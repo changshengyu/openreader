@@ -1,4 +1,4 @@
-<p align="right"><a href="README_CN.md">中文</a></p>
+<p align="center"><a href="README_CN.md">中文</a></p>
 
 # OpenReader
 
