@@ -1,6 +1,7 @@
 <template>
   <template v-if="isReader">
     <router-view />
+    <GlobalOverlayHost v-if="isLoggedIn" />
   </template>
 
   <template v-else-if="isLoggedIn">

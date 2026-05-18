@@ -38,7 +38,7 @@
       <button class="round-tool" type="button" title="搜索正文" @click="openContentSearch">
         <el-icon :size="18"><Search /></el-icon>
       </button>
-      <button class="round-tool" type="button" title="书籍信息" @click="showBookInfoDrawer = true">
+      <button class="round-tool" type="button" title="书籍信息" @click="openReaderBookInfo">
         <el-icon :size="18"><InfoFilled /></el-icon>
       </button>
       <button class="round-tool" type="button" title="添加笔记" @click="openNoteDialog">
@@ -222,41 +222,6 @@
       </div>
     </el-drawer>
 
-    <!-- ===== 书籍信息抽屉 ===== -->
-    <el-drawer v-model="showBookInfoDrawer" title="书籍信息" :direction="drawerDirection" :size="drawerSize">
-      <div class="book-info-panel" v-if="book">
-        <div class="book-cover-preview">
-          <img v-if="book.coverUrl" :src="book.coverUrl" :alt="book.title" />
-          <span v-else>{{ book.title?.slice(0, 1) || '书' }}</span>
-        </div>
-        <h2>{{ book.title }}</h2>
-        <p class="book-meta">{{ book.author || '未知作者' }}</p>
-        <dl class="book-info-list">
-          <div>
-            <dt>当前章节</dt>
-            <dd>{{ chapter?.title || '-' }}</dd>
-          </div>
-          <div>
-            <dt>章节总数</dt>
-            <dd>{{ chapters.length }}</dd>
-          </div>
-          <div>
-            <dt>最新章节</dt>
-            <dd>{{ book.lastChapter || '-' }}</dd>
-          </div>
-          <div>
-            <dt>进度</dt>
-            <dd>{{ bookProgressLabel }}</dd>
-          </div>
-        </dl>
-        <p class="book-intro">{{ book.intro || '暂无简介' }}</p>
-        <div class="drawer-actions">
-          <el-button size="small" @click="goHome">详情</el-button>
-          <el-button size="small" @click="showTocDrawer = true">目录</el-button>
-        </div>
-      </div>
-    </el-drawer>
-
     <!-- ===== 书源抽屉 ===== -->
     <el-drawer v-model="showSourceDrawer" title="书源" :direction="drawerDirection" :size="drawerSize" @open="loadSourceCandidates">
       <el-alert
@@ -268,7 +233,7 @@
       />
       <div class="drawer-actions">
         <el-button size="small" :loading="loadingSources" @click="loadSourceCandidates">搜索更多来源</el-button>
-        <el-button size="small" @click="goHome">完整详情</el-button>
+        <el-button size="small" @click="openReaderBookInfo">书籍信息</el-button>
       </div>
       <div class="source-switch-list">
         <button
@@ -299,7 +264,7 @@
           <el-icon :size="22"><Grid /></el-icon>
           <span>书源</span>
         </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(() => { showBookInfoDrawer = true })">
+        <button type="button" class="mobile-more-item" @click="runMobileAction(openReaderBookInfo)">
           <el-icon :size="22"><InfoFilled /></el-icon>
           <span>信息</span>
         </button>
@@ -526,6 +491,7 @@ import api from '../api/client'
 import { cacheBookContent, changeBookSource, listBookSourceCandidates } from '../api/books'
 import BookCover from '../components/BookCover.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
+import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
@@ -535,6 +501,7 @@ const route = useRoute()
 const router = useRouter()
 const reader = useReaderStore()
 const bookshelf = useBookshelfStore()
+const overlay = useOverlayStore()
 const bookId = computed(() => Number(route.params.id))
 
 const book = ref(null)
@@ -552,7 +519,6 @@ const showTocDrawer = ref(false)
 const showSettingsDrawer = ref(false)
 const showBookmarkDrawer = ref(false)
 const showSearchDrawer = ref(false)
-const showBookInfoDrawer = ref(false)
 const showShelfDrawer = ref(false)
 const showSourceDrawer = ref(false)
 const showMobileMoreDrawer = ref(false)
@@ -598,8 +564,10 @@ const filteredChapters = computed(() => {
 
 const filteredShelfBooks = computed(() => {
   const value = shelfKeyword.value.trim().toLowerCase()
-  if (!value) return bookshelf.books
-  return bookshelf.books.filter(item => `${item.title || ''} ${item.author || ''}`.toLowerCase().includes(value))
+  const values = value
+    ? bookshelf.books.filter(item => `${item.title || ''} ${item.author || ''}`.toLowerCase().includes(value))
+    : bookshelf.books
+  return [...values].sort(compareByReadingOrder)
 })
 
 const lines = computed(() => content.value.split('\n').map(l => l.trim()).filter(Boolean))
@@ -756,6 +724,29 @@ async function changeBookFromShelf(item) {
 
 function bookProgressPercent(item) {
   return Math.round(((reader.progressByBook[item.id] || item.progress)?.percent || 0) * 100)
+}
+
+function compareByReadingOrder(a, b) {
+  const aProgress = reader.progressByBook[a.id] || a.progress
+  const bProgress = reader.progressByBook[b.id] || b.progress
+  const aReadAt = new Date(aProgress?.updatedAt || 0).getTime()
+  const bReadAt = new Date(bProgress?.updatedAt || 0).getTime()
+  if (aReadAt !== bReadAt) return bReadAt - aReadAt
+  return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+}
+
+function openReaderBookInfo() {
+  if (!book.value) return
+  overlay.openBookInfo(book.value, {
+    statusLabel: `阅读中 · ${bookProgressLabel.value}`,
+    statusType: 'success',
+    progress: bookProgress.value,
+    actions: [
+      { label: '目录', plain: true, handler: () => { showTocDrawer.value = true; overlay.closeBookInfo() } },
+      { label: '书源', plain: true, handler: () => { showSourceDrawer.value = true; overlay.closeBookInfo() } },
+      { label: '完整详情', type: 'primary', handler: () => { overlay.closeBookInfo(); goHome() } },
+    ],
+  })
 }
 
 function goSourcePanel() {
@@ -1549,79 +1540,6 @@ function readError(err, fallback) {
 .search-result-item:hover,
 .bookmark-main:hover strong {
   color: #0f5451;
-}
-
-.book-info-panel {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-}
-
-.book-cover-preview {
-  display: grid;
-  width: 92px;
-  height: 124px;
-  overflow: hidden;
-  place-items: center;
-  color: #5c4d2b;
-  background: linear-gradient(145deg, #f5e7b9, #d4bb77);
-  border: 1px solid rgba(118, 94, 43, 0.25);
-  border-radius: 4px;
-  box-shadow: 0 12px 28px rgba(70, 51, 16, 0.16);
-  font-size: 34px;
-  font-weight: 700;
-}
-
-.book-cover-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.book-info-panel h2 {
-  margin: 4px 0 0;
-  font-size: 20px;
-  text-align: center;
-}
-
-.book-meta {
-  margin: 0;
-  color: #7b715e;
-}
-
-.book-info-list {
-  display: grid;
-  width: 100%;
-  gap: 9px;
-  margin: 4px 0;
-}
-
-.book-info-list div {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 10px;
-}
-
-.book-info-list dt {
-  color: #8a806d;
-}
-
-.book-info-list dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: #25282c;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.book-intro {
-  width: 100%;
-  margin: 0;
-  color: #4f4a3d;
-  font-size: 14px;
-  line-height: 1.7;
-  text-align: left;
 }
 
 .source-alert {
