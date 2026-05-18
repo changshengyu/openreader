@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -935,32 +936,87 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		Percent      float64 `json:"percent"`
 	}
 
-	needle := strings.ToLower(keyword)
 	matches := make([]contentMatch, 0)
 	for i := range chapters {
 		content := s.loadChapterText(book, &chapters[i])
 		if content == "" {
 			continue
 		}
-		lowerContent := strings.ToLower(content)
-		position := strings.Index(lowerContent, needle)
-		if position < 0 {
-			continue
+		positions := searchContentPositions(content, keyword, 6)
+		for _, position := range positions {
+			matches = append(matches, contentMatch{
+				ChapterID:    chapters[i].ID,
+				ChapterIndex: chapters[i].Index,
+				ChapterTitle: chapters[i].Title,
+				Excerpt:      excerptAround(content, position, keyword),
+				Offset:       position,
+				Percent:      float64(position) / float64(max(len(content), 1)),
+			})
+			if len(matches) >= 200 {
+				break
+			}
 		}
-		matches = append(matches, contentMatch{
-			ChapterID:    chapters[i].ID,
-			ChapterIndex: chapters[i].Index,
-			ChapterTitle: chapters[i].Title,
-			Excerpt:      excerptAround(content, position, keyword),
-			Offset:       position,
-			Percent:      float64(position) / float64(max(len(content), 1)),
-		})
-		if len(matches) >= 80 {
+		if len(matches) >= 200 {
 			break
 		}
 	}
 
 	c.JSON(http.StatusOK, matches)
+}
+
+func searchContentPositions(content string, keyword string, limit int) []int {
+	if content == "" || keyword == "" || limit <= 0 {
+		return nil
+	}
+	lowerContent := strings.ToLower(content)
+	needle := strings.ToLower(keyword)
+	positions := make([]int, 0)
+	for offset := 0; offset < len(lowerContent) && len(positions) < limit; {
+		position := strings.Index(lowerContent[offset:], needle)
+		if position < 0 {
+			break
+		}
+		absolute := offset + position
+		positions = append(positions, absolute)
+		offset = absolute + len(needle)
+	}
+	if len(positions) > 0 {
+		return positions
+	}
+
+	normalizedContent, contentMap := normalizeSearchText(content)
+	normalizedKeyword, _ := normalizeSearchText(keyword)
+	if normalizedKeyword == "" {
+		return nil
+	}
+	for offset := 0; offset < len(normalizedContent) && len(positions) < limit; {
+		position := strings.Index(normalizedContent[offset:], normalizedKeyword)
+		if position < 0 {
+			break
+		}
+		absolute := offset + position
+		if absolute >= 0 && absolute < len(contentMap) {
+			positions = append(positions, contentMap[absolute])
+		}
+		offset = absolute + len(normalizedKeyword)
+	}
+	return positions
+}
+
+func normalizeSearchText(value string) (string, []int) {
+	var builder strings.Builder
+	bytePositions := make([]int, 0, len(value))
+	for position, r := range value {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		lower := strings.ToLower(string(r))
+		builder.WriteString(lower)
+		for range []byte(lower) {
+			bytePositions = append(bytePositions, position)
+		}
+	}
+	return builder.String(), bytePositions
 }
 
 func excerptAround(content string, bytePosition int, keyword string) string {

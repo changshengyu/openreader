@@ -1690,10 +1690,10 @@ function readError(err, fallback) {
   .reader-content {
     box-sizing: border-box;
     width: 100vw;
-    font-size: 19px;
+    font-size: var(--reader-font-size);
     padding: 42px 22px 58px;
   }
-  .reader-content h1 { font-size: 28px; margin-bottom: 28px; }
+  .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
   .reader-left-rail,
   .reader-right-rail,
   .reader-page-control {
