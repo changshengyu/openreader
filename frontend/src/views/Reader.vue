@@ -165,92 +165,48 @@
 
     <!-- ===== 目录抽屉 ===== -->
     <el-drawer v-model="showTocDrawer" title="目录" :direction="drawerDirection" :size="drawerSize">
-      <el-input v-model="tocFilter" placeholder="搜索章节..." clearable size="small" class="toc-search" />
-      <div class="toc-list">
-        <div
-          v-for="item in filteredChapters" :key="item.id"
-          class="toc-item"
-          :class="{ active: item.index === currentIndex }"
-          @click="goChapter(item.index); showTocDrawer = false"
-        >
-          <span>{{ item.title }}</span>
-          <el-tag v-if="item.cachePath" size="small" type="success" effect="plain">已缓存</el-tag>
-        </div>
-      </div>
+      <ReaderTocPanel
+        v-model="tocFilter"
+        :chapters="chapters"
+        :current-index="currentIndex"
+        @jump="jumpFromToc"
+      />
     </el-drawer>
 
     <!-- ===== 书签抽屉 ===== -->
     <el-drawer v-model="showBookmarkDrawer" title="书签" :direction="drawerDirection" :size="drawerSize">
-      <div class="drawer-actions">
-        <el-button type="primary" size="small" @click="createBookmark()">添加书签</el-button>
-      </div>
-      <div class="bookmark-list">
-        <div v-for="item in bookmarks" :key="item.id" class="bookmark-card">
-          <button class="bookmark-main" type="button" @click="jumpToBookmark(item)">
-            <strong>{{ item.title || '书签' }}</strong>
-            <span>{{ item.excerpt || item.note || '无摘录' }}</span>
-            <small>第 {{ item.chapterIndex + 1 }} 章 · {{ Math.round((item.percent || 0) * 100) }}%</small>
-          </button>
-          <span class="bookmark-actions">
-            <el-button text size="small" @click="openBookmarkEditor(item)">编辑</el-button>
-            <el-button text type="danger" size="small" @click="removeBookmark(item)">删除</el-button>
-          </span>
-        </div>
-        <el-empty v-if="!bookmarks.length" description="暂无书签" />
-      </div>
+      <ReaderBookmarkPanel
+        :bookmarks="bookmarks"
+        @add="createBookmark"
+        @jump="jumpToBookmark"
+        @edit="openBookmarkEditor"
+        @remove="removeBookmark"
+      />
     </el-drawer>
 
     <!-- ===== 正文搜索抽屉 ===== -->
     <el-drawer v-model="showSearchDrawer" title="搜索正文" :direction="drawerDirection" :size="drawerSize">
-      <div class="content-search-row">
-        <el-input v-model="contentSearch" placeholder="搜索整本书..." clearable size="small" @keyup.enter="searchBookContent" />
-        <el-button size="small" type="primary" :loading="bookSearching" @click="searchBookContent">搜索</el-button>
-      </div>
-      <div class="search-result-list">
-        <button
-          v-for="result in bookSearchResults"
-          :key="`${result.chapterIndex}-${result.offset}`"
-          class="search-result-item"
-          type="button"
-          @click="jumpToBookSearchResult(result)"
-        >
-          <strong>{{ result.chapterTitle || `第 ${result.chapterIndex + 1} 章` }}</strong>
-          <span>{{ result.excerpt }}</span>
-        </button>
-        <el-empty v-if="contentSearch && !bookSearching && searchedBookContent && !bookSearchResults.length" description="没有匹配内容" />
-        <el-empty v-else-if="!contentSearch" description="输入关键词搜索整本书正文" />
-      </div>
+      <ReaderSearchPanel
+        v-model="contentSearch"
+        :results="bookSearchResults"
+        :loading="bookSearching"
+        :searched="searchedBookContent"
+        @search="searchBookContent"
+        @jump="jumpToBookSearchResult"
+      />
     </el-drawer>
 
     <!-- ===== 书源抽屉 ===== -->
     <el-drawer v-model="showSourceDrawer" title="书源" :direction="drawerDirection" :size="drawerSize" @open="loadSourceCandidates">
-      <el-alert
-        class="source-alert"
-        type="info"
-        :closable="false"
-        show-icon
-        title="按当前书名搜索候选书源，切换时会使用候选书籍地址重新抓取目录。"
+      <SourceSwitchPanel
+        :book="book"
+        :sources="sourceCandidates"
+        :loading="loadingSources"
+        :changing-source="changingSource"
+        @refresh="loadSourceCandidates"
+        @show-info="openReaderBookInfo"
+        @change="changeSource"
       />
-      <div class="drawer-actions">
-        <el-button size="small" :loading="loadingSources" @click="loadSourceCandidates">搜索更多来源</el-button>
-        <el-button size="small" @click="openReaderBookInfo">书籍信息</el-button>
-      </div>
-      <div class="source-switch-list">
-        <button
-          v-for="source in sourceCandidates"
-          :key="`${source.sourceId}-${source.bookUrl}`"
-          class="source-switch-card"
-          :class="{ active: source.current }"
-          type="button"
-          :disabled="source.current || changingSource === source.sourceId"
-          @click="changeSource(source)"
-        >
-          <strong>{{ source.title || book?.title }}</strong>
-          <span>{{ source.sourceName }} · {{ source.author || '未知作者' }}</span>
-          <small>{{ source.current ? '当前来源' : '点击切换' }}</small>
-        </button>
-        <el-empty v-if="!loadingSources && !sourceCandidates.length" description="没有找到可用来源" />
-      </div>
     </el-drawer>
 
     <!-- ===== 移动端更多 ===== -->
@@ -310,134 +266,21 @@
 
     <!-- ===== 设置抽屉 ===== -->
     <el-drawer v-model="showSettingsDrawer" title="阅读设置" :direction="drawerDirection" :size="drawerSize">
-      <div class="settings-body">
-        <!-- 阅读模式 -->
-        <div class="setting-row">
-          <label class="setting-label">阅读模式</label>
-          <el-radio-group v-model="reader.mode" size="small" @change="onModeChange">
-            <el-radio-button value="scroll">滚动</el-radio-button>
-            <el-radio-button value="flip">翻页</el-radio-button>
-            <el-radio-button value="page">分页</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <!-- 主题 -->
-        <div class="setting-row">
-          <label class="setting-label">主题</label>
-          <div class="theme-grid">
-            <span
-              v-for="(preset, key) in themePresets"
-              :key="key"
-              class="theme-dot"
-              :class="{ active: reader.theme === key }"
-              :style="{ background: preset.bg }"
-              :title="preset.label"
-              @click="setTheme(key)"
-            />
-            <span
-              class="theme-dot custom-dot"
-              :class="{ active: reader.theme === 'custom' }"
-              @click="setTheme('custom')"
-            >+</span>
-          </div>
-        </div>
-
-        <!-- 自定义主题 -->
-        <template v-if="reader.theme === 'custom'">
-          <div class="setting-row">
-            <label class="setting-label">背景色</label>
-            <el-color-picker v-model="customBg" size="small" @change="reader.setCustomBgColor($event)" />
-          </div>
-          <div class="setting-row">
-            <label class="setting-label">背景图</label>
-            <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="pickBgImage">
-              <el-button size="small">上传</el-button>
-            </el-upload>
-          </div>
-        </template>
-
-        <!-- 亮度 -->
-        <div class="setting-row">
-          <label class="setting-label">亮度</label>
-          <el-slider v-model="reader.brightness" :min="50" :max="150" size="small" @input="reader.setBrightness" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">自动阅读速度 ({{ reader.autoReadSpeed }}px)</label>
-          <el-slider v-model="reader.autoReadSpeed" :min="2" :max="40" :step="1" size="small" @input="reader.setAutoReadSpeed($event)" />
-        </div>
-
-        <!-- 字体 -->
-        <div class="setting-row">
-          <label class="setting-label">字体</label>
-          <el-select v-model="reader.fontFamily" size="small" @change="reader.setFontFamily">
-            <el-option v-for="f in fontOptions" :key="f.value" :label="f.label" :value="f.value" />
-          </el-select>
-        </div>
-
-        <!-- 字号 -->
-        <div class="setting-row">
-          <label class="setting-label">字号 ({{ reader.fontSize }}px)</label>
-          <div class="font-controls">
-            <el-button size="small" :icon="Minus" circle @click="reader.setFontSize(reader.fontSize - 1)" />
-            <el-slider v-model="reader.fontSize" :min="8" :max="36" size="small" class="font-slider" @input="reader.setFontSize" />
-            <el-button size="small" :icon="Plus" circle @click="reader.setFontSize(reader.fontSize + 1)" />
-          </div>
-        </div>
-
-        <!-- 行高 -->
-        <div class="setting-row">
-          <label class="setting-label">行高 ({{ reader.lineHeight }})</label>
-          <el-slider v-model="sliderLineHeight" :min="1" :max="5" :step="0.2" size="small" @input="reader.setLineHeight($event)" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
-          <el-slider v-model="reader.fontWeight" :min="300" :max="900" :step="100" size="small" @input="reader.setFontWeight($event)" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
-          <el-slider v-model="reader.paragraphSpace" :min="0" :max="3" :step="0.1" size="small" @input="reader.setParagraphSpace($event)" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">阅读宽度 ({{ reader.columnWidth }}px)</label>
-          <el-slider v-model="reader.columnWidth" :min="560" :max="1080" :step="20" size="small" @input="reader.setColumnWidth($event)" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">朗读语速 ({{ reader.ttsRate }})</label>
-          <el-slider v-model="reader.ttsRate" :min="0.5" :max="3" :step="0.1" size="small" @input="setTTSRate($event)" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">朗读音调 ({{ reader.ttsPitch }})</label>
-          <el-slider v-model="reader.ttsPitch" :min="0.5" :max="2" :step="0.1" size="small" @input="setTTSPitch($event)" />
-        </div>
-
-        <div class="setting-row">
-          <label class="setting-label">朗读语音</label>
-          <el-select
-            v-model="reader.ttsVoiceURI"
-            size="small"
-            clearable
-            :disabled="!tts.state.supported || !ttsVoices.length"
-            placeholder="浏览器默认"
-            @change="setTTSVoice"
-          >
-            <el-option label="浏览器默认" value="" />
-            <el-option
-              v-for="voice in ttsVoices"
-              :key="voice.voiceURI"
-              :label="`${voice.name} · ${voice.lang}`"
-              :value="voice.voiceURI"
-            />
-          </el-select>
-          <small v-if="!tts.state.supported" class="setting-help">当前浏览器不支持系统朗读。</small>
-          <small v-else-if="!ttsVoices.length" class="setting-help">浏览器尚未返回可用语音，稍后再打开设置会自动刷新。</small>
-        </div>
-      </div>
+      <ReaderSettingsPanel
+        v-model:custom-bg="customBg"
+        v-model:line-height="sliderLineHeight"
+        :reader="reader"
+        :tts="tts"
+        :tts-voices="ttsVoices"
+        :font-options="fontOptions"
+        :theme-presets="themePresets"
+        @mode-change="onModeChange"
+        @theme-change="setTheme"
+        @pick-bg-image="pickBgImage"
+        @tts-rate-change="setTTSRate"
+        @tts-pitch-change="setTTSPitch"
+        @tts-voice-change="setTTSVoice"
+      />
     </el-drawer>
 
     <el-dialog v-model="showNoteDialog" title="添加笔记" width="360px">
@@ -490,6 +333,11 @@ import {
 import api from '../api/client'
 import { cacheBookContent, changeBookSource, listBookSourceCandidates } from '../api/books'
 import BookCover from '../components/BookCover.vue'
+import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
+import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
+import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
+import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
+import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore, themePresets } from '../stores/reader'
@@ -555,12 +403,6 @@ const fontOptions = [
   { label: '楷体', value: 'kai' },
   { label: '仿宋', value: 'mono' },
 ]
-
-const filteredChapters = computed(() => {
-  const kw = tocFilter.value.trim().toLowerCase()
-  if (!kw) return chapters.value
-  return chapters.value.filter(ch => ch.title.toLowerCase().includes(kw))
-})
 
 const filteredShelfBooks = computed(() => {
   const value = shelfKeyword.value.trim().toLowerCase()
@@ -699,6 +541,11 @@ function pickBgImage(data) {
 async function goChapter(index) {
   if (index === currentIndex.value) { showTocDrawer.value = false; return }
   await router.replace({ name: 'reader', params: { id: bookId.value }, query: { chapter: index } })
+}
+
+async function jumpFromToc(index) {
+  showTocDrawer.value = false
+  await goChapter(index)
 }
 
 function goHome() { router.push({ name: 'book-detail', params: { id: bookId.value } }) }
@@ -1052,7 +899,11 @@ async function jumpToBookSearchResult(result) {
     await loadChapter(targetIndex, 0)
   }
   await nextTick()
-  jumpToFirstSearchMatch()
+  if (Number.isInteger(result.lineIndex)) {
+    jumpToLine(result.lineIndex)
+  } else {
+    jumpToFirstSearchMatch()
+  }
 }
 
 function jumpToFirstSearchMatch() {
@@ -1399,8 +1250,6 @@ function readError(err, fallback) {
   transform: translateX(-50%); z-index: 5; font-size: 14px;
 }
 
-/* ---- 目录列表 ---- */
-.toc-search { margin-bottom: 12px; }
 .shelf-search { margin-bottom: 12px; }
 .reader-shelf-list { display: grid; gap: 10px; }
 .reader-shelf-card {
@@ -1442,156 +1291,11 @@ function readError(err, fallback) {
   color: #7b715e;
   font-size: 12px;
 }
-.toc-list { max-height: calc(100vh - 160px); overflow-y: auto; }
-.toc-item { padding: 12px 8px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
-.toc-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.toc-item:hover { color: #409eff; background: #f5f7fa; }
-.toc-item.active { color: #409eff; font-weight: 600; background: #ecf5ff; }
-
-/* ---- 书签 / 搜索 / 信息 ---- */
-.drawer-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.bookmark-list,
-.search-result-list {
-  display: grid;
-  gap: 10px;
-}
-
-.bookmark-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: start;
-  padding: 10px;
-  border: 1px solid #eee4c9;
-  border-radius: 6px;
-  background: #fffaf0;
-}
-
-.bookmark-main,
-.search-result-item {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  padding: 0;
-  color: #24282c;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.bookmark-main strong,
-.search-result-item strong {
-  overflow: hidden;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bookmark-main span,
-.search-result-item span {
-  color: #6f6754;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.bookmark-main small {
-  color: #9a8e72;
-  font-size: 12px;
-}
-
-.bookmark-actions {
-  display: grid;
-  gap: 2px;
-}
-
+/* ---- 编辑弹层 ---- */
 .bookmark-editor {
   display: grid;
   gap: 10px;
 }
-
-.content-search-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.content-search-row .el-input {
-  flex: 1;
-}
-
-.search-result-item {
-  padding: 10px;
-  border: 1px solid #eee4c9;
-  border-radius: 6px;
-  background: #fffaf0;
-}
-
-.search-result-item:hover,
-.bookmark-main:hover strong {
-  color: #0f5451;
-}
-
-.source-alert {
-  margin-bottom: 12px;
-}
-
-.source-switch-list {
-  display: grid;
-  gap: 10px;
-}
-
-.source-switch-card {
-  display: grid;
-  gap: 5px;
-  width: 100%;
-  padding: 12px;
-  color: #24282c;
-  background: #fffaf0;
-  border: 1px solid #eee4c9;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-}
-
-.source-switch-card:hover,
-.source-switch-card.active {
-  border-color: #0f5451;
-  background: #fff7dc;
-}
-
-.source-switch-card:disabled {
-  cursor: progress;
-  opacity: 0.7;
-}
-
-.source-switch-card span,
-.source-switch-card small {
-  color: #7b715e;
-  font-size: 12px;
-}
-
-/* ---- 设置面板 ---- */
-.settings-body { display: grid; gap: 20px; }
-.setting-row { display: grid; gap: 8px; }
-.setting-label { font-size: 13px; color: #666; }
-.setting-help { color: #8a8171; font-size: 12px; line-height: 1.5; }
-.theme-grid { display: flex; gap: 8px; flex-wrap: wrap; }
-.theme-dot { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
-.theme-dot.active { border-color: #409eff; box-shadow: 0 0 0 1px #409eff; }
-.theme-dot.custom-dot { background: linear-gradient(135deg, #f4e9bd, #2d2d2d); color: #fff; display: grid; place-items: center; font-size: 14px; }
-.font-controls { display: flex; align-items: center; gap: 8px; }
-.font-slider { flex: 1; }
 
 .empty-hint { color: #999; text-align: center; padding-top: 40px; text-indent: 0; }
 

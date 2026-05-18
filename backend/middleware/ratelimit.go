@@ -54,6 +54,11 @@ func (rl *RateLimiter) cleanup() {
 // Middleware returns a Gin handler that enforces the rate limit.
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.Request.Method == http.MethodOptions || c.FullPath() == "/api/health" || c.FullPath() == "/assets/*filepath" {
+			c.Next()
+			return
+		}
+
 		ip := c.ClientIP()
 
 		rl.mu.Lock()

@@ -1025,7 +1025,7 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(fullPath, []byte("第一段内容\n这里有一个特殊关键词用于搜索\n第二个特殊关键词也应命中\n换行拆开的隐 藏\n关 键 词\n结尾"), 0o644); err != nil {
+	if err := os.WriteFile(fullPath, []byte("第一段内容\n这里有一个特殊关键词用于搜索\n第二个特殊关键词也应命中\n换行拆开的隐 藏\n关 键 词\n夫君御驾亲征了！！！\n结尾"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1050,6 +1050,7 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 		ChapterIndex int    `json:"chapterIndex"`
 		ChapterTitle string `json:"chapterTitle"`
 		Excerpt      string `json:"excerpt"`
+		LineIndex    int    `json:"lineIndex"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
@@ -1071,6 +1072,21 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	}
 	if len(matches) != 1 || !strings.Contains(matches[0].Excerpt, "隐 藏") {
 		t.Fatalf("unexpected normalized matches: %+v", matches)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("夫君御驾亲征了!"), nil)
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("search punctuation-normalized content: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	matches = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].LineIndex != 5 || !strings.Contains(matches[0].Excerpt, "夫君御驾亲征了") {
+		t.Fatalf("unexpected punctuation-normalized matches: %+v", matches)
 	}
 }
 

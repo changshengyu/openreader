@@ -933,6 +933,7 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		ChapterTitle string  `json:"chapterTitle"`
 		Excerpt      string  `json:"excerpt"`
 		Offset       int     `json:"offset"`
+		LineIndex    int     `json:"lineIndex"`
 		Percent      float64 `json:"percent"`
 	}
 
@@ -950,6 +951,7 @@ func (s *Server) searchBookContent(c *gin.Context) {
 				ChapterTitle: chapters[i].Title,
 				Excerpt:      excerptAround(content, position, keyword),
 				Offset:       position,
+				LineIndex:    lineIndexAtByte(content, position),
 				Percent:      float64(position) / float64(max(len(content), 1)),
 			})
 			if len(matches) >= 200 {
@@ -1007,7 +1009,7 @@ func normalizeSearchText(value string) (string, []int) {
 	var builder strings.Builder
 	bytePositions := make([]int, 0, len(value))
 	for position, r := range value {
-		if unicode.IsSpace(r) {
+		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
 			continue
 		}
 		lower := strings.ToLower(string(r))
@@ -1017,6 +1019,22 @@ func normalizeSearchText(value string) (string, []int) {
 		}
 	}
 	return builder.String(), bytePositions
+}
+
+func lineIndexAtByte(content string, bytePosition int) int {
+	if bytePosition <= 0 {
+		return 0
+	}
+	if bytePosition > len(content) {
+		bytePosition = len(content)
+	}
+	lineIndex := 0
+	for _, r := range content[:bytePosition] {
+		if r == '\n' {
+			lineIndex++
+		}
+	}
+	return lineIndex
 }
 
 func excerptAround(content string, bytePosition int, keyword string) string {
