@@ -102,6 +102,10 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | Parsing | goquery (CSS selectors), custom regex chapter detection |
 | Deployment | Docker multi-stage build, single Alpine container |
 
+## Acknowledgments
+
+This project is a refactor and rewrite of [hectorqin/reader](https://github.com/hectorqin/reader), an excellent open-source reading platform. We are grateful for the original author's work and inspiration.
+
 ## License
 
 [GPL v3](LICENSE)
@@ -205,6 +209,10 @@ cd frontend && npm run build
 | 实时通信 | Gorilla WebSocket (同步通道) |
 | 内容解析 | goquery (CSS 选择器)、正则分章 |
 | 部署 | Docker 多阶段构建、Alpine 单容器 |
+
+## 致谢
+
+本项目是对 [hectorqin/reader](https://github.com/hectorqin/reader) 的重构与重写。感谢原作者的优秀工作和灵感。
 
 ## 许可证
 
