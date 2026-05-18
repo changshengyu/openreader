@@ -130,6 +130,15 @@ func (s *Server) deleteSource(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (s *Server) clearSources(c *gin.Context) {
+	result := s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.BookSource{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear sources"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected})
+}
+
 type batchSourcesRequest struct {
 	Action    string `json:"action" binding:"required"`
 	SourceIDs []uint `json:"sourceIds" binding:"required"`

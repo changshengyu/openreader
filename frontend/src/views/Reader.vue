@@ -1,5 +1,5 @@
 <template>
-  <main class="reader-shell" :class="reader.mode">
+  <main class="reader-shell" :class="[reader.mode, { 'mobile-chrome-visible': mobileChromeVisible }]">
     <aside class="reader-left-rail">
       <button class="rail-item rail-home" type="button" title="返回首页" @click="goShelf">
         <el-icon :size="18"><ArrowLeft /></el-icon>
@@ -64,6 +64,17 @@
       </button>
     </aside>
 
+    <header class="reader-mobile-top">
+      <button class="mobile-tool-button" type="button" aria-label="返回" @click="goHome">
+        <el-icon :size="20"><ArrowLeft /></el-icon>
+      </button>
+      <div class="mobile-reader-title">
+        <strong>{{ book?.title || '阅读中' }}</strong>
+        <span>{{ chapter?.title || chapterLabel }}</span>
+      </div>
+      <span class="mobile-reader-progress">{{ bookProgressLabel }}</span>
+    </header>
+
     <section ref="pageEl" class="reader-page" :style="readerStyle">
       <header class="reader-page-head">
         <span>{{ book?.title || '阅读中' }}</span>
@@ -90,14 +101,26 @@
     </footer>
 
     <footer class="reader-mobile-bottom">
-      <button type="button" @click="previousPage">上一页</button>
-      <span>
-        <template v-if="reader.mode === 'flip' || reader.mode === 'page'">
-          第{{ page + 1 }}/{{ pageCount }}页 {{ bookProgressLabel }}
-        </template>
-        <template v-else>{{ bookProgressLabel }}</template>
-      </span>
-      <button type="button" @click="nextPage">下一页</button>
+      <button class="mobile-tool-button" type="button" @click="openMobileTool(openTocSearch)">
+        <el-icon :size="20"><List /></el-icon>
+        <span>目录</span>
+      </button>
+      <button class="mobile-tool-button" type="button" @click="openMobileTool(() => { showBookmarkDrawer = true })">
+        <el-icon :size="20"><CollectionTag /></el-icon>
+        <span>书签</span>
+      </button>
+      <button class="mobile-tool-button" type="button" @click="openMobileTool(openContentSearch)">
+        <el-icon :size="20"><Search /></el-icon>
+        <span>搜索</span>
+      </button>
+      <button class="mobile-tool-button" type="button" @click="openMobileTool(() => { showSettingsDrawer = true })">
+        <el-icon :size="20"><Setting /></el-icon>
+        <span>设置</span>
+      </button>
+      <button class="mobile-tool-button" type="button" @click="openMobileTool(() => { showMobileMoreDrawer = true })">
+        <el-icon :size="20"><MoreFilled /></el-icon>
+        <span>更多</span>
+      </button>
     </footer>
 
     <!-- TTS 朗读条 -->
@@ -263,6 +286,61 @@
         </button>
         <el-empty v-if="!loadingSources && !sourceCandidates.length" description="没有找到可用来源" />
       </div>
+    </el-drawer>
+
+    <!-- ===== 移动端更多 ===== -->
+    <el-drawer v-model="showMobileMoreDrawer" title="阅读工具" direction="btt" size="72%" class="mobile-more-drawer">
+      <div class="mobile-more-grid">
+        <button type="button" class="mobile-more-item" @click="runMobileAction(openShelfPanel)">
+          <el-icon :size="22"><Notebook /></el-icon>
+          <span>书架</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(goSourcePanel)">
+          <el-icon :size="22"><Grid /></el-icon>
+          <span>书源</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(() => { showBookInfoDrawer = true })">
+          <el-icon :size="22"><InfoFilled /></el-icon>
+          <span>信息</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(openNoteDialog)">
+          <el-icon :size="22"><EditPen /></el-icon>
+          <span>笔记</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(cacheCurrentChapter)">
+          <el-icon :size="22"><Download /></el-icon>
+          <span>缓存</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(reloadChapter)">
+          <el-icon :size="22"><RefreshRight /></el-icon>
+          <span>刷新</span>
+        </button>
+        <button type="button" class="mobile-more-item" :class="{ active: autoReading }" @click="runMobileAction(toggleAutoReading)">
+          <el-icon :size="22"><VideoPlay /></el-icon>
+          <span>自动</span>
+        </button>
+        <button type="button" class="mobile-more-item" :class="{ active: tts.state.playing }" :disabled="!tts.state.supported" @click="runMobileAction(toggleTTS)">
+          <el-icon :size="22"><Headset /></el-icon>
+          <span>听书</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(toggleNight)">
+          <el-icon :size="22"><Moon /></el-icon>
+          <span>夜间</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(scrollToTop)">
+          <el-icon :size="22"><ArrowUpBold /></el-icon>
+          <span>顶部</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(scrollToBottom)">
+          <el-icon :size="22"><ArrowDownBold /></el-icon>
+          <span>底部</span>
+        </button>
+        <button type="button" class="mobile-more-item" @click="runMobileAction(goHome)">
+          <el-icon :size="22"><ArrowLeft /></el-icon>
+          <span>详情</span>
+        </button>
+      </div>
+      <p v-if="!tts.state.supported" class="mobile-more-hint">当前浏览器不支持系统朗读，听书入口已禁用。</p>
     </el-drawer>
 
     <!-- ===== 设置抽屉 ===== -->
@@ -435,6 +513,7 @@ import {
   Headset,
   InfoFilled,
   List,
+  MoreFilled,
   Moon,
   Notebook,
   RefreshRight,
@@ -476,6 +555,7 @@ const showSearchDrawer = ref(false)
 const showBookInfoDrawer = ref(false)
 const showShelfDrawer = ref(false)
 const showSourceDrawer = ref(false)
+const showMobileMoreDrawer = ref(false)
 const showNoteDialog = ref(false)
 const showBookmarkEditor = ref(false)
 const sourceCandidates = ref([])
@@ -557,13 +637,15 @@ const bodyStyle = computed(() => {
 })
 
 const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.value.length || 1}`)
+const isMobileReader = computed(() => windowWidth.value <= 680)
 const drawerDirection = computed(() => windowWidth.value <= 680 ? 'btt' : 'rtl')
-const drawerSize = computed(() => windowWidth.value <= 680 ? '76%' : '360px')
+const drawerSize = computed(() => windowWidth.value <= 680 ? '82%' : '360px')
 const bookProgress = computed(() => {
   const total = Math.max(chapters.value.length, 1)
   return Math.min(1, Math.max(0, (currentIndex.value + currentChapterPercent()) / total))
 })
 const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
+const mobileChromeVisible = ref(false)
 
 function onModeChange(mode) {
   reader.setMode(mode)
@@ -678,6 +760,17 @@ function bookProgressPercent(item) {
 
 function goSourcePanel() {
   showSourceDrawer.value = true
+}
+
+function runMobileAction(action) {
+  showMobileMoreDrawer.value = false
+  mobileChromeVisible.value = false
+  action?.()
+}
+
+function openMobileTool(action) {
+  mobileChromeVisible.value = false
+  action?.()
 }
 
 async function loadSourceCandidates() {
@@ -1020,7 +1113,14 @@ useKeyboard({
 useGesture(pageEl, {
   onSwipeLeft: () => nextPage(),
   onSwipeRight: () => previousPage(),
-  onCenterTap: () => { showTocDrawer.value = !showTocDrawer.value; showSettingsDrawer.value = false },
+  onCenterTap: () => {
+    if (isMobileReader.value) {
+      mobileChromeVisible.value = !mobileChromeVisible.value
+      return
+    }
+    showTocDrawer.value = !showTocDrawer.value
+    showSettingsDrawer.value = false
+  },
   onEdgeLeftTap: () => previousPage(),
   onEdgeRightTap: () => nextPage(),
   onPinchOut: () => reader.setFontSize(reader.fontSize + 2),
@@ -1283,6 +1383,10 @@ function readError(err, fallback) {
 }
 
 .reader-mobile-bottom {
+  display: none;
+}
+
+.reader-mobile-top {
   display: none;
 }
 
@@ -1582,38 +1686,138 @@ function readError(err, fallback) {
     padding: 0;
   }
   .reader-page { border: 0; width: 100vw; }
-  .reader-page-head { padding: 14px 18px 0; }
-  .reader-content { font-size: 19px; padding: 62px 22px 148px; }
+  .reader-page-head { display: none; }
+  .reader-content {
+    box-sizing: border-box;
+    width: 100vw;
+    font-size: 19px;
+    padding: 42px 22px 58px;
+  }
   .reader-content h1 { font-size: 28px; margin-bottom: 28px; }
   .reader-left-rail,
   .reader-right-rail,
   .reader-page-control {
     display: none;
   }
+  .reader-mobile-top {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 8;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 52px;
+    align-items: center;
+    gap: 8px;
+    min-height: 58px;
+    padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+    background: rgba(255, 252, 239, 0.94);
+    border-bottom: 1px solid rgba(148, 132, 87, 0.28);
+    box-shadow: 0 8px 24px rgba(73, 57, 27, 0.08);
+    transform: translateY(-110%);
+    transition: transform 180ms ease;
+  }
+  .mobile-reader-title {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+    color: #25282c;
+  }
+  .mobile-reader-title strong,
+  .mobile-reader-title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-reader-title strong {
+    font-size: 14px;
+  }
+  .mobile-reader-title span,
+  .mobile-reader-progress {
+    color: #756c5a;
+    font-size: 12px;
+  }
+  .mobile-reader-progress {
+    text-align: right;
+  }
   .reader-mobile-bottom {
     position: fixed;
     right: 0;
     bottom: 0;
     left: 0;
-    z-index: 4;
-    display: flex;
+    z-index: 8;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
+    gap: 4px;
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
     background: rgba(255, 252, 239, 0.92);
     border-top: 1px solid rgba(148, 132, 87, 0.35);
+    box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
+    transform: translateY(110%);
+    transition: transform 180ms ease;
   }
-  .reader-mobile-bottom button {
-    min-width: 76px;
-    padding: 9px 12px;
+  .reader-shell.mobile-chrome-visible .reader-mobile-top,
+  .reader-shell.mobile-chrome-visible .reader-mobile-bottom {
+    transform: translateY(0);
+  }
+  .mobile-tool-button {
+    display: grid;
+    min-width: 0;
+    min-height: 44px;
+    place-items: center;
+    gap: 3px;
+    padding: 6px 4px;
     color: #111;
     background: transparent;
-    border: 1px solid rgba(148, 132, 87, 0.35);
+    border: 0;
     border-radius: 6px;
+    font-size: 12px;
   }
-  .reader-mobile-bottom span {
-    color: #5c5a52;
+  .mobile-tool-button:active,
+  .mobile-more-item:active {
+    background: rgba(114, 91, 43, 0.1);
+  }
+  .mobile-more-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 4px 0 10px;
+  }
+  .mobile-more-item {
+    display: grid;
+    min-height: 72px;
+    place-items: center;
+    align-content: center;
+    gap: 7px;
+    color: #232323;
+    background: #fffaf0;
+    border: 1px solid #eee4c9;
+    border-radius: 8px;
     font-size: 13px;
+  }
+  .mobile-more-item.active {
+    color: #0f5451;
+    border-color: #0f5451;
+    background: #fff7dc;
+  }
+  .mobile-more-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.42;
+  }
+  .mobile-more-hint {
+    margin: 4px 0 0;
+    color: #8a8171;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .tts-bar {
+    right: 10px;
+    bottom: max(74px, calc(env(safe-area-inset-bottom) + 74px));
+    left: 10px;
+    justify-content: center;
+    overflow-x: auto;
+    transform: none;
   }
 }
 </style>

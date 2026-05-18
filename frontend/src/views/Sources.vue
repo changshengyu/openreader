@@ -13,6 +13,7 @@
           <el-button :icon="Upload">导入</el-button>
         </el-upload>
         <el-button :icon="Link" @click="showRemote = true">远程书源</el-button>
+        <el-button type="danger" plain :disabled="!sources.length" @click="clearAllSources">清空</el-button>
       </div>
     </header>
 
@@ -185,6 +186,7 @@ import { CircleCheck, Download, Link, Plus, Search, Upload } from '@element-plus
 import {
   batchSources,
   batchTestSources,
+  clearSources,
   createSource,
   deleteSource as deleteSourceApi,
   exportSources as exportSourcesApi,
@@ -359,6 +361,22 @@ async function batchUpdateSources(action) {
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, `批量${actionName}失败`))
+  }
+}
+
+async function clearAllSources() {
+  if (!sources.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定清空全部 ${sources.value.length} 个书源吗？这个操作不可撤销。`, '清空书源', { type: 'warning' })
+    const { data } = await clearSources()
+    sources.value = []
+    selection.value = []
+    health.value = {}
+    failedOnly.value = false
+    ElMessage.success(`已清空 ${data.affected || 0} 个书源`)
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '清空书源失败'))
   }
 }
 

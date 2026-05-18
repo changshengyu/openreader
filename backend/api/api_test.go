@@ -558,6 +558,34 @@ func TestBatchSourcesEnableDisableAndDelete(t *testing.T) {
 	}
 }
 
+func TestClearSources(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	if err := server.db.Create(&models.BookSource{Name: "A", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.BookSource{Name: "B", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/sources", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"affected":2`) {
+		t.Fatalf("clear sources: expected affected count, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var count int64
+	if err := server.db.Model(&models.BookSource{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("expected all sources cleared, got %d", count)
+	}
+}
+
 func TestImportRemoteSourceUsesRawJSON(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

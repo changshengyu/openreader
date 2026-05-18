@@ -36,18 +36,22 @@
       </el-button>
     </div>
 
-    <el-dialog v-model="previewDialog" title="书籍信息" width="620px">
-      <BookInfoPanel v-if="selectedBook" :book="selectedBook" :source-name="selectedBook.sourceName" status-label="探索结果" status-type="success">
-        <div class="preview-actions">
-          <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable>
-            <el-option label="未分组" value="" />
-            <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-          </el-select>
-          <el-button plain :loading="addingBook === selectedBook.bookUrl" @click="addRemoteBook(selectedBook, false)">加入书架</el-button>
-          <el-button type="primary" :loading="addingBook === selectedBook.bookUrl" @click="addRemoteBook(selectedBook, true)">加入并阅读</el-button>
-        </div>
-      </BookInfoPanel>
-    </el-dialog>
+    <BookInfoDialog
+      v-model="previewDialog"
+      :book="selectedBook"
+      :source-name="selectedBook?.sourceName"
+      status-label="探索结果"
+      status-type="success"
+    >
+      <div v-if="selectedBook" class="preview-actions">
+        <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable>
+          <el-option label="未分组" value="" />
+          <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
+        </el-select>
+        <el-button plain :loading="addingBook === selectedBook.bookUrl" @click="addRemoteBook(selectedBook, false)">加入书架</el-button>
+        <el-button type="primary" :loading="addingBook === selectedBook.bookUrl" @click="addRemoteBook(selectedBook, true)">加入并阅读</el-button>
+      </div>
+    </BookInfoDialog>
   </section>
 </template>
 
@@ -59,7 +63,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { createRemoteBook } from '../api/books'
 import { exploreBooks, listExploreSources } from '../api/explore'
 import BookCover from '../components/BookCover.vue'
-import BookInfoPanel from '../components/BookInfoPanel.vue'
+import BookInfoDialog from '../components/BookInfoDialog.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 
 const router = useRouter()

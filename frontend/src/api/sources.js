@@ -20,6 +20,10 @@ export function deleteSource(id) {
   return api.delete(`/sources/${id}`)
 }
 
+export function clearSources() {
+  return api.delete('/sources')
+}
+
 export function batchSources(payload) {
   return api.post('/sources/batch', payload)
 }

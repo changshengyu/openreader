@@ -41,6 +41,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.POST("/admin/cleanup-inactive", server.cleanupInactiveUsers)
 	protected.GET("/sources", server.listSources)
 	protected.POST("/sources", server.createSource)
+	protected.DELETE("/sources", server.clearSources)
 	protected.POST("/sources/batch", server.batchSources)
 	protected.POST("/sources/import", server.importSources)
 	protected.GET("/sources/export", server.exportSources)

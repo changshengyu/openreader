@@ -84,24 +84,22 @@
       <el-empty v-else description="输入关键词后开始搜索" />
     </div>
 
-    <el-dialog v-model="previewDialog" title="书籍信息" width="620px" class="book-preview-dialog">
-      <BookInfoPanel
-        v-if="selectedResult"
-        :book="selectedResult"
-        :source-name="selectedResult.sourceName"
-        :status-label="'搜索结果'"
-        status-type="success"
-      >
-        <div class="preview-actions">
-          <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable>
-            <el-option label="未分组" value="" />
-            <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-          </el-select>
-          <el-button plain :loading="addingBook === selectedResult.bookUrl" @click="addRemoteBook(selectedResult, false)">加入书架</el-button>
-          <el-button type="primary" :loading="addingBook === selectedResult.bookUrl" @click="addRemoteBook(selectedResult, true)">加入并阅读</el-button>
-        </div>
-      </BookInfoPanel>
-    </el-dialog>
+    <BookInfoDialog
+      v-model="previewDialog"
+      :book="selectedResult"
+      :source-name="selectedResult?.sourceName"
+      status-label="搜索结果"
+      status-type="success"
+    >
+      <div v-if="selectedResult" class="preview-actions">
+        <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable>
+          <el-option label="未分组" value="" />
+          <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
+        </el-select>
+        <el-button plain :loading="addingBook === selectedResult.bookUrl" @click="addRemoteBook(selectedResult, false)">加入书架</el-button>
+        <el-button type="primary" :loading="addingBook === selectedResult.bookUrl" @click="addRemoteBook(selectedResult, true)">加入并阅读</el-button>
+      </div>
+    </BookInfoDialog>
   </section>
 </template>
 
@@ -113,7 +111,7 @@ import { Connection, Search as SearchIcon } from '@element-plus/icons-vue'
 import { createRemoteBook } from '../api/books'
 import api from '../api/client'
 import BookCover from '../components/BookCover.vue'
-import BookInfoPanel from '../components/BookInfoPanel.vue'
+import BookInfoDialog from '../components/BookInfoDialog.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 
 const route = useRoute()
