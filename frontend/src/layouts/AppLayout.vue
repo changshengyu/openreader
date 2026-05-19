@@ -6,8 +6,8 @@
       <div class="app-brand" @click="goHome">
         <div class="app-brand-mark">阅</div>
         <div>
-          <div class="app-brand-title">OpenReader</div>
-          <div class="app-brand-subtitle">自部署阅读空间</div>
+          <div class="app-brand-title">阅读</div>
+          <div class="app-brand-subtitle">清风不识字，何故乱翻书</div>
         </div>
       </div>
 
