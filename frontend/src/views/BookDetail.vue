@@ -51,11 +51,14 @@
 
           <el-tab-pane label="书签" name="bookmarks">
             <section class="app-panel tab-panel">
+              <div class="tab-toolbar">
+                <el-button @click="openGlobalBookmark">管理书签</el-button>
+              </div>
               <ReaderBookmarkPanel
                 :bookmarks="bookmarks"
                 :show-add="false"
+                :show-edit="false"
                 @jump="goBookmark"
-                @edit="openGlobalBookmark"
                 @remove="deleteBookmarkItem"
               />
             </section>

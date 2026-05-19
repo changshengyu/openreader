@@ -10,7 +10,7 @@
         <small>第 {{ item.chapterIndex + 1 }} 章 · {{ Math.round((item.percent || 0) * 100) }}%</small>
       </button>
       <span class="bookmark-actions">
-        <el-button text size="small" @click="$emit('edit', item)">编辑</el-button>
+        <el-button v-if="showEdit" text size="small" @click="$emit('edit', item)">编辑</el-button>
         <el-button text type="danger" size="small" @click="$emit('remove', item)">删除</el-button>
       </span>
     </div>
@@ -25,6 +25,10 @@ defineProps({
     default: () => [],
   },
   showAdd: {
+    type: Boolean,
+    default: true,
+  },
+  showEdit: {
     type: Boolean,
     default: true,
   },
