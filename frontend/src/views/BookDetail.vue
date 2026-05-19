@@ -37,33 +37,27 @@
           <el-tab-pane label="目录" name="toc">
             <section class="app-panel tab-panel">
               <div class="tab-toolbar">
-                <el-input v-model="tocKeyword" placeholder="搜索章节" clearable>
-                  <template #prefix><el-icon><Search /></el-icon></template>
-                </el-input>
                 <el-switch v-model="tocReverse" active-text="倒序" inactive-text="正序" />
               </div>
-              <div class="chapter-list">
-                <button v-for="chapter in shownChapters" :key="chapter.id" type="button" class="chapter-row" @click="goChapter(chapter.index)">
-                  <span>{{ chapter.title }}</span>
-                  <small>第 {{ chapter.index + 1 }} 章 · {{ chapter.cachePath ? '已缓存' : '未缓存' }}</small>
-                </button>
-              </div>
+              <ReaderTocPanel
+                v-model="tocKeyword"
+                :chapters="chapters"
+                :reverse="tocReverse"
+                :show-meta="true"
+                @jump="goChapter"
+              />
             </section>
           </el-tab-pane>
 
           <el-tab-pane label="书签" name="bookmarks">
             <section class="app-panel tab-panel">
-              <div v-if="bookmarks.length" class="bookmark-list">
-                <article v-for="bookmark in bookmarks" :key="bookmark.id" class="bookmark-row">
-                  <button type="button" @click="goBookmark(bookmark)">
-                    <strong>{{ bookmark.title || '书签' }}</strong>
-                    <span>{{ bookmark.excerpt || bookmark.note || '无摘录' }}</span>
-                    <small>第 {{ bookmark.chapterIndex + 1 }} 章 · {{ Math.round((bookmark.percent || 0) * 100) }}%</small>
-                  </button>
-                  <el-button size="small" text type="danger" @click="deleteBookmarkItem(bookmark)">删除</el-button>
-                </article>
-              </div>
-              <el-empty v-else description="暂无书签，阅读页右侧书签按钮可以添加" />
+              <ReaderBookmarkPanel
+                :bookmarks="bookmarks"
+                :show-add="false"
+                @jump="goBookmark"
+                @edit="openGlobalBookmark"
+                @remove="deleteBookmarkItem"
+              />
             </section>
           </el-tab-pane>
 
@@ -136,18 +130,22 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Search, Switch } from '@element-plus/icons-vue'
+import { ArrowLeft, Switch } from '@element-plus/icons-vue'
 import { cacheBookContent, changeBookSource, deleteBook, deleteBookmark, listBookmarks, listBookSourceCandidates, refreshBook, updateBook, updateBookCategory } from '../api/books'
 import api from '../api/client'
 import { uploadAsset } from '../api/uploads'
 import BookInfoPanel from '../components/BookInfoPanel.vue'
+import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
+import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
 import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
+import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 
 const route = useRoute()
 const router = useRouter()
 const bookshelf = useBookshelfStore()
+const overlay = useOverlayStore()
 const reader = useReaderStore()
 
 const loading = ref(true)
@@ -174,14 +172,6 @@ const changeError = ref(false)
 const bookDraft = reactive({ title: '', author: '', coverUrl: '', intro: '' })
 
 const currentSource = computed(() => availableSources.value.find(source => source.id === book.value?.sourceId))
-
-const shownChapters = computed(() => {
-  const keyword = tocKeyword.value.trim().toLowerCase()
-  const list = keyword
-    ? chapters.value.filter(chapter => chapter.title.toLowerCase().includes(keyword))
-    : chapters.value
-  return tocReverse.value ? [...list].reverse() : list
-})
 
 onMounted(load)
 
@@ -220,6 +210,10 @@ function goChapter(index) {
 
 function goBookmark(bookmark) {
   router.push({ name: 'reader', params: { id: book.value.id }, query: { chapter: bookmark.chapterIndex, offset: bookmark.offset } })
+}
+
+function openGlobalBookmark() {
+  overlay.openBookmark(book.value)
 }
 
 async function deleteBookmarkItem(bookmark) {
@@ -551,65 +545,9 @@ function readError(err, fallback) {
   max-width: 360px;
 }
 
-.chapter-list,
-.bookmark-list,
 .info-list {
   display: grid;
   gap: 8px;
-}
-
-.chapter-list {
-  max-height: 560px;
-  overflow-y: auto;
-}
-
-.chapter-row,
-.bookmark-row button {
-  width: 100%;
-  color: var(--app-text);
-  background: transparent;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  cursor: pointer;
-  text-align: left;
-}
-
-.chapter-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-}
-
-.chapter-row:hover {
-  border-color: var(--app-primary);
-  background: var(--app-primary-soft);
-}
-
-.chapter-row small,
-.bookmark-row small {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.bookmark-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: start;
-}
-
-.bookmark-row button {
-  display: grid;
-  gap: 5px;
-  padding: 12px;
-}
-
-.bookmark-row span {
-  overflow: hidden;
-  color: var(--app-text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .info-list {
