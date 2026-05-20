@@ -31,42 +31,85 @@
     </div>
   </BookInfoDialog>
 
-  <el-drawer v-model="overlay.bookManageVisible" title="书籍管理" direction="rtl" size="420px" class="global-manage-drawer">
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      title="对齐上游 BookManage：批量分组、缓存、清缓存、导出和删除。"
-    />
-    <div class="manage-toolbar">
-      <el-checkbox
-        :model-value="allSelected"
-        :indeterminate="someSelected"
-        @change="toggleAll"
-      >
-        全选
-      </el-checkbox>
-      <el-select v-model="batchCategoryId" placeholder="批量分组" clearable size="small">
-        <el-option label="未分组" value="" />
-        <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-      </el-select>
-      <el-button size="small" :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchSetCategory">设置分组</el-button>
-      <el-button size="small" :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchCacheBooks">缓存</el-button>
-      <el-button size="small" :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchClearCache">清缓存</el-button>
-      <el-button size="small" :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchExportBooks">导出</el-button>
-      <el-button size="small" type="danger" plain :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchDeleteBooks">删除</el-button>
-    </div>
-    <div class="manage-list">
-      <div v-for="book in managedBooks" :key="book.id" class="manage-row">
-        <el-checkbox v-model="selectedBookIds" :value="book.id" />
-        <BookCover :book="book" size="small" />
-        <span class="manage-book-main">
-          <strong>{{ book.title }}</strong>
-          <small>{{ categoryName(book.categoryId) }} · {{ book.chapterCount || 0 }} 章 · {{ progressLabel(book) }}</small>
-        </span>
-        <el-button size="small" @click="overlay.openBookInfo(book)">信息</el-button>
-        <el-button size="small" type="danger" plain @click="deleteBook(book)">删除</el-button>
-      </div>
+  <el-drawer v-model="overlay.bookManageVisible" title="书架管理" direction="rtl" size="82%" class="global-manage-drawer">
+    <el-table
+      :data="managedBooks"
+      row-key="id"
+      height="calc(100vh - 188px)"
+      class="manage-table"
+      @selection-change="onManageSelectionChange"
+    >
+      <el-table-column type="selection" width="42" />
+      <el-table-column prop="title" label="书名" min-width="180" show-overflow-tooltip>
+        <template #default="{ row }">
+          <el-button text class="text-button" @click="overlay.openBookInfo(row)">{{ row.title }}</el-button>
+        </template>
+      </el-table-column>
+      <el-table-column prop="author" label="作者" min-width="120" show-overflow-tooltip />
+      <el-table-column label="分组" min-width="120">
+        <template #default="{ row }">{{ categoryName(row.categoryId) }}</template>
+      </el-table-column>
+      <el-table-column label="章节" min-width="150">
+        <template #default="{ row }">
+          <span>共 {{ row.chapterCount || 0 }} 章</span><br>
+          <span>阅读进度：{{ progressLabel(row) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="150" fixed="right">
+        <template #default="{ row }">
+          <el-button text class="text-button" @click="goDetail(row)">编辑</el-button>
+          <el-button text class="text-button" @click="setBookGroup(row)">分组</el-button>
+          <el-dropdown @command="cacheBook(row, $event)">
+            <el-button text class="text-button" :loading="cachingBookId === row.id">
+              缓存<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="cacheBook">缓存到服务器</el-dropdown-item>
+                <el-dropdown-item command="deleteBookCache">删除服务器缓存</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-dropdown @command="exportBook(row, $event)">
+            <el-button text class="text-button">
+              导出<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="json">导出书籍数据</el-dropdown-item>
+                <el-dropdown-item disabled>导出为TXT（后端未实现）</el-dropdown-item>
+                <el-dropdown-item disabled>导出为Epub（后端未实现）</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
+      </el-table-column>
+    </el-table>
+    <div class="manage-footer">
+      <el-button type="primary" :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchDeleteBooks">批量删除</el-button>
+      <el-dropdown @command="batchAddCategory">
+        <el-button type="primary" :disabled="!selectedBookIds.length" :loading="batchBusy">
+          批量添加分组<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="category in bookshelf.categories" :key="category.id" :command="category">{{ category.name }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <el-dropdown @command="batchRemoveCategory">
+        <el-button type="primary" :disabled="!selectedBookIds.length" :loading="batchBusy">
+          批量移除分组<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="category in bookshelf.categories" :key="category.id" :command="category">{{ category.name }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <span class="check-tip">已选择 {{ selectedBookIds.length }} 个</span>
+      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchCacheBooks">批量缓存</el-button>
+      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchClearCache">批量清缓存</el-button>
     </div>
   </el-drawer>
 
@@ -141,11 +184,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { checkBookUpdates, deleteBookmark, listBookmarks, searchBookContent, updateBookmark } from '../api/books'
+import { ArrowDown } from '@element-plus/icons-vue'
+import { cacheBookContent, checkBookUpdates, deleteBookmark, listBookmarks, searchBookContent, updateBookmark } from '../api/books'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
-import BookCover from './BookCover.vue'
 import BookInfoDialog from './BookInfoDialog.vue'
 import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from './reader/ReaderSearchPanel.vue'
@@ -156,8 +199,8 @@ const overlay = useOverlayStore()
 const reader = useReaderStore()
 
 const selectedBookIds = ref([])
-const batchCategoryId = ref('')
 const batchBusy = ref(false)
+const cachingBookId = ref(null)
 const loadingUpdates = ref(false)
 const newGroupName = ref('')
 const contentKeyword = ref('')
@@ -171,8 +214,6 @@ const bookmarkSaving = ref(false)
 const editingBookmark = ref(null)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
 
-const allSelected = computed(() => bookshelf.books.length > 0 && selectedBookIds.value.length === bookshelf.books.length)
-const someSelected = computed(() => selectedBookIds.value.length > 0 && selectedBookIds.value.length < bookshelf.books.length)
 const bookInfoCategory = computed(() => overlay.bookInfoOptions.categoryName || categoryName(overlay.bookInfoBook?.categoryId))
 const bookInfoProgress = computed(() => {
   const book = overlay.bookInfoBook
@@ -233,8 +274,8 @@ function compareByReadingOrder(a, b) {
   return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
 }
 
-function toggleAll(value) {
-  selectedBookIds.value = value ? bookshelf.books.map(book => book.id) : []
+function onManageSelectionChange(rows) {
+  selectedBookIds.value = rows.map(row => row.id)
 }
 
 function continueRead(book) {
@@ -244,7 +285,19 @@ function continueRead(book) {
 
 function goDetail(book) {
   overlay.closeBookInfo()
+  overlay.bookManageVisible = false
   router.push({ name: 'book-detail', params: { id: book.id } })
+}
+
+function setBookGroup(book) {
+  overlay.openBookInfo(book, {
+    categoryName: categoryName(book.categoryId),
+    progress: (reader.progressByBook[book.id]?.percent || book.progress?.percent || 0),
+    actions: [
+      { label: '详情', plain: true, handler: () => goDetail(book) },
+      { label: '分组管理', type: 'primary', handler: () => { overlay.closeBookInfo(); overlay.openBookGroup('set') } },
+    ],
+  })
 }
 
 function openContentSearch(book) {
@@ -270,16 +323,34 @@ async function refreshShelf() {
   }
 }
 
-async function batchSetCategory() {
+async function batchAddCategory(category) {
   if (!selectedBookIds.value.length) return
   batchBusy.value = true
   try {
-    const categoryId = batchCategoryId.value ? Number(batchCategoryId.value) : null
-    await bookshelf.batchSetCategory([...selectedBookIds.value], categoryId)
-    selectedBookIds.value = []
-    ElMessage.success('分组已更新')
+    await bookshelf.batchSetCategory([...selectedBookIds.value], category.id)
+    ElMessage.success(`已添加到“${category.name}”分组`)
   } catch (err) {
-    ElMessage.error(readError(err, '批量分组失败'))
+    ElMessage.error(readError(err, '批量添加分组失败'))
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+async function batchRemoveCategory(category) {
+  if (!selectedBookIds.value.length) return
+  const targetIds = managedBooks.value
+    .filter(book => selectedBookIds.value.includes(book.id) && String(book.categoryId) === String(category.id))
+    .map(book => book.id)
+  if (!targetIds.length) {
+    ElMessage.info('选中书籍不在该分组中')
+    return
+  }
+  batchBusy.value = true
+  try {
+    await bookshelf.batchSetCategory(targetIds, null)
+    ElMessage.success(`已从“${category.name}”分组移除`)
+  } catch (err) {
+    ElMessage.error(readError(err, '批量移除分组失败'))
   } finally {
     batchBusy.value = false
   }
@@ -313,27 +384,6 @@ async function batchClearCache() {
   }
 }
 
-async function batchExportBooks() {
-  if (!selectedBookIds.value.length) return
-  batchBusy.value = true
-  try {
-    const blob = await bookshelf.exportSelectedBooks([...selectedBookIds.value])
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `openreader-books-${new Date().toISOString().slice(0, 10)}.json`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
-    ElMessage.success(`已导出 ${selectedBookIds.value.length} 本书`)
-  } catch (err) {
-    ElMessage.error(readError(err, '批量导出失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
 async function batchDeleteBooks() {
   if (!selectedBookIds.value.length) return
   try {
@@ -350,15 +400,57 @@ async function batchDeleteBooks() {
   }
 }
 
-async function deleteBook(book) {
-  try {
-    await ElMessageBox.confirm(`确定删除《${book.title}》吗？`, '删除书籍', { type: 'warning' })
-    await bookshelf.removeBook(book.id)
-    ElMessage.success('书籍已删除')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除失败'))
+async function cacheBook(book, command) {
+  if (command === 'deleteBookCache') {
+    await clearBookCache(book)
+    return
   }
+  cachingBookId.value = book.id
+  try {
+    const { data } = await cacheBookContent(book.id, { all: true })
+    ElMessage.success(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
+    await bookshelf.loadBooks()
+  } catch (err) {
+    ElMessage.error(readError(err, '缓存失败'))
+  } finally {
+    cachingBookId.value = null
+  }
+}
+
+async function clearBookCache(book) {
+  cachingBookId.value = book.id
+  try {
+    const data = await bookshelf.batchClearCache([book.id])
+    ElMessage.success(`已清理 ${data.cleared || 0} 个章节缓存`)
+  } catch (err) {
+    ElMessage.error(readError(err, '清理缓存失败'))
+  } finally {
+    cachingBookId.value = null
+  }
+}
+
+async function exportBook(book) {
+  batchBusy.value = true
+  try {
+    const blob = await bookshelf.exportSelectedBooks([book.id])
+    downloadBlob(blob, `openreader-book-${book.id}.json`)
+    ElMessage.success(`已导出《${book.title}》`)
+  } catch (err) {
+    ElMessage.error(readError(err, '导出失败'))
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 async function searchCurrentBookContent() {
@@ -521,7 +613,7 @@ function readError(err, fallback) {
 
 <style scoped>
 .overlay-actions,
-.manage-toolbar {
+.manage-footer {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -531,25 +623,11 @@ function readError(err, fallback) {
   margin-top: 4px;
 }
 
-.manage-toolbar {
-  margin: 12px 0;
-  padding: 10px;
-  background: var(--app-bg-soft);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-}
-
-.manage-toolbar .el-select {
-  width: 150px;
-}
-
-.manage-list,
 .group-list {
   display: grid;
   gap: 10px;
 }
 
-.manage-row,
 .group-row,
 .group-create {
   display: grid;
@@ -557,28 +635,23 @@ function readError(err, fallback) {
   gap: 10px;
 }
 
-.manage-row {
-  grid-template-columns: auto 44px minmax(0, 1fr) auto auto;
-  padding: 10px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
+.manage-table {
+  margin-bottom: 12px;
 }
 
-.manage-book-main {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
+.text-button {
+  padding: 0;
 }
 
-.manage-book-main strong,
-.manage-book-main small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.manage-footer {
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border);
 }
 
-.manage-book-main small {
+.check-tip {
   color: var(--app-text-muted);
+  font-size: 13px;
 }
 
 .group-create {
@@ -604,13 +677,4 @@ function readError(err, fallback) {
   gap: 10px;
 }
 
-@media (max-width: 560px) {
-  .manage-row {
-    grid-template-columns: auto 42px minmax(0, 1fr);
-  }
-
-  .manage-row .el-button {
-    grid-column: span 3;
-  }
-}
 </style>
