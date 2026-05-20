@@ -4,6 +4,7 @@
     title="书籍信息"
     width="620px"
     class="book-info-dialog"
+    :fullscreen="isMobile"
     @update:model-value="$emit('update:modelValue', $event)"
   >
     <BookInfoPanel
@@ -22,6 +23,7 @@
 </template>
 
 <script setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import BookInfoPanel from './BookInfoPanel.vue'
 
 defineProps({
@@ -60,4 +62,14 @@ defineProps({
 })
 
 defineEmits(['update:modelValue'])
+
+const windowWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
+const isMobile = computed(() => windowWidth.value <= 680)
+
+function handleResize() {
+  windowWidth.value = window.innerWidth
+}
+
+onMounted(() => window.addEventListener('resize', handleResize))
+onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
 </script>

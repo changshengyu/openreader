@@ -1,31 +1,43 @@
 <template>
   <section class="book-info-shared">
-    <BookCover :book="book" />
+    <div class="book-cover-zone">
+      <div class="book-cover-bg" :style="coverBgStyle" />
+      <BookCover :book="book" />
+    </div>
     <div class="book-info-main">
       <div class="book-info-title">
         <h2>{{ book?.title || '未命名书籍' }}</h2>
         <el-tag v-if="statusLabel" size="small" effect="plain" :type="statusType">{{ statusLabel }}</el-tag>
       </div>
-      <p class="book-info-meta">
-        {{ book?.author || '未知作者' }}
-        <template v-if="sourceName"> · {{ sourceName }}</template>
-        <template v-if="categoryName"> · {{ categoryName }}</template>
-      </p>
-      <p class="book-info-intro">{{ book?.intro || '暂无简介' }}</p>
-      <dl class="book-info-facts">
+      <div class="book-props">
         <div>
-          <dt>最新章节</dt>
-          <dd>{{ book?.lastChapter || '-' }}</dd>
+          <span>作者：</span>
+          <strong>{{ book?.author || '未知' }}</strong>
         </div>
         <div>
-          <dt>章节</dt>
-          <dd>{{ chapterCount }}</dd>
+          <span>来源：</span>
+          <strong>{{ sourceName || (book?.sourceId ? '远程书籍' : '本地') }}</strong>
         </div>
         <div>
-          <dt>进度</dt>
-          <dd>{{ progressLabel }}</dd>
+          <span>最新：</span>
+          <strong>{{ book?.lastChapter || '-' }}</strong>
         </div>
-      </dl>
+        <div>
+          <span>分组：</span>
+          <strong>{{ categoryName || '未分组' }}</strong>
+        </div>
+        <div>
+          <span>章节：</span>
+          <strong>{{ chapterCount }}</strong>
+        </div>
+        <div>
+          <span>进度：</span>
+          <strong>{{ progressLabel }}</strong>
+        </div>
+      </div>
+      <div class="book-info-intro">
+        <p v-for="(paragraph, index) in introParagraphs" :key="index">{{ paragraph }}</p>
+      </div>
       <slot />
     </div>
   </section>
@@ -68,6 +80,11 @@ const props = defineProps({
 
 const chapterCount = computed(() => Array.isArray(props.chapters) ? props.chapters.length : (props.chapters || props.book?.chapterCount || 0))
 const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props.progress || 0)) * 100)}%`)
+const introParagraphs = computed(() => {
+  const text = String(props.book?.intro || '暂无简介').trim()
+  return text ? text.split(/\n+/).map(line => line.trim()).filter(Boolean) : ['暂无简介']
+})
+const coverBgStyle = computed(() => props.book?.coverUrl ? { backgroundImage: `url(${props.book.coverUrl})` } : {})
 </script>
 
 <style scoped>
@@ -76,6 +93,32 @@ const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props
   grid-template-columns: auto minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.book-cover-zone {
+  position: relative;
+  display: grid;
+  width: 112px;
+  min-height: 150px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.book-cover-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--app-bg-soft);
+  background-position: center;
+  background-size: cover;
+  filter: blur(14px);
+  opacity: 0.34;
+  transform: scale(1.18);
+}
+
+.book-cover-zone :deep(.book-cover-shared) {
+  position: relative;
+  z-index: 1;
 }
 
 .book-info-main {
@@ -92,9 +135,7 @@ const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props
 }
 
 .book-info-title h2,
-.book-info-meta,
-.book-info-intro,
-.book-info-facts {
+.book-info-intro {
   margin: 0;
 }
 
@@ -104,47 +145,38 @@ const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props
   line-height: 1.25;
 }
 
-.book-info-meta,
-.book-info-intro,
-.book-info-facts dt {
+.book-props span,
+.book-info-intro {
   color: var(--app-text-muted);
 }
 
 .book-info-intro {
-  display: -webkit-box;
-  overflow: hidden;
   line-height: 1.7;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  max-height: 180px;
+  overflow: auto;
 }
 
-.book-info-facts {
+.book-info-intro p {
+  margin: 0 0 6px;
+  text-indent: 2em;
+}
+
+.book-props {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
-.book-info-facts div {
-  display: grid;
-  gap: 3px;
+.book-props div {
+  display: flex;
+  gap: 4px;
   min-width: 0;
-  padding: 8px;
-  background: var(--app-bg-soft);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-}
-
-.book-info-facts dt {
-  font-size: 12px;
-}
-
-.book-info-facts dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--app-text);
   font-size: 13px;
-  font-weight: 700;
+}
+
+.book-props strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -154,8 +186,20 @@ const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props
     grid-template-columns: 1fr;
   }
 
-  .book-info-facts {
-    grid-template-columns: 1fr;
+  .book-cover-zone {
+    justify-self: center;
+    width: 128px;
+    min-height: 172px;
+  }
+
+  .book-info-title {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .book-info-main {
+    gap: 12px;
   }
 }
 </style>
