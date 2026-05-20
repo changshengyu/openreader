@@ -41,7 +41,7 @@
       </span>
     </section>
 
-    <el-table :data="shownSources" stripe class="source-table" @selection-change="selection = $event">
+    <el-table :data="shownSources" stripe class="source-table desktop-source-table" @selection-change="selection = $event">
       <el-table-column type="selection" width="42" />
       <el-table-column prop="name" label="名称" min-width="150" show-overflow-tooltip />
       <el-table-column prop="group" label="分组" width="120">
@@ -70,6 +70,31 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div v-if="shownSources.length" class="mobile-source-list">
+      <article v-for="source in shownSources" :key="source.id" class="mobile-source-card app-panel">
+        <header>
+          <div>
+            <strong>{{ source.name }}</strong>
+            <span>{{ source.group || '默认分组' }}</span>
+          </div>
+          <el-switch :model-value="source.enabled" size="small" @change="value => toggleSource(source, value)" />
+        </header>
+        <p>{{ source.baseUrl || source.searchUrl || '未设置地址' }}</p>
+        <div class="mobile-source-meta">
+          <el-tag size="small" effect="plain">{{ source.charset || 'utf-8' }}</el-tag>
+          <el-tag v-if="health[source.id]" size="small" :type="health[source.id].ok ? 'success' : 'danger'" effect="plain">
+            {{ health[source.id].ok ? '可用' : health[source.id].message }}
+          </el-tag>
+          <el-tag v-else size="small" effect="plain">未检测</el-tag>
+        </div>
+        <footer>
+          <el-button size="small" text type="primary" @click="openDebug(source)">调试</el-button>
+          <el-button size="small" text @click="openEditor(source)">编辑</el-button>
+          <el-button size="small" text type="danger" @click="deleteSource(source.id)">删除</el-button>
+        </footer>
+      </article>
+    </div>
 
     <el-empty v-if="!sources.length" description="还没有书源，导入或新增书源开始使用" />
 
@@ -623,6 +648,61 @@ function readError(err, fallback) {
   width: 100%;
 }
 
+.mobile-source-list {
+  display: none;
+}
+
+.mobile-source-card {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.mobile-source-card header,
+.mobile-source-card footer,
+.mobile-source-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-source-card header {
+  justify-content: space-between;
+}
+
+.mobile-source-card header > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.mobile-source-card strong,
+.mobile-source-card span,
+.mobile-source-card p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-source-card strong {
+  color: var(--app-text);
+  font-size: 15px;
+}
+
+.mobile-source-card span,
+.mobile-source-card p {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.mobile-source-card p {
+  margin: 0;
+}
+
+.mobile-source-card footer {
+  justify-content: flex-end;
+}
+
 .debug-title {
   justify-content: space-between;
   margin-bottom: 10px;
@@ -676,6 +756,15 @@ function readError(err, fallback) {
 
   .source-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desktop-source-table {
+    display: none;
+  }
+
+  .mobile-source-list {
+    display: grid;
+    gap: 10px;
   }
 }
 </style>
