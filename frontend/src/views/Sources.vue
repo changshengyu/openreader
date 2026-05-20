@@ -464,7 +464,7 @@ async function exportSources() {
 }
 
 async function checkInvalidSources() {
-  const list = selection.value.length ? selection.value : shownSources.value.slice(0, 12)
+  const list = selection.value.length ? selection.value : shownSources.value
   if (!list.length) return
   checking.value = true
   try {
