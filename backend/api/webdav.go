@@ -18,6 +18,7 @@ import (
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/localbook"
 )
 
 // ---------- WebDAV endpoints ----------
@@ -255,6 +256,70 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (s *Server) importFromWebDAV(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+
+	var req struct {
+		Paths      []string `json:"paths" binding:"required"`
+		CategoryID *uint    `json:"categoryId"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+		return
+	}
+	if !s.validateCategory(c, userID, req.CategoryID) {
+		return
+	}
+
+	userName, ok := s.currentUserName(c, userID)
+	if !ok {
+		return
+	}
+
+	importer := localbook.NewImporter(s.cfg, s.db)
+	imported := make([]gin.H, 0)
+
+	for _, rawPath := range req.Paths {
+		filePath, relativePath, ok := s.webdavPath(c, rawPath)
+		if !ok {
+			continue
+		}
+
+		info, err := os.Stat(filePath)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(filePath))
+		if !isImportableExtension(ext) {
+			imported = append(imported, gin.H{"path": relativePath, "error": "unsupported file type"})
+			continue
+		}
+
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			imported = append(imported, gin.H{"path": relativePath, "error": err.Error()})
+			continue
+		}
+
+		book, err := importer.Import(localbook.ImportRequest{
+			UserID:     userID,
+			UserName:   userName,
+			FileName:   filepath.Base(filePath),
+			Extension:  ext,
+			Data:       data,
+			CategoryID: req.CategoryID,
+		})
+		if err != nil {
+			imported = append(imported, gin.H{"path": relativePath, "error": err.Error()})
+			continue
+		}
+		imported = append(imported, gin.H{"path": relativePath, "book": book})
+	}
+
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
+	c.JSON(http.StatusOK, gin.H{"imported": imported})
 }
 
 func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error) {

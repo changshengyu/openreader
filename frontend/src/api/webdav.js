@@ -1,4 +1,5 @@
 import axios from 'axios'
+import api from './client'
 
 export function listWebDAV(path = '') {
   return axios.get(webdavURL(path), { responseType: 'text' })
@@ -28,6 +29,10 @@ export function deleteWebDAV(path) {
 
 export function downloadWebDAV(path) {
   return axios.get(webdavURL(path), { responseType: 'blob' })
+}
+
+export function importFromWebDAV(paths, categoryId = null) {
+  return api.post('/webdav/import', { paths, categoryId })
 }
 
 function webdavURL(path) {

@@ -121,6 +121,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/backup/download/:name", server.downloadBackup)
 	protected.POST("/backup/restore-legado", server.importLegadoBackup)
 	protected.POST("/backup/restore-webdav", server.restoreWebDAVBackup)
+	protected.POST("/webdav/import", server.importFromWebDAV)
 
 	router.GET("/ws/sync", server.syncSocket)
 

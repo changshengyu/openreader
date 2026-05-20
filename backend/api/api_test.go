@@ -2044,3 +2044,36 @@ func TestExploreBooksSupportsPagePlaceholder(t *testing.T) {
 		t.Fatalf("expected page placeholder URL, got %q", requested)
 	}
 }
+
+func TestImportFromWebDAVImportsBook(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	webdavDir := filepath.Join(server.cfg.DataDir, "webdav", "books")
+	if err := os.MkdirAll(webdavDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webdavDir, "webdav-book.txt"), []byte("第一章 开始\n正文内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/webdav/import", strings.NewReader(`{"paths":["books/webdav-book.txt"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("import webdav: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"book"`) {
+		t.Fatalf("expected imported book in response, got %s", w.Body.String())
+	}
+
+	var book models.Book
+	if err := server.db.Where("title = ?", "webdav-book").First(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if book.ChapterCount == 0 {
+		t.Fatalf("expected imported chapters, got %+v", book)
+	}
+}
