@@ -100,7 +100,7 @@
           </div>
           <dl class="info-list">
             <div><dt>服务地址</dt><dd><code>/webdav/</code></dd></div>
-            <div><dt>支持能力</dt><dd>浏览 / 新建目录 / 上传 / 下载 / 重命名 / 删除</dd></div>
+            <div><dt>支持能力</dt><dd>浏览 / 新建目录 / 上传 / 下载 / 重命名 / 删除 / 批量删除</dd></div>
             <div><dt>当前目录</dt><dd>{{ webdavPath || '/' }}</dd></div>
           </dl>
           <div class="panel-actions">
@@ -109,6 +109,9 @@
             <el-upload :show-file-list="false" :auto-upload="false" @change="uploadWebDAVFile">
               <el-button :icon="Upload" :loading="webdavUploading">上传</el-button>
             </el-upload>
+            <el-button type="danger" plain :disabled="!webdavSelection.length" @click="deleteSelectedWebDAVItems">
+              批量删除 ({{ webdavSelection.length }})
+            </el-button>
           </div>
           <el-breadcrumb separator="/" class="webdav-breadcrumb">
             <el-breadcrumb-item>
@@ -118,7 +121,8 @@
               <button type="button" @click="goWebDAVPath(crumb.path)">{{ crumb.name }}</button>
             </el-breadcrumb-item>
           </el-breadcrumb>
-          <el-table :data="webdavItems" stripe v-loading="webdavLoading">
+          <el-table :data="webdavItems" stripe v-loading="webdavLoading" @selection-change="webdavSelection = $event">
+            <el-table-column type="selection" width="42" />
             <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip>
               <template #default="{ row }">
                 <button class="file-name" type="button" @click="openWebDAVItem(row)">
@@ -454,6 +458,7 @@ const usersLoading = ref(false)
 const cleanupLoading = ref(false)
 const webdavPath = ref('')
 const webdavItems = ref([])
+const webdavSelection = ref([])
 const webdavLoading = ref(false)
 const webdavUploading = ref(false)
 const webdavRestoring = ref('')
@@ -855,6 +860,7 @@ async function loadWebDAV() {
   try {
     const { data } = await listWebDAV(webdavPath.value)
     webdavItems.value = parseWebDAVListing(data)
+    webdavSelection.value = []
   } catch (err) {
     ElMessage.error(readError(err, '加载 WebDAV 失败'))
   } finally {
@@ -961,6 +967,21 @@ async function deleteWebDAVItem(row) {
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '删除 WebDAV 项目失败'))
+  }
+}
+
+async function deleteSelectedWebDAVItems() {
+  if (!webdavSelection.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${webdavSelection.value.length} 个 WebDAV 项目吗？`, '批量删除 WebDAV 项目', { type: 'warning' })
+    for (const row of webdavSelection.value) {
+      await deleteWebDAV(joinPath(webdavPath.value, row.name))
+    }
+    ElMessage.success('已批量删除')
+    await loadWebDAV()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '批量删除 WebDAV 项目失败'))
   }
 }
 
