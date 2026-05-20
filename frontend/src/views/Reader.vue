@@ -142,6 +142,12 @@
 
     <!-- ===== 书架抽屉 ===== -->
     <el-drawer v-model="showShelfDrawer" title="书架" :direction="drawerDirection" :size="drawerSize">
+      <div class="reader-drawer-title">
+        <span>书架({{ filteredShelfBooks.length }})</span>
+        <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
+          {{ shelfLoading ? '刷新中...' : '刷新' }}
+        </button>
+      </div>
       <el-input v-model="shelfKeyword" placeholder="搜索书名或作者..." clearable size="small" class="shelf-search" />
       <div v-loading="shelfLoading" class="reader-shelf-list">
         <button
@@ -152,11 +158,12 @@
           type="button"
           @click="changeBookFromShelf(item)"
         >
-          <BookCover :book="item" />
           <span class="reader-shelf-main">
-            <strong>{{ item.title }}</strong>
-            <small>{{ item.author || '未知作者' }} · {{ item.lastChapter || '暂无最新章节' }}</small>
-            <el-progress :percentage="bookProgressPercent(item)" :stroke-width="4" :show-text="false" />
+            <span class="reader-shelf-title-line">
+              <strong>{{ item.title }}</strong>
+              <em v-if="unreadCount(item)">{{ unreadCount(item) }}</em>
+            </span>
+            <small>{{ readChapterTitle(item) || '尚未阅读' }}</small>
           </span>
         </button>
         <el-empty v-if="!shelfLoading && !filteredShelfBooks.length" description="书架里没有匹配书籍" />
@@ -328,7 +335,6 @@ import {
 } from '@element-plus/icons-vue'
 import api from '../api/client'
 import { cacheBookContent, changeBookSource, listBookSourceCandidates } from '../api/books'
-import BookCover from '../components/BookCover.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
@@ -571,8 +577,27 @@ async function changeBookFromShelf(item) {
   await router.push({ name: 'reader', params: { id: item.id } })
 }
 
-function bookProgressPercent(item) {
-  return Math.round(((reader.progressByBook[item.id] || item.progress)?.percent || 0) * 100)
+function readChapterTitle(item) {
+  const progress = reader.progressByBook[item.id] || item.progress
+  return progress?.chapterTitle || item.durChapterTitle || ''
+}
+
+function unreadCount(item) {
+  const progress = reader.progressByBook[item.id] || item.progress
+  const chapterIndex = Number.isInteger(progress?.chapterIndex) ? progress.chapterIndex : -1
+  const total = Number(item.chapterCount || item.totalChapterNum || 0)
+  return Math.max(0, total - 1 - chapterIndex)
+}
+
+async function refreshReaderShelf() {
+  shelfLoading.value = true
+  try {
+    await bookshelf.loadBooks()
+  } catch (err) {
+    ElMessage.error(readError(err, '刷新书架失败'))
+  } finally {
+    shelfLoading.value = false
+  }
 }
 
 function compareByReadingOrder(a, b) {
@@ -1260,42 +1285,74 @@ function readError(err, fallback) {
   transform: translateX(-50%); z-index: 5; font-size: 14px;
 }
 
-.shelf-search { margin-bottom: 12px; }
-.reader-shelf-list { display: grid; gap: 10px; }
-.reader-shelf-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  width: 100%;
+.reader-drawer-title {
+  display: flex;
   align-items: center;
-  padding: 10px;
+  justify-content: space-between;
+  margin: -2px 0 14px;
+}
+.reader-drawer-title span {
+  color: #ed4259;
+  border-bottom: 1px solid #ed4259;
+  font-size: 18px;
+}
+.reader-drawer-title button {
+  padding: 0;
+  color: #ed4259;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.reader-drawer-title button:disabled {
+  color: #8c8c8c;
+  cursor: default;
+}
+.shelf-search { margin-bottom: 12px; }
+.reader-shelf-list { display: grid; }
+.reader-shelf-card {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
   color: #24282c;
-  background: #fffaf0;
-  border: 1px solid #eee4c9;
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(160, 139, 91, 0.22);
   cursor: pointer;
   text-align: left;
 }
 .reader-shelf-card:hover,
 .reader-shelf-card.active {
-  border-color: #0f5451;
-  background: #fff7dc;
-}
-.reader-shelf-card :deep(.book-cover-shared) {
-  width: 52px;
-  height: 70px;
-  font-size: 22px;
+  color: #ed4259;
+  background: transparent;
 }
 .reader-shelf-main {
   display: grid;
   min-width: 0;
   gap: 6px;
 }
-.reader-shelf-main strong,
+.reader-shelf-title-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.reader-shelf-title-line strong,
 .reader-shelf-main small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.reader-shelf-title-line strong {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.reader-shelf-title-line em {
+  flex: 0 0 auto;
+  color: #ed4259;
+  font-size: 12px;
+  font-style: normal;
 }
 .reader-shelf-main small {
   color: #7b715e;
