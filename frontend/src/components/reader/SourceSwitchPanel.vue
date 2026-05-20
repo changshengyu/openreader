@@ -7,7 +7,18 @@
     title="按当前书名搜索候选书源，切换时会使用候选书籍地址重新抓取目录。"
   />
   <div class="drawer-actions">
-    <el-button size="small" :loading="loading" @click="$emit('refresh')">搜索更多来源</el-button>
+    <el-select
+      :model-value="group"
+      size="small"
+      placeholder="全部分组"
+      clearable
+      class="source-group-select"
+      @update:model-value="$emit('groupChange', $event || '')"
+    >
+      <el-option v-for="item in groups" :key="item" :label="item" :value="item" />
+    </el-select>
+    <el-button size="small" :loading="loading" @click="$emit('refresh')">刷新</el-button>
+    <el-button size="small" :loading="loading" @click="$emit('loadMore')">加载更多</el-button>
     <el-button v-if="showInfoButton" size="small" @click="$emit('showInfo')">书籍信息</el-button>
   </div>
   <div class="source-switch-list">
@@ -42,6 +53,14 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  group: {
+    type: String,
+    default: '',
+  },
+  groups: {
+    type: Array,
+    default: () => [],
+  },
   changingSource: {
     type: [Number, String],
     default: null,
@@ -52,7 +71,7 @@ defineProps({
   },
 })
 
-defineEmits(['refresh', 'showInfo', 'change'])
+defineEmits(['refresh', 'loadMore', 'groupChange', 'showInfo', 'change'])
 </script>
 
 <style scoped>
@@ -62,8 +81,13 @@ defineEmits(['refresh', 'showInfo', 'change'])
 
 .drawer-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.source-group-select {
+  width: 132px;
 }
 
 .source-switch-list {

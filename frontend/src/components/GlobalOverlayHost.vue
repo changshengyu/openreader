@@ -167,7 +167,10 @@
       :results="contentResults"
       :loading="contentSearching"
       :searched="contentSearched"
+      :has-more="contentHasMore"
+      :status-text="contentSearchStatus"
       @search="searchCurrentBookContent"
+      @load-more="loadMoreCurrentBookContent"
       @jump="jumpToContentResult"
     />
   </el-drawer>
@@ -232,6 +235,9 @@ const contentKeyword = ref('')
 const contentResults = ref([])
 const contentSearching = ref(false)
 const contentSearched = ref(false)
+const contentLastIndex = ref(-1)
+const contentHasMore = ref(false)
+const contentTotal = ref(0)
 const bookmarkItems = ref([])
 const bookmarkLoading = ref(false)
 const bookmarkEditorVisible = ref(false)
@@ -246,6 +252,12 @@ const bookInfoProgress = computed(() => {
 })
 const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
 const managedBooks = computed(() => [...bookshelf.books].sort(compareByReadingOrder))
+const contentSearchStatus = computed(() => {
+  if (!contentSearched.value) return ''
+  const scanned = contentLastIndex.value >= 0 ? contentLastIndex.value + 1 : 0
+  if (!contentTotal.value) return `${contentResults.value.length} 条结果`
+  return `已搜索 ${Math.min(scanned, contentTotal.value)} / ${contentTotal.value} 章，${contentResults.value.length} 条结果`
+})
 
 watch(
   () => overlay.bookManageVisible || overlay.bookGroupVisible,
@@ -269,8 +281,19 @@ watch(
     contentKeyword.value = ''
     contentResults.value = []
     contentSearched.value = false
+    contentLastIndex.value = -1
+    contentHasMore.value = false
+    contentTotal.value = 0
   },
 )
+
+watch(contentKeyword, () => {
+  contentResults.value = []
+  contentSearched.value = false
+  contentLastIndex.value = -1
+  contentHasMore.value = false
+  contentTotal.value = 0
+})
 
 watch(
   () => overlay.bookmarkVisible,
@@ -506,14 +529,31 @@ function downloadBlob(blob, filename) {
 }
 
 async function searchCurrentBookContent() {
+  return runCurrentBookContentSearch({ append: false })
+}
+
+async function loadMoreCurrentBookContent() {
+  return runCurrentBookContentSearch({ append: true })
+}
+
+async function runCurrentBookContentSearch({ append = false } = {}) {
   const book = overlay.searchBook
   const keyword = contentKeyword.value.trim()
   if (!book?.id || !keyword) return
   contentSearching.value = true
   contentSearched.value = true
   try {
-    const { data } = await searchBookContent(book.id, keyword)
-    contentResults.value = data || []
+    const { data } = await searchBookContent(book.id, keyword, {
+      paged: 1,
+      lastIndex: append ? contentLastIndex.value : -1,
+      chapterLimit: 30,
+      matchLimit: 80,
+    })
+    const rows = data?.list || []
+    contentResults.value = append ? contentResults.value.concat(rows) : rows
+    contentLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
+    contentHasMore.value = Boolean(data?.hasMore)
+    contentTotal.value = Number(data?.total || 0)
   } catch (err) {
     ElMessage.error(readError(err, '搜索正文失败'))
   } finally {

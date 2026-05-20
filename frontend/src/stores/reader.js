@@ -89,7 +89,7 @@ export const useReaderStore = defineStore('reader', {
       this.columnWidth = Math.max(320, Math.min(1200, Number(columnWidth) || 670))
     },
     normalizeSettings() {
-      if ((this.settingsVersion || 0) >= 4 && this.fontSize <= 22) return
+      if ((this.settingsVersion || 0) >= 4) return
       this.fontSize = 18
       this.fontWeight = 400
       this.lineHeight = 1.8

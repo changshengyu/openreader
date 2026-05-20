@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -748,6 +749,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 
 	source := models.BookSource{
 		Name:    "候选源",
+		Group:   "优先",
 		BaseURL: upstream,
 		Charset: "utf-8",
 		Enabled: true,
@@ -768,13 +770,36 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	if err := server.db.Create(&source).Error; err != nil {
 		t.Fatal(err)
 	}
+	otherSource := models.BookSource{
+		Name:    "其他源",
+		Group:   "其他",
+		BaseURL: upstream,
+		Charset: "utf-8",
+		Enabled: true,
+	}
+	if err := otherSource.SetRules(models.BookSourceRule{
+		SearchURL:       upstream + "/search?q={keyword}",
+		BookListRule:    ".book",
+		BookNameRule:    ".title|text",
+		BookAuthorRule:  ".author|text",
+		BookIntroRule:   ".intro|text",
+		BookURLRule:     ".link|attr:href",
+		ChapterListRule: ".chapter",
+		ChapterNameRule: "a|text",
+		ChapterURLRule:  "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&otherSource).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	book := models.Book{UserID: user.ID, SourceID: source.ID, Title: "候选书", URL: upstream + "/old"}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?group=%E4%BC%98%E5%85%88&limit=1&offset=0", nil)
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -792,6 +817,9 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	}
 	if len(candidates) != 1 || candidates[0].BookURL != upstream+"/book-new" {
 		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+	if candidates[0].SourceID != source.ID {
+		t.Fatalf("source candidates should honor group filter, got source %d", candidates[0].SourceID)
 	}
 
 	body := `{"sourceId":` + strconv.FormatUint(uint64(candidates[0].SourceID), 10) + `,"bookUrl":` + strconv.Quote(candidates[0].BookURL) + `,"title":"候选书","author":"新作者"}`
@@ -1087,6 +1115,73 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	}
 	if len(matches) != 1 || matches[0].LineIndex != 5 || !strings.Contains(matches[0].Excerpt, "夫君御驾亲征了") {
 		t.Fatalf("unexpected punctuation-normalized matches: %+v", matches)
+	}
+}
+
+func TestSearchBookContentPaged(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "分页搜索"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i, text := range []string{"第一章目标", "第二章目标", "第三章目标"} {
+		cachePath := filepath.Join("paged-search", fmt.Sprintf("chapter-%d.txt", i))
+		fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		chapter := models.Chapter{BookID: book.ID, Index: i, Title: fmt.Sprintf("第%d章", i+1), CachePath: cachePath}
+		if err := server.db.Create(&chapter).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("目标")+"&paged=1&lastIndex=-1&chapterLimit=1", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("paged search: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var first struct {
+		List      []map[string]any `json:"list"`
+		LastIndex int              `json:"lastIndex"`
+		HasMore   bool             `json:"hasMore"`
+		Total     int              `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.List) != 1 || first.LastIndex != 0 || !first.HasMore || first.Total != 3 {
+		t.Fatalf("unexpected first page: %+v", first)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("目标")+"&paged=1&lastIndex=0&chapterLimit=2", nil)
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("paged search second page: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var second struct {
+		List      []map[string]any `json:"list"`
+		LastIndex int              `json:"lastIndex"`
+		HasMore   bool             `json:"hasMore"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if len(second.List) != 2 || second.LastIndex != 2 || second.HasMore {
+		t.Fatalf("unexpected second page: %+v", second)
 	}
 }
 

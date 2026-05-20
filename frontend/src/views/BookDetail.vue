@@ -71,8 +71,12 @@
                 :sources="sourceCandidates"
                 :loading="loadingSourceCandidates"
                 :changing-source="changingSource"
+                :group="sourceGroup"
+                :groups="sourceGroups"
                 :show-info-button="false"
                 @refresh="loadSourceCandidates"
+                @load-more="loadMoreSourceCandidates"
+                @group-change="changeSourceGroup"
                 @change="changeSource"
               />
             </section>
@@ -100,8 +104,12 @@
         :sources="sourceCandidates"
         :loading="loadingSourceCandidates"
         :changing-source="changingSource"
+        :group="sourceGroup"
+        :groups="sourceGroups"
         :show-info-button="false"
         @refresh="loadSourceCandidates"
+        @load-more="loadMoreSourceCandidates"
+        @group-change="changeSourceGroup"
         @change="changeSource"
       />
       <p v-if="changeMessage" :class="changeError ? 'msg-error' : 'msg-success'">{{ changeMessage }}</p>
@@ -158,6 +166,8 @@ const bookmarks = ref([])
 const availableSources = ref([])
 const sourceCandidates = ref([])
 const loadingSourceCandidates = ref(false)
+const sourceGroup = ref('')
+const sourceOffset = ref(0)
 const activeTab = ref('toc')
 const tocKeyword = ref('')
 const tocReverse = ref(false)
@@ -175,6 +185,10 @@ const changeError = ref(false)
 const bookDraft = reactive({ title: '', author: '', coverUrl: '', intro: '' })
 
 const currentSource = computed(() => availableSources.value.find(source => source.id === book.value?.sourceId))
+const sourceGroups = computed(() => {
+  const groups = availableSources.value.map(source => source.group).filter(Boolean)
+  return [...new Set(groups)].sort()
+})
 
 onMounted(load)
 
@@ -357,17 +371,43 @@ async function reloadChapters() {
   chapters.value = chaptersRes.data
 }
 
-async function loadSourceCandidates() {
+async function loadSourceCandidates({ append = false } = {}) {
   if (!book.value) return
   loadingSourceCandidates.value = true
   try {
-    const { data } = await listBookSourceCandidates(book.value.id)
-    sourceCandidates.value = data || []
+    if (!append) sourceOffset.value = 0
+    const { data } = await listBookSourceCandidates(book.value.id, {
+      group: sourceGroup.value || undefined,
+      offset: sourceOffset.value,
+      limit: 20,
+    })
+    const rows = data || []
+    sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
+    sourceOffset.value += 20
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
   } finally {
     loadingSourceCandidates.value = false
   }
+}
+
+function loadMoreSourceCandidates() {
+  return loadSourceCandidates({ append: true })
+}
+
+function changeSourceGroup(value) {
+  sourceGroup.value = value || ''
+  loadSourceCandidates()
+}
+
+function mergeSourceCandidates(existing, incoming) {
+  const seen = new Set(existing.map(item => `${item.sourceId}-${item.bookUrl}`))
+  return existing.concat(incoming.filter(item => {
+    const key = `${item.sourceId}-${item.bookUrl}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }))
 }
 
 async function openChangeSource() {

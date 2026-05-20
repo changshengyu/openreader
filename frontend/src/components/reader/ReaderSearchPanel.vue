@@ -17,6 +17,12 @@
     <el-empty v-if="keyword && !loading && searched && !results.length" description="没有匹配内容" />
     <el-empty v-else-if="!keyword" description="输入关键词搜索整本书正文" />
   </div>
+  <div v-if="keyword && searched" class="search-footer">
+    <span>{{ statusText }}</span>
+    <el-button size="small" :loading="loading" :disabled="!hasMore" @click="$emit('loadMore')">
+      {{ hasMore ? '加载更多' : '没有更多' }}
+    </el-button>
+  </div>
 </template>
 
 <script setup>
@@ -39,9 +45,17 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  hasMore: {
+    type: Boolean,
+    default: false,
+  },
+  statusText: {
+    type: String,
+    default: '',
+  },
 })
 
-const emit = defineEmits(['update:modelValue', 'search', 'jump'])
+const emit = defineEmits(['update:modelValue', 'search', 'loadMore', 'jump'])
 
 const keyword = computed({
   get: () => props.modelValue,
@@ -93,5 +107,14 @@ const keyword = computed({
 
 .search-result-item:hover {
   color: #0f5451;
+}
+
+.search-footer {
+  align-items: center;
+  color: #7b715e;
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  margin-top: 12px;
 }
 </style>

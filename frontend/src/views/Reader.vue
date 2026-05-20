@@ -198,7 +198,10 @@
         :results="bookSearchResults"
         :loading="bookSearching"
         :searched="searchedBookContent"
+        :has-more="bookSearchHasMore"
+        :status-text="bookSearchStatus"
         @search="searchBookContent"
+        @load-more="loadMoreBookContent"
         @jump="jumpToBookSearchResult"
       />
     </el-drawer>
@@ -210,7 +213,11 @@
         :sources="sourceCandidates"
         :loading="loadingSources"
         :changing-source="changingSource"
+        :group="sourceGroup"
+        :groups="sourceGroups"
         @refresh="loadSourceCandidates"
+        @load-more="loadMoreSourceCandidates"
+        @group-change="changeSourceGroup"
         @show-info="openReaderBookInfo"
         @change="changeSource"
       />
@@ -334,7 +341,8 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import api from '../api/client'
-import { cacheBookContent, changeBookSource, listBookSourceCandidates } from '../api/books'
+import { cacheBookContent, changeBookSource, listBookSourceCandidates, searchBookContent as searchBookContentApi } from '../api/books'
+import { listSources } from '../api/sources'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
@@ -375,8 +383,11 @@ const showMobileMoreDrawer = ref(false)
 const showNoteDialog = ref(false)
 const showBookmarkEditor = ref(false)
 const sourceCandidates = ref([])
+const sourceGroupOptions = ref([])
 const loadingSources = ref(false)
 const changingSource = ref(null)
+const sourceGroup = ref('')
+const sourceOffset = ref(0)
 const shelfKeyword = ref('')
 const shelfLoading = ref(false)
 const tocFilter = ref('')
@@ -384,6 +395,9 @@ const contentSearch = ref('')
 const bookSearchResults = ref([])
 const bookSearching = ref(false)
 const searchedBookContent = ref(false)
+const bookSearchLastIndex = ref(-1)
+const bookSearchHasMore = ref(false)
+const bookSearchTotal = ref(0)
 const noteText = ref('')
 const editingBookmark = ref(null)
 const savingBookmark = ref(false)
@@ -412,6 +426,11 @@ const filteredShelfBooks = computed(() => {
     ? bookshelf.books.filter(item => `${item.title || ''} ${item.author || ''}`.toLowerCase().includes(value))
     : bookshelf.books
   return [...values].sort(compareByReadingOrder)
+})
+const sourceGroups = computed(() => {
+  const sourceRows = sourceGroupOptions.value.length ? sourceGroupOptions.value : sourceCandidates.value
+  const groups = sourceRows.map(item => item.group).filter(Boolean)
+  return [...new Set(groups)].sort()
 })
 
 const lines = computed(() => content.value.split('\n').map(l => l.trim()).filter(Boolean))
@@ -457,6 +476,13 @@ const bookProgress = computed(() => {
   return Math.min(1, Math.max(0, (currentIndex.value + currentChapterPercent()) / total))
 })
 const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
+const bookSearchStatus = computed(() => {
+  if (!searchedBookContent.value) return ''
+  const scanned = bookSearchLastIndex.value >= 0 ? bookSearchLastIndex.value + 1 : 0
+  const total = bookSearchTotal.value || chapters.value.length || 0
+  if (!total) return `${bookSearchResults.value.length} 条结果`
+  return `已搜索 ${Math.min(scanned, total)} / ${total} 章，${bookSearchResults.value.length} 条结果`
+})
 const mobileChromeVisible = ref(false)
 
 function onModeChange(mode) {
@@ -496,8 +522,16 @@ watch(() => reader.mode, async () => {
   await nextTick(); updateFlipLayout(); saveCurrentProgress()
 })
 
-watch(() => [reader.fontFamily, reader.fontSize], async () => {
+watch(() => [reader.fontFamily, reader.fontSize, reader.fontWeight, reader.lineHeight, reader.paragraphSpace, reader.columnWidth], async () => {
   await nextTick(); updateFlipLayout(); progressVersion.value += 1
+})
+
+watch(contentSearch, () => {
+  bookSearchLastIndex.value = -1
+  bookSearchHasMore.value = false
+  bookSearchTotal.value = 0
+  searchedBookContent.value = false
+  bookSearchResults.value = []
 })
 
 async function loadReaderBook() {
@@ -638,16 +672,54 @@ function openMobileTool(action) {
   action?.()
 }
 
-async function loadSourceCandidates() {
+async function loadSourceCandidates({ append = false } = {}) {
   loadingSources.value = true
   try {
-    const { data } = await listBookSourceCandidates(bookId.value)
-    sourceCandidates.value = data || []
+    if (!sourceGroupOptions.value.length) {
+      await loadSourceGroups()
+    }
+    if (!append) sourceOffset.value = 0
+    const { data } = await listBookSourceCandidates(bookId.value, {
+      group: sourceGroup.value || undefined,
+      offset: sourceOffset.value,
+      limit: 20,
+    })
+    const rows = data || []
+    sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
+    sourceOffset.value += 20
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
   } finally {
     loadingSources.value = false
   }
+}
+
+async function loadSourceGroups() {
+  try {
+    const { data } = await listSources()
+    sourceGroupOptions.value = (data || []).filter(source => source.enabled)
+  } catch (err) {
+    sourceGroupOptions.value = []
+  }
+}
+
+function loadMoreSourceCandidates() {
+  return loadSourceCandidates({ append: true })
+}
+
+function changeSourceGroup(value) {
+  sourceGroup.value = value || ''
+  loadSourceCandidates()
+}
+
+function mergeSourceCandidates(existing, incoming) {
+  const seen = new Set(existing.map(item => `${item.sourceId}-${item.bookUrl}`))
+  return existing.concat(incoming.filter(item => {
+    const key = `${item.sourceId}-${item.bookUrl}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }))
 }
 
 async function changeSource(source) {
@@ -693,13 +765,30 @@ function openContentSearch() {
 }
 
 async function searchBookContent() {
+  return runBookContentSearch({ append: false })
+}
+
+async function loadMoreBookContent() {
+  return runBookContentSearch({ append: true })
+}
+
+async function runBookContentSearch({ append = false } = {}) {
   const keyword = contentSearch.value.trim()
   if (!keyword) return
   bookSearching.value = true
   searchedBookContent.value = true
   try {
-    const { data } = await api.get(`/books/${bookId.value}/search`, { params: { q: keyword } })
-    bookSearchResults.value = data || []
+    const { data } = await searchBookContentApi(bookId.value, keyword, {
+      paged: 1,
+      lastIndex: append ? bookSearchLastIndex.value : -1,
+      chapterLimit: 30,
+      matchLimit: 80,
+    })
+    const rows = data?.list || []
+    bookSearchResults.value = append ? bookSearchResults.value.concat(rows) : rows
+    bookSearchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
+    bookSearchHasMore.value = Boolean(data?.hasMore)
+    bookSearchTotal.value = Number(data?.total || 0)
   } catch (err) {
     ElMessage.error(readError(err, '搜索正文失败'))
   } finally {

@@ -697,6 +697,16 @@ type changeSourceRequest struct {
 	Intro    string `json:"intro"`
 }
 
+type contentMatch struct {
+	ChapterID    uint    `json:"chapterId"`
+	ChapterIndex int     `json:"chapterIndex"`
+	ChapterTitle string  `json:"chapterTitle"`
+	Excerpt      string  `json:"excerpt"`
+	Offset       int     `json:"offset"`
+	LineIndex    int     `json:"lineIndex"`
+	Percent      float64 `json:"percent"`
+}
+
 func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	bookID, ok := parseUintParam(c, "id")
@@ -708,8 +718,16 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 		return
 	}
 
+	group := strings.TrimSpace(c.Query("group"))
+	limit := parseBoundedInt(c.Query("limit"), 20, 1, 80)
+	offset := parseBoundedInt(c.Query("offset"), 0, 0, 10000)
+
 	var sources []models.BookSource
-	if err := s.db.Where("enabled = ?", true).Limit(80).Find(&sources).Error; err != nil {
+	query := s.db.Where("enabled = ?", true)
+	if group != "" {
+		query = query.Where("COALESCE(\"group\", '') = ?", group)
+	}
+	if err := query.Order("id asc").Offset(offset).Limit(limit).Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
 		return
 	}
@@ -787,6 +805,23 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, results)
+}
+
+func parseBoundedInt(value string, fallback int, minValue int, maxValue int) int {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	if parsed < minValue {
+		return minValue
+	}
+	if parsed > maxValue {
+		return maxValue
+	}
+	return parsed
 }
 
 func (s *Server) changeBookSource(c *gin.Context) {
@@ -927,18 +962,44 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		return
 	}
 
-	type contentMatch struct {
-		ChapterID    uint    `json:"chapterId"`
-		ChapterIndex int     `json:"chapterIndex"`
-		ChapterTitle string  `json:"chapterTitle"`
-		Excerpt      string  `json:"excerpt"`
-		Offset       int     `json:"offset"`
-		LineIndex    int     `json:"lineIndex"`
-		Percent      float64 `json:"percent"`
+	if c.Query("paged") == "1" || c.Query("paged") == "true" {
+		start := 0
+		if strings.TrimSpace(c.Query("offset")) != "" {
+			start = parseBoundedInt(c.Query("offset"), 0, 0, len(chapters))
+		} else {
+			start = parseBoundedInt(c.Query("lastIndex"), -1, -1, len(chapters)) + 1
+		}
+		chapterLimit := parseBoundedInt(c.Query("chapterLimit"), 30, 1, 80)
+		matchLimit := parseBoundedInt(c.Query("matchLimit"), 80, 1, 200)
+		matches, lastIndex := s.collectContentMatches(book, chapters, keyword, start, chapterLimit, matchLimit)
+		c.JSON(http.StatusOK, gin.H{
+			"list":      matches,
+			"lastIndex": lastIndex,
+			"hasMore":   lastIndex >= 0 && lastIndex < len(chapters)-1,
+			"total":     len(chapters),
+		})
+		return
 	}
 
+	matches, _ := s.collectContentMatches(book, chapters, keyword, 0, len(chapters), 200)
+	c.JSON(http.StatusOK, matches)
+}
+
+func (s *Server) collectContentMatches(book models.Book, chapters []models.Chapter, keyword string, start int, chapterLimit int, matchLimit int) ([]contentMatch, int) {
 	matches := make([]contentMatch, 0)
-	for i := range chapters {
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(chapters) || chapterLimit <= 0 || matchLimit <= 0 {
+		return matches, -1
+	}
+	end := start + chapterLimit
+	if end > len(chapters) {
+		end = len(chapters)
+	}
+	lastIndex := start - 1
+	for i := start; i < end; i++ {
+		lastIndex = i
 		content := s.loadChapterText(book, &chapters[i])
 		if content == "" {
 			continue
@@ -954,16 +1015,16 @@ func (s *Server) searchBookContent(c *gin.Context) {
 				LineIndex:    lineIndexAtByte(content, position),
 				Percent:      float64(position) / float64(max(len(content), 1)),
 			})
-			if len(matches) >= 200 {
+			if len(matches) >= matchLimit {
 				break
 			}
 		}
-		if len(matches) >= 200 {
+		if len(matches) >= matchLimit {
 			break
 		}
 	}
 
-	c.JSON(http.StatusOK, matches)
+	return matches, lastIndex
 }
 
 func searchContentPositions(content string, keyword string, limit int) []int {

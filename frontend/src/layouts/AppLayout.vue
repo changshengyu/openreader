@@ -24,6 +24,19 @@
         </el-input>
       </div>
 
+      <section class="sidebar-recent">
+        <p class="app-nav-title">最近阅读</p>
+        <button
+          class="sidebar-recent-book"
+          type="button"
+          :disabled="!recentBook"
+          @click="openRecentBook"
+        >
+          <span>{{ recentBook?.title || '暂无阅读记录' }}</span>
+          <small>{{ recentBook ? recentSubTitle(recentBook) : '打开一本书后会显示在这里' }}</small>
+        </button>
+      </section>
+
       <nav class="app-nav">
         <section v-for="section in navSections" :key="section.title" class="app-nav-section">
           <p class="app-nav-title">{{ section.title }}</p>
@@ -100,12 +113,16 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import { useOverlayStore } from '../stores/overlay'
+import { useBookshelfStore } from '../stores/bookshelf'
+import { useReaderStore } from '../stores/reader'
 import { useSync } from '../composables/useSync'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const overlay = useOverlayStore()
+const bookshelf = useBookshelfStore()
+const reader = useReaderStore()
 const quickSearch = ref('')
 const offline = ref(false)
 
@@ -147,6 +164,17 @@ const navSections = [
 ]
 
 const userInitial = computed(() => (userStore.profile?.username || '?').slice(0, 1).toUpperCase())
+const recentBook = computed(() => {
+  const rows = [...bookshelf.books]
+  rows.sort((a, b) => {
+    const aProgress = reader.progressByBook[a.id] || a.progress
+    const bProgress = reader.progressByBook[b.id] || b.progress
+    const aTime = new Date(aProgress?.updatedAt || a.updatedAt || 0).getTime()
+    const bTime = new Date(bProgress?.updatedAt || b.updatedAt || 0).getTime()
+    return bTime - aTime
+  })
+  return rows[0] || null
+})
 
 const { connected: syncConnected, connect, disconnect } = useSync()
 
@@ -180,6 +208,18 @@ function goSearch() {
   quickSearch.value = ''
 }
 
+function openRecentBook() {
+  if (!recentBook.value) return
+  router.push({ name: 'reader', params: { id: recentBook.value.id } })
+}
+
+function recentSubTitle(book) {
+  const progress = reader.progressByBook[book.id] || book.progress
+  if (progress?.chapterTitle) return progress.chapterTitle
+  if (Number.isInteger(progress?.chapterIndex)) return `第 ${progress.chapterIndex + 1} 章`
+  return book.lastChapter || book.author || '继续阅读'
+}
+
 function handleLogout() {
   userStore.logout()
   router.push({ name: 'login' })
@@ -211,6 +251,9 @@ onMounted(() => {
   offline.value = !navigator.onLine
   if (userStore.token && !userStore.profile) {
     userStore.loadMe().catch(() => {})
+  }
+  if (userStore.token && !bookshelf.books.length) {
+    Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks()]).catch(() => {})
   }
 })
 
@@ -250,9 +293,9 @@ onBeforeUnmount(() => {
   width: var(--app-sidebar-width);
   flex-direction: column;
   padding: 18px 14px;
-  color: #fff9ed;
-  background: var(--app-nav-bg);
-  border-right: 1px solid rgba(255, 249, 237, 0.08);
+  color: #24201b;
+  background: #f7f4ea;
+  border-right: 1px solid #e4d9c8;
 }
 
 .app-brand {
@@ -269,8 +312,8 @@ onBeforeUnmount(() => {
   height: 38px;
   place-items: center;
   flex: 0 0 38px;
-  color: #2b2118;
-  background: var(--app-nav-active);
+  color: #f7f4ea;
+  background: #24201b;
   border-radius: var(--app-radius-md);
   font-weight: 800;
 }
@@ -283,12 +326,53 @@ onBeforeUnmount(() => {
 
 .app-brand-subtitle {
   margin-top: 3px;
-  color: var(--app-nav-muted);
+  color: #918575;
   font-size: 12px;
 }
 
 .app-shell-search {
   margin: 0 4px 18px;
+}
+
+.sidebar-recent {
+  display: grid;
+  gap: 8px;
+  margin: 0 4px 18px;
+}
+
+.sidebar-recent-book {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: #24201b;
+  background: #fffdf8;
+  border: 1px solid #e4d9c8;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-recent-book:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.sidebar-recent-book span,
+.sidebar-recent-book small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-recent-book span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sidebar-recent-book small {
+  color: #766a5c;
+  font-size: 12px;
 }
 
 .app-nav {
@@ -306,7 +390,7 @@ onBeforeUnmount(() => {
 
 .app-nav-title {
   margin: 0 8px 4px;
-  color: rgba(244, 228, 197, 0.58);
+  color: #a09282;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
@@ -319,7 +403,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 0 12px;
-  color: var(--app-nav-muted);
+  color: #766a5c;
   background: transparent;
   border: 0;
   border-radius: var(--app-radius-sm);
@@ -328,13 +412,13 @@ onBeforeUnmount(() => {
 }
 
 .app-nav-item:hover {
-  color: #fff9ed;
-  background: rgba(255, 249, 237, 0.07);
+  color: #1f5654;
+  background: #fffdf8;
 }
 
 .app-nav-item.active {
-  color: var(--app-nav-active);
-  background: rgba(244, 228, 197, 0.12);
+  color: #1f5654;
+  background: #d9ece7;
 }
 
 .app-sidebar-footer {
@@ -348,8 +432,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 7px;
   padding: 7px 9px;
-  color: var(--app-nav-muted);
-  background: rgba(255, 249, 237, 0.06);
+  color: #766a5c;
+  background: #fffdf8;
   border-radius: 999px;
   font-size: 12px;
 }
@@ -375,9 +459,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 9px;
-  color: #fff9ed;
-  background: rgba(255, 249, 237, 0.07);
-  border: 1px solid rgba(255, 249, 237, 0.08);
+  color: #24201b;
+  background: #fffdf8;
+  border: 1px solid #e4d9c8;
   border-radius: var(--app-radius-md);
   cursor: pointer;
 }
@@ -398,7 +482,7 @@ onBeforeUnmount(() => {
 
 .user-card-main small {
   margin-top: 2px;
-  color: var(--app-nav-muted);
+  color: #766a5c;
   font-size: 12px;
 }
 
@@ -413,14 +497,14 @@ onBeforeUnmount(() => {
 
 @media (max-width: 860px) {
   .app-sidebar {
-    width: 72px;
+    width: 96px;
     overflow-y: auto;
     padding: 8px 6px;
     scrollbar-width: none;
   }
 
   .app-workspace {
-    padding-left: 72px;
+    padding-left: 96px;
   }
 
   .app-content {
@@ -460,7 +544,7 @@ onBeforeUnmount(() => {
   .app-nav-title {
     margin: 9px 0 3px;
     overflow: hidden;
-    color: rgba(244, 228, 197, 0.48);
+    color: #a09282;
     font-size: 10px;
     line-height: 1.2;
     text-align: center;
@@ -482,17 +566,42 @@ onBeforeUnmount(() => {
   }
 
   .app-nav-item + .app-nav-item {
-    border-top: 1px solid rgba(255, 249, 237, 0.08);
+    border-top: 1px solid #e4d9c8;
+  }
+
+  .sidebar-recent {
+    margin: 0 0 8px;
+  }
+
+  .sidebar-recent .app-nav-title,
+  .sidebar-recent-book small {
+    display: none;
+  }
+
+  .sidebar-recent-book {
+    min-height: 58px;
+    padding: 5px;
+    place-items: center;
+    text-align: center;
+  }
+
+  .sidebar-recent-book span {
+    display: -webkit-box;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 }
 
 @media (max-width: 420px) {
   .app-sidebar {
-    width: 64px;
+    width: 88px;
   }
 
   .app-workspace {
-    padding-left: 64px;
+    padding-left: 88px;
   }
 
   .app-nav-item {

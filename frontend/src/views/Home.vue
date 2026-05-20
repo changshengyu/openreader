@@ -9,8 +9,6 @@
         <button type="button" @click="refreshShelf">
           {{ refreshLoading ? '刷新中...' : '刷新' }}
         </button>
-        <button type="button" @click="overlay.openRSS(router)">RSS</button>
-        <button type="button" @click="router.push({ name: 'discover' })">书海</button>
       </div>
     </div>
 

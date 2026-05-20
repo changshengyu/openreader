@@ -48,16 +48,16 @@ export function updateBookCategory(id, categoryId) {
   return api.put(`/books/${id}/category`, { categoryId })
 }
 
-export function listBookSourceCandidates(id) {
-  return api.get(`/books/${id}/source-candidates`)
+export function listBookSourceCandidates(id, params = {}) {
+  return api.get(`/books/${id}/source-candidates`, { params })
 }
 
 export function changeBookSource(id, payload) {
   return api.post(`/books/${id}/change-source`, typeof payload === 'object' ? payload : { sourceId: payload })
 }
 
-export function searchBookContent(id, keyword) {
-  return api.get(`/books/${id}/search`, { params: { q: keyword } })
+export function searchBookContent(id, keyword, params = {}) {
+  return api.get(`/books/${id}/search`, { params: { q: keyword, ...params } })
 }
 
 export function listChapters(id) {
