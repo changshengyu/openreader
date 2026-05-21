@@ -226,6 +226,7 @@ function readError(err, fallback) {
 <style scoped>
 .discover-page {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -238,12 +239,14 @@ function readError(err, fallback) {
 }
 
 .discover-toolbar {
+  min-width: 0;
+  flex-wrap: wrap;
   justify-content: flex-start;
   padding: 12px;
 }
 
 .discover-toolbar .el-select {
-  min-width: 280px;
+  min-width: min(280px, 100%);
 }
 
 .source-status {
@@ -253,7 +256,8 @@ function readError(err, fallback) {
 
 .discover-results {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 14px;
 }
 
@@ -313,6 +317,21 @@ function readError(err, fallback) {
   .discover-toolbar {
     display: grid;
     justify-content: stretch;
+  }
+
+  .discover-toolbar .el-select,
+  .discover-toolbar :deep(.el-button) {
+    width: 100%;
+  }
+
+  .discover-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .discover-card h2 {
+    font-size: 16px;
   }
 }
 </style>

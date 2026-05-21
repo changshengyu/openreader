@@ -265,6 +265,7 @@ function readError(err, fallback) {
 <style scoped>
 .search-page {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -294,18 +295,25 @@ function readError(err, fallback) {
 }
 
 .search-console {
+  min-width: 0;
   flex-wrap: wrap;
   padding: 14px;
 }
 
 .search-console > .el-input {
-  min-width: 260px;
+  min-width: min(260px, 100%);
   flex: 1;
 }
 
 .search-options {
+  min-width: 0;
   width: 100%;
   flex-wrap: wrap;
+}
+
+.search-options :deep(.el-select),
+.search-options :deep(.el-radio-group) {
+  max-width: 100%;
 }
 
 .source-collapse {
@@ -325,6 +333,7 @@ function readError(err, fallback) {
 .source-result-list,
 .result-list {
   display: grid;
+  min-width: 0;
   gap: 12px;
 }
 
@@ -408,13 +417,33 @@ function readError(err, fallback) {
 
 @media (max-width: 760px) {
   .search-head,
+  .search-console,
+  .search-options,
   .result-card,
   .result-actions {
     display: grid;
   }
 
+  .search-console > .el-input,
+  .search-console > :deep(.el-button),
+  .search-options :deep(.el-select),
+  .search-options :deep(.el-radio-group) {
+    width: 100%;
+  }
+
   .result-actions {
     justify-content: stretch;
+  }
+
+  .result-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .result-title {
+    display: grid;
+    gap: 4px;
   }
 }
 </style>

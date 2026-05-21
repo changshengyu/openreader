@@ -304,6 +304,7 @@ function readError(err, fallback) {
 <style scoped>
 .store-page {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -334,6 +335,7 @@ function readError(err, fallback) {
 
 .store-summary {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
@@ -355,6 +357,7 @@ function readError(err, fallback) {
 
 .store-toolbar {
   display: grid;
+  min-width: 0;
   grid-template-columns: minmax(220px, 1fr) 180px 210px;
   align-items: center;
   padding: 12px;
@@ -373,7 +376,7 @@ function readError(err, fallback) {
 }
 
 .store-toolbar .el-input {
-  min-width: 260px;
+  min-width: 0;
 }
 
 .file-name {
@@ -471,6 +474,13 @@ function readError(err, fallback) {
   .store-toolbar {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .head-actions,
+  .store-toolbar :deep(.el-input),
+  .store-toolbar :deep(.el-select),
+  .store-toolbar :deep(.el-button) {
+    width: 100%;
   }
 
   .store-summary {

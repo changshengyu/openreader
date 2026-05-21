@@ -600,6 +600,7 @@ function readError(err, fallback) {
 <style scoped>
 .sources-page {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -632,6 +633,7 @@ function readError(err, fallback) {
 
 .source-summary {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
@@ -653,12 +655,13 @@ function readError(err, fallback) {
 }
 
 .source-toolbar {
+  min-width: 0;
   flex-wrap: wrap;
   padding: 12px;
 }
 
 .source-toolbar .el-input {
-  min-width: 260px;
+  min-width: min(260px, 100%);
   flex: 1;
 }
 
@@ -776,6 +779,19 @@ function readError(err, fallback) {
   .source-toolbar,
   .replace-rule-row {
     display: grid;
+  }
+
+  .head-actions,
+  .source-toolbar :deep(.el-input),
+  .source-toolbar :deep(.el-select),
+  .source-toolbar :deep(.el-button),
+  .debug-row :deep(.el-input),
+  .debug-row :deep(.el-button) {
+    width: 100%;
+  }
+
+  .health-summary {
+    white-space: normal;
   }
 
   .source-summary {
