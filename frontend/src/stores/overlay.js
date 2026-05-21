@@ -13,6 +13,9 @@ export const useOverlayStore = defineStore('overlay', {
     bookmarkBook: null,
     searchBookContentVisible: false,
     searchBook: null,
+    rssVisible: false,
+    webdavVisible: false,
+    userManageVisible: false,
   }),
   actions: {
     openBookInfo(book, options = {}) {
@@ -48,17 +51,17 @@ export const useOverlayStore = defineStore('overlay', {
     openReplaceRules(router) {
       router?.push?.({ name: 'settings', query: { panel: 'replace' } })
     },
-    openRSS(router) {
-      router?.push?.({ name: 'settings', query: { panel: 'rss' } })
+    openRSS() {
+      this.rssVisible = true
     },
-    openUserManage(router) {
-      router?.push?.({ name: 'settings', query: { panel: 'admin' } })
+    openUserManage() {
+      this.userManageVisible = true
     },
     openLocalStore(router) {
       router?.push?.({ name: 'local-store' })
     },
-    openWebDAV(router) {
-      router?.push?.({ name: 'settings', query: { panel: 'webdav' } })
+    openWebDAV() {
+      this.webdavVisible = true
     },
   },
 })

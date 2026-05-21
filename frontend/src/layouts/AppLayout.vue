@@ -166,21 +166,21 @@ const navSections = computed(() => [
   {
     title: '用户空间',
     items: [
-      { key: 'userManage', label: '用户管理', icon: Operation, action: () => overlay.openUserManage(router), route: 'settings', panel: 'admin' },
+      { key: 'userManage', label: '用户管理', icon: Operation, action: () => overlay.openUserManage() },
       { key: 'settings', label: '设置', icon: Setting, route: 'settings', panel: 'account' },
     ],
   },
   {
     title: 'WebDAV',
     items: [
-      { key: 'webdav', label: '文件管理', icon: Upload, action: () => overlay.openWebDAV(router), route: 'settings', panel: 'webdav' },
+      { key: 'webdav', label: '文件管理', icon: Upload, action: () => overlay.openWebDAV() },
       { key: 'backup', label: '保存备份', icon: Refresh, route: 'settings', panel: 'backup' },
     ],
   },
   {
     title: 'RSS',
     items: [
-      { key: 'rss', label: 'RSS', icon: Connection, action: () => overlay.openRSS(router), route: 'settings', panel: 'rss' },
+      { key: 'rss', label: 'RSS', icon: Connection, action: () => overlay.openRSS() },
     ],
   },
 ])

@@ -265,16 +265,276 @@
       <el-button type="primary" :loading="bookmarkSaving" @click="saveBookmarkEdit">保存</el-button>
     </template>
   </el-dialog>
+
+  <el-drawer
+    v-model="overlay.webdavVisible"
+    title="WebDAV"
+    :direction="wideDrawerDirection"
+    :size="wideDrawerSize"
+    class="global-file-drawer"
+    @open="loadWebDAV"
+  >
+    <section class="file-overlay">
+      <header class="file-overlay-head">
+        <div>
+          <strong>WebDAV 文件管理</strong>
+          <span>{{ webdavPath || '/' }}</span>
+        </div>
+        <div class="file-actions">
+          <el-button size="small" :icon="Refresh" :loading="webdavLoading" @click="loadWebDAV">刷新</el-button>
+          <el-button size="small" :icon="FolderOpened" @click="createWebDAVFolder">新建目录</el-button>
+          <el-upload :show-file-list="false" :auto-upload="false" @change="uploadWebDAVFile">
+            <el-button size="small" :icon="Upload" :loading="webdavUploading">上传</el-button>
+          </el-upload>
+          <el-button size="small" type="danger" plain :disabled="!webdavSelection.length" @click="deleteSelectedWebDAVItems">
+            删除 {{ webdavSelection.length }}
+          </el-button>
+          <el-button size="small" type="primary" :disabled="!webdavImportSelection.length" :loading="webdavImporting" @click="importSelectedWebDAVBooks">
+            加入书架 {{ webdavImportSelection.length }}
+          </el-button>
+        </div>
+      </header>
+      <el-breadcrumb separator="/" class="file-breadcrumb">
+        <el-breadcrumb-item>
+          <button type="button" @click="goWebDAVPath('')">webdav</button>
+        </el-breadcrumb-item>
+        <el-breadcrumb-item v-for="crumb in webdavBreadcrumbs" :key="crumb.path">
+          <button type="button" @click="goWebDAVPath(crumb.path)">{{ crumb.name }}</button>
+        </el-breadcrumb-item>
+      </el-breadcrumb>
+      <el-table
+        :data="webdavItems"
+        stripe
+        v-loading="webdavLoading"
+        class="file-table desktop-file-table"
+        @selection-change="webdavSelection = $event"
+      >
+        <el-table-column type="selection" width="42" :selectable="row => !row.isDir" />
+        <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <button class="file-name" type="button" @click="openWebDAVItem(row)">
+              <el-icon><component :is="row.isDir ? FolderOpened : Document" /></el-icon>
+              <span>{{ row.name }}</span>
+            </button>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" width="90">
+          <template #default="{ row }">{{ row.isDir ? '目录' : '文件' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="!row.isDir && isBackupFile(row)" text type="primary" :loading="webdavRestoring === row.name" @click="restoreWebDAVBackupFile(row)">恢复</el-button>
+            <el-button v-if="!row.isDir" text type="primary" @click="downloadWebDAVFile(row)">下载</el-button>
+            <el-button v-if="row.importable" text type="primary" :loading="webdavImporting" @click="importWebDAVBook(row)">加入书架</el-button>
+            <el-button text @click="renameWebDAVItem(row)">重命名</el-button>
+            <el-button text type="danger" @click="deleteWebDAVItem(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="webdavItems.length" v-loading="webdavLoading" class="mobile-file-list">
+        <article v-for="row in webdavItems" :key="row.name" class="mobile-file-card">
+          <header>
+            <button class="mobile-file-name" type="button" @click="openWebDAVItem(row)">
+              <el-icon><component :is="row.isDir ? FolderOpened : Document" /></el-icon>
+              <span>{{ row.name }}</span>
+            </button>
+            <el-checkbox
+              v-if="!row.isDir"
+              :model-value="webdavSelection.some(item => item.name === row.name)"
+              @change="value => toggleWebDAVSelection(row, value)"
+            />
+          </header>
+          <p>{{ joinPath(webdavPath, row.name) }}</p>
+          <footer>
+            <el-button v-if="!row.isDir && isBackupFile(row)" size="small" text type="primary" :loading="webdavRestoring === row.name" @click="restoreWebDAVBackupFile(row)">恢复</el-button>
+            <el-button v-if="!row.isDir" size="small" text type="primary" @click="downloadWebDAVFile(row)">下载</el-button>
+            <el-button v-if="row.importable" size="small" text type="primary" :loading="webdavImporting" @click="importWebDAVBook(row)">加入书架</el-button>
+            <el-button size="small" text @click="renameWebDAVItem(row)">重命名</el-button>
+            <el-button size="small" text type="danger" @click="deleteWebDAVItem(row)">删除</el-button>
+          </footer>
+        </article>
+      </div>
+      <el-empty v-if="!webdavLoading && !webdavItems.length" description="WebDAV 目录为空" />
+    </section>
+  </el-drawer>
+
+  <el-dialog v-model="webdavImportResultDialog" title="WebDAV 导入结果" width="560px" :fullscreen="isMobileOverlay">
+    <div class="result-list">
+      <div v-for="(item, index) in webdavImportResults" :key="index" class="result-row">
+        <el-tag :type="item.book ? 'success' : 'danger'" effect="plain">{{ item.book ? '成功' : '失败' }}</el-tag>
+        <span>{{ item.book?.title || item.path }}</span>
+        <small>{{ item.error || `${item.book?.chapterCount || 0} 章` }}</small>
+      </div>
+    </div>
+  </el-dialog>
+
+  <el-drawer
+    v-model="overlay.userManageVisible"
+    title="用户管理"
+    :direction="wideDrawerDirection"
+    :size="wideDrawerSize"
+    class="global-user-drawer"
+    @open="loadUsers"
+  >
+    <section class="user-overlay">
+      <header class="file-overlay-head">
+        <div>
+          <strong>用户空间</strong>
+          <span>管理员可调整书源、书仓权限和用户限制</span>
+        </div>
+        <div class="file-actions">
+          <el-button size="small" :icon="Refresh" :loading="usersLoading" @click="loadUsers">刷新</el-button>
+          <el-button size="small" :icon="Delete" :loading="cleanupLoading" @click="cleanupInactive">清理不活跃用户</el-button>
+        </div>
+      </header>
+      <el-table :data="users" stripe v-loading="usersLoading" class="desktop-user-table">
+        <el-table-column prop="username" label="用户名" min-width="140" />
+        <el-table-column prop="role" label="角色" width="90" />
+        <el-table-column prop="bookCount" label="书籍" width="80" />
+        <el-table-column prop="sourceCount" label="书源" width="80" />
+        <el-table-column label="权限" min-width="300">
+          <template #default="{ row }">
+            <div class="permission-row">
+              <el-switch v-model="row.canEditSources" size="small" active-text="书源" @change="updateUserPermission(row)" />
+              <el-switch v-model="row.canAccessStore" size="small" active-text="书仓" @change="updateUserPermission(row)" />
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="users.length" v-loading="usersLoading" class="mobile-user-list">
+        <article v-for="user in users" :key="user.id" class="mobile-user-card">
+          <header>
+            <strong>{{ user.username }}</strong>
+            <span>{{ user.role }} · 书籍 {{ user.bookCount || 0 }} · 书源 {{ user.sourceCount || 0 }}</span>
+          </header>
+          <div class="permission-row">
+            <el-switch v-model="user.canEditSources" size="small" active-text="书源" @change="updateUserPermission(user)" />
+            <el-switch v-model="user.canAccessStore" size="small" active-text="书仓" @change="updateUserPermission(user)" />
+          </div>
+        </article>
+      </div>
+      <el-empty v-if="!usersLoading && !users.length" description="暂无用户，或当前账号无管理员权限" />
+    </section>
+  </el-drawer>
+
+  <el-drawer
+    v-model="overlay.rssVisible"
+    title="RSS"
+    :direction="wideDrawerDirection"
+    :size="wideDrawerSize"
+    class="global-rss-drawer"
+    @open="openRSSOverlay"
+  >
+    <section class="rss-overlay-grid">
+      <article class="rss-overlay-panel">
+        <header class="rss-overlay-head">
+          <div>
+            <strong>RSS 源</strong>
+            <span>{{ rssSources.length }} 个订阅</span>
+          </div>
+          <div class="rss-actions">
+            <el-button size="small" type="primary" @click="openRSSEditor()">新增</el-button>
+            <el-button size="small" :loading="rssSourcesLoading" @click="loadRSSSources">刷新</el-button>
+          </div>
+        </header>
+        <div v-loading="rssSourcesLoading" class="rss-source-list">
+          <div
+            v-for="source in rssSources"
+            :key="source.id"
+            class="rss-source-row"
+            :class="{ active: selectedRSSSourceId === source.id }"
+          >
+            <button type="button" @click="selectRSSSource(source.id)">
+              <strong>{{ source.title || '未命名 RSS' }}</strong>
+              <small>{{ source.url }}</small>
+            </button>
+            <span class="rss-source-tools">
+              <el-tag size="small" :type="source.enabled === false ? 'info' : 'success'" effect="plain">
+                {{ source.enabled === false ? '停用' : '启用' }}
+              </el-tag>
+              <el-button size="small" text :loading="rssRefreshing === source.id" @click="refreshRSS(source)">刷新</el-button>
+              <el-button size="small" text @click="openRSSEditor(source)">编辑</el-button>
+              <el-button size="small" text type="danger" @click="removeRSSSource(source)">删除</el-button>
+            </span>
+          </div>
+          <el-empty v-if="!rssSourcesLoading && !rssSources.length" description="暂无 RSS 源" />
+        </div>
+      </article>
+
+      <article class="rss-overlay-panel">
+        <header class="rss-overlay-head">
+          <div>
+            <strong>文章</strong>
+            <span>{{ rssArticles.length }} 篇</span>
+          </div>
+          <div class="rss-actions">
+            <el-radio-group v-model="rssArticleFilter" size="small" @change="loadRSSArticles">
+              <el-radio-button value="all">全部</el-radio-button>
+              <el-radio-button value="unread">未读</el-radio-button>
+              <el-radio-button value="favorite">收藏</el-radio-button>
+            </el-radio-group>
+            <el-button size="small" :loading="rssArticlesLoading" @click="loadRSSArticles">刷新文章</el-button>
+          </div>
+        </header>
+        <div v-loading="rssArticlesLoading" class="rss-article-list">
+          <article v-for="article in rssArticles" :key="article.id" class="rss-article-row" :class="{ read: article.isRead }">
+            <button type="button" @click="openRSSArticle(article)">
+              <strong>{{ article.title }}</strong>
+              <small>{{ formatDate(article.publishedAt || article.updatedAt) }} · {{ article.author || '未知作者' }}</small>
+              <span>{{ stripHTML(article.summary || article.content || '无摘要') }}</span>
+            </button>
+            <el-button
+              size="small"
+              text
+              :type="article.favorite ? 'warning' : 'info'"
+              @click="toggleRSSFavorite(article)"
+            >
+              {{ article.favorite ? '已收藏' : '收藏' }}
+            </el-button>
+          </article>
+          <el-empty v-if="!rssArticlesLoading && !rssArticles.length" description="暂无 RSS 文章" />
+        </div>
+      </article>
+    </section>
+  </el-drawer>
+
+  <el-dialog v-model="rssDialog" :title="editingRSSSourceId ? '编辑 RSS 源' : '新增 RSS 源'" width="520px" :fullscreen="isMobileOverlay">
+    <el-form label-position="top">
+      <el-form-item label="名称"><el-input v-model="rssDraft.title" /></el-form-item>
+      <el-form-item label="订阅地址"><el-input v-model="rssDraft.url" /></el-form-item>
+      <el-form-item><el-switch v-model="rssDraft.enabled" active-text="启用" inactive-text="停用" /></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="rssDialog = false">取消</el-button>
+      <el-button type="primary" :loading="rssSaving" @click="saveRSSSource">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="rssArticleDialog" title="RSS 文章" width="720px" class="rss-reader-dialog" :fullscreen="isMobileOverlay">
+    <article v-if="selectedRSSArticle" class="rss-reader">
+      <h2>{{ selectedRSSArticle.title }}</h2>
+      <small>{{ formatDate(selectedRSSArticle.publishedAt || selectedRSSArticle.updatedAt) }} · {{ selectedRSSArticle.author || '未知作者' }}</small>
+      <p>{{ stripHTML(selectedRSSArticle.content || selectedRSSArticle.summary || '无正文内容') }}</p>
+    </article>
+    <template #footer>
+      <el-button @click="rssArticleDialog = false">关闭</el-button>
+      <el-button v-if="selectedRSSArticle?.link" type="primary" @click="openExternal(selectedRSSArticle.link)">打开原文</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Delete, Document, FolderOpened, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
+import { cleanupInactiveUsers, listUsers, updateUser } from '../api/admin'
 import { cacheBookContent, checkBookUpdates, deleteBookmark, listBookmarks, refreshBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { restoreWebDAVBackup } from '../api/backup'
+import { createRSSSource, deleteRSSSource, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
+import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, listWebDAV, renameWebDAV, uploadWebDAV } from '../api/webdav'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -313,6 +573,31 @@ const bookmarkEditorVisible = ref(false)
 const bookmarkSaving = ref(false)
 const editingBookmark = ref(null)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
+const rssSources = ref([])
+const rssArticles = ref([])
+const selectedRSSSourceId = ref('')
+const rssSourcesLoading = ref(false)
+const rssArticlesLoading = ref(false)
+const rssRefreshing = ref(null)
+const rssDialog = ref(false)
+const rssSaving = ref(false)
+const editingRSSSourceId = ref(null)
+const rssDraft = ref({ title: '', url: '', enabled: true })
+const rssArticleDialog = ref(false)
+const selectedRSSArticle = ref(null)
+const rssArticleFilter = ref('all')
+const webdavPath = ref('')
+const webdavItems = ref([])
+const webdavSelection = ref([])
+const webdavLoading = ref(false)
+const webdavUploading = ref(false)
+const webdavRestoring = ref('')
+const webdavImporting = ref(false)
+const webdavImportResultDialog = ref(false)
+const webdavImportResults = ref([])
+const users = ref([])
+const usersLoading = ref(false)
+const cleanupLoading = ref(false)
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 
 const isMobileOverlay = computed(() => windowWidth.value <= 680)
@@ -339,6 +624,12 @@ const contentSearchStatus = computed(() => {
   if (!contentTotal.value) return `${contentResults.value.length} 条结果`
   return `已搜索 ${Math.min(scanned, contentTotal.value)} / ${contentTotal.value} 章，${contentResults.value.length} 条结果`
 })
+const webdavBreadcrumbs = computed(() => {
+  if (!webdavPath.value) return []
+  const parts = webdavPath.value.split('/').filter(Boolean)
+  return parts.map((name, index) => ({ name, path: parts.slice(0, index + 1).join('/') }))
+})
+const webdavImportSelection = computed(() => webdavSelection.value.filter(row => row.importable))
 
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
@@ -869,6 +1160,365 @@ async function removeBookmarkItem(bookmark) {
   }
 }
 
+async function openRSSOverlay() {
+  if (!rssSources.value.length) await loadRSSSources()
+  await loadRSSArticles()
+}
+
+async function loadRSSSources() {
+  rssSourcesLoading.value = true
+  try {
+    const { data } = await listRSSSources()
+    rssSources.value = data || []
+    if (!selectedRSSSourceId.value && rssSources.value.length) selectedRSSSourceId.value = rssSources.value[0].id
+  } catch (err) {
+    ElMessage.error(readError(err, '加载 RSS 源失败'))
+  } finally {
+    rssSourcesLoading.value = false
+  }
+}
+
+async function loadRSSArticles() {
+  rssArticlesLoading.value = true
+  try {
+    const params = selectedRSSSourceId.value ? { sourceId: selectedRSSSourceId.value } : {}
+    if (rssArticleFilter.value === 'unread') params.unread = true
+    if (rssArticleFilter.value === 'favorite') params.favorite = true
+    const { data } = await listRSSArticles(params)
+    rssArticles.value = data || []
+  } catch (err) {
+    ElMessage.error(readError(err, '加载 RSS 文章失败'))
+  } finally {
+    rssArticlesLoading.value = false
+  }
+}
+
+async function selectRSSSource(sourceId) {
+  selectedRSSSourceId.value = sourceId
+  await loadRSSArticles()
+}
+
+function openRSSEditor(source = null) {
+  editingRSSSourceId.value = source?.id || null
+  rssDraft.value = {
+    title: source?.title || '',
+    url: source?.url || '',
+    enabled: source?.enabled ?? true,
+  }
+  rssDialog.value = true
+}
+
+async function saveRSSSource() {
+  if (!rssDraft.value.url.trim()) {
+    ElMessage.warning('RSS 地址不能为空')
+    return
+  }
+  rssSaving.value = true
+  try {
+    const payload = { ...rssDraft.value, url: rssDraft.value.url.trim() }
+    if (editingRSSSourceId.value) {
+      await updateRSSSource(editingRSSSourceId.value, payload)
+      ElMessage.success('RSS 源已更新')
+    } else {
+      await createRSSSource(payload)
+      ElMessage.success('RSS 源已创建')
+    }
+    rssDialog.value = false
+    await loadRSSSources()
+  } catch (err) {
+    ElMessage.error(readError(err, '保存 RSS 源失败'))
+  } finally {
+    rssSaving.value = false
+  }
+}
+
+async function refreshRSS(source) {
+  rssRefreshing.value = source.id
+  try {
+    const { data } = await refreshRSSSource(source.id)
+    ElMessage.success(`已同步 ${data.imported || 0}/${data.total || 0} 篇文章`)
+    await loadRSSArticles()
+  } catch (err) {
+    ElMessage.error(readError(err, '刷新 RSS 源失败'))
+  } finally {
+    rssRefreshing.value = null
+  }
+}
+
+async function removeRSSSource(source) {
+  try {
+    await ElMessageBox.confirm(`确定删除 RSS 源“${source.title}”吗？文章缓存也会删除。`, '删除 RSS 源', { type: 'warning' })
+    await deleteRSSSource(source.id)
+    rssSources.value = rssSources.value.filter(item => item.id !== source.id)
+    if (selectedRSSSourceId.value === source.id) selectedRSSSourceId.value = rssSources.value[0]?.id || ''
+    await loadRSSArticles()
+    ElMessage.success('RSS 源已删除')
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '删除 RSS 源失败'))
+  }
+}
+
+async function openRSSArticle(article) {
+  selectedRSSArticle.value = article
+  rssArticleDialog.value = true
+  if (!article.isRead) {
+    await updateRSSArticleState(article, { isRead: true }, { silent: true })
+  }
+}
+
+async function toggleRSSFavorite(article) {
+  await updateRSSArticleState(article, { favorite: !article.favorite })
+}
+
+async function updateRSSArticleState(article, payload, { silent = false } = {}) {
+  try {
+    const { data } = await updateRSSArticle(article.id, payload)
+    Object.assign(article, data)
+    if (selectedRSSArticle.value?.id === article.id) selectedRSSArticle.value = article
+    if (!silent) ElMessage.success('文章状态已更新')
+  } catch (err) {
+    ElMessage.error(readError(err, '更新 RSS 文章失败'))
+  }
+}
+
+function stripHTML(value) {
+  return String(value || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim()
+}
+
+function openExternal(url) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function loadWebDAV() {
+  webdavLoading.value = true
+  try {
+    const { data } = await listWebDAV(webdavPath.value)
+    webdavItems.value = parseWebDAVListing(data)
+    webdavSelection.value = []
+  } catch (err) {
+    ElMessage.error(readError(err, '加载 WebDAV 失败'))
+  } finally {
+    webdavLoading.value = false
+  }
+}
+
+async function goWebDAVPath(path) {
+  webdavPath.value = path
+  await loadWebDAV()
+}
+
+function openWebDAVItem(row) {
+  if (row.isDir) goWebDAVPath(joinPath(webdavPath.value, row.name))
+}
+
+function toggleWebDAVSelection(row, checked) {
+  if (checked) {
+    if (!webdavSelection.value.some(item => item.name === row.name)) webdavSelection.value.push(row)
+    return
+  }
+  webdavSelection.value = webdavSelection.value.filter(item => item.name !== row.name)
+}
+
+async function uploadWebDAVFile(data) {
+  const file = data.raw
+  if (!file) return
+  webdavUploading.value = true
+  try {
+    await uploadWebDAV({ path: webdavPath.value, file })
+    ElMessage.success('WebDAV 文件已上传')
+    await loadWebDAV()
+  } catch (err) {
+    ElMessage.error(readError(err, '上传 WebDAV 失败'))
+  } finally {
+    webdavUploading.value = false
+  }
+}
+
+async function createWebDAVFolder() {
+  try {
+    const { value } = await ElMessageBox.prompt('输入目录名称', '新建 WebDAV 目录', {
+      inputValidator: value => !!value?.trim() || '目录名称不能为空',
+    })
+    await createWebDAVDirectory({ path: webdavPath.value, name: value.trim() })
+    ElMessage.success('WebDAV 目录已创建')
+    await loadWebDAV()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '创建 WebDAV 目录失败'))
+  }
+}
+
+async function downloadWebDAVFile(row) {
+  try {
+    const resp = await downloadWebDAV(joinPath(webdavPath.value, row.name))
+    downloadBlob(resp.data, row.name)
+  } catch (err) {
+    ElMessage.error(readError(err, '下载 WebDAV 文件失败'))
+  }
+}
+
+function isBackupFile(row) {
+  return String(row.name || '').toLowerCase().endsWith('.zip')
+}
+
+async function restoreWebDAVBackupFile(row) {
+  const path = joinPath(webdavPath.value, row.name)
+  try {
+    await ElMessageBox.confirm(`确定从 WebDAV 文件“${row.name}”恢复备份吗？`, '恢复 WebDAV 备份', { type: 'warning' })
+    webdavRestoring.value = row.name
+    const { data } = await restoreWebDAVBackup(path)
+    ElMessage.success(`恢复完成：书源 ${data.sources || 0}，书籍 ${data.books || 0}，进度 ${data.progress || 0}`)
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '恢复 WebDAV 备份失败'))
+  } finally {
+    webdavRestoring.value = ''
+  }
+}
+
+async function renameWebDAVItem(row) {
+  try {
+    const { value } = await ElMessageBox.prompt('输入新的名称', '重命名 WebDAV 项目', {
+      inputValue: row.name,
+      inputValidator: value => !!value?.trim() || '名称不能为空',
+    })
+    const name = value.trim()
+    if (!name || name === row.name) return
+    await renameWebDAV({
+      path: joinPath(webdavPath.value, row.name),
+      newPath: joinPath(webdavPath.value, name),
+    })
+    ElMessage.success('已重命名')
+    await loadWebDAV()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '重命名 WebDAV 项目失败'))
+  }
+}
+
+async function deleteWebDAVItem(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除“${row.name}”吗？`, '删除 WebDAV 项目', { type: 'warning' })
+    await deleteWebDAV(joinPath(webdavPath.value, row.name))
+    ElMessage.success('已删除')
+    await loadWebDAV()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '删除 WebDAV 项目失败'))
+  }
+}
+
+async function deleteSelectedWebDAVItems() {
+  if (!webdavSelection.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${webdavSelection.value.length} 个 WebDAV 项目吗？`, '批量删除 WebDAV 项目', { type: 'warning' })
+    for (const row of webdavSelection.value) {
+      await deleteWebDAV(joinPath(webdavPath.value, row.name))
+    }
+    ElMessage.success('已批量删除')
+    await loadWebDAV()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '批量删除 WebDAV 项目失败'))
+  }
+}
+
+async function importWebDAVBook(row) {
+  if (!row.importable) return
+  await importWebDAVBooks([joinPath(webdavPath.value, row.name)])
+}
+
+async function importSelectedWebDAVBooks() {
+  const paths = webdavImportSelection.value.map(row => joinPath(webdavPath.value, row.name))
+  if (paths.length) await importWebDAVBooks(paths)
+}
+
+async function importWebDAVBooks(paths) {
+  webdavImporting.value = true
+  try {
+    const { data } = await importFromWebDAV(paths)
+    webdavImportResults.value = data.imported || []
+    const success = webdavImportResults.value.filter(item => item.book).length
+    const failed = webdavImportResults.value.filter(item => item.error).length
+    ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
+    webdavImportResultDialog.value = true
+    await bookshelf.loadBooks()
+  } catch (err) {
+    ElMessage.error(readError(err, '导入 WebDAV 文件失败'))
+  } finally {
+    webdavImporting.value = false
+  }
+}
+
+function parseWebDAVListing(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  return [...doc.querySelectorAll('prop')].map((node) => ({
+    name: node.querySelector('displayname')?.textContent || '',
+    isDir: node.querySelector('iscollection')?.textContent === 'true',
+  })).filter(item => item.name && item.name !== webdavPath.value).map(item => ({
+    ...item,
+    importable: !item.isDir && isImportableBookFile(item.name),
+  }))
+}
+
+function isImportableBookFile(name) {
+  return /\.(txt|text|md|epub|pdf|umd)$/i.test(name || '')
+}
+
+function joinPath(base, name) {
+  return [base, name].filter(Boolean).join('/')
+}
+
+async function loadUsers() {
+  usersLoading.value = true
+  try {
+    const { data } = await listUsers()
+    users.value = data || []
+  } catch (err) {
+    ElMessage.error(readError(err, '加载用户失败'))
+  } finally {
+    usersLoading.value = false
+  }
+}
+
+async function updateUserPermission(row) {
+  try {
+    await updateUser(row.id, {
+      canEditSources: row.canEditSources,
+      canAccessStore: row.canAccessStore,
+      bookLimit: row.bookLimit,
+      sourceLimit: row.sourceLimit,
+    })
+    ElMessage.success('用户权限已更新')
+  } catch (err) {
+    ElMessage.error(readError(err, '更新用户失败'))
+    await loadUsers()
+  }
+}
+
+async function cleanupInactive() {
+  cleanupLoading.value = true
+  try {
+    await ElMessageBox.confirm('确定清理不活跃用户吗？', '清理用户', { type: 'warning' })
+    await cleanupInactiveUsers()
+    ElMessage.success('清理完成')
+    await loadUsers()
+  } catch (err) {
+    if (err !== 'cancel' && err !== 'close') ElMessage.error(readError(err, '清理用户失败'))
+  } finally {
+    cleanupLoading.value = false
+  }
+}
+
 async function createCategory() {
   const name = newGroupName.value.trim()
   if (!name) return
@@ -1089,6 +1739,277 @@ function readError(err, fallback) {
   gap: 10px;
 }
 
+.file-overlay {
+  display: grid;
+  gap: 12px;
+}
+
+.file-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.file-overlay-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.file-overlay-head span,
+.mobile-file-card p,
+.result-row small {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.file-breadcrumb button,
+.file-name,
+.mobile-file-name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 0;
+  color: var(--app-text);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.file-name span,
+.mobile-file-name span,
+.mobile-file-card p,
+.result-row span,
+.result-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-table {
+  width: 100%;
+}
+
+.mobile-file-list {
+  display: none;
+}
+
+.mobile-file-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+}
+
+.mobile-file-card header,
+.mobile-file-card footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-file-card header {
+  justify-content: space-between;
+}
+
+.mobile-file-card p {
+  margin: 0;
+}
+
+.mobile-file-card footer {
+  flex-wrap: wrap;
+}
+
+.result-list {
+  display: grid;
+  gap: 8px;
+}
+
+.result-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+}
+
+.user-overlay {
+  display: grid;
+  gap: 12px;
+}
+
+.permission-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.mobile-user-list {
+  display: none;
+}
+
+.mobile-user-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+}
+
+.mobile-user-card header {
+  display: grid;
+  gap: 2px;
+}
+
+.mobile-user-card span {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.rss-overlay-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 14px;
+  min-height: calc(100vh - 150px);
+}
+
+.rss-overlay-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.rss-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.rss-overlay-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.rss-overlay-head span,
+.rss-source-row small,
+.rss-article-row small,
+.rss-article-row span {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.rss-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.rss-source-list,
+.rss-article-list {
+  display: grid;
+  align-content: start;
+  max-height: calc(100vh - 230px);
+  overflow: auto;
+}
+
+.rss-source-row,
+.rss-article-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.rss-source-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.rss-source-row.active {
+  background: rgba(145, 118, 62, 0.12);
+}
+
+.rss-source-row button,
+.rss-article-row button {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 0;
+  color: var(--app-text);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rss-source-row strong,
+.rss-source-row small,
+.rss-article-row strong,
+.rss-article-row small,
+.rss-article-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rss-source-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rss-article-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.rss-article-row.read {
+  opacity: 0.68;
+}
+
+.rss-reader {
+  display: grid;
+  gap: 12px;
+}
+
+.rss-reader h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.rss-reader small {
+  color: var(--app-text-muted);
+}
+
+.rss-reader p {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 17px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 680px) {
   .desktop-manage-table {
     display: none;
@@ -1109,6 +2030,63 @@ function readError(err, fallback) {
 
   .overlay-actions {
     display: grid;
+  }
+
+  .file-overlay-head {
+    align-items: flex-start;
+    display: grid;
+  }
+
+  .file-actions {
+    justify-content: flex-start;
+  }
+
+  .desktop-file-table {
+    display: none;
+  }
+
+  .desktop-user-table {
+    display: none;
+  }
+
+  .mobile-file-list {
+    display: grid;
+    max-height: 48vh;
+    overflow: auto;
+    gap: 10px;
+  }
+
+  .result-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-user-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .rss-overlay-grid {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .rss-source-list,
+  .rss-article-list {
+    max-height: 40vh;
+  }
+
+  .rss-overlay-head {
+    align-items: flex-start;
+  }
+
+  .rss-source-row,
+  .rss-article-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rss-source-tools {
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 }
 
