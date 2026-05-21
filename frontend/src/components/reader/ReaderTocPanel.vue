@@ -1,11 +1,12 @@
 <template>
   <el-input v-model="keyword" placeholder="搜索章节..." clearable size="small" class="toc-search" />
-  <div class="toc-list">
+  <div ref="tocListRef" class="toc-list">
     <button
       v-for="item in filteredChapters"
       :key="item.id"
       class="toc-item"
       :class="{ active: item.index === currentIndex }"
+      :data-chapter-index="item.index"
       type="button"
       @click="$emit('jump', item.index)"
     >
@@ -17,7 +18,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   chapters: {
@@ -40,6 +41,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  locateKey: {
+    type: Number,
+    default: 0,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'jump'])
@@ -56,6 +61,25 @@ const filteredChapters = computed(() => {
     : props.chapters
   return props.reverse ? [...list].reverse() : list
 })
+
+const tocListRef = ref(null)
+
+function locateCurrentChapter() {
+  nextTick(() => {
+    const list = tocListRef.value
+    const active = list?.querySelector?.(`[data-chapter-index="${props.currentIndex}"]`)
+    if (!list || !active) return
+    const targetTop = active.offsetTop - Math.max(0, (list.clientHeight - active.clientHeight) / 2)
+    list.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
+  })
+}
+
+onMounted(locateCurrentChapter)
+
+watch(
+  () => [props.currentIndex, props.locateKey, filteredChapters.value.length],
+  () => locateCurrentChapter(),
+)
 </script>
 
 <style scoped>

@@ -187,11 +187,12 @@
     </el-drawer>
 
     <!-- ===== 目录抽屉 ===== -->
-    <el-drawer v-model="showTocDrawer" title="目录" :direction="drawerDirection" :size="drawerSize">
+    <el-drawer v-model="showTocDrawer" title="目录" :direction="drawerDirection" :size="drawerSize" @opened="locateTocCurrentChapter">
       <ReaderTocPanel
         v-model="tocFilter"
         :chapters="chapters"
         :current-index="currentIndex"
+        :locate-key="tocLocateKey"
         @jump="jumpFromToc"
       />
     </el-drawer>
@@ -411,6 +412,7 @@ const sourceCandidatesLoadedKey = ref('')
 const shelfKeyword = ref('')
 const shelfLoading = ref(false)
 const tocFilter = ref('')
+const tocLocateKey = ref(0)
 const contentSearch = ref('')
 const bookSearchResults = ref([])
 const bookSearching = ref(false)
@@ -630,6 +632,10 @@ async function goChapter(index, offset = 0) {
 async function jumpFromToc(index) {
   showTocDrawer.value = false
   await goChapter(index)
+}
+
+function locateTocCurrentChapter() {
+  tocLocateKey.value += 1
 }
 
 function goBookDetail() { router.push({ name: 'book-detail', params: { id: bookId.value } }) }
