@@ -8,12 +8,21 @@ RUN npm run build
 FROM golang:1.24-alpine AS backend-builder
 RUN apk add --no-cache build-base
 WORKDIR /src/backend
+ARG TARGETOS=linux
+ARG TARGETARCH
 COPY backend/go.mod backend/go.sum* ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/openreader .
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} go build -trimpath -ldflags="-s -w" -o /out/openreader .
 
 FROM alpine:3.20
+ARG BUILD_DATE=unknown
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.title="OpenReader" \
+      org.opencontainers.image.description="OpenReader web reader service" \
+      org.opencontainers.image.source="https://github.com/changshengyu/openreader" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 ENV OPENREADER_ADDR=:8080 \

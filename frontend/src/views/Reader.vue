@@ -372,6 +372,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
+import { compareByShelfOrder } from '../utils/bookOrder'
 
 const route = useRoute()
 const router = useRouter()
@@ -447,7 +448,7 @@ const filteredShelfBooks = computed(() => {
   const values = value
     ? books.filter(item => `${item.title || ''} ${item.author || ''}`.toLowerCase().includes(value))
     : books
-  return [...values].sort(compareByReadingOrder)
+  return [...values].sort(compareByShelfOrder)
 })
 const sourceGroups = computed(() => {
   const sourceRows = sourceGroupOptions.value.length ? sourceGroupOptions.value : sourceCandidates.value
@@ -693,15 +694,6 @@ async function refreshReaderShelf() {
   } finally {
     shelfLoading.value = false
   }
-}
-
-function compareByReadingOrder(a, b) {
-  const aProgress = reader.progressByBook[a.id] || a.progress
-  const bProgress = reader.progressByBook[b.id] || b.progress
-  const aReadAt = new Date(aProgress?.updatedAt || 0).getTime()
-  const bReadAt = new Date(bProgress?.updatedAt || 0).getTime()
-  if (aReadAt !== bReadAt) return bReadAt - aReadAt
-  return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
 }
 
 function openReaderBookInfo() {

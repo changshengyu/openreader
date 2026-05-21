@@ -35,7 +35,7 @@
       <el-button plain @click="openBookmarks(overlay.bookInfoBook)">书签</el-button>
       <el-button plain @click="setBookGroup(overlay.bookInfoBook)">设置分组</el-button>
       <el-button plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshBookInfo(overlay.bookInfoBook)">刷新目录</el-button>
-      <el-button plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存</el-button>
       <el-button plain @click="goDetail(overlay.bookInfoBook)">详情</el-button>
       <el-button plain :loading="loadingUpdates" @click="refreshShelf">刷新书架</el-button>
       <el-button plain type="danger" :loading="deletingBookId === overlay.bookInfoBook.id" @click="deleteBookFromInfo(overlay.bookInfoBook)">移出书架</el-button>
@@ -667,6 +667,7 @@ import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, 
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { compareByShelfOrder } from '../utils/bookOrder'
 import BookInfoDialog from './BookInfoDialog.vue'
 import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from './reader/ReaderSearchPanel.vue'
@@ -762,7 +763,7 @@ const bookInfoProgress = computed(() => {
   return book ? (reader.progressByBook[book.id]?.percent || book.progress?.percent || 0) : 0
 })
 const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
-const managedBooks = computed(() => [...bookshelf.books].sort(compareByReadingOrder))
+const managedBooks = computed(() => [...bookshelf.books].sort(compareByShelfOrder))
 const contentSearchStatus = computed(() => {
   if (!contentSearched.value) return ''
   const scanned = contentLastIndex.value >= 0 ? contentLastIndex.value + 1 : 0
@@ -899,15 +900,6 @@ function progressLabel(book) {
 async function loadSourceRows() {
   const { data } = await listSources()
   sourceRows.value = data || []
-}
-
-function compareByReadingOrder(a, b) {
-  const aProgress = reader.progressByBook[a.id] || a.progress
-  const bProgress = reader.progressByBook[b.id] || b.progress
-  const aReadAt = new Date(aProgress?.updatedAt || 0).getTime()
-  const bReadAt = new Date(bProgress?.updatedAt || 0).getTime()
-  if (aReadAt !== bReadAt) return bReadAt - aReadAt
-  return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
 }
 
 function onManageSelectionChange(rows) {

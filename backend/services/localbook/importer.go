@@ -102,10 +102,12 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 				chapterTitle = fmt.Sprintf("第 %d 章", index+1)
 			}
 			chapterURL := fmt.Sprintf("%s/chapter_%d", book.URL, index)
-			cachePath, err := engine.WriteChapterCache(importer.cfg.CacheDir, book.URL, chapterURL, parsedChapter.Content)
+			contentDir := filepath.Join(importer.cfg.LibraryDir, archive.Directory, "content")
+			contentPath, err := engine.WriteChapterCache(contentDir, book.URL, chapterURL, parsedChapter.Content)
 			if err != nil {
 				return err
 			}
+			cachePath := filepath.Join(contentDir, contentPath)
 
 			chapter := models.Chapter{
 				BookID:    book.ID,

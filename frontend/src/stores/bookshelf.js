@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../api/books'
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
+import { sortByShelfOrder } from '../utils/bookOrder'
 
 function asList(data) {
   if (Array.isArray(data)) return data
@@ -11,15 +12,8 @@ function asList(data) {
   return []
 }
 
-function compareByReadingOrder(a, b) {
-  const aReadAt = new Date(a?.progress?.updatedAt || 0).getTime()
-  const bReadAt = new Date(b?.progress?.updatedAt || 0).getTime()
-  if (aReadAt !== bReadAt) return bReadAt - aReadAt
-  return new Date(b?.updatedAt || 0).getTime() - new Date(a?.updatedAt || 0).getTime()
-}
-
 function sortBooks(books) {
-  return [...asList(books)].sort(compareByReadingOrder)
+  return sortByShelfOrder(asList(books))
 }
 
 export const useBookshelfStore = defineStore('bookshelf', {

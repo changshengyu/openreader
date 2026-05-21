@@ -29,8 +29,8 @@
 	              <el-button @click="openBookEditor">编辑</el-button>
 	              <el-button v-if="book.sourceId > 0" :loading="refreshingBook" @click="refreshCurrentBook">刷新目录</el-button>
 	              <el-button v-if="book.sourceId > 0" :icon="Switch" :loading="loadingSourceCandidates" @click="openChangeSource">换源</el-button>
-	              <el-button :loading="cachingBook" @click="cacheCurrentBook">缓存全书</el-button>
-	              <el-button :loading="clearingCache" @click="clearCurrentBookCache">清缓存</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="cachingBook" @click="cacheCurrentBook">缓存全书</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="clearingCache" @click="clearCurrentBookCache">清缓存</el-button>
 	              <el-button type="danger" plain @click="deleteCurrentBook">删除</el-button>
               <el-select v-model="categoryDraft" placeholder="设置分组" clearable size="default" class="category-select" @change="changeCategory">
                 <el-option label="未分组" value="" />

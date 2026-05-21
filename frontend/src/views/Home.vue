@@ -76,6 +76,7 @@ import { Search } from '@element-plus/icons-vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { compareByShelfOrder } from '../utils/bookOrder'
 
 const router = useRouter()
 const route = useRoute()
@@ -120,7 +121,7 @@ const displayedBooks = computed(() => {
       if (selectedGroup.value === 'none') return !book.categoryId
       return String(book.categoryId) === selectedGroup.value
     })
-    .sort(compareByReadingOrder)
+    .sort(compareByShelfOrder)
 })
 
 const emptyText = computed(() => {
@@ -204,15 +205,6 @@ function progressLabel(book) {
 
 function bookProgress(book) {
   return reader.progressByBook[book.id] || book.progress
-}
-
-function compareByReadingOrder(a, b) {
-  const aProgress = bookProgress(a)
-  const bProgress = bookProgress(b)
-  const aReadAt = new Date(aProgress?.updatedAt || 0).getTime()
-  const bReadAt = new Date(bProgress?.updatedAt || 0).getTime()
-  if (aReadAt !== bReadAt) return bReadAt - aReadAt
-  return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
 }
 
 function categoryName(id) {

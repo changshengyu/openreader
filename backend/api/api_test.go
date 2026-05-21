@@ -1340,7 +1340,11 @@ func TestCacheBookContentUsesCachedChapter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	book := models.Book{UserID: user.ID, Title: "缓存书"}
+	source := models.BookSource{Name: "缓存源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "缓存书", SourceID: source.ID}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -1375,12 +1379,29 @@ func TestCacheStatsAndClearCache(t *testing.T) {
 	if err := os.WriteFile(fullPath, []byte("缓存正文"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	book := models.Book{Title: "缓存统计", UserID: 1}
+	source := models.BookSource{Name: "缓存统计源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{Title: "缓存统计", UserID: 1, SourceID: source.ID}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
 	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一章", CachePath: cachePath}
 	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	localCachePath := filepath.Join("stats", "local-chapter.txt")
+	localFullPath := filepath.Join(server.cfg.CacheDir, localCachePath)
+	if err := os.WriteFile(localFullPath, []byte("本地正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	localBook := models.Book{Title: "本地书", UserID: 1}
+	if err := server.db.Create(&localBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	localChapter := models.Chapter{BookID: localBook.ID, Index: 0, Title: "本地章", CachePath: localCachePath}
+	if err := server.db.Create(&localChapter).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -1402,12 +1423,22 @@ func TestCacheStatsAndClearCache(t *testing.T) {
 	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
 		t.Fatalf("expected cache file removed, stat err=%v", err)
 	}
+	if _, err := os.Stat(localFullPath); err != nil {
+		t.Fatalf("expected local book content to remain, stat err=%v", err)
+	}
 	var updated models.Chapter
 	if err := server.db.First(&updated, chapter.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 	if updated.CachePath != "" {
 		t.Fatalf("expected chapter cache path reset, got %q", updated.CachePath)
+	}
+	var updatedLocal models.Chapter
+	if err := server.db.First(&updatedLocal, localChapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if updatedLocal.CachePath == "" {
+		t.Fatal("expected local book cache path to remain")
 	}
 }
 
@@ -1493,8 +1524,12 @@ func TestBatchBooksCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bookA := models.Book{UserID: user.ID, Title: "缓存 A"}
-	bookB := models.Book{UserID: user.ID, Title: "缓存 B"}
+	source := models.BookSource{Name: "批量缓存源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookA := models.Book{UserID: user.ID, Title: "缓存 A", SourceID: source.ID}
+	bookB := models.Book{UserID: user.ID, Title: "缓存 B", SourceID: source.ID}
 	if err := server.db.Create(&bookA).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -1539,7 +1574,11 @@ func TestBatchBooksClearCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	book := models.Book{UserID: user.ID, Title: "清缓存"}
+	source := models.BookSource{Name: "批量清缓存源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "清缓存", SourceID: source.ID}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}

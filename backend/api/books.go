@@ -266,6 +266,9 @@ func (s *Server) batchCacheBooks(c *gin.Context, userID uint, bookIDs []uint) {
 	requested := 0
 	failed := 0
 	for i := range books {
+		if books[i].SourceID == 0 {
+			continue
+		}
 		bookCached, bookRequested, err := s.cacheBookChapters(books[i], nil, true)
 		cached += bookCached
 		requested += bookRequested
@@ -465,6 +468,10 @@ func (s *Server) cacheBookContent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "chapterIndex is required"})
 		return
 	}
+	if book.SourceID == 0 {
+		c.JSON(http.StatusOK, gin.H{"cached": 0, "requested": 0, "message": "local books do not need server cache"})
+		return
+	}
 	cached, requested, err := s.cacheBookChapters(book, request.ChapterIndex, request.All)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list chapters"})
@@ -496,6 +503,14 @@ func (s *Server) cacheBookChapters(book models.Book, chapterIndex *int, all bool
 }
 
 func (s *Server) clearBookCache(bookID uint) (int, error) {
+	var book models.Book
+	if err := s.db.Select("id", "source_id").First(&book, bookID).Error; err != nil {
+		return 0, err
+	}
+	if book.SourceID == 0 {
+		return 0, nil
+	}
+
 	var chapters []models.Chapter
 	if err := s.db.Where("book_id = ? AND cache_path <> ''", bookID).Find(&chapters).Error; err != nil {
 		return 0, err
