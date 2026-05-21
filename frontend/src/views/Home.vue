@@ -12,6 +12,15 @@
       </div>
     </div>
 
+    <button v-if="recentBook" class="recent-strip app-panel" type="button" @click="continueRead(recentBook)">
+      <span>
+        <small>上次阅读</small>
+        <strong>{{ recentBook.title }}</strong>
+        <em>{{ readChapterTitle(recentBook) || recentBook.lastChapter || '继续阅读' }}</em>
+      </span>
+      <b>{{ progressLabel(recentBook) }}</b>
+    </button>
+
     <div class="book-group-wrapper app-panel">
       <el-tabs v-model="selectedGroup" stretch>
         <el-tab-pane v-for="item in groupItems" :key="item.id" :label="`${item.name} ${item.count}`" :name="item.id" />
@@ -123,6 +132,8 @@ const displayedBooks = computed(() => {
     })
     .sort(compareByShelfOrder)
 })
+
+const recentBook = computed(() => displayedBooks.value[0] || null)
 
 const emptyText = computed(() => {
   if (keyword.value.trim()) return '没有匹配的书籍'
@@ -257,6 +268,55 @@ function readError(err, fallback) {
   top: 0;
   padding: 12px 14px;
   border-radius: 0;
+}
+
+.recent-strip {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  color: var(--app-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.recent-strip span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.recent-strip small,
+.recent-strip em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-strip strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-strip b {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  flex: 0 0 48px;
+  color: var(--app-primary-strong);
+  background: var(--app-primary-soft);
+  border-radius: 50%;
+  font-size: 14px;
 }
 
 .shelf-title strong {
@@ -403,7 +463,11 @@ function readError(err, fallback) {
   }
 
   .shelf-title,
-  .shelf-toolbar {
+  .shelf-toolbar,
+  .recent-strip,
+  .book-group-wrapper,
+  .book-list,
+  .empty-panel {
     border-radius: 0;
   }
 
@@ -424,6 +488,21 @@ function readError(err, fallback) {
 
   .shelf-toolbar {
     padding: 8px 10px;
+  }
+
+  .recent-strip {
+    padding: 10px;
+  }
+
+  .recent-strip strong {
+    font-size: 14px;
+  }
+
+  .recent-strip b {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+    font-size: 12px;
   }
 
   .book-row {

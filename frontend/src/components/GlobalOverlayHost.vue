@@ -75,8 +75,15 @@
     :size="wideDrawerSize"
     class="global-manage-drawer"
   >
+    <div class="manage-head">
+      <el-input v-model="manageKeyword" placeholder="搜索书名或作者" clearable size="small" />
+      <div class="manage-head-actions">
+        <el-button size="small" text @click="selectAllManagedBooks">全选</el-button>
+        <el-button size="small" text @click="clearManagedSelection">清空</el-button>
+      </div>
+    </div>
     <el-table
-      :data="managedBooks"
+      :data="filteredManagedBooks"
       row-key="id"
       height="calc(100vh - 188px)"
       class="manage-table desktop-manage-table"
@@ -108,8 +115,9 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="cacheBook">缓存到服务器</el-dropdown-item>
-                <el-dropdown-item command="deleteBookCache">删除服务器缓存</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存到服务器</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookCache">删除服务器缓存</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) === 0" disabled>本地书无需服务器缓存</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -128,25 +136,28 @@
         </template>
       </el-table-column>
     </el-table>
-    <div v-if="managedBooks.length" class="mobile-manage-list">
-      <article v-for="book in managedBooks" :key="book.id" class="mobile-manage-card">
+    <div v-if="filteredManagedBooks.length" class="mobile-manage-list">
+      <article v-for="book in filteredManagedBooks" :key="book.id" class="mobile-manage-card" :class="{ selected: selectedBookIds.includes(book.id) }">
         <header>
           <el-checkbox :model-value="selectedBookIds.includes(book.id)" @change="value => toggleManagedBook(book.id, value)" />
+          <span class="mobile-manage-cover">{{ coverInitial(book) }}</span>
           <button type="button" @click="overlay.openBookInfo(book)">
             <strong>{{ book.title }}</strong>
             <span>{{ book.author || '未知作者' }} · {{ categoryName(book.categoryId) }}</span>
+            <span>{{ Number(book.sourceId || 0) > 0 ? '远程书籍' : '本地书籍' }} · {{ progressLabel(book) }}</span>
           </button>
         </header>
-        <p>共 {{ book.chapterCount || 0 }} 章 · 阅读进度 {{ progressLabel(book) }}</p>
+        <p>共 {{ book.chapterCount || 0 }} 章<template v-if="book.lastChapter"> · 最新：{{ book.lastChapter }}</template></p>
         <footer>
           <el-button size="small" text @click="goDetail(book)">编辑</el-button>
           <el-button size="small" text @click="setBookGroup(book)">分组</el-button>
-          <el-button size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">缓存</el-button>
-          <el-button size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清缓存</el-button>
           <el-button size="small" text @click="exportBook(book)">导出</el-button>
         </footer>
       </article>
     </div>
+    <el-empty v-else class="mobile-manage-empty" description="没有匹配的书籍" />
     <div class="manage-footer">
       <el-button type="primary" :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchDeleteBooks">批量删除</el-button>
       <el-dropdown @command="batchAddCategory">
@@ -743,6 +754,7 @@ const editingReplaceRuleId = ref(null)
 const replaceRuleDraft = ref({ name: '', pattern: '', replacement: '', enabled: true })
 const replaceRuleTestText = ref('广告123\n正文内容')
 const replaceRuleTestResult = ref(null)
+const manageKeyword = ref('')
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
 
@@ -764,6 +776,11 @@ const bookInfoProgress = computed(() => {
 })
 const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
 const managedBooks = computed(() => [...bookshelf.books].sort(compareByShelfOrder))
+const filteredManagedBooks = computed(() => {
+  const value = manageKeyword.value.trim().toLowerCase()
+  if (!value) return managedBooks.value
+  return managedBooks.value.filter(book => `${book.title || ''} ${book.author || ''}`.toLowerCase().includes(value))
+})
 const contentSearchStatus = computed(() => {
   if (!contentSearched.value) return ''
   const scanned = contentLastIndex.value >= 0 ? contentLastIndex.value + 1 : 0
@@ -828,7 +845,13 @@ async function importLocalBook() {
 watch(
   () => overlay.bookManageVisible || overlay.bookGroupVisible,
   async (visible) => {
-    if (!visible) return
+    if (!visible) {
+      if (!overlay.bookManageVisible) {
+        manageKeyword.value = ''
+        selectedBookIds.value = []
+      }
+      return
+    }
     try {
       await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks()])
       if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
@@ -912,6 +935,18 @@ function toggleManagedBook(bookId, checked) {
     return
   }
   selectedBookIds.value = selectedBookIds.value.filter(id => id !== bookId)
+}
+
+function selectAllManagedBooks() {
+  selectedBookIds.value = filteredManagedBooks.value.map(book => book.id)
+}
+
+function clearManagedSelection() {
+  selectedBookIds.value = []
+}
+
+function coverInitial(book) {
+  return (book?.title || '?').slice(0, 1)
 }
 
 function continueRead(book) {
@@ -1104,9 +1139,14 @@ async function batchRemoveCategory(category) {
 
 async function batchCacheBooks() {
   if (!selectedBookIds.value.length) return
+  const remoteBookIds = selectedRemoteBookIds()
+  if (!remoteBookIds.length) {
+    ElMessage.info('选中的本地书无需服务器缓存')
+    return
+  }
   batchBusy.value = true
   try {
-    const data = await bookshelf.batchCacheBooks([...selectedBookIds.value])
+    const data = await bookshelf.batchCacheBooks(remoteBookIds)
     ElMessage.success(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
   } catch (err) {
     ElMessage.error(readError(err, '批量缓存失败'))
@@ -1117,10 +1157,15 @@ async function batchCacheBooks() {
 
 async function batchClearCache() {
   if (!selectedBookIds.value.length) return
+  const remoteBookIds = selectedRemoteBookIds()
+  if (!remoteBookIds.length) {
+    ElMessage.info('选中的本地书没有服务器缓存')
+    return
+  }
   try {
-    await ElMessageBox.confirm(`确定清理选中 ${selectedBookIds.value.length} 本书的章节缓存吗？`, '清理缓存', { type: 'warning' })
+    await ElMessageBox.confirm(`确定清理选中 ${remoteBookIds.length} 本远程书的章节缓存吗？`, '清理缓存', { type: 'warning' })
     batchBusy.value = true
-    const data = await bookshelf.batchClearCache([...selectedBookIds.value])
+    const data = await bookshelf.batchClearCache(remoteBookIds)
     ElMessage.success(`已清理 ${data.cleared || 0} 个章节缓存`)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
@@ -1128,6 +1173,13 @@ async function batchClearCache() {
   } finally {
     batchBusy.value = false
   }
+}
+
+function selectedRemoteBookIds() {
+  const selected = new Set(selectedBookIds.value)
+  return managedBooks.value
+    .filter(book => selected.has(book.id) && Number(book.sourceId || 0) > 0)
+    .map(book => book.id)
 }
 
 async function batchDeleteBooks() {
@@ -1147,6 +1199,10 @@ async function batchDeleteBooks() {
 }
 
 async function cacheBook(book, command) {
+  if (Number(book?.sourceId || 0) === 0) {
+    ElMessage.info('本地书无需服务器缓存')
+    return
+  }
   if (command === 'deleteBookCache') {
     await clearBookCache(book)
     return
@@ -1219,14 +1275,14 @@ async function runCurrentBookContentSearch({ append = false } = {}) {
       ? {
           paged: 1,
           lastIndex: contentLastIndex.value,
-          chapterLimit: 80,
+          chapterLimit: contentSearchChapterLimit(book),
           matchLimit: 200,
           perChapterLimit: 20,
         }
       : {
           paged: 1,
           lastIndex: -1,
-          chapterLimit: 80,
+          chapterLimit: contentSearchChapterLimit(book),
           matchLimit: 200,
           perChapterLimit: 20,
         }
@@ -1241,6 +1297,10 @@ async function runCurrentBookContentSearch({ append = false } = {}) {
   } finally {
     contentSearching.value = false
   }
+}
+
+function contentSearchChapterLimit(book) {
+  return Number(book?.sourceId || 0) > 0 ? 80 : 500
 }
 
 function jumpToContentResult(result) {
@@ -1940,6 +2000,20 @@ function readError(err, fallback) {
   gap: 10px;
 }
 
+.manage-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.manage-head-actions {
+  display: none;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .manage-table {
   margin-bottom: 12px;
 }
@@ -1954,6 +2028,11 @@ function readError(err, fallback) {
   padding: 10px;
   border: 1px solid var(--app-border);
   border-radius: var(--app-radius-sm);
+}
+
+.mobile-manage-card.selected {
+  border-color: var(--app-primary);
+  background: var(--app-primary-soft);
 }
 
 .mobile-manage-card header,
@@ -1974,6 +2053,19 @@ function readError(err, fallback) {
   border: 0;
   cursor: pointer;
   text-align: left;
+}
+
+.mobile-manage-cover {
+  display: grid;
+  width: 34px;
+  height: 46px;
+  place-items: center;
+  flex: 0 0 34px;
+  color: #fffdf8;
+  background: var(--app-primary);
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .mobile-manage-card strong,
@@ -2001,6 +2093,10 @@ function readError(err, fallback) {
 .mobile-manage-card footer {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.mobile-manage-empty {
+  display: none;
 }
 
 .text-button {
@@ -2459,9 +2555,22 @@ function readError(err, fallback) {
     margin-bottom: 12px;
   }
 
+  .mobile-manage-empty {
+    display: block;
+  }
+
   .manage-footer {
     align-items: stretch;
     display: grid;
+  }
+
+  .manage-head {
+    grid-template-columns: 1fr;
+  }
+
+  .manage-head-actions {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .overlay-actions {

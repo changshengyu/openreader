@@ -497,16 +497,23 @@ const readerContentStyle = computed(() => ({
 }))
 
 const bodyStyle = computed(() => {
+  const baseStyle = {
+    fontFamily: fontStack.value,
+    fontSize: `${reader.fontSize}px`,
+    lineHeight: reader.lineHeight,
+    fontWeight: reader.fontWeight,
+  }
   if (reader.mode === 'flip') {
     return {
+      ...baseStyle,
       '--reader-page-width': `${pageWidth.value}px`,
       transform: `translateX(-${page.value * pageWidth.value}px)`,
     }
   }
   if (reader.mode === 'page') {
-    return { transform: `translateY(-${page.value * pageHeight.value}px)` }
+    return { ...baseStyle, transform: `translateY(-${page.value * pageHeight.value}px)` }
   }
-  return {}
+  return baseStyle
 })
 
 const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.value.length || 1}`)
@@ -941,14 +948,14 @@ async function runBookContentSearch({ append = false } = {}) {
       ? {
           paged: 1,
           lastIndex: bookSearchLastIndex.value,
-          chapterLimit: 80,
+          chapterLimit: contentSearchChapterLimit(book.value),
           matchLimit: 200,
           perChapterLimit: 20,
         }
       : {
           paged: 1,
           lastIndex: -1,
-          chapterLimit: 80,
+          chapterLimit: contentSearchChapterLimit(book.value),
           matchLimit: 200,
           perChapterLimit: 20,
         }
@@ -963,6 +970,10 @@ async function runBookContentSearch({ append = false } = {}) {
   } finally {
     bookSearching.value = false
   }
+}
+
+function contentSearchChapterLimit(targetBook) {
+  return Number(targetBook?.sourceId || 0) > 0 ? 80 : 500
 }
 
 function openNoteDialog() {

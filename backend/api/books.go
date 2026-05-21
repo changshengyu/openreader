@@ -1005,7 +1005,7 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		} else {
 			start = parseBoundedInt(c.Query("lastIndex"), -1, -1, len(chapters)) + 1
 		}
-		chapterLimit := parseBoundedInt(c.Query("chapterLimit"), 30, 1, 80)
+		chapterLimit := parseBoundedInt(c.Query("chapterLimit"), 30, 1, 500)
 		matchLimit := parseBoundedInt(c.Query("matchLimit"), 80, 1, 200)
 		perChapterLimit := parseBoundedInt(c.Query("perChapterLimit"), 20, 1, 100)
 		matches, lastIndex := s.collectContentMatches(book, chapters, keyword, start, chapterLimit, matchLimit, perChapterLimit)
