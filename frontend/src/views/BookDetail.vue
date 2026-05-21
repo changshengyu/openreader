@@ -16,6 +16,13 @@
             :progress="reader.progressByBook[book.id]?.percent || 0"
             :status-label="book.sourceId ? '远程书籍' : '本地书籍'"
             :status-type="book.sourceId ? 'success' : 'info'"
+            :cover-editable="true"
+            :cover-uploading="uploadingCover"
+            :show-update-switch="book.sourceId > 0"
+            :can-update="book.canUpdate !== false"
+            :update-switch-loading="updatingBook"
+            @cover-upload="uploadBookCoverFromPanel"
+            @can-update-change="toggleBookCanUpdate"
           >
             <div class="hero-actions">
               <el-button type="primary" @click="startRead">开始阅读</el-button>
@@ -176,6 +183,7 @@ const showChangeSource = ref(false)
 const showBookEditor = ref(false)
 const savingBook = ref(false)
 const uploadingCover = ref(false)
+const updatingBook = ref(false)
 const refreshingBook = ref(false)
 const cachingBook = ref(false)
 const clearingCache = ref(false)
@@ -293,6 +301,7 @@ async function saveBookEdit() {
       coverUrl: bookDraft.coverUrl,
       intro: bookDraft.intro,
       categoryId: book.value.categoryId || null,
+      canUpdate: book.value.canUpdate !== false,
     })
     book.value = data
     showBookEditor.value = false
@@ -316,6 +325,49 @@ async function uploadBookCover(data) {
     ElMessage.error(readError(err, '上传封面失败'))
   } finally {
     uploadingCover.value = false
+  }
+}
+
+async function uploadBookCoverFromPanel(file) {
+  if (!book.value || !file) return
+  uploadingCover.value = true
+  try {
+    const { data: result } = await uploadAsset({ file, type: 'cover' })
+    const { data } = await updateBook(book.value.id, {
+      title: book.value.title,
+      author: book.value.author || '',
+      coverUrl: result.url,
+      intro: book.value.intro || '',
+      categoryId: book.value.categoryId || null,
+      canUpdate: book.value.canUpdate !== false,
+    })
+    book.value = data
+    ElMessage.success('封面已更新')
+  } catch (err) {
+    ElMessage.error(readError(err, '上传封面失败'))
+  } finally {
+    uploadingCover.value = false
+  }
+}
+
+async function toggleBookCanUpdate(value) {
+  if (!book.value?.id || !book.value.sourceId) return
+  updatingBook.value = true
+  try {
+    const { data } = await updateBook(book.value.id, {
+      title: book.value.title,
+      author: book.value.author || '',
+      coverUrl: book.value.coverUrl || '',
+      intro: book.value.intro || '',
+      categoryId: book.value.categoryId || null,
+      canUpdate: value,
+    })
+    book.value = data
+    ElMessage.success(value ? '已开启追更' : '已关闭追更')
+  } catch (err) {
+    ElMessage.error(readError(err, '更新追更状态失败'))
+  } finally {
+    updatingBook.value = false
   }
 }
 

@@ -54,7 +54,7 @@
 
     <div class="setting-row">
       <label class="setting-label">字体</label>
-      <el-select v-model="reader.fontFamily" size="small" @change="reader.setFontFamily">
+      <el-select v-model="fontFamilyModel" size="small">
         <el-option v-for="font in fontOptions" :key="font.value" :label="font.label" :value="font.value" />
       </el-select>
     </div>
@@ -62,9 +62,9 @@
     <div class="setting-row">
       <label class="setting-label">字号 ({{ reader.fontSize }}px)</label>
       <div class="font-controls">
-        <el-button size="small" :icon="Minus" circle @click="reader.setFontSize(reader.fontSize - 1)" />
-        <el-slider v-model="reader.fontSize" :min="8" :max="36" size="small" class="font-slider" @input="reader.setFontSize" />
-        <el-button size="small" :icon="Plus" circle @click="reader.setFontSize(reader.fontSize + 1)" />
+        <el-button size="small" :icon="Minus" circle @click="changeFontSize(-1)" />
+        <el-slider v-model="fontSizeModel" :min="8" :max="36" size="small" class="font-slider" />
+        <el-button size="small" :icon="Plus" circle @click="changeFontSize(1)" />
       </div>
     </div>
 
@@ -75,12 +75,12 @@
 
     <div class="setting-row">
       <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
-      <el-slider v-model="reader.fontWeight" :min="300" :max="900" :step="100" size="small" @input="reader.setFontWeight($event)" />
+      <el-slider v-model="fontWeightModel" :min="300" :max="900" :step="100" size="small" />
     </div>
 
     <div class="setting-row">
       <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
-      <el-slider v-model="reader.paragraphSpace" :min="0" :max="3" :step="0.1" size="small" @input="reader.setParagraphSpace($event)" />
+      <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" />
     </div>
 
     <div class="setting-row">
@@ -163,6 +163,30 @@ const localLineHeight = computed({
   get: () => props.lineHeight,
   set: value => emit('update:lineHeight', value),
 })
+
+const fontFamilyModel = computed({
+  get: () => props.reader.fontFamily,
+  set: value => props.reader.setFontFamily(value),
+})
+
+const fontSizeModel = computed({
+  get: () => props.reader.fontSize,
+  set: value => props.reader.setFontSize(value),
+})
+
+const fontWeightModel = computed({
+  get: () => props.reader.fontWeight,
+  set: value => props.reader.setFontWeight(value),
+})
+
+const paragraphSpaceModel = computed({
+  get: () => props.reader.paragraphSpace,
+  set: value => props.reader.setParagraphSpace(value),
+})
+
+function changeFontSize(delta) {
+  props.reader.setFontSize(props.reader.fontSize + delta)
+}
 </script>
 
 <style scoped>

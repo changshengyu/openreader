@@ -113,6 +113,7 @@ type bookUpdateRequest struct {
 	CoverURL   string `json:"coverUrl"`
 	Intro      string `json:"intro"`
 	CategoryID *uint  `json:"categoryId"`
+	CanUpdate  *bool  `json:"canUpdate"`
 }
 
 func (s *Server) updateBook(c *gin.Context) {
@@ -142,6 +143,9 @@ func (s *Server) updateBook(c *gin.Context) {
 	book.CoverURL = strings.TrimSpace(request.CoverURL)
 	book.Intro = strings.TrimSpace(request.Intro)
 	book.CategoryID = request.CategoryID
+	if request.CanUpdate != nil {
+		book.CanUpdate = *request.CanUpdate
+	}
 
 	if err := s.db.Save(&book).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book"})
@@ -660,6 +664,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		CategoryID:   req.CategoryID,
 		LastChapter:  chapters[len(chapters)-1].Title,
 		ChapterCount: len(chapters),
+		CanUpdate:    true,
 	}
 
 	err = s.db.Transaction(func(tx *gorm.DB) error {

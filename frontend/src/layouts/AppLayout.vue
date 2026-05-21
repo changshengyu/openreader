@@ -169,7 +169,7 @@ const navSections = [
 
 const userInitial = computed(() => (userStore.profile?.username || '?').slice(0, 1).toUpperCase())
 const recentBook = computed(() => {
-  const rows = [...bookshelf.books]
+  const rows = [...(Array.isArray(bookshelf.books) ? bookshelf.books : [])]
   rows.sort((a, b) => {
     const aProgress = reader.progressByBook[a.id] || a.progress
     const bProgress = reader.progressByBook[b.id] || b.progress

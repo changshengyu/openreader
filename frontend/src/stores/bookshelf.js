@@ -3,6 +3,14 @@ import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../a
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
 
+function asList(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.list)) return data.list
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.data)) return data.data
+  return []
+}
+
 export const useBookshelfStore = defineStore('bookshelf', {
   state: () => ({
     books: [],
@@ -19,14 +27,14 @@ export const useBookshelfStore = defineStore('bookshelf', {
           params.categoryId = this.selectedCategoryId
         }
         const { data } = await listBooks(params)
-        this.books = data
+        this.books = asList(data)
       } finally {
         this.loading = false
       }
     },
     async loadCategories() {
       const { data } = await listCategories()
-      this.categories = data
+      this.categories = asList(data)
     },
     async addCategory(category) {
       const { data } = await createCategory(category)
@@ -80,7 +88,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
     },
     async reorderCategoryIds(ids) {
       const { data } = await reorderCategories(ids)
-      this.categories = data
+      this.categories = asList(data)
       return data
     },
     async importTXT({ file, title, author, categoryId }) {

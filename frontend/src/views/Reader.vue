@@ -784,13 +784,16 @@ async function runBookContentSearch({ append = false } = {}) {
   bookSearching.value = true
   searchedBookContent.value = true
   try {
-    const { data } = await searchBookContentApi(bookId.value, keyword, {
-      paged: 1,
-      lastIndex: append ? bookSearchLastIndex.value : -1,
-      chapterLimit: 30,
-      matchLimit: 80,
-    })
-    const rows = data?.list || []
+    const params = append
+      ? {
+          paged: 1,
+          lastIndex: bookSearchLastIndex.value,
+          chapterLimit: 80,
+          matchLimit: 200,
+        }
+      : {}
+    const { data } = await searchBookContentApi(bookId.value, keyword, params)
+    const rows = Array.isArray(data) ? data : (data?.list || [])
     bookSearchResults.value = append ? bookSearchResults.value.concat(rows) : rows
     bookSearchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
     bookSearchHasMore.value = Boolean(data?.hasMore)

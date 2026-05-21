@@ -1,8 +1,17 @@
 <template>
   <section class="book-info-shared">
-    <div class="book-cover-zone">
+    <div class="book-cover-zone" :class="{ editable: coverEditable, uploading: coverUploading }" @click="triggerCoverUpload">
       <div class="book-cover-bg" :style="coverBgStyle" />
       <BookCover :book="book" />
+      <span v-if="coverEditable" class="cover-edit-label">{{ coverUploading ? '上传中' : '更换封面' }}</span>
+      <input
+        v-if="coverEditable"
+        ref="coverInput"
+        type="file"
+        accept="image/*"
+        class="cover-file-input"
+        @change="handleCoverFileChange"
+      />
     </div>
     <div class="book-info-main">
       <div class="book-info-title">
@@ -20,7 +29,7 @@
         </div>
         <div>
           <span>最新：</span>
-          <strong>{{ book?.lastChapter || '-' }}</strong>
+          <strong>{{ latestChapterLabel }}</strong>
         </div>
         <div>
           <span>分组：</span>
@@ -35,6 +44,16 @@
           <strong>{{ progressLabel }}</strong>
         </div>
       </div>
+      <div v-if="showUpdateSwitch" class="book-info-controls">
+        <span>追更：</span>
+        <el-switch
+          :model-value="canUpdateValue"
+          :loading="updateSwitchLoading"
+          active-text="开启"
+          inactive-text="关闭"
+          @change="value => emit('can-update-change', value)"
+        />
+      </div>
       <div class="book-info-intro">
         <p v-for="(paragraph, index) in introParagraphs" :key="index">{{ paragraph }}</p>
       </div>
@@ -44,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import BookCover from './BookCover.vue'
 
 const props = defineProps({
@@ -76,15 +95,51 @@ const props = defineProps({
     type: String,
     default: 'info',
   },
+  coverEditable: {
+    type: Boolean,
+    default: false,
+  },
+  coverUploading: {
+    type: Boolean,
+    default: false,
+  },
+  showUpdateSwitch: {
+    type: Boolean,
+    default: false,
+  },
+  canUpdate: {
+    type: Boolean,
+    default: true,
+  },
+  updateSwitchLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
 
+const emit = defineEmits(['cover-upload', 'can-update-change'])
+const coverInput = ref(null)
+
 const chapterCount = computed(() => Array.isArray(props.chapters) ? props.chapters.length : (props.chapters || props.book?.chapterCount || 0))
+const latestChapterLabel = computed(() => props.book?.lastChapter || props.book?.latestChapter || props.book?.latestChapterTitle || '-')
 const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props.progress || 0)) * 100)}%`)
+const canUpdateValue = computed(() => props.book?.canUpdate !== false && props.canUpdate !== false)
 const introParagraphs = computed(() => {
   const text = String(props.book?.intro || '暂无简介').trim()
   return text ? text.split(/\n+/).map(line => line.trim()).filter(Boolean) : ['暂无简介']
 })
 const coverBgStyle = computed(() => props.book?.coverUrl ? { backgroundImage: `url(${props.book.coverUrl})` } : {})
+
+function triggerCoverUpload() {
+  if (!props.coverEditable || props.coverUploading) return
+  coverInput.value?.click()
+}
+
+function handleCoverFileChange(event) {
+  const file = event.target.files?.[0]
+  if (file) emit('cover-upload', file)
+  event.target.value = ''
+}
 </script>
 
 <style scoped>
@@ -105,6 +160,14 @@ const coverBgStyle = computed(() => props.book?.coverUrl ? { backgroundImage: `u
   border-radius: 6px;
 }
 
+.book-cover-zone.editable {
+  cursor: pointer;
+}
+
+.book-cover-zone.uploading {
+  cursor: progress;
+}
+
 .book-cover-bg {
   position: absolute;
   inset: 0;
@@ -119,6 +182,33 @@ const coverBgStyle = computed(() => props.book?.coverUrl ? { backgroundImage: `u
 .book-cover-zone :deep(.book-cover-shared) {
   position: relative;
   z-index: 1;
+}
+
+.cover-edit-label {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  padding: 5px 6px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.54);
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.cover-file-input {
+  display: none;
+}
+
+.book-info-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 6px;
+  color: var(--app-text-muted);
+  font-size: 14px;
 }
 
 .book-info-main {

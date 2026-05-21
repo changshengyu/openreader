@@ -63,7 +63,7 @@ func (s *Scheduler) CheckNow() int {
 
 func (s *Scheduler) checkAllBooks() int {
 	var books []models.Book
-	if err := s.db.Where("source_id > ?", 0).Find(&books).Error; err != nil {
+	if err := s.db.Where("source_id > ? AND can_update = ?", 0, true).Find(&books).Error; err != nil {
 		log.Printf("scheduler: failed to list books: %v", err)
 		return 0
 	}

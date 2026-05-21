@@ -2,12 +2,19 @@
   <BookInfoDialog
     v-model="overlay.bookInfoVisible"
     :book="overlay.bookInfoBook"
-    :source-name="overlay.bookInfoOptions.sourceName"
+    :source-name="bookInfoSourceName"
     :category-name="bookInfoCategory"
     :progress="bookInfoProgress"
     :chapters="overlay.bookInfoBook?.chapterCount || 0"
     :status-label="overlay.bookInfoOptions.statusLabel || sourceStatusLabel"
     :status-type="overlay.bookInfoOptions.statusType || 'info'"
+    :cover-editable="!!overlay.bookInfoBook?.id"
+    :cover-uploading="coverUploadingBookId === overlay.bookInfoBook?.id"
+    :show-update-switch="!!overlay.bookInfoBook?.id && Number(overlay.bookInfoBook?.sourceId || 0) > 0"
+    :can-update="overlay.bookInfoBook?.canUpdate !== false"
+    :update-switch-loading="updatingBookId === overlay.bookInfoBook?.id"
+    @cover-upload="uploadBookInfoCover"
+    @can-update-change="toggleBookCanUpdate"
   >
     <div v-if="overlay.bookInfoOptions.actions?.length" class="overlay-actions">
       <el-button
@@ -239,7 +246,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
-import { cacheBookContent, checkBookUpdates, deleteBookmark, listBookmarks, refreshBook, searchBookContent, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, checkBookUpdates, deleteBookmark, listBookmarks, refreshBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { listSources } from '../api/sources'
+import { uploadAsset } from '../api/uploads'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -256,10 +265,13 @@ const selectedBookIds = ref([])
 const batchBusy = ref(false)
 const cachingBookId = ref(null)
 const refreshingBookId = ref(null)
+const coverUploadingBookId = ref(null)
+const updatingBookId = ref(null)
 const settingCategoryId = ref('')
 const settingCategorySaving = ref(false)
 const loadingUpdates = ref(false)
 const newGroupName = ref('')
+const sourceRows = ref([])
 const contentKeyword = ref('')
 const contentResults = ref([])
 const contentSearching = ref(false)
@@ -281,6 +293,12 @@ const wideDrawerSize = computed(() => isMobileOverlay.value ? '88%' : '82%')
 const narrowDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const narrowDrawerSize = computed(() => isMobileOverlay.value ? '86%' : '420px')
 const bookInfoCategory = computed(() => overlay.bookInfoOptions.categoryName || categoryName(overlay.bookInfoBook?.categoryId))
+const bookInfoSourceName = computed(() => {
+  if (overlay.bookInfoOptions.sourceName) return overlay.bookInfoOptions.sourceName
+  const sourceId = overlay.bookInfoBook?.sourceId
+  if (!sourceId) return '本地'
+  return sourceRows.value.find(source => Number(source.id) === Number(sourceId))?.name || '远程书籍'
+})
 const bookInfoProgress = computed(() => {
   const book = overlay.bookInfoBook
   return book ? (reader.progressByBook[book.id]?.percent || book.progress?.percent || 0) : 0
@@ -317,6 +335,21 @@ watch(
       }
     } catch (err) {
       ElMessage.error(readError(err, '加载书架数据失败'))
+    }
+  },
+)
+
+watch(
+  () => overlay.bookInfoVisible,
+  async (visible) => {
+    if (!visible) return
+    try {
+      await bookshelf.loadCategories()
+      if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
+        await loadSourceRows()
+      }
+    } catch (err) {
+      ElMessage.error(readError(err, '加载书籍信息失败'))
     }
   },
 )
@@ -361,6 +394,11 @@ function categoryName(id) {
 function progressLabel(book) {
   const progress = reader.progressByBook[book.id] || book.progress
   return `${Math.round((progress?.percent || 0) * 100)}%`
+}
+
+async function loadSourceRows() {
+  const { data } = await listSources()
+  sourceRows.value = data || []
 }
 
 function compareByReadingOrder(a, b) {
@@ -471,6 +509,55 @@ async function refreshBookInfo(book) {
     ElMessage.error(readError(err, '刷新目录失败'))
   } finally {
     refreshingBookId.value = null
+  }
+}
+
+async function uploadBookInfoCover(file) {
+  const book = overlay.bookInfoBook
+  if (!book?.id || !file) return
+  coverUploadingBookId.value = book.id
+  try {
+    const { data: uploadResult } = await uploadAsset({ file, type: 'cover' })
+    const { data: updatedBook } = await updateBook(book.id, {
+      title: book.title,
+      author: book.author || '',
+      coverUrl: uploadResult.url,
+      intro: book.intro || '',
+      categoryId: book.categoryId || null,
+      canUpdate: book.canUpdate !== false,
+    })
+    const index = bookshelf.books.findIndex(item => item.id === book.id)
+    if (index >= 0) bookshelf.books[index] = updatedBook
+    overlay.bookInfoBook = updatedBook
+    ElMessage.success('封面已更新')
+  } catch (err) {
+    ElMessage.error(readError(err, '更新封面失败'))
+  } finally {
+    coverUploadingBookId.value = null
+  }
+}
+
+async function toggleBookCanUpdate(value) {
+  const book = overlay.bookInfoBook
+  if (!book?.id || !book.sourceId) return
+  updatingBookId.value = book.id
+  try {
+    const { data: updatedBook } = await updateBook(book.id, {
+      title: book.title,
+      author: book.author || '',
+      coverUrl: book.coverUrl || '',
+      intro: book.intro || '',
+      categoryId: book.categoryId || null,
+      canUpdate: value,
+    })
+    const index = bookshelf.books.findIndex(item => item.id === book.id)
+    if (index >= 0) bookshelf.books[index] = updatedBook
+    overlay.bookInfoBook = updatedBook
+    ElMessage.success(value ? '已开启追更' : '已关闭追更')
+  } catch (err) {
+    ElMessage.error(readError(err, '更新追更状态失败'))
+  } finally {
+    updatingBookId.value = null
   }
 }
 
@@ -619,13 +706,16 @@ async function runCurrentBookContentSearch({ append = false } = {}) {
   contentSearching.value = true
   contentSearched.value = true
   try {
-    const { data } = await searchBookContent(book.id, keyword, {
-      paged: 1,
-      lastIndex: append ? contentLastIndex.value : -1,
-      chapterLimit: 30,
-      matchLimit: 80,
-    })
-    const rows = data?.list || []
+    const params = append
+      ? {
+          paged: 1,
+          lastIndex: contentLastIndex.value,
+          chapterLimit: 80,
+          matchLimit: 200,
+        }
+      : {}
+    const { data } = await searchBookContent(book.id, keyword, params)
+    const rows = Array.isArray(data) ? data : (data?.list || [])
     contentResults.value = append ? contentResults.value.concat(rows) : rows
     contentLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
     contentHasMore.value = Boolean(data?.hasMore)

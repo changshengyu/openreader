@@ -166,12 +166,12 @@ func TestUpdateBook(t *testing.T) {
 	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	book := models.Book{UserID: user.ID, Title: "旧书名", Author: "旧作者"}
+	book := models.Book{UserID: user.ID, SourceID: 1, Title: "旧书名", Author: "旧作者", CanUpdate: true}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	body := `{"title":"新书名","author":"新作者","coverUrl":"https://example.com/cover.jpg","intro":"新简介"}`
+	body := `{"title":"新书名","author":"新作者","coverUrl":"https://example.com/cover.jpg","intro":"新简介","canUpdate":false}`
 	req := httptest.NewRequest(http.MethodPut, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -187,6 +187,9 @@ func TestUpdateBook(t *testing.T) {
 	}
 	if updated.Title != "新书名" || updated.Author != "新作者" || updated.Intro != "新简介" {
 		t.Fatalf("unexpected updated book: %+v", updated)
+	}
+	if updated.CanUpdate {
+		t.Fatalf("expected canUpdate to be false after update: %+v", updated)
 	}
 }
 
@@ -896,6 +899,79 @@ func TestCreateRemoteBookAcceptsCategory(t *testing.T) {
 	}
 	if book.CategoryID == nil || *book.CategoryID != category.ID {
 		t.Fatalf("expected category on remote book, got %+v", book)
+	}
+	if !book.CanUpdate {
+		t.Fatalf("expected remote book to enable update checks by default, got %+v", book)
+	}
+}
+
+func TestSchedulerSkipsBooksWithCanUpdateDisabled(t *testing.T) {
+	router, server := setupTestServer(t)
+	authHeader(t, router)
+
+	var calls int
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<li class="chapter"><a href="/c1">第一章</a></li>
+					<li class="chapter"><a href="/c2">第二章</a></li>
+				</body></html>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{Name: "追更源", BaseURL: "https://updates.example", Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{
+		ChapterListRule: ".chapter",
+		ChapterNameRule: "a|text",
+		ChapterURLRule:  "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID:       user.ID,
+		SourceID:     source.ID,
+		Title:        "关闭追更",
+		URL:          "https://updates.example/book",
+		LastChapter:  "第一章",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Model(&book).Update("can_update", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.Chapter{BookID: book.ID, Index: 0, Title: "第一章", URL: "/c1"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if got := server.scheduler.CheckNow(); got != 0 {
+		t.Fatalf("expected no new chapters for disabled book, got %d", got)
+	}
+	if calls != 0 {
+		t.Fatalf("expected disabled book to skip remote request, got %d calls", calls)
+	}
+	var count int64
+	if err := server.db.Model(&models.Chapter{}).Where("book_id = ?", book.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected no chapters added for disabled book, got %d", count)
 	}
 }
 

@@ -121,22 +121,25 @@ const refreshLoading = ref(false)
 const draft = reactive({ title: '', author: '', categoryId: '', file: null })
 
 const recentBook = computed(() => {
-  const withProgress = bookshelf.books
+  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
+  const withProgress = books
     .filter(book => bookProgress(book))
     .sort((a, b) => new Date(bookProgress(b)?.updatedAt || 0) - new Date(bookProgress(a)?.updatedAt || 0))
-  return withProgress[0] || bookshelf.books[0] || null
+  return withProgress[0] || books[0] || null
 })
 
 const groupItems = computed(() => {
   const countByCategory = new Map()
-  for (const book of bookshelf.books) {
+  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
+  const categories = Array.isArray(bookshelf.categories) ? bookshelf.categories : []
+  for (const book of books) {
     const key = book.categoryId ? String(book.categoryId) : 'none'
     countByCategory.set(key, (countByCategory.get(key) || 0) + 1)
   }
   return [
-    { id: '', name: '全部', count: bookshelf.books.length, builtin: true },
+    { id: '', name: '全部', count: books.length, builtin: true },
     { id: 'none', name: '未分组', count: countByCategory.get('none') || 0, builtin: true },
-    ...bookshelf.categories.map(category => ({
+    ...categories.map(category => ({
       id: String(category.id),
       name: category.name,
       count: countByCategory.get(String(category.id)) || 0,
@@ -148,7 +151,8 @@ const groupItems = computed(() => {
 
 const displayedBooks = computed(() => {
   const value = keyword.value.trim().toLowerCase()
-  return bookshelf.books
+  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
+  return books
     .filter(book => {
       const matchesKeyword = !value || `${book.title || ''} ${book.author || ''}`.toLowerCase().includes(value)
       if (!matchesKeyword) return false

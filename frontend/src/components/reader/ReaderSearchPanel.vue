@@ -14,13 +14,16 @@
       <strong>{{ result.chapterTitle || `第 ${result.chapterIndex + 1} 章` }}</strong>
       <span>{{ result.excerpt }}</span>
     </button>
-    <el-empty v-if="keyword && !loading && searched && !results.length" description="没有匹配内容" />
+    <el-empty
+      v-if="keyword && !loading && searched && !results.length"
+      :description="hasMore ? '当前已搜索章节没有匹配，可继续搜索后续章节' : '没有匹配内容'"
+    />
     <el-empty v-else-if="!keyword" description="输入关键词搜索整本书正文" />
   </div>
   <div v-if="keyword && searched" class="search-footer">
     <span>{{ statusText }}</span>
     <el-button size="small" :loading="loading" :disabled="!hasMore" @click="$emit('loadMore')">
-      {{ hasMore ? '加载更多' : '没有更多' }}
+      {{ hasMore ? '继续搜索' : '没有更多' }}
     </el-button>
   </div>
 </template>

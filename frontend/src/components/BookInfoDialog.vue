@@ -16,6 +16,13 @@
       :chapters="chapters"
       :status-label="statusLabel"
       :status-type="statusType"
+      :cover-editable="coverEditable"
+      :cover-uploading="coverUploading"
+      :show-update-switch="showUpdateSwitch"
+      :can-update="canUpdate"
+      :update-switch-loading="updateSwitchLoading"
+      @cover-upload="$emit('coverUpload', $event)"
+      @can-update-change="$emit('canUpdateChange', $event)"
     >
       <slot />
     </BookInfoPanel>
@@ -59,9 +66,29 @@ defineProps({
     type: String,
     default: 'info',
   },
+  coverEditable: {
+    type: Boolean,
+    default: false,
+  },
+  coverUploading: {
+    type: Boolean,
+    default: false,
+  },
+  showUpdateSwitch: {
+    type: Boolean,
+    default: false,
+  },
+  canUpdate: {
+    type: Boolean,
+    default: true,
+  },
+  updateSwitchLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-defineEmits(['update:modelValue'])
+defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange'])
 
 const windowWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
 const isMobile = computed(() => windowWidth.value <= 680)
