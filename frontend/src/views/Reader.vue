@@ -714,7 +714,7 @@ function openMobileTool(action) {
 
 function openReplaceRules() {
   showSettingsDrawer.value = false
-  overlay.openReplaceRules(router)
+  overlay.openReplaceRules()
 }
 
 async function loadSourceCandidates({ append = false, force = false } = {}) {

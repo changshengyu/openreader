@@ -54,7 +54,7 @@
 
     <div class="setting-row">
       <label class="setting-label">字体</label>
-      <el-select v-model="fontFamilyModel" size="small">
+      <el-select v-model="fontFamilyModel" size="small" @change="setFontFamily">
         <el-option v-for="font in fontOptions" :key="font.value" :label="font.label" :value="font.value" />
       </el-select>
     </div>
@@ -63,24 +63,24 @@
       <label class="setting-label">字号 ({{ reader.fontSize }}px)</label>
       <div class="font-controls">
         <el-button size="small" :icon="Minus" circle @click="changeFontSize(-1)" />
-        <el-slider v-model="fontSizeModel" :min="8" :max="36" size="small" class="font-slider" />
+        <el-slider v-model="fontSizeModel" :min="8" :max="36" size="small" class="font-slider" @input="setFontSize" @change="setFontSize" />
         <el-button size="small" :icon="Plus" circle @click="changeFontSize(1)" />
       </div>
     </div>
 
     <div class="setting-row">
       <label class="setting-label">行高 ({{ reader.lineHeight }})</label>
-      <el-slider v-model="localLineHeight" :min="1" :max="5" :step="0.2" size="small" @input="reader.setLineHeight($event)" />
+      <el-slider v-model="localLineHeight" :min="1" :max="5" :step="0.2" size="small" @input="setLineHeight" @change="setLineHeight" />
     </div>
 
     <div class="setting-row">
       <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
-      <el-slider v-model="fontWeightModel" :min="300" :max="900" :step="100" size="small" />
+      <el-slider v-model="fontWeightModel" :min="300" :max="900" :step="100" size="small" @input="setFontWeight" @change="setFontWeight" />
     </div>
 
     <div class="setting-row">
       <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
-      <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" />
+      <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" @input="setParagraphSpace" @change="setParagraphSpace" />
     </div>
 
     <div class="setting-row">
@@ -183,6 +183,27 @@ const paragraphSpaceModel = computed({
   get: () => props.reader.paragraphSpace,
   set: value => props.reader.setParagraphSpace(value),
 })
+
+function setFontFamily(value) {
+  props.reader.setFontFamily(value)
+}
+
+function setFontSize(value) {
+  props.reader.setFontSize(value)
+}
+
+function setLineHeight(value) {
+  props.reader.setLineHeight(value)
+  emit('update:lineHeight', props.reader.lineHeight)
+}
+
+function setFontWeight(value) {
+  props.reader.setFontWeight(value)
+}
+
+function setParagraphSpace(value) {
+  props.reader.setParagraphSpace(value)
+}
 
 function changeFontSize(delta) {
   props.reader.setFontSize(props.reader.fontSize + delta)
