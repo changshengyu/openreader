@@ -4,8 +4,8 @@
       <label class="setting-label">阅读模式</label>
       <el-radio-group v-model="reader.mode" size="small" @change="$emit('modeChange', $event)">
         <el-radio-button value="scroll">滚动</el-radio-button>
-        <el-radio-button value="flip">翻页</el-radio-button>
-        <el-radio-button value="page">分页</el-radio-button>
+        <el-radio-button value="flip">左右翻页</el-radio-button>
+        <el-radio-button value="page">上下分页</el-radio-button>
       </el-radio-group>
     </div>
 

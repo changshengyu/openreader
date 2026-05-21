@@ -427,7 +427,8 @@ const progressVersion = ref(0)
 const autoReading = ref(false)
 const customBg = ref('')
 const sliderLineHeight = ref(2.12)
-const pageHeight = ref(600)   // 可视区高度（翻页/分页模式用）
+const pageHeight = ref(600)
+const pageWidth = ref(600)
 const windowWidth = ref(window.innerWidth)
 const coarsePointer = ref(window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
 const mobileReaderMaxWidth = 860
@@ -494,8 +495,13 @@ const readerContentStyle = computed(() => ({
 }))
 
 const bodyStyle = computed(() => {
-  // 翻页/分页模式：translateY 垂直切页，一页 = 一屏
-  if (reader.mode === 'flip' || reader.mode === 'page') {
+  if (reader.mode === 'flip') {
+    return {
+      '--reader-page-width': `${pageWidth.value}px`,
+      transform: `translateX(-${page.value * pageWidth.value}px)`,
+    }
+  }
+  if (reader.mode === 'page') {
     return { transform: `translateY(-${page.value * pageHeight.value}px)` }
   }
   return {}
@@ -1054,9 +1060,15 @@ function scrollStep() {
 
 function updateFlipLayout() {
   if (!contentEl.value || !contentBody.value) return
-  // 翻页/分页模式：按可视区高度分页
-  if (reader.mode === 'flip' || reader.mode === 'page') {
+  if (reader.mode === 'flip') {
+    pageWidth.value = Math.max(1, contentEl.value.clientWidth)
     pageHeight.value = contentEl.value.clientHeight
+    pageCount.value = Math.max(1, Math.ceil(contentBody.value.scrollWidth / pageWidth.value))
+    page.value = Math.min(page.value, pageCount.value - 1)
+    return
+  }
+  if (reader.mode === 'page') {
+    pageHeight.value = Math.max(1, contentEl.value.clientHeight)
     pageCount.value = Math.max(1, Math.ceil(contentBody.value.scrollHeight / pageHeight.value))
     page.value = Math.min(page.value, pageCount.value - 1)
     return
@@ -1081,7 +1093,6 @@ function onScroll() {
 
 function currentChapterPercent() {
   progressVersion.value
-  // 翻页/分页：以页为单位
   if (reader.mode === 'flip' || reader.mode === 'page') {
     return pageCount.value <= 1 ? 0 : page.value / (pageCount.value - 1)
   }
@@ -1092,7 +1103,6 @@ function currentChapterPercent() {
 }
 
 function currentOffset() {
-  // 翻页/分页：保存页码
   if (reader.mode === 'flip' || reader.mode === 'page') return page.value
   return Math.round(contentEl.value?.scrollTop || 0)
 }
@@ -1209,7 +1219,9 @@ function jumpToLine(index) {
   const lineEl = contentBody.value?.querySelectorAll('p')?.[index]
   if (!lineEl) return
   showSearchDrawer.value = false
-  if (reader.mode === 'flip' || reader.mode === 'page') {
+  if (reader.mode === 'flip') {
+    page.value = Math.min(pageCount.value - 1, Math.floor(lineEl.offsetLeft / Math.max(pageWidth.value, 1)))
+  } else if (reader.mode === 'page') {
     page.value = Math.min(pageCount.value - 1, Math.floor(lineEl.offsetTop / Math.max(pageHeight.value, 1)))
   } else if (contentEl.value) {
     contentEl.value.scrollTop = Math.max(0, lineEl.offsetTop - 80)
@@ -1482,10 +1494,19 @@ function readError(err, fallback) {
   text-indent: 2em;
 }
 
-/* 翻页 & 分页模式：隐藏滚动条，用 translateY 切页 */
+/* 翻页 & 分页模式 */
 .reader-shell.flip .reader-content,
 .reader-shell.page .reader-content {
   overflow: hidden;
+}
+.reader-shell.flip .reader-body {
+  height: 100%;
+  column-width: var(--reader-page-width);
+  column-gap: 0;
+}
+.reader-shell.flip .reader-body h1,
+.reader-shell.flip .reader-body p {
+  break-inside: avoid;
 }
 .reader-shell.flip .reader-body,
 .reader-shell.page .reader-body {
