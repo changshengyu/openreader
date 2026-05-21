@@ -7,7 +7,7 @@ const PINCH_DEAD_ZONE = 40
 export function useGesture(elementRef, handlers) {
   const {
     onSwipeLeft, onSwipeRight,
-    onCenterTap, onEdgeLeftTap, onEdgeRightTap,
+    onCenterTap, onEdgeLeftTap, onEdgeRightTap, onUpperTap, onLowerTap,
     onPinchIn, onPinchOut,
   } = handlers
 
@@ -15,6 +15,7 @@ export function useGesture(elementRef, handlers) {
   let startY = 0
   let startTime = 0
   let startDistance = 0
+  let lastTouchTapAt = 0
   let cleanup = null
 
   function getDistance(touches) {
@@ -50,15 +51,8 @@ export function useGesture(elementRef, handlers) {
       const rect = el.getBoundingClientRect()
       const relX = endX - rect.left
 
-      if (relX < EDGE_WIDTH) {
-        onEdgeLeftTap?.()
-        return
-      }
-      if (relX > rect.width - EDGE_WIDTH) {
-        onEdgeRightTap?.()
-        return
-      }
-      onCenterTap?.()
+      lastTouchTapAt = Date.now()
+      handleTap(endX, endY)
       return
     }
 
@@ -69,6 +63,42 @@ export function useGesture(elementRef, handlers) {
         onSwipeRight?.()
       }
     }
+  }
+
+  function shouldIgnoreTap(target) {
+    return !!target?.closest?.('button,a,input,textarea,select,[role="button"],.el-drawer,.el-dialog')
+  }
+
+  function handleTap(clientX, clientY, target) {
+    if (shouldIgnoreTap(target)) return
+    const el = elementRef.value
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const relX = clientX - rect.left
+    const relY = clientY - rect.top
+
+    if (relX < EDGE_WIDTH) {
+      onEdgeLeftTap?.()
+      return
+    }
+    if (relX > rect.width - EDGE_WIDTH) {
+      onEdgeRightTap?.()
+      return
+    }
+    if (relY < rect.height * 0.35) {
+      onUpperTap?.()
+      return
+    }
+    if (relY > rect.height * 0.65) {
+      onLowerTap?.()
+      return
+    }
+    onCenterTap?.()
+  }
+
+  function handleClick(event) {
+    if (Date.now() - lastTouchTapAt < 450) return
+    handleTap(event.clientX, event.clientY, event.target)
   }
 
   function handleTouchMove(event) {
@@ -91,10 +121,12 @@ export function useGesture(elementRef, handlers) {
     el.addEventListener('touchstart', handleTouchStart, { passive: true })
     el.addEventListener('touchend', handleTouchEnd, { passive: true })
     el.addEventListener('touchmove', handleTouchMove, { passive: true })
+    el.addEventListener('click', handleClick)
     cleanup = () => {
       el.removeEventListener('touchstart', handleTouchStart)
       el.removeEventListener('touchend', handleTouchEnd)
       el.removeEventListener('touchmove', handleTouchMove)
+      el.removeEventListener('click', handleClick)
     }
   })
 

@@ -614,9 +614,11 @@ function pickBgImage(data) {
   fr.readAsDataURL(file)
 }
 
-async function goChapter(index) {
+async function goChapter(index, offset = 0) {
   if (index === currentIndex.value) { showTocDrawer.value = false; return }
-  await router.replace({ name: 'reader', params: { id: bookId.value }, query: { chapter: index } })
+  const query = { chapter: index }
+  if (offset) query.offset = offset
+  await router.replace({ name: 'reader', params: { id: bookId.value }, query })
 }
 
 async function jumpFromToc(index) {
@@ -1009,28 +1011,45 @@ function toggleNight() {
   reader.setTheme(reader.theme === 'dark' || reader.theme === 'black' ? 'parchment' : 'dark')
 }
 
-function previousPage() {
-  // 翻页/分页：在本章内垂直切上一页
+async function previousPage() {
   if ((reader.mode === 'flip' || reader.mode === 'page') && page.value > 0) {
     page.value -= 1
     progressVersion.value += 1
     saveCurrentProgress()
     return
   }
-  // 已到章首：切上一章
-  if (currentIndex.value > 0) goChapter(currentIndex.value - 1)
+  if (reader.mode === 'scroll' && contentEl.value) {
+    const el = contentEl.value
+    if (el.scrollTop > 8) {
+      el.scrollBy({ top: -scrollStep(), behavior: 'smooth' })
+      setTimeout(saveCurrentProgress, 240)
+      return
+    }
+  }
+  if (currentIndex.value > 0) await goChapter(currentIndex.value - 1, Number.MAX_SAFE_INTEGER)
 }
 
-function nextPage() {
-  // 翻页/分页：在本章内垂直切下一页
+async function nextPage() {
   if ((reader.mode === 'flip' || reader.mode === 'page') && page.value < pageCount.value - 1) {
     page.value += 1
     progressVersion.value += 1
     saveCurrentProgress()
     return
   }
-  // 已到章尾：切下一章
-  if (currentIndex.value < chapters.value.length - 1) goChapter(currentIndex.value + 1)
+  if (reader.mode === 'scroll' && contentEl.value) {
+    const el = contentEl.value
+    const bottom = el.scrollHeight - el.clientHeight
+    if (el.scrollTop < bottom - 8) {
+      el.scrollBy({ top: scrollStep(), behavior: 'smooth' })
+      setTimeout(saveCurrentProgress, 240)
+      return
+    }
+  }
+  if (currentIndex.value < chapters.value.length - 1) await goChapter(currentIndex.value + 1)
+}
+
+function scrollStep() {
+  return Math.max(240, Math.floor((contentEl.value?.clientHeight || window.innerHeight) * 0.82))
 }
 
 function updateFlipLayout() {
@@ -1245,6 +1264,8 @@ useGesture(pageEl, {
   },
   onEdgeLeftTap: () => previousPage(),
   onEdgeRightTap: () => nextPage(),
+  onUpperTap: () => previousPage(),
+  onLowerTap: () => nextPage(),
   onPinchOut: () => reader.setFontSize(reader.fontSize + 2),
   onPinchIn: () => reader.setFontSize(reader.fontSize - 2),
 })
@@ -1441,11 +1462,12 @@ function readError(err, fallback) {
 .reader-content {
   font-family: var(--reader-font-family);
   font-size: var(--reader-font-size);
-  height: 100vh; line-height: var(--reader-line-height);
+  height: 100dvh; line-height: var(--reader-line-height);
   overflow-y: auto; overflow-x: hidden;
-  padding: 44px 65px 72px;
-  width: var(--reader-content-width);
-  box-sizing: content-box;
+  padding: 44px 65px 132px;
+  width: 100%;
+  box-sizing: border-box;
+  scroll-padding-bottom: 132px;
 }
 .reader-body { transition: transform 180ms ease; }
 .reader-content h1 {
@@ -1642,7 +1664,8 @@ function readError(err, fallback) {
     box-sizing: border-box;
     width: 100vw;
     font-size: var(--reader-font-size);
-    padding: 42px 22px 58px;
+    padding: 42px 22px calc(96px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
   .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
   .reader-left-rail,
@@ -1711,14 +1734,15 @@ function readError(err, fallback) {
   .reader-mobile-progress-panel {
     position: fixed;
     right: 10px;
-    bottom: calc(68px + env(safe-area-inset-bottom));
+    bottom: calc(82px + env(safe-area-inset-bottom));
     left: 10px;
     z-index: 8;
     display: grid;
-    grid-template-columns: 68px minmax(0, 1fr) 68px;
+    grid-template-columns: minmax(62px, 76px) minmax(0, 1fr) minmax(62px, 76px);
     align-items: center;
     gap: 8px;
-    padding: 8px;
+    min-height: 54px;
+    padding: 7px;
     background: rgba(255, 252, 239, 0.94);
     border: 1px solid rgba(148, 132, 87, 0.28);
     border-radius: 8px;
