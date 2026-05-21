@@ -50,8 +50,12 @@
               <small>{{ book.author || '未知作者' }}<template v-if="book.chapterCount"> · 共{{ book.chapterCount }}章</template></small>
               <small v-if="readChapterTitle(book)">已读：{{ readChapterTitle(book) }}</small>
               <small v-if="book.lastChapter">最新：{{ book.lastChapter }}</small>
+              <span class="mobile-row-actions">
+                <span>{{ progressLabel(book) }}</span>
+                <em>点击详情</em>
+              </span>
             </span>
-            <el-button size="small" type="primary" plain @click.stop="continueRead(book)">阅读</el-button>
+            <el-button class="read-button" size="small" type="primary" plain @click.stop="continueRead(book)">阅读</el-button>
           </button>
         </div>
       </template>
@@ -193,6 +197,11 @@ function unreadCount(book) {
   return Math.max(0, chapterCount - 1 - chapterIndex)
 }
 
+function progressLabel(book) {
+  const progress = bookProgress(book)
+  return `${Math.round(Math.max(0, Math.min(1, progress?.percent || 0)) * 100)}%`
+}
+
 function bookProgress(book) {
   return reader.progressByBook[book.id] || book.progress
 }
@@ -238,6 +247,7 @@ function readError(err, fallback) {
 .shelf-page,
 .shelf-main {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
@@ -295,7 +305,9 @@ function readError(err, fallback) {
 }
 
 .book-group-wrapper {
+  min-width: 0;
   padding: 0 10px;
+  overflow: hidden;
 }
 
 .book-group-wrapper :deep(.el-tabs__header) {
@@ -307,15 +319,26 @@ function readError(err, fallback) {
   font-size: 14px;
 }
 
+.book-group-wrapper :deep(.el-tabs__nav-scroll) {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.book-group-wrapper :deep(.el-tabs__nav) {
+  min-width: 0;
+}
+
 .shelf-toolbar {
   padding: 10px 12px;
 }
 
 .shelf-toolbar .el-input {
+  min-width: 0;
   flex: 1;
 }
 
 .book-list {
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -357,6 +380,10 @@ function readError(err, fallback) {
   justify-items: end;
 }
 
+.mobile-row-actions {
+  display: none;
+}
+
 .empty-panel {
   display: grid;
   min-height: 360px;
@@ -370,6 +397,9 @@ function readError(err, fallback) {
 @media (max-width: 700px) {
   .shelf-page {
     gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .shelf-title,
@@ -380,9 +410,11 @@ function readError(err, fallback) {
   .shelf-title {
     gap: 10px;
     align-items: start;
+    min-width: 0;
   }
 
   .title-actions {
+    flex: 0 0 auto;
     gap: 8px;
   }
 
@@ -395,7 +427,7 @@ function readError(err, fallback) {
   }
 
   .book-row {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
+    grid-template-columns: 42px minmax(0, 1fr);
     gap: 10px;
     padding: 10px;
   }
@@ -403,6 +435,63 @@ function readError(err, fallback) {
   .list-cover {
     width: 42px;
     height: 56px;
+  }
+
+  .book-operation {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    min-height: 0;
+  }
+
+  .book-operation :deep(.el-button) {
+    padding: 0 2px;
+  }
+
+  .list-main {
+    padding-right: 28px;
+  }
+
+  .read-button {
+    display: none;
+  }
+
+  .mobile-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--app-primary-strong);
+    font-size: 12px;
+  }
+
+  .mobile-row-actions em {
+    color: var(--app-text-subtle);
+    font-style: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .book-group-wrapper {
+    padding: 0 6px;
+  }
+
+  .book-group-wrapper :deep(.el-tabs__item) {
+    min-width: 58px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .shelf-title {
+    padding: 10px 8px;
+  }
+
+  .shelf-title strong {
+    font-size: 15px;
+  }
+
+  .book-row {
+    padding: 9px 8px;
   }
 }
 </style>

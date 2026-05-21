@@ -294,6 +294,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .app-shell {
   min-height: 100vh;
+  max-width: 100vw;
+  overflow-x: hidden;
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.86), rgba(245, 241, 232, 0.92)),
     var(--app-bg);
@@ -516,11 +518,13 @@ onBeforeUnmount(() => {
 
 .app-workspace {
   min-height: 100vh;
+  min-width: 0;
   padding-left: var(--app-sidebar-width);
 }
 
 .app-content {
   min-height: 100vh;
+  min-width: 0;
 }
 
 @media (max-width: 860px) {
@@ -625,15 +629,15 @@ onBeforeUnmount(() => {
 
 @media (max-width: 420px) {
   .app-sidebar {
-    width: 88px;
+    width: 76px;
   }
 
   .app-workspace {
-    padding-left: 88px;
+    padding-left: 76px;
   }
 
   .app-nav-item {
-    height: 62px;
+    height: 58px;
   }
 
   .app-nav-item span {
