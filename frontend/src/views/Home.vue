@@ -294,11 +294,16 @@ function readError(err, fallback) {
 }
 
 .list-main small {
+  min-width: 0;
+  overflow: hidden;
   color: var(--app-text-muted);
   font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .list-main strong {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -348,6 +353,9 @@ function readError(err, fallback) {
   grid-template-columns: 52px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   width: 100%;
   padding: 12px;
   color: var(--app-text);
@@ -394,7 +402,7 @@ function readError(err, fallback) {
   grid-template-columns: 1fr;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 860px), (hover: none) and (pointer: coarse) {
   .shelf-page {
     gap: 8px;
     width: 100%;
@@ -458,6 +466,7 @@ function readError(err, fallback) {
 
   .mobile-row-actions {
     display: flex;
+    min-width: 0;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -466,12 +475,16 @@ function readError(err, fallback) {
   }
 
   .mobile-row-actions em {
+    min-width: 0;
+    overflow: hidden;
     color: var(--app-text-subtle);
     font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 520px) {
   .book-group-wrapper {
     padding: 0 6px;
   }
