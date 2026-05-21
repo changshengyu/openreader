@@ -127,14 +127,20 @@ const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const quickSearch = ref('')
 const offline = ref(false)
+const { connected: syncConnected, connect, disconnect } = useSync()
 
-const navSections = [
+const navSections = computed(() => [
   {
-    title: '书架',
+    title: '搜索设置',
     items: [
-      { key: 'home', label: '书架', icon: Notebook, route: 'home' },
       { key: 'search', label: '搜索', icon: Search, route: 'search' },
       { key: 'discover', label: '书海', icon: Compass, route: 'discover' },
+    ],
+  },
+  {
+    title: '后端设定',
+    items: [
+      { key: 'backendStatus', label: syncConnected.value ? '同步在线' : '同步未连', icon: Connection, action: refreshShelfData },
     ],
   },
   {
@@ -148,24 +154,36 @@ const navSections = [
   {
     title: '书架设置',
     items: [
+      { key: 'home', label: '书架', icon: Notebook, route: 'home' },
       { key: 'bookManage', label: '书籍管理', icon: Files, action: () => overlay.openBookManage() },
       { key: 'bookGroup', label: '分组管理', icon: Box, action: () => overlay.openBookGroup('manage') },
-      { key: 'importBook', label: '导入书籍', icon: Upload, action: () => overlay.openImportBook(router), route: 'home' },
-      { key: 'localStore', label: '本地书仓', icon: FolderOpened, action: () => overlay.openLocalStore(router), route: 'local-store' },
-      { key: 'refreshShelf', label: '刷新书架', icon: Refresh, action: refreshShelfData },
+      { key: 'importBook', label: '导入书籍', icon: Upload, action: () => overlay.openImportBook() },
+      { key: 'localStore', label: '浏览书仓', icon: FolderOpened, action: () => overlay.openLocalStore(router), route: 'local-store' },
+      { key: 'refreshShelf', label: '刷新缓存', icon: Refresh, action: refreshShelfData },
       { key: 'replaceRules', label: '替换规则', icon: Edit, action: () => overlay.openReplaceRules(router), route: 'settings', panel: 'replace' },
     ],
   },
   {
     title: '用户空间',
     items: [
-      { key: 'webdav', label: 'WebDAV', icon: Upload, action: () => overlay.openWebDAV(router), route: 'settings', panel: 'webdav' },
-      { key: 'rss', label: 'RSS', icon: Connection, action: () => overlay.openRSS(router), route: 'settings', panel: 'rss' },
       { key: 'userManage', label: '用户管理', icon: Operation, action: () => overlay.openUserManage(router), route: 'settings', panel: 'admin' },
       { key: 'settings', label: '设置', icon: Setting, route: 'settings', panel: 'account' },
     ],
   },
-]
+  {
+    title: 'WebDAV',
+    items: [
+      { key: 'webdav', label: '文件管理', icon: Upload, action: () => overlay.openWebDAV(router), route: 'settings', panel: 'webdav' },
+      { key: 'backup', label: '保存备份', icon: Refresh, route: 'settings', panel: 'backup' },
+    ],
+  },
+  {
+    title: 'RSS',
+    items: [
+      { key: 'rss', label: 'RSS', icon: Connection, action: () => overlay.openRSS(router), route: 'settings', panel: 'rss' },
+    ],
+  },
+])
 
 const userInitial = computed(() => (userStore.profile?.username || '?').slice(0, 1).toUpperCase())
 const recentBook = computed(() => {
@@ -179,8 +197,6 @@ const recentBook = computed(() => {
   })
   return rows[0] || null
 })
-
-const { connected: syncConnected, connect, disconnect } = useSync()
 
 function goHome() {
   router.push({ name: 'home' })
@@ -200,7 +216,6 @@ function runNavAction(item) {
 
 function isNavActive(item) {
   if (!item.route || route.name !== item.route) return false
-  if (item.key === 'importBook') return route.query.import === '1'
   if (item.key === 'sources') return !route.query.panel && !route.query.action
   if (item.query) {
     return Object.entries(item.query).every(([key, value]) => String(route.query[key] || '') === String(value))

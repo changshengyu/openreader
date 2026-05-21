@@ -12,16 +12,6 @@
       </div>
     </div>
 
-    <section v-if="recentBook" class="recent-panel app-panel" @click="openDetail(recentBook)">
-      <div class="recent-cover" :style="coverStyle(recentBook)">{{ coverInitial(recentBook) }}</div>
-      <div class="recent-main">
-        <span>最近阅读</span>
-        <h2>{{ recentBook.title }}</h2>
-        <p>{{ recentBook.author || '未知作者' }} · {{ recentBook.lastChapter || '暂无最新章节' }}</p>
-      </div>
-      <el-button type="primary" @click.stop="continueRead(recentBook)">继续阅读</el-button>
-    </section>
-
     <div class="book-group-wrapper app-panel">
       <el-tabs v-model="selectedGroup" stretch>
         <el-tab-pane v-for="item in groupItems" :key="item.id" :label="`${item.name} ${item.count}`" :name="item.id" />
@@ -67,41 +57,18 @@
       </template>
 
       <div v-else class="empty-panel app-panel">
-        <el-empty :description="emptyText">
-          <div class="empty-actions">
-            <el-button type="primary" :icon="Upload" @click="importDialog = true">导入本地书</el-button>
-            <el-button :icon="Search" @click="router.push({ name: 'search' })">搜索远程书</el-button>
-          </div>
-        </el-empty>
+        <el-empty :description="emptyText" />
       </div>
     </main>
 
-    <el-dialog v-model="importDialog" title="导入本地书籍" width="520px">
-      <div class="import-form">
-        <el-upload drag :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="pickFile">
-          <el-icon class="upload-icon"><UploadFilled /></el-icon>
-          <div class="upload-text">{{ draft.file ? draft.file.name : '拖入或选择 TXT / EPUB / PDF / UMD 文件' }}</div>
-        </el-upload>
-        <el-input v-model="draft.title" placeholder="书名（可选，不填则使用文件名）" />
-        <el-input v-model="draft.author" placeholder="作者（可选）" />
-        <el-select v-model="draft.categoryId" placeholder="分组（可选）" clearable>
-          <el-option label="未分组" value="" />
-          <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-        </el-select>
-      </div>
-      <template #footer>
-        <el-button @click="importDialog = false">取消</el-button>
-        <el-button type="primary" :loading="importing" :disabled="!draft.file" @click="importBook">导入</el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Upload, UploadFilled } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -114,19 +81,8 @@ const reader = useReaderStore()
 
 const keyword = ref('')
 const selectedGroup = ref('')
-const importDialog = ref(false)
-const importing = ref(false)
 const showBookEditButton = ref(false)
 const refreshLoading = ref(false)
-const draft = reactive({ title: '', author: '', categoryId: '', file: null })
-
-const recentBook = computed(() => {
-  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
-  const withProgress = books
-    .filter(book => bookProgress(book))
-    .sort((a, b) => new Date(bookProgress(b)?.updatedAt || 0) - new Date(bookProgress(a)?.updatedAt || 0))
-  return withProgress[0] || books[0] || null
-})
 
 const groupItems = computed(() => {
   const countByCategory = new Map()
@@ -166,7 +122,7 @@ const displayedBooks = computed(() => {
 const emptyText = computed(() => {
   if (keyword.value.trim()) return '没有匹配的书籍'
   if (selectedGroup.value) return '这个分组里还没有书'
-  return '书架还是空的，导入一本书或搜索远程书源开始阅读'
+  return '书架还是空的，请从左侧侧边栏导入书籍或搜索远程书'
 })
 
 onMounted(async () => {
@@ -180,37 +136,10 @@ onMounted(async () => {
 watch(
   () => route.query.import,
   (value) => {
-    if (value === '1') importDialog.value = true
+    if (value === '1') overlay.openImportBook()
   },
   { immediate: true },
 )
-
-function pickFile(data) {
-  draft.file = data.raw || null
-  if (draft.file && !draft.title) {
-    draft.title = draft.file.name.replace(/\.[^.]+$/, '')
-  }
-}
-
-async function importBook() {
-  if (!draft.file) return
-  importing.value = true
-  try {
-    const book = await bookshelf.importTXT({
-      file: draft.file,
-      title: draft.title,
-      author: draft.author,
-      categoryId: draft.categoryId,
-    })
-    ElMessage.success(`已导入《${book.title}》，共 ${book.chapterCount || 0} 章`)
-    Object.assign(draft, { title: '', author: '', categoryId: '', file: null })
-    importDialog.value = false
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importing.value = false
-  }
-}
 
 async function deleteManagedBook(book) {
   try {
@@ -313,7 +242,6 @@ function readError(err, fallback) {
 }
 
 .shelf-title,
-.recent-panel,
 .shelf-toolbar {
   display: flex;
   align-items: center;
@@ -349,51 +277,21 @@ function readError(err, fallback) {
   font-size: 14px;
 }
 
-.recent-panel {
-  padding: 12px 14px;
-  cursor: pointer;
-}
-
-.recent-cover,
 .list-cover {
   display: grid;
   place-items: center;
   font-weight: 900;
 }
 
-.recent-cover {
-  width: 48px;
-  height: 64px;
-  border-radius: 5px;
-  font-size: 22px;
-}
-
-.recent-main {
-  min-width: 0;
-  flex: 1;
-}
-
-.recent-main span,
 .list-main small {
   color: var(--app-text-muted);
   font-size: 13px;
 }
 
-.recent-main h2,
-.recent-main p {
-  margin: 0;
-}
-
-.recent-main h2,
 .list-main strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.recent-main h2 {
-  margin: 3px 0;
-  font-size: 17px;
 }
 
 .book-group-wrapper {
@@ -465,27 +363,6 @@ function readError(err, fallback) {
   place-items: center;
 }
 
-.import-form {
-  display: grid;
-  gap: 12px;
-}
-
-.upload-icon {
-  color: var(--app-primary);
-  font-size: 32px;
-}
-
-.upload-text {
-  color: var(--app-text-muted);
-}
-
-.empty-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .skeleton-row {
   grid-template-columns: 1fr;
 }
@@ -496,7 +373,6 @@ function readError(err, fallback) {
   }
 
   .shelf-title,
-  .recent-panel,
   .shelf-toolbar {
     border-radius: 0;
   }
@@ -512,34 +388,6 @@ function readError(err, fallback) {
 
   .title-actions button {
     font-size: 13px;
-  }
-
-  .recent-panel {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
-    gap: 10px;
-    padding: 10px;
-  }
-
-  .recent-cover {
-    width: 44px;
-    height: 58px;
-    font-size: 20px;
-  }
-
-  .recent-main span {
-    font-size: 11px;
-  }
-
-  .recent-main h2 {
-    font-size: 16px;
-  }
-
-  .recent-main p {
-    font-size: 12px;
-  }
-
-  .recent-panel .el-button {
-    padding: 8px 10px;
   }
 
   .shelf-toolbar {

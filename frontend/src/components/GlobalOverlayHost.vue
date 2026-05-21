@@ -41,6 +41,32 @@
     </div>
   </BookInfoDialog>
 
+  <el-dialog
+    v-model="overlay.importBookVisible"
+    title="导入本地书籍"
+    width="520px"
+    class="import-book-dialog"
+    :fullscreen="isMobileOverlay"
+    @open="loadImportCategories"
+  >
+    <div class="import-form">
+      <el-upload drag :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="pickImportFile">
+        <el-icon class="upload-icon"><UploadFilled /></el-icon>
+        <div class="upload-text">{{ importDraft.file ? importDraft.file.name : '拖入或选择 TXT / EPUB / PDF / UMD 文件' }}</div>
+      </el-upload>
+      <el-input v-model="importDraft.title" placeholder="书名（可选，不填则使用文件名）" />
+      <el-input v-model="importDraft.author" placeholder="作者（可选）" />
+      <el-select v-model="importDraft.categoryId" placeholder="分组（可选）" clearable>
+        <el-option label="未分组" value="" />
+        <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
+      </el-select>
+    </div>
+    <template #footer>
+      <el-button @click="overlay.importBookVisible = false">取消</el-button>
+      <el-button type="primary" :loading="importingBook" :disabled="!importDraft.file" @click="importLocalBook">导入</el-button>
+    </template>
+  </el-dialog>
+
   <el-drawer
     v-model="overlay.bookManageVisible"
     title="书架管理"
@@ -245,7 +271,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, UploadFilled } from '@element-plus/icons-vue'
 import { cacheBookContent, checkBookUpdates, deleteBookmark, listBookmarks, refreshBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
@@ -270,7 +296,9 @@ const updatingBookId = ref(null)
 const settingCategoryId = ref('')
 const settingCategorySaving = ref(false)
 const loadingUpdates = ref(false)
+const importingBook = ref(false)
 const newGroupName = ref('')
+const importDraft = reactive({ title: '', author: '', categoryId: '', file: null })
 const sourceRows = ref([])
 const contentKeyword = ref('')
 const contentResults = ref([])
@@ -322,6 +350,41 @@ onBeforeUnmount(() => {
 
 function updateWindowWidth() {
   windowWidth.value = window.innerWidth
+}
+
+async function loadImportCategories() {
+  try {
+    if (!bookshelf.categories.length) await bookshelf.loadCategories()
+  } catch (err) {
+    ElMessage.error(readError(err, '加载分组失败'))
+  }
+}
+
+function pickImportFile(data) {
+  importDraft.file = data.raw || null
+  if (importDraft.file && !importDraft.title) {
+    importDraft.title = importDraft.file.name.replace(/\.[^.]+$/, '')
+  }
+}
+
+async function importLocalBook() {
+  if (!importDraft.file) return
+  importingBook.value = true
+  try {
+    const book = await bookshelf.importTXT({
+      file: importDraft.file,
+      title: importDraft.title,
+      author: importDraft.author,
+      categoryId: importDraft.categoryId,
+    })
+    ElMessage.success(`已导入《${book.title}》，共 ${book.chapterCount || 0} 章`)
+    Object.assign(importDraft, { title: '', author: '', categoryId: '', file: null })
+    overlay.importBookVisible = false
+  } catch (err) {
+    ElMessage.error(readError(err, '导入失败'))
+  } finally {
+    importingBook.value = false
+  }
 }
 
 watch(
@@ -875,6 +938,20 @@ function readError(err, fallback) {
 
 .overlay-actions {
   margin-top: 4px;
+}
+
+.import-form {
+  display: grid;
+  gap: 12px;
+}
+
+.upload-icon {
+  color: var(--app-primary);
+  font-size: 32px;
+}
+
+.upload-text {
+  color: var(--app-text-muted);
 }
 
 .group-list {

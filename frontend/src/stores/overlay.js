@@ -8,6 +8,7 @@ export const useOverlayStore = defineStore('overlay', {
     bookManageVisible: false,
     bookGroupVisible: false,
     bookGroupMode: 'manage',
+    importBookVisible: false,
     bookmarkVisible: false,
     bookmarkBook: null,
     searchBookContentVisible: false,
@@ -33,8 +34,8 @@ export const useOverlayStore = defineStore('overlay', {
       this.bookGroupMode = mode
       this.bookGroupVisible = true
     },
-    openImportBook(router) {
-      router?.push?.({ name: 'home', query: { import: '1' } })
+    openImportBook() {
+      this.importBookVisible = true
     },
     openBookmark(book) {
       this.bookmarkBook = book
