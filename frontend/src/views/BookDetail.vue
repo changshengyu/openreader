@@ -75,9 +75,10 @@
             <section class="app-panel tab-panel">
               <SourceSwitchPanel
                 :book="book"
-                :sources="sourceCandidates"
+                :sources="switchableSourceCandidates"
                 :loading="loadingSourceCandidates"
                 :changing-source="changingSource"
+                :current-source-name="currentSource?.name || ''"
                 :group="sourceGroup"
                 :groups="sourceGroups"
                 :show-info-button="false"
@@ -108,9 +109,10 @@
     <el-dialog v-model="showChangeSource" title="换源" width="460px">
       <SourceSwitchPanel
         :book="book"
-        :sources="sourceCandidates"
+        :sources="switchableSourceCandidates"
         :loading="loadingSourceCandidates"
         :changing-source="changingSource"
+        :current-source-name="currentSource?.name || ''"
         :group="sourceGroup"
         :groups="sourceGroups"
         :show-info-button="false"
@@ -193,6 +195,7 @@ const changeError = ref(false)
 const bookDraft = reactive({ title: '', author: '', coverUrl: '', intro: '' })
 
 const currentSource = computed(() => availableSources.value.find(source => source.id === book.value?.sourceId))
+const switchableSourceCandidates = computed(() => sourceCandidates.value.filter(source => !source.current))
 const sourceGroups = computed(() => {
   const groups = availableSources.value.map(source => source.group).filter(Boolean)
   return [...new Set(groups)].sort()
@@ -431,11 +434,11 @@ async function loadSourceCandidates({ append = false } = {}) {
     const { data } = await listBookSourceCandidates(book.value.id, {
       group: sourceGroup.value || undefined,
       offset: sourceOffset.value,
-      limit: 20,
+      limit: 10,
     })
     const rows = data || []
     sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
-    sourceOffset.value += 20
+    sourceOffset.value += 10
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
   } finally {

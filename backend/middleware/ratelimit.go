@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,7 +55,13 @@ func (rl *RateLimiter) cleanup() {
 // Middleware returns a Gin handler that enforces the rate limit.
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Method == http.MethodOptions || c.FullPath() == "/api/health" || c.FullPath() == "/assets/*filepath" {
+		path := c.Request.URL.Path
+		if c.Request.Method == http.MethodOptions ||
+			path == "/api/health" ||
+			strings.HasPrefix(path, "/assets/") ||
+			strings.HasPrefix(path, "/uploads/") ||
+			strings.HasPrefix(path, "/ws/") ||
+			(!strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/webdav/")) {
 			c.Next()
 			return
 		}
@@ -94,5 +101,5 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 // Mobile browsers may load static assets, API data, and sync channels in a
 // short burst; keep this high enough to avoid false positives during startup.
 func DefaultRateLimiter() gin.HandlerFunc {
-	return NewRateLimiter(600, time.Minute).Middleware()
+	return NewRateLimiter(1800, time.Minute).Middleware()
 }

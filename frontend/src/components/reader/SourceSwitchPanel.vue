@@ -21,6 +21,13 @@
     <el-button size="small" :loading="loading" @click="$emit('loadMore')">加载更多</el-button>
     <el-button v-if="showInfoButton" size="small" @click="$emit('showInfo')">书籍信息</el-button>
   </div>
+  <section v-if="book" class="current-source-card">
+    <div>
+      <strong>{{ currentSourceName || '当前来源' }}</strong>
+      <span>{{ book.title }}<template v-if="book.author"> · {{ book.author }}</template></span>
+    </div>
+    <el-tag size="small" effect="plain" type="success">当前</el-tag>
+  </section>
   <div class="source-switch-list">
     <button
       v-for="source in sources"
@@ -33,7 +40,7 @@
     >
       <strong>{{ source.title || book?.title }}</strong>
       <span>{{ source.sourceName }} · {{ source.author || '未知作者' }}</span>
-      <small>{{ source.current ? '当前来源' : '点击切换' }}</small>
+      <small>{{ source.current ? '当前来源' : (changingSource === source.sourceId ? '切换中...' : '点击切换') }}</small>
     </button>
     <el-empty v-if="!loading && !sources.length" description="没有找到可用来源" />
   </div>
@@ -65,6 +72,10 @@ defineProps({
     type: [Number, String],
     default: null,
   },
+  currentSourceName: {
+    type: String,
+    default: '',
+  },
   showInfoButton: {
     type: Boolean,
     default: true,
@@ -93,6 +104,37 @@ defineEmits(['refresh', 'loadMore', 'groupChange', 'showInfo', 'change'])
 .source-switch-list {
   display: grid;
   gap: 10px;
+}
+
+.current-source-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  color: #24282c;
+  background: #fff7dc;
+  border: 1px solid #dfc98a;
+  border-radius: 6px;
+}
+
+.current-source-card div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.current-source-card strong,
+.current-source-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.current-source-card span {
+  color: #7b715e;
+  font-size: 12px;
 }
 
 .source-switch-card {

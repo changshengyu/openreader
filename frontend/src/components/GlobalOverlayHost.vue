@@ -451,8 +451,7 @@ async function saveBookGroupSetting() {
   try {
     const categoryId = settingCategoryId.value ? Number(settingCategoryId.value) : null
     const { data } = await updateBookCategory(book.id, categoryId)
-    const index = bookshelf.books.findIndex(item => item.id === book.id)
-    if (index >= 0) bookshelf.books[index] = data
+    bookshelf.upsertBook(data)
     overlay.bookInfoBook = data
     overlay.bookInfoOptions = {
       ...overlay.bookInfoOptions,
@@ -497,9 +496,8 @@ async function refreshBookInfo(book) {
   try {
     const { data } = await refreshBook(book.id)
     const updatedBook = data?.book || data
-    const index = bookshelf.books.findIndex(item => item.id === book.id)
     if (updatedBook?.id) {
-      if (index >= 0) bookshelf.books[index] = updatedBook
+      bookshelf.upsertBook(updatedBook)
       overlay.bookInfoBook = updatedBook
     } else {
       await bookshelf.loadBooks()
@@ -526,8 +524,7 @@ async function uploadBookInfoCover(file) {
       categoryId: book.categoryId || null,
       canUpdate: book.canUpdate !== false,
     })
-    const index = bookshelf.books.findIndex(item => item.id === book.id)
-    if (index >= 0) bookshelf.books[index] = updatedBook
+    bookshelf.upsertBook(updatedBook)
     overlay.bookInfoBook = updatedBook
     ElMessage.success('封面已更新')
   } catch (err) {
@@ -550,8 +547,7 @@ async function toggleBookCanUpdate(value) {
       categoryId: book.categoryId || null,
       canUpdate: value,
     })
-    const index = bookshelf.books.findIndex(item => item.id === book.id)
-    if (index >= 0) bookshelf.books[index] = updatedBook
+    bookshelf.upsertBook(updatedBook)
     overlay.bookInfoBook = updatedBook
     ElMessage.success(value ? '已开启追更' : '已关闭追更')
   } catch (err) {

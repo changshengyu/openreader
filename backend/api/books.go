@@ -724,7 +724,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	}
 
 	group := strings.TrimSpace(c.Query("group"))
-	limit := parseBoundedInt(c.Query("limit"), 20, 1, 80)
+	limit := parseBoundedInt(c.Query("limit"), 10, 1, 80)
 	offset := parseBoundedInt(c.Query("offset"), 0, 0, 10000)
 
 	var sources []models.BookSource
@@ -750,9 +750,25 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	}
 
 	results := make([]sourceCandidate, 0)
+	if offset == 0 && book.SourceID > 0 {
+		var currentSource models.BookSource
+		if err := s.db.First(&currentSource, book.SourceID).Error; err == nil && (group == "" || currentSource.Group == group) {
+			results = append(results, sourceCandidate{
+				SourceID:   currentSource.ID,
+				SourceName: currentSource.Name,
+				Group:      currentSource.Group,
+				Title:      book.Title,
+				Author:     book.Author,
+				CoverURL:   book.CoverURL,
+				Intro:      book.Intro,
+				BookURL:    book.URL,
+				Current:    true,
+			})
+		}
+	}
 	channel := make(chan []sourceCandidate, len(sources))
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, 4)
 	for _, source := range sources {
 		source := source
 		wg.Add(1)

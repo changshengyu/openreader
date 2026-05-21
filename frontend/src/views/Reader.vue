@@ -158,12 +158,15 @@
           type="button"
           @click="changeBookFromShelf(item)"
         >
+          <span class="reader-shelf-cover" :style="shelfCoverStyle(item)">{{ shelfCoverInitial(item) }}</span>
           <span class="reader-shelf-main">
             <span class="reader-shelf-title-line">
               <strong>{{ item.title }}</strong>
               <em v-if="unreadCount(item)">{{ unreadCount(item) }}</em>
             </span>
+            <small>{{ item.author || '未知作者' }} · {{ shelfProgressLabel(item) }}</small>
             <small>{{ readChapterTitle(item) || '尚未阅读' }}</small>
+            <small v-if="item.lastChapter">最新：{{ item.lastChapter }}</small>
           </span>
         </button>
         <el-empty v-if="!shelfLoading && !filteredShelfBooks.length" description="书架里没有匹配书籍" />
@@ -210,12 +213,13 @@
     <el-drawer v-model="showSourceDrawer" title="书源" :direction="drawerDirection" :size="drawerSize" @open="loadSourceCandidates">
       <SourceSwitchPanel
         :book="book"
-        :sources="sourceCandidates"
+        :sources="switchableSourceCandidates"
         :loading="loadingSources"
         :changing-source="changingSource"
+        :current-source-name="currentSourceName"
         :group="sourceGroup"
         :groups="sourceGroups"
-        @refresh="loadSourceCandidates"
+        @refresh="refreshSourceCandidates"
         @load-more="loadMoreSourceCandidates"
         @group-change="changeSourceGroup"
         @show-info="openReaderBookInfo"
@@ -389,6 +393,7 @@ const loadingSources = ref(false)
 const changingSource = ref(null)
 const sourceGroup = ref('')
 const sourceOffset = ref(0)
+const sourceCandidatesLoadedKey = ref('')
 const shelfKeyword = ref('')
 const shelfLoading = ref(false)
 const tocFilter = ref('')
@@ -423,9 +428,10 @@ const fontOptions = [
 
 const filteredShelfBooks = computed(() => {
   const value = shelfKeyword.value.trim().toLowerCase()
+  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
   const values = value
-    ? bookshelf.books.filter(item => `${item.title || ''} ${item.author || ''}`.toLowerCase().includes(value))
-    : bookshelf.books
+    ? books.filter(item => `${item.title || ''} ${item.author || ''}`.toLowerCase().includes(value))
+    : books
   return [...values].sort(compareByReadingOrder)
 })
 const sourceGroups = computed(() => {
@@ -433,6 +439,11 @@ const sourceGroups = computed(() => {
   const groups = sourceRows.map(item => item.group).filter(Boolean)
   return [...new Set(groups)].sort()
 })
+const currentSourceName = computed(() => {
+  if (!book.value?.sourceId) return '本地书籍'
+  return sourceGroupOptions.value.find(source => Number(source.id) === Number(book.value.sourceId))?.name || '当前来源'
+})
+const switchableSourceCandidates = computed(() => sourceCandidates.value.filter(source => !source.current))
 
 const lines = computed(() => content.value.split('\n').map(l => l.trim()).filter(Boolean))
 
@@ -624,6 +635,34 @@ function unreadCount(item) {
   return Math.max(0, total - 1 - chapterIndex)
 }
 
+function shelfProgressLabel(item) {
+  const progress = reader.progressByBook[item.id] || item.progress
+  return `${Math.round(Math.max(0, Math.min(1, progress?.percent || 0)) * 100)}%`
+}
+
+function shelfCoverInitial(item) {
+  return (item.title || '?').slice(0, 1)
+}
+
+function shelfCoverStyle(item) {
+  if (item.coverUrl) {
+    return {
+      backgroundImage: `url(${item.coverUrl})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      color: 'transparent',
+    }
+  }
+  const palettes = [
+    ['#6b4f18', '#f3dfab'],
+    ['#235d58', '#d7ece8'],
+    ['#734533', '#f0d8cb'],
+    ['#4f4b82', '#dddaf0'],
+  ]
+  const [fg, bg] = palettes[Number(item.id || 1) % palettes.length]
+  return { color: fg, background: bg }
+}
+
 async function refreshReaderShelf() {
   shelfLoading.value = true
   try {
@@ -678,7 +717,9 @@ function openReplaceRules() {
   overlay.openReplaceRules(router)
 }
 
-async function loadSourceCandidates({ append = false } = {}) {
+async function loadSourceCandidates({ append = false, force = false } = {}) {
+  const key = `${bookId.value}:${sourceGroup.value || 'all'}`
+  if (!append && !force && sourceCandidatesLoadedKey.value === key && sourceCandidates.value.length) return
   loadingSources.value = true
   try {
     if (!sourceGroupOptions.value.length) {
@@ -688,16 +729,22 @@ async function loadSourceCandidates({ append = false } = {}) {
     const { data } = await listBookSourceCandidates(bookId.value, {
       group: sourceGroup.value || undefined,
       offset: sourceOffset.value,
-      limit: 20,
+      limit: 10,
     })
     const rows = data || []
     sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
-    sourceOffset.value += 20
+    sourceOffset.value += 10
+    sourceCandidatesLoadedKey.value = key
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
   } finally {
     loadingSources.value = false
   }
+}
+
+function refreshSourceCandidates() {
+  sourceCandidatesLoadedKey.value = ''
+  return loadSourceCandidates({ force: true })
 }
 
 async function loadSourceGroups() {
@@ -715,7 +762,8 @@ function loadMoreSourceCandidates() {
 
 function changeSourceGroup(value) {
   sourceGroup.value = value || ''
-  loadSourceCandidates()
+  sourceCandidatesLoadedKey.value = ''
+  loadSourceCandidates({ force: true })
 }
 
 function mergeSourceCandidates(existing, incoming) {
@@ -745,7 +793,8 @@ async function changeSource(source) {
     chapters.value = chRes.data
     currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
     await loadChapter(currentIndex.value, 0)
-    await loadSourceCandidates()
+    sourceCandidatesLoadedKey.value = ''
+    await loadSourceCandidates({ force: true })
     ElMessage.success(`已切换到 ${source.sourceName}`)
   } catch (err) {
     ElMessage.error(readError(err, '换源失败'))
@@ -1409,15 +1458,28 @@ function readError(err, fallback) {
 .shelf-search { margin-bottom: 12px; }
 .reader-shelf-list { display: grid; }
 .reader-shelf-card {
-  display: block;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
   width: 100%;
-  padding: 8px 0;
+  padding: 10px 0;
   color: #24282c;
   background: transparent;
   border: 0;
   border-bottom: 1px solid rgba(160, 139, 91, 0.22);
   cursor: pointer;
   text-align: left;
+}
+.reader-shelf-cover {
+  display: grid;
+  width: 42px;
+  height: 56px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 4px;
+  font-size: 18px;
+  font-weight: 800;
 }
 .reader-shelf-card:hover,
 .reader-shelf-card.active {

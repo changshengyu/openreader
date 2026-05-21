@@ -11,6 +11,17 @@ function asList(data) {
   return []
 }
 
+function compareByReadingOrder(a, b) {
+  const aReadAt = new Date(a?.progress?.updatedAt || 0).getTime()
+  const bReadAt = new Date(b?.progress?.updatedAt || 0).getTime()
+  if (aReadAt !== bReadAt) return bReadAt - aReadAt
+  return new Date(b?.updatedAt || 0).getTime() - new Date(a?.updatedAt || 0).getTime()
+}
+
+function sortBooks(books) {
+  return [...asList(books)].sort(compareByReadingOrder)
+}
+
 export const useBookshelfStore = defineStore('bookshelf', {
   state: () => ({
     books: [],
@@ -27,7 +38,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
           params.categoryId = this.selectedCategoryId
         }
         const { data } = await listBooks(params)
-        this.books = asList(data)
+        this.books = sortBooks(data)
       } finally {
         this.loading = false
       }
@@ -48,12 +59,20 @@ export const useBookshelfStore = defineStore('bookshelf', {
     },
     async addBook(book) {
       const { data } = await createBook(book)
-      this.books.unshift(data)
+      this.books = sortBooks([data, ...this.books])
       return data
     },
     async removeBook(bookId) {
       await deleteBook(bookId)
       this.books = this.books.filter(book => book.id !== bookId)
+    },
+    upsertBook(book) {
+      if (!book?.id) return
+      const index = this.books.findIndex(item => item.id === book.id)
+      const nextBooks = index >= 0
+        ? this.books.map(item => item.id === book.id ? book : item)
+        : [book, ...this.books]
+      this.books = sortBooks(nextBooks)
     },
     async batchDeleteBooks(bookIds) {
       await batchBooks({ action: 'delete', bookIds })
@@ -61,7 +80,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
     },
     async batchSetCategory(bookIds, categoryId) {
       await batchBooks({ action: 'category', bookIds, categoryId })
-      this.books = this.books.map(book => bookIds.includes(book.id) ? { ...book, categoryId } : book)
+      this.books = sortBooks(this.books.map(book => bookIds.includes(book.id) ? { ...book, categoryId } : book))
     },
     async batchCacheBooks(bookIds) {
       const { data } = await batchBooks({ action: 'cache', bookIds })
@@ -84,7 +103,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
     async removeCategory(categoryId) {
       await deleteCategory(categoryId)
       this.categories = this.categories.filter(category => category.id !== categoryId)
-      this.books = this.books.map(book => String(book.categoryId) === String(categoryId) ? { ...book, categoryId: null } : book)
+      this.books = sortBooks(this.books.map(book => String(book.categoryId) === String(categoryId) ? { ...book, categoryId: null } : book))
     },
     async reorderCategoryIds(ids) {
       const { data } = await reorderCategories(ids)

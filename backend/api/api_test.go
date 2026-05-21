@@ -814,18 +814,31 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		SourceID uint   `json:"sourceId"`
 		Title    string `json:"title"`
 		BookURL  string `json:"bookUrl"`
+		Current  bool   `json:"current"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &candidates); err != nil {
 		t.Fatal(err)
 	}
-	if len(candidates) != 1 || candidates[0].BookURL != upstream+"/book-new" {
+	var target struct {
+		SourceID uint   `json:"sourceId"`
+		Title    string `json:"title"`
+		BookURL  string `json:"bookUrl"`
+		Current  bool   `json:"current"`
+	}
+	for _, candidate := range candidates {
+		if !candidate.Current {
+			target = candidate
+			break
+		}
+	}
+	if target.BookURL != upstream+"/book-new" {
 		t.Fatalf("unexpected candidates: %+v", candidates)
 	}
-	if candidates[0].SourceID != source.ID {
-		t.Fatalf("source candidates should honor group filter, got source %d", candidates[0].SourceID)
+	if target.SourceID != source.ID {
+		t.Fatalf("source candidates should honor group filter, got source %d", target.SourceID)
 	}
 
-	body := `{"sourceId":` + strconv.FormatUint(uint64(candidates[0].SourceID), 10) + `,"bookUrl":` + strconv.Quote(candidates[0].BookURL) + `,"title":"候选书","author":"新作者"}`
+	body := `{"sourceId":` + strconv.FormatUint(uint64(target.SourceID), 10) + `,"bookUrl":` + strconv.Quote(target.BookURL) + `,"title":"候选书","author":"新作者"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/change-source", strings.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Authorization", token)
