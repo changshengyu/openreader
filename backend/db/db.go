@@ -49,3 +49,45 @@ func AutoMigrate(database *gorm.DB) error {
 		&models.Bookmark{},
 	)
 }
+
+func MigrateLocalBookCache(database *gorm.DB, cfg config.Config) error {
+	var books []models.Book
+	if err := database.Where("source_id = 0 AND library_path <> ''").Find(&books).Error; err != nil {
+		return err
+	}
+	for _, book := range books {
+		var chapters []models.Chapter
+		if err := database.Where("book_id = ? AND cache_path <> ''", book.ID).Find(&chapters).Error; err != nil {
+			return err
+		}
+		contentDir := filepath.Join(cfg.LibraryDir, book.LibraryPath, "content")
+		for _, chapter := range chapters {
+			if filepath.IsAbs(chapter.CachePath) {
+				continue
+			}
+			oldPath := filepath.Join(cfg.CacheDir, chapter.CachePath)
+			if _, err := os.Stat(oldPath); err != nil {
+				continue
+			}
+			newPath := filepath.Join(contentDir, chapter.CachePath)
+			if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+				return err
+			}
+			if _, err := os.Stat(newPath); err != nil {
+				data, readErr := os.ReadFile(oldPath)
+				if readErr != nil {
+					return readErr
+				}
+				if writeErr := os.WriteFile(newPath, data, 0o644); writeErr != nil {
+					return writeErr
+				}
+			}
+			_ = os.Remove(oldPath)
+			chapter.CachePath = newPath
+			if err := database.Save(&chapter).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

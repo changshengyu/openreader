@@ -38,6 +38,9 @@ func main() {
 	if err := db.AutoMigrate(database); err != nil {
 		log.Fatalf("migrate database: %v", err)
 	}
+	if err := db.MigrateLocalBookCache(database, cfg); err != nil {
+		log.Fatalf("migrate local book cache: %v", err)
+	}
 
 	hub := readersync.NewHub()
 
