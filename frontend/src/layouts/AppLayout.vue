@@ -529,14 +529,14 @@ onBeforeUnmount(() => {
 
 @media (max-width: 860px) {
   .app-sidebar {
-    width: 96px;
+    width: 78px;
     overflow-y: auto;
     padding: 8px 6px;
     scrollbar-width: none;
   }
 
   .app-workspace {
-    padding-left: 96px;
+    padding-left: 78px;
   }
 
   .app-content {
@@ -585,7 +585,7 @@ onBeforeUnmount(() => {
 
   .app-nav-item {
     display: grid;
-    height: 66px;
+    height: 60px;
     place-items: center;
     align-content: center;
     gap: 5px;
@@ -594,7 +594,8 @@ onBeforeUnmount(() => {
   }
 
   .app-nav-item span {
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.15;
   }
 
   .app-nav-item + .app-nav-item {
@@ -629,11 +630,11 @@ onBeforeUnmount(() => {
 
 @media (max-width: 420px) {
   .app-sidebar {
-    width: 76px;
+    width: 72px;
   }
 
   .app-workspace {
-    padding-left: 76px;
+    padding-left: 72px;
   }
 
   .app-nav-item {

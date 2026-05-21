@@ -474,6 +474,13 @@ function readError(err, fallback) {
     font-size: 12px;
   }
 
+  .mobile-row-actions span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .mobile-row-actions em {
     min-width: 0;
     overflow: hidden;

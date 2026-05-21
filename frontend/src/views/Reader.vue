@@ -1,5 +1,5 @@
 <template>
-  <main class="reader-shell" :class="[reader.mode, { 'mobile-chrome-visible': mobileChromeVisible }]">
+  <main class="reader-shell" :class="[reader.mode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
     <aside class="reader-left-rail">
       <button class="rail-item rail-home" type="button" title="返回首页" @click="goShelf">
         <el-icon :size="18"><ArrowLeft /></el-icon>
@@ -81,7 +81,7 @@
         <span>{{ chapterLabel }}</span>
       </header>
 
-      <article ref="contentEl" class="reader-content" @scroll.passive="onScroll">
+      <article ref="contentEl" class="reader-content" :style="readerContentStyle" @scroll.passive="onScroll">
         <div ref="contentBody" class="reader-body" :style="bodyStyle">
           <h1>{{ chapter?.title || '正文' }}</h1>
           <p v-for="(line, index) in lines" :key="index">{{ line }}</p>
@@ -469,6 +469,12 @@ const readerStyle = computed(() => ({
   '--reader-paragraph-space': `${reader.paragraphSpace}em`,
   '--reader-read-width': `${reader.columnWidth}px`,
   '--reader-bg-image': reader.customBgImage ? `url(${reader.customBgImage})` : '',
+}))
+
+const readerContentStyle = computed(() => ({
+  fontFamily: fontStack.value,
+  fontSize: `${reader.fontSize}px`,
+  lineHeight: reader.lineHeight,
 }))
 
 const bodyStyle = computed(() => {
@@ -916,7 +922,12 @@ async function runBookContentSearch({ append = false } = {}) {
           chapterLimit: 80,
           matchLimit: 200,
         }
-      : {}
+      : {
+          paged: 1,
+          lastIndex: -1,
+          chapterLimit: 80,
+          matchLimit: 200,
+        }
     const { data } = await searchBookContentApi(bookId.value, keyword, params)
     const rows = Array.isArray(data) ? data : (data?.list || [])
     bookSearchResults.value = append ? bookSearchResults.value.concat(rows) : rows
