@@ -1312,6 +1312,7 @@ function jumpToContentResult(result) {
     query: {
       chapter: Number(result.chapterIndex || 0),
       line: Number.isInteger(result.lineIndex) ? result.lineIndex : undefined,
+      match: Number.isInteger(result.resultCountWithinChapter) ? result.resultCountWithinChapter : undefined,
       q: contentKeyword.value.trim() || undefined,
     },
   })

@@ -562,7 +562,7 @@ watch(() => route.query.chapter, async (q) => {
   await jumpToRouteLine()
 })
 
-watch(() => route.query.line, async () => {
+watch(() => [route.query.line, route.query.match, route.query.q], async () => {
   await jumpToRouteLine()
 })
 
@@ -899,12 +899,14 @@ async function changeSource(source) {
       intro: source.intro,
     })
     book.value = data
+    bookshelf.upsertBook(data)
     const chRes = await api.get(`/books/${bookId.value}/chapters`)
     chapters.value = chRes.data
     currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
     await loadChapter(currentIndex.value, 0)
     sourceCandidatesLoadedKey.value = ''
     await loadSourceCandidates({ force: true })
+    showSourceDrawer.value = false
     ElMessage.success(`已切换到 ${source.sourceName}`)
   } catch (err) {
     ElMessage.error(readError(err, '换源失败'))
@@ -1216,6 +1218,9 @@ async function jumpToBookSearchResult(result) {
     await loadChapter(targetIndex, 0)
   }
   await nextTick()
+  if (jumpToSearchMatch(result)) {
+    return
+  }
   if (Number.isInteger(result.lineIndex)) {
     jumpToLine(result.lineIndex)
   } else {
@@ -1231,8 +1236,64 @@ function jumpToFirstSearchMatch() {
   if (index >= 0) jumpToLine(index)
 }
 
+function jumpToSearchMatch(result) {
+  const keyword = String(result?.query || contentSearch.value || route.query.q || '').trim()
+  if (!keyword || !contentBody.value) return false
+  const targetIndex = Number.isInteger(result?.resultCountWithinChapter)
+    ? result.resultCountWithinChapter
+    : Number(result?.resultCountWithinChapter ?? route.query.match ?? 0)
+  const expectedIndex = Number.isFinite(targetIndex) ? Math.max(0, Math.floor(targetIndex)) : 0
+  const paragraphs = [...contentBody.value.querySelectorAll('p')]
+  let matchCount = 0
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const text = paragraphs[index].textContent || ''
+    const exactMatches = countTextMatches(text, keyword)
+    if (matchCount + exactMatches > expectedIndex) {
+      jumpToParagraph(paragraphs[index])
+      return true
+    }
+    matchCount += exactMatches
+  }
+  const normalizedKeyword = normalizeSearchText(keyword)
+  if (!normalizedKeyword) return false
+  matchCount = 0
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const text = normalizeSearchText(paragraphs[index].textContent || '')
+    const matches = countTextMatches(text, normalizedKeyword)
+    if (matchCount + matches > expectedIndex) {
+      jumpToParagraph(paragraphs[index])
+      return true
+    }
+    matchCount += matches
+  }
+  return false
+}
+
+function countTextMatches(text, keyword) {
+  const haystack = String(text || '').toLowerCase()
+  const needle = String(keyword || '').toLowerCase()
+  if (!haystack || !needle) return 0
+  let count = 0
+  for (let offset = 0; offset < haystack.length;) {
+    const position = haystack.indexOf(needle, offset)
+    if (position < 0) break
+    count += 1
+    offset = position + Math.max(needle.length, 1)
+  }
+  return count
+}
+
+function normalizeSearchText(value) {
+  return String(value || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
+}
+
 function jumpToLine(index) {
   const lineEl = contentBody.value?.querySelectorAll('p')?.[index]
+  if (!lineEl) return
+  jumpToParagraph(lineEl)
+}
+
+function jumpToParagraph(lineEl) {
   if (!lineEl) return
   showSearchDrawer.value = false
   if (reader.mode === 'flip') {
@@ -1242,15 +1303,34 @@ function jumpToLine(index) {
   } else if (contentEl.value) {
     contentEl.value.scrollTop = Math.max(0, lineEl.offsetTop - 80)
   }
+  flashParagraph(lineEl)
   saveCurrentProgress()
 }
 
 async function jumpToRouteLine() {
+  if (route.query.q !== undefined && route.query.match !== undefined) {
+    await nextTick()
+    if (jumpToSearchMatch({
+      query: route.query.q,
+      resultCountWithinChapter: Number(route.query.match),
+      lineIndex: Number(route.query.line),
+    })) {
+      return
+    }
+  }
   if (route.query.line === undefined) return
   const index = Number(route.query.line)
   if (!Number.isFinite(index)) return
   await nextTick()
   jumpToLine(Math.max(0, Math.floor(index)))
+}
+
+function flashParagraph(lineEl) {
+  lineEl.classList.remove('reader-search-active')
+  requestAnimationFrame(() => {
+    lineEl.classList.add('reader-search-active')
+    window.setTimeout(() => lineEl.classList.remove('reader-search-active'), 1800)
+  })
 }
 
 function scrollToTop() {
@@ -1508,6 +1588,11 @@ function readError(err, fallback) {
   margin: 0 0 var(--reader-paragraph-space);
   font-weight: var(--reader-font-weight);
   text-indent: 2em;
+}
+.reader-content p.reader-search-active {
+  background: rgba(47, 111, 109, 0.16);
+  box-shadow: -8px 0 0 rgba(47, 111, 109, 0.16), 8px 0 0 rgba(47, 111, 109, 0.16);
+  transition: background 160ms ease, box-shadow 160ms ease;
 }
 
 /* 翻页 & 分页模式 */

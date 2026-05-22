@@ -718,13 +718,15 @@ type changeSourceRequest struct {
 }
 
 type contentMatch struct {
-	ChapterID    uint    `json:"chapterId"`
-	ChapterIndex int     `json:"chapterIndex"`
-	ChapterTitle string  `json:"chapterTitle"`
-	Excerpt      string  `json:"excerpt"`
-	Offset       int     `json:"offset"`
-	LineIndex    int     `json:"lineIndex"`
-	Percent      float64 `json:"percent"`
+	ChapterID                uint    `json:"chapterId"`
+	ChapterIndex             int     `json:"chapterIndex"`
+	ChapterTitle             string  `json:"chapterTitle"`
+	Excerpt                  string  `json:"excerpt"`
+	Query                    string  `json:"query"`
+	ResultCountWithinChapter int     `json:"resultCountWithinChapter"`
+	Offset                   int     `json:"offset"`
+	LineIndex                int     `json:"lineIndex"`
+	Percent                  float64 `json:"percent"`
 }
 
 func (s *Server) listBookSourceCandidates(c *gin.Context) {
@@ -1047,15 +1049,17 @@ func (s *Server) collectContentMatches(book models.Book, chapters []models.Chapt
 			continue
 		}
 		positions := searchContentPositions(content, keyword, perChapterLimit)
-		for _, position := range positions {
+		for matchIndex, position := range positions {
 			matches = append(matches, contentMatch{
-				ChapterID:    chapters[i].ID,
-				ChapterIndex: chapters[i].Index,
-				ChapterTitle: chapters[i].Title,
-				Excerpt:      excerptAround(content, position, keyword),
-				Offset:       position,
-				LineIndex:    lineIndexAtByte(content, position),
-				Percent:      float64(position) / float64(max(len(content), 1)),
+				ChapterID:                chapters[i].ID,
+				ChapterIndex:             chapters[i].Index,
+				ChapterTitle:             chapters[i].Title,
+				Excerpt:                  excerptAround(content, position, keyword),
+				Query:                    keyword,
+				ResultCountWithinChapter: matchIndex,
+				Offset:                   position,
+				LineIndex:                lineIndexAtByte(content, position),
+				Percent:                  float64(position) / float64(max(len(content), 1)),
 			})
 			if len(matches) >= matchLimit {
 				break

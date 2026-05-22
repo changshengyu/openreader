@@ -1164,16 +1164,21 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	}
 
 	var matches []struct {
-		ChapterIndex int    `json:"chapterIndex"`
-		ChapterTitle string `json:"chapterTitle"`
-		Excerpt      string `json:"excerpt"`
-		LineIndex    int    `json:"lineIndex"`
+		ChapterIndex             int    `json:"chapterIndex"`
+		ChapterTitle             string `json:"chapterTitle"`
+		Excerpt                  string `json:"excerpt"`
+		Query                    string `json:"query"`
+		ResultCountWithinChapter int    `json:"resultCountWithinChapter"`
+		LineIndex                int    `json:"lineIndex"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
 	if len(matches) != 2 || matches[0].ChapterIndex != 0 || !strings.Contains(matches[0].Excerpt, "特殊关键词") {
 		t.Fatalf("unexpected matches: %+v", matches)
+	}
+	if matches[0].Query != "特殊关键词" || matches[0].ResultCountWithinChapter != 0 || matches[1].ResultCountWithinChapter != 1 {
+		t.Fatalf("unexpected match metadata: %+v", matches)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("隐藏关键词"), nil)
