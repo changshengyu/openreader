@@ -269,7 +269,7 @@ func (s *Server) batchCacheBooks(c *gin.Context, userID uint, bookIDs []uint) {
 		if books[i].SourceID == 0 {
 			continue
 		}
-		bookCached, bookRequested, err := s.cacheBookChapters(books[i], nil, true)
+		bookCached, bookRequested, err := s.cacheBookChapters(books[i], nil, true, 50)
 		cached += bookCached
 		requested += bookRequested
 		if err != nil {
@@ -445,6 +445,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 type cacheBookRequest struct {
 	ChapterIndex *int `json:"chapterIndex"`
 	All          bool `json:"all"`
+	Count        int  `json:"count"`
 }
 
 func (s *Server) cacheBookContent(c *gin.Context) {
@@ -472,7 +473,7 @@ func (s *Server) cacheBookContent(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"cached": 0, "requested": 0, "message": "local books do not need server cache"})
 		return
 	}
-	cached, requested, err := s.cacheBookChapters(book, request.ChapterIndex, request.All)
+	cached, requested, err := s.cacheBookChapters(book, request.ChapterIndex, request.All, request.Count)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list chapters"})
 		return
@@ -480,10 +481,19 @@ func (s *Server) cacheBookContent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"cached": cached, "requested": requested})
 }
 
-func (s *Server) cacheBookChapters(book models.Book, chapterIndex *int, all bool) (int, int, error) {
+func (s *Server) cacheBookChapters(book models.Book, chapterIndex *int, all bool, count int) (int, int, error) {
 	query := s.db.Where("book_id = ?", book.ID).Order("`index` asc")
 	if all {
-		query = query.Limit(300)
+		if chapterIndex != nil {
+			query = query.Where("`index` >= ?", *chapterIndex)
+		}
+		if count <= 0 {
+			count = 50
+		}
+		if count > 300 {
+			count = 300
+		}
+		query = query.Limit(count)
 	} else {
 		query = query.Where("`index` = ?", *chapterIndex)
 	}

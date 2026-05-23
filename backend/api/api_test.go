@@ -1372,6 +1372,50 @@ func TestCacheBookContentUsesCachedChapter(t *testing.T) {
 	}
 }
 
+func TestCacheBookContentDefaultsToFiftyChapters(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{Name: "缓存源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "缓存书", SourceID: source.ID}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 60; i++ {
+		cachePath := filepath.Join("cache-limit", fmt.Sprintf("chapter-%d.txt", i))
+		fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte("已缓存正文"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		chapter := models.Chapter{BookID: book.ID, Index: i, Title: fmt.Sprintf("第%d章", i+1), CachePath: cachePath}
+		if err := server.db.Create(&chapter).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/cache", strings.NewReader(`{"all":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("cache book: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"requested":50`) || !strings.Contains(w.Body.String(), `"cached":50`) {
+		t.Fatalf("expected default cache window of 50 chapters, got %s", w.Body.String())
+	}
+}
+
 func TestCacheStatsAndClearCache(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -1706,6 +1750,36 @@ func TestLocalStoreBrowseAndDelete(t *testing.T) {
 	}
 	if listing.Path != "nested" || len(listing.Items) != 1 || listing.Items[0].Path != filepath.Join("nested", "book.txt") || !listing.Items[0].Importable {
 		t.Fatalf("unexpected listing: %+v", listing)
+	}
+
+	reqRecursive := httptest.NewRequest(http.MethodGet, "/api/local-store?recursive=1", nil)
+	reqRecursive.Header.Set("Authorization", token)
+	wRecursive := httptest.NewRecorder()
+	router.ServeHTTP(wRecursive, reqRecursive)
+	if wRecursive.Code != http.StatusOK {
+		t.Fatalf("recursive local store: expected 200, got %d: %s", wRecursive.Code, wRecursive.Body.String())
+	}
+	var recursiveListing struct {
+		Recursive bool `json:"recursive"`
+		Items     []struct {
+			Path       string `json:"path"`
+			Importable bool   `json:"importable"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(wRecursive.Body.Bytes(), &recursiveListing); err != nil {
+		t.Fatal(err)
+	}
+	if !recursiveListing.Recursive {
+		t.Fatalf("expected recursive listing flag, got %+v", recursiveListing)
+	}
+	foundNestedBook := false
+	for _, item := range recursiveListing.Items {
+		if item.Path == filepath.Join("nested", "book.txt") && item.Importable {
+			foundNestedBook = true
+		}
+	}
+	if !foundNestedBook {
+		t.Fatalf("recursive listing did not include nested book: %+v", recursiveListing.Items)
 	}
 
 	req2 := httptest.NewRequest(http.MethodDelete, "/api/local-store?path="+url.QueryEscape(filepath.Join("nested", "book.txt")), nil)

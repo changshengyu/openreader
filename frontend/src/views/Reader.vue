@@ -1572,10 +1572,10 @@ function readError(err, fallback) {
   font-size: var(--reader-font-size);
   height: 100dvh; line-height: var(--reader-line-height);
   overflow-y: auto; overflow-x: hidden;
-  padding: 44px 65px 132px;
+  padding: 44px 65px 180px;
   width: 100%;
   box-sizing: border-box;
-  scroll-padding-bottom: 132px;
+  scroll-padding-bottom: 180px;
 }
 .reader-body { transition: transform 180ms ease; }
 .reader-content h1 {
@@ -1786,8 +1786,12 @@ function readError(err, fallback) {
     box-sizing: border-box;
     width: 100vw;
     font-size: var(--reader-font-size);
-    padding: 42px 22px calc(96px + env(safe-area-inset-bottom));
-    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    padding: 42px 22px calc(118px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(118px + env(safe-area-inset-bottom));
+  }
+  .reader-shell.mobile-chrome-visible .reader-content {
+    padding-bottom: calc(182px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(182px + env(safe-area-inset-bottom));
   }
   .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
   .reader-left-rail,
@@ -1846,6 +1850,7 @@ function readError(err, fallback) {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
     gap: 4px;
+    min-height: calc(62px + env(safe-area-inset-bottom));
     padding: 8px 10px max(8px, env(safe-area-inset-bottom));
     background: rgba(255, 252, 239, 0.92);
     border-top: 1px solid rgba(148, 132, 87, 0.35);
@@ -1856,14 +1861,14 @@ function readError(err, fallback) {
   .reader-mobile-progress-panel {
     position: fixed;
     right: 10px;
-    bottom: calc(82px + env(safe-area-inset-bottom));
+    bottom: calc(66px + env(safe-area-inset-bottom));
     left: 10px;
     z-index: 8;
     display: grid;
     grid-template-columns: minmax(62px, 76px) minmax(0, 1fr) minmax(62px, 76px);
     align-items: center;
     gap: 8px;
-    min-height: 54px;
+    min-height: 50px;
     padding: 7px;
     background: rgba(255, 252, 239, 0.94);
     border: 1px solid rgba(148, 132, 87, 0.28);

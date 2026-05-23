@@ -35,7 +35,7 @@
       <el-button plain @click="openBookmarks(overlay.bookInfoBook)">书签</el-button>
       <el-button plain @click="setBookGroup(overlay.bookInfoBook)">设置分组</el-button>
       <el-button plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshBookInfo(overlay.bookInfoBook)">刷新目录</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存50章</el-button>
       <el-button plain @click="goDetail(overlay.bookInfoBook)">详情</el-button>
       <el-button plain :loading="loadingUpdates" @click="refreshShelf">刷新书架</el-button>
       <el-button plain type="danger" :loading="deletingBookId === overlay.bookInfoBook.id" @click="deleteBookFromInfo(overlay.bookInfoBook)">移出书架</el-button>
@@ -115,7 +115,7 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存到服务器</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存50章</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookCache">删除服务器缓存</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) === 0" disabled>本地书无需服务器缓存</el-dropdown-item>
               </el-dropdown-menu>
@@ -151,7 +151,7 @@
         <footer>
           <el-button size="small" text @click="goDetail(book)">编辑</el-button>
           <el-button size="small" text @click="setBookGroup(book)">分组</el-button>
-          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">缓存50章</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清缓存</el-button>
           <el-button size="small" text @click="exportBook(book)">导出</el-button>
         </footer>
@@ -181,7 +181,7 @@
         </template>
       </el-dropdown>
       <span class="check-tip">已选择 {{ selectedBookIds.length }} 个</span>
-      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchCacheBooks">批量缓存</el-button>
+      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchCacheBooks">批量缓存50章</el-button>
       <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchClearCache">批量清缓存</el-button>
     </div>
   </el-drawer>
@@ -343,6 +343,13 @@
           </template>
         </el-table-column>
       </el-table>
+      <div v-if="webdavItems.length" class="mobile-file-select-actions">
+        <span>已选 {{ webdavSelection.length }} 个</span>
+        <div>
+          <el-button size="small" text @click="selectShownWebDAVFiles">全选当前</el-button>
+          <el-button size="small" text @click="webdavSelection = []">清空</el-button>
+        </div>
+      </div>
       <div v-if="webdavItems.length" v-loading="webdavLoading" class="mobile-file-list">
         <article v-for="row in webdavItems" :key="row.name" class="mobile-file-card">
           <header>
@@ -1209,7 +1216,7 @@ async function cacheBook(book, command) {
   }
   cachingBookId.value = book.id
   try {
-    const { data } = await cacheBookContent(book.id, { all: true })
+    const { data } = await cacheBookContent(book.id, { all: true, count: 50 })
     ElMessage.success(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
     await bookshelf.loadBooks()
   } catch (err) {
@@ -1564,6 +1571,10 @@ function toggleWebDAVSelection(row, checked) {
     return
   }
   webdavSelection.value = webdavSelection.value.filter(item => item.name !== row.name)
+}
+
+function selectShownWebDAVFiles() {
+  webdavSelection.value = webdavItems.value.filter(item => !item.isDir)
 }
 
 async function uploadWebDAVFile(data) {
@@ -2223,6 +2234,23 @@ function readError(err, fallback) {
   display: none;
 }
 
+.mobile-file-select-actions {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  color: var(--app-text-muted);
+  font-weight: 700;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+}
+
+.mobile-file-select-actions div {
+  display: flex;
+  gap: 4px;
+}
+
 .mobile-file-card {
   display: grid;
   gap: 8px;
@@ -2607,6 +2635,10 @@ function readError(err, fallback) {
     max-height: 48vh;
     overflow: auto;
     gap: 10px;
+  }
+
+  .mobile-file-select-actions {
+    display: flex;
   }
 
   .result-row {

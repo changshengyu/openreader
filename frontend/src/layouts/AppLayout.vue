@@ -518,13 +518,19 @@ onBeforeUnmount(() => {
 
 .app-workspace {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
   min-width: 0;
   padding-left: var(--app-sidebar-width);
+  overflow-x: hidden;
 }
 
 .app-content {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
+  overflow-x: hidden;
 }
 
 @media (max-width: 860px) {
@@ -536,6 +542,8 @@ onBeforeUnmount(() => {
   }
 
   .app-workspace {
+    width: 100vw;
+    max-width: 100vw;
     padding-left: 78px;
   }
 

@@ -28,6 +28,7 @@ func (s *Server) listLocalStore(c *gin.Context) {
 	if !ok {
 		return
 	}
+	recursive := c.Query("recursive") == "1" || strings.EqualFold(c.Query("recursive"), "true")
 	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create local store"})
@@ -35,40 +36,69 @@ func (s *Server) listLocalStore(c *gin.Context) {
 		}
 	}
 
-	entries, err := os.ReadDir(targetDir)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read local store"})
-		return
-	}
-
 	items := make([]localStoreItem, 0)
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		itemPath := cleanRelativePath(filepath.Join(relativePath, entry.Name()))
-		items = append(items, localStoreItem{
-			Name:       entry.Name(),
-			Path:       itemPath,
-			Extension:  ext,
-			Size:       info.Size(),
-			IsDir:      entry.IsDir(),
-			Importable: !entry.IsDir() && isImportableExtension(ext),
+	if recursive {
+		err := filepath.WalkDir(targetDir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if path == targetDir {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return nil
+			}
+			rel, err := filepath.Rel(targetDir, path)
+			if err != nil {
+				return nil
+			}
+			items = append(items, makeLocalStoreItem(entry.Name(), cleanRelativePath(filepath.Join(relativePath, rel)), info, entry.IsDir()))
+			return nil
 		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read local store"})
+			return
+		}
+	} else {
+		entries, err := os.ReadDir(targetDir)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read local store"})
+			return
+		}
+		for _, entry := range entries {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			itemPath := cleanRelativePath(filepath.Join(relativePath, entry.Name()))
+			items = append(items, makeLocalStoreItem(entry.Name(), itemPath, info, entry.IsDir()))
+		}
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].IsDir != items[j].IsDir {
 			return items[i].IsDir
 		}
-		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+		return strings.ToLower(items[i].Path) < strings.ToLower(items[j].Path)
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"path":  relativePath,
-		"items": items,
+		"path":      relativePath,
+		"recursive": recursive,
+		"items":     items,
 	})
+}
+
+func makeLocalStoreItem(name string, itemPath string, info os.FileInfo, isDir bool) localStoreItem {
+	ext := strings.ToLower(filepath.Ext(name))
+	return localStoreItem{
+		Name:       name,
+		Path:       itemPath,
+		Extension:  ext,
+		Size:       info.Size(),
+		IsDir:      isDir,
+		Importable: !isDir && isImportableExtension(ext),
+	}
 }
 
 func (s *Server) uploadToLocalStore(c *gin.Context) {

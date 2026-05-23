@@ -109,7 +109,6 @@
           </div>
           <dl class="info-list">
             <div><dt>服务地址</dt><dd><code>/webdav/</code></dd></div>
-            <div><dt>支持能力</dt><dd>浏览 / 新建目录 / 上传 / 下载 / 重命名 / 删除 / 批量删除 / 加入书架</dd></div>
             <div><dt>当前目录</dt><dd>{{ webdavPath || '/' }}</dd></div>
           </dl>
           <div class="panel-actions">
@@ -156,6 +155,13 @@
               </template>
             </el-table-column>
           </el-table>
+          <div v-if="webdavItems.length" class="mobile-file-select-actions app-panel">
+            <span>已选 {{ webdavSelection.length }} 个</span>
+            <div>
+              <el-button size="small" text @click="selectShownWebDAVFiles">全选当前</el-button>
+              <el-button size="small" text @click="webdavSelection = []">清空</el-button>
+            </div>
+          </div>
           <div v-if="webdavItems.length" v-loading="webdavLoading" class="mobile-file-list">
             <article v-for="row in webdavItems" :key="row.name" class="mobile-file-card app-panel">
               <header>
@@ -988,6 +994,10 @@ function toggleWebDAVSelection(row, checked) {
   webdavSelection.value = webdavSelection.value.filter(item => item.name !== row.name)
 }
 
+function selectShownWebDAVFiles() {
+  webdavSelection.value = webdavItems.value.filter(item => !item.isDir)
+}
+
 async function uploadWebDAVFile(data) {
   const file = data.raw
   if (!file) return
@@ -1353,6 +1363,21 @@ function readError(err, fallback) {
 
 .mobile-file-list {
   display: none;
+}
+
+.mobile-file-select-actions {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--app-text-muted);
+  font-weight: 700;
+}
+
+.mobile-file-select-actions div {
+  display: flex;
+  gap: 4px;
 }
 
 .mobile-file-card {
@@ -1744,6 +1769,10 @@ code {
   .mobile-file-list {
     display: grid;
     gap: 10px;
+  }
+
+  .mobile-file-select-actions {
+    display: flex;
   }
 
   .rss-reader-dialog :deep(.el-dialog) {

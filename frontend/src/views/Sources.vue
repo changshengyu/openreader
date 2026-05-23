@@ -72,8 +72,21 @@
     </el-table>
 
     <div v-if="shownSources.length" class="mobile-source-list">
-      <article v-for="source in shownSources" :key="source.id" class="mobile-source-card app-panel">
+      <div class="mobile-source-select-actions app-panel">
+        <span>已选 {{ selection.length }} 个</span>
+        <div>
+          <el-button size="small" text @click="selectShownSources">全选当前</el-button>
+          <el-button size="small" text @click="selection = []">清空</el-button>
+        </div>
+      </div>
+      <article
+        v-for="source in shownSources"
+        :key="source.id"
+        class="mobile-source-card app-panel"
+        :class="{ selected: isSourceSelected(source) }"
+      >
         <header>
+          <el-checkbox :model-value="isSourceSelected(source)" @change="value => toggleMobileSourceSelection(source, value)" />
           <div>
             <strong>{{ source.name }}</strong>
             <span>{{ source.group || '默认分组' }}</span>
@@ -98,7 +111,7 @@
 
     <el-empty v-if="!sources.length" description="还没有书源，导入或新增书源开始使用" />
 
-    <el-dialog v-model="showRemote" title="远程书源" width="460px">
+    <el-dialog v-model="showRemote" title="远程书源" width="460px" :fullscreen="isMobileDialog">
       <el-input v-model="remoteURL" placeholder="输入书源 JSON 订阅地址" />
       <template #footer>
         <el-button @click="showRemote = false">取消</el-button>
@@ -106,7 +119,7 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="showEditor" :title="editingSourceId ? '编辑书源' : '新增书源'" direction="rtl" size="520px">
+    <el-drawer v-model="showEditor" :title="editingSourceId ? '编辑书源' : '新增书源'" :direction="drawerDirection" :size="editorDrawerSize">
       <el-form label-position="top">
         <el-form-item label="名称"><el-input v-model="sourceForm.name" /></el-form-item>
         <el-form-item label="分组"><el-input v-model="sourceForm.group" placeholder="默认分组" /></el-form-item>
@@ -174,7 +187,7 @@
       </template>
     </el-drawer>
 
-    <el-dialog v-model="showDebug" title="书源调试" width="720px">
+    <el-dialog v-model="showDebug" title="书源调试" width="720px" :fullscreen="isMobileDialog">
       <div class="debug-title">
         <strong>{{ debugSource?.name }}</strong>
         <span>{{ debugSource?.baseUrl }}</span>
@@ -199,13 +212,21 @@
           </div>
         </el-tab-pane>
       </el-tabs>
-      <pre v-if="debugResult" class="debug-pre">{{ debugResult }}</pre>
+      <div v-if="debugSearchRows.length" class="debug-next-actions">
+        <span>搜索返回 {{ debugSearchRows.length }} 条</span>
+        <el-button size="small" type="primary" plain @click="useSearchResultForChapter(debugSearchRows[0])">用第一条测试目录</el-button>
+      </div>
+      <div v-if="debugChapterRows.length" class="debug-next-actions">
+        <span>目录返回 {{ debugChapterRows.length }} 章</span>
+        <el-button size="small" type="primary" plain @click="useChapterForContent(debugChapterRows[0])">用第一章测试正文</el-button>
+      </div>
+      <pre v-if="debugResult" class="debug-pre">{{ debugResultText }}</pre>
     </el-dialog>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Download, Link, Plus, Search, Upload } from '@element-plus/icons-vue'
@@ -272,6 +293,8 @@ const debugChapterURL = ref('')
 const debugResult = ref(null)
 const testing = ref(false)
 const handledRouteAction = ref('')
+const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
 
 const enabledCount = computed(() => sources.value.filter(source => source.enabled).length)
 const groups = computed(() => [...new Set(sources.value.map(source => source.group || '默认分组'))].sort())
@@ -293,10 +316,21 @@ const shownSources = computed(() => {
     return `${source.name || ''} ${source.baseUrl || ''} ${source.searchUrl || ''} ${groupName}`.toLowerCase().includes(value)
   })
 })
+const debugResultText = computed(() => debugResult.value ? JSON.stringify(debugResult.value, null, 2) : '')
+const debugSearchRows = computed(() => Array.isArray(debugResult.value?.results) ? debugResult.value.results : [])
+const debugChapterRows = computed(() => Array.isArray(debugResult.value?.chapters) ? debugResult.value.chapters : [])
+const isMobileDialog = computed(() => windowWidth.value <= 860 || coarsePointer.value)
+const drawerDirection = computed(() => isMobileDialog.value ? 'btt' : 'rtl')
+const editorDrawerSize = computed(() => isMobileDialog.value ? '88%' : '520px')
 
 onMounted(async () => {
+  window.addEventListener('resize', handleResize)
   await loadSources()
   applyRouteAction()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
 })
 
 watch(
@@ -320,6 +354,11 @@ function applyRouteAction() {
     failedOnly.value = true
     if (!healthSummary.value.total && !checking.value) checkInvalidSources()
   }
+}
+
+function handleResize() {
+  windowWidth.value = window.innerWidth
+  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
 }
 
 async function toggleSource(source, enabled) {
@@ -411,6 +450,22 @@ async function batchUpdateSources(action) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, `批量${actionName}失败`))
   }
+}
+
+function isSourceSelected(source) {
+  return selection.value.some(item => item.id === source.id)
+}
+
+function toggleMobileSourceSelection(source, checked) {
+  if (checked) {
+    if (!isSourceSelected(source)) selection.value = [...selection.value, source]
+    return
+  }
+  selection.value = selection.value.filter(item => item.id !== source.id)
+}
+
+function selectShownSources() {
+  selection.value = [...shownSources.value]
 }
 
 async function clearAllSources() {
@@ -584,12 +639,34 @@ async function runDebug(fn) {
   testing.value = true
   try {
     const { data } = await fn()
-    debugResult.value = JSON.stringify(data, null, 2)
+    debugResult.value = data
   } catch (err) {
-    debugResult.value = readError(err, '失败')
+    debugResult.value = { error: readError(err, '失败') }
   } finally {
     testing.value = false
   }
+}
+
+async function useSearchResultForChapter(row) {
+  const bookUrl = row?.bookUrl || row?.url || row?.bookURL
+  if (!bookUrl) {
+    ElMessage.warning('搜索结果没有书籍地址')
+    return
+  }
+  debugBookURL.value = bookUrl
+  debugTab.value = 'toc'
+  await testChapter()
+}
+
+async function useChapterForContent(row) {
+  const chapterUrl = row?.url || row?.chapterUrl || row?.chapterURL
+  if (!chapterUrl) {
+    ElMessage.warning('目录结果没有章节地址')
+    return
+  }
+  debugChapterURL.value = chapterUrl
+  debugTab.value = 'content'
+  await testContent()
 }
 
 function readError(err, fallback) {
@@ -679,10 +756,29 @@ function readError(err, fallback) {
   display: none;
 }
 
+.mobile-source-select-actions {
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.mobile-source-select-actions,
+.mobile-source-select-actions div {
+  display: flex;
+}
+
 .mobile-source-card {
   display: grid;
   gap: 9px;
   padding: 12px;
+}
+
+.mobile-source-card.selected {
+  border-color: var(--app-primary);
+  background: var(--app-primary-soft);
 }
 
 .mobile-source-card header,
@@ -700,6 +796,7 @@ function readError(err, fallback) {
 .mobile-source-card header > div {
   display: grid;
   min-width: 0;
+  flex: 1;
   gap: 3px;
 }
 
@@ -737,6 +834,20 @@ function readError(err, fallback) {
 
 .debug-row .el-input {
   flex: 1;
+}
+
+.debug-next-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  color: var(--app-text-muted);
+  background: var(--app-bg-soft);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  font-size: 13px;
 }
 
 .debug-pre {
@@ -792,6 +903,10 @@ function readError(err, fallback) {
 
   .health-summary {
     white-space: normal;
+  }
+
+  .debug-next-actions {
+    display: grid;
   }
 
   .source-summary {

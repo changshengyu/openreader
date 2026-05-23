@@ -44,9 +44,8 @@
         <el-option label="未分组" value="" />
         <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
+      <el-switch v-model="recursiveScan" inline-prompt active-text="子目录" inactive-text="当前层" @change="load" />
     </section>
-
-    <el-alert type="success" :closable="false" show-icon title="已支持目录浏览、新建目录、上传、重命名、删除和批量导入。" />
 
     <el-table
       :data="shownItems"
@@ -79,6 +78,14 @@
       </el-table-column>
     </el-table>
 
+    <div v-if="shownItems.length" class="mobile-file-select-actions app-panel">
+      <span>已选 {{ checkedRows.length }} 个</span>
+      <div>
+        <el-button size="small" text @click="selectShownImportableFiles">全选可导入</el-button>
+        <el-button size="small" text @click="checkedRows = []">清空</el-button>
+      </div>
+    </div>
+
     <div v-if="shownItems.length" class="mobile-file-list">
       <article v-for="row in shownItems" :key="row.path" class="mobile-file-card app-panel">
         <header>
@@ -108,7 +115,7 @@
 
     <el-empty v-if="!items.length && !loading" description="书仓为空，把文件放入 localStore 目录即可显示" />
 
-    <el-dialog v-model="resultDialog" title="导入结果" width="560px">
+    <el-dialog v-model="resultDialog" title="导入结果" width="560px" :fullscreen="isMobileDialog">
       <div class="result-list">
         <div v-for="(item, index) in importResults" :key="index" class="result-row">
           <el-tag :type="item.book ? 'success' : 'danger'" effect="plain">{{ item.book ? '成功' : '失败' }}</el-tag>
@@ -121,7 +128,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { createLocalStoreDirectory, deleteFromLocalStore, importFromLocalStore, listLocalStore, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
@@ -134,11 +141,14 @@ const currentPath = ref('')
 const keyword = ref('')
 const extension = ref('')
 const targetCategoryId = ref('')
+const recursiveScan = ref(true)
 const loading = ref(false)
 const importing = ref(false)
 const uploading = ref(false)
 const resultDialog = ref(false)
 const importResults = ref([])
+const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
 
 const totalSize = computed(() => items.value.filter(item => !item.isDir).reduce((sum, item) => sum + (item.size || 0), 0))
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
@@ -156,15 +166,24 @@ const shownItems = computed(() => {
     return `${item.name || ''} ${item.path || ''}`.toLowerCase().includes(value)
   })
 })
+const isMobileDialog = computed(() => windowWidth.value <= 860 || coarsePointer.value)
 
 onMounted(async () => {
+  window.addEventListener('resize', handleResize)
   await Promise.all([load(), bookshelf.loadCategories()])
 })
+
+onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
+
+function handleResize() {
+  windowWidth.value = window.innerWidth
+  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+}
 
 async function load() {
   loading.value = true
   try {
-    const { data } = await listLocalStore(currentPath.value)
+    const { data } = await listLocalStore(currentPath.value, recursiveScan.value)
     currentPath.value = data.path || ''
     items.value = data.items || []
     checkedRows.value = []
@@ -199,6 +218,10 @@ function toggleCheckedPath(path, checked) {
     return
   }
   checkedRows.value = checkedRows.value.filter(item => item !== path)
+}
+
+function selectShownImportableFiles() {
+  checkedRows.value = shownItems.value.filter(item => item.importable).map(item => item.path)
 }
 
 async function uploadFile(data) {
@@ -358,7 +381,7 @@ function readError(err, fallback) {
 .store-toolbar {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(220px, 1fr) 180px 210px;
+  grid-template-columns: minmax(220px, 1fr) 160px 210px auto;
   align-items: center;
   padding: 12px;
 }
@@ -399,6 +422,21 @@ function readError(err, fallback) {
 
 .mobile-file-list {
   display: none;
+}
+
+.mobile-file-select-actions {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--app-text-muted);
+  font-weight: 700;
+}
+
+.mobile-file-select-actions div {
+  display: flex;
+  gap: 4px;
 }
 
 .mobile-file-card {
@@ -494,6 +532,10 @@ function readError(err, fallback) {
   .mobile-file-list {
     display: grid;
     gap: 10px;
+  }
+
+  .mobile-file-select-actions {
+    display: flex;
   }
 }
 </style>

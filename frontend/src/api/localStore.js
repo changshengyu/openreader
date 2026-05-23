@@ -1,7 +1,7 @@
 import api from './client'
 
-export function listLocalStore(path = '') {
-  return api.get('/local-store', { params: { path } })
+export function listLocalStore(path = '', recursive = false) {
+  return api.get('/local-store', { params: { path, recursive: recursive ? 1 : 0 } })
 }
 
 export function uploadToLocalStore({ path = '', file }) {

@@ -257,6 +257,7 @@ function readError(err, fallback) {
 .shelf-title,
 .shelf-toolbar {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -325,6 +326,7 @@ function readError(err, fallback) {
 
 .title-actions {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
@@ -472,13 +474,14 @@ function readError(err, fallback) {
   }
 
   .shelf-title {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     align-items: start;
     min-width: 0;
   }
 
   .title-actions {
-    flex: 0 0 auto;
     gap: 8px;
   }
 

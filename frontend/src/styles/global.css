@@ -41,8 +41,11 @@ a {
 
 .app-page {
   width: min(100%, var(--app-content-max));
+  max-width: 100%;
+  min-width: 0;
   margin: 0 auto;
   padding: 28px;
+  overflow-x: hidden;
 }
 
 .app-page-title {
