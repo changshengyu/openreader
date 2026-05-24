@@ -321,6 +321,64 @@ func TestListBooksOrdersByRecentProgressThenShelfTime(t *testing.T) {
 	}
 }
 
+func TestListBooksOrdersNewImportBeforeStaleProgress(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	staleReadBook := models.Book{UserID: user.ID, Title: "旧进度"}
+	newBook := models.Book{UserID: user.ID, Title: "新导入"}
+	if err := server.db.Create(&staleReadBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&newBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Model(&staleReadBook).Updates(map[string]any{
+		"created_at": time.Now().Add(-8 * time.Hour),
+		"updated_at": time.Now().Add(-8 * time.Hour),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Model(&newBook).Updates(map[string]any{
+		"created_at": time.Now().Add(-1 * time.Hour),
+		"updated_at": time.Now().Add(-1 * time.Hour),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	progress := models.ReadingProgress{
+		UserID:       user.ID,
+		BookID:       staleReadBook.ID,
+		ChapterIndex: 1,
+		Percent:      0.2,
+		UpdatedAt:    time.Now().Add(-6 * time.Hour),
+	}
+	if err := server.db.Create(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list books: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var books []struct {
+		ID uint `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &books); err != nil {
+		t.Fatal(err)
+	}
+	if len(books) != 2 || books[0].ID != newBook.ID || books[1].ID != staleReadBook.ID {
+		t.Fatalf("expected new import before stale progress, got %+v", books)
+	}
+}
+
 func TestBatchBooksCategoryAndDelete(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

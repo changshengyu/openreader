@@ -9,13 +9,9 @@ function progressFor(book, progressByBook) {
 
 export function compareByShelfOrderWithProgress(progressByBook) {
   return (a, b) => {
-    const aProgressAt = toTime(progressFor(a, progressByBook)?.updatedAt)
-    const bProgressAt = toTime(progressFor(b, progressByBook)?.updatedAt)
-    if (aProgressAt !== bProgressAt) return bProgressAt - aProgressAt
-
-    const aShelfAt = Math.max(toTime(a?.updatedAt), toTime(a?.createdAt))
-    const bShelfAt = Math.max(toTime(b?.updatedAt), toTime(b?.createdAt))
-    if (aShelfAt !== bShelfAt) return bShelfAt - aShelfAt
+    const aOrderAt = shelfOrderTime(a, progressByBook)
+    const bOrderAt = shelfOrderTime(b, progressByBook)
+    if (aOrderAt !== bOrderAt) return bOrderAt - aOrderAt
     return Number(b?.id || 0) - Number(a?.id || 0)
   }
 }
