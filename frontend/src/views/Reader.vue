@@ -1534,18 +1534,24 @@ useGesture(pageEl, {
     showSettingsDrawer.value = false
   },
   onEdgeLeftTap: () => {
-    previousPage()
+    if (reader.mode === 'flip') {
+      previousPage()
+      return
+    }
+    if (reader.mode === 'scroll') previousPage()
   },
   onEdgeRightTap: () => {
-    nextPage()
+    if (reader.mode === 'flip') {
+      nextPage()
+      return
+    }
+    if (reader.mode === 'scroll') nextPage()
   },
   onUpperTap: () => {
-    if (reader.mode === 'flip') return
-    previousPage()
+    if (reader.mode === 'page' || reader.mode === 'scroll') previousPage()
   },
   onLowerTap: () => {
-    if (reader.mode === 'flip') return
-    nextPage()
+    if (reader.mode === 'page' || reader.mode === 'scroll') nextPage()
   },
   onPinchOut: () => reader.setFontSize(reader.fontSize + 2),
   onPinchIn: () => reader.setFontSize(reader.fontSize - 2),

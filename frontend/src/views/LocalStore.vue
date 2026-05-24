@@ -317,6 +317,9 @@ async function importPaths(paths) {
   const categoryId = targetCategoryId.value ? Number(targetCategoryId.value) : null
   const { data } = await importFromLocalStore(paths, categoryId)
   importResults.value = data.imported || []
+  importResults.value.forEach(item => {
+    if (item.book) bookshelf.upsertBook(item.book)
+  })
   const success = importResults.value.filter(item => item.book).length
   const failed = importResults.value.filter(item => item.error).length
   ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
