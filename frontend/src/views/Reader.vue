@@ -264,6 +264,10 @@
           <el-icon :size="22"><Download /></el-icon>
           <span>缓存</span>
         </button>
+        <button v-if="isRemoteBook" type="button" class="mobile-more-item" @click="runMobileAction(clearCurrentBookCache)">
+          <el-icon :size="22"><Delete /></el-icon>
+          <span>清缓存</span>
+        </button>
         <button type="button" class="mobile-more-item" @click="runMobileAction(reloadChapter)">
           <el-icon :size="22"><RefreshRight /></el-icon>
           <span>刷新</span>
@@ -344,6 +348,7 @@ import {
   ArrowRight,
   ArrowUpBold,
   CollectionTag,
+  Delete,
   Download,
   EditPen,
   Grid,
@@ -783,6 +788,8 @@ function openReaderBookInfo() {
     hasRemoteSource ? { label: '书源', plain: true, handler: openInfoSources } : null,
     { label: '分组', plain: true, handler: openInfoGroup },
     hasRemoteSource ? { label: '刷新目录', plain: true, handler: refreshReaderBookCatalog } : null,
+    hasRemoteSource ? { label: '缓存本章', plain: true, handler: cacheCurrentChapter } : null,
+    hasRemoteSource ? { label: '清缓存', plain: true, handler: clearCurrentBookCache } : null,
     { label: '设置', plain: true, handler: openInfoSettings },
     { label: '完整详情', type: 'primary', handler: () => { overlay.closeBookInfo(); goBookDetail() } },
   ].filter(Boolean)
@@ -864,6 +871,13 @@ async function refreshReaderBookCatalog() {
   } catch (err) {
     ElMessage.error(readError(err, '刷新目录失败'))
   }
+}
+
+async function loadChapters() {
+  const { data } = await api.get(`/books/${bookId.value}/chapters`)
+  chapters.value = Array.isArray(data) ? data : []
+  currentIndex.value = Math.max(0, Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0)))
+  return chapters.value
 }
 
 function goSourcePanel() {
@@ -1063,6 +1077,19 @@ async function cacheCurrentChapter() {
     setTimeout(() => { toastMsg.value = '' }, 1600)
   } catch (err) {
     ElMessage.error(readError(err, '缓存章节失败'))
+  }
+}
+
+async function clearCurrentBookCache() {
+  if (!isRemoteBook.value) return
+  try {
+    const data = await bookshelf.batchClearCache([bookId.value])
+    await loadChapters()
+    await bookshelf.loadBooks({ force: true })
+    toastMsg.value = `已清理 ${data.cleared || 0} 个章节缓存`
+    setTimeout(() => { toastMsg.value = '' }, 1600)
+  } catch (err) {
+    ElMessage.error(readError(err, '清理缓存失败'))
   }
 }
 
