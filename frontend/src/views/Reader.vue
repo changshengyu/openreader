@@ -1026,7 +1026,7 @@ async function runBookContentSearch({ append = false } = {}) {
   try {
     let lastIndex = append ? bookSearchLastIndex.value : -1
     let nextResults = append ? [...bookSearchResults.value] : []
-    const maxRounds = 1
+    const maxRounds = append ? 1 : (Number(book.value?.sourceId || 0) > 0 ? 4 : 1)
     for (let round = 0; round < maxRounds; round += 1) {
       const { data } = await searchBookContentApi(bookId.value, keyword, {
         paged: 1,

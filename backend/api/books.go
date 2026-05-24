@@ -1153,6 +1153,7 @@ func searchContentPositions(content string, keyword string, limit int) []int {
 	if content == "" || keyword == "" || limit <= 0 {
 		return nil
 	}
+	seen := make(map[int]struct{})
 	lowerContent := strings.ToLower(content)
 	needle := strings.ToLower(keyword)
 	positions := make([]int, 0)
@@ -1162,17 +1163,21 @@ func searchContentPositions(content string, keyword string, limit int) []int {
 			break
 		}
 		absolute := offset + position
-		positions = append(positions, absolute)
+		if _, ok := seen[absolute]; !ok {
+			seen[absolute] = struct{}{}
+			positions = append(positions, absolute)
+		}
 		offset = absolute + len(needle)
-	}
-	if len(positions) > 0 {
-		return positions
 	}
 
 	normalizedContent, contentMap := normalizeSearchText(content)
 	normalizedKeyword, _ := normalizeSearchText(keyword)
 	if normalizedKeyword == "" {
-		return nil
+		sort.Ints(positions)
+		if len(positions) > limit {
+			return positions[:limit]
+		}
+		return positions
 	}
 	for offset := 0; offset < len(normalizedContent) && len(positions) < limit; {
 		position := strings.Index(normalizedContent[offset:], normalizedKeyword)
@@ -1181,10 +1186,15 @@ func searchContentPositions(content string, keyword string, limit int) []int {
 		}
 		absolute := offset + position
 		if absolute >= 0 && absolute < len(contentMap) {
-			positions = append(positions, contentMap[absolute])
+			mappedPosition := contentMap[absolute]
+			if _, ok := seen[mappedPosition]; !ok {
+				seen[mappedPosition] = struct{}{}
+				positions = append(positions, mappedPosition)
+			}
 		}
 		offset = absolute + len(normalizedKeyword)
 	}
+	sort.Ints(positions)
 	return positions
 }
 

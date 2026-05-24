@@ -1256,7 +1256,7 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(fullPath, []byte("第一段内容\n这里有一个特殊关键词用于搜索\n第二个特殊关键词也应命中\n换行拆开的隐 藏\n关 键 词\n夫君御驾亲征了！！！\n结尾"), 0o644); err != nil {
+	if err := os.WriteFile(fullPath, []byte("第一段内容\n这里有一个特殊关键词用于搜索\n第二个特殊关键词也应命中\n第三个特 殊 关 键 词也应命中\n换行拆开的隐 藏\n关 键 词\n夫君御驾亲征了！！！\n结尾"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1288,11 +1288,14 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 2 || matches[0].ChapterIndex != 0 || !strings.Contains(matches[0].Excerpt, "特殊关键词") {
+	if len(matches) != 3 || matches[0].ChapterIndex != 0 || !strings.Contains(matches[0].Excerpt, "特殊关键词") {
 		t.Fatalf("unexpected matches: %+v", matches)
 	}
-	if matches[0].Query != "特殊关键词" || matches[0].ResultCountWithinChapter != 0 || matches[1].ResultCountWithinChapter != 1 {
+	if matches[0].Query != "特殊关键词" || matches[0].ResultCountWithinChapter != 0 || matches[1].ResultCountWithinChapter != 1 || matches[2].ResultCountWithinChapter != 2 {
 		t.Fatalf("unexpected match metadata: %+v", matches)
+	}
+	if !strings.Contains(matches[2].Excerpt, "特 殊 关 键 词") {
+		t.Fatalf("expected normalized mixed match, got %+v", matches[2])
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("隐藏关键词"), nil)
@@ -1321,7 +1324,7 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 || matches[0].LineIndex != 5 || !strings.Contains(matches[0].Excerpt, "夫君御驾亲征了") {
+	if len(matches) != 1 || matches[0].LineIndex != 6 || !strings.Contains(matches[0].Excerpt, "夫君御驾亲征了") {
 		t.Fatalf("unexpected punctuation-normalized matches: %+v", matches)
 	}
 }
