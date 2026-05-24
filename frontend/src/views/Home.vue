@@ -466,6 +466,10 @@ function readError(err, fallback) {
   text-align: left;
 }
 
+.book-row > * {
+  min-width: 0;
+}
+
 .book-row:hover,
 .book-row:focus-visible {
   background: var(--app-bg-soft);
@@ -536,12 +540,14 @@ function readError(err, fallback) {
   }
 
   .title-actions {
-    min-width: max-content;
+    min-width: 0;
     gap: 8px;
   }
 
   .title-actions button {
+    min-width: 0;
     font-size: 13px;
+    white-space: nowrap;
   }
 
   .shelf-toolbar {
@@ -593,7 +599,11 @@ function readError(err, fallback) {
   }
 
   .book-operation :deep(.el-button) {
+    min-width: 0;
+    max-width: 38px;
+    overflow: hidden;
     padding: 0 2px;
+    text-overflow: ellipsis;
   }
 
   .list-main {

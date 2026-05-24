@@ -98,8 +98,8 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 }
 
 // DefaultRateLimiter is a browser-friendly default for self-hosted reading.
-// Mobile browsers may load static assets, API data, and sync channels in a
-// short burst; keep this high enough to avoid false positives during startup.
+// Mobile browsers may load API data, sync channels, and chapter requests in a
+// short burst; keep this high enough to avoid false positives during reading.
 func DefaultRateLimiter() gin.HandlerFunc {
-	return NewRateLimiter(1800, time.Minute).Middleware()
+	return NewRateLimiter(6000, time.Minute).Middleware()
 }
