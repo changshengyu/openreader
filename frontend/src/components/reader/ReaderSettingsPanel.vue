@@ -60,11 +60,15 @@
           :key="font.value"
           class="font-family-option"
           :class="{ active: fontFamilyModel === font.value }"
+          :style="{ fontFamily: font.stack }"
           type="button"
           @click="setFontFamily(font.value)"
         >
           {{ font.label }}
         </button>
+      </div>
+      <div class="font-preview" :style="fontPreviewStyle">
+        夜色沉静，字形、字号与行距会立即应用到正文。
       </div>
     </div>
 
@@ -176,6 +180,13 @@ const emit = defineEmits([
 ])
 
 const fontSizePresets = [14, 16, 18, 20, 22, 24, 28, 32]
+
+const fontPreviewStyle = computed(() => ({
+  fontFamily: props.fontOptions.find(font => font.value === props.reader.fontFamily)?.stack,
+  fontSize: `${props.reader.fontSize}px`,
+  fontWeight: props.reader.fontWeight,
+  lineHeight: props.reader.lineHeight,
+}))
 
 const localCustomBg = computed({
   get: () => props.customBg,
@@ -373,6 +384,16 @@ function setTTSVoice(value) {
   background: #e6f2ee;
   border-color: #2f6f6d;
   font-weight: 700;
+}
+
+.font-preview {
+  min-width: 0;
+  padding: 10px 12px;
+  color: #2c2a24;
+  background: #fffaf0;
+  border: 1px solid #eadfca;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
 }
 
 .font-size-presets {

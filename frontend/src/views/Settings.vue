@@ -534,6 +534,7 @@ import { uploadAsset } from '../api/uploads'
 import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, listWebDAV, renameWebDAV, uploadWebDAV } from '../api/webdav'
 import { useSync } from '../composables/useSync'
 import { useReaderStore, themePresets } from '../stores/reader'
+import { readerFontOptions } from '../utils/readerFonts'
 import { useUserStore } from '../stores/user'
 
 const router = useRouter()
@@ -591,12 +592,7 @@ const healthInfo = ref(null)
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
 
-const fontOptions = [
-  { label: '系统黑体', value: 'system' },
-  { label: '宋体', value: 'serif' },
-  { label: '楷体', value: 'kai' },
-  { label: '仿宋', value: 'mono' },
-]
+const fontOptions = readerFontOptions
 
 const readerModeModel = computed({
   get: () => readerStore.mode,

@@ -379,6 +379,7 @@ import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
 import { sortByShelfOrder } from '../utils/bookOrder'
+import { readerFontOptions, readerFontStack } from '../utils/readerFonts'
 
 const route = useRoute()
 const router = useRouter()
@@ -447,12 +448,7 @@ let savingProgress = false
 let pendingProgressPayload = null
 let lastProgressSaveKey = ''
 
-const fontOptions = [
-  { label: '系统黑体', value: 'system' },
-  { label: '宋体', value: 'serif' },
-  { label: '楷体', value: 'kai' },
-  { label: '仿宋', value: 'mono' },
-]
+const fontOptions = readerFontOptions
 
 const filteredShelfBooks = computed(() => {
   const value = shelfKeyword.value.trim().toLowerCase()
@@ -476,13 +472,7 @@ const isRemoteBook = computed(() => Number(book.value?.sourceId || 0) > 0)
 const lines = computed(() => content.value.split('\n').map(l => l.trim()).filter(Boolean))
 
 const fontStack = computed(() => {
-  const stacks = {
-    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
-    serif: '"Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", serif',
-    kai: '"Kaiti SC", "STKaiti", "KaiTi", "楷体", "AR PL UKai CN", serif',
-    mono: '"STFangsong", "FangSong", "仿宋", "FangSong_GB2312", "Source Han Serif SC", serif',
-  }
-  return stacks[reader.fontFamily] || stacks.system
+  return readerFontStack(reader.fontFamily)
 })
 
 const readerStyle = computed(() => ({
