@@ -1,7 +1,22 @@
 import { onBeforeUnmount } from 'vue'
 
 export function useKeyboard(handlers) {
-  const { onPageUp, onPageDown, onHome, onEnd, onEscape, onSpace } = handlers
+  const {
+    onPageUp,
+    onPageDown,
+    onHome,
+    onEnd,
+    onEscape,
+    onSpace,
+    onArrowLeft,
+    onArrowRight,
+    onArrowUp,
+    onArrowDown,
+  } = handlers
+
+  function run(handler) {
+    handler?.()
+  }
 
   function handleKey(event) {
     const tag = document.activeElement?.tagName?.toLowerCase()
@@ -10,11 +25,19 @@ export function useKeyboard(handlers) {
     switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault()
-        onPageUp?.()
+        run(onArrowLeft || onPageUp)
         break
       case 'ArrowRight':
         event.preventDefault()
-        onPageDown?.()
+        run(onArrowRight || onPageDown)
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        run(onArrowUp || onPageUp)
+        break
+      case 'ArrowDown':
+        event.preventDefault()
+        run(onArrowDown || onPageDown)
         break
       case 'PageUp':
         event.preventDefault()

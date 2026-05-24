@@ -1492,6 +1492,18 @@ function scrollToBottom() {
 useKeyboard({
   onPageUp: () => previousPage(),
   onPageDown: () => nextPage(),
+  onArrowLeft: () => {
+    if (reader.mode === 'flip') previousPage()
+  },
+  onArrowRight: () => {
+    if (reader.mode === 'flip') nextPage()
+  },
+  onArrowUp: () => {
+    if (reader.mode === 'page' || reader.mode === 'scroll') previousPage()
+  },
+  onArrowDown: () => {
+    if (reader.mode === 'page' || reader.mode === 'scroll') nextPage()
+  },
   onHome: () => scrollToTop(),
   onEnd: () => scrollToBottom(),
   onSpace: () => nextPage(),
