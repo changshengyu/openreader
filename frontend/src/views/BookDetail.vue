@@ -84,6 +84,7 @@
                 :group="sourceGroup"
                 :groups="sourceGroups"
                 :has-more="sourceHasMore"
+                :stats="sourceStats"
                 :show-info-button="false"
                 @refresh="loadSourceCandidates"
                 @load-more="loadMoreSourceCandidates"
@@ -119,6 +120,7 @@
         :group="sourceGroup"
         :groups="sourceGroups"
         :has-more="sourceHasMore"
+        :stats="sourceStats"
         :show-info-button="false"
         @refresh="loadSourceCandidates"
         @load-more="loadMoreSourceCandidates"
@@ -182,6 +184,7 @@ const loadingSourceCandidates = ref(false)
 const sourceGroup = ref('')
 const sourceOffset = ref(0)
 const sourceHasMore = ref(false)
+const sourceStats = ref(null)
 const activeTab = ref('toc')
 const tocKeyword = ref('')
 const tocLocateKey = ref(0)
@@ -481,6 +484,7 @@ async function loadSourceCandidates({ append = false } = {}) {
     if (!append) {
       sourceOffset.value = 0
       sourceHasMore.value = false
+      sourceStats.value = null
     }
     const { data } = await listBookSourceCandidates(book.value.id, {
       group: sourceGroup.value || undefined,
@@ -492,6 +496,14 @@ async function loadSourceCandidates({ append = false } = {}) {
     sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
     sourceOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceOffset.value + 10
     sourceHasMore.value = Boolean(data?.hasMore)
+    sourceStats.value = Array.isArray(data)
+      ? null
+      : {
+          searched: data?.searched || 0,
+          matched: data?.matched || 0,
+          failed: data?.failed || 0,
+          empty: data?.empty || 0,
+        }
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
   } finally {
@@ -505,6 +517,7 @@ function loadMoreSourceCandidates() {
 
 function changeSourceGroup(value) {
   sourceGroup.value = value || ''
+  sourceStats.value = null
   loadSourceCandidates()
 }
 
