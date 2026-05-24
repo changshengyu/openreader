@@ -657,14 +657,19 @@
               <small>{{ formatDate(article.publishedAt || article.updatedAt) }} · {{ article.author || '未知作者' }}</small>
               <span>{{ stripHTML(article.summary || article.content || '无摘要') }}</span>
             </button>
-            <el-button
-              size="small"
-              text
-              :type="article.favorite ? 'warning' : 'info'"
-              @click="toggleRSSFavorite(article)"
-            >
-              {{ article.favorite ? '已收藏' : '收藏' }}
-            </el-button>
+            <span class="rss-article-tools">
+              <el-button size="small" text @click="toggleRSSRead(article)">
+                {{ article.isRead ? '标未读' : '标已读' }}
+              </el-button>
+              <el-button
+                size="small"
+                text
+                :type="article.favorite ? 'warning' : 'info'"
+                @click="toggleRSSFavorite(article)"
+              >
+                {{ article.favorite ? '已收藏' : '收藏' }}
+              </el-button>
+            </span>
           </article>
           <el-empty v-if="!rssArticlesLoading && !rssArticles.length" description="暂无 RSS 文章" />
         </div>
@@ -692,6 +697,12 @@
     </article>
     <template #footer>
       <el-button @click="rssArticleDialog = false">关闭</el-button>
+      <el-button v-if="selectedRSSArticle" @click="toggleRSSRead(selectedRSSArticle)">
+        {{ selectedRSSArticle.isRead ? '标为未读' : '标为已读' }}
+      </el-button>
+      <el-button v-if="selectedRSSArticle" :type="selectedRSSArticle.favorite ? 'warning' : 'default'" @click="toggleRSSFavorite(selectedRSSArticle)">
+        {{ selectedRSSArticle.favorite ? '取消收藏' : '收藏' }}
+      </el-button>
       <el-button v-if="selectedRSSArticle?.link" type="primary" @click="openExternal(selectedRSSArticle.link)">打开原文</el-button>
     </template>
   </el-dialog>
@@ -1676,15 +1687,28 @@ async function toggleRSSFavorite(article) {
   await updateRSSArticleState(article, { favorite: !article.favorite })
 }
 
+async function toggleRSSRead(article) {
+  await updateRSSArticleState(article, { isRead: !article.isRead })
+}
+
 async function updateRSSArticleState(article, payload, { silent = false } = {}) {
   try {
     const { data } = await updateRSSArticle(article.id, payload)
     Object.assign(article, data)
     if (selectedRSSArticle.value?.id === article.id) selectedRSSArticle.value = article
+    if (shouldHideRSSArticle(article)) {
+      rssArticles.value = rssArticles.value.filter(item => item.id !== article.id)
+    }
     if (!silent) ElMessage.success('文章状态已更新')
   } catch (err) {
     ElMessage.error(readError(err, '更新 RSS 文章失败'))
   }
+}
+
+function shouldHideRSSArticle(article) {
+  if (rssArticleFilter.value === 'unread' && article.isRead) return true
+  if (rssArticleFilter.value === 'favorite' && !article.favorite) return true
+  return false
 }
 
 function stripHTML(value) {
@@ -2730,10 +2754,16 @@ function readError(err, fallback) {
   white-space: nowrap;
 }
 
-.rss-source-tools {
+.rss-source-tools,
+.rss-article-tools {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+.rss-article-tools {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .rss-article-row {
