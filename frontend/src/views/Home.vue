@@ -1,5 +1,14 @@
 <template>
   <section class="app-page shelf-page">
+    <button v-if="recentBook" class="recent-strip app-panel" type="button" @click="continueRead(recentBook)">
+      <span>
+        <small>上次阅读</small>
+        <strong>{{ recentBook.title }}</strong>
+        <em>{{ readChapterTitle(recentBook) || recentBook.lastChapter || '继续阅读' }}</em>
+      </span>
+      <b>{{ progressLabel(recentBook) }}</b>
+    </button>
+
     <div class="shelf-title app-panel">
       <strong>书架 ({{ displayedBooks.length }})</strong>
       <div class="title-actions">
@@ -11,15 +20,6 @@
         </button>
       </div>
     </div>
-
-    <button v-if="recentBook" class="recent-strip app-panel" type="button" @click="continueRead(recentBook)">
-      <span>
-        <small>上次阅读</small>
-        <strong>{{ recentBook.title }}</strong>
-        <em>{{ readChapterTitle(recentBook) || recentBook.lastChapter || '继续阅读' }}</em>
-      </span>
-      <b>{{ progressLabel(recentBook) }}</b>
-    </button>
 
     <div class="book-group-wrapper app-panel" role="tablist" aria-label="书架分组">
       <button
@@ -138,20 +138,21 @@ const groupItems = computed(() => {
   ]
 })
 
+const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.books) ? bookshelf.books : [], reader.progressByBook))
+
 const displayedBooks = computed(() => {
   const value = keyword.value.trim().toLowerCase()
-  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
-  const filtered = books.filter(book => {
+  const filtered = sortedBooks.value.filter(book => {
     const matchesKeyword = !value || `${book.title || ''} ${book.author || ''}`.toLowerCase().includes(value)
     if (!matchesKeyword) return false
     if (!selectedGroup.value) return true
     if (selectedGroup.value === 'none') return !book.categoryId
     return String(book.categoryId) === selectedGroup.value
   })
-  return sortByShelfOrder(filtered, reader.progressByBook)
+  return filtered
 })
 
-const recentBook = computed(() => displayedBooks.value[0] || null)
+const recentBook = computed(() => sortedBooks.value[0] || null)
 
 const emptyText = computed(() => {
   if (keyword.value.trim()) return '没有匹配的书籍'
