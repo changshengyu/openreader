@@ -22,9 +22,12 @@
   </div>
   <div v-if="keyword && searched" class="search-footer">
     <span>{{ statusText }}</span>
-    <el-button size="small" :loading="loading" :disabled="!hasMore" @click="$emit('loadMore')">
-      {{ hasMore ? '继续搜索' : '没有更多' }}
-    </el-button>
+    <span class="search-actions">
+      <el-button size="small" :loading="loading" :disabled="!hasMore" @click="$emit('loadMore')">
+        {{ hasMore ? '继续搜索' : '没有更多' }}
+      </el-button>
+      <el-button v-if="hasMore" size="small" plain :loading="loading" @click="$emit('loadAll')">搜完全书</el-button>
+    </span>
   </div>
 </template>
 
@@ -58,7 +61,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue', 'search', 'loadMore', 'jump'])
+const emit = defineEmits(['update:modelValue', 'search', 'loadMore', 'loadAll', 'jump'])
 
 const keyword = computed({
   get: () => props.modelValue,
@@ -129,6 +132,12 @@ const keyword = computed({
   min-width: 0;
 }
 
+.search-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 @media (max-width: 860px), (hover: none) and (pointer: coarse) {
   .content-search-row {
     display: grid;
@@ -161,6 +170,12 @@ const keyword = computed({
   .search-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .search-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .search-footer :deep(.el-button) {
