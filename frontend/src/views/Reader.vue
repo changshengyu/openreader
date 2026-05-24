@@ -2009,12 +2009,18 @@ function readError(err, fallback) {
     border: 1px solid rgba(148, 132, 87, 0.28);
     border-radius: 8px;
     box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
-    transform: translateY(180%);
-    transition: transform 180ms ease;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(100% + 110px + env(safe-area-inset-bottom)));
+    transition: transform 180ms ease, opacity 120ms ease;
   }
   .reader-shell.mobile-chrome-visible .reader-mobile-top,
-  .reader-shell.mobile-chrome-visible .reader-mobile-bottom,
+  .reader-shell.mobile-chrome-visible .reader-mobile-bottom {
+    transform: translateY(0);
+  }
   .reader-shell.mobile-chrome-visible .reader-mobile-progress-panel {
+    opacity: 1;
+    pointer-events: auto;
     transform: translateY(0);
   }
   .mobile-chapter-step {
