@@ -1185,11 +1185,11 @@ function handleTapZone(zone) {
     return
   }
   if (zone === 'left') {
-    if (reader.mode === 'flip') previousPage()
+    if (reader.mode === 'flip' || reader.mode === 'scroll') previousPage()
     return
   }
   if (zone === 'right') {
-    if (reader.mode === 'flip') nextPage()
+    if (reader.mode === 'flip' || reader.mode === 'scroll') nextPage()
     return
   }
   if (zone === 'upper') {
@@ -1569,10 +1569,10 @@ useKeyboard({
   onPageUp: () => previousPage(),
   onPageDown: () => nextPage(),
   onArrowLeft: () => {
-    if (reader.mode === 'flip') previousPage()
+    if (reader.mode === 'flip' || reader.mode === 'scroll') previousPage()
   },
   onArrowRight: () => {
-    if (reader.mode === 'flip') nextPage()
+    if (reader.mode === 'flip' || reader.mode === 'scroll') nextPage()
   },
   onArrowUp: () => {
     if (reader.mode === 'page' || reader.mode === 'scroll') previousPage()
@@ -1927,6 +1927,7 @@ function readError(err, fallback) {
   height: 100%;
   column-width: var(--reader-page-width);
   column-gap: 0;
+  column-fill: auto;
 }
 .reader-shell.flip .reader-body h1,
 .reader-shell.flip .reader-body p {
