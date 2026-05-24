@@ -34,6 +34,26 @@ docker compose up -d
 
 Open `http://localhost:8080`. Register an account and start reading.
 
+### Publish Docker Image
+
+The image is published as a multi-arch manifest for both Intel/AMD servers and Apple Silicon Macs:
+
+```bash
+docker login ghcr.io
+./scripts/docker-build-push.sh
+```
+
+Useful overrides:
+
+```bash
+TAG=manual-test ./scripts/docker-build-push.sh
+IMAGE=ghcr.io/changshengyu/openreader TAG=$(git rev-parse --short HEAD) ./scripts/docker-build-push.sh
+PUSH=0 PLATFORMS=linux/arm64 ./scripts/docker-build-push.sh
+docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
+```
+
+The script passes `VERSION`, `VCS_REF`, and `BUILD_DATE` into the Go binary and OCI image labels, so `/api/health` and the Settings page show the actual build metadata instead of `unknown`.
+
 ### Local Development
 
 **Backend:**
