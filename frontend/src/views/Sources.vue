@@ -35,6 +35,9 @@
       <el-button :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
       <el-button type="danger" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">删除选中</el-button>
       <el-button :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">失效检测</el-button>
+      <el-button type="warning" plain :disabled="!failedHealthSourceIds.length" @click="disableFailedSources">
+        停用失败 {{ failedHealthSourceIds.length || '' }}
+      </el-button>
       <el-checkbox v-model="failedOnly" :disabled="!healthSummary.total">只看失败</el-checkbox>
       <span v-if="healthSummary.total" class="health-summary">
         已检 {{ healthSummary.total }} · 可用 {{ healthSummary.ok }} · 失败 {{ healthSummary.failed }}
@@ -306,6 +309,12 @@ const healthSummary = computed(() => {
     failed: rows.filter(row => !row.ok).length,
   }
 })
+const failedHealthSourceIds = computed(() =>
+  Object.entries(health.value)
+    .filter(([, row]) => row && row.ok === false)
+    .map(([id]) => Number(id))
+    .filter(Boolean),
+)
 const shownSources = computed(() => {
   const value = keyword.value.trim().toLowerCase()
   return sources.value.filter(source => {
@@ -452,6 +461,24 @@ async function batchUpdateSources(action) {
   }
 }
 
+async function disableFailedSources() {
+  const sourceIds = failedHealthSourceIds.value
+  if (!sourceIds.length) return
+  try {
+    await ElMessageBox.confirm(`确定停用检测失败的 ${sourceIds.length} 个书源吗？`, '停用失败书源', { type: 'warning' })
+    const { data } = await batchSources({ action: 'disable', sourceIds })
+    ElMessage.success(`已停用 ${data.affected || 0} 个失败书源`)
+    for (const id of sourceIds) {
+      if (health.value[id]) health.value[id].enabled = false
+    }
+    selection.value = []
+    await loadSources()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '停用失败书源失败'))
+  }
+}
+
 function isSourceSelected(source) {
   return selection.value.some(item => item.id === source.id)
 }
@@ -577,7 +604,14 @@ async function checkInvalidSources() {
       keyword: '测试',
     })
     for (const item of data.results || []) {
-      health.value[item.sourceId] = { ok: item.ok, message: item.ok ? `可用，${item.count} 条` : item.message || '失败' }
+      health.value[item.sourceId] = {
+        ok: item.ok,
+        message: item.ok ? `可用，${item.count} 条` : item.message || '失败',
+        name: item.name,
+        group: item.group || '默认分组',
+        enabled: item.enabled,
+        count: item.count || 0,
+      }
     }
     const failed = (data.results || []).filter(item => !item.ok).length
     ElMessage.success(`已检测 ${data.results?.length || 0} 个书源，失败 ${failed} 个`)

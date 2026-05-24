@@ -645,8 +645,12 @@ func TestBatchTestSourcesReturnsPerSourceResults(t *testing.T) {
 
 	var resp struct {
 		Results []struct {
-			OK      bool   `json:"ok"`
-			Message string `json:"message"`
+			SourceID uint   `json:"sourceId"`
+			Name     string `json:"name"`
+			Group    string `json:"group"`
+			Enabled  bool   `json:"enabled"`
+			OK       bool   `json:"ok"`
+			Message  string `json:"message"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(w2.Body.Bytes(), &resp); err != nil {
@@ -654,6 +658,9 @@ func TestBatchTestSourcesReturnsPerSourceResults(t *testing.T) {
 	}
 	if len(resp.Results) != 1 || resp.Results[0].OK || !strings.Contains(resp.Results[0].Message, "no search URL") {
 		t.Fatalf("unexpected batch result: %+v", resp.Results)
+	}
+	if resp.Results[0].SourceID == 0 || resp.Results[0].Name != "无搜索地址" || !resp.Results[0].Enabled {
+		t.Fatalf("batch result missing source metadata: %+v", resp.Results[0])
 	}
 }
 

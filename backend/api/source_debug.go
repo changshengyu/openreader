@@ -100,6 +100,9 @@ type batchTestSourcesRequest struct {
 
 type batchTestSourceResult struct {
 	SourceID uint   `json:"sourceId"`
+	Name     string `json:"name"`
+	Group    string `json:"group"`
+	Enabled  bool   `json:"enabled"`
 	OK       bool   `json:"ok"`
 	Count    int    `json:"count"`
 	Message  string `json:"message"`
@@ -140,6 +143,9 @@ func (s *Server) batchTestSources(c *gin.Context) {
 			searchResults, err := engine.SearchBooks(source, keyword)
 			results[index] = batchTestSourceResult{
 				SourceID: source.ID,
+				Name:     source.Name,
+				Group:    source.Group,
+				Enabled:  source.Enabled,
 				OK:       err == nil,
 				Count:    len(searchResults),
 				Message:  errToString(err),
