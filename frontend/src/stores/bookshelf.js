@@ -16,49 +16,106 @@ function sortBooks(books) {
   return sortByShelfOrder(asList(books))
 }
 
+const REFRESH_DEDUPE_MS = 1200
+let booksRequest = null
+let booksRequestKey = ''
+let categoriesRequest = null
+
 export const useBookshelfStore = defineStore('bookshelf', {
   state: () => ({
     books: [],
     categories: [],
     selectedCategoryId: '',
     loading: false,
+    booksLoadedAt: 0,
+    booksLoadedKey: '',
+    categoriesLoadedAt: 0,
   }),
   actions: {
-    async loadBooks() {
-      this.loading = true
-      try {
-        const params = {}
-        if (this.selectedCategoryId) {
-          params.categoryId = this.selectedCategoryId
-        }
-        const { data } = await listBooks(params)
-        this.books = sortBooks(data)
-      } finally {
-        this.loading = false
+    async loadBooks(options = {}) {
+      const force = options === true || Boolean(options?.force)
+      const params = {}
+      if (this.selectedCategoryId) {
+        params.categoryId = this.selectedCategoryId
       }
+      const requestKey = JSON.stringify(params)
+      const now = Date.now()
+      if (!force && this.booksLoadedKey === requestKey && this.booksLoadedAt > 0 && now - this.booksLoadedAt < REFRESH_DEDUPE_MS) {
+        return this.books
+      }
+      if (!force && booksRequest && booksRequestKey === requestKey) return booksRequest
+
+      this.loading = true
+      booksRequestKey = requestKey
+      const request = listBooks(params)
+        .then(({ data }) => {
+          this.books = sortBooks(data)
+          this.booksLoadedAt = Date.now()
+          this.booksLoadedKey = requestKey
+          return this.books
+        })
+        .finally(() => {
+          if (booksRequest === request) {
+            booksRequest = null
+            booksRequestKey = ''
+            this.loading = false
+          }
+        })
+      booksRequest = request
+      return booksRequest
     },
-    async loadCategories() {
-      const { data } = await listCategories()
-      this.categories = asList(data)
+    async loadCategories(options = {}) {
+      const force = options === true || Boolean(options?.force)
+      const now = Date.now()
+      if (!force && this.categoriesLoadedAt > 0 && now - this.categoriesLoadedAt < REFRESH_DEDUPE_MS) {
+        return this.categories
+      }
+      if (!force && categoriesRequest) return categoriesRequest
+
+      const request = listCategories()
+        .then(({ data }) => {
+          this.categories = asList(data)
+          this.categoriesLoadedAt = Date.now()
+          return this.categories
+        })
+        .finally(() => {
+          if (categoriesRequest === request) categoriesRequest = null
+        })
+      categoriesRequest = request
+      return categoriesRequest
+    },
+    invalidateBooks() {
+      this.booksLoadedAt = 0
+      this.booksLoadedKey = ''
+    },
+    invalidateCategories() {
+      this.categoriesLoadedAt = 0
+    },
+    invalidateShelf() {
+      this.invalidateBooks()
+      this.invalidateCategories()
     },
     async addCategory(category) {
       const { data } = await createCategory(category)
       this.categories.push(data)
       this.categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name))
+      this.invalidateCategories()
       return data
     },
     async selectCategory(categoryId) {
       this.selectedCategoryId = categoryId
-      await this.loadBooks()
+      await this.loadBooks({ force: true })
     },
     async addBook(book) {
       const { data } = await createBook(book)
       this.books = sortBooks([data, ...this.books])
+      this.invalidateBooks()
       return data
     },
     async removeBook(bookId) {
       await deleteBook(bookId)
       this.books = this.books.filter(book => book.id !== bookId)
+      this.invalidateBooks()
     },
     upsertBook(book) {
       if (!book?.id) return
@@ -67,14 +124,17 @@ export const useBookshelfStore = defineStore('bookshelf', {
         ? this.books.map(item => item.id === book.id ? book : item)
         : [book, ...this.books]
       this.books = sortBooks(nextBooks)
+      this.invalidateBooks()
     },
     async batchDeleteBooks(bookIds) {
       await batchBooks({ action: 'delete', bookIds })
       this.books = this.books.filter(book => !bookIds.includes(book.id))
+      this.invalidateBooks()
     },
     async batchSetCategory(bookIds, categoryId) {
       await batchBooks({ action: 'category', bookIds, categoryId })
       this.books = sortBooks(this.books.map(book => bookIds.includes(book.id) ? { ...book, categoryId } : book))
+      this.invalidateBooks()
     },
     async batchCacheBooks(bookIds) {
       const { data } = await batchBooks({ action: 'cache', bookIds })
@@ -92,16 +152,19 @@ export const useBookshelfStore = defineStore('bookshelf', {
       const { data } = await updateCategory(categoryId, payload)
       const index = this.categories.findIndex(category => category.id === data.id)
       if (index >= 0) this.categories[index] = data
+      this.invalidateCategories()
       return data
     },
     async removeCategory(categoryId) {
       await deleteCategory(categoryId)
       this.categories = this.categories.filter(category => category.id !== categoryId)
       this.books = sortBooks(this.books.map(book => String(book.categoryId) === String(categoryId) ? { ...book, categoryId: null } : book))
+      this.invalidateShelf()
     },
     async reorderCategoryIds(ids) {
       const { data } = await reorderCategories(ids)
       this.categories = asList(data)
+      this.invalidateCategories()
       return data
     },
     async importTXT({ file, title, author, categoryId }) {
@@ -114,7 +177,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       const { data } = await api.post('/imports/books', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      await this.loadBooks()
+      await this.loadBooks({ force: true })
       return data
     },
   },

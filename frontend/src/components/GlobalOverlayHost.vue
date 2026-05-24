@@ -1013,7 +1013,7 @@ async function refreshShelf() {
   loadingUpdates.value = true
   try {
     const { data } = await checkBookUpdates()
-    await bookshelf.loadBooks()
+    await bookshelf.loadBooks({ force: true })
     ElMessage.success(data?.newChapters ? `发现 ${data.newChapters} 个新章节` : '暂未发现新章节')
   } catch (err) {
     ElMessage.error(readError(err, '刷新失败'))
@@ -1032,7 +1032,7 @@ async function refreshBookInfo(book) {
       bookshelf.upsertBook(updatedBook)
       overlay.bookInfoBook = updatedBook
     } else {
-      await bookshelf.loadBooks()
+      await bookshelf.loadBooks({ force: true })
     }
     ElMessage.success(`目录已刷新，共 ${data?.chapterCount || updatedBook?.chapterCount || 0} 章`)
   } catch (err) {
@@ -1217,7 +1217,7 @@ async function cacheBook(book, command) {
     const chapterIndex = cacheStartChapterIndex(book)
     const { data } = await cacheBookContent(book.id, { all: true, count: 20, chapterIndex })
     ElMessage.success(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
-    await bookshelf.loadBooks()
+    await bookshelf.loadBooks({ force: true })
   } catch (err) {
     ElMessage.error(readError(err, '缓存失败'))
   } finally {
@@ -1709,7 +1709,7 @@ async function importWebDAVBooks(paths) {
     const failed = webdavImportResults.value.filter(item => item.error).length
     ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
     webdavImportResultDialog.value = true
-    await bookshelf.loadBooks()
+    await bookshelf.loadBooks({ force: true })
   } catch (err) {
     ElMessage.error(readError(err, '导入 WebDAV 文件失败'))
   } finally {
@@ -1779,7 +1779,7 @@ async function restoreBackup(data) {
     form.append('file', file)
     const { data: result } = await restoreLegadoBackup(form)
     ElMessage.success(`恢复完成：书源 ${result.sources || 0}，书籍 ${result.books || 0}，进度 ${result.progress || 0}`)
-    await bookshelf.loadBooks()
+    await bookshelf.loadBooks({ force: true })
   } catch (err) {
     ElMessage.error(readError(err, '恢复备份失败'))
   } finally {

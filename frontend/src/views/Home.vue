@@ -189,7 +189,7 @@ async function deleteManagedBook(book) {
 async function refreshShelf() {
   refreshLoading.value = true
   try {
-    await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks()])
+    await Promise.all([bookshelf.loadCategories({ force: true }), bookshelf.loadBooks({ force: true })])
     ElMessage.success('书架已刷新')
   } catch (err) {
     ElMessage.error(readError(err, '刷新书架失败'))

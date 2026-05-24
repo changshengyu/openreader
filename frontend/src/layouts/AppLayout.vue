@@ -244,7 +244,7 @@ function handleLogout() {
 }
 
 async function refreshShelfData() {
-  await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks()]).catch(() => {})
+  await Promise.all([bookshelf.loadCategories({ force: true }), bookshelf.loadBooks({ force: true })]).catch(() => {})
   router.push({ name: 'home' })
 }
 

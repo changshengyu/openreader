@@ -764,7 +764,7 @@ function shelfCoverStyle(item) {
 async function refreshReaderShelf() {
   shelfLoading.value = true
   try {
-    await bookshelf.loadBooks()
+    await bookshelf.loadBooks({ force: true })
   } catch (err) {
     ElMessage.error(readError(err, '刷新书架失败'))
   } finally {
