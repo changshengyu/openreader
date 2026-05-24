@@ -518,7 +518,11 @@ function readError(err, fallback) {
   .book-group-wrapper,
   .book-list,
   .empty-panel {
+    max-width: 100%;
     border-radius: 0;
+    border-right: 0;
+    border-left: 0;
+    box-shadow: none;
   }
 
   .shelf-title {
@@ -567,14 +571,15 @@ function readError(err, fallback) {
   }
 
   .book-row {
-    grid-template-columns: 42px minmax(0, 1fr);
-    gap: 10px;
-    padding: 10px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px 8px;
+    contain: layout paint;
   }
 
   .list-cover {
-    width: 42px;
-    height: 56px;
+    width: 40px;
+    height: 54px;
   }
 
   .book-operation {
@@ -583,6 +588,7 @@ function readError(err, fallback) {
     min-width: 0;
     min-height: 0;
     justify-content: flex-end;
+    overflow: hidden;
   }
 
   .book-operation :deep(.el-button) {
@@ -590,7 +596,10 @@ function readError(err, fallback) {
   }
 
   .list-main {
+    width: 100%;
+    max-width: 100%;
     padding-right: 0;
+    overflow: hidden;
   }
 
   .read-button {
@@ -599,12 +608,14 @@ function readError(err, fallback) {
 
   .mobile-row-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) minmax(28px, auto) minmax(28px, auto);
     min-width: 0;
+    max-width: 100%;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     color: var(--app-primary-strong);
     font-size: 12px;
+    overflow: hidden;
   }
 
   .mobile-row-actions span {
@@ -616,6 +627,7 @@ function readError(err, fallback) {
 
   .mobile-row-actions button {
     min-width: 0;
+    max-width: 44px;
     overflow: hidden;
     padding: 0;
     color: var(--app-text-subtle);
@@ -655,7 +667,22 @@ function readError(err, fallback) {
   }
 
   .book-row {
-    padding: 9px 8px;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 7px;
+    padding: 8px 6px;
+  }
+
+  .list-cover {
+    width: 36px;
+    height: 50px;
+  }
+
+  .list-main {
+    gap: 4px;
+  }
+
+  .list-main small {
+    font-size: 12px;
   }
 }
 </style>

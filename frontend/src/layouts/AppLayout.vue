@@ -537,9 +537,11 @@ onBeforeUnmount(() => {
   }
 
   .app-workspace {
+    position: relative;
+    left: 78px;
     width: calc(100vw - 78px);
     max-width: calc(100vw - 78px);
-    margin-left: 78px;
+    margin-left: 0;
     padding-left: 0;
   }
 
@@ -638,9 +640,9 @@ onBeforeUnmount(() => {
   }
 
   .app-workspace {
+    left: 72px;
     width: calc(100vw - 72px);
     max-width: calc(100vw - 72px);
-    margin-left: 72px;
   }
 
   .app-nav-item {
