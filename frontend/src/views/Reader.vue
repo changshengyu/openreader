@@ -195,6 +195,7 @@
     <!-- ===== 目录抽屉 ===== -->
     <el-drawer v-model="showTocDrawer" title="目录" :direction="drawerDirection" :size="drawerSize" @opened="locateTocCurrentChapter">
       <ReaderTocPanel
+        ref="tocPanelRef"
         v-model="tocFilter"
         :chapters="chapters"
         :current-index="currentIndex"
@@ -427,6 +428,7 @@ const sourceCandidatesLoadedKey = ref('')
 const sourceStats = ref(null)
 const shelfKeyword = ref('')
 const shelfLoading = ref(false)
+const tocPanelRef = ref(null)
 const tocFilter = ref('')
 const tocLocateKey = ref(0)
 const contentSearch = ref('')
@@ -723,12 +725,13 @@ async function jumpFromToc(index) {
 function locateTocCurrentChapter() {
   tocFilter.value = ''
   tocLocateKey.value += 1
+  nextTick(() => tocPanelRef.value?.locateCurrentChapter?.())
 }
 
 function openTocDrawer() {
   tocFilter.value = ''
   showTocDrawer.value = true
-  nextTick(locateTocCurrentChapter)
+  window.setTimeout(locateTocCurrentChapter, 0)
 }
 
 function openSettingsDrawer() {
@@ -2230,19 +2233,20 @@ function readError(err, fallback) {
   }
   .reader-mobile-bottom {
     position: fixed;
-    right: 10px;
-    bottom: max(16px, env(safe-area-inset-bottom));
-    left: 10px;
+    right: 0;
+    bottom: 0;
+    left: 0;
     z-index: 8;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
     gap: 7px 4px;
     min-height: 74px;
-    padding: 8px 10px;
+    box-sizing: border-box;
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
     background: rgba(255, 252, 239, 0.92);
     border-top: 1px solid rgba(148, 132, 87, 0.35);
-    border-radius: 10px;
+    border-radius: 10px 10px 0 0;
     box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
     transition: transform 180ms ease;
   }

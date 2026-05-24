@@ -47,6 +47,7 @@
                 <el-switch v-model="tocReverse" active-text="倒序" inactive-text="正序" />
               </div>
               <ReaderTocPanel
+                ref="tocPanelRef"
                 v-model="tocKeyword"
                 :chapters="chapters"
                 :current-index="detailCurrentIndex"
@@ -186,6 +187,7 @@ const sourceOffset = ref(0)
 const sourceHasMore = ref(false)
 const sourceStats = ref(null)
 const activeTab = ref('toc')
+const tocPanelRef = ref(null)
 const tocKeyword = ref('')
 const tocLocateKey = ref(0)
 const tocReverse = ref(false)
@@ -227,7 +229,10 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateWindowWidth))
 watch(activeTab, (tab) => {
   if (tab !== 'toc') return
   tocKeyword.value = ''
-  nextTick(() => { tocLocateKey.value += 1 })
+  nextTick(() => {
+    tocLocateKey.value += 1
+    tocPanelRef.value?.locateCurrentChapter?.()
+  })
 })
 
 function updateWindowWidth() {

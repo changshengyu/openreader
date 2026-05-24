@@ -89,6 +89,10 @@ function locateCurrentChapter(attempt = 0) {
   })
 }
 
+defineExpose({
+  locateCurrentChapter,
+})
+
 onMounted(locateCurrentChapter)
 onBeforeUnmount(() => {
   if (locateTimer) window.clearTimeout(locateTimer)
