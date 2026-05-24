@@ -12,8 +12,11 @@
         <el-upload :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="uploadFile">
           <el-button :icon="Upload" :loading="uploading">上传</el-button>
         </el-upload>
-        <el-button :disabled="!shownImportablePaths.length || importing" :loading="importing" @click="importAllShown">
-          导入全部 ({{ shownImportablePaths.length }})
+        <el-button :disabled="!importableCount || importing" :loading="importing" @click="importCurrentDirectory">
+          导入当前目录 ({{ importableCount }})
+        </el-button>
+        <el-button :disabled="!shownImportablePaths.length || importing" :loading="importing" @click="importFiltered">
+          导入筛选 ({{ shownImportablePaths.length }})
         </el-button>
         <el-button type="primary" :disabled="!checkedRows.length || importing" :loading="importing" @click="importSelected">
           导入选中 ({{ checkedRows.length }})
@@ -22,10 +25,10 @@
     </header>
 
     <section class="store-summary">
-      <article class="app-panel stat"><span>文件</span><strong>{{ items.length }}</strong></article>
+      <article class="app-panel stat"><span>项目</span><strong>{{ items.length }}</strong></article>
+      <article class="app-panel stat"><span>可导入</span><strong>{{ importableCount }}</strong></article>
       <article class="app-panel stat"><span>已选</span><strong>{{ checkedRows.length }}</strong></article>
       <article class="app-panel stat"><span>总大小</span><strong>{{ formatSize(totalSize) }}</strong></article>
-      <article class="app-panel stat"><span>格式</span><strong>{{ extensions.length }}</strong></article>
     </section>
 
     <section class="store-toolbar app-panel">
@@ -157,6 +160,7 @@ const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMe
 
 const totalSize = computed(() => items.value.filter(item => !item.isDir).reduce((sum, item) => sum + (item.size || 0), 0))
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
+const importableCount = computed(() => items.value.filter(item => item.importable).length)
 const breadcrumbs = computed(() => {
   if (!currentPath.value) return []
   const parts = currentPath.value.split(/[\\/]/).filter(Boolean)
@@ -273,7 +277,28 @@ async function importSelected() {
   }
 }
 
-async function importAllShown() {
+async function importCurrentDirectory() {
+  if (!importableCount.value) return
+  try {
+    const label = currentPath.value || 'localStore'
+    await ElMessageBox.confirm(`将递归导入“${label}”下的 ${importableCount.value} 个可导入文件，是否继续？`, '导入当前目录', { type: 'info' })
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    throw err
+  }
+  importing.value = true
+  try {
+    await importPaths([currentPath.value])
+    checkedRows.value = []
+    await load()
+  } catch (err) {
+    ElMessage.error(readError(err, '导入目录失败'))
+  } finally {
+    importing.value = false
+  }
+}
+
+async function importFiltered() {
   if (!shownImportablePaths.value.length) return
   importing.value = true
   try {

@@ -363,6 +363,7 @@
             <el-button v-if="!row.isDir && isBackupFile(row)" text type="primary" :loading="webdavRestoring === row.name" @click="restoreWebDAVBackupFile(row)">恢复</el-button>
             <el-button v-if="!row.isDir" text type="primary" @click="downloadWebDAVFile(row)">下载</el-button>
             <el-button v-if="row.importable" text type="primary" :loading="webdavImporting" @click="importWebDAVBook(row)">加入书架</el-button>
+            <el-button v-else-if="row.isDir" text type="primary" :loading="webdavImporting" @click="importWebDAVDirectory(row)">加入目录</el-button>
             <el-button text @click="renameWebDAVItem(row)">重命名</el-button>
             <el-button text type="danger" @click="deleteWebDAVItem(row)">删除</el-button>
           </template>
@@ -393,6 +394,7 @@
             <el-button v-if="!row.isDir && isBackupFile(row)" size="small" text type="primary" :loading="webdavRestoring === row.name" @click="restoreWebDAVBackupFile(row)">恢复</el-button>
             <el-button v-if="!row.isDir" size="small" text type="primary" @click="downloadWebDAVFile(row)">下载</el-button>
             <el-button v-if="row.importable" size="small" text type="primary" :loading="webdavImporting" @click="importWebDAVBook(row)">加入书架</el-button>
+            <el-button v-else-if="row.isDir" size="small" text type="primary" :loading="webdavImporting" @click="importWebDAVDirectory(row)">加入目录</el-button>
             <el-button size="small" text @click="renameWebDAVItem(row)">重命名</el-button>
             <el-button size="small" text type="danger" @click="deleteWebDAVItem(row)">删除</el-button>
           </footer>
@@ -1840,6 +1842,17 @@ async function deleteSelectedWebDAVItems() {
 
 async function importWebDAVBook(row) {
   if (!row.importable) return
+  await importWebDAVBooks([joinPath(webdavPath.value, row.name)])
+}
+
+async function importWebDAVDirectory(row) {
+  if (!row.isDir) return
+  try {
+    await ElMessageBox.confirm(`将递归导入 WebDAV 目录“${row.name}”下的可导入文件，是否继续？`, '加入 WebDAV 目录', { type: 'info' })
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    throw err
+  }
   await importWebDAVBooks([joinPath(webdavPath.value, row.name)])
 }
 

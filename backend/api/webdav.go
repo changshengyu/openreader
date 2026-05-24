@@ -280,46 +280,83 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 
 	importer := localbook.NewImporter(s.cfg, s.db)
 	imported := make([]gin.H, 0)
+	seen := make(map[string]bool)
 
 	for _, rawPath := range req.Paths {
-		filePath, relativePath, ok := s.webdavPath(c, rawPath)
+		files, ok := s.webDAVImportFiles(c, rawPath)
 		if !ok {
 			continue
 		}
+		for _, file := range files {
+			if seen[file.relativePath] {
+				continue
+			}
+			seen[file.relativePath] = true
 
-		info, err := os.Stat(filePath)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(filePath))
-		if !isImportableExtension(ext) {
-			imported = append(imported, gin.H{"path": relativePath, "error": "unsupported file type"})
-			continue
-		}
+			data, err := os.ReadFile(file.filePath)
+			if err != nil {
+				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
+				continue
+			}
 
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			imported = append(imported, gin.H{"path": relativePath, "error": err.Error()})
-			continue
+			book, err := importer.Import(localbook.ImportRequest{
+				UserID:     userID,
+				UserName:   userName,
+				FileName:   filepath.Base(file.filePath),
+				Extension:  file.extension,
+				Data:       data,
+				CategoryID: req.CategoryID,
+			})
+			if err != nil {
+				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
+				continue
+			}
+			imported = append(imported, gin.H{"path": file.relativePath, "book": book})
 		}
-
-		book, err := importer.Import(localbook.ImportRequest{
-			UserID:     userID,
-			UserName:   userName,
-			FileName:   filepath.Base(filePath),
-			Extension:  ext,
-			Data:       data,
-			CategoryID: req.CategoryID,
-		})
-		if err != nil {
-			imported = append(imported, gin.H{"path": relativePath, "error": err.Error()})
-			continue
-		}
-		imported = append(imported, gin.H{"path": relativePath, "book": book})
 	}
 
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
 	c.JSON(http.StatusOK, gin.H{"imported": imported})
+}
+
+func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStoreImportFile, bool) {
+	filePath, relativePath, ok := s.webdavPath(c, rawPath)
+	if !ok {
+		return nil, false
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, true
+	}
+	if !info.IsDir() {
+		ext := strings.ToLower(filepath.Ext(filePath))
+		if !isImportableExtension(ext) {
+			return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
+		}
+		return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
+	}
+
+	files := make([]localStoreImportFile, 0)
+	_ = filepath.WalkDir(filePath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if !isImportableExtension(ext) {
+			return nil
+		}
+		rel, err := filepath.Rel(filePath, path)
+		if err != nil {
+			return nil
+		}
+		files = append(files, localStoreImportFile{
+			filePath:     path,
+			relativePath: cleanRelativePath(filepath.Join(relativePath, rel)),
+			extension:    ext,
+		})
+		return nil
+	})
+	return files, true
 }
 
 func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error) {

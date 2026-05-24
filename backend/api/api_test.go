@@ -2184,6 +2184,44 @@ func TestLocalStoreImportDirectoryRecursively(t *testing.T) {
 	}
 }
 
+func TestLocalStoreImportRootRecursively(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	nestedDir := filepath.Join(server.cfg.LocalStoreDir, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.cfg.LocalStoreDir, "root.txt"), []byte("第一章 开始\n正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "child.txt"), []byte("第一章 开始\n正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/local-store/import", strings.NewReader(`{"paths":[""]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("local store root import: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Imported []struct {
+			Path string       `json:"path"`
+			Book *models.Book `json:"book"`
+		} `json:"imported"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Imported) != 2 {
+		t.Fatalf("expected root import to include nested files, got %+v", payload.Imported)
+	}
+}
+
 func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	router, _ := setupTestServer(t)
 
@@ -2735,5 +2773,46 @@ func TestImportFromWebDAVImportsBook(t *testing.T) {
 	}
 	if book.ChapterCount == 0 {
 		t.Fatalf("expected imported chapters, got %+v", book)
+	}
+}
+
+func TestImportFromWebDAVImportsDirectoryRecursively(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	webdavDir := filepath.Join(server.cfg.DataDir, "webdav", "books", "nested")
+	if err := os.MkdirAll(webdavDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.cfg.DataDir, "webdav", "books", "root.txt"), []byte("第一章 开始\n正文内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webdavDir, "child.txt"), []byte("第一章 开始\n正文内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webdavDir, "ignore.bin"), []byte("ignore"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/webdav/import", strings.NewReader(`{"paths":["books"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("import webdav directory: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Imported []struct {
+			Path string       `json:"path"`
+			Book *models.Book `json:"book"`
+		} `json:"imported"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Imported) != 2 {
+		t.Fatalf("expected directory import to include nested files, got %+v", payload.Imported)
 	}
 }
