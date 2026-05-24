@@ -442,12 +442,35 @@ function readError(err, fallback) {
 }
 
 @media (max-width: 860px), (hover: none) and (pointer: coarse) {
+  .search-page {
+    gap: 8px;
+    padding-bottom: 14px;
+  }
+
   .search-head,
   .search-console,
   .search-options,
   .result-card,
   .result-actions {
     display: grid;
+  }
+
+  .search-head {
+    gap: 6px;
+  }
+
+  .search-head .app-page-subtitle {
+    display: none;
+  }
+
+  .search-head :deep(.el-button),
+  .search-console :deep(.el-button) {
+    min-height: 38px;
+  }
+
+  .search-console {
+    gap: 8px;
+    padding: 8px;
   }
 
   .search-console > .el-input,
@@ -457,8 +480,65 @@ function readError(err, fallback) {
     width: 100%;
   }
 
+  .search-options {
+    gap: 8px;
+  }
+
+  .search-options :deep(.el-radio-group) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-options :deep(.el-radio-button__inner) {
+    display: block;
+    min-height: 36px;
+    overflow: hidden;
+    padding: 8px 6px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .source-checks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .source-checks :deep(.el-checkbox) {
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .source-checks :deep(.el-checkbox__label) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-status {
+    gap: 6px;
+  }
+
+  .source-result-list,
+  .result-list {
+    gap: 8px;
+  }
+
+  .source-result-head {
+    align-items: flex-start;
+    display: grid;
+    gap: 4px;
+  }
+
   .result-actions {
     justify-content: stretch;
+  }
+
+  .result-actions :deep(.el-button) {
+    width: 100%;
+    min-height: 36px;
+    margin-left: 0;
   }
 
   .result-card {
@@ -470,6 +550,22 @@ function readError(err, fallback) {
   .result-title {
     display: grid;
     gap: 4px;
+  }
+
+  .result-main h3 {
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .result-main p {
+    min-width: 0;
+    font-size: 12px;
+  }
+
+  .result-intro {
+    -webkit-line-clamp: 2;
   }
 }
 </style>

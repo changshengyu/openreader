@@ -21,7 +21,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   chapters: {
@@ -66,18 +66,31 @@ const filteredChapters = computed(() => {
 })
 
 const tocListRef = ref(null)
+let locateTimer = 0
 
-function locateCurrentChapter() {
+function locateCurrentChapter(attempt = 0) {
+  if (locateTimer) window.clearTimeout(locateTimer)
   nextTick(() => {
     const list = tocListRef.value
     const active = list?.querySelector?.(`[data-chapter-index="${props.currentIndex}"]`)
-    if (!list || !active) return
+    if (!list || !active) {
+      if (attempt < 4 && props.chapters.length) {
+        locateTimer = window.setTimeout(() => locateCurrentChapter(attempt + 1), 80)
+      }
+      return
+    }
     const targetTop = active.offsetTop - Math.max(0, (list.clientHeight - active.clientHeight) / 2)
     list.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
+    requestAnimationFrame(() => {
+      list.scrollTop = Math.max(0, targetTop)
+    })
   })
 }
 
 onMounted(locateCurrentChapter)
+onBeforeUnmount(() => {
+  if (locateTimer) window.clearTimeout(locateTimer)
+})
 
 watch(
   () => [props.currentIndex, props.locateKey, filteredChapters.value.length],

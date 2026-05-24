@@ -49,6 +49,7 @@
               <ReaderTocPanel
                 v-model="tocKeyword"
                 :chapters="chapters"
+                :current-index="detailCurrentIndex"
                 :reverse="tocReverse"
                 :show-meta="true"
                 @jump="goChapter"
@@ -205,6 +206,12 @@ const isMobileDialog = computed(() => windowWidth.value <= 860 || coarsePointer.
 const sourceGroups = computed(() => {
   const groups = availableSources.value.map(source => source.group).filter(Boolean)
   return [...new Set(groups)].sort()
+})
+const detailCurrentIndex = computed(() => {
+  const id = book.value?.id
+  const progress = id ? reader.progressByBook[id] || book.value?.progress : null
+  const index = Number(progress?.chapterIndex || 0)
+  return Number.isFinite(index) ? Math.max(0, Math.min(chapters.value.length - 1, index)) : 0
 })
 
 onMounted(() => {

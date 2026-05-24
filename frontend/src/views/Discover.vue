@@ -339,15 +339,44 @@ function readError(err, fallback) {
 }
 
 @media (max-width: 860px), (hover: none) and (pointer: coarse) {
+  .discover-page {
+    gap: 8px;
+    padding-bottom: 14px;
+  }
+
   .discover-head,
   .discover-toolbar {
     display: grid;
+    gap: 8px;
     justify-content: stretch;
+  }
+
+  .discover-head .app-page-subtitle {
+    display: none;
+  }
+
+  .discover-toolbar {
+    padding: 8px;
   }
 
   .discover-toolbar .el-select,
   .discover-toolbar :deep(.el-button) {
     width: 100%;
+  }
+
+  .discover-toolbar :deep(.el-button) {
+    min-height: 38px;
+  }
+
+  .source-status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .discover-results {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .discover-card {
@@ -356,8 +385,37 @@ function readError(err, fallback) {
     padding: 10px;
   }
 
+  .discover-card > div {
+    min-width: 0;
+  }
+
   .discover-card h2 {
+    overflow: hidden;
     font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .discover-card p {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .discover-card .intro {
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+
+  .load-more-row {
+    display: grid;
+  }
+
+  .load-more-row :deep(.el-button) {
+    width: 100%;
+    min-height: 38px;
   }
 }
 </style>

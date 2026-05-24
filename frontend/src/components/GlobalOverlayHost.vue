@@ -2145,6 +2145,13 @@ function readError(err, fallback) {
   border-radius: var(--app-radius-sm);
 }
 
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 8px;
+}
+
 .group-set-table {
   margin-bottom: 12px;
 }
@@ -2598,6 +2605,57 @@ function readError(err, fallback) {
   .manage-footer {
     align-items: stretch;
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .manage-footer :deep(.el-button),
+  .manage-footer :deep(.el-dropdown),
+  .manage-footer :deep(.el-dropdown .el-button) {
+    width: 100%;
+    min-height: 38px;
+    margin-left: 0;
+  }
+
+  .manage-footer .check-tip {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+
+  .group-set-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .group-create {
+    grid-template-columns: 1fr;
+  }
+
+  .group-create :deep(.el-button) {
+    width: 100%;
+    min-height: 36px;
+  }
+
+  .group-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .group-row > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .group-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .group-actions :deep(.el-button) {
+    min-height: 32px;
+    margin-left: 0;
   }
 
   .manage-head {
@@ -2611,6 +2669,12 @@ function readError(err, fallback) {
 
   .overlay-actions {
     display: grid;
+  }
+
+  .overlay-actions :deep(.el-button) {
+    width: 100%;
+    min-height: 38px;
+    margin-left: 0;
   }
 
   .file-overlay-head {

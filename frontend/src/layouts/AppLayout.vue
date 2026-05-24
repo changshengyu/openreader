@@ -528,7 +528,7 @@ onBeforeUnmount(() => {
   overflow-x: hidden;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 860px), (hover: none) and (pointer: coarse) {
   .app-sidebar {
     width: 78px;
     overflow-y: auto;
@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 420px), (hover: none) and (pointer: coarse) and (max-width: 520px) {
   .app-sidebar {
     width: 72px;
   }
