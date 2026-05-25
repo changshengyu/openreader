@@ -1,8 +1,14 @@
 <template>
-  <div class="app-shell" :class="{ 'mobile-shell': isMobileShell }">
+  <div
+    class="app-shell"
+    :class="{ 'mobile-shell': isMobileShell, 'mobile-nav-open': mobileNavigationVisible }"
+    @touchstart="handleTouchStart"
+    @touchmove="handleTouchMove"
+    @touchend="handleTouchEnd"
+  >
     <div v-if="offline" class="app-offline">网络已断开，部分同步能力会在恢复连接后继续。</div>
 
-    <aside class="app-sidebar">
+    <aside class="app-sidebar" :style="mobileNavigationStyle">
       <div class="app-brand" @click="goHome">
         <div class="app-brand-mark">阅</div>
         <div>
@@ -131,6 +137,9 @@ const offline = ref(false)
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 const coarsePointer = ref(false)
 const touchDevice = ref(false)
+const mobileNavigationVisible = ref(false)
+const touchStart = ref(null)
+const touchMoveX = ref(0)
 const { connected: syncConnected, connect, disconnect } = useSync()
 
 const navSections = computed(() => [
@@ -191,6 +200,16 @@ const navSections = computed(() => [
 
 const userInitial = computed(() => (userStore.profile?.username || '?').slice(0, 1).toUpperCase())
 const isMobileShell = computed(() => windowWidth.value <= 1180 || coarsePointer.value || touchDevice.value || isMobileUA())
+const mobileNavigationStyle = computed(() => {
+  if (!isMobileShell.value || !touchMoveX.value) return {}
+  if (!mobileNavigationVisible.value && touchMoveX.value > 0 && touchMoveX.value <= 260) {
+    return { marginLeft: `${touchMoveX.value - 260}px` }
+  }
+  if (mobileNavigationVisible.value && touchMoveX.value < 0 && touchMoveX.value >= -260) {
+    return { marginLeft: `${touchMoveX.value}px` }
+  }
+  return {}
+})
 const recentBook = computed(() => {
   const rows = [...(Array.isArray(bookshelf.books) ? bookshelf.books : [])]
   rows.sort((a, b) => compareRecentBook(a, b, reader.progressByBook))
@@ -208,9 +227,13 @@ function goRoute(name) {
 function runNavAction(item) {
   if (item.action) {
     item.action()
+    if (isMobileShell.value) mobileNavigationVisible.value = false
     return
   }
-  if (item.route) router.push({ name: item.route, query: item.query || (item.panel ? { panel: item.panel } : {}) })
+  if (item.route) {
+    router.push({ name: item.route, query: item.query || (item.panel ? { panel: item.panel } : {}) })
+    if (isMobileShell.value) mobileNavigationVisible.value = false
+  }
 }
 
 function isNavActive(item) {
@@ -269,6 +292,41 @@ function updateViewportFlags() {
 function isMobileUA() {
   if (typeof navigator === 'undefined') return false
   return /Android|iPhone|iPad|iPod|Mobile|Tablet|Mobi/i.test(navigator.userAgent || '')
+}
+
+function handleTouchStart(event) {
+  if (!isMobileShell.value || event.touches?.length !== 1) return
+  const touch = event.touches[0]
+  if (touch.clientX <= 20 || touch.clientX >= window.innerWidth - 20 || touch.clientY <= 20 || touch.clientY >= window.innerHeight - 20) {
+    touchStart.value = null
+    return
+  }
+  touchStart.value = { x: touch.clientX, y: touch.clientY }
+  touchMoveX.value = 0
+}
+
+function handleTouchMove(event) {
+  if (!isMobileShell.value || !touchStart.value || event.touches?.length !== 1) return
+  const touch = event.touches[0]
+  const moveX = touch.clientX - touchStart.value.x
+  const moveY = touch.clientY - touchStart.value.y
+  if (Math.abs(moveY) > Math.abs(moveX)) {
+    touchMoveX.value = 0
+    return
+  }
+  if ((!mobileNavigationVisible.value && moveX > 0 && moveX <= 260) || (mobileNavigationVisible.value && moveX < 0 && moveX >= -260)) {
+    event.preventDefault()
+    event.stopPropagation()
+    touchMoveX.value = moveX
+  }
+}
+
+function handleTouchEnd() {
+  if (!isMobileShell.value) return
+  if (touchMoveX.value > 0) mobileNavigationVisible.value = true
+  if (touchMoveX.value < 0) mobileNavigationVisible.value = false
+  touchStart.value = null
+  touchMoveX.value = 0
 }
 
 watch(
@@ -549,19 +607,21 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell .app-sidebar {
-  --mobile-sidebar-width: 78px;
-  width: var(--mobile-sidebar-width);
+  width: 260px;
+  min-width: 260px;
+  margin-left: -260px;
   overflow-y: auto;
-  padding: 8px 6px;
+  padding: max(20px, env(safe-area-inset-top)) 36px 66px;
   scrollbar-width: none;
+  transition: margin-left 0.3s;
 }
 
 .app-shell.mobile-shell .app-workspace {
-  width: calc(100vw - var(--mobile-sidebar-width));
-  width: calc(100dvw - var(--mobile-sidebar-width));
-  max-width: calc(100vw - var(--mobile-sidebar-width));
-  max-width: calc(100dvw - var(--mobile-sidebar-width));
-  margin-left: var(--mobile-sidebar-width);
+  width: 100vw;
+  width: 100dvw;
+  max-width: 100vw;
+  max-width: 100dvw;
+  margin-left: 0;
   padding-left: 0;
 }
 
@@ -570,14 +630,21 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell .app-brand {
-  display: grid;
-  justify-items: center;
-  gap: 5px;
-  padding: 8px 0 14px;
+  display: flex;
+  justify-items: initial;
+  gap: 12px;
+  padding: 8px 0 18px;
 }
 
-.app-shell.mobile-shell .app-brand > div:last-child,
-.app-shell.mobile-shell .app-shell-search,
+.app-shell.mobile-shell .app-brand > div:last-child {
+  display: block;
+}
+
+.app-shell.mobile-shell .app-shell-search {
+  display: block;
+  margin: 0 0 18px;
+}
+
 .app-shell.mobile-shell .app-sidebar-footer {
   display: none;
 }
@@ -590,38 +657,43 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell .app-nav {
-  gap: 0;
+  gap: 14px;
   overflow-y: visible;
-  padding: 0 0 12px;
+  padding: 0 0 14px;
 }
 
 .app-shell.mobile-shell .app-nav-section {
-  gap: 0;
+  gap: 4px;
 }
 
 .app-shell.mobile-shell .app-nav-title {
-  margin: 9px 0 3px;
+  margin: 0 0 8px;
   overflow: hidden;
   color: #a09282;
-  font-size: 10px;
-  line-height: 1.2;
-  text-align: center;
+  font-size: 14px;
+  line-height: 1.3;
+  text-align: left;
   white-space: nowrap;
 }
 
 .app-shell.mobile-shell .app-nav-item {
-  display: grid;
-  height: 60px;
-  place-items: center;
-  align-content: center;
-  gap: 5px;
-  padding: 0;
-  border-radius: 0;
+  display: inline-flex;
+  width: auto;
+  min-width: 82px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 8px 8px 0;
+  padding: 0 10px;
+  background: #fffdf8;
+  border: 1px solid #e4d9c8;
+  border-radius: 4px;
 }
 
 .app-shell.mobile-shell .app-nav-item span {
-  font-size: 11px;
-  line-height: 1.15;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .app-shell.mobile-shell .app-nav-item + .app-nav-item {
@@ -634,23 +706,25 @@ onBeforeUnmount(() => {
 
 .app-shell.mobile-shell .sidebar-recent .app-nav-title,
 .app-shell.mobile-shell .sidebar-recent-book small {
-  display: none;
+  display: block;
 }
 
 .app-shell.mobile-shell .sidebar-recent-book {
-  min-height: 58px;
-  padding: 5px;
-  place-items: center;
-  text-align: center;
+  min-height: auto;
+  padding: 9px 10px;
+  place-items: initial;
+  text-align: left;
 }
 
 .app-shell.mobile-shell .sidebar-recent-book span {
-  display: -webkit-box;
-  font-size: 11px;
+  display: block;
+  font-size: 13px;
   line-height: 1.25;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  white-space: nowrap;
+}
+
+.app-shell.mobile-shell.mobile-nav-open .app-sidebar {
+  margin-left: 0;
 }
 
 @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
@@ -761,13 +835,11 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 420px), (hover: none) and (pointer: coarse) and (max-width: 520px) {
-  .app-shell.mobile-shell .app-sidebar,
   .app-sidebar {
     --mobile-sidebar-width: 72px;
     width: var(--mobile-sidebar-width);
   }
 
-  .app-shell.mobile-shell .app-workspace,
   .app-workspace {
     width: calc(100vw - var(--mobile-sidebar-width));
     width: calc(100dvw - var(--mobile-sidebar-width));
@@ -776,12 +848,10 @@ onBeforeUnmount(() => {
     margin-left: var(--mobile-sidebar-width);
   }
 
-  .app-shell.mobile-shell .app-nav-item,
   .app-nav-item {
     height: 58px;
   }
 
-  .app-shell.mobile-shell .app-nav-item span,
   .app-nav-item span {
     font-size: 11px;
   }

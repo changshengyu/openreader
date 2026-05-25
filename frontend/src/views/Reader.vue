@@ -1672,10 +1672,10 @@ useGesture(pageEl, {
     if (reader.mode === 'flip') previousPage()
   },
   onSwipeUp: () => {
-    if (reader.mode === 'page' || reader.mode === 'scroll') nextPage()
+    if (reader.mode === 'page') nextPage()
   },
   onSwipeDown: () => {
-    if (reader.mode === 'page' || reader.mode === 'scroll') previousPage()
+    if (reader.mode === 'page') previousPage()
   },
   onCenterTap: () => {
     toggleReaderChrome()
