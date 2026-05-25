@@ -459,6 +459,7 @@ const SAVE_PROGRESS_MIN_INTERVAL = 1200
 let saveTimer
 let autoReadTimer
 let autoReadAdvancing = false
+let ttsContinueToken = 0
 let savingProgress = false
 let pendingProgressPayload = null
 let lastProgressSaveKey = ''
@@ -1735,16 +1736,37 @@ function toggleTTS() {
     return
   }
   if (tts.state.playing) {
+    ttsContinueToken += 1
     tts.stop()
   } else {
+    const token = ++ttsContinueToken
     tts.speak(content.value, () => {
       if (currentIndex.value < chapters.value.length - 1) {
-        goChapter(currentIndex.value + 1).then(() => setTimeout(() => tts.speak(content.value), 500))
+        speakNextChapter(currentIndex.value + 1, token)
       }
     })
   }
 }
-function ttsStop() { tts.stop() }
+function ttsStop() {
+  ttsContinueToken += 1
+  tts.stop()
+}
+
+async function speakNextChapter(index, token) {
+  await goChapter(index)
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (token !== ttsContinueToken) return
+    await new Promise(resolve => setTimeout(resolve, 120))
+    if (currentIndex.value === index && content.value.trim()) {
+      tts.speak(content.value, () => {
+        if (token === ttsContinueToken && currentIndex.value < chapters.value.length - 1) {
+          speakNextChapter(currentIndex.value + 1, token)
+        }
+      })
+      return
+    }
+  }
+}
 
 watch(() => tts.currentIndex.value, (idx) => {
   if (idx < 0 || !contentBody.value) return
