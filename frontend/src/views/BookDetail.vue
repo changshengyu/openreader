@@ -14,6 +14,7 @@
             :category-name="categoryName(book.categoryId)"
             :chapters="chapters"
             :progress="reader.progressByBook[book.id]?.percent || 0"
+            :browser-cache-count="book.sourceId > 0 ? browserCacheCount : -1"
             :status-label="book.sourceId ? '远程书籍' : '本地书籍'"
             :status-type="book.sourceId ? 'success' : 'info'"
             :cover-editable="true"
@@ -29,8 +30,10 @@
 	              <el-button @click="openBookEditor">编辑</el-button>
 	              <el-button v-if="book.sourceId > 0" :loading="refreshingBook" @click="refreshCurrentBook">刷新目录</el-button>
 	              <el-button v-if="book.sourceId > 0" :icon="Switch" :loading="loadingSourceCandidates" @click="openChangeSource">换源</el-button>
-	              <el-button v-if="book.sourceId > 0" :loading="cachingBook" @click="cacheCurrentBook">缓存后续20章</el-button>
-	              <el-button v-if="book.sourceId > 0" :loading="clearingCache" @click="clearCurrentBookCache">清缓存</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="cachingLocalBook" @click="cacheCurrentBookLocal">缓存到浏览器</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="cachingBook" @click="cacheCurrentBook">缓存到服务器</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="clearingLocalCache" @click="clearCurrentBookLocalCache">清浏览器缓存</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="clearingCache" @click="clearCurrentBookCache">清服务器缓存</el-button>
 	              <el-button type="danger" plain @click="deleteCurrentBook">删除</el-button>
               <el-select v-model="categoryDraft" placeholder="设置分组" clearable size="default" class="category-select" @change="changeCategory">
                 <el-option label="未分组" value="" />
@@ -45,6 +48,7 @@
             <section class="app-panel tab-panel">
               <div class="tab-toolbar">
                 <el-switch v-model="tocReverse" active-text="倒序" inactive-text="正序" />
+                <span v-if="book.sourceId > 0" class="toc-cache-summary">浏览器缓存 {{ browserCacheCount }} 章</span>
               </div>
               <ReaderTocPanel
                 ref="tocPanelRef"
@@ -54,6 +58,7 @@
                 :reverse="tocReverse"
                 :show-meta="true"
                 :locate-key="tocLocateKey"
+                :browser-cached-map="browserCachedChapters"
                 @jump="goChapter"
               />
             </section>
@@ -168,6 +173,7 @@ import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 
 const route = useRoute()
 const router = useRouter()
@@ -191,6 +197,7 @@ const tocPanelRef = ref(null)
 const tocKeyword = ref('')
 const tocLocateKey = ref(0)
 const tocReverse = ref(false)
+const browserCachedChapters = ref({})
 const categoryDraft = ref('')
 const showChangeSource = ref(false)
 const showBookEditor = ref(false)
@@ -199,7 +206,9 @@ const uploadingCover = ref(false)
 const updatingBook = ref(false)
 const refreshingBook = ref(false)
 const cachingBook = ref(false)
+const cachingLocalBook = ref(false)
 const clearingCache = ref(false)
+const clearingLocalCache = ref(false)
 const changingSource = ref(null)
 const changeMessage = ref('')
 const changeError = ref(false)
@@ -219,6 +228,7 @@ const detailCurrentIndex = computed(() => {
   const index = Number(progress?.chapterIndex || 0)
   return Number.isFinite(index) ? Math.max(0, Math.min(chapters.value.length - 1, index)) : 0
 })
+const browserCacheCount = computed(() => Object.keys(browserCachedChapters.value).length)
 
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
@@ -226,9 +236,10 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.removeEventListener('resize', updateWindowWidth))
 
-watch(activeTab, (tab) => {
+watch(activeTab, async (tab) => {
   if (tab !== 'toc') return
   tocKeyword.value = ''
+  await refreshBrowserCacheMap()
   nextTick(() => {
     tocLocateKey.value += 1
     tocPanelRef.value?.locateCurrentChapter?.()
@@ -256,6 +267,7 @@ async function load() {
     chapters.value = chapterRes.data
     bookmarks.value = bookmarkRes.data
     availableSources.value = sourceRes.data.filter(source => source.enabled)
+    await refreshBrowserCacheMap()
     await loadSourceCandidates()
     categoryDraft.value = book.value.categoryId ? String(book.value.categoryId) : ''
   } catch (err) {
@@ -454,6 +466,24 @@ async function cacheCurrentBook() {
   }
 }
 
+async function cacheCurrentBookLocal() {
+  if (!book.value) return
+  cachingLocalBook.value = true
+  try {
+    if (!chapters.value.length) await reloadChapters()
+    const result = await cacheBookChaptersToBrowser(book.value, book.value.id, chapters.value, {
+      startIndex: 0,
+      count: true,
+    })
+    await refreshBrowserCacheMap()
+    ElMessage.success(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)
+  } catch (err) {
+    ElMessage.error(readError(err, '缓存到浏览器失败'))
+  } finally {
+    cachingLocalBook.value = false
+  }
+}
+
 function cacheStartChapterIndex() {
   const progress = reader.progressByBook[book.value?.id] || book.value?.progress
   const chapterIndex = Number(progress?.chapterIndex)
@@ -476,10 +506,39 @@ async function clearCurrentBookCache() {
   }
 }
 
+async function clearCurrentBookLocalCache() {
+  if (!book.value) return
+  try {
+    await ElMessageBox.confirm(`确定清理浏览器中《${book.value.title}》的章节缓存吗？`, '清理浏览器缓存', { type: 'warning' })
+    clearingLocalCache.value = true
+    const removed = await clearBookBrowserChapterCache(book.value, book.value.id)
+    browserCachedChapters.value = {}
+    ElMessage.success(`已清理浏览器缓存 ${removed} 章`)
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '清理浏览器缓存失败'))
+  } finally {
+    clearingLocalCache.value = false
+  }
+}
+
 async function reloadChapters() {
   if (!book.value) return
   const chaptersRes = await api.get(`/books/${book.value.id}/chapters`)
   chapters.value = chaptersRes.data
+  await refreshBrowserCacheMap()
+}
+
+async function refreshBrowserCacheMap() {
+  if (!book.value || Number(book.value.sourceId || 0) <= 0) {
+    browserCachedChapters.value = {}
+    return
+  }
+  try {
+    browserCachedChapters.value = await listBookBrowserCachedChapters(book.value, book.value.id)
+  } catch {
+    browserCachedChapters.value = {}
+  }
 }
 
 async function loadSourceCandidates({ append = false } = {}) {
@@ -713,6 +772,11 @@ function readError(err, fallback) {
 
 .tab-toolbar .el-input {
   max-width: 360px;
+}
+
+.toc-cache-summary {
+  color: var(--app-text-muted);
+  font-size: 13px;
 }
 
 .info-list {

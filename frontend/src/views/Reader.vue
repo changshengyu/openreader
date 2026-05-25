@@ -44,7 +44,7 @@
       <button class="round-tool" type="button" title="添加笔记" @click="openNoteDialog">
         <el-icon :size="18"><EditPen /></el-icon>
       </button>
-      <button class="round-tool" type="button" :disabled="!isRemoteBook" :title="isRemoteBook ? '缓存本章' : '本地书无需服务器缓存'" @click="cacheCurrentChapter">
+      <button class="round-tool" type="button" :disabled="!isRemoteBook" :title="isRemoteBook ? '缓存章节' : '本地书无需服务器缓存'" @click="openCacheDrawer">
         <el-icon :size="18"><Download /></el-icon>
       </button>
       <button class="round-tool" type="button" title="重新载入章节" @click="reloadChapter">
@@ -204,6 +204,7 @@
         :chapters="chapters"
         :current-index="currentIndex"
         :locate-key="tocLocateKey"
+        :browser-cached-map="browserCachedChapters"
         @jump="jumpFromToc"
       />
     </el-drawer>
@@ -274,7 +275,7 @@
           <el-icon :size="22"><EditPen /></el-icon>
           <span>笔记</span>
         </button>
-        <button v-if="isRemoteBook" type="button" class="mobile-more-item" @click="runMobileAction(cacheCurrentChapter)">
+        <button v-if="isRemoteBook" type="button" class="mobile-more-item" @click="runMobileAction(openCacheDrawer)">
           <el-icon :size="22"><Download /></el-icon>
           <span>缓存</span>
         </button>
@@ -308,6 +309,22 @@
         </button>
       </div>
       <p v-if="!tts.state.supported" class="mobile-more-hint">当前浏览器不支持系统朗读，听书入口已禁用。</p>
+    </el-drawer>
+
+    <!-- ===== 缓存抽屉 ===== -->
+    <el-drawer v-model="showCacheDrawer" title="缓存章节" :direction="drawerDirection" :size="drawerSize">
+      <div class="reader-cache-panel">
+        <p>从当前章节之后开始缓存正文到本地浏览器。</p>
+        <div class="reader-cache-actions">
+          <button type="button" :disabled="isCachingContent" @click="cacheFollowingChapters(50)">后面50章</button>
+          <button type="button" :disabled="isCachingContent" @click="cacheFollowingChapters(100)">后面100章</button>
+          <button type="button" :disabled="isCachingContent" @click="cacheFollowingChapters(true)">后面全部</button>
+        </div>
+        <div v-if="isCachingContent" class="reader-cache-status">
+          <span>{{ cachingContentTip }}</span>
+          <button type="button" @click="cancelCachingContent">取消</button>
+        </div>
+      </div>
     </el-drawer>
 
     <!-- ===== 设置抽屉 ===== -->
@@ -380,7 +397,7 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import api from '../api/client'
-import { cacheBookContent, changeBookSource, getChapterContent, listBookSourceCandidates, refreshBook, searchBookContent as searchBookContentApi } from '../api/books'
+import { changeBookSource, listBookSourceCandidates, refreshBook, searchBookContent as searchBookContentApi } from '../api/books'
 import { listSources } from '../api/sources'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
@@ -394,7 +411,7 @@ import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
 import { sortByShelfOrder } from '../utils/bookOrder'
-import { cacheFirstRequest } from '../utils/browserCache'
+import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { readerFontOptions, readerFontStack } from '../utils/readerFonts'
 
 const route = useRoute()
@@ -423,6 +440,7 @@ const showSearchDrawer = ref(false)
 const showShelfDrawer = ref(false)
 const showSourceDrawer = ref(false)
 const showMobileMoreDrawer = ref(false)
+const showCacheDrawer = ref(false)
 const showNoteDialog = ref(false)
 const showBookmarkEditor = ref(false)
 const sourceCandidates = ref([])
@@ -439,6 +457,7 @@ const shelfLoading = ref(false)
 const tocPanelRef = ref(null)
 const tocFilter = ref('')
 const tocLocateKey = ref(0)
+const browserCachedChapters = ref({})
 const contentSearch = ref('')
 const bookSearchResults = ref([])
 const bookSearching = ref(false)
@@ -451,6 +470,8 @@ const editingBookmark = ref(null)
 const savingBookmark = ref(false)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
 const toastMsg = ref('')
+const isCachingContent = ref(false)
+const cachingContentTip = ref('')
 const progressVersion = ref(0)
 const autoReading = ref(false)
 const customBg = ref('')
@@ -472,6 +493,7 @@ let lastProgressSaveKey = ''
 let lastProgressRequestAt = 0
 let restoringPosition = false
 let chapterContentCache = null
+let cachingContentCancelled = false
 
 const fontOptions = readerFontOptions
 
@@ -572,6 +594,7 @@ const isOverlayOpen = computed(() => (
   showShelfDrawer.value ||
   showSourceDrawer.value ||
   showMobileMoreDrawer.value ||
+  showCacheDrawer.value ||
   showNoteDialog.value ||
   showBookmarkEditor.value
 ))
@@ -704,13 +727,11 @@ async function loadChapterContent(index, options = {}) {
     const cached = getChapterContentFromMemory(index)
     if (cached) return cached
   }
-  const cacheKey = chapterContentCacheKey(index)
-  const { data } = await cacheFirstRequest(
-    () => getChapterContent(bookId.value, index),
-    cacheKey,
-    { refresh: Boolean(options.refresh), validate: isValidChapterContentResponse },
-  )
+  const data = await loadBrowserChapterContent(book.value, bookId.value, index, { refresh: Boolean(options.refresh) })
   addChapterContentToMemory(index, data)
+  if (isValidChapterContentResponse(data)) {
+    browserCachedChapters.value = { ...browserCachedChapters.value, [index]: true }
+  }
   return data
 }
 
@@ -728,19 +749,6 @@ function addChapterContentToMemory(index, data) {
     chapterContentCache = { bookKey: cacheBookKey, chapters: {} }
   }
   chapterContentCache.chapters[index] = data
-}
-
-function isValidChapterContentResponse(data) {
-  return Boolean(data?.chapter && typeof data.content === 'string' && data.content.trim())
-}
-
-function chapterContentCacheKey(index) {
-  const currentBook = book.value || {}
-  return [
-    `${currentBook.title || currentBook.name || 'book'}_${currentBook.author || ''}`,
-    currentChapterCacheBookKey(),
-    `chapterContent-${index}`,
-  ].join('@')
 }
 
 function currentChapterCacheBookKey() {
@@ -831,13 +839,28 @@ function locateTocCurrentChapter() {
 
 function openTocDrawer() {
   tocFilter.value = ''
+  computeBrowserCachedChapters()
   showTocDrawer.value = true
   window.setTimeout(locateTocCurrentChapter, 0)
+}
+
+async function computeBrowserCachedChapters() {
+  try {
+    browserCachedChapters.value = await listBookBrowserCachedChapters(book.value, bookId.value)
+  } catch {
+    browserCachedChapters.value = {}
+  }
 }
 
 function openSettingsDrawer() {
   sliderLineHeight.value = reader.lineHeight
   showSettingsDrawer.value = true
+}
+
+function openCacheDrawer() {
+  if (!isRemoteBook.value) return
+  computeBrowserCachedChapters()
+  showCacheDrawer.value = true
 }
 
 async function goBookDetail() {
@@ -930,7 +953,7 @@ function openReaderBookInfo() {
     hasRemoteSource ? { label: '书源', plain: true, handler: openInfoSources } : null,
     { label: '分组', plain: true, handler: openInfoGroup },
     hasRemoteSource ? { label: '刷新目录', plain: true, handler: refreshReaderBookCatalog } : null,
-    hasRemoteSource ? { label: '缓存本章', plain: true, handler: cacheCurrentChapter } : null,
+    hasRemoteSource ? { label: '缓存章节', plain: true, handler: openCacheDrawer } : null,
     hasRemoteSource ? { label: '清缓存', plain: true, handler: clearCurrentBookCache } : null,
     { label: '设置', plain: true, handler: openInfoSettings },
     { label: '完整详情', type: 'primary', handler: () => { overlay.closeBookInfo(); goBookDetail() } },
@@ -1228,30 +1251,78 @@ async function reloadChapter() {
   setTimeout(() => { toastMsg.value = '' }, 1600)
 }
 
-async function cacheCurrentChapter() {
-  if (!isRemoteBook.value) return
-  try {
-    const { data } = await cacheBookContent(bookId.value, { chapterIndex: currentIndex.value })
-    await loadChapters()
-    await loadChapter(currentIndex.value, currentOffset(), { refresh: true })
-    toastMsg.value = data.cached ? '本章已缓存' : '本章暂无可缓存内容'
-    setTimeout(() => { toastMsg.value = '' }, 1600)
-  } catch (err) {
-    ElMessage.error(readError(err, '缓存章节失败'))
+async function cacheFollowingChapters(cacheCount) {
+  if (!isRemoteBook.value || isCachingContent.value) return
+  await computeBrowserCachedChapters()
+  const targets = cacheChapterTargets(cacheCount)
+  if (!targets.length) {
+    ElMessage.error('不需要缓存')
+    return
   }
+  isCachingContent.value = true
+  cachingContentCancelled = false
+  cachingContentTip.value = `正在缓存章节 0/${targets.length}`
+  try {
+    const result = await cacheBookChaptersToBrowser(book.value, bookId.value, chapters.value, {
+      startIndex: currentIndex.value + 1,
+      count: cacheCount === true ? true : Number(cacheCount || 0),
+      cancelled: () => cachingContentCancelled,
+      onProgress: ({ finished, total }) => {
+        cachingContentTip.value = `正在缓存章节 ${finished}/${total}`
+      },
+    })
+    if (result.cancelled) {
+      toastMsg.value = `已取消，缓存 ${result.cached} 章`
+    } else {
+      toastMsg.value = `缓存完成：${result.cached} 章`
+    }
+    setTimeout(() => { toastMsg.value = '' }, 1600)
+  } finally {
+    isCachingContent.value = false
+    cachingContentTip.value = ''
+    cachingContentCancelled = false
+    computeBrowserCachedChapters()
+    await loadChapters()
+  }
+}
+
+function cacheChapterTargets(cacheCount) {
+  const start = currentIndex.value + 1
+  if (start >= chapters.value.length) return []
+  const end = cacheCount === true
+    ? chapters.value.length
+    : Math.min(chapters.value.length, start + Number(cacheCount || 0))
+  const targets = []
+  for (let index = start; index < end; index += 1) {
+    if (!browserCachedChapters.value[index]) targets.push(index)
+  }
+  return targets
+}
+
+function cancelCachingContent() {
+  cachingContentCancelled = true
+  cachingContentTip.value = '正在取消缓存...'
 }
 
 async function clearCurrentBookCache() {
   if (!isRemoteBook.value) return
   try {
     const data = await bookshelf.batchClearCache([bookId.value])
+    const localCleared = await clearCurrentBookBrowserCache()
     await loadChapters()
     await bookshelf.loadBooks({ force: true })
-    toastMsg.value = `已清理 ${data.cleared || 0} 个章节缓存`
+    toastMsg.value = `已清理服务器 ${data.cleared || 0} 章，本地 ${localCleared} 章`
     setTimeout(() => { toastMsg.value = '' }, 1600)
   } catch (err) {
     ElMessage.error(readError(err, '清理缓存失败'))
   }
+}
+
+async function clearCurrentBookBrowserCache() {
+  const removed = await clearBookBrowserChapterCache(book.value, bookId.value)
+  chapterContentCache = null
+  browserCachedChapters.value = {}
+  return removed
 }
 
 function toggleAutoReading() {
@@ -2370,6 +2441,50 @@ function readError(err, fallback) {
 .reader-shelf-main small {
   color: #7b715e;
   font-size: 12px;
+}
+.reader-cache-panel {
+  display: grid;
+  gap: 16px;
+  color: #5f553f;
+  font-size: 14px;
+}
+.reader-cache-panel p {
+  margin: 0;
+  color: #7b715e;
+}
+.reader-cache-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.reader-cache-actions button,
+.reader-cache-status button {
+  min-height: 42px;
+  color: #2a2925;
+  background: #fffaf0;
+  border: 1px solid #e7dabb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.reader-cache-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.reader-cache-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 250, 240, 0.78);
+  border: 1px solid #eadfca;
+  border-radius: 6px;
+}
+.reader-cache-status button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 14px;
 }
 /* ---- 编辑弹层 ---- */
 .bookmark-editor {

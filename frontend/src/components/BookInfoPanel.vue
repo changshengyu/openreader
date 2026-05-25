@@ -43,6 +43,10 @@
           <span>进度：</span>
           <strong>{{ progressLabel }}</strong>
         </div>
+        <div v-if="browserCacheCount >= 0">
+          <span>浏览器缓存：</span>
+          <strong>{{ browserCacheCount }} 章</strong>
+        </div>
       </div>
       <div v-if="showUpdateSwitch" class="book-info-controls">
         <span>追更：</span>
@@ -114,6 +118,10 @@ const props = defineProps({
   updateSwitchLoading: {
     type: Boolean,
     default: false,
+  },
+  browserCacheCount: {
+    type: Number,
+    default: -1,
   },
 })
 

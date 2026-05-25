@@ -12,9 +12,9 @@
     >
       <span class="toc-main">
         <span>{{ item.title }}</span>
-        <small>第 {{ item.index + 1 }} 章<template v-if="showMeta"> · {{ item.cachePath ? '已缓存' : '未缓存' }}</template></small>
+        <small>第 {{ item.index + 1 }} 章<template v-if="showMeta"> · {{ isCached(item) ? '已缓存' : '未缓存' }}</template></small>
       </span>
-      <el-tag v-if="!showMeta && item.cachePath" size="small" type="success" effect="plain">已缓存</el-tag>
+      <el-tag v-if="!showMeta && isCached(item)" size="small" type="success" effect="plain">{{ browserCachedMap[item.index] ? '本地' : '已缓存' }}</el-tag>
     </button>
     <el-empty v-if="keyword && !filteredChapters.length" description="没有匹配章节" />
   </div>
@@ -48,6 +48,10 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  browserCachedMap: {
+    type: Object,
+    default: () => ({}),
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'jump'])
@@ -64,6 +68,10 @@ const filteredChapters = computed(() => {
     : props.chapters
   return props.reverse ? [...list].reverse() : list
 })
+
+function isCached(item) {
+  return Boolean(item?.cachePath || props.browserCachedMap?.[item?.index])
+}
 
 const tocListRef = ref(null)
 let locateTimer = 0

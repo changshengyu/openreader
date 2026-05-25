@@ -13,6 +13,7 @@
     :show-update-switch="!!overlay.bookInfoBook?.id && Number(overlay.bookInfoBook?.sourceId || 0) > 0"
     :can-update="overlay.bookInfoBook?.canUpdate !== false"
     :update-switch-loading="updatingBookId === overlay.bookInfoBook?.id"
+    :browser-cache-count="bookInfoBrowserCacheCount"
     @cover-upload="uploadBookInfoCover"
     @can-update-change="toggleBookCanUpdate"
   >
@@ -36,8 +37,10 @@
       <el-button plain @click="setBookGroup(overlay.bookInfoBook)">设置分组</el-button>
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshBookInfo(overlay.bookInfoBook)">刷新目录</el-button>
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="sourceSwitchLoading" @click="openGlobalSourceSwitch(overlay.bookInfoBook)">换源</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存后续20章</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookCache')">清缓存</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBookLocal')">缓存到浏览器</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存到服务器</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookLocalCache')">清浏览器缓存</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookCache')">清服务器缓存</el-button>
       <el-button plain @click="goDetail(overlay.bookInfoBook)">详情</el-button>
       <el-button plain :loading="loadingUpdates" @click="refreshShelf">刷新书架</el-button>
       <el-button plain type="danger" :loading="deletingBookId === overlay.bookInfoBook.id" @click="deleteBookFromInfo(overlay.bookInfoBook)">移出书架</el-button>
@@ -131,6 +134,9 @@
         <template #default="{ row }">
           <span>共 {{ row.chapterCount || 0 }} 章</span><br>
           <span>阅读进度：{{ progressLabel(row) }}</span>
+          <template v-if="Number(row.sourceId || 0) > 0">
+            <br><span>浏览器缓存：{{ localCacheCount(row) }} 章</span>
+          </template>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
@@ -143,7 +149,9 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存后续20章</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBookLocal">缓存到浏览器</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存到服务器</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookLocalCache">删除浏览器缓存</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookCache">删除服务器缓存</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) === 0" disabled>本地书无需服务器缓存</el-dropdown-item>
               </el-dropdown-menu>
@@ -173,12 +181,14 @@
             <span>{{ Number(book.sourceId || 0) > 0 ? '远程书籍' : '本地书籍' }} · {{ progressLabel(book) }}</span>
           </button>
         </header>
-        <p>共 {{ book.chapterCount || 0 }} 章<template v-if="book.lastChapter"> · 最新：{{ book.lastChapter }}</template></p>
+        <p>共 {{ book.chapterCount || 0 }} 章<template v-if="Number(book.sourceId || 0) > 0"> · 浏览器缓存 {{ localCacheCount(book) }} 章</template><template v-if="book.lastChapter"> · 最新：{{ book.lastChapter }}</template></p>
         <footer>
           <el-button size="small" text @click="goDetail(book)">编辑</el-button>
           <el-button size="small" text @click="setBookGroup(book)">分组</el-button>
-          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">缓存后续20章</el-button>
-          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBookLocal')">浏览器缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookLocalCache')">清浏览器</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">服务器缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清服务器</el-button>
           <el-button size="small" text @click="exportBook(book)">导出</el-button>
         </footer>
       </article>
@@ -207,8 +217,8 @@
         </template>
       </el-dropdown>
       <span class="check-tip">已选择 {{ selectedBookIds.length }} 个</span>
-      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchCacheBooks">批量缓存10章</el-button>
-      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchClearCache">批量清缓存</el-button>
+      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchCacheBooks">批量服务器缓存10章</el-button>
+      <el-button :disabled="!selectedBookIds.length" :loading="batchBusy" @click="batchClearCache">批量清服务器缓存</el-button>
     </div>
   </el-drawer>
 
@@ -719,7 +729,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Document, Edit, FolderOpened, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, listUsers, updateUser } from '../api/admin'
-import { cacheBookContent, changeBookSource, checkBookUpdates, deleteBookmark, listBookSourceCandidates, listBookmarks, refreshBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, changeBookSource, checkBookUpdates, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, refreshBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, restoreWebDAVBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { createRSSSource, deleteRSSSource, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
@@ -729,6 +739,7 @@ import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, 
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { sortByShelfOrder } from '../utils/bookOrder'
 import BookInfoDialog from './BookInfoDialog.vue'
 import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
@@ -744,6 +755,7 @@ const reader = useReaderStore()
 const selectedBookIds = ref([])
 const batchBusy = ref(false)
 const cachingBookId = ref(null)
+const localCacheCounts = ref({})
 const refreshingBookId = ref(null)
 const coverUploadingBookId = ref(null)
 const updatingBookId = ref(null)
@@ -846,6 +858,9 @@ const bookInfoProgress = computed(() => {
   const book = overlay.bookInfoBook
   return book ? (reader.progressByBook[book.id]?.percent || book.progress?.percent || 0) : 0
 })
+const bookInfoBrowserCacheCount = computed(() => (
+  overlay.bookInfoBook?.sourceId ? localCacheCount(overlay.bookInfoBook) : -1
+))
 const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
 const managedBooks = computed(() => sortByShelfOrder(bookshelf.books, reader.progressByBook))
 const filteredManagedBooks = computed(() => {
@@ -926,6 +941,7 @@ watch(
     }
     try {
       await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks()])
+      if (overlay.bookManageVisible) await refreshManagedBrowserCacheCounts()
       if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
         settingCategoryId.value = overlay.bookInfoBook?.categoryId ? String(overlay.bookInfoBook.categoryId) : ''
       }
@@ -943,6 +959,9 @@ watch(
       await bookshelf.loadCategories()
       if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
         await loadSourceRows()
+      }
+      if (overlay.bookInfoBook?.sourceId) {
+        await refreshBookInfoBrowserCacheCount(overlay.bookInfoBook)
       }
     } catch (err) {
       ElMessage.error(readError(err, '加载书籍信息失败'))
@@ -1064,6 +1083,35 @@ async function saveBookGroupSetting() {
   } finally {
     settingCategorySaving.value = false
   }
+}
+
+async function refreshManagedBrowserCacheCounts() {
+  const rows = managedBooks.value.filter(book => Number(book.sourceId || 0) > 0)
+  try {
+    localCacheCounts.value = await countBooksBrowserCachedChapters(rows)
+  } catch {
+    localCacheCounts.value = Object.fromEntries(rows.map(book => [book.id, 0]))
+  }
+}
+
+async function refreshBookInfoBrowserCacheCount(book) {
+  if (!book?.id || Number(book.sourceId || 0) <= 0) return
+  try {
+    const map = await listBookBrowserCachedChapters(book, book.id)
+    localCacheCounts.value = {
+      ...localCacheCounts.value,
+      [book.id]: Object.keys(map).length,
+    }
+  } catch {
+    localCacheCounts.value = {
+      ...localCacheCounts.value,
+      [book.id]: 0,
+    }
+  }
+}
+
+function localCacheCount(book) {
+  return localCacheCounts.value[book?.id] || 0
 }
 
 function openContentSearch(book) {
@@ -1384,11 +1432,19 @@ async function batchDeleteBooks() {
 
 async function cacheBook(book, command) {
   if (Number(book?.sourceId || 0) === 0) {
-    ElMessage.info('本地书无需服务器缓存')
+    ElMessage.info(command?.includes?.('Local') ? '本地书无需浏览器章节缓存' : '本地书无需服务器缓存')
     return
   }
   if (command === 'deleteBookCache') {
     await clearBookCache(book)
+    return
+  }
+  if (command === 'deleteBookLocalCache') {
+    await clearBookLocalCache(book)
+    return
+  }
+  if (command === 'cacheBookLocal') {
+    await cacheBookLocal(book)
     return
   }
   cachingBookId.value = book.id
@@ -1399,6 +1455,24 @@ async function cacheBook(book, command) {
     await bookshelf.loadBooks({ force: true })
   } catch (err) {
     ElMessage.error(readError(err, '缓存失败'))
+  } finally {
+    cachingBookId.value = null
+  }
+}
+
+async function cacheBookLocal(book) {
+  cachingBookId.value = book.id
+  try {
+    const { data } = await listChapters(book.id)
+    const result = await cacheBookChaptersToBrowser(book, book.id, Array.isArray(data) ? data : [], {
+      startIndex: 0,
+      count: true,
+    })
+    ElMessage.success(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)
+    await refreshManagedBrowserCacheCounts()
+    await refreshBookInfoBrowserCacheCount(book)
+  } catch (err) {
+    ElMessage.error(readError(err, '缓存到浏览器失败'))
   } finally {
     cachingBookId.value = null
   }
@@ -1418,6 +1492,20 @@ async function clearBookCache(book) {
     ElMessage.success(`已清理 ${data.cleared || 0} 个章节缓存`)
   } catch (err) {
     ElMessage.error(readError(err, '清理缓存失败'))
+  } finally {
+    cachingBookId.value = null
+  }
+}
+
+async function clearBookLocalCache(book) {
+  cachingBookId.value = book.id
+  try {
+    const removed = await clearBookBrowserChapterCache(book, book.id)
+    await refreshManagedBrowserCacheCounts()
+    await refreshBookInfoBrowserCacheCount(book)
+    ElMessage.success(`已清理浏览器缓存 ${removed} 章`)
+  } catch (err) {
+    ElMessage.error(readError(err, '清理浏览器缓存失败'))
   } finally {
     cachingBookId.value = null
   }

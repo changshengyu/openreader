@@ -21,6 +21,7 @@
       :show-update-switch="showUpdateSwitch"
       :can-update="canUpdate"
       :update-switch-loading="updateSwitchLoading"
+      :browser-cache-count="browserCacheCount"
       @cover-upload="$emit('coverUpload', $event)"
       @can-update-change="$emit('canUpdateChange', $event)"
     >
@@ -85,6 +86,10 @@ defineProps({
   updateSwitchLoading: {
     type: Boolean,
     default: false,
+  },
+  browserCacheCount: {
+    type: Number,
+    default: -1,
   },
 })
 
