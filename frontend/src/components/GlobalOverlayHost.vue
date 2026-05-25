@@ -1042,13 +1042,26 @@ function coverInitial(book) {
 
 function continueRead(book) {
   overlay.closeBookInfo()
-  router.push({ name: 'reader', params: { id: book.id } })
+  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQuery(book) })
 }
 
 function goDetail(book) {
   overlay.closeBookInfo()
   overlay.bookManageVisible = false
   router.push({ name: 'book-detail', params: { id: book.id } })
+}
+
+function readerRouteQuery(book) {
+  const progress = reader.progressByBook[book?.id] || book?.progress
+  if (!progress) return {}
+  const query = {}
+  const chapterIndex = Number(progress.chapterIndex)
+  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
+  const offset = Number(progress.offset)
+  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const percent = Number(progress.percent)
+  if (Number.isFinite(percent) && percent > 0) query.percent = Math.max(0, Math.min(1, percent))
+  return query
 }
 
 function setBookGroup(book) {

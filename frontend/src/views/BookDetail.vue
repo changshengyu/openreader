@@ -278,7 +278,7 @@ async function load() {
 }
 
 function startRead() {
-  router.push({ name: 'reader', params: { id: book.value.id } })
+  router.push({ name: 'reader', params: { id: book.value.id }, query: readerRouteQuery(book.value) })
 }
 
 function goChapter(index) {
@@ -295,6 +295,19 @@ function goBookmark(bookmark) {
       percent: Number.isFinite(Number(bookmark.percent)) ? Number(bookmark.percent) : undefined,
     },
   })
+}
+
+function readerRouteQuery(targetBook) {
+  const progress = reader.progressByBook[targetBook?.id] || targetBook?.progress
+  if (!progress) return {}
+  const query = {}
+  const chapterIndex = Number(progress.chapterIndex)
+  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
+  const offset = Number(progress.offset)
+  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const percent = Number(progress.percent)
+  if (Number.isFinite(percent) && percent > 0) query.percent = Math.max(0, Math.min(1, percent))
+  return query
 }
 
 function openGlobalBookmark() {

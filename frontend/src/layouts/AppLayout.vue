@@ -256,7 +256,7 @@ function goSearch() {
 
 function openRecentBook() {
   if (!recentBook.value) return
-  router.push({ name: 'reader', params: { id: recentBook.value.id } })
+  router.push({ name: 'reader', params: { id: recentBook.value.id }, query: readerRouteQuery(recentBook.value) })
 }
 
 function recentSubTitle(book) {
@@ -264,6 +264,19 @@ function recentSubTitle(book) {
   if (progress?.chapterTitle) return progress.chapterTitle
   if (Number.isInteger(progress?.chapterIndex)) return `第 ${progress.chapterIndex + 1} 章`
   return book.lastChapter || book.author || '继续阅读'
+}
+
+function readerRouteQuery(book) {
+  const progress = reader.progressByBook[book?.id] || book?.progress
+  if (!progress) return {}
+  const query = {}
+  const chapterIndex = Number(progress.chapterIndex)
+  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
+  const offset = Number(progress.offset)
+  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const percent = Number(progress.percent)
+  if (Number.isFinite(percent) && percent > 0) query.percent = Math.max(0, Math.min(1, percent))
+  return query
 }
 
 function handleLogout() {

@@ -510,6 +510,7 @@ let cachingContentCancelled = false
 let readerTouchStart = null
 let readerTouchMoved = false
 let ignoreNextContentClick = false
+let lastLocalProgressKey = ''
 
 const fontOptions = readerFontOptions
 
@@ -905,12 +906,25 @@ async function changeBookFromShelf(item) {
   showShelfDrawer.value = false
   if (item.id === bookId.value) return
   await saveCurrentProgress({ force: true })
-  await router.push({ name: 'reader', params: { id: item.id } })
+  await router.push({ name: 'reader', params: { id: item.id }, query: readerRouteQueryForBook(item) })
 }
 
 function readChapterTitle(item) {
   const progress = reader.progressByBook[item.id] || item.progress
   return progress?.chapterTitle || item.durChapterTitle || ''
+}
+
+function readerRouteQueryForBook(item) {
+  const progress = reader.progressByBook[item?.id] || item?.progress
+  if (!progress) return {}
+  const query = {}
+  const chapterIndex = Number(progress.chapterIndex)
+  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
+  const offset = Number(progress.offset)
+  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const percent = Number(progress.percent)
+  if (Number.isFinite(percent) && percent > 0) query.percent = Math.max(0, Math.min(1, percent))
+  return query
 }
 
 function unreadCount(item) {
@@ -1492,7 +1506,7 @@ function handleReaderContentClick(event) {
 function handleReaderTouchStart(event) {
   if (!isMobileReader.value || event.touches?.length !== 1) return
   const touch = event.touches[0]
-  readerTouchStart = { x: touch.clientX, y: touch.clientY }
+  readerTouchStart = { x: touch.clientX, y: touch.clientY, at: Date.now() }
   readerTouchMoved = false
 }
 
@@ -1501,7 +1515,7 @@ function handleReaderTouchMove(event) {
   const touch = event.touches[0]
   const moveX = touch.clientX - readerTouchStart.x
   const moveY = touch.clientY - readerTouchStart.y
-  if (Math.abs(moveX) > 6 || Math.abs(moveY) > 6) {
+  if (Math.abs(moveX) > 18 || Math.abs(moveY) > 18) {
     readerTouchMoved = true
   }
 }
@@ -1633,6 +1647,7 @@ function onScroll() {
   if (reader.mode !== 'scroll') return
   if (restoringPosition || chapterLoading.value) return
   progressVersion.value += 1
+  applyLocalProgressSnapshot()
   clearTimeout(saveTimer)
   saveTimer = setTimeout(saveCurrentProgress, 500)
 }
@@ -1696,6 +1711,7 @@ async function saveCurrentProgress(options = {}) {
   if (!chapter.value) return
   const force = Boolean(options.force)
   const payload = currentProgressPayload()
+  applyLocalProgressSnapshot(payload)
   const key = progressSaveKey(payload)
   if (key === lastProgressSaveKey) return
   pendingProgressPayload = payload
@@ -1733,7 +1749,20 @@ function currentProgressPayload() {
     chapterIndex: currentIndex.value,
     offset: currentOffset(),
     percent: bookProgress.value,
+    chapterTitle: chapter.value?.title || '',
   }
+}
+
+function applyLocalProgressSnapshot(payload = currentProgressPayload()) {
+  if (!payload?.bookId || !chapter.value) return
+  const key = progressSaveKey(payload)
+  if (key === lastLocalProgressKey) return
+  lastLocalProgressKey = key
+  reader.applyProgress({
+    ...payload,
+    mode: reader.mode,
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 function waitForProgressSaveIdle(timeout = 1500) {
@@ -2015,7 +2044,6 @@ useKeyboard({
 })
 
 useGesture(pageEl, {
-  onTapPoint: handleTapPoint,
   onSwipeLeft: () => {
     if (reader.mode === 'flip') nextPage()
   },

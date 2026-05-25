@@ -223,7 +223,7 @@ function openDetail(book) {
 }
 
 function continueRead(book) {
-  router.push({ name: 'reader', params: { id: book.id } })
+  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQuery(book) })
 }
 
 function handleBookRowClick(book) {
@@ -255,6 +255,19 @@ function progressLabel(book) {
 
 function bookProgress(book) {
   return reader.progressByBook[book.id] || book.progress
+}
+
+function readerRouteQuery(book) {
+  const progress = bookProgress(book)
+  if (!progress) return {}
+  const query = {}
+  const chapterIndex = Number(progress.chapterIndex)
+  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
+  const offset = Number(progress.offset)
+  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const percent = Number(progress.percent)
+  if (Number.isFinite(percent) && percent > 0) query.percent = Math.max(0, Math.min(1, percent))
+  return query
 }
 
 function categoryName(id) {
