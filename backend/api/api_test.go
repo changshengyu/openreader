@@ -369,13 +369,20 @@ func TestListBooksOrdersNewImportBeforeStaleProgress(t *testing.T) {
 	}
 
 	var books []struct {
-		ID uint `json:"id"`
+		ID           uint      `json:"id"`
+		ShelfOrderAt time.Time `json:"shelfOrderAt"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &books); err != nil {
 		t.Fatal(err)
 	}
 	if len(books) != 2 || books[0].ID != newBook.ID || books[1].ID != staleReadBook.ID {
 		t.Fatalf("expected new import before stale progress, got %+v", books)
+	}
+	if books[0].ShelfOrderAt.IsZero() || books[1].ShelfOrderAt.IsZero() {
+		t.Fatalf("expected shelfOrderAt on listed books, got %+v", books)
+	}
+	if !books[0].ShelfOrderAt.After(books[1].ShelfOrderAt) {
+		t.Fatalf("expected shelfOrderAt to match list order, got %+v", books)
 	}
 }
 

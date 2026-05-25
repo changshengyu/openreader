@@ -517,6 +517,13 @@ function readError(err, fallback) {
     overflow-x: hidden;
   }
 
+  .shelf-main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
   .shelf-title,
   .shelf-toolbar,
   .recent-strip,

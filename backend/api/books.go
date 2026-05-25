@@ -55,7 +55,8 @@ func (s *Server) listBooks(c *gin.Context) {
 
 	type bookListItem struct {
 		models.Book
-		Progress *models.ReadingProgress `json:"progress,omitempty"`
+		Progress     *models.ReadingProgress `json:"progress,omitempty"`
+		ShelfOrderAt time.Time               `json:"shelfOrderAt"`
 	}
 	items := make([]bookListItem, 0, len(books))
 	for _, book := range books {
@@ -63,11 +64,12 @@ func (s *Server) listBooks(c *gin.Context) {
 		if progress, ok := progressByBookID[book.ID]; ok {
 			item.Progress = &progress
 		}
+		item.ShelfOrderAt = shelfOrderAt(item.Book, item.Progress)
 		items = append(items, item)
 	}
 	sort.SliceStable(items, func(i, j int) bool {
-		iShelfAt := shelfOrderAt(items[i].Book, items[i].Progress)
-		jShelfAt := shelfOrderAt(items[j].Book, items[j].Progress)
+		iShelfAt := items[i].ShelfOrderAt
+		jShelfAt := items[j].ShelfOrderAt
 		if !iShelfAt.Equal(jShelfAt) {
 			return iShelfAt.After(jShelfAt)
 		}

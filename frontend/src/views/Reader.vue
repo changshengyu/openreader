@@ -1671,10 +1671,10 @@ useGesture(pageEl, {
     if (reader.mode === 'flip') previousPage()
   },
   onSwipeUp: () => {
-    if (reader.mode === 'page') nextPage()
+    if (reader.mode === 'page' || reader.mode === 'scroll') nextPage()
   },
   onSwipeDown: () => {
-    if (reader.mode === 'page') previousPage()
+    if (reader.mode === 'page' || reader.mode === 'scroll') previousPage()
   },
   onCenterTap: () => {
     toggleReaderChrome()
@@ -1996,7 +1996,7 @@ function readError(err, fallback) {
 .reader-shell.scroll .reader-body::after {
   content: "";
   display: block;
-  height: 120px;
+  height: min(40vh, 280px);
 }
 .reader-content h1 {
   font-size: var(--reader-heading-size);
@@ -2213,12 +2213,12 @@ function readError(err, fallback) {
     box-sizing: border-box;
     width: 100vw;
     font-size: var(--reader-font-size);
-    padding: 42px 22px calc(116px + env(safe-area-inset-bottom));
-    scroll-padding-bottom: calc(116px + env(safe-area-inset-bottom));
+    padding: 42px 22px calc(132px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(132px + env(safe-area-inset-bottom));
   }
   .reader-shell.mobile-chrome-visible .reader-content {
-    padding-bottom: calc(212px + env(safe-area-inset-bottom));
-    scroll-padding-bottom: calc(212px + env(safe-area-inset-bottom));
+    padding-bottom: calc(220px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(220px + env(safe-area-inset-bottom));
   }
   .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
   .reader-left-rail,
@@ -2278,9 +2278,9 @@ function readError(err, fallback) {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
     gap: 7px 4px;
-    min-height: 74px;
+    min-height: calc(76px + env(safe-area-inset-bottom));
     box-sizing: border-box;
-    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
+    padding: 8px 10px max(10px, env(safe-area-inset-bottom));
     background: rgba(255, 252, 239, 0.92);
     border-top: 1px solid rgba(148, 132, 87, 0.35);
     border-radius: 10px 10px 0 0;
@@ -2293,7 +2293,7 @@ function readError(err, fallback) {
     grid-template-columns: minmax(62px, 76px) minmax(0, 1fr) minmax(62px, 76px);
     align-items: center;
     gap: 8px;
-    min-height: 52px;
+    min-height: 54px;
     padding: 7px;
     background: rgba(255, 252, 239, 0.94);
     border: 1px solid rgba(148, 132, 87, 0.28);
