@@ -13,6 +13,8 @@ ARG TARGETARCH
 ARG BUILD_DATE=unknown
 ARG VCS_REF=unknown
 ARG VERSION=dev
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 COPY backend/go.mod backend/go.sum* ./
 RUN go mod download
 COPY backend/ ./
