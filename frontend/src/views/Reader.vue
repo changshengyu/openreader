@@ -380,7 +380,7 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import api from '../api/client'
-import { cacheBookContent, changeBookSource, listBookSourceCandidates, refreshBook, searchBookContent as searchBookContentApi } from '../api/books'
+import { cacheBookContent, changeBookSource, getChapterContent, listBookSourceCandidates, refreshBook, searchBookContent as searchBookContentApi } from '../api/books'
 import { listSources } from '../api/sources'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
@@ -394,6 +394,7 @@ import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
 import { sortByShelfOrder } from '../utils/bookOrder'
+import { cacheFirstRequest } from '../utils/browserCache'
 import { readerFontOptions, readerFontStack } from '../utils/readerFonts'
 
 const route = useRoute()
@@ -469,6 +470,8 @@ let savingProgress = false
 let pendingProgressPayload = null
 let lastProgressSaveKey = ''
 let lastProgressRequestAt = 0
+let restoringPosition = false
+let chapterContentCache = null
 
 const fontOptions = readerFontOptions
 
@@ -597,8 +600,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
 })
 
-onBeforeRouteLeave(async () => {
-  await saveCurrentProgress({ force: true })
+onBeforeRouteLeave(() => {
+  saveCurrentProgress({ force: true })
 })
 
 watch(bookId, async () => {
@@ -610,7 +613,7 @@ watch(() => [route.query.chapter, route.query.offset, route.query.percent], asyn
   const nextOffset = Number(offset || 0)
   const restorePercent = parseRoutePercent(percent)
   if (idx !== currentIndex.value || offset !== undefined || restorePercent !== null) {
-    await loadChapter(idx, nextOffset, { restorePercent })
+    await loadChapter(idx, nextOffset, { restorePercent, saveAfterLoad: idx !== currentIndex.value || offset !== undefined || restorePercent !== null })
   }
   await jumpToRouteLine()
 })
@@ -665,7 +668,7 @@ async function loadReaderBook() {
   const restorePercent = !hasRouteOffset && saved?.mode && saved.mode !== reader.mode
     ? chapterPercentFromBookProgress(saved)
     : null
-  await loadChapter(currentIndex.value, initialOffset, { restorePercent })
+  await loadChapter(currentIndex.value, initialOffset, { restorePercent, saveAfterLoad: false })
   await jumpToRouteLine()
 }
 
@@ -673,43 +676,118 @@ async function loadChapter(index, offset = 0, options = {}) {
   currentIndex.value = Math.max(0, Math.min(index, Math.max(chapters.value.length - 1, 0)))
   mobileChromeVisible.value = false
   chapterLoading.value = true
+  restoringPosition = true
+  clearTimeout(saveTimer)
   content.value = ''
   try {
-    const { data } = await api.get(`/books/${bookId.value}/chapters/${currentIndex.value}/content`)
+    const data = await loadChapterContent(currentIndex.value, { refresh: Boolean(options.refresh) })
     chapter.value = data.chapter
     content.value = data.content || ''
     page.value = 0
     await nextTick()
     updateFlipLayout()
-    const restorePercent = Number(options.restorePercent)
-    const hasRestorePercent = Number.isFinite(restorePercent)
-    if (reader.mode === 'flip' || reader.mode === 'page') {
-      page.value = offset === CHAPTER_END_OFFSET
-        ? Math.max(0, pageCount.value - 1)
-        : (hasRestorePercent
-            ? Math.round(Math.max(0, Math.min(1, restorePercent)) * Math.max(0, pageCount.value - 1))
-            : Math.min(Math.max(offset, 0), pageCount.value - 1))
-    } else if (contentEl.value) {
-      if (offset === CHAPTER_END_OFFSET) {
-        contentEl.value.scrollTop = contentEl.value.scrollHeight
-      } else if (hasRestorePercent) {
-        const bottom = Math.max(contentEl.value.scrollHeight - contentEl.value.clientHeight, 0)
-        contentEl.value.scrollTop = Math.round(Math.max(0, Math.min(1, restorePercent)) * bottom)
-      } else {
-        contentEl.value.scrollTop = Math.max(offset, 0)
-      }
+    await restoreReadingPosition(offset, options)
+    if (options.saveAfterLoad) {
+      await saveCurrentProgress({ force: true })
+    } else {
+      lastProgressSaveKey = progressSaveKey(currentProgressPayload())
     }
-    saveCurrentProgress()
   } finally {
+    await nextFrame()
+    restoringPosition = false
     chapterLoading.value = false
   }
+}
+
+async function loadChapterContent(index, options = {}) {
+  if (!options.refresh) {
+    const cached = getChapterContentFromMemory(index)
+    if (cached) return cached
+  }
+  const cacheKey = chapterContentCacheKey(index)
+  const { data } = await cacheFirstRequest(
+    () => getChapterContent(bookId.value, index),
+    cacheKey,
+    { refresh: Boolean(options.refresh), validate: isValidChapterContentResponse },
+  )
+  addChapterContentToMemory(index, data)
+  return data
+}
+
+function getChapterContentFromMemory(index) {
+  const cacheBookKey = currentChapterCacheBookKey()
+  if (!chapterContentCache || chapterContentCache.bookKey !== cacheBookKey) return null
+  const cached = chapterContentCache.chapters[index]
+  return isValidChapterContentResponse(cached) ? cached : null
+}
+
+function addChapterContentToMemory(index, data) {
+  if (!isValidChapterContentResponse(data)) return
+  const cacheBookKey = currentChapterCacheBookKey()
+  if (!chapterContentCache || chapterContentCache.bookKey !== cacheBookKey) {
+    chapterContentCache = { bookKey: cacheBookKey, chapters: {} }
+  }
+  chapterContentCache.chapters[index] = data
+}
+
+function isValidChapterContentResponse(data) {
+  return Boolean(data?.chapter && typeof data.content === 'string' && data.content.trim())
+}
+
+function chapterContentCacheKey(index) {
+  const currentBook = book.value || {}
+  return [
+    `${currentBook.title || currentBook.name || 'book'}_${currentBook.author || ''}`,
+    currentChapterCacheBookKey(),
+    `chapterContent-${index}`,
+  ].join('@')
+}
+
+function currentChapterCacheBookKey() {
+  const currentBook = book.value || {}
+  return currentBook.url || currentBook.bookUrl || currentBook.libraryPath || `book:${bookId.value}`
+}
+
+async function restoreReadingPosition(offset = 0, options = {}) {
+  const restorePercent = Number(options.restorePercent)
+  const hasRestorePercent = Number.isFinite(restorePercent)
+  await nextTick()
+  await nextFrame()
+  updateFlipLayout()
+  if (reader.mode === 'flip' || reader.mode === 'page') {
+    page.value = offset === CHAPTER_END_OFFSET
+      ? Math.max(0, pageCount.value - 1)
+      : (hasRestorePercent
+          ? Math.round(Math.max(0, Math.min(1, restorePercent)) * Math.max(0, pageCount.value - 1))
+          : Math.min(Math.max(offset, 0), pageCount.value - 1))
+    return
+  }
+  if (!contentEl.value) return
+  const applyScroll = () => {
+    if (!contentEl.value) return
+    if (offset === CHAPTER_END_OFFSET) {
+      contentEl.value.scrollTop = Math.max(0, contentEl.value.scrollHeight - contentEl.value.clientHeight)
+    } else if (hasRestorePercent) {
+      const bottom = Math.max(contentEl.value.scrollHeight - contentEl.value.clientHeight, 0)
+      contentEl.value.scrollTop = Math.round(Math.max(0, Math.min(1, restorePercent)) * bottom)
+    } else {
+      contentEl.value.scrollTop = Math.max(offset, 0)
+    }
+  }
+  applyScroll()
+  await nextFrame()
+  applyScroll()
+}
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()))
 }
 
 async function handleReplaceRulesUpdated() {
   if (!book.value?.id || !chapter.value) return
   const restorePercent = currentChapterPercent()
   try {
-    await loadChapter(currentIndex.value, currentOffset(), { restorePercent })
+    await loadChapter(currentIndex.value, currentOffset(), { restorePercent, refresh: true })
     ElMessage.success('已按最新替换规则刷新当前章节')
   } catch (err) {
     ElMessage.error(readError(err, '刷新当前章节失败'))
@@ -763,12 +841,12 @@ function openSettingsDrawer() {
 }
 
 async function goBookDetail() {
-  await saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true })
   router.push({ name: 'book-detail', params: { id: bookId.value } })
 }
 
 async function goShelf() {
-  await saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true })
   router.push({ name: 'home' })
 }
 async function openShelfPanel() {
@@ -787,6 +865,7 @@ async function openShelfPanel() {
 async function changeBookFromShelf(item) {
   showShelfDrawer.value = false
   if (item.id === bookId.value) return
+  saveCurrentProgress({ force: true })
   await router.push({ name: 'reader', params: { id: item.id } })
 }
 
@@ -1144,7 +1223,7 @@ function openNoteDialog() {
 }
 
 async function reloadChapter() {
-  await loadChapter(currentIndex.value, currentOffset())
+  await loadChapter(currentIndex.value, currentOffset(), { refresh: true })
   toastMsg.value = '章节已重新载入'
   setTimeout(() => { toastMsg.value = '' }, 1600)
 }
@@ -1154,6 +1233,7 @@ async function cacheCurrentChapter() {
   try {
     const { data } = await cacheBookContent(bookId.value, { chapterIndex: currentIndex.value })
     await loadChapters()
+    await loadChapter(currentIndex.value, currentOffset(), { refresh: true })
     toastMsg.value = data.cached ? '本章已缓存' : '本章暂无可缓存内容'
     setTimeout(() => { toastMsg.value = '' }, 1600)
   } catch (err) {
@@ -1401,6 +1481,7 @@ function handleReaderVisibilityChange() {
 
 function onScroll() {
   if (reader.mode !== 'scroll') return
+  if (restoringPosition || chapterLoading.value) return
   progressVersion.value += 1
   clearTimeout(saveTimer)
   saveTimer = setTimeout(saveCurrentProgress, 500)
@@ -1450,10 +1531,7 @@ function currentVisibleExcerpt() {
 async function saveCurrentProgress(options = {}) {
   if (!chapter.value) return
   const force = Boolean(options.force)
-  const payload = {
-    bookId: bookId.value, chapterId: chapter.value.id,
-    chapterIndex: currentIndex.value, offset: currentOffset(), percent: bookProgress.value,
-  }
+  const payload = currentProgressPayload()
   const key = progressSaveKey(payload)
   if (key === lastProgressSaveKey) return
   pendingProgressPayload = payload
@@ -1481,6 +1559,16 @@ async function saveCurrentProgress(options = {}) {
     }
   } finally {
     savingProgress = false
+  }
+}
+
+function currentProgressPayload() {
+  return {
+    bookId: bookId.value,
+    chapterId: chapter.value?.id,
+    chapterIndex: currentIndex.value,
+    offset: currentOffset(),
+    percent: bookProgress.value,
   }
 }
 
@@ -1578,7 +1666,7 @@ async function jumpToBookmark(bookmark) {
   showBookmarkDrawer.value = false
   const query = bookmarkReaderQuery(bookmark)
   if (bookmark.chapterIndex === currentIndex.value) {
-    await loadChapter(currentIndex.value, Number(query.offset || 0), { restorePercent: parseRoutePercent(query.percent) })
+    await loadChapter(currentIndex.value, Number(query.offset || 0), { restorePercent: parseRoutePercent(query.percent), saveAfterLoad: true })
     return
   }
   await router.replace({ name: 'reader', params: { id: bookId.value }, query })
@@ -1603,10 +1691,10 @@ async function jumpToBookSearchResult(result) {
   const targetIndex = Number(result.chapterIndex || 0)
   const restorePercent = Number.isFinite(Number(result.percent)) ? Number(result.percent) : null
   if (targetIndex === currentIndex.value) {
-    await loadChapter(targetIndex, 0, { restorePercent })
+    await loadChapter(targetIndex, 0, { restorePercent, saveAfterLoad: true })
   } else {
     await router.replace({ name: 'reader', params: { id: bookId.value }, query: { chapter: targetIndex, percent: restorePercent ?? undefined } })
-    await loadChapter(targetIndex, 0, { restorePercent })
+    await loadChapter(targetIndex, 0, { restorePercent, saveAfterLoad: true })
   }
   await nextTick()
   if (jumpToSearchMatch(result)) {

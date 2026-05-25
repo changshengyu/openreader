@@ -125,16 +125,33 @@ export const useReaderStore = defineStore('reader', {
       this.progressByBook[progress.bookId] = progress
     },
     async saveProgress(payload) {
+      const optimistic = {
+        ...payload,
+        mode: this.mode,
+        updatedAt: new Date().toISOString(),
+      }
+      this.applyProgress(optimistic)
       const { data } = await api.put('/progress', { ...payload, mode: this.mode })
       this.applyProgress(data)
       return data
     },
     async loadProgress(bookId) {
+      const local = this.progressByBook[bookId]
       const { data } = await api.get(`/progress/${bookId}`)
       if (data?.bookId) {
+        if (progressUpdatedAt(local) > progressUpdatedAt(data)) {
+          return local
+        }
         this.applyProgress(data)
+        return data
       }
-      return data
+      return local || data
     },
   },
 })
+
+function progressUpdatedAt(progress) {
+  if (!progress?.updatedAt) return 0
+  const timestamp = Date.parse(progress.updatedAt)
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
