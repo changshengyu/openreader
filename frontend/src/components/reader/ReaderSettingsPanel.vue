@@ -4,11 +4,11 @@
       <label class="setting-label">翻页方式</label>
       <el-radio-group v-model="reader.mode" size="small" class="read-method-group" @change="$emit('modeChange', $event)">
         <el-radio-button value="page">上下滑动</el-radio-button>
-        <el-radio-button v-if="miniInterface" value="flip">左右滑动</el-radio-button>
+        <el-radio-button value="flip">{{ miniInterface ? '左右滑动' : '左右翻页' }}</el-radio-button>
         <el-radio-button value="scroll">上下滚动</el-radio-button>
-        <el-radio-button value="scroll2" disabled title="上游多章节连续滚动尚未补齐">上下滚动2</el-radio-button>
+        <el-radio-button value="scroll2">上下滚动2</el-radio-button>
       </el-radio-group>
-      <small class="setting-help">上下滚动2对应上游多章节连续滚动，补齐前保持禁用。</small>
+      <small class="setting-help">上下滚动2按上游逻辑连续显示相邻章节，并按当前段落保存进度。</small>
     </div>
 
     <div class="setting-row">

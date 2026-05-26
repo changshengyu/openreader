@@ -46,7 +46,7 @@ export const useReaderStore = defineStore('reader', {
   },
   actions: {
     setMode(mode) {
-      this.mode = ['scroll', 'flip', 'page'].includes(mode) ? mode : 'scroll'
+      this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'scroll'
     },
     setClickMethod(method) {
       this.clickMethod = ['next', 'auto', 'none'].includes(method) ? method : 'auto'
@@ -98,7 +98,7 @@ export const useReaderStore = defineStore('reader', {
       this.columnWidth = Math.max(320, Math.min(1200, Number(columnWidth) || 670))
     },
     normalizeSettings() {
-      if (!['scroll', 'flip', 'page'].includes(this.mode)) this.mode = 'scroll'
+      if (!['scroll', 'scroll2', 'flip', 'page'].includes(this.mode)) this.mode = 'scroll'
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['system', 'serif', 'kai', 'mono'].includes(this.fontFamily)) this.fontFamily = 'system'
       this.setFontSize(this.fontSize)

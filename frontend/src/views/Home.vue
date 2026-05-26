@@ -66,7 +66,7 @@
             @click="handleBookRowClick(book)"
             @keyup.enter="handleBookRowClick(book)"
           >
-            <span class="list-cover" :style="coverStyle(book)">{{ coverInitial(book) }}</span>
+            <span class="list-cover" :style="coverStyle(book)" @click.stop="openDetail(book)">{{ coverInitial(book) }}</span>
             <span class="list-main">
               <span class="book-operation">
                 <el-button v-if="showBookEditButton" size="small" text type="danger" @click.stop="deleteManagedBook(book)">删除</el-button>
@@ -79,11 +79,10 @@
                 />
               </span>
               <strong>{{ book.title }}</strong>
-              <small>{{ book.author || '未知作者' }}<template v-if="book.chapterCount"> · 共{{ book.chapterCount }}章</template></small>
+              <small>{{ bookAuthorLine(book) }}</small>
               <small v-if="readChapterTitle(book)">已读：{{ readChapterTitle(book) }}</small>
-              <small v-if="book.lastChapter">最新：{{ book.lastChapter }}</small>
+              <small v-if="latestChapterTitle(book)">{{ latestChapterLabel(book) }}：{{ latestChapterTitle(book) }}</small>
             </span>
-            <el-button class="read-button" size="small" type="primary" plain @click.stop="continueRead(book)">阅读</el-button>
           </article>
         </div>
       </template>
@@ -227,11 +226,7 @@ function continueRead(book) {
 }
 
 function handleBookRowClick(book) {
-  if (isMobileShelf.value) {
-    continueRead(book)
-    return
-  }
-  openDetail(book)
+  continueRead(book)
 }
 
 function readChapterTitle(book) {
@@ -255,6 +250,35 @@ function progressLabel(book) {
 
 function bookProgress(book) {
   return reader.progressByBook[book.id] || book.progress
+}
+
+function bookAuthorLine(book) {
+  const parts = []
+  if (book.author) parts.push(book.author)
+  if (book.chapterCount) parts.push(`共${book.chapterCount}章`)
+  return parts.join(' · ') || '未知作者'
+}
+
+function latestChapterTitle(book) {
+  return book.lastChapter || book.latestChapterTitle || book.latestChapter || ''
+}
+
+function latestChapterLabel(book) {
+  const rawTime = book.lastCheckTime || book.shelfOrderAt || book.updatedAt
+  return rawTime ? relativeTimeLabel(rawTime) : '最新'
+}
+
+function relativeTimeLabel(value) {
+  const timestamp = typeof value === 'number' ? value : Date.parse(value)
+  if (!Number.isFinite(timestamp)) return '最新'
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+  if (seconds <= 30) return '刚刚'
+  if (seconds < 60) return `${seconds}秒前`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`
+  if (seconds < 2592000) return `${Math.floor(seconds / 86400)}天前`
+  if (seconds < 31536000) return `${Math.floor(seconds / 2592000)}月前`
+  return `${Math.floor(seconds / 31536000)}年前`
 }
 
 function readerRouteQuery(book) {
@@ -522,7 +546,7 @@ function readError(err, fallback) {
 .book-row {
   position: relative;
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   min-width: 0;
@@ -552,6 +576,7 @@ function readError(err, fallback) {
   width: 52px;
   height: 68px;
   border-radius: 5px;
+  cursor: zoom-in;
 }
 
 .list-main {
@@ -822,17 +847,15 @@ function readError(err, fallback) {
     word-break: break-word;
   }
 
-  .read-button {
-    display: none;
-  }
-
 }
 
 @media (max-width: 520px) {
+  .shelf-page.mobile-shelf .book-group-wrapper,
   .book-group-wrapper {
     padding: 0 6px;
   }
 
+  .shelf-page.mobile-shelf .group-chip,
   .group-chip {
     max-width: 94px;
     height: 32px;
@@ -841,29 +864,57 @@ function readError(err, fallback) {
     font-size: 12px;
   }
 
+  .shelf-page.mobile-shelf .shelf-title,
   .shelf-title {
     padding: 8px;
   }
 
+  .shelf-page.mobile-shelf .shelf-title strong,
   .shelf-title strong {
     font-size: 15px;
   }
 
+  .shelf-page.mobile-shelf .book-row,
   .book-row {
-    grid-template-columns: 36px minmax(0, 1fr);
-    gap: 7px;
-    padding: 8px 6px;
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 10px;
+    min-height: 96px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
   }
 
+  .shelf-page.mobile-shelf .list-cover,
   .list-cover {
-    width: 36px;
-    height: 50px;
+    width: 64px;
+    height: 86px;
+    flex-basis: 64px;
   }
 
+  .shelf-page.mobile-shelf .list-main,
   .list-main {
+    width: 100%;
+    max-width: 100%;
+    min-height: 86px;
     gap: 4px;
+    padding-right: 38px;
+    overflow: hidden;
   }
 
+  .shelf-page.mobile-shelf .book-operation,
+  .book-operation {
+    top: 8px;
+    right: 10px;
+  }
+
+  .shelf-page.mobile-shelf .list-main strong,
+  .list-main strong {
+    padding-right: 38px;
+  }
+
+  .shelf-page.mobile-shelf .list-main small,
   .list-main small {
     font-size: 12px;
   }

@@ -140,6 +140,9 @@ const touchDevice = ref(false)
 const mobileNavigationVisible = ref(false)
 const touchStart = ref(null)
 const touchMoveX = ref(0)
+const MOBILE_NAV_WIDTH = 260
+const MOBILE_NAV_EDGE = 48
+const MOBILE_NAV_TRIGGER = 72
 const { connected: syncConnected, connect, disconnect } = useSync()
 
 const navSections = computed(() => [
@@ -203,10 +206,10 @@ const userInitial = computed(() => (userStore.profile?.username || '?').slice(0,
 const isMobileShell = computed(() => windowWidth.value <= 1180 || coarsePointer.value || touchDevice.value || isMobileUA())
 const mobileNavigationStyle = computed(() => {
   if (!isMobileShell.value || !touchMoveX.value) return {}
-  if (!mobileNavigationVisible.value && touchMoveX.value > 0 && touchMoveX.value <= 260) {
-    return { marginLeft: `${touchMoveX.value - 260}px` }
+  if (!mobileNavigationVisible.value && touchMoveX.value > 0 && touchMoveX.value <= MOBILE_NAV_WIDTH) {
+    return { marginLeft: `${touchMoveX.value - MOBILE_NAV_WIDTH}px` }
   }
-  if (mobileNavigationVisible.value && touchMoveX.value < 0 && touchMoveX.value >= -260) {
+  if (mobileNavigationVisible.value && touchMoveX.value < 0 && touchMoveX.value >= -MOBILE_NAV_WIDTH) {
     return { marginLeft: `${touchMoveX.value}px` }
   }
   return {}
@@ -309,7 +312,11 @@ function isMobileUA() {
 function handleTouchStart(event) {
   if (!isMobileShell.value || event.touches?.length !== 1) return
   const touch = event.touches[0]
-  if (touch.clientX <= 20 || touch.clientX >= window.innerWidth - 20 || touch.clientY <= 20 || touch.clientY >= window.innerHeight - 20) {
+  if (touch.clientY <= 20 || touch.clientY >= window.innerHeight - 20) {
+    touchStart.value = null
+    return
+  }
+  if (!mobileNavigationVisible.value && touch.clientX > MOBILE_NAV_EDGE) {
     touchStart.value = null
     return
   }
@@ -326,7 +333,7 @@ function handleTouchMove(event) {
     touchMoveX.value = 0
     return
   }
-  if ((!mobileNavigationVisible.value && moveX > 0 && moveX <= 260) || (mobileNavigationVisible.value && moveX < 0 && moveX >= -260)) {
+  if ((!mobileNavigationVisible.value && moveX > 0 && moveX <= MOBILE_NAV_WIDTH) || (mobileNavigationVisible.value && moveX < 0 && moveX >= -MOBILE_NAV_WIDTH)) {
     event.preventDefault()
     event.stopPropagation()
     touchMoveX.value = moveX
@@ -335,8 +342,8 @@ function handleTouchMove(event) {
 
 function handleTouchEnd() {
   if (!isMobileShell.value) return
-  if (touchMoveX.value > 0) mobileNavigationVisible.value = true
-  if (touchMoveX.value < 0) mobileNavigationVisible.value = false
+  if (touchMoveX.value > MOBILE_NAV_TRIGGER) mobileNavigationVisible.value = true
+  if (touchMoveX.value < -MOBILE_NAV_TRIGGER) mobileNavigationVisible.value = false
   touchStart.value = null
   touchMoveX.value = 0
 }
@@ -718,15 +725,15 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell .app-nav-item {
-  display: inline-flex;
-  width: auto;
-  min-width: 82px;
+  display: flex;
+  width: 100%;
+  min-width: 0;
   height: 38px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin: 0 8px 8px 0;
-  padding: 0 10px;
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 0 8px;
   background: #fffdf8;
   border: 1px solid #e4d9c8;
   border-radius: 4px;
