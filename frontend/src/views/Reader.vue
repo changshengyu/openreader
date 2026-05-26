@@ -185,7 +185,7 @@
     <div v-if="toastMsg" class="reader-toast">{{ toastMsg }}</div>
 
     <!-- ===== 书架抽屉 ===== -->
-    <el-drawer v-model="showShelfDrawer" title="书架" :direction="drawerDirection" :size="drawerSize">
+    <el-drawer v-model="showShelfDrawer" title="书架" :direction="drawerDirection" :size="drawerSize" @opened="locateReaderShelfCurrentBook">
       <div class="reader-drawer-title">
         <span>书架({{ filteredShelfBooks.length }})</span>
         <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
@@ -193,12 +193,13 @@
         </button>
       </div>
       <el-input v-model="shelfKeyword" placeholder="搜索书名或作者..." clearable size="small" class="shelf-search" />
-      <div v-loading="shelfLoading" class="reader-shelf-list">
+      <div ref="shelfListRef" v-loading="shelfLoading" class="reader-shelf-list">
         <button
           v-for="item in filteredShelfBooks"
           :key="item.id"
           class="reader-shelf-card"
           :class="{ active: item.id === bookId }"
+          :data-book-id="item.id"
           type="button"
           @click="changeBookFromShelf(item)"
         >
@@ -477,6 +478,7 @@ const sourceCandidatesLoadedKey = ref('')
 const sourceStats = ref(null)
 const shelfKeyword = ref('')
 const shelfLoading = ref(false)
+const shelfListRef = ref(null)
 const tocPanelRef = ref(null)
 const tocFilter = ref('')
 const tocLocateKey = ref(0)
@@ -761,7 +763,7 @@ async function loadReaderBook() {
     api.get(`/books/${bookId.value}`),
     api.get(`/books/${bookId.value}/chapters`),
     api.get(`/books/${bookId.value}/bookmarks`),
-    reader.loadProgress(bookId.value),
+    reader.loadProgress(bookId.value, { preferLocal: true }),
   ])
   book.value = bookRes.data
   chapters.value = chRes.data
@@ -1039,6 +1041,7 @@ function openTocDrawer() {
   computeBrowserCachedChapters()
   showTocDrawer.value = true
   window.setTimeout(locateTocCurrentChapter, 0)
+  window.setTimeout(locateTocCurrentChapter, 180)
 }
 
 async function computeBrowserCachedChapters() {
@@ -1070,16 +1073,41 @@ async function goShelf() {
   await router.push({ name: 'home' })
 }
 async function openShelfPanel() {
+  shelfKeyword.value = ''
   showShelfDrawer.value = true
-  if (bookshelf.books.length) return
+  if (bookshelf.books.length) {
+    window.setTimeout(locateReaderShelfCurrentBook, 0)
+    return
+  }
   shelfLoading.value = true
   try {
     await bookshelf.loadBooks()
+    locateReaderShelfCurrentBook()
   } catch (err) {
     ElMessage.error(readError(err, '加载书架失败'))
   } finally {
     shelfLoading.value = false
   }
+}
+
+function locateReaderShelfCurrentBook(attempt = 0) {
+  nextTick(() => {
+    const list = shelfListRef.value
+    const active = list?.querySelector?.(`[data-book-id="${bookId.value}"]`)
+    if (!list || !active) {
+      if (attempt < 20 && showShelfDrawer.value && filteredShelfBooks.value.length) {
+        window.setTimeout(() => locateReaderShelfCurrentBook(attempt + 1), 50)
+      }
+      return
+    }
+    const targetTop = active.offsetTop - Math.max(0, (list.clientHeight - active.clientHeight) / 2)
+    const nextTop = Math.max(0, targetTop)
+    list.scrollTo({ top: nextTop, behavior: 'auto' })
+    requestAnimationFrame(() => {
+      list.scrollTop = nextTop
+      active.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+  })
 }
 
 async function changeBookFromShelf(item) {
@@ -2809,7 +2837,12 @@ function readError(err, fallback) {
   cursor: default;
 }
 .shelf-search { margin-bottom: 12px; }
-.reader-shelf-list { display: grid; }
+.reader-shelf-list {
+  display: grid;
+  max-height: calc(100vh - 154px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .reader-shelf-card {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);

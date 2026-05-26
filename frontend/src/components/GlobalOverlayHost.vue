@@ -784,6 +784,7 @@ const contentSearched = ref(false)
 const contentLastIndex = ref(-1)
 const contentHasMore = ref(false)
 const contentTotal = ref(0)
+const contentSearchBookKey = ref('')
 const bookmarkItems = ref([])
 const bookmarkLoading = ref(false)
 const bookmarkEditorVisible = ref(false)
@@ -970,15 +971,37 @@ watch(
 )
 
 watch(
+  () => overlay.searchBook?.id || overlay.searchBook?.bookUrl || '',
+  (key) => {
+    if (String(key || '') === contentSearchBookKey.value) return
+    contentSearchBookKey.value = String(key || '')
+    resetContentSearchState()
+  },
+)
+
+function resetContentSearchState() {
+  contentKeyword.value = ''
+  contentResults.value = []
+  contentSearched.value = false
+  contentLastIndex.value = -1
+  contentHasMore.value = false
+  contentTotal.value = 0
+}
+
+watch(
   () => overlay.searchBookContentVisible,
   (visible) => {
-    if (visible) return
-    contentKeyword.value = ''
-    contentResults.value = []
-    contentSearched.value = false
-    contentLastIndex.value = -1
-    contentHasMore.value = false
-    contentTotal.value = 0
+    if (!visible) return
+    const key = String(overlay.searchBook?.id || overlay.searchBook?.bookUrl || '')
+    if (key && key !== contentSearchBookKey.value) {
+      contentSearchBookKey.value = key
+      contentKeyword.value = ''
+      contentResults.value = []
+      contentSearched.value = false
+      contentLastIndex.value = -1
+      contentHasMore.value = false
+      contentTotal.value = 0
+    }
   },
 )
 

@@ -82,8 +82,8 @@ function locateCurrentChapter(attempt = 0) {
     const list = tocListRef.value
     const active = list?.querySelector?.(`[data-chapter-index="${props.currentIndex}"]`)
     if (!list || !active) {
-      if (attempt < 8 && props.chapters.length) {
-        locateTimer = window.setTimeout(() => locateCurrentChapter(attempt + 1), 80)
+      if (attempt < 20 && props.chapters.length) {
+        locateTimer = window.setTimeout(() => locateCurrentChapter(attempt + 1), 50)
       }
       return
     }
@@ -93,6 +93,9 @@ function locateCurrentChapter(attempt = 0) {
     requestAnimationFrame(() => {
       list.scrollTop = nextTop
       active.scrollIntoView({ block: 'center', inline: 'nearest' })
+      requestAnimationFrame(() => {
+        list.scrollTop = nextTop
+      })
     })
   })
 }

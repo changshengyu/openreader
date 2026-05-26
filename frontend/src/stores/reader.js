@@ -135,9 +135,25 @@ export const useReaderStore = defineStore('reader', {
       this.applyProgress(data)
       return data
     },
-    async loadProgress(bookId) {
+    async loadProgress(bookId, options = {}) {
       const local = this.progressByBook[bookId]
-      const { data } = await api.get(`/progress/${bookId}`)
+      if (options.preferLocal && local?.bookId) {
+        api.get(`/progress/${bookId}`)
+          .then(({ data }) => {
+            if (data?.bookId && progressUpdatedAt(data) >= progressUpdatedAt(local)) {
+              this.applyProgress(data)
+            }
+          })
+          .catch(() => {})
+        return local
+      }
+      let data = null
+      try {
+        const res = await api.get(`/progress/${bookId}`)
+        data = res.data
+      } catch {
+        return local || null
+      }
       if (data?.bookId) {
         if (progressUpdatedAt(local) > progressUpdatedAt(data)) {
           return local
