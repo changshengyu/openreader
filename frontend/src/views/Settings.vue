@@ -213,8 +213,9 @@
                 <span>翻页方式</span>
                 <el-radio-group v-model="readerModeModel" size="small" @change="readerStore.setMode($event)">
                   <el-radio-button value="page">上下滑动</el-radio-button>
+                  <el-radio-button value="flip">左右翻页</el-radio-button>
                   <el-radio-button value="scroll">上下滚动</el-radio-button>
-                  <el-radio-button value="scroll2" disabled title="上游多章节连续滚动尚未补齐">上下滚动2</el-radio-button>
+                  <el-radio-button value="scroll2">上下滚动2</el-radio-button>
                 </el-radio-group>
               </label>
               <label>

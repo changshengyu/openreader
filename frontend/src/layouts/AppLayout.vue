@@ -209,10 +209,10 @@ const isMobileShell = computed(() => windowWidth.value <= 1180 || coarsePointer.
 const mobileNavigationStyle = computed(() => {
   if (!isMobileShell.value || !touchMoveX.value) return {}
   if (!mobileNavigationVisible.value && touchMoveX.value > 0 && touchMoveX.value <= MOBILE_NAV_WIDTH) {
-    return { marginLeft: `${touchMoveX.value - MOBILE_NAV_WIDTH}px` }
+    return { transform: `translateX(${touchMoveX.value - MOBILE_NAV_WIDTH}px)` }
   }
   if (mobileNavigationVisible.value && touchMoveX.value < 0 && touchMoveX.value >= -MOBILE_NAV_WIDTH) {
-    return { marginLeft: `${touchMoveX.value}px` }
+    return { transform: `translateX(${touchMoveX.value}px)` }
   }
   return {}
 })
@@ -650,36 +650,30 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell {
-  display: flex;
-  flex-direction: row;
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
 }
 
 .app-shell.mobile-shell .app-sidebar {
-  position: relative;
-  inset: auto;
+  position: fixed;
+  inset: 0 auto 0 0;
   width: 260px;
-  min-width: 260px;
   height: 100vh;
   height: 100dvh;
-  flex: 0 0 260px;
-  margin-left: -260px;
   overflow-y: auto;
   padding: max(20px, env(safe-area-inset-top)) 36px 66px;
   scrollbar-width: none;
-  transition: margin-left 0.3s;
+  transform: translateX(-260px);
+  transition: transform 0.3s;
+  will-change: transform;
 }
 
 .app-shell.mobile-shell .app-workspace {
-  flex: 0 0 100vw;
-  flex-basis: 100dvw;
   width: 100vw;
   width: 100dvw;
   max-width: 100vw;
   max-width: 100dvw;
-  margin-left: 0;
   padding-left: 0;
 }
 
@@ -778,6 +772,6 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell.mobile-nav-open .app-sidebar {
-  margin-left: 0;
+  transform: translateX(0);
 }
 </style>

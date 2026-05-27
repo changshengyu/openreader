@@ -210,7 +210,7 @@ const sourceGroups = computed(() => {
 })
 
 const localImportableCount = computed(() => localItems.value.filter(item => item.importable).length)
-const localShelfBooks = computed(() => (bookshelf.books || []).filter(book => Number(book.sourceId || 0) === 0))
+const localShelfBooks = computed(() => (bookshelf.books || []).filter(isLocalShelfBook))
 const shownLocalResults = computed(() => {
   if (!searched.value || searchMode.value !== 'local') return []
   const value = normalizeLocalSearch(keyword.value)
@@ -417,6 +417,12 @@ function localShelfSearchText(book) {
     localBookSubline({ book }),
     localBookMeta({ book }),
   ].filter(Boolean).join(' '))
+}
+
+function isLocalShelfBook(book) {
+  if (!book) return false
+  if (Number(book.sourceId || 0) === 0) return true
+  return Boolean(book.originalFile || book.libraryPath || book.tocFile || book.sourceFile)
 }
 
 function localFileSearchText(item) {

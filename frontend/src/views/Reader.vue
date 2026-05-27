@@ -666,7 +666,7 @@ onBeforeUnmount(() => {
   clearTimeout(saveTimer)
   clearTimeout(chapterLoadingTimer)
   stopAutoReading()
-  saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true, background: true })
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('wheel', handleReaderWheel)
   window.removeEventListener('pagehide', handleReaderPageHide)
@@ -674,8 +674,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
 })
 
-onBeforeRouteLeave(async () => {
-  await saveCurrentProgress({ force: true })
+onBeforeRouteLeave(() => {
+  saveCurrentProgress({ force: true, background: true })
 })
 
 watch(bookId, async () => {
@@ -1076,12 +1076,12 @@ function openCacheDrawer() {
 }
 
 async function goBookDetail() {
-  await saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true, background: true })
   await router.push({ name: 'book-detail', params: { id: bookId.value } })
 }
 
 async function goShelf() {
-  await saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true, background: true })
   await router.push({ name: 'home' })
 }
 async function openShelfPanel() {
@@ -1884,11 +1884,11 @@ function isMobileUA() {
 }
 
 function handleReaderPageHide() {
-  saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true, background: true })
 }
 
 function handleReaderVisibilityChange() {
-  if (document.hidden) saveCurrentProgress({ force: true })
+  if (document.hidden) saveCurrentProgress({ force: true, background: true })
 }
 
 function onScroll() {
@@ -2008,11 +2008,20 @@ function currentVisibleExcerpt() {
 async function saveCurrentProgress(options = {}) {
   if (!chapter.value) return
   const force = Boolean(options.force)
+  const background = Boolean(options.background)
   const payload = currentProgressPayload()
   applyLocalProgressSnapshot(payload)
   const key = progressSaveKey(payload)
   if (key === lastProgressSaveKey) return
   pendingProgressPayload = payload
+  if (background) {
+    flushProgressQueue(force).catch(() => {})
+    return
+  }
+  await flushProgressQueue(force)
+}
+
+async function flushProgressQueue(force = false) {
   if (savingProgress) {
     if (!force) return
     await waitForProgressSaveIdle()
