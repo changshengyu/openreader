@@ -31,7 +31,7 @@
 	              <el-button v-if="book.sourceId > 0" :loading="refreshingBook" @click="refreshCurrentBook">刷新目录</el-button>
 	              <el-button v-else :loading="refreshingBook" @click="refreshCurrentLocalBook">刷新本地书</el-button>
 	              <el-button v-if="book.sourceId > 0" :icon="Switch" :loading="loadingSourceCandidates" @click="openChangeSource">换源</el-button>
-	              <el-button v-if="book.sourceId > 0" :loading="cachingLocalBook" @click="cacheCurrentBookLocal">缓存到浏览器</el-button>
+	              <el-button v-if="book.sourceId > 0" :loading="cachingLocalBook" @click="cacheCurrentBookLocal">缓存后续100章</el-button>
 	              <el-button v-if="book.sourceId > 0" :loading="cachingBook" @click="cacheCurrentBook">缓存到服务器</el-button>
 	              <el-button v-if="book.sourceId > 0" :loading="clearingLocalCache" @click="clearCurrentBookLocalCache">清浏览器缓存</el-button>
 	              <el-button v-if="book.sourceId > 0" :loading="clearingCache" @click="clearCurrentBookCache">清服务器缓存</el-button>
@@ -175,6 +175,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
+import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -300,13 +301,7 @@ function goBookmark(bookmark) {
 
 function readerRouteQuery(targetBook) {
   const progress = reader.progressByBook[targetBook?.id] || targetBook?.progress
-  if (!progress) return {}
-  const query = {}
-  const chapterIndex = Number(progress.chapterIndex)
-  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
-  const offset = Number(progress.offset)
-  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
-  return query
+  return readerRouteQueryFromBook(targetBook, progress, targetBook?.chapterCount || chapters.value.length)
 }
 
 function openGlobalBookmark() {
@@ -500,8 +495,8 @@ async function cacheCurrentBookLocal() {
   try {
     if (!chapters.value.length) await reloadChapters()
     const result = await cacheBookChaptersToBrowser(book.value, book.value.id, chapters.value, {
-      startIndex: 0,
-      count: true,
+      startIndex: cacheStartChapterIndex(),
+      count: 100,
     })
     await refreshBrowserCacheMap()
     ElMessage.success(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)

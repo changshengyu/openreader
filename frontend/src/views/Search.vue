@@ -158,6 +158,7 @@ import api from '../api/client'
 import BookCover from '../components/BookCover.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
+import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -443,30 +444,11 @@ function readLocalShelfBook(book) {
 }
 
 function readerRouteQueryForLocalBook(book) {
-  const progress = readerProgressForBook(book)
-  if (!progress) return {}
-  const query = {}
-  const chapterIndex = Number(progress.chapterIndex)
-  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
-  const offset = Number(progress.offset)
-  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
-  const chapterPercent = savedBookChapterPercent(progress, book)
-  if (chapterPercent !== null) query.percent = Number(chapterPercent.toFixed(6))
-  return query
+  return readerRouteQueryFromBook(book, readerProgressForBook(book))
 }
 
 function readerProgressForBook(book) {
   return bookshelf.books.find(item => item.id === book?.id)?.progress || book?.progress || null
-}
-
-function savedBookChapterPercent(progress, book) {
-  if (!progress || !Number.isFinite(Number(progress.percent))) return null
-  const chapterIndex = Number(progress.chapterIndex)
-  if (!Number.isFinite(chapterIndex)) return null
-  const total = Math.max(Number(book?.chapterCount || 0), 1)
-  const raw = Number(progress.percent) * total - chapterIndex
-  if (!Number.isFinite(raw) || raw <= 0) return null
-  return Math.max(0, Math.min(1, raw))
 }
 
 function openLocalShelfDetail(book) {
@@ -567,7 +549,7 @@ function openExistingInfo(book, sourceName = '') {
 
 function openExistingReader(book) {
   overlay.closeBookInfo()
-  router.push({ name: 'reader', params: { id: book.id } })
+  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQueryForLocalBook(book) })
 }
 
 function readError(err, fallback) {

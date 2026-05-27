@@ -742,6 +742,7 @@ import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { sortByShelfOrder } from '../utils/bookOrder'
+import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import BookInfoDialog from './BookInfoDialog.vue'
 import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from './reader/ReaderSearchPanel.vue'
@@ -1077,13 +1078,7 @@ function goDetail(book) {
 
 function readerRouteQuery(book) {
   const progress = reader.progressByBook[book?.id] || book?.progress
-  if (!progress) return {}
-  const query = {}
-  const chapterIndex = Number(progress.chapterIndex)
-  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
-  const offset = Number(progress.offset)
-  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
-  return query
+  return readerRouteQueryFromBook(book, progress)
 }
 
 function setBookGroup(book) {

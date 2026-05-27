@@ -126,6 +126,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { useSync } from '../composables/useSync'
 import { compareRecentBook } from '../utils/bookOrder'
+import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const router = useRouter()
 const route = useRoute()
@@ -278,13 +279,7 @@ function recentSubTitle(book) {
 
 function readerRouteQuery(book) {
   const progress = reader.progressByBook[book?.id] || book?.progress
-  if (!progress) return {}
-  const query = {}
-  const chapterIndex = Number(progress.chapterIndex)
-  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
-  const offset = Number(progress.offset)
-  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
-  return query
+  return readerRouteQueryFromBook(book, progress)
 }
 
 function handleLogout() {

@@ -56,6 +56,7 @@ import { exploreBooks, listExploreSources } from '../api/explore'
 import BookCover from '../components/BookCover.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
+import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const router = useRouter()
 const bookshelf = useBookshelfStore()
@@ -241,7 +242,11 @@ function openExistingInfo(book, sourceName = '') {
 
 function openExistingReader(book) {
   overlay.closeBookInfo()
-  router.push({ name: 'reader', params: { id: book.id } })
+  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQuery(book) })
+}
+
+function readerRouteQuery(book) {
+  return readerRouteQueryFromBook(book, book?.progress)
 }
 
 function readError(err, fallback) {

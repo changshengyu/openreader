@@ -435,6 +435,7 @@ import { useTTS } from '../composables/useTTS'
 import { sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { readerFontOptions, readerFontStack } from '../utils/readerFonts'
+import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -777,7 +778,7 @@ async function loadReaderBook() {
   const hasRouteOffset = route.query.offset !== undefined
   const initialOffset = hasRouteOffset ? Number(route.query.offset || 0) : Number(saved?.offset || 0)
   const routePercent = parseRoutePercent(route.query.percent)
-  const savedPercent = savedChapterPercent(saved, currentIndex.value)
+  const savedPercent = savedBookChapterPercent(saved, chapters.value.length)
   await loadChapter(currentIndex.value, initialOffset, {
     restorePercent: routePercent ?? (hasRouteOffset ? null : savedPercent),
     saveAfterLoad: false,
@@ -1135,15 +1136,7 @@ function readChapterTitle(item) {
 
 function readerRouteQueryForBook(item) {
   const progress = reader.progressByBook[item?.id] || item?.progress
-  if (!progress) return {}
-  const query = {}
-  const chapterIndex = Number(progress.chapterIndex)
-  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
-  const offset = Number(progress.offset)
-  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
-  const chapterPercent = savedChapterPercent(progress, chapterIndex, item?.chapterCount)
-  if (chapterPercent !== null) query.percent = Number(chapterPercent.toFixed(6))
-  return query
+  return readerRouteQueryFromBook(item, progress, item?.chapterCount || chapters.value.length)
 }
 
 function unreadCount(item) {
@@ -2184,16 +2177,6 @@ function parseRoutePercent(value) {
   return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : null
 }
 
-function savedChapterPercent(progress, chapterIndex, totalChapters = chapters.value.length) {
-  if (!progress || !Number.isFinite(Number(progress.percent))) return null
-  const index = Number.isFinite(Number(chapterIndex)) ? Number(chapterIndex) : Number(progress.chapterIndex)
-  if (!Number.isFinite(index)) return null
-  const total = Math.max(Number(totalChapters || 0), 1)
-  const raw = Number(progress.percent) * total - index
-  if (!Number.isFinite(raw) || raw <= 0) return null
-  return Math.max(0, Math.min(1, raw))
-}
-
 async function jumpToBookSearchResult(result) {
   showSearchDrawer.value = false
   const targetIndex = Number(result.chapterIndex || 0)
@@ -2766,7 +2749,7 @@ function readError(err, fallback) {
 }
 .reader-shell.flip .reader-body,
 .reader-shell.page .reader-body {
-  transition: transform 250ms ease;
+  transition: transform var(--reader-animate-duration, 180ms) ease;
 }
 
 /* ---- 右下翻页控制 ---- */

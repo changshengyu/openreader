@@ -11,7 +11,7 @@ export const themePresets = {
 
 export const useReaderStore = defineStore('reader', {
   state: () => ({
-    mode: 'scroll',
+    mode: 'page',
     clickMethod: 'auto',
     fontFamily: 'system',
     fontSize: 18,
@@ -21,7 +21,7 @@ export const useReaderStore = defineStore('reader', {
     customBgImage: '',
     brightness: 100,
     autoReadSpeed: 12,
-    animateDuration: 180,
+    animateDuration: 300,
     ttsRate: 1,
     ttsPitch: 1,
     ttsVoiceURI: '',
@@ -46,7 +46,7 @@ export const useReaderStore = defineStore('reader', {
   },
   actions: {
     setMode(mode) {
-      this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'scroll'
+      this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'page'
     },
     setClickMethod(method) {
       this.clickMethod = ['next', 'auto', 'none'].includes(method) ? method : 'auto'
@@ -77,7 +77,7 @@ export const useReaderStore = defineStore('reader', {
     },
     setAnimateDuration(duration) {
       const value = Number(duration)
-      this.animateDuration = Math.max(0, Math.min(1000, Number.isFinite(value) ? value : 180))
+      this.animateDuration = Math.max(0, Math.min(1000, Number.isFinite(value) ? value : 300))
     },
     setTTSRate(rate) {
       this.ttsRate = Math.max(0.5, Math.min(3, Number(rate) || 1))
@@ -95,10 +95,10 @@ export const useReaderStore = defineStore('reader', {
       this.paragraphSpace = Math.max(0, Math.min(3, Number(paragraphSpace) || 0))
     },
     setColumnWidth(columnWidth) {
-      this.columnWidth = Math.max(320, Math.min(1200, Number(columnWidth) || 670))
+      this.columnWidth = Math.max(320, Math.min(1200, Number(columnWidth) || 800))
     },
     normalizeSettings() {
-      if (!['scroll', 'scroll2', 'flip', 'page'].includes(this.mode)) this.mode = 'scroll'
+      if (!['scroll', 'scroll2', 'flip', 'page'].includes(this.mode)) this.mode = 'page'
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['system', 'serif', 'kai', 'mono'].includes(this.fontFamily)) this.fontFamily = 'system'
       this.setFontSize(this.fontSize)
