@@ -38,7 +38,7 @@
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshBookInfo(overlay.bookInfoBook)">刷新目录</el-button>
       <el-button v-else plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshLocalBookInfo(overlay.bookInfoBook)">刷新本地书</el-button>
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="sourceSwitchLoading" @click="openGlobalSourceSwitch(overlay.bookInfoBook)">换源</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBookLocal')">缓存到浏览器</el-button>
+      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBookLocal')">缓存后续100章</el-button>
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存到服务器</el-button>
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookLocalCache')">清浏览器缓存</el-button>
       <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookCache')">清服务器缓存</el-button>
@@ -150,7 +150,7 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBookLocal">缓存到浏览器</el-dropdown-item>
+                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBookLocal">缓存后续100章</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存到服务器</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookLocalCache">删除浏览器缓存</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookCache">删除服务器缓存</el-dropdown-item>
@@ -186,7 +186,7 @@
         <footer>
           <el-button size="small" text @click="goDetail(book)">编辑</el-button>
           <el-button size="small" text @click="setBookGroup(book)">分组</el-button>
-          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBookLocal')">浏览器缓存</el-button>
+          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBookLocal')">缓存100章</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookLocalCache')">清浏览器</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">服务器缓存</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清服务器</el-button>
@@ -1519,9 +1519,10 @@ async function cacheBookLocal(book) {
   cachingBookId.value = book.id
   try {
     const { data } = await listChapters(book.id)
+    const chapterIndex = cacheStartChapterIndex(book)
     const result = await cacheBookChaptersToBrowser(book, book.id, Array.isArray(data) ? data : [], {
-      startIndex: 0,
-      count: true,
+      startIndex: chapterIndex,
+      count: 100,
     })
     ElMessage.success(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)
     await refreshManagedBrowserCacheCounts()

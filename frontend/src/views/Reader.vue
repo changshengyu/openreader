@@ -776,7 +776,12 @@ async function loadReaderBook() {
   }
   const hasRouteOffset = route.query.offset !== undefined
   const initialOffset = hasRouteOffset ? Number(route.query.offset || 0) : Number(saved?.offset || 0)
-  await loadChapter(currentIndex.value, initialOffset, { saveAfterLoad: false })
+  const routePercent = parseRoutePercent(route.query.percent)
+  const savedPercent = savedChapterPercent(saved, currentIndex.value)
+  await loadChapter(currentIndex.value, initialOffset, {
+    restorePercent: routePercent ?? (hasRouteOffset ? null : savedPercent),
+    saveAfterLoad: false,
+  })
   await jumpToRouteLine()
 }
 
@@ -1136,6 +1141,8 @@ function readerRouteQueryForBook(item) {
   if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
   const offset = Number(progress.offset)
   if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const chapterPercent = savedChapterPercent(progress, chapterIndex, item?.chapterCount)
+  if (chapterPercent !== null) query.percent = Number(chapterPercent.toFixed(6))
   return query
 }
 
@@ -2175,6 +2182,16 @@ function parseRoutePercent(value) {
   if (value === undefined || value === null || value === '') return null
   const percent = Number(value)
   return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : null
+}
+
+function savedChapterPercent(progress, chapterIndex, totalChapters = chapters.value.length) {
+  if (!progress || !Number.isFinite(Number(progress.percent))) return null
+  const index = Number.isFinite(Number(chapterIndex)) ? Number(chapterIndex) : Number(progress.chapterIndex)
+  if (!Number.isFinite(index)) return null
+  const total = Math.max(Number(totalChapters || 0), 1)
+  const raw = Number(progress.percent) * total - index
+  if (!Number.isFinite(raw) || raw <= 0) return null
+  return Math.max(0, Math.min(1, raw))
 }
 
 async function jumpToBookSearchResult(result) {

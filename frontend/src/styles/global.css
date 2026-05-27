@@ -78,17 +78,17 @@ a {
 }
 
 .app-shell-search .el-input__wrapper {
-  background: rgba(255, 253, 248, 0.1);
+  background: #fffdf8;
   border-radius: var(--app-radius-sm);
-  box-shadow: inset 0 0 0 1px rgba(255, 253, 248, 0.1);
+  box-shadow: inset 0 0 0 1px #e4d9c8;
 }
 
 .app-shell-search .el-input__inner {
-  color: #fff9ed;
+  color: #24201b;
 }
 
 .app-shell-search .el-input__inner::placeholder {
-  color: rgba(255, 249, 237, 0.45);
+  color: #a09282;
 }
 
 @media (max-width: 860px), (hover: none) and (pointer: coarse) {

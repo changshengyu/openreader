@@ -23,6 +23,7 @@
           placeholder="搜索书籍"
           clearable
           @keyup.enter="goSearch"
+          @clear="clearShelfSearch"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
@@ -254,7 +255,13 @@ function goSearch() {
   const keyword = quickSearch.value.trim()
   if (!keyword) return
   router.push({ name: 'home', query: { shelfQ: keyword } })
-  quickSearch.value = ''
+}
+
+function clearShelfSearch() {
+  if (route.name === 'home' && route.query.shelfQ !== undefined) {
+    const { shelfQ, ...query } = route.query
+    router.replace({ name: 'home', query })
+  }
 }
 
 function openRecentBook() {
@@ -368,6 +375,14 @@ watch(
     } else {
       disconnect()
     }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => route.query.shelfQ,
+  (value) => {
+    if (route.name === 'home') quickSearch.value = typeof value === 'string' ? value : ''
   },
   { immediate: true },
 )

@@ -316,7 +316,19 @@ function readerRouteQuery(book) {
   if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
   const offset = Number(progress.offset)
   if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const chapterPercent = savedBookChapterPercent(progress, book)
+  if (chapterPercent !== null) query.percent = Number(chapterPercent.toFixed(6))
   return query
+}
+
+function savedBookChapterPercent(progress, book) {
+  if (!progress || !Number.isFinite(Number(progress.percent))) return null
+  const chapterIndex = Number(progress.chapterIndex)
+  if (!Number.isFinite(chapterIndex)) return null
+  const total = Math.max(Number(book?.chapterCount || 0), 1)
+  const raw = Number(progress.percent) * total - chapterIndex
+  if (!Number.isFinite(raw) || raw <= 0) return null
+  return Math.max(0, Math.min(1, raw))
 }
 
 function categoryName(id) {

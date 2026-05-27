@@ -212,7 +212,7 @@ const localImportableCount = computed(() => localItems.value.filter(item => item
 const localShelfBooks = computed(() => (bookshelf.books || []).filter(book => Number(book.sourceId || 0) === 0))
 const shownLocalResults = computed(() => {
   if (!searched.value || searchMode.value !== 'local') return []
-  const value = keyword.value.trim().toLowerCase()
+  const value = normalizeLocalSearch(keyword.value)
   const shelfResults = localShelfBooks.value
     .filter(book => !value || localShelfSearchText(book).includes(value))
     .map(book => ({
@@ -227,7 +227,7 @@ const shownLocalResults = computed(() => {
     .filter(item => {
       if (!item.importable) return false
       if (!value) return true
-      return `${item.name || ''} ${item.path || ''}`.toLowerCase().includes(value)
+      return localFileSearchText(item).includes(value)
     })
     .map(item => ({ ...item, type: 'file' }))
   return [...shelfResults, ...storeResults]
@@ -402,14 +402,35 @@ function localResultKey(item) {
 }
 
 function localShelfSearchText(book) {
-  return [
+  return normalizeLocalSearch([
     book.title,
     book.author,
     book.lastChapter,
+    book.latestChapter,
+    book.latestChapterTitle,
     book.originalFile,
     book.libraryPath,
+    book.tocFile,
+    book.sourceFile,
     book.url,
-  ].filter(Boolean).join(' ').toLowerCase()
+    localBookSubline({ book }),
+    localBookMeta({ book }),
+  ].filter(Boolean).join(' '))
+}
+
+function localFileSearchText(item) {
+  return normalizeLocalSearch([
+    item.name,
+    item.path,
+    item.extension,
+    item.mimeType,
+  ].filter(Boolean).join(' '))
+}
+
+function normalizeLocalSearch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\s·•._\-—–:：，,。.!！?？()[\]【】《》"'“”‘’/\\]+/g, '')
 }
 
 function fileExtension(value) {
@@ -418,7 +439,34 @@ function fileExtension(value) {
 }
 
 function readLocalShelfBook(book) {
-  router.push({ name: 'reader', params: { id: book.id } })
+  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQueryForLocalBook(book) })
+}
+
+function readerRouteQueryForLocalBook(book) {
+  const progress = readerProgressForBook(book)
+  if (!progress) return {}
+  const query = {}
+  const chapterIndex = Number(progress.chapterIndex)
+  if (Number.isFinite(chapterIndex)) query.chapter = Math.max(0, Math.floor(chapterIndex))
+  const offset = Number(progress.offset)
+  if (Number.isFinite(offset) && offset > 0) query.offset = Math.floor(offset)
+  const chapterPercent = savedBookChapterPercent(progress, book)
+  if (chapterPercent !== null) query.percent = Number(chapterPercent.toFixed(6))
+  return query
+}
+
+function readerProgressForBook(book) {
+  return bookshelf.books.find(item => item.id === book?.id)?.progress || book?.progress || null
+}
+
+function savedBookChapterPercent(progress, book) {
+  if (!progress || !Number.isFinite(Number(progress.percent))) return null
+  const chapterIndex = Number(progress.chapterIndex)
+  if (!Number.isFinite(chapterIndex)) return null
+  const total = Math.max(Number(book?.chapterCount || 0), 1)
+  const raw = Number(progress.percent) * total - chapterIndex
+  if (!Number.isFinite(raw) || raw <= 0) return null
+  return Math.max(0, Math.min(1, raw))
 }
 
 function openLocalShelfDetail(book) {
