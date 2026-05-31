@@ -579,8 +579,9 @@ const chapterTextLength = computed(() => {
   return last.pos + last.text.length
 })
 const isScrollRead = computed(() => reader.mode === 'page' || reader.mode === 'scroll' || reader.mode === 'scroll2')
+const isContinuousScrollRead = computed(() => reader.mode === 'scroll' || reader.mode === 'scroll2')
 const displayedChapterBlocks = computed(() => {
-  if (reader.mode === 'scroll2' && chapterBlocks.value.length) return chapterBlocks.value
+  if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
 })
 
@@ -717,7 +718,7 @@ watch(() => [route.query.line, route.query.match, route.query.q], async () => {
 watch(() => reader.mode, async () => {
   const offset = currentOffset()
   page.value = 0
-  if (reader.mode === 'scroll2') {
+  if (isContinuousScrollRead.value) {
     chapterLoading.value = true
     try {
       await computeShowChapterList()
@@ -868,7 +869,7 @@ async function loadChapter(index, offset = 0, options = {}) {
     chapter.value = data.chapter
     content.value = data.content || ''
     page.value = 0
-    if (reader.mode === 'scroll2') {
+    if (isContinuousScrollRead.value) {
       await computeShowChapterList({ reset: true })
     } else {
       chapterBlocks.value = [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
@@ -900,7 +901,7 @@ async function computeShowChapterList() {
   const startIndex = reader.mode === 'scroll2'
     ? Math.max(0, currentIndex.value - SHOW_PREV_CHAPTER_SIZE)
     : currentIndex.value
-  const endIndex = reader.mode === 'scroll2'
+  const endIndex = isContinuousScrollRead.value
     ? Math.min(chapters.value.length - 1, currentIndex.value + SHOW_NEXT_CHAPTER_SIZE)
     : currentIndex.value
   const blocks = []
@@ -912,7 +913,7 @@ async function computeShowChapterList() {
 }
 
 async function appendNextShowChapter() {
-  if (reader.mode !== 'scroll2' || !chapterBlocks.value.length) return
+  if (!isContinuousScrollRead.value || !chapterBlocks.value.length) return
   const lastIndex = chapterBlocks.value[chapterBlocks.value.length - 1].index
   const nextIndex = lastIndex + 1
   if (nextIndex >= chapters.value.length) return
@@ -988,7 +989,7 @@ async function restoreReadingPosition(offset = 0, options = {}) {
     return
   }
   if (!contentEl.value) return
-  if (reader.mode === 'scroll2') {
+  if (isContinuousScrollRead.value) {
     restoreScroll2ChapterPosition(chapterOffset, hasRestorePercent ? restorePercent : null)
     return
   }
@@ -1065,7 +1066,7 @@ function pickBgImage(data) {
 
 async function goChapter(index, offset = 0) {
   if (index === currentIndex.value) { showTocDrawer.value = false; return }
-  if (reader.mode === 'scroll2' && jumpToLoadedChapter(index, offset)) {
+  if (isContinuousScrollRead.value && jumpToLoadedChapter(index, offset)) {
     showTocDrawer.value = false
     return
   }
@@ -1746,7 +1747,7 @@ function seekCurrentChapterPercent(percent, options = {}) {
     return
   }
   if (!contentEl.value) return
-  if (reader.mode === 'scroll2') {
+  if (isContinuousScrollRead.value) {
     const chapterEl = contentBody.value?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`)
     if (chapterEl) {
       const room = Math.max(chapterEl.offsetHeight - contentEl.value.clientHeight, 0)
@@ -2030,7 +2031,7 @@ function currentChapterPercent() {
   if (!el) return 0
   const textLength = Math.max(chapterTextLength.value, 1)
   const position = currentChapterPosition()
-  if (position > 0 || reader.mode === 'scroll2') return Math.max(0, Math.min(1, position / textLength))
+  if (position > 0 || isContinuousScrollRead.value) return Math.max(0, Math.min(1, position / textLength))
   const bottom = Math.max(el.scrollHeight - el.clientHeight, 1)
   const scrollTop = Number(el.scrollTop || 0)
   if (scrollTop > 0) return scrollTop / bottom
@@ -2094,7 +2095,7 @@ function activeChapterElement() {
 }
 
 function updateCurrentChapterFromScroll() {
-  if (reader.mode !== 'scroll2') return
+  if (!isContinuousScrollRead.value) return
   const chapterEl = activeChapterElement()
   const nextIndex = Number(chapterEl?.dataset?.index)
   if (!Number.isInteger(nextIndex) || nextIndex === currentIndex.value) return
@@ -2105,7 +2106,7 @@ function updateCurrentChapterFromScroll() {
 }
 
 function maybeAppendShowChapter() {
-  if (reader.mode !== 'scroll2' || appendingShowChapter || !contentEl.value) return
+  if (!isContinuousScrollRead.value || appendingShowChapter || !contentEl.value) return
   const el = contentEl.value
   const nearBottom = el.scrollTop + el.clientHeight > el.scrollHeight - el.clientHeight * 2
   if (!nearBottom) return
@@ -2851,6 +2852,7 @@ function readError(err, fallback) {
 .chapter-content {
   min-height: 1px;
 }
+.reader-shell.scroll .chapter-content + .chapter-content,
 .reader-shell.scroll2 .chapter-content + .chapter-content {
   padding-top: 58px;
 }
