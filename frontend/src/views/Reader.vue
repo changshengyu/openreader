@@ -2067,9 +2067,9 @@ async function saveCurrentProgress(options = {}) {
   const force = Boolean(options.force)
   const background = Boolean(options.background)
   const payload = currentProgressPayload()
-  applyLocalProgressSnapshot(payload)
+  applyLocalProgressSnapshot(payload, { force })
   const key = progressSaveKey(payload)
-  if (key === lastProgressSaveKey) return
+  if (key === lastProgressSaveKey && !force) return
   pendingProgressPayload = payload
   if (background) {
     flushProgressQueue(force).catch(() => {})
@@ -2096,7 +2096,7 @@ async function flushProgressQueue(force = false) {
       const nextPayload = pendingProgressPayload
       pendingProgressPayload = null
       const nextKey = progressSaveKey(nextPayload)
-      if (nextKey === lastProgressSaveKey) continue
+      if (nextKey === lastProgressSaveKey && !force) continue
       lastProgressRequestAt = Date.now()
       await reader.saveProgress(nextPayload)
       lastProgressSaveKey = nextKey
@@ -2117,10 +2117,10 @@ function currentProgressPayload() {
   }
 }
 
-function applyLocalProgressSnapshot(payload = currentProgressPayload()) {
+function applyLocalProgressSnapshot(payload = currentProgressPayload(), options = {}) {
   if (!payload?.bookId || !chapter.value) return
   const key = progressSaveKey(payload)
-  if (key === lastLocalProgressKey) return
+  if (key === lastLocalProgressKey && !options.force) return
   lastLocalProgressKey = key
   reader.applyProgress({
     ...payload,
