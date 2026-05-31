@@ -449,7 +449,7 @@ function setTTSVoice(value) {
   font-weight: 700;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .settings-body {
     gap: 16px;
     padding-bottom: max(10px, env(safe-area-inset-bottom));

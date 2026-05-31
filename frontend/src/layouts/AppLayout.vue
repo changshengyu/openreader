@@ -162,7 +162,7 @@ import { useReaderStore } from '../stores/reader'
 import { useSync } from '../composables/useSync'
 import { clearCache, getCacheStats } from '../api/cache'
 import { listSources } from '../api/sources'
-import { compareRecentBook } from '../utils/bookOrder'
+import { compareRecentBook, newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const router = useRouter()
@@ -174,7 +174,7 @@ const reader = useReaderStore()
 const quickSearch = ref('')
 const offline = ref(false)
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(false)
+const coarsePointer = ref(isCoarsePointer())
 const touchDevice = ref(false)
 const mobileNavigationVisible = ref(false)
 const touchStart = ref(null)
@@ -435,15 +435,18 @@ function openRecentBook() {
 }
 
 function recentSubTitle(book) {
-  const progress = reader.progressByBook[book.id] || book.progress
+  const progress = progressForBook(book)
   if (progress?.chapterTitle) return progress.chapterTitle
   if (Number.isInteger(progress?.chapterIndex)) return `第 ${progress.chapterIndex + 1} 章`
   return book.lastChapter || book.author || '继续阅读'
 }
 
 function readerRouteQuery(book) {
-  const progress = reader.progressByBook[book?.id] || book?.progress
-  return readerRouteQueryFromBook(book, progress)
+  return readerRouteQueryFromBook(book, progressForBook(book))
+}
+
+function progressForBook(book) {
+  return newestBookProgress(book, reader.progressByBook)
 }
 
 function handleLogout() {
@@ -466,8 +469,14 @@ function setOnline() {
 
 function updateViewportFlags() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
   touchDevice.value = Number(navigator.maxTouchPoints || 0) > 0
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 function isMobileUA() {

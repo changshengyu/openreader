@@ -446,7 +446,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
-import { sortByShelfOrder } from '../utils/bookOrder'
+import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { readerFontOptions, readerFontStack } from '../utils/readerFonts'
@@ -520,9 +520,9 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(window.innerWidth)
-const coarsePointer = ref(window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
+const coarsePointer = ref(isCoarsePointer())
 const touchDevice = ref(Number(navigator.maxTouchPoints || 0) > 0)
-const mobileReaderMaxWidth = 860
+const mobileReaderMaxWidth = 1180
 const SAVE_PROGRESS_MIN_INTERVAL = 1200
 
 let saveTimer
@@ -800,11 +800,12 @@ async function loadReaderBook() {
       { validate: data => Array.isArray(data) },
     ),
     api.get(`/books/${bookId.value}/bookmarks`),
-    reader.loadProgress(bookId.value, { preferLocal: true }),
+    reader.loadProgress(bookId.value),
   ])
   book.value = bookRes.data
   chapters.value = chRes.data
   bookmarks.value = bmRes.data
+  if (saved?.bookId) bookshelf.applyBookProgress(saved)
   if (route.query.chapter === undefined && saved?.chapterIndex !== undefined) {
     currentIndex.value = saved.chapterIndex
   } else {
@@ -1195,25 +1196,28 @@ async function changeBookFromShelf(item) {
 }
 
 function readChapterTitle(item) {
-  const progress = reader.progressByBook[item.id] || item.progress
+  const progress = shelfItemProgress(item)
   return progress?.chapterTitle || item.durChapterTitle || ''
 }
 
 function readerRouteQueryForBook(item) {
-  const progress = reader.progressByBook[item?.id] || item?.progress
-  return readerRouteQueryFromBook(item, progress, item?.chapterCount || chapters.value.length)
+  return readerRouteQueryFromBook(item, shelfItemProgress(item), item?.chapterCount || chapters.value.length)
 }
 
 function unreadCount(item) {
-  const progress = reader.progressByBook[item.id] || item.progress
+  const progress = shelfItemProgress(item)
   const chapterIndex = Number.isInteger(progress?.chapterIndex) ? progress.chapterIndex : -1
   const total = Number(item.chapterCount || item.totalChapterNum || 0)
   return Math.max(0, total - 1 - chapterIndex)
 }
 
 function shelfProgressLabel(item) {
-  const progress = reader.progressByBook[item.id] || item.progress
+  const progress = shelfItemProgress(item)
   return `${Math.round(Math.max(0, Math.min(1, progress?.percent || 0)) * 100)}%`
+}
+
+function shelfItemProgress(item) {
+  return newestBookProgress(item, reader.progressByBook)
 }
 
 function shelfCoverInitial(item) {
@@ -1992,9 +1996,15 @@ function readableViewportSize() {
 
 function handleResize() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
   touchDevice.value = Number(navigator.maxTouchPoints || 0) > 0
   updateFlipLayout()
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 function isMobileUA() {
@@ -2161,7 +2171,8 @@ async function flushProgressQueue(force = false) {
       const nextKey = progressSaveKey(nextPayload)
       if (nextKey === lastProgressSaveKey && !force) continue
       lastProgressRequestAt = Date.now()
-      await reader.saveProgress(nextPayload)
+      const savedProgress = await reader.saveProgress(nextPayload)
+      bookshelf.applyBookProgress(savedProgress)
       lastProgressSaveKey = nextKey
     }
   } finally {
@@ -2191,6 +2202,7 @@ function applyLocalProgressSnapshot(payload = currentProgressPayload(), options 
     mode: reader.mode,
     updatedAt: new Date().toISOString(),
   })
+  bookshelf.applyBookProgress(reader.progressByBook[payload.bookId])
 }
 
 function waitForProgressSaveIdle(timeout = 1500) {
@@ -3147,7 +3159,7 @@ function readError(err, fallback) {
 .empty-hint { color: #999; text-align: center; padding-top: 40px; text-indent: 0; }
 
 /* ---- 响应式 ---- */
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .reader-shell {
     --reader-frame-width: 100dvw;
     --reader-content-width: calc(100dvw - 44px);

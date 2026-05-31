@@ -173,7 +173,7 @@ watch(
   background: #ecf5ff;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .toc-search {
     margin-bottom: 8px;
   }

@@ -602,7 +602,7 @@ const selectedRSSArticle = ref(null)
 const rssArticleFilter = ref('all')
 const healthInfo = ref(null)
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
+const coarsePointer = ref(isCoarsePointer())
 
 const fontOptions = readerFontOptions
 
@@ -665,7 +665,7 @@ const webdavBreadcrumbs = computed(() => {
   return parts.map((name, index) => ({ name, path: parts.slice(0, index + 1).join('/') }))
 })
 const webdavImportSelection = computed(() => webdavSelection.value.filter(row => row.importable))
-const isMobileDialog = computed(() => windowWidth.value <= 860 || coarsePointer.value)
+const isMobileDialog = computed(() => windowWidth.value <= 1180 || coarsePointer.value)
 
 onMounted(() => {
   readerStore.normalizeSettings()
@@ -684,7 +684,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateWindowWidth))
 
 function updateWindowWidth() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 watch(
@@ -1828,7 +1834,7 @@ code {
   border-radius: 4px;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .settings-head,
   .settings-grid {
     display: grid;

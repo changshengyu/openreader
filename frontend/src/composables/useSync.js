@@ -27,9 +27,10 @@ export function useSync() {
       const message = JSON.parse(event.data)
       if (message.type === 'progress_update') {
         reader.applyProgress(message.payload)
+        bookshelf.applyBookProgress(message.payload)
       }
       if (message.type === 'bookshelf_update') {
-        bookshelf.loadBooks({ all: true })
+        bookshelf.loadBooks({ force: true, all: true })
       }
     })
   }

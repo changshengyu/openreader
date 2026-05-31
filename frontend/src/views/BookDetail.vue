@@ -13,7 +13,7 @@
             :source-name="currentSource?.name || ''"
             :category-name="categoryName(book.categoryId)"
             :chapters="chapters"
-            :progress="reader.progressByBook[book.id]?.percent || 0"
+            :progress="bookProgress?.percent || 0"
             :browser-cache-count="book.sourceId > 0 ? browserCacheCount : -1"
             :status-label="book.sourceId ? '远程书籍' : '本地书籍'"
             :status-type="book.sourceId ? 'success' : 'info'"
@@ -156,6 +156,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
+import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const route = useRoute()
@@ -196,17 +197,17 @@ const changeMessage = ref('')
 const changeError = ref(false)
 const bookDraft = reactive({ title: '', author: '', coverUrl: '', intro: '' })
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
+const coarsePointer = ref(isCoarsePointer())
 
 const currentSource = computed(() => availableSources.value.find(source => Number(source.id) === Number(book.value?.sourceId)))
-const isMobileDialog = computed(() => windowWidth.value <= 860 || coarsePointer.value)
+const isMobileDialog = computed(() => windowWidth.value <= 1180 || coarsePointer.value)
 const sourceGroups = computed(() => {
   const groups = availableSources.value.map(source => source.group).filter(Boolean)
   return [...new Set(groups)].sort()
 })
+const bookProgress = computed(() => newestBookProgress(book.value, reader.progressByBook))
 const detailCurrentIndex = computed(() => {
-  const id = book.value?.id
-  const progress = id ? reader.progressByBook[id] || book.value?.progress : null
+  const progress = bookProgress.value
   const index = Number(progress?.chapterIndex || 0)
   return Number.isFinite(index) ? Math.max(0, Math.min(chapters.value.length - 1, index)) : 0
 })
@@ -230,7 +231,13 @@ watch(activeTab, async (tab) => {
 
 function updateWindowWidth() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 async function load() {
@@ -280,7 +287,7 @@ function goBookmark(bookmark) {
 }
 
 function readerRouteQuery(targetBook) {
-  const progress = reader.progressByBook[targetBook?.id] || targetBook?.progress
+  const progress = newestBookProgress(targetBook, reader.progressByBook)
   return readerRouteQueryFromBook(targetBook, progress, targetBook?.chapterCount || chapters.value.length)
 }
 
@@ -488,7 +495,7 @@ async function cacheCurrentBookLocal() {
 }
 
 function cacheStartChapterIndex() {
-  const progress = reader.progressByBook[book.value?.id] || book.value?.progress
+  const progress = bookProgress.value
   const chapterIndex = Number(progress?.chapterIndex)
   return Number.isInteger(chapterIndex) && chapterIndex > 0 ? chapterIndex : 0
 }
@@ -832,7 +839,7 @@ function readError(err, fallback) {
   color: #f56c6c;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .detail-page {
     gap: 12px;
   }

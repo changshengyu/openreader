@@ -102,7 +102,7 @@ import { Grid, List, Menu } from '@element-plus/icons-vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
-import { sortByShelfOrder } from '../utils/bookOrder'
+import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const router = useRouter()
@@ -117,7 +117,7 @@ const showBookEditButton = ref(false)
 const refreshLoading = ref(false)
 const shelfView = ref(readStoredShelfView())
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(false)
+const coarsePointer = ref(isCoarsePointer())
 const touchDevice = ref(false)
 
 const groupItems = computed(() => {
@@ -264,7 +264,7 @@ function unreadCount(book) {
 }
 
 function bookProgress(book) {
-  return reader.progressByBook[book.id] || book.progress
+  return newestBookProgress(book, reader.progressByBook)
 }
 
 function bookAuthorLine(book) {
@@ -343,8 +343,14 @@ function coverStyle(book) {
 
 function updateViewportFlags() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
   touchDevice.value = Number(navigator.maxTouchPoints || 0) > 0
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 function isMobileUA() {
@@ -874,7 +880,7 @@ function readError(err, fallback) {
   display: none;
 }
 
-@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .shelf-page {
     gap: 8px;
     width: 100%;

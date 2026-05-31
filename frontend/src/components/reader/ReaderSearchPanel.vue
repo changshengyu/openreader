@@ -138,7 +138,7 @@ const keyword = computed({
   gap: 6px;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .content-search-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

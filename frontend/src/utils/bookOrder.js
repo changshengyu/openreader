@@ -3,8 +3,28 @@ function toTime(value) {
   return Number.isFinite(time) ? time : 0
 }
 
+export function progressUpdatedAt(progress) {
+  return toTime(progress?.updatedAt)
+}
+
+export function newestProgress(a, b) {
+  if (!a) return b || null
+  if (!b) return a
+  const aTime = progressUpdatedAt(a)
+  const bTime = progressUpdatedAt(b)
+  if (bTime > aTime) return b
+  if (aTime > bTime) return a
+  if (b.chapterPercent !== undefined && a.chapterPercent === undefined) return b
+  if (b.chapterTitle && !a.chapterTitle) return b
+  return a
+}
+
+export function newestBookProgress(book, progressByBook) {
+  return newestProgress(book?.progress || null, progressByBook?.[book?.id] || null)
+}
+
 function progressFor(book, progressByBook) {
-  return progressByBook?.[book?.id] || book?.progress || null
+  return newestBookProgress(book, progressByBook)
 }
 
 export function compareByShelfOrderWithProgress(progressByBook) {

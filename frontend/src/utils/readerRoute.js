@@ -1,5 +1,7 @@
+import { newestProgress } from './bookOrder'
+
 export function readerRouteQueryFromBook(book, progressOverride = null, totalChaptersOverride = null) {
-  const progress = progressOverride || book?.progress
+  const progress = newestProgress(book?.progress || null, progressOverride || null)
   if (!progress) return {}
   const query = {}
   const chapterIndex = Number(progress.chapterIndex)

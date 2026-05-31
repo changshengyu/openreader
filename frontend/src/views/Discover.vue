@@ -54,11 +54,14 @@ import { exploreBooks, listExploreSources } from '../api/explore'
 import BookCover from '../components/BookCover.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
+import { useReaderStore } from '../stores/reader'
+import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const router = useRouter()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
+const reader = useReaderStore()
 const sources = ref([])
 const books = ref([])
 const selectedSourceId = ref('')
@@ -163,7 +166,7 @@ function openPreview(book) {
     sourceName: book.sourceName,
     statusLabel: existing ? '已在书架' : '探索结果',
     statusType: existing ? 'warning' : 'success',
-    progress: existing?.progress?.percent || 0,
+    progress: existingProgress(existing)?.percent || 0,
     actions: existing
       ? [
           { label: '查看详情', plain: true, handler: () => openExistingInfo(existing, book.sourceName) },
@@ -230,7 +233,7 @@ function openExistingInfo(book, sourceName = '') {
     sourceName,
     statusLabel: '已在书架',
     statusType: 'warning',
-    progress: book.progress?.percent || 0,
+    progress: existingProgress(book)?.percent || 0,
     actions: [
       { label: '完整详情', plain: true, handler: () => openExistingDetail(book) },
       { label: '继续阅读', type: 'primary', handler: () => openExistingReader(book) },
@@ -244,7 +247,11 @@ function openExistingReader(book) {
 }
 
 function readerRouteQuery(book) {
-  return readerRouteQueryFromBook(book, book?.progress)
+  return readerRouteQueryFromBook(book, existingProgress(book))
+}
+
+function existingProgress(book) {
+  return newestBookProgress(book, reader.progressByBook)
 }
 
 function readError(err, fallback) {
@@ -341,7 +348,7 @@ function readError(err, fallback) {
   flex: 1;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .discover-page {
     gap: 8px;
     padding-bottom: 14px;

@@ -96,12 +96,18 @@ defineProps({
 defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange'])
 
 const windowWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
-const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
-const isMobile = computed(() => windowWidth.value <= 860 || coarsePointer.value)
+const coarsePointer = ref(isCoarsePointer())
+const isMobile = computed(() => windowWidth.value <= 1180 || coarsePointer.value)
 
 function handleResize() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 onMounted(() => window.addEventListener('resize', handleResize))

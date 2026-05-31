@@ -161,6 +161,7 @@ import BookCover from '../components/BookCover.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
 const route = useRoute()
@@ -505,7 +506,9 @@ function readerRouteQueryForLocalBook(book) {
 }
 
 function readerProgressForBook(book) {
-  return reader.progressByBook[book?.id] || bookshelf.books.find(item => item.id === book?.id)?.progress || book?.progress || null
+  const shelfBook = bookshelf.books.find(item => item.id === book?.id)
+  const mergedBook = shelfBook ? { ...book, progress: shelfBook.progress || book?.progress } : book
+  return newestBookProgress(mergedBook, reader.progressByBook)
 }
 
 function openLocalShelfDetail(book) {
@@ -566,7 +569,7 @@ function openPreview(item) {
     sourceName: item.sourceName,
     statusLabel: existing ? '已在书架' : '搜索结果',
     statusType: existing ? 'warning' : 'success',
-    progress: existing?.progress?.percent || 0,
+    progress: readerProgressForBook(existing)?.percent || 0,
     actions: existing
       ? [
           { label: '查看详情', plain: true, handler: () => openExistingInfo(existing, item.sourceName) },
@@ -596,7 +599,7 @@ function openExistingInfo(book, sourceName = '') {
     sourceName,
     statusLabel: '已在书架',
     statusType: 'warning',
-    progress: book.progress?.percent || 0,
+    progress: readerProgressForBook(book)?.percent || 0,
     actions: [
       { label: '完整详情', plain: true, handler: () => openExistingDetail(book) },
       { label: '继续阅读', type: 'primary', handler: () => openExistingReader(book) },
@@ -784,7 +787,7 @@ function readError(err, fallback) {
   flex: 1;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .search-page {
     gap: 8px;
     padding-bottom: 14px;

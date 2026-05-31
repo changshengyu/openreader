@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../api/client'
+import { newestProgress as pickNewestProgress, progressUpdatedAt } from '../utils/bookOrder'
 
 export const themePresets = {
   parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c' },
@@ -122,8 +123,11 @@ export const useReaderStore = defineStore('reader', {
     },
     applyProgress(progress) {
       if (!progress?.bookId) return
-      this.progressByBook[progress.bookId] = progress
-      persistLocalChapterProgress(progress)
+      const current = pickNewestProgress(this.progressByBook[progress.bookId], readLocalChapterProgress(progress.bookId))
+      const next = pickNewestProgress(current, progress)
+      if (!next) return
+      this.progressByBook[progress.bookId] = next
+      persistLocalChapterProgress(next)
     },
     async saveProgress(payload) {
       const optimistic = {
@@ -175,16 +179,8 @@ export const useReaderStore = defineStore('reader', {
   },
 })
 
-function progressUpdatedAt(progress) {
-  if (!progress?.updatedAt) return 0
-  const timestamp = Date.parse(progress.updatedAt)
-  return Number.isFinite(timestamp) ? timestamp : 0
-}
-
 function newestProgress(a, b) {
-  if (!a) return b || null
-  if (!b) return a
-  return progressUpdatedAt(b) > progressUpdatedAt(a) ? b : a
+  return pickNewestProgress(a, b)
 }
 
 function localChapterProgressKey(bookId) {

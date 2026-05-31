@@ -160,7 +160,7 @@ const uploading = ref(false)
 const resultDialog = ref(false)
 const importResults = ref([])
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(typeof window === 'undefined' ? false : window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false)
+const coarsePointer = ref(isCoarsePointer())
 
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
 const importableCount = computed(() => items.value.filter(item => item.importable).length)
@@ -179,7 +179,7 @@ const shownItems = computed(() => {
   })
 })
 const shownImportablePaths = computed(() => shownItems.value.filter(item => item.importable).map(item => item.path))
-const isMobileDialog = computed(() => windowWidth.value <= 860 || coarsePointer.value)
+const isMobileDialog = computed(() => windowWidth.value <= 1180 || coarsePointer.value)
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
@@ -190,7 +190,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
 
 function handleResize() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false
+  coarsePointer.value = isCoarsePointer()
+}
+
+function isCoarsePointer() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    || window.matchMedia('(any-pointer: coarse)').matches
 }
 
 async function load() {
@@ -591,7 +597,7 @@ function readError(err, fallback) {
   grid-column: 2;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .store-head,
   .store-toolbar {
     display: grid;

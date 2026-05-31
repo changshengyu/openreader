@@ -101,7 +101,7 @@ defineEmits(['add', 'jump', 'edit', 'remove'])
   gap: 2px;
 }
 
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
   .drawer-actions {
     margin-bottom: 10px;
   }

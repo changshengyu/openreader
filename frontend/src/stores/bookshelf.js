@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../api/books'
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
-import { sortByShelfOrder } from '../utils/bookOrder'
+import { newestProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { getBrowserCache, setBrowserCache } from '../utils/browserCache'
 
 function asList(data) {
@@ -159,6 +159,22 @@ export const useBookshelfStore = defineStore('bookshelf', {
         : [book, ...this.books]
       this.books = sortBooks(nextBooks)
       this.invalidateBooks()
+    },
+    applyBookProgress(progress) {
+      if (!progress?.bookId) return
+      let changed = false
+      const nextBooks = this.books.map(book => {
+        if (Number(book.id) !== Number(progress.bookId)) return book
+        const nextProgress = newestProgress(book.progress || null, progress)
+        if (nextProgress === book.progress) return book
+        changed = true
+        return { ...book, progress: nextProgress }
+      })
+      if (changed) {
+        this.books = sortBooks(nextBooks)
+        this.booksLoadedAt = Date.now()
+        if (this.booksLoadedKey) writeShelfCache(`${SHELF_CACHE_KEY}:${this.booksLoadedKey}`, this.books)
+      }
     },
     async batchDeleteBooks(bookIds) {
       await batchBooks({ action: 'delete', bookIds })
