@@ -183,7 +183,6 @@ const cacheStats = ref({})
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
 const MINI_INTERFACE_MAX_WIDTH = 750
-const MOBILE_NAV_EDGE = 48
 const MOBILE_NAV_TRIGGER = 72
 const FOREGROUND_REFRESH_INTERVAL = 5000
 let lastForegroundRefreshAt = 0
@@ -517,7 +516,7 @@ function handleTouchStart(event) {
     touchStart.value = null
     return
   }
-  if (!mobileNavigationVisible.value && touch.clientX > MOBILE_NAV_EDGE) {
+  if (touch.clientX <= 20 || touch.clientX >= window.innerWidth - 20) {
     touchStart.value = null
     return
   }
@@ -915,7 +914,7 @@ onBeforeUnmount(() => {
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
-  padding: max(20px, env(safe-area-inset-top)) 20px 66px;
+  padding: max(20px, env(safe-area-inset-top)) 36px 66px;
   scrollbar-width: none;
   box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
   transform: translateX(calc(-1 * var(--mobile-nav-width, 72vw)));
