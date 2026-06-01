@@ -146,12 +146,13 @@ export const useReaderStore = defineStore('reader', {
       persistLocalChapterProgress(next)
     },
     async saveProgress(payload) {
+      const currentProgress = this.progressByBook[payload.bookId]
       const optimistic = {
         ...payload,
         mode: this.mode,
         updatedAt: new Date().toISOString(),
         pendingSync: true,
-        baseUpdatedAt: payload.baseUpdatedAt || this.progressByBook[payload.bookId]?.updatedAt || '',
+        baseUpdatedAt: payload.baseUpdatedAt || progressServerBaseUpdatedAt(currentProgress),
       }
       this.applyProgress(optimistic)
       const response = await api.put('/progress', { ...payload, mode: this.mode })
@@ -233,6 +234,12 @@ function clearLocalProgressFlags(progress) {
   if (!progress) return progress
   const { pendingSync, baseUpdatedAt, ...rest } = progress
   return rest
+}
+
+function progressServerBaseUpdatedAt(progress) {
+  if (!progress) return ''
+  if (progress.pendingSync) return progress.baseUpdatedAt || ''
+  return progress.updatedAt || ''
 }
 
 function localChapterProgressKey(bookId) {

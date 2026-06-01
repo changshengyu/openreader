@@ -2174,7 +2174,7 @@ async function saveCurrentProgress(options = {}) {
   if (!chapter.value) return
   const force = Boolean(options.force)
   const background = Boolean(options.background)
-  const baseUpdatedAt = reader.progressByBook[bookId.value]?.updatedAt || ''
+  const baseUpdatedAt = progressServerBaseUpdatedAt()
   const payload = {
     ...currentProgressPayload(),
     baseUpdatedAt,
@@ -2184,10 +2184,30 @@ async function saveCurrentProgress(options = {}) {
   if (key === lastProgressSaveKey && !force) return
   pendingProgressPayload = payload
   if (background) {
+    sendProgressKeepAlive(payload)
     flushProgressQueue(force).catch(() => {})
     return
   }
   await flushProgressQueue(force)
+}
+
+function sendProgressKeepAlive(payload) {
+  if (typeof window === 'undefined' || typeof fetch !== 'function' || !payload?.bookId) return
+  const token = window.localStorage?.getItem('openreader_token')
+  if (!token) return
+  try {
+    fetch('/api/progress', {
+      method: 'PUT',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ ...payload, mode: reader.mode }),
+    }).catch(() => {})
+  } catch {
+    // The queued local progress remains pending and will sync on the next open.
+  }
 }
 
 async function flushProgressQueue(force = false) {
@@ -2233,15 +2253,27 @@ function currentProgressPayload() {
 
 function applyLocalProgressSnapshot(payload = currentProgressPayload(), options = {}) {
   if (!payload?.bookId || !chapter.value) return
-  const key = progressSaveKey(payload)
+  const nextPayload = {
+    ...payload,
+    baseUpdatedAt: payload.baseUpdatedAt || progressServerBaseUpdatedAt(payload.bookId),
+  }
+  const key = progressSaveKey(nextPayload)
   if (key === lastLocalProgressKey && !options.force) return
   lastLocalProgressKey = key
   reader.applyProgress({
-    ...payload,
+    ...nextPayload,
     mode: reader.mode,
     updatedAt: new Date().toISOString(),
+    pendingSync: true,
   })
-  bookshelf.applyBookProgress(reader.progressByBook[payload.bookId])
+  bookshelf.applyBookProgress(reader.progressByBook[nextPayload.bookId])
+}
+
+function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
+  const progress = reader.progressByBook[targetBookId]
+  if (!progress) return ''
+  if (progress.pendingSync) return progress.baseUpdatedAt || ''
+  return progress.updatedAt || ''
 }
 
 function waitForProgressSaveIdle(timeout = 1500) {
