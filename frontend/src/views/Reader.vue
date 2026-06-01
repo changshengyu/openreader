@@ -2580,12 +2580,6 @@ useKeyboard({
 })
 
 useGesture(pageEl, {
-  onSwipeLeft: () => {
-    if (reader.mode === 'flip') nextPage()
-  },
-  onSwipeRight: () => {
-    if (reader.mode === 'flip') previousPage()
-  },
   onPinchOut: () => reader.setFontSize(reader.fontSize + 2),
   onPinchIn: () => reader.setFontSize(reader.fontSize - 2),
 })
