@@ -83,6 +83,7 @@ func (s *Service) run() (string, error) {
 	defer zipWriter.Close()
 
 	s.addSources(zipWriter)
+	s.addUserSettings(zipWriter)
 	s.addBookshelf(zipWriter)
 	s.addProgress(zipWriter)
 
@@ -100,6 +101,18 @@ func (s *Service) addSources(zipWriter *zip.Writer) {
 		return
 	}
 	writeZipEntry(zipWriter, "bookSource.json", data)
+}
+
+func (s *Service) addUserSettings(zipWriter *zip.Writer) {
+	var settings []models.UserSetting
+	if err := s.db.Order("user_id, key").Find(&settings).Error; err != nil {
+		return
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "userSettings.json", data)
 }
 
 func (s *Service) addBookshelf(zipWriter *zip.Writer) {

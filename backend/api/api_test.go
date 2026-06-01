@@ -177,6 +177,46 @@ func TestUserReaderSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBackupIncludesUserSettings(t *testing.T) {
+	_, server := setupTestServer(t)
+
+	setting := models.UserSetting{UserID: 1, Key: "reader", Value: `{"fontSize":24}`}
+	if err := server.db.Create(&setting).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := server.backupSvc.RunNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if file.Name != "userSettings.json" {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), `"key": "reader"`) || !strings.Contains(string(data), `fontSize`) {
+			t.Fatalf("unexpected user settings backup: %s", string(data))
+		}
+		return
+	}
+	t.Fatal("userSettings.json not found in backup")
+}
+
 func TestAdminUsersIncludesGlobalSourceCount(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -2836,6 +2876,13 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	if _, err := sourceFile.Write([]byte(`[{"name":"备份源","baseUrl":"https://new-source.example","charset":"gbk","enabled":false}]`)); err != nil {
 		t.Fatal(err)
 	}
+	settingFile, err := zipWriter.Create("userSettings.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := settingFile.Write([]byte(`[{"userId":99,"key":"search","value":"{\"searchType\":\"group\",\"group\":\"默认分组\",\"concurrent\":32}"}]`)); err != nil {
+		t.Fatal(err)
+	}
 	file, err := zipWriter.Create("myBookShelf.json")
 	if err != nil {
 		t.Fatal(err)
@@ -2872,6 +2919,9 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"progress":1`) {
 		t.Fatalf("expected one restored progress, got %s", w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), `"settings":1`) {
+		t.Fatalf("expected one restored setting, got %s", w.Body.String())
+	}
 
 	var book models.Book
 	if err := server.db.Where("title = ?", "WebDAV恢复书").First(&book).Error; err != nil {
@@ -2890,6 +2940,17 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	}
 	if source.BaseURL != "https://new-source.example" || source.Charset != "gbk" || source.Enabled {
 		t.Fatalf("unexpected restored source update: %+v", source)
+	}
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	var setting models.UserSetting
+	if err := server.db.Where("user_id = ? AND key = ?", user.ID, "search").First(&setting).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(setting.Value, `"concurrent":32`) {
+		t.Fatalf("unexpected restored setting: %+v", setting)
 	}
 }
 

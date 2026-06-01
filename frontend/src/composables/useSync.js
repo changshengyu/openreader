@@ -54,6 +54,10 @@ export function useSync() {
       if (message.type === 'settings_update' && message.payload?.key === 'reader') {
         reader.loadReaderSettings().catch(() => {})
       }
+      if (message.type === 'settings_update' && message.payload?.key === 'all') {
+        reader.loadReaderSettings().catch(() => {})
+        preferences.loadPreferences().catch(() => {})
+      }
       if (message.type === 'settings_update' && ['shelf', 'search'].includes(message.payload?.key)) {
         preferences.loadPreference(message.payload.key).catch(() => {})
       }

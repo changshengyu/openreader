@@ -365,12 +365,14 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		return nil, errors.New("invalid backup zip")
 	}
 
-	var sourcesCount, booksCount, progressCount int
+	var sourcesCount, booksCount, progressCount, settingsCount int
 
 	for _, zipFile := range zipReader.File {
 		switch {
 		case strings.HasSuffix(zipFile.Name, "bookSource.json"):
 			sourcesCount, _ = s.restoreSourcesFromZip(zipFile)
+		case strings.HasSuffix(zipFile.Name, "userSettings.json"):
+			settingsCount, _ = s.restoreUserSettingsFromZip(zipFile, userID)
 		case strings.HasSuffix(zipFile.Name, "myBookShelf.json"),
 			strings.HasSuffix(zipFile.Name, "bookshelf.json"):
 			restoredBooks, restoredProgress, _ := s.restoreBookshelfFromZip(zipFile, userID)
@@ -386,6 +388,7 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		"sources":  sourcesCount,
 		"books":    booksCount,
 		"progress": progressCount,
+		"settings": settingsCount,
 	}, nil
 }
 
@@ -408,6 +411,45 @@ func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {
 
 	result := s.importBookSources(sources)
 	return (result["imported"].(int) + result["updated"].(int)), nil
+}
+
+func (s *Server) restoreUserSettingsFromZip(file *zip.File, userID uint) (int, error) {
+	reader, err := file.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer reader.Close()
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return 0, err
+	}
+
+	var settings []models.UserSetting
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, setting := range settings {
+		key := normalizeUserSettingKey(setting.Key)
+		if key == "" || !json.Valid([]byte(setting.Value)) {
+			continue
+		}
+		next := models.UserSetting{
+			UserID:    userID,
+			Key:       key,
+			Value:     setting.Value,
+			UpdatedAt: time.Now(),
+		}
+		if err := s.db.Where("user_id = ? AND key = ?", userID, key).Assign(next).FirstOrCreate(&next).Error; err == nil {
+			count++
+		}
+	}
+	if count > 0 {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "settings_update", "payload": gin.H{"key": "all"}})
+	}
+	return count, nil
 }
 
 func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int, error) {
