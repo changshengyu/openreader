@@ -71,6 +71,10 @@ func ExploreBooks(source models.BookSource) ([]SearchResult, error) {
 }
 
 func ExploreBooksPage(source models.BookSource, page int) (ExploreResult, error) {
+	return ExploreBooksPageWithURL(source, "", page)
+}
+
+func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string, page int) (ExploreResult, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -78,14 +82,25 @@ func ExploreBooksPage(source models.BookSource, page int) (ExploreResult, error)
 	if err != nil {
 		return ExploreResult{}, fmt.Errorf("parse rules: %w", err)
 	}
-	if rule.ExploreURL == "" {
+	activeExploreURL := strings.TrimSpace(exploreURLOverride)
+	if activeExploreURL == "" {
+		activeExploreURL = strings.TrimSpace(rule.ExploreURL)
+	}
+	if activeExploreURL == "" {
 		return ExploreResult{}, fmt.Errorf("source %q has no explore URL", source.Name)
 	}
 	charset := source.Charset
 	if charset == "" {
 		charset = "utf-8"
 	}
-	exploreURL := strings.ReplaceAll(rule.ExploreURL, "{page}", fmt.Sprintf("%d", page))
+	baseURL := source.BaseURL
+	if baseURL == "" {
+		baseURL = source.SearchURL
+	}
+	if baseURL != "" {
+		activeExploreURL = resolveURL(baseURL, activeExploreURL)
+	}
+	exploreURL := strings.ReplaceAll(activeExploreURL, "{page}", fmt.Sprintf("%d", page))
 	doc, err := FetchDocument(exploreURL, charset)
 	if err != nil {
 		return ExploreResult{}, fmt.Errorf("fetch explore page: %w", err)
@@ -95,7 +110,7 @@ func ExploreBooksPage(source models.BookSource, page int) (ExploreResult, error)
 	if rule.PaginationRule != "" {
 		nextURL = resolveURL(exploreURL, firstMatch(doc.Selection, rule.PaginationRule))
 	}
-	hasMore := strings.Contains(rule.ExploreURL, "{page}") && len(items) > 0
+	hasMore := strings.Contains(activeExploreURL, "{page}") && len(items) > 0
 	if nextURL != "" {
 		hasMore = true
 	}

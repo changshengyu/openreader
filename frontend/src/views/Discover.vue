@@ -2,43 +2,77 @@
   <section class="app-page discover-page">
     <header class="discover-head">
       <div>
-        <h1 class="app-page-title">书海探索</h1>
+        <h1 class="app-page-title">书海</h1>
       </div>
       <el-button :icon="Refresh" :loading="loadingSources" @click="loadSources">刷新书源</el-button>
     </header>
 
     <section class="discover-toolbar app-panel">
-      <el-select v-model="selectedGroup" placeholder="全部分组" clearable @change="onGroupChange">
-        <el-option v-for="group in sourceGroups" :key="group.value" :label="`${group.label} (${group.count})`" :value="group.value" />
-      </el-select>
-      <el-select v-model="selectedSourceId" placeholder="选择探索书源" filterable @change="loadBooks">
-        <el-option v-for="source in filteredSources" :key="source.id" :label="source.name" :value="source.id" />
-      </el-select>
       <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable>
         <el-option label="未分组" value="" />
         <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
-      <el-button type="primary" :loading="loadingBooks" :disabled="!selectedSourceId" @click="loadBooks">加载</el-button>
-      <span v-if="activeSource" class="source-status">{{ activeSource.group || '默认分组' }} · 第 {{ page }} 页</span>
+      <span v-if="activeSource" class="source-status">
+        {{ activeSource.name }} · {{ activeExploreName || '默认' }} · 第 {{ page }} 页
+      </span>
     </section>
 
-    <div v-loading="loadingBooks" class="discover-results">
-      <article v-for="book in books" :key="book.sourceId + book.bookUrl" class="discover-card app-panel" @click="openPreview(book)">
-        <BookCover :book="book" />
-        <div>
-          <h2>{{ book.title }}</h2>
-          <p>{{ book.author || '未知作者' }} · {{ book.sourceName }}</p>
-          <p v-if="book.latestChapter" class="latest">最新：{{ book.latestChapter }}</p>
-          <p class="intro">{{ book.intro || '无简介' }}</p>
-        </div>
-      </article>
-      <el-empty v-if="!loadingBooks && !books.length" :description="sources.length ? '当前书源没有返回发现结果' : '没有配置 exploreUrl 的书源'" />
-    </div>
+    <section class="source-group-tabs app-panel">
+      <button
+        v-for="group in sourceGroups"
+        :key="group.value"
+        type="button"
+        :class="{ active: selectedGroup === group.value }"
+        @click="selectGroup(group.value)"
+      >
+        {{ group.label }} <span>{{ group.count }}</span>
+      </button>
+    </section>
 
-    <div v-if="books.length" class="load-more-row">
-      <el-button :loading="loadingMore" :disabled="!hasMore" @click="loadMoreBooks">
-        {{ hasMore ? '加载更多' : '没有更多结果' }}
-      </el-button>
+    <div class="discover-main">
+      <aside class="source-panel app-panel">
+        <el-collapse v-model="expandedSources" accordion>
+          <el-collapse-item v-for="source in filteredSources" :key="source.id" :name="String(source.id)">
+            <template #title>
+              <span class="source-title">{{ source.name }}</span>
+              <span class="source-group">{{ source.group || '未分组' }}</span>
+            </template>
+            <div v-for="(group, groupIndex) in sourceExploreGroups(source)" :key="`${source.id}-${groupIndex}`" class="explore-entry-row">
+              <button
+                v-for="entry in group"
+                :key="entry.url"
+                type="button"
+                :class="{ active: selectedSourceId === source.id && activeExploreUrl === entry.url }"
+                @click="loadBooksFromEntry(source, entry)"
+              >
+                {{ entry.name }}
+              </button>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+        <el-empty v-if="!loadingSources && !filteredSources.length" description="没有配置 exploreUrl 的书源" />
+      </aside>
+
+      <section>
+        <div v-loading="loadingBooks" class="discover-results">
+          <article v-for="book in books" :key="book.sourceId + book.bookUrl" class="discover-card app-panel" @click="openPreview(book)">
+            <BookCover :book="book" />
+            <div>
+              <h2>{{ book.title }}</h2>
+              <p>{{ book.author || '未知作者' }} · {{ book.sourceName }}</p>
+              <p v-if="book.latestChapter" class="latest">最新：{{ book.latestChapter }}</p>
+              <p class="intro">{{ book.intro || '无简介' }}</p>
+            </div>
+          </article>
+          <el-empty v-if="!loadingBooks && !books.length" :description="sources.length ? '选择左侧书源入口开始探索' : '没有配置 exploreUrl 的书源'" />
+        </div>
+
+        <div v-if="books.length" class="load-more-row">
+          <el-button :loading="loadingMore" :disabled="!hasMore" @click="loadMoreBooks">
+            {{ hasMore ? '加载更多' : '没有更多结果' }}
+          </el-button>
+        </div>
+      </section>
     </div>
 
   </section>
@@ -66,6 +100,8 @@ const sources = ref([])
 const books = ref([])
 const selectedSourceId = ref('')
 const selectedGroup = ref('')
+const activeExploreUrl = ref('')
+const activeExploreName = ref('')
 const targetCategoryId = ref('')
 const loadingSources = ref(false)
 const loadingBooks = ref(false)
@@ -73,19 +109,23 @@ const addingBook = ref(null)
 const page = ref(1)
 const hasMore = ref(false)
 const loadingMore = ref(false)
+const expandedSources = ref('')
 
 const activeSource = computed(() => sources.value.find(source => source.id === selectedSourceId.value))
 const sourceGroups = computed(() => {
   const groups = new Map()
   for (const source of sources.value) {
-    const name = source.group || '默认分组'
+    const name = source.group || '未分组'
     groups.set(name, (groups.get(name) || 0) + 1)
   }
-  return [...groups.entries()].map(([label, count]) => ({ label, value: label, count })).sort((a, b) => a.label.localeCompare(b.label))
+  return [
+    { label: '全部', value: '', count: sources.value.length },
+    ...[...groups.entries()].map(([label, count]) => ({ label, value: label, count })).sort((a, b) => a.label.localeCompare(b.label)),
+  ]
 })
 const filteredSources = computed(() => {
   if (!selectedGroup.value) return sources.value
-  return sources.value.filter(source => (source.group || '默认分组') === selectedGroup.value)
+  return sources.value.filter(source => (source.group || '未分组') === selectedGroup.value)
 })
 
 onMounted(async () => {
@@ -98,7 +138,7 @@ async function loadSources() {
   try {
     const { data } = await listExploreSources()
     sources.value = data || []
-    if (!selectedSourceId.value && filteredSources.value.length) selectedSourceId.value = filteredSources.value[0].id
+    ensureActiveEntry()
   } catch (err) {
     ElMessage.error(readError(err, '加载探索书源失败'))
   } finally {
@@ -106,20 +146,60 @@ async function loadSources() {
   }
 }
 
-function onGroupChange() {
+function selectGroup(group) {
+  selectedGroup.value = group
   const exists = filteredSources.value.some(source => source.id === selectedSourceId.value)
-  if (!exists) selectedSourceId.value = filteredSources.value[0]?.id || ''
+  if (!exists) {
+    selectedSourceId.value = ''
+    activeExploreUrl.value = ''
+    activeExploreName.value = ''
+    ensureActiveEntry()
+  }
   books.value = []
   hasMore.value = false
   if (selectedSourceId.value) loadBooks()
 }
 
+function ensureActiveEntry() {
+  if (selectedSourceId.value && activeExploreUrl.value) {
+    expandedSources.value = String(selectedSourceId.value)
+    return
+  }
+  const source = filteredSources.value[0]
+  const entry = source ? firstExploreEntry(source) : null
+  if (!source || !entry) return
+  selectedSourceId.value = source.id
+  activeExploreUrl.value = entry.url
+  activeExploreName.value = entry.name
+  expandedSources.value = String(source.id)
+}
+
+function sourceExploreGroups(source) {
+  return Array.isArray(source?.exploreGroups) ? source.exploreGroups.filter(group => Array.isArray(group) && group.length) : []
+}
+
+function firstExploreEntry(source) {
+  for (const group of sourceExploreGroups(source)) {
+    if (group[0]) return group[0]
+  }
+  return null
+}
+
+function loadBooksFromEntry(source, entry) {
+  selectedSourceId.value = source.id
+  activeExploreUrl.value = entry.url
+  activeExploreName.value = entry.name
+  expandedSources.value = String(source.id)
+  loadBooks()
+}
+
 async function loadBooks() {
-  if (!selectedSourceId.value) return
+  ensureActiveEntry()
+  if (!selectedSourceId.value || !activeExploreUrl.value) return
   loadingBooks.value = true
   try {
     page.value = 1
-    const { data } = await exploreBooks(selectedSourceId.value, { page: page.value })
+    const { data } = await exploreBooks(selectedSourceId.value, { page: page.value, url: activeExploreUrl.value })
     const result = normalizeExploreResult(data, page.value)
     books.value = result.items
     hasMore.value = result.hasMore
@@ -131,11 +211,11 @@ async function loadBooks() {
 }
 
 async function loadMoreBooks() {
-  if (!selectedSourceId.value || loadingMore.value || !hasMore.value) return
+  if (!selectedSourceId.value || !activeExploreUrl.value || loadingMore.value || !hasMore.value) return
   loadingMore.value = true
   try {
     const nextPage = page.value + 1
-    const { data } = await exploreBooks(selectedSourceId.value, { page: nextPage })
+    const { data } = await exploreBooks(selectedSourceId.value, { page: nextPage, url: activeExploreUrl.value })
     const result = normalizeExploreResult(data, nextPage)
     const known = new Set(books.value.map(book => `${book.sourceId}-${book.bookUrl}`))
     const nextItems = result.items.filter(book => !known.has(`${book.sourceId}-${book.bookUrl}`))
@@ -290,6 +370,99 @@ function readError(err, fallback) {
   font-size: 13px;
 }
 
+.source-group-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px;
+}
+
+.source-group-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--app-text);
+  cursor: pointer;
+  font: inherit;
+  min-height: 34px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.source-group-tabs button.active {
+  border-color: var(--app-accent);
+  color: var(--app-accent);
+}
+
+.source-group-tabs span {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.discover-main {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.source-panel {
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.source-panel :deep(.el-collapse),
+.source-panel :deep(.el-collapse-item__wrap) {
+  border: 0;
+}
+
+.source-panel :deep(.el-collapse-item__header) {
+  min-width: 0;
+  gap: 8px;
+  border: 0;
+}
+
+.source-title {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-group {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.explore-entry-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
+.explore-entry-row button {
+  min-width: 64px;
+  max-width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  cursor: pointer;
+  padding: 4px 10px;
+}
+
+.explore-entry-row button.active {
+  border-color: var(--app-accent);
+  color: var(--app-accent);
+}
+
 .discover-results {
   display: grid;
   min-width: 0;
@@ -378,6 +551,25 @@ function readError(err, fallback) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .source-group-tabs {
+    margin-right: -8px;
+    margin-left: -8px;
+    border-radius: 0;
+  }
+
+  .discover-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .source-panel {
+    padding: 6px 8px;
+  }
+
+  .source-panel :deep(.el-collapse-item__header) {
+    min-height: 38px;
   }
 
   .discover-results {

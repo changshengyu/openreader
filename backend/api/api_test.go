@@ -3449,6 +3449,30 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 	}
 }
 
+func TestExploreSourcesExposeExploreGroups(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	source := models.BookSource{Name: "分组探索源", BaseURL: "https://explore.example", Charset: "utf-8", Enabled: true, Group: "玄幻"}
+	if err := source.SetRules(models.BookSourceRule{
+		ExploreURL: "热门::https://explore.example/top/{page}\n完本::https://explore.example/done/{page}\n\n新书::https://explore.example/new/{page}",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/explore/sources", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.Contains(body, `"exploreGroups"`) || !strings.Contains(body, `"热门"`) || !strings.Contains(body, `"新书"`) {
+		t.Fatalf("explore sources: expected parsed groups, got %d: %s", w.Code, body)
+	}
+}
+
 func TestExploreBooksSupportsPagePlaceholder(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -3491,6 +3515,52 @@ func TestExploreBooksSupportsPagePlaceholder(t *testing.T) {
 	}
 	if requested != "https://explore.example/top/2" {
 		t.Fatalf("expected page placeholder URL, got %q", requested)
+	}
+}
+
+func TestExploreBooksUsesSelectedExploreURL(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	var requested string
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requested = req.URL.String()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<div class="book"><a class="link" href="/book-category"><span class="title">分类书</span></a></div>
+				</body></html>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{Name: "分类探索源", BaseURL: "https://explore.example", Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{
+		ExploreURL:   "https://explore.example/top/{page}",
+		BookListRule: ".book",
+		BookNameRule: ".title|text",
+		BookURLRule:  ".link|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	selected := url.QueryEscape("https://explore.example/category/{page}")
+	req := httptest.NewRequest(http.MethodGet, "/api/explore/"+strconv.FormatUint(uint64(source.ID), 10)+"?page=3&url="+selected, nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "分类书") {
+		t.Fatalf("explore selected url: expected result, got %d: %s", w.Code, w.Body.String())
+	}
+	if requested != "https://explore.example/category/3" {
+		t.Fatalf("expected selected explore URL, got %q", requested)
 	}
 }
 
