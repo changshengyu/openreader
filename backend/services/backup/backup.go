@@ -84,8 +84,11 @@ func (s *Service) run() (string, error) {
 
 	s.addSources(zipWriter)
 	s.addUserSettings(zipWriter)
+	s.addCategories(zipWriter)
 	s.addBookshelf(zipWriter)
+	s.addBookmarks(zipWriter)
 	s.addProgress(zipWriter)
+	s.addReplaceRules(zipWriter)
 
 	log.Printf("backup created: %s", backupPath)
 	return backupPath, nil
@@ -115,6 +118,18 @@ func (s *Service) addUserSettings(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "userSettings.json", data)
 }
 
+func (s *Service) addCategories(zipWriter *zip.Writer) {
+	var categories []models.Category
+	if err := s.db.Order("user_id, sort_order, name").Find(&categories).Error; err != nil {
+		return
+	}
+	data, err := json.MarshalIndent(categories, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "categories.json", data)
+}
+
 func (s *Service) addBookshelf(zipWriter *zip.Writer) {
 	var books []models.Book
 	if err := s.db.Order("id asc").Find(&books).Error; err != nil {
@@ -127,6 +142,33 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "bookshelf.json", data)
 }
 
+func (s *Service) addBookmarks(zipWriter *zip.Writer) {
+	type bookmarkExport struct {
+		models.Bookmark
+		BookTitle string `json:"bookTitle"`
+		BookURL   string `json:"bookUrl"`
+	}
+	var bookmarks []models.Bookmark
+	if err := s.db.Order("user_id, book_id, updated_at").Find(&bookmarks).Error; err != nil {
+		return
+	}
+	rows := make([]bookmarkExport, 0, len(bookmarks))
+	for _, bookmark := range bookmarks {
+		row := bookmarkExport{Bookmark: bookmark}
+		var book models.Book
+		if err := s.db.Select("title", "url").First(&book, bookmark.BookID).Error; err == nil {
+			row.BookTitle = book.Title
+			row.BookURL = book.URL
+		}
+		rows = append(rows, row)
+	}
+	data, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "bookmarks.json", data)
+}
+
 func (s *Service) addProgress(zipWriter *zip.Writer) {
 	var progresses []models.ReadingProgress
 	if err := s.db.Order("user_id, book_id").Find(&progresses).Error; err != nil {
@@ -137,6 +179,18 @@ func (s *Service) addProgress(zipWriter *zip.Writer) {
 		return
 	}
 	writeZipEntry(zipWriter, "readingProgress.json", data)
+}
+
+func (s *Service) addReplaceRules(zipWriter *zip.Writer) {
+	var rules []models.ReplaceRule
+	if err := s.db.Order("user_id, updated_at").Find(&rules).Error; err != nil {
+		return
+	}
+	data, err := json.MarshalIndent(rules, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "replaceRules.json", data)
 }
 
 func writeZipEntry(zipWriter *zip.Writer, name string, data []byte) {
