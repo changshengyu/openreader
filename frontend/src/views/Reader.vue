@@ -1142,12 +1142,13 @@ function openCacheDrawer() {
 }
 
 async function goBookDetail() {
-  saveCurrentProgress({ force: true, background: true })
+  await saveCurrentProgress({ force: true })
   await router.push({ name: 'book-detail', params: { id: bookId.value } })
 }
 
 async function goShelf() {
-  saveCurrentProgress({ force: true, background: true })
+  await saveCurrentProgress({ force: true })
+  bookshelf.loadBooks({ force: true, all: true }).catch(() => {})
   await router.push({ name: 'home' })
 }
 async function openShelfPanel() {
@@ -1155,11 +1156,10 @@ async function openShelfPanel() {
   showShelfDrawer.value = true
   if (bookshelf.books.length) {
     window.setTimeout(locateReaderShelfCurrentBook, 0)
-    return
   }
   shelfLoading.value = true
   try {
-    await bookshelf.loadBooks({ all: true })
+    await bookshelf.loadBooks({ force: true, all: true })
     locateReaderShelfCurrentBook()
   } catch (err) {
     ElMessage.error(readError(err, '加载书架失败'))
@@ -2176,7 +2176,7 @@ async function flushProgressQueue(force = false) {
       if (nextKey === lastProgressSaveKey && !force) continue
       lastProgressRequestAt = Date.now()
       const savedProgress = await reader.saveProgress(nextPayload)
-      bookshelf.applyBookProgress(savedProgress)
+      bookshelf.applyBookProgress(savedProgress, { replace: true })
       lastProgressSaveKey = nextKey
     }
   } finally {
