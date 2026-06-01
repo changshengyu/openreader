@@ -20,7 +20,7 @@
       <div class="app-shell-search">
         <el-input
           v-model="quickSearch"
-          placeholder="搜索书籍"
+          :placeholder="quickSearchPlaceholder"
           clearable
           @keyup.enter="goSearch"
           @clear="clearShelfSearch"
@@ -308,6 +308,7 @@ const recentBook = computed(() => {
   rows.sort((a, b) => compareRecentBook(a, b, reader.progressByBook))
   return rows[0] || null
 })
+const quickSearchPlaceholder = computed(() => route.name === 'home' ? '搜索书架' : '搜索书籍')
 
 function goHome() {
   router.push({ name: 'home' })
@@ -324,12 +325,16 @@ function runNavAction(item) {
     return
   }
   if (item.route) {
-    const query = item.key === 'search'
-      ? searchRouteQuery()
-      : (item.query || (item.panel ? { panel: item.panel } : {}))
+    const query = navRouteQuery(item)
     router.push({ name: item.route, query })
     if (isMobileShell.value) mobileNavigationVisible.value = false
   }
+}
+
+function navRouteQuery(item) {
+  if (item.key === 'search') return searchRouteQuery()
+  if (item.key === 'localSearch') return localSearchRouteQuery()
+  return item.query || (item.panel ? { panel: item.panel } : {})
 }
 
 function isNavActive(item) {
@@ -344,6 +349,10 @@ function isNavActive(item) {
 
 function goSearch() {
   const keyword = quickSearch.value.trim()
+  if (route.name === 'home') {
+    setShelfSearch(keyword)
+    return
+  }
   const query = searchRouteQuery(keyword)
   if (!keyword) {
     router.push({ name: 'search', query })
@@ -362,7 +371,28 @@ function searchRouteQuery(keyword = '') {
   return query
 }
 
+function localSearchRouteQuery(keyword = quickSearch.value.trim()) {
+  const query = { mode: 'local' }
+  if (keyword) query.q = keyword
+  return query
+}
+
+function setShelfSearch(keyword) {
+  const nextQuery = { ...route.query }
+  if (keyword) {
+    nextQuery.shelfQ = keyword
+  } else {
+    delete nextQuery.shelfQ
+  }
+  router.replace({ name: 'home', query: nextQuery })
+}
+
 function clearShelfSearch() {
+  if (route.name === 'home' && route.query.shelfQ !== undefined) {
+    const { shelfQ, ...query } = route.query
+    router.replace({ name: 'home', query })
+    return
+  }
   if (route.name === 'search' && route.query.q !== undefined) {
     const { q, ...query } = route.query
     router.replace({ name: 'search', query })
@@ -545,10 +575,12 @@ watch(
 )
 
 watch(
-  () => [route.name, route.query.q],
-  ([name, value]) => {
+  () => [route.name, route.query.q, route.query.shelfQ],
+  ([name, value, shelfQ]) => {
     if (name === 'search') {
       quickSearch.value = typeof value === 'string' ? value : ''
+    } else if (name === 'home') {
+      quickSearch.value = typeof shelfQ === 'string' ? shelfQ : ''
     } else if (name !== 'home') {
       quickSearch.value = ''
     }

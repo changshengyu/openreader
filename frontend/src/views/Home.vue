@@ -5,7 +5,8 @@
         <button v-if="isMobileShelf" class="mobile-menu-trigger" type="button" aria-label="打开侧边栏" @click.stop="toggleMobileNavigation">
           <el-icon><Menu /></el-icon>
         </button>
-        <strong>书架 ({{ displayedBooks.length }})</strong>
+        <strong>书架 ({{ totalBookCount }})</strong>
+        <small v-if="keyword.trim()" class="shelf-filter-count">命中 {{ displayedBooks.length }}</small>
       </div>
       <div class="title-actions">
         <button type="button" @click="router.push({ name: 'discover' })">书海</button>
@@ -39,6 +40,7 @@
         @click="selectedGroup = item.id"
       >
         <span>{{ item.name }}</span>
+        <em>{{ item.count }}</em>
       </button>
     </div>
 
@@ -149,6 +151,7 @@ const groupItems = computed(() => {
 })
 
 const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.books) ? bookshelf.books : [], reader.progressByBook))
+const totalBookCount = computed(() => Array.isArray(bookshelf.books) ? bookshelf.books.length : 0)
 
 const displayedBooks = computed(() => {
   const value = normalizeShelfSearch(keyword.value)
@@ -456,6 +459,14 @@ function readError(err, fallback) {
   white-space: nowrap;
 }
 
+.shelf-filter-count {
+  flex: 0 0 auto;
+  color: #8f97a3;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .mobile-menu-trigger {
   display: inline-grid;
   width: 30px;
@@ -581,9 +592,21 @@ function readError(err, fallback) {
   white-space: nowrap;
 }
 
+.group-chip em {
+  flex: 0 0 auto;
+  color: #8f97a3;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .group-chip.active {
   color: #1f6feb;
   background: transparent;
+}
+
+.group-chip.active em {
+  color: #1f6feb;
 }
 
 .group-chip.active::after {
