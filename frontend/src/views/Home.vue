@@ -851,8 +851,8 @@ function readError(err, fallback) {
 }
 
 .shelf-page.mobile-shelf .book-group-wrapper {
-  margin-right: 24px;
-  margin-left: 24px;
+  margin-right: 0;
+  margin-left: 0;
   padding: 5px 0;
 }
 
@@ -987,8 +987,8 @@ function readError(err, fallback) {
   }
 
   .book-group-wrapper {
-    margin-right: 24px;
-    margin-left: 24px;
+    margin-right: 0;
+    margin-left: 0;
     padding: 5px 0;
   }
 
@@ -1058,8 +1058,8 @@ function readError(err, fallback) {
 @media (max-width: 520px) {
   .shelf-page.mobile-shelf .book-group-wrapper,
   .book-group-wrapper {
-    margin-right: 24px;
-    margin-left: 24px;
+    margin-right: 0;
+    margin-left: 0;
     padding: 5px 0;
   }
 

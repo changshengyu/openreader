@@ -917,6 +917,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: max(20px, env(safe-area-inset-top)) 20px 66px;
   scrollbar-width: none;
+  box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
   transform: translateX(calc(-1 * var(--mobile-nav-width, 72vw)));
   transition: transform 0.3s;
   will-change: transform;
@@ -928,8 +929,6 @@ onBeforeUnmount(() => {
   max-width: 100vw;
   max-width: 100dvw;
   padding-left: 0;
-  transition: transform 0.3s;
-  will-change: transform;
 }
 
 .app-shell.mobile-shell .app-content {
@@ -1038,7 +1037,4 @@ onBeforeUnmount(() => {
   transform: translateX(0);
 }
 
-.app-shell.mobile-shell.mobile-nav-open .app-workspace {
-  transform: translateX(var(--mobile-nav-width, 72vw));
-}
 </style>
