@@ -24,6 +24,7 @@
       </el-select>
       <el-button :disabled="!selection.length" @click="batchUpdateSources('enable')">启用选中</el-button>
       <el-button :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
+      <el-button :disabled="!selection.length" @click="setSelectedSourceGroup">设置分组</el-button>
       <el-button type="danger" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">删除选中</el-button>
       <el-button :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">失效检测</el-button>
       <el-button type="warning" plain :disabled="!failedHealthSourceIds.length" @click="disableFailedSources">
@@ -449,6 +450,31 @@ async function batchUpdateSources(action) {
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, `批量${actionName}失败`))
+  }
+}
+
+async function setSelectedSourceGroup() {
+  if (!selection.value.length) return
+  try {
+    const currentGroups = [...new Set(selection.value.map(source => source.group || '').filter(Boolean))]
+    const res = await ElMessageBox.prompt(
+      '留空将移回默认分组',
+      `设置 ${selection.value.length} 个书源的分组`,
+      {
+        inputValue: currentGroups.length === 1 ? currentGroups[0] : '',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+      },
+    )
+    const sourceIds = selection.value.map(source => source.id)
+    const group = String(res.value || '').trim()
+    const { data } = await batchSources({ action: 'group', sourceIds, group })
+    ElMessage.success(`已设置 ${data.affected || 0} 个书源分组`)
+    selection.value = []
+    await loadSources()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '设置分组失败'))
   }
 }
 

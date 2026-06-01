@@ -159,6 +159,7 @@ func (s *Server) clearSources(c *gin.Context) {
 type batchSourcesRequest struct {
 	Action    string `json:"action" binding:"required"`
 	SourceIDs []uint `json:"sourceIds" binding:"required"`
+	Group     string `json:"group"`
 }
 
 func (s *Server) batchSources(c *gin.Context) {
@@ -188,6 +189,8 @@ func (s *Server) batchSources(c *gin.Context) {
 		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("enabled", false)
 	case "delete":
 		result = s.db.Where("id IN ?", req.SourceIDs).Delete(&models.BookSource{})
+	case "group":
+		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("group", strings.TrimSpace(req.Group))
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported batch action"})
 		return

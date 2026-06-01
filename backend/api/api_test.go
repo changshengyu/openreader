@@ -999,6 +999,24 @@ func TestBatchSourcesEnableDisableAndDelete(t *testing.T) {
 		t.Fatalf("expected 2 disabled sources, got %d", disabled)
 	}
 
+	body = `{"action":"group","sourceIds":[` + strconv.FormatUint(uint64(sourceA.ID), 10) + `,` + strconv.FormatUint(uint64(sourceB.ID), 10) + `],"group":"优先分组"}`
+	reqGroup := httptest.NewRequest(http.MethodPost, "/api/sources/batch", strings.NewReader(body))
+	reqGroup.Header.Set("Content-Type", "application/json")
+	reqGroup.Header.Set("Authorization", token)
+	wGroup := httptest.NewRecorder()
+	router.ServeHTTP(wGroup, reqGroup)
+	if wGroup.Code != http.StatusOK {
+		t.Fatalf("batch group sources: expected 200, got %d: %s", wGroup.Code, wGroup.Body.String())
+	}
+
+	var grouped int64
+	if err := server.db.Model(&models.BookSource{}).Where("\"group\" = ?", "优先分组").Count(&grouped).Error; err != nil {
+		t.Fatal(err)
+	}
+	if grouped != 2 {
+		t.Fatalf("expected 2 grouped sources, got %d", grouped)
+	}
+
 	body = `{"action":"delete","sourceIds":[` + strconv.FormatUint(uint64(sourceA.ID), 10) + `]}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/sources/batch", strings.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
