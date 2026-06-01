@@ -385,12 +385,17 @@ async function searchLocalBooks() {
   results.value = []
   checkedLocalPaths.value = []
   try {
-    const [{ data }] = await Promise.all([
+    const [storeResult, shelfResult] = await Promise.allSettled([
       listLocalStore('', localRecursiveScan.value),
       bookshelf.loadBooks({ force: true, all: true }),
     ])
-    localItems.value = data.items || []
+    if (shelfResult.status === 'rejected') throw shelfResult.reason
+    localItems.value = storeResult.status === 'fulfilled' ? (storeResult.value.data.items || []) : []
     searched.value = true
+    if (storeResult.status === 'rejected') {
+      ElMessage.warning(`本地书仓扫描失败，已仅搜索书架本地书：${readError(storeResult.reason, '扫描失败')}`)
+      return
+    }
     ElMessage.success(shownLocalResults.value.length ? `找到 ${shownLocalResults.value.length} 条本地结果` : '没有找到本地书籍')
   } catch (err) {
     ElMessage.error(readError(err, '搜索本地书仓失败'))
