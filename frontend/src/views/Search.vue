@@ -84,31 +84,11 @@
     </section>
 
     <div v-loading="searching" class="result-area">
-      <div v-if="searchMode === 'remote' && groupedResults.length" class="source-result-list">
-        <section v-for="group in groupedResults" :key="group.sourceId" class="source-result-group">
-          <header class="source-result-head">
-            <h2>{{ group.sourceName }}</h2>
-            <el-tag effect="plain">{{ group.items.length }} 条</el-tag>
-          </header>
-          <div class="result-list">
-            <article v-for="item in group.items" :key="item.bookUrl + item.sourceId" class="result-card app-panel" @click="openPreview(item)">
-              <BookCover :book="item" />
-              <div class="result-main">
-                <div class="result-title">
-                  <h3>{{ item.title }}</h3>
-                  <el-tag size="small" effect="plain">{{ item.sourceName }}</el-tag>
-                </div>
-                <p>{{ item.author || '未知作者' }}</p>
-                <p v-if="item.latestChapter" class="latest-chapter">{{ item.latestChapter }}</p>
-                <p class="result-intro">{{ item.intro || '暂无简介' }}</p>
-              </div>
-              <div class="result-actions" @click.stop>
-                <el-button type="primary" size="small" @click="openPreview(item)">查看信息</el-button>
-              </div>
-            </article>
-          </div>
-        </section>
-      </div>
+      <RemoteBookResultGroups
+        v-if="searchMode === 'remote' && groupedResults.length"
+        :groups="groupedResults"
+        @preview="openPreview"
+      />
 
       <div v-else-if="searchMode === 'local' && shownLocalResults.length" class="local-result-list">
         <article
@@ -157,7 +137,7 @@ import { Connection, Document, FolderOpened, Search as SearchIcon } from '@eleme
 import { createRemoteBook } from '../api/books'
 import { importFromLocalStore, listLocalStore } from '../api/localStore'
 import api from '../api/client'
-import BookCover from '../components/BookCover.vue'
+import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
