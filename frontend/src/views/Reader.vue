@@ -520,9 +520,7 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(window.innerWidth)
-const coarsePointer = ref(isCoarsePointer())
-const touchDevice = ref(Number(navigator.maxTouchPoints || 0) > 0)
-const mobileReaderMaxWidth = 1180
+const mobileReaderMaxWidth = 750
 const SAVE_PROGRESS_MIN_INTERVAL = 1200
 
 let saveTimer
@@ -629,7 +627,7 @@ const bodyStyle = computed(() => {
 })
 
 const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.value.length || 1}`)
-const isMobileReader = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= mobileReaderMaxWidth || coarsePointer.value || touchDevice.value || isMobileUA())
+const isMobileReader = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= mobileReaderMaxWidth)
 const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
 const bookProgress = computed(() => {
@@ -2037,20 +2035,7 @@ function readableViewportSize() {
 
 function handleResize() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = isCoarsePointer()
-  touchDevice.value = Number(navigator.maxTouchPoints || 0) > 0
   updateFlipLayout()
-}
-
-function isCoarsePointer() {
-  if (typeof window === 'undefined' || !window.matchMedia) return false
-  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
-    || window.matchMedia('(any-pointer: coarse)').matches
-}
-
-function isMobileUA() {
-  if (typeof navigator === 'undefined') return false
-  return /Android|iPhone|iPad|iPod|Mobile|Tablet|Mobi/i.test(navigator.userAgent || '')
 }
 
 function handleReaderPageHide() {
@@ -3236,7 +3221,7 @@ function readError(err, fallback) {
 .empty-hint { color: #999; text-align: center; padding-top: 40px; text-indent: 0; }
 
 /* ---- 响应式 ---- */
-@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
+@media (max-width: 750px) {
   .reader-shell {
     --reader-frame-width: 100dvw;
     --reader-content-width: calc(100dvw - 44px);

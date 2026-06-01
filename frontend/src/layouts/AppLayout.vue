@@ -174,14 +174,13 @@ const reader = useReaderStore()
 const quickSearch = ref('')
 const offline = ref(false)
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(isCoarsePointer())
-const touchDevice = ref(false)
 const mobileNavigationVisible = ref(false)
 const touchStart = ref(null)
 const touchMoveX = ref(0)
 const cacheStats = ref({})
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
+const MINI_INTERFACE_MAX_WIDTH = 750
 const MOBILE_NAV_EDGE = 48
 const MOBILE_NAV_TRIGGER = 72
 const FOREGROUND_REFRESH_INTERVAL = 5000
@@ -275,7 +274,7 @@ const cacheStatsLabel = computed(() => {
   const chapters = Number(cacheStats.value?.cachedChapters || 0)
   return `章节缓存 ${size}${chapters ? ` / ${chapters}章` : ''}`
 })
-const isMobileShell = computed(() => windowWidth.value <= 1180 || coarsePointer.value || touchDevice.value || isMobileUA())
+const isMobileShell = computed(() => windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const mobileNavigationWidth = computed(() => {
   return 260
 })
@@ -489,19 +488,6 @@ function setOnline() {
 
 function updateViewportFlags() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = isCoarsePointer()
-  touchDevice.value = Number(navigator.maxTouchPoints || 0) > 0
-}
-
-function isCoarsePointer() {
-  if (typeof window === 'undefined' || !window.matchMedia) return false
-  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
-    || window.matchMedia('(any-pointer: coarse)').matches
-}
-
-function isMobileUA() {
-  if (typeof navigator === 'undefined') return false
-  return /Android|iPhone|iPad|iPod|Mobile|Tablet|Mobi/i.test(navigator.userAgent || '')
 }
 
 function handleTouchStart(event) {

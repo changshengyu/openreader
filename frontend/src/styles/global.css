@@ -94,7 +94,7 @@ a {
   color: #a09282;
 }
 
-@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
+@media (max-width: 750px) {
   .app-page {
     padding: 18px 14px 82px;
   }

@@ -122,8 +122,7 @@ const showBookEditButton = ref(false)
 const refreshLoading = ref(false)
 const shelfView = ref(readStoredShelfView())
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const coarsePointer = ref(isCoarsePointer())
-const touchDevice = ref(false)
+const MINI_INTERFACE_MAX_WIDTH = 750
 
 const groupItems = computed(() => {
   const countByCategory = new Map()
@@ -162,7 +161,7 @@ const displayedBooks = computed(() => {
   return filtered
 })
 
-const isMobileShelf = computed(() => windowWidth.value <= 1180 || coarsePointer.value || touchDevice.value || isMobileUA())
+const isMobileShelf = computed(() => windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
 
 const emptyText = computed(() => {
@@ -349,19 +348,6 @@ function coverStyle(book) {
 
 function updateViewportFlags() {
   windowWidth.value = window.innerWidth
-  coarsePointer.value = isCoarsePointer()
-  touchDevice.value = Number(navigator.maxTouchPoints || 0) > 0
-}
-
-function isCoarsePointer() {
-  if (typeof window === 'undefined' || !window.matchMedia) return false
-  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
-    || window.matchMedia('(any-pointer: coarse)').matches
-}
-
-function isMobileUA() {
-  if (typeof navigator === 'undefined') return false
-  return /Android|iPhone|iPad|iPod|Mobile|Tablet|Mobi/i.test(navigator.userAgent || '')
 }
 
 function readStoredShelfView() {
@@ -918,7 +904,7 @@ function readError(err, fallback) {
   display: none;
 }
 
-@media (max-width: 1180px), (hover: none) and (pointer: coarse), (any-pointer: coarse) {
+@media (max-width: 750px) {
   .shelf-page {
     gap: 8px;
     width: 100%;
