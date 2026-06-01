@@ -111,90 +111,8 @@
           </div>
           <dl class="info-list">
             <div><dt>服务地址</dt><dd><code>/webdav/</code></dd></div>
-            <div><dt>当前目录</dt><dd>{{ webdavPath || '/' }}</dd></div>
           </dl>
-          <div class="panel-actions">
-            <el-button :icon="Refresh" :loading="webdavLoading" @click="loadWebDAV">刷新</el-button>
-            <el-button :icon="FolderOpened" @click="createWebDAVFolder">新建目录</el-button>
-            <el-upload :show-file-list="false" :auto-upload="false" @change="uploadWebDAVFile">
-              <el-button :icon="Upload" :loading="webdavUploading">上传</el-button>
-            </el-upload>
-            <el-button type="danger" plain :disabled="!webdavSelection.length" @click="deleteSelectedWebDAVItems">
-              批量删除 ({{ webdavSelection.length }})
-            </el-button>
-            <el-button type="primary" :disabled="!webdavImportSelection.length" :loading="webdavImporting" @click="importSelectedWebDAVBooks">
-              批量加入书架 ({{ webdavImportSelection.length }})
-            </el-button>
-          </div>
-          <el-breadcrumb separator="/" class="webdav-breadcrumb">
-            <el-breadcrumb-item>
-              <button type="button" @click="goWebDAVPath('')">webdav</button>
-            </el-breadcrumb-item>
-            <el-breadcrumb-item v-for="crumb in webdavBreadcrumbs" :key="crumb.path">
-              <button type="button" @click="goWebDAVPath(crumb.path)">{{ crumb.name }}</button>
-            </el-breadcrumb-item>
-          </el-breadcrumb>
-          <el-table :data="webdavItems" stripe v-loading="webdavLoading" class="webdav-table desktop-webdav-table" @selection-change="webdavSelection = $event">
-            <el-table-column type="selection" width="42" :selectable="row => !row.isDir" />
-            <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip>
-              <template #default="{ row }">
-                <button class="file-name" type="button" @click="openWebDAVItem(row)">
-                  <el-icon><component :is="row.isDir ? FolderOpened : Document" /></el-icon>
-                  <span>{{ row.name }}</span>
-                </button>
-              </template>
-            </el-table-column>
-            <el-table-column label="类型" width="90">
-              <template #default="{ row }">{{ row.isDir ? '目录' : '文件' }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="260" fixed="right">
-              <template #default="{ row }">
-                <el-button v-if="!row.isDir && isBackupFile(row)" text type="primary" :loading="webdavRestoring === row.name" @click="restoreWebDAVBackupFile(row)">恢复</el-button>
-                <el-button v-if="!row.isDir" text type="primary" @click="downloadWebDAVFile(row)">下载</el-button>
-                <el-button v-if="row.importable" text type="primary" :loading="webdavImporting" @click="importWebDAVBook(row)">加入书架</el-button>
-                <el-button v-else-if="row.isDir" text type="primary" :loading="webdavImporting" @click="importWebDAVDirectory(row)">加入目录</el-button>
-                <el-button text @click="renameWebDAVItem(row)">重命名</el-button>
-                <el-button text type="danger" @click="deleteWebDAVItem(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div v-if="webdavItems.length" class="mobile-file-select-actions app-panel">
-            <span>已选 {{ webdavSelection.length }} 个</span>
-            <div>
-              <el-button size="small" text @click="selectShownWebDAVFiles">全选当前</el-button>
-              <el-button size="small" text @click="webdavSelection = []">清空</el-button>
-            </div>
-          </div>
-          <div v-if="webdavItems.length" v-loading="webdavLoading" class="mobile-file-list">
-            <article v-for="row in webdavItems" :key="row.name" class="mobile-file-card app-panel">
-              <header>
-                <button class="mobile-file-name" type="button" @click="openWebDAVItem(row)">
-                  <el-icon><component :is="row.isDir ? FolderOpened : Document" /></el-icon>
-                  <span>{{ row.name }}</span>
-                </button>
-                <el-checkbox
-                  v-if="!row.isDir"
-                  :model-value="webdavSelection.some(item => item.name === row.name)"
-                  @change="value => toggleWebDAVSelection(row, value)"
-                />
-              </header>
-              <p>{{ joinPath(webdavPath, row.name) }}</p>
-              <div class="mobile-file-meta">
-                <el-tag size="small" effect="plain">{{ row.isDir ? '目录' : '文件' }}</el-tag>
-                <el-tag v-if="row.importable" size="small" type="success" effect="plain">可加入书架</el-tag>
-                <el-tag v-if="!row.isDir && isBackupFile(row)" size="small" type="warning" effect="plain">备份</el-tag>
-              </div>
-              <footer>
-                <el-button v-if="!row.isDir && isBackupFile(row)" size="small" text type="primary" :loading="webdavRestoring === row.name" @click="restoreWebDAVBackupFile(row)">恢复</el-button>
-                <el-button v-if="!row.isDir" size="small" text type="primary" @click="downloadWebDAVFile(row)">下载</el-button>
-                <el-button v-if="row.importable" size="small" text type="primary" :loading="webdavImporting" @click="importWebDAVBook(row)">加入书架</el-button>
-                <el-button v-else-if="row.isDir" size="small" text type="primary" :loading="webdavImporting" @click="importWebDAVDirectory(row)">加入目录</el-button>
-                <el-button size="small" text @click="renameWebDAVItem(row)">重命名</el-button>
-                <el-button size="small" text type="danger" @click="deleteWebDAVItem(row)">删除</el-button>
-              </footer>
-            </article>
-          </div>
-          <el-empty v-if="!webdavLoading && !webdavItems.length" description="WebDAV 目录为空" />
+          <WebDAVBrowser :is-mobile="isMobileDialog" />
         </section>
       </el-tab-pane>
 
@@ -511,15 +429,6 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="webdavImportResultDialog" title="WebDAV 导入结果" width="560px" :fullscreen="isMobileDialog">
-      <div class="result-list">
-        <div v-for="(item, index) in webdavImportResults" :key="index" class="result-row">
-          <el-tag :type="item.book ? 'success' : 'danger'" effect="plain">{{ item.book ? '成功' : '失败' }}</el-tag>
-          <span>{{ item.book?.title || item.path }}</span>
-          <small>{{ item.error || `${item.book?.chapterCount || 0} 章` }}</small>
-        </div>
-      </div>
-    </el-dialog>
   </section>
 </template>
 
@@ -533,7 +442,6 @@ import {
   Document,
   Edit,
   Files,
-  FolderOpened,
   Link,
   Refresh,
   RefreshLeft,
@@ -546,16 +454,16 @@ import {
 } from '@element-plus/icons-vue'
 import api from '../api/client'
 import { cleanupInactiveUsers, listUsers, updateUser } from '../api/admin'
-import { downloadBackup, listBackups, restoreLegadoBackup, restoreWebDAVBackup, triggerBackup } from '../api/backup'
+import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { clearCache, getCacheStats } from '../api/cache'
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { createRSSSource, deleteRSSSource, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
 import { uploadAsset } from '../api/uploads'
-import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, listWebDAV, renameWebDAV, uploadWebDAV } from '../api/webdav'
 import { useSync } from '../composables/useSync'
 import { useReaderStore, themePresets } from '../stores/reader'
 import { readerFontOptions } from '../utils/readerFonts'
 import { useUserStore } from '../stores/user'
+import WebDAVBrowser from '../components/WebDAVBrowser.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -573,15 +481,6 @@ const backups = ref([])
 const users = ref([])
 const usersLoading = ref(false)
 const cleanupLoading = ref(false)
-const webdavPath = ref('')
-const webdavItems = ref([])
-const webdavSelection = ref([])
-const webdavLoading = ref(false)
-const webdavUploading = ref(false)
-const webdavRestoring = ref('')
-const webdavImporting = ref(false)
-const webdavImportResultDialog = ref(false)
-const webdavImportResults = ref([])
 const cacheStats = ref({})
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
@@ -681,12 +580,6 @@ const readerSettingsSyncText = computed(() => {
   return '本地设置'
 })
 
-const webdavBreadcrumbs = computed(() => {
-  if (!webdavPath.value) return []
-  const parts = webdavPath.value.split('/').filter(Boolean)
-  return parts.map((name, index) => ({ name, path: parts.slice(0, index + 1).join('/') }))
-})
-const webdavImportSelection = computed(() => webdavSelection.value.filter(row => row.importable))
 const isMobileDialog = computed(() => readerStore.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 
 onMounted(() => {
@@ -694,7 +587,6 @@ onMounted(() => {
   readerStore.loadReaderSettings().catch(() => {})
   window.addEventListener('resize', updateWindowWidth, { passive: true })
   loadBackups()
-  loadWebDAV()
   loadCacheStats()
   loadHealthInfo().catch(() => {})
   loadReplaceRules()
@@ -1065,188 +957,6 @@ function openExternal(url) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-async function loadWebDAV() {
-  webdavLoading.value = true
-  try {
-    const { data } = await listWebDAV(webdavPath.value)
-    webdavItems.value = parseWebDAVListing(data)
-    webdavSelection.value = []
-  } catch (err) {
-    ElMessage.error(readError(err, '加载 WebDAV 失败'))
-  } finally {
-    webdavLoading.value = false
-  }
-}
-
-async function goWebDAVPath(path) {
-  webdavPath.value = path
-  await loadWebDAV()
-}
-
-function openWebDAVItem(row) {
-  if (row.isDir) goWebDAVPath(joinPath(webdavPath.value, row.name))
-}
-
-function toggleWebDAVSelection(row, checked) {
-  if (checked) {
-    if (!webdavSelection.value.some(item => item.name === row.name)) {
-      webdavSelection.value.push(row)
-    }
-    return
-  }
-  webdavSelection.value = webdavSelection.value.filter(item => item.name !== row.name)
-}
-
-function selectShownWebDAVFiles() {
-  webdavSelection.value = webdavItems.value.filter(item => !item.isDir)
-}
-
-async function uploadWebDAVFile(data) {
-  const file = data.raw
-  if (!file) return
-  webdavUploading.value = true
-  try {
-    await uploadWebDAV({ path: webdavPath.value, file })
-    ElMessage.success('WebDAV 文件已上传')
-    await loadWebDAV()
-  } catch (err) {
-    ElMessage.error(readError(err, '上传 WebDAV 失败'))
-  } finally {
-    webdavUploading.value = false
-  }
-}
-
-async function createWebDAVFolder() {
-  try {
-    const { value } = await ElMessageBox.prompt('输入目录名称', '新建 WebDAV 目录', {
-      inputValidator: value => !!value?.trim() || '目录名称不能为空',
-    })
-    await createWebDAVDirectory({ path: webdavPath.value, name: value.trim() })
-    ElMessage.success('WebDAV 目录已创建')
-    await loadWebDAV()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '创建 WebDAV 目录失败'))
-  }
-}
-
-async function downloadWebDAVFile(row) {
-  try {
-    const path = joinPath(webdavPath.value, row.name)
-    const resp = await downloadWebDAV(path)
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([resp.data]))
-    a.download = row.name
-    a.click()
-    URL.revokeObjectURL(a.href)
-  } catch (err) {
-    ElMessage.error(readError(err, '下载 WebDAV 文件失败'))
-  }
-}
-
-function isBackupFile(row) {
-  return String(row.name || '').toLowerCase().endsWith('.zip')
-}
-
-async function restoreWebDAVBackupFile(row) {
-  const path = joinPath(webdavPath.value, row.name)
-  try {
-    await ElMessageBox.confirm(`确定从 WebDAV 文件“${row.name}”恢复备份吗？`, '恢复 WebDAV 备份', { type: 'warning' })
-    webdavRestoring.value = row.name
-    const { data } = await restoreWebDAVBackup(path)
-    ElMessage.success(`恢复完成：书源 ${data.sources || 0}，书籍 ${data.books || 0}，进度 ${data.progress || 0}`)
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '恢复 WebDAV 备份失败'))
-  } finally {
-    webdavRestoring.value = ''
-  }
-}
-
-async function renameWebDAVItem(row) {
-  try {
-    const { value } = await ElMessageBox.prompt('输入新的名称', '重命名 WebDAV 项目', {
-      inputValue: row.name,
-      inputValidator: value => !!value?.trim() || '名称不能为空',
-    })
-    const name = value.trim()
-    if (!name || name === row.name) return
-    const current = joinPath(webdavPath.value, row.name)
-    const target = joinPath(webdavPath.value, name)
-    await renameWebDAV({ path: current, newPath: target })
-    ElMessage.success('已重命名')
-    await loadWebDAV()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '重命名 WebDAV 项目失败'))
-  }
-}
-
-async function deleteWebDAVItem(row) {
-  try {
-    await ElMessageBox.confirm(`确定删除“${row.name}”吗？`, '删除 WebDAV 项目', { type: 'warning' })
-    await deleteWebDAV(joinPath(webdavPath.value, row.name))
-    ElMessage.success('已删除')
-    await loadWebDAV()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除 WebDAV 项目失败'))
-  }
-}
-
-async function deleteSelectedWebDAVItems() {
-  if (!webdavSelection.value.length) return
-  try {
-    await ElMessageBox.confirm(`确定删除选中的 ${webdavSelection.value.length} 个 WebDAV 项目吗？`, '批量删除 WebDAV 项目', { type: 'warning' })
-    for (const row of webdavSelection.value) {
-      await deleteWebDAV(joinPath(webdavPath.value, row.name))
-    }
-    ElMessage.success('已批量删除')
-    await loadWebDAV()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '批量删除 WebDAV 项目失败'))
-  }
-}
-
-async function importWebDAVBook(row) {
-  if (!row.importable) return
-  await importWebDAVBooks([joinPath(webdavPath.value, row.name)])
-}
-
-async function importWebDAVDirectory(row) {
-  if (!row.isDir) return
-  try {
-    await ElMessageBox.confirm(`将递归导入 WebDAV 目录“${row.name}”下的可导入文件，是否继续？`, '加入 WebDAV 目录', { type: 'info' })
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    throw err
-  }
-  await importWebDAVBooks([joinPath(webdavPath.value, row.name)])
-}
-
-async function importSelectedWebDAVBooks() {
-  const paths = webdavImportSelection.value.map(row => joinPath(webdavPath.value, row.name))
-  if (!paths.length) return
-  await importWebDAVBooks(paths)
-}
-
-async function importWebDAVBooks(paths) {
-  webdavImporting.value = true
-  try {
-    const { data } = await importFromWebDAV(paths)
-    webdavImportResults.value = data.imported || []
-    const success = webdavImportResults.value.filter(item => item.book).length
-    const failed = webdavImportResults.value.filter(item => item.error).length
-    ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
-    webdavImportResultDialog.value = true
-  } catch (err) {
-    ElMessage.error(readError(err, '导入 WebDAV 文件失败'))
-  } finally {
-    webdavImporting.value = false
-  }
-}
-
 async function loadUsers() {
   usersLoading.value = true
   try {
@@ -1307,25 +1017,6 @@ function formatSize(bytes) {
 function formatDate(value) {
   if (!value) return '-'
   return new Date(value).toLocaleString()
-}
-
-function parseWebDAVListing(xml) {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml')
-  return [...doc.querySelectorAll('prop')].map((node) => ({
-    name: node.querySelector('displayname')?.textContent || '',
-    isDir: node.querySelector('iscollection')?.textContent === 'true',
-  })).filter(item => item.name && item.name !== webdavPath.value).map(item => ({
-    ...item,
-    importable: !item.isDir && isImportableBookFile(item.name),
-  }))
-}
-
-function isImportableBookFile(name) {
-  return /\.(txt|text|md|epub|pdf|umd)$/i.test(name || '')
-}
-
-function joinPath(base, name) {
-  return [base, name].filter(Boolean).join('/')
 }
 
 function readError(err, fallback) {
@@ -1461,98 +1152,6 @@ function readError(err, fallback) {
 .mobile-backup-card span {
   color: var(--app-text-muted);
   font-size: 12px;
-}
-
-.webdav-breadcrumb button,
-.file-name {
-  padding: 0;
-  color: var(--app-primary);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.file-name {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 8px;
-  color: var(--app-text);
-}
-
-.file-name span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-file-list {
-  display: none;
-}
-
-.mobile-file-select-actions {
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  color: var(--app-text-muted);
-  font-weight: 700;
-}
-
-.mobile-file-select-actions div {
-  display: flex;
-  gap: 4px;
-}
-
-.mobile-file-card {
-  display: grid;
-  gap: 9px;
-  padding: 12px;
-}
-
-.mobile-file-card header,
-.mobile-file-card footer,
-.mobile-file-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mobile-file-card header {
-  justify-content: space-between;
-}
-
-.mobile-file-name {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  color: var(--app-text);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-weight: 700;
-  text-align: left;
-}
-
-.mobile-file-name span,
-.mobile-file-card p {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-file-card p {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.mobile-file-card footer {
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .mobile-rule-list,
@@ -1822,33 +1421,6 @@ function readError(err, fallback) {
   white-space: pre-wrap;
 }
 
-.result-list {
-  display: grid;
-  gap: 10px;
-}
-
-.result-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 10px;
-  background: var(--app-bg-soft);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-}
-
-.result-row span,
-.result-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.result-row small {
-  color: var(--app-text-muted);
-}
-
 .permission-row {
   flex-wrap: wrap;
 }
@@ -1865,10 +1437,6 @@ code {
   .settings-grid {
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .desktop-webdav-table {
-    display: none;
   }
 
   .desktop-backup-table {
@@ -1889,15 +1457,6 @@ code {
   .mobile-user-list {
     display: grid;
     gap: 10px;
-  }
-
-  .mobile-file-list {
-    display: grid;
-    gap: 10px;
-  }
-
-  .mobile-file-select-actions {
-    display: flex;
   }
 
   .rss-reader-dialog :deep(.el-dialog) {
