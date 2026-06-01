@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../api/books'
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
+import { useReaderStore } from './reader'
 import { newestProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { getBrowserCache, setBrowserCache } from '../utils/browserCache'
 
@@ -66,7 +67,9 @@ export const useBookshelfStore = defineStore('bookshelf', {
       booksRequestKey = requestKey
       const request = listBooks(params)
         .then(({ data }) => {
-          this.books = sortBooks(data)
+          const serverBooks = asList(data)
+          syncServerProgressFromBooks(serverBooks)
+          this.books = sortBooks(serverBooks)
           this.booksLoadedAt = Date.now()
           this.booksLoadedKey = requestKey
           writeShelfCache(`${SHELF_CACHE_KEY}:${requestKey}`, this.books)
@@ -244,4 +247,11 @@ async function readShelfCache(key) {
 
 function writeShelfCache(key, value) {
   setBrowserCache(key, asList(value)).catch(() => {})
+}
+
+function syncServerProgressFromBooks(books) {
+  const reader = useReaderStore()
+  asList(books).forEach(book => {
+    if (book?.progress?.bookId) reader.applyServerProgress(book.progress)
+  })
 }

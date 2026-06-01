@@ -129,16 +129,29 @@ export const useReaderStore = defineStore('reader', {
       this.progressByBook[progress.bookId] = next
       persistLocalChapterProgress(next)
     },
+    applyServerProgress(progress) {
+      if (!progress?.bookId) return null
+      const local = newestProgress(this.progressByBook[progress.bookId], readLocalChapterProgress(progress.bookId))
+      if (local?.pendingSync && progressUpdatedAt(local) > progressUpdatedAt(progress)) {
+        this.syncLocalProgress(local, local.baseUpdatedAt || progress.updatedAt || '').catch(() => {})
+        return local
+      }
+      this.replaceProgress(progress)
+      return progress
+    },
     replaceProgress(progress) {
       if (!progress?.bookId) return
-      this.progressByBook[progress.bookId] = progress
-      persistLocalChapterProgress(progress)
+      const next = clearLocalProgressFlags(progress)
+      this.progressByBook[progress.bookId] = next
+      persistLocalChapterProgress(next)
     },
     async saveProgress(payload) {
       const optimistic = {
         ...payload,
         mode: this.mode,
         updatedAt: new Date().toISOString(),
+        pendingSync: true,
+        baseUpdatedAt: payload.baseUpdatedAt || this.progressByBook[payload.bookId]?.updatedAt || '',
       }
       this.applyProgress(optimistic)
       const response = await api.put('/progress', { ...payload, mode: this.mode })
@@ -150,11 +163,7 @@ export const useReaderStore = defineStore('reader', {
           : optimistic.chapterPercent,
         chapterTitle: data.chapterTitle || optimistic.chapterTitle,
       } : data
-      if (isProgressConflict(response)) {
-        this.replaceProgress(merged)
-      } else {
-        this.applyProgress(merged)
-      }
+      this.replaceProgress(merged)
       return merged
     },
     async loadProgress(bookId, options = {}) {
@@ -162,9 +171,7 @@ export const useReaderStore = defineStore('reader', {
       if (options.preferLocal && local?.bookId) {
         api.get(`/progress/${bookId}`)
           .then(({ data }) => {
-            if (data?.bookId && progressUpdatedAt(data) >= progressUpdatedAt(local)) {
-              this.applyProgress(data)
-            }
+            if (data?.bookId) this.applyServerProgress(data)
           })
           .catch(() => {})
         return local
@@ -177,15 +184,14 @@ export const useReaderStore = defineStore('reader', {
         return local || null
       }
       if (data?.bookId) {
-        if (progressUpdatedAt(local) > progressUpdatedAt(data)) {
-          this.applyProgress(local)
-          this.syncLocalProgress(local, data.updatedAt)
+        if (local?.pendingSync && progressUpdatedAt(local) > progressUpdatedAt(data)) {
+          this.syncLocalProgress(local, local.baseUpdatedAt || data.updatedAt)
           return local
         }
-        this.applyProgress(data)
+        this.replaceProgress(data)
         return data
       }
-      if (local?.bookId) this.syncLocalProgress(local, data?.updatedAt)
+      if (local?.bookId && local.pendingSync) this.syncLocalProgress(local, local.baseUpdatedAt || data?.updatedAt)
       return local || data
     },
     async syncLocalProgress(progress, baseUpdatedAt = '') {
@@ -200,7 +206,7 @@ export const useReaderStore = defineStore('reader', {
           chapterPercent: progress.chapterPercent,
           chapterTitle: progress.chapterTitle,
           mode: progress.mode || this.mode,
-          baseUpdatedAt,
+          baseUpdatedAt: baseUpdatedAt || progress.baseUpdatedAt || '',
         })
         const { data } = response
         const next = data?.bookId ? {
@@ -210,11 +216,7 @@ export const useReaderStore = defineStore('reader', {
             : progress.chapterPercent,
           chapterTitle: data.chapterTitle || progress.chapterTitle,
         } : data
-        if (isProgressConflict(response)) {
-          this.replaceProgress(next)
-        } else {
-          this.applyProgress(next)
-        }
+        this.replaceProgress(next)
         return next
       } catch {
         return null
@@ -227,8 +229,10 @@ function newestProgress(a, b) {
   return pickNewestProgress(a, b)
 }
 
-function isProgressConflict(response) {
-  return String(response?.headers?.['x-openreader-progress-conflict'] || '') === '1'
+function clearLocalProgressFlags(progress) {
+  if (!progress) return progress
+  const { pendingSync, baseUpdatedAt, ...rest } = progress
+  return rest
 }
 
 function localChapterProgressKey(bookId) {
@@ -248,6 +252,10 @@ function persistLocalChapterProgress(progress) {
       mode: progress.mode || '',
       chapterTitle: progress.chapterTitle || '',
       updatedAt: progress.updatedAt || new Date().toISOString(),
+    }
+    if (progress.pendingSync) {
+      payload.pendingSync = true
+      payload.baseUpdatedAt = progress.baseUpdatedAt || ''
     }
     if (Number.isFinite(chapterPercent)) {
       payload.chapterPercent = Math.max(0, Math.min(1, chapterPercent))
