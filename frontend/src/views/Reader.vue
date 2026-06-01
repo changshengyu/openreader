@@ -80,7 +80,7 @@
       class="reader-page"
       :style="readerStyle"
       @touchstart.passive="handleReaderTouchStart"
-      @touchmove.passive="handleReaderTouchMove"
+      @touchmove="handleReaderTouchMove"
       @touchend.passive="handleReaderTouchEnd"
       @wheel="handleReaderWheel"
       @click="handleReaderContentClick"
@@ -539,6 +539,7 @@ let chapterContentCache = null
 let cachingContentCancelled = false
 let readerTouchStart = null
 let readerTouchMoved = false
+let readerTouchMove = { x: 0, y: 0 }
 let ignoreNextContentClick = false
 let handledTouchTapAt = 0
 let lastLocalProgressKey = ''
@@ -1832,6 +1833,7 @@ function handleReaderTouchStart(event) {
   const touch = event.touches[0]
   readerTouchStart = { x: touch.clientX, y: touch.clientY, at: Date.now() }
   readerTouchMoved = false
+  readerTouchMove = { x: 0, y: 0 }
 }
 
 function handleReaderTouchMove(event) {
@@ -1839,8 +1841,13 @@ function handleReaderTouchMove(event) {
   const touch = event.touches[0]
   const moveX = touch.clientX - readerTouchStart.x
   const moveY = touch.clientY - readerTouchStart.y
+  readerTouchMove = { x: moveX, y: moveY }
   if (Math.abs(moveX) > 6 || Math.abs(moveY) > 6) {
     readerTouchMoved = true
+  }
+  if (reader.mode === 'flip' && Math.abs(moveX) > 12 && Math.abs(moveX) > Math.abs(moveY) + 8) {
+    event.preventDefault()
+    event.stopPropagation()
   }
 }
 
@@ -1854,7 +1861,10 @@ function handleReaderTouchEnd(event) {
   setTimeout(() => {
     ignoreNextContentClick = false
   }, 360)
-  if (!readerTouchMoved && !isOverlayOpen.value && pageEl.value) {
+  if (readerTouchMoved && !isOverlayOpen.value && shouldHandleHorizontalSwipe()) {
+    if (readerTouchMove.x > 0) previousPage()
+    else nextPage()
+  } else if (!readerTouchMoved && !isOverlayOpen.value && pageEl.value) {
     if (touch) {
       const rect = pageEl.value.getBoundingClientRect()
       handleTapPoint({
@@ -1868,6 +1878,14 @@ function handleReaderTouchEnd(event) {
   }
   readerTouchStart = null
   readerTouchMoved = false
+  readerTouchMove = { x: 0, y: 0 }
+}
+
+function shouldHandleHorizontalSwipe() {
+  if (reader.mode !== 'flip') return false
+  const moveX = Number(readerTouchMove.x || 0)
+  const moveY = Number(readerTouchMove.y || 0)
+  return Math.abs(moveX) >= 42 && Math.abs(moveX) > Math.abs(moveY) * 1.2
 }
 
 function handleTapPoint(point) {
@@ -1878,8 +1896,8 @@ function handleTapPoint(point) {
   const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
   const midX = viewportWidth / 2
   const midY = viewportHeight / 2
-  const centerWidthRatio = isMobileReader.value ? 0.32 : 0.2
-  const centerHeightRatio = isMobileReader.value ? 0.32 : 0.2
+  const centerWidthRatio = 0.2
+  const centerHeightRatio = 0.2
   const inMenuZone = Math.abs(pointX - midX) <= viewportWidth * centerWidthRatio
     && Math.abs(pointY - midY) <= viewportHeight * centerHeightRatio
 
