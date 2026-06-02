@@ -227,18 +227,21 @@
               </el-upload>
               <el-button v-if="readerStore.customBgImage" size="small" text type="danger" @click="readerStore.setCustomBgImage('')">取消背景图</el-button>
               <div v-if="readerStore.customBgImageList?.length" class="settings-bg-list">
-                <button
+                <div
                   v-for="image in readerStore.customBgImageList"
                   :key="image"
                   class="settings-bg-choice"
                   :class="{ active: readerStore.customBgImage === image }"
                   :style="{ backgroundImage: `url(${image})` }"
-                  type="button"
+                  role="button"
+                  tabindex="0"
                   @click="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
+                  @keydown.enter.prevent="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
+                  @keydown.space.prevent="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
                 >
                   <span>{{ readerStore.customBgImage === image ? '使用中' : '选择' }}</span>
                   <button type="button" @click.stop="deleteReaderBgImage(image)">删除</button>
-                </button>
+                </div>
               </div>
             </div>
           </article>

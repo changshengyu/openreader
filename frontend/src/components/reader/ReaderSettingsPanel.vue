@@ -55,20 +55,23 @@
       <div class="setting-row">
         <label class="setting-label">背景图</label>
         <div v-if="reader.customBgImageList?.length" class="bg-image-grid">
-          <button
+          <div
             v-for="image in reader.customBgImageList"
             :key="image"
             class="bg-image-option"
             :class="{ active: reader.customBgImage === image }"
             :style="{ backgroundImage: `url(${image})` }"
-            type="button"
+            role="button"
+            tabindex="0"
             @click="toggleBgImage(image)"
+            @keydown.enter.prevent="toggleBgImage(image)"
+            @keydown.space.prevent="toggleBgImage(image)"
           >
             <span>{{ reader.customBgImage === image ? '使用中' : '选择' }}</span>
             <button class="bg-image-delete" type="button" title="删除背景图" @click.stop="$emit('clearBgImage', image)">
               <el-icon><Close /></el-icon>
             </button>
-          </button>
+          </div>
         </div>
         <div class="bg-image-actions">
           <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
