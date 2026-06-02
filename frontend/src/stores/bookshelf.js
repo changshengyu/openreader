@@ -210,6 +210,13 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.invalidateCategories()
       return data
     },
+    async setCategoryVisible(categoryId, show) {
+      const { data } = await updateCategory(categoryId, { show })
+      const index = this.categories.findIndex(category => category.id === data.id)
+      if (index >= 0) this.categories[index] = data
+      this.invalidateCategories()
+      return data
+    },
     async removeCategory(categoryId) {
       await deleteCategory(categoryId)
       this.categories = this.categories.filter(category => category.id !== categoryId)

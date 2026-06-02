@@ -270,6 +270,15 @@
             <span>{{ category.name }}</span>
             <small>{{ groupBookCount(category) }} 本</small>
           </span>
+          <span class="group-visibility">
+            <el-switch
+              :model-value="category.show !== false"
+              :loading="visibilitySavingId === category.id"
+              active-text="显示"
+              inactive-text="隐藏"
+              @change="value => toggleGroupVisibility(category, value)"
+            />
+          </span>
           <span class="group-actions">
             <el-button size="small" text @click="moveGroup(category, -1)">上移</el-button>
             <el-button size="small" text @click="moveGroup(category, 1)">下移</el-button>
@@ -641,6 +650,7 @@ const settingCategorySaving = ref(false)
 const loadingUpdates = ref(false)
 const importingBook = ref(false)
 const newGroupName = ref('')
+const visibilitySavingId = ref(null)
 const importDraft = reactive({ title: '', author: '', categoryId: '', file: null })
 const sourceRows = ref([])
 const sourceSwitchVisible = ref(false)
@@ -2095,6 +2105,19 @@ function groupBookCount(category) {
   return managedBooks.value.filter(book => String(book.categoryId || '') === String(category.id)).length
 }
 
+async function toggleGroupVisibility(category, show) {
+  visibilitySavingId.value = category.id
+  try {
+    await bookshelf.setCategoryVisible(category.id, show)
+    ElMessage.success(show ? '分组已显示' : '分组已隐藏')
+  } catch (err) {
+    await bookshelf.loadCategories({ force: true }).catch(() => {})
+    ElMessage.error(readError(err, '修改分组显示状态失败'))
+  } finally {
+    visibilitySavingId.value = null
+  }
+}
+
 async function deleteGroup(category) {
   if (groupBookCount(category) > 0) {
     ElMessage.warning('分组内还有书籍，清空后才能删除')
@@ -2288,7 +2311,7 @@ function readError(err, fallback) {
 }
 
 .group-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   padding: 10px;
   border: 1px solid var(--app-border);
   border-radius: var(--app-radius-sm);
@@ -2310,6 +2333,11 @@ function readError(err, fallback) {
 .group-name small {
   color: var(--app-text-muted);
   font-size: 12px;
+}
+
+.group-visibility {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .group-actions {
@@ -2616,6 +2644,10 @@ function readError(err, fallback) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .group-visibility {
+    justify-content: flex-start;
   }
 
   .group-actions {

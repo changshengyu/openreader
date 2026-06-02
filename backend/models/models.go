@@ -169,6 +169,7 @@ type Category struct {
 	UserID    uint      `json:"userId" gorm:"not null;uniqueIndex:idx_user_category"`
 	Name      string    `json:"name" gorm:"size:80;not null;uniqueIndex:idx_user_category"`
 	Color     string    `json:"color" gorm:"size:24"`
+	Show      bool      `json:"show" gorm:"default:true"`
 	SortOrder int       `json:"sortOrder" gorm:"default:0"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

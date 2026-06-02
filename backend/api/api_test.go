@@ -913,6 +913,39 @@ func TestReorderCategories(t *testing.T) {
 	}
 }
 
+func TestUpdateCategoryVisibility(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	category := models.Category{UserID: user.ID, Name: "可隐藏分组", Show: true, SortOrder: 10}
+	if err := server.db.Create(&category).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/categories/"+strconv.FormatUint(uint64(category.ID), 10), strings.NewReader(`{"show":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("hide category: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Category
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Show {
+		t.Fatalf("expected hidden category, got %+v", updated)
+	}
+	if updated.Name != category.Name {
+		t.Fatalf("visibility update should not rename category: %+v", updated)
+	}
+}
+
 func TestDeleteCategoryRejectsNonEmptyCategory(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

@@ -132,22 +132,24 @@ const groupItems = computed(() => {
   const countByCategory = new Map()
   const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
   const categories = Array.isArray(bookshelf.categories) ? bookshelf.categories : []
+  const localCount = books.filter(isLocalBook).length
   for (const book of books) {
     const key = book.categoryId ? String(book.categoryId) : 'none'
     countByCategory.set(key, (countByCategory.get(key) || 0) + 1)
   }
+  const noneCount = countByCategory.get('none') || 0
   return [
     { id: '', name: '全部', count: books.length, builtin: true },
-    { id: 'local', name: '本地', count: books.filter(isLocalBook).length, builtin: true },
-    { id: 'none', name: '未分组', count: countByCategory.get('none') || 0, builtin: true },
-    ...categories.map(category => ({
+    localCount ? { id: 'local', name: '本地', count: localCount, builtin: true } : null,
+    noneCount ? { id: 'none', name: '未分组', count: noneCount, builtin: true } : null,
+    ...categories.filter(category => category.show !== false && (countByCategory.get(String(category.id)) || 0) > 0).map(category => ({
       id: String(category.id),
       name: category.name,
       count: countByCategory.get(String(category.id)) || 0,
       sortOrder: category.sortOrder || 0,
       builtin: false,
     })),
-  ]
+  ].filter(Boolean)
 })
 
 const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.books) ? bookshelf.books : [], reader.progressByBook))
@@ -206,6 +208,12 @@ watch(
   },
   { immediate: true },
 )
+
+watch(groupItems, (items) => {
+  if (selectedGroup.value && !items.some(item => item.id === selectedGroup.value)) {
+    selectedGroup.value = ''
+  }
+})
 
 async function deleteManagedBook(book) {
   try {
