@@ -63,8 +63,6 @@ export const useReaderStore = defineStore('reader', {
     },
     setPageMode(pageMode) {
       this.pageMode = pageMode === 'mobile' ? 'mobile' : 'auto'
-      this.settingsUpdatedAt = new Date().toISOString()
-      this.settingsSyncError = ''
     },
     setClickMethod(method) {
       this.clickMethod = ['next', 'auto', 'none'].includes(method) ? method : 'auto'

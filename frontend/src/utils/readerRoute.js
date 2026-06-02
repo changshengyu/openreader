@@ -25,6 +25,6 @@ export function savedBookChapterPercent(progress, totalChapters) {
   if (!Number.isFinite(totalValue) || totalValue <= 0) return null
   const total = Math.max(totalValue, 1)
   const raw = Number(progress.percent) * total - chapterIndex
-  if (!Number.isFinite(raw) || raw <= 0) return null
-  return Math.max(0, Math.min(1, raw))
+  if (!Number.isFinite(raw) || raw <= 0 || raw > 1) return null
+  return raw
 }
