@@ -17,11 +17,11 @@
         <button type="button" @click="showBookEditButton = !showBookEditButton">
           {{ showBookEditButton ? '取消' : '编辑' }}
         </button>
-        <button class="view-switch" type="button" :class="{ active: effectiveShelfView === 'grid' }" title="网格显示" @click="setShelfView('grid')">
+        <button v-if="!isMobileShelf" class="view-switch" type="button" :class="{ active: effectiveShelfView === 'grid' }" title="网格显示" @click="setShelfView('grid')">
           <el-icon><Grid /></el-icon>
           <span>网格</span>
         </button>
-        <button class="view-switch" type="button" :class="{ active: effectiveShelfView === 'list' }" title="列表显示" @click="setShelfView('list')">
+        <button v-if="!isMobileShelf" class="view-switch" type="button" :class="{ active: effectiveShelfView === 'list' }" title="列表显示" @click="setShelfView('list')">
           <el-icon><List /></el-icon>
           <span>列表</span>
         </button>
@@ -859,7 +859,7 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .book-group-wrapper {
   width: auto;
-  max-width: calc(100% - 48px);
+  max-width: none;
   margin-right: 24px;
   margin-left: 24px;
   padding: 5px 0;
@@ -1006,7 +1006,7 @@ function readError(err, fallback) {
 
   .book-group-wrapper {
     width: auto;
-    max-width: calc(100% - 48px);
+    max-width: none;
     margin-right: 24px;
     margin-left: 24px;
     padding: 5px 0;
@@ -1081,7 +1081,7 @@ function readError(err, fallback) {
   .shelf-page.mobile-shelf .book-group-wrapper,
   .book-group-wrapper {
     width: auto;
-    max-width: calc(100% - 32px);
+    max-width: none;
     margin-right: 16px;
     margin-left: 16px;
     padding: 5px 0;

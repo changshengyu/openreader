@@ -8,7 +8,7 @@
 
 | 模块 | 上游基准 | 当前状态 | 结论 |
 | --- | --- | --- | --- |
-| 首页/书架 | `views/Index.vue` | 已恢复移动端侧边导航思路，正文区继续收敛为书架列表；本批已移除移动正文区搜索和行内操作按钮 | 继续对齐 |
+| 首页/书架 | `views/Index.vue` | 已恢复移动端侧边导航思路，正文区继续收敛为书架列表；已移除移动正文区搜索和行内操作按钮；本批隐藏移动端无效网格/列表切换，并将分组栏宽度恢复为上游式自然留白滚动 | 继续真机验收移动端宽度 |
 | `miniInterface` 判定 | `plugins/helper.js` `isMiniInterface`、`plugins/vuex.js` `setMiniInterface` | 已收敛为 `<=750px` 或手动“手机模式”，不再用触摸设备/1180px 误判 | 本批完成 |
 | 移动侧边栏/书架宽度 | `Index.vue` `navigation-wrapper`、`shelf-wrapper` | 已使用 260px 侧栏、右滑打开/左滑关闭；本批修正移动端分组栏 `width:100% + margin` 导致的横向溢出 | 继续真机验收 |
 | 阅读器工具栏 | `views/Reader.vue` `showToolBar/showReadBar` | 移动端工具栏默认隐藏，中心点击显示；桌面右侧快捷工具栏已恢复为上游式单列圆形按钮，不再挤成两列 | 基本对齐 |
