@@ -9,12 +9,12 @@
         <small v-if="keyword.trim()" class="shelf-filter-count">命中 {{ displayedBooks.length }}</small>
       </div>
       <div class="title-actions">
-        <button type="button" @click="router.push({ name: 'discover' })">书海</button>
-        <button type="button" @click="overlay.openRSS()">RSS</button>
+        <button v-if="isNormalPage" type="button" @click="router.push({ name: 'discover' })">书海</button>
+        <button v-if="isNormalPage" type="button" @click="overlay.openRSS()">RSS</button>
         <button type="button" @click="refreshShelf">
           {{ refreshLoading ? '刷新中...' : '刷新' }}
         </button>
-        <button type="button" @click="showBookEditButton = !showBookEditButton">
+        <button v-if="isNormalPage" type="button" @click="showBookEditButton = !showBookEditButton">
           {{ showBookEditButton ? '取消' : '编辑' }}
         </button>
         <button v-if="!isMobileShelf" class="view-switch" type="button" :class="{ active: effectiveShelfView === 'grid' }" title="网格显示" @click="setShelfView('grid')">
@@ -170,6 +170,7 @@ const displayedBooks = computed(() => {
 })
 
 const isMobileShelf = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isNormalPage = computed(() => reader.pageType !== 'simple')
 const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
 
 const emptyText = computed(() => {
@@ -214,6 +215,10 @@ watch(groupItems, (items) => {
   if (selectedGroup.value && !items.some(item => item.id === selectedGroup.value)) {
     selectedGroup.value = ''
   }
+})
+
+watch(isNormalPage, (normal) => {
+  if (!normal) showBookEditButton.value = false
 })
 
 async function deleteManagedBook(book) {

@@ -126,6 +126,13 @@
             </div>
             <div class="reader-setting-list">
               <label>
+                <span>特殊模式</span>
+                <el-radio-group v-model="readerPageTypeModel" size="small">
+                  <el-radio-button value="normal">正常</el-radio-button>
+                  <el-radio-button value="simple">简洁</el-radio-button>
+                </el-radio-group>
+              </label>
+              <label>
                 <span>页面模式（本机）</span>
                 <el-radio-group v-model="readerPageModeModel" size="small">
                   <el-radio-button value="auto">自适应</el-radio-button>
@@ -172,7 +179,7 @@
               </label>
               <label>
                 <span>动画时长 {{ readerStore.animateDuration }}ms</span>
-                <el-slider v-model="readerAnimateDurationModel" :min="0" :max="1000" :step="20" />
+                <el-slider v-model="readerAnimateDurationModel" :min="0" :max="1000" :step="20" :disabled="readerStore.pageType === 'simple'" />
               </label>
               <label>
                 <span>字号 {{ readerStore.fontSize }}px</span>
@@ -348,6 +355,10 @@ const fontOptions = readerFontOptions
 const readerModeModel = computed({
   get: () => readerStore.mode,
   set: value => readerStore.setMode(value),
+})
+const readerPageTypeModel = computed({
+  get: () => readerStore.pageType,
+  set: value => readerStore.setPageType(value),
 })
 const readerPageModeModel = computed({
   get: () => readerStore.pageMode,

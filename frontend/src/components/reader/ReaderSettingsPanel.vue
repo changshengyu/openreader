@@ -6,6 +6,15 @@
     </div>
 
     <div class="setting-row">
+      <label class="setting-label">特殊模式</label>
+      <el-radio-group v-model="pageTypeModel" size="small" class="read-method-group">
+        <el-radio-button value="normal">正常</el-radio-button>
+        <el-radio-button value="simple">简洁</el-radio-button>
+      </el-radio-group>
+      <small class="setting-help">开启简洁模式会关闭动画并切到手机模式。</small>
+    </div>
+
+    <div class="setting-row">
       <label class="setting-label">页面模式（本机）</label>
       <el-radio-group v-model="pageModeModel" size="small" class="read-method-group">
         <el-radio-button value="auto">自适应</el-radio-button>
@@ -99,7 +108,8 @@
 
     <div class="setting-row">
       <label class="setting-label">动画时长 ({{ reader.animateDuration }}ms)</label>
-      <el-slider v-model="animateDurationModel" :min="0" :max="1000" :step="20" size="small" />
+      <el-slider v-model="animateDurationModel" :min="0" :max="1000" :step="20" size="small" :disabled="reader.pageType === 'simple'" />
+      <small v-if="reader.pageType === 'simple'" class="setting-help">简洁模式会关闭翻页动画。</small>
     </div>
 
     <div class="setting-row">
@@ -274,6 +284,11 @@ const fontPreviewStyle = computed(() => ({
 const pageModeModel = computed({
   get: () => props.reader.pageMode,
   set: value => props.reader.setPageMode(value),
+})
+
+const pageTypeModel = computed({
+  get: () => props.reader.pageType,
+  set: value => props.reader.setPageType(value),
 })
 
 const readerModeModel = computed({

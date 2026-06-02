@@ -16,6 +16,7 @@ export const themePresets = {
 export const useReaderStore = defineStore('reader', {
   state: () => ({
     mode: 'page',
+    pageType: 'normal',
     pageMode: 'auto',
     clickMethod: 'auto',
     fontFamily: 'system',
@@ -42,6 +43,7 @@ export const useReaderStore = defineStore('reader', {
     settingsSyncing: false,
     settingsSyncError: '',
     progressByBook: {},
+    normalModeSnapshot: null,
   }),
   persist: true,
   getters: {
@@ -59,6 +61,35 @@ export const useReaderStore = defineStore('reader', {
   actions: {
     setMode(mode) {
       this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'page'
+      this.markSettingsDirty()
+    },
+    setPageType(pageType) {
+      const nextType = pageType === 'simple' ? 'simple' : 'normal'
+      if (nextType === this.pageType) return
+      if (nextType === 'simple') {
+        this.normalModeSnapshot = {
+          pageMode: this.pageMode,
+          animateDuration: this.animateDuration,
+          mode: this.mode,
+          fontSize: this.fontSize,
+          theme: this.theme,
+        }
+        this.pageType = 'simple'
+        this.animateDuration = 0
+        this.pageMode = 'mobile'
+        this.mode = 'flip'
+        this.fontSize = Math.min(this.fontSize, 20)
+        this.theme = 'white'
+      } else {
+        const snapshot = this.normalModeSnapshot || {}
+        this.pageType = 'normal'
+        this.pageMode = snapshot.pageMode === 'mobile' ? 'mobile' : 'auto'
+        this.animateDuration = clampNumber(snapshot.animateDuration, 0, 1000, 300)
+        if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
+        if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
+        if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
+        this.normalModeSnapshot = null
+      }
       this.markSettingsDirty()
     },
     setPageMode(pageMode) {
@@ -133,7 +164,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setAnimateDuration(duration) {
-      this.animateDuration = clampNumber(duration, 0, 1000, 300)
+      this.animateDuration = this.pageType === 'simple' ? 0 : clampNumber(duration, 0, 1000, 300)
       this.markSettingsDirty()
     },
     setTTSRate(rate) {
@@ -166,6 +197,7 @@ export const useReaderStore = defineStore('reader', {
     },
     normalizeSettings() {
       if (!['scroll', 'scroll2', 'flip', 'page'].includes(this.mode)) this.mode = 'page'
+      if (!['normal', 'simple'].includes(this.pageType)) this.pageType = 'normal'
       if (!['auto', 'mobile'].includes(this.pageMode)) this.pageMode = 'auto'
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['system', 'serif', 'kai', 'mono'].includes(this.fontFamily)) this.fontFamily = 'system'
@@ -180,6 +212,9 @@ export const useReaderStore = defineStore('reader', {
       this.brightness = clampNumber(this.brightness, 50, 150, 100)
       this.autoReadSpeed = clampNumber(this.autoReadSpeed, 2, 40, 12)
       this.animateDuration = clampNumber(this.animateDuration, 0, 1000, 300)
+      if (this.pageType === 'simple') {
+        this.animateDuration = 0
+      }
       this.ttsRate = clampNumber(this.ttsRate, 0.5, 3, 1)
       this.ttsPitch = clampNumber(this.ttsPitch, 0.5, 2, 1)
       if ((this.settingsVersion || 0) < 4) {
@@ -453,6 +488,7 @@ function clampNumber(value, min, max, fallback) {
 function readerSettingsPayload(state) {
   return {
     mode: state.mode,
+    pageType: state.pageType,
     clickMethod: state.clickMethod,
     fontFamily: state.fontFamily,
     customFontsMap: state.customFontsMap || {},
@@ -479,6 +515,7 @@ function readerSettingsPayload(state) {
 function defaultReaderSettings() {
   return {
     mode: 'page',
+    pageType: 'normal',
     clickMethod: 'auto',
     fontFamily: 'system',
     customFontsMap: {},
@@ -499,12 +536,14 @@ function defaultReaderSettings() {
     paragraphSpace: 0.2,
     columnWidth: 800,
     settingsVersion: 7,
+    normalModeSnapshot: null,
   }
 }
 
 function sanitizeReaderSettings(payload) {
   const settings = {}
   if (['scroll', 'scroll2', 'flip', 'page'].includes(payload.mode)) settings.mode = payload.mode
+  if (['normal', 'simple'].includes(payload.pageType)) settings.pageType = payload.pageType
   if (['next', 'auto', 'none'].includes(payload.clickMethod)) settings.clickMethod = payload.clickMethod
   if (['system', 'serif', 'kai', 'mono'].includes(payload.fontFamily)) settings.fontFamily = payload.fontFamily
   settings.customFontsMap = sanitizeCustomFontsMap(payload.customFontsMap)
