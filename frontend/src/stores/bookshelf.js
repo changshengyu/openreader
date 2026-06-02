@@ -16,7 +16,7 @@ function asList(data) {
 }
 
 function sortBooks(books) {
-  return sortByShelfOrder(asList(books))
+  return sortByShelfOrder(asList(books), useReaderStore().progressByBook)
 }
 
 const REFRESH_DEDUPE_MS = 1200
