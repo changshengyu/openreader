@@ -37,10 +37,10 @@
         type="button"
         role="tab"
         :aria-selected="selectedGroup === item.id"
+        :title="`${item.name} (${item.count})`"
         @click="selectedGroup = item.id"
       >
         <span>{{ item.name }}</span>
-        <em>{{ item.count }}</em>
       </button>
     </div>
 
@@ -592,21 +592,9 @@ function readError(err, fallback) {
   white-space: nowrap;
 }
 
-.group-chip em {
-  flex: 0 0 auto;
-  color: #8f97a3;
-  font-size: 13px;
-  font-style: normal;
-  font-weight: 700;
-}
-
 .group-chip.active {
   color: #1f6feb;
   background: transparent;
-}
-
-.group-chip.active em {
-  color: #1f6feb;
 }
 
 .group-chip.active::after {

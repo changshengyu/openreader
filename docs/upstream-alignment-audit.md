@@ -8,14 +8,14 @@
 
 | 模块 | 上游基准 | 当前状态 | 结论 |
 | --- | --- | --- | --- |
-| 首页/书架 | `views/Index.vue` | 已恢复移动端侧边导航思路，正文区继续收敛为书架列表；已移除移动正文区搜索和行内操作按钮；本批隐藏移动端无效网格/列表切换，并将分组栏宽度恢复为上游式自然留白滚动 | 继续真机验收移动端宽度 |
+| 首页/书架 | `views/Index.vue` | 已恢复移动端侧边导航思路，正文区继续收敛为书架列表；已移除移动正文区搜索和行内操作按钮；已隐藏移动端无效网格/列表切换，并将分组栏宽度恢复为上游式自然留白滚动；本批把分组 tab 收敛为只显示分组名，数量回到书架标题统计，减少移动端横向挤压 | 继续真机验收移动端宽度 |
 | `miniInterface` 判定 | `plugins/helper.js` `isMiniInterface`、`plugins/vuex.js` `setMiniInterface` | 已收敛为 `<=750px` 或手动“手机模式”，不再用触摸设备/1180px 误判 | 本批完成 |
 | 移动侧边栏/书架宽度 | `Index.vue` `navigation-wrapper`、`shelf-wrapper` | 已使用 260px 侧栏、右滑打开/左滑关闭；本批修正移动端分组栏 `width:100% + margin` 导致的横向溢出 | 继续真机验收 |
 | 搜索/加书 | `Index.vue` `searchBook`、`BookInfo.vue` | 远程搜索结果已先进入全局书籍信息再加入/阅读；按用户要求，本地书籍搜索独立于书源搜索，本批修复切入本地模式后不立即搜索的问题，确保已导入本地书和书仓文件都会刷新结果 | 基本对齐，继续真机验收 |
 | 阅读器工具栏 | `views/Reader.vue` `showToolBar/showReadBar` | 移动端工具栏默认隐藏，中心点击显示；桌面右侧快捷工具栏已恢复为上游式单列圆形按钮，不再挤成两列 | 基本对齐 |
 | 阅读点击区 | `Reader.vue` `eventHandler`、`ReadSettings.vue` `clickMethod` | 本批补齐“下一页 / 自动 / 不翻页”；自动模式按上游区分左右滑动和上下滚动 | 本批完成 |
 | 滚动阅读手势 | `Reader.vue` `handleTouchMove`、`isSlideRead` | 本批确认上下滚动不拦截手指滑动，固定距离翻页只由点击区触发 | 本批完成 |
-| 阅读方式 | `ReadSettings.vue` `readMethods`、`animateMSTime` | 当前有上下滑动、左右滑动、上下滚动、上下滚动2；已补齐 `scroll2` 顶部附近自动加载上一章并保持视口位置，连续滚动不再只能向下追加章节；本批把设置页“左右翻页”也收敛为仅 `miniInterface` 可见，和上游 `ReadSettings.vue` 一致 | 继续真机验收长书跨章节滚动 |
+| 阅读方式 | `ReadSettings.vue` `readMethods`、`animateMSTime` | 当前有上下滑动、左右滑动、上下滚动、上下滚动2；已补齐 `scroll2` 顶部附近自动加载上一章并保持视口位置，连续滚动不再只能向下追加章节；本批把设置页“左右滑动”也收敛为仅 `miniInterface` 可见，命名和可见性都与上游 `ReadSettings.vue` 一致 | 继续真机验收长书跨章节滚动 |
 | 设置写入路径 | `ReadSettings.vue` `setReadMethod/setPageMode`、`Index.vue` 搜索设置 | 已收敛为单一 computed setter 写入；阅读器设置抽屉、设置页、首页侧边栏搜索设置不再同时通过 `v-model`、`@input`、`@change` 双写同一项；本批复核上游 `setPageMode` 只切换 `miniInterface`，不额外强制修改阅读方式 | 本批完成 |
 | 目录定位 | `PopCatalog.vue` + `Reader.vue` 当前章节定位 | 本批按上游目录弹层补齐倒序/顺序、顶部、底部、刷新入口；打开目录和切换顺序都会重新定位当前章节 | 基本对齐，继续真机验收 |
 | 书籍信息 | `components/BookInfo.vue` | 已复核书架、搜索、书海、阅读器均走全局 `openBookInfo`，详情页直接复用 `BookInfoPanel`；已补齐上游书名下方分类/标签信息层，并把“设置分组”放回分组属性行 | 基本对齐，继续核对加书/刷新/封面细节 |
