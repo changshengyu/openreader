@@ -1,9 +1,14 @@
 <template>
   <div class="drawer-actions">
     <el-button v-if="showAdd" type="primary" size="small" @click="$emit('add')">添加书签</el-button>
+    <el-button size="small" @click="pickImportFile">导入</el-button>
+    <el-button size="small" type="danger" plain :disabled="!selectedBookmarks.length" @click="$emit('removeMany', selectedBookmarks)">批量删除</el-button>
+    <span class="selection-count">已选择 {{ selectedBookmarks.length }} 个</span>
+    <input ref="fileRef" class="bookmark-file-input" type="file" accept=".json,application/json" @change="onImportFileChange" />
   </div>
   <div class="bookmark-list">
     <div v-for="item in bookmarks" :key="item.id" class="bookmark-card">
+      <el-checkbox v-model="selectedIds" :value="item.id" class="bookmark-check" />
       <button class="bookmark-main" type="button" @click="$emit('jump', item)">
         <strong>{{ item.title || '书签' }}</strong>
         <span>{{ item.excerpt || item.note || '无摘录' }}</span>
@@ -19,7 +24,10 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+
+const props = defineProps({
   bookmarks: {
     type: Array,
     default: () => [],
@@ -34,7 +42,47 @@ defineProps({
   },
 })
 
-defineEmits(['add', 'jump', 'edit', 'remove'])
+const emit = defineEmits(['add', 'jump', 'edit', 'remove', 'removeMany', 'import'])
+const selectedIds = ref([])
+const fileRef = ref(null)
+
+const selectedBookmarks = computed(() => {
+  const ids = new Set(selectedIds.value)
+  return props.bookmarks.filter(item => ids.has(item.id))
+})
+
+watch(
+  () => props.bookmarks.map(item => item.id).join(','),
+  () => {
+    const ids = new Set(props.bookmarks.map(item => item.id))
+    selectedIds.value = selectedIds.value.filter(id => ids.has(id))
+  },
+)
+
+function pickImportFile() {
+  fileRef.value?.click()
+}
+
+function onImportFileChange(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const rows = JSON.parse(String(reader.result || '[]'))
+      if (!Array.isArray(rows) || !rows.length) {
+        ElMessage.error('书签文件错误')
+        return
+      }
+      emit('import', rows)
+    } catch {
+      ElMessage.error('书签文件错误')
+    }
+  }
+  reader.onerror = () => ElMessage.error('读取书签文件失败')
+  reader.readAsText(file)
+}
 </script>
 
 <style scoped>
@@ -43,6 +91,17 @@ defineEmits(['add', 'jump', 'edit', 'remove'])
   gap: 8px;
   margin-bottom: 14px;
   min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.bookmark-file-input {
+  display: none;
+}
+
+.selection-count {
+  color: var(--app-text-muted, #909399);
+  font-size: 12px;
 }
 
 .bookmark-list {
@@ -53,13 +112,17 @@ defineEmits(['add', 'jump', 'edit', 'remove'])
 
 .bookmark-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
   padding: 10px;
   border: 1px solid #eee4c9;
   border-radius: 6px;
   background: #fffaf0;
+}
+
+.bookmark-check {
+  padding-top: 2px;
 }
 
 .bookmark-main {
@@ -116,13 +179,14 @@ defineEmits(['add', 'jump', 'edit', 'remove'])
   }
 
   .bookmark-card {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
     padding: 9px;
   }
 
   .bookmark-actions {
     display: flex;
+    grid-column: 2;
     justify-content: flex-end;
     gap: 8px;
   }

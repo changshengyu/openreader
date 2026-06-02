@@ -314,6 +314,8 @@
         @jump="jumpToBookmark"
         @edit="openBookmarkEditor"
         @remove="removeBookmarkItem"
+        @remove-many="removeBookmarkItems"
+        @import="importBookmarkItems"
       />
     </div>
   </el-drawer>
@@ -544,7 +546,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, listUsers, updateUser } from '../api/admin'
-import { cacheBookContent, changeBookSource, checkBookUpdates, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, refreshBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, changeBookSource, checkBookUpdates, createBookmark, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, refreshBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
@@ -1551,6 +1553,64 @@ async function removeBookmarkItem(bookmark) {
   } catch (err) {
     ElMessage.error(readError(err, '删除书签失败'))
   }
+}
+
+async function removeBookmarkItems(rows) {
+  if (!Array.isArray(rows) || !rows.length) return
+  try {
+    await ElMessageBox.confirm(`确认要删除所选择的 ${rows.length} 条书签吗？`, '批量删除书签', { type: 'warning' })
+    await Promise.all(rows.map(item => deleteBookmark(item.id)))
+    const deleted = new Set(rows.map(item => item.id))
+    bookmarkItems.value = bookmarkItems.value.filter(item => !deleted.has(item.id))
+    ElMessage.success('书签已删除')
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '批量删除书签失败'))
+  }
+}
+
+async function importBookmarkItems(rows) {
+  const book = overlay.bookmarkBook
+  if (!book?.id) return
+  const payloads = normalizeImportedBookmarks(rows)
+  if (!payloads.length) {
+    ElMessage.error('书签文件没有可导入内容')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认要导入文件中的 ${payloads.length} 条书签到当前书籍吗？`, '导入书签', { type: 'info' })
+    const created = []
+    for (const payload of payloads) {
+      const { data } = await createBookmark(book.id, payload)
+      if (data?.id) created.push(data)
+    }
+    bookmarkItems.value = [...created, ...bookmarkItems.value]
+    ElMessage.success(`已导入 ${created.length} 条书签`)
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '导入书签失败'))
+  }
+}
+
+function normalizeImportedBookmarks(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map(row => {
+      const chapterIndex = Math.max(0, Math.floor(Number(row.chapterIndex ?? row.durChapterIndex ?? 0)))
+      return {
+        chapterIndex,
+        offset: Math.max(0, Math.floor(Number(row.offset ?? 0))),
+        percent: clampPercent(row.percent),
+        title: String(row.title || row.chapterName || row.chapterTitle || `第 ${chapterIndex + 1} 章`).trim(),
+        excerpt: String(row.excerpt || row.bookText || '').trim(),
+        note: String(row.note || row.content || '').trim(),
+      }
+    })
+    .filter(row => row.title || row.excerpt || row.note)
+}
+
+function clampPercent(value) {
+  const percent = Number(value)
+  return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0
 }
 
 function formatSize(bytes) {

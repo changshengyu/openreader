@@ -18,6 +18,7 @@
 | 阅读方式 | `ReadSettings.vue` `readMethods`、`animateMSTime` | 当前有上下滑动、左右滑动、上下滚动、上下滚动2；已补齐 `scroll2` 顶部附近自动加载上一章并保持视口位置，连续滚动不再只能向下追加章节；本批把设置页“左右滑动”也收敛为仅 `miniInterface` 可见，命名和可见性都与上游 `ReadSettings.vue` 一致 | 继续真机验收长书跨章节滚动 |
 | 设置写入路径 | `ReadSettings.vue` `setReadMethod/setPageMode`、`Index.vue` 搜索设置 | 已收敛为单一 computed setter 写入；阅读器设置抽屉、设置页、首页侧边栏搜索设置不再同时通过 `v-model`、`@input`、`@change` 双写同一项；本批复核上游 `setPageMode` 只切换 `miniInterface`，不额外强制修改阅读方式 | 本批完成 |
 | 目录定位 | `PopCatalog.vue` + `Reader.vue` 当前章节定位 | 本批按上游目录弹层补齐倒序/顺序、顶部、底部、刷新入口；打开目录和切换顺序都会重新定位当前章节 | 基本对齐，继续真机验收 |
+| 书签管理 | `components/Bookmark.vue`、`BookmarkForm.vue` | 已有添加、编辑、删除、跳转；本批补齐上游书签管理里的选择、批量删除、导入 JSON 入口，阅读器内抽屉和全局书签抽屉共用同一组件；当前后端未提供批量接口，前端逐条调用真实 CRUD，不做假状态 | 基本对齐，继续真机验收导入格式 |
 | 书籍信息 | `components/BookInfo.vue` | 已复核书架、搜索、书海、阅读器均走全局 `openBookInfo`，详情页直接复用 `BookInfoPanel`；已补齐上游书名下方分类/标签信息层，并把“设置分组”放回分组属性行 | 基本对齐，继续核对加书/刷新/封面细节 |
 | 书架管理 | `components/BookManage.vue`、`BookGroup.vue` | 已有全局弹层；批量删除、批量添加/移除分组走上游主操作区，缓存/清缓存/导出等扩展真实能力收进“更多批量操作”，移动端不再堆叠全部按钮 | 基本对齐，继续真机验收移动端 |
 | 书源管理 | `components/BookSource.vue`、首页书源入口 | 基础管理、导入预览、远程预览、三段调试、失效检测、批量启停/删除、批量设置分组、恢复默认已有；本批移动端按上游 footer 语义补齐“已选择/批量删除/检测书源/取消”，启停/分组/停用失败收进“更多批量操作” | 基本对齐，继续真机验收移动端 |
