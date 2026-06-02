@@ -467,10 +467,14 @@
         </div>
         <div class="file-actions">
           <el-button size="small" type="primary" :icon="Edit" @click="openReplaceRuleEditor()">新增规则</el-button>
+          <el-button size="small" :icon="Upload" :loading="replaceRuleImporting" @click="triggerReplaceRuleImport">导入</el-button>
+          <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedReplaceRuleIds.length" @click="deleteSelectedReplaceRules">批量删除</el-button>
           <el-button size="small" :icon="Refresh" :loading="replaceRulesLoading" @click="loadReplaceRules">刷新</el-button>
+          <input ref="replaceRuleFileInput" class="visually-hidden-file" type="file" accept=".json,application/json" @change="importReplaceRuleFile" />
         </div>
       </header>
-      <el-table :data="replaceRules" stripe v-loading="replaceRulesLoading" class="desktop-replace-table">
+      <el-table :data="replaceRules" stripe v-loading="replaceRulesLoading" class="desktop-replace-table" @selection-change="onReplaceRuleSelectionChange">
+        <el-table-column type="selection" width="44" />
         <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
         <el-table-column prop="pattern" label="匹配" min-width="180" show-overflow-tooltip />
         <el-table-column prop="replacement" label="替换为" min-width="160" show-overflow-tooltip />
@@ -489,6 +493,7 @@
       <div v-if="replaceRules.length" v-loading="replaceRulesLoading" class="mobile-rule-list">
         <article v-for="rule in replaceRules" :key="rule.id" class="mobile-rule-card">
           <header>
+            <el-checkbox :model-value="selectedReplaceRuleIds.includes(rule.id)" @change="toggleReplaceRuleSelection(rule.id, $event)" />
             <div>
               <strong>{{ rule.name || '未命名规则' }}</strong>
               <span>{{ rule.pattern }}</span>
@@ -621,6 +626,9 @@ const usersLoading = ref(false)
 const cleanupLoading = ref(false)
 const replaceRules = ref([])
 const replaceRulesLoading = ref(false)
+const replaceRuleImporting = ref(false)
+const selectedReplaceRuleIds = ref([])
+const replaceRuleFileInput = ref(null)
 const replaceRuleDialog = ref(false)
 const replaceRuleSaving = ref(false)
 const replaceRuleTesting = ref(false)
@@ -1726,11 +1734,68 @@ async function loadReplaceRules() {
   try {
     const { data } = await listReplaceRules()
     replaceRules.value = data || []
+    selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(id => replaceRules.value.some(rule => rule.id === id))
   } catch (err) {
     ElMessage.error(readError(err, '加载替换规则失败'))
   } finally {
     replaceRulesLoading.value = false
   }
+}
+
+function onReplaceRuleSelectionChange(rows) {
+  selectedReplaceRuleIds.value = rows.map(row => row.id)
+}
+
+function toggleReplaceRuleSelection(id, checked) {
+  if (checked) {
+    if (!selectedReplaceRuleIds.value.includes(id)) selectedReplaceRuleIds.value.push(id)
+    return
+  }
+  selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(item => item !== id)
+}
+
+function triggerReplaceRuleImport() {
+  replaceRuleFileInput.value?.click()
+}
+
+async function importReplaceRuleFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  replaceRuleImporting.value = true
+  try {
+    const text = await file.text()
+    const parsed = JSON.parse(text)
+    const ruleList = normalizeReplaceRuleImport(parsed)
+    if (!ruleList.length) {
+      ElMessage.warning('替换规则文件中没有可导入的规则')
+      return
+    }
+    await ElMessageBox.confirm(`确认要导入文件中的 ${ruleList.length} 条替换规则吗？`, '导入替换规则', { type: 'warning' })
+    for (const rule of ruleList) {
+      await createReplaceRule(rule)
+    }
+    ElMessage.success('导入替换规则成功')
+    await loadReplaceRules()
+    notifyReplaceRulesUpdated()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '导入替换规则失败'))
+  } finally {
+    replaceRuleImporting.value = false
+  }
+}
+
+function normalizeReplaceRuleImport(input) {
+  const rows = Array.isArray(input) ? input : Array.isArray(input?.rules) ? input.rules : []
+  return rows
+    .map((rule, index) => ({
+      name: String(rule.name || rule.title || `导入规则 ${index + 1}`).trim(),
+      pattern: String(rule.pattern || rule.regex || rule.match || '').trim(),
+      replacement: String(rule.replacement ?? rule.replace ?? ''),
+      enabled: rule.enabled === false || rule.isEnabled === false ? false : true,
+    }))
+    .filter(rule => rule.pattern)
 }
 
 function openReplaceRuleEditor(rule = null) {
@@ -1811,7 +1876,29 @@ async function removeReplaceRule(rule) {
     await ElMessageBox.confirm(`确定删除替换规则“${rule.name || rule.pattern}”吗？`, '删除替换规则', { type: 'warning' })
     await deleteReplaceRule(rule.id)
     replaceRules.value = replaceRules.value.filter(item => item.id !== rule.id)
+    selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(id => id !== rule.id)
     ElMessage.success('替换规则已删除')
+    notifyReplaceRulesUpdated()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '删除替换规则失败'))
+  }
+}
+
+async function deleteSelectedReplaceRules() {
+  const ids = [...selectedReplaceRuleIds.value]
+  if (!ids.length) {
+    ElMessage.warning('请选择需要删除的替换规则')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认要删除所选择的 ${ids.length} 条替换规则吗？`, '批量删除替换规则', { type: 'warning' })
+    for (const id of ids) {
+      await deleteReplaceRule(id)
+    }
+    replaceRules.value = replaceRules.value.filter(rule => !ids.includes(rule.id))
+    selectedReplaceRuleIds.value = []
+    ElMessage.success('删除替换规则成功')
     notifyReplaceRulesUpdated()
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
@@ -2116,6 +2203,18 @@ function readError(err, fallback) {
   gap: 8px;
 }
 
+.visually-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: -1px;
+}
+
 .backup-overlay {
   display: grid;
   gap: 12px;
@@ -2219,6 +2318,7 @@ function readError(err, fallback) {
 .mobile-rule-card header > div {
   display: grid;
   min-width: 0;
+  flex: 1;
   gap: 2px;
 }
 
