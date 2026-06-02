@@ -119,6 +119,12 @@
         <button class="tap-zone tap-upper" type="button" tabindex="-1" @click="handleTapZone('upper')" />
         <button class="tap-zone tap-lower" type="button" tabindex="-1" @click="handleTapZone('lower')" />
       </div>
+      <div v-if="showClickZoneOverlay" class="click-zone-overlay" :class="{ flip: reader.mode === 'flip' }">
+        <div class="click-zone-piece click-zone-prev"><span>{{ reader.mode === 'flip' ? '点击前一页' : '点击向上翻页' }}</span></div>
+        <div class="click-zone-piece click-zone-menu"><span>点击显示菜单</span></div>
+        <div class="click-zone-piece click-zone-next"><span>{{ reader.mode === 'flip' ? '点击后一页' : '点击向下翻页' }}</span></div>
+        <button class="click-zone-close" type="button" @click="showClickZoneOverlay = false">关闭</button>
+      </div>
     </section>
 
     <footer class="reader-page-control">
@@ -398,6 +404,7 @@
         @tts-pitch-change="setTTSPitch"
         @tts-voice-change="setTTSVoice"
         @open-replace-rules="openReplaceRules"
+        @show-click-zone="showClickZone"
       />
     </el-drawer>
 
@@ -503,6 +510,7 @@ const showMobileMoreDrawer = ref(false)
 const showCacheDrawer = ref(false)
 const showNoteDialog = ref(false)
 const showBookmarkEditor = ref(false)
+const showClickZoneOverlay = ref(false)
 const sourceCandidates = ref([])
 const sourceGroupOptions = ref([])
 const loadingSources = ref(false)
@@ -1282,6 +1290,13 @@ function openSettingsDrawer() {
   customBg.value = reader.customBgColor
   sliderLineHeight.value = reader.lineHeight
   showSettingsDrawer.value = true
+}
+
+function showClickZone() {
+  showSettingsDrawer.value = false
+  showMobileMoreDrawer.value = false
+  readerChromeVisible.value = false
+  showClickZoneOverlay.value = true
 }
 
 function openCacheDrawer() {
@@ -3088,6 +3103,52 @@ function readError(err, fallback) {
 .reader-shell.flip .tap-upper,
 .reader-shell.flip .tap-lower {
   display: none;
+}
+
+.click-zone-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: 35% 30% 35%;
+  background: rgba(20, 20, 20, 0.08);
+}
+
+.click-zone-overlay.flip {
+  grid-template-columns: 24% 52% 24%;
+  grid-template-rows: 1fr;
+}
+
+.click-zone-piece {
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(237, 66, 89, 0.55);
+  background: rgba(237, 66, 89, 0.08);
+  color: #ed4259;
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.click-zone-piece span {
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.click-zone-overlay.flip .click-zone-prev { grid-column: 1; }
+.click-zone-overlay.flip .click-zone-menu { grid-column: 2; }
+.click-zone-overlay.flip .click-zone-next { grid-column: 3; }
+
+.click-zone-close {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: #ed4259;
+  color: #fff;
+  cursor: pointer;
 }
 
 @media (hover: hover) and (pointer: fine) {

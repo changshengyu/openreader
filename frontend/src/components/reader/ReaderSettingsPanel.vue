@@ -242,7 +242,10 @@
 
     <div class="setting-row">
       <label class="setting-label">替换规则</label>
-      <el-button size="small" plain @click="$emit('openReplaceRules')">管理全局替换规则</el-button>
+      <div class="operation-actions">
+        <el-button size="small" plain @click="$emit('showClickZone')">显示翻页区域</el-button>
+        <el-button size="small" plain @click="$emit('openReplaceRules')">管理全局替换规则</el-button>
+      </div>
     </div>
 
     <div class="setting-row">
@@ -307,6 +310,7 @@ const emit = defineEmits([
   'ttsPitchChange',
   'ttsVoiceChange',
   'openReplaceRules',
+  'showClickZone',
 ])
 
 const fontSizePresets = [14, 16, 18, 20, 22, 24, 28, 32]
@@ -568,6 +572,13 @@ function resetReaderSettings() {
 
 .config-scheme.add {
   color: #ed4259;
+}
+
+.operation-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .setting-row {
