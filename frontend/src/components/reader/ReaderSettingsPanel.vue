@@ -1,5 +1,10 @@
 <template>
   <div class="settings-body">
+    <div class="settings-title-row">
+      <strong>设置</strong>
+      <button type="button" @click="resetReaderSettings">重置为默认配置</button>
+    </div>
+
     <div class="setting-row">
       <label class="setting-label">页面模式（本机）</label>
       <el-radio-group v-model="pageModeModel" size="small" class="read-method-group">
@@ -377,6 +382,12 @@ function hasCustomFont(value) {
   return Boolean(props.reader.customFontsMap?.[value])
 }
 
+function resetReaderSettings() {
+  props.reader.resetReaderSettings()
+  emit('update:customBg', props.reader.customBgColor)
+  emit('update:lineHeight', props.reader.lineHeight)
+}
+
 </script>
 
 <style scoped>
@@ -384,6 +395,30 @@ function hasCustomFont(value) {
   display: grid;
   gap: 20px;
   min-width: 0;
+}
+
+.settings-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-title-row strong {
+  color: #ed4259;
+  border-bottom: 1px solid #ed4259;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.settings-title-row button {
+  padding: 0;
+  color: #ed4259;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 .read-method-group {

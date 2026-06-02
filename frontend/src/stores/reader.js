@@ -160,6 +160,10 @@ export const useReaderStore = defineStore('reader', {
       this.columnWidth = clampNumber(columnWidth, 320, 1200, 800)
       this.markSettingsDirty()
     },
+    resetReaderSettings() {
+      Object.assign(this, defaultReaderSettings())
+      this.markSettingsDirty()
+    },
     normalizeSettings() {
       if (!['scroll', 'scroll2', 'flip', 'page'].includes(this.mode)) this.mode = 'page'
       if (!['auto', 'mobile'].includes(this.pageMode)) this.pageMode = 'auto'
@@ -468,6 +472,32 @@ function readerSettingsPayload(state) {
     lineHeight: state.lineHeight,
     paragraphSpace: state.paragraphSpace,
     columnWidth: state.columnWidth,
+    settingsVersion: 7,
+  }
+}
+
+function defaultReaderSettings() {
+  return {
+    mode: 'page',
+    clickMethod: 'auto',
+    fontFamily: 'system',
+    customFontsMap: {},
+    chineseFont: '简体',
+    fontSize: 18,
+    fontWeight: 400,
+    theme: 'parchment',
+    customBgColor: '',
+    customBgImage: '',
+    customBgImageList: [],
+    brightness: 100,
+    autoReadSpeed: 12,
+    animateDuration: 300,
+    ttsRate: 1,
+    ttsPitch: 1,
+    ttsVoiceURI: '',
+    lineHeight: 1.8,
+    paragraphSpace: 0.2,
+    columnWidth: 800,
     settingsVersion: 7,
   }
 }
