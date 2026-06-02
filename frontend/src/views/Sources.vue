@@ -26,12 +26,12 @@
       <el-select v-model="selectedGroup" placeholder="全部分组" clearable>
         <el-option v-for="group in groups" :key="group" :label="group" :value="group" />
       </el-select>
-      <el-button :disabled="!selection.length" @click="batchUpdateSources('enable')">启用选中</el-button>
-      <el-button :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
-      <el-button :disabled="!selection.length" @click="setSelectedSourceGroup">设置分组</el-button>
-      <el-button type="danger" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">删除选中</el-button>
-      <el-button :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">失效检测</el-button>
-      <el-button type="warning" plain :disabled="!failedHealthSourceIds.length" @click="disableFailedSources">
+      <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('enable')">启用选中</el-button>
+      <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
+      <el-button class="source-batch-command" :disabled="!selection.length" @click="setSelectedSourceGroup">设置分组</el-button>
+      <el-button class="source-batch-command" type="danger" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">删除选中</el-button>
+      <el-button class="source-batch-command" :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">失效检测</el-button>
+      <el-button class="source-batch-command" type="warning" plain :disabled="!failedHealthSourceIds.length" @click="disableFailedSources">
         停用失败 {{ failedHealthSourceIds.length || '' }}
       </el-button>
       <el-checkbox v-model="failedOnly" :disabled="!healthSummary.total">只看失败</el-checkbox>
@@ -109,6 +109,28 @@
     </div>
 
     <el-empty v-if="!sources.length" description="还没有书源，导入或新增书源开始使用" />
+
+    <div v-if="sources.length" class="source-batch-footer app-panel">
+      <span class="check-tip">已选择 {{ selection.length }} 个</span>
+      <el-button type="primary" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">批量删除</el-button>
+      <el-button :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">
+        {{ checking ? '正在' : '' }}检测书源
+      </el-button>
+      <el-dropdown @command="handleSourceBatchMoreCommand">
+        <el-button :disabled="!selection.length && !failedHealthSourceIds.length">
+          更多批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="enable" :disabled="!selection.length">启用选中</el-dropdown-item>
+            <el-dropdown-item command="disable" :disabled="!selection.length">停用选中</el-dropdown-item>
+            <el-dropdown-item command="group" :disabled="!selection.length">设置分组</el-dropdown-item>
+            <el-dropdown-item command="disable-failed" :disabled="!failedHealthSourceIds.length">停用失败 {{ failedHealthSourceIds.length || '' }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <el-button @click="clearSourceBatchState">取消</el-button>
+    </div>
 
     <el-dialog v-model="showRemote" title="远程书源" width="460px" :fullscreen="isMobileDialog">
       <el-input v-model="remoteURL" placeholder="输入书源 JSON 订阅地址" />
@@ -228,7 +250,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, Download, Link, Plus, Search, Upload } from '@element-plus/icons-vue'
+import { ArrowDown, CircleCheck, Download, Link, Plus, Search, Upload } from '@element-plus/icons-vue'
 import {
   batchSources,
   batchTestSources,
@@ -515,6 +537,22 @@ async function disableFailedSources() {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '停用失败书源失败'))
   }
+}
+
+function handleSourceBatchMoreCommand(command) {
+  if (command === 'enable') {
+    batchUpdateSources('enable')
+  } else if (command === 'disable') {
+    batchUpdateSources('disable')
+  } else if (command === 'group') {
+    setSelectedSourceGroup()
+  } else if (command === 'disable-failed') {
+    disableFailedSources()
+  }
+}
+
+function clearSourceBatchState() {
+  selection.value = []
 }
 
 function isSourceSelected(source) {
@@ -842,6 +880,10 @@ function readError(err, fallback) {
   width: 100%;
 }
 
+.source-batch-footer {
+  display: none;
+}
+
 .mobile-source-list {
   display: none;
 }
@@ -982,6 +1024,10 @@ function readError(err, fallback) {
     display: grid;
   }
 
+  .source-batch-command {
+    display: none;
+  }
+
   .head-actions,
   .source-toolbar :deep(.el-input),
   .source-toolbar :deep(.el-select),
@@ -1006,6 +1052,31 @@ function readError(err, fallback) {
   .mobile-source-list {
     display: grid;
     gap: 10px;
+  }
+
+  .source-batch-footer {
+    position: sticky;
+    z-index: 2;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+    box-shadow: 0 -8px 22px rgba(15, 23, 42, 0.08);
+  }
+
+  .source-batch-footer .check-tip {
+    grid-column: 1 / -1;
+    color: var(--app-text-muted);
+    font-size: 13px;
+  }
+
+  .source-batch-footer :deep(.el-button),
+  .source-batch-footer :deep(.el-dropdown),
+  .source-batch-footer :deep(.el-dropdown .el-button) {
+    width: 100%;
+    min-height: 38px;
+    margin-left: 0;
   }
 }
 </style>
