@@ -57,12 +57,13 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "setting value must be valid json"})
 		return
 	}
+	value := sanitizeUserSettingValue(key, req.Value)
 
 	now := time.Now()
 	setting := models.UserSetting{
 		UserID:    userID,
 		Key:       key,
-		Value:     string(req.Value),
+		Value:     string(value),
 		UpdatedAt: now,
 	}
 
@@ -103,6 +104,21 @@ func normalizeUserSettingKey(key string) string {
 	default:
 		return ""
 	}
+}
+
+func sanitizeUserSettingValue(key string, value json.RawMessage) json.RawMessage {
+	if key != "reader" {
+		return value
+	}
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(value, &data); err != nil {
+		return value
+	}
+	delete(data, "pageMode")
+	if encoded, err := json.Marshal(data); err == nil {
+		return encoded
+	}
+	return value
 }
 
 func userSettingResponse(setting models.UserSetting) gin.H {

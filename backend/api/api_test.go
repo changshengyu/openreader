@@ -156,7 +156,7 @@ func TestUserReaderSettingsRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if saved.Key != "reader" || saved.Value["pageMode"] != "mobile" || saved.Value["mode"] != "scroll" || saved.UpdatedAt == "" {
+	if saved.Key != "reader" || saved.Value["pageMode"] != nil || saved.Value["mode"] != "scroll" || saved.UpdatedAt == "" {
 		t.Fatalf("unexpected saved settings: %+v", saved)
 	}
 
