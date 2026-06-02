@@ -8,7 +8,7 @@
         v-if="coverEditable"
         ref="coverInput"
         type="file"
-        accept="image/*"
+        accept="image/jpg,image/png,image/jpeg"
         class="cover-file-input"
         @change="handleCoverFileChange"
       />

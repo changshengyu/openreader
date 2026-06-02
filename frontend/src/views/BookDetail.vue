@@ -127,7 +127,7 @@
         <el-form-item label="封面">
           <div class="cover-upload-row">
             <el-input v-model="bookDraft.coverUrl" placeholder="封面地址或上传本地图片" />
-            <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="uploadBookCover">
+            <el-upload accept="image/jpg,image/png,image/jpeg" :show-file-list="false" :auto-upload="false" @change="uploadBookCover">
               <el-button :loading="uploadingCover">上传</el-button>
             </el-upload>
           </div>

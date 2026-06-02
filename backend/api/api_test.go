@@ -3671,6 +3671,36 @@ func TestUploadAssetStoresPublicFile(t *testing.T) {
 	}
 }
 
+func TestUploadCoverRejectsUnsupportedImageFormat(t *testing.T) {
+	router, _ := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("type", "cover"); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("file", "cover.webp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("webp-data")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/uploads", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "unsupported file type") {
+		t.Fatalf("upload cover webp: expected unsupported file type, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUploadFontAssetStoresPublicFontFile(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

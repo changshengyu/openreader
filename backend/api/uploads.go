@@ -111,9 +111,12 @@ func uploadKindDir(kind string) string {
 
 func allowedUploadExtension(kind, ext string) bool {
 	imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
+	coverExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true}
 	fontExts := map[string]bool{".ttf": true, ".otf": true, ".woff": true, ".woff2": true}
 	switch kind {
-	case "cover", "background":
+	case "cover":
+		return coverExts[ext]
+	case "background":
 		return imageExts[ext]
 	case "font":
 		return fontExts[ext]
