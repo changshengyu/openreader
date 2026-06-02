@@ -391,6 +391,7 @@
         @mode-change="onModeChange"
         @theme-change="setTheme"
         @pick-bg-image="pickBgImage"
+        @clear-bg-image="clearBgImage"
         @pick-font-file="pickFontFile"
         @clear-font-file="clearFontFile"
         @tts-rate-change="setTTSRate"
@@ -1122,12 +1123,28 @@ async function handleReplaceRulesUpdated() {
 
 function setTheme(theme) { reader.setTheme(theme) }
 
-function pickBgImage(data) {
+async function pickBgImage(data) {
   const file = data.raw || data.file
   if (!file) return
-  const fr = new FileReader()
-  fr.onload = (e) => reader.setCustomBgImage(e.target.result)
-  fr.readAsDataURL(file)
+  try {
+    const { data: result } = await uploadAsset({ file, type: 'background' })
+    if (!result?.url) throw new Error('上传结果缺少背景图地址')
+    reader.addCustomBgImage(result.url)
+    ElMessage.success('阅读背景图已上传')
+  } catch (err) {
+    ElMessage.error(readError(err, '上传背景图失败'))
+  }
+}
+
+async function clearBgImage(image) {
+  if (!image) return
+  try {
+    await deleteAsset(image)
+    reader.removeCustomBgImage(image)
+    ElMessage.success('已删除阅读背景图')
+  } catch (err) {
+    ElMessage.error(readError(err, '删除阅读背景图失败'))
+  }
 }
 
 async function pickFontFile({ file, font }) {

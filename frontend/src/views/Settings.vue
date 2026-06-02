@@ -225,7 +225,21 @@
               <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="pickReaderBgImage">
                 <el-button size="small" :icon="Upload" :loading="readerBgUploading">背景图</el-button>
               </el-upload>
-              <el-button v-if="readerStore.customBgImage" size="small" text type="danger" @click="readerStore.setCustomBgImage('')">清除背景图</el-button>
+              <el-button v-if="readerStore.customBgImage" size="small" text type="danger" @click="readerStore.setCustomBgImage('')">取消背景图</el-button>
+              <div v-if="readerStore.customBgImageList?.length" class="settings-bg-list">
+                <button
+                  v-for="image in readerStore.customBgImageList"
+                  :key="image"
+                  class="settings-bg-choice"
+                  :class="{ active: readerStore.customBgImage === image }"
+                  :style="{ backgroundImage: `url(${image})` }"
+                  type="button"
+                  @click="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
+                >
+                  <span>{{ readerStore.customBgImage === image ? '使用中' : '选择' }}</span>
+                  <button type="button" @click.stop="deleteReaderBgImage(image)">删除</button>
+                </button>
+              </div>
             </div>
           </article>
         </section>
@@ -288,7 +302,7 @@ import {
 import api from '../api/client'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { clearCache, getCacheStats } from '../api/cache'
-import { uploadAsset } from '../api/uploads'
+import { deleteAsset, uploadAsset } from '../api/uploads'
 import { useSync } from '../composables/useSync'
 import { useReaderStore, themePresets } from '../stores/reader'
 import { useOverlayStore } from '../stores/overlay'
@@ -525,12 +539,23 @@ async function pickReaderBgImage(data) {
   readerBgUploading.value = true
   try {
     const { data: result } = await uploadAsset({ file, type: 'background' })
-    readerStore.setCustomBgImage(result.url)
+    readerStore.addCustomBgImage(result.url)
     ElMessage.success('阅读背景图已上传')
   } catch (err) {
     ElMessage.error(readError(err, '上传背景图失败'))
   } finally {
     readerBgUploading.value = false
+  }
+}
+
+async function deleteReaderBgImage(image) {
+  if (!image) return
+  try {
+    await deleteAsset(image)
+    readerStore.removeCustomBgImage(image)
+    ElMessage.success('已删除阅读背景图')
+  } catch (err) {
+    ElMessage.error(readError(err, '删除背景图失败'))
   }
 }
 
@@ -835,10 +860,72 @@ function readError(err, fallback) {
 
 .custom-theme-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   color: var(--app-text-muted);
   font-size: 13px;
+}
+
+.settings-bg-list {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-bg-choice {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  color: #fff;
+  background-color: var(--app-bg-soft);
+  background-position: center;
+  background-size: cover;
+  border: 2px solid transparent;
+  border-radius: var(--app-radius-sm);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.settings-bg-choice::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0.04));
+}
+
+.settings-bg-choice.active {
+  border-color: var(--app-primary);
+}
+
+.settings-bg-choice span,
+.settings-bg-choice button {
+  position: relative;
+  z-index: 1;
+}
+
+.settings-bg-choice span {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-bg-choice button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: #fff;
+  background: rgba(0,0,0,0.42);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  min-height: 24px;
+  padding: 0 8px;
 }
 
 .permission-row {

@@ -54,9 +54,28 @@
       </div>
       <div class="setting-row">
         <label class="setting-label">背景图</label>
-        <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
-          <el-button size="small">上传</el-button>
-        </el-upload>
+        <div v-if="reader.customBgImageList?.length" class="bg-image-grid">
+          <button
+            v-for="image in reader.customBgImageList"
+            :key="image"
+            class="bg-image-option"
+            :class="{ active: reader.customBgImage === image }"
+            :style="{ backgroundImage: `url(${image})` }"
+            type="button"
+            @click="toggleBgImage(image)"
+          >
+            <span>{{ reader.customBgImage === image ? '使用中' : '选择' }}</span>
+            <button class="bg-image-delete" type="button" title="删除背景图" @click.stop="$emit('clearBgImage', image)">
+              <el-icon><Close /></el-icon>
+            </button>
+          </button>
+        </div>
+        <div class="bg-image-actions">
+          <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
+            <el-button size="small">上传</el-button>
+          </el-upload>
+          <el-button v-if="reader.customBgImage" size="small" text type="danger" @click="reader.setCustomBgImage('')">取消背景图</el-button>
+        </div>
       </div>
     </template>
 
@@ -199,7 +218,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Minus, Plus, RefreshLeft, Upload } from '@element-plus/icons-vue'
+import { Close, Minus, Plus, RefreshLeft, Upload } from '@element-plus/icons-vue'
 
 const props = defineProps({
   reader: { type: Object, required: true },
@@ -218,6 +237,7 @@ const emit = defineEmits([
   'modeChange',
   'themeChange',
   'pickBgImage',
+  'clearBgImage',
   'pickFontFile',
   'clearFontFile',
   'ttsRateChange',
@@ -333,6 +353,10 @@ function changeFontSize(delta) {
   props.reader.setFontSize(props.reader.fontSize + delta)
 }
 
+function toggleBgImage(image) {
+  props.reader.setCustomBgImage(props.reader.customBgImage === image ? '' : image)
+}
+
 function hasCustomFont(value) {
   return Boolean(props.reader.customFontsMap?.[value])
 }
@@ -393,6 +417,69 @@ function hasCustomFont(value) {
   background: linear-gradient(135deg, #f4e9bd, #2d2d2d);
   font-size: 14px;
   place-items: center;
+}
+
+.bg-image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bg-image-option {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  color: #fff;
+  background-color: #eadfca;
+  background-position: center;
+  background-size: cover;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.bg-image-option::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(to top, rgba(0,0,0,0.52), rgba(0,0,0,0.05));
+}
+
+.bg-image-option.active {
+  border-color: #409eff;
+}
+
+.bg-image-option > span {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bg-image-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  background: rgba(0,0,0,0.42);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.bg-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .font-controls {

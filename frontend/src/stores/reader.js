@@ -25,6 +25,7 @@ export const useReaderStore = defineStore('reader', {
     theme: 'parchment',
     customBgColor: '',
     customBgImage: '',
+    customBgImageList: [],
     brightness: 100,
     autoReadSpeed: 12,
     animateDuration: 300,
@@ -107,6 +108,19 @@ export const useReaderStore = defineStore('reader', {
       this.customBgImage = image
       this.markSettingsDirty()
     },
+    addCustomBgImage(image) {
+      if (!image) return
+      const current = Array.isArray(this.customBgImageList) ? this.customBgImageList : []
+      this.customBgImageList = current.includes(image) ? current : [...current, image]
+      this.customBgImage = image
+      this.markSettingsDirty()
+    },
+    removeCustomBgImage(image) {
+      if (!image) return
+      this.customBgImageList = (Array.isArray(this.customBgImageList) ? this.customBgImageList : []).filter(item => item !== image)
+      if (this.customBgImage === image) this.customBgImage = ''
+      this.markSettingsDirty()
+    },
     setBrightness(brightness) {
       this.brightness = clampNumber(brightness, 50, 150, 100)
       this.markSettingsDirty()
@@ -149,6 +163,7 @@ export const useReaderStore = defineStore('reader', {
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['system', 'serif', 'kai', 'mono'].includes(this.fontFamily)) this.fontFamily = 'system'
       if (!this.customFontsMap || typeof this.customFontsMap !== 'object' || Array.isArray(this.customFontsMap)) this.customFontsMap = {}
+      if (!Array.isArray(this.customBgImageList)) this.customBgImageList = []
       this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
       this.fontWeight = clampNumber(this.fontWeight, 300, 900, 400)
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
@@ -438,6 +453,7 @@ function readerSettingsPayload(state) {
     theme: state.theme,
     customBgColor: state.customBgColor,
     customBgImage: state.customBgImage,
+    customBgImageList: Array.isArray(state.customBgImageList) ? state.customBgImageList : [],
     brightness: state.brightness,
     autoReadSpeed: state.autoReadSpeed,
     animateDuration: state.animateDuration,
@@ -460,6 +476,7 @@ function sanitizeReaderSettings(payload) {
   if (typeof payload.theme === 'string') settings.theme = payload.theme
   if (typeof payload.customBgColor === 'string') settings.customBgColor = payload.customBgColor
   if (typeof payload.customBgImage === 'string') settings.customBgImage = payload.customBgImage
+  settings.customBgImageList = sanitizeStringList(payload.customBgImageList)
   if (typeof payload.ttsVoiceURI === 'string') settings.ttsVoiceURI = payload.ttsVoiceURI
   settings.fontSize = clampNumber(payload.fontSize, 8, 36, 18)
   settings.fontWeight = clampNumber(payload.fontWeight, 300, 900, 400)
@@ -481,6 +498,11 @@ function sanitizeCustomFontsMap(value) {
     if (typeof value[key] === 'string' && value[key]) map[key] = value[key]
     return map
   }, {})
+}
+
+function sanitizeStringList(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter(item => typeof item === 'string' && item))]
 }
 
 function readErrorMessage(err) {
