@@ -108,7 +108,7 @@
             >
               <h1 data-pos="0">{{ block.title || '正文' }}</h1>
               <p v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`" :data-pos="line.pos">{{ line.text }}</p>
-              <p v-if="block.paragraphs.length === 0" class="empty-hint">当前章节暂无缓存内容</p>
+              <p v-if="chapterLoaded && block.paragraphs.length === 0" class="empty-hint">当前章节暂无正文内容</p>
             </section>
           </template>
         </div>
@@ -498,6 +498,7 @@ const bookmarks = ref([])
 const content = ref('')
 const chapterBlocks = ref([])
 const chapterLoading = ref(true)
+const chapterLoaded = ref(false)
 const contentEl = ref(null)
 const contentBody = ref(null)
 const pageEl = ref(null)
@@ -731,8 +732,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
 })
 
-onBeforeRouteLeave(async () => {
-  await saveCurrentProgress({ force: true })
+onBeforeRouteLeave(() => {
+  saveCurrentProgress({ force: true, background: true })
 })
 
 watch(bookId, async () => {
@@ -934,6 +935,7 @@ async function loadChapter(index, offset = 0, options = {}) {
   currentIndex.value = Math.max(0, Math.min(index, Math.max(chapters.value.length - 1, 0)))
   mobileChromeVisible.value = false
   restoringPosition = true
+  chapterLoaded.value = false
   clearTimeout(saveTimer)
   clearTimeout(chapterLoadingTimer)
   const cachedBeforeLoad = !options.refresh && getChapterContentFromMemory(currentIndex.value)
@@ -966,6 +968,7 @@ async function loadChapter(index, offset = 0, options = {}) {
     } else {
       lastProgressSaveKey = progressSaveKey(currentProgressPayload())
     }
+    chapterLoaded.value = true
   } finally {
     clearTimeout(chapterLoadingTimer)
     await nextFrame()
@@ -1320,12 +1323,12 @@ function openCacheDrawer() {
 }
 
 async function goBookDetail() {
-  await saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true, background: true })
   await router.push({ name: 'book-detail', params: { id: bookId.value } })
 }
 
 async function goShelf() {
-  await saveCurrentProgress({ force: true })
+  saveCurrentProgress({ force: true, background: true })
   bookshelf.loadBooks({ force: true, all: true }).catch(() => {})
   await router.push({ name: 'home' })
 }
