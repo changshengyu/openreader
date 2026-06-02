@@ -12,13 +12,13 @@
         </el-select>
         <el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button size="small" :icon="FolderOpened" @click="createFolder">新建目录</el-button>
-        <el-upload :show-file-list="false" :auto-upload="false" @change="uploadFile">
+        <el-upload class="webdav-batch-command" :show-file-list="false" :auto-upload="false" @change="uploadFile">
           <el-button size="small" :icon="Upload" :loading="uploading">上传</el-button>
         </el-upload>
-        <el-button size="small" type="danger" plain :disabled="!selection.length" @click="deleteSelected">
+        <el-button class="webdav-batch-command" size="small" type="danger" plain :disabled="!selection.length" @click="deleteSelected">
           删除 {{ selection.length }}
         </el-button>
-        <el-button size="small" type="primary" :disabled="!importSelection.length" :loading="importing" @click="importSelected">
+        <el-button class="webdav-batch-command" size="small" type="primary" :disabled="!importSelection.length" :loading="importing" @click="importSelected">
           加入书架 {{ importSelection.length }}
         </el-button>
       </div>
@@ -103,6 +103,18 @@
     </div>
 
     <el-empty v-if="!loading && !items.length" description="WebDAV 目录为空" />
+
+    <div v-if="items.length" class="webdav-batch-footer">
+      <span class="check-tip">已选择 {{ selection.length }} 个</span>
+      <el-button type="primary" plain :disabled="!selection.length" @click="deleteSelected">批量删除</el-button>
+      <el-button type="primary" :disabled="!importSelection.length" :loading="importing" @click="importSelected">
+        批量加入书架 {{ importSelection.length || '' }}
+      </el-button>
+      <el-upload :show-file-list="false" :auto-upload="false" @change="uploadFile">
+        <el-button :loading="uploading">上传文件</el-button>
+      </el-upload>
+      <el-button @click="selection = []">取消</el-button>
+    </div>
 
     <el-dialog v-model="importResultDialog" title="WebDAV 导入结果" width="560px" :fullscreen="isMobile">
       <div class="result-list">
@@ -456,6 +468,10 @@ function readError(err, fallback) {
   border-radius: var(--app-radius-sm);
 }
 
+.webdav-batch-footer {
+  display: none;
+}
+
 .mobile-file-select-actions div {
   display: flex;
   gap: 4px;
@@ -515,6 +531,10 @@ function readError(err, fallback) {
     justify-content: flex-start;
   }
 
+  .webdav-batch-command {
+    display: none;
+  }
+
   .webdav-category-select {
     width: 100%;
   }
@@ -532,6 +552,37 @@ function readError(err, fallback) {
 
   .mobile-file-select-actions {
     display: flex;
+  }
+
+  .webdav-batch-footer {
+    position: sticky;
+    z-index: 2;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-sm);
+    box-shadow: 0 -8px 22px rgba(15, 23, 42, 0.08);
+  }
+
+  .webdav-batch-footer .check-tip {
+    grid-column: 1 / -1;
+    color: var(--app-text-muted);
+    font-size: 13px;
+  }
+
+  .webdav-batch-footer :deep(.el-button),
+  .webdav-batch-footer :deep(.el-upload) {
+    width: 100%;
+    min-height: 38px;
+    margin-left: 0;
+  }
+
+  .webdav-batch-footer :deep(.el-upload .el-button) {
+    width: 100%;
   }
 
   .result-row {

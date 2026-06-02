@@ -11,17 +11,17 @@
       <div class="head-actions">
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button :icon="FolderOpened" @click="createDirectory">新建目录</el-button>
-        <el-upload :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="uploadFile">
+        <el-upload class="store-batch-command" :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="uploadFile">
           <el-button :icon="Upload" :loading="uploading">上传</el-button>
         </el-upload>
-        <el-button :disabled="!importableCount || importing" :loading="importing" @click="importCurrentDirectory">
+        <el-button class="store-batch-command" :disabled="!importableCount || importing" :loading="importing" @click="importCurrentDirectory">
           导入当前目录 ({{ importableCount }})
         </el-button>
-        <el-button :disabled="!shownImportablePaths.length || importing" :loading="importing" @click="importFiltered">
+        <el-button class="store-batch-command" :disabled="!shownImportablePaths.length || importing" :loading="importing" @click="importFiltered">
           导入筛选 ({{ shownImportablePaths.length }})
         </el-button>
-        <el-button type="primary" :disabled="!checkedRows.length || importing" :loading="importing" @click="importSelected">
-          导入选中 ({{ checkedRows.length }})
+        <el-button class="store-batch-command" type="primary" :disabled="!selectedImportablePaths.length || importing" :loading="importing" @click="importSelected">
+          导入选中 ({{ selectedImportablePaths.length }})
         </el-button>
       </div>
     </header>
@@ -53,10 +53,10 @@
       row-key="path"
       stripe
       class="store-table desktop-store-table"
-      @selection-change="checkedRows = $event.filter(row => row.importable).map(row => row.path)"
+      @selection-change="onSelectionChange"
       @row-dblclick="openRow"
     >
-      <el-table-column type="selection" width="42" :selectable="row => row.importable" />
+      <el-table-column type="selection" width="42" />
       <el-table-column prop="name" label="文件名" min-width="260" show-overflow-tooltip>
         <template #default="{ row }">
           <button class="file-name" type="button" @click="openRow(row)">
@@ -82,10 +82,10 @@
     </el-table>
 
     <div v-if="shownItems.length" class="mobile-file-select-actions app-panel">
-      <span>已选 {{ checkedRows.length }} 个</span>
+      <span>已选 {{ selectedRows.length }} 个</span>
       <div>
-        <el-button size="small" text @click="selectShownImportableFiles">全选可导入</el-button>
-        <el-button size="small" text @click="checkedRows = []">清空</el-button>
+        <el-button size="small" text @click="selectShownFiles">全选当前</el-button>
+        <el-button size="small" text @click="clearSelection">清空</el-button>
       </div>
     </div>
 
@@ -97,9 +97,8 @@
             <span>{{ row.name }}</span>
           </button>
           <el-checkbox
-            v-if="row.importable"
-            :model-value="checkedRows.includes(row.path)"
-            @change="value => toggleCheckedPath(row.path, value)"
+            :model-value="isSelected(row)"
+            @change="value => toggleSelectedRow(row, value)"
           />
         </header>
         <p>{{ row.path }}</p>
@@ -119,6 +118,18 @@
     </div>
 
     <el-empty v-if="!items.length && !loading" description="书仓为空，把文件放入 localStore 目录即可显示" />
+
+    <div v-if="items.length" class="store-batch-footer app-panel">
+      <span class="check-tip">已选择 {{ selectedRows.length }} 个</span>
+      <el-button type="primary" plain :disabled="!selectedRows.length" @click="deleteSelected">批量删除</el-button>
+      <el-button type="primary" :disabled="!selectedImportablePaths.length || importing" :loading="importing" @click="importSelected">
+        批量加入书架 {{ selectedImportablePaths.length || '' }}
+      </el-button>
+      <el-upload :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="uploadFile">
+        <el-button :loading="uploading">上传书籍</el-button>
+      </el-upload>
+      <el-button @click="clearSelection">取消</el-button>
+    </div>
 
     <el-dialog v-model="resultDialog" title="导入结果" width="560px" :fullscreen="isMobileDialog">
       <div class="result-list">
@@ -151,6 +162,7 @@ const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const items = ref([])
 const checkedRows = ref([])
+const selectedRows = ref([])
 const currentPath = ref('')
 const keyword = ref('')
 const extension = ref('')
@@ -181,6 +193,7 @@ const shownItems = computed(() => {
   })
 })
 const shownImportablePaths = computed(() => shownItems.value.filter(item => item.importable).map(item => item.path))
+const selectedImportablePaths = computed(() => selectedRows.value.filter(item => item.importable).map(item => item.path))
 const isMobileDialog = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 
 onMounted(async () => {
@@ -200,7 +213,7 @@ async function load() {
     const { data } = await listLocalStore(currentPath.value, recursiveScan.value)
     currentPath.value = data.path || ''
     items.value = data.items || []
-    checkedRows.value = []
+    clearSelection()
   } catch (err) {
     ElMessage.error(readError(err, '加载书仓失败'))
   } finally {
@@ -226,16 +239,33 @@ function openRow(row) {
   }
 }
 
-function toggleCheckedPath(path, checked) {
-  if (checked) {
-    if (!checkedRows.value.includes(path)) checkedRows.value.push(path)
-    return
-  }
-  checkedRows.value = checkedRows.value.filter(item => item !== path)
+function onSelectionChange(rows) {
+  selectedRows.value = rows
+  checkedRows.value = rows.filter(row => row.importable).map(row => row.path)
 }
 
-function selectShownImportableFiles() {
-  checkedRows.value = shownImportablePaths.value
+function isSelected(row) {
+  return selectedRows.value.some(item => item.path === row.path)
+}
+
+function toggleSelectedRow(row, checked) {
+  if (checked) {
+    if (!isSelected(row)) selectedRows.value.push(row)
+    checkedRows.value = selectedImportablePaths.value
+    return
+  }
+  selectedRows.value = selectedRows.value.filter(item => item.path !== row.path)
+  checkedRows.value = selectedImportablePaths.value
+}
+
+function selectShownFiles() {
+  selectedRows.value = [...shownItems.value]
+  checkedRows.value = selectedImportablePaths.value
+}
+
+function clearSelection() {
+  selectedRows.value = []
+  checkedRows.value = []
 }
 
 async function uploadFile(data) {
@@ -268,11 +298,11 @@ async function createDirectory() {
 }
 
 async function importSelected() {
-  if (!checkedRows.value.length) return
+  if (!selectedImportablePaths.value.length) return
   importing.value = true
   try {
-    await importPaths(checkedRows.value)
-    checkedRows.value = []
+    await importPaths(selectedImportablePaths.value)
+    clearSelection()
     await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入失败'))
@@ -293,7 +323,7 @@ async function importCurrentDirectory() {
   importing.value = true
   try {
     await importPaths([currentPath.value])
-    checkedRows.value = []
+    clearSelection()
     await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入目录失败'))
@@ -307,7 +337,7 @@ async function importFiltered() {
   importing.value = true
   try {
     await importPaths(shownImportablePaths.value)
-    checkedRows.value = []
+    clearSelection()
     await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入失败'))
@@ -400,6 +430,21 @@ async function deleteItem(row) {
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '删除失败'))
+  }
+}
+
+async function deleteSelected() {
+  if (!selectedRows.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 个书仓项目吗？`, '批量删除书仓项目', { type: 'warning' })
+    for (const row of selectedRows.value) {
+      await deleteFromLocalStore(row.path)
+    }
+    ElMessage.success('已批量删除')
+    await load()
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(readError(err, '批量删除失败'))
   }
 }
 
@@ -519,6 +564,10 @@ function readError(err, fallback) {
   font-weight: 700;
 }
 
+.store-batch-footer {
+  display: none;
+}
+
 .mobile-file-select-actions div {
   display: flex;
   gap: 4px;
@@ -606,6 +655,10 @@ function readError(err, fallback) {
     width: 100%;
   }
 
+  .store-batch-command {
+    display: none;
+  }
+
   .desktop-store-table {
     display: none;
   }
@@ -617,6 +670,34 @@ function readError(err, fallback) {
 
   .mobile-file-select-actions {
     display: flex;
+  }
+
+  .store-batch-footer {
+    position: sticky;
+    z-index: 2;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+    box-shadow: 0 -8px 22px rgba(15, 23, 42, 0.08);
+  }
+
+  .store-batch-footer .check-tip {
+    grid-column: 1 / -1;
+    color: var(--app-text-muted);
+    font-size: 13px;
+  }
+
+  .store-batch-footer :deep(.el-button),
+  .store-batch-footer :deep(.el-upload) {
+    width: 100%;
+    min-height: 38px;
+    margin-left: 0;
+  }
+
+  .store-batch-footer :deep(.el-upload .el-button) {
+    width: 100%;
   }
 }
 </style>
