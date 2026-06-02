@@ -18,6 +18,9 @@
         <h2>{{ book?.title || '未命名书籍' }}</h2>
         <el-tag v-if="statusLabel" size="small" effect="plain" :type="statusType">{{ statusLabel }}</el-tag>
       </div>
+      <div v-if="bookKindTags.length" class="book-kind-tags">
+        <span v-for="tag in bookKindTags" :key="tag">{{ tag }}</span>
+      </div>
       <div class="book-props">
         <div>
           <span>作者：</span>
@@ -132,11 +135,26 @@ const chapterCount = computed(() => Array.isArray(props.chapters) ? props.chapte
 const latestChapterLabel = computed(() => props.book?.lastChapter || props.book?.latestChapter || props.book?.latestChapterTitle || '-')
 const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props.progress || 0)) * 100)}%`)
 const canUpdateValue = computed(() => props.book?.canUpdate !== false && props.canUpdate !== false)
+const bookKindTags = computed(() => {
+  const raw = props.book?.kind ?? props.book?.category ?? props.book?.categoryName ?? props.book?.genre ?? props.book?.tags
+  return normalizeKindTags(raw)
+})
 const introParagraphs = computed(() => {
   const text = String(props.book?.intro || '暂无简介').trim()
   return text ? text.split(/\n+/).map(line => line.trim()).filter(Boolean) : ['暂无简介']
 })
 const coverBgStyle = computed(() => props.book?.coverUrl ? { backgroundImage: `url(${props.book.coverUrl})` } : {})
+
+function normalizeKindTags(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap(item => normalizeKindTags(item)).filter(Boolean).slice(0, 8)
+  }
+  return String(value || '')
+    .split(/[,\uFF0C|/、]+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+}
 
 function triggerCoverUpload() {
   if (!props.coverEditable || props.coverUploading) return
@@ -241,6 +259,27 @@ function handleCoverFileChange(event) {
   min-width: 0;
   font-size: 21px;
   line-height: 1.25;
+}
+
+.book-kind-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -3px;
+}
+
+.book-kind-tags span {
+  max-width: 100%;
+  padding: 3px 8px;
+  overflow: hidden;
+  color: var(--app-text-muted);
+  background: var(--app-bg-soft);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .book-props span,
