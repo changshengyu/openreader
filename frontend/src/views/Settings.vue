@@ -151,6 +151,21 @@
                   <button class="reader-config-scheme" :class="{ active: readerStore.autoTheme }" type="button" @click="readerStore.setAutoTheme(!readerStore.autoTheme)">自动切换</button>
                 </div>
               </label>
+              <label class="reader-config-schemes-row">
+                <span>方案类型</span>
+                <div class="reader-config-schemes">
+                  <button
+                    v-for="type in configDefaultTypes"
+                    :key="type"
+                    class="reader-config-scheme"
+                    :class="{ active: currentReaderCustomConfig?.configDefaultType === type }"
+                    type="button"
+                    @click="setReaderConfigDefaultType(type)"
+                  >
+                    {{ type }}
+                  </button>
+                </div>
+              </label>
               <label>
                 <span>页面模式（本机）</span>
                 <el-radio-group v-model="readerPageModeModel" size="small">
@@ -370,6 +385,7 @@ const MINI_INTERFACE_MAX_WIDTH = 750
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 
 const fontOptions = readerFontOptions
+const configDefaultTypes = ['白天默认', '黑夜默认']
 
 const readerModeModel = computed({
   get: () => readerStore.mode,
@@ -448,6 +464,9 @@ const readerSettingsSyncText = computed(() => {
 
 const readerSettingsMiniInterface = computed(() => readerStore.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const isMobileDialog = computed(() => readerSettingsMiniInterface.value)
+const currentReaderCustomConfig = computed(() => {
+  return (Array.isArray(readerStore.customConfigList) ? readerStore.customConfigList : []).find(config => config.name === readerStore.customConfigName) || null
+})
 
 function selectReaderCustomConfig(name) {
   readerStore.setCustomConfig(name)
@@ -478,6 +497,17 @@ async function deleteReaderCustomConfig(name) {
     return
   }
   ElMessage.success('已删除配置方案')
+}
+
+async function setReaderConfigDefaultType(type) {
+  const confirmed = await ElMessageBox.confirm(`确认把「${readerStore.customConfigName}」设为${type}吗？`, '设置方案类型', { type: 'warning' }).catch(() => false)
+  if (!confirmed) return
+  const result = readerStore.setCustomConfigDefaultType(type)
+  if (!result.ok) {
+    ElMessage.error(result.message || '设置方案类型失败')
+    return
+  }
+  ElMessage.success(`已设为${type}`)
 }
 
 onMounted(() => {

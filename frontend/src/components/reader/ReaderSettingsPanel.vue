@@ -35,6 +35,22 @@
     </div>
 
     <div class="setting-row">
+      <label class="setting-label">方案类型</label>
+      <div class="config-scheme-list">
+        <button
+          v-for="type in configDefaultTypes"
+          :key="type"
+          class="config-scheme"
+          :class="{ active: currentCustomConfig?.configDefaultType === type }"
+          type="button"
+          @click="setConfigDefaultType(type)"
+        >
+          {{ type }}
+        </button>
+      </div>
+    </div>
+
+    <div class="setting-row">
       <label class="setting-label">页面模式（本机）</label>
       <el-radio-group v-model="pageModeModel" size="small" class="read-method-group">
         <el-radio-button value="auto">自适应</el-radio-button>
@@ -294,6 +310,7 @@ const emit = defineEmits([
 ])
 
 const fontSizePresets = [14, 16, 18, 20, 22, 24, 28, 32]
+const configDefaultTypes = ['白天默认', '黑夜默认']
 
 const fontPreviewStyle = computed(() => ({
   fontFamily: props.fontOptions.find(font => font.value === props.reader.fontFamily)?.stack,
@@ -301,6 +318,10 @@ const fontPreviewStyle = computed(() => ({
   fontWeight: props.reader.fontWeight,
   lineHeight: props.reader.lineHeight,
 }))
+
+const currentCustomConfig = computed(() => {
+  return (Array.isArray(props.reader.customConfigList) ? props.reader.customConfigList : []).find(config => config.name === props.reader.customConfigName) || null
+})
 
 const pageModeModel = computed({
   get: () => props.reader.pageMode,
@@ -343,6 +364,17 @@ async function deleteCustomConfig(name) {
     return
   }
   ElMessage.success('已删除配置方案')
+}
+
+async function setConfigDefaultType(type) {
+  const confirmed = await ElMessageBox.confirm(`确认把「${props.reader.customConfigName}」设为${type}吗？`, '设置方案类型', { type: 'warning' }).catch(() => false)
+  if (!confirmed) return
+  const result = props.reader.setCustomConfigDefaultType(type)
+  if (!result.ok) {
+    ElMessage.error(result.message || '设置方案类型失败')
+    return
+  }
+  ElMessage.success(`已设为${type}`)
 }
 
 const readerModeModel = computed({

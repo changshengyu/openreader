@@ -97,6 +97,19 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty({ skipCustomConfigSync: true })
       return { ok: true }
     },
+    setCustomConfigDefaultType(configDefaultType) {
+      if (!this.customConfigName) return { ok: false, message: '请先选择配置方案' }
+      if (!['白天默认', '黑夜默认'].includes(configDefaultType)) return { ok: false, message: '方案类型无效' }
+      const current = Array.isArray(this.customConfigList) ? this.customConfigList : []
+      if (!current.some(item => item?.name === this.customConfigName)) return { ok: false, message: '当前方案不存在' }
+      this.customConfigList = current.map(item => {
+        if (item.name === this.customConfigName) return { ...item, configDefaultType }
+        if (item.configDefaultType === configDefaultType) return { ...item, configDefaultType: '' }
+        return item
+      })
+      this.markSettingsDirty({ skipCustomConfigSync: true })
+      return { ok: true }
+    },
     setAutoTheme(autoTheme) {
       this.autoTheme = Boolean(autoTheme)
       this.markSettingsDirty({ skipCustomConfigSync: true })
