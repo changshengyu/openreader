@@ -903,7 +903,6 @@ function readError(err, fallback) {
   box-sizing: border-box;
   justify-content: space-between;
   gap: 4px;
-  padding-right: 48px;
   overflow: hidden;
 }
 
@@ -1135,7 +1134,7 @@ function readError(err, fallback) {
     min-height: 112px;
     box-sizing: border-box;
     gap: 4px;
-    padding-right: 48px;
+    padding-right: 0;
     overflow: hidden;
   }
 

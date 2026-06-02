@@ -739,12 +739,16 @@ onBeforeUnmount(() => {
   font-size: 24px;
   font-weight: 800;
   line-height: 1.2;
+  word-break: keep-all;
 }
 
 .app-brand-subtitle {
   margin-top: 18px;
   color: #b5b5b5;
   font-size: 16px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .app-shell-search {
@@ -842,7 +846,10 @@ onBeforeUnmount(() => {
   color: #b5b5b5;
   font-size: 16px;
   font-weight: 600;
+  line-height: 1.35;
   letter-spacing: 0;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .app-nav-item {
@@ -853,7 +860,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 8px;
+  padding: 8px;
   color: #9aa1aa;
   background: #fafafa;
   border: 1px solid #e6e9ef;
@@ -877,8 +884,11 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow: visible;
   font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
   text-overflow: clip;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .app-sidebar-footer {
@@ -935,9 +945,10 @@ onBeforeUnmount(() => {
 
 .user-card-main strong,
 .user-card-main small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .user-card-main small {
@@ -976,7 +987,7 @@ onBeforeUnmount(() => {
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
-  padding: max(20px, env(safe-area-inset-top)) 36px 66px;
+  padding: max(20px, env(safe-area-inset-top)) 28px 66px;
   scrollbar-width: none;
   box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
   transform: translateX(calc(-1 * var(--mobile-nav-width, 72vw)));
@@ -1038,12 +1049,13 @@ onBeforeUnmount(() => {
 
 .app-shell.mobile-shell .app-nav-title {
   margin: 0 0 8px;
-  overflow: hidden;
+  overflow: visible;
   color: #a09282;
   font-size: 14px;
   line-height: 1.3;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .app-shell.mobile-shell .app-nav-item {
@@ -1064,11 +1076,12 @@ onBeforeUnmount(() => {
 
 .app-shell.mobile-shell .app-nav-item span {
   overflow: visible;
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.25;
   text-overflow: clip;
   white-space: normal;
-  word-break: keep-all;
+  word-break: break-word;
 }
 
 .app-shell.mobile-shell .sidebar-recent {
@@ -1096,9 +1109,9 @@ onBeforeUnmount(() => {
 
 .app-shell.mobile-shell .sidebar-bottom-icons {
   position: absolute;
-  right: 36px;
+  right: 28px;
   bottom: 30px;
-  left: 36px;
+  left: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;

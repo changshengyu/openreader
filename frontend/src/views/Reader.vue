@@ -858,23 +858,26 @@ function resetContentSearchState() {
 
 async function loadReaderBook() {
   clearTimeout(saveTimer)
-  const [bookRes, chRes, bmRes, saved] = await Promise.all([
+  const targetBookId = bookId.value
+  const bookmarksRequest = api.get(`/books/${targetBookId}/bookmarks`)
+    .then(({ data }) => data)
+    .catch(() => [])
+  const [bookRes, chRes, saved] = await Promise.all([
     cacheFirstRequest(
-      () => api.get(`/books/${bookId.value}`),
-      `reader@book:${bookId.value}`,
+      () => api.get(`/books/${targetBookId}`),
+      `reader@book:${targetBookId}`,
       { validate: data => Boolean(data?.id) },
     ),
     cacheFirstRequest(
-      () => api.get(`/books/${bookId.value}/chapters`),
-      `reader@chapters:${bookId.value}`,
+      () => api.get(`/books/${targetBookId}/chapters`),
+      `reader@chapters:${targetBookId}`,
       { validate: data => Array.isArray(data) },
     ),
-    api.get(`/books/${bookId.value}/bookmarks`),
-    reader.loadProgress(bookId.value),
+    reader.loadProgress(targetBookId, { preferLocal: true }),
   ])
+  if (bookId.value !== targetBookId) return
   book.value = bookRes.data
   chapters.value = chRes.data
-  bookmarks.value = bmRes.data
   sourceQuery.value = ''
   sourceCandidates.value = []
   sourceCandidatesLoadedKey.value = ''
@@ -896,6 +899,9 @@ async function loadReaderBook() {
   if (bookRes.fromCache || chRes.fromCache) {
     refreshReaderBookCaches({ book: Boolean(bookRes.fromCache), chapters: Boolean(chRes.fromCache) }).catch(() => {})
   }
+  bookmarksRequest.then(data => {
+    if (bookId.value === targetBookId) bookmarks.value = data
+  }).catch(() => {})
   await jumpToRouteLine()
 }
 
