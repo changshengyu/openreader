@@ -144,24 +144,25 @@ type RSSArticle struct {
 }
 
 type Book struct {
-	ID           uint      `json:"id" gorm:"primaryKey"`
-	UserID       uint      `json:"userId" gorm:"index"`
-	SourceID     uint      `json:"sourceId" gorm:"index"`
-	CategoryID   *uint     `json:"categoryId,omitempty" gorm:"index"`
-	Title        string    `json:"title" gorm:"size:240;not null"`
-	Author       string    `json:"author" gorm:"size:160"`
-	CoverURL     string    `json:"coverUrl" gorm:"size:600"`
-	Intro        string    `json:"intro" gorm:"type:text"`
-	URL          string    `json:"url" gorm:"size:800;index"`
-	LibraryPath  string    `json:"libraryPath" gorm:"size:600"`
-	OriginalFile string    `json:"originalFile" gorm:"size:600"`
-	TOCFile      string    `json:"tocFile" gorm:"size:600"`
-	SourceFile   string    `json:"sourceFile" gorm:"size:600"`
-	LastChapter  string    `json:"lastChapter" gorm:"size:240"`
-	ChapterCount int       `json:"chapterCount"`
-	CanUpdate    bool      `json:"canUpdate" gorm:"default:true"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	UserID         uint      `json:"userId" gorm:"index"`
+	SourceID       uint      `json:"sourceId" gorm:"index"`
+	CategoryID     *uint     `json:"categoryId,omitempty" gorm:"index"`
+	Title          string    `json:"title" gorm:"size:240;not null"`
+	Author         string    `json:"author" gorm:"size:160"`
+	CoverURL       string    `json:"coverUrl" gorm:"size:600"`
+	CustomCoverURL string    `json:"customCoverUrl" gorm:"size:600"`
+	Intro          string    `json:"intro" gorm:"type:text"`
+	URL            string    `json:"url" gorm:"size:800;index"`
+	LibraryPath    string    `json:"libraryPath" gorm:"size:600"`
+	OriginalFile   string    `json:"originalFile" gorm:"size:600"`
+	TOCFile        string    `json:"tocFile" gorm:"size:600"`
+	SourceFile     string    `json:"sourceFile" gorm:"size:600"`
+	LastChapter    string    `json:"lastChapter" gorm:"size:240"`
+	ChapterCount   int       `json:"chapterCount"`
+	CanUpdate      bool      `json:"canUpdate" gorm:"default:true"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type Category struct {

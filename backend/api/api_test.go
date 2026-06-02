@@ -482,7 +482,7 @@ func TestUpdateBook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"title":"新书名","author":"新作者","coverUrl":"https://example.com/cover.jpg","intro":"新简介","canUpdate":false}`
+	body := `{"title":"新书名","author":"新作者","coverUrl":"https://example.com/cover.jpg","customCoverUrl":"/uploads/covers/custom.jpg","intro":"新简介","canUpdate":false}`
 	req := httptest.NewRequest(http.MethodPut, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -498,6 +498,9 @@ func TestUpdateBook(t *testing.T) {
 	}
 	if updated.Title != "新书名" || updated.Author != "新作者" || updated.Intro != "新简介" {
 		t.Fatalf("unexpected updated book: %+v", updated)
+	}
+	if updated.CoverURL != "https://example.com/cover.jpg" || updated.CustomCoverURL != "/uploads/covers/custom.jpg" {
+		t.Fatalf("unexpected cover fields after update: %+v", updated)
 	}
 	if updated.CanUpdate {
 		t.Fatalf("expected canUpdate to be false after update: %+v", updated)

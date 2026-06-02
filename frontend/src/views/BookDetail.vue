@@ -391,7 +391,7 @@ async function uploadBookCoverFromPanel(file) {
     const { data } = await updateBook(book.value.id, {
       title: book.value.title,
       author: book.value.author || '',
-      coverUrl: result.url,
+      customCoverUrl: result.url,
       intro: book.value.intro || '',
       categoryId: book.value.categoryId || null,
       canUpdate: book.value.canUpdate !== false,

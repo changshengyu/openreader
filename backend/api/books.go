@@ -130,12 +130,13 @@ func (s *Server) getBook(c *gin.Context) {
 }
 
 type bookUpdateRequest struct {
-	Title      string `json:"title"`
-	Author     string `json:"author"`
-	CoverURL   string `json:"coverUrl"`
-	Intro      string `json:"intro"`
-	CategoryID *uint  `json:"categoryId"`
-	CanUpdate  *bool  `json:"canUpdate"`
+	Title          string  `json:"title"`
+	Author         string  `json:"author"`
+	CoverURL       *string `json:"coverUrl"`
+	CustomCoverURL *string `json:"customCoverUrl"`
+	Intro          string  `json:"intro"`
+	CategoryID     *uint   `json:"categoryId"`
+	CanUpdate      *bool   `json:"canUpdate"`
 }
 
 func (s *Server) updateBook(c *gin.Context) {
@@ -162,7 +163,12 @@ func (s *Server) updateBook(c *gin.Context) {
 		book.Title = title
 	}
 	book.Author = strings.TrimSpace(request.Author)
-	book.CoverURL = strings.TrimSpace(request.CoverURL)
+	if request.CoverURL != nil {
+		book.CoverURL = strings.TrimSpace(*request.CoverURL)
+	}
+	if request.CustomCoverURL != nil {
+		book.CustomCoverURL = strings.TrimSpace(*request.CustomCoverURL)
+	}
 	book.Intro = strings.TrimSpace(request.Intro)
 	book.CategoryID = request.CategoryID
 	if request.CanUpdate != nil {

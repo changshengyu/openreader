@@ -4,6 +4,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 
 const props = defineProps({
   book: {
@@ -16,13 +17,14 @@ const props = defineProps({
   },
 })
 
-const hasCover = computed(() => Boolean(props.book?.coverUrl))
+const hasCover = computed(() => hasBookCover(props.book))
 const coverText = computed(() => (hasCover.value ? '' : '暂无封面'))
+const coverUrl = computed(() => bookCoverUrl(props.book))
 
 const coverStyle = computed(() => {
   if (hasCover.value) {
     return {
-      backgroundImage: `url(${props.book.coverUrl})`,
+      backgroundImage: `url(${coverUrl.value})`,
       backgroundPosition: 'center',
       backgroundSize: 'cover',
       color: 'transparent',

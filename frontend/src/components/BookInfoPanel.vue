@@ -75,6 +75,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import BookCover from './BookCover.vue'
+import { bookCoverUrl } from '../utils/bookCover'
 
 const props = defineProps({
   book: {
@@ -154,7 +155,10 @@ const introParagraphs = computed(() => {
   const text = String(props.book?.intro || '暂无简介').trim()
   return text ? text.split(/\n+/).map(line => line.trim()).filter(Boolean) : ['暂无简介']
 })
-const coverBgStyle = computed(() => props.book?.coverUrl ? { backgroundImage: `url(${props.book.coverUrl})` } : {})
+const coverBgStyle = computed(() => {
+  const url = bookCoverUrl(props.book)
+  return url ? { backgroundImage: `url(${url})` } : {}
+})
 
 function normalizeKindTags(value) {
   if (Array.isArray(value)) {

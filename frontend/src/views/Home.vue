@@ -65,7 +65,7 @@
           >
             <span
               class="list-cover"
-              :class="{ 'has-cover': Boolean(book.coverUrl) }"
+              :class="{ 'has-cover': hasBookCover(book) }"
               :style="coverStyle(book)"
               @click.stop="openDetail(book)"
             >{{ coverInitial(book) }}</span>
@@ -110,6 +110,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 
@@ -344,12 +345,13 @@ function categoryName(id) {
 }
 
 function coverInitial(book) {
-  return book.coverUrl ? '' : '暂无封面'
+  return hasBookCover(book) ? '' : '暂无封面'
 }
 
 function coverStyle(book) {
-  if (book.coverUrl) {
-    return { backgroundImage: `url(${book.coverUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
+  const url = bookCoverUrl(book)
+  if (url) {
+    return { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
   }
   return {}
 }

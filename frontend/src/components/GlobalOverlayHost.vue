@@ -1221,7 +1221,7 @@ async function uploadBookInfoCover(file) {
     const { data: updatedBook } = await updateBook(book.id, {
       title: book.title,
       author: book.author || '',
-      coverUrl: uploadResult.url,
+      customCoverUrl: uploadResult.url,
       intro: book.intro || '',
       categoryId: book.categoryId || null,
       canUpdate: book.canUpdate !== false,

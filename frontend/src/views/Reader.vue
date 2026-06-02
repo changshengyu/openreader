@@ -464,6 +464,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
+import { bookCoverUrl } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
@@ -1369,13 +1370,15 @@ function shelfItemProgress(item) {
 }
 
 function shelfCoverInitial(item) {
+  if (bookCoverUrl(item)) return ''
   return (item.title || '?').slice(0, 1)
 }
 
 function shelfCoverStyle(item) {
-  if (item.coverUrl) {
+  const url = bookCoverUrl(item)
+  if (url) {
     return {
-      backgroundImage: `url(${item.coverUrl})`,
+      backgroundImage: `url(${url})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       color: 'transparent',
