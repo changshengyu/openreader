@@ -170,7 +170,7 @@ const displayedBooks = computed(() => {
 })
 
 const isMobileShelf = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
-const isNormalPage = computed(() => reader.pageType !== 'simple')
+const isNormalPage = computed(() => !['kindle', 'simple', 'Kindle'].includes(reader.pageType))
 const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
 
 const emptyText = computed(() => {

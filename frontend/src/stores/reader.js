@@ -123,22 +123,26 @@ export const useReaderStore = defineStore('reader', {
       return this.setCustomConfig(config.name)
     },
     setPageType(pageType) {
-      const nextType = pageType === 'simple' ? 'simple' : 'normal'
+      const nextType = ['kindle', 'simple', 'Kindle'].includes(pageType) ? 'kindle' : 'normal'
       if (nextType === this.pageType) return
-      if (nextType === 'simple') {
+      if (nextType === 'kindle') {
         this.normalModeSnapshot = {
           pageMode: this.pageMode,
           animateDuration: this.animateDuration,
           mode: this.mode,
           fontSize: this.fontSize,
           theme: this.theme,
+          clickMethod: this.clickMethod,
+          selectionAction: this.selectionAction,
         }
-        this.pageType = 'simple'
+        this.pageType = 'kindle'
         this.animateDuration = 0
         this.pageMode = 'mobile'
         this.mode = 'flip'
         this.fontSize = Math.min(this.fontSize, 20)
         this.theme = 'white'
+        this.clickMethod = 'none'
+        this.selectionAction = '忽略'
       } else {
         const snapshot = this.normalModeSnapshot || {}
         this.pageType = 'normal'
@@ -147,6 +151,8 @@ export const useReaderStore = defineStore('reader', {
         if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
         if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
         if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
+        if (['next', 'auto', 'none'].includes(snapshot.clickMethod)) this.clickMethod = snapshot.clickMethod
+        if (['操作弹窗', '忽略'].includes(snapshot.selectionAction)) this.selectionAction = snapshot.selectionAction
         this.normalModeSnapshot = null
       }
       this.markSettingsDirty()
@@ -227,7 +233,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setAnimateDuration(duration) {
-      this.animateDuration = this.pageType === 'simple' ? 0 : clampNumber(duration, 0, 1000, 300)
+      this.animateDuration = this.pageType === 'kindle' ? 0 : clampNumber(duration, 0, 1000, 300)
       this.markSettingsDirty()
     },
     setTTSRate(rate) {
@@ -260,7 +266,8 @@ export const useReaderStore = defineStore('reader', {
     },
     normalizeSettings() {
       if (!['scroll', 'scroll2', 'flip', 'page'].includes(this.mode)) this.mode = 'page'
-      if (!['normal', 'simple'].includes(this.pageType)) this.pageType = 'normal'
+      if (this.pageType === 'simple' || this.pageType === 'Kindle') this.pageType = 'kindle'
+      if (!['normal', 'kindle'].includes(this.pageType)) this.pageType = 'normal'
       if (!['auto', 'mobile'].includes(this.pageMode)) this.pageMode = 'auto'
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['操作弹窗', '忽略'].includes(this.selectionAction)) this.selectionAction = '操作弹窗'
@@ -282,7 +289,7 @@ export const useReaderStore = defineStore('reader', {
       this.brightness = clampNumber(this.brightness, 50, 150, 100)
       this.autoReadSpeed = clampNumber(this.autoReadSpeed, 2, 40, 12)
       this.animateDuration = clampNumber(this.animateDuration, 0, 1000, 300)
-      if (this.pageType === 'simple') {
+      if (this.pageType === 'kindle') {
         this.animateDuration = 0
       }
       this.ttsRate = clampNumber(this.ttsRate, 0.5, 3, 1)
@@ -634,7 +641,8 @@ function sanitizeReaderSettings(payload, options = {}) {
   const includeCustomConfigs = options.includeCustomConfigs !== false
   const settings = {}
   if (['scroll', 'scroll2', 'flip', 'page'].includes(payload.mode)) settings.mode = payload.mode
-  if (['normal', 'simple'].includes(payload.pageType)) settings.pageType = payload.pageType
+  if (['normal', 'kindle'].includes(payload.pageType)) settings.pageType = payload.pageType
+  if (payload.pageType === 'simple' || payload.pageType === 'Kindle') settings.pageType = 'kindle'
   if (['next', 'auto', 'none'].includes(payload.clickMethod)) settings.clickMethod = payload.clickMethod
   if (['操作弹窗', '忽略'].includes(payload.selectionAction)) settings.selectionAction = payload.selectionAction
   if (['system', 'serif', 'kai', 'mono'].includes(payload.fontFamily)) settings.fontFamily = payload.fontFamily

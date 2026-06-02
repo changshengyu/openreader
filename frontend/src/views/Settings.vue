@@ -129,7 +129,7 @@
                 <span>特殊模式</span>
                 <el-radio-group v-model="readerPageTypeModel" size="small">
                   <el-radio-button value="normal">正常</el-radio-button>
-                  <el-radio-button value="simple">简洁</el-radio-button>
+                  <el-radio-button value="kindle">Kindle</el-radio-button>
                 </el-radio-group>
               </label>
               <label class="reader-config-schemes-row">
@@ -220,7 +220,7 @@
               </label>
               <label>
                 <span>动画时长 {{ readerStore.animateDuration }}ms</span>
-                <el-slider v-model="readerAnimateDurationModel" :min="0" :max="1000" :step="20" :disabled="readerStore.pageType === 'simple'" />
+                <el-slider v-model="readerAnimateDurationModel" :min="0" :max="1000" :step="20" :disabled="readerStore.pageType === 'kindle'" />
               </label>
               <label>
                 <span>字号 {{ readerStore.fontSize }}px</span>
