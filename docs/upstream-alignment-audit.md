@@ -15,8 +15,8 @@
 | 阅读器工具栏 | `views/Reader.vue` `showToolBar/showReadBar` | 移动端工具栏默认隐藏，中心点击显示；桌面右侧快捷工具栏已恢复为上游式单列圆形按钮，不再挤成两列 | 基本对齐 |
 | 阅读点击区 | `Reader.vue` `eventHandler`、`ReadSettings.vue` `clickMethod` | 本批补齐“下一页 / 自动 / 不翻页”；自动模式按上游区分左右滑动和上下滚动 | 本批完成 |
 | 滚动阅读手势 | `Reader.vue` `handleTouchMove`、`isSlideRead` | 本批确认上下滚动不拦截手指滑动，固定距离翻页只由点击区触发 | 本批完成 |
-| 阅读方式 | `ReadSettings.vue` `readMethods`、`animateMSTime` | 当前有上下滑动、左右滑动、上下滚动、上下滚动2；本批补齐 `scroll2` 顶部附近自动加载上一章并保持视口位置，连续滚动不再只能向下追加章节 | 继续真机验收长书跨章节滚动 |
-| 设置写入路径 | `ReadSettings.vue` `setReadMethod/setPageMode`、`Index.vue` 搜索设置 | 本批收敛为单一 computed setter 写入；阅读器设置抽屉、设置页、首页侧边栏搜索设置不再同时通过 `v-model`、`@input`、`@change` 双写同一项 | 本批完成 |
+| 阅读方式 | `ReadSettings.vue` `readMethods`、`animateMSTime` | 当前有上下滑动、左右滑动、上下滚动、上下滚动2；已补齐 `scroll2` 顶部附近自动加载上一章并保持视口位置，连续滚动不再只能向下追加章节；本批把设置页“左右翻页”也收敛为仅 `miniInterface` 可见，和上游 `ReadSettings.vue` 一致 | 继续真机验收长书跨章节滚动 |
+| 设置写入路径 | `ReadSettings.vue` `setReadMethod/setPageMode`、`Index.vue` 搜索设置 | 已收敛为单一 computed setter 写入；阅读器设置抽屉、设置页、首页侧边栏搜索设置不再同时通过 `v-model`、`@input`、`@change` 双写同一项；本批复核上游 `setPageMode` 只切换 `miniInterface`，不额外强制修改阅读方式 | 本批完成 |
 | 目录定位 | `PopCatalog.vue` + `Reader.vue` 当前章节定位 | 本批按上游目录弹层补齐倒序/顺序、顶部、底部、刷新入口；打开目录和切换顺序都会重新定位当前章节 | 基本对齐，继续真机验收 |
 | 书籍信息 | `components/BookInfo.vue` | 已复核书架、搜索、书海、阅读器均走全局 `openBookInfo`，详情页直接复用 `BookInfoPanel`；已补齐上游书名下方分类/标签信息层，并把“设置分组”放回分组属性行 | 基本对齐，继续核对加书/刷新/封面细节 |
 | 书架管理 | `components/BookManage.vue`、`BookGroup.vue` | 已有全局弹层；批量删除、批量添加/移除分组走上游主操作区，缓存/清缓存/导出等扩展真实能力收进“更多批量操作”，移动端不再堆叠全部按钮 | 基本对齐，继续真机验收移动端 |

@@ -136,7 +136,7 @@
                 <span>翻页方式</span>
                 <el-radio-group v-model="readerModeModel" size="small">
                   <el-radio-button value="page">上下滑动</el-radio-button>
-                  <el-radio-button value="flip">左右翻页</el-radio-button>
+                  <el-radio-button v-if="readerSettingsMiniInterface" value="flip">左右翻页</el-radio-button>
                   <el-radio-button value="scroll">上下滚动</el-radio-button>
                   <el-radio-button value="scroll2">上下滚动2</el-radio-button>
                 </el-radio-group>
@@ -485,7 +485,8 @@ const readerSettingsSyncText = computed(() => {
   return '本地设置'
 })
 
-const isMobileDialog = computed(() => readerStore.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const readerSettingsMiniInterface = computed(() => readerStore.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isMobileDialog = computed(() => readerSettingsMiniInterface.value)
 
 onMounted(() => {
   readerStore.normalizeSettings()
