@@ -24,7 +24,7 @@
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <el-select v-model="selectedGroup" placeholder="全部分组" clearable>
-        <el-option v-for="group in groups" :key="group" :label="group" :value="group" />
+        <el-option v-for="group in sourceGroupOptions" :key="group.value" :label="group.label" :value="group.value" />
       </el-select>
       <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('enable')">启用选中</el-button>
       <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
@@ -325,7 +325,7 @@ const handledRouteAction = ref('')
 const MINI_INTERFACE_MAX_WIDTH = 750
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 
-const groups = computed(() => [...new Set(sources.value.map(source => source.group || '默认分组'))].sort())
+const sourceGroupOptions = computed(() => buildSourceGroupOptions(sources.value))
 const healthSummary = computed(() => {
   const rows = Object.values(health.value)
   return {
@@ -371,6 +371,12 @@ watch(
   () => [route.query.panel, route.query.action],
   () => applyRouteAction(),
 )
+
+watch(sourceGroupOptions, (items) => {
+  if (selectedGroup.value && !items.some(item => item.value === selectedGroup.value)) {
+    selectedGroup.value = ''
+  }
+})
 
 async function loadSources() {
   const { data } = await listSources()
@@ -553,6 +559,17 @@ function handleSourceBatchMoreCommand(command) {
 
 function clearSourceBatchState() {
   selection.value = []
+}
+
+function buildSourceGroupOptions(rows) {
+  const counts = new Map()
+  for (const source of rows || []) {
+    const group = String(source?.group || '默认分组').trim() || '默认分组'
+    counts.set(group, (counts.get(group) || 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([value, count]) => ({ value, label: `${value} (${count})`, count }))
 }
 
 function isSourceSelected(source) {
