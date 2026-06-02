@@ -102,6 +102,8 @@ function locateCurrentChapter(attempt = 0) {
 
 defineExpose({
   locateCurrentChapter,
+  scrollToTop,
+  scrollToBottom,
 })
 
 onMounted(locateCurrentChapter)
@@ -113,6 +115,18 @@ watch(
   () => [props.currentIndex, props.locateKey, filteredChapters.value.length],
   () => locateCurrentChapter(),
 )
+
+function scrollToTop() {
+  const list = tocListRef.value
+  if (!list) return
+  list.scrollTo({ top: 0, behavior: 'auto' })
+}
+
+function scrollToBottom() {
+  const list = tocListRef.value
+  if (!list) return
+  list.scrollTo({ top: Math.max(0, list.scrollHeight - list.clientHeight), behavior: 'auto' })
+}
 </script>
 
 <style scoped>

@@ -37,6 +37,9 @@
         <div>
           <span>分组：</span>
           <strong>{{ categoryName || '未分组' }}</strong>
+          <button v-if="showCategoryAction" type="button" class="book-prop-action" @click="emit('category-action')">
+            {{ categoryActionLabel }}
+          </button>
         </div>
         <div>
           <span>章节：</span>
@@ -126,9 +129,17 @@ const props = defineProps({
     type: Number,
     default: -1,
   },
+  showCategoryAction: {
+    type: Boolean,
+    default: false,
+  },
+  categoryActionLabel: {
+    type: String,
+    default: '设置分组',
+  },
 })
 
-const emit = defineEmits(['cover-upload', 'can-update-change'])
+const emit = defineEmits(['cover-upload', 'can-update-change', 'category-action'])
 const coverInput = ref(null)
 
 const chapterCount = computed(() => Array.isArray(props.chapters) ? props.chapters.length : (props.chapters || props.book?.chapterCount || 0))
@@ -316,6 +327,16 @@ function handleCoverFileChange(event) {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.book-prop-action {
+  flex: 0 0 auto;
+  padding: 0;
+  color: #409eff;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 @media (max-width: 560px) {

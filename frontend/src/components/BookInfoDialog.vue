@@ -22,8 +22,11 @@
       :can-update="canUpdate"
       :update-switch-loading="updateSwitchLoading"
       :browser-cache-count="browserCacheCount"
+      :show-category-action="showCategoryAction"
+      :category-action-label="categoryActionLabel"
       @cover-upload="$emit('coverUpload', $event)"
       @can-update-change="$emit('canUpdateChange', $event)"
+      @category-action="$emit('categoryAction')"
     >
       <slot />
     </BookInfoPanel>
@@ -92,9 +95,17 @@ defineProps({
     type: Number,
     default: -1,
   },
+  showCategoryAction: {
+    type: Boolean,
+    default: false,
+  },
+  categoryActionLabel: {
+    type: String,
+    default: '设置分组',
+  },
 })
 
-defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange'])
+defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange', 'categoryAction'])
 
 const MINI_INTERFACE_MAX_WIDTH = 750
 const reader = useReaderStore()

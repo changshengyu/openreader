@@ -235,11 +235,21 @@
 
     <!-- ===== 目录抽屉 ===== -->
     <el-drawer v-model="showTocDrawer" title="目录" :direction="drawerDirection" :size="drawerSize" @opened="locateTocCurrentChapter">
+      <div class="reader-drawer-title">
+        <span>目录({{ chapters.length }})</span>
+        <div class="reader-drawer-actions">
+          <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
+          <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
+          <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
+          <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
+        </div>
+      </div>
       <ReaderTocPanel
         ref="tocPanelRef"
         v-model="tocFilter"
         :chapters="chapters"
         :current-index="currentIndex"
+        :reverse="tocReverse"
         :locate-key="tocLocateKey"
         :browser-cached-map="browserCachedChapters"
         @jump="jumpFromToc"
@@ -501,6 +511,8 @@ const shelfListRef = ref(null)
 const tocPanelRef = ref(null)
 const tocFilter = ref('')
 const tocLocateKey = ref(0)
+const tocReverse = ref(false)
+const tocRefreshing = ref(false)
 const browserCachedChapters = ref({})
 const contentSearch = ref('')
 const bookSearchResults = ref([])
@@ -1150,6 +1162,34 @@ function openTocDrawer() {
   showTocDrawer.value = true
   window.setTimeout(locateTocCurrentChapter, 0)
   window.setTimeout(locateTocCurrentChapter, 180)
+}
+
+function toggleTocReverse() {
+  tocReverse.value = !tocReverse.value
+  locateTocCurrentChapter()
+}
+
+function scrollTocTop() {
+  tocPanelRef.value?.scrollToTop?.()
+}
+
+function scrollTocBottom() {
+  tocPanelRef.value?.scrollToBottom?.()
+}
+
+async function refreshTocDrawer() {
+  tocRefreshing.value = true
+  try {
+    if (isRemoteBook.value) {
+      await refreshReaderBookCatalog()
+    } else {
+      await loadChapters()
+    }
+    await computeBrowserCachedChapters()
+    locateTocCurrentChapter()
+  } finally {
+    tocRefreshing.value = false
+  }
 }
 
 async function computeBrowserCachedChapters() {
@@ -3114,6 +3154,7 @@ function readError(err, fallback) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   margin: -2px 0 14px;
 }
 .reader-drawer-title span {
@@ -3132,6 +3173,12 @@ function readError(err, fallback) {
 .reader-drawer-title button:disabled {
   color: #8c8c8c;
   cursor: default;
+}
+.reader-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px;
 }
 .shelf-search { margin-bottom: 12px; }
 .reader-shelf-list {
