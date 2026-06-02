@@ -54,4 +54,13 @@ watch(isLoggedIn, (loggedIn) => {
     disconnect()
   }
 })
+
+watch(
+  () => readerStore.theme,
+  (theme) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.classList.toggle('dark-reader', theme === 'dark' || theme === 'black')
+  },
+  { immediate: true },
+)
 </script>

@@ -35,4 +35,21 @@
 
 html.dark-reader {
   color-scheme: dark;
+  --app-bg: #181715;
+  --app-bg-soft: #22201d;
+  --app-surface: #24221f;
+  --app-surface-muted: #2f2c28;
+  --app-border: #39352f;
+  --app-border-strong: #5a5148;
+  --app-text: #d8d4c8;
+  --app-text-muted: #a8a093;
+  --app-text-subtle: #7f766c;
+  --app-primary: #8ac0b5;
+  --app-primary-strong: #b1d8d0;
+  --app-primary-soft: #243b37;
+  --app-accent: #d1a171;
+  --app-warning: #d39d3d;
+  --app-danger: #dc746b;
+  --app-success: #86c28f;
+  --reader-toolbar-bg: rgba(31, 29, 26, 0.92);
 }

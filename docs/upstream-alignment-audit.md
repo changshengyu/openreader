@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | 首页/书架 | `views/Index.vue` | 已恢复移动端侧边导航思路，正文区继续收敛为书架列表；已移除移动正文区搜索和行内操作按钮；已隐藏移动端无效网格/列表切换，并将分组栏宽度恢复为上游式自然留白滚动；本批把分组 tab 收敛为只显示分组名，数量回到书架标题统计，减少移动端横向挤压 | 继续真机验收移动端宽度 |
 | `miniInterface` 判定 | `plugins/helper.js` `isMiniInterface`、`plugins/vuex.js` `setMiniInterface` | 已收敛为 `<=750px` 或手动“手机模式”，不再用触摸设备/1180px 误判 | 本批完成 |
-| 移动侧边栏/书架宽度 | `Index.vue` `navigation-wrapper`、`shelf-wrapper` | 已使用 260px 侧栏、右滑打开/左滑关闭；本批修正移动端分组栏 `width:100% + margin` 导致的横向溢出 | 继续真机验收 |
+| 移动侧边栏/书架宽度 | `Index.vue` `navigation-wrapper`、`shelf-wrapper`、`bottom-icons` | 已使用 260px 侧栏、右滑打开/左滑关闭；已修正移动端分组栏 `width:100% + margin` 导致的横向溢出；本批补齐上游侧栏底部 GitHub/夜间切换入口，并让夜间主题实际作用到 App 外壳 | 继续真机验收 |
 | 搜索/加书 | `Index.vue` `searchBook`、`BookInfo.vue` | 远程搜索结果已先进入全局书籍信息再加入/阅读；按用户要求，本地书籍搜索独立于书源搜索，本批修复切入本地模式后不立即搜索的问题，确保已导入本地书和书仓文件都会刷新结果 | 基本对齐，继续真机验收 |
 | 阅读器工具栏 | `views/Reader.vue` `showToolBar/showReadBar` | 移动端工具栏默认隐藏，中心点击显示；桌面右侧快捷工具栏已恢复为上游式单列圆形按钮，不再挤成两列 | 基本对齐 |
 | 阅读点击区 | `Reader.vue` `eventHandler`、`ReadSettings.vue` `clickMethod` | 本批补齐“下一页 / 自动 / 不翻页”；自动模式按上游区分左右滑动和上下滚动 | 本批完成 |

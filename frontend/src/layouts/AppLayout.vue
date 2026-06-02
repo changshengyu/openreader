@@ -92,6 +92,21 @@
         </section>
       </nav>
 
+      <div class="sidebar-bottom-icons" aria-label="侧栏快捷入口">
+        <a class="sidebar-bottom-icon" href="https://github.com/changshengyu/openreader" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.5 4.6 18.5 5 18.5 5c.6 1.6.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.2c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"
+            />
+          </svg>
+        </a>
+        <button class="sidebar-bottom-icon theme-toggle" type="button" :class="{ night: isNightTheme }" :aria-label="isNightTheme ? '切换日间主题' : '切换夜间主题'" @click="toggleNightTheme">
+          <el-icon v-if="isNightTheme"><Sunny /></el-icon>
+          <el-icon v-else><Moon /></el-icon>
+        </button>
+      </div>
+
       <div class="app-sidebar-footer">
         <div class="sync-pill" :class="{ connected: syncConnected }">
           <span class="sync-dot" />
@@ -145,11 +160,13 @@ import {
   Files,
   FolderOpened,
   Link as LinkIcon,
+  Moon,
   Notebook,
   Operation,
   Refresh,
   Search,
   Setting,
+  Sunny,
   SwitchButton,
   Upload,
 } from '@element-plus/icons-vue'
@@ -284,6 +301,7 @@ const cacheStatsLabel = computed(() => {
   const chapters = Number(cacheStats.value?.cachedChapters || 0)
   return `章节缓存 ${size}${chapters ? ` / ${chapters}章` : ''}`
 })
+const isNightTheme = computed(() => reader.theme === 'dark' || reader.theme === 'black')
 const isMobileShell = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const mobileNavigationWidth = computed(() => {
   return 260
@@ -456,6 +474,10 @@ function formatSize(bytes) {
 function openRecentBook() {
   if (!recentBook.value) return
   router.push({ name: 'reader', params: { id: recentBook.value.id }, query: readerRouteQuery(recentBook.value) })
+}
+
+function toggleNightTheme() {
+  reader.setTheme(isNightTheme.value ? 'parchment' : 'dark')
 }
 
 function recentSubTitle(book) {
@@ -660,6 +682,48 @@ onBeforeUnmount(() => {
   border-right: 1px solid #eee;
 }
 
+:global(html.dark-reader) .app-shell {
+  background: #181715;
+}
+
+:global(html.dark-reader) .app-sidebar {
+  color: var(--app-text);
+  background: #222;
+  border-right-color: #303030;
+}
+
+:global(html.dark-reader) .app-brand-title {
+  color: #bbb;
+}
+
+:global(html.dark-reader) .app-brand-subtitle,
+:global(html.dark-reader) .app-nav-title {
+  color: #7f766c;
+}
+
+:global(html.dark-reader) .setting-select :deep(.el-select__wrapper),
+:global(html.dark-reader) .app-shell-search :deep(.el-input__wrapper),
+:global(html.dark-reader) .app-nav-item,
+:global(html.dark-reader) .user-card,
+:global(html.dark-reader) .sidebar-recent-book,
+:global(html.dark-reader) .sync-pill {
+  color: #aaa;
+  background: #2a2927;
+  border-color: #39352f;
+  box-shadow: none;
+}
+
+:global(html.dark-reader) .app-nav-item:hover,
+:global(html.dark-reader) .app-nav-item.active {
+  color: var(--app-primary-strong);
+  background: #243b37;
+  border-color: #365b55;
+}
+
+:global(html.dark-reader) .sidebar-recent-book {
+  color: #d39d3d;
+}
+
 .app-brand {
   display: flex;
   align-items: center;
@@ -771,6 +835,10 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: 0 0 18px;
   scrollbar-width: thin;
+}
+
+.sidebar-bottom-icons {
+  display: none;
 }
 
 .app-nav-section {
@@ -973,7 +1041,7 @@ onBeforeUnmount(() => {
 .app-shell.mobile-shell .app-nav {
   gap: 14px;
   overflow-y: visible;
-  padding: 0 0 14px;
+  padding: 0 0 70px;
 }
 
 .app-shell.mobile-shell .app-nav-section {
@@ -1037,6 +1105,48 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.25;
   white-space: normal;
+}
+
+.app-shell.mobile-shell .sidebar-bottom-icons {
+  position: absolute;
+  right: 36px;
+  bottom: 30px;
+  left: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.app-shell.mobile-shell .sidebar-bottom-icon {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #24201b;
+  background: #fffdf8;
+  border: 1px solid #e4d9c8;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(36, 32, 27, 0.08);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.app-shell.mobile-shell .sidebar-bottom-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.app-shell.mobile-shell .theme-toggle {
+  color: #f7f7f7;
+  background: #1f1f1f;
+  border-color: #1f1f1f;
+}
+
+.app-shell.mobile-shell .theme-toggle.night {
+  color: #121212;
+  background: #f4e4c5;
+  border-color: #f4e4c5;
 }
 
 .app-shell.mobile-shell.mobile-nav-open .app-sidebar {
