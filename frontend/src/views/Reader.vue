@@ -391,6 +391,8 @@
         @mode-change="onModeChange"
         @theme-change="setTheme"
         @pick-bg-image="pickBgImage"
+        @pick-font-file="pickFontFile"
+        @clear-font-file="clearFontFile"
         @tts-rate-change="setTTSRate"
         @tts-pitch-change="setTTSPitch"
         @tts-voice-change="setTTSVoice"
@@ -449,6 +451,7 @@ import {
 import api from '../api/client'
 import { changeBookSource, listBookSourceCandidates, refreshBook, searchBookContent as searchBookContentApi } from '../api/books'
 import { listSources } from '../api/sources'
+import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
@@ -463,7 +466,7 @@ import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
-import { readerFontOptions, readerFontStack } from '../utils/readerFonts'
+import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 
 const route = useRoute()
@@ -601,7 +604,7 @@ const displayedChapterBlocks = computed(() => {
 })
 
 const fontStack = computed(() => {
-  return readerFontStack(reader.fontFamily)
+  return readerFontStack(reader.fontFamily, reader.customFontsMap)
 })
 
 const readerStyle = computed(() => ({
@@ -686,6 +689,7 @@ function onModeChange(mode) {
 
 onMounted(async () => {
   reader.normalizeSettings()
+  syncReaderFontFaces(reader.customFontsMap)
   await loadReaderBook()
   window.addEventListener('resize', handleResize)
   window.addEventListener('wheel', handleReaderWheel, { passive: false })
@@ -770,6 +774,10 @@ watch(() => [reader.fontFamily, reader.fontSize, reader.fontWeight, reader.lineH
   clearTimeout(saveTimer)
   saveTimer = setTimeout(saveCurrentProgress, 300)
 })
+
+watch(() => reader.customFontsMap, (customFontsMap) => {
+  syncReaderFontFaces(customFontsMap)
+}, { deep: true })
 
 watch(contentSearch, () => {
   resetContentSearchState()
@@ -1120,6 +1128,34 @@ function pickBgImage(data) {
   const fr = new FileReader()
   fr.onload = (e) => reader.setCustomBgImage(e.target.result)
   fr.readAsDataURL(file)
+}
+
+async function pickFontFile({ file, font }) {
+  const rawFile = file?.raw || file?.file || file
+  if (!rawFile || !font?.value) return
+  try {
+    const { data } = await uploadAsset({ file: rawFile, type: 'font' })
+    if (!data?.url) throw new Error('上传结果缺少字体地址')
+    reader.setCustomFont(font.value, data.url)
+    reader.setFontFamily(font.value)
+    syncReaderFontFaces(reader.customFontsMap)
+    ElMessage.success(`已上传${font.label}字体`)
+  } catch (err) {
+    ElMessage.error(readError(err, '上传字体失败'))
+  }
+}
+
+async function clearFontFile(font) {
+  const url = reader.customFontsMap?.[font?.value]
+  if (!url || !font?.value) return
+  try {
+    await deleteAsset(url)
+    reader.clearCustomFont(font.value)
+    syncReaderFontFaces(reader.customFontsMap)
+    ElMessage.success(`已恢复默认${font.label}字体`)
+  } catch (err) {
+    ElMessage.error(readError(err, '恢复默认字体失败'))
+  }
 }
 
 async function goChapter(index, offset = 0) {

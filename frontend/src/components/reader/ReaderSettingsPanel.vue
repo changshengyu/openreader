@@ -78,17 +78,40 @@
     <div class="setting-row">
       <label class="setting-label">字体</label>
       <div class="font-family-grid">
-        <button
+        <div
           v-for="font in fontOptions"
           :key="font.value"
           class="font-family-option"
           :class="{ active: fontFamilyModel === font.value }"
           :style="{ fontFamily: font.stack }"
-          type="button"
           @click="setFontFamily(font.value)"
         >
-          {{ font.label }}
-        </button>
+          <button class="font-family-select" type="button">
+            <span>{{ font.label }}</span>
+            <small v-if="hasCustomFont(font.value)">已上传</small>
+          </button>
+          <span class="font-family-actions" @click.stop>
+            <el-upload
+              accept=".ttf,.otf,.woff,.woff2"
+              :show-file-list="false"
+              :auto-upload="false"
+              @change="file => $emit('pickFontFile', { file, font })"
+            >
+              <button class="font-action-btn" type="button" :title="hasCustomFont(font.value) ? '替换字体' : '上传字体'">
+                <el-icon><Upload /></el-icon>
+              </button>
+            </el-upload>
+            <button
+              v-if="hasCustomFont(font.value)"
+              class="font-action-btn"
+              type="button"
+              title="恢复默认字体"
+              @click="$emit('clearFontFile', font)"
+            >
+              <el-icon><RefreshLeft /></el-icon>
+            </button>
+          </span>
+        </div>
       </div>
       <div class="font-preview" :style="fontPreviewStyle">
         春风过处，纸页微明。
@@ -176,7 +199,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Minus, Plus } from '@element-plus/icons-vue'
+import { Minus, Plus, RefreshLeft, Upload } from '@element-plus/icons-vue'
 
 const props = defineProps({
   reader: { type: Object, required: true },
@@ -195,6 +218,8 @@ const emit = defineEmits([
   'modeChange',
   'themeChange',
   'pickBgImage',
+  'pickFontFile',
+  'clearFontFile',
   'ttsRateChange',
   'ttsPitchChange',
   'ttsVoiceChange',
@@ -307,6 +332,11 @@ function setFontSize(value) {
 function changeFontSize(delta) {
   props.reader.setFontSize(props.reader.fontSize + delta)
 }
+
+function hasCustomFont(value) {
+  return Boolean(props.reader.customFontsMap?.[value])
+}
+
 </script>
 
 <style scoped>
@@ -385,14 +415,18 @@ function changeFontSize(delta) {
 
 .font-family-option {
   min-width: 0;
-  min-height: 34px;
-  padding: 0 10px;
+  min-height: 40px;
+  padding: 0 8px 0 10px;
   color: #5f564a;
   background: #fffaf0;
   border: 1px solid #eadfca;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: space-between;
 }
 
 .font-family-option.active {
@@ -400,6 +434,57 @@ function changeFontSize(delta) {
   background: #e6f2ee;
   border-color: #2f6f6d;
   font-weight: 700;
+}
+
+.font-family-select {
+  min-width: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 1px;
+  padding: 0;
+  text-align: left;
+}
+
+.font-family-select span,
+.font-family-select small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-family-select small {
+  color: #409eff;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.font-family-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.font-action-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #7b705f;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.font-action-btn:hover {
+  color: #0f5451;
+  background: rgba(47, 111, 109, 0.1);
 }
 
 .font-preview {

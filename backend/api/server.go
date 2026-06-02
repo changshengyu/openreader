@@ -100,6 +100,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.POST("/imports/books", server.importTXT)
 	protected.POST("/imports/txt", server.importTXT)
 	protected.POST("/uploads", server.uploadAsset)
+	protected.DELETE("/uploads", server.deleteAsset)
 	protected.GET("/progress/:bookID", server.getProgress)
 	protected.PUT("/progress", server.updateProgress)
 	protected.GET("/cache/stats", server.cacheStats)

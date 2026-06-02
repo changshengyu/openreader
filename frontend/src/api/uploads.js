@@ -8,3 +8,7 @@ export function uploadAsset({ file, type = 'misc' }) {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
+
+export function deleteAsset(url) {
+  return api.delete('/uploads', { data: { url } })
+}

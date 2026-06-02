@@ -18,12 +18,11 @@ func (s *Server) uploadAsset(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
 	}
-	if fileHeader.Size > 8*1024*1024 {
+	kind := strings.TrimSpace(c.PostForm("type"))
+	if fileHeader.Size > uploadSizeLimit(kind) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is too large"})
 		return
 	}
-
-	kind := strings.TrimSpace(c.PostForm("type"))
 	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 	if !allowedUploadExtension(kind, ext) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported file type"})
@@ -48,6 +47,53 @@ func (s *Server) uploadAsset(c *gin.Context) {
 		"size": fileHeader.Size,
 		"type": uploadKindDir(kind),
 	})
+}
+
+func (s *Server) deleteAsset(c *gin.Context) {
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil || strings.TrimSpace(payload.URL) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+		return
+	}
+	target, err := s.uploadAssetPath(payload.URL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported upload url"})
+		return
+	}
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete upload"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (s *Server) uploadAssetPath(url string) (string, error) {
+	cleanURL := strings.TrimSpace(url)
+	if strings.HasPrefix(cleanURL, "http://") || strings.HasPrefix(cleanURL, "https://") || strings.HasPrefix(cleanURL, "//") {
+		return "", os.ErrPermission
+	}
+	if !strings.HasPrefix(cleanURL, "/uploads/") {
+		return "", os.ErrPermission
+	}
+	uploadsRoot := filepath.Join(s.cfg.DataDir, "uploads")
+	rel := filepath.Clean(strings.TrimPrefix(cleanURL, "/uploads/"))
+	if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", os.ErrPermission
+	}
+	target := filepath.Join(uploadsRoot, rel)
+	if relative, err := filepath.Rel(uploadsRoot, target); err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
+		return "", os.ErrPermission
+	}
+	return target, nil
+}
+
+func uploadSizeLimit(kind string) int64 {
+	if kind == "font" {
+		return 32 * 1024 * 1024
+	}
+	return 8 * 1024 * 1024
 }
 
 func uploadKindDir(kind string) string {

@@ -3598,6 +3598,81 @@ func TestUploadAssetStoresPublicFile(t *testing.T) {
 	}
 }
 
+func TestUploadFontAssetStoresPublicFontFile(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("type", "font"); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("file", "reader.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("ttf-data")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/uploads", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"/uploads/fonts/`) {
+		t.Fatalf("upload font asset: expected public font URL, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	name := strings.TrimPrefix(resp.URL, "/uploads/fonts/")
+	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "uploads", "fonts", name)); err != nil {
+		t.Fatalf("uploaded font file missing: %v", err)
+	}
+}
+
+func TestDeleteUploadAssetRemovesOnlyUploads(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	uploadsDir := filepath.Join(server.cfg.DataDir, "uploads", "fonts")
+	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fontPath := filepath.Join(uploadsDir, "reader.ttf")
+	if err := os.WriteFile(fontPath, []byte("ttf-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/uploads", strings.NewReader(`{"url":"/uploads/fonts/reader.ttf"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete upload asset: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(fontPath); !os.IsNotExist(err) {
+		t.Fatalf("expected uploaded font to be removed, stat err=%v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/uploads", strings.NewReader(`{"url":"/uploads/../openreader.db"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("delete upload traversal: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestRSSArticleStateCanBeUpdatedAndFiltered(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

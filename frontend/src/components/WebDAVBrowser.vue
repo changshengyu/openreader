@@ -40,7 +40,7 @@
       class="webdav-table desktop-webdav-table"
       @selection-change="selection = $event"
     >
-      <el-table-column type="selection" width="42" :selectable="row => !row.isDir" />
+      <el-table-column type="selection" width="42" />
       <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip>
         <template #default="{ row }">
           <button class="file-name" type="button" @click="openItem(row)">
@@ -80,7 +80,6 @@
             <span>{{ row.name }}</span>
           </button>
           <el-checkbox
-            v-if="!row.isDir"
             :model-value="selection.some(item => item.name === row.name)"
             @change="value => toggleSelection(row, value)"
           />
@@ -203,7 +202,7 @@ function toggleSelection(row, checked) {
 }
 
 function selectShownFiles() {
-  selection.value = items.value.filter(item => !item.isDir)
+  selection.value = [...items.value]
 }
 
 async function uploadFile(data) {

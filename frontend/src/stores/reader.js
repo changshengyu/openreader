@@ -19,6 +19,7 @@ export const useReaderStore = defineStore('reader', {
     pageMode: 'auto',
     clickMethod: 'auto',
     fontFamily: 'system',
+    customFontsMap: {},
     fontSize: 18,
     fontWeight: 400,
     theme: 'parchment',
@@ -69,6 +70,21 @@ export const useReaderStore = defineStore('reader', {
     },
     setFontFamily(fontFamily) {
       this.fontFamily = ['system', 'serif', 'kai', 'mono'].includes(fontFamily) ? fontFamily : 'system'
+      this.markSettingsDirty()
+    },
+    setCustomFont(fontFamily, url) {
+      if (!['system', 'serif', 'kai', 'mono'].includes(fontFamily) || !url) return
+      this.customFontsMap = {
+        ...(this.customFontsMap || {}),
+        [fontFamily]: url,
+      }
+      this.markSettingsDirty()
+    },
+    clearCustomFont(fontFamily) {
+      if (!this.customFontsMap?.[fontFamily]) return
+      const next = { ...this.customFontsMap }
+      delete next[fontFamily]
+      this.customFontsMap = next
       this.markSettingsDirty()
     },
     setFontSize(fontSize) {
@@ -132,6 +148,7 @@ export const useReaderStore = defineStore('reader', {
       if (!['auto', 'mobile'].includes(this.pageMode)) this.pageMode = 'auto'
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['system', 'serif', 'kai', 'mono'].includes(this.fontFamily)) this.fontFamily = 'system'
+      if (!this.customFontsMap || typeof this.customFontsMap !== 'object' || Array.isArray(this.customFontsMap)) this.customFontsMap = {}
       this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
       this.fontWeight = clampNumber(this.fontWeight, 300, 900, 400)
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
@@ -415,6 +432,7 @@ function readerSettingsPayload(state) {
     mode: state.mode,
     clickMethod: state.clickMethod,
     fontFamily: state.fontFamily,
+    customFontsMap: state.customFontsMap || {},
     fontSize: state.fontSize,
     fontWeight: state.fontWeight,
     theme: state.theme,
@@ -438,6 +456,7 @@ function sanitizeReaderSettings(payload) {
   if (['scroll', 'scroll2', 'flip', 'page'].includes(payload.mode)) settings.mode = payload.mode
   if (['next', 'auto', 'none'].includes(payload.clickMethod)) settings.clickMethod = payload.clickMethod
   if (['system', 'serif', 'kai', 'mono'].includes(payload.fontFamily)) settings.fontFamily = payload.fontFamily
+  settings.customFontsMap = sanitizeCustomFontsMap(payload.customFontsMap)
   if (typeof payload.theme === 'string') settings.theme = payload.theme
   if (typeof payload.customBgColor === 'string') settings.customBgColor = payload.customBgColor
   if (typeof payload.customBgImage === 'string') settings.customBgImage = payload.customBgImage
@@ -454,6 +473,14 @@ function sanitizeReaderSettings(payload) {
   settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)
   settings.settingsVersion = 7
   return settings
+}
+
+function sanitizeCustomFontsMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return ['system', 'serif', 'kai', 'mono'].reduce((map, key) => {
+    if (typeof value[key] === 'string' && value[key]) map[key] = value[key]
+    return map
+  }, {})
 }
 
 function readErrorMessage(err) {
