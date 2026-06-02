@@ -913,6 +913,44 @@ func TestReorderCategories(t *testing.T) {
 	}
 }
 
+func TestDeleteCategoryRejectsNonEmptyCategory(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	category := models.Category{UserID: user.ID, Name: "非空分组", SortOrder: 10}
+	if err := server.db.Create(&category).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, CategoryID: &category.ID, Title: "分组内的书", Author: "作者"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/categories/"+strconv.FormatUint(uint64(category.ID), 10), nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("delete non-empty category: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var storedCategory models.Category
+	if err := server.db.First(&storedCategory, category.ID).Error; err != nil {
+		t.Fatalf("category should still exist: %v", err)
+	}
+	var storedBook models.Book
+	if err := server.db.First(&storedBook, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedBook.CategoryID == nil || *storedBook.CategoryID != category.ID {
+		t.Fatalf("book category should be preserved, got %+v", storedBook.CategoryID)
+	}
+}
+
 func TestSourceManagement(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)

@@ -266,12 +266,23 @@
       </div>
       <div class="group-list">
         <div v-for="category in bookshelf.categories" :key="category.id" class="group-row">
-          <span>{{ category.name }}</span>
+          <span class="group-name">
+            <span>{{ category.name }}</span>
+            <small>{{ groupBookCount(category) }} 本</small>
+          </span>
           <span class="group-actions">
             <el-button size="small" text @click="moveGroup(category, -1)">上移</el-button>
             <el-button size="small" text @click="moveGroup(category, 1)">下移</el-button>
             <el-button size="small" text @click="renameGroup(category)">重命名</el-button>
-            <el-button size="small" text type="danger" @click="deleteGroup(category)">删除</el-button>
+            <el-button
+              v-if="groupBookCount(category) === 0"
+              size="small"
+              text
+              type="danger"
+              @click="deleteGroup(category)"
+            >
+              删除
+            </el-button>
           </span>
         </div>
       </div>
@@ -2080,7 +2091,15 @@ async function renameGroup(category) {
   }
 }
 
+function groupBookCount(category) {
+  return managedBooks.value.filter(book => String(book.categoryId || '') === String(category.id)).length
+}
+
 async function deleteGroup(category) {
+  if (groupBookCount(category) > 0) {
+    ElMessage.warning('分组内还有书籍，清空后才能删除')
+    return
+  }
   try {
     await ElMessageBox.confirm(`确定删除分组“${category.name}”吗？`, '删除分组', { type: 'warning' })
     await bookshelf.removeCategory(category.id)
@@ -2273,6 +2292,24 @@ function readError(err, fallback) {
   padding: 10px;
   border: 1px solid var(--app-border);
   border-radius: var(--app-radius-sm);
+}
+
+.group-name {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.group-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-name small {
+  color: var(--app-text-muted);
+  font-size: 12px;
 }
 
 .group-actions {

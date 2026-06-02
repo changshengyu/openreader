@@ -148,14 +148,19 @@ func (s *Server) deleteCategory(c *gin.Context) {
 		return
 	}
 
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.Book{}).
-			Where("user_id = ? AND category_id = ?", userID, categoryID).
-			Update("category_id", nil).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&category).Error
-	}); err != nil {
+	var bookCount int64
+	if err := s.db.Model(&models.Book{}).
+		Where("user_id = ? AND category_id = ?", userID, categoryID).
+		Count(&bookCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check category books"})
+		return
+	}
+	if bookCount > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "category is not empty"})
+		return
+	}
+
+	if err := s.db.Delete(&category).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete category"})
 		return
 	}
