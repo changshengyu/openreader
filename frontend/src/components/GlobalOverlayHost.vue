@@ -718,6 +718,7 @@ const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth
 let replaceRulesRefreshTimer
 let bookmarkRefreshTimer
 let usersRefreshTimer
+let sourceRowsRefreshTimer
 
 const isMobileOverlay = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -775,6 +776,7 @@ onMounted(() => {
   window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
   window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   window.addEventListener('openreader:users-updated', handleUsersUpdated)
+  window.addEventListener('openreader:sources-update', handleSourcesUpdated)
 })
 
 onBeforeUnmount(() => {
@@ -782,9 +784,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
   window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   window.removeEventListener('openreader:users-updated', handleUsersUpdated)
+  window.removeEventListener('openreader:sources-update', handleSourcesUpdated)
   clearReplaceRulesRefreshTimer()
   clearBookmarkRefreshTimer()
   clearUsersRefreshTimer()
+  clearSourceRowsRefreshTimer()
 })
 
 function updateWindowWidth() {
@@ -933,6 +937,35 @@ function progressLabel(book) {
 async function loadSourceRows() {
   const { data } = await listSources()
   sourceRows.value = data || []
+}
+
+function handleSourcesUpdated() {
+  if (!shouldRefreshOverlaySources()) return
+  scheduleSourceRowsRefresh()
+}
+
+function shouldRefreshOverlaySources() {
+  return sourceSwitchVisible.value ||
+    (overlay.bookInfoVisible && Number(overlay.bookInfoBook?.sourceId || 0) > 0) ||
+    sourceRows.value.length > 0
+}
+
+function scheduleSourceRowsRefresh() {
+  clearSourceRowsRefreshTimer()
+  sourceRowsRefreshTimer = window.setTimeout(async () => {
+    sourceRowsRefreshTimer = undefined
+    try {
+      await loadSourceRows()
+    } catch {
+      // Keep existing source names/groups; the next source action can recover.
+    }
+  }, 350)
+}
+
+function clearSourceRowsRefreshTimer() {
+  if (!sourceRowsRefreshTimer) return
+  window.clearTimeout(sourceRowsRefreshTimer)
+  sourceRowsRefreshTimer = undefined
 }
 
 function onManageSelectionChange(rows) {
