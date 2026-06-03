@@ -408,6 +408,16 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		}
 	}
 
+	s.broadcastRestoreUpdates(userID, gin.H{
+		"sources":      sourcesCount,
+		"books":        booksCount,
+		"progress":     progressCount,
+		"settings":     settingsCount,
+		"categories":   categoriesCount,
+		"bookmarks":    bookmarksCount,
+		"replaceRules": replaceRulesCount,
+	})
+
 	return gin.H{
 		"sources":      sourcesCount,
 		"books":        booksCount,
@@ -438,6 +448,40 @@ func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {
 
 	result := s.importBookSources(sources)
 	return (result["imported"].(int) + result["updated"].(int)), nil
+}
+
+func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
+	if s.hub == nil {
+		return
+	}
+	if restoreResultCount(result, "sources") > 0 {
+		s.broadcastSourcesUpdate("restore-backup")
+	}
+	if restoreResultCount(result, "settings") > 0 {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "settings_update", "payload": gin.H{"key": "all"}})
+	}
+	if restoreResultCount(result, "books")+restoreResultCount(result, "progress")+restoreResultCount(result, "categories") > 0 {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
+	}
+	if restoreResultCount(result, "bookmarks") > 0 {
+		s.broadcastBookmarksUpdate(userID, "restore-backup", 0, nil)
+	}
+	if restoreResultCount(result, "replaceRules") > 0 {
+		s.broadcastReplaceRulesUpdate(userID, "restore-backup")
+	}
+}
+
+func restoreResultCount(result gin.H, key string) int {
+	switch value := result[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
 }
 
 func (s *Server) restoreUserSettingsFromZip(file *zip.File, userID uint) (int, error) {
@@ -472,9 +516,6 @@ func (s *Server) restoreUserSettingsFromZip(file *zip.File, userID uint) (int, e
 		if err := s.db.Where("user_id = ? AND key = ?", userID, key).Assign(next).FirstOrCreate(&next).Error; err == nil {
 			count++
 		}
-	}
-	if count > 0 {
-		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "settings_update", "payload": gin.H{"key": "all"}})
 	}
 	return count, nil
 }
@@ -513,9 +554,6 @@ func (s *Server) restoreCategoriesFromZip(file *zip.File, userID uint) (int, err
 		if err := s.db.Where("user_id = ? AND name = ?", userID, name).Assign(next).FirstOrCreate(&next).Error; err == nil {
 			count++
 		}
-	}
-	if count > 0 {
-		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
 	}
 	return count, nil
 }
