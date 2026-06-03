@@ -19,6 +19,10 @@ function sortBooks(books) {
   return sortByShelfOrder(asList(books), useReaderStore().progressByBook)
 }
 
+function sortCategories(categories) {
+  return asList(categories).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || '')))
+}
+
 const REFRESH_DEDUPE_MS = 1200
 const MEMORY_CACHE_MS = 5000
 const SHELF_CACHE_KEY = 'bookshelf@getBookshelf'
@@ -101,14 +105,14 @@ export const useBookshelfStore = defineStore('bookshelf', {
       if (!force && this.categories.length === 0) {
         const cached = await readShelfCache(scopedShelfCacheKey(CATEGORY_CACHE_KEY))
         if (cached.length) {
-          this.categories = cached
+          this.categories = sortCategories(cached)
           this.categoriesLoadedAt = Date.now()
         }
       }
 
       const request = listCategories()
         .then(({ data }) => {
-          this.categories = asList(data)
+          this.categories = sortCategories(data)
           this.categoriesLoadedAt = Date.now()
           writeShelfCache(scopedShelfCacheKey(CATEGORY_CACHE_KEY), this.categories)
           return this.categories
@@ -136,8 +140,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
     },
     async addCategory(category) {
       const { data } = await createCategory(category)
-      this.categories.push(data)
-      this.categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name))
+      this.categories = sortCategories([...this.categories, data])
       this.invalidateCategories()
       return data
     },
@@ -168,6 +171,27 @@ export const useBookshelfStore = defineStore('bookshelf', {
         : [book, ...this.books]
       this.books = sortBooks(nextBooks)
       this.invalidateBooks()
+    },
+    replaceCategories(categories) {
+      this.categories = sortCategories(categories)
+      this.categoriesLoadedAt = Date.now()
+      writeShelfCache(scopedShelfCacheKey(CATEGORY_CACHE_KEY), this.categories)
+    },
+    upsertCategory(category) {
+      if (!category?.id) return
+      const index = this.categories.findIndex(item => Number(item.id) === Number(category.id))
+      const nextCategories = index >= 0
+        ? this.categories.map(item => Number(item.id) === Number(category.id) ? category : item)
+        : [...this.categories, category]
+      this.replaceCategories(nextCategories)
+    },
+    removeCategoryLocal(categoryId) {
+      this.categories = this.categories.filter(category => Number(category.id) !== Number(categoryId))
+      if (String(this.selectedCategoryId) === String(categoryId)) {
+        this.selectedCategoryId = ''
+      }
+      this.invalidateCategories()
+      writeShelfCache(scopedShelfCacheKey(CATEGORY_CACHE_KEY), this.categories)
     },
     applyBookProgress(progress, options = {}) {
       if (!progress?.bookId) return

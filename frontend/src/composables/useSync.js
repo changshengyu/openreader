@@ -7,6 +7,7 @@ const connected = ref(false)
 let socket
 let reconnectTimer
 let bookshelfRefreshTimer
+let bookshelfRefreshPending = { books: false, categories: false }
 let reconnectDelay = 1500
 let manualDisconnect = false
 const MAX_RECONNECT_DELAY = 15000
@@ -28,7 +29,10 @@ export function useSync() {
     socket.addEventListener('open', () => {
       connected.value = true
       reconnectDelay = 1500
-      bookshelf.loadBooks({ force: true, all: true }).catch(() => {})
+      Promise.all([
+        bookshelf.loadCategories({ force: true }),
+        bookshelf.loadBooks({ force: true, all: true }),
+      ]).catch(() => {})
     })
     socket.addEventListener('close', () => {
       connected.value = false
@@ -53,11 +57,24 @@ export function useSync() {
         if (message.payload?.id) {
           bookshelf.upsertBook(message.payload)
         } else {
-          scheduleBookshelfRefresh()
+          scheduleBookshelfRefresh({ books: true, categories: true })
         }
       }
       if (message.type === 'bookshelf_delete') {
         bookshelf.removeBookLocal(message.payload?.id)
+      }
+      if (message.type === 'category_update') {
+        bookshelf.upsertCategory(message.payload)
+      }
+      if (message.type === 'category_delete') {
+        bookshelf.removeCategoryLocal(message.payload?.id)
+      }
+      if (message.type === 'categories_update') {
+        if (Array.isArray(message.payload)) {
+          bookshelf.replaceCategories(message.payload)
+        } else {
+          scheduleBookshelfRefresh({ books: false, categories: true })
+        }
       }
       if (message.type === 'settings_update' && message.payload?.key === 'reader') {
         reader.loadReaderSettings().catch(() => {})
@@ -105,11 +122,20 @@ export function useSync() {
     reconnectTimer = undefined
   }
 
-  function scheduleBookshelfRefresh() {
+  function scheduleBookshelfRefresh(options = {}) {
+    const refreshBooks = options.books !== false
+    const refreshCategories = options.categories !== false
+    bookshelfRefreshPending.books = bookshelfRefreshPending.books || refreshBooks
+    bookshelfRefreshPending.categories = bookshelfRefreshPending.categories || refreshCategories
     if (bookshelfRefreshTimer) return
     bookshelfRefreshTimer = window.setTimeout(() => {
       bookshelfRefreshTimer = undefined
-      bookshelf.loadBooks({ force: true, all: true }).catch(() => {})
+      const pending = bookshelfRefreshPending
+      bookshelfRefreshPending = { books: false, categories: false }
+      const jobs = []
+      if (pending.categories) jobs.push(bookshelf.loadCategories({ force: true }))
+      if (pending.books) jobs.push(bookshelf.loadBooks({ force: true, all: true }))
+      Promise.all(jobs).catch(() => {})
     }, 500)
   }
 
@@ -117,5 +143,6 @@ export function useSync() {
     if (!bookshelfRefreshTimer) return
     window.clearTimeout(bookshelfRefreshTimer)
     bookshelfRefreshTimer = undefined
+    bookshelfRefreshPending = { books: false, categories: false }
   }
 }

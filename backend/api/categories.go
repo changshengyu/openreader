@@ -68,6 +68,7 @@ func (s *Server) createCategory(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "category already exists"})
 		return
 	}
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "category_update", "payload": category})
 	c.JSON(http.StatusCreated, category)
 }
 
@@ -112,6 +113,7 @@ func (s *Server) updateCategory(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "category already exists"})
 		return
 	}
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "category_update", "payload": category})
 	c.JSON(http.StatusOK, category)
 }
 
@@ -147,6 +149,7 @@ func (s *Server) reorderCategories(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list categories"})
 		return
 	}
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "categories_update", "payload": categories})
 	c.JSON(http.StatusOK, categories)
 }
 
@@ -180,5 +183,6 @@ func (s *Server) deleteCategory(c *gin.Context) {
 		return
 	}
 
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "category_delete", "payload": gin.H{"id": categoryID}})
 	c.Status(http.StatusNoContent)
 }
