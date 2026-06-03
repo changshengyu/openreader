@@ -111,11 +111,31 @@ func (s *Service) addUserSettings(zipWriter *zip.Writer) {
 	if err := s.db.Order("user_id, key").Find(&settings).Error; err != nil {
 		return
 	}
+	for i := range settings {
+		settings[i].Value = sanitizeBackupUserSettingValue(settings[i].Key, settings[i].Value)
+	}
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return
 	}
 	writeZipEntry(zipWriter, "userSettings.json", data)
+}
+
+func sanitizeBackupUserSettingValue(key string, value string) string {
+	if key != "reader" || !json.Valid([]byte(value)) {
+		return value
+	}
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(value), &data); err != nil {
+		return value
+	}
+	delete(data, "pageMode")
+	delete(data, "miniInterface")
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return value
+	}
+	return string(encoded)
 }
 
 func (s *Service) addCategories(zipWriter *zip.Writer) {

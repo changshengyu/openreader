@@ -138,7 +138,7 @@ func TestUserReaderSettingsRoundTrip(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
 
-	body := `{"value":{"fontSize":22,"pageMode":"mobile","mode":"scroll"},"baseUpdatedAt":""}`
+	body := `{"value":{"fontSize":22,"pageMode":"mobile","miniInterface":true,"mode":"scroll"},"baseUpdatedAt":""}`
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/reader", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -156,7 +156,7 @@ func TestUserReaderSettingsRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if saved.Key != "reader" || saved.Value["pageMode"] != nil || saved.Value["mode"] != "scroll" || saved.UpdatedAt == "" {
+	if saved.Key != "reader" || saved.Value["pageMode"] != nil || saved.Value["miniInterface"] != nil || saved.Value["mode"] != "scroll" || saved.UpdatedAt == "" {
 		t.Fatalf("unexpected saved settings: %+v", saved)
 	}
 
@@ -181,7 +181,7 @@ func TestUserReaderSettingsRoundTrip(t *testing.T) {
 func TestBackupIncludesUserData(t *testing.T) {
 	_, server := setupTestServer(t)
 
-	setting := models.UserSetting{UserID: 1, Key: "reader", Value: `{"fontSize":24}`}
+	setting := models.UserSetting{UserID: 1, Key: "reader", Value: `{"fontSize":24,"pageMode":"mobile","miniInterface":true}`}
 	if err := server.db.Create(&setting).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +237,9 @@ func TestBackupIncludesUserData(t *testing.T) {
 	}
 	if !strings.Contains(entries["userSettings.json"], `"key": "reader"`) || !strings.Contains(entries["userSettings.json"], `fontSize`) {
 		t.Fatalf("unexpected user settings backup: %s", entries["userSettings.json"])
+	}
+	if strings.Contains(entries["userSettings.json"], "pageMode") || strings.Contains(entries["userSettings.json"], "miniInterface") {
+		t.Fatalf("user settings backup kept local page mode: %s", entries["userSettings.json"])
 	}
 	if !strings.Contains(entries["categories.json"], `"name": "备份分组"`) {
 		t.Fatalf("unexpected categories backup: %s", entries["categories.json"])
@@ -3321,7 +3324,10 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := settingFile.Write([]byte(`[{"userId":99,"key":"search","value":"{\"searchType\":\"group\",\"group\":\"默认分组\",\"concurrent\":32}"}]`)); err != nil {
+	if _, err := settingFile.Write([]byte(`[
+		{"userId":99,"key":"search","value":"{\"searchType\":\"group\",\"group\":\"默认分组\",\"concurrent\":32}"},
+		{"userId":99,"key":"reader","value":"{\"fontSize\":24,\"pageMode\":\"mobile\",\"miniInterface\":true}"}
+	]`)); err != nil {
 		t.Fatal(err)
 	}
 	file, err := zipWriter.Create("myBookShelf.json")
@@ -3360,8 +3366,8 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"progress":1`) {
 		t.Fatalf("expected one restored progress, got %s", w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"settings":1`) {
-		t.Fatalf("expected one restored setting, got %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), `"settings":2`) {
+		t.Fatalf("expected two restored settings, got %s", w.Body.String())
 	}
 
 	var book models.Book
@@ -3392,6 +3398,13 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	}
 	if !strings.Contains(setting.Value, `"concurrent":32`) {
 		t.Fatalf("unexpected restored setting: %+v", setting)
+	}
+	setting = models.UserSetting{}
+	if err := server.db.Where("user_id = ? AND key = ?", user.ID, "reader").First(&setting).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(setting.Value, "pageMode") || strings.Contains(setting.Value, "miniInterface") {
+		t.Fatalf("restored reader setting kept local page mode: %+v", setting)
 	}
 }
 

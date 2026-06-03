@@ -466,7 +466,7 @@ func (s *Server) restoreUserSettingsFromZip(file *zip.File, userID uint) (int, e
 		next := models.UserSetting{
 			UserID:    userID,
 			Key:       key,
-			Value:     setting.Value,
+			Value:     string(sanitizeUserSettingValue(key, json.RawMessage(setting.Value))),
 			UpdatedAt: time.Now(),
 		}
 		if err := s.db.Where("user_id = ? AND key = ?", userID, key).Assign(next).FirstOrCreate(&next).Error; err == nil {

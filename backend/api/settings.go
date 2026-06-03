@@ -115,6 +115,7 @@ func sanitizeUserSettingValue(key string, value json.RawMessage) json.RawMessage
 		return value
 	}
 	delete(data, "pageMode")
+	delete(data, "miniInterface")
 	if encoded, err := json.Marshal(data); err == nil {
 		return encoded
 	}
@@ -123,7 +124,8 @@ func sanitizeUserSettingValue(key string, value json.RawMessage) json.RawMessage
 
 func userSettingResponse(setting models.UserSetting) gin.H {
 	var value any
-	if err := json.Unmarshal([]byte(setting.Value), &value); err != nil {
+	sanitized := sanitizeUserSettingValue(setting.Key, json.RawMessage(setting.Value))
+	if err := json.Unmarshal(sanitized, &value); err != nil {
 		value = gin.H{}
 	}
 	return gin.H{
