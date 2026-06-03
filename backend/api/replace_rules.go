@@ -63,6 +63,7 @@ func (s *Server) createReplaceRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create replace rule"})
 		return
 	}
+	s.broadcastReplaceRulesUpdate(userID, "create")
 	c.JSON(http.StatusCreated, rule)
 }
 
@@ -100,6 +101,7 @@ func (s *Server) updateReplaceRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update replace rule"})
 		return
 	}
+	s.broadcastReplaceRulesUpdate(userID, "update")
 	c.JSON(http.StatusOK, rule)
 }
 
@@ -118,7 +120,18 @@ func (s *Server) deleteReplaceRule(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "replace rule not found"})
 		return
 	}
+	s.broadcastReplaceRulesUpdate(userID, "delete")
 	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) broadcastReplaceRulesUpdate(userID uint, kind string) {
+	if s.hub == nil {
+		return
+	}
+	_ = s.hub.Broadcast(userID, nil, gin.H{
+		"type":    "replace_rules_update",
+		"payload": gin.H{"kind": kind},
+	})
 }
 
 func (s *Server) testReplaceRule(c *gin.Context) {

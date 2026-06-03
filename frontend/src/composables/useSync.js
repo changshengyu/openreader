@@ -7,6 +7,7 @@ const connected = ref(false)
 let socket
 let reconnectTimer
 let bookshelfRefreshTimer
+let replaceRulesUpdateTimer
 let bookshelfRefreshPending = { books: false, categories: false }
 let reconnectDelay = 1500
 let manualDisconnect = false
@@ -89,6 +90,9 @@ export function useSync() {
       if (message.type === 'sources_update') {
         dispatchWindowEvent('openreader:sources-update', message.payload)
       }
+      if (message.type === 'replace_rules_update') {
+        scheduleReplaceRulesUpdate(message.payload)
+      }
     })
   }
 
@@ -96,6 +100,7 @@ export function useSync() {
     manualDisconnect = true
     clearReconnectTimer()
     clearBookshelfRefreshTimer()
+    clearReplaceRulesUpdateTimer()
     socket?.close()
     socket = undefined
     connected.value = false
@@ -152,5 +157,19 @@ export function useSync() {
   function dispatchWindowEvent(name, detail) {
     if (typeof window === 'undefined') return
     window.dispatchEvent(new CustomEvent(name, { detail }))
+  }
+
+  function scheduleReplaceRulesUpdate(detail) {
+    clearReplaceRulesUpdateTimer()
+    replaceRulesUpdateTimer = window.setTimeout(() => {
+      replaceRulesUpdateTimer = undefined
+      dispatchWindowEvent('openreader:replace-rules-updated', detail)
+    }, 500)
+  }
+
+  function clearReplaceRulesUpdateTimer() {
+    if (!replaceRulesUpdateTimer) return
+    window.clearTimeout(replaceRulesUpdateTimer)
+    replaceRulesUpdateTimer = undefined
   }
 }

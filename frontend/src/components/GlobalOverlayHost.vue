@@ -715,6 +715,7 @@ const replaceRuleTestResult = ref(null)
 const manageKeyword = ref('')
 const MINI_INTERFACE_MAX_WIDTH = 750
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+let replaceRulesRefreshTimer
 
 const isMobileOverlay = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -769,10 +770,13 @@ const currentUserId = computed(() => userStore.profile?.id || null)
 
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
+  window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateWindowWidth)
+  window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
+  clearReplaceRulesRefreshTimer()
 })
 
 function updateWindowWidth() {
@@ -1929,6 +1933,25 @@ async function loadReplaceRules() {
   }
 }
 
+function handleReplaceRulesUpdated(event) {
+  if (event?.detail?.local || !overlay.replaceRulesVisible) return
+  scheduleReplaceRulesRefresh()
+}
+
+function scheduleReplaceRulesRefresh() {
+  clearReplaceRulesRefreshTimer()
+  replaceRulesRefreshTimer = window.setTimeout(async () => {
+    replaceRulesRefreshTimer = undefined
+    await loadReplaceRules()
+  }, 250)
+}
+
+function clearReplaceRulesRefreshTimer() {
+  if (!replaceRulesRefreshTimer) return
+  window.clearTimeout(replaceRulesRefreshTimer)
+  replaceRulesRefreshTimer = undefined
+}
+
 function onReplaceRuleSelectionChange(rows) {
   selectedReplaceRuleIds.value = rows.map(row => row.id)
 }
@@ -2094,7 +2117,7 @@ async function deleteSelectedReplaceRules() {
 }
 
 function notifyReplaceRulesUpdated() {
-  window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated'))
+  window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated', { detail: { local: true } }))
 }
 
 async function createCategory() {
