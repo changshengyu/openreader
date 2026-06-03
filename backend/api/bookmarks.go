@@ -75,6 +75,7 @@ func (s *Server) createBookmark(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create bookmark"})
 		return
 	}
+	s.broadcastBookmarksUpdate(userID, "create", bookmark.BookID, gin.H{"bookmark": bookmark})
 	c.JSON(http.StatusCreated, bookmark)
 }
 
@@ -107,6 +108,7 @@ func (s *Server) updateBookmark(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update bookmark"})
 		return
 	}
+	s.broadcastBookmarksUpdate(userID, "update", bookmark.BookID, gin.H{"bookmark": bookmark})
 	c.JSON(http.StatusOK, bookmark)
 }
 
@@ -117,7 +119,13 @@ func (s *Server) deleteBookmark(c *gin.Context) {
 		return
 	}
 
-	result := s.db.Where("user_id = ? AND id = ?", userID, bookmarkID).Delete(&models.Bookmark{})
+	var bookmark models.Bookmark
+	if err := s.db.Where("user_id = ? AND id = ?", userID, bookmarkID).First(&bookmark).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bookmark not found"})
+		return
+	}
+
+	result := s.db.Delete(&bookmark)
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete bookmark"})
 		return
@@ -126,5 +134,21 @@ func (s *Server) deleteBookmark(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "bookmark not found"})
 		return
 	}
+	s.broadcastBookmarksUpdate(userID, "delete", bookmark.BookID, gin.H{"id": bookmarkID})
 	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) broadcastBookmarksUpdate(userID uint, kind string, bookID uint, payload gin.H) {
+	if s.hub == nil {
+		return
+	}
+	if payload == nil {
+		payload = gin.H{}
+	}
+	payload["kind"] = kind
+	payload["bookId"] = bookID
+	_ = s.hub.Broadcast(userID, nil, gin.H{
+		"type":    "bookmarks_update",
+		"payload": payload,
+	})
 }

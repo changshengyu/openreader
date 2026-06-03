@@ -547,6 +547,7 @@ const noteText = ref('')
 const editingBookmark = ref(null)
 const savingBookmark = ref(false)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
+let bookmarkReloadTimer
 const toastMsg = ref('')
 const isCachingContent = ref(false)
 const cachingContentTip = ref('')
@@ -715,6 +716,7 @@ onMounted(async () => {
   window.addEventListener('pagehide', handleReaderPageHide)
   document.addEventListener('visibilitychange', handleReaderVisibilityChange)
   window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
+  window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   customBg.value = reader.customBgColor
   sliderLineHeight.value = reader.lineHeight
 })
@@ -730,6 +732,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pagehide', handleReaderPageHide)
   document.removeEventListener('visibilitychange', handleReaderVisibilityChange)
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
+  window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
+  clearBookmarkReloadTimer()
 })
 
 onBeforeRouteLeave(() => {
@@ -860,9 +864,7 @@ function resetContentSearchState() {
 async function loadReaderBook() {
   clearTimeout(saveTimer)
   const targetBookId = bookId.value
-  const bookmarksRequest = api.get(`/books/${targetBookId}/bookmarks`)
-    .then(({ data }) => data)
-    .catch(() => [])
+  const bookmarksRequest = loadBookmarks(targetBookId).catch(() => [])
   const [bookRes, chRes, saved] = await Promise.all([
     cacheFirstRequest(
       () => api.get(`/books/${targetBookId}`),
@@ -904,6 +906,38 @@ async function loadReaderBook() {
     if (bookId.value === targetBookId) bookmarks.value = data
   }).catch(() => {})
   await jumpToRouteLine()
+}
+
+async function loadBookmarks(targetBookId = bookId.value) {
+  const { data } = await api.get(`/books/${targetBookId}/bookmarks`)
+  if (String(bookId.value) === String(targetBookId)) {
+    bookmarks.value = data || []
+  }
+  return data || []
+}
+
+function handleBookmarksUpdated(event) {
+  const bookIds = event?.detail?.bookIds || []
+  if (bookIds.length && !bookIds.some(id => String(id) === String(bookId.value))) return
+  scheduleBookmarkReload()
+}
+
+function scheduleBookmarkReload() {
+  clearBookmarkReloadTimer()
+  bookmarkReloadTimer = window.setTimeout(async () => {
+    bookmarkReloadTimer = undefined
+    try {
+      await loadBookmarks()
+    } catch {
+      // Keep the current bookmark list; the next drawer open or sync event can recover.
+    }
+  }, 250)
+}
+
+function clearBookmarkReloadTimer() {
+  if (!bookmarkReloadTimer) return
+  window.clearTimeout(bookmarkReloadTimer)
+  bookmarkReloadTimer = undefined
 }
 
 async function refreshReaderBookCaches(options = {}) {

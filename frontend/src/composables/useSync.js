@@ -9,8 +9,10 @@ let reconnectTimer
 let bookshelfRefreshTimer
 let replaceRulesUpdateTimer
 let rssUpdateTimer
+let bookmarksUpdateTimer
 let bookshelfRefreshPending = { books: false, categories: false }
 let rssUpdatePending = { sources: false, articles: false, payload: null }
+let bookmarksUpdatePending = { bookIds: new Set(), payload: null }
 let reconnectDelay = 1500
 let manualDisconnect = false
 const MAX_RECONNECT_DELAY = 15000
@@ -98,6 +100,9 @@ export function useSync() {
       if (message.type === 'rss_update') {
         scheduleRSSUpdate(message.payload)
       }
+      if (message.type === 'bookmarks_update') {
+        scheduleBookmarksUpdate(message.payload)
+      }
     })
   }
 
@@ -107,6 +112,7 @@ export function useSync() {
     clearBookshelfRefreshTimer()
     clearReplaceRulesUpdateTimer()
     clearRSSUpdateTimer()
+    clearBookmarksUpdateTimer()
     socket?.close()
     socket = undefined
     connected.value = false
@@ -198,5 +204,28 @@ export function useSync() {
     window.clearTimeout(rssUpdateTimer)
     rssUpdateTimer = undefined
     rssUpdatePending = { sources: false, articles: false, payload: null }
+  }
+
+  function scheduleBookmarksUpdate(detail = {}) {
+    const bookId = Number(detail?.bookId || 0)
+    if (bookId) bookmarksUpdatePending.bookIds.add(bookId)
+    bookmarksUpdatePending.payload = detail
+    if (bookmarksUpdateTimer) return
+    bookmarksUpdateTimer = window.setTimeout(() => {
+      bookmarksUpdateTimer = undefined
+      const pending = {
+        bookIds: [...bookmarksUpdatePending.bookIds],
+        payload: bookmarksUpdatePending.payload,
+      }
+      bookmarksUpdatePending = { bookIds: new Set(), payload: null }
+      dispatchWindowEvent('openreader:bookmarks-updated', pending)
+    }, 500)
+  }
+
+  function clearBookmarksUpdateTimer() {
+    if (!bookmarksUpdateTimer) return
+    window.clearTimeout(bookmarksUpdateTimer)
+    bookmarksUpdateTimer = undefined
+    bookmarksUpdatePending = { bookIds: new Set(), payload: null }
   }
 }

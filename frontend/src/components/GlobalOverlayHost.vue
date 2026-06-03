@@ -716,6 +716,7 @@ const manageKeyword = ref('')
 const MINI_INTERFACE_MAX_WIDTH = 750
 const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 let replaceRulesRefreshTimer
+let bookmarkRefreshTimer
 
 const isMobileOverlay = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -771,12 +772,15 @@ const currentUserId = computed(() => userStore.profile?.id || null)
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
   window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
+  window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateWindowWidth)
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
+  window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   clearReplaceRulesRefreshTimer()
+  clearBookmarkRefreshTimer()
 })
 
 function updateWindowWidth() {
@@ -1601,6 +1605,27 @@ async function loadBookmarkItems() {
   } finally {
     bookmarkLoading.value = false
   }
+}
+
+function handleBookmarksUpdated(event) {
+  if (!overlay.bookmarkVisible || !overlay.bookmarkBook?.id) return
+  const bookIds = event?.detail?.bookIds || []
+  if (bookIds.length && !bookIds.some(id => String(id) === String(overlay.bookmarkBook.id))) return
+  scheduleBookmarkRefresh()
+}
+
+function scheduleBookmarkRefresh() {
+  clearBookmarkRefreshTimer()
+  bookmarkRefreshTimer = window.setTimeout(async () => {
+    bookmarkRefreshTimer = undefined
+    await loadBookmarkItems()
+  }, 250)
+}
+
+function clearBookmarkRefreshTimer() {
+  if (!bookmarkRefreshTimer) return
+  window.clearTimeout(bookmarkRefreshTimer)
+  bookmarkRefreshTimer = undefined
 }
 
 function jumpToBookmark(bookmark) {
