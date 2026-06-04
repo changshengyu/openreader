@@ -252,6 +252,14 @@
     </div>
 
     <div class="setting-row">
+      <label class="setting-label">字体颜色</label>
+      <div class="color-setting">
+        <el-color-picker v-model="fontColorModel" size="small" />
+        <el-button v-if="reader.fontColor" size="small" text type="danger" @click="reader.setFontColor('')">恢复默认</el-button>
+      </div>
+    </div>
+
+    <div class="setting-row">
       <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
       <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" />
     </div>
@@ -453,6 +461,11 @@ const fontWeightModel = computed({
   set: value => props.reader.setFontWeight(value),
 })
 
+const fontColorModel = computed({
+  get: () => props.reader.fontColor,
+  set: value => props.reader.setFontColor(value || ''),
+})
+
 const paragraphSpaceModel = computed({
   get: () => props.reader.paragraphSpace,
   set: value => props.reader.setParagraphSpace(value),
@@ -615,6 +628,13 @@ function resetReaderSettings() {
   min-width: 0;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.color-setting {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
 }
 
 .setting-row {

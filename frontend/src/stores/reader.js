@@ -25,6 +25,7 @@ export const useReaderStore = defineStore('reader', {
     chineseFont: '简体',
     fontSize: 18,
     fontWeight: 400,
+    fontColor: '',
     theme: 'parchment',
     customBgColor: '',
     customBgImage: '',
@@ -41,7 +42,7 @@ export const useReaderStore = defineStore('reader', {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 9,
+    settingsVersion: 10,
     settingsUpdatedAt: '',
     settingsSyncBaseUpdatedAt: '',
     settingsSyncing: false,
@@ -59,7 +60,7 @@ export const useReaderStore = defineStore('reader', {
         return {
           label: '自定义',
           bg: state.customBgColor || '#f4e9bd',
-          text: '#24282c',
+          text: state.fontColor || '#24282c',
         }
       }
       return themePresets[state.theme] || themePresets.parchment
@@ -135,6 +136,7 @@ export const useReaderStore = defineStore('reader', {
           mode: this.mode,
           fontSize: this.fontSize,
           theme: this.theme,
+          fontColor: this.fontColor,
           clickMethod: this.clickMethod,
           selectionAction: this.selectionAction,
         }
@@ -144,6 +146,7 @@ export const useReaderStore = defineStore('reader', {
         this.mode = 'flip'
         this.fontSize = Math.min(this.fontSize, 20)
         this.theme = 'white'
+        this.fontColor = ''
         this.clickMethod = 'none'
         this.selectionAction = '忽略'
       } else {
@@ -154,6 +157,7 @@ export const useReaderStore = defineStore('reader', {
         if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
         if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
         if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
+        if (typeof snapshot.fontColor === 'string') this.fontColor = snapshot.fontColor
         if (['next', 'auto', 'none'].includes(snapshot.clickMethod)) this.clickMethod = snapshot.clickMethod
         if (['操作弹窗', '忽略'].includes(snapshot.selectionAction)) this.selectionAction = snapshot.selectionAction
         this.normalModeSnapshot = null
@@ -200,6 +204,10 @@ export const useReaderStore = defineStore('reader', {
     },
     setFontWeight(fontWeight) {
       this.fontWeight = clampNumber(fontWeight, 300, 900, 400)
+      this.markSettingsDirty()
+    },
+    setFontColor(fontColor) {
+      this.fontColor = typeof fontColor === 'string' ? fontColor : ''
       this.markSettingsDirty()
     },
     setTheme(theme) {
@@ -298,6 +306,7 @@ export const useReaderStore = defineStore('reader', {
       this.autoTheme = this.autoTheme === true
       this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
       this.fontWeight = clampNumber(this.fontWeight, 300, 900, 400)
+      if (typeof this.fontColor !== 'string') this.fontColor = ''
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
       this.paragraphSpace = clampNumber(this.paragraphSpace, 0, 3, 0)
       this.columnWidth = clampNumber(this.columnWidth, 320, 1200, 800)
@@ -319,7 +328,7 @@ export const useReaderStore = defineStore('reader', {
         this.paragraphSpace = 0.2
         this.columnWidth = 800
       }
-      this.settingsVersion = 9
+      this.settingsVersion = 10
       this.settingsSyncing = false
     },
     markSettingsDirty(options = {}) {
@@ -632,6 +641,7 @@ function readerSettingsPayload(state) {
     chineseFont: state.chineseFont,
     fontSize: state.fontSize,
     fontWeight: state.fontWeight,
+    fontColor: state.fontColor || '',
     theme: state.theme,
     customBgColor: state.customBgColor,
     customBgImage: state.customBgImage,
@@ -651,7 +661,7 @@ function readerSettingsPayload(state) {
     lineHeight: state.lineHeight,
     paragraphSpace: state.paragraphSpace,
     columnWidth: state.columnWidth,
-    settingsVersion: 9,
+    settingsVersion: 10,
   }
 }
 
@@ -666,6 +676,7 @@ function defaultReaderSettings() {
     chineseFont: '简体',
     fontSize: 18,
     fontWeight: 400,
+    fontColor: '',
     theme: 'parchment',
     customBgColor: '',
     customBgImage: '',
@@ -685,7 +696,7 @@ function defaultReaderSettings() {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 9,
+    settingsVersion: 10,
     normalModeSnapshot: null,
   }
 }
@@ -713,6 +724,7 @@ function sanitizeReaderSettings(payload, options = {}) {
   if (typeof payload.ttsVoiceURI === 'string') settings.ttsVoiceURI = payload.ttsVoiceURI
   settings.fontSize = clampNumber(payload.fontSize, 8, 36, 18)
   settings.fontWeight = clampNumber(payload.fontWeight, 300, 900, 400)
+  settings.fontColor = typeof payload.fontColor === 'string' ? payload.fontColor : ''
   settings.brightness = clampNumber(payload.brightness, 50, 150, 100)
   settings.autoReadingMethod = payload.autoReadingMethod === '段落滚动' ? '段落滚动' : '像素滚动'
   settings.autoReadingPixel = clampNumber(payload.autoReadingPixel ?? payload.autoReadSpeed, 1, 80, 12)
@@ -724,7 +736,7 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.lineHeight = clampNumber(payload.lineHeight, 1, 5, 1.8)
   settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 3, 0.2)
   settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)
-  settings.settingsVersion = 9
+  settings.settingsVersion = 10
   return settings
 }
 
@@ -768,6 +780,7 @@ function defaultCustomConfigList() {
       chineseFont: '简体',
       fontSize: 18,
       fontWeight: 400,
+      fontColor: '',
       theme: 'parchment',
       customBgColor: '',
       customBgImage: '',
@@ -786,7 +799,7 @@ function defaultCustomConfigList() {
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 9,
+      settingsVersion: 10,
       name: '内置白天',
       configDefaultType: '白天默认',
       builtin: true,
@@ -801,6 +814,7 @@ function defaultCustomConfigList() {
       chineseFont: '简体',
       fontSize: 18,
       fontWeight: 400,
+      fontColor: '',
       theme: 'dark',
       customBgColor: '',
       customBgImage: '',
@@ -819,7 +833,7 @@ function defaultCustomConfigList() {
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 9,
+      settingsVersion: 10,
       name: '内置黑夜',
       configDefaultType: '黑夜默认',
       builtin: true,

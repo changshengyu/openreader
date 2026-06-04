@@ -649,7 +649,7 @@ const readerStyle = computed(() => ({
   '--reader-font-size': `${reader.fontSize}px`,
   '--reader-heading-size': `${Math.round(reader.fontSize * 1.36)}px`,
   '--reader-bg': reader.currentTheme.bg,
-  '--reader-text': reader.currentTheme.text,
+  '--reader-text': reader.fontColor || reader.currentTheme.text,
   '--reader-font-weight': reader.fontWeight,
   '--reader-brightness': `${reader.brightness}%`,
   '--reader-line-height': reader.lineHeight,
