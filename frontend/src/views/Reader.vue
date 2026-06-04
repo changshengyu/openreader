@@ -625,7 +625,9 @@ const chapterTextLength = computed(() => {
   const last = paragraphs[paragraphs.length - 1]
   return last.pos + last.text.length
 })
-const isScrollRead = computed(() => reader.mode === 'page' || reader.mode === 'scroll' || reader.mode === 'scroll2')
+const isVerticalPagedRead = computed(() => reader.mode === 'page')
+const isScrollRead = computed(() => reader.mode === 'scroll' || reader.mode === 'scroll2')
+const isVerticalRead = computed(() => isVerticalPagedRead.value || isScrollRead.value)
 const isContinuousScrollRead = computed(() => reader.mode === 'scroll' || reader.mode === 'scroll2')
 const displayedChapterBlocks = computed(() => {
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
@@ -1908,7 +1910,7 @@ function runAutoReadLoop(delay = 0) {
 }
 
 async function autoReadByPixel() {
-  if (isScrollRead.value && contentEl.value) {
+  if (isVerticalRead.value && contentEl.value) {
     const el = contentEl.value
     const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
     if (el.scrollTop < bottom - 4) {
@@ -1922,7 +1924,7 @@ async function autoReadByPixel() {
 }
 
 async function autoReadByParagraph() {
-  if (!isScrollRead.value || !contentEl.value || !contentBody.value) {
+  if (!isVerticalRead.value || !contentEl.value || !contentBody.value) {
     const advanced = await advanceAutoReadPage()
     if (advanced) runAutoReadLoop(reader.autoReadingLineTime)
     return
@@ -1992,7 +1994,7 @@ async function previousPage() {
     saveCurrentProgress()
     return
   }
-  if (isScrollRead.value && contentEl.value) {
+  if (isVerticalRead.value && contentEl.value) {
     const el = contentEl.value
     if (el.scrollTop > 8) {
       el.scrollBy({ top: -scrollStep(), behavior: readerScrollBehavior() })
@@ -2010,7 +2012,7 @@ async function nextPage() {
     saveCurrentProgress()
     return
   }
-  if (isScrollRead.value && contentEl.value) {
+  if (isVerticalRead.value && contentEl.value) {
     const el = contentEl.value
     const bottom = el.scrollHeight - el.clientHeight
     if (el.scrollTop < bottom - 8) {
@@ -2349,7 +2351,7 @@ function handleReaderVisibilityChange() {
 }
 
 function onScroll() {
-  if (!isScrollRead.value) return
+  if (!isVerticalRead.value) return
   if (restoringPosition || chapterLoading.value) return
   updateCurrentChapterFromScroll()
   maybeExtendShowChapters()
