@@ -892,20 +892,19 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .book-row {
   display: grid;
-  grid-template-columns: clamp(58px, 18vw, 76px) minmax(0, 1fr);
-  min-height: 116px;
+  grid-template-columns: 84px minmax(0, 1fr);
+  min-height: 132px;
   align-items: center;
-  gap: 14px;
+  gap: 20px;
   width: 100%;
   box-sizing: border-box;
-  padding: 10px 14px;
+  padding: 10px 20px;
   contain: layout paint;
 }
 
 .shelf-page.mobile-shelf .list-cover {
-  width: clamp(58px, 18vw, 76px);
-  aspect-ratio: 3 / 4;
-  height: auto;
+  width: 84px;
+  height: 112px;
 }
 
 .shelf-page.mobile-shelf .book-operation {
@@ -921,7 +920,7 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .list-main {
   width: auto;
-  min-height: clamp(78px, 24vw, 102px);
+  min-height: 112px;
   box-sizing: border-box;
   justify-content: space-between;
   gap: 4px;
@@ -1052,20 +1051,19 @@ function readError(err, fallback) {
 
   .book-row {
     display: grid;
-    grid-template-columns: clamp(58px, 18vw, 76px) minmax(0, 1fr);
-    min-height: 116px;
+    grid-template-columns: 84px minmax(0, 1fr);
+    min-height: 132px;
     align-items: center;
-    gap: 14px;
+    gap: 20px;
     width: 100%;
     box-sizing: border-box;
-    padding: 10px 14px;
+    padding: 10px 20px;
     contain: layout paint;
   }
 
   .list-cover {
-    width: clamp(58px, 18vw, 76px);
-    aspect-ratio: 3 / 4;
-    height: auto;
+    width: 84px;
+    height: 112px;
   }
 
   .book-operation {
@@ -1082,7 +1080,7 @@ function readError(err, fallback) {
   .list-main {
     width: auto;
     max-width: 100%;
-    min-height: clamp(78px, 24vw, 102px);
+    min-height: 112px;
     box-sizing: border-box;
     justify-content: space-between;
     padding-right: 0;
@@ -1147,19 +1145,19 @@ function readError(err, fallback) {
   .shelf-page.mobile-shelf .book-row,
   .book-row {
     display: grid;
-    grid-template-columns: clamp(58px, 18vw, 72px) minmax(0, 1fr);
-    gap: 12px;
-    min-height: 112px;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 14px;
+    min-height: 132px;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 10px 12px;
+    padding: 10px 20px;
   }
 
   .shelf-page.mobile-shelf .list-cover,
   .list-cover {
-    width: clamp(58px, 18vw, 72px);
-    height: auto;
+    width: 84px;
+    height: 112px;
     flex-basis: auto;
   }
 
