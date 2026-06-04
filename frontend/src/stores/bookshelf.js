@@ -16,7 +16,13 @@ function asList(data) {
 }
 
 function sortBooks(books) {
-  return sortByShelfOrder(asList(books), useReaderStore().progressByBook)
+  const reader = useReaderStore()
+  const values = asList(books).map(book => {
+    const progress = newestProgress(book?.progress || null, reader.progressByBook?.[book?.id] || null)
+    if (!progress || progress === book?.progress) return book
+    return { ...book, progress }
+  })
+  return sortByShelfOrder(values, reader.progressByBook)
 }
 
 function sortCategories(categories) {
