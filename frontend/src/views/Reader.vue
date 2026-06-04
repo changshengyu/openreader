@@ -1304,6 +1304,7 @@ async function jumpFromToc(index) {
 }
 
 function locateTocCurrentChapter() {
+  updateCurrentChapterFromScroll()
   tocFilter.value = ''
   tocLocateKey.value += 1
   nextTick(() => tocPanelRef.value?.locateCurrentChapter?.())
@@ -2111,7 +2112,7 @@ function handleTapZone(zone) {
 }
 
 function handleReaderContentClick(event) {
-  if (!isMobileReader.value || isOverlayOpen.value || !pageEl.value) return
+  if (isOverlayOpen.value || !pageEl.value) return
   if (Date.now() - handledTouchTapAt < 450) return
   if (ignoreNextContentClick) {
     ignoreNextContentClick = false
@@ -2121,13 +2122,18 @@ function handleReaderContentClick(event) {
   const target = event.target
   if (target?.closest?.('button, a, input, textarea, select, [role="button"]')) return
   const rect = pageEl.value.getBoundingClientRect()
-  handleTapPoint({
+  const point = {
     rect,
     relX: event.clientX - rect.left,
     relY: event.clientY - rect.top,
     clientX: event.clientX,
     clientY: event.clientY,
-  })
+  }
+  if (isMobileReader.value) {
+    handleTapPoint(point)
+  } else {
+    handleDesktopTapPoint(point)
+  }
 }
 
 function handleReaderTouchStart(event) {
@@ -2243,6 +2249,34 @@ function handleTapPoint(point) {
     return
   }
 
+  if (pointY > midY) nextPage()
+  else previousPage()
+}
+
+function handleDesktopTapPoint(point) {
+  if (isOverlayOpen.value || !point?.rect) return
+  if (scheduleSelectedTextOperation(0)) {
+    ignoreNextContentClick = true
+    return
+  }
+  const viewportWidth = window.innerWidth || point.rect.width
+  const viewportHeight = window.innerHeight || point.rect.height
+  const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
+  const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
+  const midX = viewportWidth / 2
+  const midY = viewportHeight / 2
+  const inCenter = Math.abs(pointX - midX) <= viewportWidth * 0.2
+    && Math.abs(pointY - midY) <= viewportHeight * 0.2
+  if (inCenter || reader.clickMethod === 'none') return
+  if (reader.clickMethod === 'next') {
+    nextPage()
+    return
+  }
+  if (reader.mode === 'flip') {
+    if (pointX > midX) nextPage()
+    else previousPage()
+    return
+  }
   if (pointY > midY) nextPage()
   else previousPage()
 }
