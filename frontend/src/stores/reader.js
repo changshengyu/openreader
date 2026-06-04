@@ -27,6 +27,8 @@ export const useReaderStore = defineStore('reader', {
     fontWeight: 400,
     fontColor: '',
     theme: 'parchment',
+    customBodyColor: '',
+    customPopupColor: '',
     customBgColor: '',
     customBgImage: '',
     customBgImageList: [],
@@ -42,7 +44,7 @@ export const useReaderStore = defineStore('reader', {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 10,
+    settingsVersion: 11,
     settingsUpdatedAt: '',
     settingsSyncBaseUpdatedAt: '',
     settingsSyncing: false,
@@ -136,6 +138,8 @@ export const useReaderStore = defineStore('reader', {
           mode: this.mode,
           fontSize: this.fontSize,
           theme: this.theme,
+          customBodyColor: this.customBodyColor,
+          customPopupColor: this.customPopupColor,
           fontColor: this.fontColor,
           clickMethod: this.clickMethod,
           selectionAction: this.selectionAction,
@@ -157,6 +161,8 @@ export const useReaderStore = defineStore('reader', {
         if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
         if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
         if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
+        if (typeof snapshot.customBodyColor === 'string') this.customBodyColor = snapshot.customBodyColor
+        if (typeof snapshot.customPopupColor === 'string') this.customPopupColor = snapshot.customPopupColor
         if (typeof snapshot.fontColor === 'string') this.fontColor = snapshot.fontColor
         if (['next', 'auto', 'none'].includes(snapshot.clickMethod)) this.clickMethod = snapshot.clickMethod
         if (['操作弹窗', '忽略'].includes(snapshot.selectionAction)) this.selectionAction = snapshot.selectionAction
@@ -212,6 +218,14 @@ export const useReaderStore = defineStore('reader', {
     },
     setTheme(theme) {
       this.theme = theme
+      this.markSettingsDirty()
+    },
+    setCustomBodyColor(color) {
+      this.customBodyColor = typeof color === 'string' ? color : ''
+      this.markSettingsDirty()
+    },
+    setCustomPopupColor(color) {
+      this.customPopupColor = typeof color === 'string' ? color : ''
       this.markSettingsDirty()
     },
     setCustomBgColor(color) {
@@ -307,6 +321,8 @@ export const useReaderStore = defineStore('reader', {
       this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
       this.fontWeight = clampNumber(this.fontWeight, 300, 900, 400)
       if (typeof this.fontColor !== 'string') this.fontColor = ''
+      if (typeof this.customBodyColor !== 'string') this.customBodyColor = ''
+      if (typeof this.customPopupColor !== 'string') this.customPopupColor = ''
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
       this.paragraphSpace = clampNumber(this.paragraphSpace, 0, 3, 0)
       this.columnWidth = clampNumber(this.columnWidth, 320, 1200, 800)
@@ -328,7 +344,7 @@ export const useReaderStore = defineStore('reader', {
         this.paragraphSpace = 0.2
         this.columnWidth = 800
       }
-      this.settingsVersion = 10
+      this.settingsVersion = 11
       this.settingsSyncing = false
     },
     markSettingsDirty(options = {}) {
@@ -643,6 +659,8 @@ function readerSettingsPayload(state) {
     fontWeight: state.fontWeight,
     fontColor: state.fontColor || '',
     theme: state.theme,
+    customBodyColor: state.customBodyColor || '',
+    customPopupColor: state.customPopupColor || '',
     customBgColor: state.customBgColor,
     customBgImage: state.customBgImage,
     customBgImageList: Array.isArray(state.customBgImageList) ? state.customBgImageList : [],
@@ -661,7 +679,7 @@ function readerSettingsPayload(state) {
     lineHeight: state.lineHeight,
     paragraphSpace: state.paragraphSpace,
     columnWidth: state.columnWidth,
-    settingsVersion: 10,
+    settingsVersion: 11,
   }
 }
 
@@ -678,6 +696,8 @@ function defaultReaderSettings() {
     fontWeight: 400,
     fontColor: '',
     theme: 'parchment',
+    customBodyColor: '',
+    customPopupColor: '',
     customBgColor: '',
     customBgImage: '',
     customBgImageList: [],
@@ -696,7 +716,7 @@ function defaultReaderSettings() {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 10,
+    settingsVersion: 11,
     normalModeSnapshot: null,
   }
 }
@@ -713,6 +733,8 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.customFontsMap = sanitizeCustomFontsMap(payload.customFontsMap)
   settings.chineseFont = payload.chineseFont === '繁体' ? '繁体' : '简体'
   if (typeof payload.theme === 'string') settings.theme = payload.theme
+  settings.customBodyColor = typeof payload.customBodyColor === 'string' ? payload.customBodyColor : ''
+  settings.customPopupColor = typeof payload.customPopupColor === 'string' ? payload.customPopupColor : ''
   if (typeof payload.customBgColor === 'string') settings.customBgColor = payload.customBgColor
   if (typeof payload.customBgImage === 'string') settings.customBgImage = payload.customBgImage
   settings.customBgImageList = sanitizeStringList(payload.customBgImageList)
@@ -736,7 +758,7 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.lineHeight = clampNumber(payload.lineHeight, 1, 5, 1.8)
   settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 3, 0.2)
   settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)
-  settings.settingsVersion = 10
+  settings.settingsVersion = 11
   return settings
 }
 
@@ -782,6 +804,8 @@ function defaultCustomConfigList() {
       fontWeight: 400,
       fontColor: '',
       theme: 'parchment',
+      customBodyColor: '',
+      customPopupColor: '',
       customBgColor: '',
       customBgImage: '',
       customBgImageList: [],
@@ -799,7 +823,7 @@ function defaultCustomConfigList() {
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 10,
+      settingsVersion: 11,
       name: '内置白天',
       configDefaultType: '白天默认',
       builtin: true,
@@ -816,6 +840,8 @@ function defaultCustomConfigList() {
       fontWeight: 400,
       fontColor: '',
       theme: 'dark',
+      customBodyColor: '',
+      customPopupColor: '',
       customBgColor: '',
       customBgImage: '',
       customBgImageList: [],
@@ -833,7 +859,7 @@ function defaultCustomConfigList() {
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 10,
+      settingsVersion: 11,
       name: '内置黑夜',
       configDefaultType: '黑夜默认',
       builtin: true,

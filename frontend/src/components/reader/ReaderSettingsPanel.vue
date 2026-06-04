@@ -107,7 +107,21 @@
 
     <template v-if="reader.theme === 'custom'">
       <div class="setting-row">
-        <label class="setting-label">背景色</label>
+        <label class="setting-label">页面背景颜色</label>
+        <div class="color-setting">
+          <el-color-picker v-model="bodyColorModel" size="small" />
+          <el-button v-if="reader.customBodyColor" size="small" text type="danger" @click="reader.setCustomBodyColor('')">恢复默认</el-button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <label class="setting-label">浮窗背景颜色</label>
+        <div class="color-setting">
+          <el-color-picker v-model="popupColorModel" size="small" />
+          <el-button v-if="reader.customPopupColor" size="small" text type="danger" @click="reader.setCustomPopupColor('')">恢复默认</el-button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <label class="setting-label">阅读背景颜色</label>
         <el-color-picker v-model="localCustomBg" size="small" />
       </div>
       <div class="setting-row">
@@ -464,6 +478,16 @@ const fontWeightModel = computed({
 const fontColorModel = computed({
   get: () => props.reader.fontColor,
   set: value => props.reader.setFontColor(value || ''),
+})
+
+const bodyColorModel = computed({
+  get: () => props.reader.customBodyColor,
+  set: value => props.reader.setCustomBodyColor(value || ''),
+})
+
+const popupColorModel = computed({
+  get: () => props.reader.customPopupColor,
+  set: value => props.reader.setCustomPopupColor(value || ''),
 })
 
 const paragraphSpaceModel = computed({

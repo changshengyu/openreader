@@ -648,6 +648,8 @@ const readerStyle = computed(() => ({
   '--reader-font-family': fontStack.value,
   '--reader-font-size': `${reader.fontSize}px`,
   '--reader-heading-size': `${Math.round(reader.fontSize * 1.36)}px`,
+  '--reader-body-bg': reader.customBodyColor || '#d9c27f',
+  '--reader-popup-bg': reader.customPopupColor || 'rgba(255, 252, 239, 0.94)',
   '--reader-bg': reader.currentTheme.bg,
   '--reader-text': reader.fontColor || reader.currentTheme.text,
   '--reader-font-weight': reader.fontWeight,
@@ -3333,7 +3335,7 @@ function readError(err, fallback) {
   background:
     linear-gradient(90deg, rgba(124, 99, 43, 0.16), transparent 18%, transparent 82%, rgba(124, 99, 43, 0.16)),
     repeating-linear-gradient(0deg, rgba(105, 83, 35, 0.035) 0 1px, transparent 1px 6px),
-    #d9c27f;
+    var(--reader-body-bg);
 }
 
 /* ---- 左侧工具栏 ---- */
@@ -3346,7 +3348,7 @@ function readError(err, fallback) {
   width: 58px;
   display: grid;
   align-content: start;
-  background: rgba(255, 250, 226, 0.5);
+  background: color-mix(in srgb, var(--reader-popup-bg) 64%, transparent);
   border-left: 1px solid rgba(148, 132, 87, 0.26);
   border-right: 1px solid rgba(148, 132, 87, 0.38);
   backdrop-filter: blur(2px);
@@ -3361,7 +3363,7 @@ function readError(err, fallback) {
   gap: 2px;
   padding: 7px 0 5px;
   color: rgba(36, 33, 27, 0.62);
-  background: rgba(255, 253, 240, 0.46);
+  background: color-mix(in srgb, var(--reader-popup-bg) 58%, transparent);
   border: 0;
   border-bottom: 1px solid rgba(148, 132, 87, 0.35);
   cursor: pointer;
@@ -3375,7 +3377,7 @@ function readError(err, fallback) {
 
 .rail-item:hover {
   color: #1e1f22;
-  background: rgba(255, 253, 240, 0.78);
+  background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
 }
 
 .rail-item:disabled {
@@ -3416,7 +3418,7 @@ function readError(err, fallback) {
   height: 36px;
   place-items: center;
   color: #121212;
-  background: rgba(255, 249, 226, 0.9);
+  background: var(--reader-popup-bg);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 999px;
   box-shadow: 0 4px 10px rgba(80, 62, 28, 0.08);
@@ -3426,7 +3428,7 @@ function readError(err, fallback) {
 .round-tool:hover,
 .round-tool.active {
   color: #0f5451;
-  background: #fff9df;
+  background: var(--reader-popup-bg);
   box-shadow: 0 12px 26px rgba(80, 62, 28, 0.14);
 }
 
@@ -3674,7 +3676,7 @@ function readError(err, fallback) {
   z-index: 4;
   display: grid;
   width: 42px;
-  background: rgba(255, 250, 226, 0.72);
+  background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
   border: 1px solid rgba(148, 132, 87, 0.38);
   border-bottom: 0;
 }
@@ -3685,7 +3687,7 @@ function readError(err, fallback) {
   height: 43px;
   place-items: center;
   color: #121212;
-  background: rgba(255, 253, 240, 0.44);
+  background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
   border: 0;
   border-bottom: 1px solid rgba(148, 132, 87, 0.32);
   font-size: 16px;
@@ -3704,7 +3706,7 @@ function readError(err, fallback) {
   gap: 7px;
   padding: 9px 0;
   color: #121212;
-  background: rgba(255, 253, 240, 0.5);
+  background: color-mix(in srgb, var(--reader-popup-bg) 70%, transparent);
   border-bottom: 1px solid rgba(148, 132, 87, 0.32);
   font-size: 12px;
 }
@@ -3737,7 +3739,7 @@ function readError(err, fallback) {
 }
 
 .page-step:hover {
-  background: rgba(255, 253, 240, 0.82);
+  background: var(--reader-popup-bg);
 }
 
 .reader-mobile-bottom {
@@ -3778,6 +3780,21 @@ function readError(err, fallback) {
   gap: 14px;
   margin: -2px 0 14px;
 }
+
+.reader-shell :deep(.el-drawer) {
+  color: var(--reader-text);
+  background: var(--reader-popup-bg);
+}
+
+.reader-shell :deep(.el-drawer__header) {
+  color: var(--reader-text);
+  margin-bottom: 14px;
+}
+
+.reader-shell :deep(.el-drawer__body) {
+  background: var(--reader-popup-bg);
+}
+
 .reader-drawer-title span {
   color: #ed4259;
   border-bottom: 1px solid #ed4259;
@@ -3888,7 +3905,7 @@ function readError(err, fallback) {
 .reader-cache-status button {
   min-height: 42px;
   color: #2a2925;
-  background: #fffaf0;
+  background: var(--reader-popup-bg);
   border: 1px solid #e7dabb;
   border-radius: 6px;
   cursor: pointer;
@@ -3904,7 +3921,7 @@ function readError(err, fallback) {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  background: rgba(255, 250, 240, 0.78);
+  background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
   border: 1px solid #eadfca;
   border-radius: 6px;
 }
@@ -3968,7 +3985,7 @@ function readError(err, fallback) {
     gap: 8px;
     min-height: 58px;
     padding: max(8px, env(safe-area-inset-top)) 12px 8px;
-    background: rgba(255, 252, 239, 0.94);
+    background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
     border-bottom: 1px solid rgba(148, 132, 87, 0.28);
     box-shadow: 0 8px 24px rgba(73, 57, 27, 0.08);
   }
@@ -4008,7 +4025,7 @@ function readError(err, fallback) {
     min-height: calc(76px + env(safe-area-inset-bottom));
     box-sizing: border-box;
     padding: 8px 10px max(10px, env(safe-area-inset-bottom));
-    background: rgba(255, 252, 239, 0.92);
+    background: color-mix(in srgb, var(--reader-popup-bg) 94%, transparent);
     border-top: 1px solid rgba(148, 132, 87, 0.35);
     border-radius: 10px 10px 0 0;
     box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
@@ -4021,7 +4038,7 @@ function readError(err, fallback) {
     gap: 8px;
     min-height: 54px;
     padding: 7px;
-    background: rgba(255, 252, 239, 0.94);
+    background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
     border: 1px solid rgba(148, 132, 87, 0.28);
     border-radius: 8px;
     box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
@@ -4034,7 +4051,7 @@ function readError(err, fallback) {
     min-width: 0;
     min-height: 38px;
     color: #24201b;
-    background: #fffaf0;
+    background: var(--reader-popup-bg);
     border: 1px solid rgba(148, 132, 87, 0.3);
     border-radius: 6px;
     font-size: 13px;
@@ -4103,7 +4120,7 @@ function readError(err, fallback) {
     align-content: center;
     gap: 7px;
     color: #232323;
-    background: #fffaf0;
+    background: var(--reader-popup-bg);
     border: 1px solid #eee4c9;
     border-radius: 8px;
     font-size: 13px;
@@ -4111,7 +4128,7 @@ function readError(err, fallback) {
   .mobile-more-item.active {
     color: #0f5451;
     border-color: #0f5451;
-    background: #fff7dc;
+    background: color-mix(in srgb, var(--reader-popup-bg) 90%, #fff1bc);
   }
   .mobile-more-item:disabled {
     cursor: not-allowed;
