@@ -144,6 +144,14 @@ import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
 import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import {
+  remoteBookCreatePayload,
+  remoteBookKey,
+  remoteBookSourceId,
+  remoteBookSourceName,
+  remoteBookTitle,
+  remoteBookUrl,
+} from '../utils/remoteBookResult'
 
 const route = useRoute()
 const router = useRouter()
@@ -176,11 +184,11 @@ const allSelected = computed(() => enabledSources.value.length > 0 && selectedId
 const groupedResults = computed(() => {
   const groups = new Map()
   for (const item of results.value) {
-    const key = item.sourceId || item.sourceName || 'unknown'
+    const key = remoteBookSourceId(item) || remoteBookSourceName(item) || 'unknown'
     if (!groups.has(key)) {
       groups.set(key, {
         sourceId: key,
-        sourceName: item.sourceName || '未知书源',
+        sourceName: remoteBookSourceName(item),
         items: [],
       })
     }
@@ -546,28 +554,20 @@ function formatSize(bytes) {
 }
 
 async function addRemoteBook(item, shouldRead) {
-  addingBook.value = item.bookUrl
+  const key = remoteBookKey(item)
+  addingBook.value = key
   try {
-    const payload = {
-      title: item.title,
-      author: item.author,
-      coverUrl: item.coverUrl,
-      intro: item.intro,
-      bookUrl: item.bookUrl,
-      sourceId: item.sourceId,
-      sourceName: item.sourceName,
-      categoryId: targetCategoryId.value ? Number(targetCategoryId.value) : null,
-    }
+    const payload = remoteBookCreatePayload(item, targetCategoryId.value)
     const { data } = await createRemoteBook(payload)
     bookshelf.upsertBook(data)
-    ElMessage.success(`已加入书架：《${item.title}》`)
+    ElMessage.success(`已加入书架：《${remoteBookTitle(item)}》`)
     if (shouldRead) {
       overlay.closeBookInfo()
       router.push({ name: 'reader', params: { id: data.id } })
       return
     }
     overlay.openBookInfo(data, {
-      sourceName: item.sourceName,
+      sourceName: remoteBookSourceName(item),
       statusLabel: '已加入书架',
       statusType: 'success',
       progress: 0,
@@ -586,26 +586,26 @@ async function addRemoteBook(item, shouldRead) {
 function openPreview(item) {
   const existing = findExistingBook(item)
   overlay.openBookInfo(item, {
-    sourceName: item.sourceName,
+    sourceName: remoteBookSourceName(item),
     statusLabel: existing ? '已在书架' : '搜索结果',
     statusType: existing ? 'warning' : 'success',
     progress: readerProgressForBook(existing)?.percent || 0,
     actions: existing
       ? [
-          { label: '查看详情', plain: true, handler: () => openExistingInfo(existing, item.sourceName) },
+          { label: '查看详情', plain: true, handler: () => openExistingInfo(existing, remoteBookSourceName(item)) },
           { label: '继续阅读', type: 'primary', handler: () => openExistingReader(existing) },
         ]
       : [
-          { label: '加入书架', plain: true, loading: addingBook.value === item.bookUrl, handler: () => addRemoteBook(item, false) },
-          { label: '加入并阅读', type: 'primary', loading: addingBook.value === item.bookUrl, handler: () => addRemoteBook(item, true) },
+          { label: '加入书架', plain: true, loading: addingBook.value === remoteBookKey(item), handler: () => addRemoteBook(item, false) },
+          { label: '加入并阅读', type: 'primary', loading: addingBook.value === remoteBookKey(item), handler: () => addRemoteBook(item, true) },
         ],
   })
 }
 
 function findExistingBook(item) {
   return bookshelf.books.find(book => (
-    Number(book.sourceId || 0) === Number(item.sourceId || 0)
-    && String(book.url || book.bookUrl || '') === String(item.bookUrl || '')
+    Number(book.sourceId || 0) === Number(remoteBookSourceId(item) || 0)
+    && String(book.url || book.bookUrl || '') === String(remoteBookUrl(item) || '')
   )) || null
 }
 

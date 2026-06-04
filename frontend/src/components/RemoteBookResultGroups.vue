@@ -8,19 +8,19 @@
       <div class="result-list">
         <article
           v-for="item in group.items || []"
-          :key="`${item.sourceId || group.sourceId}-${item.bookUrl}`"
+          :key="bookKey(item, group)"
           class="result-card app-panel"
           @click="$emit('preview', item)"
         >
           <BookCover :book="item" />
           <div class="result-main">
             <div class="result-title">
-              <h3>{{ bookTitle(item) }}</h3>
-              <el-tag size="small" effect="plain">{{ item.sourceName || group.sourceName }}</el-tag>
+              <h3>{{ remoteBookTitle(item) }}</h3>
+              <el-tag size="small" effect="plain">{{ remoteBookSourceName(item, group.sourceName) }}</el-tag>
             </div>
-            <p>{{ item.author || '未知作者' }}</p>
-            <p v-if="latestChapter(item)" class="latest-chapter">{{ latestChapter(item) }}</p>
-            <p class="result-intro">{{ item.intro || '暂无简介' }}</p>
+            <p>{{ remoteBookAuthor(item) || '未知作者' }}</p>
+            <p v-if="remoteBookLatestChapter(item)" class="latest-chapter">{{ remoteBookLatestChapter(item) }}</p>
+            <p class="result-intro">{{ remoteBookIntro(item) || '暂无简介' }}</p>
           </div>
           <div class="result-actions" @click.stop>
             <el-button type="primary" size="small" @click="$emit('preview', item)">查看信息</el-button>
@@ -33,6 +33,14 @@
 
 <script setup>
 import BookCover from './BookCover.vue'
+import {
+  remoteBookAuthor,
+  remoteBookIntro,
+  remoteBookKey,
+  remoteBookLatestChapter,
+  remoteBookSourceName,
+  remoteBookTitle,
+} from '../utils/remoteBookResult'
 
 defineProps({
   groups: { type: Array, default: () => [] },
@@ -40,12 +48,8 @@ defineProps({
 
 defineEmits(['preview'])
 
-function bookTitle(item) {
-  return item?.title || item?.name || item?.bookName || '未命名书籍'
-}
-
-function latestChapter(item) {
-  return item?.latestChapter || item?.latestChapterTitle || item?.lastChapter || ''
+function bookKey(item, group) {
+  return remoteBookKey(item, group?.sourceId)
 }
 </script>
 
