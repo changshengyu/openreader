@@ -59,6 +59,10 @@ export function useSync() {
       if (message.type === 'progress_update') {
         const progress = reader.applyServerProgress(message.payload) || message.payload
         bookshelf.applyBookProgress(progress, { replace: true })
+        dispatchWindowEvent('openreader:progress-updated', {
+          progress,
+          raw: message.payload,
+        })
       }
       if (message.type === 'bookshelf_update') {
         if (message.payload?.id) {

@@ -724,6 +724,7 @@ onMounted(async () => {
   window.addEventListener('wheel', handleReaderWheel, { passive: false })
   window.addEventListener('pagehide', handleReaderPageHide)
   document.addEventListener('visibilitychange', handleReaderVisibilityChange)
+  window.addEventListener('openreader:progress-updated', handleProgressUpdated)
   window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
   window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   customBg.value = reader.customBgColor
@@ -740,6 +741,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('wheel', handleReaderWheel)
   window.removeEventListener('pagehide', handleReaderPageHide)
   document.removeEventListener('visibilitychange', handleReaderVisibilityChange)
+  window.removeEventListener('openreader:progress-updated', handleProgressUpdated)
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
   window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   clearBookmarkReloadTimer()
@@ -1178,18 +1180,24 @@ function restoreScroll2ChapterPosition(chapterOffset, restorePercent = null) {
     el.scrollTop = Math.max(0, activeChapter.offsetTop + Math.round(Math.max(0, Math.min(1, restorePercent)) * room))
     return
   }
+  if (chapterOffset > 0 && restoreByChapterPosition(chapterOffset)) return
   el.scrollTop = Math.max(0, activeChapter.offsetTop)
 }
 
 function restoreByChapterPosition(position) {
   if (!contentBody.value || !Number.isFinite(position) || position <= 0) return false
   const activeChapter = contentBody.value.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`) || contentBody.value
-  const nodes = [...activeChapter.querySelectorAll('h1[data-pos], p[data-pos]')]
-  if (!nodes.length) return false
-  const target = [...nodes].reverse().find(node => Number(node.dataset.pos) <= position) || nodes[0]
+  const target = paragraphByChapterPosition(activeChapter, position)
   if (!target) return false
   jumpToParagraph(target, { save: false, flash: false })
   return true
+}
+
+function paragraphByChapterPosition(chapterEl, position) {
+  if (!chapterEl || !Number.isFinite(position) || position <= 0) return null
+  const nodes = [...chapterEl.querySelectorAll('h1[data-pos], p[data-pos]')]
+  if (!nodes.length) return null
+  return [...nodes].reverse().find(node => Number(node.dataset.pos) <= position) || nodes[0]
 }
 
 function nextFrame() {
@@ -1286,6 +1294,16 @@ function jumpToLoadedChapter(index, offset = 0) {
       top: Math.max(0, chapterEl.offsetTop + chapterEl.offsetHeight - contentEl.value.clientHeight),
       behavior: readerScrollBehavior(),
     })
+  } else if (offset > 0) {
+    const target = paragraphByChapterPosition(chapterEl, offset)
+    if (target) {
+      jumpToParagraph(target, { save: false, flash: false })
+    } else {
+      contentEl.value.scrollTo({
+        top: Math.max(0, chapterEl.offsetTop),
+        behavior: readerScrollBehavior(),
+      })
+    }
   } else {
     contentEl.value.scrollTo({
       top: Math.max(0, chapterEl.offsetTop),
@@ -2388,6 +2406,43 @@ function handleReaderPageHide() {
 
 function handleReaderVisibilityChange() {
   if (document.hidden) saveCurrentProgress({ force: true, background: true })
+}
+
+async function handleProgressUpdated(event) {
+  const progress = event?.detail?.progress
+  if (!progress?.bookId || Number(progress.bookId) !== Number(bookId.value)) return
+  if (!chapter.value || restoringPosition || savingProgress || pendingProgressPayload) return
+  const localKey = progressSaveKey(currentProgressPayload())
+  const remoteKey = progressSaveKey({
+    bookId: progress.bookId,
+    chapterId: progress.chapterId,
+    chapterIndex: progress.chapterIndex,
+    offset: progress.offset,
+    percent: progress.percent,
+    chapterPercent: progress.chapterPercent,
+  })
+  if (!remoteKey || remoteKey === localKey) return
+  const targetIndex = Math.max(0, Math.min(Number(progress.chapterIndex || 0), Math.max(chapters.value.length - 1, 0)))
+  const targetOffset = Math.max(0, Math.floor(Number(progress.offset || 0)))
+  const restorePercent = Number.isFinite(Number(progress.chapterPercent))
+    ? Math.max(0, Math.min(1, Number(progress.chapterPercent)))
+    : null
+  clearTimeout(saveTimer)
+  try {
+    await router.replace({
+      name: 'reader',
+      params: { id: bookId.value },
+      query: {
+        chapter: targetIndex,
+        ...(targetOffset ? { offset: targetOffset } : {}),
+        ...(restorePercent !== null ? { percent: Number(restorePercent.toFixed(6)) } : {}),
+      },
+    })
+    await loadChapter(targetIndex, targetOffset, { restorePercent, saveAfterLoad: false })
+    lastProgressSaveKey = progressSaveKey(currentProgressPayload())
+  } catch {
+    // If the chapter cannot be applied immediately, the stored progress will be used on the next open.
+  }
 }
 
 function onScroll() {
