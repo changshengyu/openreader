@@ -63,6 +63,16 @@
         <el-select v-model="sidebarConcurrent" size="small" class="setting-select">
           <el-option v-for="count in concurrentOptions" :key="count" :label="`${count}并发线程`" :value="count" />
         </el-select>
+        <div class="sidebar-search-actions">
+          <button type="button" @click="goSearchRoute('remote')">
+            <el-icon><Search /></el-icon>
+            <span>书源搜索</span>
+          </button>
+          <button type="button" @click="goSearchRoute('local')">
+            <el-icon><FolderOpened /></el-icon>
+            <span>本地书籍</span>
+          </button>
+        </div>
       </section>
 
       <section class="sidebar-recent">
@@ -210,14 +220,6 @@ const { connected: syncConnected, connect, disconnect } = useSync()
 
 const navSections = computed(() => [
   {
-    title: '搜索入口',
-    items: [
-      { key: 'search', label: '书源搜索', icon: Search, route: 'search' },
-      { key: 'localSearch', label: '本地书籍', icon: FolderOpened, route: 'search', query: { mode: 'local' } },
-      { key: 'discover', label: '书海', icon: Compass, route: 'discover' },
-    ],
-  },
-  {
     title: '后端设定',
     items: [
       { key: 'backendStatus', label: syncConnected.value ? '同步在线' : '同步未连接', icon: Connection, action: refreshShelfData },
@@ -227,8 +229,11 @@ const navSections = computed(() => [
     title: '书源设置',
     items: [
       { key: 'sources', label: '书源管理', icon: Connection, route: 'sources' },
+      { key: 'discover', label: '探索书源', icon: Compass, route: 'discover' },
+      { key: 'importSources', label: '导入书源', icon: Upload, route: 'sources', query: { action: 'import' } },
       { key: 'remoteSources', label: '远程书源', icon: LinkIcon, route: 'sources', query: { panel: 'remote' } },
       { key: 'sourceHealth', label: '失效书源', icon: Operation, route: 'sources', query: { action: 'health' } },
+      { key: 'sourceDebug', label: '调试书源', icon: Edit, route: 'sources', query: { action: 'debug' } },
     ],
   },
   {
@@ -240,7 +245,6 @@ const navSections = computed(() => [
       { key: 'importBook', label: '导入书籍', icon: Upload, action: () => overlay.openImportBook() },
       { key: 'localStore', label: '浏览书仓', icon: FolderOpened, action: () => overlay.openLocalStore() },
       { key: 'refreshShelf', label: '刷新书架', icon: Refresh, action: refreshShelfData },
-      { key: 'replaceRules', label: '替换规则', icon: Edit, action: () => overlay.openReplaceRules() },
     ],
   },
   {
@@ -265,9 +269,10 @@ const navSections = computed(() => [
     ],
   },
   {
-    title: 'RSS',
+    title: '其它',
     items: [
       { key: 'rss', label: 'RSS', icon: Connection, action: () => overlay.openRSS() },
+      { key: 'replaceRules', label: '替换规则', icon: Edit, action: () => overlay.openReplaceRules() },
     ],
   },
 ])
@@ -385,6 +390,13 @@ function goSearch() {
     return
   }
   router.push({ name: 'search', query })
+}
+
+function goSearchRoute(mode = 'remote') {
+  const keyword = quickSearch.value.trim()
+  const query = mode === 'local' ? localSearchRouteQuery(keyword) : searchRouteQuery(keyword)
+  router.push({ name: 'search', query })
+  if (isMobileShell.value) mobileNavigationVisible.value = false
 }
 
 function searchRouteQuery(keyword = '') {
@@ -727,6 +739,7 @@ onBeforeUnmount(() => {
 
 :global(html.dark-reader) .setting-select :deep(.el-select__wrapper),
 :global(html.dark-reader) .app-shell-search :deep(.el-input__wrapper),
+:global(html.dark-reader) .sidebar-search-actions button,
 :global(html.dark-reader) .app-nav-item,
 :global(html.dark-reader) .user-card,
 :global(html.dark-reader) .sidebar-recent-book,
@@ -738,7 +751,8 @@ onBeforeUnmount(() => {
 }
 
 :global(html.dark-reader) .app-nav-item:hover,
-:global(html.dark-reader) .app-nav-item.active {
+:global(html.dark-reader) .app-nav-item.active,
+:global(html.dark-reader) .sidebar-search-actions button:hover {
   color: var(--app-primary-strong);
   background: #243b37;
   border-color: #365b55;
@@ -836,6 +850,43 @@ onBeforeUnmount(() => {
   background: #fffdf8;
   border-radius: 4px;
   box-shadow: 0 0 0 1px #e6e6e6 inset;
+}
+
+.sidebar-search-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.sidebar-search-actions button {
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  color: #9aa1aa;
+  background: #fafafa;
+  border: 1px solid #e6e9ef;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sidebar-search-actions button:hover {
+  color: #1f6feb;
+  background: #fff;
+}
+
+.sidebar-search-actions span {
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .sidebar-recent {
@@ -1086,6 +1137,21 @@ onBeforeUnmount(() => {
 .app-shell.mobile-shell .app-search-setting {
   margin: 0 0 22px;
   gap: 10px;
+}
+
+.app-shell.mobile-shell .sidebar-search-actions {
+  gap: 10px 12px;
+}
+
+.app-shell.mobile-shell .sidebar-search-actions button {
+  min-height: 38px;
+  padding: 8px;
+  background: #fffdf8;
+  border-color: #e4d9c8;
+}
+
+.app-shell.mobile-shell .sidebar-search-actions span {
+  font-size: 13px;
 }
 
 .app-shell.mobile-shell .app-sidebar-footer {

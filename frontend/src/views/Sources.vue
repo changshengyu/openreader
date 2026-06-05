@@ -7,7 +7,7 @@
       <div class="head-actions">
         <el-button type="primary" :icon="Plus" @click="openEditor()">新增</el-button>
         <el-button :icon="Download" @click="exportSources">导出</el-button>
-        <el-upload :show-file-list="false" :auto-upload="false" accept=".json" @change="importFile">
+        <el-upload ref="sourceUploadRef" :show-file-list="false" :auto-upload="false" accept=".json" @change="importFile">
           <el-button :icon="Upload">导入</el-button>
         </el-upload>
         <el-button :icon="Link" @click="showRemote = true">远程书源</el-button>
@@ -289,6 +289,7 @@ const defaultRestoring = ref(false)
 const showRemote = ref(false)
 const remoteURL = ref('')
 const remoteLoading = ref(false)
+const sourceUploadRef = ref(null)
 
 const showEditor = ref(false)
 const editingSourceId = ref(null)
@@ -433,6 +434,12 @@ function applyRouteAction() {
   if (route.query.action === 'health') {
     failedOnly.value = true
     if (!healthSummary.value.total && !checking.value) checkInvalidSources()
+  }
+  if (route.query.action === 'import') {
+    openSourceImportPicker()
+  }
+  if (route.query.action === 'debug') {
+    openFirstDebugSource()
   }
 }
 
@@ -700,6 +707,15 @@ async function importFile(data) {
   }
 }
 
+function openSourceImportPicker() {
+  const input = sourceUploadRef.value?.$el?.querySelector?.('input[type="file"]')
+  if (input) {
+    input.click()
+    return
+  }
+  ElMessage.info('请点击页面右上角“导入”选择书源 JSON 文件')
+}
+
 function previewSourceNames(value) {
   const list = Array.isArray(value)
     ? value
@@ -795,6 +811,15 @@ function openDebug(source) {
   debugChapterURL.value = ''
   debugResult.value = null
   showDebug.value = true
+}
+
+function openFirstDebugSource() {
+  const source = sources.value.find(item => item.enabled) || sources.value[0]
+  if (source) {
+    openDebug(source)
+    return
+  }
+  ElMessage.info('请先添加书源后再调试')
 }
 
 function parseRules(value) {
