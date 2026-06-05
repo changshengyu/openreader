@@ -1,6 +1,6 @@
 <template>
   <section class="app-page shelf-page" :class="{ 'mobile-shelf': isMobileShelf }">
-    <div class="shelf-title app-panel">
+    <div class="shelf-title">
       <div class="shelf-title-main">
         <button v-if="isMobileShelf" class="mobile-menu-trigger" type="button" aria-label="打开侧边栏" @click.stop="toggleMobileNavigation">
           <el-icon><Menu /></el-icon>
@@ -28,7 +28,7 @@
       </div>
     </div>
 
-    <div class="book-group-wrapper app-panel" role="tablist" aria-label="书架分组">
+    <div class="book-group-wrapper" role="tablist" aria-label="书架分组">
       <button
         v-for="item in groupItems"
         :key="item.id"
@@ -46,14 +46,14 @@
 
     <main class="shelf-main" :class="`${effectiveShelfView}-view`">
       <div class="books-wrapper">
-        <div v-if="bookshelf.loading" class="book-list app-panel">
+        <div v-if="bookshelf.loading" class="book-list">
           <article v-for="i in 8" :key="i" class="book-row skeleton-row">
             <el-skeleton :rows="2" animated />
           </article>
         </div>
 
         <template v-else-if="displayedBooks.length">
-          <div class="book-list app-panel">
+          <div class="book-list">
             <article
               v-for="book in displayedBooks"
               :key="book.id"
@@ -94,7 +94,7 @@
           </div>
         </template>
 
-        <div v-else class="empty-panel app-panel">
+        <div v-else class="empty-panel">
           <el-empty :description="emptyText" />
         </div>
       </div>
@@ -373,23 +373,26 @@ function readError(err, fallback) {
 
 .shelf-page {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   box-sizing: border-box;
-  min-height: 100vh;
-  gap: 14px;
-  padding: 38px 24px 28px;
+  height: 100vh;
+  max-height: 100vh;
+  gap: 0;
+  padding: 48px 48px;
   background: #fff;
+  overflow: hidden;
 }
 
 .shelf-main {
   display: grid;
+  min-height: 0;
   gap: 0;
+  overflow: hidden;
 }
 
 .shelf-title {
   display: flex;
-  position: sticky;
   z-index: 2;
-  top: 0;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
@@ -563,7 +566,15 @@ function readError(err, fallback) {
 }
 
 .books-wrapper {
+  min-height: 0;
   overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.books-wrapper::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .shelf-main.grid-view .book-list {
@@ -749,11 +760,15 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf {
   gap: 0;
+  height: auto;
+  max-height: none;
+  min-height: 100vh;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   padding: 0 0 18px;
   overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .shelf-page.mobile-shelf .shelf-main,
@@ -906,17 +921,22 @@ function readError(err, fallback) {
 @media (max-width: 750px) {
   .shelf-page {
     gap: 0;
+    height: auto;
+    max-height: none;
+    min-height: 100vh;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     padding: 0 0 18px;
     overflow-x: hidden;
+    overflow-y: visible;
   }
 
   .shelf-main {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    overflow: visible;
     overflow-x: hidden;
   }
 
@@ -925,6 +945,7 @@ function readError(err, fallback) {
     max-width: 100%;
     min-width: 0;
     overflow-x: hidden;
+    overflow-y: visible;
   }
 
   .shelf-main.grid-view .book-list {
