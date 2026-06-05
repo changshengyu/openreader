@@ -166,6 +166,66 @@
                   </button>
                 </div>
               </label>
+              <div class="reader-theme-row">
+                <span>阅读主题</span>
+                <div class="theme-list">
+                  <button
+                    v-for="(theme, key) in themePresets"
+                    :key="key"
+                    type="button"
+                    class="theme-choice"
+                    :class="{ active: readerStore.theme === key }"
+                    @click="readerStore.setTheme(key)"
+                  >
+                    <span class="theme-swatch" :style="{ background: theme.bg }" />
+                    <span>{{ theme.label }}</span>
+                  </button>
+                  <button type="button" class="theme-choice" :class="{ active: readerStore.theme === 'custom' }" @click="readerStore.setTheme('custom')">
+                    <span class="theme-swatch custom-swatch" :style="{ background: readerStore.customBgColor || '#f4e9bd' }" />
+                    <span>自定义</span>
+                  </button>
+                </div>
+              </div>
+              <div v-if="readerStore.theme === 'custom'" class="reader-theme-row">
+                <span>自定义</span>
+                <div class="custom-theme-row">
+                  <div class="custom-theme-field">
+                    <span>页面背景颜色</span>
+                    <el-color-picker v-model="readerCustomBodyColorModel" />
+                    <el-button v-if="readerStore.customBodyColor" size="small" text type="danger" @click="readerStore.setCustomBodyColor('')">恢复默认</el-button>
+                  </div>
+                  <div class="custom-theme-field">
+                    <span>浮窗背景颜色</span>
+                    <el-color-picker v-model="readerCustomPopupColorModel" />
+                    <el-button v-if="readerStore.customPopupColor" size="small" text type="danger" @click="readerStore.setCustomPopupColor('')">恢复默认</el-button>
+                  </div>
+                  <div class="custom-theme-field">
+                    <span>阅读背景颜色</span>
+                    <el-color-picker v-model="readerCustomBgColorModel" />
+                  </div>
+                  <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="pickReaderBgImage">
+                    <el-button size="small" :icon="Upload" :loading="readerBgUploading">背景图</el-button>
+                  </el-upload>
+                  <el-button v-if="readerStore.customBgImage" size="small" text type="danger" @click="readerStore.setCustomBgImage('')">取消背景图</el-button>
+                  <div v-if="readerStore.customBgImageList?.length" class="settings-bg-list">
+                    <div
+                      v-for="image in readerStore.customBgImageList"
+                      :key="image"
+                      class="settings-bg-choice"
+                      :class="{ active: readerStore.customBgImage === image }"
+                      :style="{ backgroundImage: `url(${image})` }"
+                      role="button"
+                      tabindex="0"
+                      @click="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
+                      @keydown.enter.prevent="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
+                      @keydown.space.prevent="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
+                    >
+                      <span>{{ readerStore.customBgImage === image ? '使用中' : '选择' }}</span>
+                      <button type="button" @click.stop="deleteReaderBgImage(image)">删除</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <label>
                 <span>字体</span>
                 <el-select v-model="readerFontFamilyModel" size="small">
@@ -263,66 +323,6 @@
               </label>
             </div>
           </article>
-          <article class="app-panel settings-card">
-            <div class="card-head">
-              <el-icon><Moon /></el-icon>
-              <h2>主题</h2>
-            </div>
-            <div class="theme-list">
-              <button
-                v-for="(theme, key) in themePresets"
-                :key="key"
-                type="button"
-                class="theme-choice"
-                :class="{ active: readerStore.theme === key }"
-                @click="readerStore.setTheme(key)"
-              >
-                <span class="theme-swatch" :style="{ background: theme.bg }" />
-                <span>{{ theme.label }}</span>
-              </button>
-              <button type="button" class="theme-choice" :class="{ active: readerStore.theme === 'custom' }" @click="readerStore.setTheme('custom')">
-                <span class="theme-swatch custom-swatch" :style="{ background: readerStore.customBgColor || '#f4e9bd' }" />
-                <span>自定义</span>
-              </button>
-            </div>
-            <div v-if="readerStore.theme === 'custom'" class="custom-theme-row">
-              <label class="custom-theme-field">
-                <span>页面背景颜色</span>
-                <el-color-picker v-model="readerCustomBodyColorModel" />
-                <el-button v-if="readerStore.customBodyColor" size="small" text type="danger" @click="readerStore.setCustomBodyColor('')">恢复默认</el-button>
-              </label>
-              <label class="custom-theme-field">
-                <span>浮窗背景颜色</span>
-                <el-color-picker v-model="readerCustomPopupColorModel" />
-                <el-button v-if="readerStore.customPopupColor" size="small" text type="danger" @click="readerStore.setCustomPopupColor('')">恢复默认</el-button>
-              </label>
-              <label class="custom-theme-field">
-                <span>阅读背景颜色</span>
-                <el-color-picker v-model="readerCustomBgColorModel" />
-              </label>
-              <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="pickReaderBgImage">
-                <el-button size="small" :icon="Upload" :loading="readerBgUploading">背景图</el-button>
-              </el-upload>
-              <el-button v-if="readerStore.customBgImage" size="small" text type="danger" @click="readerStore.setCustomBgImage('')">取消背景图</el-button>
-              <div v-if="readerStore.customBgImageList?.length" class="settings-bg-list">
-                <div
-                  v-for="image in readerStore.customBgImageList"
-                  :key="image"
-                  class="settings-bg-choice"
-                  :class="{ active: readerStore.customBgImage === image }"
-                  :style="{ backgroundImage: `url(${image})` }"
-                  role="button"
-                  tabindex="0"
-                  @click="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
-                  @keydown.enter.prevent="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
-                  @keydown.space.prevent="readerStore.setCustomBgImage(readerStore.customBgImage === image ? '' : image)"
-                >
-                  <span>{{ readerStore.customBgImage === image ? '使用中' : '选择' }}</span>
-                  <button type="button" @click.stop="deleteReaderBgImage(image)">删除</button>
-                </div>
-              </div>
-            </div>
-          </article>
         </section>
       </el-tab-pane>
 
@@ -378,7 +378,6 @@ import {
   User,
   UserFilled,
   View,
-  Moon,
 } from '@element-plus/icons-vue'
 import api from '../api/client'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
@@ -940,7 +939,8 @@ function readError(err, fallback) {
   gap: 14px;
 }
 
-.reader-setting-list label {
+.reader-setting-list label,
+.reader-theme-row {
   display: grid;
   gap: 6px;
 }
