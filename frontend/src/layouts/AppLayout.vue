@@ -119,36 +119,6 @@
           <el-icon v-else><Moon /></el-icon>
         </button>
       </div>
-
-      <div class="app-sidebar-footer">
-        <div class="sync-pill" :class="{ connected: syncConnected }">
-          <span class="sync-dot" />
-          {{ syncConnected ? '实时同步在线' : '同步未连接' }}
-        </div>
-
-        <el-dropdown trigger="click" placement="top-start">
-          <button class="user-card" type="button">
-            <el-avatar :size="34">{{ userInitial }}</el-avatar>
-            <span class="user-card-main">
-              <strong>{{ userStore.profile?.username || '用户' }}</strong>
-              <small>账户与设置</small>
-            </span>
-            <el-icon><ArrowUp /></el-icon>
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item @click="goRoute('settings')">
-                <el-icon><Setting /></el-icon>
-                设置
-              </el-dropdown-item>
-              <el-dropdown-item divided @click="handleLogout">
-                <el-icon><SwitchButton /></el-icon>
-                退出登录
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
     </aside>
 
     <div class="app-workspace" @click="closeMobileNavigation">
@@ -164,7 +134,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowUp,
   Box,
   Compass,
   Connection,
@@ -180,7 +149,6 @@ import {
   Search,
   Setting,
   Sunny,
-  SwitchButton,
   Upload,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
@@ -279,7 +247,6 @@ const navSections = computed(() => [
   },
 ])
 
-const userInitial = computed(() => (userStore.profile?.username || '?').slice(0, 1).toUpperCase())
 const concurrentOptions = [8, 16, 32, 60]
 const sidebarSources = ref([])
 const sidebarSearchType = computed({
@@ -306,12 +273,6 @@ const sidebarSourceGroups = computed(() => {
     groups.set(name, (groups.get(name) || 0) + 1)
   }
   return [...groups.entries()].map(([label, count]) => ({ label, value: label, count }))
-})
-const cacheStatsLabel = computed(() => {
-  if (cacheLoading.value) return '缓存读取中'
-  const size = formatSize(cacheStats.value?.size || 0)
-  const chapters = Number(cacheStats.value?.cachedChapters || 0)
-  return `章节缓存 ${size}${chapters ? ` / ${chapters}章` : ''}`
 })
 const cacheSectionTitle = computed(() => {
   const size = Number(cacheStats.value?.size || 0)
@@ -353,10 +314,6 @@ const quickSearchPlaceholder = computed(() => route.name === 'home' ? '搜索书
 
 function goHome() {
   router.push({ name: 'home' })
-}
-
-function goRoute(name) {
-  router.push({ name })
 }
 
 function runNavAction(item) {
@@ -552,11 +509,6 @@ function progressForBook(book) {
   return newestBookProgress(book, reader.progressByBook)
 }
 
-function handleLogout() {
-  userStore.logout()
-  router.push({ name: 'login' })
-}
-
 async function refreshShelfData() {
   await Promise.all([bookshelf.loadCategories({ force: true }), bookshelf.loadBooks({ force: true, all: true })]).catch(() => {})
   router.push({ name: 'home' })
@@ -731,13 +683,21 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 30;
-  display: flex;
+  display: block;
   width: var(--app-sidebar-width);
-  flex-direction: column;
-  padding: 20px 28px 24px;
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  padding: 48px 36px 88px;
+  overflow-y: auto;
   color: #24201b;
   background: #f7f7f7;
   border-right: 1px solid #eee;
+  scrollbar-width: none;
+}
+
+.app-sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 :global(html.dark-reader) .app-shell {
@@ -767,9 +727,8 @@ onBeforeUnmount(() => {
 :global(html.dark-reader) .app-shell-search :deep(.el-input__wrapper),
 :global(html.dark-reader) .sidebar-search-actions button,
 :global(html.dark-reader) .app-nav-item,
-:global(html.dark-reader) .user-card,
 :global(html.dark-reader) .sidebar-recent-book,
-:global(html.dark-reader) .sync-pill {
+:global(html.dark-reader) .sidebar-bottom-icon {
   color: #aaa;
   background: #2a2927;
   border-color: #39352f;
@@ -778,7 +737,8 @@ onBeforeUnmount(() => {
 
 :global(html.dark-reader) .app-nav-item:hover,
 :global(html.dark-reader) .app-nav-item.active,
-:global(html.dark-reader) .sidebar-search-actions button:hover {
+:global(html.dark-reader) .sidebar-search-actions button:hover,
+:global(html.dark-reader) .sidebar-bottom-icon:hover {
   color: var(--app-primary-strong);
   background: #243b37;
   border-color: #365b55;
@@ -792,7 +752,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 0 18px;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -852,7 +812,7 @@ onBeforeUnmount(() => {
 }
 
 .app-shell-search {
-  margin: 0 0 28px;
+  margin: 24px 0 28px;
 }
 
 .app-shell-search :deep(.el-input__wrapper) {
@@ -864,7 +824,7 @@ onBeforeUnmount(() => {
 .app-search-setting {
   display: grid;
   gap: 12px;
-  margin: 0 0 28px;
+  margin: 0 0 36px;
 }
 
 .setting-select {
@@ -887,7 +847,7 @@ onBeforeUnmount(() => {
 .sidebar-search-actions button {
   display: flex;
   min-width: 0;
-  min-height: 34px;
+  min-height: 32px;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -917,8 +877,8 @@ onBeforeUnmount(() => {
 
 .sidebar-recent {
   display: grid;
-  gap: 8px;
-  margin: 0 0 28px;
+  gap: 18px;
+  margin: 0 0 36px;
 }
 
 .sidebar-recent-book {
@@ -961,14 +921,20 @@ onBeforeUnmount(() => {
 
 .app-nav {
   display: grid;
-  gap: 28px;
-  overflow-y: auto;
-  padding: 0 0 18px;
-  scrollbar-width: thin;
+  gap: 36px;
+  padding: 0 0 20px;
 }
 
 .sidebar-bottom-icons {
-  display: none;
+  position: fixed;
+  bottom: 30px;
+  left: 36px;
+  z-index: 31;
+  display: flex;
+  width: calc(var(--app-sidebar-width) - 72px);
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
 }
 
 .app-nav-section {
@@ -979,10 +945,10 @@ onBeforeUnmount(() => {
 
 .app-nav-title {
   grid-column: 1 / -1;
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   color: #b5b5b5;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.35;
   letter-spacing: 0;
   white-space: normal;
@@ -993,11 +959,11 @@ onBeforeUnmount(() => {
   display: flex;
   width: 100%;
   max-width: 100%;
-  min-height: 36px;
+  min-height: 34px;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 8px;
+  padding: 7px 8px;
   color: #9aa1aa;
   background: #fafafa;
   border: 1px solid #e6e9ef;
@@ -1028,70 +994,32 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-.app-sidebar-footer {
-  display: grid;
-  gap: 10px;
-  margin-top: auto;
-}
-
-.sync-pill {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 9px;
-  color: #766a5c;
-  background: #fafafa;
-  border-radius: 999px;
-  font-size: 12px;
-}
-
-.sync-pill.connected {
-  color: #bfe6c9;
-}
-
-.sync-dot {
-  width: 7px;
-  height: 7px;
-  background: #8d8174;
-  border-radius: 50%;
-}
-
-.sync-pill.connected .sync-dot {
-  background: #77c78b;
-}
-
-.user-card {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 10px;
-  padding: 9px;
+.sidebar-bottom-icon {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
   color: #24201b;
-  background: #fafafa;
-  border: 1px solid #e6e9ef;
-  border-radius: var(--app-radius-md);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
   cursor: pointer;
+  pointer-events: auto;
 }
 
-.user-card-main {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  text-align: left;
+.sidebar-bottom-icon svg {
+  width: 32px;
+  height: 32px;
 }
 
-.user-card-main strong,
-.user-card-main small {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  word-break: break-word;
+.theme-toggle {
+  color: #f7f7f7;
+  background: #1f1f1f;
 }
 
-.user-card-main small {
-  margin-top: 2px;
-  color: #766a5c;
-  font-size: 12px;
+.theme-toggle.night {
+  color: #121212;
+  background: #f4e4c5;
 }
 
 .app-workspace {
@@ -1124,7 +1052,7 @@ onBeforeUnmount(() => {
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
-  padding: max(20px, env(safe-area-inset-top)) 28px 66px;
+  padding: max(48px, env(safe-area-inset-top)) 36px 88px;
   scrollbar-width: none;
   box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
   transform: translateX(calc(-1 * var(--mobile-nav-width, 72vw)));
@@ -1180,18 +1108,13 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.app-shell.mobile-shell .app-sidebar-footer {
-  display: none;
-}
-
 .app-shell.mobile-shell .app-brand-mark {
   display: none;
 }
 
 .app-shell.mobile-shell .app-nav {
-  gap: 14px;
-  overflow-y: visible;
-  padding: 0 0 70px;
+  gap: 36px;
+  padding: 0 0 20px;
 }
 
 .app-shell.mobile-shell .app-nav-section {
@@ -1214,13 +1137,13 @@ onBeforeUnmount(() => {
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 38px;
+  min-height: 34px;
   height: auto;
   align-items: center;
   justify-content: center;
   gap: 5px;
   margin: 0;
-  padding: 8px 8px;
+  padding: 6px 8px;
   background: #fffdf8;
   border: 1px solid #e4d9c8;
   border-radius: 4px;
@@ -1229,7 +1152,7 @@ onBeforeUnmount(() => {
 .app-shell.mobile-shell .app-nav-item span {
   overflow: visible;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.25;
   text-overflow: clip;
   white-space: normal;
@@ -1260,28 +1183,21 @@ onBeforeUnmount(() => {
 }
 
 .app-shell.mobile-shell .sidebar-bottom-icons {
-  position: absolute;
-  right: 28px;
+  position: fixed;
+  right: auto;
   bottom: 30px;
-  left: 28px;
+  left: 36px;
   display: flex;
+  width: calc(var(--mobile-nav-width, 72vw) - 72px);
   align-items: center;
   justify-content: space-between;
   pointer-events: none;
 }
 
 .app-shell.mobile-shell .sidebar-bottom-icon {
-  display: inline-grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  color: #24201b;
-  background: #fffdf8;
-  border: 1px solid #e4d9c8;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(36, 32, 27, 0.08);
-  cursor: pointer;
-  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .app-shell.mobile-shell .sidebar-bottom-icon svg {
