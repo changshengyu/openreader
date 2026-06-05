@@ -16,7 +16,7 @@
     <div class="book-info-main">
       <div class="book-info-title">
         <h2>{{ bookTitle }}</h2>
-        <el-tag v-if="statusLabel" size="small" effect="plain" :type="statusType">{{ statusLabel }}</el-tag>
+        <el-tag v-if="statusLabel && variant !== 'dialog'" size="small" effect="plain" :type="statusType">{{ statusLabel }}</el-tag>
       </div>
       <div v-if="bookKindTags.length" class="book-kind-tags">
         <span v-for="tag in bookKindTags" :key="tag">{{ tag }}</span>
@@ -30,9 +30,17 @@
           <span>来源：</span>
           <strong>{{ displaySourceName }}</strong>
         </div>
-        <div>
+        <div class="book-latest-prop">
           <span>最新：</span>
           <strong>{{ latestChapterLabel }}</strong>
+          <span v-if="showUpdateSwitch && variant === 'dialog'" class="inline-update-switch">
+            追更
+            <el-switch
+              :model-value="canUpdateValue"
+              :loading="updateSwitchLoading"
+              @change="value => emit('can-update-change', value)"
+            />
+          </span>
         </div>
         <div>
           <span>分组：</span>
@@ -41,20 +49,20 @@
             {{ categoryActionLabel }}
           </button>
         </div>
-        <div>
+        <div v-if="showStats">
           <span>章节：</span>
           <strong>{{ chapterCount }}</strong>
         </div>
-        <div>
+        <div v-if="showStats">
           <span>进度：</span>
           <strong>{{ progressLabel }}</strong>
         </div>
-        <div v-if="browserCacheCount >= 0">
+        <div v-if="showStats && browserCacheCount >= 0">
           <span>浏览器缓存：</span>
           <strong>{{ browserCacheCount }} 章</strong>
         </div>
       </div>
-      <div v-if="showUpdateSwitch" class="book-info-controls">
+      <div v-if="showUpdateSwitch && variant !== 'dialog'" class="book-info-controls">
         <span>追更：</span>
         <el-switch
           :model-value="canUpdateValue"
@@ -164,6 +172,7 @@ const displaySourceName = computed(() => {
 })
 const progressLabel = computed(() => `${Math.round(Math.max(0, Math.min(1, props.progress || 0)) * 100)}%`)
 const canUpdateValue = computed(() => props.book?.canUpdate !== false && props.canUpdate !== false)
+const showStats = computed(() => props.variant !== 'dialog')
 const bookKindTags = computed(() => {
   const raw = props.book?.kind ?? props.book?.category ?? props.book?.categoryName ?? props.book?.genre ?? props.book?.tags ?? props.book?.type
   return normalizeKindTags(raw)
@@ -360,6 +369,15 @@ function handleCoverFileChange(event) {
   font-size: 13px;
 }
 
+.inline-update-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .book-info-shared.variant-dialog {
   display: block;
 }
@@ -427,6 +445,10 @@ function handleCoverFileChange(event) {
 .variant-dialog .book-props div {
   padding: 3px 0;
   font-size: 14px;
+}
+
+.variant-dialog .book-latest-prop strong {
+  flex: 1 1 auto;
 }
 
 .variant-dialog .book-info-controls {

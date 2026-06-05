@@ -9,9 +9,9 @@
       <label class="setting-label">特殊模式</label>
       <el-radio-group v-model="pageTypeModel" size="small" class="read-method-group">
         <el-radio-button value="normal">正常</el-radio-button>
-        <el-radio-button value="kindle">Kindle</el-radio-button>
+        <el-radio-button value="kindle">简洁</el-radio-button>
       </el-radio-group>
-      <small class="setting-help">Kindle 模式会关闭动画、切到手机模式并忽略文字选择。</small>
+      <small class="setting-help">开启简洁模式会关闭动画以及首页的部分功能。</small>
     </div>
 
     <div class="setting-row">
@@ -246,7 +246,7 @@
     <div class="setting-row">
       <label class="setting-label">动画时长 ({{ reader.animateDuration }}ms)</label>
       <el-slider v-model="animateDurationModel" :min="0" :max="1000" :step="20" size="small" :disabled="reader.pageType === 'kindle'" />
-      <small v-if="reader.pageType === 'kindle'" class="setting-help">Kindle 模式会关闭翻页动画。</small>
+      <small v-if="reader.pageType === 'kindle'" class="setting-help">简洁模式会关闭翻页动画。</small>
     </div>
 
     <div class="setting-row">
