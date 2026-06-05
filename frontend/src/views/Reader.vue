@@ -3982,21 +3982,30 @@ function readError(err, fallback) {
 /* ---- 响应式 ---- */
 @media (max-width: 750px) {
   .reader-shell {
-    --reader-frame-width: 100dvw;
-    --reader-content-width: calc(100dvw - 44px);
+    --reader-frame-width: 100%;
+    --reader-content-width: calc(100% - 44px);
     min-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     overflow: hidden;
     padding: 0;
   }
   .reader-page {
     height: 100dvh;
     border: 0;
-    width: 100dvw;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .reader-page-head { display: none; }
   .reader-content {
     box-sizing: border-box;
-    width: 100dvw;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     font-size: var(--reader-font-size);
     padding: 42px 22px calc(42px + env(safe-area-inset-bottom));
     scroll-padding-bottom: calc(42px + env(safe-area-inset-bottom));

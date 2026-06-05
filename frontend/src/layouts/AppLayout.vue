@@ -645,7 +645,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .app-shell {
   min-height: 100vh;
-  max-width: 100vw;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   overflow-x: hidden;
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.86), rgba(245, 241, 232, 0.92)),
@@ -1011,8 +1013,9 @@ onBeforeUnmount(() => {
 .app-workspace {
   min-height: 100vh;
   width: 100%;
-  max-width: 100vw;
+  max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   padding-left: var(--app-sidebar-width);
   overflow-x: hidden;
 }
@@ -1022,6 +1025,7 @@ onBeforeUnmount(() => {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   overflow-x: hidden;
 }
 
