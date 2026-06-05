@@ -51,41 +51,6 @@
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">页面模式（本机）</label>
-      <el-radio-group v-model="pageModeModel" size="small" class="read-method-group">
-        <el-radio-button value="auto">自适应</el-radio-button>
-        <el-radio-button value="mobile">手机模式</el-radio-button>
-      </el-radio-group>
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">翻页方式</label>
-      <el-radio-group v-model="readerModeModel" size="small" class="read-method-group">
-        <el-radio-button value="page">上下滑动</el-radio-button>
-        <el-radio-button v-if="miniInterface" value="flip">左右滑动</el-radio-button>
-        <el-radio-button value="scroll">上下滚动</el-radio-button>
-        <el-radio-button value="scroll2">上下滚动2</el-radio-button>
-      </el-radio-group>
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">全屏点击</label>
-      <el-radio-group v-model="clickMethodModel" size="small" class="read-method-group">
-        <el-radio-button value="next">下一页</el-radio-button>
-        <el-radio-button value="auto">自动</el-radio-button>
-        <el-radio-button value="none">不翻页</el-radio-button>
-      </el-radio-group>
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">选择文字</label>
-      <el-radio-group v-model="selectionActionModel" size="small" class="read-method-group">
-        <el-radio-button value="操作弹窗">操作弹窗</el-radio-button>
-        <el-radio-button value="忽略">忽略</el-radio-button>
-      </el-radio-group>
-    </div>
-
-    <div class="setting-row">
       <label class="setting-label">主题</label>
       <div class="theme-grid">
         <span
@@ -157,30 +122,6 @@
     <div class="setting-row">
       <label class="setting-label">亮度</label>
       <el-slider v-model="brightnessModel" :min="50" :max="150" size="small" />
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">自动阅读</label>
-      <el-radio-group v-model="autoReadingMethodModel" size="small" class="read-method-group">
-        <el-radio-button value="像素滚动">像素滚动</el-radio-button>
-        <el-radio-button value="段落滚动">段落滚动</el-radio-button>
-      </el-radio-group>
-    </div>
-
-    <div v-if="reader.autoReadingMethod === '像素滚动'" class="setting-row">
-      <label class="setting-label">滚动像素 ({{ reader.autoReadingPixel }}px)</label>
-      <el-slider v-model="autoReadingPixelModel" :min="1" :max="80" :step="1" size="small" />
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">翻页速度 ({{ reader.autoReadingLineTime }}ms)</label>
-      <el-slider v-model="autoReadingLineTimeModel" :min="50" :max="3000" :step="50" size="small" />
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">动画时长 ({{ reader.animateDuration }}ms)</label>
-      <el-slider v-model="animateDurationModel" :min="0" :max="1000" :step="20" size="small" :disabled="reader.pageType === 'kindle'" />
-      <small v-if="reader.pageType === 'kindle'" class="setting-help">Kindle 模式会关闭翻页动画。</small>
     </div>
 
     <div class="setting-row">
@@ -256,13 +197,18 @@
     </div>
 
     <div class="setting-row">
+      <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
+      <el-slider v-model="fontWeightModel" :min="300" :max="900" :step="100" size="small" />
+    </div>
+
+    <div class="setting-row">
       <label class="setting-label">行高 ({{ reader.lineHeight }})</label>
       <el-slider v-model="localLineHeight" :min="1" :max="5" :step="0.2" size="small" />
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
-      <el-slider v-model="fontWeightModel" :min="300" :max="900" :step="100" size="small" />
+      <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
+      <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" />
     </div>
 
     <div class="setting-row">
@@ -274,13 +220,68 @@
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
-      <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" />
+      <label class="setting-label">页面模式（本机）</label>
+      <el-radio-group v-model="pageModeModel" size="small" class="read-method-group">
+        <el-radio-button value="auto">自适应</el-radio-button>
+        <el-radio-button value="mobile">手机模式</el-radio-button>
+      </el-radio-group>
     </div>
 
     <div v-if="!miniInterface" class="setting-row">
       <label class="setting-label">阅读宽度 ({{ reader.columnWidth }}px)</label>
       <el-slider v-model="columnWidthModel" :min="560" :max="1080" :step="20" size="small" />
+    </div>
+
+    <div class="setting-row">
+      <label class="setting-label">翻页方式</label>
+      <el-radio-group v-model="readerModeModel" size="small" class="read-method-group">
+        <el-radio-button value="page">上下滑动</el-radio-button>
+        <el-radio-button v-if="miniInterface" value="flip">左右滑动</el-radio-button>
+        <el-radio-button value="scroll">上下滚动</el-radio-button>
+        <el-radio-button value="scroll2">上下滚动2</el-radio-button>
+      </el-radio-group>
+      <small class="setting-help">上下滚动2会自动隐藏看过的章节，但是可能会抖动。</small>
+    </div>
+
+    <div class="setting-row">
+      <label class="setting-label">动画时长 ({{ reader.animateDuration }}ms)</label>
+      <el-slider v-model="animateDurationModel" :min="0" :max="1000" :step="20" size="small" :disabled="reader.pageType === 'kindle'" />
+      <small v-if="reader.pageType === 'kindle'" class="setting-help">Kindle 模式会关闭翻页动画。</small>
+    </div>
+
+    <div class="setting-row">
+      <label class="setting-label">自动阅读</label>
+      <el-radio-group v-model="autoReadingMethodModel" size="small" class="read-method-group">
+        <el-radio-button value="像素滚动">像素滚动</el-radio-button>
+        <el-radio-button value="段落滚动">段落滚动</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <div v-if="reader.autoReadingMethod === '像素滚动'" class="setting-row">
+      <label class="setting-label">滚动像素 ({{ reader.autoReadingPixel }}px)</label>
+      <el-slider v-model="autoReadingPixelModel" :min="1" :max="80" :step="1" size="small" />
+    </div>
+
+    <div class="setting-row">
+      <label class="setting-label">翻页速度 ({{ reader.autoReadingLineTime }}ms)</label>
+      <el-slider v-model="autoReadingLineTimeModel" :min="50" :max="3000" :step="50" size="small" />
+    </div>
+
+    <div class="setting-row">
+      <label class="setting-label">全屏点击</label>
+      <el-radio-group v-model="clickMethodModel" size="small" class="read-method-group">
+        <el-radio-button value="next">下一页</el-radio-button>
+        <el-radio-button value="auto">自动</el-radio-button>
+        <el-radio-button value="none">不翻页</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <div class="setting-row">
+      <label class="setting-label">选择文字</label>
+      <el-radio-group v-model="selectionActionModel" size="small" class="read-method-group">
+        <el-radio-button value="操作弹窗">操作弹窗</el-radio-button>
+        <el-radio-button value="忽略">忽略</el-radio-button>
+      </el-radio-group>
     </div>
 
     <div class="setting-row">

@@ -1,5 +1,5 @@
 <template>
-  <section class="book-info-shared">
+  <section class="book-info-shared" :class="`variant-${variant}`">
     <div class="book-cover-zone" :class="{ editable: coverEditable, uploading: coverUploading }" @click="triggerCoverUpload">
       <div class="book-cover-bg" :style="coverBgStyle" />
       <BookCover :book="book" />
@@ -137,6 +137,11 @@ const props = defineProps({
   categoryActionLabel: {
     type: String,
     default: '设置分组',
+  },
+  variant: {
+    type: String,
+    default: 'detail',
+    validator: value => ['detail', 'dialog'].includes(value),
   },
 })
 
@@ -355,6 +360,85 @@ function handleCoverFileChange(event) {
   font-size: 13px;
 }
 
+.book-info-shared.variant-dialog {
+  display: block;
+}
+
+.variant-dialog .book-cover-zone {
+  width: 100%;
+  height: 150px;
+  min-height: 150px;
+  border-radius: 0;
+}
+
+.variant-dialog .book-cover-bg {
+  filter: blur(50px);
+  opacity: 0.45;
+}
+
+.variant-dialog .book-cover-zone :deep(.book-cover-shared) {
+  width: 100px;
+  height: 150px;
+  margin: 0 auto;
+  box-shadow: 0 8px 24px rgba(58, 41, 10, 0.18);
+}
+
+.variant-dialog .cover-edit-label {
+  right: calc(50% - 50px);
+  bottom: 8px;
+  left: calc(50% - 50px);
+}
+
+.variant-dialog .book-info-main {
+  display: block;
+}
+
+.variant-dialog .book-info-title {
+  justify-content: center;
+  padding: 10px 0 4px;
+  text-align: center;
+}
+
+.variant-dialog .book-info-title h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.variant-dialog .book-kind-tags {
+  justify-content: center;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.variant-dialog .book-kind-tags span {
+  padding: 0 3px;
+  color: #d03050;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 13px;
+}
+
+.variant-dialog .book-props {
+  gap: 0;
+  padding: 5px 0;
+}
+
+.variant-dialog .book-props div {
+  padding: 3px 0;
+  font-size: 14px;
+}
+
+.variant-dialog .book-info-controls {
+  justify-content: flex-end;
+  margin: 2px 0 8px;
+}
+
+.variant-dialog .book-info-intro {
+  max-height: calc(var(--vh, 1vh) * 70 - 54px - 60px - 150px - 75px - 120px);
+  line-height: 1.6;
+}
+
 @media (max-width: 560px) {
   .book-info-shared {
     grid-template-columns: 1fr;
@@ -374,6 +458,16 @@ function handleCoverFileChange(event) {
 
   .book-info-main {
     gap: 12px;
+  }
+
+  .variant-dialog .book-cover-zone {
+    justify-self: stretch;
+    width: 100%;
+    min-height: 150px;
+  }
+
+  .variant-dialog .book-info-intro {
+    max-height: calc(var(--vh, 1vh) * 100 - 54px - 60px - 150px - 75px - 120px);
   }
 }
 </style>

@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     title="书籍信息"
-    width="620px"
+    width="480px"
     class="book-info-dialog"
     :fullscreen="isMobile"
     @update:model-value="$emit('update:modelValue', $event)"
@@ -24,6 +24,7 @@
       :browser-cache-count="browserCacheCount"
       :show-category-action="showCategoryAction"
       :category-action-label="categoryActionLabel"
+      variant="dialog"
       @cover-upload="$emit('coverUpload', $event)"
       @can-update-change="$emit('canUpdateChange', $event)"
       @category-action="$emit('categoryAction')"
