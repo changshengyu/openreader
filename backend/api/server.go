@@ -97,6 +97,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.POST("/local-store/upload", server.uploadToLocalStore)
 	protected.DELETE("/local-store", server.deleteFromLocalStore)
 	protected.POST("/local-store/import", server.importFromLocalStore)
+	protected.GET("/txt-toc-rules", server.listTXTTocRules)
 	protected.POST("/imports/books", server.importTXT)
 	protected.POST("/imports/txt", server.importTXT)
 	protected.POST("/uploads", server.uploadAsset)

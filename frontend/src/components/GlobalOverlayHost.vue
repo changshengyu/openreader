@@ -96,6 +96,23 @@
         <el-option label="未分组" value="" />
         <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
+      <el-select
+        v-if="importSupportsTocRule"
+        v-model="importDraft.tocRule"
+        filterable
+        allow-create
+        clearable
+        default-first-option
+        :loading="tocRulesLoading"
+        placeholder="目录规则（可选，留空自动识别）"
+      >
+        <el-option v-for="rule in tocRuleOptions" :key="rule.id" :label="rule.name" :value="rule.rule">
+          <div class="toc-rule-option">
+            <strong>{{ rule.name }}</strong>
+            <span>{{ rule.rule }}</span>
+          </div>
+        </el-option>
+      </el-select>
       <el-input
         v-if="importSupportsTocRule"
         v-model="importDraft.tocRule"
@@ -631,7 +648,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
-import { cacheBookContent, changeBookSource, checkBookUpdates, createBookmark, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, refreshBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, changeBookSource, checkBookUpdates, createBookmark, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, listTXTTocRules, refreshBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
@@ -686,6 +703,8 @@ const loadingUpdates = ref(false)
 const importingBook = ref(false)
 const visibilitySavingId = ref(null)
 const importDraft = reactive({ title: '', author: '', categoryId: '', file: null, tocRule: '' })
+const tocRuleOptions = ref([])
+const tocRulesLoading = ref(false)
 const sourceRows = ref([])
 const sourceSwitchVisible = ref(false)
 const sourceSwitchBook = ref(null)
@@ -837,8 +856,22 @@ async function loadImportCategories() {
   }
 }
 
+async function loadTXTTocRuleOptions() {
+  if (tocRuleOptions.value.length || tocRulesLoading.value) return
+  tocRulesLoading.value = true
+  try {
+    const { data } = await listTXTTocRules()
+    tocRuleOptions.value = Array.isArray(data) ? data.filter(rule => rule?.enable !== false && rule?.rule) : []
+  } catch (err) {
+    ElMessage.error(readError(err, '加载目录规则失败'))
+  } finally {
+    tocRulesLoading.value = false
+  }
+}
+
 function pickImportFile(data) {
   importDraft.file = data.raw || null
+  if (!importSupportsTocRule.value) importDraft.tocRule = ''
   if (importDraft.file && !importDraft.title) {
     importDraft.title = importDraft.file.name.replace(/\.[^.]+$/, '')
   }
@@ -864,6 +897,14 @@ async function importLocalBook() {
     importingBook.value = false
   }
 }
+
+watch(
+  importSupportsTocRule,
+  (supported) => {
+    if (supported) loadTXTTocRuleOptions()
+    else importDraft.tocRule = ''
+  },
+)
 
 watch(
   () => overlay.bookManageVisible || overlay.bookGroupVisible,
@@ -2348,6 +2389,24 @@ function readError(err, fallback) {
 .import-form {
   display: grid;
   gap: 12px;
+}
+
+.toc-rule-option {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.toc-rule-option strong,
+.toc-rule-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toc-rule-option span {
+  color: var(--app-text-muted);
+  font-size: 12px;
 }
 
 .upload-icon {

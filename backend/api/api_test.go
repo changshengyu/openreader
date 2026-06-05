@@ -100,6 +100,29 @@ func TestHealthIncludesBuildInfo(t *testing.T) {
 	}
 }
 
+func TestListTXTTocRules(t *testing.T) {
+	router, _ := setupTestServer(t)
+	auth := authHeader(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/txt-toc-rules", nil)
+	req.Header.Set("Authorization", auth)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("txt toc rules: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var rules []engine.TXTTocRule
+	if err := json.Unmarshal(w.Body.Bytes(), &rules); err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) == 0 {
+		t.Fatal("expected default txt toc rules")
+	}
+	if rules[0].Name == "" || rules[0].Rule == "" {
+		t.Fatalf("unexpected first rule: %+v", rules[0])
+	}
+}
+
 func TestRegisterAndLogin(t *testing.T) {
 	router, _ := setupTestServer(t)
 

@@ -10,9 +10,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/services/localbook"
 )
+
+func (s *Server) listTXTTocRules(c *gin.Context) {
+	c.JSON(http.StatusOK, engine.DefaultTXTTocRules())
+}
 
 func (s *Server) importTXT(c *gin.Context) {
 	userID, _ := middleware.UserID(c)

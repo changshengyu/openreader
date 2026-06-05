@@ -44,6 +44,10 @@ export function refreshLocalBook(id, payload = undefined) {
   return api.post(`/books/${id}/refresh-local`, payload)
 }
 
+export function listTXTTocRules() {
+  return api.get('/txt-toc-rules')
+}
+
 export function cacheBookContent(id, payload) {
   return api.post(`/books/${id}/cache`, payload)
 }
