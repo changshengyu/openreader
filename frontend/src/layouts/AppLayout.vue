@@ -184,6 +184,7 @@ import { listSources } from '../api/sources'
 import api from '../api/client'
 import { compareRecentBook, newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
 const router = useRouter()
 const route = useRoute()
@@ -194,7 +195,7 @@ const reader = useReaderStore()
 const preferences = usePreferencesStore()
 const quickSearch = ref('')
 const offline = ref(false)
-const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const windowWidth = ref(currentViewportWidth())
 const mobileNavigationVisible = ref(false)
 const touchStart = ref(null)
 const touchMoveX = ref(0)
@@ -202,7 +203,6 @@ const cacheStats = ref({})
 const healthInfo = ref(null)
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
-const MINI_INTERFACE_MAX_WIDTH = 750
 const MOBILE_NAV_TRIGGER = 72
 const FOREGROUND_REFRESH_INTERVAL = 5000
 let lastForegroundRefreshAt = 0
@@ -313,7 +313,7 @@ const appVersionLabel = computed(() => {
   if (version && !['dev', 'unknown'].includes(version)) return version
   return commit || 'dev'
 })
-const isMobileShell = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isMobileShell = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const mobileNavigationWidth = computed(() => {
   return 260
 })
@@ -552,7 +552,7 @@ function setOnline() {
 }
 
 function updateViewportFlags() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 function handleTouchStart(event) {

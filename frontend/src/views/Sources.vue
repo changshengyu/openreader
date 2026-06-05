@@ -271,6 +271,7 @@ import {
   updateSource,
 } from '../api/sources'
 import { useReaderStore } from '../stores/reader'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
 const route = useRoute()
 const reader = useReaderStore()
@@ -322,8 +323,7 @@ const debugChapterURL = ref('')
 const debugResult = ref(null)
 const testing = ref(false)
 const handledRouteAction = ref('')
-const MINI_INTERFACE_MAX_WIDTH = 750
-const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const windowWidth = ref(currentViewportWidth())
 let sourceReloadTimer
 
 const sourceGroupOptions = computed(() => buildSourceGroupOptions(sources.value))
@@ -354,7 +354,7 @@ const shownSources = computed(() => {
 const debugResultText = computed(() => debugResult.value ? JSON.stringify(debugResult.value, null, 2) : '')
 const debugSearchRows = computed(() => Array.isArray(debugResult.value?.results) ? debugResult.value.results : [])
 const debugChapterRows = computed(() => Array.isArray(debugResult.value?.chapters) ? debugResult.value.chapters : [])
-const isMobileDialog = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const drawerDirection = computed(() => isMobileDialog.value ? 'btt' : 'rtl')
 const editorDrawerSize = computed(() => isMobileDialog.value ? '88%' : '520px')
 
@@ -437,7 +437,7 @@ function applyRouteAction() {
 }
 
 function handleResize() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 async function toggleSource(source, enabled) {

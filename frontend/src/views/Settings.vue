@@ -388,6 +388,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useOverlayStore } from '../stores/overlay'
 import { readerFontOptions } from '../utils/readerFonts'
 import { useUserStore } from '../stores/user'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import RSSManager from '../components/RSSManager.vue'
 import WebDAVBrowser from '../components/WebDAVBrowser.vue'
 
@@ -410,8 +411,7 @@ const cacheLoading = ref(false)
 const cacheClearing = ref(false)
 const readerBgUploading = ref(false)
 const healthInfo = ref(null)
-const MINI_INTERFACE_MAX_WIDTH = 750
-const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const windowWidth = ref(currentViewportWidth())
 
 const fontOptions = readerFontOptions
 const configDefaultTypes = ['白天默认', '黑夜默认']
@@ -511,7 +511,7 @@ const readerSettingsSyncText = computed(() => {
   return '本地设置'
 })
 
-const readerSettingsMiniInterface = computed(() => readerStore.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const readerSettingsMiniInterface = computed(() => shouldUseMiniInterface(readerStore.pageMode, windowWidth.value))
 const isMobileDialog = computed(() => readerSettingsMiniInterface.value)
 const currentReaderCustomConfig = computed(() => {
   return (Array.isArray(readerStore.customConfigList) ? readerStore.customConfigList : []).find(config => config.name === readerStore.customConfigName) || null
@@ -571,7 +571,7 @@ onMounted(() => {
 onBeforeUnmount(() => window.removeEventListener('resize', updateWindowWidth))
 
 function updateWindowWidth() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 watch(

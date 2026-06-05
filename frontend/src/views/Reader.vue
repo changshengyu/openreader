@@ -476,6 +476,7 @@ import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import {
   sourceCandidateAuthor,
   sourceCandidateBookUrl,
@@ -559,8 +560,7 @@ const customBg = ref('')
 const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
-const windowWidth = ref(window.innerWidth)
-const mobileReaderMaxWidth = 750
+const windowWidth = ref(currentViewportWidth())
 const SAVE_PROGRESS_MIN_INTERVAL = 1200
 const MOBILE_TAP_MOVE_TOLERANCE = 14
 
@@ -666,7 +666,7 @@ const bodyStyle = computed(() => {
 })
 
 const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.value.length || 1}`)
-const isMobileReader = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= mobileReaderMaxWidth)
+const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
 const bookProgress = computed(() => {
@@ -2365,7 +2365,7 @@ function readableViewportSize() {
 }
 
 function handleResize() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
   updateFlipLayout()
 }
 

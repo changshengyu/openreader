@@ -150,6 +150,7 @@ import { Document, FolderOpened, Refresh, Search, Upload } from '@element-plus/i
 import { createLocalStoreDirectory, deleteFromLocalStore, downloadFromLocalStore, importFromLocalStore, listLocalStore, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
 defineProps({
   embedded: {
@@ -173,8 +174,7 @@ const importing = ref(false)
 const uploading = ref(false)
 const resultDialog = ref(false)
 const importResults = ref([])
-const MINI_INTERFACE_MAX_WIDTH = 750
-const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const windowWidth = ref(currentViewportWidth())
 
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
 const importableCount = computed(() => items.value.filter(item => item.importable).length)
@@ -194,7 +194,7 @@ const shownItems = computed(() => {
 })
 const shownImportablePaths = computed(() => shownItems.value.filter(item => item.importable).map(item => item.path))
 const selectedImportablePaths = computed(() => selectedRows.value.filter(item => item.importable).map(item => item.path))
-const isMobileDialog = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
@@ -204,7 +204,7 @@ onMounted(async () => {
 onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
 
 function handleResize() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 async function load() {

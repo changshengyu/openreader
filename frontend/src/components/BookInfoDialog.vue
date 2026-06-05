@@ -38,6 +38,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import BookInfoPanel from './BookInfoPanel.vue'
 import { useReaderStore } from '../stores/reader'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
 defineProps({
   modelValue: {
@@ -108,13 +109,12 @@ defineProps({
 
 defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange', 'categoryAction'])
 
-const MINI_INTERFACE_MAX_WIDTH = 750
 const reader = useReaderStore()
-const windowWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
-const isMobile = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const windowWidth = ref(currentViewportWidth())
+const isMobile = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 
 function handleResize() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 onMounted(() => window.addEventListener('resize', handleResize))

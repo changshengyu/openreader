@@ -116,6 +116,7 @@ import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { isLocalBook, localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
 const router = useRouter()
 const route = useRoute()
@@ -129,8 +130,7 @@ const selectedGroup = ref('')
 const showBookEditButton = ref(false)
 const refreshLoading = ref(false)
 const shelfView = computed(() => preferences.shelf.view)
-const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
-const MINI_INTERFACE_MAX_WIDTH = 750
+const windowWidth = ref(currentViewportWidth())
 
 const groupItems = computed(() => {
   const countByCategory = new Map()
@@ -172,7 +172,7 @@ const displayedBooks = computed(() => {
   return filtered
 })
 
-const isMobileShelf = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isMobileShelf = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const isNormalPage = computed(() => !['kindle', 'simple', 'Kindle'].includes(reader.pageType))
 const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
 
@@ -351,7 +351,7 @@ function coverStyle(book) {
 }
 
 function updateViewportFlags() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 function toggleMobileNavigation() {
@@ -374,7 +374,7 @@ function readError(err, fallback) {
 .shelf-page {
   background: #fff;
   min-height: 100vh;
-  padding: 48px;
+  padding: 42px 48px;
   box-sizing: border-box;
 }
 
@@ -630,17 +630,17 @@ function readError(err, fallback) {
 
 .shelf-main.grid-view .book-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 380px);
+  grid-template-columns: repeat(auto-fill, minmax(320px, 380px));
   justify-content: space-around;
-  gap: 10px;
-  padding: 18px 0;
+  gap: 10px 16px;
+  padding: 18px 0 28px;
   overflow: visible;
 }
 
 .shelf-main.grid-view .book-row {
   grid-template-columns: 84px minmax(0, 1fr);
   gap: 20px;
-  width: 360px;
+  width: min(360px, 100%);
   min-height: 160px;
   align-items: start;
   padding: 24px;
@@ -827,7 +827,7 @@ function readError(err, fallback) {
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  padding: 20px 24px 0;
+  padding: 18px 16px 0;
   overflow: hidden;
 }
 
@@ -837,14 +837,15 @@ function readError(err, fallback) {
 }
 
 .shelf-page.mobile-shelf .shelf-title strong {
-  font-size: clamp(24px, 6vw, 30px);
+  font-size: 28px;
+  line-height: 1.2;
 }
 
 .shelf-page.mobile-shelf .title-actions {
   max-width: none;
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  gap: 14px;
+  gap: 12px;
   overflow: visible;
   scrollbar-width: none;
 }
@@ -855,7 +856,7 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .title-actions button {
   flex: 0 0 auto;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 28px;
   white-space: nowrap;
 }
@@ -880,28 +881,28 @@ function readError(err, fallback) {
 }
 
 .shelf-page.mobile-shelf .book-group-wrapper {
-  width: calc(100% - 48px);
-  max-width: calc(100% - 48px);
-  margin-right: 24px;
-  margin-left: 24px;
+  width: 100%;
+  max-width: 100%;
+  margin-right: 0;
+  margin-left: 0;
   padding: 5px 0;
 }
 
 .shelf-page.mobile-shelf .book-row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  min-height: 132px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-height: 142px;
   align-items: start;
-  gap: 20px;
+  gap: 18px;
   width: 100%;
   box-sizing: border-box;
-  padding: 10px 20px;
-  contain: layout paint;
+  padding: 14px 16px;
+  contain: inline-size paint;
 }
 
 .shelf-page.mobile-shelf .list-cover {
-  width: 84px;
-  height: 112px;
+  width: 92px;
+  height: 122px;
 }
 
 .shelf-page.mobile-shelf .book-operation {
@@ -917,7 +918,7 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .list-main {
   width: auto;
-  min-height: 112px;
+  min-height: 122px;
   box-sizing: border-box;
   justify-content: start;
   gap: 6px;
@@ -1000,7 +1001,7 @@ function readError(err, fallback) {
     align-items: center;
     justify-content: space-between;
     min-width: 0;
-    padding: 20px 24px 0;
+    padding: 18px 16px 0;
     overflow: hidden;
   }
 
@@ -1010,7 +1011,8 @@ function readError(err, fallback) {
   }
 
   .shelf-title strong {
-    font-size: clamp(24px, 6vw, 30px);
+    font-size: 28px;
+    line-height: 1.2;
   }
 
   .title-actions {
@@ -1044,28 +1046,28 @@ function readError(err, fallback) {
   }
 
   .book-group-wrapper {
-    width: calc(100% - 48px);
-    max-width: calc(100% - 48px);
-    margin-right: 24px;
-    margin-left: 24px;
+    width: 100%;
+    max-width: 100%;
+    margin-right: 0;
+    margin-left: 0;
     padding: 5px 0;
   }
 
   .book-row {
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
-    min-height: 132px;
+    grid-template-columns: 92px minmax(0, 1fr);
+    min-height: 142px;
     align-items: start;
-    gap: 20px;
+    gap: 18px;
     width: 100%;
     box-sizing: border-box;
-    padding: 10px 20px;
-    contain: layout paint;
+    padding: 14px 16px;
+    contain: inline-size paint;
   }
 
   .list-cover {
-    width: 84px;
-    height: 112px;
+    width: 92px;
+    height: 122px;
   }
 
   .book-operation {
@@ -1082,7 +1084,7 @@ function readError(err, fallback) {
   .list-main {
     width: auto;
     max-width: 100%;
-    min-height: 112px;
+    min-height: 122px;
     box-sizing: border-box;
     justify-content: start;
     gap: 6px;
@@ -1119,10 +1121,10 @@ function readError(err, fallback) {
 @media (max-width: 520px) {
   .shelf-page.mobile-shelf .book-group-wrapper,
   .book-group-wrapper {
-    width: calc(100% - 32px);
-    max-width: calc(100% - 32px);
-    margin-right: 16px;
-    margin-left: 16px;
+    width: 100%;
+    max-width: 100%;
+    margin-right: 0;
+    margin-left: 0;
     padding: 5px 0;
   }
 
@@ -1137,12 +1139,12 @@ function readError(err, fallback) {
 
   .shelf-page.mobile-shelf .shelf-title,
   .shelf-title {
-    padding: 20px 16px 0;
+    padding: 18px 14px 0;
   }
 
   .shelf-page.mobile-shelf .shelf-title strong,
   .shelf-title strong {
-    font-size: clamp(22px, 7vw, 28px);
+    font-size: 28px;
   }
 
   .shelf-page.mobile-shelf .title-actions,
@@ -1158,19 +1160,19 @@ function readError(err, fallback) {
   .shelf-page.mobile-shelf .book-row,
   .book-row {
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-columns: 86px minmax(0, 1fr);
     gap: 14px;
-    min-height: 132px;
+    min-height: 134px;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 10px 20px;
+    padding: 12px 14px;
   }
 
   .shelf-page.mobile-shelf .list-cover,
   .list-cover {
-    width: 84px;
-    height: 112px;
+    width: 86px;
+    height: 114px;
     flex-basis: auto;
   }
 
@@ -1178,7 +1180,7 @@ function readError(err, fallback) {
   .list-main {
     width: auto;
     max-width: 100%;
-    min-height: 112px;
+    min-height: 114px;
     box-sizing: border-box;
     gap: 4px;
     padding-right: 0;

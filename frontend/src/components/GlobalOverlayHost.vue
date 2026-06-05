@@ -638,6 +638,7 @@ import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBro
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import {
   sourceCandidateAuthor,
   sourceCandidateBookUrl,
@@ -729,14 +730,13 @@ const replaceRuleDraft = ref({ name: '', pattern: '', replacement: '', enabled: 
 const replaceRuleTestText = ref('广告123\n正文内容')
 const replaceRuleTestResult = ref(null)
 const manageKeyword = ref('')
-const MINI_INTERFACE_MAX_WIDTH = 750
-const windowWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const windowWidth = ref(currentViewportWidth())
 let replaceRulesRefreshTimer
 let bookmarkRefreshTimer
 let usersRefreshTimer
 let sourceRowsRefreshTimer
 
-const isMobileOverlay = computed(() => reader.pageMode === 'mobile' || windowWidth.value <= MINI_INTERFACE_MAX_WIDTH)
+const isMobileOverlay = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const wideDrawerSize = computed(() => isMobileOverlay.value ? '88%' : '82%')
 const narrowDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -815,7 +815,7 @@ onBeforeUnmount(() => {
 })
 
 function updateWindowWidth() {
-  windowWidth.value = window.innerWidth
+  windowWidth.value = currentViewportWidth()
 }
 
 async function loadImportCategories() {
