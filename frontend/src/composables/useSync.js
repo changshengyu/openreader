@@ -67,7 +67,11 @@ export function useSync() {
         })
       }
       if (message.type === 'bookshelf_update') {
-        if (message.payload?.id) {
+        if (Array.isArray(message.payload)) {
+          message.payload.forEach(book => {
+            if (book?.id) bookshelf.upsertBook(book)
+          })
+        } else if (message.payload?.id) {
           bookshelf.upsertBook(message.payload)
         } else {
           scheduleBookshelfRefresh({ books: true, categories: true })

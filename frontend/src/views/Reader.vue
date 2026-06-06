@@ -2598,11 +2598,12 @@ async function handleProgressUpdated(event) {
 async function handleReaderBookDataUpdated(event) {
   const detail = event?.detail || {}
   if (!detail.bookId || Number(detail.bookId) !== Number(bookId.value)) return
+  if (detail.book?.id) book.value = detail.book
+  if (!Array.isArray(detail.chapters)) return
   const restoreOffset = currentOffset()
   const restorePercent = currentChapterPercent()
-  const targetIndex = Math.max(0, Math.min(currentIndex.value, Math.max((detail.chapters || chapters.value).length - 1, 0)))
-  if (detail.book?.id) book.value = detail.book
-  if (Array.isArray(detail.chapters)) chapters.value = detail.chapters
+  const targetIndex = Math.max(0, Math.min(currentIndex.value, Math.max(detail.chapters.length - 1, 0)))
+  chapters.value = detail.chapters
   currentIndex.value = targetIndex
   chapterContentCache = null
   browserCachedChapters.value = {}

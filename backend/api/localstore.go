@@ -266,6 +266,7 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 
 	importer := localbook.NewImporter(s.cfg, s.db)
 	imported := make([]gin.H, 0)
+	importedBooks := make([]bookListItem, 0)
 	seen := make(map[string]bool)
 
 	for _, rawPath := range req.Paths {
@@ -296,10 +297,11 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 				continue
 			}
 			imported = append(imported, gin.H{"path": file.relativePath, "book": book})
+			importedBooks = append(importedBooks, s.bookShelfListItem(userID, book))
 		}
 	}
 
-	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": importedBooks})
 	c.JSON(http.StatusOK, gin.H{"imported": imported})
 }
 

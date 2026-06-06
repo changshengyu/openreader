@@ -336,7 +336,9 @@ async function importBooks(paths) {
     const failed = importResults.value.filter(item => item.error).length
     ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
     importResultDialog.value = true
-    await bookshelf.loadBooks({ force: true, all: true })
+    importResults.value.forEach(item => {
+      if (item.book) bookshelf.upsertBook(item.book)
+    })
     emit('imported', importResults.value)
   } catch (err) {
     ElMessage.error(readError(err, '导入 WebDAV 文件失败'))
