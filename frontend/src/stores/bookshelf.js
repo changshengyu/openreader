@@ -39,6 +39,7 @@ let categoriesRequest = null
 
 export const useBookshelfStore = defineStore('bookshelf', {
   state: () => ({
+    shelfScope: currentUserScope(),
     books: [],
     categories: [],
     selectedCategoryId: '',
@@ -48,7 +49,32 @@ export const useBookshelfStore = defineStore('bookshelf', {
     categoriesLoadedAt: 0,
   }),
   actions: {
+    ensureShelfScope() {
+      const scope = currentUserScope()
+      if (!this.shelfScope) {
+        this.shelfScope = scope
+        return scope
+      }
+      if (this.shelfScope !== scope) {
+        this.resetShelfState(scope)
+      }
+      return scope
+    },
+    resetShelfState(scope = currentUserScope()) {
+      this.shelfScope = scope
+      this.books = []
+      this.categories = []
+      this.selectedCategoryId = ''
+      this.loading = false
+      this.booksLoadedAt = 0
+      this.booksLoadedKey = ''
+      this.categoriesLoadedAt = 0
+      booksRequest = null
+      booksRequestKey = ''
+      categoriesRequest = null
+    },
     async loadBooks(options = {}) {
+      this.ensureShelfScope()
       const force = options === true || Boolean(options?.force)
       const all = Boolean(options?.all)
       const params = {}
@@ -101,6 +127,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       return booksRequest
     },
     async loadCategories(options = {}) {
+      this.ensureShelfScope()
       const force = options === true || Boolean(options?.force)
       const now = Date.now()
       if (!force && this.categoriesLoadedAt > 0 && now - this.categoriesLoadedAt < REFRESH_DEDUPE_MS) {
