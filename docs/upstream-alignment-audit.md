@@ -38,6 +38,7 @@
 ## 最近批次记录
 
 - 2026-06-06：继续对齐上游 `Reader.vue` 的阅读现场缓存心智。阅读页主动刷新目录、切换书源、修改 TXT 目录规则时，会先失效当前书的 reader 书籍/目录浏览器缓存，并清理旧章节正文内存缓存和浏览器章节缓存；刷新成功后会把新的书籍信息和目录重新写回 reader 缓存，远程目录刷新还会按当前章节内位置重新载入正文。这样下一次进入阅读页不会从旧 `reader@user@book/chapters` 读到过期目录，也减少显著重新加载感。对应代码：[Reader.vue](/Users/yuchangsheng/Documents/OpenReader-dev/frontend/src/views/Reader.vue)。
+- 2026-06-06：继续对齐上游 `vuex.js` 的 `currentUserName@readingRecent` 语义。侧边栏“最近阅读”不再直接取书架排序第一本，而是只从已有真实阅读进度的书中按进度更新时间选择；补齐上游首页的“清除”入口，清除只隐藏最近阅读入口到下一次新阅读进度产生，不删除书籍或真实阅读进度；书架排序仍保留导入/更新/阅读都能置前的工作台行为。对应代码：[AppLayout.vue](/Users/yuchangsheng/Documents/OpenReader-dev/frontend/src/layouts/AppLayout.vue)。
 
 ## 后续提交前检查清单
 
