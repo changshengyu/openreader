@@ -29,7 +29,8 @@ type progressRequest struct {
 
 type progressBroadcast struct {
 	models.ReadingProgress
-	ClientID string `json:"clientId,omitempty"`
+	ClientID string       `json:"clientId,omitempty"`
+	Book     bookListItem `json:"book,omitempty"`
 }
 
 func (s *Server) getProgress(c *gin.Context) {
@@ -64,7 +65,8 @@ func (s *Server) updateProgress(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid progress payload"})
 		return
 	}
-	if _, ok := s.ensureBook(c, userID, request.BookID); !ok {
+	progressBook, ok := s.ensureBook(c, userID, request.BookID)
+	if !ok {
 		return
 	}
 
@@ -103,7 +105,7 @@ func (s *Server) updateProgress(c *gin.Context) {
 
 	_ = s.hub.Broadcast(userID, nil, gin.H{
 		"type":    "progress_update",
-		"payload": progressBroadcast{ReadingProgress: progress, ClientID: request.ClientID},
+		"payload": progressBroadcast{ReadingProgress: progress, ClientID: request.ClientID, Book: s.bookShelfListItem(userID, progressBook)},
 	})
 
 	c.JSON(http.StatusOK, progress)

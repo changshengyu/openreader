@@ -58,9 +58,13 @@ export function useSync() {
       }
       if (message.type === 'progress_update') {
         if (message.payload?.clientId && message.payload.clientId === reader.ensureClientId()) return
-        const progressPayload = stripProgressClientId(message.payload)
+        const progressPayload = normalizeProgressPayload(message.payload)
         const progress = reader.applyServerProgress(progressPayload) || progressPayload
-        bookshelf.applyBookProgress(progress, { replace: true })
+        if (message.payload?.book?.id) {
+          bookshelf.upsertBook(message.payload.book)
+        } else {
+          bookshelf.applyBookProgress(progress, { replace: true })
+        }
         dispatchWindowEvent('openreader:progress-updated', {
           progress,
           raw: message.payload,
@@ -257,9 +261,9 @@ export function useSync() {
     })
   }
 
-  function stripProgressClientId(progress = {}) {
+  function normalizeProgressPayload(progress = {}) {
     if (!progress || typeof progress !== 'object') return progress
-    const { clientId, ...rest } = progress
+    const { clientId, book, ...rest } = progress
     return rest
   }
 }

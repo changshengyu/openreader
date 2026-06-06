@@ -2977,7 +2977,7 @@ async function flushProgressQueue(force = false) {
       if (nextKey === lastProgressSaveKey && !force) continue
       lastProgressRequestAt = Date.now()
       const savedProgress = await reader.saveProgress(nextPayload)
-      bookshelf.applyBookProgress(savedProgress, { replace: true })
+      upsertReaderBookProgress(savedProgress, { replace: true })
       lastProgressSaveKey = nextKey
     }
   } finally {
@@ -3017,7 +3017,22 @@ function applyLocalProgressSnapshot(payload = currentProgressPayload(), options 
     updatedAt: new Date().toISOString(),
     pendingSync: true,
   })
-  bookshelf.applyBookProgress(reader.progressByBook[nextPayload.bookId])
+  upsertReaderBookProgress(reader.progressByBook[nextPayload.bookId])
+}
+
+function upsertReaderBookProgress(progress, options = {}) {
+  if (!progress?.bookId) return
+  if (book.value?.id && Number(book.value.id) === Number(progress.bookId)) {
+    const nextBook = mergeShelfBook(book.value, {
+      id: book.value.id,
+      progress,
+      shelfOrderAt: progress.updatedAt,
+    })
+    book.value = nextBook
+    bookshelf.upsertBook(nextBook)
+    return
+  }
+  bookshelf.applyBookProgress(progress, options)
 }
 
 function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
