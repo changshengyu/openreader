@@ -37,8 +37,8 @@ export function useSync() {
       connected.value = true
       reconnectDelay = 1500
       Promise.all([
-        bookshelf.loadCategories({ force: true }),
-        bookshelf.loadBooks({ force: true, all: true }),
+        bookshelf.loadCategories(),
+        bookshelf.loadBooks({ all: true }),
       ]).catch(() => {})
     })
     socket.addEventListener('close', () => {

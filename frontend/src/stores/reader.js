@@ -4,6 +4,7 @@ import { currentUserScope } from '../utils/authScope'
 import { newestProgress as pickNewestProgress, progressUpdatedAt } from '../utils/bookOrder'
 
 let readerSettingsSyncTimer
+const READER_CLIENT_ID = readerClientId()
 
 export const themePresets = {
   parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c' },
@@ -50,7 +51,7 @@ export const useReaderStore = defineStore('reader', {
     settingsSyncing: false,
     settingsSyncError: '',
     progressByBook: {},
-    clientId: readerClientId(),
+    clientId: READER_CLIENT_ID,
     normalModeSnapshot: null,
     customConfigName: '内置白天',
     customConfigList: defaultCustomConfigList(),
@@ -71,8 +72,8 @@ export const useReaderStore = defineStore('reader', {
   },
   actions: {
     ensureClientId() {
-      if (!this.clientId || this.clientId === 'server-render') {
-        this.clientId = readerClientId()
+      if (this.clientId !== READER_CLIENT_ID) {
+        this.clientId = READER_CLIENT_ID
       }
       return this.clientId
     },
@@ -660,13 +661,13 @@ function clampNumber(value, min, max, fallback) {
 }
 
 function readerClientId() {
-  if (typeof localStorage === 'undefined') return 'server-render'
+  if (typeof sessionStorage === 'undefined') return makeClientId()
   const key = 'openreader_reader_client_id'
   try {
-    const current = localStorage.getItem(key)
+    const current = sessionStorage.getItem(key)
     if (current) return current
     const next = makeClientId()
-    localStorage.setItem(key, next)
+    sessionStorage.setItem(key, next)
     return next
   } catch {
     return makeClientId()
