@@ -1336,13 +1336,26 @@ async function refreshShelf() {
   loadingUpdates.value = true
   try {
     const { data } = await checkBookUpdates()
-    await bookshelf.loadBooks({ force: true, all: true })
+    const updatedBooks = normalizeList(data?.books)
+    if (updatedBooks.length) {
+      updatedBooks.forEach(book => bookshelf.upsertBook(book))
+    } else {
+      await bookshelf.loadBooks({ force: true, all: true })
+    }
     ElMessage.success(data?.newChapters ? `发现 ${data.newChapters} 个新章节` : '暂未发现新章节')
   } catch (err) {
     ElMessage.error(readError(err, '刷新失败'))
   } finally {
     loadingUpdates.value = false
   }
+}
+
+function normalizeList(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.list)) return data.list
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.data)) return data.data
+  return []
 }
 
 async function refreshBookInfo(book) {

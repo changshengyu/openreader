@@ -78,7 +78,10 @@ export function useSync() {
         }
       }
       if (message.type === 'bookshelf_delete') {
-        bookshelf.removeBookLocal(message.payload?.id)
+        const ids = Array.isArray(message.payload?.ids)
+          ? message.payload.ids
+          : [message.payload?.id]
+        ids.filter(Boolean).forEach(id => bookshelf.removeBookLocal(id))
       }
       if (message.type === 'category_update') {
         bookshelf.upsertCategory(message.payload)

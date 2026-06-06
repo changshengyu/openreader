@@ -253,17 +253,25 @@ export const useBookshelfStore = defineStore('bookshelf', {
       }
     },
     async batchDeleteBooks(bookIds) {
-      await batchBooks({ action: 'delete', bookIds })
-      this.books = this.books.filter(book => !bookIds.includes(book.id))
+      const { data } = await batchBooks({ action: 'delete', bookIds })
+      const deletedIds = Array.isArray(data?.deletedIds) && data.deletedIds.length ? data.deletedIds : bookIds
+      const deletedSet = new Set(deletedIds.map(id => Number(id)))
+      this.books = this.books.filter(book => !deletedSet.has(Number(book.id)))
       this.invalidateBooks()
-      bookIds.forEach(bookId => syncCachedBookRemoval(bookId))
+      deletedIds.forEach(bookId => syncCachedBookRemoval(bookId))
     },
     async batchSetCategory(bookIds, categoryId) {
-      await batchBooks({ action: 'category', bookIds, categoryId })
-      const nextBooks = this.books.map(book => bookIds.includes(book.id) ? { ...book, categoryId } : book)
+      const { data } = await batchBooks({ action: 'category', bookIds, categoryId })
+      const updatedBooks = asList(data?.books)
+      if (updatedBooks.length) {
+        updatedBooks.forEach(book => this.upsertBook(book))
+        return
+      }
+      const idSet = new Set(bookIds.map(id => Number(id)))
+      const nextBooks = this.books.map(book => idSet.has(Number(book.id)) ? { ...book, categoryId } : book)
       this.books = sortBooks(nextBooks)
       this.invalidateBooks()
-      nextBooks.filter(book => bookIds.includes(book.id)).forEach(book => syncCachedBookUpsert(book))
+      nextBooks.filter(book => idSet.has(Number(book.id))).forEach(book => syncCachedBookUpsert(book))
     },
     async batchCacheBooks(bookIds) {
       const { data } = await batchBooks({ action: 'cache', bookIds })

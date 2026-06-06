@@ -58,17 +58,28 @@ func (s *Scheduler) loop() {
 
 // CheckNow triggers an immediate check of all remote books. Returns the number of new chapters found.
 func (s *Scheduler) CheckNow() int {
-	return s.checkAllBooks()
+	count, _ := s.checkAllBooks()
+	return count
 }
 
-func (s *Scheduler) checkAllBooks() int {
+// CheckNowForUser triggers an immediate check of one user's remote books.
+func (s *Scheduler) CheckNowForUser(userID uint) (int, []uint) {
+	return s.checkBooks("user_id = ? AND source_id > ? AND can_update = ?", userID, 0, true)
+}
+
+func (s *Scheduler) checkAllBooks() (int, []uint) {
+	return s.checkBooks("source_id > ? AND can_update = ?", 0, true)
+}
+
+func (s *Scheduler) checkBooks(query any, args ...any) (int, []uint) {
 	var books []models.Book
-	if err := s.db.Where("source_id > ? AND can_update = ?", 0, true).Find(&books).Error; err != nil {
+	if err := s.db.Where(query, args...).Find(&books).Error; err != nil {
 		log.Printf("scheduler: failed to list books: %v", err)
-		return 0
+		return 0, nil
 	}
 
 	totalNew := 0
+	updatedBookIDs := make([]uint, 0)
 	for _, book := range books {
 		count, err := s.checkBook(book)
 		if err != nil {
@@ -76,12 +87,15 @@ func (s *Scheduler) checkAllBooks() int {
 			continue
 		}
 		totalNew += count
+		if count > 0 {
+			updatedBookIDs = append(updatedBookIDs, book.ID)
+		}
 	}
 
 	if totalNew > 0 {
 		log.Printf("scheduler: found %d new chapters total", totalNew)
 	}
-	return totalNew
+	return totalNew, updatedBookIDs
 }
 
 func (s *Scheduler) checkBook(book models.Book) (int, error) {

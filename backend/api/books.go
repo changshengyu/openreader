@@ -280,6 +280,8 @@ func (s *Server) batchBooks(c *gin.Context) {
 	}
 
 	var affected int64
+	var deletedIDs []uint
+	var updatedBooks []models.Book
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		switch request.Action {
 		case "delete":
@@ -288,6 +290,7 @@ func (s *Server) batchBooks(c *gin.Context) {
 				return err
 			}
 			for i := range books {
+				deletedIDs = append(deletedIDs, books[i].ID)
 				if err := deleteBookRecords(tx, userID, books[i].ID, &books[i]); err != nil {
 					return err
 				}
@@ -301,6 +304,11 @@ func (s *Server) batchBooks(c *gin.Context) {
 				return result.Error
 			}
 			affected = result.RowsAffected
+			if affected > 0 {
+				if err := tx.Where("user_id = ? AND id IN ?", userID, request.BookIDs).Find(&updatedBooks).Error; err != nil {
+					return err
+				}
+			}
 		default:
 			return fmt.Errorf("unsupported batch action")
 		}
@@ -311,8 +319,22 @@ func (s *Server) batchBooks(c *gin.Context) {
 		return
 	}
 
-	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
-	c.JSON(http.StatusOK, gin.H{"affected": affected})
+	switch request.Action {
+	case "delete":
+		if len(deletedIDs) > 0 {
+			_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_delete", "payload": gin.H{"ids": deletedIDs}})
+		}
+		c.JSON(http.StatusOK, gin.H{"affected": affected, "deletedIds": deletedIDs})
+	case "category":
+		items := make([]bookListItem, 0, len(updatedBooks))
+		for _, book := range updatedBooks {
+			items = append(items, s.bookShelfListItem(userID, book))
+		}
+		if len(items) > 0 {
+			_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": items})
+		}
+		c.JSON(http.StatusOK, gin.H{"affected": affected, "books": items})
+	}
 }
 
 func (s *Server) batchCacheBooks(c *gin.Context, userID uint, bookIDs []uint) {
@@ -1860,9 +1882,20 @@ func (s *Server) applyUserReplaceRules(userID uint, content string) string {
 
 func (s *Server) checkUpdates(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	count := s.scheduler.CheckNow()
-	if count > 0 {
+	count, updatedBookIDs := s.scheduler.CheckNowForUser(userID)
+	items := make([]bookListItem, 0, len(updatedBookIDs))
+	if len(updatedBookIDs) > 0 {
+		var books []models.Book
+		if err := s.db.Where("user_id = ? AND id IN ?", userID, updatedBookIDs).Find(&books).Error; err == nil {
+			for _, book := range books {
+				items = append(items, s.bookShelfListItem(userID, book))
+			}
+		}
+	}
+	if len(items) > 0 {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": items})
+	} else if count > 0 {
 		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
 	}
-	c.JSON(http.StatusOK, gin.H{"newChapters": count})
+	c.JSON(http.StatusOK, gin.H{"newChapters": count, "books": items})
 }

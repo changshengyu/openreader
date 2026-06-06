@@ -1008,6 +1008,25 @@ func TestBatchBooksCategoryAndDelete(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("batch category: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+	var categoryResp struct {
+		Affected int `json:"affected"`
+		Books    []struct {
+			ID           uint      `json:"id"`
+			CategoryID   *uint     `json:"categoryId"`
+			ShelfOrderAt time.Time `json:"shelfOrderAt"`
+		} `json:"books"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &categoryResp); err != nil {
+		t.Fatal(err)
+	}
+	if categoryResp.Affected != 2 || len(categoryResp.Books) != 2 {
+		t.Fatalf("expected category response with 2 updated books, got %+v", categoryResp)
+	}
+	for _, item := range categoryResp.Books {
+		if item.CategoryID == nil || *item.CategoryID != category.ID || item.ShelfOrderAt.IsZero() {
+			t.Fatalf("expected updated shelf item with category and shelf order, got %+v", item)
+		}
+	}
 
 	var count int64
 	if err := server.db.Model(&models.Book{}).Where("category_id = ?", category.ID).Count(&count).Error; err != nil {
@@ -1025,6 +1044,16 @@ func TestBatchBooksCategoryAndDelete(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("batch delete: expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	var deleteResp struct {
+		Affected   int    `json:"affected"`
+		DeletedIDs []uint `json:"deletedIds"`
+	}
+	if err := json.Unmarshal(w2.Body.Bytes(), &deleteResp); err != nil {
+		t.Fatal(err)
+	}
+	if deleteResp.Affected != 2 || len(deleteResp.DeletedIDs) != 2 {
+		t.Fatalf("expected delete response with 2 deleted ids, got %+v", deleteResp)
 	}
 	if err := server.db.Model(&models.Book{}).Count(&count).Error; err != nil {
 		t.Fatal(err)
@@ -1984,6 +2013,116 @@ func TestSchedulerSkipsBooksWithCanUpdateDisabled(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected no chapters added for disabled book, got %d", count)
+	}
+}
+
+func TestCheckUpdatesScopesToCurrentUserAndReturnsShelfItems(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var calls int
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<li class="chapter"><a href="/c1">第一章</a></li>
+					<li class="chapter"><a href="/c2">第二章</a></li>
+				</body></html>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	otherUser := models.User{Username: "other-user", PasswordHash: "hash", CanEditSources: true, CanAccessStore: true}
+	if err := server.db.Create(&otherUser).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{Name: "手动追更源", BaseURL: "https://manual-update.example", Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{
+		ChapterListRule: ".chapter",
+		ChapterNameRule: "a|text",
+		ChapterURLRule:  "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID:       user.ID,
+		SourceID:     source.ID,
+		Title:        "当前用户书",
+		URL:          "https://manual-update.example/current",
+		LastChapter:  "第一章",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	otherBook := models.Book{
+		UserID:       otherUser.ID,
+		SourceID:     source.ID,
+		Title:        "其它用户书",
+		URL:          "https://manual-update.example/other",
+		LastChapter:  "第一章",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&otherBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.Chapter{BookID: book.ID, Index: 0, Title: "第一章", URL: "/c1"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.Chapter{BookID: otherBook.ID, Index: 0, Title: "第一章", URL: "/c1"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/check-updates", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("check updates: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		NewChapters int `json:"newChapters"`
+		Books       []struct {
+			ID           uint      `json:"id"`
+			ChapterCount int       `json:"chapterCount"`
+			LastChapter  string    `json:"lastChapter"`
+			ShelfOrderAt time.Time `json:"shelfOrderAt"`
+		} `json:"books"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.NewChapters != 1 || len(resp.Books) != 1 || resp.Books[0].ID != book.ID {
+		t.Fatalf("expected one updated shelf item for current user, got %+v", resp)
+	}
+	if resp.Books[0].ChapterCount != 2 || resp.Books[0].LastChapter != "第二章" || resp.Books[0].ShelfOrderAt.IsZero() {
+		t.Fatalf("expected updated chapter metadata in shelf item, got %+v", resp.Books[0])
+	}
+	if calls != 1 {
+		t.Fatalf("expected only current user's book to be checked, got %d calls", calls)
+	}
+
+	var updatedOther models.Book
+	if err := server.db.First(&updatedOther, otherBook.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if updatedOther.ChapterCount != 1 || updatedOther.LastChapter != "第一章" {
+		t.Fatalf("expected other user's book to stay unchanged, got %+v", updatedOther)
 	}
 }
 
