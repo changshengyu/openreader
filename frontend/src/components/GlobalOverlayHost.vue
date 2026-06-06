@@ -662,6 +662,7 @@ import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBro
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import {
   sourceCandidateAuthor,
@@ -1148,6 +1149,31 @@ async function refreshBookInfoBrowserCacheCount(book) {
   }
 }
 
+async function invalidateBookReaderCaches(book, options = {}) {
+  if (!book?.id) return
+  await invalidateReaderDataCache(book.id, { book: true, chapters: true })
+  if (options.clearBrowser) {
+    await clearBookBrowserChapterCache(book, book.id).catch(() => 0)
+    localCacheCounts.value = {
+      ...localCacheCounts.value,
+      [book.id]: 0,
+    }
+  }
+}
+
+async function refreshBookChaptersCache(book) {
+  if (!book?.id) return null
+  try {
+    const { data } = await listChapters(book.id)
+    const chapters = Array.isArray(data) ? data : []
+    await writeReaderDataCache(book.id, { bookData: book, chaptersData: chapters })
+    return chapters
+  } catch {
+    await writeReaderDataCache(book.id, { bookData: book })
+    return null
+  }
+}
+
 function localCacheCount(book) {
   return localCacheCounts.value[book?.id] || 0
 }
@@ -1263,9 +1289,13 @@ async function changeGlobalBookSource(source) {
       coverUrl: sourceCandidateCover(source),
       intro: sourceCandidateIntro(source),
     })
+    await invalidateBookReaderCaches(book, { clearBrowser: true })
+    const chapters = await refreshBookChaptersCache(data)
     bookshelf.upsertBook(data)
     sourceSwitchBook.value = data
     if (overlay.bookInfoBook?.id === data.id) overlay.bookInfoBook = data
+    await refreshBookInfoBrowserCacheCount(data)
+    window.dispatchEvent(new CustomEvent('openreader:reader-book-data-updated', { detail: { bookId: data.id, book: data, chapters } }))
     sourceSwitchLoadedKey.value = ''
     await loadGlobalSourceCandidates({ force: true })
     ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`)
@@ -1303,10 +1333,14 @@ async function refreshBookInfo(book) {
   refreshingBookId.value = book.id
   try {
     const { data } = await refreshBook(book.id)
+    await invalidateBookReaderCaches(book, { clearBrowser: true })
     const updatedBook = data?.book || data
     if (updatedBook?.id) {
+      const chapters = await refreshBookChaptersCache(updatedBook)
       bookshelf.upsertBook(updatedBook)
       overlay.bookInfoBook = updatedBook
+      await refreshBookInfoBrowserCacheCount(updatedBook)
+      window.dispatchEvent(new CustomEvent('openreader:reader-book-data-updated', { detail: { bookId: updatedBook.id, book: updatedBook, chapters } }))
     } else {
       await bookshelf.loadBooks({ force: true, all: true })
     }
@@ -1323,10 +1357,14 @@ async function refreshLocalBookInfo(book) {
   refreshingBookId.value = book.id
   try {
     const { data } = await refreshLocalBook(book.id)
+    await invalidateBookReaderCaches(book, { clearBrowser: true })
     const updatedBook = data?.book || data
     if (updatedBook?.id) {
+      const chapters = await refreshBookChaptersCache(updatedBook)
       bookshelf.upsertBook(updatedBook)
       overlay.bookInfoBook = updatedBook
+      await refreshBookInfoBrowserCacheCount(updatedBook)
+      window.dispatchEvent(new CustomEvent('openreader:reader-book-data-updated', { detail: { bookId: updatedBook.id, book: updatedBook, chapters } }))
     } else {
       await bookshelf.loadBooks({ force: true, all: true })
     }

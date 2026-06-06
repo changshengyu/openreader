@@ -486,12 +486,12 @@ import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
-import { cacheFirstRequest, networkFirstRequest, removeBrowserCache, setBrowserCache } from '../utils/browserCache'
+import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
-import { currentUserScope } from '../utils/authScope'
+import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import {
   sourceCandidateAuthor,
   sourceCandidateBookUrl,
@@ -735,6 +735,7 @@ onMounted(async () => {
   window.addEventListener('pagehide', handleReaderPageHide)
   document.addEventListener('visibilitychange', handleReaderVisibilityChange)
   window.addEventListener('openreader:progress-updated', handleProgressUpdated)
+  window.addEventListener('openreader:reader-book-data-updated', handleReaderBookDataUpdated)
   window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
   window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   customBg.value = reader.customBgColor
@@ -752,6 +753,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pagehide', handleReaderPageHide)
   document.removeEventListener('visibilitychange', handleReaderVisibilityChange)
   window.removeEventListener('openreader:progress-updated', handleProgressUpdated)
+  window.removeEventListener('openreader:reader-book-data-updated', handleReaderBookDataUpdated)
   window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
   window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   clearBookmarkReloadTimer()
@@ -1040,23 +1042,18 @@ async function refreshReaderBookCaches(options = {}) {
 }
 
 function readerDataCacheKey(key) {
-  return `reader@${currentUserScope()}@${key}`
+  const [type, targetBookId] = String(key || '').split(':')
+  return scopedReaderDataCacheKey(targetBookId || bookId.value, type || key)
 }
 
 async function invalidateReaderDataCache(options = {}) {
   const targetBookId = options.bookId || bookId.value
-  const tasks = []
-  if (options.book !== false) tasks.push(removeBrowserCache(readerDataCacheKey(`book:${targetBookId}`)))
-  if (options.chapters !== false) tasks.push(removeBrowserCache(readerDataCacheKey(`chapters:${targetBookId}`)))
-  await Promise.allSettled(tasks)
+  await invalidateReaderCache(targetBookId, options)
 }
 
 async function writeReaderDataCache(options = {}) {
   const targetBookId = options.bookId || bookId.value
-  const tasks = []
-  if (options.bookData?.id) tasks.push(setBrowserCache(readerDataCacheKey(`book:${targetBookId}`), options.bookData))
-  if (Array.isArray(options.chaptersData)) tasks.push(setBrowserCache(readerDataCacheKey(`chapters:${targetBookId}`), options.chaptersData))
-  await Promise.allSettled(tasks)
+  await writeReaderCache(targetBookId, options)
 }
 
 async function resetReaderChapterCaches(options = {}) {
@@ -1462,9 +1459,9 @@ async function changeReaderLocalTocRule() {
   if (!result) return
   tocRefreshing.value = true
   try {
+    const { data } = await refreshLocalBook(book.value.id, { tocRule: result.value || '' })
     await invalidateReaderDataCache({ chapters: true, book: true })
     await resetReaderChapterCaches({ clearBrowser: true })
-    const { data } = await refreshLocalBook(book.value.id, { tocRule: result.value || '' })
     const updated = data?.book || data
     if (updated?.id) {
       book.value = { ...book.value, ...updated }
@@ -1684,9 +1681,9 @@ async function refreshReaderBookCatalog() {
   try {
     const restoreOffset = currentOffset()
     const restorePercent = currentChapterPercent()
+    const { data } = await refreshBook(book.value.id)
     await invalidateReaderDataCache({ book: true, chapters: true })
     await resetReaderChapterCaches({ clearBrowser: true })
-    const { data } = await refreshBook(book.value.id)
     const updated = data?.book || data
     if (updated?.id) {
       book.value = { ...book.value, ...updated }
@@ -1828,8 +1825,6 @@ async function changeSource(source) {
   const previousBook = book.value
   changingSource.value = nextSourceId
   try {
-    await invalidateReaderDataCache({ book: true, chapters: true })
-    await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })
     const { data } = await changeBookSource(bookId.value, {
       sourceId: nextSourceId,
       bookUrl: sourceCandidateBookUrl(source),
@@ -1838,6 +1833,8 @@ async function changeSource(source) {
       coverUrl: sourceCandidateCover(source),
       intro: sourceCandidateIntro(source),
     })
+    await invalidateReaderDataCache({ book: true, chapters: true })
+    await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })
     book.value = data
     bookshelf.upsertBook(data)
     const chRes = await api.get(`/books/${bookId.value}/chapters`)
@@ -2560,6 +2557,22 @@ async function handleProgressUpdated(event) {
   } catch {
     // If the chapter cannot be applied immediately, the stored progress will be used on the next open.
   }
+}
+
+async function handleReaderBookDataUpdated(event) {
+  const detail = event?.detail || {}
+  if (!detail.bookId || Number(detail.bookId) !== Number(bookId.value)) return
+  const restoreOffset = currentOffset()
+  const restorePercent = currentChapterPercent()
+  const targetIndex = Math.max(0, Math.min(currentIndex.value, Math.max((detail.chapters || chapters.value).length - 1, 0)))
+  if (detail.book?.id) book.value = detail.book
+  if (Array.isArray(detail.chapters)) chapters.value = detail.chapters
+  currentIndex.value = targetIndex
+  chapterContentCache = null
+  browserCachedChapters.value = {}
+  resetContentSearchState()
+  await computeBrowserCachedChapters()
+  await loadChapter(targetIndex, restoreOffset, { restorePercent, refresh: true, saveAfterLoad: false })
 }
 
 function onScroll() {
