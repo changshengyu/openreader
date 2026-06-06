@@ -412,19 +412,21 @@ async function loadSidebarSources() {
 
 async function loadCacheStats() {
   cacheLoading.value = true
-  try {
-    const [{ data }, browserStats] = await Promise.all([
-      getCacheStats(),
-      currentUserBrowserChapterCacheStats(),
-    ])
-    cacheStats.value = data || {}
-    browserCacheStats.value = browserStats || {}
-  } catch {
+  const [serverResult, browserResult] = await Promise.allSettled([
+    getCacheStats(),
+    currentUserBrowserChapterCacheStats(),
+  ])
+  if (serverResult.status === 'fulfilled') {
+    cacheStats.value = serverResult.value?.data || {}
+  } else {
     cacheStats.value = {}
-    browserCacheStats.value = {}
-  } finally {
-    cacheLoading.value = false
   }
+  if (browserResult.status === 'fulfilled') {
+    browserCacheStats.value = browserResult.value || {}
+  } else {
+    browserCacheStats.value = {}
+  }
+  cacheLoading.value = false
 }
 
 async function syncUserConfig() {

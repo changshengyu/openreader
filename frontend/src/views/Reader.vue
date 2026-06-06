@@ -491,6 +491,7 @@ import { simplized, traditionalized } from '../utils/chinese'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
+import { currentUserScope } from '../utils/authScope'
 import {
   sourceCandidateAuthor,
   sourceCandidateBookUrl,
@@ -897,12 +898,12 @@ async function loadReaderBook() {
   const [bookRes, chRes] = await Promise.all([
     cacheFirstRequest(
       () => api.get(`/books/${targetBookId}`),
-      `reader@book:${targetBookId}`,
+      readerDataCacheKey(`book:${targetBookId}`),
       { validate: data => Boolean(data?.id) },
     ),
     cacheFirstRequest(
       () => api.get(`/books/${targetBookId}/chapters`),
-      `reader@chapters:${targetBookId}`,
+      readerDataCacheKey(`chapters:${targetBookId}`),
       { validate: data => Array.isArray(data) },
     ),
   ])
@@ -1019,14 +1020,14 @@ async function refreshReaderBookCaches(options = {}) {
   if (options.book) {
     requests.push(networkFirstRequest(
       () => api.get(`/books/${targetBookId}`),
-      `reader@book:${targetBookId}`,
+      readerDataCacheKey(`book:${targetBookId}`),
       { validate: data => Boolean(data?.id) },
     ).then(res => ({ key: 'book', data: res.data })))
   }
   if (options.chapters) {
     requests.push(networkFirstRequest(
       () => api.get(`/books/${targetBookId}/chapters`),
-      `reader@chapters:${targetBookId}`,
+      readerDataCacheKey(`chapters:${targetBookId}`),
       { validate: data => Array.isArray(data) },
     ).then(res => ({ key: 'chapters', data: res.data })))
   }
@@ -1036,6 +1037,10 @@ async function refreshReaderBookCaches(options = {}) {
     if (row.key === 'book' && row.data?.id) book.value = row.data
     if (row.key === 'chapters' && Array.isArray(row.data)) chapters.value = row.data
   })
+}
+
+function readerDataCacheKey(key) {
+  return `reader@${currentUserScope()}@${key}`
 }
 
 async function loadChapter(index, offset = 0, options = {}) {

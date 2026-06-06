@@ -681,19 +681,23 @@ async function download(row) {
 
 async function loadCacheStats() {
   cacheLoading.value = true
-  try {
-    const [{ data }, browserStats] = await Promise.all([
-      getCacheStats(),
-      currentUserBrowserChapterCacheStats(),
-    ])
-    cacheStats.value = data || {}
-    browserCacheStats.value = browserStats || {}
-  } catch (err) {
-    browserCacheStats.value = {}
-    ElMessage.error(readError(err, '加载缓存统计失败'))
-  } finally {
-    cacheLoading.value = false
+  const [serverResult, browserResult] = await Promise.allSettled([
+    getCacheStats(),
+    currentUserBrowserChapterCacheStats(),
+  ])
+  if (serverResult.status === 'fulfilled') {
+    cacheStats.value = serverResult.value?.data || {}
+  } else {
+    cacheStats.value = {}
+    ElMessage.error(readError(serverResult.reason, '加载服务器缓存统计失败'))
   }
+  if (browserResult.status === 'fulfilled') {
+    browserCacheStats.value = browserResult.value || {}
+  } else {
+    browserCacheStats.value = {}
+    ElMessage.error(readError(browserResult.reason, '加载浏览器缓存统计失败'))
+  }
+  cacheLoading.value = false
 }
 
 async function clearSystemCache() {
