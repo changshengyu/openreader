@@ -486,7 +486,7 @@ import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
-import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
+import { cacheFirstRequest, networkFirstRequest, removeBrowserCache, setBrowserCache } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
@@ -1043,6 +1043,33 @@ function readerDataCacheKey(key) {
   return `reader@${currentUserScope()}@${key}`
 }
 
+async function invalidateReaderDataCache(options = {}) {
+  const targetBookId = options.bookId || bookId.value
+  const tasks = []
+  if (options.book !== false) tasks.push(removeBrowserCache(readerDataCacheKey(`book:${targetBookId}`)))
+  if (options.chapters !== false) tasks.push(removeBrowserCache(readerDataCacheKey(`chapters:${targetBookId}`)))
+  await Promise.allSettled(tasks)
+}
+
+async function writeReaderDataCache(options = {}) {
+  const targetBookId = options.bookId || bookId.value
+  const tasks = []
+  if (options.bookData?.id) tasks.push(setBrowserCache(readerDataCacheKey(`book:${targetBookId}`), options.bookData))
+  if (Array.isArray(options.chaptersData)) tasks.push(setBrowserCache(readerDataCacheKey(`chapters:${targetBookId}`), options.chaptersData))
+  await Promise.allSettled(tasks)
+}
+
+async function resetReaderChapterCaches(options = {}) {
+  chapterContentCache = null
+  browserCachedChapters.value = {}
+  if (!options.clearBrowser) return 0
+  try {
+    return await clearBookBrowserChapterCache(options.book || book.value, bookId.value)
+  } catch {
+    return 0
+  }
+}
+
 async function loadChapter(index, offset = 0, options = {}) {
   currentIndex.value = Math.max(0, Math.min(index, Math.max(chapters.value.length - 1, 0)))
   mobileChromeVisible.value = false
@@ -1435,12 +1462,15 @@ async function changeReaderLocalTocRule() {
   if (!result) return
   tocRefreshing.value = true
   try {
+    await invalidateReaderDataCache({ chapters: true, book: true })
+    await resetReaderChapterCaches({ clearBrowser: true })
     const { data } = await refreshLocalBook(book.value.id, { tocRule: result.value || '' })
     const updated = data?.book || data
     if (updated?.id) {
       book.value = { ...book.value, ...updated }
       bookshelf.upsertBook(updated)
       if (overlay.bookInfoBook?.id === updated.id) overlay.bookInfoBook = book.value
+      await writeReaderDataCache({ bookData: book.value })
     }
     await loadChapters()
     const nextIndex = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
@@ -1652,13 +1682,19 @@ function categoryName(id) {
 async function refreshReaderBookCatalog() {
   if (!book.value?.id || Number(book.value.sourceId || 0) <= 0) return
   try {
+    const restoreOffset = currentOffset()
+    const restorePercent = currentChapterPercent()
+    await invalidateReaderDataCache({ book: true, chapters: true })
+    await resetReaderChapterCaches({ clearBrowser: true })
     const { data } = await refreshBook(book.value.id)
     const updated = data?.book || data
     if (updated?.id) {
       book.value = { ...book.value, ...updated }
       bookshelf.upsertBook(updated)
+      await writeReaderDataCache({ bookData: book.value })
     }
     await loadChapters()
+    await loadChapter(currentIndex.value, restoreOffset, { restorePercent, refresh: true })
     overlay.bookInfoBook = book.value
     toastMsg.value = '目录已刷新'
     setTimeout(() => { toastMsg.value = '' }, 1400)
@@ -1668,9 +1704,12 @@ async function refreshReaderBookCatalog() {
 }
 
 async function loadChapters() {
-  const { data } = await api.get(`/books/${bookId.value}/chapters`)
+  const targetBookId = bookId.value
+  const { data } = await api.get(`/books/${targetBookId}/chapters`)
+  if (bookId.value !== targetBookId) return chapters.value
   chapters.value = Array.isArray(data) ? data : []
   currentIndex.value = Math.max(0, Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0)))
+  await writeReaderDataCache({ bookId: targetBookId, chaptersData: chapters.value })
   return chapters.value
 }
 
@@ -1786,8 +1825,11 @@ function mergeSourceCandidates(existing, incoming) {
 async function changeSource(source) {
   if (!book.value || source.current) return
   const nextSourceId = sourceCandidateSourceId(source)
+  const previousBook = book.value
   changingSource.value = nextSourceId
   try {
+    await invalidateReaderDataCache({ book: true, chapters: true })
+    await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })
     const { data } = await changeBookSource(bookId.value, {
       sourceId: nextSourceId,
       bookUrl: sourceCandidateBookUrl(source),
@@ -1799,7 +1841,8 @@ async function changeSource(source) {
     book.value = data
     bookshelf.upsertBook(data)
     const chRes = await api.get(`/books/${bookId.value}/chapters`)
-    chapters.value = chRes.data
+    chapters.value = Array.isArray(chRes.data) ? chRes.data : []
+    await writeReaderDataCache({ bookData: data, chaptersData: chapters.value })
     currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
     await loadChapter(currentIndex.value, 0)
     sourceCandidatesLoadedKey.value = ''
