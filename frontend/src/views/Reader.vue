@@ -1488,8 +1488,8 @@ async function goBookDetail() {
 async function goShelf() {
   mobileChromeVisible.value = false
   saveCurrentProgress({ force: true, background: true })
-  bookshelf.loadBooks({ force: true, all: true }).catch(() => {})
   await router.push({ name: 'home' })
+  bookshelf.loadBooks({ all: true }).catch(() => {})
 }
 async function openShelfPanel() {
   mobileChromeVisible.value = false
@@ -2810,7 +2810,12 @@ function sendProgressKeepAlive(payload) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ ...payload, mode: reader.mode, clientId: reader.ensureClientId() }),
+      body: JSON.stringify({
+        ...payload,
+        mode: reader.mode,
+        clientUpdatedAt: reader.progressByBook[payload.bookId]?.updatedAt || new Date().toISOString(),
+        clientId: reader.ensureClientId(),
+      }),
     }).catch(() => {})
   } catch {
     // The queued local progress remains pending and will sync on the next open.

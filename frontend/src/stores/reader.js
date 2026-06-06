@@ -478,6 +478,7 @@ export const useReaderStore = defineStore('reader', {
         ...payload,
         mode: this.mode,
         baseUpdatedAt: optimistic.baseUpdatedAt,
+        clientUpdatedAt: optimistic.updatedAt,
         clientId: this.ensureClientId(),
       })
       const merged = mergeProgressResponse(response.data, optimistic)
@@ -529,6 +530,7 @@ export const useReaderStore = defineStore('reader', {
           chapterTitle: progress.chapterTitle,
           mode: progress.mode || this.mode,
           baseUpdatedAt: baseUpdatedAt || progress.baseUpdatedAt || '',
+          clientUpdatedAt: progress.updatedAt || '',
           clientId: this.ensureClientId(),
         })
         const next = mergeProgressResponse(response.data, progress)

@@ -169,7 +169,7 @@ const healthInfo = ref(null)
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
 const MOBILE_NAV_TRIGGER = 72
-const FOREGROUND_REFRESH_INTERVAL = 5000
+const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
 const { connected: syncConnected, connect, disconnect } = useSync()
 
@@ -508,8 +508,8 @@ function refreshShelfInForeground() {
   if (now - lastForegroundRefreshAt < FOREGROUND_REFRESH_INTERVAL) return
   lastForegroundRefreshAt = now
   Promise.all([
-    bookshelf.loadCategories({ force: true }),
-    bookshelf.loadBooks({ force: true, all: true }),
+    bookshelf.loadCategories(),
+    bookshelf.loadBooks({ all: true }),
   ]).catch(() => {})
 }
 

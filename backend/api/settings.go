@@ -69,7 +69,7 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 
 	var existing models.UserSetting
 	err := s.db.Where("user_id = ? AND key = ?", userID, key).First(&existing).Error
-	if err == nil && isStaleProgressUpdate(existing.UpdatedAt, req.BaseUpdatedAt) {
+	if err == nil && isStaleProgressUpdate(existing.UpdatedAt, req.BaseUpdatedAt, "") {
 		c.Header("X-OpenReader-Setting-Conflict", "1")
 		c.JSON(http.StatusOK, userSettingResponse(existing))
 		return

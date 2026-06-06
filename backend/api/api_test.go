@@ -757,6 +757,55 @@ func TestUpdateProgressRejectsStaleClientBase(t *testing.T) {
 	}
 }
 
+func TestUpdateProgressRejectsOlderClientWithoutBase(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "无基线旧进度"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	existing := models.ReadingProgress{
+		UserID:         user.ID,
+		BookID:         book.ID,
+		ChapterIndex:   20,
+		Offset:         8000,
+		Percent:        0.6,
+		ChapterPercent: 0.44,
+		ChapterTitle:   "第二十一章",
+		UpdatedAt:      time.Now().UTC(),
+	}
+	if err := server.db.Create(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	clientUpdatedAt := existing.UpdatedAt.Add(-2 * time.Minute).Format(time.RFC3339Nano)
+	body := fmt.Sprintf(`{"bookId":%d,"chapterIndex":2,"offset":12,"percent":0.02,"chapterPercent":0.03,"chapterTitle":"第三章","clientUpdatedAt":%q}`, book.ID, clientUpdatedAt)
+	req := httptest.NewRequest(http.MethodPut, "/api/progress", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update progress: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("X-OpenReader-Progress-Conflict") != "1" {
+		t.Fatalf("expected stale progress conflict header, got %q", w.Header().Get("X-OpenReader-Progress-Conflict"))
+	}
+
+	var saved models.ReadingProgress
+	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).First(&saved).Error; err != nil {
+		t.Fatal(err)
+	}
+	if saved.ChapterIndex != existing.ChapterIndex || saved.Offset != existing.Offset || saved.ChapterTitle != existing.ChapterTitle {
+		t.Fatalf("stale no-base update overwrote progress: %+v", saved)
+	}
+}
+
 func TestListBooksOrdersByRecentProgressThenShelfTime(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
