@@ -23,6 +23,12 @@ type progressRequest struct {
 	ChapterTitle   string  `json:"chapterTitle"`
 	Mode           string  `json:"mode"`
 	BaseUpdatedAt  string  `json:"baseUpdatedAt"`
+	ClientID       string  `json:"clientId"`
+}
+
+type progressBroadcast struct {
+	models.ReadingProgress
+	ClientID string `json:"clientId,omitempty"`
 }
 
 func (s *Server) getProgress(c *gin.Context) {
@@ -96,7 +102,7 @@ func (s *Server) updateProgress(c *gin.Context) {
 
 	_ = s.hub.Broadcast(userID, nil, gin.H{
 		"type":    "progress_update",
-		"payload": progress,
+		"payload": progressBroadcast{ReadingProgress: progress, ClientID: request.ClientID},
 	})
 
 	c.JSON(http.StatusOK, progress)

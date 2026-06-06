@@ -2810,7 +2810,7 @@ function sendProgressKeepAlive(payload) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ ...payload, mode: reader.mode }),
+      body: JSON.stringify({ ...payload, mode: reader.mode, clientId: reader.ensureClientId() }),
     }).catch(() => {})
   } catch {
     // The queued local progress remains pending and will sync on the next open.

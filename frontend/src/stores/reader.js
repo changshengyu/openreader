@@ -50,6 +50,7 @@ export const useReaderStore = defineStore('reader', {
     settingsSyncing: false,
     settingsSyncError: '',
     progressByBook: {},
+    clientId: readerClientId(),
     normalModeSnapshot: null,
     customConfigName: '内置白天',
     customConfigList: defaultCustomConfigList(),
@@ -69,6 +70,12 @@ export const useReaderStore = defineStore('reader', {
     },
   },
   actions: {
+    ensureClientId() {
+      if (!this.clientId || this.clientId === 'server-render') {
+        this.clientId = readerClientId()
+      }
+      return this.clientId
+    },
     setMode(mode) {
       this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'page'
       this.markSettingsDirty()
@@ -470,6 +477,7 @@ export const useReaderStore = defineStore('reader', {
         ...payload,
         mode: this.mode,
         baseUpdatedAt: optimistic.baseUpdatedAt,
+        clientId: this.ensureClientId(),
       })
       const merged = mergeProgressResponse(response.data, optimistic)
       if (isProgressConflict(response) && shouldRetryProgressConflict(optimistic, merged)) {
@@ -520,6 +528,7 @@ export const useReaderStore = defineStore('reader', {
           chapterTitle: progress.chapterTitle,
           mode: progress.mode || this.mode,
           baseUpdatedAt: baseUpdatedAt || progress.baseUpdatedAt || '',
+          clientId: this.ensureClientId(),
         })
         const next = mergeProgressResponse(response.data, progress)
         if (isProgressConflict(response) && shouldRetryProgressConflict(progress, next) && !options.force) {
@@ -648,6 +657,27 @@ function readLocalChapterProgress(bookId) {
 function clampNumber(value, min, max, fallback) {
   const number = Number(value)
   return Math.max(min, Math.min(max, Number.isFinite(number) ? number : fallback))
+}
+
+function readerClientId() {
+  if (typeof localStorage === 'undefined') return 'server-render'
+  const key = 'openreader_reader_client_id'
+  try {
+    const current = localStorage.getItem(key)
+    if (current) return current
+    const next = makeClientId()
+    localStorage.setItem(key, next)
+    return next
+  } catch {
+    return makeClientId()
+  }
+}
+
+function makeClientId() {
+  const random = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  return `web-${random}`
 }
 
 function readerSettingsPayload(state) {
