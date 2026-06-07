@@ -164,8 +164,8 @@
           <span>阅读进度：{{ progressLabel(row) }}</span>
           <template v-if="Number(row.sourceId || 0) > 0">
             <br><span>服务器缓存：{{ serverCacheCount(row) }} 章</span>
-            <br><span>浏览器缓存：{{ localCacheCount(row) }} 章</span>
           </template>
+          <br><span>浏览器缓存：{{ localCacheCount(row) }} 章</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
@@ -178,9 +178,9 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBookLocal">缓存到浏览器</el-dropdown-item>
+                <el-dropdown-item command="cacheBookLocal">缓存到浏览器</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="cacheBook">缓存到服务器</el-dropdown-item>
-                <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookLocalCache">删除浏览器缓存</el-dropdown-item>
+                <el-dropdown-item command="deleteBookLocalCache">删除浏览器缓存</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) > 0" command="deleteBookCache">删除服务器缓存</el-dropdown-item>
                 <el-dropdown-item v-if="Number(row.sourceId || 0) === 0" disabled>本地书无需服务器缓存</el-dropdown-item>
               </el-dropdown-menu>
@@ -216,12 +216,12 @@
             <span>{{ Number(book.sourceId || 0) > 0 ? '远程书籍' : '本地书籍' }} · {{ progressLabel(book) }}</span>
           </button>
         </header>
-        <p>共 {{ book.chapterCount || 0 }} 章<template v-if="Number(book.sourceId || 0) > 0"> · 服务器缓存 {{ serverCacheCount(book) }} 章 · 浏览器缓存 {{ localCacheCount(book) }} 章</template><template v-if="book.lastChapter"> · 最新：{{ book.lastChapter }}</template></p>
+        <p>共 {{ book.chapterCount || 0 }} 章<template v-if="Number(book.sourceId || 0) > 0"> · 服务器缓存 {{ serverCacheCount(book) }} 章</template> · 浏览器缓存 {{ localCacheCount(book) }} 章<template v-if="book.lastChapter"> · 最新：{{ book.lastChapter }}</template></p>
         <footer>
           <el-button size="small" text @click="goDetail(book)">编辑</el-button>
           <el-button size="small" text @click="setBookGroup(book)">分组</el-button>
-          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBookLocal')">缓存到浏览器</el-button>
-          <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookLocalCache')">清浏览器</el-button>
+          <el-button size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBookLocal')">缓存到浏览器</el-button>
+          <el-button size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookLocalCache')">清浏览器</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">服务器缓存</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清服务器</el-button>
           <el-button size="small" text @click="exportBook(book, 'txt')">导出TXT</el-button>
@@ -1625,8 +1625,8 @@ async function batchExportBooks() {
 }
 
 async function cacheBook(book, command) {
-  if (Number(book?.sourceId || 0) === 0) {
-    ElMessage.info(command?.includes?.('Local') ? '本地书无需浏览器章节缓存' : '本地书无需服务器缓存')
+  if (Number(book?.sourceId || 0) === 0 && command !== 'cacheBookLocal' && command !== 'deleteBookLocalCache') {
+    ElMessage.info('本地书无需服务器缓存')
     return
   }
   if (command === 'deleteBookCache') {
