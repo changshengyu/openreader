@@ -19,6 +19,16 @@ type rssSourceRequest struct {
 	Icon              string `json:"icon"`
 	Group             string `json:"group"`
 	CustomOrder       *int   `json:"customOrder"`
+	SingleURL         *bool  `json:"singleUrl"`
+	ArticleStyle      *int   `json:"articleStyle"`
+	SortURL           string `json:"sortUrl"`
+	RuleArticles      string `json:"ruleArticles"`
+	RuleTitle         string `json:"ruleTitle"`
+	RulePubDate       string `json:"rulePubDate"`
+	RuleImage         string `json:"ruleImage"`
+	RuleLink          string `json:"ruleLink"`
+	RuleContent       string `json:"ruleContent"`
+	EnableJS          *bool  `json:"enableJs"`
 	Enabled           *bool  `json:"enabled"`
 	UpstreamTitle     string `json:"sourceName"`
 	UpstreamURL       string `json:"sourceUrl"`
@@ -51,13 +61,23 @@ func (s *Server) createRSSSource(c *gin.Context) {
 	}
 	customOrder := req.orderOrDefault(s, userID)
 	source := models.RSSSource{
-		UserID:      userID,
-		Title:       strings.TrimSpace(req.Title),
-		URL:         strings.TrimSpace(req.URL),
-		Icon:        strings.TrimSpace(req.Icon),
-		Group:       strings.TrimSpace(req.Group),
-		CustomOrder: customOrder,
-		Enabled:     enabled,
+		UserID:       userID,
+		Title:        strings.TrimSpace(req.Title),
+		URL:          strings.TrimSpace(req.URL),
+		Icon:         strings.TrimSpace(req.Icon),
+		Group:        strings.TrimSpace(req.Group),
+		CustomOrder:  customOrder,
+		SingleURL:    req.singleURLOrDefault(),
+		ArticleStyle: req.articleStyleOrDefault(),
+		SortURL:      strings.TrimSpace(req.SortURL),
+		RuleArticles: strings.TrimSpace(req.RuleArticles),
+		RuleTitle:    strings.TrimSpace(req.RuleTitle),
+		RulePubDate:  strings.TrimSpace(req.RulePubDate),
+		RuleImage:    strings.TrimSpace(req.RuleImage),
+		RuleLink:     strings.TrimSpace(req.RuleLink),
+		RuleContent:  strings.TrimSpace(req.RuleContent),
+		EnableJS:     req.enableJSOrDefault(),
+		Enabled:      enabled,
 	}
 	if source.URL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
@@ -97,6 +117,22 @@ func (s *Server) updateRSSSource(c *gin.Context) {
 	source.Group = strings.TrimSpace(req.Group)
 	if req.CustomOrder != nil {
 		source.CustomOrder = *req.CustomOrder
+	}
+	if req.SingleURL != nil {
+		source.SingleURL = *req.SingleURL
+	}
+	if req.ArticleStyle != nil {
+		source.ArticleStyle = *req.ArticleStyle
+	}
+	source.SortURL = strings.TrimSpace(req.SortURL)
+	source.RuleArticles = strings.TrimSpace(req.RuleArticles)
+	source.RuleTitle = strings.TrimSpace(req.RuleTitle)
+	source.RulePubDate = strings.TrimSpace(req.RulePubDate)
+	source.RuleImage = strings.TrimSpace(req.RuleImage)
+	source.RuleLink = strings.TrimSpace(req.RuleLink)
+	source.RuleContent = strings.TrimSpace(req.RuleContent)
+	if req.EnableJS != nil {
+		source.EnableJS = *req.EnableJS
 	}
 	if req.Enabled != nil {
 		source.Enabled = *req.Enabled
@@ -141,6 +177,27 @@ func (r rssSourceRequest) orderOrDefault(s *Server, userID uint) int {
 	var maxOrder int
 	_ = s.db.Model(&models.RSSSource{}).Where("user_id = ?", userID).Select("COALESCE(MAX(custom_order), 0)").Scan(&maxOrder).Error
 	return maxOrder + 1
+}
+
+func (r rssSourceRequest) singleURLOrDefault() bool {
+	if r.SingleURL != nil {
+		return *r.SingleURL
+	}
+	return true
+}
+
+func (r rssSourceRequest) articleStyleOrDefault() int {
+	if r.ArticleStyle != nil {
+		return *r.ArticleStyle
+	}
+	return 0
+}
+
+func (r rssSourceRequest) enableJSOrDefault() bool {
+	if r.EnableJS != nil {
+		return *r.EnableJS
+	}
+	return true
 }
 
 func (s *Server) deleteRSSSource(c *gin.Context) {

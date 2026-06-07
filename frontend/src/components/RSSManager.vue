@@ -67,7 +67,7 @@
               <small>{{ formatDate(article.publishedAt || article.updatedAt) }} · {{ article.author || '未知作者' }}</small>
               <span>{{ stripHTML(article.summary || article.content || '无摘要') }}</span>
             </span>
-            <span v-if="article.image" class="rss-article-image">
+            <span v-if="article.image" class="rss-article-image" @click.stop.prevent="openArticleListImagePreview(article)">
               <img :src="article.image" alt="" loading="lazy" />
             </span>
           </button>
@@ -172,7 +172,21 @@ const articlePreviewImages = ref([])
 const articlePreviewIndex = ref(0)
 let rssReloadTimer
 
+const RSS_ADVANCED_FIELDS = [
+  'singleUrl',
+  'articleStyle',
+  'sortUrl',
+  'ruleArticles',
+  'ruleTitle',
+  'rulePubDate',
+  'ruleImage',
+  'ruleLink',
+  'ruleContent',
+  'enableJs',
+]
+
 const articleCountText = computed(() => `${articles.value.length} 篇${hasMoreArticles.value ? '+' : ''}`)
+const rssArticleImageList = computed(() => articles.value.map(article => article.image).filter(Boolean))
 
 onMounted(async () => {
   window.addEventListener('openreader:rss-updated', handleRSSUpdated)
@@ -295,6 +309,7 @@ function openEditor(source = null) {
     group: source?.group || '',
     customOrder: Number(source?.customOrder || 0),
     enabled: source?.enabled ?? true,
+    ...pickRSSAdvancedFields(source),
   }
   editorVisible.value = true
 }
@@ -313,6 +328,7 @@ async function saveSource() {
       icon: draft.value.icon.trim(),
       group: draft.value.group.trim(),
       customOrder: Number(draft.value.customOrder || 0),
+      ...pickRSSAdvancedFields(draft.value),
     }
     if (editingSourceId.value) {
       await updateRSSSource(editingSourceId.value, payload)
@@ -402,9 +418,21 @@ function normalizeRSSSourceImport(payload) {
         group,
         customOrder: Number.isFinite(order) ? order : 0,
         enabled: enabled !== false,
+        ...pickRSSAdvancedFields(source),
       }
     })
     .filter(source => source.title && source.url)
+}
+
+function pickRSSAdvancedFields(source = {}) {
+  const picked = {}
+  for (const field of RSS_ADVANCED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) picked[field] = source[field]
+  }
+  if (!Object.prototype.hasOwnProperty.call(picked, 'singleUrl')) picked.singleUrl = true
+  if (!Object.prototype.hasOwnProperty.call(picked, 'articleStyle')) picked.articleStyle = 0
+  if (!Object.prototype.hasOwnProperty.call(picked, 'enableJs')) picked.enableJs = true
+  return picked
 }
 
 async function refreshSource(source) {
@@ -499,6 +527,14 @@ function handleArticleContentClick(event) {
   const clickedURL = image.currentSrc || image.src
   articlePreviewImages.value = images
   articlePreviewIndex.value = Math.max(0, images.indexOf(clickedURL))
+  articleImagePreviewVisible.value = true
+}
+
+function openArticleListImagePreview(article) {
+  const images = rssArticleImageList.value
+  if (!images.length || !article?.image) return
+  articlePreviewImages.value = images
+  articlePreviewIndex.value = Math.max(0, images.indexOf(article.image))
   articleImagePreviewVisible.value = true
 }
 
@@ -688,12 +724,13 @@ function normalizeURL(value) {
 }
 
 .rss-article-image {
-  width: 88px;
+  width: 120px;
   aspect-ratio: 16 / 10;
   overflow: hidden;
   border-radius: var(--app-radius-sm);
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid var(--app-border);
+  cursor: zoom-in;
 }
 
 .rss-article-image img {
@@ -775,7 +812,7 @@ function normalizeURL(value) {
   }
 
   .rss-article-image {
-    width: 72px;
+    width: 100px;
   }
 
   .rss-source-tools,
