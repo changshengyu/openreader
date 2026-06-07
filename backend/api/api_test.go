@@ -4032,6 +4032,13 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if _, err := ruleFile.Write([]byte(`[{"name":"规则","pattern":"foo","replacement":"bar","enabled":true}]`)); err != nil {
 		t.Fatal(err)
 	}
+	rssFile, err := zipWriter.Create("rssSources.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rssFile.Write([]byte(`[{"sourceName":"OpenReader RSS","sourceUrl":"https://rss.example/openreader.xml","sourceIcon":"https://rss.example/icon.png","sourceGroup":"资讯","customOrder":7,"enabled":false}]`)); err != nil {
+		t.Fatal(err)
+	}
 	if err := zipWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -4057,7 +4064,7 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("restore openreader backup: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	for _, expected := range []string{`"books":1`, `"categories":1`, `"bookmarks":1`, `"progress":1`, `"replaceRules":1`} {
+	for _, expected := range []string{`"books":1`, `"categories":1`, `"bookmarks":1`, `"progress":1`, `"replaceRules":1`, `"rssSources":1`} {
 		if !strings.Contains(w.Body.String(), expected) {
 			t.Fatalf("expected %s in restore result, got %s", expected, w.Body.String())
 		}
@@ -4101,6 +4108,13 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	}
 	if rule.Replacement != "bar" || !rule.Enabled {
 		t.Fatalf("unexpected restored replace rule: %+v", rule)
+	}
+	var rssSource models.RSSSource
+	if err := server.db.Where("user_id = ? AND url = ?", user.ID, "https://rss.example/openreader.xml").First(&rssSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rssSource.Title != "OpenReader RSS" || rssSource.Icon != "https://rss.example/icon.png" || rssSource.Group != "资讯" || rssSource.CustomOrder != 7 || rssSource.Enabled {
+		t.Fatalf("unexpected restored rss source: %+v", rssSource)
 	}
 }
 
@@ -4282,6 +4296,62 @@ func TestRSSSourcePreservesUpstreamFieldsAndOrder(t *testing.T) {
 	}
 	if len(sources) != 2 || sources[0].Title != "先显示" || sources[1].Title != "后导入" {
 		t.Fatalf("expected sources ordered by customOrder, got %+v", sources)
+	}
+}
+
+func TestBackupExportsRSSSources(t *testing.T) {
+	_, server := setupTestServer(t)
+	user := models.User{Username: "rss-backup", PasswordHash: "hash", LastActiveAt: time.Now()}
+	if err := server.db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.RSSSource{
+		UserID:      user.ID,
+		Title:       "备份 RSS",
+		URL:         "https://rss.example/backup.xml",
+		Icon:        "https://rss.example/backup.png",
+		Group:       "资讯",
+		CustomOrder: 4,
+		Enabled:     true,
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	backupDir := t.TempDir()
+	backupSvc := backup.New(server.db, backupDir)
+	backupPath, err := backupSvc.RunNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.OpenReader(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	var found bool
+	for _, file := range reader.File {
+		if file.Name != "rssSources.json" {
+			continue
+		}
+		found = true
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, expected := range []string{`"sourceName": "备份 RSS"`, `"sourceUrl": "https://rss.example/backup.xml"`, `"sourceIcon": "https://rss.example/backup.png"`, `"sourceGroup": "资讯"`} {
+			if !strings.Contains(string(data), expected) {
+				t.Fatalf("expected %s in rssSources.json, got %s", expected, string(data))
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected rssSources.json in backup")
 	}
 }
 

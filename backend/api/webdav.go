@@ -368,13 +368,16 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		return nil, errors.New("invalid backup zip")
 	}
 
-	var sourcesCount, booksCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
+	var sourcesCount, rssSourcesCount, booksCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
 
 	for _, zipFile := range zipReader.File {
 		switch {
 		case strings.HasSuffix(zipFile.Name, "bookSource.json"):
 			n, _ := s.restoreSourcesFromZip(zipFile)
 			sourcesCount += n
+		case strings.HasSuffix(zipFile.Name, "rssSources.json"):
+			n, _ := s.restoreRSSSourcesFromZip(zipFile, userID)
+			rssSourcesCount += n
 		case strings.HasSuffix(zipFile.Name, "userSettings.json"):
 			n, _ := s.restoreUserSettingsFromZip(zipFile, userID)
 			settingsCount += n
@@ -413,6 +416,7 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 
 	s.broadcastRestoreUpdates(userID, gin.H{
 		"sources":      sourcesCount,
+		"rssSources":   rssSourcesCount,
 		"books":        booksCount,
 		"progress":     progressCount,
 		"settings":     settingsCount,
@@ -423,6 +427,7 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 
 	return gin.H{
 		"sources":      sourcesCount,
+		"rssSources":   rssSourcesCount,
 		"books":        booksCount,
 		"progress":     progressCount,
 		"settings":     settingsCount,
@@ -451,6 +456,60 @@ func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {
 
 	result := s.importBookSources(sources)
 	return (result["imported"].(int) + result["updated"].(int)), nil
+}
+
+func (s *Server) restoreRSSSourcesFromZip(file *zip.File, userID uint) (int, error) {
+	reader, err := file.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer reader.Close()
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return 0, err
+	}
+
+	var sources []rssSourceRequest
+	if err := json.Unmarshal(data, &sources); err != nil {
+		var source rssSourceRequest
+		if err := json.Unmarshal(data, &source); err != nil {
+			return 0, err
+		}
+		sources = []rssSourceRequest{source}
+	}
+
+	count := 0
+	for _, sourceReq := range sources {
+		sourceReq.normalize()
+		url := strings.TrimSpace(sourceReq.URL)
+		if url == "" {
+			continue
+		}
+		title := strings.TrimSpace(sourceReq.Title)
+		if title == "" {
+			title = url
+		}
+		enabled := true
+		if sourceReq.Enabled != nil {
+			enabled = *sourceReq.Enabled
+		}
+		source := models.RSSSource{
+			UserID:      userID,
+			Title:       title,
+			URL:         url,
+			Icon:        strings.TrimSpace(sourceReq.Icon),
+			Group:       strings.TrimSpace(sourceReq.Group),
+			CustomOrder: sourceReq.orderOrDefault(s, userID),
+			Enabled:     enabled,
+			UpdatedAt:   time.Now(),
+		}
+		query := s.db.Where("user_id = ? AND url = ?", userID, url)
+		if err := query.Assign(source).FirstOrCreate(&source).Error; err == nil {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
@@ -483,6 +542,9 @@ func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
 	}
 	if restoreResultCount(result, "replaceRules") > 0 {
 		s.broadcastReplaceRulesUpdate(userID, "restore-backup")
+	}
+	if restoreResultCount(result, "rssSources") > 0 {
+		s.broadcastRSSUpdate(userID, "restore-backup", gin.H{"sources": true})
 	}
 }
 

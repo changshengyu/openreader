@@ -83,6 +83,7 @@ func (s *Service) run() (string, error) {
 	defer zipWriter.Close()
 
 	s.addSources(zipWriter)
+	s.addRSSSources(zipWriter)
 	s.addUserSettings(zipWriter)
 	s.addCategories(zipWriter)
 	s.addBookshelf(zipWriter)
@@ -104,6 +105,35 @@ func (s *Service) addSources(zipWriter *zip.Writer) {
 		return
 	}
 	writeZipEntry(zipWriter, "bookSource.json", data)
+}
+
+func (s *Service) addRSSSources(zipWriter *zip.Writer) {
+	type rssSourceExport struct {
+		models.RSSSource
+		SourceName  string `json:"sourceName,omitempty"`
+		SourceURL   string `json:"sourceUrl,omitempty"`
+		SourceIcon  string `json:"sourceIcon,omitempty"`
+		SourceGroup string `json:"sourceGroup,omitempty"`
+	}
+	var sources []models.RSSSource
+	if err := s.db.Order("user_id, custom_order, updated_at").Find(&sources).Error; err != nil {
+		return
+	}
+	rows := make([]rssSourceExport, 0, len(sources))
+	for _, source := range sources {
+		rows = append(rows, rssSourceExport{
+			RSSSource:   source,
+			SourceName:  source.Title,
+			SourceURL:   source.URL,
+			SourceIcon:  source.Icon,
+			SourceGroup: source.Group,
+		})
+	}
+	data, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "rssSources.json", data)
 }
 
 func (s *Service) addUserSettings(zipWriter *zip.Writer) {
