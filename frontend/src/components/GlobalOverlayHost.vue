@@ -573,11 +573,17 @@
       <el-table :data="replaceRules" stripe v-loading="replaceRulesLoading" class="desktop-replace-table" @selection-change="onReplaceRuleSelectionChange">
         <el-table-column type="selection" width="44" />
         <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="scope" label="替换范围" min-width="150" show-overflow-tooltip />
         <el-table-column prop="pattern" label="匹配" min-width="180" show-overflow-tooltip />
         <el-table-column prop="replacement" label="替换为" min-width="160" show-overflow-tooltip />
+        <el-table-column label="正则" width="80">
+          <template #default="{ row }">
+            {{ normalizeReplaceRule(row).isRegex ? '是' : '否' }}
+          </template>
+        </el-table-column>
         <el-table-column label="启用" width="90">
           <template #default="{ row }">
-            <el-switch v-model="row.enabled" size="small" @change="toggleReplaceRule(row)" />
+            <el-switch :model-value="normalizeReplaceRule(row).enabled" size="small" @change="value => toggleReplaceRule(row, value)" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="140" fixed="right">
@@ -593,11 +599,13 @@
             <el-checkbox :model-value="selectedReplaceRuleIds.includes(rule.id)" @change="toggleReplaceRuleSelection(rule.id, $event)" />
             <div>
               <strong>{{ rule.name || '未命名规则' }}</strong>
+              <em>{{ normalizeReplaceRule(rule).scope }}</em>
               <span>{{ rule.pattern }}</span>
             </div>
-            <el-switch v-model="rule.enabled" size="small" @change="toggleReplaceRule(rule)" />
+            <el-switch :model-value="normalizeReplaceRule(rule).enabled" size="small" @change="value => toggleReplaceRule(rule, value)" />
           </header>
           <p>替换为：{{ rule.replacement || '空' }}</p>
+          <p>模式：{{ normalizeReplaceRule(rule).isRegex ? '正则表达式' : '普通文本' }}</p>
           <footer>
             <el-button size="small" text @click="openReplaceRuleEditor(rule)">编辑</el-button>
             <el-button size="small" text type="danger" @click="removeReplaceRule(rule)">删除</el-button>
@@ -613,6 +621,8 @@
       <el-form-item label="名称"><el-input v-model="replaceRuleDraft.name" /></el-form-item>
       <el-form-item label="匹配正则或文本"><el-input v-model="replaceRuleDraft.pattern" /></el-form-item>
       <el-form-item label="替换为"><el-input v-model="replaceRuleDraft.replacement" /></el-form-item>
+      <el-form-item label="替换范围"><el-input v-model="replaceRuleDraft.scope" placeholder="* 或 书名 或 书名;书籍地址" /></el-form-item>
+      <el-form-item><el-switch v-model="replaceRuleDraft.isRegex" active-text="使用正则表达式" inactive-text="普通文本" /></el-form-item>
       <el-form-item><el-switch v-model="replaceRuleDraft.enabled" active-text="启用" inactive-text="停用" /></el-form-item>
       <el-form-item label="测试文本">
         <el-input v-model="replaceRuleTestText" type="textarea" :rows="3" />
@@ -754,7 +764,7 @@ const replaceRuleDialog = ref(false)
 const replaceRuleSaving = ref(false)
 const replaceRuleTesting = ref(false)
 const editingReplaceRuleId = ref(null)
-const replaceRuleDraft = ref({ name: '', pattern: '', replacement: '', enabled: true })
+const replaceRuleDraft = ref({ name: '', pattern: '', replacement: '', scope: '*', isRegex: false, enabled: true })
 const replaceRuleTestText = ref('广告123\n正文内容')
 const replaceRuleTestResult = ref(null)
 const manageKeyword = ref('')
@@ -2147,7 +2157,7 @@ async function loadReplaceRules() {
   replaceRulesLoading.value = true
   try {
     const { data } = await listReplaceRules()
-    replaceRules.value = data || []
+    replaceRules.value = Array.isArray(data) ? data.map(normalizeReplaceRule) : []
     selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(id => replaceRules.value.some(rule => rule.id === id))
   } catch (err) {
     ElMessage.error(readError(err, '加载替换规则失败'))
@@ -2226,18 +2236,40 @@ function normalizeReplaceRuleImport(input) {
       name: String(rule.name || rule.title || `导入规则 ${index + 1}`).trim(),
       pattern: String(rule.pattern || rule.regex || rule.match || '').trim(),
       replacement: String(rule.replacement ?? rule.replace ?? ''),
+      scope: String(rule.scope || '*').trim() || '*',
+      isRegex: rule.isRegex === true,
       enabled: rule.enabled === false || rule.isEnabled === false ? false : true,
     }))
     .filter(rule => rule.pattern)
 }
 
+function normalizeReplaceRule(rule = {}) {
+  rule = rule || {}
+  return {
+    ...rule,
+    scope: String(rule.scope || '*').trim() || '*',
+    isRegex: rule.isRegex == null ? true : rule.isRegex === true,
+    enabled: rule.enabled === false || rule.isEnabled === false ? false : true,
+  }
+}
+
 function openReplaceRuleEditor(rule = null) {
-  editingReplaceRuleId.value = rule?.id || null
+  if (!rule) {
+    editingReplaceRuleId.value = null
+    replaceRuleDraft.value = { name: '', pattern: '', replacement: '', scope: '*', isRegex: false, enabled: true }
+    replaceRuleTestResult.value = null
+    replaceRuleDialog.value = true
+    return
+  }
+  const normalized = normalizeReplaceRule(rule)
+  editingReplaceRuleId.value = normalized.id || null
   replaceRuleDraft.value = {
-    name: rule?.name || '',
-    pattern: rule?.pattern || '',
-    replacement: rule?.replacement || '',
-    enabled: rule?.enabled ?? true,
+    name: normalized.name || '',
+    pattern: normalized.pattern || '',
+    replacement: normalized.replacement || '',
+    scope: normalized.scope || '*',
+    isRegex: normalized.isRegex,
+    enabled: normalized.enabled,
   }
   replaceRuleTestResult.value = null
   replaceRuleDialog.value = true
@@ -2250,7 +2282,11 @@ async function saveReplaceRule() {
   }
   replaceRuleSaving.value = true
   try {
-    const payload = { ...replaceRuleDraft.value, pattern: replaceRuleDraft.value.pattern.trim() }
+    const payload = normalizeReplaceRule({
+      ...replaceRuleDraft.value,
+      pattern: replaceRuleDraft.value.pattern.trim(),
+      scope: replaceRuleDraft.value.scope,
+    })
     if (editingReplaceRuleId.value) {
       await updateReplaceRule(editingReplaceRuleId.value, payload)
       ElMessage.success('替换规则已更新')
@@ -2268,15 +2304,20 @@ async function saveReplaceRule() {
   }
 }
 
-async function toggleReplaceRule(rule) {
+async function toggleReplaceRule(rule, enabled) {
+  const normalized = normalizeReplaceRule({ ...rule, enabled })
   try {
-    await updateReplaceRule(rule.id, {
-      name: rule.name,
-      pattern: rule.pattern,
-      replacement: rule.replacement,
-      enabled: rule.enabled,
+    await updateReplaceRule(normalized.id, {
+      name: normalized.name,
+      pattern: normalized.pattern,
+      replacement: normalized.replacement,
+      scope: normalized.scope,
+      isRegex: normalized.isRegex,
+      enabled: normalized.enabled,
     })
-    ElMessage.success(rule.enabled ? '规则已启用' : '规则已停用')
+    rule.enabled = normalized.enabled
+    rule.isEnabled = normalized.enabled
+    ElMessage.success(normalized.enabled ? '规则已启用' : '规则已停用')
     notifyReplaceRulesUpdated()
   } catch (err) {
     ElMessage.error(readError(err, '更新替换规则失败'))
@@ -2294,6 +2335,7 @@ async function runReplaceRuleTest() {
     const { data } = await testReplaceRule({
       pattern: replaceRuleDraft.value.pattern,
       replacement: replaceRuleDraft.value.replacement,
+      isRegex: replaceRuleDraft.value.isRegex,
       text: replaceRuleTestText.value,
     })
     replaceRuleTestResult.value = data
@@ -2835,11 +2877,18 @@ function readError(err, fallback) {
 }
 
 .mobile-rule-card strong,
+.mobile-rule-card em,
 .mobile-rule-card span,
 .mobile-rule-card p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-rule-card em {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-style: normal;
 }
 
 .mobile-rule-card span,

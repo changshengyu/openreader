@@ -271,6 +271,10 @@ func ApplyTextReplacements(text string, rules []models.TextReplaceRule) string {
 		if r.Pattern == "" {
 			continue
 		}
+		if r.IsRegex != nil && !*r.IsRegex {
+			text = strings.Replace(text, r.Pattern, r.Replacement, 1)
+			continue
+		}
 		re, err := regexp.Compile(r.Pattern)
 		if err != nil {
 			text = strings.ReplaceAll(text, r.Pattern, r.Replacement)

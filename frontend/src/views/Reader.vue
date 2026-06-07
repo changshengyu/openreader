@@ -2880,6 +2880,8 @@ async function createReplaceRuleFromSelectedText(text) {
     name,
     pattern: cleanText,
     replacement: String(prompt.value || ''),
+    scope: `${book.value?.title || ''};${book.value?.url || ''}`,
+    isRegex: false,
     enabled: true,
   })
   window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated'))

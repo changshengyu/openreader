@@ -1605,7 +1605,7 @@ func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) stri
 			}
 		}
 	}
-	content = s.applyUserReplaceRules(book.UserID, content)
+	content = s.applyUserReplaceRules(book, content)
 	return content
 }
 
@@ -1873,22 +1873,47 @@ func splitPathSegments(path string) []string {
 	return filtered
 }
 
-func (s *Server) applyUserReplaceRules(userID uint, content string) string {
+func (s *Server) applyUserReplaceRules(book models.Book, content string) string {
 	if content == "" {
 		return content
 	}
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ? AND enabled = ?", userID, true).Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Find(&rules).Error; err != nil {
 		return content
 	}
 	replacements := make([]models.TextReplaceRule, 0, len(rules))
 	for _, rule := range rules {
+		if !replaceRuleAppliesToBook(rule.Scope, book) {
+			continue
+		}
+		isRegex := true
+		if rule.IsRegex != nil {
+			isRegex = *rule.IsRegex
+		}
 		replacements = append(replacements, models.TextReplaceRule{
 			Pattern:     rule.Pattern,
 			Replacement: rule.Replacement,
+			IsRegex:     &isRegex,
 		})
 	}
 	return engine.ApplyTextReplacements(content, replacements)
+}
+
+func replaceRuleAppliesToBook(scope string, book models.Book) bool {
+	scope = strings.TrimSpace(scope)
+	if scope == "" || scope == "*" {
+		return true
+	}
+	parts := strings.Split(scope, ";")
+	name := strings.TrimSpace(parts[0])
+	if name != "*" && name != strings.TrimSpace(book.Title) {
+		return false
+	}
+	if len(parts) < 2 {
+		return true
+	}
+	url := strings.TrimSpace(parts[1])
+	return url == "" || url == strings.TrimSpace(book.URL)
 }
 
 func (s *Server) checkUpdates(c *gin.Context) {

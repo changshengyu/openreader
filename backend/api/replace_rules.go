@@ -15,12 +15,16 @@ type replaceRuleRequest struct {
 	Name        string `json:"name"`
 	Pattern     string `json:"pattern" binding:"required"`
 	Replacement string `json:"replacement"`
+	Scope       string `json:"scope"`
+	IsRegex     *bool  `json:"isRegex"`
+	IsEnabled   *bool  `json:"isEnabled"`
 	Enabled     *bool  `json:"enabled"`
 }
 
 type replaceRuleTestRequest struct {
 	Pattern     string `json:"pattern" binding:"required"`
 	Replacement string `json:"replacement"`
+	IsRegex     *bool  `json:"isRegex"`
 	Text        string `json:"text" binding:"required"`
 }
 
@@ -45,11 +49,20 @@ func (s *Server) createReplaceRule(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	if req.IsEnabled != nil {
+		enabled = *req.IsEnabled
+	}
+	isRegex := true
+	if req.IsRegex != nil {
+		isRegex = *req.IsRegex
+	}
 	rule := models.ReplaceRule{
 		UserID:      userID,
 		Name:        strings.TrimSpace(req.Name),
 		Pattern:     strings.TrimSpace(req.Pattern),
 		Replacement: req.Replacement,
+		Scope:       normalizeReplaceRuleScope(req.Scope),
+		IsRegex:     &isRegex,
 		Enabled:     enabled,
 	}
 	if rule.Pattern == "" {
@@ -87,8 +100,15 @@ func (s *Server) updateReplaceRule(c *gin.Context) {
 	rule.Name = strings.TrimSpace(req.Name)
 	rule.Pattern = strings.TrimSpace(req.Pattern)
 	rule.Replacement = req.Replacement
+	rule.Scope = normalizeReplaceRuleScope(req.Scope)
+	if req.IsRegex != nil {
+		rule.IsRegex = req.IsRegex
+	}
 	if req.Enabled != nil {
 		rule.Enabled = *req.Enabled
+	}
+	if req.IsEnabled != nil {
+		rule.Enabled = *req.IsEnabled
 	}
 	if rule.Pattern == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
@@ -144,6 +164,15 @@ func (s *Server) testReplaceRule(c *gin.Context) {
 	output := engine.ApplyTextReplacements(input, []models.TextReplaceRule{{
 		Pattern:     strings.TrimSpace(req.Pattern),
 		Replacement: req.Replacement,
+		IsRegex:     req.IsRegex,
 	}})
 	c.JSON(http.StatusOK, gin.H{"input": input, "output": output, "changed": input != output})
+}
+
+func normalizeReplaceRuleScope(scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return "*"
+	}
+	return scope
 }

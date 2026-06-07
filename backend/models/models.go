@@ -104,6 +104,7 @@ type BookSourceRule struct {
 type TextReplaceRule struct {
 	Pattern     string `json:"pattern"`
 	Replacement string `json:"replacement"`
+	IsRegex     *bool  `json:"isRegex,omitempty"`
 }
 
 type ReplaceRule struct {
@@ -112,6 +113,8 @@ type ReplaceRule struct {
 	Name        string    `json:"name" gorm:"size:120;not null"`
 	Pattern     string    `json:"pattern" gorm:"type:text;not null"`
 	Replacement string    `json:"replacement" gorm:"type:text"`
+	Scope       string    `json:"scope" gorm:"size:800;default:*"`
+	IsRegex     *bool     `json:"isRegex"`
 	Enabled     bool      `json:"enabled"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`

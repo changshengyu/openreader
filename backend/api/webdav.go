@@ -738,7 +738,15 @@ func (s *Server) restoreReplaceRulesFromZip(file *zip.File, userID uint) (int, e
 		return 0, err
 	}
 
-	var rules []models.ReplaceRule
+	var rules []struct {
+		Name        string `json:"name"`
+		Pattern     string `json:"pattern"`
+		Replacement string `json:"replacement"`
+		Scope       string `json:"scope"`
+		IsRegex     *bool  `json:"isRegex"`
+		Enabled     *bool  `json:"enabled"`
+		IsEnabled   *bool  `json:"isEnabled"`
+	}
 	if err := json.Unmarshal(data, &rules); err != nil {
 		return 0, err
 	}
@@ -753,12 +761,25 @@ func (s *Server) restoreReplaceRulesFromZip(file *zip.File, userID uint) (int, e
 		if name == "" {
 			name = pattern
 		}
+		enabled := true
+		if rule.Enabled != nil {
+			enabled = *rule.Enabled
+		}
+		if rule.IsEnabled != nil {
+			enabled = *rule.IsEnabled
+		}
+		isRegex := true
+		if rule.IsRegex != nil {
+			isRegex = *rule.IsRegex
+		}
 		next := models.ReplaceRule{
 			UserID:      userID,
 			Name:        name,
 			Pattern:     pattern,
 			Replacement: rule.Replacement,
-			Enabled:     rule.Enabled,
+			Scope:       normalizeReplaceRuleScope(rule.Scope),
+			IsRegex:     &isRegex,
+			Enabled:     enabled,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}
