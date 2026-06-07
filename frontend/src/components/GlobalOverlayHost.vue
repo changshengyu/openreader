@@ -297,7 +297,23 @@
       </div>
     </template>
     <template v-else>
-      <el-table :data="bookshelf.categories" row-key="id" class="group-manage-table">
+      <el-table :data="groupManageRows" row-key="id" class="group-manage-table">
+        <el-table-column width="46">
+          <template #default="{ row }">
+            <button
+              type="button"
+              class="group-drag-handle"
+              draggable="true"
+              title="拖动排序"
+              @dragstart="startGroupDrag(row)"
+              @dragover.prevent
+              @drop.prevent="dropGroupOn(row)"
+              @dragend="finishGroupDrag"
+            >
+              <el-icon><Rank /></el-icon>
+            </button>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="分组名" min-width="130">
           <template #default="{ row }">
             <span class="group-table-name">
@@ -319,8 +335,6 @@
         </el-table-column>
         <el-table-column label="操作" min-width="180">
           <template #default="{ row }">
-            <el-button size="small" text @click="moveGroup(row, -1)">上移</el-button>
-            <el-button size="small" text @click="moveGroup(row, 1)">下移</el-button>
             <el-button size="small" text @click="renameGroup(row)">编辑</el-button>
             <el-button
               v-if="groupBookCount(row) === 0"
@@ -337,6 +351,7 @@
       <el-empty v-if="!bookshelf.categories.length" description="还没有自定义分组" />
       <div class="manage-footer group-manage-footer">
         <el-button type="primary" @click="createCategory">添加分组</el-button>
+        <el-button v-if="isGroupOrderDirty" type="primary" :loading="groupOrderSaving" @click="saveGroupOrderDraft">保存排序</el-button>
         <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
       </div>
     </template>
@@ -660,7 +675,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, Delete, Edit, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
 import { cacheBookContent, changeBookSource, checkBookUpdates, createBookmark, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, listTXTTocRules, refreshBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
@@ -718,6 +733,9 @@ const settingCategorySaving = ref(false)
 const loadingUpdates = ref(false)
 const importingBook = ref(false)
 const visibilitySavingId = ref(null)
+const groupOrderDraftIds = ref([])
+const draggingGroupId = ref(null)
+const groupOrderSaving = ref(false)
 const importDraft = reactive({ title: '', author: '', categoryId: '', file: null, tocRule: '' })
 const tocRuleOptions = ref([])
 const tocRulesLoading = ref(false)
@@ -819,6 +837,21 @@ const groupSetRows = computed(() => [
     description: `${groupBookCount(category)} 本`,
   })),
 ])
+const groupManageRows = computed(() => {
+  const categoryById = new Map(bookshelf.categories.map(category => [String(category.id), category]))
+  const rows = []
+  for (const id of groupOrderDraftIds.value) {
+    const category = categoryById.get(String(id))
+    if (category) rows.push(category)
+  }
+  for (const category of bookshelf.categories) {
+    if (!groupOrderDraftIds.value.includes(String(category.id))) rows.push(category)
+  }
+  return rows
+})
+const isGroupOrderDirty = computed(() => (
+  groupManageRows.value.map(category => String(category.id)).join(',') !== bookshelf.categories.map(category => String(category.id)).join(',')
+))
 const managedBooks = computed(() => sortByShelfOrder(bookshelf.books, reader.progressByBook))
 const filteredManagedBooks = computed(() => {
   const value = normalizeLocalBookSearch(manageKeyword.value)
@@ -937,6 +970,8 @@ watch(
       if (overlay.bookManageVisible) await refreshManagedBrowserCacheCounts()
       if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
         settingCategoryId.value = overlay.bookInfoBook?.categoryId ? String(overlay.bookInfoBook.categoryId) : ''
+      } else if (overlay.bookGroupVisible) {
+        resetGroupOrderDraft()
       }
     } catch (err) {
       ElMessage.error(readError(err, '加载书架数据失败'))
@@ -2425,6 +2460,7 @@ async function createCategory() {
     const name = value.trim()
     if (!name) return
     await bookshelf.addCategory({ name })
+    resetGroupOrderDraft()
     ElMessage.success('分组已创建')
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
@@ -2441,6 +2477,7 @@ async function renameGroup(category) {
     const name = value.trim()
     if (!name || name === category.name) return
     await bookshelf.renameCategory(category.id, { name })
+    resetGroupOrderDraft()
     ElMessage.success('分组已重命名')
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
@@ -2486,6 +2523,7 @@ async function deleteGroup(category) {
   try {
     await ElMessageBox.confirm(`确定删除分组“${category.name}”吗？`, '删除分组', { type: 'warning' })
     await bookshelf.removeCategory(category.id)
+    resetGroupOrderDraft()
     ElMessage.success('分组已删除')
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
@@ -2493,18 +2531,44 @@ async function deleteGroup(category) {
   }
 }
 
-async function moveGroup(category, direction) {
-  const categories = [...bookshelf.categories]
-  const index = categories.findIndex(item => item.id === category.id)
-  const targetIndex = index + direction
-  if (index < 0 || targetIndex < 0 || targetIndex >= categories.length) return
-  const [moved] = categories.splice(index, 1)
-  categories.splice(targetIndex, 0, moved)
+function resetGroupOrderDraft() {
+  groupOrderDraftIds.value = bookshelf.categories.map(category => String(category.id))
+  draggingGroupId.value = null
+}
+
+function startGroupDrag(category) {
+  draggingGroupId.value = String(category.id)
+}
+
+function finishGroupDrag() {
+  draggingGroupId.value = null
+}
+
+function dropGroupOn(targetCategory) {
+  const sourceId = draggingGroupId.value
+  const targetId = String(targetCategory.id)
+  if (!sourceId || sourceId === targetId) return
+  const ids = groupManageRows.value.map(category => String(category.id))
+  const sourceIndex = ids.indexOf(sourceId)
+  const targetIndex = ids.indexOf(targetId)
+  if (sourceIndex < 0 || targetIndex < 0) return
+  const [moved] = ids.splice(sourceIndex, 1)
+  ids.splice(targetIndex, 0, moved)
+  groupOrderDraftIds.value = ids
+}
+
+async function saveGroupOrderDraft() {
+  if (!isGroupOrderDirty.value) return
+  const orderedIds = groupManageRows.value.map(item => item.id)
+  groupOrderSaving.value = true
   try {
-    await bookshelf.reorderCategoryIds(categories.map(item => item.id))
+    await bookshelf.reorderCategoryIds(orderedIds)
+    resetGroupOrderDraft()
     ElMessage.success('分组排序已更新')
   } catch (err) {
     ElMessage.error(readError(err, '分组排序失败'))
+  } finally {
+    groupOrderSaving.value = false
   }
 }
 
@@ -2679,6 +2743,21 @@ function readError(err, fallback) {
 
 .group-manage-table {
   margin-bottom: 12px;
+}
+
+.group-drag-handle {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--app-text-muted);
+  cursor: move;
+}
+
+.group-drag-handle:hover {
+  background: var(--app-bg-soft);
+  color: var(--app-text);
 }
 
 .group-table-name {
