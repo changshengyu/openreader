@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -489,6 +490,10 @@ func (s *Server) exportBooks(c *gin.Context) {
 		s.exportBooksTXT(c, books)
 		return
 	}
+	if format == "epub" {
+		s.exportBooksEPUB(c, books)
+		return
+	}
 	c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported export format"})
 }
 
@@ -570,6 +575,49 @@ func (s *Server) exportBooksTXT(c *gin.Context, books []models.Book) {
 	c.Data(http.StatusOK, "application/zip", buffer.Bytes())
 }
 
+func (s *Server) exportBooksEPUB(c *gin.Context, books []models.Book) {
+	if len(books) == 1 {
+		book := books[0]
+		content, err := s.exportBookEPUB(book)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to export book"})
+			return
+		}
+		filename := safeDownloadFilename(book.Title, "epub")
+		setAttachmentHeader(c, filename)
+		c.Data(http.StatusOK, "application/epub+zip", content)
+		return
+	}
+
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+	for _, book := range books {
+		content, err := s.exportBookEPUB(book)
+		if err != nil {
+			_ = zipWriter.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to export book"})
+			return
+		}
+		writer, err := zipWriter.Create(safeDownloadFilename(fmt.Sprintf("%s-%d", book.Title, book.ID), "epub"))
+		if err != nil {
+			_ = zipWriter.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to export book"})
+			return
+		}
+		if _, err := writer.Write(content); err != nil {
+			_ = zipWriter.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to export book"})
+			return
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to export book"})
+		return
+	}
+	setAttachmentHeader(c, "openreader-books-epub.zip")
+	c.Data(http.StatusOK, "application/zip", buffer.Bytes())
+}
+
 func (s *Server) exportBookPlainText(book models.Book) (string, error) {
 	var chapters []models.Chapter
 	if err := s.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
@@ -604,6 +652,179 @@ func (s *Server) exportBookPlainText(book models.Book) (string, error) {
 		builder.WriteString("\n")
 	}
 	return builder.String(), nil
+}
+
+type exportedChapterContent struct {
+	Title   string
+	Content string
+}
+
+func (s *Server) exportBookEPUB(book models.Book) ([]byte, error) {
+	var chapters []models.Chapter
+	if err := s.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		return nil, err
+	}
+	contents := make([]exportedChapterContent, 0, len(chapters))
+	for _, chapter := range chapters {
+		contents = append(contents, exportedChapterContent{
+			Title:   strings.TrimSpace(chapter.Title),
+			Content: strings.TrimSpace(s.loadChapterText(book, &chapter)),
+		})
+	}
+
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+	if err := writeEPUBStoredFile(zipWriter, "mimetype", []byte("application/epub+zip")); err != nil {
+		_ = zipWriter.Close()
+		return nil, err
+	}
+	if err := writeEPUBFile(zipWriter, "META-INF/container.xml", []byte(epubContainerXML())); err != nil {
+		_ = zipWriter.Close()
+		return nil, err
+	}
+	if err := writeEPUBFile(zipWriter, "OEBPS/content.opf", []byte(epubContentOPF(book, contents))); err != nil {
+		_ = zipWriter.Close()
+		return nil, err
+	}
+	if err := writeEPUBFile(zipWriter, "OEBPS/nav.xhtml", []byte(epubNavXHTML(book, contents))); err != nil {
+		_ = zipWriter.Close()
+		return nil, err
+	}
+	for index, chapter := range contents {
+		if err := writeEPUBFile(zipWriter, fmt.Sprintf("OEBPS/chapter-%04d.xhtml", index+1), []byte(epubChapterXHTML(book, chapter, index))); err != nil {
+			_ = zipWriter.Close()
+			return nil, err
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
+func writeEPUBStoredFile(zipWriter *zip.Writer, name string, content []byte) error {
+	header := &zip.FileHeader{Name: name, Method: zip.Store}
+	header.SetModTime(time.Unix(0, 0))
+	writer, err := zipWriter.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(content)
+	return err
+}
+
+func writeEPUBFile(zipWriter *zip.Writer, name string, content []byte) error {
+	header := &zip.FileHeader{Name: name, Method: zip.Deflate}
+	header.SetModTime(time.Unix(0, 0))
+	writer, err := zipWriter.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(content)
+	return err
+}
+
+func epubContainerXML() string {
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`
+}
+
+func epubContentOPF(book models.Book, chapters []exportedChapterContent) string {
+	title := html.EscapeString(strings.TrimSpace(book.Title))
+	if title == "" {
+		title = "OpenReader Book"
+	}
+	author := html.EscapeString(strings.TrimSpace(book.Author))
+	if author == "" {
+		author = "Unknown"
+	}
+	var manifest strings.Builder
+	var spine strings.Builder
+	for index := range chapters {
+		id := fmt.Sprintf("chapter-%04d", index+1)
+		href := fmt.Sprintf("chapter-%04d.xhtml", index+1)
+		manifest.WriteString(fmt.Sprintf(`    <item id="%s" href="%s" media-type="application/xhtml+xml"/>`+"\n", id, href))
+		spine.WriteString(fmt.Sprintf(`    <itemref idref="%s"/>`+"\n", id))
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">openreader-book-%d</dc:identifier>
+    <dc:title>%s</dc:title>
+    <dc:creator>%s</dc:creator>
+    <dc:language>zh-CN</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+%s  </manifest>
+  <spine>
+%s  </spine>
+</package>`, book.ID, title, author, manifest.String(), spine.String())
+}
+
+func epubNavXHTML(book models.Book, chapters []exportedChapterContent) string {
+	title := html.EscapeString(strings.TrimSpace(book.Title))
+	if title == "" {
+		title = "OpenReader Book"
+	}
+	var items strings.Builder
+	for index, chapter := range chapters {
+		chapterTitle := html.EscapeString(strings.TrimSpace(chapter.Title))
+		if chapterTitle == "" {
+			chapterTitle = fmt.Sprintf("第%d章", index+1)
+		}
+		items.WriteString(fmt.Sprintf(`      <li><a href="chapter-%04d.xhtml">%s</a></li>`+"\n", index+1, chapterTitle))
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-CN">
+<head><title>%s</title></head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>%s</h1>
+    <ol>
+%s    </ol>
+  </nav>
+</body>
+</html>`, title, title, items.String())
+}
+
+func epubChapterXHTML(book models.Book, chapter exportedChapterContent, index int) string {
+	title := html.EscapeString(strings.TrimSpace(chapter.Title))
+	if title == "" {
+		title = fmt.Sprintf("第%d章", index+1)
+	}
+	var paragraphs strings.Builder
+	for _, line := range strings.Split(chapter.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		paragraphs.WriteString("    <p>")
+		paragraphs.WriteString(html.EscapeString(line))
+		paragraphs.WriteString("</p>\n")
+	}
+	bookTitle := html.EscapeString(strings.TrimSpace(book.Title))
+	if bookTitle == "" {
+		bookTitle = "OpenReader Book"
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN">
+<head>
+  <title>%s - %s</title>
+  <style>body{line-height:1.8;font-family:serif;}p{text-indent:2em;margin:0 0 1em;}</style>
+</head>
+<body>
+  <section>
+    <h1>%s</h1>
+%s  </section>
+</body>
+</html>`, bookTitle, title, title, paragraphs.String())
 }
 
 func safeDownloadFilename(name string, ext string) string {

@@ -3441,6 +3441,67 @@ func TestExportMultipleBooksAsTXTZip(t *testing.T) {
 	}
 }
 
+func TestExportBookAsEPUB(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("export-epub", "chapter.txt")
+	fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, []byte("EPUB正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "导出EPUB书", Author: "作者"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.Chapter{BookID: book.ID, Index: 0, Title: "第一章", CachePath: cachePath}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"bookIds":[` + strconv.FormatUint(uint64(book.ID), 10) + `],"format":"epub"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/books/export", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("export epub: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if contentType := w.Header().Get("Content-Type"); !strings.Contains(contentType, "application/epub+zip") {
+		t.Fatalf("expected epub content type, got %q", contentType)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, file := range reader.File {
+		handle, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(handle)
+		_ = handle.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[file.Name] = string(data)
+	}
+	if files["mimetype"] != "application/epub+zip" {
+		t.Fatalf("missing epub mimetype: %q", files["mimetype"])
+	}
+	if !strings.Contains(files["OEBPS/content.opf"], "导出EPUB书") || !strings.Contains(files["OEBPS/nav.xhtml"], "第一章") || !strings.Contains(files["OEBPS/chapter-0001.xhtml"], "EPUB正文") {
+		t.Fatalf("unexpected epub files: %+v", files)
+	}
+}
+
 func TestLocalStoreBrowseAndDelete(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

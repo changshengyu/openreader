@@ -193,6 +193,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="txt">导出为 TXT</el-dropdown-item>
+                <el-dropdown-item command="epub">导出为 Epub</el-dropdown-item>
                 <el-dropdown-item command="json">导出书籍数据</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -224,6 +225,7 @@
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'cacheBook')">服务器缓存</el-button>
           <el-button v-if="Number(book.sourceId || 0) > 0" size="small" text :loading="cachingBookId === book.id" @click="cacheBook(book, 'deleteBookCache')">清服务器</el-button>
           <el-button size="small" text @click="exportBook(book, 'txt')">导出TXT</el-button>
+          <el-button size="small" text @click="exportBook(book, 'epub')">导出Epub</el-button>
         </footer>
       </article>
     </div>
@@ -1711,7 +1713,7 @@ async function clearBookLocalCache(book) {
 async function exportBook(book, format = 'txt') {
   batchBusy.value = true
   try {
-    const normalizedFormat = format === 'json' ? 'json' : 'txt'
+    const normalizedFormat = ['json', 'txt', 'epub'].includes(format) ? format : 'txt'
     const blob = await bookshelf.exportSelectedBooks([book.id], normalizedFormat)
     downloadBlob(blob, exportBookFilename(book, normalizedFormat))
     ElMessage.success(`已导出《${book.title}》`)
@@ -1725,7 +1727,7 @@ async function exportBook(book, format = 'txt') {
 function exportBookFilename(book, format) {
   const fallback = `book-${book?.id || Date.now()}`
   const title = String(book?.title || fallback).replace(/[\\/:*?"<>|]/g, '-').trim() || fallback
-  return `${title}.${format === 'json' ? 'json' : 'txt'}`
+  return `${title}.${format === 'json' ? 'json' : format === 'epub' ? 'epub' : 'txt'}`
 }
 
 function downloadBlob(blob, filename) {
