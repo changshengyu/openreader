@@ -15,9 +15,12 @@
     :update-switch-loading="updatingBookId === overlay.bookInfoBook?.id"
     :browser-cache-count="bookInfoBrowserCacheCount"
     :show-category-action="!!overlay.bookInfoBook?.id"
+    :show-local-refresh-action="!!overlay.bookInfoBook?.id && Number(overlay.bookInfoBook?.sourceId || 0) <= 0"
+    :local-refresh-loading="refreshingBookId === overlay.bookInfoBook?.id"
     @cover-upload="uploadBookInfoCover"
     @can-update-change="toggleBookCanUpdate"
     @category-action="setBookGroup(overlay.bookInfoBook)"
+    @local-refresh="refreshLocalBookInfo(overlay.bookInfoBook)"
   >
     <div v-if="overlay.bookInfoOptions.actions?.length" class="overlay-actions">
       <el-button
@@ -32,50 +35,7 @@
         {{ action.label }}
       </el-button>
     </div>
-    <div v-else-if="overlay.bookInfoBook?.id" class="overlay-actions">
-      <el-button type="primary" @click="continueRead(overlay.bookInfoBook)">继续阅读</el-button>
-      <el-button plain @click="openContentSearch(overlay.bookInfoBook)">搜正文</el-button>
-      <el-button plain @click="openBookmarks(overlay.bookInfoBook)">书签</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshBookInfo(overlay.bookInfoBook)">刷新目录</el-button>
-      <el-button v-else plain :loading="refreshingBookId === overlay.bookInfoBook.id" @click="refreshLocalBookInfo(overlay.bookInfoBook)">刷新本地书</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="sourceSwitchLoading" @click="openGlobalSourceSwitch(overlay.bookInfoBook)">换源</el-button>
-      <el-button plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBookLocal')">缓存到浏览器</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'cacheBook')">缓存到服务器</el-button>
-      <el-button plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookLocalCache')">清浏览器缓存</el-button>
-      <el-button v-if="Number(overlay.bookInfoBook.sourceId || 0) > 0" plain :loading="cachingBookId === overlay.bookInfoBook.id" @click="cacheBook(overlay.bookInfoBook, 'deleteBookCache')">清服务器缓存</el-button>
-      <el-button plain @click="goDetail(overlay.bookInfoBook)">详情</el-button>
-      <el-button plain :loading="loadingUpdates" @click="refreshShelf">刷新书架</el-button>
-      <el-button plain type="danger" :loading="deletingBookId === overlay.bookInfoBook.id" @click="deleteBookFromInfo(overlay.bookInfoBook)">移出书架</el-button>
-    </div>
   </BookInfoDialog>
-
-  <el-drawer
-    v-model="sourceSwitchVisible"
-    title="切换书源"
-    :direction="narrowDrawerDirection"
-    :size="narrowDrawerSize"
-    class="global-source-drawer"
-    @open="loadGlobalSourceCandidates"
-  >
-    <SourceSwitchPanel
-      :book="sourceSwitchBook"
-      :sources="sourceSwitchCandidates"
-      :loading="sourceSwitchLoading"
-      :has-more="sourceSwitchHasMore"
-      :changing-source="sourceSwitchChanging"
-      :current-source-name="sourceSwitchCurrentName"
-      :group="sourceSwitchGroup"
-      :query="sourceSwitchQuery"
-      :groups="sourceSwitchGroups"
-      :stats="sourceSwitchStats"
-      @refresh="refreshGlobalSourceCandidates"
-      @load-more="loadMoreGlobalSourceCandidates"
-      @group-change="changeGlobalSourceGroup"
-      @query-change="changeGlobalSourceQuery"
-      @show-info="reopenSourceSwitchBookInfo"
-      @change="changeGlobalBookSource"
-    />
-  </el-drawer>
 
   <el-dialog
     v-model="overlay.importBookVisible"
@@ -673,11 +633,11 @@
 
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
-import { cacheBookContent, changeBookSource, checkBookUpdates, createBookmark, deleteBookmark, listBookSourceCandidates, listBookmarks, listChapters, listTXTTocRules, refreshBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, createBookmark, deleteBookmark, listBookmarks, listChapters, listTXTTocRules, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
@@ -690,31 +650,18 @@ import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
-import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { applyRestoreResult } from '../utils/restoreSync'
-import {
-  sourceCandidateAuthor,
-  sourceCandidateBookUrl,
-  sourceCandidateCover,
-  sourceCandidateIntro,
-  sourceCandidateKey,
-  sourceCandidateSourceId,
-  sourceCandidateSourceName,
-  sourceCandidateTitle,
-} from '../utils/sourceCandidate'
 import BookInfoDialog from './BookInfoDialog.vue'
 import RSSManager from './RSSManager.vue'
 import WebDAVBrowser from './WebDAVBrowser.vue'
 import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from './reader/ReaderSearchPanel.vue'
-import SourceSwitchPanel from './reader/SourceSwitchPanel.vue'
 
 const LocalStore = defineAsyncComponent(() => import('../views/LocalStore.vue'))
 
 const router = useRouter()
-const route = useRoute()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
@@ -727,10 +674,8 @@ const localCacheCounts = ref({})
 const refreshingBookId = ref(null)
 const coverUploadingBookId = ref(null)
 const updatingBookId = ref(null)
-const deletingBookId = ref(null)
 const settingCategoryId = ref('')
 const settingCategorySaving = ref(false)
-const loadingUpdates = ref(false)
 const importingBook = ref(false)
 const visibilitySavingId = ref(null)
 const groupOrderDraftIds = ref([])
@@ -740,17 +685,6 @@ const importDraft = reactive({ title: '', author: '', categoryId: '', file: null
 const tocRuleOptions = ref([])
 const tocRulesLoading = ref(false)
 const sourceRows = ref([])
-const sourceSwitchVisible = ref(false)
-const sourceSwitchBook = ref(null)
-const sourceSwitchCandidates = ref([])
-const sourceSwitchLoading = ref(false)
-const sourceSwitchChanging = ref(null)
-const sourceSwitchGroup = ref('')
-const sourceSwitchQuery = ref('')
-const sourceSwitchOffset = ref(0)
-const sourceSwitchHasMore = ref(false)
-const sourceSwitchLoadedKey = ref('')
-const sourceSwitchStats = ref(null)
 const contentKeyword = ref('')
 const contentResults = ref([])
 const contentSearching = ref(false)
@@ -811,15 +745,6 @@ const bookInfoSourceName = computed(() => {
   const sourceId = overlay.bookInfoBook?.sourceId
   if (!sourceId) return '本地'
   return sourceRows.value.find(source => Number(source.id) === Number(sourceId))?.name || '远程书籍'
-})
-const sourceSwitchCurrentName = computed(() => {
-  const sourceId = sourceSwitchBook.value?.sourceId
-  if (!sourceId) return '本地书籍'
-  return sourceRows.value.find(source => Number(source.id) === Number(sourceId))?.name || '当前来源'
-})
-const sourceSwitchGroups = computed(() => {
-  const rows = sourceRows.value.length ? sourceRows.value : sourceSwitchCandidates.value
-  return buildSourceGroupOptions(rows)
 })
 const bookInfoProgress = computed(() => {
   const book = overlay.bookInfoBook
@@ -1072,8 +997,7 @@ function handleSourcesUpdated() {
 }
 
 function shouldRefreshOverlaySources() {
-  return sourceSwitchVisible.value ||
-    (overlay.bookInfoVisible && Number(overlay.bookInfoBook?.sourceId || 0) > 0) ||
+  return (overlay.bookInfoVisible && Number(overlay.bookInfoBook?.sourceId || 0) > 0) ||
     sourceRows.value.length > 0
 }
 
@@ -1125,19 +1049,10 @@ function coverStyle(book) {
   return url ? { backgroundImage: `url(${url})` } : {}
 }
 
-function continueRead(book) {
-  overlay.closeBookInfo()
-  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQuery(book) })
-}
-
 function goDetail(book) {
   overlay.closeBookInfo()
   overlay.bookManageVisible = false
   router.push({ name: 'book-detail', params: { id: book.id } })
-}
-
-function readerRouteQuery(book) {
-  return readerRouteQueryFromBook(book, bookProgress(book))
 }
 
 function setBookGroup(book) {
@@ -1236,7 +1151,6 @@ function applyUpdatedBookToOverlay(book, chapters = null) {
   const nextBook = mergedShelfBook(book)
   bookshelf.upsertBook(nextBook)
   if (Number(overlay.bookInfoBook?.id) === Number(nextBook.id)) overlay.bookInfoBook = nextBook
-  if (Number(sourceSwitchBook.value?.id) === Number(nextBook.id)) sourceSwitchBook.value = nextBook
   window.dispatchEvent(new CustomEvent('openreader:reader-book-data-updated', {
     detail: { bookId: nextBook.id, book: nextBook, chapters },
   }))
@@ -1261,190 +1175,6 @@ function updateServerCacheCount(book, count) {
   }
 }
 
-function openContentSearch(book) {
-  overlay.closeBookInfo()
-  overlay.openSearchBookContent(book)
-}
-
-function openBookmarks(book) {
-  overlay.closeBookInfo()
-  overlay.openBookmark(book)
-}
-
-function openGlobalSourceSwitch(book) {
-  if (!book?.id || Number(book.sourceId || 0) <= 0) return
-  sourceSwitchBook.value = book
-  sourceSwitchGroup.value = ''
-  sourceSwitchQuery.value = ''
-  sourceSwitchOffset.value = 0
-  sourceSwitchHasMore.value = false
-  sourceSwitchLoadedKey.value = ''
-  sourceSwitchStats.value = null
-  sourceSwitchCandidates.value = []
-  overlay.closeBookInfo()
-  sourceSwitchVisible.value = true
-}
-
-async function loadGlobalSourceCandidates({ append = false, force = false } = {}) {
-  const book = sourceSwitchBook.value
-  if (!book?.id || Number(book.sourceId || 0) <= 0) return
-  const query = sourceSwitchQuery.value.trim()
-  const key = `${book.id}:${sourceSwitchGroup.value || 'all'}:${query || 'title'}`
-  if (!append && !force && sourceSwitchLoadedKey.value === key && sourceSwitchCandidates.value.length) return
-  sourceSwitchLoading.value = true
-  try {
-    if (!sourceRows.value.length) await loadSourceRows()
-    if (!append) sourceSwitchOffset.value = 0
-    const { data } = await listBookSourceCandidates(book.id, {
-      group: sourceSwitchGroup.value || undefined,
-      q: query || undefined,
-      offset: sourceSwitchOffset.value,
-      limit: 10,
-      paged: 1,
-    })
-    const rows = Array.isArray(data) ? data : (data?.list || [])
-    sourceSwitchCandidates.value = append ? mergeSourceCandidates(sourceSwitchCandidates.value, rows) : rows
-    sourceSwitchOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceSwitchOffset.value + 10
-    sourceSwitchHasMore.value = Boolean(data?.hasMore)
-    sourceSwitchStats.value = Array.isArray(data)
-      ? null
-      : {
-          searched: data?.searched || 0,
-          matched: data?.matched || 0,
-          failed: data?.failed || 0,
-          empty: data?.empty || 0,
-        }
-    sourceSwitchLoadedKey.value = key
-  } catch (err) {
-    ElMessage.error(readError(err, '搜索可用来源失败'))
-  } finally {
-    sourceSwitchLoading.value = false
-  }
-}
-
-function refreshGlobalSourceCandidates() {
-  sourceSwitchLoadedKey.value = ''
-  sourceSwitchHasMore.value = false
-  sourceSwitchStats.value = null
-  return loadGlobalSourceCandidates({ force: true })
-}
-
-function loadMoreGlobalSourceCandidates() {
-  return loadGlobalSourceCandidates({ append: true })
-}
-
-function changeGlobalSourceGroup(value) {
-  sourceSwitchGroup.value = value || ''
-  sourceSwitchLoadedKey.value = ''
-  sourceSwitchHasMore.value = false
-  sourceSwitchStats.value = null
-  loadGlobalSourceCandidates({ force: true })
-}
-
-function changeGlobalSourceQuery(value) {
-  sourceSwitchQuery.value = value || ''
-  sourceSwitchLoadedKey.value = ''
-  sourceSwitchHasMore.value = false
-  sourceSwitchStats.value = null
-}
-
-function mergeSourceCandidates(existing, incoming) {
-  const seen = new Set(existing.map(item => sourceCandidateKey(item)))
-  return existing.concat(incoming.filter(item => {
-    const key = sourceCandidateKey(item)
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  }))
-}
-
-async function changeGlobalBookSource(source) {
-  const book = sourceSwitchBook.value
-  if (!book?.id || source.current) return
-  const nextSourceId = sourceCandidateSourceId(source)
-  sourceSwitchChanging.value = nextSourceId
-  try {
-    const { data } = await changeBookSource(book.id, {
-      sourceId: nextSourceId,
-      bookUrl: sourceCandidateBookUrl(source),
-      title: sourceCandidateTitle(source, book.title),
-      author: sourceCandidateAuthor(source),
-      coverUrl: sourceCandidateCover(source),
-      intro: sourceCandidateIntro(source),
-    })
-    await invalidateBookReaderCaches(book, { clearBrowser: true })
-    const updatedBook = mergedShelfBook(data)
-    const chapters = await refreshBookChaptersCache(updatedBook)
-    applyUpdatedBookToOverlay(updatedBook, chapters)
-    await refreshBookInfoBrowserCacheCount(updatedBook)
-    sourceSwitchLoadedKey.value = ''
-    await loadGlobalSourceCandidates({ force: true })
-    ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`)
-  } catch (err) {
-    ElMessage.error(readError(err, '换源失败'))
-  } finally {
-    sourceSwitchChanging.value = null
-  }
-}
-
-function reopenSourceSwitchBookInfo() {
-  if (!sourceSwitchBook.value) return
-  sourceSwitchVisible.value = false
-  overlay.openBookInfo(sourceSwitchBook.value, {
-    categoryName: categoryName(sourceSwitchBook.value.categoryId),
-    progress: bookProgress(sourceSwitchBook.value)?.percent || 0,
-  })
-}
-
-async function refreshShelf() {
-  loadingUpdates.value = true
-  try {
-    const { data } = await checkBookUpdates()
-    const updatedBooks = normalizeList(data?.books)
-    if (updatedBooks.length) {
-      updatedBooks.forEach(book => bookshelf.upsertBook(book))
-    } else if (Number(data?.newChapters || 0) > 0) {
-      await bookshelf.loadBooks({ force: true, all: true })
-    }
-    ElMessage.success(data?.newChapters ? `发现 ${data.newChapters} 个新章节` : '暂未发现新章节')
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新失败'))
-  } finally {
-    loadingUpdates.value = false
-  }
-}
-
-function normalizeList(data) {
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.list)) return data.list
-  if (Array.isArray(data?.items)) return data.items
-  if (Array.isArray(data?.data)) return data.data
-  return []
-}
-
-async function refreshBookInfo(book) {
-  if (!book?.id) return
-  refreshingBookId.value = book.id
-  try {
-    const { data } = await refreshBook(book.id)
-    await invalidateBookReaderCaches(book, { clearBrowser: true })
-    const updatedBook = data?.book || data
-    if (updatedBook?.id) {
-      const mergedBook = mergedShelfBook(updatedBook)
-      const chapters = await refreshBookChaptersCache(mergedBook)
-      applyUpdatedBookToOverlay(mergedBook, chapters)
-      await refreshBookInfoBrowserCacheCount(mergedBook)
-    } else {
-      await bookshelf.loadBooks({ force: true, all: true })
-    }
-    ElMessage.success(`目录已刷新，共 ${data?.chapterCount || updatedBook?.chapterCount || 0} 章`)
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新目录失败'))
-  } finally {
-    refreshingBookId.value = null
-  }
-}
-
 async function refreshLocalBookInfo(book) {
   if (!book?.id) return
   refreshingBookId.value = book.id
@@ -1465,26 +1195,6 @@ async function refreshLocalBookInfo(book) {
     ElMessage.error(readError(err, '刷新本地书失败'))
   } finally {
     refreshingBookId.value = null
-  }
-}
-
-async function deleteBookFromInfo(book) {
-  if (!book?.id) return
-  deletingBookId.value = book.id
-  try {
-    await ElMessageBox.confirm(`确定将《${book.title || '这本书'}》移出书架吗？`, '移出书架', { type: 'warning' })
-    await bookshelf.removeBook(book.id)
-    overlay.closeBookInfo()
-    ElMessage.success('已移出书架')
-    const currentBookId = Number(route.params.id || 0)
-    if ((route.name === 'reader' || route.name === 'book-detail') && currentBookId === Number(book.id)) {
-      await router.push({ name: 'home' })
-    }
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '移出书架失败'))
-  } finally {
-    deletingBookId.value = null
   }
 }
 

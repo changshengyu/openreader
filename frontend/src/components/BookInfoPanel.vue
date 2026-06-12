@@ -29,6 +29,15 @@
         <div>
           <span>来源：</span>
           <strong>{{ displaySourceName }}</strong>
+          <button
+            v-if="showLocalRefreshAction"
+            type="button"
+            class="book-prop-action"
+            :disabled="localRefreshLoading"
+            @click="emit('local-refresh')"
+          >
+            {{ localRefreshLoading ? '更新中' : '更新' }}
+          </button>
         </div>
         <div class="book-latest-prop">
           <span>最新：</span>
@@ -146,6 +155,14 @@ const props = defineProps({
     type: String,
     default: '设置分组',
   },
+  showLocalRefreshAction: {
+    type: Boolean,
+    default: false,
+  },
+  localRefreshLoading: {
+    type: Boolean,
+    default: false,
+  },
   variant: {
     type: String,
     default: 'detail',
@@ -153,7 +170,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['cover-upload', 'can-update-change', 'category-action'])
+const emit = defineEmits(['cover-upload', 'can-update-change', 'category-action', 'local-refresh'])
 const coverInput = ref(null)
 
 const bookTitle = computed(() => props.book?.title || props.book?.name || props.book?.bookName || '未命名书籍')

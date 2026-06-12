@@ -309,18 +309,13 @@
         :book="book"
         :sources="sourceCandidates"
         :loading="loadingSources"
-        :has-more="sourceHasMore"
         :changing-source="changingSource"
         :current-source-name="currentSourceName"
         :group="sourceGroup"
-        :query="sourceQuery"
         :groups="sourceGroups"
-        :stats="sourceStats"
         @refresh="refreshSourceCandidates"
         @load-more="loadMoreSourceCandidates"
         @group-change="changeSourceGroup"
-        @query-change="changeSourceQuery"
-        @show-info="openReaderBookInfo"
         @change="changeSource"
       />
     </el-drawer>
@@ -541,11 +536,8 @@ const sourceGroupOptions = ref([])
 const loadingSources = ref(false)
 const changingSource = ref(null)
 const sourceGroup = ref('')
-const sourceQuery = ref('')
 const sourceOffset = ref(0)
-const sourceHasMore = ref(false)
 const sourceCandidatesLoadedKey = ref('')
-const sourceStats = ref(null)
 const shelfLoading = ref(false)
 const shelfListRef = ref(null)
 const tocPanelRef = ref(null)
@@ -921,7 +913,6 @@ async function loadReaderBook() {
   if (saved?.bookId) {
     book.value = mergeShelfBook(book.value, { id: book.value.id, progress: saved })
   }
-  sourceQuery.value = ''
   sourceCandidates.value = []
   sourceCandidatesLoadedKey.value = ''
   sourceOffset.value = 0
@@ -1775,8 +1766,7 @@ function openReplaceRules() {
 }
 
 async function loadSourceCandidates({ append = false, force = false } = {}) {
-  const query = sourceQuery.value.trim()
-  const key = `${bookId.value}:${sourceGroup.value || 'all'}:${query || 'title'}`
+  const key = `${bookId.value}:${sourceGroup.value || 'all'}`
   if (!append && !force && sourceCandidatesLoadedKey.value === key && sourceCandidates.value.length) return
   loadingSources.value = true
   try {
@@ -1786,7 +1776,6 @@ async function loadSourceCandidates({ append = false, force = false } = {}) {
     if (!append) sourceOffset.value = 0
     const { data } = await listBookSourceCandidates(bookId.value, {
       group: sourceGroup.value || undefined,
-      q: query || undefined,
       offset: sourceOffset.value,
       limit: 10,
       paged: 1,
@@ -1794,15 +1783,6 @@ async function loadSourceCandidates({ append = false, force = false } = {}) {
     const rows = Array.isArray(data) ? data : (data?.list || [])
     sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
     sourceOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceOffset.value + 10
-    sourceHasMore.value = Boolean(data?.hasMore)
-    sourceStats.value = Array.isArray(data)
-      ? null
-      : {
-          searched: data?.searched || 0,
-          matched: data?.matched || 0,
-          failed: data?.failed || 0,
-          empty: data?.empty || 0,
-        }
     sourceCandidatesLoadedKey.value = key
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
@@ -1813,8 +1793,6 @@ async function loadSourceCandidates({ append = false, force = false } = {}) {
 
 function refreshSourceCandidates() {
   sourceCandidatesLoadedKey.value = ''
-  sourceHasMore.value = false
-  sourceStats.value = null
   return loadSourceCandidates({ force: true })
 }
 
@@ -1834,16 +1812,7 @@ function loadMoreSourceCandidates() {
 function changeSourceGroup(value) {
   sourceGroup.value = value || ''
   sourceCandidatesLoadedKey.value = ''
-  sourceHasMore.value = false
-  sourceStats.value = null
   loadSourceCandidates({ force: true })
-}
-
-function changeSourceQuery(value) {
-  sourceQuery.value = value || ''
-  sourceCandidatesLoadedKey.value = ''
-  sourceHasMore.value = false
-  sourceStats.value = null
 }
 
 function mergeSourceCandidates(existing, incoming) {

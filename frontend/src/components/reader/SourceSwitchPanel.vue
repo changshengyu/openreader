@@ -14,27 +14,9 @@
         <el-option v-for="item in normalizedGroups" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
       <button type="button" :disabled="loading" @click="$emit('refresh')">{{ loading ? '刷新中...' : '刷新' }}</button>
-      <button type="button" :disabled="loading || !hasMore" @click="$emit('loadMore')">{{ loading ? '加载中...' : '加载更多' }}</button>
-      <button v-if="showInfoButton" type="button" @click="$emit('showInfo')">书籍信息</button>
+      <button type="button" :disabled="loading" @click="$emit('loadMore')">{{ loading ? '加载中...' : '加载更多' }}</button>
     </div>
   </div>
-
-  <div class="source-query-row">
-    <el-input
-      :model-value="query"
-      size="small"
-      clearable
-      class="source-query-input"
-      placeholder="搜索书名或别名"
-      @update:model-value="$emit('queryChange', $event || '')"
-      @keyup.enter="$emit('refresh')"
-      @clear="$emit('refresh')"
-    />
-  </div>
-
-  <p v-if="stats && stats.searched" class="source-stats">
-    本轮搜索 {{ stats.searched }} 个书源，命中 {{ stats.matched || 0 }} 个，空结果 {{ stats.empty || 0 }} 个，失败 {{ stats.failed || 0 }} 个。
-  </p>
 
   <div ref="sourceList" class="source-switch-list">
     <button
@@ -80,15 +62,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  hasMore: {
-    type: Boolean,
-    default: false,
-  },
   group: {
-    type: String,
-    default: '',
-  },
-  query: {
     type: String,
     default: '',
   },
@@ -104,17 +78,9 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  showInfoButton: {
-    type: Boolean,
-    default: true,
-  },
-  stats: {
-    type: Object,
-    default: null,
-  },
 })
 
-defineEmits(['refresh', 'loadMore', 'groupChange', 'queryChange', 'showInfo', 'change'])
+defineEmits(['refresh', 'loadMore', 'groupChange', 'change'])
 
 const sourceList = ref(null)
 const sourceItemRefs = ref([])
@@ -231,22 +197,6 @@ function jumpToActive() {
   cursor: default;
 }
 
-.source-query-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
-.source-query-input {
-  width: min(260px, 100%);
-}
-
-.source-stats {
-  margin: -4px 0 12px;
-  color: #7b715e;
-  font-size: 12px;
-}
-
 .source-group-select {
   width: 140px;
 }
@@ -338,14 +288,6 @@ function jumpToActive() {
 
   .source-group-select {
     width: 132px;
-  }
-
-  .source-query-row {
-    justify-content: stretch;
-  }
-
-  .source-query-input {
-    width: 100%;
   }
 
   .source-switch-list {

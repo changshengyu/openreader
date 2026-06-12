@@ -24,10 +24,13 @@
       :browser-cache-count="browserCacheCount"
       :show-category-action="showCategoryAction"
       :category-action-label="categoryActionLabel"
+      :show-local-refresh-action="showLocalRefreshAction"
+      :local-refresh-loading="localRefreshLoading"
       variant="dialog"
       @cover-upload="$emit('coverUpload', $event)"
       @can-update-change="$emit('canUpdateChange', $event)"
       @category-action="$emit('categoryAction')"
+      @local-refresh="$emit('localRefresh')"
     >
       <slot />
     </BookInfoPanel>
@@ -105,9 +108,17 @@ defineProps({
     type: String,
     default: '设置分组',
   },
+  showLocalRefreshAction: {
+    type: Boolean,
+    default: false,
+  },
+  localRefreshLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange', 'categoryAction'])
+defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange', 'categoryAction', 'localRefresh'])
 
 const reader = useReaderStore()
 const windowWidth = ref(currentViewportWidth())
