@@ -92,6 +92,7 @@
                 :current-source-name="currentSource?.name || ''"
                 :group="sourceGroup"
                 :groups="sourceGroups"
+                :has-more="sourceHasMore"
                 @refresh="loadSourceCandidates"
                 @load-more="loadMoreSourceCandidates"
                 @group-change="changeSourceGroup"
@@ -184,6 +185,7 @@ const sourceCandidates = ref([])
 const loadingSourceCandidates = ref(false)
 const sourceGroup = ref('')
 const sourceOffset = ref(0)
+const sourceHasMore = ref(true)
 const activeTab = ref('toc')
 const tocPanelRef = ref(null)
 const tocKeyword = ref('')
@@ -249,35 +251,55 @@ async function load() {
   loading.value = true
   try {
     const id = route.params.id
-    await bookshelf.loadCategories()
-    const [bookRes, chapterRes, bookmarkRes, sourceRes, progressRes] = await Promise.all([
+    const [bookRes, chapterRes] = await Promise.all([
       api.get(`/books/${id}`),
       api.get(`/books/${id}/chapters`),
-      listBookmarks(id),
-      api.get('/sources'),
-      reader.loadProgress(id).catch(() => null),
     ])
     book.value = mergeBookUpdate(bookRes.data)
+    chapters.value = Array.isArray(chapterRes.data) ? chapterRes.data : []
+
+    const [categoryRes, bookmarkRes, sourceRes, progressRes] = await Promise.allSettled([
+      warmDetailCategories(),
+      listBookmarks(id),
+      api.get('/sources'),
+      reader.loadProgress(id),
+    ])
+    if (categoryRes.status === 'rejected') {
+      ElMessage.warning(readError(categoryRes.reason, '分组加载失败，详情仍可阅读'))
+    }
+    bookmarks.value = bookmarkRes.status === 'fulfilled' && Array.isArray(bookmarkRes.value.data) ? bookmarkRes.value.data : []
+    if (bookmarkRes.status === 'rejected') {
+      ElMessage.warning(readError(bookmarkRes.reason, '书签加载失败，详情仍可阅读'))
+    }
+    availableSources.value = sourceRes.status === 'fulfilled' && Array.isArray(sourceRes.value.data)
+      ? sourceRes.value.data.filter(source => source.enabled)
+      : []
+    if (sourceRes.status === 'rejected') {
+      ElMessage.warning(readError(sourceRes.reason, '书源加载失败，详情仍可阅读'))
+    }
+    const progress = progressRes.status === 'fulfilled' ? progressRes.value : null
     if (book.value?.progress?.bookId) {
       reader.applyServerProgress(book.value.progress)
       bookshelf.applyBookProgress(book.value.progress)
     }
-    if (progressRes?.bookId) {
-      book.value = mergeShelfBook(book.value, { id: book.value.id, progress: progressRes })
+    if (progress?.bookId) {
+      book.value = mergeShelfBook(book.value, { id: book.value.id, progress })
     }
-    chapters.value = chapterRes.data
-    bookmarks.value = bookmarkRes.data
-    availableSources.value = sourceRes.data.filter(source => source.enabled)
     sourceCandidates.value = []
     sourceOffset.value = 0
+    sourceHasMore.value = true
     await refreshBrowserCacheMap()
-    await loadSourceCandidates()
+    if (book.value?.sourceId) await loadSourceCandidates({ silent: true })
     categoryDraft.value = book.value.categoryId ? String(book.value.categoryId) : ''
   } catch (err) {
     ElMessage.error(readError(err, '加载书籍失败'))
   } finally {
     loading.value = false
   }
+}
+
+async function warmDetailCategories() {
+  return bookshelf.ensureCategoriesLoaded()
 }
 
 function startRead() {
@@ -629,12 +651,13 @@ async function refreshBrowserCacheMap() {
   }
 }
 
-async function loadSourceCandidates({ append = false } = {}) {
+async function loadSourceCandidates({ append = false, silent = false } = {}) {
   if (!book.value) return
   loadingSourceCandidates.value = true
   try {
     if (!append) {
       sourceOffset.value = 0
+      sourceHasMore.value = true
     }
     const { data } = await listBookSourceCandidates(book.value.id, {
       group: sourceGroup.value || undefined,
@@ -645,19 +668,25 @@ async function loadSourceCandidates({ append = false } = {}) {
     const rows = Array.isArray(data) ? data : (data?.list || [])
     sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
     sourceOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceOffset.value + 10
+    sourceHasMore.value = typeof data?.hasMore === 'boolean' ? data.hasMore : rows.length >= 10
   } catch (err) {
-    ElMessage.error(readError(err, '搜索可用来源失败'))
+    if (!silent) ElMessage.error(readError(err, '搜索可用来源失败'))
   } finally {
     loadingSourceCandidates.value = false
   }
 }
 
 function loadMoreSourceCandidates() {
+  if (!sourceHasMore.value) {
+    ElMessage.info('没有更多啦')
+    return undefined
+  }
   return loadSourceCandidates({ append: true })
 }
 
 function changeSourceGroup(value) {
   sourceGroup.value = value || ''
+  sourceHasMore.value = true
   loadSourceCandidates()
 }
 
@@ -699,6 +728,7 @@ async function changeSource(source) {
     const nextChapters = await loadBookChapters(updatedBook)
     await applyBookUpdate(updatedBook, { chapters: nextChapters })
     changeMessage.value = `已切换，共 ${updatedBook.chapterCount || chapters.value.length} 章`
+    sourceHasMore.value = true
     await loadSourceCandidates()
     ElMessage.success('换源成功')
   } catch (err) {

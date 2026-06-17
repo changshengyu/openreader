@@ -15,7 +15,8 @@ func (s *Server) triggerBackup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "backup failed: " + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "backup created", "path": filepath.Base(path)})
+	name := filepath.Base(path)
+	c.JSON(http.StatusOK, gin.H{"message": "backup created", "path": name, "name": name})
 }
 
 func (s *Server) listBackups(c *gin.Context) {

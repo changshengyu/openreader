@@ -6,7 +6,6 @@
           <el-icon><Menu /></el-icon>
         </button>
         <strong>书架 ({{ totalBookCount }})</strong>
-        <small v-if="keyword.trim()" class="shelf-filter-count">命中 {{ displayedBooks.length }}</small>
       </div>
       <div class="title-actions">
         <button v-if="isNormalPage" type="button" @click="router.push({ name: 'discover' })">书海</button>
@@ -114,7 +113,7 @@ import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
-import { isLocalBook, localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
+import { isLocalBook } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
@@ -125,7 +124,6 @@ const overlay = useOverlayStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
 
-const keyword = ref('')
 const selectedGroup = ref('')
 const showBookEditButton = ref(false)
 const refreshLoading = ref(false)
@@ -160,10 +158,7 @@ const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.book
 const totalBookCount = computed(() => Array.isArray(bookshelf.books) ? bookshelf.books.length : 0)
 
 const displayedBooks = computed(() => {
-  const value = normalizeShelfSearch(keyword.value)
   const filtered = sortedBooks.value.filter(book => {
-    const matchesKeyword = !value || shelfSearchText(book).includes(value)
-    if (!matchesKeyword) return false
     if (!selectedGroup.value) return true
     if (selectedGroup.value === 'local') return isLocalBook(book)
     if (selectedGroup.value === 'none') return !book.categoryId
@@ -177,7 +172,6 @@ const isNormalPage = computed(() => !['kindle', 'simple', 'Kindle'].includes(rea
 const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
 
 const emptyText = computed(() => {
-  if (keyword.value.trim()) return '没有匹配的书籍'
   if (selectedGroup.value) return '这个分组里还没有书'
   return '暂无书籍'
 })
@@ -186,11 +180,7 @@ onMounted(async () => {
   updateViewportFlags()
   window.addEventListener('resize', updateViewportFlags)
   window.addEventListener('orientationchange', updateViewportFlags)
-  try {
-    await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks({ all: true })])
-  } catch (err) {
-    ElMessage.error(readError(err, '加载书架失败'))
-  }
+  await warmHomeShelf()
 })
 
 onBeforeUnmount(() => {
@@ -202,14 +192,6 @@ watch(
   () => route.query.import,
   (value) => {
     if (value === '1') overlay.openImportBook()
-  },
-  { immediate: true },
-)
-
-watch(
-  () => route.query.shelfQ,
-  (value) => {
-    keyword.value = typeof value === 'string' ? value : ''
   },
   { immediate: true },
 )
@@ -238,8 +220,16 @@ async function deleteManagedBook(book) {
 async function refreshShelf() {
   refreshLoading.value = true
   try {
-    await Promise.all([bookshelf.loadCategories({ force: true }), bookshelf.loadBooks({ force: true, all: true })])
-    ElMessage.success('书架已刷新')
+    const [categoryResult, booksResult] = await Promise.allSettled([
+      bookshelf.loadCategories({ force: true }),
+      bookshelf.loadBooks({ force: true, all: true }),
+    ])
+    if (booksResult.status === 'rejected') throw booksResult.reason
+    if (categoryResult.status === 'rejected') {
+      ElMessage.warning(readError(categoryResult.reason, '书架已刷新，分组刷新失败'))
+    } else {
+      ElMessage.success('书架已刷新')
+    }
   } catch (err) {
     ElMessage.error(readError(err, '刷新书架失败'))
   } finally {
@@ -299,18 +289,6 @@ function latestChapterTitle(book) {
   return book.lastChapter || book.latestChapterTitle || book.latestChapter || ''
 }
 
-function shelfSearchText(book) {
-  return localBookSearchText(book, [
-    readChapterTitle(book),
-    latestChapterTitle(book),
-    categoryName(book.categoryId),
-  ])
-}
-
-function normalizeShelfSearch(value) {
-  return normalizeLocalBookSearch(value)
-}
-
 function latestChapterLabel(book) {
   const rawTime = book.lastCheckTime || book.shelfOrderAt || book.updatedAt
   return rawTime ? relativeTimeLabel(rawTime) : '最新'
@@ -356,6 +334,23 @@ function updateViewportFlags() {
 
 function toggleMobileNavigation() {
   window.dispatchEvent(new CustomEvent('openreader:toggle-mobile-nav'))
+}
+
+async function warmHomeShelf() {
+  const jobs = [
+    ['categories', bookshelf.ensureCategoriesLoaded()],
+    ['books', bookshelf.ensureBooksLoaded({ all: true })],
+  ]
+  const results = await Promise.allSettled(jobs.map(([, job]) => job))
+  results.forEach((result, index) => {
+    if (result.status !== 'rejected') return
+    const type = jobs[index][0]
+    if (type === 'books') {
+      ElMessage.error(readError(result.reason, '加载书架失败'))
+    } else {
+      ElMessage.warning(readError(result.reason, '分组加载失败，书架仍可使用'))
+    }
+  })
 }
 
 function readError(err, fallback) {
@@ -422,14 +417,6 @@ function readError(err, fallback) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.shelf-filter-count {
-  flex: 0 0 auto;
-  color: #8f97a3;
-  font-size: 13px;
-  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1001,19 +988,20 @@ function readError(err, fallback) {
   .shelf-page.mobile-shelf .book-row,
   .book-row {
     display: grid;
-    grid-template-columns: 86px minmax(0, 1fr);
-    gap: 14px;
-    min-height: 134px;
+    grid-template-columns: clamp(72px, 22vw, 86px) minmax(0, 1fr);
+    gap: clamp(10px, 3.5vw, 14px);
+    min-height: clamp(116px, 34vw, 134px);
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 12px 14px;
+    padding: 12px clamp(12px, 3.5vw, 14px);
   }
 
   .shelf-page.mobile-shelf .list-cover,
   .list-cover {
-    width: 86px;
-    height: 114px;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 4;
     flex-basis: auto;
   }
 
@@ -1036,12 +1024,12 @@ function readError(err, fallback) {
 
   .shelf-page.mobile-shelf .list-main strong,
   .list-main strong {
-    padding-right: 48px;
+    padding-right: clamp(38px, 12vw, 48px);
   }
 
   .shelf-page.mobile-shelf .book-row.editing .list-main strong,
   .book-row.editing .list-main strong {
-    padding-right: 58px;
+    padding-right: clamp(48px, 14vw, 58px);
   }
 
   .shelf-page.mobile-shelf .list-main small,

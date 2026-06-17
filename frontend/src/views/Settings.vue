@@ -48,9 +48,9 @@
             <h2>备份恢复</h2>
           </div>
           <div class="panel-actions">
-            <el-button type="primary" :icon="Upload" :loading="backupLoading" @click="runBackup">保存备份</el-button>
+            <el-button type="primary" :icon="Upload" :loading="backupLoading" @click="runBackup">保存备份到 WebDAV</el-button>
             <el-upload :show-file-list="false" :auto-upload="false" accept=".zip" @change="restoreBackup">
-              <el-button :icon="RefreshLeft" :loading="restoreLoading">恢复 Legado 备份</el-button>
+              <el-button :icon="RefreshLeft" :loading="restoreLoading">恢复备份包</el-button>
             </el-upload>
             <el-button :icon="Refresh" :loading="backupListLoading" @click="loadBackups">刷新列表</el-button>
           </div>
@@ -103,17 +103,51 @@
           <article class="app-panel settings-card">
             <div class="card-head">
               <el-icon><Files /></el-icon>
-              <h2>浏览器章节缓存</h2>
+              <h2>浏览器本地缓存</h2>
             </div>
             <dl class="info-list">
               <div><dt>缓存位置</dt><dd>当前浏览器</dd></div>
-              <div><dt>缓存文件</dt><dd>{{ browserCacheStats.files || 0 }}</dd></div>
-              <div><dt>缓存大小</dt><dd>{{ formatSize(browserCacheStats.size || 0) }}</dd></div>
-              <div><dt>章节状态</dt><dd>{{ browserCacheStats.chapters || 0 }} 章已缓存</dd></div>
+              <div><dt>缓存文件</dt><dd>{{ localBrowserCacheStats.total?.files || 0 }}</dd></div>
+              <div><dt>缓存大小</dt><dd>{{ formatSize(localBrowserCacheStats.total?.size || 0) }}</dd></div>
+              <div><dt>书源缓存</dt><dd>{{ cacheGroupText('bookSourceList') }}</dd></div>
+              <div><dt>RSS源缓存</dt><dd>{{ cacheGroupText('rssSources') }}</dd></div>
+              <div><dt>章节列表缓存</dt><dd>{{ cacheGroupText('chapterList') }}</dd></div>
+              <div><dt>章节内容缓存</dt><dd>{{ cacheGroupText('chapterContent') }}</dd></div>
             </dl>
-            <div class="panel-actions">
+            <div class="panel-actions cache-action-grid">
               <el-button :icon="Refresh" :loading="cacheLoading" @click="loadCacheStats">刷新</el-button>
-              <el-button type="danger" plain :icon="Delete" :loading="browserCacheClearing" @click="clearBrowserChapterCache">清理浏览器缓存</el-button>
+              <el-button
+                type="danger"
+                plain
+                :icon="Delete"
+                :loading="browserCacheClearing === 'bookSourceList'"
+                :disabled="!cacheGroupFiles('bookSourceList')"
+                @click="clearBrowserLocalCache('bookSourceList')"
+              >清空书源缓存</el-button>
+              <el-button
+                type="danger"
+                plain
+                :icon="Delete"
+                :loading="browserCacheClearing === 'rssSources'"
+                :disabled="!cacheGroupFiles('rssSources')"
+                @click="clearBrowserLocalCache('rssSources')"
+              >清空 RSS 源缓存</el-button>
+              <el-button
+                type="danger"
+                plain
+                :icon="Delete"
+                :loading="browserCacheClearing === 'chapterList'"
+                :disabled="!cacheGroupFiles('chapterList')"
+                @click="clearBrowserLocalCache('chapterList')"
+              >清空章节列表缓存</el-button>
+              <el-button
+                type="danger"
+                plain
+                :icon="Delete"
+                :loading="browserCacheClearing === 'chapterContent'"
+                :disabled="!cacheGroupFiles('chapterContent')"
+                @click="clearBrowserLocalCache('chapterContent')"
+              >清空章节内容缓存</el-button>
             </div>
           </article>
         </section>
@@ -265,7 +299,7 @@
               </label>
               <label>
                 <span>字重 {{ readerStore.fontWeight }}</span>
-                <el-slider v-model="readerFontWeightModel" :min="300" :max="900" :step="100" />
+                <el-slider v-model="readerFontWeightModel" :min="100" :max="900" :step="100" />
               </label>
               <label>
                 <span>行高 {{ readerStore.lineHeight }}</span>
@@ -273,11 +307,11 @@
               </label>
               <label>
                 <span>段落间距 {{ readerStore.paragraphSpace }}em</span>
-                <el-slider v-model="readerParagraphSpaceModel" :min="0" :max="3" :step="0.1" />
+                <el-slider v-model="readerParagraphSpaceModel" :min="0" :max="5" :step="0.2" />
               </label>
               <label>
                 <span>阅读宽度 {{ readerStore.columnWidth }}px</span>
-                <el-slider v-model="readerColumnWidthModel" :min="560" :max="1080" :step="20" />
+                <el-slider v-model="readerColumnWidthModel" :min="480" :max="1120" :step="160" />
               </label>
               <label>
                 <span>页面模式（本机）</span>
@@ -297,7 +331,7 @@
               </label>
               <label>
                 <span>动画时长 {{ readerStore.animateDuration }}ms</span>
-                <el-slider v-model="readerAnimateDurationModel" :min="0" :max="1000" :step="20" :disabled="readerStore.pageType === 'kindle'" />
+                <el-slider v-model="readerAnimateDurationModel" :min="0" :max="500" :step="50" :disabled="readerStore.pageType === 'kindle'" />
               </label>
               <label>
                 <span>自动阅读</span>
@@ -312,7 +346,7 @@
               </label>
               <label>
                 <span>翻页速度 {{ readerStore.autoReadingLineTime }}ms</span>
-                <el-slider v-model="readerAutoReadingLineTimeModel" :min="50" :max="3000" :step="50" />
+                <el-slider v-model="readerAutoReadingLineTimeModel" :min="10" :max="3000" :step="50" />
               </label>
               <label>
                 <span>全屏点击</span>
@@ -404,7 +438,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useOverlayStore } from '../stores/overlay'
 import { readerFontOptions } from '../utils/readerFonts'
 import { useUserStore } from '../stores/user'
-import { clearCurrentUserBrowserChapterCache, currentUserBrowserChapterCacheStats } from '../utils/bookChapterCache'
+import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { applyRestoreResult } from '../utils/restoreSync'
 import RSSManager from '../components/RSSManager.vue'
@@ -425,10 +459,10 @@ const backupListLoading = ref(false)
 const restoreLoading = ref(false)
 const backups = ref([])
 const cacheStats = ref({})
-const browserCacheStats = ref({})
+const localBrowserCacheStats = ref({ total: { files: 0, size: 0 }, groups: {} })
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
-const browserCacheClearing = ref(false)
+const browserCacheClearing = ref('')
 const readerBgUploading = ref(false)
 const healthInfo = ref(null)
 const windowWidth = ref(currentViewportWidth())
@@ -630,7 +664,7 @@ async function runBackup() {
   backupLoading.value = true
   try {
     const { data } = await triggerBackup()
-    ElMessage.success(data?.path ? `备份已创建：${data.path}` : '备份已创建')
+    ElMessage.success(data?.name || data?.path ? `备份已保存到 WebDAV：${data.name || data.path}` : '备份已保存到 WebDAV')
     await loadBackups()
   } catch (err) {
     ElMessage.error(readError(err, '备份失败'))
@@ -685,7 +719,7 @@ async function loadCacheStats() {
   cacheLoading.value = true
   const [serverResult, browserResult] = await Promise.allSettled([
     getCacheStats(),
-    currentUserBrowserChapterCacheStats(),
+    currentBrowserLocalCacheStats(),
   ])
   if (serverResult.status === 'fulfilled') {
     cacheStats.value = serverResult.value?.data || {}
@@ -694,9 +728,9 @@ async function loadCacheStats() {
     ElMessage.error(readError(serverResult.reason, '加载服务器缓存统计失败'))
   }
   if (browserResult.status === 'fulfilled') {
-    browserCacheStats.value = browserResult.value || {}
+    localBrowserCacheStats.value = browserResult.value || { total: { files: 0, size: 0 }, groups: {} }
   } else {
-    browserCacheStats.value = {}
+    localBrowserCacheStats.value = { total: { files: 0, size: 0 }, groups: {} }
     ElMessage.error(readError(browserResult.reason, '加载浏览器缓存统计失败'))
   }
   cacheLoading.value = false
@@ -717,19 +751,43 @@ async function clearSystemCache() {
   }
 }
 
-async function clearBrowserChapterCache() {
+async function clearBrowserLocalCache(group) {
+  const label = cacheGroupLabel(group)
   try {
-    await ElMessageBox.confirm('确定清理当前用户的浏览器章节缓存吗？清理后本机阅读时会重新加载章节内容。', '清理浏览器缓存', { type: 'warning' })
-    browserCacheClearing.value = true
-    const removed = await clearCurrentUserBrowserChapterCache()
-    ElMessage.success(`已清理浏览器章节缓存 ${removed} 章`)
+    await ElMessageBox.confirm(`确定清理当前浏览器的${label}吗？清理后会在需要时重新加载。`, '清理浏览器缓存', { type: 'warning' })
+    browserCacheClearing.value = group
+    const removed = await clearBrowserLocalCacheGroup(group)
+    ElMessage.success(`已清理${label} ${removed} 项`)
     await loadCacheStats()
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '清理浏览器缓存失败'))
   } finally {
-    browserCacheClearing.value = false
+    browserCacheClearing.value = ''
   }
+}
+
+function cacheGroup(group) {
+  return localBrowserCacheStats.value?.groups?.[group] || { files: 0, size: 0 }
+}
+
+function cacheGroupFiles(group) {
+  return Number(cacheGroup(group).files || 0)
+}
+
+function cacheGroupText(group) {
+  const row = cacheGroup(group)
+  return `${row.files || 0} 项 · ${formatSize(row.size || 0)}`
+}
+
+function cacheGroupLabel(group) {
+  const labels = {
+    bookSourceList: '书源缓存',
+    rssSources: 'RSS源缓存',
+    chapterList: '章节列表缓存',
+    chapterContent: '章节内容缓存',
+  }
+  return labels[group] || '缓存'
 }
 
 async function pickReaderBgImage(data) {
@@ -844,6 +902,10 @@ function readError(err, fallback) {
 
 .panel-actions {
   flex-wrap: wrap;
+}
+
+.cache-action-grid :deep(.el-button) {
+  margin-left: 0;
 }
 
 .info-list {

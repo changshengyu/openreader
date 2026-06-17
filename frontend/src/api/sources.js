@@ -46,8 +46,12 @@ export function importSources(form) {
   })
 }
 
-export function exportSources() {
-  return api.get('/sources/export', { responseType: 'blob' })
+export function exportSources(sourceIds = []) {
+  const ids = Array.isArray(sourceIds) ? sourceIds.filter(Boolean) : []
+  return api.get('/sources/export', {
+    params: ids.length ? { sourceIds: ids.join(',') } : undefined,
+    responseType: 'blob',
+  })
 }
 
 export function importRemoteSource(url) {

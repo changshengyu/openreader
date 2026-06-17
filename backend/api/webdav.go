@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,8 +58,10 @@ func (s *Server) webdavList(c *gin.Context, relPath string) {
 	}
 
 	type fileEntry struct {
-		Name  string `xml:"displayname"`
-		IsDir bool   `xml:"iscollection"`
+		Name         string `xml:"displayname"`
+		IsDir        bool   `xml:"iscollection"`
+		Size         int64  `xml:"getcontentlength"`
+		LastModified string `xml:"lastmodified"`
 	}
 
 	response := struct {
@@ -71,9 +74,19 @@ func (s *Server) webdavList(c *gin.Context, relPath string) {
 	}
 
 	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		size := info.Size()
+		if e.IsDir() {
+			size = 0
+		}
 		response.Response = append(response.Response, fileEntry{
-			Name:  e.Name(),
-			IsDir: e.IsDir(),
+			Name:         e.Name(),
+			IsDir:        e.IsDir(),
+			Size:         size,
+			LastModified: info.ModTime().Format(time.RFC1123),
 		})
 	}
 
@@ -358,6 +371,9 @@ func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStore
 			extension:    ext,
 		})
 		return nil
+	})
+	sort.SliceStable(files, func(i, j int) bool {
+		return strings.ToLower(files[i].relativePath) < strings.ToLower(files[j].relativePath)
 	})
 	return files, true
 }

@@ -3,10 +3,12 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -23,17 +25,47 @@ func (s *Server) listSources(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
+	s.attachBookSourceUsage(sources)
 	c.JSON(http.StatusOK, sources)
 }
 
 type bookSourcePayload struct {
-	Name      string `json:"name"`
-	BaseURL   string `json:"baseUrl"`
-	SearchURL string `json:"searchUrl"`
-	Charset   string `json:"charset"`
-	Rules     string `json:"rules"`
-	Enabled   *bool  `json:"enabled"`
-	Group     string `json:"group"`
+	Name            string                  `json:"name"`
+	BaseURL         string                  `json:"baseUrl"`
+	SearchURL       string                  `json:"searchUrl"`
+	Charset         string                  `json:"charset"`
+	Rules           string                  `json:"rules"`
+	Enabled         *bool                   `json:"enabled"`
+	Group           string                  `json:"group"`
+	BookSourceName  string                  `json:"bookSourceName"`
+	BookSourceURL   string                  `json:"bookSourceUrl"`
+	BookSourceGroup string                  `json:"bookSourceGroup"`
+	ExploreURL      string                  `json:"exploreUrl"`
+	Header          string                  `json:"header"`
+	HeaderMap       json.RawMessage         `json:"headerMap"`
+	RuleSearch      legacySourceSearchRule  `json:"ruleSearch"`
+	RuleTOC         legacySourceTOCRule     `json:"ruleToc"`
+	RuleContent     legacySourceContentRule `json:"ruleContent"`
+}
+
+type legacySourceSearchRule struct {
+	BookList    string `json:"bookList"`
+	Name        string `json:"name"`
+	Author      string `json:"author"`
+	CoverURL    string `json:"coverUrl"`
+	Intro       string `json:"intro"`
+	LastChapter string `json:"lastChapter"`
+	BookURL     string `json:"bookUrl"`
+}
+
+type legacySourceTOCRule struct {
+	ChapterList string `json:"chapterList"`
+	ChapterName string `json:"chapterName"`
+	ChapterURL  string `json:"chapterUrl"`
+}
+
+type legacySourceContentRule struct {
+	Content string `json:"content"`
 }
 
 func (p bookSourcePayload) toModel() models.BookSource {
@@ -41,15 +73,109 @@ func (p bookSourcePayload) toModel() models.BookSource {
 	if p.Enabled != nil {
 		enabled = *p.Enabled
 	}
+	rules := strings.TrimSpace(p.Rules)
+	if rules == "" {
+		rules = p.compatRules()
+	}
 	return models.BookSource{
-		Name:      strings.TrimSpace(p.Name),
-		BaseURL:   strings.TrimSpace(p.BaseURL),
+		Name:      firstNonBlank(p.Name, p.BookSourceName),
+		BaseURL:   firstNonBlank(p.BaseURL, p.BookSourceURL),
 		SearchURL: strings.TrimSpace(p.SearchURL),
 		Charset:   strings.TrimSpace(p.Charset),
-		Rules:     strings.TrimSpace(p.Rules),
+		Rules:     rules,
 		Enabled:   enabled,
-		Group:     strings.TrimSpace(p.Group),
+		Group:     firstNonBlank(p.Group, p.BookSourceGroup),
 	}
+}
+
+func (p bookSourcePayload) compatRules() string {
+	rule := models.BookSourceRule{
+		SearchURL:         strings.TrimSpace(p.SearchURL),
+		ExploreURL:        strings.TrimSpace(p.ExploreURL),
+		BookListRule:      strings.TrimSpace(p.RuleSearch.BookList),
+		BookNameRule:      strings.TrimSpace(p.RuleSearch.Name),
+		BookAuthorRule:    strings.TrimSpace(p.RuleSearch.Author),
+		BookCoverRule:     strings.TrimSpace(p.RuleSearch.CoverURL),
+		BookIntroRule:     strings.TrimSpace(p.RuleSearch.Intro),
+		LatestChapterRule: strings.TrimSpace(p.RuleSearch.LastChapter),
+		BookURLRule:       strings.TrimSpace(p.RuleSearch.BookURL),
+		ChapterListRule:   strings.TrimSpace(p.RuleTOC.ChapterList),
+		ChapterNameRule:   strings.TrimSpace(p.RuleTOC.ChapterName),
+		ChapterURLRule:    strings.TrimSpace(p.RuleTOC.ChapterURL),
+		ContentRule:       strings.TrimSpace(p.RuleContent.Content),
+		Headers:           p.compatHeaders(),
+	}
+	if isEmptyCompatRule(rule) {
+		return ""
+	}
+	data, err := json.Marshal(rule)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func isEmptyCompatRule(rule models.BookSourceRule) bool {
+	return rule.SearchURL == "" &&
+		rule.ExploreURL == "" &&
+		rule.BookListRule == "" &&
+		rule.BookNameRule == "" &&
+		rule.BookAuthorRule == "" &&
+		rule.BookCoverRule == "" &&
+		rule.BookIntroRule == "" &&
+		rule.LatestChapterRule == "" &&
+		rule.BookURLRule == "" &&
+		rule.ChapterListRule == "" &&
+		rule.ChapterNameRule == "" &&
+		rule.ChapterURLRule == "" &&
+		rule.ContentRule == "" &&
+		len(rule.Headers) == 0
+}
+
+func (p bookSourcePayload) compatHeaders() map[string]string {
+	if header := strings.TrimSpace(p.Header); header != "" {
+		if headers := decodeHeaderMap([]byte(header)); len(headers) > 0 {
+			return headers
+		}
+	}
+	if len(p.HeaderMap) > 0 {
+		if headers := decodeHeaderMap(p.HeaderMap); len(headers) > 0 {
+			return headers
+		}
+		var headerText string
+		if err := json.Unmarshal(p.HeaderMap, &headerText); err == nil {
+			return decodeHeaderMap([]byte(headerText))
+		}
+	}
+	return nil
+}
+
+func decodeHeaderMap(data []byte) map[string]string {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	headers := make(map[string]string, len(raw))
+	for key, value := range raw {
+		name := strings.TrimSpace(key)
+		if name == "" {
+			continue
+		}
+		headers[name] = strings.TrimSpace(strings.Trim(fmt.Sprint(value), `"`))
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (s *Server) createSource(c *gin.Context) {
@@ -135,6 +261,10 @@ func (s *Server) deleteSource(c *gin.Context) {
 		return
 	}
 
+	if count := s.bookSourceUsageCount(uint(id)); count > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "source is used by bookshelf books", "usedBookCount": count})
+		return
+	}
 	result := s.db.Delete(&models.BookSource{}, id)
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete source"})
@@ -160,6 +290,40 @@ func (s *Server) clearSources(c *gin.Context) {
 	}
 	s.broadcastSourcesUpdate("clear")
 	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected})
+}
+
+func (s *Server) attachBookSourceUsage(sources []models.BookSource) {
+	if len(sources) == 0 {
+		return
+	}
+	counts := s.bookSourceUsageCounts(nil)
+	for i := range sources {
+		sources[i].UsedBookCount = counts[sources[i].ID]
+	}
+}
+
+func (s *Server) bookSourceUsageCount(sourceID uint) int {
+	return s.bookSourceUsageCounts([]uint{sourceID})[sourceID]
+}
+
+func (s *Server) bookSourceUsageCounts(sourceIDs []uint) map[uint]int {
+	type sourceUsage struct {
+		SourceID uint
+		Count    int
+	}
+	query := s.db.Model(&models.Book{}).Select("source_id, COUNT(*) AS count").Where("source_id > 0").Group("source_id")
+	if len(sourceIDs) > 0 {
+		query = query.Where("source_id IN ?", sourceIDs)
+	}
+	var rows []sourceUsage
+	if err := query.Scan(&rows).Error; err != nil {
+		return map[uint]int{}
+	}
+	counts := make(map[uint]int, len(rows))
+	for _, row := range rows {
+		counts[row.SourceID] = row.Count
+	}
+	return counts
 }
 
 func (s *Server) defaultSourcesStatus(c *gin.Context) {
@@ -270,13 +434,27 @@ func (s *Server) batchSources(c *gin.Context) {
 	}
 
 	var result *gorm.DB
+	skippedUsed := 0
 	switch req.Action {
 	case "enable":
 		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("enabled", true)
 	case "disable":
 		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("enabled", false)
 	case "delete":
-		result = s.db.Where("id IN ?", req.SourceIDs).Delete(&models.BookSource{})
+		usageCounts := s.bookSourceUsageCounts(req.SourceIDs)
+		deletableIDs := make([]uint, 0, len(req.SourceIDs))
+		for _, sourceID := range req.SourceIDs {
+			if usageCounts[sourceID] > 0 {
+				skippedUsed++
+				continue
+			}
+			deletableIDs = append(deletableIDs, sourceID)
+		}
+		if len(deletableIDs) == 0 {
+			c.JSON(http.StatusOK, gin.H{"affected": 0, "skippedUsed": skippedUsed})
+			return
+		}
+		result = s.db.Where("id IN ?", deletableIDs).Delete(&models.BookSource{})
 	case "group":
 		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("group", strings.TrimSpace(req.Group))
 	default:
@@ -289,7 +467,7 @@ func (s *Server) batchSources(c *gin.Context) {
 	}
 
 	s.broadcastSourcesUpdate("batch-" + req.Action)
-	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected})
+	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected, "skippedUsed": skippedUsed})
 }
 
 func (s *Server) importSources(c *gin.Context) {
@@ -329,7 +507,15 @@ func (s *Server) importSources(c *gin.Context) {
 
 func (s *Server) exportSources(c *gin.Context) {
 	var sources []models.BookSource
-	if err := s.db.Order("id asc").Find(&sources).Error; err != nil {
+	sourceIDs, ok := parseSourceIDsQuery(c)
+	if !ok {
+		return
+	}
+	query := s.db.Order("id asc")
+	if len(sourceIDs) > 0 {
+		query = query.Where("id IN ?", sourceIDs)
+	}
+	if err := query.Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
@@ -337,6 +523,44 @@ func (s *Server) exportSources(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 	c.Header("Content-Disposition", "attachment; filename=bookSources.json")
 	c.JSON(http.StatusOK, sources)
+}
+
+func parseSourceIDsQuery(c *gin.Context) ([]uint, bool) {
+	raw := strings.TrimSpace(c.Query("sourceIds"))
+	if raw == "" {
+		return nil, true
+	}
+
+	parts := strings.Split(raw, ",")
+	if len(parts) > 300 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "too many sources"})
+		return nil, false
+	}
+
+	sourceIDs := make([]uint, 0, len(parts))
+	seen := make(map[uint]bool, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(value, 10, 64)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sourceIds"})
+			return nil, false
+		}
+		sourceID := uint(id)
+		if seen[sourceID] {
+			continue
+		}
+		seen[sourceID] = true
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+	if len(sourceIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sourceIds is required"})
+		return nil, false
+	}
+	return sourceIDs, true
 }
 
 type remoteSourceRequest struct {
@@ -392,7 +616,7 @@ func (s *Server) previewRemoteSource(c *gin.Context) {
 			names = append(names, name)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"count": len(sources), "names": names})
+	c.JSON(http.StatusOK, gin.H{"count": len(sources), "names": names, "sources": sources})
 }
 
 func fetchRemoteBookSources(rawURL string) ([]models.BookSource, error) {

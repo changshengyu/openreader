@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -94,8 +95,10 @@ func (s *Server) testSourceContent(c *gin.Context) {
 }
 
 type batchTestSourcesRequest struct {
-	SourceIDs []uint `json:"sourceIds"`
-	Keyword   string `json:"keyword"`
+	SourceIDs  []uint `json:"sourceIds"`
+	Keyword    string `json:"keyword"`
+	TimeoutMS  int    `json:"timeout"`
+	Concurrent int    `json:"concurrent"`
 }
 
 type batchTestSourceResult struct {
@@ -118,6 +121,24 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	if keyword == "" {
 		keyword = "测试"
 	}
+	concurrent := req.Concurrent
+	if concurrent < 3 {
+		concurrent = 3
+	}
+	if concurrent > 15 {
+		concurrent = 15
+	}
+	timeoutMS := req.TimeoutMS
+	if timeoutMS <= 0 {
+		timeoutMS = 5000
+	}
+	if timeoutMS < 1000 {
+		timeoutMS = 1000
+	}
+	if timeoutMS > 15000 {
+		timeoutMS = 15000
+	}
+	timeout := time.Duration(timeoutMS) * time.Millisecond
 
 	var sources []models.BookSource
 	query := s.db.Model(&models.BookSource{})
@@ -126,21 +147,40 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	} else {
 		query = query.Where("enabled = ?", true)
 	}
-	if err := query.Limit(80).Find(&sources).Error; err != nil {
+	if err := query.Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
 
 	results := make([]batchTestSourceResult, len(sources))
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, concurrent)
 	for index, source := range sources {
 		wg.Add(1)
 		go func(index int, source models.BookSource) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			searchResults, err := engine.SearchBooks(source, keyword)
+			done := make(chan struct {
+				results []engine.SearchResult
+				err     error
+			}, 1)
+			go func() {
+				searchResults, err := engine.SearchBooks(source, keyword)
+				done <- struct {
+					results []engine.SearchResult
+					err     error
+				}{results: searchResults, err: err}
+			}()
+			var searchResults []engine.SearchResult
+			var err error
+			select {
+			case outcome := <-done:
+				searchResults = outcome.results
+				err = outcome.err
+			case <-time.After(timeout):
+				err = errTimeout
+			}
 			results[index] = batchTestSourceResult{
 				SourceID: source.ID,
 				Name:     source.Name,

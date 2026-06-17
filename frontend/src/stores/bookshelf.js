@@ -29,6 +29,10 @@ function sortCategories(categories) {
   return asList(categories).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || '')))
 }
 
+function normalizeLoadOptions(options = {}) {
+  return options === true ? { force: true } : { ...(options || {}) }
+}
+
 const REFRESH_DEDUPE_MS = 1200
 const MEMORY_CACHE_MS = 5000
 const SHELF_CACHE_KEY = 'bookshelf@getBookshelf'
@@ -159,6 +163,22 @@ export const useBookshelfStore = defineStore('bookshelf', {
         })
       categoriesRequest = request
       return categoriesRequest
+    },
+    async ensureBooksLoaded(options = {}) {
+      this.ensureShelfScope()
+      const force = options === true || Boolean(options?.force)
+      if (force || (!this.books.length && !this.booksLoadedAt)) {
+        return this.loadBooks({ all: true, ...normalizeLoadOptions(options) })
+      }
+      return this.books
+    },
+    async ensureCategoriesLoaded(options = {}) {
+      this.ensureShelfScope()
+      const force = options === true || Boolean(options?.force)
+      if (force || (!this.categories.length && !this.categoriesLoadedAt)) {
+        return this.loadCategories(normalizeLoadOptions(options))
+      }
+      return this.categories
     },
     invalidateBooks() {
       this.booksLoadedAt = 0

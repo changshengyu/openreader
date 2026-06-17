@@ -52,6 +52,12 @@
       <el-table-column label="类型" width="90">
         <template #default="{ row }">{{ row.isDir ? '目录' : '文件' }}</template>
       </el-table-column>
+      <el-table-column label="大小" width="110">
+        <template #default="{ row }">{{ row.isDir ? '-' : formatSize(row.size) }}</template>
+      </el-table-column>
+      <el-table-column label="修改时间" width="150">
+        <template #default="{ row }">{{ formatDate(row.lastModified) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button v-if="!row.isDir && isBackupFile(row)" text type="primary" :loading="restoring === row.name" @click="restoreBackupFile(row)">恢复</el-button>
@@ -87,6 +93,8 @@
         <p>{{ joinPath(path, row.name) }}</p>
         <div class="mobile-file-meta">
           <el-tag size="small" effect="plain">{{ row.isDir ? '目录' : '文件' }}</el-tag>
+          <el-tag v-if="!row.isDir" size="small" effect="plain">{{ formatSize(row.size) }}</el-tag>
+          <el-tag v-if="row.lastModified" size="small" effect="plain">{{ formatDate(row.lastModified) }}</el-tag>
           <el-tag v-if="row.importable" size="small" type="success" effect="plain">可加入书架</el-tag>
           <el-tag v-if="!row.isDir && isBackupFile(row)" size="small" type="warning" effect="plain">备份</el-tag>
         </div>
@@ -174,7 +182,9 @@ onMounted(load)
 async function load() {
   loading.value = true
   try {
-    if (!bookshelf.categories.length) await bookshelf.loadCategories()
+    await warmWebDAVCategories().catch((err) => {
+      ElMessage.warning(readError(err, '分组加载失败，仍可浏览 WebDAV'))
+    })
     const { data } = await listWebDAV(path.value)
     items.value = parseWebDAVListing(data)
     selection.value = []
@@ -183,6 +193,10 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function warmWebDAVCategories() {
+  return bookshelf.ensureCategoriesLoaded()
 }
 
 async function goPath(nextPath) {
@@ -354,10 +368,32 @@ function parseWebDAVListing(xml) {
   return [...doc.querySelectorAll('prop')].map((node) => ({
     name: node.querySelector('displayname')?.textContent || '',
     isDir: node.querySelector('iscollection')?.textContent === 'true',
+    size: Number(node.querySelector('getcontentlength')?.textContent || 0),
+    lastModified: node.querySelector('lastmodified')?.textContent || '',
   })).filter(item => item.name && item.name !== path.value).map(item => ({
     ...item,
     importable: !item.isDir && isImportableBookFile(item.name),
   }))
+}
+
+function formatSize(bytes) {
+  const value = Number(bytes || 0)
+  if (!value) return '0 B'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatDate(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const year = String(date.getFullYear()).slice(2)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hour}:${minute}`
 }
 
 function isBackupFile(row) {

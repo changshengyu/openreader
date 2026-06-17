@@ -28,16 +28,17 @@ type UserSetting struct {
 }
 
 type BookSource struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Name      string    `json:"name" gorm:"size:120;not null"`
-	BaseURL   string    `json:"baseUrl" gorm:"size:500"`
-	SearchURL string    `json:"searchUrl" gorm:"size:500"`
-	Charset   string    `json:"charset" gorm:"size:40;default:utf-8"`
-	Rules     string    `json:"rules" gorm:"type:text"`
-	Enabled   bool      `json:"enabled"`
-	Group     string    `json:"group" gorm:"size:80"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID            uint      `json:"id" gorm:"primaryKey"`
+	Name          string    `json:"name" gorm:"size:120;not null"`
+	BaseURL       string    `json:"baseUrl" gorm:"size:500"`
+	SearchURL     string    `json:"searchUrl" gorm:"size:500"`
+	Charset       string    `json:"charset" gorm:"size:40;default:utf-8"`
+	Rules         string    `json:"rules" gorm:"type:text"`
+	Enabled       bool      `json:"enabled"`
+	Group         string    `json:"group" gorm:"size:80"`
+	UsedBookCount int       `json:"usedBookCount" gorm:"-"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 // ParsedRules deserializes the Rules JSON into a BookSourceRule.

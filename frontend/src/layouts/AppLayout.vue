@@ -23,10 +23,10 @@
       <div class="app-shell-search">
         <el-input
           v-model="quickSearch"
-          :placeholder="quickSearchPlaceholder"
+          placeholder="搜索书籍"
           clearable
           @keyup.enter="goSearch"
-          @clear="clearShelfSearch"
+          @clear="clearSearchQuery"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
@@ -150,8 +150,9 @@ import { useSync } from '../composables/useSync'
 import { clearCache, getCacheStats } from '../api/cache'
 import { listSources } from '../api/sources'
 import api from '../api/client'
+import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
 import { newestBookProgress, progressUpdatedAt } from '../utils/bookOrder'
-import { clearCurrentUserBrowserChapterCache, currentUserBrowserChapterCacheStats } from '../utils/bookChapterCache'
+import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
@@ -170,13 +171,12 @@ const mobileNavigationVisible = ref(false)
 const touchStart = ref(null)
 const touchMoveX = ref(0)
 const cacheStats = ref({})
-const browserCacheStats = ref({})
+const localBrowserCacheStats = ref({ total: { files: 0, size: 0 }, groups: {} })
 const healthInfo = ref(null)
 const recentSuppressedAt = ref(readRecentSuppressedAt())
 const cacheLoading = ref(false)
 const cacheClearing = ref(false)
-const browserCacheClearing = ref(false)
-const MOBILE_NAV_TRIGGER = 72
+const browserCacheClearing = ref('')
 const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
 const { connected: syncConnected, connect, disconnect } = useSync()
@@ -231,7 +231,7 @@ const navSections = computed(() => [
     items: [
       { key: 'cacheStats', label: '刷新缓存统计', action: loadCacheStats },
       { key: 'clearCache', label: cacheClearing.value ? '清理中' : clearServerChapterCacheLabel.value, action: clearSystemCache },
-      { key: 'clearBrowserCache', label: browserCacheClearing.value ? '清理中' : clearBrowserChapterCacheLabel.value, action: clearBrowserChapterCache },
+      ...browserCacheNavItems.value,
     ],
   },
   {
@@ -271,16 +271,27 @@ const sidebarSourceGroups = computed(() => {
   return [...groups.entries()].map(([label, count]) => ({ label, value: label, count }))
 })
 const cacheSectionTitle = computed(() => {
-  const size = Number(cacheStats.value?.size || 0) + Number(browserCacheStats.value?.size || 0)
+  const size = Number(cacheStats.value?.size || 0) + Number(localBrowserCacheStats.value?.total?.size || 0)
   return size ? `本地缓存 ${formatSize(size)}` : '本地缓存'
 })
 const clearServerChapterCacheLabel = computed(() => {
   const size = Number(cacheStats.value?.size || 0)
   return size ? `清空服务器缓存 ${formatSize(size)}` : '清空服务器缓存'
 })
-const clearBrowserChapterCacheLabel = computed(() => {
-  const size = Number(browserCacheStats.value?.size || 0)
-  return size ? `清空浏览器缓存 ${formatSize(size)}` : '清空浏览器缓存'
+const browserCacheNavItems = computed(() => {
+  const rows = [
+    { group: 'bookSourceList', label: '书源缓存' },
+    { group: 'rssSources', label: 'RSS源缓存' },
+    { group: 'chapterList', label: '章节列表缓存' },
+    { group: 'chapterContent', label: '章节内容缓存' },
+  ]
+  return rows
+    .filter(row => cacheGroupFiles(row.group) > 0 || ['chapterList', 'chapterContent'].includes(row.group))
+    .map(row => ({
+      key: `clear-${row.group}`,
+      label: browserCacheClearing.value === row.group ? '清理中' : clearBrowserLocalCacheLabel(row.group, row.label),
+      action: () => clearBrowserLocalCache(row.group),
+    }))
 })
 const isNightTheme = computed(() => reader.theme === 'dark' || reader.theme === 'black')
 const appVersionLabel = computed(() => {
@@ -321,8 +332,6 @@ const recentBook = computed(() => {
     })
   return rows[0] || null
 })
-const quickSearchPlaceholder = computed(() => route.name === 'home' ? '搜索书架' : '搜索书籍')
-
 function goHome() {
   router.push({ name: 'home' })
 }
@@ -358,16 +367,13 @@ function isNavActive(item) {
 
 function goSearch() {
   const keyword = quickSearch.value.trim()
-  if (route.name === 'home') {
-    setShelfSearch(keyword)
+  if (!keyword) {
+    ElMessage.warning('请输入关键词进行搜索')
     return
   }
   const query = searchRouteQuery(keyword)
-  if (!keyword) {
-    router.push({ name: 'search', query })
-    return
-  }
   router.push({ name: 'search', query })
+  if (isMobileShell.value) mobileNavigationVisible.value = false
 }
 
 function goSearchRoute(mode = 'remote') {
@@ -393,22 +399,7 @@ function localSearchRouteQuery(keyword = quickSearch.value.trim()) {
   return query
 }
 
-function setShelfSearch(keyword) {
-  const nextQuery = { ...route.query }
-  if (keyword) {
-    nextQuery.shelfQ = keyword
-  } else {
-    delete nextQuery.shelfQ
-  }
-  router.replace({ name: 'home', query: nextQuery })
-}
-
-function clearShelfSearch() {
-  if (route.name === 'home' && route.query.shelfQ !== undefined) {
-    const { shelfQ, ...query } = route.query
-    router.replace({ name: 'home', query })
-    return
-  }
+function clearSearchQuery() {
   if (route.name === 'search' && route.query.q !== undefined) {
     const { q, ...query } = route.query
     router.replace({ name: 'search', query })
@@ -417,20 +408,48 @@ function clearShelfSearch() {
 
 async function loadSidebarSources() {
   try {
-    const { data } = await listSources()
-    sidebarSources.value = Array.isArray(data) ? data : []
-    if (!sidebarSearchGroup.value && sidebarSourceGroups.value.length) sidebarSearchGroup.value = sidebarSourceGroups.value[0].value
-    if (!sidebarSourceId.value && sidebarEnabledSources.value.length) sidebarSourceId.value = sidebarEnabledSources.value[0].id
+    const response = await cacheFirstRequest(
+      () => listSources(),
+      sidebarSourceCacheKey(),
+      { validate: data => Array.isArray(data) },
+    )
+    applySidebarSources(response.data)
+    if (response.fromCache) refreshSidebarSourcesCache().catch(() => {})
   } catch {
     sidebarSources.value = []
   }
+}
+
+async function refreshSidebarSourcesCache() {
+  const response = await networkFirstRequest(
+    () => listSources(),
+    sidebarSourceCacheKey(),
+    { validate: data => Array.isArray(data) },
+  )
+  applySidebarSources(response.data)
+}
+
+function applySidebarSources(data) {
+  sidebarSources.value = Array.isArray(data) ? data : []
+  if (!sidebarSearchGroup.value && sidebarSourceGroups.value.length) sidebarSearchGroup.value = sidebarSourceGroups.value[0].value
+  if (!sidebarSourceId.value && sidebarEnabledSources.value.length) sidebarSourceId.value = sidebarEnabledSources.value[0].id
+}
+
+function sidebarSourceCacheKey() {
+  return `bookSourceList@${currentUserScope()}`
+}
+
+async function handleSourcesUpdated() {
+  await removeBrowserCache(sidebarSourceCacheKey())
+  await loadSidebarSources()
+  await loadCacheStats()
 }
 
 async function loadCacheStats() {
   cacheLoading.value = true
   const [serverResult, browserResult] = await Promise.allSettled([
     getCacheStats(),
-    currentUserBrowserChapterCacheStats(),
+    currentBrowserLocalCacheStats(),
   ])
   if (serverResult.status === 'fulfilled') {
     cacheStats.value = serverResult.value?.data || {}
@@ -438,27 +457,32 @@ async function loadCacheStats() {
     cacheStats.value = {}
   }
   if (browserResult.status === 'fulfilled') {
-    browserCacheStats.value = browserResult.value || {}
+    localBrowserCacheStats.value = browserResult.value || { total: { files: 0, size: 0 }, groups: {} }
   } else {
-    browserCacheStats.value = {}
+    localBrowserCacheStats.value = { total: { files: 0, size: 0 }, groups: {} }
   }
   cacheLoading.value = false
 }
 
 async function syncUserConfig() {
-  try {
-    await Promise.all([
-      userStore.loadMe(),
-      preferences.loadPreferences(),
-      reader.loadReaderSettings(),
-      bookshelf.loadCategories({ force: true }),
-      bookshelf.loadBooks({ force: true, all: true }),
-      loadCacheStats(),
-    ])
-    ElMessage.success('用户配置已同步')
-  } catch (err) {
-    ElMessage.error(readError(err, '同步用户配置失败'))
+  const results = await Promise.allSettled([
+    userStore.loadMe(),
+    preferences.loadPreferences(),
+    reader.loadReaderSettings(),
+    loadShelfForShell({ force: true, all: true }),
+    loadCacheStats(),
+  ])
+  const failed = results.find((result, index) => index < 4 && result.status === 'rejected')
+  if (failed) {
+    ElMessage.error(readError(failed.reason, '同步用户配置失败'))
+    return
   }
+  const shelfResult = results[3]
+  if (shelfResult.status === 'fulfilled' && shelfResult.value?.categoryError) {
+    ElMessage.warning(readError(shelfResult.value.categoryError, '用户配置已同步，分组刷新失败'))
+    return
+  }
+  ElMessage.success('用户配置已同步')
 }
 
 async function refreshHealthInfo(showMessage = false) {
@@ -495,19 +519,47 @@ async function clearSystemCache() {
   }
 }
 
-async function clearBrowserChapterCache() {
+async function clearBrowserLocalCache(group) {
+  const label = cacheGroupLabel(group)
   try {
-    await ElMessageBox.confirm('确定清理当前用户的浏览器章节缓存吗？清理后本机阅读时会重新加载章节内容。', '清理浏览器缓存', { type: 'warning' })
-    browserCacheClearing.value = true
-    const removed = await clearCurrentUserBrowserChapterCache()
-    ElMessage.success(`已清理浏览器章节缓存 ${removed} 章`)
+    if (!cacheGroupFiles(group)) {
+      ElMessage.info(`${label}为空`)
+      return
+    }
+    await ElMessageBox.confirm(`确定清理当前浏览器的${label}吗？清理后会在需要时重新加载。`, '清理浏览器缓存', { type: 'warning' })
+    browserCacheClearing.value = group
+    const removed = await clearBrowserLocalCacheGroup(group)
+    ElMessage.success(`已清理${label} ${removed} 项`)
     await loadCacheStats()
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '清理浏览器缓存失败'))
   } finally {
-    browserCacheClearing.value = false
+    browserCacheClearing.value = ''
   }
+}
+
+function cacheGroup(group) {
+  return localBrowserCacheStats.value?.groups?.[group] || { files: 0, size: 0 }
+}
+
+function cacheGroupFiles(group) {
+  return Number(cacheGroup(group).files || 0)
+}
+
+function clearBrowserLocalCacheLabel(group, label) {
+  const size = Number(cacheGroup(group).size || 0)
+  return size ? `清空${label} ${formatSize(size)}` : `清空${label}`
+}
+
+function cacheGroupLabel(group) {
+  const labels = {
+    bookSourceList: '书源缓存',
+    rssSources: 'RSS源缓存',
+    chapterList: '章节列表缓存',
+    chapterContent: '章节内容缓存',
+  }
+  return labels[group] || '缓存'
 }
 
 function formatSize(bytes) {
@@ -580,20 +632,23 @@ function writeRecentSuppressedAt(value) {
 }
 
 async function refreshShelfData() {
-  await Promise.all([bookshelf.loadCategories({ force: true }), bookshelf.loadBooks({ force: true, all: true })]).catch(() => {})
+  try {
+    const result = await loadShelfForShell({ force: true, all: true })
+    if (result.categoryError) ElMessage.warning(readError(result.categoryError, '书架已刷新，分组刷新失败'))
+  } catch (err) {
+    ElMessage.error(readError(err, '刷新书架失败'))
+  }
   router.push({ name: 'home' })
 }
 
 function refreshShelfInForeground() {
   if (!userStore.token) return
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  if (syncConnected.value && bookshelf.books.length) return
   const now = Date.now()
   if (now - lastForegroundRefreshAt < FOREGROUND_REFRESH_INTERVAL) return
   lastForegroundRefreshAt = now
-  Promise.all([
-    bookshelf.loadCategories(),
-    bookshelf.loadBooks({ all: true }),
-  ]).catch(() => {})
+  loadShelfForShell({ all: true }).catch(() => {})
 }
 
 function handleVisibilityChange() {
@@ -649,8 +704,8 @@ function handleTouchMove(event) {
 
 function handleTouchEnd() {
   if (!isMobileShell.value) return
-  if (touchMoveX.value > MOBILE_NAV_TRIGGER) mobileNavigationVisible.value = true
-  if (touchMoveX.value < -MOBILE_NAV_TRIGGER) mobileNavigationVisible.value = false
+  if (touchMoveX.value > 0) mobileNavigationVisible.value = true
+  if (touchMoveX.value < 0) mobileNavigationVisible.value = false
   touchStart.value = null
   touchMoveX.value = 0
 }
@@ -681,12 +736,10 @@ watch(
 )
 
 watch(
-  () => [route.name, route.query.q, route.query.shelfQ],
-  ([name, value, shelfQ]) => {
+  () => [route.name, route.query.q],
+  ([name, value]) => {
     if (name === 'search') {
       quickSearch.value = typeof value === 'string' ? value : ''
-    } else if (name === 'home') {
-      quickSearch.value = typeof shelfQ === 'string' ? shelfQ : ''
     } else if (name !== 'home') {
       quickSearch.value = ''
     }
@@ -703,12 +756,13 @@ onMounted(() => {
   window.addEventListener('focus', refreshShelfInForeground)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('openreader:toggle-mobile-nav', toggleMobileNavigation)
+  window.addEventListener('openreader:sources-update', handleSourcesUpdated)
   offline.value = !navigator.onLine
   if (userStore.token && !userStore.profile) {
     userStore.loadMe().catch(() => {})
   }
   if (userStore.token && !bookshelf.books.length) {
-    Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks({ all: true })]).catch(() => {})
+    loadShelfForShell({ all: true }).catch(() => {})
   }
   if (userStore.token) loadSidebarSources()
   if (userStore.token) loadCacheStats()
@@ -723,7 +777,25 @@ onBeforeUnmount(() => {
   window.removeEventListener('focus', refreshShelfInForeground)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('openreader:toggle-mobile-nav', toggleMobileNavigation)
+  window.removeEventListener('openreader:sources-update', handleSourcesUpdated)
 })
+
+async function loadShelfForShell(options = {}) {
+  const [categoryResult, booksResult] = await Promise.allSettled([
+    bookshelf.loadCategories(options),
+    bookshelf.loadBooks(options),
+  ])
+  if (booksResult.status === 'rejected') throw booksResult.reason
+  return {
+    books: booksResult.value,
+    categories: categoryResult.status === 'fulfilled' ? categoryResult.value : bookshelf.categories,
+    categoryError: categoryResult.status === 'rejected' ? categoryResult.reason : null,
+  }
+}
+
+function readError(err, fallback) {
+  return err?.response?.data?.error || err?.response?.data?.message || err?.message || fallback
+}
 </script>
 
 <style scoped>

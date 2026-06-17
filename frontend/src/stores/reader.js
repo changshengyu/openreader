@@ -204,7 +204,7 @@ export const useReaderStore = defineStore('reader', {
         const snapshot = this.normalModeSnapshot || {}
         this.pageType = 'normal'
         this.pageMode = snapshot.pageMode === 'mobile' ? 'mobile' : 'auto'
-        this.animateDuration = clampNumber(snapshot.animateDuration, 0, 1000, 300)
+        this.animateDuration = clampNumber(snapshot.animateDuration, 0, 500, 300)
         if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
         if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
         if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
@@ -218,7 +218,10 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setPageMode(pageMode) {
-      this.pageMode = pageMode === 'mobile' ? 'mobile' : 'auto'
+      const next = pageMode === 'mobile' ? 'mobile' : 'auto'
+      if (this.pageMode === next) return
+      this.pageMode = next
+      this.markSettingsDirty({ localOnly: true })
     },
     setClickMethod(method) {
       this.clickMethod = ['next', 'auto', 'none'].includes(method) ? method : 'auto'
@@ -256,7 +259,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setFontWeight(fontWeight) {
-      this.fontWeight = clampNumber(fontWeight, 300, 900, 400)
+      this.fontWeight = clampNumber(fontWeight, 100, 900, 400)
       this.markSettingsDirty()
     },
     setFontColor(fontColor) {
@@ -313,11 +316,11 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setAutoReadingLineTime(lineTime) {
-      this.autoReadingLineTime = clampNumber(lineTime, 50, 3000, 260)
+      this.autoReadingLineTime = clampNumber(lineTime, 10, 3000, 260)
       this.markSettingsDirty()
     },
     setAnimateDuration(duration) {
-      this.animateDuration = this.pageType === 'kindle' ? 0 : clampNumber(duration, 0, 1000, 300)
+      this.animateDuration = this.pageType === 'kindle' ? 0 : clampNumber(duration, 0, 500, 300)
       this.markSettingsDirty()
     },
     setTTSRate(rate) {
@@ -337,7 +340,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setParagraphSpace(paragraphSpace) {
-      this.paragraphSpace = clampNumber(paragraphSpace, 0, 3, 0)
+      this.paragraphSpace = clampNumber(paragraphSpace, 0, 5, 0)
       this.markSettingsDirty()
     },
     setColumnWidth(columnWidth) {
@@ -367,19 +370,19 @@ export const useReaderStore = defineStore('reader', {
       }
       this.autoTheme = this.autoTheme === true
       this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
-      this.fontWeight = clampNumber(this.fontWeight, 300, 900, 400)
+      this.fontWeight = clampNumber(this.fontWeight, 100, 900, 400)
       if (typeof this.fontColor !== 'string') this.fontColor = ''
       if (typeof this.customBodyColor !== 'string') this.customBodyColor = ''
       if (typeof this.customPopupColor !== 'string') this.customPopupColor = ''
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
-      this.paragraphSpace = clampNumber(this.paragraphSpace, 0, 3, 0)
+      this.paragraphSpace = clampNumber(this.paragraphSpace, 0, 5, 0)
       this.columnWidth = clampNumber(this.columnWidth, 320, 1200, 800)
       this.brightness = clampNumber(this.brightness, 50, 150, 100)
       if (!['像素滚动', '段落滚动'].includes(this.autoReadingMethod)) this.autoReadingMethod = '像素滚动'
       this.autoReadingPixel = clampNumber(this.autoReadingPixel ?? this.autoReadSpeed, 1, 80, 12)
       this.autoReadSpeed = this.autoReadingPixel
-      this.autoReadingLineTime = clampNumber(this.autoReadingLineTime, 50, 3000, 260)
-      this.animateDuration = clampNumber(this.animateDuration, 0, 1000, 300)
+      this.autoReadingLineTime = clampNumber(this.autoReadingLineTime, 10, 3000, 260)
+      this.animateDuration = clampNumber(this.animateDuration, 0, 500, 300)
       if (this.pageType === 'kindle') {
         this.animateDuration = 0
       }
@@ -397,6 +400,7 @@ export const useReaderStore = defineStore('reader', {
     },
     markSettingsDirty(options = {}) {
       this.ensureReaderSettingsScope()
+      if (options.localOnly) return
       if (!options.skipCustomConfigSync) this.syncActiveCustomConfig()
       this.settingsUpdatedAt = new Date().toISOString()
       this.settingsSyncError = ''
@@ -842,18 +846,18 @@ function sanitizeReaderSettings(payload, options = {}) {
   }
   if (typeof payload.ttsVoiceURI === 'string') settings.ttsVoiceURI = payload.ttsVoiceURI
   settings.fontSize = clampNumber(payload.fontSize, 8, 36, 18)
-  settings.fontWeight = clampNumber(payload.fontWeight, 300, 900, 400)
+  settings.fontWeight = clampNumber(payload.fontWeight, 100, 900, 400)
   settings.fontColor = typeof payload.fontColor === 'string' ? payload.fontColor : ''
   settings.brightness = clampNumber(payload.brightness, 50, 150, 100)
   settings.autoReadingMethod = payload.autoReadingMethod === '段落滚动' ? '段落滚动' : '像素滚动'
   settings.autoReadingPixel = clampNumber(payload.autoReadingPixel ?? payload.autoReadSpeed, 1, 80, 12)
   settings.autoReadSpeed = settings.autoReadingPixel
-  settings.autoReadingLineTime = clampNumber(payload.autoReadingLineTime, 50, 3000, 260)
-  settings.animateDuration = clampNumber(payload.animateDuration, 0, 1000, 300)
+  settings.autoReadingLineTime = clampNumber(payload.autoReadingLineTime, 10, 3000, 260)
+  settings.animateDuration = clampNumber(payload.animateDuration, 0, 500, 300)
   settings.ttsRate = clampNumber(payload.ttsRate, 0.5, 3, 1)
   settings.ttsPitch = clampNumber(payload.ttsPitch, 0.5, 2, 1)
   settings.lineHeight = clampNumber(payload.lineHeight, 1, 5, 1.8)
-  settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 3, 0.2)
+  settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 5, 0.2)
   settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)
   settings.settingsVersion = 11
   return settings

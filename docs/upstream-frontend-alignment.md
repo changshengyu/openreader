@@ -1,7 +1,7 @@
 # OpenReader 与 hectorqin/reader 前端对齐审阅
 
 > 审阅日期：2026-05-18  
-> 上游参照仓库：`hectorqin/reader`，本地快照：`/private/tmp/hectorqin-reader`  
+> 上游参照仓库：`hectorqin/reader`，本地快照：`/private/tmp/hectorqin-reader-current`（commit `827dd82`）
 > 当前项目：`/Users/yuchangsheng/Documents/OpenReader-dev`
 
 这份文档不是新的设计稿，而是对重构遗漏项的核对清单：逐项确认上游 Web 前端有哪些页面、弹窗、按钮和业务入口，当前 OpenReader 已经实现了什么，还缺什么，以及后续应该按什么顺序补齐。

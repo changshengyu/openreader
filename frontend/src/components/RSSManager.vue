@@ -100,6 +100,22 @@
         <el-form-item label="分组"><el-input v-model="draft.group" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="draft.customOrder" :min="0" :step="1" controls-position="right" /></el-form-item>
         <el-form-item><el-switch v-model="draft.enabled" active-text="启用" inactive-text="停用" /></el-form-item>
+        <el-collapse class="rss-rule-collapse">
+          <el-collapse-item title="高级规则" name="advanced">
+            <div class="rss-rule-grid">
+              <el-form-item label="单页地址"><el-switch v-model="draft.singleUrl" active-text="单页" inactive-text="分页" /></el-form-item>
+              <el-form-item label="文章样式"><el-input-number v-model="draft.articleStyle" :min="0" :step="1" controls-position="right" /></el-form-item>
+              <el-form-item label="启用 JS"><el-switch v-model="draft.enableJs" active-text="启用" inactive-text="停用" /></el-form-item>
+              <el-form-item label="排序地址 sortUrl"><el-input v-model="draft.sortUrl" /></el-form-item>
+              <el-form-item label="文章列表 ruleArticles"><el-input v-model="draft.ruleArticles" /></el-form-item>
+              <el-form-item label="标题 ruleTitle"><el-input v-model="draft.ruleTitle" /></el-form-item>
+              <el-form-item label="发布时间 rulePubDate"><el-input v-model="draft.rulePubDate" /></el-form-item>
+              <el-form-item label="图片 ruleImage"><el-input v-model="draft.ruleImage" /></el-form-item>
+              <el-form-item label="链接 ruleLink"><el-input v-model="draft.ruleLink" /></el-form-item>
+              <el-form-item label="正文 ruleContent"><el-input v-model="draft.ruleContent" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" /></el-form-item>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </el-form>
       <template #footer>
         <el-button @click="editorVisible = false">取消</el-button>
@@ -138,6 +154,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createRSSSource, deleteRSSSource, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
+import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
+import { currentUserScope } from '../utils/authScope'
 
 defineProps({
   isMobile: {
@@ -202,18 +220,44 @@ onBeforeUnmount(() => {
 async function loadSources() {
   sourcesLoading.value = true
   try {
-    const { data } = await listRSSSources()
-    sources.value = data || []
-    if (!sources.value.length) rssEditMode.value = false
-    if (!selectedSourceId.value && sources.value.length) selectedSourceId.value = sources.value[0].id
-    if (selectedSourceId.value && !sources.value.some(source => source.id === selectedSourceId.value)) {
-      selectedSourceId.value = sources.value[0]?.id || ''
-    }
+    const response = await cacheFirstRequest(
+      () => listRSSSources(),
+      rssSourcesCacheKey(),
+      { validate: data => Array.isArray(data) },
+    )
+    applyRSSSources(response.data)
+    if (response.fromCache) refreshRSSSourcesCache().catch(() => {})
   } catch (err) {
     ElMessage.error(readError(err, '加载 RSS 源失败'))
   } finally {
     sourcesLoading.value = false
   }
+}
+
+async function refreshRSSSourcesCache() {
+  const response = await networkFirstRequest(
+    () => listRSSSources(),
+    rssSourcesCacheKey(),
+    { validate: data => Array.isArray(data) },
+  )
+  applyRSSSources(response.data)
+}
+
+function applyRSSSources(data) {
+  sources.value = Array.isArray(data) ? data : []
+  if (!sources.value.length) rssEditMode.value = false
+  if (!selectedSourceId.value && sources.value.length) selectedSourceId.value = sources.value[0].id
+  if (selectedSourceId.value && !sources.value.some(source => source.id === selectedSourceId.value)) {
+    selectedSourceId.value = sources.value[0]?.id || ''
+  }
+}
+
+function rssSourcesCacheKey() {
+  return `rssSources@${currentUserScope()}`
+}
+
+async function invalidateRSSSourcesCache() {
+  await removeBrowserCache(rssSourcesCacheKey())
 }
 
 function handleRSSUpdated(event) {
@@ -230,7 +274,10 @@ function scheduleRSSReload(detail = {}) {
   rssReloadTimer = window.setTimeout(async () => {
     rssReloadTimer = undefined
     try {
-      if (detail.sources) await loadSources()
+      if (detail.sources) {
+        await invalidateRSSSourcesCache()
+        await loadSources()
+      }
       if (detail.articles) await loadArticles()
     } catch {
       // Keep the visible RSS state; the next manual refresh or sync event can recover.
@@ -338,6 +385,7 @@ async function saveSource() {
       ElMessage.success('RSS 源已创建')
     }
     editorVisible.value = false
+    await invalidateRSSSourcesCache()
     await loadSources()
     await loadArticles()
   } catch (err) {
@@ -380,6 +428,7 @@ async function importRSSSources(event) {
       await createRSSSource(source)
     }
     ElMessage.success(`已导入 ${nextSources.length} 个 RSS 源`)
+    await invalidateRSSSourcesCache()
     await loadSources()
     await loadArticles()
     window.dispatchEvent(new CustomEvent('openreader:rss-updated', { detail: { sources: true, articles: true } }))
@@ -452,6 +501,7 @@ async function removeSource(source) {
   try {
     await ElMessageBox.confirm(`确定删除 RSS 源“${source.title}”吗？文章缓存也会删除。`, '删除 RSS 源', { type: 'warning' })
     await deleteRSSSource(source.id)
+    await invalidateRSSSourcesCache()
     sources.value = sources.value.filter(item => item.id !== source.id)
     if (!sources.value.length) rssEditMode.value = false
     if (selectedSourceId.value === source.id) selectedSourceId.value = sources.value[0]?.id || ''
@@ -791,6 +841,25 @@ function normalizeURL(value) {
   cursor: zoom-in;
 }
 
+.rss-rule-collapse {
+  width: 100%;
+}
+
+.rss-rule-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.rss-rule-grid :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
+.rss-rule-grid :deep(.el-form-item:last-child) {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 750px) {
   .rss-manager {
     grid-template-columns: 1fr;
@@ -827,6 +896,10 @@ function normalizeURL(value) {
 
   .rss-reader-content {
     max-height: 70vh;
+  }
+
+  .rss-rule-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

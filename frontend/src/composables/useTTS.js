@@ -142,18 +142,33 @@ export function useTTS() {
     }
   }
 
+  function restartCurrent() {
+    if (!synth || !state.playing || currentIndex.value < 0 || currentIndex.value >= paragraphs.length) return
+    const wasPaused = state.paused
+    synth.cancel()
+    pending = true
+    setTimeout(() => {
+      pending = false
+      speakCurrent(activeOnEnd, activeOnStart)
+      if (wasPaused) setTimeout(() => pause(), 0)
+    }, 50)
+  }
+
   function setRate(rate) {
     state.rate = Math.max(0.5, Math.min(3, Number(rate) || 1))
+    restartCurrent()
   }
 
   function setPitch(pitch) {
     state.pitch = Math.max(0.5, Math.min(2, Number(pitch) || 1))
+    restartCurrent()
   }
 
   function setVoice(uri) {
     state.voiceURI = uri || ''
     const index = voices.value.findIndex(voice => voice.voiceURI === state.voiceURI)
     state.voiceIndex = index >= 0 ? index : 0
+    restartCurrent()
   }
 
   onBeforeUnmount(() => {

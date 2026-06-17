@@ -234,9 +234,13 @@ const shownLocalResults = computed(() => {
 const shownLocalImportablePaths = computed(() => shownLocalResults.value.filter(item => item.importable).map(item => item.path))
 
 onMounted(async () => {
-  await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks({ all: true })])
+  await warmSearchShelf()
   if (searchMode.value === 'remote') {
-    await loadSources()
+    try {
+      await loadSources()
+    } catch (err) {
+      ElMessage.warning(readError(err, '加载书源失败'))
+    }
   } else {
     loadSources().catch(() => {})
   }
@@ -244,6 +248,23 @@ onMounted(async () => {
   syncSelection()
   if (keyword.value || searchMode.value === 'local') doSearch()
 })
+
+async function warmSearchShelf() {
+  const jobs = [
+    ['categories', bookshelf.ensureCategoriesLoaded()],
+    ['books', bookshelf.ensureBooksLoaded({ all: true })],
+  ]
+  const results = await Promise.allSettled(jobs.map(([, job]) => job))
+  results.forEach((result, index) => {
+    if (result.status !== 'rejected') return
+    const type = jobs[index][0]
+    if (type === 'books') {
+      ElMessage.warning(readError(result.reason, '加载书架失败，部分已入架状态可能暂不可用'))
+    } else {
+      ElMessage.warning(readError(result.reason, '分组加载失败，部分筛选状态可能暂不可用'))
+    }
+  })
+}
 
 watch(searchType, () => {
   syncSelection()
@@ -384,9 +405,14 @@ async function searchLocalBooks() {
       listLocalStore('', localRecursiveScan.value),
       bookshelf.loadBooks({ all: true }),
     ])
-    if (shelfResult.status === 'rejected') throw shelfResult.reason
+    if (storeResult.status === 'rejected' && shelfResult.status === 'rejected') {
+      throw storeResult.reason || shelfResult.reason
+    }
     localItems.value = storeResult.status === 'fulfilled' ? (storeResult.value.data.items || []) : []
     searched.value = true
+    if (shelfResult.status === 'rejected') {
+      ElMessage.warning(`书架本地书加载失败，已仅搜索本地书仓：${readError(shelfResult.reason, '加载失败')}`)
+    }
     if (storeResult.status === 'rejected') {
       ElMessage.warning(`本地书仓扫描失败，已仅搜索书架本地书：${readError(storeResult.reason, '扫描失败')}`)
       return

@@ -198,13 +198,20 @@ const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, wi
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
-  await Promise.all([load(), bookshelf.loadCategories()])
+  const [, categoriesResult] = await Promise.allSettled([load(), warmLocalStoreCategories()])
+  if (categoriesResult.status === 'rejected') {
+    ElMessage.warning(readError(categoriesResult.reason, '加载分组失败，导入时可能暂时无法选择分组'))
+  }
 })
 
 onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
 
 function handleResize() {
   windowWidth.value = currentViewportWidth()
+}
+
+async function warmLocalStoreCategories() {
+  return bookshelf.ensureCategoriesLoaded()
 }
 
 async function load() {

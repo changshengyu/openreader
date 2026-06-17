@@ -6,7 +6,9 @@
       </div>
       <div class="head-actions">
         <el-button type="primary" :icon="Plus" @click="openEditor()">新增</el-button>
-        <el-button :icon="Download" @click="exportSources">导出</el-button>
+        <el-button :icon="Download" @click="exportSources">
+          {{ selection.length ? `导出选中 ${selection.length}` : '导出' }}
+        </el-button>
         <el-upload ref="sourceUploadRef" :show-file-list="false" :auto-upload="false" accept=".json" @change="importFile">
           <el-button :icon="Upload">导入</el-button>
         </el-upload>
@@ -26,6 +28,14 @@
       <el-select v-model="selectedGroup" placeholder="全部分组" clearable>
         <el-option v-for="group in sourceGroupOptions" :key="group.value" :label="group.label" :value="group.value" />
       </el-select>
+      <div class="source-check-config">
+        <span>搜索词</span>
+        <el-input v-model="checkConfig.keyword" placeholder="检测关键词" />
+        <span>超时(ms)</span>
+        <el-input-number v-model="checkConfig.timeout" :min="1000" :max="15000" :step="500" controls-position="right" />
+        <span>并发数</span>
+        <el-input-number v-model="checkConfig.concurrent" :min="3" :max="15" :step="1" controls-position="right" />
+      </div>
       <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('enable')">启用选中</el-button>
       <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
       <el-button class="source-batch-command" :disabled="!selection.length" @click="setSelectedSourceGroup">设置分组</el-button>
@@ -40,14 +50,33 @@
       </span>
     </section>
 
-    <el-table :data="shownSources" stripe class="source-table desktop-source-table" @selection-change="selection = $event">
-      <el-table-column type="selection" width="42" />
+    <div v-if="sourceShowGroups.length" class="source-group-wrapper">
+      <el-tag
+        v-for="group in sourceShowGroups"
+        :key="group.value"
+        type="info"
+        class="source-group-btn"
+        :effect="isSourceGroupChipSelected(group.value) ? 'dark' : 'light'"
+        :class="{ selected: isSourceGroupChipSelected(group.value) }"
+        @click="setSourceGroupChip(group.value)"
+      >
+        {{ group.label }}
+      </el-tag>
+    </div>
+
+    <el-table :data="pagedSources" stripe class="source-table desktop-source-table" @selection-change="selection = $event">
+      <el-table-column type="selection" width="42" :selectable="isSourceSelectable" />
       <el-table-column prop="name" label="名称" min-width="150" show-overflow-tooltip />
       <el-table-column prop="group" label="分组" width="120">
         <template #default="{ row }">{{ row.group || '默认分组' }}</template>
       </el-table-column>
       <el-table-column prop="baseUrl" label="地址" min-width="220" show-overflow-tooltip />
       <el-table-column prop="charset" label="编码" width="90" />
+      <el-table-column label="书架书籍" width="100">
+        <template #default="{ row }">
+          <span :class="row.usedBookCount ? 'source-used' : 'muted'">{{ row.usedBookCount || 0 }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="启用" width="76">
         <template #default="{ row }">
           <el-switch :model-value="row.enabled" size="small" @change="value => toggleSource(row, value)" />
@@ -65,12 +94,12 @@
         <template #default="{ row }">
           <el-button size="small" text type="primary" @click="openDebug(row)">调试</el-button>
           <el-button size="small" text @click="openEditor(row)">编辑</el-button>
-          <el-button size="small" text type="danger" @click="deleteSource(row.id)">删除</el-button>
+          <el-button size="small" text type="danger" :disabled="!isSourceSelectable(row)" @click="deleteSource(row.id)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <div v-if="shownSources.length" class="mobile-source-list">
+    <div v-if="pagedSources.length" class="mobile-source-list">
       <div class="mobile-source-select-actions app-panel">
         <span>已选 {{ selection.length }} 个</span>
         <div>
@@ -79,13 +108,13 @@
         </div>
       </div>
       <article
-        v-for="source in shownSources"
+        v-for="source in pagedSources"
         :key="source.id"
         class="mobile-source-card app-panel"
         :class="{ selected: isSourceSelected(source) }"
       >
         <header>
-          <el-checkbox :model-value="isSourceSelected(source)" @change="value => toggleMobileSourceSelection(source, value)" />
+          <el-checkbox :model-value="isSourceSelected(source)" :disabled="!isSourceSelectable(source)" @change="value => toggleMobileSourceSelection(source, value)" />
           <div>
             <strong>{{ source.name }}</strong>
             <span>{{ source.group || '默认分组' }}</span>
@@ -95,6 +124,7 @@
         <p>{{ source.baseUrl || source.searchUrl || '未设置地址' }}</p>
         <div class="mobile-source-meta">
           <el-tag size="small" effect="plain">{{ source.charset || 'utf-8' }}</el-tag>
+          <el-tag v-if="source.usedBookCount" size="small" type="warning" effect="plain">书架 {{ source.usedBookCount }} 本</el-tag>
           <el-tag v-if="health[source.id]" size="small" :type="health[source.id].ok ? 'success' : 'danger'" effect="plain">
             {{ health[source.id].ok ? '可用' : health[source.id].message }}
           </el-tag>
@@ -103,9 +133,20 @@
         <footer>
           <el-button size="small" text type="primary" @click="openDebug(source)">调试</el-button>
           <el-button size="small" text @click="openEditor(source)">编辑</el-button>
-          <el-button size="small" text type="danger" @click="deleteSource(source.id)">删除</el-button>
+          <el-button size="small" text type="danger" :disabled="!isSourceSelectable(source)" @click="deleteSource(source.id)">删除</el-button>
         </footer>
       </article>
+    </div>
+
+    <div v-if="shownSources.length" class="source-pagination">
+      <el-pagination
+        v-model:current-page="sourcePage"
+        v-model:page-size="sourcePageSize"
+        :page-sizes="sourcePageSizes"
+        layout="total, sizes, prev, pager, next"
+        :pager-count="isMobileDialog ? 5 : 7"
+        :total="shownSources.length"
+      />
     </div>
 
     <el-empty v-if="!sources.length" description="还没有书源，导入或新增书源开始使用" />
@@ -125,6 +166,7 @@
             <el-dropdown-item command="enable" :disabled="!selection.length">启用选中</el-dropdown-item>
             <el-dropdown-item command="disable" :disabled="!selection.length">停用选中</el-dropdown-item>
             <el-dropdown-item command="group" :disabled="!selection.length">设置分组</el-dropdown-item>
+            <el-dropdown-item command="export" :disabled="!selection.length">导出选中 {{ selection.length || '' }}</el-dropdown-item>
             <el-dropdown-item command="disable-failed" :disabled="!failedHealthSourceIds.length">停用失败 {{ failedHealthSourceIds.length || '' }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -137,6 +179,38 @@
       <template #footer>
         <el-button @click="showRemote = false">取消</el-button>
         <el-button type="primary" :loading="remoteLoading" @click="importRemote">导入</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showImportPreview" title="导入书源" width="720px" :fullscreen="isMobileDialog">
+      <div class="source-import-preview">
+        <el-checkbox
+          v-model="importCheckAll"
+          :indeterminate="importCheckIndeterminate"
+          border
+          @change="toggleImportCheckAll"
+        >
+          全选
+        </el-checkbox>
+        <span class="check-tip">已选择 {{ checkedImportSourceIndexes.length }} / {{ importPreviewSources.length }} 个</span>
+        <el-checkbox-group v-model="checkedImportSourceIndexes" class="source-import-list" @change="handleImportSelectionChange">
+          <el-checkbox
+            v-for="(source, index) in importPreviewSources"
+            :key="index"
+            :label="index"
+            class="source-import-item"
+          >
+            <strong>{{ importSourceName(source) || '未命名书源' }}</strong>
+            <span>{{ importSourceURL(source) || '未设置地址' }}</span>
+            <em v-if="importSourceTags(source)">{{ importSourceTags(source) }}</em>
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <template #footer>
+        <el-button @click="closeImportPreview">取消</el-button>
+        <el-button type="primary" :loading="importPreviewSaving" :disabled="!checkedImportSourceIndexes.length" @click="saveSelectedImportSources">
+          确定导入
+        </el-button>
       </template>
     </el-dialog>
 
@@ -259,7 +333,6 @@ import {
   defaultSourceStatus,
   deleteSource as deleteSourceApi,
   exportSources as exportSourcesApi,
-  importRemoteSource,
   importSources,
   listSources,
   previewRemoteSource,
@@ -282,6 +355,10 @@ const selection = ref([])
 const health = ref({})
 const checking = ref(false)
 const failedOnly = ref(false)
+const checkConfig = reactive({ keyword: '斗罗大陆', timeout: 5000, concurrent: 5 })
+const sourcePage = ref(1)
+const sourcePageSize = ref(25)
+const sourcePageSizes = [25, 50, 100, 200, 300, 400]
 const defaultSource = reactive({ configured: false, count: 0 })
 const defaultSaving = ref(false)
 const defaultRestoring = ref(false)
@@ -290,6 +367,12 @@ const showRemote = ref(false)
 const remoteURL = ref('')
 const remoteLoading = ref(false)
 const sourceUploadRef = ref(null)
+const showImportPreview = ref(false)
+const importPreviewSources = ref([])
+const checkedImportSourceIndexes = ref([])
+const importCheckAll = ref(false)
+const importCheckIndeterminate = ref(false)
+const importPreviewSaving = ref(false)
 
 const showEditor = ref(false)
 const editingSourceId = ref(null)
@@ -328,6 +411,26 @@ const windowWidth = ref(currentViewportWidth())
 let sourceReloadTimer
 
 const sourceGroupOptions = computed(() => buildSourceGroupOptions(sources.value))
+const sourceShowGroups = computed(() => {
+  const groups = []
+  const seen = new Set()
+  let ungroupedCount = 0
+  for (const source of sources.value || []) {
+    const rawGroup = String(source?.group || '').trim()
+    if (!rawGroup) {
+      ungroupedCount += 1
+      continue
+    }
+    if (seen.has(rawGroup)) continue
+    seen.add(rawGroup)
+    groups.push({ value: rawGroup, label: rawGroup })
+  }
+  groups.sort((a, b) => a.label.localeCompare(b.label))
+  if (ungroupedCount > 0) {
+    groups.push({ value: '默认分组', label: '未分组' })
+  }
+  return groups
+})
 const healthSummary = computed(() => {
   const rows = Object.values(health.value)
   return {
@@ -352,6 +455,10 @@ const shownSources = computed(() => {
     return `${source.name || ''} ${source.baseUrl || ''} ${source.searchUrl || ''} ${groupName}`.toLowerCase().includes(value)
   })
 })
+const pagedSources = computed(() => {
+  const start = (sourcePage.value - 1) * sourcePageSize.value
+  return shownSources.value.slice(start, start + sourcePageSize.value)
+})
 const debugResultText = computed(() => debugResult.value ? JSON.stringify(debugResult.value, null, 2) : '')
 const debugSearchRows = computed(() => Array.isArray(debugResult.value?.results) ? debugResult.value.results : [])
 const debugChapterRows = computed(() => Array.isArray(debugResult.value?.chapters) ? debugResult.value.chapters : [])
@@ -362,7 +469,16 @@ const editorDrawerSize = computed(() => isMobileDialog.value ? '88%' : '520px')
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
   window.addEventListener('openreader:sources-update', handleSourcesUpdate)
-  await Promise.all([loadSources(), loadDefaultSourceStatus()])
+  const [sourcesResult, defaultResult] = await Promise.allSettled([
+    loadSources(),
+    loadDefaultSourceStatus(),
+  ])
+  if (sourcesResult.status === 'rejected') {
+    ElMessage.warning(readError(sourcesResult.reason, '加载书源失败'))
+  }
+  if (defaultResult.status === 'rejected') {
+    ElMessage.warning(readError(defaultResult.reason, '默认书源状态加载失败'))
+  }
   applyRouteAction()
 })
 
@@ -382,6 +498,15 @@ watch(sourceGroupOptions, (items) => {
     selectedGroup.value = ''
   }
 })
+
+watch([keyword, selectedGroup, failedOnly, sourcePageSize], () => {
+  sourcePage.value = 1
+})
+
+watch(
+  () => shownSources.value.length,
+  () => ensureSourcePageInRange(),
+)
 
 async function loadSources() {
   const { data } = await listSources()
@@ -510,6 +635,11 @@ async function saveSource() {
 }
 
 async function deleteSource(id) {
+  const source = sources.value.find(item => item.id === id)
+  if (source && !isSourceSelectable(source)) {
+    ElMessage.warning(`该书源仍有 ${source.usedBookCount} 本书在使用，不能删除`)
+    return
+  }
   try {
     await ElMessageBox.confirm('确定删除这个书源吗？', '提示', { type: 'warning' })
     await deleteSourceApi(id)
@@ -529,7 +659,8 @@ async function batchUpdateSources(action) {
       await ElMessageBox.confirm(`确定删除选中的 ${sourceIds.length} 个书源吗？`, '批量删除书源', { type: 'warning' })
     }
     const { data } = await batchSources({ action, sourceIds })
-    ElMessage.success(`已${actionName} ${data.affected || 0} 个书源`)
+    const skippedUsed = Number(data.skippedUsed || 0)
+    ElMessage.success(`已${actionName} ${data.affected || 0} 个书源${skippedUsed ? `，跳过 ${skippedUsed} 个使用中的书源` : ''}`)
     selection.value = []
     await loadSources()
   } catch (err) {
@@ -588,6 +719,8 @@ function handleSourceBatchMoreCommand(command) {
     batchUpdateSources('disable')
   } else if (command === 'group') {
     setSelectedSourceGroup()
+  } else if (command === 'export') {
+    exportSources()
   } else if (command === 'disable-failed') {
     disableFailedSources()
   }
@@ -608,11 +741,24 @@ function buildSourceGroupOptions(rows) {
     .map(([value, count]) => ({ value, label: `${value} (${count})`, count }))
 }
 
+function isSourceGroupChipSelected(group) {
+  return selectedGroup.value === group
+}
+
+function setSourceGroupChip(group) {
+  selectedGroup.value = selectedGroup.value === group ? '' : group
+}
+
 function isSourceSelected(source) {
   return selection.value.some(item => item.id === source.id)
 }
 
+function isSourceSelectable(source) {
+  return Number(source?.usedBookCount || 0) === 0
+}
+
 function toggleMobileSourceSelection(source, checked) {
+  if (!isSourceSelectable(source)) return
   if (checked) {
     if (!isSourceSelected(source)) selection.value = [...selection.value, source]
     return
@@ -621,7 +767,14 @@ function toggleMobileSourceSelection(source, checked) {
 }
 
 function selectShownSources() {
-  selection.value = [...shownSources.value]
+  selection.value = pagedSources.value.filter(isSourceSelectable)
+}
+
+function ensureSourcePageInRange() {
+  const maxPage = Math.max(1, Math.ceil(shownSources.value.length / sourcePageSize.value))
+  if (sourcePage.value > maxPage) {
+    sourcePage.value = maxPage
+  }
 }
 
 async function clearAllSources() {
@@ -688,21 +841,13 @@ async function importFile(data) {
   const file = data.raw
   if (!file) return
   try {
-    const names = previewSourceNames(JSON.parse(await file.text()))
-    await ElMessageBox.confirm(
-      names.length
-        ? `将导入 ${names.length} 个书源：${names.slice(0, 8).join('、')}${names.length > 8 ? '...' : ''}`
-        : '未识别到书源名称，仍要尝试导入吗？',
-      '导入书源预览',
-      { type: 'info' },
-    )
-    const form = new FormData()
-    form.append('file', file)
-    const { data: result } = await importSources(form)
-    ElMessage.success(sourceImportMessage(result))
-    await loadSources()
+    const list = parseImportSourceList(JSON.parse(await file.text()))
+    if (!list.length) {
+      ElMessage.error('书源文件错误')
+      return
+    }
+    openImportPreview(list)
   } catch (err) {
-    if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '导入失败'))
   }
 }
@@ -716,8 +861,8 @@ function openSourceImportPicker() {
   ElMessage.info('请点击页面右上角“导入”选择书源 JSON 文件')
 }
 
-function previewSourceNames(value) {
-  const list = Array.isArray(value)
+function parseImportSourceList(value) {
+  return Array.isArray(value)
     ? value
     : Array.isArray(value?.bookSources)
       ? value.bookSources
@@ -725,8 +870,9 @@ function previewSourceNames(value) {
         ? value.sources
         : value?.name
           ? [value]
+          : value?.bookSourceName
+          ? [value]
           : []
-  return list.map(item => item?.name).filter(Boolean)
 }
 
 async function importRemote() {
@@ -735,24 +881,95 @@ async function importRemote() {
   try {
     const url = remoteURL.value.trim()
     const { data: preview } = await previewRemoteSource(url)
-    const names = preview.names || []
-    await ElMessageBox.confirm(
-      preview.count
-        ? `远程订阅包含 ${preview.count} 个书源：${names.slice(0, 8).join('、')}${names.length > 8 ? '...' : ''}`
-        : '远程订阅未识别到书源名称，仍要尝试导入吗？',
-      '远程书源预览',
-      { type: 'info' },
-    )
-    const { data } = await importRemoteSource(url)
-    ElMessage.success(sourceImportMessage(data))
+    const list = parseImportSourceList(preview.sources || [])
+    if (!list.length) {
+      ElMessage.error('远程订阅未识别到书源')
+      return
+    }
     showRemote.value = false
     remoteURL.value = ''
-    await loadSources()
+    openImportPreview(list)
   } catch (err) {
-    if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '远程导入失败'))
   } finally {
     remoteLoading.value = false
+  }
+}
+
+function openImportPreview(list) {
+  importPreviewSources.value = list
+  checkedImportSourceIndexes.value = list
+    .map((source, index) => importSourceTags(source) ? null : index)
+    .filter(index => index !== null)
+  updateImportCheckState()
+  showImportPreview.value = true
+  if (checkedImportSourceIndexes.value.length < list.length) {
+    ElMessage.info('部分使用 Javascript 或 WebView 的书源未默认勾选')
+  }
+}
+
+function closeImportPreview() {
+  showImportPreview.value = false
+  importPreviewSources.value = []
+  checkedImportSourceIndexes.value = []
+  updateImportCheckState()
+}
+
+function toggleImportCheckAll(checked) {
+  checkedImportSourceIndexes.value = checked
+    ? importPreviewSources.value.map((source, index) => importSourceTags(source) ? null : index).filter(index => index !== null)
+    : []
+  updateImportCheckState()
+  if (checked && checkedImportSourceIndexes.value.length < importPreviewSources.value.length) {
+    ElMessage.info('部分使用 Javascript 或 WebView 的书源未勾选')
+  }
+}
+
+function handleImportSelectionChange() {
+  updateImportCheckState()
+}
+
+function updateImportCheckState() {
+  const totalSelectable = importPreviewSources.value.filter(source => !importSourceTags(source)).length
+  const selected = checkedImportSourceIndexes.value.length
+  importCheckAll.value = totalSelectable > 0 && selected === totalSelectable
+  importCheckIndeterminate.value = selected > 0 && selected < totalSelectable
+}
+
+function importSourceName(source) {
+  return source?.name || source?.bookSourceName || ''
+}
+
+function importSourceURL(source) {
+  return source?.baseUrl || source?.bookSourceUrl || source?.searchUrl || ''
+}
+
+function importSourceTags(source) {
+  const sourceText = JSON.stringify(source || {})
+  const tags = []
+  if (sourceText.includes('@js:')) tags.push('@Javascript')
+  if (sourceText.includes('webView:')) tags.push('@WebView')
+  return tags.join(' ')
+}
+
+async function saveSelectedImportSources() {
+  if (!checkedImportSourceIndexes.value.length) {
+    ElMessage.warning('请选择需要导入的源')
+    return
+  }
+  importPreviewSaving.value = true
+  try {
+    const selectedSources = checkedImportSourceIndexes.value.map(index => importPreviewSources.value[index])
+    const form = new FormData()
+    form.append('file', new Blob([JSON.stringify(selectedSources)], { type: 'application/json' }), 'bookSources.json')
+    const { data: result } = await importSources(form)
+    ElMessage.success(sourceImportMessage(result))
+    closeImportPreview()
+    await loadSources()
+  } catch (err) {
+    ElMessage.error(readError(err, '导入失败'))
+  } finally {
+    importPreviewSaving.value = false
   }
 }
 
@@ -765,12 +982,14 @@ function sourceImportMessage(result = {}) {
 
 async function exportSources() {
   try {
-    const resp = await exportSourcesApi()
+    const selectedIds = selection.value.map(source => source.id).filter(Boolean)
+    const resp = await exportSourcesApi(selectedIds)
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([resp.data], { type: 'application/json' }))
-    a.download = 'bookSources.json'
+    a.download = selectedIds.length ? 'bookSources-selected.json' : 'bookSources.json'
     a.click()
     URL.revokeObjectURL(a.href)
+    ElMessage.success(selectedIds.length ? `已导出 ${selectedIds.length} 个书源` : '已导出全部书源')
   } catch (err) {
     ElMessage.error(readError(err, '导出失败'))
   }
@@ -783,7 +1002,9 @@ async function checkInvalidSources() {
   try {
     const { data } = await batchTestSources({
       sourceIds: list.map(source => source.id),
-      keyword: '测试',
+      keyword: checkConfig.keyword,
+      timeout: checkConfig.timeout,
+      concurrent: checkConfig.concurrent,
     })
     for (const item of data.results || []) {
       health.value[item.sourceId] = {
@@ -930,6 +1151,11 @@ function readError(err, fallback) {
   color: var(--app-text-muted);
 }
 
+.source-used {
+  color: var(--app-warning, #b7791f);
+  font-weight: 600;
+}
+
 .source-toolbar {
   min-width: 0;
   flex-wrap: wrap;
@@ -941,6 +1167,25 @@ function readError(err, fallback) {
   flex: 1;
 }
 
+.source-check-config {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.source-check-config :deep(.el-input) {
+  width: 150px;
+  min-width: 0;
+  flex: none;
+}
+
+.source-check-config :deep(.el-input-number) {
+  width: 110px;
+}
+
 .health-summary {
   color: var(--app-text-muted);
   font-size: 13px;
@@ -949,6 +1194,31 @@ function readError(err, fallback) {
 
 .source-table {
   width: 100%;
+}
+
+.source-group-wrapper {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  gap: 8px;
+  padding: 0 2px 2px;
+}
+
+.source-group-btn {
+  flex: 0 0 auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.source-group-btn.selected {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+}
+
+.source-pagination {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .source-batch-footer {
@@ -1065,6 +1335,49 @@ function readError(err, fallback) {
   white-space: pre-wrap;
 }
 
+.source-import-preview {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.source-import-list {
+  display: grid;
+  max-height: min(58vh, 520px);
+  min-width: 0;
+  overflow: auto;
+  gap: 8px;
+}
+
+.source-import-item {
+  display: block;
+  min-width: 0;
+  margin-right: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+}
+
+.source-import-item :deep(.el-checkbox__label) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.source-import-item strong {
+  color: var(--app-text);
+}
+
+.source-import-item span,
+.source-import-item em {
+  overflow-wrap: anywhere;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
 .replace-rule-editor {
   display: grid;
   width: 100%;
@@ -1108,6 +1421,16 @@ function readError(err, fallback) {
     width: 100%;
   }
 
+  .source-check-config {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .source-check-config :deep(.el-input),
+  .source-check-config :deep(.el-input-number) {
+    width: 100%;
+  }
+
   .health-summary {
     white-space: normal;
   }
@@ -1123,6 +1446,12 @@ function readError(err, fallback) {
   .mobile-source-list {
     display: grid;
     gap: 10px;
+  }
+
+  .source-pagination {
+    justify-content: center;
+    overflow-x: auto;
+    padding-bottom: 2px;
   }
 
   .source-batch-footer {

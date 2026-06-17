@@ -58,7 +58,7 @@ func setupTestServer(t *testing.T) (*gin.Engine, *Server) {
 
 	hub := readersync.NewHub()
 	sched := scheduler.New(database, 1)
-	backupSvc := backup.New(database, t.TempDir())
+	backupSvc := backup.New(database, filepath.Join(cfg.DataDir, "webdav"))
 
 	router := gin.New()
 	RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
@@ -1507,6 +1507,116 @@ func TestDecodeBookSourcesEnabledDefaults(t *testing.T) {
 	}
 }
 
+func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
+	sources, err := decodeBookSources([]byte(`[
+		{
+			"bookSourceName":"上游源",
+			"bookSourceUrl":"https://reader.example",
+			"bookSourceGroup":"分组A",
+			"searchUrl":"https://reader.example/search?q={{key}}",
+			"exploreUrl":"https://reader.example/top/{page}",
+			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
+			"enabled":false,
+			"ruleSearch":{
+				"bookList":".book",
+				"name":".name",
+				"author":".author",
+				"coverUrl":"img@src",
+				"intro":".intro",
+				"lastChapter":".last",
+				"bookUrl":"a@href"
+			},
+			"ruleToc":{
+				"chapterList":".chapter",
+				"chapterName":".title",
+				"chapterUrl":"a@href"
+			},
+			"ruleContent":{
+				"content":"#content"
+			}
+		}
+	]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+	source := sources[0]
+	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.Enabled {
+		t.Fatalf("unexpected upstream source mapping: %+v", source)
+	}
+	rule, err := source.ParsedRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rule.SearchURL != "https://reader.example/search?q={{key}}" ||
+		rule.ExploreURL != "https://reader.example/top/{page}" ||
+		rule.BookListRule != ".book" ||
+		rule.BookNameRule != ".name" ||
+		rule.ChapterListRule != ".chapter" ||
+		rule.ContentRule != "#content" ||
+		rule.Headers["User-Agent"] != "OpenReader Test" ||
+		rule.Headers["Referer"] != "https://reader.example" {
+		t.Fatalf("unexpected converted rules: %+v", rule)
+	}
+}
+
+func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "bookSources.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = part.Write([]byte(`[
+		{
+			"bookSourceName":"上传上游源",
+			"bookSourceUrl":"https://upload-reader.example",
+			"bookSourceGroup":"上传分组",
+			"searchUrl":"https://upload-reader.example/search?q={{key}}",
+			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
+			"ruleContent":{"content":".content"}
+		}
+	]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sources/import", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("import upstream sources: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"imported":1`) {
+		t.Fatalf("unexpected import response: %s", w.Body.String())
+	}
+
+	var source models.BookSource
+	if err := server.db.Where("name = ?", "上传上游源").First(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	if source.BaseURL != "https://upload-reader.example" || source.Group != "上传分组" {
+		t.Fatalf("unexpected imported source: %+v", source)
+	}
+	rule, err := source.ParsedRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.ContentRule != ".content" {
+		t.Fatalf("unexpected imported rules: %+v", rule)
+	}
+}
+
 func TestBatchTestSourcesReturnsPerSourceResults(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
@@ -1548,6 +1658,92 @@ func TestBatchTestSourcesReturnsPerSourceResults(t *testing.T) {
 	}
 	if resp.Results[0].SourceID == 0 || resp.Results[0].Name != "无搜索地址" || !resp.Results[0].Enabled {
 		t.Fatalf("batch result missing source metadata: %+v", resp.Results[0])
+	}
+}
+
+func TestBatchTestSourcesRespectsTimeout(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			time.Sleep(1200 * time.Millisecond)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<html><body><div class="book">慢源</div></body></html>`)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{Name: "慢源", BaseURL: "https://slow.example", Enabled: true, Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    "https://slow.example/search?q={keyword}",
+		BookListRule: ".book",
+		BookNameRule: ".book|text",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sources/batch-test", strings.NewReader(`{"keyword":"测试","timeout":1000,"concurrent":3}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch test: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Results []struct {
+			OK      bool   `json:"ok"`
+			Message string `json:"message"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].OK || resp.Results[0].Message != "search timeout" {
+		t.Fatalf("expected timeout result, got %+v", resp.Results)
+	}
+}
+
+func TestBatchTestSourcesDoesNotTruncateLargeSourceList(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	sources := make([]models.BookSource, 0, 85)
+	for i := 0; i < 85; i++ {
+		sources = append(sources, models.BookSource{Name: fmt.Sprintf("源%02d", i), Enabled: true})
+	}
+	if err := server.db.Create(&sources).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sources/batch-test", strings.NewReader(`{"keyword":"测试","concurrent":5}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch test sources: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Results []struct {
+			SourceID uint `json:"sourceId"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) != len(sources) {
+		t.Fatalf("expected all sources to be checked, got %d of %d", len(resp.Results), len(sources))
 	}
 }
 
@@ -1616,6 +1812,73 @@ func TestBatchSourcesEnableDisableAndDelete(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected 1 source after delete, got %d", count)
+	}
+}
+
+func TestSourceUsagePreventsDeletingUsedSources(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	usedSource := models.BookSource{Name: "使用中源", BaseURL: "https://used.example", Enabled: true}
+	freeSource := models.BookSource{Name: "空闲源", BaseURL: "https://free.example", Enabled: true}
+	if err := server.db.Create(&usedSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&freeSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, SourceID: usedSource.ID, Title: "使用该源的书", URL: "https://used.example/book"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	reqList := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	reqList.Header.Set("Authorization", token)
+	wList := httptest.NewRecorder()
+	router.ServeHTTP(wList, reqList)
+	if wList.Code != http.StatusOK {
+		t.Fatalf("list sources: expected 200, got %d: %s", wList.Code, wList.Body.String())
+	}
+	var listed []models.BookSource
+	if err := json.Unmarshal(wList.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	usageByName := map[string]int{}
+	for _, source := range listed {
+		usageByName[source.Name] = source.UsedBookCount
+	}
+	if usageByName["使用中源"] != 1 || usageByName["空闲源"] != 0 {
+		t.Fatalf("unexpected used book counts: %+v", listed)
+	}
+
+	reqDelete := httptest.NewRequest(http.MethodDelete, "/api/sources/"+strconv.FormatUint(uint64(usedSource.ID), 10), nil)
+	reqDelete.Header.Set("Authorization", token)
+	wDelete := httptest.NewRecorder()
+	router.ServeHTTP(wDelete, reqDelete)
+	if wDelete.Code != http.StatusConflict || !strings.Contains(wDelete.Body.String(), `"usedBookCount":1`) {
+		t.Fatalf("delete used source should be blocked, got %d: %s", wDelete.Code, wDelete.Body.String())
+	}
+
+	body := fmt.Sprintf(`{"action":"delete","sourceIds":[%d,%d]}`, usedSource.ID, freeSource.ID)
+	reqBatch := httptest.NewRequest(http.MethodPost, "/api/sources/batch", strings.NewReader(body))
+	reqBatch.Header.Set("Content-Type", "application/json")
+	reqBatch.Header.Set("Authorization", token)
+	wBatch := httptest.NewRecorder()
+	router.ServeHTTP(wBatch, reqBatch)
+	if wBatch.Code != http.StatusOK || !strings.Contains(wBatch.Body.String(), `"affected":1`) || !strings.Contains(wBatch.Body.String(), `"skippedUsed":1`) {
+		t.Fatalf("batch delete should skip used source, got %d: %s", wBatch.Code, wBatch.Body.String())
+	}
+
+	var remaining []models.BookSource
+	if err := server.db.Order("name asc").Find(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].Name != "使用中源" {
+		t.Fatalf("expected only used source to remain, got %+v", remaining)
 	}
 }
 
@@ -1770,7 +2033,7 @@ func TestPreviewRemoteSourceDoesNotImport(t *testing.T) {
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"count":1`) || !strings.Contains(w.Body.String(), "预览源") {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"count":1`) || !strings.Contains(w.Body.String(), "预览源") || !strings.Contains(w.Body.String(), `"sources"`) {
 		t.Fatalf("remote source preview: expected preview, got %d: %s", w.Code, w.Body.String())
 	}
 
@@ -1780,6 +2043,45 @@ func TestPreviewRemoteSourceDoesNotImport(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("preview should not import sources, got %d", count)
+	}
+}
+
+func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	sources := []models.BookSource{
+		{Name: "导出源一", BaseURL: "https://one.example", Charset: "utf-8", Enabled: true},
+		{Name: "导出源二", BaseURL: "https://two.example", Charset: "utf-8", Enabled: true},
+		{Name: "导出源三", BaseURL: "https://three.example", Charset: "utf-8", Enabled: false},
+	}
+	if err := server.db.Create(&sources).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	query := fmt.Sprintf("/api/sources/export?sourceIds=%d,%d", sources[2].ID, sources[0].ID)
+	req := httptest.NewRequest(http.MethodGet, query, nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("export selected sources: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var exported []models.BookSource
+	if err := json.Unmarshal(w.Body.Bytes(), &exported); err != nil {
+		t.Fatalf("decode export response: %v", err)
+	}
+	if len(exported) != 2 {
+		t.Fatalf("expected 2 selected sources, got %+v", exported)
+	}
+	if exported[0].Name != "导出源一" || exported[1].Name != "导出源三" {
+		t.Fatalf("expected selected sources ordered by id, got %+v", exported)
+	}
+	for _, source := range exported {
+		if source.Name == "导出源二" {
+			t.Fatalf("unselected source should not be exported: %+v", exported)
+		}
 	}
 }
 
@@ -3882,6 +4184,12 @@ func TestLocalStoreImportDirectoryRecursively(t *testing.T) {
 	if len(payload.Imported) != 2 {
 		t.Fatalf("expected 2 imported files, got %+v", payload.Imported)
 	}
+	wantPaths := []string{"nested/alpha.txt", "nested/deeper/beta.txt"}
+	for i, want := range wantPaths {
+		if payload.Imported[i].Path != want {
+			t.Fatalf("expected stable local store import order %v, got %+v", wantPaths, payload.Imported)
+		}
+	}
 }
 
 func TestLocalStoreImportRootRecursively(t *testing.T) {
@@ -3937,6 +4245,9 @@ func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusMultiStatus || !strings.Contains(w2.Body.String(), "sample.txt") {
 		t.Fatalf("webdav list: expected multistatus with file, got %d: %s", w2.Code, w2.Body.String())
+	}
+	if !strings.Contains(w2.Body.String(), "<getcontentlength>12</getcontentlength>") || !strings.Contains(w2.Body.String(), "<lastmodified>") {
+		t.Fatalf("webdav list should include size and modified time, got %s", w2.Body.String())
 	}
 
 	req3 := httptest.NewRequest(http.MethodGet, "/webdav/backups/sample.txt", nil)
@@ -3995,6 +4306,33 @@ func TestWebDAVRejectsEscapedPath(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for escaped path, got %d", w.Code)
+	}
+}
+
+func TestTriggerBackupReturnsWebDAVFileName(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/backup/trigger", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("trigger backup: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Name == "" || payload.Name != payload.Path || !strings.HasPrefix(payload.Name, "backup_") || !strings.HasSuffix(payload.Name, ".zip") {
+		t.Fatalf("unexpected backup response: %+v", payload)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "webdav", payload.Name)); err != nil {
+		t.Fatalf("backup file was not created in webdav dir: %v", err)
 	}
 }
 
@@ -5086,6 +5424,12 @@ func TestImportFromWebDAVImportsDirectoryRecursively(t *testing.T) {
 	}
 	if len(payload.Imported) != 2 {
 		t.Fatalf("expected directory import to include nested files, got %+v", payload.Imported)
+	}
+	wantPaths := []string{"books/nested/child.txt", "books/root.txt"}
+	for i, want := range wantPaths {
+		if payload.Imported[i].Path != want {
+			t.Fatalf("expected stable webdav import order %v, got %+v", wantPaths, payload.Imported)
+		}
 	}
 	for _, item := range payload.Imported {
 		if item.Book == nil || item.Book.ID == 0 || item.Book.ShelfOrderAt.IsZero() {

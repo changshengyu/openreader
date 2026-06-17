@@ -36,10 +36,7 @@ export function useSync() {
     socket.addEventListener('open', () => {
       connected.value = true
       reconnectDelay = 1500
-      Promise.all([
-        bookshelf.loadCategories(),
-        bookshelf.loadBooks({ all: true }),
-      ]).catch(() => {})
+      warmShelfAfterReconnect()
     })
     socket.addEventListener('close', () => {
       connected.value = false
@@ -162,6 +159,13 @@ export function useSync() {
     if (!reconnectTimer) return
     window.clearTimeout(reconnectTimer)
     reconnectTimer = undefined
+  }
+
+  function warmShelfAfterReconnect() {
+    Promise.all([
+      bookshelf.ensureCategoriesLoaded(),
+      bookshelf.ensureBooksLoaded({ all: true }),
+    ]).catch(() => {})
   }
 
   function scheduleBookshelfRefresh(options = {}) {

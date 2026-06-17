@@ -198,7 +198,7 @@
 
     <div class="setting-row">
       <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
-      <el-slider v-model="fontWeightModel" :min="300" :max="900" :step="100" size="small" />
+      <el-slider v-model="fontWeightModel" :min="100" :max="900" :step="100" size="small" />
     </div>
 
     <div class="setting-row">
@@ -208,7 +208,7 @@
 
     <div class="setting-row">
       <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
-      <el-slider v-model="paragraphSpaceModel" :min="0" :max="3" :step="0.1" size="small" />
+      <el-slider v-model="paragraphSpaceModel" :min="0" :max="5" :step="0.2" size="small" />
     </div>
 
     <div class="setting-row">
@@ -229,7 +229,7 @@
 
     <div v-if="!miniInterface" class="setting-row">
       <label class="setting-label">阅读宽度 ({{ reader.columnWidth }}px)</label>
-      <el-slider v-model="columnWidthModel" :min="560" :max="1080" :step="20" size="small" />
+      <el-slider v-model="columnWidthModel" :min="480" :max="1120" :step="160" size="small" />
     </div>
 
     <div class="setting-row">
@@ -245,7 +245,7 @@
 
     <div class="setting-row">
       <label class="setting-label">动画时长 ({{ reader.animateDuration }}ms)</label>
-      <el-slider v-model="animateDurationModel" :min="0" :max="1000" :step="20" size="small" :disabled="reader.pageType === 'kindle'" />
+      <el-slider v-model="animateDurationModel" :min="0" :max="500" :step="50" size="small" :disabled="reader.pageType === 'kindle'" />
       <small v-if="reader.pageType === 'kindle'" class="setting-help">简洁模式会关闭翻页动画。</small>
     </div>
 
@@ -264,7 +264,7 @@
 
     <div class="setting-row">
       <label class="setting-label">翻页速度 ({{ reader.autoReadingLineTime }}ms)</label>
-      <el-slider v-model="autoReadingLineTimeModel" :min="50" :max="3000" :step="50" size="small" />
+      <el-slider v-model="autoReadingLineTimeModel" :min="10" :max="3000" :step="50" size="small" />
     </div>
 
     <div class="setting-row">

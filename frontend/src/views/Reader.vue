@@ -136,38 +136,37 @@
       <button class="page-step chapter-step" type="button" title="下一章" :disabled="currentIndex >= chapters.length - 1" @click="goChapter(currentIndex + 1)">
         <el-icon :size="24"><ArrowRight /></el-icon>
       </button>
+      <label class="desktop-progress-control" title="拖动定位当前章节进度">
+        <input
+          class="desktop-progress-slider"
+          type="range"
+          min="0"
+          max="1000"
+          step="1"
+          :value="desktopChapterSliderValue"
+          :aria-label="`当前章节进度 ${desktopChapterProgressLabel}`"
+          @input="handleDesktopProgressInput"
+          @change="handleDesktopProgressChange"
+        />
+        <span>{{ desktopChapterProgressLabel }}</span>
+      </label>
     </footer>
-
-    <label class="desktop-progress-control" title="拖动定位当前章节进度">
-      <input
-        class="desktop-progress-slider"
-        type="range"
-        min="0"
-        max="1000"
-        step="1"
-        :value="desktopChapterSliderValue"
-        :aria-label="`当前章节进度 ${desktopChapterProgressLabel}`"
-        @input="handleDesktopProgressInput"
-        @change="handleDesktopProgressChange"
-      />
-      <span>{{ desktopChapterProgressLabel }}</span>
-    </label>
 
     <footer class="reader-mobile-bottom">
       <div class="reader-mobile-progress-panel">
-        <label class="mobile-progress-slider-row" title="拖动定位当前章节进度">
+        <label class="mobile-progress-slider-row" title="拖动定位阅读进度">
           <input
             class="mobile-progress-slider"
             type="range"
             min="0"
             max="1000"
             step="1"
-            :value="desktopChapterSliderValue"
-            :aria-label="`当前章节进度 ${desktopChapterProgressLabel}`"
-            @input="handleDesktopProgressInput"
-            @change="handleDesktopProgressChange"
+            :value="mobileBookSliderValue"
+            :aria-label="`阅读进度 ${mobileBookProgressLabel}`"
+            @input="handleMobileBookProgressInput"
+            @change="handleMobileBookProgressChange"
           />
-          <span>{{ desktopChapterProgressLabel }}</span>
+          <span>{{ mobileBookProgressLabel }}</span>
         </label>
         <button class="mobile-chapter-step" type="button" :disabled="currentIndex <= 0" @click="goChapter(currentIndex - 1)">
           上一章
@@ -313,6 +312,7 @@
         :current-source-name="currentSourceName"
         :group="sourceGroup"
         :groups="sourceGroups"
+        :has-more="sourceHasMore"
         @refresh="refreshSourceCandidates"
         @load-more="loadMoreSourceCandidates"
         @group-change="changeSourceGroup"
@@ -531,12 +531,14 @@ const showCacheDrawer = ref(false)
 const showNoteDialog = ref(false)
 const showBookmarkEditor = ref(false)
 const showClickZoneOverlay = ref(false)
+const mobileBookSliderDraft = ref(null)
 const sourceCandidates = ref([])
 const sourceGroupOptions = ref([])
 const loadingSources = ref(false)
 const changingSource = ref(null)
 const sourceGroup = ref('')
 const sourceOffset = ref(0)
+const sourceHasMore = ref(true)
 const sourceCandidatesLoadedKey = ref('')
 const shelfLoading = ref(false)
 const shelfListRef = ref(null)
@@ -685,6 +687,11 @@ const bookProgress = computed(() => {
   return Math.min(1, Math.max(0, (currentIndex.value + currentChapterPercent()) / total))
 })
 const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
+const mobileBookSliderValue = computed(() => {
+  if (mobileBookSliderDraft.value !== null) return mobileBookSliderDraft.value
+  return Math.round(bookProgress.value * 1000)
+})
+const mobileBookProgressLabel = computed(() => `${Math.round(Number(mobileBookSliderValue.value || 0) / 10)}%`)
 const desktopChapterSliderValue = computed(() => {
   progressVersion.value
   return Math.round(Math.max(0, Math.min(1, currentChapterPercent())) * 1000)
@@ -1560,7 +1567,7 @@ async function openShelfPanel() {
   }
   shelfLoading.value = true
   try {
-    await bookshelf.loadBooks({ all: true })
+    await bookshelf.ensureBooksLoaded({ all: true })
     locateReaderShelfCurrentBook()
   } catch (err) {
     ElMessage.error(readError(err, '加载书架失败'))
@@ -1684,12 +1691,10 @@ function openInfoSettings() {
 async function openInfoGroup() {
   if (!book.value) return
   closeInfoAndMobileChrome()
-  if (!bookshelf.categories.length) {
-    try {
-      await bookshelf.loadCategories()
-    } catch {
-      // 分组弹层仍可打开，失败提示由保存时处理。
-    }
+  try {
+    await bookshelf.ensureCategoriesLoaded()
+  } catch {
+    // 分组弹层仍可打开，失败提示由保存时处理。
   }
   overlay.openBookGroup('set', book.value, {
     categoryName: categoryName(book.value.categoryId),
@@ -1773,7 +1778,10 @@ async function loadSourceCandidates({ append = false, force = false } = {}) {
     if (!sourceGroupOptions.value.length) {
       await loadSourceGroups()
     }
-    if (!append) sourceOffset.value = 0
+    if (!append) {
+      sourceOffset.value = 0
+      sourceHasMore.value = true
+    }
     const { data } = await listBookSourceCandidates(bookId.value, {
       group: sourceGroup.value || undefined,
       offset: sourceOffset.value,
@@ -1783,6 +1791,7 @@ async function loadSourceCandidates({ append = false, force = false } = {}) {
     const rows = Array.isArray(data) ? data : (data?.list || [])
     sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
     sourceOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceOffset.value + 10
+    sourceHasMore.value = typeof data?.hasMore === 'boolean' ? data.hasMore : rows.length >= 10
     sourceCandidatesLoadedKey.value = key
   } catch (err) {
     ElMessage.error(readError(err, '搜索可用来源失败'))
@@ -1793,6 +1802,7 @@ async function loadSourceCandidates({ append = false, force = false } = {}) {
 
 function refreshSourceCandidates() {
   sourceCandidatesLoadedKey.value = ''
+  sourceHasMore.value = true
   return loadSourceCandidates({ force: true })
 }
 
@@ -1806,12 +1816,17 @@ async function loadSourceGroups() {
 }
 
 function loadMoreSourceCandidates() {
+  if (!sourceHasMore.value) {
+    ElMessage.info('没有更多啦')
+    return undefined
+  }
   return loadSourceCandidates({ append: true })
 }
 
 function changeSourceGroup(value) {
   sourceGroup.value = value || ''
   sourceCandidatesLoadedKey.value = ''
+  sourceHasMore.value = true
   loadSourceCandidates({ force: true })
 }
 
@@ -1849,6 +1864,7 @@ async function changeSource(source) {
     currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
     await loadChapter(currentIndex.value, 0)
     sourceCandidatesLoadedKey.value = ''
+    sourceHasMore.value = true
     resetContentSearchState()
     await loadSourceCandidates({ force: true })
     showSourceDrawer.value = false
@@ -2097,17 +2113,14 @@ function scrollParagraphIntoView(paragraph) {
 async function advanceAutoReadPage() {
   const beforeChapter = currentIndex.value
   const beforePage = page.value
-  try {
-    await nextPage()
-    if (beforeChapter === currentIndex.value && beforePage === page.value) {
-      stopAutoReading()
-      toastMsg.value = '已到本书末尾'
-      setTimeout(() => { toastMsg.value = '' }, 1200)
-      return false
-    }
-    return true
-  } finally {
+  await nextPage()
+  if (beforeChapter === currentIndex.value && beforePage === page.value) {
+    stopAutoReading()
+    toastMsg.value = '已到本书末尾'
+    setTimeout(() => { toastMsg.value = '' }, 1200)
+    return false
   }
+  return true
 }
 
 function stopAutoReading() {
@@ -2181,6 +2194,44 @@ function handleDesktopProgressInput(event) {
 
 function handleDesktopProgressChange(event) {
   seekCurrentChapterPercent(Number(event.target.value || 0) / 1000, { save: true })
+}
+
+function handleMobileBookProgressInput(event) {
+  mobileBookSliderDraft.value = Number(event.target.value || 0)
+}
+
+async function handleMobileBookProgressChange(event) {
+  const value = Number(event.target.value || 0)
+  mobileBookSliderDraft.value = value
+  try {
+    await seekBookProgress(value / 1000)
+  } finally {
+    mobileBookSliderDraft.value = null
+  }
+}
+
+async function seekBookProgress(percent) {
+  const total = Math.max(chapters.value.length, 1)
+  const value = Math.max(0, Math.min(1, Number(percent) || 0))
+  let targetIndex = 0
+  let chapterPercent = 0
+  if (value >= 1) {
+    targetIndex = total - 1
+    chapterPercent = 1
+  } else {
+    const raw = value * total
+    targetIndex = Math.max(0, Math.min(total - 1, Math.floor(raw)))
+    chapterPercent = Math.max(0, Math.min(1, raw - targetIndex))
+  }
+  if (targetIndex === currentIndex.value) {
+    seekCurrentChapterPercent(chapterPercent, { save: true })
+    return
+  }
+  await router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query: { chapter: targetIndex, percent: chapterPercent },
+  })
 }
 
 function seekCurrentChapterPercent(percent, options = {}) {
@@ -2424,7 +2475,7 @@ function handleReaderWheel(event) {
   if (isOverlayOpen.value) return
   if (!shellEl.value?.contains(event.target)) return
   const target = event.target
-  if (target?.closest?.('button, a, input, textarea, select, [role="button"], .el-drawer, .el-dialog') && !target?.closest?.('.tap-zone')) return
+  if (target?.closest?.('a, input, textarea, select, .el-drawer, .el-dialog')) return
   const delta = normalizedWheelDelta(event)
   if (Math.abs(delta) < 4) return
   if (isScrollRead.value) {
@@ -3575,14 +3626,14 @@ function readError(err, fallback) {
   position: fixed;
   right: auto;
   left: var(--reader-right-x);
-  bottom: 155px;
+  bottom: 310px;
   z-index: 4;
   display: grid;
   align-content: start;
   grid-template-columns: 36px;
   grid-auto-rows: 36px;
   gap: 16px;
-  max-height: calc(100vh - 190px);
+  max-height: max(120px, calc(100vh - 340px));
   overflow-y: auto;
   padding-right: 2px;
   scrollbar-width: none;
@@ -3855,7 +3906,7 @@ function readError(err, fallback) {
   bottom: 0;
   z-index: 4;
   display: grid;
-  width: 42px;
+  width: 46px;
   background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
   border: 1px solid rgba(148, 132, 87, 0.38);
   border-bottom: 0;
@@ -3874,19 +3925,15 @@ function readError(err, fallback) {
 }
 
 .desktop-progress-control {
-  position: fixed;
-  right: auto;
-  left: calc(50vw + var(--reader-frame-width) / 2 + 100px);
-  bottom: 0;
-  z-index: 4;
   display: grid;
-  width: 42px;
+  width: 100%;
   min-height: 154px;
   place-items: center;
   gap: 7px;
   padding: 9px 0;
   color: #121212;
-  background: color-mix(in srgb, var(--reader-popup-bg) 70%, transparent);
+  background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
+  border: 0;
   border-bottom: 1px solid rgba(148, 132, 87, 0.32);
   font-size: 12px;
 }

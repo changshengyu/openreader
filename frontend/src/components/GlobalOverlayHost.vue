@@ -403,12 +403,12 @@
       <header class="file-overlay-head">
         <div>
           <strong>备份恢复</strong>
-          <span>保存当前数据，或从 Legado 备份包恢复</span>
+          <span>保存当前数据到 WebDAV，或从备份包恢复</span>
         </div>
         <div class="file-actions">
-          <el-button size="small" type="primary" :icon="Upload" :loading="backupLoading" @click="runBackup">保存备份</el-button>
+          <el-button size="small" type="primary" :icon="Upload" :loading="backupLoading" @click="runBackup">保存到 WebDAV</el-button>
           <el-upload :show-file-list="false" :auto-upload="false" accept=".zip" @change="restoreBackup">
-            <el-button size="small" :icon="Refresh" :loading="restoreLoading">恢复 Legado</el-button>
+            <el-button size="small" :icon="Refresh" :loading="restoreLoading">恢复备份包</el-button>
           </el-upload>
           <el-button size="small" :icon="Refresh" :loading="backupListLoading" @click="loadBackups">刷新列表</el-button>
         </div>
@@ -824,7 +824,7 @@ function updateWindowWidth() {
 
 async function loadImportCategories() {
   try {
-    if (!bookshelf.categories.length) await bookshelf.loadCategories()
+    await warmOverlayCategories()
   } catch (err) {
     ElMessage.error(readError(err, '加载分组失败'))
   }
@@ -890,16 +890,35 @@ watch(
       }
       return
     }
-    try {
-      await Promise.all([bookshelf.loadCategories(), bookshelf.loadBooks({ all: true })])
-      if (overlay.bookManageVisible) await refreshManagedBrowserCacheCounts()
-      if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
-        settingCategoryId.value = overlay.bookInfoBook?.categoryId ? String(overlay.bookInfoBook.categoryId) : ''
-      } else if (overlay.bookGroupVisible) {
-        resetGroupOrderDraft()
+    if (overlay.bookManageVisible) {
+      const [categoryResult, booksResult] = await Promise.allSettled([
+        warmOverlayCategories(),
+        warmOverlayBooks(),
+      ])
+      if (booksResult.status === 'rejected') {
+        ElMessage.error(readError(booksResult.reason, '加载书架数据失败'))
+        return
       }
-    } catch (err) {
-      ElMessage.error(readError(err, '加载书架数据失败'))
+      if (categoryResult.status === 'rejected') {
+        if (overlay.bookGroupVisible) {
+          ElMessage.error(readError(categoryResult.reason, '加载分组失败'))
+          return
+        }
+        ElMessage.warning(readError(categoryResult.reason, '分组加载失败，书架管理仍可使用'))
+      }
+      await refreshManagedBrowserCacheCounts()
+    } else {
+      try {
+        await warmOverlayCategories()
+      } catch (err) {
+        ElMessage.error(readError(err, '加载分组失败'))
+        return
+      }
+    }
+    if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
+      settingCategoryId.value = overlay.bookInfoBook?.categoryId ? String(overlay.bookInfoBook.categoryId) : ''
+    } else if (overlay.bookGroupVisible) {
+      resetGroupOrderDraft()
     }
   },
 )
@@ -908,16 +927,16 @@ watch(
   () => overlay.bookInfoVisible,
   async (visible) => {
     if (!visible) return
-    try {
-      await bookshelf.loadCategories()
-      if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
-        await loadSourceRows()
-      }
-      if (overlay.bookInfoBook?.id) {
-        await refreshBookInfoBrowserCacheCount(overlay.bookInfoBook)
-      }
-    } catch (err) {
-      ElMessage.error(readError(err, '加载书籍信息失败'))
+    await warmOverlayCategories().catch((err) => {
+      ElMessage.warning(readError(err, '分组加载失败，书籍信息仍可查看'))
+    })
+    if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
+      await loadSourceRows().catch((err) => {
+        ElMessage.warning(readError(err, '书源加载失败，书籍信息仍可查看'))
+      })
+    }
+    if (overlay.bookInfoBook?.id) {
+      await refreshBookInfoBrowserCacheCount(overlay.bookInfoBook)
     }
   },
 )
@@ -930,6 +949,14 @@ watch(
     resetContentSearchState()
   },
 )
+
+async function warmOverlayCategories(options = {}) {
+  return bookshelf.ensureCategoriesLoaded(options)
+}
+
+async function warmOverlayBooks(options = {}) {
+  return bookshelf.ensureBooksLoaded({ all: true, ...options })
+}
 
 function resetContentSearchState() {
   contentKeyword.value = ''
@@ -1727,7 +1754,7 @@ async function runBackup() {
   backupLoading.value = true
   try {
     const { data } = await triggerBackup()
-    ElMessage.success(`备份已生成：${data.name || 'backup.zip'}`)
+    ElMessage.success(`备份已保存到 WebDAV：${data.name || data.path || 'backup.zip'}`)
     await loadBackups()
   } catch (err) {
     ElMessage.error(readError(err, '保存备份失败'))

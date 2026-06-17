@@ -14,7 +14,7 @@
         <el-option v-for="item in normalizedGroups" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
       <button type="button" :disabled="loading" @click="$emit('refresh')">{{ loading ? '刷新中...' : '刷新' }}</button>
-      <button type="button" :disabled="loading" @click="$emit('loadMore')">{{ loading ? '加载中...' : '加载更多' }}</button>
+      <button type="button" :disabled="loading || !hasMore" @click="$emit('loadMore')">{{ loading ? '加载中...' : (hasMore ? '加载更多' : '没有更多') }}</button>
     </div>
   </div>
 
@@ -77,6 +77,10 @@ const props = defineProps({
   currentSourceName: {
     type: String,
     default: '',
+  },
+  hasMore: {
+    type: Boolean,
+    default: true,
   },
 })
 

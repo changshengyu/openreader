@@ -18,7 +18,7 @@
       </span>
     </section>
 
-    <section class="source-group-tabs app-panel">
+    <section v-if="sourceGroups.length" class="source-group-tabs">
       <button
         v-for="group in sourceGroups"
         :key="group.value"
@@ -135,14 +135,20 @@ const exploreResultGroups = computed(() => {
 })
 const sourceGroups = computed(() => {
   const groups = new Map()
+  let ungrouped = 0
   for (const source of sources.value) {
-    const name = source.group || '未分组'
+    const name = String(source.group || '').trim()
+    if (!name) {
+      ungrouped += 1
+      continue
+    }
     groups.set(name, (groups.get(name) || 0) + 1)
   }
-  return [
-    { label: '全部', value: '', count: sources.value.length },
-    ...[...groups.entries()].map(([label, count]) => ({ label, value: label, count })).sort((a, b) => a.label.localeCompare(b.label)),
-  ]
+  const rows = [...groups.entries()]
+    .map(([label, count]) => ({ label, value: label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  if (ungrouped > 0) rows.push({ label: '未分组', value: '未分组', count: ungrouped })
+  return rows
 })
 const filteredSources = computed(() => {
   if (!selectedGroup.value) return sources.value
@@ -150,9 +156,28 @@ const filteredSources = computed(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadSources(), bookshelf.loadCategories(), bookshelf.loadBooks({ all: true })])
+  const [sourcesResult, shelfResult] = await Promise.allSettled([
+    loadSources(),
+    warmDiscoverShelf(),
+  ])
+  if (shelfResult.status === 'rejected') {
+    ElMessage.warning(readError(shelfResult.reason, '加载书架失败，已入架状态和分组可能暂不可用'))
+  }
+  if (sourcesResult.status === 'rejected') {
+    ElMessage.warning(readError(sourcesResult.reason, '加载探索书源失败'))
+  }
   if (selectedSourceId.value) await loadBooks()
 })
+
+async function warmDiscoverShelf() {
+  const jobs = [
+    bookshelf.ensureCategoriesLoaded(),
+    bookshelf.ensureBooksLoaded({ all: true }),
+  ]
+  const results = await Promise.allSettled(jobs)
+  const failed = results.find(result => result.status === 'rejected')
+  if (failed) throw failed.reason
+}
 
 async function loadSources() {
   loadingSources.value = true
@@ -168,7 +193,7 @@ async function loadSources() {
 }
 
 function selectGroup(group) {
-  selectedGroup.value = group
+  selectedGroup.value = selectedGroup.value === group ? '' : group
   const exists = filteredSources.value.some(source => source.id === selectedSourceId.value)
   if (!exists) {
     selectedSourceId.value = ''
@@ -409,18 +434,19 @@ function readError(err, fallback) {
   min-width: 0;
   gap: 8px;
   overflow-x: auto;
-  padding: 8px;
+  padding: 2px 0 4px;
 }
 
 .source-group-tabs button {
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
+  flex: 0 0 auto;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background: var(--app-surface);
   color: var(--app-text);
   cursor: pointer;
   font: inherit;
-  min-height: 34px;
-  padding: 0 16px;
+  min-height: 30px;
+  padding: 3px 10px;
   white-space: nowrap;
 }
 
@@ -590,7 +616,8 @@ function readError(err, fallback) {
   .source-group-tabs {
     margin-right: -8px;
     margin-left: -8px;
-    border-radius: 0;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .discover-main {
