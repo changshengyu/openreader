@@ -4052,7 +4052,11 @@ func TestLocalStoreImportAcceptsCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 	category := models.Category{UserID: user.ID, Name: "书仓分组"}
+	categoryB := models.Category{UserID: user.ID, Name: "书仓分组B"}
 	if err := server.db.Create(&category).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&categoryB).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(server.cfg.LocalStoreDir, 0o755); err != nil {
@@ -4062,7 +4066,23 @@ func TestLocalStoreImportAcceptsCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"paths":["store.txt"],"categoryId":` + strconv.FormatUint(uint64(category.ID), 10) + `}`
+	previewReq := httptest.NewRequest(http.MethodPost, "/api/local-store/import-preview", strings.NewReader(`{"paths":["store.txt"]}`))
+	previewReq.Header.Set("Content-Type", "application/json")
+	previewReq.Header.Set("Authorization", token)
+	previewW := httptest.NewRecorder()
+	router.ServeHTTP(previewW, previewReq)
+	if previewW.Code != http.StatusOK || !strings.Contains(previewW.Body.String(), `"chapterCount":1`) {
+		t.Fatalf("local store preview: expected parsed book, got %d: %s", previewW.Code, previewW.Body.String())
+	}
+	var previewBookCount int64
+	if err := server.db.Model(&models.Book{}).Where("title = ?", "store").Count(&previewBookCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if previewBookCount != 0 {
+		t.Fatalf("local store preview must not create books, got %d", previewBookCount)
+	}
+
+	body := fmt.Sprintf(`{"items":[{"path":"store.txt","title":"书仓自定义书名","author":"书仓作者"}],"categoryIds":[%d,%d]}`, category.ID, categoryB.ID)
 	req := httptest.NewRequest(http.MethodPost, "/api/local-store/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -4077,6 +4097,7 @@ func TestLocalStoreImportAcceptsCategory(t *testing.T) {
 			Book *struct {
 				ID           uint      `json:"id"`
 				CategoryID   *uint     `json:"categoryId"`
+				CategoryIDs  []uint    `json:"categoryIds"`
 				ShelfOrderAt time.Time `json:"shelfOrderAt"`
 			} `json:"book"`
 		} `json:"imported"`
@@ -4090,13 +4111,22 @@ func TestLocalStoreImportAcceptsCategory(t *testing.T) {
 	if payload.Imported[0].Book.CategoryID == nil || *payload.Imported[0].Book.CategoryID != category.ID {
 		t.Fatalf("expected imported shelf item category %d, got %+v", category.ID, payload.Imported[0].Book.CategoryID)
 	}
+	if !sameUintSet(payload.Imported[0].Book.CategoryIDs, []uint{category.ID, categoryB.ID}) {
+		t.Fatalf("expected imported shelf item in both categories, got %+v", payload.Imported[0].Book.CategoryIDs)
+	}
 
 	var book models.Book
-	if err := server.db.Where("title = ?", "store").First(&book).Error; err != nil {
+	if err := server.db.Where("title = ?", "书仓自定义书名").First(&book).Error; err != nil {
 		t.Fatal(err)
+	}
+	if book.Author != "书仓作者" {
+		t.Fatalf("expected imported author override, got %q", book.Author)
 	}
 	if book.CategoryID == nil || *book.CategoryID != category.ID {
 		t.Fatalf("expected imported book category %d, got %+v", category.ID, book.CategoryID)
+	}
+	if ids := server.bookCategoryIDs(user.ID, book); !sameUintSet(ids, []uint{category.ID, categoryB.ID}) {
+		t.Fatalf("expected imported book in both categories, got %+v", ids)
 	}
 }
 
@@ -4109,7 +4139,11 @@ func TestDirectImportReturnsShelfListItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	category := models.Category{UserID: user.ID, Name: "直接导入分组"}
+	categoryB := models.Category{UserID: user.ID, Name: "直接导入分组B"}
 	if err := server.db.Create(&category).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&categoryB).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -4122,7 +4156,10 @@ func TestDirectImportReturnsShelfListItem(t *testing.T) {
 	if _, err := part.Write([]byte("第一章 开始\n正文")); err != nil {
 		t.Fatal(err)
 	}
-	if err := writer.WriteField("categoryId", strconv.FormatUint(uint64(category.ID), 10)); err != nil {
+	if err := writer.WriteField("categoryIds", strconv.FormatUint(uint64(category.ID), 10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("categoryIds", strconv.FormatUint(uint64(categoryB.ID), 10)); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -4142,6 +4179,7 @@ func TestDirectImportReturnsShelfListItem(t *testing.T) {
 		ID           uint      `json:"id"`
 		Title        string    `json:"title"`
 		CategoryID   *uint     `json:"categoryId"`
+		CategoryIDs  []uint    `json:"categoryIds"`
 		ShelfOrderAt time.Time `json:"shelfOrderAt"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &item); err != nil {
@@ -4153,8 +4191,65 @@ func TestDirectImportReturnsShelfListItem(t *testing.T) {
 	if item.CategoryID == nil || *item.CategoryID != category.ID {
 		t.Fatalf("expected category %d in shelf item, got %+v", category.ID, item.CategoryID)
 	}
+	if !sameUintSet(item.CategoryIDs, []uint{category.ID, categoryB.ID}) {
+		t.Fatalf("expected both direct import categories, got %+v", item.CategoryIDs)
+	}
 	if item.ShelfOrderAt.IsZero() {
 		t.Fatalf("expected shelfOrderAt in direct import response, got %+v", item)
+	}
+}
+
+func TestDirectImportPreviewDoesNotCreateBook(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var before int64
+	if err := server.db.Model(&models.Book{}).Count(&before).Error; err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "preview.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("第一章 开始\n正文\n第二章 继续\n正文")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("title", "预览书名"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/imports/books/preview", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("direct import preview: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var preview struct {
+		Title        string `json:"title"`
+		ChapterCount int    `json:"chapterCount"`
+		Chapters     []struct {
+			Title string `json:"title"`
+		} `json:"chapters"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.Title != "预览书名" || preview.ChapterCount < 1 || len(preview.Chapters) != preview.ChapterCount {
+		t.Fatalf("unexpected direct preview: %+v", preview)
+	}
+	var after int64
+	if err := server.db.Model(&models.Book{}).Count(&after).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("preview must not create books: before=%d after=%d", before, after)
 	}
 }
 
@@ -5450,6 +5545,18 @@ func TestExploreBooksUsesSelectedExploreURL(t *testing.T) {
 func TestImportFromWebDAVImportsBook(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	categoryA := models.Category{UserID: user.ID, Name: "WebDAV分组A"}
+	categoryB := models.Category{UserID: user.ID, Name: "WebDAV分组B"}
+	if err := server.db.Create(&categoryA).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&categoryB).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	webdavDir := filepath.Join(server.cfg.DataDir, "webdav", "books")
 	if err := os.MkdirAll(webdavDir, 0o755); err != nil {
@@ -5459,7 +5566,17 @@ func TestImportFromWebDAVImportsBook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/webdav/import", strings.NewReader(`{"paths":["books/webdav-book.txt"]}`))
+	previewReq := httptest.NewRequest(http.MethodPost, "/api/webdav/import-preview", strings.NewReader(`{"paths":["books/webdav-book.txt"]}`))
+	previewReq.Header.Set("Content-Type", "application/json")
+	previewReq.Header.Set("Authorization", token)
+	previewW := httptest.NewRecorder()
+	router.ServeHTTP(previewW, previewReq)
+	if previewW.Code != http.StatusOK || !strings.Contains(previewW.Body.String(), `"chapterCount":1`) {
+		t.Fatalf("webdav import preview: expected parsed book, got %d: %s", previewW.Code, previewW.Body.String())
+	}
+
+	body := fmt.Sprintf(`{"items":[{"path":"books/webdav-book.txt","title":"WebDAV自定义书名"}],"categoryIds":[%d,%d]}`, categoryA.ID, categoryB.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/webdav/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
@@ -5472,6 +5589,7 @@ func TestImportFromWebDAVImportsBook(t *testing.T) {
 			Path string `json:"path"`
 			Book *struct {
 				ID           uint      `json:"id"`
+				CategoryIDs  []uint    `json:"categoryIds"`
 				ShelfOrderAt time.Time `json:"shelfOrderAt"`
 			} `json:"book"`
 		} `json:"imported"`
@@ -5482,13 +5600,19 @@ func TestImportFromWebDAVImportsBook(t *testing.T) {
 	if len(payload.Imported) != 1 || payload.Imported[0].Book == nil || payload.Imported[0].Book.ShelfOrderAt.IsZero() {
 		t.Fatalf("expected imported shelf item in response, got %+v", payload.Imported)
 	}
+	if !sameUintSet(payload.Imported[0].Book.CategoryIDs, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected webdav import in both categories, got %+v", payload.Imported[0].Book.CategoryIDs)
+	}
 
 	var book models.Book
-	if err := server.db.Where("title = ?", "webdav-book").First(&book).Error; err != nil {
+	if err := server.db.Where("title = ?", "WebDAV自定义书名").First(&book).Error; err != nil {
 		t.Fatal(err)
 	}
 	if book.ChapterCount == 0 {
 		t.Fatalf("expected imported chapters, got %+v", book)
+	}
+	if ids := server.bookCategoryIDs(user.ID, book); !sameUintSet(ids, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected webdav book in both categories, got %+v", ids)
 	}
 }
 

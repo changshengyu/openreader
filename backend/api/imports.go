@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,39 @@ import (
 
 func (s *Server) listTXTTocRules(c *gin.Context) {
 	c.JSON(http.StatusOK, engine.DefaultTXTTocRules())
+}
+
+func (s *Server) previewTXTImport(c *gin.Context) {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read file"})
+		return
+	}
+	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
+		FileName:  fileHeader.Filename,
+		Extension: ext,
+		Data:      data,
+		Title:     c.PostForm("title"),
+		Author:    c.PostForm("author"),
+		TOCRule:   c.PostForm("tocRule"),
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, preview)
 }
 
 func (s *Server) importTXT(c *gin.Context) {
@@ -47,9 +81,17 @@ func (s *Server) importTXT(c *gin.Context) {
 		return
 	}
 
+	categoryIDs := parseOptionalCategoryIDs(c.PostFormArray("categoryIds"))
 	categoryID := parseOptionalCategoryID(c.PostForm("categoryId"))
-	if !s.validateCategory(c, userID, categoryID) {
+	if len(categoryIDs) > 0 {
+		if !s.validateCategoryIDs(c, userID, categoryIDs) {
+			return
+		}
+		categoryID = &categoryIDs[0]
+	} else if !s.validateCategory(c, userID, categoryID) {
 		return
+	} else if categoryID != nil {
+		categoryIDs = []uint{*categoryID}
 	}
 	userName, ok := s.currentUserName(c, userID)
 	if !ok {
@@ -78,11 +120,23 @@ func (s *Server) importTXT(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import book"})
 		return
 	}
-	if categoryID != nil {
-		_ = s.setBookCategories(s.db, userID, book.ID, []uint{*categoryID})
+	if len(categoryIDs) > 0 {
+		_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 	}
 
 	c.JSON(http.StatusCreated, s.broadcastBookShelfUpdate(userID, book))
+}
+
+func parseOptionalCategoryIDs(values []string) []uint {
+	result := make([]uint, 0, len(values))
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			if id := parseOptionalCategoryID(part); id != nil && !slices.Contains(result, *id) {
+				result = append(result, *id)
+			}
+		}
+	}
+	return result
 }
 
 func parseOptionalCategoryID(value string) *uint {
@@ -96,4 +150,41 @@ func parseOptionalCategoryID(value string) *uint {
 	}
 	result := uint(parsed)
 	return &result
+}
+
+type localBookImportItem struct {
+	Path    string `json:"path"`
+	Title   string `json:"title"`
+	Author  string `json:"author"`
+	TOCRule string `json:"tocRule"`
+}
+
+type localBookImportRequest struct {
+	Paths       []string              `json:"paths"`
+	Items       []localBookImportItem `json:"items"`
+	CategoryID  *uint                 `json:"categoryId"`
+	CategoryIDs []uint                `json:"categoryIds"`
+}
+
+func (request localBookImportRequest) requestedPaths() []string {
+	if len(request.Items) == 0 {
+		return request.Paths
+	}
+	paths := make([]string, 0, len(request.Items))
+	for _, item := range request.Items {
+		if path := strings.TrimSpace(item.Path); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func (request localBookImportRequest) itemByPath() map[string]localBookImportItem {
+	items := make(map[string]localBookImportItem, len(request.Items))
+	for _, item := range request.Items {
+		if path := strings.TrimSpace(item.Path); path != "" {
+			items[path] = item
+		}
+	}
+	return items
 }

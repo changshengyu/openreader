@@ -41,8 +41,7 @@
       <el-select v-model="extension" placeholder="全部格式" clearable>
         <el-option v-for="ext in extensions" :key="ext" :label="ext" :value="ext" />
       </el-select>
-      <el-select v-model="targetCategoryId" placeholder="导入到分组（可选）" clearable>
-        <el-option label="未分组" value="" />
+      <el-select v-model="targetCategoryIds" placeholder="导入到分组（可多选）" multiple clearable>
         <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
       <el-switch v-model="recursiveScan" inline-prompt active-text="子目录" inactive-text="当前层" @change="load" />
@@ -131,6 +130,16 @@
       <el-button @click="clearSelection">取消</el-button>
     </div>
 
+    <LocalBookImportPreviewDialog
+      v-model="previewDialog"
+      title="本地书仓导入预览"
+      :items="previewItems"
+      :categories="bookshelf.categories"
+      :category-ids="targetCategoryIds"
+      :loading="importing"
+      @confirm="confirmPreviewImport"
+    />
+
     <el-dialog v-model="resultDialog" title="导入结果" width="560px" :fullscreen="isMobileDialog">
       <div class="result-list">
         <div v-for="(item, index) in importResults" :key="index" class="result-row">
@@ -147,7 +156,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened, Refresh, Search, Upload } from '@element-plus/icons-vue'
-import { createLocalStoreDirectory, deleteFromLocalStore, downloadFromLocalStore, importFromLocalStore, listLocalStore, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
+import { createLocalStoreDirectory, deleteFromLocalStore, downloadFromLocalStore, importFromLocalStore, listLocalStore, previewLocalStoreImport, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
+import LocalBookImportPreviewDialog from '../components/LocalBookImportPreviewDialog.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
@@ -167,11 +177,13 @@ const selectedRows = ref([])
 const currentPath = ref('')
 const keyword = ref('')
 const extension = ref('')
-const targetCategoryId = ref('')
+const targetCategoryIds = ref([])
 const recursiveScan = ref(true)
 const loading = ref(false)
 const importing = ref(false)
 const uploading = ref(false)
+const previewDialog = ref(false)
+const previewItems = ref([])
 const resultDialog = ref(false)
 const importResults = ref([])
 const windowWidth = ref(currentViewportWidth())
@@ -309,8 +321,6 @@ async function importSelected() {
   importing.value = true
   try {
     await importPaths(selectedImportablePaths.value)
-    clearSelection()
-    await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入失败'))
   } finally {
@@ -330,8 +340,6 @@ async function importCurrentDirectory() {
   importing.value = true
   try {
     await importPaths([currentPath.value])
-    clearSelection()
-    await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入目录失败'))
   } finally {
@@ -344,8 +352,6 @@ async function importFiltered() {
   importing.value = true
   try {
     await importPaths(shownImportablePaths.value)
-    clearSelection()
-    await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入失败'))
   } finally {
@@ -358,7 +364,6 @@ async function importOne(row) {
   importing.value = true
   try {
     await importPaths([row.path])
-    await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入失败'))
   } finally {
@@ -371,7 +376,6 @@ async function importDirectory(row) {
   importing.value = true
   try {
     await importPaths([row.path])
-    await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入目录失败'))
   } finally {
@@ -390,8 +394,31 @@ async function downloadItem(row) {
 }
 
 async function importPaths(paths) {
-  const categoryId = targetCategoryId.value ? Number(targetCategoryId.value) : null
-  const { data } = await importFromLocalStore(paths, categoryId)
+  const { data } = await previewLocalStoreImport(paths)
+  previewItems.value = data.items || []
+  if (!previewItems.value.some(item => item.book)) {
+    ElMessage.warning('没有可导入的书籍')
+    return
+  }
+  previewDialog.value = true
+}
+
+async function confirmPreviewImport({ items: selectedItems, categoryIds }) {
+  importing.value = true
+  try {
+    const { data } = await importFromLocalStore(selectedItems, categoryIds)
+    applyImportResults(data)
+    previewDialog.value = false
+    clearSelection()
+    await load()
+  } catch (err) {
+    ElMessage.error(readError(err, '导入失败'))
+  } finally {
+    importing.value = false
+  }
+}
+
+function applyImportResults(data) {
   importResults.value = data.imported || []
   importResults.value.forEach(item => {
     if (item.book) bookshelf.upsertBook(item.book)

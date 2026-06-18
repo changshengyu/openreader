@@ -51,7 +51,7 @@
             />
           </span>
         </div>
-        <div>
+        <div v-if="inShelf">
           <span>分组：</span>
           <strong>{{ categoryName || '未分组' }}</strong>
           <button v-if="showCategoryAction" type="button" class="book-prop-action" @click="emit('category-action')">
@@ -146,6 +146,10 @@ const props = defineProps({
   browserCacheCount: {
     type: Number,
     default: -1,
+  },
+  inShelf: {
+    type: Boolean,
+    default: true,
   },
   showCategoryAction: {
     type: Boolean,

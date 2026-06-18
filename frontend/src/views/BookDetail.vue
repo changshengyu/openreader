@@ -22,8 +22,10 @@
             :show-update-switch="book.sourceId > 0"
             :can-update="book.canUpdate !== false"
             :update-switch-loading="updatingBook"
+            :show-category-action="true"
             @cover-upload="uploadBookCoverFromPanel"
             @can-update-change="toggleBookCanUpdate"
+            @category-action="openBookGroupSetter"
           >
             <div class="hero-actions">
               <el-button type="primary" @click="startRead">开始阅读</el-button>
@@ -37,10 +39,6 @@
               <el-button :loading="clearingLocalCache" @click="clearCurrentBookLocalCache">清浏览器缓存</el-button>
               <el-button v-if="book.sourceId > 0" :loading="clearingCache" @click="clearCurrentBookCache">清服务器缓存</el-button>
               <el-button type="danger" plain @click="deleteCurrentBook">删除</el-button>
-              <el-select v-model="categoryDraft" placeholder="设置分组" clearable size="default" class="category-select" @change="changeCategory">
-                <el-option label="未分组" value="" />
-                <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-              </el-select>
             </div>
           </BookInfoPanel>
         </section>
@@ -118,36 +116,19 @@
       </template>
     </div>
 
-    <el-dialog v-model="showBookEditor" title="编辑书籍" width="540px" :fullscreen="isMobileDialog">
-      <el-form label-position="top" class="book-editor">
-        <el-form-item label="书名"><el-input v-model="bookDraft.title" /></el-form-item>
-        <el-form-item label="作者"><el-input v-model="bookDraft.author" /></el-form-item>
-        <el-form-item label="封面">
-          <div class="cover-upload-row">
-            <el-input v-model="bookDraft.coverUrl" placeholder="封面地址或上传本地图片" />
-            <el-upload accept="image/jpg,image/png,image/jpeg" :show-file-list="false" :auto-upload="false" @change="uploadBookCover">
-              <el-button :loading="uploadingCover">上传</el-button>
-            </el-upload>
-          </div>
-        </el-form-item>
-        <el-form-item label="简介"><el-input v-model="bookDraft.intro" type="textarea" :rows="5" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showBookEditor = false">取消</el-button>
-        <el-button type="primary" :loading="savingBook" @click="saveBookEdit">保存</el-button>
-      </template>
-    </el-dialog>
+    <BookEditDialog v-model="showBookEditor" :book="book" :saving="savingBook" @save="saveBookEdit" />
   </section>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Switch } from '@element-plus/icons-vue'
-import { cacheBookContent, changeBookSource, deleteBookmark, listBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
+import { cacheBookContent, changeBookSource, deleteBookmark, listBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook, updateBook } from '../api/books'
 import api from '../api/client'
 import { uploadAsset } from '../api/uploads'
+import BookEditDialog from '../components/BookEditDialog.vue'
 import BookInfoPanel from '../components/BookInfoPanel.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
@@ -159,7 +140,6 @@ import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrows
 import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
-import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import {
   sourceCandidateAuthor,
   sourceCandidateBookUrl,
@@ -192,7 +172,6 @@ const tocKeyword = ref('')
 const tocLocateKey = ref(0)
 const tocReverse = ref(false)
 const browserCachedChapters = ref({})
-const categoryDraft = ref('')
 const showBookEditor = ref(false)
 const savingBook = ref(false)
 const uploadingCover = ref(false)
@@ -205,11 +184,8 @@ const clearingLocalCache = ref(false)
 const changingSource = ref(null)
 const changeMessage = ref('')
 const changeError = ref(false)
-const bookDraft = reactive({ title: '', author: '', coverUrl: '', intro: '' })
-const windowWidth = ref(currentViewportWidth())
 
 const currentSource = computed(() => availableSources.value.find(source => Number(source.id) === Number(book.value?.sourceId)))
-const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const sourceGroups = computed(() => {
   const groups = availableSources.value.map(source => source.group).filter(Boolean)
   return [...new Set(groups)].sort()
@@ -228,10 +204,12 @@ const detailCurrentIndex = computed(() => {
 const browserCacheCount = computed(() => Object.keys(browserCachedChapters.value).length)
 
 onMounted(() => {
-  window.addEventListener('resize', updateWindowWidth, { passive: true })
+  window.addEventListener('openreader:book-info-updated', handleExternalBookUpdate)
   load()
 })
-onBeforeUnmount(() => window.removeEventListener('resize', updateWindowWidth))
+onBeforeUnmount(() => {
+  window.removeEventListener('openreader:book-info-updated', handleExternalBookUpdate)
+})
 
 watch(activeTab, async (tab) => {
   if (tab !== 'toc') return
@@ -242,10 +220,6 @@ watch(activeTab, async (tab) => {
     tocPanelRef.value?.locateCurrentChapter?.()
   })
 })
-
-function updateWindowWidth() {
-  windowWidth.value = currentViewportWidth()
-}
 
 async function load() {
   loading.value = true
@@ -290,7 +264,6 @@ async function load() {
     sourceHasMore.value = true
     await refreshBrowserCacheMap()
     if (book.value?.sourceId) await loadSourceCandidates({ silent: true })
-    categoryDraft.value = bookCategoryIds(book.value)[0] ? String(bookCategoryIds(book.value)[0]) : ''
   } catch (err) {
     ElMessage.error(readError(err, '加载书籍失败'))
   } finally {
@@ -341,16 +314,19 @@ async function deleteBookmarkItem(bookmark) {
   }
 }
 
-async function changeCategory(value) {
+async function openBookGroupSetter() {
+  if (!book.value?.id) return
   try {
-    const categoryId = value ? Number(value) : null
-    const { data } = await updateBookCategory(book.value.id, categoryId)
-    await applyBookUpdate(data)
-    ElMessage.success('分组已更新')
+    await warmDetailCategories()
   } catch (err) {
-    ElMessage.error(readError(err, '更新分组失败'))
-    categoryDraft.value = bookCategoryIds(book.value)[0] ? String(bookCategoryIds(book.value)[0]) : ''
+    ElMessage.warning(readError(err, '分组加载失败，仍可尝试打开设置'))
   }
+  overlay.openBookGroup('set', book.value, {
+    categoryName: categoryName(book.value),
+    progress: bookProgress.value?.percent || 0,
+    statusLabel: book.value.sourceId ? '远程书籍' : '本地书籍',
+    statusType: book.value.sourceId ? 'success' : 'info',
+  })
 }
 
 async function deleteCurrentBook() {
@@ -367,29 +343,15 @@ async function deleteCurrentBook() {
 }
 
 function openBookEditor() {
-  if (!book.value) return
-  Object.assign(bookDraft, {
-    title: book.value.title || '',
-    author: book.value.author || '',
-    coverUrl: book.value.coverUrl || '',
-    intro: book.value.intro || '',
-  })
-  showBookEditor.value = true
+  if (book.value) showBookEditor.value = true
 }
 
-async function saveBookEdit() {
+async function saveBookEdit(payload) {
   if (!book.value) return
-  if (!bookDraft.title.trim()) {
-    ElMessage.warning('书名不能为空')
-    return
-  }
   savingBook.value = true
   try {
     const { data } = await updateBook(book.value.id, {
-      title: bookDraft.title,
-      author: bookDraft.author,
-      coverUrl: bookDraft.coverUrl,
-      intro: bookDraft.intro,
+      ...payload,
       categoryIds: bookCategoryIds(book.value),
       canUpdate: book.value.canUpdate !== false,
     })
@@ -400,21 +362,6 @@ async function saveBookEdit() {
     ElMessage.error(readError(err, '更新书籍失败'))
   } finally {
     savingBook.value = false
-  }
-}
-
-async function uploadBookCover(data) {
-  const file = data.raw || data.file
-  if (!file) return
-  uploadingCover.value = true
-  try {
-    const { data: result } = await uploadAsset({ file, type: 'cover' })
-    bookDraft.coverUrl = result.url
-    ElMessage.success('封面已上传')
-  } catch (err) {
-    ElMessage.error(readError(err, '上传封面失败'))
-  } finally {
-    uploadingCover.value = false
   }
 }
 
@@ -628,6 +575,12 @@ async function applyBookUpdate(incoming, options = {}) {
     detail: { bookId: nextBook.id, book: nextBook, chapters: nextChapters },
   }))
   return nextBook
+}
+
+async function handleExternalBookUpdate(event) {
+  const updatedBook = event?.detail?.book
+  if (!updatedBook?.id || Number(updatedBook.id) !== Number(book.value?.id)) return
+  await applyBookUpdate(updatedBook)
 }
 
 async function invalidateBookReaderCaches(targetBook, options = {}) {
@@ -865,10 +818,6 @@ function readError(err, fallback) {
   font-size: 12px;
 }
 
-.category-select {
-  width: 160px;
-}
-
 .detail-tabs {
   min-width: 0;
 }
@@ -920,19 +869,6 @@ function readError(err, fallback) {
   white-space: nowrap;
 }
 
-.book-editor {
-  display: grid;
-}
-
-.cover-upload-row {
-  display: flex;
-  gap: 8px;
-}
-
-.cover-upload-row .el-input {
-  flex: 1;
-}
-
 .msg-success {
   color: #67c23a;
 }
@@ -975,8 +911,7 @@ function readError(err, fallback) {
     margin-left: 0;
   }
 
-  .tab-toolbar .el-input,
-  .category-select {
+  .tab-toolbar .el-input {
     max-width: none;
     width: 100%;
   }

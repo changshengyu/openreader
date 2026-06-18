@@ -29,6 +29,11 @@ export function downloadFromLocalStore(path) {
   return api.get('/local-store/download', { params: { path }, responseType: 'blob' })
 }
 
-export function importFromLocalStore(paths, categoryId = null) {
-  return api.post('/local-store/import', { paths, categoryId })
+export function importFromLocalStore(paths, categoryIds = []) {
+  const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
+  return api.post('/local-store/import', items.length ? { items, categoryIds } : { paths, categoryIds })
+}
+
+export function previewLocalStoreImport(paths) {
+  return api.post('/local-store/import-preview', { paths })
 }

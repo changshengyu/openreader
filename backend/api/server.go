@@ -96,8 +96,10 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.PUT("/local-store/rename", server.renameLocalStoreItem)
 	protected.POST("/local-store/upload", server.uploadToLocalStore)
 	protected.DELETE("/local-store", server.deleteFromLocalStore)
+	protected.POST("/local-store/import-preview", server.previewLocalStoreImport)
 	protected.POST("/local-store/import", server.importFromLocalStore)
 	protected.GET("/txt-toc-rules", server.listTXTTocRules)
+	protected.POST("/imports/books/preview", server.previewTXTImport)
 	protected.POST("/imports/books", server.importTXT)
 	protected.POST("/imports/txt", server.importTXT)
 	protected.POST("/uploads", server.uploadAsset)
@@ -133,6 +135,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/backup/download/:name", server.downloadBackup)
 	protected.POST("/backup/restore-legado", server.importLegadoBackup)
 	protected.POST("/backup/restore-webdav", server.restoreWebDAVBackup)
+	protected.POST("/webdav/import-preview", server.previewWebDAVImport)
 	protected.POST("/webdav/import", server.importFromWebDAV)
 
 	router.GET("/ws/sync", server.syncSocket)

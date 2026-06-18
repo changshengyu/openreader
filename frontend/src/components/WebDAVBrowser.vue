@@ -6,8 +6,7 @@
         <span>{{ currentPathLabel }}</span>
       </div>
       <div class="webdav-actions">
-        <el-select v-model="targetCategoryId" size="small" placeholder="导入分组" clearable class="webdav-category-select">
-          <el-option label="未分组" value="" />
+        <el-select v-model="targetCategoryIds" size="small" placeholder="导入分组（可多选）" multiple clearable class="webdav-category-select">
           <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
         </el-select>
         <el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
@@ -123,6 +122,16 @@
       <el-button @click="selection = []">取消</el-button>
     </div>
 
+    <LocalBookImportPreviewDialog
+      v-model="previewDialog"
+      title="WebDAV 导入预览"
+      :items="previewItems"
+      :categories="bookshelf.categories"
+      :category-ids="targetCategoryIds"
+      :loading="importing"
+      @confirm="confirmPreviewImport"
+    />
+
     <el-dialog v-model="importResultDialog" title="WebDAV 导入结果" width="560px" :fullscreen="isMobile">
       <div class="result-list">
         <div v-for="(item, index) in importResults" :key="index" class="result-row">
@@ -140,7 +149,8 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened, Refresh, Upload } from '@element-plus/icons-vue'
 import { restoreWebDAVBackup } from '../api/backup'
-import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, listWebDAV, renameWebDAV, uploadWebDAV } from '../api/webdav'
+import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, listWebDAV, previewWebDAVImport, renameWebDAV, uploadWebDAV } from '../api/webdav'
+import LocalBookImportPreviewDialog from './LocalBookImportPreviewDialog.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { applyRestoreResult } from '../utils/restoreSync'
 
@@ -165,9 +175,11 @@ const loading = ref(false)
 const uploading = ref(false)
 const restoring = ref('')
 const importing = ref(false)
+const previewDialog = ref(false)
+const previewItems = ref([])
 const importResultDialog = ref(false)
 const importResults = ref([])
-const targetCategoryId = ref('')
+const targetCategoryIds = ref([])
 
 const currentPathLabel = computed(() => path.value || '/')
 const breadcrumbs = computed(() => {
@@ -345,17 +357,35 @@ async function importSelected() {
 async function importBooks(paths) {
   importing.value = true
   try {
-    const categoryId = targetCategoryId.value ? Number(targetCategoryId.value) : null
-    const { data } = await importFromWebDAV(paths, categoryId)
+    const { data } = await previewWebDAVImport(paths)
+    previewItems.value = data.items || []
+    if (!previewItems.value.some(item => item.book)) {
+      ElMessage.warning('没有可导入的书籍')
+      return
+    }
+    previewDialog.value = true
+  } catch (err) {
+    ElMessage.error(readError(err, '解析 WebDAV 文件失败'))
+  } finally {
+    importing.value = false
+  }
+}
+
+async function confirmPreviewImport({ items: selectedItems, categoryIds }) {
+  importing.value = true
+  try {
+    const { data } = await importFromWebDAV(selectedItems, categoryIds)
     importResults.value = data.imported || []
     const success = importResults.value.filter(item => item.book).length
     const failed = importResults.value.filter(item => item.error).length
     ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
     importResultDialog.value = true
+    previewDialog.value = false
     importResults.value.forEach(item => {
       if (item.book) bookshelf.upsertBook(item.book)
     })
     emit('imported', importResults.value)
+    await load()
   } catch (err) {
     ElMessage.error(readError(err, '导入 WebDAV 文件失败'))
   } finally {

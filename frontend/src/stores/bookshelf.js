@@ -347,12 +347,19 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.invalidateCategories()
       return data
     },
-    async importTXT({ file, title, author, categoryId, tocRule }) {
+    async importTXT({ file, title, author, categoryId, categoryIds = [], tocRule }) {
       const form = new FormData()
       form.append('file', file)
       if (title) form.append('title', title)
       if (author) form.append('author', author)
-      if (categoryId) form.append('categoryId', categoryId)
+      const normalizedCategoryIds = Array.isArray(categoryIds)
+        ? categoryIds.map(id => Number(id)).filter(id => Number.isFinite(id) && id > 0)
+        : []
+      if (normalizedCategoryIds.length) {
+        normalizedCategoryIds.forEach(id => form.append('categoryIds', String(id)))
+      } else if (categoryId) {
+        form.append('categoryId', categoryId)
+      }
       if (tocRule) form.append('tocRule', tocRule)
 
       const { data } = await api.post('/imports/books', form, {

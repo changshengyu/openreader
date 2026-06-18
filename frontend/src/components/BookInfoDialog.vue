@@ -22,6 +22,7 @@
       :can-update="canUpdate"
       :update-switch-loading="updateSwitchLoading"
       :browser-cache-count="browserCacheCount"
+      :in-shelf="inShelf"
       :show-category-action="showCategoryAction"
       :category-action-label="categoryActionLabel"
       :show-local-refresh-action="showLocalRefreshAction"
@@ -99,6 +100,10 @@ defineProps({
   browserCacheCount: {
     type: Number,
     default: -1,
+  },
+  inShelf: {
+    type: Boolean,
+    default: true,
   },
   showCategoryAction: {
     type: Boolean,

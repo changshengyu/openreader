@@ -31,8 +31,13 @@ export function downloadWebDAV(path) {
   return axios.get(webdavURL(path), { responseType: 'blob' })
 }
 
-export function importFromWebDAV(paths, categoryId = null) {
-  return api.post('/webdav/import', { paths, categoryId })
+export function importFromWebDAV(paths, categoryIds = []) {
+  const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
+  return api.post('/webdav/import', items.length ? { items, categoryIds } : { paths, categoryIds })
+}
+
+export function previewWebDAVImport(paths) {
+  return api.post('/webdav/import-preview', { paths })
 }
 
 function webdavURL(path) {

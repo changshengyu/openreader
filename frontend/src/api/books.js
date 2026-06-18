@@ -12,6 +12,17 @@ export function createRemoteBook(payload) {
   return api.post('/books/remote', payload)
 }
 
+export function previewLocalBook(file, payload = {}) {
+  const form = new FormData()
+  form.append('file', file)
+  if (payload.title) form.append('title', payload.title)
+  if (payload.author) form.append('author', payload.author)
+  if (payload.tocRule) form.append('tocRule', payload.tocRule)
+  return api.post('/imports/books/preview', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
 export function checkBookUpdates(payload = {}) {
   return api.post('/books/check-updates', payload)
 }

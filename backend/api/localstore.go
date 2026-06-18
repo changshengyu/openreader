@@ -247,16 +247,27 @@ func (s *Server) deleteFromLocalStore(c *gin.Context) {
 func (s *Server) importFromLocalStore(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
-	var req struct {
-		Paths      []string `json:"paths" binding:"required"`
-		CategoryID *uint    `json:"categoryId"`
-	}
+	var req localBookImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
 		return
 	}
-	if !s.validateCategory(c, userID, req.CategoryID) {
+	paths := req.requestedPaths()
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
 		return
+	}
+	categoryIDs := categoryIDsFromRequest(req.CategoryID, req.CategoryIDs)
+	if len(req.CategoryIDs) > 0 {
+		if !s.validateCategoryIDs(c, userID, categoryIDs) {
+			return
+		}
+	} else if !s.validateCategory(c, userID, req.CategoryID) {
+		return
+	}
+	var primaryCategoryID *uint
+	if len(categoryIDs) > 0 {
+		primaryCategoryID = &categoryIDs[0]
 	}
 
 	userName, ok := s.currentUserName(c, userID)
@@ -268,8 +279,9 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 	imported := make([]gin.H, 0)
 	importedBooks := make([]bookListItem, 0)
 	seen := make(map[string]bool)
+	itemByPath := req.itemByPath()
 
-	for _, rawPath := range req.Paths {
+	for _, rawPath := range paths {
 		files, ok := s.localStoreImportFiles(c, rawPath)
 		if !ok {
 			continue
@@ -284,20 +296,24 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
 				continue
 			}
+			override := itemByPath[file.relativePath]
 			book, err := importer.Import(localbook.ImportRequest{
 				UserID:     userID,
 				UserName:   userName,
 				FileName:   filepath.Base(file.filePath),
 				Extension:  file.extension,
 				Data:       data,
-				CategoryID: req.CategoryID,
+				Title:      override.Title,
+				Author:     override.Author,
+				CategoryID: primaryCategoryID,
+				TOCRule:    override.TOCRule,
 			})
 			if err != nil {
 				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
 				continue
 			}
-			if req.CategoryID != nil {
-				_ = s.setBookCategories(s.db, userID, book.ID, []uint{*req.CategoryID})
+			if len(categoryIDs) > 0 {
+				_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 			}
 			item := s.bookShelfListItem(userID, book)
 			imported = append(imported, gin.H{"path": file.relativePath, "book": item})
@@ -307,6 +323,55 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": importedBooks})
 	c.JSON(http.StatusOK, gin.H{"imported": imported})
+}
+
+func (s *Server) previewLocalStoreImport(c *gin.Context) {
+	var req localBookImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+		return
+	}
+	paths := req.requestedPaths()
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+		return
+	}
+	importer := localbook.NewImporter(s.cfg, s.db)
+	results := make([]gin.H, 0)
+	seen := make(map[string]bool)
+	itemByPath := req.itemByPath()
+	for _, rawPath := range paths {
+		files, ok := s.localStoreImportFiles(c, rawPath)
+		if !ok {
+			continue
+		}
+		for _, file := range files {
+			if seen[file.relativePath] {
+				continue
+			}
+			seen[file.relativePath] = true
+			data, err := os.ReadFile(file.filePath)
+			if err != nil {
+				results = append(results, gin.H{"path": file.relativePath, "error": err.Error()})
+				continue
+			}
+			override := itemByPath[file.relativePath]
+			preview, err := importer.Preview(localbook.ImportRequest{
+				FileName:  filepath.Base(file.filePath),
+				Extension: file.extension,
+				Data:      data,
+				Title:     override.Title,
+				Author:    override.Author,
+				TOCRule:   override.TOCRule,
+			})
+			if err != nil {
+				results = append(results, gin.H{"path": file.relativePath, "error": err.Error()})
+				continue
+			}
+			results = append(results, gin.H{"path": file.relativePath, "book": preview})
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": results})
 }
 
 type localStoreImportFile struct {

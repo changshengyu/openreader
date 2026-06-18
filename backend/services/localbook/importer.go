@@ -36,8 +36,60 @@ type ImportRequest struct {
 	TOCRule    string
 }
 
+type PreviewChapter struct {
+	Index int    `json:"index"`
+	Title string `json:"title"`
+}
+
+type PreviewResult struct {
+	Title        string           `json:"title"`
+	Author       string           `json:"author"`
+	ChapterCount int              `json:"chapterCount"`
+	Chapters     []PreviewChapter `json:"chapters"`
+}
+
 func NewImporter(cfg config.Config, db *gorm.DB) Importer {
 	return Importer{cfg: cfg, db: db}
+}
+
+func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
+	parsedBook, err := parseUploadedBook(request.Extension, request.Data, request.TOCRule)
+	if err != nil {
+		if errors.Is(err, ErrUnsupportedFormat) {
+			return PreviewResult{}, err
+		}
+		return PreviewResult{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+	}
+	if len(parsedBook.Chapters) == 0 {
+		return PreviewResult{}, ErrNoReadableChapters
+	}
+
+	title := strings.TrimSpace(request.Title)
+	if title == "" {
+		title = strings.TrimSpace(parsedBook.Title)
+	}
+	if title == "" {
+		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
+	}
+	author := strings.TrimSpace(request.Author)
+	if author == "" {
+		author = strings.TrimSpace(parsedBook.Author)
+	}
+
+	chapters := make([]PreviewChapter, 0, len(parsedBook.Chapters))
+	for index, chapter := range parsedBook.Chapters {
+		chapterTitle := strings.TrimSpace(chapter.Title)
+		if chapterTitle == "" {
+			chapterTitle = fmt.Sprintf("第 %d 章", index+1)
+		}
+		chapters = append(chapters, PreviewChapter{Index: index, Title: chapterTitle})
+	}
+	return PreviewResult{
+		Title:        title,
+		Author:       author,
+		ChapterCount: len(chapters),
+		Chapters:     chapters,
+	}, nil
 }
 
 func (importer Importer) Import(request ImportRequest) (models.Book, error) {
