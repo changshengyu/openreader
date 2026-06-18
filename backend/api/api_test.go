@@ -212,8 +212,18 @@ func TestBackupIncludesUserData(t *testing.T) {
 	if err := server.db.Create(&category).Error; err != nil {
 		t.Fatal(err)
 	}
+	categoryExtra := models.Category{UserID: 1, Name: "备份分组二", SortOrder: 8}
+	if err := server.db.Create(&categoryExtra).Error; err != nil {
+		t.Fatal(err)
+	}
 	book := models.Book{UserID: 1, CategoryID: &category.ID, Title: "备份书", URL: "https://book.example/backup"}
 	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.BookCategory{UserID: 1, BookID: book.ID, CategoryID: category.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.BookCategory{UserID: 1, BookID: book.ID, CategoryID: categoryExtra.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
 	progress := models.ReadingProgress{UserID: 1, BookID: book.ID, ChapterIndex: 4, Offset: 99, ChapterTitle: "进度章"}
@@ -267,7 +277,7 @@ func TestBackupIncludesUserData(t *testing.T) {
 	if !strings.Contains(entries["categories.json"], `"name": "备份分组"`) {
 		t.Fatalf("unexpected categories backup: %s", entries["categories.json"])
 	}
-	if !strings.Contains(entries["bookshelf.json"], `"categoryName": "备份分组"`) {
+	if !strings.Contains(entries["bookshelf.json"], `"categoryName": "备份分组"`) || !strings.Contains(entries["bookshelf.json"], `"categoryNames":`) || !strings.Contains(entries["bookshelf.json"], `"备份分组二"`) {
 		t.Fatalf("unexpected bookshelf backup: %s", entries["bookshelf.json"])
 	}
 	if !strings.Contains(entries["bookmarks.json"], `"bookTitle": "备份书"`) || !strings.Contains(entries["bookmarks.json"], `"title": "备份书签"`) {
@@ -1137,6 +1147,90 @@ func TestBookMutationsReturnShelfListItems(t *testing.T) {
 	}
 	if updated.ID != created.ID || updated.CategoryID == nil || *updated.CategoryID != category.ID || updated.ShelfOrderAt.IsZero() {
 		t.Fatalf("expected category response shelf item, got %+v", updated)
+	}
+}
+
+func TestBookMultiCategoryMembership(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	categoryA := models.Category{UserID: user.ID, Name: "多分组A"}
+	categoryB := models.Category{UserID: user.ID, Name: "多分组B"}
+	if err := server.db.Create(&categoryA).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&categoryB).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "多分组书"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := fmt.Sprintf(`{"categoryIds":[%d,%d]}`, categoryA.ID, categoryB.ID)
+	req := httptest.NewRequest(http.MethodPut, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/category", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("set multi category: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated struct {
+		ID          uint   `json:"id"`
+		CategoryID  *uint  `json:"categoryId"`
+		CategoryIDs []uint `json:"categoryIds"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.CategoryID == nil || *updated.CategoryID != categoryA.ID || !sameUintSet(updated.CategoryIDs, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected both categories in response, got %+v", updated)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/books?categoryId="+strconv.FormatUint(uint64(categoryB.ID), 10), nil)
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("filter category B: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var filtered []struct {
+		ID          uint   `json:"id"`
+		CategoryIDs []uint `json:"categoryIds"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != book.ID || !sameUintSet(filtered[0].CategoryIDs, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected book to appear under second category, got %+v", filtered)
+	}
+
+	body = fmt.Sprintf(`{"action":"category-remove","bookIds":[%d],"categoryId":%d}`, book.ID, categoryA.ID)
+	req = httptest.NewRequest(http.MethodPost, "/api/books/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch remove category: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var batchResp struct {
+		Books []struct {
+			ID          uint   `json:"id"`
+			CategoryID  *uint  `json:"categoryId"`
+			CategoryIDs []uint `json:"categoryIds"`
+		} `json:"books"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &batchResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(batchResp.Books) != 1 || batchResp.Books[0].CategoryID == nil || *batchResp.Books[0].CategoryID != categoryB.ID || !sameUintSet(batchResp.Books[0].CategoryIDs, []uint{categoryB.ID}) {
+		t.Fatalf("expected only category B after remove, got %+v", batchResp)
 	}
 }
 
@@ -4576,14 +4670,14 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bookFile.Write([]byte(`[{"title":"OpenReader备份书","author":"作者","url":"https://book.example/openreader","coverUrl":"https://book.example/openreader-cover.jpg","customCoverUrl":"/uploads/covers/openreader-custom.jpg","lastChapter":"最新章","chapterCount":12,"canUpdate":true,"categoryName":"OpenReader分组"}]`)); err != nil {
+	if _, err := bookFile.Write([]byte(`[{"title":"OpenReader备份书","author":"作者","url":"https://book.example/openreader","coverUrl":"https://book.example/openreader-cover.jpg","customCoverUrl":"/uploads/covers/openreader-custom.jpg","lastChapter":"最新章","chapterCount":12,"canUpdate":true,"categoryName":"OpenReader分组","categoryNames":["OpenReader分组","OpenReader分组二"]}]`)); err != nil {
 		t.Fatal(err)
 	}
 	categoryFile, err := zipWriter.Create("categories.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := categoryFile.Write([]byte(`[{"name":"OpenReader分组","color":"#336699","sortOrder":3}]`)); err != nil {
+	if _, err := categoryFile.Write([]byte(`[{"name":"OpenReader分组","color":"#336699","sortOrder":3},{"name":"OpenReader分组二","color":"#663399","sortOrder":4}]`)); err != nil {
 		t.Fatal(err)
 	}
 	ruleFile, err := zipWriter.Create("replaceRules.json")
@@ -4625,7 +4719,7 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("restore openreader backup: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	for _, expected := range []string{`"books":1`, `"categories":1`, `"bookmarks":1`, `"progress":1`, `"replaceRules":1`, `"rssSources":1`} {
+	for _, expected := range []string{`"books":1`, `"categories":2`, `"bookmarks":1`, `"progress":1`, `"replaceRules":1`, `"rssSources":1`} {
 		if !strings.Contains(w.Body.String(), expected) {
 			t.Fatalf("expected %s in restore result, got %s", expected, w.Body.String())
 		}
@@ -4646,8 +4740,23 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if err := server.db.Where("user_id = ? AND name = ?", user.ID, "OpenReader分组").First(&category).Error; err != nil {
 		t.Fatal(err)
 	}
+	var categoryExtra models.Category
+	if err := server.db.Where("user_id = ? AND name = ?", user.ID, "OpenReader分组二").First(&categoryExtra).Error; err != nil {
+		t.Fatal(err)
+	}
 	if book.CategoryID == nil || *book.CategoryID != category.ID {
 		t.Fatalf("expected restored book category %d, got %+v", category.ID, book.CategoryID)
+	}
+	var restoredCategoryRows []models.BookCategory
+	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).Find(&restoredCategoryRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	restoredCategoryIDs := make([]uint, 0, len(restoredCategoryRows))
+	for _, row := range restoredCategoryRows {
+		restoredCategoryIDs = append(restoredCategoryIDs, row.CategoryID)
+	}
+	if !sameUintSet(restoredCategoryIDs, []uint{category.ID, categoryExtra.ID}) {
+		t.Fatalf("expected restored book categories, got %+v", restoredCategoryRows)
 	}
 	var progress models.ReadingProgress
 	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).First(&progress).Error; err != nil {
@@ -5436,4 +5545,21 @@ func TestImportFromWebDAVImportsDirectoryRecursively(t *testing.T) {
 			t.Fatalf("expected directory import shelf items, got %+v", payload.Imported)
 		}
 	}
+}
+
+func sameUintSet(a, b []uint) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[uint]int, len(a))
+	for _, value := range a {
+		counts[value]++
+	}
+	for _, value := range b {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
 }

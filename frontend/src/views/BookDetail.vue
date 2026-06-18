@@ -11,7 +11,7 @@
           <BookInfoPanel
             :book="book"
             :source-name="currentSource?.name || ''"
-            :category-name="categoryName(book.categoryId)"
+            :category-name="categoryName(book)"
             :chapters="chapters"
             :progress="bookProgress?.percent || 0"
             :browser-cache-count="book.id ? browserCacheCount : -1"
@@ -152,7 +152,7 @@ import BookInfoPanel from '../components/BookInfoPanel.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
 import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
-import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { bookCategoryIds, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
@@ -290,7 +290,7 @@ async function load() {
     sourceHasMore.value = true
     await refreshBrowserCacheMap()
     if (book.value?.sourceId) await loadSourceCandidates({ silent: true })
-    categoryDraft.value = book.value.categoryId ? String(book.value.categoryId) : ''
+    categoryDraft.value = bookCategoryIds(book.value)[0] ? String(bookCategoryIds(book.value)[0]) : ''
   } catch (err) {
     ElMessage.error(readError(err, '加载书籍失败'))
   } finally {
@@ -349,7 +349,7 @@ async function changeCategory(value) {
     ElMessage.success('分组已更新')
   } catch (err) {
     ElMessage.error(readError(err, '更新分组失败'))
-    categoryDraft.value = book.value.categoryId ? String(book.value.categoryId) : ''
+    categoryDraft.value = bookCategoryIds(book.value)[0] ? String(bookCategoryIds(book.value)[0]) : ''
   }
 }
 
@@ -390,7 +390,7 @@ async function saveBookEdit() {
       author: bookDraft.author,
       coverUrl: bookDraft.coverUrl,
       intro: bookDraft.intro,
-      categoryId: book.value.categoryId || null,
+      categoryIds: bookCategoryIds(book.value),
       canUpdate: book.value.canUpdate !== false,
     })
     await applyBookUpdate(data)
@@ -428,7 +428,7 @@ async function uploadBookCoverFromPanel(file) {
       author: book.value.author || '',
       customCoverUrl: result.url,
       intro: book.value.intro || '',
-      categoryId: book.value.categoryId || null,
+      categoryIds: bookCategoryIds(book.value),
       canUpdate: book.value.canUpdate !== false,
     })
     await applyBookUpdate(data)
@@ -449,7 +449,7 @@ async function toggleBookCanUpdate(value) {
       author: book.value.author || '',
       coverUrl: book.value.coverUrl || '',
       intro: book.value.intro || '',
-      categoryId: book.value.categoryId || null,
+      categoryIds: bookCategoryIds(book.value),
       canUpdate: value,
     })
     await applyBookUpdate(data)
@@ -739,9 +739,13 @@ async function changeSource(source) {
   }
 }
 
-function categoryName(id) {
-  if (!id) return '未分组'
-  return bookshelf.categories.find(category => String(category.id) === String(id))?.name || '未分组'
+function categoryName(bookOrId) {
+  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
+  if (!ids.length) return '未分组'
+  const names = ids
+    .map(id => bookshelf.categories.find(category => String(category.id) === String(id))?.name)
+    .filter(Boolean)
+  return names.length ? names.join('、') : '未分组'
 }
 
 function formatDate(value) {

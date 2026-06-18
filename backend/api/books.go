@@ -30,6 +30,7 @@ import (
 
 type bookListItem struct {
 	models.Book
+	CategoryIDs        []uint                  `json:"categoryIds"`
 	Progress           *models.ReadingProgress `json:"progress,omitempty"`
 	ShelfOrderAt       time.Time               `json:"shelfOrderAt"`
 	CachedChapterCount int64                   `json:"cachedChapterCount"`
@@ -40,16 +41,19 @@ func (s *Server) listBooks(c *gin.Context) {
 
 	var books []models.Book
 	query := s.db.Where("user_id = ?", userID)
-	if categoryID := strings.TrimSpace(c.Query("categoryId")); categoryID != "" {
-		if categoryID == "none" {
-			query = query.Where("category_id IS NULL")
-		} else {
-			query = query.Where("category_id = ?", categoryID)
-		}
-	}
 	if err := query.Order("updated_at desc").Find(&books).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list books"})
 		return
+	}
+	if categoryID := strings.TrimSpace(c.Query("categoryId")); categoryID != "" {
+		categoryIDsByBookID := s.bookCategoryIDsByBookID(userID, books)
+		filtered := make([]models.Book, 0, len(books))
+		for _, book := range books {
+			if bookMatchesCategoryFilter(book, categoryIDsByBookID[book.ID], categoryID) {
+				filtered = append(filtered, book)
+			}
+		}
+		books = filtered
 	}
 
 	c.JSON(http.StatusOK, s.bookShelfListItems(userID, books))
@@ -59,10 +63,11 @@ func (s *Server) bookShelfListItem(userID uint, book models.Book) bookListItem {
 	var progress models.ReadingProgress
 	err := s.db.Where("user_id = ? AND book_id = ?", userID, book.ID).First(&progress).Error
 	cachedCount := s.cachedChapterCount(book.ID, book.SourceID)
+	categoryIDs := s.bookCategoryIDs(userID, book)
 	if err != nil {
-		return bookShelfListItem(book, models.ReadingProgress{}, cachedCount)
+		return bookShelfListItem(book, categoryIDs, models.ReadingProgress{}, cachedCount)
 	}
-	return bookShelfListItem(book, progress, cachedCount)
+	return bookShelfListItem(book, categoryIDs, progress, cachedCount)
 }
 
 func (s *Server) listAllBookShelfItems(userID uint) ([]bookListItem, error) {
@@ -87,10 +92,11 @@ func (s *Server) bookShelfListItems(userID uint, books []models.Book) []bookList
 		progressByBookID[progress.BookID] = progress
 	}
 	cacheCountByBookID := s.cachedChapterCounts(books)
+	categoryIDsByBookID := s.bookCategoryIDsByBookID(userID, books)
 
 	items := make([]bookListItem, 0, len(books))
 	for _, book := range books {
-		items = append(items, bookShelfListItem(book, progressByBookID[book.ID], cacheCountByBookID[book.ID]))
+		items = append(items, bookShelfListItem(book, categoryIDsByBookID[book.ID], progressByBookID[book.ID], cacheCountByBookID[book.ID]))
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		iShelfAt := items[i].ShelfOrderAt
@@ -103,13 +109,119 @@ func (s *Server) bookShelfListItems(userID uint, books []models.Book) []bookList
 	return items
 }
 
-func bookShelfListItem(book models.Book, progress models.ReadingProgress, cachedChapterCount int64) bookListItem {
-	item := bookListItem{Book: book, CachedChapterCount: cachedChapterCount}
+func bookShelfListItem(book models.Book, categoryIDs []uint, progress models.ReadingProgress, cachedChapterCount int64) bookListItem {
+	item := bookListItem{Book: book, CategoryIDs: normalizeBookCategoryIDs(book, categoryIDs), CachedChapterCount: cachedChapterCount}
+	if len(item.CategoryIDs) > 0 {
+		primary := item.CategoryIDs[0]
+		item.CategoryID = &primary
+	}
 	if progress.BookID != 0 {
 		item.Progress = &progress
 	}
 	item.ShelfOrderAt = shelfOrderAt(item.Book, item.Progress)
 	return item
+}
+
+func (s *Server) bookCategoryIDs(userID uint, book models.Book) []uint {
+	return s.bookCategoryIDsByBookID(userID, []models.Book{book})[book.ID]
+}
+
+func (s *Server) bookCategoryIDsByBookID(userID uint, books []models.Book) map[uint][]uint {
+	result := make(map[uint][]uint, len(books))
+	if len(books) == 0 {
+		return result
+	}
+	bookIDs := make([]uint, 0, len(books))
+	legacyByBookID := make(map[uint]*uint, len(books))
+	for _, book := range books {
+		bookIDs = append(bookIDs, book.ID)
+		legacyByBookID[book.ID] = book.CategoryID
+	}
+	var rows []models.BookCategory
+	_ = s.db.Where("user_id = ? AND book_id IN ?", userID, bookIDs).Order("id asc").Find(&rows).Error
+	for _, row := range rows {
+		result[row.BookID] = append(result[row.BookID], row.CategoryID)
+	}
+	for _, book := range books {
+		result[book.ID] = normalizeBookCategoryIDs(book, result[book.ID])
+		if len(result[book.ID]) == 0 && legacyByBookID[book.ID] != nil && *legacyByBookID[book.ID] > 0 {
+			result[book.ID] = []uint{*legacyByBookID[book.ID]}
+		}
+	}
+	return result
+}
+
+func normalizeBookCategoryIDs(book models.Book, categoryIDs []uint) []uint {
+	ids := uniquePositiveUintIDs(categoryIDs)
+	if len(ids) == 0 && book.CategoryID != nil && *book.CategoryID > 0 {
+		ids = append(ids, *book.CategoryID)
+	}
+	return ids
+}
+
+func bookMatchesCategoryFilter(book models.Book, categoryIDs []uint, categoryID string) bool {
+	if categoryID == "none" {
+		return len(normalizeBookCategoryIDs(book, categoryIDs)) == 0
+	}
+	for _, id := range normalizeBookCategoryIDs(book, categoryIDs) {
+		if strconv.FormatUint(uint64(id), 10) == categoryID {
+			return true
+		}
+	}
+	return false
+}
+
+func categoryIDsFromRequest(categoryID *uint, categoryIDs []uint) []uint {
+	ids := uniquePositiveUintIDs(categoryIDs)
+	if len(ids) == 0 && categoryID != nil && *categoryID > 0 {
+		ids = append(ids, *categoryID)
+	}
+	return ids
+}
+
+func requestCategoryIDs(request batchBooksRequest) []uint {
+	return categoryIDsFromRequest(request.CategoryID, request.CategoryIDs)
+}
+
+func mergeCategoryID(book models.Book, categoryIDs []uint, categoryID *uint) []uint {
+	ids := normalizeBookCategoryIDs(book, categoryIDs)
+	if categoryID == nil || *categoryID == 0 {
+		return ids
+	}
+	for _, id := range ids {
+		if id == *categoryID {
+			return ids
+		}
+	}
+	return append(ids, *categoryID)
+}
+
+func removeCategoryID(book models.Book, categoryIDs []uint, categoryID *uint) []uint {
+	if categoryID == nil || *categoryID == 0 {
+		return normalizeBookCategoryIDs(book, categoryIDs)
+	}
+	ids := normalizeBookCategoryIDs(book, categoryIDs)
+	next := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id != *categoryID {
+			next = append(next, id)
+		}
+	}
+	return next
+}
+
+func (s *Server) setBookCategories(tx *gorm.DB, userID, bookID uint, categoryIDs []uint) error {
+	ids := uniquePositiveUintIDs(categoryIDs)
+	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Delete(&models.BookCategory{}).Error; err != nil {
+		return err
+	}
+	for _, categoryID := range ids {
+		row := models.BookCategory{UserID: userID, BookID: bookID, CategoryID: categoryID}
+		if err := tx.Create(&row).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) cachedChapterCount(bookID uint, sourceID uint) int64 {
@@ -169,21 +281,43 @@ func (s *Server) createBook(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
 	var book models.Book
-	if err := c.ShouldBindJSON(&book); err != nil {
+	data, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
 		return
 	}
+	if err := json.Unmarshal(data, &book); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
+		return
+	}
+	var request struct {
+		CategoryIDs []uint `json:"categoryIds"`
+	}
+	_ = json.Unmarshal(data, &request)
 	book.UserID = userID
 	book.Title = strings.TrimSpace(book.Title)
 	if book.Title == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "book title is required"})
 		return
 	}
-	if !s.validateCategory(c, userID, book.CategoryID) {
+	if len(request.CategoryIDs) > 0 {
+		if !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
+			return
+		}
+	} else if !s.validateCategory(c, userID, book.CategoryID) {
 		return
 	}
+	categoryIDs := categoryIDsFromRequest(book.CategoryID, request.CategoryIDs)
+	if len(categoryIDs) > 0 {
+		book.CategoryID = &categoryIDs[0]
+	}
 
-	if err := s.db.Create(&book).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&book).Error; err != nil {
+			return err
+		}
+		return s.setBookCategories(tx, userID, book.ID, categoryIDs)
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create book"})
 		return
 	}
@@ -211,6 +345,7 @@ type bookUpdateRequest struct {
 	CustomCoverURL *string `json:"customCoverUrl"`
 	Intro          *string `json:"intro"`
 	CategoryID     *uint   `json:"categoryId"`
+	CategoryIDs    []uint  `json:"categoryIds"`
 	CanUpdate      *bool   `json:"canUpdate"`
 }
 
@@ -241,7 +376,11 @@ func (s *Server) updateBook(c *gin.Context) {
 		return
 	}
 	_, categoryIDSet := raw["categoryId"]
+	_, categoryIDsSet := raw["categoryIds"]
 	if categoryIDSet && !s.validateCategory(c, userID, request.CategoryID) {
+		return
+	}
+	if categoryIDsSet && !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
 		return
 	}
 
@@ -268,11 +407,33 @@ func (s *Server) updateBook(c *gin.Context) {
 	if categoryIDSet {
 		book.CategoryID = request.CategoryID
 	}
+	if categoryIDsSet {
+		ids := uniquePositiveUintIDs(request.CategoryIDs)
+		if len(ids) > 0 {
+			book.CategoryID = &ids[0]
+		} else {
+			book.CategoryID = nil
+		}
+	}
 	if request.CanUpdate != nil {
 		book.CanUpdate = *request.CanUpdate
 	}
 
-	if err := s.db.Save(&book).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&book).Error; err != nil {
+			return err
+		}
+		if categoryIDsSet {
+			return s.setBookCategories(tx, userID, book.ID, request.CategoryIDs)
+		}
+		if categoryIDSet {
+			if request.CategoryID == nil {
+				return s.setBookCategories(tx, userID, book.ID, nil)
+			}
+			return s.setBookCategories(tx, userID, book.ID, []uint{*request.CategoryID})
+		}
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book"})
 		return
 	}
@@ -302,9 +463,10 @@ func (s *Server) deleteBook(c *gin.Context) {
 }
 
 type batchBooksRequest struct {
-	Action     string `json:"action" binding:"required"`
-	BookIDs    []uint `json:"bookIds" binding:"required"`
-	CategoryID *uint  `json:"categoryId"`
+	Action      string `json:"action" binding:"required"`
+	BookIDs     []uint `json:"bookIds" binding:"required"`
+	CategoryID  *uint  `json:"categoryId"`
+	CategoryIDs []uint `json:"categoryIds"`
 }
 
 type bookIDsRequest struct {
@@ -335,8 +497,19 @@ func (s *Server) batchBooks(c *gin.Context) {
 		s.batchClearBookCache(c, userID, request.BookIDs)
 		return
 	}
-	if request.Action == "category" && !s.validateCategory(c, userID, request.CategoryID) {
-		return
+	switch request.Action {
+	case "category":
+		if len(request.CategoryIDs) > 0 {
+			if !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
+				return
+			}
+		} else if !s.validateCategory(c, userID, request.CategoryID) {
+			return
+		}
+	case "category-add", "category-remove":
+		if !s.validateCategory(c, userID, request.CategoryID) {
+			return
+		}
 	}
 
 	var affected int64
@@ -356,18 +529,29 @@ func (s *Server) batchBooks(c *gin.Context) {
 				}
 				affected++
 			}
-		case "category":
-			result := tx.Model(&models.Book{}).
-				Where("user_id = ? AND id IN ?", userID, request.BookIDs).
-				Update("category_id", request.CategoryID)
-			if result.Error != nil {
-				return result.Error
+		case "category", "category-add", "category-remove":
+			if err := tx.Where("user_id = ? AND id IN ?", userID, request.BookIDs).Find(&updatedBooks).Error; err != nil {
+				return err
 			}
-			affected = result.RowsAffected
-			if affected > 0 {
-				if err := tx.Where("user_id = ? AND id IN ?", userID, request.BookIDs).Find(&updatedBooks).Error; err != nil {
+			for i := range updatedBooks {
+				nextIDs := requestCategoryIDs(request)
+				if request.Action == "category-add" {
+					nextIDs = mergeCategoryID(updatedBooks[i], s.bookCategoryIDs(userID, updatedBooks[i]), request.CategoryID)
+				} else if request.Action == "category-remove" {
+					nextIDs = removeCategoryID(updatedBooks[i], s.bookCategoryIDs(userID, updatedBooks[i]), request.CategoryID)
+				}
+				if err := s.setBookCategories(tx, userID, updatedBooks[i].ID, nextIDs); err != nil {
 					return err
 				}
+				if len(nextIDs) > 0 {
+					updatedBooks[i].CategoryID = &nextIDs[0]
+				} else {
+					updatedBooks[i].CategoryID = nil
+				}
+				if err := tx.Save(&updatedBooks[i]).Error; err != nil {
+					return err
+				}
+				affected++
 			}
 		default:
 			return fmt.Errorf("unsupported batch action")
@@ -385,7 +569,7 @@ func (s *Server) batchBooks(c *gin.Context) {
 			_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_delete", "payload": gin.H{"ids": deletedIDs}})
 		}
 		c.JSON(http.StatusOK, gin.H{"affected": affected, "deletedIds": deletedIDs})
-	case "category":
+	case "category", "category-add", "category-remove":
 		items := make([]bookListItem, 0, len(updatedBooks))
 		for _, book := range updatedBooks {
 			items = append(items, s.bookShelfListItem(userID, book))
@@ -1207,6 +1391,9 @@ func (s *Server) deleteCacheFile(cachePath string) bool {
 }
 
 func deleteBookRecords(tx *gorm.DB, userID, bookID uint, book *models.Book) error {
+	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Delete(&models.BookCategory{}).Error; err != nil {
+		return err
+	}
 	if err := tx.Where("book_id = ?", bookID).Delete(&models.Chapter{}).Error; err != nil {
 		return err
 	}
@@ -1220,7 +1407,8 @@ func deleteBookRecords(tx *gorm.DB, userID, bookID uint, book *models.Book) erro
 }
 
 type bookCategoryRequest struct {
-	CategoryID *uint `json:"categoryId"`
+	CategoryID  *uint  `json:"categoryId"`
+	CategoryIDs []uint `json:"categoryIds"`
 }
 
 func (s *Server) updateBookCategory(c *gin.Context) {
@@ -1235,16 +1423,44 @@ func (s *Server) updateBookCategory(c *gin.Context) {
 	}
 
 	var request bookCategoryRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	data, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
 		return
 	}
-	if !s.validateCategory(c, userID, request.CategoryID) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
+		return
+	}
+	if err := json.Unmarshal(data, &request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
+		return
+	}
+	_, categoryIDsSet := raw["categoryIds"]
+	if categoryIDsSet {
+		if !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
+			return
+		}
+	} else if !s.validateCategory(c, userID, request.CategoryID) {
 		return
 	}
 
-	book.CategoryID = request.CategoryID
-	if err := s.db.Save(&book).Error; err != nil {
+	nextIDs := categoryIDsFromRequest(request.CategoryID, request.CategoryIDs)
+	if !categoryIDsSet && request.CategoryID != nil {
+		nextIDs = []uint{*request.CategoryID}
+	}
+	if len(nextIDs) > 0 {
+		book.CategoryID = &nextIDs[0]
+	} else {
+		book.CategoryID = nil
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.setBookCategories(tx, userID, book.ID, nextIDs); err != nil {
+			return err
+		}
+		return tx.Save(&book).Error
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update category"})
 		return
 	}
@@ -1270,14 +1486,15 @@ func (s *Server) listChapters(c *gin.Context) {
 }
 
 type remoteBookRequest struct {
-	Title      string `json:"title" binding:"required"`
-	Author     string `json:"author"`
-	CoverURL   string `json:"coverUrl"`
-	Intro      string `json:"intro"`
-	BookURL    string `json:"bookUrl" binding:"required"`
-	SourceID   uint   `json:"sourceId" binding:"required"`
-	SourceName string `json:"sourceName"`
-	CategoryID *uint  `json:"categoryId"`
+	Title       string `json:"title" binding:"required"`
+	Author      string `json:"author"`
+	CoverURL    string `json:"coverUrl"`
+	Intro       string `json:"intro"`
+	BookURL     string `json:"bookUrl" binding:"required"`
+	SourceID    uint   `json:"sourceId" binding:"required"`
+	SourceName  string `json:"sourceName"`
+	CategoryID  *uint  `json:"categoryId"`
+	CategoryIDs []uint `json:"categoryIds"`
 }
 
 func (s *Server) createRemoteBook(c *gin.Context) {
@@ -1288,9 +1505,14 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title, bookUrl, and sourceId are required"})
 		return
 	}
-	if !s.validateCategory(c, userID, req.CategoryID) {
+	if len(req.CategoryIDs) > 0 {
+		if !s.validateCategoryIDs(c, userID, req.CategoryIDs) {
+			return
+		}
+	} else if !s.validateCategory(c, userID, req.CategoryID) {
 		return
 	}
+	categoryIDs := categoryIDsFromRequest(req.CategoryID, req.CategoryIDs)
 
 	var source models.BookSource
 	if err := s.db.First(&source, req.SourceID).Error; err != nil {
@@ -1300,9 +1522,18 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 
 	var existing models.Book
 	if err := s.db.Where("user_id = ? AND url = ?", userID, strings.TrimSpace(req.BookURL)).First(&existing).Error; err == nil {
-		if req.CategoryID != nil {
-			existing.CategoryID = req.CategoryID
-			_ = s.db.Save(&existing).Error
+		if len(req.CategoryIDs) > 0 || req.CategoryID != nil {
+			if len(categoryIDs) > 0 {
+				existing.CategoryID = &categoryIDs[0]
+			} else {
+				existing.CategoryID = nil
+			}
+			_ = s.db.Transaction(func(tx *gorm.DB) error {
+				if err := s.setBookCategories(tx, userID, existing.ID, categoryIDs); err != nil {
+					return err
+				}
+				return tx.Save(&existing).Error
+			})
 		}
 		c.JSON(http.StatusOK, s.broadcastBookShelfUpdate(userID, existing))
 		return
@@ -1326,14 +1557,19 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		CoverURL:     strings.TrimSpace(req.CoverURL),
 		Intro:        strings.TrimSpace(req.Intro),
 		URL:          req.BookURL,
-		CategoryID:   req.CategoryID,
 		LastChapter:  chapters[len(chapters)-1].Title,
 		ChapterCount: len(chapters),
 		CanUpdate:    true,
 	}
+	if len(categoryIDs) > 0 {
+		book.CategoryID = &categoryIDs[0]
+	}
 
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&book).Error; err != nil {
+			return err
+		}
+		if err := s.setBookCategories(tx, userID, book.ID, categoryIDs); err != nil {
 			return err
 		}
 		for _, ch := range chapters {

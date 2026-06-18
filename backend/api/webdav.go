@@ -325,6 +325,9 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
 				continue
 			}
+			if req.CategoryID != nil {
+				_ = s.setBookCategories(s.db, userID, book.ID, []uint{*req.CategoryID})
+			}
 			item := s.bookShelfListItem(userID, book)
 			imported = append(imported, gin.H{"path": file.relativePath, "book": item})
 			importedBooks = append(importedBooks, item)
@@ -674,22 +677,23 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 	}
 
 	var books []struct {
-		Title           string `json:"title"`
-		Name            string `json:"name"`
-		Author          string `json:"author"`
-		URL             string `json:"url"`
-		BookURL         string `json:"bookUrl"`
-		CoverURL        string `json:"coverUrl"`
-		CustomCoverURL  string `json:"customCoverUrl"`
-		Intro           string `json:"intro"`
-		LastChapter     string `json:"lastChapter"`
-		ChapterCount    int    `json:"chapterCount"`
-		CanUpdate       *bool  `json:"canUpdate"`
-		CategoryName    string `json:"categoryName"`
-		OriginName      string `json:"originName"`
-		DurChapter      int    `json:"durChapter"`
-		DurChapterPos   int    `json:"durChapterPos"`
-		DurChapterTitle string `json:"durChapterTitle"`
+		Title           string   `json:"title"`
+		Name            string   `json:"name"`
+		Author          string   `json:"author"`
+		URL             string   `json:"url"`
+		BookURL         string   `json:"bookUrl"`
+		CoverURL        string   `json:"coverUrl"`
+		CustomCoverURL  string   `json:"customCoverUrl"`
+		Intro           string   `json:"intro"`
+		LastChapter     string   `json:"lastChapter"`
+		ChapterCount    int      `json:"chapterCount"`
+		CanUpdate       *bool    `json:"canUpdate"`
+		CategoryName    string   `json:"categoryName"`
+		CategoryNames   []string `json:"categoryNames"`
+		OriginName      string   `json:"originName"`
+		DurChapter      int      `json:"durChapter"`
+		DurChapterPos   int      `json:"durChapterPos"`
+		DurChapterTitle string   `json:"durChapterTitle"`
 	}
 	if err := json.Unmarshal(data, &books); err != nil {
 		return 0, 0, err
@@ -725,8 +729,9 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 			ChapterCount:   b.ChapterCount,
 			CanUpdate:      canUpdate,
 		}
-		if categoryID := s.findRestoredCategoryID(userID, b.CategoryName); categoryID != nil {
-			book.CategoryID = categoryID
+		categoryIDs := s.restoredCategoryIDs(userID, b.CategoryName, b.CategoryNames)
+		if len(categoryIDs) > 0 {
+			book.CategoryID = &categoryIDs[0]
 		}
 		query := s.db.Where("user_id = ? AND title = ?", userID, book.Title)
 		if book.URL != "" {
@@ -748,6 +753,7 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 			if err := s.db.Save(&existing).Error; err != nil {
 				continue
 			}
+			_ = s.setBookCategories(s.db, userID, existing.ID, categoryIDs)
 			count++
 			if s.restoreBookshelfProgress(userID, existing.ID, b.DurChapter, b.DurChapterPos, b.DurChapterTitle) {
 				progressCount++
@@ -757,6 +763,7 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 		if err := s.db.Create(&book).Error; err != nil {
 			continue
 		}
+		_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 		if s.restoreBookshelfProgress(userID, book.ID, b.DurChapter, b.DurChapterPos, b.DurChapterTitle) {
 			progressCount++
 		}
@@ -991,6 +998,30 @@ func (s *Server) findRestoredCategoryID(userID uint, categoryName string) *uint 
 		return nil
 	}
 	return &category.ID
+}
+
+func (s *Server) restoredCategoryIDs(userID uint, categoryName string, categoryNames []string) []uint {
+	names := make([]string, 0, len(categoryNames)+1)
+	names = append(names, categoryNames...)
+	if strings.TrimSpace(categoryName) != "" {
+		names = append(names, categoryName)
+	}
+	seen := make(map[string]struct{}, len(names))
+	ids := make([]uint, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		if categoryID := s.findRestoredCategoryID(userID, name); categoryID != nil {
+			ids = append(ids, *categoryID)
+		}
+	}
+	return ids
 }
 
 func (s *Server) findRestoredBook(userID uint, bookURL string, title string) (models.Book, bool) {

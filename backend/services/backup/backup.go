@@ -183,7 +183,8 @@ func (s *Service) addCategories(zipWriter *zip.Writer) {
 func (s *Service) addBookshelf(zipWriter *zip.Writer) {
 	type bookExport struct {
 		models.Book
-		CategoryName string `json:"categoryName,omitempty"`
+		CategoryName  string   `json:"categoryName,omitempty"`
+		CategoryNames []string `json:"categoryNames,omitempty"`
 	}
 	var books []models.Book
 	if err := s.db.Order("id asc").Find(&books).Error; err != nil {
@@ -192,10 +193,22 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer) {
 	rows := make([]bookExport, 0, len(books))
 	for _, book := range books {
 		row := bookExport{Book: book}
-		if book.CategoryID != nil {
+		var categoryRows []models.Category
+		_ = s.db.
+			Joins("JOIN book_categories ON book_categories.category_id = categories.id").
+			Where("book_categories.user_id = ? AND book_categories.book_id = ?", book.UserID, book.ID).
+			Order("book_categories.id asc").
+			Find(&categoryRows).Error
+		for _, category := range categoryRows {
+			row.CategoryNames = append(row.CategoryNames, category.Name)
+		}
+		if len(row.CategoryNames) > 0 {
+			row.CategoryName = row.CategoryNames[0]
+		} else if book.CategoryID != nil {
 			var category models.Category
 			if err := s.db.Select("name").First(&category, *book.CategoryID).Error; err == nil {
 				row.CategoryName = category.Name
+				row.CategoryNames = []string{category.Name}
 			}
 		}
 		rows = append(rows, row)

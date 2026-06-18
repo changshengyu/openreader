@@ -296,6 +296,9 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
 				continue
 			}
+			if req.CategoryID != nil {
+				_ = s.setBookCategories(s.db, userID, book.ID, []uint{*req.CategoryID})
+			}
 			item := s.bookShelfListItem(userID, book)
 			imported = append(imported, gin.H{"path": file.relativePath, "book": item})
 			importedBooks = append(importedBooks, item)

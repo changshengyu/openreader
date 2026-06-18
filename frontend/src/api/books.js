@@ -52,8 +52,11 @@ export function cacheBookContent(id, payload) {
   return api.post(`/books/${id}/cache`, payload)
 }
 
-export function updateBookCategory(id, categoryId) {
-  return api.put(`/books/${id}/category`, { categoryId })
+export function updateBookCategory(id, categoryIdOrIds) {
+  if (Array.isArray(categoryIdOrIds)) {
+    return api.put(`/books/${id}/category`, { categoryIds: categoryIdOrIds })
+  }
+  return api.put(`/books/${id}/category`, { categoryId: categoryIdOrIds })
 }
 
 export function listBookSourceCandidates(id, params = {}) {

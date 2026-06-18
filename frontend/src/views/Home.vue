@@ -107,7 +107,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Edit, Grid, List, Menu } from '@element-plus/icons-vue'
-import { useBookshelfStore } from '../stores/bookshelf'
+import { bookCategoryIds, bookHasCategory, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
@@ -136,8 +136,15 @@ const groupItems = computed(() => {
   const categories = Array.isArray(bookshelf.categories) ? bookshelf.categories : []
   const localCount = books.filter(isLocalBook).length
   for (const book of books) {
-    const key = book.categoryId ? String(book.categoryId) : 'none'
-    countByCategory.set(key, (countByCategory.get(key) || 0) + 1)
+    const categoryIds = bookCategoryIds(book)
+    if (!categoryIds.length) {
+      countByCategory.set('none', (countByCategory.get('none') || 0) + 1)
+      continue
+    }
+    categoryIds.forEach(id => {
+      const key = String(id)
+      countByCategory.set(key, (countByCategory.get(key) || 0) + 1)
+    })
   }
   const noneCount = countByCategory.get('none') || 0
   return [
@@ -161,8 +168,8 @@ const displayedBooks = computed(() => {
   const filtered = sortedBooks.value.filter(book => {
     if (!selectedGroup.value) return true
     if (selectedGroup.value === 'local') return isLocalBook(book)
-    if (selectedGroup.value === 'none') return !book.categoryId
-    return String(book.categoryId) === selectedGroup.value
+    if (selectedGroup.value === 'none') return bookCategoryIds(book).length === 0
+    return bookHasCategory(book, selectedGroup.value)
   })
   return filtered
 })
@@ -243,7 +250,7 @@ function goEditBook(book) {
 
 function openDetail(book) {
   overlay.openBookInfo(book, {
-    categoryName: categoryName(book.categoryId),
+    categoryName: categoryName(book),
     progress: (bookProgress(book)?.percent || 0),
   })
 }
@@ -311,9 +318,13 @@ function readerRouteQuery(book) {
   return readerRouteQueryFromBook(book, bookProgress(book))
 }
 
-function categoryName(id) {
-  if (!id) return '未分组'
-  return bookshelf.categories.find(category => String(category.id) === String(id))?.name || '未分组'
+function categoryName(bookOrId) {
+  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
+  if (!ids.length) return '未分组'
+  const names = ids
+    .map(id => bookshelf.categories.find(category => String(category.id) === String(id))?.name)
+    .filter(Boolean)
+  return names.length ? names.join('、') : '未分组'
 }
 
 function coverInitial(book) {

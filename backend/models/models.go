@@ -195,6 +195,14 @@ type Category struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+type BookCategory struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	UserID     uint      `json:"userId" gorm:"not null;uniqueIndex:idx_user_book_category"`
+	BookID     uint      `json:"bookId" gorm:"not null;uniqueIndex:idx_user_book_category;index"`
+	CategoryID uint      `json:"categoryId" gorm:"not null;uniqueIndex:idx_user_book_category;index"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
 type Chapter struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	BookID    uint      `json:"bookId" gorm:"not null;uniqueIndex:idx_book_chapter"`

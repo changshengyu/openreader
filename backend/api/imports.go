@@ -78,6 +78,9 @@ func (s *Server) importTXT(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import book"})
 		return
 	}
+	if categoryID != nil {
+		_ = s.setBookCategories(s.db, userID, book.ID, []uint{*categoryID})
+	}
 
 	c.JSON(http.StatusCreated, s.broadcastBookShelfUpdate(userID, book))
 }

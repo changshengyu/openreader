@@ -99,3 +99,38 @@ func (s *Server) validateCategory(c *gin.Context, userID uint, categoryID *uint)
 	}
 	return true
 }
+
+func (s *Server) validateCategoryIDs(c *gin.Context, userID uint, categoryIDs []uint) bool {
+	ids := uniquePositiveUintIDs(categoryIDs)
+	if len(ids) == 0 {
+		return true
+	}
+	var count int64
+	if err := s.db.Model(&models.Category{}).
+		Where("user_id = ? AND id IN ?", userID, ids).
+		Count(&count).Error; err != nil {
+		internalError(c, "failed to validate categories")
+		return false
+	}
+	if count != int64(len(ids)) {
+		badRequest(c, "category not found")
+		return false
+	}
+	return true
+}
+
+func uniquePositiveUintIDs(ids []uint) []uint {
+	seen := make(map[uint]struct{}, len(ids))
+	unique := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
+}

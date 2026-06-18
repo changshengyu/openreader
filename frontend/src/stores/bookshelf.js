@@ -280,15 +280,23 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.invalidateBooks()
       deletedIds.forEach(bookId => syncCachedBookRemoval(bookId))
     },
-    async batchSetCategory(bookIds, categoryId) {
-      const { data } = await batchBooks({ action: 'category', bookIds, categoryId })
+    async batchSetCategory(bookIds, categoryId, options = {}) {
+      const action = options.action || 'category'
+      const payload = Array.isArray(categoryId)
+        ? { action, bookIds, categoryIds: categoryId }
+        : { action, bookIds, categoryId }
+      const { data } = await batchBooks(payload)
       const updatedBooks = asList(data?.books)
       if (updatedBooks.length) {
         updatedBooks.forEach(book => this.upsertBook(book))
         return
       }
       const idSet = new Set(bookIds.map(id => Number(id)))
-      const nextBooks = this.books.map(book => idSet.has(Number(book.id)) ? { ...book, categoryId } : book)
+      const nextBooks = this.books.map(book => {
+        if (!idSet.has(Number(book.id))) return book
+        const categoryIds = nextCategoryIdsForAction(book, categoryId, action)
+        return { ...book, categoryId: categoryIds[0] || null, categoryIds }
+      })
       this.books = sortBooks(nextBooks)
       this.invalidateBooks()
       nextBooks.filter(book => idSet.has(Number(book.id))).forEach(book => syncCachedBookUpsert(book))
@@ -322,10 +330,16 @@ export const useBookshelfStore = defineStore('bookshelf', {
     async removeCategory(categoryId) {
       await deleteCategory(categoryId)
       this.categories = this.categories.filter(category => category.id !== categoryId)
-      const nextBooks = this.books.map(book => String(book.categoryId) === String(categoryId) ? { ...book, categoryId: null } : book)
+      const changedIds = new Set()
+      const nextBooks = this.books.map(book => {
+        if (!bookHasCategory(book, categoryId)) return book
+        changedIds.add(Number(book.id))
+        const categoryIds = bookCategoryIds(book).filter(id => String(id) !== String(categoryId))
+        return { ...book, categoryId: categoryIds[0] || null, categoryIds }
+      })
       this.books = sortBooks(nextBooks)
       this.invalidateShelf()
-      nextBooks.filter(book => String(book.categoryId || '') === '').forEach(book => syncCachedBookUpsert(book))
+      nextBooks.filter(book => changedIds.has(Number(book.id))).forEach(book => syncCachedBookUpsert(book))
     },
     async reorderCategoryIds(ids) {
       const { data } = await reorderCategories(ids)
@@ -452,8 +466,8 @@ function shelfRequestParamsFromCacheKey(key) {
 
 function matchesShelfRequest(book, requestParams = {}) {
   if (!requestParams.categoryId) return true
-  if (requestParams.categoryId === 'none') return !book.categoryId
-  return String(book.categoryId || '') === String(requestParams.categoryId)
+  if (requestParams.categoryId === 'none') return bookCategoryIds(book).length === 0
+  return bookHasCategory(book, requestParams.categoryId)
 }
 
 function sameBookIdList(a, b) {
@@ -464,10 +478,43 @@ function sameBookIdList(a, b) {
 export function mergeShelfBook(current, incoming) {
   if (!current) return incoming
   const next = { ...current, ...incoming }
+  next.categoryIds = bookCategoryIds(next)
+  next.categoryId = next.categoryIds[0] || null
   const progress = newestProgress(current.progress || null, incoming?.progress || null)
   if (progress) next.progress = progress
   next.shelfOrderAt = newestShelfOrderAt(current.shelfOrderAt, incoming?.shelfOrderAt)
   return next
+}
+
+export function bookCategoryIds(book) {
+  const ids = Array.isArray(book?.categoryIds) ? book.categoryIds : []
+  const values = ids
+    .map(id => Number(id))
+    .filter(id => Number.isFinite(id) && id > 0)
+  if (values.length === 0 && book?.categoryId) {
+    const id = Number(book.categoryId)
+    if (Number.isFinite(id) && id > 0) values.push(id)
+  }
+  return [...new Set(values)]
+}
+
+export function bookHasCategory(book, categoryId) {
+  return bookCategoryIds(book).some(id => String(id) === String(categoryId))
+}
+
+function nextCategoryIdsForAction(book, categoryIdOrIds, action) {
+  const current = bookCategoryIds(book)
+  const targetIds = Array.isArray(categoryIdOrIds)
+    ? categoryIdOrIds.map(id => Number(id)).filter(id => Number.isFinite(id) && id > 0)
+    : (categoryIdOrIds ? [Number(categoryIdOrIds)] : [])
+  if (action === 'category-add') {
+    return [...new Set([...current, ...targetIds])]
+  }
+  if (action === 'category-remove') {
+    const removeSet = new Set(targetIds.map(id => String(id)))
+    return current.filter(id => !removeSet.has(String(id)))
+  }
+  return [...new Set(targetIds)]
 }
 
 function newestShelfOrderAt(current, incoming) {

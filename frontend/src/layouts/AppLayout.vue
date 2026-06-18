@@ -1222,9 +1222,13 @@ function readError(err, fallback) {
   position: fixed;
   inset: 0 auto 0 0;
   width: var(--mobile-nav-width, 72vw);
+  max-width: 86vw;
+  min-width: 0;
+  box-sizing: border-box;
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: max(48px, env(safe-area-inset-top)) 36px 88px;
   scrollbar-width: none;
   box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
@@ -1247,6 +1251,8 @@ function readError(err, fallback) {
 
 .app-shell.mobile-shell .app-brand {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   justify-items: initial;
   gap: 12px;
   padding: 8px 0 18px;
@@ -1258,19 +1264,25 @@ function readError(err, fallback) {
 
 .app-shell.mobile-shell .app-shell-search {
   display: block;
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 18px;
 }
 
 .app-shell.mobile-shell .app-search-setting {
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 22px;
   gap: 10px;
 }
 
 .app-shell.mobile-shell .sidebar-search-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 12px;
 }
 
 .app-shell.mobile-shell .sidebar-search-actions button {
+  min-width: 0;
   min-height: 38px;
   padding: 8px;
   background: #fffdf8;
@@ -1286,6 +1298,8 @@ function readError(err, fallback) {
 }
 
 .app-shell.mobile-shell .app-nav {
+  min-width: 0;
+  max-width: 100%;
   gap: 36px;
   padding: 0 0 20px;
 }
@@ -1333,6 +1347,8 @@ function readError(err, fallback) {
 }
 
 .app-shell.mobile-shell .sidebar-recent {
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 8px;
 }
 
@@ -1342,6 +1358,9 @@ function readError(err, fallback) {
 }
 
 .app-shell.mobile-shell .sidebar-recent-book {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: auto;
   padding: 9px 10px;
   place-items: initial;
@@ -1350,9 +1369,12 @@ function readError(err, fallback) {
 
 .app-shell.mobile-shell .sidebar-recent-book span {
   display: block;
+  min-width: 0;
   font-size: 13px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
   white-space: normal;
+  word-break: break-word;
 }
 
 .app-shell.mobile-shell .sidebar-bottom-icons {
@@ -1361,7 +1383,8 @@ function readError(err, fallback) {
   bottom: 30px;
   left: 36px;
   display: flex;
-  width: calc(var(--mobile-nav-width, 72vw) - 72px);
+  width: min(calc(var(--mobile-nav-width, 72vw) - 72px), calc(86vw - 72px));
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   pointer-events: none;

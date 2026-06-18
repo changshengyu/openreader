@@ -45,6 +45,7 @@ func AutoMigrate(database *gorm.DB) error {
 		&models.RSSArticle{},
 		&models.Category{},
 		&models.Book{},
+		&models.BookCategory{},
 		&models.Chapter{},
 		&models.ReadingProgress{},
 		&models.Bookmark{},

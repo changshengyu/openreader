@@ -167,11 +167,19 @@ func (s *Server) deleteCategory(c *gin.Context) {
 	}
 
 	var bookCount int64
-	if err := s.db.Model(&models.Book{}).
+	if err := s.db.Model(&models.BookCategory{}).
 		Where("user_id = ? AND category_id = ?", userID, categoryID).
 		Count(&bookCount).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check category books"})
 		return
+	}
+	if bookCount == 0 {
+		if err := s.db.Model(&models.Book{}).
+			Where("user_id = ? AND category_id = ?", userID, categoryID).
+			Count(&bookCount).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check category books"})
+			return
+		}
 	}
 	if bookCount > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "category is not empty"})

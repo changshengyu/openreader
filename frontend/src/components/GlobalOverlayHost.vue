@@ -116,7 +116,7 @@
       </el-table-column>
       <el-table-column prop="author" label="作者" min-width="120" show-overflow-tooltip />
       <el-table-column label="分组" min-width="120">
-        <template #default="{ row }">{{ categoryName(row.categoryId) }}</template>
+        <template #default="{ row }">{{ categoryName(row) }}</template>
       </el-table-column>
       <el-table-column label="章节" min-width="150">
         <template #default="{ row }">
@@ -172,7 +172,7 @@
           >{{ coverInitial(book) }}</span>
           <button type="button" @click="overlay.openBookInfo(book)">
             <strong>{{ book.title }}</strong>
-            <span>{{ book.author || '未知作者' }} · {{ categoryName(book.categoryId) }}</span>
+            <span>{{ book.author || '未知作者' }} · {{ categoryName(book) }}</span>
             <span>{{ Number(book.sourceId || 0) > 0 ? '远程书籍' : '本地书籍' }} · {{ progressLabel(book) }}</span>
           </button>
         </header>
@@ -236,10 +236,10 @@
     :size="narrowDrawerSize"
   >
     <template v-if="overlay.bookGroupMode === 'set'">
-      <el-table :data="groupSetRows" row-key="id" class="group-set-table" @row-click="selectBookGroup">
+      <el-table :data="groupSetRows" row-key="id" class="group-set-table" @row-click="toggleBookGroupSelection">
         <el-table-column width="46">
           <template #default="{ row }">
-            <span class="radio-cell" :class="{ active: String(settingCategoryId) === String(row.id) }" />
+            <el-checkbox :model-value="isBookGroupSelected(row)" @change="() => toggleBookGroupSelection(row)" @click.stop />
           </template>
         </el-table-column>
         <el-table-column label="分组名">
@@ -642,7 +642,7 @@ import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from 
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
-import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { bookCategoryIds, bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useUserStore } from '../stores/user'
@@ -674,7 +674,7 @@ const localCacheCounts = ref({})
 const refreshingBookId = ref(null)
 const coverUploadingBookId = ref(null)
 const updatingBookId = ref(null)
-const settingCategoryId = ref('')
+const selectedCategoryIds = ref([])
 const settingCategorySaving = ref(false)
 const importingBook = ref(false)
 const visibilitySavingId = ref(null)
@@ -739,7 +739,7 @@ const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl'
 const wideDrawerSize = computed(() => isMobileOverlay.value ? '88%' : '82%')
 const narrowDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const narrowDrawerSize = computed(() => isMobileOverlay.value ? '86%' : '420px')
-const bookInfoCategory = computed(() => overlay.bookInfoOptions.categoryName || categoryName(overlay.bookInfoBook?.categoryId))
+const bookInfoCategory = computed(() => overlay.bookInfoOptions.categoryName || categoryName(overlay.bookInfoBook))
 const bookInfoSourceName = computed(() => {
   if (overlay.bookInfoOptions.sourceName) return overlay.bookInfoOptions.sourceName
   const sourceId = overlay.bookInfoBook?.sourceId
@@ -754,14 +754,13 @@ const bookInfoBrowserCacheCount = computed(() => (
   overlay.bookInfoBook?.id ? localCacheCount(overlay.bookInfoBook) : -1
 ))
 const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
-const groupSetRows = computed(() => [
-  { id: '', name: '未分组', description: '从当前分组移出' },
-  ...bookshelf.categories.map(category => ({
+const groupSetRows = computed(() => (
+  bookshelf.categories.map(category => ({
     ...category,
     id: String(category.id),
     description: `${groupBookCount(category)} 本`,
-  })),
-])
+  }))
+))
 const groupManageRows = computed(() => {
   const categoryById = new Map(bookshelf.categories.map(category => [String(category.id), category]))
   const rows = []
@@ -787,7 +786,7 @@ const filteredManagedBooks = computed(() => {
 function manageBookSearchText(book) {
   return localBookSearchText(book, [
     progressLabel(book),
-    categoryName(book.categoryId),
+    categoryName(book),
   ])
 }
 const contentSearchStatus = computed(() => {
@@ -916,7 +915,7 @@ watch(
       }
     }
     if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
-      settingCategoryId.value = overlay.bookInfoBook?.categoryId ? String(overlay.bookInfoBook.categoryId) : ''
+      selectedCategoryIds.value = bookCategoryIds(overlay.bookInfoBook).map(id => String(id))
     } else if (overlay.bookGroupVisible) {
       resetGroupOrderDraft()
     }
@@ -1003,9 +1002,13 @@ watch(
   },
 )
 
-function categoryName(id) {
-  if (!id) return '未分组'
-  return bookshelf.categories.find(category => String(category.id) === String(id))?.name || '未分组'
+function categoryName(bookOrId) {
+  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
+  if (!ids.length) return '未分组'
+  const names = ids
+    .map(id => bookshelf.categories.find(category => String(category.id) === String(id))?.name)
+    .filter(Boolean)
+  return names.length ? names.join('、') : '未分组'
 }
 
 function progressLabel(book) {
@@ -1084,13 +1087,23 @@ function goDetail(book) {
 
 function setBookGroup(book) {
   overlay.openBookGroup('set', book, {
-    categoryName: categoryName(book.categoryId),
+    categoryName: categoryName(book),
     progress: bookProgress(book)?.percent || 0,
   })
 }
 
-function selectBookGroup(category) {
-  settingCategoryId.value = String(category.id)
+function isBookGroupSelected(category) {
+  return selectedCategoryIds.value.includes(String(category.id))
+}
+
+function toggleBookGroupSelection(category) {
+  const id = String(category.id)
+  if (!id) return
+  if (selectedCategoryIds.value.includes(id)) {
+    selectedCategoryIds.value = selectedCategoryIds.value.filter(item => item !== id)
+    return
+  }
+  selectedCategoryIds.value = [...selectedCategoryIds.value, id]
 }
 
 async function saveBookGroupSetting() {
@@ -1098,13 +1111,13 @@ async function saveBookGroupSetting() {
   if (!book?.id) return
   settingCategorySaving.value = true
   try {
-    const categoryId = settingCategoryId.value ? Number(settingCategoryId.value) : null
-    const { data } = await updateBookCategory(book.id, categoryId)
+    const categoryIds = selectedCategoryIds.value.map(id => Number(id)).filter(Boolean)
+    const { data } = await updateBookCategory(book.id, categoryIds)
     bookshelf.upsertBook(data)
     overlay.bookInfoBook = data
     overlay.bookInfoOptions = {
       ...overlay.bookInfoOptions,
-      categoryName: categoryName(data.categoryId),
+      categoryName: categoryName(data),
       progress: bookProgress(data)?.percent || 0,
     }
     overlay.bookGroupVisible = false
@@ -1236,7 +1249,7 @@ async function uploadBookInfoCover(file) {
       author: book.author || '',
       customCoverUrl: uploadResult.url,
       intro: book.intro || '',
-      categoryId: book.categoryId || null,
+      categoryIds: bookCategoryIds(book),
       canUpdate: book.canUpdate !== false,
     })
     bookshelf.upsertBook(updatedBook)
@@ -1259,7 +1272,7 @@ async function toggleBookCanUpdate(value) {
       author: book.author || '',
       coverUrl: book.coverUrl || '',
       intro: book.intro || '',
-      categoryId: book.categoryId || null,
+      categoryIds: bookCategoryIds(book),
       canUpdate: value,
     })
     bookshelf.upsertBook(updatedBook)
@@ -1276,7 +1289,7 @@ async function batchAddCategory(category) {
   if (!selectedBookIds.value.length) return
   batchBusy.value = true
   try {
-    await bookshelf.batchSetCategory([...selectedBookIds.value], category.id)
+    await bookshelf.batchSetCategory([...selectedBookIds.value], category.id, { action: 'category-add' })
     ElMessage.success(`已添加到“${category.name}”分组`)
   } catch (err) {
     ElMessage.error(readError(err, '批量添加分组失败'))
@@ -1288,7 +1301,7 @@ async function batchAddCategory(category) {
 async function batchRemoveCategory(category) {
   if (!selectedBookIds.value.length) return
   const targetIds = managedBooks.value
-    .filter(book => selectedBookIds.value.includes(book.id) && String(book.categoryId) === String(category.id))
+    .filter(book => selectedBookIds.value.includes(book.id) && bookHasCategory(book, category.id))
     .map(book => book.id)
   if (!targetIds.length) {
     ElMessage.info('选中书籍不在该分组中')
@@ -1296,7 +1309,7 @@ async function batchRemoveCategory(category) {
   }
   batchBusy.value = true
   try {
-    await bookshelf.batchSetCategory(targetIds, null)
+    await bookshelf.batchSetCategory(targetIds, category.id, { action: 'category-remove' })
     ElMessage.success(`已从“${category.name}”分组移除`)
   } catch (err) {
     ElMessage.error(readError(err, '批量移除分组失败'))
@@ -2223,7 +2236,7 @@ async function renameGroup(category) {
 }
 
 function groupBookCount(category) {
-  return managedBooks.value.filter(book => String(book.categoryId || '') === String(category.id)).length
+  return managedBooks.value.filter(book => bookHasCategory(book, category.id)).length
 }
 
 function buildSourceGroupOptions(rows) {
