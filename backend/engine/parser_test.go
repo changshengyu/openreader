@@ -261,6 +261,20 @@ func TestApplyTextReplacementsSupportsRegex(t *testing.T) {
 	}
 }
 
+func TestNormalizeChapterHTMLKeepsTextAndSafeImages(t *testing.T) {
+	got := normalizeChapterHTML(`
+		<div>第一段 <strong>正文</strong></div>
+		<p><img data-src="../images/one.jpg" alt="插图一"></p>
+		<script>alert(1)</script>
+		<img src="javascript:alert(1)">
+		<p>第二段</p>
+	`, "https://books.example/chapters/1.html")
+	want := "第一段 正文\n<img src=\"https://books.example/images/one.jpg\" alt=\"插图一\">\n第二段"
+	if got != want {
+		t.Fatalf("normalized html = %q, want %q", got, want)
+	}
+}
+
 func TestParseSearchResultsIncludesLatestChapter(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(`
 		<div class="book">

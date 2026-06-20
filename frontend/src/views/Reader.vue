@@ -107,7 +107,21 @@
               :data-index="block.index"
             >
               <h1 data-pos="0">{{ block.title || '正文' }}</h1>
-              <p v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`" :data-pos="line.pos">{{ line.text }}</p>
+              <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
+                <figure v-if="line.type === 'image'" class="reader-content-image" :data-pos="line.pos" data-reader-block>
+                  <el-image
+                    :src="line.src"
+                    :alt="line.alt"
+                    :preview-src-list="block.imageUrls"
+                    :initial-index="imageIndex(block, line.src)"
+                    fit="contain"
+                    lazy
+                    preview-teleported
+                  />
+                  <figcaption v-if="line.alt">{{ line.alt }}</figcaption>
+                </figure>
+                <p v-else :data-pos="line.pos" data-reader-block>{{ line.text }}</p>
+              </template>
               <p v-if="chapterLoaded && block.paragraphs.length === 0" class="empty-hint">当前章节暂无正文内容</p>
             </section>
           </template>
@@ -486,6 +500,7 @@ import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
+import { parseReaderContentBlocks } from '../utils/readerContent'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import {
@@ -620,7 +635,7 @@ const canChangeLocalTocRule = computed(() => isTextLocalBook.value || isEPUBLoca
 const chapterParagraphs = computed(() => {
   return makeParagraphs(content.value, chapter.value?.title)
 })
-const lines = computed(() => chapterParagraphs.value.map(item => item.text))
+const lines = computed(() => chapterParagraphs.value.filter(item => item.type === 'text').map(item => item.text))
 const chapterTextLength = computed(() => {
   return chapterBlockTextLength({ paragraphs: chapterParagraphs.value })
 })
@@ -829,15 +844,7 @@ watch(contentSearch, () => {
 })
 
 function makeParagraphs(value, heading = '') {
-  let wordCount = String(heading || '').length + 2
-  return String(value || '').split(/\n+/).reduce((items, rawLine) => {
-    const text = rawLine.trim()
-    if (!text) return items
-    const pos = wordCount
-    wordCount += text.length + 2
-    items.push({ text: formatChineseText(text), pos })
-    return items
-  }, [])
+  return parseReaderContentBlocks(value, heading, formatChineseText)
 }
 
 function formatChineseText(text) {
@@ -865,12 +872,14 @@ function buildSourceGroupOptions(rows) {
 function makeChapterBlock(index, chapterRow, text) {
   const fallback = chapters.value[index] || {}
   const title = chapterRow?.title || fallback.title || `第 ${index + 1} 章`
+  const paragraphs = makeParagraphs(text, title)
   return {
     index,
     id: chapterRow?.id || fallback.id,
     title: displayChapterTitle(title),
     content: String(text || ''),
-    paragraphs: makeParagraphs(text, title),
+    paragraphs,
+    imageUrls: paragraphs.filter(item => item.type === 'image').map(item => item.src),
   }
 }
 
@@ -878,7 +887,11 @@ function chapterBlockTextLength(block) {
   const paragraphs = Array.isArray(block?.paragraphs) ? block.paragraphs : []
   if (!paragraphs.length) return 0
   const last = paragraphs[paragraphs.length - 1]
-  return Number(last.pos || 0) + String(last.text || '').length
+  return Number(last.endPos || last.pos || 0)
+}
+
+function imageIndex(block, src) {
+  return Math.max(0, (block?.imageUrls || []).indexOf(src))
 }
 
 function resetContentSearchState() {
@@ -1290,7 +1303,7 @@ function restoreByChapterPosition(position) {
 
 function paragraphByChapterPosition(chapterEl, position) {
   if (!chapterEl || !Number.isFinite(position) || position <= 0) return null
-  const nodes = [...chapterEl.querySelectorAll('h1[data-pos], p[data-pos]')]
+  const nodes = [...chapterEl.querySelectorAll('h1[data-pos], [data-reader-block][data-pos]')]
   if (!nodes.length) return null
   return [...nodes].reverse().find(node => Number(node.dataset.pos) <= position) || nodes[0]
 }
@@ -2117,7 +2130,7 @@ async function autoReadByParagraph() {
 }
 
 function nextParagraphAfter(paragraph) {
-  const paragraphs = [...(contentBody.value?.querySelectorAll('p') || [])]
+  const paragraphs = [...(contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
   if (!paragraph) return paragraphs[0] || null
   const index = paragraphs.indexOf(paragraph)
   return index >= 0 ? paragraphs[index + 1] || null : paragraphs[0] || null
@@ -2765,7 +2778,7 @@ function visibleParagraphOffset(paragraph, paragraphPos) {
 
 function currentVisibleParagraph() {
   const viewport = contentEl.value?.getBoundingClientRect()
-  const paragraphs = [...(contentBody.value?.querySelectorAll('p') || [])]
+  const paragraphs = [...(contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
   if (!viewport || !paragraphs.length) return null
   const visibleTop = viewport.top + 8
   const visibleBottom = viewport.bottom - 8
@@ -3894,6 +3907,30 @@ function readError(err, fallback) {
   margin: 0 0 var(--reader-paragraph-space);
   font-weight: var(--reader-font-weight);
   text-indent: 2em;
+}
+.reader-content-image {
+  display: grid;
+  width: 100%;
+  margin: 0 auto var(--reader-paragraph-space);
+  place-items: center;
+  text-indent: 0;
+}
+.reader-content-image :deep(.el-image) {
+  display: block;
+  width: min(100%, 960px);
+  min-height: 1px;
+}
+.reader-content-image :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.reader-content-image figcaption {
+  margin-top: 8px;
+  color: rgba(36, 40, 44, 0.55);
+  font-size: 0.78em;
+  text-align: center;
 }
 .reader-content p.reader-search-active {
   background: rgba(47, 111, 109, 0.16);

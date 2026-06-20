@@ -2,11 +2,13 @@ package engine
 
 import (
 	"fmt"
+	stdhtml "html"
 	"net/url"
 	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 
 	"openreader/backend/models"
 )
@@ -226,6 +228,11 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	text := ""
 	if rule.ContentRule != "" {
 		values := Extract(doc.Selection, rule.ContentRule)
+		if ruleOperation(rule.ContentRule) == "html" {
+			for index := range values {
+				values[index] = normalizeChapterHTML(values[index], contentURL)
+			}
+		}
 		text = strings.Join(values, "\n")
 	} else {
 		values := Extract(doc.Selection, "body|text")
@@ -234,6 +241,102 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 
 	text = ApplyTextReplacements(text, rule.TextReplaceRules)
 	return text, nil
+}
+
+func ruleOperation(rule string) string {
+	parts := strings.Split(rule, "|")
+	if len(parts) < 2 {
+		return "text"
+	}
+	return strings.TrimSpace(parts[len(parts)-1])
+}
+
+func normalizeChapterHTML(fragment string, baseURL string) string {
+	doc, err := html.Parse(strings.NewReader("<html><body>" + fragment + "</body></html>"))
+	if err != nil {
+		return strings.TrimSpace(fragment)
+	}
+	lines := make([]string, 0)
+	var text strings.Builder
+	flushText := func() {
+		value := strings.Join(strings.Fields(text.String()), " ")
+		text.Reset()
+		if value != "" {
+			lines = append(lines, value)
+		}
+	}
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			if value := strings.TrimSpace(node.Data); value != "" {
+				if text.Len() > 0 {
+					text.WriteByte(' ')
+				}
+				text.WriteString(value)
+			}
+			return
+		}
+		if node.Type == html.ElementNode {
+			tag := strings.ToLower(node.Data)
+			if tag == "script" || tag == "style" || tag == "noscript" {
+				return
+			}
+			if tag == "img" {
+				flushText()
+				src := firstHTMLAttr(node, "src", "data-src", "data-original", "data-url")
+				src = resolveURL(baseURL, src)
+				if isSafeChapterImageURL(src) {
+					alt := strings.TrimSpace(firstHTMLAttr(node, "alt", "title"))
+					lines = append(lines, `<img src="`+stdhtml.EscapeString(src)+`" alt="`+stdhtml.EscapeString(alt)+`">`)
+				}
+				return
+			}
+			if isChapterBlockTag(tag) {
+				flushText()
+			}
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				walk(child)
+			}
+			if isChapterBlockTag(tag) {
+				flushText()
+			}
+			return
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+	flushText()
+	return strings.Join(lines, "\n")
+}
+
+func firstHTMLAttr(node *html.Node, names ...string) string {
+	for _, name := range names {
+		for _, attr := range node.Attr {
+			if strings.EqualFold(attr.Key, name) && strings.TrimSpace(attr.Val) != "" {
+				return strings.TrimSpace(attr.Val)
+			}
+		}
+	}
+	return ""
+}
+
+func isChapterBlockTag(tag string) bool {
+	switch tag {
+	case "address", "article", "aside", "blockquote", "br", "div", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "li", "main", "nav", "ol", "p", "pre", "section", "table", "tr", "ul":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSafeChapterImageURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func findItems(doc *goquery.Document, rule string) []*goquery.Selection {
