@@ -119,6 +119,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.DELETE("/rss/sources/:id", server.deleteRSSSource)
 	protected.POST("/rss/sources/:id/refresh", server.refreshRSSSource)
 	protected.GET("/rss/articles", server.listRSSArticles)
+	protected.GET("/rss/articles/:id/content", server.getRSSArticleContent)
 	protected.PUT("/rss/articles/:id", server.updateRSSArticleState)
 	protected.GET("/explore/sources", server.listExploreSources)
 	protected.GET("/explore/:sourceId", server.exploreBooks)

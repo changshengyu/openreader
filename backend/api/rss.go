@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/xml"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,8 +25,10 @@ type rssSourceRequest struct {
 	ArticleStyle      *int   `json:"articleStyle"`
 	SortURL           string `json:"sortUrl"`
 	RuleArticles      string `json:"ruleArticles"`
+	RuleNextPage      string `json:"ruleNextPage"`
 	RuleTitle         string `json:"ruleTitle"`
 	RulePubDate       string `json:"rulePubDate"`
+	RuleDescription   string `json:"ruleDescription"`
 	RuleImage         string `json:"ruleImage"`
 	RuleLink          string `json:"ruleLink"`
 	RuleContent       string `json:"ruleContent"`
@@ -61,23 +65,25 @@ func (s *Server) createRSSSource(c *gin.Context) {
 	}
 	customOrder := req.orderOrDefault(s, userID)
 	source := models.RSSSource{
-		UserID:       userID,
-		Title:        strings.TrimSpace(req.Title),
-		URL:          strings.TrimSpace(req.URL),
-		Icon:         strings.TrimSpace(req.Icon),
-		Group:        strings.TrimSpace(req.Group),
-		CustomOrder:  customOrder,
-		SingleURL:    req.singleURLOrDefault(),
-		ArticleStyle: req.articleStyleOrDefault(),
-		SortURL:      strings.TrimSpace(req.SortURL),
-		RuleArticles: strings.TrimSpace(req.RuleArticles),
-		RuleTitle:    strings.TrimSpace(req.RuleTitle),
-		RulePubDate:  strings.TrimSpace(req.RulePubDate),
-		RuleImage:    strings.TrimSpace(req.RuleImage),
-		RuleLink:     strings.TrimSpace(req.RuleLink),
-		RuleContent:  strings.TrimSpace(req.RuleContent),
-		EnableJS:     req.enableJSOrDefault(),
-		Enabled:      enabled,
+		UserID:          userID,
+		Title:           strings.TrimSpace(req.Title),
+		URL:             strings.TrimSpace(req.URL),
+		Icon:            strings.TrimSpace(req.Icon),
+		Group:           strings.TrimSpace(req.Group),
+		CustomOrder:     customOrder,
+		SingleURL:       req.singleURLOrDefault(),
+		ArticleStyle:    req.articleStyleOrDefault(),
+		SortURL:         strings.TrimSpace(req.SortURL),
+		RuleArticles:    strings.TrimSpace(req.RuleArticles),
+		RuleNextPage:    strings.TrimSpace(req.RuleNextPage),
+		RuleTitle:       strings.TrimSpace(req.RuleTitle),
+		RulePubDate:     strings.TrimSpace(req.RulePubDate),
+		RuleDescription: strings.TrimSpace(req.RuleDescription),
+		RuleImage:       strings.TrimSpace(req.RuleImage),
+		RuleLink:        strings.TrimSpace(req.RuleLink),
+		RuleContent:     strings.TrimSpace(req.RuleContent),
+		EnableJS:        req.enableJSOrDefault(),
+		Enabled:         enabled,
 	}
 	if source.URL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
@@ -126,8 +132,10 @@ func (s *Server) updateRSSSource(c *gin.Context) {
 	}
 	source.SortURL = strings.TrimSpace(req.SortURL)
 	source.RuleArticles = strings.TrimSpace(req.RuleArticles)
+	source.RuleNextPage = strings.TrimSpace(req.RuleNextPage)
 	source.RuleTitle = strings.TrimSpace(req.RuleTitle)
 	source.RulePubDate = strings.TrimSpace(req.RulePubDate)
+	source.RuleDescription = strings.TrimSpace(req.RuleDescription)
 	source.RuleImage = strings.TrimSpace(req.RuleImage)
 	source.RuleLink = strings.TrimSpace(req.RuleLink)
 	source.RuleContent = strings.TrimSpace(req.RuleContent)
@@ -353,6 +361,47 @@ func (s *Server) updateRSSArticleState(c *gin.Context) {
 	c.JSON(http.StatusOK, article)
 }
 
+func (s *Server) getRSSArticleContent(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+	articleID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	var article models.RSSArticle
+	if err := s.db.Where("user_id = ? AND id = ?", userID, articleID).First(&article).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "RSS article not found"})
+		return
+	}
+	var source models.RSSSource
+	if err := s.db.Where("user_id = ? AND id = ?", userID, article.SourceID).First(&source).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "RSS source not found"})
+		return
+	}
+	if strings.TrimSpace(source.RuleContent) != "" && strings.TrimSpace(article.Link) != "" &&
+		(strings.TrimSpace(article.Content) == "" || c.Query("refresh") == "1") {
+		body, err := engine.FetchText(article.Link, "utf-8")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS article: " + err.Error()})
+			return
+		}
+		content, err := engine.ExtractRSSRuleContent(body, article.Link, source.RuleContent)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse RSS article: " + err.Error()})
+			return
+		}
+		if strings.TrimSpace(content) != "" {
+			article.Content = content
+			if err := s.db.Save(&article).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cache RSS article"})
+				return
+			}
+		}
+	}
+	article.Summary = engine.SanitizeRSSHTML(article.Summary, article.Link)
+	article.Content = engine.SanitizeRSSHTML(article.Content, article.Link)
+	c.JSON(http.StatusOK, article)
+}
+
 func (s *Server) broadcastRSSUpdate(userID uint, kind string, payload gin.H) {
 	if s.hub == nil {
 		return
@@ -417,9 +466,34 @@ type parsedRSS struct {
 }
 
 func fetchRSSArticles(source models.RSSSource) ([]models.RSSArticle, error) {
-	text, err := engine.FetchText(source.URL, "utf-8")
+	fetchURL := rssSourceFetchURL(source)
+	text, err := engine.FetchText(fetchURL, "utf-8")
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(source.RuleArticles) != "" {
+		rows, err := engine.ParseRSSRuleArticles(text, fetchURL, engine.RSSRuleSet{
+			Articles:    source.RuleArticles,
+			Title:       source.RuleTitle,
+			PubDate:     source.RulePubDate,
+			Description: source.RuleDescription,
+			Image:       source.RuleImage,
+			Link:        source.RuleLink,
+		})
+		if err != nil {
+			return nil, err
+		}
+		articles := make([]models.RSSArticle, 0, len(rows))
+		for _, row := range rows {
+			articles = append(articles, models.RSSArticle{
+				Title:       row.Title,
+				Link:        row.Link,
+				Image:       row.Image,
+				Summary:     engine.SanitizeRSSHTML(row.Description, row.Link),
+				PublishedAt: parseRSSDate(row.PubDate),
+			})
+		}
+		return articles, nil
 	}
 	var parsed parsedRSS
 	if err := xml.Unmarshal([]byte(text), &parsed); err != nil {
@@ -432,8 +506,8 @@ func fetchRSSArticles(source models.RSSSource) ([]models.RSSArticle, error) {
 			Link:        strings.TrimSpace(item.Link),
 			Author:      firstNonEmpty(item.Creator, item.Author),
 			Image:       rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent),
-			Summary:     strings.TrimSpace(item.Description),
-			Content:     strings.TrimSpace(item.Encoded),
+			Summary:     engine.SanitizeRSSHTML(item.Description, item.Link),
+			Content:     engine.SanitizeRSSHTML(item.Encoded, item.Link),
 			PublishedAt: parseRSSDate(item.PubDate),
 		})
 	}
@@ -447,8 +521,8 @@ func fetchRSSArticles(source models.RSSSource) ([]models.RSSArticle, error) {
 			Link:        strings.TrimSpace(link),
 			Author:      strings.TrimSpace(entry.Author.Name),
 			Image:       atomEntryImage(entry.Link, entry.MediaThumbnail, entry.MediaContent),
-			Summary:     strings.TrimSpace(entry.Summary),
-			Content:     strings.TrimSpace(entry.Content),
+			Summary:     engine.SanitizeRSSHTML(entry.Summary, link),
+			Content:     engine.SanitizeRSSHTML(entry.Content, link),
 			PublishedAt: parseRSSDate(firstNonEmpty(entry.Published, entry.Updated)),
 		})
 	}
@@ -459,6 +533,35 @@ func fetchRSSArticles(source models.RSSSource) ([]models.RSSArticle, error) {
 		}
 	}
 	return filtered, nil
+}
+
+var rssSortURLSeparator = regexp.MustCompile(`(?:&&|\r?\n)+`)
+
+func rssSourceFetchURL(source models.RSSSource) string {
+	baseURL := strings.TrimSpace(source.URL)
+	sortRule := strings.TrimSpace(source.SortURL)
+	if sortRule == "" || strings.HasPrefix(sortRule, "@js:") || strings.HasPrefix(sortRule, "<js>") {
+		return baseURL
+	}
+	first := strings.TrimSpace(rssSortURLSeparator.Split(sortRule, 2)[0])
+	if index := strings.Index(first, "::"); index >= 0 {
+		first = strings.TrimSpace(first[index+2:])
+	}
+	if first == "" {
+		return baseURL
+	}
+	parsed, err := url.Parse(first)
+	if err != nil {
+		return baseURL
+	}
+	if parsed.IsAbs() {
+		return parsed.String()
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return baseURL
+	}
+	return base.ResolveReference(parsed).String()
 }
 
 func rssItemImage(enclosureURL string, enclosureType string, thumbnails []struct {

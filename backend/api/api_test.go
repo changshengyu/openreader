@@ -5180,6 +5180,113 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 	}
 }
 
+func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	var listRequests int
+	var contentRequests int
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			var body string
+			switch req.URL.Path {
+			case "/news":
+				listRequests++
+				body = `<main>
+					<article class="entry">
+						<a class="title" href="/post/1">规则文章</a>
+						<time datetime="2026-06-20T10:00:00Z"></time>
+						<div class="summary"><b>规则摘要</b><script>alert(1)</script></div>
+						<img data-src="/images/1.jpg">
+					</article>
+				</main>`
+			case "/post/1":
+				contentRequests++
+				body = `<div class="content"><p onclick="bad()">规则正文</p><img src="/content.jpg"><script>bad()</script></div>`
+			default:
+				t.Fatalf("unexpected RSS request URL: %s", req.URL.String())
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	payload := `{
+		"title":"规则 RSS",
+		"url":"https://rss.example/feed",
+		"sortUrl":"新闻::/news",
+		"ruleArticles":"//article[@class='entry']",
+		"ruleTitle":".title|text",
+		"rulePubDate":"time@datetime",
+		"ruleDescription":".summary|html",
+		"ruleImage":"img@data-src",
+		"ruleLink":".title@href",
+		"ruleContent":".content|html",
+		"enabled":true
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/rss/sources", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create rule RSS source: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var source models.RSSSource
+	if err := json.Unmarshal(w.Body.Bytes(), &source); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh", nil)
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK || !strings.Contains(refreshW.Body.String(), `"imported":1`) {
+		t.Fatalf("refresh rule RSS source: got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+	if listRequests != 1 || contentRequests != 0 {
+		t.Fatalf("refresh requests list=%d content=%d, want 1/0", listRequests, contentRequests)
+	}
+	var article models.RSSArticle
+	if err := server.db.Where("source_id = ?", source.ID).First(&article).Error; err != nil {
+		t.Fatal(err)
+	}
+	if article.Link != "https://rss.example/post/1" || article.Image != "https://rss.example/images/1.jpg" {
+		t.Fatalf("rule URLs were not resolved: %+v", article)
+	}
+	if strings.Contains(article.Summary, "<script") || !strings.Contains(article.Summary, "规则摘要") {
+		t.Fatalf("rule summary was not sanitized: %s", article.Summary)
+	}
+	if article.Content != "" {
+		t.Fatalf("article content was fetched eagerly: %q", article.Content)
+	}
+
+	contentURL := "/api/rss/articles/" + strconv.FormatUint(uint64(article.ID), 10) + "/content"
+	for requestIndex := 0; requestIndex < 2; requestIndex++ {
+		contentReq := httptest.NewRequest(http.MethodGet, contentURL, nil)
+		contentReq.Header.Set("Authorization", token)
+		contentW := httptest.NewRecorder()
+		router.ServeHTTP(contentW, contentReq)
+		if contentW.Code != http.StatusOK {
+			t.Fatalf("load rule RSS content: got %d: %s", contentW.Code, contentW.Body.String())
+		}
+		body := contentW.Body.String()
+		if !strings.Contains(body, "规则正文") || !strings.Contains(body, "https://rss.example/content.jpg") {
+			t.Fatalf("unexpected rule RSS content: %s", body)
+		}
+		if strings.Contains(body, "onclick") || strings.Contains(body, "<script") {
+			t.Fatalf("unsafe rule RSS content: %s", body)
+		}
+	}
+	if contentRequests != 1 {
+		t.Fatalf("content requests = %d, want cached after first request", contentRequests)
+	}
+}
+
 func TestCreateRSSSourceRespectsEnabledFlag(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
@@ -5205,7 +5312,7 @@ func TestRSSSourcePreservesUpstreamFieldsAndOrder(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
 
-	first := `{"sourceName":"后导入","sourceUrl":"https://rss.example/late.xml","sourceIcon":"https://rss.example/late.png","sourceGroup":"新闻","customOrder":20,"singleUrl":false,"articleStyle":1,"sortUrl":"分类::https://rss.example/cat.xml","ruleArticles":"//item","ruleTitle":"title","rulePubDate":"pubDate","ruleImage":"image","ruleLink":"link","ruleContent":"content","enableJs":false,"enabled":true}`
+	first := `{"sourceName":"后导入","sourceUrl":"https://rss.example/late.xml","sourceIcon":"https://rss.example/late.png","sourceGroup":"新闻","customOrder":20,"singleUrl":false,"articleStyle":1,"sortUrl":"分类::https://rss.example/cat.xml","ruleArticles":"//item","ruleNextPage":"next@href","ruleTitle":"title","rulePubDate":"pubDate","ruleDescription":"description|html","ruleImage":"image","ruleLink":"link","ruleContent":"content","enableJs":false,"enabled":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/rss/sources", strings.NewReader(first))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -5221,7 +5328,7 @@ func TestRSSSourcePreservesUpstreamFieldsAndOrder(t *testing.T) {
 	if source.Title != "后导入" || source.URL != "https://rss.example/late.xml" || source.Icon != "https://rss.example/late.png" || source.Group != "新闻" || source.CustomOrder != 20 {
 		t.Fatalf("upstream rss fields were not preserved: %+v", source)
 	}
-	if source.SingleURL || source.ArticleStyle != 1 || source.SortURL != "分类::https://rss.example/cat.xml" || source.RuleArticles != "//item" || source.RuleTitle != "title" || source.RulePubDate != "pubDate" || source.RuleImage != "image" || source.RuleLink != "link" || source.RuleContent != "content" || source.EnableJS {
+	if source.SingleURL || source.ArticleStyle != 1 || source.SortURL != "分类::https://rss.example/cat.xml" || source.RuleArticles != "//item" || source.RuleNextPage != "next@href" || source.RuleTitle != "title" || source.RulePubDate != "pubDate" || source.RuleDescription != "description|html" || source.RuleImage != "image" || source.RuleLink != "link" || source.RuleContent != "content" || source.EnableJS {
 		t.Fatalf("upstream advanced rss fields were not preserved: %+v", source)
 	}
 

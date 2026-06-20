@@ -24,6 +24,10 @@ export function listRSSArticles(params = {}) {
   return api.get('/rss/articles', { params })
 }
 
+export function getRSSArticleContent(id, params = {}) {
+  return api.get(`/rss/articles/${id}/content`, { params })
+}
+
 export function updateRSSArticle(id, payload) {
   return api.put(`/rss/articles/${id}`, payload)
 }

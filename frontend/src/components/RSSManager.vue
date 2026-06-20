@@ -110,6 +110,7 @@
               <el-form-item label="文章列表 ruleArticles"><el-input v-model="draft.ruleArticles" /></el-form-item>
               <el-form-item label="标题 ruleTitle"><el-input v-model="draft.ruleTitle" /></el-form-item>
               <el-form-item label="发布时间 rulePubDate"><el-input v-model="draft.rulePubDate" /></el-form-item>
+              <el-form-item label="摘要 ruleDescription"><el-input v-model="draft.ruleDescription" /></el-form-item>
               <el-form-item label="图片 ruleImage"><el-input v-model="draft.ruleImage" /></el-form-item>
               <el-form-item label="链接 ruleLink"><el-input v-model="draft.ruleLink" /></el-form-item>
               <el-form-item label="正文 ruleContent"><el-input v-model="draft.ruleContent" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" /></el-form-item>
@@ -124,7 +125,7 @@
     </el-dialog>
 
     <el-dialog v-model="articleDialogVisible" :title="selectedArticle?.title || 'RSS 文章'" width="720px" class="rss-reader-dialog" :fullscreen="isMobile">
-      <article v-if="selectedArticle" class="rss-reader">
+      <article v-if="selectedArticle" v-loading="articleContentLoading" class="rss-reader">
         <h2>{{ selectedArticle.title }}</h2>
         <small>{{ formatDate(selectedArticle.publishedAt || selectedArticle.updatedAt) }} · {{ selectedArticle.author || '未知作者' }}</small>
         <div class="rss-reader-content" v-html="articleBodyHTML(selectedArticle)" @click="handleArticleContentClick" />
@@ -153,7 +154,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createRSSSource, deleteRSSSource, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
+import { createRSSSource, deleteRSSSource, getRSSArticleContent, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
 import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
 import { currentUserScope } from '../utils/authScope'
 
@@ -180,6 +181,7 @@ const importingSources = ref(false)
 const editingSourceId = ref(null)
 const draft = ref({ title: '', url: '', icon: '', group: '', customOrder: 0, enabled: true })
 const articleDialogVisible = ref(false)
+const articleContentLoading = ref(false)
 const selectedArticle = ref(null)
 const articleFilter = ref('all')
 const articlePage = ref(1)
@@ -195,8 +197,10 @@ const RSS_ADVANCED_FIELDS = [
   'articleStyle',
   'sortUrl',
   'ruleArticles',
+  'ruleNextPage',
   'ruleTitle',
   'rulePubDate',
+  'ruleDescription',
   'ruleImage',
   'ruleLink',
   'ruleContent',
@@ -517,6 +521,16 @@ async function openArticle(article) {
   selectedArticle.value = article
   articleDialogVisible.value = true
   articleImagePreviewVisible.value = false
+  articleContentLoading.value = true
+  try {
+    const { data } = await getRSSArticleContent(article.id)
+    Object.assign(article, data)
+    selectedArticle.value = article
+  } catch (err) {
+    ElMessage.error(readError(err, '加载 RSS 正文失败'))
+  } finally {
+    articleContentLoading.value = false
+  }
   if (!article.isRead) await updateArticleState(article, { isRead: true }, { silent: true })
 }
 
