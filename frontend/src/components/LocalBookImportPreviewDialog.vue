@@ -41,6 +41,14 @@
           <template v-if="!row.error">
             <el-input v-model="row.title" placeholder="书名" />
             <el-input v-model="row.author" placeholder="作者（可选）" />
+            <el-input
+              v-if="isTextLocalPath(row.path)"
+              v-model="row.tocRule"
+              placeholder="TXT 目录规则（可选，导入时重新解析）"
+            />
+            <el-select v-if="isEPUBLocalPath(row.path)" v-model="row.tocRule" placeholder="EPUB 目录规则">
+              <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
+            </el-select>
             <div class="preview-meta">
               <span>共 {{ row.chapterCount }} 章</span>
               <el-button v-if="row.chapters.length" text @click="row.expanded = !row.expanded">
@@ -69,6 +77,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useReaderStore } from '../stores/reader'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
+import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../utils/localBookToc'
 
 const props = defineProps({
   modelValue: {
@@ -133,7 +142,7 @@ function resetDrafts() {
     author: item.book?.author || '',
     chapterCount: Number(item.book?.chapterCount || 0),
     chapters: Array.isArray(item.book?.chapters) ? item.book.chapters : [],
-    tocRule: item.tocRule || '',
+    tocRule: item.tocRule || (isEPUBLocalPath(item.path) ? 'spin+toc' : ''),
     selected: !item.error,
     expanded: false,
   }))

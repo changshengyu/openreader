@@ -147,6 +147,109 @@ func TestParseEPUBUsesSpineOrder(t *testing.T) {
 	if book.Chapters[0].Title != "第一章" || book.Chapters[1].Title != "第二章" {
 		t.Fatalf("chapters not in spine order: %#v", book.Chapters)
 	}
+	tocFallback, err := ParseEPUBWithRule(buffer.Bytes(), "toc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tocFallback.Chapters) != 2 || tocFallback.Chapters[0].Title != "第一章" {
+		t.Fatalf("toc rule should fall back to readable spine when toc is missing: %#v", tocFallback.Chapters)
+	}
+}
+
+func TestParseEPUBWithRuleCombinesSpineAndNav(t *testing.T) {
+	data := testEPUBWithNav(t)
+
+	tests := []struct {
+		rule   string
+		titles []string
+		bodies []string
+	}{
+		{rule: "spin", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
+		{rule: "spin<toc", titles: []string{"目录一", "目录二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
+		{rule: "toc", titles: []string{"目录二", "目录一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
+		{rule: "toc<spin", titles: []string{"正文二", "正文一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.rule, func(t *testing.T) {
+			book, err := ParseEPUBWithRule(data, tt.rule)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(book.Chapters) != len(tt.titles) {
+				t.Fatalf("chapter count = %d, want %d", len(book.Chapters), len(tt.titles))
+			}
+			for index := range tt.titles {
+				if book.Chapters[index].Title != tt.titles[index] {
+					t.Fatalf("chapter %d title = %q, want %q", index, book.Chapters[index].Title, tt.titles[index])
+				}
+				if !strings.Contains(book.Chapters[index].Content, tt.bodies[index]) {
+					t.Fatalf("chapter %d content = %q, want body %q", index, book.Chapters[index].Content, tt.bodies[index])
+				}
+			}
+		})
+	}
+}
+
+func TestParseEPUBWithRuleReadsNCX(t *testing.T) {
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+	writeZipFile(t, zipWriter, "META-INF/container.xml", `<?xml version="1.0"?>
+<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`)
+	writeZipFile(t, zipWriter, "OPS/content.opf", `<?xml version="1.0"?>
+<package>
+  <metadata><title>NCX EPUB</title></metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>
+    <item id="two" href="two.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx"><itemref idref="one"/><itemref idref="two"/></spine>
+</package>`)
+	writeZipFile(t, zipWriter, "OPS/toc.ncx", `<?xml version="1.0"?>
+<ncx><navMap>
+  <navPoint><navLabel><text>NCX 二</text></navLabel><content src="two.xhtml"/></navPoint>
+  <navPoint><navLabel><text>NCX 一</text></navLabel><content src="one.xhtml"/></navPoint>
+</navMap></ncx>`)
+	writeZipFile(t, zipWriter, "OPS/one.xhtml", `<html><body><h1>正文一</h1><p>一。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OPS/two.xhtml", `<html><body><h1>正文二</h1><p>二。</p></body></html>`)
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	book, err := ParseEPUBWithRule(buffer.Bytes(), "toc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(book.Chapters) != 2 || book.Chapters[0].Title != "NCX 二" || book.Chapters[1].Title != "NCX 一" {
+		t.Fatalf("unexpected NCX chapters: %+v", book.Chapters)
+	}
+}
+
+func testEPUBWithNav(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+	writeZipFile(t, zipWriter, "META-INF/container.xml", `<?xml version="1.0"?>
+<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`)
+	writeZipFile(t, zipWriter, "OEBPS/content.opf", `<?xml version="1.0"?>
+<package>
+  <metadata><title>规则 EPUB</title><creator>作者</creator></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="one" href="text/one.xhtml" media-type="application/xhtml+xml"/>
+    <item id="two" href="text/two.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="one"/><itemref idref="two"/></spine>
+</package>`)
+	writeZipFile(t, zipWriter, "OEBPS/nav.xhtml", `<html><body><nav epub:type="toc">
+  <ol><li><a href="text/two.xhtml#start">目录二</a></li><li><a href="text/one.xhtml">目录一</a></li></ol>
+</nav></body></html>`)
+	writeZipFile(t, zipWriter, "OEBPS/text/one.xhtml", `<html><body><h1>正文一</h1><p>第一章内容。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OEBPS/text/two.xhtml", `<html><body><h1>正文二</h1><p>第二章内容。</p></body></html>`)
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
 }
 
 func TestApplyTextReplacementsSupportsRegex(t *testing.T) {

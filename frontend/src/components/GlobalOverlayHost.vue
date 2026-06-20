@@ -64,7 +64,7 @@
         <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
       <el-select
-        v-if="importSupportsTocRule"
+        v-if="importIsText"
         v-model="importDraft.tocRule"
         filterable
         allow-create
@@ -81,12 +81,15 @@
         </el-option>
       </el-select>
       <el-input
-        v-if="importSupportsTocRule"
+        v-if="importIsText"
         v-model="importDraft.tocRule"
         type="textarea"
         :rows="2"
         placeholder="TXT目录规则（可选，留空使用默认规则，例如：^第.+章.*$）"
       />
+      <el-select v-if="importIsEPUB" v-model="importDraft.tocRule" placeholder="EPUB 目录规则">
+        <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
+      </el-select>
       <div v-if="importDraft.file" class="direct-import-preview">
         <div>
           <strong>{{ importPreview ? `已解析 ${importPreview.chapterCount || 0} 章` : '尚未解析目录' }}</strong>
@@ -683,6 +686,7 @@ import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
+import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../utils/localBookToc'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { applyRestoreResult } from '../utils/restoreSync'
@@ -769,10 +773,9 @@ let sourceRowsRefreshTimer
 let groupSortable
 
 const isMobileOverlay = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
-const importSupportsTocRule = computed(() => {
-  const name = String(importDraft.file?.name || '').toLowerCase()
-  return /\.(txt|text|md)$/.test(name)
-})
+const importIsText = computed(() => isTextLocalPath(importDraft.file?.name))
+const importIsEPUB = computed(() => isEPUBLocalPath(importDraft.file?.name))
+const importSupportsTocRule = computed(() => importIsText.value || importIsEPUB.value)
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const wideDrawerSize = computed(() => isMobileOverlay.value ? '88%' : '82%')
 const narrowDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -895,7 +898,8 @@ function pickImportFile(data) {
   importDraft.title = ''
   importDraft.author = ''
   importPreview.value = null
-  if (!importSupportsTocRule.value) importDraft.tocRule = ''
+  if (importIsEPUB.value) importDraft.tocRule = 'spin+toc'
+  else if (!importIsText.value) importDraft.tocRule = ''
   if (importDraft.file) previewImportFile()
 }
 
@@ -942,9 +946,10 @@ async function importLocalBook() {
 }
 
 watch(
-  importSupportsTocRule,
-  (supported) => {
-    if (supported) loadTXTTocRuleOptions()
+  () => [importIsText.value, importIsEPUB.value],
+  ([text, epub]) => {
+    if (text) loadTXTTocRuleOptions()
+    else if (epub) importDraft.tocRule = 'spin+toc'
     else importDraft.tocRule = ''
   },
 )

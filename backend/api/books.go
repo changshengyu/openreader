@@ -2312,7 +2312,7 @@ func parseLocalBookChapters(ext string, data []byte, tocRule string) ([]engine.T
 	case ".txt", ".text", ".md":
 		return engine.ParseTXTWithRule(data, tocRule)
 	case ".epub":
-		book, err := engine.ParseEPUB(data)
+		book, err := engine.ParseEPUBWithRule(data, tocRule)
 		return book.Chapters, err
 	case ".pdf":
 		book, err := engine.ParsePDF(data)

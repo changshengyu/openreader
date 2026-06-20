@@ -218,7 +218,7 @@ func parseUploadedBook(ext string, data []byte, tocRule string) (engine.ParsedBo
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	switch ext {
 	case ".epub":
-		return engine.ParseEPUB(data)
+		return engine.ParseEPUBWithRule(data, tocRule)
 	case ".txt", ".text", ".md":
 		chapters, err := engine.ParseTXTWithRule(data, tocRule)
 		if err != nil {

@@ -258,7 +258,7 @@
           <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
           <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
           <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
-          <button v-if="isTextLocalBook" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
+          <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
           <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
         </div>
       </div>
@@ -438,7 +438,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -483,6 +483,7 @@ import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
+import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
@@ -612,11 +613,9 @@ const currentSourceName = computed(() => {
   return sourceGroupOptions.value.find(source => Number(source.id) === Number(book.value.sourceId))?.name || '当前来源'
 })
 const isRemoteBook = computed(() => Number(book.value?.sourceId || 0) > 0)
-const isTextLocalBook = computed(() => {
-  if (isRemoteBook.value) return false
-  const name = String(book.value?.originalFile || book.value?.libraryPath || book.value?.title || '').toLowerCase()
-  return /\.(txt|text|md)$/.test(name)
-})
+const isTextLocalBook = computed(() => checkTextLocalBook(book.value))
+const isEPUBLocalBook = computed(() => checkEPUBLocalBook(book.value))
+const canChangeLocalTocRule = computed(() => isTextLocalBook.value || isEPUBLocalBook.value)
 
 const chapterParagraphs = computed(() => {
   return makeParagraphs(content.value, chapter.value?.title)
@@ -1484,18 +1483,12 @@ async function refreshTocDrawer() {
 }
 
 async function changeReaderLocalTocRule() {
-  if (!book.value || !isTextLocalBook.value) return
-  const result = await ElMessageBox.prompt('填写 TXT 目录行正则，留空则使用默认目录规则。', '修改目录规则', {
-    confirmButtonText: '刷新目录',
-    cancelButtonText: '取消',
-    inputType: 'textarea',
-    inputValue: book.value.tocRule || '',
-    inputPlaceholder: '^第.+章.*$',
-  }).catch(() => null)
-  if (!result) return
+  if (!book.value || !canChangeLocalTocRule.value) return
+  const tocRule = await chooseReaderLocalTocRule()
+  if (tocRule === null) return
   tocRefreshing.value = true
   try {
-    const { data } = await refreshLocalBook(book.value.id, { tocRule: result.value || '' })
+    const { data } = await refreshLocalBook(book.value.id, { tocRule })
     await invalidateReaderDataCache({ chapters: true, book: true })
     await resetReaderChapterCaches({ clearBrowser: true })
     const updated = data?.book || data
@@ -1517,6 +1510,30 @@ async function changeReaderLocalTocRule() {
   } finally {
     tocRefreshing.value = false
   }
+}
+
+async function chooseReaderLocalTocRule() {
+  if (!isEPUBLocalBook.value) {
+    const result = await ElMessageBox.prompt('填写 TXT 目录行正则，留空则使用默认目录规则。', '修改目录规则', {
+      confirmButtonText: '刷新目录',
+      cancelButtonText: '取消',
+      inputType: 'textarea',
+      inputValue: book.value?.tocRule || '',
+      inputPlaceholder: '^第.+章.*$',
+    }).catch(() => null)
+    return result ? (result.value || '') : null
+  }
+  const selected = ref(book.value?.tocRule || 'spin+toc')
+  const selector = h('select', {
+    value: selected.value,
+    style: 'width:100%;min-height:38px;padding:0 10px;border:1px solid var(--el-border-color);border-radius:4px;background:var(--el-bg-color);color:var(--el-text-color-primary)',
+    onChange: event => { selected.value = event.target.value },
+  }, epubTocRuleOptions.map(rule => h('option', { value: rule.value }, rule.label)))
+  const confirmed = await ElMessageBox.confirm(selector, '修改 EPUB 目录规则', {
+    confirmButtonText: '刷新目录',
+    cancelButtonText: '取消',
+  }).catch(() => false)
+  return confirmed ? selected.value : null
 }
 
 async function computeBrowserCachedChapters() {

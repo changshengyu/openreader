@@ -4300,6 +4300,129 @@ func TestDirectImportPreviewDoesNotCreateBook(t *testing.T) {
 	}
 }
 
+func TestDirectEPUBImportAndRefreshUseTocRule(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	epubData := testEPUBArchive(t)
+
+	request := func(path string, rule string) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "rules.epub")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(epubData); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteField("tocRule", rule); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", token)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	previewW := request("/api/imports/books/preview", "toc")
+	if previewW.Code != http.StatusOK {
+		t.Fatalf("epub preview: expected 200, got %d: %s", previewW.Code, previewW.Body.String())
+	}
+	var preview struct {
+		Chapters []struct {
+			Title string `json:"title"`
+		} `json:"chapters"`
+	}
+	if err := json.Unmarshal(previewW.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "目录二" || preview.Chapters[1].Title != "目录一" {
+		t.Fatalf("preview ignored epub toc rule: %+v", preview.Chapters)
+	}
+
+	importW := request("/api/imports/books", "spin")
+	if importW.Code != http.StatusCreated {
+		t.Fatalf("epub import: expected 201, got %d: %s", importW.Code, importW.Body.String())
+	}
+	var imported bookListItem
+	if err := json.Unmarshal(importW.Body.Bytes(), &imported); err != nil {
+		t.Fatal(err)
+	}
+	var book models.Book
+	if err := server.db.First(&book, imported.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if book.TOCRule != "spin" {
+		t.Fatalf("epub import toc rule = %q, want spin", book.TOCRule)
+	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].Title != "正文一" || chapters[1].Title != "正文二" {
+		t.Fatalf("import ignored spine rule: %+v", chapters)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", strings.NewReader(`{"tocRule":"toc"}`))
+	refreshReq.Header.Set("Content-Type", "application/json")
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK {
+		t.Fatalf("refresh epub: expected 200, got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+	chapters = nil
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].Title != "目录二" || chapters[1].Title != "目录一" {
+		t.Fatalf("refresh ignored toc rule: %+v", chapters)
+	}
+	if err := server.db.First(&book, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if book.TOCRule != "toc" {
+		t.Fatalf("refreshed epub toc rule = %q, want toc", book.TOCRule)
+	}
+}
+
+func testEPUBArchive(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	write := func(name string, content string) {
+		file, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("META-INF/container.xml", `<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`)
+	write("OPS/content.opf", `<package>
+  <metadata><title>规则书</title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>
+    <item id="two" href="two.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="one"/><itemref idref="two"/></spine>
+</package>`)
+	write("OPS/nav.xhtml", `<html><body><nav epub:type="toc"><a href="two.xhtml">目录二</a><a href="one.xhtml">目录一</a></nav></body></html>`)
+	write("OPS/one.xhtml", `<html><body><h1>正文一</h1><p>内容一。</p></body></html>`)
+	write("OPS/two.xhtml", `<html><body><h1>正文二</h1><p>内容二。</p></body></html>`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
 func TestRefreshLocalBookReparsesArchivedSource(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
