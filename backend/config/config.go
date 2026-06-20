@@ -30,7 +30,7 @@ func Load() Config {
 		CacheDir:           cacheDir,
 		LibraryDir:         env("OPENREADER_LIBRARY_DIR", "library"),
 		DatabasePath:       env("OPENREADER_DB", filepath.Join(dataDir, "openreader.db")),
-		JWTSecret:          env("OPENREADER_JWT_SECRET", "change-me-in-production"),
+		JWTSecret:          env("OPENREADER_JWT_SECRET", "change-this-before-deploy"),
 		CORSOrigin:         env("OPENREADER_CORS_ORIGIN", "http://localhost:5173"),
 		PublicDir:          env("OPENREADER_PUBLIC_DIR", "public"),
 		CheckInterval:      env("OPENREADER_CHECK_INTERVAL", "30m"),
