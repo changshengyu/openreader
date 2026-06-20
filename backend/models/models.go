@@ -128,7 +128,12 @@ type RSSSource struct {
 	URL             string    `json:"url" gorm:"size:800;not null"`
 	Icon            string    `json:"icon" gorm:"size:800"`
 	Group           string    `json:"group" gorm:"size:120"`
+	Comment         string    `json:"comment" gorm:"type:text"`
 	CustomOrder     int       `json:"customOrder" gorm:"default:0"`
+	ConcurrentRate  string    `json:"concurrentRate" gorm:"size:80"`
+	Header          string    `json:"header" gorm:"type:text"`
+	LoginURL        string    `json:"loginUrl" gorm:"type:text"`
+	LoginCheckJS    string    `json:"loginCheckJs" gorm:"type:text"`
 	SingleURL       bool      `json:"singleUrl"`
 	ArticleStyle    int       `json:"articleStyle"`
 	SortURL         string    `json:"sortUrl" gorm:"type:text"`
@@ -140,7 +145,9 @@ type RSSSource struct {
 	RuleImage       string    `json:"ruleImage" gorm:"type:text"`
 	RuleLink        string    `json:"ruleLink" gorm:"type:text"`
 	RuleContent     string    `json:"ruleContent" gorm:"type:text"`
+	Style           string    `json:"style" gorm:"type:text"`
 	EnableJS        bool      `json:"enableJs"`
+	LoadWithBaseURL bool      `json:"loadWithBaseUrl"`
 	Enabled         bool      `json:"enabled"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
@@ -150,6 +157,7 @@ type RSSArticle struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	UserID      uint      `json:"userId" gorm:"not null;index"`
 	SourceID    uint      `json:"sourceId" gorm:"not null;index"`
+	Sort        string    `json:"sort" gorm:"size:160;index"`
 	Title       string    `json:"title" gorm:"size:240;not null"`
 	Link        string    `json:"link" gorm:"size:800;index"`
 	Author      string    `json:"author" gorm:"size:160"`

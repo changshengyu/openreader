@@ -110,10 +110,11 @@ func (s *Service) addSources(zipWriter *zip.Writer) {
 func (s *Service) addRSSSources(zipWriter *zip.Writer) {
 	type rssSourceExport struct {
 		models.RSSSource
-		SourceName  string `json:"sourceName,omitempty"`
-		SourceURL   string `json:"sourceUrl,omitempty"`
-		SourceIcon  string `json:"sourceIcon,omitempty"`
-		SourceGroup string `json:"sourceGroup,omitempty"`
+		SourceName    string `json:"sourceName,omitempty"`
+		SourceURL     string `json:"sourceUrl,omitempty"`
+		SourceIcon    string `json:"sourceIcon,omitempty"`
+		SourceGroup   string `json:"sourceGroup,omitempty"`
+		SourceComment string `json:"sourceComment,omitempty"`
 	}
 	var sources []models.RSSSource
 	if err := s.db.Order("user_id, custom_order, updated_at").Find(&sources).Error; err != nil {
@@ -122,11 +123,12 @@ func (s *Service) addRSSSources(zipWriter *zip.Writer) {
 	rows := make([]rssSourceExport, 0, len(sources))
 	for _, source := range sources {
 		rows = append(rows, rssSourceExport{
-			RSSSource:   source,
-			SourceName:  source.Title,
-			SourceURL:   source.URL,
-			SourceIcon:  source.Icon,
-			SourceGroup: source.Group,
+			RSSSource:     source,
+			SourceName:    source.Title,
+			SourceURL:     source.URL,
+			SourceIcon:    source.Icon,
+			SourceGroup:   source.Group,
+			SourceComment: source.Comment,
 		})
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")

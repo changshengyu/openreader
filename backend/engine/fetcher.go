@@ -36,11 +36,24 @@ func FetchDocument(url, charset string) (*goquery.Document, error) {
 }
 
 func FetchText(url, charset string) (string, error) {
+	return FetchTextWithHeaders(url, charset, nil)
+}
+
+func FetchTextWithHeaders(url, charset string, headers map[string]string) (string, error) {
 	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("User-Agent", "OpenReader/0.1 (+self-hosted reader)")
+	for name, value := range headers {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.EqualFold(name, "Host") || strings.EqualFold(name, "Content-Length") {
+			continue
+		}
+		request.Header.Set(name, value)
+	}
+	if request.Header.Get("User-Agent") == "" {
+		request.Header.Set("User-Agent", "OpenReader/0.1 (+self-hosted reader)")
+	}
 
 	response, err := defaultClient.Do(request)
 	if err != nil {

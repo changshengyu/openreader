@@ -4956,7 +4956,7 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rssFile.Write([]byte(`[{"sourceName":"OpenReader RSS","sourceUrl":"https://rss.example/openreader.xml","sourceIcon":"https://rss.example/icon.png","sourceGroup":"资讯","customOrder":7,"singleUrl":false,"articleStyle":2,"sortUrl":"综合::https://rss.example/openreader-sort.xml","ruleArticles":"article","ruleTitle":"title","rulePubDate":"date","ruleImage":"img","ruleLink":"a@href","ruleContent":"content","enableJs":false,"enabled":false}]`)); err != nil {
+	if _, err := rssFile.Write([]byte(`[{"sourceName":"OpenReader RSS","sourceUrl":"https://rss.example/openreader.xml","sourceIcon":"https://rss.example/icon.png","sourceGroup":"资讯","sourceComment":"恢复注释","customOrder":7,"concurrentRate":"3/1000","headerMap":{"X-Restore":"yes"},"loginUrl":"https://rss.example/login","loginCheckJs":"check()","singleUrl":false,"articleStyle":2,"sortUrl":"综合::https://rss.example/openreader-sort.xml","ruleArticles":"article","ruleTitle":"title","rulePubDate":"date","ruleImage":"img","ruleLink":"a@href","ruleContent":"content","style":"body{}","enableJs":false,"loadWithBaseUrl":false,"enabled":false}]`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := zipWriter.Close(); err != nil {
@@ -5048,10 +5048,13 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if err := server.db.Where("user_id = ? AND url = ?", user.ID, "https://rss.example/openreader.xml").First(&rssSource).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rssSource.Title != "OpenReader RSS" || rssSource.Icon != "https://rss.example/icon.png" || rssSource.Group != "资讯" || rssSource.CustomOrder != 7 || rssSource.Enabled {
+	if rssSource.Title != "OpenReader RSS" || rssSource.Icon != "https://rss.example/icon.png" || rssSource.Group != "资讯" || rssSource.Comment != "恢复注释" || rssSource.CustomOrder != 7 || rssSource.Enabled {
 		t.Fatalf("unexpected restored rss source: %+v", rssSource)
 	}
-	if rssSource.SingleURL || rssSource.ArticleStyle != 2 || rssSource.SortURL != "综合::https://rss.example/openreader-sort.xml" || rssSource.RuleArticles != "article" || rssSource.RuleTitle != "title" || rssSource.RulePubDate != "date" || rssSource.RuleImage != "img" || rssSource.RuleLink != "a@href" || rssSource.RuleContent != "content" || rssSource.EnableJS {
+	if rssSource.ConcurrentRate != "3/1000" || !strings.Contains(rssSource.Header, `"X-Restore":"yes"`) || rssSource.LoginURL != "https://rss.example/login" || rssSource.LoginCheckJS != "check()" {
+		t.Fatalf("unexpected restored RSS transport fields: %+v", rssSource)
+	}
+	if rssSource.SingleURL || rssSource.ArticleStyle != 2 || rssSource.SortURL != "综合::https://rss.example/openreader-sort.xml" || rssSource.RuleArticles != "article" || rssSource.RuleTitle != "title" || rssSource.RulePubDate != "date" || rssSource.RuleImage != "img" || rssSource.RuleLink != "a@href" || rssSource.RuleContent != "content" || rssSource.Style != "body{}" || rssSource.EnableJS || rssSource.LoadWithBaseURL {
 		t.Fatalf("unexpected restored advanced rss source fields: %+v", rssSource)
 	}
 }
@@ -5187,6 +5190,9 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	var contentRequests int
 	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Header.Get("X-Feed-Token") != "secret" {
+				t.Fatalf("RSS request missing custom header: %v", req.Header)
+			}
 			var body string
 			switch req.URL.Path {
 			case "/news":
@@ -5218,7 +5224,8 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	payload := `{
 		"title":"规则 RSS",
 		"url":"https://rss.example/feed",
-		"sortUrl":"新闻::/news",
+		"sortUrl":"全部::/all&&新闻::/news",
+		"headerMap":{"X-Feed-Token":"secret"},
 		"ruleArticles":"//article[@class='entry']",
 		"ruleTitle":".title|text",
 		"rulePubDate":"time@datetime",
@@ -5241,11 +5248,12 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh", nil)
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh?sortUrl=%2Fnews", nil)
 	refreshReq.Header.Set("Authorization", token)
 	refreshW := httptest.NewRecorder()
 	router.ServeHTTP(refreshW, refreshReq)
-	if refreshW.Code != http.StatusOK || !strings.Contains(refreshW.Body.String(), `"imported":1`) {
+	if refreshW.Code != http.StatusOK || !strings.Contains(refreshW.Body.String(), `"imported":1`) ||
+		!strings.Contains(refreshW.Body.String(), `"sortUrl":"https://rss.example/news"`) {
 		t.Fatalf("refresh rule RSS source: got %d: %s", refreshW.Code, refreshW.Body.String())
 	}
 	if listRequests != 1 || contentRequests != 0 {
@@ -5257,6 +5265,9 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	}
 	if article.Link != "https://rss.example/post/1" || article.Image != "https://rss.example/images/1.jpg" {
 		t.Fatalf("rule URLs were not resolved: %+v", article)
+	}
+	if article.Sort != "新闻" {
+		t.Fatalf("rule article sort = %q, want 新闻", article.Sort)
 	}
 	if strings.Contains(article.Summary, "<script") || !strings.Contains(article.Summary, "规则摘要") {
 		t.Fatalf("rule summary was not sanitized: %s", article.Summary)
@@ -5285,6 +5296,14 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	if contentRequests != 1 {
 		t.Fatalf("content requests = %d, want cached after first request", contentRequests)
 	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/rss/articles?sourceId="+strconv.FormatUint(uint64(source.ID), 10)+"&sort="+url.QueryEscape("新闻"), nil)
+	listReq.Header.Set("Authorization", token)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK || !strings.Contains(listW.Body.String(), "规则文章") {
+		t.Fatalf("filtered RSS sort did not return article: %d %s", listW.Code, listW.Body.String())
+	}
 }
 
 func TestCreateRSSSourceRespectsEnabledFlag(t *testing.T) {
@@ -5312,7 +5331,7 @@ func TestRSSSourcePreservesUpstreamFieldsAndOrder(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
 
-	first := `{"sourceName":"后导入","sourceUrl":"https://rss.example/late.xml","sourceIcon":"https://rss.example/late.png","sourceGroup":"新闻","customOrder":20,"singleUrl":false,"articleStyle":1,"sortUrl":"分类::https://rss.example/cat.xml","ruleArticles":"//item","ruleNextPage":"next@href","ruleTitle":"title","rulePubDate":"pubDate","ruleDescription":"description|html","ruleImage":"image","ruleLink":"link","ruleContent":"content","enableJs":false,"enabled":true}`
+	first := `{"sourceName":"后导入","sourceUrl":"https://rss.example/late.xml","sourceIcon":"https://rss.example/late.png","sourceGroup":"新闻","sourceComment":"源注释","customOrder":20,"concurrentRate":"2/1000","headerMap":{"Referer":"https://rss.example/"},"loginUrl":"https://rss.example/login","loginCheckJs":"return true","singleUrl":false,"articleStyle":1,"sortUrl":"分类::https://rss.example/cat.xml","ruleArticles":"//item","ruleNextPage":"next@href","ruleTitle":"title","rulePubDate":"pubDate","ruleDescription":"description|html","ruleImage":"image","ruleLink":"link","ruleContent":"content","style":"article{}","enableJs":false,"loadWithBaseUrl":false,"enabled":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/rss/sources", strings.NewReader(first))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -5325,10 +5344,13 @@ func TestRSSSourcePreservesUpstreamFieldsAndOrder(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &source); err != nil {
 		t.Fatal(err)
 	}
-	if source.Title != "后导入" || source.URL != "https://rss.example/late.xml" || source.Icon != "https://rss.example/late.png" || source.Group != "新闻" || source.CustomOrder != 20 {
+	if source.Title != "后导入" || source.URL != "https://rss.example/late.xml" || source.Icon != "https://rss.example/late.png" || source.Group != "新闻" || source.Comment != "源注释" || source.CustomOrder != 20 {
 		t.Fatalf("upstream rss fields were not preserved: %+v", source)
 	}
-	if source.SingleURL || source.ArticleStyle != 1 || source.SortURL != "分类::https://rss.example/cat.xml" || source.RuleArticles != "//item" || source.RuleNextPage != "next@href" || source.RuleTitle != "title" || source.RulePubDate != "pubDate" || source.RuleDescription != "description|html" || source.RuleImage != "image" || source.RuleLink != "link" || source.RuleContent != "content" || source.EnableJS {
+	if source.ConcurrentRate != "2/1000" || !strings.Contains(source.Header, `"Referer":"https://rss.example/"`) || source.LoginURL != "https://rss.example/login" || source.LoginCheckJS != "return true" {
+		t.Fatalf("upstream RSS transport fields were not preserved: %+v", source)
+	}
+	if source.SingleURL || source.ArticleStyle != 1 || source.SortURL != "分类::https://rss.example/cat.xml" || source.RuleArticles != "//item" || source.RuleNextPage != "next@href" || source.RuleTitle != "title" || source.RulePubDate != "pubDate" || source.RuleDescription != "description|html" || source.RuleImage != "image" || source.RuleLink != "link" || source.RuleContent != "content" || source.Style != "article{}" || source.EnableJS || source.LoadWithBaseURL {
 		t.Fatalf("upstream advanced rss fields were not preserved: %+v", source)
 	}
 
@@ -5365,19 +5387,26 @@ func TestBackupExportsRSSSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := models.RSSSource{
-		UserID:       user.ID,
-		Title:        "备份 RSS",
-		URL:          "https://rss.example/backup.xml",
-		Icon:         "https://rss.example/backup.png",
-		Group:        "资讯",
-		CustomOrder:  4,
-		SingleURL:    false,
-		ArticleStyle: 1,
-		SortURL:      "分类::https://rss.example/backup-cat.xml",
-		RuleImage:    "cover",
-		RuleContent:  "content",
-		EnableJS:     false,
-		Enabled:      true,
+		UserID:          user.ID,
+		Title:           "备份 RSS",
+		URL:             "https://rss.example/backup.xml",
+		Icon:            "https://rss.example/backup.png",
+		Group:           "资讯",
+		Comment:         "备份注释",
+		CustomOrder:     4,
+		ConcurrentRate:  "2/1000",
+		Header:          `{"X-Backup":"yes"}`,
+		LoginURL:        "https://rss.example/login",
+		LoginCheckJS:    "check()",
+		SingleURL:       false,
+		ArticleStyle:    1,
+		SortURL:         "分类::https://rss.example/backup-cat.xml",
+		RuleImage:       "cover",
+		RuleContent:     "content",
+		Style:           "body{}",
+		EnableJS:        false,
+		LoadWithBaseURL: false,
+		Enabled:         true,
 	}
 	if err := server.db.Create(&source).Error; err != nil {
 		t.Fatal(err)
@@ -5409,7 +5438,7 @@ func TestBackupExportsRSSSources(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, expected := range []string{`"sourceName": "备份 RSS"`, `"sourceUrl": "https://rss.example/backup.xml"`, `"sourceIcon": "https://rss.example/backup.png"`, `"sourceGroup": "资讯"`, `"singleUrl": false`, `"sortUrl": "分类::https://rss.example/backup-cat.xml"`, `"ruleImage": "cover"`, `"ruleContent": "content"`} {
+		for _, expected := range []string{`"sourceName": "备份 RSS"`, `"sourceUrl": "https://rss.example/backup.xml"`, `"sourceIcon": "https://rss.example/backup.png"`, `"sourceGroup": "资讯"`, `"sourceComment": "备份注释"`, `"comment": "备份注释"`, `"concurrentRate": "2/1000"`, `"header": "{\"X-Backup\":\"yes\"}"`, `"loginUrl": "https://rss.example/login"`, `"loginCheckJs": "check()"`, `"singleUrl": false`, `"sortUrl": "分类::https://rss.example/backup-cat.xml"`, `"ruleImage": "cover"`, `"ruleContent": "content"`, `"style": "body{}"`, `"loadWithBaseUrl": false`} {
 			if !strings.Contains(string(data), expected) {
 				t.Fatalf("expected %s in rssSources.json, got %s", expected, string(data))
 			}

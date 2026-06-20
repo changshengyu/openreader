@@ -16,8 +16,8 @@ export function deleteRSSSource(id) {
   return api.delete(`/rss/sources/${id}`)
 }
 
-export function refreshRSSSource(id) {
-  return api.post(`/rss/sources/${id}/refresh`)
+export function refreshRSSSource(id, params = {}) {
+  return api.post(`/rss/sources/${id}/refresh`, null, { params })
 }
 
 export function listRSSArticles(params = {}) {

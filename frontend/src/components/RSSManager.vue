@@ -51,12 +51,21 @@
           <span>{{ articleCountText }}</span>
         </div>
         <div class="rss-actions">
+          <el-select
+            v-if="selectedSortOptions.length > 1"
+            v-model="selectedSortURL"
+            size="small"
+            class="rss-sort-select"
+            @change="refreshSelectedSource"
+          >
+            <el-option v-for="option in selectedSortOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
           <el-radio-group v-model="articleFilter" size="small" @change="loadArticles">
             <el-radio-button value="all">全部</el-radio-button>
             <el-radio-button value="unread">未读</el-radio-button>
             <el-radio-button value="favorite">收藏</el-radio-button>
           </el-radio-group>
-          <el-button size="small" :loading="articlesLoading" @click="loadArticles">刷新文章</el-button>
+          <el-button size="small" :loading="refreshingSourceId === selectedSourceId" @click="refreshSelectedSource">刷新文章</el-button>
         </div>
       </header>
       <div v-loading="articlesLoading" class="rss-article-list">
@@ -98,6 +107,7 @@
         <el-form-item label="订阅地址"><el-input v-model="draft.url" /></el-form-item>
         <el-form-item label="图标地址"><el-input v-model="draft.icon" /></el-form-item>
         <el-form-item label="分组"><el-input v-model="draft.group" /></el-form-item>
+        <el-form-item label="源注释"><el-input v-model="draft.comment" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="draft.customOrder" :min="0" :step="1" controls-position="right" /></el-form-item>
         <el-form-item><el-switch v-model="draft.enabled" active-text="启用" inactive-text="停用" /></el-form-item>
         <el-collapse class="rss-rule-collapse">
@@ -105,7 +115,12 @@
             <div class="rss-rule-grid">
               <el-form-item label="单页地址"><el-switch v-model="draft.singleUrl" active-text="单页" inactive-text="分页" /></el-form-item>
               <el-form-item label="文章样式"><el-input-number v-model="draft.articleStyle" :min="0" :step="1" controls-position="right" /></el-form-item>
-              <el-form-item label="启用 JS"><el-switch v-model="draft.enableJs" active-text="启用" inactive-text="停用" /></el-form-item>
+              <el-form-item label="启用 JS（兼容字段）"><el-switch v-model="draft.enableJs" active-text="启用" inactive-text="停用" /></el-form-item>
+              <el-form-item label="使用基础地址（兼容字段）"><el-switch v-model="draft.loadWithBaseUrl" active-text="启用" inactive-text="停用" /></el-form-item>
+              <el-form-item label="请求头 header"><el-input v-model="draft.header" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" placeholder='JSON 或每行 Header: Value' /></el-form-item>
+              <el-form-item label="登录地址（仅保存）"><el-input v-model="draft.loginUrl" /></el-form-item>
+              <el-form-item label="登录检测 JS（仅保存）"><el-input v-model="draft.loginCheckJs" type="textarea" :rows="2" /></el-form-item>
+              <el-form-item label="并发率（仅保存）"><el-input v-model="draft.concurrentRate" /></el-form-item>
               <el-form-item label="排序地址 sortUrl"><el-input v-model="draft.sortUrl" /></el-form-item>
               <el-form-item label="文章列表 ruleArticles"><el-input v-model="draft.ruleArticles" /></el-form-item>
               <el-form-item label="标题 ruleTitle"><el-input v-model="draft.ruleTitle" /></el-form-item>
@@ -114,6 +129,7 @@
               <el-form-item label="图片 ruleImage"><el-input v-model="draft.ruleImage" /></el-form-item>
               <el-form-item label="链接 ruleLink"><el-input v-model="draft.ruleLink" /></el-form-item>
               <el-form-item label="正文 ruleContent"><el-input v-model="draft.ruleContent" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" /></el-form-item>
+              <el-form-item label="显示样式（仅保存）"><el-input v-model="draft.style" type="textarea" :rows="2" /></el-form-item>
             </div>
           </el-collapse-item>
         </el-collapse>
@@ -170,6 +186,7 @@ const ARTICLE_LIMIT = 50
 const sources = ref([])
 const articles = ref([])
 const selectedSourceId = ref('')
+const selectedSortURL = ref('')
 const sourcesLoading = ref(false)
 const articlesLoading = ref(false)
 const articlesLoadingMore = ref(false)
@@ -195,6 +212,11 @@ let rssReloadTimer
 const RSS_ADVANCED_FIELDS = [
   'singleUrl',
   'articleStyle',
+  'comment',
+  'concurrentRate',
+  'header',
+  'loginUrl',
+  'loginCheckJs',
   'sortUrl',
   'ruleArticles',
   'ruleNextPage',
@@ -204,11 +226,16 @@ const RSS_ADVANCED_FIELDS = [
   'ruleImage',
   'ruleLink',
   'ruleContent',
+  'style',
   'enableJs',
+  'loadWithBaseUrl',
 ]
 
 const articleCountText = computed(() => `${articles.value.length} 篇${hasMoreArticles.value ? '+' : ''}`)
 const rssArticleImageList = computed(() => articles.value.map(article => article.image).filter(Boolean))
+const selectedSource = computed(() => sources.value.find(source => source.id === selectedSourceId.value) || null)
+const selectedSortOptions = computed(() => rssSortOptions(selectedSource.value))
+const selectedSortOption = computed(() => selectedSortOptions.value.find(option => option.value === selectedSortURL.value) || null)
 
 onMounted(async () => {
   window.addEventListener('openreader:rss-updated', handleRSSUpdated)
@@ -254,6 +281,7 @@ function applyRSSSources(data) {
   if (selectedSourceId.value && !sources.value.some(source => source.id === selectedSourceId.value)) {
     selectedSourceId.value = sources.value[0]?.id || ''
   }
+  syncSelectedSortURL()
 }
 
 function rssSourcesCacheKey() {
@@ -297,6 +325,7 @@ function clearRSSReloadTimer() {
 
 async function selectSource(sourceId) {
   selectedSourceId.value = sourceId
+  syncSelectedSortURL(true)
   await loadArticles()
 }
 
@@ -337,6 +366,7 @@ async function loadMoreArticles() {
 function articleParams(page) {
   const params = { page, limit: ARTICLE_LIMIT }
   if (selectedSourceId.value) params.sourceId = selectedSourceId.value
+  if (selectedSortOptions.value.length > 1 && selectedSortOption.value?.label) params.sort = selectedSortOption.value.label
   if (articleFilter.value === 'unread') params.unread = true
   if (articleFilter.value === 'favorite') params.favorite = true
   return params
@@ -358,6 +388,7 @@ function openEditor(source = null) {
     url: source?.url || '',
     icon: source?.icon || '',
     group: source?.group || '',
+    comment: source?.comment || '',
     customOrder: Number(source?.customOrder || 0),
     enabled: source?.enabled ?? true,
     ...pickRSSAdvancedFields(source),
@@ -482,16 +513,26 @@ function pickRSSAdvancedFields(source = {}) {
   for (const field of RSS_ADVANCED_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(source, field)) picked[field] = source[field]
   }
+  if (!Object.prototype.hasOwnProperty.call(picked, 'comment') && source.sourceComment !== undefined) {
+    picked.comment = source.sourceComment
+  }
+  if (!Object.prototype.hasOwnProperty.call(picked, 'header') && source.headerMap !== undefined) {
+    picked.header = typeof source.headerMap === 'string' ? source.headerMap : JSON.stringify(source.headerMap)
+  }
   if (!Object.prototype.hasOwnProperty.call(picked, 'singleUrl')) picked.singleUrl = true
   if (!Object.prototype.hasOwnProperty.call(picked, 'articleStyle')) picked.articleStyle = 0
   if (!Object.prototype.hasOwnProperty.call(picked, 'enableJs')) picked.enableJs = true
+  if (!Object.prototype.hasOwnProperty.call(picked, 'loadWithBaseUrl')) picked.loadWithBaseUrl = true
   return picked
 }
 
 async function refreshSource(source) {
   refreshingSourceId.value = source.id
   try {
-    const { data } = await refreshRSSSource(source.id)
+    const params = source.id === selectedSourceId.value && selectedSortURL.value
+      ? { sortUrl: selectedSortURL.value, sortName: selectedSortOption.value?.label || '' }
+      : {}
+    const { data } = await refreshRSSSource(source.id, params)
     ElMessage.success(`已同步 ${data.imported || 0}/${data.total || 0} 篇文章`)
     await loadArticles()
   } catch (err) {
@@ -499,6 +540,14 @@ async function refreshSource(source) {
   } finally {
     refreshingSourceId.value = null
   }
+}
+
+async function refreshSelectedSource() {
+  if (!selectedSource.value) {
+    await loadArticles()
+    return
+  }
+  await refreshSource(selectedSource.value)
 }
 
 async function removeSource(source) {
@@ -617,6 +666,30 @@ function readError(err, fallback) {
 
 function normalizeURL(value) {
   return String(value || '').trim()
+}
+
+function rssSortOptions(source) {
+  const baseURL = String(source?.url || '').trim()
+  const raw = String(source?.sortUrl || '').trim()
+  if (!raw || raw.startsWith('@js:') || raw.startsWith('<js>')) {
+    return baseURL ? [{ label: '全部', value: baseURL }] : []
+  }
+  const options = raw.split(/(?:&&|\r?\n)+/)
+    .map((row, index) => {
+      const separator = row.indexOf('::')
+      const label = separator >= 0 ? row.slice(0, separator).trim() : `分类 ${index + 1}`
+      const value = separator >= 0 ? row.slice(separator + 2).trim() : row.trim()
+      return value ? { label: label || `分类 ${index + 1}`, value } : null
+    })
+    .filter(Boolean)
+  return options.length ? options : (baseURL ? [{ label: '全部', value: baseURL }] : [])
+}
+
+function syncSelectedSortURL(reset = false) {
+  const options = selectedSortOptions.value
+  if (reset || !options.some(option => option.value === selectedSortURL.value)) {
+    selectedSortURL.value = options[0]?.value || ''
+  }
 }
 </script>
 
