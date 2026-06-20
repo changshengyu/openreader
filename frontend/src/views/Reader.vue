@@ -99,6 +99,10 @@
       >
         <div ref="contentBody" class="reader-body" :style="bodyStyle">
           <p v-if="chapterLoading" class="empty-hint">正在加载章节...</p>
+          <div v-else-if="chapterLoadError" class="chapter-load-error">
+            <p>{{ chapterLoadError }}</p>
+            <button type="button" @click="reloadChapter">重新加载</button>
+          </div>
           <template v-else>
             <section
               v-for="block in displayedChapterBlocks"
@@ -528,6 +532,7 @@ const bookmarks = ref([])
 const content = ref('')
 const chapterBlocks = ref([])
 const chapterLoading = ref(true)
+const chapterLoadError = ref('')
 const chapterLoaded = ref(false)
 const contentEl = ref(null)
 const contentBody = ref(null)
@@ -742,7 +747,12 @@ function onModeChange(mode) {
 onMounted(async () => {
   reader.normalizeSettings()
   syncReaderFontFaces(reader.customFontsMap)
-  await loadReaderBook()
+  try {
+    await loadReaderBook()
+  } catch (err) {
+    chapterLoadError.value = readError(err, '章节加载失败')
+    chapterLoading.value = false
+  }
   window.addEventListener('resize', handleResize)
   window.addEventListener('wheel', handleReaderWheel, { passive: false })
   window.addEventListener('pagehide', handleReaderPageHide)
@@ -777,7 +787,13 @@ onBeforeRouteLeave(() => {
 })
 
 watch(bookId, async () => {
-  await loadReaderBook()
+  chapterLoadError.value = ''
+  try {
+    await loadReaderBook()
+  } catch (err) {
+    chapterLoadError.value = readError(err, '章节加载失败')
+    chapterLoading.value = false
+  }
 })
 
 watch(() => [route.query.chapter, route.query.offset, route.query.percent], async ([q, offset, percent]) => {
@@ -1096,6 +1112,7 @@ async function loadChapter(index, offset = 0, options = {}) {
   mobileChromeVisible.value = false
   restoringPosition = true
   chapterLoaded.value = false
+  chapterLoadError.value = ''
   clearTimeout(saveTimer)
   clearTimeout(chapterLoadingTimer)
   const cachedBeforeLoad = !options.refresh && getChapterContentFromMemory(currentIndex.value)
@@ -1112,11 +1129,7 @@ async function loadChapter(index, offset = 0, options = {}) {
     chapter.value = data.chapter
     content.value = data.content || ''
     page.value = 0
-    if (isContinuousScrollRead.value) {
-      await computeShowChapterList({ reset: true })
-    } else {
-      chapterBlocks.value = [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
-    }
+    chapterBlocks.value = [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
     chapterLoading.value = false
     await nextTick()
     updateFlipLayout()
@@ -1129,6 +1142,11 @@ async function loadChapter(index, offset = 0, options = {}) {
       lastProgressSaveKey = progressSaveKey(currentProgressPayload())
     }
     chapterLoaded.value = true
+    if (isContinuousScrollRead.value) {
+      computeShowChapterList({ anchorIndex: currentIndex.value }).catch(() => {})
+    }
+  } catch (err) {
+    chapterLoadError.value = readError(err, '章节加载失败，请检查书源或网络后重试')
   } finally {
     clearTimeout(chapterLoadingTimer)
     await nextFrame()
@@ -1137,23 +1155,32 @@ async function loadChapter(index, offset = 0, options = {}) {
   }
 }
 
-async function computeShowChapterList() {
+async function computeShowChapterList(options = {}) {
   if (!chapters.value.length) {
     chapterBlocks.value = []
     return
   }
+  const anchorIndex = Number.isInteger(options.anchorIndex) ? options.anchorIndex : currentIndex.value
   const startIndex = reader.mode === 'scroll2'
-    ? Math.max(0, currentIndex.value - SHOW_PREV_CHAPTER_SIZE)
-    : currentIndex.value
+    ? Math.max(0, anchorIndex - SHOW_PREV_CHAPTER_SIZE)
+    : anchorIndex
   const endIndex = isContinuousScrollRead.value
-    ? Math.min(chapters.value.length - 1, currentIndex.value + SHOW_NEXT_CHAPTER_SIZE)
-    : currentIndex.value
-  const blocks = []
-  for (let index = startIndex; index <= endIndex; index += 1) {
-    const data = await loadChapterContent(index)
-    blocks.push(makeChapterBlock(index, data.chapter || chapters.value[index], data.content || ''))
+    ? Math.min(chapters.value.length - 1, anchorIndex + SHOW_NEXT_CHAPTER_SIZE)
+    : anchorIndex
+  const indexes = Array.from({ length: endIndex - startIndex + 1 }, (_, offset) => startIndex + offset)
+  const rows = await Promise.all(indexes.map(async index => {
+    try {
+      const data = await loadChapterContent(index)
+      return makeChapterBlock(index, data.chapter || chapters.value[index], data.content || '')
+    } catch {
+      return null
+    }
+  }))
+  if (currentIndex.value !== anchorIndex) return
+  const blocks = rows.filter(Boolean)
+  if (blocks.some(block => block.index === anchorIndex)) {
+    chapterBlocks.value = blocks
   }
-  chapterBlocks.value = blocks
 }
 
 async function appendNextShowChapter() {
@@ -3931,6 +3958,27 @@ function readError(err, fallback) {
   color: rgba(36, 40, 44, 0.55);
   font-size: 0.78em;
   text-align: center;
+}
+.chapter-load-error {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.chapter-load-error p {
+  margin: 0;
+  color: rgba(112, 48, 42, 0.8);
+  text-indent: 0;
+}
+.chapter-load-error button {
+  justify-self: center;
+  padding: 8px 18px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
 }
 .reader-content p.reader-search-active {
   background: rgba(47, 111, 109, 0.16);
