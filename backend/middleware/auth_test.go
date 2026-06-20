@@ -1,6 +1,11 @@
 package middleware
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
 
 func TestDefaultJWTSecretsRemainCompatible(t *testing.T) {
 	for _, issuedWith := range []string{legacyDefaultJWTSecret, currentDefaultJWTSecret} {
@@ -27,5 +32,43 @@ func TestCustomJWTSecretDoesNotTrustDefaultSecrets(t *testing.T) {
 	}
 	if _, err := ParseToken("custom-production-secret", token); err == nil {
 		t.Fatal("custom secret unexpectedly accepted a token signed with a public default")
+	}
+}
+
+func TestExpiredLegacyTokenRemainsUsable(t *testing.T) {
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
+		UserID: 42,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-45 * 24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-15 * 24 * time.Hour)),
+		},
+	}).SignedString([]byte(currentDefaultJWTSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := ParseToken(currentDefaultJWTSecret, token)
+	if err != nil {
+		t.Fatalf("expired legacy token was rejected: %v", err)
+	}
+	if userID != 42 {
+		t.Fatalf("user id = %d, want 42", userID)
+	}
+}
+
+func TestTokenRejectsUnexpectedAlgorithmAndInvalidUser(t *testing.T) {
+	unsigned, err := jwt.NewWithClaims(jwt.SigningMethodNone, Claims{UserID: 42}).SignedString(jwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseToken(currentDefaultJWTSecret, unsigned); err == nil {
+		t.Fatal("unsigned token was accepted")
+	}
+
+	zeroUser, err := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{}).SignedString([]byte(currentDefaultJWTSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseToken(currentDefaultJWTSecret, zeroUser); err == nil {
+		t.Fatal("token without a user id was accepted")
 	}
 }

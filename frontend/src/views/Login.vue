@@ -3,6 +3,14 @@
     <div class="auth-card">
       <h1 class="auth-title">OpenReader</h1>
       <p class="auth-sub">继续阅读</p>
+      <el-alert
+        v-if="route.query.reason === 'session'"
+        title="登录状态已失效，请重新登录"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="auth-alert"
+      />
 
       <el-form @submit.prevent="submit" label-position="top" size="large">
         <el-form-item label="用户名">
@@ -29,11 +37,12 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/user'
 
 const router = useRouter()
+const route = useRoute()
 const user = useUserStore()
 const username = ref('')
 const password = ref('')
@@ -46,7 +55,8 @@ async function submit() {
   loading.value = true
   try {
     await user.login(username.value, password.value, mode.value)
-    router.push({ name: 'home' })
+    const returnTo = String(route.query.returnTo || '')
+    await router.replace(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : { name: 'home' })
   } catch (err) {
     ElMessage.error(err?.response?.data?.error?.message || '请求失败')
   } finally {
@@ -60,6 +70,7 @@ async function submit() {
 .auth-card { background: #fff; border-radius: 12px; padding: 40px 36px; width: 400px; max-width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
 .auth-title { font-size: 28px; font-weight: 700; color: #1e293b; margin: 0 0 4px; text-align: center; }
 .auth-sub { font-size: 14px; color: #94a3b8; text-align: center; margin: 0 0 28px; }
+.auth-alert { margin-bottom: 20px; }
 .auth-btn { width: 100%; }
 .auth-switch { text-align: center; margin-top: 12px; }
 </style>

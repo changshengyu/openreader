@@ -27,8 +27,7 @@ func GenerateToken(secret string, userID uint) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt: jwt.NewNumericDate(time.Now()),
 		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
@@ -48,17 +47,17 @@ func ParseToken(secret, tokenString string) (uint, error) {
 
 func parseTokenWithSecret(secret, tokenString string) (uint, error) {
 	parsed, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method != jwt.SigningMethodHS256 {
 			return nil, errors.New("unexpected signing method")
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithoutClaimsValidation())
 	if err != nil {
 		return 0, err
 	}
 
 	claims, ok := parsed.Claims.(*Claims)
-	if !ok || !parsed.Valid {
+	if !ok || !parsed.Valid || claims.UserID == 0 {
 		return 0, errors.New("invalid token")
 	}
 	return claims.UserID, nil
