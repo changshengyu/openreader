@@ -79,7 +79,10 @@ export function changeBookSource(id, payload) {
 }
 
 export function searchBookContent(id, keyword, params = {}) {
-  return api.get(`/books/${id}/search`, { params: { q: keyword, ...params } })
+  return api.get(`/books/${id}/search`, {
+    params: { q: keyword, ...params },
+    timeout: 60000,
+  })
 }
 
 export function listChapters(id) {

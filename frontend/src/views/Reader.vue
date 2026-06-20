@@ -1939,9 +1939,9 @@ async function runBookContentSearch({ append = false, scanAll = false } = {}) {
 
 function contentSearchPagingParams(targetBook) {
   if (Number(targetBook?.sourceId || 0) > 0) {
-    return { chapterLimit: 80, scanLimit: 240, matchLimit: 200, perChapterLimit: 20 }
+    return { chapterLimit: 10, scanLimit: 10, matchLimit: 120, perChapterLimit: 20 }
   }
-  return { chapterLimit: 500, scanLimit: 2000, matchLimit: 5000, perChapterLimit: 500, localFull: 1 }
+  return { chapterLimit: 160, scanLimit: 480, matchLimit: 1000, perChapterLimit: 100, localFull: 1 }
 }
 
 function openNoteDialog() {

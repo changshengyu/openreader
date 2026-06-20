@@ -3120,6 +3120,53 @@ func TestSearchBookContentPaged(t *testing.T) {
 	}
 }
 
+func TestSearchLocalBookContentKeepsRequestedPageSize(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "本地长篇搜索", SourceID: 0}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		cachePath := filepath.Join("local-paged-search", fmt.Sprintf("chapter-%d.txt", i))
+		fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(fmt.Sprintf("第%d章目标", i+1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		chapter := models.Chapter{BookID: book.ID, Index: i, Title: fmt.Sprintf("第%d章", i+1), CachePath: cachePath}
+		if err := server.db.Create(&chapter).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("目标")+"&paged=1&lastIndex=-1&chapterLimit=2&localFull=1", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("local paged search: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result struct {
+		List      []map[string]any `json:"list"`
+		LastIndex int              `json:"lastIndex"`
+		HasMore   bool             `json:"hasMore"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.List) != 2 || result.LastIndex != 1 || !result.HasMore {
+		t.Fatalf("local search ignored requested page size: %+v", result)
+	}
+}
+
 func TestSearchBookContentScansAheadUntilMatch(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

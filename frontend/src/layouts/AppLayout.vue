@@ -5,10 +5,12 @@
     @touchstart="handleTouchStart"
     @touchmove="handleTouchMove"
     @touchend="handleTouchEnd"
+    @touchcancel="handleTouchCancel"
   >
     <div v-if="offline" class="app-offline">网络已断开，部分同步能力会在恢复连接后继续。</div>
 
     <aside class="app-sidebar" :style="mobileNavigationStyle">
+      <div class="app-sidebar-scroll">
       <div class="app-brand" @click="goHome">
         <div class="app-brand-mark">阅</div>
         <div>
@@ -106,6 +108,7 @@
           </button>
         </section>
       </nav>
+      </div>
 
       <div class="sidebar-bottom-icons" aria-label="侧栏快捷入口">
         <a class="sidebar-bottom-icon" href="https://github.com/changshengyu/openreader" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
@@ -170,6 +173,8 @@ const windowWidth = ref(currentViewportWidth())
 const mobileNavigationVisible = ref(false)
 const touchStart = ref(null)
 const touchMoveX = ref(0)
+const touchAxis = ref('')
+let ignoreWorkspaceClickUntil = 0
 const cacheStats = ref({})
 const localBrowserCacheStats = ref({ total: { files: 0, size: 0 }, groups: {} })
 const healthInfo = ref(null)
@@ -683,6 +688,7 @@ function handleTouchStart(event) {
   }
   touchStart.value = { x: touch.clientX, y: touch.clientY }
   touchMoveX.value = 0
+  touchAxis.value = ''
 }
 
 function handleTouchMove(event) {
@@ -690,10 +696,14 @@ function handleTouchMove(event) {
   const touch = event.touches[0]
   const moveX = touch.clientX - touchStart.value.x
   const moveY = touch.clientY - touchStart.value.y
-  if (Math.abs(moveY) > Math.abs(moveX)) {
+  if (!touchAxis.value && Math.max(Math.abs(moveX), Math.abs(moveY)) >= 8) {
+    touchAxis.value = Math.abs(moveX) > Math.abs(moveY) ? 'x' : 'y'
+  }
+  if (touchAxis.value === 'y') {
     touchMoveX.value = 0
     return
   }
+  if (touchAxis.value !== 'x') return
   const width = mobileNavigationWidth.value
   if ((!mobileNavigationVisible.value && moveX > 0 && moveX <= width) || (mobileNavigationVisible.value && moveX < 0 && moveX >= -width)) {
     event.preventDefault()
@@ -704,13 +714,24 @@ function handleTouchMove(event) {
 
 function handleTouchEnd() {
   if (!isMobileShell.value) return
-  if (touchMoveX.value > 0) mobileNavigationVisible.value = true
-  if (touchMoveX.value < 0) mobileNavigationVisible.value = false
+  if (touchAxis.value === 'x' && touchMoveX.value > 0) mobileNavigationVisible.value = true
+  if (touchAxis.value === 'x' && touchMoveX.value < 0) mobileNavigationVisible.value = false
+  if (touchAxis.value === 'x' && touchMoveX.value !== 0) {
+    ignoreWorkspaceClickUntil = Date.now() + 350
+  }
   touchStart.value = null
   touchMoveX.value = 0
+  touchAxis.value = ''
+}
+
+function handleTouchCancel() {
+  touchStart.value = null
+  touchMoveX.value = 0
+  touchAxis.value = ''
 }
 
 function closeMobileNavigation() {
+  if (Date.now() < ignoreWorkspaceClickUntil) return
   if (isMobileShell.value && mobileNavigationVisible.value) {
     mobileNavigationVisible.value = false
   }
@@ -833,15 +854,25 @@ function readError(err, fallback) {
   box-sizing: border-box;
   height: 100vh;
   height: 100dvh;
-  padding: 48px 36px 88px;
-  overflow-y: auto;
+  padding: 0;
+  overflow: hidden;
   color: #24201b;
   background: #f7f7f7;
   border-right: 1px solid #eee;
   scrollbar-width: none;
 }
 
-.app-sidebar::-webkit-scrollbar {
+.app-sidebar-scroll {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 48px 36px 88px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar {
   display: none;
 }
 
@@ -1098,7 +1129,7 @@ function readError(err, fallback) {
 }
 
 .sidebar-bottom-icons {
-  position: fixed;
+  position: absolute;
   bottom: 30px;
   left: 36px;
   z-index: 31;
@@ -1227,14 +1258,17 @@ function readError(err, fallback) {
   box-sizing: border-box;
   height: 100vh;
   height: 100dvh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: max(48px, env(safe-area-inset-top)) 36px 88px;
+  overflow: hidden;
+  padding: 0;
   scrollbar-width: none;
   box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
   transform: translateX(calc(-1 * var(--mobile-nav-width, 72vw)));
   transition: transform 0.3s;
   will-change: transform;
+}
+
+.app-shell.mobile-shell .app-sidebar-scroll {
+  padding: max(48px, env(safe-area-inset-top)) 36px 88px;
 }
 
 .app-shell.mobile-shell .app-workspace {
@@ -1378,7 +1412,7 @@ function readError(err, fallback) {
 }
 
 .app-shell.mobile-shell .sidebar-bottom-icons {
-  position: fixed;
+  position: absolute;
   right: auto;
   bottom: 30px;
   left: 36px;
