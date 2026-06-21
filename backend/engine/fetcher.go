@@ -33,7 +33,15 @@ func FetchDocument(url, charset string) (*goquery.Document, error) {
 }
 
 func FetchDocumentContext(ctx context.Context, url, charset string) (*goquery.Document, error) {
-	decoded, err := FetchTextContext(ctx, url, charset)
+	return FetchDocumentWithHeadersContext(ctx, url, charset, nil)
+}
+
+func FetchDocumentWithHeaders(url, charset string, headers map[string]string) (*goquery.Document, error) {
+	return FetchDocumentWithHeadersContext(context.Background(), url, charset, headers)
+}
+
+func FetchDocumentWithHeadersContext(ctx context.Context, url, charset string, headers map[string]string) (*goquery.Document, error) {
+	decoded, err := FetchTextWithHeadersContext(ctx, url, charset, headers)
 	if err != nil {
 		return nil, err
 	}

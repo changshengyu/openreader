@@ -61,7 +61,7 @@ func SearchBooksContext(ctx context.Context, source models.BookSource, keyword s
 		charset = "utf-8"
 	}
 
-	doc, err := FetchDocumentContext(ctx, searchURL, charset)
+	doc, err := FetchDocumentWithHeadersContext(ctx, searchURL, charset, rule.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("fetch search page: %w", err)
 	}
@@ -108,7 +108,7 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 		activeExploreURL = resolveURL(baseURL, activeExploreURL)
 	}
 	exploreURL := strings.ReplaceAll(activeExploreURL, "{page}", fmt.Sprintf("%d", page))
-	doc, err := FetchDocument(exploreURL, charset)
+	doc, err := FetchDocumentWithHeaders(exploreURL, charset, rule.Headers)
 	if err != nil {
 		return ExploreResult{}, fmt.Errorf("fetch explore page: %w", err)
 	}
@@ -178,7 +178,7 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 		charset = "utf-8"
 	}
 
-	doc, err := FetchDocument(tocURL, charset)
+	doc, err := FetchDocumentWithHeaders(tocURL, charset, rule.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("fetch toc page: %w", err)
 	}
@@ -225,7 +225,7 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 		charset = "utf-8"
 	}
 
-	doc, err := FetchDocument(contentURL, charset)
+	doc, err := FetchDocumentWithHeaders(contentURL, charset, rule.Headers)
 	if err != nil {
 		return "", fmt.Errorf("fetch content page: %w", err)
 	}

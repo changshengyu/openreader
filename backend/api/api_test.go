@@ -1673,7 +1673,8 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"bookSourceUrl":"https://upload-reader.example",
 			"bookSourceGroup":"上传分组",
 			"searchUrl":"https://upload-reader.example/search?q={{key}}",
-			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
+			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
+			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a|attr:href"},
 			"ruleContent":{"content":".content"}
 		}
 	]`))
@@ -1707,8 +1708,35 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.ContentRule != ".content" {
+	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.ContentRule != ".content" ||
+		rule.Headers["X-Source-Token"] != "upload-secret" ||
+		rule.Headers["Referer"] != "https://upload-reader.example/" {
 		t.Fatalf("unexpected imported rules: %+v", rule)
+	}
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Header.Get("X-Source-Token") != "upload-secret" ||
+				request.Header.Get("Referer") != "https://upload-reader.example/" {
+				t.Fatalf("imported source headers were not applied: %v", request.Header)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<article class="item"><span class="name">请求头测试书</span><a href="/book/1">详情</a></article>`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	testReq := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/sources/%d/test", source.ID), strings.NewReader(`{"keyword":"请求头"}`))
+	testReq.Header.Set("Content-Type", "application/json")
+	testReq.Header.Set("Authorization", token)
+	testW := httptest.NewRecorder()
+	router.ServeHTTP(testW, testReq)
+	if testW.Code != http.StatusOK || !strings.Contains(testW.Body.String(), `"请求头测试书"`) {
+		t.Fatalf("test imported source with headers: expected parsed result, got %d: %s", testW.Code, testW.Body.String())
 	}
 }
 
