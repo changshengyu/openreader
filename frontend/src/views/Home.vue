@@ -107,10 +107,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Edit, Grid, List, Menu } from '@element-plus/icons-vue'
-import { bookCategoryIds, bookHasCategory, useBookshelfStore } from '../stores/bookshelf'
+import { bookHasCategory, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { isLocalBook } from '../utils/localBook'
@@ -123,6 +124,7 @@ const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
+const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
 const selectedGroup = ref('')
 const showBookEditButton = ref(false)
@@ -316,15 +318,6 @@ function relativeTimeLabel(value) {
 
 function readerRouteQuery(book) {
   return readerRouteQueryFromBook(book, bookProgress(book))
-}
-
-function categoryName(bookOrId) {
-  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
-  if (!ids.length) return '未分组'
-  const names = ids
-    .map(id => bookshelf.categories.find(category => String(category.id) === String(id))?.name)
-    .filter(Boolean)
-  return names.length ? names.join('、') : '未分组'
 }
 
 function coverInitial(book) {

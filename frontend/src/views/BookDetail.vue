@@ -133,9 +133,10 @@ import BookInfoPanel from '../components/BookInfoPanel.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
 import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
-import { bookCategoryIds, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
@@ -156,6 +157,7 @@ const router = useRouter()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
+const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
 const loading = ref(true)
 const book = ref(null)
@@ -706,15 +708,6 @@ async function changeSource(source) {
   } finally {
     changingSource.value = null
   }
-}
-
-function categoryName(bookOrId) {
-  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
-  if (!ids.length) return '未分组'
-  const names = ids
-    .map(id => bookshelf.categories.find(category => String(category.id) === String(id))?.name)
-    .filter(Boolean)
-  return names.length ? names.join('、') : '未分组'
 }
 
 function formatDate(value) {

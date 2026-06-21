@@ -678,13 +678,14 @@ import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from 
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
-import { bookCategoryIds, bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useUserStore } from '../stores/user'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
+import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../utils/localBookToc'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
@@ -704,6 +705,7 @@ const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
 const userStore = useUserStore()
+const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
 const selectedBookIds = ref([])
 const batchBusy = ref(false)
@@ -1102,15 +1104,6 @@ watch(
     await loadBookmarkItems()
   },
 )
-
-function categoryName(bookOrId) {
-  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
-  if (!ids.length) return '未分组'
-  const names = ids
-    .map(id => bookshelf.categories.find(category => String(category.id) === String(id))?.name)
-    .filter(Boolean)
-  return names.length ? names.join('、') : '未分组'
-}
 
 function progressLabel(book) {
   const progress = bookProgress(book)

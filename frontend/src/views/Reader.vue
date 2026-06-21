@@ -491,13 +491,14 @@ import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
 import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
-import { bookCategoryIds, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
+import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
@@ -523,6 +524,7 @@ const router = useRouter()
 const reader = useReaderStore()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
+const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const bookId = computed(() => Number(route.params.id))
 
 const book = ref(null)
@@ -1759,15 +1761,6 @@ async function openInfoGroup() {
     statusLabel: `阅读中 · ${bookProgressLabel.value}`,
     statusType: 'success',
   })
-}
-
-function categoryName(bookOrId) {
-  const ids = typeof bookOrId === 'object' ? bookCategoryIds(bookOrId) : (bookOrId ? [Number(bookOrId)] : [])
-  if (!ids.length) return '未分组'
-  const names = ids
-    .map(id => bookshelf.categories.find(category => Number(category.id) === Number(id))?.name)
-    .filter(Boolean)
-  return names.length ? names.join('、') : '未分组'
 }
 
 async function refreshReaderBookCatalog() {

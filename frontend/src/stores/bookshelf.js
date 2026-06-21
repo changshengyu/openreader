@@ -5,6 +5,7 @@ import api from '../api/client'
 import { useReaderStore } from './reader'
 import { newestProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { getBrowserCache, listBrowserCacheKeys, setBrowserCache } from '../utils/browserCache'
+import { bookCategoryIds } from '../utils/bookCategory'
 import { currentUserScope } from '../utils/authScope'
 
 function asList(data) {
@@ -491,18 +492,6 @@ export function mergeShelfBook(current, incoming) {
   if (progress) next.progress = progress
   next.shelfOrderAt = newestShelfOrderAt(current.shelfOrderAt, incoming?.shelfOrderAt)
   return next
-}
-
-export function bookCategoryIds(book) {
-  const ids = Array.isArray(book?.categoryIds) ? book.categoryIds : []
-  const values = ids
-    .map(id => Number(id))
-    .filter(id => Number.isFinite(id) && id > 0)
-  if (values.length === 0 && book?.categoryId) {
-    const id = Number(book.categoryId)
-    if (Number.isFinite(id) && id > 0) values.push(id)
-  }
-  return [...new Set(values)]
 }
 
 export function bookHasCategory(book, categoryId) {
