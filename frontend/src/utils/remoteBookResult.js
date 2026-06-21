@@ -34,7 +34,7 @@ export function remoteBookKey(book = {}, fallbackSourceId = '') {
   return `${remoteBookSourceId(book, fallbackSourceId)}-${remoteBookUrl(book)}`
 }
 
-export function remoteBookCreatePayload(book = {}, categoryId = '', options = {}) {
+export function remoteBookCreatePayload(book = {}, categoryIds = [], options = {}) {
   return {
     title: remoteBookTitle(book),
     author: remoteBookAuthor(book),
@@ -43,6 +43,11 @@ export function remoteBookCreatePayload(book = {}, categoryId = '', options = {}
     bookUrl: remoteBookUrl(book),
     sourceId: remoteBookSourceId(book, options.sourceId),
     sourceName: remoteBookSourceName(book, options.sourceName),
-    categoryId: categoryId ? Number(categoryId) : null,
+    categoryIds: normalizeCategoryIds(categoryIds),
   }
+}
+
+function normalizeCategoryIds(value) {
+  const values = Array.isArray(value) ? value : [value]
+  return [...new Set(values.map(Number).filter(id => Number.isInteger(id) && id > 0))]
 }

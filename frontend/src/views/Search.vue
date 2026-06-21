@@ -40,15 +40,13 @@
           <el-option v-for="count in concurrentOptions" :key="count" :label="`${count}并发线程`" :value="count" />
         </el-select>
 
-        <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable size="small">
-          <el-option label="未分组" value="" />
+        <el-select v-model="targetCategoryIds" placeholder="加入书架分组（可多选）" multiple collapse-tags collapse-tags-tooltip clearable size="small">
           <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
         </el-select>
       </div>
 
       <div v-else class="search-options local-search-options">
-        <el-select v-model="targetCategoryId" placeholder="导入到书架分组（可选）" clearable size="small">
-          <el-option label="未分组" value="" />
+        <el-select v-model="targetCategoryIds" placeholder="导入到书架分组（可多选）" multiple collapse-tags collapse-tags-tooltip clearable size="small">
           <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
         </el-select>
         <el-switch v-model="localRecursiveScan" inline-prompt active-text="子目录" inactive-text="当前层" />
@@ -167,7 +165,7 @@ const sources = ref([])
 const selectedIds = ref([])
 const selectedGroup = ref(typeof route.query.group === 'string' ? route.query.group : preferences.search.group)
 const singleSourceId = ref(Number(route.query.sourceId || preferences.search.sourceId || 0) || null)
-const targetCategoryId = ref('')
+const targetCategoryIds = ref([])
 const searchType = ref(['all', 'group', 'single', 'custom'].includes(route.query.searchType) ? route.query.searchType : preferences.search.searchType)
 const concurrentOptions = [8, 16, 32, 60]
 const concurrentCount = ref(concurrentOptions.includes(Number(route.query.concurrent)) ? Number(route.query.concurrent) : preferences.search.concurrent)
@@ -451,8 +449,8 @@ async function importLocalOne(item) {
 async function importLocalPaths(paths) {
   importingLocal.value = true
   try {
-    const categoryId = targetCategoryId.value ? Number(targetCategoryId.value) : null
-    const { data } = await importFromLocalStore(paths, categoryId)
+    const categoryIds = targetCategoryIds.value.map(Number).filter(Boolean)
+    const { data } = await importFromLocalStore(paths, categoryIds)
     const imported = data.imported || []
     imported.forEach(item => {
       if (item.book) bookshelf.upsertBook(item.book)
@@ -568,7 +566,7 @@ async function addRemoteBook(item, shouldRead) {
   const key = remoteBookKey(item)
   addingBook.value = key
   try {
-    const payload = remoteBookCreatePayload(item, targetCategoryId.value)
+    const payload = remoteBookCreatePayload(item, targetCategoryIds.value)
     const { data } = await createRemoteBook(payload)
     bookshelf.upsertBook(data)
     ElMessage.success(`已加入书架：《${remoteBookTitle(item)}》`)

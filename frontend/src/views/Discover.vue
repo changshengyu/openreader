@@ -9,8 +9,7 @@
     </header>
 
     <section class="discover-toolbar app-panel">
-      <el-select v-model="targetCategoryId" placeholder="加入书架分组（可选）" clearable>
-        <el-option label="未分组" value="" />
+      <el-select v-model="targetCategoryIds" placeholder="加入书架分组（可多选）" multiple collapse-tags collapse-tags-tooltip clearable>
         <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
       <span v-if="activeSource" class="source-status">
@@ -103,7 +102,7 @@ const selectedSourceId = ref('')
 const selectedGroup = ref('')
 const activeExploreUrl = ref('')
 const activeExploreName = ref('')
-const targetCategoryId = ref('')
+const targetCategoryIds = ref([])
 const loadingSources = ref(false)
 const loadingBooks = ref(false)
 const addingBook = ref(null)
@@ -308,7 +307,7 @@ function openPreview(book) {
 async function addRemoteBook(book, shouldRead) {
   addingBook.value = activeRemoteKey(book)
   try {
-    const payload = remoteBookCreatePayload(book, targetCategoryId.value, {
+    const payload = remoteBookCreatePayload(book, targetCategoryIds.value, {
       sourceId: activeRemoteSourceId(book),
       sourceName: activeRemoteSourceName(book),
     })

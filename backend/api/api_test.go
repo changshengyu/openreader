@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -2443,7 +2444,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	}
 }
 
-func TestCreateRemoteBookAcceptsCategory(t *testing.T) {
+func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
@@ -2466,8 +2467,12 @@ func TestCreateRemoteBookAcceptsCategory(t *testing.T) {
 	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	category := models.Category{UserID: user.ID, Name: "远程分组"}
-	if err := server.db.Create(&category).Error; err != nil {
+	categoryA := models.Category{UserID: user.ID, Name: "远程分组 A"}
+	categoryB := models.Category{UserID: user.ID, Name: "远程分组 B"}
+	if err := server.db.Create(&categoryA).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&categoryB).Error; err != nil {
 		t.Fatal(err)
 	}
 	source := models.BookSource{Name: "远程源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
@@ -2482,7 +2487,7 @@ func TestCreateRemoteBookAcceptsCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"title":"远程书","bookUrl":"` + upstream + `/book","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `,"categoryId":` + strconv.FormatUint(uint64(category.ID), 10) + `}`
+	body := `{"title":"远程书","bookUrl":"` + upstream + `/book","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `,"categoryIds":[` + strconv.FormatUint(uint64(categoryA.ID), 10) + `,` + strconv.FormatUint(uint64(categoryB.ID), 10) + `]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/books/remote", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -2492,12 +2497,18 @@ func TestCreateRemoteBookAcceptsCategory(t *testing.T) {
 		t.Fatalf("create remote book: expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var book models.Book
+	var book struct {
+		models.Book
+		CategoryIDs []uint `json:"categoryIds"`
+	}
 	if err := json.Unmarshal(w.Body.Bytes(), &book); err != nil {
 		t.Fatal(err)
 	}
-	if book.CategoryID == nil || *book.CategoryID != category.ID {
-		t.Fatalf("expected category on remote book, got %+v", book)
+	if !reflect.DeepEqual(book.CategoryIDs, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected both categories on remote book, got %+v", book.CategoryIDs)
+	}
+	if book.CategoryID == nil || *book.CategoryID != categoryA.ID {
+		t.Fatalf("expected first category as compatibility category, got %+v", book.Book)
 	}
 	if !book.CanUpdate {
 		t.Fatalf("expected remote book to enable update checks by default, got %+v", book)
@@ -2692,8 +2703,12 @@ func TestCreateRemoteBookReusesExistingURL(t *testing.T) {
 	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	category := models.Category{UserID: user.ID, Name: "新分组"}
-	if err := server.db.Create(&category).Error; err != nil {
+	categoryA := models.Category{UserID: user.ID, Name: "新分组 A"}
+	categoryB := models.Category{UserID: user.ID, Name: "新分组 B"}
+	if err := server.db.Create(&categoryA).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&categoryB).Error; err != nil {
 		t.Fatal(err)
 	}
 	source := models.BookSource{Name: "已有源", Enabled: true}
@@ -2705,7 +2720,7 @@ func TestCreateRemoteBookReusesExistingURL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"title":"已有书","bookUrl":"https://book.example/existing","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `,"categoryId":` + strconv.FormatUint(uint64(category.ID), 10) + `}`
+	body := `{"title":"已有书","bookUrl":"https://book.example/existing","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `,"categoryIds":[` + strconv.FormatUint(uint64(categoryA.ID), 10) + `,` + strconv.FormatUint(uint64(categoryB.ID), 10) + `]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/books/remote", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -2722,12 +2737,25 @@ func TestCreateRemoteBookReusesExistingURL(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected no duplicate books, got %d", count)
 	}
-	var updated models.Book
-	if err := server.db.First(&updated, book.ID).Error; err != nil {
+	var updated struct {
+		models.Book
+		CategoryIDs []uint `json:"categoryIds"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.CategoryID == nil || *updated.CategoryID != category.ID {
-		t.Fatalf("expected existing book category updated, got %+v", updated)
+	if !reflect.DeepEqual(updated.CategoryIDs, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected existing book categories updated, got %+v", updated.CategoryIDs)
+	}
+	if updated.CategoryID == nil || *updated.CategoryID != categoryA.ID {
+		t.Fatalf("expected first category as compatibility category, got %+v", updated.Book)
+	}
+	var categoryRows int64
+	if err := server.db.Model(&models.BookCategory{}).Where("user_id = ? AND book_id = ?", user.ID, book.ID).Count(&categoryRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if categoryRows != 2 {
+		t.Fatalf("expected two persisted category memberships, got %d", categoryRows)
 	}
 }
 
