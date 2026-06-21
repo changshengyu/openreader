@@ -673,7 +673,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
-import { cacheBookContent, createBookmark, deleteBookmark, listBookmarks, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, createBookmark, createBookmarks, deleteBookmark, deleteBookmarks, listBookmarks, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
@@ -686,6 +686,7 @@ import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
+import { normalizeImportedBookmarks } from '../utils/bookmark'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../utils/localBookToc'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
@@ -1806,8 +1807,8 @@ async function removeBookmarkItems(rows) {
   if (!Array.isArray(rows) || !rows.length) return
   try {
     await ElMessageBox.confirm(`确认要删除所选择的 ${rows.length} 条书签吗？`, '批量删除书签', { type: 'warning' })
-    await Promise.all(rows.map(item => deleteBookmark(item.id)))
-    const deleted = new Set(rows.map(item => item.id))
+    const { data } = await deleteBookmarks(overlay.bookmarkBook.id, rows.map(item => item.id))
+    const deleted = new Set(data?.deletedIds || [])
     bookmarkItems.value = bookmarkItems.value.filter(item => !deleted.has(item.id))
     ElMessage.success('书签已删除')
   } catch (err) {
@@ -1826,38 +1827,14 @@ async function importBookmarkItems(rows) {
   }
   try {
     await ElMessageBox.confirm(`确认要导入文件中的 ${payloads.length} 条书签到当前书籍吗？`, '导入书签', { type: 'info' })
-    const created = []
-    for (const payload of payloads) {
-      const { data } = await createBookmark(book.id, payload)
-      if (data?.id) created.push(data)
-    }
+    const { data } = await createBookmarks(book.id, payloads)
+    const created = Array.isArray(data) ? data : []
     bookmarkItems.value = [...created, ...bookmarkItems.value]
     ElMessage.success(`已导入 ${created.length} 条书签`)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '导入书签失败'))
   }
-}
-
-function normalizeImportedBookmarks(rows) {
-  return (Array.isArray(rows) ? rows : [])
-    .map(row => {
-      const chapterIndex = Math.max(0, Math.floor(Number(row.chapterIndex ?? row.durChapterIndex ?? 0)))
-      return {
-        chapterIndex,
-        offset: Math.max(0, Math.floor(Number(row.offset ?? 0))),
-        percent: clampPercent(row.percent),
-        title: String(row.title || row.chapterName || row.chapterTitle || `第 ${chapterIndex + 1} 章`).trim(),
-        excerpt: String(row.excerpt || row.bookText || '').trim(),
-        note: String(row.note || row.content || '').trim(),
-      }
-    })
-    .filter(row => row.title || row.excerpt || row.note)
-}
-
-function clampPercent(value) {
-  const percent = Number(value)
-  return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0
 }
 
 function formatSize(bytes) {

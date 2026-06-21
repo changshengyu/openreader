@@ -88,6 +88,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/books/:id/chapters/:index/content", server.chapterContent)
 	protected.GET("/books/:id/bookmarks", server.listBookmarks)
 	protected.POST("/books/:id/bookmarks", server.createBookmark)
+	protected.POST("/books/:id/bookmarks/batch", server.createBookmarks)
+	protected.POST("/books/:id/bookmarks/batch-delete", server.deleteBookmarks)
 	protected.PUT("/bookmarks/:id", server.updateBookmark)
 	protected.DELETE("/bookmarks/:id", server.deleteBookmark)
 	protected.GET("/local-store", server.listLocalStore)

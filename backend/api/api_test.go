@@ -2852,6 +2852,81 @@ func TestUpdateBookmark(t *testing.T) {
 	}
 }
 
+func TestBatchCreateAndDeleteBookmarks(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "批量书签书"}
+	otherBook := models.Book{UserID: user.ID, Title: "其它书籍"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&otherBook).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `[
+		{"chapterIndex":1,"offset":12,"percent":0.25,"title":"第一条","excerpt":"摘录一"},
+		{"chapterIndex":2,"offset":24,"percent":0.5,"note":"笔记二"}
+	]`
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/bookmarks/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("batch create bookmarks: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var created []models.Bookmark
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 2 || created[0].Title != "第一条" || created[1].Title != "书签" {
+		t.Fatalf("unexpected created bookmarks: %+v", created)
+	}
+	for _, bookmark := range created {
+		if bookmark.UserID != user.ID || bookmark.BookID != book.ID || bookmark.ID == 0 {
+			t.Fatalf("batch bookmark was not scoped correctly: %+v", bookmark)
+		}
+	}
+
+	otherBookmark := models.Bookmark{UserID: user.ID, BookID: otherBook.ID, Title: "不能被跨书删除"}
+	if err := server.db.Create(&otherBookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+	deleteBody := fmt.Sprintf(`{"ids":[%d,%d,%d,%d]}`, created[0].ID, otherBookmark.ID, created[0].ID, 999999)
+	deleteReq := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/bookmarks/batch-delete", strings.NewReader(deleteBody))
+	deleteReq.Header.Set("Content-Type", "application/json")
+	deleteReq.Header.Set("Authorization", token)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+	if deleteW.Code != http.StatusOK {
+		t.Fatalf("batch delete bookmarks: expected 200, got %d: %s", deleteW.Code, deleteW.Body.String())
+	}
+	var deleted struct {
+		DeletedIDs []uint `json:"deletedIds"`
+	}
+	if err := json.Unmarshal(deleteW.Body.Bytes(), &deleted); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(deleted.DeletedIDs, []uint{created[0].ID}) {
+		t.Fatalf("unexpected deleted bookmark ids: %+v", deleted.DeletedIDs)
+	}
+
+	var remaining []models.Bookmark
+	if err := server.db.Order("id asc").Find(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 2 || remaining[0].ID != created[1].ID || remaining[1].ID != otherBookmark.ID {
+		t.Fatalf("batch delete crossed scope or removed wrong rows: %+v", remaining)
+	}
+}
+
 func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

@@ -101,10 +101,18 @@ export function createBookmark(id, payload) {
   return api.post(`/books/${id}/bookmarks`, payload)
 }
 
+export function createBookmarks(id, payloads) {
+  return api.post(`/books/${id}/bookmarks/batch`, payloads)
+}
+
 export function updateBookmark(id, payload) {
   return api.put(`/bookmarks/${id}`, payload)
 }
 
 export function deleteBookmark(id) {
   return api.delete(`/bookmarks/${id}`)
+}
+
+export function deleteBookmarks(id, bookmarkIds) {
+  return api.post(`/books/${id}/bookmarks/batch-delete`, { ids: bookmarkIds })
 }
