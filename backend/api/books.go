@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1691,6 +1692,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	channel := make(chan sourceCandidateBatch, len(sources))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
+	parentCtx := c.Request.Context()
 	for _, source := range sources {
 		source := source
 		wg.Add(1)
@@ -1699,47 +1701,40 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			done := make(chan sourceCandidateBatch, 1)
-			go func() {
-				started := time.Now()
-				searchResults, err := engine.SearchBooks(source, keyword)
-				elapsed := time.Since(started).Milliseconds()
-				if err != nil {
-					done <- sourceCandidateBatch{Failed: true}
-					return
-				}
-				candidates := make([]sourceCandidate, 0)
-				for _, item := range searchResults {
-					if item.BookURL == "" {
-						continue
-					}
-					candidates = append(candidates, sourceCandidate{
-						SourceID:           source.ID,
-						SourceName:         source.Name,
-						Group:              source.Group,
-						Title:              item.Title,
-						Author:             item.Author,
-						CoverURL:           item.CoverURL,
-						Intro:              item.Intro,
-						LatestChapterTitle: item.LatestChapter,
-						BookURL:            item.BookURL,
-						Time:               elapsed,
-						Current:            source.ID == book.SourceID && item.BookURL == book.URL,
-					})
-					if len(candidates) >= 3 {
-						break
-					}
-				}
-				done <- sourceCandidateBatch{
-					Candidates: candidates,
-					Empty:      len(candidates) == 0,
-				}
-			}()
-			select {
-			case batch := <-done:
-				channel <- batch
-			case <-time.After(12 * time.Second):
+			ctx, cancel := context.WithTimeout(parentCtx, 12*time.Second)
+			started := time.Now()
+			searchResults, err := engine.SearchBooksContext(ctx, source, keyword)
+			cancel()
+			elapsed := time.Since(started).Milliseconds()
+			if err != nil {
 				channel <- sourceCandidateBatch{Failed: true}
+				return
+			}
+			candidates := make([]sourceCandidate, 0)
+			for _, item := range searchResults {
+				if item.BookURL == "" {
+					continue
+				}
+				candidates = append(candidates, sourceCandidate{
+					SourceID:           source.ID,
+					SourceName:         source.Name,
+					Group:              source.Group,
+					Title:              item.Title,
+					Author:             item.Author,
+					CoverURL:           item.CoverURL,
+					Intro:              item.Intro,
+					LatestChapterTitle: item.LatestChapter,
+					BookURL:            item.BookURL,
+					Time:               elapsed,
+					Current:            source.ID == book.SourceID && item.BookURL == book.URL,
+				})
+				if len(candidates) >= 3 {
+					break
+				}
+			}
+			channel <- sourceCandidateBatch{
+				Candidates: candidates,
+				Empty:      len(candidates) == 0,
 			}
 		}()
 	}

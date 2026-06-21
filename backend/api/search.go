@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -44,11 +46,11 @@ func (s *Server) search(c *gin.Context) {
 		return
 	}
 
-	results := concurrentSearch(sources, req.Keyword, req.ConcurrentCount)
+	results := concurrentSearch(c.Request.Context(), sources, req.Keyword, req.ConcurrentCount)
 	c.JSON(http.StatusOK, results)
 }
 
-func concurrentSearch(sources []models.BookSource, keyword string, concurrentCount int) []engine.SearchResult {
+func concurrentSearch(parent context.Context, sources []models.BookSource, keyword string, concurrentCount int) []engine.SearchResult {
 	type searchOutcome struct {
 		Results []engine.SearchResult
 		Error   error
@@ -74,19 +76,20 @@ func concurrentSearch(sources []models.BookSource, keyword string, concurrentCou
 		source := source
 		go func() {
 			defer wg.Done()
-			workerGate <- struct{}{}
-			defer func() { <-workerGate }()
-			done := make(chan searchOutcome, 1)
-			go func() {
-				results, err := engine.SearchBooks(source, keyword)
-				done <- searchOutcome{Results: results, Error: err}
-			}()
 			select {
-			case outcome := <-done:
-				channel <- outcome
-			case <-time.After(timeout):
-				channel <- searchOutcome{Error: errTimeout}
+			case workerGate <- struct{}{}:
+			case <-parent.Done():
+				channel <- searchOutcome{Error: parent.Err()}
+				return
 			}
+			defer func() { <-workerGate }()
+			ctx, cancel := context.WithTimeout(parent, timeout)
+			results, err := engine.SearchBooksContext(ctx, source, keyword)
+			cancel()
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = errTimeout
+			}
+			channel <- searchOutcome{Results: results, Error: err}
 		}()
 	}
 

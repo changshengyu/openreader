@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -139,6 +141,7 @@ func (s *Server) batchTestSources(c *gin.Context) {
 		timeoutMS = 15000
 	}
 	timeout := time.Duration(timeoutMS) * time.Millisecond
+	parentCtx := c.Request.Context()
 
 	var sources []models.BookSource
 	query := s.db.Model(&models.BookSource{})
@@ -161,24 +164,10 @@ func (s *Server) batchTestSources(c *gin.Context) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			done := make(chan struct {
-				results []engine.SearchResult
-				err     error
-			}, 1)
-			go func() {
-				searchResults, err := engine.SearchBooks(source, keyword)
-				done <- struct {
-					results []engine.SearchResult
-					err     error
-				}{results: searchResults, err: err}
-			}()
-			var searchResults []engine.SearchResult
-			var err error
-			select {
-			case outcome := <-done:
-				searchResults = outcome.results
-				err = outcome.err
-			case <-time.After(timeout):
+			ctx, cancel := context.WithTimeout(parentCtx, timeout)
+			searchResults, err := engine.SearchBooksContext(ctx, source, keyword)
+			cancel()
+			if errors.Is(err, context.DeadlineExceeded) {
 				err = errTimeout
 			}
 			results[index] = batchTestSourceResult{

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	stdhtml "html"
 	"net/url"
@@ -42,6 +43,10 @@ type RemoteChapter struct {
 
 // SearchBooks performs a remote search against a single book source.
 func SearchBooks(source models.BookSource, keyword string) ([]SearchResult, error) {
+	return SearchBooksContext(context.Background(), source, keyword)
+}
+
+func SearchBooksContext(ctx context.Context, source models.BookSource, keyword string) ([]SearchResult, error) {
 	rule, err := source.ParsedRules()
 	if err != nil {
 		return nil, fmt.Errorf("parse rules: %w", err)
@@ -56,7 +61,7 @@ func SearchBooks(source models.BookSource, keyword string) ([]SearchResult, erro
 		charset = "utf-8"
 	}
 
-	doc, err := FetchDocument(searchURL, charset)
+	doc, err := FetchDocumentContext(ctx, searchURL, charset)
 	if err != nil {
 		return nil, fmt.Errorf("fetch search page: %w", err)
 	}

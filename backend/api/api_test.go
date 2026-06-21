@@ -1760,15 +1760,21 @@ func TestBatchTestSourcesRespectsTimeout(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
+	requestCanceled := make(chan struct{}, 1)
 	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			time.Sleep(1200 * time.Millisecond)
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`<html><body><div class="book">慢源</div></body></html>`)),
-				Header:     make(http.Header),
-				Request:    req,
-			}, nil
+			select {
+			case <-time.After(1200 * time.Millisecond):
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`<html><body><div class="book">慢源</div></body></html>`)),
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			case <-req.Context().Done():
+				requestCanceled <- struct{}{}
+				return nil, req.Context().Err()
+			}
 		}),
 	})
 	defer restoreHTTPClient()
@@ -1785,6 +1791,7 @@ func TestBatchTestSourcesRespectsTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	started := time.Now()
 	req := httptest.NewRequest(http.MethodPost, "/api/sources/batch-test", strings.NewReader(`{"keyword":"测试","timeout":1000,"concurrent":3}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1805,6 +1812,14 @@ func TestBatchTestSourcesRespectsTimeout(t *testing.T) {
 	}
 	if len(resp.Results) != 1 || resp.Results[0].OK || resp.Results[0].Message != "search timeout" {
 		t.Fatalf("expected timeout result, got %+v", resp.Results)
+	}
+	if elapsed := time.Since(started); elapsed >= 1150*time.Millisecond {
+		t.Fatalf("expected request context to stop slow source early, took %s", elapsed)
+	}
+	select {
+	case <-requestCanceled:
+	default:
+		t.Fatal("expected slow source HTTP request to receive context cancellation")
 	}
 }
 
