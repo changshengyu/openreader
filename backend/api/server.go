@@ -112,6 +112,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.DELETE("/cache", server.clearCache)
 	protected.GET("/replace-rules", server.listReplaceRules)
 	protected.POST("/replace-rules", server.createReplaceRule)
+	protected.POST("/replace-rules/batch", server.upsertReplaceRules)
+	protected.POST("/replace-rules/batch-delete", server.deleteReplaceRules)
 	protected.POST("/replace-rules/test", server.testReplaceRule)
 	protected.PUT("/replace-rules/:id", server.updateReplaceRule)
 	protected.DELETE("/replace-rules/:id", server.deleteReplaceRule)

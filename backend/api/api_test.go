@@ -5162,6 +5162,96 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	}
 }
 
+func TestBatchUpsertAndDeleteReplaceRules(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	isRegex := true
+	existing := models.ReplaceRule{
+		UserID: user.ID, Name: "已有规则", Pattern: "旧匹配", Replacement: "旧替换",
+		Scope: "*", IsRegex: &isRegex, Enabled: true,
+	}
+	otherUserRule := models.ReplaceRule{
+		UserID: user.ID + 100, Name: "其它用户规则", Pattern: "不能删除",
+		Scope: "*", IsRegex: &isRegex, Enabled: true,
+	}
+	if err := server.db.Create(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&otherUserRule).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `[
+		{"name":"已有规则","pattern":"新匹配","replacement":"新替换","scope":"目标书","isRegex":false,"enabled":false},
+		{"name":"新增规则","pattern":"广告","replacement":"","scope":"*","isRegex":true,"isEnabled":true},
+		{"name":"","pattern":"无名称"},
+		{"name":"无匹配","pattern":""}
+	]`
+	req := httptest.NewRequest(http.MethodPost, "/api/replace-rules/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch upsert replace rules: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var upserted struct {
+		Rules   []models.ReplaceRule `json:"rules"`
+		Created int                  `json:"created"`
+		Updated int                  `json:"updated"`
+		Skipped int                  `json:"skipped"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &upserted); err != nil {
+		t.Fatal(err)
+	}
+	if upserted.Created != 1 || upserted.Updated != 1 || upserted.Skipped != 2 || len(upserted.Rules) != 2 {
+		t.Fatalf("unexpected batch upsert summary: %+v", upserted)
+	}
+	if upserted.Rules[0].ID != existing.ID || upserted.Rules[0].Pattern != "新匹配" || upserted.Rules[0].Enabled {
+		t.Fatalf("expected existing rule to be updated in place, got %+v", upserted.Rules[0])
+	}
+
+	var ownRules []models.ReplaceRule
+	if err := server.db.Where("user_id = ?", user.ID).Order("id asc").Find(&ownRules).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(ownRules) != 2 || ownRules[0].ID != existing.ID || ownRules[1].Name != "新增规则" {
+		t.Fatalf("expected one updated and one created rule, got %+v", ownRules)
+	}
+
+	deleteBody := fmt.Sprintf(`{"ids":[%d,%d,%d,%d]}`, ownRules[0].ID, ownRules[1].ID, otherUserRule.ID, ownRules[0].ID)
+	deleteReq := httptest.NewRequest(http.MethodPost, "/api/replace-rules/batch-delete", strings.NewReader(deleteBody))
+	deleteReq.Header.Set("Content-Type", "application/json")
+	deleteReq.Header.Set("Authorization", token)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+	if deleteW.Code != http.StatusOK {
+		t.Fatalf("batch delete replace rules: expected 200, got %d: %s", deleteW.Code, deleteW.Body.String())
+	}
+	var deleted struct {
+		DeletedIDs []uint `json:"deletedIds"`
+	}
+	if err := json.Unmarshal(deleteW.Body.Bytes(), &deleted); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(deleted.DeletedIDs, []uint{ownRules[0].ID, ownRules[1].ID}) {
+		t.Fatalf("unexpected deleted replace rule ids: %+v", deleted.DeletedIDs)
+	}
+
+	var remaining []models.ReplaceRule
+	if err := server.db.Find(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].ID != otherUserRule.ID {
+		t.Fatalf("batch delete crossed user scope: %+v", remaining)
+	}
+}
+
 func TestCreateReplaceRuleRespectsEnabledFlag(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)

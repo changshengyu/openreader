@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
@@ -13,7 +15,7 @@ import (
 
 type replaceRuleRequest struct {
 	Name        string `json:"name"`
-	Pattern     string `json:"pattern" binding:"required"`
+	Pattern     string `json:"pattern"`
 	Replacement string `json:"replacement"`
 	Scope       string `json:"scope"`
 	IsRegex     *bool  `json:"isRegex"`
@@ -45,6 +47,20 @@ func (s *Server) createReplaceRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
 		return
 	}
+	rule, ok := replaceRuleFromRequest(userID, req, true)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
+		return
+	}
+	if err := s.db.Create(&rule).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create replace rule"})
+		return
+	}
+	s.broadcastReplaceRulesUpdate(userID, "create")
+	c.JSON(http.StatusCreated, rule)
+}
+
+func replaceRuleFromRequest(userID uint, req replaceRuleRequest, defaultName bool) (models.ReplaceRule, bool) {
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -66,18 +82,69 @@ func (s *Server) createReplaceRule(c *gin.Context) {
 		Enabled:     enabled,
 	}
 	if rule.Pattern == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
-		return
+		return models.ReplaceRule{}, false
 	}
-	if rule.Name == "" {
+	if rule.Name == "" && defaultName {
 		rule.Name = rule.Pattern
 	}
-	if err := s.db.Create(&rule).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create replace rule"})
+	return rule, rule.Name != ""
+}
+
+func (s *Server) upsertReplaceRules(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+	var requests []replaceRuleRequest
+	if err := c.ShouldBindJSON(&requests); err != nil || len(requests) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid replace rules payload"})
 		return
 	}
-	s.broadcastReplaceRulesUpdate(userID, "create")
-	c.JSON(http.StatusCreated, rule)
+
+	rules := make([]models.ReplaceRule, 0, len(requests))
+	created := 0
+	updated := 0
+	skipped := 0
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		for _, request := range requests {
+			next, ok := replaceRuleFromRequest(userID, request, false)
+			if !ok {
+				skipped++
+				continue
+			}
+			var existing models.ReplaceRule
+			err := tx.Where("user_id = ? AND name = ?", userID, next.Name).First(&existing).Error
+			switch {
+			case err == nil:
+				existing.Pattern = next.Pattern
+				existing.Replacement = next.Replacement
+				existing.Scope = next.Scope
+				existing.IsRegex = next.IsRegex
+				existing.Enabled = next.Enabled
+				if err := tx.Save(&existing).Error; err != nil {
+					return err
+				}
+				rules = append(rules, existing)
+				updated++
+			case errors.Is(err, gorm.ErrRecordNotFound):
+				if err := tx.Create(&next).Error; err != nil {
+					return err
+				}
+				rules = append(rules, next)
+				created++
+			default:
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save replace rules"})
+		return
+	}
+	s.broadcastReplaceRulesUpdate(userID, "batch-upsert")
+	c.JSON(http.StatusOK, gin.H{
+		"rules":   rules,
+		"created": created,
+		"updated": updated,
+		"skipped": skipped,
+	})
 }
 
 func (s *Server) updateReplaceRule(c *gin.Context) {
@@ -142,6 +209,50 @@ func (s *Server) deleteReplaceRule(c *gin.Context) {
 	}
 	s.broadcastReplaceRulesUpdate(userID, "delete")
 	c.Status(http.StatusNoContent)
+}
+
+type replaceRuleBatchDeleteRequest struct {
+	IDs []uint `json:"ids"`
+}
+
+func (s *Server) deleteReplaceRules(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+	var request replaceRuleBatchDeleteRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid replace rule ids"})
+		return
+	}
+	ids := uniquePositiveUintIDs(request.IDs)
+	if len(ids) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "replace rule ids are required"})
+		return
+	}
+
+	var rules []models.ReplaceRule
+	if err := s.db.Where("user_id = ? AND id IN ?", userID, ids).Find(&rules).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load replace rules"})
+		return
+	}
+	existing := make(map[uint]struct{}, len(rules))
+	for _, rule := range rules {
+		existing[rule.ID] = struct{}{}
+	}
+	deletedIDs := make([]uint, 0, len(rules))
+	for _, id := range ids {
+		if _, ok := existing[id]; ok {
+			deletedIDs = append(deletedIDs, id)
+		}
+	}
+	if len(deletedIDs) > 0 {
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			return tx.Where("user_id = ? AND id IN ?", userID, deletedIDs).Delete(&models.ReplaceRule{}).Error
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete replace rules"})
+			return
+		}
+		s.broadcastReplaceRulesUpdate(userID, "batch-delete")
+	}
+	c.JSON(http.StatusOK, gin.H{"deletedIds": deletedIDs})
 }
 
 func (s *Server) broadcastReplaceRulesUpdate(userID uint, kind string) {

@@ -675,7 +675,7 @@ import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@e
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
 import { cacheBookContent, createBookmark, createBookmarks, deleteBookmark, deleteBookmarks, listBookmarks, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
-import { createReplaceRule, deleteReplaceRule, listReplaceRules, testReplaceRule, updateReplaceRule } from '../api/replaceRules'
+import { createReplaceRule, deleteReplaceRule, deleteReplaceRules, listReplaceRules, testReplaceRule, updateReplaceRule, upsertReplaceRules } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
 import { bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
@@ -2122,10 +2122,8 @@ async function importReplaceRuleFile(event) {
       return
     }
     await ElMessageBox.confirm(`确认要导入文件中的 ${ruleList.length} 条替换规则吗？`, '导入替换规则', { type: 'warning' })
-    for (const rule of ruleList) {
-      await createReplaceRule(rule)
-    }
-    ElMessage.success('导入替换规则成功')
+    const { data } = await upsertReplaceRules(ruleList)
+    ElMessage.success(`导入替换规则成功：新增 ${data?.created || 0}，更新 ${data?.updated || 0}` + (data?.skipped ? `，跳过 ${data.skipped}` : ''))
     await loadReplaceRules()
     notifyReplaceRulesUpdated()
   } catch (err) {
@@ -2275,10 +2273,9 @@ async function deleteSelectedReplaceRules() {
   }
   try {
     await ElMessageBox.confirm(`确认要删除所选择的 ${ids.length} 条替换规则吗？`, '批量删除替换规则', { type: 'warning' })
-    for (const id of ids) {
-      await deleteReplaceRule(id)
-    }
-    replaceRules.value = replaceRules.value.filter(rule => !ids.includes(rule.id))
+    const { data } = await deleteReplaceRules(ids)
+    const deletedIds = Array.isArray(data?.deletedIds) ? data.deletedIds : []
+    replaceRules.value = replaceRules.value.filter(rule => !deletedIds.includes(rule.id))
     selectedReplaceRuleIds.value = []
     ElMessage.success('删除替换规则成功')
     notifyReplaceRulesUpdated()
