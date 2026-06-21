@@ -1621,6 +1621,15 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"lastChapter":".last",
 				"bookUrl":"a@href"
 			},
+			"ruleExplore":{
+				"bookList":".explore-book",
+				"name":".explore-name",
+				"author":".explore-author",
+				"coverUrl":"img@data-src",
+				"intro":".explore-intro",
+				"lastChapter":".explore-last",
+				"bookUrl":"a@data-url"
+			},
 			"ruleBookInfo":{
 				"tocUrl":".catalog@href"
 			},
@@ -1653,6 +1662,13 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.BookListRule != ".book" ||
 		rule.BookNameRule != ".name" ||
 		rule.BookURLRule != "a|attr:href" ||
+		rule.ExploreBookListRule != ".explore-book" ||
+		rule.ExploreBookNameRule != ".explore-name" ||
+		rule.ExploreBookAuthorRule != ".explore-author" ||
+		rule.ExploreBookCoverRule != "img|attr:data-src" ||
+		rule.ExploreBookIntroRule != ".explore-intro" ||
+		rule.ExploreLatestChapterRule != ".explore-last" ||
+		rule.ExploreBookURLRule != "a|attr:data-url" ||
 		rule.TOCURLRule != ".catalog|attr:href" ||
 		rule.ChapterListRule != ".chapter" ||
 		rule.ChapterURLRule != "a|attr:href" ||
@@ -1712,8 +1728,10 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"bookSourceUrl":"https://upload-reader.example",
 			"bookSourceGroup":"上传分组",
 			"searchUrl":"https://upload-reader.example/search?q={{key}}",
+			"exploreUrl":"https://upload-reader.example/explore/{{page}}",
 			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
 			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
+			"ruleExplore":{"bookList":".explore-item","name":".explore-name","bookUrl":"a@data-url"},
 			"ruleContent":{"content":".content"}
 		}
 	]`))
@@ -1747,7 +1765,12 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.BookURLRule != "a|attr:href" || rule.ContentRule != ".content" ||
+	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.BookURLRule != "a|attr:href" ||
+		rule.ExploreURL != "https://upload-reader.example/explore/{page}" ||
+		rule.ExploreBookListRule != ".explore-item" ||
+		rule.ExploreBookNameRule != ".explore-name" ||
+		rule.ExploreBookURLRule != "a|attr:data-url" ||
+		rule.ContentRule != ".content" ||
 		rule.Headers["X-Source-Token"] != "upload-secret" ||
 		rule.Headers["Referer"] != "https://upload-reader.example/" {
 		t.Fatalf("unexpected imported rules: %+v", rule)
@@ -1759,12 +1782,21 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				request.Header.Get("Referer") != "https://upload-reader.example/" {
 				t.Fatalf("imported source headers were not applied: %v", request.Header)
 			}
-			if request.URL.Query().Get("q") != "请求头" {
-				t.Fatalf("upstream {{key}} placeholder was not normalized: %s", request.URL.String())
+			body := ""
+			switch request.URL.Path {
+			case "/search":
+				if request.URL.Query().Get("q") != "请求头" {
+					t.Fatalf("upstream {{key}} placeholder was not normalized: %s", request.URL.String())
+				}
+				body = `<article class="item"><span class="name">请求头测试书</span><a href="/book/1">详情</a></article>`
+			case "/explore/2":
+				body = `<article class="explore-item"><span class="explore-name">独立探索规则书籍</span><a data-url="/book/2">详情</a></article>`
+			default:
+				t.Fatalf("unexpected imported source request: %s", request.URL.String())
 			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`<article class="item"><span class="name">请求头测试书</span><a href="/book/1">详情</a></article>`)),
+				Body:       io.NopCloser(strings.NewReader(body)),
 				Header:     make(http.Header),
 				Request:    request,
 			}, nil
@@ -1779,6 +1811,16 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	router.ServeHTTP(testW, testReq)
 	if testW.Code != http.StatusOK || !strings.Contains(testW.Body.String(), `"请求头测试书"`) {
 		t.Fatalf("test imported source with headers: expected parsed result, got %d: %s", testW.Code, testW.Body.String())
+	}
+
+	exploreReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/explore/%d?page=2", source.ID), nil)
+	exploreReq.Header.Set("Authorization", token)
+	exploreW := httptest.NewRecorder()
+	router.ServeHTTP(exploreW, exploreReq)
+	if exploreW.Code != http.StatusOK ||
+		!strings.Contains(exploreW.Body.String(), `"独立探索规则书籍"`) ||
+		!strings.Contains(exploreW.Body.String(), `"https://upload-reader.example/book/2"`) {
+		t.Fatalf("explore imported source with independent rules: expected parsed result, got %d: %s", exploreW.Code, exploreW.Body.String())
 	}
 }
 
@@ -2243,21 +2285,29 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		{Name: "导出源三", BaseURL: "https://three.example", Charset: "utf-8", Enabled: false},
 	}
 	if err := sources[0].SetRules(models.BookSourceRule{
-		SearchURL:         "https://one.example/search?q={keyword}",
-		ExploreURL:        "https://one.example/explore/{page}",
-		BookListRule:      ".book",
-		BookNameRule:      ".name",
-		BookAuthorRule:    ".author",
-		BookCoverRule:     "img|attr:src",
-		BookIntroRule:     ".intro",
-		LatestChapterRule: ".latest",
-		BookURLRule:       "a|attr:href",
-		TOCURLRule:        ".catalog|attr:href",
-		ChapterListRule:   ".chapter",
-		ChapterNameRule:   ".title",
-		ChapterURLRule:    "a|attr:href",
-		ContentRule:       "#content",
-		PaginationRule:    ".next|attr:href",
+		SearchURL:                "https://one.example/search?q={keyword}",
+		ExploreURL:               "https://one.example/explore/{page}",
+		BookListRule:             ".book",
+		BookNameRule:             ".name",
+		BookAuthorRule:           ".author",
+		BookCoverRule:            "img|attr:src",
+		BookIntroRule:            ".intro",
+		LatestChapterRule:        ".latest",
+		BookURLRule:              "a|attr:href",
+		ExploreBookListRule:      ".explore-card",
+		ExploreBookNameRule:      ".explore-title",
+		ExploreBookAuthorRule:    ".explore-author",
+		ExploreBookCoverRule:     "img|attr:data-src",
+		ExploreBookIntroRule:     ".explore-intro",
+		ExploreLatestChapterRule: ".explore-latest",
+		ExploreBookURLRule:       "a|attr:data-url",
+		ExplorePaginationRule:    ".explore-next|attr:href",
+		TOCURLRule:               ".catalog|attr:href",
+		ChapterListRule:          ".chapter",
+		ChapterNameRule:          ".title",
+		ChapterURLRule:           "a|attr:href",
+		ContentRule:              "#content",
+		PaginationRule:           ".next|attr:href",
 		Headers: map[string]string{
 			"Referer": "https://one.example/",
 		},
@@ -2310,6 +2360,10 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.RuleSearch.Name != ".name" ||
 		first.RuleSearch.BookURL != "a@href" ||
 		first.RuleSearch.CoverURL != "img@src" ||
+		first.RuleExplore.BookList != ".explore-card" ||
+		first.RuleExplore.Name != ".explore-title" ||
+		first.RuleExplore.CoverURL != "img@data-src" ||
+		first.RuleExplore.BookURL != "a@data-url" ||
 		first.RuleBookInfo.TOCURL != ".catalog@href" ||
 		first.RuleTOC.ChapterList != ".chapter" ||
 		first.RuleTOC.ChapterURL != "a@href" ||
@@ -2336,6 +2390,9 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		roundTripped[0].Group != sources[0].Group ||
 		roundTripped[0].Charset != sources[0].Charset ||
 		reimportedRule.PaginationRule != ".next|attr:href" ||
+		reimportedRule.ExploreBookListRule != ".explore-card" ||
+		reimportedRule.ExploreBookURLRule != "a|attr:data-url" ||
+		reimportedRule.ExplorePaginationRule != ".explore-next|attr:href" ||
 		len(reimportedRule.TextReplaceRules) != 1 ||
 		reimportedRule.Headers["Referer"] != "https://one.example/" {
 		t.Fatalf("export should round-trip without losing OpenReader rules: source=%+v rule=%+v", roundTripped[0], reimportedRule)
@@ -6059,11 +6116,15 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 
 	source := models.BookSource{Name: "探索源", BaseURL: "https://explore.example", Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
-		ExploreURL:     "https://explore.example/top",
-		BookListRule:   ".book",
-		BookNameRule:   ".title|text",
-		BookAuthorRule: ".author|text",
-		BookURLRule:    ".link|attr:href",
+		ExploreURL:            "https://explore.example/top",
+		BookListRule:          ".search-only",
+		BookNameRule:          ".search-title|text",
+		BookURLRule:           ".search-link|attr:href",
+		ExploreBookListRule:   ".book",
+		ExploreBookNameRule:   ".title|text",
+		ExploreBookAuthorRule: ".author|text",
+		ExploreBookURLRule:    ".link|attr:href",
+		ExplorePaginationRule: ".explore-next|attr:href",
 	}); err != nil {
 		t.Fatal(err)
 	}

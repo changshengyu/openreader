@@ -301,6 +301,35 @@ func TestParseSearchResultsIncludesLatestChapter(t *testing.T) {
 	}
 }
 
+func TestEffectiveExploreRuleMatchesUpstreamFallback(t *testing.T) {
+	searchOnly := models.BookSourceRule{
+		BookListRule:   ".search-book",
+		BookNameRule:   ".search-name",
+		BookURLRule:    ".search-link|attr:href",
+		PaginationRule: ".search-next|attr:href",
+	}
+	fallback := effectiveExploreRule(searchOnly)
+	if fallback.BookListRule != ".search-book" ||
+		fallback.BookNameRule != ".search-name" ||
+		fallback.BookURLRule != ".search-link|attr:href" ||
+		fallback.PaginationRule != ".search-next|attr:href" {
+		t.Fatalf("empty explore bookList should reuse search rules: %+v", fallback)
+	}
+
+	independent := searchOnly
+	independent.ExploreBookListRule = ".explore-book"
+	independent.ExploreBookNameRule = ".explore-name"
+	independent.ExploreBookURLRule = ".explore-link|attr:data-url"
+	independent.ExplorePaginationRule = ".explore-next|attr:href"
+	explore := effectiveExploreRule(independent)
+	if explore.BookListRule != ".explore-book" ||
+		explore.BookNameRule != ".explore-name" ||
+		explore.BookURLRule != ".explore-link|attr:data-url" ||
+		explore.PaginationRule != ".explore-next|attr:href" {
+		t.Fatalf("non-empty explore bookList should use independent explore rules: %+v", explore)
+	}
+}
+
 func writeZipFile(t *testing.T, writer *zip.Writer, name string, content string) {
 	t.Helper()
 	file, err := writer.Create(name)

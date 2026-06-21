@@ -44,6 +44,7 @@ type bookSourcePayload struct {
 	Header          string                   `json:"header"`
 	HeaderMap       json.RawMessage          `json:"headerMap"`
 	RuleSearch      legacySourceSearchRule   `json:"ruleSearch"`
+	RuleExplore     legacySourceSearchRule   `json:"ruleExplore"`
 	RuleBookInfo    legacySourceBookInfoRule `json:"ruleBookInfo"`
 	RuleTOC         legacySourceTOCRule      `json:"ruleToc"`
 	RuleContent     legacySourceContentRule  `json:"ruleContent"`
@@ -114,21 +115,28 @@ func (p bookSourcePayload) toModel() models.BookSource {
 
 func (p bookSourcePayload) compatRules() string {
 	rule := models.BookSourceRule{
-		SearchURL:         normalizeUpstreamURLTemplate(p.SearchURL),
-		ExploreURL:        normalizeUpstreamURLTemplate(p.ExploreURL),
-		BookListRule:      normalizeUpstreamSelectorRule(p.RuleSearch.BookList),
-		BookNameRule:      normalizeUpstreamSelectorRule(p.RuleSearch.Name),
-		BookAuthorRule:    normalizeUpstreamSelectorRule(p.RuleSearch.Author),
-		BookCoverRule:     normalizeUpstreamSelectorRule(p.RuleSearch.CoverURL),
-		BookIntroRule:     normalizeUpstreamSelectorRule(p.RuleSearch.Intro),
-		LatestChapterRule: normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
-		BookURLRule:       normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
-		TOCURLRule:        normalizeUpstreamSelectorRule(p.RuleBookInfo.TOCURL),
-		ChapterListRule:   normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
-		ChapterNameRule:   normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
-		ChapterURLRule:    normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
-		ContentRule:       normalizeUpstreamSelectorRule(p.RuleContent.Content),
-		Headers:           p.compatHeaders(),
+		SearchURL:                normalizeUpstreamURLTemplate(p.SearchURL),
+		ExploreURL:               normalizeUpstreamURLTemplate(p.ExploreURL),
+		BookListRule:             normalizeUpstreamSelectorRule(p.RuleSearch.BookList),
+		BookNameRule:             normalizeUpstreamSelectorRule(p.RuleSearch.Name),
+		BookAuthorRule:           normalizeUpstreamSelectorRule(p.RuleSearch.Author),
+		BookCoverRule:            normalizeUpstreamSelectorRule(p.RuleSearch.CoverURL),
+		BookIntroRule:            normalizeUpstreamSelectorRule(p.RuleSearch.Intro),
+		LatestChapterRule:        normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
+		BookURLRule:              normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
+		ExploreBookListRule:      normalizeUpstreamSelectorRule(p.RuleExplore.BookList),
+		ExploreBookNameRule:      normalizeUpstreamSelectorRule(p.RuleExplore.Name),
+		ExploreBookAuthorRule:    normalizeUpstreamSelectorRule(p.RuleExplore.Author),
+		ExploreBookCoverRule:     normalizeUpstreamSelectorRule(p.RuleExplore.CoverURL),
+		ExploreBookIntroRule:     normalizeUpstreamSelectorRule(p.RuleExplore.Intro),
+		ExploreLatestChapterRule: normalizeUpstreamSelectorRule(p.RuleExplore.LastChapter),
+		ExploreBookURLRule:       normalizeUpstreamSelectorRule(p.RuleExplore.BookURL),
+		TOCURLRule:               normalizeUpstreamSelectorRule(p.RuleBookInfo.TOCURL),
+		ChapterListRule:          normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
+		ChapterNameRule:          normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
+		ChapterURLRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
+		ContentRule:              normalizeUpstreamSelectorRule(p.RuleContent.Content),
+		Headers:                  p.compatHeaders(),
 	}
 	if isEmptyCompatRule(rule) {
 		return ""
@@ -150,6 +158,13 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.BookIntroRule == "" &&
 		rule.LatestChapterRule == "" &&
 		rule.BookURLRule == "" &&
+		rule.ExploreBookListRule == "" &&
+		rule.ExploreBookNameRule == "" &&
+		rule.ExploreBookAuthorRule == "" &&
+		rule.ExploreBookCoverRule == "" &&
+		rule.ExploreBookIntroRule == "" &&
+		rule.ExploreLatestChapterRule == "" &&
+		rule.ExploreBookURLRule == "" &&
 		rule.ChapterListRule == "" &&
 		rule.ChapterNameRule == "" &&
 		rule.ChapterURLRule == "" &&
@@ -626,6 +641,15 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			LastChapter: exportUpstreamSelectorRule(rule.LatestChapterRule),
 			BookURL:     exportUpstreamSelectorRule(rule.BookURLRule),
 		}
+		exploreRule := legacySourceSearchRule{
+			BookList:    exportUpstreamSelectorRule(rule.ExploreBookListRule),
+			Name:        exportUpstreamSelectorRule(rule.ExploreBookNameRule),
+			Author:      exportUpstreamSelectorRule(rule.ExploreBookAuthorRule),
+			CoverURL:    exportUpstreamSelectorRule(rule.ExploreBookCoverRule),
+			Intro:       exportUpstreamSelectorRule(rule.ExploreBookIntroRule),
+			LastChapter: exportUpstreamSelectorRule(rule.ExploreLatestChapterRule),
+			BookURL:     exportUpstreamSelectorRule(rule.ExploreBookURLRule),
+		}
 		header := ""
 		if len(rule.Headers) > 0 {
 			if data, marshalErr := json.Marshal(rule.Headers); marshalErr == nil {
@@ -643,7 +667,7 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			ExploreURL:      exportUpstreamURLTemplate(rule.ExploreURL),
 			Header:          header,
 			RuleSearch:      searchRule,
-			RuleExplore:     searchRule,
+			RuleExplore:     exploreRule,
 			RuleBookInfo: legacySourceBookInfoRule{
 				TOCURL: exportUpstreamSelectorRule(rule.TOCURLRule),
 			},

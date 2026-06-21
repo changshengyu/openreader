@@ -79,6 +79,17 @@ type BookSourceRule struct {
 	LatestChapterRule string `json:"latestChapterRule,omitempty"`
 	BookURLRule       string `json:"bookUrlRule,omitempty"`
 
+	// Explore result rules. When ExploreBookListRule is empty, search result
+	// rules are reused to match upstream BookSource fallback behavior.
+	ExploreBookListRule      string `json:"exploreBookListRule,omitempty"`
+	ExploreBookNameRule      string `json:"exploreBookNameRule,omitempty"`
+	ExploreBookAuthorRule    string `json:"exploreBookAuthorRule,omitempty"`
+	ExploreBookCoverRule     string `json:"exploreBookCoverRule,omitempty"`
+	ExploreBookIntroRule     string `json:"exploreBookIntroRule,omitempty"`
+	ExploreLatestChapterRule string `json:"exploreLatestChapterRule,omitempty"`
+	ExploreBookURLRule       string `json:"exploreBookUrlRule,omitempty"`
+	ExplorePaginationRule    string `json:"explorePaginationRule,omitempty"`
+
 	// TOC/directory page URL template (typically derived from book URL).
 	TOCURLRule string `json:"tocUrlRule,omitempty"`
 

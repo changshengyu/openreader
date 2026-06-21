@@ -112,10 +112,11 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 	if err != nil {
 		return ExploreResult{}, fmt.Errorf("fetch explore page: %w", err)
 	}
-	items := parseBookResults(doc, rule, source, exploreURL)
+	exploreRule := effectiveExploreRule(rule)
+	items := parseBookResults(doc, exploreRule, source, exploreURL)
 	nextURL := ""
-	if rule.PaginationRule != "" {
-		nextURL = resolveURL(exploreURL, firstMatch(doc.Selection, rule.PaginationRule))
+	if exploreRule.PaginationRule != "" {
+		nextURL = resolveURL(exploreURL, firstMatch(doc.Selection, exploreRule.PaginationRule))
 	}
 	hasMore := strings.Contains(activeExploreURL, "{page}") && len(items) > 0
 	if nextURL != "" {
@@ -127,6 +128,22 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 		HasMore: hasMore,
 		NextURL: nextURL,
 	}, nil
+}
+
+func effectiveExploreRule(rule models.BookSourceRule) models.BookSourceRule {
+	if strings.TrimSpace(rule.ExploreBookListRule) == "" {
+		return rule
+	}
+	exploreRule := rule
+	exploreRule.BookListRule = rule.ExploreBookListRule
+	exploreRule.BookNameRule = rule.ExploreBookNameRule
+	exploreRule.BookAuthorRule = rule.ExploreBookAuthorRule
+	exploreRule.BookCoverRule = rule.ExploreBookCoverRule
+	exploreRule.BookIntroRule = rule.ExploreBookIntroRule
+	exploreRule.LatestChapterRule = rule.ExploreLatestChapterRule
+	exploreRule.BookURLRule = rule.ExploreBookURLRule
+	exploreRule.PaginationRule = rule.ExplorePaginationRule
+	return exploreRule
 }
 
 func parseSearchResults(doc *goquery.Document, rule models.BookSourceRule, source models.BookSource) []SearchResult {

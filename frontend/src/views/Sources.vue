@@ -243,6 +243,18 @@
                 <el-input v-model="ruleForm.paginationRule" placeholder="下一页 paginationRule（可选）" />
               </div>
             </el-collapse-item>
+            <el-collapse-item title="探索结果" name="explore">
+              <div class="rule-grid">
+                <el-input v-model="ruleForm.exploreBookListRule" placeholder="探索列表 exploreBookListRule（留空复用搜索规则）" />
+                <el-input v-model="ruleForm.exploreBookNameRule" placeholder="书名 exploreBookNameRule" />
+                <el-input v-model="ruleForm.exploreBookAuthorRule" placeholder="作者 exploreBookAuthorRule" />
+                <el-input v-model="ruleForm.exploreBookCoverRule" placeholder="封面 exploreBookCoverRule" />
+                <el-input v-model="ruleForm.exploreBookIntroRule" placeholder="简介 exploreBookIntroRule" />
+                <el-input v-model="ruleForm.exploreLatestChapterRule" placeholder="最新章节 exploreLatestChapterRule" />
+                <el-input v-model="ruleForm.exploreBookUrlRule" placeholder="详情地址 exploreBookUrlRule" />
+                <el-input v-model="ruleForm.explorePaginationRule" placeholder="下一页 explorePaginationRule（可选）" />
+              </div>
+            </el-collapse-item>
             <el-collapse-item title="目录" name="toc">
               <div class="rule-grid">
                 <el-input v-model="ruleForm.tocUrlRule" placeholder="目录地址 tocUrlRule" />
@@ -388,6 +400,14 @@ const ruleKeys = [
   'latestChapterRule',
   'bookUrlRule',
   'paginationRule',
+  'exploreBookListRule',
+  'exploreBookNameRule',
+  'exploreBookAuthorRule',
+  'exploreBookCoverRule',
+  'exploreBookIntroRule',
+  'exploreLatestChapterRule',
+  'exploreBookUrlRule',
+  'explorePaginationRule',
   'tocUrlRule',
   'chapterListRule',
   'chapterNameRule',
