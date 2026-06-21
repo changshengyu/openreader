@@ -1621,6 +1621,9 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"lastChapter":".last",
 				"bookUrl":"a@href"
 			},
+			"ruleBookInfo":{
+				"tocUrl":".catalog@href"
+			},
 			"ruleToc":{
 				"chapterList":".chapter",
 				"chapterName":".title",
@@ -1645,15 +1648,51 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.SearchURL != "https://reader.example/search?q={{key}}" ||
+	if rule.SearchURL != "https://reader.example/search?q={keyword}" ||
 		rule.ExploreURL != "https://reader.example/top/{page}" ||
 		rule.BookListRule != ".book" ||
 		rule.BookNameRule != ".name" ||
+		rule.BookURLRule != "a|attr:href" ||
+		rule.TOCURLRule != ".catalog|attr:href" ||
 		rule.ChapterListRule != ".chapter" ||
+		rule.ChapterURLRule != "a|attr:href" ||
 		rule.ContentRule != "#content" ||
 		rule.Headers["User-Agent"] != "OpenReader Test" ||
 		rule.Headers["Referer"] != "https://reader.example" {
 		t.Fatalf("unexpected converted rules: %+v", rule)
+	}
+}
+
+func TestBookSourceCompatibilityRuleNormalization(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		upstream string
+		internal string
+		exported string
+	}{
+		{name: "attribute", upstream: "a.book@href", internal: "a.book|attr:href", exported: "a.book@href"},
+		{name: "data attribute", upstream: "img@data-src", internal: "img|attr:data-src", exported: "img@data-src"},
+		{name: "explicit text", upstream: ".name@text", internal: ".name|text", exported: ".name@text"},
+		{name: "explicit html", upstream: "#content@html", internal: "#content|html", exported: "#content@html"},
+		{name: "plain selector", upstream: ".book", internal: ".book", exported: ".book"},
+		{name: "xpath remains untouched", upstream: "//a/@href", internal: "//a/@href", exported: "//a/@href"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			internal := normalizeUpstreamSelectorRule(test.upstream)
+			if internal != test.internal {
+				t.Fatalf("normalize %q = %q, want %q", test.upstream, internal, test.internal)
+			}
+			if exported := exportUpstreamSelectorRule(internal); exported != test.exported {
+				t.Fatalf("export %q = %q, want %q", internal, exported, test.exported)
+			}
+		})
+	}
+
+	if got := normalizeUpstreamURLTemplate("https://example/search?q={{key}}&page={{page}}"); got != "https://example/search?q={keyword}&page={page}" {
+		t.Fatalf("normalize upstream URL = %q", got)
+	}
+	if got := exportUpstreamURLTemplate("https://example/search?q={keyword}&page={page}"); got != "https://example/search?q={{key}}&page={{page}}" {
+		t.Fatalf("export upstream URL = %q", got)
 	}
 }
 
@@ -1674,7 +1713,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"bookSourceGroup":"上传分组",
 			"searchUrl":"https://upload-reader.example/search?q={{key}}",
 			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
-			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a|attr:href"},
+			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
 			"ruleContent":{"content":".content"}
 		}
 	]`))
@@ -1708,7 +1747,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.ContentRule != ".content" ||
+	if rule.BookListRule != ".item" || rule.BookNameRule != ".name" || rule.BookURLRule != "a|attr:href" || rule.ContentRule != ".content" ||
 		rule.Headers["X-Source-Token"] != "upload-secret" ||
 		rule.Headers["Referer"] != "https://upload-reader.example/" {
 		t.Fatalf("unexpected imported rules: %+v", rule)
@@ -1719,6 +1758,9 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			if request.Header.Get("X-Source-Token") != "upload-secret" ||
 				request.Header.Get("Referer") != "https://upload-reader.example/" {
 				t.Fatalf("imported source headers were not applied: %v", request.Header)
+			}
+			if request.URL.Query().Get("q") != "请求头" {
+				t.Fatalf("upstream {{key}} placeholder was not normalized: %s", request.URL.String())
 			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -2189,9 +2231,41 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 	token := authHeader(t, router)
 
 	sources := []models.BookSource{
-		{Name: "导出源一", BaseURL: "https://one.example", Charset: "utf-8", Enabled: true},
+		{
+			Name:      "导出源一",
+			BaseURL:   "https://one.example",
+			SearchURL: "https://one.example/legacy-search?q={keyword}",
+			Charset:   "gbk",
+			Enabled:   true,
+			Group:     "导出分组",
+		},
 		{Name: "导出源二", BaseURL: "https://two.example", Charset: "utf-8", Enabled: true},
 		{Name: "导出源三", BaseURL: "https://three.example", Charset: "utf-8", Enabled: false},
+	}
+	if err := sources[0].SetRules(models.BookSourceRule{
+		SearchURL:         "https://one.example/search?q={keyword}",
+		ExploreURL:        "https://one.example/explore/{page}",
+		BookListRule:      ".book",
+		BookNameRule:      ".name",
+		BookAuthorRule:    ".author",
+		BookCoverRule:     "img|attr:src",
+		BookIntroRule:     ".intro",
+		LatestChapterRule: ".latest",
+		BookURLRule:       "a|attr:href",
+		TOCURLRule:        ".catalog|attr:href",
+		ChapterListRule:   ".chapter",
+		ChapterNameRule:   ".title",
+		ChapterURLRule:    "a|attr:href",
+		ContentRule:       "#content",
+		PaginationRule:    ".next|attr:href",
+		Headers: map[string]string{
+			"Referer": "https://one.example/",
+		},
+		TextReplaceRules: []models.TextReplaceRule{
+			{Pattern: "广告", Replacement: ""},
+		},
+	}); err != nil {
+		t.Fatal(err)
 	}
 	if err := server.db.Create(&sources).Error; err != nil {
 		t.Fatal(err)
@@ -2205,21 +2279,66 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("export selected sources: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+	for _, internalField := range []string{`"id":`, `"createdAt":`, `"updatedAt":`, `"usedBookCount":`} {
+		if strings.Contains(w.Body.String(), internalField) {
+			t.Fatalf("export should not expose internal database field %s: %s", internalField, w.Body.String())
+		}
+	}
 
-	var exported []models.BookSource
+	var exported []exportedBookSource
 	if err := json.Unmarshal(w.Body.Bytes(), &exported); err != nil {
 		t.Fatalf("decode export response: %v", err)
 	}
 	if len(exported) != 2 {
 		t.Fatalf("expected 2 selected sources, got %+v", exported)
 	}
-	if exported[0].Name != "导出源一" || exported[1].Name != "导出源三" {
+	if exported[0].BookSourceName != "导出源一" || exported[1].BookSourceName != "导出源三" {
 		t.Fatalf("expected selected sources ordered by id, got %+v", exported)
 	}
 	for _, source := range exported {
-		if source.Name == "导出源二" {
+		if source.BookSourceName == "导出源二" {
 			t.Fatalf("unselected source should not be exported: %+v", exported)
 		}
+	}
+	first := exported[0]
+	if first.BookSourceURL != "https://one.example" ||
+		first.BookSourceGroup != "导出分组" ||
+		first.SearchURL != "https://one.example/search?q={{key}}" ||
+		first.ExploreURL != "https://one.example/explore/{{page}}" ||
+		first.Charset != "gbk" ||
+		first.RuleSearch.BookList != ".book" ||
+		first.RuleSearch.Name != ".name" ||
+		first.RuleSearch.BookURL != "a@href" ||
+		first.RuleSearch.CoverURL != "img@src" ||
+		first.RuleBookInfo.TOCURL != ".catalog@href" ||
+		first.RuleTOC.ChapterList != ".chapter" ||
+		first.RuleTOC.ChapterURL != "a@href" ||
+		first.RuleContent.Content != "#content" ||
+		!strings.Contains(first.Header, `"Referer":"https://one.example/"`) ||
+		!strings.Contains(first.Rules, `"paginationRule":".next|attr:href"`) ||
+		!strings.Contains(first.Rules, `"textReplaceRules"`) {
+		t.Fatalf("expected upstream-compatible fields plus lossless extensions, got %+v", first)
+	}
+
+	roundTripped, err := decodeBookSources(w.Body.Bytes())
+	if err != nil {
+		t.Fatalf("re-import exported sources: %v", err)
+	}
+	if len(roundTripped) != 2 {
+		t.Fatalf("expected two round-tripped sources, got %+v", roundTripped)
+	}
+	reimportedRule, err := roundTripped[0].ParsedRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roundTripped[0].Name != sources[0].Name ||
+		roundTripped[0].BaseURL != sources[0].BaseURL ||
+		roundTripped[0].Group != sources[0].Group ||
+		roundTripped[0].Charset != sources[0].Charset ||
+		reimportedRule.PaginationRule != ".next|attr:href" ||
+		len(reimportedRule.TextReplaceRules) != 1 ||
+		reimportedRule.Headers["Referer"] != "https://one.example/" {
+		t.Fatalf("export should round-trip without losing OpenReader rules: source=%+v rule=%+v", roundTripped[0], reimportedRule)
 	}
 }
 

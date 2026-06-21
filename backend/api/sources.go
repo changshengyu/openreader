@@ -30,22 +30,23 @@ func (s *Server) listSources(c *gin.Context) {
 }
 
 type bookSourcePayload struct {
-	Name            string                  `json:"name"`
-	BaseURL         string                  `json:"baseUrl"`
-	SearchURL       string                  `json:"searchUrl"`
-	Charset         string                  `json:"charset"`
-	Rules           string                  `json:"rules"`
-	Enabled         *bool                   `json:"enabled"`
-	Group           string                  `json:"group"`
-	BookSourceName  string                  `json:"bookSourceName"`
-	BookSourceURL   string                  `json:"bookSourceUrl"`
-	BookSourceGroup string                  `json:"bookSourceGroup"`
-	ExploreURL      string                  `json:"exploreUrl"`
-	Header          string                  `json:"header"`
-	HeaderMap       json.RawMessage         `json:"headerMap"`
-	RuleSearch      legacySourceSearchRule  `json:"ruleSearch"`
-	RuleTOC         legacySourceTOCRule     `json:"ruleToc"`
-	RuleContent     legacySourceContentRule `json:"ruleContent"`
+	Name            string                   `json:"name"`
+	BaseURL         string                   `json:"baseUrl"`
+	SearchURL       string                   `json:"searchUrl"`
+	Charset         string                   `json:"charset"`
+	Rules           string                   `json:"rules"`
+	Enabled         *bool                    `json:"enabled"`
+	Group           string                   `json:"group"`
+	BookSourceName  string                   `json:"bookSourceName"`
+	BookSourceURL   string                   `json:"bookSourceUrl"`
+	BookSourceGroup string                   `json:"bookSourceGroup"`
+	ExploreURL      string                   `json:"exploreUrl"`
+	Header          string                   `json:"header"`
+	HeaderMap       json.RawMessage          `json:"headerMap"`
+	RuleSearch      legacySourceSearchRule   `json:"ruleSearch"`
+	RuleBookInfo    legacySourceBookInfoRule `json:"ruleBookInfo"`
+	RuleTOC         legacySourceTOCRule      `json:"ruleToc"`
+	RuleContent     legacySourceContentRule  `json:"ruleContent"`
 }
 
 type legacySourceSearchRule struct {
@@ -64,8 +65,31 @@ type legacySourceTOCRule struct {
 	ChapterURL  string `json:"chapterUrl"`
 }
 
+type legacySourceBookInfoRule struct {
+	TOCURL string `json:"tocUrl,omitempty"`
+}
+
 type legacySourceContentRule struct {
 	Content string `json:"content"`
+}
+
+type exportedBookSource struct {
+	BookSourceName  string                   `json:"bookSourceName"`
+	BookSourceGroup string                   `json:"bookSourceGroup,omitempty"`
+	BookSourceURL   string                   `json:"bookSourceUrl"`
+	BookSourceType  int                      `json:"bookSourceType"`
+	Enabled         bool                     `json:"enabled"`
+	EnabledExplore  bool                     `json:"enabledExplore"`
+	SearchURL       string                   `json:"searchUrl,omitempty"`
+	ExploreURL      string                   `json:"exploreUrl,omitempty"`
+	Header          string                   `json:"header,omitempty"`
+	RuleSearch      legacySourceSearchRule   `json:"ruleSearch"`
+	RuleExplore     legacySourceSearchRule   `json:"ruleExplore"`
+	RuleBookInfo    legacySourceBookInfoRule `json:"ruleBookInfo"`
+	RuleTOC         legacySourceTOCRule      `json:"ruleToc"`
+	RuleContent     legacySourceContentRule  `json:"ruleContent"`
+	Charset         string                   `json:"charset,omitempty"`
+	Rules           string                   `json:"rules,omitempty"`
 }
 
 func (p bookSourcePayload) toModel() models.BookSource {
@@ -80,7 +104,7 @@ func (p bookSourcePayload) toModel() models.BookSource {
 	return models.BookSource{
 		Name:      firstNonBlank(p.Name, p.BookSourceName),
 		BaseURL:   firstNonBlank(p.BaseURL, p.BookSourceURL),
-		SearchURL: strings.TrimSpace(p.SearchURL),
+		SearchURL: normalizeUpstreamURLTemplate(p.SearchURL),
 		Charset:   strings.TrimSpace(p.Charset),
 		Rules:     rules,
 		Enabled:   enabled,
@@ -90,19 +114,20 @@ func (p bookSourcePayload) toModel() models.BookSource {
 
 func (p bookSourcePayload) compatRules() string {
 	rule := models.BookSourceRule{
-		SearchURL:         strings.TrimSpace(p.SearchURL),
-		ExploreURL:        strings.TrimSpace(p.ExploreURL),
-		BookListRule:      strings.TrimSpace(p.RuleSearch.BookList),
-		BookNameRule:      strings.TrimSpace(p.RuleSearch.Name),
-		BookAuthorRule:    strings.TrimSpace(p.RuleSearch.Author),
-		BookCoverRule:     strings.TrimSpace(p.RuleSearch.CoverURL),
-		BookIntroRule:     strings.TrimSpace(p.RuleSearch.Intro),
-		LatestChapterRule: strings.TrimSpace(p.RuleSearch.LastChapter),
-		BookURLRule:       strings.TrimSpace(p.RuleSearch.BookURL),
-		ChapterListRule:   strings.TrimSpace(p.RuleTOC.ChapterList),
-		ChapterNameRule:   strings.TrimSpace(p.RuleTOC.ChapterName),
-		ChapterURLRule:    strings.TrimSpace(p.RuleTOC.ChapterURL),
-		ContentRule:       strings.TrimSpace(p.RuleContent.Content),
+		SearchURL:         normalizeUpstreamURLTemplate(p.SearchURL),
+		ExploreURL:        normalizeUpstreamURLTemplate(p.ExploreURL),
+		BookListRule:      normalizeUpstreamSelectorRule(p.RuleSearch.BookList),
+		BookNameRule:      normalizeUpstreamSelectorRule(p.RuleSearch.Name),
+		BookAuthorRule:    normalizeUpstreamSelectorRule(p.RuleSearch.Author),
+		BookCoverRule:     normalizeUpstreamSelectorRule(p.RuleSearch.CoverURL),
+		BookIntroRule:     normalizeUpstreamSelectorRule(p.RuleSearch.Intro),
+		LatestChapterRule: normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
+		BookURLRule:       normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
+		TOCURLRule:        normalizeUpstreamSelectorRule(p.RuleBookInfo.TOCURL),
+		ChapterListRule:   normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
+		ChapterNameRule:   normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
+		ChapterURLRule:    normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
+		ContentRule:       normalizeUpstreamSelectorRule(p.RuleContent.Content),
 		Headers:           p.compatHeaders(),
 	}
 	if isEmptyCompatRule(rule) {
@@ -176,6 +201,66 @@ func firstNonBlank(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeUpstreamSelectorRule(value string) string {
+	rule := strings.TrimSpace(value)
+	if rule == "" || strings.HasPrefix(rule, "/") || strings.HasPrefix(strings.ToLower(rule), "@js:") {
+		return rule
+	}
+	at := strings.LastIndex(rule, "@")
+	if at <= 0 || at == len(rule)-1 {
+		return rule
+	}
+	selector := strings.TrimSpace(rule[:at])
+	operation := strings.TrimSpace(rule[at+1:])
+	if selector == "" || operation == "" || strings.ContainsAny(operation, " /|@[](){}") {
+		return rule
+	}
+	switch strings.ToLower(operation) {
+	case "text", "html":
+		return selector + "|" + strings.ToLower(operation)
+	default:
+		return selector + "|attr:" + operation
+	}
+}
+
+func normalizeUpstreamURLTemplate(value string) string {
+	template := strings.TrimSpace(value)
+	template = strings.ReplaceAll(template, "{{key}}", "{keyword}")
+	template = strings.ReplaceAll(template, "{{keyword}}", "{keyword}")
+	template = strings.ReplaceAll(template, "{{page}}", "{page}")
+	return template
+}
+
+func exportUpstreamURLTemplate(value string) string {
+	template := normalizeUpstreamURLTemplate(value)
+	template = strings.ReplaceAll(template, "{keyword}", "{{key}}")
+	template = strings.ReplaceAll(template, "{page}", "{{page}}")
+	return template
+}
+
+func exportUpstreamSelectorRule(value string) string {
+	rule := strings.TrimSpace(value)
+	parts := strings.SplitN(rule, "|", 2)
+	if len(parts) != 2 {
+		return rule
+	}
+	selector := strings.TrimSpace(parts[0])
+	operation := strings.TrimSpace(parts[1])
+	if selector == "" {
+		return rule
+	}
+	switch {
+	case operation == "text" || operation == "html":
+		return selector + "@" + operation
+	case strings.HasPrefix(operation, "attr:"):
+		attribute := strings.TrimSpace(strings.TrimPrefix(operation, "attr:"))
+		if attribute != "" {
+			return selector + "@" + attribute
+		}
+	}
+	return rule
 }
 
 func (s *Server) createSource(c *gin.Context) {
@@ -522,7 +607,59 @@ func (s *Server) exportSources(c *gin.Context) {
 
 	c.Header("Content-Type", "application/json")
 	c.Header("Content-Disposition", "attachment; filename=bookSources.json")
-	c.JSON(http.StatusOK, sources)
+	c.JSON(http.StatusOK, exportBookSources(sources))
+}
+
+func exportBookSources(sources []models.BookSource) []exportedBookSource {
+	exported := make([]exportedBookSource, 0, len(sources))
+	for _, source := range sources {
+		rule, err := source.ParsedRules()
+		if err != nil {
+			rule = models.BookSourceRule{}
+		}
+		searchRule := legacySourceSearchRule{
+			BookList:    exportUpstreamSelectorRule(rule.BookListRule),
+			Name:        exportUpstreamSelectorRule(rule.BookNameRule),
+			Author:      exportUpstreamSelectorRule(rule.BookAuthorRule),
+			CoverURL:    exportUpstreamSelectorRule(rule.BookCoverRule),
+			Intro:       exportUpstreamSelectorRule(rule.BookIntroRule),
+			LastChapter: exportUpstreamSelectorRule(rule.LatestChapterRule),
+			BookURL:     exportUpstreamSelectorRule(rule.BookURLRule),
+		}
+		header := ""
+		if len(rule.Headers) > 0 {
+			if data, marshalErr := json.Marshal(rule.Headers); marshalErr == nil {
+				header = string(data)
+			}
+		}
+		exported = append(exported, exportedBookSource{
+			BookSourceName:  source.Name,
+			BookSourceGroup: source.Group,
+			BookSourceURL:   source.BaseURL,
+			BookSourceType:  0,
+			Enabled:         source.Enabled,
+			EnabledExplore:  source.Enabled && strings.TrimSpace(rule.ExploreURL) != "",
+			SearchURL:       exportUpstreamURLTemplate(firstNonBlank(rule.SearchURL, source.SearchURL)),
+			ExploreURL:      exportUpstreamURLTemplate(rule.ExploreURL),
+			Header:          header,
+			RuleSearch:      searchRule,
+			RuleExplore:     searchRule,
+			RuleBookInfo: legacySourceBookInfoRule{
+				TOCURL: exportUpstreamSelectorRule(rule.TOCURLRule),
+			},
+			RuleTOC: legacySourceTOCRule{
+				ChapterList: exportUpstreamSelectorRule(rule.ChapterListRule),
+				ChapterName: exportUpstreamSelectorRule(rule.ChapterNameRule),
+				ChapterURL:  exportUpstreamSelectorRule(rule.ChapterURLRule),
+			},
+			RuleContent: legacySourceContentRule{
+				Content: exportUpstreamSelectorRule(rule.ContentRule),
+			},
+			Charset: source.Charset,
+			Rules:   source.Rules,
+		})
+	}
+	return exported
 }
 
 func parseSourceIDsQuery(c *gin.Context) ([]uint, bool) {
