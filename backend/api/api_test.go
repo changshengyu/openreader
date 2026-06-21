@@ -1732,6 +1732,8 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
 			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
 			"ruleExplore":{"bookList":".explore-item","name":".explore-name","bookUrl":"a@data-url"},
+			"ruleBookInfo":{"tocUrl":".catalog@href"},
+			"ruleToc":{"chapterList":".chapter","chapterName":".chapter-name","chapterUrl":"a@href"},
 			"ruleContent":{"content":".content"}
 		}
 	]`))
@@ -1770,6 +1772,10 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.ExploreBookListRule != ".explore-item" ||
 		rule.ExploreBookNameRule != ".explore-name" ||
 		rule.ExploreBookURLRule != "a|attr:data-url" ||
+		rule.TOCURLRule != ".catalog|attr:href" ||
+		rule.ChapterListRule != ".chapter" ||
+		rule.ChapterNameRule != ".chapter-name" ||
+		rule.ChapterURLRule != "a|attr:href" ||
 		rule.ContentRule != ".content" ||
 		rule.Headers["X-Source-Token"] != "upload-secret" ||
 		rule.Headers["Referer"] != "https://upload-reader.example/" {
@@ -1791,6 +1797,10 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				body = `<article class="item"><span class="name">请求头测试书</span><a href="/book/1">详情</a></article>`
 			case "/explore/2":
 				body = `<article class="explore-item"><span class="explore-name">独立探索规则书籍</span><a data-url="/book/2">详情</a></article>`
+			case "/book/2":
+				body = `<a class="catalog" href="/catalog/2">目录</a>`
+			case "/catalog/2":
+				body = `<article class="chapter"><span class="chapter-name">详情页解析目录</span><a href="/chapter/2">阅读</a></article>`
 			default:
 				t.Fatalf("unexpected imported source request: %s", request.URL.String())
 			}
@@ -1821,6 +1831,17 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		!strings.Contains(exploreW.Body.String(), `"独立探索规则书籍"`) ||
 		!strings.Contains(exploreW.Body.String(), `"https://upload-reader.example/book/2"`) {
 		t.Fatalf("explore imported source with independent rules: expected parsed result, got %d: %s", exploreW.Code, exploreW.Body.String())
+	}
+
+	tocReq := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/sources/%d/test-chapter", source.ID), strings.NewReader(`{"bookUrl":"https://upload-reader.example/book/2"}`))
+	tocReq.Header.Set("Content-Type", "application/json")
+	tocReq.Header.Set("Authorization", token)
+	tocW := httptest.NewRecorder()
+	router.ServeHTTP(tocW, tocReq)
+	if tocW.Code != http.StatusOK ||
+		!strings.Contains(tocW.Body.String(), `"详情页解析目录"`) ||
+		!strings.Contains(tocW.Body.String(), `"https://upload-reader.example/chapter/2"`) {
+		t.Fatalf("resolve imported ruleBookInfo.tocUrl: expected parsed catalog, got %d: %s", tocW.Code, tocW.Body.String())
 	}
 }
 

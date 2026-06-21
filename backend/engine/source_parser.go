@@ -185,17 +185,37 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 		return nil, fmt.Errorf("parse rules: %w", err)
 	}
 
-	tocURL := bookURL
-	if rule.TOCURLRule != "" {
-		tocURL = resolveURL(bookURL, rule.TOCURLRule)
-	}
-
 	charset := source.Charset
 	if charset == "" {
 		charset = "utf-8"
 	}
 
-	doc, err := FetchDocumentWithHeaders(tocURL, charset, rule.Headers)
+	tocURL := bookURL
+	var doc *goquery.Document
+	tocURLRule := strings.TrimSpace(rule.TOCURLRule)
+	switch {
+	case tocURLRule == "":
+		doc, err = FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+	case isDirectTOCURLRule(tocURLRule):
+		tocURL = resolveURL(bookURL, tocURLRule)
+		doc, err = FetchDocumentWithHeaders(tocURL, charset, rule.Headers)
+	default:
+		var bookDoc *goquery.Document
+		bookDoc, err = FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+		if err == nil {
+			parsedTOCURL := firstMatch(bookDoc.Selection, tocURLRule)
+			if parsedTOCURL == "" {
+				doc = bookDoc
+			} else {
+				tocURL = resolveURL(bookURL, parsedTOCURL)
+				if tocURL == bookURL {
+					doc = bookDoc
+				} else {
+					doc, err = FetchDocumentWithHeaders(tocURL, charset, rule.Headers)
+				}
+			}
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("fetch toc page: %w", err)
 	}
@@ -205,6 +225,20 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 		return nil, fmt.Errorf("no chapters found on toc page")
 	}
 	return chapters, nil
+}
+
+func isDirectTOCURLRule(rule string) bool {
+	value := strings.TrimSpace(rule)
+	if value == "" || strings.Contains(value, "|") {
+		return false
+	}
+	lower := strings.ToLower(value)
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(value, "//") ||
+		strings.HasPrefix(value, "/") ||
+		strings.HasPrefix(value, "./") ||
+		strings.HasPrefix(value, "../")
 }
 
 func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, baseURL string) []RemoteChapter {
