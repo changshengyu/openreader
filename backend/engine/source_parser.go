@@ -28,6 +28,17 @@ type SearchResult struct {
 	SourceName    string `json:"sourceName"`
 }
 
+type RemoteBookInfo struct {
+	Title         string `json:"title"`
+	Author        string `json:"author"`
+	CoverURL      string `json:"coverUrl"`
+	Intro         string `json:"intro"`
+	Kind          string `json:"kind"`
+	LatestChapter string `json:"latestChapter"`
+	UpdateTime    string `json:"updateTime"`
+	WordCount     string `json:"wordCount"`
+}
+
 // ExploreResult represents one page of source discovery results.
 type ExploreResult struct {
 	Items   []SearchResult `json:"items"`
@@ -191,19 +202,66 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 	if charset == "" {
 		charset = "utf-8"
 	}
+	return parseTOCWithRule(bookURL, rule, charset, nil)
+}
 
+func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookInfo, []RemoteChapter, error) {
+	rule, err := source.ParsedRules()
+	if err != nil {
+		return RemoteBookInfo{}, nil, fmt.Errorf("parse rules: %w", err)
+	}
+	charset := source.Charset
+	if charset == "" {
+		charset = "utf-8"
+	}
+	bookDoc, err := FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+	if err != nil {
+		return RemoteBookInfo{}, nil, fmt.Errorf("fetch book info page: %w", err)
+	}
+	info := parseRemoteBookInfo(bookDoc, rule, bookURL)
+	chapters, err := parseTOCWithRule(bookURL, rule, charset, bookDoc)
+	if err != nil {
+		return RemoteBookInfo{}, nil, err
+	}
+	return info, chapters, nil
+}
+
+func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, baseURL string) RemoteBookInfo {
+	return RemoteBookInfo{
+		Title:         firstMatch(doc.Selection, rule.BookInfoNameRule),
+		Author:        firstMatch(doc.Selection, rule.BookInfoAuthorRule),
+		CoverURL:      resolveURL(baseURL, firstMatch(doc.Selection, rule.BookInfoCoverRule)),
+		Intro:         firstMatch(doc.Selection, rule.BookInfoIntroRule),
+		Kind:          firstMatch(doc.Selection, rule.BookInfoKindRule),
+		LatestChapter: firstMatch(doc.Selection, rule.BookInfoLatestChapterRule),
+		UpdateTime:    firstMatch(doc.Selection, rule.BookInfoUpdateTimeRule),
+		WordCount:     firstMatch(doc.Selection, rule.BookInfoWordCountRule),
+	}
+}
+
+func parseTOCWithRule(bookURL string, rule models.BookSourceRule, charset string, bookDoc *goquery.Document) ([]RemoteChapter, error) {
+	var err error
 	tocURL := bookURL
 	var doc *goquery.Document
 	tocURLRule := strings.TrimSpace(rule.TOCURLRule)
 	switch {
 	case tocURLRule == "":
-		doc, err = FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+		if bookDoc != nil {
+			doc = bookDoc
+		} else {
+			doc, err = FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+		}
 	case isDirectTOCURLRule(tocURLRule):
 		tocURL = resolveURL(bookURL, tocURLRule)
-		doc, err = FetchDocumentWithHeaders(tocURL, charset, rule.Headers)
+		if tocURL == bookURL && bookDoc != nil {
+			doc = bookDoc
+		} else {
+			doc, err = FetchDocumentWithHeaders(tocURL, charset, rule.Headers)
+		}
 	default:
-		var bookDoc *goquery.Document
-		bookDoc, err = FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+		if bookDoc == nil {
+			bookDoc, err = FetchDocumentWithHeaders(bookURL, charset, rule.Headers)
+		}
 		if err == nil {
 			parsedTOCURL := firstMatch(bookDoc.Selection, tocURLRule)
 			if parsedTOCURL == "" {

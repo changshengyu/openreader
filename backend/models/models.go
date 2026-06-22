@@ -90,6 +90,16 @@ type BookSourceRule struct {
 	ExploreBookURLRule       string `json:"exploreBookUrlRule,omitempty"`
 	ExplorePaginationRule    string `json:"explorePaginationRule,omitempty"`
 
+	// Book detail page metadata.
+	BookInfoNameRule          string `json:"bookInfoNameRule,omitempty"`
+	BookInfoAuthorRule        string `json:"bookInfoAuthorRule,omitempty"`
+	BookInfoCoverRule         string `json:"bookInfoCoverRule,omitempty"`
+	BookInfoIntroRule         string `json:"bookInfoIntroRule,omitempty"`
+	BookInfoKindRule          string `json:"bookInfoKindRule,omitempty"`
+	BookInfoLatestChapterRule string `json:"bookInfoLatestChapterRule,omitempty"`
+	BookInfoUpdateTimeRule    string `json:"bookInfoUpdateTimeRule,omitempty"`
+	BookInfoWordCountRule     string `json:"bookInfoWordCountRule,omitempty"`
+
 	// TOC/directory page URL template (typically derived from book URL).
 	TOCURLRule string `json:"tocUrlRule,omitempty"`
 

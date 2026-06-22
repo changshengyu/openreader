@@ -1059,7 +1059,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
 		return
 	}
-	remoteChapters, err := engine.ParseTOC(book.URL, source)
+	remoteInfo, remoteChapters, err := engine.FetchBookInfoAndTOC(book.URL, source)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters: %v", err)})
 		return
@@ -1099,6 +1099,10 @@ func (s *Server) refreshBook(c *gin.Context) {
 			}
 			added++
 		}
+		book.Title = firstNonBlank(remoteInfo.Title, book.Title)
+		book.Author = firstNonBlank(remoteInfo.Author, book.Author)
+		book.CoverURL = firstNonBlank(remoteInfo.CoverURL, book.CoverURL)
+		book.Intro = firstNonBlank(remoteInfo.Intro, book.Intro)
 		book.LastChapter = remoteChapters[len(remoteChapters)-1].Title
 		book.ChapterCount = len(remoteChapters)
 		return tx.Save(&book).Error
@@ -1540,7 +1544,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		return
 	}
 
-	chapters, err := engine.ParseTOC(req.BookURL, source)
+	remoteInfo, chapters, err := engine.FetchBookInfoAndTOC(req.BookURL, source)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters: %v", err)})
 		return
@@ -1553,10 +1557,10 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 	book := models.Book{
 		UserID:       userID,
 		SourceID:     req.SourceID,
-		Title:        strings.TrimSpace(req.Title),
-		Author:       strings.TrimSpace(req.Author),
-		CoverURL:     strings.TrimSpace(req.CoverURL),
-		Intro:        strings.TrimSpace(req.Intro),
+		Title:        firstNonBlank(remoteInfo.Title, req.Title),
+		Author:       firstNonBlank(remoteInfo.Author, req.Author),
+		CoverURL:     firstNonBlank(remoteInfo.CoverURL, req.CoverURL),
+		Intro:        firstNonBlank(remoteInfo.Intro, req.Intro),
 		URL:          req.BookURL,
 		LastChapter:  chapters[len(chapters)-1].Title,
 		ChapterCount: len(chapters),
@@ -1823,7 +1827,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 	if newBookURL == "" {
 		newBookURL = book.URL
 	}
-	newChapters, err := engine.ParseTOC(newBookURL, newSource)
+	remoteInfo, newChapters, err := engine.FetchBookInfoAndTOC(newBookURL, newSource)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters from new source: %v", err)})
 		return
@@ -1850,16 +1854,16 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		}
 		book.SourceID = req.SourceID
 		book.URL = newBookURL
-		if title := strings.TrimSpace(req.Title); title != "" {
+		if title := firstNonBlank(remoteInfo.Title, req.Title); title != "" {
 			book.Title = title
 		}
-		if author := strings.TrimSpace(req.Author); author != "" {
+		if author := firstNonBlank(remoteInfo.Author, req.Author); author != "" {
 			book.Author = author
 		}
-		if coverURL := strings.TrimSpace(req.CoverURL); coverURL != "" {
+		if coverURL := firstNonBlank(remoteInfo.CoverURL, req.CoverURL); coverURL != "" {
 			book.CoverURL = coverURL
 		}
-		if intro := strings.TrimSpace(req.Intro); intro != "" {
+		if intro := firstNonBlank(remoteInfo.Intro, req.Intro); intro != "" {
 			book.Intro = intro
 		}
 		book.LastChapter = newChapters[len(newChapters)-1].Title

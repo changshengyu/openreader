@@ -20,7 +20,17 @@ func TestParseTOCResolvesCatalogURLFromBookInfoPage(t *testing.T) {
 			body := ""
 			switch request.URL.Path {
 			case "/book/1":
-				body = `<a class="catalog" href="/catalog/1">目录</a>`
+				body = `
+					<h1 class="book-name">详情书名</h1>
+					<span class="book-author">详情作者</span>
+					<img class="book-cover" data-src="/cover.jpg">
+					<div class="book-intro">详情简介</div>
+					<span class="book-kind">玄幻</span>
+					<span class="book-latest">最新章</span>
+					<span class="book-update">今天</span>
+					<span class="book-words">100万字</span>
+					<a class="catalog" href="/catalog/1">目录</a>
+				`
 			case "/catalog/1":
 				body = `<div class="chapter"><span class="title">第一章</span><a href="/chapter/1">阅读</a></div>`
 			default:
@@ -38,10 +48,18 @@ func TestParseTOCResolvesCatalogURLFromBookInfoPage(t *testing.T) {
 
 	source := models.BookSource{Name: "详情目录源", BaseURL: "https://source.example", Charset: "utf-8"}
 	if err := source.SetRules(models.BookSourceRule{
-		TOCURLRule:      ".catalog|attr:href",
-		ChapterListRule: ".chapter",
-		ChapterNameRule: ".title",
-		ChapterURLRule:  "a|attr:href",
+		BookInfoNameRule:          ".book-name",
+		BookInfoAuthorRule:        ".book-author",
+		BookInfoCoverRule:         ".book-cover|attr:data-src",
+		BookInfoIntroRule:         ".book-intro",
+		BookInfoKindRule:          ".book-kind",
+		BookInfoLatestChapterRule: ".book-latest",
+		BookInfoUpdateTimeRule:    ".book-update",
+		BookInfoWordCountRule:     ".book-words",
+		TOCURLRule:                ".catalog|attr:href",
+		ChapterListRule:           ".chapter",
+		ChapterNameRule:           ".title",
+		ChapterURLRule:            "a|attr:href",
 		Headers: map[string]string{
 			"Referer": "https://source.example/",
 		},
@@ -49,9 +67,19 @@ func TestParseTOCResolvesCatalogURLFromBookInfoPage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chapters, err := ParseTOC("https://source.example/book/1", source)
+	info, chapters, err := FetchBookInfoAndTOC("https://source.example/book/1", source)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if info.Title != "详情书名" ||
+		info.Author != "详情作者" ||
+		info.CoverURL != "https://source.example/cover.jpg" ||
+		info.Intro != "详情简介" ||
+		info.Kind != "玄幻" ||
+		info.LatestChapter != "最新章" ||
+		info.UpdateTime != "今天" ||
+		info.WordCount != "100万字" {
+		t.Fatalf("unexpected book info: %+v", info)
 	}
 	if len(chapters) != 1 || chapters[0].Title != "第一章" || chapters[0].URL != "https://source.example/chapter/1" {
 		t.Fatalf("unexpected chapters: %+v", chapters)

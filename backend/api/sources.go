@@ -68,7 +68,15 @@ type legacySourceTOCRule struct {
 }
 
 type legacySourceBookInfoRule struct {
-	TOCURL string `json:"tocUrl,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Author      string `json:"author,omitempty"`
+	CoverURL    string `json:"coverUrl,omitempty"`
+	Intro       string `json:"intro,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	LastChapter string `json:"lastChapter,omitempty"`
+	UpdateTime  string `json:"updateTime,omitempty"`
+	WordCount   string `json:"wordCount,omitempty"`
+	TOCURL      string `json:"tocUrl,omitempty"`
 }
 
 type legacySourceContentRule struct {
@@ -117,30 +125,38 @@ func (p bookSourcePayload) toModel() models.BookSource {
 
 func (p bookSourcePayload) compatRules() string {
 	rule := models.BookSourceRule{
-		SearchURL:                normalizeUpstreamURLTemplate(p.SearchURL),
-		ExploreURL:               normalizeUpstreamURLTemplate(p.ExploreURL),
-		BookListRule:             normalizeUpstreamSelectorRule(p.RuleSearch.BookList),
-		BookNameRule:             normalizeUpstreamSelectorRule(p.RuleSearch.Name),
-		BookAuthorRule:           normalizeUpstreamSelectorRule(p.RuleSearch.Author),
-		BookCoverRule:            normalizeUpstreamSelectorRule(p.RuleSearch.CoverURL),
-		BookIntroRule:            normalizeUpstreamSelectorRule(p.RuleSearch.Intro),
-		LatestChapterRule:        normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
-		BookURLRule:              normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
-		ExploreBookListRule:      normalizeUpstreamSelectorRule(p.RuleExplore.BookList),
-		ExploreBookNameRule:      normalizeUpstreamSelectorRule(p.RuleExplore.Name),
-		ExploreBookAuthorRule:    normalizeUpstreamSelectorRule(p.RuleExplore.Author),
-		ExploreBookCoverRule:     normalizeUpstreamSelectorRule(p.RuleExplore.CoverURL),
-		ExploreBookIntroRule:     normalizeUpstreamSelectorRule(p.RuleExplore.Intro),
-		ExploreLatestChapterRule: normalizeUpstreamSelectorRule(p.RuleExplore.LastChapter),
-		ExploreBookURLRule:       normalizeUpstreamSelectorRule(p.RuleExplore.BookURL),
-		TOCURLRule:               normalizeUpstreamSelectorRule(p.RuleBookInfo.TOCURL),
-		ChapterListRule:          normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
-		ChapterNameRule:          normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
-		ChapterURLRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
-		NextTOCURLRule:           normalizeUpstreamSelectorRule(p.RuleTOC.NextTOCURL),
-		ContentRule:              normalizeUpstreamSelectorRule(p.RuleContent.Content),
-		NextContentURLRule:       normalizeUpstreamSelectorRule(p.RuleContent.NextContentURL),
-		Headers:                  p.compatHeaders(),
+		SearchURL:                 normalizeUpstreamURLTemplate(p.SearchURL),
+		ExploreURL:                normalizeUpstreamURLTemplate(p.ExploreURL),
+		BookListRule:              normalizeUpstreamSelectorRule(p.RuleSearch.BookList),
+		BookNameRule:              normalizeUpstreamSelectorRule(p.RuleSearch.Name),
+		BookAuthorRule:            normalizeUpstreamSelectorRule(p.RuleSearch.Author),
+		BookCoverRule:             normalizeUpstreamSelectorRule(p.RuleSearch.CoverURL),
+		BookIntroRule:             normalizeUpstreamSelectorRule(p.RuleSearch.Intro),
+		LatestChapterRule:         normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
+		BookURLRule:               normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
+		ExploreBookListRule:       normalizeUpstreamSelectorRule(p.RuleExplore.BookList),
+		ExploreBookNameRule:       normalizeUpstreamSelectorRule(p.RuleExplore.Name),
+		ExploreBookAuthorRule:     normalizeUpstreamSelectorRule(p.RuleExplore.Author),
+		ExploreBookCoverRule:      normalizeUpstreamSelectorRule(p.RuleExplore.CoverURL),
+		ExploreBookIntroRule:      normalizeUpstreamSelectorRule(p.RuleExplore.Intro),
+		ExploreLatestChapterRule:  normalizeUpstreamSelectorRule(p.RuleExplore.LastChapter),
+		ExploreBookURLRule:        normalizeUpstreamSelectorRule(p.RuleExplore.BookURL),
+		BookInfoNameRule:          normalizeUpstreamSelectorRule(p.RuleBookInfo.Name),
+		BookInfoAuthorRule:        normalizeUpstreamSelectorRule(p.RuleBookInfo.Author),
+		BookInfoCoverRule:         normalizeUpstreamSelectorRule(p.RuleBookInfo.CoverURL),
+		BookInfoIntroRule:         normalizeUpstreamSelectorRule(p.RuleBookInfo.Intro),
+		BookInfoKindRule:          normalizeUpstreamSelectorRule(p.RuleBookInfo.Kind),
+		BookInfoLatestChapterRule: normalizeUpstreamSelectorRule(p.RuleBookInfo.LastChapter),
+		BookInfoUpdateTimeRule:    normalizeUpstreamSelectorRule(p.RuleBookInfo.UpdateTime),
+		BookInfoWordCountRule:     normalizeUpstreamSelectorRule(p.RuleBookInfo.WordCount),
+		TOCURLRule:                normalizeUpstreamSelectorRule(p.RuleBookInfo.TOCURL),
+		ChapterListRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
+		ChapterNameRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
+		ChapterURLRule:            normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
+		NextTOCURLRule:            normalizeUpstreamSelectorRule(p.RuleTOC.NextTOCURL),
+		ContentRule:               normalizeUpstreamSelectorRule(p.RuleContent.Content),
+		NextContentURLRule:        normalizeUpstreamSelectorRule(p.RuleContent.NextContentURL),
+		Headers:                   p.compatHeaders(),
 	}
 	if isEmptyCompatRule(rule) {
 		return ""
@@ -169,6 +185,14 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.ExploreBookIntroRule == "" &&
 		rule.ExploreLatestChapterRule == "" &&
 		rule.ExploreBookURLRule == "" &&
+		rule.BookInfoNameRule == "" &&
+		rule.BookInfoAuthorRule == "" &&
+		rule.BookInfoCoverRule == "" &&
+		rule.BookInfoIntroRule == "" &&
+		rule.BookInfoKindRule == "" &&
+		rule.BookInfoLatestChapterRule == "" &&
+		rule.BookInfoUpdateTimeRule == "" &&
+		rule.BookInfoWordCountRule == "" &&
 		rule.ChapterListRule == "" &&
 		rule.ChapterNameRule == "" &&
 		rule.ChapterURLRule == "" &&
@@ -675,7 +699,15 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			RuleSearch:      searchRule,
 			RuleExplore:     exploreRule,
 			RuleBookInfo: legacySourceBookInfoRule{
-				TOCURL: exportUpstreamSelectorRule(rule.TOCURLRule),
+				Name:        exportUpstreamSelectorRule(rule.BookInfoNameRule),
+				Author:      exportUpstreamSelectorRule(rule.BookInfoAuthorRule),
+				CoverURL:    exportUpstreamSelectorRule(rule.BookInfoCoverRule),
+				Intro:       exportUpstreamSelectorRule(rule.BookInfoIntroRule),
+				Kind:        exportUpstreamSelectorRule(rule.BookInfoKindRule),
+				LastChapter: exportUpstreamSelectorRule(rule.BookInfoLatestChapterRule),
+				UpdateTime:  exportUpstreamSelectorRule(rule.BookInfoUpdateTimeRule),
+				WordCount:   exportUpstreamSelectorRule(rule.BookInfoWordCountRule),
+				TOCURL:      exportUpstreamSelectorRule(rule.TOCURLRule),
 			},
 			RuleTOC: legacySourceTOCRule{
 				ChapterList: exportUpstreamSelectorRule(rule.ChapterListRule),
