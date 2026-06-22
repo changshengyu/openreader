@@ -6,6 +6,8 @@ TAG="${TAG:-$(git rev-parse --short HEAD)}"
 VERSION="${VERSION:-$TAG}"
 VCS_REF="${VCS_REF:-$(git rev-parse HEAD)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}"
+GOSUMDB="${GOSUMDB:-sum.golang.org}"
 PLATFORMS="${PLATFORMS:-}"
 PUSH="${PUSH:-1}"
 RELEASE="${RELEASE:-0}"
@@ -31,5 +33,7 @@ docker buildx build \
   --build-arg "VERSION=$VERSION" \
   --build-arg "VCS_REF=$VCS_REF" \
   --build-arg "BUILD_DATE=$BUILD_DATE" \
+  --build-arg "GOPROXY=$GOPROXY" \
+  --build-arg "GOSUMDB=$GOSUMDB" \
   $OUTPUT_FLAG \
   .
