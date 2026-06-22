@@ -290,6 +290,65 @@ func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *t
 	}
 }
 
+func TestSearchExecutesImportedUpstreamPostOptions(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	source := models.BookSource{Name: "上游 POST 源", Enabled: true, Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    `https://post-search.example/search, {"method":"POST","body":{"keyword":"{keyword}","page":"{page}"},"headers":{"X-Page":"{page}"}}`,
+		BookListRule: ".book",
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Method != http.MethodPost ||
+				request.Header.Get("Content-Type") != "application/json; charset=utf-8" ||
+				request.Header.Get("X-Page") != "2" {
+				t.Fatalf("unexpected POST search request: method=%s headers=%v", request.Method, request.Header)
+			}
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(body) != `{"keyword":"中文书","page":"2"}` {
+				t.Fatalf("unexpected POST search body: %s", body)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					`<article class="book"><a class="name" href="/book/2">POST 搜索结果</a></article>`,
+				)),
+				Header:  make(http.Header),
+				Request: request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	body := fmt.Sprintf(
+		`{"keyword":"中文书","sourceIds":[%d],"page":2,"lastIndex":-1,"searchSize":20}`,
+		source.ID,
+	)
+	req := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"POST 搜索结果"`) ||
+		!strings.Contains(w.Body.String(), `"page":2`) {
+		t.Fatalf("POST source search: expected parsed second page, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUserReaderSettingsRoundTrip(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
@@ -1740,7 +1799,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"bookSourceName":"上游源",
 			"bookSourceUrl":"https://reader.example",
 			"bookSourceGroup":"分组A",
-			"searchUrl":"https://reader.example/search?q={{key}}",
+			"searchUrl":"https://reader.example/search, {\"method\":\"POST\",\"body\":\"key={{key}}&page={{page}}\",\"headers\":{\"X-Page\":\"{{page}}\"}}",
 			"exploreUrl":"https://reader.example/top/{page}",
 			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
 			"enabled":false,
@@ -1797,7 +1856,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.SearchURL != "https://reader.example/search?q={keyword}" ||
+	if rule.SearchURL != `https://reader.example/search, {"method":"POST","body":"key={keyword}&page={page}","headers":{"X-Page":"{page}"}}` ||
 		rule.ExploreURL != "https://reader.example/top/{page}" ||
 		rule.BookListRule != ".book" ||
 		rule.BookNameRule != ".name" ||
@@ -1824,6 +1883,10 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.Headers["User-Agent"] != "OpenReader Test" ||
 		rule.Headers["Referer"] != "https://reader.example" {
 		t.Fatalf("unexpected converted rules: %+v", rule)
+	}
+	if exported := exportUpstreamURLTemplate(rule.SearchURL); exported !=
+		`https://reader.example/search, {"method":"POST","body":"key={{key}}&page={{page}}","headers":{"X-Page":"{{page}}"}}` {
+		t.Fatalf("POST URL options were not preserved for upstream export: %s", exported)
 	}
 }
 
@@ -1935,7 +1998,6 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.Headers["Referer"] != "https://upload-reader.example/" {
 		t.Fatalf("unexpected imported rules: %+v", rule)
 	}
-
 	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.Header.Get("X-Source-Token") != "upload-secret" ||

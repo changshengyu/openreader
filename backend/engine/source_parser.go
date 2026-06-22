@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	stdhtml "html"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -89,21 +90,24 @@ func SearchBooksPageContext(ctx context.Context, source models.BookSource, keywo
 	if rule.SearchURL == "" {
 		return SearchPageResult{}, fmt.Errorf("source %q has no search URL", source.Name)
 	}
+	searchURLTemplate := resolveSourceURLTemplate(source.BaseURL, rule.SearchURL)
 
-	searchURLTemplate := strings.ReplaceAll(rule.SearchURL, "{keyword}", url.QueryEscape(keyword))
 	charset := source.Charset
 	if charset == "" {
 		charset = "utf-8"
 	}
 
 	if strings.Contains(searchURLTemplate, "{page}") {
-		searchURL := strings.ReplaceAll(searchURLTemplate, "{page}", fmt.Sprintf("%d", page))
-		doc, err := FetchDocumentWithHeadersContext(ctx, searchURL, charset, rule.Headers)
+		request, err := prepareSourceRequest(searchURLTemplate, keyword, page, charset, rule.Headers)
+		if err != nil {
+			return SearchPageResult{}, err
+		}
+		doc, err := FetchDocumentRequestContext(ctx, request.Method, request.URL, request.Body, request.Charset, request.Headers)
 		if err != nil {
 			return SearchPageResult{}, fmt.Errorf("fetch search page: %w", err)
 		}
-		items := parseBookResults(doc, rule, source, searchURL)
-		nextURL := searchNextURL(doc, rule, searchURL)
+		items := parseBookResults(doc, rule, source, request.URL)
+		nextURL := searchNextURL(doc, rule, request.URL)
 		return SearchPageResult{
 			Items:   items,
 			Page:    page,
@@ -116,14 +120,17 @@ func SearchBooksPageContext(ctx context.Context, source models.BookSource, keywo
 		return SearchPageResult{Items: []SearchResult{}, Page: page}, nil
 	}
 
-	searchURL := searchURLTemplate
+	request, err := prepareSourceRequest(searchURLTemplate, keyword, 1, charset, rule.Headers)
+	if err != nil {
+		return SearchPageResult{}, err
+	}
 	for currentPage := 1; currentPage <= page; currentPage++ {
-		doc, err := FetchDocumentWithHeadersContext(ctx, searchURL, charset, rule.Headers)
+		doc, err := FetchDocumentRequestContext(ctx, request.Method, request.URL, request.Body, request.Charset, request.Headers)
 		if err != nil {
 			return SearchPageResult{}, fmt.Errorf("fetch search page: %w", err)
 		}
-		items := parseBookResults(doc, rule, source, searchURL)
-		nextURL := searchNextURL(doc, rule, searchURL)
+		items := parseBookResults(doc, rule, source, request.URL)
+		nextURL := searchNextURL(doc, rule, request.URL)
 		if currentPage == page {
 			return SearchPageResult{
 				Items:   items,
@@ -135,7 +142,12 @@ func SearchBooksPageContext(ctx context.Context, source models.BookSource, keywo
 		if nextURL == "" {
 			return SearchPageResult{Items: []SearchResult{}, Page: page}, nil
 		}
-		searchURL = nextURL
+		request = sourceRequest{
+			URL:     nextURL,
+			Method:  http.MethodGet,
+			Charset: request.Charset,
+			Headers: request.Headers,
+		}
 	}
 
 	return SearchPageResult{Items: []SearchResult{}, Page: page}, nil
@@ -184,18 +196,21 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 		baseURL = source.SearchURL
 	}
 	if baseURL != "" {
-		activeExploreURL = resolveURL(baseURL, activeExploreURL)
+		activeExploreURL = resolveSourceURLTemplate(baseURL, activeExploreURL)
 	}
-	exploreURL := strings.ReplaceAll(activeExploreURL, "{page}", fmt.Sprintf("%d", page))
-	doc, err := FetchDocumentWithHeaders(exploreURL, charset, rule.Headers)
+	request, err := prepareSourceRequest(activeExploreURL, "", page, charset, rule.Headers)
+	if err != nil {
+		return ExploreResult{}, err
+	}
+	doc, err := FetchDocumentRequestContext(context.Background(), request.Method, request.URL, request.Body, request.Charset, request.Headers)
 	if err != nil {
 		return ExploreResult{}, fmt.Errorf("fetch explore page: %w", err)
 	}
 	exploreRule := effectiveExploreRule(rule)
-	items := parseBookResults(doc, exploreRule, source, exploreURL)
+	items := parseBookResults(doc, exploreRule, source, request.URL)
 	nextURL := ""
 	if exploreRule.PaginationRule != "" {
-		nextURL = resolveURL(exploreURL, firstMatch(doc.Selection, exploreRule.PaginationRule))
+		nextURL = resolveURL(request.URL, firstMatch(doc.Selection, exploreRule.PaginationRule))
 	}
 	hasMore := strings.Contains(activeExploreURL, "{page}") && len(items) > 0
 	if nextURL != "" {

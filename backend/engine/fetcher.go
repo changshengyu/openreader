@@ -41,7 +41,15 @@ func FetchDocumentWithHeaders(url, charset string, headers map[string]string) (*
 }
 
 func FetchDocumentWithHeadersContext(ctx context.Context, url, charset string, headers map[string]string) (*goquery.Document, error) {
-	decoded, err := FetchTextWithHeadersContext(ctx, url, charset, headers)
+	decoded, err := FetchTextRequestContext(ctx, http.MethodGet, url, "", charset, headers)
+	if err != nil {
+		return nil, err
+	}
+	return goquery.NewDocumentFromReader(strings.NewReader(decoded))
+}
+
+func FetchDocumentRequestContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (*goquery.Document, error) {
+	decoded, err := FetchTextRequestContext(ctx, method, url, body, charset, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +69,19 @@ func FetchTextWithHeaders(url, charset string, headers map[string]string) (strin
 }
 
 func FetchTextWithHeadersContext(ctx context.Context, url, charset string, headers map[string]string) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	return FetchTextRequestContext(ctx, http.MethodGet, url, "", charset, headers)
+}
+
+func FetchTextRequestContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (string, error) {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	var requestBody io.Reader
+	if body != "" {
+		requestBody = strings.NewReader(body)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, url, requestBody)
 	if err != nil {
 		return "", err
 	}
@@ -82,12 +102,12 @@ func FetchTextWithHeadersContext(ctx context.Context, url, charset string, heade
 	}
 	defer response.Body.Close()
 
-	body, err := io.ReadAll(response.Body)
+	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return "", err
 	}
 
-	decoded, err := DecodeBody(body, charset)
+	decoded, err := DecodeBody(responseBody, charset)
 	if err != nil {
 		return "", err
 	}
