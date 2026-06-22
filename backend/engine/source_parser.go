@@ -14,6 +14,8 @@ import (
 	"openreader/backend/models"
 )
 
+const maxSourcePaginationPages = 1000
+
 // SearchResult represents a single book found through remote search.
 type SearchResult struct {
 	Title         string `json:"title"`
@@ -220,7 +222,44 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 		return nil, fmt.Errorf("fetch toc page: %w", err)
 	}
 
-	chapters := parseChapterList(doc, rule, tocURL)
+	type tocPage struct {
+		url string
+		doc *goquery.Document
+	}
+	queue := []tocPage{{url: tocURL, doc: doc}}
+	visited := map[string]bool{tocURL: true}
+	chapters := make([]RemoteChapter, 0)
+	chapterKeys := make(map[string]bool)
+	for len(queue) > 0 {
+		page := queue[0]
+		queue = queue[1:]
+		for _, chapter := range parseChapterList(page.doc, rule, page.url) {
+			key := chapter.URL
+			if key == "" {
+				key = chapter.Title
+			}
+			if chapterKeys[key] {
+				continue
+			}
+			chapterKeys[key] = true
+			chapter.Index = len(chapters)
+			chapters = append(chapters, chapter)
+		}
+		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextTOCURLRule, page.url) {
+			if visited[nextURL] {
+				continue
+			}
+			if len(visited) >= maxSourcePaginationPages {
+				return nil, fmt.Errorf("toc pagination exceeds %d pages", maxSourcePaginationPages)
+			}
+			visited[nextURL] = true
+			nextDoc, fetchErr := FetchDocumentWithHeaders(nextURL, charset, rule.Headers)
+			if fetchErr != nil {
+				return nil, fmt.Errorf("fetch toc page: %w", fetchErr)
+			}
+			queue = append(queue, tocPage{url: nextURL, doc: nextDoc})
+		}
+	}
 	if len(chapters) == 0 {
 		return nil, fmt.Errorf("no chapters found on toc page")
 	}
@@ -259,6 +298,24 @@ func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, baseURL
 	return chapters
 }
 
+func extractResolvedURLs(selection *goquery.Selection, rule string, baseURL string) []string {
+	if strings.TrimSpace(rule) == "" {
+		return nil
+	}
+	values := Extract(selection, rule)
+	urls := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		resolved := resolveURL(baseURL, value)
+		if resolved == "" || seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
+		urls = append(urls, resolved)
+	}
+	return urls
+}
+
 // FetchChapterContent fetches and parses a single chapter's content.
 func FetchChapterContent(chapterURL string, source models.BookSource) (string, error) {
 	rule, err := source.ParsedRules()
@@ -281,22 +338,51 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 		return "", fmt.Errorf("fetch content page: %w", err)
 	}
 
-	text := ""
-	if rule.ContentRule != "" {
-		values := Extract(doc.Selection, rule.ContentRule)
-		if ruleOperation(rule.ContentRule) == "html" {
-			for index := range values {
-				values[index] = normalizeChapterHTML(values[index], contentURL)
-			}
+	type contentPage struct {
+		url string
+		doc *goquery.Document
+	}
+	queue := []contentPage{{url: contentURL, doc: doc}}
+	visited := map[string]bool{contentURL: true}
+	parts := make([]string, 0)
+	for len(queue) > 0 {
+		page := queue[0]
+		queue = queue[1:]
+		if text := extractChapterContent(page.doc, rule.ContentRule, page.url); text != "" {
+			parts = append(parts, text)
 		}
-		text = strings.Join(values, "\n")
-	} else {
-		values := Extract(doc.Selection, "body|text")
-		text = strings.Join(values, "\n")
+		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextContentURLRule, page.url) {
+			if visited[nextURL] {
+				continue
+			}
+			if len(visited) >= maxSourcePaginationPages {
+				return "", fmt.Errorf("content pagination exceeds %d pages", maxSourcePaginationPages)
+			}
+			visited[nextURL] = true
+			nextDoc, fetchErr := FetchDocumentWithHeaders(nextURL, charset, rule.Headers)
+			if fetchErr != nil {
+				return "", fmt.Errorf("fetch content page: %w", fetchErr)
+			}
+			queue = append(queue, contentPage{url: nextURL, doc: nextDoc})
+		}
 	}
 
+	text := strings.Join(parts, "\n")
 	text = ApplyTextReplacements(text, rule.TextReplaceRules)
 	return text, nil
+}
+
+func extractChapterContent(doc *goquery.Document, contentRule string, baseURL string) string {
+	if contentRule == "" {
+		return strings.Join(Extract(doc.Selection, "body|text"), "\n")
+	}
+	values := Extract(doc.Selection, contentRule)
+	if ruleOperation(contentRule) == "html" {
+		for index := range values {
+			values[index] = normalizeChapterHTML(values[index], baseURL)
+		}
+	}
+	return strings.Join(values, "\n")
 }
 
 func ruleOperation(rule string) string {

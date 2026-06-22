@@ -64,6 +64,7 @@ type legacySourceTOCRule struct {
 	ChapterList string `json:"chapterList"`
 	ChapterName string `json:"chapterName"`
 	ChapterURL  string `json:"chapterUrl"`
+	NextTOCURL  string `json:"nextTocUrl,omitempty"`
 }
 
 type legacySourceBookInfoRule struct {
@@ -71,7 +72,8 @@ type legacySourceBookInfoRule struct {
 }
 
 type legacySourceContentRule struct {
-	Content string `json:"content"`
+	Content        string `json:"content"`
+	NextContentURL string `json:"nextContentUrl,omitempty"`
 }
 
 type exportedBookSource struct {
@@ -135,7 +137,9 @@ func (p bookSourcePayload) compatRules() string {
 		ChapterListRule:          normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
 		ChapterNameRule:          normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
 		ChapterURLRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
+		NextTOCURLRule:           normalizeUpstreamSelectorRule(p.RuleTOC.NextTOCURL),
 		ContentRule:              normalizeUpstreamSelectorRule(p.RuleContent.Content),
+		NextContentURLRule:       normalizeUpstreamSelectorRule(p.RuleContent.NextContentURL),
 		Headers:                  p.compatHeaders(),
 	}
 	if isEmptyCompatRule(rule) {
@@ -168,7 +172,9 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.ChapterListRule == "" &&
 		rule.ChapterNameRule == "" &&
 		rule.ChapterURLRule == "" &&
+		rule.NextTOCURLRule == "" &&
 		rule.ContentRule == "" &&
+		rule.NextContentURLRule == "" &&
 		len(rule.Headers) == 0
 }
 
@@ -675,9 +681,11 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 				ChapterList: exportUpstreamSelectorRule(rule.ChapterListRule),
 				ChapterName: exportUpstreamSelectorRule(rule.ChapterNameRule),
 				ChapterURL:  exportUpstreamSelectorRule(rule.ChapterURLRule),
+				NextTOCURL:  exportUpstreamSelectorRule(rule.NextTOCURLRule),
 			},
 			RuleContent: legacySourceContentRule{
-				Content: exportUpstreamSelectorRule(rule.ContentRule),
+				Content:        exportUpstreamSelectorRule(rule.ContentRule),
+				NextContentURL: exportUpstreamSelectorRule(rule.NextContentURLRule),
 			},
 			Charset: source.Charset,
 			Rules:   source.Rules,

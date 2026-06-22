@@ -97,10 +97,12 @@ type BookSourceRule struct {
 	ChapterListRule string `json:"chapterListRule,omitempty"`
 	ChapterNameRule string `json:"chapterNameRule,omitempty"`
 	ChapterURLRule  string `json:"chapterUrlRule,omitempty"`
+	NextTOCURLRule  string `json:"nextTocUrlRule,omitempty"`
 
 	// Content page: URL template and content selector.
-	ContentURLRule string `json:"contentUrlRule,omitempty"`
-	ContentRule    string `json:"contentRule,omitempty"`
+	ContentURLRule     string `json:"contentUrlRule,omitempty"`
+	ContentRule        string `json:"contentRule,omitempty"`
+	NextContentURLRule string `json:"nextContentUrlRule,omitempty"`
 
 	// HTTP headers for requests made with this source.
 	Headers map[string]string `json:"headers,omitempty"`

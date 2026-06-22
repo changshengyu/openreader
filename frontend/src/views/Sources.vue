@@ -261,12 +261,14 @@
                 <el-input v-model="ruleForm.chapterListRule" placeholder="章节列表 chapterListRule" />
                 <el-input v-model="ruleForm.chapterNameRule" placeholder="章节名 chapterNameRule" />
                 <el-input v-model="ruleForm.chapterUrlRule" placeholder="章节地址 chapterUrlRule" />
+                <el-input v-model="ruleForm.nextTocUrlRule" placeholder="目录下一页 nextTocUrlRule（可选）" />
               </div>
             </el-collapse-item>
             <el-collapse-item title="正文" name="content">
               <div class="rule-grid">
                 <el-input v-model="ruleForm.contentUrlRule" placeholder="正文地址 contentUrlRule" />
                 <el-input v-model="ruleForm.contentRule" placeholder="正文内容 contentRule" />
+                <el-input v-model="ruleForm.nextContentUrlRule" placeholder="正文下一页 nextContentUrlRule（可选）" />
               </div>
             </el-collapse-item>
           </el-collapse>
@@ -412,8 +414,10 @@ const ruleKeys = [
   'chapterListRule',
   'chapterNameRule',
   'chapterUrlRule',
+  'nextTocUrlRule',
   'contentUrlRule',
   'contentRule',
+  'nextContentUrlRule',
 ]
 const ruleForm = reactive(Object.fromEntries(ruleKeys.map(key => [key, ''])))
 const replaceRules = ref([])

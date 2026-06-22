@@ -1733,8 +1733,8 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
 			"ruleExplore":{"bookList":".explore-item","name":".explore-name","bookUrl":"a@data-url"},
 			"ruleBookInfo":{"tocUrl":".catalog@href"},
-			"ruleToc":{"chapterList":".chapter","chapterName":".chapter-name","chapterUrl":"a@href"},
-			"ruleContent":{"content":".content"}
+			"ruleToc":{"chapterList":".chapter","chapterName":".chapter-name","chapterUrl":"a@href","nextTocUrl":".toc-next@href"},
+			"ruleContent":{"content":".content","nextContentUrl":".content-next@href"}
 		}
 	]`))
 	if err != nil {
@@ -1776,7 +1776,9 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.ChapterListRule != ".chapter" ||
 		rule.ChapterNameRule != ".chapter-name" ||
 		rule.ChapterURLRule != "a|attr:href" ||
+		rule.NextTOCURLRule != ".toc-next|attr:href" ||
 		rule.ContentRule != ".content" ||
+		rule.NextContentURLRule != ".content-next|attr:href" ||
 		rule.Headers["X-Source-Token"] != "upload-secret" ||
 		rule.Headers["Referer"] != "https://upload-reader.example/" {
 		t.Fatalf("unexpected imported rules: %+v", rule)
@@ -1800,7 +1802,18 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			case "/book/2":
 				body = `<a class="catalog" href="/catalog/2">目录</a>`
 			case "/catalog/2":
-				body = `<article class="chapter"><span class="chapter-name">详情页解析目录</span><a href="/chapter/2">阅读</a></article>`
+				body = `
+					<article class="chapter"><span class="chapter-name">详情页解析目录</span><a href="/chapter/2">阅读</a></article>
+					<a class="toc-next" href="/catalog/3">下一页</a>
+				`
+			case "/catalog/3":
+				body = `<article class="chapter"><span class="chapter-name">分页目录第二章</span><a href="/chapter/3">阅读</a></article>`
+			case "/chapter/2":
+				if request.URL.Query().Get("page") == "2" {
+					body = `<main class="content">正文第二页</main>`
+				} else {
+					body = `<main class="content">正文第一页</main><a class="content-next" href="/chapter/2?page=2">下一页</a>`
+				}
 			default:
 				t.Fatalf("unexpected imported source request: %s", request.URL.String())
 			}
@@ -1840,8 +1853,19 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	router.ServeHTTP(tocW, tocReq)
 	if tocW.Code != http.StatusOK ||
 		!strings.Contains(tocW.Body.String(), `"详情页解析目录"`) ||
+		!strings.Contains(tocW.Body.String(), `"分页目录第二章"`) ||
 		!strings.Contains(tocW.Body.String(), `"https://upload-reader.example/chapter/2"`) {
 		t.Fatalf("resolve imported ruleBookInfo.tocUrl: expected parsed catalog, got %d: %s", tocW.Code, tocW.Body.String())
+	}
+
+	contentReq := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/sources/%d/test-content", source.ID), strings.NewReader(`{"chapterUrl":"https://upload-reader.example/chapter/2"}`))
+	contentReq.Header.Set("Content-Type", "application/json")
+	contentReq.Header.Set("Authorization", token)
+	contentW := httptest.NewRecorder()
+	router.ServeHTTP(contentW, contentReq)
+	if contentW.Code != http.StatusOK ||
+		!strings.Contains(contentW.Body.String(), `正文第一页\n正文第二页`) {
+		t.Fatalf("load imported paginated content: expected joined content, got %d: %s", contentW.Code, contentW.Body.String())
 	}
 }
 
@@ -2327,7 +2351,9 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		ChapterListRule:          ".chapter",
 		ChapterNameRule:          ".title",
 		ChapterURLRule:           "a|attr:href",
+		NextTOCURLRule:           ".toc-next|attr:href",
 		ContentRule:              "#content",
+		NextContentURLRule:       ".content-next|attr:href",
 		PaginationRule:           ".next|attr:href",
 		Headers: map[string]string{
 			"Referer": "https://one.example/",
@@ -2388,7 +2414,9 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.RuleBookInfo.TOCURL != ".catalog@href" ||
 		first.RuleTOC.ChapterList != ".chapter" ||
 		first.RuleTOC.ChapterURL != "a@href" ||
+		first.RuleTOC.NextTOCURL != ".toc-next@href" ||
 		first.RuleContent.Content != "#content" ||
+		first.RuleContent.NextContentURL != ".content-next@href" ||
 		!strings.Contains(first.Header, `"Referer":"https://one.example/"`) ||
 		!strings.Contains(first.Rules, `"paginationRule":".next|attr:href"`) ||
 		!strings.Contains(first.Rules, `"textReplaceRules"`) {
@@ -2414,6 +2442,8 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimportedRule.ExploreBookListRule != ".explore-card" ||
 		reimportedRule.ExploreBookURLRule != "a|attr:data-url" ||
 		reimportedRule.ExplorePaginationRule != ".explore-next|attr:href" ||
+		reimportedRule.NextTOCURLRule != ".toc-next|attr:href" ||
+		reimportedRule.NextContentURLRule != ".content-next|attr:href" ||
 		len(reimportedRule.TextReplaceRules) != 1 ||
 		reimportedRule.Headers["Referer"] != "https://one.example/" {
 		t.Fatalf("export should round-trip without losing OpenReader rules: source=%+v rule=%+v", roundTripped[0], reimportedRule)
