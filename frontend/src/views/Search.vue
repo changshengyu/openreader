@@ -124,6 +124,12 @@
       <el-empty v-else :description="searchMode === 'local' ? '输入关键词搜索本地书仓，或直接搜索显示全部可导入文件' : '输入关键词后开始搜索书源'" />
     </div>
 
+    <div v-if="searchMode === 'remote' && searched && (results.length || remoteHasMore)" class="load-more-row">
+      <el-button :loading="loadingMore" :disabled="!remoteHasMore" @click="loadMoreRemote">
+        {{ remoteHasMore ? '加载更多' : '没有更多' }}
+      </el-button>
+    </div>
+
   </section>
 </template>
 
@@ -171,7 +177,14 @@ const concurrentOptions = [8, 16, 32, 60]
 const concurrentCount = ref(concurrentOptions.includes(Number(route.query.concurrent)) ? Number(route.query.concurrent) : preferences.search.concurrent)
 const results = ref([])
 const searching = ref(false)
+const loadingMore = ref(false)
 const searched = ref(false)
+const searchPage = ref(1)
+const searchLastIndex = ref(-1)
+const remoteHasMore = ref(false)
+const activeSearchKeyword = ref('')
+const activeSourceIds = ref([])
+const activeConcurrentCount = ref(1)
 const addingBook = ref(null)
 const localItems = ref([])
 const checkedLocalPaths = ref([])
@@ -339,6 +352,7 @@ async function switchSearchMode(mode, updateRoute = true) {
   searchMode.value = mode
   searched.value = false
   results.value = []
+  resetRemotePagination()
   checkedLocalPaths.value = []
   if (mode === 'remote') {
     if (!sources.value.length) {
@@ -377,20 +391,82 @@ async function doSearch() {
   searching.value = true
   searched.value = false
   results.value = []
+  resetRemotePagination()
+  activeSearchKeyword.value = value
+  activeSourceIds.value = [...selectedIds.value]
+  activeConcurrentCount.value = searchType.value === 'single' ? 1 : concurrentCount.value
   try {
-    const { data } = await api.post('/search', {
-      keyword: value,
-      sourceIds: selectedIds.value,
-      concurrentCount: searchType.value === 'single' ? 1 : concurrentCount.value,
-    })
-    results.value = data
+    const added = await requestRemoteSearch(false)
     searched.value = true
-    ElMessage.success(data.length ? `找到 ${data.length} 条结果` : '没有找到相关书籍')
+    ElMessage.success(added ? `找到 ${added} 条结果` : '没有找到相关书籍')
   } catch (err) {
     ElMessage.error(readError(err, '搜索失败'))
   } finally {
     searching.value = false
   }
+}
+
+async function loadMoreRemote() {
+  if (loadingMore.value || !remoteHasMore.value) return
+  loadingMore.value = true
+  try {
+    searchPage.value += 1
+    const added = await requestRemoteSearch(true)
+    if (!added) {
+      ElMessage.info(remoteHasMore.value ? '本批没有新增结果' : '没有更多了')
+    }
+  } catch (err) {
+    searchPage.value = Math.max(1, searchPage.value - 1)
+    ElMessage.error(readError(err, '加载更多失败'))
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+async function requestRemoteSearch(append) {
+  const { data } = await api.post('/search', {
+    keyword: activeSearchKeyword.value,
+    sourceIds: activeSourceIds.value,
+    concurrentCount: activeConcurrentCount.value,
+    page: searchPage.value,
+    lastIndex: searchLastIndex.value,
+    searchSize: 20,
+  })
+  const incoming = Array.isArray(data) ? data : (data?.list || [])
+  const added = appendRemoteResults(incoming, append)
+  searchPage.value = Number(data?.page || searchPage.value)
+  searchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : searchLastIndex.value
+  remoteHasMore.value = Boolean(data?.hasMore)
+  return added
+}
+
+function appendRemoteResults(incoming, append) {
+  const next = append ? [...results.value] : []
+  const seen = new Set(next.map(remoteResultDedupKey).filter(Boolean))
+  let added = 0
+  for (const item of incoming) {
+    const key = remoteResultDedupKey(item)
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    next.push(item)
+    added += 1
+  }
+  results.value = next
+  return added
+}
+
+function remoteResultDedupKey(item) {
+  return remoteBookUrl(item) || remoteBookKey(item)
+}
+
+function resetRemotePagination() {
+  searchPage.value = 1
+  searchLastIndex.value = -1
+  remoteHasMore.value = false
+  loadingMore.value = false
+  activeSearchKeyword.value = ''
+  activeSourceIds.value = []
+  activeConcurrentCount.value = 1
 }
 
 async function searchLocalBooks() {
@@ -651,6 +727,12 @@ function readError(err, fallback) {
   display: grid;
   min-width: 0;
   gap: 16px;
+}
+
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 8px;
 }
 
 .search-head,

@@ -158,6 +158,138 @@ func TestRegisterAndLogin(t *testing.T) {
 	}
 }
 
+func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var requestedMu sync.Mutex
+	requested := make([]string, 0)
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestedMu.Lock()
+			requested = append(requested, request.URL.Path+"?"+request.URL.RawQuery)
+			requestedMu.Unlock()
+			sourceName := strings.TrimPrefix(request.URL.Path, "/")
+			page := request.URL.Query().Get("page")
+			if page == "" {
+				page = "1"
+			}
+			body := fmt.Sprintf(
+				`<article class="book"><a class="name" href="/book/%s/%s">%s 第%s页</a><span class="author">%s作者</span></article>`,
+				sourceName,
+				page,
+				sourceName,
+				page,
+				sourceName,
+			)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	sources := make([]models.BookSource, 0, 3)
+	for _, name := range []string{"source-a", "source-b", "source-c"} {
+		source := models.BookSource{Name: name, Enabled: true, Charset: "utf-8"}
+		if err := source.SetRules(models.BookSourceRule{
+			SearchURL:      "https://search.example/" + name + "?q={keyword}&page={page}",
+			BookListRule:   ".book",
+			BookNameRule:   ".name",
+			BookAuthorRule: ".author",
+			BookURLRule:    ".name|attr:href",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.db.Create(&source).Error; err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, source)
+	}
+
+	singleBody := fmt.Sprintf(
+		`{"keyword":"分页","sourceIds":[%d],"concurrentCount":1,"page":2,"lastIndex":-1,"searchSize":20}`,
+		sources[0].ID,
+	)
+	singleReq := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(singleBody))
+	singleReq.Header.Set("Content-Type", "application/json")
+	singleReq.Header.Set("Authorization", token)
+	singleW := httptest.NewRecorder()
+	router.ServeHTTP(singleW, singleReq)
+	if singleW.Code != http.StatusOK {
+		t.Fatalf("single source search: expected 200, got %d: %s", singleW.Code, singleW.Body.String())
+	}
+	var singleResp searchResponse
+	if err := json.Unmarshal(singleW.Body.Bytes(), &singleResp); err != nil {
+		t.Fatal(err)
+	}
+	if singleResp.Page != 2 || !singleResp.HasMore || singleResp.LastIndex != -1 ||
+		len(singleResp.List) != 1 || singleResp.List[0].Title != "source-a 第2页" {
+		t.Fatalf("unexpected single source response: %+v", singleResp)
+	}
+
+	requestedMu.Lock()
+	requested = requested[:0]
+	requestedMu.Unlock()
+	firstMultiBody := fmt.Sprintf(
+		`{"keyword":"游标","sourceIds":[%d,%d,%d],"concurrentCount":1,"page":1,"lastIndex":-1,"searchSize":1}`,
+		sources[1].ID,
+		sources[0].ID,
+		sources[2].ID,
+	)
+	firstMultiReq := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(firstMultiBody))
+	firstMultiReq.Header.Set("Content-Type", "application/json")
+	firstMultiReq.Header.Set("Authorization", token)
+	firstMultiW := httptest.NewRecorder()
+	router.ServeHTTP(firstMultiW, firstMultiReq)
+	if firstMultiW.Code != http.StatusOK {
+		t.Fatalf("first multi search: expected 200, got %d: %s", firstMultiW.Code, firstMultiW.Body.String())
+	}
+	var firstMultiResp searchResponse
+	if err := json.Unmarshal(firstMultiW.Body.Bytes(), &firstMultiResp); err != nil {
+		t.Fatal(err)
+	}
+	if firstMultiResp.LastIndex != 0 || !firstMultiResp.HasMore ||
+		len(firstMultiResp.List) != 1 || firstMultiResp.List[0].SourceID != sources[1].ID {
+		t.Fatalf("unexpected first multi response: %+v", firstMultiResp)
+	}
+
+	secondMultiBody := fmt.Sprintf(
+		`{"keyword":"游标","sourceIds":[%d,%d,%d],"concurrentCount":1,"page":2,"lastIndex":0,"searchSize":1}`,
+		sources[1].ID,
+		sources[0].ID,
+		sources[2].ID,
+	)
+	secondMultiReq := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(secondMultiBody))
+	secondMultiReq.Header.Set("Content-Type", "application/json")
+	secondMultiReq.Header.Set("Authorization", token)
+	secondMultiW := httptest.NewRecorder()
+	router.ServeHTTP(secondMultiW, secondMultiReq)
+	if secondMultiW.Code != http.StatusOK {
+		t.Fatalf("second multi search: expected 200, got %d: %s", secondMultiW.Code, secondMultiW.Body.String())
+	}
+	var secondMultiResp searchResponse
+	if err := json.Unmarshal(secondMultiW.Body.Bytes(), &secondMultiResp); err != nil {
+		t.Fatal(err)
+	}
+	if secondMultiResp.LastIndex != 1 || !secondMultiResp.HasMore ||
+		len(secondMultiResp.List) != 1 || secondMultiResp.List[0].SourceID != sources[0].ID {
+		t.Fatalf("unexpected second multi response: %+v", secondMultiResp)
+	}
+
+	requestedMu.Lock()
+	gotRequests := append([]string(nil), requested...)
+	requestedMu.Unlock()
+	if len(gotRequests) != 2 ||
+		!strings.HasPrefix(gotRequests[0], "/source-b?") ||
+		!strings.HasPrefix(gotRequests[1], "/source-a?") {
+		t.Fatalf("multi source cursor did not preserve requested source order: %v", gotRequests)
+	}
+}
+
 func TestUserReaderSettingsRoundTrip(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)

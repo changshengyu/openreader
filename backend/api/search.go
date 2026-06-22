@@ -18,6 +18,16 @@ type searchRequest struct {
 	Keyword         string `json:"keyword" binding:"required"`
 	SourceIDs       []uint `json:"sourceIds"`
 	ConcurrentCount int    `json:"concurrentCount"`
+	Page            *int   `json:"page"`
+	LastIndex       *int   `json:"lastIndex"`
+	SearchSize      *int   `json:"searchSize"`
+}
+
+type searchResponse struct {
+	List      []engine.SearchResult `json:"list"`
+	Page      int                   `json:"page"`
+	LastIndex int                   `json:"lastIndex"`
+	HasMore   bool                  `json:"hasMore"`
 }
 
 func (s *Server) search(c *gin.Context) {
@@ -33,7 +43,7 @@ func (s *Server) search(c *gin.Context) {
 	}
 
 	var sources []models.BookSource
-	query := s.db.Where("enabled = ?", true)
+	query := s.db.Where("enabled = ?", true).Order("id ASC")
 	if len(req.SourceIDs) > 0 {
 		query = query.Where("id IN ?", req.SourceIDs)
 	}
@@ -41,34 +51,119 @@ func (s *Server) search(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
 		return
 	}
+	sources = orderSearchSources(sources, req.SourceIDs)
+	pagedRequest := req.Page != nil || req.LastIndex != nil || req.SearchSize != nil
 	if len(sources) == 0 {
-		c.JSON(http.StatusOK, []engine.SearchResult{})
+		if pagedRequest {
+			c.JSON(http.StatusOK, searchResponse{
+				List:      []engine.SearchResult{},
+				Page:      normalizedSearchPage(req.Page),
+				LastIndex: -1,
+			})
+		} else {
+			c.JSON(http.StatusOK, []engine.SearchResult{})
+		}
 		return
 	}
 
-	results := concurrentSearch(c.Request.Context(), sources, req.Keyword, req.ConcurrentCount)
-	c.JSON(http.StatusOK, results)
+	if !pagedRequest {
+		results := concurrentSearch(c.Request.Context(), sources, req.Keyword, req.ConcurrentCount)
+		c.JSON(http.StatusOK, results)
+		return
+	}
+
+	page := normalizedSearchPage(req.Page)
+	if len(sources) == 1 {
+		result, err := searchSingleSourcePage(c.Request.Context(), sources[0], req.Keyword, page)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, searchResponse{
+			List:      result.Items,
+			Page:      result.Page,
+			LastIndex: -1,
+			HasMore:   result.HasMore,
+		})
+		return
+	}
+
+	lastIndex := -1
+	if req.LastIndex != nil {
+		lastIndex = *req.LastIndex
+	}
+	results, nextIndex := concurrentSearchFrom(
+		c.Request.Context(),
+		sources,
+		req.Keyword,
+		req.ConcurrentCount,
+		lastIndex,
+		normalizedSearchSize(req.SearchSize),
+	)
+	c.JSON(http.StatusOK, searchResponse{
+		List:      results,
+		Page:      page,
+		LastIndex: nextIndex,
+		HasMore:   nextIndex < len(sources)-1,
+	})
 }
 
 func concurrentSearch(parent context.Context, sources []models.BookSource, keyword string, concurrentCount int) []engine.SearchResult {
-	type searchOutcome struct {
-		Results []engine.SearchResult
-		Error   error
-	}
+	results, _ := concurrentSearchFrom(parent, sources, keyword, concurrentCount, -1, 0)
+	return results
+}
 
+func concurrentSearchFrom(parent context.Context, sources []models.BookSource, keyword string, concurrentCount, lastIndex, searchSize int) ([]engine.SearchResult, int) {
+	start := lastIndex + 1
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(sources) {
+		return []engine.SearchResult{}, len(sources) - 1
+	}
+	limit := normalizedConcurrentCount(concurrentCount, len(sources)-start)
+	seen := make(map[string]bool)
+	aggregated := make([]engine.SearchResult, 0)
+	nextIndex := lastIndex
+
+	for start < len(sources) {
+		end := start + limit
+		if end > len(sources) {
+			end = len(sources)
+		}
+		outcomes := searchSourceBatch(parent, sources[start:end], keyword, limit)
+		nextIndex = end - 1
+		for _, outcome := range outcomes {
+			if outcome.Error != nil {
+				continue
+			}
+			for _, result := range outcome.Results {
+				key := result.Title + "|" + result.Author
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				aggregated = append(aggregated, result)
+			}
+		}
+		if searchSize > 0 && len(aggregated) >= searchSize {
+			break
+		}
+		start = end
+	}
+	return aggregated, nextIndex
+}
+
+type searchOutcome struct {
+	Results []engine.SearchResult
+	Error   error
+}
+
+func searchSourceBatch(parent context.Context, sources []models.BookSource, keyword string, concurrentCount int) []searchOutcome {
 	var wg sync.WaitGroup
 	channel := make(chan searchOutcome, len(sources))
 	timeout := 15 * time.Second
-	limit := concurrentCount
-	if limit <= 0 {
-		limit = 60
-	}
-	if limit > len(sources) {
-		limit = len(sources)
-	}
-	if limit < 1 {
-		limit = 1
-	}
+	limit := normalizedConcurrentCount(concurrentCount, len(sources))
 	workerGate := make(chan struct{}, limit)
 
 	for _, source := range sources {
@@ -98,25 +193,72 @@ func concurrentSearch(parent context.Context, sources []models.BookSource, keywo
 		close(channel)
 	}()
 
-	seen := make(map[string]bool)
-	aggregated := make([]engine.SearchResult, 0)
+	outcomes := make([]searchOutcome, 0, len(sources))
 	for outcome := range channel {
-		if outcome.Error != nil {
+		outcomes = append(outcomes, outcome)
+	}
+	return outcomes
+}
+
+func searchSingleSourcePage(parent context.Context, source models.BookSource, keyword string, page int) (engine.SearchPageResult, error) {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	defer cancel()
+	result, err := engine.SearchBooksPageContext(ctx, source, keyword, page)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return engine.SearchPageResult{}, errTimeout
+	}
+	return result, err
+}
+
+func normalizedConcurrentCount(value, sourceCount int) int {
+	if value <= 0 {
+		value = 60
+	}
+	if value > sourceCount {
+		value = sourceCount
+	}
+	if value < 1 {
+		value = 1
+	}
+	return value
+}
+
+func normalizedSearchPage(value *int) int {
+	if value == nil || *value < 1 {
+		return 1
+	}
+	return *value
+}
+
+func normalizedSearchSize(value *int) int {
+	if value == nil || *value <= 0 {
+		return 20
+	}
+	if *value > 200 {
+		return 200
+	}
+	return *value
+}
+
+func orderSearchSources(sources []models.BookSource, sourceIDs []uint) []models.BookSource {
+	if len(sourceIDs) == 0 {
+		return sources
+	}
+	byID := make(map[uint]models.BookSource, len(sources))
+	for _, source := range sources {
+		byID[source.ID] = source
+	}
+	ordered := make([]models.BookSource, 0, len(sources))
+	seen := make(map[uint]bool, len(sources))
+	for _, id := range sourceIDs {
+		source, ok := byID[id]
+		if !ok || seen[id] {
 			continue
 		}
-		for _, result := range outcome.Results {
-			key := result.Title + "|" + result.Author
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			aggregated = append(aggregated, result)
-		}
+		seen[id] = true
+		ordered = append(ordered, source)
 	}
-	if aggregated == nil {
-		aggregated = []engine.SearchResult{}
-	}
-	return aggregated
+	return ordered
 }
 
 var errTimeout = &searchTimeoutError{}

@@ -28,6 +28,13 @@ type SearchResult struct {
 	SourceName    string `json:"sourceName"`
 }
 
+type SearchPageResult struct {
+	Items   []SearchResult `json:"items"`
+	Page    int            `json:"page"`
+	HasMore bool           `json:"hasMore"`
+	NextURL string         `json:"nextUrl,omitempty"`
+}
+
 type RemoteBookInfo struct {
 	Title         string `json:"title"`
 	Author        string `json:"author"`
@@ -60,26 +67,85 @@ func SearchBooks(source models.BookSource, keyword string) ([]SearchResult, erro
 }
 
 func SearchBooksContext(ctx context.Context, source models.BookSource, keyword string) ([]SearchResult, error) {
+	result, err := SearchBooksPageContext(ctx, source, keyword, 1)
+	if err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func SearchBooksPage(source models.BookSource, keyword string, page int) (SearchPageResult, error) {
+	return SearchBooksPageContext(context.Background(), source, keyword, page)
+}
+
+func SearchBooksPageContext(ctx context.Context, source models.BookSource, keyword string, page int) (SearchPageResult, error) {
+	if page < 1 {
+		page = 1
+	}
 	rule, err := source.ParsedRules()
 	if err != nil {
-		return nil, fmt.Errorf("parse rules: %w", err)
+		return SearchPageResult{}, fmt.Errorf("parse rules: %w", err)
 	}
 	if rule.SearchURL == "" {
-		return nil, fmt.Errorf("source %q has no search URL", source.Name)
+		return SearchPageResult{}, fmt.Errorf("source %q has no search URL", source.Name)
 	}
 
-	searchURL := strings.ReplaceAll(rule.SearchURL, "{keyword}", url.QueryEscape(keyword))
+	searchURLTemplate := strings.ReplaceAll(rule.SearchURL, "{keyword}", url.QueryEscape(keyword))
 	charset := source.Charset
 	if charset == "" {
 		charset = "utf-8"
 	}
 
-	doc, err := FetchDocumentWithHeadersContext(ctx, searchURL, charset, rule.Headers)
-	if err != nil {
-		return nil, fmt.Errorf("fetch search page: %w", err)
+	if strings.Contains(searchURLTemplate, "{page}") {
+		searchURL := strings.ReplaceAll(searchURLTemplate, "{page}", fmt.Sprintf("%d", page))
+		doc, err := FetchDocumentWithHeadersContext(ctx, searchURL, charset, rule.Headers)
+		if err != nil {
+			return SearchPageResult{}, fmt.Errorf("fetch search page: %w", err)
+		}
+		items := parseBookResults(doc, rule, source, searchURL)
+		nextURL := searchNextURL(doc, rule, searchURL)
+		return SearchPageResult{
+			Items:   items,
+			Page:    page,
+			HasMore: len(items) > 0 || nextURL != "",
+			NextURL: nextURL,
+		}, nil
 	}
 
-	return parseSearchResults(doc, rule, source), nil
+	if page > 1 && strings.TrimSpace(rule.PaginationRule) == "" {
+		return SearchPageResult{Items: []SearchResult{}, Page: page}, nil
+	}
+
+	searchURL := searchURLTemplate
+	for currentPage := 1; currentPage <= page; currentPage++ {
+		doc, err := FetchDocumentWithHeadersContext(ctx, searchURL, charset, rule.Headers)
+		if err != nil {
+			return SearchPageResult{}, fmt.Errorf("fetch search page: %w", err)
+		}
+		items := parseBookResults(doc, rule, source, searchURL)
+		nextURL := searchNextURL(doc, rule, searchURL)
+		if currentPage == page {
+			return SearchPageResult{
+				Items:   items,
+				Page:    page,
+				HasMore: nextURL != "",
+				NextURL: nextURL,
+			}, nil
+		}
+		if nextURL == "" {
+			return SearchPageResult{Items: []SearchResult{}, Page: page}, nil
+		}
+		searchURL = nextURL
+	}
+
+	return SearchPageResult{Items: []SearchResult{}, Page: page}, nil
+}
+
+func searchNextURL(doc *goquery.Document, rule models.BookSourceRule, searchURL string) string {
+	if strings.TrimSpace(rule.PaginationRule) == "" {
+		return ""
+	}
+	return resolveURL(searchURL, firstMatch(doc.Selection, rule.PaginationRule))
 }
 
 func ExploreBooks(source models.BookSource) ([]SearchResult, error) {
