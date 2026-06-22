@@ -12,12 +12,14 @@
   </template>
 
   <router-view v-else />
+  <AuthDialog />
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppLayout from './layouts/AppLayout.vue'
+import AuthDialog from './components/AuthDialog.vue'
 import GlobalOverlayHost from './components/GlobalOverlayHost.vue'
 import { useUserStore } from './stores/user'
 import { useReaderStore } from './stores/reader'
@@ -35,6 +37,14 @@ const { connect, disconnect } = useSync()
 const isLoggedIn = computed(() => !!userStore.token)
 const isReader = computed(() => route.name === 'reader')
 let systemThemeMedia
+
+function handleAuthRequired(event) {
+  userStore.requireLogin(event?.detail?.reason, event?.detail?.rejectedToken)
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('openreader:auth-required', handleAuthRequired)
+}
 
 onMounted(() => {
   readerStore.normalizeSettings()
@@ -54,6 +64,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('openreader:auth-required', handleAuthRequired)
+  }
   if (!systemThemeMedia) return
   if (typeof systemThemeMedia.removeEventListener === 'function') {
     systemThemeMedia.removeEventListener('change', applyAutoThemeFromSystem)
