@@ -33,6 +33,10 @@ import (
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
+func boolPointer(value bool) *bool {
+	return &value
+}
+
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
@@ -1654,7 +1658,7 @@ func TestSourceManagement(t *testing.T) {
 	token := authHeader(t, router)
 
 	// create source
-	body := `{"name":"测试书源","baseUrl":"https://example.com","charset":"utf-8","concurrentRate":"3/1000"}`
+	body := `{"name":"测试书源","baseUrl":"https://example.com","charset":"utf-8","concurrentRate":"3/1000","enabledExplore":false}`
 	req := httptest.NewRequest(http.MethodPost, "/api/sources", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1682,6 +1686,9 @@ func TestSourceManagement(t *testing.T) {
 	}
 	if sources[0].ConcurrentRate != "3/1000" {
 		t.Fatalf("source concurrent rate was not persisted: %+v", sources[0])
+	}
+	if sources[0].IsExploreEnabled() {
+		t.Fatalf("source enabledExplore=false was not persisted: %+v", sources[0])
 	}
 
 	// delete source
@@ -1782,7 +1789,7 @@ func TestSourceEditingPermissionBlocksMutations(t *testing.T) {
 func TestDecodeBookSourcesEnabledDefaults(t *testing.T) {
 	sources, err := decodeBookSources([]byte(`[
 		{"name":"默认启用"},
-		{"name":"显式停用","enabled":false}
+		{"name":"显式停用","enabled":false,"enabledExplore":false}
 	]`))
 	if err != nil {
 		t.Fatal(err)
@@ -1790,11 +1797,11 @@ func TestDecodeBookSourcesEnabledDefaults(t *testing.T) {
 	if len(sources) != 2 {
 		t.Fatalf("expected 2 sources, got %d", len(sources))
 	}
-	if !sources[0].Enabled {
-		t.Fatalf("expected missing enabled to default true: %+v", sources[0])
+	if !sources[0].Enabled || !sources[0].IsExploreEnabled() {
+		t.Fatalf("expected missing enable flags to default true: %+v", sources[0])
 	}
-	if sources[1].Enabled {
-		t.Fatalf("expected explicit false to be preserved: %+v", sources[1])
+	if sources[1].Enabled || sources[1].IsExploreEnabled() {
+		t.Fatalf("expected explicit false flags to be preserved: %+v", sources[1])
 	}
 }
 
@@ -1808,6 +1815,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"exploreUrl":"https://reader.example/top/{page}",
 			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
 			"concurrentRate":"2/1000",
+			"enabledExplore":false,
 			"enabled":false,
 			"ruleSearch":{
 				"bookList":".book",
@@ -1855,7 +1863,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		t.Fatalf("expected 1 source, got %d", len(sources))
 	}
 	source := sources[0]
-	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.ConcurrentRate != "2/1000" || source.Enabled {
+	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.ConcurrentRate != "2/1000" || source.Enabled || source.IsExploreEnabled() {
 		t.Fatalf("unexpected upstream source mapping: %+v", source)
 	}
 	rule, err := source.ParsedRules()
@@ -2574,6 +2582,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 			Charset:        "gbk",
 			ConcurrentRate: "2/1000",
 			Enabled:        true,
+			EnabledExplore: boolPointer(false),
 			Group:          "导出分组",
 		},
 		{Name: "导出源二", BaseURL: "https://two.example", Charset: "utf-8", Enabled: true},
@@ -2662,6 +2671,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.ExploreURL != "https://one.example/explore/{{page}}" ||
 		first.Charset != "gbk" ||
 		first.ConcurrentRate != "2/1000" ||
+		first.EnabledExplore ||
 		first.RuleSearch.BookList != ".book" ||
 		first.RuleSearch.Name != ".name" ||
 		first.RuleSearch.BookURL != "a@href" ||
@@ -6808,6 +6818,70 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK || !strings.Contains(w2.Body.String(), "探索书") || !strings.Contains(w2.Body.String(), "https://explore.example/book") {
 		t.Fatalf("explore books: expected result, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestEnabledExploreDisablesOnlyDiscovery(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<div class="book"><a class="link" href="/book"><span class="title">仍可搜索</span></a></div>
+				</body></html>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{
+		Name:           "关闭发现源",
+		BaseURL:        "https://explore-disabled.example",
+		Charset:        "utf-8",
+		Enabled:        true,
+		EnabledExplore: boolPointer(false),
+	}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    "https://explore-disabled.example/search?key={keyword}",
+		ExploreURL:   "https://explore-disabled.example/top",
+		BookListRule: ".book",
+		BookNameRule: ".title|text",
+		BookURLRule:  ".link|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Select("*").Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/explore/sources", nil)
+	listReq.Header.Set("Authorization", token)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK || strings.Contains(listW.Body.String(), "关闭发现源") {
+		t.Fatalf("disabled explore source leaked into discovery: %d %s", listW.Code, listW.Body.String())
+	}
+
+	exploreReq := httptest.NewRequest(http.MethodGet, "/api/explore/"+strconv.FormatUint(uint64(source.ID), 10), nil)
+	exploreReq.Header.Set("Authorization", token)
+	exploreW := httptest.NewRecorder()
+	router.ServeHTTP(exploreW, exploreReq)
+	if exploreW.Code != http.StatusNotFound {
+		t.Fatalf("disabled explore source remained executable: %d %s", exploreW.Code, exploreW.Body.String())
+	}
+
+	searchReq := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(`{"keyword":"测试","sourceIds":[`+strconv.FormatUint(uint64(source.ID), 10)+`]}`))
+	searchReq.Header.Set("Authorization", token)
+	searchReq.Header.Set("Content-Type", "application/json")
+	searchW := httptest.NewRecorder()
+	router.ServeHTTP(searchW, searchReq)
+	if searchW.Code != http.StatusOK || !strings.Contains(searchW.Body.String(), "仍可搜索") {
+		t.Fatalf("enabled source stopped searching when only discovery was disabled: %d %s", searchW.Code, searchW.Body.String())
 	}
 }
 

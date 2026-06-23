@@ -36,10 +36,15 @@ type BookSource struct {
 	ConcurrentRate string    `json:"concurrentRate" gorm:"size:80"`
 	Rules          string    `json:"rules" gorm:"type:text"`
 	Enabled        bool      `json:"enabled"`
+	EnabledExplore *bool     `json:"enabledExplore" gorm:"not null;default:true"`
 	Group          string    `json:"group" gorm:"size:80"`
 	UsedBookCount  int       `json:"usedBookCount" gorm:"-"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+func (s BookSource) IsExploreEnabled() bool {
+	return s.EnabledExplore == nil || *s.EnabledExplore
 }
 
 // ParsedRules deserializes the Rules JSON into a BookSourceRule.

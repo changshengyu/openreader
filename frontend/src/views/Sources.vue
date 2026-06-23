@@ -300,6 +300,9 @@
         <el-form-item>
           <el-switch v-model="sourceForm.enabled" active-text="启用" inactive-text="停用" />
         </el-form-item>
+        <el-form-item>
+          <el-switch v-model="sourceForm.enabledExplore" active-text="启用发现" inactive-text="关闭发现" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showEditor = false">取消</el-button>
@@ -402,7 +405,7 @@ const importPreviewSaving = ref(false)
 const showEditor = ref(false)
 const editingSourceId = ref(null)
 const savingSource = ref(false)
-const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', charset: 'utf-8', concurrentRate: '', rules: '', enabled: true })
+const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', charset: 'utf-8', concurrentRate: '', rules: '', enabled: true, enabledExplore: true })
 const ruleKeys = [
   'exploreUrl',
   'bookListRule',
@@ -637,6 +640,7 @@ function openEditor(source) {
     concurrentRate: source?.concurrentRate || '',
     rules: source?.rules || '',
     enabled: source?.enabled ?? true,
+    enabledExplore: source?.enabledExplore ?? true,
   })
   replaceRules.value = Array.isArray(parsedRules.textReplaceRules)
     ? parsedRules.textReplaceRules.map(rule => ({ pattern: rule.pattern || '', replacement: rule.replacement || '' }))

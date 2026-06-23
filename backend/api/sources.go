@@ -37,6 +37,7 @@ type bookSourcePayload struct {
 	ConcurrentRate  string                   `json:"concurrentRate"`
 	Rules           string                   `json:"rules"`
 	Enabled         *bool                    `json:"enabled"`
+	EnabledExplore  *bool                    `json:"enabledExplore"`
 	Group           string                   `json:"group"`
 	BookSourceName  string                   `json:"bookSourceName"`
 	BookSourceURL   string                   `json:"bookSourceUrl"`
@@ -110,6 +111,10 @@ func (p bookSourcePayload) toModel() models.BookSource {
 	if p.Enabled != nil {
 		enabled = *p.Enabled
 	}
+	enabledExplore := true
+	if p.EnabledExplore != nil {
+		enabledExplore = *p.EnabledExplore
+	}
 	rules := strings.TrimSpace(p.Rules)
 	if rules == "" {
 		rules = p.compatRules()
@@ -122,6 +127,7 @@ func (p bookSourcePayload) toModel() models.BookSource {
 		ConcurrentRate: strings.TrimSpace(p.ConcurrentRate),
 		Rules:          rules,
 		Enabled:        enabled,
+		EnabledExplore: &enabledExplore,
 		Group:          firstNonBlank(p.Group, p.BookSourceGroup),
 	}
 }
@@ -330,7 +336,7 @@ func (s *Server) createSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 
-	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "Rules", "Enabled", "Group").Create(&source).Error; err != nil {
+	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
 	}
@@ -376,6 +382,9 @@ func (s *Server) updateSource(c *gin.Context) {
 	source.ConcurrentRate = strings.TrimSpace(req.ConcurrentRate)
 	source.Group = strings.TrimSpace(req.Group)
 	source.Enabled = req.Enabled
+	if req.EnabledExplore != nil {
+		source.EnabledExplore = req.EnabledExplore
+	}
 
 	if err := s.db.Save(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update source"})
@@ -696,7 +705,7 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			BookSourceURL:   source.BaseURL,
 			BookSourceType:  0,
 			Enabled:         source.Enabled,
-			EnabledExplore:  source.Enabled && strings.TrimSpace(rule.ExploreURL) != "",
+			EnabledExplore:  source.IsExploreEnabled(),
 			SearchURL:       exportUpstreamURLTemplate(firstNonBlank(rule.SearchURL, source.SearchURL)),
 			ExploreURL:      exportUpstreamURLTemplate(rule.ExploreURL),
 			Header:          header,
@@ -872,6 +881,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			existing.ConcurrentRate = source.ConcurrentRate
 			existing.Rules = source.Rules
 			existing.Enabled = source.Enabled
+			existing.EnabledExplore = source.EnabledExplore
 			existing.Group = source.Group
 			if err := db.Save(&existing).Error; err == nil {
 				updated++
@@ -881,7 +891,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			continue
 		}
 
-		if err := db.Create(&source).Error; err != nil {
+		if err := db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 			skipped++
 			continue
 		}
