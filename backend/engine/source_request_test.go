@@ -60,6 +60,47 @@ func TestSearchBooksPageExecutesUpstreamPostFormOptions(t *testing.T) {
 	}
 }
 
+func TestSearchBooksPageExecutesUpstreamRetryOption(t *testing.T) {
+	attempts := 0
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts == 1 {
+				return &http.Response{
+					StatusCode: http.StatusServiceUnavailable,
+					Body:       io.NopCloser(strings.NewReader("temporary")),
+					Header:     make(http.Header),
+					Request:    request,
+				}, nil
+			}
+			return searchPaginationResponse(request, `
+				<article class="book">
+					<a class="name" href="/book/retried">重试成功</a>
+				</article>
+			`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{ID: 5, Name: "重试搜索源", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    `https://source.example/search?key={keyword}, {"retry":1}`,
+		BookListRule: ".book",
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SearchBooksPage(source, "重试", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 || len(result.Items) != 1 || result.Items[0].Title != "重试成功" {
+		t.Fatalf("retry option did not reach search execution: attempts=%d result=%+v", attempts, result)
+	}
+}
+
 func TestPrepareSourceRequestKeepsJSONKeywordUnescaped(t *testing.T) {
 	request, err := prepareSourceRequest(
 		`https://source.example/search, {"method":"POST","body":{"keyword":"{keyword}","page":"{page}"},"headers":"{\"Content-Type\":\"application/json\",\"X-Keyword\":\"{keyword}\"}"}`,
@@ -102,6 +143,25 @@ func TestPrepareSourceRequestSupportsUpstreamPageChoices(t *testing.T) {
 		if request.URL != test.url || request.Body != test.body {
 			t.Fatalf("page %d request = %+v, want url=%q body=%q", test.page, request, test.url, test.body)
 		}
+	}
+}
+
+func TestPrepareSourceRequestPreservesRetryAndBinaryType(t *testing.T) {
+	request, err := PrepareSourceRequest(
+		`https://source.example/binary, {"method":"POST","retry":"2","type":"image/png"}`,
+		"",
+		1,
+		"utf-8",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Retry != 2 || request.Type != "image/png" {
+		t.Fatalf("retry/type options were not preserved: %+v", request)
+	}
+	if request.Headers["Content-Type"] != "application/x-www-form-urlencoded; charset=utf-8" {
+		t.Fatalf("type must not be treated as request Content-Type: %+v", request.Headers)
 	}
 }
 

@@ -471,14 +471,7 @@ func (s *Server) getRSSArticleContent(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to prepare RSS article: " + err.Error()})
 			return
 		}
-		body, responseURL, err := engine.FetchTextRequestWithURLContext(
-			c.Request.Context(),
-			request.Method,
-			request.URL,
-			request.Body,
-			request.Charset,
-			request.Headers,
-		)
+		body, responseURL, err := engine.FetchSourceTextWithURLContext(c.Request.Context(), request)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS article: " + err.Error()})
 			return
@@ -583,14 +576,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 	if err != nil {
 		return nil, 0, err
 	}
-	text, responseURL, err := engine.FetchTextRequestWithURLContext(
-		ctx,
-		request.Method,
-		request.URL,
-		request.Body,
-		request.Charset,
-		request.Headers,
-	)
+	text, responseURL, err := engine.FetchSourceTextWithURLContext(ctx, request)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -668,14 +654,7 @@ func fetchRSSRuleArticles(ctx context.Context, source models.RSSSource, fetchURL
 		}
 		visitedRequests[requestKey] = true
 
-		text, responseURL, err := engine.FetchTextRequestWithURLContext(
-			ctx,
-			request.Method,
-			request.URL,
-			request.Body,
-			request.Charset,
-			request.Headers,
-		)
+		text, responseURL, err := engine.FetchSourceTextWithURLContext(ctx, request)
 		if err != nil {
 			return nil, pageCount, err
 		}

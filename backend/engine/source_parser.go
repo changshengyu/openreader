@@ -62,14 +62,7 @@ type RemoteChapter struct {
 }
 
 func fetchSourceDocumentContext(ctx context.Context, request sourceRequest) (*goquery.Document, sourceRequest, error) {
-	document, responseURL, err := FetchDocumentRequestWithURLContext(
-		ctx,
-		request.Method,
-		request.URL,
-		request.Body,
-		request.Charset,
-		request.Headers,
-	)
+	document, responseURL, err := FetchSourceDocumentWithURLContext(ctx, request)
 	if responseURL != "" {
 		request.URL = responseURL
 	}

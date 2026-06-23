@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"strings"
@@ -62,6 +63,15 @@ func FetchDocumentRequestWithURLContext(ctx context.Context, method, url, body, 
 	return document, responseURL, err
 }
 
+func FetchSourceDocumentWithURLContext(ctx context.Context, request SourceRequest) (*goquery.Document, string, error) {
+	decoded, responseURL, err := FetchSourceTextWithURLContext(ctx, request)
+	if err != nil {
+		return nil, responseURL, err
+	}
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(decoded))
+	return document, responseURL, err
+}
+
 func FetchText(url, charset string) (string, error) {
 	return FetchTextContext(context.Background(), url, charset)
 }
@@ -84,49 +94,90 @@ func FetchTextRequestContext(ctx context.Context, method, url, body, charset str
 }
 
 func FetchTextRequestWithURLContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (string, string, error) {
+	return fetchTextRequestWithURLContext(ctx, method, url, body, charset, headers, 0, "")
+}
+
+func FetchSourceTextWithURLContext(ctx context.Context, request SourceRequest) (string, string, error) {
+	return fetchTextRequestWithURLContext(
+		ctx,
+		request.Method,
+		request.URL,
+		request.Body,
+		request.Charset,
+		request.Headers,
+		request.Retry,
+		request.Type,
+	)
+}
+
+func fetchTextRequestWithURLContext(
+	ctx context.Context,
+	method string,
+	url string,
+	body string,
+	charset string,
+	headers map[string]string,
+	retry int,
+	responseType string,
+) (string, string, error) {
 	method = strings.ToUpper(strings.TrimSpace(method))
 	if method == "" {
 		method = http.MethodGet
 	}
-	var requestBody io.Reader
-	if body != "" {
-		requestBody = strings.NewReader(body)
+	if retry < 0 {
+		retry = 0
 	}
-	request, err := http.NewRequestWithContext(ctx, method, url, requestBody)
-	if err != nil {
-		return "", url, err
-	}
-	for name, value := range headers {
-		name = strings.TrimSpace(name)
-		if name == "" || strings.EqualFold(name, "Host") || strings.EqualFold(name, "Content-Length") {
-			continue
+
+	for attempt := 0; attempt <= retry; attempt++ {
+		var requestBody io.Reader
+		if body != "" {
+			requestBody = strings.NewReader(body)
 		}
-		request.Header.Set(name, value)
-	}
-	if request.Header.Get("User-Agent") == "" {
-		request.Header.Set("User-Agent", "OpenReader/0.1 (+self-hosted reader)")
-	}
+		request, err := http.NewRequestWithContext(ctx, method, url, requestBody)
+		if err != nil {
+			return "", url, err
+		}
+		for name, value := range headers {
+			name = strings.TrimSpace(name)
+			if name == "" || strings.EqualFold(name, "Host") || strings.EqualFold(name, "Content-Length") {
+				continue
+			}
+			request.Header.Set(name, value)
+		}
+		if request.Header.Get("User-Agent") == "" {
+			request.Header.Set("User-Agent", "OpenReader/0.1 (+self-hosted reader)")
+		}
 
-	response, err := defaultClient.Do(request)
-	if err != nil {
-		return "", url, err
-	}
-	defer response.Body.Close()
+		response, err := defaultClient.Do(request)
+		if err != nil {
+			return "", url, err
+		}
 
-	responseURL := url
-	if response.Request != nil && response.Request.URL != nil {
-		responseURL = response.Request.URL.String()
-	}
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", responseURL, err
-	}
+		responseURL := url
+		if response.Request != nil && response.Request.URL != nil {
+			responseURL = response.Request.URL.String()
+		}
+		responseBody, readErr := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if readErr != nil {
+			return "", responseURL, readErr
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			if attempt < retry {
+				continue
+			}
+		}
 
-	decoded, err := DecodeBody(responseBody, charset)
-	if err != nil {
-		return "", responseURL, err
+		if strings.TrimSpace(responseType) != "" {
+			return hex.EncodeToString(responseBody), responseURL, nil
+		}
+		decoded, err := DecodeBody(responseBody, charset)
+		if err != nil {
+			return "", responseURL, err
+		}
+		return decoded, responseURL, nil
 	}
-	return decoded, responseURL, nil
+	return "", url, nil
 }
 
 func DecodeBody(body []byte, charset string) (string, error) {

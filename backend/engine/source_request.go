@@ -17,6 +17,8 @@ type sourceRequest struct {
 	Body    string
 	Charset string
 	Headers map[string]string
+	Retry   int
+	Type    string
 }
 
 type sourceURLOption struct {
@@ -24,6 +26,7 @@ type sourceURLOption struct {
 	Charset string `json:"charset"`
 	Headers any    `json:"headers"`
 	Body    any    `json:"body"`
+	Retry   any    `json:"retry"`
 	Type    string `json:"type"`
 }
 
@@ -66,6 +69,8 @@ func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset strin
 	if option.Charset != "" {
 		request.Charset = strings.TrimSpace(option.Charset)
 	}
+	request.Retry = decodeSourceRetry(option.Retry)
+	request.Type = strings.TrimSpace(option.Type)
 	optionHeaders, err := decodeSourceOptionHeaders(option.Headers)
 	if err != nil {
 		return sourceRequest{}, fmt.Errorf("parse request headers: %w", err)
@@ -85,7 +90,7 @@ func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset strin
 		request.Body = replaceSourceBodyPlaceholders(body, keyword, page)
 	}
 	if request.Method == http.MethodPost {
-		prepareSourcePOSTBody(&request, option.Type)
+		prepareSourcePOSTBody(&request)
 	}
 	return request, nil
 }
@@ -146,6 +151,10 @@ func sourceRequestKey(request sourceRequest) string {
 	key.WriteString(request.Body)
 	key.WriteByte('\n')
 	key.WriteString(strings.ToLower(strings.TrimSpace(request.Charset)))
+	key.WriteByte('\n')
+	key.WriteString(strconv.Itoa(request.Retry))
+	key.WriteByte('\n')
+	key.WriteString(strings.ToLower(strings.TrimSpace(request.Type)))
 	for _, name := range headerNames {
 		key.WriteByte('\n')
 		key.WriteString(name)
@@ -215,7 +224,26 @@ func decodeSourceOptionHeaders(value any) (map[string]any, error) {
 	return headers, nil
 }
 
-func prepareSourcePOSTBody(request *sourceRequest, optionType string) {
+func decodeSourceRetry(value any) int {
+	var retry int
+	switch typed := value.(type) {
+	case json.Number:
+		parsed, err := strconv.Atoi(typed.String())
+		if err == nil {
+			retry = parsed
+		}
+	case float64:
+		retry = int(typed)
+	case string:
+		retry, _ = strconv.Atoi(strings.TrimSpace(typed))
+	}
+	if retry < 0 {
+		return 0
+	}
+	return retry
+}
+
+func prepareSourcePOSTBody(request *sourceRequest) {
 	contentType := headerValue(request.Headers, "Content-Type")
 	trimmedBody := strings.TrimSpace(request.Body)
 	if contentType == "" {
@@ -231,9 +259,6 @@ func prepareSourcePOSTBody(request *sourceRequest, optionType string) {
 	}
 	if strings.Contains(strings.ToLower(contentType), "application/x-www-form-urlencoded") {
 		request.Body = normalizeSourceFormBody(request.Body)
-	}
-	if strings.TrimSpace(optionType) != "" && request.Body == "" {
-		setHeader(request.Headers, "Content-Type", optionType)
 	}
 }
 
