@@ -82,29 +82,32 @@ type BookSourceRule struct {
 	// Search result list: CSS selector for the container of each result item.
 	BookListRule string `json:"bookListRule,omitempty"`
 	// Per-item field selectors (relative to each result item).
-	BookNameRule      string `json:"bookNameRule,omitempty"`
-	BookAuthorRule    string `json:"bookAuthorRule,omitempty"`
-	BookCoverRule     string `json:"bookCoverRule,omitempty"`
-	BookIntroRule     string `json:"bookIntroRule,omitempty"`
-	BookKindRule      string `json:"bookKindRule,omitempty"`
-	BookWordCountRule string `json:"bookWordCountRule,omitempty"`
-	LatestChapterRule string `json:"latestChapterRule,omitempty"`
-	BookURLRule       string `json:"bookUrlRule,omitempty"`
+	BookNameRule       string `json:"bookNameRule,omitempty"`
+	BookAuthorRule     string `json:"bookAuthorRule,omitempty"`
+	BookCoverRule      string `json:"bookCoverRule,omitempty"`
+	BookIntroRule      string `json:"bookIntroRule,omitempty"`
+	BookKindRule       string `json:"bookKindRule,omitempty"`
+	BookWordCountRule  string `json:"bookWordCountRule,omitempty"`
+	LatestChapterRule  string `json:"latestChapterRule,omitempty"`
+	BookUpdateTimeRule string `json:"bookUpdateTimeRule,omitempty"`
+	BookURLRule        string `json:"bookUrlRule,omitempty"`
 
 	// Explore result rules. When ExploreBookListRule is empty, search result
 	// rules are reused to match upstream BookSource fallback behavior.
-	ExploreBookListRule      string `json:"exploreBookListRule,omitempty"`
-	ExploreBookNameRule      string `json:"exploreBookNameRule,omitempty"`
-	ExploreBookAuthorRule    string `json:"exploreBookAuthorRule,omitempty"`
-	ExploreBookCoverRule     string `json:"exploreBookCoverRule,omitempty"`
-	ExploreBookIntroRule     string `json:"exploreBookIntroRule,omitempty"`
-	ExploreBookKindRule      string `json:"exploreBookKindRule,omitempty"`
-	ExploreBookWordCountRule string `json:"exploreBookWordCountRule,omitempty"`
-	ExploreLatestChapterRule string `json:"exploreLatestChapterRule,omitempty"`
-	ExploreBookURLRule       string `json:"exploreBookUrlRule,omitempty"`
-	ExplorePaginationRule    string `json:"explorePaginationRule,omitempty"`
+	ExploreBookListRule       string `json:"exploreBookListRule,omitempty"`
+	ExploreBookNameRule       string `json:"exploreBookNameRule,omitempty"`
+	ExploreBookAuthorRule     string `json:"exploreBookAuthorRule,omitempty"`
+	ExploreBookCoverRule      string `json:"exploreBookCoverRule,omitempty"`
+	ExploreBookIntroRule      string `json:"exploreBookIntroRule,omitempty"`
+	ExploreBookKindRule       string `json:"exploreBookKindRule,omitempty"`
+	ExploreBookWordCountRule  string `json:"exploreBookWordCountRule,omitempty"`
+	ExploreLatestChapterRule  string `json:"exploreLatestChapterRule,omitempty"`
+	ExploreBookUpdateTimeRule string `json:"exploreBookUpdateTimeRule,omitempty"`
+	ExploreBookURLRule        string `json:"exploreBookUrlRule,omitempty"`
+	ExplorePaginationRule     string `json:"explorePaginationRule,omitempty"`
 
 	// Book detail page metadata.
+	BookInfoInitRule          string `json:"bookInfoInitRule,omitempty"`
 	BookInfoNameRule          string `json:"bookInfoNameRule,omitempty"`
 	BookInfoAuthorRule        string `json:"bookInfoAuthorRule,omitempty"`
 	BookInfoCoverRule         string `json:"bookInfoCoverRule,omitempty"`
@@ -113,20 +116,29 @@ type BookSourceRule struct {
 	BookInfoLatestChapterRule string `json:"bookInfoLatestChapterRule,omitempty"`
 	BookInfoUpdateTimeRule    string `json:"bookInfoUpdateTimeRule,omitempty"`
 	BookInfoWordCountRule     string `json:"bookInfoWordCountRule,omitempty"`
+	BookInfoCanRenameRule     string `json:"bookInfoCanRenameRule,omitempty"`
 
 	// TOC/directory page URL template (typically derived from book URL).
 	TOCURLRule string `json:"tocUrlRule,omitempty"`
 
 	// Chapter list selectors.
-	ChapterListRule string `json:"chapterListRule,omitempty"`
-	ChapterNameRule string `json:"chapterNameRule,omitempty"`
-	ChapterURLRule  string `json:"chapterUrlRule,omitempty"`
-	NextTOCURLRule  string `json:"nextTocUrlRule,omitempty"`
+	ChapterPreUpdateJSRule string `json:"chapterPreUpdateJsRule,omitempty"`
+	ChapterListRule        string `json:"chapterListRule,omitempty"`
+	ChapterNameRule        string `json:"chapterNameRule,omitempty"`
+	ChapterURLRule         string `json:"chapterUrlRule,omitempty"`
+	ChapterIsVolumeRule    string `json:"chapterIsVolumeRule,omitempty"`
+	ChapterIsVIPRule       string `json:"chapterIsVipRule,omitempty"`
+	ChapterUpdateTimeRule  string `json:"chapterUpdateTimeRule,omitempty"`
+	NextTOCURLRule         string `json:"nextTocUrlRule,omitempty"`
 
 	// Content page: URL template and content selector.
-	ContentURLRule     string `json:"contentUrlRule,omitempty"`
-	ContentRule        string `json:"contentRule,omitempty"`
-	NextContentURLRule string `json:"nextContentUrlRule,omitempty"`
+	ContentURLRule      string `json:"contentUrlRule,omitempty"`
+	ContentRule         string `json:"contentRule,omitempty"`
+	NextContentURLRule  string `json:"nextContentUrlRule,omitempty"`
+	ContentWebJSRule    string `json:"contentWebJsRule,omitempty"`
+	ContentSourceRegex  string `json:"contentSourceRegex,omitempty"`
+	ContentReplaceRegex string `json:"contentReplaceRegex,omitempty"`
+	ContentImageStyle   string `json:"contentImageStyle,omitempty"`
 
 	// HTTP headers for requests made with this source.
 	Headers map[string]string `json:"headers,omitempty"`

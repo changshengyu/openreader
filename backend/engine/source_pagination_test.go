@@ -70,13 +70,41 @@ func TestParseTOCFollowsNextPagesWithoutLoopsOrDuplicates(t *testing.T) {
 	if len(chapters) != 3 {
 		t.Fatalf("expected 3 deduplicated chapters, got %+v", chapters)
 	}
-	for index, title := range []string{"第一章", "第二章", "第三章"} {
+	for index, title := range []string{"第一章重复", "第二章", "第三章"} {
 		if chapters[index].Index != index || chapters[index].Title != title {
 			t.Fatalf("unexpected chapter order/index: %+v", chapters)
 		}
 	}
 	if strings.Join(requested, ",") != "/catalog/1,/catalog/2,/catalog/3" {
 		t.Fatalf("expected each toc page once in source order, got %+v", requested)
+	}
+}
+
+func TestNormalizeChapterOrderHonorsListPrefixSemantics(t *testing.T) {
+	raw := []RemoteChapter{
+		{Title: "第一章早期", URL: "/chapter/1"},
+		{Title: "第二章", URL: "/chapter/2"},
+		{Title: "第一章后期", URL: "/chapter/1"},
+		{Title: "第三章", URL: "/chapter/3"},
+	}
+	normal := normalizeChapterOrder(raw, false)
+	if len(normal) != 3 ||
+		normal[0].Title != "第二章" ||
+		normal[1].Title != "第一章后期" ||
+		normal[2].Title != "第三章" {
+		t.Fatalf("normal chapter order should keep the last duplicate: %+v", normal)
+	}
+	reversed := normalizeChapterOrder(raw, true)
+	if len(reversed) != 3 ||
+		reversed[0].Title != "第三章" ||
+		reversed[1].Title != "第二章" ||
+		reversed[2].Title != "第一章早期" {
+		t.Fatalf("reversed chapter order should keep the first duplicate: %+v", reversed)
+	}
+	for index := range reversed {
+		if reversed[index].Index != index {
+			t.Fatalf("reversed chapter indexes were not normalized: %+v", reversed)
+		}
 	}
 }
 

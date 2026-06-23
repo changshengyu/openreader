@@ -66,17 +66,23 @@ type legacySourceSearchRule struct {
 	Kind        string `json:"kind"`
 	WordCount   string `json:"wordCount"`
 	LastChapter string `json:"lastChapter"`
+	UpdateTime  string `json:"updateTime"`
 	BookURL     string `json:"bookUrl"`
 }
 
 type legacySourceTOCRule struct {
+	PreUpdateJS string `json:"preUpdateJs,omitempty"`
 	ChapterList string `json:"chapterList"`
 	ChapterName string `json:"chapterName"`
 	ChapterURL  string `json:"chapterUrl"`
+	IsVolume    string `json:"isVolume,omitempty"`
+	IsVIP       string `json:"isVip,omitempty"`
+	UpdateTime  string `json:"updateTime,omitempty"`
 	NextTOCURL  string `json:"nextTocUrl,omitempty"`
 }
 
 type legacySourceBookInfoRule struct {
+	Init        string `json:"init,omitempty"`
 	Name        string `json:"name,omitempty"`
 	Author      string `json:"author,omitempty"`
 	CoverURL    string `json:"coverUrl,omitempty"`
@@ -86,11 +92,16 @@ type legacySourceBookInfoRule struct {
 	UpdateTime  string `json:"updateTime,omitempty"`
 	WordCount   string `json:"wordCount,omitempty"`
 	TOCURL      string `json:"tocUrl,omitempty"`
+	CanRename   string `json:"canReName,omitempty"`
 }
 
 type legacySourceContentRule struct {
 	Content        string `json:"content"`
 	NextContentURL string `json:"nextContentUrl,omitempty"`
+	WebJS          string `json:"webJs,omitempty"`
+	SourceRegex    string `json:"sourceRegex,omitempty"`
+	ReplaceRegex   string `json:"replaceRegex,omitempty"`
+	ImageStyle     string `json:"imageStyle,omitempty"`
 }
 
 type exportedBookSource struct {
@@ -158,6 +169,7 @@ func (p bookSourcePayload) compatRules() string {
 		BookKindRule:              normalizeUpstreamSelectorRule(p.RuleSearch.Kind),
 		BookWordCountRule:         normalizeUpstreamSelectorRule(p.RuleSearch.WordCount),
 		LatestChapterRule:         normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
+		BookUpdateTimeRule:        normalizeUpstreamSelectorRule(p.RuleSearch.UpdateTime),
 		BookURLRule:               normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
 		ExploreBookListRule:       normalizeUpstreamSelectorRule(p.RuleExplore.BookList),
 		ExploreBookNameRule:       normalizeUpstreamSelectorRule(p.RuleExplore.Name),
@@ -167,7 +179,9 @@ func (p bookSourcePayload) compatRules() string {
 		ExploreBookKindRule:       normalizeUpstreamSelectorRule(p.RuleExplore.Kind),
 		ExploreBookWordCountRule:  normalizeUpstreamSelectorRule(p.RuleExplore.WordCount),
 		ExploreLatestChapterRule:  normalizeUpstreamSelectorRule(p.RuleExplore.LastChapter),
+		ExploreBookUpdateTimeRule: normalizeUpstreamSelectorRule(p.RuleExplore.UpdateTime),
 		ExploreBookURLRule:        normalizeUpstreamSelectorRule(p.RuleExplore.BookURL),
+		BookInfoInitRule:          normalizeUpstreamSelectorRule(p.RuleBookInfo.Init),
 		BookInfoNameRule:          normalizeUpstreamSelectorRule(p.RuleBookInfo.Name),
 		BookInfoAuthorRule:        normalizeUpstreamSelectorRule(p.RuleBookInfo.Author),
 		BookInfoCoverRule:         normalizeUpstreamSelectorRule(p.RuleBookInfo.CoverURL),
@@ -176,13 +190,22 @@ func (p bookSourcePayload) compatRules() string {
 		BookInfoLatestChapterRule: normalizeUpstreamSelectorRule(p.RuleBookInfo.LastChapter),
 		BookInfoUpdateTimeRule:    normalizeUpstreamSelectorRule(p.RuleBookInfo.UpdateTime),
 		BookInfoWordCountRule:     normalizeUpstreamSelectorRule(p.RuleBookInfo.WordCount),
+		BookInfoCanRenameRule:     normalizeUpstreamSelectorRule(p.RuleBookInfo.CanRename),
 		TOCURLRule:                normalizeUpstreamSelectorRule(p.RuleBookInfo.TOCURL),
+		ChapterPreUpdateJSRule:    strings.TrimSpace(p.RuleTOC.PreUpdateJS),
 		ChapterListRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterList),
 		ChapterNameRule:           normalizeUpstreamSelectorRule(p.RuleTOC.ChapterName),
 		ChapterURLRule:            normalizeUpstreamSelectorRule(p.RuleTOC.ChapterURL),
+		ChapterIsVolumeRule:       normalizeUpstreamSelectorRule(p.RuleTOC.IsVolume),
+		ChapterIsVIPRule:          normalizeUpstreamSelectorRule(p.RuleTOC.IsVIP),
+		ChapterUpdateTimeRule:     normalizeUpstreamSelectorRule(p.RuleTOC.UpdateTime),
 		NextTOCURLRule:            normalizeUpstreamSelectorRule(p.RuleTOC.NextTOCURL),
 		ContentRule:               normalizeUpstreamSelectorRule(p.RuleContent.Content),
 		NextContentURLRule:        normalizeUpstreamSelectorRule(p.RuleContent.NextContentURL),
+		ContentWebJSRule:          strings.TrimSpace(p.RuleContent.WebJS),
+		ContentSourceRegex:        strings.TrimSpace(p.RuleContent.SourceRegex),
+		ContentReplaceRegex:       strings.TrimSpace(p.RuleContent.ReplaceRegex),
+		ContentImageStyle:         strings.TrimSpace(p.RuleContent.ImageStyle),
 		Headers:                   p.compatHeaders(),
 	}
 	if isEmptyCompatRule(rule) {
@@ -206,6 +229,7 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.BookKindRule == "" &&
 		rule.BookWordCountRule == "" &&
 		rule.LatestChapterRule == "" &&
+		rule.BookUpdateTimeRule == "" &&
 		rule.BookURLRule == "" &&
 		rule.ExploreBookListRule == "" &&
 		rule.ExploreBookNameRule == "" &&
@@ -215,7 +239,9 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.ExploreBookKindRule == "" &&
 		rule.ExploreBookWordCountRule == "" &&
 		rule.ExploreLatestChapterRule == "" &&
+		rule.ExploreBookUpdateTimeRule == "" &&
 		rule.ExploreBookURLRule == "" &&
+		rule.BookInfoInitRule == "" &&
 		rule.BookInfoNameRule == "" &&
 		rule.BookInfoAuthorRule == "" &&
 		rule.BookInfoCoverRule == "" &&
@@ -224,12 +250,21 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.BookInfoLatestChapterRule == "" &&
 		rule.BookInfoUpdateTimeRule == "" &&
 		rule.BookInfoWordCountRule == "" &&
+		rule.BookInfoCanRenameRule == "" &&
+		rule.ChapterPreUpdateJSRule == "" &&
 		rule.ChapterListRule == "" &&
 		rule.ChapterNameRule == "" &&
 		rule.ChapterURLRule == "" &&
+		rule.ChapterIsVolumeRule == "" &&
+		rule.ChapterIsVIPRule == "" &&
+		rule.ChapterUpdateTimeRule == "" &&
 		rule.NextTOCURLRule == "" &&
 		rule.ContentRule == "" &&
 		rule.NextContentURLRule == "" &&
+		rule.ContentWebJSRule == "" &&
+		rule.ContentSourceRegex == "" &&
+		rule.ContentReplaceRegex == "" &&
+		rule.ContentImageStyle == "" &&
 		len(rule.Headers) == 0
 }
 
@@ -710,6 +745,7 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			Kind:        exportUpstreamSelectorRule(rule.BookKindRule),
 			WordCount:   exportUpstreamSelectorRule(rule.BookWordCountRule),
 			LastChapter: exportUpstreamSelectorRule(rule.LatestChapterRule),
+			UpdateTime:  exportUpstreamSelectorRule(rule.BookUpdateTimeRule),
 			BookURL:     exportUpstreamSelectorRule(rule.BookURLRule),
 		}
 		exploreRule := legacySourceSearchRule{
@@ -721,6 +757,7 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			Kind:        exportUpstreamSelectorRule(rule.ExploreBookKindRule),
 			WordCount:   exportUpstreamSelectorRule(rule.ExploreBookWordCountRule),
 			LastChapter: exportUpstreamSelectorRule(rule.ExploreLatestChapterRule),
+			UpdateTime:  exportUpstreamSelectorRule(rule.ExploreBookUpdateTimeRule),
 			BookURL:     exportUpstreamSelectorRule(rule.ExploreBookURLRule),
 		}
 		header := ""
@@ -744,6 +781,7 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			RuleSearch:        searchRule,
 			RuleExplore:       exploreRule,
 			RuleBookInfo: legacySourceBookInfoRule{
+				Init:        exportUpstreamSelectorRule(rule.BookInfoInitRule),
 				Name:        exportUpstreamSelectorRule(rule.BookInfoNameRule),
 				Author:      exportUpstreamSelectorRule(rule.BookInfoAuthorRule),
 				CoverURL:    exportUpstreamSelectorRule(rule.BookInfoCoverRule),
@@ -753,16 +791,25 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 				UpdateTime:  exportUpstreamSelectorRule(rule.BookInfoUpdateTimeRule),
 				WordCount:   exportUpstreamSelectorRule(rule.BookInfoWordCountRule),
 				TOCURL:      exportUpstreamSelectorRule(rule.TOCURLRule),
+				CanRename:   exportUpstreamSelectorRule(rule.BookInfoCanRenameRule),
 			},
 			RuleTOC: legacySourceTOCRule{
+				PreUpdateJS: rule.ChapterPreUpdateJSRule,
 				ChapterList: exportUpstreamSelectorRule(rule.ChapterListRule),
 				ChapterName: exportUpstreamSelectorRule(rule.ChapterNameRule),
 				ChapterURL:  exportUpstreamSelectorRule(rule.ChapterURLRule),
+				IsVolume:    exportUpstreamSelectorRule(rule.ChapterIsVolumeRule),
+				IsVIP:       exportUpstreamSelectorRule(rule.ChapterIsVIPRule),
+				UpdateTime:  exportUpstreamSelectorRule(rule.ChapterUpdateTimeRule),
 				NextTOCURL:  exportUpstreamSelectorRule(rule.NextTOCURLRule),
 			},
 			RuleContent: legacySourceContentRule{
 				Content:        exportUpstreamSelectorRule(rule.ContentRule),
 				NextContentURL: exportUpstreamSelectorRule(rule.NextContentURLRule),
+				WebJS:          rule.ContentWebJSRule,
+				SourceRegex:    rule.ContentSourceRegex,
+				ReplaceRegex:   rule.ContentReplaceRegex,
+				ImageStyle:     rule.ContentImageStyle,
 			},
 			Charset:        source.Charset,
 			ConcurrentRate: source.ConcurrentRate,

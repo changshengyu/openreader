@@ -266,7 +266,6 @@ func TestSearchBooksPageFallsBackToDetailOnlyWithoutPattern(t *testing.T) {
 		}
 		if err := source.SetRules(models.BookSourceRule{
 			SearchURL:        "https://source.example/search",
-			BookListRule:     ".missing-list",
 			BookInfoNameRule: ".detail-name",
 		}); err != nil {
 			t.Fatal(err)

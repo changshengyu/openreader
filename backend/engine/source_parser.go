@@ -299,7 +299,8 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 			return []SearchResult{}, nil
 		}
 	}
-	items := findItems(doc, rule.BookListRule)
+	listRule, reverse := sourceListRule(rule.BookListRule)
+	items := findItems(doc, listRule)
 	if len(items) == 0 && pattern == "" {
 		if result, ok := parseDirectBookResult(doc, rule, source, request); ok {
 			return []SearchResult{result}, nil
@@ -327,6 +328,9 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 			continue
 		}
 		results = append(results, result)
+	}
+	if reverse {
+		reverseSearchResults(results)
 	}
 	return results, nil
 }
@@ -507,23 +511,12 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 	queue := []tocPage{{request: tocRequest, doc: doc}}
 	visited := map[string]bool{sourceRequestKey(tocRequest): true}
 	pageCount := 1
+	chapterListRule, reverse := sourceListRule(rule.ChapterListRule)
 	chapters := make([]RemoteChapter, 0)
-	chapterKeys := make(map[string]bool)
 	for len(queue) > 0 {
 		page := queue[0]
 		queue = queue[1:]
-		for _, chapter := range parseChapterList(page.doc, rule, page.request.URL) {
-			key := chapter.URL
-			if key == "" {
-				key = chapter.Title
-			}
-			if chapterKeys[key] {
-				continue
-			}
-			chapterKeys[key] = true
-			chapter.Index = len(chapters)
-			chapters = append(chapters, chapter)
-		}
+		chapters = append(chapters, parseChapterList(page.doc, rule, chapterListRule, page.request.URL)...)
 		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextTOCURLRule, page.request.URL) {
 			nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
 			if prepareErr != nil {
@@ -554,7 +547,7 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 	if len(chapters) == 0 {
 		return nil, fmt.Errorf("no chapters found on toc page")
 	}
-	return chapters, nil
+	return normalizeChapterOrder(chapters, reverse), nil
 }
 
 func isDirectTOCURLRule(rule string) bool {
@@ -571,8 +564,8 @@ func isDirectTOCURLRule(rule string) bool {
 		strings.HasPrefix(value, "../")
 }
 
-func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, baseURL string) []RemoteChapter {
-	items := findItems(doc, rule.ChapterListRule)
+func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, listRule string, baseURL string) []RemoteChapter {
+	items := findItems(doc, listRule)
 	chapters := make([]RemoteChapter, 0, len(items))
 	for i, sel := range items {
 		title := firstMatch(sel, rule.ChapterNameRule)
@@ -587,6 +580,68 @@ func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, baseURL
 		})
 	}
 	return chapters
+}
+
+func sourceListRule(rule string) (selector string, reverse bool) {
+	selector = strings.TrimSpace(rule)
+	if selector == "" {
+		return "", false
+	}
+	switch selector[0] {
+	case '-':
+		return strings.TrimSpace(selector[1:]), true
+	case '+':
+		return strings.TrimSpace(selector[1:]), false
+	default:
+		return selector, false
+	}
+}
+
+func reverseSearchResults(results []SearchResult) {
+	for left, right := 0, len(results)-1; left < right; left, right = left+1, right-1 {
+		results[left], results[right] = results[right], results[left]
+	}
+}
+
+func normalizeChapterOrder(chapters []RemoteChapter, reverse bool) []RemoteChapter {
+	ordered := make([]RemoteChapter, 0, len(chapters))
+	seen := make(map[string]bool, len(chapters))
+	if reverse {
+		for _, chapter := range chapters {
+			key := chapter.URL
+			if key == "" {
+				key = chapter.Title
+			}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			ordered = append(ordered, chapter)
+		}
+		for left, right := 0, len(ordered)-1; left < right; left, right = left+1, right-1 {
+			ordered[left], ordered[right] = ordered[right], ordered[left]
+		}
+	} else {
+		for index := len(chapters) - 1; index >= 0; index-- {
+			chapter := chapters[index]
+			key := chapter.URL
+			if key == "" {
+				key = chapter.Title
+			}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			ordered = append(ordered, chapter)
+		}
+		for left, right := 0, len(ordered)-1; left < right; left, right = left+1, right-1 {
+			ordered[left], ordered[right] = ordered[right], ordered[left]
+		}
+	}
+	for index := range ordered {
+		ordered[index].Index = index
+	}
+	return ordered
 }
 
 func extractResolvedURLs(selection *goquery.Selection, rule string, baseURL string) []string {
@@ -801,12 +856,12 @@ func isSafeChapterImageURL(value string) bool {
 
 func findItems(doc *goquery.Document, rule string) []*goquery.Selection {
 	if rule == "" {
-		return []*goquery.Selection{doc.Selection}
+		return nil
 	}
 	parts := strings.SplitN(rule, "|", 2)
 	selector := strings.TrimSpace(parts[0])
 	if selector == "" {
-		return []*goquery.Selection{doc.Selection}
+		return nil
 	}
 	items := make([]*goquery.Selection, 0)
 	doc.Find(selector).Each(func(_ int, sel *goquery.Selection) {

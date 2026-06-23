@@ -1915,6 +1915,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"kind":".kind",
 				"wordCount":".words",
 				"lastChapter":".last",
+				"updateTime":".updated",
 				"bookUrl":"a@href"
 			},
 			"ruleExplore":{
@@ -1926,9 +1927,11 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"kind":".explore-kind",
 				"wordCount":".explore-words",
 				"lastChapter":".explore-last",
+				"updateTime":".explore-updated",
 				"bookUrl":"a@data-url"
 			},
 			"ruleBookInfo":{
+				"init":"@js:book.init = true",
 				"name":"h1@text",
 				"author":".detail-author@text",
 				"coverUrl":"img.cover@data-src",
@@ -1937,15 +1940,24 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"lastChapter":".detail-last@text",
 				"updateTime":".detail-update@text",
 				"wordCount":".detail-words@text",
-				"tocUrl":".catalog@href"
+				"tocUrl":".catalog@href",
+				"canReName":".can-rename"
 			},
 			"ruleToc":{
-				"chapterList":".chapter",
+				"preUpdateJs":"@js:book.preUpdate = true",
+				"chapterList":"-.chapter",
 				"chapterName":".title",
-				"chapterUrl":"a@href"
+				"chapterUrl":"a@href",
+				"isVolume":".volume",
+				"isVip":".vip",
+				"updateTime":".chapter-updated"
 			},
 			"ruleContent":{
-				"content":"#content"
+				"content":"#content",
+				"webJs":"@js:result",
+				"sourceRegex":"source-(.*)",
+				"replaceRegex":"replace##with",
+				"imageStyle":"FULL"
 			}
 		}
 	]`))
@@ -1972,6 +1984,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.BookURLRule != "a|attr:href" ||
 		rule.BookKindRule != ".kind" ||
 		rule.BookWordCountRule != ".words" ||
+		rule.BookUpdateTimeRule != ".updated" ||
 		rule.ExploreBookListRule != ".explore-book" ||
 		rule.ExploreBookNameRule != ".explore-name" ||
 		rule.ExploreBookAuthorRule != ".explore-author" ||
@@ -1980,7 +1993,9 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.ExploreBookKindRule != ".explore-kind" ||
 		rule.ExploreBookWordCountRule != ".explore-words" ||
 		rule.ExploreLatestChapterRule != ".explore-last" ||
+		rule.ExploreBookUpdateTimeRule != ".explore-updated" ||
 		rule.ExploreBookURLRule != "a|attr:data-url" ||
+		rule.BookInfoInitRule != "@js:book.init = true" ||
 		rule.BookInfoNameRule != "h1|text" ||
 		rule.BookInfoAuthorRule != ".detail-author|text" ||
 		rule.BookInfoCoverRule != "img.cover|attr:data-src" ||
@@ -1989,10 +2004,19 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.BookInfoLatestChapterRule != ".detail-last|text" ||
 		rule.BookInfoUpdateTimeRule != ".detail-update|text" ||
 		rule.BookInfoWordCountRule != ".detail-words|text" ||
+		rule.BookInfoCanRenameRule != ".can-rename" ||
 		rule.TOCURLRule != ".catalog|attr:href" ||
-		rule.ChapterListRule != ".chapter" ||
+		rule.ChapterPreUpdateJSRule != "@js:book.preUpdate = true" ||
+		rule.ChapterListRule != "-.chapter" ||
 		rule.ChapterURLRule != "a|attr:href" ||
+		rule.ChapterIsVolumeRule != ".volume" ||
+		rule.ChapterIsVIPRule != ".vip" ||
+		rule.ChapterUpdateTimeRule != ".chapter-updated" ||
 		rule.ContentRule != "#content" ||
+		rule.ContentWebJSRule != "@js:result" ||
+		rule.ContentSourceRegex != "source-(.*)" ||
+		rule.ContentReplaceRegex != "replace##with" ||
+		rule.ContentImageStyle != "FULL" ||
 		rule.Headers["User-Agent"] != "OpenReader Test" ||
 		rule.Headers["Referer"] != "https://reader.example" {
 		t.Fatalf("unexpected converted rules: %+v", rule)
@@ -2702,6 +2726,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		BookKindRule:              ".kind",
 		BookWordCountRule:         ".words",
 		LatestChapterRule:         ".latest",
+		BookUpdateTimeRule:        ".updated",
 		BookURLRule:               "a|attr:href",
 		ExploreBookListRule:       ".explore-card",
 		ExploreBookNameRule:       ".explore-title",
@@ -2711,8 +2736,10 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		ExploreBookKindRule:       ".explore-kind",
 		ExploreBookWordCountRule:  ".explore-words",
 		ExploreLatestChapterRule:  ".explore-latest",
+		ExploreBookUpdateTimeRule: ".explore-updated",
 		ExploreBookURLRule:        "a|attr:data-url",
 		ExplorePaginationRule:     ".explore-next|attr:href",
+		BookInfoInitRule:          "@js:book.init = true",
 		BookInfoNameRule:          ".detail-name",
 		BookInfoAuthorRule:        ".detail-author",
 		BookInfoCoverRule:         "img.detail-cover|attr:data-src",
@@ -2721,13 +2748,22 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		BookInfoLatestChapterRule: ".detail-latest",
 		BookInfoUpdateTimeRule:    ".detail-update",
 		BookInfoWordCountRule:     ".detail-words",
+		BookInfoCanRenameRule:     ".can-rename",
 		TOCURLRule:                ".catalog|attr:href",
-		ChapterListRule:           ".chapter",
+		ChapterPreUpdateJSRule:    "@js:book.preUpdate = true",
+		ChapterListRule:           "-.chapter",
 		ChapterNameRule:           ".title",
 		ChapterURLRule:            "a|attr:href",
+		ChapterIsVolumeRule:       ".volume",
+		ChapterIsVIPRule:          ".vip",
+		ChapterUpdateTimeRule:     ".chapter-updated",
 		NextTOCURLRule:            ".toc-next|attr:href",
 		ContentRule:               "#content",
 		NextContentURLRule:        ".content-next|attr:href",
+		ContentWebJSRule:          "@js:result",
+		ContentSourceRegex:        "source-(.*)",
+		ContentReplaceRegex:       "replace##with",
+		ContentImageStyle:         "FULL",
 		PaginationRule:            ".next|attr:href",
 		Headers: map[string]string{
 			"Referer": "https://one.example/",
@@ -2795,12 +2831,15 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.RuleSearch.CoverURL != "img@src" ||
 		first.RuleSearch.Kind != ".kind" ||
 		first.RuleSearch.WordCount != ".words" ||
+		first.RuleSearch.UpdateTime != ".updated" ||
 		first.RuleExplore.BookList != ".explore-card" ||
 		first.RuleExplore.Name != ".explore-title" ||
 		first.RuleExplore.CoverURL != "img@data-src" ||
 		first.RuleExplore.BookURL != "a@data-url" ||
 		first.RuleExplore.Kind != ".explore-kind" ||
 		first.RuleExplore.WordCount != ".explore-words" ||
+		first.RuleExplore.UpdateTime != ".explore-updated" ||
+		first.RuleBookInfo.Init != "@js:book.init = true" ||
 		first.RuleBookInfo.Name != ".detail-name" ||
 		first.RuleBookInfo.Author != ".detail-author" ||
 		first.RuleBookInfo.CoverURL != "img.detail-cover@data-src" ||
@@ -2810,11 +2849,20 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.RuleBookInfo.UpdateTime != ".detail-update" ||
 		first.RuleBookInfo.WordCount != ".detail-words" ||
 		first.RuleBookInfo.TOCURL != ".catalog@href" ||
-		first.RuleTOC.ChapterList != ".chapter" ||
+		first.RuleBookInfo.CanRename != ".can-rename" ||
+		first.RuleTOC.PreUpdateJS != "@js:book.preUpdate = true" ||
+		first.RuleTOC.ChapterList != "-.chapter" ||
 		first.RuleTOC.ChapterURL != "a@href" ||
+		first.RuleTOC.IsVolume != ".volume" ||
+		first.RuleTOC.IsVIP != ".vip" ||
+		first.RuleTOC.UpdateTime != ".chapter-updated" ||
 		first.RuleTOC.NextTOCURL != ".toc-next@href" ||
 		first.RuleContent.Content != "#content" ||
 		first.RuleContent.NextContentURL != ".content-next@href" ||
+		first.RuleContent.WebJS != "@js:result" ||
+		first.RuleContent.SourceRegex != "source-(.*)" ||
+		first.RuleContent.ReplaceRegex != "replace##with" ||
+		first.RuleContent.ImageStyle != "FULL" ||
 		!strings.Contains(first.Header, `"Referer":"https://one.example/"`) ||
 		!strings.Contains(first.Rules, `"paginationRule":".next|attr:href"`) ||
 		!strings.Contains(first.Rules, `"textReplaceRules"`) {
@@ -2852,14 +2900,27 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimportedRule.ExploreBookURLRule != "a|attr:data-url" ||
 		reimportedRule.BookKindRule != ".kind" ||
 		reimportedRule.BookWordCountRule != ".words" ||
+		reimportedRule.BookUpdateTimeRule != ".updated" ||
 		reimportedRule.ExploreBookKindRule != ".explore-kind" ||
 		reimportedRule.ExploreBookWordCountRule != ".explore-words" ||
+		reimportedRule.ExploreBookUpdateTimeRule != ".explore-updated" ||
 		reimportedRule.ExplorePaginationRule != ".explore-next|attr:href" ||
+		reimportedRule.BookInfoInitRule != "@js:book.init = true" ||
 		reimportedRule.BookInfoNameRule != ".detail-name" ||
 		reimportedRule.BookInfoCoverRule != "img.detail-cover|attr:data-src" ||
 		reimportedRule.BookInfoLatestChapterRule != ".detail-latest" ||
+		reimportedRule.BookInfoCanRenameRule != ".can-rename" ||
+		reimportedRule.ChapterPreUpdateJSRule != "@js:book.preUpdate = true" ||
+		reimportedRule.ChapterListRule != "-.chapter" ||
+		reimportedRule.ChapterIsVolumeRule != ".volume" ||
+		reimportedRule.ChapterIsVIPRule != ".vip" ||
+		reimportedRule.ChapterUpdateTimeRule != ".chapter-updated" ||
 		reimportedRule.NextTOCURLRule != ".toc-next|attr:href" ||
 		reimportedRule.NextContentURLRule != ".content-next|attr:href" ||
+		reimportedRule.ContentWebJSRule != "@js:result" ||
+		reimportedRule.ContentSourceRegex != "source-(.*)" ||
+		reimportedRule.ContentReplaceRegex != "replace##with" ||
+		reimportedRule.ContentImageStyle != "FULL" ||
 		len(reimportedRule.TextReplaceRules) != 1 ||
 		reimportedRule.Headers["Referer"] != "https://one.example/" {
 		t.Fatalf("export should round-trip without losing OpenReader rules: source=%+v rule=%+v", reimported, reimportedRule)

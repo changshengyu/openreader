@@ -301,6 +301,39 @@ func TestParseSearchResultsIncludesLatestChapter(t *testing.T) {
 	}
 }
 
+func TestParseSearchResultsHonorsListOrderPrefix(t *testing.T) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(`
+		<div class="book"><a class="name" href="/book/1">第一本</a></div>
+		<div class="book"><a class="name" href="/book/2">第二本</a></div>
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{ID: 1, Name: "顺序源", BaseURL: "https://source.example"}
+	baseRule := models.BookSourceRule{
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}
+	for _, test := range []struct {
+		name      string
+		listRule  string
+		firstBook string
+	}{
+		{name: "plain", listRule: ".book", firstBook: "第一本"},
+		{name: "explicit keep", listRule: "+.book", firstBook: "第一本"},
+		{name: "reverse", listRule: "-.book", firstBook: "第二本"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rule := baseRule
+			rule.BookListRule = test.listRule
+			results := parseSearchResults(doc, rule, source)
+			if len(results) != 2 || results[0].Title != test.firstBook {
+				t.Fatalf("unexpected %s results: %+v", test.listRule, results)
+			}
+		})
+	}
+}
+
 func TestEffectiveExploreRuleMatchesUpstreamFallback(t *testing.T) {
 	searchOnly := models.BookSourceRule{
 		BookListRule:   ".search-book",
