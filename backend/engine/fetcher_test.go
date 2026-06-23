@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -138,6 +141,57 @@ func TestSourceHTTPClientConfiguresAuthenticatedProxy(t *testing.T) {
 		proxyURL.User.Username() != "reader" ||
 		password != "secret" {
 		t.Fatalf("authenticated proxy = %v", proxyURL)
+	}
+}
+
+func TestPerformSOCKS4HandshakeUsesSOCKS4aForDomain(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	serverErr := make(chan error, 1)
+	go func() {
+		expected := []byte{
+			0x04, 0x01, 0x01, 0xbb,
+			0x00, 0x00, 0x00, 0x01,
+			'r', 'e', 'a', 'd', 'e', 'r', 0x00,
+			'b', 'o', 'o', 'k', 's', '.', 'e', 'x', 'a', 'm', 'p', 'l', 'e', 0x00,
+		}
+		actual := make([]byte, len(expected))
+		if _, err := io.ReadFull(server, actual); err != nil {
+			serverErr <- err
+			return
+		}
+		if !bytes.Equal(actual, expected) {
+			serverErr <- fmt.Errorf("SOCKS4a request = %x, want %x", actual, expected)
+			return
+		}
+		_, err := server.Write([]byte{0x00, 0x5a, 0x01, 0xbb, 0x7f, 0x00, 0x00, 0x01})
+		serverErr <- err
+	}()
+
+	if err := performSOCKS4Handshake(context.Background(), client, "books.example:443", "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPerformSOCKS4HandshakeRejectsProxyFailure(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	go func() {
+		request := make([]byte, 9)
+		_, _ = io.ReadFull(server, request)
+		_, _ = server.Write([]byte{0x00, 0x5b, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00})
+	}()
+
+	err := performSOCKS4Handshake(context.Background(), client, "127.0.0.1:80", "")
+	if err == nil || !strings.Contains(err.Error(), "0x5b") {
+		t.Fatalf("expected SOCKS4 rejection, got %v", err)
 	}
 }
 

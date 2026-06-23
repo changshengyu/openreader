@@ -308,7 +308,7 @@ func sourceHTTPClient(base *http.Client, value string) (*http.Client, error) {
 			proxyURL.User = url.UserPassword(match[4], match[5])
 		}
 		transport.Proxy = http.ProxyURL(proxyURL)
-	default:
+	case "socks5":
 		var auth *proxy.Auth
 		if match[4] != "" || match[5] != "" {
 			auth = &proxy.Auth{User: match[4], Password: match[5]}
@@ -324,10 +324,85 @@ func sourceHTTPClient(base *http.Client, value string) (*http.Client, error) {
 			}
 			return dialer.Dial(network, address)
 		}
+	case "socks4":
+		transport.Proxy = nil
+		transport.DialContext = func(ctx context.Context, network, targetAddress string) (net.Conn, error) {
+			return dialSOCKS4Context(ctx, address, targetAddress, match[4])
+		}
 	}
 	client := *base
 	client.Transport = transport
 	return &client, nil
+}
+
+func dialSOCKS4Context(ctx context.Context, proxyAddress, targetAddress, userID string) (net.Conn, error) {
+	var dialer net.Dialer
+	connection, err := dialer.DialContext(ctx, "tcp", proxyAddress)
+	if err != nil {
+		return nil, err
+	}
+	if err := performSOCKS4Handshake(ctx, connection, targetAddress, userID); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	return connection, nil
+}
+
+func performSOCKS4Handshake(ctx context.Context, connection net.Conn, targetAddress, userID string) error {
+	host, portText, err := net.SplitHostPort(targetAddress)
+	if err != nil {
+		return fmt.Errorf("invalid SOCKS4 target %q: %w", targetAddress, err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("invalid SOCKS4 target port %q", portText)
+	}
+	if strings.IndexByte(userID, 0) >= 0 {
+		return fmt.Errorf("invalid SOCKS4 user ID")
+	}
+
+	request := make([]byte, 0, 9+len(userID)+len(host))
+	request = append(request, 0x04, 0x01, byte(port>>8), byte(port))
+	ipv4 := net.ParseIP(host).To4()
+	if ipv4 != nil {
+		request = append(request, ipv4...)
+	} else {
+		if strings.IndexByte(host, 0) >= 0 {
+			return fmt.Errorf("invalid SOCKS4 target host")
+		}
+		request = append(request, 0x00, 0x00, 0x00, 0x01)
+	}
+	request = append(request, userID...)
+	request = append(request, 0x00)
+	if ipv4 == nil {
+		request = append(request, host...)
+		request = append(request, 0x00)
+	}
+
+	cancelDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = connection.SetDeadline(time.Now())
+		case <-cancelDone:
+		}
+	}()
+	defer close(cancelDone)
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = connection.SetDeadline(deadline)
+	}
+	if _, err := connection.Write(request); err != nil {
+		return err
+	}
+	response := make([]byte, 8)
+	if _, err := io.ReadFull(connection, response); err != nil {
+		return err
+	}
+	if response[0] != 0x00 || response[1] != 0x5a {
+		return fmt.Errorf("SOCKS4 proxy rejected connection with code 0x%02x", response[1])
+	}
+	_ = connection.SetDeadline(time.Time{})
+	return nil
 }
 
 func cloneHTTPTransport(transport http.RoundTripper) (*http.Transport, error) {
