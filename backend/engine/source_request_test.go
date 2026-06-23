@@ -37,6 +37,8 @@ func TestSearchBooksPageExecutesUpstreamPostFormOptions(t *testing.T) {
 			return searchPaginationResponse(request, `
 				<article class="book">
 					<a class="name" href="/book/2">POST 分页书籍</a>
+					<span class="kind">玄幻</span><span class="kind">热血</span>
+					<span class="words">12345</span>
 				</article>
 			`), nil
 		}),
@@ -45,11 +47,13 @@ func TestSearchBooksPageExecutesUpstreamPostFormOptions(t *testing.T) {
 
 	source := models.BookSource{ID: 3, Name: "POST 搜索源", Charset: "utf-8"}
 	if err := source.SetRules(models.BookSourceRule{
-		SearchURL:    `https://source.example/search, {"method":"POST","body":"key={keyword}&page={page}","headers":{"X-Search-Page":"{page}"}}`,
-		BookListRule: ".book",
-		BookNameRule: ".name",
-		BookURLRule:  ".name|attr:href",
-		Headers:      map[string]string{"X-Source-Token": "source-secret"},
+		SearchURL:         `https://source.example/search, {"method":"POST","body":"key={keyword}&page={page}","headers":{"X-Search-Page":"{page}"}}`,
+		BookListRule:      ".book",
+		BookNameRule:      ".name",
+		BookKindRule:      ".kind",
+		BookWordCountRule: ".words",
+		BookURLRule:       ".name|attr:href",
+		Headers:           map[string]string{"X-Source-Token": "source-secret"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +62,8 @@ func TestSearchBooksPageExecutesUpstreamPostFormOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Items) != 1 || result.Items[0].Title != "POST 分页书籍" {
+	if len(result.Items) != 1 || result.Items[0].Title != "POST 分页书籍" ||
+		result.Items[0].Kind != "玄幻,热血" || result.Items[0].WordCount != "1.2万字" {
 		t.Fatalf("unexpected POST search result: %+v", result)
 	}
 }
@@ -200,6 +205,8 @@ func TestSearchBooksPageUsesBookURLPatternForDirectDetail(t *testing.T) {
 				<h1 class="detail-name">直接详情书</h1>
 				<span class="detail-author">详情作者</span>
 				<span class="detail-last">最新章</span>
+				<span class="detail-kind">科幻</span>
+				<span class="detail-words">9999</span>
 			`), nil
 		}),
 	})
@@ -219,6 +226,8 @@ func TestSearchBooksPageUsesBookURLPatternForDirectDetail(t *testing.T) {
 		BookInfoNameRule:          ".detail-name",
 		BookInfoAuthorRule:        ".detail-author",
 		BookInfoLatestChapterRule: ".detail-last",
+		BookInfoKindRule:          ".detail-kind",
+		BookInfoWordCountRule:     ".detail-words",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -231,6 +240,8 @@ func TestSearchBooksPageUsesBookURLPatternForDirectDetail(t *testing.T) {
 		result.Items[0].Title != "直接详情书" ||
 		result.Items[0].Author != "详情作者" ||
 		result.Items[0].LatestChapter != "最新章" ||
+		result.Items[0].Kind != "科幻" ||
+		result.Items[0].WordCount != "9999字" ||
 		result.Items[0].Type != 1 ||
 		!strings.Contains(result.Items[0].BookURL, `"body":"id=1"`) ||
 		!strings.Contains(result.Items[0].BookURL, `"X-Detail":"yes"`) {

@@ -20,6 +20,7 @@
             </div>
             <p>{{ remoteBookAuthor(item) || '未知作者' }}</p>
             <p v-if="remoteBookLatestChapter(item)" class="latest-chapter">{{ remoteBookLatestChapter(item) }}</p>
+            <p v-if="remoteBookKind(item) || remoteBookWordCount(item)">{{ [remoteBookKind(item), remoteBookWordCount(item)].filter(Boolean).join(' · ') }}</p>
             <p class="result-intro">{{ remoteBookIntro(item) || '暂无简介' }}</p>
           </div>
           <div class="result-actions" @click.stop>
@@ -36,10 +37,12 @@ import BookCover from './BookCover.vue'
 import {
   remoteBookAuthor,
   remoteBookIntro,
+  remoteBookKind,
   remoteBookKey,
   remoteBookLatestChapter,
   remoteBookSourceName,
   remoteBookTitle,
+  remoteBookWordCount,
 } from '../utils/remoteBookResult'
 
 defineProps({

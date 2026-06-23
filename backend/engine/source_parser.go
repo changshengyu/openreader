@@ -6,6 +6,7 @@ import (
 	stdhtml "html"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -22,6 +23,8 @@ type SearchResult struct {
 	Author        string `json:"author"`
 	CoverURL      string `json:"coverUrl"`
 	Intro         string `json:"intro"`
+	Kind          string `json:"kind"`
+	WordCount     string `json:"wordCount"`
 	LatestChapter string `json:"latestChapter"`
 	BookURL       string `json:"bookUrl"`
 	SourceID      uint   `json:"sourceId"`
@@ -262,6 +265,8 @@ func effectiveExploreRule(rule models.BookSourceRule) models.BookSourceRule {
 	exploreRule.BookAuthorRule = rule.ExploreBookAuthorRule
 	exploreRule.BookCoverRule = rule.ExploreBookCoverRule
 	exploreRule.BookIntroRule = rule.ExploreBookIntroRule
+	exploreRule.BookKindRule = rule.ExploreBookKindRule
+	exploreRule.BookWordCountRule = rule.ExploreBookWordCountRule
 	exploreRule.LatestChapterRule = rule.ExploreLatestChapterRule
 	exploreRule.BookURLRule = rule.ExploreBookURLRule
 	exploreRule.PaginationRule = rule.ExplorePaginationRule
@@ -313,6 +318,8 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 		result.Author = firstMatch(sel, rule.BookAuthorRule)
 		result.CoverURL = resolveURL(baseURL, firstMatch(sel, rule.BookCoverRule))
 		result.Intro = firstMatch(sel, rule.BookIntroRule)
+		result.Kind = strings.Join(Extract(sel, rule.BookKindRule), ",")
+		result.WordCount = formatSourceWordCount(firstMatch(sel, rule.BookWordCountRule))
 		result.LatestChapter = firstMatch(sel, rule.LatestChapterRule)
 		result.BookURL = resolveSourceURLTemplate(baseURL, firstMatch(sel, rule.BookURLRule))
 
@@ -338,6 +345,8 @@ func parseDirectBookResult(doc *goquery.Document, rule models.BookSourceRule, so
 		Author:        info.Author,
 		CoverURL:      info.CoverURL,
 		Intro:         info.Intro,
+		Kind:          info.Kind,
+		WordCount:     formatSourceWordCount(info.WordCount),
 		LatestChapter: info.LatestChapter,
 		BookURL:       bookURL,
 		SourceID:      source.ID,
@@ -345,6 +354,23 @@ func parseDirectBookResult(doc *goquery.Document, rule models.BookSourceRule, so
 		OriginOrder:   source.CustomOrder,
 		Type:          source.SourceType,
 	}, true
+}
+
+func formatSourceWordCount(value string) string {
+	value = strings.TrimSpace(value)
+	words, err := strconv.Atoi(value)
+	if err != nil {
+		return value
+	}
+	if words <= 0 {
+		return ""
+	}
+	if words > 10000 {
+		formatted := strconv.FormatFloat(float64(words)/10000, 'f', 1, 64)
+		formatted = strings.TrimSuffix(formatted, ".0")
+		return formatted + "万字"
+	}
+	return strconv.Itoa(words) + "字"
 }
 
 // ParseTOC fetches and parses a book's table of contents.
@@ -396,7 +422,7 @@ func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, base
 		Kind:          firstMatch(doc.Selection, rule.BookInfoKindRule),
 		LatestChapter: firstMatch(doc.Selection, rule.BookInfoLatestChapterRule),
 		UpdateTime:    firstMatch(doc.Selection, rule.BookInfoUpdateTimeRule),
-		WordCount:     firstMatch(doc.Selection, rule.BookInfoWordCountRule),
+		WordCount:     formatSourceWordCount(firstMatch(doc.Selection, rule.BookInfoWordCountRule)),
 	}
 }
 

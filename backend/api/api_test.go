@@ -1912,6 +1912,8 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"author":".author",
 				"coverUrl":"img@src",
 				"intro":".intro",
+				"kind":".kind",
+				"wordCount":".words",
 				"lastChapter":".last",
 				"bookUrl":"a@href"
 			},
@@ -1921,6 +1923,8 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				"author":".explore-author",
 				"coverUrl":"img@data-src",
 				"intro":".explore-intro",
+				"kind":".explore-kind",
+				"wordCount":".explore-words",
 				"lastChapter":".explore-last",
 				"bookUrl":"a@data-url"
 			},
@@ -1966,11 +1970,15 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.BookListRule != ".book" ||
 		rule.BookNameRule != ".name" ||
 		rule.BookURLRule != "a|attr:href" ||
+		rule.BookKindRule != ".kind" ||
+		rule.BookWordCountRule != ".words" ||
 		rule.ExploreBookListRule != ".explore-book" ||
 		rule.ExploreBookNameRule != ".explore-name" ||
 		rule.ExploreBookAuthorRule != ".explore-author" ||
 		rule.ExploreBookCoverRule != "img|attr:data-src" ||
 		rule.ExploreBookIntroRule != ".explore-intro" ||
+		rule.ExploreBookKindRule != ".explore-kind" ||
+		rule.ExploreBookWordCountRule != ".explore-words" ||
 		rule.ExploreLatestChapterRule != ".explore-last" ||
 		rule.ExploreBookURLRule != "a|attr:data-url" ||
 		rule.BookInfoNameRule != "h1|text" ||
@@ -2691,6 +2699,8 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		BookAuthorRule:            ".author",
 		BookCoverRule:             "img|attr:src",
 		BookIntroRule:             ".intro",
+		BookKindRule:              ".kind",
+		BookWordCountRule:         ".words",
 		LatestChapterRule:         ".latest",
 		BookURLRule:               "a|attr:href",
 		ExploreBookListRule:       ".explore-card",
@@ -2698,6 +2708,8 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		ExploreBookAuthorRule:     ".explore-author",
 		ExploreBookCoverRule:      "img|attr:data-src",
 		ExploreBookIntroRule:      ".explore-intro",
+		ExploreBookKindRule:       ".explore-kind",
+		ExploreBookWordCountRule:  ".explore-words",
 		ExploreLatestChapterRule:  ".explore-latest",
 		ExploreBookURLRule:        "a|attr:data-url",
 		ExplorePaginationRule:     ".explore-next|attr:href",
@@ -2781,10 +2793,14 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.RuleSearch.Name != ".name" ||
 		first.RuleSearch.BookURL != "a@href" ||
 		first.RuleSearch.CoverURL != "img@src" ||
+		first.RuleSearch.Kind != ".kind" ||
+		first.RuleSearch.WordCount != ".words" ||
 		first.RuleExplore.BookList != ".explore-card" ||
 		first.RuleExplore.Name != ".explore-title" ||
 		first.RuleExplore.CoverURL != "img@data-src" ||
 		first.RuleExplore.BookURL != "a@data-url" ||
+		first.RuleExplore.Kind != ".explore-kind" ||
+		first.RuleExplore.WordCount != ".explore-words" ||
 		first.RuleBookInfo.Name != ".detail-name" ||
 		first.RuleBookInfo.Author != ".detail-author" ||
 		first.RuleBookInfo.CoverURL != "img.detail-cover@data-src" ||
@@ -2834,6 +2850,10 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimportedRule.PaginationRule != ".next|attr:href" ||
 		reimportedRule.ExploreBookListRule != ".explore-card" ||
 		reimportedRule.ExploreBookURLRule != "a|attr:data-url" ||
+		reimportedRule.BookKindRule != ".kind" ||
+		reimportedRule.BookWordCountRule != ".words" ||
+		reimportedRule.ExploreBookKindRule != ".explore-kind" ||
+		reimportedRule.ExploreBookWordCountRule != ".explore-words" ||
 		reimportedRule.ExplorePaginationRule != ".explore-next|attr:href" ||
 		reimportedRule.BookInfoNameRule != ".detail-name" ||
 		reimportedRule.BookInfoCoverRule != "img.detail-cover|attr:data-src" ||
@@ -2911,6 +2931,8 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 						<a class="link" href="/book-new"><span class="title">候选书</span></a>
 						<span class="author">新作者</span>
 						<span class="latest">第一百章 新来源</span>
+						<span class="kind">玄幻</span>
+						<span class="word-count">12345</span>
 						<p class="intro">新书源简介</p>
 					</div>
 				</body></html>`
@@ -2920,6 +2942,8 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 					<span class="detail-author">换源详情作者</span>
 					<img class="detail-cover" src="/switch-cover.jpg">
 					<p class="detail-intro">换源详情简介</p>
+					<span class="detail-kind">仙侠</span>
+					<span class="detail-word-count">45678</span>
 					<ul>
 						<li class="chapter"><a href="/c1">第一章</a></li>
 						<li class="chapter"><a href="/c2">第二章</a></li>
@@ -2957,20 +2981,24 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		Enabled:    true,
 	}
 	if err := source.SetRules(models.BookSourceRule{
-		SearchURL:          upstream + "/search?q={keyword}",
-		BookListRule:       ".book",
-		BookNameRule:       ".title|text",
-		BookAuthorRule:     ".author|text",
-		BookIntroRule:      ".intro|text",
-		LatestChapterRule:  ".latest|text",
-		BookURLRule:        ".link|attr:href",
-		BookInfoNameRule:   ".detail-name",
-		BookInfoAuthorRule: ".detail-author",
-		BookInfoCoverRule:  ".detail-cover|attr:src",
-		BookInfoIntroRule:  ".detail-intro",
-		ChapterListRule:    ".chapter",
-		ChapterNameRule:    "a|text",
-		ChapterURLRule:     "a|attr:href",
+		SearchURL:             upstream + "/search?q={keyword}",
+		BookListRule:          ".book",
+		BookNameRule:          ".title|text",
+		BookAuthorRule:        ".author|text",
+		BookIntroRule:         ".intro|text",
+		BookKindRule:          ".kind|text",
+		BookWordCountRule:     ".word-count|text",
+		LatestChapterRule:     ".latest|text",
+		BookURLRule:           ".link|attr:href",
+		BookInfoNameRule:      ".detail-name",
+		BookInfoAuthorRule:    ".detail-author",
+		BookInfoCoverRule:     ".detail-cover|attr:src",
+		BookInfoIntroRule:     ".detail-intro",
+		BookInfoKindRule:      ".detail-kind",
+		BookInfoWordCountRule: ".detail-word-count",
+		ChapterListRule:       ".chapter",
+		ChapterNameRule:       "a|text",
+		ChapterURLRule:        "a|attr:href",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -3019,6 +3047,8 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		Title              string `json:"title"`
 		BookURL            string `json:"bookUrl"`
 		LatestChapterTitle string `json:"latestChapterTitle"`
+		Kind               string `json:"kind"`
+		WordCount          string `json:"wordCount"`
 		Current            bool   `json:"current"`
 		Type               int    `json:"type"`
 	}
@@ -3030,6 +3060,8 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		Title              string `json:"title"`
 		BookURL            string `json:"bookUrl"`
 		LatestChapterTitle string `json:"latestChapterTitle"`
+		Kind               string `json:"kind"`
+		WordCount          string `json:"wordCount"`
 		Current            bool   `json:"current"`
 		Type               int    `json:"type"`
 	}
@@ -3050,6 +3082,9 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	}
 	if target.Type != 1 {
 		t.Fatalf("source candidates should expose source type, got %+v", target)
+	}
+	if target.Kind != "玄幻" || target.WordCount != "1.2万字" {
+		t.Fatalf("source candidates should expose list metadata, got %+v", target)
 	}
 
 	pagedReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?group=%E4%BC%98%E5%85%88&limit=1&offset=0&paged=1", nil)
@@ -3124,6 +3159,8 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		updated.Author != "换源详情作者" ||
 		updated.CoverURL != upstream+"/switch-cover.jpg" ||
 		updated.Intro != "换源详情简介" ||
+		updated.Kind != "仙侠" ||
+		updated.WordCount != "4.6万字" ||
 		updated.Type != 1 ||
 		updated.ChapterCount != 2 ||
 		updated.LastChapter != "第二章" {
@@ -3138,6 +3175,8 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	upstream := "https://remote-book.test"
 	detailTitle := "详情远程书"
 	detailIntro := "详情简介"
+	detailKind := "科幻"
+	detailWordCount := "23456"
 	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -3147,8 +3186,10 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 					<span class="detail-author">详情作者</span>
 					<img class="detail-cover" data-src="/cover-detail.jpg">
 					<p class="detail-intro">%s</p>
+					<span class="detail-kind">%s</span>
+					<span class="detail-word-count">%s</span>
 					<li class="chapter"><a href="/c1">第一章</a></li>
-				</body></html>`, detailTitle, detailIntro))),
+				</body></html>`, detailTitle, detailIntro, detailKind, detailWordCount))),
 				Header:  make(http.Header),
 				Request: req,
 			}, nil
@@ -3170,13 +3211,15 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	}
 	source := models.BookSource{Name: "远程源", BaseURL: upstream, SourceType: 1, Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
-		BookInfoNameRule:   ".detail-name",
-		BookInfoAuthorRule: ".detail-author",
-		BookInfoCoverRule:  ".detail-cover|attr:data-src",
-		BookInfoIntroRule:  ".detail-intro",
-		ChapterListRule:    ".chapter",
-		ChapterNameRule:    "a|text",
-		ChapterURLRule:     "a|attr:href",
+		BookInfoNameRule:      ".detail-name",
+		BookInfoAuthorRule:    ".detail-author",
+		BookInfoCoverRule:     ".detail-cover|attr:data-src",
+		BookInfoIntroRule:     ".detail-intro",
+		BookInfoKindRule:      ".detail-kind",
+		BookInfoWordCountRule: ".detail-word-count",
+		ChapterListRule:       ".chapter",
+		ChapterNameRule:       "a|text",
+		ChapterURLRule:        "a|attr:href",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -3216,12 +3259,16 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	if book.Title != "详情远程书" ||
 		book.Author != "详情作者" ||
 		book.CoverURL != upstream+"/cover-detail.jpg" ||
-		book.Intro != "详情简介" {
+		book.Intro != "详情简介" ||
+		book.Kind != "科幻" ||
+		book.WordCount != "2.3万字" {
 		t.Fatalf("expected detail page metadata to override search payload: %+v", book.Book)
 	}
 
 	detailTitle = "刷新后的详情书名"
 	detailIntro = "刷新后的详情简介"
+	detailKind = "悬疑"
+	detailWordCount = "连载中"
 	refreshReq := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh", nil)
 	refreshReq.Header.Set("Authorization", token)
 	refreshW := httptest.NewRecorder()
@@ -3233,7 +3280,10 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	if err := server.db.First(&refreshed, book.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if refreshed.Title != detailTitle || refreshed.Intro != detailIntro {
+	if refreshed.Title != detailTitle ||
+		refreshed.Intro != detailIntro ||
+		refreshed.Kind != detailKind ||
+		refreshed.WordCount != detailWordCount {
 		t.Fatalf("refresh should update detail page metadata: %+v", refreshed)
 	}
 }

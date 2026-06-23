@@ -26,6 +26,10 @@
           <span>作者：</span>
           <strong>{{ book?.author || '未知' }}</strong>
         </div>
+        <div v-if="book?.wordCount">
+          <span>字数：</span>
+          <strong>{{ book.wordCount }}</strong>
+        </div>
         <div>
           <span>来源：</span>
           <strong>{{ displaySourceName }}</strong>

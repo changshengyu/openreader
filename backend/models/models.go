@@ -86,6 +86,8 @@ type BookSourceRule struct {
 	BookAuthorRule    string `json:"bookAuthorRule,omitempty"`
 	BookCoverRule     string `json:"bookCoverRule,omitempty"`
 	BookIntroRule     string `json:"bookIntroRule,omitempty"`
+	BookKindRule      string `json:"bookKindRule,omitempty"`
+	BookWordCountRule string `json:"bookWordCountRule,omitempty"`
 	LatestChapterRule string `json:"latestChapterRule,omitempty"`
 	BookURLRule       string `json:"bookUrlRule,omitempty"`
 
@@ -96,6 +98,8 @@ type BookSourceRule struct {
 	ExploreBookAuthorRule    string `json:"exploreBookAuthorRule,omitempty"`
 	ExploreBookCoverRule     string `json:"exploreBookCoverRule,omitempty"`
 	ExploreBookIntroRule     string `json:"exploreBookIntroRule,omitempty"`
+	ExploreBookKindRule      string `json:"exploreBookKindRule,omitempty"`
+	ExploreBookWordCountRule string `json:"exploreBookWordCountRule,omitempty"`
 	ExploreLatestChapterRule string `json:"exploreLatestChapterRule,omitempty"`
 	ExploreBookURLRule       string `json:"exploreBookUrlRule,omitempty"`
 	ExplorePaginationRule    string `json:"explorePaginationRule,omitempty"`
@@ -215,6 +219,8 @@ type Book struct {
 	CoverURL       string    `json:"coverUrl" gorm:"size:600"`
 	CustomCoverURL string    `json:"customCoverUrl" gorm:"size:600"`
 	Intro          string    `json:"intro" gorm:"type:text"`
+	Kind           string    `json:"kind" gorm:"size:400"`
+	WordCount      string    `json:"wordCount" gorm:"size:120"`
 	URL            string    `json:"url" gorm:"size:800;index"`
 	LibraryPath    string    `json:"libraryPath" gorm:"size:600"`
 	OriginalFile   string    `json:"originalFile" gorm:"size:600"`

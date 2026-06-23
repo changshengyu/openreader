@@ -22,6 +22,14 @@ export function sourceCandidateIntro(candidate = {}) {
   return candidate.intro || candidate.desc || candidate.description || ''
 }
 
+export function sourceCandidateKind(candidate = {}) {
+  return candidate.kind || candidate.category || candidate.genre || ''
+}
+
+export function sourceCandidateWordCount(candidate = {}) {
+  return candidate.wordCount || candidate.words || ''
+}
+
 export function sourceCandidateSourceName(candidate = {}) {
   return candidate.sourceName || candidate.bookSourceName || candidate.originName || candidate.origin || '未知书源'
 }

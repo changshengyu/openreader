@@ -514,10 +514,12 @@ import {
   sourceCandidateBookUrl,
   sourceCandidateCover,
   sourceCandidateIntro,
+  sourceCandidateKind,
   sourceCandidateKey,
   sourceCandidateSourceId,
   sourceCandidateSourceName,
   sourceCandidateTitle,
+  sourceCandidateWordCount,
 } from '../utils/sourceCandidate'
 
 const route = useRoute()
@@ -1908,6 +1910,8 @@ async function changeSource(source) {
       author: sourceCandidateAuthor(source),
       coverUrl: sourceCandidateCover(source),
       intro: sourceCandidateIntro(source),
+      kind: sourceCandidateKind(source),
+      wordCount: sourceCandidateWordCount(source),
     })
     await invalidateReaderDataCache({ book: true, chapters: true })
     await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })

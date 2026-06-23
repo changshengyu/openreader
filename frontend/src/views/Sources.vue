@@ -252,6 +252,8 @@
                 <el-input v-model="ruleForm.bookAuthorRule" placeholder="作者 bookAuthorRule" />
                 <el-input v-model="ruleForm.bookCoverRule" placeholder="封面 bookCoverRule" />
                 <el-input v-model="ruleForm.bookIntroRule" placeholder="简介 bookIntroRule" />
+                <el-input v-model="ruleForm.bookKindRule" placeholder="分类 bookKindRule" />
+                <el-input v-model="ruleForm.bookWordCountRule" placeholder="字数 bookWordCountRule" />
                 <el-input v-model="ruleForm.latestChapterRule" placeholder="最新章节 latestChapterRule" />
                 <el-input v-model="ruleForm.bookUrlRule" placeholder="详情地址 bookUrlRule" />
                 <el-input v-model="ruleForm.paginationRule" placeholder="下一页 paginationRule（可选）" />
@@ -264,6 +266,8 @@
                 <el-input v-model="ruleForm.exploreBookAuthorRule" placeholder="作者 exploreBookAuthorRule" />
                 <el-input v-model="ruleForm.exploreBookCoverRule" placeholder="封面 exploreBookCoverRule" />
                 <el-input v-model="ruleForm.exploreBookIntroRule" placeholder="简介 exploreBookIntroRule" />
+                <el-input v-model="ruleForm.exploreBookKindRule" placeholder="分类 exploreBookKindRule" />
+                <el-input v-model="ruleForm.exploreBookWordCountRule" placeholder="字数 exploreBookWordCountRule" />
                 <el-input v-model="ruleForm.exploreLatestChapterRule" placeholder="最新章节 exploreLatestChapterRule" />
                 <el-input v-model="ruleForm.exploreBookUrlRule" placeholder="详情地址 exploreBookUrlRule" />
                 <el-input v-model="ruleForm.explorePaginationRule" placeholder="下一页 explorePaginationRule（可选）" />
@@ -424,6 +428,8 @@ const ruleKeys = [
   'bookAuthorRule',
   'bookCoverRule',
   'bookIntroRule',
+  'bookKindRule',
+  'bookWordCountRule',
   'latestChapterRule',
   'bookUrlRule',
   'paginationRule',
@@ -432,6 +438,8 @@ const ruleKeys = [
   'exploreBookAuthorRule',
   'exploreBookCoverRule',
   'exploreBookIntroRule',
+  'exploreBookKindRule',
+  'exploreBookWordCountRule',
   'exploreLatestChapterRule',
   'exploreBookUrlRule',
   'explorePaginationRule',

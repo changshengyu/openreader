@@ -147,9 +147,11 @@ import {
   sourceCandidateBookUrl,
   sourceCandidateCover,
   sourceCandidateIntro,
+  sourceCandidateKind,
   sourceCandidateKey,
   sourceCandidateSourceId,
   sourceCandidateTitle,
+  sourceCandidateWordCount,
 } from '../utils/sourceCandidate'
 
 const route = useRoute()
@@ -693,6 +695,8 @@ async function changeSource(source) {
       author: sourceCandidateAuthor(source),
       coverUrl: sourceCandidateCover(source),
       intro: sourceCandidateIntro(source),
+      kind: sourceCandidateKind(source),
+      wordCount: sourceCandidateWordCount(source),
     })
     const updatedBook = mergeBookUpdate(data)
     await invalidateBookReaderCaches(previousBook, { clearBrowser: true })

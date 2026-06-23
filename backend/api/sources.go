@@ -63,6 +63,8 @@ type legacySourceSearchRule struct {
 	Author      string `json:"author"`
 	CoverURL    string `json:"coverUrl"`
 	Intro       string `json:"intro"`
+	Kind        string `json:"kind"`
+	WordCount   string `json:"wordCount"`
 	LastChapter string `json:"lastChapter"`
 	BookURL     string `json:"bookUrl"`
 }
@@ -153,6 +155,8 @@ func (p bookSourcePayload) compatRules() string {
 		BookAuthorRule:            normalizeUpstreamSelectorRule(p.RuleSearch.Author),
 		BookCoverRule:             normalizeUpstreamSelectorRule(p.RuleSearch.CoverURL),
 		BookIntroRule:             normalizeUpstreamSelectorRule(p.RuleSearch.Intro),
+		BookKindRule:              normalizeUpstreamSelectorRule(p.RuleSearch.Kind),
+		BookWordCountRule:         normalizeUpstreamSelectorRule(p.RuleSearch.WordCount),
 		LatestChapterRule:         normalizeUpstreamSelectorRule(p.RuleSearch.LastChapter),
 		BookURLRule:               normalizeUpstreamSelectorRule(p.RuleSearch.BookURL),
 		ExploreBookListRule:       normalizeUpstreamSelectorRule(p.RuleExplore.BookList),
@@ -160,6 +164,8 @@ func (p bookSourcePayload) compatRules() string {
 		ExploreBookAuthorRule:     normalizeUpstreamSelectorRule(p.RuleExplore.Author),
 		ExploreBookCoverRule:      normalizeUpstreamSelectorRule(p.RuleExplore.CoverURL),
 		ExploreBookIntroRule:      normalizeUpstreamSelectorRule(p.RuleExplore.Intro),
+		ExploreBookKindRule:       normalizeUpstreamSelectorRule(p.RuleExplore.Kind),
+		ExploreBookWordCountRule:  normalizeUpstreamSelectorRule(p.RuleExplore.WordCount),
 		ExploreLatestChapterRule:  normalizeUpstreamSelectorRule(p.RuleExplore.LastChapter),
 		ExploreBookURLRule:        normalizeUpstreamSelectorRule(p.RuleExplore.BookURL),
 		BookInfoNameRule:          normalizeUpstreamSelectorRule(p.RuleBookInfo.Name),
@@ -197,6 +203,8 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.BookAuthorRule == "" &&
 		rule.BookCoverRule == "" &&
 		rule.BookIntroRule == "" &&
+		rule.BookKindRule == "" &&
+		rule.BookWordCountRule == "" &&
 		rule.LatestChapterRule == "" &&
 		rule.BookURLRule == "" &&
 		rule.ExploreBookListRule == "" &&
@@ -204,6 +212,8 @@ func isEmptyCompatRule(rule models.BookSourceRule) bool {
 		rule.ExploreBookAuthorRule == "" &&
 		rule.ExploreBookCoverRule == "" &&
 		rule.ExploreBookIntroRule == "" &&
+		rule.ExploreBookKindRule == "" &&
+		rule.ExploreBookWordCountRule == "" &&
 		rule.ExploreLatestChapterRule == "" &&
 		rule.ExploreBookURLRule == "" &&
 		rule.BookInfoNameRule == "" &&
@@ -697,6 +707,8 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			Author:      exportUpstreamSelectorRule(rule.BookAuthorRule),
 			CoverURL:    exportUpstreamSelectorRule(rule.BookCoverRule),
 			Intro:       exportUpstreamSelectorRule(rule.BookIntroRule),
+			Kind:        exportUpstreamSelectorRule(rule.BookKindRule),
+			WordCount:   exportUpstreamSelectorRule(rule.BookWordCountRule),
 			LastChapter: exportUpstreamSelectorRule(rule.LatestChapterRule),
 			BookURL:     exportUpstreamSelectorRule(rule.BookURLRule),
 		}
@@ -706,6 +718,8 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			Author:      exportUpstreamSelectorRule(rule.ExploreBookAuthorRule),
 			CoverURL:    exportUpstreamSelectorRule(rule.ExploreBookCoverRule),
 			Intro:       exportUpstreamSelectorRule(rule.ExploreBookIntroRule),
+			Kind:        exportUpstreamSelectorRule(rule.ExploreBookKindRule),
+			WordCount:   exportUpstreamSelectorRule(rule.ExploreBookWordCountRule),
 			LastChapter: exportUpstreamSelectorRule(rule.ExploreLatestChapterRule),
 			BookURL:     exportUpstreamSelectorRule(rule.ExploreBookURLRule),
 		}

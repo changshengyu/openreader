@@ -22,6 +22,14 @@ export function remoteBookIntro(book = {}) {
   return book.intro || book.desc || book.description || ''
 }
 
+export function remoteBookKind(book = {}) {
+  return book.kind || book.category || book.genre || ''
+}
+
+export function remoteBookWordCount(book = {}) {
+  return book.wordCount || book.words || ''
+}
+
 export function remoteBookSourceName(book = {}, fallback = '') {
   return book.sourceName || book.bookSourceName || book.originName || book.origin || fallback || '未知书源'
 }
@@ -40,6 +48,8 @@ export function remoteBookCreatePayload(book = {}, categoryIds = [], options = {
     author: remoteBookAuthor(book),
     coverUrl: remoteBookCover(book),
     intro: remoteBookIntro(book),
+    kind: remoteBookKind(book),
+    wordCount: remoteBookWordCount(book),
     bookUrl: remoteBookUrl(book),
     sourceId: remoteBookSourceId(book, options.sourceId),
     sourceName: remoteBookSourceName(book, options.sourceName),
