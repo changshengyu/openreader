@@ -186,6 +186,118 @@ func TestSearchBooksPageAppliesSourceConcurrentRate(t *testing.T) {
 	}
 }
 
+func TestSearchBooksPageUsesBookURLPatternForDirectDetail(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Method != http.MethodPost || string(body) != "id=1" || request.Header.Get("X-Detail") != "yes" {
+				t.Fatalf("direct detail request = %s body=%s headers=%v", request.Method, body, request.Header)
+			}
+			return searchPaginationResponse(request, `
+				<h1 class="detail-name">直接详情书</h1>
+				<span class="detail-author">详情作者</span>
+				<span class="detail-last">最新章</span>
+			`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{
+		ID:             88,
+		Name:           "直接详情源",
+		BaseURL:        "https://source.example",
+		BookURLPattern: `https://source\.example/detail/\d+`,
+		SourceType:     1,
+		Charset:        "utf-8",
+	}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:                 `https://source.example/detail/1, {"method":"POST","body":"id=1","headers":{"X-Detail":"yes"}}`,
+		BookListRule:              ".missing-list",
+		BookInfoNameRule:          ".detail-name",
+		BookInfoAuthorRule:        ".detail-author",
+		BookInfoLatestChapterRule: ".detail-last",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SearchBooksPage(source, "ignored", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 ||
+		result.Items[0].Title != "直接详情书" ||
+		result.Items[0].Author != "详情作者" ||
+		result.Items[0].LatestChapter != "最新章" ||
+		result.Items[0].Type != 1 ||
+		!strings.Contains(result.Items[0].BookURL, `"body":"id=1"`) ||
+		!strings.Contains(result.Items[0].BookURL, `"X-Detail":"yes"`) {
+		t.Fatalf("direct detail result = %+v", result)
+	}
+}
+
+func TestSearchBooksPageFallsBackToDetailOnlyWithoutPattern(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return searchPaginationResponse(request, `<h1 class="detail-name">空列表详情</h1>`), nil
+		}),
+	})
+	defer restore()
+
+	newSource := func(pattern string) models.BookSource {
+		source := models.BookSource{
+			Name:           "空列表源",
+			BaseURL:        "https://source.example",
+			BookURLPattern: pattern,
+			Charset:        "utf-8",
+		}
+		if err := source.SetRules(models.BookSourceRule{
+			SearchURL:        "https://source.example/search",
+			BookListRule:     ".missing-list",
+			BookInfoNameRule: ".detail-name",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return source
+	}
+
+	fallback, err := SearchBooksPage(newSource(""), "ignored", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fallback.Items) != 1 || fallback.Items[0].Title != "空列表详情" {
+		t.Fatalf("empty list detail fallback = %+v", fallback)
+	}
+
+	noFallback, err := SearchBooksPage(newSource(`/detail/\d+$`), "ignored", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(noFallback.Items) != 0 {
+		t.Fatalf("non-matching pattern must disable detail fallback: %+v", noFallback)
+	}
+}
+
+func TestSearchBooksPageRejectsInvalidBookURLPattern(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return searchPaginationResponse(request, `<html></html>`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "坏正则源", BookURLPattern: "[", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{SearchURL: "https://source.example/search"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := SearchBooksPage(source, "ignored", 1)
+	if err == nil || !strings.Contains(err.Error(), "invalid book URL pattern") {
+		t.Fatalf("invalid pattern error = %v", err)
+	}
+}
+
 func TestPrepareSourceRequestKeepsJSONKeywordUnescaped(t *testing.T) {
 	request, err := prepareSourceRequest(
 		`https://source.example/search, {"method":"POST","body":{"keyword":"{keyword}","page":"{page}"},"headers":"{\"Content-Type\":\"application/json\",\"X-Keyword\":\"{keyword}\"}"}`,

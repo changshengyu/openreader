@@ -1498,6 +1498,7 @@ type remoteBookRequest struct {
 	BookURL     string `json:"bookUrl" binding:"required"`
 	SourceID    uint   `json:"sourceId" binding:"required"`
 	SourceName  string `json:"sourceName"`
+	Type        int    `json:"type"`
 	CategoryID  *uint  `json:"categoryId"`
 	CategoryIDs []uint `json:"categoryIds"`
 }
@@ -1557,6 +1558,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 	book := models.Book{
 		UserID:       userID,
 		SourceID:     req.SourceID,
+		Type:         source.SourceType,
 		Title:        firstNonBlank(remoteInfo.Title, req.Title),
 		Author:       firstNonBlank(remoteInfo.Author, req.Author),
 		CoverURL:     firstNonBlank(remoteInfo.CoverURL, req.CoverURL),
@@ -1668,6 +1670,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 		BookURL            string `json:"bookUrl"`
 		Time               int64  `json:"time,omitempty"`
 		Current            bool   `json:"current"`
+		Type               int    `json:"type"`
 	}
 	type sourceCandidateBatch struct {
 		Index      int
@@ -1691,6 +1694,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 				LatestChapterTitle: book.LastChapter,
 				BookURL:            book.URL,
 				Current:            true,
+				Type:               currentSource.SourceType,
 			})
 		}
 	}
@@ -1732,6 +1736,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 					BookURL:            item.BookURL,
 					Time:               elapsed,
 					Current:            source.ID == book.SourceID && item.BookURL == book.URL,
+					Type:               source.SourceType,
 				})
 				if len(candidates) >= 3 {
 					break
@@ -1859,6 +1864,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 			}
 		}
 		book.SourceID = req.SourceID
+		book.Type = newSource.SourceType
 		book.URL = newBookURL
 		if title := firstNonBlank(remoteInfo.Title, req.Title); title != "" {
 			book.Title = title

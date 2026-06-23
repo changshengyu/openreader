@@ -24,6 +24,7 @@ type sourceRequest struct {
 	Proxy          string
 	SourceKey      string
 	ConcurrentRate string
+	Descriptor     string
 }
 
 type sourceURLOption struct {
@@ -91,12 +92,15 @@ func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset strin
 	if err != nil {
 		return sourceRequest{}, fmt.Errorf("parse request headers: %w", err)
 	}
+	descriptorHeaders := make(map[string]string, len(optionHeaders))
 	for name, value := range optionHeaders {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
 		}
-		request.Headers[name] = replaceSourceBodyPlaceholders(fmt.Sprint(value), keyword, page)
+		rendered := replaceSourceBodyPlaceholders(fmt.Sprint(value), keyword, page)
+		request.Headers[name] = rendered
+		descriptorHeaders[name] = rendered
 	}
 	if option.Body != nil {
 		body, err := marshalSourceRequestBody(option.Body)
@@ -108,6 +112,7 @@ func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset strin
 	if request.Method == http.MethodPost {
 		prepareSourcePOSTBody(&request)
 	}
+	request.Descriptor = buildSourceRequestDescriptor(request, optionText != "", descriptorHeaders)
 	return request, nil
 }
 
@@ -422,6 +427,39 @@ func takeHeader(headers map[string]string, name string) string {
 		}
 	}
 	return ""
+}
+
+func buildSourceRequestDescriptor(request sourceRequest, hasOptions bool, optionHeaders map[string]string) string {
+	if !hasOptions {
+		return request.URL
+	}
+	options := make(map[string]any)
+	if request.Method != http.MethodGet {
+		options["method"] = request.Method
+	}
+	if request.Body != "" {
+		options["body"] = request.Body
+	}
+	if len(optionHeaders) > 0 {
+		options["headers"] = optionHeaders
+	}
+	if request.Charset != "" {
+		options["charset"] = request.Charset
+	}
+	if request.Retry > 0 {
+		options["retry"] = request.Retry
+	}
+	if request.Type != "" {
+		options["type"] = request.Type
+	}
+	if len(options) == 0 {
+		return request.URL
+	}
+	data, err := json.Marshal(options)
+	if err != nil {
+		return request.URL
+	}
+	return request.URL + ", " + string(data)
 }
 
 func normalizeSourcePage(page int) int {

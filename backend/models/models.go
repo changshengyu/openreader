@@ -32,6 +32,9 @@ type BookSource struct {
 	Name           string    `json:"name" gorm:"size:120;not null"`
 	BaseURL        string    `json:"baseUrl" gorm:"size:500"`
 	SearchURL      string    `json:"searchUrl" gorm:"size:500"`
+	BookURLPattern string    `json:"bookUrlPattern" gorm:"type:text"`
+	SourceType     int       `json:"bookSourceType" gorm:"default:0"`
+	Comment        string    `json:"bookSourceComment" gorm:"type:text"`
 	Charset        string    `json:"charset" gorm:"size:40;default:utf-8"`
 	ConcurrentRate string    `json:"concurrentRate" gorm:"size:80"`
 	CustomOrder    int       `json:"customOrder" gorm:"default:0"`
@@ -205,6 +208,7 @@ type Book struct {
 	ID             uint      `json:"id" gorm:"primaryKey"`
 	UserID         uint      `json:"userId" gorm:"index"`
 	SourceID       uint      `json:"sourceId" gorm:"index"`
+	Type           int       `json:"type" gorm:"default:0"`
 	CategoryID     *uint     `json:"categoryId,omitempty" gorm:"index"`
 	Title          string    `json:"title" gorm:"size:240;not null"`
 	Author         string    `json:"author" gorm:"size:160"`

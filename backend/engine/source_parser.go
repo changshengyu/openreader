@@ -27,6 +27,7 @@ type SearchResult struct {
 	SourceID      uint   `json:"sourceId"`
 	SourceName    string `json:"sourceName"`
 	OriginOrder   int    `json:"originOrder"`
+	Type          int    `json:"type"`
 }
 
 type SearchPageResult struct {
@@ -125,7 +126,10 @@ func SearchBooksPageContext(ctx context.Context, source models.BookSource, keywo
 		if err != nil {
 			return SearchPageResult{}, fmt.Errorf("fetch search page: %w", err)
 		}
-		items := parseBookResults(doc, rule, source, request.URL)
+		items, err := parseBookResults(doc, rule, source, request)
+		if err != nil {
+			return SearchPageResult{}, fmt.Errorf("parse search page: %w", err)
+		}
 		nextURL := searchNextURL(doc, rule, request.URL)
 		return SearchPageResult{
 			Items:   items,
@@ -149,7 +153,10 @@ func SearchBooksPageContext(ctx context.Context, source models.BookSource, keywo
 			return SearchPageResult{}, fmt.Errorf("fetch search page: %w", err)
 		}
 		request = fetchedRequest
-		items := parseBookResults(doc, rule, source, request.URL)
+		items, err := parseBookResults(doc, rule, source, request)
+		if err != nil {
+			return SearchPageResult{}, fmt.Errorf("parse search page: %w", err)
+		}
 		nextURL := searchNextURL(doc, rule, request.URL)
 		if currentPage == page {
 			return SearchPageResult{
@@ -225,7 +232,10 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 		return ExploreResult{}, fmt.Errorf("fetch explore page: %w", err)
 	}
 	exploreRule := effectiveExploreRule(rule)
-	items := parseBookResults(doc, exploreRule, source, request.URL)
+	items, err := parseBookResults(doc, exploreRule, source, request)
+	if err != nil {
+		return ExploreResult{}, fmt.Errorf("parse explore page: %w", err)
+	}
 	nextURL := ""
 	if exploreRule.PaginationRule != "" {
 		nextURL = resolveSourceURLTemplate(request.URL, firstMatch(doc.Selection, exploreRule.PaginationRule))
@@ -263,11 +273,33 @@ func parseSearchResults(doc *goquery.Document, rule models.BookSourceRule, sourc
 	if baseURL == "" {
 		baseURL = source.SearchURL
 	}
-	return parseBookResults(doc, rule, source, baseURL)
+	items, _ := parseBookResults(doc, rule, source, sourceRequest{URL: baseURL, Descriptor: baseURL})
+	return items
 }
 
-func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source models.BookSource, baseURL string) []SearchResult {
+func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source models.BookSource, request sourceRequest) ([]SearchResult, error) {
+	baseURL := request.URL
+	pattern := strings.TrimSpace(source.BookURLPattern)
+	if pattern != "" {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("invalid book URL pattern: %w", err)
+		}
+		match := compiled.FindStringIndex(baseURL)
+		matched := len(match) == 2 && match[0] == 0 && match[1] == len(baseURL)
+		if matched {
+			if result, ok := parseDirectBookResult(doc, rule, source, request); ok {
+				return []SearchResult{result}, nil
+			}
+			return []SearchResult{}, nil
+		}
+	}
 	items := findItems(doc, rule.BookListRule)
+	if len(items) == 0 && pattern == "" {
+		if result, ok := parseDirectBookResult(doc, rule, source, request); ok {
+			return []SearchResult{result}, nil
+		}
+	}
 
 	results := make([]SearchResult, 0, len(items))
 	for _, sel := range items {
@@ -275,6 +307,7 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 			SourceID:    source.ID,
 			SourceName:  source.Name,
 			OriginOrder: source.CustomOrder,
+			Type:        source.SourceType,
 		}
 		result.Title = firstMatch(sel, rule.BookNameRule)
 		result.Author = firstMatch(sel, rule.BookAuthorRule)
@@ -288,7 +321,30 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 		}
 		results = append(results, result)
 	}
-	return results
+	return results, nil
+}
+
+func parseDirectBookResult(doc *goquery.Document, rule models.BookSourceRule, source models.BookSource, request sourceRequest) (SearchResult, bool) {
+	info := parseRemoteBookInfo(doc, rule, request.URL)
+	if strings.TrimSpace(info.Title) == "" {
+		return SearchResult{}, false
+	}
+	bookURL := request.Descriptor
+	if bookURL == "" {
+		bookURL = request.URL
+	}
+	return SearchResult{
+		Title:         info.Title,
+		Author:        info.Author,
+		CoverURL:      info.CoverURL,
+		Intro:         info.Intro,
+		LatestChapter: info.LatestChapter,
+		BookURL:       bookURL,
+		SourceID:      source.ID,
+		SourceName:    source.Name,
+		OriginOrder:   source.CustomOrder,
+		Type:          source.SourceType,
+	}, true
 }
 
 // ParseTOC fetches and parses a book's table of contents.
@@ -730,9 +786,6 @@ func findItems(doc *goquery.Document, rule string) []*goquery.Selection {
 	doc.Find(selector).Each(func(_ int, sel *goquery.Selection) {
 		items = append(items, sel)
 	})
-	if len(items) == 0 {
-		return []*goquery.Selection{doc.Selection}
-	}
 	return items
 }
 

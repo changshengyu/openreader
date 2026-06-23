@@ -220,6 +220,14 @@
         <el-form-item label="分组"><el-input v-model="sourceForm.group" placeholder="默认分组" /></el-form-item>
         <el-form-item label="基础地址"><el-input v-model="sourceForm.baseUrl" /></el-form-item>
         <el-form-item label="搜索地址"><el-input v-model="sourceForm.searchUrl" /></el-form-item>
+        <el-form-item label="详情页 URL 正则"><el-input v-model="sourceForm.bookUrlPattern" /></el-form-item>
+        <el-form-item label="书源类型">
+          <el-select v-model="sourceForm.bookSourceType">
+            <el-option label="文本" :value="0" />
+            <el-option label="音频" :value="1" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="注释"><el-input v-model="sourceForm.bookSourceComment" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="探索地址">
           <el-input v-model="ruleForm.exploreUrl" placeholder="用于书海/发现页的 exploreUrl，可包含 {page}" />
         </el-form-item>
@@ -408,7 +416,7 @@ const importPreviewSaving = ref(false)
 const showEditor = ref(false)
 const editingSourceId = ref(null)
 const savingSource = ref(false)
-const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', charset: 'utf-8', concurrentRate: '', customOrder: 0, rules: '', enabled: true, enabledExplore: true })
+const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', bookUrlPattern: '', bookSourceType: 0, bookSourceComment: '', charset: 'utf-8', concurrentRate: '', customOrder: 0, rules: '', enabled: true, enabledExplore: true })
 const ruleKeys = [
   'exploreUrl',
   'bookListRule',
@@ -639,6 +647,9 @@ function openEditor(source) {
     group: source?.group || '',
     baseUrl: source?.baseUrl || '',
     searchUrl: source?.searchUrl || '',
+    bookUrlPattern: source?.bookUrlPattern || '',
+    bookSourceType: Number(source?.bookSourceType) || 0,
+    bookSourceComment: source?.bookSourceComment || '',
     charset: source?.charset || 'utf-8',
     concurrentRate: source?.concurrentRate || '',
     customOrder: Number(source?.customOrder) || 0,

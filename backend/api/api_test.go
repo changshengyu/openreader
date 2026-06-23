@@ -1740,7 +1740,7 @@ func TestSourceManagement(t *testing.T) {
 	token := authHeader(t, router)
 
 	// create source
-	body := `{"name":"测试书源","baseUrl":"https://example.com","charset":"utf-8","concurrentRate":"3/1000","enabledExplore":false}`
+	body := `{"name":"测试书源","baseUrl":"https://example.com","bookUrlPattern":"/book/\\d+$","bookSourceType":1,"bookSourceComment":"音频测试源","charset":"utf-8","concurrentRate":"3/1000","enabledExplore":false}`
 	req := httptest.NewRequest(http.MethodPost, "/api/sources", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1771,6 +1771,9 @@ func TestSourceManagement(t *testing.T) {
 	}
 	if sources[0].IsExploreEnabled() {
 		t.Fatalf("source enabledExplore=false was not persisted: %+v", sources[0])
+	}
+	if sources[0].BookURLPattern != `/book/\d+$` || sources[0].SourceType != 1 || sources[0].Comment != "音频测试源" {
+		t.Fatalf("source detail metadata was not persisted: %+v", sources[0])
 	}
 
 	// delete source
@@ -1898,6 +1901,9 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
 			"concurrentRate":"2/1000",
 			"customOrder":37,
+			"bookUrlPattern":"/detail/\\d+$",
+			"bookSourceType":1,
+			"bookSourceComment":"上游注释",
 			"enabledExplore":false,
 			"enabled":false,
 			"ruleSearch":{
@@ -1946,7 +1952,9 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		t.Fatalf("expected 1 source, got %d", len(sources))
 	}
 	source := sources[0]
-	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.ConcurrentRate != "2/1000" || source.CustomOrder != 37 || source.Enabled || source.IsExploreEnabled() {
+	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" ||
+		source.BookURLPattern != `/detail/\d+$` || source.SourceType != 1 || source.Comment != "上游注释" ||
+		source.ConcurrentRate != "2/1000" || source.CustomOrder != 37 || source.Enabled || source.IsExploreEnabled() {
 		t.Fatalf("unexpected upstream source mapping: %+v", source)
 	}
 	rule, err := source.ParsedRules()
@@ -2665,6 +2673,9 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 			Charset:        "gbk",
 			ConcurrentRate: "2/1000",
 			CustomOrder:    37,
+			BookURLPattern: `/detail/\d+$`,
+			SourceType:     1,
+			Comment:        "导出注释",
 			Enabled:        true,
 			EnabledExplore: boolPointer(false),
 			Group:          "导出分组",
@@ -2762,6 +2773,9 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.Charset != "gbk" ||
 		first.ConcurrentRate != "2/1000" ||
 		first.CustomOrder != 37 ||
+		first.BookURLPattern != `/detail/\d+$` ||
+		first.BookSourceType != 1 ||
+		first.BookSourceComment != "导出注释" ||
 		first.EnabledExplore ||
 		first.RuleSearch.BookList != ".book" ||
 		first.RuleSearch.Name != ".name" ||
@@ -2814,6 +2828,9 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimported.Group != sources[0].Group ||
 		reimported.Charset != sources[0].Charset ||
 		reimported.CustomOrder != sources[0].CustomOrder ||
+		reimported.BookURLPattern != sources[0].BookURLPattern ||
+		reimported.SourceType != sources[0].SourceType ||
+		reimported.Comment != sources[0].Comment ||
 		reimportedRule.PaginationRule != ".next|attr:href" ||
 		reimportedRule.ExploreBookListRule != ".explore-card" ||
 		reimportedRule.ExploreBookURLRule != "a|attr:data-url" ||
@@ -2932,11 +2949,12 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	}
 
 	source := models.BookSource{
-		Name:    "候选源",
-		Group:   "优先",
-		BaseURL: upstream,
-		Charset: "utf-8",
-		Enabled: true,
+		Name:       "候选源",
+		Group:      "优先",
+		BaseURL:    upstream,
+		SourceType: 1,
+		Charset:    "utf-8",
+		Enabled:    true,
 	}
 	if err := source.SetRules(models.BookSourceRule{
 		SearchURL:          upstream + "/search?q={keyword}",
@@ -3002,6 +3020,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		BookURL            string `json:"bookUrl"`
 		LatestChapterTitle string `json:"latestChapterTitle"`
 		Current            bool   `json:"current"`
+		Type               int    `json:"type"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &candidates); err != nil {
 		t.Fatal(err)
@@ -3012,6 +3031,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		BookURL            string `json:"bookUrl"`
 		LatestChapterTitle string `json:"latestChapterTitle"`
 		Current            bool   `json:"current"`
+		Type               int    `json:"type"`
 	}
 	for _, candidate := range candidates {
 		if !candidate.Current {
@@ -3027,6 +3047,9 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	}
 	if target.LatestChapterTitle != "第一百章 新来源" {
 		t.Fatalf("source candidates should expose latest chapter, got %+v", target)
+	}
+	if target.Type != 1 {
+		t.Fatalf("source candidates should expose source type, got %+v", target)
 	}
 
 	pagedReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?group=%E4%BC%98%E5%85%88&limit=1&offset=0&paged=1", nil)
@@ -3101,6 +3124,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		updated.Author != "换源详情作者" ||
 		updated.CoverURL != upstream+"/switch-cover.jpg" ||
 		updated.Intro != "换源详情简介" ||
+		updated.Type != 1 ||
 		updated.ChapterCount != 2 ||
 		updated.LastChapter != "第二章" {
 		t.Fatalf("book was not switched to candidate URL: %+v", updated)
@@ -3144,7 +3168,7 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	if err := server.db.Create(&categoryB).Error; err != nil {
 		t.Fatal(err)
 	}
-	source := models.BookSource{Name: "远程源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	source := models.BookSource{Name: "远程源", BaseURL: upstream, SourceType: 1, Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
 		BookInfoNameRule:   ".detail-name",
 		BookInfoAuthorRule: ".detail-author",
@@ -3185,6 +3209,9 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	}
 	if !book.CanUpdate {
 		t.Fatalf("expected remote book to enable update checks by default, got %+v", book)
+	}
+	if book.Type != 1 {
+		t.Fatalf("expected remote book to preserve source type: %+v", book.Book)
 	}
 	if book.Title != "详情远程书" ||
 		book.Author != "详情作者" ||

@@ -30,27 +30,31 @@ func (s *Server) listSources(c *gin.Context) {
 }
 
 type bookSourcePayload struct {
-	Name            string                   `json:"name"`
-	BaseURL         string                   `json:"baseUrl"`
-	SearchURL       string                   `json:"searchUrl"`
-	Charset         string                   `json:"charset"`
-	ConcurrentRate  string                   `json:"concurrentRate"`
-	CustomOrder     int                      `json:"customOrder"`
-	Rules           string                   `json:"rules"`
-	Enabled         *bool                    `json:"enabled"`
-	EnabledExplore  *bool                    `json:"enabledExplore"`
-	Group           string                   `json:"group"`
-	BookSourceName  string                   `json:"bookSourceName"`
-	BookSourceURL   string                   `json:"bookSourceUrl"`
-	BookSourceGroup string                   `json:"bookSourceGroup"`
-	ExploreURL      string                   `json:"exploreUrl"`
-	Header          string                   `json:"header"`
-	HeaderMap       json.RawMessage          `json:"headerMap"`
-	RuleSearch      legacySourceSearchRule   `json:"ruleSearch"`
-	RuleExplore     legacySourceSearchRule   `json:"ruleExplore"`
-	RuleBookInfo    legacySourceBookInfoRule `json:"ruleBookInfo"`
-	RuleTOC         legacySourceTOCRule      `json:"ruleToc"`
-	RuleContent     legacySourceContentRule  `json:"ruleContent"`
+	Name              string                   `json:"name"`
+	BaseURL           string                   `json:"baseUrl"`
+	SearchURL         string                   `json:"searchUrl"`
+	Charset           string                   `json:"charset"`
+	ConcurrentRate    string                   `json:"concurrentRate"`
+	CustomOrder       int                      `json:"customOrder"`
+	Rules             string                   `json:"rules"`
+	Enabled           *bool                    `json:"enabled"`
+	EnabledExplore    *bool                    `json:"enabledExplore"`
+	Group             string                   `json:"group"`
+	BookSourceName    string                   `json:"bookSourceName"`
+	BookSourceURL     string                   `json:"bookSourceUrl"`
+	BookURLPattern    string                   `json:"bookUrlPattern"`
+	RuleURLPattern    string                   `json:"ruleBookUrlPattern"`
+	BookSourceType    int                      `json:"bookSourceType"`
+	BookSourceComment string                   `json:"bookSourceComment"`
+	BookSourceGroup   string                   `json:"bookSourceGroup"`
+	ExploreURL        string                   `json:"exploreUrl"`
+	Header            string                   `json:"header"`
+	HeaderMap         json.RawMessage          `json:"headerMap"`
+	RuleSearch        legacySourceSearchRule   `json:"ruleSearch"`
+	RuleExplore       legacySourceSearchRule   `json:"ruleExplore"`
+	RuleBookInfo      legacySourceBookInfoRule `json:"ruleBookInfo"`
+	RuleTOC           legacySourceTOCRule      `json:"ruleToc"`
+	RuleContent       legacySourceContentRule  `json:"ruleContent"`
 }
 
 type legacySourceSearchRule struct {
@@ -88,24 +92,26 @@ type legacySourceContentRule struct {
 }
 
 type exportedBookSource struct {
-	BookSourceName  string                   `json:"bookSourceName"`
-	BookSourceGroup string                   `json:"bookSourceGroup,omitempty"`
-	BookSourceURL   string                   `json:"bookSourceUrl"`
-	BookSourceType  int                      `json:"bookSourceType"`
-	Enabled         bool                     `json:"enabled"`
-	EnabledExplore  bool                     `json:"enabledExplore"`
-	SearchURL       string                   `json:"searchUrl,omitempty"`
-	ExploreURL      string                   `json:"exploreUrl,omitempty"`
-	Header          string                   `json:"header,omitempty"`
-	RuleSearch      legacySourceSearchRule   `json:"ruleSearch"`
-	RuleExplore     legacySourceSearchRule   `json:"ruleExplore"`
-	RuleBookInfo    legacySourceBookInfoRule `json:"ruleBookInfo"`
-	RuleTOC         legacySourceTOCRule      `json:"ruleToc"`
-	RuleContent     legacySourceContentRule  `json:"ruleContent"`
-	Charset         string                   `json:"charset,omitempty"`
-	ConcurrentRate  string                   `json:"concurrentRate,omitempty"`
-	CustomOrder     int                      `json:"customOrder"`
-	Rules           string                   `json:"rules,omitempty"`
+	BookSourceName    string                   `json:"bookSourceName"`
+	BookSourceGroup   string                   `json:"bookSourceGroup,omitempty"`
+	BookSourceURL     string                   `json:"bookSourceUrl"`
+	BookSourceType    int                      `json:"bookSourceType"`
+	BookURLPattern    string                   `json:"bookUrlPattern,omitempty"`
+	BookSourceComment string                   `json:"bookSourceComment,omitempty"`
+	Enabled           bool                     `json:"enabled"`
+	EnabledExplore    bool                     `json:"enabledExplore"`
+	SearchURL         string                   `json:"searchUrl,omitempty"`
+	ExploreURL        string                   `json:"exploreUrl,omitempty"`
+	Header            string                   `json:"header,omitempty"`
+	RuleSearch        legacySourceSearchRule   `json:"ruleSearch"`
+	RuleExplore       legacySourceSearchRule   `json:"ruleExplore"`
+	RuleBookInfo      legacySourceBookInfoRule `json:"ruleBookInfo"`
+	RuleTOC           legacySourceTOCRule      `json:"ruleToc"`
+	RuleContent       legacySourceContentRule  `json:"ruleContent"`
+	Charset           string                   `json:"charset,omitempty"`
+	ConcurrentRate    string                   `json:"concurrentRate,omitempty"`
+	CustomOrder       int                      `json:"customOrder"`
+	Rules             string                   `json:"rules,omitempty"`
 }
 
 func (p bookSourcePayload) toModel() models.BookSource {
@@ -124,6 +130,9 @@ func (p bookSourcePayload) toModel() models.BookSource {
 	return models.BookSource{
 		Name:           firstNonBlank(p.Name, p.BookSourceName),
 		BaseURL:        firstNonBlank(p.BaseURL, p.BookSourceURL),
+		BookURLPattern: firstNonBlank(p.BookURLPattern, p.RuleURLPattern),
+		SourceType:     p.BookSourceType,
+		Comment:        strings.TrimSpace(p.BookSourceComment),
 		SearchURL:      normalizeUpstreamURLTemplate(p.SearchURL),
 		Charset:        strings.TrimSpace(p.Charset),
 		ConcurrentRate: strings.TrimSpace(p.ConcurrentRate),
@@ -339,7 +348,7 @@ func (s *Server) createSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 
-	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "CustomOrder", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+	if err := s.db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "CustomOrder", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
 	}
@@ -377,6 +386,9 @@ func (s *Server) updateSource(c *gin.Context) {
 	source.Name = req.Name
 	source.BaseURL = strings.TrimSpace(req.BaseURL)
 	source.SearchURL = strings.TrimSpace(req.SearchURL)
+	source.BookURLPattern = strings.TrimSpace(req.BookURLPattern)
+	source.SourceType = req.SourceType
+	source.Comment = strings.TrimSpace(req.Comment)
 	source.Charset = strings.TrimSpace(req.Charset)
 	if source.Charset == "" {
 		source.Charset = "utf-8"
@@ -704,17 +716,19 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			}
 		}
 		exported = append(exported, exportedBookSource{
-			BookSourceName:  source.Name,
-			BookSourceGroup: source.Group,
-			BookSourceURL:   source.BaseURL,
-			BookSourceType:  0,
-			Enabled:         source.Enabled,
-			EnabledExplore:  source.IsExploreEnabled(),
-			SearchURL:       exportUpstreamURLTemplate(firstNonBlank(rule.SearchURL, source.SearchURL)),
-			ExploreURL:      exportUpstreamURLTemplate(rule.ExploreURL),
-			Header:          header,
-			RuleSearch:      searchRule,
-			RuleExplore:     exploreRule,
+			BookSourceName:    source.Name,
+			BookSourceGroup:   source.Group,
+			BookSourceURL:     source.BaseURL,
+			BookSourceType:    source.SourceType,
+			BookURLPattern:    source.BookURLPattern,
+			BookSourceComment: source.Comment,
+			Enabled:           source.Enabled,
+			EnabledExplore:    source.IsExploreEnabled(),
+			SearchURL:         exportUpstreamURLTemplate(firstNonBlank(rule.SearchURL, source.SearchURL)),
+			ExploreURL:        exportUpstreamURLTemplate(rule.ExploreURL),
+			Header:            header,
+			RuleSearch:        searchRule,
+			RuleExplore:       exploreRule,
 			RuleBookInfo: legacySourceBookInfoRule{
 				Name:        exportUpstreamSelectorRule(rule.BookInfoNameRule),
 				Author:      exportUpstreamSelectorRule(rule.BookInfoAuthorRule),
@@ -870,6 +884,8 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 		seen[source.Name] = true
 		source.BaseURL = strings.TrimSpace(source.BaseURL)
 		source.SearchURL = strings.TrimSpace(source.SearchURL)
+		source.BookURLPattern = strings.TrimSpace(source.BookURLPattern)
+		source.Comment = strings.TrimSpace(source.Comment)
 		source.Rules = strings.TrimSpace(source.Rules)
 		source.Group = strings.TrimSpace(source.Group)
 		source.Charset = strings.TrimSpace(source.Charset)
@@ -882,6 +898,9 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 		if err := db.Where("name = ?", source.Name).First(&existing).Error; err == nil {
 			existing.BaseURL = source.BaseURL
 			existing.SearchURL = source.SearchURL
+			existing.BookURLPattern = source.BookURLPattern
+			existing.SourceType = source.SourceType
+			existing.Comment = source.Comment
 			existing.Charset = source.Charset
 			existing.ConcurrentRate = source.ConcurrentRate
 			existing.CustomOrder = source.CustomOrder
@@ -897,7 +916,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			continue
 		}
 
-		if err := db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "CustomOrder", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+		if err := db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "CustomOrder", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 			skipped++
 			continue
 		}
