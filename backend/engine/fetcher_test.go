@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 type contextRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -93,5 +95,19 @@ func TestFetchSourceTextDoesNotRetryTransportErrors(t *testing.T) {
 	})
 	if !errors.Is(err, expected) || attempts != 1 {
 		t.Fatalf("transport error retry behavior: attempts=%d err=%v", attempts, err)
+	}
+}
+
+func TestDecodeBodySupportsExplicitUpstreamCharset(t *testing.T) {
+	encoded, err := traditionalchinese.Big5.NewEncoder().Bytes([]byte("繁體內容"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeBody(encoded, "big5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != "繁體內容" {
+		t.Fatalf("Big5 response decoded as %q", decoded)
 	}
 }

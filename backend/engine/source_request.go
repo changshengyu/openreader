@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+
+	"golang.org/x/text/encoding/htmlindex"
 )
 
 type sourceRequest struct {
@@ -57,17 +59,18 @@ func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset strin
 		}
 	}
 
+	requestCharset := strings.TrimSpace(defaultCharset)
+	if option.Charset != "" {
+		requestCharset = strings.TrimSpace(option.Charset)
+	}
 	request := sourceRequest{
-		URL:     replaceSourceURLPlaceholders(urlTemplate, keyword, page),
+		URL:     replaceSourceURLPlaceholders(urlTemplate, keyword, page, requestCharset),
 		Method:  http.MethodGet,
-		Charset: strings.TrimSpace(defaultCharset),
+		Charset: requestCharset,
 		Headers: cloneHeaders(sourceHeaders),
 	}
 	if strings.EqualFold(strings.TrimSpace(option.Method), http.MethodPost) {
 		request.Method = http.MethodPost
-	}
-	if option.Charset != "" {
-		request.Charset = strings.TrimSpace(option.Charset)
 	}
 	request.Retry = decodeSourceRetry(option.Retry)
 	request.Type = strings.TrimSpace(option.Type)
@@ -164,10 +167,11 @@ func sourceRequestKey(request sourceRequest) string {
 	return key.String()
 }
 
-func replaceSourceURLPlaceholders(value, keyword string, page int) string {
-	value = strings.ReplaceAll(value, "{keyword}", url.QueryEscape(keyword))
+func replaceSourceURLPlaceholders(value, keyword string, page int, charset string) string {
+	value = strings.ReplaceAll(value, "{keyword}", keyword)
 	value = strings.ReplaceAll(value, "{page}", strconv.Itoa(normalizeSourcePage(page)))
-	return replaceSourcePageChoices(value, page)
+	value = replaceSourcePageChoices(value, page)
+	return normalizeSourceURLFields(value, charset)
 }
 
 func replaceSourceBodyPlaceholders(value, keyword string, page int) string {
@@ -258,16 +262,114 @@ func prepareSourcePOSTBody(request *sourceRequest) {
 		contentType = headerValue(request.Headers, "Content-Type")
 	}
 	if strings.Contains(strings.ToLower(contentType), "application/x-www-form-urlencoded") {
-		request.Body = normalizeSourceFormBody(request.Body)
+		request.Body = normalizeSourceFormFields(request.Body, request.Charset)
 	}
 }
 
-func normalizeSourceFormBody(body string) string {
-	values, err := url.ParseQuery(body)
-	if err != nil {
-		return body
+func normalizeSourceURLFields(rawURL, charset string) string {
+	queryStart := strings.Index(rawURL, "?")
+	if queryStart < 0 {
+		return rawURL
 	}
-	return values.Encode()
+	queryEnd := len(rawURL)
+	if fragmentStart := strings.Index(rawURL[queryStart:], "#"); fragmentStart >= 0 {
+		queryEnd = queryStart + fragmentStart
+	}
+	return rawURL[:queryStart+1] +
+		normalizeSourceFormFields(rawURL[queryStart+1:queryEnd], charset) +
+		rawURL[queryEnd:]
+}
+
+func normalizeSourceFormFields(fields, charset string) string {
+	parts := strings.Split(fields, "&")
+	for index, part := range parts {
+		name, value, found := strings.Cut(part, "=")
+		if !found {
+			continue
+		}
+		parts[index] = name + "=" + encodeSourceFieldValue(value, charset)
+	}
+	return strings.Join(parts, "&")
+}
+
+func encodeSourceFieldValue(value, charset string) string {
+	if sourceFieldAlreadyEncoded(value) {
+		return value
+	}
+	if strings.EqualFold(strings.TrimSpace(charset), "escape") {
+		return escapeSourceFieldValue(value)
+	}
+	data := []byte(value)
+	normalizedCharset := strings.TrimSpace(charset)
+	if normalizedCharset != "" && !strings.EqualFold(normalizedCharset, "utf-8") && !strings.EqualFold(normalizedCharset, "utf8") {
+		if encoding, err := htmlindex.Get(normalizedCharset); err == nil {
+			if encoded, encodeErr := encoding.NewEncoder().Bytes(data); encodeErr == nil {
+				data = encoded
+			}
+		}
+	}
+	const hexDigits = "0123456789ABCDEF"
+	var encoded strings.Builder
+	for _, current := range data {
+		switch {
+		case current >= 'a' && current <= 'z',
+			current >= 'A' && current <= 'Z',
+			current >= '0' && current <= '9',
+			current == '-', current == '_', current == '.', current == '*':
+			encoded.WriteByte(current)
+		case current == ' ':
+			encoded.WriteByte('+')
+		default:
+			encoded.WriteByte('%')
+			encoded.WriteByte(hexDigits[current>>4])
+			encoded.WriteByte(hexDigits[current&0x0f])
+		}
+	}
+	return encoded.String()
+}
+
+func sourceFieldAlreadyEncoded(value string) bool {
+	for index := 0; index < len(value); index++ {
+		current := value[index]
+		switch {
+		case current >= 'a' && current <= 'z',
+			current >= 'A' && current <= 'Z',
+			current >= '0' && current <= '9',
+			strings.ContainsRune("-_.~!*'();:@&=+$,/?#[]+", rune(current)):
+			continue
+		case current == '%' && index+2 < len(value) && isSourceHex(value[index+1]) && isSourceHex(value[index+2]):
+			index += 2
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isSourceHex(value byte) bool {
+	return value >= '0' && value <= '9' ||
+		value >= 'a' && value <= 'f' ||
+		value >= 'A' && value <= 'F'
+}
+
+func escapeSourceFieldValue(value string) string {
+	var escaped strings.Builder
+	for _, codeUnit := range utf16.Encode([]rune(value)) {
+		switch {
+		case codeUnit >= '0' && codeUnit <= '9',
+			codeUnit >= 'A' && codeUnit <= 'Z',
+			codeUnit >= 'a' && codeUnit <= 'z':
+			escaped.WriteRune(rune(codeUnit))
+		case codeUnit < 0x10:
+			fmt.Fprintf(&escaped, "%%0%x", codeUnit)
+		case codeUnit < 0x100:
+			fmt.Fprintf(&escaped, "%%%x", codeUnit)
+		default:
+			fmt.Fprintf(&escaped, "%%u%x", codeUnit)
+		}
+	}
+	return escaped.String()
 }
 
 func cloneHeaders(headers map[string]string) map[string]string {

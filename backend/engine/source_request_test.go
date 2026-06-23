@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/text/encoding/simplifiedchinese"
+
 	"openreader/backend/models"
 )
 
@@ -101,6 +103,49 @@ func TestSearchBooksPageExecutesUpstreamRetryOption(t *testing.T) {
 	}
 }
 
+func TestSearchBooksPageUsesSourceCharsetForRequestAndResponse(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.RawQuery != "key=%D6%D0%CE%C4+%CA%E9" {
+				t.Fatalf("GBK search query = %q", request.URL.RawQuery)
+			}
+			body, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(`
+				<article class="book">
+					<a class="name" href="/book/gbk">中文书名</a>
+				</article>
+			`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(string(body))),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{ID: 6, Name: "GBK 搜索源", Charset: "gbk"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    `https://source.example/search?key={keyword}`,
+		BookListRule: ".book",
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SearchBooksPage(source, "中文 书", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Title != "中文书名" {
+		t.Fatalf("GBK search result = %+v", result)
+	}
+}
+
 func TestPrepareSourceRequestKeepsJSONKeywordUnescaped(t *testing.T) {
 	request, err := prepareSourceRequest(
 		`https://source.example/search, {"method":"POST","body":{"keyword":"{keyword}","page":"{page}"},"headers":"{\"Content-Type\":\"application/json\",\"X-Keyword\":\"{keyword}\"}"}`,
@@ -143,6 +188,39 @@ func TestPrepareSourceRequestSupportsUpstreamPageChoices(t *testing.T) {
 		if request.URL != test.url || request.Body != test.body {
 			t.Fatalf("page %d request = %+v, want url=%q body=%q", test.page, request, test.url, test.body)
 		}
+	}
+}
+
+func TestPrepareSourceRequestUsesConfiguredCharsetForFields(t *testing.T) {
+	request, err := PrepareSourceRequest(
+		`https://source.example/search?key={keyword}&kept=%D2%D1, {"method":"POST","charset":"gbk","body":"key={keyword}&kept=%D2%D1"}`,
+		"中文 书",
+		1,
+		"utf-8",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.URL != "https://source.example/search?key=%D6%D0%CE%C4+%CA%E9&kept=%D2%D1" ||
+		request.Body != "key=%D6%D0%CE%C4+%CA%E9&kept=%D2%D1" {
+		t.Fatalf("GBK request fields were not encoded like upstream: %+v", request)
+	}
+}
+
+func TestPrepareSourceRequestSupportsEscapeCharset(t *testing.T) {
+	request, err := PrepareSourceRequest(
+		`https://source.example/search?key={keyword}, {"charset":"escape"}`,
+		"中文😀",
+		1,
+		"utf-8",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.URL != "https://source.example/search?key=%u4e2d%u6587%ud83d%ude00" {
+		t.Fatalf("escape request field = %q", request.URL)
 	}
 }
 

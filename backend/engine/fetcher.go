@@ -8,10 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/htmlindex"
 	"golang.org/x/text/transform"
 )
 
@@ -181,23 +180,19 @@ func fetchTextRequestWithURLContext(
 }
 
 func DecodeBody(body []byte, charset string) (string, error) {
-	if utf8.Valid(body) && !isGBK(charset) {
+	normalized := strings.ToLower(strings.TrimSpace(charset))
+	if normalized == "" || normalized == "utf-8" || normalized == "utf8" || normalized == "escape" {
 		return string(body), nil
 	}
 
-	if isGBK(charset) {
-		reader := transform.NewReader(bytes.NewReader(body), simplifiedchinese.GBK.NewDecoder())
-		decoded, err := io.ReadAll(reader)
-		if err != nil {
-			return "", err
-		}
-		return string(decoded), nil
+	encoding, err := htmlindex.Get(normalized)
+	if err != nil {
+		return string(body), nil
 	}
-
-	return string(body), nil
-}
-
-func isGBK(charset string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(charset))
-	return normalized == "gbk" || normalized == "gb2312" || normalized == "gb18030"
+	reader := transform.NewReader(bytes.NewReader(body), encoding.NewDecoder())
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
 }
