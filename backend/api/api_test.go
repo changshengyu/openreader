@@ -1654,7 +1654,7 @@ func TestSourceManagement(t *testing.T) {
 	token := authHeader(t, router)
 
 	// create source
-	body := `{"name":"测试书源","baseUrl":"https://example.com","charset":"utf-8"}`
+	body := `{"name":"测试书源","baseUrl":"https://example.com","charset":"utf-8","concurrentRate":"3/1000"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/sources", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1680,6 +1680,9 @@ func TestSourceManagement(t *testing.T) {
 	if len(sources) != 1 {
 		t.Fatalf("expected 1 source, got %d", len(sources))
 	}
+	if sources[0].ConcurrentRate != "3/1000" {
+		t.Fatalf("source concurrent rate was not persisted: %+v", sources[0])
+	}
 
 	// delete source
 	req3 := httptest.NewRequest(http.MethodDelete, "/api/sources/1", nil)
@@ -1697,19 +1700,20 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 	token := authHeader(t, router)
 
 	source := models.BookSource{
-		Name:      "待编辑",
-		BaseURL:   "https://example.com",
-		SearchURL: "https://example.com/search",
-		Charset:   "gbk",
-		Group:     "旧分组",
-		Rules:     `{"searchUrl":"x"}`,
-		Enabled:   true,
+		Name:           "待编辑",
+		BaseURL:        "https://example.com",
+		SearchURL:      "https://example.com/search",
+		Charset:        "gbk",
+		ConcurrentRate: "1000",
+		Group:          "旧分组",
+		Rules:          `{"searchUrl":"x"}`,
+		Enabled:        true,
 	}
 	if err := server.db.Create(&source).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	body := `{"name":"待编辑","baseUrl":"","searchUrl":"","charset":"","group":"","rules":"","enabled":false}`
+	body := `{"name":"待编辑","baseUrl":"","searchUrl":"","charset":"","concurrentRate":"","group":"","rules":"","enabled":false}`
 	req := httptest.NewRequest(http.MethodPut, "/api/sources/"+strconv.FormatUint(uint64(source.ID), 10), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1723,7 +1727,7 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 	if err := server.db.First(&updated, source.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if updated.BaseURL != "" || updated.SearchURL != "" || updated.Group != "" || updated.Rules != "" || updated.Charset != "utf-8" || updated.Enabled {
+	if updated.BaseURL != "" || updated.SearchURL != "" || updated.ConcurrentRate != "" || updated.Group != "" || updated.Rules != "" || updated.Charset != "utf-8" || updated.Enabled {
 		t.Fatalf("source optional fields were not cleared: %+v", updated)
 	}
 }
@@ -1803,6 +1807,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"searchUrl":"https://reader.example/search, {\"method\":\"POST\",\"body\":\"key={{key}}&page={{page}}\",\"headers\":{\"X-Page\":\"{{page}}\"}}",
 			"exploreUrl":"https://reader.example/top/{page}",
 			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
+			"concurrentRate":"2/1000",
 			"enabled":false,
 			"ruleSearch":{
 				"bookList":".book",
@@ -1850,7 +1855,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		t.Fatalf("expected 1 source, got %d", len(sources))
 	}
 	source := sources[0]
-	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.Enabled {
+	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.ConcurrentRate != "2/1000" || source.Enabled {
 		t.Fatalf("unexpected upstream source mapping: %+v", source)
 	}
 	rule, err := source.ParsedRules()
@@ -2563,12 +2568,13 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 
 	sources := []models.BookSource{
 		{
-			Name:      "导出源一",
-			BaseURL:   "https://one.example",
-			SearchURL: "https://one.example/legacy-search?q={keyword}",
-			Charset:   "gbk",
-			Enabled:   true,
-			Group:     "导出分组",
+			Name:           "导出源一",
+			BaseURL:        "https://one.example",
+			SearchURL:      "https://one.example/legacy-search?q={keyword}",
+			Charset:        "gbk",
+			ConcurrentRate: "2/1000",
+			Enabled:        true,
+			Group:          "导出分组",
 		},
 		{Name: "导出源二", BaseURL: "https://two.example", Charset: "utf-8", Enabled: true},
 		{Name: "导出源三", BaseURL: "https://three.example", Charset: "utf-8", Enabled: false},
@@ -2655,6 +2661,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.SearchURL != "https://one.example/search?q={{key}}" ||
 		first.ExploreURL != "https://one.example/explore/{{page}}" ||
 		first.Charset != "gbk" ||
+		first.ConcurrentRate != "2/1000" ||
 		first.RuleSearch.BookList != ".book" ||
 		first.RuleSearch.Name != ".name" ||
 		first.RuleSearch.BookURL != "a@href" ||

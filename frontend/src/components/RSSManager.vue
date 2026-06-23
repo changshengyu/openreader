@@ -120,7 +120,7 @@
               <el-form-item label="请求头 header"><el-input v-model="draft.header" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" placeholder='JSON 或每行 Header: Value' /></el-form-item>
               <el-form-item label="登录地址（仅保存）"><el-input v-model="draft.loginUrl" /></el-form-item>
               <el-form-item label="登录检测 JS（仅保存）"><el-input v-model="draft.loginCheckJs" type="textarea" :rows="2" /></el-form-item>
-              <el-form-item label="并发率（仅保存）"><el-input v-model="draft.concurrentRate" /></el-form-item>
+              <el-form-item label="并发率"><el-input v-model="draft.concurrentRate" placeholder="例如 1000 或 3/1000" /></el-form-item>
               <el-form-item label="排序地址 sortUrl"><el-input v-model="draft.sortUrl" /></el-form-item>
               <el-form-item label="文章列表 ruleArticles"><el-input v-model="draft.ruleArticles" /></el-form-item>
               <el-form-item label="标题 ruleTitle"><el-input v-model="draft.ruleTitle" /></el-form-item>

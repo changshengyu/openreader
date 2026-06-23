@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -109,5 +110,82 @@ func TestDecodeBodySupportsExplicitUpstreamCharset(t *testing.T) {
 	}
 	if decoded != "繁體內容" {
 		t.Fatalf("Big5 response decoded as %q", decoded)
+	}
+}
+
+func TestSourceHTTPClientConfiguresAuthenticatedProxy(t *testing.T) {
+	client, err := sourceHTTPClient(
+		&http.Client{Timeout: time.Second},
+		"http://127.0.0.1:18080@reader@secret",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.Proxy == nil {
+		t.Fatalf("proxy transport was not configured: %#v", client.Transport)
+	}
+	targetURL, err := url.Parse("https://source.example/content")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyURL, err := transport.Proxy(&http.Request{URL: targetURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	password, _ := proxyURL.User.Password()
+	if proxyURL.String() != "http://reader:secret@127.0.0.1:18080" ||
+		proxyURL.User.Username() != "reader" ||
+		password != "secret" {
+		t.Fatalf("authenticated proxy = %v", proxyURL)
+	}
+}
+
+func TestFetchSourceTextHonorsConcurrentRateAndContext(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restore()
+
+	request := SourceRequest{
+		URL:            "https://source.example/content",
+		SourceKey:      "rate-test-serial",
+		ConcurrentRate: "80",
+	}
+	if _, _, err := FetchSourceTextWithURLContext(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, _, err := FetchSourceTextWithURLContext(ctx, request)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) < 15*time.Millisecond {
+		t.Fatalf("rate wait did not honor context: elapsed=%v err=%v", time.Since(started), err)
+	}
+
+	windowRequest := SourceRequest{
+		URL:            "https://source.example/content",
+		SourceKey:      "rate-test-window",
+		ConcurrentRate: "2/60",
+	}
+	if _, _, err := FetchSourceTextWithURLContext(context.Background(), windowRequest); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := FetchSourceTextWithURLContext(context.Background(), windowRequest); err != nil {
+		t.Fatal(err)
+	}
+	started = time.Now()
+	if _, _, err := FetchSourceTextWithURLContext(context.Background(), windowRequest); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) < 45*time.Millisecond {
+		t.Fatalf("window rate did not delay third request: %v", time.Since(started))
 	}
 }

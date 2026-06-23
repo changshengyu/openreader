@@ -14,13 +14,16 @@ import (
 )
 
 type sourceRequest struct {
-	URL     string
-	Method  string
-	Body    string
-	Charset string
-	Headers map[string]string
-	Retry   int
-	Type    string
+	URL            string
+	Method         string
+	Body           string
+	Charset        string
+	Headers        map[string]string
+	Retry          int
+	Type           string
+	Proxy          string
+	SourceKey      string
+	ConcurrentRate string
 }
 
 type sourceURLOption struct {
@@ -36,8 +39,13 @@ var sourcePageChoicePattern = regexp.MustCompile(`<([^<>]*)>`)
 
 type SourceRequest = sourceRequest
 
-func PrepareSourceRequest(rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string) (SourceRequest, error) {
-	return prepareSourceRequest(rawURL, keyword, page, defaultCharset, sourceHeaders)
+type SourceRequestPolicy struct {
+	SourceKey      string
+	ConcurrentRate string
+}
+
+func PrepareSourceRequest(rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string, policies ...SourceRequestPolicy) (SourceRequest, error) {
+	return prepareSourceRequest(rawURL, keyword, page, defaultCharset, sourceHeaders, policies...)
 }
 
 func ResolveSourceURLTemplate(baseURL, value string) string {
@@ -48,7 +56,7 @@ func SourceRequestKey(request SourceRequest) string {
 	return sourceRequestKey(request)
 }
 
-func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string) (sourceRequest, error) {
+func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string, policies ...SourceRequestPolicy) (sourceRequest, error) {
 	urlTemplate, optionText := splitSourceURLOption(rawURL)
 	option := sourceURLOption{}
 	if optionText != "" {
@@ -68,6 +76,11 @@ func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset strin
 		Method:  http.MethodGet,
 		Charset: requestCharset,
 		Headers: cloneHeaders(sourceHeaders),
+	}
+	request.Proxy = takeHeader(request.Headers, "proxy")
+	if len(policies) > 0 {
+		request.SourceKey = strings.TrimSpace(policies[0].SourceKey)
+		request.ConcurrentRate = strings.TrimSpace(policies[0].ConcurrentRate)
 	}
 	if strings.EqualFold(strings.TrimSpace(option.Method), http.MethodPost) {
 		request.Method = http.MethodPost
@@ -121,13 +134,14 @@ func resolveSourceURLTemplate(baseURL, value string) string {
 	return resolved + ", " + optionPart
 }
 
-func prepareResolvedSourceRequest(baseURL, rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string) (sourceRequest, error) {
+func prepareResolvedSourceRequest(baseURL, rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string, policies ...SourceRequestPolicy) (sourceRequest, error) {
 	return prepareSourceRequest(
 		resolveSourceURLTemplate(baseURL, rawURL),
 		keyword,
 		page,
 		defaultCharset,
 		sourceHeaders,
+		policies...,
 	)
 }
 
@@ -158,6 +172,8 @@ func sourceRequestKey(request sourceRequest) string {
 	key.WriteString(strconv.Itoa(request.Retry))
 	key.WriteByte('\n')
 	key.WriteString(strings.ToLower(strings.TrimSpace(request.Type)))
+	key.WriteByte('\n')
+	key.WriteString(strings.TrimSpace(request.Proxy))
 	for _, name := range headerNames {
 		key.WriteByte('\n')
 		key.WriteString(name)
@@ -396,6 +412,16 @@ func setHeader(headers map[string]string, name, value string) {
 		}
 	}
 	headers[name] = value
+}
+
+func takeHeader(headers map[string]string, name string) string {
+	for key, value := range headers {
+		if strings.EqualFold(strings.TrimSpace(key), name) {
+			delete(headers, key)
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func normalizeSourcePage(page int) int {

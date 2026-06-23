@@ -229,6 +229,9 @@
             <el-option label="GBK" value="gbk" />
           </el-select>
         </el-form-item>
+        <el-form-item label="并发率">
+          <el-input v-model="sourceForm.concurrentRate" placeholder="例如 1000 或 3/1000" />
+        </el-form-item>
         <el-form-item label="常用规则">
           <el-collapse class="rule-collapse">
             <el-collapse-item title="搜索结果" name="search">
@@ -399,7 +402,7 @@ const importPreviewSaving = ref(false)
 const showEditor = ref(false)
 const editingSourceId = ref(null)
 const savingSource = ref(false)
-const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', charset: 'utf-8', rules: '', enabled: true })
+const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', charset: 'utf-8', concurrentRate: '', rules: '', enabled: true })
 const ruleKeys = [
   'exploreUrl',
   'bookListRule',
@@ -631,6 +634,7 @@ function openEditor(source) {
     baseUrl: source?.baseUrl || '',
     searchUrl: source?.searchUrl || '',
     charset: source?.charset || 'utf-8',
+    concurrentRate: source?.concurrentRate || '',
     rules: source?.rules || '',
     enabled: source?.enabled ?? true,
   })

@@ -34,6 +34,7 @@ type bookSourcePayload struct {
 	BaseURL         string                   `json:"baseUrl"`
 	SearchURL       string                   `json:"searchUrl"`
 	Charset         string                   `json:"charset"`
+	ConcurrentRate  string                   `json:"concurrentRate"`
 	Rules           string                   `json:"rules"`
 	Enabled         *bool                    `json:"enabled"`
 	Group           string                   `json:"group"`
@@ -100,6 +101,7 @@ type exportedBookSource struct {
 	RuleTOC         legacySourceTOCRule      `json:"ruleToc"`
 	RuleContent     legacySourceContentRule  `json:"ruleContent"`
 	Charset         string                   `json:"charset,omitempty"`
+	ConcurrentRate  string                   `json:"concurrentRate,omitempty"`
 	Rules           string                   `json:"rules,omitempty"`
 }
 
@@ -113,13 +115,14 @@ func (p bookSourcePayload) toModel() models.BookSource {
 		rules = p.compatRules()
 	}
 	return models.BookSource{
-		Name:      firstNonBlank(p.Name, p.BookSourceName),
-		BaseURL:   firstNonBlank(p.BaseURL, p.BookSourceURL),
-		SearchURL: normalizeUpstreamURLTemplate(p.SearchURL),
-		Charset:   strings.TrimSpace(p.Charset),
-		Rules:     rules,
-		Enabled:   enabled,
-		Group:     firstNonBlank(p.Group, p.BookSourceGroup),
+		Name:           firstNonBlank(p.Name, p.BookSourceName),
+		BaseURL:        firstNonBlank(p.BaseURL, p.BookSourceURL),
+		SearchURL:      normalizeUpstreamURLTemplate(p.SearchURL),
+		Charset:        strings.TrimSpace(p.Charset),
+		ConcurrentRate: strings.TrimSpace(p.ConcurrentRate),
+		Rules:          rules,
+		Enabled:        enabled,
+		Group:          firstNonBlank(p.Group, p.BookSourceGroup),
 	}
 }
 
@@ -327,7 +330,7 @@ func (s *Server) createSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 
-	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "Rules", "Enabled", "Group").Create(&source).Error; err != nil {
+	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "Rules", "Enabled", "Group").Create(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
 	}
@@ -370,6 +373,7 @@ func (s *Server) updateSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 	source.Rules = strings.TrimSpace(req.Rules)
+	source.ConcurrentRate = strings.TrimSpace(req.ConcurrentRate)
 	source.Group = strings.TrimSpace(req.Group)
 	source.Enabled = req.Enabled
 
@@ -719,8 +723,9 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 				Content:        exportUpstreamSelectorRule(rule.ContentRule),
 				NextContentURL: exportUpstreamSelectorRule(rule.NextContentURLRule),
 			},
-			Charset: source.Charset,
-			Rules:   source.Rules,
+			Charset:        source.Charset,
+			ConcurrentRate: source.ConcurrentRate,
+			Rules:          source.Rules,
 		})
 	}
 	return exported
@@ -854,6 +859,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 		source.Rules = strings.TrimSpace(source.Rules)
 		source.Group = strings.TrimSpace(source.Group)
 		source.Charset = strings.TrimSpace(source.Charset)
+		source.ConcurrentRate = strings.TrimSpace(source.ConcurrentRate)
 		if source.Charset == "" {
 			source.Charset = "utf-8"
 		}
@@ -863,6 +869,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			existing.BaseURL = source.BaseURL
 			existing.SearchURL = source.SearchURL
 			existing.Charset = source.Charset
+			existing.ConcurrentRate = source.ConcurrentRate
 			existing.Rules = source.Rules
 			existing.Enabled = source.Enabled
 			existing.Group = source.Group

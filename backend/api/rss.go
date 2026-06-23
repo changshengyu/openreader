@@ -19,6 +19,17 @@ import (
 
 const maxRSSPaginationPages = 1000
 
+func rssSourceRequestPolicy(source models.RSSSource) engine.SourceRequestPolicy {
+	key := strings.TrimSpace(source.URL)
+	if key == "" {
+		key = fmt.Sprintf("rss-source:%d", source.ID)
+	}
+	return engine.SourceRequestPolicy{
+		SourceKey:      key,
+		ConcurrentRate: strings.TrimSpace(source.ConcurrentRate),
+	}
+}
+
 type rssSourceRequest struct {
 	Title             string `json:"title"`
 	URL               string `json:"url"`
@@ -466,7 +477,7 @@ func (s *Server) getRSSArticleContent(c *gin.Context) {
 	}
 	if strings.TrimSpace(source.RuleContent) != "" && strings.TrimSpace(article.Link) != "" &&
 		(strings.TrimSpace(article.Content) == "" || c.Query("refresh") == "1") {
-		request, err := engine.PrepareSourceRequest(article.Link, "", 1, "utf-8", rssSourceHeaders(source))
+		request, err := engine.PrepareSourceRequest(article.Link, "", 1, "utf-8", rssSourceHeaders(source), rssSourceRequestPolicy(source))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to prepare RSS article: " + err.Error()})
 			return
@@ -572,7 +583,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 	if strings.TrimSpace(source.RuleArticles) != "" {
 		return fetchRSSRuleArticles(ctx, source, fetchURL, headers)
 	}
-	request, err := engine.PrepareSourceRequest(fetchURL, "", 1, "utf-8", headers)
+	request, err := engine.PrepareSourceRequest(fetchURL, "", 1, "utf-8", headers, rssSourceRequestPolicy(source))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -644,7 +655,7 @@ func fetchRSSRuleArticles(ctx context.Context, source models.RSSSource, fetchURL
 	pageCount := 0
 
 	for page := 1; pageCount < maxRSSPaginationPages; page++ {
-		request, err := engine.PrepareSourceRequest(currentTemplate, "", page, "utf-8", headers)
+		request, err := engine.PrepareSourceRequest(currentTemplate, "", page, "utf-8", headers, rssSourceRequestPolicy(source))
 		if err != nil {
 			return nil, pageCount, err
 		}
@@ -680,7 +691,7 @@ func fetchRSSRuleArticles(ctx context.Context, source models.RSSSource, fetchURL
 			}
 			articleKeys[key] = true
 			summaryBaseURL := row.Link
-			if request, prepareErr := engine.PrepareSourceRequest(row.Link, "", 1, "utf-8", headers); prepareErr == nil {
+			if request, prepareErr := engine.PrepareSourceRequest(row.Link, "", 1, "utf-8", headers, rssSourceRequestPolicy(source)); prepareErr == nil {
 				summaryBaseURL = request.URL
 			}
 			articles = append(articles, models.RSSArticle{

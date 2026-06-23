@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 
@@ -146,6 +147,45 @@ func TestSearchBooksPageUsesSourceCharsetForRequestAndResponse(t *testing.T) {
 	}
 }
 
+func TestSearchBooksPageAppliesSourceConcurrentRate(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return searchPaginationResponse(request, `
+				<article class="book">
+					<a class="name" href="/book/rate">限速书籍</a>
+				</article>
+			`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{
+		ID:             77,
+		Name:           "限速搜索源",
+		BaseURL:        "https://rate-source.example",
+		Charset:        "utf-8",
+		ConcurrentRate: "60",
+	}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    "https://rate-source.example/search?key={keyword}",
+		BookListRule: ".book",
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SearchBooksPage(source, "限速", 1); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if _, err := SearchBooksPage(source, "限速", 1); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) < 45*time.Millisecond {
+		t.Fatalf("book source concurrentRate did not reach request execution: %v", time.Since(started))
+	}
+}
+
 func TestPrepareSourceRequestKeepsJSONKeywordUnescaped(t *testing.T) {
 	request, err := prepareSourceRequest(
 		`https://source.example/search, {"method":"POST","body":{"keyword":"{keyword}","page":"{page}"},"headers":"{\"Content-Type\":\"application/json\",\"X-Keyword\":\"{keyword}\"}"}`,
@@ -240,6 +280,24 @@ func TestPrepareSourceRequestPreservesRetryAndBinaryType(t *testing.T) {
 	}
 	if request.Headers["Content-Type"] != "application/x-www-form-urlencoded; charset=utf-8" {
 		t.Fatalf("type must not be treated as request Content-Type: %+v", request.Headers)
+	}
+}
+
+func TestPrepareSourceRequestExtractsStaticProxyOnly(t *testing.T) {
+	request, err := PrepareSourceRequest(
+		`https://source.example/search, {"headers":{"proxy":"url-option-value"}}`,
+		"",
+		1,
+		"utf-8",
+		map[string]string{"Proxy": "http://proxy.example:8080", "X-Source": "yes"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Proxy != "http://proxy.example:8080" ||
+		request.Headers["proxy"] != "url-option-value" ||
+		request.Headers["X-Source"] != "yes" {
+		t.Fatalf("static proxy extraction mismatch: %+v", request)
 	}
 }
 
