@@ -34,6 +34,7 @@ type BookSource struct {
 	SearchURL      string    `json:"searchUrl" gorm:"size:500"`
 	Charset        string    `json:"charset" gorm:"size:40;default:utf-8"`
 	ConcurrentRate string    `json:"concurrentRate" gorm:"size:80"`
+	CustomOrder    int       `json:"customOrder" gorm:"default:0"`
 	Rules          string    `json:"rules" gorm:"type:text"`
 	Enabled        bool      `json:"enabled"`
 	EnabledExplore *bool     `json:"enabledExplore" gorm:"not null;default:true"`

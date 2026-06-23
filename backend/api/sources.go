@@ -21,7 +21,7 @@ import (
 
 func (s *Server) listSources(c *gin.Context) {
 	var sources []models.BookSource
-	if err := s.db.Order("created_at desc").Find(&sources).Error; err != nil {
+	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
@@ -35,6 +35,7 @@ type bookSourcePayload struct {
 	SearchURL       string                   `json:"searchUrl"`
 	Charset         string                   `json:"charset"`
 	ConcurrentRate  string                   `json:"concurrentRate"`
+	CustomOrder     int                      `json:"customOrder"`
 	Rules           string                   `json:"rules"`
 	Enabled         *bool                    `json:"enabled"`
 	EnabledExplore  *bool                    `json:"enabledExplore"`
@@ -103,6 +104,7 @@ type exportedBookSource struct {
 	RuleContent     legacySourceContentRule  `json:"ruleContent"`
 	Charset         string                   `json:"charset,omitempty"`
 	ConcurrentRate  string                   `json:"concurrentRate,omitempty"`
+	CustomOrder     int                      `json:"customOrder"`
 	Rules           string                   `json:"rules,omitempty"`
 }
 
@@ -125,6 +127,7 @@ func (p bookSourcePayload) toModel() models.BookSource {
 		SearchURL:      normalizeUpstreamURLTemplate(p.SearchURL),
 		Charset:        strings.TrimSpace(p.Charset),
 		ConcurrentRate: strings.TrimSpace(p.ConcurrentRate),
+		CustomOrder:    p.CustomOrder,
 		Rules:          rules,
 		Enabled:        enabled,
 		EnabledExplore: &enabledExplore,
@@ -336,7 +339,7 @@ func (s *Server) createSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 
-	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+	if err := s.db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "CustomOrder", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
 	}
@@ -380,6 +383,7 @@ func (s *Server) updateSource(c *gin.Context) {
 	}
 	source.Rules = strings.TrimSpace(req.Rules)
 	source.ConcurrentRate = strings.TrimSpace(req.ConcurrentRate)
+	source.CustomOrder = req.CustomOrder
 	source.Group = strings.TrimSpace(req.Group)
 	source.Enabled = req.Enabled
 	if req.EnabledExplore != nil {
@@ -488,7 +492,7 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 	}
 
 	var sources []models.BookSource
-	if err := s.db.Order("name asc").Find(&sources).Error; err != nil {
+	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
@@ -654,7 +658,7 @@ func (s *Server) exportSources(c *gin.Context) {
 	if !ok {
 		return
 	}
-	query := s.db.Order("id asc")
+	query := s.db.Order("custom_order asc, id asc")
 	if len(sourceIDs) > 0 {
 		query = query.Where("id IN ?", sourceIDs)
 	}
@@ -734,6 +738,7 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			},
 			Charset:        source.Charset,
 			ConcurrentRate: source.ConcurrentRate,
+			CustomOrder:    source.CustomOrder,
 			Rules:          source.Rules,
 		})
 	}
@@ -879,6 +884,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			existing.SearchURL = source.SearchURL
 			existing.Charset = source.Charset
 			existing.ConcurrentRate = source.ConcurrentRate
+			existing.CustomOrder = source.CustomOrder
 			existing.Rules = source.Rules
 			existing.Enabled = source.Enabled
 			existing.EnabledExplore = source.EnabledExplore
@@ -891,7 +897,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			continue
 		}
 
-		if err := db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+		if err := db.Select("Name", "BaseURL", "SearchURL", "Charset", "ConcurrentRate", "CustomOrder", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 			skipped++
 			continue
 		}

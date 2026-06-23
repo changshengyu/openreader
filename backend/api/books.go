@@ -1651,7 +1651,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 			return
 		}
 	}
-	if err := query.Order("id asc").Offset(offset).Limit(limit).Find(&sources).Error; err != nil {
+	if err := query.Order("custom_order asc, id asc").Offset(offset).Limit(limit).Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
 		return
 	}
@@ -1670,6 +1670,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 		Current            bool   `json:"current"`
 	}
 	type sourceCandidateBatch struct {
+		Index      int
 		Candidates []sourceCandidate
 		Failed     bool
 		Empty      bool
@@ -1697,10 +1698,10 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
 	parentCtx := c.Request.Context()
-	for _, source := range sources {
+	for index, source := range sources {
 		source := source
 		wg.Add(1)
-		go func() {
+		go func(index int) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -1711,7 +1712,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 			cancel()
 			elapsed := time.Since(started).Milliseconds()
 			if err != nil {
-				channel <- sourceCandidateBatch{Failed: true}
+				channel <- sourceCandidateBatch{Index: index, Failed: true}
 				return
 			}
 			candidates := make([]sourceCandidate, 0)
@@ -1737,10 +1738,11 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 				}
 			}
 			channel <- sourceCandidateBatch{
+				Index:      index,
 				Candidates: candidates,
 				Empty:      len(candidates) == 0,
 			}
-		}()
+		}(index)
 	}
 	go func() {
 		wg.Wait()
@@ -1749,7 +1751,11 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	failedSources := 0
 	emptySources := 0
 	matchedSources := 0
+	batches := make([]sourceCandidateBatch, len(sources))
 	for batch := range channel {
+		batches[batch.Index] = batch
+	}
+	for _, batch := range batches {
 		if batch.Failed {
 			failedSources++
 			continue

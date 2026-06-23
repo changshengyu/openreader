@@ -150,7 +150,7 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	} else {
 		query = query.Where("enabled = ?", true)
 	}
-	if err := query.Find(&sources).Error; err != nil {
+	if err := query.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}

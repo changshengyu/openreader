@@ -26,7 +26,7 @@ type exploreEntry struct {
 
 func (s *Server) listExploreSources(c *gin.Context) {
 	var sources []models.BookSource
-	if err := s.db.Where("enabled = ? AND enabled_explore = ?", true, true).Order("name asc").Find(&sources).Error; err != nil {
+	if err := s.db.Where("enabled = ? AND enabled_explore = ?", true, true).Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}

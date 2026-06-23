@@ -43,7 +43,7 @@ func (s *Server) search(c *gin.Context) {
 	}
 
 	var sources []models.BookSource
-	query := s.db.Where("enabled = ?", true).Order("id ASC")
+	query := s.db.Where("enabled = ?", true).Order("custom_order ASC, id ASC")
 	if len(req.SourceIDs) > 0 {
 		query = query.Where("id IN ?", req.SourceIDs)
 	}
@@ -155,6 +155,7 @@ func concurrentSearchFrom(parent context.Context, sources []models.BookSource, k
 }
 
 type searchOutcome struct {
+	Index   int
 	Results []engine.SearchResult
 	Error   error
 }
@@ -166,15 +167,15 @@ func searchSourceBatch(parent context.Context, sources []models.BookSource, keyw
 	limit := normalizedConcurrentCount(concurrentCount, len(sources))
 	workerGate := make(chan struct{}, limit)
 
-	for _, source := range sources {
+	for index, source := range sources {
 		wg.Add(1)
 		source := source
-		go func() {
+		go func(index int) {
 			defer wg.Done()
 			select {
 			case workerGate <- struct{}{}:
 			case <-parent.Done():
-				channel <- searchOutcome{Error: parent.Err()}
+				channel <- searchOutcome{Index: index, Error: parent.Err()}
 				return
 			}
 			defer func() { <-workerGate }()
@@ -184,8 +185,8 @@ func searchSourceBatch(parent context.Context, sources []models.BookSource, keyw
 			if errors.Is(err, context.DeadlineExceeded) {
 				err = errTimeout
 			}
-			channel <- searchOutcome{Results: results, Error: err}
-		}()
+			channel <- searchOutcome{Index: index, Results: results, Error: err}
+		}(index)
 	}
 
 	go func() {
@@ -193,9 +194,9 @@ func searchSourceBatch(parent context.Context, sources []models.BookSource, keyw
 		close(channel)
 	}()
 
-	outcomes := make([]searchOutcome, 0, len(sources))
+	outcomes := make([]searchOutcome, len(sources))
 	for outcome := range channel {
-		outcomes = append(outcomes, outcome)
+		outcomes[outcome.Index] = outcome
 	}
 	return outcomes
 }

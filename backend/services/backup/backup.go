@@ -97,7 +97,7 @@ func (s *Service) run() (string, error) {
 
 func (s *Service) addSources(zipWriter *zip.Writer) {
 	var sources []models.BookSource
-	if err := s.db.Order("id asc").Find(&sources).Error; err != nil {
+	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(sources, "", "  ")

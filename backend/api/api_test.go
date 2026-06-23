@@ -295,6 +295,88 @@ func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *t
 	}
 }
 
+func TestBookSourceCustomOrderIsStableAcrossListsAndConcurrentSearch(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	for _, item := range []struct {
+		name  string
+		order int
+	}{
+		{name: "late", order: 20},
+		{name: "first", order: 5},
+	} {
+		source := models.BookSource{
+			Name:        item.name,
+			BaseURL:     "https://order.example/" + item.name,
+			Charset:     "utf-8",
+			CustomOrder: item.order,
+			Enabled:     true,
+		}
+		if err := source.SetRules(models.BookSourceRule{
+			SearchURL:    "https://order.example/" + item.name + "?q={keyword}",
+			ExploreURL:   "https://order.example/" + item.name + "/explore",
+			BookListRule: ".book",
+			BookNameRule: ".name",
+			BookURLRule:  ".name|attr:href",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.db.Create(&source).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			name := strings.Trim(strings.TrimSuffix(request.URL.Path, "/explore"), "/")
+			if name == "first" {
+				time.Sleep(25 * time.Millisecond)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					`<article class="book"><a class="name" href="/book/` + name + `">` + name + `</a></article>`,
+				)),
+				Header:  make(http.Header),
+				Request: request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	listReq.Header.Set("Authorization", token)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	var listed []models.BookSource
+	if listW.Code != http.StatusOK || json.Unmarshal(listW.Body.Bytes(), &listed) != nil ||
+		len(listed) != 2 || listed[0].Name != "first" || listed[1].Name != "late" {
+		t.Fatalf("source list custom order: %d %+v", listW.Code, listed)
+	}
+
+	exploreReq := httptest.NewRequest(http.MethodGet, "/api/explore/sources", nil)
+	exploreReq.Header.Set("Authorization", token)
+	exploreW := httptest.NewRecorder()
+	router.ServeHTTP(exploreW, exploreReq)
+	var explored []exploreSourceResponse
+	if exploreW.Code != http.StatusOK || json.Unmarshal(exploreW.Body.Bytes(), &explored) != nil ||
+		len(explored) != 2 || explored[0].Name != "first" || explored[1].Name != "late" {
+		t.Fatalf("explore source custom order: %d %+v", exploreW.Code, explored)
+	}
+
+	searchReq := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(`{"keyword":"排序","concurrentCount":2}`))
+	searchReq.Header.Set("Authorization", token)
+	searchReq.Header.Set("Content-Type", "application/json")
+	searchW := httptest.NewRecorder()
+	router.ServeHTTP(searchW, searchReq)
+	var searched []engine.SearchResult
+	if searchW.Code != http.StatusOK || json.Unmarshal(searchW.Body.Bytes(), &searched) != nil ||
+		len(searched) != 2 || searched[0].SourceName != "first" || searched[1].SourceName != "late" {
+		t.Fatalf("concurrent search custom order: %d %+v", searchW.Code, searched)
+	}
+}
+
 func TestSearchExecutesImportedUpstreamPostOptions(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -1815,6 +1897,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"exploreUrl":"https://reader.example/top/{page}",
 			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
 			"concurrentRate":"2/1000",
+			"customOrder":37,
 			"enabledExplore":false,
 			"enabled":false,
 			"ruleSearch":{
@@ -1863,7 +1946,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		t.Fatalf("expected 1 source, got %d", len(sources))
 	}
 	source := sources[0]
-	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.ConcurrentRate != "2/1000" || source.Enabled || source.IsExploreEnabled() {
+	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" || source.ConcurrentRate != "2/1000" || source.CustomOrder != 37 || source.Enabled || source.IsExploreEnabled() {
 		t.Fatalf("unexpected upstream source mapping: %+v", source)
 	}
 	rule, err := source.ParsedRules()
@@ -2581,6 +2664,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 			SearchURL:      "https://one.example/legacy-search?q={keyword}",
 			Charset:        "gbk",
 			ConcurrentRate: "2/1000",
+			CustomOrder:    37,
 			Enabled:        true,
 			EnabledExplore: boolPointer(false),
 			Group:          "导出分组",
@@ -2656,21 +2740,28 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 	if len(exported) != 2 {
 		t.Fatalf("expected 2 selected sources, got %+v", exported)
 	}
-	if exported[0].BookSourceName != "导出源一" || exported[1].BookSourceName != "导出源三" {
-		t.Fatalf("expected selected sources ordered by id, got %+v", exported)
+	if exported[0].BookSourceName != "导出源三" || exported[1].BookSourceName != "导出源一" {
+		t.Fatalf("expected selected sources ordered by customOrder then id, got %+v", exported)
 	}
 	for _, source := range exported {
 		if source.BookSourceName == "导出源二" {
 			t.Fatalf("unselected source should not be exported: %+v", exported)
 		}
 	}
-	first := exported[0]
+	var first exportedBookSource
+	for _, source := range exported {
+		if source.BookSourceName == "导出源一" {
+			first = source
+			break
+		}
+	}
 	if first.BookSourceURL != "https://one.example" ||
 		first.BookSourceGroup != "导出分组" ||
 		first.SearchURL != "https://one.example/search?q={{key}}" ||
 		first.ExploreURL != "https://one.example/explore/{{page}}" ||
 		first.Charset != "gbk" ||
 		first.ConcurrentRate != "2/1000" ||
+		first.CustomOrder != 37 ||
 		first.EnabledExplore ||
 		first.RuleSearch.BookList != ".book" ||
 		first.RuleSearch.Name != ".name" ||
@@ -2707,14 +2798,22 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 	if len(roundTripped) != 2 {
 		t.Fatalf("expected two round-tripped sources, got %+v", roundTripped)
 	}
-	reimportedRule, err := roundTripped[0].ParsedRules()
+	var reimported models.BookSource
+	for _, source := range roundTripped {
+		if source.Name == sources[0].Name {
+			reimported = source
+			break
+		}
+	}
+	reimportedRule, err := reimported.ParsedRules()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if roundTripped[0].Name != sources[0].Name ||
-		roundTripped[0].BaseURL != sources[0].BaseURL ||
-		roundTripped[0].Group != sources[0].Group ||
-		roundTripped[0].Charset != sources[0].Charset ||
+	if reimported.Name != sources[0].Name ||
+		reimported.BaseURL != sources[0].BaseURL ||
+		reimported.Group != sources[0].Group ||
+		reimported.Charset != sources[0].Charset ||
+		reimported.CustomOrder != sources[0].CustomOrder ||
 		reimportedRule.PaginationRule != ".next|attr:href" ||
 		reimportedRule.ExploreBookListRule != ".explore-card" ||
 		reimportedRule.ExploreBookURLRule != "a|attr:data-url" ||
@@ -2726,7 +2825,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimportedRule.NextContentURLRule != ".content-next|attr:href" ||
 		len(reimportedRule.TextReplaceRules) != 1 ||
 		reimportedRule.Headers["Referer"] != "https://one.example/" {
-		t.Fatalf("export should round-trip without losing OpenReader rules: source=%+v rule=%+v", roundTripped[0], reimportedRule)
+		t.Fatalf("export should round-trip without losing OpenReader rules: source=%+v rule=%+v", reimported, reimportedRule)
 	}
 }
 

@@ -26,6 +26,7 @@ type SearchResult struct {
 	BookURL       string `json:"bookUrl"`
 	SourceID      uint   `json:"sourceId"`
 	SourceName    string `json:"sourceName"`
+	OriginOrder   int    `json:"originOrder"`
 }
 
 type SearchPageResult struct {
@@ -271,8 +272,9 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 	results := make([]SearchResult, 0, len(items))
 	for _, sel := range items {
 		result := SearchResult{
-			SourceID:   source.ID,
-			SourceName: source.Name,
+			SourceID:    source.ID,
+			SourceName:  source.Name,
+			OriginOrder: source.CustomOrder,
 		}
 		result.Title = firstMatch(sel, rule.BookNameRule)
 		result.Author = firstMatch(sel, rule.BookAuthorRule)
