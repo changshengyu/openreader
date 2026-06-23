@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -6189,6 +6190,186 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	router.ServeHTTP(listW, listReq)
 	if listW.Code != http.StatusOK || !strings.Contains(listW.Body.String(), "规则文章") {
 		t.Fatalf("filtered RSS sort did not return article: %d %s", listW.Code, listW.Body.String())
+	}
+}
+
+func TestRSSRuleSourceExecutesPageRequestsAndArticleOptions(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	listBodies := make([]string, 0, 2)
+	var contentRequests int
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Header.Get("X-Feed") != "static" {
+				t.Fatalf("RSS static header missing: %v", request.Header)
+			}
+			responseBody := ""
+			responseRequest := request
+			switch request.URL.Path {
+			case "/news":
+				if request.Method != http.MethodPost {
+					t.Fatalf("RSS page method = %s, want POST", request.Method)
+				}
+				listBodies = append(listBodies, string(body))
+				if request.Header.Get("X-Page") != strings.TrimPrefix(string(body), "page=") {
+					t.Fatalf("RSS page option header mismatch: body=%s headers=%v", body, request.Header)
+				}
+				switch string(body) {
+				case "page=1":
+					responseBody = `
+						<article class="entry">
+							<a class="title" data-url='/post/1, {"method":"POST","body":"id=1","headers":{"X-Article":"one"}}'>第一页文章</a>
+						</article>
+					`
+				case "page=2":
+					responseBody = `
+						<article class="entry">
+							<a class="title" data-url='/post/1, {"method":"POST","body":"id=1","headers":{"X-Article":"one"}}'>第一页文章重复</a>
+						</article>
+						<article class="entry">
+							<a class="title" data-url="/post/2">第二页文章</a>
+						</article>
+					`
+				default:
+					t.Fatalf("unexpected RSS page body: %s", body)
+				}
+			case "/post/1":
+				contentRequests++
+				if request.Method != http.MethodPost || string(body) != "id=1" ||
+					request.Header.Get("X-Article") != "one" || request.Header.Get("X-Page") != "" {
+					t.Fatalf("RSS article options missing or leaked: %s body=%s headers=%v", request.Method, body, request.Header)
+				}
+				responseBody = `<div class="content">分页源正文<img src="./image.jpg"></div>`
+				redirectedURL, err := url.Parse("https://cdn.rss.example/articles/1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				responseRequest = request.Clone(request.Context())
+				responseRequest.URL = redirectedURL
+			default:
+				t.Fatalf("unexpected RSS request: %s", request.URL)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+				Header:     make(http.Header),
+				Request:    responseRequest,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.RSSSource{
+		UserID:          1,
+		Title:           "分页规则 RSS",
+		URL:             `https://rss.example/news, {"method":"POST","body":"page=<1,2>","headers":{"X-Page":"<1,2>"}}`,
+		Header:          `{"X-Feed":"static"}`,
+		RuleArticles:    ".entry",
+		RuleNextPage:    "PAGE",
+		RuleTitle:       ".title",
+		RuleLink:        ".title@data-url",
+		RuleContent:     ".content|html",
+		LoadWithBaseURL: true,
+		Enabled:         true,
+	}
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source.UserID = user.ID
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh", nil)
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK ||
+		!strings.Contains(refreshW.Body.String(), `"pages":2`) ||
+		!strings.Contains(refreshW.Body.String(), `"total":2`) {
+		t.Fatalf("refresh paginated RSS source: got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+	if strings.Join(listBodies, ",") != "page=1,page=2" {
+		t.Fatalf("RSS PAGE requests were not bounded by repeated request descriptor: %+v", listBodies)
+	}
+
+	var articles []models.RSSArticle
+	if err := server.db.Where("source_id = ?", source.ID).Order("title asc").Find(&articles).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(articles) != 2 {
+		t.Fatalf("expected two deduplicated RSS articles, got %+v", articles)
+	}
+	var first models.RSSArticle
+	for _, article := range articles {
+		if article.Title == "第一页文章" {
+			first = article
+			break
+		}
+	}
+	expectedLink := `https://rss.example/post/1, {"method":"POST","body":"id=1","headers":{"X-Article":"one"}}`
+	if first.ID == 0 || first.Link != expectedLink {
+		t.Fatalf("RSS article request options were not persisted: %+v", first)
+	}
+
+	contentReq := httptest.NewRequest(http.MethodGet, "/api/rss/articles/"+strconv.FormatUint(uint64(first.ID), 10)+"/content", nil)
+	contentReq.Header.Set("Authorization", token)
+	contentW := httptest.NewRecorder()
+	router.ServeHTTP(contentW, contentReq)
+	if contentW.Code != http.StatusOK ||
+		!strings.Contains(contentW.Body.String(), "分页源正文") ||
+		!strings.Contains(contentW.Body.String(), "https://cdn.rss.example/articles/image.jpg") {
+		t.Fatalf("load RSS POST article content: got %d: %s", contentW.Code, contentW.Body.String())
+	}
+	if contentRequests != 1 {
+		t.Fatalf("RSS article content requests = %d, want 1", contentRequests)
+	}
+}
+
+func TestFetchRSSRuleArticlesFollowsNextLinksWithoutLoops(t *testing.T) {
+	requested := make([]string, 0, 2)
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requested = append(requested, request.URL.Path)
+			body := ""
+			switch request.URL.Path {
+			case "/list/1":
+				body = `<article><a href="/post/1">第一篇</a></article><a class="next" href="/list/2">下一页</a>`
+			case "/list/2":
+				body = `<article><a href="/post/2">第二篇</a></article><a class="next" href="/list/1">循环</a>`
+			default:
+				t.Fatalf("unexpected RSS next-page request: %s", request.URL)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.RSSSource{
+		URL:          "https://rss.example/list/1",
+		RuleArticles: "article",
+		RuleNextPage: ".next@href",
+		RuleTitle:    "a",
+		RuleLink:     "a@href",
+	}
+	articles, pages, err := fetchRSSArticlesContext(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages != 2 || len(articles) != 2 ||
+		strings.Join(requested, ",") != "/list/1,/list/2" {
+		t.Fatalf("unexpected RSS next-page result: pages=%d articles=%+v requested=%v", pages, articles, requested)
 	}
 }
 

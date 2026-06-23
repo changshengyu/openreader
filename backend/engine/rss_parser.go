@@ -28,22 +28,32 @@ type RSSRuleArticle struct {
 	Link        string
 }
 
+type RSSRulePage struct {
+	Articles []RSSRuleArticle
+	NextURL  string
+}
+
 var (
 	simpleXPathAttrPattern     = regexp.MustCompile(`^([a-zA-Z0-9_-]+)\[@([a-zA-Z0-9_-]+)=['"]([^'"]+)['"]\]$`)
 	simpleXPathContainsPattern = regexp.MustCompile(`^([a-zA-Z0-9_-]+)\[contains\(@([a-zA-Z0-9_-]+),\s*['"]([^'"]+)['"]\)\]$`)
 )
 
 func ParseRSSRuleArticles(body string, baseURL string, rules RSSRuleSet) ([]RSSRuleArticle, error) {
+	page, err := ParseRSSRulePage(body, baseURL, rules, "")
+	return page.Articles, err
+}
+
+func ParseRSSRulePage(body string, baseURL string, rules RSSRuleSet, nextPageRule string) (RSSRulePage, error) {
 	document, err := goquery.NewDocumentFromReader(strings.NewReader(body))
 	if err != nil {
-		return nil, err
+		return RSSRulePage{}, err
 	}
 	articleRule := strings.TrimSpace(rules.Articles)
 	reverse := strings.HasPrefix(articleRule, "-")
 	articleRule = strings.TrimSpace(strings.TrimPrefix(articleRule, "-"))
 	selector := rssCSSSelector(articleRule)
 	if selector == "" {
-		return nil, nil
+		return RSSRulePage{}, nil
 	}
 	articles := make([]RSSRuleArticle, 0)
 	document.Find(selector).Each(func(_ int, item *goquery.Selection) {
@@ -52,7 +62,7 @@ func ParseRSSRuleArticles(body string, baseURL string, rules RSSRuleSet) ([]RSSR
 			PubDate:     rssRuleValue(item, rules.PubDate, false),
 			Description: rssRuleValue(item, rules.Description, true),
 			Image:       resolveRSSURL(baseURL, rssRuleValue(item, rules.Image, false)),
-			Link:        resolveRSSURL(baseURL, rssRuleValue(item, rules.Link, false)),
+			Link:        resolveRSSRequestURL(baseURL, rssRuleValue(item, rules.Link, false)),
 		}
 		article.Title = strings.TrimSpace(article.Title)
 		if article.Title != "" {
@@ -64,7 +74,14 @@ func ParseRSSRuleArticles(body string, baseURL string, rules RSSRuleSet) ([]RSSR
 			articles[left], articles[right] = articles[right], articles[left]
 		}
 	}
-	return articles, nil
+	nextURL := ""
+	nextPageRule = strings.TrimSpace(nextPageRule)
+	if strings.EqualFold(nextPageRule, "PAGE") {
+		nextURL = baseURL
+	} else if nextPageRule != "" {
+		nextURL = resolveRSSRequestURL(baseURL, rssRuleValue(document.Selection, nextPageRule, false))
+	}
+	return RSSRulePage{Articles: articles, NextURL: nextURL}, nil
 }
 
 func ExtractRSSRuleContent(body string, baseURL string, rule string) (string, error) {
@@ -235,4 +252,18 @@ func resolveRSSURL(baseURL string, value string) string {
 		return ""
 	}
 	return resolved.String()
+}
+
+func resolveRSSRequestURL(baseURL string, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	resolved := resolveSourceURLTemplate(baseURL, value)
+	urlPart, _ := splitSourceURLOption(resolved)
+	parsed, err := url.Parse(urlPart)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return ""
+	}
+	return resolved
 }

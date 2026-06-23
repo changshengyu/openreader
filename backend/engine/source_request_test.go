@@ -79,6 +79,32 @@ func TestPrepareSourceRequestKeepsJSONKeywordUnescaped(t *testing.T) {
 	}
 }
 
+func TestPrepareSourceRequestSupportsUpstreamPageChoices(t *testing.T) {
+	for _, test := range []struct {
+		page int
+		url  string
+		body string
+	}{
+		{page: 1, url: "https://source.example/list?offset=0", body: "page=first"},
+		{page: 2, url: "https://source.example/list?offset=20", body: "page=second"},
+		{page: 4, url: "https://source.example/list?offset=40", body: "page=last"},
+	} {
+		request, err := PrepareSourceRequest(
+			`https://source.example/list?offset=<0,20,40>, {"method":"POST","body":"page=<first,second,last>"}`,
+			"",
+			test.page,
+			"utf-8",
+			nil,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if request.URL != test.url || request.Body != test.body {
+			t.Fatalf("page %d request = %+v, want url=%q body=%q", test.page, request, test.url, test.body)
+		}
+	}
+}
+
 func TestSplitSourceURLOptionLeavesOrdinaryCommasInURL(t *testing.T) {
 	raw := `https://source.example/search?categories=1,2,3, {"method":"POST","body":"key={keyword}"}`
 	urlPart, optionPart := splitSourceURLOption(raw)

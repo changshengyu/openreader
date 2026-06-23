@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,22 @@ type sourceURLOption struct {
 	Headers any    `json:"headers"`
 	Body    any    `json:"body"`
 	Type    string `json:"type"`
+}
+
+var sourcePageChoicePattern = regexp.MustCompile(`<([^<>]*)>`)
+
+type SourceRequest = sourceRequest
+
+func PrepareSourceRequest(rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string) (SourceRequest, error) {
+	return prepareSourceRequest(rawURL, keyword, page, defaultCharset, sourceHeaders)
+}
+
+func ResolveSourceURLTemplate(baseURL, value string) string {
+	return resolveSourceURLTemplate(baseURL, value)
+}
+
+func SourceRequestKey(request SourceRequest) string {
+	return sourceRequestKey(request)
 }
 
 func prepareSourceRequest(rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string) (sourceRequest, error) {
@@ -88,6 +105,7 @@ func splitSourceURLOption(value string) (string, string) {
 
 func resolveSourceURLTemplate(baseURL, value string) string {
 	urlPart, optionPart := splitSourceURLOption(value)
+	baseURL, _ = splitSourceURLOption(baseURL)
 	resolved := resolveURL(baseURL, urlPart)
 	if optionPart == "" {
 		return resolved
@@ -139,12 +157,33 @@ func sourceRequestKey(request sourceRequest) string {
 
 func replaceSourceURLPlaceholders(value, keyword string, page int) string {
 	value = strings.ReplaceAll(value, "{keyword}", url.QueryEscape(keyword))
-	return strings.ReplaceAll(value, "{page}", strconv.Itoa(normalizeSourcePage(page)))
+	value = strings.ReplaceAll(value, "{page}", strconv.Itoa(normalizeSourcePage(page)))
+	return replaceSourcePageChoices(value, page)
 }
 
 func replaceSourceBodyPlaceholders(value, keyword string, page int) string {
 	value = strings.ReplaceAll(value, "{keyword}", keyword)
-	return strings.ReplaceAll(value, "{page}", strconv.Itoa(normalizeSourcePage(page)))
+	value = strings.ReplaceAll(value, "{page}", strconv.Itoa(normalizeSourcePage(page)))
+	return replaceSourcePageChoices(value, page)
+}
+
+func replaceSourcePageChoices(value string, page int) string {
+	page = normalizeSourcePage(page)
+	return sourcePageChoicePattern.ReplaceAllStringFunc(value, func(match string) string {
+		groups := sourcePageChoicePattern.FindStringSubmatch(match)
+		if len(groups) != 2 {
+			return match
+		}
+		choices := strings.Split(groups[1], ",")
+		if len(choices) == 0 {
+			return ""
+		}
+		index := page - 1
+		if index >= len(choices) {
+			index = len(choices) - 1
+		}
+		return strings.TrimSpace(choices[index])
+	})
 }
 
 func marshalSourceRequestBody(value any) (string, error) {

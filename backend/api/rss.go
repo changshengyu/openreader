@@ -1,11 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +16,8 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
+
+const maxRSSPaginationPages = 1000
 
 type rssSourceRequest struct {
 	Title             string `json:"title"`
@@ -312,7 +314,7 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 		return
 	}
 	requestedSortURL := strings.TrimSpace(c.Query("sortUrl"))
-	articles, err := fetchRSSArticles(source, requestedSortURL)
+	articles, pageCount, err := fetchRSSArticlesContext(c.Request.Context(), source, requestedSortURL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS source: " + err.Error()})
 		return
@@ -346,10 +348,12 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 		"sourceId": source.ID,
 		"imported": imported,
 		"total":    len(articles),
+		"pages":    pageCount,
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"imported": imported,
 		"total":    len(articles),
+		"pages":    pageCount,
 		"sortUrl":  rssSourceFetchURL(source, requestedSortURL),
 	})
 }
@@ -462,12 +466,24 @@ func (s *Server) getRSSArticleContent(c *gin.Context) {
 	}
 	if strings.TrimSpace(source.RuleContent) != "" && strings.TrimSpace(article.Link) != "" &&
 		(strings.TrimSpace(article.Content) == "" || c.Query("refresh") == "1") {
-		body, err := engine.FetchTextWithHeaders(article.Link, "utf-8", rssSourceHeaders(source))
+		request, err := engine.PrepareSourceRequest(article.Link, "", 1, "utf-8", rssSourceHeaders(source))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to prepare RSS article: " + err.Error()})
+			return
+		}
+		body, responseURL, err := engine.FetchTextRequestWithURLContext(
+			c.Request.Context(),
+			request.Method,
+			request.URL,
+			request.Body,
+			request.Charset,
+			request.Headers,
+		)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS article: " + err.Error()})
 			return
 		}
-		content, err := engine.ExtractRSSRuleContent(body, article.Link, source.RuleContent)
+		content, err := engine.ExtractRSSRuleContent(body, responseURL, source.RuleContent)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse RSS article: " + err.Error()})
 			return
@@ -549,52 +565,52 @@ type parsedRSS struct {
 }
 
 func fetchRSSArticles(source models.RSSSource, requestedSortURL ...string) ([]models.RSSArticle, error) {
+	articles, _, err := fetchRSSArticlesContext(context.Background(), source, requestedSortURL...)
+	return articles, err
+}
+
+func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, requestedSortURL ...string) ([]models.RSSArticle, int, error) {
 	overrideURL := ""
 	if len(requestedSortURL) > 0 {
 		overrideURL = requestedSortURL[0]
 	}
 	fetchURL := rssSourceFetchURL(source, overrideURL)
-	text, err := engine.FetchTextWithHeaders(fetchURL, "utf-8", rssSourceHeaders(source))
-	if err != nil {
-		return nil, err
-	}
+	headers := rssSourceHeaders(source)
 	if strings.TrimSpace(source.RuleArticles) != "" {
-		rows, err := engine.ParseRSSRuleArticles(text, fetchURL, engine.RSSRuleSet{
-			Articles:    source.RuleArticles,
-			Title:       source.RuleTitle,
-			PubDate:     source.RulePubDate,
-			Description: source.RuleDescription,
-			Image:       source.RuleImage,
-			Link:        source.RuleLink,
-		})
-		if err != nil {
-			return nil, err
-		}
-		articles := make([]models.RSSArticle, 0, len(rows))
-		for _, row := range rows {
-			articles = append(articles, models.RSSArticle{
-				Title:       row.Title,
-				Link:        row.Link,
-				Image:       row.Image,
-				Summary:     engine.SanitizeRSSHTML(row.Description, row.Link),
-				PublishedAt: parseRSSDate(row.PubDate),
-			})
-		}
-		return articles, nil
+		return fetchRSSRuleArticles(ctx, source, fetchURL, headers)
+	}
+	request, err := engine.PrepareSourceRequest(fetchURL, "", 1, "utf-8", headers)
+	if err != nil {
+		return nil, 0, err
+	}
+	text, responseURL, err := engine.FetchTextRequestWithURLContext(
+		ctx,
+		request.Method,
+		request.URL,
+		request.Body,
+		request.Charset,
+		request.Headers,
+	)
+	if err != nil {
+		return nil, 0, err
 	}
 	var parsed parsedRSS
 	if err := xml.Unmarshal([]byte(text), &parsed); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	articles := make([]models.RSSArticle, 0)
 	for _, item := range parsed.Channel.Items {
+		link := strings.TrimSpace(item.Link)
+		if link != "" {
+			link = resolveRSSFetchURL(responseURL, link)
+		}
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(item.Title),
-			Link:        strings.TrimSpace(item.Link),
+			Link:        link,
 			Author:      firstNonEmpty(item.Creator, item.Author),
 			Image:       rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent),
-			Summary:     engine.SanitizeRSSHTML(item.Description, item.Link),
-			Content:     engine.SanitizeRSSHTML(item.Encoded, item.Link),
+			Summary:     engine.SanitizeRSSHTML(item.Description, link),
+			Content:     engine.SanitizeRSSHTML(item.Encoded, link),
 			PublishedAt: parseRSSDate(item.PubDate),
 		})
 	}
@@ -602,6 +618,9 @@ func fetchRSSArticles(source models.RSSSource, requestedSortURL ...string) ([]mo
 		link := ""
 		if len(entry.Link) > 0 {
 			link = entry.Link[0].Href
+		}
+		if strings.TrimSpace(link) != "" {
+			link = resolveRSSFetchURL(responseURL, link)
 		}
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(entry.Title),
@@ -619,7 +638,91 @@ func fetchRSSArticles(source models.RSSSource, requestedSortURL ...string) ([]mo
 			filtered = append(filtered, article)
 		}
 	}
-	return filtered, nil
+	return filtered, 1, nil
+}
+
+func fetchRSSRuleArticles(ctx context.Context, source models.RSSSource, fetchURL string, headers map[string]string) ([]models.RSSArticle, int, error) {
+	rules := engine.RSSRuleSet{
+		Articles:    source.RuleArticles,
+		Title:       source.RuleTitle,
+		PubDate:     source.RulePubDate,
+		Description: source.RuleDescription,
+		Image:       source.RuleImage,
+		Link:        source.RuleLink,
+	}
+	currentTemplate := fetchURL
+	pageMode := strings.EqualFold(strings.TrimSpace(source.RuleNextPage), "PAGE")
+	visitedRequests := make(map[string]bool)
+	articleKeys := make(map[string]bool)
+	articles := make([]models.RSSArticle, 0)
+	pageCount := 0
+
+	for page := 1; pageCount < maxRSSPaginationPages; page++ {
+		request, err := engine.PrepareSourceRequest(currentTemplate, "", page, "utf-8", headers)
+		if err != nil {
+			return nil, pageCount, err
+		}
+		requestKey := engine.SourceRequestKey(request)
+		if visitedRequests[requestKey] {
+			break
+		}
+		visitedRequests[requestKey] = true
+
+		text, responseURL, err := engine.FetchTextRequestWithURLContext(
+			ctx,
+			request.Method,
+			request.URL,
+			request.Body,
+			request.Charset,
+			request.Headers,
+		)
+		if err != nil {
+			return nil, pageCount, err
+		}
+		responseRequest := request
+		responseRequest.URL = responseURL
+		responseRequestKey := engine.SourceRequestKey(responseRequest)
+		if responseRequestKey != requestKey && visitedRequests[responseRequestKey] {
+			break
+		}
+		visitedRequests[responseRequestKey] = true
+		pageCount++
+		result, err := engine.ParseRSSRulePage(text, responseURL, rules, source.RuleNextPage)
+		if err != nil {
+			return nil, pageCount, err
+		}
+		for _, row := range result.Articles {
+			key := strings.TrimSpace(row.Link)
+			if key == "" {
+				key = strings.TrimSpace(row.Title) + "\n" + strings.TrimSpace(row.PubDate)
+			}
+			if key == "" || articleKeys[key] {
+				continue
+			}
+			articleKeys[key] = true
+			summaryBaseURL := row.Link
+			if request, prepareErr := engine.PrepareSourceRequest(row.Link, "", 1, "utf-8", headers); prepareErr == nil {
+				summaryBaseURL = request.URL
+			}
+			articles = append(articles, models.RSSArticle{
+				Title:       row.Title,
+				Link:        row.Link,
+				Image:       row.Image,
+				Summary:     engine.SanitizeRSSHTML(row.Description, summaryBaseURL),
+				PublishedAt: parseRSSDate(row.PubDate),
+			})
+		}
+		if result.NextURL == "" {
+			break
+		}
+		if pageCount >= maxRSSPaginationPages {
+			return nil, pageCount, fmt.Errorf("RSS pagination exceeds %d pages", maxRSSPaginationPages)
+		}
+		if !pageMode {
+			currentTemplate = result.NextURL
+		}
+	}
+	return articles, pageCount, nil
 }
 
 var rssSortURLSeparator = regexp.MustCompile(`(?:&&|\r?\n)+`)
@@ -693,19 +796,11 @@ func rssSourceSortOptions(source models.RSSSource) []rssSortOption {
 }
 
 func resolveRSSFetchURL(baseURL string, value string) string {
-	value = strings.TrimSpace(value)
-	parsed, err := url.Parse(value)
-	if err != nil {
+	resolved := engine.ResolveSourceURLTemplate(baseURL, strings.TrimSpace(value))
+	if resolved == "" {
 		return baseURL
 	}
-	if parsed.IsAbs() {
-		return parsed.String()
-	}
-	base, err := url.Parse(baseURL)
-	if err != nil {
-		return baseURL
-	}
-	return base.ResolveReference(parsed).String()
+	return resolved
 }
 
 func rssSourceHeaders(source models.RSSSource) map[string]string {

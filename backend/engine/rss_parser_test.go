@@ -75,3 +75,39 @@ func TestParseRSSRuleArticlesReadsXMLLinkText(t *testing.T) {
 		t.Fatalf("unexpected XML rule result: %+v", rows)
 	}
 }
+
+func TestParseRSSRulePageResolvesNextRequestOptions(t *testing.T) {
+	page, err := ParseRSSRulePage(
+		`<main>
+			<article><a class="title" href="/post/1">第一页</a></article>
+			<a class="next" data-url='/list, {"method":"POST","body":"page=2"}'>下一页</a>
+		</main>`,
+		"https://rss.example/news/page/1",
+		RSSRuleSet{Articles: "article", Title: ".title", Link: ".title@href"},
+		".next@data-url",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Articles) != 1 || page.Articles[0].Link != "https://rss.example/post/1" {
+		t.Fatalf("unexpected page articles: %+v", page.Articles)
+	}
+	if page.NextURL != `https://rss.example/list, {"method":"POST","body":"page=2"}` {
+		t.Fatalf("next request options were not preserved: %q", page.NextURL)
+	}
+}
+
+func TestParseRSSRulePageSupportsPageMode(t *testing.T) {
+	page, err := ParseRSSRulePage(
+		`<article><a href="/post/1">文章</a></article>`,
+		"https://rss.example/list?page=1",
+		RSSRuleSet{Articles: "article", Title: "a", Link: "a@href"},
+		"PAGE",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.NextURL != "https://rss.example/list?page=1" {
+		t.Fatalf("PAGE next URL = %q", page.NextURL)
+	}
+}
