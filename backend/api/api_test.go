@@ -3094,6 +3094,120 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	}
 }
 
+func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	requests := make([]string, 0, 3)
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Method != http.MethodPost || request.Header.Get("X-Source") != "static" {
+				t.Fatalf("unexpected source request: %s %s headers=%v", request.Method, request.URL, request.Header)
+			}
+			requestKey := request.URL.Path + "?" + string(body)
+			requests = append(requests, requestKey)
+
+			responseBody := ""
+			switch requestKey {
+			case "/book?id=11":
+				responseBody = `
+					<h1 class="detail-title">请求选项书籍</h1>
+					<a class="catalog" href='/catalog, {"method":"POST","body":"book=11"}'>目录</a>
+				`
+			case "/catalog?book=11":
+				responseBody = `
+					<div class="chapter">
+						<span class="chapter-title">第一章</span>
+						<a href='/content, {"method":"POST","body":"chapter=1","headers":{"X-Chapter":"one"}}'>阅读</a>
+					</div>
+				`
+			case "/content?chapter=1":
+				if request.Header.Get("X-Chapter") != "one" {
+					t.Fatalf("chapter request header option missing: %v", request.Header)
+				}
+				responseBody = `<main class="content">API 闭环正文</main>`
+			default:
+				t.Fatalf("unexpected source request: %s", requestKey)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{
+		Name:    "请求选项 API 源",
+		BaseURL: "https://source-options.test",
+		Charset: "utf-8",
+		Enabled: true,
+	}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoNameRule: ".detail-title",
+		TOCURLRule:       ".catalog|attr:href",
+		ChapterListRule:  ".chapter",
+		ChapterNameRule:  ".chapter-title",
+		ChapterURLRule:   "a|attr:href",
+		ContentRule:      ".content",
+		Headers:          map[string]string{"X-Source": "static"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	bookURL := `/book, {"method":"POST","body":"id=11"}`
+	body := `{"title":"搜索结果标题","bookUrl":` + strconv.Quote(bookURL) +
+		`,"sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `}`
+	addReq := httptest.NewRequest(http.MethodPost, "/api/books/remote", strings.NewReader(body))
+	addReq.Header.Set("Content-Type", "application/json")
+	addReq.Header.Set("Authorization", token)
+	addW := httptest.NewRecorder()
+	router.ServeHTTP(addW, addReq)
+	if addW.Code != http.StatusCreated {
+		t.Fatalf("create remote book with request options: expected 201, got %d: %s", addW.Code, addW.Body.String())
+	}
+
+	var added models.Book
+	if err := json.Unmarshal(addW.Body.Bytes(), &added); err != nil {
+		t.Fatal(err)
+	}
+	if added.Title != "请求选项书籍" || added.URL != bookURL || added.ChapterCount != 1 {
+		t.Fatalf("remote book request options were not preserved: %+v", added)
+	}
+	var chapter models.Chapter
+	if err := server.db.Where("book_id = ?", added.ID).First(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	expectedChapterURL := `https://source-options.test/content, {"method":"POST","body":"chapter=1","headers":{"X-Chapter":"one"}}`
+	if chapter.URL != expectedChapterURL {
+		t.Fatalf("chapter request options were not persisted: %+v", chapter)
+	}
+
+	contentReq := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/api/books/%d/chapters/0/content", added.ID),
+		nil,
+	)
+	contentReq.Header.Set("Authorization", token)
+	contentW := httptest.NewRecorder()
+	router.ServeHTTP(contentW, contentReq)
+	if contentW.Code != http.StatusOK || !strings.Contains(contentW.Body.String(), "API 闭环正文") {
+		t.Fatalf("load remote content with request options: expected content, got %d: %s", contentW.Code, contentW.Body.String())
+	}
+	if strings.Join(requests, ",") != "/book?id=11,/catalog?book=11,/content?chapter=1" {
+		t.Fatalf("unexpected API source request sequence: %+v", requests)
+	}
+}
+
 func TestSchedulerSkipsBooksWithCanUpdateDisabled(t *testing.T) {
 	router, server := setupTestServer(t)
 	authHeader(t, router)

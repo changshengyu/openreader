@@ -3,6 +3,7 @@ package engine
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -153,5 +154,304 @@ func TestSearchBooksResolvesRelativeURLBeforeOptions(t *testing.T) {
 	}
 	if _, err := SearchBooks(source, "测试"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSearchBooksPreservesRequestOptionsInBookURL(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return searchPaginationResponse(request, `
+				<article class="book">
+					<a class="name" href='/book/detail, {"method":"POST","body":"id=7"}'>带请求参数的详情</a>
+				</article>
+			`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{ID: 6, Name: "详情选项源", BaseURL: "https://source.example/root/", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    "/search",
+		BookListRule: ".book",
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := SearchBooks(source, "测试")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 ||
+		results[0].BookURL != `https://source.example/book/detail, {"method":"POST","body":"id=7"}` {
+		t.Fatalf("book request options were not preserved: %+v", results)
+	}
+}
+
+func TestFetchBookInfoAndTOCExecutesRequestOptionsAcrossPages(t *testing.T) {
+	requests := make([]string, 0, 3)
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Method != http.MethodPost || request.Header.Get("X-Source") != "static" {
+				t.Fatalf("unexpected request: %s %s headers=%v", request.Method, request.URL, request.Header)
+			}
+			requests = append(requests, request.URL.Path+"?"+string(body))
+
+			responseBody := ""
+			switch request.URL.Path + "?" + string(body) {
+			case "/book/detail?id=7":
+				if request.Header.Get("X-Detail") != "yes" {
+					t.Fatalf("detail request options missing: %v", request.Header)
+				}
+				responseBody = `
+					<h1 class="title">POST 详情书</h1>
+					<a class="catalog" href='/catalog, {"method":"POST","body":"book=7","headers":{"X-Catalog":"one"}}'>目录</a>
+				`
+			case "/catalog?book=7":
+				if request.Header.Get("X-Catalog") != "one" || request.Header.Get("X-Detail") != "" {
+					t.Fatalf("catalog options leaked or missing: %v", request.Header)
+				}
+				responseBody = `
+					<div class="chapter">
+						<span class="chapter-title">第一章</span>
+						<a href='/content, {"method":"POST","body":"chapter=1"}'>阅读</a>
+					</div>
+					<a class="next" href='/catalog, {"method":"POST","body":"book=7&page=2","headers":{"X-Catalog":"two"}}'>下一页</a>
+				`
+			case "/catalog?book=7&page=2":
+				if request.Header.Get("X-Catalog") != "two" || request.Header.Get("X-Detail") != "" {
+					t.Fatalf("next catalog options leaked or missing: %v", request.Header)
+				}
+				responseBody = `
+					<div class="chapter">
+						<span class="chapter-title">第二章</span>
+						<a href='/content, {"method":"POST","body":"chapter=2"}'>阅读</a>
+					</div>
+				`
+			default:
+				t.Fatalf("unexpected request: %s %s body=%s", request.Method, request.URL, body)
+			}
+			return searchPaginationResponse(request, responseBody), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "POST 详情目录源", BaseURL: "https://source.example/root/", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoNameRule: ".title",
+		TOCURLRule:       ".catalog|attr:href",
+		ChapterListRule:  ".chapter",
+		ChapterNameRule:  ".chapter-title",
+		ChapterURLRule:   "a|attr:href",
+		NextTOCURLRule:   ".next|attr:href",
+		Headers:          map[string]string{"X-Source": "static"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, chapters, err := FetchBookInfoAndTOC(
+		`/book/detail, {"method":"POST","body":"id=7","headers":{"X-Detail":"yes"}}`,
+		source,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "POST 详情书" || len(chapters) != 2 {
+		t.Fatalf("unexpected detail/toc result: info=%+v chapters=%+v", info, chapters)
+	}
+	if chapters[0].URL != `https://source.example/content, {"method":"POST","body":"chapter=1"}` ||
+		chapters[1].URL != `https://source.example/content, {"method":"POST","body":"chapter=2"}` {
+		t.Fatalf("chapter request options were not preserved: %+v", chapters)
+	}
+	if strings.Join(requests, ",") != "/book/detail?id=7,/catalog?book=7,/catalog?book=7&page=2" {
+		t.Fatalf("same URL with different POST bodies was incorrectly deduplicated: %+v", requests)
+	}
+}
+
+func TestParseTOCExecutesDirectPostURLRule(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Method != http.MethodPost ||
+				request.URL.String() != "https://source.example/catalog" ||
+				string(body) != "book=8" {
+				t.Fatalf("direct toc URL options were not executed: %s %s body=%s", request.Method, request.URL, body)
+			}
+			return searchPaginationResponse(request, `
+				<div class="chapter"><span class="title">直接 POST 目录</span><a href="/chapter/1">阅读</a></div>
+			`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "直接 POST 目录源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		TOCURLRule:      `/catalog, {"method":"POST","body":"book=8"}`,
+		ChapterListRule: ".chapter",
+		ChapterNameRule: ".title",
+		ChapterURLRule:  "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chapters, err := ParseTOC("/book/8", source)
+	if err != nil || len(chapters) != 1 || chapters[0].Title != "直接 POST 目录" {
+		t.Fatalf("direct POST toc failed: chapters=%+v err=%v", chapters, err)
+	}
+}
+
+func TestFetchChapterContentExecutesPostOptionsWithoutHeaderLeakage(t *testing.T) {
+	requests := make([]string, 0, 2)
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Method != http.MethodPost || request.Header.Get("X-Source") != "static" {
+				t.Fatalf("unexpected content request: %s %s headers=%v", request.Method, request.URL, request.Header)
+			}
+			requests = append(requests, string(body))
+			switch string(body) {
+			case "chapter=1":
+				if request.Header.Get("X-Chapter") != "one" || request.Header.Get("X-Page") != "" {
+					t.Fatalf("initial content headers mismatch: %v", request.Header)
+				}
+				return searchPaginationResponse(request, `
+					<main class="content">第一页</main>
+					<a class="next" href='/content, {"method":"POST","body":"chapter=1&page=2","headers":{"X-Page":"two"}}'>下一页</a>
+				`), nil
+			case "chapter=1&page=2":
+				if request.Header.Get("X-Page") != "two" || request.Header.Get("X-Chapter") != "" {
+					t.Fatalf("content page options leaked or missing: %v", request.Header)
+				}
+				return searchPaginationResponse(request, `<main class="content">第二页</main>`), nil
+			default:
+				t.Fatalf("unexpected content body: %s", body)
+			}
+			return nil, nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "POST 正文源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentRule:        ".content",
+		NextContentURLRule: ".next|attr:href",
+		Headers:            map[string]string{"X-Source": "static"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := FetchChapterContent(
+		`/content, {"method":"POST","body":"chapter=1","headers":{"X-Chapter":"one"}}`,
+		source,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "第一页\n第二页" || strings.Join(requests, ",") != "chapter=1,chapter=1&page=2" {
+		t.Fatalf("unexpected POST content result: content=%q requests=%v", content, requests)
+	}
+}
+
+func TestFetchChapterContentExecutesDirectContentURLRuleOptions(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Method != http.MethodPost ||
+				request.URL.String() != "https://source.example/api/content" ||
+				string(body) != "chapter=9" {
+				t.Fatalf("content URL rule options were not executed: %s %s body=%s", request.Method, request.URL, body)
+			}
+			return searchPaginationResponse(request, `<main class="content">规则正文</main>`), nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "正文地址规则源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentURLRule: `/api/content, {"method":"POST","body":"chapter=9"}`,
+		ContentRule:    ".content",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := FetchChapterContent("/chapter/9", source)
+	if err != nil || content != "规则正文" {
+		t.Fatalf("direct content URL rule failed: content=%q err=%v", content, err)
+	}
+}
+
+func TestFetchBookInfoAndTOCResolvesLinksFromRedirectedResponseURL(t *testing.T) {
+	requested := make([]string, 0, 2)
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requested = append(requested, request.URL.String())
+			responseBody := ""
+			responseRequest := request
+			switch request.URL.String() {
+			case "https://source.example/book/12":
+				responseBody = `
+					<h1 class="title">重定向详情</h1>
+					<a class="catalog" href="../catalog">目录</a>
+				`
+				redirectedURL, err := url.Parse("https://cdn.example/books/12/detail")
+				if err != nil {
+					t.Fatal(err)
+				}
+				responseRequest = request.Clone(request.Context())
+				responseRequest.URL = redirectedURL
+			case "https://cdn.example/books/catalog":
+				responseBody = `
+					<div class="chapter">
+						<span class="chapter-title">重定向目录章节</span>
+						<a href="./content/1">阅读</a>
+					</div>
+				`
+			default:
+				t.Fatalf("relative URL did not use redirected response URL: %s", request.URL)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+				Header:     make(http.Header),
+				Request:    responseRequest,
+			}, nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "重定向地址源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoNameRule: ".title",
+		TOCURLRule:       ".catalog|attr:href",
+		ChapterListRule:  ".chapter",
+		ChapterNameRule:  ".chapter-title",
+		ChapterURLRule:   "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, chapters, err := FetchBookInfoAndTOC("/book/12", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "重定向详情" ||
+		len(chapters) != 1 ||
+		chapters[0].URL != "https://cdn.example/books/content/1" {
+		t.Fatalf("redirected response URL was not used as parsing base: info=%+v chapters=%+v", info, chapters)
+	}
+	if strings.Join(requested, ",") != "https://source.example/book/12,https://cdn.example/books/catalog" {
+		t.Fatalf("unexpected redirected request sequence: %+v", requested)
 	}
 }

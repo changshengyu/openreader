@@ -49,11 +49,17 @@ func FetchDocumentWithHeadersContext(ctx context.Context, url, charset string, h
 }
 
 func FetchDocumentRequestContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (*goquery.Document, error) {
-	decoded, err := FetchTextRequestContext(ctx, method, url, body, charset, headers)
+	document, _, err := FetchDocumentRequestWithURLContext(ctx, method, url, body, charset, headers)
+	return document, err
+}
+
+func FetchDocumentRequestWithURLContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (*goquery.Document, string, error) {
+	decoded, responseURL, err := FetchTextRequestWithURLContext(ctx, method, url, body, charset, headers)
 	if err != nil {
-		return nil, err
+		return nil, responseURL, err
 	}
-	return goquery.NewDocumentFromReader(strings.NewReader(decoded))
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(decoded))
+	return document, responseURL, err
 }
 
 func FetchText(url, charset string) (string, error) {
@@ -73,6 +79,11 @@ func FetchTextWithHeadersContext(ctx context.Context, url, charset string, heade
 }
 
 func FetchTextRequestContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (string, error) {
+	decoded, _, err := FetchTextRequestWithURLContext(ctx, method, url, body, charset, headers)
+	return decoded, err
+}
+
+func FetchTextRequestWithURLContext(ctx context.Context, method, url, body, charset string, headers map[string]string) (string, string, error) {
 	method = strings.ToUpper(strings.TrimSpace(method))
 	if method == "" {
 		method = http.MethodGet
@@ -83,7 +94,7 @@ func FetchTextRequestContext(ctx context.Context, method, url, body, charset str
 	}
 	request, err := http.NewRequestWithContext(ctx, method, url, requestBody)
 	if err != nil {
-		return "", err
+		return "", url, err
 	}
 	for name, value := range headers {
 		name = strings.TrimSpace(name)
@@ -98,20 +109,24 @@ func FetchTextRequestContext(ctx context.Context, method, url, body, charset str
 
 	response, err := defaultClient.Do(request)
 	if err != nil {
-		return "", err
+		return "", url, err
 	}
 	defer response.Body.Close()
 
+	responseURL := url
+	if response.Request != nil && response.Request.URL != nil {
+		responseURL = response.Request.URL.String()
+	}
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return "", err
+		return "", responseURL, err
 	}
 
 	decoded, err := DecodeBody(responseBody, charset)
 	if err != nil {
-		return "", err
+		return "", responseURL, err
 	}
-	return decoded, nil
+	return decoded, responseURL, nil
 }
 
 func DecodeBody(body []byte, charset string) (string, error) {

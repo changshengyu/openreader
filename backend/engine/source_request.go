@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -92,6 +93,48 @@ func resolveSourceURLTemplate(baseURL, value string) string {
 		return resolved
 	}
 	return resolved + ", " + optionPart
+}
+
+func prepareResolvedSourceRequest(baseURL, rawURL, keyword string, page int, defaultCharset string, sourceHeaders map[string]string) (sourceRequest, error) {
+	return prepareSourceRequest(
+		resolveSourceURLTemplate(baseURL, rawURL),
+		keyword,
+		page,
+		defaultCharset,
+		sourceHeaders,
+	)
+}
+
+func sourceRequestKey(request sourceRequest) string {
+	headerNames := make([]string, 0, len(request.Headers))
+	normalizedHeaders := make(map[string]string, len(request.Headers))
+	for name, value := range request.Headers {
+		normalizedName := strings.ToLower(strings.TrimSpace(name))
+		if normalizedName == "" {
+			continue
+		}
+		if _, exists := normalizedHeaders[normalizedName]; !exists {
+			headerNames = append(headerNames, normalizedName)
+		}
+		normalizedHeaders[normalizedName] = value
+	}
+	sort.Strings(headerNames)
+
+	var key strings.Builder
+	key.WriteString(strings.ToUpper(strings.TrimSpace(request.Method)))
+	key.WriteByte('\n')
+	key.WriteString(request.URL)
+	key.WriteByte('\n')
+	key.WriteString(request.Body)
+	key.WriteByte('\n')
+	key.WriteString(strings.ToLower(strings.TrimSpace(request.Charset)))
+	for _, name := range headerNames {
+		key.WriteByte('\n')
+		key.WriteString(name)
+		key.WriteByte(':')
+		key.WriteString(normalizedHeaders[name])
+	}
+	return key.String()
 }
 
 func replaceSourceURLPlaceholders(value, keyword string, page int) string {
