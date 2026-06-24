@@ -19,6 +19,7 @@ export const useUserStore = defineStore('user', {
       this.authDialogVisible = false
       this.authReason = ''
       localStorage.setItem('openreader_token', data.token)
+      if (typeof window !== 'undefined') delete window.__openreaderAuthRequired
     },
     async loadMe() {
       const { data } = await getMe()

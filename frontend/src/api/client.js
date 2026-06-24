@@ -13,7 +13,11 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-let lastRejectedToken = ''
+function notifyAuthRequired(detail) {
+  if (typeof window === 'undefined') return
+  window.__openreaderAuthRequired = detail
+  window.dispatchEvent(new CustomEvent('openreader:auth-required', { detail }))
+}
 
 api.interceptors.response.use(
   response => response,
@@ -23,14 +27,11 @@ api.interceptors.response.use(
     const isAuthRequest = requestURL.includes('/auth/login') || requestURL.includes('/auth/register')
     const authorization = String(error?.config?.headers?.Authorization || '')
     const rejectedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
-    if (status === 401 && rejectedToken && !isAuthRequest && rejectedToken !== lastRejectedToken) {
-      lastRejectedToken = rejectedToken
+    if (status === 401 && rejectedToken && !isAuthRequest) {
       if (localStorage.getItem('openreader_token') === rejectedToken) {
         localStorage.removeItem('openreader_token')
       }
-      window.dispatchEvent(new CustomEvent('openreader:auth-required', {
-        detail: { reason: 'session', rejectedToken },
-      }))
+      notifyAuthRequired({ reason: 'session', rejectedToken })
     }
     return Promise.reject(error)
   },

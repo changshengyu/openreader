@@ -44,6 +44,9 @@ function handleAuthRequired(event) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('openreader:auth-required', handleAuthRequired)
+  if (window.__openreaderAuthRequired) {
+    handleAuthRequired({ detail: window.__openreaderAuthRequired })
+  }
 }
 
 onMounted(() => {

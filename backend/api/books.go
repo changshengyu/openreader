@@ -1977,7 +1977,7 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		return
 	}
 
-	keyword := strings.TrimSpace(c.Query("q"))
+	keyword := strings.TrimSpace(firstNonBlank(c.Query("q"), c.Query("keyword")))
 	if keyword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "q is required"})
 		return
@@ -1996,12 +1996,13 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		} else {
 			start = parseBoundedInt(c.Query("lastIndex"), -1, -1, len(chapters)) + 1
 		}
+		matchLimitQuery := firstNonBlank(c.Query("matchLimit"), c.Query("size"))
 		chapterLimit := parseBoundedInt(c.Query("chapterLimit"), 30, 1, 500)
-		matchLimit := parseBoundedInt(c.Query("matchLimit"), 80, 1, 200)
+		matchLimit := parseBoundedInt(matchLimitQuery, 80, 1, 200)
 		perChapterLimit := parseBoundedInt(c.Query("perChapterLimit"), 20, 1, 100)
 		if book.SourceID == 0 && (c.Query("localFull") == "1" || c.Query("localFull") == "true") {
 			chapterLimit = parseBoundedInt(c.Query("chapterLimit"), 160, 1, 2000)
-			matchLimit = parseBoundedInt(c.Query("matchLimit"), 5000, 1, 20000)
+			matchLimit = parseBoundedInt(matchLimitQuery, 5000, 1, 20000)
 			perChapterLimit = parseBoundedInt(c.Query("perChapterLimit"), 500, 1, 2000)
 		}
 		matches, lastIndex := s.collectContentMatches(book, chapters, keyword, start, chapterLimit, matchLimit, perChapterLimit)

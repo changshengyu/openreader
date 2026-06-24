@@ -4305,6 +4305,25 @@ func TestSearchBookContentPaged(t *testing.T) {
 	if len(second.List) != 2 || second.LastIndex != 2 || second.HasMore {
 		t.Fatalf("unexpected second page: %+v", second)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?keyword="+url.QueryEscape("目标")+"&paged=1&lastIndex=-1&chapterLimit=3&size=1", nil)
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("paged search keyword/size aliases: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var aliasResult struct {
+		List      []map[string]any `json:"list"`
+		LastIndex int              `json:"lastIndex"`
+		HasMore   bool             `json:"hasMore"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &aliasResult); err != nil {
+		t.Fatal(err)
+	}
+	if len(aliasResult.List) != 1 || aliasResult.LastIndex != 0 || !aliasResult.HasMore {
+		t.Fatalf("unexpected keyword/size alias result: %+v", aliasResult)
+	}
 }
 
 func TestSearchLocalBookContentKeepsRequestedPageSize(t *testing.T) {
