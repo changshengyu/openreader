@@ -314,10 +314,22 @@ const mobileNavigationStyle = computed(() => {
   const base = { '--mobile-nav-width': `${width}px` }
   if (!isMobileShell.value || !touchMoveX.value) return base
   if (!mobileNavigationVisible.value && touchMoveX.value > 0 && touchMoveX.value <= width) {
-    return { ...base, transform: `translateX(${touchMoveX.value - width}px)` }
+    const offset = touchMoveX.value - width
+    return {
+      ...base,
+      '--mobile-nav-drag-offset': `${offset}px`,
+      transform: `translateX(${offset}px)`,
+      transition: 'none'
+    }
   }
   if (mobileNavigationVisible.value && touchMoveX.value < 0 && touchMoveX.value >= -width) {
-    return { ...base, transform: `translateX(${touchMoveX.value}px)` }
+    const offset = touchMoveX.value
+    return {
+      ...base,
+      '--mobile-nav-drag-offset': `${offset}px`,
+      transform: `translateX(${offset}px)`,
+      transition: 'none'
+    }
   }
   return base
 })
@@ -1422,6 +1434,7 @@ function readError(err, fallback) {
   align-items: center;
   justify-content: space-between;
   pointer-events: none;
+  transform: translateX(calc(-1 * var(--mobile-nav-drag-offset, 0px)));
 }
 
 .app-shell.mobile-shell .sidebar-bottom-icon {
