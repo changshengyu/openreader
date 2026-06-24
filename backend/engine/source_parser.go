@@ -51,6 +51,7 @@ type RemoteBookInfo struct {
 	LatestChapter string `json:"latestChapter"`
 	UpdateTime    string `json:"updateTime"`
 	WordCount     string `json:"wordCount"`
+	CanRename     bool   `json:"canRename"`
 }
 
 // ExploreResult represents one page of source discovery results.
@@ -432,6 +433,7 @@ func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, base
 		LatestChapter: firstMatch(scope, rule.BookInfoLatestChapterRule),
 		UpdateTime:    firstMatch(scope, rule.BookInfoUpdateTimeRule),
 		WordCount:     formatSourceWordCount(firstMatch(scope, rule.BookInfoWordCountRule)),
+		CanRename:     strings.TrimSpace(rule.BookInfoCanRenameRule) != "",
 	}
 }
 

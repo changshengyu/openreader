@@ -2080,7 +2080,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
 			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
 			"ruleExplore":{"bookList":".explore-item","name":".explore-name","bookUrl":"a@data-url"},
-			"ruleBookInfo":{"name":".detail-name","author":".detail-author","coverUrl":"img@data-src","intro":".detail-intro","tocUrl":".catalog@href"},
+			"ruleBookInfo":{"name":".detail-name","author":".detail-author","coverUrl":"img@data-src","intro":".detail-intro","tocUrl":".catalog@href","canReName":".allow-rename"},
 			"ruleToc":{"chapterList":".chapter","chapterName":".chapter-name","chapterUrl":"a@href","nextTocUrl":".toc-next@href"},
 			"ruleContent":{"content":".content","nextContentUrl":".content-next@href"}
 		}
@@ -2124,6 +2124,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.BookInfoAuthorRule != ".detail-author" ||
 		rule.BookInfoCoverRule != "img|attr:data-src" ||
 		rule.BookInfoIntroRule != ".detail-intro" ||
+		rule.BookInfoCanRenameRule != ".allow-rename" ||
 		rule.TOCURLRule != ".catalog|attr:href" ||
 		rule.ChapterListRule != ".chapter" ||
 		rule.ChapterNameRule != ".chapter-name" ||
@@ -2152,6 +2153,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 				body = `<article class="explore-item"><span class="explore-name">独立探索规则书籍</span><a data-url="/book/2">详情</a></article>`
 			case "/book/2":
 				body = `
+					<span class="allow-rename">1</span>
 					<h1 class="detail-name">详情页完整书名</h1>
 					<span class="detail-author">详情页作者</span>
 					<img data-src="/detail-cover.jpg">
@@ -2999,6 +3001,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 				</body></html>`
 			case "/book-new":
 				body = `<html><body>
+					<span class="allow-rename">1</span>
 					<h1 class="detail-name">换源详情书名</h1>
 					<span class="detail-author">换源详情作者</span>
 					<img class="detail-cover" src="/switch-cover.jpg">
@@ -3051,6 +3054,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		BookWordCountRule:     ".word-count|text",
 		LatestChapterRule:     ".latest|text",
 		BookURLRule:           ".link|attr:href",
+		BookInfoCanRenameRule: ".allow-rename",
 		BookInfoNameRule:      ".detail-name",
 		BookInfoAuthorRule:    ".detail-author",
 		BookInfoCoverRule:     ".detail-cover|attr:src",
@@ -3256,6 +3260,7 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 						<span class="detail-word-count">123</span>
 					</section>
 					<section class="detail-main">
+						<span class="allow-rename">1</span>
 						<h1 class="detail-name">%s</h1>
 						<span class="detail-author">详情作者</span>
 						<img class="detail-cover" data-src="/cover-detail.jpg">
@@ -3292,6 +3297,7 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	source := models.BookSource{Name: "远程源", BaseURL: upstream, SourceType: 1, Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
 		BookInfoInitRule:      ".detail-main",
+		BookInfoCanRenameRule: ".allow-rename",
 		BookInfoNameRule:      ".detail-name",
 		BookInfoAuthorRule:    ".detail-author",
 		BookInfoCoverRule:     ".detail-cover|attr:data-src",
@@ -3394,6 +3400,86 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	}
 }
 
+func TestRemoteBookInfoPreservesNameWithoutCanRename(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	upstream := "https://no-rename.test"
+	detailTitle := "详情标题"
+	detailAuthor := "详情作者"
+	detailIntro := "详情简介"
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			responseBody := fmt.Sprintf(`<html><body>
+				<h1 class="detail-name">%s</h1>
+				<span class="detail-author">%s</span>
+				<p class="detail-intro">%s</p>
+				<div class="chapter"><span class="chapter-title">第一章</span><a href="/c1">阅读</a></div>
+			</body></html>`, detailTitle, detailAuthor, detailIntro)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{Name: "不可改名源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoNameRule:   ".detail-name",
+		BookInfoAuthorRule: ".detail-author",
+		BookInfoIntroRule:  ".detail-intro",
+		ChapterListRule:    ".chapter",
+		ChapterNameRule:    ".chapter-title",
+		ChapterURLRule:     "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"title":"搜索标题","author":"搜索作者","bookUrl":"` + upstream + `/book","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `}`
+	req := httptest.NewRequest(http.MethodPost, "/api/books/remote", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create remote book: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var book models.Book
+	if err := json.Unmarshal(w.Body.Bytes(), &book); err != nil {
+		t.Fatal(err)
+	}
+	if book.Title != "搜索标题" || book.Author != "搜索作者" || book.Intro != "详情简介" {
+		t.Fatalf("book info without canReName should preserve name/author only: %+v", book)
+	}
+
+	detailTitle = "刷新详情标题"
+	detailAuthor = "刷新详情作者"
+	detailIntro = "刷新详情简介"
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh", nil)
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK {
+		t.Fatalf("refresh remote book: expected 200, got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+	var refreshed models.Book
+	if err := server.db.First(&refreshed, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Title != "搜索标题" ||
+		refreshed.Author != "搜索作者" ||
+		refreshed.Intro != "刷新详情简介" {
+		t.Fatalf("refresh without canReName should preserve name/author only: %+v", refreshed)
+	}
+}
+
 func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -3415,6 +3501,7 @@ func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 			switch requestKey {
 			case "/book?id=11":
 				responseBody = `
+					<span class="allow-rename">1</span>
 					<h1 class="detail-title">请求选项书籍</h1>
 					<a class="catalog" href='/catalog, {"method":"POST","body":"book=11"}'>目录</a>
 				`
@@ -3450,14 +3537,15 @@ func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 		Enabled: true,
 	}
 	if err := source.SetRules(models.BookSourceRule{
-		BookInfoNameRule:    ".detail-title",
-		TOCURLRule:          ".catalog|attr:href",
-		ChapterListRule:     ".chapter",
-		ChapterNameRule:     ".chapter-title",
-		ChapterURLRule:      "a|attr:href",
-		ContentRule:         ".content",
-		ContentReplaceRegex: "##\\s*广告##",
-		Headers:             map[string]string{"X-Source": "static"},
+		BookInfoNameRule:      ".detail-title",
+		BookInfoCanRenameRule: ".allow-rename",
+		TOCURLRule:            ".catalog|attr:href",
+		ChapterListRule:       ".chapter",
+		ChapterNameRule:       ".chapter-title",
+		ChapterURLRule:        "a|attr:href",
+		ContentRule:           ".content",
+		ContentReplaceRegex:   "##\\s*广告##",
+		Headers:               map[string]string{"X-Source": "static"},
 	}); err != nil {
 		t.Fatal(err)
 	}

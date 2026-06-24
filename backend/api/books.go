@@ -1103,8 +1103,8 @@ func (s *Server) refreshBook(c *gin.Context) {
 			}
 			added++
 		}
-		book.Title = firstNonBlank(remoteInfo.Title, book.Title)
-		book.Author = firstNonBlank(remoteInfo.Author, book.Author)
+		book.Title = firstNonBlankCanRename(remoteInfo.Title, book.Title, remoteInfo.CanRename)
+		book.Author = firstNonBlankCanRename(remoteInfo.Author, book.Author, remoteInfo.CanRename)
 		book.CoverURL = firstNonBlank(remoteInfo.CoverURL, book.CoverURL)
 		book.Intro = firstNonBlank(remoteInfo.Intro, book.Intro)
 		book.Kind = firstNonBlank(remoteInfo.Kind, book.Kind)
@@ -1511,6 +1511,18 @@ type remoteBookRequest struct {
 	CategoryIDs []uint `json:"categoryIds"`
 }
 
+func firstNonBlankCanRename(remote string, current string, allowRename bool) string {
+	current = strings.TrimSpace(current)
+	remote = strings.TrimSpace(remote)
+	if current == "" {
+		return remote
+	}
+	if allowRename && remote != "" {
+		return remote
+	}
+	return current
+}
+
 func (s *Server) createRemoteBook(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
@@ -1567,8 +1579,8 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		UserID:       userID,
 		SourceID:     req.SourceID,
 		Type:         source.SourceType,
-		Title:        firstNonBlank(remoteInfo.Title, req.Title),
-		Author:       firstNonBlank(remoteInfo.Author, req.Author),
+		Title:        firstNonBlankCanRename(remoteInfo.Title, req.Title, remoteInfo.CanRename),
+		Author:       firstNonBlankCanRename(remoteInfo.Author, req.Author, remoteInfo.CanRename),
 		CoverURL:     firstNonBlank(remoteInfo.CoverURL, req.CoverURL),
 		Intro:        firstNonBlank(remoteInfo.Intro, req.Intro),
 		Kind:         firstNonBlank(remoteInfo.Kind, req.Kind),
@@ -1888,10 +1900,10 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		book.SourceID = req.SourceID
 		book.Type = newSource.SourceType
 		book.URL = newBookURL
-		if title := firstNonBlank(remoteInfo.Title, req.Title); title != "" {
+		if title := firstNonBlankCanRename(remoteInfo.Title, firstNonBlank(req.Title, book.Title), remoteInfo.CanRename); title != "" {
 			book.Title = title
 		}
-		if author := firstNonBlank(remoteInfo.Author, req.Author); author != "" {
+		if author := firstNonBlankCanRename(remoteInfo.Author, firstNonBlank(req.Author, book.Author), remoteInfo.CanRename); author != "" {
 			book.Author = author
 		}
 		if coverURL := firstNonBlank(remoteInfo.CoverURL, req.CoverURL); coverURL != "" {
