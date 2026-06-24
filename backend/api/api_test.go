@@ -6501,7 +6501,7 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 							<link>https://rss.example/a</link>
 							<description>文章摘要</description>
 							<author>作者</author>
-							<enclosure url="https://rss.example/a.jpg" type="image/jpeg"></enclosure>
+							<enclosure url="/images/a.jpg" type="image/jpeg"></enclosure>
 							<pubDate>Mon, 02 Jan 2006 15:04:05 +0000</pubDate>
 						</item>
 					</channel></rss>`)),
@@ -6540,7 +6540,7 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 	if w3.Code != http.StatusOK || !strings.Contains(w3.Body.String(), "RSS 文章") || !strings.Contains(w3.Body.String(), "文章摘要") {
 		t.Fatalf("list rss articles: expected article, got %d: %s", w3.Code, w3.Body.String())
 	}
-	if !strings.Contains(w3.Body.String(), "https://rss.example/a.jpg") {
+	if !strings.Contains(w3.Body.String(), "https://rss.example/images/a.jpg") {
 		t.Fatalf("list rss articles: expected article image, got %d: %s", w3.Code, w3.Body.String())
 	}
 
@@ -6555,8 +6555,63 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 	if err := server.db.Where("link = ?", "https://rss.example/a").First(&article).Error; err != nil {
 		t.Fatal(err)
 	}
-	if article.Image != "https://rss.example/a.jpg" {
+	if article.Image != "https://rss.example/images/a.jpg" {
 		t.Fatalf("expected rss article image to persist, got %+v", article)
+	}
+}
+
+func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+					<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+						<entry>
+							<title>Atom 文章</title>
+							<link href="/posts/atom"></link>
+							<summary>Atom 摘要</summary>
+							<media:thumbnail url="../covers/atom.jpg"></media:thumbnail>
+							<updated>2026-06-24T08:00:00Z</updated>
+						</entry>
+					</feed>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/rss/sources", strings.NewReader(`{"title":"Atom 源","url":"https://rss.example/feeds/atom.xml","enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create atom source: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var source models.RSSSource
+	if err := json.Unmarshal(w.Body.Bytes(), &source); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh", nil)
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK {
+		t.Fatalf("refresh atom source: expected 200, got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+
+	var article models.RSSArticle
+	if err := server.db.Where("source_id = ?", source.ID).First(&article).Error; err != nil {
+		t.Fatal(err)
+	}
+	if article.Link != "https://rss.example/posts/atom" || article.Image != "https://rss.example/covers/atom.jpg" {
+		t.Fatalf("atom relative URLs were not resolved: %+v", article)
 	}
 }
 

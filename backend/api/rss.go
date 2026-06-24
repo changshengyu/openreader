@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -535,12 +536,12 @@ type parsedRSS struct {
 			} `xml:"enclosure"`
 			MediaThumbnail []struct {
 				URL string `xml:"url,attr"`
-			} `xml:"thumbnail"`
+			} `xml:"http://search.yahoo.com/mrss/ thumbnail"`
 			MediaContent []struct {
 				URL    string `xml:"url,attr"`
 				Type   string `xml:"type,attr"`
 				Medium string `xml:"medium,attr"`
-			} `xml:"content"`
+			} `xml:"http://search.yahoo.com/mrss/ content"`
 		} `xml:"item"`
 	} `xml:"channel"`
 	Entries []struct {
@@ -559,12 +560,12 @@ type parsedRSS struct {
 		Updated        string `xml:"updated"`
 		MediaThumbnail []struct {
 			URL string `xml:"url,attr"`
-		} `xml:"thumbnail"`
+		} `xml:"http://search.yahoo.com/mrss/ thumbnail"`
 		MediaContent []struct {
 			URL    string `xml:"url,attr"`
 			Type   string `xml:"type,attr"`
 			Medium string `xml:"medium,attr"`
-		} `xml:"content"`
+		} `xml:"http://search.yahoo.com/mrss/ content"`
 	} `xml:"entry"`
 }
 
@@ -605,7 +606,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 			Title:       strings.TrimSpace(item.Title),
 			Link:        link,
 			Author:      firstNonEmpty(item.Creator, item.Author),
-			Image:       rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent),
+			Image:       resolveRSSMediaURL(responseURL, rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent)),
 			Summary:     engine.SanitizeRSSHTML(item.Description, link),
 			Content:     engine.SanitizeRSSHTML(item.Encoded, link),
 			PublishedAt: parseRSSDate(item.PubDate),
@@ -623,7 +624,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 			Title:       strings.TrimSpace(entry.Title),
 			Link:        strings.TrimSpace(link),
 			Author:      strings.TrimSpace(entry.Author.Name),
-			Image:       atomEntryImage(entry.Link, entry.MediaThumbnail, entry.MediaContent),
+			Image:       resolveRSSMediaURL(responseURL, atomEntryImage(entry.Link, entry.MediaThumbnail, entry.MediaContent)),
 			Summary:     engine.SanitizeRSSHTML(entry.Summary, link),
 			Content:     engine.SanitizeRSSHTML(entry.Content, link),
 			PublishedAt: parseRSSDate(firstNonEmpty(entry.Published, entry.Updated)),
@@ -791,6 +792,32 @@ func resolveRSSFetchURL(baseURL string, value string) string {
 		return baseURL
 	}
 	return resolved
+}
+
+func resolveRSSMediaURL(baseURL string, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return ""
+	}
+	if parsed.IsAbs() {
+		if parsed.Scheme == "http" || parsed.Scheme == "https" {
+			return parsed.String()
+		}
+		return ""
+	}
+	base, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return ""
+	}
+	resolved := base.ResolveReference(parsed)
+	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+		return ""
+	}
+	return resolved.String()
 }
 
 func rssSourceHeaders(source models.RSSSource) map[string]string {
