@@ -2048,6 +2048,18 @@ type legacySearchBookContentRequest struct {
 	Size      *int   `json:"size"`
 }
 
+type legacyContentMatch struct {
+	ChapterID                uint    `json:"chapterId"`
+	ChapterIndex             int     `json:"chapterIndex"`
+	ChapterTitle             string  `json:"chapterTitle"`
+	ResultText               string  `json:"resultText"`
+	Query                    string  `json:"query"`
+	ResultCountWithinChapter int     `json:"resultCountWithinChapter"`
+	Offset                   int     `json:"offset"`
+	LineIndex                int     `json:"lineIndex"`
+	Percent                  float64 `json:"percent"`
+}
+
 func (s *Server) legacySearchBookContent(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	req := legacySearchBookContentRequest{
@@ -2115,7 +2127,7 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"isSuccess": true,
 			"data": gin.H{
-				"list":      []contentMatch{},
+				"list":      []legacyContentMatch{},
 				"lastIndex": start,
 				"hasMore":   false,
 				"total":     len(chapters),
@@ -2127,12 +2139,30 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"isSuccess": true,
 		"data": gin.H{
-			"list":      matches,
+			"list":      legacyContentMatches(matches),
 			"lastIndex": currentIndex,
 			"hasMore":   currentIndex >= 0 && currentIndex < len(chapters)-1,
 			"total":     len(chapters),
 		},
 	})
+}
+
+func legacyContentMatches(matches []contentMatch) []legacyContentMatch {
+	result := make([]legacyContentMatch, 0, len(matches))
+	for _, match := range matches {
+		result = append(result, legacyContentMatch{
+			ChapterID:                match.ChapterID,
+			ChapterIndex:             match.ChapterIndex,
+			ChapterTitle:             match.ChapterTitle,
+			ResultText:               match.Excerpt,
+			Query:                    match.Query,
+			ResultCountWithinChapter: match.ResultCountWithinChapter,
+			Offset:                   match.Offset,
+			LineIndex:                match.LineIndex,
+			Percent:                  match.Percent,
+		})
+	}
+	return result
 }
 
 func (s *Server) collectContentMatches(book models.Book, chapters []models.Chapter, keyword string, start int, chapterLimit int, matchLimit int, perChapterLimit int) ([]contentMatch, int) {

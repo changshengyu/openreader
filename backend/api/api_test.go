@@ -4425,6 +4425,9 @@ func TestLegacySearchBookContentByURL(t *testing.T) {
 	if !first.IsSuccess || len(first.Data.List) != 1 || first.Data.LastIndex != 0 || !first.Data.HasMore || first.Data.Total != 3 {
 		t.Fatalf("unexpected legacy first result: %+v body=%s", first, w.Body.String())
 	}
+	if first.Data.List[0]["resultText"] == "" || !strings.Contains(fmt.Sprint(first.Data.List[0]["resultText"]), "目标") {
+		t.Fatalf("legacy result missing upstream resultText field: %+v", first.Data.List[0])
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/reader3/searchBookContent?bookUrl="+url.QueryEscape("https://book.example/legacy-search")+"&keyword="+url.QueryEscape("目标")+"&lastIndex=0&size=2", nil)
 	req.Header.Set("Authorization", token)
