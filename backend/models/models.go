@@ -271,6 +271,8 @@ type Chapter struct {
 	Index     int       `json:"index" gorm:"not null;uniqueIndex:idx_book_chapter"`
 	Title     string    `json:"title" gorm:"size:240;not null"`
 	URL       string    `json:"url" gorm:"size:800"`
+	IsVolume  bool      `json:"isVolume"`
+	Tag       string    `json:"tag" gorm:"size:240"`
 	CachePath string    `json:"cachePath" gorm:"size:500"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

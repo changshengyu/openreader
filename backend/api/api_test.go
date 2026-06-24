@@ -3238,6 +3238,10 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	detailIntro := "详情简介"
 	detailKind := "科幻"
 	detailWordCount := "23456"
+	chapterTitle := "第一卷"
+	chapterVolume := "yes"
+	chapterVIP := "0"
+	chapterUpdated := "昨日"
 	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -3249,8 +3253,13 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 					<p class="detail-intro">%s</p>
 					<span class="detail-kind">%s</span>
 					<span class="detail-word-count">%s</span>
-					<li class="chapter"><a href="/c1">第一章</a></li>
-				</body></html>`, detailTitle, detailIntro, detailKind, detailWordCount))),
+					<li class="chapter">
+						<span class="chapter-title">%s</span>
+						<span class="chapter-volume">%s</span>
+						<span class="chapter-vip">%s</span>
+						<span class="chapter-updated">%s</span>
+					</li>
+				</body></html>`, detailTitle, detailIntro, detailKind, detailWordCount, chapterTitle, chapterVolume, chapterVIP, chapterUpdated))),
 				Header:  make(http.Header),
 				Request: req,
 			}, nil
@@ -3279,8 +3288,11 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 		BookInfoKindRule:      ".detail-kind",
 		BookInfoWordCountRule: ".detail-word-count",
 		ChapterListRule:       ".chapter",
-		ChapterNameRule:       "a|text",
+		ChapterNameRule:       ".chapter-title",
 		ChapterURLRule:        "a|attr:href",
+		ChapterIsVolumeRule:   ".chapter-volume",
+		ChapterIsVIPRule:      ".chapter-vip",
+		ChapterUpdateTimeRule: ".chapter-updated",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -3325,11 +3337,22 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 		book.WordCount != "2.3万字" {
 		t.Fatalf("expected detail page metadata to override search payload: %+v", book.Book)
 	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || !chapters[0].IsVolume || chapters[0].Title != "第一卷" || chapters[0].URL != "第一卷0" || chapters[0].Tag != "昨日" {
+		t.Fatalf("expected remote chapter flags to be persisted: %+v", chapters)
+	}
 
 	detailTitle = "刷新后的详情书名"
 	detailIntro = "刷新后的详情简介"
 	detailKind = "悬疑"
 	detailWordCount = "连载中"
+	chapterTitle = "收费章"
+	chapterVolume = "false"
+	chapterVIP = "yes"
+	chapterUpdated = "今日"
 	refreshReq := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh", nil)
 	refreshReq.Header.Set("Authorization", token)
 	refreshW := httptest.NewRecorder()
@@ -3346,6 +3369,17 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 		refreshed.Kind != detailKind ||
 		refreshed.WordCount != detailWordCount {
 		t.Fatalf("refresh should update detail page metadata: %+v", refreshed)
+	}
+	chapters = nil
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 ||
+		chapters[0].IsVolume ||
+		chapters[0].Title != "🔒收费章" ||
+		chapters[0].URL != upstream+"/book" ||
+		chapters[0].Tag != "今日" {
+		t.Fatalf("refresh should update remote chapter flags: %+v", chapters)
 	}
 }
 

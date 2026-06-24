@@ -17,6 +17,8 @@ import (
 
 const maxSourcePaginationPages = 1000
 
+var sourceFalsePattern = regexp.MustCompile(`(?i)^\s*(false|no|not|0)\s*$`)
+
 // SearchResult represents a single book found through remote search.
 type SearchResult struct {
 	Title         string `json:"title"`
@@ -61,9 +63,11 @@ type ExploreResult struct {
 
 // RemoteChapter represents a chapter parsed from a remote book source.
 type RemoteChapter struct {
-	Title string `json:"title"`
-	URL   string `json:"url"`
-	Index int    `json:"index"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	Index    int    `json:"index"`
+	IsVolume bool   `json:"isVolume"`
+	Tag      string `json:"tag"`
 }
 
 func bookSourceRequestPolicy(source models.BookSource) SourceRequestPolicy {
@@ -569,17 +573,38 @@ func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, listRul
 	chapters := make([]RemoteChapter, 0, len(items))
 	for i, sel := range items {
 		title := firstMatch(sel, rule.ChapterNameRule)
+		isVolume := sourceRuleBool(firstMatch(sel, rule.ChapterIsVolumeRule))
 		chapterURL := resolveSourceURLTemplate(baseURL, firstMatch(sel, rule.ChapterURLRule))
+		if chapterURL == "" {
+			if isVolume {
+				chapterURL = title + strconv.Itoa(i)
+			} else {
+				chapterURL = baseURL
+			}
+		}
 		if title == "" || chapterURL == "" {
 			continue
 		}
+		if sourceRuleBool(firstMatch(sel, rule.ChapterIsVIPRule)) {
+			title = "🔒" + title
+		}
 		chapters = append(chapters, RemoteChapter{
-			Title: title,
-			URL:   chapterURL,
-			Index: i,
+			Title:    title,
+			URL:      chapterURL,
+			Index:    i,
+			IsVolume: isVolume,
+			Tag:      firstMatch(sel, rule.ChapterUpdateTimeRule),
 		})
 	}
 	return chapters
+}
+
+func sourceRuleBool(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "null" {
+		return false
+	}
+	return !sourceFalsePattern.MatchString(value)
 }
 
 func sourceListRule(rule string) (selector string, reverse bool) {

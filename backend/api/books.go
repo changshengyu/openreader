@@ -1083,16 +1083,20 @@ func (s *Server) refreshBook(c *gin.Context) {
 			if chapter, ok := existingByIndex[remoteChapter.Index]; ok {
 				chapter.Title = remoteChapter.Title
 				chapter.URL = remoteChapter.URL
+				chapter.IsVolume = remoteChapter.IsVolume
+				chapter.Tag = remoteChapter.Tag
 				if err := tx.Save(&chapter).Error; err != nil {
 					return err
 				}
 				continue
 			}
 			chapter := models.Chapter{
-				BookID: book.ID,
-				Index:  remoteChapter.Index,
-				Title:  remoteChapter.Title,
-				URL:    remoteChapter.URL,
+				BookID:   book.ID,
+				Index:    remoteChapter.Index,
+				Title:    remoteChapter.Title,
+				URL:      remoteChapter.URL,
+				IsVolume: remoteChapter.IsVolume,
+				Tag:      remoteChapter.Tag,
 			}
 			if err := tx.Create(&chapter).Error; err != nil {
 				return err
@@ -1587,10 +1591,12 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		}
 		for _, ch := range chapters {
 			chapter := models.Chapter{
-				BookID: book.ID,
-				Index:  ch.Index,
-				Title:  ch.Title,
-				URL:    ch.URL,
+				BookID:   book.ID,
+				Index:    ch.Index,
+				Title:    ch.Title,
+				URL:      ch.URL,
+				IsVolume: ch.IsVolume,
+				Tag:      ch.Tag,
 			}
 			if err := tx.Create(&chapter).Error; err != nil {
 				return err
@@ -1868,10 +1874,12 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		}
 		for _, ch := range newChapters {
 			chapter := models.Chapter{
-				BookID: bookID,
-				Index:  ch.Index,
-				Title:  ch.Title,
-				URL:    ch.URL,
+				BookID:   bookID,
+				Index:    ch.Index,
+				Title:    ch.Title,
+				URL:      ch.URL,
+				IsVolume: ch.IsVolume,
+				Tag:      ch.Tag,
 			}
 			if err := tx.Create(&chapter).Error; err != nil {
 				return err
