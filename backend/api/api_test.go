@@ -3429,7 +3429,7 @@ func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 				if request.Header.Get("X-Chapter") != "one" {
 					t.Fatalf("chapter request header option missing: %v", request.Header)
 				}
-				responseBody = `<main class="content">API 闭环正文</main>`
+				responseBody = `<main class="content">API 闭环正文 广告</main>`
 			default:
 				t.Fatalf("unexpected source request: %s", requestKey)
 			}
@@ -3450,13 +3450,14 @@ func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 		Enabled: true,
 	}
 	if err := source.SetRules(models.BookSourceRule{
-		BookInfoNameRule: ".detail-title",
-		TOCURLRule:       ".catalog|attr:href",
-		ChapterListRule:  ".chapter",
-		ChapterNameRule:  ".chapter-title",
-		ChapterURLRule:   "a|attr:href",
-		ContentRule:      ".content",
-		Headers:          map[string]string{"X-Source": "static"},
+		BookInfoNameRule:    ".detail-title",
+		TOCURLRule:          ".catalog|attr:href",
+		ChapterListRule:     ".chapter",
+		ChapterNameRule:     ".chapter-title",
+		ChapterURLRule:      "a|attr:href",
+		ContentRule:         ".content",
+		ContentReplaceRegex: "##\\s*广告##",
+		Headers:             map[string]string{"X-Source": "static"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -3500,7 +3501,9 @@ func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 	contentReq.Header.Set("Authorization", token)
 	contentW := httptest.NewRecorder()
 	router.ServeHTTP(contentW, contentReq)
-	if contentW.Code != http.StatusOK || !strings.Contains(contentW.Body.String(), "API 闭环正文") {
+	if contentW.Code != http.StatusOK ||
+		!strings.Contains(contentW.Body.String(), "API 闭环正文") ||
+		strings.Contains(contentW.Body.String(), "广告") {
 		t.Fatalf("load remote content with request options: expected content, got %d: %s", contentW.Code, contentW.Body.String())
 	}
 	if strings.Join(requests, ",") != "/book?id=11,/catalog?book=11,/content?chapter=1" {

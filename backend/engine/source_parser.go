@@ -784,8 +784,53 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	}
 
 	text := strings.Join(parts, "\n")
+	text = applyContentReplaceRegex(text, rule.ContentReplaceRegex)
 	text = ApplyTextReplacements(text, rule.TextReplaceRules)
 	return text, nil
+}
+
+func applyContentReplaceRegex(text string, rule string) string {
+	rule = strings.TrimSpace(rule)
+	if rule == "" {
+		return text
+	}
+	parts := strings.Split(rule, "##")
+	if len(parts) < 2 {
+		return text
+	}
+	result := text
+	selector := strings.TrimSpace(parts[0])
+	if selector != "" {
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(text))
+		if err != nil {
+			return text
+		}
+		result = strings.Join(Extract(doc.Selection, selector), "\n")
+	}
+	pattern := parts[1]
+	replacement := ""
+	if len(parts) > 2 {
+		replacement = parts[2]
+	}
+	if pattern == "" {
+		return result
+	}
+	replaceFirst := len(parts) > 3
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		if replaceFirst {
+			return strings.Replace(result, pattern, replacement, 1)
+		}
+		return strings.ReplaceAll(result, pattern, replacement)
+	}
+	if replaceFirst {
+		loc := compiled.FindStringIndex(result)
+		if loc == nil {
+			return ""
+		}
+		return result[:loc[0]] + compiled.ReplaceAllString(result[loc[0]:loc[1]], replacement) + result[loc[1]:]
+	}
+	return compiled.ReplaceAllString(result, replacement)
 }
 
 func extractChapterContent(doc *goquery.Document, contentRule string, baseURL string) string {

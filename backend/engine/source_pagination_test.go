@@ -230,3 +230,34 @@ func TestFetchChapterContentFollowsNextPagesInOrder(t *testing.T) {
 		t.Fatalf("expected three content requests without loops, got %+v", requested)
 	}
 }
+
+func TestFetchChapterContentAppliesContentReplaceRegex(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<main class="content">第一段 广告
+第二段 广告</main>`)),
+				Header:  make(http.Header),
+				Request: request,
+			}, nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "正文替换源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentRule:         ".content",
+		ContentReplaceRegex: "##\\s*广告##",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := FetchChapterContent("https://source.example/chapter/1", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "第一段\n第二段" {
+		t.Fatalf("unexpected replaced content: %q", content)
+	}
+}
