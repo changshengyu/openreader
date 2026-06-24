@@ -3247,18 +3247,28 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`<html><body>
-					<h1 class="detail-name">%s</h1>
-					<span class="detail-author">详情作者</span>
-					<img class="detail-cover" data-src="/cover-detail.jpg">
-					<p class="detail-intro">%s</p>
-					<span class="detail-kind">%s</span>
-					<span class="detail-word-count">%s</span>
-					<li class="chapter">
-						<span class="chapter-title">%s</span>
-						<span class="chapter-volume">%s</span>
-						<span class="chapter-vip">%s</span>
-						<span class="chapter-updated">%s</span>
-					</li>
+					<section class="recommend">
+						<h1 class="detail-name">推荐书</h1>
+						<span class="detail-author">推荐作者</span>
+						<img class="detail-cover" data-src="/wrong-cover.jpg">
+						<p class="detail-intro">推荐简介</p>
+						<span class="detail-kind">推荐分类</span>
+						<span class="detail-word-count">123</span>
+					</section>
+					<section class="detail-main">
+						<h1 class="detail-name">%s</h1>
+						<span class="detail-author">详情作者</span>
+						<img class="detail-cover" data-src="/cover-detail.jpg">
+						<p class="detail-intro">%s</p>
+						<span class="detail-kind">%s</span>
+						<span class="detail-word-count">%s</span>
+						<li class="chapter">
+							<span class="chapter-title">%s</span>
+							<span class="chapter-volume">%s</span>
+							<span class="chapter-vip">%s</span>
+							<span class="chapter-updated">%s</span>
+						</li>
+					</section>
 				</body></html>`, detailTitle, detailIntro, detailKind, detailWordCount, chapterTitle, chapterVolume, chapterVIP, chapterUpdated))),
 				Header:  make(http.Header),
 				Request: req,
@@ -3281,6 +3291,7 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	}
 	source := models.BookSource{Name: "远程源", BaseURL: upstream, SourceType: 1, Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
+		BookInfoInitRule:      ".detail-main",
 		BookInfoNameRule:      ".detail-name",
 		BookInfoAuthorRule:    ".detail-author",
 		BookInfoCoverRule:     ".detail-cover|attr:data-src",

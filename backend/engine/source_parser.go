@@ -422,16 +422,34 @@ func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookIn
 }
 
 func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, baseURL string) RemoteBookInfo {
+	scope := bookInfoScope(doc, rule.BookInfoInitRule)
 	return RemoteBookInfo{
-		Title:         firstMatch(doc.Selection, rule.BookInfoNameRule),
-		Author:        firstMatch(doc.Selection, rule.BookInfoAuthorRule),
-		CoverURL:      resolveURL(baseURL, firstMatch(doc.Selection, rule.BookInfoCoverRule)),
-		Intro:         firstMatch(doc.Selection, rule.BookInfoIntroRule),
-		Kind:          firstMatch(doc.Selection, rule.BookInfoKindRule),
-		LatestChapter: firstMatch(doc.Selection, rule.BookInfoLatestChapterRule),
-		UpdateTime:    firstMatch(doc.Selection, rule.BookInfoUpdateTimeRule),
-		WordCount:     formatSourceWordCount(firstMatch(doc.Selection, rule.BookInfoWordCountRule)),
+		Title:         firstMatch(scope, rule.BookInfoNameRule),
+		Author:        firstMatch(scope, rule.BookInfoAuthorRule),
+		CoverURL:      resolveURL(baseURL, firstMatch(scope, rule.BookInfoCoverRule)),
+		Intro:         firstMatch(scope, rule.BookInfoIntroRule),
+		Kind:          firstMatch(scope, rule.BookInfoKindRule),
+		LatestChapter: firstMatch(scope, rule.BookInfoLatestChapterRule),
+		UpdateTime:    firstMatch(scope, rule.BookInfoUpdateTimeRule),
+		WordCount:     formatSourceWordCount(firstMatch(scope, rule.BookInfoWordCountRule)),
 	}
+}
+
+func bookInfoScope(doc *goquery.Document, initRule string) *goquery.Selection {
+	initRule = strings.TrimSpace(initRule)
+	if initRule == "" || strings.HasPrefix(initRule, "@") {
+		return doc.Selection
+	}
+	parts := strings.SplitN(initRule, "|", 2)
+	selector := strings.TrimSpace(parts[0])
+	if selector == "" {
+		return doc.Selection
+	}
+	scope := doc.Find(selector).First()
+	if scope.Length() == 0 {
+		return doc.Selection
+	}
+	return scope
 }
 
 func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule, charset string, policy SourceRequestPolicy, bookDoc *goquery.Document, preparedBookRequest *sourceRequest) ([]RemoteChapter, error) {
