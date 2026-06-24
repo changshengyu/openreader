@@ -2040,6 +2040,101 @@ func (s *Server) searchBookContent(c *gin.Context) {
 	c.JSON(http.StatusOK, matches)
 }
 
+type legacySearchBookContentRequest struct {
+	URL       string `json:"url"`
+	BookURL   string `json:"bookUrl"`
+	Keyword   string `json:"keyword"`
+	LastIndex *int   `json:"lastIndex"`
+	Size      *int   `json:"size"`
+}
+
+func (s *Server) legacySearchBookContent(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+	req := legacySearchBookContentRequest{
+		URL:     c.Query("url"),
+		BookURL: c.Query("bookUrl"),
+		Keyword: c.Query("keyword"),
+	}
+	if lastIndexValue := strings.TrimSpace(c.Query("lastIndex")); lastIndexValue != "" {
+		lastIndex := parseBoundedInt(lastIndexValue, 0, -1, 1000000)
+		req.LastIndex = &lastIndex
+	}
+	if sizeValue := strings.TrimSpace(c.Query("size")); sizeValue != "" {
+		size := parseBoundedInt(sizeValue, 20, 1, 20000)
+		req.Size = &size
+	}
+	if c.Request.Method == http.MethodPost {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "请求格式不正确"})
+			return
+		}
+	}
+
+	bookURL := strings.TrimSpace(firstNonBlank(req.URL, req.BookURL))
+	if bookURL == "" {
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "请输入书籍链接"})
+		return
+	}
+	keyword := strings.TrimSpace(req.Keyword)
+	if keyword == "" {
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "请输入搜索关键词"})
+		return
+	}
+
+	var book models.Book
+	err := s.db.Where("user_id = ? AND url = ?", userID, bookURL).First(&book).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "请先加入书架"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "加载书籍失败"})
+		return
+	}
+
+	var chapters []models.Chapter
+	if err := s.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "加载目录失败"})
+		return
+	}
+
+	lastIndex := 0
+	if req.LastIndex != nil {
+		lastIndex = *req.LastIndex
+	}
+	if lastIndex >= len(chapters) {
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "没有更多了"})
+		return
+	}
+	size := 20
+	if req.Size != nil {
+		size = *req.Size
+	}
+	start := lastIndex + 1
+	if start >= len(chapters) {
+		c.JSON(http.StatusOK, gin.H{
+			"isSuccess": true,
+			"data": gin.H{
+				"list":      []contentMatch{},
+				"lastIndex": start,
+				"hasMore":   false,
+				"total":     len(chapters),
+			},
+		})
+		return
+	}
+	matches, currentIndex := s.collectContentMatches(book, chapters, keyword, start, len(chapters)-start, max(size, 1), max(size, 1))
+	c.JSON(http.StatusOK, gin.H{
+		"isSuccess": true,
+		"data": gin.H{
+			"list":      matches,
+			"lastIndex": currentIndex,
+			"hasMore":   currentIndex >= 0 && currentIndex < len(chapters)-1,
+			"total":     len(chapters),
+		},
+	})
+}
+
 func (s *Server) collectContentMatches(book models.Book, chapters []models.Chapter, keyword string, start int, chapterLimit int, matchLimit int, perChapterLimit int) ([]contentMatch, int) {
 	matches := make([]contentMatch, 0)
 	if start < 0 {

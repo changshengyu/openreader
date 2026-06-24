@@ -4373,6 +4373,82 @@ func TestSearchLocalBookContentKeepsRequestedPageSize(t *testing.T) {
 	}
 }
 
+func TestLegacySearchBookContentByURL(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "上游正文搜索", URL: "https://book.example/legacy-search"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i, text := range []string{"第一章目标", "第二章目标", "第三章目标"} {
+		cachePath := filepath.Join("legacy-content-search", fmt.Sprintf("chapter-%d.txt", i))
+		fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		chapter := models.Chapter{BookID: book.ID, Index: i, Title: fmt.Sprintf("第%d章", i+1), CachePath: cachePath}
+		if err := server.db.Create(&chapter).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	body := `{"url":"https://book.example/legacy-search","keyword":"目标","lastIndex":-1,"size":1}`
+	req := httptest.NewRequest(http.MethodPost, "/api/reader3/searchBookContent", strings.NewReader(body))
+	req.Header.Set("Authorization", token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("legacy search post: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var first struct {
+		IsSuccess bool `json:"isSuccess"`
+		Data      struct {
+			List      []map[string]any `json:"list"`
+			LastIndex int              `json:"lastIndex"`
+			HasMore   bool             `json:"hasMore"`
+			Total     int              `json:"total"`
+		} `json:"data"`
+		ErrorMsg string `json:"errorMsg"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if !first.IsSuccess || len(first.Data.List) != 1 || first.Data.LastIndex != 0 || !first.Data.HasMore || first.Data.Total != 3 {
+		t.Fatalf("unexpected legacy first result: %+v body=%s", first, w.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/reader3/searchBookContent?bookUrl="+url.QueryEscape("https://book.example/legacy-search")+"&keyword="+url.QueryEscape("目标")+"&lastIndex=0&size=2", nil)
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("legacy search get: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var second struct {
+		IsSuccess bool `json:"isSuccess"`
+		Data      struct {
+			List      []map[string]any `json:"list"`
+			LastIndex int              `json:"lastIndex"`
+			HasMore   bool             `json:"hasMore"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if !second.IsSuccess || len(second.Data.List) != 2 || second.Data.LastIndex != 2 || second.Data.HasMore {
+		t.Fatalf("unexpected legacy second result: %+v body=%s", second, w.Body.String())
+	}
+}
+
 func TestSearchBookContentScansAheadUntilMatch(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

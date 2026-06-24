@@ -83,6 +83,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.PUT("/books/:id/category", server.updateBookCategory)
 	protected.POST("/books/:id/change-source", server.changeBookSource)
 	protected.GET("/books/:id/search", server.searchBookContent)
+	protected.GET("/reader3/searchBookContent", server.legacySearchBookContent)
+	protected.POST("/reader3/searchBookContent", server.legacySearchBookContent)
 	protected.GET("/books/:id/chapters", server.listChapters)
 	protected.POST("/search", server.search)
 	protected.GET("/books/:id/chapters/:index/content", server.chapterContent)
