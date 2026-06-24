@@ -277,7 +277,7 @@
             </el-collapse-item>
             <el-collapse-item title="目录" name="toc">
               <div class="rule-grid">
-                <el-input v-model="ruleForm.bookInfoInitRule" placeholder="详情初始化 bookInfoInitRule（兼容字段）" />
+                <el-input v-model="ruleForm.bookInfoInitRule" placeholder="详情初始化范围 bookInfoInitRule" />
                 <el-input v-model="ruleForm.bookInfoNameRule" placeholder="详情书名 bookInfoNameRule" />
                 <el-input v-model="ruleForm.bookInfoAuthorRule" placeholder="详情作者 bookInfoAuthorRule" />
                 <el-input v-model="ruleForm.bookInfoCoverRule" placeholder="详情封面 bookInfoCoverRule" />
@@ -286,15 +286,15 @@
                 <el-input v-model="ruleForm.bookInfoLatestChapterRule" placeholder="详情最新章节 bookInfoLatestChapterRule" />
                 <el-input v-model="ruleForm.bookInfoUpdateTimeRule" placeholder="详情更新时间 bookInfoUpdateTimeRule" />
                 <el-input v-model="ruleForm.bookInfoWordCountRule" placeholder="详情字数 bookInfoWordCountRule" />
-                <el-input v-model="ruleForm.bookInfoCanRenameRule" placeholder="允许改名 bookInfoCanRenameRule（兼容字段）" />
+                <el-input v-model="ruleForm.bookInfoCanRenameRule" placeholder="允许详情改名 bookInfoCanRenameRule" />
                 <el-input v-model="ruleForm.tocUrlRule" placeholder="目录地址 tocUrlRule" />
                 <el-input v-model="ruleForm.chapterPreUpdateJsRule" placeholder="目录预处理 JS chapterPreUpdateJsRule（兼容字段）" />
                 <el-input v-model="ruleForm.chapterListRule" placeholder="章节列表 chapterListRule" />
                 <el-input v-model="ruleForm.chapterNameRule" placeholder="章节名 chapterNameRule" />
                 <el-input v-model="ruleForm.chapterUrlRule" placeholder="章节地址 chapterUrlRule" />
-                <el-input v-model="ruleForm.chapterIsVolumeRule" placeholder="卷名 chapterIsVolumeRule（兼容字段）" />
-                <el-input v-model="ruleForm.chapterIsVipRule" placeholder="VIP chapterIsVipRule（兼容字段）" />
-                <el-input v-model="ruleForm.chapterUpdateTimeRule" placeholder="章节更新时间 chapterUpdateTimeRule（兼容字段）" />
+                <el-input v-model="ruleForm.chapterIsVolumeRule" placeholder="卷名 chapterIsVolumeRule" />
+                <el-input v-model="ruleForm.chapterIsVipRule" placeholder="VIP chapterIsVipRule" />
+                <el-input v-model="ruleForm.chapterUpdateTimeRule" placeholder="章节更新时间 chapterUpdateTimeRule" />
                 <el-input v-model="ruleForm.nextTocUrlRule" placeholder="目录下一页 nextTocUrlRule（可选）" />
               </div>
             </el-collapse-item>
@@ -305,7 +305,7 @@
                 <el-input v-model="ruleForm.nextContentUrlRule" placeholder="正文下一页 nextContentUrlRule（可选）" />
                 <el-input v-model="ruleForm.contentWebJsRule" placeholder="正文 Web JS contentWebJsRule（兼容字段）" />
                 <el-input v-model="ruleForm.contentSourceRegex" placeholder="源码正则 contentSourceRegex（兼容字段）" />
-                <el-input v-model="ruleForm.contentReplaceRegex" placeholder="替换正则 contentReplaceRegex（兼容字段）" />
+                <el-input v-model="ruleForm.contentReplaceRegex" placeholder="替换正则 contentReplaceRegex" />
                 <el-input v-model="ruleForm.contentImageStyle" placeholder="图片样式 contentImageStyle（兼容字段）" />
               </div>
             </el-collapse-item>
