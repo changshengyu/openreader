@@ -28,6 +28,7 @@ type SearchResult struct {
 	Kind          string `json:"kind"`
 	WordCount     string `json:"wordCount"`
 	LatestChapter string `json:"latestChapter"`
+	UpdateTime    string `json:"updateTime"`
 	BookURL       string `json:"bookUrl"`
 	SourceID      uint   `json:"sourceId"`
 	SourceName    string `json:"sourceName"`
@@ -273,6 +274,7 @@ func effectiveExploreRule(rule models.BookSourceRule) models.BookSourceRule {
 	exploreRule.BookKindRule = rule.ExploreBookKindRule
 	exploreRule.BookWordCountRule = rule.ExploreBookWordCountRule
 	exploreRule.LatestChapterRule = rule.ExploreLatestChapterRule
+	exploreRule.BookUpdateTimeRule = rule.ExploreBookUpdateTimeRule
 	exploreRule.BookURLRule = rule.ExploreBookURLRule
 	exploreRule.PaginationRule = rule.ExplorePaginationRule
 	return exploreRule
@@ -327,6 +329,7 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 		result.Kind = strings.Join(Extract(sel, rule.BookKindRule), ",")
 		result.WordCount = formatSourceWordCount(firstMatch(sel, rule.BookWordCountRule))
 		result.LatestChapter = firstMatch(sel, rule.LatestChapterRule)
+		result.UpdateTime = firstMatch(sel, rule.BookUpdateTimeRule)
 		result.BookURL = resolveSourceURLTemplate(baseURL, firstMatch(sel, rule.BookURLRule))
 
 		if result.Title == "" || result.BookURL == "" {
@@ -357,6 +360,7 @@ func parseDirectBookResult(doc *goquery.Document, rule models.BookSourceRule, so
 		Kind:          info.Kind,
 		WordCount:     formatSourceWordCount(info.WordCount),
 		LatestChapter: info.LatestChapter,
+		UpdateTime:    info.UpdateTime,
 		BookURL:       bookURL,
 		SourceID:      source.ID,
 		SourceName:    source.Name,

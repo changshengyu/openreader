@@ -180,7 +180,7 @@ func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *t
 				page = "1"
 			}
 			body := fmt.Sprintf(
-				`<article class="book"><a class="name" href="/book/%s/%s">%s 第%s页</a><span class="author">%s作者</span></article>`,
+				`<article class="book"><a class="name" href="/book/%s/%s">%s 第%s页</a><span class="author">%s作者</span><span class="updated">刚刚更新</span></article>`,
 				sourceName,
 				page,
 				sourceName,
@@ -201,11 +201,12 @@ func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *t
 	for _, name := range []string{"source-a", "source-b", "source-c"} {
 		source := models.BookSource{Name: name, Enabled: true, Charset: "utf-8"}
 		if err := source.SetRules(models.BookSourceRule{
-			SearchURL:      "https://search.example/" + name + "?q={keyword}&page={page}",
-			BookListRule:   ".book",
-			BookNameRule:   ".name",
-			BookAuthorRule: ".author",
-			BookURLRule:    ".name|attr:href",
+			SearchURL:          "https://search.example/" + name + "?q={keyword}&page={page}",
+			BookListRule:       ".book",
+			BookNameRule:       ".name",
+			BookAuthorRule:     ".author",
+			BookUpdateTimeRule: ".updated",
+			BookURLRule:        ".name|attr:href",
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -232,7 +233,8 @@ func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *t
 		t.Fatal(err)
 	}
 	if singleResp.Page != 2 || !singleResp.HasMore || singleResp.LastIndex != -1 ||
-		len(singleResp.List) != 1 || singleResp.List[0].Title != "source-a 第2页" {
+		len(singleResp.List) != 1 || singleResp.List[0].Title != "source-a 第2页" ||
+		singleResp.List[0].UpdateTime != "刚刚更新" {
 		t.Fatalf("unexpected single source response: %+v", singleResp)
 	}
 
@@ -7248,7 +7250,7 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body: io.NopCloser(strings.NewReader(`<html><body>
-					<div class="book"><a class="link" href="/book"><span class="title">探索书</span></a><span class="author">作者</span></div>
+					<div class="book"><a class="link" href="/book"><span class="title">探索书</span></a><span class="author">作者</span><span class="updated">今日更新</span></div>
 				</body></html>`)),
 				Header:  make(http.Header),
 				Request: req,
@@ -7259,15 +7261,16 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 
 	source := models.BookSource{Name: "探索源", BaseURL: "https://explore.example", Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
-		ExploreURL:            "https://explore.example/top",
-		BookListRule:          ".search-only",
-		BookNameRule:          ".search-title|text",
-		BookURLRule:           ".search-link|attr:href",
-		ExploreBookListRule:   ".book",
-		ExploreBookNameRule:   ".title|text",
-		ExploreBookAuthorRule: ".author|text",
-		ExploreBookURLRule:    ".link|attr:href",
-		ExplorePaginationRule: ".explore-next|attr:href",
+		ExploreURL:                "https://explore.example/top",
+		BookListRule:              ".search-only",
+		BookNameRule:              ".search-title|text",
+		BookURLRule:               ".search-link|attr:href",
+		ExploreBookListRule:       ".book",
+		ExploreBookNameRule:       ".title|text",
+		ExploreBookAuthorRule:     ".author|text",
+		ExploreBookUpdateTimeRule: ".updated|text",
+		ExploreBookURLRule:        ".link|attr:href",
+		ExplorePaginationRule:     ".explore-next|attr:href",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -7287,7 +7290,10 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 	req2.Header.Set("Authorization", token)
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
-	if w2.Code != http.StatusOK || !strings.Contains(w2.Body.String(), "探索书") || !strings.Contains(w2.Body.String(), "https://explore.example/book") {
+	if w2.Code != http.StatusOK ||
+		!strings.Contains(w2.Body.String(), "探索书") ||
+		!strings.Contains(w2.Body.String(), "今日更新") ||
+		!strings.Contains(w2.Body.String(), "https://explore.example/book") {
 		t.Fatalf("explore books: expected result, got %d: %s", w2.Code, w2.Body.String())
 	}
 }

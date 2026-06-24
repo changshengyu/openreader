@@ -255,7 +255,7 @@
                 <el-input v-model="ruleForm.bookKindRule" placeholder="分类 bookKindRule" />
                 <el-input v-model="ruleForm.bookWordCountRule" placeholder="字数 bookWordCountRule" />
                 <el-input v-model="ruleForm.latestChapterRule" placeholder="最新章节 latestChapterRule" />
-                <el-input v-model="ruleForm.bookUpdateTimeRule" placeholder="更新时间 bookUpdateTimeRule（兼容字段）" />
+                <el-input v-model="ruleForm.bookUpdateTimeRule" placeholder="更新时间 bookUpdateTimeRule" />
                 <el-input v-model="ruleForm.bookUrlRule" placeholder="详情地址 bookUrlRule" />
                 <el-input v-model="ruleForm.paginationRule" placeholder="下一页 paginationRule（可选）" />
               </div>
@@ -270,7 +270,7 @@
                 <el-input v-model="ruleForm.exploreBookKindRule" placeholder="分类 exploreBookKindRule" />
                 <el-input v-model="ruleForm.exploreBookWordCountRule" placeholder="字数 exploreBookWordCountRule" />
                 <el-input v-model="ruleForm.exploreLatestChapterRule" placeholder="最新章节 exploreLatestChapterRule" />
-                <el-input v-model="ruleForm.exploreBookUpdateTimeRule" placeholder="更新时间 exploreBookUpdateTimeRule（兼容字段）" />
+                <el-input v-model="ruleForm.exploreBookUpdateTimeRule" placeholder="更新时间 exploreBookUpdateTimeRule" />
                 <el-input v-model="ruleForm.exploreBookUrlRule" placeholder="详情地址 exploreBookUrlRule" />
                 <el-input v-model="ruleForm.explorePaginationRule" placeholder="下一页 explorePaginationRule（可选）" />
               </div>

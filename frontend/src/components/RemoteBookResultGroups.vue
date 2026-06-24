@@ -20,6 +20,7 @@
             </div>
             <p>{{ remoteBookAuthor(item) || '未知作者' }}</p>
             <p v-if="remoteBookLatestChapter(item)" class="latest-chapter">{{ remoteBookLatestChapter(item) }}</p>
+            <p v-if="remoteBookUpdateTime(item)" class="update-time">更新：{{ remoteBookUpdateTime(item) }}</p>
             <p v-if="remoteBookKind(item) || remoteBookWordCount(item)">{{ [remoteBookKind(item), remoteBookWordCount(item)].filter(Boolean).join(' · ') }}</p>
             <p class="result-intro">{{ remoteBookIntro(item) || '暂无简介' }}</p>
           </div>
@@ -42,6 +43,7 @@ import {
   remoteBookLatestChapter,
   remoteBookSourceName,
   remoteBookTitle,
+  remoteBookUpdateTime,
   remoteBookWordCount,
 } from '../utils/remoteBookResult'
 
@@ -120,6 +122,10 @@ function bookKey(item, group) {
 
 .latest-chapter {
   color: var(--app-accent) !important;
+}
+
+.update-time {
+  font-size: 12px;
 }
 
 .result-intro {

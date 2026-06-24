@@ -38,6 +38,10 @@ export function remoteBookLatestChapter(book = {}) {
   return book.latestChapter || book.latestChapterTitle || book.lastChapter || ''
 }
 
+export function remoteBookUpdateTime(book = {}) {
+  return book.updateTime || book.updated || book.lastUpdateTime || ''
+}
+
 export function remoteBookKey(book = {}, fallbackSourceId = '') {
   return `${remoteBookSourceId(book, fallbackSourceId)}-${remoteBookUrl(book)}`
 }
