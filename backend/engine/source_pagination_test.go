@@ -261,3 +261,39 @@ func TestFetchChapterContentAppliesContentReplaceRegex(t *testing.T) {
 		t.Fatalf("unexpected replaced content: %q", content)
 	}
 }
+
+func TestFetchChapterContentAppliesFullImageStyle(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`
+					<main class="content">
+						<p>图文正文</p>
+						<img data-src="/images/full.jpg" alt="插图">
+					</main>
+				`)),
+				Header:  make(http.Header),
+				Request: request,
+			}, nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{Name: "正文图片样式源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentRule:       ".content|html",
+		ContentImageStyle: "FULL",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := FetchChapterContent("https://source.example/chapter/1", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "图文正文\n<img src=\"https://source.example/images/full.jpg\" alt=\"插图\" data-image-style=\"FULL\">"
+	if content != want {
+		t.Fatalf("unexpected image style content: %q, want %q", content, want)
+	}
+}

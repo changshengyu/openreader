@@ -17,6 +17,7 @@ export function parseReaderContentBlocks(value, heading = '', formatText = text 
           type: 'image',
           src: image.src,
           alt: image.alt,
+          imageStyle: image.imageStyle,
           text: '',
           pos: lineStart + match.index,
           endPos: lineStart + match.index + match[0].length,
@@ -54,7 +55,12 @@ function parseImageTag(value) {
   return {
     src,
     alt: String(image.getAttribute('alt') || image.getAttribute('title') || '').trim(),
+    imageStyle: normalizeImageStyle(image.getAttribute('data-image-style')),
   }
+}
+
+function normalizeImageStyle(value) {
+  return String(value || '').trim().toUpperCase() === 'FULL' ? 'FULL' : ''
 }
 
 function htmlText(value) {

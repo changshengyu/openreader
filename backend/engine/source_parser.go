@@ -758,7 +758,7 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	for len(queue) > 0 {
 		page := queue[0]
 		queue = queue[1:]
-		if text := extractChapterContent(page.doc, rule.ContentRule, page.request.URL); text != "" {
+		if text := extractChapterContent(page.doc, rule, page.request.URL); text != "" {
 			parts = append(parts, text)
 		}
 		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextContentURLRule, page.request.URL) {
@@ -839,14 +839,15 @@ func applyContentReplaceRegex(text string, rule string) string {
 	return compiled.ReplaceAllString(result, replacement)
 }
 
-func extractChapterContent(doc *goquery.Document, contentRule string, baseURL string) string {
+func extractChapterContent(doc *goquery.Document, rule models.BookSourceRule, baseURL string) string {
+	contentRule := rule.ContentRule
 	if contentRule == "" {
 		return strings.Join(Extract(doc.Selection, "body|text"), "\n")
 	}
 	values := Extract(doc.Selection, contentRule)
 	if ruleOperation(contentRule) == "html" {
 		for index := range values {
-			values[index] = normalizeChapterHTML(values[index], baseURL)
+			values[index] = normalizeChapterHTMLWithImageStyle(values[index], baseURL, rule.ContentImageStyle)
 		}
 	}
 	return strings.Join(values, "\n")
@@ -861,10 +862,15 @@ func ruleOperation(rule string) string {
 }
 
 func normalizeChapterHTML(fragment string, baseURL string) string {
+	return normalizeChapterHTMLWithImageStyle(fragment, baseURL, "")
+}
+
+func normalizeChapterHTMLWithImageStyle(fragment string, baseURL string, imageStyle string) string {
 	doc, err := html.Parse(strings.NewReader("<html><body>" + fragment + "</body></html>"))
 	if err != nil {
 		return strings.TrimSpace(fragment)
 	}
+	normalizedImageStyle := normalizeContentImageStyle(imageStyle)
 	lines := make([]string, 0)
 	var text strings.Builder
 	flushText := func() {
@@ -896,7 +902,12 @@ func normalizeChapterHTML(fragment string, baseURL string) string {
 				src = resolveURL(baseURL, src)
 				if isSafeChapterImageURL(src) {
 					alt := strings.TrimSpace(firstHTMLAttr(node, "alt", "title"))
-					lines = append(lines, `<img src="`+stdhtml.EscapeString(src)+`" alt="`+stdhtml.EscapeString(alt)+`">`)
+					imageTag := `<img src="` + stdhtml.EscapeString(src) + `" alt="` + stdhtml.EscapeString(alt) + `"`
+					if normalizedImageStyle != "" {
+						imageTag += ` data-image-style="` + stdhtml.EscapeString(normalizedImageStyle) + `"`
+					}
+					imageTag += `>`
+					lines = append(lines, imageTag)
 				}
 				return
 			}
@@ -918,6 +929,13 @@ func normalizeChapterHTML(fragment string, baseURL string) string {
 	walk(doc)
 	flushText()
 	return strings.Join(lines, "\n")
+}
+
+func normalizeContentImageStyle(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "FULL") {
+		return "FULL"
+	}
+	return ""
 }
 
 func firstHTMLAttr(node *html.Node, names ...string) string {

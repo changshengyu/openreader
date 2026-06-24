@@ -112,7 +112,13 @@
             >
               <h1 data-pos="0">{{ block.title || '正文' }}</h1>
               <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
-                <figure v-if="line.type === 'image'" class="reader-content-image" :data-pos="line.pos" data-reader-block>
+                <figure
+                  v-if="line.type === 'image'"
+                  class="reader-content-image"
+                  :class="{ 'is-full': line.imageStyle === 'FULL' }"
+                  :data-pos="line.pos"
+                  data-reader-block
+                >
                   <el-image
                     :src="line.src"
                     :alt="line.alt"
@@ -3921,11 +3927,17 @@ function readError(err, fallback) {
   width: min(100%, 960px);
   min-height: 1px;
 }
+.reader-content-image.is-full :deep(.el-image) {
+  width: 100%;
+}
 .reader-content-image :deep(img) {
   display: block;
   max-width: 100%;
   height: auto;
   margin: 0 auto;
+}
+.reader-content-image.is-full :deep(img) {
+  width: 100%;
 }
 .reader-content-image figcaption {
   margin-top: 8px;

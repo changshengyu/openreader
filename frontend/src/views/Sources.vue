@@ -306,7 +306,7 @@
                 <el-input v-model="ruleForm.contentWebJsRule" placeholder="正文 Web JS contentWebJsRule（兼容字段）" />
                 <el-input v-model="ruleForm.contentSourceRegex" placeholder="源码正则 contentSourceRegex（兼容字段）" />
                 <el-input v-model="ruleForm.contentReplaceRegex" placeholder="替换正则 contentReplaceRegex" />
-                <el-input v-model="ruleForm.contentImageStyle" placeholder="图片样式 contentImageStyle（兼容字段）" />
+                <el-input v-model="ruleForm.contentImageStyle" placeholder="图片样式 contentImageStyle" />
               </div>
             </el-collapse-item>
           </el-collapse>
