@@ -318,7 +318,7 @@ const mobileNavigationStyle = computed(() => {
     return {
       ...base,
       '--mobile-nav-drag-offset': `${offset}px`,
-      transform: `translateX(${offset}px)`,
+      marginLeft: `${offset}px`,
       transition: 'none'
     }
   }
@@ -327,7 +327,7 @@ const mobileNavigationStyle = computed(() => {
     return {
       ...base,
       '--mobile-nav-drag-offset': `${offset}px`,
-      transform: `translateX(${offset}px)`,
+      marginLeft: `${offset}px`,
       transition: 'none'
     }
   }
@@ -1274,9 +1274,9 @@ function readError(err, fallback) {
   padding: 0;
   scrollbar-width: none;
   box-shadow: 12px 0 28px rgba(36, 32, 27, 0.08);
-  transform: translateX(calc(-1 * var(--mobile-nav-width, 72vw)));
-  transition: transform 0.3s;
-  will-change: transform;
+  margin-left: calc(-1 * var(--mobile-nav-width, 72vw));
+  transition: margin-left 0.3s;
+  will-change: margin-left;
 }
 
 .app-shell.mobile-shell .app-sidebar-scroll {
@@ -1461,7 +1461,7 @@ function readError(err, fallback) {
 }
 
 .app-shell.mobile-shell.mobile-nav-open .app-sidebar {
-  transform: translateX(0);
+  margin-left: 0;
 }
 
 .app-shell.mobile-shell.mobile-nav-open .app-workspace {
