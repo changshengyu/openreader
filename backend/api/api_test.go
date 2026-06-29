@@ -6560,6 +6560,55 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 	}
 }
 
+func TestFetchRSSArticlesSupportsRDFRootItems(t *testing.T) {
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+					<rdf:RDF
+						xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+						xmlns:dc="http://purl.org/dc/elements/1.1/"
+						xmlns:media="http://search.yahoo.com/mrss/">
+						<channel rdf:about="https://rss.example/rdf.xml">
+							<title>RDF 订阅</title>
+						</channel>
+						<item rdf:about="https://rss.example/posts/rdf">
+							<Title>RDF 文章</Title>
+							<Link>/posts/rdf</Link>
+							<dc:creator>RDF 作者</dc:creator>
+							<Description>RDF 摘要</Description>
+							<PubDate>Sun, 29 Jun 2026 10:00:00 +0800</PubDate>
+							<media:thumbnail url="/covers/rdf.jpg"></media:thumbnail>
+						</item>
+					</rdf:RDF>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	articles, err := fetchRSSArticles(models.RSSSource{
+		Title: "RDF RSS",
+		URL:   "https://rss.example/rdf.xml",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(articles) != 1 {
+		t.Fatalf("rdf articles = %d, want 1: %+v", len(articles), articles)
+	}
+	article := articles[0]
+	if article.Title != "RDF 文章" ||
+		article.Link != "https://rss.example/posts/rdf" ||
+		article.Author != "RDF 作者" ||
+		article.Image != "https://rss.example/covers/rdf.jpg" ||
+		article.PubDate != "Sun, 29 Jun 2026 10:00:00 +0800" {
+		t.Fatalf("unexpected rdf article: %+v", article)
+	}
+}
+
 func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

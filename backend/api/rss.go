@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -522,53 +523,156 @@ func (s *Server) broadcastRSSUpdate(userID uint, kind string, payload gin.H) {
 }
 
 type parsedRSS struct {
-	Channel struct {
-		Items []struct {
-			Title       string `xml:"title"`
-			Link        string `xml:"link"`
-			Description string `xml:"description"`
-			Creator     string `xml:"creator"`
-			Author      string `xml:"author"`
-			PubDate     string `xml:"pubDate"`
-			Time        string `xml:"time"`
-			Encoded     string `xml:"encoded"`
-			Enclosure   struct {
-				URL  string `xml:"url,attr"`
-				Type string `xml:"type,attr"`
-			} `xml:"enclosure"`
-			MediaThumbnail []struct {
-				URL string `xml:"url,attr"`
-			} `xml:"http://search.yahoo.com/mrss/ thumbnail"`
-			MediaContent []struct {
-				URL    string `xml:"url,attr"`
-				Type   string `xml:"type,attr"`
-				Medium string `xml:"medium,attr"`
-			} `xml:"http://search.yahoo.com/mrss/ content"`
-		} `xml:"item"`
-	} `xml:"channel"`
-	Entries []struct {
-		Title string `xml:"title"`
-		Link  []struct {
-			Href string `xml:"href,attr"`
-			Rel  string `xml:"rel,attr"`
-			Type string `xml:"type,attr"`
-		} `xml:"link"`
-		Summary string `xml:"summary"`
-		Content string `xml:"content"`
-		Author  struct {
-			Name string `xml:"name"`
-		} `xml:"author"`
-		Published      string `xml:"published"`
-		Updated        string `xml:"updated"`
-		MediaThumbnail []struct {
-			URL string `xml:"url,attr"`
-		} `xml:"http://search.yahoo.com/mrss/ thumbnail"`
-		MediaContent []struct {
-			URL    string `xml:"url,attr"`
-			Type   string `xml:"type,attr"`
-			Medium string `xml:"medium,attr"`
-		} `xml:"http://search.yahoo.com/mrss/ content"`
-	} `xml:"entry"`
+	Items   []parsedRSSItem
+	Entries []parsedAtomEntry
+}
+
+type parsedRSSItem struct {
+	Title          string              `xml:"title"`
+	Link           string              `xml:"link"`
+	Description    string              `xml:"description"`
+	Creator        string              `xml:"creator"`
+	Author         string              `xml:"author"`
+	PubDate        string              `xml:"pubDate"`
+	Time           string              `xml:"time"`
+	Encoded        string              `xml:"encoded"`
+	Enclosure      rssEnclosure        `xml:"enclosure"`
+	MediaThumbnail []rssMediaThumbnail `xml:"http://search.yahoo.com/mrss/ thumbnail"`
+	MediaContent   []rssMediaContent   `xml:"http://search.yahoo.com/mrss/ content"`
+}
+
+func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		switch current := token.(type) {
+		case xml.StartElement:
+			name := strings.ToLower(current.Name.Local)
+			switch name {
+			case "title", "link", "description", "creator", "author", "pubdate", "time", "encoded":
+				var value string
+				if err := decoder.DecodeElement(&value, &current); err != nil {
+					return err
+				}
+				switch name {
+				case "title":
+					item.Title = value
+				case "link":
+					item.Link = value
+				case "description":
+					item.Description = value
+				case "creator":
+					item.Creator = value
+				case "author":
+					item.Author = value
+				case "pubdate":
+					item.PubDate = value
+				case "time":
+					item.Time = value
+				case "encoded":
+					item.Encoded = value
+				}
+			case "enclosure":
+				var enclosure rssEnclosure
+				if err := decoder.DecodeElement(&enclosure, &current); err != nil {
+					return err
+				}
+				item.Enclosure = enclosure
+			case "thumbnail":
+				var thumbnail rssMediaThumbnail
+				if err := decoder.DecodeElement(&thumbnail, &current); err != nil {
+					return err
+				}
+				item.MediaThumbnail = append(item.MediaThumbnail, thumbnail)
+			case "content":
+				var content rssMediaContent
+				if err := decoder.DecodeElement(&content, &current); err != nil {
+					return err
+				}
+				item.MediaContent = append(item.MediaContent, content)
+			default:
+				if err := decoder.Skip(); err != nil {
+					return err
+				}
+			}
+		case xml.EndElement:
+			if current.Name == start.Name {
+				return nil
+			}
+		}
+	}
+}
+
+type parsedAtomEntry struct {
+	Title   string     `xml:"title"`
+	Link    []atomLink `xml:"link"`
+	Summary string     `xml:"summary"`
+	Content string     `xml:"content"`
+	Author  struct {
+		Name string `xml:"name"`
+	} `xml:"author"`
+	Published      string              `xml:"published"`
+	Updated        string              `xml:"updated"`
+	MediaThumbnail []rssMediaThumbnail `xml:"http://search.yahoo.com/mrss/ thumbnail"`
+	MediaContent   []rssMediaContent   `xml:"http://search.yahoo.com/mrss/ content"`
+}
+
+type atomLink struct {
+	Href string `xml:"href,attr"`
+	Rel  string `xml:"rel,attr"`
+	Type string `xml:"type,attr"`
+}
+
+type rssEnclosure struct {
+	URL  string `xml:"url,attr"`
+	Type string `xml:"type,attr"`
+}
+
+type rssMediaThumbnail struct {
+	URL string `xml:"url,attr"`
+}
+
+type rssMediaContent struct {
+	URL    string `xml:"url,attr"`
+	Type   string `xml:"type,attr"`
+	Medium string `xml:"medium,attr"`
+}
+
+func decodeRSSDocument(text string) (parsedRSS, error) {
+	decoder := xml.NewDecoder(strings.NewReader(text))
+	parsed := parsedRSS{
+		Items:   make([]parsedRSSItem, 0),
+		Entries: make([]parsedAtomEntry, 0),
+	}
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return parsed, nil
+		}
+		if err != nil {
+			return parsedRSS{}, err
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		switch {
+		case strings.EqualFold(start.Name.Local, "item"):
+			var item parsedRSSItem
+			if err := decoder.DecodeElement(&item, &start); err != nil {
+				return parsedRSS{}, err
+			}
+			parsed.Items = append(parsed.Items, item)
+		case strings.EqualFold(start.Name.Local, "entry"):
+			var entry parsedAtomEntry
+			if err := decoder.DecodeElement(&entry, &start); err != nil {
+				return parsedRSS{}, err
+			}
+			parsed.Entries = append(parsed.Entries, entry)
+		}
+	}
 }
 
 func fetchRSSArticles(source models.RSSSource, requestedSortURL ...string) ([]models.RSSArticle, error) {
@@ -594,12 +698,12 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 	if err != nil {
 		return nil, 0, err
 	}
-	var parsed parsedRSS
-	if err := xml.Unmarshal([]byte(text), &parsed); err != nil {
+	parsed, err := decodeRSSDocument(text)
+	if err != nil {
 		return nil, 0, err
 	}
 	articles := make([]models.RSSArticle, 0)
-	for _, item := range parsed.Channel.Items {
+	for _, item := range parsed.Items {
 		link := strings.TrimSpace(item.Link)
 		if link != "" {
 			link = resolveRSSFetchURL(responseURL, link)
@@ -859,13 +963,7 @@ func rssSourceHeaders(source models.RSSSource) map[string]string {
 	return headers
 }
 
-func rssItemImage(enclosureURL string, enclosureType string, thumbnails []struct {
-	URL string `xml:"url,attr"`
-}, contents []struct {
-	URL    string `xml:"url,attr"`
-	Type   string `xml:"type,attr"`
-	Medium string `xml:"medium,attr"`
-}) string {
+func rssItemImage(enclosureURL string, enclosureType string, thumbnails []rssMediaThumbnail, contents []rssMediaContent) string {
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(enclosureType)), "image/") {
 		if url := strings.TrimSpace(enclosureURL); url != "" {
 			return url
@@ -887,17 +985,7 @@ func rssItemImage(enclosureURL string, enclosureType string, thumbnails []struct
 	return ""
 }
 
-func atomEntryImage(links []struct {
-	Href string `xml:"href,attr"`
-	Rel  string `xml:"rel,attr"`
-	Type string `xml:"type,attr"`
-}, thumbnails []struct {
-	URL string `xml:"url,attr"`
-}, contents []struct {
-	URL    string `xml:"url,attr"`
-	Type   string `xml:"type,attr"`
-	Medium string `xml:"medium,attr"`
-}) string {
+func atomEntryImage(links []atomLink, thumbnails []rssMediaThumbnail, contents []rssMediaContent) string {
 	for _, link := range links {
 		rel := strings.ToLower(strings.TrimSpace(link.Rel))
 		if rel == "enclosure" || rel == "image" {
