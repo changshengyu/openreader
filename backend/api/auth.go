@@ -18,6 +18,8 @@ type authRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+var errUsernameExists = errors.New("username already exists")
+
 func (s *Server) register(c *gin.Context) {
 	var request authRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -37,9 +39,40 @@ func (s *Server) register(c *gin.Context) {
 		return
 	}
 
-	user := models.User{Username: username, PasswordHash: string(hash)}
-	if err := s.db.Create(&user).Error; err != nil {
+	s.registerMu.Lock()
+	defer s.registerMu.Unlock()
+
+	user := models.User{}
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		var existing int64
+		if err := tx.Model(&models.User{}).Where("username = ?", username).Count(&existing).Error; err != nil {
+			return err
+		}
+		if existing > 0 {
+			return errUsernameExists
+		}
+
+		var userCount int64
+		if err := tx.Model(&models.User{}).Count(&userCount).Error; err != nil {
+			return err
+		}
+		role := "user"
+		if userCount == 0 {
+			role = "admin"
+		}
+		user = models.User{
+			Username:     username,
+			PasswordHash: string(hash),
+			Role:         role,
+		}
+		return tx.Create(&user).Error
+	})
+	if errors.Is(err, errUsernameExists) {
 		c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
 

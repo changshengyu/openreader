@@ -130,7 +130,7 @@ func TestListTXTTocRules(t *testing.T) {
 }
 
 func TestRegisterAndLogin(t *testing.T) {
-	router, _ := setupTestServer(t)
+	router, server := setupTestServer(t)
 
 	// register
 	body := `{"username":"alice","password":"secret123"}`
@@ -151,6 +151,41 @@ func TestRegisterAndLogin(t *testing.T) {
 	if registerResp.Token == "" {
 		t.Fatal("register: no token in response")
 	}
+	if registerResp.User.Role != "admin" {
+		t.Fatalf("first registered user role = %q, want admin", registerResp.User.Role)
+	}
+	var storedFirst models.User
+	if err := server.db.Where("username = ?", "alice").First(&storedFirst).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedFirst.Role != "admin" {
+		t.Fatalf("stored first user role = %q, want admin", storedFirst.Role)
+	}
+	adminReq := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	adminReq.Header.Set("Authorization", "Bearer "+registerResp.Token)
+	adminW := httptest.NewRecorder()
+	router.ServeHTTP(adminW, adminReq)
+	if adminW.Code != http.StatusOK {
+		t.Fatalf("first registered user should have admin access: %d %s", adminW.Code, adminW.Body.String())
+	}
+
+	secondBody := `{"username":"bob","password":"secret456"}`
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(secondBody))
+	secondReq.Header.Set("Content-Type", "application/json")
+	secondW := httptest.NewRecorder()
+	router.ServeHTTP(secondW, secondReq)
+	if secondW.Code != http.StatusOK {
+		t.Fatalf("register second user: expected 200, got %d: %s", secondW.Code, secondW.Body.String())
+	}
+	var secondResp struct {
+		User models.User `json:"user"`
+	}
+	if err := json.Unmarshal(secondW.Body.Bytes(), &secondResp); err != nil {
+		t.Fatal(err)
+	}
+	if secondResp.User.Role != "user" {
+		t.Fatalf("second registered user role = %q, want user", secondResp.User.Role)
+	}
 
 	// login
 	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
@@ -160,6 +195,44 @@ func TestRegisterAndLogin(t *testing.T) {
 
 	if w2.Code != http.StatusOK {
 		t.Fatalf("login: expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestConcurrentRegistrationCreatesExactlyOneAdmin(t *testing.T) {
+	router, server := setupTestServer(t)
+
+	const registrations = 4
+	var wait sync.WaitGroup
+	wait.Add(registrations)
+	statuses := make([]int, registrations)
+	for index := 0; index < registrations; index++ {
+		go func(index int) {
+			defer wait.Done()
+			body := fmt.Sprintf(`{"username":"parallel%d","password":"secret%d"}`, index, index)
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			statuses[index] = w.Code
+		}(index)
+	}
+	wait.Wait()
+
+	for index, status := range statuses {
+		if status != http.StatusOK {
+			t.Fatalf("parallel registration %d status = %d", index, status)
+		}
+	}
+	var adminCount int64
+	if err := server.db.Model(&models.User{}).Where("role = ?", "admin").Count(&adminCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	var userCount int64
+	if err := server.db.Model(&models.User{}).Count(&userCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if adminCount != 1 || userCount != registrations {
+		t.Fatalf("registered users=%d admins=%d, want %d/1", userCount, adminCount, registrations)
 	}
 }
 

@@ -3,6 +3,7 @@ package api
 import (
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -15,11 +16,12 @@ import (
 )
 
 type Server struct {
-	cfg       config.Config
-	db        *gorm.DB
-	hub       *readersync.Hub
-	scheduler *scheduler.Scheduler
-	backupSvc *backup.Service
+	cfg        config.Config
+	db         *gorm.DB
+	hub        *readersync.Hub
+	scheduler  *scheduler.Scheduler
+	backupSvc  *backup.Service
+	registerMu sync.Mutex
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) {
