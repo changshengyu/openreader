@@ -834,6 +834,7 @@ func fetchRSSRuleArticles(ctx context.Context, source models.RSSSource, fetchURL
 		Description: source.RuleDescription,
 		Image:       source.RuleImage,
 		Link:        source.RuleLink,
+		LinkBaseURL: source.URL,
 	}
 	currentTemplate := fetchURL
 	pageMode := strings.EqualFold(strings.TrimSpace(source.RuleNextPage), "PAGE")

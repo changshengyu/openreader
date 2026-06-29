@@ -115,6 +115,36 @@ func TestParseRSSRulePageResolvesNextRequestOptions(t *testing.T) {
 	}
 }
 
+func TestParseRSSRulePageResolvesArticleLinksAgainstSourceURL(t *testing.T) {
+	page, err := ParseRSSRulePage(
+		`<article><a href="../post/1">文章</a><img src="../cover.jpg"></article><a class="next" href="../page/2">下一页</a>`,
+		"https://cdn.rss.example/categories/tech/page/1",
+		RSSRuleSet{
+			Articles:    "article",
+			Title:       "a",
+			Image:       "img@src",
+			Link:        "a@href",
+			LinkBaseURL: `https://rss.example/feeds/main.xml, {"headers":{"Referer":"https://rss.example/"}}`,
+		},
+		".next@href",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Articles) != 1 {
+		t.Fatalf("article count = %d", len(page.Articles))
+	}
+	if page.Articles[0].Link != "https://rss.example/post/1" {
+		t.Fatalf("article link = %q", page.Articles[0].Link)
+	}
+	if page.Articles[0].Image != "https://cdn.rss.example/categories/tech/cover.jpg" {
+		t.Fatalf("article image = %q", page.Articles[0].Image)
+	}
+	if page.NextURL != "https://cdn.rss.example/categories/tech/page/2" {
+		t.Fatalf("next page URL = %q", page.NextURL)
+	}
+}
+
 func TestParseRSSRulePageSupportsPageMode(t *testing.T) {
 	page, err := ParseRSSRulePage(
 		`<article><a href="/post/1">文章</a></article>`,

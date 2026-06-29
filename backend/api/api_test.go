@@ -7287,6 +7287,50 @@ func TestFetchRSSRuleArticlesFollowsNextLinksWithoutLoops(t *testing.T) {
 	}
 }
 
+func TestFetchRSSRuleArticlesUsesSourceURLForRelativeArticleLinks(t *testing.T) {
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.String() != "https://cdn.rss.example/categories/tech/page.html" {
+				t.Fatalf("unexpected RSS category request: %s", request.URL)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					`<article><a href="../post/1">文章</a><img src="../cover.jpg"></article>`,
+				)),
+				Header:  make(http.Header),
+				Request: request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.RSSSource{
+		URL:          "https://rss.example/feeds/main.xml",
+		RuleArticles: "article",
+		RuleTitle:    "a",
+		RuleImage:    "img@src",
+		RuleLink:     "a@href",
+	}
+	articles, pages, err := fetchRSSArticlesContext(
+		context.Background(),
+		source,
+		"https://cdn.rss.example/categories/tech/page.html",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages != 1 || len(articles) != 1 {
+		t.Fatalf("pages=%d articles=%+v", pages, articles)
+	}
+	if articles[0].Link != "https://rss.example/post/1" {
+		t.Fatalf("article link = %q", articles[0].Link)
+	}
+	if articles[0].Image != "https://cdn.rss.example/categories/cover.jpg" {
+		t.Fatalf("article image = %q", articles[0].Image)
+	}
+}
+
 func TestCreateRSSSourceRespectsEnabledFlag(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
