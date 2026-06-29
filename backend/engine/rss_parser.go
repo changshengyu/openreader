@@ -136,6 +136,10 @@ func SanitizeRSSHTML(value string, baseURL string) string {
 }
 
 func ExtractRSSFirstImage(value string, baseURL string) string {
+	return resolveRSSURL(baseURL, ExtractRSSFirstImageSource(value))
+}
+
+func ExtractRSSFirstImageSource(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
@@ -149,7 +153,7 @@ func ExtractRSSFirstImage(value string, baseURL string) string {
 		return ""
 	}
 	src, _ := image.Attr("src")
-	return resolveRSSURL(baseURL, src)
+	return strings.TrimSpace(src)
 }
 
 func rssRuleValue(scope *goquery.Selection, rule string, preferHTML bool) string {

@@ -63,6 +63,9 @@ func TestSanitizeRSSHTMLRemovesActiveContentAndResolvesURLs(t *testing.T) {
 }
 
 func TestExtractRSSFirstImageMatchesUpstreamEmbeddedImageFallback(t *testing.T) {
+	if value := ExtractRSSFirstImageSource(`<p>摘要</p><img src="../covers/raw.jpg">`); value != "../covers/raw.jpg" {
+		t.Fatalf("raw first embedded image = %q", value)
+	}
 	value := ExtractRSSFirstImage(`
 		<p>摘要</p>
 		<img src="../covers/first.jpg">

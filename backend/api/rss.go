@@ -571,6 +571,9 @@ type parsedRSSItem struct {
 	Enclosure      rssEnclosure        `xml:"enclosure"`
 	MediaThumbnail []rssMediaThumbnail `xml:"http://search.yahoo.com/mrss/ thumbnail"`
 	MediaContent   []rssMediaContent   `xml:"http://search.yahoo.com/mrss/ content"`
+	Image          string              `xml:"-"`
+	imageSelected  bool
+	imageEmbedded  bool
 }
 
 func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
@@ -603,6 +606,7 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 					item.GUID = value
 				case "description":
 					item.Description = value
+					item.useEmbeddedImageFallback(value)
 				case "creator":
 					item.Creator = value
 				case "author":
@@ -613,6 +617,7 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 					item.Time = value
 				case "encoded":
 					item.Encoded = value
+					item.useEmbeddedImageFallback(value)
 				}
 			case "enclosure":
 				var enclosure rssEnclosure
@@ -620,12 +625,20 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 					return err
 				}
 				item.Enclosure = enclosure
+				if strings.Contains(strings.TrimSpace(enclosure.Type), "image/") {
+					item.Image = strings.TrimSpace(enclosure.URL)
+					item.imageSelected = rssAttributeExists(current.Attr, "url")
+					item.imageEmbedded = false
+				}
 			case "thumbnail":
 				var thumbnail rssMediaThumbnail
 				if err := decoder.DecodeElement(&thumbnail, &current); err != nil {
 					return err
 				}
 				item.MediaThumbnail = append(item.MediaThumbnail, thumbnail)
+				item.Image = strings.TrimSpace(thumbnail.URL)
+				item.imageSelected = rssAttributeExists(current.Attr, "url")
+				item.imageEmbedded = false
 			case "content":
 				var content rssMediaContent
 				if err := decoder.DecodeElement(&content, &current); err != nil {
@@ -643,6 +656,26 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 			}
 		}
 	}
+}
+
+func (item *parsedRSSItem) useEmbeddedImageFallback(value string) {
+	if item.imageSelected {
+		return
+	}
+	if image := engine.ExtractRSSFirstImageSource(value); image != "" {
+		item.Image = image
+		item.imageSelected = true
+		item.imageEmbedded = true
+	}
+}
+
+func rssAttributeExists(attributes []xml.Attr, name string) bool {
+	for _, attribute := range attributes {
+		if strings.EqualFold(attribute.Name.Local, name) {
+			return true
+		}
+	}
+	return false
 }
 
 type parsedAtomEntry struct {
@@ -749,13 +782,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 		if link != "" {
 			link = resolveRSSFetchURL(responseURL, link)
 		}
-		image := resolveRSSMediaURL(responseURL, rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent))
-		if image == "" {
-			image = engine.ExtractRSSFirstImage(item.Description, responseURL)
-		}
-		if image == "" {
-			image = engine.ExtractRSSFirstImage(item.Encoded, responseURL)
-		}
+		image := resolveRSSItemImage(responseURL, item)
 		pubDate := firstNonEmpty(item.PubDate, item.Time)
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(item.Title),
@@ -1012,26 +1039,23 @@ func rssSourceHeaders(source models.RSSSource) map[string]string {
 	return headers
 }
 
-func rssItemImage(enclosureURL string, enclosureType string, thumbnails []rssMediaThumbnail, contents []rssMediaContent) string {
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(enclosureType)), "image/") {
-		if url := strings.TrimSpace(enclosureURL); url != "" {
-			return url
-		}
-	}
-	for _, thumb := range thumbnails {
-		if url := strings.TrimSpace(thumb.URL); url != "" {
-			return url
-		}
-	}
+func rssMediaContentImage(contents []rssMediaContent) string {
 	for _, content := range contents {
 		if isRSSImageMedia(content.URL, content.Type, content.Medium) {
 			return strings.TrimSpace(content.URL)
 		}
 	}
-	if url := strings.TrimSpace(enclosureURL); looksLikeImageURL(url) {
-		return url
-	}
 	return ""
+}
+
+func resolveRSSItemImage(baseURL string, item parsedRSSItem) string {
+	image := resolveRSSMediaURL(baseURL, item.Image)
+	if !item.imageSelected || item.imageEmbedded {
+		if mediaImage := resolveRSSMediaURL(baseURL, rssMediaContentImage(item.MediaContent)); mediaImage != "" {
+			return mediaImage
+		}
+	}
+	return image
 }
 
 func atomEntryImage(links []atomLink, thumbnails []rssMediaThumbnail, contents []rssMediaContent) string {

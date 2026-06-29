@@ -6862,6 +6862,62 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 	}
 }
 
+func TestDecodeRSSDocumentPreservesUpstreamImageEventOrder(t *testing.T) {
+	parsed, err := decodeRSSDocument(`<?xml version="1.0" encoding="UTF-8"?>
+		<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+			<channel>
+				<item>
+					<title>后置 enclosure</title>
+					<description><![CDATA[<img src="/description-a.jpg">]]></description>
+					<media:thumbnail url="/thumbnail-a.jpg"></media:thumbnail>
+					<enclosure url="/enclosure-a.jpg" type="image/jpeg"></enclosure>
+				</item>
+				<item>
+					<title>后置 thumbnail</title>
+					<enclosure url="/enclosure-b.jpg" type="image/jpeg"></enclosure>
+					<description><![CDATA[<img src="/description-b.jpg">]]></description>
+					<media:thumbnail url="/thumbnail-b.jpg"></media:thumbnail>
+					<content:encoded><![CDATA[<img src="/content-b.jpg">]]></content:encoded>
+				</item>
+				<item>
+					<title>摘要兜底</title>
+					<description><![CDATA[<img src="/description-c.jpg">]]></description>
+					<content:encoded><![CDATA[<img src="/content-c.jpg">]]></content:encoded>
+				</item>
+				<item>
+					<title>正文兜底</title>
+					<description>没有图片</description>
+					<content:encoded><![CDATA[<img src="/content-d.jpg">]]></content:encoded>
+				</item>
+				<item>
+					<title>media content 扩展</title>
+					<description><![CDATA[<img src="/description-e.jpg">]]></description>
+					<media:content url="/media-e.jpg" type="image/jpeg"></media:content>
+				</item>
+				<item>
+					<title>无类型 enclosure</title>
+					<description><![CDATA[<img src="/description-f.jpg">]]></description>
+					<enclosure url="/untyped-f.jpg"></enclosure>
+				</item>
+			</channel>
+		</rss>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Items) != 6 {
+		t.Fatalf("decoded item count = %d", len(parsed.Items))
+	}
+	want := []string{"/enclosure-a.jpg", "/thumbnail-b.jpg", "/description-c.jpg", "/content-d.jpg", "/description-e.jpg", "/description-f.jpg"}
+	for index, item := range parsed.Items {
+		if item.Image != want[index] || !item.imageSelected {
+			t.Fatalf("item %q image = %q (selected=%v), want %q", item.Title, item.Image, item.imageSelected, want[index])
+		}
+	}
+	if image := resolveRSSItemImage("https://rss.example/feed.xml", parsed.Items[4]); image != "https://rss.example/media-e.jpg" {
+		t.Fatalf("media:content extension image = %q", image)
+	}
+}
+
 func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
