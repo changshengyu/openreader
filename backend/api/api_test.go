@@ -1742,7 +1742,7 @@ func TestSourceManagement(t *testing.T) {
 	token := authHeader(t, router)
 
 	// create source
-	body := `{"name":"测试书源","baseUrl":"https://example.com","bookUrlPattern":"/book/\\d+$","bookSourceType":1,"bookSourceComment":"音频测试源","charset":"utf-8","concurrentRate":"3/1000","enabledExplore":false}`
+	body := `{"name":"测试书源","baseUrl":"https://example.com","bookUrlPattern":"/book/\\d+$","bookSourceType":1,"bookSourceComment":"音频测试源","charset":"utf-8","concurrentRate":"3/1000","loginUrl":"https://example.com/login","loginCheckJs":"check()","lastUpdateTime":1750000000000,"weight":6,"respondTime":4321,"enabledExplore":false}`
 	req := httptest.NewRequest(http.MethodPost, "/api/sources", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1770,6 +1770,10 @@ func TestSourceManagement(t *testing.T) {
 	}
 	if sources[0].ConcurrentRate != "3/1000" {
 		t.Fatalf("source concurrent rate was not persisted: %+v", sources[0])
+	}
+	if sources[0].LoginURL != "https://example.com/login" || sources[0].LoginCheckJS != "check()" ||
+		sources[0].LastUpdateTime != 1750000000000 || sources[0].Weight != 6 || sources[0].RespondTime != 4321 {
+		t.Fatalf("source upstream metadata was not persisted: %+v", sources[0])
 	}
 	if sources[0].IsExploreEnabled() {
 		t.Fatalf("source enabledExplore=false was not persisted: %+v", sources[0])
@@ -1799,6 +1803,11 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 		SearchURL:      "https://example.com/search",
 		Charset:        "gbk",
 		ConcurrentRate: "1000",
+		LoginURL:       "https://example.com/login",
+		LoginCheckJS:   "check()",
+		LastUpdateTime: 1750000000000,
+		Weight:         6,
+		RespondTime:    4321,
 		Group:          "旧分组",
 		Rules:          `{"searchUrl":"x"}`,
 		Enabled:        true,
@@ -1807,7 +1816,7 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"name":"待编辑","baseUrl":"","searchUrl":"","charset":"","concurrentRate":"","group":"","rules":"","enabled":false}`
+	body := `{"name":"待编辑","baseUrl":"","searchUrl":"","charset":"","concurrentRate":"","loginUrl":"","loginCheckJs":"","lastUpdateTime":0,"weight":0,"respondTime":0,"group":"","rules":"","enabled":false}`
 	req := httptest.NewRequest(http.MethodPut, "/api/sources/"+strconv.FormatUint(uint64(source.ID), 10), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1821,7 +1830,10 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 	if err := server.db.First(&updated, source.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if updated.BaseURL != "" || updated.SearchURL != "" || updated.ConcurrentRate != "" || updated.Group != "" || updated.Rules != "" || updated.Charset != "utf-8" || updated.Enabled {
+	if updated.BaseURL != "" || updated.SearchURL != "" || updated.ConcurrentRate != "" ||
+		updated.LoginURL != "" || updated.LoginCheckJS != "" || updated.LastUpdateTime != 0 ||
+		updated.Weight != 0 || updated.RespondTime != 0 || updated.Group != "" ||
+		updated.Rules != "" || updated.Charset != "utf-8" || updated.Enabled {
 		t.Fatalf("source optional fields were not cleared: %+v", updated)
 	}
 }
@@ -1887,6 +1899,9 @@ func TestDecodeBookSourcesEnabledDefaults(t *testing.T) {
 	if !sources[0].Enabled || !sources[0].IsExploreEnabled() {
 		t.Fatalf("expected missing enable flags to default true: %+v", sources[0])
 	}
+	if sources[0].RespondTime != 180000 {
+		t.Fatalf("expected missing respondTime to use upstream default: %+v", sources[0])
+	}
 	if sources[1].Enabled || sources[1].IsExploreEnabled() {
 		t.Fatalf("expected explicit false flags to be preserved: %+v", sources[1])
 	}
@@ -1902,7 +1917,12 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"exploreUrl":"https://reader.example/top/{page}",
 			"headerMap":{"User-Agent":"OpenReader Test","Referer":"https://reader.example"},
 			"concurrentRate":"2/1000",
+			"loginUrl":"https://reader.example/login",
+			"loginCheckJs":"return source.isLogin()",
 			"customOrder":37,
+			"lastUpdateTime":1710000000000,
+			"weight":12,
+			"respondTime":3456,
 			"bookUrlPattern":"/detail/\\d+$",
 			"bookSourceType":1,
 			"bookSourceComment":"上游注释",
@@ -1972,7 +1992,10 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	source := sources[0]
 	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" ||
 		source.BookURLPattern != `/detail/\d+$` || source.SourceType != 1 || source.Comment != "上游注释" ||
-		source.ConcurrentRate != "2/1000" || source.CustomOrder != 37 || source.Enabled || source.IsExploreEnabled() {
+		source.ConcurrentRate != "2/1000" || source.LoginURL != "https://reader.example/login" ||
+		source.LoginCheckJS != "return source.isLogin()" || source.CustomOrder != 37 ||
+		source.LastUpdateTime != 1710000000000 || source.Weight != 12 || source.RespondTime != 3456 ||
+		source.Enabled || source.IsExploreEnabled() {
 		t.Fatalf("unexpected upstream source mapping: %+v", source)
 	}
 	rule, err := source.ParsedRules()
@@ -2080,6 +2103,11 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"searchUrl":"https://upload-reader.example/search?q={{key}}",
 			"exploreUrl":"https://upload-reader.example/explore/{{page}}",
 			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
+			"loginUrl":"https://upload-reader.example/login",
+			"loginCheckJs":"checkLogin()",
+			"lastUpdateTime":1720000000000,
+			"weight":8,
+			"respondTime":9876,
 			"ruleSearch":{"bookList":".item","name":".name","bookUrl":"a@href"},
 			"ruleExplore":{"bookList":".explore-item","name":".explore-name","bookUrl":"a@data-url"},
 			"ruleBookInfo":{"name":".detail-name","author":".detail-author","coverUrl":"img@data-src","intro":".detail-intro","tocUrl":".catalog@href","canReName":".allow-rename"},
@@ -2110,7 +2138,9 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if err := server.db.Where("name = ?", "上传上游源").First(&source).Error; err != nil {
 		t.Fatal(err)
 	}
-	if source.BaseURL != "https://upload-reader.example" || source.Group != "上传分组" {
+	if source.BaseURL != "https://upload-reader.example" || source.Group != "上传分组" ||
+		source.LoginURL != "https://upload-reader.example/login" || source.LoginCheckJS != "checkLogin()" ||
+		source.LastUpdateTime != 1720000000000 || source.Weight != 8 || source.RespondTime != 9876 {
 		t.Fatalf("unexpected imported source: %+v", source)
 	}
 	rule, err := source.ParsedRules()
@@ -2708,7 +2738,12 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 			SearchURL:      "https://one.example/legacy-search?q={keyword}",
 			Charset:        "gbk",
 			ConcurrentRate: "2/1000",
+			LoginURL:       "https://one.example/login",
+			LoginCheckJS:   "checkLogin()",
 			CustomOrder:    37,
+			LastUpdateTime: 1730000000000,
+			Weight:         15,
+			RespondTime:    2468,
 			BookURLPattern: `/detail/\d+$`,
 			SourceType:     1,
 			Comment:        "导出注释",
@@ -2824,7 +2859,12 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.ExploreURL != "https://one.example/explore/{{page}}" ||
 		first.Charset != "gbk" ||
 		first.ConcurrentRate != "2/1000" ||
+		first.LoginURL != "https://one.example/login" ||
+		first.LoginCheckJS != "checkLogin()" ||
 		first.CustomOrder != 37 ||
+		first.LastUpdateTime != 1730000000000 ||
+		first.Weight != 15 ||
+		first.RespondTime != 2468 ||
 		first.BookURLPattern != `/detail/\d+$` ||
 		first.BookSourceType != 1 ||
 		first.BookSourceComment != "导出注释" ||
@@ -2895,7 +2935,12 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimported.BaseURL != sources[0].BaseURL ||
 		reimported.Group != sources[0].Group ||
 		reimported.Charset != sources[0].Charset ||
+		reimported.LoginURL != sources[0].LoginURL ||
+		reimported.LoginCheckJS != sources[0].LoginCheckJS ||
 		reimported.CustomOrder != sources[0].CustomOrder ||
+		reimported.LastUpdateTime != sources[0].LastUpdateTime ||
+		reimported.Weight != sources[0].Weight ||
+		reimported.RespondTime != sources[0].RespondTime ||
 		reimported.BookURLPattern != sources[0].BookURLPattern ||
 		reimported.SourceType != sources[0].SourceType ||
 		reimported.Comment != sources[0].Comment ||
@@ -2943,7 +2988,7 @@ func TestRemoteSourceImportUpdatesExistingByName(t *testing.T) {
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`[{"name":"同名源","baseUrl":"https://new.example","charset":"gbk","enabled":false}]`)),
+				Body:       io.NopCloser(strings.NewReader(`[{"name":"同名源","baseUrl":"https://new.example","charset":"gbk","loginUrl":"https://new.example/login","loginCheckJs":"check()","lastUpdateTime":1740000000000,"weight":9,"respondTime":1357,"enabled":false}]`)),
 				Header:     make(http.Header),
 				Request:    req,
 			}, nil
@@ -2971,7 +3016,10 @@ func TestRemoteSourceImportUpdatesExistingByName(t *testing.T) {
 	if err := server.db.First(&updated, existing.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if updated.BaseURL != "https://new.example" || updated.Charset != "gbk" || updated.Enabled {
+	if updated.BaseURL != "https://new.example" || updated.Charset != "gbk" ||
+		updated.LoginURL != "https://new.example/login" || updated.LoginCheckJS != "check()" ||
+		updated.LastUpdateTime != 1740000000000 || updated.Weight != 9 || updated.RespondTime != 1357 ||
+		updated.Enabled {
 		t.Fatalf("source was not updated correctly: %+v", updated)
 	}
 }

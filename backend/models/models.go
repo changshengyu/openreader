@@ -37,7 +37,12 @@ type BookSource struct {
 	Comment        string    `json:"bookSourceComment" gorm:"type:text"`
 	Charset        string    `json:"charset" gorm:"size:40;default:utf-8"`
 	ConcurrentRate string    `json:"concurrentRate" gorm:"size:80"`
+	LoginURL       string    `json:"loginUrl" gorm:"type:text"`
+	LoginCheckJS   string    `json:"loginCheckJs" gorm:"type:text"`
 	CustomOrder    int       `json:"customOrder" gorm:"default:0"`
+	LastUpdateTime int64     `json:"lastUpdateTime"`
+	Weight         int       `json:"weight"`
+	RespondTime    int64     `json:"respondTime"`
 	Rules          string    `json:"rules" gorm:"type:text"`
 	Enabled        bool      `json:"enabled"`
 	EnabledExplore *bool     `json:"enabledExplore" gorm:"not null;default:true"`
