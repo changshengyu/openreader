@@ -62,6 +62,21 @@ func TestSanitizeRSSHTMLRemovesActiveContentAndResolvesURLs(t *testing.T) {
 	}
 }
 
+func TestExtractRSSFirstImageMatchesUpstreamEmbeddedImageFallback(t *testing.T) {
+	value := ExtractRSSFirstImage(`
+		<p>摘要</p>
+		<img src="../covers/first.jpg">
+		<img src="/covers/second.jpg">`,
+		"https://rss.example/feeds/news.xml",
+	)
+	if value != "https://rss.example/covers/first.jpg" {
+		t.Fatalf("first embedded image = %q", value)
+	}
+	if value := ExtractRSSFirstImage(`<img src="javascript:alert(1)">`, "https://rss.example/feed.xml"); value != "" {
+		t.Fatalf("unsafe embedded image = %q", value)
+	}
+}
+
 func TestParseRSSRuleArticlesReadsXMLLinkText(t *testing.T) {
 	rows, err := ParseRSSRuleArticles(
 		`<rss><channel><item><title>XML 文章</title><link>https://rss.example/xml</link></item></channel></rss>`,

@@ -6560,6 +6560,78 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 	}
 }
 
+func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+					<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+						<channel>
+							<item>
+								<title>摘要首图</title>
+								<link>https://rss.example/posts/summary</link>
+								<description><![CDATA[<p>摘要</p><img src="../covers/summary.jpg"><img src="/covers/later.jpg">]]></description>
+								<content:encoded><![CDATA[<img src="/covers/content-ignored.jpg">]]></content:encoded>
+							</item>
+							<item>
+								<title>正文首图</title>
+								<link>https://rss.example/posts/content</link>
+								<description>无图摘要</description>
+								<content:encoded><![CDATA[<p>正文</p><img src="/covers/content.jpg">]]></content:encoded>
+							</item>
+						</channel>
+					</rss>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/rss/sources", strings.NewReader(`{"title":"内嵌图片 RSS","url":"https://rss.example/feeds/news.xml","enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create rss source: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var source models.RSSSource
+	if err := json.Unmarshal(w.Body.Bytes(), &source); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh", nil)
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK || !strings.Contains(refreshW.Body.String(), `"imported":2`) {
+		t.Fatalf("refresh rss source: expected two imports, got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+
+	var articles []models.RSSArticle
+	if err := server.db.Where("source_id = ?", source.ID).Order("title asc").Find(&articles).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(articles) != 2 {
+		t.Fatalf("expected two rss articles, got %+v", articles)
+	}
+	images := make(map[string]string, len(articles))
+	for _, article := range articles {
+		images[article.Title] = article.Image
+	}
+	if images["摘要首图"] != "https://rss.example/covers/summary.jpg" {
+		t.Fatalf("description image fallback = %q", images["摘要首图"])
+	}
+	if images["正文首图"] != "https://rss.example/covers/content.jpg" {
+		t.Fatalf("content image fallback = %q", images["正文首图"])
+	}
+}
+
 func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

@@ -602,11 +602,18 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 		if link != "" {
 			link = resolveRSSFetchURL(responseURL, link)
 		}
+		image := resolveRSSMediaURL(responseURL, rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent))
+		if image == "" {
+			image = engine.ExtractRSSFirstImage(item.Description, responseURL)
+		}
+		if image == "" {
+			image = engine.ExtractRSSFirstImage(item.Encoded, responseURL)
+		}
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(item.Title),
 			Link:        link,
 			Author:      firstNonEmpty(item.Creator, item.Author),
-			Image:       resolveRSSMediaURL(responseURL, rssItemImage(item.Enclosure.URL, item.Enclosure.Type, item.MediaThumbnail, item.MediaContent)),
+			Image:       image,
 			Summary:     engine.SanitizeRSSHTML(item.Description, link),
 			Content:     engine.SanitizeRSSHTML(item.Encoded, link),
 			PublishedAt: parseRSSDate(item.PubDate),

@@ -135,6 +135,23 @@ func SanitizeRSSHTML(value string, baseURL string) string {
 	return strings.TrimSpace(html)
 }
 
+func ExtractRSSFirstImage(value string, baseURL string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	document, err := goquery.NewDocumentFromReader(strings.NewReader("<div id=\"openreader-rss-image-root\">" + value + "</div>"))
+	if err != nil {
+		return ""
+	}
+	image := document.Find("#openreader-rss-image-root img[src]").First()
+	if image.Length() == 0 {
+		return ""
+	}
+	src, _ := image.Attr("src")
+	return resolveRSSURL(baseURL, src)
+}
+
 func rssRuleValue(scope *goquery.Selection, rule string, preferHTML bool) string {
 	rule = strings.TrimSpace(rule)
 	if rule == "" {
