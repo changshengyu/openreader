@@ -341,10 +341,38 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 		article.UserID = userID
 		article.SourceID = source.ID
 		article.Sort = sortName
-		var existing models.RSSArticle
-		if article.Link != "" && s.db.Where("user_id = ? AND source_id = ? AND link = ?", userID, source.ID, article.Link).First(&existing).Error == nil {
+		existingQuery := s.db.Where("user_id = ? AND source_id = ? AND sort = ?", userID, source.ID, article.Sort)
+		switch {
+		case article.Link != "":
+			existingQuery = existingQuery.Where("link = ?", article.Link)
+		case article.GUID != "":
+			existingQuery = existingQuery.Where(
+				"link = '' AND (guid = ? OR (guid = '' AND title = ? AND author = ? AND pub_date = ?))",
+				article.GUID,
+				article.Title,
+				article.Author,
+				article.PubDate,
+			)
+		default:
+			existingQuery = existingQuery.Where(
+				"link = '' AND guid = '' AND title = ? AND author = ? AND pub_date = ?",
+				article.Title,
+				article.Author,
+				article.PubDate,
+			)
+		}
+		var existingRows []models.RSSArticle
+		if existingQuery.Order("id asc").Find(&existingRows).Error == nil && len(existingRows) > 0 {
+			existing := existingRows[0]
+			duplicateIDs := make([]uint, 0, len(existingRows)-1)
+			for _, duplicate := range existingRows[1:] {
+				existing.IsRead = existing.IsRead || duplicate.IsRead
+				existing.Favorite = existing.Favorite || duplicate.Favorite
+				duplicateIDs = append(duplicateIDs, duplicate.ID)
+			}
 			existing.Title = article.Title
 			existing.Sort = article.Sort
+			existing.GUID = article.GUID
 			existing.Author = article.Author
 			existing.Image = article.Image
 			existing.Summary = article.Summary
@@ -352,6 +380,9 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 			existing.PubDate = article.PubDate
 			existing.PublishedAt = article.PublishedAt
 			_ = s.db.Save(&existing).Error
+			if len(duplicateIDs) > 0 {
+				_ = s.db.Where("id IN ?", duplicateIDs).Delete(&models.RSSArticle{}).Error
+			}
 			continue
 		}
 		if err := s.db.Create(&article).Error; err == nil {
@@ -530,6 +561,7 @@ type parsedRSS struct {
 type parsedRSSItem struct {
 	Title          string              `xml:"title"`
 	Link           string              `xml:"link"`
+	GUID           string              `xml:"guid"`
 	Description    string              `xml:"description"`
 	Creator        string              `xml:"creator"`
 	Author         string              `xml:"author"`
@@ -542,6 +574,12 @@ type parsedRSSItem struct {
 }
 
 func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
+	for _, attribute := range start.Attr {
+		if strings.EqualFold(attribute.Name.Local, "about") {
+			item.GUID = strings.TrimSpace(attribute.Value)
+			break
+		}
+	}
 	for {
 		token, err := decoder.Token()
 		if err != nil {
@@ -551,7 +589,7 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 		case xml.StartElement:
 			name := strings.ToLower(current.Name.Local)
 			switch name {
-			case "title", "link", "description", "creator", "author", "pubdate", "time", "encoded":
+			case "title", "link", "guid", "description", "creator", "author", "pubdate", "time", "encoded":
 				var value string
 				if err := decoder.DecodeElement(&value, &current); err != nil {
 					return err
@@ -561,6 +599,8 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 					item.Title = value
 				case "link":
 					item.Link = value
+				case "guid":
+					item.GUID = value
 				case "description":
 					item.Description = value
 				case "creator":
@@ -607,6 +647,7 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 
 type parsedAtomEntry struct {
 	Title   string     `xml:"title"`
+	ID      string     `xml:"id"`
 	Link    []atomLink `xml:"link"`
 	Summary string     `xml:"summary"`
 	Content string     `xml:"content"`
@@ -719,6 +760,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(item.Title),
 			Link:        link,
+			GUID:        strings.TrimSpace(item.GUID),
 			Author:      firstNonEmpty(item.Creator, item.Author),
 			Image:       image,
 			Summary:     engine.SanitizeRSSHTML(item.Description, link),
@@ -739,6 +781,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(entry.Title),
 			Link:        strings.TrimSpace(link),
+			GUID:        strings.TrimSpace(entry.ID),
 			Author:      strings.TrimSpace(entry.Author.Name),
 			Image:       resolveRSSMediaURL(responseURL, atomEntryImage(entry.Link, entry.MediaThumbnail, entry.MediaContent)),
 			Summary:     engine.SanitizeRSSHTML(entry.Summary, link),

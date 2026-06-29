@@ -6602,10 +6602,118 @@ func TestFetchRSSArticlesSupportsRDFRootItems(t *testing.T) {
 	article := articles[0]
 	if article.Title != "RDF 文章" ||
 		article.Link != "https://rss.example/posts/rdf" ||
+		article.GUID != "https://rss.example/posts/rdf" ||
 		article.Author != "RDF 作者" ||
 		article.Image != "https://rss.example/covers/rdf.jpg" ||
 		article.PubDate != "Sun, 29 Jun 2026 10:00:00 +0800" {
 		t.Fatalf("unexpected rdf article: %+v", article)
+	}
+}
+
+func TestRSSRefreshUsesGUIDWithinSortWithoutDuplicatingArticles(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+					<rss version="2.0"><channel><item>
+						<title>无链接文章</title>
+						<guid isPermaLink="false">article-guid-1</guid>
+						<description>只有标准 GUID</description>
+						<pubDate>Sun, 29 Jun 2026 11:00:00 +0800</pubDate>
+					</item></channel></rss>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources", strings.NewReader(`{"title":"GUID RSS","url":"https://rss.example/guid.xml","enabled":true}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Authorization", token)
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create rss source: expected 201, got %d: %s", createW.Code, createW.Body.String())
+	}
+	var source models.RSSSource
+	if err := json.Unmarshal(createW.Body.Bytes(), &source); err != nil {
+		t.Fatal(err)
+	}
+	legacyArticles := []models.RSSArticle{
+		{
+			UserID:   source.UserID,
+			SourceID: source.ID,
+			Sort:     "分类 A",
+			Title:    "无链接文章",
+			PubDate:  "Sun, 29 Jun 2026 11:00:00 +0800",
+			IsRead:   true,
+		},
+		{
+			UserID:   source.UserID,
+			SourceID: source.ID,
+			Sort:     "分类 A",
+			Title:    "无链接文章",
+			PubDate:  "Sun, 29 Jun 2026 11:00:00 +0800",
+			Favorite: true,
+		},
+	}
+	if err := server.db.Create(&legacyArticles).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	refresh := func(sortName string) *httptest.ResponseRecorder {
+		t.Helper()
+		path := "/api/rss/sources/" + strconv.FormatUint(uint64(source.ID), 10) + "/refresh?sortName=" + url.QueryEscape(sortName)
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req.Header.Set("Authorization", token)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	firstW := refresh("分类 A")
+	if firstW.Code != http.StatusOK || !strings.Contains(firstW.Body.String(), `"imported":0`) {
+		t.Fatalf("first refresh: got %d: %s", firstW.Code, firstW.Body.String())
+	}
+	var sameSort []models.RSSArticle
+	if err := server.db.Where("source_id = ? AND sort = ?", source.ID, "分类 A").Find(&sameSort).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(sameSort) != 1 ||
+		sameSort[0].Link != "" ||
+		sameSort[0].GUID != "article-guid-1" ||
+		!sameSort[0].IsRead ||
+		!sameSort[0].Favorite {
+		t.Fatalf("legacy duplicates were not merged into the guid article: %+v", sameSort)
+	}
+
+	secondW := refresh("分类 A")
+	if secondW.Code != http.StatusOK || !strings.Contains(secondW.Body.String(), `"imported":0`) {
+		t.Fatalf("second refresh should update existing article: got %d: %s", secondW.Code, secondW.Body.String())
+	}
+	sameSort = nil
+	if err := server.db.Where("source_id = ? AND sort = ?", source.ID, "分类 A").Find(&sameSort).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(sameSort) != 1 || !sameSort[0].IsRead || !sameSort[0].Favorite {
+		t.Fatalf("same-sort refresh duplicated article or lost state: %+v", sameSort)
+	}
+
+	thirdW := refresh("分类 B")
+	if thirdW.Code != http.StatusOK || !strings.Contains(thirdW.Body.String(), `"imported":1`) {
+		t.Fatalf("cross-sort refresh should keep a separate article: got %d: %s", thirdW.Code, thirdW.Body.String())
+	}
+	var total int64
+	if err := server.db.Model(&models.RSSArticle{}).Where("source_id = ?", source.ID).Count(&total).Error; err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("cross-sort article count = %d, want 2", total)
 	}
 }
 
@@ -6722,6 +6830,7 @@ func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
 					<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
 						<entry>
 							<title>Atom 文章</title>
+							<id>tag:rss.example,2026:atom</id>
 							<link href="/posts/atom"></link>
 							<summary>Atom 摘要</summary>
 							<media:thumbnail url="../covers/atom.jpg"></media:thumbnail>
@@ -6765,6 +6874,9 @@ func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
 	}
 	if article.PubDate != "2026-06-24T08:00:00Z" {
 		t.Fatalf("atom date was not preserved: %q", article.PubDate)
+	}
+	if article.GUID != "tag:rss.example,2026:atom" {
+		t.Fatalf("atom id was not preserved: %q", article.GUID)
 	}
 }
 
