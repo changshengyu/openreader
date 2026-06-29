@@ -6775,6 +6775,7 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 							<item>
 								<title>摘要首图</title>
 								<link>https://rss.example/posts/summary</link>
+								<pubDate>应被后置 time 覆盖</pubDate>
 								<time>刚刚</time>
 								<description><![CDATA[<p>摘要</p><img src="../covers/summary.jpg"><img src="/covers/later.jpg">]]></description>
 								<content:encoded><![CDATA[<img src="/covers/content-ignored.jpg">]]></content:encoded>
@@ -6782,6 +6783,7 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 							<item>
 								<title>正文首图</title>
 								<link>https://rss.example/posts/content</link>
+								<time>应被后置 pubDate 覆盖</time>
 								<pubDate>Sun, 29 Jun 2026 09:00:00 +0800</pubDate>
 								<description>无图摘要</description>
 								<content:encoded><![CDATA[<p>正文</p><img src="/covers/content.jpg">]]></content:encoded>
@@ -6915,6 +6917,26 @@ func TestDecodeRSSDocumentPreservesUpstreamImageEventOrder(t *testing.T) {
 	}
 	if image := resolveRSSItemImage("https://rss.example/feed.xml", parsed.Items[4]); image != "https://rss.example/media-e.jpg" {
 		t.Fatalf("media:content extension image = %q", image)
+	}
+}
+
+func TestDecodeRSSDocumentPreservesUpstreamDateEventOrder(t *testing.T) {
+	parsed, err := decodeRSSDocument(`<rss><channel>
+		<item><title>后置 time</title><pubDate>正式日期</pubDate><time>  刚刚  </time></item>
+		<item><title>后置 pubDate</title><time>昨天</time><pubDate>  Sun, 29 Jun 2026 09:00:00 +0800  </pubDate></item>
+		<item><title>后置空 time</title><pubDate>旧日期</pubDate><time></time></item>
+	</channel></rss>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Items) != 3 {
+		t.Fatalf("decoded item count = %d", len(parsed.Items))
+	}
+	want := []string{"  刚刚  ", "Sun, 29 Jun 2026 09:00:00 +0800", ""}
+	for index, item := range parsed.Items {
+		if item.Date != want[index] {
+			t.Fatalf("item %q date = %q, want %q", item.Title, item.Date, want[index])
+		}
 	}
 }
 

@@ -567,6 +567,7 @@ type parsedRSSItem struct {
 	Author         string              `xml:"author"`
 	PubDate        string              `xml:"pubDate"`
 	Time           string              `xml:"time"`
+	Date           string              `xml:"-"`
 	Encoded        string              `xml:"encoded"`
 	Enclosure      rssEnclosure        `xml:"enclosure"`
 	MediaThumbnail []rssMediaThumbnail `xml:"http://search.yahoo.com/mrss/ thumbnail"`
@@ -613,8 +614,10 @@ func (item *parsedRSSItem) UnmarshalXML(decoder *xml.Decoder, start xml.StartEle
 					item.Author = value
 				case "pubdate":
 					item.PubDate = value
+					item.Date = strings.TrimSpace(value)
 				case "time":
 					item.Time = value
+					item.Date = value
 				case "encoded":
 					item.Encoded = value
 					item.useEmbeddedImageFallback(value)
@@ -783,7 +786,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 			link = resolveRSSFetchURL(responseURL, link)
 		}
 		image := resolveRSSItemImage(responseURL, item)
-		pubDate := firstNonEmpty(item.PubDate, item.Time)
+		pubDate := item.Date
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(item.Title),
 			Link:        link,
