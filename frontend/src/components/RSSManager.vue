@@ -73,7 +73,7 @@
           <button type="button" @click="openArticle(article)">
             <span class="rss-article-info">
               <strong>{{ article.title }}</strong>
-              <small>{{ formatDate(article.publishedAt || article.updatedAt) }} · {{ article.author || '未知作者' }}</small>
+              <small>{{ articleDateText(article) }} · {{ article.author || '未知作者' }}</small>
               <span>{{ stripHTML(article.summary || article.content || '无摘要') }}</span>
             </span>
             <span v-if="article.image" class="rss-article-image" @click.stop.prevent="openArticleListImagePreview(article)">
@@ -143,7 +143,7 @@
     <el-dialog v-model="articleDialogVisible" :title="selectedArticle?.title || 'RSS 文章'" width="720px" class="rss-reader-dialog" :fullscreen="isMobile">
       <article v-if="selectedArticle" v-loading="articleContentLoading" class="rss-reader">
         <h2>{{ selectedArticle.title }}</h2>
-        <small>{{ formatDate(selectedArticle.publishedAt || selectedArticle.updatedAt) }} · {{ selectedArticle.author || '未知作者' }}</small>
+        <small>{{ articleDateText(selectedArticle) }} · {{ selectedArticle.author || '未知作者' }}</small>
         <div class="rss-reader-content" v-html="articleBodyHTML(selectedArticle)" @click="handleArticleContentClick" />
       </article>
       <template #footer>
@@ -658,6 +658,14 @@ function sourceInitial(source) {
 function formatDate(value) {
   if (!value) return '-'
   return new Date(value).toLocaleString()
+}
+
+function articleDateText(article) {
+  const raw = String(article?.pubDate || '').trim()
+  if (raw) return raw
+  const publishedAt = String(article?.publishedAt || '')
+  if (publishedAt && !publishedAt.startsWith('0001-01-01')) return formatDate(publishedAt)
+  return formatDate(article?.updatedAt)
 }
 
 function readError(err, fallback) {

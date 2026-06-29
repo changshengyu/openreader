@@ -348,6 +348,7 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 			existing.Image = article.Image
 			existing.Summary = article.Summary
 			existing.Content = article.Content
+			existing.PubDate = article.PubDate
 			existing.PublishedAt = article.PublishedAt
 			_ = s.db.Save(&existing).Error
 			continue
@@ -529,6 +530,7 @@ type parsedRSS struct {
 			Creator     string `xml:"creator"`
 			Author      string `xml:"author"`
 			PubDate     string `xml:"pubDate"`
+			Time        string `xml:"time"`
 			Encoded     string `xml:"encoded"`
 			Enclosure   struct {
 				URL  string `xml:"url,attr"`
@@ -609,6 +611,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 		if image == "" {
 			image = engine.ExtractRSSFirstImage(item.Encoded, responseURL)
 		}
+		pubDate := firstNonEmpty(item.PubDate, item.Time)
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(item.Title),
 			Link:        link,
@@ -616,7 +619,8 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 			Image:       image,
 			Summary:     engine.SanitizeRSSHTML(item.Description, link),
 			Content:     engine.SanitizeRSSHTML(item.Encoded, link),
-			PublishedAt: parseRSSDate(item.PubDate),
+			PubDate:     pubDate,
+			PublishedAt: parseRSSDate(pubDate),
 		})
 	}
 	for _, entry := range parsed.Entries {
@@ -627,6 +631,7 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 		if strings.TrimSpace(link) != "" {
 			link = resolveRSSFetchURL(responseURL, link)
 		}
+		pubDate := firstNonEmpty(entry.Published, entry.Updated)
 		articles = append(articles, models.RSSArticle{
 			Title:       strings.TrimSpace(entry.Title),
 			Link:        strings.TrimSpace(link),
@@ -634,7 +639,8 @@ func fetchRSSArticlesContext(ctx context.Context, source models.RSSSource, reque
 			Image:       resolveRSSMediaURL(responseURL, atomEntryImage(entry.Link, entry.MediaThumbnail, entry.MediaContent)),
 			Summary:     engine.SanitizeRSSHTML(entry.Summary, link),
 			Content:     engine.SanitizeRSSHTML(entry.Content, link),
-			PublishedAt: parseRSSDate(firstNonEmpty(entry.Published, entry.Updated)),
+			PubDate:     pubDate,
+			PublishedAt: parseRSSDate(pubDate),
 		})
 	}
 	filtered := articles[:0]
@@ -707,6 +713,7 @@ func fetchRSSRuleArticles(ctx context.Context, source models.RSSSource, fetchURL
 				Link:        row.Link,
 				Image:       row.Image,
 				Summary:     engine.SanitizeRSSHTML(row.Description, summaryBaseURL),
+				PubDate:     strings.TrimSpace(row.PubDate),
 				PublishedAt: parseRSSDate(row.PubDate),
 			})
 		}

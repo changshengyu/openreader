@@ -6574,12 +6574,14 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 							<item>
 								<title>摘要首图</title>
 								<link>https://rss.example/posts/summary</link>
+								<time>刚刚</time>
 								<description><![CDATA[<p>摘要</p><img src="../covers/summary.jpg"><img src="/covers/later.jpg">]]></description>
 								<content:encoded><![CDATA[<img src="/covers/content-ignored.jpg">]]></content:encoded>
 							</item>
 							<item>
 								<title>正文首图</title>
 								<link>https://rss.example/posts/content</link>
+								<pubDate>Sun, 29 Jun 2026 09:00:00 +0800</pubDate>
 								<description>无图摘要</description>
 								<content:encoded><![CDATA[<p>正文</p><img src="/covers/content.jpg">]]></content:encoded>
 							</item>
@@ -6604,13 +6606,22 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &source); err != nil {
 		t.Fatal(err)
 	}
+	if err := server.db.Create(&models.RSSArticle{
+		UserID:   source.UserID,
+		SourceID: source.ID,
+		Title:    "旧摘要首图",
+		Link:     "https://rss.example/posts/summary",
+		PubDate:  "旧时间",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	refreshReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh", nil)
 	refreshReq.Header.Set("Authorization", token)
 	refreshW := httptest.NewRecorder()
 	router.ServeHTTP(refreshW, refreshReq)
-	if refreshW.Code != http.StatusOK || !strings.Contains(refreshW.Body.String(), `"imported":2`) {
-		t.Fatalf("refresh rss source: expected two imports, got %d: %s", refreshW.Code, refreshW.Body.String())
+	if refreshW.Code != http.StatusOK || !strings.Contains(refreshW.Body.String(), `"imported":1`) {
+		t.Fatalf("refresh rss source: expected one new and one updated article, got %d: %s", refreshW.Code, refreshW.Body.String())
 	}
 
 	var articles []models.RSSArticle
@@ -6629,6 +6640,24 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 	}
 	if images["正文首图"] != "https://rss.example/covers/content.jpg" {
 		t.Fatalf("content image fallback = %q", images["正文首图"])
+	}
+	pubDates := make(map[string]string, len(articles))
+	for _, article := range articles {
+		pubDates[article.Title] = article.PubDate
+	}
+	if pubDates["摘要首图"] != "刚刚" {
+		t.Fatalf("time fallback was not preserved: %q", pubDates["摘要首图"])
+	}
+	if pubDates["正文首图"] != "Sun, 29 Jun 2026 09:00:00 +0800" {
+		t.Fatalf("pubDate was not preserved: %q", pubDates["正文首图"])
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/rss/articles?sourceId="+strconv.FormatUint(uint64(source.ID), 10), nil)
+	listReq.Header.Set("Authorization", token)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK || !strings.Contains(listW.Body.String(), `"pubDate":"刚刚"`) {
+		t.Fatalf("rss list did not expose the original date: %d %s", listW.Code, listW.Body.String())
 	}
 }
 
@@ -6684,6 +6713,9 @@ func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
 	}
 	if article.Link != "https://rss.example/posts/atom" || article.Image != "https://rss.example/covers/atom.jpg" {
 		t.Fatalf("atom relative URLs were not resolved: %+v", article)
+	}
+	if article.PubDate != "2026-06-24T08:00:00Z" {
+		t.Fatalf("atom date was not preserved: %q", article.PubDate)
 	}
 }
 
@@ -6772,6 +6804,9 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	}
 	if article.Sort != "新闻" {
 		t.Fatalf("rule article sort = %q, want 新闻", article.Sort)
+	}
+	if article.PubDate != "2026-06-20T10:00:00Z" {
+		t.Fatalf("rule article date was not preserved: %q", article.PubDate)
 	}
 	if strings.Contains(article.Summary, "<script") || !strings.Contains(article.Summary, "规则摘要") {
 		t.Fatalf("rule summary was not sanitized: %s", article.Summary)

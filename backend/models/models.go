@@ -215,6 +215,7 @@ type RSSArticle struct {
 	Content     string    `json:"content" gorm:"type:text"`
 	IsRead      bool      `json:"isRead"`
 	Favorite    bool      `json:"favorite"`
+	PubDate     string    `json:"pubDate" gorm:"type:text"`
 	PublishedAt time.Time `json:"publishedAt"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
