@@ -173,6 +173,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { createRSSSource, deleteRSSSource, getRSSArticleContent, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
 import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
 import { currentUserScope } from '../utils/authScope'
+import { planRSSSourceImport } from '../utils/rssSourceImport'
 
 defineProps({
   isMobile: {
@@ -447,22 +448,19 @@ async function importRSSSources(event) {
       ElMessage.warning('没有找到可导入的 RSS 源')
       return
     }
-    const existingURLs = new Set(sources.value.map(source => normalizeURL(source.url)).filter(Boolean))
-    const nextSources = imported.filter(source => !existingURLs.has(normalizeURL(source.url)))
-    const skipped = imported.length - nextSources.length
-    if (!nextSources.length) {
-      ElMessage.warning('导入文件中的 RSS 源已存在')
-      return
-    }
+    const { creates, updates } = planRSSSourceImport(imported, sources.value)
     await ElMessageBox.confirm(
-      `将导入 ${nextSources.length} 个 RSS 源${skipped ? `，跳过 ${skipped} 个已存在源` : ''}。`,
+      `将新增 ${creates.length} 个 RSS 源，更新 ${updates.length} 个同地址源。`,
       '导入 RSS 源',
       { type: 'info' },
     )
-    for (const source of nextSources) {
+    for (const { id, source } of updates) {
+      await updateRSSSource(id, source)
+    }
+    for (const source of creates) {
       await createRSSSource(source)
     }
-    ElMessage.success(`已导入 ${nextSources.length} 个 RSS 源`)
+    ElMessage.success(`已导入 ${creates.length} 个、更新 ${updates.length} 个 RSS 源`)
     await invalidateRSSSourcesCache()
     await loadSources()
     await loadArticles()
