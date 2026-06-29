@@ -102,7 +102,7 @@ func (s *Server) createRSSSource(c *gin.Context) {
 		Header:          req.headerText(),
 		LoginURL:        strings.TrimSpace(req.LoginURL),
 		LoginCheckJS:    strings.TrimSpace(req.LoginCheckJS),
-		SingleURL:       req.singleURLOrDefault(),
+		SingleURL:       req.singleURLOr(true),
 		ArticleStyle:    req.articleStyleOrDefault(),
 		SortURL:         strings.TrimSpace(req.SortURL),
 		RuleArticles:    strings.TrimSpace(req.RuleArticles),
@@ -235,11 +235,11 @@ func (r rssSourceRequest) orderOrDefault(s *Server, userID uint) int {
 	return maxOrder + 1
 }
 
-func (r rssSourceRequest) singleURLOrDefault() bool {
+func (r rssSourceRequest) singleURLOr(fallback bool) bool {
 	if r.SingleURL != nil {
 		return *r.SingleURL
 	}
-	return true
+	return fallback
 }
 
 func (r rssSourceRequest) articleStyleOrDefault() int {
@@ -884,6 +884,9 @@ func rssSourceFetchURL(source models.RSSSource, requestedURL ...string) string {
 	if len(requestedURL) > 0 && strings.TrimSpace(requestedURL[0]) != "" {
 		return resolveRSSFetchURL(baseURL, requestedURL[0])
 	}
+	if source.SingleURL {
+		return baseURL
+	}
 	sortRule := strings.TrimSpace(source.SortURL)
 	if sortRule == "" || strings.HasPrefix(sortRule, "@js:") || strings.HasPrefix(sortRule, "<js>") {
 		return baseURL
@@ -920,6 +923,9 @@ type rssSortOption struct {
 
 func rssSourceSortOptions(source models.RSSSource) []rssSortOption {
 	baseURL := strings.TrimSpace(source.URL)
+	if source.SingleURL {
+		return []rssSortOption{{Name: "", URL: baseURL}}
+	}
 	sortRule := strings.TrimSpace(source.SortURL)
 	if sortRule == "" || strings.HasPrefix(sortRule, "@js:") || strings.HasPrefix(sortRule, "<js>") {
 		return []rssSortOption{{Name: "", URL: baseURL}}

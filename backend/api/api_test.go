@@ -6243,7 +6243,7 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rssFile.Write([]byte(`[{"sourceName":"OpenReader RSS","sourceUrl":"https://rss.example/openreader.xml","sourceIcon":"https://rss.example/icon.png","sourceGroup":"资讯","sourceComment":"恢复注释","customOrder":7,"concurrentRate":"3/1000","headerMap":{"X-Restore":"yes"},"loginUrl":"https://rss.example/login","loginCheckJs":"check()","singleUrl":false,"articleStyle":2,"sortUrl":"综合::https://rss.example/openreader-sort.xml","ruleArticles":"article","ruleTitle":"title","rulePubDate":"date","ruleImage":"img","ruleLink":"a@href","ruleContent":"content","style":"body{}","enableJs":false,"loadWithBaseUrl":false,"enabled":false}]`)); err != nil {
+	if _, err := rssFile.Write([]byte(`[{"sourceName":"OpenReader RSS","sourceUrl":"https://rss.example/openreader.xml","sourceIcon":"https://rss.example/icon.png","sourceGroup":"资讯","sourceComment":"恢复注释","customOrder":7,"concurrentRate":"3/1000","headerMap":{"X-Restore":"yes"},"loginUrl":"https://rss.example/login","loginCheckJs":"check()","articleStyle":2,"sortUrl":"综合::https://rss.example/openreader-sort.xml","ruleArticles":"article","ruleTitle":"title","rulePubDate":"date","ruleImage":"img","ruleLink":"a@href","ruleContent":"content","style":"body{}","enableJs":false,"loadWithBaseUrl":false,"enabled":false}]`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := zipWriter.Close(); err != nil {
@@ -6610,6 +6610,50 @@ func TestFetchRSSArticlesSupportsRDFRootItems(t *testing.T) {
 	}
 }
 
+func TestFetchRSSArticlesHonorsSingleURLBeforeSortURL(t *testing.T) {
+	requestedPaths := make([]string, 0, 2)
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requestedPaths = append(requestedPaths, req.URL.Path)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<rss><channel><item>
+					<title>地址验证</title>
+					<link>/article</link>
+				</item></channel></rss>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.RSSSource{
+		URL:       "https://rss.example/feed.xml",
+		SortURL:   "分类::https://rss.example/category.xml",
+		SingleURL: true,
+	}
+	if _, err := fetchRSSArticles(source); err != nil {
+		t.Fatal(err)
+	}
+	source.SingleURL = false
+	if _, err := fetchRSSArticles(source); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(requestedPaths, ",") != "/feed.xml,/category.xml" {
+		t.Fatalf("singleUrl request paths = %v", requestedPaths)
+	}
+
+	singleOptions := rssSourceSortOptions(models.RSSSource{
+		URL:       "https://rss.example/feed.xml",
+		SortURL:   "分类 A::/a&&分类 B::/b",
+		SingleURL: true,
+	})
+	if len(singleOptions) != 1 || singleOptions[0].URL != "https://rss.example/feed.xml" || singleOptions[0].Name != "" {
+		t.Fatalf("singleUrl sort options = %+v", singleOptions)
+	}
+}
+
 func TestRSSRefreshUsesGUIDWithinSortWithoutDuplicatingArticles(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -6921,6 +6965,7 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	payload := `{
 		"title":"规则 RSS",
 		"url":"https://rss.example/feed",
+		"singleUrl":false,
 		"sortUrl":"全部::/all&&新闻::/news",
 		"headerMap":{"X-Feed-Token":"secret"},
 		"ruleArticles":"//article[@class='entry']",
@@ -7204,6 +7249,9 @@ func TestCreateRSSSourceRespectsEnabledFlag(t *testing.T) {
 	}
 	if source.Enabled {
 		t.Fatalf("expected rss source to remain disabled: %+v", source)
+	}
+	if !source.SingleURL {
+		t.Fatalf("new RSS source should keep upstream editor default singleUrl=true: %+v", source)
 	}
 }
 

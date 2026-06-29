@@ -502,13 +502,13 @@ function normalizeRSSSourceImport(payload) {
         group,
         customOrder: Number.isFinite(order) ? order : 0,
         enabled: enabled !== false,
-        ...pickRSSAdvancedFields(source),
+        ...pickRSSAdvancedFields(source, { singleURLDefault: false }),
       }
     })
     .filter(source => source.title && source.url)
 }
 
-function pickRSSAdvancedFields(source = {}) {
+function pickRSSAdvancedFields(source = {}, { singleURLDefault = true } = {}) {
   const picked = {}
   for (const field of RSS_ADVANCED_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(source, field)) picked[field] = source[field]
@@ -519,7 +519,7 @@ function pickRSSAdvancedFields(source = {}) {
   if (!Object.prototype.hasOwnProperty.call(picked, 'header') && source.headerMap !== undefined) {
     picked.header = typeof source.headerMap === 'string' ? source.headerMap : JSON.stringify(source.headerMap)
   }
-  if (!Object.prototype.hasOwnProperty.call(picked, 'singleUrl')) picked.singleUrl = true
+  if (!Object.prototype.hasOwnProperty.call(picked, 'singleUrl')) picked.singleUrl = singleURLDefault
   if (!Object.prototype.hasOwnProperty.call(picked, 'articleStyle')) picked.articleStyle = 0
   if (!Object.prototype.hasOwnProperty.call(picked, 'enableJs')) picked.enableJs = true
   if (!Object.prototype.hasOwnProperty.call(picked, 'loadWithBaseUrl')) picked.loadWithBaseUrl = true
@@ -678,6 +678,9 @@ function normalizeURL(value) {
 
 function rssSortOptions(source) {
   const baseURL = String(source?.url || '').trim()
+  if (source?.singleUrl) {
+    return baseURL ? [{ label: '全部', value: baseURL }] : []
+  }
   const raw = String(source?.sortUrl || '').trim()
   if (!raw || raw.startsWith('@js:') || raw.startsWith('<js>')) {
     return baseURL ? [{ label: '全部', value: baseURL }] : []

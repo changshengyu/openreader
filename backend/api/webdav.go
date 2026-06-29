@@ -590,7 +590,7 @@ func (s *Server) restoreRSSSourcesFromZip(file *zip.File, userID uint) (int, err
 			Header:          sourceReq.headerText(),
 			LoginURL:        strings.TrimSpace(sourceReq.LoginURL),
 			LoginCheckJS:    strings.TrimSpace(sourceReq.LoginCheckJS),
-			SingleURL:       sourceReq.singleURLOrDefault(),
+			SingleURL:       sourceReq.singleURLOr(false),
 			ArticleStyle:    sourceReq.articleStyleOrDefault(),
 			SortURL:         strings.TrimSpace(sourceReq.SortURL),
 			RuleArticles:    strings.TrimSpace(sourceReq.RuleArticles),
