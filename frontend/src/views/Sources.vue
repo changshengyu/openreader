@@ -240,6 +240,9 @@
         <el-form-item label="并发率">
           <el-input v-model="sourceForm.concurrentRate" placeholder="例如 1000 或 3/1000" />
         </el-form-item>
+        <el-form-item label="请求头 header">
+          <el-input v-model="sourceForm.header" type="textarea" :rows="2" placeholder="静态 JSON 会用于请求；JS header 仅无损保存" />
+        </el-form-item>
         <el-form-item label="登录地址（兼容字段）">
           <el-input v-model="sourceForm.loginUrl" />
         </el-form-item>
@@ -438,7 +441,7 @@ const importPreviewSaving = ref(false)
 const showEditor = ref(false)
 const editingSourceId = ref(null)
 const savingSource = ref(false)
-const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', bookUrlPattern: '', bookSourceType: 0, bookSourceComment: '', charset: 'utf-8', concurrentRate: '', loginUrl: '', loginCheckJs: '', customOrder: 0, lastUpdateTime: 0, weight: 0, respondTime: 180000, rules: '', enabled: true, enabledExplore: true })
+const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', bookUrlPattern: '', bookSourceType: 0, bookSourceComment: '', charset: 'utf-8', concurrentRate: '', header: '', loginUrl: '', loginCheckJs: '', customOrder: 0, lastUpdateTime: 0, weight: 0, respondTime: 180000, rules: '', enabled: true, enabledExplore: true })
 const ruleKeys = [
   'exploreUrl',
   'bookListRule',
@@ -690,6 +693,7 @@ function openEditor(source) {
     bookSourceComment: source?.bookSourceComment || '',
     charset: source?.charset || 'utf-8',
     concurrentRate: source?.concurrentRate || '',
+    header: source?.header || '',
     loginUrl: source?.loginUrl || '',
     loginCheckJs: source?.loginCheckJs || '',
     customOrder: Number(source?.customOrder) || 0,

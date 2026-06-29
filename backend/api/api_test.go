@@ -1742,7 +1742,7 @@ func TestSourceManagement(t *testing.T) {
 	token := authHeader(t, router)
 
 	// create source
-	body := `{"name":"测试书源","baseUrl":"https://example.com","bookUrlPattern":"/book/\\d+$","bookSourceType":1,"bookSourceComment":"音频测试源","charset":"utf-8","concurrentRate":"3/1000","loginUrl":"https://example.com/login","loginCheckJs":"check()","lastUpdateTime":1750000000000,"weight":6,"respondTime":4321,"enabledExplore":false}`
+	body := `{"name":"测试书源","baseUrl":"https://example.com","bookUrlPattern":"/book/\\d+$","bookSourceType":1,"bookSourceComment":"音频测试源","charset":"utf-8","concurrentRate":"3/1000","header":"{\"X-Source\":\"yes\"}","loginUrl":"https://example.com/login","loginCheckJs":"check()","lastUpdateTime":1750000000000,"weight":6,"respondTime":4321,"enabledExplore":false}`
 	req := httptest.NewRequest(http.MethodPost, "/api/sources", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1771,7 +1771,8 @@ func TestSourceManagement(t *testing.T) {
 	if sources[0].ConcurrentRate != "3/1000" {
 		t.Fatalf("source concurrent rate was not persisted: %+v", sources[0])
 	}
-	if sources[0].LoginURL != "https://example.com/login" || sources[0].LoginCheckJS != "check()" ||
+	if sources[0].Header != `{"X-Source":"yes"}` ||
+		sources[0].LoginURL != "https://example.com/login" || sources[0].LoginCheckJS != "check()" ||
 		sources[0].LastUpdateTime != 1750000000000 || sources[0].Weight != 6 || sources[0].RespondTime != 4321 {
 		t.Fatalf("source upstream metadata was not persisted: %+v", sources[0])
 	}
@@ -1803,6 +1804,7 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 		SearchURL:      "https://example.com/search",
 		Charset:        "gbk",
 		ConcurrentRate: "1000",
+		Header:         `{"X-Source":"old"}`,
 		LoginURL:       "https://example.com/login",
 		LoginCheckJS:   "check()",
 		LastUpdateTime: 1750000000000,
@@ -1816,7 +1818,7 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"name":"待编辑","baseUrl":"","searchUrl":"","charset":"","concurrentRate":"","loginUrl":"","loginCheckJs":"","lastUpdateTime":0,"weight":0,"respondTime":0,"group":"","rules":"","enabled":false}`
+	body := `{"name":"待编辑","baseUrl":"","searchUrl":"","charset":"","concurrentRate":"","header":"","loginUrl":"","loginCheckJs":"","lastUpdateTime":0,"weight":0,"respondTime":0,"group":"","rules":"","enabled":false}`
 	req := httptest.NewRequest(http.MethodPut, "/api/sources/"+strconv.FormatUint(uint64(source.ID), 10), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1830,7 +1832,7 @@ func TestUpdateSourceCanClearOptionalFields(t *testing.T) {
 	if err := server.db.First(&updated, source.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if updated.BaseURL != "" || updated.SearchURL != "" || updated.ConcurrentRate != "" ||
+	if updated.BaseURL != "" || updated.SearchURL != "" || updated.ConcurrentRate != "" || updated.Header != "" ||
 		updated.LoginURL != "" || updated.LoginCheckJS != "" || updated.LastUpdateTime != 0 ||
 		updated.Weight != 0 || updated.RespondTime != 0 || updated.Group != "" ||
 		updated.Rules != "" || updated.Charset != "utf-8" || updated.Enabled {
@@ -1992,7 +1994,8 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	source := sources[0]
 	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" ||
 		source.BookURLPattern != `/detail/\d+$` || source.SourceType != 1 || source.Comment != "上游注释" ||
-		source.ConcurrentRate != "2/1000" || source.LoginURL != "https://reader.example/login" ||
+		source.ConcurrentRate != "2/1000" || !strings.Contains(source.Header, `"Referer":"https://reader.example"`) ||
+		source.LoginURL != "https://reader.example/login" ||
 		source.LoginCheckJS != "return source.isLogin()" || source.CustomOrder != 37 ||
 		source.LastUpdateTime != 1710000000000 || source.Weight != 12 || source.RespondTime != 3456 ||
 		source.Enabled || source.IsExploreEnabled() {
@@ -2049,6 +2052,34 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	if exported := exportUpstreamURLTemplate(rule.SearchURL); exported !=
 		`https://reader.example/search, {"method":"POST","body":"key={{key}}&page={{page}}","headers":{"X-Page":"{{page}}"}}` {
 		t.Fatalf("POST URL options were not preserved for upstream export: %s", exported)
+	}
+}
+
+func TestBookSourceParsedRulesMergesRawStaticHeader(t *testing.T) {
+	source := models.BookSource{
+		Header: `{"X-Base":"raw","X-Override":"raw"}`,
+		Rules:  `{"headers":{"x-override":"rule","X-Rule":"yes"}}`,
+	}
+	rule, err := source.ParsedRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rule.Headers["X-Base"] != "raw" || rule.Headers["x-override"] != "rule" || rule.Headers["X-Rule"] != "yes" {
+		t.Fatalf("merged source headers = %+v", rule.Headers)
+	}
+	for name := range rule.Headers {
+		if name == "X-Override" {
+			t.Fatalf("case-insensitive overridden raw header remained: %+v", rule.Headers)
+		}
+	}
+
+	source.Header = "@js:return {'X-Dynamic':'yes'}"
+	rule, err = source.ParsedRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rule.Headers) != 2 || rule.Headers["X-Base"] != "" {
+		t.Fatalf("dynamic raw header should be preserved but not executed: %+v", rule.Headers)
 	}
 }
 
@@ -2139,6 +2170,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if source.BaseURL != "https://upload-reader.example" || source.Group != "上传分组" ||
+		!strings.Contains(source.Header, `"X-Source-Token":"upload-secret"`) ||
 		source.LoginURL != "https://upload-reader.example/login" || source.LoginCheckJS != "checkLogin()" ||
 		source.LastUpdateTime != 1720000000000 || source.Weight != 8 || source.RespondTime != 9876 {
 		t.Fatalf("unexpected imported source: %+v", source)
@@ -2738,6 +2770,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 			SearchURL:      "https://one.example/legacy-search?q={keyword}",
 			Charset:        "gbk",
 			ConcurrentRate: "2/1000",
+			Header:         "@js:return source.loginHeader()",
 			LoginURL:       "https://one.example/login",
 			LoginCheckJS:   "checkLogin()",
 			CustomOrder:    37,
@@ -2859,6 +2892,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.ExploreURL != "https://one.example/explore/{{page}}" ||
 		first.Charset != "gbk" ||
 		first.ConcurrentRate != "2/1000" ||
+		first.Header != "@js:return source.loginHeader()" ||
 		first.LoginURL != "https://one.example/login" ||
 		first.LoginCheckJS != "checkLogin()" ||
 		first.CustomOrder != 37 ||
@@ -2907,7 +2941,6 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		first.RuleContent.SourceRegex != "source-(.*)" ||
 		first.RuleContent.ReplaceRegex != "replace##with" ||
 		first.RuleContent.ImageStyle != "FULL" ||
-		!strings.Contains(first.Header, `"Referer":"https://one.example/"`) ||
 		!strings.Contains(first.Rules, `"paginationRule":".next|attr:href"`) ||
 		!strings.Contains(first.Rules, `"textReplaceRules"`) {
 		t.Fatalf("expected upstream-compatible fields plus lossless extensions, got %+v", first)
@@ -2935,6 +2968,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 		reimported.BaseURL != sources[0].BaseURL ||
 		reimported.Group != sources[0].Group ||
 		reimported.Charset != sources[0].Charset ||
+		reimported.Header != sources[0].Header ||
 		reimported.LoginURL != sources[0].LoginURL ||
 		reimported.LoginCheckJS != sources[0].LoginCheckJS ||
 		reimported.CustomOrder != sources[0].CustomOrder ||
@@ -2988,7 +3022,7 @@ func TestRemoteSourceImportUpdatesExistingByName(t *testing.T) {
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`[{"name":"同名源","baseUrl":"https://new.example","charset":"gbk","loginUrl":"https://new.example/login","loginCheckJs":"check()","lastUpdateTime":1740000000000,"weight":9,"respondTime":1357,"enabled":false}]`)),
+				Body:       io.NopCloser(strings.NewReader(`[{"name":"同名源","baseUrl":"https://new.example","charset":"gbk","header":"@js:return dynamicHeaders()","loginUrl":"https://new.example/login","loginCheckJs":"check()","lastUpdateTime":1740000000000,"weight":9,"respondTime":1357,"enabled":false}]`)),
 				Header:     make(http.Header),
 				Request:    req,
 			}, nil
@@ -3017,6 +3051,7 @@ func TestRemoteSourceImportUpdatesExistingByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if updated.BaseURL != "https://new.example" || updated.Charset != "gbk" ||
+		updated.Header != "@js:return dynamicHeaders()" ||
 		updated.LoginURL != "https://new.example/login" || updated.LoginCheckJS != "check()" ||
 		updated.LastUpdateTime != 1740000000000 || updated.Weight != 9 || updated.RespondTime != 1357 ||
 		updated.Enabled {

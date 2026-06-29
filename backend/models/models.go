@@ -2,6 +2,8 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -37,6 +39,7 @@ type BookSource struct {
 	Comment        string    `json:"bookSourceComment" gorm:"type:text"`
 	Charset        string    `json:"charset" gorm:"size:40;default:utf-8"`
 	ConcurrentRate string    `json:"concurrentRate" gorm:"size:80"`
+	Header         string    `json:"header" gorm:"type:text"`
 	LoginURL       string    `json:"loginUrl" gorm:"type:text"`
 	LoginCheckJS   string    `json:"loginCheckJs" gorm:"type:text"`
 	CustomOrder    int       `json:"customOrder" gorm:"default:0"`
@@ -58,14 +61,43 @@ func (s BookSource) IsExploreEnabled() bool {
 
 // ParsedRules deserializes the Rules JSON into a BookSourceRule.
 func (s BookSource) ParsedRules() (BookSourceRule, error) {
-	if s.Rules == "" {
-		return BookSourceRule{}, nil
-	}
 	var rule BookSourceRule
-	if err := json.Unmarshal([]byte(s.Rules), &rule); err != nil {
-		return BookSourceRule{}, err
+	if s.Rules != "" {
+		if err := json.Unmarshal([]byte(s.Rules), &rule); err != nil {
+			return BookSourceRule{}, err
+		}
+	}
+	rawHeaders := parseBookSourceHeader(s.Header)
+	if len(rawHeaders) > 0 {
+		for name, value := range rule.Headers {
+			for rawName := range rawHeaders {
+				if strings.EqualFold(rawName, name) {
+					delete(rawHeaders, rawName)
+				}
+			}
+			rawHeaders[name] = value
+		}
+		rule.Headers = rawHeaders
 	}
 	return rule, nil
+}
+
+func parseBookSourceHeader(value string) map[string]string {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.HasPrefix(strings.ToLower(value), "@js:") || strings.HasPrefix(strings.ToLower(value), "<js>") {
+		return nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(value), &raw); err != nil {
+		return nil
+	}
+	headers := make(map[string]string, len(raw))
+	for name, item := range raw {
+		if name = strings.TrimSpace(name); name != "" && item != nil {
+			headers[name] = fmt.Sprint(item)
+		}
+	}
+	return headers
 }
 
 // SetRules serializes rule and stores it in the Rules field.

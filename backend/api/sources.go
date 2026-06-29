@@ -163,6 +163,7 @@ func (p bookSourcePayload) toModel() models.BookSource {
 		SearchURL:      normalizeUpstreamURLTemplate(p.SearchURL),
 		Charset:        strings.TrimSpace(p.Charset),
 		ConcurrentRate: strings.TrimSpace(p.ConcurrentRate),
+		Header:         p.rawHeader(),
 		LoginURL:       strings.TrimSpace(p.LoginURL),
 		LoginCheckJS:   strings.TrimSpace(p.LoginCheckJS),
 		CustomOrder:    p.CustomOrder,
@@ -305,6 +306,28 @@ func (p bookSourcePayload) compatHeaders() map[string]string {
 	return nil
 }
 
+func (p bookSourcePayload) rawHeader() string {
+	if header := strings.TrimSpace(p.Header); header != "" {
+		return header
+	}
+	if len(p.HeaderMap) == 0 {
+		return ""
+	}
+	var headerText string
+	if err := json.Unmarshal(p.HeaderMap, &headerText); err == nil {
+		return strings.TrimSpace(headerText)
+	}
+	var compact any
+	if err := json.Unmarshal(p.HeaderMap, &compact); err != nil {
+		return ""
+	}
+	data, err := json.Marshal(compact)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
 func decodeHeaderMap(data []byte) map[string]string {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -412,7 +435,7 @@ func (s *Server) createSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 
-	if err := s.db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "LoginURL", "LoginCheckJS", "CustomOrder", "LastUpdateTime", "Weight", "RespondTime", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+	if err := s.db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "Header", "LoginURL", "LoginCheckJS", "CustomOrder", "LastUpdateTime", "Weight", "RespondTime", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
 	}
@@ -459,6 +482,7 @@ func (s *Server) updateSource(c *gin.Context) {
 	}
 	source.Rules = strings.TrimSpace(req.Rules)
 	source.ConcurrentRate = strings.TrimSpace(req.ConcurrentRate)
+	source.Header = strings.TrimSpace(req.Header)
 	source.LoginURL = strings.TrimSpace(req.LoginURL)
 	source.LoginCheckJS = strings.TrimSpace(req.LoginCheckJS)
 	source.CustomOrder = req.CustomOrder
@@ -784,8 +808,8 @@ func exportBookSources(sources []models.BookSource) []exportedBookSource {
 			UpdateTime:  exportUpstreamSelectorRule(rule.ExploreBookUpdateTimeRule),
 			BookURL:     exportUpstreamSelectorRule(rule.ExploreBookURLRule),
 		}
-		header := ""
-		if len(rule.Headers) > 0 {
+		header := strings.TrimSpace(source.Header)
+		if header == "" && len(rule.Headers) > 0 {
 			if data, marshalErr := json.Marshal(rule.Headers); marshalErr == nil {
 				header = string(data)
 			}
@@ -980,6 +1004,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 		source.Group = strings.TrimSpace(source.Group)
 		source.Charset = strings.TrimSpace(source.Charset)
 		source.ConcurrentRate = strings.TrimSpace(source.ConcurrentRate)
+		source.Header = strings.TrimSpace(source.Header)
 		source.LoginURL = strings.TrimSpace(source.LoginURL)
 		source.LoginCheckJS = strings.TrimSpace(source.LoginCheckJS)
 		if source.Charset == "" {
@@ -995,6 +1020,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			existing.Comment = source.Comment
 			existing.Charset = source.Charset
 			existing.ConcurrentRate = source.ConcurrentRate
+			existing.Header = source.Header
 			existing.LoginURL = source.LoginURL
 			existing.LoginCheckJS = source.LoginCheckJS
 			existing.CustomOrder = source.CustomOrder
@@ -1013,7 +1039,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			continue
 		}
 
-		if err := db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "LoginURL", "LoginCheckJS", "CustomOrder", "LastUpdateTime", "Weight", "RespondTime", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+		if err := db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "Header", "LoginURL", "LoginCheckJS", "CustomOrder", "LastUpdateTime", "Weight", "RespondTime", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
 			skipped++
 			continue
 		}
