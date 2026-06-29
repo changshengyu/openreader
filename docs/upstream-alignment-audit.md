@@ -1,6 +1,8 @@
 # OpenReader 上游对齐审查
 
-上游基准：`hectorqin/reader` commit `827dd8281ac39a870dde7b0db7274bf0f41aed20`（本轮从 GitHub 提交归档恢复到 `/private/tmp/hectorqin-reader-827dd82`）。
+上游基准：用户保留的公开 fork [`changshengyu/reader-dev`](https://github.com/changshengyu/reader-dev) `master` commit `fa22f271849d45f93349ae1636223e27b16a4691`（固定检出于 `/private/tmp/changshengyu-reader-dev`）。
+
+历史基准 `hectorqin/reader` commit `827dd8281ac39a870dde7b0db7274bf0f41aed20` 是当前 fork 基准的祖先；此前审计记录与源码链接继续作为当时证据保留。后续重构、差异判断和新增审计统一以 `changshengyu/reader-dev@fa22f27` 为准，不再依赖已删除的原仓库。
 
 本文件是提交前闸门。每一批重构都要回答：改动对应上游哪个组件、哪个方法、哪些差异是后端缺口或用户明确要求导致的。
 
@@ -38,6 +40,7 @@
 
 ## 最近批次记录
 
+- 2026-06-29：将后续重构的正式上游基准从已删除的原仓库切换为用户保留的 [`changshengyu/reader-dev`](https://github.com/changshengyu/reader-dev) fork，并固定到 `master@fa22f271849d45f93349ae1636223e27b16a4691`，避免“参照最新”随远端漂移。Git 历史确认旧基准 `827dd828` 是新基准祖先，因此此前对齐工作无需推倒重来；新基准在其上增加 31 个提交、涉及 18 个文件，主要增量集中于阅读器/Content、跨书章节缓存与暖启动、书架编辑搜索、书架管理搜索、本地书仓大目录性能、编码检测、BookInfo 追读入口和桌面布局。后续差异批次优先从这些 fork 增量逐项核对。对应基线目录：[reader-dev](/private/tmp/changshengyu-reader-dev)。
 - 2026-06-29：修复 GitHub issue #1“注册的第一个用户是 user 角色”。注册入口此前完全依赖 `User.Role` 的 GORM 默认值，因此空数据库初始化出的首个账号也是普通用户，无法进入管理员接口，只能手改数据库。本批把“检查现有用户名、统计用户数、创建账号”放入同一数据库事务，并在注册入口增加进程内互斥：用户表为空时首位账号明确写入 `admin`，之后账号仍为 `user`，并发首次注册也只会产生一个管理员；用户名冲突继续返回 409，其它数据库异常返回 500。不会在启动时自动提升既有账号，避免对已有部署做隐式越权迁移。回归覆盖首用户角色及管理员接口权限、第二用户普通角色、四路并发注册唯一管理员，后端全量测试通过。对应 issue：[openreader#1](https://github.com/changshengyu/openreader/issues/1)，对应代码：[auth.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/auth.go)、[server.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/server.go)、[api_test.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/api_test.go)。
 - 2026-06-29：继续补齐上游 `BaseSource.header` 的原始字段与执行语义。当前实现此前只把可解析的静态 `header/headerMap` 转存到内部 `rules.headers`，原始字段本身不落库；`@js:`/`<js>` 动态 header 会静默丢失，普通 JSON 的格式与原值也无法无损导出。本批为 `BookSource` 增加独立 raw `header` 字段，贯通上游/current JSON、新增编辑、同名导入更新、默认快照、自动备份、WebDAV 恢复和标准格式导出再导入。`ParsedRules()` 统一把可解析的 raw 静态 JSON 作为基础请求头，再由内部 `rules.headers` 按名称大小写不敏感地覆盖，因此搜索、书海、详情、目录和正文沿用现有执行路径；动态 JS header 只保留并在界面明确提示，不冒充执行。回归覆盖 HeaderMap 落库、静态合并及覆盖、动态 header 不执行、上传/远程导入、新增编辑清空和动态 header round-trip；后端全量测试、前端单测和生产构建通过。对应代码：[BaseSource.kt upstream](/private/tmp/hectorqin-reader-827dd82/src/main/java/io/legado/app/data/entities/BaseSource.kt)、[models.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/models/models.go)、[sources.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/sources.go)、[Sources.vue](/Users/yuchangsheng/Documents/OpenReader-dev/frontend/src/views/Sources.vue)、[api_test.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/api_test.go)。
 - 2026-06-29：补齐上游 `BookSource` 实体级元数据的无损链路。当前模型此前缺少 `loginUrl/loginCheckJs/lastUpdateTime/weight/respondTime`，上游 JSON 导入虽然成功，这些字段却会静默丢失，随后编辑、默认快照、自动备份或标准格式导出都无法恢复。本批为书源模型和迁移增加五个字段，贯通当前/上游 JSON 解码、新增、编辑、同名导入更新、列表、默认快照、自动备份、WebDAV 恢复与标准格式导出再导入；缺省 `respondTime` 按上游实体使用 `180000`。书源编辑器保留全部元数据，并显式提供登录地址/登录检测 JS 兼容字段；当前没有上游脚本登录运行时，因此只保证无损保存，不冒充执行。回归覆盖字段缺省、上游解码、上传导入、远程同名更新、新增、编辑清空以及标准导出 round-trip；后端全量测试、前端单测和生产构建通过。对应代码：[BookSource.kt upstream](/private/tmp/hectorqin-reader-827dd82/src/main/java/io/legado/app/data/entities/BookSource.kt)、[models.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/models/models.go)、[sources.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/sources.go)、[Sources.vue](/Users/yuchangsheng/Documents/OpenReader-dev/frontend/src/views/Sources.vue)、[api_test.go](/Users/yuchangsheng/Documents/OpenReader-dev/backend/api/api_test.go)。
