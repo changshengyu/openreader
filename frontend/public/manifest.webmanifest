@@ -1,0 +1,20 @@
+{
+  "name": "OpenReader",
+  "short_name": "OpenReader",
+  "description": "A self-hosted web reader",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f1e5",
+  "theme_color": "#2f6f6d",
+  "icons": [
+    {
+      "src": "/openreader.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
