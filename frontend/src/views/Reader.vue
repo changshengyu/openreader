@@ -283,6 +283,7 @@ import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
+import { useAutoReading } from '../composables/useAutoReading'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
@@ -378,7 +379,6 @@ const toastMsg = ref('')
 const isCachingContent = ref(false)
 const cachingContentTip = ref('')
 const progressVersion = ref(0)
-const autoReading = ref(false)
 const customBg = ref('')
 const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
@@ -389,8 +389,6 @@ const MOBILE_TAP_MOVE_TOLERANCE = 14
 
 let saveTimer
 let chapterLoadingTimer
-let autoReadTimer
-let autoReadAdvancing = false
 let ttsContinueToken = 0
 let savingProgress = false
 let pendingProgressPayload = null
@@ -534,6 +532,29 @@ const isOverlayOpen = computed(() => (
   showNoteDialog.value ||
   showBookmarkEditor.value
 ))
+
+const {
+  active: autoReading,
+  stop: stopAutoReading,
+  toggle: toggleAutoReading,
+} = useAutoReading({
+  contentEl,
+  contentBody,
+  isVerticalRead,
+  shouldPause: () => isOverlayOpen.value || mobileChromeVisible.value,
+  settings: () => ({
+    method: reader.autoReadingMethod,
+    pixel: reader.autoReadingPixel,
+    interval: reader.autoReadingLineTime,
+    fontSize: reader.fontSize,
+    lineHeight: reader.lineHeight,
+  }),
+  currentVisibleParagraph,
+  scrollBehavior: readerScrollBehavior,
+  advancePage: advanceAutoReadingPage,
+  onProgress: recordAutoReadingProgress,
+  onNotify: showAutoReadingMessage,
+})
 
 function onModeChange(mode) {
   reader.setMode(mode)
@@ -1904,110 +1925,23 @@ async function clearCurrentBookBrowserCache() {
   return removed
 }
 
-function toggleAutoReading() {
-  if (autoReading.value) {
-    stopAutoReading()
-    toastMsg.value = '自动阅读已停止'
-    setTimeout(() => { toastMsg.value = '' }, 1200)
-    return
-  }
-  autoReading.value = true
-  runAutoReadLoop()
-  toastMsg.value = '自动阅读已开始'
-  setTimeout(() => { toastMsg.value = '' }, 1200)
-}
-
-function runAutoReadLoop(delay = 0) {
-  clearTimeout(autoReadTimer)
-  if (!autoReading.value) return
-  autoReadTimer = setTimeout(async () => {
-    if (!autoReading.value) return
-    if (autoReadAdvancing || isOverlayOpen.value || mobileChromeVisible.value) {
-      runAutoReadLoop(300)
-      return
-    }
-    autoReadAdvancing = true
-    try {
-      if (reader.autoReadingMethod === '段落滚动') {
-        await autoReadByParagraph()
-      } else {
-        await autoReadByPixel()
-      }
-    } finally {
-      autoReadAdvancing = false
-    }
-  }, delay)
-}
-
-async function autoReadByPixel() {
-  if (isVerticalRead.value && contentEl.value) {
-    const el = contentEl.value
-    const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
-    if (el.scrollTop < bottom - 4) {
-      el.scrollTop = Math.min(bottom, el.scrollTop + reader.autoReadingPixel)
-      runAutoReadLoop(reader.autoReadingLineTime)
-      return
-    }
-  }
-  const advanced = await advanceAutoReadPage()
-  if (advanced) runAutoReadLoop(reader.autoReadingLineTime)
-}
-
-async function autoReadByParagraph() {
-  if (!isVerticalRead.value || !contentEl.value || !contentBody.value) {
-    const advanced = await advanceAutoReadPage()
-    if (advanced) runAutoReadLoop(reader.autoReadingLineTime)
-    return
-  }
-  const current = currentVisibleParagraph()
-  const next = nextParagraphAfter(current)
-  if (next) {
-    const currentRect = current?.getBoundingClientRect?.()
-    const lineHeight = Math.max(1, Number(reader.fontSize || 18) * Number(reader.lineHeight || 1.8))
-    const lineCount = currentRect?.height ? Math.max(1, Math.ceil(currentRect.height / lineHeight)) : 1
-    scrollParagraphIntoView(next)
-    progressVersion.value += 1
-    saveCurrentProgress()
-    runAutoReadLoop(reader.autoReadingLineTime * lineCount)
-    return
-  }
-  const advanced = await advanceAutoReadPage()
-  if (advanced) runAutoReadLoop(reader.autoReadingLineTime)
-}
-
-function nextParagraphAfter(paragraph) {
-  const paragraphs = [...(contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
-  if (!paragraph) return paragraphs[0] || null
-  const index = paragraphs.indexOf(paragraph)
-  return index >= 0 ? paragraphs[index + 1] || null : paragraphs[0] || null
-}
-
-function scrollParagraphIntoView(paragraph) {
-  if (!paragraph || !contentEl.value) return
-  const viewport = contentEl.value.getBoundingClientRect()
-  const rect = paragraph.getBoundingClientRect()
-  const nextTop = contentEl.value.scrollTop + rect.top - viewport.top - 24
-  contentEl.value.scrollTo({ top: Math.max(0, nextTop), behavior: readerScrollBehavior() })
-}
-
-async function advanceAutoReadPage() {
+async function advanceAutoReadingPage() {
   const beforeChapter = currentIndex.value
   const beforePage = page.value
   await nextPage()
-  if (beforeChapter === currentIndex.value && beforePage === page.value) {
-    stopAutoReading()
-    toastMsg.value = '已到本书末尾'
-    setTimeout(() => { toastMsg.value = '' }, 1200)
-    return false
-  }
-  return true
+  return beforeChapter !== currentIndex.value || beforePage !== page.value
 }
 
-function stopAutoReading() {
-  autoReading.value = false
-  autoReadAdvancing = false
-  clearTimeout(autoReadTimer)
-  autoReadTimer = null
+function recordAutoReadingProgress() {
+  progressVersion.value += 1
+  saveCurrentProgress()
+}
+
+function showAutoReadingMessage(message) {
+  toastMsg.value = message
+  setTimeout(() => {
+    if (toastMsg.value === message) toastMsg.value = ''
+  }, 1200)
 }
 
 function toggleNight() {
