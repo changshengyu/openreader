@@ -170,22 +170,22 @@
     </footer>
 
     <!-- TTS 朗读条 -->
-    <div v-if="tts.state.playing" class="tts-bar">
-      <el-button text class="tts-btn" @click="tts.skipBackward">‹</el-button>
-      <el-button text class="tts-btn" @click="tts.state.paused ? tts.resume() : tts.pause()">
-        {{ tts.state.paused ? '▶' : '⏸' }}
-      </el-button>
-      <el-button text class="tts-btn" @click="tts.skipForward">›</el-button>
-      <el-button text class="tts-btn" @click="ttsStop">⏹</el-button>
-      <span class="tts-progress">{{ ttsProgressLabel }}</span>
-      <span class="tts-label">语速</span>
-      <input :value="tts.state.rate" max="3" min="0.5" step="0.1" type="range" class="tts-slider" @input="setTTSRate($event.target.value)" />
-      <span class="tts-label">音调</span>
-      <input :value="tts.state.pitch" max="2" min="0.5" step="0.1" type="range" class="tts-slider" @input="setTTSPitch($event.target.value)" />
-      <span class="tts-label">定时</span>
-      <input :value="ttsSleepMinutes" max="180" min="0" step="1" type="range" class="tts-slider" @input="setTTSSleepMinutes($event.target.value)" />
-      <span class="tts-label">{{ ttsSleepMinutes }}分钟</span>
-    </div>
+    <ReaderTTSBar
+      v-if="tts.state.playing"
+      :paused="tts.state.paused"
+      :rate="tts.state.rate"
+      :pitch="tts.state.pitch"
+      :sleep-minutes="ttsSleepMinutes"
+      :progress-text="ttsProgressLabel"
+      @backward="tts.skipBackward"
+      @pause="tts.pause"
+      @resume="tts.resume"
+      @forward="tts.skipForward"
+      @stop="ttsStop"
+      @rate-change="setTTSRate"
+      @pitch-change="setTTSPitch"
+      @sleep-change="setTTSSleepMinutes"
+    />
 
     <!-- Toast -->
     <div v-if="toastMsg" class="reader-toast">{{ toastMsg }}</div>
@@ -373,6 +373,7 @@ import ReaderMobileToolsPanel from '../components/reader/ReaderMobileToolsPanel.
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
+import ReaderTTSBar from '../components/reader/ReaderTTSBar.vue'
 import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
 import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
@@ -3903,18 +3904,6 @@ function readError(err, fallback) {
   display: none;
 }
 
-/* ---- TTS ---- */
-.tts-bar {
-  align-items: center; background: rgba(64,158,255,0.9);
-  border-radius: 10px; bottom: 16px; color: #fff;
-  display: flex; gap: 8px; left: 50%; padding: 10px 18px;
-  position: fixed; transform: translateX(-50%); z-index: 6;
-}
-.tts-btn { color: #fff !important; font-size: 18px; }
-.tts-label { color: rgba(255,255,255,0.7); font-size: 12px; }
-.tts-progress { color: #fff; font-size: 12px; white-space: nowrap; }
-.tts-slider { width: 60px; accent-color: #fff; }
-
 /* ---- Toast ---- */
 .reader-toast {
   background: rgba(30, 41, 59, 0.92); border-radius: 8px; bottom: 96px; color: #fff;
@@ -4170,14 +4159,6 @@ function readError(err, fallback) {
   }
   .mobile-tool-button:active {
     background: rgba(114, 91, 43, 0.1);
-  }
-  .tts-bar {
-    right: 10px;
-    bottom: max(74px, calc(env(safe-area-inset-bottom) + 74px));
-    left: 10px;
-    justify-content: center;
-    overflow-x: auto;
-    transform: none;
   }
 }
 </style>
