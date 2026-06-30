@@ -259,7 +259,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
-import { changeBookSource, refreshBook, refreshLocalBook } from '../api/books'
+import { refreshBook, refreshLocalBook } from '../api/books'
 import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
@@ -286,6 +286,7 @@ import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
+import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
@@ -305,17 +306,7 @@ import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
-import {
-  sourceCandidateAuthor,
-  sourceCandidateBookUrl,
-  sourceCandidateCover,
-  sourceCandidateIntro,
-  sourceCandidateKind,
-  sourceCandidateSourceId,
-  sourceCandidateSourceName,
-  sourceCandidateTitle,
-  sourceCandidateWordCount,
-} from '../utils/sourceCandidate'
+import { sourceCandidateSourceName } from '../utils/sourceCandidate'
 
 const route = useRoute()
 const router = useRouter()
@@ -388,7 +379,16 @@ const {
   onError: error => ElMessage.error(readError(error, '搜索可用来源失败')),
   onInfo: message => ElMessage.info(message),
 })
-const changingSource = ref(null)
+const {
+  changingSource,
+  change: changeSource,
+} = useBookSourceChange({
+  book,
+  bookId,
+  onChanged: applyReaderSourceChange,
+  onSuccess: (_data, source) => ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`),
+  onError: error => ElMessage.error(readError(error, '换源失败')),
+})
 const shelfLoading = ref(false)
 const shelfPanelRef = ref(null)
 const tocPanelRef = ref(null)
@@ -1680,40 +1680,19 @@ function openReplaceRules() {
   overlay.openReplaceRules()
 }
 
-async function changeSource(source) {
-  if (!book.value || source.current) return
-  const nextSourceId = sourceCandidateSourceId(source)
-  const previousBook = book.value
-  changingSource.value = nextSourceId
-  try {
-    const { data } = await changeBookSource(bookId.value, {
-      sourceId: nextSourceId,
-      bookUrl: sourceCandidateBookUrl(source),
-      title: sourceCandidateTitle(source, book.value?.title),
-      author: sourceCandidateAuthor(source),
-      coverUrl: sourceCandidateCover(source),
-      intro: sourceCandidateIntro(source),
-      kind: sourceCandidateKind(source),
-      wordCount: sourceCandidateWordCount(source),
-    })
-    await invalidateReaderDataCache({ book: true, chapters: true })
-    await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })
-    book.value = mergeLoadedBook(data)
-    bookshelf.upsertBook(book.value)
-    const chRes = await api.get(`/books/${bookId.value}/chapters`)
-    chapters.value = Array.isArray(chRes.data) ? chRes.data : []
-    await writeReaderDataCache({ bookData: book.value, chaptersData: chapters.value })
-    currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
-    await loadChapter(currentIndex.value, 0)
-    resetContentSearchState()
-    await refreshSourceCandidates()
-    showSourceDrawer.value = false
-    ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`)
-  } catch (err) {
-    ElMessage.error(readError(err, '换源失败'))
-  } finally {
-    changingSource.value = null
-  }
+async function applyReaderSourceChange({ book: updatedBook, previousBook }) {
+  await invalidateReaderDataCache({ book: true, chapters: true })
+  await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })
+  book.value = mergeLoadedBook(updatedBook)
+  bookshelf.upsertBook(book.value)
+  const chRes = await api.get(`/books/${bookId.value}/chapters`)
+  chapters.value = Array.isArray(chRes.data) ? chRes.data : []
+  await writeReaderDataCache({ bookData: book.value, chaptersData: chapters.value })
+  currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
+  await loadChapter(currentIndex.value, 0)
+  resetContentSearchState()
+  await refreshSourceCandidates()
+  showSourceDrawer.value = false
 }
 
 function openContentSearch() {

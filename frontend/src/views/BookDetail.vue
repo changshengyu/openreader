@@ -125,7 +125,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Switch } from '@element-plus/icons-vue'
-import { cacheBookContent, changeBookSource, deleteBookmark, listBookmarks, refreshBook, refreshLocalBook, updateBook } from '../api/books'
+import { cacheBookContent, deleteBookmark, listBookmarks, refreshBook, refreshLocalBook, updateBook } from '../api/books'
 import api from '../api/client'
 import { uploadAsset } from '../api/uploads'
 import BookEditDialog from '../components/BookEditDialog.vue'
@@ -136,6 +136,7 @@ import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
@@ -143,16 +144,6 @@ import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
-import {
-  sourceCandidateAuthor,
-  sourceCandidateBookUrl,
-  sourceCandidateCover,
-  sourceCandidateIntro,
-  sourceCandidateKind,
-  sourceCandidateSourceId,
-  sourceCandidateTitle,
-  sourceCandidateWordCount,
-} from '../utils/sourceCandidate'
 
 const route = useRoute()
 const router = useRouter()
@@ -199,9 +190,25 @@ const cachingBook = ref(false)
 const cachingLocalBook = ref(false)
 const clearingCache = ref(false)
 const clearingLocalCache = ref(false)
-const changingSource = ref(null)
 const changeMessage = ref('')
 const changeError = ref(false)
+const {
+  changingSource,
+  change: changeSource,
+} = useBookSourceChange({
+  book,
+  bookId: detailBookId,
+  onStart: () => {
+    changeMessage.value = ''
+    changeError.value = false
+  },
+  onChanged: applyDetailSourceChange,
+  onSuccess: () => ElMessage.success('换源成功'),
+  onError: error => {
+    changeError.value = true
+    changeMessage.value = readError(error, '换源失败')
+  },
+})
 
 const currentSource = computed(() => availableSources.value.find(source => Number(source.id) === Number(book.value?.sourceId)))
 const bookProgress = computed(() => newestBookProgress(book.value, reader.progressByBook))
@@ -638,37 +645,13 @@ async function openChangeSource() {
   }
 }
 
-async function changeSource(source) {
-  if (!book.value || source.current) return
-  const nextSourceId = sourceCandidateSourceId(source)
-  changingSource.value = nextSourceId
-  changeMessage.value = ''
-  changeError.value = false
-  try {
-    const previousBook = book.value
-    const { data } = await changeBookSource(book.value.id, {
-      sourceId: nextSourceId,
-      bookUrl: sourceCandidateBookUrl(source),
-      title: sourceCandidateTitle(source, book.value.title),
-      author: sourceCandidateAuthor(source),
-      coverUrl: sourceCandidateCover(source),
-      intro: sourceCandidateIntro(source),
-      kind: sourceCandidateKind(source),
-      wordCount: sourceCandidateWordCount(source),
-    })
-    const updatedBook = mergeBookUpdate(data)
-    await invalidateBookReaderCaches(previousBook, { clearBrowser: true })
-    const nextChapters = await loadBookChapters(updatedBook)
-    await applyBookUpdate(updatedBook, { chapters: nextChapters })
-    changeMessage.value = `已切换，共 ${updatedBook.chapterCount || chapters.value.length} 章`
-    await refreshSourceCandidates()
-    ElMessage.success('换源成功')
-  } catch (err) {
-    changeError.value = true
-    changeMessage.value = readError(err, '换源失败')
-  } finally {
-    changingSource.value = null
-  }
+async function applyDetailSourceChange({ book: changedBook, previousBook }) {
+  const updatedBook = mergeBookUpdate(changedBook)
+  await invalidateBookReaderCaches(previousBook, { clearBrowser: true })
+  const nextChapters = await loadBookChapters(updatedBook)
+  await applyBookUpdate(updatedBook, { chapters: nextChapters })
+  changeMessage.value = `已切换，共 ${updatedBook.chapterCount || chapters.value.length} 章`
+  await refreshSourceCandidates()
 }
 
 function formatDate(value) {

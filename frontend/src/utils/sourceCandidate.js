@@ -37,3 +37,16 @@ export function sourceCandidateSourceName(candidate = {}) {
 export function sourceCandidateKey(candidate = {}) {
   return `${sourceCandidateSourceId(candidate)}-${sourceCandidateBookUrl(candidate)}`
 }
+
+export function sourceCandidateChangePayload(candidate = {}, fallbackTitle = '') {
+  return {
+    sourceId: sourceCandidateSourceId(candidate),
+    bookUrl: sourceCandidateBookUrl(candidate),
+    title: sourceCandidateTitle(candidate, fallbackTitle),
+    author: sourceCandidateAuthor(candidate),
+    coverUrl: sourceCandidateCover(candidate),
+    intro: sourceCandidateIntro(candidate),
+    kind: sourceCandidateKind(candidate),
+    wordCount: sourceCandidateWordCount(candidate),
+  }
+}
