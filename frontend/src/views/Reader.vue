@@ -46,43 +46,14 @@
         @mouseup="handleReaderSelectionEnd"
       >
         <div ref="contentBody" class="reader-body" :style="bodyStyle">
-          <p v-if="chapterLoading" class="empty-hint">正在加载章节...</p>
-          <div v-else-if="chapterLoadError" class="chapter-load-error">
-            <p>{{ chapterLoadError }}</p>
-            <button type="button" @click="reloadChapter">重新加载</button>
-          </div>
-          <template v-else>
-            <section
-              v-for="block in displayedChapterBlocks"
-              :key="block.index"
-              class="chapter-content reading-chapter"
-              :data-index="block.index"
-            >
-              <h1 data-pos="0">{{ block.title || '正文' }}</h1>
-              <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
-                <figure
-                  v-if="line.type === 'image'"
-                  class="reader-content-image"
-                  :class="{ 'is-full': line.imageStyle === 'FULL' }"
-                  :data-pos="line.pos"
-                  data-reader-block
-                >
-                  <el-image
-                    :src="line.src"
-                    :alt="line.alt"
-                    :preview-src-list="block.imageUrls"
-                    :initial-index="imageIndex(block, line.src)"
-                    fit="contain"
-                    lazy
-                    preview-teleported
-                  />
-                  <figcaption v-if="line.alt">{{ line.alt }}</figcaption>
-                </figure>
-                <p v-else :data-pos="line.pos" data-reader-block>{{ line.text }}</p>
-              </template>
-              <p v-if="chapterLoaded && block.paragraphs.length === 0" class="empty-hint">当前章节暂无正文内容</p>
-            </section>
-          </template>
+          <ReaderChapterContent
+            :blocks="displayedChapterBlocks"
+            :error="chapterLoadError"
+            :loaded="chapterLoaded"
+            :loading="chapterLoading"
+            :mode="reader.mode"
+            @reload="reloadChapter"
+          />
         </div>
       </article>
       <ReaderClickZones
@@ -295,6 +266,7 @@ import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
+import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
 import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
 import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vue'
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
@@ -727,10 +699,6 @@ function chapterBlockTextLength(block) {
   if (!paragraphs.length) return 0
   const last = paragraphs[paragraphs.length - 1]
   return Number(last.endPos || last.pos || 0)
-}
-
-function imageIndex(block, src) {
-  return Math.max(0, (block?.imageUrls || []).indexOf(src))
 }
 
 function resetContentSearchState() {
@@ -3525,87 +3493,12 @@ function readError(err, fallback) {
   scroll-padding-bottom: 180px;
 }
 .reader-body { transition: transform var(--reader-animate-duration, 180ms) ease; }
-.chapter-content {
-  min-height: 1px;
-}
-.reader-shell.scroll .chapter-content + .chapter-content,
-.reader-shell.scroll2 .chapter-content + .chapter-content {
-  padding-top: 58px;
-}
 .reader-shell.scroll .reader-body::after,
 .reader-shell.scroll2 .reader-body::after {
   content: "";
   display: block;
   height: min(40vh, 280px);
 }
-.reader-content h1 {
-  font-size: var(--reader-heading-size);
-  line-height: 1.35;
-  margin: 0 0 76px;
-  text-align: center;
-}
-.reader-content p {
-  margin: 0 0 var(--reader-paragraph-space);
-  font-weight: var(--reader-font-weight);
-  text-indent: 2em;
-}
-.reader-content-image {
-  display: grid;
-  width: 100%;
-  margin: 0 auto var(--reader-paragraph-space);
-  place-items: center;
-  text-indent: 0;
-}
-.reader-content-image :deep(.el-image) {
-  display: block;
-  width: min(100%, 960px);
-  min-height: 1px;
-}
-.reader-content-image.is-full :deep(.el-image) {
-  width: 100%;
-}
-.reader-content-image :deep(img) {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
-}
-.reader-content-image.is-full :deep(img) {
-  width: 100%;
-}
-.reader-content-image figcaption {
-  margin-top: 8px;
-  color: rgba(36, 40, 44, 0.55);
-  font-size: 0.78em;
-  text-align: center;
-}
-.chapter-load-error {
-  display: grid;
-  min-height: 180px;
-  place-content: center;
-  gap: 14px;
-  text-align: center;
-}
-.chapter-load-error p {
-  margin: 0;
-  color: rgba(112, 48, 42, 0.8);
-  text-indent: 0;
-}
-.chapter-load-error button {
-  justify-self: center;
-  padding: 8px 18px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
-}
-.reader-content p.reader-search-active {
-  background: rgba(47, 111, 109, 0.16);
-  box-shadow: -8px 0 0 rgba(47, 111, 109, 0.16), 8px 0 0 rgba(47, 111, 109, 0.16);
-  transition: background 160ms ease, box-shadow 160ms ease;
-}
-
 /* 翻页模式 */
 .reader-shell.flip .reader-content {
   overflow: hidden;
@@ -3615,10 +3508,6 @@ function readError(err, fallback) {
   column-width: var(--reader-page-width);
   column-gap: 0;
   column-fill: auto;
-}
-.reader-shell.flip .reader-body h1,
-.reader-shell.flip .reader-body p {
-  break-inside: avoid;
 }
 .reader-shell.flip .reader-body {
   transition: transform var(--reader-animate-duration, 180ms) ease;
@@ -3676,8 +3565,6 @@ function readError(err, fallback) {
   justify-content: flex-end;
   gap: 14px;
 }
-.empty-hint { color: #999; text-align: center; padding-top: 40px; text-indent: 0; }
-
 /* ---- 响应式 ---- */
 @media (max-width: 750px) {
   .reader-shell {
@@ -3725,6 +3612,5 @@ function readError(err, fallback) {
     padding-bottom: calc(250px + env(safe-area-inset-bottom));
     scroll-padding-bottom: calc(250px + env(safe-area-inset-bottom));
   }
-  .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
 }
 </style>
