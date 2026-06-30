@@ -673,7 +673,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
-import { cacheBookContent, createBookmark, createBookmarks, deleteBookmark, deleteBookmarks, listBookmarks, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, deleteReplaceRules, listReplaceRules, testReplaceRule, updateReplaceRule, upsertReplaceRules } from '../api/replaceRules'
 import { listSources } from '../api/sources'
@@ -682,6 +682,7 @@ import { bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bo
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useUserStore } from '../stores/user'
+import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
@@ -750,10 +751,24 @@ const {
   onError: error => ElMessage.error(readError(error, '搜索正文失败')),
 })
 const contentSearchBookKey = ref('')
-const bookmarkItems = ref([])
-const bookmarkLoading = ref(false)
+const bookmarkBookId = computed(() => overlay.bookmarkBook?.id)
+const {
+  items: bookmarkItems,
+  loading: bookmarkLoading,
+  mutating: bookmarkSaving,
+  load: loadBookmarkItems,
+  reset: resetBookmarkItems,
+  update: updateBookmarkData,
+  remove: removeBookmarkData,
+  removeMany: removeBookmarkRows,
+  importPayloads: importBookmarkPayloads,
+  handleUpdated: handleBookmarksUpdated,
+} = useBookBookmarks({
+  bookId: bookmarkBookId,
+  isActive: () => overlay.bookmarkVisible,
+  onLoadError: error => ElMessage.error(readError(error, '加载书签失败')),
+})
 const bookmarkEditorVisible = ref(false)
-const bookmarkSaving = ref(false)
 const editingBookmark = ref(null)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
 const backups = ref([])
@@ -783,7 +798,6 @@ const replaceRuleTestResult = ref(null)
 const manageKeyword = ref('')
 const windowWidth = ref(currentViewportWidth())
 let replaceRulesRefreshTimer
-let bookmarkRefreshTimer
 let usersRefreshTimer
 let sourceRowsRefreshTimer
 let groupSortable
@@ -872,7 +886,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('openreader:users-updated', handleUsersUpdated)
   window.removeEventListener('openreader:sources-update', handleSourcesUpdated)
   clearReplaceRulesRefreshTimer()
-  clearBookmarkRefreshTimer()
   clearUsersRefreshTimer()
   clearSourceRowsRefreshTimer()
   destroyGroupSortable()
@@ -1089,7 +1102,7 @@ watch(
   () => overlay.bookmarkVisible,
   async (visible) => {
     if (!visible) {
-      bookmarkItems.value = []
+      resetBookmarkItems()
       return
     }
     await loadBookmarkItems()
@@ -1647,41 +1660,6 @@ function jumpToContentResult(result) {
   })
 }
 
-async function loadBookmarkItems() {
-  const book = overlay.bookmarkBook
-  if (!book?.id) return
-  bookmarkLoading.value = true
-  try {
-    const { data } = await listBookmarks(book.id)
-    bookmarkItems.value = data || []
-  } catch (err) {
-    ElMessage.error(readError(err, '加载书签失败'))
-  } finally {
-    bookmarkLoading.value = false
-  }
-}
-
-function handleBookmarksUpdated(event) {
-  if (!overlay.bookmarkVisible || !overlay.bookmarkBook?.id) return
-  const bookIds = event?.detail?.bookIds || []
-  if (bookIds.length && !bookIds.some(id => String(id) === String(overlay.bookmarkBook.id))) return
-  scheduleBookmarkRefresh()
-}
-
-function scheduleBookmarkRefresh() {
-  clearBookmarkRefreshTimer()
-  bookmarkRefreshTimer = window.setTimeout(async () => {
-    bookmarkRefreshTimer = undefined
-    await loadBookmarkItems()
-  }, 250)
-}
-
-function clearBookmarkRefreshTimer() {
-  if (!bookmarkRefreshTimer) return
-  window.clearTimeout(bookmarkRefreshTimer)
-  bookmarkRefreshTimer = undefined
-}
-
 function jumpToBookmark(bookmark) {
   const book = overlay.bookmarkBook
   if (!book?.id) return
@@ -1709,28 +1687,22 @@ function openBookmarkEditor(bookmark) {
 
 async function saveBookmarkEdit() {
   if (!editingBookmark.value) return
-  bookmarkSaving.value = true
   try {
-    const { data } = await updateBookmark(editingBookmark.value.id, {
+    await updateBookmarkData(editingBookmark.value.id, {
       title: bookmarkDraft.title,
       excerpt: bookmarkDraft.excerpt,
       note: bookmarkDraft.note,
     })
-    const index = bookmarkItems.value.findIndex(item => item.id === data.id)
-    if (index >= 0) bookmarkItems.value[index] = data
     bookmarkEditorVisible.value = false
     ElMessage.success('书签已更新')
   } catch (err) {
     ElMessage.error(readError(err, '更新书签失败'))
-  } finally {
-    bookmarkSaving.value = false
   }
 }
 
 async function removeBookmarkItem(bookmark) {
   try {
-    await deleteBookmark(bookmark.id)
-    bookmarkItems.value = bookmarkItems.value.filter(item => item.id !== bookmark.id)
+    await removeBookmarkData(bookmark.id)
     ElMessage.success('书签已删除')
   } catch (err) {
     ElMessage.error(readError(err, '删除书签失败'))
@@ -1741,9 +1713,7 @@ async function removeBookmarkItems(rows) {
   if (!Array.isArray(rows) || !rows.length) return
   try {
     await ElMessageBox.confirm(`确认要删除所选择的 ${rows.length} 条书签吗？`, '批量删除书签', { type: 'warning' })
-    const { data } = await deleteBookmarks(overlay.bookmarkBook.id, rows.map(item => item.id))
-    const deleted = new Set(data?.deletedIds || [])
-    bookmarkItems.value = bookmarkItems.value.filter(item => !deleted.has(item.id))
+    await removeBookmarkRows(rows)
     ElMessage.success('书签已删除')
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
@@ -1761,9 +1731,7 @@ async function importBookmarkItems(rows) {
   }
   try {
     await ElMessageBox.confirm(`确认要导入文件中的 ${payloads.length} 条书签到当前书籍吗？`, '导入书签', { type: 'info' })
-    const { data } = await createBookmarks(book.id, payloads)
-    const created = Array.isArray(data) ? data : []
-    bookmarkItems.value = [...created, ...bookmarkItems.value]
+    const created = await importBookmarkPayloads(payloads)
     ElMessage.success(`已导入 ${created.length} 条书签`)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return

@@ -14,6 +14,28 @@ export function normalizeImportedBookmarks(rows) {
     .filter(row => row.title || row.excerpt || row.note)
 }
 
+export function prependBookmarks(current, incoming) {
+  return [...(Array.isArray(incoming) ? incoming : []), ...(Array.isArray(current) ? current : [])]
+}
+
+export function replaceBookmark(current, bookmark) {
+  if (!bookmark?.id) return Array.isArray(current) ? current : []
+  return (Array.isArray(current) ? current : []).map(item => (
+    String(item.id) === String(bookmark.id) ? bookmark : item
+  ))
+}
+
+export function removeBookmarkIds(current, ids) {
+  const removed = new Set((Array.isArray(ids) ? ids : []).map(id => String(id)))
+  return (Array.isArray(current) ? current : []).filter(item => !removed.has(String(item.id)))
+}
+
+export function bookmarkUpdateTargetsBook(event, bookId) {
+  if (!bookId) return false
+  const bookIds = event?.detail?.bookIds || []
+  return !bookIds.length || bookIds.some(id => String(id) === String(bookId))
+}
+
 function clampPercent(value) {
   const percent = Number(value)
   return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0
