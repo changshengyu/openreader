@@ -337,72 +337,23 @@
 
     <!-- ===== 移动端更多 ===== -->
     <el-drawer v-model="showMobileMoreDrawer" title="阅读工具" direction="btt" size="72%" class="mobile-more-drawer">
-      <div class="mobile-more-grid">
-        <button type="button" class="mobile-more-item" @click="runMobileAction(openShelfPanel)">
-          <el-icon :size="22"><Notebook /></el-icon>
-          <span>书架</span>
-        </button>
-        <button v-if="isRemoteBook" type="button" class="mobile-more-item" @click="runMobileAction(goSourcePanel)">
-          <el-icon :size="22"><Grid /></el-icon>
-          <span>书源</span>
-        </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(openReaderBookInfo)">
-          <el-icon :size="22"><InfoFilled /></el-icon>
-          <span>信息</span>
-        </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(openNoteDialog)">
-          <el-icon :size="22"><EditPen /></el-icon>
-          <span>笔记</span>
-        </button>
-        <button v-if="isRemoteBook" type="button" class="mobile-more-item" @click="runMobileAction(openCacheDrawer)">
-          <el-icon :size="22"><Download /></el-icon>
-          <span>缓存</span>
-        </button>
-        <button v-if="isRemoteBook" type="button" class="mobile-more-item" @click="runMobileAction(clearCurrentBookCache)">
-          <el-icon :size="22"><Delete /></el-icon>
-          <span>清缓存</span>
-        </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(reloadChapter)">
-          <el-icon :size="22"><RefreshRight /></el-icon>
-          <span>刷新</span>
-        </button>
-        <button type="button" class="mobile-more-item" :class="{ active: autoReading }" @click="runMobileAction(toggleAutoReading)">
-          <el-icon :size="22"><VideoPlay /></el-icon>
-          <span>自动</span>
-        </button>
-        <button type="button" class="mobile-more-item" :class="{ active: tts.state.playing }" :disabled="!tts.state.supported" @click="runMobileAction(toggleTTS)">
-          <el-icon :size="22"><Headset /></el-icon>
-          <span>听书</span>
-        </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(toggleNight)">
-          <el-icon :size="22"><Moon /></el-icon>
-          <span>夜间</span>
-        </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(scrollToTop)">
-          <el-icon :size="22"><ArrowUpBold /></el-icon>
-          <span>顶部</span>
-        </button>
-        <button type="button" class="mobile-more-item" @click="runMobileAction(scrollToBottom)">
-          <el-icon :size="22"><ArrowDownBold /></el-icon>
-          <span>底部</span>
-        </button>
-      </div>
-      <p v-if="!tts.state.supported" class="mobile-more-hint">当前浏览器不支持系统朗读，听书入口已禁用。</p>
+      <ReaderMobileToolsPanel
+        :remote-book="isRemoteBook"
+        :auto-reading="autoReading"
+        :tts-playing="tts.state.playing"
+        :tts-supported="tts.state.supported"
+        @action="handleMobileToolAction"
+      />
     </el-drawer>
 
     <!-- ===== 缓存抽屉 ===== -->
     <el-drawer v-model="showCacheDrawer" title="缓存章节" :direction="drawerDirection" :size="drawerSize">
-      <div class="reader-cache-panel">
-        <div class="reader-cache-actions">
-          <button type="button" :disabled="isCachingContent" @click="cacheFollowingChapters(50)">后面50章</button>
-          <button type="button" :disabled="isCachingContent" @click="cacheFollowingChapters(100)">后面100章</button>
-          <button type="button" :disabled="isCachingContent" @click="cacheFollowingChapters(true)">后面全部</button>
-        </div>
-        <div v-if="isCachingContent" class="reader-cache-status">
-          <span>{{ cachingContentTip }}</span>
-          <button type="button" @click="cancelCachingContent">取消</button>
-        </div>
-      </div>
+      <ReaderCachePanel
+        :caching="isCachingContent"
+        :status-text="cachingContentTip"
+        @cache="cacheFollowingChapters"
+        @cancel="cancelCachingContent"
+      />
     </el-drawer>
 
     <!-- ===== 设置抽屉 ===== -->
@@ -462,7 +413,6 @@ import {
   ArrowRight,
   ArrowUpBold,
   CollectionTag,
-  Delete,
   Download,
   EditPen,
   Grid,
@@ -484,6 +434,8 @@ import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
+import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
+import ReaderMobileToolsPanel from '../components/reader/ReaderMobileToolsPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
@@ -1801,6 +1753,24 @@ function runMobileAction(action) {
   showMobileMoreDrawer.value = false
   mobileChromeVisible.value = false
   action?.()
+}
+
+function handleMobileToolAction(action) {
+  const handlers = {
+    shelf: openShelfPanel,
+    source: goSourcePanel,
+    info: openReaderBookInfo,
+    note: openNoteDialog,
+    cache: openCacheDrawer,
+    'clear-cache': clearCurrentBookCache,
+    reload: reloadChapter,
+    'auto-read': toggleAutoReading,
+    tts: toggleTTS,
+    night: toggleNight,
+    top: scrollToTop,
+    bottom: scrollToBottom,
+  }
+  runMobileAction(handlers[action])
 }
 
 function openMobileTool(action) {
@@ -4150,50 +4120,6 @@ function readError(err, fallback) {
   justify-content: flex-end;
   gap: 14px;
 }
-.reader-cache-panel {
-  display: grid;
-  gap: 16px;
-  color: #5f553f;
-  font-size: 14px;
-}
-.reader-cache-panel p {
-  margin: 0;
-  color: #7b715e;
-}
-.reader-cache-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.reader-cache-actions button,
-.reader-cache-status button {
-  min-height: 42px;
-  color: #2a2925;
-  background: var(--reader-popup-bg);
-  border: 1px solid #e7dabb;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.reader-cache-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-.reader-cache-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
-  border: 1px solid #eadfca;
-  border-radius: 6px;
-}
-.reader-cache-status button {
-  flex: 0 0 auto;
-  min-height: 34px;
-  padding: 0 14px;
-}
 /* ---- 编辑弹层 ---- */
 .bookmark-editor {
   display: grid;
@@ -4403,42 +4329,8 @@ function readError(err, fallback) {
     border-radius: 6px;
     font-size: 12px;
   }
-  .mobile-tool-button:active,
-  .mobile-more-item:active {
+  .mobile-tool-button:active {
     background: rgba(114, 91, 43, 0.1);
-  }
-  .mobile-more-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-    padding: 4px 0 10px;
-  }
-  .mobile-more-item {
-    display: grid;
-    min-height: 72px;
-    place-items: center;
-    align-content: center;
-    gap: 7px;
-    color: #232323;
-    background: var(--reader-popup-bg);
-    border: 1px solid #eee4c9;
-    border-radius: 8px;
-    font-size: 13px;
-  }
-  .mobile-more-item.active {
-    color: #0f5451;
-    border-color: #0f5451;
-    background: color-mix(in srgb, var(--reader-popup-bg) 90%, #fff1bc);
-  }
-  .mobile-more-item:disabled {
-    cursor: not-allowed;
-    opacity: 0.42;
-  }
-  .mobile-more-hint {
-    margin: 4px 0 0;
-    color: #8a8171;
-    font-size: 12px;
-    line-height: 1.6;
   }
   .tts-bar {
     right: 10px;
