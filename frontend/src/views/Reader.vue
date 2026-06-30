@@ -247,7 +247,7 @@
     <div v-if="toastMsg" class="reader-toast">{{ toastMsg }}</div>
 
     <!-- ===== 书架抽屉 ===== -->
-    <el-drawer v-model="showShelfDrawer" title="书架" :direction="drawerDirection" :size="drawerSize" @opened="locateReaderShelfCurrentBook">
+    <el-drawer v-model="showShelfDrawer" title="书架" :direction="drawerDirection" :size="shelfDrawerSize" @opened="locateReaderShelfCurrentBook">
       <div class="reader-drawer-title">
         <span>书架({{ filteredShelfBooks.length }})</span>
         <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
@@ -513,6 +513,7 @@ import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalB
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
+import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
@@ -713,6 +714,7 @@ const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.valu
 const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
+const shelfDrawerSize = computed(() => isMobileReader.value ? '88%' : 'min(900px, calc(100vw - 80px))')
 const bookProgress = computed(() => {
   const total = Math.max(chapters.value.length, 1)
   return Math.min(1, Math.max(0, (currentIndex.value + currentChapterPercent()) / total))
@@ -1193,7 +1195,9 @@ async function computeShowChapterList(options = {}) {
   if (currentIndex.value !== anchorIndex) return
   const blocks = rows.filter(Boolean)
   if (blocks.some(block => block.index === anchorIndex)) {
+    const scrollAnchor = captureReaderScrollAnchor()
     chapterBlocks.value = blocks
+    await restoreReaderScrollAnchor(scrollAnchor)
   }
 }
 
@@ -2828,6 +2832,39 @@ function currentVisibleParagraph() {
   return visible.sort((a, b) => Math.abs(a.rect.top - anchorY) - Math.abs(b.rect.top - anchorY))[0]?.node || null
 }
 
+function captureReaderScrollAnchor() {
+  if (!isContinuousScrollRead.value || !contentEl.value) return null
+  const paragraph = currentVisibleParagraph()
+  const chapterEl = paragraph?.closest?.('.chapter-content')
+  const chapterIndex = Number(chapterEl?.dataset?.index)
+  const paragraphPos = Number(paragraph?.dataset?.pos)
+  if (!paragraph || !Number.isInteger(chapterIndex) || !Number.isFinite(paragraphPos)) return null
+  const viewport = contentEl.value.getBoundingClientRect()
+  return {
+    chapterIndex,
+    paragraphPos,
+    viewportOffset: paragraph.getBoundingClientRect().top - viewport.top,
+  }
+}
+
+async function restoreReaderScrollAnchor(anchor) {
+  if (!anchor || !contentEl.value || !contentBody.value) return
+  await nextTick()
+  await nextFrame()
+  const chapterEl = contentBody.value.querySelector(`.chapter-content[data-index="${anchor.chapterIndex}"]`)
+  const paragraph = chapterEl?.querySelector(`[data-reader-block][data-pos="${anchor.paragraphPos}"]`)
+  if (!paragraph || !contentEl.value) return
+  const viewport = contentEl.value.getBoundingClientRect()
+  const currentOffset = paragraph.getBoundingClientRect().top - viewport.top
+  const maxScroll = Math.max(0, contentEl.value.scrollHeight - contentEl.value.clientHeight)
+  contentEl.value.scrollTop = restoredReaderScrollTop({
+    scrollTop: contentEl.value.scrollTop,
+    previousOffset: anchor.viewportOffset,
+    currentOffset,
+    maxScroll,
+  })
+}
+
 function activeChapterElement() {
   const paragraph = currentVisibleParagraph()
   const chapterEl = paragraph?.closest?.('.chapter-content')
@@ -4193,6 +4230,20 @@ function readError(err, fallback) {
   color: #888;
   font-size: 14px;
 }
+@media (min-width: 900px) {
+  .reader-shelf-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-content: start;
+    gap: 16px 24px;
+  }
+  .reader-shelf-card {
+    min-width: 0;
+    padding: 10px 0;
+  }
+  .reader-shelf-list :deep(.el-empty) {
+    grid-column: 1 / -1;
+  }
+}
 .reader-cache-panel {
   display: grid;
   gap: 16px;
@@ -4276,6 +4327,17 @@ function readError(err, fallback) {
     padding: 42px 22px calc(42px + env(safe-area-inset-bottom));
     scroll-padding-bottom: calc(42px + env(safe-area-inset-bottom));
     touch-action: pan-y pinch-zoom;
+  }
+  .reader-shell.scroll .reader-content,
+  .reader-shell.scroll2 .reader-content {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .reader-shell.scroll .reader-content::-webkit-scrollbar,
+  .reader-shell.scroll2 .reader-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   .reader-shell.mobile-chrome-visible .reader-content {
     padding-bottom: calc(250px + env(safe-area-inset-bottom));
