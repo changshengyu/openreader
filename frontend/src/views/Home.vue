@@ -27,6 +27,12 @@
       </div>
     </div>
 
+    <div v-if="showBookEditButton" class="shelf-search-wrapper">
+      <el-input v-model="shelfKeyword" placeholder="搜索书名或作者" clearable>
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+    </div>
+
     <div class="book-group-wrapper" role="tablist" aria-label="书架分组">
       <button
         v-for="item in groupItems"
@@ -106,7 +112,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Edit, Grid, List, Menu } from '@element-plus/icons-vue'
+import { Close, Edit, Grid, List, Menu, Search } from '@element-plus/icons-vue'
 import { bookHasCategory, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -114,7 +120,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
-import { isLocalBook } from '../utils/localBook'
+import { isLocalBook, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
@@ -128,6 +134,7 @@ const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
 const selectedGroup = ref('')
 const showBookEditButton = ref(false)
+const shelfKeyword = ref('')
 const refreshLoading = ref(false)
 const shelfView = computed(() => preferences.shelf.view)
 const windowWidth = ref(currentViewportWidth())
@@ -167,13 +174,15 @@ const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.book
 const totalBookCount = computed(() => Array.isArray(bookshelf.books) ? bookshelf.books.length : 0)
 
 const displayedBooks = computed(() => {
+  const keyword = showBookEditButton.value ? normalizeLocalBookSearch(shelfKeyword.value) : ''
   const filtered = sortedBooks.value.filter(book => {
     if (!selectedGroup.value) return true
     if (selectedGroup.value === 'local') return isLocalBook(book)
     if (selectedGroup.value === 'none') return bookCategoryIds(book).length === 0
     return bookHasCategory(book, selectedGroup.value)
   })
-  return filtered
+  if (!keyword) return filtered
+  return filtered.filter(book => normalizeLocalBookSearch(`${book.title || ''} ${book.author || ''}`).includes(keyword))
 })
 
 const isMobileShelf = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
@@ -181,6 +190,7 @@ const isNormalPage = computed(() => !['kindle', 'simple', 'Kindle'].includes(rea
 const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
 
 const emptyText = computed(() => {
+  if (showBookEditButton.value && normalizeLocalBookSearch(shelfKeyword.value)) return '没有匹配的书籍'
   if (selectedGroup.value) return '这个分组里还没有书'
   return '暂无书籍'
 })
@@ -372,7 +382,7 @@ function readError(err, fallback) {
 
 .shelf-page {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   box-sizing: border-box;
   height: 100vh;
   max-height: 100vh;
@@ -380,6 +390,24 @@ function readError(err, fallback) {
   padding: 48px 48px;
   background: #fff;
   overflow: hidden;
+}
+
+.shelf-title {
+  grid-row: 1;
+}
+
+.shelf-search-wrapper {
+  grid-row: 2;
+  width: min(420px, 100%);
+  padding: 0 0 8px;
+}
+
+.book-group-wrapper {
+  grid-row: 3;
+}
+
+.shelf-main {
+  grid-row: 4;
 }
 
 .shelf-main {
@@ -829,6 +857,13 @@ function readError(err, fallback) {
   margin-right: 0;
   margin-left: 0;
   padding: 0;
+}
+
+.shelf-page.mobile-shelf .shelf-search-wrapper {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 16px 10px;
 }
 
 .shelf-page.mobile-shelf .group-chip {
