@@ -506,7 +506,7 @@ import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { normalizeImportedBookmarks } from '../utils/bookmark'
-import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
+import { cacheBookChaptersToBrowser, chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
@@ -515,6 +515,7 @@ import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/read
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
+import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
 import {
   sourceCandidateAuthor,
   sourceCandidateBookUrl,
@@ -614,7 +615,7 @@ let pendingProgressPayload = null
 let lastProgressSaveKey = ''
 let lastProgressRequestAt = 0
 let restoringPosition = false
-let chapterContentCache = null
+const chapterContentCache = createMultiBookChapterMemoryCache(3)
 let cachingContentCancelled = false
 let readerTouchStart = null
 let readerTouchMoved = false
@@ -1108,11 +1109,13 @@ async function writeReaderDataCache(options = {}) {
 }
 
 async function resetReaderChapterCaches(options = {}) {
-  chapterContentCache = null
+  const targetBook = options.book || book.value
+  const targetBookId = targetBook?.id || bookId.value
+  chapterContentCache.clearBook(currentChapterCacheBookKey(targetBook, targetBookId))
   browserCachedChapters.value = {}
   if (!options.clearBrowser) return 0
   try {
-    return await clearBookBrowserChapterCache(options.book || book.value, bookId.value)
+    return await clearBookBrowserChapterCache(targetBook, targetBookId)
   } catch {
     return 0
   }
@@ -1227,13 +1230,20 @@ async function prependPreviousShowChapter() {
 }
 
 async function loadChapterContent(index, options = {}) {
+  const targetBook = { ...(book.value || {}) }
+  const targetBookId = bookId.value
+  const cacheBookKey = currentChapterCacheBookKey(targetBook, targetBookId)
   if (!options.refresh) {
-    const cached = getChapterContentFromMemory(index)
+    const cached = getChapterContentFromMemory(index, cacheBookKey)
     if (cached) return cached
   }
-  const data = await loadBrowserChapterContent(book.value, bookId.value, index, { refresh: Boolean(options.refresh) })
-  addChapterContentToMemory(index, data)
-  if (isValidChapterContentResponse(data)) {
+  const data = await loadBrowserChapterContent(targetBook, targetBookId, index, { refresh: Boolean(options.refresh) })
+  addChapterContentToMemory(index, data, cacheBookKey)
+  if (
+    isValidChapterContentResponse(data)
+    && Number(bookId.value) === Number(targetBookId)
+    && currentChapterCacheBookKey() === cacheBookKey
+  ) {
     browserCachedChapters.value = { ...browserCachedChapters.value, [index]: true }
   }
   return data
@@ -1253,25 +1263,18 @@ function preloadNearbyChapters(index) {
     })
 }
 
-function getChapterContentFromMemory(index) {
-  const cacheBookKey = currentChapterCacheBookKey()
-  if (!chapterContentCache || chapterContentCache.bookKey !== cacheBookKey) return null
-  const cached = chapterContentCache.chapters[index]
+function getChapterContentFromMemory(index, cacheBookKey = currentChapterCacheBookKey()) {
+  const cached = chapterContentCache.get(cacheBookKey, index)
   return isValidChapterContentResponse(cached) ? cached : null
 }
 
-function addChapterContentToMemory(index, data) {
+function addChapterContentToMemory(index, data, cacheBookKey = currentChapterCacheBookKey()) {
   if (!isValidChapterContentResponse(data)) return
-  const cacheBookKey = currentChapterCacheBookKey()
-  if (!chapterContentCache || chapterContentCache.bookKey !== cacheBookKey) {
-    chapterContentCache = { bookKey: cacheBookKey, chapters: {} }
-  }
-  chapterContentCache.chapters[index] = data
+  chapterContentCache.set(cacheBookKey, index, data)
 }
 
-function currentChapterCacheBookKey() {
-  const currentBook = book.value || {}
-  return currentBook.url || currentBook.bookUrl || currentBook.libraryPath || `book:${bookId.value}`
+function currentChapterCacheBookKey(targetBook = book.value, fallbackBookId = bookId.value) {
+  return chapterCacheBookKey(targetBook, fallbackBookId)
 }
 
 async function restoreReadingPosition(offset = 0, options = {}) {
@@ -2084,7 +2087,7 @@ async function clearCurrentBookCache() {
 
 async function clearCurrentBookBrowserCache() {
   const removed = await clearBookBrowserChapterCache(book.value, bookId.value)
-  chapterContentCache = null
+  chapterContentCache.clearBook(currentChapterCacheBookKey())
   browserCachedChapters.value = {}
   return removed
 }
@@ -2702,7 +2705,7 @@ async function handleReaderBookDataUpdated(event) {
   const targetIndex = Math.max(0, Math.min(currentIndex.value, Math.max(detail.chapters.length - 1, 0)))
   chapters.value = detail.chapters
   currentIndex.value = targetIndex
-  chapterContentCache = null
+  chapterContentCache.clearBook(currentChapterCacheBookKey())
   browserCachedChapters.value = {}
   resetContentSearchState()
   await computeBrowserCachedChapters()
