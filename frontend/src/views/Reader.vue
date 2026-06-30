@@ -1,68 +1,12 @@
 <template>
   <main ref="shellEl" class="reader-shell" :class="[reader.mode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
-    <aside class="reader-left-rail">
-      <button class="rail-item rail-home" type="button" title="返回首页" @click="goShelf">
-        <el-icon :size="18"><ArrowLeft /></el-icon>
-        <span>首页</span>
-      </button>
-      <button class="rail-item" type="button" title="书架" @click="openShelfPanel">
-        <el-icon :size="18"><Notebook /></el-icon>
-        <span>书架</span>
-      </button>
-      <button class="rail-item" type="button" :disabled="!isRemoteBook" :title="isRemoteBook ? '书源' : '本地书无可切换书源'" @click="goSourcePanel">
-        <el-icon :size="18"><Grid /></el-icon>
-        <span>书源</span>
-      </button>
-      <button class="rail-item" type="button" title="目录" @click="openTocDrawer">
-        <el-icon :size="18"><List /></el-icon>
-        <span>目录</span>
-      </button>
-      <button class="rail-item" type="button" title="设置" @click="openSettingsDrawer">
-        <el-icon :size="18"><Setting /></el-icon>
-        <span>设置</span>
-      </button>
-      <button class="rail-item" type="button" title="回到顶部" @click="scrollToTop">
-        <el-icon :size="18"><ArrowUpBold /></el-icon>
-        <span>顶部</span>
-      </button>
-      <button class="rail-item" type="button" title="跳到底部" @click="scrollToBottom">
-        <el-icon :size="18"><ArrowDownBold /></el-icon>
-        <span>底部</span>
-      </button>
-    </aside>
-
-    <aside class="reader-right-rail">
-      <button class="round-tool" type="button" title="书签" @click="openBookmarkDrawer">
-        <el-icon :size="18"><CollectionTag /></el-icon>
-      </button>
-      <button class="round-tool" type="button" title="搜索正文" @click="openContentSearch">
-        <el-icon :size="18"><Search /></el-icon>
-      </button>
-      <button class="round-tool" type="button" title="书籍信息" @click="openReaderBookInfo">
-        <el-icon :size="18"><InfoFilled /></el-icon>
-      </button>
-      <button class="round-tool" type="button" title="添加笔记" @click="openNoteDialog">
-        <el-icon :size="18"><EditPen /></el-icon>
-      </button>
-      <button class="round-tool" type="button" :disabled="!isRemoteBook" :title="isRemoteBook ? '缓存章节' : '本地书无需章节缓存'" @click="openCacheDrawer">
-        <el-icon :size="18"><Download /></el-icon>
-      </button>
-      <button class="round-tool" type="button" title="重新载入章节" @click="reloadChapter">
-        <el-icon :size="18"><RefreshRight /></el-icon>
-      </button>
-      <button class="round-tool" type="button" :class="{ active: autoReading }" title="自动阅读" @click="toggleAutoReading">
-        <el-icon :size="18"><VideoPlay /></el-icon>
-      </button>
-      <button class="round-tool" type="button" title="阅读设置" @click="openSettingsDrawer">
-        <el-icon :size="18"><View /></el-icon>
-      </button>
-      <button class="round-tool" type="button" :class="{ active: tts.state.playing }" :disabled="!tts.state.supported" :title="tts.state.supported ? '朗读' : '当前浏览器不支持朗读'" @click="toggleTTS">
-        <el-icon :size="18"><Headset /></el-icon>
-      </button>
-      <button class="round-tool" type="button" title="夜间模式" @click="toggleNight">
-        <el-icon :size="18"><Moon /></el-icon>
-      </button>
-    </aside>
+    <ReaderDesktopTools
+      :remote-book="isRemoteBook"
+      :auto-reading="autoReading"
+      :tts-playing="tts.state.playing"
+      :tts-supported="tts.state.supported"
+      @action="handleDesktopToolAction"
+    />
 
     <header class="reader-mobile-top">
       <button class="mobile-tool-button" type="button" aria-label="返回首页" @click="goShelf">
@@ -408,25 +352,13 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowDownBold,
   ArrowLeft,
   ArrowRight,
-  ArrowUpBold,
   CollectionTag,
-  Download,
-  EditPen,
-  Grid,
-  Headset,
-  InfoFilled,
   List,
   MoreFilled,
-  Moon,
-  Notebook,
-  RefreshRight,
   Search,
   Setting,
-  VideoPlay,
-  View,
 } from '@element-plus/icons-vue'
 import api from '../api/client'
 import { changeBookSource, createBookmarks, deleteBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook, searchBookContent as searchBookContentApi } from '../api/books'
@@ -436,6 +368,7 @@ import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
+import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
 import ReaderMobileToolsPanel from '../components/reader/ReaderMobileToolsPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
@@ -1757,9 +1690,22 @@ function runMobileAction(action) {
 }
 
 function handleMobileToolAction(action) {
-  const handlers = {
+  runMobileAction(readerToolAction(action))
+}
+
+function handleDesktopToolAction(action) {
+  readerToolAction(action)?.()
+}
+
+function readerToolAction(action) {
+  return {
+    home: goShelf,
     shelf: openShelfPanel,
     source: goSourcePanel,
+    toc: openTocDrawer,
+    settings: openSettingsDrawer,
+    bookmarks: openBookmarkDrawer,
+    search: openContentSearch,
     info: openReaderBookInfo,
     note: openNoteDialog,
     cache: openCacheDrawer,
@@ -1770,8 +1716,7 @@ function handleMobileToolAction(action) {
     night: toggleNight,
     top: scrollToTop,
     bottom: scrollToBottom,
-  }
-  runMobileAction(handlers[action])
+  }[action]
 }
 
 function openMobileTool(action) {
@@ -3594,105 +3539,6 @@ function readError(err, fallback) {
     var(--reader-body-bg);
 }
 
-/* ---- 左侧工具栏 ---- */
-.reader-left-rail {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: max(8px, var(--reader-left-x));
-  z-index: 4;
-  width: 58px;
-  display: grid;
-  align-content: start;
-  background: color-mix(in srgb, var(--reader-popup-bg) 64%, transparent);
-  border-left: 1px solid rgba(148, 132, 87, 0.26);
-  border-right: 1px solid rgba(148, 132, 87, 0.38);
-  backdrop-filter: blur(2px);
-}
-
-.rail-item {
-  display: grid;
-  width: 100%;
-  height: 60px;
-  place-items: center;
-  align-content: center;
-  gap: 2px;
-  padding: 7px 0 5px;
-  color: rgba(36, 33, 27, 0.62);
-  background: color-mix(in srgb, var(--reader-popup-bg) 58%, transparent);
-  border: 0;
-  border-bottom: 1px solid rgba(148, 132, 87, 0.35);
-  cursor: pointer;
-  font-size: 16px;
-}
-
-.rail-item span {
-  font-size: 12px;
-  line-height: 1;
-}
-
-.rail-item:hover {
-  color: #1e1f22;
-  background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
-}
-
-.rail-item:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.rail-home {
-  height: 60px;
-  color: #111;
-}
-
-/* ---- 右侧浮动工具 ---- */
-.reader-right-rail {
-  position: fixed;
-  right: auto;
-  left: var(--reader-right-x);
-  bottom: 310px;
-  z-index: 4;
-  display: grid;
-  align-content: start;
-  grid-template-columns: 36px;
-  grid-auto-rows: 36px;
-  gap: 16px;
-  max-height: max(120px, calc(100vh - 340px));
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-width: none;
-}
-
-.reader-right-rail::-webkit-scrollbar {
-  display: none;
-}
-
-.round-tool {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  color: #121212;
-  background: var(--reader-popup-bg);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 999px;
-  box-shadow: 0 4px 10px rgba(80, 62, 28, 0.08);
-  cursor: pointer;
-}
-
-.round-tool:hover,
-.round-tool.active {
-  color: #0f5451;
-  background: var(--reader-popup-bg);
-  box-shadow: 0 12px 26px rgba(80, 62, 28, 0.14);
-}
-
-.round-tool:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
 /* ---- 正文 ---- */
 .reader-page {
   background-color: var(--reader-bg);
@@ -4171,8 +4017,6 @@ function readError(err, fallback) {
     scroll-padding-bottom: calc(250px + env(safe-area-inset-bottom));
   }
   .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
-  .reader-left-rail,
-  .reader-right-rail,
   .reader-page-control,
   .desktop-progress-control,
   .reader-tap-zones {
