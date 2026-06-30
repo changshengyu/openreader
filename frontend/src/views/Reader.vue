@@ -254,24 +254,15 @@
           {{ shelfLoading ? '刷新中...' : '刷新' }}
         </button>
       </div>
-      <div ref="shelfListRef" v-loading="shelfLoading" class="reader-shelf-list">
-        <button
-          v-for="item in filteredShelfBooks"
-          :key="item.id"
-          class="reader-shelf-card"
-          :class="{ active: item.id === bookId }"
-          :data-book-id="item.id"
-          type="button"
-          @click="changeBookFromShelf(item)"
-        >
-          <span class="reader-shelf-title-line">
-            <strong>{{ item.title }}</strong>
-            <em v-if="unreadCount(item)">{{ unreadCount(item) }}</em>
-          </span>
-          <span class="reader-shelf-chapter">{{ readChapterTitle(item) || '尚未阅读' }}</span>
-        </button>
-        <el-empty v-if="!shelfLoading && !filteredShelfBooks.length" description="书架暂无书籍" />
-      </div>
+      <ReaderShelfPanel
+        ref="shelfPanelRef"
+        v-loading="shelfLoading"
+        :books="filteredShelfBooks"
+        :current-book-id="bookId"
+        :progress-by-book="reader.progressByBook"
+        :loading="shelfLoading"
+        @select="changeBookFromShelf"
+      />
     </el-drawer>
 
     <!-- ===== 目录抽屉 ===== -->
@@ -494,6 +485,7 @@ import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
+import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
 import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
@@ -575,7 +567,7 @@ const sourceOffset = ref(0)
 const sourceHasMore = ref(true)
 const sourceCandidatesLoadedKey = ref('')
 const shelfLoading = ref(false)
-const shelfListRef = ref(null)
+const shelfPanelRef = ref(null)
 const tocPanelRef = ref(null)
 const tocLocateKey = ref(0)
 const tocReverse = ref(false)
@@ -1653,21 +1645,14 @@ async function openShelfPanel() {
 
 function locateReaderShelfCurrentBook(attempt = 0) {
   nextTick(() => {
-    const list = shelfListRef.value
-    const active = list?.querySelector?.(`[data-book-id="${bookId.value}"]`)
-    if (!list || !active) {
-      if (attempt < 20 && showShelfDrawer.value && filteredShelfBooks.value.length) {
-        window.setTimeout(() => locateReaderShelfCurrentBook(attempt + 1), 50)
-      }
+    const panel = shelfPanelRef.value
+    if (panel?.locateCurrentBook) {
+      panel.locateCurrentBook()
       return
     }
-    const targetTop = active.offsetTop - Math.max(0, (list.clientHeight - active.clientHeight) / 2)
-    const nextTop = Math.max(0, targetTop)
-    list.scrollTo({ top: nextTop, behavior: 'auto' })
-    requestAnimationFrame(() => {
-      list.scrollTop = nextTop
-      active.scrollIntoView({ block: 'center', inline: 'nearest' })
-    })
+    if (attempt < 20 && showShelfDrawer.value && filteredShelfBooks.value.length) {
+      window.setTimeout(() => locateReaderShelfCurrentBook(attempt + 1), 50)
+    }
   })
 }
 
@@ -1678,20 +1663,8 @@ async function changeBookFromShelf(item) {
   await router.push({ name: 'reader', params: { id: item.id }, query: readerRouteQueryForBook(item) })
 }
 
-function readChapterTitle(item) {
-  const progress = shelfItemProgress(item)
-  return progress?.chapterTitle || item.durChapterTitle || ''
-}
-
 function readerRouteQueryForBook(item) {
   return readerRouteQueryFromBook(item, shelfItemProgress(item), item?.chapterCount || chapters.value.length)
-}
-
-function unreadCount(item) {
-  const progress = shelfItemProgress(item)
-  const chapterIndex = Number.isInteger(progress?.chapterIndex) ? progress.chapterIndex : -1
-  const total = Number(item.chapterCount || item.totalChapterNum || 0)
-  return Math.max(0, total - 1 - chapterIndex)
 }
 
 function shelfItemProgress(item) {
@@ -4176,73 +4149,6 @@ function readError(err, fallback) {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 14px;
-}
-.reader-shelf-list {
-  display: grid;
-  max-height: calc(100vh - 154px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.reader-shelf-card {
-  display: grid;
-  gap: 6px;
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
-  padding: 8px 0;
-  color: #24282c;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid rgba(160, 139, 91, 0.22);
-  cursor: pointer;
-  text-align: left;
-}
-.reader-shelf-card:hover,
-.reader-shelf-card.active {
-  color: #ed4259;
-  background: transparent;
-}
-.reader-shelf-title-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.reader-shelf-title-line strong,
-.reader-shelf-chapter {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.reader-shelf-title-line strong {
-  min-width: 0;
-  font-size: 16px;
-  font-weight: 500;
-}
-.reader-shelf-title-line em {
-  flex: 0 0 auto;
-  color: #ed4259;
-  font-size: 12px;
-  font-style: normal;
-}
-.reader-shelf-chapter {
-  color: #888;
-  font-size: 14px;
-}
-@media (min-width: 900px) {
-  .reader-shelf-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    align-content: start;
-    gap: 16px 24px;
-  }
-  .reader-shelf-card {
-    min-width: 0;
-    padding: 10px 0;
-  }
-  .reader-shelf-list :deep(.el-empty) {
-    grid-column: 1 / -1;
-  }
 }
 .reader-cache-panel {
   display: grid;
