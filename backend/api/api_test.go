@@ -2067,6 +2067,7 @@ func TestDecodeBookSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	source := sources[0]
 	if source.Name != "上游源" || source.BaseURL != "https://reader.example" || source.Group != "分组A" ||
 		source.BookURLPattern != `/detail/\d+$` || source.SourceType != 1 || source.Comment != "上游注释" ||
+		source.Charset != "auto" ||
 		source.ConcurrentRate != "2/1000" || !strings.Contains(source.Header, `"Referer":"https://reader.example"`) ||
 		source.LoginURL != "https://reader.example/login" ||
 		source.LoginCheckJS != "return source.isLogin()" || source.CustomOrder != 37 ||

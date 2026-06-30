@@ -1,12 +1,9 @@
 package engine
 
 import (
-	"bytes"
 	"regexp"
 	"strings"
 	"unicode/utf8"
-
-	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 var ChapterTitlePattern = regexp.MustCompile(`^(?:第[零一二三四五六七八九十百千万两〇○0-9０-９]+[章回节卷集部]|序章|楔子|引子|前言|尾声|后记|番外(?:篇)?|第[零一二三四五六七八九十百千万两〇○0-9０-９]+卷|[上中下]卷).{0,64}$`)
@@ -229,12 +226,6 @@ func shouldKeepFrontMatter(content string) bool {
 }
 
 func decodeTXT(data []byte) (string, error) {
-	if utf8.Valid(data) {
-		return string(data), nil
-	}
-	decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF}))
-	if err != nil {
-		return "", err
-	}
-	return string(decoded), nil
+	decoded, _, err := detectAndDecodeText(data)
+	return decoded, err
 }

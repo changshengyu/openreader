@@ -418,8 +418,15 @@ func cloneHTTPTransport(transport http.RoundTripper) (*http.Transport, error) {
 
 func DecodeBody(body []byte, charset string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(charset))
-	if normalized == "" || normalized == "utf-8" || normalized == "utf8" || normalized == "escape" {
-		return string(body), nil
+	if normalized == "" || normalized == "auto" {
+		if detected := detectHTMLCharset(body); detected != "" {
+			return DecodeBody(body, detected)
+		}
+		decoded, _, err := detectAndDecodeText(body)
+		return decoded, err
+	}
+	if normalized == "utf-8" || normalized == "utf8" || normalized == "escape" {
+		return string(bytes.TrimPrefix(body, []byte{0xEF, 0xBB, 0xBF})), nil
 	}
 
 	encoding, err := htmlindex.Get(normalized)

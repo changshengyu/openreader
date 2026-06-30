@@ -7,6 +7,10 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
+	unicodeencoding "golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/encoding/unicode/utf32"
 
 	"openreader/backend/models"
 )
@@ -101,6 +105,54 @@ func TestParseTXTWithRuleAcceptsUpstreamLookbehindPrefix(t *testing.T) {
 	}
 	if chapters[0].Title != "第一章 起始" || chapters[1].Title != "第二章 转折" {
 		t.Fatalf("unexpected chapters: %+v", chapters)
+	}
+}
+
+func TestParseTXTDetectsCommonUpstreamTextEncodings(t *testing.T) {
+	tests := []struct {
+		name   string
+		encode func([]byte) ([]byte, error)
+		bom    []byte
+	}{
+		{name: "GB18030", encode: simplifiedchinese.GB18030.NewEncoder().Bytes},
+		{name: "Big5", encode: traditionalchinese.Big5.NewEncoder().Bytes},
+		{
+			name: "UTF-16LE",
+			encode: unicodeencoding.UTF16(
+				unicodeencoding.LittleEndian,
+				unicodeencoding.IgnoreBOM,
+			).NewEncoder().Bytes,
+			bom: []byte{0xFF, 0xFE},
+		},
+		{
+			name: "UTF-16BE",
+			encode: unicodeencoding.UTF16(
+				unicodeencoding.BigEndian,
+				unicodeencoding.IgnoreBOM,
+			).NewEncoder().Bytes,
+			bom: []byte{0xFE, 0xFF},
+		},
+		{
+			name:   "UTF-32LE",
+			encode: utf32.UTF32(utf32.LittleEndian, utf32.IgnoreBOM).NewEncoder().Bytes,
+			bom:    []byte{0xFF, 0xFE, 0x00, 0x00},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := []byte("第一章 開始\n這是第一章內容。\n第二章 再會\n這是第二章內容。")
+			encoded, err := test.encode(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chapters, err := ParseTXT(append(test.bom, encoded...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(chapters) != 2 || chapters[0].Title != "第一章 開始" || chapters[1].Title != "第二章 再會" {
+				t.Fatalf("decoded chapters = %+v", chapters)
+			}
+		})
 	}
 }
 

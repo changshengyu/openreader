@@ -154,6 +154,10 @@ func (p bookSourcePayload) toModel() models.BookSource {
 	if rules == "" {
 		rules = p.compatRules()
 	}
+	charset := strings.TrimSpace(p.Charset)
+	if charset == "" && (strings.TrimSpace(p.BookSourceName) != "" || strings.TrimSpace(p.BookSourceURL) != "") {
+		charset = "auto"
+	}
 	return models.BookSource{
 		Name:           firstNonBlank(p.Name, p.BookSourceName),
 		BaseURL:        firstNonBlank(p.BaseURL, p.BookSourceURL),
@@ -161,7 +165,7 @@ func (p bookSourcePayload) toModel() models.BookSource {
 		SourceType:     p.BookSourceType,
 		Comment:        strings.TrimSpace(p.BookSourceComment),
 		SearchURL:      normalizeUpstreamURLTemplate(p.SearchURL),
-		Charset:        strings.TrimSpace(p.Charset),
+		Charset:        charset,
 		ConcurrentRate: strings.TrimSpace(p.ConcurrentRate),
 		Header:         p.rawHeader(),
 		LoginURL:       strings.TrimSpace(p.LoginURL),

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 
 	"openreader/backend/models"
 )
@@ -149,6 +150,48 @@ func TestSearchBooksPageUsesSourceCharsetForRequestAndResponse(t *testing.T) {
 	}
 	if len(result.Items) != 1 || result.Items[0].Title != "中文书名" {
 		t.Fatalf("GBK search result = %+v", result)
+	}
+}
+
+func TestSearchBooksPageAutoDetectsUpstreamHTMLCharset(t *testing.T) {
+	restore := SetHTTPClient(&http.Client{
+		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			body, err := traditionalchinese.Big5.NewEncoder().Bytes([]byte(`
+				<html><head><meta charset="big5"></head><body>
+					<article class="book">
+						<a class="name" href="/book/big5">繁體書名</a>
+					</article>
+				</body></html>
+			`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(string(body))),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restore()
+
+	source := models.BookSource{ID: 7, Name: "自动编码源", Charset: "auto"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    `https://source.example/search?key={keyword}`,
+		BookListRule: ".book",
+		BookNameRule: ".name",
+		BookURLRule:  ".name|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := SearchBooksPage(source, "book", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Title != "繁體書名" {
+		t.Fatalf("auto-detected search result = %+v", result)
 	}
 }
 

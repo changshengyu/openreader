@@ -233,6 +233,7 @@
         </el-form-item>
         <el-form-item label="编码">
           <el-select v-model="sourceForm.charset">
+            <el-option label="自动检测" value="auto" />
             <el-option label="UTF-8" value="utf-8" />
             <el-option label="GBK" value="gbk" />
           </el-select>

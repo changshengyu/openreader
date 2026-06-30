@@ -116,6 +116,21 @@ func TestDecodeBodySupportsExplicitUpstreamCharset(t *testing.T) {
 	}
 }
 
+func TestDecodeBodyDetectsHTMLMetaCharsetWhenUnspecified(t *testing.T) {
+	html := `<html><head><meta http-equiv="Content-Type" content="text/html; charset=big5"></head><body>繁體內容</body></html>`
+	encoded, err := traditionalchinese.Big5.NewEncoder().Bytes([]byte(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeBody(encoded, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded != html {
+		t.Fatalf("auto-detected HTML response decoded as %q", decoded)
+	}
+}
+
 func TestSourceHTTPClientConfiguresAuthenticatedProxy(t *testing.T) {
 	client, err := sourceHTTPClient(
 		&http.Client{Timeout: time.Second},
