@@ -100,29 +100,17 @@
       </div>
     </section>
 
-    <footer class="reader-page-control">
-      <div class="progress-box">{{ bookProgressLabel }}</div>
-      <button class="page-step chapter-step" type="button" title="上一章" :disabled="currentIndex <= 0" @click="goChapter(currentIndex - 1)">
-        <el-icon :size="24"><ArrowLeft /></el-icon>
-      </button>
-      <button class="page-step chapter-step" type="button" title="下一章" :disabled="currentIndex >= chapters.length - 1" @click="goChapter(currentIndex + 1)">
-        <el-icon :size="24"><ArrowRight /></el-icon>
-      </button>
-      <label class="desktop-progress-control" title="拖动定位当前章节进度">
-        <input
-          class="desktop-progress-slider"
-          type="range"
-          min="0"
-          max="1000"
-          step="1"
-          :value="desktopChapterSliderValue"
-          :aria-label="`当前章节进度 ${desktopChapterProgressLabel}`"
-          @input="handleDesktopProgressInput"
-          @change="handleDesktopProgressChange"
-        />
-        <span>{{ desktopChapterProgressLabel }}</span>
-      </label>
-    </footer>
+    <ReaderDesktopProgress
+      :book-progress-label="bookProgressLabel"
+      :chapter-slider-value="desktopChapterSliderValue"
+      :chapter-progress-label="desktopChapterProgressLabel"
+      :previous-disabled="currentIndex <= 0"
+      :next-disabled="currentIndex >= chapters.length - 1"
+      @previous="goChapter(currentIndex - 1)"
+      @next="goChapter(currentIndex + 1)"
+      @chapter-progress-input="handleDesktopProgressInput"
+      @chapter-progress-change="handleDesktopProgressChange"
+    />
 
     <!-- TTS 朗读条 -->
     <ReaderTTSBar
@@ -306,10 +294,6 @@
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  ArrowLeft,
-  ArrowRight,
-} from '@element-plus/icons-vue'
 import api from '../api/client'
 import { changeBookSource, createBookmarks, deleteBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook, searchBookContent as searchBookContentApi } from '../api/books'
 import { createReplaceRule } from '../api/replaceRules'
@@ -318,6 +302,7 @@ import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
+import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vue'
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
 import ReaderMobileChrome from '../components/reader/ReaderMobileChrome.vue'
 import ReaderMobileToolsPanel from '../components/reader/ReaderMobileToolsPanel.vue'
@@ -3792,77 +3777,6 @@ function readError(err, fallback) {
   transition: transform var(--reader-animate-duration, 180ms) ease;
 }
 
-/* ---- 右下翻页控制 ---- */
-.reader-page-control {
-  position: fixed;
-  right: auto;
-  left: calc(50vw + var(--reader-frame-width) / 2 + 52px);
-  bottom: 0;
-  z-index: 4;
-  display: grid;
-  width: 46px;
-  background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
-  border: 1px solid rgba(148, 132, 87, 0.38);
-  border-bottom: 0;
-}
-
-.progress-box,
-.page-step {
-  display: grid;
-  height: 43px;
-  place-items: center;
-  color: #121212;
-  background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
-  border: 0;
-  border-bottom: 1px solid rgba(148, 132, 87, 0.32);
-  font-size: 16px;
-}
-
-.desktop-progress-control {
-  display: grid;
-  width: 100%;
-  min-height: 154px;
-  place-items: center;
-  gap: 7px;
-  padding: 9px 0;
-  color: #121212;
-  background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
-  border: 0;
-  border-bottom: 1px solid rgba(148, 132, 87, 0.32);
-  font-size: 12px;
-}
-
-.desktop-progress-control span {
-  line-height: 1;
-}
-
-.desktop-progress-slider {
-  width: 18px;
-  height: 124px;
-  margin: 0;
-  accent-color: #2f6f6d;
-  cursor: pointer;
-  writing-mode: vertical-lr;
-}
-
-.page-step {
-  cursor: pointer;
-}
-
-.chapter-step {
-  padding: 0;
-  font-size: 16px;
-}
-
-.chapter-step:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.page-step:hover {
-  background: var(--reader-popup-bg);
-}
-
 /* ---- Toast ---- */
 .reader-toast {
   background: rgba(30, 41, 59, 0.92); border-radius: 8px; bottom: 96px; color: #fff;
@@ -3965,8 +3879,6 @@ function readError(err, fallback) {
     scroll-padding-bottom: calc(250px + env(safe-area-inset-bottom));
   }
   .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
-  .reader-page-control,
-  .desktop-progress-control,
   .reader-tap-zones {
     display: none;
   }
