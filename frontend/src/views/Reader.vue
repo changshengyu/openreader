@@ -259,7 +259,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
-import { changeBookSource, createBookmarks, deleteBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook, searchBookContent as searchBookContentApi } from '../api/books'
+import { changeBookSource, createBookmarks, deleteBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook } from '../api/books'
 import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
@@ -284,6 +284,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
+import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
@@ -363,13 +364,23 @@ const tocLocateKey = ref(0)
 const tocReverse = ref(false)
 const tocRefreshing = ref(false)
 const browserCachedChapters = ref({})
-const contentSearch = ref('')
-const bookSearchResults = ref([])
-const bookSearching = ref(false)
-const searchedBookContent = ref(false)
-const bookSearchLastIndex = ref(-1)
-const bookSearchHasMore = ref(false)
-const bookSearchTotal = ref(0)
+const {
+  keyword: contentSearch,
+  results: bookSearchResults,
+  loading: bookSearching,
+  searched: searchedBookContent,
+  hasMore: bookSearchHasMore,
+  status: bookSearchStatus,
+  reset: resetContentSearchState,
+  search: searchBookContent,
+  loadMore: loadMoreBookContent,
+  loadAll: searchAllBookContent,
+} = useBookContentSearch({
+  bookId,
+  book,
+  chapters,
+  onError: error => ElMessage.error(readError(error, '搜索正文失败')),
+})
 const noteText = ref('')
 const editingBookmark = ref(null)
 const savingBookmark = ref(false)
@@ -509,13 +520,6 @@ const desktopChapterSliderValue = computed(() => {
   return Math.round(Math.max(0, Math.min(1, currentChapterPercent())) * 1000)
 })
 const desktopChapterProgressLabel = computed(() => `${Math.round(desktopChapterSliderValue.value / 10)}%`)
-const bookSearchStatus = computed(() => {
-  if (!searchedBookContent.value) return ''
-  const scanned = bookSearchLastIndex.value >= 0 ? bookSearchLastIndex.value + 1 : 0
-  const total = bookSearchTotal.value || chapters.value.length || 0
-  if (!total) return `${bookSearchResults.value.length} 条结果`
-  return `已搜索 ${Math.min(scanned, total)} / ${total} 章，${bookSearchResults.value.length} 条结果`
-})
 const mobileChromeVisible = ref(false)
 const CHAPTER_END_OFFSET = -1
 const NEARBY_PRELOAD_RADIUS = 2
@@ -671,10 +675,6 @@ watch(() => reader.customFontsMap, (customFontsMap) => {
   syncReaderFontFaces(customFontsMap)
 }, { deep: true })
 
-watch(contentSearch, () => {
-  resetContentSearchState()
-})
-
 function makeParagraphs(value, heading = '') {
   return parseReaderContentBlocks(value, heading, formatChineseText)
 }
@@ -720,14 +720,6 @@ function chapterBlockTextLength(block) {
   if (!paragraphs.length) return 0
   const last = paragraphs[paragraphs.length - 1]
   return Number(last.endPos || last.pos || 0)
-}
-
-function resetContentSearchState() {
-  bookSearchLastIndex.value = -1
-  bookSearchHasMore.value = false
-  bookSearchTotal.value = 0
-  searchedBookContent.value = false
-  bookSearchResults.value = []
 }
 
 async function loadReaderBook() {
@@ -1784,61 +1776,6 @@ function openContentSearch() {
     const input = document.querySelector('.content-search-row input')
     input?.focus()
   })
-}
-
-async function searchBookContent() {
-  return runBookContentSearch({ append: false })
-}
-
-async function loadMoreBookContent() {
-  return runBookContentSearch({ append: true })
-}
-
-async function searchAllBookContent() {
-  return runBookContentSearch({ append: true, scanAll: true })
-}
-
-async function runBookContentSearch({ append = false, scanAll = false } = {}) {
-  const keyword = contentSearch.value.trim()
-  if (!keyword) return
-  if (bookSearching.value) return
-  bookSearching.value = true
-  searchedBookContent.value = true
-  try {
-    let lastIndex = append ? bookSearchLastIndex.value : -1
-    let nextResults = append ? [...bookSearchResults.value] : []
-    const maxRounds = scanAll ? 80 : (append ? 1 : (Number(book.value?.sourceId || 0) > 0 ? 4 : 1))
-    let previousLastIndex = lastIndex
-    for (let round = 0; round < maxRounds; round += 1) {
-      const { data } = await searchBookContentApi(bookId.value, keyword, {
-        paged: 1,
-        lastIndex,
-        scanUntilMatch: append ? 0 : 1,
-        ...contentSearchPagingParams(book.value),
-      })
-      const rows = Array.isArray(data) ? data : (data?.list || [])
-      nextResults = nextResults.concat(rows)
-      bookSearchResults.value = nextResults
-      bookSearchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
-      bookSearchHasMore.value = Boolean(data?.hasMore)
-      bookSearchTotal.value = Number(data?.total || 0)
-      lastIndex = bookSearchLastIndex.value
-      if (!scanAll && (rows.length || !bookSearchHasMore.value)) break
-      if (scanAll && (!bookSearchHasMore.value || lastIndex <= previousLastIndex)) break
-      previousLastIndex = lastIndex
-    }
-  } catch (err) {
-    ElMessage.error(readError(err, '搜索正文失败'))
-  } finally {
-    bookSearching.value = false
-  }
-}
-
-function contentSearchPagingParams(targetBook) {
-  if (Number(targetBook?.sourceId || 0) > 0) {
-    return { chapterLimit: 10, scanLimit: 10, matchLimit: 120, perChapterLimit: 20 }
-  }
-  return { chapterLimit: 160, scanLimit: 480, matchLimit: 1000, perChapterLimit: 100, localFull: 1 }
 }
 
 function openNoteDialog() {

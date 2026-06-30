@@ -673,7 +673,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
-import { cacheBookContent, createBookmark, createBookmarks, deleteBookmark, deleteBookmarks, listBookmarks, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, searchBookContent, updateBook, updateBookCategory, updateBookmark } from '../api/books'
+import { cacheBookContent, createBookmark, createBookmarks, deleteBookmark, deleteBookmarks, listBookmarks, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory, updateBookmark } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, deleteReplaceRules, listReplaceRules, testReplaceRule, updateReplaceRule, upsertReplaceRules } from '../api/replaceRules'
 import { listSources } from '../api/sources'
@@ -682,6 +682,7 @@ import { bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bo
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useUserStore } from '../stores/user'
+import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -729,13 +730,25 @@ const importDraft = reactive({ title: '', author: '', categoryIds: [], file: nul
 const tocRuleOptions = ref([])
 const tocRulesLoading = ref(false)
 const sourceRows = ref([])
-const contentKeyword = ref('')
-const contentResults = ref([])
-const contentSearching = ref(false)
-const contentSearched = ref(false)
-const contentLastIndex = ref(-1)
-const contentHasMore = ref(false)
-const contentTotal = ref(0)
+const contentSearchBook = computed(() => overlay.searchBook)
+const contentSearchBookId = computed(() => overlay.searchBook?.id)
+const {
+  keyword: contentKeyword,
+  results: contentResults,
+  loading: contentSearching,
+  searched: contentSearched,
+  hasMore: contentHasMore,
+  status: contentSearchStatus,
+  reset: resetCurrentBookContentSearch,
+  search: searchCurrentBookContent,
+  loadMore: loadMoreCurrentBookContent,
+  loadAll: searchAllCurrentBookContent,
+} = useBookContentSearch({
+  bookId: contentSearchBookId,
+  book: contentSearchBook,
+  chapters: [],
+  onError: error => ElMessage.error(readError(error, '搜索正文失败')),
+})
 const contentSearchBookKey = ref('')
 const bookmarkItems = ref([])
 const bookmarkLoading = ref(false)
@@ -842,12 +855,6 @@ function isShelfBook(book) {
   if (!bookUrl) return false
   return bookshelf.books.some(item => String(item.url || item.bookUrl || '').trim() === bookUrl)
 }
-const contentSearchStatus = computed(() => {
-  if (!contentSearched.value) return ''
-  const scanned = contentLastIndex.value >= 0 ? contentLastIndex.value + 1 : 0
-  if (!contentTotal.value) return `${contentResults.value.length} 条结果`
-  return `已搜索 ${Math.min(scanned, contentTotal.value)} / ${contentTotal.value} 章，${contentResults.value.length} 条结果`
-})
 const currentUserId = computed(() => userStore.profile?.id || null)
 
 onMounted(() => {
@@ -1063,11 +1070,7 @@ async function warmOverlayBooks(options = {}) {
 
 function resetContentSearchState() {
   contentKeyword.value = ''
-  contentResults.value = []
-  contentSearched.value = false
-  contentLastIndex.value = -1
-  contentHasMore.value = false
-  contentTotal.value = 0
+  resetCurrentBookContentSearch()
 }
 
 watch(
@@ -1077,23 +1080,10 @@ watch(
     const key = String(overlay.searchBook?.id || overlay.searchBook?.bookUrl || '')
     if (key && key !== contentSearchBookKey.value) {
       contentSearchBookKey.value = key
-      contentKeyword.value = ''
-      contentResults.value = []
-      contentSearched.value = false
-      contentLastIndex.value = -1
-      contentHasMore.value = false
-      contentTotal.value = 0
+      resetContentSearchState()
     }
   },
 )
-
-watch(contentKeyword, () => {
-  contentResults.value = []
-  contentSearched.value = false
-  contentLastIndex.value = -1
-  contentHasMore.value = false
-  contentTotal.value = 0
-})
 
 watch(
   () => overlay.bookmarkVisible,
@@ -1638,62 +1628,6 @@ function downloadBlob(blob, filename) {
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
-}
-
-async function searchCurrentBookContent() {
-  return runCurrentBookContentSearch({ append: false })
-}
-
-async function loadMoreCurrentBookContent() {
-  return runCurrentBookContentSearch({ append: true })
-}
-
-async function searchAllCurrentBookContent() {
-  return runCurrentBookContentSearch({ append: true, scanAll: true })
-}
-
-async function runCurrentBookContentSearch({ append = false, scanAll = false } = {}) {
-  const book = overlay.searchBook
-  const keyword = contentKeyword.value.trim()
-  if (!book?.id || !keyword) return
-  if (contentSearching.value) return
-  contentSearching.value = true
-  contentSearched.value = true
-  try {
-    let lastIndex = append ? contentLastIndex.value : -1
-    let nextResults = append ? [...contentResults.value] : []
-    const maxRounds = scanAll ? 80 : (append ? 1 : (Number(book.sourceId || 0) > 0 ? 4 : 1))
-    let previousLastIndex = lastIndex
-    for (let round = 0; round < maxRounds; round += 1) {
-      const { data } = await searchBookContent(book.id, keyword, {
-        paged: 1,
-        lastIndex,
-        scanUntilMatch: append ? 0 : 1,
-        ...contentSearchPagingParams(book),
-      })
-      const rows = Array.isArray(data) ? data : (data?.list || [])
-      nextResults = nextResults.concat(rows)
-      contentResults.value = nextResults
-      contentLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
-      contentHasMore.value = Boolean(data?.hasMore)
-      contentTotal.value = Number(data?.total || 0)
-      lastIndex = contentLastIndex.value
-      if (!scanAll && (rows.length || !contentHasMore.value)) break
-      if (scanAll && (!contentHasMore.value || lastIndex <= previousLastIndex)) break
-      previousLastIndex = lastIndex
-    }
-  } catch (err) {
-    ElMessage.error(readError(err, '搜索正文失败'))
-  } finally {
-    contentSearching.value = false
-  }
-}
-
-function contentSearchPagingParams(book) {
-  if (Number(book?.sourceId || 0) > 0) {
-    return { chapterLimit: 10, scanLimit: 10, matchLimit: 120, perChapterLimit: 20 }
-  }
-  return { chapterLimit: 160, scanLimit: 480, matchLimit: 1000, perChapterLimit: 100, localFull: 1 }
 }
 
 function jumpToContentResult(result) {
