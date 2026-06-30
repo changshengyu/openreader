@@ -287,7 +287,7 @@ import { useAutoReading } from '../composables/useAutoReading'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
-import { useTTS } from '../composables/useTTS'
+import { useReaderTTS } from '../composables/useReaderTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { normalizeImportedBookmarks } from '../utils/bookmark'
@@ -415,7 +415,6 @@ const windowWidth = ref(currentViewportWidth())
 const MOBILE_TAP_MOVE_TOLERANCE = 14
 
 let chapterLoadingTimer
-let ttsContinueToken = 0
 let restoringPosition = false
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
 let cachingContentCancelled = false
@@ -584,6 +583,27 @@ const {
   getMode: () => reader.mode,
   getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
   ensureClientId: () => reader.ensureClientId(),
+})
+
+const {
+  tts,
+  voices: ttsVoices,
+  sleepMinutes: ttsSleepMinutes,
+  progressLabel: ttsProgressLabel,
+  setRate: setTTSRate,
+  setPitch: setTTSPitch,
+  setVoice: setTTSVoice,
+  setSleepMinutes: setTTSSleepMinutes,
+  toggle: toggleTTS,
+  stop: ttsStop,
+} = useReaderTTS({
+  reader,
+  content,
+  contentBody,
+  currentIndex,
+  chapters,
+  goChapter,
+  notify: showTTSMessage,
 })
 
 function onModeChange(mode) {
@@ -1818,6 +1838,14 @@ function showAutoReadingMessage(message) {
   }, 1200)
 }
 
+function showTTSMessage(message, duration = 0) {
+  toastMsg.value = message
+  if (duration <= 0) return
+  setTimeout(() => {
+    if (toastMsg.value === message) toastMsg.value = ''
+  }, duration)
+}
+
 function toggleNight() {
   reader.setTheme(reader.theme === 'dark' || reader.theme === 'black' ? 'parchment' : 'dark')
 }
@@ -3032,108 +3060,6 @@ useKeyboard({
 useGesture(pageEl, {
   onPinchOut: () => reader.setFontSize(reader.fontSize + 2),
   onPinchIn: () => reader.setFontSize(reader.fontSize - 2),
-})
-
-// ---- TTS ----
-const tts = useTTS()
-const ttsVoices = computed(() => tts.voices.value)
-const ttsSleepMinutes = ref(0)
-const ttsSleepEndAt = ref(0)
-const ttsProgressLabel = computed(() => {
-  const total = tts.total.value || 0
-  if (!tts.state.playing || total <= 0) return '段落 - / -'
-  return `段落 ${Math.min(tts.currentIndex.value + 1, total)} / ${total}`
-})
-tts.setRate(reader.ttsRate)
-tts.setPitch(reader.ttsPitch)
-tts.setVoice(reader.ttsVoiceURI)
-
-function setTTSRate(value) {
-  reader.setTTSRate(value)
-  tts.setRate(reader.ttsRate)
-}
-
-function setTTSPitch(value) {
-  reader.setTTSPitch(value)
-  tts.setPitch(reader.ttsPitch)
-}
-
-function setTTSVoice(value) {
-  reader.setTTSVoice(value)
-  tts.setVoice(reader.ttsVoiceURI)
-}
-
-function setTTSSleepMinutes(value) {
-  const minutes = Math.max(0, Math.min(180, Math.floor(Number(value) || 0)))
-  ttsSleepMinutes.value = minutes
-  ttsSleepEndAt.value = minutes > 0 ? Date.now() + minutes * 60 * 1000 : 0
-}
-
-function isTTSSleepExpired() {
-  return ttsSleepEndAt.value > 0 && Date.now() > ttsSleepEndAt.value
-}
-
-function handleTTSParagraphStart() {
-  if (!isTTSSleepExpired()) return
-  ttsContinueToken += 1
-  tts.stop()
-  toastMsg.value = '定时关闭朗读'
-  setTimeout(() => { toastMsg.value = '' }, 1400)
-}
-
-function toggleTTS() {
-  if (!tts.state.supported) {
-    toastMsg.value = '当前浏览器不支持朗读'
-    return
-  }
-  if (tts.state.playing) {
-    ttsContinueToken += 1
-    tts.stop()
-  } else {
-    const token = ++ttsContinueToken
-    if (ttsSleepMinutes.value > 0 && !ttsSleepEndAt.value) setTTSSleepMinutes(ttsSleepMinutes.value)
-    tts.speak(content.value, () => {
-      if (isTTSSleepExpired()) {
-        handleTTSParagraphStart()
-        return
-      }
-      if (currentIndex.value < chapters.value.length - 1) {
-        speakNextChapter(currentIndex.value + 1, token)
-      }
-    }, handleTTSParagraphStart)
-  }
-}
-function ttsStop() {
-  ttsContinueToken += 1
-  tts.stop()
-}
-
-async function speakNextChapter(index, token) {
-  await goChapter(index)
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    if (token !== ttsContinueToken) return
-    await new Promise(resolve => setTimeout(resolve, 120))
-    if (currentIndex.value === index && content.value.trim()) {
-      tts.speak(content.value, () => {
-        if (isTTSSleepExpired()) {
-          handleTTSParagraphStart()
-          return
-        }
-        if (token === ttsContinueToken && currentIndex.value < chapters.value.length - 1) {
-          speakNextChapter(currentIndex.value + 1, token)
-        }
-      }, handleTTSParagraphStart)
-      return
-    }
-  }
-}
-
-watch(() => tts.currentIndex.value, (idx) => {
-  if (idx < 0 || !contentBody.value) return
-  const ps = contentBody.value.querySelectorAll('p')
-  ps.forEach(p => p.classList.remove('tts-active'))
-  const t = ps[idx]
-  if (t) { t.classList.add('tts-active'); t.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
 })
 
 function readError(err, fallback) {
