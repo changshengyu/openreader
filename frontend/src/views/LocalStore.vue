@@ -17,8 +17,8 @@
         <el-button class="store-batch-command" :disabled="!importableCount || importing" :loading="importing" @click="importCurrentDirectory">
           导入当前目录 ({{ importableCount }})
         </el-button>
-        <el-button class="store-batch-command" :disabled="!shownImportablePaths.length || importing" :loading="importing" @click="importFiltered">
-          导入筛选 ({{ shownImportablePaths.length }})
+        <el-button class="store-batch-command" :disabled="!filteredImportablePaths.length || importing" :loading="importing" @click="importFiltered">
+          导入筛选 ({{ filteredImportablePaths.length }})
         </el-button>
         <el-button class="store-batch-command" type="primary" :disabled="!selectedImportablePaths.length || importing" :loading="importing" @click="importSelected">
           导入选中 ({{ selectedImportablePaths.length }})
@@ -116,6 +116,13 @@
       </article>
     </div>
 
+    <div v-if="remainingItemCount" class="store-load-more">
+      <span>已显示 {{ shownItems.length }} / {{ filteredItems.length }} 项</span>
+      <el-button @click="showMoreItems">
+        再显示 {{ Math.min(ITEM_RENDER_BATCH_SIZE, remainingItemCount) }} 项
+      </el-button>
+    </div>
+
     <el-empty v-if="!items.length && !loading" description="书仓为空，把文件放入 localStore 目录即可显示" />
 
     <div v-if="items.length" class="store-batch-footer app-panel">
@@ -153,7 +160,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { createLocalStoreDirectory, deleteFromLocalStore, downloadFromLocalStore, importFromLocalStore, listLocalStore, previewLocalStoreImport, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
@@ -161,6 +168,7 @@ import LocalBookImportPreviewDialog from '../components/LocalBookImportPreviewDi
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
+import { filterLocalStoreItems, limitLocalStoreItems } from '../utils/localStoreItems'
 
 defineProps({
   embedded: {
@@ -187,6 +195,8 @@ const previewItems = ref([])
 const resultDialog = ref(false)
 const importResults = ref([])
 const windowWidth = ref(currentViewportWidth())
+const ITEM_RENDER_BATCH_SIZE = 100
+const visibleItemLimit = ref(ITEM_RENDER_BATCH_SIZE)
 
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
 const importableCount = computed(() => items.value.filter(item => item.importable).length)
@@ -195,18 +205,19 @@ const breadcrumbs = computed(() => {
   const parts = currentPath.value.split(/[\\/]/).filter(Boolean)
   return parts.map((name, index) => ({ name, path: parts.slice(0, index + 1).join('/') }))
 })
-const shownItems = computed(() => {
-  const value = keyword.value.trim().toLowerCase()
-  return items.value.filter(item => {
-    if (extension.value && !item.isDir && item.extension !== extension.value) return false
-    if (extension.value && item.isDir) return true
-    if (!value) return true
-    return `${item.name || ''} ${item.path || ''}`.toLowerCase().includes(value)
-  })
-})
-const shownImportablePaths = computed(() => shownItems.value.filter(item => item.importable).map(item => item.path))
+const filteredItems = computed(() => filterLocalStoreItems(items.value, {
+  keyword: keyword.value,
+  extension: extension.value,
+}))
+const shownItems = computed(() => limitLocalStoreItems(filteredItems.value, visibleItemLimit.value))
+const remainingItemCount = computed(() => Math.max(0, filteredItems.value.length - shownItems.value.length))
+const filteredImportablePaths = computed(() => filteredItems.value.filter(item => item.importable).map(item => item.path))
 const selectedImportablePaths = computed(() => selectedRows.value.filter(item => item.importable).map(item => item.path))
 const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
+
+watch([keyword, extension], () => {
+  visibleItemLimit.value = ITEM_RENDER_BATCH_SIZE
+})
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
@@ -232,6 +243,7 @@ async function load() {
     const { data } = await listLocalStore(currentPath.value, recursiveScan.value)
     currentPath.value = data.path || ''
     items.value = data.items || []
+    visibleItemLimit.value = ITEM_RENDER_BATCH_SIZE
     clearSelection()
   } catch (err) {
     ElMessage.error(readError(err, '加载书仓失败'))
@@ -280,6 +292,10 @@ function toggleSelectedRow(row, checked) {
 function selectShownFiles() {
   selectedRows.value = [...shownItems.value]
   checkedRows.value = selectedImportablePaths.value
+}
+
+function showMoreItems() {
+  visibleItemLimit.value += ITEM_RENDER_BATCH_SIZE
 }
 
 function clearSelection() {
@@ -348,10 +364,10 @@ async function importCurrentDirectory() {
 }
 
 async function importFiltered() {
-  if (!shownImportablePaths.value.length) return
+  if (!filteredImportablePaths.value.length) return
   importing.value = true
   try {
-    await importPaths(shownImportablePaths.value)
+    await importPaths(filteredImportablePaths.value)
   } catch (err) {
     ElMessage.error(readError(err, '导入失败'))
   } finally {
@@ -588,6 +604,14 @@ function readError(err, fallback) {
   display: none;
 }
 
+.store-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--app-text-muted);
+}
+
 .mobile-file-select-actions {
   display: none;
   align-items: center;
@@ -700,6 +724,11 @@ function readError(err, fallback) {
   .mobile-file-list {
     display: grid;
     gap: 10px;
+  }
+
+  .store-load-more {
+    display: grid;
+    text-align: center;
   }
 
   .mobile-file-select-actions {
