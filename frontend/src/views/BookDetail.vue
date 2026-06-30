@@ -91,7 +91,7 @@
                 :group="sourceGroup"
                 :groups="sourceGroups"
                 :has-more="sourceHasMore"
-                @refresh="loadSourceCandidates"
+                @refresh="refreshSourceCandidates"
                 @load-more="loadMoreSourceCandidates"
                 @group-change="changeSourceGroup"
                 @change="changeSource"
@@ -125,7 +125,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Switch } from '@element-plus/icons-vue'
-import { cacheBookContent, changeBookSource, deleteBookmark, listBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook, updateBook } from '../api/books'
+import { cacheBookContent, changeBookSource, deleteBookmark, listBookmarks, refreshBook, refreshLocalBook, updateBook } from '../api/books'
 import api from '../api/client'
 import { uploadAsset } from '../api/uploads'
 import BookEditDialog from '../components/BookEditDialog.vue'
@@ -136,6 +136,7 @@ import SourceSwitchPanel from '../components/reader/SourceSwitchPanel.vue'
 import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress } from '../utils/bookOrder'
@@ -148,7 +149,6 @@ import {
   sourceCandidateCover,
   sourceCandidateIntro,
   sourceCandidateKind,
-  sourceCandidateKey,
   sourceCandidateSourceId,
   sourceCandidateTitle,
   sourceCandidateWordCount,
@@ -166,11 +166,24 @@ const book = ref(null)
 const chapters = ref([])
 const bookmarks = ref([])
 const availableSources = ref([])
-const sourceCandidates = ref([])
-const loadingSourceCandidates = ref(false)
-const sourceGroup = ref('')
-const sourceOffset = ref(0)
-const sourceHasMore = ref(true)
+const detailBookId = computed(() => Number(book.value?.id || route.params.id))
+const {
+  candidates: sourceCandidates,
+  loading: loadingSourceCandidates,
+  group: sourceGroup,
+  hasMore: sourceHasMore,
+  groups: sourceGroups,
+  load: loadSourceCandidates,
+  refresh: refreshSourceCandidates,
+  loadMore: loadMoreSourceCandidates,
+  changeGroup: changeSourceGroup,
+  reset: resetSourceCandidates,
+} = useBookSourceCandidates({
+  bookId: detailBookId,
+  groupSources: availableSources,
+  onError: error => ElMessage.error(readError(error, '搜索可用来源失败')),
+  onInfo: message => ElMessage.info(message),
+})
 const activeTab = ref('toc')
 const tocPanelRef = ref(null)
 const tocKeyword = ref('')
@@ -191,10 +204,6 @@ const changeMessage = ref('')
 const changeError = ref(false)
 
 const currentSource = computed(() => availableSources.value.find(source => Number(source.id) === Number(book.value?.sourceId)))
-const sourceGroups = computed(() => {
-  const groups = availableSources.value.map(source => source.group).filter(Boolean)
-  return [...new Set(groups)].sort()
-})
 const bookProgress = computed(() => newestBookProgress(book.value, reader.progressByBook))
 const isTextLocalBook = computed(() => checkTextLocalBook(book.value))
 const isEPUBLocalBook = computed(() => checkEPUBLocalBook(book.value))
@@ -262,9 +271,7 @@ async function load() {
     if (progress?.bookId) {
       book.value = mergeShelfBook(book.value, { id: book.value.id, progress })
     }
-    sourceCandidates.value = []
-    sourceOffset.value = 0
-    sourceHasMore.value = true
+    resetSourceCandidates()
     await refreshBrowserCacheMap()
     if (book.value?.sourceId) await loadSourceCandidates({ silent: true })
   } catch (err) {
@@ -624,55 +631,6 @@ async function refreshBrowserCacheMap() {
   }
 }
 
-async function loadSourceCandidates({ append = false, silent = false } = {}) {
-  if (!book.value) return
-  loadingSourceCandidates.value = true
-  try {
-    if (!append) {
-      sourceOffset.value = 0
-      sourceHasMore.value = true
-    }
-    const { data } = await listBookSourceCandidates(book.value.id, {
-      group: sourceGroup.value || undefined,
-      offset: sourceOffset.value,
-      limit: 10,
-      paged: 1,
-    })
-    const rows = Array.isArray(data) ? data : (data?.list || [])
-    sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
-    sourceOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceOffset.value + 10
-    sourceHasMore.value = typeof data?.hasMore === 'boolean' ? data.hasMore : rows.length >= 10
-  } catch (err) {
-    if (!silent) ElMessage.error(readError(err, '搜索可用来源失败'))
-  } finally {
-    loadingSourceCandidates.value = false
-  }
-}
-
-function loadMoreSourceCandidates() {
-  if (!sourceHasMore.value) {
-    ElMessage.info('没有更多啦')
-    return undefined
-  }
-  return loadSourceCandidates({ append: true })
-}
-
-function changeSourceGroup(value) {
-  sourceGroup.value = value || ''
-  sourceHasMore.value = true
-  loadSourceCandidates()
-}
-
-function mergeSourceCandidates(existing, incoming) {
-  const seen = new Set(existing.map(item => sourceCandidateKey(item)))
-  return existing.concat(incoming.filter(item => {
-    const key = sourceCandidateKey(item)
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  }))
-}
-
 async function openChangeSource() {
   activeTab.value = 'sources'
   if (!sourceCandidates.value.length) {
@@ -703,8 +661,7 @@ async function changeSource(source) {
     const nextChapters = await loadBookChapters(updatedBook)
     await applyBookUpdate(updatedBook, { chapters: nextChapters })
     changeMessage.value = `已切换，共 ${updatedBook.chapterCount || chapters.value.length} 章`
-    sourceHasMore.value = true
-    await loadSourceCandidates()
+    await refreshSourceCandidates()
     ElMessage.success('换源成功')
   } catch (err) {
     changeError.value = true

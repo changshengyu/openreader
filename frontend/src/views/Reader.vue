@@ -169,7 +169,7 @@
     </el-drawer>
 
     <!-- ===== 书源抽屉 ===== -->
-    <el-drawer v-model="showSourceDrawer" title="书源" :direction="drawerDirection" :size="drawerSize" @open="loadSourceCandidates">
+    <el-drawer v-model="showSourceDrawer" title="书源" :direction="drawerDirection" :size="drawerSize" @open="ensureSourceCandidates">
       <SourceSwitchPanel
         :book="book"
         :sources="sourceCandidates"
@@ -259,7 +259,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
-import { changeBookSource, createBookmarks, deleteBookmarks, listBookSourceCandidates, refreshBook, refreshLocalBook } from '../api/books'
+import { changeBookSource, createBookmarks, deleteBookmarks, refreshBook, refreshLocalBook } from '../api/books'
 import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
@@ -285,6 +285,7 @@ import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
+import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
@@ -306,7 +307,6 @@ import {
   sourceCandidateCover,
   sourceCandidateIntro,
   sourceCandidateKind,
-  sourceCandidateKey,
   sourceCandidateSourceId,
   sourceCandidateSourceName,
   sourceCandidateTitle,
@@ -349,14 +349,29 @@ const showNoteDialog = ref(false)
 const showBookmarkEditor = ref(false)
 const showClickZoneOverlay = ref(false)
 const mobileBookSliderDraft = ref(null)
-const sourceCandidates = ref([])
 const sourceGroupOptions = ref([])
-const loadingSources = ref(false)
+const {
+  candidates: sourceCandidates,
+  loading: loadingSources,
+  group: sourceGroup,
+  hasMore: sourceHasMore,
+  groups: sourceGroups,
+  ensure: ensureSourceCandidates,
+  refresh: refreshSourceCandidates,
+  loadMore: loadMoreSourceCandidates,
+  changeGroup: changeSourceGroup,
+  reset: resetSourceCandidates,
+} = useBookSourceCandidates({
+  bookId,
+  groupSources: sourceGroupOptions,
+  loadGroupSources: async () => {
+    const { data } = await listSources()
+    return (data || []).filter(source => source.enabled)
+  },
+  onError: error => ElMessage.error(readError(error, '搜索可用来源失败')),
+  onInfo: message => ElMessage.info(message),
+})
 const changingSource = ref(null)
-const sourceGroup = ref('')
-const sourceOffset = ref(0)
-const sourceHasMore = ref(true)
-const sourceCandidatesLoadedKey = ref('')
 const shelfLoading = ref(false)
 const shelfPanelRef = ref(null)
 const tocPanelRef = ref(null)
@@ -426,10 +441,6 @@ const SHOW_NEXT_CHAPTER_SIZE = 2
 const filteredShelfBooks = computed(() => {
   const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
   return sortByShelfOrder(books, reader.progressByBook)
-})
-const sourceGroups = computed(() => {
-  const sourceRows = sourceGroupOptions.value.length ? sourceGroupOptions.value : sourceCandidates.value
-  return buildSourceGroupOptions(sourceRows)
 })
 const currentSourceName = computed(() => {
   if (!book.value?.sourceId) return '本地书籍'
@@ -688,19 +699,6 @@ function displayChapterTitle(title) {
   return formatChineseText(title || '')
 }
 
-function buildSourceGroupOptions(rows) {
-  const counts = new Map()
-  for (const item of rows || []) {
-    if (item?.enabled === false) continue
-    const group = String(item?.group || '').trim()
-    if (!group) continue
-    counts.set(group, (counts.get(group) || 0) + 1)
-  }
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([value, count]) => ({ value, label: value, count }))
-}
-
 function makeChapterBlock(index, chapterRow, text) {
   const fallback = chapters.value[index] || {}
   const title = chapterRow?.title || fallback.title || `第 ${index + 1} 章`
@@ -752,9 +750,7 @@ async function loadReaderBook() {
   if (saved?.bookId) {
     book.value = mergeShelfBook(book.value, { id: book.value.id, progress: saved })
   }
-  sourceCandidates.value = []
-  sourceCandidatesLoadedKey.value = ''
-  sourceOffset.value = 0
+  resetSourceCandidates()
   if (saved?.bookId) bookshelf.applyBookProgress(saved)
   const resumeFromProgress = route.query.resume === '1'
   const hasExplicitChapter = route.query.chapter !== undefined
@@ -1661,76 +1657,6 @@ function openReplaceRules() {
   overlay.openReplaceRules()
 }
 
-async function loadSourceCandidates({ append = false, force = false } = {}) {
-  const key = `${bookId.value}:${sourceGroup.value || 'all'}`
-  if (!append && !force && sourceCandidatesLoadedKey.value === key && sourceCandidates.value.length) return
-  loadingSources.value = true
-  try {
-    if (!sourceGroupOptions.value.length) {
-      await loadSourceGroups()
-    }
-    if (!append) {
-      sourceOffset.value = 0
-      sourceHasMore.value = true
-    }
-    const { data } = await listBookSourceCandidates(bookId.value, {
-      group: sourceGroup.value || undefined,
-      offset: sourceOffset.value,
-      limit: 10,
-      paged: 1,
-    })
-    const rows = Array.isArray(data) ? data : (data?.list || [])
-    sourceCandidates.value = append ? mergeSourceCandidates(sourceCandidates.value, rows) : rows
-    sourceOffset.value = Number.isInteger(data?.nextOffset) ? data.nextOffset : sourceOffset.value + 10
-    sourceHasMore.value = typeof data?.hasMore === 'boolean' ? data.hasMore : rows.length >= 10
-    sourceCandidatesLoadedKey.value = key
-  } catch (err) {
-    ElMessage.error(readError(err, '搜索可用来源失败'))
-  } finally {
-    loadingSources.value = false
-  }
-}
-
-function refreshSourceCandidates() {
-  sourceCandidatesLoadedKey.value = ''
-  sourceHasMore.value = true
-  return loadSourceCandidates({ force: true })
-}
-
-async function loadSourceGroups() {
-  try {
-    const { data } = await listSources()
-    sourceGroupOptions.value = (data || []).filter(source => source.enabled)
-  } catch (err) {
-    sourceGroupOptions.value = []
-  }
-}
-
-function loadMoreSourceCandidates() {
-  if (!sourceHasMore.value) {
-    ElMessage.info('没有更多啦')
-    return undefined
-  }
-  return loadSourceCandidates({ append: true })
-}
-
-function changeSourceGroup(value) {
-  sourceGroup.value = value || ''
-  sourceCandidatesLoadedKey.value = ''
-  sourceHasMore.value = true
-  loadSourceCandidates({ force: true })
-}
-
-function mergeSourceCandidates(existing, incoming) {
-  const seen = new Set(existing.map(item => sourceCandidateKey(item)))
-  return existing.concat(incoming.filter(item => {
-    const key = sourceCandidateKey(item)
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  }))
-}
-
 async function changeSource(source) {
   if (!book.value || source.current) return
   const nextSourceId = sourceCandidateSourceId(source)
@@ -1756,10 +1682,8 @@ async function changeSource(source) {
     await writeReaderDataCache({ bookData: book.value, chaptersData: chapters.value })
     currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
     await loadChapter(currentIndex.value, 0)
-    sourceCandidatesLoadedKey.value = ''
-    sourceHasMore.value = true
     resetContentSearchState()
-    await loadSourceCandidates({ force: true })
+    await refreshSourceCandidates()
     showSourceDrawer.value = false
     ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`)
   } catch (err) {
