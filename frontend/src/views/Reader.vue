@@ -286,6 +286,7 @@ import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
+import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useTTS } from '../composables/useTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
@@ -297,6 +298,7 @@ import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalB
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
+import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
 import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
@@ -410,16 +412,10 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
-const SAVE_PROGRESS_MIN_INTERVAL = 1200
 const MOBILE_TAP_MOVE_TOLERANCE = 14
 
-let saveTimer
 let chapterLoadingTimer
 let ttsContinueToken = 0
-let savingProgress = false
-let pendingProgressPayload = null
-let lastProgressSaveKey = ''
-let lastProgressRequestAt = 0
 let restoringPosition = false
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
 let cachingContentCancelled = false
@@ -571,6 +567,25 @@ const {
   onNotify: showAutoReadingMessage,
 })
 
+const {
+  cancelScheduled: cancelProgressSave,
+  isBusy: isProgressSaveBusy,
+  key: progressSaveKey,
+  markSaved: markProgressSaved,
+  save: saveCurrentProgress,
+  schedule: scheduleProgressSave,
+} = useReaderProgressPersistence({
+  minimumInterval: 1200,
+  getPayload: () => chapter.value ? currentProgressPayload() : null,
+  getBaseUpdatedAt: progressServerBaseUpdatedAt,
+  applyLocal: applyLocalProgressSnapshot,
+  saveRemote: payload => reader.saveProgress(payload),
+  onSaved: progress => upsertReaderBookProgress(progress, { replace: true }),
+  getMode: () => reader.mode,
+  getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
+  ensureClientId: () => reader.ensureClientId(),
+})
+
 function onModeChange(mode) {
   reader.setMode(mode)
 }
@@ -597,7 +612,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  clearTimeout(saveTimer)
+  cancelProgressSave()
   clearTimeout(chapterLoadingTimer)
   clearTimeout(selectionOperateTimer)
   stopAutoReading()
@@ -678,8 +693,7 @@ watch(() => [reader.fontFamily, reader.chineseFont, reader.fontSize, reader.font
     restoringPosition = false
   }
   progressVersion.value += 1
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveCurrentProgress, 300)
+  scheduleProgressSave(300)
 })
 
 watch(() => reader.customFontsMap, (customFontsMap) => {
@@ -721,7 +735,7 @@ function chapterBlockTextLength(block) {
 }
 
 async function loadReaderBook() {
-  clearTimeout(saveTimer)
+  cancelProgressSave()
   const targetBookId = bookId.value
   const bookmarksRequest = loadBookmarks(targetBookId).catch(() => [])
   const progressRequest = reader.loadProgress(targetBookId, { preferLocal: true }).catch(() => null)
@@ -814,7 +828,7 @@ async function reconcileInitialServerProgress(serverSaved, options = {}) {
     restorePercent,
     saveAfterLoad: false,
   })
-  lastProgressSaveKey = progressSaveKey(currentProgressPayload())
+  markProgressSaved(currentProgressPayload())
 }
 
 function mergeLoadedBook(incoming) {
@@ -915,7 +929,7 @@ async function loadChapter(index, offset = 0, options = {}) {
   restoringPosition = true
   chapterLoaded.value = false
   chapterLoadError.value = ''
-  clearTimeout(saveTimer)
+  cancelProgressSave()
   clearTimeout(chapterLoadingTimer)
   const cachedBeforeLoad = !options.refresh && getChapterContentFromMemory(currentIndex.value)
   chapterLoading.value = !cachedBeforeLoad
@@ -941,7 +955,7 @@ async function loadChapter(index, offset = 0, options = {}) {
     if (options.saveAfterLoad) {
       await saveCurrentProgress({ force: true })
     } else {
-      lastProgressSaveKey = progressSaveKey(currentProgressPayload())
+      markProgressSaved(currentProgressPayload())
     }
     chapterLoaded.value = true
     if (isContinuousScrollRead.value) {
@@ -1274,8 +1288,7 @@ function jumpToLoadedChapter(index, offset = 0) {
     })
   }
   progressVersion.value += 1
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveCurrentProgress, Math.max(300, reader.animateDuration + 80))
+  scheduleProgressSave(Math.max(300, reader.animateDuration + 80))
   return true
 }
 
@@ -1820,7 +1833,7 @@ async function previousPage() {
     const el = contentEl.value
     if (el.scrollTop > 8) {
       el.scrollBy({ top: -scrollStep(), behavior: readerScrollBehavior() })
-      setTimeout(saveCurrentProgress, reader.animateDuration + 60)
+      scheduleProgressSave(reader.animateDuration + 60)
       return
     }
   }
@@ -1839,7 +1852,7 @@ async function nextPage() {
     const bottom = el.scrollHeight - el.clientHeight
     if (el.scrollTop < bottom - 8) {
       el.scrollBy({ top: scrollStep(), behavior: readerScrollBehavior() })
-      setTimeout(saveCurrentProgress, reader.animateDuration + 60)
+      scheduleProgressSave(reader.animateDuration + 60)
       return
     }
   }
@@ -1930,9 +1943,8 @@ function seekCurrentChapterPercent(percent, options = {}) {
   }
   progressVersion.value += 1
   applyLocalProgressSnapshot()
-  clearTimeout(saveTimer)
   if (options.save === false) {
-    saveTimer = setTimeout(saveCurrentProgress, 500)
+    scheduleProgressSave(500)
   } else {
     saveCurrentProgress()
   }
@@ -2268,7 +2280,7 @@ function handleReaderVisibilityChange() {
 async function handleProgressUpdated(event) {
   const progress = event?.detail?.progress
   if (!progress?.bookId || Number(progress.bookId) !== Number(bookId.value)) return
-  if (!chapter.value || restoringPosition || savingProgress || pendingProgressPayload) return
+  if (!chapter.value || restoringPosition || isProgressSaveBusy()) return
   const localKey = progressSaveKey(currentProgressPayload())
   const remoteKey = progressSaveKey({
     bookId: progress.bookId,
@@ -2284,7 +2296,7 @@ async function handleProgressUpdated(event) {
   const restorePercent = Number.isFinite(Number(progress.chapterPercent))
     ? Math.max(0, Math.min(1, Number(progress.chapterPercent)))
     : null
-  clearTimeout(saveTimer)
+  cancelProgressSave()
   try {
     await router.replace({
       name: 'reader',
@@ -2296,7 +2308,7 @@ async function handleProgressUpdated(event) {
       },
     })
     await loadChapter(targetIndex, targetOffset, { restorePercent, saveAfterLoad: false })
-    lastProgressSaveKey = progressSaveKey(currentProgressPayload())
+    markProgressSaved(currentProgressPayload())
   } catch {
     // If the chapter cannot be applied immediately, the stored progress will be used on the next open.
   }
@@ -2327,8 +2339,7 @@ function onScroll() {
   updateFlipLayout()
   progressVersion.value += 1
   applyLocalProgressSnapshot()
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveCurrentProgress, 500)
+  scheduleProgressSave(500)
 }
 
 function currentChapterPercent() {
@@ -2640,80 +2651,6 @@ function clearReaderSelection() {
   }
 }
 
-async function saveCurrentProgress(options = {}) {
-  if (!chapter.value) return
-  const force = Boolean(options.force)
-  const background = Boolean(options.background)
-  const baseUpdatedAt = progressServerBaseUpdatedAt()
-  const payload = {
-    ...currentProgressPayload(),
-    baseUpdatedAt,
-  }
-  applyLocalProgressSnapshot(payload, { force })
-  const key = progressSaveKey(payload)
-  if (key === lastProgressSaveKey && !force) return
-  pendingProgressPayload = payload
-  if (background) {
-    sendProgressKeepAlive(payload)
-    flushProgressQueue(force).catch(() => {})
-    return
-  }
-  await flushProgressQueue(force)
-}
-
-function sendProgressKeepAlive(payload) {
-  if (typeof window === 'undefined' || typeof fetch !== 'function' || !payload?.bookId) return
-  const token = window.localStorage?.getItem('openreader_token')
-  if (!token) return
-  try {
-    fetch('/api/progress', {
-      method: 'PUT',
-      keepalive: true,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        ...payload,
-        mode: reader.mode,
-        clientUpdatedAt: reader.progressByBook[payload.bookId]?.updatedAt || new Date().toISOString(),
-        clientId: reader.ensureClientId(),
-      }),
-    }).catch(() => {})
-  } catch {
-    // The queued local progress remains pending and will sync on the next open.
-  }
-}
-
-async function flushProgressQueue(force = false) {
-  if (savingProgress) {
-    if (!force) return
-    await waitForProgressSaveIdle()
-    if (savingProgress) return
-  }
-  savingProgress = true
-  try {
-    while (pendingProgressPayload) {
-      const elapsed = Date.now() - lastProgressRequestAt
-      if (!force && elapsed < SAVE_PROGRESS_MIN_INTERVAL) {
-        clearTimeout(saveTimer)
-        saveTimer = setTimeout(() => saveCurrentProgress(), SAVE_PROGRESS_MIN_INTERVAL - elapsed)
-        break
-      }
-      const nextPayload = pendingProgressPayload
-      pendingProgressPayload = null
-      const nextKey = progressSaveKey(nextPayload)
-      if (nextKey === lastProgressSaveKey && !force) continue
-      lastProgressRequestAt = Date.now()
-      const savedProgress = await reader.saveProgress(nextPayload)
-      upsertReaderBookProgress(savedProgress, { replace: true })
-      lastProgressSaveKey = nextKey
-    }
-  } finally {
-    savingProgress = false
-  }
-}
-
 function currentProgressPayload() {
   const snapshot = visibleChapterProgressSnapshot()
   const progressChapter = snapshot?.chapter || chapter.value
@@ -2765,36 +2702,7 @@ function upsertReaderBookProgress(progress, options = {}) {
 }
 
 function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
-  const progress = reader.progressByBook[targetBookId]
-  if (!progress) return ''
-  if (progress.pendingSync) return progress.baseUpdatedAt || ''
-  return progress.updatedAt || ''
-}
-
-function waitForProgressSaveIdle(timeout = 1500) {
-  const started = Date.now()
-  return new Promise(resolve => {
-    const tick = () => {
-      if (!savingProgress || Date.now() - started >= timeout) {
-        resolve()
-        return
-      }
-      window.setTimeout(tick, 40)
-    }
-    tick()
-  })
-}
-
-function progressSaveKey(payload) {
-  return [
-    payload.bookId,
-    payload.chapterId,
-    payload.chapterIndex,
-    payload.offset,
-    Math.round(Number(payload.percent || 0) * 10000),
-    Math.round(Number(payload.chapterPercent || 0) * 10000),
-    reader.mode,
-  ].join(':')
+  return readerProgressBaseUpdatedAt(reader.progressByBook[targetBookId])
 }
 
 function progressUpdatedAtMs(progress) {
