@@ -290,6 +290,7 @@ import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
+import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
@@ -340,6 +341,16 @@ const chapterLoadError = ref('')
 const chapterLoaded = ref(false)
 const contentEl = ref(null)
 const contentBody = ref(null)
+const {
+  consumeSuppressedContentClick,
+  schedule: scheduleSelectedTextOperation,
+  suppressContentClick,
+} = useReaderSelection({
+  contentBody,
+  getAction: () => reader.selectionAction,
+  onOperate: operateSelectedText,
+  onError: error => ElMessage.error(readError(error, '处理选中文字失败')),
+})
 const pageEl = ref(null)
 const shellEl = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
@@ -430,13 +441,10 @@ const chapterContentCache = createMultiBookChapterMemoryCache(3)
 let readerTouchStart = null
 let readerTouchMoved = false
 let readerTouchMove = { x: 0, y: 0 }
-let ignoreNextContentClick = false
 let handledTouchTapAt = 0
 let lastLocalProgressKey = ''
 let lastWheelPageAt = 0
 let extendingShowChapters = false
-let selectionOperateTimer = null
-let selectionOperating = false
 
 const fontOptions = readerFontOptions
 const SHOW_PREV_CHAPTER_SIZE = 1
@@ -665,7 +673,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   cancelProgressSave()
   clearTimeout(chapterLoadingTimer)
-  clearTimeout(selectionOperateTimer)
   stopAutoReading()
   saveCurrentProgress({ force: true, background: true })
   window.removeEventListener('resize', handleResize)
@@ -1933,10 +1940,7 @@ function handleTapZone(zone) {
 function handleReaderContentClick(event) {
   if (isOverlayOpen.value || !pageEl.value) return
   if (Date.now() - handledTouchTapAt < 450) return
-  if (ignoreNextContentClick) {
-    ignoreNextContentClick = false
-    return
-  }
+  if (consumeSuppressedContentClick()) return
   if (event.defaultPrevented || event.button !== 0) return
   const target = event.target
   if (target?.closest?.('button, a, input, textarea, select, [role="button"]')) return
@@ -1982,7 +1986,7 @@ function handleReaderTouchEnd(event) {
   if (!isMobileReader.value) return
   const touch = event.changedTouches?.[0]
   if (scheduleSelectedTextOperation(200)) {
-    ignoreNextContentClick = true
+    suppressContentClick()
     readerTouchStart = null
     readerTouchMoved = false
     readerTouchMove = { x: 0, y: 0 }
@@ -1991,11 +1995,8 @@ function handleReaderTouchEnd(event) {
   const elapsed = readerTouchStart ? Date.now() - readerTouchStart.at : 0
   const moveDistance = Math.hypot(Number(readerTouchMove.x || 0), Number(readerTouchMove.y || 0))
   const isTap = moveDistance <= MOBILE_TAP_MOVE_TOLERANCE && elapsed < 650 && Boolean(touch)
-  ignoreNextContentClick = Boolean(touch)
+  if (touch) suppressContentClick(360)
   if (isTap) handledTouchTapAt = Date.now()
-  setTimeout(() => {
-    ignoreNextContentClick = false
-  }, 360)
   if (readerTouchMoved && !isOverlayOpen.value && shouldHandleHorizontalSwipe()) {
     if (readerTouchMove.x > 0) previousPage()
     else nextPage()
@@ -2026,7 +2027,7 @@ function shouldHandleHorizontalSwipe() {
 function handleTapPoint(point) {
   if (isOverlayOpen.value || !point?.rect) return
   if (scheduleSelectedTextOperation(0)) {
-    ignoreNextContentClick = true
+    suppressContentClick()
     return
   }
   const viewportWidth = window.innerWidth || point.rect.width
@@ -2075,7 +2076,7 @@ function handleTapPoint(point) {
 function handleDesktopTapPoint(point) {
   if (isOverlayOpen.value || !point?.rect) return
   if (scheduleSelectedTextOperation(0)) {
-    ignoreNextContentClick = true
+    suppressContentClick()
     return
   }
   const viewportWidth = window.innerWidth || point.rect.width
@@ -2492,60 +2493,21 @@ function handleReaderSelectionEnd() {
   scheduleSelectedTextOperation(180)
 }
 
-function scheduleSelectedTextOperation(delay = 0) {
-  if (reader.selectionAction === '忽略') return false
-  clearTimeout(selectionOperateTimer)
-  const selectedNow = selectedReaderText()
-  selectionOperateTimer = window.setTimeout(() => {
-    const text = selectedReaderText()
-    if (!text) return
-    ignoreNextContentClick = true
-    handleSelectedTextOperation(text).catch(err => {
-      if (err === 'cancel' || err === 'close') return
-      ElMessage.error(readError(err, '处理选中文字失败'))
-    })
-  }, delay)
-  return Boolean(selectedNow)
-}
-
-function selectedReaderText() {
-  if (typeof window === 'undefined' || !contentBody.value) return ''
-  const selection = window.getSelection?.()
-  const text = selection?.toString?.().replace(/\s+/g, ' ').trim()
-  if (!text || !selection.rangeCount) return ''
-  const range = selection.getRangeAt(0)
-  const container = range.commonAncestorContainer?.nodeType === window.Node?.ELEMENT_NODE
-    ? range.commonAncestorContainer
-    : range.commonAncestorContainer?.parentElement
-  if (!container || !contentBody.value.contains(container)) return ''
-  return text.slice(0, 1000)
-}
-
-async function handleSelectedTextOperation(text) {
-  if (selectionOperating || reader.selectionAction === '忽略') return
-  selectionOperating = true
-  try {
-    const action = await ElMessageBox.confirm('请选择对选中文字执行的操作。', '选择文字', {
-      confirmButtonText: '添加过滤规则',
-      cancelButtonText: '添加书签',
-      distinguishCancelAndClose: true,
-      closeOnClickModal: false,
-      closeOnPressEscape: false,
-      type: 'info',
-    }).catch(result => result)
-    if (action === 'close') return
-    if (action === 'cancel') {
-      await createBookmarkFromSelectedText(text)
-      return
-    }
-    await createReplaceRuleFromSelectedText(text)
-  } finally {
-    clearReaderSelection()
-    selectionOperating = false
-    window.setTimeout(() => {
-      ignoreNextContentClick = false
-    }, 320)
+async function operateSelectedText(text) {
+  const action = await ElMessageBox.confirm('请选择对选中文字执行的操作。', '选择文字', {
+    confirmButtonText: '添加过滤规则',
+    cancelButtonText: '添加书签',
+    distinguishCancelAndClose: true,
+    closeOnClickModal: false,
+    closeOnPressEscape: false,
+    type: 'info',
+  }).catch(result => result)
+  if (action === 'close') return
+  if (action === 'cancel') {
+    await createBookmarkFromSelectedText(text)
+    return
   }
+  await createReplaceRuleFromSelectedText(text)
 }
 
 async function createReplaceRuleFromSelectedText(text) {
@@ -2584,14 +2546,6 @@ async function createBookmarkFromSelectedText(text) {
   })
   toastMsg.value = '书签已创建'
   setTimeout(() => { toastMsg.value = '' }, 1600)
-}
-
-function clearReaderSelection() {
-  try {
-    window.getSelection?.()?.removeAllRanges?.()
-  } catch {
-    // Selection APIs may be unavailable in embedded browsers.
-  }
 }
 
 function currentProgressPayload() {
