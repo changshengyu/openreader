@@ -85,19 +85,12 @@
           </template>
         </div>
       </article>
-      <div class="reader-tap-zones" aria-hidden="true">
-        <button class="tap-zone tap-left" type="button" tabindex="-1" @click="handleTapZone('left')" />
-        <button class="tap-zone tap-center" type="button" tabindex="-1" @click="handleTapZone('center')" />
-        <button class="tap-zone tap-right" type="button" tabindex="-1" @click="handleTapZone('right')" />
-        <button class="tap-zone tap-upper" type="button" tabindex="-1" @click="handleTapZone('upper')" />
-        <button class="tap-zone tap-lower" type="button" tabindex="-1" @click="handleTapZone('lower')" />
-      </div>
-      <div v-if="showClickZoneOverlay" class="click-zone-overlay" :class="{ flip: reader.mode === 'flip' }">
-        <div class="click-zone-piece click-zone-prev"><span>{{ reader.mode === 'flip' ? '点击前一页' : '点击向上翻页' }}</span></div>
-        <div class="click-zone-piece click-zone-menu"><span>点击显示菜单</span></div>
-        <div class="click-zone-piece click-zone-next"><span>{{ reader.mode === 'flip' ? '点击后一页' : '点击向下翻页' }}</span></div>
-        <button class="click-zone-close" type="button" @click="showClickZoneOverlay = false">关闭</button>
-      </div>
+      <ReaderClickZones
+        :mode="reader.mode"
+        :show-overlay="showClickZoneOverlay"
+        @tap="handleTapZone"
+        @close-overlay="showClickZoneOverlay = false"
+      />
     </section>
 
     <ReaderDesktopProgress
@@ -302,6 +295,7 @@ import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
+import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
 import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vue'
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
 import ReaderMobileChrome from '../components/reader/ReaderMobileChrome.vue'
@@ -3514,153 +3508,6 @@ function readError(err, fallback) {
   width: var(--reader-frame-width);
 }
 
-.reader-tap-zones {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: none;
-  pointer-events: none;
-}
-
-.tap-zone {
-  position: absolute;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.tap-left {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 24%;
-}
-
-.tap-right {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 24%;
-}
-
-.tap-center {
-  top: 35%;
-  right: 24%;
-  bottom: 35%;
-  left: 24%;
-}
-
-.tap-upper {
-  top: 0;
-  right: 24%;
-  left: 24%;
-  height: 35%;
-}
-
-.tap-lower {
-  right: 24%;
-  bottom: 0;
-  left: 24%;
-  height: 35%;
-}
-
-.reader-shell.scroll .tap-left,
-.reader-shell.scroll .tap-right,
-.reader-shell.scroll2 .tap-left,
-.reader-shell.scroll2 .tap-right,
-.reader-shell.page .tap-left,
-.reader-shell.page .tap-right {
-  display: none;
-}
-
-.reader-shell.scroll .tap-upper,
-.reader-shell.scroll .tap-lower,
-.reader-shell.scroll2 .tap-upper,
-.reader-shell.scroll2 .tap-lower,
-.reader-shell.page .tap-upper,
-.reader-shell.page .tap-lower {
-  right: 0;
-  left: 0;
-}
-
-.reader-shell.flip .tap-upper,
-.reader-shell.flip .tap-lower {
-  display: none;
-}
-
-.click-zone-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  grid-template-rows: 35% 30% 35%;
-  background: rgba(20, 20, 20, 0.08);
-}
-
-.click-zone-overlay.flip {
-  grid-template-columns: 24% 52% 24%;
-  grid-template-rows: 1fr;
-}
-
-.click-zone-piece {
-  display: grid;
-  place-items: center;
-  border: 1px dashed rgba(237, 66, 89, 0.55);
-  background: rgba(237, 66, 89, 0.08);
-  color: #ed4259;
-  font-size: 16px;
-  pointer-events: none;
-}
-
-.click-zone-piece span {
-  border-radius: 999px;
-  padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.click-zone-overlay.flip .click-zone-prev { grid-column: 1; }
-.click-zone-overlay.flip .click-zone-menu { grid-column: 2; }
-.click-zone-overlay.flip .click-zone-next { grid-column: 3; }
-
-.click-zone-close {
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
-  border: 0;
-  border-radius: 999px;
-  padding: 8px 16px;
-  background: #ed4259;
-  color: #fff;
-  cursor: pointer;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .reader-tap-zones {
-    display: block;
-  }
-  .tap-zone {
-    display: none;
-  }
-  .tap-center {
-    display: block;
-    pointer-events: none;
-  }
-  .reader-shell.scroll .tap-upper,
-  .reader-shell.scroll .tap-lower,
-  .reader-shell.scroll2 .tap-upper,
-  .reader-shell.scroll2 .tap-lower,
-  .reader-shell.page .tap-upper,
-  .reader-shell.page .tap-lower {
-    display: block;
-  }
-  .reader-shell.flip .tap-left,
-  .reader-shell.flip .tap-right {
-    display: block;
-  }
-}
-
 .reader-page-head {
   align-items: center; color: rgba(36,40,44,0.45);
   display: flex; font-size: 14px; justify-content: space-between;
@@ -3879,8 +3726,5 @@ function readError(err, fallback) {
     scroll-padding-bottom: calc(250px + env(safe-area-inset-bottom));
   }
   .reader-content h1 { font-size: var(--reader-heading-size); margin-bottom: 28px; }
-  .reader-tap-zones {
-    display: none;
-  }
 }
 </style>
