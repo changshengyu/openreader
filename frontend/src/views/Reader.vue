@@ -286,12 +286,13 @@ import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
+import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { normalizeImportedBookmarks } from '../utils/bookmark'
-import { cacheBookChaptersToBrowser, chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, listBookBrowserCachedChapters, loadBrowserChapterContent } from '../utils/bookChapterCache'
+import { chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
@@ -380,7 +381,6 @@ const tocPanelRef = ref(null)
 const tocLocateKey = ref(0)
 const tocReverse = ref(false)
 const tocRefreshing = ref(false)
-const browserCachedChapters = ref({})
 const {
   keyword: contentSearch,
   results: bookSearchResults,
@@ -404,8 +404,6 @@ const savingBookmark = ref(false)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
 let bookmarkReloadTimer
 const toastMsg = ref('')
-const isCachingContent = ref(false)
-const cachingContentTip = ref('')
 const progressVersion = ref(0)
 const customBg = ref('')
 const sliderLineHeight = ref(2.12)
@@ -417,7 +415,6 @@ const MOBILE_TAP_MOVE_TOLERANCE = 14
 let chapterLoadingTimer
 let restoringPosition = false
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
-let cachingContentCancelled = false
 let readerTouchStart = null
 let readerTouchMoved = false
 let readerTouchMove = { x: 0, y: 0 }
@@ -445,6 +442,28 @@ const isRemoteBook = computed(() => Number(book.value?.sourceId || 0) > 0)
 const isTextLocalBook = computed(() => checkTextLocalBook(book.value))
 const isEPUBLocalBook = computed(() => checkEPUBLocalBook(book.value))
 const canChangeLocalTocRule = computed(() => isTextLocalBook.value || isEPUBLocalBook.value)
+const {
+  cachedChapters: browserCachedChapters,
+  caching: isCachingContent,
+  statusText: cachingContentTip,
+  refresh: computeBrowserCachedChapters,
+  markCached: markBrowserChapterCached,
+  reset: resetBrowserCachedChapters,
+  cacheFollowing: cacheFollowingChapters,
+  cancel: cancelCachingContent,
+  clearBrowserCache: clearCurrentBookBrowserCache,
+} = useReaderChapterCache({
+  book,
+  bookId,
+  chapters,
+  currentIndex,
+  isRemoteBook,
+  afterCache: loadChapters,
+  onClearMemory: () => chapterContentCache.clearBook(currentChapterCacheBookKey()),
+  notify: showChapterCacheMessage,
+  onNoTargets: () => ElMessage.error('不需要缓存'),
+  onError: error => ElMessage.error(readError(error, '缓存章节失败')),
+})
 
 const chapterParagraphs = computed(() => {
   return makeParagraphs(content.value, chapter.value?.title)
@@ -934,7 +953,7 @@ async function resetReaderChapterCaches(options = {}) {
   const targetBook = options.book || book.value
   const targetBookId = targetBook?.id || bookId.value
   chapterContentCache.clearBook(currentChapterCacheBookKey(targetBook, targetBookId))
-  browserCachedChapters.value = {}
+  resetBrowserCachedChapters()
   if (!options.clearBrowser) return 0
   try {
     return await clearBookBrowserChapterCache(targetBook, targetBookId)
@@ -1068,7 +1087,7 @@ async function loadChapterContent(index, options = {}) {
     && Number(bookId.value) === Number(targetBookId)
     && currentChapterCacheBookKey() === cacheBookKey
   ) {
-    browserCachedChapters.value = { ...browserCachedChapters.value, [index]: true }
+    markBrowserChapterCached(index)
   }
   return data
 }
@@ -1413,14 +1432,6 @@ async function chooseReaderLocalTocRule() {
   return confirmed ? selected.value : null
 }
 
-async function computeBrowserCachedChapters() {
-  try {
-    browserCachedChapters.value = await listBookBrowserCachedChapters(book.value, bookId.value)
-  } catch {
-    browserCachedChapters.value = {}
-  }
-}
-
 function openSettingsDrawer() {
   mobileChromeVisible.value = false
   customBg.value = reader.customBgColor
@@ -1746,59 +1757,6 @@ async function reloadChapter() {
   setTimeout(() => { toastMsg.value = '' }, 1600)
 }
 
-async function cacheFollowingChapters(cacheCount) {
-  if (!isRemoteBook.value || isCachingContent.value) return
-  await computeBrowserCachedChapters()
-  const targets = cacheChapterTargets(cacheCount)
-  if (!targets.length) {
-    ElMessage.error('不需要缓存')
-    return
-  }
-  isCachingContent.value = true
-  cachingContentCancelled = false
-  cachingContentTip.value = `正在缓存章节 0/${targets.length}`
-  try {
-    const result = await cacheBookChaptersToBrowser(book.value, bookId.value, chapters.value, {
-      startIndex: currentIndex.value + 1,
-      count: cacheCount === true ? true : Number(cacheCount || 0),
-      cancelled: () => cachingContentCancelled,
-      onProgress: ({ finished, total }) => {
-        cachingContentTip.value = `正在缓存章节 ${finished}/${total}`
-      },
-    })
-    if (result.cancelled) {
-      toastMsg.value = `已取消，缓存 ${result.cached} 章`
-    } else {
-      toastMsg.value = `缓存完成：${result.cached} 章`
-    }
-    setTimeout(() => { toastMsg.value = '' }, 1600)
-  } finally {
-    isCachingContent.value = false
-    cachingContentTip.value = ''
-    cachingContentCancelled = false
-    computeBrowserCachedChapters()
-    await loadChapters()
-  }
-}
-
-function cacheChapterTargets(cacheCount) {
-  const start = currentIndex.value + 1
-  if (start >= chapters.value.length) return []
-  const end = cacheCount === true
-    ? chapters.value.length
-    : Math.min(chapters.value.length, start + Number(cacheCount || 0))
-  const targets = []
-  for (let index = start; index < end; index += 1) {
-    if (!browserCachedChapters.value[index]) targets.push(index)
-  }
-  return targets
-}
-
-function cancelCachingContent() {
-  cachingContentCancelled = true
-  cachingContentTip.value = '正在取消缓存...'
-}
-
 async function clearCurrentBookCache() {
   if (!isRemoteBook.value) return
   try {
@@ -1810,13 +1768,6 @@ async function clearCurrentBookCache() {
   } catch (err) {
     ElMessage.error(readError(err, '清理缓存失败'))
   }
-}
-
-async function clearCurrentBookBrowserCache() {
-  const removed = await clearBookBrowserChapterCache(book.value, bookId.value)
-  chapterContentCache.clearBook(currentChapterCacheBookKey())
-  browserCachedChapters.value = {}
-  return removed
 }
 
 async function advanceAutoReadingPage() {
@@ -1844,6 +1795,13 @@ function showTTSMessage(message, duration = 0) {
   setTimeout(() => {
     if (toastMsg.value === message) toastMsg.value = ''
   }, duration)
+}
+
+function showChapterCacheMessage(message) {
+  toastMsg.value = message
+  setTimeout(() => {
+    if (toastMsg.value === message) toastMsg.value = ''
+  }, 1600)
 }
 
 function toggleNight() {
@@ -2353,7 +2311,7 @@ async function handleReaderBookDataUpdated(event) {
   chapters.value = detail.chapters
   currentIndex.value = targetIndex
   chapterContentCache.clearBook(currentChapterCacheBookKey())
-  browserCachedChapters.value = {}
+  resetBrowserCachedChapters()
   resetContentSearchState()
   await computeBrowserCachedChapters()
   await loadChapter(targetIndex, restoreOffset, { restorePercent, refresh: true, saveAfterLoad: false })
