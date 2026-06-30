@@ -4,6 +4,8 @@
 
 轻量级、自部署、多端同步的小说阅读器。读自己的书，随时随地。
 
+欢迎各位使用 OpenReader，并积极提交 [Issues](https://github.com/changshengyu/openreader/issues) 反馈问题与建议。
+
 ![](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
 ![](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![](https://img.shields.io/badge/SQLite-WAL-brightgreen)
@@ -125,7 +127,7 @@ cd frontend && npm run build
 
 ## 致谢
 
-本项目是对 [hectorqin/reader](https://github.com/hectorqin/reader) 的重构与重写。感谢原作者的优秀工作和灵感。
+本项目基于原 Reader 项目的持续维护 fork [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev) 进行重构与重写。感谢所有上游作者和贡献者的优秀工作与启发。
 
 ## 许可证
 

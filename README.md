@@ -4,6 +4,8 @@
 
 A self-hosted, lightweight ebook reader with multi-device sync. Read your own books, from anywhere.
 
+Everyone is welcome to use OpenReader and actively submit [Issues](https://github.com/changshengyu/openreader/issues) with bug reports and suggestions.
+
 ![](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
 ![](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![](https://img.shields.io/badge/SQLite-WAL-brightgreen)
@@ -125,7 +127,7 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 
 ## Acknowledgments
 
-This project is a refactor and rewrite of [hectorqin/reader](https://github.com/hectorqin/reader), an excellent open-source reading platform. We are grateful for the original author's work and inspiration.
+This project is a refactor and rewrite based on [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev), a maintained fork of the original Reader project. We are grateful to all upstream authors and contributors for their work and inspiration.
 
 ## License
 
