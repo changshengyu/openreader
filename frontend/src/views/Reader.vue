@@ -381,25 +381,25 @@
       />
     </el-drawer>
 
-    <el-dialog v-model="showNoteDialog" title="添加笔记" width="360px">
-      <el-input v-model="noteText" type="textarea" :rows="4" placeholder="写下当前阅读位置的笔记..." />
-      <template #footer>
-        <el-button @click="showNoteDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveNote">保存</el-button>
-      </template>
-    </el-dialog>
+    <ReaderBookmarkFormDialog
+      v-model="showNoteDialog"
+      v-model:note="noteText"
+      dialog-title="添加笔记"
+      width="360px"
+      note-placeholder="写下当前阅读位置的笔记..."
+      @save="saveNote"
+    />
 
-    <el-dialog v-model="showBookmarkEditor" title="编辑书签" width="380px">
-      <div class="bookmark-editor">
-        <el-input v-model="bookmarkDraft.title" placeholder="标题" />
-        <el-input v-model="bookmarkDraft.excerpt" type="textarea" :rows="3" placeholder="摘录" />
-        <el-input v-model="bookmarkDraft.note" type="textarea" :rows="4" placeholder="笔记" />
-      </div>
-      <template #footer>
-        <el-button @click="showBookmarkEditor = false">取消</el-button>
-        <el-button type="primary" :loading="savingBookmark" @click="saveBookmarkEdit">保存</el-button>
-      </template>
-    </el-dialog>
+    <ReaderBookmarkFormDialog
+      v-model="showBookmarkEditor"
+      v-model:title="bookmarkDraft.title"
+      v-model:excerpt="bookmarkDraft.excerpt"
+      v-model:note="bookmarkDraft.note"
+      dialog-title="编辑书签"
+      show-details
+      :saving="savingBookmark"
+      @save="saveBookmarkEdit"
+    />
   </main>
 </template>
 
@@ -433,6 +433,7 @@ import { changeBookSource, createBookmarks, deleteBookmarks, listBookSourceCandi
 import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
+import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
 import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
 import ReaderMobileToolsPanel from '../components/reader/ReaderMobileToolsPanel.vue'
@@ -4120,12 +4121,6 @@ function readError(err, fallback) {
   justify-content: flex-end;
   gap: 14px;
 }
-/* ---- 编辑弹层 ---- */
-.bookmark-editor {
-  display: grid;
-  gap: 10px;
-}
-
 .empty-hint { color: #999; text-align: center; padding-top: 40px; text-indent: 0; }
 
 /* ---- 响应式 ---- */
