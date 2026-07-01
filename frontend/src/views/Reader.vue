@@ -301,6 +301,16 @@ import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
+import {
+  didReaderTouchMove,
+  isReaderTouchTap,
+  MOBILE_READER_TAP_MOVE_TOLERANCE,
+  normalizedReaderWheelDelta,
+  readerTapPointAction,
+  readerTapZoneAction,
+  shouldHandleReaderHorizontalSwipe,
+  shouldPreventReaderTouchMove,
+} from '../utils/readerInteraction'
 import { savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
@@ -447,8 +457,6 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
-const MOBILE_TAP_MOVE_TOLERANCE = 14
-
 let chapterLoadingTimer
 let restoringPosition = false
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
@@ -1834,38 +1842,15 @@ function seekCurrentChapterPercent(percent, options = {}) {
 
 function handleTapZone(zone) {
   if (isOverlayOpen.value) return
-  if (zone === 'center') {
-    toggleMobileReaderChrome()
-    return
-  }
-
-  if (autoReading.value) {
-    toggleMobileReaderChrome()
-    return
-  }
-
-  if (reader.clickMethod === 'next') {
-    mobileChromeVisible.value = false
-    nextPage()
-    return
-  }
-
-  if (reader.clickMethod === 'none') {
-    toggleMobileReaderChrome()
-    return
-  }
-
-  if (reader.mode === 'flip') {
-    if (zone === 'left') previousPage()
-    if (zone === 'right') nextPage()
-    return
-  }
-
-  if (zone === 'upper') {
-    previousPage()
-    return
-  }
-  if (zone === 'lower') nextPage()
+  applyReaderTapAction(readerTapZoneAction({
+    zone,
+    clickMethod: reader.clickMethod,
+    mode: reader.mode,
+    autoReading: autoReading.value,
+  }), {
+    mobile: true,
+    hideChrome: reader.clickMethod === 'next',
+  })
 }
 
 function handleReaderContentClick(event) {
@@ -1904,10 +1889,10 @@ function handleReaderTouchMove(event) {
   const moveX = touch.clientX - readerTouchStart.x
   const moveY = touch.clientY - readerTouchStart.y
   readerTouchMove = { x: moveX, y: moveY }
-  if (Math.hypot(moveX, moveY) > MOBILE_TAP_MOVE_TOLERANCE) {
+  if (didReaderTouchMove(readerTouchMove, MOBILE_READER_TAP_MOVE_TOLERANCE)) {
     readerTouchMoved = true
   }
-  if (reader.mode === 'flip' && Math.abs(moveX) > 12 && Math.abs(moveX) > Math.abs(moveY) + 8) {
+  if (shouldPreventReaderTouchMove({ mode: reader.mode, moveX, moveY })) {
     event.preventDefault()
     event.stopPropagation()
   }
@@ -1924,11 +1909,18 @@ function handleReaderTouchEnd(event) {
     return
   }
   const elapsed = readerTouchStart ? Date.now() - readerTouchStart.at : 0
-  const moveDistance = Math.hypot(Number(readerTouchMove.x || 0), Number(readerTouchMove.y || 0))
-  const isTap = moveDistance <= MOBILE_TAP_MOVE_TOLERANCE && elapsed < 650 && Boolean(touch)
+  const isTap = isReaderTouchTap({
+    move: readerTouchMove,
+    elapsed,
+    hasTouch: touch,
+    tolerance: MOBILE_READER_TAP_MOVE_TOLERANCE,
+  })
   if (touch) suppressContentClick(360)
   if (isTap) handledTouchTapAt = Date.now()
-  if (readerTouchMoved && !isOverlayOpen.value && shouldHandleHorizontalSwipe()) {
+  if (readerTouchMoved && !isOverlayOpen.value && shouldHandleReaderHorizontalSwipe({
+    mode: reader.mode,
+    move: readerTouchMove,
+  })) {
     if (readerTouchMove.x > 0) previousPage()
     else nextPage()
   } else if (!readerTouchMoved && !isOverlayOpen.value && pageEl.value) {
@@ -1948,13 +1940,6 @@ function handleReaderTouchEnd(event) {
   readerTouchMove = { x: 0, y: 0 }
 }
 
-function shouldHandleHorizontalSwipe() {
-  if (reader.mode !== 'flip') return false
-  const moveX = Number(readerTouchMove.x || 0)
-  const moveY = Number(readerTouchMove.y || 0)
-  return Math.abs(moveX) >= 42 && Math.abs(moveX) > Math.abs(moveY) * 1.2
-}
-
 function handleTapPoint(point) {
   if (isOverlayOpen.value || !point?.rect) return
   if (scheduleSelectedTextOperation(0)) {
@@ -1965,43 +1950,16 @@ function handleTapPoint(point) {
   const viewportHeight = window.innerHeight || point.rect.height
   const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
   const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
-  const midX = viewportWidth / 2
-  const midY = viewportHeight / 2
-  const centerWidthRatio = 0.2
-  const centerHeightRatio = 0.2
-  const inMenuZone = Math.abs(pointX - midX) <= viewportWidth * centerWidthRatio
-    && Math.abs(pointY - midY) <= viewportHeight * centerHeightRatio
-
-  if (inMenuZone) {
-    toggleReaderChrome()
-    return
-  }
-
-  if (autoReading.value) {
-    toggleMobileReaderChrome()
-    return
-  }
-
-  if (reader.clickMethod === 'next') {
-    mobileChromeVisible.value = false
-    nextPage()
-    return
-  }
-
-  if (reader.clickMethod === 'none') {
-    toggleReaderChrome()
-    return
-  }
-
-  mobileChromeVisible.value = false
-  if (reader.mode === 'flip') {
-    if (pointX > midX) nextPage()
-    else previousPage()
-    return
-  }
-
-  if (pointY > midY) nextPage()
-  else previousPage()
+  applyReaderTapAction(readerTapPointAction({
+    mobile: true,
+    pointX,
+    pointY,
+    viewportWidth,
+    viewportHeight,
+    clickMethod: reader.clickMethod,
+    mode: reader.mode,
+    autoReading: autoReading.value,
+  }), { mobile: true, hideChrome: true })
 }
 
 function handleDesktopTapPoint(point) {
@@ -2014,22 +1972,28 @@ function handleDesktopTapPoint(point) {
   const viewportHeight = window.innerHeight || point.rect.height
   const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
   const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
-  const midX = viewportWidth / 2
-  const midY = viewportHeight / 2
-  const inCenter = Math.abs(pointX - midX) <= viewportWidth * 0.2
-    && Math.abs(pointY - midY) <= viewportHeight * 0.2
-  if (inCenter || reader.clickMethod === 'none') return
-  if (reader.clickMethod === 'next') {
-    nextPage()
+  applyReaderTapAction(readerTapPointAction({
+    mobile: false,
+    pointX,
+    pointY,
+    viewportWidth,
+    viewportHeight,
+    clickMethod: reader.clickMethod,
+    mode: reader.mode,
+    autoReading: autoReading.value,
+  }))
+}
+
+function applyReaderTapAction(action, options = {}) {
+  if (!action) return
+  if (action === 'toggle-chrome') {
+    if (options.mobile) toggleMobileReaderChrome()
+    else toggleReaderChrome()
     return
   }
-  if (reader.mode === 'flip') {
-    if (pointX > midX) nextPage()
-    else previousPage()
-    return
-  }
-  if (pointY > midY) nextPage()
-  else previousPage()
+  if (options.hideChrome) mobileChromeVisible.value = false
+  if (action === 'next') nextPage()
+  if (action === 'previous') previousPage()
 }
 
 function handleReaderWheel(event) {
@@ -2039,7 +2003,14 @@ function handleReaderWheel(event) {
   if (!shellEl.value?.contains(event.target)) return
   const target = event.target
   if (target?.closest?.('a, input, textarea, select, .el-drawer, .el-dialog')) return
-  const delta = normalizedWheelDelta(event)
+  const delta = normalizedReaderWheelDelta({
+    deltaX: event.deltaX,
+    deltaY: event.deltaY,
+    deltaMode: event.deltaMode,
+    fontSize: reader.fontSize,
+    lineHeight: reader.lineHeight,
+    pageHeight: contentEl.value?.clientHeight || window.innerHeight || 800,
+  })
   if (Math.abs(delta) < 4) return
   if (isScrollRead.value) {
     if (!contentEl.value) return
@@ -2056,18 +2027,6 @@ function handleReaderWheel(event) {
   } else {
     previousPage()
   }
-}
-
-function normalizedWheelDelta(event) {
-  const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
-  if (event.deltaMode === 1) {
-    const lineHeight = Number(reader.fontSize || 18) * Number(reader.lineHeight || 1.8)
-    return rawDelta * Math.max(12, lineHeight)
-  }
-  if (event.deltaMode === 2) {
-    return rawDelta * (contentEl.value?.clientHeight || window.innerHeight || 800)
-  }
-  return rawDelta
 }
 
 function scrollReaderByWheel(delta) {
