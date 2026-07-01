@@ -292,6 +292,7 @@ import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderSelection } from '../composables/useReaderSelection'
+import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
 import { useReaderTTS } from '../composables/useReaderTTS'
@@ -637,6 +638,39 @@ const {
   makeChapterBlock,
   chapterBlockTextLength,
   nextFrame,
+})
+const {
+  jumpToFirstSearchMatch,
+  jumpToLine,
+  jumpToMatch: jumpToSearchMatch,
+  jumpToParagraph,
+  jumpToResult: jumpToBookSearchResult,
+  jumpToRouteLine,
+} = useReaderSearchNavigation({
+  keyword: contentSearch,
+  contentEl,
+  contentBody,
+  currentIndex,
+  chapterBlocks,
+  chapters,
+  chapter,
+  content,
+  page,
+  pageCount,
+  pageWidth,
+  getMode: () => reader.mode,
+  getRouteQuery: () => route.query,
+  closeDrawer: () => {
+    showSearchDrawer.value = false
+  },
+  navigate: query => router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query,
+  }),
+  loadChapter: (index, loadOptions) => loadChapter(index, 0, loadOptions),
+  flashParagraph,
+  saveProgress: () => saveCurrentProgress(),
 })
 
 const fontStack = computed(() => {
@@ -2469,133 +2503,6 @@ function parseRoutePercent(value) {
   if (value === undefined || value === null || value === '') return null
   const percent = Number(value)
   return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : null
-}
-
-async function jumpToBookSearchResult(result) {
-  showSearchDrawer.value = false
-  const targetIndex = Number(result.chapterIndex || 0)
-  const restorePercent = Number.isFinite(Number(result.percent)) ? Number(result.percent) : null
-  if (targetIndex === currentIndex.value) {
-    await loadChapter(targetIndex, 0, { restorePercent, saveAfterLoad: true })
-  } else {
-    await router.replace({ name: 'reader', params: { id: bookId.value }, query: { chapter: targetIndex, percent: restorePercent ?? undefined } })
-    await loadChapter(targetIndex, 0, { restorePercent, saveAfterLoad: true })
-  }
-  await nextTick()
-  if (jumpToSearchMatch(result)) {
-    return
-  }
-  if (Number.isInteger(result.lineIndex)) {
-    jumpToLine(result.lineIndex)
-  } else {
-    jumpToFirstSearchMatch()
-  }
-}
-
-function jumpToFirstSearchMatch() {
-  const keyword = contentSearch.value.trim().toLowerCase()
-  if (!keyword || !contentBody.value) return
-  const scope = contentBody.value.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`) || contentBody.value
-  const paragraphList = [...scope.querySelectorAll('p')]
-  const index = paragraphList.findIndex(item => item.textContent.toLowerCase().includes(keyword))
-  if (index >= 0) jumpToLine(index)
-}
-
-function jumpToSearchMatch(result) {
-  const keyword = String(result?.query || contentSearch.value || route.query.q || '').trim()
-  if (!keyword || !contentBody.value) return false
-  const targetIndex = Number.isInteger(result?.resultCountWithinChapter)
-    ? result.resultCountWithinChapter
-    : Number(result?.resultCountWithinChapter ?? route.query.match ?? 0)
-  const expectedIndex = Number.isFinite(targetIndex) ? Math.max(0, Math.floor(targetIndex)) : 0
-  const scope = contentBody.value.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`) || contentBody.value
-  const paragraphs = [...scope.querySelectorAll('p')]
-  let matchCount = 0
-  for (let index = 0; index < paragraphs.length; index += 1) {
-    const text = paragraphs[index].textContent || ''
-    const exactMatches = countTextMatches(text, keyword)
-    if (matchCount + exactMatches > expectedIndex) {
-      jumpToParagraph(paragraphs[index])
-      return true
-    }
-    matchCount += exactMatches
-  }
-  const normalizedKeyword = normalizeSearchText(keyword)
-  if (!normalizedKeyword) return false
-  matchCount = 0
-  for (let index = 0; index < paragraphs.length; index += 1) {
-    const text = normalizeSearchText(paragraphs[index].textContent || '')
-    const matches = countTextMatches(text, normalizedKeyword)
-    if (matchCount + matches > expectedIndex) {
-      jumpToParagraph(paragraphs[index])
-      return true
-    }
-    matchCount += matches
-  }
-  return false
-}
-
-function countTextMatches(text, keyword) {
-  const haystack = String(text || '').toLowerCase()
-  const needle = String(keyword || '').toLowerCase()
-  if (!haystack || !needle) return 0
-  let count = 0
-  for (let offset = 0; offset < haystack.length;) {
-    const position = haystack.indexOf(needle, offset)
-    if (position < 0) break
-    count += 1
-    offset = position + Math.max(needle.length, 1)
-  }
-  return count
-}
-
-function normalizeSearchText(value) {
-  return String(value || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
-}
-
-function jumpToLine(index) {
-  const scope = contentBody.value?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`) || contentBody.value
-  const lineEl = scope?.querySelectorAll('p')?.[index]
-  if (!lineEl) return
-  jumpToParagraph(lineEl)
-}
-
-function jumpToParagraph(lineEl, options = {}) {
-  if (!lineEl) return
-  showSearchDrawer.value = false
-  const chapterEl = lineEl.closest?.('.chapter-content')
-  const chapterIndex = Number(chapterEl?.dataset?.index)
-  if (Number.isInteger(chapterIndex) && chapterIndex !== currentIndex.value) {
-    currentIndex.value = chapterIndex
-    const block = chapterBlocks.value.find(item => item.index === chapterIndex)
-    chapter.value = chapters.value[chapterIndex] || (block?.id ? { id: block.id, title: block.title, index: chapterIndex } : chapter.value)
-    content.value = block?.content || content.value
-  }
-  if (reader.mode === 'flip') {
-    page.value = Math.min(pageCount.value - 1, Math.floor(lineEl.offsetLeft / Math.max(pageWidth.value, 1)))
-  } else if (contentEl.value) {
-    contentEl.value.scrollTop = Math.max(0, lineEl.offsetTop - 80)
-  }
-  if (options.flash !== false) flashParagraph(lineEl)
-  if (options.save !== false) saveCurrentProgress()
-}
-
-async function jumpToRouteLine() {
-  if (route.query.q !== undefined && route.query.match !== undefined) {
-    await nextTick()
-    if (jumpToSearchMatch({
-      query: route.query.q,
-      resultCountWithinChapter: Number(route.query.match),
-      lineIndex: Number(route.query.line),
-    })) {
-      return
-    }
-  }
-  if (route.query.line === undefined) return
-  const index = Number(route.query.line)
-  if (!Number.isFinite(index)) return
-  await nextTick()
-  jumpToLine(Math.max(0, Math.floor(index)))
 }
 
 function flashParagraph(lineEl) {

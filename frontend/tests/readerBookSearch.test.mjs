@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  bookContentSearchParagraphIndex,
   bookContentSearchMaxRounds,
   bookContentSearchPagingParams,
   bookContentSearchStatus,
+  countBookContentMatches,
+  normalizeBookContentSearchText,
 } from '../src/utils/readerBookSearch.js'
 
 test('uses bounded remote and expanded local book search windows', () => {
@@ -41,4 +44,17 @@ test('formats book content search progress from scanned chapters', () => {
     searched: false,
     resultCount: 5,
   }), '')
+})
+
+test('finds the paragraph containing the requested exact or normalized match', () => {
+  assert.equal(countBookContentMatches('目标目标', '目标'), 2)
+  assert.equal(bookContentSearchParagraphIndex([
+    '第一处目标',
+    '第二处目标和第三处目标',
+  ], '目标', 2), 1)
+  assert.equal(normalizeBookContentSearchText('目 标，！'), '目标')
+  assert.equal(bookContentSearchParagraphIndex([
+    '没有',
+    '目 标，出现',
+  ], '目标', 0), 1)
 })
