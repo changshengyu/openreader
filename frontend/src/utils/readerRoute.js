@@ -1,5 +1,11 @@
 import { newestProgress } from './bookOrder.js'
 
+export function parseReaderRoutePercent(value) {
+  if (value === undefined || value === null || value === '') return null
+  const percent = Number(value)
+  return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : null
+}
+
 export function readerRouteQueryFromBook(book, progressOverride = null, totalChaptersOverride = null) {
   const progress = newestProgress(book?.progress || null, progressOverride || null)
   const query = { resume: '1' }

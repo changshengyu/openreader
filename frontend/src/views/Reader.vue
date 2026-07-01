@@ -295,6 +295,7 @@ import { useReaderProgressControls } from '../composables/useReaderProgressContr
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderMode } from '../composables/useReaderMode'
+import { useReaderRouteSync } from '../composables/useReaderRouteSync'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
@@ -330,7 +331,7 @@ import {
   restoredReaderFlipPage,
   restoredReaderSingleChapterScrollTop,
 } from '../utils/readerPosition'
-import { savedBookChapterPercent } from '../utils/readerRoute'
+import { parseReaderRoutePercent, savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import {
   adjacentReaderChapterIndex,
@@ -906,6 +907,23 @@ const {
   notify: showReaderToast,
 })
 
+useReaderRouteSync({
+  bookId,
+  currentIndex,
+  positionQuery: () => [route.query.chapter, route.query.offset, route.query.percent],
+  searchQuery: () => [route.query.line, route.query.match, route.query.q],
+  loadBook: () => loadReaderBook(),
+  loadChapter: (index, offset, options) => loadChapter(index, offset, options),
+  jumpToRouteLine,
+  onBookLoadStart: () => {
+    chapterLoadError.value = ''
+  },
+  onBookLoadError: error => {
+    chapterLoadError.value = readError(error, '章节加载失败')
+    chapterLoading.value = false
+  },
+})
+
 onMounted(async () => {
   reader.normalizeSettings()
   syncReaderFontFaces(reader.customFontsMap)
@@ -944,30 +962,6 @@ onBeforeUnmount(() => {
 
 onBeforeRouteLeave(() => {
   saveCurrentProgress({ force: true, background: true })
-})
-
-watch(bookId, async () => {
-  chapterLoadError.value = ''
-  try {
-    await loadReaderBook()
-  } catch (err) {
-    chapterLoadError.value = readError(err, '章节加载失败')
-    chapterLoading.value = false
-  }
-})
-
-watch(() => [route.query.chapter, route.query.offset, route.query.percent], async ([q, offset, percent]) => {
-  const idx = Number(q || 0)
-  const nextOffset = Number(offset || 0)
-  const restorePercent = parseRoutePercent(percent)
-  if (idx !== currentIndex.value || offset !== undefined || restorePercent !== null) {
-    await loadChapter(idx, nextOffset, { restorePercent, saveAfterLoad: idx !== currentIndex.value || offset !== undefined || restorePercent !== null })
-  }
-  await jumpToRouteLine()
-})
-
-watch(() => [route.query.line, route.query.match, route.query.q], async () => {
-  await jumpToRouteLine()
 })
 
 watch(() => [reader.fontFamily, reader.chineseFont, reader.fontSize, reader.fontWeight, reader.lineHeight, reader.paragraphSpace, reader.columnWidth], async () => {
@@ -1067,7 +1061,7 @@ async function loadReaderBook() {
   const initialOffset = hasRouteOffset
     ? Number(route.query.offset || 0)
     : (shouldUseSavedPosition ? Number(saved?.offset || 0) : 0)
-  const routePercent = resumeFromProgress ? null : parseRoutePercent(route.query.percent)
+  const routePercent = resumeFromProgress ? null : parseReaderRoutePercent(route.query.percent)
   const savedPercent = shouldUseSavedPosition ? savedBookChapterPercent(saved, chapters.value.length) : null
   await loadChapter(currentIndex.value, initialOffset, {
     restorePercent: routePercent ?? (hasRouteOffset ? null : savedPercent),
@@ -2264,12 +2258,6 @@ function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
 function progressUpdatedAtMs(progress) {
   const time = Date.parse(progress?.updatedAt || '')
   return Number.isFinite(time) ? time : 0
-}
-
-function parseRoutePercent(value) {
-  if (value === undefined || value === null || value === '') return null
-  const percent = Number(value)
-  return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : null
 }
 
 function flashParagraph(lineEl) {
