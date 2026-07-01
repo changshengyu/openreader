@@ -284,6 +284,7 @@ import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
+import { useReaderAppearanceAssets } from '../composables/useReaderAppearanceAssets'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
@@ -352,6 +353,21 @@ const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const bookId = computed(() => Number(route.params.id))
+const {
+  clearBgImage,
+  clearFontFile,
+  pickBgImage,
+  pickFontFile,
+  setTheme,
+  toggleNight,
+} = useReaderAppearanceAssets({
+  reader,
+  upload: uploadAsset,
+  removeAsset: deleteAsset,
+  syncFonts: syncReaderFontFaces,
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 
 const book = ref(null)
 const chapters = ref([])
@@ -1412,60 +1428,6 @@ async function handleReplaceRulesUpdated() {
   }
 }
 
-function setTheme(theme) { reader.setTheme(theme) }
-
-async function pickBgImage(data) {
-  const file = data.raw || data.file
-  if (!file) return
-  try {
-    const { data: result } = await uploadAsset({ file, type: 'background' })
-    if (!result?.url) throw new Error('上传结果缺少背景图地址')
-    reader.addCustomBgImage(result.url)
-    ElMessage.success('阅读背景图已上传')
-  } catch (err) {
-    ElMessage.error(readError(err, '上传背景图失败'))
-  }
-}
-
-async function clearBgImage(image) {
-  if (!image) return
-  try {
-    await deleteAsset(image)
-    reader.removeCustomBgImage(image)
-    ElMessage.success('已删除阅读背景图')
-  } catch (err) {
-    ElMessage.error(readError(err, '删除阅读背景图失败'))
-  }
-}
-
-async function pickFontFile({ file, font }) {
-  const rawFile = file?.raw || file?.file || file
-  if (!rawFile || !font?.value) return
-  try {
-    const { data } = await uploadAsset({ file: rawFile, type: 'font' })
-    if (!data?.url) throw new Error('上传结果缺少字体地址')
-    reader.setCustomFont(font.value, data.url)
-    reader.setFontFamily(font.value)
-    syncReaderFontFaces(reader.customFontsMap)
-    ElMessage.success(`已上传${font.label}字体`)
-  } catch (err) {
-    ElMessage.error(readError(err, '上传字体失败'))
-  }
-}
-
-async function clearFontFile(font) {
-  const url = reader.customFontsMap?.[font?.value]
-  if (!url || !font?.value) return
-  try {
-    await deleteAsset(url)
-    reader.clearCustomFont(font.value)
-    syncReaderFontFaces(reader.customFontsMap)
-    ElMessage.success(`已恢复默认${font.label}字体`)
-  } catch (err) {
-    ElMessage.error(readError(err, '恢复默认字体失败'))
-  }
-}
-
 async function changeReaderLocalTocRule() {
   if (!book.value || !canChangeLocalTocRule.value) return
   const tocRule = await chooseReaderLocalTocRule()
@@ -1813,10 +1775,6 @@ function showReaderToast(message, duration = 1600) {
   setTimeout(() => {
     if (toastMsg.value === message) toastMsg.value = ''
   }, duration)
-}
-
-function toggleNight() {
-  reader.setTheme(reader.theme === 'dark' || reader.theme === 'black' ? 'parchment' : 'dark')
 }
 
 function scrollStep() {
