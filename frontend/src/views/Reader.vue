@@ -291,8 +291,8 @@ import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderSelection } from '../composables/useReaderSelection'
+import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderTTS } from '../composables/useReaderTTS'
-import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { normalizeImportedBookmarks } from '../utils/bookmark'
 import { chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, loadBrowserChapterContent } from '../utils/bookChapterCache'
@@ -300,7 +300,7 @@ import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
-import { readerRouteQueryFromBook, savedBookChapterPercent } from '../utils/readerRoute'
+import { savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
 import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
@@ -360,7 +360,6 @@ const showTocDrawer = ref(false)
 const showSettingsDrawer = ref(false)
 const showBookmarkDrawer = ref(false)
 const showSearchDrawer = ref(false)
-const showShelfDrawer = ref(false)
 const showSourceDrawer = ref(false)
 const showMobileMoreDrawer = ref(false)
 const showCacheDrawer = ref(false)
@@ -400,8 +399,27 @@ const {
   onSuccess: (_data, source) => ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`),
   onError: error => ElMessage.error(readError(error, '换源失败')),
 })
-const shelfLoading = ref(false)
-const shelfPanelRef = ref(null)
+const {
+  visible: showShelfDrawer,
+  loading: shelfLoading,
+  panelRef: shelfPanelRef,
+  books: filteredShelfBooks,
+  open: openShelfPanel,
+  locateCurrentBook: locateReaderShelfCurrentBook,
+  select: changeBookFromShelf,
+  refresh: refreshReaderShelf,
+} = useReaderShelf({
+  bookshelf,
+  reader,
+  currentBookId: bookId,
+  currentChapterCount: () => chapters.value.length,
+  router,
+  beforeOpen: () => {
+    mobileChromeVisible.value = false
+  },
+  saveProgress: () => saveCurrentProgress({ force: true }),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const tocPanelRef = ref(null)
 const tocLocateKey = ref(0)
 const tocReverse = ref(false)
@@ -450,10 +468,6 @@ const fontOptions = readerFontOptions
 const SHOW_PREV_CHAPTER_SIZE = 1
 const SHOW_NEXT_CHAPTER_SIZE = 2
 
-const filteredShelfBooks = computed(() => {
-  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
-  return sortByShelfOrder(books, reader.progressByBook)
-})
 const currentSourceName = computed(() => {
   if (!book.value?.sourceId) return '本地书籍'
   return sourceGroupOptions.value.find(source => Number(source.id) === Number(book.value.sourceId))?.name || '当前来源'
@@ -1449,63 +1463,6 @@ async function goShelf() {
   saveCurrentProgress({ force: true, background: true })
   await router.push({ name: 'home' })
 }
-async function openShelfPanel() {
-  mobileChromeVisible.value = false
-  showShelfDrawer.value = true
-  if (bookshelf.books.length) {
-    window.setTimeout(locateReaderShelfCurrentBook, 0)
-    return
-  }
-  shelfLoading.value = true
-  try {
-    await bookshelf.ensureBooksLoaded({ all: true })
-    locateReaderShelfCurrentBook()
-  } catch (err) {
-    ElMessage.error(readError(err, '加载书架失败'))
-  } finally {
-    shelfLoading.value = false
-  }
-}
-
-function locateReaderShelfCurrentBook(attempt = 0) {
-  nextTick(() => {
-    const panel = shelfPanelRef.value
-    if (panel?.locateCurrentBook) {
-      panel.locateCurrentBook()
-      return
-    }
-    if (attempt < 20 && showShelfDrawer.value && filteredShelfBooks.value.length) {
-      window.setTimeout(() => locateReaderShelfCurrentBook(attempt + 1), 50)
-    }
-  })
-}
-
-async function changeBookFromShelf(item) {
-  showShelfDrawer.value = false
-  if (item.id === bookId.value) return
-  await saveCurrentProgress({ force: true })
-  await router.push({ name: 'reader', params: { id: item.id }, query: readerRouteQueryForBook(item) })
-}
-
-function readerRouteQueryForBook(item) {
-  return readerRouteQueryFromBook(item, shelfItemProgress(item), item?.chapterCount || chapters.value.length)
-}
-
-function shelfItemProgress(item) {
-  return newestBookProgress(item, reader.progressByBook)
-}
-
-async function refreshReaderShelf() {
-  shelfLoading.value = true
-  try {
-    await bookshelf.loadBooks({ force: true, all: true })
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新书架失败'))
-  } finally {
-    shelfLoading.value = false
-  }
-}
-
 function openReaderBookInfo() {
   if (!book.value) return
   const hasRemoteSource = isRemoteBook.value

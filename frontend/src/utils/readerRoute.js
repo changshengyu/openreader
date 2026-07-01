@@ -1,4 +1,4 @@
-import { newestProgress } from './bookOrder'
+import { newestProgress } from './bookOrder.js'
 
 export function readerRouteQueryFromBook(book, progressOverride = null, totalChaptersOverride = null) {
   const progress = newestProgress(book?.progress || null, progressOverride || null)
