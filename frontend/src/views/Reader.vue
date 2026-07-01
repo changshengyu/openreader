@@ -291,6 +291,7 @@ import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
+import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
@@ -323,8 +324,6 @@ import {
   readerVerticalPageLayout,
 } from '../utils/readerPagination'
 import {
-  readerChapterBoundaryScrollTop,
-  readerParagraphAtPosition,
   READER_CHAPTER_END_OFFSET,
   restoredReaderContinuousScrollTop,
   restoredReaderFlipPage,
@@ -569,7 +568,7 @@ const {
   },
   refreshCachedChapters: computeBrowserCachedChapters,
   syncCurrentChapter: updateCurrentChapterFromScroll,
-  goChapter,
+  goChapter: (...args) => goChapter(...args),
   refreshRemoteCatalog: refreshReaderBookCatalog,
   refreshLocalCatalog: loadChapters,
 })
@@ -671,6 +670,44 @@ const {
   loadChapter: (index, loadOptions) => loadChapter(index, 0, loadOptions),
   flashParagraph,
   saveProgress: () => saveCurrentProgress(),
+})
+const {
+  goChapter,
+  jumpToLoadedChapter,
+  jumpWithinCurrentChapter,
+  nextPage,
+  paragraphByChapterPosition,
+  previousPage,
+  scrollToBottom,
+  scrollToTop,
+} = useReaderNavigation({
+  contentEl,
+  contentBody,
+  chapterBlocks,
+  chapters,
+  currentIndex,
+  chapter,
+  content,
+  page,
+  pageCount,
+  progressVersion,
+  isContinuousScrollRead,
+  isVerticalRead,
+  getMode: () => reader.mode,
+  getAnimateDuration: () => reader.animateDuration,
+  scrollStep,
+  scrollBehavior: readerScrollBehavior,
+  jumpToParagraph,
+  closeToc: () => {
+    showTocDrawer.value = false
+  },
+  navigate: query => router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query,
+  }),
+  saveProgress: () => saveCurrentProgress(),
+  scheduleProgressSave: delay => scheduleProgressSave(delay),
 })
 
 const fontStack = computed(() => {
@@ -1350,12 +1387,6 @@ function restoreByChapterPosition(position) {
   return true
 }
 
-function paragraphByChapterPosition(chapterEl, position) {
-  if (!chapterEl || !Number.isFinite(position) || position <= 0) return null
-  const nodes = [...chapterEl.querySelectorAll('h1[data-pos], [data-reader-block][data-pos]')]
-  return readerParagraphAtPosition(nodes, position)
-}
-
 function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
 }
@@ -1423,98 +1454,6 @@ async function clearFontFile(font) {
   } catch (err) {
     ElMessage.error(readError(err, '恢复默认字体失败'))
   }
-}
-
-async function goChapter(index, offset = 0) {
-  const targetIndex = Math.max(0, Math.min(Number(index), Math.max(chapters.value.length - 1, 0)))
-  if (targetIndex === currentIndex.value) {
-    showTocDrawer.value = false
-    jumpWithinCurrentChapter(offset)
-    return
-  }
-  if (isContinuousScrollRead.value && jumpToLoadedChapter(targetIndex, offset)) {
-    showTocDrawer.value = false
-    return
-  }
-  const query = { chapter: targetIndex }
-  if (offset) query.offset = offset
-  await router.replace({ name: 'reader', params: { id: bookId.value }, query })
-}
-
-function jumpWithinCurrentChapter(offset = 0) {
-  if (reader.mode === 'flip') {
-    page.value = restoredReaderFlipPage({
-      offset: Number(offset) === READER_CHAPTER_END_OFFSET ? READER_CHAPTER_END_OFFSET : 0,
-      percent: null,
-      pageCount: pageCount.value,
-    })
-    progressVersion.value += 1
-    saveCurrentProgress()
-    return
-  }
-  if (jumpToLoadedChapter(currentIndex.value, offset)) return
-  if (!contentEl.value) return
-  contentEl.value.scrollTo({
-    top: restoredReaderSingleChapterScrollTop({
-      offset: Number(offset) === READER_CHAPTER_END_OFFSET ? READER_CHAPTER_END_OFFSET : 0,
-      percent: null,
-      scrollHeight: contentEl.value.scrollHeight,
-      clientHeight: contentEl.value.clientHeight,
-    }),
-    behavior: readerScrollBehavior(),
-  })
-  progressVersion.value += 1
-  saveCurrentProgress()
-}
-
-function jumpToLoadedChapter(index, offset = 0) {
-  if (!contentEl.value || !contentBody.value) return false
-  const targetIndex = Math.max(0, Math.min(Number(index), Math.max(chapters.value.length - 1, 0)))
-  const chapterEl = contentBody.value.querySelector(`.chapter-content[data-index="${targetIndex}"]`)
-  if (!chapterEl) return false
-  const block = chapterBlocks.value.find(item => item.index === targetIndex)
-  currentIndex.value = targetIndex
-  chapter.value = chapters.value[targetIndex] || (block?.id ? { id: block.id, title: block.title, index: targetIndex } : chapter.value)
-  content.value = block?.content || content.value
-  if (Number(offset) === READER_CHAPTER_END_OFFSET) {
-    contentEl.value.scrollTo({
-      top: readerChapterBoundaryScrollTop({
-        chapterTop: chapterEl.offsetTop,
-        chapterHeight: chapterEl.offsetHeight,
-        clientHeight: contentEl.value.clientHeight,
-        end: true,
-      }),
-      behavior: readerScrollBehavior(),
-    })
-  } else if (offset > 0) {
-    const target = paragraphByChapterPosition(chapterEl, offset)
-    if (target) {
-      jumpToParagraph(target, { save: false, flash: false })
-    } else {
-      contentEl.value.scrollTo({
-        top: readerChapterBoundaryScrollTop({
-          chapterTop: chapterEl.offsetTop,
-          chapterHeight: chapterEl.offsetHeight,
-          clientHeight: contentEl.value.clientHeight,
-          end: false,
-        }),
-        behavior: readerScrollBehavior(),
-      })
-    }
-  } else {
-    contentEl.value.scrollTo({
-      top: readerChapterBoundaryScrollTop({
-        chapterTop: chapterEl.offsetTop,
-        chapterHeight: chapterEl.offsetHeight,
-        clientHeight: contentEl.value.clientHeight,
-        end: false,
-      }),
-      behavior: readerScrollBehavior(),
-    })
-  }
-  progressVersion.value += 1
-  scheduleProgressSave(Math.max(300, reader.animateDuration + 80))
-  return true
 }
 
 async function changeReaderLocalTocRule() {
@@ -1868,43 +1807,6 @@ function showReaderToast(message, duration = 1600) {
 
 function toggleNight() {
   reader.setTheme(reader.theme === 'dark' || reader.theme === 'black' ? 'parchment' : 'dark')
-}
-
-async function previousPage() {
-  if (reader.mode === 'flip' && page.value > 0) {
-    page.value -= 1
-    progressVersion.value += 1
-    saveCurrentProgress()
-    return
-  }
-  if (isVerticalRead.value && contentEl.value) {
-    const el = contentEl.value
-    if (el.scrollTop > 8) {
-      el.scrollBy({ top: -scrollStep(), behavior: readerScrollBehavior() })
-      scheduleProgressSave(reader.animateDuration + 60)
-      return
-    }
-  }
-  if (currentIndex.value > 0) await goChapter(currentIndex.value - 1, READER_CHAPTER_END_OFFSET)
-}
-
-async function nextPage() {
-  if (reader.mode === 'flip' && page.value < pageCount.value - 1) {
-    page.value += 1
-    progressVersion.value += 1
-    saveCurrentProgress()
-    return
-  }
-  if (isVerticalRead.value && contentEl.value) {
-    const el = contentEl.value
-    const bottom = el.scrollHeight - el.clientHeight
-    if (el.scrollTop < bottom - 8) {
-      el.scrollBy({ top: scrollStep(), behavior: readerScrollBehavior() })
-      scheduleProgressSave(reader.animateDuration + 60)
-      return
-    }
-  }
-  if (currentIndex.value < chapters.value.length - 1) await goChapter(currentIndex.value + 1)
 }
 
 function scrollStep() {
@@ -2511,34 +2413,6 @@ function flashParagraph(lineEl) {
     lineEl.classList.add('reader-search-active')
     window.setTimeout(() => lineEl.classList.remove('reader-search-active'), 1800)
   })
-}
-
-function scrollToTop() {
-  if (reader.mode === 'flip') {
-    page.value = 0
-    progressVersion.value += 1
-    saveCurrentProgress()
-    return
-  }
-  if (contentEl.value) {
-    contentEl.value.scrollTop = 0
-    progressVersion.value += 1
-    saveCurrentProgress()
-  }
-}
-
-function scrollToBottom() {
-  if (reader.mode === 'flip') {
-    page.value = Math.max(0, pageCount.value - 1)
-    progressVersion.value += 1
-    saveCurrentProgress()
-    return
-  }
-  if (contentEl.value) {
-    contentEl.value.scrollTop = Math.max(0, contentEl.value.scrollHeight - contentEl.value.clientHeight)
-    progressVersion.value += 1
-    saveCurrentProgress()
-  }
 }
 
 // ---- Keyboard ----
