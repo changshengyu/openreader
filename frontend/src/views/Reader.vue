@@ -340,6 +340,12 @@ import {
 } from '../utils/readerChapterWindow'
 import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
 import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
+import {
+  readerBlockTextOffset,
+  readerScrollTextOffset,
+  readerTextProgress,
+  selectVisibleReaderBlock,
+} from '../utils/readerVisibility'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
@@ -2269,17 +2275,19 @@ function currentChapterPosition() {
   const paragraph = currentVisibleParagraph()
   const paragraphPos = Number(paragraph?.dataset?.pos)
   if (Number.isFinite(paragraphPos)) {
-    const rect = paragraph.getBoundingClientRect()
-    const anchorY = viewport.top + Math.min(viewport.height * 0.32, 180)
-    const ratio = rect.height > 0 ? Math.max(0, Math.min(1, (anchorY - rect.top) / rect.height)) : 0
-    const extra = Math.round((paragraph.textContent?.length || 0) * ratio)
-    return Math.max(0, Math.round(paragraphPos + extra))
+    return readerBlockTextOffset({
+      blockPosition: paragraphPos,
+      textLength: paragraph.textContent?.length || 0,
+      blockRect: paragraph.getBoundingClientRect(),
+      viewport,
+    })
   }
-  const bottom = Math.max(el.scrollHeight - el.clientHeight, 1)
-  const textLength = Math.max(chapterTextLength.value, 1)
-  const scrollPercent = Math.max(0, Math.min(1, Number(el.scrollTop || 0) / bottom))
-  if (scrollPercent > 0) return Math.round(scrollPercent * textLength)
-  return 0
+  return readerScrollTextOffset({
+    scrollTop: el.scrollTop,
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+    textLength: chapterTextLength.value,
+  })
 }
 
 function visibleChapterProgressSnapshot() {
@@ -2301,36 +2309,28 @@ function visibleChapterProgressSnapshot() {
     chapterIndex,
     chapter: chapters.value[chapterIndex] || (block?.id ? { id: block.id, title: block.title, index: chapterIndex } : null),
     offset,
-    chapterPercent: Math.max(0, Math.min(1, offset / textLength)),
+    chapterPercent: readerTextProgress(offset, textLength),
   }
 }
 
 function visibleParagraphOffset(paragraph, paragraphPos) {
   const viewport = contentEl.value?.getBoundingClientRect()
-  if (!viewport) return Math.max(0, Math.round(paragraphPos))
-  const rect = paragraph.getBoundingClientRect()
-  const anchorY = viewport.top + Math.min(viewport.height * 0.32, 180)
-  const ratio = rect.height > 0 ? Math.max(0, Math.min(1, (anchorY - rect.top) / rect.height)) : 0
-  const extra = Math.round((paragraph.textContent?.length || 0) * ratio)
-  return Math.max(0, Math.round(paragraphPos + extra))
+  return readerBlockTextOffset({
+    blockPosition: paragraphPos,
+    textLength: paragraph.textContent?.length || 0,
+    blockRect: viewport ? paragraph.getBoundingClientRect() : null,
+    viewport,
+  })
 }
 
 function currentVisibleParagraph() {
   const viewport = contentEl.value?.getBoundingClientRect()
   const paragraphs = [...(contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
   if (!viewport || !paragraphs.length) return null
-  const visibleTop = viewport.top + 8
-  const visibleBottom = viewport.bottom - 8
-  const visibleLeft = viewport.left + 8
-  const visibleRight = viewport.right - 8
-  const anchorY = viewport.top + Math.min(viewport.height * 0.32, 180)
-  const visible = paragraphs
-    .map(node => ({ node, rect: node.getBoundingClientRect() }))
-    .filter(({ rect }) => rect.bottom >= visibleTop && rect.top <= visibleBottom && rect.right >= visibleLeft && rect.left <= visibleRight)
-  if (!visible.length) return null
-  const anchored = visible.find(({ rect }) => rect.top <= anchorY && rect.bottom >= anchorY)
-  if (anchored) return anchored.node
-  return visible.sort((a, b) => Math.abs(a.rect.top - anchorY) - Math.abs(b.rect.top - anchorY))[0]?.node || null
+  return selectVisibleReaderBlock(
+    paragraphs.map(node => ({ node, rect: node.getBoundingClientRect() })),
+    viewport,
+  )
 }
 
 function captureReaderScrollAnchor() {
