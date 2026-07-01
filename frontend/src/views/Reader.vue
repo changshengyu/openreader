@@ -302,6 +302,7 @@ import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
 import { useReaderToast } from '../composables/useReaderToast'
 import { useReaderTTS } from '../composables/useReaderTTS'
+import { useReaderTypographySync } from '../composables/useReaderTypographySync'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, loadBrowserChapterContent } from '../utils/bookChapterCache'
@@ -924,6 +925,20 @@ useReaderRouteSync({
   },
 })
 
+useReaderTypographySync({
+  reader,
+  progressVersion,
+  getCurrentOffset: currentOffset,
+  getCurrentPercent: currentChapterPercent,
+  setRestoring: value => {
+    restoringPosition = value
+  },
+  updateLayout: updateFlipLayout,
+  restorePosition: restoreReadingPosition,
+  scheduleProgressSave,
+  syncFonts: syncReaderFontFaces,
+})
+
 onMounted(async () => {
   reader.normalizeSettings()
   syncReaderFontFaces(reader.customFontsMap)
@@ -963,25 +978,6 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave(() => {
   saveCurrentProgress({ force: true, background: true })
 })
-
-watch(() => [reader.fontFamily, reader.chineseFont, reader.fontSize, reader.fontWeight, reader.lineHeight, reader.paragraphSpace, reader.columnWidth], async () => {
-  const offset = currentOffset()
-  const restorePercent = currentChapterPercent()
-  restoringPosition = true
-  try {
-    await nextTick()
-    updateFlipLayout()
-    await restoreReadingPosition(offset, { restorePercent, saveAfterLoad: false })
-  } finally {
-    restoringPosition = false
-  }
-  progressVersion.value += 1
-  scheduleProgressSave(300)
-})
-
-watch(() => reader.customFontsMap, (customFontsMap) => {
-  syncReaderFontFaces(customFontsMap)
-}, { deep: true })
 
 function makeParagraphs(value, heading = '') {
   return parseReaderContentBlocks(value, heading, formatChineseText)
