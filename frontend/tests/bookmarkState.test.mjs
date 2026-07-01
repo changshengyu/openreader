@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  bookmarkReaderQuery,
   bookmarkUpdateTargetsBook,
+  parseBookmarkPercent,
   prependBookmarks,
   removeBookmarkIds,
   replaceBookmark,
@@ -21,4 +23,18 @@ test('filters bookmark update events by book id', () => {
   assert.equal(bookmarkUpdateTargetsBook({ detail: { bookIds: [7, 8] } }, 8), true)
   assert.equal(bookmarkUpdateTargetsBook({ detail: { bookIds: [7] } }, 8), false)
   assert.equal(bookmarkUpdateTargetsBook({ detail: {} }, 8), true)
+})
+
+test('builds reader bookmark routes and parses optional percentages', () => {
+  assert.deepEqual(bookmarkReaderQuery({
+    chapterIndex: 4,
+    offset: 120,
+    percent: 1.4,
+  }), {
+    chapter: 4,
+    offset: 120,
+    percent: 1.4,
+  })
+  assert.equal(parseBookmarkPercent(''), null)
+  assert.equal(parseBookmarkPercent('invalid'), null)
 })

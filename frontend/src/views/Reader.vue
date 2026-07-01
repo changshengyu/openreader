@@ -255,7 +255,7 @@
 </template>
 
 <script setup>
-import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
@@ -290,13 +290,13 @@ import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
+import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
-import { normalizeImportedBookmarks } from '../utils/bookmark'
 import { chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
@@ -372,6 +372,50 @@ const {
   bookId,
   onLoadError: error => ElMessage.error(readError(error, '加载书签失败')),
 })
+const {
+  draft: bookmarkDraft,
+  editorVisible: showBookmarkEditor,
+  noteText,
+  noteVisible: showNoteDialog,
+  createCurrent: createBookmark,
+  createFromSelectedText: createBookmarkFromSelectedText,
+  importRows: importBookmarks,
+  jump: jumpToBookmark,
+  openEditor: openBookmarkEditor,
+  openNote: openNoteDialog,
+  removeMany: removeBookmarks,
+  removeOne: removeBookmark,
+  saveEdit: saveBookmarkEdit,
+  saveNote,
+} = useReaderBookmarkActions({
+  chapter,
+  currentIndex,
+  getOffset: () => currentOffset(),
+  getPercent: () => currentChapterPercent(),
+  getExcerpt: currentVisibleExcerpt,
+  create: addBookmark,
+  update: updateBookmarkData,
+  remove: removeBookmarkData,
+  removeMany: removeBookmarkRows,
+  importPayloads: importBookmarkPayloads,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  closeDrawer: () => {
+    showBookmarkDrawer.value = false
+  },
+  reloadCurrent: ({ offset, percent }) => loadChapter(
+    currentIndex.value,
+    offset,
+    { restorePercent: percent, saveAfterLoad: true },
+  ),
+  navigate: query => router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query,
+  }),
+  onToast: message => showReaderToast(message),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const content = ref('')
 const chapterBlocks = ref([])
 const chapterLoading = ref(true)
@@ -400,8 +444,6 @@ const showSearchDrawer = ref(false)
 const showSourceDrawer = ref(false)
 const showMobileMoreDrawer = ref(false)
 const showCacheDrawer = ref(false)
-const showNoteDialog = ref(false)
-const showBookmarkEditor = ref(false)
 const showClickZoneOverlay = ref(false)
 const mobileBookSliderDraft = ref(null)
 const sourceGroupOptions = ref([])
@@ -474,9 +516,6 @@ const {
   chapters,
   onError: error => ElMessage.error(readError(error, '搜索正文失败')),
 })
-const noteText = ref('')
-const editingBookmark = ref(null)
-const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
 const toastMsg = ref('')
 const progressVersion = ref(0)
 const customBg = ref('')
@@ -1733,11 +1772,6 @@ function openContentSearch() {
   })
 }
 
-function openNoteDialog() {
-  noteText.value = ''
-  showNoteDialog.value = true
-}
-
 async function reloadChapter() {
   await loadChapter(currentIndex.value, currentOffset(), { refresh: true })
   toastMsg.value = '章节已重新载入'
@@ -1789,6 +1823,13 @@ function showChapterCacheMessage(message) {
   setTimeout(() => {
     if (toastMsg.value === message) toastMsg.value = ''
   }, 1600)
+}
+
+function showReaderToast(message, duration = 1600) {
+  toastMsg.value = message
+  setTimeout(() => {
+    if (toastMsg.value === message) toastMsg.value = ''
+  }, duration)
 }
 
 function toggleNight() {
@@ -2369,21 +2410,6 @@ async function createReplaceRuleFromSelectedText(text) {
   ElMessage.success('过滤规则已添加')
 }
 
-async function createBookmarkFromSelectedText(text) {
-  if (!chapter.value) return
-  const cleanText = String(text || '').trim()
-  await addBookmark({
-    chapterId: chapter.value.id,
-    chapterIndex: currentIndex.value,
-    offset: currentOffset(),
-    percent: currentChapterPercent(),
-    title: chapter.value.title,
-    excerpt: cleanText.slice(0, 500),
-  })
-  toastMsg.value = '书签已创建'
-  setTimeout(() => { toastMsg.value = '' }, 1600)
-}
-
 function currentProgressPayload() {
   const snapshot = visibleChapterProgressSnapshot()
   return readerProgressPayload({
@@ -2437,109 +2463,6 @@ function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
 function progressUpdatedAtMs(progress) {
   const time = Date.parse(progress?.updatedAt || '')
   return Number.isFinite(time) ? time : 0
-}
-
-async function createBookmark() {
-  if (!chapter.value) return
-  const excerpt = currentVisibleExcerpt()
-  await addBookmark({
-    chapterId: chapter.value.id, chapterIndex: currentIndex.value,
-    offset: currentOffset(), percent: currentChapterPercent(),
-    title: chapter.value.title, excerpt,
-  })
-  toastMsg.value = '书签已创建'
-  setTimeout(() => { toastMsg.value = '' }, 1600)
-}
-
-async function saveNote() {
-  if (!chapter.value) return
-  const note = noteText.value.trim()
-  if (!note) return
-  const excerpt = currentVisibleExcerpt()
-  await addBookmark({
-    chapterId: chapter.value.id, chapterIndex: currentIndex.value,
-    offset: currentOffset(), percent: currentChapterPercent(),
-    title: chapter.value.title, excerpt, note,
-  })
-  showNoteDialog.value = false
-  toastMsg.value = '笔记已保存'
-  setTimeout(() => { toastMsg.value = '' }, 1600)
-}
-
-async function removeBookmark(bookmark) {
-  await removeBookmarkData(bookmark.id)
-}
-
-async function removeBookmarks(rows) {
-  if (!Array.isArray(rows) || !rows.length) return
-  try {
-    await ElMessageBox.confirm(`确认要删除所选择的 ${rows.length} 条书签吗？`, '批量删除书签', { type: 'warning' })
-    await removeBookmarkRows(rows)
-    ElMessage.success('书签已删除')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '批量删除书签失败'))
-  }
-}
-
-async function importBookmarks(rows) {
-  const payloads = normalizeImportedBookmarks(rows)
-  if (!payloads.length) {
-    ElMessage.error('书签文件没有可导入内容')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`确认要导入文件中的 ${payloads.length} 条书签到当前书籍吗？`, '导入书签', { type: 'info' })
-    const created = await importBookmarkPayloads(payloads)
-    ElMessage.success(`已导入 ${created.length} 条书签`)
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '导入书签失败'))
-  }
-}
-
-function openBookmarkEditor(bookmark) {
-  editingBookmark.value = bookmark
-  Object.assign(bookmarkDraft, {
-    title: bookmark.title || '',
-    excerpt: bookmark.excerpt || '',
-    note: bookmark.note || '',
-  })
-  showBookmarkEditor.value = true
-}
-
-async function saveBookmarkEdit() {
-  if (!editingBookmark.value) return
-  try {
-    await updateBookmarkData(editingBookmark.value.id, {
-      title: bookmarkDraft.title,
-      excerpt: bookmarkDraft.excerpt,
-      note: bookmarkDraft.note,
-    })
-    showBookmarkEditor.value = false
-    toastMsg.value = '书签已更新'
-    setTimeout(() => { toastMsg.value = '' }, 1600)
-  } catch (err) {
-    ElMessage.error(readError(err, '更新书签失败'))
-  }
-}
-
-async function jumpToBookmark(bookmark) {
-  showBookmarkDrawer.value = false
-  const query = bookmarkReaderQuery(bookmark)
-  if (bookmark.chapterIndex === currentIndex.value) {
-    await loadChapter(currentIndex.value, Number(query.offset || 0), { restorePercent: parseRoutePercent(query.percent), saveAfterLoad: true })
-    return
-  }
-  await router.replace({ name: 'reader', params: { id: bookId.value }, query })
-}
-
-function bookmarkReaderQuery(bookmark) {
-  return {
-    chapter: bookmark.chapterIndex,
-    offset: bookmark.offset || 0,
-    percent: Number.isFinite(Number(bookmark.percent)) ? Number(bookmark.percent) : undefined,
-  }
 }
 
 function parseRoutePercent(value) {

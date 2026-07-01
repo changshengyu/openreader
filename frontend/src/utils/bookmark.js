@@ -36,6 +36,21 @@ export function bookmarkUpdateTargetsBook(event, bookId) {
   return !bookIds.length || bookIds.some(id => String(id) === String(bookId))
 }
 
+export function bookmarkReaderQuery(bookmark) {
+  const percent = Number(bookmark?.percent)
+  return {
+    chapter: bookmark?.chapterIndex,
+    offset: bookmark?.offset || 0,
+    percent: Number.isFinite(percent) ? percent : undefined,
+  }
+}
+
+export function parseBookmarkPercent(value) {
+  if (value === undefined || value === null || value === '') return null
+  const percent = Number(value)
+  return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : null
+}
+
 function clampPercent(value) {
   const percent = Number(value)
   return Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0
