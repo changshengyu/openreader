@@ -290,6 +290,7 @@ import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
+import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderSelection } from '../composables/useReaderSelection'
@@ -315,9 +316,6 @@ import {
   shouldPreventReaderTouchMove,
 } from '../utils/readerInteraction'
 import {
-  clampReaderPercent,
-  readerBookProgress,
-  readerBookSeekTarget,
   readerFlipPageLayout,
   readerScrollBehaviorForDuration,
   readerScrollStep,
@@ -445,7 +443,6 @@ const showSourceDrawer = ref(false)
 const showMobileMoreDrawer = ref(false)
 const showCacheDrawer = ref(false)
 const showClickZoneOverlay = ref(false)
-const mobileBookSliderDraft = ref(null)
 const sourceGroupOptions = ref([])
 const {
   candidates: sourceCandidates,
@@ -709,6 +706,37 @@ const {
   saveProgress: () => saveCurrentProgress(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
 })
+const {
+  bookProgress,
+  bookProgressLabel,
+  desktopChapterProgressLabel,
+  desktopChapterSliderValue,
+  mobileBookProgressLabel,
+  mobileBookSliderValue,
+  handleDesktopProgressChange,
+  handleDesktopProgressInput,
+  handleMobileBookProgressChange,
+  handleMobileBookProgressInput,
+} = useReaderProgressControls({
+  contentEl,
+  contentBody,
+  chapters,
+  currentIndex,
+  page,
+  pageCount,
+  progressVersion,
+  isContinuousScrollRead,
+  getMode: () => reader.mode,
+  getCurrentChapterPercent: currentChapterPercent,
+  navigate: query => router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query,
+  }),
+  applyLocalProgress: () => applyLocalProgressSnapshot(),
+  saveProgress: () => saveCurrentProgress(),
+  scheduleProgressSave: delay => scheduleProgressSave(delay),
+})
 
 const fontStack = computed(() => {
   return readerFontStack(reader.fontFamily, reader.customFontsMap)
@@ -759,24 +787,6 @@ const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, wi
 const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
 const shelfDrawerSize = computed(() => isMobileReader.value ? '88%' : 'min(900px, calc(100vw - 80px))')
-const bookProgress = computed(() => {
-  return readerBookProgress({
-    chapterIndex: currentIndex.value,
-    chapterPercent: currentChapterPercent(),
-    totalChapters: chapters.value.length,
-  })
-})
-const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
-const mobileBookSliderValue = computed(() => {
-  if (mobileBookSliderDraft.value !== null) return mobileBookSliderDraft.value
-  return Math.round(bookProgress.value * 1000)
-})
-const mobileBookProgressLabel = computed(() => `${Math.round(Number(mobileBookSliderValue.value || 0) / 10)}%`)
-const desktopChapterSliderValue = computed(() => {
-  progressVersion.value
-  return Math.round(Math.max(0, Math.min(1, currentChapterPercent())) * 1000)
-})
-const desktopChapterProgressLabel = computed(() => `${Math.round(desktopChapterSliderValue.value / 10)}%`)
 const mobileChromeVisible = ref(false)
 const NEARBY_PRELOAD_RADIUS = 2
 
@@ -1821,71 +1831,6 @@ function scrollStep() {
 
 function readerScrollBehavior() {
   return readerScrollBehaviorForDuration(reader.animateDuration)
-}
-
-function handleDesktopProgressInput(event) {
-  seekCurrentChapterPercent(Number(event.target.value || 0) / 1000, { save: false })
-}
-
-function handleDesktopProgressChange(event) {
-  seekCurrentChapterPercent(Number(event.target.value || 0) / 1000, { save: true })
-}
-
-function handleMobileBookProgressInput(event) {
-  mobileBookSliderDraft.value = Number(event.target.value || 0)
-}
-
-async function handleMobileBookProgressChange(event) {
-  const value = Number(event.target.value || 0)
-  mobileBookSliderDraft.value = value
-  try {
-    await seekBookProgress(value / 1000)
-  } finally {
-    mobileBookSliderDraft.value = null
-  }
-}
-
-async function seekBookProgress(percent) {
-  const target = readerBookSeekTarget(percent, chapters.value.length)
-  const targetIndex = target.chapterIndex
-  const chapterPercent = target.chapterPercent
-  if (targetIndex === currentIndex.value) {
-    seekCurrentChapterPercent(chapterPercent, { save: true })
-    return
-  }
-  await router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query: { chapter: targetIndex, percent: chapterPercent },
-  })
-}
-
-function seekCurrentChapterPercent(percent, options = {}) {
-  const value = clampReaderPercent(percent)
-  if (reader.mode === 'flip') {
-    page.value = Math.round(value * Math.max(0, pageCount.value - 1))
-    progressVersion.value += 1
-    if (options.save !== false) saveCurrentProgress()
-    return
-  }
-  if (!contentEl.value) return
-  if (isContinuousScrollRead.value) {
-    const chapterEl = contentBody.value?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`)
-    if (chapterEl) {
-      const room = Math.max(chapterEl.offsetHeight - contentEl.value.clientHeight, 0)
-      contentEl.value.scrollTop = Math.max(0, chapterEl.offsetTop + Math.round(value * room))
-    }
-  } else {
-    const bottom = Math.max(contentEl.value.scrollHeight - contentEl.value.clientHeight, 0)
-    contentEl.value.scrollTop = Math.round(value * bottom)
-  }
-  progressVersion.value += 1
-  applyLocalProgressSnapshot()
-  if (options.save === false) {
-    scheduleProgressSave(500)
-  } else {
-    saveCurrentProgress()
-  }
 }
 
 function handleTapZone(zone) {
