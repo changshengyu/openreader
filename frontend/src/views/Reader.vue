@@ -338,7 +338,10 @@ import {
   readerChapterWindowIndexes,
   readerChapterWindowPrunePlan,
 } from '../utils/readerChapterWindow'
-import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
+import {
+  readerProgressBaseUpdatedAt,
+  readerProgressPayload,
+} from '../utils/readerProgressPersistence'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
@@ -2383,19 +2386,15 @@ async function createBookmarkFromSelectedText(text) {
 
 function currentProgressPayload() {
   const snapshot = visibleChapterProgressSnapshot()
-  const progressChapter = snapshot?.chapter || chapter.value
-  const progressChapterIndex = Number.isInteger(snapshot?.chapterIndex) ? snapshot.chapterIndex : currentIndex.value
-  const progressChapterPercent = snapshot ? snapshot.chapterPercent : currentChapterPercent()
-  const progressTotal = Math.max(chapters.value.length, 1)
-  return {
+  return readerProgressPayload({
     bookId: bookId.value,
-    chapterId: progressChapter?.id,
-    chapterIndex: progressChapterIndex,
-    offset: snapshot ? snapshot.offset : currentOffset(),
-    percent: Math.min(1, Math.max(0, (progressChapterIndex + progressChapterPercent) / progressTotal)),
-    chapterPercent: progressChapterPercent,
-    chapterTitle: progressChapter?.title || '',
-  }
+    visibleSnapshot: snapshot,
+    currentChapter: chapter.value,
+    currentChapterIndex: currentIndex.value,
+    currentOffset: snapshot ? 0 : currentOffset(),
+    currentChapterPercent: snapshot ? 0 : currentChapterPercent(),
+    totalChapters: chapters.value.length,
+  })
 }
 
 function applyLocalProgressSnapshot(payload = currentProgressPayload(), options = {}) {

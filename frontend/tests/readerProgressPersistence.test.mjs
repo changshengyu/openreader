@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   readerProgressBaseUpdatedAt,
+  readerProgressPayload,
   readerProgressSaveKey,
   readerProgressThrottleDelay,
 } from '../src/utils/readerProgressPersistence.js'
@@ -34,4 +35,49 @@ test('preserves the server base while local progress is pending', () => {
 test('calculates the remaining progress request throttle window', () => {
   assert.equal(readerProgressThrottleDelay(1000, 1500, 1200), 700)
   assert.equal(readerProgressThrottleDelay(1000, 2500, 1200), 0)
+})
+
+test('builds progress from the visible chapter snapshot when available', () => {
+  assert.deepEqual(readerProgressPayload({
+    bookId: 7,
+    visibleSnapshot: {
+      chapterIndex: 3,
+      chapter: { id: 13, title: '第四章' },
+      offset: 240,
+      chapterPercent: 0.25,
+    },
+    currentChapter: { id: 12, title: '第三章' },
+    currentChapterIndex: 2,
+    currentOffset: 100,
+    currentChapterPercent: 0.5,
+    totalChapters: 10,
+  }), {
+    bookId: 7,
+    chapterId: 13,
+    chapterIndex: 3,
+    offset: 240,
+    percent: 0.325,
+    chapterPercent: 0.25,
+    chapterTitle: '第四章',
+  })
+})
+
+test('falls back to the current chapter and clamps whole-book progress', () => {
+  assert.deepEqual(readerProgressPayload({
+    bookId: 7,
+    visibleSnapshot: null,
+    currentChapter: { id: 19, title: '末章' },
+    currentChapterIndex: 9,
+    currentOffset: 800,
+    currentChapterPercent: 1,
+    totalChapters: 10,
+  }), {
+    bookId: 7,
+    chapterId: 19,
+    chapterIndex: 9,
+    offset: 800,
+    percent: 1,
+    chapterPercent: 1,
+    chapterTitle: '末章',
+  })
 })
