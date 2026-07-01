@@ -294,6 +294,7 @@ import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
 import { useReaderTTS } from '../composables/useReaderTTS'
+import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { normalizeImportedBookmarks } from '../utils/bookmark'
 import { chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, loadBrowserChapterContent } from '../utils/bookChapterCache'
@@ -315,7 +316,6 @@ import {
   clampReaderPercent,
   readerBookProgress,
   readerBookSeekTarget,
-  readerFlipChapterPercent,
   readerFlipPageLayout,
   readerScrollBehaviorForDuration,
   readerScrollStep,
@@ -339,13 +339,6 @@ import {
   readerChapterWindowPrunePlan,
 } from '../utils/readerChapterWindow'
 import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
-import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
-import {
-  readerBlockTextOffset,
-  readerScrollTextOffset,
-  readerTextProgress,
-  selectVisibleReaderBlock,
-} from '../utils/readerVisibility'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
@@ -574,6 +567,34 @@ const isContinuousScrollRead = computed(() => reader.mode === 'scroll' || reader
 const displayedChapterBlocks = computed(() => {
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
+})
+const {
+  activeChapterElement,
+  captureReaderScrollAnchor,
+  currentChapterPercent,
+  currentChapterPosition,
+  currentOffset,
+  currentVisibleParagraph,
+  restoreReaderScrollAnchor,
+  visibleChapterProgressSnapshot,
+} = useReaderViewportProgress({
+  contentEl,
+  contentBody,
+  chapterBlocks,
+  displayedChapterBlocks,
+  chapters,
+  currentIndex,
+  chapter,
+  content,
+  chapterTextLength,
+  progressVersion,
+  page,
+  pageCount,
+  isContinuousScrollRead,
+  getMode: () => reader.mode,
+  makeChapterBlock,
+  chapterBlockTextLength,
+  nextFrame,
 })
 
 const fontStack = computed(() => {
@@ -2233,144 +2254,6 @@ function onScroll() {
   progressVersion.value += 1
   applyLocalProgressSnapshot()
   scheduleProgressSave(500)
-}
-
-function currentChapterPercent() {
-  progressVersion.value
-  if (reader.mode === 'flip') {
-    return readerFlipChapterPercent(page.value, pageCount.value)
-  }
-  const snapshot = visibleChapterProgressSnapshot()
-  if (snapshot) return snapshot.chapterPercent
-  const el = contentEl.value
-  if (!el) return 0
-  const textLength = Math.max(chapterTextLength.value, 1)
-  const position = currentChapterPosition()
-  if (position > 0 || isContinuousScrollRead.value) return Math.max(0, Math.min(1, position / textLength))
-  const bottom = Math.max(el.scrollHeight - el.clientHeight, 1)
-  const scrollTop = Number(el.scrollTop || 0)
-  if (scrollTop > 0) return scrollTop / bottom
-  return position / textLength
-}
-
-function currentOffset() {
-  if (reader.mode === 'flip') {
-    return Math.max(0, Math.floor(page.value || 0))
-  }
-  const snapshot = visibleChapterProgressSnapshot()
-  if (snapshot) return snapshot.offset
-  return currentChapterPosition()
-}
-
-function currentChapterPosition() {
-  const snapshot = visibleChapterProgressSnapshot()
-  if (snapshot) return snapshot.offset
-  const el = contentEl.value
-  if (!el) return 0
-  const activeChapter = activeChapterElement()
-  const heading = activeChapter?.querySelector('h1') || contentBody.value?.querySelector('h1')
-  const viewport = el.getBoundingClientRect()
-  const headingRect = heading?.getBoundingClientRect()
-  if (headingRect && headingRect.bottom >= viewport.top && headingRect.top <= viewport.bottom) return 0
-  const paragraph = currentVisibleParagraph()
-  const paragraphPos = Number(paragraph?.dataset?.pos)
-  if (Number.isFinite(paragraphPos)) {
-    return readerBlockTextOffset({
-      blockPosition: paragraphPos,
-      textLength: paragraph.textContent?.length || 0,
-      blockRect: paragraph.getBoundingClientRect(),
-      viewport,
-    })
-  }
-  return readerScrollTextOffset({
-    scrollTop: el.scrollTop,
-    scrollHeight: el.scrollHeight,
-    clientHeight: el.clientHeight,
-    textLength: chapterTextLength.value,
-  })
-}
-
-function visibleChapterProgressSnapshot() {
-  if (!contentEl.value || !contentBody.value) return null
-  const paragraph = currentVisibleParagraph()
-  if (!paragraph) return null
-  const chapterEl = paragraph.closest?.('.chapter-content')
-  const chapterIndex = Number(chapterEl?.dataset?.index)
-  if (!Number.isInteger(chapterIndex)) return null
-  const block = displayedChapterBlocks.value.find(item => item.index === chapterIndex)
-    || chapterBlocks.value.find(item => item.index === chapterIndex)
-    || (chapterIndex === currentIndex.value ? makeChapterBlock(currentIndex.value, chapter.value, content.value) : null)
-  const paragraphPos = Number(paragraph.dataset?.pos)
-  const offset = Number.isFinite(paragraphPos)
-    ? visibleParagraphOffset(paragraph, paragraphPos)
-    : 0
-  const textLength = Math.max(chapterBlockTextLength(block), 1)
-  return {
-    chapterIndex,
-    chapter: chapters.value[chapterIndex] || (block?.id ? { id: block.id, title: block.title, index: chapterIndex } : null),
-    offset,
-    chapterPercent: readerTextProgress(offset, textLength),
-  }
-}
-
-function visibleParagraphOffset(paragraph, paragraphPos) {
-  const viewport = contentEl.value?.getBoundingClientRect()
-  return readerBlockTextOffset({
-    blockPosition: paragraphPos,
-    textLength: paragraph.textContent?.length || 0,
-    blockRect: viewport ? paragraph.getBoundingClientRect() : null,
-    viewport,
-  })
-}
-
-function currentVisibleParagraph() {
-  const viewport = contentEl.value?.getBoundingClientRect()
-  const paragraphs = [...(contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
-  if (!viewport || !paragraphs.length) return null
-  return selectVisibleReaderBlock(
-    paragraphs.map(node => ({ node, rect: node.getBoundingClientRect() })),
-    viewport,
-  )
-}
-
-function captureReaderScrollAnchor() {
-  if (!isContinuousScrollRead.value || !contentEl.value) return null
-  const paragraph = currentVisibleParagraph()
-  const chapterEl = paragraph?.closest?.('.chapter-content')
-  const chapterIndex = Number(chapterEl?.dataset?.index)
-  const paragraphPos = Number(paragraph?.dataset?.pos)
-  if (!paragraph || !Number.isInteger(chapterIndex) || !Number.isFinite(paragraphPos)) return null
-  const viewport = contentEl.value.getBoundingClientRect()
-  return {
-    chapterIndex,
-    paragraphPos,
-    viewportOffset: paragraph.getBoundingClientRect().top - viewport.top,
-  }
-}
-
-async function restoreReaderScrollAnchor(anchor) {
-  if (!anchor || !contentEl.value || !contentBody.value) return
-  await nextTick()
-  await nextFrame()
-  const chapterEl = contentBody.value.querySelector(`.chapter-content[data-index="${anchor.chapterIndex}"]`)
-  const paragraph = chapterEl?.querySelector(`[data-reader-block][data-pos="${anchor.paragraphPos}"]`)
-  if (!paragraph || !contentEl.value) return
-  const viewport = contentEl.value.getBoundingClientRect()
-  const currentOffset = paragraph.getBoundingClientRect().top - viewport.top
-  const maxScroll = Math.max(0, contentEl.value.scrollHeight - contentEl.value.clientHeight)
-  contentEl.value.scrollTop = restoredReaderScrollTop({
-    scrollTop: contentEl.value.scrollTop,
-    previousOffset: anchor.viewportOffset,
-    currentOffset,
-    maxScroll,
-  })
-}
-
-function activeChapterElement() {
-  const paragraph = currentVisibleParagraph()
-  const chapterEl = paragraph?.closest?.('.chapter-content')
-  if (chapterEl) return chapterEl
-  return contentBody.value?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`) || null
 }
 
 function updateCurrentChapterFromScroll() {
