@@ -292,6 +292,7 @@ import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderShelf } from '../composables/useReaderShelf'
+import { useReaderToc } from '../composables/useReaderToc'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { normalizeImportedBookmarks } from '../utils/bookmark'
@@ -356,7 +357,6 @@ const shellEl = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
 const page = ref(0)
 const pageCount = ref(1)
-const showTocDrawer = ref(false)
 const showSettingsDrawer = ref(false)
 const showBookmarkDrawer = ref(false)
 const showSearchDrawer = ref(false)
@@ -420,10 +420,6 @@ const {
   saveProgress: () => saveCurrentProgress({ force: true }),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
-const tocPanelRef = ref(null)
-const tocLocateKey = ref(0)
-const tocReverse = ref(false)
-const tocRefreshing = ref(false)
 const {
   keyword: contentSearch,
   results: bookSearchResults,
@@ -476,6 +472,32 @@ const isRemoteBook = computed(() => Number(book.value?.sourceId || 0) > 0)
 const isTextLocalBook = computed(() => checkTextLocalBook(book.value))
 const isEPUBLocalBook = computed(() => checkEPUBLocalBook(book.value))
 const canChangeLocalTocRule = computed(() => isTextLocalBook.value || isEPUBLocalBook.value)
+const {
+  visible: showTocDrawer,
+  panelRef: tocPanelRef,
+  locateKey: tocLocateKey,
+  reverse: tocReverse,
+  refreshing: tocRefreshing,
+  open: openTocDrawer,
+  locateCurrentChapter: locateTocCurrentChapter,
+  toggleReverse: toggleTocReverse,
+  scrollTop: scrollTocTop,
+  scrollBottom: scrollTocBottom,
+  jump: jumpFromToc,
+  refresh: refreshTocDrawer,
+  runRefreshing: runTocRefreshing,
+} = useReaderToc({
+  chapters,
+  isRemoteBook,
+  beforeOpen: () => {
+    mobileChromeVisible.value = false
+  },
+  refreshCachedChapters: computeBrowserCachedChapters,
+  syncCurrentChapter: updateCurrentChapterFromScroll,
+  goChapter,
+  refreshRemoteCatalog: refreshReaderBookCatalog,
+  refreshLocalCatalog: loadChapters,
+})
 const {
   cachedChapters: browserCachedChapters,
   caching: isCachingContent,
@@ -1331,80 +1353,32 @@ function jumpToLoadedChapter(index, offset = 0) {
   return true
 }
 
-async function jumpFromToc(index) {
-  showTocDrawer.value = false
-  await goChapter(index)
-}
-
-function locateTocCurrentChapter() {
-  updateCurrentChapterFromScroll()
-  tocLocateKey.value += 1
-  nextTick(() => tocPanelRef.value?.locateCurrentChapter?.())
-}
-
-function openTocDrawer() {
-  mobileChromeVisible.value = false
-  computeBrowserCachedChapters()
-  showTocDrawer.value = true
-  window.setTimeout(locateTocCurrentChapter, 0)
-  window.setTimeout(locateTocCurrentChapter, 180)
-}
-
-function toggleTocReverse() {
-  tocReverse.value = !tocReverse.value
-  locateTocCurrentChapter()
-}
-
-function scrollTocTop() {
-  tocPanelRef.value?.scrollToTop?.()
-}
-
-function scrollTocBottom() {
-  tocPanelRef.value?.scrollToBottom?.()
-}
-
-async function refreshTocDrawer() {
-  tocRefreshing.value = true
-  try {
-    if (isRemoteBook.value) {
-      await refreshReaderBookCatalog()
-    } else {
-      await loadChapters()
-    }
-    await computeBrowserCachedChapters()
-    locateTocCurrentChapter()
-  } finally {
-    tocRefreshing.value = false
-  }
-}
-
 async function changeReaderLocalTocRule() {
   if (!book.value || !canChangeLocalTocRule.value) return
   const tocRule = await chooseReaderLocalTocRule()
   if (tocRule === null) return
-  tocRefreshing.value = true
   try {
-    const { data } = await refreshLocalBook(book.value.id, { tocRule })
-    await invalidateReaderDataCache({ chapters: true, book: true })
-    await resetReaderChapterCaches({ clearBrowser: true })
-    const updated = data?.book || data
-    if (updated?.id) {
-      book.value = mergeLoadedBook(updated)
-      bookshelf.upsertBook(book.value)
-      if (overlay.bookInfoBook?.id === updated.id) overlay.bookInfoBook = book.value
-      await writeReaderDataCache({ bookData: book.value })
-    }
-    await loadChapters()
-    const nextIndex = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
-    await loadChapter(nextIndex, 0, { refresh: true, saveAfterLoad: true })
-    await computeBrowserCachedChapters()
-    locateTocCurrentChapter()
-    toastMsg.value = `目录规则已更新，共 ${data?.chapterCount || chapters.value.length} 章`
-    setTimeout(() => { toastMsg.value = '' }, 1600)
+    await runTocRefreshing(async () => {
+      const { data } = await refreshLocalBook(book.value.id, { tocRule })
+      await invalidateReaderDataCache({ chapters: true, book: true })
+      await resetReaderChapterCaches({ clearBrowser: true })
+      const updated = data?.book || data
+      if (updated?.id) {
+        book.value = mergeLoadedBook(updated)
+        bookshelf.upsertBook(book.value)
+        if (overlay.bookInfoBook?.id === updated.id) overlay.bookInfoBook = book.value
+        await writeReaderDataCache({ bookData: book.value })
+      }
+      await loadChapters()
+      const nextIndex = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
+      await loadChapter(nextIndex, 0, { refresh: true, saveAfterLoad: true })
+      await computeBrowserCachedChapters()
+      locateTocCurrentChapter()
+      toastMsg.value = `目录规则已更新，共 ${data?.chapterCount || chapters.value.length} 章`
+      setTimeout(() => { toastMsg.value = '' }, 1600)
+    })
   } catch (err) {
     ElMessage.error(readError(err, '更新目录规则失败'))
-  } finally {
-    tocRefreshing.value = false
   }
 }
 
