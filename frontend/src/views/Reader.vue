@@ -298,6 +298,7 @@ import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
+import { useReaderToast } from '../composables/useReaderToast'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
@@ -529,7 +530,10 @@ const {
   chapters,
   onError: error => ElMessage.error(readError(error, '搜索正文失败')),
 })
-const toastMsg = ref('')
+const {
+  message: toastMsg,
+  show: showReaderToast,
+} = useReaderToast()
 const progressVersion = ref(0)
 const customBg = ref('')
 const sliderLineHeight = ref(2.12)
@@ -603,7 +607,7 @@ const {
   isRemoteBook,
   afterCache: loadChapters,
   onClearMemory: () => chapterContentCache.clearBook(currentChapterCacheBookKey()),
-  notify: showChapterCacheMessage,
+  notify: message => showReaderToast(message, 1600),
   onNoTargets: () => ElMessage.error('不需要缓存'),
   onError: error => ElMessage.error(readError(error, '缓存章节失败')),
 })
@@ -839,7 +843,7 @@ const {
   scrollBehavior: readerScrollBehavior,
   advancePage: advanceAutoReadingPage,
   onProgress: recordAutoReadingProgress,
-  onNotify: showAutoReadingMessage,
+  onNotify: message => showReaderToast(message, 1200),
 })
 
 const {
@@ -879,7 +883,7 @@ const {
   currentIndex,
   chapters,
   goChapter,
-  notify: showTTSMessage,
+  notify: showReaderToast,
 })
 
 function onModeChange(mode) {
@@ -1449,8 +1453,7 @@ async function changeReaderLocalTocRule() {
       await loadChapter(nextIndex, 0, { refresh: true, saveAfterLoad: true })
       await computeBrowserCachedChapters()
       locateTocCurrentChapter()
-      toastMsg.value = `目录规则已更新，共 ${data?.chapterCount || chapters.value.length} 章`
-      setTimeout(() => { toastMsg.value = '' }, 1600)
+      showReaderToast(`目录规则已更新，共 ${data?.chapterCount || chapters.value.length} 章`)
     })
   } catch (err) {
     ElMessage.error(readError(err, '更新目录规则失败'))
@@ -1599,8 +1602,7 @@ async function refreshReaderBookCatalog() {
     await loadChapters()
     await loadChapter(currentIndex.value, restoreOffset, { restorePercent, refresh: true })
     overlay.bookInfoBook = book.value
-    toastMsg.value = '目录已刷新'
-    setTimeout(() => { toastMsg.value = '' }, 1400)
+    showReaderToast('目录已刷新', 1400)
   } catch (err) {
     ElMessage.error(readError(err, '刷新目录失败'))
   }
@@ -1719,8 +1721,7 @@ function openContentSearch() {
 
 async function reloadChapter() {
   await loadChapter(currentIndex.value, currentOffset(), { refresh: true })
-  toastMsg.value = '章节已重新载入'
-  setTimeout(() => { toastMsg.value = '' }, 1600)
+  showReaderToast('章节已重新载入')
 }
 
 async function clearCurrentBookCache() {
@@ -1729,8 +1730,7 @@ async function clearCurrentBookCache() {
     const data = await bookshelf.batchClearCache([bookId.value])
     const localCleared = await clearCurrentBookBrowserCache()
     await loadChapters()
-    toastMsg.value = `已清理服务器 ${data.cleared || 0} 章，本地 ${localCleared} 章`
-    setTimeout(() => { toastMsg.value = '' }, 1600)
+    showReaderToast(`已清理服务器 ${data.cleared || 0} 章，本地 ${localCleared} 章`)
   } catch (err) {
     ElMessage.error(readError(err, '清理缓存失败'))
   }
@@ -1746,35 +1746,6 @@ async function advanceAutoReadingPage() {
 function recordAutoReadingProgress() {
   progressVersion.value += 1
   saveCurrentProgress()
-}
-
-function showAutoReadingMessage(message) {
-  toastMsg.value = message
-  setTimeout(() => {
-    if (toastMsg.value === message) toastMsg.value = ''
-  }, 1200)
-}
-
-function showTTSMessage(message, duration = 0) {
-  toastMsg.value = message
-  if (duration <= 0) return
-  setTimeout(() => {
-    if (toastMsg.value === message) toastMsg.value = ''
-  }, duration)
-}
-
-function showChapterCacheMessage(message) {
-  toastMsg.value = message
-  setTimeout(() => {
-    if (toastMsg.value === message) toastMsg.value = ''
-  }, 1600)
-}
-
-function showReaderToast(message, duration = 1600) {
-  toastMsg.value = message
-  setTimeout(() => {
-    if (toastMsg.value === message) toastMsg.value = ''
-  }, duration)
 }
 
 function scrollStep() {
