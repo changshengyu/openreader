@@ -311,6 +311,16 @@ import {
   shouldHandleReaderHorizontalSwipe,
   shouldPreventReaderTouchMove,
 } from '../utils/readerInteraction'
+import {
+  clampReaderPercent,
+  readerBookProgress,
+  readerBookSeekTarget,
+  readerFlipChapterPercent,
+  readerFlipPageLayout,
+  readerScrollBehaviorForDuration,
+  readerScrollStep,
+  readerVerticalPageLayout,
+} from '../utils/readerPagination'
 import { savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
@@ -595,8 +605,11 @@ const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
 const shelfDrawerSize = computed(() => isMobileReader.value ? '88%' : 'min(900px, calc(100vw - 80px))')
 const bookProgress = computed(() => {
-  const total = Math.max(chapters.value.length, 1)
-  return Math.min(1, Math.max(0, (currentIndex.value + currentChapterPercent()) / total))
+  return readerBookProgress({
+    chapterIndex: currentIndex.value,
+    chapterPercent: currentChapterPercent(),
+    totalChapters: chapters.value.length,
+  })
 })
 const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
 const mobileBookSliderValue = computed(() => {
@@ -1751,19 +1764,16 @@ async function nextPage() {
 
 function scrollStep() {
   const viewportHeight = contentEl.value?.clientHeight || window.innerHeight || readableViewportSize().height
-  return Math.max(1, Math.floor(viewportHeight - scrollOffset()))
-}
-
-function scrollOffset() {
-  const fontSize = Number(reader.fontSize || 18)
-  return (
-    fontSize * Number(reader.lineHeight || 1.8) * 2 +
-    fontSize * Number(reader.paragraphSpace || 0) * 2
-  )
+  return readerScrollStep({
+    viewportHeight,
+    fontSize: reader.fontSize,
+    lineHeight: reader.lineHeight,
+    paragraphSpace: reader.paragraphSpace,
+  })
 }
 
 function readerScrollBehavior() {
-  return reader.animateDuration > 0 ? 'smooth' : 'auto'
+  return readerScrollBehaviorForDuration(reader.animateDuration)
 }
 
 function handleDesktopProgressInput(event) {
@@ -1789,18 +1799,9 @@ async function handleMobileBookProgressChange(event) {
 }
 
 async function seekBookProgress(percent) {
-  const total = Math.max(chapters.value.length, 1)
-  const value = Math.max(0, Math.min(1, Number(percent) || 0))
-  let targetIndex = 0
-  let chapterPercent = 0
-  if (value >= 1) {
-    targetIndex = total - 1
-    chapterPercent = 1
-  } else {
-    const raw = value * total
-    targetIndex = Math.max(0, Math.min(total - 1, Math.floor(raw)))
-    chapterPercent = Math.max(0, Math.min(1, raw - targetIndex))
-  }
+  const target = readerBookSeekTarget(percent, chapters.value.length)
+  const targetIndex = target.chapterIndex
+  const chapterPercent = target.chapterPercent
   if (targetIndex === currentIndex.value) {
     seekCurrentChapterPercent(chapterPercent, { save: true })
     return
@@ -1813,7 +1814,7 @@ async function seekBookProgress(percent) {
 }
 
 function seekCurrentChapterPercent(percent, options = {}) {
-  const value = Math.max(0, Math.min(1, Number(percent) || 0))
+  const value = clampReaderPercent(percent)
   if (reader.mode === 'flip') {
     page.value = Math.round(value * Math.max(0, pageCount.value - 1))
     progressVersion.value += 1
@@ -2067,17 +2068,28 @@ function updateFlipLayout() {
   if (!contentEl.value || !contentBody.value) return
   const viewport = readableViewportSize()
   if (reader.mode === 'flip') {
-    pageWidth.value = viewport.width
-    pageHeight.value = viewport.height
-    pageCount.value = Math.max(1, Math.ceil(contentBody.value.scrollWidth / pageWidth.value))
-    page.value = Math.min(page.value, pageCount.value - 1)
+    const layout = readerFlipPageLayout({
+      viewportWidth: viewport.width,
+      viewportHeight: viewport.height,
+      scrollWidth: contentBody.value.scrollWidth,
+      currentPage: page.value,
+    })
+    pageWidth.value = layout.pageWidth
+    pageHeight.value = layout.pageHeight
+    pageCount.value = layout.pageCount
+    page.value = layout.page
     return
   }
   if (reader.mode === 'page') {
-    pageHeight.value = scrollStep()
-    const scrollBottom = Math.max(contentEl.value.scrollHeight - contentEl.value.clientHeight, 1)
-    pageCount.value = Math.max(1, Math.ceil(contentEl.value.scrollHeight / pageHeight.value))
-    page.value = Math.max(0, Math.min(pageCount.value - 1, Math.round((contentEl.value.scrollTop / scrollBottom) * Math.max(pageCount.value - 1, 0))))
+    const layout = readerVerticalPageLayout({
+      scrollHeight: contentEl.value.scrollHeight,
+      clientHeight: contentEl.value.clientHeight,
+      scrollTop: contentEl.value.scrollTop,
+      pageHeight: scrollStep(),
+    })
+    pageHeight.value = layout.pageHeight
+    pageCount.value = layout.pageCount
+    page.value = layout.page
     return
   }
   // 滚动模式
@@ -2180,7 +2192,7 @@ function onScroll() {
 function currentChapterPercent() {
   progressVersion.value
   if (reader.mode === 'flip') {
-    return pageCount.value <= 1 ? 0 : page.value / (pageCount.value - 1)
+    return readerFlipChapterPercent(page.value, pageCount.value)
   }
   const snapshot = visibleChapterProgressSnapshot()
   if (snapshot) return snapshot.chapterPercent
