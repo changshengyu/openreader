@@ -294,6 +294,7 @@ import { useReaderProgressPersistence } from '../composables/useReaderProgressPe
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderNavigation } from '../composables/useReaderNavigation'
+import { useReaderMode } from '../composables/useReaderMode'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
@@ -807,6 +808,25 @@ const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, wi
 const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
 const shelfDrawerSize = computed(() => isMobileReader.value ? '88%' : 'min(900px, calc(100vw - 80px))')
+const {
+  change: onModeChange,
+} = useReaderMode({
+  reader,
+  isMobileReader,
+  isContinuousScrollRead,
+  page,
+  chapterLoading,
+  chapterBlocks,
+  currentIndex,
+  chapter,
+  content,
+  getCurrentOffset: currentOffset,
+  computeChapterWindow: computeShowChapterList,
+  makeChapterBlock,
+  updateLayout: updateFlipLayout,
+  restorePosition: restoreReadingPosition,
+  saveProgress: () => saveCurrentProgress(),
+})
 const mobileChromeVisible = ref(false)
 const NEARBY_PRELOAD_RADIUS = 2
 
@@ -886,10 +906,6 @@ const {
   notify: showReaderToast,
 })
 
-function onModeChange(mode) {
-  reader.setMode(mode)
-}
-
 onMounted(async () => {
   reader.normalizeSettings()
   syncReaderFontFaces(reader.customFontsMap)
@@ -953,31 +969,6 @@ watch(() => [route.query.chapter, route.query.offset, route.query.percent], asyn
 watch(() => [route.query.line, route.query.match, route.query.q], async () => {
   await jumpToRouteLine()
 })
-
-watch(() => reader.mode, async () => {
-  const offset = currentOffset()
-  page.value = 0
-  if (isContinuousScrollRead.value) {
-    chapterLoading.value = true
-    try {
-      await computeShowChapterList()
-    } finally {
-      chapterLoading.value = false
-    }
-  } else {
-    chapterBlocks.value = [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
-  }
-  await nextTick()
-  updateFlipLayout()
-  await restoreReadingPosition(offset, { saveAfterLoad: false })
-  saveCurrentProgress()
-})
-
-watch(isMobileReader, (mobile) => {
-  if (!mobile && reader.mode === 'flip') {
-    reader.setMode('page')
-  }
-}, { immediate: true })
 
 watch(() => [reader.fontFamily, reader.chineseFont, reader.fontSize, reader.fontWeight, reader.lineHeight, reader.paragraphSpace, reader.columnWidth], async () => {
   const offset = currentOffset()
