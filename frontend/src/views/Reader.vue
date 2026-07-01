@@ -323,6 +323,13 @@ import {
 } from '../utils/readerPagination'
 import { savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
+import {
+  adjacentReaderChapterIndex,
+  nearbyReaderChapterIndexes,
+  readerChapterWindowExtension,
+  readerChapterWindowIndexes,
+  readerChapterWindowPrunePlan,
+} from '../utils/readerChapterWindow'
 import { readerProgressBaseUpdatedAt } from '../utils/readerProgressPersistence'
 import { restoredReaderScrollTop } from '../utils/readerScrollAnchor'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
@@ -1059,13 +1066,13 @@ async function computeShowChapterList(options = {}) {
     return
   }
   const anchorIndex = Number.isInteger(options.anchorIndex) ? options.anchorIndex : currentIndex.value
-  const startIndex = reader.mode === 'scroll2'
-    ? Math.max(0, anchorIndex - SHOW_PREV_CHAPTER_SIZE)
-    : anchorIndex
-  const endIndex = isContinuousScrollRead.value
-    ? Math.min(chapters.value.length - 1, anchorIndex + SHOW_NEXT_CHAPTER_SIZE)
-    : anchorIndex
-  const indexes = Array.from({ length: endIndex - startIndex + 1 }, (_, offset) => startIndex + offset)
+  const indexes = readerChapterWindowIndexes({
+    mode: reader.mode,
+    anchorIndex,
+    totalChapters: chapters.value.length,
+    previousSize: SHOW_PREV_CHAPTER_SIZE,
+    nextSize: isContinuousScrollRead.value ? SHOW_NEXT_CHAPTER_SIZE : 0,
+  })
   const rows = await Promise.all(indexes.map(async index => {
     try {
       const data = await loadChapterContent(index)
@@ -1085,9 +1092,12 @@ async function computeShowChapterList(options = {}) {
 
 async function appendNextShowChapter() {
   if (!isContinuousScrollRead.value || !chapterBlocks.value.length) return
-  const lastIndex = chapterBlocks.value[chapterBlocks.value.length - 1].index
-  const nextIndex = lastIndex + 1
-  if (nextIndex >= chapters.value.length) return
+  const nextIndex = adjacentReaderChapterIndex({
+    blocks: chapterBlocks.value,
+    direction: 'next',
+    totalChapters: chapters.value.length,
+  })
+  if (nextIndex === null) return
   if (chapterBlocks.value.some(block => block.index === nextIndex)) return
   const data = await loadChapterContent(nextIndex)
   chapterBlocks.value = [
@@ -1098,9 +1108,12 @@ async function appendNextShowChapter() {
 
 async function prependPreviousShowChapter() {
   if (reader.mode !== 'scroll2' || !chapterBlocks.value.length || !contentEl.value) return
-  const firstIndex = chapterBlocks.value[0].index
-  const previousIndex = firstIndex - 1
-  if (previousIndex < 0) return
+  const previousIndex = adjacentReaderChapterIndex({
+    blocks: chapterBlocks.value,
+    direction: 'previous',
+    totalChapters: chapters.value.length,
+  })
+  if (previousIndex === null) return
   if (chapterBlocks.value.some(block => block.index === previousIndex)) return
   const beforeHeight = contentEl.value.scrollHeight
   const beforeTop = contentEl.value.scrollTop
@@ -1137,12 +1150,11 @@ async function loadChapterContent(index, options = {}) {
 
 function preloadNearbyChapters(index) {
   if (!book.value || !chapters.value.length) return
-  const targets = []
-  for (let distance = 1; distance <= NEARBY_PRELOAD_RADIUS; distance += 1) {
-    targets.push(index + distance, index - distance)
-  }
-  targets
-    .filter(target => target >= 0 && target < chapters.value.length)
+  nearbyReaderChapterIndexes({
+    chapterIndex: index,
+    totalChapters: chapters.value.length,
+    radius: NEARBY_PRELOAD_RADIUS,
+  })
     .forEach(target => {
       if (getChapterContentFromMemory(target)) return
       loadChapterContent(target).catch(() => {})
@@ -2348,13 +2360,17 @@ function updateCurrentChapterFromScroll() {
 function maybeExtendShowChapters() {
   if (!isContinuousScrollRead.value || extendingShowChapters || !contentEl.value) return
   const el = contentEl.value
-  const nearBottom = el.scrollTop + el.clientHeight > el.scrollHeight - el.clientHeight * 2
-  const nearTop = reader.mode === 'scroll2' && el.scrollTop < el.clientHeight
-  if (!nearTop && !nearBottom) return
+  const extension = readerChapterWindowExtension({
+    mode: reader.mode,
+    scrollTop: el.scrollTop,
+    clientHeight: el.clientHeight,
+    scrollHeight: el.scrollHeight,
+  })
+  if (!extension.previous && !extension.next) return
   extendingShowChapters = true
   Promise.all([
-    nearTop ? prependPreviousShowChapter() : Promise.resolve(),
-    nearBottom ? appendNextShowChapter() : Promise.resolve(),
+    extension.previous ? prependPreviousShowChapter() : Promise.resolve(),
+    extension.next ? appendNextShowChapter() : Promise.resolve(),
   ])
     .catch(() => {})
     .finally(() => {
@@ -2364,18 +2380,22 @@ function maybeExtendShowChapters() {
 
 function pruneScroll2ChapterWindow() {
   if (reader.mode !== 'scroll2' || !contentEl.value || !chapterBlocks.value.length) return
-  const minIndex = Math.max(0, currentIndex.value - SHOW_PREV_CHAPTER_SIZE)
-  const maxIndex = Math.min(chapters.value.length - 1, currentIndex.value + SHOW_NEXT_CHAPTER_SIZE)
   const currentBlocks = chapterBlocks.value
-  if (currentBlocks.every(block => block.index >= minIndex && block.index <= maxIndex)) return
-  const removedBeforeHeight = currentBlocks
-    .filter(block => block.index < minIndex)
-    .reduce((sum, block) => {
-      const element = contentBody.value?.querySelector(`.chapter-content[data-index="${block.index}"]`)
+  const plan = readerChapterWindowPrunePlan({
+    blocks: currentBlocks,
+    currentIndex: currentIndex.value,
+    totalChapters: chapters.value.length,
+    previousSize: SHOW_PREV_CHAPTER_SIZE,
+    nextSize: SHOW_NEXT_CHAPTER_SIZE,
+  })
+  if (!plan.changed) return
+  const removedBeforeHeight = plan.removedBeforeIndexes
+    .reduce((sum, index) => {
+      const element = contentBody.value?.querySelector(`.chapter-content[data-index="${index}"]`)
       return sum + (element?.getBoundingClientRect?.().height || 0)
     }, 0)
   const beforeTop = contentEl.value.scrollTop
-  chapterBlocks.value = currentBlocks.filter(block => block.index >= minIndex && block.index <= maxIndex)
+  chapterBlocks.value = plan.blocks
   if (removedBeforeHeight > 0) {
     nextTick(() => {
       if (!contentEl.value) return
