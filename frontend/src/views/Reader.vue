@@ -321,6 +321,14 @@ import {
   readerScrollStep,
   readerVerticalPageLayout,
 } from '../utils/readerPagination'
+import {
+  readerChapterBoundaryScrollTop,
+  readerParagraphAtPosition,
+  READER_CHAPTER_END_OFFSET,
+  restoredReaderContinuousScrollTop,
+  restoredReaderFlipPage,
+  restoredReaderSingleChapterScrollTop,
+} from '../utils/readerPosition'
 import { savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import {
@@ -630,7 +638,6 @@ const desktopChapterSliderValue = computed(() => {
 })
 const desktopChapterProgressLabel = computed(() => `${Math.round(desktopChapterSliderValue.value / 10)}%`)
 const mobileChromeVisible = ref(false)
-const CHAPTER_END_OFFSET = -1
 const NEARBY_PRELOAD_RADIUS = 2
 
 const isOverlayOpen = computed(() => (
@@ -1183,11 +1190,11 @@ async function restoreReadingPosition(offset = 0, options = {}) {
   updateFlipLayout()
   const chapterOffset = Number(offset || 0)
   if (reader.mode === 'flip') {
-    page.value = chapterOffset === CHAPTER_END_OFFSET
-      ? Math.max(0, pageCount.value - 1)
-      : (hasRestorePercent
-          ? Math.round(Math.max(0, Math.min(1, restorePercent)) * Math.max(0, pageCount.value - 1))
-          : Math.min(Math.max(chapterOffset, 0), pageCount.value - 1))
+    page.value = restoredReaderFlipPage({
+      offset: chapterOffset,
+      percent: hasRestorePercent ? restorePercent : null,
+      pageCount: pageCount.value,
+    })
     return
   }
   if (!contentEl.value) return
@@ -1200,14 +1207,12 @@ async function restoreReadingPosition(offset = 0, options = {}) {
   }
   const applyScroll = () => {
     if (!contentEl.value) return
-    if (chapterOffset === CHAPTER_END_OFFSET) {
-      contentEl.value.scrollTop = Math.max(0, contentEl.value.scrollHeight - contentEl.value.clientHeight)
-    } else if (hasRestorePercent) {
-      const bottom = Math.max(contentEl.value.scrollHeight - contentEl.value.clientHeight, 0)
-      contentEl.value.scrollTop = Math.round(Math.max(0, Math.min(1, restorePercent)) * bottom)
-    } else {
-      contentEl.value.scrollTop = Math.max(chapterOffset, 0)
-    }
+    contentEl.value.scrollTop = restoredReaderSingleChapterScrollTop({
+      offset: chapterOffset,
+      percent: hasRestorePercent ? restorePercent : null,
+      scrollHeight: contentEl.value.scrollHeight,
+      clientHeight: contentEl.value.clientHeight,
+    })
   }
   applyScroll()
   await nextFrame()
@@ -1218,13 +1223,15 @@ function restoreScroll2ChapterPosition(chapterOffset, restorePercent = null) {
   const el = contentEl.value
   const activeChapter = contentBody.value?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`)
   if (!el || !activeChapter) return
-  if (chapterOffset === CHAPTER_END_OFFSET) {
-    el.scrollTop = Math.max(0, activeChapter.offsetTop + activeChapter.offsetHeight - el.clientHeight)
-    return
-  }
-  if (Number.isFinite(restorePercent)) {
-    const room = Math.max(activeChapter.offsetHeight - el.clientHeight, 0)
-    el.scrollTop = Math.max(0, activeChapter.offsetTop + Math.round(Math.max(0, Math.min(1, restorePercent)) * room))
+  const scrollTop = restoredReaderContinuousScrollTop({
+    offset: chapterOffset,
+    percent: restorePercent,
+    chapterTop: activeChapter.offsetTop,
+    chapterHeight: activeChapter.offsetHeight,
+    clientHeight: el.clientHeight,
+  })
+  if (scrollTop !== null) {
+    el.scrollTop = scrollTop
     return
   }
   if (chapterOffset > 0 && restoreByChapterPosition(chapterOffset)) return
@@ -1243,8 +1250,7 @@ function restoreByChapterPosition(position) {
 function paragraphByChapterPosition(chapterEl, position) {
   if (!chapterEl || !Number.isFinite(position) || position <= 0) return null
   const nodes = [...chapterEl.querySelectorAll('h1[data-pos], [data-reader-block][data-pos]')]
-  if (!nodes.length) return null
-  return [...nodes].reverse().find(node => Number(node.dataset.pos) <= position) || nodes[0]
+  return readerParagraphAtPosition(nodes, position)
 }
 
 function nextFrame() {
@@ -1334,7 +1340,11 @@ async function goChapter(index, offset = 0) {
 
 function jumpWithinCurrentChapter(offset = 0) {
   if (reader.mode === 'flip') {
-    page.value = offset === CHAPTER_END_OFFSET ? Math.max(0, pageCount.value - 1) : 0
+    page.value = restoredReaderFlipPage({
+      offset: Number(offset) === READER_CHAPTER_END_OFFSET ? READER_CHAPTER_END_OFFSET : 0,
+      percent: null,
+      pageCount: pageCount.value,
+    })
     progressVersion.value += 1
     saveCurrentProgress()
     return
@@ -1342,9 +1352,12 @@ function jumpWithinCurrentChapter(offset = 0) {
   if (jumpToLoadedChapter(currentIndex.value, offset)) return
   if (!contentEl.value) return
   contentEl.value.scrollTo({
-    top: offset === CHAPTER_END_OFFSET
-      ? Math.max(0, contentEl.value.scrollHeight - contentEl.value.clientHeight)
-      : 0,
+    top: restoredReaderSingleChapterScrollTop({
+      offset: Number(offset) === READER_CHAPTER_END_OFFSET ? READER_CHAPTER_END_OFFSET : 0,
+      percent: null,
+      scrollHeight: contentEl.value.scrollHeight,
+      clientHeight: contentEl.value.clientHeight,
+    }),
     behavior: readerScrollBehavior(),
   })
   progressVersion.value += 1
@@ -1360,9 +1373,14 @@ function jumpToLoadedChapter(index, offset = 0) {
   currentIndex.value = targetIndex
   chapter.value = chapters.value[targetIndex] || (block?.id ? { id: block.id, title: block.title, index: targetIndex } : chapter.value)
   content.value = block?.content || content.value
-  if (offset === CHAPTER_END_OFFSET) {
+  if (Number(offset) === READER_CHAPTER_END_OFFSET) {
     contentEl.value.scrollTo({
-      top: Math.max(0, chapterEl.offsetTop + chapterEl.offsetHeight - contentEl.value.clientHeight),
+      top: readerChapterBoundaryScrollTop({
+        chapterTop: chapterEl.offsetTop,
+        chapterHeight: chapterEl.offsetHeight,
+        clientHeight: contentEl.value.clientHeight,
+        end: true,
+      }),
       behavior: readerScrollBehavior(),
     })
   } else if (offset > 0) {
@@ -1371,13 +1389,23 @@ function jumpToLoadedChapter(index, offset = 0) {
       jumpToParagraph(target, { save: false, flash: false })
     } else {
       contentEl.value.scrollTo({
-        top: Math.max(0, chapterEl.offsetTop),
+        top: readerChapterBoundaryScrollTop({
+          chapterTop: chapterEl.offsetTop,
+          chapterHeight: chapterEl.offsetHeight,
+          clientHeight: contentEl.value.clientHeight,
+          end: false,
+        }),
         behavior: readerScrollBehavior(),
       })
     }
   } else {
     contentEl.value.scrollTo({
-      top: Math.max(0, chapterEl.offsetTop),
+      top: readerChapterBoundaryScrollTop({
+        chapterTop: chapterEl.offsetTop,
+        chapterHeight: chapterEl.offsetHeight,
+        clientHeight: contentEl.value.clientHeight,
+        end: false,
+      }),
       behavior: readerScrollBehavior(),
     })
   }
@@ -1752,7 +1780,7 @@ async function previousPage() {
       return
     }
   }
-  if (currentIndex.value > 0) await goChapter(currentIndex.value - 1, CHAPTER_END_OFFSET)
+  if (currentIndex.value > 0) await goChapter(currentIndex.value - 1, READER_CHAPTER_END_OFFSET)
 }
 
 async function nextPage() {
@@ -2808,7 +2836,7 @@ useKeyboard({
   onArrowLeft: () => {
     mobileChromeVisible.value = false
     if (reader.mode === 'flip') previousPage()
-    else if (currentIndex.value > 0) goChapter(currentIndex.value - 1, CHAPTER_END_OFFSET)
+    else if (currentIndex.value > 0) goChapter(currentIndex.value - 1, READER_CHAPTER_END_OFFSET)
   },
   onArrowRight: () => {
     mobileChromeVisible.value = false
