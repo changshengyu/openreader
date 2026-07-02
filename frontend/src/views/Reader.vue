@@ -283,8 +283,8 @@ import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore, themePresets } from '../stores/reader'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
-import { useAutoReading } from '../composables/useAutoReading'
 import { useReaderAppearanceAssets } from '../composables/useReaderAppearanceAssets'
+import { useReaderAutoReading } from '../composables/useReaderAutoReading'
 import { useReaderBookLoad } from '../composables/useReaderBookLoad'
 import { useReaderBookState } from '../composables/useReaderBookState'
 import { useReaderCatalogActions } from '../composables/useReaderCatalogActions'
@@ -1031,23 +1031,21 @@ const {
   active: autoReading,
   stop: stopAutoReading,
   toggle: toggleAutoReading,
-} = useAutoReading({
+} = useReaderAutoReading({
+  reader,
   contentEl,
   contentBody,
   isVerticalRead,
-  shouldPause: () => isOverlayOpen.value || mobileChromeVisible.value,
-  settings: () => ({
-    method: reader.autoReadingMethod,
-    pixel: reader.autoReadingPixel,
-    interval: reader.autoReadingLineTime,
-    fontSize: reader.fontSize,
-    lineHeight: reader.lineHeight,
-  }),
+  isOverlayOpen,
+  mobileChromeVisible,
+  currentIndex,
+  page,
+  progressVersion,
   currentVisibleParagraph,
   scrollBehavior: readerScrollBehavior,
-  advancePage: advanceAutoReadingPage,
-  onProgress: recordAutoReadingProgress,
-  onNotify: message => showReaderToast(message, 1200),
+  nextPage,
+  saveProgress: () => saveCurrentProgress(),
+  notify: showReaderToast,
 })
 const {
   handleContentClick: handleReaderContentClick,
@@ -1399,18 +1397,6 @@ async function chooseReaderLocalTocRule() {
     cancelButtonText: '取消',
   }).catch(() => false)
   return confirmed ? selected.value : null
-}
-
-async function advanceAutoReadingPage() {
-  const beforeChapter = currentIndex.value
-  const beforePage = page.value
-  await nextPage()
-  return beforeChapter !== currentIndex.value || beforePage !== page.value
-}
-
-function recordAutoReadingProgress() {
-  progressVersion.value += 1
-  saveCurrentProgress()
 }
 
 function scrollStep() {

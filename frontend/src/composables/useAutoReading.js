@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, unref } from 'vue'
-import { nextReaderBlock, paragraphAutoReadDelay } from '../utils/readerAutoReading'
+import { nextReaderBlock, paragraphAutoReadDelay } from '../utils/readerAutoReading.js'
 
 export function useAutoReading(options) {
   const active = ref(false)
