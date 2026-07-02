@@ -290,6 +290,7 @@ import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
+import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
@@ -940,6 +941,38 @@ useReaderTypographySync({
   syncFonts: syncReaderFontFaces,
 })
 
+const {
+  handleBookDataUpdated: handleReaderBookDataUpdated,
+  handleProgressUpdated,
+  handleReplaceRulesUpdated,
+} = useReaderExternalUpdates({
+  bookId,
+  book,
+  chapter,
+  chapters,
+  currentIndex,
+  isRestoring: () => restoringPosition,
+  isProgressSaveBusy,
+  progressKey: progressSaveKey,
+  getCurrentProgress: currentProgressPayload,
+  cancelProgressSave,
+  navigate: query => router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query,
+  }),
+  loadChapter,
+  markProgressSaved,
+  getCurrentOffset: currentOffset,
+  getCurrentPercent: currentChapterPercent,
+  clearChapterCache: () => chapterContentCache.clearBook(currentChapterCacheBookKey()),
+  resetCachedChapters: resetBrowserCachedChapters,
+  resetContentSearch: resetContentSearchState,
+  refreshCachedChapters: computeBrowserCachedChapters,
+  onReplaceSuccess: () => ElMessage.success('已按最新替换规则刷新当前章节'),
+  onReplaceError: error => ElMessage.error(readError(error, '刷新当前章节失败')),
+})
+
 useReaderPageLifecycle({
   reader,
   customBg,
@@ -1389,17 +1422,6 @@ function restoreByChapterPosition(position) {
 
 function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
-}
-
-async function handleReplaceRulesUpdated() {
-  if (!book.value?.id || !chapter.value) return
-  const restorePercent = currentChapterPercent()
-  try {
-    await loadChapter(currentIndex.value, currentOffset(), { restorePercent, refresh: true })
-    ElMessage.success('已按最新替换规则刷新当前章节')
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新当前章节失败'))
-  }
 }
 
 async function changeReaderLocalTocRule() {
@@ -2013,60 +2035,6 @@ function handleReaderPageHide() {
 
 function handleReaderVisibilityChange() {
   if (document.hidden) saveCurrentProgress({ force: true, background: true })
-}
-
-async function handleProgressUpdated(event) {
-  const progress = event?.detail?.progress
-  if (!progress?.bookId || Number(progress.bookId) !== Number(bookId.value)) return
-  if (!chapter.value || restoringPosition || isProgressSaveBusy()) return
-  const localKey = progressSaveKey(currentProgressPayload())
-  const remoteKey = progressSaveKey({
-    bookId: progress.bookId,
-    chapterId: progress.chapterId,
-    chapterIndex: progress.chapterIndex,
-    offset: progress.offset,
-    percent: progress.percent,
-    chapterPercent: progress.chapterPercent,
-  })
-  if (!remoteKey || remoteKey === localKey) return
-  const targetIndex = Math.max(0, Math.min(Number(progress.chapterIndex || 0), Math.max(chapters.value.length - 1, 0)))
-  const targetOffset = Math.max(0, Math.floor(Number(progress.offset || 0)))
-  const restorePercent = Number.isFinite(Number(progress.chapterPercent))
-    ? Math.max(0, Math.min(1, Number(progress.chapterPercent)))
-    : null
-  cancelProgressSave()
-  try {
-    await router.replace({
-      name: 'reader',
-      params: { id: bookId.value },
-      query: {
-        chapter: targetIndex,
-        ...(targetOffset ? { offset: targetOffset } : {}),
-        ...(restorePercent !== null ? { percent: Number(restorePercent.toFixed(6)) } : {}),
-      },
-    })
-    await loadChapter(targetIndex, targetOffset, { restorePercent, saveAfterLoad: false })
-    markProgressSaved(currentProgressPayload())
-  } catch {
-    // If the chapter cannot be applied immediately, the stored progress will be used on the next open.
-  }
-}
-
-async function handleReaderBookDataUpdated(event) {
-  const detail = event?.detail || {}
-  if (!detail.bookId || Number(detail.bookId) !== Number(bookId.value)) return
-  if (detail.book?.id) book.value = detail.book
-  if (!Array.isArray(detail.chapters)) return
-  const restoreOffset = currentOffset()
-  const restorePercent = currentChapterPercent()
-  const targetIndex = Math.max(0, Math.min(currentIndex.value, Math.max(detail.chapters.length - 1, 0)))
-  chapters.value = detail.chapters
-  currentIndex.value = targetIndex
-  chapterContentCache.clearBook(currentChapterCacheBookKey())
-  resetBrowserCachedChapters()
-  resetContentSearchState()
-  await computeBrowserCachedChapters()
-  await loadChapter(targetIndex, restoreOffset, { restorePercent, refresh: true, saveAfterLoad: false })
 }
 
 function onScroll() {
