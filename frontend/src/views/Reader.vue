@@ -285,6 +285,7 @@ import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useReaderAppearanceAssets } from '../composables/useReaderAppearanceAssets'
+import { useReaderBookLoad } from '../composables/useReaderBookLoad'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
@@ -325,7 +326,6 @@ import {
   readerScrollStep,
 } from '../utils/readerPagination'
 import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
-import { parseReaderRoutePercent, savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import {
   readerProgressBaseUpdatedAt,
@@ -1008,6 +1008,56 @@ const {
   applyLocalProgress: applyLocalProgressSnapshot,
   scheduleProgressSave,
 })
+const {
+  load: loadReaderBook,
+} = useReaderBookLoad({
+  reader,
+  bookshelf,
+  bookId,
+  book,
+  chapters,
+  currentIndex,
+  bookmarks,
+  getRouteQuery: () => route.query,
+  cancelProgressSave,
+  loadBookmarks,
+  loadCachedBook: targetBookId => cacheFirstRequest(
+    () => api.get(`/books/${targetBookId}`),
+    readerDataCacheKey(`book:${targetBookId}`),
+    { validate: data => Boolean(data?.id) },
+  ),
+  loadCachedChapters: targetBookId => cacheFirstRequest(
+    () => api.get(`/books/${targetBookId}/chapters`),
+    readerDataCacheKey(`chapters:${targetBookId}`),
+    { validate: data => Array.isArray(data) },
+  ),
+  refreshBook: targetBookId => networkFirstRequest(
+    () => api.get(`/books/${targetBookId}`),
+    readerDataCacheKey(`book:${targetBookId}`),
+    { validate: data => Boolean(data?.id) },
+  ),
+  refreshChapters: targetBookId => networkFirstRequest(
+    () => api.get(`/books/${targetBookId}/chapters`),
+    readerDataCacheKey(`chapters:${targetBookId}`),
+    { validate: data => Array.isArray(data) },
+  ),
+  mergeLoadedBook,
+  mergeBookProgress: (loadedBook, progress) => mergeShelfBook(
+    loadedBook,
+    { id: loadedBook.id, progress },
+  ),
+  resetSourceCandidates,
+  loadChapter,
+  progressKey: progressSaveKey,
+  getCurrentProgress: currentProgressPayload,
+  navigate: query => router.replace({
+    name: 'reader',
+    params: { id: bookId.value },
+    query,
+  }),
+  markProgressSaved,
+  jumpToRouteLine,
+})
 
 const {
   tts,
@@ -1155,133 +1205,11 @@ function chapterBlockTextLength(block) {
   return Number(last.endPos || last.pos || 0)
 }
 
-async function loadReaderBook() {
-  cancelProgressSave()
-  const targetBookId = bookId.value
-  const bookmarksRequest = loadBookmarks(targetBookId).catch(() => [])
-  const progressRequest = reader.loadProgress(targetBookId, { preferLocal: true }).catch(() => null)
-  const cachedProgress = reader.cachedProgress(targetBookId)
-  const [bookRes, chRes] = await Promise.all([
-    cacheFirstRequest(
-      () => api.get(`/books/${targetBookId}`),
-      readerDataCacheKey(`book:${targetBookId}`),
-      { validate: data => Boolean(data?.id) },
-    ),
-    cacheFirstRequest(
-      () => api.get(`/books/${targetBookId}/chapters`),
-      readerDataCacheKey(`chapters:${targetBookId}`),
-      { validate: data => Array.isArray(data) },
-    ),
-  ])
-  if (bookId.value !== targetBookId) return
-  const saved = cachedProgress?.bookId ? cachedProgress : await progressRequest
-  if (bookId.value !== targetBookId) return
-  book.value = mergeLoadedBook(bookRes.data)
-  chapters.value = chRes.data
-  if (book.value?.progress?.bookId) {
-    reader.applyServerProgress(book.value.progress)
-    bookshelf.applyBookProgress(book.value.progress)
-  }
-  if (saved?.bookId) {
-    book.value = mergeShelfBook(book.value, { id: book.value.id, progress: saved })
-  }
-  resetSourceCandidates()
-  if (saved?.bookId) bookshelf.applyBookProgress(saved)
-  const resumeFromProgress = route.query.resume === '1'
-  const hasExplicitChapter = route.query.chapter !== undefined
-  const shouldUseSavedPosition = resumeFromProgress || !hasExplicitChapter
-  if (shouldUseSavedPosition && saved?.chapterIndex !== undefined) {
-    currentIndex.value = saved.chapterIndex
-  } else {
-    currentIndex.value = Number(route.query.chapter || 0)
-  }
-  const hasRouteOffset = !resumeFromProgress && route.query.offset !== undefined
-  const initialOffset = hasRouteOffset
-    ? Number(route.query.offset || 0)
-    : (shouldUseSavedPosition ? Number(saved?.offset || 0) : 0)
-  const routePercent = resumeFromProgress ? null : parseReaderRoutePercent(route.query.percent)
-  const savedPercent = shouldUseSavedPosition ? savedBookChapterPercent(saved, chapters.value.length) : null
-  await loadChapter(currentIndex.value, initialOffset, {
-    restorePercent: routePercent ?? (hasRouteOffset ? null : savedPercent),
-    saveAfterLoad: false,
-  })
-  const initialProgressKey = progressSaveKey(currentProgressPayload())
-  progressRequest.then(serverSaved => {
-    reconcileInitialServerProgress(serverSaved, {
-      baseline: saved,
-      baselineKey: initialProgressKey,
-      resumeFromProgress,
-      hasRouteOffset,
-      routePercent,
-    }).catch(() => {})
-  })
-  if (bookRes.fromCache || chRes.fromCache) {
-    refreshReaderBookCaches({ book: Boolean(bookRes.fromCache), chapters: Boolean(chRes.fromCache) }).catch(() => {})
-  }
-  bookmarksRequest.then(data => {
-    if (bookId.value === targetBookId) bookmarks.value = data
-  }).catch(() => {})
-  await jumpToRouteLine()
-}
-
-async function reconcileInitialServerProgress(serverSaved, options = {}) {
-  if (!serverSaved?.bookId || Number(serverSaved.bookId) !== Number(bookId.value)) return
-  const canFollowServer = options.resumeFromProgress || route.query.chapter === undefined
-  if (!canFollowServer || options.hasRouteOffset || options.routePercent !== null) return
-  if (options.baseline?.bookId && progressUpdatedAtMs(serverSaved) <= progressUpdatedAtMs(options.baseline)) return
-  if (progressSaveKey(currentProgressPayload()) !== options.baselineKey) return
-  const targetIndex = Math.max(0, Math.min(Number(serverSaved.chapterIndex || 0), Math.max(chapters.value.length - 1, 0)))
-  const targetOffset = Math.max(0, Math.floor(Number(serverSaved.offset || 0)))
-  const restorePercent = Number.isFinite(Number(serverSaved.chapterPercent))
-    ? Math.max(0, Math.min(1, Number(serverSaved.chapterPercent)))
-    : savedBookChapterPercent(serverSaved, chapters.value.length)
-  await router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query: {
-      resume: '1',
-      chapter: targetIndex,
-      ...(targetOffset ? { offset: targetOffset } : {}),
-      ...(restorePercent !== null ? { percent: Number(restorePercent.toFixed(6)) } : {}),
-    },
-  })
-  await loadChapter(targetIndex, targetOffset, {
-    restorePercent,
-    saveAfterLoad: false,
-  })
-  markProgressSaved(currentProgressPayload())
-}
-
 function mergeLoadedBook(incoming) {
   if (!incoming?.id) return incoming
   const current = bookshelf.books.find(item => Number(item.id) === Number(incoming.id)) ||
     (Number(book.value?.id) === Number(incoming.id) ? book.value : null)
   return mergeShelfBook(current, incoming)
-}
-
-async function refreshReaderBookCaches(options = {}) {
-  const targetBookId = bookId.value
-  const requests = []
-  if (options.book) {
-    requests.push(networkFirstRequest(
-      () => api.get(`/books/${targetBookId}`),
-      readerDataCacheKey(`book:${targetBookId}`),
-      { validate: data => Boolean(data?.id) },
-    ).then(res => ({ key: 'book', data: res.data })))
-  }
-  if (options.chapters) {
-    requests.push(networkFirstRequest(
-      () => api.get(`/books/${targetBookId}/chapters`),
-      readerDataCacheKey(`chapters:${targetBookId}`),
-      { validate: data => Array.isArray(data) },
-    ).then(res => ({ key: 'chapters', data: res.data })))
-  }
-  const rows = await Promise.all(requests)
-  if (bookId.value !== targetBookId) return
-  rows.forEach(row => {
-    if (row.key === 'book' && row.data?.id) book.value = mergeLoadedBook(row.data)
-    if (row.key === 'chapters' && Array.isArray(row.data)) chapters.value = row.data
-  })
 }
 
 function readerDataCacheKey(key) {
@@ -1766,11 +1694,6 @@ function upsertReaderBookProgress(progress, options = {}) {
 
 function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
   return readerProgressBaseUpdatedAt(reader.progressByBook[targetBookId])
-}
-
-function progressUpdatedAtMs(progress) {
-  const time = Date.parse(progress?.updatedAt || '')
-  return Number.isFinite(time) ? time : 0
 }
 
 function flashParagraph(lineEl) {
