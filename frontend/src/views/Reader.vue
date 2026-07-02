@@ -592,8 +592,8 @@ const {
   beforeOpen: () => {
     mobileChromeVisible.value = false
   },
-  refreshCachedChapters: computeBrowserCachedChapters,
-  syncCurrentChapter: updateCurrentChapterFromScroll,
+  refreshCachedChapters: (...args) => computeBrowserCachedChapters(...args),
+  syncCurrentChapter: (...args) => updateCurrentChapterFromScroll(...args),
   goChapter: (...args) => goChapter(...args),
   refreshRemoteCatalog: (...args) => refreshReaderBookCatalog(...args),
   refreshLocalCatalog: (...args) => loadChapters(...args),
