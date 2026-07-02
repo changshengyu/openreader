@@ -286,6 +286,7 @@ import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useReaderAppearanceAssets } from '../composables/useReaderAppearanceAssets'
 import { useReaderBookLoad } from '../composables/useReaderBookLoad'
+import { useReaderCatalogActions } from '../composables/useReaderCatalogActions'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
@@ -491,7 +492,7 @@ const {
 } = useBookSourceChange({
   book,
   bookId,
-  onChanged: applyReaderSourceChange,
+  onChanged: (...args) => applyReaderSourceChange(...args),
   onSuccess: (_data, source) => ElMessage.success(`已切换到 ${sourceCandidateSourceName(source)}`),
   onError: error => ElMessage.error(readError(error, '换源失败')),
 })
@@ -582,7 +583,7 @@ const {
   refreshCachedChapters: computeBrowserCachedChapters,
   syncCurrentChapter: updateCurrentChapterFromScroll,
   goChapter: (...args) => goChapter(...args),
-  refreshRemoteCatalog: refreshReaderBookCatalog,
+  refreshRemoteCatalog: (...args) => refreshReaderBookCatalog(...args),
   refreshLocalCatalog: (...args) => loadChapters(...args),
 })
 const {
@@ -644,6 +645,53 @@ const {
   clearServerCache: ids => bookshelf.batchClearCache(ids),
   clearCurrentBrowserCache: clearCurrentBookBrowserCache,
   notify: message => showReaderToast(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
+  applySourceChange: applyReaderSourceChange,
+  changeLocalTocRule: changeReaderLocalTocRule,
+  refreshRemoteCatalog: refreshReaderBookCatalog,
+} = useReaderCatalogActions({
+  book,
+  bookId,
+  chapters,
+  currentIndex,
+  canChangeLocalTocRule,
+  chooseLocalTocRule: chooseReaderLocalTocRule,
+  runTocRefreshing,
+  refreshLocalBook: async (...args) => {
+    const { data } = await refreshLocalBook(...args)
+    return data
+  },
+  refreshRemoteBook: async (...args) => {
+    const { data } = await refreshBook(...args)
+    return data
+  },
+  invalidateDataCache: invalidateReaderDataCache,
+  resetChapterCaches: resetReaderChapterCaches,
+  mergeLoadedBook,
+  upsertBook: row => bookshelf.upsertBook(row),
+  getOverlayBook: () => overlay.bookInfoBook,
+  setOverlayBook: row => {
+    overlay.bookInfoBook = row
+  },
+  writeDataCache: writeReaderDataCache,
+  loadChapters,
+  loadChapter: (...args) => loadChapter(...args),
+  refreshBrowserCachedChapters: computeBrowserCachedChapters,
+  locateCurrentTocChapter: locateTocCurrentChapter,
+  getCurrentOffset: () => currentOffset(),
+  getCurrentChapterPercent: () => currentChapterPercent(),
+  fetchChapters: async targetBookId => {
+    const { data } = await api.get(`/books/${targetBookId}/chapters`)
+    return data
+  },
+  resetContentSearch: resetContentSearchState,
+  refreshSourceCandidates,
+  closeSourceDrawer: () => {
+    showSourceDrawer.value = false
+  },
+  notify: (...args) => showReaderToast(...args),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 
@@ -1318,34 +1366,6 @@ function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
 }
 
-async function changeReaderLocalTocRule() {
-  if (!book.value || !canChangeLocalTocRule.value) return
-  const tocRule = await chooseReaderLocalTocRule()
-  if (tocRule === null) return
-  try {
-    await runTocRefreshing(async () => {
-      const { data } = await refreshLocalBook(book.value.id, { tocRule })
-      await invalidateReaderDataCache({ chapters: true, book: true })
-      await resetReaderChapterCaches({ clearBrowser: true })
-      const updated = data?.book || data
-      if (updated?.id) {
-        book.value = mergeLoadedBook(updated)
-        bookshelf.upsertBook(book.value)
-        if (overlay.bookInfoBook?.id === updated.id) overlay.bookInfoBook = book.value
-        await writeReaderDataCache({ bookData: book.value })
-      }
-      await loadChapters()
-      const nextIndex = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
-      await loadChapter(nextIndex, 0, { refresh: true, saveAfterLoad: true })
-      await computeBrowserCachedChapters()
-      locateTocCurrentChapter()
-      showReaderToast(`目录规则已更新，共 ${data?.chapterCount || chapters.value.length} 章`)
-    })
-  } catch (err) {
-    ElMessage.error(readError(err, '更新目录规则失败'))
-  }
-}
-
 async function chooseReaderLocalTocRule() {
   if (!isEPUBLocalBook.value) {
     const result = await ElMessageBox.prompt('填写 TXT 目录行正则，留空则使用默认目录规则。', '修改目录规则', {
@@ -1471,29 +1491,6 @@ async function openInfoGroup() {
   })
 }
 
-async function refreshReaderBookCatalog() {
-  if (!book.value?.id || Number(book.value.sourceId || 0) <= 0) return
-  try {
-    const restoreOffset = currentOffset()
-    const restorePercent = currentChapterPercent()
-    const { data } = await refreshBook(book.value.id)
-    await invalidateReaderDataCache({ book: true, chapters: true })
-    await resetReaderChapterCaches({ clearBrowser: true })
-    const updated = data?.book || data
-    if (updated?.id) {
-      book.value = mergeLoadedBook(updated)
-      bookshelf.upsertBook(book.value)
-      await writeReaderDataCache({ bookData: book.value })
-    }
-    await loadChapters()
-    await loadChapter(currentIndex.value, restoreOffset, { restorePercent, refresh: true })
-    overlay.bookInfoBook = book.value
-    showReaderToast('目录已刷新', 1400)
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新目录失败'))
-  }
-}
-
 function goSourcePanel() {
   if (!isRemoteBook.value) return
   mobileChromeVisible.value = false
@@ -1508,21 +1505,6 @@ function openBookmarkDrawer() {
 function openReplaceRules() {
   showSettingsDrawer.value = false
   overlay.openReplaceRules()
-}
-
-async function applyReaderSourceChange({ book: updatedBook, previousBook }) {
-  await invalidateReaderDataCache({ book: true, chapters: true })
-  await resetReaderChapterCaches({ clearBrowser: true, book: previousBook })
-  book.value = mergeLoadedBook(updatedBook)
-  bookshelf.upsertBook(book.value)
-  const chRes = await api.get(`/books/${bookId.value}/chapters`)
-  chapters.value = Array.isArray(chRes.data) ? chRes.data : []
-  await writeReaderDataCache({ bookData: book.value, chaptersData: chapters.value })
-  currentIndex.value = Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0))
-  await loadChapter(currentIndex.value, 0)
-  resetContentSearchState()
-  await refreshSourceCandidates()
-  showSourceDrawer.value = false
 }
 
 function openContentSearch() {
