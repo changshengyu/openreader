@@ -300,6 +300,7 @@ import { useReaderBookmarkActions } from '../composables/useReaderBookmarkAction
 import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderMode } from '../composables/useReaderMode'
 import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
+import { useReaderPositionRestore } from '../composables/useReaderPositionRestore'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
@@ -331,12 +332,7 @@ import {
   readerScrollStep,
   readerVerticalPageLayout,
 } from '../utils/readerPagination'
-import {
-  READER_CHAPTER_END_OFFSET,
-  restoredReaderContinuousScrollTop,
-  restoredReaderFlipPage,
-  restoredReaderSingleChapterScrollTop,
-} from '../utils/readerPosition'
+import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
 import { parseReaderRoutePercent, savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import {
@@ -761,6 +757,21 @@ const {
   }),
   saveProgress: () => saveCurrentProgress(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
+})
+const {
+  restore: restoreReadingPosition,
+} = useReaderPositionRestore({
+  reader,
+  contentEl,
+  contentBody,
+  currentIndex,
+  page,
+  pageCount,
+  isContinuousScrollRead,
+  paragraphByChapterPosition,
+  jumpToParagraph,
+  updateLayout: updateFlipLayout,
+  nextFrame,
 })
 const {
   bookProgress,
@@ -1252,71 +1263,6 @@ async function resetReaderChapterCaches(options = {}) {
   } catch {
     return 0
   }
-}
-
-async function restoreReadingPosition(offset = 0, options = {}) {
-  const restorePercent = Number(options.restorePercent)
-  const hasRestorePercent = Number.isFinite(restorePercent)
-  await nextTick()
-  await nextFrame()
-  updateFlipLayout()
-  const chapterOffset = Number(offset || 0)
-  if (reader.mode === 'flip') {
-    page.value = restoredReaderFlipPage({
-      offset: chapterOffset,
-      percent: hasRestorePercent ? restorePercent : null,
-      pageCount: pageCount.value,
-    })
-    return
-  }
-  if (!contentEl.value) return
-  if (isContinuousScrollRead.value) {
-    restoreScroll2ChapterPosition(chapterOffset, hasRestorePercent ? restorePercent : null)
-    return
-  }
-  if (!hasRestorePercent && chapterOffset > 0 && restoreByChapterPosition(chapterOffset)) {
-    return
-  }
-  const applyScroll = () => {
-    if (!contentEl.value) return
-    contentEl.value.scrollTop = restoredReaderSingleChapterScrollTop({
-      offset: chapterOffset,
-      percent: hasRestorePercent ? restorePercent : null,
-      scrollHeight: contentEl.value.scrollHeight,
-      clientHeight: contentEl.value.clientHeight,
-    })
-  }
-  applyScroll()
-  await nextFrame()
-  applyScroll()
-}
-
-function restoreScroll2ChapterPosition(chapterOffset, restorePercent = null) {
-  const el = contentEl.value
-  const activeChapter = contentBody.value?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`)
-  if (!el || !activeChapter) return
-  const scrollTop = restoredReaderContinuousScrollTop({
-    offset: chapterOffset,
-    percent: restorePercent,
-    chapterTop: activeChapter.offsetTop,
-    chapterHeight: activeChapter.offsetHeight,
-    clientHeight: el.clientHeight,
-  })
-  if (scrollTop !== null) {
-    el.scrollTop = scrollTop
-    return
-  }
-  if (chapterOffset > 0 && restoreByChapterPosition(chapterOffset)) return
-  el.scrollTop = Math.max(0, activeChapter.offsetTop)
-}
-
-function restoreByChapterPosition(position) {
-  if (!contentBody.value || !Number.isFinite(position) || position <= 0) return false
-  const activeChapter = contentBody.value.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`) || contentBody.value
-  const target = paragraphByChapterPosition(activeChapter, position)
-  if (!target) return false
-  jumpToParagraph(target, { save: false, flash: false })
-  return true
 }
 
 function nextFrame() {
