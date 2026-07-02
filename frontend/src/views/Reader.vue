@@ -255,7 +255,7 @@
 </template>
 
 <script setup>
-import { computed, h, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
@@ -301,6 +301,7 @@ import { useReaderChrome } from '../composables/useReaderChrome'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderLayout } from '../composables/useReaderLayout'
 import { useReaderKeyboard } from '../composables/useReaderKeyboard'
+import { useReaderLocalTocRulePicker } from '../composables/useReaderLocalTocRulePicker'
 import { useReaderLocalProgress } from '../composables/useReaderLocalProgress'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
@@ -327,7 +328,7 @@ import { useReaderWheel } from '../composables/useReaderWheel'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
-import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
+import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import {
   readerScrollBehaviorForDuration,
@@ -657,6 +658,14 @@ const {
   clearCurrentBrowserCache: clearCurrentBookBrowserCache,
   notify: message => showReaderToast(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
+  choose: chooseReaderLocalTocRule,
+} = useReaderLocalTocRulePicker({
+  book,
+  isEPUBLocalBook,
+  prompt: (...args) => ElMessageBox.prompt(...args),
+  confirm: (...args) => ElMessageBox.confirm(...args),
 })
 const {
   applySourceChange: applyReaderSourceChange,
@@ -1382,30 +1391,6 @@ onBeforeRouteLeave(() => {
 
 function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
-}
-
-async function chooseReaderLocalTocRule() {
-  if (!isEPUBLocalBook.value) {
-    const result = await ElMessageBox.prompt('填写 TXT 目录行正则，留空则使用默认目录规则。', '修改目录规则', {
-      confirmButtonText: '刷新目录',
-      cancelButtonText: '取消',
-      inputType: 'textarea',
-      inputValue: book.value?.tocRule || '',
-      inputPlaceholder: '^第.+章.*$',
-    }).catch(() => null)
-    return result ? (result.value || '') : null
-  }
-  const selected = ref(book.value?.tocRule || 'spin+toc')
-  const selector = h('select', {
-    value: selected.value,
-    style: 'width:100%;min-height:38px;padding:0 10px;border:1px solid var(--el-border-color);border-radius:4px;background:var(--el-bg-color);color:var(--el-text-color-primary)',
-    onChange: event => { selected.value = event.target.value },
-  }, epubTocRuleOptions.map(rule => h('option', { value: rule.value }, rule.label)))
-  const confirmed = await ElMessageBox.confirm(selector, '修改 EPUB 目录规则', {
-    confirmButtonText: '刷新目录',
-    cancelButtonText: '取消',
-  }).catch(() => false)
-  return confirmed ? selected.value : null
 }
 
 function scrollStep() {
