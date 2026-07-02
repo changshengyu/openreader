@@ -295,6 +295,7 @@ import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderChapterMaintenance } from '../composables/useReaderChapterMaintenance'
+import { useReaderChapterPresentation } from '../composables/useReaderChapterPresentation'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderLayout } from '../composables/useReaderLayout'
@@ -324,7 +325,6 @@ import { useReaderWheel } from '../composables/useReaderWheel'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
-import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import {
@@ -332,7 +332,6 @@ import {
   readerScrollStep,
 } from '../utils/readerPagination'
 import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
-import { parseReaderContentBlocks } from '../utils/readerContent'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
@@ -694,6 +693,15 @@ const {
   },
   notify: (...args) => showReaderToast(...args),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
+  chapterBlockTextLength,
+  displayChapterTitle,
+  makeChapterBlock,
+  makeParagraphs,
+} = useReaderChapterPresentation({
+  reader,
+  chapters,
 })
 
 const chapterParagraphs = computed(() => {
@@ -1353,40 +1361,6 @@ useReaderPageLifecycle({
 onBeforeRouteLeave(() => {
   saveCurrentProgress({ force: true, background: true })
 })
-
-function makeParagraphs(value, heading = '') {
-  return parseReaderContentBlocks(value, heading, formatChineseText)
-}
-
-function formatChineseText(text) {
-  if (!text) return ''
-  return reader.chineseFont === '繁体' ? traditionalized(String(text)) : simplized(String(text))
-}
-
-function displayChapterTitle(title) {
-  return formatChineseText(title || '')
-}
-
-function makeChapterBlock(index, chapterRow, text) {
-  const fallback = chapters.value[index] || {}
-  const title = chapterRow?.title || fallback.title || `第 ${index + 1} 章`
-  const paragraphs = makeParagraphs(text, title)
-  return {
-    index,
-    id: chapterRow?.id || fallback.id,
-    title: displayChapterTitle(title),
-    content: String(text || ''),
-    paragraphs,
-    imageUrls: paragraphs.filter(item => item.type === 'image').map(item => item.src),
-  }
-}
-
-function chapterBlockTextLength(block) {
-  const paragraphs = Array.isArray(block?.paragraphs) ? block.paragraphs : []
-  if (!paragraphs.length) return 0
-  const last = paragraphs[paragraphs.length - 1]
-  return Number(last.endPos || last.pos || 0)
-}
 
 function mergeLoadedBook(incoming) {
   if (!incoming?.id) return incoming
