@@ -255,7 +255,7 @@
 </template>
 
 <script setup>
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
@@ -295,6 +295,7 @@ import { useReaderProgressControls } from '../composables/useReaderProgressContr
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderMode } from '../composables/useReaderMode'
+import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
@@ -939,40 +940,28 @@ useReaderTypographySync({
   syncFonts: syncReaderFontFaces,
 })
 
-onMounted(async () => {
-  reader.normalizeSettings()
-  syncReaderFontFaces(reader.customFontsMap)
-  try {
-    await loadReaderBook()
-  } catch (err) {
-    chapterLoadError.value = readError(err, '章节加载失败')
+useReaderPageLifecycle({
+  reader,
+  customBg,
+  sliderLineHeight,
+  syncFonts: syncReaderFontFaces,
+  loadBook: loadReaderBook,
+  onBookLoadError: error => {
+    chapterLoadError.value = readError(error, '章节加载失败')
     chapterLoading.value = false
-  }
-  window.addEventListener('resize', handleResize)
-  window.addEventListener('wheel', handleReaderWheel, { passive: false })
-  window.addEventListener('pagehide', handleReaderPageHide)
-  document.addEventListener('visibilitychange', handleReaderVisibilityChange)
-  window.addEventListener('openreader:progress-updated', handleProgressUpdated)
-  window.addEventListener('openreader:reader-book-data-updated', handleReaderBookDataUpdated)
-  window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
-  window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
-  customBg.value = reader.customBgColor
-  sliderLineHeight.value = reader.lineHeight
-})
-
-onBeforeUnmount(() => {
-  cancelProgressSave()
-  clearTimeout(chapterLoadingTimer)
-  stopAutoReading()
-  saveCurrentProgress({ force: true, background: true })
-  window.removeEventListener('resize', handleResize)
-  window.removeEventListener('wheel', handleReaderWheel)
-  window.removeEventListener('pagehide', handleReaderPageHide)
-  document.removeEventListener('visibilitychange', handleReaderVisibilityChange)
-  window.removeEventListener('openreader:progress-updated', handleProgressUpdated)
-  window.removeEventListener('openreader:reader-book-data-updated', handleReaderBookDataUpdated)
-  window.removeEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
-  window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
+  },
+  cancelProgressSave,
+  clearChapterLoadingTimer: () => clearTimeout(chapterLoadingTimer),
+  stopAutoReading,
+  saveProgress: saveCurrentProgress,
+  onResize: handleResize,
+  onWheel: handleReaderWheel,
+  onPageHide: handleReaderPageHide,
+  onVisibilityChange: handleReaderVisibilityChange,
+  onProgressUpdated: handleProgressUpdated,
+  onBookDataUpdated: handleReaderBookDataUpdated,
+  onReplaceRulesUpdated: handleReplaceRulesUpdated,
+  onBookmarksUpdated: handleBookmarksUpdated,
 })
 
 onBeforeRouteLeave(() => {
