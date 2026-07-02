@@ -305,6 +305,7 @@ import { useReaderBookmarkActions } from '../composables/useReaderBookmarkAction
 import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderMode } from '../composables/useReaderMode'
 import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
+import { useReaderPanels } from '../composables/useReaderPanels'
 import { useReaderPositionRestore } from '../composables/useReaderPositionRestore'
 import { useReaderPointer } from '../composables/useReaderPointer'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
@@ -1068,6 +1069,53 @@ const {
   getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
   ensureClientId: () => reader.ensureClientId(),
 })
+const {
+  goBookDetail,
+  goShelf,
+  openBookInfo: openReaderBookInfo,
+  openBookmarks: openBookmarkDrawer,
+  openCache: openCacheDrawer,
+  openContentSearch,
+  openReplaceRules,
+  openSettings: openSettingsDrawer,
+  openSource: goSourcePanel,
+  showClickZone,
+} = useReaderPanels({
+  book,
+  bookId,
+  isRemoteBook,
+  bookProgress,
+  bookProgressLabel,
+  mobileChromeVisible,
+  mobileMoreVisible: showMobileMoreDrawer,
+  settingsVisible: showSettingsDrawer,
+  bookmarkVisible: showBookmarkDrawer,
+  searchVisible: showSearchDrawer,
+  sourceVisible: showSourceDrawer,
+  cacheVisible: showCacheDrawer,
+  clickZoneVisible: showClickZoneOverlay,
+  customBg,
+  sliderLineHeight,
+  getCustomBgColor: () => reader.customBgColor,
+  getLineHeight: () => reader.lineHeight,
+  refreshBrowserCachedChapters: computeBrowserCachedChapters,
+  saveProgress: saveCurrentProgress,
+  navigate: routeLocation => router.push(routeLocation),
+  defer: nextTick,
+  focusContentSearch: () => {
+    const input = document.querySelector('.content-search-row input')
+    input?.focus()
+  },
+  closeBookInfo: () => overlay.closeBookInfo(),
+  openBookInfoOverlay: (...args) => overlay.openBookInfo(...args),
+  openReplaceRulesOverlay: () => overlay.openReplaceRules(),
+  openToc: openTocDrawer,
+  ensureCategoriesLoaded: () => bookshelf.ensureCategoriesLoaded(),
+  openBookGroup: (...args) => overlay.openBookGroup(...args),
+  getCategoryName: row => categoryName(row),
+  refreshCatalog: refreshReaderBookCatalog,
+  clearCache: clearCurrentBookCache,
+})
 
 const {
   clearLoadingTimer: clearChapterLoadingTimer,
@@ -1388,132 +1436,6 @@ async function chooseReaderLocalTocRule() {
     cancelButtonText: '取消',
   }).catch(() => false)
   return confirmed ? selected.value : null
-}
-
-function openSettingsDrawer() {
-  mobileChromeVisible.value = false
-  customBg.value = reader.customBgColor
-  sliderLineHeight.value = reader.lineHeight
-  showSettingsDrawer.value = true
-}
-
-function showClickZone() {
-  showSettingsDrawer.value = false
-  showMobileMoreDrawer.value = false
-  mobileChromeVisible.value = false
-  showClickZoneOverlay.value = true
-}
-
-function openCacheDrawer() {
-  if (!isRemoteBook.value) return
-  mobileChromeVisible.value = false
-  computeBrowserCachedChapters()
-  showCacheDrawer.value = true
-}
-
-async function goBookDetail() {
-  saveCurrentProgress({ force: true, background: true })
-  await router.push({ name: 'book-detail', params: { id: bookId.value } })
-}
-
-async function goShelf() {
-  mobileChromeVisible.value = false
-  saveCurrentProgress({ force: true, background: true })
-  await router.push({ name: 'home' })
-}
-function openReaderBookInfo() {
-  if (!book.value) return
-  const hasRemoteSource = isRemoteBook.value
-  const actions = [
-    { label: '目录', plain: true, handler: openInfoToc },
-    { label: '书签', plain: true, handler: openInfoBookmarks },
-    { label: '搜正文', plain: true, handler: openInfoSearch },
-    hasRemoteSource ? { label: '书源', plain: true, handler: openInfoSources } : null,
-    { label: '分组', plain: true, handler: openInfoGroup },
-    hasRemoteSource ? { label: '刷新目录', plain: true, handler: refreshReaderBookCatalog } : null,
-    hasRemoteSource ? { label: '缓存章节', plain: true, handler: openCacheDrawer } : null,
-    hasRemoteSource ? { label: '清缓存', plain: true, handler: clearCurrentBookCache } : null,
-    { label: '设置', plain: true, handler: openInfoSettings },
-    { label: '完整详情', type: 'primary', handler: () => { overlay.closeBookInfo(); goBookDetail() } },
-  ].filter(Boolean)
-  overlay.openBookInfo(book.value, {
-    statusLabel: `阅读中 · ${bookProgressLabel.value}`,
-    statusType: 'success',
-    progress: bookProgress.value,
-    actions,
-  })
-}
-
-function closeInfoAndMobileChrome() {
-  overlay.closeBookInfo()
-  mobileChromeVisible.value = false
-}
-
-function openInfoToc() {
-  closeInfoAndMobileChrome()
-  openTocDrawer()
-}
-
-function openInfoBookmarks() {
-  closeInfoAndMobileChrome()
-  openBookmarkDrawer()
-}
-
-function openInfoSearch() {
-  closeInfoAndMobileChrome()
-  openContentSearch()
-}
-
-function openInfoSources() {
-  if (!isRemoteBook.value) return
-  closeInfoAndMobileChrome()
-  showSourceDrawer.value = true
-}
-
-function openInfoSettings() {
-  closeInfoAndMobileChrome()
-  openSettingsDrawer()
-}
-
-async function openInfoGroup() {
-  if (!book.value) return
-  closeInfoAndMobileChrome()
-  try {
-    await bookshelf.ensureCategoriesLoaded()
-  } catch {
-    // 分组弹层仍可打开，失败提示由保存时处理。
-  }
-  overlay.openBookGroup('set', book.value, {
-    categoryName: categoryName(book.value),
-    progress: bookProgress.value,
-    statusLabel: `阅读中 · ${bookProgressLabel.value}`,
-    statusType: 'success',
-  })
-}
-
-function goSourcePanel() {
-  if (!isRemoteBook.value) return
-  mobileChromeVisible.value = false
-  showSourceDrawer.value = true
-}
-
-function openBookmarkDrawer() {
-  mobileChromeVisible.value = false
-  showBookmarkDrawer.value = true
-}
-
-function openReplaceRules() {
-  showSettingsDrawer.value = false
-  overlay.openReplaceRules()
-}
-
-function openContentSearch() {
-  mobileChromeVisible.value = false
-  showSearchDrawer.value = true
-  nextTick(() => {
-    const input = document.querySelector('.content-search-row input')
-    input?.focus()
-  })
 }
 
 async function advanceAutoReadingPage() {
