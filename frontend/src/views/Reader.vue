@@ -292,6 +292,7 @@ import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
+import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
@@ -338,12 +339,6 @@ import {
 } from '../utils/readerPosition'
 import { parseReaderRoutePercent, savedBookChapterPercent } from '../utils/readerRoute'
 import { parseReaderContentBlocks } from '../utils/readerContent'
-import {
-  adjacentReaderChapterIndex,
-  readerChapterWindowExtension,
-  readerChapterWindowIndexes,
-  readerChapterWindowPrunePlan,
-} from '../utils/readerChapterWindow'
 import {
   readerProgressBaseUpdatedAt,
   readerProgressPayload,
@@ -554,7 +549,6 @@ let readerTouchMove = { x: 0, y: 0 }
 let handledTouchTapAt = 0
 let lastLocalProgressKey = ''
 let lastWheelPageAt = 0
-let extendingShowChapters = false
 
 const fontOptions = readerFontOptions
 const SHOW_PREV_CHAPTER_SIZE = 1
@@ -673,6 +667,29 @@ const {
   makeChapterBlock,
   chapterBlockTextLength,
   nextFrame,
+})
+const {
+  compute: computeShowChapterList,
+  maybeExtend: maybeExtendShowChapters,
+  syncCurrentChapter: updateCurrentChapterFromScroll,
+} = useReaderChapterWindow({
+  reader,
+  contentEl,
+  contentBody,
+  chapters,
+  currentIndex,
+  chapter,
+  content,
+  chapterBlocks,
+  isContinuousScrollRead,
+  loadContent: loadChapterContent,
+  makeChapterBlock,
+  captureScrollAnchor: captureReaderScrollAnchor,
+  restoreScrollAnchor: restoreReaderScrollAnchor,
+  visibleProgressSnapshot: visibleChapterProgressSnapshot,
+  nextFrame,
+  previousSize: SHOW_PREV_CHAPTER_SIZE,
+  nextSize: SHOW_NEXT_CHAPTER_SIZE,
 })
 const {
   jumpToFirstSearchMatch,
@@ -1235,74 +1252,6 @@ async function resetReaderChapterCaches(options = {}) {
   } catch {
     return 0
   }
-}
-
-async function computeShowChapterList(options = {}) {
-  if (!chapters.value.length) {
-    chapterBlocks.value = []
-    return
-  }
-  const anchorIndex = Number.isInteger(options.anchorIndex) ? options.anchorIndex : currentIndex.value
-  const indexes = readerChapterWindowIndexes({
-    mode: reader.mode,
-    anchorIndex,
-    totalChapters: chapters.value.length,
-    previousSize: SHOW_PREV_CHAPTER_SIZE,
-    nextSize: isContinuousScrollRead.value ? SHOW_NEXT_CHAPTER_SIZE : 0,
-  })
-  const rows = await Promise.all(indexes.map(async index => {
-    try {
-      const data = await loadChapterContent(index)
-      return makeChapterBlock(index, data.chapter || chapters.value[index], data.content || '')
-    } catch {
-      return null
-    }
-  }))
-  if (currentIndex.value !== anchorIndex) return
-  const blocks = rows.filter(Boolean)
-  if (blocks.some(block => block.index === anchorIndex)) {
-    const scrollAnchor = captureReaderScrollAnchor()
-    chapterBlocks.value = blocks
-    await restoreReaderScrollAnchor(scrollAnchor)
-  }
-}
-
-async function appendNextShowChapter() {
-  if (!isContinuousScrollRead.value || !chapterBlocks.value.length) return
-  const nextIndex = adjacentReaderChapterIndex({
-    blocks: chapterBlocks.value,
-    direction: 'next',
-    totalChapters: chapters.value.length,
-  })
-  if (nextIndex === null) return
-  if (chapterBlocks.value.some(block => block.index === nextIndex)) return
-  const data = await loadChapterContent(nextIndex)
-  chapterBlocks.value = [
-    ...chapterBlocks.value,
-    makeChapterBlock(nextIndex, data.chapter || chapters.value[nextIndex], data.content || ''),
-  ]
-}
-
-async function prependPreviousShowChapter() {
-  if (reader.mode !== 'scroll2' || !chapterBlocks.value.length || !contentEl.value) return
-  const previousIndex = adjacentReaderChapterIndex({
-    blocks: chapterBlocks.value,
-    direction: 'previous',
-    totalChapters: chapters.value.length,
-  })
-  if (previousIndex === null) return
-  if (chapterBlocks.value.some(block => block.index === previousIndex)) return
-  const beforeHeight = contentEl.value.scrollHeight
-  const beforeTop = contentEl.value.scrollTop
-  const data = await loadChapterContent(previousIndex)
-  chapterBlocks.value = [
-    makeChapterBlock(previousIndex, data.chapter || chapters.value[previousIndex], data.content || ''),
-    ...chapterBlocks.value,
-  ]
-  await nextTick()
-  await nextFrame()
-  const heightDelta = Math.max(0, contentEl.value.scrollHeight - beforeHeight)
-  contentEl.value.scrollTop = beforeTop + heightDelta
 }
 
 async function restoreReadingPosition(offset = 0, options = {}) {
@@ -1996,65 +1945,6 @@ function onScroll() {
   progressVersion.value += 1
   applyLocalProgressSnapshot()
   scheduleProgressSave(500)
-}
-
-function updateCurrentChapterFromScroll() {
-  if (!isContinuousScrollRead.value) return
-  const snapshot = visibleChapterProgressSnapshot()
-  const nextIndex = Number(snapshot?.chapterIndex)
-  if (!Number.isInteger(nextIndex) || nextIndex === currentIndex.value) return
-  const block = chapterBlocks.value.find(item => item.index === nextIndex)
-  currentIndex.value = nextIndex
-  chapter.value = snapshot?.chapter || chapters.value[nextIndex] || (block?.id ? { id: block.id, title: block.title, index: nextIndex } : chapter.value)
-  content.value = block?.content || content.value
-  pruneScroll2ChapterWindow()
-}
-
-function maybeExtendShowChapters() {
-  if (!isContinuousScrollRead.value || extendingShowChapters || !contentEl.value) return
-  const el = contentEl.value
-  const extension = readerChapterWindowExtension({
-    mode: reader.mode,
-    scrollTop: el.scrollTop,
-    clientHeight: el.clientHeight,
-    scrollHeight: el.scrollHeight,
-  })
-  if (!extension.previous && !extension.next) return
-  extendingShowChapters = true
-  Promise.all([
-    extension.previous ? prependPreviousShowChapter() : Promise.resolve(),
-    extension.next ? appendNextShowChapter() : Promise.resolve(),
-  ])
-    .catch(() => {})
-    .finally(() => {
-      extendingShowChapters = false
-    })
-}
-
-function pruneScroll2ChapterWindow() {
-  if (reader.mode !== 'scroll2' || !contentEl.value || !chapterBlocks.value.length) return
-  const currentBlocks = chapterBlocks.value
-  const plan = readerChapterWindowPrunePlan({
-    blocks: currentBlocks,
-    currentIndex: currentIndex.value,
-    totalChapters: chapters.value.length,
-    previousSize: SHOW_PREV_CHAPTER_SIZE,
-    nextSize: SHOW_NEXT_CHAPTER_SIZE,
-  })
-  if (!plan.changed) return
-  const removedBeforeHeight = plan.removedBeforeIndexes
-    .reduce((sum, index) => {
-      const element = contentBody.value?.querySelector(`.chapter-content[data-index="${index}"]`)
-      return sum + (element?.getBoundingClientRect?.().height || 0)
-    }, 0)
-  const beforeTop = contentEl.value.scrollTop
-  chapterBlocks.value = plan.blocks
-  if (removedBeforeHeight > 0) {
-    nextTick(() => {
-      if (!contentEl.value) return
-      contentEl.value.scrollTop = Math.max(0, beforeTop - removedBeforeHeight)
-    })
-  }
 }
 
 function currentVisibleExcerpt() {
