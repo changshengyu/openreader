@@ -306,6 +306,7 @@ import { useReaderPositionRestore } from '../composables/useReaderPositionRestor
 import { useReaderPointer } from '../composables/useReaderPointer'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
 import { useReaderScrollSync } from '../composables/useReaderScrollSync'
+import { useReaderSelectedTextActions } from '../composables/useReaderSelectedTextActions'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
@@ -421,6 +422,19 @@ const {
   onSuccess: message => ElMessage.success(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
+const {
+  operate: operateSelectedText,
+} = useReaderSelectedTextActions({
+  getBook: () => book.value,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  prompt: (...args) => ElMessageBox.prompt(...args),
+  createBookmark: createBookmarkFromSelectedText,
+  createReplaceRule,
+  dispatchRulesUpdated: () => {
+    window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated'))
+  },
+  onSuccess: message => ElMessage.success(message),
+})
 const content = ref('')
 const chapterBlocks = ref([])
 const chapterLoading = ref(true)
@@ -438,6 +452,7 @@ const {
   onOperate: operateSelectedText,
   onError: error => ElMessage.error(readError(error, '处理选中文字失败')),
 })
+const handleReaderSelectionEnd = () => scheduleSelectedTextOperation(180)
 const pageEl = ref(null)
 const shellEl = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
@@ -1570,50 +1585,6 @@ function currentVisibleExcerpt() {
   const text = paragraph?.textContent?.replace(/\s+/g, ' ').trim()
   if (text) return text.slice(0, 140)
   return lines.value.slice(0, 2).join(' ').slice(0, 140)
-}
-
-function handleReaderSelectionEnd() {
-  scheduleSelectedTextOperation(180)
-}
-
-async function operateSelectedText(text) {
-  const action = await ElMessageBox.confirm('请选择对选中文字执行的操作。', '选择文字', {
-    confirmButtonText: '添加过滤规则',
-    cancelButtonText: '添加书签',
-    distinguishCancelAndClose: true,
-    closeOnClickModal: false,
-    closeOnPressEscape: false,
-    type: 'info',
-  }).catch(result => result)
-  if (action === 'close') return
-  if (action === 'cancel') {
-    await createBookmarkFromSelectedText(text)
-    return
-  }
-  await createReplaceRuleFromSelectedText(text)
-}
-
-async function createReplaceRuleFromSelectedText(text) {
-  const prompt = await ElMessageBox.prompt('替换为留空时表示直接过滤该文字。', '添加过滤规则', {
-    confirmButtonText: '保存',
-    cancelButtonText: '取消',
-    inputValue: '',
-    inputPlaceholder: '替换为',
-  }).catch(() => null)
-  if (!prompt) return
-  const cleanText = String(text || '').trim()
-  if (!cleanText) return
-  const name = cleanText.length > 24 ? `${cleanText.slice(0, 24)}...` : cleanText
-  await createReplaceRule({
-    name,
-    pattern: cleanText,
-    replacement: String(prompt.value || ''),
-    scope: `${book.value?.title || ''};${book.value?.url || ''}`,
-    isRegex: false,
-    enabled: true,
-  })
-  window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated'))
-  ElMessage.success('过滤规则已添加')
 }
 
 function currentProgressPayload() {
