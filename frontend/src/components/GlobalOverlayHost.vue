@@ -675,7 +675,7 @@ import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@e
 import * as adminApi from '../api/admin'
 import { cacheBookContent, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
-import { createReplaceRule, deleteReplaceRule, deleteReplaceRules, listReplaceRules, testReplaceRule, updateReplaceRule, upsertReplaceRules } from '../api/replaceRules'
+import * as replaceRulesApi from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
 import { bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
@@ -685,6 +685,7 @@ import { useUserStore } from '../stores/user'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useOverlayUserManagement } from '../composables/useOverlayUserManagement'
+import { useOverlayReplaceRules } from '../composables/useOverlayReplaceRules'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -808,21 +809,49 @@ const {
   onWarning: message => ElMessage.warning(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
-const replaceRules = ref([])
-const replaceRulesLoading = ref(false)
-const replaceRuleImporting = ref(false)
-const selectedReplaceRuleIds = ref([])
-const replaceRuleFileInput = ref(null)
-const replaceRuleDialog = ref(false)
-const replaceRuleSaving = ref(false)
-const replaceRuleTesting = ref(false)
-const editingReplaceRuleId = ref(null)
-const replaceRuleDraft = ref({ name: '', pattern: '', replacement: '', scope: '*', isRegex: false, enabled: true })
-const replaceRuleTestText = ref('广告123\n正文内容')
-const replaceRuleTestResult = ref(null)
+const {
+  rules: replaceRules,
+  loading: replaceRulesLoading,
+  importing: replaceRuleImporting,
+  selectedIds: selectedReplaceRuleIds,
+  fileInput: replaceRuleFileInput,
+  dialogVisible: replaceRuleDialog,
+  saving: replaceRuleSaving,
+  testing: replaceRuleTesting,
+  editingId: editingReplaceRuleId,
+  draft: replaceRuleDraft,
+  testText: replaceRuleTestText,
+  testResult: replaceRuleTestResult,
+  load: loadReplaceRules,
+  handleUpdated: handleReplaceRulesUpdated,
+  clearRefresh: clearReplaceRulesRefreshTimer,
+  changeSelection: onReplaceRuleSelectionChange,
+  toggleSelection: toggleReplaceRuleSelection,
+  triggerImport: triggerReplaceRuleImport,
+  importFile: importReplaceRuleFile,
+  normalize: normalizeReplaceRule,
+  openEditor: openReplaceRuleEditor,
+  save: saveReplaceRule,
+  toggle: toggleReplaceRule,
+  runTest: runReplaceRuleTest,
+  remove: removeReplaceRule,
+  removeSelected: deleteSelectedReplaceRules,
+} = useOverlayReplaceRules({
+  isActive: () => overlay.replaceRulesVisible,
+  ...replaceRulesApi,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  notifyUpdated: () => {
+    window.dispatchEvent(new CustomEvent(
+      'openreader:replace-rules-updated',
+      { detail: { local: true } },
+    ))
+  },
+  onSuccess: message => ElMessage.success(message),
+  onWarning: message => ElMessage.warning(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const manageKeyword = ref('')
 const windowWidth = ref(currentViewportWidth())
-let replaceRulesRefreshTimer
 let sourceRowsRefreshTimer
 let groupSortable
 
@@ -1826,235 +1855,6 @@ async function restoreBackup(data) {
   } finally {
     restoreLoading.value = false
   }
-}
-
-async function loadReplaceRules() {
-  replaceRulesLoading.value = true
-  try {
-    const { data } = await listReplaceRules()
-    replaceRules.value = Array.isArray(data) ? data.map(normalizeReplaceRule) : []
-    selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(id => replaceRules.value.some(rule => rule.id === id))
-  } catch (err) {
-    ElMessage.error(readError(err, '加载替换规则失败'))
-  } finally {
-    replaceRulesLoading.value = false
-  }
-}
-
-function handleReplaceRulesUpdated(event) {
-  if (event?.detail?.local || !overlay.replaceRulesVisible) return
-  scheduleReplaceRulesRefresh()
-}
-
-function scheduleReplaceRulesRefresh() {
-  clearReplaceRulesRefreshTimer()
-  replaceRulesRefreshTimer = window.setTimeout(async () => {
-    replaceRulesRefreshTimer = undefined
-    await loadReplaceRules()
-  }, 250)
-}
-
-function clearReplaceRulesRefreshTimer() {
-  if (!replaceRulesRefreshTimer) return
-  window.clearTimeout(replaceRulesRefreshTimer)
-  replaceRulesRefreshTimer = undefined
-}
-
-function onReplaceRuleSelectionChange(rows) {
-  selectedReplaceRuleIds.value = rows.map(row => row.id)
-}
-
-function toggleReplaceRuleSelection(id, checked) {
-  if (checked) {
-    if (!selectedReplaceRuleIds.value.includes(id)) selectedReplaceRuleIds.value.push(id)
-    return
-  }
-  selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(item => item !== id)
-}
-
-function triggerReplaceRuleImport() {
-  replaceRuleFileInput.value?.click()
-}
-
-async function importReplaceRuleFile(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  replaceRuleImporting.value = true
-  try {
-    const text = await file.text()
-    const parsed = JSON.parse(text)
-    const ruleList = normalizeReplaceRuleImport(parsed)
-    if (!ruleList.length) {
-      ElMessage.warning('替换规则文件中没有可导入的规则')
-      return
-    }
-    await ElMessageBox.confirm(`确认要导入文件中的 ${ruleList.length} 条替换规则吗？`, '导入替换规则', { type: 'warning' })
-    const { data } = await upsertReplaceRules(ruleList)
-    ElMessage.success(`导入替换规则成功：新增 ${data?.created || 0}，更新 ${data?.updated || 0}` + (data?.skipped ? `，跳过 ${data.skipped}` : ''))
-    await loadReplaceRules()
-    notifyReplaceRulesUpdated()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '导入替换规则失败'))
-  } finally {
-    replaceRuleImporting.value = false
-  }
-}
-
-function normalizeReplaceRuleImport(input) {
-  const rows = Array.isArray(input) ? input : Array.isArray(input?.rules) ? input.rules : []
-  return rows
-    .map((rule, index) => ({
-      name: String(rule.name || rule.title || `导入规则 ${index + 1}`).trim(),
-      pattern: String(rule.pattern || rule.regex || rule.match || '').trim(),
-      replacement: String(rule.replacement ?? rule.replace ?? ''),
-      scope: String(rule.scope || '*').trim() || '*',
-      isRegex: rule.isRegex === true,
-      enabled: rule.enabled === false || rule.isEnabled === false ? false : true,
-    }))
-    .filter(rule => rule.pattern)
-}
-
-function normalizeReplaceRule(rule = {}) {
-  rule = rule || {}
-  return {
-    ...rule,
-    scope: String(rule.scope || '*').trim() || '*',
-    isRegex: rule.isRegex == null ? true : rule.isRegex === true,
-    enabled: rule.enabled === false || rule.isEnabled === false ? false : true,
-  }
-}
-
-function openReplaceRuleEditor(rule = null) {
-  if (!rule) {
-    editingReplaceRuleId.value = null
-    replaceRuleDraft.value = { name: '', pattern: '', replacement: '', scope: '*', isRegex: false, enabled: true }
-    replaceRuleTestResult.value = null
-    replaceRuleDialog.value = true
-    return
-  }
-  const normalized = normalizeReplaceRule(rule)
-  editingReplaceRuleId.value = normalized.id || null
-  replaceRuleDraft.value = {
-    name: normalized.name || '',
-    pattern: normalized.pattern || '',
-    replacement: normalized.replacement || '',
-    scope: normalized.scope || '*',
-    isRegex: normalized.isRegex,
-    enabled: normalized.enabled,
-  }
-  replaceRuleTestResult.value = null
-  replaceRuleDialog.value = true
-}
-
-async function saveReplaceRule() {
-  if (!replaceRuleDraft.value.pattern.trim()) {
-    ElMessage.warning('匹配规则不能为空')
-    return
-  }
-  replaceRuleSaving.value = true
-  try {
-    const payload = normalizeReplaceRule({
-      ...replaceRuleDraft.value,
-      pattern: replaceRuleDraft.value.pattern.trim(),
-      scope: replaceRuleDraft.value.scope,
-    })
-    if (editingReplaceRuleId.value) {
-      await updateReplaceRule(editingReplaceRuleId.value, payload)
-      ElMessage.success('替换规则已更新')
-    } else {
-      await createReplaceRule(payload)
-      ElMessage.success('替换规则已创建')
-    }
-    replaceRuleDialog.value = false
-    await loadReplaceRules()
-    notifyReplaceRulesUpdated()
-  } catch (err) {
-    ElMessage.error(readError(err, '保存替换规则失败'))
-  } finally {
-    replaceRuleSaving.value = false
-  }
-}
-
-async function toggleReplaceRule(rule, enabled) {
-  const normalized = normalizeReplaceRule({ ...rule, enabled })
-  try {
-    await updateReplaceRule(normalized.id, {
-      name: normalized.name,
-      pattern: normalized.pattern,
-      replacement: normalized.replacement,
-      scope: normalized.scope,
-      isRegex: normalized.isRegex,
-      enabled: normalized.enabled,
-    })
-    rule.enabled = normalized.enabled
-    rule.isEnabled = normalized.enabled
-    ElMessage.success(normalized.enabled ? '规则已启用' : '规则已停用')
-    notifyReplaceRulesUpdated()
-  } catch (err) {
-    ElMessage.error(readError(err, '更新替换规则失败'))
-    await loadReplaceRules()
-  }
-}
-
-async function runReplaceRuleTest() {
-  if (!replaceRuleDraft.value.pattern.trim() || !replaceRuleTestText.value) {
-    ElMessage.warning('请输入匹配规则和测试文本')
-    return
-  }
-  replaceRuleTesting.value = true
-  try {
-    const { data } = await testReplaceRule({
-      pattern: replaceRuleDraft.value.pattern,
-      replacement: replaceRuleDraft.value.replacement,
-      isRegex: replaceRuleDraft.value.isRegex,
-      text: replaceRuleTestText.value,
-    })
-    replaceRuleTestResult.value = data
-  } catch (err) {
-    ElMessage.error(readError(err, '测试替换规则失败'))
-  } finally {
-    replaceRuleTesting.value = false
-  }
-}
-
-async function removeReplaceRule(rule) {
-  try {
-    await ElMessageBox.confirm(`确定删除替换规则“${rule.name || rule.pattern}”吗？`, '删除替换规则', { type: 'warning' })
-    await deleteReplaceRule(rule.id)
-    replaceRules.value = replaceRules.value.filter(item => item.id !== rule.id)
-    selectedReplaceRuleIds.value = selectedReplaceRuleIds.value.filter(id => id !== rule.id)
-    ElMessage.success('替换规则已删除')
-    notifyReplaceRulesUpdated()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除替换规则失败'))
-  }
-}
-
-async function deleteSelectedReplaceRules() {
-  const ids = [...selectedReplaceRuleIds.value]
-  if (!ids.length) {
-    ElMessage.warning('请选择需要删除的替换规则')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`确认要删除所选择的 ${ids.length} 条替换规则吗？`, '批量删除替换规则', { type: 'warning' })
-    const { data } = await deleteReplaceRules(ids)
-    const deletedIds = Array.isArray(data?.deletedIds) ? data.deletedIds : []
-    replaceRules.value = replaceRules.value.filter(rule => !deletedIds.includes(rule.id))
-    selectedReplaceRuleIds.value = []
-    ElMessage.success('删除替换规则成功')
-    notifyReplaceRulesUpdated()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除替换规则失败'))
-  }
-}
-
-function notifyReplaceRulesUpdated() {
-  window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated', { detail: { local: true } }))
 }
 
 async function createCategory() {
