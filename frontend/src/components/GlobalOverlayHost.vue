@@ -674,7 +674,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import * as adminApi from '../api/admin'
 import { cacheBookContent, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
-import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
+import * as backupApi from '../api/backup'
 import * as replaceRulesApi from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
@@ -686,6 +686,7 @@ import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useOverlayUserManagement } from '../composables/useOverlayUserManagement'
 import { useOverlayReplaceRules } from '../composables/useOverlayReplaceRules'
+import { useOverlayBackups } from '../composables/useOverlayBackups'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -773,10 +774,24 @@ const {
 const bookmarkEditorVisible = ref(false)
 const editingBookmark = ref(null)
 const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
-const backups = ref([])
-const backupLoading = ref(false)
-const backupListLoading = ref(false)
-const restoreLoading = ref(false)
+const {
+  backups,
+  backupLoading,
+  listLoading: backupListLoading,
+  restoreLoading,
+  load: loadBackups,
+  run: runBackup,
+  download: downloadBackupFile,
+  restore: restoreBackup,
+} = useOverlayBackups({
+  ...backupApi,
+  restoreBackup: backupApi.restoreLegadoBackup,
+  applyRestoreResult,
+  saveBlob: downloadBlob,
+  createFormData: () => new FormData(),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const {
   users,
   usersLoading,
@@ -1804,57 +1819,6 @@ function formatDate(value) {
 
 function joinPath(base, name) {
   return [base, name].filter(Boolean).join('/')
-}
-
-async function runBackup() {
-  backupLoading.value = true
-  try {
-    const { data } = await triggerBackup()
-    ElMessage.success(`备份已保存到 WebDAV：${data.name || data.path || 'backup.zip'}`)
-    await loadBackups()
-  } catch (err) {
-    ElMessage.error(readError(err, '保存备份失败'))
-  } finally {
-    backupLoading.value = false
-  }
-}
-
-async function loadBackups() {
-  backupListLoading.value = true
-  try {
-    const { data } = await listBackups()
-    backups.value = data || []
-  } catch (err) {
-    ElMessage.error(readError(err, '加载备份列表失败'))
-  } finally {
-    backupListLoading.value = false
-  }
-}
-
-async function downloadBackupFile(row) {
-  try {
-    const resp = await downloadBackup(row.name)
-    downloadBlob(resp.data, row.name)
-  } catch (err) {
-    ElMessage.error(readError(err, '下载备份失败'))
-  }
-}
-
-async function restoreBackup(data) {
-  const file = data.raw
-  if (!file) return
-  restoreLoading.value = true
-  try {
-    const form = new FormData()
-    form.append('file', file)
-    const { data: result } = await restoreLegadoBackup(form)
-    ElMessage.success(`恢复完成：书源 ${result.sources || 0}，书籍 ${result.books || 0}，进度 ${result.progress || 0}`)
-    await applyRestoreResult(result)
-  } catch (err) {
-    ElMessage.error(readError(err, '恢复备份失败'))
-  } finally {
-    restoreLoading.value = false
-  }
 }
 
 async function createCategory() {
