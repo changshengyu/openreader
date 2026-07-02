@@ -687,11 +687,11 @@ import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useOverlayUserManagement } from '../composables/useOverlayUserManagement'
 import { useOverlayReplaceRules } from '../composables/useOverlayReplaceRules'
 import { useOverlayBackups } from '../composables/useOverlayBackups'
+import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActions'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
-import { normalizeImportedBookmarks } from '../utils/bookmark'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../utils/localBookToc'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
@@ -771,9 +771,30 @@ const {
   isActive: () => overlay.bookmarkVisible,
   onLoadError: error => ElMessage.error(readError(error, '加载书签失败')),
 })
-const bookmarkEditorVisible = ref(false)
-const editingBookmark = ref(null)
-const bookmarkDraft = reactive({ title: '', excerpt: '', note: '' })
+const {
+  editorVisible: bookmarkEditorVisible,
+  draft: bookmarkDraft,
+  jump: jumpToBookmark,
+  openEditor: openBookmarkEditor,
+  saveEdit: saveBookmarkEdit,
+  removeOne: removeBookmarkItem,
+  removeMany: removeBookmarkItems,
+  importRows: importBookmarkItems,
+} = useOverlayBookmarkActions({
+  getBook: () => overlay.bookmarkBook,
+  closePanel: () => {
+    overlay.bookmarkVisible = false
+  },
+  navigate: routeLocation => router.push(routeLocation),
+  update: updateBookmarkData,
+  remove: removeBookmarkData,
+  removeMany: removeBookmarkRows,
+  importPayloads: importBookmarkPayloads,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  onSuccess: message => ElMessage.success(message),
+  onInvalidImport: message => ElMessage.error(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const {
   backups,
   backupLoading,
@@ -1724,85 +1745,6 @@ function jumpToContentResult(result) {
       q: contentKeyword.value.trim() || undefined,
     },
   })
-}
-
-function jumpToBookmark(bookmark) {
-  const book = overlay.bookmarkBook
-  if (!book?.id) return
-  overlay.bookmarkVisible = false
-  router.push({
-    name: 'reader',
-    params: { id: book.id },
-    query: {
-      chapter: bookmark.chapterIndex,
-      offset: bookmark.offset || 0,
-      percent: Number.isFinite(Number(bookmark.percent)) ? Number(bookmark.percent) : undefined,
-    },
-  })
-}
-
-function openBookmarkEditor(bookmark) {
-  editingBookmark.value = bookmark
-  Object.assign(bookmarkDraft, {
-    title: bookmark.title || '',
-    excerpt: bookmark.excerpt || '',
-    note: bookmark.note || '',
-  })
-  bookmarkEditorVisible.value = true
-}
-
-async function saveBookmarkEdit() {
-  if (!editingBookmark.value) return
-  try {
-    await updateBookmarkData(editingBookmark.value.id, {
-      title: bookmarkDraft.title,
-      excerpt: bookmarkDraft.excerpt,
-      note: bookmarkDraft.note,
-    })
-    bookmarkEditorVisible.value = false
-    ElMessage.success('书签已更新')
-  } catch (err) {
-    ElMessage.error(readError(err, '更新书签失败'))
-  }
-}
-
-async function removeBookmarkItem(bookmark) {
-  try {
-    await removeBookmarkData(bookmark.id)
-    ElMessage.success('书签已删除')
-  } catch (err) {
-    ElMessage.error(readError(err, '删除书签失败'))
-  }
-}
-
-async function removeBookmarkItems(rows) {
-  if (!Array.isArray(rows) || !rows.length) return
-  try {
-    await ElMessageBox.confirm(`确认要删除所选择的 ${rows.length} 条书签吗？`, '批量删除书签', { type: 'warning' })
-    await removeBookmarkRows(rows)
-    ElMessage.success('书签已删除')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '批量删除书签失败'))
-  }
-}
-
-async function importBookmarkItems(rows) {
-  const book = overlay.bookmarkBook
-  if (!book?.id) return
-  const payloads = normalizeImportedBookmarks(rows)
-  if (!payloads.length) {
-    ElMessage.error('书签文件没有可导入内容')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`确认要导入文件中的 ${payloads.length} 条书签到当前书籍吗？`, '导入书签', { type: 'info' })
-    const created = await importBookmarkPayloads(payloads)
-    ElMessage.success(`已导入 ${created.length} 条书签`)
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '导入书签失败'))
-  }
 }
 
 function formatSize(bytes) {
