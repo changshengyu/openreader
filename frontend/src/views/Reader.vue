@@ -311,6 +311,7 @@ import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigat
 import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
 import { useReaderToast } from '../composables/useReaderToast'
+import { useReaderTools } from '../composables/useReaderTools'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { useReaderTypographySync } from '../composables/useReaderTypographySync'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
@@ -1079,6 +1080,36 @@ const {
   goChapter,
   notify: showReaderToast,
 })
+const {
+  handleDesktopToolAction,
+  handleMobileChromeAction,
+  handleMobileToolAction,
+} = useReaderTools({
+  currentIndex,
+  mobileChromeVisible,
+  mobileMoreVisible: showMobileMoreDrawer,
+  goChapter,
+  toggleChrome: toggleReaderChrome,
+  actions: {
+    home: goShelf,
+    shelf: openShelfPanel,
+    source: goSourcePanel,
+    toc: openTocDrawer,
+    settings: openSettingsDrawer,
+    bookmarks: openBookmarkDrawer,
+    search: openContentSearch,
+    info: openReaderBookInfo,
+    note: openNoteDialog,
+    cache: openCacheDrawer,
+    'clear-cache': clearCurrentBookCache,
+    reload: reloadChapter,
+    'auto-read': toggleAutoReading,
+    tts: toggleTTS,
+    night: toggleNight,
+    top: scrollToTop,
+    bottom: scrollToBottom,
+  },
+})
 
 useReaderRouteSync({
   bookId,
@@ -1439,67 +1470,6 @@ function goSourcePanel() {
 function openBookmarkDrawer() {
   mobileChromeVisible.value = false
   showBookmarkDrawer.value = true
-}
-
-function runMobileAction(action) {
-  showMobileMoreDrawer.value = false
-  mobileChromeVisible.value = false
-  action?.()
-}
-
-function handleMobileToolAction(action) {
-  runMobileAction(readerToolAction(action))
-}
-
-function handleMobileChromeAction(action) {
-  if (action === 'previous') {
-    goChapter(currentIndex.value - 1)
-    return
-  }
-  if (action === 'next') {
-    goChapter(currentIndex.value + 1)
-    return
-  }
-  if (action === 'toggle') {
-    toggleReaderChrome()
-    return
-  }
-  if (action === 'more') {
-    openMobileTool(() => { showMobileMoreDrawer.value = true })
-    return
-  }
-  openMobileTool(readerToolAction(action))
-}
-
-function handleDesktopToolAction(action) {
-  readerToolAction(action)?.()
-}
-
-function readerToolAction(action) {
-  return {
-    home: goShelf,
-    shelf: openShelfPanel,
-    source: goSourcePanel,
-    toc: openTocDrawer,
-    settings: openSettingsDrawer,
-    bookmarks: openBookmarkDrawer,
-    search: openContentSearch,
-    info: openReaderBookInfo,
-    note: openNoteDialog,
-    cache: openCacheDrawer,
-    'clear-cache': clearCurrentBookCache,
-    reload: reloadChapter,
-    'auto-read': toggleAutoReading,
-    tts: toggleTTS,
-    night: toggleNight,
-    top: scrollToTop,
-    bottom: scrollToBottom,
-  }[action]
-}
-
-function openMobileTool(action) {
-  mobileChromeVisible.value = false
-  action?.()
 }
 
 function openReplaceRules() {
