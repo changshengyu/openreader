@@ -286,6 +286,7 @@ import { useGesture } from '../composables/useGesture'
 import { useAutoReading } from '../composables/useAutoReading'
 import { useReaderAppearanceAssets } from '../composables/useReaderAppearanceAssets'
 import { useReaderBookLoad } from '../composables/useReaderBookLoad'
+import { useReaderBookState } from '../composables/useReaderBookState'
 import { useReaderCatalogActions } from '../composables/useReaderCatalogActions'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
@@ -333,7 +334,6 @@ import {
 } from '../utils/readerPagination'
 import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
-import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
 import { sourceCandidateSourceName } from '../utils/sourceCandidate'
 
@@ -363,6 +363,17 @@ const {
 const book = ref(null)
 const chapters = ref([])
 const chapter = ref(null)
+const {
+  cacheKey: readerDataCacheKey,
+  invalidate: invalidateReaderDataCache,
+  mergeLoadedBook,
+  write: writeReaderDataCache,
+} = useReaderBookState({
+  book,
+  bookId,
+  bookshelf,
+  mergeBook: mergeShelfBook,
+})
 const {
   items: bookmarks,
   mutating: savingBookmark,
@@ -1361,28 +1372,6 @@ useReaderPageLifecycle({
 onBeforeRouteLeave(() => {
   saveCurrentProgress({ force: true, background: true })
 })
-
-function mergeLoadedBook(incoming) {
-  if (!incoming?.id) return incoming
-  const current = bookshelf.books.find(item => Number(item.id) === Number(incoming.id)) ||
-    (Number(book.value?.id) === Number(incoming.id) ? book.value : null)
-  return mergeShelfBook(current, incoming)
-}
-
-function readerDataCacheKey(key) {
-  const [type, targetBookId] = String(key || '').split(':')
-  return scopedReaderDataCacheKey(targetBookId || bookId.value, type || key)
-}
-
-async function invalidateReaderDataCache(options = {}) {
-  const targetBookId = options.bookId || bookId.value
-  await invalidateReaderCache(targetBookId, options)
-}
-
-async function writeReaderDataCache(options = {}) {
-  const targetBookId = options.bookId || bookId.value
-  await writeReaderCache(targetBookId, options)
-}
 
 function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))

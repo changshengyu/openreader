@@ -1,5 +1,5 @@
-import { removeBrowserCache, setBrowserCache } from './browserCache'
-import { currentUserScope } from './authScope'
+import { removeBrowserCache, setBrowserCache } from './browserCache.js'
+import { currentUserScope } from './authScope.js'
 
 export function readerDataCacheKey(bookId, type) {
   return `reader@${currentUserScope()}@${type}:${bookId}`
