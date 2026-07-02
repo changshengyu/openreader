@@ -1,0 +1,178 @@
+import { unref } from 'vue'
+import {
+  didReaderTouchMove,
+  isReaderTouchTap,
+  MOBILE_READER_TAP_MOVE_TOLERANCE,
+  readerTapPointAction,
+  readerTapZoneAction,
+  shouldHandleReaderHorizontalSwipe,
+  shouldPreventReaderTouchMove,
+} from '../utils/readerInteraction.js'
+
+export function useReaderPointer(options) {
+  const windowTarget = options.windowTarget ?? window
+  const now = options.now ?? Date.now
+  let touchStart = null
+  let touchMoved = false
+  let touchMove = { x: 0, y: 0 }
+  let handledTouchTapAt = 0
+
+  function resetTouch() {
+    touchStart = null
+    touchMoved = false
+    touchMove = { x: 0, y: 0 }
+  }
+
+  function applyAction(action, actionOptions = {}) {
+    if (!action) return
+    if (action === 'toggle-chrome') {
+      if (actionOptions.mobileOnly && !unref(options.isMobileReader)) return
+      options.toggleChrome()
+      return
+    }
+    if (actionOptions.hideChrome) options.mobileChromeVisible.value = false
+    if (action === 'next') options.nextPage()
+    if (action === 'previous') options.previousPage()
+  }
+
+  function tapPoint(point, mobile) {
+    if (unref(options.isOverlayOpen) || !point?.rect) return
+    if (options.scheduleSelectedTextOperation(0)) {
+      options.suppressContentClick()
+      return
+    }
+    const viewportWidth = windowTarget.innerWidth || point.rect.width
+    const viewportHeight = windowTarget.innerHeight || point.rect.height
+    const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
+    const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
+    applyAction(readerTapPointAction({
+      mobile,
+      pointX,
+      pointY,
+      viewportWidth,
+      viewportHeight,
+      clickMethod: options.reader.clickMethod,
+      mode: options.reader.mode,
+      autoReading: unref(options.autoReading),
+    }), {
+      hideChrome: mobile,
+    })
+  }
+
+  function handleTapZone(zone) {
+    if (unref(options.isOverlayOpen)) return
+    applyAction(readerTapZoneAction({
+      zone,
+      clickMethod: options.reader.clickMethod,
+      mode: options.reader.mode,
+      autoReading: unref(options.autoReading),
+    }), {
+      hideChrome: options.reader.clickMethod === 'next',
+      mobileOnly: true,
+    })
+  }
+
+  function handleContentClick(event) {
+    const page = unref(options.pageEl)
+    if (unref(options.isOverlayOpen) || !page) return
+    if (now() - handledTouchTapAt < 450) return
+    if (options.consumeSuppressedContentClick()) return
+    if (event.defaultPrevented || event.button !== 0) return
+    const target = event.target
+    if (target?.closest?.('button, a, input, textarea, select, [role="button"]')) return
+    const rect = page.getBoundingClientRect()
+    tapPoint({
+      rect,
+      relX: event.clientX - rect.left,
+      relY: event.clientY - rect.top,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    }, unref(options.isMobileReader))
+  }
+
+  function handleTouchStart(event) {
+    if (!unref(options.isMobileReader) || event.touches?.length !== 1) return
+    const touch = event.touches[0]
+    touchStart = { x: touch.clientX, y: touch.clientY, at: now() }
+    touchMoved = false
+    touchMove = { x: 0, y: 0 }
+  }
+
+  function handleTouchMove(event) {
+    if (
+      !unref(options.isMobileReader)
+      || !touchStart
+      || event.touches?.length !== 1
+    ) return
+    const touch = event.touches[0]
+    const moveX = touch.clientX - touchStart.x
+    const moveY = touch.clientY - touchStart.y
+    touchMove = { x: moveX, y: moveY }
+    if (didReaderTouchMove(touchMove, MOBILE_READER_TAP_MOVE_TOLERANCE)) {
+      touchMoved = true
+    }
+    if (shouldPreventReaderTouchMove({
+      mode: options.reader.mode,
+      moveX,
+      moveY,
+    })) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+
+  function handleTouchEnd(event) {
+    if (!unref(options.isMobileReader)) return
+    const touch = event.changedTouches?.[0]
+    if (options.scheduleSelectedTextOperation(200)) {
+      options.suppressContentClick()
+      resetTouch()
+      return
+    }
+    const elapsed = touchStart ? now() - touchStart.at : 0
+    const isTap = isReaderTouchTap({
+      move: touchMove,
+      elapsed,
+      hasTouch: touch,
+      tolerance: MOBILE_READER_TAP_MOVE_TOLERANCE,
+    })
+    if (touch) options.suppressContentClick(360)
+    if (isTap) handledTouchTapAt = now()
+
+    if (
+      touchMoved
+      && !unref(options.isOverlayOpen)
+      && shouldHandleReaderHorizontalSwipe({
+        mode: options.reader.mode,
+        move: touchMove,
+      })
+    ) {
+      if (touchMove.x > 0) options.previousPage()
+      else options.nextPage()
+    } else if (
+      !touchMoved
+      && !unref(options.isOverlayOpen)
+      && unref(options.pageEl)
+      && touch
+    ) {
+      const rect = unref(options.pageEl).getBoundingClientRect()
+      tapPoint({
+        rect,
+        relX: touch.clientX - rect.left,
+        relY: touch.clientY - rect.top,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+      }, true)
+    }
+    resetTouch()
+  }
+
+  return {
+    handleContentClick,
+    handleTapZone,
+    handleTouchEnd,
+    handleTouchMove,
+    handleTouchStart,
+    tapPoint,
+  }
+}

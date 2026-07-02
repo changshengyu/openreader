@@ -302,6 +302,7 @@ import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { useReaderMode } from '../composables/useReaderMode'
 import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
 import { useReaderPositionRestore } from '../composables/useReaderPositionRestore'
+import { useReaderPointer } from '../composables/useReaderPointer'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
@@ -318,15 +319,6 @@ import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
-import {
-  didReaderTouchMove,
-  isReaderTouchTap,
-  MOBILE_READER_TAP_MOVE_TOLERANCE,
-  readerTapPointAction,
-  readerTapZoneAction,
-  shouldHandleReaderHorizontalSwipe,
-  shouldPreventReaderTouchMove,
-} from '../utils/readerInteraction'
 import {
   readerScrollBehaviorForDuration,
   readerScrollStep,
@@ -538,10 +530,6 @@ const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
 const restoringPosition = ref(false)
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
-let readerTouchStart = null
-let readerTouchMoved = false
-let readerTouchMove = { x: 0, y: 0 }
-let handledTouchTapAt = 0
 let lastLocalProgressKey = ''
 
 const fontOptions = readerFontOptions
@@ -934,6 +922,26 @@ const {
   advancePage: advanceAutoReadingPage,
   onProgress: recordAutoReadingProgress,
   onNotify: message => showReaderToast(message, 1200),
+})
+const {
+  handleContentClick: handleReaderContentClick,
+  handleTapZone,
+  handleTouchEnd: handleReaderTouchEnd,
+  handleTouchMove: handleReaderTouchMove,
+  handleTouchStart: handleReaderTouchStart,
+} = useReaderPointer({
+  reader,
+  pageEl,
+  isMobileReader,
+  isOverlayOpen,
+  autoReading,
+  mobileChromeVisible,
+  scheduleSelectedTextOperation,
+  suppressContentClick,
+  consumeSuppressedContentClick,
+  nextPage,
+  previousPage,
+  toggleChrome: toggleReaderChrome,
 })
 
 const {
@@ -1624,162 +1632,6 @@ function readerScrollBehavior() {
   return readerScrollBehaviorForDuration(reader.animateDuration)
 }
 
-function handleTapZone(zone) {
-  if (isOverlayOpen.value) return
-  applyReaderTapAction(readerTapZoneAction({
-    zone,
-    clickMethod: reader.clickMethod,
-    mode: reader.mode,
-    autoReading: autoReading.value,
-  }), {
-    mobile: true,
-    hideChrome: reader.clickMethod === 'next',
-  })
-}
-
-function handleReaderContentClick(event) {
-  if (isOverlayOpen.value || !pageEl.value) return
-  if (Date.now() - handledTouchTapAt < 450) return
-  if (consumeSuppressedContentClick()) return
-  if (event.defaultPrevented || event.button !== 0) return
-  const target = event.target
-  if (target?.closest?.('button, a, input, textarea, select, [role="button"]')) return
-  const rect = pageEl.value.getBoundingClientRect()
-  const point = {
-    rect,
-    relX: event.clientX - rect.left,
-    relY: event.clientY - rect.top,
-    clientX: event.clientX,
-    clientY: event.clientY,
-  }
-  if (isMobileReader.value) {
-    handleTapPoint(point)
-  } else {
-    handleDesktopTapPoint(point)
-  }
-}
-
-function handleReaderTouchStart(event) {
-  if (!isMobileReader.value || event.touches?.length !== 1) return
-  const touch = event.touches[0]
-  readerTouchStart = { x: touch.clientX, y: touch.clientY, at: Date.now() }
-  readerTouchMoved = false
-  readerTouchMove = { x: 0, y: 0 }
-}
-
-function handleReaderTouchMove(event) {
-  if (!isMobileReader.value || !readerTouchStart || event.touches?.length !== 1) return
-  const touch = event.touches[0]
-  const moveX = touch.clientX - readerTouchStart.x
-  const moveY = touch.clientY - readerTouchStart.y
-  readerTouchMove = { x: moveX, y: moveY }
-  if (didReaderTouchMove(readerTouchMove, MOBILE_READER_TAP_MOVE_TOLERANCE)) {
-    readerTouchMoved = true
-  }
-  if (shouldPreventReaderTouchMove({ mode: reader.mode, moveX, moveY })) {
-    event.preventDefault()
-    event.stopPropagation()
-  }
-}
-
-function handleReaderTouchEnd(event) {
-  if (!isMobileReader.value) return
-  const touch = event.changedTouches?.[0]
-  if (scheduleSelectedTextOperation(200)) {
-    suppressContentClick()
-    readerTouchStart = null
-    readerTouchMoved = false
-    readerTouchMove = { x: 0, y: 0 }
-    return
-  }
-  const elapsed = readerTouchStart ? Date.now() - readerTouchStart.at : 0
-  const isTap = isReaderTouchTap({
-    move: readerTouchMove,
-    elapsed,
-    hasTouch: touch,
-    tolerance: MOBILE_READER_TAP_MOVE_TOLERANCE,
-  })
-  if (touch) suppressContentClick(360)
-  if (isTap) handledTouchTapAt = Date.now()
-  if (readerTouchMoved && !isOverlayOpen.value && shouldHandleReaderHorizontalSwipe({
-    mode: reader.mode,
-    move: readerTouchMove,
-  })) {
-    if (readerTouchMove.x > 0) previousPage()
-    else nextPage()
-  } else if (!readerTouchMoved && !isOverlayOpen.value && pageEl.value) {
-    if (touch) {
-      const rect = pageEl.value.getBoundingClientRect()
-      handleTapPoint({
-        rect,
-        relX: touch.clientX - rect.left,
-        relY: touch.clientY - rect.top,
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-      })
-    }
-  }
-  readerTouchStart = null
-  readerTouchMoved = false
-  readerTouchMove = { x: 0, y: 0 }
-}
-
-function handleTapPoint(point) {
-  if (isOverlayOpen.value || !point?.rect) return
-  if (scheduleSelectedTextOperation(0)) {
-    suppressContentClick()
-    return
-  }
-  const viewportWidth = window.innerWidth || point.rect.width
-  const viewportHeight = window.innerHeight || point.rect.height
-  const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
-  const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
-  applyReaderTapAction(readerTapPointAction({
-    mobile: true,
-    pointX,
-    pointY,
-    viewportWidth,
-    viewportHeight,
-    clickMethod: reader.clickMethod,
-    mode: reader.mode,
-    autoReading: autoReading.value,
-  }), { mobile: true, hideChrome: true })
-}
-
-function handleDesktopTapPoint(point) {
-  if (isOverlayOpen.value || !point?.rect) return
-  if (scheduleSelectedTextOperation(0)) {
-    suppressContentClick()
-    return
-  }
-  const viewportWidth = window.innerWidth || point.rect.width
-  const viewportHeight = window.innerHeight || point.rect.height
-  const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
-  const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
-  applyReaderTapAction(readerTapPointAction({
-    mobile: false,
-    pointX,
-    pointY,
-    viewportWidth,
-    viewportHeight,
-    clickMethod: reader.clickMethod,
-    mode: reader.mode,
-    autoReading: autoReading.value,
-  }))
-}
-
-function applyReaderTapAction(action, options = {}) {
-  if (!action) return
-  if (action === 'toggle-chrome') {
-    if (options.mobile) toggleMobileReaderChrome()
-    else toggleReaderChrome()
-    return
-  }
-  if (options.hideChrome) mobileChromeVisible.value = false
-  if (action === 'next') nextPage()
-  if (action === 'previous') previousPage()
-}
-
 function toggleReaderChrome() {
   if (isMobileReader.value) {
     mobileChromeVisible.value = !mobileChromeVisible.value
@@ -1791,10 +1643,6 @@ function toggleReaderChrome() {
     openTocDrawer()
   }
   showSettingsDrawer.value = false
-}
-
-function toggleMobileReaderChrome() {
-  if (isMobileReader.value) toggleReaderChrome()
 }
 
 function handleReaderPageHide() {
