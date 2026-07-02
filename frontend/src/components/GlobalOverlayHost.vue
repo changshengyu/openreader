@@ -672,7 +672,7 @@ import Sortable from 'sortablejs'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Edit, Rank, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
-import { cleanupInactiveUsers, createUser, deleteUsers, listUsers, resetUserPassword, updateUser } from '../api/admin'
+import * as adminApi from '../api/admin'
 import { cacheBookContent, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
 import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { createReplaceRule, deleteReplaceRule, deleteReplaceRules, listReplaceRules, testReplaceRule, updateReplaceRule, upsertReplaceRules } from '../api/replaceRules'
@@ -684,6 +684,7 @@ import { useReaderStore } from '../stores/reader'
 import { useUserStore } from '../stores/user'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookContentSearch } from '../composables/useBookContentSearch'
+import { useOverlayUserManagement } from '../composables/useOverlayUserManagement'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -775,14 +776,38 @@ const backups = ref([])
 const backupLoading = ref(false)
 const backupListLoading = ref(false)
 const restoreLoading = ref(false)
-const users = ref([])
-const usersLoading = ref(false)
-const cleanupLoading = ref(false)
-const deletingUsers = ref(false)
-const creatingUser = ref(false)
-const userCreateDialog = ref(false)
-const selectedUserIds = ref([])
-const userDraft = reactive({ username: '', password: '', role: 'user', canEditSources: true, canAccessStore: true })
+const {
+  users,
+  usersLoading,
+  cleanupLoading,
+  deletingUsers,
+  creatingUser,
+  createDialogVisible: userCreateDialog,
+  selectedUserIds,
+  draft: userDraft,
+  load: loadUsers,
+  handleUpdated: handleUsersUpdated,
+  clearRefresh: clearUsersRefreshTimer,
+  isDeletable: isUserDeletable,
+  changeSelection: onUserSelectionChange,
+  toggleSelection: toggleUserSelection,
+  openCreateDialog: openCreateUserDialog,
+  create: createManagedUser,
+  resetPassword,
+  removeSelected: deleteSelectedUsers,
+  updatePermission: updateUserPermission,
+  cleanupInactive,
+} = useOverlayUserManagement({
+  userStore,
+  getCurrentUserId: () => userStore.profile?.id || null,
+  isActive: () => overlay.userManageVisible,
+  ...adminApi,
+  prompt: (...args) => ElMessageBox.prompt(...args),
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  onSuccess: message => ElMessage.success(message),
+  onWarning: message => ElMessage.warning(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const replaceRules = ref([])
 const replaceRulesLoading = ref(false)
 const replaceRuleImporting = ref(false)
@@ -798,7 +823,6 @@ const replaceRuleTestResult = ref(null)
 const manageKeyword = ref('')
 const windowWidth = ref(currentViewportWidth())
 let replaceRulesRefreshTimer
-let usersRefreshTimer
 let sourceRowsRefreshTimer
 let groupSortable
 
@@ -869,8 +893,6 @@ function isShelfBook(book) {
   if (!bookUrl) return false
   return bookshelf.books.some(item => String(item.url || item.bookUrl || '').trim() === bookUrl)
 }
-const currentUserId = computed(() => userStore.profile?.id || null)
-
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
   window.addEventListener('openreader:replace-rules-updated', handleReplaceRulesUpdated)
@@ -1803,162 +1825,6 @@ async function restoreBackup(data) {
     ElMessage.error(readError(err, '恢复备份失败'))
   } finally {
     restoreLoading.value = false
-  }
-}
-
-async function loadUsers() {
-  usersLoading.value = true
-  try {
-    if (!userStore.profile) await userStore.loadMe()
-    const { data } = await listUsers()
-    users.value = data || []
-    selectedUserIds.value = selectedUserIds.value.filter(id => users.value.some(user => user.id === id && isUserDeletable(user)))
-  } catch (err) {
-    ElMessage.error(readError(err, '加载用户失败'))
-  } finally {
-    usersLoading.value = false
-  }
-}
-
-function handleUsersUpdated() {
-  if (!overlay.userManageVisible) return
-  scheduleUsersRefresh()
-}
-
-function scheduleUsersRefresh() {
-  clearUsersRefreshTimer()
-  usersRefreshTimer = window.setTimeout(async () => {
-    usersRefreshTimer = undefined
-    await loadUsers()
-  }, 250)
-}
-
-function clearUsersRefreshTimer() {
-  if (!usersRefreshTimer) return
-  window.clearTimeout(usersRefreshTimer)
-  usersRefreshTimer = undefined
-}
-
-function isUserDeletable(user) {
-  return user.role !== 'admin' && user.id !== currentUserId.value
-}
-
-function onUserSelectionChange(rows) {
-  selectedUserIds.value = rows.filter(isUserDeletable).map(user => user.id)
-}
-
-function toggleUserSelection(id, checked) {
-  const user = users.value.find(item => item.id === id)
-  if (!user || !isUserDeletable(user)) return
-  if (checked) {
-    if (!selectedUserIds.value.includes(id)) selectedUserIds.value.push(id)
-    return
-  }
-  selectedUserIds.value = selectedUserIds.value.filter(item => item !== id)
-}
-
-function openCreateUserDialog() {
-  Object.assign(userDraft, {
-    username: '',
-    password: '',
-    role: 'user',
-    canEditSources: true,
-    canAccessStore: true,
-  })
-  userCreateDialog.value = true
-}
-
-async function createManagedUser() {
-  const username = userDraft.username.trim()
-  if (username.length < 3 || userDraft.password.length < 6) {
-    ElMessage.warning('用户名至少 3 位，密码至少 6 位')
-    return
-  }
-  creatingUser.value = true
-  try {
-    await createUser({
-      username,
-      password: userDraft.password,
-      role: userDraft.role,
-      canEditSources: userDraft.canEditSources,
-      canAccessStore: userDraft.canAccessStore,
-    })
-    ElMessage.success('新增用户成功')
-    userCreateDialog.value = false
-    await loadUsers()
-  } catch (err) {
-    ElMessage.error(readError(err, '新增用户失败'))
-  } finally {
-    creatingUser.value = false
-  }
-}
-
-async function resetPassword(row) {
-  try {
-    const res = await ElMessageBox.prompt('', `重置 ${row.username} 的密码`, {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputType: 'password',
-      inputValidator(value) {
-        if (!value || value.length < 6) return '密码至少 6 位'
-        return true
-      },
-    })
-    await resetUserPassword(row.id, { password: res.value })
-    ElMessage.success('重置密码成功')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '重置密码失败'))
-  }
-}
-
-async function deleteSelectedUsers() {
-  const ids = [...selectedUserIds.value]
-  if (!ids.length) {
-    ElMessage.warning('请选择需要删除的用户')
-    return
-  }
-  deletingUsers.value = true
-  try {
-    await ElMessageBox.confirm(`确认要删除所选择的 ${ids.length} 个用户吗？该用户空间内的书架、进度、书签和设置也会删除。`, '批量删除用户', { type: 'warning' })
-    const { data } = await deleteUsers(ids)
-    selectedUserIds.value = []
-    ElMessage.success(`删除用户成功：${data.deleted || ids.length} 个`)
-    await loadUsers()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除用户失败'))
-  } finally {
-    deletingUsers.value = false
-  }
-}
-
-async function updateUserPermission(row) {
-  try {
-    await updateUser(row.id, {
-      canEditSources: row.canEditSources,
-      canAccessStore: row.canAccessStore,
-      bookLimit: row.bookLimit,
-      sourceLimit: row.sourceLimit,
-    })
-    ElMessage.success('用户权限已更新')
-  } catch (err) {
-    ElMessage.error(readError(err, '更新用户失败'))
-    await loadUsers()
-  }
-}
-
-async function cleanupInactive() {
-  cleanupLoading.value = true
-  try {
-    await ElMessageBox.confirm('确定清理不活跃用户吗？', '清理用户', { type: 'warning' })
-    await cleanupInactiveUsers()
-    ElMessage.success('清理完成')
-    await loadUsers()
-  } catch (err) {
-    if (err !== 'cancel' && err !== 'close') ElMessage.error(readError(err, '清理用户失败'))
-  } finally {
-    cleanupLoading.value = false
   }
 }
 
