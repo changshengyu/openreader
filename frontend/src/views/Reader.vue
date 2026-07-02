@@ -304,6 +304,7 @@ import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
 import { useReaderPositionRestore } from '../composables/useReaderPositionRestore'
 import { useReaderPointer } from '../composables/useReaderPointer'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
+import { useReaderScrollSync } from '../composables/useReaderScrollSync'
 import { useReaderSelection } from '../composables/useReaderSelection'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
@@ -994,6 +995,19 @@ const {
   formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
   nextFrame,
 })
+const {
+  handle: onScroll,
+} = useReaderScrollSync({
+  isVerticalRead,
+  restoringPosition,
+  chapterLoading,
+  progressVersion,
+  syncCurrentChapter: updateCurrentChapterFromScroll,
+  maybeExtendChapterWindow: maybeExtendShowChapters,
+  updateLayout: updateFlipLayout,
+  applyLocalProgress: applyLocalProgressSnapshot,
+  scheduleProgressSave,
+})
 
 const {
   tts,
@@ -1651,17 +1665,6 @@ function handleReaderPageHide() {
 
 function handleReaderVisibilityChange() {
   if (document.hidden) saveCurrentProgress({ force: true, background: true })
-}
-
-function onScroll() {
-  if (!isVerticalRead.value) return
-  if (restoringPosition.value || chapterLoading.value) return
-  updateCurrentChapterFromScroll()
-  maybeExtendShowChapters()
-  updateFlipLayout()
-  progressVersion.value += 1
-  applyLocalProgressSnapshot()
-  scheduleProgressSave(500)
 }
 
 function currentVisibleExcerpt() {
