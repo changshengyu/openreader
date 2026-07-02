@@ -689,6 +689,7 @@ import { useOverlayReplaceRules } from '../composables/useOverlayReplaceRules'
 import { useOverlayBackups } from '../composables/useOverlayBackups'
 import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActions'
 import { useOverlayBookImport } from '../composables/useOverlayBookImport'
+import { useOverlayBookGroups } from '../composables/useOverlayBookGroups'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -722,12 +723,6 @@ const refreshingBookId = ref(null)
 const coverUploadingBookId = ref(null)
 const updatingBookId = ref(null)
 const editingBookSaving = ref(false)
-const selectedCategoryIds = ref([])
-const settingCategorySaving = ref(false)
-const visibilitySavingId = ref(null)
-const groupOrderDraftIds = ref([])
-const groupOrderSaving = ref(false)
-const groupManageTableRef = ref(null)
 const {
   importing: importingBook,
   previewing: previewingImport,
@@ -910,7 +905,6 @@ const {
 const manageKeyword = ref('')
 const windowWidth = ref(currentViewportWidth())
 let sourceRowsRefreshTimer
-let groupSortable
 
 const isMobileOverlay = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -933,33 +927,52 @@ const bookInfoBrowserCacheCount = computed(() => (
 ))
 const bookInfoInShelf = computed(() => isShelfBook(overlay.bookInfoBook))
 const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
-const groupSetRows = computed(() => (
-  bookshelf.categories.map(category => ({
-    ...category,
-    id: String(category.id),
-    description: `${groupBookCount(category)} 本`,
-  }))
-))
-const groupManageRows = computed(() => {
-  const categoryById = new Map(bookshelf.categories.map(category => [String(category.id), category]))
-  const rows = []
-  for (const id of groupOrderDraftIds.value) {
-    const category = categoryById.get(String(id))
-    if (category) rows.push(category)
-  }
-  for (const category of bookshelf.categories) {
-    if (!groupOrderDraftIds.value.includes(String(category.id))) rows.push(category)
-  }
-  return rows
-})
-const isGroupOrderDirty = computed(() => (
-  groupManageRows.value.map(category => String(category.id)).join(',') !== bookshelf.categories.map(category => String(category.id)).join(',')
-))
 const managedBooks = computed(() => sortByShelfOrder(bookshelf.books, reader.progressByBook))
 const filteredManagedBooks = computed(() => {
   const value = normalizeLocalBookSearch(manageKeyword.value)
   if (!value) return managedBooks.value
   return managedBooks.value.filter(book => manageBookSearchText(book).includes(value))
+})
+const {
+  settingCategorySaving,
+  visibilitySavingId,
+  groupOrderSaving,
+  groupManageTableRef,
+  groupSetRows,
+  groupManageRows,
+  isGroupOrderDirty,
+  groupBookCount,
+  prepareOpen: prepareBookGroupOpen,
+  isBookGroupSelected,
+  toggleBookGroupSelection,
+  saveBookGroupSetting,
+  createCategory,
+  renameGroup,
+  toggleGroupVisibility,
+  deleteGroup,
+  handleBookGroupOpened,
+  destroyGroupSortable,
+  handleModeChange: handleBookGroupModeChange,
+  saveGroupOrderDraft,
+} = useOverlayBookGroups({
+  overlay,
+  bookshelf,
+  getManagedBooks: () => managedBooks.value,
+  updateBookCategory,
+  categoryName,
+  getBookProgress: bookProgress,
+  emitBookInfoUpdated: data => {
+    window.dispatchEvent(new CustomEvent('openreader:book-info-updated', {
+      detail: { book: data },
+    }))
+  },
+  prompt: (...args) => ElMessageBox.prompt(...args),
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  createSortable: (...args) => Sortable.create(...args),
+  nextFrame: nextTick,
+  onSuccess: message => ElMessage.success(message),
+  onWarning: message => ElMessage.warning(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 
 function manageBookSearchText(book) {
@@ -1035,11 +1048,7 @@ watch(
         return
       }
     }
-    if (overlay.bookGroupVisible && overlay.bookGroupMode === 'set') {
-      selectedCategoryIds.value = bookCategoryIds(overlay.bookInfoBook).map(id => String(id))
-    } else if (overlay.bookGroupVisible) {
-      resetGroupOrderDraft()
-    }
+    if (overlay.bookGroupVisible) prepareBookGroupOpen()
   },
 )
 
@@ -1069,13 +1078,7 @@ watch(
 
 watch(
   () => overlay.bookGroupMode,
-  async (mode) => {
-    destroyGroupSortable()
-    if (mode === 'manage' && overlay.bookGroupVisible) {
-      await nextTick()
-      handleBookGroupOpened()
-    }
-  },
+  mode => handleBookGroupModeChange(mode),
 )
 
 watch(
@@ -1216,46 +1219,6 @@ async function saveEditedBook(payload) {
     ElMessage.error(readError(err, '更新书籍失败'))
   } finally {
     editingBookSaving.value = false
-  }
-}
-
-function isBookGroupSelected(category) {
-  return selectedCategoryIds.value.includes(String(category.id))
-}
-
-function toggleBookGroupSelection(category) {
-  const id = String(category.id)
-  if (!id) return
-  if (selectedCategoryIds.value.includes(id)) {
-    selectedCategoryIds.value = selectedCategoryIds.value.filter(item => item !== id)
-    return
-  }
-  selectedCategoryIds.value = [...selectedCategoryIds.value, id]
-}
-
-async function saveBookGroupSetting() {
-  const book = overlay.bookInfoBook
-  if (!book?.id) return
-  settingCategorySaving.value = true
-  try {
-    const categoryIds = selectedCategoryIds.value.map(id => Number(id)).filter(Boolean)
-    const { data } = await updateBookCategory(book.id, categoryIds)
-    bookshelf.upsertBook(data)
-    overlay.bookInfoBook = data
-    window.dispatchEvent(new CustomEvent('openreader:book-info-updated', {
-      detail: { book: data },
-    }))
-    overlay.bookInfoOptions = {
-      ...overlay.bookInfoOptions,
-      categoryName: categoryName(data),
-      progress: bookProgress(data)?.percent || 0,
-    }
-    overlay.bookGroupVisible = false
-    ElMessage.success('分组已设置')
-  } catch (err) {
-    ElMessage.error(readError(err, '设置分组失败'))
-  } finally {
-    settingCategorySaving.value = false
   }
 }
 
@@ -1690,43 +1653,6 @@ function joinPath(base, name) {
   return [base, name].filter(Boolean).join('/')
 }
 
-async function createCategory() {
-  try {
-    const { value } = await ElMessageBox.prompt('输入分组名称', '添加分组', {
-      inputValidator: value => !!value?.trim() || '分组名称不能为空',
-    })
-    const name = value.trim()
-    if (!name) return
-    await bookshelf.addCategory({ name })
-    resetGroupOrderDraft()
-    ElMessage.success('分组已创建')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '创建分组失败'))
-  }
-}
-
-async function renameGroup(category) {
-  try {
-    const { value } = await ElMessageBox.prompt('输入新的分组名称', '重命名分组', {
-      inputValue: category.name,
-      inputValidator: value => !!value?.trim() || '分组名称不能为空',
-    })
-    const name = value.trim()
-    if (!name || name === category.name) return
-    await bookshelf.renameCategory(category.id, { name })
-    resetGroupOrderDraft()
-    ElMessage.success('分组已重命名')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '重命名失败'))
-  }
-}
-
-function groupBookCount(category) {
-  return managedBooks.value.filter(book => bookHasCategory(book, category.id)).length
-}
-
 function buildSourceGroupOptions(rows) {
   const counts = new Map()
   for (const item of rows || []) {
@@ -1738,80 +1664,6 @@ function buildSourceGroupOptions(rows) {
   return [...counts.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([value, count]) => ({ value, label: value, count }))
-}
-
-async function toggleGroupVisibility(category, show) {
-  visibilitySavingId.value = category.id
-  try {
-    await bookshelf.setCategoryVisible(category.id, show)
-    ElMessage.success(show ? '分组已显示' : '分组已隐藏')
-  } catch (err) {
-    await bookshelf.loadCategories({ force: true }).catch(() => {})
-    ElMessage.error(readError(err, '修改分组显示状态失败'))
-  } finally {
-    visibilitySavingId.value = null
-  }
-}
-
-async function deleteGroup(category) {
-  if (groupBookCount(category) > 0) {
-    ElMessage.warning('分组内还有书籍，清空后才能删除')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`确定删除分组“${category.name}”吗？`, '删除分组', { type: 'warning' })
-    await bookshelf.removeCategory(category.id)
-    resetGroupOrderDraft()
-    ElMessage.success('分组已删除')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除分组失败'))
-  }
-}
-
-function resetGroupOrderDraft() {
-  groupOrderDraftIds.value = bookshelf.categories.map(category => String(category.id))
-}
-
-async function handleBookGroupOpened() {
-  if (overlay.bookGroupMode !== 'manage') return
-  await nextTick()
-  destroyGroupSortable()
-  const tableBody = groupManageTableRef.value?.$el?.querySelector('.el-table__body-wrapper tbody')
-  if (!tableBody) return
-  groupSortable = Sortable.create(tableBody, {
-    handle: '.group-drag-handle',
-    animation: 150,
-    forceFallback: true,
-    fallbackTolerance: 4,
-    onEnd: ({ oldIndex, newIndex }) => {
-      if (oldIndex == null || newIndex == null || oldIndex === newIndex) return
-      const ids = groupManageRows.value.map(category => String(category.id))
-      const [moved] = ids.splice(oldIndex, 1)
-      ids.splice(newIndex, 0, moved)
-      groupOrderDraftIds.value = ids
-    },
-  })
-}
-
-function destroyGroupSortable() {
-  groupSortable?.destroy()
-  groupSortable = null
-}
-
-async function saveGroupOrderDraft() {
-  if (!isGroupOrderDirty.value) return
-  const orderedIds = groupManageRows.value.map(item => item.id)
-  groupOrderSaving.value = true
-  try {
-    await bookshelf.reorderCategoryIds(orderedIds)
-    resetGroupOrderDraft()
-    ElMessage.success('分组排序已更新')
-  } catch (err) {
-    ElMessage.error(readError(err, '分组排序失败'))
-  } finally {
-    groupOrderSaving.value = false
-  }
 }
 
 function readError(err, fallback) {
