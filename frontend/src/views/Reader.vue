@@ -291,6 +291,7 @@ import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderChapterContent } from '../composables/useReaderChapterContent'
+import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
@@ -545,8 +546,7 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
-let chapterLoadingTimer
-let restoringPosition = false
+const restoringPosition = ref(false)
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
 let readerTouchStart = null
 let readerTouchMoved = false
@@ -903,6 +903,38 @@ const {
 })
 
 const {
+  clearLoadingTimer: clearChapterLoadingTimer,
+  load: loadChapter,
+} = useReaderChapterLoader({
+  chapters,
+  currentIndex,
+  mobileChromeVisible,
+  restoringPosition,
+  chapterLoaded,
+  chapterLoadError,
+  chapterLoading,
+  chapter,
+  content,
+  page,
+  chapterBlocks,
+  progressVersion,
+  isContinuousScrollRead,
+  cancelProgressSave,
+  getMemoryContent: getChapterContentFromMemory,
+  loadContent: loadChapterContent,
+  makeChapterBlock,
+  updateLayout: updateFlipLayout,
+  restorePosition: restoreReadingPosition,
+  preloadNearby: preloadNearbyChapters,
+  saveProgress: saveCurrentProgress,
+  markProgressSaved,
+  getCurrentProgress: currentProgressPayload,
+  computeChapterWindow: computeShowChapterList,
+  formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
+  nextFrame,
+})
+
+const {
   tts,
   voices: ttsVoices,
   sleepMinutes: ttsSleepMinutes,
@@ -946,7 +978,7 @@ useReaderTypographySync({
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,
   setRestoring: value => {
-    restoringPosition = value
+    restoringPosition.value = value
   },
   updateLayout: updateFlipLayout,
   restorePosition: restoreReadingPosition,
@@ -964,7 +996,7 @@ const {
   chapter,
   chapters,
   currentIndex,
-  isRestoring: () => restoringPosition,
+  isRestoring: () => restoringPosition.value,
   isProgressSaveBusy,
   progressKey: progressSaveKey,
   getCurrentProgress: currentProgressPayload,
@@ -997,7 +1029,7 @@ useReaderPageLifecycle({
     chapterLoading.value = false
   },
   cancelProgressSave,
-  clearChapterLoadingTimer: () => clearTimeout(chapterLoadingTimer),
+  clearChapterLoadingTimer,
   stopAutoReading,
   saveProgress: saveCurrentProgress,
   onResize: handleResize,
@@ -1202,54 +1234,6 @@ async function resetReaderChapterCaches(options = {}) {
     return await clearBookBrowserChapterCache(targetBook, targetBookId)
   } catch {
     return 0
-  }
-}
-
-async function loadChapter(index, offset = 0, options = {}) {
-  currentIndex.value = Math.max(0, Math.min(index, Math.max(chapters.value.length - 1, 0)))
-  mobileChromeVisible.value = false
-  restoringPosition = true
-  chapterLoaded.value = false
-  chapterLoadError.value = ''
-  cancelProgressSave()
-  clearTimeout(chapterLoadingTimer)
-  const cachedBeforeLoad = !options.refresh && getChapterContentFromMemory(currentIndex.value)
-  chapterLoading.value = !cachedBeforeLoad
-  if (cachedBeforeLoad) {
-    chapterLoadingTimer = null
-  } else {
-    chapterLoadingTimer = setTimeout(() => {
-      chapterLoading.value = true
-    }, 120)
-  }
-  try {
-    const data = await loadChapterContent(currentIndex.value, { refresh: Boolean(options.refresh) })
-    chapter.value = data.chapter
-    content.value = data.content || ''
-    page.value = 0
-    chapterBlocks.value = [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
-    chapterLoading.value = false
-    await nextTick()
-    updateFlipLayout()
-    await restoreReadingPosition(offset, options)
-    progressVersion.value += 1
-    preloadNearbyChapters(currentIndex.value)
-    if (options.saveAfterLoad) {
-      await saveCurrentProgress({ force: true })
-    } else {
-      markProgressSaved(currentProgressPayload())
-    }
-    chapterLoaded.value = true
-    if (isContinuousScrollRead.value) {
-      computeShowChapterList({ anchorIndex: currentIndex.value }).catch(() => {})
-    }
-  } catch (err) {
-    chapterLoadError.value = readError(err, '章节加载失败，请检查书源或网络后重试')
-  } finally {
-    clearTimeout(chapterLoadingTimer)
-    await nextFrame()
-    restoringPosition = false
-    chapterLoading.value = false
   }
 }
 
@@ -2005,7 +1989,7 @@ function handleReaderVisibilityChange() {
 
 function onScroll() {
   if (!isVerticalRead.value) return
-  if (restoringPosition || chapterLoading.value) return
+  if (restoringPosition.value || chapterLoading.value) return
   updateCurrentChapterFromScroll()
   maybeExtendShowChapters()
   updateFlipLayout()
