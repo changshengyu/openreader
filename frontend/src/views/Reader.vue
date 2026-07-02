@@ -293,6 +293,7 @@ import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
+import { useReaderChapterMaintenance } from '../composables/useReaderChapterMaintenance'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderLayout } from '../composables/useReaderLayout'
@@ -582,7 +583,7 @@ const {
   syncCurrentChapter: updateCurrentChapterFromScroll,
   goChapter: (...args) => goChapter(...args),
   refreshRemoteCatalog: refreshReaderBookCatalog,
-  refreshLocalCatalog: loadChapters,
+  refreshLocalCatalog: (...args) => loadChapters(...args),
 })
 const {
   cachedChapters: browserCachedChapters,
@@ -600,7 +601,7 @@ const {
   chapters,
   currentIndex,
   isRemoteBook,
-  afterCache: loadChapters,
+  afterCache: (...args) => loadChapters(...args),
   onClearMemory: () => clearChapterContentMemory(),
   notify: message => showReaderToast(message, 1600),
   onNoTargets: () => ElMessage.error('不需要缓存'),
@@ -618,6 +619,32 @@ const {
   memoryCache: chapterContentCache,
   markCached: markBrowserChapterCached,
   preloadRadius: NEARBY_PRELOAD_RADIUS,
+})
+const {
+  clearCurrentBookCache,
+  loadChapters,
+  reloadChapter,
+  resetCaches: resetReaderChapterCaches,
+} = useReaderChapterMaintenance({
+  book,
+  bookId,
+  chapters,
+  currentIndex,
+  isRemoteBook,
+  fetchChapters: async targetBookId => {
+    const { data } = await api.get(`/books/${targetBookId}/chapters`)
+    return data
+  },
+  writeDataCache: writeReaderDataCache,
+  clearMemory: clearChapterContentMemory,
+  resetBrowserState: resetBrowserCachedChapters,
+  clearBrowserCache: clearBookBrowserChapterCache,
+  loadChapter: (...args) => loadChapter(...args),
+  getCurrentOffset: () => currentOffset(),
+  clearServerCache: ids => bookshelf.batchClearCache(ids),
+  clearCurrentBrowserCache: clearCurrentBookBrowserCache,
+  notify: message => showReaderToast(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 
 const chapterParagraphs = computed(() => {
@@ -1287,19 +1314,6 @@ async function writeReaderDataCache(options = {}) {
   await writeReaderCache(targetBookId, options)
 }
 
-async function resetReaderChapterCaches(options = {}) {
-  const targetBook = options.book || book.value
-  const targetBookId = targetBook?.id || bookId.value
-  clearChapterContentMemory(targetBook, targetBookId)
-  resetBrowserCachedChapters()
-  if (!options.clearBrowser) return 0
-  try {
-    return await clearBookBrowserChapterCache(targetBook, targetBookId)
-  } catch {
-    return 0
-  }
-}
-
 function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
 }
@@ -1480,16 +1494,6 @@ async function refreshReaderBookCatalog() {
   }
 }
 
-async function loadChapters() {
-  const targetBookId = bookId.value
-  const { data } = await api.get(`/books/${targetBookId}/chapters`)
-  if (bookId.value !== targetBookId) return chapters.value
-  chapters.value = Array.isArray(data) ? data : []
-  currentIndex.value = Math.max(0, Math.min(currentIndex.value, Math.max(chapters.value.length - 1, 0)))
-  await writeReaderDataCache({ bookId: targetBookId, chaptersData: chapters.value })
-  return chapters.value
-}
-
 function goSourcePanel() {
   if (!isRemoteBook.value) return
   mobileChromeVisible.value = false
@@ -1528,23 +1532,6 @@ function openContentSearch() {
     const input = document.querySelector('.content-search-row input')
     input?.focus()
   })
-}
-
-async function reloadChapter() {
-  await loadChapter(currentIndex.value, currentOffset(), { refresh: true })
-  showReaderToast('章节已重新载入')
-}
-
-async function clearCurrentBookCache() {
-  if (!isRemoteBook.value) return
-  try {
-    const data = await bookshelf.batchClearCache([bookId.value])
-    const localCleared = await clearCurrentBookBrowserCache()
-    await loadChapters()
-    showReaderToast(`已清理服务器 ${data.cleared || 0} 章，本地 ${localCleared} 章`)
-  } catch (err) {
-    ElMessage.error(readError(err, '清理缓存失败'))
-  }
 }
 
 async function advanceAutoReadingPage() {
