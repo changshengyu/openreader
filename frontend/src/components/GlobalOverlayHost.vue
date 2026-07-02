@@ -667,7 +667,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Sortable from 'sortablejs'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -688,12 +688,13 @@ import { useOverlayUserManagement } from '../composables/useOverlayUserManagemen
 import { useOverlayReplaceRules } from '../composables/useOverlayReplaceRules'
 import { useOverlayBackups } from '../composables/useOverlayBackups'
 import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActions'
+import { useOverlayBookImport } from '../composables/useOverlayBookImport'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
-import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../utils/localBookToc'
+import { epubTocRuleOptions } from '../utils/localBookToc'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { applyRestoreResult } from '../utils/restoreSync'
@@ -723,16 +724,36 @@ const updatingBookId = ref(null)
 const editingBookSaving = ref(false)
 const selectedCategoryIds = ref([])
 const settingCategorySaving = ref(false)
-const importingBook = ref(false)
-const previewingImport = ref(false)
-const importPreview = ref(null)
 const visibilitySavingId = ref(null)
 const groupOrderDraftIds = ref([])
 const groupOrderSaving = ref(false)
 const groupManageTableRef = ref(null)
-const importDraft = reactive({ title: '', author: '', categoryIds: [], file: null, tocRule: '' })
-const tocRuleOptions = ref([])
-const tocRulesLoading = ref(false)
+const {
+  importing: importingBook,
+  previewing: previewingImport,
+  previewData: importPreview,
+  draft: importDraft,
+  tocRuleOptions,
+  tocRulesLoading,
+  isText: importIsText,
+  isEPUB: importIsEPUB,
+  supportsTocRule: importSupportsTocRule,
+  open: loadImportCategories,
+  pickFile: pickImportFile,
+  preview: previewImportFile,
+  importBook: importLocalBook,
+} = useOverlayBookImport({
+  visible: computed(() => overlay.importBookVisible),
+  loadCategories: () => warmOverlayCategories(),
+  listTocRules: () => listTXTTocRules(),
+  previewBook: (...args) => previewLocalBook(...args),
+  importBook: payload => bookshelf.importTXT(payload),
+  close: () => {
+    overlay.importBookVisible = false
+  },
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 const sourceRows = ref([])
 const contentSearchBook = computed(() => overlay.searchBook)
 const contentSearchBookId = computed(() => overlay.searchBook?.id)
@@ -892,9 +913,6 @@ let sourceRowsRefreshTimer
 let groupSortable
 
 const isMobileOverlay = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
-const importIsText = computed(() => isTextLocalPath(importDraft.file?.name))
-const importIsEPUB = computed(() => isEPUBLocalPath(importDraft.file?.name))
-const importSupportsTocRule = computed(() => importIsText.value || importIsEPUB.value)
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const wideDrawerSize = computed(() => isMobileOverlay.value ? '88%' : '82%')
 const narrowDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
@@ -981,97 +999,6 @@ onBeforeUnmount(() => {
 function updateWindowWidth() {
   windowWidth.value = currentViewportWidth()
 }
-
-async function loadImportCategories() {
-  try {
-    await warmOverlayCategories()
-  } catch (err) {
-    ElMessage.error(readError(err, '加载分组失败'))
-  }
-}
-
-async function loadTXTTocRuleOptions() {
-  if (tocRuleOptions.value.length || tocRulesLoading.value) return
-  tocRulesLoading.value = true
-  try {
-    const { data } = await listTXTTocRules()
-    tocRuleOptions.value = Array.isArray(data) ? data.filter(rule => rule?.enable !== false && rule?.rule) : []
-  } catch (err) {
-    ElMessage.error(readError(err, '加载目录规则失败'))
-  } finally {
-    tocRulesLoading.value = false
-  }
-}
-
-function pickImportFile(data) {
-  importDraft.file = data.raw || null
-  importDraft.title = ''
-  importDraft.author = ''
-  importPreview.value = null
-  if (importIsEPUB.value) importDraft.tocRule = 'spin+toc'
-  else if (!importIsText.value) importDraft.tocRule = ''
-  if (importDraft.file) previewImportFile()
-}
-
-async function previewImportFile() {
-  if (!importDraft.file) return
-  previewingImport.value = true
-  try {
-    const { data } = await previewLocalBook(importDraft.file, {
-      title: importDraft.title,
-      author: importDraft.author,
-      tocRule: importSupportsTocRule.value ? importDraft.tocRule : '',
-    })
-    importPreview.value = data
-    if (!importDraft.title && data.title) importDraft.title = data.title
-    if (!importDraft.author && data.author) importDraft.author = data.author
-  } catch (err) {
-    importPreview.value = null
-    ElMessage.error(readError(err, '解析书籍失败'))
-  } finally {
-    previewingImport.value = false
-  }
-}
-
-async function importLocalBook() {
-  if (!importDraft.file || !importPreview.value) return
-  importingBook.value = true
-  try {
-    const book = await bookshelf.importTXT({
-      file: importDraft.file,
-      title: importDraft.title,
-      author: importDraft.author,
-      categoryIds: importDraft.categoryIds,
-      tocRule: importSupportsTocRule.value ? importDraft.tocRule : '',
-    })
-    ElMessage.success(`已导入《${book.title}》，共 ${book.chapterCount || 0} 章`)
-    Object.assign(importDraft, { title: '', author: '', categoryIds: [], file: null, tocRule: '' })
-    importPreview.value = null
-    overlay.importBookVisible = false
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importingBook.value = false
-  }
-}
-
-watch(
-  () => [importIsText.value, importIsEPUB.value],
-  ([text, epub]) => {
-    if (text) loadTXTTocRuleOptions()
-    else if (epub) importDraft.tocRule = 'spin+toc'
-    else importDraft.tocRule = ''
-  },
-)
-
-watch(
-  () => overlay.importBookVisible,
-  (visible) => {
-    if (visible) return
-    Object.assign(importDraft, { title: '', author: '', categoryIds: [], file: null, tocRule: '' })
-    importPreview.value = null
-  },
-)
 
 watch(
   () => overlay.bookManageVisible || overlay.bookGroupVisible,
