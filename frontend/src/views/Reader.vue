@@ -311,6 +311,7 @@ import { useReaderToast } from '../composables/useReaderToast'
 import { useReaderTTS } from '../composables/useReaderTTS'
 import { useReaderTypographySync } from '../composables/useReaderTypographySync'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
+import { useReaderWheel } from '../composables/useReaderWheel'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
@@ -321,7 +322,6 @@ import {
   didReaderTouchMove,
   isReaderTouchTap,
   MOBILE_READER_TAP_MOVE_TOLERANCE,
-  normalizedReaderWheelDelta,
   readerTapPointAction,
   readerTapZoneAction,
   shouldHandleReaderHorizontalSwipe,
@@ -543,7 +543,6 @@ let readerTouchMoved = false
 let readerTouchMove = { x: 0, y: 0 }
 let handledTouchTapAt = 0
 let lastLocalProgressKey = ''
-let lastWheelPageAt = 0
 
 const fontOptions = readerFontOptions
 const SHOW_PREV_CHAPTER_SIZE = 1
@@ -902,6 +901,17 @@ const isOverlayOpen = computed(() => (
   showNoteDialog.value ||
   showBookmarkEditor.value
 ))
+const {
+  handle: handleReaderWheel,
+} = useReaderWheel({
+  reader,
+  shellEl,
+  contentEl,
+  isOverlayOpen,
+  isScrollRead,
+  nextPage,
+  previousPage,
+})
 
 const {
   active: autoReading,
@@ -1768,56 +1778,6 @@ function applyReaderTapAction(action, options = {}) {
   if (options.hideChrome) mobileChromeVisible.value = false
   if (action === 'next') nextPage()
   if (action === 'previous') previousPage()
-}
-
-function handleReaderWheel(event) {
-  if (event._openReaderWheelHandled) return
-  event._openReaderWheelHandled = true
-  if (isOverlayOpen.value) return
-  if (!shellEl.value?.contains(event.target)) return
-  const target = event.target
-  if (target?.closest?.('a, input, textarea, select, .el-drawer, .el-dialog')) return
-  const delta = normalizedReaderWheelDelta({
-    deltaX: event.deltaX,
-    deltaY: event.deltaY,
-    deltaMode: event.deltaMode,
-    fontSize: reader.fontSize,
-    lineHeight: reader.lineHeight,
-    pageHeight: contentEl.value?.clientHeight || window.innerHeight || 800,
-  })
-  if (Math.abs(delta) < 4) return
-  if (isScrollRead.value) {
-    if (!contentEl.value) return
-    event.preventDefault()
-    scrollReaderByWheel(delta)
-    return
-  }
-  event.preventDefault()
-  const now = Date.now()
-  if (now - lastWheelPageAt < Math.max(140, reader.animateDuration + 40)) return
-  lastWheelPageAt = now
-  if (delta > 0) {
-    nextPage()
-  } else {
-    previousPage()
-  }
-}
-
-function scrollReaderByWheel(delta) {
-  const el = contentEl.value
-  if (!el) return
-  const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
-  const atTop = el.scrollTop <= 2
-  const atBottom = el.scrollTop >= bottom - 2
-  if (delta < 0 && atTop) {
-    previousPage()
-    return
-  }
-  if (delta > 0 && atBottom) {
-    nextPage()
-    return
-  }
-  el.scrollTop = Math.max(0, Math.min(bottom, el.scrollTop + delta))
 }
 
 function toggleReaderChrome() {
