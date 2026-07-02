@@ -281,7 +281,6 @@ import ReaderTocPanel from '../components/reader/ReaderTocPanel.vue'
 import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore, themePresets } from '../stores/reader'
-import { useKeyboard } from '../composables/useKeyboard'
 import { useGesture } from '../composables/useGesture'
 import { useReaderAppearanceAssets } from '../composables/useReaderAppearanceAssets'
 import { useReaderAutoReading } from '../composables/useReaderAutoReading'
@@ -298,8 +297,10 @@ import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderChapterMaintenance } from '../composables/useReaderChapterMaintenance'
 import { useReaderChapterPresentation } from '../composables/useReaderChapterPresentation'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
+import { useReaderChrome } from '../composables/useReaderChrome'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderLayout } from '../composables/useReaderLayout'
+import { useReaderKeyboard } from '../composables/useReaderKeyboard'
 import { useReaderLocalProgress } from '../composables/useReaderLocalProgress'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
@@ -332,7 +333,6 @@ import {
   readerScrollBehaviorForDuration,
   readerScrollStep,
 } from '../utils/readerPagination'
-import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
 import { sourceCandidateSourceName } from '../utils/sourceCandidate'
@@ -1002,6 +1002,15 @@ const {
   saveProgress: () => saveCurrentProgress(),
 })
 const mobileChromeVisible = ref(false)
+const {
+  toggle: toggleReaderChrome,
+} = useReaderChrome({
+  isMobileReader,
+  mobileChromeVisible,
+  tocVisible: showTocDrawer,
+  settingsVisible: showSettingsDrawer,
+  openToc: openTocDrawer,
+})
 
 const isOverlayOpen = computed(() => (
   showTocDrawer.value ||
@@ -1413,19 +1422,6 @@ function readerScrollBehavior() {
   return readerScrollBehaviorForDuration(reader.animateDuration)
 }
 
-function toggleReaderChrome() {
-  if (isMobileReader.value) {
-    mobileChromeVisible.value = !mobileChromeVisible.value
-    return
-  }
-  if (showTocDrawer.value) {
-    showTocDrawer.value = false
-  } else {
-    openTocDrawer()
-  }
-  showSettingsDrawer.value = false
-}
-
 function handleReaderPageHide() {
   saveCurrentProgress({ force: true, background: true })
 }
@@ -1449,39 +1445,20 @@ function flashParagraph(lineEl) {
   })
 }
 
-// ---- Keyboard ----
-useKeyboard({
-  onPageUp: () => previousPage(),
-  onPageDown: () => nextPage(),
-  onArrowLeft: () => {
-    mobileChromeVisible.value = false
-    if (reader.mode === 'flip') previousPage()
-    else if (currentIndex.value > 0) goChapter(currentIndex.value - 1, READER_CHAPTER_END_OFFSET)
-  },
-  onArrowRight: () => {
-    mobileChromeVisible.value = false
-    if (reader.mode === 'flip') nextPage()
-    else if (currentIndex.value < chapters.value.length - 1) goChapter(currentIndex.value + 1)
-  },
-  onArrowUp: () => {
-    mobileChromeVisible.value = false
-    if (reader.mode === 'page' || isScrollRead.value) previousPage()
-  },
-  onArrowDown: () => {
-    mobileChromeVisible.value = false
-    if (reader.mode === 'page' || isScrollRead.value) nextPage()
-  },
-  onHome: () => scrollToTop(),
-  onEnd: () => scrollToBottom(),
-  onSpace: () => nextPage(),
-  onEscape: () => {
-    if (showTocDrawer.value || showSettingsDrawer.value) {
-      showTocDrawer.value = false; showSettingsDrawer.value = false
-    } else {
-      mobileChromeVisible.value = false
-      goShelf()
-    }
-  },
+useReaderKeyboard({
+  reader,
+  currentIndex,
+  chapters,
+  isScrollRead,
+  mobileChromeVisible,
+  tocVisible: showTocDrawer,
+  settingsVisible: showSettingsDrawer,
+  previousPage,
+  nextPage,
+  goChapter,
+  scrollToTop,
+  scrollToBottom,
+  goShelf,
 })
 
 useGesture(pageEl, {
