@@ -296,6 +296,7 @@ import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderLayout } from '../composables/useReaderLayout'
+import { useReaderLocalProgress } from '../composables/useReaderLocalProgress'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
@@ -329,10 +330,6 @@ import {
 } from '../utils/readerPagination'
 import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
 import { parseReaderContentBlocks } from '../utils/readerContent'
-import {
-  readerProgressBaseUpdatedAt,
-  readerProgressPayload,
-} from '../utils/readerProgressPersistence'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { invalidateReaderDataCache as invalidateReaderCache, readerDataCacheKey as scopedReaderDataCacheKey, writeReaderDataCache as writeReaderCache } from '../utils/readerDataCache'
 import { createMultiBookChapterMemoryCache } from '../utils/multiBookChapterMemoryCache'
@@ -547,7 +544,6 @@ const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
 const restoringPosition = ref(false)
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
-let lastLocalProgressKey = ''
 
 const fontOptions = readerFontOptions
 const SHOW_PREV_CHAPTER_SIZE = 1
@@ -666,6 +662,24 @@ const {
   makeChapterBlock,
   chapterBlockTextLength,
   nextFrame,
+})
+const {
+  apply: applyLocalProgressSnapshot,
+  currentPayload: currentProgressPayload,
+  serverBaseUpdatedAt: progressServerBaseUpdatedAt,
+  upsert: upsertReaderBookProgress,
+} = useReaderLocalProgress({
+  reader,
+  bookshelf,
+  bookId,
+  book,
+  chapter,
+  chapters,
+  currentIndex,
+  getVisibleSnapshot: visibleChapterProgressSnapshot,
+  getCurrentOffset: currentOffset,
+  getCurrentPercent: currentChapterPercent,
+  mergeBook: mergeShelfBook,
 })
 const {
   compute: computeShowChapterList,
@@ -1585,56 +1599,6 @@ function currentVisibleExcerpt() {
   const text = paragraph?.textContent?.replace(/\s+/g, ' ').trim()
   if (text) return text.slice(0, 140)
   return lines.value.slice(0, 2).join(' ').slice(0, 140)
-}
-
-function currentProgressPayload() {
-  const snapshot = visibleChapterProgressSnapshot()
-  return readerProgressPayload({
-    bookId: bookId.value,
-    visibleSnapshot: snapshot,
-    currentChapter: chapter.value,
-    currentChapterIndex: currentIndex.value,
-    currentOffset: snapshot ? 0 : currentOffset(),
-    currentChapterPercent: snapshot ? 0 : currentChapterPercent(),
-    totalChapters: chapters.value.length,
-  })
-}
-
-function applyLocalProgressSnapshot(payload = currentProgressPayload(), options = {}) {
-  if (!payload?.bookId || !chapter.value) return
-  const nextPayload = {
-    ...payload,
-    baseUpdatedAt: payload.baseUpdatedAt || progressServerBaseUpdatedAt(payload.bookId),
-  }
-  const key = progressSaveKey(nextPayload)
-  if (key === lastLocalProgressKey && !options.force) return
-  lastLocalProgressKey = key
-  reader.applyProgress({
-    ...nextPayload,
-    mode: reader.mode,
-    updatedAt: new Date().toISOString(),
-    pendingSync: true,
-  })
-  upsertReaderBookProgress(reader.progressByBook[nextPayload.bookId])
-}
-
-function upsertReaderBookProgress(progress, options = {}) {
-  if (!progress?.bookId) return
-  if (book.value?.id && Number(book.value.id) === Number(progress.bookId)) {
-    const nextBook = mergeShelfBook(book.value, {
-      id: book.value.id,
-      progress,
-      shelfOrderAt: progress.updatedAt,
-    })
-    book.value = nextBook
-    bookshelf.upsertBook(nextBook)
-    return
-  }
-  bookshelf.applyBookProgress(progress, options)
-}
-
-function progressServerBaseUpdatedAt(targetBookId = bookId.value) {
-  return readerProgressBaseUpdatedAt(reader.progressByBook[targetBookId])
 }
 
 function flashParagraph(lineEl) {
