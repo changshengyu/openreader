@@ -294,6 +294,7 @@ import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
+import { useReaderLayout } from '../composables/useReaderLayout'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
@@ -327,10 +328,8 @@ import {
   shouldPreventReaderTouchMove,
 } from '../utils/readerInteraction'
 import {
-  readerFlipPageLayout,
   readerScrollBehaviorForDuration,
   readerScrollStep,
-  readerVerticalPageLayout,
 } from '../utils/readerPagination'
 import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition'
 import { parseReaderRoutePercent, savedBookChapterPercent } from '../utils/readerRoute'
@@ -686,6 +685,22 @@ const {
   nextFrame,
   previousSize: SHOW_PREV_CHAPTER_SIZE,
   nextSize: SHOW_NEXT_CHAPTER_SIZE,
+})
+const {
+  readableViewportSize,
+  resize: handleResize,
+  update: updateFlipLayout,
+} = useReaderLayout({
+  reader,
+  contentEl,
+  contentBody,
+  page,
+  pageCount,
+  pageWidth,
+  pageHeight,
+  windowWidth,
+  getScrollStep: scrollStep,
+  getViewportWidth: currentViewportWidth,
 })
 const {
   jumpToFirstSearchMatch,
@@ -1820,58 +1835,6 @@ function toggleReaderChrome() {
 
 function toggleMobileReaderChrome() {
   if (isMobileReader.value) toggleReaderChrome()
-}
-
-function updateFlipLayout() {
-  if (!contentEl.value || !contentBody.value) return
-  const viewport = readableViewportSize()
-  if (reader.mode === 'flip') {
-    const layout = readerFlipPageLayout({
-      viewportWidth: viewport.width,
-      viewportHeight: viewport.height,
-      scrollWidth: contentBody.value.scrollWidth,
-      currentPage: page.value,
-    })
-    pageWidth.value = layout.pageWidth
-    pageHeight.value = layout.pageHeight
-    pageCount.value = layout.pageCount
-    page.value = layout.page
-    return
-  }
-  if (reader.mode === 'page') {
-    const layout = readerVerticalPageLayout({
-      scrollHeight: contentEl.value.scrollHeight,
-      clientHeight: contentEl.value.clientHeight,
-      scrollTop: contentEl.value.scrollTop,
-      pageHeight: scrollStep(),
-    })
-    pageHeight.value = layout.pageHeight
-    pageCount.value = layout.pageCount
-    page.value = layout.page
-    return
-  }
-  // 滚动模式
-  pageCount.value = 1
-  page.value = 0
-}
-
-function readableViewportSize() {
-  const el = contentEl.value
-  if (!el) {
-    return { width: window.innerWidth, height: window.innerHeight }
-  }
-  const style = window.getComputedStyle(el)
-  const horizontalPadding = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0')
-  const verticalPadding = parseFloat(style.paddingTop || '0') + parseFloat(style.paddingBottom || '0')
-  return {
-    width: Math.max(1, el.clientWidth - horizontalPadding),
-    height: Math.max(1, el.clientHeight - verticalPadding),
-  }
-}
-
-function handleResize() {
-  windowWidth.value = currentViewportWidth()
-  updateFlipLayout()
 }
 
 function handleReaderPageHide() {
