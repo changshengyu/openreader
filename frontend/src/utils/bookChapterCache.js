@@ -1,6 +1,6 @@
-import { getChapterContent } from '../api/books'
-import { getBrowserCache, listBrowserCacheKeys, removeBrowserCache, removeBrowserCacheKeys, setBrowserCache } from './browserCache'
-import { currentUserScope } from './authScope'
+import { getChapterContent } from '../api/books.js'
+import { getBrowserCache, listBrowserCacheKeys, removeBrowserCache, removeBrowserCacheKeys, setBrowserCache } from './browserCache.js'
+import { currentUserScope } from './authScope.js'
 
 export function chapterCacheBookKey(book, fallbackBookId) {
   const currentBook = book || {}

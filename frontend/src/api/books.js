@@ -1,4 +1,4 @@
-import api from './client'
+import api from './client.js'
 
 export function listBooks(params = {}) {
   return api.get('/books', { params })

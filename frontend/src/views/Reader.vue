@@ -290,6 +290,7 @@ import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
+import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
 import { useReaderProgressPersistence } from '../composables/useReaderProgressPersistence'
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
@@ -307,7 +308,7 @@ import { useReaderTTS } from '../composables/useReaderTTS'
 import { useReaderTypographySync } from '../composables/useReaderTypographySync'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
-import { chapterCacheBookKey, clearBookBrowserChapterCache, isValidChapterContentResponse, loadBrowserChapterContent } from '../utils/bookChapterCache'
+import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { simplized, traditionalized } from '../utils/chinese'
 import { epubTocRuleOptions, isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
@@ -338,7 +339,6 @@ import { parseReaderRoutePercent, savedBookChapterPercent } from '../utils/reade
 import { parseReaderContentBlocks } from '../utils/readerContent'
 import {
   adjacentReaderChapterIndex,
-  nearbyReaderChapterIndexes,
   readerChapterWindowExtension,
   readerChapterWindowIndexes,
   readerChapterWindowPrunePlan,
@@ -559,6 +559,7 @@ let extendingShowChapters = false
 const fontOptions = readerFontOptions
 const SHOW_PREV_CHAPTER_SIZE = 1
 const SHOW_NEXT_CHAPTER_SIZE = 2
+const NEARBY_PRELOAD_RADIUS = 2
 
 const currentSourceName = computed(() => {
   if (!book.value?.sourceId) return '本地书籍'
@@ -611,10 +612,23 @@ const {
   currentIndex,
   isRemoteBook,
   afterCache: loadChapters,
-  onClearMemory: () => chapterContentCache.clearBook(currentChapterCacheBookKey()),
+  onClearMemory: () => clearChapterContentMemory(),
   notify: message => showReaderToast(message, 1600),
   onNoTargets: () => ElMessage.error('不需要缓存'),
   onError: error => ElMessage.error(readError(error, '缓存章节失败')),
+})
+const {
+  clear: clearChapterContentMemory,
+  get: getChapterContentFromMemory,
+  load: loadChapterContent,
+  preload: preloadNearbyChapters,
+} = useReaderChapterContent({
+  book,
+  bookId,
+  chapters,
+  memoryCache: chapterContentCache,
+  markCached: markBrowserChapterCached,
+  preloadRadius: NEARBY_PRELOAD_RADIUS,
 })
 
 const chapterParagraphs = computed(() => {
@@ -832,7 +846,6 @@ const {
   saveProgress: () => saveCurrentProgress(),
 })
 const mobileChromeVisible = ref(false)
-const NEARBY_PRELOAD_RADIUS = 2
 
 const isOverlayOpen = computed(() => (
   showTocDrawer.value ||
@@ -965,7 +978,7 @@ const {
   markProgressSaved,
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,
-  clearChapterCache: () => chapterContentCache.clearBook(currentChapterCacheBookKey()),
+  clearChapterCache: () => clearChapterContentMemory(),
   resetCachedChapters: resetBrowserCachedChapters,
   resetContentSearch: resetContentSearchState,
   refreshCachedChapters: computeBrowserCachedChapters,
@@ -1182,7 +1195,7 @@ async function writeReaderDataCache(options = {}) {
 async function resetReaderChapterCaches(options = {}) {
   const targetBook = options.book || book.value
   const targetBookId = targetBook?.id || bookId.value
-  chapterContentCache.clearBook(currentChapterCacheBookKey(targetBook, targetBookId))
+  clearChapterContentMemory(targetBook, targetBookId)
   resetBrowserCachedChapters()
   if (!options.clearBrowser) return 0
   try {
@@ -1306,53 +1319,6 @@ async function prependPreviousShowChapter() {
   await nextFrame()
   const heightDelta = Math.max(0, contentEl.value.scrollHeight - beforeHeight)
   contentEl.value.scrollTop = beforeTop + heightDelta
-}
-
-async function loadChapterContent(index, options = {}) {
-  const targetBook = { ...(book.value || {}) }
-  const targetBookId = bookId.value
-  const cacheBookKey = currentChapterCacheBookKey(targetBook, targetBookId)
-  if (!options.refresh) {
-    const cached = getChapterContentFromMemory(index, cacheBookKey)
-    if (cached) return cached
-  }
-  const data = await loadBrowserChapterContent(targetBook, targetBookId, index, { refresh: Boolean(options.refresh) })
-  addChapterContentToMemory(index, data, cacheBookKey)
-  if (
-    isValidChapterContentResponse(data)
-    && Number(bookId.value) === Number(targetBookId)
-    && currentChapterCacheBookKey() === cacheBookKey
-  ) {
-    markBrowserChapterCached(index)
-  }
-  return data
-}
-
-function preloadNearbyChapters(index) {
-  if (!book.value || !chapters.value.length) return
-  nearbyReaderChapterIndexes({
-    chapterIndex: index,
-    totalChapters: chapters.value.length,
-    radius: NEARBY_PRELOAD_RADIUS,
-  })
-    .forEach(target => {
-      if (getChapterContentFromMemory(target)) return
-      loadChapterContent(target).catch(() => {})
-    })
-}
-
-function getChapterContentFromMemory(index, cacheBookKey = currentChapterCacheBookKey()) {
-  const cached = chapterContentCache.get(cacheBookKey, index)
-  return isValidChapterContentResponse(cached) ? cached : null
-}
-
-function addChapterContentToMemory(index, data, cacheBookKey = currentChapterCacheBookKey()) {
-  if (!isValidChapterContentResponse(data)) return
-  chapterContentCache.set(cacheBookKey, index, data)
-}
-
-function currentChapterCacheBookKey(targetBook = book.value, fallbackBookId = bookId.value) {
-  return chapterCacheBookKey(targetBook, fallbackBookId)
 }
 
 async function restoreReadingPosition(offset = 0, options = {}) {
