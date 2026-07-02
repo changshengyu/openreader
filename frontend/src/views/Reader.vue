@@ -364,6 +364,7 @@ const {
 const book = ref(null)
 const chapters = ref([])
 const chapter = ref(null)
+const currentIndex = ref(Number(route.query.chapter || 0))
 const {
   cacheKey: readerDataCacheKey,
   invalidate: invalidateReaderDataCache,
@@ -466,7 +467,6 @@ const {
 const handleReaderSelectionEnd = () => scheduleSelectedTextOperation(180)
 const pageEl = ref(null)
 const shellEl = ref(null)
-const currentIndex = ref(Number(route.query.chapter || 0))
 const page = ref(0)
 const pageCount = ref(1)
 const showSettingsDrawer = ref(false)
