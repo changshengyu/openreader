@@ -690,10 +690,11 @@ import { useOverlayBackups } from '../composables/useOverlayBackups'
 import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActions'
 import { useOverlayBookImport } from '../composables/useOverlayBookImport'
 import { useOverlayBookGroups } from '../composables/useOverlayBookGroups'
+import { useOverlayBookInfo } from '../composables/useOverlayBookInfo'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
-import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
+import { createBookCategoryNameResolver } from '../utils/bookCategory'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { epubTocRuleOptions } from '../utils/localBookToc'
 import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
@@ -718,11 +719,6 @@ const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const selectedBookIds = ref([])
 const batchBusy = ref(false)
 const cachingBookId = ref(null)
-const localCacheCounts = ref({})
-const refreshingBookId = ref(null)
-const coverUploadingBookId = ref(null)
-const updatingBookId = ref(null)
-const editingBookSaving = ref(false)
 const {
   importing: importingBook,
   previewing: previewingImport,
@@ -932,6 +928,52 @@ const filteredManagedBooks = computed(() => {
   const value = normalizeLocalBookSearch(manageKeyword.value)
   if (!value) return managedBooks.value
   return managedBooks.value.filter(book => manageBookSearchText(book).includes(value))
+})
+const {
+  refreshingBookId,
+  coverUploadingBookId,
+  updatingBookId,
+  editingBookSaving,
+  refreshManagedBrowserCacheCounts,
+  refreshBookInfoBrowserCacheCount,
+  invalidateBookReaderCaches,
+  refreshBookChaptersCache,
+  mergedShelfBook,
+  applyUpdatedBookToOverlay,
+  localCacheCount,
+  serverCacheCount,
+  updateServerCacheCount,
+  saveEditedBook,
+  refreshLocalBookInfo,
+  uploadBookInfoCover,
+  toggleBookCanUpdate,
+} = useOverlayBookInfo({
+  overlay,
+  bookshelf,
+  getManagedBooks: () => managedBooks.value,
+  countBrowserCachedChapters: countBooksBrowserCachedChapters,
+  listBrowserCachedChapters: listBookBrowserCachedChapters,
+  clearBrowserChapterCache: clearBookBrowserChapterCache,
+  invalidateReaderData: invalidateReaderDataCache,
+  listChapters,
+  writeReaderData: writeReaderDataCache,
+  refreshLocalBook,
+  uploadAsset,
+  updateBook,
+  mergeBook: mergeShelfBook,
+  emitBookInfoUpdated: book => {
+    window.dispatchEvent(new CustomEvent('openreader:book-info-updated', {
+      detail: { book },
+    }))
+  },
+  emitReaderBookDataUpdated: detail => {
+    window.dispatchEvent(new CustomEvent(
+      'openreader:reader-book-data-updated',
+      { detail },
+    ))
+  },
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const {
   settingCategorySaving,
@@ -1199,184 +1241,6 @@ function setBookGroup(book) {
     categoryName: categoryName(book),
     progress: bookProgress(book)?.percent || 0,
   })
-}
-
-async function saveEditedBook(payload) {
-  const book = overlay.bookEditBook
-  if (!book?.id) return
-  editingBookSaving.value = true
-  try {
-    const { data } = await updateBook(book.id, {
-      ...payload,
-      categoryIds: bookCategoryIds(book),
-      canUpdate: book.canUpdate !== false,
-    })
-    const nextBook = applyUpdatedBookToOverlay(data)
-    overlay.bookEditBook = nextBook
-    overlay.bookEditVisible = false
-    ElMessage.success('书籍已更新')
-  } catch (err) {
-    ElMessage.error(readError(err, '更新书籍失败'))
-  } finally {
-    editingBookSaving.value = false
-  }
-}
-
-async function refreshManagedBrowserCacheCounts() {
-  const rows = managedBooks.value.filter(book => book?.id)
-  try {
-    localCacheCounts.value = await countBooksBrowserCachedChapters(rows)
-  } catch {
-    localCacheCounts.value = Object.fromEntries(rows.map(book => [book.id, 0]))
-  }
-}
-
-async function refreshBookInfoBrowserCacheCount(book) {
-  if (!book?.id) return
-  try {
-    const map = await listBookBrowserCachedChapters(book, book.id)
-    localCacheCounts.value = {
-      ...localCacheCounts.value,
-      [book.id]: Object.keys(map).length,
-    }
-  } catch {
-    localCacheCounts.value = {
-      ...localCacheCounts.value,
-      [book.id]: 0,
-    }
-  }
-}
-
-async function invalidateBookReaderCaches(book, options = {}) {
-  if (!book?.id) return
-  await invalidateReaderDataCache(book.id, { book: true, chapters: true })
-  if (options.clearBrowser) {
-    await clearBookBrowserChapterCache(book, book.id).catch(() => 0)
-    localCacheCounts.value = {
-      ...localCacheCounts.value,
-      [book.id]: 0,
-    }
-  }
-}
-
-async function refreshBookChaptersCache(book) {
-  if (!book?.id) return null
-  try {
-    const { data } = await listChapters(book.id)
-    const chapters = Array.isArray(data) ? data : []
-    await writeReaderDataCache(book.id, { bookData: book, chaptersData: chapters })
-    return chapters
-  } catch {
-    await writeReaderDataCache(book.id, { bookData: book })
-    return null
-  }
-}
-
-function mergedShelfBook(book) {
-  if (!book?.id) return book
-  const current = bookshelf.books.find(item => Number(item.id) === Number(book.id)) ||
-    (Number(overlay.bookInfoBook?.id) === Number(book.id) ? overlay.bookInfoBook : null)
-  return mergeShelfBook(current, book)
-}
-
-function applyUpdatedBookToOverlay(book, chapters = null) {
-  if (!book?.id) return book
-  const nextBook = mergedShelfBook(book)
-  bookshelf.upsertBook(nextBook)
-  if (Number(overlay.bookInfoBook?.id) === Number(nextBook.id)) overlay.bookInfoBook = nextBook
-  window.dispatchEvent(new CustomEvent('openreader:book-info-updated', {
-    detail: { book: nextBook },
-  }))
-  window.dispatchEvent(new CustomEvent('openreader:reader-book-data-updated', {
-    detail: { bookId: nextBook.id, book: nextBook, chapters },
-  }))
-  return nextBook
-}
-
-function localCacheCount(book) {
-  return localCacheCounts.value[book?.id] || 0
-}
-
-function serverCacheCount(book) {
-  return Number(book?.cachedChapterCount || 0)
-}
-
-function updateServerCacheCount(book, count) {
-  if (!book?.id) return
-  const nextCount = Math.max(0, Number(count || 0))
-  const nextBook = { ...book, cachedChapterCount: nextCount }
-  bookshelf.upsertBook(nextBook)
-  if (Number(overlay.bookInfoBook?.id) === Number(book.id)) {
-    overlay.bookInfoBook = { ...overlay.bookInfoBook, cachedChapterCount: nextCount }
-  }
-}
-
-async function refreshLocalBookInfo(book) {
-  if (!book?.id) return
-  refreshingBookId.value = book.id
-  try {
-    const { data } = await refreshLocalBook(book.id)
-    await invalidateBookReaderCaches(book, { clearBrowser: true })
-    const updatedBook = data?.book || data
-    if (updatedBook?.id) {
-      const mergedBook = mergedShelfBook(updatedBook)
-      const chapters = await refreshBookChaptersCache(mergedBook)
-      applyUpdatedBookToOverlay(mergedBook, chapters)
-      await refreshBookInfoBrowserCacheCount(mergedBook)
-    } else {
-      await bookshelf.loadBooks({ force: true, all: true })
-    }
-    ElMessage.success(`本地书已刷新，共 ${data?.chapterCount || updatedBook?.chapterCount || 0} 章`)
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新本地书失败'))
-  } finally {
-    refreshingBookId.value = null
-  }
-}
-
-async function uploadBookInfoCover(file) {
-  const book = overlay.bookInfoBook
-  if (!book?.id || !file) return
-  coverUploadingBookId.value = book.id
-  try {
-    const { data: uploadResult } = await uploadAsset({ file, type: 'cover' })
-    const { data: updatedBook } = await updateBook(book.id, {
-      title: book.title,
-      author: book.author || '',
-      customCoverUrl: uploadResult.url,
-      intro: book.intro || '',
-      categoryIds: bookCategoryIds(book),
-      canUpdate: book.canUpdate !== false,
-    })
-    applyUpdatedBookToOverlay(updatedBook)
-    ElMessage.success('封面已更新')
-  } catch (err) {
-    ElMessage.error(readError(err, '更新封面失败'))
-  } finally {
-    coverUploadingBookId.value = null
-  }
-}
-
-async function toggleBookCanUpdate(value) {
-  const book = overlay.bookInfoBook
-  if (!book?.id || !book.sourceId) return
-  updatingBookId.value = book.id
-  try {
-    const { data: updatedBook } = await updateBook(book.id, {
-      title: book.title,
-      author: book.author || '',
-      coverUrl: book.coverUrl || '',
-      intro: book.intro || '',
-      categoryIds: bookCategoryIds(book),
-      canUpdate: value,
-    })
-    applyUpdatedBookToOverlay(updatedBook)
-    ElMessage.success(value ? '已开启追更' : '已关闭追更')
-  } catch (err) {
-    ElMessage.error(readError(err, '更新追更状态失败'))
-  } finally {
-    updatingBookId.value = null
-  }
 }
 
 async function batchAddCategory(category) {
