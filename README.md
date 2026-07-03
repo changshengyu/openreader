@@ -63,6 +63,11 @@ docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 
 The script passes `VERSION`, `VCS_REF`, and `BUILD_DATE` into the Go binary and OCI image labels, so `/api/health` and the Settings page show the actual build metadata instead of `unknown`.
 
+Maintainers can also run the **Publish Docker image** workflow manually from
+GitHub Actions. It builds `linux/amd64` and `linux/arm64` in GitHub's runner and
+publishes both `latest` and the seven-character commit tag, avoiding any
+dependency on the maintainer machine's proxy or TUN connection.
+
 ### Local Development
 
 **Backend:**
