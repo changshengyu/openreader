@@ -678,7 +678,7 @@ import * as backupApi from '../api/backup'
 import * as replaceRulesApi from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
-import { bookHasCategory, mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useUserStore } from '../stores/user'
@@ -691,6 +691,7 @@ import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActi
 import { useOverlayBookImport } from '../composables/useOverlayBookImport'
 import { useOverlayBookGroups } from '../composables/useOverlayBookGroups'
 import { useOverlayBookInfo } from '../composables/useOverlayBookInfo'
+import { useOverlayBookManagement } from '../composables/useOverlayBookManagement'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -716,9 +717,6 @@ const reader = useReaderStore()
 const userStore = useUserStore()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
-const selectedBookIds = ref([])
-const batchBusy = ref(false)
-const cachingBookId = ref(null)
 const {
   importing: importingBook,
   previewing: previewingImport,
@@ -976,6 +974,39 @@ const {
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const {
+  selectedBookIds,
+  batchBusy,
+  cachingBookId,
+  onManageSelectionChange,
+  toggleManagedBook,
+  selectAllManagedBooks,
+  clearManagedSelection,
+  batchAddCategory,
+  batchRemoveCategory,
+  batchDeleteBooks,
+  handleBatchMoreCommand,
+  cacheBook,
+  exportBook,
+} = useOverlayBookManagement({
+  bookshelf,
+  getManagedBooks: () => managedBooks.value,
+  getFilteredManagedBooks: () => filteredManagedBooks.value,
+  getBookProgress: bookProgress,
+  cacheBookContent,
+  listChapters,
+  cacheBrowserChapters: cacheBookChaptersToBrowser,
+  clearBrowserChapterCache: clearBookBrowserChapterCache,
+  updateServerCacheCount,
+  refreshManagedBrowserCacheCounts,
+  refreshBookInfoBrowserCacheCount,
+  saveBlob: downloadBlob,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  now: () => Date.now(),
+  onSuccess: message => ElMessage.success(message),
+  onInfo: message => ElMessage.info(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
   settingCategorySaving,
   visibilitySavingId,
   groupOrderSaving,
@@ -1061,7 +1092,7 @@ watch(
     if (!visible) {
       if (!overlay.bookManageVisible) {
         manageKeyword.value = ''
-        selectedBookIds.value = []
+        clearManagedSelection()
       }
       return
     }
@@ -1206,26 +1237,6 @@ function clearSourceRowsRefreshTimer() {
   sourceRowsRefreshTimer = undefined
 }
 
-function onManageSelectionChange(rows) {
-  selectedBookIds.value = rows.map(row => row.id)
-}
-
-function toggleManagedBook(bookId, checked) {
-  if (checked) {
-    if (!selectedBookIds.value.includes(bookId)) selectedBookIds.value.push(bookId)
-    return
-  }
-  selectedBookIds.value = selectedBookIds.value.filter(id => id !== bookId)
-}
-
-function selectAllManagedBooks() {
-  selectedBookIds.value = filteredManagedBooks.value.map(book => book.id)
-}
-
-function clearManagedSelection() {
-  selectedBookIds.value = []
-}
-
 function coverInitial(book) {
   if (hasBookCover(book)) return ''
   return (book?.title || '?').slice(0, 1)
@@ -1243,234 +1254,8 @@ function setBookGroup(book) {
   })
 }
 
-async function batchAddCategory(category) {
-  if (!selectedBookIds.value.length) return
-  batchBusy.value = true
-  try {
-    await bookshelf.batchSetCategory([...selectedBookIds.value], category.id, { action: 'category-add' })
-    ElMessage.success(`已添加到“${category.name}”分组`)
-  } catch (err) {
-    ElMessage.error(readError(err, '批量添加分组失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-async function batchRemoveCategory(category) {
-  if (!selectedBookIds.value.length) return
-  const targetIds = managedBooks.value
-    .filter(book => selectedBookIds.value.includes(book.id) && bookHasCategory(book, category.id))
-    .map(book => book.id)
-  if (!targetIds.length) {
-    ElMessage.info('选中书籍不在该分组中')
-    return
-  }
-  batchBusy.value = true
-  try {
-    await bookshelf.batchSetCategory(targetIds, category.id, { action: 'category-remove' })
-    ElMessage.success(`已从“${category.name}”分组移除`)
-  } catch (err) {
-    ElMessage.error(readError(err, '批量移除分组失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-async function batchCacheBooks() {
-  if (!selectedBookIds.value.length) return
-  const remoteBookIds = selectedRemoteBookIds()
-  if (!remoteBookIds.length) {
-    ElMessage.info('选中的本地书无需服务器缓存')
-    return
-  }
-  batchBusy.value = true
-  try {
-    const data = await bookshelf.batchCacheBooks(remoteBookIds)
-    ElMessage.success(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
-    await bookshelf.loadBooks({ force: true, all: true })
-  } catch (err) {
-    ElMessage.error(readError(err, '批量缓存失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-async function batchClearCache() {
-  if (!selectedBookIds.value.length) return
-  const remoteBookIds = selectedRemoteBookIds()
-  if (!remoteBookIds.length) {
-    ElMessage.info('选中的本地书没有服务器缓存')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(`确定清理选中 ${remoteBookIds.length} 本远程书的章节缓存吗？`, '清理缓存', { type: 'warning' })
-    batchBusy.value = true
-    const data = await bookshelf.batchClearCache(remoteBookIds)
-    ElMessage.success(`已清理 ${data.cleared || 0} 个章节缓存`)
-    for (const bookId of remoteBookIds) {
-      const book = managedBooks.value.find(item => Number(item.id) === Number(bookId))
-      if (book) updateServerCacheCount(book, 0)
-    }
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '清理缓存失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-function handleBatchMoreCommand(command) {
-  if (command === 'cache') {
-    batchCacheBooks()
-  } else if (command === 'clear-cache') {
-    batchClearCache()
-  } else if (command === 'export') {
-    batchExportBooks()
-  }
-}
-
-function selectedRemoteBookIds() {
-  const selected = new Set(selectedBookIds.value)
-  return managedBooks.value
-    .filter(book => selected.has(book.id) && Number(book.sourceId || 0) > 0)
-    .map(book => book.id)
-}
-
-async function batchDeleteBooks() {
-  if (!selectedBookIds.value.length) return
-  try {
-    await ElMessageBox.confirm(`确定删除选中的 ${selectedBookIds.value.length} 本书吗？`, '批量删除', { type: 'warning' })
-    batchBusy.value = true
-    await bookshelf.batchDeleteBooks([...selectedBookIds.value])
-    selectedBookIds.value = []
-    ElMessage.success('已批量删除')
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '批量删除失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-async function batchExportBooks() {
-  if (!selectedBookIds.value.length) return
-  batchBusy.value = true
-  try {
-    const bookIds = [...selectedBookIds.value]
-    const blob = await bookshelf.exportSelectedBooks(bookIds, 'json')
-    downloadBlob(blob, `openreader-books-${bookIds.length}.json`)
-    ElMessage.success(`已导出 ${bookIds.length} 本书`)
-  } catch (err) {
-    ElMessage.error(readError(err, '批量导出失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-async function cacheBook(book, command) {
-  if (Number(book?.sourceId || 0) === 0 && command !== 'cacheBookLocal' && command !== 'deleteBookLocalCache') {
-    ElMessage.info('本地书无需服务器缓存')
-    return
-  }
-  if (command === 'deleteBookCache') {
-    await clearBookCache(book)
-    return
-  }
-  if (command === 'deleteBookLocalCache') {
-    await clearBookLocalCache(book)
-    return
-  }
-  if (command === 'cacheBookLocal') {
-    await cacheBookLocal(book)
-    return
-  }
-  cachingBookId.value = book.id
-  try {
-    const chapterIndex = cacheStartChapterIndex(book)
-    const { data } = await cacheBookContent(book.id, { all: true, count: 20, chapterIndex })
-    if (data?.book) bookshelf.upsertBook(data.book)
-    ElMessage.success(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
-  } catch (err) {
-    ElMessage.error(readError(err, '缓存失败'))
-  } finally {
-    cachingBookId.value = null
-  }
-}
-
-async function cacheBookLocal(book) {
-  cachingBookId.value = book.id
-  try {
-    const { data } = await listChapters(book.id)
-    const chapterIndex = cacheStartChapterIndex(book)
-    const result = await cacheBookChaptersToBrowser(book, book.id, Array.isArray(data) ? data : [], {
-      startIndex: chapterIndex,
-      count: 100,
-    })
-    ElMessage.success(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)
-    await refreshManagedBrowserCacheCounts()
-    await refreshBookInfoBrowserCacheCount(book)
-  } catch (err) {
-    ElMessage.error(readError(err, '缓存到浏览器失败'))
-  } finally {
-    cachingBookId.value = null
-  }
-}
-
-function cacheStartChapterIndex(book) {
-  const progress = bookProgress(book)
-  const chapterIndex = Number(progress?.chapterIndex)
-  return Number.isInteger(chapterIndex) && chapterIndex > 0 ? chapterIndex : 0
-}
-
 function bookProgress(book) {
   return newestBookProgress(book, reader.progressByBook)
-}
-
-async function clearBookCache(book) {
-  cachingBookId.value = book.id
-  try {
-    const data = await bookshelf.batchClearCache([book.id])
-    updateServerCacheCount(book, 0)
-    ElMessage.success(`已清理 ${data.cleared || 0} 个章节缓存`)
-  } catch (err) {
-    ElMessage.error(readError(err, '清理缓存失败'))
-  } finally {
-    cachingBookId.value = null
-  }
-}
-
-async function clearBookLocalCache(book) {
-  cachingBookId.value = book.id
-  try {
-    const removed = await clearBookBrowserChapterCache(book, book.id)
-    await refreshManagedBrowserCacheCounts()
-    await refreshBookInfoBrowserCacheCount(book)
-    ElMessage.success(`已清理浏览器缓存 ${removed} 章`)
-  } catch (err) {
-    ElMessage.error(readError(err, '清理浏览器缓存失败'))
-  } finally {
-    cachingBookId.value = null
-  }
-}
-
-async function exportBook(book, format = 'txt') {
-  batchBusy.value = true
-  try {
-    const normalizedFormat = ['json', 'txt', 'epub'].includes(format) ? format : 'txt'
-    const blob = await bookshelf.exportSelectedBooks([book.id], normalizedFormat)
-    downloadBlob(blob, exportBookFilename(book, normalizedFormat))
-    ElMessage.success(`已导出《${book.title}》`)
-  } catch (err) {
-    ElMessage.error(readError(err, '导出失败'))
-  } finally {
-    batchBusy.value = false
-  }
-}
-
-function exportBookFilename(book, format) {
-  const fallback = `book-${book?.id || Date.now()}`
-  const title = String(book?.title || fallback).replace(/[\\/:*?"<>|]/g, '-').trim() || fallback
-  return `${title}.${format === 'json' ? 'json' : format === 'epub' ? 'epub' : 'txt'}`
 }
 
 function downloadBlob(blob, filename) {
