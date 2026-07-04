@@ -63,10 +63,6 @@ docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 
 脚本会把 `VERSION`、`VCS_REF` 和 `BUILD_DATE` 写入 Go 二进制和 OCI 镜像标签，设置页显示的构建信息不再是 `unknown`。
 
-维护者也可以在 GitHub Actions 中手动运行 **Publish Docker image** 工作流。
-它会在 GitHub 云端构建 `linux/amd64` 与 `linux/arm64`，并同时发布 `latest`
-和七位 commit 标签，不再依赖维护者本机的代理或 TUN 连接。
-
 ### 本地开发
 
 **后端：**
