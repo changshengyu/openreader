@@ -352,26 +352,10 @@
     </template>
   </el-drawer>
 
-  <el-drawer
-    v-model="overlay.searchBookContentVisible"
-    :title="`搜索正文${overlay.searchBook?.title ? ` · ${overlay.searchBook.title}` : ''}`"
+  <OverlayBookContentSearch
     :direction="narrowDrawerDirection"
     :size="narrowDrawerSize"
-    class="global-search-drawer"
-  >
-    <ReaderSearchPanel
-      v-model="contentKeyword"
-      :results="contentResults"
-      :loading="contentSearching"
-      :searched="contentSearched"
-      :has-more="contentHasMore"
-      :status-text="contentSearchStatus"
-      @search="searchCurrentBookContent"
-      @load-more="loadMoreCurrentBookContent"
-      @load-all="searchAllCurrentBookContent"
-      @jump="jumpToContentResult"
-    />
-  </el-drawer>
+  />
 
   <el-drawer
     v-model="overlay.bookmarkVisible"
@@ -467,7 +451,6 @@ import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
-import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActions'
 import { useOverlayBookImport } from '../composables/useOverlayBookImport'
 import { useOverlayBookGroups } from '../composables/useOverlayBookGroups'
@@ -484,12 +467,12 @@ import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsiv
 import BookEditDialog from './BookEditDialog.vue'
 import BookInfoDialog from './BookInfoDialog.vue'
 import OverlayBackups from './overlays/OverlayBackups.vue'
+import OverlayBookContentSearch from './overlays/OverlayBookContentSearch.vue'
 import OverlayReplaceRules from './overlays/OverlayReplaceRules.vue'
 import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
 import RSSManager from './RSSManager.vue'
 import WebDAVBrowser from './WebDAVBrowser.vue'
 import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
-import ReaderSearchPanel from './reader/ReaderSearchPanel.vue'
 
 const LocalStore = defineAsyncComponent(() => import('../views/LocalStore.vue'))
 
@@ -526,26 +509,6 @@ const {
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const sourceRows = ref([])
-const contentSearchBook = computed(() => overlay.searchBook)
-const contentSearchBookId = computed(() => overlay.searchBook?.id)
-const {
-  keyword: contentKeyword,
-  results: contentResults,
-  loading: contentSearching,
-  searched: contentSearched,
-  hasMore: contentHasMore,
-  status: contentSearchStatus,
-  reset: resetCurrentBookContentSearch,
-  search: searchCurrentBookContent,
-  loadMore: loadMoreCurrentBookContent,
-  loadAll: searchAllCurrentBookContent,
-} = useBookContentSearch({
-  bookId: contentSearchBookId,
-  book: contentSearchBook,
-  chapters: [],
-  onError: error => ElMessage.error(readError(error, '搜索正文失败')),
-})
-const contentSearchBookKey = ref('')
 const bookmarkBookId = computed(() => overlay.bookmarkBook?.id)
 const {
   items: bookmarkItems,
@@ -839,15 +802,6 @@ watch(
   mode => handleBookGroupModeChange(mode),
 )
 
-watch(
-  () => overlay.searchBook?.id || overlay.searchBook?.bookUrl || '',
-  (key) => {
-    if (String(key || '') === contentSearchBookKey.value) return
-    contentSearchBookKey.value = String(key || '')
-    resetContentSearchState()
-  },
-)
-
 async function warmOverlayCategories(options = {}) {
   return bookshelf.ensureCategoriesLoaded(options)
 }
@@ -855,23 +809,6 @@ async function warmOverlayCategories(options = {}) {
 async function warmOverlayBooks(options = {}) {
   return bookshelf.ensureBooksLoaded({ all: true, ...options })
 }
-
-function resetContentSearchState() {
-  contentKeyword.value = ''
-  resetCurrentBookContentSearch()
-}
-
-watch(
-  () => overlay.searchBookContentVisible,
-  (visible) => {
-    if (!visible) return
-    const key = String(overlay.searchBook?.id || overlay.searchBook?.bookUrl || '')
-    if (key && key !== contentSearchBookKey.value) {
-      contentSearchBookKey.value = key
-      resetContentSearchState()
-    }
-  },
-)
 
 watch(
   () => overlay.bookmarkVisible,
@@ -952,23 +889,6 @@ function downloadBlob(blob, filename) {
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
-}
-
-function jumpToContentResult(result) {
-  const book = overlay.searchBook
-  if (!book?.id) return
-  overlay.searchBookContentVisible = false
-  router.push({
-    name: 'reader',
-    params: { id: book.id },
-    query: {
-      chapter: Number(result.chapterIndex || 0),
-      line: Number.isInteger(result.lineIndex) ? result.lineIndex : undefined,
-      match: Number.isInteger(result.resultCountWithinChapter) ? result.resultCountWithinChapter : undefined,
-      percent: Number.isFinite(Number(result.percent)) ? Number(result.percent) : undefined,
-      q: contentKeyword.value.trim() || undefined,
-    },
-  })
 }
 
 function joinPath(base, name) {
