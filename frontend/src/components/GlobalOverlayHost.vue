@@ -357,37 +357,11 @@
     :size="narrowDrawerSize"
   />
 
-  <el-drawer
-    v-model="overlay.bookmarkVisible"
-    :title="`书签${overlay.bookmarkBook?.title ? ` · ${overlay.bookmarkBook.title}` : ''}`"
+  <OverlayBookmarks
     :direction="narrowDrawerDirection"
     :size="narrowDrawerSize"
-    class="global-bookmark-drawer"
-  >
-    <div v-loading="bookmarkLoading">
-      <ReaderBookmarkPanel
-        :bookmarks="bookmarkItems"
-        :show-add="false"
-        @jump="jumpToBookmark"
-        @edit="openBookmarkEditor"
-        @remove="removeBookmarkItem"
-        @remove-many="removeBookmarkItems"
-        @import="importBookmarkItems"
-      />
-    </div>
-  </el-drawer>
-
-  <el-dialog v-model="bookmarkEditorVisible" title="编辑书签" width="380px" :fullscreen="isMobileOverlay">
-    <div class="bookmark-editor">
-      <el-input v-model="bookmarkDraft.title" placeholder="标题" />
-      <el-input v-model="bookmarkDraft.excerpt" type="textarea" :rows="3" placeholder="摘录" />
-      <el-input v-model="bookmarkDraft.note" type="textarea" :rows="4" placeholder="笔记" />
-    </div>
-    <template #footer>
-      <el-button @click="bookmarkEditorVisible = false">取消</el-button>
-      <el-button type="primary" :loading="bookmarkSaving" @click="saveBookmarkEdit">保存</el-button>
-    </template>
-  </el-dialog>
+    :is-mobile="isMobileOverlay"
+  />
 
   <el-drawer
     v-model="overlay.localStoreVisible"
@@ -441,7 +415,6 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Sortable from 'sortablejs'
-import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Rank, UploadFilled } from '@element-plus/icons-vue'
 import { cacheBookContent, listChapters, listTXTTocRules, previewLocalBook, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
@@ -450,8 +423,6 @@ import { uploadAsset } from '../api/uploads'
 import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
-import { useBookBookmarks } from '../composables/useBookBookmarks'
-import { useOverlayBookmarkActions } from '../composables/useOverlayBookmarkActions'
 import { useOverlayBookImport } from '../composables/useOverlayBookImport'
 import { useOverlayBookGroups } from '../composables/useOverlayBookGroups'
 import { useOverlayBookInfo } from '../composables/useOverlayBookInfo'
@@ -468,15 +439,14 @@ import BookEditDialog from './BookEditDialog.vue'
 import BookInfoDialog from './BookInfoDialog.vue'
 import OverlayBackups from './overlays/OverlayBackups.vue'
 import OverlayBookContentSearch from './overlays/OverlayBookContentSearch.vue'
+import OverlayBookmarks from './overlays/OverlayBookmarks.vue'
 import OverlayReplaceRules from './overlays/OverlayReplaceRules.vue'
 import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
 import RSSManager from './RSSManager.vue'
 import WebDAVBrowser from './WebDAVBrowser.vue'
-import ReaderBookmarkPanel from './reader/ReaderBookmarkPanel.vue'
 
 const LocalStore = defineAsyncComponent(() => import('../views/LocalStore.vue'))
 
-const router = useRouter()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
@@ -509,47 +479,6 @@ const {
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const sourceRows = ref([])
-const bookmarkBookId = computed(() => overlay.bookmarkBook?.id)
-const {
-  items: bookmarkItems,
-  loading: bookmarkLoading,
-  mutating: bookmarkSaving,
-  load: loadBookmarkItems,
-  reset: resetBookmarkItems,
-  update: updateBookmarkData,
-  remove: removeBookmarkData,
-  removeMany: removeBookmarkRows,
-  importPayloads: importBookmarkPayloads,
-  handleUpdated: handleBookmarksUpdated,
-} = useBookBookmarks({
-  bookId: bookmarkBookId,
-  isActive: () => overlay.bookmarkVisible,
-  onLoadError: error => ElMessage.error(readError(error, '加载书签失败')),
-})
-const {
-  editorVisible: bookmarkEditorVisible,
-  draft: bookmarkDraft,
-  jump: jumpToBookmark,
-  openEditor: openBookmarkEditor,
-  saveEdit: saveBookmarkEdit,
-  removeOne: removeBookmarkItem,
-  removeMany: removeBookmarkItems,
-  importRows: importBookmarkItems,
-} = useOverlayBookmarkActions({
-  getBook: () => overlay.bookmarkBook,
-  closePanel: () => {
-    overlay.bookmarkVisible = false
-  },
-  navigate: routeLocation => router.push(routeLocation),
-  update: updateBookmarkData,
-  remove: removeBookmarkData,
-  removeMany: removeBookmarkRows,
-  importPayloads: importBookmarkPayloads,
-  confirm: (...args) => ElMessageBox.confirm(...args),
-  onSuccess: message => ElMessage.success(message),
-  onInvalidImport: message => ElMessage.error(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
-})
 const manageKeyword = ref('')
 const windowWidth = ref(currentViewportWidth())
 let sourceRowsRefreshTimer
@@ -718,13 +647,11 @@ function isShelfBook(book) {
 }
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
-  window.addEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   window.addEventListener('openreader:sources-update', handleSourcesUpdated)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateWindowWidth)
-  window.removeEventListener('openreader:bookmarks-updated', handleBookmarksUpdated)
   window.removeEventListener('openreader:sources-update', handleSourcesUpdated)
   clearSourceRowsRefreshTimer()
   destroyGroupSortable()
@@ -809,17 +736,6 @@ async function warmOverlayCategories(options = {}) {
 async function warmOverlayBooks(options = {}) {
   return bookshelf.ensureBooksLoaded({ all: true, ...options })
 }
-
-watch(
-  () => overlay.bookmarkVisible,
-  async (visible) => {
-    if (!visible) {
-      resetBookmarkItems()
-      return
-    }
-    await loadBookmarkItems()
-  },
-)
 
 function progressLabel(book) {
   const progress = bookProgress(book)
@@ -1178,11 +1094,6 @@ function readError(err, fallback) {
   border-color: var(--el-color-primary);
   box-shadow: inset 0 0 0 4px #fff;
   background: var(--el-color-primary);
-}
-
-.bookmark-editor {
-  display: grid;
-  gap: 10px;
 }
 
 @media (max-width: 750px) {
