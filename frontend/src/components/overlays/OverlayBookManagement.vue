@@ -6,22 +6,11 @@
     :size="size"
     class="global-manage-drawer"
   >
-    <div class="manage-head">
-      <el-input
-        v-model="manageKeyword"
-        placeholder="搜索书名、作者或文件名"
-        clearable
-        size="small"
-      />
-      <div class="manage-head-actions">
-        <el-button size="small" text @click="selectAllManagedBooks">
-          全选
-        </el-button>
-        <el-button size="small" text @click="clearManagedSelection">
-          清空
-        </el-button>
-      </div>
-    </div>
+    <BookManagementToolbar
+      v-model="manageKeyword"
+      @select-all="selectAllManagedBooks"
+      @clear-selection="clearManagedSelection"
+    />
 
     <BookManagementDesktopTable
       :books="filteredManagedBooks"
@@ -54,88 +43,21 @@
       @export="exportBook"
     />
 
-    <div class="manage-footer">
-      <el-button
-        type="primary"
-        :disabled="!selectedBookIds.length"
-        :loading="batchBusy"
-        @click="batchDeleteBooks"
-      >
-        批量删除
-      </el-button>
-      <el-dropdown @command="batchAddCategory">
-        <el-button
-          type="primary"
-          :disabled="!selectedBookIds.length"
-          :loading="batchBusy"
-        >
-          批量添加分组
-          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="category in bookshelf.categories"
-              :key="category.id"
-              :command="category"
-            >
-              {{ category.name }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <el-dropdown @command="batchRemoveCategory">
-        <el-button
-          type="primary"
-          :disabled="!selectedBookIds.length"
-          :loading="batchBusy"
-        >
-          批量移除分组
-          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="category in bookshelf.categories"
-              :key="category.id"
-              :command="category"
-            >
-              {{ category.name }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <span class="check-tip">已选择 {{ selectedBookIds.length }} 个</span>
-      <el-dropdown @command="handleBatchMoreCommand">
-        <el-button
-          :disabled="!selectedBookIds.length"
-          :loading="batchBusy"
-        >
-          更多批量操作
-          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="cache">
-              批量缓存到服务器
-            </el-dropdown-item>
-            <el-dropdown-item command="clear-cache">
-              批量清服务器缓存
-            </el-dropdown-item>
-            <el-dropdown-item command="export">
-              批量导出
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <el-button @click="overlay.bookManageVisible = false">取消</el-button>
-    </div>
+    <BookManagementBatchFooter
+      :categories="bookshelf.categories"
+      :selected-count="selectedBookIds.length"
+      :busy="batchBusy"
+      @delete-selected="batchDeleteBooks"
+      @add-category="batchAddCategory"
+      @remove-category="batchRemoveCategory"
+      @more-command="handleBatchMoreCommand"
+      @close="overlay.bookManageVisible = false"
+    />
   </el-drawer>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cacheBookContent, listChapters } from '../../api/books'
 import { useOverlayBookCacheState } from '../../composables/useOverlayBookCacheState'
@@ -151,8 +73,10 @@ import {
 import { createBookCategoryNameResolver } from '../../utils/bookCategory'
 import { localBookSearchText, normalizeLocalBookSearch } from '../../utils/localBook'
 import { newestBookProgress, sortByShelfOrder } from '../../utils/bookOrder'
+import BookManagementBatchFooter from './BookManagementBatchFooter.vue'
 import BookManagementDesktopTable from './BookManagementDesktopTable.vue'
 import BookManagementMobileList from './BookManagementMobileList.vue'
+import BookManagementToolbar from './BookManagementToolbar.vue'
 
 defineProps({
   direction: {
@@ -288,67 +212,3 @@ function readError(error, fallback) {
     fallback
 }
 </script>
-
-<style scoped>
-.manage-footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.manage-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.manage-head-actions {
-  display: none;
-  flex: 0 0 auto;
-  gap: 6px;
-}
-
-.manage-footer {
-  align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--app-border);
-}
-
-.check-tip {
-  color: var(--app-text-muted);
-  font-size: 13px;
-}
-
-@media (max-width: 750px) {
-  .manage-footer {
-    align-items: stretch;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .manage-footer :deep(.el-button),
-  .manage-footer :deep(.el-dropdown),
-  .manage-footer :deep(.el-dropdown .el-button) {
-    width: 100%;
-    min-height: 38px;
-    margin-left: 0;
-  }
-
-  .manage-footer .check-tip {
-    grid-column: 1 / -1;
-    order: -1;
-  }
-
-  .manage-head {
-    grid-template-columns: 1fr;
-  }
-
-  .manage-head-actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-}
-</style>
