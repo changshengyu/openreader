@@ -149,6 +149,7 @@ import { useOverlayStore } from '../stores/overlay'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { useAppCacheManagement } from '../composables/useAppCacheManagement'
 import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
 import { useSync } from '../composables/useSync'
@@ -170,13 +171,8 @@ const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
 const offline = ref(false)
-const cacheStats = ref({})
-const localBrowserCacheStats = ref({ total: { files: 0, size: 0 }, groups: {} })
 const healthInfo = ref(null)
 const recentSuppressedAt = ref(readRecentSuppressedAt())
-const cacheLoading = ref(false)
-const cacheClearing = ref(false)
-const browserCacheClearing = ref('')
 const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
 const { connected: syncConnected, connect, disconnect } = useSync()
@@ -198,6 +194,23 @@ const {
   getPageMode: () => reader.pageMode,
   shouldUseMiniInterface,
   now: () => Date.now(),
+})
+const {
+  clearingServer: cacheClearing,
+  sectionTitle: cacheSectionTitle,
+  clearServerLabel: clearServerChapterCacheLabel,
+  browserNavItems: browserCacheNavItems,
+  loadStats: loadCacheStats,
+  clearServer: clearSystemCache,
+} = useAppCacheManagement({
+  getServerStats: getCacheStats,
+  getBrowserStats: currentBrowserLocalCacheStats,
+  clearServerCache: clearCache,
+  clearBrowserGroup: clearBrowserLocalCacheGroup,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  onSuccess: message => ElMessage.success(message),
+  onInfo: message => ElMessage.info(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 
 const navSections = computed(() => [
@@ -293,29 +306,6 @@ const {
   },
   afterSourcesUpdated: () => loadCacheStats(),
 })
-const cacheSectionTitle = computed(() => {
-  const size = Number(cacheStats.value?.size || 0) + Number(localBrowserCacheStats.value?.total?.size || 0)
-  return size ? `本地缓存 ${formatSize(size)}` : '本地缓存'
-})
-const clearServerChapterCacheLabel = computed(() => {
-  const size = Number(cacheStats.value?.size || 0)
-  return size ? `清空服务器缓存 ${formatSize(size)}` : '清空服务器缓存'
-})
-const browserCacheNavItems = computed(() => {
-  const rows = [
-    { group: 'bookSourceList', label: '书源缓存' },
-    { group: 'rssSources', label: 'RSS源缓存' },
-    { group: 'chapterList', label: '章节列表缓存' },
-    { group: 'chapterContent', label: '章节内容缓存' },
-  ]
-  return rows
-    .filter(row => cacheGroupFiles(row.group) > 0 || ['chapterList', 'chapterContent'].includes(row.group))
-    .map(row => ({
-      key: `clear-${row.group}`,
-      label: browserCacheClearing.value === row.group ? '清理中' : clearBrowserLocalCacheLabel(row.group, row.label),
-      action: () => clearBrowserLocalCache(row.group),
-    }))
-})
 const isNightTheme = computed(() => reader.theme === 'dark' || reader.theme === 'black')
 const appVersionLabel = computed(() => {
   const version = String(healthInfo.value?.version || '').trim()
@@ -372,25 +362,6 @@ function isNavActive(item) {
   return String(route.query.panel || 'account') === item.panel
 }
 
-async function loadCacheStats() {
-  cacheLoading.value = true
-  const [serverResult, browserResult] = await Promise.allSettled([
-    getCacheStats(),
-    currentBrowserLocalCacheStats(),
-  ])
-  if (serverResult.status === 'fulfilled') {
-    cacheStats.value = serverResult.value?.data || {}
-  } else {
-    cacheStats.value = {}
-  }
-  if (browserResult.status === 'fulfilled') {
-    localBrowserCacheStats.value = browserResult.value || { total: { files: 0, size: 0 }, groups: {} }
-  } else {
-    localBrowserCacheStats.value = { total: { files: 0, size: 0 }, groups: {} }
-  }
-  cacheLoading.value = false
-}
-
 async function syncUserConfig() {
   const results = await Promise.allSettled([
     userStore.loadMe(),
@@ -429,72 +400,6 @@ async function refreshHealthInfo(showMessage = false) {
 function shortCommit(value) {
   if (!value || value === 'unknown') return ''
   return String(value).slice(0, 12)
-}
-
-async function clearSystemCache() {
-  try {
-    await ElMessageBox.confirm('确定清理服务器章节缓存吗？清理后阅读时会重新加载远程章节内容。', '清理缓存', { type: 'warning' })
-    cacheClearing.value = true
-    const { data } = await clearCache()
-    ElMessage.success(`已清理 ${data.clearedFiles || 0} 个文件，释放 ${formatSize(data.clearedSize || 0)}`)
-    await loadCacheStats()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '清理缓存失败'))
-  } finally {
-    cacheClearing.value = false
-  }
-}
-
-async function clearBrowserLocalCache(group) {
-  const label = cacheGroupLabel(group)
-  try {
-    if (!cacheGroupFiles(group)) {
-      ElMessage.info(`${label}为空`)
-      return
-    }
-    await ElMessageBox.confirm(`确定清理当前浏览器的${label}吗？清理后会在需要时重新加载。`, '清理浏览器缓存', { type: 'warning' })
-    browserCacheClearing.value = group
-    const removed = await clearBrowserLocalCacheGroup(group)
-    ElMessage.success(`已清理${label} ${removed} 项`)
-    await loadCacheStats()
-  } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '清理浏览器缓存失败'))
-  } finally {
-    browserCacheClearing.value = ''
-  }
-}
-
-function cacheGroup(group) {
-  return localBrowserCacheStats.value?.groups?.[group] || { files: 0, size: 0 }
-}
-
-function cacheGroupFiles(group) {
-  return Number(cacheGroup(group).files || 0)
-}
-
-function clearBrowserLocalCacheLabel(group, label) {
-  const size = Number(cacheGroup(group).size || 0)
-  return size ? `清空${label} ${formatSize(size)}` : `清空${label}`
-}
-
-function cacheGroupLabel(group) {
-  const labels = {
-    bookSourceList: '书源缓存',
-    rssSources: 'RSS源缓存',
-    chapterList: '章节列表缓存',
-    chapterContent: '章节内容缓存',
-  }
-  return labels[group] || '缓存'
-}
-
-function formatSize(bytes) {
-  const value = Number(bytes || 0)
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`
-  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
 function openRecentBook() {
