@@ -1,0 +1,198 @@
+import { ref } from 'vue'
+import { bookCategoryIds } from '../utils/bookCategory.js'
+
+function isCancelled(error) {
+  return error === 'cancel' || error === 'close'
+}
+
+function bookHasCategory(book, categoryId) {
+  return bookCategoryIds(book).some(id => String(id) === String(categoryId))
+}
+
+export function useOverlayBookBatchActions(options) {
+  const selectedBookIds = ref([])
+  const batchBusy = ref(false)
+
+  function onManageSelectionChange(rows) {
+    selectedBookIds.value = rows.map(row => row.id)
+  }
+
+  function toggleManagedBook(bookId, checked) {
+    if (checked) {
+      if (!selectedBookIds.value.includes(bookId)) {
+        selectedBookIds.value.push(bookId)
+      }
+      return
+    }
+    selectedBookIds.value = selectedBookIds.value.filter(id => id !== bookId)
+  }
+
+  function selectAllManagedBooks() {
+    selectedBookIds.value = options.getFilteredManagedBooks().map(book => book.id)
+  }
+
+  function clearManagedSelection() {
+    selectedBookIds.value = []
+  }
+
+  async function batchAddCategory(category) {
+    if (!selectedBookIds.value.length) return
+    batchBusy.value = true
+    try {
+      await options.bookshelf.batchSetCategory(
+        [...selectedBookIds.value],
+        category.id,
+        { action: 'category-add' },
+      )
+      options.onSuccess(`已添加到“${category.name}”分组`)
+    } catch (error) {
+      options.onError(error, '批量添加分组失败')
+    } finally {
+      batchBusy.value = false
+    }
+  }
+
+  async function batchRemoveCategory(category) {
+    if (!selectedBookIds.value.length) return
+    const targetIds = options.getManagedBooks()
+      .filter(book => (
+        selectedBookIds.value.includes(book.id) &&
+        bookHasCategory(book, category.id)
+      ))
+      .map(book => book.id)
+    if (!targetIds.length) {
+      options.onInfo('选中书籍不在该分组中')
+      return
+    }
+    batchBusy.value = true
+    try {
+      await options.bookshelf.batchSetCategory(
+        targetIds,
+        category.id,
+        { action: 'category-remove' },
+      )
+      options.onSuccess(`已从“${category.name}”分组移除`)
+    } catch (error) {
+      options.onError(error, '批量移除分组失败')
+    } finally {
+      batchBusy.value = false
+    }
+  }
+
+  function selectedRemoteBookIds() {
+    const selected = new Set(selectedBookIds.value)
+    return options.getManagedBooks()
+      .filter(book => selected.has(book.id) && Number(book.sourceId || 0) > 0)
+      .map(book => book.id)
+  }
+
+  async function batchCacheBooks() {
+    if (!selectedBookIds.value.length) return
+    const remoteBookIds = selectedRemoteBookIds()
+    if (!remoteBookIds.length) {
+      options.onInfo('选中的本地书无需服务器缓存')
+      return
+    }
+    batchBusy.value = true
+    try {
+      const data = await options.bookshelf.batchCacheBooks(remoteBookIds)
+      options.onSuccess(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
+      await options.bookshelf.loadBooks({ force: true, all: true })
+    } catch (error) {
+      options.onError(error, '批量缓存失败')
+    } finally {
+      batchBusy.value = false
+    }
+  }
+
+  async function batchClearCache() {
+    if (!selectedBookIds.value.length) return
+    const remoteBookIds = selectedRemoteBookIds()
+    if (!remoteBookIds.length) {
+      options.onInfo('选中的本地书没有服务器缓存')
+      return
+    }
+    try {
+      await options.confirm(
+        `确定清理选中 ${remoteBookIds.length} 本远程书的章节缓存吗？`,
+        '清理缓存',
+        { type: 'warning' },
+      )
+      batchBusy.value = true
+      const data = await options.bookshelf.batchClearCache(remoteBookIds)
+      options.onSuccess(`已清理 ${data.cleared || 0} 个章节缓存`)
+      for (const bookId of remoteBookIds) {
+        const book = options.getManagedBooks()
+          .find(item => Number(item.id) === Number(bookId))
+        if (book) options.updateServerCacheCount(book, 0)
+      }
+    } catch (error) {
+      if (isCancelled(error)) return
+      options.onError(error, '清理缓存失败')
+    } finally {
+      batchBusy.value = false
+    }
+  }
+
+  async function batchDeleteBooks() {
+    if (!selectedBookIds.value.length) return
+    try {
+      await options.confirm(
+        `确定删除选中的 ${selectedBookIds.value.length} 本书吗？`,
+        '批量删除',
+        { type: 'warning' },
+      )
+      batchBusy.value = true
+      await options.bookshelf.batchDeleteBooks([...selectedBookIds.value])
+      selectedBookIds.value = []
+      options.onSuccess('已批量删除')
+    } catch (error) {
+      if (isCancelled(error)) return
+      options.onError(error, '批量删除失败')
+    } finally {
+      batchBusy.value = false
+    }
+  }
+
+  async function batchExportBooks() {
+    if (!selectedBookIds.value.length) return
+    batchBusy.value = true
+    try {
+      const bookIds = [...selectedBookIds.value]
+      const blob = await options.bookshelf.exportSelectedBooks(bookIds, 'json')
+      options.saveBlob(blob, `openreader-books-${bookIds.length}.json`)
+      options.onSuccess(`已导出 ${bookIds.length} 本书`)
+    } catch (error) {
+      options.onError(error, '批量导出失败')
+    } finally {
+      batchBusy.value = false
+    }
+  }
+
+  function handleBatchMoreCommand(command) {
+    if (command === 'cache') {
+      batchCacheBooks()
+    } else if (command === 'clear-cache') {
+      batchClearCache()
+    } else if (command === 'export') {
+      batchExportBooks()
+    }
+  }
+
+  return {
+    selectedBookIds,
+    batchBusy,
+    onManageSelectionChange,
+    toggleManagedBook,
+    selectAllManagedBooks,
+    clearManagedSelection,
+    batchAddCategory,
+    batchRemoveCategory,
+    selectedRemoteBookIds,
+    batchCacheBooks,
+    batchClearCache,
+    batchDeleteBooks,
+    batchExportBooks,
+    handleBatchMoreCommand,
+  }
+}

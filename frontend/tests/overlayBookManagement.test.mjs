@@ -203,3 +203,22 @@ test('clears both cache layers and sanitizes single-book export names', async ()
   assert.equal(fixture.controller.batchBusy.value, false)
   assert.equal(fixture.controller.cachingBookId.value, null)
 })
+
+test('shares batch busy state with single-book exports', async () => {
+  const fixture = createController()
+  let finishExport
+  fixture.bookshelf.exportSelectedBooks = async () => new Promise((resolve) => {
+    finishExport = resolve
+  })
+
+  const pending = fixture.controller.exportBook(fixture.books[1], 'json')
+  assert.equal(fixture.controller.batchBusy.value, true)
+
+  finishExport({ format: 'json' })
+  await pending
+  assert.equal(fixture.controller.batchBusy.value, false)
+  assert.deepEqual(fixture.calls, [
+    ['save-blob', { format: 'json' }, '远程书.json'],
+    ['success', '已导出《远程书》'],
+  ])
+})
