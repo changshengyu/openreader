@@ -149,6 +149,7 @@ import { useOverlayStore } from '../stores/overlay'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
 import { useSync } from '../composables/useSync'
 import { clearCache, getCacheStats } from '../api/cache'
@@ -169,12 +170,6 @@ const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
 const offline = ref(false)
-const windowWidth = ref(currentViewportWidth())
-const mobileNavigationVisible = ref(false)
-const touchStart = ref(null)
-const touchMoveX = ref(0)
-const touchAxis = ref('')
-let ignoreWorkspaceClickUntil = 0
 const cacheStats = ref({})
 const localBrowserCacheStats = ref({ total: { files: 0, size: 0 }, groups: {} })
 const healthInfo = ref(null)
@@ -185,6 +180,25 @@ const browserCacheClearing = ref('')
 const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
 const { connected: syncConnected, connect, disconnect } = useSync()
+const {
+  visible: mobileNavigationVisible,
+  isMobile: isMobileShell,
+  navigationStyle: mobileNavigationStyle,
+  updateViewport: updateViewportFlags,
+  handleTouchStart,
+  handleTouchMove,
+  handleTouchEnd,
+  handleTouchCancel,
+  close: closeMobileNavigation,
+  toggle: toggleMobileNavigation,
+} = useAppMobileNavigation({
+  currentViewportWidth,
+  getViewportWidth: () => window.innerWidth,
+  getViewportHeight: () => window.innerHeight,
+  getPageMode: () => reader.pageMode,
+  shouldUseMiniInterface,
+  now: () => Date.now(),
+})
 
 const navSections = computed(() => [
   {
@@ -308,34 +322,6 @@ const appVersionLabel = computed(() => {
   const commit = shortCommit(healthInfo.value?.commit)
   if (version && !['dev', 'unknown'].includes(version)) return version
   return commit || 'dev'
-})
-const isMobileShell = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
-const mobileNavigationWidth = computed(() => {
-  return 260
-})
-const mobileNavigationStyle = computed(() => {
-  const width = mobileNavigationWidth.value
-  const base = { '--mobile-nav-width': `${width}px` }
-  if (!isMobileShell.value || !touchMoveX.value) return base
-  if (!mobileNavigationVisible.value && touchMoveX.value > 0 && touchMoveX.value <= width) {
-    const offset = touchMoveX.value - width
-    return {
-      ...base,
-      '--mobile-nav-drag-offset': `${offset}px`,
-      marginLeft: `${offset}px`,
-      transition: 'none'
-    }
-  }
-  if (mobileNavigationVisible.value && touchMoveX.value < 0 && touchMoveX.value >= -width) {
-    const offset = touchMoveX.value
-    return {
-      ...base,
-      '--mobile-nav-drag-offset': `${offset}px`,
-      marginLeft: `${offset}px`,
-      transition: 'none'
-    }
-  }
-  return base
 })
 const recentBook = computed(() => {
   const rows = (Array.isArray(bookshelf.books) ? bookshelf.books : [])
@@ -605,78 +591,6 @@ function setOffline() {
 
 function setOnline() {
   offline.value = false
-}
-
-function updateViewportFlags() {
-  windowWidth.value = currentViewportWidth()
-}
-
-function handleTouchStart(event) {
-  if (!isMobileShell.value || event.touches?.length !== 1) return
-  const touch = event.touches[0]
-  if (touch.clientY <= 20 || touch.clientY >= window.innerHeight - 20) {
-    touchStart.value = null
-    return
-  }
-  if (touch.clientX <= 20 || touch.clientX >= window.innerWidth - 20) {
-    touchStart.value = null
-    return
-  }
-  touchStart.value = { x: touch.clientX, y: touch.clientY }
-  touchMoveX.value = 0
-  touchAxis.value = ''
-}
-
-function handleTouchMove(event) {
-  if (!isMobileShell.value || !touchStart.value || event.touches?.length !== 1) return
-  const touch = event.touches[0]
-  const moveX = touch.clientX - touchStart.value.x
-  const moveY = touch.clientY - touchStart.value.y
-  if (!touchAxis.value && Math.max(Math.abs(moveX), Math.abs(moveY)) >= 8) {
-    touchAxis.value = Math.abs(moveX) > Math.abs(moveY) ? 'x' : 'y'
-  }
-  if (touchAxis.value === 'y') {
-    touchMoveX.value = 0
-    return
-  }
-  if (touchAxis.value !== 'x') return
-  const width = mobileNavigationWidth.value
-  if ((!mobileNavigationVisible.value && moveX > 0 && moveX <= width) || (mobileNavigationVisible.value && moveX < 0 && moveX >= -width)) {
-    event.preventDefault()
-    event.stopPropagation()
-    touchMoveX.value = moveX
-  }
-}
-
-function handleTouchEnd() {
-  if (!isMobileShell.value) return
-  if (touchAxis.value === 'x' && touchMoveX.value > 0) mobileNavigationVisible.value = true
-  if (touchAxis.value === 'x' && touchMoveX.value < 0) mobileNavigationVisible.value = false
-  if (touchAxis.value === 'x' && touchMoveX.value !== 0) {
-    ignoreWorkspaceClickUntil = Date.now() + 350
-  }
-  touchStart.value = null
-  touchMoveX.value = 0
-  touchAxis.value = ''
-}
-
-function handleTouchCancel() {
-  touchStart.value = null
-  touchMoveX.value = 0
-  touchAxis.value = ''
-}
-
-function closeMobileNavigation() {
-  if (Date.now() < ignoreWorkspaceClickUntil) return
-  if (isMobileShell.value && mobileNavigationVisible.value) {
-    mobileNavigationVisible.value = false
-  }
-}
-
-function toggleMobileNavigation() {
-  if (isMobileShell.value) {
-    mobileNavigationVisible.value = !mobileNavigationVisible.value
-  }
 }
 
 watch(
