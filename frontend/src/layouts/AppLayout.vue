@@ -151,15 +151,14 @@ import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
 import { useAppCacheManagement } from '../composables/useAppCacheManagement'
 import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
+import { useAppRecentReading } from '../composables/useAppRecentReading'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
 import { useSync } from '../composables/useSync'
 import { clearCache, getCacheStats } from '../api/cache'
 import { listSources } from '../api/sources'
 import api from '../api/client'
 import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
-import { newestBookProgress, progressUpdatedAt } from '../utils/bookOrder'
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
-import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
 
@@ -172,7 +171,6 @@ const reader = useReaderStore()
 const preferences = usePreferencesStore()
 const offline = ref(false)
 const healthInfo = ref(null)
-const recentSuppressedAt = ref(readRecentSuppressedAt())
 const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
 const { connected: syncConnected, connect, disconnect } = useSync()
@@ -211,6 +209,20 @@ const {
   onSuccess: message => ElMessage.success(message),
   onInfo: message => ElMessage.info(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
+  recentBook,
+  open: openRecentBook,
+  clear: clearRecentBook,
+  subtitle: recentSubTitle,
+  refreshScope: refreshRecentReadingScope,
+} = useAppRecentReading({
+  getBooks: () => bookshelf.books,
+  getProgressByBook: () => reader.progressByBook,
+  getUserScope: currentUserScope,
+  getStorage: () => window.localStorage,
+  now: () => Date.now(),
+  navigate: route => router.push(route),
 })
 
 const navSections = computed(() => [
@@ -313,22 +325,6 @@ const appVersionLabel = computed(() => {
   if (version && !['dev', 'unknown'].includes(version)) return version
   return commit || 'dev'
 })
-const recentBook = computed(() => {
-  const rows = (Array.isArray(bookshelf.books) ? bookshelf.books : [])
-    .filter(book => {
-      const progress = progressForBook(book)
-      return hasReadingProgress(progress) && progressUpdatedAt(progress) > recentSuppressedAt.value
-    })
-    .sort((a, b) => {
-      const aProgress = progressForBook(a)
-      const bProgress = progressForBook(b)
-      const aTime = progressUpdatedAt(aProgress)
-      const bTime = progressUpdatedAt(bProgress)
-      if (aTime !== bTime) return bTime - aTime
-      return Number(b?.id || 0) - Number(a?.id || 0)
-    })
-  return rows[0] || null
-})
 function goHome() {
   router.push({ name: 'home' })
 }
@@ -402,65 +398,8 @@ function shortCommit(value) {
   return String(value).slice(0, 12)
 }
 
-function openRecentBook() {
-  if (!recentBook.value) return
-  router.push({ name: 'reader', params: { id: recentBook.value.id }, query: readerRouteQuery(recentBook.value) })
-}
-
-function clearRecentBook() {
-  const progress = recentBook.value ? progressForBook(recentBook.value) : null
-  const nextValue = Math.max(Date.now(), progressUpdatedAt(progress))
-  recentSuppressedAt.value = nextValue
-  writeRecentSuppressedAt(nextValue)
-}
-
 function toggleNightTheme() {
   reader.setTheme(isNightTheme.value ? 'parchment' : 'dark')
-}
-
-function recentSubTitle(book) {
-  const progress = progressForBook(book)
-  if (progress?.chapterTitle) return progress.chapterTitle
-  if (Number.isInteger(progress?.chapterIndex)) return `第 ${progress.chapterIndex + 1} 章`
-  return book.lastChapter || book.author || '继续阅读'
-}
-
-function readerRouteQuery(book) {
-  return readerRouteQueryFromBook(book, progressForBook(book))
-}
-
-function progressForBook(book) {
-  return newestBookProgress(book, reader.progressByBook)
-}
-
-function hasReadingProgress(progress) {
-  if (!progress?.bookId) return false
-  if (progressUpdatedAt(progress) > 0) return true
-  if (progress.chapterTitle) return true
-  if (Number.isInteger(progress.chapterIndex) && progress.chapterIndex >= 0) return true
-  return Number(progress.offset || 0) > 0 ||
-    Number(progress.percent || 0) > 0 ||
-    Number(progress.chapterPercent || 0) > 0
-}
-
-function recentSuppressedCacheKey() {
-  return `openreader:readingRecentClearedAt:${currentUserScope()}`
-}
-
-function readRecentSuppressedAt() {
-  try {
-    return Number(window.localStorage?.getItem(recentSuppressedCacheKey()) || 0)
-  } catch {
-    return 0
-  }
-}
-
-function writeRecentSuppressedAt(value) {
-  try {
-    window.localStorage?.setItem(recentSuppressedCacheKey(), String(Number(value || 0)))
-  } catch {
-    // Ignore private-mode storage errors; the in-memory value still hides it for this session.
-  }
 }
 
 async function refreshShelfData() {
@@ -501,7 +440,7 @@ function setOnline() {
 watch(
   () => userStore.token,
   (token) => {
-    recentSuppressedAt.value = readRecentSuppressedAt()
+    refreshRecentReadingScope()
     if (token) {
       connect()
     } else {
