@@ -243,7 +243,7 @@ export function useOverlayBookManagement(options) {
       options.onSuccess(
         `已缓存到浏览器 ${result.cached}/${result.requested} 章`,
       )
-      await refreshBrowserCacheCounts(book)
+      await refreshBrowserCacheCounts()
     } catch (error) {
       options.onError(error, '缓存到浏览器失败')
     } finally {
@@ -268,7 +268,7 @@ export function useOverlayBookManagement(options) {
     cachingBookId.value = book.id
     try {
       const removed = await options.clearBrowserChapterCache(book, book.id)
-      await refreshBrowserCacheCounts(book)
+      await refreshBrowserCacheCounts()
       options.onSuccess(`已清理浏览器缓存 ${removed} 章`)
     } catch (error) {
       options.onError(error, '清理浏览器缓存失败')
@@ -277,9 +277,8 @@ export function useOverlayBookManagement(options) {
     }
   }
 
-  async function refreshBrowserCacheCounts(book) {
+  async function refreshBrowserCacheCounts() {
     await options.refreshManagedBrowserCacheCounts()
-    await options.refreshBookInfoBrowserCacheCount(book)
   }
 
   async function exportBook(book, format = 'txt') {

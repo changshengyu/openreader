@@ -63,9 +63,6 @@ function createController(overrides = {}) {
     refreshManagedBrowserCacheCounts: async () => {
       calls.push(['refresh-managed-cache'])
     },
-    refreshBookInfoBrowserCacheCount: async book => {
-      calls.push(['refresh-info-cache', book.id])
-    },
     saveBlob: (blob, filename) => calls.push(['save-blob', blob, filename]),
     confirm: async (...args) => calls.push(['confirm', ...args]),
     now: () => 123,
@@ -182,7 +179,6 @@ test('routes server and browser caching while starting from reading progress', a
     ],
     ['success', '已缓存到浏览器 2/2 章'],
     ['refresh-managed-cache'],
-    ['refresh-info-cache', 1],
   ])
 })
 
@@ -198,7 +194,6 @@ test('clears both cache layers and sanitizes single-book export names', async ()
     ['success', '已清理 2 个章节缓存'],
     ['clear-browser', 1, 1],
     ['refresh-managed-cache'],
-    ['refresh-info-cache', 1],
     ['success', '已清理浏览器缓存 5 章'],
     ['export', [1], 'epub'],
     ['save-blob', { ids: [1], format: 'epub' }, '本地-书.epub'],

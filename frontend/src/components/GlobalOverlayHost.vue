@@ -1,49 +1,5 @@
 <template>
-  <BookInfoDialog
-    v-model="overlay.bookInfoVisible"
-    :book="overlay.bookInfoBook"
-    :source-name="bookInfoSourceName"
-    :category-name="bookInfoCategory"
-    :progress="bookInfoProgress"
-    :chapters="overlay.bookInfoBook?.chapterCount || 0"
-    :status-label="overlay.bookInfoOptions.statusLabel || sourceStatusLabel"
-    :status-type="overlay.bookInfoOptions.statusType || 'info'"
-    :cover-editable="bookInfoInShelf"
-    :cover-uploading="coverUploadingBookId === overlay.bookInfoBook?.id"
-    :show-update-switch="bookInfoInShelf && Number(overlay.bookInfoBook?.sourceId || 0) > 0"
-    :can-update="overlay.bookInfoBook?.canUpdate !== false"
-    :update-switch-loading="updatingBookId === overlay.bookInfoBook?.id"
-    :browser-cache-count="bookInfoBrowserCacheCount"
-    :in-shelf="bookInfoInShelf"
-    :show-category-action="bookInfoInShelf"
-    :show-local-refresh-action="bookInfoInShelf && Number(overlay.bookInfoBook?.sourceId || 0) <= 0"
-    :local-refresh-loading="refreshingBookId === overlay.bookInfoBook?.id"
-    @cover-upload="uploadBookInfoCover"
-    @can-update-change="toggleBookCanUpdate"
-    @category-action="setBookGroup(overlay.bookInfoBook)"
-    @local-refresh="refreshLocalBookInfo(overlay.bookInfoBook)"
-  >
-    <div v-if="overlay.bookInfoOptions.actions?.length" class="overlay-actions">
-      <el-button
-        v-for="action in overlay.bookInfoOptions.actions"
-        :key="action.label"
-        :type="action.type || 'default'"
-        :plain="action.plain"
-        :loading="!!action.loading"
-        :disabled="!!action.disabled"
-        @click="action.handler?.(overlay.bookInfoBook)"
-      >
-        {{ action.label }}
-      </el-button>
-    </div>
-  </BookInfoDialog>
-
-  <BookEditDialog
-    v-model="overlay.bookEditVisible"
-    :book="overlay.bookEditBook"
-    :saving="editingBookSaving"
-    @save="saveEditedBook"
-  />
+  <OverlayBookInfo />
 
   <OverlayBookImport :is-mobile="isMobileOverlay" />
 
@@ -263,26 +219,22 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
-import { cacheBookContent, listChapters, refreshLocalBook, updateBook } from '../api/books'
-import { listSources } from '../api/sources'
-import { uploadAsset } from '../api/uploads'
-import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
+import { cacheBookContent, listChapters } from '../api/books'
+import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
-import { useOverlayBookInfo } from '../composables/useOverlayBookInfo'
+import { useOverlayBookCacheState } from '../composables/useOverlayBookCacheState'
 import { useOverlayBookManagement } from '../composables/useOverlayBookManagement'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
-import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters, listBookBrowserCachedChapters } from '../utils/bookChapterCache'
+import { cacheBookChaptersToBrowser, clearBookBrowserChapterCache, countBooksBrowserCachedChapters } from '../utils/bookChapterCache'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { createBookCategoryNameResolver } from '../utils/bookCategory'
 import { localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
-import { invalidateReaderDataCache, writeReaderDataCache } from '../utils/readerDataCache'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
-import BookEditDialog from './BookEditDialog.vue'
-import BookInfoDialog from './BookInfoDialog.vue'
 import OverlayBackups from './overlays/OverlayBackups.vue'
 import OverlayBookContentSearch from './overlays/OverlayBookContentSearch.vue'
 import OverlayBookGroups from './overlays/OverlayBookGroups.vue'
+import OverlayBookInfo from './overlays/OverlayBookInfo.vue'
 import OverlayBookImport from './overlays/OverlayBookImport.vue'
 import OverlayBookmarks from './overlays/OverlayBookmarks.vue'
 import OverlayLocalStore from './overlays/OverlayLocalStore.vue'
@@ -296,32 +248,14 @@ const overlay = useOverlayStore()
 const reader = useReaderStore()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
-const sourceRows = ref([])
 const manageKeyword = ref('')
 const windowWidth = ref(currentViewportWidth())
-let sourceRowsRefreshTimer
 
 const isMobileOverlay = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const wideDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const wideDrawerSize = computed(() => isMobileOverlay.value ? '88%' : '82%')
 const narrowDrawerDirection = computed(() => isMobileOverlay.value ? 'btt' : 'rtl')
 const narrowDrawerSize = computed(() => isMobileOverlay.value ? '86%' : '420px')
-const bookInfoCategory = computed(() => overlay.bookInfoOptions.categoryName || categoryName(overlay.bookInfoBook))
-const bookInfoSourceName = computed(() => {
-  if (overlay.bookInfoOptions.sourceName) return overlay.bookInfoOptions.sourceName
-  const sourceId = overlay.bookInfoBook?.sourceId
-  if (!sourceId) return '本地'
-  return sourceRows.value.find(source => Number(source.id) === Number(sourceId))?.name || '远程书籍'
-})
-const bookInfoProgress = computed(() => {
-  const book = overlay.bookInfoBook
-  return bookProgress(book)?.percent || 0
-})
-const bookInfoBrowserCacheCount = computed(() => (
-  overlay.bookInfoBook?.id ? localCacheCount(overlay.bookInfoBook) : -1
-))
-const bookInfoInShelf = computed(() => isShelfBook(overlay.bookInfoBook))
-const sourceStatusLabel = computed(() => overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍')
 const managedBooks = computed(() => sortByShelfOrder(bookshelf.books, reader.progressByBook))
 const filteredManagedBooks = computed(() => {
   const value = normalizeLocalBookSearch(manageKeyword.value)
@@ -329,50 +263,15 @@ const filteredManagedBooks = computed(() => {
   return managedBooks.value.filter(book => manageBookSearchText(book).includes(value))
 })
 const {
-  refreshingBookId,
-  coverUploadingBookId,
-  updatingBookId,
-  editingBookSaving,
   refreshManagedBrowserCacheCounts,
-  refreshBookInfoBrowserCacheCount,
-  invalidateBookReaderCaches,
-  refreshBookChaptersCache,
-  mergedShelfBook,
-  applyUpdatedBookToOverlay,
   localCacheCount,
   serverCacheCount,
   updateServerCacheCount,
-  saveEditedBook,
-  refreshLocalBookInfo,
-  uploadBookInfoCover,
-  toggleBookCanUpdate,
-} = useOverlayBookInfo({
+} = useOverlayBookCacheState({
   overlay,
   bookshelf,
   getManagedBooks: () => managedBooks.value,
   countBrowserCachedChapters: countBooksBrowserCachedChapters,
-  listBrowserCachedChapters: listBookBrowserCachedChapters,
-  clearBrowserChapterCache: clearBookBrowserChapterCache,
-  invalidateReaderData: invalidateReaderDataCache,
-  listChapters,
-  writeReaderData: writeReaderDataCache,
-  refreshLocalBook,
-  uploadAsset,
-  updateBook,
-  mergeBook: mergeShelfBook,
-  emitBookInfoUpdated: book => {
-    window.dispatchEvent(new CustomEvent('openreader:book-info-updated', {
-      detail: { book },
-    }))
-  },
-  emitReaderBookDataUpdated: detail => {
-    window.dispatchEvent(new CustomEvent(
-      'openreader:reader-book-data-updated',
-      { detail },
-    ))
-  },
-  onSuccess: message => ElMessage.success(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const {
   selectedBookIds,
@@ -399,7 +298,6 @@ const {
   clearBrowserChapterCache: clearBookBrowserChapterCache,
   updateServerCacheCount,
   refreshManagedBrowserCacheCounts,
-  refreshBookInfoBrowserCacheCount,
   saveBlob: downloadBlob,
   confirm: (...args) => ElMessageBox.confirm(...args),
   now: () => Date.now(),
@@ -414,22 +312,12 @@ function manageBookSearchText(book) {
   ])
 }
 
-function isShelfBook(book) {
-  if (!book) return false
-  if (book.id && bookshelf.books.some(item => Number(item.id) === Number(book.id))) return true
-  const bookUrl = String(book.url || book.bookUrl || '').trim()
-  if (!bookUrl) return false
-  return bookshelf.books.some(item => String(item.url || item.bookUrl || '').trim() === bookUrl)
-}
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
-  window.addEventListener('openreader:sources-update', handleSourcesUpdated)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateWindowWidth)
-  window.removeEventListener('openreader:sources-update', handleSourcesUpdated)
-  clearSourceRowsRefreshTimer()
 })
 
 function updateWindowWidth() {
@@ -459,30 +347,6 @@ watch(
   },
 )
 
-watch(
-  () => overlay.bookInfoVisible,
-  async (visible) => {
-    if (!visible) return
-    const warmTasks = [warmOverlayCategories()]
-    if (overlay.bookInfoBook?.id) warmTasks.push(warmOverlayBooks())
-    const [categoryResult, booksResult] = await Promise.allSettled(warmTasks)
-    if (categoryResult.status === 'rejected') {
-      ElMessage.warning(readError(categoryResult.reason, '分组加载失败，书籍信息仍可查看'))
-    }
-    if (booksResult?.status === 'rejected') {
-      ElMessage.warning(readError(booksResult.reason, '书架状态加载失败，书籍信息仍可查看'))
-    }
-    if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
-      await loadSourceRows().catch((err) => {
-        ElMessage.warning(readError(err, '书源加载失败，书籍信息仍可查看'))
-      })
-    }
-    if (overlay.bookInfoBook?.id) {
-      await refreshBookInfoBrowserCacheCount(overlay.bookInfoBook)
-    }
-  },
-)
-
 async function warmOverlayCategories(options = {}) {
   return bookshelf.ensureCategoriesLoaded(options)
 }
@@ -494,39 +358,6 @@ async function warmOverlayBooks(options = {}) {
 function progressLabel(book) {
   const progress = bookProgress(book)
   return `${Math.round((progress?.percent || 0) * 100)}%`
-}
-
-async function loadSourceRows() {
-  const { data } = await listSources()
-  sourceRows.value = data || []
-}
-
-function handleSourcesUpdated() {
-  if (!shouldRefreshOverlaySources()) return
-  scheduleSourceRowsRefresh()
-}
-
-function shouldRefreshOverlaySources() {
-  return (overlay.bookInfoVisible && Number(overlay.bookInfoBook?.sourceId || 0) > 0) ||
-    sourceRows.value.length > 0
-}
-
-function scheduleSourceRowsRefresh() {
-  clearSourceRowsRefreshTimer()
-  sourceRowsRefreshTimer = window.setTimeout(async () => {
-    sourceRowsRefreshTimer = undefined
-    try {
-      await loadSourceRows()
-    } catch {
-      // Keep existing source names/groups; the next source action can recover.
-    }
-  }, 350)
-}
-
-function clearSourceRowsRefreshTimer() {
-  if (!sourceRowsRefreshTimer) return
-  window.clearTimeout(sourceRowsRefreshTimer)
-  sourceRowsRefreshTimer = undefined
 }
 
 function coverInitial(book) {
@@ -561,38 +392,16 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url)
 }
 
-function joinPath(base, name) {
-  return [base, name].filter(Boolean).join('/')
-}
-
-function buildSourceGroupOptions(rows) {
-  const counts = new Map()
-  for (const item of rows || []) {
-    if (item?.enabled === false) continue
-    const group = String(item?.group || '').trim()
-    if (!group) continue
-    counts.set(group, (counts.get(group) || 0) + 1)
-  }
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([value, count]) => ({ value, label: value, count }))
-}
-
 function readError(err, fallback) {
   return err?.response?.data?.error?.message || err?.response?.data?.error || fallback
 }
 </script>
 
 <style scoped>
-.overlay-actions,
 .manage-footer {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.overlay-actions {
-  margin-top: 4px;
 }
 
 .manage-head {
@@ -759,16 +568,6 @@ function readError(err, fallback) {
   .manage-head-actions {
     display: flex;
     justify-content: flex-end;
-  }
-
-  .overlay-actions {
-    display: grid;
-  }
-
-  .overlay-actions :deep(.el-button) {
-    width: 100%;
-    min-height: 38px;
-    margin-left: 0;
   }
 
 }
