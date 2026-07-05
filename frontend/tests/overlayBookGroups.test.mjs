@@ -93,6 +93,17 @@ test('prepares and saves the selected groups for the current book', async () => 
   assert.deepEqual(fixture.calls.at(-1), ['success', '分组已设置'])
 })
 
+test('prepares the current book selection when an open drawer changes mode', async () => {
+  const fixture = createController()
+  fixture.overlay.bookInfoBook = { id: 9, categoryIds: [1, 3] }
+
+  await fixture.controller.handleModeChange('set')
+
+  assert.equal(fixture.controller.isBookGroupSelected({ id: 1 }), true)
+  assert.equal(fixture.controller.isBookGroupSelected({ id: 2 }), false)
+  assert.equal(fixture.controller.isBookGroupSelected({ id: 3 }), true)
+})
+
 test('creates and renames groups while preserving cancellation semantics', async () => {
   const fixture = createController()
   await fixture.controller.createCategory()

@@ -194,7 +194,10 @@ export const useBookshelfStore = defineStore('bookshelf', {
     },
     async addCategory(category) {
       const { data } = await createCategory(category)
-      this.categories = sortCategories([...this.categories, data])
+      const index = this.categories.findIndex(item => Number(item.id) === Number(data.id))
+      this.categories = sortCategories(index >= 0
+        ? this.categories.map(item => Number(item.id) === Number(data.id) ? data : item)
+        : [...this.categories, data])
       this.invalidateCategories()
       return data
     },

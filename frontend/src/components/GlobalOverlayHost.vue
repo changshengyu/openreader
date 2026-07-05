@@ -208,90 +208,10 @@
     </div>
   </el-drawer>
 
-  <el-drawer
-    v-model="overlay.bookGroupVisible"
-    :title="overlay.bookGroupMode === 'set' ? '设置分组' : '分组管理'"
+  <OverlayBookGroups
     :direction="narrowDrawerDirection"
     :size="narrowDrawerSize"
-    @opened="handleBookGroupOpened"
-    @closed="destroyGroupSortable"
-  >
-    <template v-if="overlay.bookGroupMode === 'set'">
-      <el-table :data="groupSetRows" row-key="id" class="group-set-table" @row-click="toggleBookGroupSelection">
-        <el-table-column width="46">
-          <template #default="{ row }">
-            <el-checkbox :model-value="isBookGroupSelected(row)" @change="() => toggleBookGroupSelection(row)" @click.stop />
-          </template>
-        </el-table-column>
-        <el-table-column label="分组名">
-          <template #default="{ row }">
-            <span class="group-set-name">
-              <span>{{ row.name }}</span>
-              <small>{{ row.description }}</small>
-            </span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="manage-footer group-set-footer">
-        <el-button type="primary" :loading="settingCategorySaving" @click="saveBookGroupSetting">确认</el-button>
-        <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
-      </div>
-    </template>
-    <template v-else>
-      <el-table ref="groupManageTableRef" :data="groupManageRows" row-key="id" class="group-manage-table">
-        <el-table-column width="46">
-          <template #default>
-            <button
-              type="button"
-              class="group-drag-handle"
-              title="拖动排序"
-            >
-              <el-icon><Rank /></el-icon>
-            </button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="分组名" min-width="130">
-          <template #default="{ row }">
-            <span class="group-table-name">
-              <span>{{ row.name }}</span>
-              <small>{{ groupBookCount(row) }} 本</small>
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="显示" width="120">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.show !== false"
-              :loading="visibilitySavingId === row.id"
-              active-text="显示"
-              inactive-text="隐藏"
-              @change="value => toggleGroupVisibility(row, value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="180">
-          <template #default="{ row }">
-            <el-button size="small" text @click="renameGroup(row)">编辑</el-button>
-            <el-button
-              v-if="groupBookCount(row) === 0"
-              size="small"
-              text
-              type="danger"
-              @click="deleteGroup(row)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-if="!bookshelf.categories.length" description="还没有自定义分组" />
-      <div class="manage-footer group-manage-footer">
-        <el-button type="primary" @click="createCategory">添加分组</el-button>
-        <el-button v-if="isGroupOrderDirty" type="primary" :loading="groupOrderSaving" @click="saveGroupOrderDraft">保存排序</el-button>
-        <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
-      </div>
-    </template>
-  </el-drawer>
+  />
 
   <OverlayBookContentSearch
     :direction="narrowDrawerDirection"
@@ -354,17 +274,15 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import Sortable from 'sortablejs'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, Rank } from '@element-plus/icons-vue'
-import { cacheBookContent, listChapters, refreshLocalBook, updateBook, updateBookCategory } from '../api/books'
+import { ArrowDown } from '@element-plus/icons-vue'
+import { cacheBookContent, listChapters, refreshLocalBook, updateBook } from '../api/books'
 import { listSources } from '../api/sources'
 import { uploadAsset } from '../api/uploads'
 import { mergeShelfBook, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
-import { useOverlayBookGroups } from '../composables/useOverlayBookGroups'
 import { useOverlayBookInfo } from '../composables/useOverlayBookInfo'
 import { useOverlayBookManagement } from '../composables/useOverlayBookManagement'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
@@ -378,6 +296,7 @@ import BookEditDialog from './BookEditDialog.vue'
 import BookInfoDialog from './BookInfoDialog.vue'
 import OverlayBackups from './overlays/OverlayBackups.vue'
 import OverlayBookContentSearch from './overlays/OverlayBookContentSearch.vue'
+import OverlayBookGroups from './overlays/OverlayBookGroups.vue'
 import OverlayBookImport from './overlays/OverlayBookImport.vue'
 import OverlayBookmarks from './overlays/OverlayBookmarks.vue'
 import OverlayReplaceRules from './overlays/OverlayReplaceRules.vue'
@@ -503,48 +422,6 @@ const {
   onInfo: message => ElMessage.info(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
-const {
-  settingCategorySaving,
-  visibilitySavingId,
-  groupOrderSaving,
-  groupManageTableRef,
-  groupSetRows,
-  groupManageRows,
-  isGroupOrderDirty,
-  groupBookCount,
-  prepareOpen: prepareBookGroupOpen,
-  isBookGroupSelected,
-  toggleBookGroupSelection,
-  saveBookGroupSetting,
-  createCategory,
-  renameGroup,
-  toggleGroupVisibility,
-  deleteGroup,
-  handleBookGroupOpened,
-  destroyGroupSortable,
-  handleModeChange: handleBookGroupModeChange,
-  saveGroupOrderDraft,
-} = useOverlayBookGroups({
-  overlay,
-  bookshelf,
-  getManagedBooks: () => managedBooks.value,
-  updateBookCategory,
-  categoryName,
-  getBookProgress: bookProgress,
-  emitBookInfoUpdated: data => {
-    window.dispatchEvent(new CustomEvent('openreader:book-info-updated', {
-      detail: { book: data },
-    }))
-  },
-  prompt: (...args) => ElMessageBox.prompt(...args),
-  confirm: (...args) => ElMessageBox.confirm(...args),
-  createSortable: (...args) => Sortable.create(...args),
-  nextFrame: nextTick,
-  onSuccess: message => ElMessage.success(message),
-  onWarning: message => ElMessage.warning(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
-})
-
 function manageBookSearchText(book) {
   return localBookSearchText(book, [
     progressLabel(book),
@@ -568,7 +445,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateWindowWidth)
   window.removeEventListener('openreader:sources-update', handleSourcesUpdated)
   clearSourceRowsRefreshTimer()
-  destroyGroupSortable()
 })
 
 function updateWindowWidth() {
@@ -576,41 +452,25 @@ function updateWindowWidth() {
 }
 
 watch(
-  () => overlay.bookManageVisible || overlay.bookGroupVisible,
+  () => overlay.bookManageVisible,
   async (visible) => {
     if (!visible) {
-      if (!overlay.bookManageVisible) {
-        manageKeyword.value = ''
-        clearManagedSelection()
-      }
+      manageKeyword.value = ''
+      clearManagedSelection()
       return
     }
-    if (overlay.bookManageVisible) {
-      const [categoryResult, booksResult] = await Promise.allSettled([
-        warmOverlayCategories(),
-        warmOverlayBooks(),
-      ])
-      if (booksResult.status === 'rejected') {
-        ElMessage.error(readError(booksResult.reason, '加载书架数据失败'))
-        return
-      }
-      if (categoryResult.status === 'rejected') {
-        if (overlay.bookGroupVisible) {
-          ElMessage.error(readError(categoryResult.reason, '加载分组失败'))
-          return
-        }
-        ElMessage.warning(readError(categoryResult.reason, '分组加载失败，书架管理仍可使用'))
-      }
-      await refreshManagedBrowserCacheCounts()
-    } else {
-      try {
-        await warmOverlayCategories()
-      } catch (err) {
-        ElMessage.error(readError(err, '加载分组失败'))
-        return
-      }
+    const [categoryResult, booksResult] = await Promise.allSettled([
+      warmOverlayCategories(),
+      warmOverlayBooks(),
+    ])
+    if (booksResult.status === 'rejected') {
+      ElMessage.error(readError(booksResult.reason, '加载书架数据失败'))
+      return
     }
-    if (overlay.bookGroupVisible) prepareBookGroupOpen()
+    if (categoryResult.status === 'rejected') {
+      ElMessage.warning(readError(categoryResult.reason, '分组加载失败，书架管理仍可使用'))
+    }
+    await refreshManagedBrowserCacheCounts()
   },
 )
 
@@ -636,11 +496,6 @@ watch(
       await refreshBookInfoBrowserCacheCount(overlay.bookInfoBook)
     }
   },
-)
-
-watch(
-  () => overlay.bookGroupMode,
-  mode => handleBookGroupModeChange(mode),
 )
 
 async function warmOverlayCategories(options = {}) {
@@ -875,83 +730,6 @@ function readError(err, fallback) {
   font-size: 13px;
 }
 
-.group-manage-table {
-  margin-bottom: 12px;
-}
-
-.group-drag-handle {
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--app-text-muted);
-  cursor: move;
-}
-
-.group-drag-handle:hover {
-  background: var(--app-bg-soft);
-  color: var(--app-text);
-}
-
-.group-table-name {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.group-table-name span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.group-table-name small {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.group-set-table {
-  margin-bottom: 12px;
-}
-
-.group-set-footer {
-  margin-top: 12px;
-}
-
-.group-set-name {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.group-set-name span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.group-set-name small {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.radio-cell {
-  display: inline-flex;
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--app-border);
-  border-radius: 50%;
-}
-
-.radio-cell.active {
-  border-color: var(--el-color-primary);
-  box-shadow: inset 0 0 0 4px #fff;
-  background: var(--el-color-primary);
-}
-
 @media (max-width: 750px) {
   .desktop-manage-table {
     display: none;
@@ -987,10 +765,6 @@ function readError(err, fallback) {
   .manage-footer .check-tip {
     grid-column: 1 / -1;
     order: -1;
-  }
-
-  .group-set-footer {
-    grid-template-columns: 1fr;
   }
 
   .manage-head {

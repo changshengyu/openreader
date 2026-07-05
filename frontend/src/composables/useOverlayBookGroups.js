@@ -52,8 +52,8 @@ export function useOverlayBookGroups(options) {
       .length
   }
 
-  function prepareOpen() {
-    if (options.overlay.bookGroupMode === 'set') {
+  function prepareOpen(mode = options.overlay.bookGroupMode) {
+    if (mode === 'set') {
       selectedCategoryIds.value = bookCategoryIds(options.overlay.bookInfoBook)
         .map(id => String(id))
       return
@@ -208,6 +208,7 @@ export function useOverlayBookGroups(options) {
 
   async function handleModeChange(mode) {
     destroyGroupSortable()
+    prepareOpen(mode)
     if (mode === 'manage' && options.overlay.bookGroupVisible) {
       await handleBookGroupOpened()
     }
