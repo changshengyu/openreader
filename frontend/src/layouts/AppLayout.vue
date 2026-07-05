@@ -149,6 +149,7 @@ import { useOverlayStore } from '../stores/overlay'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
 import { useSync } from '../composables/useSync'
 import { clearCache, getCacheStats } from '../api/cache'
 import { listSources } from '../api/sources'
@@ -167,7 +168,6 @@ const overlay = useOverlayStore()
 const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
-const quickSearch = ref('')
 const offline = ref(false)
 const windowWidth = ref(currentViewportWidth())
 const mobileNavigationVisible = ref(false)
@@ -248,32 +248,36 @@ const navSections = computed(() => [
   },
 ])
 
-const concurrentOptions = [8, 16, 32, 60]
-const sidebarSources = ref([])
-const sidebarSearchType = computed({
-  get: () => preferences.search.searchType,
-  set: value => preferences.setSearchConfig({ searchType: value }),
-})
-const sidebarSearchGroup = computed({
-  get: () => preferences.search.group,
-  set: value => preferences.setSearchConfig({ group: value }),
-})
-const sidebarSourceId = computed({
-  get: () => preferences.search.sourceId,
-  set: value => preferences.setSearchConfig({ sourceId: value }),
-})
-const sidebarConcurrent = computed({
-  get: () => preferences.search.concurrent,
-  set: value => preferences.setSearchConfig({ concurrent: value }),
-})
-const sidebarEnabledSources = computed(() => sidebarSources.value.filter(source => source.enabled))
-const sidebarSourceGroups = computed(() => {
-  const groups = new Map()
-  for (const source of sidebarEnabledSources.value) {
-    const name = source.group || '默认分组'
-    groups.set(name, (groups.get(name) || 0) + 1)
-  }
-  return [...groups.entries()].map(([label, count]) => ({ label, value: label, count }))
+const {
+  quickSearch,
+  concurrentOptions,
+  searchType: sidebarSearchType,
+  searchGroup: sidebarSearchGroup,
+  sourceId: sidebarSourceId,
+  concurrent: sidebarConcurrent,
+  enabledSources: sidebarEnabledSources,
+  sourceGroups: sidebarSourceGroups,
+  searchRouteQuery,
+  localSearchRouteQuery,
+  goSearch,
+  goSearchRoute,
+  clearSearchQuery,
+  loadSources: loadSidebarSources,
+  handleSourcesUpdated,
+} = useAppSidebarSearch({
+  preferences,
+  route,
+  router,
+  listSources,
+  cacheFirstRequest,
+  networkFirstRequest,
+  removeBrowserCache,
+  getUserScope: currentUserScope,
+  onWarning: message => ElMessage.warning(message),
+  afterNavigate: () => {
+    if (isMobileShell.value) mobileNavigationVisible.value = false
+  },
+  afterSourcesUpdated: () => loadCacheStats(),
 })
 const cacheSectionTitle = computed(() => {
   const size = Number(cacheStats.value?.size || 0) + Number(localBrowserCacheStats.value?.total?.size || 0)
@@ -380,86 +384,6 @@ function isNavActive(item) {
   }
   if (!item.panel) return true
   return String(route.query.panel || 'account') === item.panel
-}
-
-function goSearch() {
-  const keyword = quickSearch.value.trim()
-  if (!keyword) {
-    ElMessage.warning('请输入关键词进行搜索')
-    return
-  }
-  const query = searchRouteQuery(keyword)
-  router.push({ name: 'search', query })
-  if (isMobileShell.value) mobileNavigationVisible.value = false
-}
-
-function goSearchRoute(mode = 'remote') {
-  const keyword = quickSearch.value.trim()
-  const query = mode === 'local' ? localSearchRouteQuery(keyword) : searchRouteQuery(keyword)
-  router.push({ name: 'search', query })
-  if (isMobileShell.value) mobileNavigationVisible.value = false
-}
-
-function searchRouteQuery(keyword = '') {
-  const query = {}
-  if (keyword) query.q = keyword
-  query.searchType = sidebarSearchType.value
-  query.concurrent = sidebarConcurrent.value
-  if (sidebarSearchType.value === 'group' && sidebarSearchGroup.value) query.group = sidebarSearchGroup.value
-  if (sidebarSearchType.value === 'single' && sidebarSourceId.value) query.sourceId = sidebarSourceId.value
-  return query
-}
-
-function localSearchRouteQuery(keyword = quickSearch.value.trim()) {
-  const query = { mode: 'local' }
-  if (keyword) query.q = keyword
-  return query
-}
-
-function clearSearchQuery() {
-  if (route.name === 'search' && route.query.q !== undefined) {
-    const { q, ...query } = route.query
-    router.replace({ name: 'search', query })
-  }
-}
-
-async function loadSidebarSources() {
-  try {
-    const response = await cacheFirstRequest(
-      () => listSources(),
-      sidebarSourceCacheKey(),
-      { validate: data => Array.isArray(data) },
-    )
-    applySidebarSources(response.data)
-    if (response.fromCache) refreshSidebarSourcesCache().catch(() => {})
-  } catch {
-    sidebarSources.value = []
-  }
-}
-
-async function refreshSidebarSourcesCache() {
-  const response = await networkFirstRequest(
-    () => listSources(),
-    sidebarSourceCacheKey(),
-    { validate: data => Array.isArray(data) },
-  )
-  applySidebarSources(response.data)
-}
-
-function applySidebarSources(data) {
-  sidebarSources.value = Array.isArray(data) ? data : []
-  if (!sidebarSearchGroup.value && sidebarSourceGroups.value.length) sidebarSearchGroup.value = sidebarSourceGroups.value[0].value
-  if (!sidebarSourceId.value && sidebarEnabledSources.value.length) sidebarSourceId.value = sidebarEnabledSources.value[0].id
-}
-
-function sidebarSourceCacheKey() {
-  return `bookSourceList@${currentUserScope()}`
-}
-
-async function handleSourcesUpdated() {
-  await removeBrowserCache(sidebarSourceCacheKey())
-  await loadSidebarSources()
-  await loadCacheStats()
 }
 
 async function loadCacheStats() {
@@ -763,18 +687,6 @@ watch(
       connect()
     } else {
       disconnect()
-    }
-  },
-  { immediate: true },
-)
-
-watch(
-  () => [route.name, route.query.q],
-  ([name, value]) => {
-    if (name === 'search') {
-      quickSearch.value = typeof value === 'string' ? value : ''
-    } else if (name !== 'home') {
-      quickSearch.value = ''
     }
   },
   { immediate: true },
