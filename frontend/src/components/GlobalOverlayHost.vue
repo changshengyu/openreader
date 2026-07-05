@@ -224,26 +224,16 @@
     :is-mobile="isMobileOverlay"
   />
 
-  <el-drawer
-    v-model="overlay.localStoreVisible"
-    title="本地书仓"
+  <OverlayLocalStore
     :direction="wideDrawerDirection"
     :size="wideDrawerSize"
-    class="global-local-store-drawer"
-    destroy-on-close
-  >
-    <LocalStore embedded />
-  </el-drawer>
+  />
 
-  <el-drawer
-    v-model="overlay.webdavVisible"
-    title="WebDAV"
+  <OverlayWebDAV
     :direction="wideDrawerDirection"
     :size="wideDrawerSize"
-    class="global-file-drawer"
-  >
-    <WebDAVBrowser :is-mobile="isMobileOverlay" />
-  </el-drawer>
+    :is-mobile="isMobileOverlay"
+  />
 
   <OverlayBackups
     :direction="wideDrawerDirection"
@@ -262,19 +252,15 @@
     :is-mobile="isMobileOverlay"
   />
 
-  <el-drawer
-    v-model="overlay.rssVisible"
-    title="RSS"
+  <OverlayRSS
     :direction="wideDrawerDirection"
     :size="wideDrawerSize"
-    class="global-rss-drawer"
-  >
-    <RSSManager :is-mobile="isMobileOverlay" />
-  </el-drawer>
+    :is-mobile="isMobileOverlay"
+  />
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { cacheBookContent, listChapters, refreshLocalBook, updateBook } from '../api/books'
@@ -299,12 +285,11 @@ import OverlayBookContentSearch from './overlays/OverlayBookContentSearch.vue'
 import OverlayBookGroups from './overlays/OverlayBookGroups.vue'
 import OverlayBookImport from './overlays/OverlayBookImport.vue'
 import OverlayBookmarks from './overlays/OverlayBookmarks.vue'
+import OverlayLocalStore from './overlays/OverlayLocalStore.vue'
 import OverlayReplaceRules from './overlays/OverlayReplaceRules.vue'
+import OverlayRSS from './overlays/OverlayRSS.vue'
 import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
-import RSSManager from './RSSManager.vue'
-import WebDAVBrowser from './WebDAVBrowser.vue'
-
-const LocalStore = defineAsyncComponent(() => import('../views/LocalStore.vue'))
+import OverlayWebDAV from './overlays/OverlayWebDAV.vue'
 
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
