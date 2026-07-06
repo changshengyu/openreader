@@ -282,6 +282,79 @@ Deferred from this EPUB slice:
 - Search result navigation into exact text inside iframe content.
 - Remaining CBZ archive/import and lazy-loading edge cases.
 
+## Immediate P0 contract: CBZ/comic image and audio chapter reading
+
+### Upstream evidence
+
+| Feature | Upstream authority | Contract |
+|---|---|---|
+| CBZ detection | `web/src/components/Content.vue.isCbz`, `web/src/views/Reader.vue.isCbz` | A book whose `bookUrl` ends with `.cbz` enters the comic/CBZ branch. CBZ chapters hide the chapter title and render the chapter content as image content rather than normal prose. |
+| CBZ import/catalog | `src/main/java/io/legado/app/model/localBook/CbzFile.kt`, `BookController.extractCbz`, `BookController.getLocalChapterList` | CBZ files are accepted as local books. The archive is extracted to a derived `index` directory; non-directory, non-XML entries are sorted lexicographically and become one chapter per image/file path. `ComicInfo.xml` can update title/author and the first image can become cover. |
+| CBZ chapter content | `BookController.getBookContent` CBZ branch | A CBZ chapter resolves to the extracted file. Image extensions `jpg/jpeg/gif/png/bmp/webp/svg` return `<img src='__API_ROOT__...'>`; non-image files return the raw file URL. Missing extraction or missing chapter file returns an explicit error. |
+| Comic image rendering | `Content.vue.render` and `renderScrollChapterList` | Any content containing `<img` enters a comic/image rendering path. Image `src` is rewritten to lazy `data-src`; `__API_ROOT__` is expanded; image click opens preview. `isCarToon` disables auto-reading/TTS controls. |
+| Audio detection | `Content.vue.isAudio`, `Reader.vue.isAudio` | A book with `readingBook.type === 1` enters an audio branch. Audio disables scroll/slide page interactions, keyboard paging, progress slider display in mini interface, auto-reading, and speech/TTS controls. |
+| Audio player | `Content.vue.renderAudio` | Audio content is rendered by an `<audio preload>` element whose `src` is the chapter content URL. The UI includes cover, elapsed/total time, seek slider, -15s/+15s, previous/next chapter, play/pause, volume mute and volume slider. |
+| Audio state transitions | `Content.vue.play/computeDuration/onTimeupdate/onEnd/prevChapter/nextChapter` | Initial mount calls `play(true)` and computes duration. If `autoPlay` is true the element starts playback. `timeupdate` emits progress update; `ended` resets current time/duration, enables autoplay, and advances to the next chapter. Previous/next chapter buttons set autoplay and emit chapter navigation. |
+| Reader input guard | `Reader.vue.handleTouchStart/eventHandler/keydownHandler` | Parent touch and keyboard handlers return early for audio. Center tap only toggles the toolbar when read bar is not shown; it must not page text. |
+
+### Current OpenReader evidence and classification
+
+| Layer | Current OpenReader evidence | Difference | Classification |
+|---|---|---|---|
+| Local import allow-list | `backend/api/imports.go`, `backend/api/localstore.go`, `backend/api/books.go.isSupportedLocalBookFile` accept `txt/text/md/epub/pdf/umd` but not `.cbz`. | New CBZ local imports are rejected even though upstream accepts CBZ. | `must-fix` |
+| CBZ parsing/extraction | No current Go CBZ parser/extractor exists in `backend/engine` or `backend/services/localbook`; frontend only infers CBZ from existing book path fields. | Existing legacy CBZ rows may render if content already contains `<img>`, but OpenReader cannot build upstream-style CBZ chapter rows from the archive. | `must-fix` |
+| CBZ content response | `backend/api/books.go.getBookChapterContent` always returns `format: "text"` except EPUB; no CBZ branch generates `<img src='...'>` from an extracted page. | A CBZ chapter cannot be served through the upstream chapter-content contract. | `must-fix` |
+| Image rendering | `frontend/src/components/reader/ReaderChapterContent.vue`, `useReaderChapterPresentation.js`, `parseReaderContentBlocks` already convert `<img>` to image blocks, hide CBZ titles, collect preview image lists, and recompute layout on image load. | This is a Vue 3 equivalent for HTML image chapters, but it depends on the backend producing the right image chapter content. | `technical-stack-equivalent`, pending backend CBZ support |
+| Lazy-loading model | Upstream uses `v-lazy-container` and `data-src`; OpenReader uses Element Plus `el-image lazy` with preview. | Visible behavior is acceptable if images load lazily, trigger layout recomputation, and preview does not toggle toolbar. | `acceptable-change` |
+| Audio detection/API | Current Reader has TTS/Web Speech but no chapter `format: "audio"` response and no book `type === 1` reader branch. | Upstream audio books cannot be represented as audio in the rewritten Reader. | `must-fix` |
+| Audio UI | No `ReaderAudioContent`/audio player component exists. | Missing cover/progress/seek/chapter/volume controls and audio-specific event handling. | `must-fix` |
+| Reader controls | Current toolbar disables TTS for EPUB only; image/comic detection exists, but audio-specific touch/keyboard guards are absent because no audio state exists. | Audio must suppress paging and speech/auto-reading like upstream. | `must-fix` |
+
+### OpenReader adaptation contract
+
+| Concern | Required behavior | Classification |
+|---|---|---|
+| CBZ storage | Accept `.cbz` in upload/import/local-store paths. Preserve the original archive under the existing `library/` model and derive extracted pages under a rebuildable, user-scoped directory inside that book's library root. | `must-fix` |
+| CBZ archive safety | Reject ZIP-slip paths, absolute paths, drive prefixes, NUL names, symlinks, duplicate/conflicting paths, excessive entry counts, excessive per-entry size, and excessive total expanded size. Never write outside the derived extraction root. | `acceptable-change` security hardening |
+| CBZ catalog | Build chapter rows by lexicographically sorted non-directory image entries. `ComicInfo.xml` is metadata only and must not become a readable chapter. Unsupported non-image entries should not break import; if retained for upstream parity, serving them must use a safe static resource route and explicit MIME handling. | `must-fix` |
+| CBZ cover/info | If present, parse `ComicInfo.xml` for title/author and use the first valid image as cover without requiring network access. | `must-fix` |
+| CBZ chapter endpoint | `GET /api/books/:id/chapters/:index/content` may keep the existing JSON envelope but must mark CBZ explicitly, for example `format: "cbz"` plus `content: "<img src='...'>"` or equivalent image metadata. Existing text clients must not break. | `acceptable-change` API adaptation |
+| CBZ resource serving | Page image URLs must be same-origin, user/book scoped, and safe for iframe/image loading without exposing another user's library path. Current JWT-bearing API routes may serve JSON; direct image resources need either cookie-compatible auth or signed scoped capabilities. | `acceptable-change` security hardening |
+| CBZ frontend | Reader must hide CBZ chapter titles, render image pages full readable width, keep mobile padding symmetric, recompute pagination/progress after image load, and keep image preview clicks from toggling toolbar. | `must-fix` |
+| Audio chapter API | Introduce an explicit audio chapter contract instead of overloading text content. The chapter response should identify audio, provide a same-origin/signed resource URL, title, cover, and enough progress metadata to save current playback seconds. | `must-fix` |
+| Audio frontend | Add a dedicated audio content branch/component with upstream controls: cover, elapsed/total duration, seek, -15s/+15s, previous/next chapter, play/pause, mute and volume. Mount should load metadata and respect autoplay after manual previous/next or ended advancement. | `must-fix` |
+| Audio progress | Save audio progress on `timeupdate` as chapter position/time without disturbing text scroll position semantics. On chapter reopen, restore the saved playback second before autoplay. | `must-fix` |
+| Audio input model | Parent touch/click/keyboard paging handlers must return early for audio. Center tap toggles toolbar only; audio must not trigger page navigation, auto-reading, or TTS. | `must-fix` |
+
+### Recommended tests before implementation
+
+Backend/API:
+
+1. Import a fixture CBZ containing `ComicInfo.xml`, nested image paths, mixed image extensions, and one unsupported file; verify title/author/cover and sorted chapter rows.
+2. Chapter content for a CBZ image returns explicit CBZ/image format and a safe same-origin image URL; missing extraction rebuilds from the preserved archive.
+3. CBZ security tests reject traversal, absolute paths, duplicate normalized paths, symlink-like entries, excessive entry count, per-entry size, and total expanded size.
+4. Existing TXT/EPUB/PDF/UMD imports and old local-store rows remain unchanged.
+5. Audio fixture/API test verifies an audio chapter response shape, saved playback progress, previous/next autoplay state, and access isolation for the audio resource.
+
+Frontend unit/contract:
+
+1. `ReaderChapterContent` keeps CBZ titles hidden and treats image-only blocks as comic blocks.
+2. Image load emits pagination/progress recomputation and preview click does not pass through to the reader click zones.
+3. `ReaderAudioContent` renders upstream-equivalent controls and normalizes duration/time/volume.
+4. Reader mode/input tests verify audio disables scroll/slide paging, keyboard paging, auto-reading, and TTS controls.
+5. Progress persistence tests verify audio seconds do not overwrite text paragraph offsets incorrectly.
+
+Real-browser gate:
+
+1. Open a CBZ fixture at 1440×900, 390×844, and 360×800; confirm sorted pages, hidden titles, full-width images, symmetric mobile padding, preview, and no stale pagination after image load.
+2. Open an audio fixture at the same viewports; confirm metadata load, seek, -15s/+15s, previous/next chapter, volume/mute, ended-to-next behavior, and restored playback second.
+3. Confirm toolbar/panel coexistence still follows the Reader mobile state contract and that audio/image interactions do not produce blank pages or unintended center-click toggles.
+
+Deferred from this slice:
+
+- Full online audio book-source parsing semantics, if upstream source rules expose audio differently from local/imported chapters.
+- Browser autoplay restrictions: OpenReader may require an explicit user gesture before first audio playback, but previous/next and ended autoplay should match upstream after the user has interacted.
+
 ## Required workflow for each future module
 
 1. Use `readerdev-compat-inventory`.
