@@ -1,7 +1,7 @@
 # OpenReader 上游驱动重构计划
 
-> 目标：从 `hectorqin/reader` 的真实前端结构出发，重新规划 OpenReader 的前端模块、页面逻辑、组件职责、移动端适配和后端补齐顺序。  
-> 上游源码快照：`/private/tmp/hectorqin-reader-current/web/src`（`hectorqin/reader`，commit `827dd82`）
+> 目标：从用户保留的 `changshengyu/reader-dev` fork 真实前端结构出发，重新规划 OpenReader 的前端模块、页面逻辑、组件职责、移动端适配和后端补齐顺序；此前重构结果不自动成为后续骨架。
+> 上游源码快照：`/private/tmp/changshengyu-reader-dev/web/src`（`changshengyu/reader-dev`，commit `fa22f271849d45f93349ae1636223e27b16a4691`）
 > 当前项目：Vue 3 + Vite + Pinia + Element Plus + Go REST API
 
 ## 1. 为什么要重新规划
