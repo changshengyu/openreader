@@ -131,3 +131,23 @@ test('keeps EPUB document metadata out of the ordinary paragraph renderer', asyn
   assert.deepEqual(fixture.state.chapterBlocks.value, [])
   assert.equal(fixture.state.content.value, '可搜索纯文本')
 })
+
+test('renders CBZ image chapter responses through the ordinary image block path', async () => {
+  const fixture = createController({
+    loadContent: async () => ({
+      chapter: { id: 3, title: 'pages/001.jpg', resourcePath: 'pages/001.jpg' },
+      content: '<img src="/api/cbz-resource/token/pages/001.jpg" />',
+      format: 'cbz',
+      resourceUrl: '/api/cbz-resource/token/pages/001.jpg',
+      resourceExpiresAt: '2026-07-06T12:00:00Z',
+    }),
+  })
+  await fixture.controller.load(0)
+  assert.equal(fixture.state.chapterFormat.value, 'text')
+  assert.equal(fixture.state.epubResource.value, null)
+  assert.deepEqual(fixture.state.chapterBlocks.value, [{
+    index: 0,
+    id: 3,
+    content: '<img src="/api/cbz-resource/token/pages/001.jpg" />',
+  }])
+})

@@ -27,6 +27,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/backup"
+	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 	"openreader/backend/services/scheduler"
 	readersync "openreader/backend/sync"
@@ -76,6 +77,7 @@ func setupTestServer(t *testing.T) (*gin.Engine, *Server) {
 		hub:        hub,
 		scheduler:  sched,
 		backupSvc:  backupSvc,
+		cbzReader:  cbzreader.New(cfg, database),
 		epubReader: epubreader.New(cfg, database),
 	}
 	return router, server
@@ -6098,6 +6100,181 @@ func TestDirectEPUBImportAndRefreshUseTocRule(t *testing.T) {
 	}
 }
 
+func TestDirectCBZImportAndResourceCapability(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	cbzData := testCBZArchive(t, "first")
+
+	request := func(path string) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "comic.cbz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(cbzData); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", token)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	previewW := request("/api/imports/books/preview")
+	if previewW.Code != http.StatusOK {
+		t.Fatalf("cbz preview: expected 200, got %d: %s", previewW.Code, previewW.Body.String())
+	}
+	var preview struct {
+		Title    string `json:"title"`
+		Author   string `json:"author"`
+		Chapters []struct {
+			Title string `json:"title"`
+		} `json:"chapters"`
+	}
+	if err := json.Unmarshal(previewW.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.Title != "CBZ 标题" || preview.Author != "CBZ 作者" {
+		t.Fatalf("preview did not use ComicInfo: %+v", preview)
+	}
+	if len(preview.Chapters) != 2 || preview.Chapters[0].Title != "pages/001.jpg" || preview.Chapters[1].Title != "pages/002.png" {
+		t.Fatalf("preview chapters not sorted image entries: %+v", preview.Chapters)
+	}
+
+	importW := request("/api/imports/books")
+	if importW.Code != http.StatusCreated {
+		t.Fatalf("cbz import: expected 201, got %d: %s", importW.Code, importW.Body.String())
+	}
+	var imported bookListItem
+	if err := json.Unmarshal(importW.Body.Bytes(), &imported); err != nil {
+		t.Fatal(err)
+	}
+	var book models.Book
+	if err := server.db.First(&book, imported.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if book.Title != "CBZ 标题" || book.Author != "CBZ 作者" || book.ChapterCount != 2 {
+		t.Fatalf("imported CBZ metadata mismatch: %+v", book)
+	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].ResourcePath != "pages/001.jpg" || chapters[1].ResourcePath != "pages/002.png" {
+		t.Fatalf("cbz resource paths were not imported: %+v", chapters)
+	}
+
+	contentReq := httptest.NewRequest(
+		http.MethodGet,
+		"/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content",
+		nil,
+	)
+	contentReq.Header.Set("Authorization", token)
+	contentW := httptest.NewRecorder()
+	router.ServeHTTP(contentW, contentReq)
+	if contentW.Code != http.StatusOK {
+		t.Fatalf("cbz chapter content: expected 200, got %d: %s", contentW.Code, contentW.Body.String())
+	}
+	var contentResponse struct {
+		Format            string         `json:"format"`
+		ResourceURL       string         `json:"resourceUrl"`
+		ResourceExpiresAt string         `json:"resourceExpiresAt"`
+		Content           string         `json:"content"`
+		Chapter           models.Chapter `json:"chapter"`
+	}
+	if err := json.Unmarshal(contentW.Body.Bytes(), &contentResponse); err != nil {
+		t.Fatal(err)
+	}
+	if contentResponse.Format != "cbz" ||
+		contentResponse.ResourceURL == "" ||
+		contentResponse.ResourceExpiresAt == "" ||
+		!strings.Contains(contentResponse.Content, "<img") ||
+		!strings.Contains(contentResponse.Content, contentResponse.ResourceURL) ||
+		contentResponse.Chapter.ResourcePath != "pages/001.jpg" {
+		t.Fatalf("missing cbz resource metadata: %+v", contentResponse)
+	}
+	if strings.Contains(contentResponse.ResourceURL, strings.TrimPrefix(token, "Bearer ")) {
+		t.Fatal("CBZ resource URL leaked the login JWT")
+	}
+
+	resourceReq := httptest.NewRequest(http.MethodGet, contentResponse.ResourceURL, nil)
+	resourceW := httptest.NewRecorder()
+	router.ServeHTTP(resourceW, resourceReq)
+	if resourceW.Code != http.StatusOK || !strings.Contains(resourceW.Header().Get("Content-Type"), "image/jpeg") || resourceW.Body.String() != "first" {
+		t.Fatalf("cbz image resource: got %d %q: %s", resourceW.Code, resourceW.Header().Get("Content-Type"), resourceW.Body.String())
+	}
+	if resourceW.Header().Get("X-Content-Type-Options") != "nosniff" ||
+		resourceW.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("missing CBZ security headers: %v", resourceW.Header())
+	}
+
+	resourcePrefix := strings.TrimSuffix(contentResponse.ResourceURL, "pages/001.jpg")
+	unsupportedReq := httptest.NewRequest(http.MethodGet, resourcePrefix+"notes/readme.txt", nil)
+	unsupportedW := httptest.NewRecorder()
+	router.ServeHTTP(unsupportedW, unsupportedReq)
+	if unsupportedW.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("unsupported CBZ resource: expected 415, got %d: %s", unsupportedW.Code, unsupportedW.Body.String())
+	}
+
+	parts := strings.Split(strings.TrimPrefix(contentResponse.ResourceURL, "/api/cbz-resource/"), "/")
+	if len(parts) < 2 {
+		t.Fatalf("unexpected cbz resource URL: %q", contentResponse.ResourceURL)
+	}
+	tamperedCapability := parts[0]
+	if strings.HasSuffix(tamperedCapability, "a") {
+		tamperedCapability = strings.TrimSuffix(tamperedCapability, "a") + "b"
+	} else {
+		tamperedCapability += "a"
+	}
+	tamperedReq := httptest.NewRequest(http.MethodGet, "/api/cbz-resource/"+tamperedCapability+"/pages/001.jpg", nil)
+	tamperedW := httptest.NewRecorder()
+	router.ServeHTTP(tamperedW, tamperedReq)
+	if tamperedW.Code == http.StatusOK {
+		t.Fatal("tampered CBZ capability unexpectedly succeeded")
+	}
+
+	if err := server.db.Model(&models.Chapter{}).
+		Where("id = ?", chapters[0].ID).
+		Update("resource_path", "").Error; err != nil {
+		t.Fatal(err)
+	}
+	recoverReq := httptest.NewRequest(
+		http.MethodGet,
+		"/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content",
+		nil,
+	)
+	recoverReq.Header.Set("Authorization", token)
+	recoverW := httptest.NewRecorder()
+	router.ServeHTTP(recoverW, recoverReq)
+	if recoverW.Code != http.StatusOK {
+		t.Fatalf("legacy CBZ path recovery: expected 200, got %d: %s", recoverW.Code, recoverW.Body.String())
+	}
+	var recovered models.Chapter
+	if err := server.db.First(&recovered, chapters[0].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if recovered.ResourcePath != "pages/001.jpg" {
+		t.Fatalf("legacy CBZ resource path was not recovered: %+v", recovered)
+	}
+
+	sourcePath := filepath.Join(server.cfg.LibraryDir, book.OriginalFile)
+	if err := os.WriteFile(sourcePath, testCBZArchive(t, "changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	staleReq := httptest.NewRequest(http.MethodGet, contentResponse.ResourceURL, nil)
+	staleW := httptest.NewRecorder()
+	router.ServeHTTP(staleW, staleReq)
+	if staleW.Code != http.StatusForbidden {
+		t.Fatalf("stale CBZ capability: expected 403, got %d: %s", staleW.Code, staleW.Body.String())
+	}
+}
+
 func testEPUBArchive(t *testing.T) []byte {
 	return testEPUBArchiveWithBody(t, "内容一。")
 }
@@ -6154,6 +6331,29 @@ func testEPUBArchiveWithBody(t *testing.T, firstChapterBody string) []byte {
 	write("OPS/styles/book.css", `body { color: rgb(12, 34, 56); }`)
 	write("OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20"/></svg>`)
 	write("OPS/scripts/evil.js", `window.epubAuthoredScript = true`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func testCBZArchive(t *testing.T, firstPageContent string) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	write := func(name string, content string) {
+		file, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("ComicInfo.xml", `<ComicInfo><Title>CBZ 标题</Title><Writer>CBZ 作者</Writer></ComicInfo>`)
+	write("pages/002.png", "second")
+	write("pages/001.jpg", firstPageContent)
+	write("notes/readme.txt", "ignored")
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

@@ -220,6 +220,8 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 func parseUploadedBook(ext string, data []byte, tocRule string) (engine.ParsedBook, error) {
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	switch ext {
+	case ".cbz":
+		return engine.ParseCBZ(data)
 	case ".epub":
 		return engine.ParseEPUBWithRule(data, tocRule)
 	case ".txt", ".text", ".md":

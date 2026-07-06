@@ -480,7 +480,7 @@ func sLocalStorePrefix(value string) string {
 
 func isImportableExtension(ext string) bool {
 	switch ext {
-	case ".txt", ".text", ".md", ".epub", ".pdf", ".umd":
+	case ".txt", ".text", ".md", ".epub", ".pdf", ".umd", ".cbz":
 		return true
 	default:
 		return false

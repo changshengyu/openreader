@@ -105,6 +105,71 @@ Security headers include at minimum:
 
 The route must not log the capability value. Application access logs should redact the capability path segment.
 
+## CBZ reader resource contract
+
+### Authenticated chapter response
+
+`GET /api/books/:id/chapters/:index/content`
+
+| Field | Contract |
+|---|---|
+| Method/path | Existing `GET /api/books/:id/chapters/:index/content`; no path change. |
+| Auth | Existing `Authorization: Bearer <jwt>` requirement. The book lookup remains scoped to the authenticated user. |
+| Request | Existing numeric book ID and zero-based chapter index. |
+| CBZ response | `200` JSON keeps `chapter` and `content`; adds `"format": "cbz"`, `resourceUrl`, and RFC3339 `resourceExpiresAt`. `content` remains compatible with the upstream image chapter shape and contains an `<img>` tag pointing at `resourceUrl`. |
+| Side effects | May verify/recover the chapter `resourcePath` from the preserved archive. It must not modify the original CBZ archive. |
+| `400` | Invalid book/chapter parameter or unsafe archive path. |
+| `404` | Book/chapter/source archive/page is not available to the current user. |
+| `415` | The selected CBZ entry is not a supported image media type. |
+| `422` | CBZ exists but is corrupt, unsafe, unsupported, or exceeds parser/resource limits. |
+| `500` | Unexpected persistence or filesystem failure. |
+| Error body | `{ "error": "<stable client-safe message>" }`; never include a host filesystem path or token. |
+
+The CBZ additions are backward-compatible JSON fields. Existing clients that only consume `content` will see upstream-style image HTML.
+
+Example:
+
+```json
+{
+  "chapter": {
+    "id": 9,
+    "bookId": 4,
+    "index": 0,
+    "title": "001.jpg",
+    "resourcePath": "pages/001.jpg"
+  },
+  "content": "<img src=\"/api/cbz-resource/<capability>/pages/001.jpg\" />",
+  "format": "cbz",
+  "resourceUrl": "/api/cbz-resource/<capability>/pages/001.jpg",
+  "resourceExpiresAt": "2026-07-06T12:00:00Z"
+}
+```
+
+### Capability-protected CBZ image resources
+
+`GET /api/cbz-resource/:capability/*resourcePath`
+
+| Field | Contract |
+|---|---|
+| Auth | Does not accept or require the login Bearer token. Authorization is the signed path capability returned by the protected chapter endpoint. |
+| Capability scope | One user ID, one book ID, one source fingerprint, read-only access, and a bounded expiration. It is signed with a purpose-separated key derived from `OPENREADER_JWT_SECRET`; it is never interchangeable with a login JWT or EPUB capability. |
+| Path | `resourcePath` is URL-decoded once, normalized as a ZIP/POSIX path, and resolved strictly to an image entry inside that book's preserved CBZ archive. |
+| Success | `200` with a supported image MIME type. `HEAD` may return the same headers without a body. |
+| `400` | Malformed capability or unsafe/malformed resource path. |
+| `403` | Invalid signature, expired capability, wrong purpose, wrong archive fingerprint, or book ownership no longer matches. |
+| `404` | Scoped book/resource no longer exists. |
+| `415` | Resource media type is not on the CBZ image allowlist. |
+| Error body | JSON for handled failures. Reader displays a retryable chapter error rather than a blank page when the image cannot be resolved. |
+
+Security headers include at minimum:
+
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: no-referrer`;
+- `Cross-Origin-Resource-Policy: same-origin`;
+- private short-lived cache headers.
+
+The route must not log the capability value. Application access logs should redact the capability path segment.
+
 ## WebDAV contract
 
 | Method | Path | Purpose |

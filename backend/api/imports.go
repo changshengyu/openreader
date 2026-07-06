@@ -51,8 +51,8 @@ func (s *Server) importTXT(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if ext != ".txt" && ext != ".text" && ext != ".md" && ext != ".epub" && ext != ".pdf" && ext != ".umd" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "only txt/text/md/epub/pdf/umd files are supported"})
+	if ext != ".txt" && ext != ".text" && ext != ".md" && ext != ".epub" && ext != ".pdf" && ext != ".umd" && ext != ".cbz" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "only txt/text/md/epub/pdf/umd/cbz files are supported"})
 		return
 	}
 

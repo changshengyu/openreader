@@ -27,6 +27,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 )
 
@@ -1967,6 +1968,18 @@ func (s *Server) chapterContent(c *gin.Context) {
 		"content": content,
 		"format":  "text",
 	}
+	if cbzreader.IsLocalCBZ(book) {
+		prepared, err := s.cbzReader.PrepareChapter(book, &chapter)
+		if err != nil {
+			writeCBZServiceError(c, err, "failed to prepare CBZ chapter")
+			return
+		}
+		response["chapter"] = chapter
+		response["content"] = `<img src="` + html.EscapeString(prepared.ResourceURL) + `" />`
+		response["format"] = "cbz"
+		response["resourceUrl"] = prepared.ResourceURL
+		response["resourceExpiresAt"] = prepared.ExpiresAt.UTC().Format(time.RFC3339)
+	}
 	if epubreader.IsLocalEPUB(book) {
 		prepared, err := s.epubReader.PrepareChapter(book, &chapter)
 		if err != nil {
@@ -2514,6 +2527,9 @@ func parseLocalBookChapters(ext string, data []byte, tocRule string) ([]engine.T
 	case ".umd":
 		book, err := engine.ParseUMD(data)
 		return book.Chapters, err
+	case ".cbz":
+		book, err := engine.ParseCBZ(data)
+		return book.Chapters, err
 	default:
 		return nil, fmt.Errorf("unsupported local book extension: %s", ext)
 	}
@@ -2580,7 +2596,7 @@ func (s *Server) localBookSourcePath(book models.Book) (string, bool) {
 
 func isSupportedLocalBookFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".txt", ".text", ".md", ".epub", ".pdf", ".umd":
+	case ".txt", ".text", ".md", ".epub", ".pdf", ".umd", ".cbz":
 		return true
 	default:
 		return false
