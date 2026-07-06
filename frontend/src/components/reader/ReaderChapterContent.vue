@@ -39,6 +39,7 @@
           />
           <figcaption v-if="line.alt">{{ line.alt }}</figcaption>
         </figure>
+        <p v-else-if="line.html" :data-pos="line.pos" data-reader-block v-html="line.html"></p>
         <p v-else :data-pos="line.pos" data-reader-block>{{ line.text }}</p>
         </template>
         <p v-if="loaded && block.paragraphs.length === 0" class="empty-hint">当前章节暂无正文内容</p>

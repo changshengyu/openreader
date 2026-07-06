@@ -33,6 +33,40 @@ test('parses chapter paragraphs while preserving source positions', () => {
   ])
 })
 
+test('preserves safe upstream inline html while keeping searchable text', () => {
+  const fixture = createController()
+  const paragraphs = fixture.controller.makeParagraphs(
+    '她说<ruby>愛<rt>あい</rt></ruby><em>很好</em><br>继续',
+    '标题',
+  )
+  assert.deepEqual(paragraphs, [
+    {
+      type: 'text',
+      text: '她说爱あい很好继续',
+      html: '她说<ruby>爱<rt>あい</rt></ruby><em>很好</em><br>继续',
+      pos: 4,
+      endPos: 48,
+    },
+  ])
+})
+
+test('strips unsafe html from reader text blocks', () => {
+  const fixture = createController()
+  const paragraphs = fixture.controller.makeParagraphs(
+    '正文<script>alert(1)</script><span onclick="x()">保留</span><img src="javascript:alert(1)">',
+    '标题',
+  )
+  assert.deepEqual(paragraphs, [
+    {
+      type: 'text',
+      text: '正文保留',
+      html: '正文<span>保留</span>',
+      pos: 4,
+      endPos: 60,
+    },
+  ])
+})
+
 test('builds chapter blocks from row and catalog fallbacks', () => {
   const fixture = createController()
   const fromCatalog = fixture.controller.makeChapterBlock(0, null, '正文')
