@@ -408,6 +408,10 @@ import {
   testSourceSearch,
   updateSource,
 } from '../api/sources'
+import {
+  sourceImportMessage,
+  useSourceTransfer,
+} from '../composables/useSourceTransfer'
 import { useReaderStore } from '../stores/reader'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
@@ -427,17 +431,48 @@ const sourcePageSizes = [25, 50, 100, 200, 300, 400]
 const defaultSource = reactive({ configured: false, count: 0 })
 const defaultSaving = ref(false)
 const defaultRestoring = ref(false)
-
-const showRemote = ref(false)
-const remoteURL = ref('')
-const remoteLoading = ref(false)
-const sourceUploadRef = ref(null)
-const showImportPreview = ref(false)
-const importPreviewSources = ref([])
-const checkedImportSourceIndexes = ref([])
-const importCheckAll = ref(false)
-const importCheckIndeterminate = ref(false)
-const importPreviewSaving = ref(false)
+const {
+  showRemote,
+  remoteURL,
+  remoteLoading,
+  sourceUploadRef,
+  showImportPreview,
+  importPreviewSources,
+  checkedImportSourceIndexes,
+  importCheckAll,
+  importCheckIndeterminate,
+  importPreviewSaving,
+  importFile,
+  openSourceImportPicker,
+  importRemote,
+  closeImportPreview,
+  toggleImportCheckAll,
+  handleImportSelectionChange,
+  importSourceName,
+  importSourceURL,
+  importSourceTags,
+  saveSelectedImportSources,
+  exportSources,
+} = useSourceTransfer({
+  previewRemoteSource,
+  importSources,
+  exportSources: exportSourcesApi,
+  reloadSources: loadSources,
+  getSelection: () => selection.value,
+  download: (data, filename) => {
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(
+      new Blob([data], { type: 'application/json' }),
+    )
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(link.href)
+  },
+  onInfo: message => ElMessage.info(message),
+  onWarning: message => ElMessage.warning(message),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 
 const showEditor = ref(false)
 const editingSourceId = ref(null)
@@ -945,164 +980,6 @@ async function restoreDefaults() {
     ElMessage.error(readError(err, '恢复默认书源失败'))
   } finally {
     defaultRestoring.value = false
-  }
-}
-
-async function importFile(data) {
-  const file = data.raw
-  if (!file) return
-  try {
-    const list = parseImportSourceList(JSON.parse(await file.text()))
-    if (!list.length) {
-      ElMessage.error('书源文件错误')
-      return
-    }
-    openImportPreview(list)
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  }
-}
-
-function openSourceImportPicker() {
-  const input = sourceUploadRef.value?.$el?.querySelector?.('input[type="file"]')
-  if (input) {
-    input.click()
-    return
-  }
-  ElMessage.info('请点击页面右上角“导入”选择书源 JSON 文件')
-}
-
-function parseImportSourceList(value) {
-  return Array.isArray(value)
-    ? value
-    : Array.isArray(value?.bookSources)
-      ? value.bookSources
-      : Array.isArray(value?.sources)
-        ? value.sources
-        : value?.name
-          ? [value]
-          : value?.bookSourceName
-          ? [value]
-          : []
-}
-
-async function importRemote() {
-  if (!remoteURL.value.trim()) return
-  remoteLoading.value = true
-  try {
-    const url = remoteURL.value.trim()
-    const { data: preview } = await previewRemoteSource(url)
-    const list = parseImportSourceList(preview.sources || [])
-    if (!list.length) {
-      ElMessage.error('远程订阅未识别到书源')
-      return
-    }
-    showRemote.value = false
-    remoteURL.value = ''
-    openImportPreview(list)
-  } catch (err) {
-    ElMessage.error(readError(err, '远程导入失败'))
-  } finally {
-    remoteLoading.value = false
-  }
-}
-
-function openImportPreview(list) {
-  importPreviewSources.value = list
-  checkedImportSourceIndexes.value = list
-    .map((source, index) => importSourceTags(source) ? null : index)
-    .filter(index => index !== null)
-  updateImportCheckState()
-  showImportPreview.value = true
-  if (checkedImportSourceIndexes.value.length < list.length) {
-    ElMessage.info('部分使用 Javascript 或 WebView 的书源未默认勾选')
-  }
-}
-
-function closeImportPreview() {
-  showImportPreview.value = false
-  importPreviewSources.value = []
-  checkedImportSourceIndexes.value = []
-  updateImportCheckState()
-}
-
-function toggleImportCheckAll(checked) {
-  checkedImportSourceIndexes.value = checked
-    ? importPreviewSources.value.map((source, index) => importSourceTags(source) ? null : index).filter(index => index !== null)
-    : []
-  updateImportCheckState()
-  if (checked && checkedImportSourceIndexes.value.length < importPreviewSources.value.length) {
-    ElMessage.info('部分使用 Javascript 或 WebView 的书源未勾选')
-  }
-}
-
-function handleImportSelectionChange() {
-  updateImportCheckState()
-}
-
-function updateImportCheckState() {
-  const totalSelectable = importPreviewSources.value.filter(source => !importSourceTags(source)).length
-  const selected = checkedImportSourceIndexes.value.length
-  importCheckAll.value = totalSelectable > 0 && selected === totalSelectable
-  importCheckIndeterminate.value = selected > 0 && selected < totalSelectable
-}
-
-function importSourceName(source) {
-  return source?.name || source?.bookSourceName || ''
-}
-
-function importSourceURL(source) {
-  return source?.baseUrl || source?.bookSourceUrl || source?.searchUrl || ''
-}
-
-function importSourceTags(source) {
-  const sourceText = JSON.stringify(source || {})
-  const tags = []
-  if (sourceText.includes('@js:')) tags.push('@Javascript')
-  if (sourceText.includes('webView:')) tags.push('@WebView')
-  return tags.join(' ')
-}
-
-async function saveSelectedImportSources() {
-  if (!checkedImportSourceIndexes.value.length) {
-    ElMessage.warning('请选择需要导入的源')
-    return
-  }
-  importPreviewSaving.value = true
-  try {
-    const selectedSources = checkedImportSourceIndexes.value.map(index => importPreviewSources.value[index])
-    const form = new FormData()
-    form.append('file', new Blob([JSON.stringify(selectedSources)], { type: 'application/json' }), 'bookSources.json')
-    const { data: result } = await importSources(form)
-    ElMessage.success(sourceImportMessage(result))
-    closeImportPreview()
-    await loadSources()
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importPreviewSaving.value = false
-  }
-}
-
-function sourceImportMessage(result = {}) {
-  const imported = result.imported || 0
-  const updated = result.updated || 0
-  const skipped = result.skipped || 0
-  return `新增 ${imported} 个，更新 ${updated} 个${skipped ? `，跳过 ${skipped} 个` : ''}`
-}
-
-async function exportSources() {
-  try {
-    const selectedIds = selection.value.map(source => source.id).filter(Boolean)
-    const resp = await exportSourcesApi(selectedIds)
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([resp.data], { type: 'application/json' }))
-    a.download = selectedIds.length ? 'bookSources-selected.json' : 'bookSources.json'
-    a.click()
-    URL.revokeObjectURL(a.href)
-    ElMessage.success(selectedIds.length ? `已导出 ${selectedIds.length} 个书源` : '已导出全部书源')
-  } catch (err) {
-    ElMessage.error(readError(err, '导出失败'))
   }
 }
 
