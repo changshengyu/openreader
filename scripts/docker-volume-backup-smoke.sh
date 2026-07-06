@@ -3,8 +3,8 @@ set -eu
 
 IMAGE="${IMAGE:-ghcr.io/changshengyu/openreader:latest}"
 PORT="${PORT:-18080}"
-NAME="openreader-volume-smoke-$$"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openreader-volume-smoke.XXXXXX")"
+NAME="${NAME:-openreader-volume-smoke-$(basename "$ROOT")}"
 PASSWORD="password123"
 USERNAME="smoke_$$"
 BASE_URL="http://127.0.0.1:${PORT}"
@@ -61,6 +61,18 @@ wait_health() {
   exit 1
 }
 
+wait_removed() {
+  i=0
+  while docker inspect "$NAME" >/dev/null 2>&1; do
+    if [ "$i" -ge 30 ]; then
+      echo "container was stopped but not removed: $NAME" >&2
+      exit 1
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+}
+
 json_field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
 }
@@ -82,6 +94,7 @@ BACKUP_NAME="$(printf '%s' "$BACKUP_RESPONSE" | json_field name)"
 curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$BACKUP_NAME" >/dev/null
 
 docker stop "$NAME" >/dev/null
+wait_removed
 start_container
 wait_health
 
