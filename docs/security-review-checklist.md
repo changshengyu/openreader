@@ -45,3 +45,22 @@ Use this checklist for security-sensitive changes and release reviews.
 ## Release note
 
 For each release, record which checklist sections were relevant and which tests/probes covered them.
+
+## EPUB iframe/resource review
+
+Apply this section to Reader P0 EPUB work:
+
+- [ ] The iframe URL never contains the login JWT or Authorization header value.
+- [ ] The EPUB resource capability is signed with a purpose-separated key and is scoped to user, book, source fingerprint, read-only purpose, and expiry.
+- [ ] Capability comparison/signature verification is constant-time through the standard crypto library.
+- [ ] Invalid, expired, modified, stale-version, deleted-book, or ownership-changed capabilities fail closed.
+- [ ] Capability path segments are redacted from application logs and never returned in error text.
+- [ ] Every resource path is decoded once, normalized as a POSIX archive path, and verified below the scoped extraction root.
+- [ ] ZIP entries reject absolute paths, drive prefixes, NUL bytes, `..`, symlinks, duplicate/conflicting paths, and writes through existing symlinks.
+- [ ] Entry count, per-entry expanded size, and total expanded size are bounded before/during extraction.
+- [ ] Extraction uses a staging directory and only exposes an atomically completed version.
+- [ ] XHTML is served without EPUB-authored active scripts; the reader bridge is injected dynamically rather than written into the archived source.
+- [ ] CSP blocks remote network loads and untrusted scripts while allowing scoped local CSS/images/fonts and required inline reader styles.
+- [ ] MIME types are allowlisted and responses set `nosniff` and `no-referrer`.
+- [ ] Multi-user tests prove one user's capability cannot read another user's book or resource tree.
+- [ ] Parent `message` handlers verify both the active iframe window and expected same-origin resource origin.

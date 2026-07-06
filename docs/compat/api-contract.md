@@ -39,6 +39,72 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## EPUB reader resource contract
+
+### Authenticated chapter response
+
+`GET /api/books/:id/chapters/:index/content`
+
+| Field | Contract |
+|---|---|
+| Method/path | Existing `GET /api/books/:id/chapters/:index/content`; no path change. |
+| Auth | Existing `Authorization: Bearer <jwt>` requirement. The book lookup remains scoped to the authenticated user. |
+| Request | Existing numeric book ID and zero-based chapter index. |
+| Text response | `200` JSON keeps `chapter` and `content`; adds `"format": "text"`. |
+| EPUB response | `200` JSON keeps `chapter` and searchable plain-text `content`; adds `"format": "epub"`, `resourceUrl`, and RFC3339 `resourceExpiresAt`. |
+| Side effects | For EPUB, may safely extract/rebuild a derived resource tree and backfill the chapter's canonical `resourcePath`. It must not alter the archived source EPUB. |
+| `400` | Invalid book/chapter parameter. |
+| `404` | Book/chapter/source archive is not available to the current user. |
+| `422` | EPUB exists but is corrupt, unsafe, unsupported, or exceeds extraction limits. |
+| `500` | Unexpected persistence or filesystem failure. |
+| Error body | `{ "error": "<stable client-safe message>" }`; never include a host filesystem path or token. |
+
+The EPUB additions are backward-compatible JSON fields. Existing clients that only consume `chapter` and `content` continue to work.
+
+Example:
+
+```json
+{
+  "chapter": {
+    "id": 7,
+    "bookId": 3,
+    "index": 0,
+    "title": "第一章"
+  },
+  "content": "第一章\n正文……",
+  "format": "epub",
+  "resourceUrl": "/api/epub-resource/<capability>/OEBPS/chapter-1.xhtml",
+  "resourceExpiresAt": "2026-07-06T12:00:00Z"
+}
+```
+
+### Capability-protected EPUB resources
+
+`GET /api/epub-resource/:capability/*resourcePath`
+
+| Field | Contract |
+|---|---|
+| Auth | Does not accept or require the login Bearer token. Authorization is the signed path capability returned by the protected chapter endpoint. |
+| Capability scope | One user ID, one book ID, one source fingerprint/extracted version, read-only access, and a bounded expiration. It is signed with a purpose-separated key derived from `OPENREADER_JWT_SECRET`; it is never interchangeable with a login JWT. |
+| Path | `resourcePath` is URL-decoded once, normalized as an EPUB POSIX path, and resolved strictly below that book/version's derived extraction root. |
+| Success | `200` with a supported XHTML/HTML, CSS, image, SVG, or font MIME type. `HEAD` may return the same headers without a body. |
+| XHTML | Dynamically receives the OpenReader iframe bridge and restrictive security headers. The archived/extracted source file is not modified in place. |
+| Relative assets | The capability remains a stable path segment so relative chapter CSS/image/font/link URLs stay within the same authorized root. |
+| `400` | Malformed capability or unsafe/malformed resource path. |
+| `403` | Invalid signature, expired capability, wrong purpose, wrong archive version, or book ownership no longer matches. |
+| `404` | Scoped book/resource no longer exists. |
+| `415` | Resource media type is not on the EPUB reader allowlist. |
+| Error body | JSON for API-style failures. Iframe failures remain non-blank because the parent detects the resource load failure and displays the reader retry state. |
+
+Security headers include at minimum:
+
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: no-referrer`;
+- a CSP that permits only the injected bridge script and same-capability local styles/images/fonts/data resources;
+- no permissive cross-origin credential policy.
+
+The route must not log the capability value. Application access logs should redact the capability path segment.
+
 ## WebDAV contract
 
 | Method | Path | Purpose |

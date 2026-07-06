@@ -35,3 +35,55 @@ Before changing storage for a module, document:
 - Reader progress and bookmark migration semantics.
 - Local store/WebDAV path normalization and permissions.
 - Cache invalidation rules for local and remote books.
+
+## EPUB reader compatibility migration
+
+Status: implementation contract for Reader P0.
+
+### Existing representation
+
+- The original imported EPUB is already archived below `library/<Book.LibraryPath>` and referenced by `Book.OriginalFile`.
+- `Book.LibraryPath`, `Book.OriginalFile`, `Book.TOCFile`, and `Book.SourceFile` are persistent source-of-truth fields.
+- `Chapter.CachePath` points to the flattened plain-text chapter copy used by existing reader/search/cache flows.
+- Existing EPUB chapter rows do not retain the canonical XHTML resource path from the archive.
+
+### Additive representation
+
+- Add nullable/empty `Chapter.ResourcePath` (`resourcePath` in JSON) through GORM auto-migration. It stores a normalized POSIX EPUB path such as `OEBPS/Text/chapter-1.xhtml`; it is never an absolute host path.
+- Add optional `resourcePath` to archived `chapters.json` entries. Old archives without it remain valid.
+- EPUB import writes both:
+  - the existing plain-text `CachePath`;
+  - the canonical XHTML `ResourcePath`.
+- Existing imported EPUBs are lazily backfilled from the archived original file and current TOC rule when first opened/refreshed. Backfill updates only matching chapter rows and the optional portable `chapters.json` metadata.
+
+No table or column is removed. Text, PDF, UMD, Markdown, remote, and existing EPUB rows remain readable when `ResourcePath` is empty.
+
+### Derived extracted resources
+
+- Extraction lives below the existing book root:
+
+```text
+library/<Book.LibraryPath>/.epub-resources/<source-fingerprint>/
+```
+
+- The source fingerprint is deterministic from the archived EPUB bytes. A replacement file receives a new directory/version and invalidates old resource capabilities.
+- The original EPUB remains the source of truth. `.epub-resources/` is derived and may be recreated when absent or corrupt.
+- Extraction is staged in a sibling temporary directory and atomically renamed only after every entry passes validation. Failed extraction must not leave a partially active version.
+- Cleanup may remove stale derived fingerprint directories for the same book after the current version is durable, but must never delete `OriginalFile`, `content/`, `chapters.json`, or `bookSource.json`.
+
+### Compatibility and recovery
+
+- Old databases: GORM adds the empty `resource_path` column; no full-table destructive migration.
+- Old `chapters.json`: missing `resourcePath` is treated as unknown and recovered from the source EPUB.
+- Missing derived directory: rebuild transparently from `OriginalFile`.
+- Missing/corrupt source EPUB: preserve all database rows and plain-text caches; return a reader error instead of deleting/reimporting the book.
+- Backup/restore and WebDAV: the existing original EPUB and metadata remain sufficient. Derived `.epub-resources/` need not be present in a backup to recover the book.
+- Docker volumes: all new files remain under the existing `library/` mount. No new volume is introduced.
+
+### Required migration evidence
+
+- Auto-migrate an existing database containing chapters without `resource_path`; old rows and caches remain readable.
+- Open an old imported EPUB and verify lazy path backfill without re-upload.
+- Remove `.epub-resources/`, restart, and verify deterministic rebuild.
+- Replace the source archive and verify old capability/version rejection.
+- Run full backend tests and `scripts/docker-volume-backup-smoke.sh` before an EPUB release image.
