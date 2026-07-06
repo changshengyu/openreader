@@ -110,8 +110,9 @@ h1 {
 }
 
 p {
-  margin: 0 0 var(--reader-paragraph-space);
+  margin: var(--reader-paragraph-space) 0;
   font-weight: var(--reader-font-weight);
+  text-align: inherit;
   text-indent: 2em;
 }
 
@@ -194,6 +195,9 @@ p.reader-search-active {
 }
 
 @media (max-width: 750px) {
+  .chapter-content {
+    text-align: justify;
+  }
   h1 {
     font-size: var(--reader-heading-size);
     margin-bottom: 28px;

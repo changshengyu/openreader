@@ -594,9 +594,6 @@ const {
   currentBookId: bookId,
   currentChapterCount: () => chapters.value.length,
   router,
-  beforeOpen: () => {
-    mobileChromeVisible.value = false
-  },
   saveProgress: () => saveCurrentProgress({ force: true }),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
@@ -660,9 +657,6 @@ const {
 } = useReaderToc({
   chapters,
   isRemoteBook,
-  beforeOpen: () => {
-    mobileChromeVisible.value = false
-  },
   refreshCachedChapters: (...args) => computeBrowserCachedChapters(...args),
   syncCurrentChapter: (...args) => updateCurrentChapterFromScroll(...args),
   goChapter: (...args) => goChapter(...args),
@@ -1140,7 +1134,7 @@ const {
   restorePosition: restoreReadingPosition,
   saveProgress: () => saveCurrentProgress(),
 })
-const mobileChromeVisible = ref(false)
+const mobileChromeVisible = ref(true)
 const {
   toggle: toggleReaderChrome,
 } = useReaderChrome({
@@ -1725,10 +1719,12 @@ function readError(err, fallback) {
   .reader-page {
     height: 100dvh;
     border: 0;
-    width: 100%;
+    width: 100vw;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    padding: 0 16px;
+    text-align: justify;
   }
   .reader-page-head { display: none; }
   .reader-content {
@@ -1737,9 +1733,15 @@ function readError(err, fallback) {
     max-width: 100%;
     min-width: 0;
     font-size: var(--reader-font-size);
-    padding: 42px 22px calc(42px + env(safe-area-inset-bottom));
-    scroll-padding-bottom: calc(42px + env(safe-area-inset-bottom));
+    padding: 0;
+    scroll-padding-bottom: calc(15px + env(safe-area-inset-bottom));
     touch-action: pan-y pinch-zoom;
+  }
+  .reader-body {
+    margin-top: calc(30px + env(safe-area-inset-top));
+    padding-top: 15px;
+    padding-bottom: calc(15px + env(safe-area-inset-bottom));
+    text-align: justify;
   }
   .reader-shell.scroll .reader-content,
   .reader-shell.scroll2 .reader-content {
@@ -1751,10 +1753,6 @@ function readError(err, fallback) {
     display: none;
     width: 0;
     height: 0;
-  }
-  .reader-shell.mobile-chrome-visible .reader-content {
-    padding-bottom: calc(250px + env(safe-area-inset-bottom));
-    scroll-padding-bottom: calc(250px + env(safe-area-inset-bottom));
   }
 }
 </style>

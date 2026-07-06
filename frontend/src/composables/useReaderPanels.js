@@ -1,13 +1,11 @@
 import { unref } from 'vue'
 
 export function useReaderPanels(options) {
-  function closeInfoAndMobileChrome() {
+  function closeBookInfo() {
     options.closeBookInfo()
-    options.mobileChromeVisible.value = false
   }
 
   function openSettings() {
-    options.mobileChromeVisible.value = false
     options.customBg.value = options.getCustomBgColor()
     options.sliderLineHeight.value = options.getLineHeight()
     options.settingsVisible.value = true
@@ -15,13 +13,11 @@ export function useReaderPanels(options) {
 
   function showClickZone() {
     options.settingsVisible.value = false
-    options.mobileChromeVisible.value = false
     options.clickZoneVisible.value = true
   }
 
   function openCache() {
     if (!unref(options.isRemoteBook)) return
-    options.mobileChromeVisible.value = false
     options.refreshBrowserCachedChapters()
     options.cacheVisible.value = true
   }
@@ -35,19 +31,16 @@ export function useReaderPanels(options) {
   }
 
   async function goShelf() {
-    options.mobileChromeVisible.value = false
     options.saveProgress({ force: true, background: true })
     await options.navigate({ name: 'home' })
   }
 
   function openSource() {
     if (!unref(options.isRemoteBook)) return
-    options.mobileChromeVisible.value = false
     options.sourceVisible.value = true
   }
 
   function openBookmarks() {
-    options.mobileChromeVisible.value = false
     options.bookmarkVisible.value = true
   }
 
@@ -57,41 +50,40 @@ export function useReaderPanels(options) {
   }
 
   function openContentSearch() {
-    options.mobileChromeVisible.value = false
     options.searchVisible.value = true
     options.defer(() => options.focusContentSearch())
   }
 
   function openInfoToc() {
-    closeInfoAndMobileChrome()
+    closeBookInfo()
     options.openToc()
   }
 
   function openInfoBookmarks() {
-    closeInfoAndMobileChrome()
+    closeBookInfo()
     openBookmarks()
   }
 
   function openInfoSearch() {
-    closeInfoAndMobileChrome()
+    closeBookInfo()
     openContentSearch()
   }
 
   function openInfoSources() {
     if (!unref(options.isRemoteBook)) return
-    closeInfoAndMobileChrome()
+    closeBookInfo()
     options.sourceVisible.value = true
   }
 
   function openInfoSettings() {
-    closeInfoAndMobileChrome()
+    closeBookInfo()
     openSettings()
   }
 
   async function openInfoGroup() {
     const currentBook = unref(options.book)
     if (!currentBook) return
-    closeInfoAndMobileChrome()
+    closeBookInfo()
     try {
       await options.ensureCategoriesLoaded()
     } catch {

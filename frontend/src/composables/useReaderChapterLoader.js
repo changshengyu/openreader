@@ -13,7 +13,9 @@ export function useReaderChapterLoader(options) {
       0,
       Math.min(index, Math.max(options.chapters.value.length - 1, 0)),
     )
-    options.mobileChromeVisible.value = false
+    if (loadOptions.hideChrome) {
+      options.mobileChromeVisible.value = false
+    }
     options.restoringPosition.value = true
     options.chapterLoaded.value = false
     options.chapterLoadError.value = ''

@@ -4,7 +4,6 @@ export function useReaderTools(options) {
   }
 
   function openMobileTool(action) {
-    options.mobileChromeVisible.value = false
     action?.()
   }
 

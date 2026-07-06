@@ -49,6 +49,21 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Horizontal layout | Upstream mini chapter padding is 16px and justified. | Current mobile content padding is 22px with altered vertical padding. | Restore upstream 16px geometry and paragraph semantics. |
 | Tests | Upstream behavior is source contract. | Existing tests assert toolbar hides after panel actions. | Delete/rewrite conflicting tests. |
 
+### 2026-07-06 implementation note
+
+Implemented in commit work following this contract:
+
+- Mobile reader tool layer now defaults to visible and initial chapter loading no longer hides it.
+- Opening reader tools/panels no longer forces the mobile tool layer closed.
+- Settings panel coexistence, center tap behavior, and 16px mobile reader geometry are covered by `scripts/smoke/reader-mobile-contract.mjs`.
+- Unit tests that previously encoded “panel open hides toolbar” were rewritten.
+
+Still pending in Reader P0:
+
+- Replace the current mobile bottom `el-drawer` panel framework with upstream-style full-width popover/workspace layering.
+- Complete desktop `Content.vue` format parity review for EPUB, image/comic, audio/TTS, and continuous cross-chapter branches.
+- Run final Docker release only after the full Reader P0 module, including panel-structure rebuild, is complete.
+
 ## Required workflow for each future module
 
 1. Use `readerdev-compat-inventory`.

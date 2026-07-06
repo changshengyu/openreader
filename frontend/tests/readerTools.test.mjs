@@ -46,6 +46,6 @@ test('keeps mobile chrome navigation and direct tool actions distinct', () => {
 
   fixture.mobileChromeVisible.value = true
   fixture.controller.handleMobileChromeAction('toc')
-  assert.equal(fixture.mobileChromeVisible.value, false)
+  assert.equal(fixture.mobileChromeVisible.value, true)
   assert.deepEqual(fixture.calls.at(-1), ['toc'])
 })

@@ -16,6 +16,12 @@ SMOKE_READER_URL=http://127.0.0.1:8080/books/1/read \
 node scripts/smoke/openreader-smoke.mjs
 ```
 
+For the mocked mobile Reader contract:
+
+```bash
+TARGET_URL=http://127.0.0.1:5173 node scripts/smoke/reader-mobile-contract.mjs
+```
+
 The script expects Playwright to be available in the current Node environment. If it is missing, install it in the environment used for smoke testing or run an equivalent browser probe.
 
 ## Required manual/automated coverage for reader work

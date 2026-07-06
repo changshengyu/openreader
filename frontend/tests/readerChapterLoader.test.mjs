@@ -50,6 +50,7 @@ function createController(overrides = {}) {
 test('loads a clamped chapter and marks its restored progress', async () => {
   const fixture = createController()
   await fixture.controller.load(9, 120, { restorePercent: 0.5 })
+  assert.equal(fixture.state.mobileChromeVisible.value, true)
   assert.equal(fixture.state.currentIndex.value, 2)
   assert.equal(fixture.state.chapter.value.id, 3)
   assert.equal(fixture.state.content.value, '正文 2')
@@ -67,6 +68,12 @@ test('loads a clamped chapter and marks its restored progress', async () => {
     ['mark', fixture.currentProgress],
     ['frame'],
   ])
+})
+
+test('hides mobile chrome only when the caller explicitly requests it', async () => {
+  const fixture = createController()
+  await fixture.controller.load(1, 0, { hideChrome: true })
+  assert.equal(fixture.state.mobileChromeVisible.value, false)
 })
 
 test('saves forced progress and expands continuous chapter windows', async () => {

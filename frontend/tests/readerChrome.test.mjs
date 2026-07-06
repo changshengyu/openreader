@@ -7,7 +7,7 @@ function createController({ mobile = false, toc = false } = {}) {
   const calls = []
   const state = {
     isMobileReader: ref(mobile),
-    mobileChromeVisible: ref(false),
+    mobileChromeVisible: ref(true),
     tocVisible: ref(toc),
     settingsVisible: ref(true),
   }
@@ -24,7 +24,7 @@ function createController({ mobile = false, toc = false } = {}) {
 test('toggles only the mobile reader chrome on compact screens', () => {
   const fixture = createController({ mobile: true })
   fixture.controller.toggle()
-  assert.equal(fixture.state.mobileChromeVisible.value, true)
+  assert.equal(fixture.state.mobileChromeVisible.value, false)
   assert.equal(fixture.state.settingsVisible.value, true)
   assert.deepEqual(fixture.calls, [])
 })
