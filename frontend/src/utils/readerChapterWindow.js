@@ -5,16 +5,18 @@ function normalizedChapterCount(totalChapters) {
 export function readerChapterWindowIndexes({
   mode,
   anchorIndex,
+  startIndex = anchorIndex,
   totalChapters,
-  previousSize = 1,
-  nextSize = 2,
+  nextSize = 1,
 }) {
   const total = normalizedChapterCount(totalChapters)
   if (!total) return []
   const anchor = Math.max(0, Math.min(Math.floor(Number(anchorIndex) || 0), total - 1))
-  const start = mode === 'scroll2'
-    ? Math.max(0, anchor - Math.max(0, Number(previousSize) || 0))
-    : anchor
+  const requestedStart = Math.max(
+    0,
+    Math.min(Math.floor(Number(startIndex) || 0), total - 1),
+  )
+  const start = mode === 'scroll2' ? anchor : Math.min(requestedStart, anchor)
   const end = Math.min(total - 1, anchor + Math.max(0, Number(nextSize) || 0))
   return Array.from({ length: end - start + 1 }, (_, offset) => start + offset)
 }
@@ -53,7 +55,6 @@ export function nearbyReaderChapterIndexes({
 }
 
 export function readerChapterWindowExtension({
-  mode,
   scrollTop,
   clientHeight,
   scrollHeight,
@@ -62,17 +63,15 @@ export function readerChapterWindowExtension({
   const viewport = Math.max(0, Number(clientHeight) || 0)
   const height = Math.max(0, Number(scrollHeight) || 0)
   return {
-    previous: mode === 'scroll2' && top < viewport,
-    next: top + viewport > height - viewport * 2,
+    next: viewport > 0 && top > height - viewport * 4,
   }
 }
 
 export function readerChapterWindowPrunePlan({
   blocks,
+  mode,
   currentIndex,
   totalChapters,
-  previousSize = 1,
-  nextSize = 2,
 }) {
   const rows = Array.isArray(blocks) ? blocks : []
   const total = normalizedChapterCount(totalChapters)
@@ -83,14 +82,19 @@ export function readerChapterWindowPrunePlan({
       changed: rows.length > 0,
     }
   }
+  if (mode !== 'scroll2') {
+    return {
+      blocks: rows,
+      removedBeforeIndexes: [],
+      changed: false,
+    }
+  }
   const anchor = Math.max(0, Math.min(Math.floor(Number(currentIndex) || 0), total - 1))
-  const minIndex = Math.max(0, anchor - Math.max(0, Number(previousSize) || 0))
-  const maxIndex = Math.min(total - 1, anchor + Math.max(0, Number(nextSize) || 0))
-  const kept = rows.filter(block => Number(block?.index) >= minIndex && Number(block?.index) <= maxIndex)
+  const kept = rows.filter(block => Number(block?.index) >= anchor)
   return {
     blocks: kept,
     removedBeforeIndexes: rows
-      .filter(block => Number(block?.index) < minIndex)
+      .filter(block => Number(block?.index) < anchor)
       .map(block => Number(block.index)),
     changed: kept.length !== rows.length,
   }

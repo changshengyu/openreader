@@ -89,6 +89,25 @@ test('does not mark a completed request after switching books', async () => {
   assert.equal(fixture.controller.get(1), null)
 })
 
+test('deduplicates concurrent loads for the same book and chapter', async () => {
+  let resolveLoad
+  let requestCount = 0
+  const fixture = createController({
+    loadBrowserContent: () => {
+      requestCount += 1
+      return new Promise(resolve => {
+        resolveLoad = resolve
+      })
+    },
+  })
+  const first = fixture.controller.load(2)
+  const second = fixture.controller.load(2)
+  assert.equal(requestCount, 1)
+  resolveLoad(validContent(2))
+  assert.deepEqual(await first, validContent(2))
+  assert.deepEqual(await second, validContent(2))
+})
+
 test('preloads uncached neighboring chapters within the configured radius', async () => {
   const fixture = createController()
   fixture.controller.set(1, validContent(1))

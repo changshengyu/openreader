@@ -49,8 +49,7 @@ function createController(overrides = {}) {
     restoreScrollAnchor: async anchor => calls.push(['restore', anchor]),
     visibleProgressSnapshot: () => ({ chapterIndex: 2, chapter: chapters.value[2] }),
     nextFrame: async () => calls.push(['frame']),
-    previousSize: 1,
-    nextSize: 2,
+    formatError: error => `加载失败：${error.message}`,
     ...overrides,
   })
   return {
@@ -72,57 +71,16 @@ test('builds a continuous chapter window around the active chapter', async () =>
   await fixture.controller.compute()
   assert.deepEqual(
     fixture.chapterBlocks.value.map(block => block.index),
-    [1, 2, 3, 4],
+    [2, 3],
   )
   assert.deepEqual(fixture.calls, [
-    ['load', 1],
-    ['load', 2],
     ['load', 3],
-    ['load', 4],
     ['capture'],
     ['restore', { index: 2, offset: 30 }],
   ])
 })
 
-test('prepends the previous chapter while preserving the viewport position', async () => {
-  const fixture = createController()
-  fixture.currentIndex.value = 3
-  fixture.chapterBlocks.value = [3, 4].map(index => ({
-    index,
-    id: index + 1,
-    content: `正文 ${index}`,
-  }))
-  fixture.contentEl.value.scrollTop = 120
-  fixture.controller = useReaderChapterWindow({
-    reader: fixture.reader,
-    contentEl: fixture.contentEl,
-    contentBody: fixture.contentBody,
-    chapters: fixture.chapters,
-    currentIndex: fixture.currentIndex,
-    chapter: fixture.chapter,
-    content: fixture.content,
-    chapterBlocks: fixture.chapterBlocks,
-    isContinuousScrollRead: ref(true),
-    loadContent: async index => ({
-      chapter: fixture.chapters.value[index],
-      content: `正文 ${index}`,
-    }),
-    makeChapterBlock: (index, row, text) => ({ index, id: row.id, content: text }),
-    captureScrollAnchor: () => null,
-    restoreScrollAnchor: async () => {},
-    visibleProgressSnapshot: () => null,
-    nextFrame: async () => {
-      fixture.contentEl.value.scrollHeight = 650
-    },
-    previousSize: 1,
-    nextSize: 2,
-  })
-  await fixture.controller.prependPrevious()
-  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [2, 3, 4])
-  assert.equal(fixture.contentEl.value.scrollTop, 270)
-})
-
-test('syncs the visible chapter and prunes old scroll2 blocks with compensation', async () => {
+test('syncs the visible chapter without replacing the chapter window mid-scroll', async () => {
   const fixture = createController({
     visibleProgressSnapshot: () => ({
       chapterIndex: 3,
@@ -146,6 +104,101 @@ test('syncs the visible chapter and prunes old scroll2 blocks with compensation'
   assert.equal(fixture.currentIndex.value, 3)
   assert.equal(fixture.chapter.value.id, 4)
   assert.equal(fixture.content.value, '正文 3')
-  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [2, 3, 4, 5])
-  assert.equal(fixture.contentEl.value.scrollTop, 200)
+  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [0, 1, 2, 3, 4, 5, 6])
+  assert.equal(fixture.contentEl.value.scrollTop, 300)
+})
+
+test('appends one chapter and removes read scroll2 chapters in one anchored transaction', async () => {
+  const fixture = createController({
+    visibleProgressSnapshot: () => ({
+      chapterIndex: 3,
+      chapter: { id: 4, title: '第四章' },
+    }),
+  })
+  fixture.chapterBlocks.value = [2, 3].map(index => ({
+    index,
+    id: index + 1,
+    title: `第 ${index + 1} 章`,
+    content: `正文 ${index}`,
+  }))
+  fixture.controller.syncCurrentChapter()
+  fixture.calls.length = 0
+  await fixture.controller.appendNext()
+  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [3, 4])
+  assert.deepEqual(fixture.calls, [
+    ['load', 4],
+    ['capture'],
+    ['restore', { index: 2, offset: 30 }],
+  ])
+})
+
+test('renders adjacent chapter failures and can retry them without losing current content', async () => {
+  let attempts = 0
+  const loadedIndexes = []
+  const fixture = createController({
+    loadContent: async index => {
+      loadedIndexes.push(index)
+      if (index === 4 && attempts++ === 0) throw new Error('network error')
+      return { chapter: fixture.chapters.value[index], content: `正文 ${index}` }
+    },
+  })
+  fixture.currentIndex.value = 3
+  fixture.chapterBlocks.value = [3].map(index => ({
+    index,
+    id: index + 1,
+    title: `第 ${index + 1} 章`,
+    content: `正文 ${index}`,
+  }))
+
+  await fixture.controller.appendNext()
+  assert.equal(fixture.chapterBlocks.value[0].content, '正文 3')
+  assert.equal(fixture.chapterBlocks.value[1].index, 4)
+  assert.equal(fixture.chapterBlocks.value[1].error, '加载失败：network error')
+  fixture.controller.maybeExtend()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(loadedIndexes, [4])
+
+  await fixture.controller.retry(4)
+  assert.equal(fixture.chapterBlocks.value[1].error, undefined)
+  assert.equal(fixture.chapterBlocks.value[1].content, '正文 4')
+  assert.deepEqual(loadedIndexes, [4, 4])
+})
+
+test('serializes boundary extension and releases its lock after completion', async () => {
+  const attempts = []
+  let resolveFirst
+  const fixture = createController({
+    loadContent: index => {
+      attempts.push(index)
+      if (index === 4) {
+        return new Promise(resolve => {
+          resolveFirst = resolve
+        })
+      }
+      return Promise.resolve({
+        chapter: fixture.chapters.value[index],
+        content: `正文 ${index}`,
+      })
+    },
+  })
+  fixture.currentIndex.value = 3
+  fixture.chapterBlocks.value = [{
+    index: 3,
+    id: 4,
+    title: '第四章',
+    content: '正文 3',
+  }]
+
+  fixture.controller.maybeExtend()
+  fixture.controller.maybeExtend()
+  assert.deepEqual(attempts, [4])
+
+  resolveFirst({
+    chapter: fixture.chapters.value[4],
+    content: '正文 4',
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  fixture.controller.maybeExtend()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(attempts, [4, 5])
 })

@@ -9,6 +9,7 @@ import { nearbyReaderChapterIndexes } from '../utils/readerChapterWindow.js'
 export function useReaderChapterContent(options) {
   const loadBrowserContent = options.loadBrowserContent ?? loadBrowserChapterContent
   const preloadRadius = Math.max(0, Number(options.preloadRadius) || 0)
+  const inFlight = new Map()
 
   function cacheKey(targetBook = unref(options.book), fallbackBookId = unref(options.bookId)) {
     return chapterCacheBookKey(targetBook, fallbackBookId)
@@ -36,22 +37,36 @@ export function useReaderChapterContent(options) {
       const cached = get(index, targetCacheKey)
       if (cached) return cached
     }
+    const requestKey = [
+      targetCacheKey,
+      Number(index),
+      loadOptions.refresh ? 'refresh' : 'normal',
+    ].join(':')
+    if (inFlight.has(requestKey)) return inFlight.get(requestKey)
 
-    const data = await loadBrowserContent(
-      targetBook,
-      targetBookId,
-      index,
-      { refresh: Boolean(loadOptions.refresh) },
-    )
-    set(index, data, targetCacheKey)
-    if (
-      isValidChapterContentResponse(data)
-      && Number(unref(options.bookId)) === Number(targetBookId)
-      && cacheKey() === targetCacheKey
-    ) {
-      options.markCached(index)
+    const request = (async () => {
+      const data = await loadBrowserContent(
+        targetBook,
+        targetBookId,
+        index,
+        { refresh: Boolean(loadOptions.refresh) },
+      )
+      set(index, data, targetCacheKey)
+      if (
+        isValidChapterContentResponse(data)
+        && Number(unref(options.bookId)) === Number(targetBookId)
+        && cacheKey() === targetCacheKey
+      ) {
+        options.markCached(index)
+      }
+      return data
+    })()
+    inFlight.set(requestKey, request)
+    try {
+      return await request
+    } finally {
+      if (inFlight.get(requestKey) === request) inFlight.delete(requestKey)
     }
-    return data
   }
 
   function preload(index) {

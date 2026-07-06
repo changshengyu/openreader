@@ -25,7 +25,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Reader mobile content geometry | Upstream mini `.chapter` uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, `text-align: justify`; slide mode also uses 16px content margins. | Current mobile CSS uses `padding: 42px 22px ...`; paragraph justification/spacing does not fully match upstream. | Causes asymmetric left/right whitespace and paragraph layout drift. | `must-fix` for P0 | DOM geometry probe for left/right padding within 1px across 390×844 and 360×800. |
 | Reader scrolling vs click paging | Upstream has page/scroll modes with discrete click navigation. | User requested continuous native finger/wheel scrolling while click paging remains segmented. | Intentional UX improvement if it does not change mode selection semantics. | `acceptable-change` | Browser scroll continuity probe; click paging regression tests. |
 | Reader settings controls | Upstream uses controls that are easier to distinguish visually; user requested minus/value/plus controls instead of current easy-to-mis-tap slider behavior. | Current setting stepper exists but must be rechecked against upstream layout/state. | Allowed UX adaptation, but values/defaults/state must match upstream. | `acceptable-change` | Unit tests for value bounds; browser setting interaction test. |
-| Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, and cross-chapter behavior. | Current `ReaderChapterContent.vue` handles text/images/volume blocks and the rebuilt EPUB iframe branch; its continuous chapter window still follows an invented previous-1/next-2 policy. | EPUB and image/CBZ document rendering are implemented. Continuous chapter retention, extension threshold, reverse extension, and adjacent-load failure behavior conflict with the fixed upstream baseline. Audio/TTS still needs a separate extraction. | `must-fix` for continuous chapters; `unknown` for audio/TTS | Cross-chapter window/state/error contract tests and long-book browser smoke; separate audio/TTS contract. |
+| Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, and cross-chapter behavior. | Current `ReaderChapterContent.vue` handles text/images/volume blocks and the rebuilt EPUB iframe branch; continuous chapter retention, extension, anchor, error, and explicit-jump behavior now follows the extracted fixed-baseline contract. | EPUB, image/CBZ rendering, and continuous cross-chapter behavior are implemented and browser-validated. Audio/TTS still needs a separate extraction; CBZ archive/import edges remain. | `aligned` for implemented formats; `unknown` for audio/TTS and CBZ archive edges | Keep EPUB/image/continuous browser contracts; add separate audio/TTS and CBZ archive fixtures. |
 | BookInfo | Upstream has one `web/src/components/BookInfo.vue` used from workspace flows. | Current has `BookDetail.vue`, `BookInfoDialog.vue`, `BookInfoPanel.vue`, `OverlayBookInfo.vue`. | Duplicate logic risks inconsistent actions/search/read/source behavior. | `must-fix` for P1 | Single BookInfo action contract; search/shelf/reader reuse tests. |
 | Bookshelf/BookManage/BookGroup | Upstream: `BookShelf.vue`, `BookManage.vue`, `BookGroup.vue` under Index workspace. | Current: `Home.vue`, overlay management components, categories/store utilities. | Some enhancements may be valid, but workflow and mobile sidebar behavior need upstream comparison. | `unknown` | Workspace browser flows; category/order tests. |
 | Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons must be extracted from `Index.vue` and related CSS. | Current `AppLayout.vue` and mobile navigation had reported drag/fixed-button mismatch. | User-visible mismatch: GitHub/day-night buttons should not slide with drawer content. | `must-fix` for P1 | Mobile drag smoke; fixed-bottom button geometry probe. |
@@ -66,12 +66,12 @@ Implemented in commit work following this contract:
 
 Still pending in Reader P0:
 
-- Implement the extracted continuous cross-chapter contract below, then complete separate `Content.vue` parity reviews for CBZ import/archive edge cases and audio/TTS media controls.
+- Complete separate `Content.vue` parity reviews for CBZ import/archive edge cases and audio/TTS media controls.
 - The final Reader P0 acceptance image remains pending. Intermediate validation image `ca43409` has been published and is not the final Reader P0 release.
 
 ## Immediate P0 contract: continuous cross-chapter reading
 
-Status: contract extracted on 2026-07-06; implementation pending.
+Status: implemented and validated on 2026-07-06.
 
 This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. It replaces earlier audit notes and tests that treated a fixed previous-1/next-2 window as upstream behavior.
 
@@ -102,17 +102,17 @@ This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e
 | Server progress | Upstream posts `/saveBookProgress` with book URL and chapter index while local cache keeps the paragraph offset. | Keep authenticated `PUT /progress` with chapter id/index, offset, chapter/full-book percent, mode, and conflict metadata. This is the Go multi-user data model, not a reason to change the visible transition order. | `intentional-redesign` |
 | Chapter content | Upstream calls `getBookContent(chapterIndex, ..., cache=true)` and caches up to three books in memory. | Keep current chapter API and scoped browser memory cache/preload implementation, but boundary extension must expose failures and follow the upstream window policy. | `acceptable-change` |
 
-### Current OpenReader gaps to fix
+### OpenReader implementation mapping
 
-| Current evidence | Difference | Classification | Replacement test |
+| Previous incorrect evidence | Implemented replacement | Classification | Contract test |
 |---|---|---|---|
-| `readerChapterWindowIndexes()` defaults to previous 1/next 2 and initially creates `[current-1, current, current+1, current+2]` for `scroll2`. | Eager window is larger and includes a chapter upstream does not show. | `must-fix` | Initial `scroll` and `scroll2` windows are `[current, current+1]`, clipped at book bounds. |
-| `readerChapterWindowPrunePlan()` keeps previous 1/next 2 after every visible chapter change. | It encodes the wrong `scroll2` retention model and prevents “hide read chapters” parity. | `must-fix` | After the visible chapter advances and the list recomputes, `scroll2` begins at that chapter; `scroll` retains its explicit start chapter. |
-| `readerChapterWindowExtension()` returns `previous: true` for `scroll2` near the top, and `prependPrevious()` inserts the chapter with scroll-height compensation. | Fixed upstream disables natural reverse extension. | `must-fix` | Top scrolling schedules no load; explicit previous navigation still rebuilds the previous chapter at its requested boundary. |
-| The current next threshold is effectively within three viewport heights of the bottom. | Upstream starts within four viewport heights. | `must-fix` | Boundary tests immediately below/above `scrollHeight - 4 * clientHeight`. |
-| `compute()` catches adjacent load failures and filters them out; `maybeExtend()` swallows extension rejection. | Failure is invisible and can be retried repeatedly without an in-list explanation. | `must-fix` | Failed next chapter yields one error block, retains current content, releases the extension lock, and supports explicit retry. |
-| `syncCurrentChapter()` prunes synchronously on every scroll event. | Upstream changes current chapter during position saving and rebuilds the list as part of a controlled extension/rebuild transaction. Immediate pruning can mutate DOM while the user is still scrolling. | `must-fix` | Visible chapter identity updates without replacing DOM; pruning/rebuild occurs only in the controlled `scroll2` extension or explicit navigation transaction and preserves the anchor. |
-| `compute()` loads every planned index with `Promise.all`. | Upstream starts from cached current content and loads only missing visible chapters; concurrent loading is an implementation choice but can make an adjacent slow/failing request block the whole first render. | `must-fix` for render blocking; concurrency itself `acceptable-change` | Current cached chapter renders independently; adjacent load latency/failure cannot blank or hold the current chapter loading state. |
+| Initial `scroll2` window was previous 1/current/next 2. | `readerChapterWindowIndexes()` now begins at the current/explicit start chapter and initially shows only current plus one following chapter. | `aligned` | Book-start, middle, and book-end window tests. |
+| `scroll2` retained a synthetic previous chapter and pruned on every scroll event. | Visible chapter identity updates without DOM replacement; the controlled forward-extension transaction removes every read chapter only in `scroll2`, while `scroll` retains its explicit start. | `aligned` | Mode-specific retention and anchored transaction tests. |
+| Top proximity automatically prepended the previous chapter. | Natural top scrolling no longer extends backward. Explicit previous/catalog/search/bookmark navigation rebuilds the selected chapter and requested position. | `aligned` | Extension-zone and loaded explicit-navigation tests. |
+| Forward extension began within three viewport heights. | `readerChapterWindowExtension()` now uses the fixed upstream `scrollTop > scrollHeight - 4 * clientHeight` boundary. | `aligned` | Exact threshold tests immediately below/above the boundary. |
+| Adjacent failures were silently dropped. | A failed adjacent chapter renders an in-list error block with stable chapter position and retry; current content remains readable and the extension lock always releases. | `aligned` plus explicit retry affordance | Failure/retry and serialized-extension tests plus browser failure fixture. |
+| Preload and window construction could issue duplicate requests for the same chapter. | `useReaderChapterContent()` deduplicates in-flight requests by book, chapter, and refresh intent. | `acceptable-change` | Concurrent load test and browser request counters. |
+| Mode changes held the already-readable current chapter behind a global loading state until adjacent requests finished. | The cached current block renders immediately; only missing adjacent blocks load, and adjacent latency/failure cannot blank the current chapter. | `aligned` | Mode controller and delayed/failing adjacent chapter browser tests. |
 
 ### Required implementation gates
 
@@ -121,6 +121,15 @@ This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e
 3. Add a delayed/failing adjacent chapter fixture proving the current chapter remains readable and the error is visible/retryable.
 4. Add a real-browser long-book smoke at 1440×900, 390×844, and 360×800. Verify native finger/wheel continuity, no horizontal shift, no anchor jump after `scroll2` cleanup, and no duplicate chapter requests.
 5. Preserve the user-requested difference: native touch/wheel scrolling remains continuous, while click zones and keyboard paging keep discrete viewport-sized movement.
+
+Validation evidence:
+
+- Backend `go test ./...`: passed.
+- Frontend `npm test`: 261 passed.
+- Frontend `npm run build`: passed.
+- `scripts/smoke/reader-continuous-contract.mjs`: passed at 1440×900, 390×844, and 360×800, plus a 390×844 adjacent-failure/retry pass.
+- The browser contract verifies initial `[current, next]` rendering, native 137px wheel movement, symmetric readable geometry, `scroll2` read-chapter removal, paragraph anchor drift within 2px, no duplicate adjacent requests, current-content survival on failure, and successful retry.
+- Existing `scripts/smoke/reader-mobile-contract.mjs` and `scripts/smoke/reader-image-contract.mjs` both passed after this change.
 
 ## Immediate P0 contract: Content image/comic/CBZ reading
 
@@ -271,7 +280,7 @@ Deferred from this EPUB slice:
 
 - TTS/read-aloud and auto-reading behavior: upstream hides some reader controls for EPUB while `Content.vue` contains generic autoplay methods. This requires a separate evidence pass before claiming parity.
 - Search result navigation into exact text inside iframe content.
-- Remaining CBZ lazy-loading and continuous cross-chapter edge cases.
+- Remaining CBZ archive/import and lazy-loading edge cases.
 
 ## Required workflow for each future module
 

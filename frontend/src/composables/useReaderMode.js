@@ -17,12 +17,7 @@ export function useReaderMode(options) {
       if (unref(options.isEPUB)) {
         options.chapterBlocks.value = []
       } else if (unref(options.isContinuousScrollRead)) {
-        options.chapterLoading.value = true
-        try {
-          await options.computeChapterWindow()
-        } finally {
-          options.chapterLoading.value = false
-        }
+        await options.computeChapterWindow()
       } else {
         options.chapterBlocks.value = [
           options.makeChapterBlock(

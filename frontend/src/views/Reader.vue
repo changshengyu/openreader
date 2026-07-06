@@ -149,6 +149,7 @@
             @epub-preview="handleEpubPreview"
             @epub-error="handleEpubError"
             @image-load="handleReaderImageLoad"
+            @retry-block="retryContinuousChapter"
           />
         </div>
       </article>
@@ -718,8 +719,6 @@ const restoringPosition = ref(false)
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
 
 const fontOptions = readerFontOptions
-const SHOW_PREV_CHAPTER_SIZE = 1
-const SHOW_NEXT_CHAPTER_SIZE = 2
 const NEARBY_PRELOAD_RADIUS = 2
 
 const currentSourceName = computed(() => {
@@ -970,6 +969,7 @@ const {
 const {
   compute: computeShowChapterList,
   maybeExtend: maybeExtendShowChapters,
+  retry: retryContinuousChapter,
   syncCurrentChapter: updateCurrentChapterFromScroll,
 } = useReaderChapterWindow({
   reader,
@@ -987,8 +987,8 @@ const {
   restoreScrollAnchor: restoreReaderScrollAnchor,
   visibleProgressSnapshot: visibleChapterProgressSnapshot,
   nextFrame,
-  previousSize: SHOW_PREV_CHAPTER_SIZE,
-  nextSize: SHOW_NEXT_CHAPTER_SIZE,
+  nextSize: 1,
+  formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
 })
 const {
   readableViewportSize,
@@ -1066,6 +1066,10 @@ const {
   scrollStep,
   scrollBehavior: readerScrollBehavior,
   jumpToParagraph,
+  rebuildContinuousWindow: index => computeShowChapterList({
+    anchorIndex: index,
+    activate: true,
+  }),
   closeToc: () => {
     showTocDrawer.value = false
   },

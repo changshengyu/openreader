@@ -96,3 +96,37 @@ test('scrolls vertical pages and schedules progress without changing chapters', 
   assert.deepEqual(fixture.scheduled, [260, 260])
   assert.deepEqual(fixture.navigated, [])
 })
+
+test('rebuilds an explicitly selected loaded chapter before jumping in continuous mode', async () => {
+  const calls = []
+  const targetChapter = {
+    offsetTop: 900,
+    offsetHeight: 700,
+    querySelector: () => null,
+  }
+  const fixture = createNavigation({
+    contentEl: ref({
+      scrollTop: 200,
+      clientHeight: 600,
+      scrollTo: value => calls.push(['scroll', value]),
+    }),
+    contentBody: ref({
+      querySelector: selector => selector.includes('"2"') ? targetChapter : null,
+    }),
+    chapterBlocks: ref([
+      { index: 1, id: 2, title: '第二章', content: '正文 1' },
+      { index: 2, id: 3, title: '第三章', content: '正文 2' },
+    ]),
+    isContinuousScrollRead: ref(true),
+    getMode: () => 'scroll2',
+    rebuildContinuousWindow: async index => calls.push(['rebuild', index]),
+  })
+
+  await fixture.navigation.goChapter(2)
+  assert.deepEqual(calls, [
+    ['rebuild', 2],
+    ['scroll', { top: 900, behavior: 'smooth' }],
+  ])
+  assert.equal(fixture.options.currentIndex.value, 2)
+  assert.deepEqual(fixture.navigated, [])
+})

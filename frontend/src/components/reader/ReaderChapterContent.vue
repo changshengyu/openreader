@@ -33,6 +33,11 @@
         <h1 data-pos="0">{{ block.title || '正文' }}</h1>
         <p v-if="block.volumeText" class="volume-tag" data-reader-block>{{ block.volumeText }}</p>
       </div>
+      <div v-else-if="block.error" class="chapter-inline-error">
+        <h1 data-pos="0">{{ block.title || '正文' }}</h1>
+        <p data-pos="0" data-reader-block>{{ block.error }}</p>
+        <button type="button" @click.stop="emit('retry-block', block.index)">重新加载</button>
+      </div>
       <template v-else>
         <h1 v-if="!block.hideTitle" data-pos="0">{{ block.title || '正文' }}</h1>
         <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
@@ -114,6 +119,7 @@ const emit = defineEmits([
   'epub-preview',
   'epub-error',
   'image-load',
+  'retry-block',
 ])
 </script>
 
@@ -226,6 +232,24 @@ p {
   margin: 0;
   color: rgba(112, 48, 42, 0.8);
   text-indent: 0;
+}
+
+.chapter-inline-error {
+  display: grid;
+  min-height: 45vh;
+  place-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.chapter-inline-error h1,
+.chapter-inline-error p {
+  margin: 0;
+  text-indent: 0;
+}
+
+.chapter-inline-error p {
+  color: rgba(112, 48, 42, 0.8);
 }
 
 .chapter-load-error button {

@@ -49,7 +49,7 @@ test('rebuilds continuous chapter windows and restores reading position', async 
   assert.equal(page.value, 0)
   assert.equal(chapterLoading.value, false)
   assert.deepEqual(calls, [
-    ['window', true],
+    ['window', false],
     ['layout'],
     ['restore', 240, { saveAfterLoad: false }],
     ['save'],

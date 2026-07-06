@@ -1,4 +1,4 @@
-import { nextTick, unref } from 'vue'
+import { unref } from 'vue'
 import {
   adjacentReaderChapterIndex,
   readerChapterWindowExtension,
@@ -7,9 +7,39 @@ import {
 } from '../utils/readerChapterWindow.js'
 
 export function useReaderChapterWindow(options) {
-  const previousSize = Math.max(0, Number(options.previousSize) || 0)
-  const nextSize = Math.max(0, Number(options.nextSize) || 0)
+  const configuredNextSize = Number(options.nextSize)
+  const nextSize = Math.max(0, Number.isFinite(configuredNextSize) ? configuredNextSize : 1)
+  let scrollStartIndex = Math.max(0, Number(unref(options.currentIndex)) || 0)
   let extending = false
+  let computeVersion = 0
+
+  function blockFor(index, data) {
+    const chapterRows = unref(options.chapters)
+    return options.makeChapterBlock(
+      index,
+      data?.chapter || chapterRows[index],
+      data?.content || '',
+    )
+  }
+
+  function errorBlockFor(index, error) {
+    const message = options.formatError?.(error)
+      || error?.message
+      || String(error || '章节加载失败')
+    return {
+      ...blockFor(index, {
+        chapter: unref(options.chapters)[index],
+        content: `获取章节内容失败！\n${message}`,
+      }),
+      error: message,
+    }
+  }
+
+  async function replaceBlocks(blocks, preserveAnchor = true) {
+    const anchor = preserveAnchor ? options.captureScrollAnchor() : null
+    options.chapterBlocks.value = blocks
+    await options.restoreScrollAnchor(anchor)
+  }
 
   async function compute(computeOptions = {}) {
     const chapterRows = unref(options.chapters)
@@ -20,31 +50,59 @@ export function useReaderChapterWindow(options) {
     const anchorIndex = Number.isInteger(computeOptions.anchorIndex)
       ? computeOptions.anchorIndex
       : unref(options.currentIndex)
+    scrollStartIndex = anchorIndex
+    const version = ++computeVersion
+    const activatedBlock = options.chapterBlocks.value.find(
+      block => Number(block.index) === anchorIndex,
+    )
+    if (computeOptions.activate) {
+      options.currentIndex.value = anchorIndex
+      options.chapter.value = chapterRows[anchorIndex]
+        || (activatedBlock?.id
+          ? { id: activatedBlock.id, title: activatedBlock.title, index: anchorIndex }
+          : unref(options.chapter))
+      options.content.value = activatedBlock?.content || unref(options.content)
+    }
     const indexes = readerChapterWindowIndexes({
       mode: options.reader.mode,
       anchorIndex,
+      startIndex: scrollStartIndex,
       totalChapters: chapterRows.length,
-      previousSize,
       nextSize: unref(options.isContinuousScrollRead) ? nextSize : 0,
     })
-    const rows = await Promise.all(indexes.map(async index => {
+    const existing = new Map(
+      options.chapterBlocks.value.map(block => [Number(block.index), block]),
+    )
+    if (!existing.has(anchorIndex) && anchorIndex === unref(options.currentIndex)) {
+      existing.set(
+        anchorIndex,
+        blockFor(anchorIndex, {
+          chapter: unref(options.chapter),
+          content: unref(options.content),
+        }),
+      )
+    }
+    const immediate = indexes.map(index => existing.get(index)).filter(Boolean)
+    if (
+      options.chapterBlocks.value.length <= 1
+      && immediate.some(block => Number(block.index) === anchorIndex)
+    ) {
+      options.chapterBlocks.value = immediate
+    }
+
+    const loaded = await Promise.all(indexes.map(async index => {
+      if (existing.has(index)) return existing.get(index)
       try {
         const data = await options.loadContent(index)
-        return options.makeChapterBlock(
-          index,
-          data.chapter || chapterRows[index],
-          data.content || '',
-        )
-      } catch {
-        return null
+        return blockFor(index, data)
+      } catch (error) {
+        return errorBlockFor(index, error)
       }
     }))
-    if (unref(options.currentIndex) !== anchorIndex) return
-    const blocks = rows.filter(Boolean)
+    if (version !== computeVersion || unref(options.currentIndex) !== anchorIndex) return
+    const blocks = loaded.filter(Boolean)
     if (!blocks.some(block => block.index === anchorIndex)) return
-    const scrollAnchor = options.captureScrollAnchor()
-    options.chapterBlocks.value = blocks
-    await options.restoreScrollAnchor(scrollAnchor)
+    await replaceBlocks(blocks, !computeOptions.activate)
   }
 
   async function appendNext() {
@@ -57,78 +115,24 @@ export function useReaderChapterWindow(options) {
     })
     if (nextIndex === null) return
     if (options.chapterBlocks.value.some(block => block.index === nextIndex)) return
-    const data = await options.loadContent(nextIndex)
-    options.chapterBlocks.value = [
+    let block
+    try {
+      const data = await options.loadContent(nextIndex)
+      block = blockFor(nextIndex, data)
+    } catch (error) {
+      block = errorBlockFor(nextIndex, error)
+    }
+    const appended = [
       ...options.chapterBlocks.value,
-      options.makeChapterBlock(
-        nextIndex,
-        data.chapter || chapterRows[nextIndex],
-        data.content || '',
-      ),
+      block,
     ]
-  }
-
-  async function prependPrevious() {
-    const viewport = unref(options.contentEl)
-    if (
-      options.reader.mode !== 'scroll2'
-      || !options.chapterBlocks.value.length
-      || !viewport
-    ) return
-    const chapterRows = unref(options.chapters)
-    const previousIndex = adjacentReaderChapterIndex({
-      blocks: options.chapterBlocks.value,
-      direction: 'previous',
+    const plan = readerChapterWindowPrunePlan({
+      blocks: appended,
+      mode: options.reader.mode,
+      currentIndex: unref(options.currentIndex),
       totalChapters: chapterRows.length,
     })
-    if (previousIndex === null) return
-    if (options.chapterBlocks.value.some(block => block.index === previousIndex)) return
-    const beforeHeight = viewport.scrollHeight
-    const beforeTop = viewport.scrollTop
-    const data = await options.loadContent(previousIndex)
-    options.chapterBlocks.value = [
-      options.makeChapterBlock(
-        previousIndex,
-        data.chapter || chapterRows[previousIndex],
-        data.content || '',
-      ),
-      ...options.chapterBlocks.value,
-    ]
-    await nextTick()
-    await options.nextFrame()
-    const heightDelta = Math.max(0, viewport.scrollHeight - beforeHeight)
-    viewport.scrollTop = beforeTop + heightDelta
-  }
-
-  function prune() {
-    const viewport = unref(options.contentEl)
-    if (
-      options.reader.mode !== 'scroll2'
-      || !viewport
-      || !options.chapterBlocks.value.length
-    ) return
-    const plan = readerChapterWindowPrunePlan({
-      blocks: options.chapterBlocks.value,
-      currentIndex: unref(options.currentIndex),
-      totalChapters: unref(options.chapters).length,
-      previousSize,
-      nextSize,
-    })
-    if (!plan.changed) return
-    const body = unref(options.contentBody)
-    const removedBeforeHeight = plan.removedBeforeIndexes.reduce((sum, index) => {
-      const element = body?.querySelector(`.chapter-content[data-index="${index}"]`)
-      return sum + (element?.getBoundingClientRect?.().height || 0)
-    }, 0)
-    const beforeTop = viewport.scrollTop
-    options.chapterBlocks.value = plan.blocks
-    if (removedBeforeHeight > 0) {
-      nextTick(() => {
-        const currentViewport = unref(options.contentEl)
-        if (!currentViewport) return
-        currentViewport.scrollTop = Math.max(0, beforeTop - removedBeforeHeight)
-      })
-    }
+    await replaceBlocks(plan.blocks)
   }
 
   function syncCurrentChapter() {
@@ -144,24 +148,46 @@ export function useReaderChapterWindow(options) {
         ? { id: block.id, title: block.title, index: nextIndex }
         : options.chapter.value)
     options.content.value = block?.content || options.content.value
-    prune()
+  }
+
+  async function retry(index) {
+    const targetIndex = Number(index)
+    const blockIndex = options.chapterBlocks.value.findIndex(
+      block => Number(block.index) === targetIndex,
+    )
+    if (blockIndex < 0) return
+    try {
+      const data = await options.loadContent(targetIndex, { refresh: true })
+      const blocks = [...options.chapterBlocks.value]
+      blocks[blockIndex] = blockFor(targetIndex, data)
+      await replaceBlocks(blocks)
+    } catch (error) {
+      const blocks = [...options.chapterBlocks.value]
+      blocks[blockIndex] = errorBlockFor(targetIndex, error)
+      await replaceBlocks(blocks)
+    }
   }
 
   function maybeExtend() {
     const viewport = unref(options.contentEl)
     if (!unref(options.isContinuousScrollRead) || extending || !viewport) return
+    const lastBlock = options.chapterBlocks.value[options.chapterBlocks.value.length - 1]
+    if (lastBlock?.error) return
     const extension = readerChapterWindowExtension({
       mode: options.reader.mode,
       scrollTop: viewport.scrollTop,
       clientHeight: viewport.clientHeight,
       scrollHeight: viewport.scrollHeight,
     })
-    if (!extension.previous && !extension.next) return
+    if (!extension.next) return
+    const nextIndex = adjacentReaderChapterIndex({
+      blocks: options.chapterBlocks.value,
+      direction: 'next',
+      totalChapters: unref(options.chapters).length,
+    })
+    if (nextIndex === null) return
     extending = true
-    Promise.all([
-      extension.previous ? prependPrevious() : Promise.resolve(),
-      extension.next ? appendNext() : Promise.resolve(),
-    ])
+    appendNext()
       .catch(() => {})
       .finally(() => {
         extending = false
@@ -172,8 +198,7 @@ export function useReaderChapterWindow(options) {
     appendNext,
     compute,
     maybeExtend,
-    prependPrevious,
-    prune,
+    retry,
     syncCurrentChapter,
   }
 }

@@ -13,12 +13,19 @@ test('builds mode-specific chapter windows at book boundaries', () => {
     mode: 'scroll2',
     anchorIndex: 0,
     totalChapters: 10,
-  }), [0, 1, 2])
+  }), [0, 1])
   assert.deepEqual(readerChapterWindowIndexes({
     mode: 'scroll2',
     anchorIndex: 5,
     totalChapters: 10,
-  }), [4, 5, 6, 7])
+    startIndex: 2,
+  }), [5, 6])
+  assert.deepEqual(readerChapterWindowIndexes({
+    mode: 'scroll',
+    anchorIndex: 5,
+    startIndex: 2,
+    totalChapters: 10,
+  }), [2, 3, 4, 5, 6])
   assert.deepEqual(readerChapterWindowIndexes({
     mode: 'scroll',
     anchorIndex: 9,
@@ -53,40 +60,40 @@ test('selects adjacent and nearby chapters without crossing book bounds', () => 
 test('detects chapter extension zones for continuous reading modes', () => {
   assert.deepEqual(readerChapterWindowExtension({
     mode: 'scroll2',
-    scrollTop: 400,
+    scrollTop: 800,
     clientHeight: 800,
     scrollHeight: 4000,
   }), {
-    previous: true,
     next: false,
   })
   assert.deepEqual(readerChapterWindowExtension({
-    mode: 'scroll',
-    scrollTop: 1700,
+    mode: 'scroll2',
+    scrollTop: 801,
     clientHeight: 800,
     scrollHeight: 4000,
   }), {
-    previous: false,
     next: true,
   })
 })
 
-test('plans scroll2 pruning and identifies only removed leading chapters', () => {
+test('scroll2 drops every read chapter while scroll retains its explicit start', () => {
   const blocks = [1, 2, 3, 4, 5, 6].map(index => ({ index }))
   const plan = readerChapterWindowPrunePlan({
     blocks,
+    mode: 'scroll2',
     currentIndex: 4,
     totalChapters: 10,
   })
-  assert.deepEqual(plan.blocks.map(block => block.index), [3, 4, 5, 6])
-  assert.deepEqual(plan.removedBeforeIndexes, [1, 2])
+  assert.deepEqual(plan.blocks.map(block => block.index), [4, 5, 6])
+  assert.deepEqual(plan.removedBeforeIndexes, [1, 2, 3])
   assert.equal(plan.changed, true)
 
-  const stable = readerChapterWindowPrunePlan({
-    blocks: plan.blocks,
+  const retained = readerChapterWindowPrunePlan({
+    blocks,
+    mode: 'scroll',
     currentIndex: 4,
     totalChapters: 10,
   })
-  assert.equal(stable.changed, false)
-  assert.equal(stable.blocks[0], plan.blocks[0])
+  assert.equal(retained.changed, false)
+  assert.equal(retained.blocks[0], blocks[0])
 })

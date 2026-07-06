@@ -113,9 +113,16 @@ export function useReaderNavigation(options) {
       jumpWithinCurrentChapter(offset)
       return
     }
-    if (unref(options.isContinuousScrollRead) && jumpToLoadedChapter(targetIndex, offset)) {
-      options.closeToc?.()
-      return
+    if (unref(options.isContinuousScrollRead)) {
+      const loaded = options.contentBody.value
+        ?.querySelector(`.chapter-content[data-index="${targetIndex}"]`)
+      if (loaded) {
+        await options.rebuildContinuousWindow?.(targetIndex)
+        if (jumpToLoadedChapter(targetIndex, offset)) {
+          options.closeToc?.()
+          return
+        }
+      }
     }
     const query = { chapter: targetIndex }
     if (offset) query.offset = offset
