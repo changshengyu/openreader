@@ -44,13 +44,16 @@
       <el-icon :size="18"><RefreshRight /></el-icon>
     </button>
     <button class="round-tool" type="button" :class="{ active: autoReading }" title="自动阅读" @click="$emit('action', 'auto-read')">
-      <el-icon :size="18"><VideoPlay /></el-icon>
+      <el-icon :size="18"><View /></el-icon>
     </button>
     <button class="round-tool" type="button" :class="{ active: ttsPlaying }" :disabled="!ttsSupported" :title="ttsSupported ? '朗读' : '当前浏览器不支持朗读'" @click="$emit('action', 'tts')">
       <el-icon :size="18"><Headset /></el-icon>
     </button>
-    <button class="round-tool" type="button" title="夜间模式" @click="$emit('action', 'night')">
-      <el-icon :size="18"><Moon /></el-icon>
+    <button class="round-tool" type="button" :title="isNight ? '日间模式' : '夜间模式'" @click="$emit('action', 'night')">
+      <el-icon :size="18">
+        <Sunny v-if="isNight" />
+        <Moon v-else />
+      </el-icon>
     </button>
   </aside>
 </template>
@@ -70,7 +73,8 @@ import {
   RefreshRight,
   Search,
   Setting,
-  VideoPlay,
+  Sunny,
+  View,
 } from '@element-plus/icons-vue'
 
 defineProps({
@@ -93,6 +97,10 @@ defineProps({
   activePanel: {
     type: String,
     default: '',
+  },
+  isNight: {
+    type: Boolean,
+    default: false,
   },
 })
 

@@ -8,16 +8,6 @@ export function useReaderTools(options) {
     action?.()
   }
 
-  function runMobileAction(action) {
-    options.mobileMoreVisible.value = false
-    options.mobileChromeVisible.value = false
-    action?.()
-  }
-
-  function handleMobileToolAction(action) {
-    runMobileAction(resolve(action))
-  }
-
   function handleMobileChromeAction(action) {
     if (action === 'previous') {
       options.goChapter(options.currentIndex.value - 1)
@@ -31,12 +21,6 @@ export function useReaderTools(options) {
       options.toggleChrome()
       return
     }
-    if (action === 'more') {
-      openMobileTool(() => {
-        options.mobileMoreVisible.value = true
-      })
-      return
-    }
     openMobileTool(resolve(action))
   }
 
@@ -47,9 +31,7 @@ export function useReaderTools(options) {
   return {
     handleDesktopToolAction,
     handleMobileChromeAction,
-    handleMobileToolAction,
     openMobileTool,
     resolve,
-    runMobileAction,
   }
 }

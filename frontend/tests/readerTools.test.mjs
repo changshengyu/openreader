@@ -7,11 +7,9 @@ function createController() {
   const calls = []
   const currentIndex = ref(3)
   const mobileChromeVisible = ref(true)
-  const mobileMoreVisible = ref(true)
   const controller = useReaderTools({
     currentIndex,
     mobileChromeVisible,
-    mobileMoreVisible,
     goChapter: index => calls.push(['chapter', index]),
     toggleChrome: () => calls.push(['toggle']),
     actions: {
@@ -24,7 +22,6 @@ function createController() {
     controller,
     currentIndex,
     mobileChromeVisible,
-    mobileMoreVisible,
   }
 }
 
@@ -36,27 +33,16 @@ test('dispatches desktop tools through the shared action map', () => {
   assert.equal(typeof fixture.controller.resolve('settings'), 'function')
 })
 
-test('closes mobile tool surfaces before running more-menu actions', () => {
-  const fixture = createController()
-  fixture.controller.handleMobileToolAction('settings')
-  assert.equal(fixture.mobileChromeVisible.value, false)
-  assert.equal(fixture.mobileMoreVisible.value, false)
-  assert.deepEqual(fixture.calls, [['settings']])
-})
-
-test('keeps mobile chrome navigation and more actions distinct', () => {
+test('keeps mobile chrome navigation and direct tool actions distinct', () => {
   const fixture = createController()
   fixture.controller.handleMobileChromeAction('previous')
   fixture.controller.handleMobileChromeAction('next')
   fixture.controller.handleMobileChromeAction('toggle')
-  fixture.controller.handleMobileChromeAction('more')
   assert.deepEqual(fixture.calls, [
     ['chapter', 2],
     ['chapter', 4],
     ['toggle'],
   ])
-  assert.equal(fixture.mobileChromeVisible.value, false)
-  assert.equal(fixture.mobileMoreVisible.value, true)
 
   fixture.mobileChromeVisible.value = true
   fixture.controller.handleMobileChromeAction('toc')

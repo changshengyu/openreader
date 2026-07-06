@@ -1,61 +1,94 @@
 <template>
   <header class="reader-mobile-top" :class="{ visible }">
-    <button class="mobile-tool-button" type="button" aria-label="返回首页" @click="$emit('action', 'home')">
-      <el-icon :size="20"><ArrowLeft /></el-icon>
+    <button class="mobile-tool-button" type="button" @click="$emit('action', 'shelf')">
+      <el-icon :size="19"><Notebook /></el-icon>
+      <span>书架</span>
     </button>
-    <div class="mobile-reader-title">
-      <strong>{{ bookTitle || '阅读中' }}</strong>
-      <span>{{ chapterTitle || chapterLabel }}</span>
-    </div>
-    <span class="mobile-reader-progress">{{ bookProgressLabel }}</span>
-  </header>
-
-  <footer class="reader-mobile-bottom" :class="{ visible }">
-    <div class="reader-mobile-progress-panel">
-      <label class="mobile-progress-slider-row" title="拖动定位阅读进度">
-        <input
-          class="mobile-progress-slider"
-          type="range"
-          min="0"
-          max="1000"
-          step="1"
-          :value="bookSliderValue"
-          :aria-label="`阅读进度 ${bookSliderLabel}`"
-          @input="$emit('book-progress-input', $event)"
-          @change="$emit('book-progress-change', $event)"
-        />
-        <span>{{ bookSliderLabel }}</span>
-      </label>
-      <button class="mobile-chapter-step" type="button" :disabled="previousDisabled" @click="$emit('action', 'previous')">
-        上一章
-      </button>
-      <button class="mobile-chapter-progress" type="button" @click="$emit('action', 'toggle')">
-        <strong>{{ bookProgressLabel }}</strong>
-        <span>{{ chapterLabel }}</span>
-      </button>
-      <button class="mobile-chapter-step" type="button" :disabled="nextDisabled" @click="$emit('action', 'next')">
-        下一章
-      </button>
-    </div>
+    <button
+      class="mobile-tool-button"
+      type="button"
+      :disabled="!remoteBook"
+      @click="$emit('action', 'source')"
+    >
+      <el-icon :size="19"><Grid /></el-icon>
+      <span>书源</span>
+    </button>
     <button class="mobile-tool-button" type="button" @click="$emit('action', 'toc')">
-      <el-icon :size="20"><List /></el-icon>
+      <el-icon :size="19"><List /></el-icon>
       <span>目录</span>
     </button>
-    <button class="mobile-tool-button" type="button" @click="$emit('action', 'bookmarks')">
-      <el-icon :size="20"><CollectionTag /></el-icon>
-      <span>书签</span>
-    </button>
-    <button class="mobile-tool-button" type="button" @click="$emit('action', 'search')">
-      <el-icon :size="20"><Search /></el-icon>
-      <span>搜索</span>
-    </button>
     <button class="mobile-tool-button" type="button" @click="$emit('action', 'settings')">
-      <el-icon :size="20"><Setting /></el-icon>
+      <el-icon :size="19"><Setting /></el-icon>
       <span>设置</span>
     </button>
-    <button class="mobile-tool-button" type="button" @click="$emit('action', 'more')">
-      <el-icon :size="20"><MoreFilled /></el-icon>
-      <span>更多</span>
+    <button class="mobile-tool-button" type="button" @click="$emit('action', 'home')">
+      <el-icon :size="19"><ArrowLeft /></el-icon>
+      <span>首页</span>
+    </button>
+  </header>
+
+  <aside class="reader-mobile-float-tools reader-mobile-float-left" :class="{ visible }">
+    <button type="button" title="书签" @click="$emit('action', 'bookmarks')">
+      <el-icon :size="18"><CollectionTag /></el-icon>
+    </button>
+    <button type="button" title="搜索正文" @click="$emit('action', 'search')">
+      <el-icon :size="18"><Search /></el-icon>
+    </button>
+    <button type="button" title="书籍信息" @click="$emit('action', 'info')">
+      <el-icon :size="18"><InfoFilled /></el-icon>
+    </button>
+  </aside>
+
+  <aside class="reader-mobile-float-tools reader-mobile-float-right" :class="{ visible }">
+    <button type="button" title="重新载入章节" @click="$emit('action', 'reload')">
+      <el-icon :size="18"><RefreshRight /></el-icon>
+    </button>
+    <button type="button" :class="{ active: autoReading }" title="自动阅读" @click="$emit('action', 'auto-read')">
+      <el-icon :size="18"><View /></el-icon>
+    </button>
+    <button
+      type="button"
+      :class="{ active: ttsPlaying }"
+      :disabled="!ttsSupported"
+      :title="ttsSupported ? '朗读' : '当前浏览器不支持朗读'"
+      @click="$emit('action', 'tts')"
+    >
+      <el-icon :size="18"><Headset /></el-icon>
+    </button>
+    <button type="button" :title="isNight ? '日间模式' : '夜间模式'" @click="$emit('action', 'night')">
+      <el-icon :size="18">
+        <Sunny v-if="isNight" />
+        <Moon v-else />
+      </el-icon>
+    </button>
+  </aside>
+
+  <footer class="reader-mobile-bottom" :class="{ visible }">
+    <label class="mobile-progress-slider-row" title="拖动定位阅读进度">
+      <input
+        class="mobile-progress-slider"
+        type="range"
+        min="0"
+        max="1000"
+        step="1"
+        :value="bookSliderValue"
+        :aria-label="`阅读进度 ${bookSliderLabel}`"
+        @input="$emit('book-progress-input', $event)"
+        @change="$emit('book-progress-change', $event)"
+      />
+      <span>{{ bookSliderLabel }}</span>
+    </label>
+    <button class="mobile-chapter-step" type="button" :disabled="previousDisabled" @click="$emit('action', 'previous')">
+      <el-icon :size="18"><ArrowLeft /></el-icon>
+      <span>上一章</span>
+    </button>
+    <button class="mobile-chapter-progress" type="button" title="缓存章节" @click="$emit('action', 'cache')">
+      <strong>{{ bookProgressLabel }}</strong>
+      <span>{{ chapterLabel }}</span>
+    </button>
+    <button class="mobile-chapter-step" type="button" :disabled="nextDisabled" @click="$emit('action', 'next')">
+      <span>下一章</span>
+      <el-icon :size="18"><ArrowRight /></el-icon>
     </button>
   </footer>
 </template>
@@ -63,11 +96,19 @@
 <script setup>
 import {
   ArrowLeft,
+  ArrowRight,
   CollectionTag,
+  Grid,
+  Headset,
+  InfoFilled,
   List,
-  MoreFilled,
+  Moon,
+  Notebook,
+  RefreshRight,
   Search,
   Setting,
+  Sunny,
+  View,
 } from '@element-plus/icons-vue'
 
 defineProps({
@@ -75,13 +116,25 @@ defineProps({
     type: Boolean,
     default: false,
   },
-  bookTitle: {
-    type: String,
-    default: '',
+  remoteBook: {
+    type: Boolean,
+    default: false,
   },
-  chapterTitle: {
-    type: String,
-    default: '',
+  autoReading: {
+    type: Boolean,
+    default: false,
+  },
+  ttsPlaying: {
+    type: Boolean,
+    default: false,
+  },
+  ttsSupported: {
+    type: Boolean,
+    default: false,
+  },
+  isNight: {
+    type: Boolean,
+    default: false,
   },
   bookProgressLabel: {
     type: String,
@@ -115,83 +168,94 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
 <style scoped>
 .reader-mobile-top,
 .reader-mobile-bottom,
-.reader-mobile-progress-panel {
+.reader-mobile-float-tools {
   display: none;
 }
 
 @media (max-width: 750px) {
-  .reader-mobile-top {
+  .reader-mobile-top.visible {
     position: fixed;
     top: 0;
     right: 0;
     left: 0;
     z-index: 8;
-    grid-template-columns: 44px minmax(0, 1fr) 52px;
-    align-items: center;
-    gap: 8px;
-    min-height: 58px;
-    padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: max(5px, env(safe-area-inset-top)) 8px 5px;
     background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
     border-bottom: 1px solid rgba(148, 132, 87, 0.28);
     box-shadow: 0 8px 24px rgba(73, 57, 27, 0.08);
   }
 
-  .mobile-reader-title {
+  .mobile-tool-button {
     display: grid;
     min-width: 0;
+    min-height: 48px;
+    place-items: center;
+    align-content: center;
     gap: 2px;
-    color: #25282c;
-  }
-
-  .mobile-reader-title strong,
-  .mobile-reader-title span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .mobile-reader-title strong {
-    font-size: 14px;
-  }
-
-  .mobile-reader-title span,
-  .mobile-reader-progress {
-    color: #756c5a;
+    padding: 4px 2px;
+    color: #25221d;
+    background: transparent;
+    border: 0;
     font-size: 12px;
   }
 
-  .mobile-reader-progress {
-    text-align: right;
+  .mobile-tool-button:disabled {
+    opacity: 0.4;
   }
 
-  .reader-mobile-bottom {
+  .reader-mobile-float-tools.visible {
+    position: fixed;
+    bottom: 134px;
+    z-index: 8;
+    display: grid;
+    gap: 12px;
+  }
+
+  .reader-mobile-float-left {
+    left: 18px;
+  }
+
+  .reader-mobile-float-right {
+    right: 18px;
+  }
+
+  .reader-mobile-float-tools button {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    color: #191714;
+    background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 999px;
+    box-shadow: 0 4px 12px rgba(73, 57, 27, 0.12);
+  }
+
+  .reader-mobile-float-tools button.active {
+    color: #0f5451;
+  }
+
+  .reader-mobile-float-tools button:disabled {
+    opacity: 0.42;
+  }
+
+  .reader-mobile-bottom.visible {
     position: fixed;
     right: 0;
     bottom: 0;
     left: 0;
     z-index: 8;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    align-items: center;
-    gap: 7px 4px;
-    min-height: calc(76px + env(safe-area-inset-bottom));
-    box-sizing: border-box;
-    padding: 8px 10px max(10px, env(safe-area-inset-bottom));
-    background: color-mix(in srgb, var(--reader-popup-bg) 94%, transparent);
-    border-top: 1px solid rgba(148, 132, 87, 0.35);
-    border-radius: 10px 10px 0 0;
-    box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
-  }
-
-  .reader-mobile-progress-panel {
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(62px, 76px) minmax(0, 1fr) minmax(62px, 76px);
+    display: grid;
+    grid-template-columns: minmax(72px, 92px) minmax(0, 1fr) minmax(72px, 92px);
     align-items: center;
     gap: 8px;
-    min-height: 84px;
-    padding: 7px;
+    min-height: calc(88px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    padding: 8px 12px max(10px, env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
-    border: 1px solid rgba(148, 132, 87, 0.28);
-    border-radius: 8px;
+    border-top: 1px solid rgba(148, 132, 87, 0.35);
     box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
   }
 
@@ -201,9 +265,7 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
-    min-width: 0;
-    padding: 0 3px;
-    color: #8d8270;
+    color: #756c5a;
     font-size: 12px;
   }
 
@@ -213,26 +275,21 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
     accent-color: #409eff;
   }
 
-  .reader-mobile-top.visible,
-  .reader-mobile-bottom.visible,
-  .reader-mobile-bottom.visible .reader-mobile-progress-panel,
-  .reader-mobile-bottom.visible > .mobile-tool-button {
-    display: grid;
-  }
-
   .mobile-chapter-step {
+    display: flex;
     min-width: 0;
-    min-height: 38px;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
     color: #24201b;
-    background: var(--reader-popup-bg);
-    border: 1px solid rgba(148, 132, 87, 0.3);
-    border-radius: 6px;
+    background: transparent;
+    border: 0;
     font-size: 13px;
   }
 
   .mobile-chapter-step:disabled {
-    color: #a09282;
-    opacity: 0.55;
+    opacity: 0.45;
   }
 
   .mobile-chapter-progress {
@@ -243,7 +300,6 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
     padding: 0;
     background: transparent;
     border: 0;
-    cursor: pointer;
   }
 
   .mobile-chapter-progress strong,
@@ -262,23 +318,6 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
   .mobile-chapter-progress span {
     color: #756c5a;
     font-size: 12px;
-  }
-
-  .mobile-tool-button {
-    min-width: 0;
-    min-height: 44px;
-    place-items: center;
-    gap: 3px;
-    padding: 6px 4px;
-    color: #111;
-    background: transparent;
-    border: 0;
-    border-radius: 6px;
-    font-size: 12px;
-  }
-
-  .mobile-tool-button:active {
-    background: rgba(114, 91, 43, 0.1);
   }
 }
 </style>

@@ -8,7 +8,6 @@ function createController(overrides = {}) {
   const book = ref({ id: 7, sourceId: 2, title: '测试书' })
   const state = {
     mobileChromeVisible: ref(true),
-    mobileMoreVisible: ref(true),
     settingsVisible: ref(false),
     bookmarkVisible: ref(false),
     searchVisible: ref(false),
@@ -59,7 +58,6 @@ test('opens reader panels while preserving their existing visibility side effect
 
   fixture.controller.showClickZone()
   assert.equal(fixture.state.settingsVisible.value, false)
-  assert.equal(fixture.state.mobileMoreVisible.value, false)
   assert.equal(fixture.state.clickZoneVisible.value, true)
 
   fixture.controller.openCache()

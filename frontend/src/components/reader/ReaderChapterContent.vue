@@ -11,11 +11,16 @@
       v-for="block in blocks"
       :key="block.index"
       class="chapter-content reading-chapter"
-      :class="mode"
+      :class="[mode, { 'volume-chapter': block.isVolume }]"
       :data-index="block.index"
     >
-      <h1 data-pos="0">{{ block.title || '正文' }}</h1>
-      <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
+      <div v-if="block.isVolume" class="volume-content">
+        <h1 data-pos="0">{{ block.title || '正文' }}</h1>
+        <p v-if="block.volumeText" class="volume-tag" data-reader-block>{{ block.volumeText }}</p>
+      </div>
+      <template v-else>
+        <h1 data-pos="0">{{ block.title || '正文' }}</h1>
+        <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
         <figure
           v-if="line.type === 'image'"
           class="reader-content-image"
@@ -35,8 +40,9 @@
           <figcaption v-if="line.alt">{{ line.alt }}</figcaption>
         </figure>
         <p v-else :data-pos="line.pos" data-reader-block>{{ line.text }}</p>
+        </template>
+        <p v-if="loaded && block.paragraphs.length === 0" class="empty-hint">当前章节暂无正文内容</p>
       </template>
-      <p v-if="loaded && block.paragraphs.length === 0" class="empty-hint">当前章节暂无正文内容</p>
     </section>
   </template>
 </template>
@@ -76,6 +82,24 @@ const emit = defineEmits(['reload'])
 .chapter-content.scroll + .chapter-content,
 .chapter-content.scroll2 + .chapter-content {
   padding-top: 58px;
+}
+
+.chapter-content.volume-chapter {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+}
+
+.volume-content {
+  width: 100%;
+  text-align: center;
+}
+
+.volume-tag {
+  text-align: right;
+  text-indent: 0;
+  white-space: pre-line;
 }
 
 h1 {

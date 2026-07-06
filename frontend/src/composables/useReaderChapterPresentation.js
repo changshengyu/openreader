@@ -22,11 +22,16 @@ export function useReaderChapterPresentation(options) {
     const fallback = unref(options.chapters)?.[index] || {}
     const title = chapterRow?.title || fallback.title || `第 ${index + 1} 章`
     const paragraphs = makeParagraphs(text, title)
+    const isVolume = Boolean(chapterRow?.isVolume ?? fallback.isVolume)
     return {
       index,
       id: chapterRow?.id || fallback.id,
       title: displayChapterTitle(title),
       content: String(text || ''),
+      isVolume,
+      volumeText: isVolume
+        ? paragraphs.filter(item => item.type === 'text').map(item => item.text).join('\n')
+        : '',
       paragraphs,
       imageUrls: paragraphs
         .filter(item => item.type === 'image')

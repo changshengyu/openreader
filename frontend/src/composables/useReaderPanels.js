@@ -15,7 +15,6 @@ export function useReaderPanels(options) {
 
   function showClickZone() {
     options.settingsVisible.value = false
-    options.mobileMoreVisible.value = false
     options.mobileChromeVisible.value = false
     options.clickZoneVisible.value = true
   }

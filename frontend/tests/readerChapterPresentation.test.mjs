@@ -46,6 +46,18 @@ test('builds chapter blocks from row and catalog fallbacks', () => {
   assert.equal(generated.title, '第 2 章')
 })
 
+test('preserves upstream volume chapter semantics', () => {
+  const fixture = createController()
+  fixture.chapters.value[0].isVolume = true
+  const volume = fixture.controller.makeChapterBlock(0, null, '卷首语\n敬请期待')
+  assert.equal(volume.isVolume, true)
+  assert.equal(volume.volumeText, '卷首语\n敬请期待')
+
+  const regular = fixture.controller.makeChapterBlock(1, { id: 22, isVolume: false }, '正文')
+  assert.equal(regular.isVolume, false)
+  assert.equal(regular.volumeText, '')
+})
+
 test('reads the final paragraph boundary as chapter text length', () => {
   const fixture = createController()
   assert.equal(fixture.controller.chapterBlockTextLength({ paragraphs: [] }), 0)

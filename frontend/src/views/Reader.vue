@@ -6,6 +6,7 @@
       :tts-playing="tts.state.playing"
       :tts-supported="tts.state.supported"
       :active-panel="desktopWorkspacePanel"
+      :is-night="isNightTheme"
       @action="handleDesktopToolAction"
     />
 
@@ -91,8 +92,11 @@
 
     <ReaderMobileChrome
       :visible="mobileChromeVisible"
-      :book-title="book?.title || '阅读中'"
-      :chapter-title="displayChapterTitle(chapter?.title) || chapterLabel"
+      :remote-book="isRemoteBook"
+      :auto-reading="autoReading"
+      :tts-playing="tts.state.playing"
+      :tts-supported="tts.state.supported"
+      :is-night="isNightTheme"
       :book-progress-label="bookProgressLabel"
       :chapter-label="chapterLabel"
       :book-slider-value="mobileBookSliderValue"
@@ -264,17 +268,6 @@
       />
     </el-drawer>
 
-    <!-- ===== 移动端更多 ===== -->
-    <el-drawer v-model="showMobileMoreDrawer" title="阅读工具" direction="btt" size="72%" class="mobile-more-drawer">
-      <ReaderMobileToolsPanel
-        :remote-book="isRemoteBook"
-        :auto-reading="autoReading"
-        :tts-playing="tts.state.playing"
-        :tts-supported="tts.state.supported"
-        @action="handleMobileToolAction"
-      />
-    </el-drawer>
-
     <!-- ===== 缓存抽屉 ===== -->
     <el-drawer v-model="showCacheDrawer" title="缓存章节" :direction="drawerDirection" :size="drawerSize">
       <ReaderCachePanel
@@ -350,7 +343,6 @@ import ReaderDesktopWorkspacePanel from '../components/reader/ReaderDesktopWorks
 import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vue'
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
 import ReaderMobileChrome from '../components/reader/ReaderMobileChrome.vue'
-import ReaderMobileToolsPanel from '../components/reader/ReaderMobileToolsPanel.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
@@ -444,6 +436,7 @@ const book = ref(null)
 const chapters = ref([])
 const chapter = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
+const isNightTheme = computed(() => reader.theme === 'dark' || reader.theme === 'black')
 const {
   cacheKey: readerDataCacheKey,
   invalidate: invalidateReaderDataCache,
@@ -552,7 +545,6 @@ const showSettingsDrawer = ref(false)
 const showBookmarkDrawer = ref(false)
 const showSearchDrawer = ref(false)
 const showSourceDrawer = ref(false)
-const showMobileMoreDrawer = ref(false)
 const showCacheDrawer = ref(false)
 const showClickZoneOverlay = ref(false)
 const sourceGroupOptions = ref([])
@@ -1166,7 +1158,6 @@ const isOverlayOpen = computed(() => (
   showSearchDrawer.value ||
   showShelfDrawer.value ||
   showSourceDrawer.value ||
-  showMobileMoreDrawer.value ||
   showCacheDrawer.value ||
   showNoteDialog.value ||
   showBookmarkEditor.value
@@ -1260,7 +1251,6 @@ const {
   bookProgress,
   bookProgressLabel,
   mobileChromeVisible,
-  mobileMoreVisible: showMobileMoreDrawer,
   settingsVisible: showSettingsDrawer,
   bookmarkVisible: showBookmarkDrawer,
   searchVisible: showSearchDrawer,
@@ -1408,11 +1398,9 @@ const {
 const {
   handleDesktopToolAction,
   handleMobileChromeAction,
-  handleMobileToolAction,
 } = useReaderTools({
   currentIndex,
   mobileChromeVisible,
-  mobileMoreVisible: showMobileMoreDrawer,
   goChapter,
   toggleChrome: toggleReaderChrome,
   actions: {
