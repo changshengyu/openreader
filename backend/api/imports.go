@@ -21,25 +21,14 @@ func (s *Server) listTXTTocRules(c *gin.Context) {
 }
 
 func (s *Server) previewTXTImport(c *gin.Context) {
-	fileHeader, err := c.FormFile("file")
+	userID, _ := middleware.UserID(c)
+	fileName, ext, data, importToken, err := s.readLocalImportPayload(c, userID, true)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
-		return
-	}
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read file"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
-		FileName:  fileHeader.Filename,
+		FileName:  fileName,
 		Extension: ext,
 		Data:      data,
 		Title:     c.PostForm("title"),
@@ -47,37 +36,23 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		TOCRule:   c.PostForm("tocRule"),
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "importToken": importToken})
 		return
 	}
+	preview.ImportToken = importToken
 	c.JSON(http.StatusOK, preview)
 }
 
 func (s *Server) importTXT(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
-	fileHeader, err := c.FormFile("file")
+	fileName, ext, data, importToken, err := s.readLocalImportPayload(c, userID, false)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 	if ext != ".txt" && ext != ".text" && ext != ".md" && ext != ".epub" && ext != ".pdf" && ext != ".umd" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "only txt/text/md/epub/pdf/umd files are supported"})
-		return
-	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
-		return
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read file"})
 		return
 	}
 
@@ -102,7 +77,7 @@ func (s *Server) importTXT(c *gin.Context) {
 	book, err := importer.Import(localbook.ImportRequest{
 		UserID:     userID,
 		UserName:   userName,
-		FileName:   fileHeader.Filename,
+		FileName:   fileName,
 		Extension:  ext,
 		Data:       data,
 		Title:      c.PostForm("title"),
@@ -123,8 +98,45 @@ func (s *Server) importTXT(c *gin.Context) {
 	if len(categoryIDs) > 0 {
 		_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 	}
+	if importToken != "" {
+		s.removeStagedLocalImport(userID, importToken)
+	}
 
 	c.JSON(http.StatusCreated, s.broadcastBookShelfUpdate(userID, book))
+}
+
+func (s *Server) readLocalImportPayload(c *gin.Context, userID uint, createStage bool) (string, string, []byte, string, error) {
+	importToken := strings.TrimSpace(c.PostForm("importToken"))
+	if importToken != "" {
+		metadata, data, err := s.loadStagedLocalImport(userID, importToken)
+		if err != nil {
+			return "", "", nil, "", err
+		}
+		return metadata.FileName, metadata.Extension, data, importToken, nil
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return "", "", nil, "", errors.New("file or importToken is required")
+	}
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", "", nil, "", errors.New("failed to open file")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", nil, "", errors.New("failed to read file")
+	}
+	if !createStage {
+		return fileHeader.Filename, ext, data, "", nil
+	}
+	importToken, err = s.stageLocalImport(userID, fileHeader.Filename, ext, data)
+	if err != nil {
+		return "", "", nil, "", errors.New("failed to stage import")
+	}
+	return fileHeader.Filename, ext, data, importToken, nil
 }
 
 func parseOptionalCategoryIDs(values []string) []uint {

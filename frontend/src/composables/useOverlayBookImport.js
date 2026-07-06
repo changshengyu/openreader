@@ -8,6 +8,7 @@ export function useOverlayBookImport(options) {
   const importing = ref(false)
   const previewing = ref(false)
   const previewData = ref(null)
+  const importToken = ref('')
   const draft = reactive({
     title: '',
     author: '',
@@ -30,6 +31,7 @@ export function useOverlayBookImport(options) {
       tocRule: '',
     })
     previewData.value = null
+    importToken.value = ''
   }
 
   async function open() {
@@ -60,6 +62,7 @@ export function useOverlayBookImport(options) {
     draft.title = ''
     draft.author = ''
     previewData.value = null
+    importToken.value = ''
     if (isEPUB.value) draft.tocRule = 'spin+toc'
     else if (!isText.value) draft.tocRule = ''
     if (draft.file) return preview()
@@ -73,12 +76,15 @@ export function useOverlayBookImport(options) {
         title: draft.title,
         author: draft.author,
         tocRule: supportsTocRule.value ? draft.tocRule : '',
+        ...(importToken.value ? { importToken: importToken.value } : {}),
       })
       previewData.value = data
+      importToken.value = data.importToken || importToken.value
       if (!draft.title && data.title) draft.title = data.title
       if (!draft.author && data.author) draft.author = data.author
     } catch (error) {
       previewData.value = null
+      importToken.value = error?.response?.data?.importToken || importToken.value
       options.onError(error, '解析书籍失败')
     } finally {
       previewing.value = false
@@ -91,6 +97,7 @@ export function useOverlayBookImport(options) {
     try {
       const book = await options.importBook({
         file: draft.file,
+        importToken: importToken.value,
         title: draft.title,
         author: draft.author,
         categoryIds: draft.categoryIds,
@@ -128,6 +135,7 @@ export function useOverlayBookImport(options) {
     importing,
     previewing,
     previewData,
+    importToken,
     draft,
     tocRuleOptions,
     tocRulesLoading,

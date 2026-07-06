@@ -46,6 +46,7 @@ type PreviewResult struct {
 	Author       string           `json:"author"`
 	ChapterCount int              `json:"chapterCount"`
 	Chapters     []PreviewChapter `json:"chapters"`
+	ImportToken  string           `json:"importToken,omitempty"`
 }
 
 func NewImporter(cfg config.Config, db *gorm.DB) Importer {

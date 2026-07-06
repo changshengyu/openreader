@@ -5744,6 +5744,91 @@ func TestDirectImportPreviewDoesNotCreateBook(t *testing.T) {
 	}
 }
 
+func TestDirectImportReusesStagedUploadForReparseAndImport(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	request := func(path string, fields map[string]string, withFile bool) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		if withFile {
+			part, err := writer.CreateFormFile("file", "staged.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := part.Write([]byte("第一章 开始\n正文\n第二章 继续\n正文")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for key, value := range fields {
+			if err := writer.WriteField(key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", token)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	first := request("/api/imports/books/preview", nil, true)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first staged preview: expected 200, got %d: %s", first.Code, first.Body.String())
+	}
+	var preview struct {
+		ImportToken  string `json:"importToken"`
+		ChapterCount int    `json:"chapterCount"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if !validLocalImportToken(preview.ImportToken) || preview.ChapterCount < 1 {
+		t.Fatalf("unexpected staged preview: %+v", preview)
+	}
+	dataPath, metadataPath := localImportStagePaths(server.localImportStageDir(1), preview.ImportToken)
+	if _, err := os.Stat(dataPath); err != nil {
+		t.Fatalf("staged book data missing: %v", err)
+	}
+	if _, err := os.Stat(metadataPath); err != nil {
+		t.Fatalf("staged metadata missing: %v", err)
+	}
+
+	second := request("/api/imports/books/preview", map[string]string{
+		"importToken": preview.ImportToken,
+		"tocRule":     `^第.+章.*$`,
+	}, false)
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"chapterCount":2`) {
+		t.Fatalf("token reparse: expected 2 chapters, got %d: %s", second.Code, second.Body.String())
+	}
+
+	imported := request("/api/imports/books", map[string]string{
+		"importToken": preview.ImportToken,
+		"title":       "复用上传测试",
+		"tocRule":     `^第.+章.*$`,
+	}, false)
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("token import: expected 201, got %d: %s", imported.Code, imported.Body.String())
+	}
+	var count int64
+	if err := server.db.Model(&models.Book{}).Where("title = ?", "复用上传测试").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected imported book, got %d", count)
+	}
+	if _, err := os.Stat(dataPath); !os.IsNotExist(err) {
+		t.Fatalf("staged data should be removed after import, got %v", err)
+	}
+	if _, err := os.Stat(metadataPath); !os.IsNotExist(err) {
+		t.Fatalf("staged metadata should be removed after import, got %v", err)
+	}
+}
+
 func TestDirectEPUBImportAndRefreshUseTocRule(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

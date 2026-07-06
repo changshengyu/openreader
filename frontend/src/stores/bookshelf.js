@@ -351,9 +351,10 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.invalidateCategories()
       return data
     },
-    async importTXT({ file, title, author, categoryId, categoryIds = [], tocRule }) {
+    async importTXT({ file, importToken, title, author, categoryId, categoryIds = [], tocRule }) {
       const form = new FormData()
-      form.append('file', file)
+      if (importToken) form.append('importToken', importToken)
+      else form.append('file', file)
       if (title) form.append('title', title)
       if (author) form.append('author', author)
       const normalizedCategoryIds = Array.isArray(categoryIds)
@@ -368,6 +369,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
 
       const { data } = await api.post('/imports/books', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 10 * 60 * 1000,
       })
       this.upsertBook(data)
       return data

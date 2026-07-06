@@ -26,6 +26,7 @@ function createController(overrides = {}) {
           title: '解析书名',
           author: '解析作者',
           chapterCount: 3,
+          importToken: 'staged-token',
         },
       }
     },
@@ -63,6 +64,7 @@ test('picks an EPUB file, previews metadata, and applies its default TOC rule', 
   assert.equal(fixture.controller.draft.tocRule, 'spin+toc')
   assert.equal(fixture.controller.draft.title, '解析书名')
   assert.equal(fixture.controller.draft.author, '解析作者')
+  assert.equal(fixture.controller.importToken.value, 'staged-token')
   assert.deepEqual(fixture.calls, [
     ['preview', file, {
       title: '',
@@ -89,6 +91,30 @@ test('clears stale previews and reports parsing failures', async () => {
   ])
 })
 
+test('reuses the staged upload for TOC reparsing and final import', async () => {
+  const fixture = createController()
+  const file = { name: 'book.txt' }
+  await fixture.controller.pickFile({ raw: file })
+  fixture.controller.draft.tocRule = '^卷.+$'
+  fixture.calls.length = 0
+
+  await fixture.controller.preview()
+  assert.deepEqual(fixture.calls[0], [
+    'preview',
+    file,
+    {
+      title: '解析书名',
+      author: '解析作者',
+      tocRule: '^卷.+$',
+      importToken: 'staged-token',
+    },
+  ])
+
+  fixture.calls.length = 0
+  await fixture.controller.importBook()
+  assert.equal(fixture.calls[0][1].importToken, 'staged-token')
+})
+
 test('imports the confirmed preview, resets state, and closes the dialog', async () => {
   const fixture = createController()
   const file = { name: 'book.txt' }
@@ -98,11 +124,13 @@ test('imports the confirmed preview, resets state, and closes the dialog', async
   fixture.controller.draft.categoryIds = ['2', '3']
   fixture.controller.draft.tocRule = '^第.+章$'
   fixture.controller.previewData.value = { chapterCount: 3 }
+  fixture.controller.importToken.value = 'staged-token'
   await nextTick()
   fixture.calls.length = 0
   await fixture.controller.importBook()
   assert.equal(fixture.calls[0][0], 'import')
   assert.equal(fixture.calls[0][1].file.name, file.name)
+  assert.equal(fixture.calls[0][1].importToken, 'staged-token')
   assert.equal(fixture.calls[0][1].title, '测试书')
   assert.equal(fixture.calls[0][1].author, '作者')
   assert.deepEqual([...fixture.calls[0][1].categoryIds], ['2', '3'])
@@ -113,6 +141,7 @@ test('imports the confirmed preview, resets state, and closes the dialog', async
   ])
   assert.equal(fixture.controller.draft.file, null)
   assert.equal(fixture.controller.previewData.value, null)
+  assert.equal(fixture.controller.importToken.value, '')
   assert.equal(fixture.controller.importing.value, false)
 })
 
