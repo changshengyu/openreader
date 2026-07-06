@@ -6,24 +6,19 @@ export function useReaderWheel(options) {
   const now = options.now ?? Date.now
   let lastPageAt = 0
 
-  function scroll(delta) {
-    const viewport = unref(options.contentEl)
-    if (!viewport) return
+  function handleVertical(event, delta, viewport) {
     const bottom = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
     const atTop = viewport.scrollTop <= 2
     const atBottom = viewport.scrollTop >= bottom - 2
     if (delta < 0 && atTop) {
+      event.preventDefault()
       options.previousPage()
       return
     }
     if (delta > 0 && atBottom) {
+      event.preventDefault()
       options.nextPage()
-      return
     }
-    viewport.scrollTop = Math.max(
-      0,
-      Math.min(bottom, viewport.scrollTop + delta),
-    )
   }
 
   function handle(event) {
@@ -45,10 +40,9 @@ export function useReaderWheel(options) {
     })
     if (Math.abs(delta) < 4) return
 
-    if (unref(options.isScrollRead)) {
+    if (unref(options.isVerticalRead)) {
       if (!viewport) return
-      event.preventDefault()
-      scroll(delta)
+      handleVertical(event, delta, viewport)
       return
     }
 
@@ -65,6 +59,6 @@ export function useReaderWheel(options) {
 
   return {
     handle,
-    scroll,
+    handleVertical,
   }
 }

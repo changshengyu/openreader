@@ -54,7 +54,7 @@
       <label class="setting-label">主题</label>
       <div class="theme-grid">
         <span
-          v-for="(preset, key) in themePresets"
+          v-for="(preset, key) in visibleThemePresets"
           :key="key"
           class="theme-dot"
           :class="{ active: reader.theme === key }"
@@ -119,9 +119,16 @@
       </div>
     </template>
 
-    <div class="setting-row">
+    <div class="setting-row stepper-setting-row">
       <label class="setting-label">亮度</label>
-      <el-slider v-model="brightnessModel" :min="50" :max="150" size="small" />
+      <ReaderSettingStepper
+        v-model="brightnessModel"
+        :min="50"
+        :max="150"
+        :step="5"
+        decrease-label="降低亮度"
+        increase-label="提高亮度"
+      />
     </div>
 
     <div class="setting-row">
@@ -175,13 +182,16 @@
       </el-radio-group>
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">字号 ({{ reader.fontSize }}px)</label>
-      <div class="font-controls">
-        <el-button size="small" :icon="Minus" circle @click="changeFontSize(-1)" />
-        <el-slider v-model="fontSizeModel" :min="8" :max="36" size="small" class="font-slider" />
-        <el-button size="small" :icon="Plus" circle @click="changeFontSize(1)" />
-      </div>
+    <div class="setting-row typography-setting-row">
+      <label class="setting-label">字号</label>
+      <ReaderSettingStepper
+        v-model="fontSizeModel"
+        :min="8"
+        :max="36"
+        :step="1"
+        decrease-label="减小字号"
+        increase-label="增大字号"
+      />
       <div class="font-size-presets">
         <button
           v-for="size in fontSizePresets"
@@ -196,19 +206,40 @@
       </div>
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">字重 ({{ reader.fontWeight }})</label>
-      <el-slider v-model="fontWeightModel" :min="100" :max="900" :step="100" size="small" />
+    <div class="setting-row typography-setting-row">
+      <label class="setting-label">字重</label>
+      <ReaderSettingStepper
+        v-model="fontWeightModel"
+        :min="100"
+        :max="900"
+        :step="100"
+        decrease-label="减小字重"
+        increase-label="增大字重"
+      />
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">行高 ({{ reader.lineHeight }})</label>
-      <el-slider v-model="localLineHeight" :min="1" :max="5" :step="0.2" size="small" />
+    <div class="setting-row typography-setting-row">
+      <label class="setting-label">行高</label>
+      <ReaderSettingStepper
+        v-model="localLineHeight"
+        :min="1"
+        :max="5"
+        :step="0.2"
+        decrease-label="减小行高"
+        increase-label="增大行高"
+      />
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">段落间距 ({{ reader.paragraphSpace }}em)</label>
-      <el-slider v-model="paragraphSpaceModel" :min="0" :max="5" :step="0.2" size="small" />
+    <div class="setting-row typography-setting-row">
+      <label class="setting-label">段落间距</label>
+      <ReaderSettingStepper
+        v-model="paragraphSpaceModel"
+        :min="0"
+        :max="5"
+        :step="0.2"
+        decrease-label="减小段落间距"
+        increase-label="增大段落间距"
+      />
     </div>
 
     <div class="setting-row">
@@ -227,9 +258,16 @@
       </el-radio-group>
     </div>
 
-    <div v-if="!miniInterface" class="setting-row">
-      <label class="setting-label">阅读宽度 ({{ reader.columnWidth }}px)</label>
-      <el-slider v-model="columnWidthModel" :min="480" :max="1120" :step="160" size="small" />
+    <div v-if="!miniInterface" class="setting-row stepper-setting-row">
+      <label class="setting-label">页面宽度</label>
+      <ReaderSettingStepper
+        v-model="columnWidthModel"
+        :min="480"
+        :max="1120"
+        :step="160"
+        decrease-label="缩小页面宽度"
+        increase-label="增大页面宽度"
+      />
     </div>
 
     <div class="setting-row">
@@ -243,9 +281,17 @@
       <small class="setting-help">上下滚动2会自动隐藏看过的章节，但是可能会抖动。</small>
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">动画时长 ({{ reader.animateDuration }}ms)</label>
-      <el-slider v-model="animateDurationModel" :min="0" :max="500" :step="50" size="small" :disabled="reader.pageType === 'kindle'" />
+    <div class="setting-row stepper-setting-row">
+      <label class="setting-label">动画时长</label>
+      <ReaderSettingStepper
+        v-model="animateDurationModel"
+        :min="0"
+        :max="500"
+        :step="50"
+        :disabled="reader.pageType === 'kindle'"
+        decrease-label="缩短动画"
+        increase-label="延长动画"
+      />
       <small v-if="reader.pageType === 'kindle'" class="setting-help">简洁模式会关闭翻页动画。</small>
     </div>
 
@@ -257,14 +303,28 @@
       </el-radio-group>
     </div>
 
-    <div v-if="reader.autoReadingMethod === '像素滚动'" class="setting-row">
-      <label class="setting-label">滚动像素 ({{ reader.autoReadingPixel }}px)</label>
-      <el-slider v-model="autoReadingPixelModel" :min="1" :max="80" :step="1" size="small" />
+    <div v-if="reader.autoReadingMethod === '像素滚动'" class="setting-row stepper-setting-row">
+      <label class="setting-label">滚动像素</label>
+      <ReaderSettingStepper
+        v-model="autoReadingPixelModel"
+        :min="1"
+        :max="80"
+        :step="5"
+        decrease-label="减少滚动像素"
+        increase-label="增加滚动像素"
+      />
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">翻页速度 ({{ reader.autoReadingLineTime }}ms)</label>
-      <el-slider v-model="autoReadingLineTimeModel" :min="10" :max="3000" :step="50" size="small" />
+    <div class="setting-row stepper-setting-row">
+      <label class="setting-label">翻页速度</label>
+      <ReaderSettingStepper
+        v-model="autoReadingLineTimeModel"
+        :min="10"
+        :max="3000"
+        :step="50"
+        decrease-label="加快翻页"
+        increase-label="减慢翻页"
+      />
     </div>
 
     <div class="setting-row">
@@ -292,14 +352,28 @@
       </div>
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">朗读语速 ({{ reader.ttsRate }})</label>
-      <el-slider v-model="ttsRateModel" :min="0.5" :max="3" :step="0.1" size="small" />
+    <div class="setting-row stepper-setting-row">
+      <label class="setting-label">朗读语速</label>
+      <ReaderSettingStepper
+        v-model="ttsRateModel"
+        :min="0.5"
+        :max="3"
+        :step="0.1"
+        decrease-label="降低朗读语速"
+        increase-label="提高朗读语速"
+      />
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">朗读音调 ({{ reader.ttsPitch }})</label>
-      <el-slider v-model="ttsPitchModel" :min="0.5" :max="2" :step="0.1" size="small" />
+    <div class="setting-row stepper-setting-row">
+      <label class="setting-label">朗读音调</label>
+      <ReaderSettingStepper
+        v-model="ttsPitchModel"
+        :min="0.5"
+        :max="2"
+        :step="0.1"
+        decrease-label="降低朗读音调"
+        increase-label="提高朗读音调"
+      />
     </div>
 
     <div class="setting-row">
@@ -328,7 +402,8 @@
 <script setup>
 import { computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Minus, Plus, RefreshLeft, Upload } from '@element-plus/icons-vue'
+import { Close, RefreshLeft, Upload } from '@element-plus/icons-vue'
+import ReaderSettingStepper from './ReaderSettingStepper.vue'
 
 const props = defineProps({
   reader: { type: Object, required: true },
@@ -370,6 +445,9 @@ const fontPreviewStyle = computed(() => ({
 const currentCustomConfig = computed(() => {
   return (Array.isArray(props.reader.customConfigList) ? props.reader.customConfigList : []).find(config => config.name === props.reader.customConfigName) || null
 })
+const visibleThemePresets = computed(() => Object.fromEntries(
+  Object.entries(props.themePresets).filter(([key]) => key !== 'black'),
+))
 
 const pageModeModel = computed({
   get: () => props.reader.pageMode,
@@ -547,10 +625,6 @@ function setFontFamily(value) {
 
 function setFontSize(value) {
   props.reader.setFontSize(value)
-}
-
-function changeFontSize(delta) {
-  props.reader.setFontSize(props.reader.fontSize + delta)
 }
 
 function toggleBgImage(image) {
@@ -769,18 +843,6 @@ function resetReaderSettings() {
   gap: 8px;
 }
 
-.font-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.font-slider {
-  min-width: 0;
-  flex: 1;
-}
-
 .font-family-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -877,6 +939,17 @@ function resetReaderSettings() {
   gap: 8px;
 }
 
+.typography-setting-row,
+.stepper-setting-row {
+  grid-template-columns: 62px minmax(0, 220px);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.typography-setting-row .font-size-presets {
+  grid-column: 2;
+}
+
 .font-size-preset {
   min-width: 0;
   min-height: 32px;
@@ -893,6 +966,48 @@ function resetReaderSettings() {
   background: #e6f2ee;
   border-color: #2f6f6d;
   font-weight: 700;
+}
+
+@media (min-width: 751px) {
+  .settings-body {
+    gap: 18px;
+    padding: 0 0 24px;
+  }
+
+  .setting-row {
+    grid-template-columns: 62px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 12px;
+  }
+
+  .setting-row > .setting-label {
+    grid-column: 1;
+    line-height: 36px;
+  }
+
+  .setting-row > :not(.setting-label) {
+    grid-column: 2;
+  }
+
+  .typography-setting-row,
+  .stepper-setting-row {
+    grid-template-columns: 62px minmax(0, 220px);
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  .font-family-grid {
+    max-width: 480px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .font-preview {
+    max-width: 456px;
+  }
+
+  .font-size-presets {
+    max-width: 456px;
+  }
 }
 
 @media (max-width: 750px) {
@@ -916,14 +1031,10 @@ function resetReaderSettings() {
     font-size: 14px;
   }
 
-  .font-controls :deep(.el-button.is-circle) {
-    width: 36px;
-    height: 36px;
-    flex: 0 0 36px;
-  }
-
-  .font-controls :deep(.el-slider) {
-    min-width: 0;
+  .typography-setting-row,
+  .stepper-setting-row {
+    grid-template-columns: 70px minmax(0, 1fr);
+    gap: 10px 8px;
   }
 }
 </style>

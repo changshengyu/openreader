@@ -5,8 +5,89 @@
       :auto-reading="autoReading"
       :tts-playing="tts.state.playing"
       :tts-supported="tts.state.supported"
+      :active-panel="desktopWorkspacePanel"
       @action="handleDesktopToolAction"
     />
+
+    <ReaderDesktopWorkspacePanel
+      v-if="!isMobileReader && desktopWorkspacePanel"
+      :title="desktopWorkspaceTitle"
+      @close="closeDesktopWorkspace"
+    >
+      <template #actions>
+        <template v-if="desktopWorkspacePanel === 'shelf'">
+          <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
+            {{ shelfLoading ? '刷新中...' : '刷新' }}
+          </button>
+        </template>
+        <template v-else-if="desktopWorkspacePanel === 'toc'">
+          <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
+          <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
+          <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
+          <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
+          <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
+        </template>
+      </template>
+
+      <ReaderShelfPanel
+        v-if="desktopWorkspacePanel === 'shelf'"
+        ref="shelfPanelRef"
+        v-loading="shelfLoading"
+        :books="filteredShelfBooks"
+        :current-book-id="bookId"
+        :progress-by-book="reader.progressByBook"
+        :loading="shelfLoading"
+        @select="changeBookFromShelf"
+      />
+      <SourceSwitchPanel
+        v-else-if="desktopWorkspacePanel === 'source'"
+        :book="book"
+        :sources="sourceCandidates"
+        :loading="loadingSources"
+        :changing-source="changingSource"
+        :current-source-name="currentSourceName"
+        :group="sourceGroup"
+        :groups="sourceGroups"
+        :has-more="sourceHasMore"
+        @refresh="refreshSourceCandidates"
+        @load-more="loadMoreSourceCandidates"
+        @group-change="changeSourceGroup"
+        @change="changeSource"
+      />
+      <ReaderTocPanel
+        v-else-if="desktopWorkspacePanel === 'toc'"
+        ref="tocPanelRef"
+        :chapters="chapters"
+        :current-index="currentIndex"
+        :reverse="tocReverse"
+        :locate-key="tocLocateKey"
+        :browser-cached-map="browserCachedChapters"
+        desktop-grid
+        @jump="jumpFromToc"
+      />
+      <ReaderSettingsPanel
+        v-else-if="desktopWorkspacePanel === 'settings'"
+        v-model:custom-bg="customBg"
+        v-model:line-height="sliderLineHeight"
+        :reader="reader"
+        :tts="tts"
+        :tts-voices="ttsVoices"
+        :font-options="fontOptions"
+        :theme-presets="themePresets"
+        :mini-interface="false"
+        @mode-change="onModeChange"
+        @theme-change="setTheme"
+        @pick-bg-image="pickBgImage"
+        @clear-bg-image="clearBgImage"
+        @pick-font-file="pickFontFile"
+        @clear-font-file="clearFontFile"
+        @tts-rate-change="setTTSRate"
+        @tts-pitch-change="setTTSPitch"
+        @tts-voice-change="setTTSVoice"
+        @open-replace-rules="openReplaceRules"
+        @show-click-zone="showClickZone"
+      />
+    </ReaderDesktopWorkspacePanel>
 
     <ReaderMobileChrome
       :visible="mobileChromeVisible"
@@ -66,14 +147,11 @@
 
     <ReaderDesktopProgress
       :book-progress-label="bookProgressLabel"
-      :chapter-slider-value="desktopChapterSliderValue"
-      :chapter-progress-label="desktopChapterProgressLabel"
       :previous-disabled="currentIndex <= 0"
       :next-disabled="currentIndex >= chapters.length - 1"
+      @cache="runWithDesktopWorkspaceClosed(openCacheDrawer)"
       @previous="goChapter(currentIndex - 1)"
       @next="goChapter(currentIndex + 1)"
-      @chapter-progress-input="handleDesktopProgressInput"
-      @chapter-progress-change="handleDesktopProgressChange"
     />
 
     <!-- TTS 朗读条 -->
@@ -98,7 +176,7 @@
     <div v-if="toastMsg" class="reader-toast">{{ toastMsg }}</div>
 
     <!-- ===== 书架抽屉 ===== -->
-    <el-drawer v-model="showShelfDrawer" title="书架" :direction="drawerDirection" :size="shelfDrawerSize" @opened="locateReaderShelfCurrentBook">
+    <el-drawer v-if="isMobileReader" v-model="showShelfDrawer" :with-header="false" :direction="drawerDirection" :size="shelfDrawerSize" @opened="locateReaderShelfCurrentBook">
       <div class="reader-drawer-title">
         <span>书架({{ filteredShelfBooks.length }})</span>
         <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
@@ -117,7 +195,7 @@
     </el-drawer>
 
     <!-- ===== 目录抽屉 ===== -->
-    <el-drawer v-model="showTocDrawer" title="目录" :direction="drawerDirection" :size="drawerSize" @opened="locateTocCurrentChapter">
+    <el-drawer v-if="isMobileReader" v-model="showTocDrawer" :with-header="false" :direction="drawerDirection" :size="drawerSize" @opened="locateTocCurrentChapter">
       <div class="reader-drawer-title">
         <span>目录({{ chapters.length }})</span>
         <div class="reader-drawer-actions">
@@ -169,7 +247,7 @@
     </el-drawer>
 
     <!-- ===== 书源抽屉 ===== -->
-    <el-drawer v-model="showSourceDrawer" title="书源" :direction="drawerDirection" :size="drawerSize" @open="ensureSourceCandidates">
+    <el-drawer v-if="isMobileReader" v-model="showSourceDrawer" :with-header="false" :direction="drawerDirection" :size="drawerSize" @open="ensureSourceCandidates">
       <SourceSwitchPanel
         :book="book"
         :sources="sourceCandidates"
@@ -208,7 +286,7 @@
     </el-drawer>
 
     <!-- ===== 设置抽屉 ===== -->
-    <el-drawer v-model="showSettingsDrawer" title="阅读设置" :direction="drawerDirection" :size="drawerSize">
+    <el-drawer v-if="isMobileReader" v-model="showSettingsDrawer" :with-header="false" :direction="drawerDirection" :size="drawerSize">
       <ReaderSettingsPanel
         v-model:custom-bg="customBg"
         v-model:line-height="sliderLineHeight"
@@ -268,6 +346,7 @@ import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
 import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
 import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
 import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
+import ReaderDesktopWorkspacePanel from '../components/reader/ReaderDesktopWorkspacePanel.vue'
 import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vue'
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
 import ReaderMobileChrome from '../components/reader/ReaderMobileChrome.vue'
@@ -913,12 +992,8 @@ const {
 const {
   bookProgress,
   bookProgressLabel,
-  desktopChapterProgressLabel,
-  desktopChapterSliderValue,
   mobileBookProgressLabel,
   mobileBookSliderValue,
-  handleDesktopProgressChange,
-  handleDesktopProgressInput,
   handleMobileBookProgressChange,
   handleMobileBookProgressInput,
 } = useReaderProgressControls({
@@ -991,6 +1066,69 @@ const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, wi
 const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
 const shelfDrawerSize = computed(() => isMobileReader.value ? '88%' : 'min(900px, calc(100vw - 80px))')
+const desktopWorkspacePanel = computed(() => {
+  if (isMobileReader.value) return ''
+  if (showShelfDrawer.value) return 'shelf'
+  if (showSourceDrawer.value) return 'source'
+  if (showTocDrawer.value) return 'toc'
+  if (showSettingsDrawer.value) return 'settings'
+  return ''
+})
+const desktopWorkspaceTitle = computed(() => {
+  if (desktopWorkspacePanel.value === 'shelf') {
+    return `书架 (${filteredShelfBooks.value.length})`
+  }
+  if (desktopWorkspacePanel.value === 'source') return ''
+  if (desktopWorkspacePanel.value === 'toc') {
+    return `目录 (${chapters.value.length})`
+  }
+  return ''
+})
+
+function closeDesktopWorkspace() {
+  showShelfDrawer.value = false
+  showSourceDrawer.value = false
+  showTocDrawer.value = false
+  showSettingsDrawer.value = false
+}
+
+function openDesktopToolPanel(panel, open) {
+  if (!isMobileReader.value && desktopWorkspacePanel.value === panel) {
+    closeDesktopWorkspace()
+    return
+  }
+  if (!isMobileReader.value) closeDesktopWorkspace()
+  open()
+}
+
+function runWithDesktopWorkspaceClosed(action) {
+  if (!isMobileReader.value) closeDesktopWorkspace()
+  return action?.()
+}
+
+watch(
+  [showShelfDrawer, showSourceDrawer, showTocDrawer, showSettingsDrawer],
+  (values, previous = []) => {
+    if (isMobileReader.value) return
+    const opened = values.findIndex((value, index) => (
+      value && !previous[index]
+    ))
+    if (opened < 0) return
+    const refs = [
+      showShelfDrawer,
+      showSourceDrawer,
+      showTocDrawer,
+      showSettingsDrawer,
+    ]
+    refs.forEach((state, index) => {
+      if (index !== opened) state.value = false
+    })
+  },
+)
+
+watch(showSourceDrawer, (visible) => {
+  if (visible) ensureSourceCandidates()
+})
 const {
   change: onModeChange,
 } = useReaderMode({
@@ -1040,7 +1178,7 @@ const {
   shellEl,
   contentEl,
   isOverlayOpen,
-  isScrollRead,
+  isVerticalRead,
   nextPage,
   previousPage,
 })
@@ -1278,23 +1416,23 @@ const {
   goChapter,
   toggleChrome: toggleReaderChrome,
   actions: {
-    home: goShelf,
-    shelf: openShelfPanel,
-    source: goSourcePanel,
-    toc: openTocDrawer,
-    settings: openSettingsDrawer,
-    bookmarks: openBookmarkDrawer,
-    search: openContentSearch,
-    info: openReaderBookInfo,
-    note: openNoteDialog,
-    cache: openCacheDrawer,
-    'clear-cache': clearCurrentBookCache,
-    reload: reloadChapter,
-    'auto-read': toggleAutoReading,
-    tts: toggleTTS,
-    night: toggleNight,
-    top: scrollToTop,
-    bottom: scrollToBottom,
+    home: () => runWithDesktopWorkspaceClosed(goShelf),
+    shelf: () => openDesktopToolPanel('shelf', openShelfPanel),
+    source: () => openDesktopToolPanel('source', goSourcePanel),
+    toc: () => openDesktopToolPanel('toc', openTocDrawer),
+    settings: () => openDesktopToolPanel('settings', openSettingsDrawer),
+    bookmarks: () => runWithDesktopWorkspaceClosed(openBookmarkDrawer),
+    search: () => runWithDesktopWorkspaceClosed(openContentSearch),
+    info: () => runWithDesktopWorkspaceClosed(openReaderBookInfo),
+    note: () => runWithDesktopWorkspaceClosed(openNoteDialog),
+    cache: () => runWithDesktopWorkspaceClosed(openCacheDrawer),
+    'clear-cache': () => runWithDesktopWorkspaceClosed(clearCurrentBookCache),
+    reload: () => runWithDesktopWorkspaceClosed(reloadChapter),
+    'auto-read': () => runWithDesktopWorkspaceClosed(toggleAutoReading),
+    tts: () => runWithDesktopWorkspaceClosed(toggleTTS),
+    night: () => runWithDesktopWorkspaceClosed(toggleNight),
+    top: () => runWithDesktopWorkspaceClosed(scrollToTop),
+    bottom: () => runWithDesktopWorkspaceClosed(scrollToBottom),
   },
 })
 

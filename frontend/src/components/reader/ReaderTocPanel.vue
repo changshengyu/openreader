@@ -1,6 +1,6 @@
 <template>
   <el-input v-if="searchable" v-model="keyword" placeholder="搜索章节..." clearable size="small" class="toc-search" />
-  <div ref="tocListRef" class="toc-list">
+  <div ref="tocListRef" class="toc-list" :class="{ 'desktop-grid': desktopGrid }">
     <button
       v-for="item in filteredChapters"
       :key="item.id"
@@ -12,7 +12,7 @@
     >
       <span class="toc-main">
         <span>{{ item.title }}</span>
-        <small>第 {{ item.index + 1 }} 章<template v-if="showMeta"> · {{ isCached(item) ? '已缓存' : '未缓存' }}</template></small>
+        <small v-if="!desktopGrid">第 {{ item.index + 1 }} 章<template v-if="showMeta"> · {{ isCached(item) ? '已缓存' : '未缓存' }}</template></small>
       </span>
       <el-tag v-if="!showMeta && isCached(item)" size="small" type="success" effect="plain">{{ browserCachedMap[item.index] ? '本地' : '已缓存' }}</el-tag>
     </button>
@@ -55,6 +55,10 @@ const props = defineProps({
   browserCachedMap: {
     type: Object,
     default: () => ({}),
+  },
+  desktopGrid: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -144,6 +148,14 @@ function scrollToBottom() {
   overscroll-behavior: contain;
 }
 
+.toc-list.desktop-grid {
+  display: grid;
+  max-height: calc(100vh - 72px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  column-gap: 20px;
+}
+
 .toc-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -159,6 +171,16 @@ function scrollToBottom() {
   border-bottom: 1px solid #f0f0f0;
   font-size: 14px;
   text-align: left;
+}
+
+.toc-list.desktop-grid .toc-item {
+  min-height: 42px;
+  padding: 7px 0;
+}
+
+.toc-list.desktop-grid .toc-item.active {
+  color: #ed4259;
+  background: transparent;
 }
 
 .toc-main {

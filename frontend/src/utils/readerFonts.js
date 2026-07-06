@@ -6,10 +6,10 @@ export const readerFontOptions = [
     stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
   },
   {
-    label: '衬线',
-    value: 'serif',
-    customFamily: 'OpenReaderCustomSerif',
-    stack: '"Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", serif',
+    label: '黑体',
+    value: 'hei',
+    customFamily: 'OpenReaderCustomHei',
+    stack: '"Noto Sans CJK SC", "Source Han Sans SC", "Heiti SC", "STHeiti", "Microsoft YaHei", SimHei, sans-serif',
   },
   {
     label: '楷体',
@@ -18,17 +18,34 @@ export const readerFontOptions = [
     stack: '"Kaiti SC", "STKaiti", "KaiTi", "AR PL UKai CN", cursive, serif',
   },
   {
-    label: '等宽',
-    value: 'mono',
-    customFamily: 'OpenReaderCustomMono',
-    stack: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    label: '宋体',
+    value: 'serif',
+    customFamily: 'OpenReaderCustomSong',
+    stack: '"Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", serif',
+  },
+  {
+    label: '仿宋',
+    value: 'fangsong',
+    customFamily: 'OpenReaderCustomFangSong',
+    stack: '"FangSong", "FangSong_GB2312", "STFangsong", "Noto Serif CJK SC", serif',
   },
 ]
 
 export function readerFontStack(value, customFontsMap = {}) {
-  const option = readerFontOptions.find(font => font.value === value) || readerFontOptions[0]
+  const option = readerFontOptions.find(font => font.value === value)
+    || legacyReaderFontOption(value)
+    || readerFontOptions[0]
   if (customFontsMap?.[option.value]) return `"${option.customFamily}", ${option.stack}`
   return option.stack
+}
+
+function legacyReaderFontOption(value) {
+  if (value !== 'mono') return null
+  return {
+    value: 'mono',
+    customFamily: 'OpenReaderCustomMono',
+    stack: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  }
 }
 
 export function syncReaderFontFaces(customFontsMap = {}) {

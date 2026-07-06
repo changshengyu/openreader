@@ -27,7 +27,7 @@ function createController(overrides = {}) {
     shellEl,
     contentEl,
     isOverlayOpen: ref(false),
-    isScrollRead: ref(false),
+    isVerticalRead: ref(false),
     nextPage: () => calls.push(['next']),
     previousPage: () => calls.push(['previous']),
     now: () => timestamp,
@@ -72,16 +72,16 @@ test('turns wheel movement into throttled page navigation', () => {
   ])
 })
 
-test('scrolls continuous content and crosses chapters at boundaries', () => {
-  const fixture = createController({ isScrollRead: ref(true) })
+test('leaves vertical reading movement native and crosses chapters only at boundaries', () => {
+  const fixture = createController({ isVerticalRead: ref(true) })
   fixture.controller.handle(fixture.event(100))
-  assert.equal(fixture.contentEl.value.scrollTop, 400)
+  assert.equal(fixture.contentEl.value.scrollTop, 300)
+  assert.deepEqual(fixture.calls, [])
   fixture.contentEl.value.scrollTop = 800
   fixture.controller.handle(fixture.event(100))
   fixture.contentEl.value.scrollTop = 0
   fixture.controller.handle(fixture.event(-100))
   assert.deepEqual(fixture.calls, [
-    ['prevent'],
     ['prevent'],
     ['next'],
     ['prevent'],

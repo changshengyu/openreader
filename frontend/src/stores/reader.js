@@ -8,9 +8,13 @@ const READER_CLIENT_ID = readerClientId()
 
 export const themePresets = {
   parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c' },
-  white:    { label: '纯白',   bg: '#ffffff', text: '#1f2933' },
+  cream:    { label: '米黄',   bg: '#f5eacc', text: '#262626' },
   green:    { label: '护眼绿', bg: '#c8dcc8', text: '#1f2933' },
+  blue:     { label: '浅蓝',   bg: '#e4f1f5', text: '#262626' },
+  pink:     { label: '浅粉',   bg: '#f5e4e4', text: '#262626' },
+  gray:     { label: '浅灰',   bg: '#e0e0e0', text: '#262626' },
   dark:     { label: '深色',   bg: '#2d2d2d', text: '#d8d4c8' },
+  white:    { label: '纯白',   bg: '#ffffff', text: '#1f2933' },
   black:    { label: '纯黑',   bg: '#000000', text: '#aaaaaa' },
 }
 

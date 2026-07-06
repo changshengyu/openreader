@@ -1,24 +1,24 @@
 <template>
   <aside class="reader-left-rail">
-    <button class="rail-item rail-home" type="button" title="返回首页" @click="$emit('action', 'home')">
-      <el-icon :size="18"><ArrowLeft /></el-icon>
-      <span>首页</span>
-    </button>
-    <button class="rail-item" type="button" title="书架" @click="$emit('action', 'shelf')">
+    <button class="rail-item" :class="{ active: activePanel === 'shelf' }" type="button" title="书架" @click="$emit('action', 'shelf')">
       <el-icon :size="18"><Notebook /></el-icon>
       <span>书架</span>
     </button>
-    <button class="rail-item" type="button" :disabled="!remoteBook" :title="remoteBook ? '书源' : '本地书无可切换书源'" @click="$emit('action', 'source')">
+    <button class="rail-item" :class="{ active: activePanel === 'source' }" type="button" :disabled="!remoteBook" :title="remoteBook ? '书源' : '本地书无可切换书源'" @click="$emit('action', 'source')">
       <el-icon :size="18"><Grid /></el-icon>
       <span>书源</span>
     </button>
-    <button class="rail-item" type="button" title="目录" @click="$emit('action', 'toc')">
+    <button class="rail-item" :class="{ active: activePanel === 'toc' }" type="button" title="目录" @click="$emit('action', 'toc')">
       <el-icon :size="18"><List /></el-icon>
       <span>目录</span>
     </button>
-    <button class="rail-item" type="button" title="设置" @click="$emit('action', 'settings')">
+    <button class="rail-item" :class="{ active: activePanel === 'settings' }" type="button" title="设置" @click="$emit('action', 'settings')">
       <el-icon :size="18"><Setting /></el-icon>
       <span>设置</span>
+    </button>
+    <button class="rail-item rail-home" type="button" title="返回首页" @click="$emit('action', 'home')">
+      <el-icon :size="18"><ArrowLeft /></el-icon>
+      <span>首页</span>
     </button>
     <button class="rail-item" type="button" title="回到顶部" @click="$emit('action', 'top')">
       <el-icon :size="18"><ArrowUpBold /></el-icon>
@@ -40,20 +40,11 @@
     <button class="round-tool" type="button" title="书籍信息" @click="$emit('action', 'info')">
       <el-icon :size="18"><InfoFilled /></el-icon>
     </button>
-    <button class="round-tool" type="button" title="添加笔记" @click="$emit('action', 'note')">
-      <el-icon :size="18"><EditPen /></el-icon>
-    </button>
-    <button class="round-tool" type="button" :disabled="!remoteBook" :title="remoteBook ? '缓存章节' : '本地书无需章节缓存'" @click="$emit('action', 'cache')">
-      <el-icon :size="18"><Download /></el-icon>
-    </button>
     <button class="round-tool" type="button" title="重新载入章节" @click="$emit('action', 'reload')">
       <el-icon :size="18"><RefreshRight /></el-icon>
     </button>
     <button class="round-tool" type="button" :class="{ active: autoReading }" title="自动阅读" @click="$emit('action', 'auto-read')">
       <el-icon :size="18"><VideoPlay /></el-icon>
-    </button>
-    <button class="round-tool" type="button" title="阅读设置" @click="$emit('action', 'settings')">
-      <el-icon :size="18"><View /></el-icon>
     </button>
     <button class="round-tool" type="button" :class="{ active: ttsPlaying }" :disabled="!ttsSupported" :title="ttsSupported ? '朗读' : '当前浏览器不支持朗读'" @click="$emit('action', 'tts')">
       <el-icon :size="18"><Headset /></el-icon>
@@ -70,8 +61,6 @@ import {
   ArrowLeft,
   ArrowUpBold,
   CollectionTag,
-  Download,
-  EditPen,
   Grid,
   Headset,
   InfoFilled,
@@ -82,7 +71,6 @@ import {
   Search,
   Setting,
   VideoPlay,
-  View,
 } from '@element-plus/icons-vue'
 
 defineProps({
@@ -101,6 +89,10 @@ defineProps({
   ttsSupported: {
     type: Boolean,
     default: false,
+  },
+  activePanel: {
+    type: String,
+    default: '',
   },
 })
 
@@ -149,6 +141,11 @@ defineEmits(['action'])
   background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
 }
 
+.rail-item.active {
+  color: #ed4259;
+  background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
+}
+
 .rail-item:disabled {
   cursor: not-allowed;
   opacity: 0.42;
@@ -162,11 +159,11 @@ defineEmits(['action'])
 .reader-right-rail {
   position: fixed;
   right: auto;
-  bottom: 310px;
+  bottom: 150px;
   left: var(--reader-right-x);
   z-index: 4;
   display: grid;
-  max-height: max(120px, calc(100vh - 340px));
+  max-height: max(120px, calc(100vh - 170px));
   grid-template-columns: 36px;
   grid-auto-rows: 36px;
   align-content: start;
