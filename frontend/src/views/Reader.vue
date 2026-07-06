@@ -179,14 +179,17 @@
     <!-- Toast -->
     <div v-if="toastMsg" class="reader-toast">{{ toastMsg }}</div>
 
-    <!-- ===== 书架抽屉 ===== -->
-    <el-drawer v-if="isMobileReader" v-model="showShelfDrawer" :with-header="false" :direction="drawerDirection" :size="shelfDrawerSize" @opened="locateReaderShelfCurrentBook">
-      <div class="reader-drawer-title">
-        <span>书架({{ filteredShelfBooks.length }})</span>
+    <!-- ===== 移动端书架面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showShelfDrawer"
+      :title="`书架(${filteredShelfBooks.length})`"
+      @close="showShelfDrawer = false"
+    >
+      <template #actions>
         <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
           {{ shelfLoading ? '刷新中...' : '刷新' }}
         </button>
-      </div>
+      </template>
       <ReaderShelfPanel
         ref="shelfPanelRef"
         v-loading="shelfLoading"
@@ -196,20 +199,21 @@
         :loading="shelfLoading"
         @select="changeBookFromShelf"
       />
-    </el-drawer>
+    </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 目录抽屉 ===== -->
-    <el-drawer v-if="isMobileReader" v-model="showTocDrawer" :with-header="false" :direction="drawerDirection" :size="drawerSize" @opened="locateTocCurrentChapter">
-      <div class="reader-drawer-title">
-        <span>目录({{ chapters.length }})</span>
-        <div class="reader-drawer-actions">
-          <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
-          <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
-          <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
-          <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
-          <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
-        </div>
-      </div>
+    <!-- ===== 移动端目录面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showTocDrawer"
+      :title="`目录(${chapters.length})`"
+      @close="showTocDrawer = false"
+    >
+      <template #actions>
+        <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
+        <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
+        <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
+        <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
+        <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
+      </template>
       <ReaderTocPanel
         ref="tocPanelRef"
         :chapters="chapters"
@@ -219,10 +223,14 @@
         :browser-cached-map="browserCachedChapters"
         @jump="jumpFromToc"
       />
-    </el-drawer>
+    </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 书签抽屉 ===== -->
-    <el-drawer v-model="showBookmarkDrawer" title="书签" :direction="drawerDirection" :size="drawerSize">
+    <!-- ===== 移动端书签面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showBookmarkDrawer"
+      title="书签"
+      @close="showBookmarkDrawer = false"
+    >
       <ReaderBookmarkPanel
         :bookmarks="bookmarks"
         @add="createBookmark"
@@ -232,10 +240,14 @@
         @remove-many="removeBookmarks"
         @import="importBookmarks"
       />
-    </el-drawer>
+    </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 正文搜索抽屉 ===== -->
-    <el-drawer v-model="showSearchDrawer" title="搜索正文" :direction="drawerDirection" :size="drawerSize">
+    <!-- ===== 移动端正文搜索面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showSearchDrawer"
+      title="搜索正文"
+      @close="showSearchDrawer = false"
+    >
       <ReaderSearchPanel
         v-model="contentSearch"
         :results="bookSearchResults"
@@ -248,10 +260,14 @@
         @load-all="searchAllBookContent"
         @jump="jumpToBookSearchResult"
       />
-    </el-drawer>
+    </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 书源抽屉 ===== -->
-    <el-drawer v-if="isMobileReader" v-model="showSourceDrawer" :with-header="false" :direction="drawerDirection" :size="drawerSize" @open="ensureSourceCandidates">
+    <!-- ===== 移动端书源面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showSourceDrawer"
+      title="书源"
+      @close="showSourceDrawer = false"
+    >
       <SourceSwitchPanel
         :book="book"
         :sources="sourceCandidates"
@@ -266,20 +282,28 @@
         @group-change="changeSourceGroup"
         @change="changeSource"
       />
-    </el-drawer>
+    </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 缓存抽屉 ===== -->
-    <el-drawer v-model="showCacheDrawer" title="缓存章节" :direction="drawerDirection" :size="drawerSize">
+    <!-- ===== 移动端缓存面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showCacheDrawer"
+      title="缓存章节"
+      @close="showCacheDrawer = false"
+    >
       <ReaderCachePanel
         :caching="isCachingContent"
         :status-text="cachingContentTip"
         @cache="cacheFollowingChapters"
         @cancel="cancelCachingContent"
       />
-    </el-drawer>
+    </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 设置抽屉 ===== -->
-    <el-drawer v-if="isMobileReader" v-model="showSettingsDrawer" :with-header="false" :direction="drawerDirection" :size="drawerSize">
+    <!-- ===== 移动端设置面板 ===== -->
+    <ReaderMobileWorkspacePanel
+      v-if="isMobileReader && showSettingsDrawer"
+      title="设置"
+      @close="showSettingsDrawer = false"
+    >
       <ReaderSettingsPanel
         v-model:custom-bg="customBg"
         v-model:line-height="sliderLineHeight"
@@ -300,6 +324,45 @@
         @tts-voice-change="setTTSVoice"
         @open-replace-rules="openReplaceRules"
         @show-click-zone="showClickZone"
+      />
+    </ReaderMobileWorkspacePanel>
+
+    <!-- ===== 桌面端书签抽屉 ===== -->
+    <el-drawer v-if="!isMobileReader" v-model="showBookmarkDrawer" title="书签" :direction="drawerDirection" :size="drawerSize">
+      <ReaderBookmarkPanel
+        :bookmarks="bookmarks"
+        @add="createBookmark"
+        @jump="jumpToBookmark"
+        @edit="openBookmarkEditor"
+        @remove="removeBookmark"
+        @remove-many="removeBookmarks"
+        @import="importBookmarks"
+      />
+    </el-drawer>
+
+    <!-- ===== 桌面端正文搜索抽屉 ===== -->
+    <el-drawer v-if="!isMobileReader" v-model="showSearchDrawer" title="搜索正文" :direction="drawerDirection" :size="drawerSize">
+      <ReaderSearchPanel
+        v-model="contentSearch"
+        :results="bookSearchResults"
+        :loading="bookSearching"
+        :searched="searchedBookContent"
+        :has-more="bookSearchHasMore"
+        :status-text="bookSearchStatus"
+        @search="searchBookContent"
+        @load-more="loadMoreBookContent"
+        @load-all="searchAllBookContent"
+        @jump="jumpToBookSearchResult"
+      />
+    </el-drawer>
+
+    <!-- ===== 桌面端缓存抽屉 ===== -->
+    <el-drawer v-if="!isMobileReader" v-model="showCacheDrawer" title="缓存章节" :direction="drawerDirection" :size="drawerSize">
+      <ReaderCachePanel
+        :caching="isCachingContent"
+        :status-text="cachingContentTip"
+        @cache="cacheFollowingChapters"
+        @cancel="cancelCachingContent"
       />
     </el-drawer>
 
@@ -342,6 +405,7 @@ import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
 import ReaderDesktopWorkspacePanel from '../components/reader/ReaderDesktopWorkspacePanel.vue'
 import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vue'
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
+import ReaderMobileWorkspacePanel from '../components/reader/ReaderMobileWorkspacePanel.vue'
 import ReaderMobileChrome from '../components/reader/ReaderMobileChrome.vue'
 import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
@@ -1049,9 +1113,8 @@ const bodyStyle = computed(() => {
 
 const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.value.length || 1}`)
 const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
-const drawerDirection = computed(() => isMobileReader.value ? 'btt' : 'rtl')
-const drawerSize = computed(() => isMobileReader.value ? '88%' : '360px')
-const shelfDrawerSize = computed(() => isMobileReader.value ? '88%' : 'min(900px, calc(100vw - 80px))')
+const drawerDirection = computed(() => 'rtl')
+const drawerSize = computed(() => '360px')
 const desktopWorkspacePanel = computed(() => {
   if (isMobileReader.value) return ''
   if (showShelfDrawer.value) return 'shelf'
@@ -1658,14 +1721,6 @@ function readError(err, fallback) {
   transform: translateX(-50%); z-index: 5; font-size: 14px;
 }
 
-.reader-drawer-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin: -2px 0 14px;
-}
-
 .reader-shell :deep(.el-drawer) {
   color: var(--reader-text);
   background: var(--reader-popup-bg);
@@ -1678,30 +1733,6 @@ function readError(err, fallback) {
 
 .reader-shell :deep(.el-drawer__body) {
   background: var(--reader-popup-bg);
-}
-
-.reader-drawer-title span {
-  color: #ed4259;
-  border-bottom: 1px solid #ed4259;
-  font-size: 18px;
-}
-.reader-drawer-title button {
-  padding: 0;
-  color: #ed4259;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 14px;
-}
-.reader-drawer-title button:disabled {
-  color: #8c8c8c;
-  cursor: default;
-}
-.reader-drawer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 14px;
 }
 /* ---- 响应式 ---- */
 @media (max-width: 750px) {

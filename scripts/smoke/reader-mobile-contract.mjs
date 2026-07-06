@@ -111,6 +111,39 @@ async function installApiMocks(page) {
   })
 }
 
+async function assertWorkspaceOpen(page, viewport, label) {
+  await page.waitForSelector('.reader-mobile-workspace', { timeout: 10000 })
+  const topCount = await page.locator('.reader-mobile-top.visible').count()
+  assert(topCount === 1, `${viewport.width}: toolbar should remain visible after opening ${label}`)
+  const workspaceState = await page.evaluate((expectedLabel) => {
+    const workspace = document.querySelector('.reader-mobile-workspace')
+    const rect = workspace.getBoundingClientRect()
+    const visibleDrawers = Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+      const drawerRect = element.getBoundingClientRect()
+      const style = window.getComputedStyle(element)
+      return drawerRect.width > 0 && drawerRect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+    }).length
+    return {
+      width: Math.round(rect.width),
+      left: Math.round(rect.left),
+      visibleDrawers,
+      role: workspace.getAttribute('role'),
+      text: workspace.innerText,
+      hasLabel: workspace.innerText.includes(expectedLabel),
+    }
+  }, label)
+  assert(workspaceState.left === 0, `${viewport.width}: mobile workspace left ${workspaceState.left}`)
+  assert(workspaceState.width === viewport.width, `${viewport.width}: mobile workspace width ${workspaceState.width}`)
+  assert(workspaceState.visibleDrawers === 0, `${viewport.width}: mobile workspace must not use visible drawer`)
+  assert(workspaceState.role === 'dialog', `${viewport.width}: mobile workspace role ${workspaceState.role}`)
+  assert(workspaceState.hasLabel, `${viewport.width}: mobile workspace missing label ${label}`)
+}
+
+async function closeWorkspace(page) {
+  await page.getByRole('button', { name: '关闭' }).click()
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.newContext({ viewport })
   await context.addInitScript((token) => {
@@ -166,20 +199,26 @@ async function runViewport(browser, viewport) {
   assert(initial.paragraphTextAlign === 'justify', `${viewport.width}: paragraph text-align ${initial.paragraphTextAlign}`)
 
   await page.getByRole('button', { name: /设置/ }).click()
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('.el-drawer')).some((element) => {
-    const rect = element.getBoundingClientRect()
-    const style = window.getComputedStyle(element)
-    return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
-  }), null, { timeout: 10000 })
-  const afterSettings = await page.locator('.reader-mobile-top.visible').count()
-  assert(afterSettings === 1, `${viewport.width}: toolbar should remain visible after opening settings`)
+  await assertWorkspaceOpen(page, viewport, '设置')
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   const afterPanelCenterTap = await page.locator('.reader-mobile-top.visible').count()
   assert(afterPanelCenterTap === 1, `${viewport.width}: center tap with panel open must not hide toolbar`)
 
-  await page.keyboard.press('Escape')
-  await page.waitForTimeout(250)
+  await closeWorkspace(page)
+  await page.getByRole('button', { name: /目录/ }).click()
+  await assertWorkspaceOpen(page, viewport, '目录')
+  await closeWorkspace(page)
+  await page.locator('.reader-mobile-float-left.visible button[title="书签"]').click()
+  await assertWorkspaceOpen(page, viewport, '书签')
+  await closeWorkspace(page)
+  await page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]').click()
+  await assertWorkspaceOpen(page, viewport, '搜索正文')
+  await closeWorkspace(page)
+  await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
+  await assertWorkspaceOpen(page, viewport, '缓存章节')
+  await closeWorkspace(page)
+
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   await page.waitForTimeout(120)
   const afterCenterTap = await page.locator('.reader-mobile-top.visible').count()
