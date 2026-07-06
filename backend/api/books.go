@@ -27,6 +27,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/epubreader"
 )
 
 type bookListItem struct {
@@ -1206,27 +1207,29 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 				chapterCachePath = filepath.Join("content", cachePath)
 			}
 			chapter := models.Chapter{
-				BookID:    book.ID,
-				Index:     index,
-				Title:     title,
-				URL:       chapterURL,
-				CachePath: chapterCachePath,
+				BookID:       book.ID,
+				Index:        index,
+				Title:        title,
+				URL:          chapterURL,
+				CachePath:    chapterCachePath,
+				ResourcePath: parsedChapter.ResourcePath,
 			}
 			if err := tx.Create(&chapter).Error; err != nil {
 				return err
 			}
 			newChapterIDs[index] = chapter.ID
 			archivedChapters = append(archivedChapters, engine.ArchivedChapter{
-				ID:        chapter.ID,
-				URL:       chapterURL,
-				Title:     title,
-				IsVolume:  false,
-				BaseURL:   "",
-				BookURL:   book.OriginalFile,
-				Index:     index,
-				Start:     parsedChapter.Start,
-				End:       parsedChapter.End,
-				CachePath: chapter.CachePath,
+				ID:           chapter.ID,
+				URL:          chapterURL,
+				Title:        title,
+				IsVolume:     false,
+				BaseURL:      "",
+				BookURL:      book.OriginalFile,
+				Index:        index,
+				Start:        parsedChapter.Start,
+				End:          parsedChapter.End,
+				CachePath:    chapter.CachePath,
+				ResourcePath: parsedChapter.ResourcePath,
 			})
 		}
 		book.LastChapter = strings.TrimSpace(parsed[len(parsed)-1].Title)
@@ -1959,11 +1962,23 @@ func (s *Server) chapterContent(c *gin.Context) {
 	}
 
 	content := s.loadChapterText(book, &chapter)
-
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"chapter": chapter,
 		"content": content,
-	})
+		"format":  "text",
+	}
+	if epubreader.IsLocalEPUB(book) {
+		prepared, err := s.epubReader.PrepareChapter(book, &chapter)
+		if err != nil {
+			writeEPUBServiceError(c, err, "failed to prepare EPUB chapter")
+			return
+		}
+		response["chapter"] = chapter
+		response["format"] = "epub"
+		response["resourceUrl"] = prepared.ResourceURL
+		response["resourceExpiresAt"] = prepared.ExpiresAt.UTC().Format(time.RFC3339)
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func (s *Server) searchBookContent(c *gin.Context) {
@@ -2400,7 +2415,9 @@ func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) stri
 			}
 		}
 	}
-	content = s.applyUserReplaceRules(book, content)
+	if !epubreader.IsLocalEPUB(book) {
+		content = s.applyUserReplaceRules(book, content)
+	}
 	return content
 }
 

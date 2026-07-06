@@ -58,7 +58,7 @@ func main() {
 	defer backupSvc.Stop()
 
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery(), middleware.NewRateLimiter(cfg.RateLimitPerMinute, time.Minute).Middleware(), cors(cfg))
+	router.Use(middleware.AccessLogger(), gin.Recovery(), middleware.NewRateLimiter(cfg.RateLimitPerMinute, time.Minute).Middleware(), cors(cfg))
 
 	api.RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
 	serveFrontend(router, cfg.PublicDir)

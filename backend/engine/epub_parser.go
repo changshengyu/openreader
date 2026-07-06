@@ -201,7 +201,12 @@ func buildEPUBChapters(spine []epubChapter, toc []epubTOCEntry, rule string) []T
 		if title == "" {
 			title = fmt.Sprintf("第 %d 章", index+1)
 		}
-		chapters = append(chapters, TXTChapter{Index: index, Title: title, Content: chapter.Content})
+		chapters = append(chapters, TXTChapter{
+			Index:        index,
+			Title:        title,
+			Content:      chapter.Content,
+			ResourcePath: chapter.Path,
+		})
 	}
 	return chapters
 }

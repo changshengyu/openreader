@@ -60,10 +60,12 @@ Implemented in commit work following this contract:
 - Ordinary text rendering now preserves safe upstream inline HTML semantics via sanitized `v-html`, while keeping plain text for search/progress.
 - Image markup now marks chapters with upstream comic semantics, and CBZ-like book URLs hide the chapter title to match upstream `Content.vue`.
 - Unit tests that previously encoded “panel open hides toolbar” were rewritten.
+- EPUB document reading now uses a dedicated iframe/resource branch that preserves XHTML, relative CSS/images/fonts, hash links, cross-document links, and upstream bridge events.
+- EPUB resources are served through scoped, expiring capabilities instead of exposing the login JWT to iframe/resource requests.
+- The EPUB browser contract is covered by `scripts/smoke/reader-epub-contract.mjs` at 1440×900, 390×844, and 360×800.
 
 Still pending in Reader P0:
 
-- Implement the EPUB contract below.
 - Complete separate `Content.vue` parity reviews for image lazy-loading/CBZ import edge cases, audio/TTS media controls, and continuous cross-chapter edge cases.
 - The final Reader P0 acceptance image remains pending. Intermediate validation image `ca43409` has been published and is not the final Reader P0 release.
 
@@ -125,33 +127,30 @@ For non-EPUB chapters, `format` is `text`, and `resourceUrl`/`resourceExpiresAt`
 | Archive safety | Existing parser reads selected ZIP entries but does not provide a full resource-serving extraction boundary. | Reject absolute paths, `..` traversal, drive prefixes, NUL names, symlinks, duplicate/conflicting paths, excessive entry counts, oversized entries, and excessive total uncompressed size. Never write outside the derived extraction root. |
 | Media handling | Current reader has no EPUB resource MIME contract. | Serve XHTML/HTML, CSS, common images, SVG, and fonts with correct MIME types, `nosniff`, no-referrer, and a restrictive CSP. Unknown executable/media types are denied rather than served as active content. |
 
-### Required tests before implementation
+### EPUB implementation validation evidence
 
 Backend/API tests:
 
-1. Import a fixture EPUB containing XHTML, relative CSS, image, font, same-document hash, and cross-chapter link; preserve both searchable text and canonical resource paths.
-2. Existing imported EPUB rows without new metadata recover resource paths from `OriginalFile` without schema/data loss.
-3. Chapter content returns the additive EPUB response while ordinary text responses remain backward-compatible.
-4. A valid capability serves chapter XHTML and relative resources with correct MIME/security headers.
-5. Another user/book, an expired or modified capability, stale archive version, traversal path, missing resource, and unsupported active content are rejected.
-6. ZIP-slip, symlink, duplicate path, entry-count, per-entry-size, and total-expanded-size fixtures fail without partial files outside the extraction root.
-7. Corrupt/missing archives and extraction failures return stable non-blank error responses.
+1. `backend/api.TestDirectEPUBImportAndRefreshUseTocRule` imports a fixture EPUB containing XHTML, relative CSS, image, same-document hash, cross-chapter link, and active-script attempts; it verifies searchable text plus canonical `resourcePath`.
+2. The same API test verifies existing imported EPUB rows without `resourcePath` recover metadata from `OriginalFile` without schema/data loss.
+3. The chapter endpoint returns the additive EPUB response while ordinary text responses remain backward-compatible.
+4. A valid capability serves chapter XHTML and relative resources with MIME/security headers and rebuilds missing derived extraction data.
+5. Modified capability, stale archive version, ownership-changed book, missing resource, and unsupported active content are rejected.
+6. `backend/services/epubreader` tests reject ZIP-slip, symlink, duplicate path, entry-count, per-entry-size, total-expanded-size, and symlink-ancestor extraction paths.
+7. `backend/db.TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters` verifies additive migration of old chapter rows.
 
 Frontend unit/contract tests:
 
-1. EPUB detection continues to use `originalFile`/`libraryPath` rather than the synthetic `local://book_<id>` URL.
-2. `format: epub` renders one dedicated iframe and never renders ordinary paragraph blocks.
-3. Bridge origin/source validation rejects messages not sent by the active iframe/resource origin.
-4. `inited`, `load`, `setHeight`, `click`, `clickHash`, `keydown`, and `previewImageList` produce the upstream state transitions.
-5. Reader style changes are sent to the live iframe; height is clamped to at least 80% viewport.
-6. Cross-document links update chapter index/title/progress; position is restored again after iframe load.
-7. Loading/capability failures show a retryable reader error and cannot become a silent blank page.
+1. `frontend/tests/readerChapterLoader.test.mjs` verifies `format: epub` renders through the dedicated iframe branch and never ordinary paragraph blocks.
+2. `frontend/tests/readerEpubFrame.test.mjs` verifies bridge origin/source validation and `inited`, `load`, `setHeight`, `click`, `clickHash`, `keydown`, and `previewImageList` forwarding.
+3. `frontend/tests/readerMode.test.mjs` verifies EPUB forces the upstream vertical-page branch even when the stored reader mode is flip/scroll.
+4. `frontend/tests/readerViewportProgress.test.mjs` verifies EPUB progress is stored as document scroll pixels.
 
 Real-browser gate:
 
-1. Open the fixture at 1440×900, 390×844, and 360×800.
-2. Confirm XHTML typography, relative CSS/image/font loads, image preview, internal hash, cross-chapter link, keyboard/click navigation, and saved-position restoration.
-3. Confirm no `401`, blank page, cross-user resource access, duplicate center-click toggle, horizontal shift, or change to the already-established toolbar/panel coexistence contract.
+1. `scripts/smoke/reader-epub-contract.mjs` opens the fixture at 1440×900, 390×844, and 360×800 against a real local server.
+2. It confirms XHTML typography, upstream reader style override, preserved non-typography CSS, relative CSS/image/font loads, image preview, internal hash, cross-chapter link, keyboard forwarding, center-click toolbar behavior, panel coexistence, and saved-position restoration.
+3. It confirms no resource `401`, no blank page, no authored script execution, no ordinary paragraph blocks, and no duplicate center-click toggle.
 
 Deferred from this EPUB slice:
 

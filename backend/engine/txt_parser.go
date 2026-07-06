@@ -23,11 +23,12 @@ var defaultTXTTitlePatterns = []*regexp.Regexp{
 }
 
 type TXTChapter struct {
-	Index   int    `json:"index"`
-	Title   string `json:"title"`
-	Start   int    `json:"start"`
-	End     int    `json:"end"`
-	Content string `json:"content"`
+	Index        int    `json:"index"`
+	Title        string `json:"title"`
+	Start        int    `json:"start"`
+	End          int    `json:"end"`
+	Content      string `json:"content"`
+	ResourcePath string `json:"resourcePath,omitempty"`
 }
 
 type TXTTocRule struct {

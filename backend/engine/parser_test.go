@@ -199,6 +199,9 @@ func TestParseEPUBUsesSpineOrder(t *testing.T) {
 	if book.Chapters[0].Title != "第一章" || book.Chapters[1].Title != "第二章" {
 		t.Fatalf("chapters not in spine order: %#v", book.Chapters)
 	}
+	if book.Chapters[0].ResourcePath != "OEBPS/chapter1.xhtml" || book.Chapters[1].ResourcePath != "OEBPS/chapter2.xhtml" {
+		t.Fatalf("chapter resource paths not preserved: %#v", book.Chapters)
+	}
 	tocFallback, err := ParseEPUBWithRule(buffer.Bytes(), "toc")
 	if err != nil {
 		t.Fatal(err)
@@ -236,6 +239,9 @@ func TestParseEPUBWithRuleCombinesSpineAndNav(t *testing.T) {
 				}
 				if !strings.Contains(book.Chapters[index].Content, tt.bodies[index]) {
 					t.Fatalf("chapter %d content = %q, want body %q", index, book.Chapters[index].Content, tt.bodies[index])
+				}
+				if book.Chapters[index].ResourcePath == "" {
+					t.Fatalf("chapter %d lost its EPUB resource path: %#v", index, book.Chapters[index])
 				}
 			}
 		})

@@ -50,17 +50,23 @@ For each release, record which checklist sections were relevant and which tests/
 
 Apply this section to Reader P0 EPUB work:
 
-- [ ] The iframe URL never contains the login JWT or Authorization header value.
-- [ ] The EPUB resource capability is signed with a purpose-separated key and is scoped to user, book, source fingerprint, read-only purpose, and expiry.
-- [ ] Capability comparison/signature verification is constant-time through the standard crypto library.
-- [ ] Invalid, expired, modified, stale-version, deleted-book, or ownership-changed capabilities fail closed.
-- [ ] Capability path segments are redacted from application logs and never returned in error text.
-- [ ] Every resource path is decoded once, normalized as a POSIX archive path, and verified below the scoped extraction root.
-- [ ] ZIP entries reject absolute paths, drive prefixes, NUL bytes, `..`, symlinks, duplicate/conflicting paths, and writes through existing symlinks.
-- [ ] Entry count, per-entry expanded size, and total expanded size are bounded before/during extraction.
-- [ ] Extraction uses a staging directory and only exposes an atomically completed version.
-- [ ] XHTML is served without EPUB-authored active scripts; the reader bridge is injected dynamically rather than written into the archived source.
-- [ ] CSP blocks remote network loads and untrusted scripts while allowing scoped local CSS/images/fonts and required inline reader styles.
-- [ ] MIME types are allowlisted and responses set `nosniff` and `no-referrer`.
-- [ ] Multi-user tests prove one user's capability cannot read another user's book or resource tree.
-- [ ] Parent `message` handlers verify both the active iframe window and expected same-origin resource origin.
+- [x] The iframe URL never contains the login JWT or Authorization header value.
+- [x] The EPUB resource capability is signed with a purpose-separated key and is scoped to user, book, source fingerprint, read-only purpose, and expiry.
+- [x] Capability comparison/signature verification is constant-time through the standard crypto library.
+- [x] Invalid, expired, modified, stale-version, deleted-book, or ownership-changed capabilities fail closed.
+- [x] Capability path segments are redacted from application logs and never returned in error text.
+- [x] Every resource path is decoded once, normalized as a POSIX archive path, and verified below the scoped extraction root.
+- [x] ZIP entries reject absolute paths, drive prefixes, NUL bytes, `..`, symlinks, duplicate/conflicting paths, and writes through existing symlinks.
+- [x] Entry count, per-entry expanded size, and total expanded size are bounded before/during extraction.
+- [x] Extraction uses a staging directory and only exposes an atomically completed version.
+- [x] XHTML is served without EPUB-authored active scripts; the reader bridge is injected dynamically rather than written into the archived source.
+- [x] CSP blocks remote network loads and untrusted scripts while allowing scoped local CSS/images/fonts and required inline reader styles.
+- [x] MIME types are allowlisted and responses set `nosniff` and `no-referrer`.
+- [x] Multi-user tests prove one user's capability cannot read another user's book or resource tree.
+- [x] Parent `message` handlers verify both the active iframe window and expected same-origin resource origin.
+
+Evidence for the checked EPUB items:
+
+- Backend tests: `go test ./services/epubreader ./api ./db ./engine ./services/localbook` and full `go test ./...`.
+- Frontend tests: `npm test`.
+- Browser test: `scripts/smoke/reader-epub-contract.mjs` against 1440×900, 390×844, and 360×800.

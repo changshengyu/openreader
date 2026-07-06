@@ -6,6 +6,21 @@
     <button type="button" @click="emit('reload')">重新加载</button>
   </div>
 
+  <ReaderEpubContent
+    v-else-if="epubResource?.url"
+    :resource="epubResource"
+    :style-text="epubStyle"
+    :viewport-height="viewportHeight"
+    @ready="emit('epub-ready')"
+    @load="emit('epub-load', $event)"
+    @height="emit('epub-height', $event)"
+    @click-point="emit('epub-click', $event)"
+    @hash="emit('epub-hash', $event)"
+    @keydown="emit('epub-keydown', $event)"
+    @preview="emit('epub-preview', $event)"
+    @error="emit('epub-error', $event)"
+  />
+
   <template v-else>
     <section
       v-for="block in blocks"
@@ -49,6 +64,8 @@
 </template>
 
 <script setup>
+import ReaderEpubContent from './ReaderEpubContent.vue'
+
 defineProps({
   blocks: {
     type: Array,
@@ -70,9 +87,31 @@ defineProps({
     type: String,
     required: true,
   },
+  epubResource: {
+    type: Object,
+    default: null,
+  },
+  epubStyle: {
+    type: String,
+    default: '',
+  },
+  viewportHeight: {
+    type: Number,
+    default: 0,
+  },
 })
 
-const emit = defineEmits(['reload'])
+const emit = defineEmits([
+  'reload',
+  'epub-ready',
+  'epub-load',
+  'epub-height',
+  'epub-click',
+  'epub-hash',
+  'epub-keydown',
+  'epub-preview',
+  'epub-error',
+])
 </script>
 
 <style scoped>

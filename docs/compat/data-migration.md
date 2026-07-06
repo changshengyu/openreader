@@ -38,7 +38,7 @@ Before changing storage for a module, document:
 
 ## EPUB reader compatibility migration
 
-Status: implementation contract for Reader P0.
+Status: implemented for the Reader P0 EPUB slice; remaining Reader P0 work is outside this EPUB resource migration.
 
 ### Existing representation
 
@@ -82,8 +82,8 @@ library/<Book.LibraryPath>/.epub-resources/<source-fingerprint>/
 
 ### Required migration evidence
 
-- Auto-migrate an existing database containing chapters without `resource_path`; old rows and caches remain readable.
-- Open an old imported EPUB and verify lazy path backfill without re-upload.
-- Remove `.epub-resources/`, restart, and verify deterministic rebuild.
-- Replace the source archive and verify old capability/version rejection.
+- Auto-migrate an existing database containing chapters without `resource_path`; old rows and caches remain readable: covered by `backend/db.TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters`.
+- Open an old imported EPUB and verify lazy path backfill without re-upload: covered by `backend/api.TestDirectEPUBImportAndRefreshUseTocRule`.
+- Remove `.epub-resources/` and verify deterministic rebuild: covered by the same API test through a repeated resource request after deleting the derived directory.
+- Replace the source archive and verify old capability/version rejection: covered by the same API test.
 - Run full backend tests and `scripts/docker-volume-backup-smoke.sh` before an EPUB release image.

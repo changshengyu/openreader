@@ -60,3 +60,54 @@ func TestMigrateLocalBookCacheMovesLocalContentToLibrary(t *testing.T) {
 		t.Fatalf("expected old cache file removed, stat err=%v", err)
 	}
 }
+
+func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+	}
+	database, err := Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrator().DropColumn(&models.Chapter{}, "ResourcePath"); err != nil {
+		t.Fatal(err)
+	}
+	if database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") {
+		t.Fatal("resource_path should be absent in the legacy fixture")
+	}
+
+	book := models.Book{UserID: 1, Title: "旧 EPUB"}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Exec(
+		"INSERT INTO chapters (book_id, `index`, title, url, is_volume, tag, cache_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+		book.ID,
+		0,
+		"第一章",
+		"local://book/chapter_0",
+		false,
+		"",
+		"content/one.txt",
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	if !database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") {
+		t.Fatal("resource_path was not added")
+	}
+	var chapter models.Chapter
+	if err := database.Where("book_id = ?", book.ID).First(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if chapter.Title != "第一章" || chapter.CachePath != "content/one.txt" || chapter.ResourcePath != "" {
+		t.Fatalf("legacy chapter changed during migration: %+v", chapter)
+	}
+}

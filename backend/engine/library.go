@@ -19,16 +19,17 @@ type ArchivedBook struct {
 }
 
 type ArchivedChapter struct {
-	ID        uint   `json:"id,omitempty"`
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	IsVolume  bool   `json:"isVolume"`
-	BaseURL   string `json:"baseUrl"`
-	BookURL   string `json:"bookUrl"`
-	Index     int    `json:"index"`
-	Start     int    `json:"start"`
-	End       int    `json:"end"`
-	CachePath string `json:"cachePath,omitempty"`
+	ID           uint   `json:"id,omitempty"`
+	URL          string `json:"url"`
+	Title        string `json:"title"`
+	IsVolume     bool   `json:"isVolume"`
+	BaseURL      string `json:"baseUrl"`
+	BookURL      string `json:"bookUrl"`
+	Index        int    `json:"index"`
+	Start        int    `json:"start"`
+	End          int    `json:"end"`
+	CachePath    string `json:"cachePath,omitempty"`
+	ResourcePath string `json:"resourcePath,omitempty"`
 }
 
 type ArchivedBookSource struct {

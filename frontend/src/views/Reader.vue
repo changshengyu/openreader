@@ -1,10 +1,10 @@
 <template>
-  <main ref="shellEl" class="reader-shell" :class="[reader.mode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
+  <main ref="shellEl" class="reader-shell" :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
     <ReaderDesktopTools
       :remote-book="isRemoteBook"
       :auto-reading="autoReading"
       :tts-playing="tts.state.playing"
-      :tts-supported="tts.state.supported"
+      :tts-supported="tts.state.supported && chapterFormat !== 'epub'"
       :active-panel="desktopWorkspacePanel"
       :is-night="isNightTheme"
       @action="handleDesktopToolAction"
@@ -95,7 +95,7 @@
       :remote-book="isRemoteBook"
       :auto-reading="autoReading"
       :tts-playing="tts.state.playing"
-      :tts-supported="tts.state.supported"
+      :tts-supported="tts.state.supported && chapterFormat !== 'epub'"
       :is-night="isNightTheme"
       :book-progress-label="bookProgressLabel"
       :chapter-label="chapterLabel"
@@ -136,13 +136,24 @@
             :error="chapterLoadError"
             :loaded="chapterLoaded"
             :loading="chapterLoading"
-            :mode="reader.mode"
+            :mode="effectiveReaderMode"
+            :epub-resource="epubResource"
+            :epub-style="epubStyleText"
+            :viewport-height="readerViewportHeight"
             @reload="reloadChapter"
+            @epub-load="handleEpubLoad"
+            @epub-height="handleEpubHeight"
+            @epub-click="handleEpubClick"
+            @epub-hash="handleEpubHash"
+            @epub-keydown="handleEpubKeydown"
+            @epub-preview="handleEpubPreview"
+            @epub-error="handleEpubError"
           />
         </div>
       </article>
       <ReaderClickZones
-        :mode="reader.mode"
+        v-if="chapterFormat !== 'epub'"
+        :mode="effectiveReaderMode"
         :show-overlay="showClickZoneOverlay"
         @tap="handleTapZone"
         @close-overlay="showClickZoneOverlay = false"
@@ -385,6 +396,13 @@
       :saving="savingBookmark"
       @save="saveBookmarkEdit"
     />
+
+    <el-image-viewer
+      v-if="epubPreviewVisible"
+      :url-list="epubPreviewImages"
+      :initial-index="epubPreviewIndex"
+      @close="epubPreviewVisible = false"
+    />
   </main>
 </template>
 
@@ -434,6 +452,7 @@ import { useReaderChapterPresentation } from '../composables/useReaderChapterPre
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderChrome } from '../composables/useReaderChrome'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
+import { epubChapterIndexForResourceURL } from '../composables/useReaderEpubFrame'
 import { useReaderLayout } from '../composables/useReaderLayout'
 import { useReaderKeyboard } from '../composables/useReaderKeyboard'
 import { useReaderLocalTocRulePicker } from '../composables/useReaderLocalTocRulePicker'
@@ -442,7 +461,7 @@ import { useReaderProgressPersistence } from '../composables/useReaderProgressPe
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderNavigation } from '../composables/useReaderNavigation'
-import { useReaderMode } from '../composables/useReaderMode'
+import { readerEffectiveMode, useReaderMode } from '../composables/useReaderMode'
 import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
 import { useReaderPanels } from '../composables/useReaderPanels'
 import { useReaderPositionRestore } from '../composables/useReaderPositionRestore'
@@ -584,6 +603,12 @@ const {
   onSuccess: message => ElMessage.success(message),
 })
 const content = ref('')
+const chapterFormat = ref('text')
+const epubResource = ref(null)
+const epubPendingRestore = ref(null)
+const epubPreviewVisible = ref(false)
+const epubPreviewImages = ref([])
+const epubPreviewIndex = ref(0)
 const chapterBlocks = ref([])
 const chapterLoading = ref(true)
 const chapterLoadError = ref('')
@@ -861,11 +886,36 @@ const lines = computed(() => chapterParagraphs.value.filter(item => item.type ==
 const chapterTextLength = computed(() => {
   return chapterBlockTextLength({ paragraphs: chapterParagraphs.value })
 })
-const isVerticalPagedRead = computed(() => reader.mode === 'page')
-const isScrollRead = computed(() => reader.mode === 'scroll' || reader.mode === 'scroll2')
+const effectiveReaderMode = computed(() => (
+  readerEffectiveMode(reader.mode, chapterFormat.value === 'epub')
+))
+const effectiveReaderState = {
+  get mode() {
+    return effectiveReaderMode.value
+  },
+  get clickMethod() {
+    return reader.clickMethod
+  },
+  get fontSize() {
+    return reader.fontSize
+  },
+  get lineHeight() {
+    return reader.lineHeight
+  },
+  get animateDuration() {
+    return reader.animateDuration
+  },
+}
+const isVerticalPagedRead = computed(() => effectiveReaderMode.value === 'page')
+const isScrollRead = computed(() => (
+  effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2'
+))
 const isVerticalRead = computed(() => isVerticalPagedRead.value || isScrollRead.value)
-const isContinuousScrollRead = computed(() => reader.mode === 'scroll' || reader.mode === 'scroll2')
+const isContinuousScrollRead = computed(() => (
+  effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2'
+))
 const displayedChapterBlocks = computed(() => {
+  if (chapterFormat.value === 'epub') return []
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
 })
@@ -892,7 +942,8 @@ const {
   page,
   pageCount,
   isContinuousScrollRead,
-  getMode: () => reader.mode,
+  isEPUB: computed(() => chapterFormat.value === 'epub'),
+  getMode: () => effectiveReaderMode.value,
   makeChapterBlock,
   chapterBlockTextLength,
   nextFrame,
@@ -943,7 +994,7 @@ const {
   resize: handleResize,
   update: updateFlipLayout,
 } = useReaderLayout({
-  reader,
+  reader: effectiveReaderState,
   contentEl,
   contentBody,
   page,
@@ -973,7 +1024,7 @@ const {
   page,
   pageCount,
   pageWidth,
-  getMode: () => reader.mode,
+  getMode: () => effectiveReaderMode.value,
   getRouteQuery: () => route.query,
   closeDrawer: () => {
     showSearchDrawer.value = false
@@ -1009,7 +1060,7 @@ const {
   progressVersion,
   isContinuousScrollRead,
   isVerticalRead,
-  getMode: () => reader.mode,
+  getMode: () => effectiveReaderMode.value,
   getAnimateDuration: () => reader.animateDuration,
   scrollStep,
   scrollBehavior: readerScrollBehavior,
@@ -1056,7 +1107,7 @@ const {
   pageCount,
   progressVersion,
   isContinuousScrollRead,
-  getMode: () => reader.mode,
+  getMode: () => effectiveReaderMode.value,
   getCurrentChapterPercent: currentChapterPercent,
   navigate: query => router.replace({
     name: 'reader',
@@ -1095,6 +1146,52 @@ const readerContentStyle = computed(() => ({
   lineHeight: reader.lineHeight,
 }))
 
+const readerViewportHeight = computed(() => (
+  contentEl.value?.clientHeight ||
+  pageHeight.value ||
+  (typeof window === 'undefined' ? 0 : window.innerHeight)
+))
+
+const epubStyleText = computed(() => `
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  *:focus {
+    outline: none !important;
+  }
+  html {
+    min-height: 100%;
+    color: ${reader.fontColor || reader.currentTheme.text};
+    background: transparent;
+    font-family: ${fontStack.value};
+    font-size: ${reader.fontSize}px;
+    font-weight: ${reader.fontWeight};
+  }
+  body {
+    min-height: 100%;
+    margin: 0 !important;
+    color: inherit;
+    background: transparent !important;
+    font: inherit;
+  }
+  body p {
+    margin-top: ${reader.paragraphSpace}em !important;
+    margin-bottom: ${reader.paragraphSpace}em !important;
+    color: inherit !important;
+    font-family: ${fontStack.value} !important;
+    font-size: ${reader.fontSize}px !important;
+    font-weight: ${reader.fontWeight} !important;
+    line-height: ${reader.lineHeight} !important;
+  }
+  img {
+    display: block;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+`)
+
 const bodyStyle = computed(() => {
   const baseStyle = {
     fontFamily: fontStack.value,
@@ -1102,7 +1199,7 @@ const bodyStyle = computed(() => {
     lineHeight: reader.lineHeight,
     fontWeight: reader.fontWeight,
   }
-  if (reader.mode === 'flip') {
+  if (effectiveReaderMode.value === 'flip') {
     return {
       ...baseStyle,
       '--reader-page-width': `${pageWidth.value}px`,
@@ -1185,6 +1282,7 @@ const {
   reader,
   isMobileReader,
   isContinuousScrollRead,
+  isEPUB: computed(() => chapterFormat.value === 'epub'),
   page,
   chapterLoading,
   chapterBlocks,
@@ -1223,7 +1321,7 @@ const isOverlayOpen = computed(() => (
 const {
   handle: handleReaderWheel,
 } = useReaderWheel({
-  reader,
+  reader: effectiveReaderState,
   shellEl,
   contentEl,
   isOverlayOpen,
@@ -1258,8 +1356,9 @@ const {
   handleTouchEnd: handleReaderTouchEnd,
   handleTouchMove: handleReaderTouchMove,
   handleTouchStart: handleReaderTouchStart,
+  tapPoint: handleReaderTapPoint,
 } = useReaderPointer({
-  reader,
+  reader: effectiveReaderState,
   pageEl,
   isMobileReader,
   isOverlayOpen,
@@ -1287,7 +1386,7 @@ const {
   applyLocal: applyLocalProgressSnapshot,
   saveRemote: payload => reader.saveProgress(payload),
   onSaved: progress => upsertReaderBookProgress(progress, { replace: true }),
-  getMode: () => reader.mode,
+  getMode: () => effectiveReaderMode.value,
   getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
   ensureClientId: () => reader.ensureClientId(),
 })
@@ -1351,6 +1450,8 @@ const {
   chapterLoading,
   chapter,
   content,
+  chapterFormat,
+  epubResource,
   page,
   chapterBlocks,
   progressVersion,
@@ -1368,6 +1469,9 @@ const {
   computeChapterWindow: computeShowChapterList,
   formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
   nextFrame,
+  onEpubPrepared: pending => {
+    epubPendingRestore.value = pending
+  },
 })
 const {
   handle: onScroll,
@@ -1452,6 +1556,9 @@ const {
   chapters,
   goChapter,
   notify: showReaderToast,
+})
+watch(chapterFormat, format => {
+  if (format === 'epub') ttsStop()
 })
 const {
   handleDesktopToolAction,
@@ -1577,6 +1684,109 @@ function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
 }
 
+async function handleEpubLoad(location) {
+  const resourceLocation = location?.href || location?.path || ''
+  const navigatedIndex = epubChapterIndexForResourceURL(resourceLocation, chapters.value)
+  if (navigatedIndex >= 0 && navigatedIndex !== currentIndex.value) {
+    currentIndex.value = navigatedIndex
+    chapter.value = chapters.value[navigatedIndex] || chapter.value
+    page.value = 0
+    chapterBlocks.value = []
+    epubPendingRestore.value = {
+      chapterIndex: navigatedIndex,
+      offset: 0,
+      restoreOptions: { restorePercent: 0, saveAfterLoad: false },
+    }
+    const cached = getChapterContentFromMemory(navigatedIndex)
+    if (cached?.content !== undefined) {
+      content.value = cached.content || ''
+    } else {
+      loadChapterContent(navigatedIndex)
+        .then(data => {
+          if (currentIndex.value === navigatedIndex) {
+            content.value = data.content || ''
+          }
+        })
+        .catch(() => {})
+    }
+  }
+
+  const pending = epubPendingRestore.value
+  await nextTick()
+  updateFlipLayout()
+  if (pending && pending.chapterIndex === currentIndex.value) {
+    await restoreReadingPosition(pending.offset, pending.restoreOptions)
+    epubPendingRestore.value = null
+  }
+  chapterLoaded.value = true
+  progressVersion.value += 1
+  scheduleProgressSave(120)
+}
+
+function handleEpubHeight() {
+  updateFlipLayout()
+  progressVersion.value += 1
+}
+
+function handleEpubClick(point) {
+  const frame = contentBody.value?.querySelector('.epub-iframe')
+  const page = pageEl.value
+  if (!frame || !page || !point) return
+  const frameRect = frame.getBoundingClientRect()
+  const pageRect = page.getBoundingClientRect()
+  const clientX = frameRect.left + (Number(point.clientX) || 0)
+  const clientY = frameRect.top + (Number(point.clientY) || 0)
+  handleReaderTapPoint({
+    rect: pageRect,
+    relX: clientX - pageRect.left,
+    relY: clientY - pageRect.top,
+    clientX,
+    clientY,
+  }, isMobileReader.value)
+}
+
+function handleEpubHash(rect) {
+  const viewport = contentEl.value
+  const frame = contentBody.value?.querySelector('.epub-iframe')
+  if (!viewport || !frame || !Number.isFinite(Number(rect?.top))) return
+  const viewportRect = viewport.getBoundingClientRect()
+  const frameRect = frame.getBoundingClientRect()
+  viewport.scrollTop = Math.max(
+    0,
+    viewport.scrollTop + frameRect.top - viewportRect.top + Number(rect.top),
+  )
+  scheduleProgressSave(120)
+}
+
+function handleEpubKeydown(event) {
+  const key = String(event?.key || '')
+  if (!key) return
+  window.dispatchEvent(new KeyboardEvent('keydown', {
+    key,
+    code: key,
+    bubbles: true,
+    cancelable: true,
+  }))
+}
+
+function handleEpubPreview(payload) {
+  const images = Array.isArray(payload?.imageList)
+    ? payload.imageList.filter(Boolean)
+    : []
+  if (!images.length) return
+  epubPreviewImages.value = images
+  epubPreviewIndex.value = Math.max(
+    0,
+    Math.min(Number(payload.imageIndex) || 0, images.length - 1),
+  )
+  epubPreviewVisible.value = true
+}
+
+function handleEpubError(error) {
+  chapterLoadError.value = error?.message || 'EPUB 正文加载失败，请重试'
+  chapterLoaded.value = false
+}
+
 function scrollStep() {
   const viewportHeight = contentEl.value?.clientHeight || window.innerHeight || readableViewportSize().height
   return readerScrollStep({
@@ -1615,7 +1825,7 @@ function flashParagraph(lineEl) {
 }
 
 useReaderKeyboard({
-  reader,
+  reader: effectiveReaderState,
   currentIndex,
   chapters,
   isScrollRead,

@@ -15,6 +15,8 @@ function createController(overrides = {}) {
     chapterLoading: ref(false),
     chapter: ref(null),
     content: ref(''),
+    chapterFormat: ref('text'),
+    epubResource: ref(null),
     page: ref(4),
     chapterBlocks: ref([]),
     progressVersion: ref(0),
@@ -30,6 +32,7 @@ function createController(overrides = {}) {
       return {
         chapter: { id: index + 1, title: `第 ${index + 1} 章` },
         content: `正文 ${index}`,
+        format: 'text',
       }
     },
     makeChapterBlock: (index, chapter, content) => ({ index, id: chapter.id, content }),
@@ -107,4 +110,24 @@ test('records load failures and always releases loading guards', async () => {
     ['cancel'],
     ['frame'],
   ])
+})
+
+test('keeps EPUB document metadata out of the ordinary paragraph renderer', async () => {
+  const fixture = createController({
+    loadContent: async () => ({
+      chapter: { id: 2, title: 'EPUB 第二章', resourcePath: 'OPS/two.xhtml' },
+      content: '可搜索纯文本',
+      format: 'epub',
+      resourceUrl: '/api/epub-resource/token/OPS/two.xhtml',
+      resourceExpiresAt: '2026-07-06T12:00:00Z',
+    }),
+  })
+  await fixture.controller.load(1, 88, { restorePercent: 0.4 })
+  assert.equal(fixture.state.chapterFormat.value, 'epub')
+  assert.deepEqual(fixture.state.epubResource.value, {
+    url: '/api/epub-resource/token/OPS/two.xhtml',
+    expiresAt: '2026-07-06T12:00:00Z',
+  })
+  assert.deepEqual(fixture.state.chapterBlocks.value, [])
+  assert.equal(fixture.state.content.value, '可搜索纯文本')
 })

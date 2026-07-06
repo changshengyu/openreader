@@ -9,6 +9,10 @@ import {
 } from '../utils/readerVisibility.js'
 
 export function useReaderViewportProgress(options) {
+  function isEPUB() {
+    return Boolean(options.isEPUB?.value)
+  }
+
   function currentVisibleParagraph() {
     const viewport = options.contentEl.value?.getBoundingClientRect()
     const paragraphs = [...(options.contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
@@ -71,6 +75,9 @@ export function useReaderViewportProgress(options) {
   }
 
   function currentChapterPosition() {
+    if (isEPUB()) {
+      return Math.max(0, Number(options.contentEl.value?.scrollTop) || 0)
+    }
     const snapshot = visibleChapterProgressSnapshot()
     if (snapshot) return snapshot.offset
     const el = options.contentEl.value
@@ -100,6 +107,12 @@ export function useReaderViewportProgress(options) {
 
   function currentChapterPercent() {
     options.progressVersion.value
+    if (isEPUB()) {
+      const el = options.contentEl.value
+      if (!el) return 0
+      const bottom = Math.max(el.scrollHeight - el.clientHeight, 1)
+      return Math.max(0, Math.min(1, (Number(el.scrollTop) || 0) / bottom))
+    }
     if (options.getMode() === 'flip') {
       return readerFlipChapterPercent(options.page.value, options.pageCount.value)
     }
@@ -119,6 +132,9 @@ export function useReaderViewportProgress(options) {
   }
 
   function currentOffset() {
+    if (isEPUB()) {
+      return Math.max(0, Math.round(Number(options.contentEl.value?.scrollTop) || 0))
+    }
     if (options.getMode() === 'flip') {
       return Math.max(0, Math.floor(options.page.value || 0))
     }

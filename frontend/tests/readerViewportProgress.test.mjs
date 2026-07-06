@@ -88,3 +88,23 @@ test('uses flip page state without requiring rendered paragraphs', () => {
   assert.equal(controller.currentChapterPercent(), 0.5)
   assert.equal(controller.visibleChapterProgressSnapshot(), null)
 })
+
+test('stores EPUB positions as document scroll pixels like upstream', () => {
+  const contentEl = ref({
+    scrollTop: 800,
+    scrollHeight: 2400,
+    clientHeight: 800,
+    getBoundingClientRect: () => ({ top: 0, bottom: 800 }),
+  })
+  const { controller } = createController({
+    contentEl,
+    contentBody: ref({ querySelectorAll: () => [], querySelector: () => null }),
+    isEPUB: ref(true),
+    isContinuousScrollRead: ref(false),
+    getMode: () => 'page',
+  })
+
+  assert.equal(controller.currentChapterPosition(), 800)
+  assert.equal(controller.currentOffset(), 800)
+  assert.equal(controller.currentChapterPercent(), 0.5)
+})
