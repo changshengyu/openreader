@@ -148,6 +148,7 @@
             @epub-keydown="handleEpubKeydown"
             @epub-preview="handleEpubPreview"
             @epub-error="handleEpubError"
+            @image-load="handleReaderImageLoad"
           />
         </div>
       </article>
@@ -1785,6 +1786,11 @@ function handleEpubPreview(payload) {
 function handleEpubError(error) {
   chapterLoadError.value = error?.message || 'EPUB 正文加载失败，请重试'
   chapterLoaded.value = false
+}
+
+function handleReaderImageLoad() {
+  updateFlipLayout()
+  progressVersion.value += 1
 }
 
 function scrollStep() {

@@ -100,12 +100,19 @@ test('marks image and cbz chapters with upstream comic semantics', () => {
   assert.equal(imageBlock.isComic, true)
   assert.equal(imageBlock.isCBZ, undefined)
   assert.equal(imageBlock.hideTitle, undefined)
+  assert.deepEqual(imageBlock.imageUrls, ['http://localhost/comic/1.jpg'])
 
   fixture.book.value = { id: 7, url: '/library/demo.CBZ?cache=1#page' }
   const cbzBlock = fixture.controller.makeChapterBlock(0, null, '<img src="/comic/1.jpg">')
   assert.equal(cbzBlock.isCBZ, true)
   assert.equal(cbzBlock.isComic, true)
   assert.equal(cbzBlock.hideTitle, true)
+
+  fixture.book.value = { id: 7, originalFile: 'uploads/archive.cbz' }
+  assert.equal(fixture.controller.makeChapterBlock(0, null, '正文').hideTitle, true)
+
+  fixture.book.value = { id: 7, libraryPath: 'books/archive.CBZ?download=1#cover' }
+  assert.equal(fixture.controller.makeChapterBlock(0, null, '正文').hideTitle, true)
 })
 
 test('reads the final paragraph boundary as chapter text length', () => {

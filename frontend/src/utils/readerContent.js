@@ -45,21 +45,47 @@ function appendTextBlock(blocks, value, pos, formatText) {
 }
 
 function parseImageTag(value) {
-  if (typeof DOMParser === 'undefined') return null
-  const document = new DOMParser().parseFromString(value, 'text/html')
-  const image = document.querySelector('img')
+  const image = parseImageAttributes(value)
   if (!image) return null
-  const source = image.getAttribute('src')
-    || image.getAttribute('data-src')
-    || image.getAttribute('data-original')
-    || image.getAttribute('data-url')
+  const source = image.src
+    || image['data-src']
+    || image['data-original']
+    || image['data-url']
   const src = safeImageURL(source)
   if (!src) return null
   return {
     src,
-    alt: String(image.getAttribute('alt') || image.getAttribute('title') || '').trim(),
-    imageStyle: normalizeImageStyle(image.getAttribute('data-image-style')),
+    alt: String(image.alt || image.title || '').trim(),
+    imageStyle: normalizeImageStyle(image['data-image-style']),
   }
+}
+
+function parseImageAttributes(value) {
+  if (typeof DOMParser !== 'undefined') {
+    const document = new DOMParser().parseFromString(value, 'text/html')
+    const image = document.querySelector('img')
+    if (!image) return null
+    return {
+      src: image.getAttribute('src') || '',
+      'data-src': image.getAttribute('data-src') || '',
+      'data-original': image.getAttribute('data-original') || '',
+      'data-url': image.getAttribute('data-url') || '',
+      alt: image.getAttribute('alt') || '',
+      title: image.getAttribute('title') || '',
+      'data-image-style': image.getAttribute('data-image-style') || '',
+    }
+  }
+  const tag = String(value || '').match(/<\s*img\b[^>]*>/i)?.[0]
+  if (!tag) return null
+  const attributes = {}
+  const attrPattern = /([:@A-Za-z0-9_-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
+  let match
+  while ((match = attrPattern.exec(tag)) !== null) {
+    const name = String(match[1] || '').toLowerCase()
+    if (!name || name === 'img') continue
+    attributes[name] = match[2] ?? match[3] ?? match[4] ?? ''
+  }
+  return attributes
 }
 
 function normalizeImageStyle(value) {
@@ -184,13 +210,24 @@ function unescapeBasicEntities(value) {
 }
 
 function safeImageURL(value) {
-  const source = String(value || '').trim().replaceAll('__API_ROOT__', window.location.origin)
+  const origin = runtimeOrigin()
+  const source = String(value || '').trim().replaceAll('__API_ROOT__', origin)
   if (!source) return ''
   try {
-    const parsed = new URL(source, window.location.origin)
+    const parsed = new URL(source, origin)
     if (!['http:', 'https:'].includes(parsed.protocol)) return ''
     return parsed.href
   } catch {
     return ''
   }
+}
+
+function runtimeOrigin() {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+  if (typeof globalThis.location !== 'undefined' && globalThis.location?.origin) {
+    return globalThis.location.origin
+  }
+  return 'http://localhost'
 }

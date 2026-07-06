@@ -66,8 +66,70 @@ Implemented in commit work following this contract:
 
 Still pending in Reader P0:
 
-- Complete separate `Content.vue` parity reviews for image lazy-loading/CBZ import edge cases, audio/TTS media controls, and continuous cross-chapter edge cases.
+- Complete separate `Content.vue` parity reviews for CBZ import/archive edge cases, audio/TTS media controls, and continuous cross-chapter edge cases.
 - The final Reader P0 acceptance image remains pending. Intermediate validation image `ca43409` has been published and is not the final Reader P0 release.
+
+## Immediate P0 contract: Content image/comic/CBZ reading
+
+Status: implemented and validated on 2026-07-06.
+
+### Upstream behavior contract
+
+| Layer | Upstream evidence | Required visible/state behavior |
+|---|---|---|
+| Image detection | `web/src/components/Content.vue` treats any content line containing `<img` as cartoon/comic content. | OpenReader must detect image markup before stripping/sanitizing text, and mixed text+image lines must preserve their text positions around the image. |
+| Image source rewriting | Upstream replaces `src=` with `data-src=` and replaces `__API_ROOT__` with `apiRoot`, then relies on `v-lazy-container`. | OpenReader may use Vue/Element lazy images instead of `v-lazy-container`, but must resolve `src`, `data-src`, `data-original`, `data-url`, and `__API_ROOT__` to the same effective image URL. |
+| Comic image layout | Upstream global `.content-body img` forces images to `width: 100%`, `max-width: 100vw`, and `display: block`. | Comic/CBZ images should visually fill the readable content width instead of being capped by a generic prose-image max width. Text illustrations may keep caption/preview behavior only when it does not shrink comic pages. |
+| CBZ title handling | Upstream `isCbz` is `readingBook.bookUrl.toLowerCase().endsWith(".cbz")`; CBZ chapters render no chapter title. | OpenReader must treat `.cbz` source/original/local URLs as CBZ and hide the chapter heading for CBZ chapters, including query/hash suffixes. |
+| Continuous chapter list | Upstream `renderScrollChapterList()` applies the same image/CBZ rules to every visible chapter in scroll modes. | OpenReader must apply image, comic, and CBZ layout consistently in single chapter, scroll, and scroll2 multi-chapter windows. |
+| Image-load pagination | Upstream Reader subscribes to `$Lazyload.$on("loaded", lazyloadHandler)` and `lazyloadHandler()` calls `computePages()` unless audio is active. | When an image finishes loading in OpenReader, flip/page pagination and chapter progress must be recomputed. A late-loading image must not leave stale page counts or wrong scroll restoration. |
+| Position/search semantics | Upstream assigns `data-pos` based on the original line offset before converting image tags to lazy markup. Search/TTS paragraph traversal still mostly targets `h3,p`, while image wrappers carry `data-pos`. | OpenReader should preserve source offsets for text/image blocks. Searchable text must not include raw image markup, and image-only CBZ pages must still expose block positions for progress/bookmark calculations. |
+| Error/unsafe HTML handling | Upstream directly injects HTML for image lines. | OpenReader must keep its stricter HTML sanitizer and URL allowlist for security; this is an allowed security hardening if the visible safe image behavior remains aligned. |
+
+### Current OpenReader mapping
+
+| Concern | Current evidence | Classification | Required action |
+|---|---|---|---|
+| Image parsing | `frontend/src/utils/readerContent.js` parses `<img>` into `type: "image"` blocks and reads `src`, `data-src`, `data-original`, `data-url`, including a non-browser parser path for deterministic tests. | `aligned` | Covered by parser contract tests for `__API_ROOT__`, mixed text+image lines, unsafe image URLs, and source positions. |
+| CBZ detection | `useReaderChapterPresentation.js` checks `url`, `bookUrl`, `libraryPath`, and `originalFile`, ignoring query/hash. | `acceptable-change` | Keep broader detection because Go/Vue data shape differs from upstream `bookUrl`; document as compatibility adaptation. |
+| Image layout | `ReaderChapterContent.vue` keeps the generic illustration cap but overrides comic/CBZ image boxes and image elements to fill the readable column width. | `aligned` | Browser geometry checks cover desktop page mode, mobile continuous scroll, and mobile flip mode. |
+| CBZ heading | `hideTitle` is set for CBZ and `h1` is skipped. | `aligned` | Tests cover query/hash `.CBZ`, `originalFile`, and `libraryPath` shapes. |
+| Image-load relayout | `ReaderChapterContent.vue` emits `image-load`; Reader calls `updateFlipLayout()` and refreshes progress state after every successful image load. | `aligned` | Static wiring test plus delayed-image browser checks cover page/flip recalculation. |
+| Preview | Element Plus image preview is used for ordinary image blocks; the image block stops click propagation before the Reader center-tap handler. | `acceptable-change` | Browser checks prove preview opens without hiding the default-visible mobile toolbar. |
+| Security | Current parser strips unsafe inline HTML and rejects non-http(s) image URLs. | `acceptable-change` | Keep the stricter allowlist; tests should prove `javascript:` and script attributes do not survive. |
+
+### Validation evidence
+
+Frontend unit tests:
+
+1. `parseReaderContentBlocks()` resolves `__API_ROOT__`, `src`, `data-src`, `data-original`, and `data-url`, preserving source `pos/endPos`.
+2. Mixed text+image+text lines produce text blocks around an image block with stable offsets.
+3. Unsafe image URLs and unsafe inline HTML are rejected while safe inline text remains searchable.
+4. CBZ detection hides titles for `.cbz`, `.CBZ?x#y`, `originalFile`, and `libraryPath` shapes.
+5. Image load events from the content component bubble to Reader layout recomputation without firing for non-image text blocks.
+
+Real-browser gate:
+
+1. Open a fixture reader chapter at 1440×900, 390×844, and 360×800 with delayed-loading images.
+2. Confirm comic/CBZ images fill the readable width, CBZ titles are hidden, and ordinary text remains justified with symmetric mobile padding.
+3. Confirm image load changes page count/layout rather than leaving stale pagination.
+4. Confirm image preview does not hide the mobile toolbar or pass through as a center tap.
+
+Implemented coverage:
+
+- `frontend/tests/readerContent.test.mjs`
+- `frontend/tests/readerChapterPresentation.test.mjs`
+- `frontend/tests/readerImageWiring.test.mjs`
+- `scripts/smoke/reader-image-contract.mjs`
+
+The browser contract covers 1440×900 desktop page mode, 390×844 and 360×800 mobile continuous scroll, plus a separate 390×844 mobile flip-pagination pass.
+
+Repository gate:
+
+- Backend `go test ./...`: passed.
+- Frontend `npm test`: 257 passed.
+- Frontend `npm run build`: passed.
+- Existing `scripts/smoke/reader-mobile-contract.mjs`: passed after the image click-through fix.
 
 ## Immediate P0 contract: EPUB document reading
 

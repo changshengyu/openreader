@@ -42,6 +42,7 @@
           :class="{ 'is-full': line.imageStyle === 'FULL' }"
           :data-pos="line.pos"
           data-reader-block
+          @click.stop
         >
           <el-image
             :src="line.src"
@@ -51,6 +52,7 @@
             fit="contain"
             lazy
             preview-teleported
+            @load="emit('image-load', { blockIndex: block.index, pos: line.pos, src: line.src })"
           />
           <figcaption v-if="line.alt">{{ line.alt }}</figcaption>
         </figure>
@@ -111,6 +113,7 @@ const emit = defineEmits([
   'epub-keydown',
   'epub-preview',
   'epub-error',
+  'image-load',
 ])
 </script>
 
@@ -179,6 +182,11 @@ p {
   min-height: 1px;
 }
 
+.comic-chapter .reader-content-image :deep(.el-image) {
+  width: 100%;
+  max-width: 100vw;
+}
+
 .reader-content-image.is-full :deep(.el-image) {
   width: 100%;
 }
@@ -192,6 +200,11 @@ p {
 
 .reader-content-image.is-full :deep(img) {
   width: 100%;
+}
+
+.comic-chapter .reader-content-image :deep(img) {
+  width: 100%;
+  max-width: 100vw;
 }
 
 .reader-content-image figcaption {
