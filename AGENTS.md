@@ -71,7 +71,8 @@ For every copied reader-dev feature, verify the relevant contract layer before c
 ### Release
 
 - Do not use cloud Docker builds for releases.
-- Build Docker images locally and push to GHCR only after a complete module passes its gate.
+- Build Docker images locally and push to GHCR after any coherent validation slice that is suitable for user verification. A full module boundary is preferred but no longer required.
+- Push Git commits to GitHub promptly after successful commits unless the user explicitly asks to keep work local.
 - Every Docker release report must include completed items, allowed differences, unfinished items, image tags, digest, and verification summary.
 
 ## Minimum validation

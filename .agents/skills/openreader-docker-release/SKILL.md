@@ -10,7 +10,8 @@ Use this skill before publishing Docker images.
 ## Release policy
 
 - Build locally. Do not use cloud Docker builds.
-- Publish only after a complete module passes backend, frontend, browser, and Docker gates appropriate to the change.
+- Publish after a coherent validation slice passes backend, frontend, browser, and Docker gates appropriate to the change. A complete module boundary is preferred but not required when the user wants intermediate verification.
+- Push Git commits to GitHub before or together with the Docker publish so the image can be traced to a remote commit.
 - Preserve upgrade compatibility for mounted `data/`, `cache/`, and `library/`.
 
 ## Standard commands
