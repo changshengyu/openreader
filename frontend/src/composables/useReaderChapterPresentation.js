@@ -23,7 +23,9 @@ export function useReaderChapterPresentation(options) {
     const title = chapterRow?.title || fallback.title || `第 ${index + 1} 章`
     const paragraphs = makeParagraphs(text, title)
     const isVolume = Boolean(chapterRow?.isVolume ?? fallback.isVolume)
-    return {
+    const isCBZ = isCBZBook(unref(options.book))
+    const isComic = isCBZ || containsImageMarkup(text) || paragraphs.some(item => item.type === 'image')
+    const block = {
       index,
       id: chapterRow?.id || fallback.id,
       title: displayChapterTitle(title),
@@ -37,6 +39,14 @@ export function useReaderChapterPresentation(options) {
         .filter(item => item.type === 'image')
         .map(item => item.src),
     }
+    if (isCBZ) {
+      block.isCBZ = true
+      block.hideTitle = true
+    }
+    if (isComic) {
+      block.isComic = true
+    }
+    return block
   }
 
   function chapterBlockTextLength(block) {
@@ -53,4 +63,18 @@ export function useReaderChapterPresentation(options) {
     makeChapterBlock,
     makeParagraphs,
   }
+}
+
+function containsImageMarkup(value) {
+  return /<img\b/i.test(String(value || ''))
+}
+
+function isCBZBook(book) {
+  const candidates = [
+    book?.url,
+    book?.bookUrl,
+    book?.libraryPath,
+    book?.originalFile,
+  ]
+  return candidates.some(value => String(value || '').toLowerCase().split(/[?#]/)[0].endsWith('.cbz'))
 }

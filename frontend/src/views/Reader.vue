@@ -850,6 +850,7 @@ const {
   makeParagraphs,
 } = useReaderChapterPresentation({
   reader,
+  book,
   chapters,
 })
 

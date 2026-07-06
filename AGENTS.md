@@ -32,8 +32,19 @@ Use the repo-level skills under `.agents/skills/` when they match the change:
 - Do not use current rewritten files as proof that a behavior is correct.
 - Before rebuilding a module, map upstream files, API/data contracts, state transitions, defaults, and visible behavior.
 - For upstream-backed features, first update `docs/compat/reader-dev-openreader-gap-analysis.md` or a more specific compatibility contract. Code comes after the contract.
+- Treat refactoring as a three-phase gate: extract upstream contract first, add/update tests second, implement third. Do not collapse these steps for compatibility-sensitive modules.
 - Keep user data and old URLs compatible. Wrong UI structures may be deleted or rebuilt.
 - Allowed differences must be explicit: Vue 3/Pinia/Go runtime adaptation, multi-user isolation, cache hardening, security fixes, or user-requested UX improvements.
+
+## Compatibility contract layers
+
+For every copied reader-dev feature, verify the relevant contract layer before claiming parity:
+
+- Feature matrix: module, upstream behavior, current behavior, difference, priority, files, and tests.
+- API contract: method, path, query/body, response schema, status code, auth, side effects, and error format.
+- Data contract: SQLite rows, persisted settings, cache/library/data files, backup/restore, WebDAV storage, and migration notes.
+- Frontend contract: routes, query parameters, local/session storage, state transitions, API call order, visible layout, keyboard/mouse/touch behavior, and error text.
+- Parser contract: selector/XPath-like rules, encoding, regex cleanup, chapter splitting, import formats, remote fetch limits, and golden fixtures.
 
 ## Architecture rules
 

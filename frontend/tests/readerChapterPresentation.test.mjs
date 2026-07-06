@@ -5,14 +5,16 @@ import { useReaderChapterPresentation } from '../src/composables/useReaderChapte
 
 function createController() {
   const reader = reactive({ chineseFont: '简体' })
+  const book = ref({ id: 7, url: 'https://example.com/book.txt' })
   const chapters = ref([
     { id: 11, title: '第一章 爱国' },
     { id: 12 },
   ])
   return {
+    book,
     chapters,
     reader,
-    controller: useReaderChapterPresentation({ reader, chapters }),
+    controller: useReaderChapterPresentation({ reader, book, chapters }),
   }
 }
 
@@ -90,6 +92,20 @@ test('preserves upstream volume chapter semantics', () => {
   const regular = fixture.controller.makeChapterBlock(1, { id: 22, isVolume: false }, '正文')
   assert.equal(regular.isVolume, false)
   assert.equal(regular.volumeText, '')
+})
+
+test('marks image and cbz chapters with upstream comic semantics', () => {
+  const fixture = createController()
+  const imageBlock = fixture.controller.makeChapterBlock(0, null, '<img src="/comic/1.jpg" alt="图">')
+  assert.equal(imageBlock.isComic, true)
+  assert.equal(imageBlock.isCBZ, undefined)
+  assert.equal(imageBlock.hideTitle, undefined)
+
+  fixture.book.value = { id: 7, url: '/library/demo.CBZ?cache=1#page' }
+  const cbzBlock = fixture.controller.makeChapterBlock(0, null, '<img src="/comic/1.jpg">')
+  assert.equal(cbzBlock.isCBZ, true)
+  assert.equal(cbzBlock.isComic, true)
+  assert.equal(cbzBlock.hideTitle, true)
 })
 
 test('reads the final paragraph boundary as chapter text length', () => {

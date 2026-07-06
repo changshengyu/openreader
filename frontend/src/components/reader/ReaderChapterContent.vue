@@ -11,7 +11,7 @@
       v-for="block in blocks"
       :key="block.index"
       class="chapter-content reading-chapter"
-      :class="[mode, { 'volume-chapter': block.isVolume }]"
+      :class="[mode, { 'volume-chapter': block.isVolume, 'comic-chapter': block.isComic }]"
       :data-index="block.index"
     >
       <div v-if="block.isVolume" class="volume-content">
@@ -19,7 +19,7 @@
         <p v-if="block.volumeText" class="volume-tag" data-reader-block>{{ block.volumeText }}</p>
       </div>
       <template v-else>
-        <h1 data-pos="0">{{ block.title || '正文' }}</h1>
+        <h1 v-if="!block.hideTitle" data-pos="0">{{ block.title || '正文' }}</h1>
         <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
         <figure
           v-if="line.type === 'image'"
@@ -128,6 +128,10 @@ p {
   margin: 0 auto var(--reader-paragraph-space);
   place-items: center;
   text-indent: 0;
+}
+
+.comic-chapter .reader-content-image {
+  margin-bottom: 0;
 }
 
 .reader-content-image :deep(.el-image) {

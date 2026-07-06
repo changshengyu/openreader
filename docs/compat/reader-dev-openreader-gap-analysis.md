@@ -58,11 +58,12 @@ Implemented in commit work following this contract:
 - Mobile shelf, catalog, bookmark, search, source, cache, and settings panels now use a toolbar-coexisting full-width workspace instead of visible bottom `el-drawer`.
 - Settings panel coexistence, no visible mobile drawer, center tap behavior, and 16px mobile reader geometry are covered by `scripts/smoke/reader-mobile-contract.mjs`.
 - Ordinary text rendering now preserves safe upstream inline HTML semantics via sanitized `v-html`, while keeping plain text for search/progress.
+- Image markup now marks chapters with upstream comic semantics, and CBZ-like book URLs hide the chapter title to match upstream `Content.vue`.
 - Unit tests that previously encoded “panel open hides toolbar” were rewritten.
 
 Still pending in Reader P0:
 
-- Complete `Content.vue` format parity review for EPUB iframe behavior, image/comic/CBZ branches, audio/TTS media controls, and continuous cross-chapter edge cases.
+- Complete `Content.vue` format parity review for EPUB iframe behavior, image lazy-loading/CBZ import edge cases, audio/TTS media controls, and continuous cross-chapter edge cases.
 - Run final Docker release only after the full Reader P0 module, including content-format parity review, is complete.
 
 ## Required workflow for each future module
