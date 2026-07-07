@@ -188,17 +188,24 @@
 
     <!-- TTS 朗读条 -->
     <ReaderTTSBar
-      v-if="tts.state.playing && !isAudioChapter"
+      v-if="ttsBarShown"
+      :playing="tts.state.playing"
       :paused="tts.state.paused"
       :rate="tts.state.rate"
       :pitch="tts.state.pitch"
+      :voices="ttsVoices"
+      :voice-uri="reader.ttsVoiceURI"
+      :config-expanded="ttsConfigExpanded"
       :sleep-minutes="ttsSleepMinutes"
       :progress-text="ttsProgressLabel"
       @backward="tts.skipBackward"
+      @play="toggleTTS"
       @pause="tts.pause"
       @resume="tts.resume"
       @forward="tts.skipForward"
-      @stop="ttsStop"
+      @close="closeTTSBar"
+      @toggle-config="ttsConfigExpanded = !ttsConfigExpanded"
+      @voice-change="setTTSVoice"
       @rate-change="setTTSRate"
       @pitch-change="setTTSPitch"
       @sleep-change="setTTSSleepMinutes"
@@ -501,6 +508,7 @@ import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
+import { readerTTSBarVisible } from '../utils/readerTTS'
 import {
   readerScrollBehaviorForDuration,
   readerScrollStep,
@@ -1591,11 +1599,28 @@ const {
   goChapter,
   notify: showReaderToast,
 })
+const ttsBarRequested = ref(false)
+const ttsConfigExpanded = ref(true)
 const ttsSupportedForChapter = computed(() => (
   tts.state.supported && chapterFormat.value !== 'epub' && !isAudioChapter.value
 ))
+const ttsBarShown = computed(() => readerTTSBarVisible({
+  requested: ttsBarRequested.value,
+  supported: tts.state.supported,
+  chapterFormat: chapterFormat.value,
+  audio: isAudioChapter.value,
+}))
+function toggleTTSBar() {
+  if (!ttsSupportedForChapter.value) return
+  ttsBarRequested.value = !ttsBarRequested.value
+}
+function closeTTSBar() {
+  ttsBarRequested.value = false
+  ttsStop()
+}
 watch(chapterFormat, format => {
   if (format === 'epub' || format === 'audio') {
+    ttsBarRequested.value = false
     ttsStop()
     if (autoReading.value) stopAutoReading()
   }
@@ -1627,7 +1652,7 @@ const {
     },
     tts: () => {
       if (!ttsSupportedForChapter.value) return
-      return runWithDesktopWorkspaceClosed(toggleTTS)
+      return runWithDesktopWorkspaceClosed(toggleTTSBar)
     },
     night: () => runWithDesktopWorkspaceClosed(toggleNight),
     top: () => runWithDesktopWorkspaceClosed(scrollToTop),

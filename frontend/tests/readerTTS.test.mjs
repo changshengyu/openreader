@@ -4,6 +4,7 @@ import {
   normalizeTTSPitch,
   normalizeTTSRate,
   normalizeTTSSleepMinutes,
+  readerTTSBarVisible,
   readerTTSProgressLabel,
   readerTTSSleepExpired,
   sortTTSVoices,
@@ -47,6 +48,33 @@ test('sorts reader TTS voices with Chinese voices first then by language', () =>
     'zh-CN',
     'fr-FR',
   ])
+})
+
+test('keeps reader TTS bar visibility independent from playback state', () => {
+  assert.equal(readerTTSBarVisible({
+    requested: true,
+    supported: true,
+    chapterFormat: 'text',
+    audio: false,
+  }), true)
+  assert.equal(readerTTSBarVisible({
+    requested: true,
+    supported: true,
+    chapterFormat: 'epub',
+    audio: false,
+  }), false)
+  assert.equal(readerTTSBarVisible({
+    requested: true,
+    supported: true,
+    chapterFormat: 'text',
+    audio: true,
+  }), false)
+  assert.equal(readerTTSBarVisible({
+    requested: false,
+    supported: true,
+    chapterFormat: 'text',
+    audio: false,
+  }), false)
 })
 
 test('formats reader TTS paragraph progress', () => {

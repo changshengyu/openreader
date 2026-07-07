@@ -689,11 +689,11 @@ Current OpenReader evidence and classification:
 | Layer | Current evidence | Difference | Classification |
 |---|---|---|---|
 | Availability | `Reader.vue` `ttsSupportedForChapter` checks speech support, non-EPUB, and non-audio; image/comic uses chapter format checks elsewhere. | Equivalent for audio/EPUB; image/comic eligibility still needs explicit verification against `chapterFormat` values. | `unknown` |
-| Read bar visibility | `ReaderTTSBar v-if="tts.state.playing && !isAudioChapter"` and tool action directly calls `toggleTTS`. | Upstream toggles bar visibility before playback and keeps it independent from speaking. Current UI only appears once speaking has started and hides when stopped. | `must-fix` |
-| Read bar structure | `ReaderTTSBar.vue` compact blue fixed bar; voice selection lives in `ReaderSettingsPanel`. | Upstream read bar contains its own config section and voice list. Current split is usable but not upstream-equivalent. | `must-fix` |
-| Rate range | `useTTS`, `readerStore`, `ReaderTTSBar`, `ReaderSettingsPanel`, `Settings.vue` use `0.5–3`. | Upstream max is `2`. | `must-fix` |
-| Pitch range | `useTTS`, `readerStore`, `ReaderTTSBar`, `ReaderSettingsPanel`, `Settings.vue` use `0.5–2`. | Upstream min is `0`. | `must-fix` |
-| Voice ordering | `useTTS.loadVoices()` filters `zh/en` voices, then uses browser order. | Upstream does not prioritize English over other voices; it sorts `zh-*` voices first, then by `lang`. | `must-fix` |
+| Read bar visibility | `Reader.vue` now keeps `ttsBarRequested` separate from `tts.state.playing`, and `readerTTSBarVisible()` gates only requested/support/chapter eligibility. | Matches upstream requirement that opening the read bar does not start speech; unlike upstream, OpenReader keeps the mobile tool layer policy governed by the existing Reader chrome contract. | `technical-stack-equivalent` |
+| Read bar structure | `ReaderTTSBar.vue` now exposes close, previous paragraph, play/pause, next paragraph, collapse/expand config, voice list, rate, pitch, and sleep controls. | Equivalent control surface, with Vue 3/Element Plus styling and current pause/resume support retained. | `technical-stack-equivalent` |
+| Rate range | `useTTS`, `readerStore`, `ReaderTTSBar`, `ReaderSettingsPanel`, `Settings.vue` use `0.5–2`. | Matches upstream. | `aligned` |
+| Pitch range | `useTTS`, `readerStore`, `ReaderTTSBar`, `ReaderSettingsPanel`, `Settings.vue` use `0–2`. | Matches upstream. | `aligned` |
+| Voice ordering | `useTTS.loadVoices()` uses `sortTTSVoices()`, sorting `zh-*` first then by language without filtering non-English/non-Chinese voices. | Matches upstream ordering while keeping `voiceURI` persistence. | `aligned` |
 | Config persistence | Pinia reader store persists `ttsRate`, `ttsPitch`, `ttsVoiceURI`. | Uses `voiceURI` instead of upstream `voiceName`; this is a Vue 3/browser-stability adaptation as long as display labels remain human-readable. | `acceptable-change` |
 | Restart on config change | `useTTS.setRate/setPitch/setVoice` call `restartCurrent()`. | Matches upstream restart-on-change behavior. | `aligned` |
 | Sleep timer | `useReaderTTS` uses 0–180 minutes and emits `定时关闭朗读`. | Matches upstream timer range and message. | `aligned` |
@@ -718,7 +718,11 @@ Implementation status:
 - Completed in this slice: TTS pitch is normalized to upstream `0–2` everywhere it is stored or edited.
 - Completed in this slice: browser voices are sorted with upstream `zh-*` first, then by language, without dropping non-Chinese/non-English voices.
 - Completed in this slice: unit tests cover TTS rate/pitch normalization, sleep timer range, progress label, deadline expiration, and voice ordering.
-- Pending follow-up: full read-bar visibility/config structure and DOM paragraph traversal must be rebuilt against upstream Reader semantics.
+- Completed in this slice: Reader TTS button opens/closes the read bar without starting speech; the play button starts speech; closing the read bar stops active speech.
+- Completed in this slice: `ReaderTTSBar` now contains voice list/config controls in the Reader surface and uses an upstream-like high layer so mobile floating tools do not intercept its controls.
+- Completed in this slice: `scripts/smoke/reader-tts-contract.mjs` verifies the real-browser TTS bar contract with a mocked `speechSynthesis`.
+- Pending follow-up: DOM paragraph traversal must be rebuilt against upstream `h3,p` current-visible paragraph semantics, including previous/next across chapter boundaries.
+- Pending follow-up: speech synthesis errors must surface `朗读错误: ...` without breaking the Reader.
 
 ## Required workflow for each future module
 

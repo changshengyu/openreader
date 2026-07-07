@@ -24,6 +24,10 @@ export function sortTTSVoices(voices) {
   })
 }
 
+export function readerTTSBarVisible({ requested, supported, chapterFormat, audio }) {
+  return Boolean(requested && supported && chapterFormat !== 'epub' && !audio)
+}
+
 export function readerTTSProgressLabel({ playing, currentIndex, total }) {
   const paragraphTotal = Number(total) || 0
   if (!playing || paragraphTotal <= 0) return '段落 - / -'
