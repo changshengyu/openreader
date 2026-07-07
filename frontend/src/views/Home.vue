@@ -809,10 +809,10 @@ function readError(err, fallback) {
 .shelf-page.mobile-shelf .shelf-title {
   display: flex;
   flex-wrap: nowrap;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 16px 10px;
+  padding: 20px 24px 0;
   overflow: hidden;
 }
 
@@ -822,17 +822,17 @@ function readError(err, fallback) {
 }
 
 .shelf-page.mobile-shelf .shelf-title strong {
-  font-size: 30px;
+  font-size: 20px;
   line-height: 1.2;
   white-space: nowrap;
 }
 
 .shelf-page.mobile-shelf .title-actions {
-  max-width: 58%;
+  max-width: 62%;
   flex: 0 1 auto;
   flex-wrap: nowrap;
   justify-content: flex-start;
-  gap: 14px;
+  gap: 10px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -844,7 +844,7 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .title-actions button {
   flex: 0 0 auto;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 28px;
   white-space: nowrap;
 }
@@ -854,8 +854,8 @@ function readError(err, fallback) {
 }
 
 .shelf-page.mobile-shelf .book-group-wrapper {
-  margin-right: 0;
-  margin-left: 0;
+  margin-right: 24px;
+  margin-left: 24px;
   padding: 0;
 }
 
@@ -863,7 +863,7 @@ function readError(err, fallback) {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 0 16px 10px;
+  padding: 8px 24px 8px;
 }
 
 .shelf-page.mobile-shelf .group-chip {
@@ -880,21 +880,21 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .book-row {
   display: grid;
-  grid-template-columns: clamp(76px, 24vw, 92px) minmax(0, 1fr);
-  min-height: clamp(120px, 36vw, 142px);
+  grid-template-columns: 84px minmax(0, 1fr);
+  min-height: 132px;
   align-items: start;
-  gap: clamp(12px, 4vw, 18px);
+  gap: 20px;
   width: 100%;
   box-sizing: border-box;
-  padding: 14px 16px;
+  padding: 10px 20px;
   border-bottom: 0;
   contain: inline-size paint;
 }
 
 .shelf-page.mobile-shelf .list-cover {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 3 / 4;
+  width: 84px;
+  height: 112px;
+  aspect-ratio: auto;
   border-radius: 0;
 }
 
@@ -911,7 +911,7 @@ function readError(err, fallback) {
 
 .shelf-page.mobile-shelf .list-main {
   width: auto;
-  min-height: clamp(102px, 32vw, 122px);
+  min-height: 112px;
   box-sizing: border-box;
   align-content: space-between;
   justify-content: stretch;
@@ -988,10 +988,10 @@ function readError(err, fallback) {
 @media (max-width: 520px) {
   .shelf-page.mobile-shelf .book-group-wrapper,
   .book-group-wrapper {
-    width: 100%;
-    max-width: 100%;
-    margin-right: 0;
-    margin-left: 0;
+    width: auto;
+    max-width: calc(100% - 48px);
+    margin-right: 24px;
+    margin-left: 24px;
     padding: 5px 0;
   }
 
@@ -1006,12 +1006,12 @@ function readError(err, fallback) {
 
   .shelf-page.mobile-shelf .shelf-title,
   .shelf-title {
-    padding: 18px 14px 0;
+    padding: 20px 24px 0;
   }
 
   .shelf-page.mobile-shelf .shelf-title strong,
   .shelf-title strong {
-    font-size: 28px;
+    font-size: 20px;
   }
 
   .shelf-page.mobile-shelf .title-actions,
@@ -1027,20 +1027,20 @@ function readError(err, fallback) {
   .shelf-page.mobile-shelf .book-row,
   .book-row {
     display: grid;
-    grid-template-columns: clamp(72px, 22vw, 86px) minmax(0, 1fr);
-    gap: clamp(10px, 3.5vw, 14px);
-    min-height: clamp(116px, 34vw, 134px);
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 20px;
+    min-height: 132px;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 12px clamp(12px, 3.5vw, 14px);
+    padding: 10px 20px;
   }
 
   .shelf-page.mobile-shelf .list-cover,
   .list-cover {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 3 / 4;
+    width: 84px;
+    height: 112px;
+    aspect-ratio: auto;
     flex-basis: auto;
   }
 
@@ -1048,7 +1048,7 @@ function readError(err, fallback) {
   .list-main {
     width: auto;
     max-width: 100%;
-    min-height: 114px;
+    min-height: 112px;
     box-sizing: border-box;
     gap: 4px;
     padding-right: 0;

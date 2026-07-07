@@ -62,6 +62,42 @@ This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e
 | Night toggle | Upstream `toogleNight` toggles day/night and changes icon color/image. | OpenReader may map this to the existing theme store, but it must be reachable from the fixed bottom control and not depend on navigating to Settings. |
 | GitHub target | Upstream links to the original project; OpenReader links to `changshengyu/openreader`. | This repository target is an intentional OpenReader adaptation. Placement/interaction must still match upstream. |
 
+### Upstream mobile shelf geometry contract
+
+| Concern | Upstream evidence | Required OpenReader behavior |
+|---|---|---|
+| Mobile breakpoint | `@media screen and (max-width: 750px)` wraps the mini Index layout. | OpenReader mobile shelf geometry should switch at the same 750px breakpoint through `shouldUseMiniInterface`/CSS-compatible rules. |
+| Shelf shell | Mobile `.shelf-wrapper` sets `padding: 0`, safe-area top padding, and hides horizontal overflow through the parent `.index-wrapper`. | The mobile shelf page should not keep desktop card padding, border radius, or horizontal overflow. |
+| Title row | Mobile `.shelf-title` uses `padding: 20px 24px 0 24px`; base title font remains the upstream 20px shelf-title style. The menu icon appears only when `collapseMenu` is true and uses `@click.stop`. | Mobile Home title should use upstream spacing and a compact title scale. The menu button must remain click-isolated and placed in the title row. |
+| Header actions | Upstream title actions are right-floated `.title-btn` text buttons inside the same title row. | OpenReader can keep flex actions for Vue 3 responsiveness, but action text must remain compact and horizontally scrollable if needed; it should not force a 30px title or squeeze the title to one side. |
+| Shelf search | Upstream only shows shelf search when edit mode is active, directly after the title and before groups. | Keep current behavior but align horizontal inset to the upstream title/group geometry. |
+| Book groups | Mobile `.book-group-wrapper` uses `margin-left: 24px` and `margin-right: 24px`. | Group tabs/chips must respect 24px side insets on mobile instead of spanning flush edge-to-edge. |
+| Book list container | Mobile `.books-wrapper .wrapper` switches from desktop grid to vertical flex column. | OpenReader list mode is acceptable, but mobile book rows should be full-width vertical list rows, not desktop cards. |
+| Book row spacing | Mobile `.book` sets `box-sizing: border-box`, `width: 100%`, `margin-bottom: 0`, and `padding: 10px 20px`. | OpenReader mobile `.book-row` must use upstream row padding and no card radius/shadow/border chrome. |
+| Cover and info | Upstream keeps desktop cover/info dimensions: cover `84px × 112px`, info height `112px`, info left margin `20px`, title 16px/2-line clamp, metadata 12–13px. | OpenReader may use CSS grid, but mobile rows should resolve to the same visible cover width/height and info spacing, not viewport-scaled cover sizes. |
+
+### Current mobile shelf evidence and classification
+
+| Layer | Current evidence | Difference | Classification |
+|---|---|---|---|
+| Title spacing/scale | `Home.vue` mobile CSS uses `padding: 22px 16px 10px`, and narrower breakpoints override to `18px 14px 0`; title font is 30px/28px. | Too large and too narrow compared with upstream 20px title and 24px side inset. | `must-fix` |
+| Group wrapper | Mobile `.book-group-wrapper` has `margin-left: 0`, `margin-right: 0`, and later `padding: 5px 0`. | Groups span edge-to-edge instead of upstream 24px margins. | `must-fix` |
+| Book rows | Mobile `.book-row` uses viewport-clamped cover columns, 14/16px or 12/clamped padding, and no fixed 84×112 cover. | Visible row geometry differs from upstream and can drift across 360/390px screens. | `must-fix` |
+| Layout model | OpenReader uses CSS grid/list rows and chip buttons instead of Element tabs/desktop `.book` flex. | Acceptable only if visible geometry and operations remain upstream-compatible. | `technical-stack-equivalent` |
+| Empty/loading rows | OpenReader adds skeleton/empty states. | Acceptable enhancement; must not alter normal loaded shelf geometry. | `acceptable-change` |
+
+Required implementation gates for this shelf-geometry slice:
+
+1. Change mobile Home CSS to upstream insets and dimensions: title 24px side inset, compact 20px title, group 24px side margins, rows `10px 20px`, covers `84px × 112px`, info margin/gap equivalent to 20px.
+2. Add source-level CSS tests for these constants so future refactors do not drift back.
+3. Extend the Index mobile browser smoke to verify at 390×844 and 360×800:
+   - title left/right insets are approximately 24px;
+   - group wrapper side insets are approximately 24px;
+   - first book row left/right padding is approximately 20px;
+   - cover box is approximately 84×112;
+   - no horizontal overflow.
+4. Keep the larger Index scene convergence and BookInfo consolidation as separate P1 slices.
+
 ### Current OpenReader evidence and classification
 
 | Layer | Current evidence | Difference | Classification |
