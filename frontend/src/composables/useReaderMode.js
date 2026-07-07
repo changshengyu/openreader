@@ -1,7 +1,7 @@
 import { nextTick, unref, watch } from 'vue'
 
-export function readerEffectiveMode(mode, isEPUB) {
-  return isEPUB ? 'page' : mode
+export function readerEffectiveMode(mode, isEPUB, isAudio = false) {
+  return isEPUB || isAudio ? 'page' : mode
 }
 
 export function useReaderMode(options) {
@@ -14,7 +14,7 @@ export function useReaderMode(options) {
     async () => {
       const offset = options.getCurrentOffset()
       options.page.value = 0
-      if (unref(options.isEPUB)) {
+      if (unref(options.isEPUB) || unref(options.isAudio)) {
         options.chapterBlocks.value = []
       } else if (unref(options.isContinuousScrollRead)) {
         await options.computeChapterWindow()

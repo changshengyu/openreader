@@ -4,11 +4,17 @@ import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition.js'
 
 export function useReaderKeyboard(options) {
   const registerKeyboard = options.registerKeyboard || useKeyboard
+  const isAudio = () => Boolean(unref(options.isAudio))
 
   registerKeyboard({
-    onPageUp: () => options.previousPage(),
-    onPageDown: () => options.nextPage(),
+    onPageUp: () => {
+      if (!isAudio()) options.previousPage()
+    },
+    onPageDown: () => {
+      if (!isAudio()) options.nextPage()
+    },
     onArrowLeft: () => {
+      if (isAudio()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'flip') {
         options.previousPage()
@@ -20,6 +26,7 @@ export function useReaderKeyboard(options) {
       }
     },
     onArrowRight: () => {
+      if (isAudio()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'flip') {
         options.nextPage()
@@ -31,20 +38,28 @@ export function useReaderKeyboard(options) {
       }
     },
     onArrowUp: () => {
+      if (isAudio()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'page' || unref(options.isScrollRead)) {
         options.previousPage()
       }
     },
     onArrowDown: () => {
+      if (isAudio()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'page' || unref(options.isScrollRead)) {
         options.nextPage()
       }
     },
-    onHome: () => options.scrollToTop(),
-    onEnd: () => options.scrollToBottom(),
-    onSpace: () => options.nextPage(),
+    onHome: () => {
+      if (!isAudio()) options.scrollToTop()
+    },
+    onEnd: () => {
+      if (!isAudio()) options.scrollToBottom()
+    },
+    onSpace: () => {
+      if (!isAudio()) options.nextPage()
+    },
     onEscape: () => {
       if (options.tocVisible.value || options.settingsVisible.value) {
         options.tocVisible.value = false

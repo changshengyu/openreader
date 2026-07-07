@@ -45,6 +45,14 @@ export function useReaderPointer(options) {
     const viewportHeight = windowTarget.innerHeight || point.rect.height
     const pointX = Number.isFinite(point.clientX) ? point.clientX : point.relX
     const pointY = Number.isFinite(point.clientY) ? point.clientY : point.relY
+    if (unref(options.isAudio)) {
+      const midX = viewportWidth / 2
+      const midY = viewportHeight / 2
+      const inCenter = Math.abs(pointX - midX) <= viewportWidth * 0.2
+        && Math.abs(pointY - midY) <= viewportHeight * 0.2
+      if (inCenter) options.toggleChrome()
+      return
+    }
     applyAction(readerTapPointAction({
       mobile,
       pointX,
@@ -61,6 +69,10 @@ export function useReaderPointer(options) {
 
   function handleTapZone(zone) {
     if (unref(options.isOverlayOpen)) return
+    if (unref(options.isAudio)) {
+      if (zone === 'center') options.toggleChrome()
+      return
+    }
     applyAction(readerTapZoneAction({
       zone,
       clickMethod: options.reader.clickMethod,

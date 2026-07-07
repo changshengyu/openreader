@@ -43,14 +43,14 @@
     <button type="button" title="重新载入章节" @click="$emit('action', 'reload')">
       <el-icon :size="18"><RefreshRight /></el-icon>
     </button>
-    <button type="button" :class="{ active: autoReading }" title="自动阅读" @click="$emit('action', 'auto-read')">
+    <button v-if="autoReadingSupported" type="button" :class="{ active: autoReading }" title="自动阅读" @click="$emit('action', 'auto-read')">
       <el-icon :size="18"><View /></el-icon>
     </button>
     <button
+      v-if="ttsSupported"
       type="button"
       :class="{ active: ttsPlaying }"
-      :disabled="!ttsSupported"
-      :title="ttsSupported ? '朗读' : '当前浏览器不支持朗读'"
+      title="朗读"
       @click="$emit('action', 'tts')"
     >
       <el-icon :size="18"><Headset /></el-icon>
@@ -123,6 +123,10 @@ defineProps({
   autoReading: {
     type: Boolean,
     default: false,
+  },
+  autoReadingSupported: {
+    type: Boolean,
+    default: true,
   },
   ttsPlaying: {
     type: Boolean,

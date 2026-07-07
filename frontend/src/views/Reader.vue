@@ -3,8 +3,9 @@
     <ReaderDesktopTools
       :remote-book="isRemoteBook"
       :auto-reading="autoReading"
+      :auto-reading-supported="!isAudioChapter"
       :tts-playing="tts.state.playing"
-      :tts-supported="tts.state.supported && chapterFormat !== 'epub'"
+      :tts-supported="ttsSupportedForChapter"
       :active-panel="desktopWorkspacePanel"
       :is-night="isNightTheme"
       @action="handleDesktopToolAction"
@@ -94,8 +95,9 @@
       :visible="mobileChromeVisible"
       :remote-book="isRemoteBook"
       :auto-reading="autoReading"
+      :auto-reading-supported="!isAudioChapter"
       :tts-playing="tts.state.playing"
-      :tts-supported="tts.state.supported && chapterFormat !== 'epub'"
+      :tts-supported="ttsSupportedForChapter"
       :is-night="isNightTheme"
       :book-progress-label="bookProgressLabel"
       :chapter-label="chapterLabel"
@@ -138,6 +140,12 @@
             :loading="chapterLoading"
             :mode="effectiveReaderMode"
             :epub-resource="epubResource"
+            :audio-resource="audioResource"
+            :audio-initial-time="audioInitialTime"
+            :audio-title="chapter?.title || book?.title || ''"
+            :audio-autoplay="audioAutoplay"
+            :previous-disabled="currentIndex <= 0"
+            :next-disabled="currentIndex >= chapters.length - 1"
             :epub-style="epubStyleText"
             :viewport-height="readerViewportHeight"
             @reload="reloadChapter"
@@ -148,13 +156,19 @@
             @epub-keydown="handleEpubKeydown"
             @epub-preview="handleEpubPreview"
             @epub-error="handleEpubError"
+            @audio-loaded="handleAudioLoaded"
+            @audio-progress="handleAudioProgress"
+            @audio-ended="handleAudioEnded"
+            @audio-error="handleAudioError"
+            @audio-previous="goChapter(currentIndex - 1)"
+            @audio-next="goChapter(currentIndex + 1)"
             @image-load="handleReaderImageLoad"
             @retry-block="retryContinuousChapter"
           />
         </div>
       </article>
       <ReaderClickZones
-        v-if="chapterFormat !== 'epub'"
+        v-if="chapterFormat !== 'epub' && !isAudioChapter"
         :mode="effectiveReaderMode"
         :show-overlay="showClickZoneOverlay"
         @tap="handleTapZone"
@@ -173,7 +187,7 @@
 
     <!-- TTS 朗读条 -->
     <ReaderTTSBar
-      v-if="tts.state.playing"
+      v-if="tts.state.playing && !isAudioChapter"
       :paused="tts.state.paused"
       :rate="tts.state.rate"
       :pitch="tts.state.pitch"
@@ -607,6 +621,11 @@ const {
 const content = ref('')
 const chapterFormat = ref('text')
 const epubResource = ref(null)
+const audioResource = ref(null)
+const audioInitialTime = ref(0)
+const audioCurrentTime = ref(0)
+const audioDuration = ref(0)
+const audioAutoplay = ref(false)
 const epubPendingRestore = ref(null)
 const epubPreviewVisible = ref(false)
 const epubPreviewImages = ref([])
@@ -886,8 +905,9 @@ const lines = computed(() => chapterParagraphs.value.filter(item => item.type ==
 const chapterTextLength = computed(() => {
   return chapterBlockTextLength({ paragraphs: chapterParagraphs.value })
 })
+const isAudioChapter = computed(() => chapterFormat.value === 'audio')
 const effectiveReaderMode = computed(() => (
-  readerEffectiveMode(reader.mode, chapterFormat.value === 'epub')
+  readerEffectiveMode(reader.mode, chapterFormat.value === 'epub', isAudioChapter.value)
 ))
 const effectiveReaderState = {
   get mode() {
@@ -906,16 +926,16 @@ const effectiveReaderState = {
     return reader.animateDuration
   },
 }
-const isVerticalPagedRead = computed(() => effectiveReaderMode.value === 'page')
+const isVerticalPagedRead = computed(() => !isAudioChapter.value && effectiveReaderMode.value === 'page')
 const isScrollRead = computed(() => (
-  effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2'
+  !isAudioChapter.value && (effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2')
 ))
 const isVerticalRead = computed(() => isVerticalPagedRead.value || isScrollRead.value)
 const isContinuousScrollRead = computed(() => (
-  effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2'
+  !isAudioChapter.value && (effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2')
 ))
 const displayedChapterBlocks = computed(() => {
-  if (chapterFormat.value === 'epub') return []
+  if (chapterFormat.value === 'epub' || isAudioChapter.value) return []
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
 })
@@ -942,7 +962,7 @@ const {
   page,
   pageCount,
   isContinuousScrollRead,
-  isEPUB: computed(() => chapterFormat.value === 'epub'),
+  isEPUB: computed(() => chapterFormat.value === 'epub' || isAudioChapter.value),
   getMode: () => effectiveReaderMode.value,
   makeChapterBlock,
   chapterBlockTextLength,
@@ -962,6 +982,7 @@ const {
   chapters,
   currentIndex,
   getVisibleSnapshot: visibleChapterProgressSnapshot,
+  getCurrentPayload: currentAudioProgressPayload,
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,
   mergeBook: mergeShelfBook,
@@ -1288,6 +1309,7 @@ const {
   isMobileReader,
   isContinuousScrollRead,
   isEPUB: computed(() => chapterFormat.value === 'epub'),
+  isAudio: isAudioChapter,
   page,
   chapterLoading,
   chapterBlocks,
@@ -1367,6 +1389,7 @@ const {
   pageEl,
   isMobileReader,
   isOverlayOpen,
+  isAudio: isAudioChapter,
   autoReading,
   mobileChromeVisible,
   scheduleSelectedTextOperation,
@@ -1457,6 +1480,7 @@ const {
   content,
   chapterFormat,
   epubResource,
+  audioResource,
   page,
   chapterBlocks,
   progressVersion,
@@ -1476,6 +1500,11 @@ const {
   nextFrame,
   onEpubPrepared: pending => {
     epubPendingRestore.value = pending
+  },
+  onAudioPrepared: pending => {
+    audioInitialTime.value = Math.max(0, Number(pending.offset) || 0)
+    audioCurrentTime.value = audioInitialTime.value
+    audioDuration.value = 0
   },
 })
 const {
@@ -1562,8 +1591,14 @@ const {
   goChapter,
   notify: showReaderToast,
 })
+const ttsSupportedForChapter = computed(() => (
+  tts.state.supported && chapterFormat.value !== 'epub' && !isAudioChapter.value
+))
 watch(chapterFormat, format => {
-  if (format === 'epub') ttsStop()
+  if (format === 'epub' || format === 'audio') {
+    ttsStop()
+    if (autoReading.value) stopAutoReading()
+  }
 })
 const {
   handleDesktopToolAction,
@@ -1586,8 +1621,14 @@ const {
     cache: () => runWithDesktopWorkspaceClosed(openCacheDrawer),
     'clear-cache': () => runWithDesktopWorkspaceClosed(clearCurrentBookCache),
     reload: () => runWithDesktopWorkspaceClosed(reloadChapter),
-    'auto-read': () => runWithDesktopWorkspaceClosed(toggleAutoReading),
-    tts: () => runWithDesktopWorkspaceClosed(toggleTTS),
+    'auto-read': () => {
+      if (isAudioChapter.value) return
+      return runWithDesktopWorkspaceClosed(toggleAutoReading)
+    },
+    tts: () => {
+      if (!ttsSupportedForChapter.value) return
+      return runWithDesktopWorkspaceClosed(toggleTTS)
+    },
     night: () => runWithDesktopWorkspaceClosed(toggleNight),
     top: () => runWithDesktopWorkspaceClosed(scrollToTop),
     bottom: () => runWithDesktopWorkspaceClosed(scrollToBottom),
@@ -1820,10 +1861,58 @@ function handleReaderVisibilityChange() {
 }
 
 function currentVisibleExcerpt() {
+  if (isAudioChapter.value) {
+    return chapter.value?.title || book.value?.title || ''
+  }
   const paragraph = currentVisibleParagraph()
   const text = paragraph?.textContent?.replace(/\s+/g, ' ').trim()
   if (text) return text.slice(0, 140)
   return lines.value.slice(0, 2).join(' ').slice(0, 140)
+}
+
+function currentAudioProgressPayload() {
+  if (!isAudioChapter.value || !chapter.value) return null
+  const totalChapters = Math.max(chapters.value.length || 0, 1)
+  const currentSecond = Math.max(0, Math.floor(Number(audioCurrentTime.value) || 0))
+  const duration = Math.max(0, Number(audioDuration.value) || 0)
+  const chapterPercent = duration > 0
+    ? Math.min(1, Math.max(0, currentSecond / duration))
+    : 0
+  return {
+    bookId: bookId.value,
+    chapterId: chapter.value.id,
+    chapterIndex: currentIndex.value,
+    offset: currentSecond,
+    percent: Math.min(1, Math.max(0, (currentIndex.value + chapterPercent) / totalChapters)),
+    chapterPercent,
+    chapterTitle: chapter.value.title || '',
+  }
+}
+
+function handleAudioLoaded(event) {
+  audioCurrentTime.value = Math.max(0, Number(event?.currentTime) || audioCurrentTime.value || 0)
+  audioDuration.value = Math.max(0, Number(event?.duration) || 0)
+  audioAutoplay.value = false
+  markProgressSaved(currentAudioProgressPayload())
+}
+
+function handleAudioProgress(event) {
+  audioCurrentTime.value = Math.max(0, Number(event?.currentTime) || 0)
+  audioDuration.value = Math.max(0, Number(event?.duration) || audioDuration.value || 0)
+  scheduleProgressSave(1200)
+}
+
+function handleAudioEnded() {
+  audioCurrentTime.value = Math.max(0, Number(audioDuration.value) || audioCurrentTime.value || 0)
+  saveCurrentProgress({ force: true }).catch(() => {})
+  if (currentIndex.value < chapters.value.length - 1) {
+    audioAutoplay.value = true
+    goChapter(currentIndex.value + 1)
+  }
+}
+
+function handleAudioError() {
+  showReaderToast('音频加载失败，请检查书源或网络后重试')
 }
 
 function flashParagraph(lineEl) {
@@ -1839,6 +1928,7 @@ useReaderKeyboard({
   currentIndex,
   chapters,
   isScrollRead,
+  isAudio: isAudioChapter,
   mobileChromeVisible,
   tocVisible: showTocDrawer,
   settingsVisible: showSettingsDrawer,

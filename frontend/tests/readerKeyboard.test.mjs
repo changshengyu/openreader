@@ -11,6 +11,7 @@ function createController(overrides = {}) {
     currentIndex: ref(1),
     chapters: ref([{}, {}, {}]),
     isScrollRead: ref(true),
+    isAudio: ref(false),
     mobileChromeVisible: ref(true),
     tocVisible: ref(false),
     settingsVisible: ref(false),
@@ -89,5 +90,24 @@ test('escape closes reader drawers before returning to the shelf', () => {
 
   fixture.handlers.onEscape()
   assert.equal(fixture.state.mobileChromeVisible.value, false)
+  assert.deepEqual(fixture.calls, [['shelf']])
+})
+
+test('ignores text paging keyboard shortcuts for audio chapters', () => {
+  const fixture = createController()
+  fixture.state.isAudio.value = true
+  fixture.handlers.onArrowLeft()
+  fixture.handlers.onArrowRight()
+  fixture.handlers.onArrowUp()
+  fixture.handlers.onArrowDown()
+  fixture.handlers.onPageUp()
+  fixture.handlers.onPageDown()
+  fixture.handlers.onHome()
+  fixture.handlers.onEnd()
+  fixture.handlers.onSpace()
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.state.mobileChromeVisible.value, true)
+
+  fixture.handlers.onEscape()
   assert.deepEqual(fixture.calls, [['shelf']])
 })

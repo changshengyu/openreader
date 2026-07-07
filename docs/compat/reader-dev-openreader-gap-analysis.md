@@ -25,7 +25,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Reader mobile content geometry | Upstream mini `.chapter` uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, `text-align: justify`; slide mode also uses 16px content margins. | Current mobile CSS uses `padding: 42px 22px ...`; paragraph justification/spacing does not fully match upstream. | Causes asymmetric left/right whitespace and paragraph layout drift. | `must-fix` for P0 | DOM geometry probe for left/right padding within 1px across 390×844 and 360×800. |
 | Reader scrolling vs click paging | Upstream has page/scroll modes with discrete click navigation. | User requested continuous native finger/wheel scrolling while click paging remains segmented. | Intentional UX improvement if it does not change mode selection semantics. | `acceptable-change` | Browser scroll continuity probe; click paging regression tests. |
 | Reader settings controls | Upstream uses controls that are easier to distinguish visually; user requested minus/value/plus controls instead of current easy-to-mis-tap slider behavior. | Current setting stepper exists but must be rechecked against upstream layout/state. | Allowed UX adaptation, but values/defaults/state must match upstream. | `acceptable-change` | Unit tests for value bounds; browser setting interaction test. |
-| Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, and cross-chapter behavior. | Current `ReaderChapterContent.vue` handles text/images/volume blocks, CBZ image resources, and the rebuilt EPUB iframe branch; continuous chapter retention, extension, anchor, error, and explicit-jump behavior now follows the extracted fixed-baseline contract. | EPUB, image/CBZ rendering/import/resource serving, and continuous cross-chapter behavior are implemented and browser-validated. Audio/TTS still needs a separate extraction. | `aligned` for implemented formats; `unknown` for audio/TTS | Keep EPUB/image/CBZ/continuous browser contracts; add separate audio/TTS fixtures. |
+| Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, and cross-chapter behavior. | Current `ReaderChapterContent.vue` handles text/images/volume blocks, CBZ image resources, EPUB iframe resources, and a dedicated audio branch for `type === 1` chapters; continuous chapter retention, extension, anchor, error, and explicit-jump behavior follows the extracted fixed-baseline contract. | EPUB, image/CBZ rendering/import/resource serving, continuous cross-chapter behavior, and basic audio playback are implemented and browser-validated. TTS parity and local/private signed audio resources remain pending. | `aligned` for implemented formats; `partial` for audio; `unknown` for TTS | Keep EPUB/image/CBZ/continuous/audio browser contracts; add TTS and local/private audio-resource fixtures. |
 | BookInfo | Upstream has one `web/src/components/BookInfo.vue` used from workspace flows. | Current has `BookDetail.vue`, `BookInfoDialog.vue`, `BookInfoPanel.vue`, `OverlayBookInfo.vue`. | Duplicate logic risks inconsistent actions/search/read/source behavior. | `must-fix` for P1 | Single BookInfo action contract; search/shelf/reader reuse tests. |
 | Bookshelf/BookManage/BookGroup | Upstream: `BookShelf.vue`, `BookManage.vue`, `BookGroup.vue` under Index workspace. | Current: `Home.vue`, overlay management components, categories/store utilities. | Some enhancements may be valid, but workflow and mobile sidebar behavior need upstream comparison. | `unknown` | Workspace browser flows; category/order tests. |
 | Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons must be extracted from `Index.vue` and related CSS. | Current `AppLayout.vue` and mobile navigation had reported drag/fixed-button mismatch. | User-visible mismatch: GitHub/day-night buttons should not slide with drawer content. | `must-fix` for P1 | Mobile drag smoke; fixed-bottom button geometry probe. |
@@ -66,7 +66,7 @@ Implemented in commit work following this contract:
 
 Still pending in Reader P0:
 
-- Complete separate `Content.vue` parity review for audio/TTS media controls.
+- Complete separate `Content.vue` parity review for TTS/read-aloud media controls and local/private signed audio resources.
 - The final Reader P0 acceptance image remains pending. Intermediate validation image `ca43409` has been published and is not the final Reader P0 release.
 
 ## Immediate P0 contract: continuous cross-chapter reading
@@ -301,14 +301,14 @@ Deferred from this EPUB slice:
 
 | Layer | Current OpenReader evidence | Difference | Classification |
 |---|---|---|---|
-| Local import allow-list | `backend/api/imports.go`, `backend/api/localstore.go`, `backend/api/books.go.isSupportedLocalBookFile` accept `txt/text/md/epub/pdf/umd` but not `.cbz`. | New CBZ local imports are rejected even though upstream accepts CBZ. | `must-fix` |
-| CBZ parsing/extraction | No current Go CBZ parser/extractor exists in `backend/engine` or `backend/services/localbook`; frontend only infers CBZ from existing book path fields. | Existing legacy CBZ rows may render if content already contains `<img>`, but OpenReader cannot build upstream-style CBZ chapter rows from the archive. | `must-fix` |
-| CBZ content response | `backend/api/books.go.getBookChapterContent` always returns `format: "text"` except EPUB; no CBZ branch generates `<img src='...'>` from an extracted page. | A CBZ chapter cannot be served through the upstream chapter-content contract. | `must-fix` |
-| Image rendering | `frontend/src/components/reader/ReaderChapterContent.vue`, `useReaderChapterPresentation.js`, `parseReaderContentBlocks` already convert `<img>` to image blocks, hide CBZ titles, collect preview image lists, and recompute layout on image load. | This is a Vue 3 equivalent for HTML image chapters, but it depends on the backend producing the right image chapter content. | `technical-stack-equivalent`, pending backend CBZ support |
+| Local import allow-list | `backend/api/imports.go`, `backend/api/localstore.go`, and local import services accept `.cbz` in the same local-book pipeline. | OpenReader keeps the single Go import path rather than upstream Java extraction classes. | `technical-stack-equivalent` |
+| CBZ parsing/extraction | `backend/services/cbzreader` and local-book import tests preserve the archive, derive sorted image chapters, and protect archive/resource paths. | Uses scoped capability URLs instead of exposing library paths. | `acceptable-change` security hardening |
+| CBZ content response | `backend/api/books.go.chapterContent` returns `format: "cbz"`, `resourceUrl`, `resourceExpiresAt`, and `<img src="...">` content for CBZ chapters. | Existing JSON envelope is preserved; resource serving is capability-protected. | `aligned` |
+| Image rendering | `frontend/src/components/reader/ReaderChapterContent.vue`, `useReaderChapterPresentation.js`, `parseReaderContentBlocks` convert `<img>` to image blocks, hide CBZ titles, collect preview image lists, and recompute layout on image load. | Vue 3/Element Plus `el-image lazy` replaces upstream `v-lazy-container`. | `technical-stack-equivalent` |
 | Lazy-loading model | Upstream uses `v-lazy-container` and `data-src`; OpenReader uses Element Plus `el-image lazy` with preview. | Visible behavior is acceptable if images load lazily, trigger layout recomputation, and preview does not toggle toolbar. | `acceptable-change` |
-| Audio detection/API | Current Reader has TTS/Web Speech but no chapter `format: "audio"` response and no book `type === 1` reader branch. | Upstream audio books cannot be represented as audio in the rewritten Reader. | `must-fix` |
-| Audio UI | No `ReaderAudioContent`/audio player component exists. | Missing cover/progress/seek/chapter/volume controls and audio-specific event handling. | `must-fix` |
-| Reader controls | Current toolbar disables TTS for EPUB only; image/comic detection exists, but audio-specific touch/keyboard guards are absent because no audio state exists. | Audio must suppress paging and speech/auto-reading like upstream. | `must-fix` |
+| Audio detection/API | `backend/api/books.go.chapterContent` returns `format: "audio"` for `book.Type == 1`, validates direct HTTP(S) audio URLs, keeps `content`, and adds `resourceUrl/resourceExpiresAt`. | Remote/direct audio is implemented; same-origin signed local/private `/api/audio-resource` remains pending. | `partial` |
+| Audio UI | `frontend/src/components/reader/ReaderAudioContent.vue` renders an audio branch with native controls, elapsed/total time, `-15s/+15s`, previous/next, progress events, ended-to-next behavior, and restore-by-offset. | Native browser controls replace upstream custom play/pause/volume widgets for this slice; cover and custom volume/mute UI remain pending. | `partial` |
+| Reader controls | `Reader.vue`, `useReaderPointer`, `useReaderKeyboard`, and `useReaderMode` now keep audio out of text paging/scrolling, hide auto-reading/TTS, and let center taps toggle the mobile toolbar without side paging. | Escape still closes panels/returns home as an OpenReader compatibility behavior. | `aligned` |
 
 ### OpenReader adaptation contract
 
@@ -325,6 +325,24 @@ Deferred from this EPUB slice:
 | Audio frontend | Add a dedicated audio content branch/component with upstream controls: cover, elapsed/total duration, seek, -15s/+15s, previous/next chapter, play/pause, mute and volume. Mount should load metadata and respect autoplay after manual previous/next or ended advancement. | `must-fix` |
 | Audio progress | Save audio progress on `timeupdate` as chapter position/time without disturbing text scroll position semantics. On chapter reopen, restore the saved playback second before autoplay. | `must-fix` |
 | Audio input model | Parent touch/click/keyboard paging handlers must return early for audio. Center tap toggles toolbar only; audio must not trigger page navigation, auto-reading, or TTS. | `must-fix` |
+
+### 2026-07-07 implementation note
+
+Implemented in commit work following this contract:
+
+- `GET /api/books/:id/chapters/:index/content` now emits `format: "audio"` for `type == 1` books and rejects unsafe direct audio URLs such as non-HTTP(S) schemes or embedded credentials.
+- Audio chapter URLs skip text replacement rules so global cleanup regexes cannot corrupt media URLs.
+- Reader loader keeps audio chapters out of the ordinary paragraph renderer and stores `resourceUrl/resourceExpiresAt` in an audio resource branch.
+- `ReaderAudioContent` renders the audio media branch, restores the saved playback second, emits time progress, supports `-15s/+15s`, previous/next chapter, and advances on ended.
+- Audio progress is persisted as playback seconds in the chapter offset while preserving existing text/EPUB/CBZ progress semantics.
+- Audio chapters hide auto-reading and TTS controls, force the non-text page branch, and suppress text paging from click zones, side taps, keyboard arrows, page keys, Home/End, Space, and wheel-driven vertical reading.
+- `scripts/smoke/reader-audio-contract.mjs` validates the audio reader in Chrome at 390×844 and 1440×900.
+
+Still pending:
+
+- Same-origin signed local/private `/api/audio-resource/:capability/*resourcePath` with byte-range support and MIME allow-list.
+- Upstream-equivalent cover, custom play/pause, mute, and volume controls beyond the native browser `<audio controls>` UI.
+- Full online audio book-source parsing fixtures if upstream source rules expose audio URLs through additional parser branches.
 
 ### Recommended tests before implementation
 

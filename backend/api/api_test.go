@@ -4957,6 +4957,112 @@ func TestReplaceRuleCRUDAndChapterContentAppliesRules(t *testing.T) {
 	}
 }
 
+func TestAudioChapterContentReturnsSafeResourceURL(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.ReplaceRule{
+		UserID:      user.ID,
+		Name:        "音频不应走正文替换",
+		Pattern:     "track",
+		Replacement: "mutated",
+		Enabled:     true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	cachePath := filepath.Join("audio", "chapter.txt")
+	fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, []byte("https://audio.example.test/books/track-001.mp3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Type: 1, Title: "有声书"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一集", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("audio chapter content: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var response struct {
+		Format            string         `json:"format"`
+		ResourceURL       string         `json:"resourceUrl"`
+		ResourceExpiresAt string         `json:"resourceExpiresAt"`
+		Content           string         `json:"content"`
+		Chapter           models.Chapter `json:"chapter"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Format != "audio" ||
+		response.ResourceURL != "https://audio.example.test/books/track-001.mp3" ||
+		response.Content != response.ResourceURL ||
+		response.Chapter.Title != "第一集" {
+		t.Fatalf("unexpected audio content response: %+v", response)
+	}
+	if strings.Contains(response.ResourceURL, "mutated") {
+		t.Fatalf("audio URL was modified by text replace rules: %+v", response)
+	}
+	if _, err := time.Parse(time.RFC3339, response.ResourceExpiresAt); err != nil {
+		t.Fatalf("invalid audio resource expiry %q: %v", response.ResourceExpiresAt, err)
+	}
+	if strings.Contains(response.ResourceURL, strings.TrimPrefix(token, "Bearer ")) {
+		t.Fatal("audio resource URL leaked the login JWT")
+	}
+}
+
+func TestAudioChapterContentRejectsUnsafeResourceURL(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("audio", "unsafe.txt")
+	fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, []byte("https://user:secret@audio.example.test/track.mp3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Type: 1, Title: "不安全有声书"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一集", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("unsafe audio chapter content: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secret") {
+		t.Fatalf("unsafe audio error leaked credentials: %s", w.Body.String())
+	}
+}
+
 func TestReplaceRuleScopeAndPlainTextMode(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

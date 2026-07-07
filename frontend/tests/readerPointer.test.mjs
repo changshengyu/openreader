@@ -19,6 +19,7 @@ function createController(overrides = {}) {
     pageEl,
     isMobileReader: ref(true),
     isOverlayOpen: ref(false),
+    isAudio: ref(false),
     autoReading: ref(false),
     mobileChromeVisible: ref(true),
     scheduleSelectedTextOperation: delay => {
@@ -137,5 +138,31 @@ test('ignores synthetic touch clicks and maps desktop reader clicks', () => {
   assert.deepEqual(desktop.calls, [
     ['selection', 0],
     ['next'],
+  ])
+})
+
+test('audio chapters only toggle chrome from the center and never page', () => {
+  const fixture = createController({ isAudio: ref(true) })
+  fixture.controller.handleContentClick({
+    button: 0,
+    defaultPrevented: false,
+    clientX: 280,
+    clientY: 300,
+    target: { closest: () => null },
+  })
+  fixture.controller.handleContentClick({
+    button: 0,
+    defaultPrevented: false,
+    clientX: 150,
+    clientY: 300,
+    target: { closest: () => null },
+  })
+  fixture.controller.handleTapZone('right')
+  fixture.controller.handleTapZone('center')
+  assert.deepEqual(fixture.calls, [
+    ['selection', 0],
+    ['selection', 0],
+    ['chrome'],
+    ['chrome'],
   ])
 })

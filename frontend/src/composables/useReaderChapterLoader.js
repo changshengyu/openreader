@@ -38,7 +38,11 @@ export function useReaderChapterLoader(options) {
       )
       options.chapter.value = data.chapter
       options.content.value = data.content || ''
-      const format = data.format === 'epub' && data.resourceUrl ? 'epub' : 'text'
+      const format = data.format === 'epub' && data.resourceUrl
+        ? 'epub'
+        : data.format === 'audio' && data.resourceUrl
+          ? 'audio'
+          : 'text'
       options.chapterFormat.value = format
       options.epubResource.value = format === 'epub'
         ? {
@@ -46,8 +50,17 @@ export function useReaderChapterLoader(options) {
             expiresAt: data.resourceExpiresAt || '',
           }
         : null
+      if (options.audioResource) {
+        options.audioResource.value = format === 'audio'
+          ? {
+              url: data.resourceUrl,
+              expiresAt: data.resourceExpiresAt || '',
+              title: data.chapter?.title || '',
+            }
+          : null
+      }
       options.page.value = 0
-      options.chapterBlocks.value = format === 'epub'
+      options.chapterBlocks.value = format === 'epub' || format === 'audio'
         ? []
         : [
             options.makeChapterBlock(
@@ -58,6 +71,13 @@ export function useReaderChapterLoader(options) {
           ]
       if (format === 'epub') {
         options.onEpubPrepared?.({
+          chapterIndex: options.currentIndex.value,
+          offset,
+          restoreOptions: loadOptions,
+        })
+      }
+      if (format === 'audio') {
+        options.onAudioPrepared?.({
           chapterIndex: options.currentIndex.value,
           offset,
           restoreOptions: loadOptions,
@@ -80,6 +100,7 @@ export function useReaderChapterLoader(options) {
       }
     } catch (error) {
       options.epubResource.value = null
+      if (options.audioResource) options.audioResource.value = null
       options.chapterLoadError.value = options.formatError(error)
     } finally {
       clearLoadingTimer()

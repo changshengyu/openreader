@@ -16,6 +16,8 @@ export function useReaderLocalProgress(options) {
   }
 
   function currentPayload() {
+    const override = options.getCurrentPayload?.()
+    if (override) return override
     const snapshot = options.getVisibleSnapshot()
     return readerProgressPayload({
       bookId: unref(options.bookId),

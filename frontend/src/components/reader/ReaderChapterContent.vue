@@ -21,6 +21,22 @@
     @error="emit('epub-error', $event)"
   />
 
+  <ReaderAudioContent
+    v-else-if="audioResource?.url"
+    :resource="audioResource"
+    :initial-time="audioInitialTime"
+    :title="audioTitle"
+    :previous-disabled="previousDisabled"
+    :next-disabled="nextDisabled"
+    :autoplay="audioAutoplay"
+    @loaded="emit('audio-loaded', $event)"
+    @progress="emit('audio-progress', $event)"
+    @ended="emit('audio-ended')"
+    @error="emit('audio-error')"
+    @previous="emit('audio-previous')"
+    @next="emit('audio-next')"
+  />
+
   <template v-else>
     <section
       v-for="block in blocks"
@@ -71,6 +87,7 @@
 </template>
 
 <script setup>
+import ReaderAudioContent from './ReaderAudioContent.vue'
 import ReaderEpubContent from './ReaderEpubContent.vue'
 
 defineProps({
@@ -98,6 +115,30 @@ defineProps({
     type: Object,
     default: null,
   },
+  audioResource: {
+    type: Object,
+    default: null,
+  },
+  audioInitialTime: {
+    type: Number,
+    default: 0,
+  },
+  audioTitle: {
+    type: String,
+    default: '',
+  },
+  audioAutoplay: {
+    type: Boolean,
+    default: false,
+  },
+  previousDisabled: {
+    type: Boolean,
+    default: false,
+  },
+  nextDisabled: {
+    type: Boolean,
+    default: false,
+  },
   epubStyle: {
     type: String,
     default: '',
@@ -118,6 +159,12 @@ const emit = defineEmits([
   'epub-keydown',
   'epub-preview',
   'epub-error',
+  'audio-loaded',
+  'audio-progress',
+  'audio-ended',
+  'audio-error',
+  'audio-previous',
+  'audio-next',
   'image-load',
   'retry-block',
 ])

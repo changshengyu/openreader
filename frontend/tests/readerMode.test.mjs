@@ -13,6 +13,7 @@ test('forces EPUB documents through the upstream vertical page branch', () => {
   assert.equal(readerEffectiveMode('flip', true), 'page')
   assert.equal(readerEffectiveMode('scroll2', true), 'page')
   assert.equal(readerEffectiveMode('scroll2', false), 'scroll2')
+  assert.equal(readerEffectiveMode('scroll2', false, true), 'page')
 })
 
 test('rebuilds continuous chapter windows and restores reading position', async () => {
@@ -88,6 +89,47 @@ test('rebuilds a single block for non-continuous modes', async () => {
   controller.change('page')
   await flushModeChange()
   assert.deepEqual(chapterBlocks.value, [{ index: 4, id: 5, content: '正文' }])
+  scope.stop()
+})
+
+test('keeps audio chapters out of text block rebuilds when modes change', async () => {
+  const reader = reactive({
+    mode: 'scroll',
+    setMode(mode) {
+      this.mode = mode
+    },
+  })
+  const chapterBlocks = ref([{ index: 0, content: '旧正文' }])
+  const scope = effectScope()
+  const calls = []
+  const controller = scope.run(() => useReaderMode({
+    reader,
+    isMobileReader: ref(true),
+    isContinuousScrollRead: ref(false),
+    isEPUB: ref(false),
+    isAudio: ref(true),
+    page: ref(0),
+    chapterLoading: ref(false),
+    chapterBlocks,
+    currentIndex: ref(0),
+    chapter: ref({ id: 1, title: '第一集' }),
+    content: ref('https://audio.example.test/001.mp3'),
+    getCurrentOffset: () => 18,
+    computeChapterWindow: async () => calls.push(['window']),
+    makeChapterBlock: () => ({ should: 'not build' }),
+    updateLayout: () => calls.push(['layout']),
+    restorePosition: async (...args) => calls.push(['restore', ...args]),
+    saveProgress: () => calls.push(['save']),
+  }))
+
+  controller.change('page')
+  await flushModeChange()
+  assert.deepEqual(chapterBlocks.value, [])
+  assert.deepEqual(calls, [
+    ['layout'],
+    ['restore', 18, { saveAfterLoad: false }],
+    ['save'],
+  ])
   scope.stop()
 })
 

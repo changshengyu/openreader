@@ -17,6 +17,7 @@ function createController(overrides = {}) {
     content: ref(''),
     chapterFormat: ref('text'),
     epubResource: ref(null),
+    audioResource: ref(null),
     page: ref(4),
     chapterBlocks: ref([]),
     progressVersion: ref(0),
@@ -130,6 +131,36 @@ test('keeps EPUB document metadata out of the ordinary paragraph renderer', asyn
   })
   assert.deepEqual(fixture.state.chapterBlocks.value, [])
   assert.equal(fixture.state.content.value, '可搜索纯文本')
+})
+
+test('keeps audio chapter responses out of the ordinary paragraph renderer', async () => {
+  const fixture = createController({
+    loadContent: async () => ({
+      chapter: { id: 4, title: '第一集' },
+      content: 'https://audio.example.test/001.mp3',
+      format: 'audio',
+      resourceUrl: 'https://audio.example.test/001.mp3',
+      resourceExpiresAt: '2026-07-06T12:00:00Z',
+    }),
+    onAudioPrepared: pending => fixture.calls.push(['audio', pending]),
+  })
+  await fixture.controller.load(0, 37, { restorePercent: 0.25 })
+  assert.equal(fixture.state.chapterFormat.value, 'audio')
+  assert.deepEqual(fixture.state.audioResource.value, {
+    url: 'https://audio.example.test/001.mp3',
+    expiresAt: '2026-07-06T12:00:00Z',
+    title: '第一集',
+  })
+  assert.deepEqual(fixture.state.chapterBlocks.value, [])
+  assert.equal(fixture.state.content.value, 'https://audio.example.test/001.mp3')
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'audio'), [
+    'audio',
+    {
+      chapterIndex: 0,
+      offset: 37,
+      restoreOptions: { restorePercent: 0.25 },
+    },
+  ])
 })
 
 test('renders CBZ image chapter responses through the ordinary image block path', async () => {
