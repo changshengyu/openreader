@@ -7,6 +7,7 @@ export function useAppMobileNavigation(options) {
   const touchMoveX = ref(0)
   const touchAxis = ref('')
   const navigationWidth = computed(() => 260)
+  const dragLimit = computed(() => 270)
   let ignoreWorkspaceClickUntil = 0
 
   const isMobile = computed(() => (
@@ -17,14 +18,15 @@ export function useAppMobileNavigation(options) {
   ))
   const navigationStyle = computed(() => {
     const width = navigationWidth.value
+    const limit = dragLimit.value
     const base = { '--mobile-nav-width': `${width}px` }
     if (!isMobile.value || !touchMoveX.value) return base
     if (
       !visible.value &&
       touchMoveX.value > 0 &&
-      touchMoveX.value <= width
+      touchMoveX.value <= limit
     ) {
-      const offset = touchMoveX.value - width
+      const offset = touchMoveX.value - limit
       return {
         ...base,
         '--mobile-nav-drag-offset': `${offset}px`,
@@ -35,7 +37,7 @@ export function useAppMobileNavigation(options) {
     if (
       visible.value &&
       touchMoveX.value < 0 &&
-      touchMoveX.value >= -width
+      touchMoveX.value >= -limit
     ) {
       const offset = touchMoveX.value
       return {
@@ -93,10 +95,10 @@ export function useAppMobileNavigation(options) {
       return
     }
     if (touchAxis.value !== 'x') return
-    const width = navigationWidth.value
+    const limit = dragLimit.value
     if (
-      (!visible.value && moveX > 0 && moveX <= width) ||
-      (visible.value && moveX < 0 && moveX >= -width)
+      (!visible.value && moveX > 0 && moveX <= limit) ||
+      (visible.value && moveX < 0 && moveX >= -limit)
     ) {
       event.preventDefault()
       event.stopPropagation()
@@ -144,6 +146,7 @@ export function useAppMobileNavigation(options) {
     touchMoveX,
     touchAxis,
     navigationWidth,
+    dragLimit,
     isMobile,
     navigationStyle,
     updateViewport,

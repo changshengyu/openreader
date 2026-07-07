@@ -59,8 +59,8 @@ test('opens from a horizontal drag and suppresses its trailing workspace click',
   assert.equal(fixture.controller.touchAxis.value, 'x')
   assert.deepEqual(fixture.controller.navigationStyle.value, {
     '--mobile-nav-width': '260px',
-    '--mobile-nav-drag-offset': '-180px',
-    marginLeft: '-180px',
+    '--mobile-nav-drag-offset': '-190px',
+    marginLeft: '-190px',
     transition: 'none',
   })
 
@@ -71,6 +71,45 @@ test('opens from a horizontal drag and suppresses its trailing workspace click',
   fixture.setNow(1351)
   fixture.controller.close()
   assert.equal(fixture.controller.visible.value, false)
+})
+
+test('uses the upstream 270px drag window while keeping a 260px sidebar width', () => {
+  const fixture = createController()
+  assert.equal(fixture.controller.navigationWidth.value, 260)
+  assert.equal(fixture.controller.dragLimit.value, 270)
+
+  fixture.controller.handleTouchStart(touchEvent(60, 220))
+  const fullOpenMove = touchEvent(330, 222)
+  fixture.controller.handleTouchMove(fullOpenMove)
+
+  assert.deepEqual(fullOpenMove.calls, ['prevent', 'stop'])
+  assert.equal(fixture.controller.touchMoveX.value, 270)
+  assert.deepEqual(fixture.controller.navigationStyle.value, {
+    '--mobile-nav-width': '260px',
+    '--mobile-nav-drag-offset': '0px',
+    marginLeft: '0px',
+    transition: 'none',
+  })
+
+  const beyondLimitMove = touchEvent(331, 222)
+  fixture.controller.handleTouchMove(beyondLimitMove)
+  assert.deepEqual(beyondLimitMove.calls, [])
+  assert.equal(fixture.controller.touchMoveX.value, 270)
+
+  fixture.controller.handleTouchEnd()
+  assert.equal(fixture.controller.visible.value, true)
+
+  fixture.controller.handleTouchStart(touchEvent(330, 220))
+  const fullCloseMove = touchEvent(60, 222)
+  fixture.controller.handleTouchMove(fullCloseMove)
+  assert.deepEqual(fullCloseMove.calls, ['prevent', 'stop'])
+  assert.equal(fixture.controller.touchMoveX.value, -270)
+  assert.deepEqual(fixture.controller.navigationStyle.value, {
+    '--mobile-nav-width': '260px',
+    '--mobile-nav-drag-offset': '-270px',
+    marginLeft: '-270px',
+    transition: 'none',
+  })
 })
 
 test('closes an open sidebar with a left drag', () => {
