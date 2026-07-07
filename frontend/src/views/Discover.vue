@@ -81,6 +81,12 @@ import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import {
+  buildBookInfoReadActions,
+  buildBookInfoStartReadActions,
+  buildSearchAddBookActions,
+  buildSearchExistingBookActions,
+} from '../utils/bookInfoOverlayActions'
 import { newestBookProgress } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import {
@@ -293,14 +299,15 @@ function openPreview(book) {
     statusType: existing ? 'warning' : 'success',
     progress: existingProgress(existing)?.percent || 0,
     actions: existing
-      ? [
-          { label: '查看详情', plain: true, handler: () => openExistingInfo(existing, activeRemoteSourceName(book)) },
-          { label: '继续阅读', type: 'primary', handler: () => openExistingReader(existing) },
-        ]
-      : [
-          { label: '加入书架', plain: true, loading: addingBook.value === activeRemoteKey(book), handler: () => addRemoteBook(book, false) },
-          { label: '加入并阅读', type: 'primary', loading: addingBook.value === activeRemoteKey(book), handler: () => addRemoteBook(book, true) },
-        ],
+      ? buildSearchExistingBookActions({
+          openInfo: () => openExistingInfo(existing, activeRemoteSourceName(book)),
+          read: () => openExistingReader(existing),
+        })
+      : buildSearchAddBookActions({
+          add: () => addRemoteBook(book, false),
+          addAndRead: () => addRemoteBook(book, true),
+          loading: addingBook.value === activeRemoteKey(book),
+        }),
   })
 }
 
@@ -324,9 +331,7 @@ async function addRemoteBook(book, shouldRead) {
       statusLabel: '已加入书架',
       statusType: 'success',
       progress: 0,
-      actions: [
-        { label: '开始阅读', type: 'primary', handler: () => openExistingReader(data) },
-      ],
+      actions: buildBookInfoStartReadActions({ read: () => openExistingReader(data) }),
     })
   } catch (err) {
     ElMessage.error(readError(err, '加入书架失败'))
@@ -360,9 +365,7 @@ function openExistingInfo(book, sourceName = '') {
     statusLabel: '已在书架',
     statusType: 'warning',
     progress: existingProgress(book)?.percent || 0,
-    actions: [
-      { label: '继续阅读', type: 'primary', handler: () => openExistingReader(book) },
-    ],
+    actions: buildBookInfoReadActions({ read: () => openExistingReader(book) }),
   })
 }
 

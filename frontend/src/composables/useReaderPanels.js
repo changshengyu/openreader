@@ -1,4 +1,5 @@
 import { unref } from 'vue'
+import { buildReaderBookInfoActions } from '../utils/bookInfoOverlayActions.js'
 
 export function useReaderPanels(options) {
   function closeBookInfo() {
@@ -93,17 +94,18 @@ export function useReaderPanels(options) {
     const currentBook = unref(options.book)
     if (!currentBook) return
     const hasRemoteSource = unref(options.isRemoteBook)
-    const actions = [
-      { label: '目录', plain: true, handler: openInfoToc },
-      { label: '书签', plain: true, handler: openInfoBookmarks },
-      { label: '搜正文', plain: true, handler: openInfoSearch },
-      hasRemoteSource ? { label: '书源', plain: true, handler: openInfoSources } : null,
-      { label: '分组', plain: true, handler: openInfoGroup },
-      hasRemoteSource ? { label: '刷新目录', plain: true, handler: options.refreshCatalog } : null,
-      hasRemoteSource ? { label: '缓存章节', plain: true, handler: openCache } : null,
-      hasRemoteSource ? { label: '清缓存', plain: true, handler: options.clearCache } : null,
-      { label: '设置', plain: true, handler: openInfoSettings },
-    ].filter(Boolean)
+    const actions = buildReaderBookInfoActions({
+      hasRemoteSource,
+      openToc: openInfoToc,
+      openBookmarks: openInfoBookmarks,
+      openContentSearch: openInfoSearch,
+      openSource: openInfoSources,
+      openGroup: openInfoGroup,
+      refreshCatalog: options.refreshCatalog,
+      openCache,
+      clearCache: options.clearCache,
+      openSettings: openInfoSettings,
+    })
     options.openBookInfoOverlay(currentBook, {
       statusLabel: `阅读中 · ${unref(options.bookProgressLabel)}`,
       statusType: 'success',
