@@ -108,6 +108,46 @@ func TestParseTXTWithRuleAcceptsUpstreamLookbehindPrefix(t *testing.T) {
 	}
 }
 
+func TestParseTXTWithRuleAcceptsUpstreamNegativeLookahead(t *testing.T) {
+	rule := `^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`
+	input := []byte(strings.Join([]string{
+		"第一章 开始",
+		"第一节课外讲义",
+		"正文完结说明",
+		"第二章 继续",
+		"第二章正文。",
+	}, "\n"))
+
+	chapters, err := ParseTXTWithRule(input, rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 {
+		t.Fatalf("expected 2 chapters, got %d: %+v", len(chapters), chapters)
+	}
+	if chapters[0].Title != "第一章 开始" || chapters[1].Title != "第二章 继续" {
+		t.Fatalf("unexpected chapters: %+v", chapters)
+	}
+	if strings.Contains(chapters[0].Content, "第二章正文") {
+		t.Fatalf("chapter split failed: %+v", chapters)
+	}
+}
+
+func TestDefaultTXTTocRulesIncludeUpstreamEnabledRules(t *testing.T) {
+	rules := DefaultTXTTocRules()
+	if len(rules) < 9 {
+		t.Fatalf("expected upstream enabled txt toc rules, got %d", len(rules))
+	}
+	if rules[0].ID != -1 || rules[0].Name != "目录(去空白)" || !strings.Contains(rules[0].Rule, `(?!完|结)`) {
+		t.Fatalf("first rule is not upstream rule -1: %+v", rules[0])
+	}
+	for _, rule := range rules {
+		if _, err := compileTXTTitleMatcher(rule.Rule); err != nil {
+			t.Fatalf("default rule %d %s does not compile after normalization: %v", rule.ID, rule.Name, err)
+		}
+	}
+}
+
 func TestParseTXTDetectsCommonUpstreamTextEncodings(t *testing.T) {
 	tests := []struct {
 		name   string

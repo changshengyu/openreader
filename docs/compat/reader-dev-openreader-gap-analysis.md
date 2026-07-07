@@ -31,13 +31,39 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons must be extracted from `Index.vue` and related CSS. | Current `AppLayout.vue` and mobile navigation had reported drag/fixed-button mismatch. | User-visible mismatch: GitHub/day-night buttons should not slide with drawer content. | `must-fix` for P1 | Mobile drag smoke; fixed-bottom button geometry probe. |
 | Search/explore/source flow | Upstream Index integrates search/explore/source and BookInfo transitions. | Current has separate `Search.vue`, `Discover.vue`, `Sources.vue` pages. | Flow fragmentation can change API order, panel state, and back behavior. | `must-fix` for P1 | Search → result group → BookInfo → add/read browser test. |
 | Online source parsing | Upstream reader3-compatible source semantics live across web components and Java backend. | Current Go parser in `backend/engine/source_*` has tests and compatibility shims. | Must continue fixture-based extraction; do not infer equivalence from passing current tests alone. | `unknown` | HTML fixture/golden tests for search/info/toc/content. |
-| Local import catalog parsing | Upstream behavior needs deterministic catalog extraction independent of network. | Current staged upload token flow reduces repeated upload/network dependency. | Staged token is acceptable enhancement; catalog detection still needs upstream fixture comparison. | `acceptable-change` + `unknown` | TXT/EPUB/Markdown/PDF/UMD fixture tests; reparse without upload test. |
+| Local import catalog parsing | Upstream `BookController.kt` imports local files through `Book.initLocalBook(...)` and `LocalBook.getChapterList(...)`; TXT parsing uses `TextFile.kt` with `DefaultData.txtTocRules`, enabled-rule reverse scoring, Java regex constructs such as `(?<=...)` and `(?!...)`, deterministic local file reads, and `TocEmptyException` for empty catalogs. | Current staged upload token flow is a valid OpenReader enhancement, but Go TXT detection uses a reduced rule set and only partially normalizes Java regex lookbehind; negative lookahead rules can fail to compile or over-match. | Staged tokens remain acceptable; TXT catalog rule compatibility is a user-visible parser bug and must be fixed before claiming local import parity. | `must-fix` for parser slice; staged upload is `acceptable-change` | Golden TXT fixtures for upstream enabled rules, Java regex normalization, negative-lookahead false-positive prevention, deterministic preview/import/reparse without upload; keep EPUB/PDF/UMD/CBZ regression fixtures. |
 | Replace rules/content cleanup | Upstream `ReplaceRule.vue` and backend semantics need extraction. | Current Go endpoints and overlays exist. | Rule ordering, scope, and test output may differ. | `unknown` | Golden rule application tests; UI batch action tests. |
 | RSS | Upstream `RssSourceList.vue`, `RssArticleList.vue`, `RssArticle.vue`. | Current `RSSManager.vue`, overlays, Go RSS parser. | UI and parser semantics need mapping. | `unknown` | RSS fixture parser tests; source/article browser smoke. |
 | WebDAV/local store | Upstream `WebDAV.vue`, `LocalStore.vue` and server storage behavior. | Current Go WebDAV/local-store endpoints and browser component exist. | Path safety and workflow compatibility both need explicit contract. | `unknown` | Path traversal tests; upload/list/import browser smoke; Docker volume smoke. |
 | Backup/restore | Upstream backup flows and reader-dev formats require extraction. | Current OpenReader backup service and Legado restore exist. | Must preserve OpenReader data and document reader-dev/Legado import semantics. | `unknown` | Restore testdata; backup list/download/restore tests. |
 | Auth/user management | Upstream user management components include `AddUser.vue`, `UserManage.vue`; OpenReader adds JWT. | Current JWT/multi-user/admin endpoints are intentional runtime adaptation. | Auth model differs intentionally, but UI/workspace placement and permission behavior need checks. | `intentional-redesign` + `unknown` | Auth dialog and admin browser smoke; user-scope API tests. |
 | Docker/runtime | Upstream ships Java/Gradle/Docker variants. | Current single Go binary + frontend dist in Alpine, env-driven volumes. | Intentional deployment redesign. Must preserve local Docker build and volume compatibility. | `intentional-redesign` | `PUSH=0 ./scripts/docker-build-push.sh`; `scripts/docker-volume-backup-smoke.sh`. |
+
+## Immediate parser contract: TXT local import catalog rules
+
+Status: extracted and implemented for the TXT rule-compatibility slice on 2026-07-07.
+
+Upstream files:
+
+- `/private/tmp/changshengyu-reader-dev/src/main/java/com/htmake/reader/api/controller/BookController.kt`
+- `/private/tmp/changshengyu-reader-dev/src/main/java/io/legado/app/model/localBook/LocalBook.kt`
+- `/private/tmp/changshengyu-reader-dev/src/main/java/io/legado/app/model/localBook/TextFile.kt`
+- `/private/tmp/changshengyu-reader-dev/src/main/resources/defaultData/txtTocRule.json`
+
+| Concern | Upstream behavior | Required OpenReader behavior | Status |
+|---|---|---|---|
+| Local read source | Uploaded/imported local files are copied into local storage, then parsed from the local file by `LocalBook.getBookInputStream`; catalog extraction is not network-dependent after the file exists locally. | OpenReader keeps staged upload/import-token and local-store import flows, but preview/reparse/import must parse the staged/local bytes deterministically without depending on client upload speed after staging. | `acceptable-change` for staged tokens |
+| TXT rule source | `DefaultData.txtTocRules` loads the fixed JSON rule list; only enabled rules participate in automatic detection. | `DefaultTXTTocRules()` should expose the upstream enabled rule set, including rule `-1 目录(去空白)`, not a reduced/simplified subset. | `aligned` for enabled TXT rules in this slice |
+| Rule scoring | `TextFile.getTocRule()` iterates enabled rules in reverse order and chooses a rule only when its match count is at least 2; ties update to the later iteration, effectively preserving upstream preference. | Automatic TXT detection must use the same enabled-rule reverse scoring rather than relying only on the old broad `ChapterTitlePattern`. | `aligned` for line-based Go parser adaptation |
+| Java regex compatibility | Upstream rules use Java regex lookbehind/lookahead, especially `(?<=...)`, `正文(?!完|结)`, `节(?!课)`, `集(?![合和])`, `部(?![分赛游])`, and `篇(?!张)`. | Go parser must normalize supported upstream Java regex forms without compile failure and must preserve the false-positive prevention semantics for common negative lookaheads. | `aligned` for known enabled-rule constructs |
+| Empty catalog | Upstream throws `TocEmptyException` when no chapters are found. | OpenReader keeps its existing preview/import error mapping for no readable chapters; this is an API adaptation, not a parser behavior change. | `technical-stack-equivalent` |
+| Non-TXT formats | EPUB/UMD/CBZ delegate to format-specific parsers; PDF is an OpenReader-added format already in the current pipeline. | This slice does not change EPUB/PDF/UMD/CBZ behavior. | `unchanged` |
+
+Validation evidence:
+
+1. `backend/engine.TestDefaultTXTTocRulesIncludeUpstreamEnabledRules` verifies the exposed rule list includes upstream rule `-1` and every enabled rule compiles after normalization.
+2. `backend/engine.TestParseTXTWithRuleAcceptsUpstreamNegativeLookahead` verifies upstream Java negative-lookahead rules do not fail compilation and do not split on false-positive text like `第一节课` or `正文完结`.
+3. Existing parser/localbook/API tests cover import archiving, custom TXT rules, local-store import preview/import, and chapter refresh.
 
 ## Immediate P1 contract: Index mobile sidebar and workspace shell
 
