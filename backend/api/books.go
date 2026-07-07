@@ -27,6 +27,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/audioreader"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 )
@@ -1969,18 +1970,17 @@ func (s *Server) chapterContent(c *gin.Context) {
 		"format":  "text",
 	}
 	if book.Type == 1 {
-		resourceURL, err := audioChapterResourceURL(book, chapter, content)
+		prepared, err := audioreader.PrepareDirectOrLocal(s.audioReader, book, &chapter, content)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unsafe audio resource URL"})
+			writeAudioChapterPrepareError(c, err)
 			return
 		}
-		expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 		c.JSON(http.StatusOK, gin.H{
 			"chapter":           chapter,
-			"content":           resourceURL,
+			"content":           prepared.ResourceURL,
 			"format":            "audio",
-			"resourceUrl":       resourceURL,
-			"resourceExpiresAt": expiresAt,
+			"resourceUrl":       prepared.ResourceURL,
+			"resourceExpiresAt": prepared.ExpiresAt.UTC().Format(time.RFC3339),
 		})
 		return
 	}
@@ -2448,50 +2448,6 @@ func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) stri
 		content = s.applyUserReplaceRules(book, content)
 	}
 	return content
-}
-
-func audioChapterResourceURL(book models.Book, chapter models.Chapter, content string) (string, error) {
-	candidate := strings.TrimSpace(content)
-	if candidate == "" {
-		candidate = strings.TrimSpace(chapter.URL)
-	}
-	if candidate == "" {
-		return "", errors.New("empty audio resource URL")
-	}
-
-	parsed, err := url.Parse(candidate)
-	if err != nil {
-		return "", err
-	}
-	if !parsed.IsAbs() {
-		baseRaw := strings.TrimSpace(chapter.URL)
-		if baseRaw == "" {
-			baseRaw = strings.TrimSpace(book.URL)
-		}
-		base, baseErr := url.Parse(baseRaw)
-		if baseErr != nil || !safeDirectAudioURL(base) {
-			return "", errors.New("relative audio URL without safe absolute base")
-		}
-		parsed = base.ResolveReference(parsed)
-	}
-	if !safeDirectAudioURL(parsed) {
-		return "", errors.New("unsafe audio resource URL")
-	}
-	parsed.Fragment = ""
-	return parsed.String(), nil
-}
-
-func safeDirectAudioURL(value *url.URL) bool {
-	if value == nil {
-		return false
-	}
-	if value.Scheme != "http" && value.Scheme != "https" {
-		return false
-	}
-	if value.Host == "" || value.User != nil {
-		return false
-	}
-	return true
 }
 
 func (s *Server) localChapterCachePath(book models.Book, fullPath string) string {

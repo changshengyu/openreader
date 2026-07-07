@@ -26,6 +26,7 @@ import (
 	readerdb "openreader/backend/db"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/audioreader"
 	"openreader/backend/services/backup"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
@@ -72,13 +73,14 @@ func setupTestServer(t *testing.T) (*gin.Engine, *Server) {
 	RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
 
 	server := &Server{
-		cfg:        cfg,
-		db:         database,
-		hub:        hub,
-		scheduler:  sched,
-		backupSvc:  backupSvc,
-		cbzReader:  cbzreader.New(cfg, database),
-		epubReader: epubreader.New(cfg, database),
+		cfg:         cfg,
+		db:          database,
+		hub:         hub,
+		scheduler:   sched,
+		backupSvc:   backupSvc,
+		audioReader: audioreader.New(cfg, database),
+		cbzReader:   cbzreader.New(cfg, database),
+		epubReader:  epubreader.New(cfg, database),
 	}
 	return router, server
 }
@@ -5060,6 +5062,215 @@ func TestAudioChapterContentRejectsUnsafeResourceURL(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "secret") {
 		t.Fatalf("unsafe audio error leaked credentials: %s", w.Body.String())
+	}
+}
+
+func TestAudioChapterContentReturnsSignedLocalResource(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookRoot := filepath.Join(server.cfg.LibraryDir, "audio-local")
+	trackPath := filepath.Join(bookRoot, "tracks", "001.mp3")
+	if err := os.MkdirAll(filepath.Dir(trackPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	trackBytes := []byte("0123456789-audio")
+	if err := os.WriteFile(trackPath, trackBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("audio", "local.txt")
+	fullCachePath := filepath.Join(server.cfg.CacheDir, cachePath)
+	if err := os.MkdirAll(filepath.Dir(fullCachePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullCachePath, []byte("tracks/001.mp3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Type: 1, Title: "本地有声书", LibraryPath: "audio-local"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一集", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("local audio chapter content: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var response struct {
+		Format            string `json:"format"`
+		ResourceURL       string `json:"resourceUrl"`
+		ResourceExpiresAt string `json:"resourceExpiresAt"`
+		Content           string `json:"content"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Format != "audio" ||
+		!strings.HasPrefix(response.ResourceURL, "/api/audio-resource/") ||
+		!strings.HasSuffix(response.ResourceURL, "/tracks/001.mp3") ||
+		response.Content != response.ResourceURL {
+		t.Fatalf("unexpected local audio content response: %+v", response)
+	}
+	if _, err := time.Parse(time.RFC3339, response.ResourceExpiresAt); err != nil {
+		t.Fatalf("invalid local audio expiry %q: %v", response.ResourceExpiresAt, err)
+	}
+	if strings.Contains(response.ResourceURL, strings.TrimPrefix(token, "Bearer ")) {
+		t.Fatal("local audio resource URL leaked the login JWT")
+	}
+
+	resourceReq := httptest.NewRequest(http.MethodGet, response.ResourceURL, nil)
+	resourceW := httptest.NewRecorder()
+	router.ServeHTTP(resourceW, resourceReq)
+	if resourceW.Code != http.StatusOK ||
+		!strings.Contains(resourceW.Header().Get("Content-Type"), "audio/mpeg") ||
+		resourceW.Body.String() != string(trackBytes) {
+		t.Fatalf("local audio resource: got %d %q: %s", resourceW.Code, resourceW.Header().Get("Content-Type"), resourceW.Body.String())
+	}
+	if resourceW.Header().Get("X-Content-Type-Options") != "nosniff" ||
+		resourceW.Header().Get("Referrer-Policy") != "no-referrer" ||
+		resourceW.Header().Get("Cross-Origin-Resource-Policy") != "same-origin" {
+		t.Fatalf("missing audio security headers: %v", resourceW.Header())
+	}
+
+	headReq := httptest.NewRequest(http.MethodHead, response.ResourceURL, nil)
+	headW := httptest.NewRecorder()
+	router.ServeHTTP(headW, headReq)
+	if headW.Code != http.StatusOK || headW.Body.Len() != 0 {
+		t.Fatalf("local audio HEAD: got %d body=%q", headW.Code, headW.Body.String())
+	}
+
+	rangeReq := httptest.NewRequest(http.MethodGet, response.ResourceURL, nil)
+	rangeReq.Header.Set("Range", "bytes=0-3")
+	rangeW := httptest.NewRecorder()
+	router.ServeHTTP(rangeW, rangeReq)
+	if rangeW.Code != http.StatusPartialContent ||
+		rangeW.Body.String() != "0123" ||
+		!strings.HasPrefix(rangeW.Header().Get("Content-Range"), "bytes 0-3/") {
+		t.Fatalf("local audio range: got %d range=%q body=%q", rangeW.Code, rangeW.Header().Get("Content-Range"), rangeW.Body.String())
+	}
+
+	parts := strings.Split(strings.TrimPrefix(response.ResourceURL, "/api/audio-resource/"), "/")
+	if len(parts) < 2 {
+		t.Fatalf("unexpected audio resource URL: %q", response.ResourceURL)
+	}
+	tamperedCapability := parts[0]
+	if strings.HasSuffix(tamperedCapability, "a") {
+		tamperedCapability = strings.TrimSuffix(tamperedCapability, "a") + "b"
+	} else {
+		tamperedCapability += "a"
+	}
+	tamperedReq := httptest.NewRequest(http.MethodGet, "/api/audio-resource/"+tamperedCapability+"/tracks/001.mp3", nil)
+	tamperedW := httptest.NewRecorder()
+	router.ServeHTTP(tamperedW, tamperedReq)
+	if tamperedW.Code == http.StatusOK {
+		t.Fatal("tampered audio capability unexpectedly succeeded")
+	}
+
+	if err := server.db.Model(&models.Book{}).Where("id = ?", book.ID).Update("user_id", book.UserID+100).Error; err != nil {
+		t.Fatal(err)
+	}
+	ownershipReq := httptest.NewRequest(http.MethodGet, response.ResourceURL, nil)
+	ownershipW := httptest.NewRecorder()
+	router.ServeHTTP(ownershipW, ownershipReq)
+	if ownershipW.Code != http.StatusNotFound {
+		t.Fatalf("ownership-changed audio capability: expected 404, got %d: %s", ownershipW.Code, ownershipW.Body.String())
+	}
+}
+
+func TestAudioChapterContentRejectsUnsafeLocalResourcePath(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookRoot := filepath.Join(server.cfg.LibraryDir, "audio-local")
+	if err := os.MkdirAll(bookRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outsidePath := filepath.Join(server.cfg.LibraryDir, "outside.mp3")
+	if err := os.WriteFile(outsidePath, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("audio", "traversal.txt")
+	fullCachePath := filepath.Join(server.cfg.CacheDir, cachePath)
+	if err := os.MkdirAll(filepath.Dir(fullCachePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullCachePath, []byte("../outside.mp3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Type: 1, Title: "越界有声书", LibraryPath: "audio-local"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一集", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("unsafe local audio path: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), outsidePath) {
+		t.Fatalf("unsafe local audio error leaked filesystem path: %s", w.Body.String())
+	}
+}
+
+func TestAudioChapterContentRejectsUnsupportedLocalMedia(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookRoot := filepath.Join(server.cfg.LibraryDir, "audio-local")
+	notePath := filepath.Join(bookRoot, "tracks", "note.txt")
+	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(notePath, []byte("not audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("audio", "note.txt")
+	fullCachePath := filepath.Join(server.cfg.CacheDir, cachePath)
+	if err := os.MkdirAll(filepath.Dir(fullCachePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullCachePath, []byte("tracks/note.txt"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Type: 1, Title: "非音频有声书", LibraryPath: "audio-local"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一集", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("unsupported local audio media: expected 415, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

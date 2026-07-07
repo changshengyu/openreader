@@ -7,7 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const epubResourceLogPrefix = "/api/epub-resource/"
+var capabilityResourceLogPrefixes = []string{
+	"/api/epub-resource/",
+	"/api/cbz-resource/",
+	"/api/audio-resource/",
+}
 
 func AccessLogger() gin.HandlerFunc {
 	return gin.LoggerWithFormatter(func(params gin.LogFormatterParams) string {
@@ -25,15 +29,18 @@ func AccessLogger() gin.HandlerFunc {
 }
 
 func RedactAccessPath(requestPath string) string {
-	index := strings.Index(requestPath, epubResourceLogPrefix)
-	if index < 0 {
-		return requestPath
+	for _, prefix := range capabilityResourceLogPrefixes {
+		index := strings.Index(requestPath, prefix)
+		if index < 0 {
+			continue
+		}
+		capabilityStart := index + len(prefix)
+		remainder := requestPath[capabilityStart:]
+		slash := strings.IndexByte(remainder, '/')
+		if slash < 0 {
+			return requestPath[:capabilityStart] + "<redacted>"
+		}
+		return requestPath[:capabilityStart] + "<redacted>" + remainder[slash:]
 	}
-	capabilityStart := index + len(epubResourceLogPrefix)
-	remainder := requestPath[capabilityStart:]
-	slash := strings.IndexByte(remainder, '/')
-	if slash < 0 {
-		return requestPath[:capabilityStart] + "<redacted>"
-	}
-	return requestPath[:capabilityStart] + "<redacted>" + remainder[slash:]
+	return requestPath
 }

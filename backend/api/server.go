@@ -10,6 +10,7 @@ import (
 
 	"openreader/backend/config"
 	"openreader/backend/middleware"
+	"openreader/backend/services/audioreader"
 	"openreader/backend/services/backup"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
@@ -18,25 +19,27 @@ import (
 )
 
 type Server struct {
-	cfg        config.Config
-	db         *gorm.DB
-	hub        *readersync.Hub
-	scheduler  *scheduler.Scheduler
-	backupSvc  *backup.Service
-	cbzReader  *cbzreader.Service
-	epubReader *epubreader.Service
-	registerMu sync.Mutex
+	cfg         config.Config
+	db          *gorm.DB
+	hub         *readersync.Hub
+	scheduler   *scheduler.Scheduler
+	backupSvc   *backup.Service
+	audioReader *audioreader.Service
+	cbzReader   *cbzreader.Service
+	epubReader  *epubreader.Service
+	registerMu  sync.Mutex
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) {
 	server := &Server{
-		cfg:        cfg,
-		db:         database,
-		hub:        hub,
-		scheduler:  sched,
-		backupSvc:  backupSvc,
-		cbzReader:  cbzreader.New(cfg, database),
-		epubReader: epubreader.New(cfg, database),
+		cfg:         cfg,
+		db:          database,
+		hub:         hub,
+		scheduler:   sched,
+		backupSvc:   backupSvc,
+		audioReader: audioreader.New(cfg, database),
+		cbzReader:   cbzreader.New(cfg, database),
+		epubReader:  epubreader.New(cfg, database),
 	}
 
 	api := router.Group("/api")
@@ -45,6 +48,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	api.HEAD("/cbz-resource/:capability/*resourcePath", server.cbzResource)
 	api.GET("/epub-resource/:capability/*resourcePath", server.epubResource)
 	api.HEAD("/epub-resource/:capability/*resourcePath", server.epubResource)
+	api.GET("/audio-resource/:capability/*resourcePath", server.audioResource)
+	api.HEAD("/audio-resource/:capability/*resourcePath", server.audioResource)
 
 	auth := api.Group("/auth")
 	auth.POST("/register", server.register)

@@ -216,7 +216,8 @@ Example:
 | Auth | Does not accept or require the login Bearer token. Authorization is the signed path capability returned by the protected chapter endpoint. |
 | Capability scope | One user ID, one book ID, one source fingerprint, read-only access, and a bounded expiration. It is signed with a purpose-separated key derived from `OPENREADER_JWT_SECRET`; it is not interchangeable with login, EPUB, or CBZ capabilities. |
 | Path | `resourcePath` is URL-decoded once, normalized, and resolved strictly below that book's local library root or approved archive-derived resource root. |
-| Success | `200` with a supported audio MIME type. `HEAD` may return the same headers without a body. Byte-range requests should be supported when serving local files so browsers can seek efficiently. |
+| Local chapter resolution | A local/private audio chapter may identify its media file through chapter content, `chapter.url`, or `chapter.resourcePath`. Absolute filesystem paths and relative paths are accepted only after they resolve under the authenticated book's library root. Remote HTTP(S) URLs continue to use the safe direct remote contract above. |
+| Success | `200` with a supported audio MIME type. `HEAD` returns the same client-relevant headers without a body. Byte-range requests return `206` with `Content-Range` when serving local files so browsers can seek efficiently. |
 | `400` | Malformed capability or unsafe/malformed resource path. |
 | `403` | Invalid signature, expired capability, wrong purpose, wrong source fingerprint, or book ownership no longer matches. |
 | `404` | Scoped book/resource no longer exists. |
@@ -230,6 +231,14 @@ Security headers include at minimum:
 - private short-lived cache headers.
 
 Remote audio URLs must be validated before they are returned to the browser: only HTTP(S), no embedded credentials, no JavaScript/data/file schemes, and no server-side credential leakage.
+
+Implementation tests must cover:
+
+- remote HTTP(S) audio remains unchanged and does not leak the login JWT;
+- local/private audio chapter responses return `/api/audio-resource/<capability>/<path>`;
+- `GET`, `HEAD`, and `Range` requests serve only allow-listed audio media under the scoped book library root;
+- modified, expired, wrong-purpose, wrong-user/book, traversal, missing-file, and unsupported-media requests fail with client-safe errors;
+- access logs redact `/api/audio-resource/<capability>/...` the same way EPUB/CBZ resource capabilities are redacted.
 
 ## WebDAV contract
 
