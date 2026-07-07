@@ -25,6 +25,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+function assertClose(actual, expected, tolerance, message) {
+  if (Math.abs(actual - expected) > tolerance) {
+    throw new Error(`${message}: expected ${expected}±${tolerance}, got ${actual}`)
+  }
+}
+
 function json(data, status = 200) {
   return {
     status,
@@ -139,6 +145,49 @@ async function assertWorkspaceOpen(page, viewport, label) {
   assert(workspaceState.hasLabel, `${viewport.width}: mobile workspace missing label ${label}`)
 }
 
+async function readerGeometry(page) {
+  return page.evaluate(() => {
+    const viewportWidth = window.innerWidth
+    const pageEl = document.querySelector('.reader-page')
+    const body = document.querySelector('.reader-body')
+    const firstParagraph = document.querySelector('.reader-body p')
+    const pageRect = pageEl.getBoundingClientRect()
+    const bodyRect = body.getBoundingClientRect()
+    const paragraphRect = firstParagraph.getBoundingClientRect()
+    const pageStyle = window.getComputedStyle(pageEl)
+    const bodyStyle = window.getComputedStyle(body)
+    const paragraphStyle = window.getComputedStyle(firstParagraph)
+    return {
+      viewportWidth,
+      pageLeft: pageRect.left,
+      pageRight: viewportWidth - pageRect.right,
+      bodyLeft: bodyRect.left,
+      bodyRight: viewportWidth - bodyRect.right,
+      paragraphLeft: paragraphRect.left,
+      paragraphRight: viewportWidth - paragraphRect.right,
+      pagePaddingLeft: pageStyle.paddingLeft,
+      pagePaddingRight: pageStyle.paddingRight,
+      pageTextAlign: pageStyle.textAlign,
+      bodyTextAlign: bodyStyle.textAlign,
+      paragraphTextAlign: paragraphStyle.textAlign,
+    }
+  })
+}
+
+function assertReaderGeometry(geometry, viewport, label) {
+  assertClose(geometry.pageLeft, 0, 1, `${viewport.width} ${label}: reader page left`)
+  assertClose(geometry.pageRight, 0, 1, `${viewport.width} ${label}: reader page right`)
+  assertClose(geometry.bodyLeft, 16, 1, `${viewport.width} ${label}: reader body left gap`)
+  assertClose(geometry.bodyRight, 16, 1, `${viewport.width} ${label}: reader body right gap`)
+  assertClose(geometry.paragraphLeft, 16, 1, `${viewport.width} ${label}: paragraph left gap`)
+  assertClose(geometry.paragraphRight, 16, 1, `${viewport.width} ${label}: paragraph right gap`)
+  assert(geometry.pagePaddingLeft === '16px', `${viewport.width} ${label}: left padding ${geometry.pagePaddingLeft}`)
+  assert(geometry.pagePaddingRight === '16px', `${viewport.width} ${label}: right padding ${geometry.pagePaddingRight}`)
+  assert(geometry.pageTextAlign === 'justify', `${viewport.width} ${label}: page text-align ${geometry.pageTextAlign}`)
+  assert(geometry.bodyTextAlign === 'justify', `${viewport.width} ${label}: body text-align ${geometry.bodyTextAlign}`)
+  assert(geometry.paragraphTextAlign === 'justify', `${viewport.width} ${label}: paragraph text-align ${geometry.paragraphTextAlign}`)
+}
+
 async function closeWorkspace(page) {
   await page.getByRole('button', { name: '关闭' }).click()
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
@@ -174,29 +223,10 @@ async function runViewport(browser, viewport) {
   }
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
 
-  const initial = await page.evaluate(() => {
-    const top = document.querySelector('.reader-mobile-top')
-    const pageEl = document.querySelector('.reader-page')
-    const body = document.querySelector('.reader-body')
-    const firstParagraph = document.querySelector('.reader-body p')
-    const pageStyle = window.getComputedStyle(pageEl)
-    const bodyStyle = window.getComputedStyle(body)
-    const paragraphStyle = window.getComputedStyle(firstParagraph)
-    return {
-      topVisible: top?.classList.contains('visible'),
-      pagePaddingLeft: pageStyle.paddingLeft,
-      pagePaddingRight: pageStyle.paddingRight,
-      pageTextAlign: pageStyle.textAlign,
-      bodyTextAlign: bodyStyle.textAlign,
-      paragraphTextAlign: paragraphStyle.textAlign,
-    }
-  })
-  assert(initial.topVisible, `${viewport.width}: mobile toolbar should be visible by default`)
-  assert(initial.pagePaddingLeft === '16px', `${viewport.width}: left padding ${initial.pagePaddingLeft}`)
-  assert(initial.pagePaddingRight === '16px', `${viewport.width}: right padding ${initial.pagePaddingRight}`)
-  assert(initial.pageTextAlign === 'justify', `${viewport.width}: page text-align ${initial.pageTextAlign}`)
-  assert(initial.bodyTextAlign === 'justify', `${viewport.width}: body text-align ${initial.bodyTextAlign}`)
-  assert(initial.paragraphTextAlign === 'justify', `${viewport.width}: paragraph text-align ${initial.paragraphTextAlign}`)
+  const initialTopVisible = await page.locator('.reader-mobile-top.visible').count()
+  assert(initialTopVisible === 1, `${viewport.width}: mobile toolbar should be visible by default`)
+  const initialGeometry = await readerGeometry(page)
+  assertReaderGeometry(initialGeometry, viewport, 'initial')
 
   await page.getByRole('button', { name: /设置/ }).click()
   await assertWorkspaceOpen(page, viewport, '设置')
@@ -223,6 +253,10 @@ async function runViewport(browser, viewport) {
   await page.waitForTimeout(120)
   const afterCenterTap = await page.locator('.reader-mobile-top.visible').count()
   assert(afterCenterTap === 0, `${viewport.width}: center tap without panel should hide toolbar`)
+  const hiddenChromeGeometry = await readerGeometry(page)
+  assertReaderGeometry(hiddenChromeGeometry, viewport, 'chrome hidden')
+  assertClose(hiddenChromeGeometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: toolbar hide should not shift paragraph left`)
+  assertClose(hiddenChromeGeometry.paragraphRight, initialGeometry.paragraphRight, 1, `${viewport.width}: toolbar hide should not shift paragraph right`)
 
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
