@@ -60,6 +60,16 @@ async function installApiMocks(page) {
     if (path === '/settings/preferences') {
       return route.fulfill(json({ key: 'preferences', value: {} }))
     }
+    if (path === '/books/1') {
+      return route.fulfill(json({
+        id: 1,
+        title: '侧栏契约测试',
+        author: 'OpenReader',
+        sourceId: 0,
+        chapterCount: 1,
+        updatedAt: '2026-07-07T00:00:00Z',
+      }))
+    }
     if (path === '/books') {
       return route.fulfill(json([
         { id: 1, title: '侧栏契约测试', author: 'OpenReader', chapterCount: 1, updatedAt: '2026-07-07T00:00:00Z' },
@@ -155,6 +165,17 @@ async function runViewport(browser, viewport) {
     window.localStorage.setItem('openreader_token', token)
   }, fakeToken())
   await installApiMocks(page)
+
+  await page.goto(`${targetUrl.replace(/\/$/, '')}/books/1`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.book-info-dialog .book-info-shared', { timeout: 10000 })
+  const routeState = await page.evaluate(() => ({
+    pathname: window.location.pathname,
+    bookInfo: new URLSearchParams(window.location.search).get('bookInfo'),
+    dialogTitle: document.querySelector('.book-info-dialog')?.textContent || '',
+  }))
+  assert(routeState.pathname === '/', `${viewport.width}: /books/1 should redirect to /, got ${routeState.pathname}`)
+  assert(routeState.bookInfo === '1', `${viewport.width}: redirected URL should preserve bookInfo=1, got ${routeState.bookInfo}`)
+  assert(routeState.dialogTitle.includes('侧栏契约测试'), `${viewport.width}: shared BookInfo dialog should show loaded book`)
 
   await page.goto(targetUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.app-shell.mobile-shell .app-sidebar', { timeout: 10000 })

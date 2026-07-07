@@ -171,6 +171,8 @@ const reader = useReaderStore()
 const preferences = usePreferencesStore()
 const offline = ref(false)
 const healthInfo = ref(null)
+const routeBookInfoLoadingId = ref(null)
+const routeBookInfoOpenedKey = ref('')
 const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
 const { connected: syncConnected, connect, disconnect } = useSync()
@@ -412,6 +414,63 @@ async function refreshShelfData() {
   router.push({ name: 'home' })
 }
 
+async function openRouteBookInfoOverlay() {
+  const rawId = route.query.bookInfo
+  const id = Number(Array.isArray(rawId) ? rawId[0] : rawId)
+  if (!Number.isFinite(id) || id <= 0 || route.name === 'reader') return
+  const key = `${route.name || ''}:${id}`
+  if (routeBookInfoOpenedKey.value === key && overlay.bookInfoVisible) return
+  routeBookInfoLoadingId.value = id
+  try {
+    const { data } = await api.get(`/books/${id}`)
+    if (!data?.id) return
+    const shelfBook = bookshelf.books.find(book => Number(book.id) === Number(data.id))
+    const mergedBook = shelfBook ? mergeShelfBookForRoute(shelfBook, data) : data
+    if (shelfBook) bookshelf.upsertBook(mergedBook)
+    overlay.openBookInfo(mergedBook, {
+      progress: routeBookProgress(mergedBook)?.percent || 0,
+      actions: [
+        {
+          label: '继续阅读',
+          type: 'primary',
+          handler: () => {
+            overlay.closeBookInfo()
+            router.push({ name: 'reader', params: { id: mergedBook.id }, query: routeReaderQuery(mergedBook) })
+          },
+        },
+      ],
+    })
+    routeBookInfoOpenedKey.value = key
+  } catch (error) {
+    ElMessage.error(readError(error, '加载书籍信息失败'))
+  } finally {
+    routeBookInfoLoadingId.value = null
+  }
+}
+
+function routeBookProgress(book) {
+  return reader.progressByBook?.[book?.id] || book?.progress || null
+}
+
+function routeReaderQuery(book) {
+  const progress = routeBookProgress(book)
+  const chapterIndex = Number(progress?.chapterIndex)
+  if (Number.isInteger(chapterIndex) && chapterIndex >= 0) {
+    return { resume: '1', chapter: chapterIndex }
+  }
+  return { resume: '1' }
+}
+
+function mergeShelfBookForRoute(current, incoming) {
+  return {
+    ...current,
+    ...incoming,
+    progress: incoming?.progress || current?.progress,
+    categories: incoming?.categories || current?.categories,
+    categoryIds: incoming?.categoryIds || current?.categoryIds,
+  }
+}
+
 function refreshShelfInForeground() {
   if (!userStore.token) return
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
@@ -446,6 +505,15 @@ watch(
     } else {
       disconnect()
     }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [route.name, route.query.bookInfo, userStore.token, bookshelf.books.length],
+  () => {
+    if (!userStore.token) return
+    openRouteBookInfoOverlay()
   },
   { immediate: true },
 )

@@ -129,6 +129,43 @@ Required implementation gates for this shelf-geometry slice:
    - verifies bottom icon click does not close the sidebar by propagation.
 5. Keep this as an incremental P1 shell-alignment slice. Larger Index convergence remains pending: merging Search/Discover/Sources/Settings into the upstream single workspace scene and consolidating BookInfo.
 
+## Immediate P1 contract: shared BookInfo and old detail URL compatibility
+
+Status: extracted on 2026-07-07 before implementation.
+
+Upstream authority: `web/src/components/BookInfo.vue` used from the single `Index.vue` workspace.
+
+### Upstream behavior contract
+
+| Concern | Upstream evidence | Required OpenReader behavior |
+|---|---|---|
+| Single BookInfo scene | Upstream has one `BookInfo.vue` dialog with `title="书籍信息"`, bound to `$store.state.showBookInfo`. It is a child of the Index workspace, not an independent route scene. | OpenReader should converge to one shared `BookInfoPanel/Dialog` flow opened from shelf, search, discover, reader, and old URLs. |
+| Dialog shell | Upstream uses `el-dialog`, width `dialogSmallWidth`, fullscreen on mini interface, and closes through the dialog close hook. | OpenReader's Vue 3 `BookInfoDialog` fullscreen/mobile behavior is a technical equivalent if every entry point uses it. |
+| In-shelf state | Upstream computes `isInShelf` by comparing `bookUrl` against shelf books. In-shelf books show source, latest chapter, follow switch, group name/action, local refresh, cover upload, and intro. | OpenReader may use `id/sourceId/categoryIds`, but the same visible actions must be available from the shared dialog for shelf books. |
+| Search/explore result state | When not in shelf, upstream shows a centered `加入书架` operation zone instead of a separate detail page. | Search/discover previews should not route to `/books/:id`; they should use the shared dialog actions to add/read. |
+| Old detail route | Upstream does not expose a separate `/books/:id` detail page. | OpenReader may preserve `/books/:id` as an old-link compatibility entry, but it should redirect into the Index workspace and open the shared BookInfo dialog. It must not keep an independent full-page BookDetail product structure as the canonical flow. |
+| Reader entry | Reader can open book info while preserving reader toolbar/panel state rules. | Reader book-info action should open the shared dialog/actions; it should not depend on the independent BookDetail page. |
+| Allowed additions | Current OpenReader has browser-cache counts, local cache actions, multi-user scopes, and Go API ids. | These are acceptable additions only inside the shared BookInfo/workspace flow. They are not a reason to keep duplicate page-level business logic. |
+
+### Current evidence and classification
+
+| Layer | Current evidence | Difference | Classification |
+|---|---|---|---|
+| Shared panel | `BookInfoPanel.vue` is already shared by `BookInfoDialog.vue`, `OverlayBookInfo.vue`, and `BookDetail.vue`. | Good base for convergence. | `aligned` |
+| Global overlay | `OverlayBookInfo.vue` owns shared source name, group name, cover upload, local refresh, follow switch, and cache count actions. | This is the closest current equivalent of upstream `BookInfo.vue`. | `aligned` |
+| Full detail route | `frontend/src/router/index.js` maps `/books/:id` to `BookDetail.vue`, a separate route with tabs/actions/source panel. | This preserves a wrong page structure as product architecture. | `must-fix` |
+| Search/discover actions | `Search.vue` and `Discover.vue` create `完整详情` actions that navigate to `book-detail`. | These keep users in the old fragmented flow instead of shared BookInfo. | `must-fix` |
+| Reader action | `useReaderPanels.openBookInfo()` adds `完整详情` action that routes to `/books/:id`. | This reintroduces the duplicate flow from inside Reader. | `must-fix` |
+| Shelf edit action | `Home.vue.goEditBook()` routes to `book-detail` for edit. | Editing metadata should open the shared edit dialog/workspace action, not the detail page. | `must-fix` |
+
+Required implementation gates for this slice:
+
+1. Change `/books/:id` to redirect to the Index workspace with `?bookInfo=<id>` while preserving login guard behavior.
+2. Add AppLayout-level old-link handler that loads `/api/books/:id`, merges shelf/progress context when available, and opens `overlay.openBookInfo()` with shared actions such as continue reading.
+3. Remove `book-detail` navigation from shelf/search/discover/reader BookInfo actions; use shared overlay/edit/read flows instead.
+4. Add unit/source tests for route redirect and action removal.
+5. Add or extend smoke coverage proving `/books/1` lands on `/` with BookInfo dialog visible, without rendering the full `BookDetail.vue` page.
+
 ## Immediate P0 contract: Reader mobile
 
 | Behavior | Upstream evidence | Current evidence | Required action |

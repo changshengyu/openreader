@@ -257,7 +257,7 @@ async function refreshShelf() {
 }
 
 function goEditBook(book) {
-  router.push({ name: 'book-detail', params: { id: book.id } })
+  overlay.openBookEdit(book)
 }
 
 function openDetail(book) {

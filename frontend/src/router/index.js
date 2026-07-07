@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-const BookDetail = () => import('../views/BookDetail.vue')
 const Discover = () => import('../views/Discover.vue')
 const Home = () => import('../views/Home.vue')
 const Login = () => import('../views/Login.vue')
@@ -20,7 +19,17 @@ const router = createRouter({
     { path: '/local-store', name: 'local-store', component: LocalStore },
     { path: '/sources', name: 'sources', component: Sources },
     { path: '/settings', name: 'settings', component: Settings },
-    { path: '/books/:id', name: 'book-detail', component: BookDetail },
+    {
+      path: '/books/:id',
+      name: 'book-detail',
+      redirect: to => ({
+        path: '/',
+        query: {
+          ...to.query,
+          bookInfo: to.params.id,
+        },
+      }),
+    },
     { path: '/books/:id/read', name: 'reader', component: Reader },
   ],
 })

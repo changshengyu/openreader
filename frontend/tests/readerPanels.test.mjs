@@ -76,15 +76,12 @@ test('opens reader panels while preserving their existing visibility side effect
   ])
 })
 
-test('saves progress before navigating to the shelf or full book detail', async () => {
+test('saves progress before navigating back to the shelf', async () => {
   const fixture = createController()
-  await fixture.controller.goBookDetail()
   fixture.state.mobileChromeVisible.value = true
   await fixture.controller.goShelf()
   assert.equal(fixture.state.mobileChromeVisible.value, true)
   assert.deepEqual(fixture.calls, [
-    ['save', { force: true, background: true }],
-    ['navigate', { name: 'book-detail', params: { id: 7 } }],
     ['save', { force: true, background: true }],
     ['navigate', { name: 'home' }],
   ])
@@ -96,7 +93,7 @@ test('builds remote book-info actions and keeps local books away from remote pan
   const remoteOptions = fixture.calls[0][2]
   assert.deepEqual(
     remoteOptions.actions.map(action => action.label),
-    ['目录', '书签', '搜正文', '书源', '分组', '刷新目录', '缓存章节', '清缓存', '设置', '完整详情'],
+    ['目录', '书签', '搜正文', '书源', '分组', '刷新目录', '缓存章节', '清缓存', '设置'],
   )
 
   fixture.calls.length = 0
@@ -107,7 +104,7 @@ test('builds remote book-info actions and keeps local books away from remote pan
   const localOptions = fixture.calls[0][2]
   assert.deepEqual(
     localOptions.actions.map(action => action.label),
-    ['目录', '书签', '搜正文', '分组', '设置', '完整详情'],
+    ['目录', '书签', '搜正文', '分组', '设置'],
   )
   assert.equal(fixture.state.sourceVisible.value, false)
 })

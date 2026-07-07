@@ -1420,7 +1420,6 @@ const {
   ensureClientId: () => reader.ensureClientId(),
 })
 const {
-  goBookDetail,
   goShelf,
   openBookInfo: openReaderBookInfo,
   openBookmarks: openBookmarkDrawer,

@@ -22,14 +22,6 @@ export function useReaderPanels(options) {
     options.cacheVisible.value = true
   }
 
-  async function goBookDetail() {
-    options.saveProgress({ force: true, background: true })
-    await options.navigate({
-      name: 'book-detail',
-      params: { id: unref(options.bookId) },
-    })
-  }
-
   async function goShelf() {
     options.saveProgress({ force: true, background: true })
     await options.navigate({ name: 'home' })
@@ -111,14 +103,6 @@ export function useReaderPanels(options) {
       hasRemoteSource ? { label: '缓存章节', plain: true, handler: openCache } : null,
       hasRemoteSource ? { label: '清缓存', plain: true, handler: options.clearCache } : null,
       { label: '设置', plain: true, handler: openInfoSettings },
-      {
-        label: '完整详情',
-        type: 'primary',
-        handler: () => {
-          options.closeBookInfo()
-          goBookDetail()
-        },
-      },
     ].filter(Boolean)
     options.openBookInfoOverlay(currentBook, {
       statusLabel: `阅读中 · ${unref(options.bookProgressLabel)}`,
@@ -129,7 +113,6 @@ export function useReaderPanels(options) {
   }
 
   return {
-    goBookDetail,
     goShelf,
     openBookInfo,
     openBookmarks,

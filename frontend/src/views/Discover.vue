@@ -325,7 +325,6 @@ async function addRemoteBook(book, shouldRead) {
       statusType: 'success',
       progress: 0,
       actions: [
-        { label: '完整详情', plain: true, handler: () => openExistingDetail(data) },
         { label: '开始阅读', type: 'primary', handler: () => openExistingReader(data) },
       ],
     })
@@ -355,11 +354,6 @@ function activeRemoteKey(book) {
   return remoteBookKey(book, activeRemoteSourceId(book))
 }
 
-function openExistingDetail(book) {
-  overlay.closeBookInfo()
-  router.push({ name: 'book-detail', params: { id: book.id } })
-}
-
 function openExistingInfo(book, sourceName = '') {
   overlay.openBookInfo(book, {
     sourceName,
@@ -367,7 +361,6 @@ function openExistingInfo(book, sourceName = '') {
     statusType: 'warning',
     progress: existingProgress(book)?.percent || 0,
     actions: [
-      { label: '完整详情', plain: true, handler: () => openExistingDetail(book) },
       { label: '继续阅读', type: 'primary', handler: () => openExistingReader(book) },
     ],
   })
