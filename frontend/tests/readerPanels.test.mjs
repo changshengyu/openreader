@@ -87,14 +87,15 @@ test('saves progress before navigating back to the shelf', async () => {
   ])
 })
 
-test('builds remote book-info actions and keeps local books away from remote panels', () => {
+test('opens plain reader BookInfo without injecting toolbar shortcut actions', () => {
   const fixture = createController()
   fixture.controller.openBookInfo()
   const remoteOptions = fixture.calls[0][2]
-  assert.deepEqual(
-    remoteOptions.actions.map(action => action.label),
-    ['目录', '书签', '搜正文', '书源', '分组', '刷新目录', '缓存章节', '清缓存', '设置'],
-  )
+  assert.equal(remoteOptions.statusLabel, '阅读中 · 42.0%')
+  assert.equal(remoteOptions.statusType, 'success')
+  assert.equal(remoteOptions.progress, 42)
+  assert.equal('actions' in remoteOptions, false)
+  assert.equal(fixture.state.mobileChromeVisible.value, true)
 
   fixture.calls.length = 0
   fixture.book.value = { id: 7, sourceId: 0, title: '本地书' }
@@ -102,33 +103,6 @@ test('builds remote book-info actions and keeps local books away from remote pan
   fixture.controller.openCache()
   fixture.controller.openBookInfo()
   const localOptions = fixture.calls[0][2]
-  assert.deepEqual(
-    localOptions.actions.map(action => action.label),
-    ['目录', '书签', '搜正文', '分组', '设置'],
-  )
+  assert.equal('actions' in localOptions, false)
   assert.equal(fixture.state.sourceVisible.value, false)
-})
-
-test('opens the group panel even when loading categories fails', async () => {
-  const fixture = createController({
-    ensureCategoriesLoaded: async () => {
-      fixture.calls.push(['load-categories'])
-      throw new Error('offline')
-    },
-  })
-  fixture.controller.openBookInfo()
-  const groupAction = fixture.calls[0][2].actions.find(action => action.label === '分组')
-  fixture.calls.length = 0
-  await groupAction.handler()
-  assert.deepEqual(fixture.calls, [
-    ['close-info'],
-    ['load-categories'],
-    ['open-group', 'set', fixture.book.value, {
-      categoryName: '收藏',
-      progress: 42,
-      statusLabel: '阅读中 · 42.0%',
-      statusType: 'success',
-    }],
-  ])
-  assert.equal(fixture.state.mobileChromeVisible.value, true)
 })
