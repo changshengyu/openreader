@@ -170,6 +170,67 @@ Security headers include at minimum:
 
 The route must not log the capability value. Application access logs should redact the capability path segment.
 
+## Audio reader resource contract
+
+### Authenticated chapter response
+
+`GET /api/books/:id/chapters/:index/content`
+
+| Field | Contract |
+|---|---|
+| Method/path | Existing `GET /api/books/:id/chapters/:index/content`; no path change. |
+| Auth | Existing `Authorization: Bearer <jwt>` requirement. The book lookup remains scoped to the authenticated user. |
+| Detection | Audio reading applies to books whose `type` is `1`, matching upstream `readingBook.type === 1`. |
+| Audio response | `200` JSON keeps `chapter` and `content`; adds `"format": "audio"`, `resourceUrl`, and RFC3339 `resourceExpiresAt`. `content` remains the same audio URL string for clients that already read it directly. |
+| Resource source | For remote audio chapters, the audio URL may remain a source-provided HTTP(S) URL if it is already safe for direct browser playback. For local/private library audio, return a same-origin signed resource URL. |
+| Side effects | No text cache rewrite is required. Progress writes store the current playback second as the chapter offset, matching upstream `durChapterPos` behavior. |
+| `400` | Invalid book/chapter parameter, unsafe audio URL, or malformed local resource path. |
+| `404` | Book/chapter/source audio is not available to the current user. |
+| `415` | Resource media type is not on the audio allowlist. |
+| `500` | Unexpected persistence, source, or filesystem failure. |
+| Error body | `{ "error": "<stable client-safe message>" }`; never include host filesystem paths, signed tokens, cookies, or source credentials. |
+
+Example:
+
+```json
+{
+  "chapter": {
+    "id": 12,
+    "bookId": 5,
+    "index": 0,
+    "title": "第一集"
+  },
+  "content": "/api/audio-resource/<capability>/tracks/001.mp3",
+  "format": "audio",
+  "resourceUrl": "/api/audio-resource/<capability>/tracks/001.mp3",
+  "resourceExpiresAt": "2026-07-07T12:00:00Z"
+}
+```
+
+### Capability-protected local audio resources
+
+`GET /api/audio-resource/:capability/*resourcePath`
+
+| Field | Contract |
+|---|---|
+| Auth | Does not accept or require the login Bearer token. Authorization is the signed path capability returned by the protected chapter endpoint. |
+| Capability scope | One user ID, one book ID, one source fingerprint, read-only access, and a bounded expiration. It is signed with a purpose-separated key derived from `OPENREADER_JWT_SECRET`; it is not interchangeable with login, EPUB, or CBZ capabilities. |
+| Path | `resourcePath` is URL-decoded once, normalized, and resolved strictly below that book's local library root or approved archive-derived resource root. |
+| Success | `200` with a supported audio MIME type. `HEAD` may return the same headers without a body. Byte-range requests should be supported when serving local files so browsers can seek efficiently. |
+| `400` | Malformed capability or unsafe/malformed resource path. |
+| `403` | Invalid signature, expired capability, wrong purpose, wrong source fingerprint, or book ownership no longer matches. |
+| `404` | Scoped book/resource no longer exists. |
+| `415` | Resource media type is not on the audio allowlist. |
+
+Security headers include at minimum:
+
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: no-referrer`;
+- `Cross-Origin-Resource-Policy: same-origin`;
+- private short-lived cache headers.
+
+Remote audio URLs must be validated before they are returned to the browser: only HTTP(S), no embedded credentials, no JavaScript/data/file schemes, and no server-side credential leakage.
+
 ## WebDAV contract
 
 | Method | Path | Purpose |
