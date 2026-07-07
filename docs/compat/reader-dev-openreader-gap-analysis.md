@@ -307,7 +307,7 @@ Deferred from this EPUB slice:
 | Image rendering | `frontend/src/components/reader/ReaderChapterContent.vue`, `useReaderChapterPresentation.js`, `parseReaderContentBlocks` convert `<img>` to image blocks, hide CBZ titles, collect preview image lists, and recompute layout on image load. | Vue 3/Element Plus `el-image lazy` replaces upstream `v-lazy-container`. | `technical-stack-equivalent` |
 | Lazy-loading model | Upstream uses `v-lazy-container` and `data-src`; OpenReader uses Element Plus `el-image lazy` with preview. | Visible behavior is acceptable if images load lazily, trigger layout recomputation, and preview does not toggle toolbar. | `acceptable-change` |
 | Audio detection/API | `backend/api/books.go.chapterContent` returns `format: "audio"` for `book.Type == 1`, validates direct HTTP(S) audio URLs, keeps `content`, and adds `resourceUrl/resourceExpiresAt`. | Remote/direct audio is implemented; same-origin signed local/private `/api/audio-resource` remains pending. | `partial` |
-| Audio UI | `frontend/src/components/reader/ReaderAudioContent.vue` renders an audio branch with native controls, elapsed/total time, `-15s/+15s`, previous/next, progress events, ended-to-next behavior, and restore-by-offset. | Native browser controls replace upstream custom play/pause/volume widgets for this slice; cover and custom volume/mute UI remain pending. | `partial` |
+| Audio UI | `frontend/src/components/reader/ReaderAudioContent.vue` renders an audio branch with cover, hidden media element, elapsed/total time, seek slider, `-15s/+15s`, previous/next, play/pause, mute/unmute, volume slider, progress events, ended-to-next behavior, and restore-by-offset. | Uses Vue/native range inputs instead of upstream Element `el-slider`, preserving visible behavior. | `technical-stack-equivalent` |
 | Reader controls | `Reader.vue`, `useReaderPointer`, `useReaderKeyboard`, and `useReaderMode` now keep audio out of text paging/scrolling, hide auto-reading/TTS, and let center taps toggle the mobile toolbar without side paging. | Escape still closes panels/returns home as an OpenReader compatibility behavior. | `aligned` |
 
 ### OpenReader adaptation contract
@@ -341,8 +341,35 @@ Implemented in commit work following this contract:
 Still pending:
 
 - Same-origin signed local/private `/api/audio-resource/:capability/*resourcePath` with byte-range support and MIME allow-list.
-- Upstream-equivalent cover, custom play/pause, mute, and volume controls beyond the native browser `<audio controls>` UI.
 - Full online audio book-source parsing fixtures if upstream source rules expose audio URLs through additional parser branches.
+
+### 2026-07-07 follow-up contract: audio custom controls
+
+Additional upstream evidence from `web/src/components/Content.vue.renderAudio` and methods:
+
+- The underlying `<audio>` element is present but not rendered as the primary browser-native control surface.
+- Visible audio UI consists of cover, elapsed time, seek slider, total duration, `-15s`, previous chapter, play/pause, next chapter, `+15s`, mute/unmute icon, and volume slider.
+- Component state includes `currentTime`, `audioDuration`, `playing`, `currentSpeed`, `audioVolume`, `startTime`, and `autoPlay`.
+- `seekTime(val)` writes `audio.currentTime`; `setAudioVolume(val)` writes `audio.volume = val / 100`.
+- `toggle()` pauses if currently playing, otherwise calls `play()`.
+- `onPlay/onPause/onTimeupdate/onEnd` update playing/current time and emit progress or next chapter transitions.
+
+OpenReader follow-up requirements:
+
+| Concern | Required behavior | Status before implementation |
+|---|---|---|
+| Hidden media element | Keep the real `<audio preload="metadata">` for browser playback, but remove native `controls` from the primary UI. | `must-fix` |
+| Play state | Add explicit play/pause button tied to audio `play/pause/ended/error` events. Browser autoplay failures must not break the page. | `must-fix` |
+| Seek slider | Add visible range slider bound to current playback second and duration. Drag/change must call `audio.currentTime` and emit progress. | `must-fix` |
+| Volume | Add mute/unmute and 0-100 volume slider, writing `audio.volume`. | `must-fix` |
+| Cover | Display book cover when available, with a stable fallback. | `must-fix` |
+| Tests | Extend unit/source tests and `reader-audio-contract.mjs` to verify no native controls, custom buttons/sliders, play/pause, seek, volume, and mute behavior. | `must-fix` |
+
+Implementation status:
+
+- Completed in the follow-up audio-control slice: OpenReader now hides native audio controls, renders cover/fallback, custom seek slider, play/pause, previous/next, `-15s/+15s`, mute/unmute, and volume slider.
+- `frontend/tests/readerAudioContent.test.mjs` verifies the component wiring against the extracted upstream control contract.
+- `scripts/smoke/reader-audio-contract.mjs` verifies custom controls in Chrome, including play/pause, seek, volume, mute, and mobile toolbar center-tap behavior.
 
 ### Recommended tests before implementation
 

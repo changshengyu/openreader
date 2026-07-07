@@ -45,6 +45,11 @@ async function installMocks(page, requests) {
     contentType: 'audio/mpeg',
     body: Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
   }))
+  await page.route(/^https?:\/\/[^/]+\/media\/cover\.svg.*$/, route => route.fulfill({
+    status: 200,
+    contentType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320"><rect width="240" height="320" fill="#345"/><text x="36" y="170" font-size="32" fill="#fff">Audio</text></svg>',
+  }))
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -77,6 +82,7 @@ async function installMocks(page, requests) {
         author: 'OpenReader',
         sourceId: 2,
         type: 1,
+        coverUrl: `${targetUrl.replace(/\/$/, '')}/media/cover.svg`,
         chapterCount: 2,
         progress: null,
       }))
@@ -140,7 +146,7 @@ async function runViewport(browser, viewport) {
   page.on('pageerror', error => failures.push(error.message))
   await installMocks(page, requests)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
-  await page.waitForSelector('.reader-audio-content audio', { timeout: 10_000 })
+  await page.waitForSelector('.reader-audio-content audio', { state: 'attached', timeout: 10_000 })
 
   const initial = await page.evaluate(() => ({
     shellClass: document.querySelector('.reader-shell')?.className || '',
@@ -149,6 +155,12 @@ async function runViewport(browser, viewport) {
     hasChapterContent: Boolean(document.querySelector('.chapter-content')),
     hasAutoReading: Boolean(document.querySelector('[title="自动阅读"]')),
     hasTTS: Boolean(document.querySelector('[title="朗读"]')),
+    hasNativeControls: document.querySelector('.reader-audio-content audio')?.hasAttribute('controls') || false,
+    hasCover: Boolean(document.querySelector('.reader-audio-cover img')),
+    hasProgressSlider: Boolean(document.querySelector('input[aria-label="音频播放进度"]')),
+    hasVolumeSlider: Boolean(document.querySelector('input[aria-label="音频音量"]')),
+    hasPlayButton: Boolean([...document.querySelectorAll('.reader-audio-actions button')].find(button => button.textContent.includes('播放'))),
+    hasMuteButton: Boolean([...document.querySelectorAll('.reader-audio-volume button')].find(button => button.textContent.includes('音量'))),
     mobileTopVisible: Boolean(document.querySelector('.reader-mobile-top.visible')),
   }))
   assert(initial.shellClass.includes('page'), `${viewport.width}: audio reader should force page mode, class=${initial.shellClass}`)
@@ -157,6 +169,54 @@ async function runViewport(browser, viewport) {
   assert(!initial.hasChapterContent, `${viewport.width}: audio should not render ordinary chapter-content sections`)
   assert(!initial.hasAutoReading, `${viewport.width}: audio should hide auto-reading control`)
   assert(!initial.hasTTS, `${viewport.width}: audio should hide TTS control`)
+  assert(!initial.hasNativeControls, `${viewport.width}: audio should not expose native controls as primary UI`)
+  assert(initial.hasCover, `${viewport.width}: audio cover should render`)
+  assert(initial.hasProgressSlider, `${viewport.width}: custom audio progress slider missing`)
+  assert(initial.hasVolumeSlider, `${viewport.width}: custom audio volume slider missing`)
+  assert(initial.hasPlayButton, `${viewport.width}: custom play button missing`)
+  assert(initial.hasMuteButton, `${viewport.width}: custom mute/volume button missing`)
+
+  await page.evaluate(() => {
+    const audio = document.querySelector('.reader-audio-content audio')
+    Object.defineProperty(audio, 'duration', { configurable: true, value: 120 })
+    audio.play = () => {
+      audio.dispatchEvent(new Event('play'))
+      return Promise.resolve()
+    }
+    audio.pause = () => {
+      audio.dispatchEvent(new Event('pause'))
+    }
+    audio.dispatchEvent(new Event('loadedmetadata'))
+  })
+  await page.getByRole('button', { name: '播放' }).click()
+  await page.waitForFunction(() => [...document.querySelectorAll('.reader-audio-actions button')].some(button => button.textContent.includes('暂停')))
+  await page.getByRole('button', { name: '暂停' }).click()
+  await page.waitForFunction(() => [...document.querySelectorAll('.reader-audio-actions button')].some(button => button.textContent.includes('播放')))
+  await page.locator('input[aria-label="音频播放进度"]').evaluate((input) => {
+    input.value = '45'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const seekState = await page.evaluate(() => ({
+    audioTime: Math.round(document.querySelector('.reader-audio-content audio').currentTime || 0),
+    sliderValue: document.querySelector('input[aria-label="音频播放进度"]').value,
+  }))
+  assert(seekState.audioTime === 45, `${viewport.width}: seek did not update audio currentTime: ${JSON.stringify(seekState)}`)
+  await page.locator('input[aria-label="音频音量"]').evaluate((input) => {
+    input.value = '35'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  let volumeState = await page.evaluate(() => ({
+    audioVolume: Math.round((document.querySelector('.reader-audio-content audio').volume || 0) * 100),
+    label: document.querySelector('.reader-audio-volume span')?.textContent || '',
+  }))
+  assert(volumeState.audioVolume === 35 && volumeState.label.includes('35%'), `${viewport.width}: volume slider failed: ${JSON.stringify(volumeState)}`)
+  await page.getByRole('button', { name: '音量' }).click()
+  volumeState = await page.evaluate(() => ({
+    audioMuted: document.querySelector('.reader-audio-content audio').muted,
+    label: document.querySelector('.reader-audio-volume span')?.textContent || '',
+  }))
+  assert(volumeState.audioMuted && volumeState.label.includes('0%'), `${viewport.width}: mute failed: ${JSON.stringify(volumeState)}`)
 
   const chapterOneRequestsBeforeKey = requests.filter(item => item === 'GET /books/1/chapters/1/content').length
   await page.keyboard.press('ArrowRight')
@@ -171,11 +231,17 @@ async function runViewport(browser, viewport) {
     await page.mouse.click(viewport.width - 20, Math.round(viewport.height / 2))
     await page.waitForTimeout(160)
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: side tap should not hide toolbar for audio`)
-    const contentTapY = Math.round(viewport.height / 2) - 110
-    await page.mouse.click(Math.round(viewport.width / 2), contentTapY)
+    const titleTapPoint = await page.locator('.reader-audio-content h1').evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+      }
+    })
+    await page.mouse.click(titleTapPoint.x, titleTapPoint.y)
     await page.waitForTimeout(160)
     assert(await page.locator('.reader-mobile-top.visible').count() === 0, `${viewport.width}: center tap should hide toolbar for audio`)
-    await page.mouse.click(Math.round(viewport.width / 2), contentTapY)
+    await page.mouse.click(titleTapPoint.x, titleTapPoint.y)
     await page.waitForTimeout(160)
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: second center tap should show toolbar for audio`)
   }

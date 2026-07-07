@@ -26,6 +26,7 @@
     :resource="audioResource"
     :initial-time="audioInitialTime"
     :title="audioTitle"
+    :cover-url="audioCoverUrl"
     :previous-disabled="previousDisabled"
     :next-disabled="nextDisabled"
     :autoplay="audioAutoplay"
@@ -124,6 +125,10 @@ defineProps({
     default: 0,
   },
   audioTitle: {
+    type: String,
+    default: '',
+  },
+  audioCoverUrl: {
     type: String,
     default: '',
   },

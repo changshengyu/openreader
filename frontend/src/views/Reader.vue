@@ -143,6 +143,7 @@
             :audio-resource="audioResource"
             :audio-initial-time="audioInitialTime"
             :audio-title="chapter?.title || book?.title || ''"
+            :audio-cover-url="book?.customCoverUrl || book?.coverUrl || ''"
             :audio-autoplay="audioAutoplay"
             :previous-disabled="currentIndex <= 0"
             :next-disabled="currentIndex >= chapters.length - 1"
