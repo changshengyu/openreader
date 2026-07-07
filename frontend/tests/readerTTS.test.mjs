@@ -5,6 +5,9 @@ import {
   normalizeTTSRate,
   normalizeTTSSleepMinutes,
   readerTTSBarVisible,
+  readerTTSCurrentParagraphIndex,
+  readerTTSParagraphElements,
+  readerTTSParagraphText,
   readerTTSProgressLabel,
   readerTTSSleepExpired,
   sortTTSVoices,
@@ -75,6 +78,48 @@ test('keeps reader TTS bar visibility independent from playback state', () => {
     chapterFormat: 'text',
     audio: false,
   }), false)
+})
+
+function fakeParagraph({ text, bottom = 100, right = 100, active = false }) {
+  return {
+    innerText: text,
+    textContent: text,
+    classList: {
+      contains: className => active && ['reading', 'tts-active'].includes(className),
+    },
+    getBoundingClientRect: () => ({ bottom, right }),
+  }
+}
+
+test('selects reader TTS paragraphs from rendered heading and paragraph DOM', () => {
+  const elements = [
+    fakeParagraph({ text: '标题' }),
+    fakeParagraph({ text: '' }),
+    fakeParagraph({ text: '第一段' }),
+  ]
+  const root = {
+    querySelectorAll: selector => (selector === 'h1,h2,h3,p' ? elements : []),
+  }
+
+  assert.equal(readerTTSParagraphText(elements[0]), '标题')
+  assert.deepEqual(readerTTSParagraphElements(root).map(readerTTSParagraphText), ['标题', '第一段'])
+})
+
+test('selects current reader TTS paragraph from active class or visible geometry', () => {
+  const activeList = [
+    fakeParagraph({ text: '第一段', bottom: 20 }),
+    fakeParagraph({ text: '第二段', bottom: 80, active: true }),
+  ]
+  assert.equal(readerTTSCurrentParagraphIndex(activeList), 1)
+
+  const visibleList = [
+    fakeParagraph({ text: '第一段', bottom: 20 }),
+    fakeParagraph({ text: '第二段', bottom: 80 }),
+    fakeParagraph({ text: '第三段', bottom: 120 }),
+  ]
+  assert.equal(readerTTSCurrentParagraphIndex(visibleList, { topOffset: 50 }), 1)
+  assert.equal(readerTTSCurrentParagraphIndex(visibleList, { slide: true }), 0)
+  assert.equal(readerTTSCurrentParagraphIndex([]), -1)
 })
 
 test('formats reader TTS paragraph progress', () => {

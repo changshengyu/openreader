@@ -20,6 +20,7 @@ export function useTTS() {
   const voices = ref([])
   let activeOnEnd = null
   let activeOnStart = null
+  let activeOnError = null
 
   function loadVoices() {
     if (!synth) return
@@ -42,6 +43,7 @@ export function useTTS() {
     pending = false
     activeOnEnd = null
     activeOnStart = null
+    activeOnError = null
   }
 
   function pause() {
@@ -60,23 +62,30 @@ export function useTTS() {
     }
   }
 
-  function speak(text, onEnd, onStart) {
+  function speak(text, onEnd, onStart, onError) {
+    speakList(String(text || '').split('\n'), 0, onEnd, onStart, onError)
+  }
+
+  function speakList(list, startIndex = 0, onEnd, onStart, onError) {
     if (!synth) return
     stop()
-    paragraphs = text.split('\n').map(l => l.trim()).filter(Boolean)
+    paragraphs = (Array.isArray(list) ? list : [])
+      .map(l => String(l || '').trim())
+      .filter(Boolean)
     if (paragraphs.length === 0) return
 
     state.playing = true
     state.paused = false
-    currentIndex.value = 0
+    currentIndex.value = Math.max(0, Math.min(paragraphs.length - 1, Number(startIndex) || 0))
     total.value = paragraphs.length
     pending = false
     activeOnEnd = onEnd
     activeOnStart = onStart
-    speakCurrent(onEnd, onStart)
+    activeOnError = onError
+    speakCurrent(onEnd, onStart, onError)
   }
 
-  function speakCurrent(onEnd, onStart) {
+  function speakCurrent(onEnd, onStart, onError) {
     if (currentIndex.value >= paragraphs.length) {
       stop()
       onEnd?.()
@@ -100,15 +109,17 @@ export function useTTS() {
       if (pending) return
       currentIndex.value++
       if (currentIndex.value < paragraphs.length) {
-        speakCurrent(onEnd, onStart)
+        speakCurrent(onEnd, onStart, onError)
       } else {
         stop()
         onEnd?.()
       }
     })
 
-    utterance.addEventListener('error', () => {
+    utterance.addEventListener('error', (event) => {
       pending = false
+      state.playing = synth.speaking || false
+      onError?.(event)
     })
 
     synth.speak(utterance)
@@ -122,7 +133,7 @@ export function useTTS() {
       currentIndex.value++
       setTimeout(() => {
         pending = false
-        speakCurrent(activeOnEnd, activeOnStart)
+        speakCurrent(activeOnEnd, activeOnStart, activeOnError)
       }, 50)
     }
   }
@@ -135,7 +146,7 @@ export function useTTS() {
       currentIndex.value = Math.max(0, currentIndex.value - 1)
       setTimeout(() => {
         pending = false
-        speakCurrent(activeOnEnd, activeOnStart)
+        speakCurrent(activeOnEnd, activeOnStart, activeOnError)
       }, 50)
     }
   }
@@ -147,7 +158,7 @@ export function useTTS() {
     pending = true
     setTimeout(() => {
       pending = false
-      speakCurrent(activeOnEnd, activeOnStart)
+      speakCurrent(activeOnEnd, activeOnStart, activeOnError)
       if (wasPaused) setTimeout(() => pause(), 0)
     }, 50)
   }
@@ -180,6 +191,7 @@ export function useTTS() {
     currentIndex,
     total,
     speak,
+    speakList,
     stop,
     pause,
     resume,

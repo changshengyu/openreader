@@ -697,8 +697,8 @@ Current OpenReader evidence and classification:
 | Config persistence | Pinia reader store persists `ttsRate`, `ttsPitch`, `ttsVoiceURI`. | Uses `voiceURI` instead of upstream `voiceName`; this is a Vue 3/browser-stability adaptation as long as display labels remain human-readable. | `acceptable-change` |
 | Restart on config change | `useTTS.setRate/setPitch/setVoice` call `restartCurrent()`. | Matches upstream restart-on-change behavior. | `aligned` |
 | Sleep timer | `useReaderTTS` uses 0–180 minutes and emits `定时关闭朗读`. | Matches upstream timer range and message. | `aligned` |
-| Paragraph traversal | `useTTS` splits plain content by newline and highlights `p` nodes by index; `skipForward/skipBackward` only move inside current chapter. | Upstream reads DOM `h3,p`, starts from the visible paragraph, and previous/next cross chapter boundaries. | `must-fix` |
-| Error handling | `useTTS` error handler only clears pending state. | Upstream displays a readable speech error. | `must-fix` |
+| Paragraph traversal | `useReaderTTS` now derives speech paragraphs from rendered `h1,h2,h3,p`, starts from an active/visible paragraph, marks `.reading/.tts-active`, and routes previous/next across chapter boundaries. | Upstream reads `h3,p`; OpenReader includes `h1/h2` because current Vue renderer uses headings for chapter titles. | `technical-stack-equivalent` |
+| Error handling | `useTTS` now forwards utterance errors to `useReaderTTS`, which displays `朗读错误: ...`. | Matches upstream user-visible error semantics. | `aligned` |
 
 Required tests for this TTS slice:
 
@@ -721,8 +721,10 @@ Implementation status:
 - Completed in this slice: Reader TTS button opens/closes the read bar without starting speech; the play button starts speech; closing the read bar stops active speech.
 - Completed in this slice: `ReaderTTSBar` now contains voice list/config controls in the Reader surface and uses an upstream-like high layer so mobile floating tools do not intercept its controls.
 - Completed in this slice: `scripts/smoke/reader-tts-contract.mjs` verifies the real-browser TTS bar contract with a mocked `speechSynthesis`.
-- Pending follow-up: DOM paragraph traversal must be rebuilt against upstream `h3,p` current-visible paragraph semantics, including previous/next across chapter boundaries.
-- Pending follow-up: speech synthesis errors must surface `朗读错误: ...` without breaking the Reader.
+- Completed in this slice: TTS paragraph source now comes from rendered DOM headings/paragraphs rather than only splitting plain text, and starts from the active or first visible paragraph.
+- Completed in this slice: TTS previous/next now restarts the target DOM paragraph and can cross chapter boundaries.
+- Completed in this slice: `speechSynthesis` utterance errors are surfaced as `朗读错误: ...`.
+- Validation note: unit tests and production build passed after this slice. The enhanced real-browser TTS smoke was updated to check next-paragraph DOM highlighting and error toast, but final rerun was blocked by the workspace approval/spend cap after an initial timing assertion exposed and fixed an insufficient wait condition.
 
 ## Required workflow for each future module
 

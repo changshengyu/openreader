@@ -121,6 +121,8 @@ async function main() {
       cancelCalls: 0,
       pauseCalls: 0,
       resumeCalls: 0,
+      lastText: '',
+      lastUtterance: null,
     }
     class MockSpeechSynthesisUtterance extends EventTarget {
       constructor(text) {
@@ -148,6 +150,8 @@ async function main() {
       removeEventListener() {},
       speak(utterance) {
         window.__openreaderTTS.speakCalls += 1
+        window.__openreaderTTS.lastText = utterance.text
+        window.__openreaderTTS.lastUtterance = utterance
         this.speaking = true
         this.paused = false
         setTimeout(() => utterance.dispatchEvent(new Event('start')), 0)
@@ -198,6 +202,25 @@ async function main() {
 
   await page.locator('.tts-play').click()
   await page.waitForFunction(() => window.__openreaderTTS.speakCalls === 1, null, { timeout: 10000 })
+  await page.getByText('下一段').click()
+  await page.waitForFunction(() => window.__openreaderTTS.speakCalls === 2, null, { timeout: 10000 })
+  await page.waitForFunction(() => (
+    document.querySelector('.tts-active')?.innerText || ''
+  ).includes('春风过处'), null, { timeout: 10000 })
+  const afterNext = await page.evaluate(() => ({
+    lastText: window.__openreaderTTS.lastText,
+    activeText: document.querySelector('.tts-active')?.innerText || '',
+  }))
+  assert(afterNext.lastText.includes('春风过处'), `next paragraph should speak the first body paragraph, got ${afterNext.lastText}`)
+  assert(afterNext.activeText.includes('春风过处'), `next paragraph should highlight active DOM paragraph, got ${afterNext.activeText}`)
+
+  await page.evaluate(() => {
+    const event = new Event('error')
+    Object.defineProperty(event, 'error', { value: 'mock-error' })
+    window.__openreaderTTS.lastUtterance.dispatchEvent(event)
+  })
+  await page.waitForFunction(() => document.body.innerText.includes('朗读错误'), null, { timeout: 10000 })
+
   await page.locator('.tts-close').click()
   await page.waitForFunction(() => !document.querySelector('.tts-bar'), null, { timeout: 10000 })
   const afterClose = await page.evaluate(() => window.__openreaderTTS)

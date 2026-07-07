@@ -198,11 +198,11 @@
       :config-expanded="ttsConfigExpanded"
       :sleep-minutes="ttsSleepMinutes"
       :progress-text="ttsProgressLabel"
-      @backward="tts.skipBackward"
+      @backward="ttsPrevious"
       @play="toggleTTS"
       @pause="tts.pause"
       @resume="tts.resume"
-      @forward="tts.skipForward"
+      @forward="ttsNext"
       @close="closeTTSBar"
       @toggle-config="ttsConfigExpanded = !ttsConfigExpanded"
       @voice-change="setTTSVoice"
@@ -1589,6 +1589,8 @@ const {
   setVoice: setTTSVoice,
   setSleepMinutes: setTTSSleepMinutes,
   toggle: toggleTTS,
+  previous: ttsPrevious,
+  next: ttsNext,
   stop: ttsStop,
 } = useReaderTTS({
   reader,
@@ -1598,6 +1600,7 @@ const {
   chapters,
   goChapter,
   notify: showReaderToast,
+  isSlideRead: () => effectiveReaderMode.value === 'flip',
 })
 const ttsBarRequested = ref(false)
 const ttsConfigExpanded = ref(true)
