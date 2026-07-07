@@ -717,6 +717,12 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	if err != nil {
 		return "", fmt.Errorf("parse rules: %w", err)
 	}
+	if source.SourceType == 1 && strings.TrimSpace(rule.ContentRule) == "" {
+		if resolved := resolveAudioContentURL(source.BaseURL, chapterURL); resolved != "" {
+			return resolved, nil
+		}
+		return strings.TrimSpace(chapterURL), nil
+	}
 
 	policy := bookSourceRequestPolicy(source)
 	chapterRequest, err := prepareResolvedSourceRequest(source.BaseURL, chapterURL, "", 1, source.Charset, rule.Headers, policy)
@@ -758,7 +764,7 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	for len(queue) > 0 {
 		page := queue[0]
 		queue = queue[1:]
-		if text := extractChapterContent(page.doc, rule, page.request.URL); text != "" {
+		if text := extractChapterContent(page.doc, rule, page.request.URL, source.SourceType); text != "" {
 			parts = append(parts, text)
 		}
 		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextContentURLRule, page.request.URL) {
@@ -839,18 +845,43 @@ func applyContentReplaceRegex(text string, rule string) string {
 	return compiled.ReplaceAllString(result, replacement)
 }
 
-func extractChapterContent(doc *goquery.Document, rule models.BookSourceRule, baseURL string) string {
+func extractChapterContent(doc *goquery.Document, rule models.BookSourceRule, baseURL string, sourceType int) string {
 	contentRule := rule.ContentRule
 	if contentRule == "" {
 		return strings.Join(Extract(doc.Selection, "body|text"), "\n")
 	}
 	values := Extract(doc.Selection, contentRule)
+	if sourceType == 1 {
+		for index := range values {
+			values[index] = resolveAudioContentURL(baseURL, values[index])
+		}
+		return strings.Join(nonBlankStrings(values), "\n")
+	}
 	if ruleOperation(contentRule) == "html" {
 		for index := range values {
 			values[index] = normalizeChapterHTMLWithImageStyle(values[index], baseURL, rule.ContentImageStyle)
 		}
 	}
 	return strings.Join(values, "\n")
+}
+
+func resolveAudioContentURL(baseURL string, value string) string {
+	urlPart, _ := splitSourceURLOption(value)
+	urlPart = strings.TrimSpace(urlPart)
+	if urlPart == "" {
+		return ""
+	}
+	return resolveURL(baseURL, urlPart)
+}
+
+func nonBlankStrings(values []string) []string {
+	result := values[:0]
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			result = append(result, strings.TrimSpace(value))
+		}
+	}
+	return result
 }
 
 func ruleOperation(rule string) string {

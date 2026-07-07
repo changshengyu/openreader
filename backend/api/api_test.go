@@ -5028,6 +5028,89 @@ func TestAudioChapterContentReturnsSafeResourceURL(t *testing.T) {
 	}
 }
 
+func TestRemoteAudioSourceChapterContentParsesPlayableURL(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != "https://audio-source.example/chapter/1" {
+				t.Fatalf("unexpected remote audio request: %s", req.URL.String())
+			}
+			body := `<html><body><audio src="../media/track-001.mp3"></audio></body></html>`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{
+		Name:       "远程音频源",
+		BaseURL:    "https://audio-source.example/books/book-1/",
+		SourceType: 1,
+		Charset:    "utf-8",
+		Enabled:    true,
+	}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentRule: "audio|attr:src",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID:   user.ID,
+		SourceID: source.ID,
+		Type:     source.SourceType,
+		Title:    "远程有声书",
+		URL:      "https://audio-source.example/books/book-1/",
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一集", URL: "https://audio-source.example/chapter/1"}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("remote audio chapter content: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var response struct {
+		Format      string `json:"format"`
+		ResourceURL string `json:"resourceUrl"`
+		Content     string `json:"content"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Format != "audio" ||
+		response.ResourceURL != "https://audio-source.example/media/track-001.mp3" ||
+		response.Content != response.ResourceURL {
+		t.Fatalf("unexpected remote audio response: %+v", response)
+	}
+	var reloaded models.Chapter
+	if err := server.db.First(&reloaded, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.CachePath == "" {
+		t.Fatal("remote audio chapter content was not cached")
+	}
+}
+
 func TestAudioChapterContentRejectsUnsafeResourceURL(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
