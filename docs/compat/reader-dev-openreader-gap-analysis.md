@@ -665,6 +665,61 @@ Deferred from this slice:
 - Broader real-world online audio book-source corpus fixtures, if imported source sets expose audio through additional non-selector/audio-specific rules.
 - Browser autoplay restrictions: OpenReader may require an explicit user gesture before first audio playback, but previous/next and ended autoplay should match upstream after the user has interacted.
 
+### 2026-07-07 follow-up contract: Reader TTS/read-aloud controls
+
+Upstream evidence from `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`:
+
+| Feature | Upstream authority | Contract |
+|---|---|---|
+| Availability | `web/src/views/Reader.vue` floating button `v-if="speechAvalable && !isEpub && !isCarToon && !isAudio"` | System speech is available only when `window.speechSynthesis.getVoices` exists and the current chapter is not EPUB, comic/image, or audio. |
+| Read bar visibility | `showReadBar`, `readBarTheme`, floating TTS button | Clicking the read-aloud button toggles the read bar independently from active speaking; the bar can be visible before playback starts. |
+| Paging/slide mode coupling | `isSlideRead()` | Showing the read bar disables slide-read behavior in the same way as auto-reading, EPUB, comic, and audio modes. |
+| Bottom spacing | `chapterTheme()` | When the read bar is visible, content adds bottom padding of `280px` when config is expanded and `80px` when collapsed. |
+| Controls | `read-bar` template and `speechPrev/toggleSpeech/speechNext/exitRead` | Visible controls are close, previous paragraph, play/pause, next paragraph, and collapse/expand config. Close stops speech and hides the bar. |
+| Voice list | `fetchVoiceList()` | Voices are sorted with `zh-*` voices first, then by `lang`; config presents the voice list as selectable buttons. |
+| Persisted config | `plugins/config.js` and `plugins/vuex.js` `speechVoiceConfig` | Defaults are `voiceName: ""`, `speechRate: 1`, `speechPitch: 1`; changes persist in cache. |
+| Rate range | `speechRate` slider | Rate is `0.5` to `2`, step `0.1`, reset `1`. Changing while speaking restarts the current paragraph. |
+| Pitch range | `speechPitch` slider | Pitch is `0` to `2`, step `0.1`, reset `1`. Changing while speaking restarts the current paragraph. |
+| Sleep timer | `speechMinutes` slider and `speechEndTime` | Sleep is `0` to `180` minutes. When the deadline passes, reading stops and shows `定时关闭朗读`. |
+| Paragraph source | `getCurrentParagraph/getPrevParagraph/getNextParagraph` | Speech reads visible `h3,p` DOM paragraphs, highlights the active paragraph with class `reading`, previous/next move across chapter boundaries. |
+| Error handling | `startSpeech()` `utterance.onerror` | Speech synthesis errors show `朗读错误: ...` and update speaking state without blanking the page. |
+
+Current OpenReader evidence and classification:
+
+| Layer | Current evidence | Difference | Classification |
+|---|---|---|---|
+| Availability | `Reader.vue` `ttsSupportedForChapter` checks speech support, non-EPUB, and non-audio; image/comic uses chapter format checks elsewhere. | Equivalent for audio/EPUB; image/comic eligibility still needs explicit verification against `chapterFormat` values. | `unknown` |
+| Read bar visibility | `ReaderTTSBar v-if="tts.state.playing && !isAudioChapter"` and tool action directly calls `toggleTTS`. | Upstream toggles bar visibility before playback and keeps it independent from speaking. Current UI only appears once speaking has started and hides when stopped. | `must-fix` |
+| Read bar structure | `ReaderTTSBar.vue` compact blue fixed bar; voice selection lives in `ReaderSettingsPanel`. | Upstream read bar contains its own config section and voice list. Current split is usable but not upstream-equivalent. | `must-fix` |
+| Rate range | `useTTS`, `readerStore`, `ReaderTTSBar`, `ReaderSettingsPanel`, `Settings.vue` use `0.5–3`. | Upstream max is `2`. | `must-fix` |
+| Pitch range | `useTTS`, `readerStore`, `ReaderTTSBar`, `ReaderSettingsPanel`, `Settings.vue` use `0.5–2`. | Upstream min is `0`. | `must-fix` |
+| Voice ordering | `useTTS.loadVoices()` filters `zh/en` voices, then uses browser order. | Upstream does not prioritize English over other voices; it sorts `zh-*` voices first, then by `lang`. | `must-fix` |
+| Config persistence | Pinia reader store persists `ttsRate`, `ttsPitch`, `ttsVoiceURI`. | Uses `voiceURI` instead of upstream `voiceName`; this is a Vue 3/browser-stability adaptation as long as display labels remain human-readable. | `acceptable-change` |
+| Restart on config change | `useTTS.setRate/setPitch/setVoice` call `restartCurrent()`. | Matches upstream restart-on-change behavior. | `aligned` |
+| Sleep timer | `useReaderTTS` uses 0–180 minutes and emits `定时关闭朗读`. | Matches upstream timer range and message. | `aligned` |
+| Paragraph traversal | `useTTS` splits plain content by newline and highlights `p` nodes by index; `skipForward/skipBackward` only move inside current chapter. | Upstream reads DOM `h3,p`, starts from the visible paragraph, and previous/next cross chapter boundaries. | `must-fix` |
+| Error handling | `useTTS` error handler only clears pending state. | Upstream displays a readable speech error. | `must-fix` |
+
+Required tests for this TTS slice:
+
+| Layer | Test requirement |
+|---|---|
+| Utility/store | Rate clamps to `0.5–2`; pitch clamps to `0–2`; sleep remains `0–180`. |
+| Voice ordering | Browser voices are sorted with `zh-*` first, then by `lang`, without dropping non-Chinese/non-English voices when available. |
+| UI contract | Reader TTS bar and reader/global settings expose the upstream rate and pitch ranges. |
+| Runtime behavior | Changing rate, pitch, or voice while speaking restarts the current paragraph. |
+| Follow-up UI | TTS button toggles bar visibility independently from speaking, and the bar exposes voice list/config in the reader surface. |
+| Follow-up navigation | Previous/next paragraph starts from visible `h3,p` and crosses chapter boundaries. |
+| Follow-up errors | Speech synthesis errors surface `朗读错误: ...` without breaking the Reader. |
+
+Implementation status:
+
+- Completed in this slice: TTS rate is normalized to upstream `0.5–2` everywhere it is stored or edited.
+- Completed in this slice: TTS pitch is normalized to upstream `0–2` everywhere it is stored or edited.
+- Completed in this slice: browser voices are sorted with upstream `zh-*` first, then by language, without dropping non-Chinese/non-English voices.
+- Completed in this slice: unit tests cover TTS rate/pitch normalization, sleep timer range, progress label, deadline expiration, and voice ordering.
+- Pending follow-up: full read-bar visibility/config structure and DOM paragraph traversal must be rebuilt against upstream Reader semantics.
+
 ## Required workflow for each future module
 
 1. Use `readerdev-compat-inventory`.

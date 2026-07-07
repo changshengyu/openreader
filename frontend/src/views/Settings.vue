@@ -365,11 +365,11 @@
               </label>
               <label>
                 <span>朗读语速 {{ readerStore.ttsRate }}</span>
-                <el-slider v-model="readerTTSRateModel" :min="0.5" :max="3" :step="0.1" />
+                <el-slider v-model="readerTTSRateModel" :min="0.5" :max="2" :step="0.1" />
               </label>
               <label>
                 <span>朗读音调 {{ readerStore.ttsPitch }}</span>
-                <el-slider v-model="readerTTSPitchModel" :min="0.5" :max="2" :step="0.1" />
+                <el-slider v-model="readerTTSPitchModel" :min="0" :max="2" :step="0.1" />
               </label>
             </div>
           </article>

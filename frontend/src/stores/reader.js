@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
 import { newestProgress as pickNewestProgress, progressUpdatedAt } from '../utils/bookOrder'
+import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
 let readerSettingsSyncTimer
 const READER_CLIENT_ID = readerClientId()
@@ -328,11 +329,11 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setTTSRate(rate) {
-      this.ttsRate = clampNumber(rate, 0.5, 3, 1)
+      this.ttsRate = normalizeTTSRate(rate)
       this.markSettingsDirty()
     },
     setTTSPitch(pitch) {
-      this.ttsPitch = clampNumber(pitch, 0.5, 2, 1)
+      this.ttsPitch = normalizeTTSPitch(pitch)
       this.markSettingsDirty()
     },
     setTTSVoice(uri) {
@@ -390,8 +391,8 @@ export const useReaderStore = defineStore('reader', {
       if (this.pageType === 'kindle') {
         this.animateDuration = 0
       }
-      this.ttsRate = clampNumber(this.ttsRate, 0.5, 3, 1)
-      this.ttsPitch = clampNumber(this.ttsPitch, 0.5, 2, 1)
+      this.ttsRate = normalizeTTSRate(this.ttsRate)
+      this.ttsPitch = normalizeTTSPitch(this.ttsPitch)
       if ((this.settingsVersion || 0) < 4) {
         this.fontSize = 18
         this.fontWeight = 400
@@ -858,8 +859,8 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.autoReadSpeed = settings.autoReadingPixel
   settings.autoReadingLineTime = clampNumber(payload.autoReadingLineTime, 10, 3000, 260)
   settings.animateDuration = clampNumber(payload.animateDuration, 0, 500, 300)
-  settings.ttsRate = clampNumber(payload.ttsRate, 0.5, 3, 1)
-  settings.ttsPitch = clampNumber(payload.ttsPitch, 0.5, 2, 1)
+  settings.ttsRate = normalizeTTSRate(payload.ttsRate)
+  settings.ttsPitch = normalizeTTSPitch(payload.ttsPitch)
   settings.lineHeight = clampNumber(payload.lineHeight, 1, 5, 1.8)
   settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 5, 0.2)
   settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)

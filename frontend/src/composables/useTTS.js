@@ -1,4 +1,5 @@
 import { onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { normalizeTTSPitch, normalizeTTSRate, sortTTSVoices } from '../utils/readerTTS'
 
 export function useTTS() {
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
@@ -23,10 +24,7 @@ export function useTTS() {
   function loadVoices() {
     if (!synth) return
     const availableVoices = synth.getVoices()
-    voices.value = availableVoices.filter(v => v.lang.startsWith('zh') || v.lang.startsWith('en'))
-    if (voices.value.length === 0) {
-      voices.value = availableVoices
-    }
+    voices.value = sortTTSVoices(availableVoices)
     if (availableVoices.length > 0 && state.voiceURI && !voices.value.some(v => v.voiceURI === state.voiceURI)) {
       state.voiceURI = ''
     }
@@ -155,12 +153,12 @@ export function useTTS() {
   }
 
   function setRate(rate) {
-    state.rate = Math.max(0.5, Math.min(3, Number(rate) || 1))
+    state.rate = normalizeTTSRate(rate)
     restartCurrent()
   }
 
   function setPitch(pitch) {
-    state.pitch = Math.max(0.5, Math.min(2, Number(pitch) || 1))
+    state.pitch = normalizeTTSPitch(pitch)
     restartCurrent()
   }
 

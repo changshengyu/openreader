@@ -357,7 +357,7 @@
       <ReaderSettingStepper
         v-model="ttsRateModel"
         :min="0.5"
-        :max="3"
+        :max="2"
         :step="0.1"
         decrease-label="降低朗读语速"
         increase-label="提高朗读语速"
@@ -368,7 +368,7 @@
       <label class="setting-label">朗读音调</label>
       <ReaderSettingStepper
         v-model="ttsPitchModel"
-        :min="0.5"
+        :min="0"
         :max="2"
         :step="0.1"
         decrease-label="降低朗读音调"

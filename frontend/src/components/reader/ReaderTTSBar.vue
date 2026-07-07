@@ -8,9 +8,9 @@
     <el-button text class="tts-btn" @click="$emit('stop')">⏹</el-button>
     <span class="tts-progress">{{ progressText }}</span>
     <span class="tts-label">语速</span>
-    <input :value="rate" max="3" min="0.5" step="0.1" type="range" class="tts-slider" @input="$emit('rate-change', $event.target.value)" />
+    <input :value="rate" max="2" min="0.5" step="0.1" type="range" class="tts-slider" @input="$emit('rate-change', $event.target.value)" />
     <span class="tts-label">音调</span>
-    <input :value="pitch" max="2" min="0.5" step="0.1" type="range" class="tts-slider" @input="$emit('pitch-change', $event.target.value)" />
+    <input :value="pitch" max="2" min="0" step="0.1" type="range" class="tts-slider" @input="$emit('pitch-change', $event.target.value)" />
     <span class="tts-label">定时</span>
     <input :value="sleepMinutes" max="180" min="0" step="1" type="range" class="tts-slider" @input="$emit('sleep-change', $event.target.value)" />
     <span class="tts-label">{{ sleepMinutes }}分钟</span>
