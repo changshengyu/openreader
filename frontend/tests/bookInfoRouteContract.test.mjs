@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
@@ -15,6 +15,7 @@ test('keeps old book detail URLs as shared BookInfo overlay redirects', () => {
   assert.match(router, /path:\s*'\/books\/:id'[\s\S]*name:\s*'book-detail'[\s\S]*redirect:\s*to =>/)
   assert.match(router, /bookInfo:\s*to\.params\.id/)
   assert.doesNotMatch(router, /const BookDetail = \(\) => import\('\.\.\/views\/BookDetail\.vue'\)/)
+  assert.equal(existsSync(resolve(__dirname, '../src/views/BookDetail.vue')), false)
 })
 
 test('removes canonical BookDetail navigation from workspace BookInfo actions', () => {

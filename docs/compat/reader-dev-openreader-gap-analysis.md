@@ -26,7 +26,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Reader scrolling vs click paging | Upstream has page/scroll modes with discrete click navigation. | User requested continuous native finger/wheel scrolling while click paging remains segmented. | Intentional UX improvement if it does not change mode selection semantics. | `acceptable-change` | Browser scroll continuity probe; click paging regression tests. |
 | Reader settings controls | Upstream uses controls that are easier to distinguish visually; user requested minus/value/plus controls instead of current easy-to-mis-tap slider behavior. | Current setting stepper exists but must be rechecked against upstream layout/state. | Allowed UX adaptation, but values/defaults/state must match upstream. | `acceptable-change` | Unit tests for value bounds; browser setting interaction test. |
 | Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, and cross-chapter behavior. | Current `ReaderChapterContent.vue` handles text/images/volume blocks, CBZ image resources, EPUB iframe resources, and a dedicated audio branch for `type === 1` chapters; continuous chapter retention, extension, anchor, error, and explicit-jump behavior follows the extracted fixed-baseline contract. | EPUB, image/CBZ rendering/import/resource serving, continuous cross-chapter behavior, and basic audio playback are implemented and browser-validated. TTS parity and local/private signed audio resources remain pending. | `aligned` for implemented formats; `partial` for audio; `unknown` for TTS | Keep EPUB/image/CBZ/continuous/audio browser contracts; add TTS and local/private audio-resource fixtures. |
-| BookInfo | Upstream has one `web/src/components/BookInfo.vue` used from workspace flows. | Current has `BookDetail.vue`, `BookInfoDialog.vue`, `BookInfoPanel.vue`, `OverlayBookInfo.vue`. | Duplicate logic risks inconsistent actions/search/read/source behavior. | `must-fix` for P1 | Single BookInfo action contract; search/shelf/reader reuse tests. |
+| BookInfo | Upstream has one `web/src/components/BookInfo.vue` used from workspace flows. | Current has shared `BookInfoDialog.vue` / `BookInfoPanel.vue` / `OverlayBookInfo.vue`; the old `/books/:id` URL redirects to the Index workspace and opens the shared dialog. | The independent `BookDetail.vue` route structure has been removed from the product path; remaining work is to centralize action generation across shelf/search/discover/reader. | `partial` for P1 | Single BookInfo action contract; search/shelf/reader reuse tests. |
 | Bookshelf/BookManage/BookGroup | Upstream: `BookShelf.vue`, `BookManage.vue`, `BookGroup.vue` under Index workspace. | Current: `Home.vue`, overlay management components, categories/store utilities. | Some enhancements may be valid, but workflow and mobile sidebar behavior need upstream comparison. | `unknown` | Workspace browser flows; category/order tests. |
 | Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons must be extracted from `Index.vue` and related CSS. | Current `AppLayout.vue` and mobile navigation had reported drag/fixed-button mismatch. | User-visible mismatch: GitHub/day-night buttons should not slide with drawer content. | `must-fix` for P1 | Mobile drag smoke; fixed-bottom button geometry probe. |
 | Search/explore/source flow | Upstream Index integrates search/explore/source and BookInfo transitions. | Current has separate `Search.vue`, `Discover.vue`, `Sources.vue` pages. | Flow fragmentation can change API order, panel state, and back behavior. | `must-fix` for P1 | Search → result group → BookInfo → add/read browser test. |
@@ -151,12 +151,12 @@ Upstream authority: `web/src/components/BookInfo.vue` used from the single `Inde
 
 | Layer | Current evidence | Difference | Classification |
 |---|---|---|---|
-| Shared panel | `BookInfoPanel.vue` is already shared by `BookInfoDialog.vue`, `OverlayBookInfo.vue`, and `BookDetail.vue`. | Good base for convergence. | `aligned` |
+| Shared panel | `BookInfoPanel.vue` is shared by `BookInfoDialog.vue` and `OverlayBookInfo.vue`; the old `BookDetail.vue` file has been removed after `/books/:id` became a compatibility redirect. | Good base for convergence. | `aligned` |
 | Global overlay | `OverlayBookInfo.vue` owns shared source name, group name, cover upload, local refresh, follow switch, and cache count actions. | This is the closest current equivalent of upstream `BookInfo.vue`. | `aligned` |
-| Full detail route | `frontend/src/router/index.js` maps `/books/:id` to `BookDetail.vue`, a separate route with tabs/actions/source panel. | This preserves a wrong page structure as product architecture. | `must-fix` |
-| Search/discover actions | `Search.vue` and `Discover.vue` create `完整详情` actions that navigate to `book-detail`. | These keep users in the old fragmented flow instead of shared BookInfo. | `must-fix` |
-| Reader action | `useReaderPanels.openBookInfo()` adds `完整详情` action that routes to `/books/:id`. | This reintroduces the duplicate flow from inside Reader. | `must-fix` |
-| Shelf edit action | `Home.vue.goEditBook()` routes to `book-detail` for edit. | Editing metadata should open the shared edit dialog/workspace action, not the detail page. | `must-fix` |
+| Full detail route | `frontend/src/router/index.js` keeps the `book-detail` route name only as an old-link redirect to `/` with `bookInfo=<id>`. | Aligned with old-link compatibility while removing the independent page structure. | `aligned` |
+| Search/discover actions | Search/discover previews no longer create `完整详情` actions that route to `book-detail`. | Aligned with shared BookInfo flow. | `aligned` |
+| Reader action | `useReaderPanels.openBookInfo()` no longer adds a `完整详情` route action. | Aligned with shared BookInfo flow. | `aligned` |
+| Shelf edit action | `Home.vue.goEditBook()` opens the shared edit dialog. | Aligned with workspace dialog responsibility. | `aligned` |
 
 Required implementation gates for this slice:
 
@@ -165,6 +165,14 @@ Required implementation gates for this slice:
 3. Remove `book-detail` navigation from shelf/search/discover/reader BookInfo actions; use shared overlay/edit/read flows instead.
 4. Add unit/source tests for route redirect and action removal.
 5. Add or extend smoke coverage proving `/books/1` lands on `/` with BookInfo dialog visible, without rendering the full `BookDetail.vue` page.
+
+### 2026-07-07 implementation note
+
+- `/books/:id` now redirects to `/` with `?bookInfo=<id>`.
+- `AppLayout.vue` hydrates that query by loading the book and opening the shared `OverlayBookInfo` dialog.
+- `BookDetail.vue` has been removed from the frontend source tree.
+- Search, Discover, Reader, and mobile shelf edit no longer route users into the removed independent detail page.
+- `frontend/tests/bookInfoRouteContract.test.mjs` and `scripts/smoke/index-mobile-sidebar-contract.mjs` lock the compatibility redirect and shared-dialog behavior.
 
 ## Immediate P0 contract: Reader mobile
 
