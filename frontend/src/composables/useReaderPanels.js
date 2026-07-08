@@ -2,6 +2,10 @@ import { unref } from 'vue'
 
 export function useReaderPanels(options) {
   function openSettings() {
+    if (options.settingsVisible.value) {
+      options.settingsVisible.value = false
+      return
+    }
     options.customBg.value = options.getCustomBgColor()
     options.sliderLineHeight.value = options.getLineHeight()
     options.settingsVisible.value = true

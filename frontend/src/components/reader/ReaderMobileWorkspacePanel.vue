@@ -1,6 +1,7 @@
 <template>
   <section
     class="reader-mobile-workspace"
+    :class="{ 'reader-mobile-workspace-no-header': !showHeader }"
     role="dialog"
     aria-modal="false"
     :aria-label="title"
@@ -9,7 +10,7 @@
     @touchmove.stop
     @touchend.stop
   >
-    <div class="reader-mobile-workspace-head">
+    <div v-if="showHeader" class="reader-mobile-workspace-head">
       <div class="reader-mobile-workspace-title">{{ title }}</div>
       <div class="reader-mobile-workspace-actions">
         <slot name="actions" />
@@ -27,6 +28,10 @@ defineProps({
   title: {
     type: String,
     required: true,
+  },
+  showHeader: {
+    type: Boolean,
+    default: true,
   },
 })
 
@@ -47,6 +52,10 @@ defineEmits(['close'])
   color: var(--reader-text);
   background: color-mix(in srgb, var(--reader-popup-bg) 97%, transparent);
   backdrop-filter: blur(2px);
+}
+
+.reader-mobile-workspace-no-header {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .reader-mobile-workspace-head {

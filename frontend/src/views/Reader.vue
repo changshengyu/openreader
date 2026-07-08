@@ -337,6 +337,7 @@
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSettingsDrawer"
       title="设置"
+      :show-header="false"
       @close="showSettingsDrawer = false"
     >
       <ReaderSettingsPanel

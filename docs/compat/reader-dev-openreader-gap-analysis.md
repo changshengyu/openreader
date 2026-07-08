@@ -742,7 +742,7 @@ Current OpenReader evidence and classification:
 
 | Layer | Current evidence | Difference | Classification |
 |---|---|---|---|
-| Shell/title | `ReaderMobileWorkspacePanel` wraps `ReaderSettingsPanel`; `ReaderSettingsPanel` title row shows `设置` and `重置为默认配置`. | The mobile wrapper adds its own panel header, so mobile can show duplicated "设置" labels. Needs later visual pass. | `unknown` |
+| Shell/title | `ReaderMobileWorkspacePanel` wraps `ReaderSettingsPanel`; `ReaderSettingsPanel` title row shows `设置` and `重置为默认配置`. | Upstream `Reader.vue` opens `ReadSettings` directly inside `el-popover popper-class="popper-component"`; there is no second mobile wrapper title. The current mobile wrapper adds a duplicate `设置` header. | `must-fix` |
 | Order | `ReaderSettingsPanel.vue` broadly follows upstream order and adds brightness plus TTS controls. | `亮度` and TTS controls are OpenReader enhancements/user-requested additions; placement does not block upstream core flow. | `acceptable-change` |
 | Labels | Current labels shorten several upstream names: `主题`, `字体`, `字号`, `字重`, `行高`. | These should match upstream visible text: `阅读主题`, `正文字体`, `字体大小`, `字体粗细`, `段落行高`. | `must-fix` |
 | Numeric controls | `ReaderSettingStepper` is used for size/weight/line-height/paragraph/animation/auto-read/TTS. | Preserves user-requested minus/value/plus controls; do not revert to mis-tap sliders. | `intentional-redesign` |
@@ -752,7 +752,7 @@ Required tests for this settings-label slice:
 
 | Layer | Test requirement |
 |---|---|
-| Unit/static | `ReaderSettingsPanel` must expose the upstream canonical labels for theme/font/typography sections. |
+| Unit/static | `ReaderSettingsPanel` must expose the upstream canonical labels for theme/font/typography sections. Mobile settings must suppress the generic workspace header so the panel has only one `设置` title row. |
 | Regression | Existing reader settings stepper tests must continue passing. |
 | Build | Production build must compile after label changes. |
 
@@ -760,7 +760,8 @@ Implementation status:
 
 - Completed in this slice: `ReaderSettingsPanel` visible labels now use upstream canonical text for `阅读主题`, `正文字体`, `字体大小`, `字体粗细`, and `段落行高`.
 - Completed in this slice: `frontend/tests/readerSettingsPanelContract.test.mjs` locks those labels and rejects the previous shortened forms.
-- Pending follow-up: full visual pass for mobile `ReadSettings` first-screen density and duplicate title behavior.
+- Completed in this slice: mobile settings now suppresses the generic `ReaderMobileWorkspacePanel` header, keeps the upstream-like `ReadSettings` title row, and closes via the still-visible mobile settings tool toggle.
+- Pending follow-up: full visual pass for mobile `ReadSettings` first-screen density after the duplicate title is removed.
 
 ## Required workflow for each future module
 

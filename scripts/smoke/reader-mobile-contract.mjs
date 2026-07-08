@@ -124,6 +124,7 @@ async function assertWorkspaceOpen(page, viewport, label) {
   const workspaceState = await page.evaluate((expectedLabel) => {
     const workspace = document.querySelector('.reader-mobile-workspace')
     const rect = workspace.getBoundingClientRect()
+    const header = workspace.querySelector('.reader-mobile-workspace-head')
     const visibleDrawers = Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
       const drawerRect = element.getBoundingClientRect()
       const style = window.getComputedStyle(element)
@@ -136,6 +137,7 @@ async function assertWorkspaceOpen(page, viewport, label) {
       role: workspace.getAttribute('role'),
       text: workspace.innerText,
       hasLabel: workspace.innerText.includes(expectedLabel),
+      hasGenericHeader: Boolean(header),
     }
   }, label)
   assert(workspaceState.left === 0, `${viewport.width}: mobile workspace left ${workspaceState.left}`)
@@ -143,6 +145,9 @@ async function assertWorkspaceOpen(page, viewport, label) {
   assert(workspaceState.visibleDrawers === 0, `${viewport.width}: mobile workspace must not use visible drawer`)
   assert(workspaceState.role === 'dialog', `${viewport.width}: mobile workspace role ${workspaceState.role}`)
   assert(workspaceState.hasLabel, `${viewport.width}: mobile workspace missing label ${label}`)
+  if (label === '设置') {
+    assert(workspaceState.hasGenericHeader === false, `${viewport.width}: settings workspace must not render a duplicate generic header`)
+  }
 }
 
 async function readerGeometry(page) {
@@ -188,8 +193,12 @@ function assertReaderGeometry(geometry, viewport, label) {
   assert(geometry.paragraphTextAlign === 'justify', `${viewport.width} ${label}: paragraph text-align ${geometry.paragraphTextAlign}`)
 }
 
-async function closeWorkspace(page) {
-  await page.getByRole('button', { name: '关闭' }).click()
+async function closeWorkspace(page, method = 'close-button') {
+  if (method === 'settings-toggle') {
+    await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' }).click()
+  } else {
+    await page.getByRole('button', { name: '关闭' }).click()
+  }
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
 }
 
@@ -235,7 +244,7 @@ async function runViewport(browser, viewport) {
   const afterPanelCenterTap = await page.locator('.reader-mobile-top.visible').count()
   assert(afterPanelCenterTap === 1, `${viewport.width}: center tap with panel open must not hide toolbar`)
 
-  await closeWorkspace(page)
+  await closeWorkspace(page, 'settings-toggle')
   await page.getByRole('button', { name: /目录/ }).click()
   await assertWorkspaceOpen(page, viewport, '目录')
   await closeWorkspace(page)

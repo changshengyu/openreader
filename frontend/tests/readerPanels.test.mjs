@@ -56,6 +56,13 @@ test('opens reader panels while preserving their existing visibility side effect
   assert.equal(fixture.state.customBg.value, '#efe4c5')
   assert.equal(fixture.state.sliderLineHeight.value, 1.8)
 
+  fixture.controller.openSettings()
+  assert.equal(fixture.state.mobileChromeVisible.value, true)
+  assert.equal(fixture.state.settingsVisible.value, false)
+
+  fixture.controller.openSettings()
+  assert.equal(fixture.state.settingsVisible.value, true)
+
   fixture.controller.showClickZone()
   assert.equal(fixture.state.settingsVisible.value, false)
   assert.equal(fixture.state.clickZoneVisible.value, true)
