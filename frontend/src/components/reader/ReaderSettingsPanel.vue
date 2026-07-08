@@ -7,10 +7,18 @@
 
     <div class="setting-row">
       <label class="setting-label">特殊模式</label>
-      <el-radio-group v-model="pageTypeModel" size="small" class="read-method-group">
-        <el-radio-button value="normal">正常</el-radio-button>
-        <el-radio-button value="kindle">简洁</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in pageTypeOptions"
+          :key="option.value"
+          class="selection-button"
+          :class="{ active: pageTypeModel === option.value }"
+          type="button"
+          @click="pageTypeModel = option.value"
+        >
+          {{ option.label }}
+        </button>
+      </div>
       <small class="setting-help">开启简洁模式会关闭动画以及首页的部分功能。</small>
     </div>
 
@@ -176,10 +184,18 @@
 
     <div class="setting-row">
       <label class="setting-label">简繁转换</label>
-      <el-radio-group v-model="chineseFontModel" size="small" class="read-method-group">
-        <el-radio-button value="简体">简体</el-radio-button>
-        <el-radio-button value="繁体">繁体</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in chineseFontOptions"
+          :key="option"
+          class="selection-button"
+          :class="{ active: chineseFontModel === option }"
+          type="button"
+          @click="chineseFontModel = option"
+        >
+          {{ option }}
+        </button>
+      </div>
     </div>
 
     <div class="setting-row typography-setting-row">
@@ -252,10 +268,18 @@
 
     <div class="setting-row">
       <label class="setting-label">页面模式（本机）</label>
-      <el-radio-group v-model="pageModeModel" size="small" class="read-method-group">
-        <el-radio-button value="auto">自适应</el-radio-button>
-        <el-radio-button value="mobile">手机模式</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in pageModeOptions"
+          :key="option.value"
+          class="selection-button"
+          :class="{ active: pageModeModel === option.value }"
+          type="button"
+          @click="pageModeModel = option.value"
+        >
+          {{ option.label }}
+        </button>
+      </div>
     </div>
 
     <div v-if="!miniInterface" class="setting-row stepper-setting-row">
@@ -272,12 +296,18 @@
 
     <div class="setting-row">
       <label class="setting-label">翻页方式</label>
-      <el-radio-group v-model="readerModeModel" size="small" class="read-method-group">
-        <el-radio-button value="page">上下滑动</el-radio-button>
-        <el-radio-button v-if="miniInterface" value="flip">左右滑动</el-radio-button>
-        <el-radio-button value="scroll">上下滚动</el-radio-button>
-        <el-radio-button value="scroll2">上下滚动2</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in visibleReaderModeOptions"
+          :key="option.value"
+          class="selection-button"
+          :class="{ active: readerModeModel === option.value }"
+          type="button"
+          @click="readerModeModel = option.value"
+        >
+          {{ option.label }}
+        </button>
+      </div>
       <small class="setting-help">上下滚动2会自动隐藏看过的章节，但是可能会抖动。</small>
     </div>
 
@@ -297,10 +327,18 @@
 
     <div class="setting-row">
       <label class="setting-label">自动阅读</label>
-      <el-radio-group v-model="autoReadingMethodModel" size="small" class="read-method-group">
-        <el-radio-button value="像素滚动">像素滚动</el-radio-button>
-        <el-radio-button value="段落滚动">段落滚动</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in autoReadingMethodOptions"
+          :key="option"
+          class="selection-button"
+          :class="{ active: autoReadingMethodModel === option }"
+          type="button"
+          @click="autoReadingMethodModel = option"
+        >
+          {{ option }}
+        </button>
+      </div>
     </div>
 
     <div v-if="reader.autoReadingMethod === '像素滚动'" class="setting-row stepper-setting-row">
@@ -329,19 +367,34 @@
 
     <div class="setting-row">
       <label class="setting-label">全屏点击</label>
-      <el-radio-group v-model="clickMethodModel" size="small" class="read-method-group">
-        <el-radio-button value="next">下一页</el-radio-button>
-        <el-radio-button value="auto">自动</el-radio-button>
-        <el-radio-button value="none">不翻页</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in clickMethodOptions"
+          :key="option.value"
+          class="selection-button"
+          :class="{ active: clickMethodModel === option.value }"
+          type="button"
+          @click="clickMethodModel = option.value"
+        >
+          {{ option.label }}
+        </button>
+      </div>
     </div>
 
     <div class="setting-row">
       <label class="setting-label">选择文字</label>
-      <el-radio-group v-model="selectionActionModel" size="small" class="read-method-group">
-        <el-radio-button value="操作弹窗">操作弹窗</el-radio-button>
-        <el-radio-button value="忽略">忽略</el-radio-button>
-      </el-radio-group>
+      <div class="selection-zone">
+        <button
+          v-for="option in selectionActionOptions"
+          :key="option"
+          class="selection-button"
+          :class="{ active: selectionActionModel === option }"
+          type="button"
+          @click="selectionActionModel = option"
+        >
+          {{ option }}
+        </button>
+      </div>
     </div>
 
     <div class="setting-row">
@@ -434,6 +487,28 @@ const emit = defineEmits([
 
 const fontSizePresets = [14, 16, 18, 20, 22, 24, 28, 32]
 const configDefaultTypes = ['白天默认', '黑夜默认']
+const pageTypeOptions = [
+  { value: 'normal', label: '正常' },
+  { value: 'kindle', label: '简洁' },
+]
+const chineseFontOptions = ['简体', '繁体']
+const pageModeOptions = [
+  { value: 'auto', label: '自适应' },
+  { value: 'mobile', label: '手机模式' },
+]
+const readerModeOptions = [
+  { value: 'page', label: '上下滑动' },
+  { value: 'flip', label: '左右滑动', mobileOnly: true },
+  { value: 'scroll', label: '上下滚动' },
+  { value: 'scroll2', label: '上下滚动2' },
+]
+const autoReadingMethodOptions = ['像素滚动', '段落滚动']
+const clickMethodOptions = [
+  { value: 'next', label: '下一页' },
+  { value: 'auto', label: '自动' },
+  { value: 'none', label: '不翻页' },
+]
+const selectionActionOptions = ['操作弹窗', '忽略']
 
 const fontPreviewStyle = computed(() => ({
   fontFamily: props.fontOptions.find(font => font.value === props.reader.fontFamily)?.stack,
@@ -447,6 +522,9 @@ const currentCustomConfig = computed(() => {
 })
 const visibleThemePresets = computed(() => Object.fromEntries(
   Object.entries(props.themePresets).filter(([key]) => key !== 'black'),
+))
+const visibleReaderModeOptions = computed(() => (
+  readerModeOptions.filter(option => props.miniInterface || !option.mobileOnly)
 ))
 
 const pageModeModel = computed({
@@ -674,9 +752,36 @@ function resetReaderSettings() {
   font-size: 13px;
 }
 
-.read-method-group {
+.selection-zone {
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selection-button {
+  min-width: 78px;
+  height: 34px;
+  padding: 0 12px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+  cursor: pointer;
+  font: 14px / 32px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.selection-button.active {
+  color: #ed4259;
+  border-color: #ed4259;
+}
+
+@media (hover: hover) {
+  .selection-button:hover {
+    color: #ed4259;
+    border-color: #ed4259;
+  }
 }
 
 .config-scheme-list {

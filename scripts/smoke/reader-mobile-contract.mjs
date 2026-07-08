@@ -156,8 +156,10 @@ async function assertSettingsRowGeometry(page, viewport) {
     const label = firstRow?.querySelector('.setting-label')
     const control = firstRow ? Array.from(firstRow.children).find(element => !element.classList.contains('setting-label')) : null
     const activeTheme = document.querySelector('.theme-dot.active')
+    const firstSelectionButton = firstRow?.querySelector('.selection-button')
     const labelRect = label?.getBoundingClientRect()
     const controlRect = control?.getBoundingClientRect()
+    const selectionButtonRect = firstSelectionButton?.getBoundingClientRect()
     const labelStyle = label ? window.getComputedStyle(label) : null
     const activeThemeStyle = activeTheme ? window.getComputedStyle(activeTheme) : null
     return {
@@ -167,6 +169,7 @@ async function assertSettingsRowGeometry(page, viewport) {
       controlTop: controlRect?.top ?? null,
       labelLineHeight: labelStyle?.lineHeight ?? '',
       activeThemeBorderColor: activeThemeStyle?.borderTopColor ?? '',
+      firstSelectionButtonHeight: selectionButtonRect?.height ?? null,
     }
   })
   assert(geometry.labelLeft !== null && geometry.controlLeft !== null, `${viewport.width}: missing settings first row geometry`)
@@ -174,6 +177,7 @@ async function assertSettingsRowGeometry(page, viewport) {
   assertClose(geometry.controlTop, geometry.labelTop, 2, `${viewport.width}: settings label and control should share a row`)
   assert(geometry.labelLineHeight === '36px', `${viewport.width}: settings label line-height ${geometry.labelLineHeight}`)
   assert(geometry.activeThemeBorderColor === 'rgb(237, 66, 89)', `${viewport.width}: active theme border ${geometry.activeThemeBorderColor}`)
+  assertClose(geometry.firstSelectionButtonHeight, 34, 1, `${viewport.width}: settings selection button height`)
 }
 
 async function readerGeometry(page) {

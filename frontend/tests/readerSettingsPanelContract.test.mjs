@@ -38,3 +38,12 @@ test('reader settings selected controls use upstream accent color', () => {
     assert.doesNotMatch(panelSource, new RegExp(staleColor, 'i'), `settings panel should not keep stale active color ${staleColor}`)
   }
 })
+
+test('reader settings discrete options use upstream-like local buttons', () => {
+  assert.doesNotMatch(panelSource, /<el-radio-group\b/, 'settings panel should not use Element radio groups for upstream span-item options')
+  assert.doesNotMatch(panelSource, /<el-radio-button\b/, 'settings panel should not use Element radio buttons for upstream span-item options')
+  assert.match(panelSource, /class="selection-zone"/, 'settings panel should expose upstream-like selection zones')
+  assert.match(panelSource, /class="selection-button"/, 'settings panel should expose upstream-like selection buttons')
+  assert.match(panelSource, /\.selection-button \{[\s\S]*?min-width: 78px;[\s\S]*?height: 34px;/, 'selection buttons should keep upstream span-item dimensions')
+  assert.match(panelSource, /\.selection-button\.active \{[\s\S]*?color: #ed4259;[\s\S]*?border-color: #ed4259;/, 'selection buttons should keep upstream selected color')
+})
