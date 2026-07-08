@@ -726,6 +726,42 @@ Implementation status:
 - Completed in this slice: `speechSynthesis` utterance errors are surfaced as `朗读错误: ...`.
 - Validation note: unit tests and production build passed after this slice. The enhanced real-browser TTS smoke was updated to check next-paragraph DOM highlighting and error toast, but final rerun was blocked by the workspace approval/spend cap after an initial timing assertion exposed and fixed an insufficient wait condition.
 
+### 2026-07-08 follow-up contract: Reader settings panel labels and first-screen structure
+
+Upstream evidence from `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`:
+
+| Feature | Upstream authority | Contract |
+|---|---|---|
+| Component | `web/src/components/ReadSettings.vue` | Reader settings is a scrollable `settings-wrapper` with title `设置` and action `重置为默认配置`. |
+| First-screen order | `ReadSettings.vue` template | The main sections appear in order: `特殊模式`, `配置方案`, `方案类型`, `阅读主题`, custom theme block, `正文字体`, `简繁转换`, `字体大小`, `字体粗细`, `段落行高`, `段落间距`, `字体颜色`, `页面模式`, `页面宽度` on desktop, `翻页方式`, `动画时长`, `自动翻页`, `滚动像素`, `翻页速度`, `全屏点击`, `选择文字`, operations. |
+| Selection controls | `.selection-zone .span-item` | Choices are button-like discrete items, not hard-to-hit raw sliders. Numeric settings use a minus/value/plus control. |
+| Mobile gating | `v-if="!$store.state.miniInterface"` and `v-show` on read methods | `页面宽度` is hidden on mobile; `左右滑动` appears only on mobile. |
+| User-requested adaptation | Existing OpenReader issue/request | OpenReader may keep the safer minus/value/plus `ReaderSettingStepper` and larger mobile controls instead of upstream small inputs/sliders. |
+
+Current OpenReader evidence and classification:
+
+| Layer | Current evidence | Difference | Classification |
+|---|---|---|---|
+| Shell/title | `ReaderMobileWorkspacePanel` wraps `ReaderSettingsPanel`; `ReaderSettingsPanel` title row shows `设置` and `重置为默认配置`. | The mobile wrapper adds its own panel header, so mobile can show duplicated "设置" labels. Needs later visual pass. | `unknown` |
+| Order | `ReaderSettingsPanel.vue` broadly follows upstream order and adds brightness plus TTS controls. | `亮度` and TTS controls are OpenReader enhancements/user-requested additions; placement does not block upstream core flow. | `acceptable-change` |
+| Labels | Current labels shorten several upstream names: `主题`, `字体`, `字号`, `字重`, `行高`. | These should match upstream visible text: `阅读主题`, `正文字体`, `字体大小`, `字体粗细`, `段落行高`. | `must-fix` |
+| Numeric controls | `ReaderSettingStepper` is used for size/weight/line-height/paragraph/animation/auto-read/TTS. | Preserves user-requested minus/value/plus controls; do not revert to mis-tap sliders. | `intentional-redesign` |
+| Mobile gating | `页面宽度` is hidden when `miniInterface`; `左右滑动` is shown only when `miniInterface`. | Matches upstream gating. | `aligned` |
+
+Required tests for this settings-label slice:
+
+| Layer | Test requirement |
+|---|---|
+| Unit/static | `ReaderSettingsPanel` must expose the upstream canonical labels for theme/font/typography sections. |
+| Regression | Existing reader settings stepper tests must continue passing. |
+| Build | Production build must compile after label changes. |
+
+Implementation status:
+
+- Completed in this slice: `ReaderSettingsPanel` visible labels now use upstream canonical text for `阅读主题`, `正文字体`, `字体大小`, `字体粗细`, and `段落行高`.
+- Completed in this slice: `frontend/tests/readerSettingsPanelContract.test.mjs` locks those labels and rejects the previous shortened forms.
+- Pending follow-up: full visual pass for mobile `ReadSettings` first-screen density and duplicate title behavior.
+
 ## Required workflow for each future module
 
 1. Use `readerdev-compat-inventory`.

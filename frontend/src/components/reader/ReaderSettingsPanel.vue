@@ -51,7 +51,7 @@
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">主题</label>
+      <label class="setting-label">阅读主题</label>
       <div class="theme-grid">
         <span
           v-for="(preset, key) in visibleThemePresets"
@@ -132,7 +132,7 @@
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">字体</label>
+      <label class="setting-label">正文字体</label>
       <div class="font-family-grid">
         <div
           v-for="font in fontOptions"
@@ -183,7 +183,7 @@
     </div>
 
     <div class="setting-row typography-setting-row">
-      <label class="setting-label">字号</label>
+      <label class="setting-label">字体大小</label>
       <ReaderSettingStepper
         v-model="fontSizeModel"
         :min="8"
@@ -207,7 +207,7 @@
     </div>
 
     <div class="setting-row typography-setting-row">
-      <label class="setting-label">字重</label>
+      <label class="setting-label">字体粗细</label>
       <ReaderSettingStepper
         v-model="fontWeightModel"
         :min="100"
@@ -219,7 +219,7 @@
     </div>
 
     <div class="setting-row typography-setting-row">
-      <label class="setting-label">行高</label>
+      <label class="setting-label">段落行高</label>
       <ReaderSettingStepper
         v-model="localLineHeight"
         :min="1"
