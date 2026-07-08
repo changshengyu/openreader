@@ -150,6 +150,28 @@ async function assertWorkspaceOpen(page, viewport, label) {
   }
 }
 
+async function assertSettingsRowGeometry(page, viewport) {
+  const geometry = await page.evaluate(() => {
+    const firstRow = document.querySelector('.settings-body .setting-row')
+    const label = firstRow?.querySelector('.setting-label')
+    const control = firstRow ? Array.from(firstRow.children).find(element => !element.classList.contains('setting-label')) : null
+    const labelRect = label?.getBoundingClientRect()
+    const controlRect = control?.getBoundingClientRect()
+    const labelStyle = label ? window.getComputedStyle(label) : null
+    return {
+      labelLeft: labelRect?.left ?? null,
+      labelTop: labelRect?.top ?? null,
+      controlLeft: controlRect?.left ?? null,
+      controlTop: controlRect?.top ?? null,
+      labelLineHeight: labelStyle?.lineHeight ?? '',
+    }
+  })
+  assert(geometry.labelLeft !== null && geometry.controlLeft !== null, `${viewport.width}: missing settings first row geometry`)
+  assertClose(geometry.controlLeft - geometry.labelLeft, 72, 1, `${viewport.width}: settings control column offset`)
+  assertClose(geometry.controlTop, geometry.labelTop, 2, `${viewport.width}: settings label and control should share a row`)
+  assert(geometry.labelLineHeight === '36px', `${viewport.width}: settings label line-height ${geometry.labelLineHeight}`)
+}
+
 async function readerGeometry(page) {
   return page.evaluate(() => {
     const viewportWidth = window.innerWidth
@@ -239,6 +261,7 @@ async function runViewport(browser, viewport) {
 
   await page.getByRole('button', { name: /设置/ }).click()
   await assertWorkspaceOpen(page, viewport, '设置')
+  await assertSettingsRowGeometry(page, viewport)
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   const afterPanelCenterTap = await page.locator('.reader-mobile-top.visible').count()

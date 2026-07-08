@@ -21,3 +21,10 @@ test('mobile reader settings suppresses the generic workspace header', () => {
   assert.match(panelSource, /<strong>设置<\/strong>/, 'settings panel must keep the upstream ReadSettings title row')
   assert.match(panelSource, /重置为默认配置/, 'settings panel must keep the upstream reset action')
 })
+
+test('mobile reader settings keeps upstream-like two-column row geometry', () => {
+  assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.settings-body \{\s*gap: 20px;/, 'mobile settings rows should keep upstream-like 20px vertical density')
+  assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.setting-row \{[\s\S]*?grid-template-columns: 72px minmax\(0, 1fr\);/, 'mobile settings should use 56px label + 16px gutter geometry')
+  assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.setting-row > \.setting-label \{[\s\S]*?line-height: 36px;/, 'mobile settings labels should align with upstream 36px controls')
+  assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.setting-row > :not\(\.setting-label\) \{[\s\S]*?grid-column: 2;/, 'mobile settings controls should start in the second column')
+})

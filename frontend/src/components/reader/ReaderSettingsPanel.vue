@@ -1012,12 +1012,23 @@ function resetReaderSettings() {
 
 @media (max-width: 750px) {
   .settings-body {
-    gap: 16px;
+    gap: 20px;
     padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .setting-row {
-    gap: 10px;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px 0;
+  }
+
+  .setting-row > .setting-label {
+    grid-column: 1;
+    line-height: 36px;
+  }
+
+  .setting-row > :not(.setting-label) {
+    grid-column: 2;
   }
 
   .theme-dot {
@@ -1033,8 +1044,7 @@ function resetReaderSettings() {
 
   .typography-setting-row,
   .stepper-setting-row {
-    grid-template-columns: 70px minmax(0, 1fr);
-    gap: 10px 8px;
+    grid-template-columns: 72px minmax(0, 1fr);
   }
 }
 </style>
