@@ -28,3 +28,13 @@ test('mobile reader settings keeps upstream-like two-column row geometry', () =>
   assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.setting-row > \.setting-label \{[\s\S]*?line-height: 36px;/, 'mobile settings labels should align with upstream 36px controls')
   assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.setting-row > :not\(\.setting-label\) \{[\s\S]*?grid-column: 2;/, 'mobile settings controls should start in the second column')
 })
+
+test('reader settings selected controls use upstream accent color', () => {
+  assert.match(panelSource, /\.theme-dot\.active \{[\s\S]*?#ed4259/, 'theme dots should use upstream accent color')
+  assert.match(panelSource, /\.bg-image-option\.active \{[\s\S]*?#ed4259/, 'background selections should use upstream accent color')
+  assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?#ed4259/, 'font selections should use upstream accent color')
+  assert.match(panelSource, /\.font-size-preset\.active \{[\s\S]*?#ed4259/, 'font-size presets should use upstream accent color')
+  for (const staleColor of ['#409eff', '#0f5451', '#2f6f6d']) {
+    assert.doesNotMatch(panelSource, new RegExp(staleColor, 'i'), `settings panel should not keep stale active color ${staleColor}`)
+  }
+})

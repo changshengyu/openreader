@@ -768,8 +768,8 @@ function resetReaderSettings() {
 }
 
 .theme-dot.active {
-  border-color: #409eff;
-  box-shadow: 0 0 0 1px #409eff;
+  border-color: #ed4259;
+  box-shadow: 0 0 0 1px #ed4259;
 }
 
 .theme-dot.custom-dot {
@@ -808,7 +808,7 @@ function resetReaderSettings() {
 }
 
 .bg-image-option.active {
-  border-color: #409eff;
+  border-color: #ed4259;
 }
 
 .bg-image-option > span {
@@ -866,9 +866,9 @@ function resetReaderSettings() {
 }
 
 .font-family-option.active {
-  color: #0f5451;
-  background: #e6f2ee;
-  border-color: #2f6f6d;
+  color: #ed4259;
+  background: rgba(237, 66, 89, 0.08);
+  border-color: #ed4259;
   font-weight: 700;
 }
 
@@ -893,7 +893,7 @@ function resetReaderSettings() {
 }
 
 .font-family-select small {
-  color: #409eff;
+  color: #ed4259;
   font-size: 11px;
   font-weight: 500;
 }
@@ -919,8 +919,8 @@ function resetReaderSettings() {
 }
 
 .font-action-btn:hover {
-  color: #0f5451;
-  background: rgba(47, 111, 109, 0.1);
+  color: #ed4259;
+  background: rgba(237, 66, 89, 0.08);
 }
 
 .font-preview {
@@ -962,9 +962,9 @@ function resetReaderSettings() {
 }
 
 .font-size-preset.active {
-  color: #0f5451;
-  background: #e6f2ee;
-  border-color: #2f6f6d;
+  color: #ed4259;
+  background: rgba(237, 66, 89, 0.08);
+  border-color: #ed4259;
   font-weight: 700;
 }
 

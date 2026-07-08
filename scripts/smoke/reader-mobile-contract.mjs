@@ -155,21 +155,25 @@ async function assertSettingsRowGeometry(page, viewport) {
     const firstRow = document.querySelector('.settings-body .setting-row')
     const label = firstRow?.querySelector('.setting-label')
     const control = firstRow ? Array.from(firstRow.children).find(element => !element.classList.contains('setting-label')) : null
+    const activeTheme = document.querySelector('.theme-dot.active')
     const labelRect = label?.getBoundingClientRect()
     const controlRect = control?.getBoundingClientRect()
     const labelStyle = label ? window.getComputedStyle(label) : null
+    const activeThemeStyle = activeTheme ? window.getComputedStyle(activeTheme) : null
     return {
       labelLeft: labelRect?.left ?? null,
       labelTop: labelRect?.top ?? null,
       controlLeft: controlRect?.left ?? null,
       controlTop: controlRect?.top ?? null,
       labelLineHeight: labelStyle?.lineHeight ?? '',
+      activeThemeBorderColor: activeThemeStyle?.borderTopColor ?? '',
     }
   })
   assert(geometry.labelLeft !== null && geometry.controlLeft !== null, `${viewport.width}: missing settings first row geometry`)
   assertClose(geometry.controlLeft - geometry.labelLeft, 72, 1, `${viewport.width}: settings control column offset`)
   assertClose(geometry.controlTop, geometry.labelTop, 2, `${viewport.width}: settings label and control should share a row`)
   assert(geometry.labelLineHeight === '36px', `${viewport.width}: settings label line-height ${geometry.labelLineHeight}`)
+  assert(geometry.activeThemeBorderColor === 'rgb(237, 66, 89)', `${viewport.width}: active theme border ${geometry.activeThemeBorderColor}`)
 }
 
 async function readerGeometry(page) {
