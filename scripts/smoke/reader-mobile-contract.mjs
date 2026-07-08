@@ -157,9 +157,11 @@ async function assertSettingsRowGeometry(page, viewport) {
     const control = firstRow ? Array.from(firstRow.children).find(element => !element.classList.contains('setting-label')) : null
     const activeTheme = document.querySelector('.theme-dot.active')
     const firstSelectionButton = firstRow?.querySelector('.selection-button')
+    const firstFontOption = document.querySelector('.font-family-option')
     const labelRect = label?.getBoundingClientRect()
     const controlRect = control?.getBoundingClientRect()
     const selectionButtonRect = firstSelectionButton?.getBoundingClientRect()
+    const fontOptionRect = firstFontOption?.getBoundingClientRect()
     const labelStyle = label ? window.getComputedStyle(label) : null
     const activeThemeStyle = activeTheme ? window.getComputedStyle(activeTheme) : null
     return {
@@ -170,6 +172,8 @@ async function assertSettingsRowGeometry(page, viewport) {
       labelLineHeight: labelStyle?.lineHeight ?? '',
       activeThemeBorderColor: activeThemeStyle?.borderTopColor ?? '',
       firstSelectionButtonHeight: selectionButtonRect?.height ?? null,
+      firstFontOptionWidth: fontOptionRect?.width ?? null,
+      firstFontOptionHeight: fontOptionRect?.height ?? null,
     }
   })
   assert(geometry.labelLeft !== null && geometry.controlLeft !== null, `${viewport.width}: missing settings first row geometry`)
@@ -178,6 +182,8 @@ async function assertSettingsRowGeometry(page, viewport) {
   assert(geometry.labelLineHeight === '36px', `${viewport.width}: settings label line-height ${geometry.labelLineHeight}`)
   assert(geometry.activeThemeBorderColor === 'rgb(237, 66, 89)', `${viewport.width}: active theme border ${geometry.activeThemeBorderColor}`)
   assertClose(geometry.firstSelectionButtonHeight, 34, 1, `${viewport.width}: settings selection button height`)
+  assertClose(geometry.firstFontOptionWidth, 78, 1, `${viewport.width}: settings font option width`)
+  assertClose(geometry.firstFontOptionHeight, 34, 1, `${viewport.width}: settings font option height`)
 }
 
 async function readerGeometry(page) {

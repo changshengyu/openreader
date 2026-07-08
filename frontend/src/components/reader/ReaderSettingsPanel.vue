@@ -141,7 +141,7 @@
 
     <div class="setting-row">
       <label class="setting-label">正文字体</label>
-      <div class="font-family-grid">
+      <div class="selection-zone font-family-grid">
         <div
           v-for="font in fontOptions"
           :key="font.value"
@@ -152,7 +152,6 @@
         >
           <button class="font-family-select" type="button">
             <span>{{ font.label }}</span>
-            <small v-if="hasCustomFont(font.value)">已上传</small>
           </button>
           <span class="font-family-actions" @click.stop>
             <el-upload
@@ -161,7 +160,12 @@
               :auto-upload="false"
               @change="file => $emit('pickFontFile', { file, font })"
             >
-              <button class="font-action-btn" type="button" :title="hasCustomFont(font.value) ? '替换字体' : '上传字体'">
+              <button
+                class="font-action-btn"
+                :class="{ active: hasCustomFont(font.value) }"
+                type="button"
+                :title="hasCustomFont(font.value) ? '替换字体' : '上传字体'"
+              >
                 <el-icon><Upload /></el-icon>
               </button>
             </el-upload>
@@ -767,7 +771,7 @@ function resetReaderSettings() {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 2px;
   cursor: pointer;
-  font: 14px / 32px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
+  font: 14px / 34px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
   text-align: center;
   white-space: nowrap;
 }
@@ -949,83 +953,77 @@ function resetReaderSettings() {
 }
 
 .font-family-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px 16px;
 }
 
 .font-family-option {
-  min-width: 0;
-  min-height: 40px;
-  padding: 0 8px 0 10px;
+  position: relative;
+  width: 78px;
+  height: 34px;
+  padding: 0;
   color: #5f564a;
-  background: #fffaf0;
-  border: 1px solid #eadfca;
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
   cursor: pointer;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: space-between;
+  font: 14px / 32px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .font-family-option.active {
   color: #ed4259;
-  background: rgba(237, 66, 89, 0.08);
   border-color: #ed4259;
-  font-weight: 700;
 }
 
 .font-family-select {
-  min-width: 0;
+  width: 100%;
+  height: 100%;
   color: inherit;
   background: transparent;
   border: 0;
   cursor: pointer;
-  display: grid;
-  gap: 1px;
+  display: block;
   padding: 0;
-  text-align: left;
+  font: inherit;
+  line-height: inherit;
+  text-align: center;
 }
 
-.font-family-select span,
-.font-family-select small {
-  min-width: 0;
+.font-family-select span {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.font-family-select small {
-  color: #ed4259;
-  font-size: 11px;
-  font-weight: 500;
-}
-
 .font-family-actions {
-  flex: 0 0 auto;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 10;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
 }
 
 .font-action-btn {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  color: #7b705f;
+  color: #606266;
   background: transparent;
   border: 0;
-  border-radius: 50%;
   cursor: pointer;
   display: grid;
   place-items: center;
+  font-size: 20px;
 }
 
+.font-action-btn.active,
 .font-action-btn:hover {
   color: #ed4259;
-  background: rgba(237, 66, 89, 0.08);
 }
 
 .font-preview {
@@ -1103,7 +1101,6 @@ function resetReaderSettings() {
 
   .font-family-grid {
     max-width: 480px;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .font-preview {
@@ -1139,12 +1136,6 @@ function resetReaderSettings() {
   .theme-dot {
     width: 34px;
     height: 34px;
-  }
-
-  .font-family-option,
-  .font-size-preset {
-    min-height: 42px;
-    font-size: 14px;
   }
 
   .typography-setting-row,
