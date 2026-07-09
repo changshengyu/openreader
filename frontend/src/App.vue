@@ -93,10 +93,10 @@ watch(isLoggedIn, (loggedIn) => {
 })
 
 watch(
-  () => readerStore.theme,
-  (theme) => {
+  () => readerStore.themeType,
+  (themeType) => {
     if (typeof document === 'undefined') return
-    document.documentElement.classList.toggle('dark-reader', theme === 'dark' || theme === 'black')
+    document.documentElement.classList.toggle('dark-reader', themeType === 'night')
   },
   { immediate: true },
 )

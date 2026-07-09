@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { useReaderAppearanceAssets } from '../src/composables/useReaderAppearanceAssets.js'
+import { themeTypeForTheme } from '../src/utils/readerThemeType.js'
 
 function createAppearance(overrides = {}) {
   const calls = []
   const reader = {
     theme: 'parchment',
+    themeType: 'day',
     customFontsMap: {},
     setTheme: theme => {
       reader.theme = theme
+      reader.themeType = themeTypeForTheme(theme, reader.themeType)
       calls.push(['theme', theme])
     },
     addCustomBgImage: url => calls.push(['add-bg', url]),

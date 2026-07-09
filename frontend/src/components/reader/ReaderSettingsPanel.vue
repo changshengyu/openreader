@@ -86,6 +86,18 @@
       <div class="setting-row">
         <label class="setting-label">自定义</label>
         <div class="custom-theme">
+          <span class="custom-theme-title custom-theme-mode">主题模式
+            <button
+              v-for="option in themeTypeOptions"
+              :key="option.value"
+              class="selection-button"
+              :class="{ active: themeTypeModel === option.value }"
+              type="button"
+              @click="themeTypeModel = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </span>
           <span class="custom-theme-title">页面背景颜色
             <el-color-picker v-model="bodyColorModel" size="small" />
           </span>
@@ -486,6 +498,10 @@ const emit = defineEmits([
 
 const fontSizePresets = [14, 16, 18, 20, 22, 24, 28, 32]
 const configDefaultTypes = ['白天默认', '黑夜默认']
+const themeTypeOptions = [
+  { value: 'day', label: '白天' },
+  { value: 'night', label: '黑夜' },
+]
 const pageTypeOptions = [
   { value: 'normal', label: '正常' },
   { value: 'kindle', label: '简洁' },
@@ -534,6 +550,11 @@ const pageModeModel = computed({
 const pageTypeModel = computed({
   get: () => props.reader.pageType,
   set: value => props.reader.setPageType(value),
+})
+
+const themeTypeModel = computed({
+  get: () => props.reader.themeType,
+  set: value => props.reader.setThemeType(value),
 })
 
 function selectCustomConfig(name) {
@@ -911,6 +932,10 @@ function resetReaderSettings() {
   display: inline-block;
   margin-right: 28px;
   margin-bottom: 5px;
+}
+
+.custom-theme-mode .selection-button {
+  margin-left: 8px;
 }
 
 .bg-image-title {

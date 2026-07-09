@@ -36,6 +36,42 @@ Before changing storage for a module, document:
 - Local store/WebDAV path normalization and permissions.
 - Cache invalidation rules for local and remote books.
 
+## Reader `themeType` persisted-setting compatibility
+
+Status: implemented and validated in the Reader custom-theme semantic mode slice.
+
+### Existing representation
+
+- Existing OpenReader Pinia and server-synchronized reader settings persist `theme`, custom colors, custom backgrounds, and `customConfigList`.
+- Existing payloads and saved custom configurations do not contain `themeType`.
+- Reader and shared shell night-state rendering currently infer night mode from `theme === "dark" || theme === "black"`.
+- The value is stored inside the existing JSON reader setting and browser-persisted Pinia state. No SQLite column or filesystem path is dedicated to it.
+
+### Additive representation
+
+- Add `themeType: "day" | "night"` to:
+  - default reader state;
+  - server-synchronized reader setting payloads;
+  - custom configuration snapshots and built-in configurations;
+  - sanitized settings restored from Pinia/server JSON.
+- Preset theme selection derives the value: `dark` and `black` become `night`; all other non-custom presets become `day`.
+- Selecting `custom` preserves the current explicit `themeType`, matching reader-dev.
+- The custom theme settings block lets the user explicitly choose `day` or `night`.
+
+### Compatibility shim
+
+- Old settings or custom configs with a missing/invalid `themeType` infer `night` when their saved theme is `dark` or `black`; all other themes infer `day`.
+- Explicit valid `day`/`night` values are preserved for `custom` themes. Non-custom presets are always normalized from their preset identity, matching reader-dev `setConfig`.
+- Sanitization applies the same rule to top-level settings and every custom configuration, so old built-in and user-created schemes remain readable.
+- This is an additive JSON setting change only. It introduces no destructive SQLite migration, no new volume, and no changes under `data/`, `cache/`, or `library/`.
+
+### Required migration evidence
+
+- `frontend/tests/readerThemeType.test.mjs` proves old payload inference, explicit custom-value preservation, preset recalculation, custom preservation, payload/custom-config wiring, and semantic night rendering.
+- Frontend full tests and production build pass with settings version `12`.
+- `scripts/smoke/reader-mobile-contract.mjs` verifies custom `白天` / `黑夜` switching at desktop `1440×900`, mobile `390×844`, and mobile `360×800`; desktop settings and the mobile reader tool layer remain visible.
+- A Docker volume/backup smoke remains required before publishing a release image even though this slice does not alter SQLite or filesystem data.
+
 ## EPUB reader compatibility migration
 
 Status: implemented for the Reader P0 EPUB slice; remaining Reader P0 work is outside this EPUB resource migration.

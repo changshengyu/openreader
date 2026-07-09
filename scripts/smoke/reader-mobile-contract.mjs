@@ -63,6 +63,7 @@ async function installApiMocks(page) {
           mode: 'scroll',
           pageMode: 'normal',
           theme: 'parchment',
+          themeType: 'day',
           customBgImage: smokeBgImage,
           customBgImageList: [smokeBgImage],
           fontSize: 18,
@@ -198,6 +199,13 @@ async function assertSettingsRowGeometry(page, viewport) {
 async function assertSettingsBackgroundGeometry(page, viewport) {
   await page.locator('.theme-custom-button').click()
   await page.waitForSelector('.content-bg-preview', { timeout: 10000 })
+  const themeModeButtons = page.locator('.custom-theme-mode .selection-button')
+  assert(await themeModeButtons.count() === 2, `${viewport.width}: custom theme must expose day/night mode buttons`)
+  assert(await themeModeButtons.filter({ hasText: '白天' }).getAttribute('class').then(value => value?.includes('active')), `${viewport.width}: custom theme should start in day mode`)
+  await themeModeButtons.filter({ hasText: '黑夜' }).click()
+  await page.waitForFunction(() => document.documentElement.classList.contains('dark-reader'))
+  assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: custom night mode must not hide toolbar`)
+  assert(await themeModeButtons.filter({ hasText: '黑夜' }).getAttribute('class').then(value => value?.includes('active')), `${viewport.width}: custom night mode should become active`)
   const geometry = await page.evaluate(() => {
     const preview = document.querySelector('.content-bg-preview')
     const upload = document.querySelector('.upload-bg-btn')
@@ -285,6 +293,39 @@ async function closeWorkspace(page, method = 'close-button') {
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
 }
 
+async function runDesktopViewport(browser) {
+  const viewport = { width: 1440, height: 900 }
+  const context = await browser.newContext({ viewport })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+  }, fakeToken())
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    failures.push(text)
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  await installApiMocks(page)
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-body p', { timeout: 10000 })
+  await page.locator('.reader-left-rail button[title="设置"]').click()
+  await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 10000 })
+  await page.locator('.theme-custom-button').click()
+
+  const themeModeButtons = page.locator('.custom-theme-mode .selection-button')
+  assert(await themeModeButtons.count() === 2, 'desktop: custom theme must expose day/night mode buttons')
+  assert(await themeModeButtons.filter({ hasText: '白天' }).getAttribute('class').then(value => value?.includes('active')), 'desktop: custom theme should start in day mode')
+  await themeModeButtons.filter({ hasText: '黑夜' }).click()
+  await page.waitForFunction(() => document.documentElement.classList.contains('dark-reader'))
+  assert(await page.locator('.reader-desktop-workspace .settings-body').count() === 1, 'desktop: switching custom night mode must keep settings open')
+  assert(await page.locator('.reader-right-rail button[title="日间模式"]').count() === 1, 'desktop: semantic night mode must update the rail toggle')
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.newContext({ viewport })
   await context.addInitScript((token) => {
@@ -363,9 +404,10 @@ async function main() {
     executablePath: process.env.CHROME_PATH || defaultChromePath,
   })
   try {
+    await runDesktopViewport(browser)
     await runViewport(browser, { width: 390, height: 844 })
     await runViewport(browser, { width: 360, height: 800 })
-    console.log('reader mobile contract smoke passed')
+    console.log('reader desktop/mobile contract smoke passed')
   } finally {
     await browser.close()
   }

@@ -75,9 +75,15 @@ test('reader settings background previews use upstream thumbnail geometry', () =
 test('reader settings custom theme block uses upstream inline structure', () => {
   assert.match(panelSource, /<label class="setting-label">自定义<\/label>/, 'custom theme block should use the upstream left label 自定义')
   assert.match(panelSource, /class="custom-theme"/, 'custom theme controls should be grouped in one upstream-like custom-theme block')
-  for (const label of ['页面背景颜色', '浮窗背景颜色', '阅读背景颜色', '阅读背景图片']) {
+  for (const label of ['主题模式', '页面背景颜色', '浮窗背景颜色', '阅读背景颜色', '阅读背景图片']) {
     assert.match(panelSource, new RegExp(`class="custom-theme-title[^\"]*"[^>]*>[\\s\\S]*?${label}`), `missing inline custom theme title ${label}`)
   }
+  assert.match(panelSource, /v-for="option in themeTypeOptions"/, 'custom theme mode must expose the upstream day/night options')
+  assert.match(panelSource, /:class="\{ active: themeTypeModel === option\.value \}"/, 'custom theme mode must expose its selected state')
+  assert.match(panelSource, /@click="themeTypeModel = option\.value"/, 'custom theme mode must update the persisted semantic type')
+  assert.match(panelSource, /\{ value: 'day', label: '白天' \}/, 'custom theme mode must expose 白天')
+  assert.match(panelSource, /\{ value: 'night', label: '黑夜' \}/, 'custom theme mode must expose 黑夜')
+  assert.match(panelSource, /const themeTypeModel = computed\(\{[\s\S]*?get: \(\) => props\.reader\.themeType,[\s\S]*?set: value => props\.reader\.setThemeType\(value\)/, 'custom theme mode must bind to the reader store')
   assert.match(panelSource, /\.custom-theme \{[\s\S]*?display: inline-block;/, 'custom theme block should keep upstream inline-block layout')
   assert.match(panelSource, /\.custom-theme-title \{[\s\S]*?display: inline-block;[\s\S]*?margin-right: 28px;[\s\S]*?margin-bottom: 5px;/, 'custom theme titles should keep upstream inline spacing')
   assert.doesNotMatch(panelSource, /reader\.customBodyColor[\s\S]{0,120}恢复默认/, 'custom body color should not keep a separate per-row reset button in Reader settings')

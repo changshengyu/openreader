@@ -545,7 +545,7 @@ const book = ref(null)
 const chapters = ref([])
 const chapter = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
-const isNightTheme = computed(() => reader.theme === 'dark' || reader.theme === 'black')
+const isNightTheme = computed(() => reader.themeType === 'night')
 const {
   cacheKey: readerDataCacheKey,
   invalidate: invalidateReaderDataCache,

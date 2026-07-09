@@ -321,7 +321,7 @@ const {
   },
   afterSourcesUpdated: () => loadCacheStats(),
 })
-const isNightTheme = computed(() => reader.theme === 'dark' || reader.theme === 'black')
+const isNightTheme = computed(() => reader.themeType === 'night')
 const appVersionLabel = computed(() => {
   const version = String(healthInfo.value?.version || '').trim()
   const commit = shortCommit(healthInfo.value?.commit)

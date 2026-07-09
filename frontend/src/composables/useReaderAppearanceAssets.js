@@ -4,8 +4,7 @@ export function useReaderAppearanceAssets(options) {
   }
 
   function toggleNight() {
-    const theme = options.reader.theme
-    options.reader.setTheme(theme === 'dark' || theme === 'black' ? 'parchment' : 'dark')
+    options.reader.setTheme(options.reader.themeType === 'night' ? 'parchment' : 'dark')
   }
 
   async function pickBgImage(data) {

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
 import { newestProgress as pickNewestProgress, progressUpdatedAt } from '../utils/bookOrder'
+import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThemeType'
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
 let readerSettingsSyncTimer
@@ -33,6 +34,7 @@ export const useReaderStore = defineStore('reader', {
     fontWeight: 400,
     fontColor: '',
     theme: 'parchment',
+    themeType: 'day',
     customBodyColor: '',
     customPopupColor: '',
     customBgColor: '',
@@ -50,7 +52,7 @@ export const useReaderStore = defineStore('reader', {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 11,
+    settingsVersion: 12,
     settingsUpdatedAt: '',
     settingsSyncBaseUpdatedAt: '',
     settingsSyncing: false,
@@ -190,6 +192,7 @@ export const useReaderStore = defineStore('reader', {
           mode: this.mode,
           fontSize: this.fontSize,
           theme: this.theme,
+          themeType: this.themeType,
           customBodyColor: this.customBodyColor,
           customPopupColor: this.customPopupColor,
           fontColor: this.fontColor,
@@ -202,6 +205,7 @@ export const useReaderStore = defineStore('reader', {
         this.mode = 'flip'
         this.fontSize = Math.min(this.fontSize, 20)
         this.theme = 'white'
+        this.themeType = 'day'
         this.fontColor = ''
         this.clickMethod = 'none'
         this.selectionAction = '忽略'
@@ -213,6 +217,7 @@ export const useReaderStore = defineStore('reader', {
         if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
         if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
         if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
+        this.themeType = normalizeReaderThemeType(snapshot.themeType, this.theme)
         if (typeof snapshot.customBodyColor === 'string') this.customBodyColor = snapshot.customBodyColor
         if (typeof snapshot.customPopupColor === 'string') this.customPopupColor = snapshot.customPopupColor
         if (typeof snapshot.fontColor === 'string') this.fontColor = snapshot.fontColor
@@ -273,6 +278,11 @@ export const useReaderStore = defineStore('reader', {
     },
     setTheme(theme) {
       this.theme = theme
+      this.themeType = themeTypeForTheme(theme, this.themeType)
+      this.markSettingsDirty()
+    },
+    setThemeType(themeType) {
+      this.themeType = normalizeReaderThemeType(themeType, this.theme)
       this.markSettingsDirty()
     },
     setCustomBodyColor(color) {
@@ -377,6 +387,7 @@ export const useReaderStore = defineStore('reader', {
       this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
       this.fontWeight = clampNumber(this.fontWeight, 100, 900, 400)
       if (typeof this.fontColor !== 'string') this.fontColor = ''
+      this.themeType = normalizeReaderThemeType(this.themeType, this.theme)
       if (typeof this.customBodyColor !== 'string') this.customBodyColor = ''
       if (typeof this.customPopupColor !== 'string') this.customPopupColor = ''
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
@@ -400,7 +411,7 @@ export const useReaderStore = defineStore('reader', {
         this.paragraphSpace = 0.2
         this.columnWidth = 800
       }
-      this.settingsVersion = 11
+      this.settingsVersion = 12
       this.settingsSyncing = false
     },
     markSettingsDirty(options = {}) {
@@ -765,6 +776,7 @@ function readerSettingsPayload(state) {
     fontWeight: state.fontWeight,
     fontColor: state.fontColor || '',
     theme: state.theme,
+    themeType: normalizeReaderThemeType(state.themeType, state.theme),
     customBodyColor: state.customBodyColor || '',
     customPopupColor: state.customPopupColor || '',
     customBgColor: state.customBgColor,
@@ -785,7 +797,7 @@ function readerSettingsPayload(state) {
     lineHeight: state.lineHeight,
     paragraphSpace: state.paragraphSpace,
     columnWidth: state.columnWidth,
-    settingsVersion: 11,
+    settingsVersion: 12,
   }
 }
 
@@ -802,6 +814,7 @@ function defaultReaderSettings() {
     fontWeight: 400,
     fontColor: '',
     theme: 'parchment',
+    themeType: 'day',
     customBodyColor: '',
     customPopupColor: '',
     customBgColor: '',
@@ -822,7 +835,7 @@ function defaultReaderSettings() {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 11,
+    settingsVersion: 12,
     normalModeSnapshot: null,
   }
 }
@@ -839,6 +852,7 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.customFontsMap = sanitizeCustomFontsMap(payload.customFontsMap)
   settings.chineseFont = payload.chineseFont === '繁体' ? '繁体' : '简体'
   if (typeof payload.theme === 'string') settings.theme = payload.theme
+  settings.themeType = normalizeReaderThemeType(payload.themeType, payload.theme)
   settings.customBodyColor = typeof payload.customBodyColor === 'string' ? payload.customBodyColor : ''
   settings.customPopupColor = typeof payload.customPopupColor === 'string' ? payload.customPopupColor : ''
   if (typeof payload.customBgColor === 'string') settings.customBgColor = payload.customBgColor
@@ -864,7 +878,7 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.lineHeight = clampNumber(payload.lineHeight, 1, 5, 1.8)
   settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 5, 0.2)
   settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)
-  settings.settingsVersion = 11
+  settings.settingsVersion = 12
   return settings
 }
 
@@ -910,6 +924,7 @@ function defaultCustomConfigList() {
       fontWeight: 400,
       fontColor: '',
       theme: 'parchment',
+      themeType: 'day',
       customBodyColor: '',
       customPopupColor: '',
       customBgColor: '',
@@ -929,7 +944,7 @@ function defaultCustomConfigList() {
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 11,
+      settingsVersion: 12,
       name: '内置白天',
       configDefaultType: '白天默认',
       builtin: true,
@@ -946,6 +961,7 @@ function defaultCustomConfigList() {
       fontWeight: 400,
       fontColor: '',
       theme: 'dark',
+      themeType: 'night',
       customBodyColor: '',
       customPopupColor: '',
       customBgColor: '',
@@ -965,7 +981,7 @@ function defaultCustomConfigList() {
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 11,
+      settingsVersion: 12,
       name: '内置黑夜',
       configDefaultType: '黑夜默认',
       builtin: true,
