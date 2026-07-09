@@ -31,7 +31,7 @@ test('mobile reader settings keeps upstream-like two-column row geometry', () =>
 
 test('reader settings selected controls use upstream accent color', () => {
   assert.match(panelSource, /\.theme-item\.active \{[\s\S]*?#ed4259/, 'theme items should use upstream accent color')
-  assert.match(panelSource, /\.bg-image-option\.active \{[\s\S]*?#ed4259/, 'background selections should use upstream accent color')
+  assert.match(panelSource, /\.content-bg-preview\.selected \{[\s\S]*?#ed4259/, 'background selections should use upstream accent color')
   assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?#ed4259/, 'font selections should use upstream accent color')
   assert.match(panelSource, /\.font-size-preset\.active \{[\s\S]*?#ed4259/, 'font-size presets should use upstream accent color')
   for (const staleColor of ['#409eff', '#0f5451', '#2f6f6d']) {
@@ -59,10 +59,24 @@ test('reader settings theme options use upstream theme-item geometry', () => {
   assert.doesNotMatch(panelSource, /\.theme-item\.active \{[\s\S]*?box-shadow:/, 'theme selected state should not use the old OpenReader box-shadow ring')
 })
 
+test('reader settings background previews use upstream thumbnail geometry', () => {
+  assert.match(panelSource, /class="custom-theme-title bg-image-title"/, 'background image row should use upstream custom-theme-title inline structure')
+  assert.match(panelSource, /class="content-bg-preview"/, 'background images should use upstream content-bg-preview thumbnails')
+  assert.match(panelSource, /class="upload-bg-btn"/, 'background upload should use upstream inline upload text action')
+  assert.doesNotMatch(panelSource, /class="bg-image-option"/, 'background images should not keep card-style option tiles')
+  assert.doesNotMatch(panelSource, /\.bg-image-option\b/, 'background image CSS should not keep card-style option tiles')
+  assert.doesNotMatch(panelSource, />使用中</, 'background thumbnails should not render active card overlay labels')
+  assert.doesNotMatch(panelSource, />选择</, 'background thumbnails should not render selectable card overlay labels')
+  assert.match(panelSource, /\.content-bg-preview \{[\s\S]*?width: 36px;[\s\S]*?height: 36px;[\s\S]*?display: inline-block;/, 'background thumbnails should keep upstream 36px inline geometry')
+  assert.match(panelSource, /\.delete-bg-icon \{[\s\S]*?top: -6px;[\s\S]*?right: -6px;[\s\S]*?color: #ed4259;/, 'background delete icons should keep upstream top-right red placement')
+  assert.match(panelSource, /\.upload-bg-btn \{[\s\S]*?display: inline-block;[\s\S]*?color: #ed4259;/, 'background upload should keep upstream inline red style')
+})
+
 test('reader settings font options use upstream span-item geometry', () => {
   assert.match(panelSource, /class="selection-zone font-family-grid"/, 'font options should share the upstream selection-zone structure')
   assert.doesNotMatch(panelSource, />已上传</, 'font upload state should be represented by the upstream-like active upload icon, not extra text')
   assert.match(panelSource, /\.font-family-option \{[\s\S]*?width: 78px;[\s\S]*?height: 34px;[\s\S]*?border-radius: 2px;/, 'font options should keep upstream 78x34 span-item geometry')
+  assert.match(panelSource, /\.font-family-option \{[\s\S]*?font: 14px \/ 34px/, 'font options should keep upstream 14px/34px font shorthand')
   assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?color: #ed4259;[\s\S]*?border-color: #ed4259;/, 'font options should keep upstream selected color')
   assert.match(panelSource, /\.font-family-actions \{[\s\S]*?position: absolute;[\s\S]*?top: -10px;[\s\S]*?right: -10px;/, 'font upload actions should be positioned like upstream upload icons')
   assert.match(panelSource, /\.font-action-btn\.active,[\s\S]*?\.font-action-btn:hover \{[\s\S]*?color: #ed4259;/, 'uploaded font icons should use upstream active color')

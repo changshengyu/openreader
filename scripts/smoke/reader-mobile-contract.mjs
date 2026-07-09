@@ -3,6 +3,7 @@
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 const readerUrl = process.env.SMOKE_READER_URL || `${targetUrl.replace(/\/$/, '')}/books/1/read?chapter=0`
 const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const smokeBgImage = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2236%22 height=%2236%22%3E%3Crect width=%2236%22 height=%2236%22 fill=%22%23d8c49a%22/%3E%3C/svg%3E'
 
 async function loadPlaywright() {
   try {
@@ -61,6 +62,9 @@ async function installApiMocks(page) {
         value: {
           mode: 'scroll',
           pageMode: 'normal',
+          theme: 'parchment',
+          customBgImage: smokeBgImage,
+          customBgImageList: [smokeBgImage],
           fontSize: 18,
           lineHeight: 1.8,
           paragraphSpace: 0.2,
@@ -191,6 +195,44 @@ async function assertSettingsRowGeometry(page, viewport) {
   assertClose(geometry.firstFontOptionHeight, 34, 1, `${viewport.width}: settings font option height`)
 }
 
+async function assertSettingsBackgroundGeometry(page, viewport) {
+  await page.locator('.theme-custom-button').click()
+  await page.waitForSelector('.content-bg-preview', { timeout: 10000 })
+  const geometry = await page.evaluate(() => {
+    const preview = document.querySelector('.content-bg-preview')
+    const upload = document.querySelector('.upload-bg-btn')
+    const deleteIcon = document.querySelector('.delete-bg-icon')
+    const previewRect = preview?.getBoundingClientRect()
+    const uploadRect = upload?.getBoundingClientRect()
+    const uploadStyle = upload ? window.getComputedStyle(upload) : null
+    const deleteStyle = deleteIcon ? window.getComputedStyle(deleteIcon) : null
+    return {
+      previewWidth: previewRect?.width ?? null,
+      previewHeight: previewRect?.height ?? null,
+      uploadLeft: uploadRect?.left ?? null,
+      uploadTop: uploadRect?.top ?? null,
+      previewRight: previewRect?.right ?? null,
+      previewTop: previewRect?.top ?? null,
+      previewBottom: previewRect?.bottom ?? null,
+      uploadColor: uploadStyle?.color ?? '',
+      deleteTop: deleteStyle?.top ?? '',
+      deleteRight: deleteStyle?.right ?? '',
+      deleteColor: deleteStyle?.color ?? '',
+      hasCardOverlay: Boolean(document.querySelector('.bg-image-option, .bg-image-delete')),
+    }
+  })
+  assertClose(geometry.previewWidth, 36, 1, `${viewport.width}: settings background preview width`)
+  assertClose(geometry.previewHeight, 36, 1, `${viewport.width}: settings background preview height`)
+  assert(geometry.uploadLeft !== null && geometry.previewRight !== null, `${viewport.width}: missing settings background upload geometry`)
+  assert(geometry.uploadLeft >= geometry.previewRight, `${viewport.width}: settings background upload should follow preview inline`)
+  assert(geometry.uploadTop >= geometry.previewTop - 1 && geometry.uploadTop <= geometry.previewBottom + 1, `${viewport.width}: settings background upload should stay on preview row`)
+  assert(geometry.uploadColor === 'rgb(237, 66, 89)', `${viewport.width}: settings background upload color ${geometry.uploadColor}`)
+  assert(geometry.deleteTop === '-6px', `${viewport.width}: settings background delete top ${geometry.deleteTop}`)
+  assert(geometry.deleteRight === '-6px', `${viewport.width}: settings background delete right ${geometry.deleteRight}`)
+  assert(geometry.deleteColor === 'rgb(237, 66, 89)', `${viewport.width}: settings background delete color ${geometry.deleteColor}`)
+  assert(geometry.hasCardOverlay === false, `${viewport.width}: settings background should not keep card overlay classes`)
+}
+
 async function readerGeometry(page) {
   return page.evaluate(() => {
     const viewportWidth = window.innerWidth
@@ -281,6 +323,7 @@ async function runViewport(browser, viewport) {
   await page.getByRole('button', { name: /设置/ }).click()
   await assertWorkspaceOpen(page, viewport, '设置')
   await assertSettingsRowGeometry(page, viewport)
+  await assertSettingsBackgroundGeometry(page, viewport)
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   const afterPanelCenterTap = await page.locator('.reader-mobile-top.visible').count()

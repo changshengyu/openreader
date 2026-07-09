@@ -768,8 +768,9 @@ Required tests for this settings-label slice:
 | Unit/static | Reader settings active/selected CSS must use upstream `#ed4259` and reject the previous blue/teal active colors. |
 | Unit/static | Reader settings must not use `el-radio-group` / `el-radio-button`; upstream-style discrete options must use local `.selection-zone` and `.selection-button` controls. |
 | Unit/static | Theme presets must use upstream-like `.theme-item` geometry (`34px × 34px`, circular, no selected `box-shadow`), expose a check/moon glyph, and render `自定义` as a rectangular selection button instead of a circular plus dot. |
+| Unit/static | Custom background previews must use upstream-like `.content-bg-preview` geometry (`36px × 36px` inline thumbnails), small top-right delete icons, and an inline red `上传` action; they must not keep 4:3 card overlays. |
 | Unit/static | Font options must use upstream-like `.font-family-option` geometry: `78px × 34px`, `border-radius: 2px`, selected `#ed4259`, and upload/clear actions positioned like upstream upload icons at the item top-right. |
-| Real browser | Mobile settings smoke must verify theme item and font option width/height so later responsive CSS cannot drift back to card-style controls. |
+| Real browser | Mobile settings smoke must verify theme item, background thumbnail, and font option width/height so later responsive CSS cannot drift back to card-style controls. |
 | Regression | Existing reader settings stepper tests must continue passing. |
 | Build | Production build must compile after label changes. |
 
@@ -783,7 +784,7 @@ Implementation status:
 - Completed in this slice: first-batch discrete options now use upstream-like `.selection-zone` / `.selection-button` controls instead of Element radio groups.
 - Completed in this slice: `正文字体` font choices now use upstream-like compact `.selection-zone` geometry with `78px × 34px` options, `#ed4259` selected/upload active states, and top-right upload/clear action placement.
 - Completed in this slice: `阅读主题` now uses upstream-like `.selection-zone` / `.theme-item` controls, `34px × 34px` circular preset themes, check/moon glyphs, and a rectangular `自定义` selection button instead of a circular plus dot.
-- Pending follow-up: custom background image previews still need compact upstream `36px × 36px` thumbnail geometry; current card-style grid is a known `must-fix`.
+- Completed in this slice: custom background image previews now use upstream-like compact `36px × 36px` `.content-bg-preview` thumbnails, small top-right red delete icons, and an inline red `上传` action instead of card overlays.
 - Pending follow-up: detailed per-control visual pass for mobile `ReadSettings` first-screen density after the base row structure is aligned.
 
 ## Required workflow for each future module

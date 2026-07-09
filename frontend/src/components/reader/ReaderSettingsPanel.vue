@@ -102,31 +102,29 @@
         <el-color-picker v-model="localCustomBg" size="small" />
       </div>
       <div class="setting-row">
-        <label class="setting-label">背景图</label>
-        <div v-if="reader.customBgImageList?.length" class="bg-image-grid">
-          <div
-            v-for="image in reader.customBgImageList"
-            :key="image"
-            class="bg-image-option"
-            :class="{ active: reader.customBgImage === image }"
-            :style="{ backgroundImage: `url(${image})` }"
-            role="button"
-            tabindex="0"
-            @click="toggleBgImage(image)"
-            @keydown.enter.prevent="toggleBgImage(image)"
-            @keydown.space.prevent="toggleBgImage(image)"
-          >
-            <span>{{ reader.customBgImage === image ? '使用中' : '选择' }}</span>
-            <button class="bg-image-delete" type="button" title="删除背景图" @click.stop="$emit('clearBgImage', image)">
-              <el-icon><Close /></el-icon>
-            </button>
+        <label class="setting-label">阅读背景图片</label>
+        <div class="custom-theme-title bg-image-title">
+          <div v-if="reader.customBgImageList?.length" class="content-bg-preview-list">
+            <div
+              v-for="image in reader.customBgImageList"
+              :key="image"
+              class="content-bg-preview"
+              :class="{ selected: reader.customBgImage === image }"
+              role="button"
+              tabindex="0"
+              @click="toggleBgImage(image)"
+              @keydown.enter.prevent="toggleBgImage(image)"
+              @keydown.space.prevent="toggleBgImage(image)"
+            >
+              <img :src="image" alt="" />
+              <button class="delete-bg-icon" type="button" title="删除背景图" @click.stop="$emit('clearBgImage', image)">
+                <el-icon><Close /></el-icon>
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="bg-image-actions">
-          <el-upload accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
-            <el-button size="small">上传</el-button>
+          <el-upload class="upload-bg-upload" accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
+            <span class="upload-bg-btn">上传</span>
           </el-upload>
-          <el-button v-if="reader.customBgImage" size="small" text type="danger" @click="reader.setCustomBgImage('')">取消背景图</el-button>
         </div>
       </div>
     </template>
@@ -909,67 +907,85 @@ function resetReaderSettings() {
   min-width: 78px;
 }
 
-.bg-image-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.bg-image-option {
-  position: relative;
+.bg-image-title {
+  display: inline-flex;
   min-width: 0;
-  aspect-ratio: 4 / 3;
-  color: #fff;
-  background-color: #eadfca;
-  background-position: center;
-  background-size: cover;
-  border: 2px solid transparent;
-  border-radius: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 0;
+}
+
+.content-bg-preview-list {
+  display: inline;
+}
+
+.content-bg-preview {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  margin-left: 10px;
+  margin-bottom: 8px;
+  border: 1px solid transparent;
+  box-sizing: border-box;
   cursor: pointer;
-  overflow: hidden;
+  display: inline-block;
+  vertical-align: middle;
 }
 
-.bg-image-option::before {
-  position: absolute;
-  inset: 0;
-  content: "";
-  background: linear-gradient(to top, rgba(0,0,0,0.52), rgba(0,0,0,0.05));
+.content-bg-preview img {
+  width: 100%;
+  height: 100%;
+  display: inline-block;
+  object-fit: cover;
+  vertical-align: middle;
 }
 
-.bg-image-option.active {
+.content-bg-preview.selected {
+  color: #ed4259;
   border-color: #ed4259;
 }
 
-.bg-image-option > span {
+.delete-bg-icon {
   position: absolute;
-  left: 8px;
-  bottom: 6px;
-  z-index: 1;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.bg-image-delete {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 1;
-  width: 24px;
-  height: 24px;
-  color: #fff;
-  background: rgba(0,0,0,0.42);
+  top: -6px;
+  right: -6px;
+  z-index: 10;
+  padding: 0;
+  color: #ed4259;
+  background: transparent;
   border: 0;
-  border-radius: 50%;
   cursor: pointer;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  font-size: 18px;
+  line-height: 1;
 }
 
-.bg-image-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+.upload-bg-upload {
+  display: inline-block;
+}
+
+.upload-bg-btn {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 0;
+  color: #ed4259;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.upload-bg-upload :deep(.upload-bg-btn) {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 0;
+  color: #ed4259;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+:global(.upload-bg-btn) {
+  display: inline-block !important;
 }
 
 .font-family-grid {
@@ -986,7 +1002,7 @@ function resetReaderSettings() {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 2px;
   cursor: pointer;
-  font: 14px / 32px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
+  font: 14px / 34px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
   display: inline-block;
   text-align: center;
   vertical-align: middle;
