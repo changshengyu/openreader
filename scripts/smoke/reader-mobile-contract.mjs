@@ -155,11 +155,12 @@ async function assertSettingsRowGeometry(page, viewport) {
     const firstRow = document.querySelector('.settings-body .setting-row')
     const label = firstRow?.querySelector('.setting-label')
     const control = firstRow ? Array.from(firstRow.children).find(element => !element.classList.contains('setting-label')) : null
-    const activeTheme = document.querySelector('.theme-dot.active')
+    const activeTheme = document.querySelector('.theme-item.active')
     const firstSelectionButton = firstRow?.querySelector('.selection-button')
     const firstFontOption = document.querySelector('.font-family-option')
     const labelRect = label?.getBoundingClientRect()
     const controlRect = control?.getBoundingClientRect()
+    const activeThemeRect = activeTheme?.getBoundingClientRect()
     const selectionButtonRect = firstSelectionButton?.getBoundingClientRect()
     const fontOptionRect = firstFontOption?.getBoundingClientRect()
     const labelStyle = label ? window.getComputedStyle(label) : null
@@ -171,6 +172,8 @@ async function assertSettingsRowGeometry(page, viewport) {
       controlTop: controlRect?.top ?? null,
       labelLineHeight: labelStyle?.lineHeight ?? '',
       activeThemeBorderColor: activeThemeStyle?.borderTopColor ?? '',
+      activeThemeWidth: activeThemeRect?.width ?? null,
+      activeThemeHeight: activeThemeRect?.height ?? null,
       firstSelectionButtonHeight: selectionButtonRect?.height ?? null,
       firstFontOptionWidth: fontOptionRect?.width ?? null,
       firstFontOptionHeight: fontOptionRect?.height ?? null,
@@ -181,6 +184,8 @@ async function assertSettingsRowGeometry(page, viewport) {
   assertClose(geometry.controlTop, geometry.labelTop, 2, `${viewport.width}: settings label and control should share a row`)
   assert(geometry.labelLineHeight === '36px', `${viewport.width}: settings label line-height ${geometry.labelLineHeight}`)
   assert(geometry.activeThemeBorderColor === 'rgb(237, 66, 89)', `${viewport.width}: active theme border ${geometry.activeThemeBorderColor}`)
+  assertClose(geometry.activeThemeWidth, 34, 1, `${viewport.width}: settings theme item width`)
+  assertClose(geometry.activeThemeHeight, 34, 1, `${viewport.width}: settings theme item height`)
   assertClose(geometry.firstSelectionButtonHeight, 34, 1, `${viewport.width}: settings selection button height`)
   assertClose(geometry.firstFontOptionWidth, 78, 1, `${viewport.width}: settings font option width`)
   assertClose(geometry.firstFontOptionHeight, 34, 1, `${viewport.width}: settings font option height`)

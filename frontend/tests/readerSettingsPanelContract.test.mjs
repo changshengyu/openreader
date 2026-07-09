@@ -30,7 +30,7 @@ test('mobile reader settings keeps upstream-like two-column row geometry', () =>
 })
 
 test('reader settings selected controls use upstream accent color', () => {
-  assert.match(panelSource, /\.theme-dot\.active \{[\s\S]*?#ed4259/, 'theme dots should use upstream accent color')
+  assert.match(panelSource, /\.theme-item\.active \{[\s\S]*?#ed4259/, 'theme items should use upstream accent color')
   assert.match(panelSource, /\.bg-image-option\.active \{[\s\S]*?#ed4259/, 'background selections should use upstream accent color')
   assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?#ed4259/, 'font selections should use upstream accent color')
   assert.match(panelSource, /\.font-size-preset\.active \{[\s\S]*?#ed4259/, 'font-size presets should use upstream accent color')
@@ -46,6 +46,17 @@ test('reader settings discrete options use upstream-like local buttons', () => {
   assert.match(panelSource, /class="selection-button"/, 'settings panel should expose upstream-like selection buttons')
   assert.match(panelSource, /\.selection-button \{[\s\S]*?min-width: 78px;[\s\S]*?height: 34px;/, 'selection buttons should keep upstream span-item dimensions')
   assert.match(panelSource, /\.selection-button\.active \{[\s\S]*?color: #ed4259;[\s\S]*?border-color: #ed4259;/, 'selection buttons should keep upstream selected color')
+})
+
+test('reader settings theme options use upstream theme-item geometry', () => {
+  assert.match(panelSource, /class="selection-zone theme-grid"/, 'theme options should share upstream selection-zone structure')
+  assert.match(panelSource, /class="theme-check"/, 'non-night theme options should expose the upstream selected check glyph')
+  assert.match(panelSource, /class="moon-icon"/, 'night theme option should expose the upstream moon glyph')
+  assert.match(panelSource, /class="selection-button theme-custom-button"/, 'custom theme should be a rectangular span-item-like button')
+  assert.doesNotMatch(panelSource, /custom-dot/, 'custom theme should not be rendered as a circular plus dot')
+  assert.doesNotMatch(panelSource, /\.theme-dot\b/, 'theme presets should not use the old dot component class')
+  assert.match(panelSource, /\.theme-item \{[\s\S]*?width: 34px;[\s\S]*?height: 34px;[\s\S]*?border-radius: 100%;/, 'theme items should keep upstream 34px circular geometry')
+  assert.doesNotMatch(panelSource, /\.theme-item\.active \{[\s\S]*?box-shadow:/, 'theme selected state should not use the old OpenReader box-shadow ring')
 })
 
 test('reader settings font options use upstream span-item geometry', () => {

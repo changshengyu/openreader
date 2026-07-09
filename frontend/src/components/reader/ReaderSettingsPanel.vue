@@ -60,21 +60,25 @@
 
     <div class="setting-row">
       <label class="setting-label">阅读主题</label>
-      <div class="theme-grid">
+      <div class="selection-zone theme-grid">
         <span
           v-for="(preset, key) in visibleThemePresets"
           :key="key"
-          class="theme-dot"
+          class="theme-item"
           :class="{ active: reader.theme === key }"
           :style="{ background: preset.bg }"
           :title="preset.label"
           @click="$emit('themeChange', key)"
-        />
-        <span
-          class="theme-dot custom-dot"
+        >
+          <em v-if="key === 'dark'" class="moon-icon">◐</em>
+          <em v-else class="theme-check">✓</em>
+        </span>
+        <button
+          class="selection-button theme-custom-button"
           :class="{ active: reader.theme === 'custom' }"
+          type="button"
           @click="$emit('themeChange', 'custom')"
-        >+</span>
+        >自定义</button>
       </div>
     </div>
 
@@ -863,30 +867,46 @@ function resetReaderSettings() {
 }
 
 .theme-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 5px 16px;
 }
 
-.theme-dot {
-  width: 28px;
-  height: 28px;
-  border: 2px solid transparent;
-  border-radius: 50%;
+.theme-item {
+  width: 34px;
+  height: 34px;
+  color: #ed4259;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 100%;
   cursor: pointer;
+  display: inline-block;
+  line-height: 32px;
+  text-align: center;
+  vertical-align: middle;
 }
 
-.theme-dot.active {
+.theme-item.active {
   border-color: #ed4259;
-  box-shadow: 0 0 0 1px #ed4259;
 }
 
-.theme-dot.custom-dot {
-  display: grid;
-  color: #fff;
-  background: linear-gradient(135deg, #f4e9bd, #2d2d2d);
-  font-size: 14px;
-  place-items: center;
+.theme-check {
+  display: none;
+  font-style: normal;
+}
+
+.theme-item.active .theme-check {
+  display: inline;
+}
+
+.moon-icon {
+  color: rgba(255, 255, 255, 0.2);
+  font-style: normal;
+}
+
+.theme-item.active .moon-icon {
+  color: #ed4259;
+}
+
+.theme-custom-button {
+  min-width: 78px;
 }
 
 .bg-image-grid {
@@ -1131,11 +1151,6 @@ function resetReaderSettings() {
 
   .setting-row > :not(.setting-label) {
     grid-column: 2;
-  }
-
-  .theme-dot {
-    width: 34px;
-    height: 34px;
   }
 
   .typography-setting-row,
