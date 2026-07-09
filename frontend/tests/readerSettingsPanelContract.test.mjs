@@ -72,6 +72,18 @@ test('reader settings background previews use upstream thumbnail geometry', () =
   assert.match(panelSource, /\.upload-bg-btn \{[\s\S]*?display: inline-block;[\s\S]*?color: #ed4259;/, 'background upload should keep upstream inline red style')
 })
 
+test('reader settings custom theme block uses upstream inline structure', () => {
+  assert.match(panelSource, /<label class="setting-label">自定义<\/label>/, 'custom theme block should use the upstream left label 自定义')
+  assert.match(panelSource, /class="custom-theme"/, 'custom theme controls should be grouped in one upstream-like custom-theme block')
+  for (const label of ['页面背景颜色', '浮窗背景颜色', '阅读背景颜色', '阅读背景图片']) {
+    assert.match(panelSource, new RegExp(`class="custom-theme-title[^\"]*"[^>]*>[\\s\\S]*?${label}`), `missing inline custom theme title ${label}`)
+  }
+  assert.match(panelSource, /\.custom-theme \{[\s\S]*?display: inline-block;/, 'custom theme block should keep upstream inline-block layout')
+  assert.match(panelSource, /\.custom-theme-title \{[\s\S]*?display: inline-block;[\s\S]*?margin-right: 28px;[\s\S]*?margin-bottom: 5px;/, 'custom theme titles should keep upstream inline spacing')
+  assert.doesNotMatch(panelSource, /reader\.customBodyColor[\s\S]{0,120}恢复默认/, 'custom body color should not keep a separate per-row reset button in Reader settings')
+  assert.doesNotMatch(panelSource, /reader\.customPopupColor[\s\S]{0,120}恢复默认/, 'custom popup color should not keep a separate per-row reset button in Reader settings')
+})
+
 test('reader settings font options use upstream span-item geometry', () => {
   assert.match(panelSource, /class="selection-zone font-family-grid"/, 'font options should share the upstream selection-zone structure')
   assert.doesNotMatch(panelSource, />已上传</, 'font upload state should be represented by the upstream-like active upload icon, not extra text')

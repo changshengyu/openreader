@@ -84,47 +84,40 @@
 
     <template v-if="reader.theme === 'custom'">
       <div class="setting-row">
-        <label class="setting-label">页面背景颜色</label>
-        <div class="color-setting">
-          <el-color-picker v-model="bodyColorModel" size="small" />
-          <el-button v-if="reader.customBodyColor" size="small" text type="danger" @click="reader.setCustomBodyColor('')">恢复默认</el-button>
-        </div>
-      </div>
-      <div class="setting-row">
-        <label class="setting-label">浮窗背景颜色</label>
-        <div class="color-setting">
-          <el-color-picker v-model="popupColorModel" size="small" />
-          <el-button v-if="reader.customPopupColor" size="small" text type="danger" @click="reader.setCustomPopupColor('')">恢复默认</el-button>
-        </div>
-      </div>
-      <div class="setting-row">
-        <label class="setting-label">阅读背景颜色</label>
-        <el-color-picker v-model="localCustomBg" size="small" />
-      </div>
-      <div class="setting-row">
-        <label class="setting-label">阅读背景图片</label>
-        <div class="custom-theme-title bg-image-title">
-          <div v-if="reader.customBgImageList?.length" class="content-bg-preview-list">
-            <div
-              v-for="image in reader.customBgImageList"
-              :key="image"
-              class="content-bg-preview"
-              :class="{ selected: reader.customBgImage === image }"
-              role="button"
-              tabindex="0"
-              @click="toggleBgImage(image)"
-              @keydown.enter.prevent="toggleBgImage(image)"
-              @keydown.space.prevent="toggleBgImage(image)"
-            >
-              <img :src="image" alt="" />
-              <button class="delete-bg-icon" type="button" title="删除背景图" @click.stop="$emit('clearBgImage', image)">
-                <el-icon><Close /></el-icon>
-              </button>
-            </div>
-          </div>
-          <el-upload class="upload-bg-upload" accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
-            <span class="upload-bg-btn">上传</span>
-          </el-upload>
+        <label class="setting-label">自定义</label>
+        <div class="custom-theme">
+          <span class="custom-theme-title">页面背景颜色
+            <el-color-picker v-model="bodyColorModel" size="small" />
+          </span>
+          <span class="custom-theme-title">浮窗背景颜色
+            <el-color-picker v-model="popupColorModel" size="small" />
+          </span>
+          <span class="custom-theme-title">阅读背景颜色
+            <el-color-picker v-model="localCustomBg" size="small" />
+          </span>
+          <span class="custom-theme-title bg-image-title">阅读背景图片
+            <span v-if="reader.customBgImageList?.length" class="content-bg-preview-list">
+              <span
+                v-for="image in reader.customBgImageList"
+                :key="image"
+                class="content-bg-preview"
+                :class="{ selected: reader.customBgImage === image }"
+                role="button"
+                tabindex="0"
+                @click="toggleBgImage(image)"
+                @keydown.enter.prevent="toggleBgImage(image)"
+                @keydown.space.prevent="toggleBgImage(image)"
+              >
+                <img :src="image" alt="" />
+                <button class="delete-bg-icon" type="button" title="删除背景图" @click.stop="$emit('clearBgImage', image)">
+                  <el-icon><Close /></el-icon>
+                </button>
+              </span>
+            </span>
+            <el-upload class="upload-bg-upload" accept="image/*" :show-file-list="false" :auto-upload="false" @change="$emit('pickBgImage', $event)">
+              <span class="upload-bg-btn">上传</span>
+            </el-upload>
+          </span>
         </div>
       </div>
     </template>
@@ -905,6 +898,19 @@ function resetReaderSettings() {
 
 .theme-custom-button {
   min-width: 78px;
+}
+
+.custom-theme {
+  display: inline-block;
+  min-width: 0;
+  width: 100%;
+  word-wrap: break-word;
+}
+
+.custom-theme-title {
+  display: inline-block;
+  margin-right: 28px;
+  margin-bottom: 5px;
 }
 
 .bg-image-title {
