@@ -527,6 +527,56 @@ Status: implemented and validated on 2026-07-10.
 - **Allowed differences.** The current Vue 3/Pinia dialog, structured editor, bounded health test, guided in-overlay debug, Go/SQLite authorization, and user-scoped persisted remote URL are retained runtime/safety improvements. No book-source API, parser, database, or backup contract changed in P1-C.
 - **Evidence.** Unit contracts cover resettable intents, one shared host, old-route normalization, and all Index actions. `scripts/smoke/source-workspace-contract.mjs` passed at 1440×900, 390×844, and 360×800: legacy remote/import/health/debug intents, manager close/query cleanup, mobile sidebar persistence and no click-through, import preview/confirmation, source-update reload, and no horizontal overflow. Full frontend tests (311), production build, and backend tests also pass.
 
+## P1-D full audit: BookInfo and shelf-operation convergence
+
+Status: audit completed on 2026-07-10. This is a compatibility gate: implementation begins only after the listed controller, API, and browser contracts are added or updated. The authority is `web/src/views/Index.vue` (`toDetail`, `addBookToShelf`, `saveBook`, `deleteBook`, `showBookManage`, `showManageBookGroup`), `web/src/components/BookInfo.vue`, `BookManage.vue`, and `BookGroup.vue` in `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
+
+### Upstream BookInfo and shelf-operation contract
+
+| Concern | Upstream behavior | Required OpenReader behavior |
+|---|---|---|
+| Ownership | `Index` and reader invoke one global BookInfo dialog through `showBookInfoDialog`; it is not a product page. | All shelf, search, explore and reader entry points must retain one global BookInfo overlay and one current-book state, with old `/books/:id` links only acting as compatibility intents. |
+| BookInfo content | Cover, title, tags/kind, author, origin, latest chapter, follow switch, group summary, intro and local-book refresh are in one dialog. Cover editing, follow and group controls appear only for a shelf book. | Preserve the same visibility gates and order. Extra word count, progress and browser-cache rows are acceptable only when they do not replace or hide the upstream fields. Plain-text intro rendering is a required XSS-safe adaptation of upstream HTML rendering. |
+| Add to shelf | A searched/explored book opens BookInfo; “加入书架” asks for groups, lets the user cancel, then saves the selected group mask. “加入并阅读” must preserve the same choice before routing to Reader. | Remote add actions must use one reusable category-selection transaction before mutation. A preselected workspace category may seed the choice, but must not silently bypass confirmation or cancellation. |
+| Read and edit | Reading routes from the selected shelf record and saved progress. JSON editing requires title, URL and origin, and a non-shelf book must be added before it can be edited. | Keep the existing structured Vue editor as an allowed safer UI, but it must share the same shelf-record/update transaction and never create a second BookInfo flow. |
+| Delete | Single and batch deletion require confirmation, delete book metadata plus progress, then reload the shelf. | Keep confirmation and preserve current multi-user transactional cleanup of progress, bookmarks, categories, chapters/cache files and browser-cache invalidation. All live shelf/reader/BookInfo consumers must receive the removal event. |
+| Book management | One `书架管理` dialog owns search, selection, per-book information/edit/group/cache/export operations, and batch delete/add-group/remove-group. Desktop remains a table; compact UI becomes fullscreen rather than a separate product scene. | Rebuild the current management Drawer into a root-workspace dialog/fullscreen-mobile overlay while retaining the one controller, current responsive cards and allowed batch safety enhancements. |
+| Cache/export | Upstream exposes server/browser cache actions and TXT/EPUB export; server cache uses cancellable SSE. | Retain the current REST/Go bounded cache pipeline only after its visible whole-book/selection/cancel semantics are mapped explicitly. JSON export is an allowed current backup/interoperability extension; TXT/EPUB must remain available. |
+| Group management | One BookGroup dialog has a setting mode for a book and a management mode for add/rename/show/delete/drag-sort. A non-empty group cannot be deleted. | Use one category controller and preserve set/manage modes, confirmation/empty guard, visibility and ordering. Current user-scoped many-to-many categories are an allowed data-model adaptation of upstream bit masks, but UI must remain one dialog/fullscreen-mobile overlay. |
+
+### Current mapping and classification
+
+| Layer | Current evidence | Classification and required outcome |
+|---|---|---|
+| BookInfo host | `OverlayBookInfo.vue` + `BookInfoDialog.vue` + `BookInfoPanel.vue` are the single host used by `Home`, `Search`, `Discover`, `Reader`, and compatibility routes. | `aligned` structurally. Recheck every context action and overlay-close route transition during implementation. |
+| Shelf-only fields | Current code limits cover replacement, remote follow, local refresh and group setting by actual shelf membership. Source/category rows refresh from live events. | `aligned`; retain. Plain-text intro and extra stats are `acceptable-change` security/usability improvements. |
+| Search/explore add | `Search.vue`/`Discover.vue` inject contextual action closures and call `createRemoteBook` with currently selected category ids. | `must-fix`: add and add-and-read must open a shared group-selection confirmation, including cancel, as upstream does. Remove duplicated category/route closure logic after convergence. |
+| Edit ownership | `BookEditDialog` is shared through `OverlayBookInfo`; Home and BookManage open it directly. | `partial`: structured edit is `acceptable-change`, but its preconditions, post-save shelf/reader/BookInfo synchronization and non-shelf prohibition need contract tests. |
+| Single/batch deletion | `bookshelf.removeBook` and `batchDeleteBooks` update local shelf/cache state after REST actions. Backend scopes all rows by user. | `partial`: retain the hardened backend cleanup, then add API and browser tests proving progress/bookmarks/categories/chapters/cache cleanup plus active overlay/reader handling. |
+| Book management shell | `OverlayBookManagement.vue` is a Drawer with desktop table and mobile card list. | `must-fix`: upstream ownership is a root workbench dialog (fullscreen on compact UI), not a side/bottom Drawer. Rebuild shell only; preserve the current shared controller and safe card/table rendering. |
+| Batch cache/export | Current controller adds batch cache/clear/JSON export and uses bounded REST operations instead of upstream SSE cancellation. | `unknown` pending exact cache-state audit: preserve Go resource limits, but either restore an explicit cancel/progress contract or record the bounded behavior as an approved security difference. |
+| Group shell and data | `OverlayBookGroups.vue` is a Drawer; `useOverlayBookGroups` has correct set/manage modes, empty guard, visibility, sort and live BookInfo update. Categories are user-scoped rows/many-to-many relations. | `must-fix` for dialog/fullscreen-mobile shell; `aligned`/`acceptable-change` for controller and data model. |
+| Backend/API | Go routes map book/category operations to authenticated REST endpoints and broadcasts. | `acceptable-change` architecture, subject to action-by-action response/error/side-effect tests; no schema migration or endpoint rewrite is authorized solely for UI convergence. |
+
+### API/data semantics that P1-D must preserve
+
+| Upstream action | Current API mapping | Required result |
+|---|---|---|
+| shelf list / refresh | `GET /books`, `GET /categories` | Per-user ordering/progress/category/cache counts; refresh must not merge another user's rows or regress newer local progress. |
+| add/update/delete | `POST /books`, `POST /books/remote`, `PUT/DELETE /books/:id`, `POST /books/batch` | Validate shelf ownership and category ids, atomically update book/category rows, broadcast shelf changes, and clean dependent rows/files when deleting. |
+| local refresh / follow | `POST /books/:id/refresh-local`, `PUT /books/:id` | Keep local import file and TOC-rule semantics; refresh invalidates reader/browser chapter caches only for that book. Follow toggling changes only `canUpdate`. |
+| category set/manage | `PUT /books/:id/category`, `GET/POST/PUT/DELETE /categories`, `PUT /categories/reorder` | Many-to-many user-scoped categories retain empty/delete guards, ordering and visible state; legacy primary `categoryId` remains compatible. |
+| source change | `GET /books/:id/source-candidates`, `POST /books/:id/change-source` | Preserve reader’s current-book source switching separately from P1-D shell work; candidate selection must replace catalog atomically and retain title/author rename rules. |
+| cache/export | `POST /books/:id/cache`, `POST /books/export`, `POST /books/batch` | Preserve ownership, cache path safety, local/remote distinction, bounded work, and TXT/EPUB compatibility. |
+
+### P1-D implementation batches and mandatory tests
+
+1. **P1-D1 — BookInfo action contract.** Add a shared add-to-shelf category-selection controller and tests for shelf/search/explore/reader ownership, follow/local-refresh/cover gates, add cancellation, add-and-read route, edit synchronization and old detail URL close behavior.
+2. **P1-D2 — BookManage shell.** Rehost the existing management controller in an upstream-style dialog/fullscreen-mobile overlay. Test desktop table, mobile fullscreen layout, search/selection, single and batch delete, group add/remove, cache/clear/export and no root-workspace/sidebar disappearance.
+3. **P1-D3 — BookGroup shell.** Rehost set/manage modes in one dialog/fullscreen-mobile overlay. Test preselection, save/cancel, non-empty delete guard, visibility, drag order and live BookInfo/shelf synchronization.
+4. **P1-D4 — API/data regression.** Expand Go/API contract coverage for category validation, user isolation, transactional delete cleanup, local refresh cache invalidation, update/follow field preservation, batch cache bounds and export formats. Do not alter persistent schemas unless a demonstrated compatibility gap requires a non-destructive migration.
+5. **Release gate.** Run front/back full tests, production build, and real-browser checks at 1440×900, 390×844 and 360×800. The browser probe must open BookInfo from shelf/search/explore/reader, exercise add/cancel/add-and-read, both management overlays, and assert no duplicate UI/route transition, no pointer leakage and no horizontal overflow.
+
 ## Immediate P0 contract: continuous cross-chapter reading
 
 Status: implemented and validated on 2026-07-06.
