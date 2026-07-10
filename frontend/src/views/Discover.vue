@@ -81,6 +81,7 @@ import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
+import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import {
   buildBookInfoReadActions,
   buildBookInfoStartReadActions,
@@ -102,6 +103,7 @@ const router = useRouter()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
+const workspace = useIndexWorkspaceStore()
 const sources = ref([])
 const books = ref([])
 const selectedSourceId = ref('')
@@ -247,6 +249,8 @@ function loadBooksFromEntry(source, entry) {
 async function loadBooks() {
   ensureActiveEntry()
   if (!selectedSourceId.value || !activeExploreUrl.value) return
+  workspace.showExploreResults([], exploreWorkspaceIntent())
+  workspace.setResultLoading(true)
   loadingBooks.value = true
   try {
     page.value = 1
@@ -254,16 +258,19 @@ async function loadBooks() {
     const result = normalizeExploreResult(data, page.value)
     books.value = result.items
     hasMore.value = result.hasMore
+    workspace.showExploreResults(books.value, exploreWorkspaceIntent())
   } catch (err) {
     ElMessage.error(readError(err, '加载探索结果失败'))
   } finally {
     loadingBooks.value = false
+    workspace.setResultLoading(false)
   }
 }
 
 async function loadMoreBooks() {
   if (!selectedSourceId.value || !activeExploreUrl.value || loadingMore.value || !hasMore.value) return
   loadingMore.value = true
+  workspace.setResultLoading(true)
   try {
     const nextPage = page.value + 1
     const { data } = await exploreBooks(selectedSourceId.value, { page: nextPage, url: activeExploreUrl.value })
@@ -273,10 +280,23 @@ async function loadMoreBooks() {
     books.value = [...books.value, ...nextItems]
     page.value = result.page || nextPage
     hasMore.value = result.hasMore && nextItems.length > 0
+    workspace.appendResultRows(nextItems, exploreWorkspaceIntent())
   } catch (err) {
     ElMessage.error(readError(err, '加载更多失败'))
   } finally {
     loadingMore.value = false
+    workspace.setResultLoading(false)
+  }
+}
+
+function exploreWorkspaceIntent() {
+  return {
+    sourceId: selectedSourceId.value,
+    sourceGroup: activeSource.value?.group || selectedGroup.value,
+    url: activeExploreUrl.value,
+    name: activeExploreName.value,
+    page: page.value,
+    hasMore: hasMore.value,
   }
 }
 

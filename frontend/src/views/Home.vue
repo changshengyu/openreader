@@ -117,6 +117,7 @@ import { bookHasCategory, useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -130,6 +131,7 @@ const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
+const workspace = useIndexWorkspaceStore()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
 const selectedGroup = ref('')
@@ -196,6 +198,7 @@ const emptyText = computed(() => {
 })
 
 onMounted(async () => {
+  workspace.backToShelf()
   updateViewportFlags()
   window.addEventListener('resize', updateViewportFlags)
   window.addEventListener('orientationchange', updateViewportFlags)

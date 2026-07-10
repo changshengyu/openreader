@@ -146,6 +146,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import {
   buildBookInfoReadActions,
   buildBookInfoStartReadActions,
@@ -170,6 +171,7 @@ const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
+const workspace = useIndexWorkspaceStore()
 
 const keyword = ref('')
 const searchMode = ref(route.query.mode === 'local' ? 'local' : 'remote')
@@ -360,6 +362,7 @@ async function switchSearchMode(mode, updateRoute = true) {
   results.value = []
   resetRemotePagination()
   checkedLocalPaths.value = []
+  workspace.beginSearch(searchWorkspaceIntent(mode))
   if (mode === 'remote') {
     if (!sources.value.length) {
       loadSources()
@@ -394,6 +397,8 @@ async function doSearch() {
     ElMessage.warning('请至少选择一个书源')
     return
   }
+  workspace.beginSearch(searchWorkspaceIntent('remote'))
+  workspace.setResultLoading(true)
   searching.value = true
   searched.value = false
   results.value = []
@@ -409,12 +414,14 @@ async function doSearch() {
     ElMessage.error(readError(err, '搜索失败'))
   } finally {
     searching.value = false
+    workspace.setResultLoading(false)
   }
 }
 
 async function loadMoreRemote() {
   if (loadingMore.value || !remoteHasMore.value) return
   loadingMore.value = true
+  workspace.setResultLoading(true)
   try {
     searchPage.value += 1
     const added = await requestRemoteSearch(true)
@@ -426,6 +433,7 @@ async function loadMoreRemote() {
     ElMessage.error(readError(err, '加载更多失败'))
   } finally {
     loadingMore.value = false
+    workspace.setResultLoading(false)
   }
 }
 
@@ -443,6 +451,7 @@ async function requestRemoteSearch(append) {
   searchPage.value = Number(data?.page || searchPage.value)
   searchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : searchLastIndex.value
   remoteHasMore.value = Boolean(data?.hasMore)
+  workspace.replaceResultRows(results.value, remoteWorkspaceContinuation())
   return added
 }
 
@@ -476,6 +485,8 @@ function resetRemotePagination() {
 }
 
 async function searchLocalBooks() {
+  workspace.beginSearch(searchWorkspaceIntent('local'))
+  workspace.setResultLoading(true)
   searching.value = true
   searched.value = false
   results.value = []
@@ -490,6 +501,11 @@ async function searchLocalBooks() {
     }
     localItems.value = storeResult.status === 'fulfilled' ? (storeResult.value.data.items || []) : []
     searched.value = true
+    workspace.replaceResultRows(shownLocalResults.value, {
+      page: 1,
+      lastIndex: -1,
+      hasMore: false,
+    })
     if (shelfResult.status === 'rejected') {
       ElMessage.warning(`书架本地书加载失败，已仅搜索本地书仓：${readError(shelfResult.reason, '加载失败')}`)
     }
@@ -502,6 +518,26 @@ async function searchLocalBooks() {
     ElMessage.error(readError(err, '搜索本地书仓失败'))
   } finally {
     searching.value = false
+    workspace.setResultLoading(false)
+  }
+}
+
+function searchWorkspaceIntent(mode = searchMode.value) {
+  return {
+    keyword: keyword.value,
+    mode,
+    searchType: searchType.value,
+    group: selectedGroup.value,
+    sourceId: singleSourceId.value || '',
+    concurrent: concurrentCount.value,
+  }
+}
+
+function remoteWorkspaceContinuation() {
+  return {
+    page: searchPage.value,
+    lastIndex: searchLastIndex.value,
+    hasMore: remoteHasMore.value,
   }
 }
 
