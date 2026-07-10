@@ -489,6 +489,7 @@ import { useReaderNavigation } from '../composables/useReaderNavigation'
 import { readerEffectiveMode, useReaderMode } from '../composables/useReaderMode'
 import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
 import { useReaderPanels } from '../composables/useReaderPanels'
+import { useReaderPrimaryPanels } from '../composables/useReaderPrimaryPanels'
 import { useReaderPositionRestore } from '../composables/useReaderPositionRestore'
 import { useReaderPointer } from '../composables/useReaderPointer'
 import { useReaderRouteSync } from '../composables/useReaderRouteSync'
@@ -1335,6 +1336,17 @@ const {
 })
 const mobileChromeVisible = ref(true)
 const {
+  isOpen: isReaderPrimaryPanelOpen,
+  toggle: toggleReaderPrimaryPanel,
+} = useReaderPrimaryPanels({
+  panels: {
+    shelf: showShelfDrawer,
+    source: showSourceDrawer,
+    toc: showTocDrawer,
+    settings: showSettingsDrawer,
+  },
+})
+const {
   toggle: toggleReaderChrome,
 } = useReaderChrome({
   isMobileReader,
@@ -1622,6 +1634,12 @@ function closeTTSBar() {
   ttsBarRequested.value = false
   ttsStop()
 }
+
+function openReaderPrimaryTool(name, open) {
+  if (isMobileReader.value) return toggleReaderPrimaryPanel(name, open)
+  return openDesktopToolPanel(name, open)
+}
+
 watch(chapterFormat, format => {
   if (format === 'epub' || format === 'audio') {
     ttsBarRequested.value = false
@@ -1639,10 +1657,10 @@ const {
   toggleChrome: toggleReaderChrome,
   actions: {
     home: () => runWithDesktopWorkspaceClosed(goShelf),
-    shelf: () => openDesktopToolPanel('shelf', openShelfPanel),
-    source: () => openDesktopToolPanel('source', goSourcePanel),
-    toc: () => openDesktopToolPanel('toc', openTocDrawer),
-    settings: () => openDesktopToolPanel('settings', openSettingsDrawer),
+    shelf: () => openReaderPrimaryTool('shelf', openShelfPanel),
+    source: () => openReaderPrimaryTool('source', goSourcePanel),
+    toc: () => openReaderPrimaryTool('toc', openTocDrawer),
+    settings: () => openReaderPrimaryTool('settings', openSettingsDrawer),
     bookmarks: () => runWithDesktopWorkspaceClosed(openBookmarkDrawer),
     search: () => runWithDesktopWorkspaceClosed(openContentSearch),
     info: () => runWithDesktopWorkspaceClosed(openReaderBookInfo),
@@ -1959,6 +1977,7 @@ useReaderKeyboard({
   isScrollRead,
   isAudio: isAudioChapter,
   mobileChromeVisible,
+  primaryPanelOpen: computed(() => isReaderPrimaryPanelOpen()),
   tocVisible: showTocDrawer,
   settingsVisible: showSettingsDrawer,
   previousPage,

@@ -5,16 +5,17 @@ import { READER_CHAPTER_END_OFFSET } from '../utils/readerPosition.js'
 export function useReaderKeyboard(options) {
   const registerKeyboard = options.registerKeyboard || useKeyboard
   const isAudio = () => Boolean(unref(options.isAudio))
+  const primaryPanelOpen = () => Boolean(unref(options.primaryPanelOpen))
 
   registerKeyboard({
     onPageUp: () => {
-      if (!isAudio()) options.previousPage()
+      if (!isAudio() && !primaryPanelOpen()) options.previousPage()
     },
     onPageDown: () => {
-      if (!isAudio()) options.nextPage()
+      if (!isAudio() && !primaryPanelOpen()) options.nextPage()
     },
     onArrowLeft: () => {
-      if (isAudio()) return
+      if (isAudio() || primaryPanelOpen()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'flip') {
         options.previousPage()
@@ -26,7 +27,7 @@ export function useReaderKeyboard(options) {
       }
     },
     onArrowRight: () => {
-      if (isAudio()) return
+      if (isAudio() || primaryPanelOpen()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'flip') {
         options.nextPage()
@@ -38,36 +39,32 @@ export function useReaderKeyboard(options) {
       }
     },
     onArrowUp: () => {
-      if (isAudio()) return
+      if (isAudio() || primaryPanelOpen()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'page' || unref(options.isScrollRead)) {
         options.previousPage()
       }
     },
     onArrowDown: () => {
-      if (isAudio()) return
+      if (isAudio() || primaryPanelOpen()) return
       options.mobileChromeVisible.value = false
       if (options.reader.mode === 'page' || unref(options.isScrollRead)) {
         options.nextPage()
       }
     },
     onHome: () => {
-      if (!isAudio()) options.scrollToTop()
+      if (!isAudio() && !primaryPanelOpen()) options.scrollToTop()
     },
     onEnd: () => {
-      if (!isAudio()) options.scrollToBottom()
+      if (!isAudio() && !primaryPanelOpen()) options.scrollToBottom()
     },
     onSpace: () => {
-      if (!isAudio()) options.nextPage()
+      if (!isAudio() && !primaryPanelOpen()) options.nextPage()
     },
     onEscape: () => {
-      if (options.tocVisible.value || options.settingsVisible.value) {
-        options.tocVisible.value = false
-        options.settingsVisible.value = false
-      } else {
-        options.mobileChromeVisible.value = false
-        options.goShelf()
-      }
+      if (primaryPanelOpen()) return
+      options.mobileChromeVisible.value = false
+      options.goShelf()
     },
   })
 }

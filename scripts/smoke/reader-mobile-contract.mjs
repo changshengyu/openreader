@@ -127,7 +127,8 @@ async function assertWorkspaceOpen(page, viewport, label) {
   const topCount = await page.locator('.reader-mobile-top.visible').count()
   assert(topCount === 1, `${viewport.width}: toolbar should remain visible after opening ${label}`)
   const workspaceState = await page.evaluate((expectedLabel) => {
-    const workspace = document.querySelector('.reader-mobile-workspace')
+    const workspaces = Array.from(document.querySelectorAll('.reader-mobile-workspace'))
+    const workspace = workspaces.at(-1)
     const rect = workspace.getBoundingClientRect()
     const header = workspace.querySelector('.reader-mobile-workspace-head')
     const visibleDrawers = Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
@@ -136,6 +137,7 @@ async function assertWorkspaceOpen(page, viewport, label) {
       return drawerRect.width > 0 && drawerRect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
     }).length
     return {
+      count: workspaces.length,
       width: Math.round(rect.width),
       left: Math.round(rect.left),
       visibleDrawers,
@@ -145,6 +147,7 @@ async function assertWorkspaceOpen(page, viewport, label) {
       hasGenericHeader: Boolean(header),
     }
   }, label)
+  assert(workspaceState.count === 1, `${viewport.width}: exactly one mobile primary workspace should remain after opening ${label}`)
   assert(workspaceState.left === 0, `${viewport.width}: mobile workspace left ${workspaceState.left}`)
   assert(workspaceState.width === viewport.width, `${viewport.width}: mobile workspace width ${workspaceState.width}`)
   assert(workspaceState.visibleDrawers === 0, `${viewport.width}: mobile workspace must not use visible drawer`)
@@ -153,6 +156,15 @@ async function assertWorkspaceOpen(page, viewport, label) {
   if (label === '设置') {
     assert(workspaceState.hasGenericHeader === false, `${viewport.width}: settings workspace must not render a duplicate generic header`)
   }
+}
+
+function mobileTopTool(page, label) {
+  return page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: label })
+}
+
+async function assertWorkspaceClosed(page, viewport, label) {
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+  assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: toolbar should remain visible after closing ${label}`)
 }
 
 async function assertSettingsRowGeometry(page, viewport) {
@@ -361,7 +373,18 @@ async function runViewport(browser, viewport) {
   const initialGeometry = await readerGeometry(page)
   assertReaderGeometry(initialGeometry, viewport, 'initial')
 
-  await page.getByRole('button', { name: /设置/ }).click()
+  await mobileTopTool(page, '书架').click()
+  await assertWorkspaceOpen(page, viewport, '书架')
+  await mobileTopTool(page, '书架').click()
+  await assertWorkspaceClosed(page, viewport, '书架')
+
+  await mobileTopTool(page, '书架').click()
+  await assertWorkspaceOpen(page, viewport, '书架')
+  await mobileTopTool(page, '书源').click()
+  await assertWorkspaceOpen(page, viewport, '书源')
+  await mobileTopTool(page, '目录').click()
+  await assertWorkspaceOpen(page, viewport, '目录')
+  await mobileTopTool(page, '设置').click()
   await assertWorkspaceOpen(page, viewport, '设置')
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)
@@ -371,9 +394,6 @@ async function runViewport(browser, viewport) {
   assert(afterPanelCenterTap === 1, `${viewport.width}: center tap with panel open must not hide toolbar`)
 
   await closeWorkspace(page, 'settings-toggle')
-  await page.getByRole('button', { name: /目录/ }).click()
-  await assertWorkspaceOpen(page, viewport, '目录')
-  await closeWorkspace(page)
   await page.locator('.reader-mobile-float-left.visible button[title="书签"]').click()
   await assertWorkspaceOpen(page, viewport, '书签')
   await closeWorkspace(page)

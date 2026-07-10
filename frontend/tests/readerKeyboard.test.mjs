@@ -13,6 +13,7 @@ function createController(overrides = {}) {
     isScrollRead: ref(true),
     isAudio: ref(false),
     mobileChromeVisible: ref(true),
+    primaryPanelOpen: ref(false),
     tocVisible: ref(false),
     settingsVisible: ref(false),
   }
@@ -79,15 +80,17 @@ test('maps vertical, paging, home, end, and space keys without changing semantic
   ])
 })
 
-test('escape closes reader drawers before returning to the shelf', () => {
+test('primary popovers consume all keyboard navigation until their trigger closes them', () => {
   const fixture = createController()
-  fixture.state.tocVisible.value = true
-  fixture.state.settingsVisible.value = true
+  fixture.state.primaryPanelOpen.value = true
+  fixture.handlers.onArrowLeft()
+  fixture.handlers.onArrowDown()
+  fixture.handlers.onPageDown()
   fixture.handlers.onEscape()
-  assert.equal(fixture.state.tocVisible.value, false)
-  assert.equal(fixture.state.settingsVisible.value, false)
+  assert.equal(fixture.state.mobileChromeVisible.value, true)
   assert.deepEqual(fixture.calls, [])
 
+  fixture.state.primaryPanelOpen.value = false
   fixture.handlers.onEscape()
   assert.equal(fixture.state.mobileChromeVisible.value, false)
   assert.deepEqual(fixture.calls, [['shelf']])
