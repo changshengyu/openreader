@@ -1,7 +1,10 @@
 <template>
   <section
     class="reader-mobile-workspace"
-    :class="{ 'reader-mobile-workspace-no-header': !showHeader }"
+    :class="{
+      'reader-mobile-workspace-no-header': !showHeader,
+      'reader-mobile-workspace-primary': primary,
+    }"
     role="dialog"
     aria-modal="false"
     :aria-label="title"
@@ -33,6 +36,10 @@ defineProps({
     type: Boolean,
     default: true,
   },
+  primary: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 defineEmits(['close'])
@@ -56,6 +63,20 @@ defineEmits(['close'])
 
 .reader-mobile-workspace-no-header {
   grid-template-rows: minmax(0, 1fr);
+}
+
+.reader-mobile-workspace-primary {
+  display: block;
+  padding: 0;
+  background: var(--reader-popup-bg);
+  backdrop-filter: none;
+}
+
+.reader-mobile-workspace-primary .reader-mobile-workspace-body {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
 }
 
 .reader-mobile-workspace-head {

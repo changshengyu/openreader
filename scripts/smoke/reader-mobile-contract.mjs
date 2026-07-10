@@ -122,7 +122,7 @@ async function installApiMocks(page) {
   })
 }
 
-async function assertWorkspaceOpen(page, viewport, label) {
+async function assertWorkspaceOpen(page, viewport, label, { primary = false } = {}) {
   await page.waitForSelector('.reader-mobile-workspace', { timeout: 10000 })
   const topCount = await page.locator('.reader-mobile-top.visible').count()
   assert(topCount === 1, `${viewport.width}: toolbar should remain visible after opening ${label}`)
@@ -145,6 +145,9 @@ async function assertWorkspaceOpen(page, viewport, label) {
       text: workspace.innerText,
       hasLabel: workspace.innerText.includes(expectedLabel),
       hasGenericHeader: Boolean(header),
+      paddingTop: window.getComputedStyle(workspace).paddingTop,
+      paddingBottom: window.getComputedStyle(workspace).paddingBottom,
+      hasPrimaryBody: Boolean(workspace.querySelector('.reader-mobile-primary-popover-body')),
     }
   }, label)
   assert(workspaceState.count === 1, `${viewport.width}: exactly one mobile primary workspace should remain after opening ${label}`)
@@ -153,8 +156,11 @@ async function assertWorkspaceOpen(page, viewport, label) {
   assert(workspaceState.visibleDrawers === 0, `${viewport.width}: mobile workspace must not use visible drawer`)
   assert(workspaceState.role === 'dialog', `${viewport.width}: mobile workspace role ${workspaceState.role}`)
   assert(workspaceState.hasLabel, `${viewport.width}: mobile workspace missing label ${label}`)
-  if (label === '设置') {
-    assert(workspaceState.hasGenericHeader === false, `${viewport.width}: settings workspace must not render a duplicate generic header`)
+  if (primary) {
+    assert(workspaceState.hasGenericHeader === false, `${viewport.width}: ${label} primary popover must not render generic workspace header`)
+    assert(workspaceState.paddingTop === '0px', `${viewport.width}: ${label} primary root top padding ${workspaceState.paddingTop}`)
+    assert(workspaceState.paddingBottom === '0px', `${viewport.width}: ${label} primary root bottom padding ${workspaceState.paddingBottom}`)
+    assert(workspaceState.hasPrimaryBody, `${viewport.width}: ${label} primary popover missing owned content body`)
   }
 }
 
@@ -374,18 +380,18 @@ async function runViewport(browser, viewport) {
   assertReaderGeometry(initialGeometry, viewport, 'initial')
 
   await mobileTopTool(page, '书架').click()
-  await assertWorkspaceOpen(page, viewport, '书架')
+  await assertWorkspaceOpen(page, viewport, '书架', { primary: true })
   await mobileTopTool(page, '书架').click()
   await assertWorkspaceClosed(page, viewport, '书架')
 
   await mobileTopTool(page, '书架').click()
-  await assertWorkspaceOpen(page, viewport, '书架')
+  await assertWorkspaceOpen(page, viewport, '书架', { primary: true })
   await mobileTopTool(page, '书源').click()
-  await assertWorkspaceOpen(page, viewport, '书源')
+  await assertWorkspaceOpen(page, viewport, '来源', { primary: true })
   await mobileTopTool(page, '目录').click()
-  await assertWorkspaceOpen(page, viewport, '目录')
+  await assertWorkspaceOpen(page, viewport, '目录', { primary: true })
   await mobileTopTool(page, '设置').click()
-  await assertWorkspaceOpen(page, viewport, '设置')
+  await assertWorkspaceOpen(page, viewport, '设置', { primary: true })
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)
 

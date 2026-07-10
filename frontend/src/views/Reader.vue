@@ -217,47 +217,61 @@
     <!-- ===== 移动端书架面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showShelfDrawer"
+      primary
+      :show-header="false"
       :title="`书架(${filteredShelfBooks.length})`"
       @close="showShelfDrawer = false"
     >
-      <template #actions>
-        <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
-          {{ shelfLoading ? '刷新中...' : '刷新' }}
-        </button>
-      </template>
-      <ReaderShelfPanel
-        ref="shelfPanelRef"
-        v-loading="shelfLoading"
-        :books="filteredShelfBooks"
-        :current-book-id="bookId"
-        :progress-by-book="reader.progressByBook"
-        :loading="shelfLoading"
-        @select="changeBookFromShelf"
-      />
+      <div class="reader-mobile-primary-popover-body reader-mobile-primary-shelf">
+        <div class="reader-mobile-primary-title-zone">
+          <div class="reader-mobile-primary-title">书架({{ filteredShelfBooks.length }})</div>
+          <div class="reader-mobile-primary-actions">
+            <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
+              {{ shelfLoading ? '刷新中...' : '刷新' }}
+            </button>
+          </div>
+        </div>
+        <ReaderShelfPanel
+          ref="shelfPanelRef"
+          v-loading="shelfLoading"
+          :books="filteredShelfBooks"
+          :current-book-id="bookId"
+          :progress-by-book="reader.progressByBook"
+          :loading="shelfLoading"
+          @select="changeBookFromShelf"
+        />
+      </div>
     </ReaderMobileWorkspacePanel>
 
     <!-- ===== 移动端目录面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showTocDrawer"
+      primary
+      :show-header="false"
       :title="`目录(${chapters.length})`"
       @close="showTocDrawer = false"
     >
-      <template #actions>
-        <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
-        <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
-        <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
-        <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
-        <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
-      </template>
-      <ReaderTocPanel
-        ref="tocPanelRef"
-        :chapters="chapters"
-        :current-index="currentIndex"
-        :reverse="tocReverse"
-        :locate-key="tocLocateKey"
-        :browser-cached-map="browserCachedChapters"
-        @jump="jumpFromToc"
-      />
+      <div class="reader-mobile-primary-popover-body reader-mobile-primary-toc">
+        <div class="reader-mobile-primary-title-zone">
+          <div class="reader-mobile-primary-title">目录<span v-if="chapters.length">({{ chapters.length }})</span></div>
+          <div class="reader-mobile-primary-actions">
+            <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
+            <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
+            <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
+            <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
+            <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
+          </div>
+        </div>
+        <ReaderTocPanel
+          ref="tocPanelRef"
+          :chapters="chapters"
+          :current-index="currentIndex"
+          :reverse="tocReverse"
+          :locate-key="tocLocateKey"
+          :browser-cached-map="browserCachedChapters"
+          @jump="jumpFromToc"
+        />
+      </div>
     </ReaderMobileWorkspacePanel>
 
     <!-- ===== 移动端书签面板 ===== -->
@@ -300,23 +314,27 @@
     <!-- ===== 移动端书源面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSourceDrawer"
+      primary
+      :show-header="false"
       title="书源"
       @close="showSourceDrawer = false"
     >
-      <SourceSwitchPanel
-        :book="book"
-        :sources="sourceCandidates"
-        :loading="loadingSources"
-        :changing-source="changingSource"
-        :current-source-name="currentSourceName"
-        :group="sourceGroup"
-        :groups="sourceGroups"
-        :has-more="sourceHasMore"
-        @refresh="refreshSourceCandidates"
-        @load-more="loadMoreSourceCandidates"
-        @group-change="changeSourceGroup"
-        @change="changeSource"
-      />
+      <div class="reader-mobile-primary-popover-body reader-mobile-primary-source">
+        <SourceSwitchPanel
+          :book="book"
+          :sources="sourceCandidates"
+          :loading="loadingSources"
+          :changing-source="changingSource"
+          :current-source-name="currentSourceName"
+          :group="sourceGroup"
+          :groups="sourceGroups"
+          :has-more="sourceHasMore"
+          @refresh="refreshSourceCandidates"
+          @load-more="loadMoreSourceCandidates"
+          @group-change="changeSourceGroup"
+          @change="changeSource"
+        />
+      </div>
     </ReaderMobileWorkspacePanel>
 
     <!-- ===== 移动端缓存面板 ===== -->
@@ -336,31 +354,34 @@
     <!-- ===== 移动端设置面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSettingsDrawer"
+      primary
       title="设置"
       :show-header="false"
       @close="showSettingsDrawer = false"
     >
-      <ReaderSettingsPanel
-        v-model:custom-bg="customBg"
-        v-model:line-height="sliderLineHeight"
-        :reader="reader"
-        :tts="tts"
-        :tts-voices="ttsVoices"
-        :font-options="fontOptions"
-        :theme-presets="themePresets"
-        :mini-interface="isMobileReader"
-        @mode-change="onModeChange"
-        @theme-change="setTheme"
-        @pick-bg-image="pickBgImage"
-        @clear-bg-image="clearBgImage"
-        @pick-font-file="pickFontFile"
-        @clear-font-file="clearFontFile"
-        @tts-rate-change="setTTSRate"
-        @tts-pitch-change="setTTSPitch"
-        @tts-voice-change="setTTSVoice"
-        @open-replace-rules="openReplaceRules"
-        @show-click-zone="showClickZone"
-      />
+      <div class="reader-mobile-primary-popover-body reader-mobile-primary-settings">
+        <ReaderSettingsPanel
+          v-model:custom-bg="customBg"
+          v-model:line-height="sliderLineHeight"
+          :reader="reader"
+          :tts="tts"
+          :tts-voices="ttsVoices"
+          :font-options="fontOptions"
+          :theme-presets="themePresets"
+          :mini-interface="isMobileReader"
+          @mode-change="onModeChange"
+          @theme-change="setTheme"
+          @pick-bg-image="pickBgImage"
+          @clear-bg-image="clearBgImage"
+          @pick-font-file="pickFontFile"
+          @clear-font-file="clearFontFile"
+          @tts-rate-change="setTTSRate"
+          @tts-pitch-change="setTTSPitch"
+          @tts-voice-change="setTTSVoice"
+          @open-replace-rules="openReplaceRules"
+          @show-click-zone="showClickZone"
+        />
+      </div>
     </ReaderMobileWorkspacePanel>
 
     <!-- ===== 桌面端书签抽屉 ===== -->
@@ -2132,6 +2153,79 @@ function readError(err, fallback) {
     padding-top: 15px;
     padding-bottom: calc(15px + env(safe-area-inset-bottom));
     text-align: justify;
+  }
+  .reader-mobile-primary-popover-body {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+    color: var(--reader-text);
+  }
+  .reader-mobile-primary-shelf,
+  .reader-mobile-primary-toc,
+  .reader-mobile-primary-source {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0;
+    overflow: hidden;
+  }
+  .reader-mobile-primary-settings {
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .reader-mobile-primary-title-zone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    margin: 0 0 20px;
+  }
+  .reader-mobile-primary-title {
+    width: fit-content;
+    color: #ed4259;
+    border-bottom: 1px solid #ed4259;
+    font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 18px;
+    font-weight: 400;
+  }
+  .reader-mobile-primary-actions {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0 15px;
+    min-width: 0;
+    color: #ed4259;
+    font-size: 14px;
+    line-height: 26px;
+  }
+  .reader-mobile-primary-actions button {
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    line-height: inherit;
+  }
+  .reader-mobile-primary-actions button:disabled {
+    color: #606266;
+    cursor: default;
+  }
+  .reader-mobile-primary-shelf :deep(.reader-shelf-list),
+  .reader-mobile-primary-toc :deep(.toc-list),
+  .reader-mobile-primary-source :deep(.source-switch-list) {
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  .reader-mobile-primary-source :deep(.title-zone) {
+    margin-bottom: 20px;
   }
   .reader-shell.scroll .reader-content,
   .reader-shell.scroll2 .reader-content {
