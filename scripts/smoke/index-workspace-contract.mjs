@@ -52,6 +52,8 @@ function remoteBook(title = '工作台搜索结果') {
 
 async function installApiMocks(page) {
   let shelfBooks = [{ id: 1, title: '书架测试书', author: 'OpenReader', chapterCount: 1 }]
+  let remoteCreateCount = 0
+  await page.exposeFunction('__workspaceRemoteCreateCount', () => remoteCreateCount)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
     const request = route.request()
@@ -83,6 +85,7 @@ async function installApiMocks(page) {
       return route.fulfill(json({ list: [remoteBook(body.keyword || '工作台搜索结果')], page: 1, lastIndex: -1, hasMore: false }))
     }
     if (path === '/books/remote' && method === 'POST') {
+      remoteCreateCount += 1
       const created = { id: 99, title: '已加入的工作台书籍', author: 'OpenReader', sourceId: 1, chapterCount: 1 }
       shelfBooks = [created, ...shelfBooks]
       return route.fulfill(json(created))
@@ -148,7 +151,16 @@ async function runViewport(browser, viewport) {
   await page.getByRole('button', { name: '查看信息' }).click()
   await page.waitForSelector('.book-info-dialog .overlay-actions', { timeout: 10000 })
   await page.getByRole('button', { name: '加入并阅读' }).click()
+  const categoryDialog = page.locator('.book-add-category-dialog')
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '取消' }).click()
+  await page.waitForFunction(() => !document.querySelector('.book-add-category-dialog .el-dialog'))
+  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 0, `${viewport.width}: cancelling BookInfo groups must not add a book`)
+  await page.waitForSelector('.book-info-dialog .overlay-actions', { timeout: 10000 })
+  await page.getByRole('button', { name: '加入并阅读' }).click()
+  await categoryDialog.getByRole('button', { name: '确定' }).click()
   await page.waitForURL(/\/books\/99\/read/, { timeout: 10000 })
+  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 1, `${viewport.width}: confirming BookInfo groups must add exactly once`)
 
   await page.goto(root, { waitUntil: 'networkidle' })
   await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
@@ -194,7 +206,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`index-workspace: ok ${checks.join(', ')} legacyRedirects=true sidebarSearch=true bookInfoAddRead=true explore=true`)
+    console.log(`index-workspace: ok ${checks.join(', ')} legacyRedirects=true sidebarSearch=true bookInfoGroupConfirm=true explore=true`)
   } finally {
     await browser.close()
   }

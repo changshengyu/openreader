@@ -92,6 +92,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
+import { useBookInfoAddToShelf } from '../composables/useBookInfoAddToShelf'
 import {
   buildBookInfoReadActions,
   buildBookInfoStartReadActions,
@@ -105,7 +106,6 @@ import {
   remoteBookKey,
   remoteBookSourceId,
   remoteBookSourceName,
-  remoteBookTitle,
   remoteBookUrl,
 } from '../utils/remoteBookResult'
 
@@ -127,7 +127,15 @@ const activeExploreName = ref('')
 const targetCategoryIds = ref([])
 const loadingSources = ref(false)
 const loadingBooks = ref(false)
-const addingBook = ref(null)
+const addToShelf = useBookInfoAddToShelf({
+  selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
+  buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
+  createRemoteBook,
+  upsertBook: book => bookshelf.upsertBook(book),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const addingBook = addToShelf.addingBookKey
 const page = ref(1)
 const hasMore = ref(false)
 const loadingMore = ref(false)
@@ -371,32 +379,25 @@ function openPreview(book) {
 }
 
 async function addRemoteBook(book, shouldRead) {
-  addingBook.value = activeRemoteKey(book)
-  try {
-    const payload = remoteBookCreatePayload(book, targetCategoryIds.value, {
-      sourceId: activeRemoteSourceId(book),
-      sourceName: activeRemoteSourceName(book),
-    })
-    const { data } = await createRemoteBook(payload)
-    bookshelf.upsertBook(data)
-    ElMessage.success(`已加入书架：《${remoteBookTitle(book)}》`)
-    if (shouldRead) {
-      overlay.closeBookInfo()
-      router.push({ name: 'reader', params: { id: data.id } })
-      return
-    }
-    overlay.openBookInfo(data, {
-      sourceName: activeRemoteSourceName(book),
-      statusLabel: '已加入书架',
-      statusType: 'success',
-      progress: 0,
-      actions: buildBookInfoStartReadActions({ read: () => openExistingReader(data) }),
-    })
-  } catch (err) {
-    ElMessage.error(readError(err, '加入书架失败'))
-  } finally {
-    addingBook.value = null
+  const data = await addToShelf.addRemoteBook(book, {
+    key: activeRemoteKey(book),
+    categoryIds: targetCategoryIds.value,
+    sourceId: activeRemoteSourceId(book),
+    sourceName: activeRemoteSourceName(book),
+  })
+  if (!data) return
+  if (shouldRead) {
+    overlay.closeBookInfo()
+    router.push({ name: 'reader', params: { id: data.id } })
+    return
   }
+  overlay.openBookInfo(data, {
+    sourceName: activeRemoteSourceName(book),
+    statusLabel: '已加入书架',
+    statusType: 'success',
+    progress: 0,
+    actions: buildBookInfoStartReadActions({ read: () => openExistingReader(data) }),
+  })
 }
 
 function findExistingBook(book) {

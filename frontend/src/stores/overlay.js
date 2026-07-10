@@ -5,6 +5,9 @@ export const useOverlayStore = defineStore('overlay', {
     bookInfoVisible: false,
     bookInfoBook: null,
     bookInfoOptions: {},
+    bookAddCategoryVisible: false,
+    bookAddCategoryIds: [],
+    bookAddCategoryResolve: null,
     bookEditVisible: false,
     bookEditBook: null,
     bookManageVisible: false,
@@ -37,6 +40,23 @@ export const useOverlayStore = defineStore('overlay', {
     },
     closeBookInfo() {
       this.bookInfoVisible = false
+    },
+    selectBookAddCategories(initialCategoryIds = []) {
+      if (this.bookAddCategoryResolve) {
+        this.finishBookAddCategories()
+      }
+      this.bookAddCategoryIds = normalizeCategoryIds(initialCategoryIds)
+      this.bookAddCategoryVisible = true
+      return new Promise(resolve => {
+        this.bookAddCategoryResolve = resolve
+      })
+    },
+    finishBookAddCategories(categoryIds = null) {
+      const resolve = this.bookAddCategoryResolve
+      this.bookAddCategoryResolve = null
+      this.bookAddCategoryVisible = false
+      this.bookAddCategoryIds = []
+      resolve?.(categoryIds === null ? null : normalizeCategoryIds(categoryIds))
     },
     openBookEdit(book) {
       this.bookEditBook = book
@@ -124,4 +144,9 @@ function normalizeSourceManageIntent(intent) {
   return ['manage', 'import', 'remote', 'health', 'debug'].includes(intent)
     ? intent
     : 'manage'
+}
+
+function normalizeCategoryIds(categoryIds) {
+  const values = Array.isArray(categoryIds) ? categoryIds : [categoryIds]
+  return [...new Set(values.map(Number).filter(id => Number.isInteger(id) && id > 0))]
 }

@@ -577,6 +577,15 @@ Status: audit completed on 2026-07-10. This is a compatibility gate: implementat
 4. **P1-D4 — API/data regression.** Expand Go/API contract coverage for category validation, user isolation, transactional delete cleanup, local refresh cache invalidation, update/follow field preservation, batch cache bounds and export formats. Do not alter persistent schemas unless a demonstrated compatibility gap requires a non-destructive migration.
 5. **Release gate.** Run front/back full tests, production build, and real-browser checks at 1440×900, 390×844 and 360×800. The browser probe must open BookInfo from shelf/search/explore/reader, exercise add/cancel/add-and-read, both management overlays, and assert no duplicate UI/route transition, no pointer leakage and no horizontal overflow.
 
+### P1-D1 implementation record: BookInfo add-to-shelf transaction
+
+Status: implemented and validated on 2026-07-10.
+
+- Added one global `OverlayBookAddToShelf` dialog and a cancellable Pinia transaction (`selectBookAddCategories` / `finishBookAddCategories`). It is fullscreen on compact UI, seeds the current search/explore category selection, accepts an intentionally empty selection, resolves cancellation without mutation, and closes/replaces an earlier pending transaction safely.
+- Added `useBookInfoAddToShelf`, the only remote BookInfo creation transaction. Search and Explore now use it to select categories before `POST /books/remote`; it normalizes ids, prevents cancellation from creating a book, updates the shared shelf only after success, and always clears the per-book action loading key.
+- Kept the current workspace category select as a convenience default rather than a silent bypass. Structured Vue controls and the current multi-category relation are allowed Vue 3/data-model adaptations of the upstream group-mask prompt.
+- Evidence: five new unit/static contracts cover cancellation, id normalization, failure cleanup, transaction replacement and Search/Explore ownership. The Index browser smoke passed at 1440×900, 390×844 and 360×800: legacy search redirect → BookInfo → add-and-read → category cancel (zero creates) → category confirm (one create) → Reader, followed by sidebar search/explore and overflow checks. P1-D2/P1-D3/D4 remain pending.
+
 ## Immediate P0 contract: continuous cross-chapter reading
 
 Status: implemented and validated on 2026-07-06.

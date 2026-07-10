@@ -1,6 +1,8 @@
 <template>
   <OverlayBookInfo />
 
+  <OverlayBookAddToShelf :is-mobile="isMobileOverlay" />
+
   <OverlayBookImport :is-mobile="isMobileOverlay" />
 
   <OverlaySources :is-mobile="isMobileOverlay" />
@@ -64,6 +66,7 @@ import {
   shouldUseMiniInterface,
 } from '../utils/responsive'
 import OverlayBackups from './overlays/OverlayBackups.vue'
+import OverlayBookAddToShelf from './overlays/OverlayBookAddToShelf.vue'
 import OverlayBookContentSearch from './overlays/OverlayBookContentSearch.vue'
 import OverlayBookGroups from './overlays/OverlayBookGroups.vue'
 import OverlayBookImport from './overlays/OverlayBookImport.vue'
