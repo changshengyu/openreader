@@ -11,6 +11,8 @@ export const useOverlayStore = defineStore('overlay', {
     bookGroupVisible: false,
     bookGroupMode: 'manage',
     importBookVisible: false,
+    sourceManageVisible: false,
+    sourceManageIntent: 'manage',
     bookmarkVisible: false,
     bookmarkBook: null,
     bookmarkFormVisible: false,
@@ -56,6 +58,14 @@ export const useOverlayStore = defineStore('overlay', {
     },
     openImportBook() {
       this.importBookVisible = true
+    },
+    openSourceManage(intent = 'manage') {
+      this.sourceManageIntent = normalizeSourceManageIntent(intent)
+      this.sourceManageVisible = true
+    },
+    closeSourceManage() {
+      this.sourceManageVisible = false
+      this.sourceManageIntent = 'manage'
     },
     openBookmark(book) {
       this.bookmarkBook = book
@@ -109,3 +119,9 @@ export const useOverlayStore = defineStore('overlay', {
     },
   },
 })
+
+function normalizeSourceManageIntent(intent) {
+  return ['manage', 'import', 'remote', 'health', 'debug'].includes(intent)
+    ? intent
+    : 'manage'
+}

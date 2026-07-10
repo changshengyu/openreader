@@ -1,7 +1,7 @@
 <template>
-  <section class="app-page sources-page">
+  <section class="app-page sources-page" :class="{ 'embedded-sources-page': embedded }">
     <header class="sources-head">
-      <div>
+      <div v-if="!embedded">
         <h1 class="app-page-title">书源管理</h1>
       </div>
       <div class="head-actions">
@@ -407,15 +407,19 @@ import {
   testSourceContent,
   testSourceSearch,
   updateSource,
-} from '../api/sources'
+} from '../../api/sources'
 import {
   sourceImportMessage,
   useSourceTransfer,
-} from '../composables/useSourceTransfer'
-import { useReaderStore } from '../stores/reader'
-import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
+} from '../../composables/useSourceTransfer'
+import { useReaderStore } from '../../stores/reader'
+import { currentViewportWidth, shouldUseMiniInterface } from '../../utils/responsive'
 
 const route = useRoute()
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+  intent: { type: String, default: 'manage' },
+})
 const reader = useReaderStore()
 const sources = ref([])
 const keyword = ref('')
@@ -624,7 +628,16 @@ onBeforeUnmount(() => {
 
 watch(
   () => [route.query.panel, route.query.action],
-  () => applyRouteAction(),
+  () => {
+    if (!props.embedded) applyRouteAction()
+  },
+)
+
+watch(
+  () => props.intent,
+  () => {
+    if (props.embedded) applyRouteAction()
+  },
 )
 
 watch(sourceGroupOptions, (items) => {
@@ -684,22 +697,34 @@ function clearSourceReloadTimer() {
 }
 
 function applyRouteAction() {
-  const signature = `${route.query.panel || ''}:${route.query.action || ''}`
+  const intent = sourceManageIntent()
+  const signature = props.embedded
+    ? `overlay:${intent}`
+    : `${route.query.panel || ''}:${route.query.action || ''}`
   if (!signature || signature === handledRouteAction.value) return
   handledRouteAction.value = signature
-  if (route.query.panel === 'remote') {
+  if (intent === 'remote') {
     showRemote.value = true
   }
-  if (route.query.action === 'health') {
+  if (intent === 'health') {
     failedOnly.value = true
     if (!healthSummary.value.total && !checking.value) checkInvalidSources()
   }
-  if (route.query.action === 'import') {
+  if (intent === 'import') {
     openSourceImportPicker()
   }
-  if (route.query.action === 'debug') {
+  if (intent === 'debug') {
     openFirstDebugSource()
   }
+}
+
+function sourceManageIntent() {
+  if (props.embedded) return props.intent
+  if (route.query.panel === 'remote') return 'remote'
+  if (route.query.action === 'import') return 'import'
+  if (route.query.action === 'health') return 'health'
+  if (route.query.action === 'debug') return 'debug'
+  return 'manage'
 }
 
 function handleResize() {

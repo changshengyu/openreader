@@ -459,6 +459,74 @@ Fixed upstream authority: `web/src/views/Index.vue` and the root dialogs in `web
 - Real-browser execution passed: `index-workspace-contract.mjs` covered old-link redirects, a second sidebar search in the same scene, BookInfo → add-and-read, Explore, shelf return, and horizontal-overflow checks at 1440×900, 390×844, and 360×800. The existing `index-mobile-sidebar-contract.mjs` also passed at 390×844 and 360×800, confirming the 260px width, 270px drag range, fixed bottom controls, and shelf geometry remain intact.
 - P1-B is therefore suitable for a local Docker release and user verification. P1-C/P1-D remain separate work: canonical source, local-store, WebDAV, user-space, and settings overlays have not yet been converged.
 
+## P1-C full audit: source-management workspace convergence
+
+Status: audit completed on 2026-07-10. This section is an implementation gate: no source-management application code changes are allowed until the listed state, route, and browser contracts are added.
+
+Fixed upstream authority: `web/src/views/Index.vue` methods `uploadBookSource`, `onSourceFileChange`, `loadRemoteBookSource`, `saveSourceList`, `showFailureBookSource`, `debugBookSource`, `editBookSource`, and the source import/manage Dialogs at `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
+
+### Upstream source workspace contract
+
+| Concern | Upstream evidence | Required OpenReader behavior |
+|---|---|---|
+| Ownership | The `Index.vue` sidebar opens `showBookSourceManageDialog`; it does not navigate to a Sources route. | Canonical source management must be a workspace overlay opened from `AppLayout`/Index, while `/sources` survives only as an intent redirect. |
+| Main manager | A single dialog owns grouped source filtering, source table, paging, source-to-shelf usage protection, add/edit, export, clear, restore-default, and batch selection. | Preserve one controller and one visible manager. Existing current-page table/mobile cards may be retained as a Vue 3 equivalent only after they are rehomed into the overlay. |
+| Local import | File input parses JSON; valid entries open a selection preview. User confirms selected rows. Invalid input shows a source-file error. | Preserve file selection/preview/confirmation, JSON shapes, source tags, cancellation and reload broadcast. Do not directly import a file without the preview selection. |
+| Remote import | Prompt remembers the last remote URL, fetches remote JSON, then opens the same selection preview as local import. | Keep one remote URL dialog and the same preview/confirm transaction. Persisting the last URL per authenticated user is a compatible current-runtime adaptation. |
+| Failure detection | Upstream obtains invalid-source errors, opens the same manager in failure view, and supports disabling/removing failed rows. | Keep current bounded batch test and health summary as a security/runtime improvement, but surface it inside the source overlay rather than a route page. |
+| Debug | Upstream opens a separate source-debug page. | The current in-overlay three-step debug dialog (search → TOC → content) is an allowed improvement if it keeps source rules and request results unmodified and opens without leaving Index. |
+| Mobile | Upstream source dialogs are fullscreen under collapsed/mobile UI; side actions do not create a second product page. | Source overlay is fullscreen/appropriate mobile popover and must consume clicks. Source manager opening does not implicitly close the Index sidebar unless the specific upstream action does. |
+| Events | Successful save/import/default/restore causes source list refresh. | Keep `sources_update` WebSocket event and `openreader:sources-update` browser event with debounced reload; no stale list after an overlay transaction. |
+
+### Current OpenReader mapping and classification
+
+| Layer | Current evidence | Difference from upstream | Classification |
+|---|---|---|---|
+| Canonical UI | `frontend/src/views/Sources.vue` is a full application page and `AppLayout.vue` routes sidebar actions to `/sources` with `panel`/`action` query fields. | Separates source management from the Index workspace. | `must-fix` |
+| Controller/UI capability | `Sources.vue` already owns add/edit, grouped search, paging, selection, usage guard, batch actions, defaults, health state, file/remote preview and three-step debug. | The capability is richer but entangled with page route lifecycle. | `partial`; extract/rehome, do not duplicate |
+| Transfer transaction | `useSourceTransfer.js` provides one local/remote preview and selected-source save path. | Functionally close to upstream and already avoids direct blind imports. | `aligned` |
+| Source editor | Current editor exposes compatible rule fields and text replacements in a responsive drawer. | Upstream JSON editor is less structured. Vue form/drawer is a user-safety improvement. | `acceptable-change` |
+| Health/failure | Current `/sources/batch-test` performs bounded concurrent tests and returns explicit rows; `failedOnly`/disable-failed are page controls. | Upstream failure state is less structured. | `acceptable-change` in API/runtime; `must-fix` for overlay ownership |
+| Debug | Current `/sources/:id/test`, `/test-chapter`, `/test-content` dialog is more guided than the upstream external debug page. | Same parser semantics need preserved; navigation is intentionally improved. | `acceptable-change` |
+| Backend persistence | `models.BookSource`, `backend/api/sources.go`, backup restore and source-update broadcast retain legacy `bookSource*`, rule, header, group, default and import shapes. | Go/SQLite/multi-user authorization differs from upstream JavaScript/local storage. | `acceptable-change` and must retain |
+| Legacy URL | `/sources`, `/sources?action=import`, `/sources?panel=remote`, `/sources?action=health`, `/sources?action=debug` are live routes. | They need to become root-workspace intents without discarding query compatibility. | `must-fix` |
+
+### API and data contract to retain
+
+| Operation | OpenReader method/path | Required side effect/error semantics |
+|---|---|---|
+| List/create/update/delete | `GET/POST /sources`, `GET/PUT/DELETE /sources/:id` | Source-edit permission for writes; list includes `usedBookCount`; deleting a used source returns a conflict/guard rather than destroying referenced books. |
+| Defaults | `GET /sources/default`, `POST /sources/default/save`, `POST /sources/default/restore` | Save writes the current compatible source snapshot; restore is transactional replacement and broadcasts `restore-default`. |
+| Batch | `POST /sources/batch` | Supports `enable`, `disable`, `delete`, `group`; caps ids, reports `affected`/`skippedUsed`, and broadcasts. |
+| File import/export | `POST /sources/import`, `GET /sources/export?sourceIds=` | Accept legacy array, `bookSources`, `sources`, or single-source JSON; export retains legacy field names/rules and source ordering. |
+| Remote import | `POST /sources/remote-preview`, `POST /sources/remote` | Preview is read-only; only confirmed import mutates data and broadcasts `remote-import`. Remote fetching remains bounded by engine policy. |
+| Health/debug | `POST /sources/batch-test`, `POST /sources/:id/test`, `/test-chapter`, `/test-content` | Health bounds timeout and concurrency; debug must return parser data/error without changing the source. |
+| Sync | `sources_update` WebSocket → `openreader:sources-update` | Overlay and sidebar source caches invalidate/reload without a route reload. |
+
+### P1-C canonical target and migration batches
+
+1. **P1-C1 — Overlay state and controller extraction.** Move the reusable manager body and its controller from `Sources.vue` into a shared source-manager component/composable. Add a single `overlay.sourceManageVisible` plus `overlay.sourceManageIntent = manage|import|remote|health|debug`; no API or parser changes.
+2. **P1-C2 — Index entry convergence.** Change all source sidebar items to overlay actions. The root workspace remains mounted, source operations do not route away, and `/sources` query variants redirect to `/?overlay=sources&sourceAction=…`.
+3. **P1-C3 — Lifecycle/mobile regression.** Retire the full Sources page structure, preserve the source editor/import/remote/debug nested interactions, and verify mobile fullscreen/pointer isolation, source-update reload and legacy URLs.
+
+### Required pre-implementation contracts
+
+- Unit state contract for source-manager intent replacement, close/reset behavior, and route-intent normalization (`manage`, `import`, `remote`, `health`, `debug`).
+- Static route contract: canonical `/` owns source overlay intent after P1-C2; old `/sources` fields map one-for-one and preserve unrelated query parameters.
+- Reuse/update source transfer tests so local and remote imports always preview before mutation and keep selected-source counts/tags.
+- Preserve backend API tests for legacy import/export, default snapshot restore, used-source deletion guard, batch bounds, remote preview/import, health timeout/concurrency, and three-step debug. No backend API rewrite is authorized in P1-C unless a documented contract gap is found.
+- Real-browser smoke: desktop 1440×900 and mobile 390×844/360×800 sidebar source-management action → overlay → import/remote/health/debug intent → close → same root route; assert no pointer leakage, no horizontal overflow, and source-update refresh.
+
+### P1-C implementation record
+
+Status: implemented and validated on 2026-07-10.
+
+- **C1 — shared controller ownership.** The former route-owned `Sources.vue` has been moved to `frontend/src/components/workspace/SourceManager.vue`. `OverlaySources.vue` is the only host and owns the single Pinia state pair `sourceManageVisible` / `sourceManageIntent`. Reopening with another intent replaces the intent; closing resets it to `manage`.
+- **C2 — Index convergence and old URLs.** Every AppLayout source action opens that shared overlay. `/sources`, `/sources?action=import|health|debug`, and `/sources?panel=remote` now redirect to the root workspace with `overlay=sources` and a normalized `sourceAction`, retaining all unrelated query keys. Closing the overlay removes only these intent keys.
+- **C3 — lifecycle and mobile behavior.** The manager is full-screen on compact screens, remains in the same root-workspace scene, receives `openreader:sources-update` reload events, and does not close or receive clicks through to the mobile sidebar. Local and remote import continue to use a selection preview before any mutation; health and three-step debug remain nested manager dialogs.
+- **Allowed differences.** The current Vue 3/Pinia dialog, structured editor, bounded health test, guided in-overlay debug, Go/SQLite authorization, and user-scoped persisted remote URL are retained runtime/safety improvements. No book-source API, parser, database, or backup contract changed in P1-C.
+- **Evidence.** Unit contracts cover resettable intents, one shared host, old-route normalization, and all Index actions. `scripts/smoke/source-workspace-contract.mjs` passed at 1440×900, 390×844, and 360×800: legacy remote/import/health/debug intents, manager close/query cleanup, mobile sidebar persistence and no click-through, import preview/confirmation, source-update reload, and no horizontal overflow. Full frontend tests (311), production build, and backend tests also pass.
+
 ## Immediate P0 contract: continuous cross-chapter reading
 
 Status: implemented and validated on 2026-07-06.

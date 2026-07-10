@@ -3,6 +3,8 @@
 
   <OverlayBookImport :is-mobile="isMobileOverlay" />
 
+  <OverlaySources :is-mobile="isMobileOverlay" />
+
   <OverlayBookManagement
     :direction="wideDrawerDirection"
     :size="wideDrawerSize"
@@ -72,6 +74,7 @@ import OverlayBookmarkForm from './overlays/OverlayBookmarkForm.vue'
 import OverlayLocalStore from './overlays/OverlayLocalStore.vue'
 import OverlayReplaceRules from './overlays/OverlayReplaceRules.vue'
 import OverlayRSS from './overlays/OverlayRSS.vue'
+import OverlaySources from './overlays/OverlaySources.vue'
 import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
 import OverlayWebDAV from './overlays/OverlayWebDAV.vue'
 

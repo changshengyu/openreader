@@ -240,12 +240,12 @@ const navSections = computed(() => [
   {
     title: '书源设置',
     items: [
-      { key: 'sources', label: '书源管理', route: 'sources' },
+      { key: 'sources', label: '书源管理', action: () => overlay.openSourceManage('manage') },
       { key: 'discover', label: '探索书源', action: beginWorkspaceExplore, closeMobile: true },
-      { key: 'importSources', label: '导入书源', route: 'sources', query: { action: 'import' } },
-      { key: 'remoteSources', label: '远程书源', route: 'sources', query: { panel: 'remote' } },
-      { key: 'sourceHealth', label: '失效书源', route: 'sources', query: { action: 'health' } },
-      { key: 'sourceDebug', label: '调试书源', route: 'sources', query: { action: 'debug' } },
+      { key: 'importSources', label: '导入书源', action: () => overlay.openSourceManage('import') },
+      { key: 'remoteSources', label: '远程书源', action: () => overlay.openSourceManage('remote') },
+      { key: 'sourceHealth', label: '失效书源', action: () => overlay.openSourceManage('health') },
+      { key: 'sourceDebug', label: '调试书源', action: () => overlay.openSourceManage('debug') },
     ],
   },
   {
@@ -488,6 +488,17 @@ async function openRouteBookInfoOverlay() {
   }
 }
 
+function openRouteSourceManageOverlay() {
+  if (route.name === 'reader' || route.query.overlay !== 'sources') return
+  overlay.openSourceManage(route.query.sourceAction)
+}
+
+function clearRouteSourceManageOverlayIntent() {
+  if (overlay.sourceManageVisible || route.query.overlay !== 'sources') return
+  const { overlay: _overlay, sourceAction: _sourceAction, ...query } = route.query
+  router.replace({ name: 'home', query })
+}
+
 function routeBookProgress(book) {
   return reader.progressByBook?.[book?.id] || book?.progress || null
 }
@@ -556,6 +567,20 @@ watch(
     openRouteBookInfoOverlay()
   },
   { immediate: true },
+)
+
+watch(
+  () => [route.name, route.query.overlay, route.query.sourceAction, userStore.token],
+  () => {
+    if (!userStore.token) return
+    openRouteSourceManageOverlay()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => overlay.sourceManageVisible,
+  () => clearRouteSourceManageOverlayIntent(),
 )
 
 onMounted(() => {

@@ -5,7 +5,12 @@ const Login = () => import('../views/Login.vue')
 const Reader = () => import('../views/Reader.vue')
 const LocalStore = () => import('../views/LocalStore.vue')
 const Settings = () => import('../views/Settings.vue')
-const Sources = () => import('../views/Sources.vue')
+
+function sourceOverlayIntentFromLegacy(to) {
+  if (to.query.panel === 'remote') return 'remote'
+  if (['import', 'health', 'debug'].includes(to.query.action)) return to.query.action
+  return 'manage'
+}
 
 const router = createRouter({
   history: createWebHistory(),
@@ -35,7 +40,21 @@ const router = createRouter({
       }),
     },
     { path: '/local-store', name: 'local-store', component: LocalStore },
-    { path: '/sources', name: 'sources', component: Sources },
+    {
+      path: '/sources',
+      name: 'sources',
+      redirect: to => {
+        const { panel, action, ...query } = to.query
+        return {
+          path: '/',
+          query: {
+            ...query,
+            overlay: 'sources',
+            sourceAction: sourceOverlayIntentFromLegacy(to),
+          },
+        }
+      },
+    },
     { path: '/settings', name: 'settings', component: Settings },
     {
       path: '/books/:id',
