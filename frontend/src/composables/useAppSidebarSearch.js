@@ -63,11 +63,7 @@ export function useAppSidebarSearch(options) {
       options.onWarning('请输入关键词进行搜索')
       return
     }
-    options.router.push({
-      name: 'search',
-      query: searchRouteQuery(keyword),
-    })
-    options.afterNavigate?.()
+    openSearchWorkspace(searchRouteQuery(keyword))
   }
 
   function goSearchRoute(mode = 'remote') {
@@ -75,19 +71,27 @@ export function useAppSidebarSearch(options) {
     const query = mode === 'local'
       ? localSearchRouteQuery(keyword)
       : searchRouteQuery(keyword)
+    openSearchWorkspace(query)
+  }
+
+  function openSearchWorkspace(query) {
+    if (typeof options.onWorkspaceSearch === 'function') {
+      options.onWorkspaceSearch(query)
+      return
+    }
     options.router.push({ name: 'search', query })
     options.afterNavigate?.()
   }
 
   function clearSearchQuery() {
     if (
-      options.route.name !== 'search' ||
+      !isSearchScene(options.route) ||
       options.route.query.q === undefined
     ) {
       return
     }
     const { q, ...query } = options.route.query
-    options.router.replace({ name: 'search', query })
+    options.router.replace({ name: options.route.name === 'home' ? 'home' : 'search', query })
   }
 
   async function loadSources() {
@@ -136,7 +140,7 @@ export function useAppSidebarSearch(options) {
   watch(
     () => [options.route.name, options.route.query.q],
     ([name, value]) => {
-      if (name === 'search') {
+      if (name === 'search' || (name === 'home' && options.route.query.workspace === 'search')) {
         quickSearch.value = typeof value === 'string' ? value : ''
       } else if (name !== 'home') {
         quickSearch.value = ''
@@ -159,6 +163,7 @@ export function useAppSidebarSearch(options) {
     localSearchRouteQuery,
     goSearch,
     goSearchRoute,
+    openSearchWorkspace,
     clearSearchQuery,
     loadSources,
     refreshSourcesCache,
@@ -166,4 +171,8 @@ export function useAppSidebarSearch(options) {
     sourceCacheKey,
     handleSourcesUpdated,
   }
+}
+
+function isSearchScene(route) {
+  return route?.name === 'search' || (route?.name === 'home' && route?.query?.workspace === 'search')
 }

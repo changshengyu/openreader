@@ -46,6 +46,7 @@ test('uses one upstream-style result scene for shelf, search, explore, and back-
   workspace.rememberResultScroll(318)
 
   assert.equal(workspace.mode, 'search')
+  assert.equal(workspace.searchRevision, 1)
   assert.deepEqual(workspace.search, {
     keyword: '雪中悍刀行',
     mode: 'remote',
@@ -89,6 +90,7 @@ test('uses one upstream-style result scene for shelf, search, explore, and back-
   })
 
   assert.equal(workspace.mode, 'explore')
+  assert.equal(workspace.exploreRevision, 0, 'applying a result page must not retrigger the Explore entry flow')
   assert.deepEqual(workspace.resultRows.map(row => row.title), ['诡秘之主'])
   assert.deepEqual(workspace.explore, {
     sourceId: 7,

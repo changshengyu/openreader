@@ -69,6 +69,8 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
     resultRows: [],
     continuation: freshContinuation(),
     resultScrollTop: 0,
+    searchRevision: 0,
+    exploreRevision: 0,
     search: freshSearch(),
     explore: freshExplore(),
   }),
@@ -89,6 +91,18 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
         concurrent: normalizedPositivePage(intent.concurrent, 60),
       }
       this.clearResultState()
+      this.searchRevision += 1
+    },
+    beginExplore(intent = {}) {
+      this.mode = 'explore'
+      this.explore = {
+        sourceId: intent.sourceId ?? '',
+        sourceGroup: normalizedText(intent.sourceGroup),
+        url: normalizedText(intent.url),
+        name: normalizedText(intent.name),
+      }
+      this.clearResultState()
+      this.exploreRevision += 1
     },
     showExploreResults(rows, intent = {}) {
       this.mode = 'explore'

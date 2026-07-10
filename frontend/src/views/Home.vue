@@ -1,5 +1,7 @@
 <template>
-  <section class="app-page shelf-page" :class="{ 'mobile-shelf': isMobileShelf }">
+  <SearchWorkspace v-if="workspace.isSearchResult" embedded @back-to-shelf="backToShelf" />
+  <DiscoverWorkspace v-else-if="workspace.isExploreResult" embedded @back-to-shelf="backToShelf" />
+  <section v-else class="app-page shelf-page" :class="{ 'mobile-shelf': isMobileShelf }">
     <div class="shelf-title">
       <div class="shelf-title-main">
         <button v-if="isMobileShelf" class="mobile-menu-trigger" type="button" aria-label="打开侧边栏" @click.stop="toggleMobileNavigation">
@@ -8,7 +10,7 @@
         <strong>书架 ({{ totalBookCount }})</strong>
       </div>
       <div class="title-actions">
-        <button v-if="isNormalPage" type="button" @click="router.push({ name: 'discover' })">书海</button>
+        <button v-if="isNormalPage" type="button" @click="openExploreWorkspace">书海</button>
         <button v-if="isNormalPage" type="button" @click="overlay.openRSS()">RSS</button>
         <button type="button" @click="refreshShelf">
           {{ refreshLoading ? '刷新中...' : '刷新' }}
@@ -118,6 +120,8 @@ import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
+import SearchWorkspace from './Search.vue'
+import DiscoverWorkspace from './Discover.vue'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
@@ -198,12 +202,17 @@ const emptyText = computed(() => {
 })
 
 onMounted(async () => {
-  workspace.backToShelf()
   updateViewportFlags()
   window.addEventListener('resize', updateViewportFlags)
   window.addEventListener('orientationchange', updateViewportFlags)
   await warmHomeShelf()
 })
+
+watch(
+  () => [route.name, route.query.workspace, route.query.q, route.query.mode, route.query.searchType, route.query.group, route.query.sourceId, route.query.concurrent],
+  () => applyRouteWorkspaceIntent(),
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportFlags)
@@ -351,6 +360,53 @@ function updateViewportFlags() {
 
 function toggleMobileNavigation() {
   window.dispatchEvent(new CustomEvent('openreader:toggle-mobile-nav'))
+}
+
+function openExploreWorkspace() {
+  workspace.beginExplore()
+}
+
+function backToShelf() {
+  workspace.backToShelf()
+  if (route.query.workspace === undefined) return
+  const {
+    workspace: _workspace,
+    q: _query,
+    mode: _mode,
+    searchType: _searchType,
+    group: _group,
+    sourceId: _sourceId,
+    concurrent: _concurrent,
+    url: _url,
+    name: _name,
+    ...query
+  } = route.query
+  router.replace({ name: 'home', query })
+}
+
+function applyRouteWorkspaceIntent() {
+  if (route.name !== 'home') return
+  if (route.query.workspace === 'search') {
+    workspace.beginSearch({
+      keyword: route.query.q,
+      mode: route.query.mode,
+      searchType: route.query.searchType,
+      group: route.query.group,
+      sourceId: route.query.sourceId,
+      concurrent: route.query.concurrent,
+    })
+    return
+  }
+  if (route.query.workspace === 'explore') {
+    workspace.beginExplore({
+      sourceId: route.query.sourceId,
+      sourceGroup: route.query.group,
+      url: route.query.url,
+      name: route.query.name,
+    })
+    return
+  }
+  if (!workspace.showingResults) workspace.backToShelf()
 }
 
 async function warmHomeShelf() {

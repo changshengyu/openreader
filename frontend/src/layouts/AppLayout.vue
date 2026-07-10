@@ -149,6 +149,7 @@ import { useOverlayStore } from '../stores/overlay'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
+import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import { useAppCacheManagement } from '../composables/useAppCacheManagement'
 import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppRecentReading } from '../composables/useAppRecentReading'
@@ -170,6 +171,7 @@ const overlay = useOverlayStore()
 const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
+const workspace = useIndexWorkspaceStore()
 const offline = ref(false)
 const healthInfo = ref(null)
 const routeBookInfoLoadingId = ref(null)
@@ -239,7 +241,7 @@ const navSections = computed(() => [
     title: '书源设置',
     items: [
       { key: 'sources', label: '书源管理', route: 'sources' },
-      { key: 'discover', label: '探索书源', route: 'discover' },
+      { key: 'discover', label: '探索书源', action: beginWorkspaceExplore, closeMobile: true },
       { key: 'importSources', label: '导入书源', route: 'sources', query: { action: 'import' } },
       { key: 'remoteSources', label: '远程书源', route: 'sources', query: { panel: 'remote' } },
       { key: 'sourceHealth', label: '失效书源', route: 'sources', query: { action: 'health' } },
@@ -249,7 +251,7 @@ const navSections = computed(() => [
   {
     title: '书架设置',
     items: [
-      { key: 'home', label: '书架', route: 'home' },
+      { key: 'home', label: '书架', action: goHome, closeMobile: true },
       { key: 'bookManage', label: '书籍管理', action: () => overlay.openBookManage() },
       { key: 'bookGroup', label: '分组管理', action: () => overlay.openBookGroup('manage') },
       { key: 'importBook', label: '导入书籍', action: () => overlay.openImportBook() },
@@ -316,6 +318,7 @@ const {
   removeBrowserCache,
   getUserScope: currentUserScope,
   onWarning: message => ElMessage.warning(message),
+  onWorkspaceSearch: beginWorkspaceSearch,
   afterNavigate: () => {
     if (isMobileShell.value) mobileNavigationVisible.value = false
   },
@@ -329,20 +332,60 @@ const appVersionLabel = computed(() => {
   return commit || 'dev'
 })
 function goHome() {
-  router.push({ name: 'home' })
+  workspace.backToShelf()
+  if (route.name !== 'home') {
+    router.push({ name: 'home' })
+    return
+  }
+  if (route.query.workspace !== undefined) {
+    router.replace({ name: 'home', query: withoutWorkspaceQuery(route.query) })
+  }
 }
 
 function runNavAction(item) {
   if (item.action) {
     item.action()
-    if (isMobileShell.value) mobileNavigationVisible.value = false
+    if (isMobileShell.value && item.closeMobile) mobileNavigationVisible.value = false
     return
   }
   if (item.route) {
     const query = navRouteQuery(item)
     router.push({ name: item.route, query })
-    if (isMobileShell.value) mobileNavigationVisible.value = false
+    if (isMobileShell.value && item.closeMobile) mobileNavigationVisible.value = false
   }
+}
+
+function beginWorkspaceSearch(query = {}) {
+  workspace.beginSearch({
+    keyword: query.q || '',
+    mode: query.mode,
+    searchType: query.searchType,
+    group: query.group,
+    sourceId: query.sourceId,
+    concurrent: query.concurrent,
+  })
+  if (route.name !== 'home') router.push({ name: 'home' })
+}
+
+function beginWorkspaceExplore() {
+  workspace.beginExplore()
+  if (route.name !== 'home') router.push({ name: 'home' })
+}
+
+function withoutWorkspaceQuery(query = {}) {
+  const {
+    workspace: _workspace,
+    q: _query,
+    mode: _mode,
+    searchType: _searchType,
+    group: _group,
+    sourceId: _sourceId,
+    concurrent: _concurrent,
+    url: _url,
+    name: _name,
+    ...rest
+  } = query
+  return rest
 }
 
 function navRouteQuery(item) {

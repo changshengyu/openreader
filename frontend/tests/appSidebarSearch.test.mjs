@@ -92,6 +92,28 @@ test('builds remote and local routes from the active search preference', () => {
   ])
 })
 
+test('uses the shared Index workspace callback without replacing the current route scene', () => {
+  const fixture = createController({
+    onWorkspaceSearch: query => fixture.calls.push(['workspace-search', query]),
+  })
+  fixture.controller.quickSearch.value = '  工作台搜索  '
+  fixture.preferences.search.searchType = 'single'
+  fixture.preferences.search.sourceId = 8
+
+  fixture.controller.goSearch()
+  fixture.controller.goSearchRoute('local')
+
+  assert.deepEqual(fixture.calls, [
+    ['workspace-search', {
+      q: '工作台搜索',
+      searchType: 'single',
+      concurrent: 60,
+      sourceId: 8,
+    }],
+    ['workspace-search', { mode: 'local', q: '工作台搜索' }],
+  ])
+})
+
 test('warns for a blank primary search and synchronizes route keywords', async () => {
   const fixture = createController()
   fixture.controller.goSearch()

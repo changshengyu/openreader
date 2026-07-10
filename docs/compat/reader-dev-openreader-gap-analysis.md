@@ -448,6 +448,16 @@ Fixed upstream authority: `web/src/views/Index.vue` and the root dialogs in `web
 - Tests lock the `shelf → search → explore → shelf` transitions, continuation/scroll semantics, route-independent store boundary, and legacy-page adapter ownership. Full frontend regression and production build pass.
 - Deliberately unfinished: sidebar search and Explore still navigate to legacy pages. Replacing those navigation transitions with the canonical `/` scene, rendering the shared results there, and converting `/search`/`/discover` to redirects are P1-B work; this record does not claim those behaviors are aligned yet.
 
+### P1-B implementation record (2026-07-10, browser gate pending)
+
+- Canonical `/` now owns all three Index body modes. `Home.vue` renders the shelf, embedded Search, or embedded Explore from the shared `indexWorkspace` state without changing the `AppLayout` sidebar or remounting a separate route scene.
+- `/search` and `/discover` are compatibility redirects to `/?workspace=search` and `/?workspace=explore`; all existing query parameters are retained. Returning to the shelf, branding, and the sidebar shelf action clear only the workspace compatibility parameters so refresh cannot reopen an obsolete result scene.
+- Sidebar searches call a workspace callback rather than `router.push`; the sidebar remains in its current mobile state for search. Explore intentionally carries `closeMobile: true`, matching upstream's Explore-trigger close behavior. The shelf is still the only ordinary workspace click that closes the mobile sidebar.
+- Search and Explore retain their existing Go API clients, shared BookInfo dialog, add/read actions, result deduplication, and source selection logic. A request revision makes a second sidebar search while already on the Search body refresh the existing component instead of requiring a remount.
+- Added `scripts/smoke/index-workspace-contract.mjs` for `/search` and `/discover` compatibility redirects, sidebar second-search, BookInfo → add-and-read, Explore, shelf return, and 1440×900 / 390×844 / 360×800 overflow checks. Its syntax is validated.
+- Non-browser validation passed: frontend 307 tests, frontend production build, backend `go test ./...`, `git diff --check`, and smoke script syntax validation.
+- Browser execution is **not yet recorded as passed**: the local Chrome command was rejected by the environment's automatic approval service because the workspace reported no remaining credits. No workaround was attempted. This blocks Docker publication for P1-B until the same smoke script and the existing mobile sidebar browser smoke can run successfully.
+
 ## Immediate P0 contract: continuous cross-chapter reading
 
 Status: implemented and validated on 2026-07-06.
