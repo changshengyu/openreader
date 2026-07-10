@@ -586,6 +586,17 @@ Status: implemented and validated on 2026-07-10.
 - Kept the current workspace category select as a convenience default rather than a silent bypass. Structured Vue controls and the current multi-category relation are allowed Vue 3/data-model adaptations of the upstream group-mask prompt.
 - Evidence: five new unit/static contracts cover cancellation, id normalization, failure cleanup, transaction replacement and Search/Explore ownership. The Index browser smoke passed at 1440×900, 390×844 and 360×800: legacy search redirect → BookInfo → add-and-read → category cancel (zero creates) → category confirm (one create) → Reader, followed by sidebar search/explore and overflow checks. P1-D2/P1-D3/D4 remain pending.
 
+### P1-D2/D3 implementation record: BookManage and BookGroup dialog shells
+
+Status: implemented and validated on 2026-07-10.
+
+- **D2 — BookManage.** `OverlayBookManagement.vue` now uses one root-workspace `el-dialog`, with a bounded desktop width and `fullscreen` at the compact breakpoint. The old side/bottom Drawer shell and direction/size coupling have been removed. `useOverlayBookManagement`, the desktop table, mobile cards, search, selection, cache/export operations and batch footer are retained as the one existing management controller rather than duplicated into a route or second scene.
+- **D3 — BookGroup.** `OverlayBookGroups.vue` now hosts both `set` and `manage` modes in one root-workspace `el-dialog`, again fullscreen on compact UI. The shared category controller, preselected groups, confirmation/cancel, non-empty delete guard, visibility toggling, drag-sort lifecycle and BookInfo update event remain intact; the previous narrow Drawer shell is removed.
+- **Overlay ownership.** `GlobalOverlayHost.vue` supplies the shared compact-mode decision to both dialogs. Opening either workspace tool does not navigate away from `/`, and closing it does not manufacture a second workspace route.
+- **Allowed differences.** Vue 3/Element Plus dialogs replace the upstream Vue 2 shell; OpenReader retains responsive mobile cards for book management and user-scoped many-to-many category rows instead of the upstream category bit mask. These are implementation/data adaptations, not separate user flows.
+- **Evidence.** `frontend/tests/bookManagementDialogContract.test.mjs` and `frontend/tests/bookGroupDialogContract.test.mjs` lock the single-dialog/fullscreen host contract. Existing `overlayBookManagement.test.mjs` covers selection, category batch changes, cache/clear, delete and export; `overlayBookGroups.test.mjs` covers set/save/cancel, deletion guard, visibility, sort persistence and lifecycle. `scripts/smoke/book-management-dialog-contract.mjs` passed at 1440×900, 390×844 and 360×800: both dialogs open/close in the root workspace without horizontal overflow, both are fullscreen on compact screens, panel clicks do not close the mobile sidebar, and BookInfo opens above BookManage then closes without closing it.
+- **Remaining P1-D work.** D4 still must extend Go/API/data coverage for category validation, multi-user isolation, delete cleanup, local-refresh cache invalidation, follow/update field preservation, cache bounds and export formats before the entire shelf-operation module can claim parity.
+
 ## Immediate P0 contract: continuous cross-chapter reading
 
 Status: implemented and validated on 2026-07-06.

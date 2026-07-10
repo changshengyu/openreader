@@ -1,59 +1,62 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.bookManageVisible"
     title="书架管理"
-    :direction="direction"
-    :size="size"
-    class="global-manage-drawer"
+    width="min(1180px, calc(100vw - 48px))"
+    :fullscreen="isMobile"
+    destroy-on-close
+    class="global-book-manage-dialog"
   >
-    <BookManagementToolbar
-      v-model="manageKeyword"
-      @select-all="selectAllManagedBooks"
-      @clear-selection="clearManagedSelection"
-    />
+    <section class="book-manage-dialog-body">
+      <BookManagementToolbar
+        v-model="manageKeyword"
+        @select-all="selectAllManagedBooks"
+        @clear-selection="clearManagedSelection"
+      />
 
-    <BookManagementDesktopTable
-      :books="filteredManagedBooks"
-      :caching-book-id="cachingBookId"
-      :category-name="categoryName"
-      :progress-label="progressLabel"
-      :server-cache-count="serverCacheCount"
-      :local-cache-count="localCacheCount"
-      @selection-change="onManageSelectionChange"
-      @open-info="overlay.openBookInfo"
-      @open-edit="overlay.openBookEdit"
-      @set-group="setBookGroup"
-      @cache="cacheBook"
-      @export="exportBook"
-    />
+      <BookManagementDesktopTable
+        :books="filteredManagedBooks"
+        :caching-book-id="cachingBookId"
+        :category-name="categoryName"
+        :progress-label="progressLabel"
+        :server-cache-count="serverCacheCount"
+        :local-cache-count="localCacheCount"
+        @selection-change="onManageSelectionChange"
+        @open-info="overlay.openBookInfo"
+        @open-edit="overlay.openBookEdit"
+        @set-group="setBookGroup"
+        @cache="cacheBook"
+        @export="exportBook"
+      />
 
-    <BookManagementMobileList
-      :books="filteredManagedBooks"
-      :selected-book-ids="selectedBookIds"
-      :caching-book-id="cachingBookId"
-      :category-name="categoryName"
-      :progress-label="progressLabel"
-      :server-cache-count="serverCacheCount"
-      :local-cache-count="localCacheCount"
-      @toggle-selection="toggleManagedBook"
-      @open-info="overlay.openBookInfo"
-      @open-edit="overlay.openBookEdit"
-      @set-group="setBookGroup"
-      @cache="cacheBook"
-      @export="exportBook"
-    />
+      <BookManagementMobileList
+        :books="filteredManagedBooks"
+        :selected-book-ids="selectedBookIds"
+        :caching-book-id="cachingBookId"
+        :category-name="categoryName"
+        :progress-label="progressLabel"
+        :server-cache-count="serverCacheCount"
+        :local-cache-count="localCacheCount"
+        @toggle-selection="toggleManagedBook"
+        @open-info="overlay.openBookInfo"
+        @open-edit="overlay.openBookEdit"
+        @set-group="setBookGroup"
+        @cache="cacheBook"
+        @export="exportBook"
+      />
 
-    <BookManagementBatchFooter
-      :categories="bookshelf.categories"
-      :selected-count="selectedBookIds.length"
-      :busy="batchBusy"
-      @delete-selected="batchDeleteBooks"
-      @add-category="batchAddCategory"
-      @remove-category="batchRemoveCategory"
-      @more-command="handleBatchMoreCommand"
-      @close="overlay.bookManageVisible = false"
-    />
-  </el-drawer>
+      <BookManagementBatchFooter
+        :categories="bookshelf.categories"
+        :selected-count="selectedBookIds.length"
+        :busy="batchBusy"
+        @delete-selected="batchDeleteBooks"
+        @add-category="batchAddCategory"
+        @remove-category="batchRemoveCategory"
+        @more-command="handleBatchMoreCommand"
+        @close="overlay.bookManageVisible = false"
+      />
+    </section>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -79,13 +82,9 @@ import BookManagementMobileList from './BookManagementMobileList.vue'
 import BookManagementToolbar from './BookManagementToolbar.vue'
 
 defineProps({
-  direction: {
-    type: String,
-    required: true,
-  },
-  size: {
-    type: [String, Number],
-    required: true,
+  isMobile: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -212,3 +211,11 @@ function readError(error, fallback) {
     fallback
 }
 </script>
+
+<style scoped>
+.book-manage-dialog-body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+</style>

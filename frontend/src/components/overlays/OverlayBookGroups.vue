@@ -1,122 +1,125 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.bookGroupVisible"
     :title="overlay.bookGroupMode === 'set' ? '设置分组' : '分组管理'"
-    :direction="direction"
-    :size="size"
-    class="global-book-group-drawer"
+    width="min(760px, calc(100vw - 48px))"
+    :fullscreen="isMobile"
+    destroy-on-close
+    class="global-book-group-dialog"
     @opened="handleOpened"
     @closed="destroySortable"
   >
-    <template v-if="overlay.bookGroupMode === 'set'">
-      <el-table
-        :data="groupSetRows"
-        row-key="id"
-        class="group-set-table"
-        @row-click="toggleSelection"
-      >
-        <el-table-column width="46">
-          <template #default="{ row }">
-            <el-checkbox
-              :model-value="isSelected(row)"
-              @change="() => toggleSelection(row)"
-              @click.stop
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="分组名">
-          <template #default="{ row }">
-            <span class="group-set-name">
-              <span>{{ row.name }}</span>
-              <small>{{ row.description }}</small>
-            </span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="manage-footer group-set-footer">
-        <el-button
-          type="primary"
-          :loading="settingCategorySaving"
-          @click="saveSetting"
+    <section class="book-group-dialog-body">
+      <template v-if="overlay.bookGroupMode === 'set'">
+        <el-table
+          :data="groupSetRows"
+          row-key="id"
+          class="group-set-table"
+          @row-click="toggleSelection"
         >
-          确认
-        </el-button>
-        <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
-      </div>
-    </template>
+          <el-table-column width="46">
+            <template #default="{ row }">
+              <el-checkbox
+                :model-value="isSelected(row)"
+                @change="() => toggleSelection(row)"
+                @click.stop
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="分组名">
+            <template #default="{ row }">
+              <span class="group-set-name">
+                <span>{{ row.name }}</span>
+                <small>{{ row.description }}</small>
+              </span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="manage-footer group-set-footer">
+          <el-button
+            type="primary"
+            :loading="settingCategorySaving"
+            @click="saveSetting"
+          >
+            确认
+          </el-button>
+          <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
+        </div>
+      </template>
 
-    <template v-else>
-      <el-table
-        ref="groupManageTableRef"
-        :data="groupManageRows"
-        row-key="id"
-        class="group-manage-table"
-      >
-        <el-table-column width="46">
-          <template #default>
-            <button
-              type="button"
-              class="group-drag-handle"
-              title="拖动排序"
-            >
-              <el-icon><Rank /></el-icon>
-            </button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="分组名" min-width="130">
-          <template #default="{ row }">
-            <span class="group-table-name">
-              <span>{{ row.name }}</span>
-              <small>{{ groupBookCount(row) }} 本</small>
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="显示" width="120">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.show !== false"
-              :loading="visibilitySavingId === row.id"
-              active-text="显示"
-              inactive-text="隐藏"
-              @change="value => toggleVisibility(row, value)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="180">
-          <template #default="{ row }">
-            <el-button size="small" text @click="renameGroup(row)">
-              编辑
-            </el-button>
-            <el-button
-              v-if="groupBookCount(row) === 0"
-              size="small"
-              text
-              type="danger"
-              @click="deleteGroup(row)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty
-        v-if="!bookshelf.categories.length"
-        description="还没有自定义分组"
-      />
-      <div class="manage-footer group-manage-footer">
-        <el-button type="primary" @click="createCategory">添加分组</el-button>
-        <el-button
-          v-if="isGroupOrderDirty"
-          type="primary"
-          :loading="groupOrderSaving"
-          @click="saveOrder"
+      <template v-else>
+        <el-table
+          ref="groupManageTableRef"
+          :data="groupManageRows"
+          row-key="id"
+          class="group-manage-table"
         >
-          保存排序
-        </el-button>
-        <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
-      </div>
-    </template>
-  </el-drawer>
+          <el-table-column width="46">
+            <template #default>
+              <button
+                type="button"
+                class="group-drag-handle"
+                title="拖动排序"
+              >
+                <el-icon><Rank /></el-icon>
+              </button>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="分组名" min-width="130">
+            <template #default="{ row }">
+              <span class="group-table-name">
+                <span>{{ row.name }}</span>
+                <small>{{ groupBookCount(row) }} 本</small>
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="显示" width="120">
+            <template #default="{ row }">
+              <el-switch
+                :model-value="row.show !== false"
+                :loading="visibilitySavingId === row.id"
+                active-text="显示"
+                inactive-text="隐藏"
+                @change="value => toggleVisibility(row, value)"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="180">
+            <template #default="{ row }">
+              <el-button size="small" text @click="renameGroup(row)">
+                编辑
+              </el-button>
+              <el-button
+                v-if="groupBookCount(row) === 0"
+                size="small"
+                text
+                type="danger"
+                @click="deleteGroup(row)"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty
+          v-if="!bookshelf.categories.length"
+          description="还没有自定义分组"
+        />
+        <div class="manage-footer group-manage-footer">
+          <el-button type="primary" @click="createCategory">添加分组</el-button>
+          <el-button
+            v-if="isGroupOrderDirty"
+            type="primary"
+            :loading="groupOrderSaving"
+            @click="saveOrder"
+          >
+            保存排序
+          </el-button>
+          <el-button @click="overlay.bookGroupVisible = false">取消</el-button>
+        </div>
+      </template>
+    </section>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -133,13 +136,9 @@ import { createBookCategoryNameResolver } from '../../utils/bookCategory'
 import { newestBookProgress, sortByShelfOrder } from '../../utils/bookOrder'
 
 defineProps({
-  direction: {
-    type: String,
-    required: true,
-  },
-  size: {
-    type: [String, Number],
-    required: true,
+  isMobile: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -222,6 +221,10 @@ function readError(error, fallback) {
 </script>
 
 <style scoped>
+.book-group-dialog-body {
+  min-width: 0;
+}
+
 .manage-footer {
   display: flex;
   align-items: center;

@@ -7,15 +7,9 @@
 
   <OverlaySources :is-mobile="isMobileOverlay" />
 
-  <OverlayBookManagement
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
-  />
+  <OverlayBookManagement :is-mobile="isMobileOverlay" />
 
-  <OverlayBookGroups
-    :direction="narrowDrawerDirection"
-    :size="narrowDrawerSize"
-  />
+  <OverlayBookGroups :is-mobile="isMobileOverlay" />
 
   <OverlayBookContentSearch :is-mobile="isMobileOverlay" />
 
@@ -92,13 +86,6 @@ const wideDrawerDirection = computed(() => (
 const wideDrawerSize = computed(() => (
   isMobileOverlay.value ? '88%' : '82%'
 ))
-const narrowDrawerDirection = computed(() => (
-  isMobileOverlay.value ? 'btt' : 'rtl'
-))
-const narrowDrawerSize = computed(() => (
-  isMobileOverlay.value ? '86%' : '420px'
-))
-
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
 })
