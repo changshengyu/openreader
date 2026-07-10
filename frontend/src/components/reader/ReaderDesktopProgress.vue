@@ -1,6 +1,14 @@
 <template>
   <footer class="reader-page-control">
-    <button class="progress-box" type="button" title="缓存章节" @click="$emit('cache')">{{ bookProgressLabel }}</button>
+    <ReaderCachePanel
+      class="desktop-cache-zone"
+      :visible="cacheVisible"
+      :caching="caching"
+      :status-text="cacheStatusText"
+      @cache="$emit('cache', $event)"
+      @cancel="$emit('cache-cancel')"
+    />
+    <button class="progress-box" type="button" title="缓存章节" @click="$emit('cache-toggle')">{{ bookProgressLabel }}</button>
     <button class="page-step chapter-step" type="button" title="上一章" :disabled="previousDisabled" @click="$emit('previous')">
       <el-icon :size="24"><ArrowLeft /></el-icon>
     </button>
@@ -12,11 +20,24 @@
 
 <script setup>
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import ReaderCachePanel from './ReaderCachePanel.vue'
 
 defineProps({
   bookProgressLabel: {
     type: String,
     default: '0%',
+  },
+  cacheVisible: {
+    type: Boolean,
+    default: false,
+  },
+  caching: {
+    type: Boolean,
+    default: false,
+  },
+  cacheStatusText: {
+    type: String,
+    default: '',
   },
   previousDisabled: {
     type: Boolean,
@@ -29,7 +50,9 @@ defineProps({
 })
 
 defineEmits([
+  'cache-toggle',
   'cache',
+  'cache-cancel',
   'previous',
   'next',
 ])
@@ -47,6 +70,13 @@ defineEmits([
   background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
   border: 1px solid rgba(148, 132, 87, 0.38);
   border-bottom: 0;
+}
+
+.desktop-cache-zone {
+  position: absolute;
+  right: 54px;
+  bottom: 0;
+  width: 300px;
 }
 
 .progress-box,

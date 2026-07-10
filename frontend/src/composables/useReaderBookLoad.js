@@ -84,7 +84,9 @@ export function useReaderBookLoad(options) {
   async function load() {
     options.cancelProgressSave()
     const targetBookId = unref(options.bookId)
-    const bookmarksRequest = options.loadBookmarks(targetBookId).catch(() => [])
+    const bookmarksRequest = typeof options.loadBookmarks === 'function'
+      ? options.loadBookmarks(targetBookId).catch(() => [])
+      : null
     const progressRequest = options.reader
       .loadProgress(targetBookId, { preferLocal: true })
       .catch(() => null)
@@ -155,8 +157,8 @@ export function useReaderBookLoad(options) {
         chapters: Boolean(chapterResponse.fromCache),
       }).catch(() => {})
     }
-    bookmarksRequest.then(data => {
-      if (Number(unref(options.bookId)) === Number(targetBookId)) {
+    bookmarksRequest?.then(data => {
+      if (options.bookmarks && Number(unref(options.bookId)) === Number(targetBookId)) {
         options.bookmarks.value = data
       }
     }).catch(() => {})

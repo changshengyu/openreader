@@ -9,8 +9,6 @@ function createController(overrides = {}) {
   const state = {
     mobileChromeVisible: ref(true),
     settingsVisible: ref(false),
-    bookmarkVisible: ref(false),
-    searchVisible: ref(false),
     sourceVisible: ref(false),
     cacheVisible: ref(false),
     clickZoneVisible: ref(false),
@@ -29,11 +27,8 @@ function createController(overrides = {}) {
     refreshBrowserCachedChapters: () => calls.push(['refresh-cache']),
     saveProgress: payload => calls.push(['save', payload]),
     navigate: async route => calls.push(['navigate', route]),
-    defer: task => {
-      calls.push(['defer'])
-      task()
-    },
-    focusContentSearch: () => calls.push(['focus-search']),
+    openBookmarksOverlay: book => calls.push(['open-bookmarks', book]),
+    openContentSearchOverlay: book => calls.push(['open-content-search', book]),
     closeBookInfo: () => calls.push(['close-info']),
     openBookInfoOverlay: (...args) => calls.push(['open-info', ...args]),
     openReplaceRulesOverlay: () => calls.push(['replace-rules']),
@@ -48,7 +43,7 @@ function createController(overrides = {}) {
   return { book, calls, controller, state }
 }
 
-test('opens reader panels while preserving their existing visibility side effects', () => {
+test('opens global reader dialogs and toggles the inline cache zone without hiding reader chrome', () => {
   const fixture = createController()
   fixture.controller.openSettings()
   assert.equal(fixture.state.mobileChromeVisible.value, true)
@@ -73,14 +68,15 @@ test('opens reader panels while preserving their existing visibility side effect
   fixture.controller.openReplaceRules()
   assert.equal(fixture.state.mobileChromeVisible.value, true)
   assert.equal(fixture.state.cacheVisible.value, true)
-  assert.equal(fixture.state.bookmarkVisible.value, true)
-  assert.equal(fixture.state.searchVisible.value, true)
   assert.deepEqual(fixture.calls, [
     ['refresh-cache'],
-    ['defer'],
-    ['focus-search'],
+    ['open-bookmarks', fixture.book.value],
+    ['open-content-search', fixture.book.value],
     ['replace-rules'],
   ])
+
+  fixture.controller.openCache()
+  assert.equal(fixture.state.cacheVisible.value, false)
 })
 
 test('saves progress before navigating back to the shelf', async () => {
@@ -108,8 +104,15 @@ test('opens plain reader BookInfo without injecting toolbar shortcut actions', (
   fixture.book.value = { id: 7, sourceId: 0, title: '本地书' }
   fixture.controller.openSource()
   fixture.controller.openCache()
+  fixture.controller.openBookmarks()
+  fixture.controller.openContentSearch()
   fixture.controller.openBookInfo()
-  const localOptions = fixture.calls[0][2]
+  const localOptions = fixture.calls.at(-1)[2]
   assert.equal('actions' in localOptions, false)
   assert.equal(fixture.state.sourceVisible.value, false)
+  assert.equal(fixture.state.cacheVisible.value, false)
+  assert.deepEqual(fixture.calls.slice(0, 2), [
+    ['open-bookmarks', fixture.book.value],
+    ['open-content-search', fixture.book.value],
+  ])
 })

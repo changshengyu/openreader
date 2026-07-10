@@ -18,6 +18,7 @@ export function useBookBookmarks(options) {
   const items = ref([])
   const loading = ref(false)
   const mutating = ref(false)
+  const trackItems = options.trackItems !== false
   let refreshTimer
   let loadToken = 0
 
@@ -29,7 +30,7 @@ export function useBookBookmarks(options) {
     try {
       const { data } = await listBookmarks(id)
       const rows = Array.isArray(data) ? data : []
-      if (token === loadToken && String(unref(options.bookId)) === String(id)) {
+      if (trackItems && token === loadToken && String(unref(options.bookId)) === String(id)) {
         items.value = rows
       }
       return rows
@@ -41,7 +42,7 @@ export function useBookBookmarks(options) {
   function reset() {
     loadToken += 1
     loading.value = false
-    items.value = []
+    if (trackItems) items.value = []
   }
 
   async function create(payload) {
@@ -50,7 +51,7 @@ export function useBookBookmarks(options) {
     mutating.value = true
     try {
       const { data } = await createBookmark(id, payload)
-      if (data && String(unref(options.bookId)) === String(id)) {
+      if (trackItems && data && String(unref(options.bookId)) === String(id)) {
         items.value = prependBookmarks(items.value, [data])
       }
       return data || null
@@ -65,7 +66,7 @@ export function useBookBookmarks(options) {
     mutating.value = true
     try {
       const { data } = await updateBookmark(bookmarkId, payload)
-      if (data && String(unref(options.bookId)) === String(id)) {
+      if (trackItems && data && String(unref(options.bookId)) === String(id)) {
         items.value = replaceBookmark(items.value, data)
       }
       return data || null
@@ -80,7 +81,7 @@ export function useBookBookmarks(options) {
     mutating.value = true
     try {
       await deleteBookmark(bookmarkId)
-      if (String(unref(options.bookId)) === String(id)) {
+      if (trackItems && String(unref(options.bookId)) === String(id)) {
         items.value = removeBookmarkIds(items.value, [bookmarkId])
       }
     } finally {
@@ -96,7 +97,7 @@ export function useBookBookmarks(options) {
     try {
       const { data } = await deleteBookmarks(id, bookmarkIds)
       const deletedIds = Array.isArray(data?.deletedIds) ? data.deletedIds : []
-      if (String(unref(options.bookId)) === String(id)) {
+      if (trackItems && String(unref(options.bookId)) === String(id)) {
         items.value = removeBookmarkIds(items.value, deletedIds)
       }
       return deletedIds
@@ -112,7 +113,7 @@ export function useBookBookmarks(options) {
     try {
       const { data } = await createBookmarks(id, payloads)
       const created = Array.isArray(data) ? data : []
-      if (String(unref(options.bookId)) === String(id)) {
+      if (trackItems && String(unref(options.bookId)) === String(id)) {
         items.value = prependBookmarks(items.value, created)
       }
       return created
@@ -122,6 +123,7 @@ export function useBookBookmarks(options) {
   }
 
   function handleUpdated(event) {
+    if (!trackItems) return
     const id = unref(options.bookId)
     if (options.isActive && !options.isActive()) return
     if (!bookmarkUpdateTargetsBook(event, id)) return

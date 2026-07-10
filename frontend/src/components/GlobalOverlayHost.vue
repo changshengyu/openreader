@@ -13,16 +13,9 @@
     :size="narrowDrawerSize"
   />
 
-  <OverlayBookContentSearch
-    :direction="narrowDrawerDirection"
-    :size="narrowDrawerSize"
-  />
+  <OverlayBookContentSearch :is-mobile="isMobileOverlay" />
 
-  <OverlayBookmarks
-    :direction="narrowDrawerDirection"
-    :size="narrowDrawerSize"
-    :is-mobile="isMobileOverlay"
-  />
+  <OverlayBookmarks :is-mobile="isMobileOverlay" />
 
   <OverlayLocalStore
     :direction="wideDrawerDirection"

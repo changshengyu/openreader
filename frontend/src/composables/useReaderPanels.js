@@ -19,7 +19,7 @@ export function useReaderPanels(options) {
   function openCache() {
     if (!unref(options.isRemoteBook)) return
     options.refreshBrowserCachedChapters()
-    options.cacheVisible.value = true
+    options.cacheVisible.value = !options.cacheVisible.value
   }
 
   async function goShelf() {
@@ -33,7 +33,9 @@ export function useReaderPanels(options) {
   }
 
   function openBookmarks() {
-    options.bookmarkVisible.value = true
+    const currentBook = unref(options.book)
+    if (!currentBook) return
+    options.openBookmarksOverlay(currentBook)
   }
 
   function openReplaceRules() {
@@ -42,8 +44,9 @@ export function useReaderPanels(options) {
   }
 
   function openContentSearch() {
-    options.searchVisible.value = true
-    options.defer(() => options.focusContentSearch())
+    const currentBook = unref(options.book)
+    if (!currentBook) return
+    options.openContentSearchOverlay(currentBook)
   }
 
   function openBookInfo() {

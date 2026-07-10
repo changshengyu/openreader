@@ -103,9 +103,14 @@
       :chapter-label="chapterLabel"
       :book-slider-value="mobileBookSliderValue"
       :book-slider-label="mobileBookProgressLabel"
+      :cache-visible="showCacheContentZone"
+      :caching="isCachingContent"
+      :cache-status-text="cachingContentTip"
       :previous-disabled="currentIndex <= 0"
       :next-disabled="currentIndex >= chapters.length - 1"
       @action="handleMobileChromeAction"
+      @cache="cacheFollowingChapters"
+      @cache-cancel="cancelCachingContent"
       @book-progress-input="handleMobileBookProgressInput"
       @book-progress-change="handleMobileBookProgressChange"
     />
@@ -179,9 +184,14 @@
 
     <ReaderDesktopProgress
       :book-progress-label="bookProgressLabel"
+      :cache-visible="showCacheContentZone"
+      :caching="isCachingContent"
+      :cache-status-text="cachingContentTip"
       :previous-disabled="currentIndex <= 0"
       :next-disabled="currentIndex >= chapters.length - 1"
-      @cache="runWithDesktopWorkspaceClosed(openCacheDrawer)"
+      @cache-toggle="toggleCacheContentZone"
+      @cache="cacheFollowingChapters"
+      @cache-cancel="cancelCachingContent"
       @previous="goChapter(currentIndex - 1)"
       @next="goChapter(currentIndex + 1)"
     />
@@ -274,43 +284,6 @@
       </div>
     </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 移动端书签面板 ===== -->
-    <ReaderMobileWorkspacePanel
-      v-if="isMobileReader && showBookmarkDrawer"
-      title="书签"
-      @close="showBookmarkDrawer = false"
-    >
-      <ReaderBookmarkPanel
-        :bookmarks="bookmarks"
-        @add="createBookmark"
-        @jump="jumpToBookmark"
-        @edit="openBookmarkEditor"
-        @remove="removeBookmark"
-        @remove-many="removeBookmarks"
-        @import="importBookmarks"
-      />
-    </ReaderMobileWorkspacePanel>
-
-    <!-- ===== 移动端正文搜索面板 ===== -->
-    <ReaderMobileWorkspacePanel
-      v-if="isMobileReader && showSearchDrawer"
-      title="搜索正文"
-      @close="showSearchDrawer = false"
-    >
-      <ReaderSearchPanel
-        v-model="contentSearch"
-        :results="bookSearchResults"
-        :loading="bookSearching"
-        :searched="searchedBookContent"
-        :has-more="bookSearchHasMore"
-        :status-text="bookSearchStatus"
-        @search="searchBookContent"
-        @load-more="loadMoreBookContent"
-        @load-all="searchAllBookContent"
-        @jump="jumpToBookSearchResult"
-      />
-    </ReaderMobileWorkspacePanel>
-
     <!-- ===== 移动端书源面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSourceDrawer"
@@ -335,20 +308,6 @@
           @change="changeSource"
         />
       </div>
-    </ReaderMobileWorkspacePanel>
-
-    <!-- ===== 移动端缓存面板 ===== -->
-    <ReaderMobileWorkspacePanel
-      v-if="isMobileReader && showCacheDrawer"
-      title="缓存章节"
-      @close="showCacheDrawer = false"
-    >
-      <ReaderCachePanel
-        :caching="isCachingContent"
-        :status-text="cachingContentTip"
-        @cache="cacheFollowingChapters"
-        @cancel="cancelCachingContent"
-      />
     </ReaderMobileWorkspacePanel>
 
     <!-- ===== 移动端设置面板 ===== -->
@@ -384,45 +343,6 @@
       </div>
     </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 桌面端书签抽屉 ===== -->
-    <el-drawer v-if="!isMobileReader" v-model="showBookmarkDrawer" title="书签" :direction="drawerDirection" :size="drawerSize">
-      <ReaderBookmarkPanel
-        :bookmarks="bookmarks"
-        @add="createBookmark"
-        @jump="jumpToBookmark"
-        @edit="openBookmarkEditor"
-        @remove="removeBookmark"
-        @remove-many="removeBookmarks"
-        @import="importBookmarks"
-      />
-    </el-drawer>
-
-    <!-- ===== 桌面端正文搜索抽屉 ===== -->
-    <el-drawer v-if="!isMobileReader" v-model="showSearchDrawer" title="搜索正文" :direction="drawerDirection" :size="drawerSize">
-      <ReaderSearchPanel
-        v-model="contentSearch"
-        :results="bookSearchResults"
-        :loading="bookSearching"
-        :searched="searchedBookContent"
-        :has-more="bookSearchHasMore"
-        :status-text="bookSearchStatus"
-        @search="searchBookContent"
-        @load-more="loadMoreBookContent"
-        @load-all="searchAllBookContent"
-        @jump="jumpToBookSearchResult"
-      />
-    </el-drawer>
-
-    <!-- ===== 桌面端缓存抽屉 ===== -->
-    <el-drawer v-if="!isMobileReader" v-model="showCacheDrawer" title="缓存章节" :direction="drawerDirection" :size="drawerSize">
-      <ReaderCachePanel
-        :caching="isCachingContent"
-        :status-text="cachingContentTip"
-        @cache="cacheFollowingChapters"
-        @cancel="cancelCachingContent"
-      />
-    </el-drawer>
-
     <ReaderBookmarkFormDialog
       v-model="showNoteDialog"
       v-model:note="noteText"
@@ -430,17 +350,6 @@
       width="360px"
       note-placeholder="写下当前阅读位置的笔记..."
       @save="saveNote"
-    />
-
-    <ReaderBookmarkFormDialog
-      v-model="showBookmarkEditor"
-      v-model:title="bookmarkDraft.title"
-      v-model:excerpt="bookmarkDraft.excerpt"
-      v-model:note="bookmarkDraft.note"
-      dialog-title="编辑书签"
-      show-details
-      :saving="savingBookmark"
-      @save="saveBookmarkEdit"
     />
 
     <el-image-viewer
@@ -462,8 +371,6 @@ import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
-import ReaderBookmarkPanel from '../components/reader/ReaderBookmarkPanel.vue'
-import ReaderCachePanel from '../components/reader/ReaderCachePanel.vue'
 import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
 import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
 import ReaderDesktopWorkspacePanel from '../components/reader/ReaderDesktopWorkspacePanel.vue'
@@ -471,7 +378,6 @@ import ReaderDesktopProgress from '../components/reader/ReaderDesktopProgress.vu
 import ReaderDesktopTools from '../components/reader/ReaderDesktopTools.vue'
 import ReaderMobileWorkspacePanel from '../components/reader/ReaderMobileWorkspacePanel.vue'
 import ReaderMobileChrome from '../components/reader/ReaderMobileChrome.vue'
-import ReaderSearchPanel from '../components/reader/ReaderSearchPanel.vue'
 import ReaderShelfPanel from '../components/reader/ReaderShelfPanel.vue'
 import ReaderSettingsPanel from '../components/reader/ReaderSettingsPanel.vue'
 import ReaderTTSBar from '../components/reader/ReaderTTSBar.vue'
@@ -487,7 +393,6 @@ import { useReaderBookLoad } from '../composables/useReaderBookLoad'
 import { useReaderBookState } from '../composables/useReaderBookState'
 import { useReaderCatalogActions } from '../composables/useReaderCatalogActions'
 import { useBookBookmarks } from '../composables/useBookBookmarks'
-import { useBookContentSearch } from '../composables/useBookContentSearch'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
@@ -580,33 +485,17 @@ const {
   mergeBook: mergeShelfBook,
 })
 const {
-  items: bookmarks,
-  mutating: savingBookmark,
-  load: loadBookmarks,
   create: addBookmark,
-  update: updateBookmarkData,
-  remove: removeBookmarkData,
-  removeMany: removeBookmarkRows,
-  importPayloads: importBookmarkPayloads,
-  handleUpdated: handleBookmarksUpdated,
 } = useBookBookmarks({
   bookId,
-  onLoadError: error => ElMessage.error(readError(error, '加载书签失败')),
+  trackItems: false,
 })
 const {
-  draft: bookmarkDraft,
-  editorVisible: showBookmarkEditor,
   noteText,
   noteVisible: showNoteDialog,
   createCurrent: createBookmark,
   createFromSelectedText: createBookmarkFromSelectedText,
-  importRows: importBookmarks,
-  jump: jumpToBookmark,
-  openEditor: openBookmarkEditor,
   openNote: openNoteDialog,
-  removeMany: removeBookmarks,
-  removeOne: removeBookmark,
-  saveEdit: saveBookmarkEdit,
   saveNote,
 } = useReaderBookmarkActions({
   chapter,
@@ -615,27 +504,7 @@ const {
   getPercent: () => currentChapterPercent(),
   getExcerpt: currentVisibleExcerpt,
   create: addBookmark,
-  update: updateBookmarkData,
-  remove: removeBookmarkData,
-  removeMany: removeBookmarkRows,
-  importPayloads: importBookmarkPayloads,
-  confirm: (...args) => ElMessageBox.confirm(...args),
-  closeDrawer: () => {
-    showBookmarkDrawer.value = false
-  },
-  reloadCurrent: ({ offset, percent }) => loadChapter(
-    currentIndex.value,
-    offset,
-    { restorePercent: percent, saveAfterLoad: true },
-  ),
-  navigate: query => router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query,
-  }),
   onToast: message => showReaderToast(message),
-  onSuccess: message => ElMessage.success(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const {
   operate: operateSelectedText,
@@ -684,10 +553,8 @@ const shellEl = ref(null)
 const page = ref(0)
 const pageCount = ref(1)
 const showSettingsDrawer = ref(false)
-const showBookmarkDrawer = ref(false)
-const showSearchDrawer = ref(false)
 const showSourceDrawer = ref(false)
-const showCacheDrawer = ref(false)
+const showCacheContentZone = ref(false)
 const showClickZoneOverlay = ref(false)
 const sourceGroupOptions = ref([])
 const {
@@ -738,23 +605,6 @@ const {
   router,
   saveProgress: () => saveCurrentProgress({ force: true }),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
-})
-const {
-  keyword: contentSearch,
-  results: bookSearchResults,
-  loading: bookSearching,
-  searched: searchedBookContent,
-  hasMore: bookSearchHasMore,
-  status: bookSearchStatus,
-  reset: resetContentSearchState,
-  search: searchBookContent,
-  loadMore: loadMoreBookContent,
-  loadAll: searchAllBookContent,
-} = useBookContentSearch({
-  bookId,
-  book,
-  chapters,
-  onError: error => ElMessage.error(readError(error, '搜索正文失败')),
 })
 const {
   message: toastMsg,
@@ -911,7 +761,6 @@ const {
     const { data } = await api.get(`/books/${targetBookId}/chapters`)
     return data
   },
-  resetContentSearch: resetContentSearchState,
   refreshSourceCandidates,
   closeSourceDrawer: () => {
     showSourceDrawer.value = false
@@ -1064,10 +913,9 @@ const {
   jumpToLine,
   jumpToMatch: jumpToSearchMatch,
   jumpToParagraph,
-  jumpToResult: jumpToBookSearchResult,
   jumpToRouteLine,
 } = useReaderSearchNavigation({
-  keyword: contentSearch,
+  keyword: computed(() => String(route.query.q || '')),
   contentEl,
   contentBody,
   currentIndex,
@@ -1080,9 +928,6 @@ const {
   pageWidth,
   getMode: () => effectiveReaderMode.value,
   getRouteQuery: () => route.query,
-  closeDrawer: () => {
-    showSearchDrawer.value = false
-  },
   navigate: query => router.replace({
     name: 'reader',
     params: { id: bookId.value },
@@ -1269,8 +1114,6 @@ const bodyStyle = computed(() => {
 
 const chapterLabel = computed(() => `${currentIndex.value + 1} / ${chapters.value.length || 1}`)
 const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
-const drawerDirection = computed(() => 'rtl')
-const drawerSize = computed(() => '360px')
 const desktopWorkspacePanel = computed(() => {
   if (isMobileReader.value) return ''
   if (showShelfDrawer.value) return 'shelf'
@@ -1380,13 +1223,9 @@ const {
 const isOverlayOpen = computed(() => (
   showTocDrawer.value ||
   showSettingsDrawer.value ||
-  showBookmarkDrawer.value ||
-  showSearchDrawer.value ||
   showShelfDrawer.value ||
   showSourceDrawer.value ||
-  showCacheDrawer.value ||
-  showNoteDialog.value ||
-  showBookmarkEditor.value
+  showNoteDialog.value
 ))
 const {
   handle: handleReaderWheel,
@@ -1464,8 +1303,8 @@ const {
 const {
   goShelf,
   openBookInfo: openReaderBookInfo,
-  openBookmarks: openBookmarkDrawer,
-  openCache: openCacheDrawer,
+  openBookmarks: openBookmarkDialog,
+  openCache: toggleCacheContentZone,
   openContentSearch,
   openReplaceRules,
   openSettings: openSettingsDrawer,
@@ -1479,10 +1318,8 @@ const {
   bookProgressLabel,
   mobileChromeVisible,
   settingsVisible: showSettingsDrawer,
-  bookmarkVisible: showBookmarkDrawer,
-  searchVisible: showSearchDrawer,
   sourceVisible: showSourceDrawer,
-  cacheVisible: showCacheDrawer,
+  cacheVisible: showCacheContentZone,
   clickZoneVisible: showClickZoneOverlay,
   customBg,
   sliderLineHeight,
@@ -1491,11 +1328,8 @@ const {
   refreshBrowserCachedChapters: computeBrowserCachedChapters,
   saveProgress: saveCurrentProgress,
   navigate: routeLocation => router.push(routeLocation),
-  defer: nextTick,
-  focusContentSearch: () => {
-    const input = document.querySelector('.content-search-row input')
-    input?.focus()
-  },
+  openBookmarksOverlay: currentBook => overlay.openBookmark(currentBook),
+  openContentSearchOverlay: currentBook => overlay.openSearchBookContent(currentBook),
   closeBookInfo: () => overlay.closeBookInfo(),
   openBookInfoOverlay: (...args) => overlay.openBookInfo(...args),
   openReplaceRulesOverlay: () => overlay.openReplaceRules(),
@@ -1571,10 +1405,8 @@ const {
   book,
   chapters,
   currentIndex,
-  bookmarks,
   getRouteQuery: () => route.query,
   cancelProgressSave,
-  loadBookmarks,
   loadCachedBook: targetBookId => cacheFirstRequest(
     () => api.get(`/books/${targetBookId}`),
     readerDataCacheKey(`book:${targetBookId}`),
@@ -1682,11 +1514,11 @@ const {
     source: () => openReaderPrimaryTool('source', goSourcePanel),
     toc: () => openReaderPrimaryTool('toc', openTocDrawer),
     settings: () => openReaderPrimaryTool('settings', openSettingsDrawer),
-    bookmarks: () => runWithDesktopWorkspaceClosed(openBookmarkDrawer),
-    search: () => runWithDesktopWorkspaceClosed(openContentSearch),
-    info: () => runWithDesktopWorkspaceClosed(openReaderBookInfo),
-    note: () => runWithDesktopWorkspaceClosed(openNoteDialog),
-    cache: () => runWithDesktopWorkspaceClosed(openCacheDrawer),
+    bookmarks: openBookmarkDialog,
+    search: openContentSearch,
+    info: openReaderBookInfo,
+    note: openNoteDialog,
+    cache: toggleCacheContentZone,
     'clear-cache': () => runWithDesktopWorkspaceClosed(clearCurrentBookCache),
     reload: () => runWithDesktopWorkspaceClosed(reloadChapter),
     'auto-read': () => {
@@ -1760,7 +1592,6 @@ const {
   getCurrentPercent: currentChapterPercent,
   clearChapterCache: () => clearChapterContentMemory(),
   resetCachedChapters: resetBrowserCachedChapters,
-  resetContentSearch: resetContentSearchState,
   refreshCachedChapters: computeBrowserCachedChapters,
   onReplaceSuccess: () => ElMessage.success('已按最新替换规则刷新当前章节'),
   onReplaceError: error => ElMessage.error(readError(error, '刷新当前章节失败')),
@@ -1787,7 +1618,7 @@ useReaderPageLifecycle({
   onProgressUpdated: handleProgressUpdated,
   onBookDataUpdated: handleReaderBookDataUpdated,
   onReplaceRulesUpdated: handleReplaceRulesUpdated,
-  onBookmarksUpdated: handleBookmarksUpdated,
+  onBookmarksUpdated: () => {},
 })
 
 onBeforeRouteLeave(() => {

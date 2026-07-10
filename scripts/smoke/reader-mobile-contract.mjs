@@ -173,6 +173,116 @@ async function assertWorkspaceClosed(page, viewport, label) {
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: toolbar should remain visible after closing ${label}`)
 }
 
+async function assertGlobalReaderDialog(page, viewport, selector, label) {
+  await page.waitForSelector(selector, { timeout: 10000 })
+  const state = await page.evaluate((target) => {
+    const dialog = document.querySelector(target)
+    const rect = dialog?.getBoundingClientRect()
+    return {
+      topTools: document.querySelectorAll('.reader-mobile-top.visible').length,
+      dialogWidth: Math.round(rect?.width || 0),
+      dialogHeight: Math.round(rect?.height || 0),
+      workspaceCount: document.querySelectorAll('.reader-mobile-workspace').length,
+      drawerCount: Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+        const rect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      }).length,
+    }
+  }, selector)
+  assert(state.topTools === 1, `${viewport.width}: toolbar state must remain visible after opening ${label}`)
+  assert(state.workspaceCount === 0, `${viewport.width}: ${label} must not create a reader workspace`)
+  assert(state.drawerCount === 0, `${viewport.width}: ${label} must not use a drawer`)
+  assert(state.dialogWidth === viewport.width, `${viewport.width}: ${label} dialog width ${state.dialogWidth}`)
+  assert(state.dialogHeight === viewport.height, `${viewport.width}: ${label} dialog height ${state.dialogHeight}`)
+  await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+  assert(
+    await page.locator('.reader-mobile-top.visible').count() === 1,
+    `${viewport.width}: ${label} dialog click must not pass through and toggle reader chrome`,
+  )
+}
+
+async function closeGlobalReaderDialog(page, selector) {
+  const dialog = page.locator(selector)
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+}
+
+async function assertInlineMobileCacheZone(page, viewport) {
+  await page.waitForSelector('.reader-mobile-bottom.visible .mobile-cache-zone.reader-cache-zone', { timeout: 10000 })
+  const state = await page.evaluate(() => {
+    const zone = document.querySelector('.reader-mobile-bottom.visible .mobile-cache-zone.reader-cache-zone')
+    const bar = document.querySelector('.reader-mobile-bottom.visible')
+    const zoneRect = zone?.getBoundingClientRect()
+    const barRect = bar?.getBoundingClientRect()
+    return {
+      topTools: document.querySelectorAll('.reader-mobile-top.visible').length,
+      workspaceCount: document.querySelectorAll('.reader-mobile-workspace').length,
+      drawerCount: Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+        const rect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      }).length,
+      zoneLeft: Math.round(zoneRect?.left || 0),
+      zoneRight: Math.round(zoneRect?.right || 0),
+      barLeft: Math.round(barRect?.left || 0),
+      barRight: Math.round(barRect?.right || 0),
+      text: zone?.innerText || '',
+    }
+  })
+  assert(state.topTools === 1, `${viewport.width}: toolbar state must remain visible with cache zone open`)
+  assert(state.workspaceCount === 0, `${viewport.width}: cache must not create a workspace`)
+  assert(state.drawerCount === 0, `${viewport.width}: cache must not create a drawer`)
+  assert(state.zoneLeft >= state.barLeft && state.zoneRight <= state.barRight, `${viewport.width}: cache zone must remain inside the read bar`)
+  assert(state.text.includes('缓存章节') && state.text.includes('后面50章'), `${viewport.width}: inline cache controls missing`)
+}
+
+async function assertDesktopReaderDialog(page, selector, label) {
+  await page.waitForSelector(selector, { timeout: 10000 })
+  const state = await page.evaluate((target) => {
+    const dialog = document.querySelector(target)
+    const rect = dialog?.getBoundingClientRect()
+    const visibleDrawers = Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+      const drawerRect = element.getBoundingClientRect()
+      const style = window.getComputedStyle(element)
+      return drawerRect.width > 0 && drawerRect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+    }).length
+    return {
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      visibleDrawers,
+      settingsOpen: document.querySelectorAll('.reader-desktop-workspace .settings-body').length,
+    }
+  }, selector)
+  assert(state.width >= 760, `desktop: ${label} dialog width ${state.width}`)
+  assert(state.height > 200, `desktop: ${label} dialog height ${state.height}`)
+  assert(state.visibleDrawers === 0, `desktop: ${label} must not use a drawer`)
+  assert(state.settingsOpen === 1, `desktop: ${label} must not close the active settings workspace`)
+}
+
+async function assertInlineDesktopCacheZone(page) {
+  await page.waitForSelector('.reader-page-control .desktop-cache-zone.reader-cache-zone', { timeout: 10000 })
+  const state = await page.evaluate(() => {
+    const zone = document.querySelector('.reader-page-control .desktop-cache-zone.reader-cache-zone')
+    const progress = document.querySelector('.reader-page-control .progress-box')
+    const zoneRect = zone?.getBoundingClientRect()
+    const progressRect = progress?.getBoundingClientRect()
+    return {
+      zoneRight: Math.round(zoneRect?.right || 0),
+      progressLeft: Math.round(progressRect?.left || 0),
+      text: zone?.innerText || '',
+      visibleDrawers: Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+        const rect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      }).length,
+    }
+  })
+  assert(state.zoneRight <= state.progressLeft, `desktop: cache zone must sit inside the read bar left of progress control`)
+  assert(state.text.includes('缓存章节') && state.text.includes('后面100章'), 'desktop: inline cache controls missing')
+  assert(state.visibleDrawers === 0, 'desktop: cache must not use a drawer')
+}
+
 async function assertSettingsRowGeometry(page, viewport) {
   const geometry = await page.evaluate(() => {
     const firstRow = document.querySelector('.settings-body .setting-row')
@@ -340,6 +450,16 @@ async function runDesktopViewport(browser) {
   await page.waitForFunction(() => document.documentElement.classList.contains('dark-reader'))
   assert(await page.locator('.reader-desktop-workspace .settings-body').count() === 1, 'desktop: switching custom night mode must keep settings open')
   assert(await page.locator('.reader-right-rail button[title="日间模式"]').count() === 1, 'desktop: semantic night mode must update the rail toggle')
+  await page.locator('.reader-right-rail button[title="书签"]').click()
+  await assertDesktopReaderDialog(page, '.global-bookmark-dialog', '书签')
+  await closeGlobalReaderDialog(page, '.global-bookmark-dialog')
+  await page.locator('.reader-right-rail button[title="搜索正文"]').click()
+  await assertDesktopReaderDialog(page, '.global-content-search-dialog', '搜索正文')
+  await closeGlobalReaderDialog(page, '.global-content-search-dialog')
+  await page.locator('.reader-page-control .progress-box').click()
+  await assertInlineDesktopCacheZone(page)
+  await page.locator('.reader-page-control .progress-box').click()
+  await page.waitForFunction(() => !document.querySelector('.reader-page-control .desktop-cache-zone.reader-cache-zone'), null, { timeout: 10000 })
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
 }
@@ -401,14 +521,15 @@ async function runViewport(browser, viewport) {
 
   await closeWorkspace(page, 'settings-toggle')
   await page.locator('.reader-mobile-float-left.visible button[title="书签"]').click()
-  await assertWorkspaceOpen(page, viewport, '书签')
-  await closeWorkspace(page)
+  await assertGlobalReaderDialog(page, viewport, '.global-bookmark-dialog', '书签')
+  await closeGlobalReaderDialog(page, '.global-bookmark-dialog')
   await page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]').click()
-  await assertWorkspaceOpen(page, viewport, '搜索正文')
-  await closeWorkspace(page)
+  await assertGlobalReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')
+  await closeGlobalReaderDialog(page, '.global-content-search-dialog')
   await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
-  await assertWorkspaceOpen(page, viewport, '缓存章节')
-  await closeWorkspace(page)
+  await assertInlineMobileCacheZone(page, viewport)
+  await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-bottom.visible .mobile-cache-zone.reader-cache-zone'), null, { timeout: 10000 })
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   await page.waitForTimeout(120)

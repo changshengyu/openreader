@@ -27,7 +27,7 @@
     </button>
   </header>
 
-  <aside class="reader-mobile-float-tools reader-mobile-float-left" :class="{ visible }">
+  <aside class="reader-mobile-float-tools reader-mobile-float-left" :class="{ visible, 'cache-zone-visible': cacheVisible }">
     <button type="button" title="书签" @click="$emit('action', 'bookmarks')">
       <el-icon :size="18"><CollectionTag /></el-icon>
     </button>
@@ -39,7 +39,7 @@
     </button>
   </aside>
 
-  <aside class="reader-mobile-float-tools reader-mobile-float-right" :class="{ visible }">
+  <aside class="reader-mobile-float-tools reader-mobile-float-right" :class="{ visible, 'cache-zone-visible': cacheVisible }">
     <button type="button" title="重新载入章节" @click="$emit('action', 'reload')">
       <el-icon :size="18"><RefreshRight /></el-icon>
     </button>
@@ -78,6 +78,14 @@
       />
       <span>{{ bookSliderLabel }}</span>
     </label>
+    <ReaderCachePanel
+      class="mobile-cache-zone"
+      :visible="cacheVisible"
+      :caching="caching"
+      :status-text="cacheStatusText"
+      @cache="$emit('cache', $event)"
+      @cancel="$emit('cache-cancel')"
+    />
     <button class="mobile-chapter-step" type="button" :disabled="previousDisabled" @click="$emit('action', 'previous')">
       <el-icon :size="18"><ArrowLeft /></el-icon>
       <span>上一章</span>
@@ -110,6 +118,7 @@ import {
   Sunny,
   View,
 } from '@element-plus/icons-vue'
+import ReaderCachePanel from './ReaderCachePanel.vue'
 
 defineProps({
   visible: {
@@ -156,6 +165,18 @@ defineProps({
     type: String,
     default: '0%',
   },
+  cacheVisible: {
+    type: Boolean,
+    default: false,
+  },
+  caching: {
+    type: Boolean,
+    default: false,
+  },
+  cacheStatusText: {
+    type: String,
+    default: '',
+  },
   previousDisabled: {
     type: Boolean,
     default: false,
@@ -166,7 +187,7 @@ defineProps({
   },
 })
 
-defineEmits(['action', 'book-progress-input', 'book-progress-change'])
+defineEmits(['action', 'book-progress-input', 'book-progress-change', 'cache', 'cache-cancel'])
 </script>
 
 <style scoped>
@@ -215,6 +236,10 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
     z-index: 8;
     display: grid;
     gap: 12px;
+  }
+
+  .reader-mobile-float-tools.cache-zone-visible {
+    bottom: 202px;
   }
 
   .reader-mobile-float-left {
@@ -277,6 +302,10 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change'])
     width: 100%;
     min-width: 0;
     accent-color: #409eff;
+  }
+
+  .mobile-cache-zone {
+    grid-column: 1 / -1;
   }
 
   .mobile-chapter-step {

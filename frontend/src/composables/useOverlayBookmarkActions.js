@@ -45,15 +45,6 @@ export function useOverlayBookmarkActions(options) {
     }
   }
 
-  async function removeOne(bookmark) {
-    try {
-      await options.remove(bookmark.id)
-      options.onSuccess('书签已删除')
-    } catch (error) {
-      options.onError(error, '删除书签失败')
-    }
-  }
-
   async function removeMany(rows) {
     if (!Array.isArray(rows) || !rows.length) return
     try {
@@ -99,7 +90,6 @@ export function useOverlayBookmarkActions(options) {
     jump,
     openEditor,
     saveEdit,
-    removeOne,
     removeMany,
     importRows,
   }

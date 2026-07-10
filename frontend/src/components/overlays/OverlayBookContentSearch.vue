@@ -1,47 +1,80 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.searchBookContentVisible"
-    :title="`搜索正文${overlay.searchBook?.title ? ` · ${overlay.searchBook.title}` : ''}`"
-    :direction="direction"
-    :size="size"
-    class="global-search-drawer"
+    :width="dialogWidth"
+    :fullscreen="isMobile"
+    class="global-content-search-dialog"
+    @opened="handleOpened"
   >
-    <ReaderSearchPanel
-      v-model="keyword"
-      :results="results"
-      :loading="loading"
-      :searched="searched"
-      :has-more="hasMore"
-      :status-text="status"
-      @search="search"
-      @load-more="loadMore"
-      @load-all="loadAll"
-      @jump="jumpToResult"
-    />
-  </el-drawer>
+    <template #header>
+      <el-input
+        ref="searchInputRef"
+        v-model="keyword"
+        placeholder="搜索书籍内容"
+        clearable
+        @keyup.enter="search"
+      />
+    </template>
+
+    <div v-loading="loading" class="reader-dialog-table">
+      <el-table
+        ref="resultTableRef"
+        :data="results"
+        max-height="520"
+        @row-click="jumpToResult"
+      >
+        <el-table-column prop="chapterTitle" label="章节" min-width="150" />
+        <el-table-column label="搜索结果" min-width="300">
+          <template #default="scope">
+            {{ scope.row.excerpt || scope.row.resultText || '—' }}
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty
+        v-if="keyword && searched && !loading && !results.length"
+        :description="hasMore ? '当前已搜索章节没有匹配，可继续搜索后续章节' : '没有匹配内容'"
+      />
+      <el-empty v-else-if="!keyword && !results.length" description="输入关键词搜索整本书正文" />
+    </div>
+
+    <template #footer>
+      <div class="reader-dialog-footer">
+        <el-button
+          type="primary"
+          :loading="loading"
+          :disabled="!hasMore"
+          @click="loadMore"
+        >
+          {{ loading ? '加载中' : (hasMore ? '加载更多' : '没有更多') }}
+        </el-button>
+        <el-button v-if="hasMore" plain :loading="loading" @click="loadAll">搜完全书</el-button>
+        <el-button v-if="lastScrollTop > 0" @click="restoreScrollTop">跳转上次位置</el-button>
+        <el-button @click="overlay.searchBookContentVisible = false">取消</el-button>
+      </div>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useBookContentSearch } from '../../composables/useBookContentSearch'
 import { useOverlayStore } from '../../stores/overlay'
-import ReaderSearchPanel from '../reader/ReaderSearchPanel.vue'
 
 defineProps({
-  direction: {
-    type: String,
-    required: true,
-  },
-  size: {
-    type: [String, Number],
-    required: true,
+  isMobile: {
+    type: Boolean,
+    default: false,
   },
 })
 
+const dialogWidth = '880px'
 const router = useRouter()
 const overlay = useOverlayStore()
+const searchInputRef = ref(null)
+const resultTableRef = ref(null)
+const lastScrollTop = ref(0)
 const book = computed(() => overlay.searchBook)
 const bookId = computed(() => overlay.searchBook?.id)
 const activeBookKey = ref('')
@@ -52,7 +85,6 @@ const {
   loading,
   searched,
   hasMore,
-  status,
   reset,
   search,
   loadMore,
@@ -91,10 +123,12 @@ watch(
 
 function resetSearch() {
   keyword.value = ''
+  lastScrollTop.value = 0
   reset()
 }
 
 function jumpToResult(result) {
+  captureScrollTop()
   const currentBook = overlay.searchBook
   if (!currentBook?.id) return
   overlay.searchBookContentVisible = false
@@ -117,9 +151,54 @@ function jumpToResult(result) {
   })
 }
 
+function getResultScrollElement() {
+  return resultTableRef.value?.$el?.querySelector('.el-scrollbar__wrap') || null
+}
+
+function captureScrollTop() {
+  lastScrollTop.value = Math.max(0, getResultScrollElement()?.scrollTop || 0)
+}
+
+function restoreScrollTop() {
+  nextTick(() => {
+    const scrollEl = getResultScrollElement()
+    if (scrollEl) scrollEl.scrollTop = lastScrollTop.value
+  })
+}
+
+function handleOpened() {
+  nextTick(() => {
+    searchInputRef.value?.focus?.()
+    restoreScrollTop()
+  })
+}
+
 function readError(error, fallback) {
   return error?.response?.data?.error?.message ||
     error?.response?.data?.error ||
     fallback
 }
 </script>
+
+<style scoped>
+.reader-dialog-table {
+  min-height: 220px;
+}
+
+.reader-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 750px) {
+  .reader-dialog-table {
+    min-height: 0;
+  }
+
+  .reader-dialog-footer > * {
+    flex: 1 1 auto;
+  }
+}
+</style>

@@ -59,7 +59,7 @@ export function useReaderExternalUpdates(options) {
     options.currentIndex.value = targetIndex
     options.clearChapterCache()
     options.resetCachedChapters()
-    options.resetContentSearch()
+    options.resetContentSearch?.()
     await options.refreshCachedChapters()
     await options.loadChapter(targetIndex, restoreOffset, {
       restorePercent,
