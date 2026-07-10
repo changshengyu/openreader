@@ -46,6 +46,16 @@ function fakeToken() {
 }
 
 async function installApiMocks(page) {
+  const bookmarks = [{
+    id: 101,
+    chapterId: 11,
+    chapterIndex: 0,
+    offset: 0,
+    percent: 0,
+    title: '第一章',
+    excerpt: '用于验证根级书签表单的摘录。',
+    note: '原笔记',
+  }]
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
     const request = route.request()
@@ -107,7 +117,12 @@ async function installApiMocks(page) {
       }))
     }
     if (path === '/books/1/bookmarks') {
-      return route.fulfill(json([]))
+      return route.fulfill(json(bookmarks))
+    }
+    if (path === '/bookmarks/101' && method === 'PUT') {
+      const payload = request.postDataJSON()
+      Object.assign(bookmarks[0], payload)
+      return route.fulfill(json(bookmarks[0]))
     }
     if (path === '/progress/1') {
       return route.fulfill(json({}))
@@ -258,6 +273,46 @@ async function assertDesktopReaderDialog(page, selector, label) {
   assert(state.height > 200, `desktop: ${label} dialog height ${state.height}`)
   assert(state.visibleDrawers === 0, `desktop: ${label} must not use a drawer`)
   assert(state.settingsOpen === 1, `desktop: ${label} must not close the active settings workspace`)
+}
+
+async function assertBookmarkFormContext(page, viewport, { fullscreen }) {
+  const selector = '.global-bookmark-form-dialog'
+  await page.waitForSelector(selector, { timeout: 10000 })
+  const state = await page.evaluate((target) => {
+    const dialog = document.querySelector(target)
+    const rect = dialog?.getBoundingClientRect()
+    const readonlyValues = Array.from(dialog?.querySelectorAll('input[readonly], textarea[readonly]') || [])
+      .map(element => element.value)
+    return {
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      readonlyValues,
+      visibleDrawers: Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+        const drawerRect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+        return drawerRect.width > 0 && drawerRect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      }).length,
+    }
+  }, selector)
+  assert(state.visibleDrawers === 0, `${viewport.width}: bookmark form must not use a drawer`)
+  assert(state.readonlyValues.includes('移动阅读契约测试'), `${viewport.width}: bookmark form missing readonly book title`)
+  assert(state.readonlyValues.includes('OpenReader'), `${viewport.width}: bookmark form missing readonly author`)
+  assert(state.readonlyValues.includes('第一章'), `${viewport.width}: bookmark form missing readonly chapter`)
+  assert(state.readonlyValues.includes('用于验证根级书签表单的摘录。'), `${viewport.width}: bookmark form missing readonly excerpt`)
+  if (fullscreen) {
+    assert(state.width === viewport.width, `${viewport.width}: bookmark form fullscreen width ${state.width}`)
+    assert(state.height === viewport.height, `${viewport.width}: bookmark form fullscreen height ${state.height}`)
+  } else {
+    assert(state.width >= 600, `desktop: bookmark form width ${state.width}`)
+  }
+}
+
+async function editBookmarkWithGlobalForm(page, viewport, { fullscreen }) {
+  await page.locator('.global-bookmark-dialog').getByRole('button', { name: '编辑', exact: true }).click()
+  await assertBookmarkFormContext(page, viewport, { fullscreen })
+  await page.locator('.global-bookmark-form-dialog textarea').last().fill('已通过根级表单更新')
+  await page.locator('.global-bookmark-form-dialog').getByRole('button', { name: '确定', exact: true }).click()
+  await page.locator('.global-bookmark-form-dialog').waitFor({ state: 'hidden', timeout: 10000 })
 }
 
 async function assertInlineDesktopCacheZone(page) {
@@ -452,6 +507,7 @@ async function runDesktopViewport(browser) {
   assert(await page.locator('.reader-right-rail button[title="日间模式"]').count() === 1, 'desktop: semantic night mode must update the rail toggle')
   await page.locator('.reader-right-rail button[title="书签"]').click()
   await assertDesktopReaderDialog(page, '.global-bookmark-dialog', '书签')
+  await editBookmarkWithGlobalForm(page, { width: 1440, height: 900 }, { fullscreen: false })
   await closeGlobalReaderDialog(page, '.global-bookmark-dialog')
   await page.locator('.reader-right-rail button[title="搜索正文"]').click()
   await assertDesktopReaderDialog(page, '.global-content-search-dialog', '搜索正文')
@@ -522,6 +578,7 @@ async function runViewport(browser, viewport) {
   await closeWorkspace(page, 'settings-toggle')
   await page.locator('.reader-mobile-float-left.visible button[title="书签"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-bookmark-dialog', '书签')
+  await editBookmarkWithGlobalForm(page, viewport, { fullscreen: true })
   await closeGlobalReaderDialog(page, '.global-bookmark-dialog')
   await page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')

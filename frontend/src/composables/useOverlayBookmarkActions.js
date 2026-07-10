@@ -1,14 +1,9 @@
-import { reactive, ref } from 'vue'
 import {
   bookmarkReaderQuery,
   normalizeImportedBookmarks,
 } from '../utils/bookmark.js'
 
 export function useOverlayBookmarkActions(options) {
-  const editorVisible = ref(false)
-  const editingBookmark = ref(null)
-  const draft = reactive({ title: '', excerpt: '', note: '' })
-
   function jump(bookmark) {
     const book = options.getBook()
     if (!book?.id) return
@@ -18,31 +13,6 @@ export function useOverlayBookmarkActions(options) {
       params: { id: book.id },
       query: bookmarkReaderQuery(bookmark),
     })
-  }
-
-  function openEditor(bookmark) {
-    editingBookmark.value = bookmark
-    Object.assign(draft, {
-      title: bookmark.title || '',
-      excerpt: bookmark.excerpt || '',
-      note: bookmark.note || '',
-    })
-    editorVisible.value = true
-  }
-
-  async function saveEdit() {
-    if (!editingBookmark.value) return
-    try {
-      await options.update(editingBookmark.value.id, {
-        title: draft.title,
-        excerpt: draft.excerpt,
-        note: draft.note,
-      })
-      editorVisible.value = false
-      options.onSuccess('书签已更新')
-    } catch (error) {
-      options.onError(error, '更新书签失败')
-    }
   }
 
   async function removeMany(rows) {
@@ -84,12 +54,7 @@ export function useOverlayBookmarkActions(options) {
   }
 
   return {
-    editorVisible,
-    editingBookmark,
-    draft,
     jump,
-    openEditor,
-    saveEdit,
     removeMany,
     importRows,
   }

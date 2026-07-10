@@ -343,15 +343,6 @@
       </div>
     </ReaderMobileWorkspacePanel>
 
-    <ReaderBookmarkFormDialog
-      v-model="showNoteDialog"
-      v-model:note="noteText"
-      dialog-title="添加笔记"
-      width="360px"
-      note-placeholder="写下当前阅读位置的笔记..."
-      @save="saveNote"
-    />
-
     <el-image-viewer
       v-if="epubPreviewVisible"
       :url-list="epubPreviewImages"
@@ -370,7 +361,6 @@ import { refreshBook, refreshLocalBook } from '../api/books'
 import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
-import ReaderBookmarkFormDialog from '../components/reader/ReaderBookmarkFormDialog.vue'
 import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
 import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
 import ReaderDesktopWorkspacePanel from '../components/reader/ReaderDesktopWorkspacePanel.vue'
@@ -392,7 +382,6 @@ import { useReaderAutoReading } from '../composables/useReaderAutoReading'
 import { useReaderBookLoad } from '../composables/useReaderBookLoad'
 import { useReaderBookState } from '../composables/useReaderBookState'
 import { useReaderCatalogActions } from '../composables/useReaderCatalogActions'
-import { useBookBookmarks } from '../composables/useBookBookmarks'
 import { useBookSourceChange } from '../composables/useBookSourceChange'
 import { useBookSourceCandidates } from '../composables/useBookSourceCandidates'
 import { useReaderChapterCache } from '../composables/useReaderChapterCache'
@@ -485,26 +474,16 @@ const {
   mergeBook: mergeShelfBook,
 })
 const {
-  create: addBookmark,
-} = useBookBookmarks({
-  bookId,
-  trackItems: false,
-})
-const {
-  noteText,
-  noteVisible: showNoteDialog,
-  createCurrent: createBookmark,
   createFromSelectedText: createBookmarkFromSelectedText,
   openNote: openNoteDialog,
-  saveNote,
 } = useReaderBookmarkActions({
+  book,
   chapter,
   currentIndex,
   getOffset: () => currentOffset(),
   getPercent: () => currentChapterPercent(),
   getExcerpt: currentVisibleExcerpt,
-  create: addBookmark,
-  onToast: message => showReaderToast(message),
+  openForm: (...args) => overlay.openBookmarkForm(...args),
 })
 const {
   operate: operateSelectedText,
@@ -1225,7 +1204,7 @@ const isOverlayOpen = computed(() => (
   showSettingsDrawer.value ||
   showShelfDrawer.value ||
   showSourceDrawer.value ||
-  showNoteDialog.value
+  overlay.bookmarkFormVisible
 ))
 const {
   handle: handleReaderWheel,

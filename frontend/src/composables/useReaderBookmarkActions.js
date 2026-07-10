@@ -1,9 +1,6 @@
-import { ref, unref } from 'vue'
+import { unref } from 'vue'
 
 export function useReaderBookmarkActions(options) {
-  const noteVisible = ref(false)
-  const noteText = ref('')
-
   function currentPayload(extra = {}) {
     const chapter = unref(options.chapter)
     if (!chapter) return null
@@ -18,50 +15,30 @@ export function useReaderBookmarkActions(options) {
     }
   }
 
-  function showToast(message) {
-    options.onToast?.(message)
+  function openForm(extra = {}) {
+    const book = unref(options.book)
+    const payload = currentPayload({ note: '', ...extra })
+    if (!book?.id || !payload) return Promise.resolve({ saved: false })
+    return options.openForm(book, payload, { mode: 'create' })
   }
 
   function openNote() {
-    noteText.value = ''
-    noteVisible.value = true
+    return openForm()
   }
 
-  async function createCurrent() {
-    const payload = currentPayload()
-    if (!payload) return null
-    const created = await options.create(payload)
-    showToast('书签已创建')
-    return created
+  function createCurrent() {
+    return openForm()
   }
 
-  async function createFromSelectedText(text) {
-    const payload = currentPayload({
+  function createFromSelectedText(text) {
+    return openForm({
       excerpt: String(text || '').trim().slice(0, 500),
     })
-    if (!payload) return null
-    const created = await options.create(payload)
-    showToast('书签已创建')
-    return created
-  }
-
-  async function saveNote() {
-    const note = noteText.value.trim()
-    if (!note) return null
-    const payload = currentPayload({ note })
-    if (!payload) return null
-    const created = await options.create(payload)
-    noteVisible.value = false
-    showToast('笔记已保存')
-    return created
   }
 
   return {
-    noteText,
-    noteVisible,
     createCurrent,
     createFromSelectedText,
     openNote,
-    saveNote,
   }
 }

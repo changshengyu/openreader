@@ -9,7 +9,6 @@ function createController(overrides = {}) {
     getBook: () => book,
     closePanel: () => calls.push(['close']),
     navigate: route => calls.push(['navigate', route]),
-    update: async (...args) => calls.push(['update', ...args]),
     removeMany: async rows => calls.push(['remove-many', rows]),
     importPayloads: async rows => {
       calls.push(['import', rows])
@@ -49,28 +48,6 @@ test('closes the panel and navigates to the bookmark position', () => {
   fixture.setBook(null)
   fixture.controller.jump({ chapterIndex: 1 })
   assert.deepEqual(fixture.calls, [])
-})
-
-test('opens and saves the bookmark editor draft', async () => {
-  const fixture = createController()
-  fixture.controller.openEditor({
-    id: 9,
-    title: '旧标题',
-    excerpt: '摘录',
-    note: '笔记',
-  })
-  assert.equal(fixture.controller.editorVisible.value, true)
-  fixture.controller.draft.title = '新标题'
-  await fixture.controller.saveEdit()
-  assert.deepEqual(fixture.calls, [
-    ['update', 9, {
-      title: '新标题',
-      excerpt: '摘录',
-      note: '笔记',
-    }],
-    ['success', '书签已更新'],
-  ])
-  assert.equal(fixture.controller.editorVisible.value, false)
 })
 
 test('removes selected bookmarks with the upstream batch confirmation', async () => {

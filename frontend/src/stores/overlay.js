@@ -13,6 +13,11 @@ export const useOverlayStore = defineStore('overlay', {
     importBookVisible: false,
     bookmarkVisible: false,
     bookmarkBook: null,
+    bookmarkFormVisible: false,
+    bookmarkFormBook: null,
+    bookmarkFormDraft: null,
+    bookmarkFormMode: 'create',
+    bookmarkFormResolve: null,
     searchBookContentVisible: false,
     searchBook: null,
     localStoreVisible: false,
@@ -55,6 +60,30 @@ export const useOverlayStore = defineStore('overlay', {
     openBookmark(book) {
       this.bookmarkBook = book
       this.bookmarkVisible = true
+    },
+    openBookmarkForm(book, draft = {}, options = {}) {
+      if (this.bookmarkFormResolve) {
+        this.finishBookmarkForm({ saved: false, reason: 'replaced' })
+      }
+      this.bookmarkFormBook = book || null
+      this.bookmarkFormDraft = { ...draft }
+      this.bookmarkFormMode = options.mode === 'edit' ? 'edit' : 'create'
+      this.bookmarkFormVisible = true
+      return new Promise(resolve => {
+        this.bookmarkFormResolve = resolve
+      })
+    },
+    finishBookmarkForm(result = { saved: false }) {
+      const resolve = this.bookmarkFormResolve
+      this.bookmarkFormResolve = null
+      this.bookmarkFormVisible = false
+      resolve?.(result)
+    },
+    clearBookmarkForm() {
+      if (this.bookmarkFormVisible) return
+      this.bookmarkFormBook = null
+      this.bookmarkFormDraft = null
+      this.bookmarkFormMode = 'create'
     },
     openSearchBookContent(book) {
       this.searchBook = book

@@ -17,6 +17,8 @@
 
   <OverlayBookmarks :is-mobile="isMobileOverlay" />
 
+  <OverlayBookmarkForm :is-mobile="isMobileOverlay" />
+
   <OverlayLocalStore
     :direction="wideDrawerDirection"
     :size="wideDrawerSize"
@@ -66,6 +68,7 @@ import OverlayBookImport from './overlays/OverlayBookImport.vue'
 import OverlayBookInfo from './overlays/OverlayBookInfo.vue'
 import OverlayBookManagement from './overlays/OverlayBookManagement.vue'
 import OverlayBookmarks from './overlays/OverlayBookmarks.vue'
+import OverlayBookmarkForm from './overlays/OverlayBookmarkForm.vue'
 import OverlayLocalStore from './overlays/OverlayLocalStore.vue'
 import OverlayReplaceRules from './overlays/OverlayReplaceRules.vue'
 import OverlayRSS from './overlays/OverlayRSS.vue'

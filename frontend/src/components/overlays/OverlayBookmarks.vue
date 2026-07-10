@@ -68,34 +68,6 @@
     </template>
   </el-dialog>
 
-  <el-dialog
-    v-model="editorVisible"
-    title="编辑书签"
-    width="380px"
-    :fullscreen="isMobile"
-  >
-    <div class="bookmark-editor">
-      <el-input v-model="draft.title" placeholder="标题" />
-      <el-input
-        v-model="draft.excerpt"
-        type="textarea"
-        :rows="3"
-        placeholder="摘录"
-      />
-      <el-input
-        v-model="draft.note"
-        type="textarea"
-        :rows="4"
-        placeholder="笔记"
-      />
-    </div>
-    <template #footer>
-      <el-button @click="editorVisible = false">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="saveEdit">
-        保存
-      </el-button>
-    </template>
-  </el-dialog>
 </template>
 
 <script setup>
@@ -126,10 +98,8 @@ const bookTitle = computed(() => (
 const {
   items,
   loading,
-  mutating: saving,
   load,
   reset,
-  update,
   removeMany: removeManyData,
   importPayloads,
   handleUpdated,
@@ -140,11 +110,7 @@ const {
 })
 
 const {
-  editorVisible,
-  draft,
   jump,
-  openEditor,
-  saveEdit,
   removeMany,
   importRows,
 } = useOverlayBookmarkActions({
@@ -153,7 +119,6 @@ const {
     overlay.bookmarkVisible = false
   },
   navigate: routeLocation => router.push(routeLocation),
-  update,
   removeMany: removeManyData,
   importPayloads,
   confirm: (...args) => ElMessageBox.confirm(...args),
@@ -184,6 +149,10 @@ onBeforeUnmount(() => {
 
 function pickImportFile() {
   fileRef.value?.click()
+}
+
+function openEditor(bookmark) {
+  overlay.openBookmarkForm(overlay.bookmarkBook, bookmark, { mode: 'edit' })
 }
 
 function onImportFileChange(event) {
@@ -245,11 +214,6 @@ function readError(error, fallback) {
 
 .bookmark-file-input {
   display: none;
-}
-
-.bookmark-editor {
-  display: grid;
-  gap: 10px;
 }
 
 @media (max-width: 750px) {

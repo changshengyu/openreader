@@ -4,41 +4,39 @@ import { ref } from 'vue'
 import { useReaderBookmarkActions } from '../src/composables/useReaderBookmarkActions.js'
 
 function createActions(overrides = {}) {
-  const created = []
+  const formCalls = []
   const actions = useReaderBookmarkActions({
+    book: ref({ id: 7, title: '测试书', author: '测试作者' }),
     chapter: ref({ id: 12, title: '第三章' }),
     currentIndex: ref(2),
     getOffset: () => 240,
     getPercent: () => 0.4,
     getExcerpt: () => '当前摘录',
-    create: async payload => {
-      created.push(payload)
-      return payload
+    openForm: async (...args) => {
+      formCalls.push(args)
+      return { saved: false }
     },
-    onToast: () => {},
     ...overrides,
   })
-  return { actions, created }
+  return { actions, formCalls }
 }
 
-test('creates current, selected-text, and note bookmarks from one position source', async () => {
-  const { actions, created } = createActions()
+test('routes current, selected-text, and note bookmarks through the shared form without direct writes', async () => {
+  const { actions, formCalls } = createActions()
   await actions.createCurrent()
   await actions.createFromSelectedText(`  ${'选'.repeat(520)}  `)
-  actions.openNote()
-  actions.noteText.value = '  我的笔记  '
-  await actions.saveNote()
+  await actions.openNote()
 
-  assert.equal(created.length, 3)
-  assert.deepEqual(created[0], {
+  assert.equal(formCalls.length, 3)
+  assert.deepEqual(formCalls[0], [{ id: 7, title: '测试书', author: '测试作者' }, {
     chapterId: 12,
     chapterIndex: 2,
     offset: 240,
     percent: 0.4,
     title: '第三章',
     excerpt: '当前摘录',
-  })
-  assert.equal(created[1].excerpt.length, 500)
-  assert.equal(created[2].note, '我的笔记')
-  assert.equal(actions.noteVisible.value, false)
+    note: '',
+  }, { mode: 'create' }])
+  assert.equal(formCalls[1][1].excerpt.length, 500)
+  assert.equal(formCalls[2][1].note, '')
 })
