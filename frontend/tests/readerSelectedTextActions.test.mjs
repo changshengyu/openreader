@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { useReaderSelectedTextActions } from '../src/composables/useReaderSelectedTextActions.js'
+import {
+  createReaderSelectedTextReplaceRuleDraft,
+  useReaderSelectedTextActions,
+} from '../src/composables/useReaderSelectedTextActions.js'
 
 function createController(overrides = {}) {
   const calls = []
   const controller = useReaderSelectedTextActions({
     getBook: () => ({ title: '测试书', url: 'https://example.com/book' }),
     confirm: async () => 'confirm',
-    prompt: async () => ({ value: '替换内容' }),
     createBookmark: async text => calls.push(['bookmark', text]),
-    createReplaceRule: async payload => calls.push(['rule', payload]),
-    dispatchRulesUpdated: () => calls.push(['dispatch']),
-    onSuccess: message => calls.push(['success', message]),
+    now: () => new Date('2026-07-11T01:02:03'),
+    openReplaceRuleEditor: payload => calls.push(['open-editor', payload]),
     ...overrides,
   })
   return { calls, controller }
@@ -37,30 +38,39 @@ test('closes the operation dialog without creating anything', async () => {
   assert.deepEqual(fixture.calls, [])
 })
 
-test('creates scoped replacement rules and broadcasts the update', async () => {
+test('creates the upstream selected-text draft without saving before editor confirmation', async () => {
   const fixture = createController()
-  const text = '这是一段超过二十四个字符的选中文字用于验证规则名称截断逻辑'
-  await fixture.controller.operate(`  ${text}  `)
+  const text = '这是一段选中文字'
+  await fixture.controller.operate(text)
   assert.deepEqual(fixture.calls, [
-    ['rule', {
-      name: `${text.slice(0, 24)}...`,
+    ['open-editor', {
+      name: '文本替换 2026-07-11 01:02:03',
       pattern: text,
-      replacement: '替换内容',
+      replacement: '',
       scope: '测试书;https://example.com/book',
       isRegex: false,
       enabled: true,
     }],
-    ['dispatch'],
-    ['success', '过滤规则已添加'],
   ])
 })
 
-test('does not create a rule after cancelling the replacement prompt', async () => {
-  const fixture = createController({
-    prompt: async () => {
-      throw new Error('cancel')
-    },
+test('builds the same full editor draft from the original selected text', () => {
+  assert.deepEqual(createReaderSelectedTextReplaceRuleDraft({
+    text: '第一段\n第二段',
+    book: { title: '范围书', url: 'local://scope' },
+    now: new Date('2026-07-11T23:59:58'),
+  }), {
+    name: '文本替换 2026-07-11 23:59:58',
+    pattern: '第一段\n第二段',
+    replacement: '',
+    scope: '范围书;local://scope',
+    isRegex: false,
+    enabled: true,
   })
-  await fixture.controller.operate('选中文字')
+})
+
+test('does not open an editor for empty selected text', async () => {
+  const fixture = createController()
+  await fixture.controller.operate('   ')
   assert.deepEqual(fixture.calls, [])
 })

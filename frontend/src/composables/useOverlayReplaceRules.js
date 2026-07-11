@@ -23,7 +23,7 @@ export function normalizeOverlayReplaceRule(rule = {}) {
   return {
     ...source,
     scope: String(source.scope || '*').trim() || '*',
-    isRegex: source.isRegex == null ? true : source.isRegex === true,
+    isRegex: source.isRegex === true,
     enabled: !(source.enabled === false || source.isEnabled === false),
   }
 }
@@ -153,16 +153,32 @@ export function useOverlayReplaceRules(options) {
   }
 
   async function save() {
-    if (!draft.value.pattern.trim()) {
+    const name = String(draft.value.name || '').trim()
+    const pattern = String(draft.value.pattern || '').trim()
+    const scope = String(draft.value.scope || '').trim()
+    if (!name) {
+      options.onWarning('规则名不能为空')
+      return
+    }
+    if (!pattern) {
       options.onWarning('匹配规则不能为空')
+      return
+    }
+    if (!scope) {
+      options.onWarning('替换范围不能为空')
+      return
+    }
+    if (!editingId.value && rules.value.some(rule => rule.name === name)) {
+      options.onWarning('规则名不能重复')
       return
     }
     saving.value = true
     try {
       const payload = normalizeOverlayReplaceRule({
         ...draft.value,
-        pattern: draft.value.pattern.trim(),
-        scope: draft.value.scope,
+        name,
+        pattern,
+        scope,
       })
       if (editingId.value) {
         await options.updateReplaceRule(editingId.value, payload)
@@ -302,7 +318,7 @@ function emptyDraft() {
     name: '',
     pattern: '',
     replacement: '',
-    scope: '*',
+    scope: '',
     isRegex: false,
     enabled: true,
   }

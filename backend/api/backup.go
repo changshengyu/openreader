@@ -10,7 +10,23 @@ import (
 )
 
 func (s *Server) triggerBackup(c *gin.Context) {
-	path, err := s.backupSvc.RunNow()
+	if !s.requireStoreAccess(c) {
+		return
+	}
+	user, ok := storeUser(c)
+	if !ok {
+		unauthorized(c, "store user missing")
+		return
+	}
+	var (
+		path string
+		err  error
+	)
+	if user.Role == "admin" {
+		path, err = s.backupSvc.RunNow()
+	} else {
+		path, err = s.backupSvc.RunNowForUser(user.ID, user.Username)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "backup failed: " + err.Error()})
 		return
@@ -20,7 +36,13 @@ func (s *Server) triggerBackup(c *gin.Context) {
 }
 
 func (s *Server) listBackups(c *gin.Context) {
-	webdavDir := filepath.Join(s.cfg.DataDir, "webdav")
+	if !s.requireStoreAccess(c) {
+		return
+	}
+	webdavDir, ok := s.backupDir(c)
+	if !ok {
+		return
+	}
 	entries, err := os.ReadDir(webdavDir)
 	if err != nil {
 		c.JSON(http.StatusOK, []gin.H{})
@@ -43,11 +65,22 @@ func (s *Server) listBackups(c *gin.Context) {
 }
 
 func (s *Server) downloadBackup(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	name := filepath.Base(c.Param("name"))
 	if !strings.HasPrefix(name, "backup_") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid backup name"})
 		return
 	}
-	path := filepath.Join(s.cfg.DataDir, "webdav", name)
+	backupDir, ok := s.backupDir(c)
+	if !ok {
+		return
+	}
+	path := filepath.Join(backupDir, name)
 	c.File(path)
+}
+
+func (s *Server) backupDir(c *gin.Context) (string, bool) {
+	return s.storeRoot(c, filepath.Join(s.cfg.DataDir, "webdav"))
 }

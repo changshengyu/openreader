@@ -12,6 +12,8 @@ function createActions(overrides = {}) {
     getOffset: () => 240,
     getPercent: () => 0.4,
     getExcerpt: () => '当前摘录',
+    getSelectedTextContext: () => ({ excerpt: '定位段落\n后续段落' }),
+    onSelectedTextNotFound: () => formCalls.push(['not-found']),
     openForm: async (...args) => {
       formCalls.push(args)
       return { saved: false }
@@ -37,6 +39,14 @@ test('routes current, selected-text, and note bookmarks through the shared form 
     excerpt: '当前摘录',
     note: '',
   }, { mode: 'create' }])
-  assert.equal(formCalls[1][1].excerpt.length, 500)
+  assert.equal(formCalls[1][1].excerpt, '定位段落\n后续段落')
   assert.equal(formCalls[2][1].note, '')
+})
+
+test('does not open a bookmark form when selected text cannot map to reader paragraphs', async () => {
+  const { actions, formCalls } = createActions({
+    getSelectedTextContext: () => null,
+  })
+  await actions.createFromSelectedText('无法定位的选择')
+  assert.deepEqual(formCalls, [['not-found']])
 })

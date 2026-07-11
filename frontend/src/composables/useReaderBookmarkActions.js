@@ -31,9 +31,12 @@ export function useReaderBookmarkActions(options) {
   }
 
   function createFromSelectedText(text) {
-    return openForm({
-      excerpt: String(text || '').trim().slice(0, 500),
-    })
+    const context = options.getSelectedTextContext?.(text)
+    if (!context?.excerpt) {
+      options.onSelectedTextNotFound?.()
+      return Promise.resolve({ saved: false, reason: 'context-not-found' })
+    }
+    return openForm(context)
   }
 
   return {

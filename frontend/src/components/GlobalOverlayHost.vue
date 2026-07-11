@@ -33,6 +33,11 @@
     :size="wideDrawerSize"
   />
 
+  <OverlayWorkspaceSettings
+    :direction="wideDrawerDirection"
+    :size="wideDrawerSize"
+  />
+
   <OverlayUserManagement
     :direction="wideDrawerDirection"
     :size="wideDrawerSize"
@@ -74,6 +79,7 @@ import OverlayRSS from './overlays/OverlayRSS.vue'
 import OverlaySources from './overlays/OverlaySources.vue'
 import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
 import OverlayWebDAV from './overlays/OverlayWebDAV.vue'
+import OverlayWorkspaceSettings from './overlays/OverlayWorkspaceSettings.vue'
 
 const reader = useReaderStore()
 const windowWidth = ref(currentViewportWidth())

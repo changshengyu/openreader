@@ -38,11 +38,14 @@ export function bookmarkUpdateTargetsBook(event, bookId) {
 
 export function bookmarkReaderQuery(bookmark) {
   const percent = Number(bookmark?.percent)
-  return {
+  const context = String(bookmark?.excerpt || '').trim()
+  const query = {
     chapter: bookmark?.chapterIndex,
     offset: bookmark?.offset || 0,
     percent: Number.isFinite(percent) ? percent : undefined,
   }
+  if (context) query.bookmark = context
+  return query
 }
 
 export function parseBookmarkPercent(value) {

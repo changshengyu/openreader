@@ -45,6 +45,10 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func setupTestServer(t *testing.T) (*gin.Engine, *Server) {
+	return setupTestServerWithConfig(t, nil)
+}
+
+func setupTestServerWithConfig(t *testing.T, configure func(*config.Config)) (*gin.Engine, *Server) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -55,6 +59,9 @@ func setupTestServer(t *testing.T) (*gin.Engine, *Server) {
 		DatabasePath:  t.TempDir() + "/test.db",
 		JWTSecret:     "test-secret",
 		LocalStoreDir: t.TempDir() + "/localStore",
+	}
+	if configure != nil {
+		configure(&cfg)
 	}
 
 	database, err := readerdb.Open(cfg)
@@ -4083,7 +4090,7 @@ func TestUpdateBookmark(t *testing.T) {
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
-	bookmark := models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterIndex: 0, Title: "旧标题"}
+	bookmark := models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterIndex: 0, Title: "旧标题", Excerpt: "旧摘录"}
 	if err := server.db.Create(&bookmark).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -4102,8 +4109,8 @@ func TestUpdateBookmark(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Title != "新标题" || updated.Excerpt != "新摘录" || updated.Note != "新笔记" {
-		t.Fatalf("unexpected bookmark: %+v", updated)
+	if updated.Title != "旧标题" || updated.Excerpt != "旧摘录" || updated.Note != "新笔记" {
+		t.Fatalf("bookmark edit must preserve the read-only reader context: %+v", updated)
 	}
 }
 
@@ -4126,7 +4133,7 @@ func TestBatchCreateAndDeleteBookmarks(t *testing.T) {
 
 	body := `[
 		{"chapterIndex":1,"offset":12,"percent":0.25,"title":"第一条","excerpt":"摘录一"},
-		{"chapterIndex":2,"offset":24,"percent":0.5,"note":"笔记二"}
+		{"chapterIndex":2,"offset":24,"percent":0.5,"excerpt":"摘录二","note":"笔记二"}
 	]`
 	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/bookmarks/batch", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -4900,7 +4907,7 @@ func TestReplaceRuleCRUDAndChapterContentAppliesRules(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/replace-rules", strings.NewReader(`{"name":"去广告","pattern":"广告[0-9]+","replacement":"","enabled":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/replace-rules", strings.NewReader(`{"name":"去广告","pattern":"广告[0-9]+","replacement":"","scope":"*","isRegex":true,"enabled":true}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
@@ -6928,8 +6935,10 @@ func TestLocalStoreImportRootRecursively(t *testing.T) {
 
 func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	router, _ := setupTestServer(t)
+	auth := authHeader(t, router)
 
 	req := httptest.NewRequest(http.MethodPut, "/webdav/backups/sample.txt", strings.NewReader("hello webdav"))
+	req.Header.Set("Authorization", auth)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -6937,6 +6946,7 @@ func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	}
 
 	req2 := httptest.NewRequest(http.MethodGet, "/webdav/backups", nil)
+	req2.Header.Set("Authorization", auth)
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusMultiStatus || !strings.Contains(w2.Body.String(), "sample.txt") {
@@ -6947,6 +6957,7 @@ func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	}
 
 	req3 := httptest.NewRequest(http.MethodGet, "/webdav/backups/sample.txt", nil)
+	req3.Header.Set("Authorization", auth)
 	w3 := httptest.NewRecorder()
 	router.ServeHTTP(w3, req3)
 	if w3.Code != http.StatusOK || strings.TrimSpace(w3.Body.String()) != "hello webdav" {
@@ -6954,6 +6965,7 @@ func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	}
 
 	req4 := httptest.NewRequest(http.MethodDelete, "/webdav/backups/sample.txt", nil)
+	req4.Header.Set("Authorization", auth)
 	w4 := httptest.NewRecorder()
 	router.ServeHTTP(w4, req4)
 	if w4.Code != http.StatusNoContent {
@@ -6963,8 +6975,10 @@ func TestWebDAVPutListGetAndDelete(t *testing.T) {
 
 func TestWebDAVMkcolAndMove(t *testing.T) {
 	router, _ := setupTestServer(t)
+	auth := authHeader(t, router)
 
 	req := httptest.NewRequest("MKCOL", "/webdav/books", nil)
+	req.Header.Set("Authorization", auth)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -6972,6 +6986,7 @@ func TestWebDAVMkcolAndMove(t *testing.T) {
 	}
 
 	req2 := httptest.NewRequest(http.MethodPut, "/webdav/books/a.txt", strings.NewReader("hello"))
+	req2.Header.Set("Authorization", auth)
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusCreated {
@@ -6979,6 +6994,7 @@ func TestWebDAVMkcolAndMove(t *testing.T) {
 	}
 
 	req3 := httptest.NewRequest("MOVE", "/webdav/books/a.txt", nil)
+	req3.Header.Set("Authorization", auth)
 	req3.Header.Set("Destination", "/webdav/books/b.txt")
 	w3 := httptest.NewRecorder()
 	router.ServeHTTP(w3, req3)
@@ -6987,6 +7003,7 @@ func TestWebDAVMkcolAndMove(t *testing.T) {
 	}
 
 	req4 := httptest.NewRequest(http.MethodGet, "/webdav/books/b.txt", nil)
+	req4.Header.Set("Authorization", auth)
 	w4 := httptest.NewRecorder()
 	router.ServeHTTP(w4, req4)
 	if w4.Code != http.StatusOK || strings.TrimSpace(w4.Body.String()) != "hello" {
@@ -6996,8 +7013,10 @@ func TestWebDAVMkcolAndMove(t *testing.T) {
 
 func TestWebDAVRejectsEscapedPath(t *testing.T) {
 	router, _ := setupTestServer(t)
+	auth := authHeader(t, router)
 
 	req := httptest.NewRequest(http.MethodDelete, "/webdav/../outside.txt", nil)
+	req.Header.Set("Authorization", auth)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusForbidden {
@@ -7378,7 +7397,7 @@ func TestRestoreOpenReaderBackupImportsUserData(t *testing.T) {
 	if err := server.db.Where("user_id = ? AND pattern = ?", user.ID, "foo").First(&rule).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rule.Replacement != "bar" || !rule.Enabled {
+	if rule.Replacement != "bar" || !rule.Enabled || rule.Scope != "*" || rule.IsRegex == nil || *rule.IsRegex {
 		t.Fatalf("unexpected restored replace rule: %+v", rule)
 	}
 	var rssSource models.RSSSource
@@ -7490,7 +7509,7 @@ func TestCreateReplaceRuleRespectsEnabledFlag(t *testing.T) {
 	router, _ := setupTestServer(t)
 	token := authHeader(t, router)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/replace-rules", strings.NewReader(`{"name":"停用规则","pattern":"广告","replacement":"","enabled":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/replace-rules", strings.NewReader(`{"name":"停用规则","pattern":"广告","replacement":"","scope":"*","isRegex":false,"enabled":false}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()

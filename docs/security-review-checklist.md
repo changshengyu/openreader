@@ -46,6 +46,49 @@ Use this checklist for security-sensitive changes and release reviews.
 
 For each release, record which checklist sections were relevant and which tests/probes covered them.
 
+## P1-E2 workspace storage audit
+
+- [x] Raw `/webdav/*` now uses the normal Bearer JWT and activity middleware before it can reach a filesystem handler.
+- [x] `User.CanAccessStore` is enforced before LocalStore, WebDAV, backup and import/restore handlers inspect a path, body or file. Store-disabled users receive 403.
+- [x] LocalStore, WebDAV and generated backups resolve to private descendants for regular users while the administrator retains the preserved legacy root. Cross-user access is denied without moving/deleting mounted data.
+- [x] Direct and storage-backed preview/import uses user-scoped random staged tokens; confirmation consumes the staged bytes, foreign/expired tokens fail closed, and successful/expired stages are removed.
+- [x] Direct local-book upload, LocalStore/WebDAV upload, preview and confirmation reads are capped by `OPENREADER_MAX_IMPORT_BYTES` (128 MiB by default) before staging or parser work. LocalStore/WebDAV writes stage beside the target and rename only after the bounded copy succeeds.
+- [ ] Archive entry/expanded-size and parser-work limits still need explicit bounds; stage cleanup must also run without a later user request.
+
+Evidence for the checked items: `backend/api/workspace_storage_access_contract_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/api/import_size_contract_test.go`, `frontend/tests/webdavAuthContract.test.mjs`, full Go/frontend test suites and production frontend build. This remains not a storage/backup release approval.
+
+## P2 replace-rule review
+
+- [x] Reader-global replacement rules remain user-scoped for list, create, update, batch upsert, delete, preview and content application.
+- [x] New and edited regex patterns compile before persistence or preview; malformed regex returns a client-safe `400` and is never silently reinterpreted as a literal replacement.
+- [x] The global Reader rule path uses Go's RE2 engine with a bounded pattern (16 KiB) and replacement (64 KiB), avoiding catastrophic-backtracking regex behavior and unbounded user-controlled rule fields.
+- [x] Existing invalid stored regexes fail closed for the remaining reader pipeline; they never produce a literal replacement that could silently corrupt chapter content.
+- [x] Reader-global rules use a dedicated execution path, so source-parser replacement semantics are not broadened or weakened by this UI compatibility change.
+- [x] Error responses contain field/regex validation messages only; they do not expose a chapter cache path, JWT, source headers, WebDAV credentials, or database content.
+
+Evidence: `backend/api/replace_rules_contract_test.go`, `backend/api/api_test.go` replace-rule/content cases, `frontend/tests/readerSelectedTextActions.test.mjs`, `frontend/tests/overlayReplaceRules.test.mjs`, and the full Go/frontend validation gates.
+
+## P2 bookmark review
+
+- [x] Every list/create/batch/delete route scopes both the bookmark and its containing book to the authenticated user; a supplied chapter is checked against that same book before it is stored.
+- [x] New reader bookmarks require a bounded non-empty paragraph context, and title/context/note fields have server-side size limits before SQLite writes.
+- [x] Batch creation validates every item before opening the write transaction, preventing a malformed/foreign chapter row from leaving a partial set of bookmarks.
+- [x] Restore never trusts the source database's bookmark or chapter IDs: destination-book ownership is resolved by the scoped URL/title lookup and the chapter is rebound only under that destination book.
+- [x] Backup restore's modern creation-time identity prevents same-location records from collapsing while its ID is not reused across users or databases.
+- [x] Client-visible validation messages expose only bookmark field/ownership errors, not database IDs beyond the requested resource, host paths, JWTs, or source credentials.
+
+Evidence: `backend/api/bookmarks_contract_test.go`, existing bookmark ownership API tests, `frontend/tests/readerBookmarkContext.test.mjs`, `frontend/tests/readerBookmarkActions.test.mjs`, and `frontend/tests/readerSearchNavigation.test.mjs`. Archive read/expanded-size limits remain a separate open storage hardening item.
+
+## P2 Reader book-content search review
+
+- [x] Both modern and legacy content-search routes require JWT; the modern route verifies the requested book belongs to that authenticated user before loading chapter rows or source content.
+- [x] Remote search uses the request context through source fetching, so a disconnected client stops before later chapter requests are scheduled; no cancellation state is serialized as a false successful page.
+- [x] Chapter and result scanning remain bounded. The explicit 2,000-match per-chapter cap is returned as `truncated/incomplete` rather than silently advancing a cursor past omitted data.
+- [x] Remote chapter/source failures are counted as client-safe `unavailableChapters`, allowing the UI to distinguish an incomplete scan from a genuine no-match result without exposing source URLs, cache paths, headers, cookies, JWTs, or filesystem details.
+- [x] Existing engine timeout, redirect, response-size, scheme, and source-header protections remain the only remote-fetch path; the search handler does not introduce a new HTTP client or bypass source validation.
+
+Evidence: `backend/api/content_search_contract_test.go`, existing legacy/modern search API tests, `frontend/tests/readerBookSearch.test.mjs`, `frontend/tests/readerGlobalDialogContract.test.mjs`, and the full Go/frontend validation gates. Three-viewport browser confirmation remains required before release.
+
 ## P1-D4 cache stream review
 
 - [x] `POST /api/books/:id/cache/stream` remains behind the normal Bearer-token middleware and verifies the requested book belongs to that authenticated user before opening an SSE response.

@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"openreader/backend/engine"
 	"openreader/backend/models"
 )
 
@@ -46,7 +47,7 @@ func (s *Service) loop() {
 		next := nextScheduledTime(23, 50)
 		select {
 		case <-time.After(time.Until(next)):
-			s.run()
+			s.runScheduled()
 		case <-s.stopCh:
 			return
 		}
@@ -64,11 +65,31 @@ func nextScheduledTime(hour, minute int) time.Time {
 
 // RunNow triggers an immediate backup. Returns the backup file path.
 func (s *Service) RunNow() (string, error) {
-	return s.run()
+	return s.run(nil, s.webdavDir)
 }
 
-func (s *Service) run() (string, error) {
-	backupPath := filepath.Join(s.webdavDir, fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405")))
+// RunNowForUser creates a user-scoped backup below the existing WebDAV mount.
+// The caller supplies the persisted username only to derive a safe directory;
+// all exported personal rows are filtered by the authenticated user id.
+func (s *Service) RunNowForUser(userID uint, username string) (string, error) {
+	return s.run(&userID, filepath.Join(s.webdavDir, "users", engine.SafeFilename(username)))
+}
+
+func (s *Service) runScheduled() {
+	var users []models.User
+	if err := s.db.Select("id", "username").Find(&users).Error; err != nil {
+		log.Printf("scheduled backup: load users: %v", err)
+		return
+	}
+	for _, user := range users {
+		if _, err := s.RunNowForUser(user.ID, user.Username); err != nil {
+			log.Printf("scheduled backup for user %d failed: %v", user.ID, err)
+		}
+	}
+}
+
+func (s *Service) run(userID *uint, backupDir string) (string, error) {
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405")))
 	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
 		return "", err
 	}
@@ -83,13 +104,13 @@ func (s *Service) run() (string, error) {
 	defer zipWriter.Close()
 
 	s.addSources(zipWriter)
-	s.addRSSSources(zipWriter)
-	s.addUserSettings(zipWriter)
-	s.addCategories(zipWriter)
-	s.addBookshelf(zipWriter)
-	s.addBookmarks(zipWriter)
-	s.addProgress(zipWriter)
-	s.addReplaceRules(zipWriter)
+	s.addRSSSources(zipWriter, userID)
+	s.addUserSettings(zipWriter, userID)
+	s.addCategories(zipWriter, userID)
+	s.addBookshelf(zipWriter, userID)
+	s.addBookmarks(zipWriter, userID)
+	s.addProgress(zipWriter, userID)
+	s.addReplaceRules(zipWriter, userID)
 
 	log.Printf("backup created: %s", backupPath)
 	return backupPath, nil
@@ -107,7 +128,7 @@ func (s *Service) addSources(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "bookSource.json", data)
 }
 
-func (s *Service) addRSSSources(zipWriter *zip.Writer) {
+func (s *Service) addRSSSources(zipWriter *zip.Writer, userID *uint) {
 	type rssSourceExport struct {
 		models.RSSSource
 		SourceName    string `json:"sourceName,omitempty"`
@@ -117,7 +138,11 @@ func (s *Service) addRSSSources(zipWriter *zip.Writer) {
 		SourceComment string `json:"sourceComment,omitempty"`
 	}
 	var sources []models.RSSSource
-	if err := s.db.Order("user_id, custom_order, updated_at").Find(&sources).Error; err != nil {
+	query := s.db.Order("user_id, custom_order, updated_at")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&sources).Error; err != nil {
 		return
 	}
 	rows := make([]rssSourceExport, 0, len(sources))
@@ -138,9 +163,13 @@ func (s *Service) addRSSSources(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "rssSources.json", data)
 }
 
-func (s *Service) addUserSettings(zipWriter *zip.Writer) {
+func (s *Service) addUserSettings(zipWriter *zip.Writer, userID *uint) {
 	var settings []models.UserSetting
-	if err := s.db.Order("user_id, key").Find(&settings).Error; err != nil {
+	query := s.db.Order("user_id, key")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&settings).Error; err != nil {
 		return
 	}
 	for i := range settings {
@@ -170,9 +199,13 @@ func sanitizeBackupUserSettingValue(key string, value string) string {
 	return string(encoded)
 }
 
-func (s *Service) addCategories(zipWriter *zip.Writer) {
+func (s *Service) addCategories(zipWriter *zip.Writer, userID *uint) {
 	var categories []models.Category
-	if err := s.db.Order("user_id, sort_order, name").Find(&categories).Error; err != nil {
+	query := s.db.Order("user_id, sort_order, name")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&categories).Error; err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(categories, "", "  ")
@@ -182,14 +215,18 @@ func (s *Service) addCategories(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "categories.json", data)
 }
 
-func (s *Service) addBookshelf(zipWriter *zip.Writer) {
+func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 	type bookExport struct {
 		models.Book
 		CategoryName  string   `json:"categoryName,omitempty"`
 		CategoryNames []string `json:"categoryNames,omitempty"`
 	}
 	var books []models.Book
-	if err := s.db.Order("id asc").Find(&books).Error; err != nil {
+	query := s.db.Order("id asc")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&books).Error; err != nil {
 		return
 	}
 	rows := make([]bookExport, 0, len(books))
@@ -222,14 +259,21 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "bookshelf.json", data)
 }
 
-func (s *Service) addBookmarks(zipWriter *zip.Writer) {
+func (s *Service) addBookmarks(zipWriter *zip.Writer, userID *uint) {
 	type bookmarkExport struct {
 		models.Bookmark
 		BookTitle string `json:"bookTitle"`
 		BookURL   string `json:"bookUrl"`
 	}
 	var bookmarks []models.Bookmark
-	if err := s.db.Order("user_id, book_id, updated_at").Find(&bookmarks).Error; err != nil {
+	// Reader-dev exposes its persisted bookmark array in insertion order.  Keep
+	// that ordering in exports too: an edit changes updated_at but must not move
+	// a bookmark in the manager or in the next restored backup.
+	query := s.db.Order("user_id, id")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&bookmarks).Error; err != nil {
 		return
 	}
 	rows := make([]bookmarkExport, 0, len(bookmarks))
@@ -249,14 +293,18 @@ func (s *Service) addBookmarks(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "bookmarks.json", data)
 }
 
-func (s *Service) addProgress(zipWriter *zip.Writer) {
+func (s *Service) addProgress(zipWriter *zip.Writer, userID *uint) {
 	type progressExport struct {
 		models.ReadingProgress
 		BookTitle string `json:"bookTitle"`
 		BookURL   string `json:"bookUrl"`
 	}
 	var progresses []models.ReadingProgress
-	if err := s.db.Order("user_id, book_id").Find(&progresses).Error; err != nil {
+	query := s.db.Order("user_id, book_id")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&progresses).Error; err != nil {
 		return
 	}
 	rows := make([]progressExport, 0, len(progresses))
@@ -276,9 +324,16 @@ func (s *Service) addProgress(zipWriter *zip.Writer) {
 	writeZipEntry(zipWriter, "readingProgress.json", data)
 }
 
-func (s *Service) addReplaceRules(zipWriter *zip.Writer) {
+func (s *Service) addReplaceRules(zipWriter *zip.Writer, userID *uint) {
 	var rules []models.ReplaceRule
-	if err := s.db.Order("user_id, updated_at").Find(&rules).Error; err != nil {
+	// Replacement order is user-visible: a backup must preserve the same
+	// insertion pipeline that the reader applies, not reorder rows by a recent
+	// edit timestamp.
+	query := s.db.Order("user_id, id")
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+	if err := query.Find(&rules).Error; err != nil {
 		return
 	}
 	data, err := json.MarshalIndent(rules, "", "  ")

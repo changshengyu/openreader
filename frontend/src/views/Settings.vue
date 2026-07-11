@@ -41,47 +41,6 @@
         </section>
       </el-tab-pane>
 
-      <el-tab-pane label="备份" name="backup">
-        <section class="app-panel settings-card">
-          <div class="card-head">
-            <el-icon><Files /></el-icon>
-            <h2>备份恢复</h2>
-          </div>
-          <div class="panel-actions">
-            <el-button type="primary" :icon="Upload" :loading="backupLoading" @click="runBackup">保存备份到 WebDAV</el-button>
-            <el-upload :show-file-list="false" :auto-upload="false" accept=".zip" @change="restoreBackup">
-              <el-button :icon="RefreshLeft" :loading="restoreLoading">恢复备份包</el-button>
-            </el-upload>
-            <el-button :icon="Refresh" :loading="backupListLoading" @click="loadBackups">刷新列表</el-button>
-          </div>
-
-          <el-table :data="backups" stripe class="backup-table desktop-backup-table">
-            <el-table-column prop="name" label="文件名" min-width="220" show-overflow-tooltip />
-            <el-table-column label="大小" width="110">
-              <template #default="{ row }">{{ formatSize(row.size) }}</template>
-            </el-table-column>
-            <el-table-column label="时间" width="190">
-              <template #default="{ row }">{{ formatDate(row.time) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="100">
-              <template #default="{ row }">
-                <el-button text type="primary" @click="download(row)">下载</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div v-if="backups.length" class="mobile-backup-list">
-            <article v-for="row in backups" :key="row.name" class="mobile-backup-card app-panel">
-              <div>
-                <strong>{{ row.name }}</strong>
-                <span>{{ formatDate(row.time) }} · {{ formatSize(row.size) }}</span>
-              </div>
-              <el-button size="small" text type="primary" @click="download(row)">下载</el-button>
-            </article>
-          </div>
-          <el-empty v-if="!backups.length && !backupListLoading" description="暂无备份文件" />
-        </section>
-      </el-tab-pane>
-
       <el-tab-pane label="缓存" name="cache">
         <section class="settings-grid">
           <article class="app-panel settings-card">
@@ -150,19 +109,6 @@
               >清空章节内容缓存</el-button>
             </div>
           </article>
-        </section>
-      </el-tab-pane>
-
-      <el-tab-pane label="WebDAV" name="webdav">
-        <section class="app-panel settings-card">
-          <div class="card-head">
-            <el-icon><Link /></el-icon>
-            <h2>WebDAV</h2>
-          </div>
-          <dl class="info-list">
-            <div><dt>服务地址</dt><dd><code>/webdav/</code></dd></div>
-          </dl>
-          <WebDAVBrowser :is-mobile="isMobileDialog" />
         </section>
       </el-tab-pane>
 
@@ -376,36 +322,6 @@
         </section>
       </el-tab-pane>
 
-      <el-tab-pane label="替换规则" name="replace">
-        <section class="app-panel settings-card">
-          <div class="card-head">
-            <el-icon><Edit /></el-icon>
-            <h2>全局替换规则</h2>
-          </div>
-          <p class="panel-text">替换规则管理使用全局弹层，和阅读器、侧边栏入口保持同一套导入、批量删除、启停、测试逻辑。</p>
-          <div class="panel-actions">
-            <el-button type="primary" :icon="Edit" @click="overlay.openReplaceRules()">打开替换规则管理</el-button>
-          </div>
-        </section>
-      </el-tab-pane>
-
-      <el-tab-pane label="RSS" name="rss">
-        <RSSManager :is-mobile="isMobileDialog" />
-      </el-tab-pane>
-
-      <el-tab-pane label="用户管理" name="admin">
-        <section class="app-panel settings-card">
-          <div class="card-head">
-            <el-icon><UserFilled /></el-icon>
-            <h2>用户空间</h2>
-          </div>
-          <p class="panel-text">用户管理使用全局弹层，和首页侧边栏入口保持同一套新增、重置密码、权限调整和批量删除逻辑。</p>
-          <div class="panel-actions">
-            <el-button type="primary" :icon="UserFilled" @click="overlay.openUserManage()">打开用户管理</el-button>
-          </div>
-          <el-alert type="warning" :closable="false" show-icon title="只有管理员账号能访问用户管理接口；普通账号加载失败是预期行为。" />
-        </section>
-      </el-tab-pane>
     </el-tabs>
 
   </section>
@@ -413,51 +329,43 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Connection,
   Delete,
-  Edit,
   Files,
-  Link,
   Refresh,
-  RefreshLeft,
   SwitchButton,
   Upload,
   User,
-  UserFilled,
   View,
 } from '@element-plus/icons-vue'
 import api from '../api/client'
-import { downloadBackup, listBackups, restoreLegadoBackup, triggerBackup } from '../api/backup'
 import { clearCache, getCacheStats } from '../api/cache'
 import { deleteAsset, uploadAsset } from '../api/uploads'
 import { useSync } from '../composables/useSync'
 import { useReaderStore, themePresets } from '../stores/reader'
-import { useOverlayStore } from '../stores/overlay'
 import { readerFontOptions } from '../utils/readerFonts'
 import { useUserStore } from '../stores/user'
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
-import { applyRestoreResult } from '../utils/restoreSync'
-import RSSManager from '../components/RSSManager.vue'
-import WebDAVBrowser from '../components/WebDAVBrowser.vue'
+
+const props = defineProps({
+  panel: {
+    type: String,
+    default: 'account',
+  },
+})
 
 const router = useRouter()
-const route = useRoute()
 const userStore = useUserStore()
 const readerStore = useReaderStore()
-const overlay = useOverlayStore()
 const { connected: syncConnected } = useSync()
 
-const settingPanels = new Set(['account', 'backup', 'cache', 'webdav', 'reader', 'replace', 'rss', 'admin'])
-const activeTab = ref(settingPanels.has(String(route.query.panel || '')) ? String(route.query.panel) : 'account')
+const workspacePanels = new Set(['account', 'cache', 'reader'])
+const activeTab = ref(resolveWorkspaceSettingsPanel(props.panel))
 const checking = ref(false)
-const backupLoading = ref(false)
-const backupListLoading = ref(false)
-const restoreLoading = ref(false)
-const backups = ref([])
 const cacheStats = ref({})
 const localBrowserCacheStats = ref({ total: { files: 0, size: 0 }, groups: {} })
 const cacheLoading = ref(false)
@@ -617,7 +525,6 @@ onMounted(() => {
   readerStore.normalizeSettings()
   readerStore.loadReaderSettings().catch(() => {})
   window.addEventListener('resize', updateWindowWidth, { passive: true })
-  loadBackups()
   loadCacheStats()
   loadHealthInfo().catch(() => {})
 })
@@ -629,12 +536,16 @@ function updateWindowWidth() {
 }
 
 watch(
-  () => route.query.panel,
+  () => props.panel,
   (panel) => {
-    const value = String(panel || '')
-    if (settingPanels.has(value)) activeTab.value = value
+    activeTab.value = resolveWorkspaceSettingsPanel(panel)
   },
 )
+
+function resolveWorkspaceSettingsPanel(panel) {
+  const value = String(panel || '')
+  return workspacePanels.has(value) ? value : 'account'
+}
 
 async function checkHealth() {
   checking.value = true
@@ -658,61 +569,6 @@ async function loadHealthInfo() {
 function shortCommit(value) {
   if (!value || value === 'unknown') return '-'
   return String(value).slice(0, 12)
-}
-
-async function runBackup() {
-  backupLoading.value = true
-  try {
-    const { data } = await triggerBackup()
-    ElMessage.success(data?.name || data?.path ? `备份已保存到 WebDAV：${data.name || data.path}` : '备份已保存到 WebDAV')
-    await loadBackups()
-  } catch (err) {
-    ElMessage.error(readError(err, '备份失败'))
-  } finally {
-    backupLoading.value = false
-  }
-}
-
-async function loadBackups() {
-  backupListLoading.value = true
-  try {
-    const { data } = await listBackups()
-    backups.value = data
-  } catch (err) {
-    ElMessage.error(readError(err, '加载备份失败'))
-  } finally {
-    backupListLoading.value = false
-  }
-}
-
-async function restoreBackup(data) {
-  const file = data.raw
-  if (!file) return
-  restoreLoading.value = true
-  try {
-    const form = new FormData()
-    form.append('file', file)
-    const { data: result } = await restoreLegadoBackup(form)
-    ElMessage.success(`恢复完成：书源 ${result.sources || 0}，书籍 ${result.books || 0}，进度 ${result.progress || 0}`)
-    await applyRestoreResult(result)
-  } catch (err) {
-    ElMessage.error(readError(err, '恢复失败'))
-  } finally {
-    restoreLoading.value = false
-  }
-}
-
-async function download(row) {
-  try {
-    const resp = await downloadBackup(row.name)
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([resp.data]))
-    a.download = row.name
-    a.click()
-    URL.revokeObjectURL(a.href)
-  } catch (err) {
-    ElMessage.error(readError(err, '下载失败'))
-  }
 }
 
 async function loadCacheStats() {
@@ -832,11 +688,6 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatDate(value) {
-  if (!value) return '-'
-  return new Date(value).toLocaleString()
-}
-
 function readError(err, fallback) {
   return err?.response?.data?.error?.message || err?.response?.data?.error || fallback
 }
@@ -850,8 +701,7 @@ function readError(err, fallback) {
 
 .settings-head,
 .card-head,
-.panel-actions,
-.permission-row {
+.panel-actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -937,110 +787,6 @@ function readError(err, fallback) {
   margin-top: 8px;
 }
 
-.backup-table {
-  width: 100%;
-}
-
-.mobile-backup-list {
-  display: none;
-}
-
-.mobile-backup-card {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  padding: 12px;
-}
-
-.mobile-backup-card div {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.mobile-backup-card strong,
-.mobile-backup-card span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-backup-card strong {
-  color: var(--app-text);
-  font-size: 14px;
-}
-
-.mobile-backup-card span {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.mobile-rule-list,
-.mobile-user-list {
-  display: none;
-}
-
-.mobile-rule-card,
-.mobile-user-card {
-  display: grid;
-  gap: 9px;
-  padding: 12px;
-}
-
-.mobile-rule-card header,
-.mobile-rule-card footer,
-.mobile-user-card header,
-.mobile-permission-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mobile-rule-card header,
-.mobile-user-card header {
-  justify-content: space-between;
-}
-
-.mobile-rule-card header > div,
-.mobile-user-card header > div {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.mobile-rule-card strong,
-.mobile-rule-card span,
-.mobile-rule-card p,
-.mobile-user-card strong,
-.mobile-user-card span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-rule-card strong,
-.mobile-user-card strong {
-  color: var(--app-text);
-  font-size: 14px;
-}
-
-.mobile-rule-card span,
-.mobile-rule-card p,
-.mobile-user-card span {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.mobile-rule-card p {
-  margin: 0;
-}
-
-.mobile-rule-card footer,
-.mobile-permission-row {
-  justify-content: flex-end;
-}
-
 .reader-setting-list {
   display: grid;
   gap: 14px;
@@ -1103,33 +849,6 @@ function readError(err, fallback) {
 
 .reader-config-scheme.add {
   color: var(--app-primary);
-}
-
-.replace-test-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: -4px 0 10px;
-}
-
-.msg-success {
-  color: var(--app-success);
-}
-
-.msg-muted {
-  color: var(--app-text-muted);
-}
-
-.replace-test-output {
-  max-height: 180px;
-  margin: 0 0 12px;
-  overflow: auto;
-  padding: 10px;
-  color: var(--app-text);
-  background: var(--app-bg-soft);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  white-space: pre-wrap;
 }
 
 .theme-list {
@@ -1250,42 +969,11 @@ function readError(err, fallback) {
   padding: 0 8px;
 }
 
-.permission-row {
-  flex-wrap: wrap;
-}
-
-code {
-  padding: 2px 5px;
-  color: var(--app-primary-strong);
-  background: var(--app-primary-soft);
-  border-radius: 4px;
-}
-
 @media (max-width: 750px) {
   .settings-head,
   .settings-grid {
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .desktop-backup-table {
-    display: none;
-  }
-
-  .desktop-replace-table,
-  .desktop-user-table {
-    display: none;
-  }
-
-  .mobile-backup-list {
-    display: grid;
-    gap: 10px;
-  }
-
-  .mobile-rule-list,
-  .mobile-user-list {
-    display: grid;
-    gap: 10px;
   }
 
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,7 +15,12 @@ import (
 
 const localImportStageLifetime = 24 * time.Hour
 
-var errInvalidLocalImportToken = errors.New("invalid or expired local import token")
+const defaultMaxLocalImportBytes int64 = 128 * 1024 * 1024
+
+var (
+	errInvalidLocalImportToken = errors.New("invalid or expired local import token")
+	errLocalImportTooLarge     = errors.New("local book exceeds maximum import size")
+)
 
 type localImportStageMetadata struct {
 	FileName  string    `json:"fileName"`
@@ -23,6 +29,9 @@ type localImportStageMetadata struct {
 }
 
 func (s *Server) stageLocalImport(userID uint, fileName string, extension string, data []byte) (string, error) {
+	if int64(len(data)) > s.maxLocalImportBytes() {
+		return "", errLocalImportTooLarge
+	}
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return "", err
@@ -71,12 +80,52 @@ func (s *Server) loadStagedLocalImport(userID uint, token string) (localImportSt
 		s.removeStagedLocalImport(userID, token)
 		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
 	}
-	data, err := os.ReadFile(dataPath)
+	data, err := s.readBoundedLocalImportFile(dataPath)
 	if err != nil {
 		s.removeStagedLocalImport(userID, token)
 		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
 	}
 	return metadata, data, nil
+}
+
+func (s *Server) maxLocalImportBytes() int64 {
+	if s.cfg.MaxImportBytes > 0 {
+		return s.cfg.MaxImportBytes
+	}
+	return defaultMaxLocalImportBytes
+}
+
+func (s *Server) readBoundedLocalImport(reader io.Reader) ([]byte, error) {
+	limit := s.maxLocalImportBytes()
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errLocalImportTooLarge
+	}
+	return data, nil
+}
+
+func (s *Server) copyBoundedLocalImport(destination io.Writer, source io.Reader) error {
+	limit := s.maxLocalImportBytes()
+	written, err := io.Copy(destination, io.LimitReader(source, limit+1))
+	if err != nil {
+		return err
+	}
+	if written > limit {
+		return errLocalImportTooLarge
+	}
+	return nil
+}
+
+func (s *Server) readBoundedLocalImportFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return s.readBoundedLocalImport(file)
 }
 
 func (s *Server) removeStagedLocalImport(userID uint, token string) {

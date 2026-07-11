@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   bookContentSearchParagraphIndex,
   bookContentSearchMaxRounds,
+  bookContentSearchNotice,
   bookContentSearchPagingParams,
   bookContentSearchStatus,
   countBookContentMatches,
@@ -14,13 +15,11 @@ test('uses bounded remote and expanded local book search windows', () => {
     chapterLimit: 10,
     scanLimit: 10,
     matchLimit: 120,
-    perChapterLimit: 20,
   })
   assert.deepEqual(bookContentSearchPagingParams({ sourceId: 0 }), {
     chapterLimit: 160,
     scanLimit: 480,
     matchLimit: 1000,
-    perChapterLimit: 100,
     localFull: 1,
   })
 })
@@ -44,6 +43,20 @@ test('formats book content search progress from scanned chapters', () => {
     searched: false,
     resultCount: 5,
   }), '')
+})
+
+test('makes incomplete or safety-truncated chapter searches visible to the reader', () => {
+  assert.equal(bookContentSearchNotice({
+    incomplete: true,
+    unavailableChapters: 2,
+    truncated: false,
+  }), '有 2 章加载失败，搜索结果不完整，请检查书源或网络后重试')
+  assert.equal(bookContentSearchNotice({
+    incomplete: true,
+    unavailableChapters: 0,
+    truncated: true,
+  }), '单章匹配结果过多，已安全截断，搜索结果不完整')
+  assert.equal(bookContentSearchNotice({ incomplete: false }), '')
 })
 
 test('finds the paragraph containing the requested exact or normalized match', () => {

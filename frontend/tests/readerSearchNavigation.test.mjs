@@ -94,3 +94,17 @@ test('loads same chapter directly and navigates before loading another chapter',
     loadOptions: { restorePercent: 0.6, saveAfterLoad: true },
   }])
 })
+
+test('restores a bookmark by paragraph context after route offset restoration', async () => {
+  const fixture = createFixture()
+  assert.equal(fixture.controller.jumpToBookmarkContext('目标 目标'), true)
+  assert.equal(fixture.options.contentEl.value.scrollTop, fixture.paragraphs[1].offsetTop - 80)
+
+  const failures = []
+  const missing = createFixture({
+    getRouteQuery: () => ({ bookmark: '不存在的书签上下文' }),
+    onBookmarkNotFound: () => failures.push('missing'),
+  })
+  await missing.controller.jumpToRouteLine()
+  assert.deepEqual(failures, ['missing'])
+})

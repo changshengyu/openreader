@@ -106,6 +106,7 @@
     :title="editingReplaceRuleId ? '编辑替换规则' : '新增替换规则'"
     width="520px"
     :fullscreen="isMobile"
+    @closed="overlay.clearReplaceRuleEditor()"
   >
     <el-form label-position="top">
       <el-form-item label="名称">
@@ -148,7 +149,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Refresh, Upload } from '@element-plus/icons-vue'
 import * as replaceRulesApi from '../../api/replaceRules'
@@ -220,6 +221,13 @@ onMounted(() => {
     handleReplaceRulesUpdated,
   )
 })
+
+watch(
+  () => overlay.replaceRuleEditorRequest,
+  request => {
+    if (request > 0) openReplaceRuleEditor(overlay.replaceRuleEditorDraft || {})
+  },
+)
 
 onBeforeUnmount(() => {
   window.removeEventListener(

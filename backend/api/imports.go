@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -24,7 +23,7 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	fileName, ext, data, importToken, err := s.readLocalImportPayload(c, userID, true)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeLocalImportError(c, err)
 		return
 	}
 	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
@@ -48,7 +47,7 @@ func (s *Server) importTXT(c *gin.Context) {
 
 	fileName, ext, data, importToken, err := s.readLocalImportPayload(c, userID, false)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeLocalImportError(c, err)
 		return
 	}
 	if ext != ".txt" && ext != ".text" && ext != ".md" && ext != ".epub" && ext != ".pdf" && ext != ".umd" && ext != ".cbz" {
@@ -105,6 +104,14 @@ func (s *Server) importTXT(c *gin.Context) {
 	c.JSON(http.StatusCreated, s.broadcastBookShelfUpdate(userID, book))
 }
 
+func writeLocalImportError(c *gin.Context, err error) {
+	status := http.StatusBadRequest
+	if errors.Is(err, errLocalImportTooLarge) {
+		status = http.StatusRequestEntityTooLarge
+	}
+	c.JSON(status, gin.H{"error": err.Error()})
+}
+
 func (s *Server) readLocalImportPayload(c *gin.Context, userID uint, createStage bool) (string, string, []byte, string, error) {
 	importToken := strings.TrimSpace(c.PostForm("importToken"))
 	if importToken != "" {
@@ -119,14 +126,20 @@ func (s *Server) readLocalImportPayload(c *gin.Context, userID uint, createStage
 	if err != nil {
 		return "", "", nil, "", errors.New("file or importToken is required")
 	}
+	if fileHeader.Size > s.maxLocalImportBytes() {
+		return "", "", nil, "", errLocalImportTooLarge
+	}
 	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 	file, err := fileHeader.Open()
 	if err != nil {
 		return "", "", nil, "", errors.New("failed to open file")
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	data, err := s.readBoundedLocalImport(file)
 	if err != nil {
+		if errors.Is(err, errLocalImportTooLarge) {
+			return "", "", nil, "", err
+		}
 		return "", "", nil, "", errors.New("failed to read file")
 	}
 	if !createStage {
@@ -165,10 +178,11 @@ func parseOptionalCategoryID(value string) *uint {
 }
 
 type localBookImportItem struct {
-	Path    string `json:"path"`
-	Title   string `json:"title"`
-	Author  string `json:"author"`
-	TOCRule string `json:"tocRule"`
+	Path        string `json:"path"`
+	ImportToken string `json:"importToken"`
+	Title       string `json:"title"`
+	Author      string `json:"author"`
+	TOCRule     string `json:"tocRule"`
 }
 
 type localBookImportRequest struct {
@@ -194,9 +208,54 @@ func (request localBookImportRequest) requestedPaths() []string {
 func (request localBookImportRequest) itemByPath() map[string]localBookImportItem {
 	items := make(map[string]localBookImportItem, len(request.Items))
 	for _, item := range request.Items {
-		if path := strings.TrimSpace(item.Path); path != "" {
+		if path := cleanRelativePath(item.Path); path != "" {
 			items[path] = item
 		}
 	}
 	return items
+}
+
+// previewStagedStorageImport fixes the source bytes at preview time for files
+// coming from LocalStore or WebDAV. Confirm/import can then safely reparse the
+// user's edited TOC rule without depending on a mutable mounted file.
+func (s *Server) previewStagedStorageImport(userID uint, file localStoreImportFile, override localBookImportItem) (localbook.PreviewResult, string, error) {
+	data, err := s.readBoundedLocalImportFile(file.filePath)
+	if err != nil {
+		return localbook.PreviewResult{}, "", err
+	}
+	importToken, err := s.stageLocalImport(userID, filepath.Base(file.filePath), file.extension, data)
+	if err != nil {
+		return localbook.PreviewResult{}, "", errors.New("failed to stage import")
+	}
+	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
+		FileName:  filepath.Base(file.filePath),
+		Extension: file.extension,
+		Data:      data,
+		Title:     override.Title,
+		Author:    override.Author,
+		TOCRule:   override.TOCRule,
+	})
+	if err != nil {
+		return localbook.PreviewResult{}, importToken, err
+	}
+	preview.ImportToken = importToken
+	return preview, importToken, nil
+}
+
+func (s *Server) stagedStorageImportRequest(userID uint, userName string, importToken string, override localBookImportItem, categoryID *uint) (localbook.ImportRequest, error) {
+	metadata, data, err := s.loadStagedLocalImport(userID, importToken)
+	if err != nil {
+		return localbook.ImportRequest{}, err
+	}
+	return localbook.ImportRequest{
+		UserID:     userID,
+		UserName:   userName,
+		FileName:   metadata.FileName,
+		Extension:  metadata.Extension,
+		Data:       data,
+		Title:      override.Title,
+		Author:     override.Author,
+		CategoryID: categoryID,
+		TOCRule:    override.TOCRule,
+	}, nil
 }

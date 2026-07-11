@@ -3,14 +3,21 @@ package api
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+)
+
+const (
+	maxReplaceRuleNameBytes        = 120
+	maxReplaceRulePatternBytes     = 16 * 1024
+	maxReplaceRuleReplacementBytes = 64 * 1024
+	maxReplaceRuleScopeBytes       = 800
 )
 
 type replaceRuleRequest struct {
@@ -30,14 +37,34 @@ type replaceRuleTestRequest struct {
 	Text        string `json:"text" binding:"required"`
 }
 
+type replaceRuleResponse struct {
+	models.ReplaceRule
+	IsEnabled bool `json:"isEnabled"`
+}
+
+func replacementRuleResponse(rule models.ReplaceRule) replaceRuleResponse {
+	return replaceRuleResponse{
+		ReplaceRule: rule,
+		IsEnabled:   rule.Enabled,
+	}
+}
+
+func replacementRuleResponses(rules []models.ReplaceRule) []replaceRuleResponse {
+	responses := make([]replaceRuleResponse, 0, len(rules))
+	for _, rule := range rules {
+		responses = append(responses, replacementRuleResponse(rule))
+	}
+	return responses
+}
+
 func (s *Server) listReplaceRules(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ?", userID).Order("updated_at desc").Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ?", userID).Order("id asc").Find(&rules).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list replace rules"})
 		return
 	}
-	c.JSON(http.StatusOK, rules)
+	c.JSON(http.StatusOK, replacementRuleResponses(rules))
 }
 
 func (s *Server) createReplaceRule(c *gin.Context) {
@@ -47,20 +74,40 @@ func (s *Server) createReplaceRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
 		return
 	}
-	rule, ok := replaceRuleFromRequest(userID, req, true)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
+	rule, err := replaceRuleFromRequest(userID, req)
+	if err != nil {
+		writeReplaceRuleValidationError(c, err)
 		return
 	}
-	if err := s.db.Create(&rule).Error; err != nil {
+
+	var existing models.ReplaceRule
+	err = s.db.Where("user_id = ? AND name = ?", userID, rule.Name).Order("id asc").First(&existing).Error
+	switch {
+	case err == nil:
+		existing.Pattern = rule.Pattern
+		existing.Replacement = rule.Replacement
+		existing.Scope = rule.Scope
+		existing.IsRegex = rule.IsRegex
+		existing.Enabled = rule.Enabled
+		if err := s.db.Save(&existing).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save replace rule"})
+			return
+		}
+		s.broadcastReplaceRulesUpdate(userID, "update")
+		c.JSON(http.StatusOK, replacementRuleResponse(existing))
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		if err := s.db.Create(&rule).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create replace rule"})
+			return
+		}
+		s.broadcastReplaceRulesUpdate(userID, "create")
+		c.JSON(http.StatusCreated, replacementRuleResponse(rule))
+	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create replace rule"})
-		return
 	}
-	s.broadcastReplaceRulesUpdate(userID, "create")
-	c.JSON(http.StatusCreated, rule)
 }
 
-func replaceRuleFromRequest(userID uint, req replaceRuleRequest, defaultName bool) (models.ReplaceRule, bool) {
+func replaceRuleFromRequest(userID uint, req replaceRuleRequest) (models.ReplaceRule, error) {
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -68,7 +115,7 @@ func replaceRuleFromRequest(userID uint, req replaceRuleRequest, defaultName boo
 	if req.IsEnabled != nil {
 		enabled = *req.IsEnabled
 	}
-	isRegex := true
+	isRegex := false
 	if req.IsRegex != nil {
 		isRegex = *req.IsRegex
 	}
@@ -77,17 +124,29 @@ func replaceRuleFromRequest(userID uint, req replaceRuleRequest, defaultName boo
 		Name:        strings.TrimSpace(req.Name),
 		Pattern:     strings.TrimSpace(req.Pattern),
 		Replacement: req.Replacement,
-		Scope:       normalizeReplaceRuleScope(req.Scope),
+		Scope:       strings.TrimSpace(req.Scope),
 		IsRegex:     &isRegex,
 		Enabled:     enabled,
 	}
+	if rule.Name == "" {
+		return models.ReplaceRule{}, errors.New("name is required")
+	}
 	if rule.Pattern == "" {
-		return models.ReplaceRule{}, false
+		return models.ReplaceRule{}, errors.New("pattern is required")
 	}
-	if rule.Name == "" && defaultName {
-		rule.Name = rule.Pattern
+	if rule.Scope == "" {
+		return models.ReplaceRule{}, errors.New("scope is required")
 	}
-	return rule, rule.Name != ""
+	if len(rule.Name) > maxReplaceRuleNameBytes ||
+		len(rule.Pattern) > maxReplaceRulePatternBytes ||
+		len(rule.Replacement) > maxReplaceRuleReplacementBytes ||
+		len(rule.Scope) > maxReplaceRuleScopeBytes {
+		return models.ReplaceRule{}, errors.New("replace rule is too large")
+	}
+	if err := validateReaderReplaceRulePattern(rule.Pattern, isRegex); err != nil {
+		return models.ReplaceRule{}, err
+	}
+	return rule, nil
 }
 
 func (s *Server) upsertReplaceRules(c *gin.Context) {
@@ -98,19 +157,28 @@ func (s *Server) upsertReplaceRules(c *gin.Context) {
 		return
 	}
 
-	rules := make([]models.ReplaceRule, 0, len(requests))
+	prepared := make([]models.ReplaceRule, 0, len(requests))
+	skipped := 0
+	for _, request := range requests {
+		if strings.TrimSpace(request.Name) == "" || strings.TrimSpace(request.Pattern) == "" {
+			skipped++
+			continue
+		}
+		next, err := replaceRuleFromRequest(userID, request)
+		if err != nil {
+			writeReplaceRuleValidationError(c, err)
+			return
+		}
+		prepared = append(prepared, next)
+	}
+
+	rules := make([]models.ReplaceRule, 0, len(prepared))
 	created := 0
 	updated := 0
-	skipped := 0
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		for _, request := range requests {
-			next, ok := replaceRuleFromRequest(userID, request, false)
-			if !ok {
-				skipped++
-				continue
-			}
+		for _, next := range prepared {
 			var existing models.ReplaceRule
-			err := tx.Where("user_id = ? AND name = ?", userID, next.Name).First(&existing).Error
+			err := tx.Where("user_id = ? AND name = ?", userID, next.Name).Order("id asc").First(&existing).Error
 			switch {
 			case err == nil:
 				existing.Pattern = next.Pattern
@@ -140,7 +208,7 @@ func (s *Server) upsertReplaceRules(c *gin.Context) {
 	}
 	s.broadcastReplaceRulesUpdate(userID, "batch-upsert")
 	c.JSON(http.StatusOK, gin.H{
-		"rules":   rules,
+		"rules":   replacementRuleResponses(rules),
 		"created": created,
 		"updated": updated,
 		"skipped": skipped,
@@ -161,35 +229,38 @@ func (s *Server) updateReplaceRule(c *gin.Context) {
 
 	var req replaceRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid replace rule"})
 		return
 	}
-	rule.Name = strings.TrimSpace(req.Name)
-	rule.Pattern = strings.TrimSpace(req.Pattern)
-	rule.Replacement = req.Replacement
-	rule.Scope = normalizeReplaceRuleScope(req.Scope)
-	if req.IsRegex != nil {
-		rule.IsRegex = req.IsRegex
-	}
-	if req.Enabled != nil {
-		rule.Enabled = *req.Enabled
-	}
-	if req.IsEnabled != nil {
-		rule.Enabled = *req.IsEnabled
-	}
-	if rule.Pattern == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
+	next, err := replaceRuleFromRequest(userID, req)
+	if err != nil {
+		writeReplaceRuleValidationError(c, err)
 		return
 	}
-	if rule.Name == "" {
-		rule.Name = rule.Pattern
+	if next.Name != rule.Name {
+		var conflict models.ReplaceRule
+		err := s.db.Where("user_id = ? AND name = ? AND id <> ?", userID, next.Name, rule.ID).Order("id asc").First(&conflict).Error
+		if err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "replace rule name already exists"})
+			return
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate replace rule"})
+			return
+		}
 	}
+	rule.Name = next.Name
+	rule.Pattern = next.Pattern
+	rule.Replacement = next.Replacement
+	rule.Scope = next.Scope
+	rule.IsRegex = next.IsRegex
+	rule.Enabled = next.Enabled
 	if err := s.db.Save(&rule).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update replace rule"})
 		return
 	}
 	s.broadcastReplaceRulesUpdate(userID, "update")
-	c.JSON(http.StatusOK, rule)
+	c.JSON(http.StatusOK, replacementRuleResponse(rule))
 }
 
 func (s *Server) deleteReplaceRule(c *gin.Context) {
@@ -271,19 +342,50 @@ func (s *Server) testReplaceRule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern and text are required"})
 		return
 	}
+	pattern := strings.TrimSpace(req.Pattern)
+	isRegex := req.IsRegex != nil && *req.IsRegex
+	if err := validateReaderReplaceRulePattern(pattern, isRegex); err != nil {
+		writeReplaceRuleValidationError(c, err)
+		return
+	}
 	input := req.Text
-	output := engine.ApplyTextReplacements(input, []models.TextReplaceRule{{
-		Pattern:     strings.TrimSpace(req.Pattern),
-		Replacement: req.Replacement,
-		IsRegex:     req.IsRegex,
-	}})
+	output := applyReaderReplaceRule(input, pattern, req.Replacement, isRegex)
 	c.JSON(http.StatusOK, gin.H{"input": input, "output": output, "changed": input != output})
 }
 
-func normalizeReplaceRuleScope(scope string) string {
-	scope = strings.TrimSpace(scope)
-	if scope == "" {
-		return "*"
+func validateReaderReplaceRulePattern(pattern string, isRegex bool) error {
+	if pattern == "" {
+		return errors.New("pattern is required")
 	}
-	return scope
+	if !isRegex {
+		return nil
+	}
+	_, err := compileReaderReplaceRule(pattern)
+	if err != nil {
+		return errors.New("invalid replace rule regex")
+	}
+	return nil
+}
+
+func compileReaderReplaceRule(pattern string) (*regexp.Regexp, error) {
+	return regexp.Compile("(?i:" + pattern + ")")
+}
+
+func applyReaderReplaceRule(content, pattern, replacement string, isRegex bool) string {
+	if !isRegex {
+		return strings.Replace(content, pattern, replacement, 1)
+	}
+	re, err := compileReaderReplaceRule(pattern)
+	if err != nil {
+		return content
+	}
+	return re.ReplaceAllString(content, replacement)
+}
+
+func writeReplaceRuleValidationError(c *gin.Context, err error) {
+	message := "invalid replace rule"
+	if err != nil {
+		message = err.Error()
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": message})
 }

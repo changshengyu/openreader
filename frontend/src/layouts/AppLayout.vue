@@ -262,10 +262,12 @@ const navSections = computed(() => [
   {
     title: '用户空间',
     items: [
-      { key: 'account', label: userStore.profile?.username || '默认', route: 'settings', panel: 'account' },
+      { key: 'account', label: userStore.profile?.username || '默认', action: () => overlay.openWorkspaceSettings('account') },
       { key: 'backupConfig', label: '备份用户配置', action: () => overlay.openBackup() },
       { key: 'syncConfig', label: '同步用户配置', action: syncUserConfig },
-      { key: 'userManage', label: '加载用户空间', action: () => overlay.openUserManage() },
+      ...(userStore.profile?.role === 'admin'
+        ? [{ key: 'userManage', label: '管理用户空间', action: () => overlay.openUserManage() }]
+        : []),
     ],
   },
   {
@@ -499,6 +501,50 @@ function clearRouteSourceManageOverlayIntent() {
   router.replace({ name: 'home', query })
 }
 
+function openRouteWorkspaceOperationOverlay() {
+  if (route.name === 'reader') return
+  switch (route.query.overlay) {
+    case 'local-store':
+      overlay.openLocalStore()
+      break
+    case 'webdav':
+      overlay.openWebDAV()
+      break
+    case 'backup':
+      overlay.openBackup()
+      break
+    case 'replace-rules':
+      overlay.openReplaceRules()
+      break
+    case 'rss':
+      overlay.openRSS()
+      break
+    case 'user-manage':
+      overlay.openUserManage()
+      break
+    case 'workspace-settings':
+      overlay.openWorkspaceSettings(route.query.settingsPanel)
+      break
+  }
+}
+
+function clearRouteWorkspaceOperationOverlayIntent() {
+  const overlayName = String(route.query.overlay || '')
+  if (!overlayName || overlayName === 'sources') return
+  const visibleByOverlay = {
+    'local-store': overlay.localStoreVisible,
+    webdav: overlay.webdavVisible,
+    backup: overlay.backupVisible,
+    'replace-rules': overlay.replaceRulesVisible,
+    rss: overlay.rssVisible,
+    'user-manage': overlay.userManageVisible,
+    'workspace-settings': overlay.workspaceSettingsVisible,
+  }
+  if (visibleByOverlay[overlayName] === undefined || visibleByOverlay[overlayName]) return
+  const { overlay: _overlay, settingsPanel: _settingsPanel, ...query } = route.query
+  router.replace({ name: 'home', query })
+}
+
 function routeBookProgress(book) {
   return reader.progressByBook?.[book?.id] || book?.progress || null
 }
@@ -561,6 +607,15 @@ watch(
 )
 
 watch(
+  () => [route.name, route.query.overlay, route.query.settingsPanel, userStore.token],
+  () => {
+    if (!userStore.token) return
+    openRouteWorkspaceOperationOverlay()
+  },
+  { immediate: true },
+)
+
+watch(
   () => [route.name, route.query.bookInfo, userStore.token, bookshelf.books.length],
   () => {
     if (!userStore.token) return
@@ -581,6 +636,19 @@ watch(
 watch(
   () => overlay.sourceManageVisible,
   () => clearRouteSourceManageOverlayIntent(),
+)
+
+watch(
+  () => [
+    overlay.localStoreVisible,
+    overlay.webdavVisible,
+    overlay.backupVisible,
+    overlay.replaceRulesVisible,
+    overlay.rssVisible,
+    overlay.userManageVisible,
+    overlay.workspaceSettingsVisible,
+  ],
+  () => clearRouteWorkspaceOperationOverlayIntent(),
 )
 
 onMounted(() => {

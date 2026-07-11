@@ -1620,6 +1620,16 @@ type contentMatch struct {
 	Percent                  float64 `json:"percent"`
 }
 
+const contentSearchMaxMatchesPerChapter = 2000
+
+type contentSearchScan struct {
+	Matches             []contentMatch
+	LastIndex           int
+	UnavailableChapters int
+	Truncated           bool
+	Canceled            bool
+}
+
 func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	bookID, ok := parseUintParam(c, "id")
@@ -2019,7 +2029,14 @@ func (s *Server) searchBookContent(c *gin.Context) {
 			matchLimit = parseBoundedInt(matchLimitQuery, 5000, 1, 20000)
 			perChapterLimit = parseBoundedInt(c.Query("perChapterLimit"), 500, 1, 2000)
 		}
-		matches, lastIndex := s.collectContentMatches(book, chapters, keyword, start, chapterLimit, matchLimit, perChapterLimit)
+		scan := s.collectContentMatchesContext(c.Request.Context(), book, chapters, keyword, start, chapterLimit, matchLimit, perChapterLimit)
+		if scan.Canceled {
+			return
+		}
+		matches := scan.Matches
+		lastIndex := scan.LastIndex
+		unavailableChapters := scan.UnavailableChapters
+		truncated := scan.Truncated
 		if (c.Query("scanUntilMatch") == "1" || c.Query("scanUntilMatch") == "true") && len(matches) == 0 && lastIndex >= 0 && lastIndex < len(chapters)-1 {
 			scanLimit := parseBoundedInt(c.Query("scanLimit"), chapterLimit, chapterLimit, 2000)
 			if book.SourceID > 0 {
@@ -2029,23 +2046,31 @@ func (s *Server) searchBookContent(c *gin.Context) {
 			for scanned < scanLimit && lastIndex >= 0 && lastIndex < len(chapters)-1 && len(matches) < matchLimit {
 				nextStart := lastIndex + 1
 				nextLimit := min(chapterLimit, scanLimit-scanned)
-				nextMatches, nextLastIndex := s.collectContentMatches(book, chapters, keyword, nextStart, nextLimit, matchLimit-len(matches), perChapterLimit)
-				if nextLastIndex < 0 {
+				nextScan := s.collectContentMatchesContext(c.Request.Context(), book, chapters, keyword, nextStart, nextLimit, matchLimit-len(matches), perChapterLimit)
+				if nextScan.Canceled {
+					return
+				}
+				if nextScan.LastIndex < 0 {
 					break
 				}
-				scanned += nextLastIndex - nextStart + 1
-				lastIndex = nextLastIndex
-				matches = append(matches, nextMatches...)
-				if len(nextMatches) > 0 {
+				scanned += nextScan.LastIndex - nextStart + 1
+				lastIndex = nextScan.LastIndex
+				matches = append(matches, nextScan.Matches...)
+				unavailableChapters += nextScan.UnavailableChapters
+				truncated = truncated || nextScan.Truncated
+				if len(nextScan.Matches) > 0 {
 					break
 				}
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"list":      matches,
-			"lastIndex": lastIndex,
-			"hasMore":   lastIndex >= 0 && lastIndex < len(chapters)-1,
-			"total":     len(chapters),
+			"list":                matches,
+			"lastIndex":           lastIndex,
+			"hasMore":             lastIndex >= 0 && lastIndex < len(chapters)-1,
+			"total":               len(chapters),
+			"incomplete":          unavailableChapters > 0 || truncated,
+			"unavailableChapters": unavailableChapters,
+			"truncated":           truncated,
 		})
 		return
 	}
@@ -2149,14 +2174,18 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 		})
 		return
 	}
-	matches, currentIndex := s.collectContentMatches(book, chapters, keyword, start, len(chapters)-start, max(size, 1), max(size, 1))
+	scan := s.collectContentMatchesContext(context.Background(), book, chapters, keyword, start, len(chapters)-start, max(size, 1), max(size, 1))
+	matches, currentIndex := scan.Matches, scan.LastIndex
 	c.JSON(http.StatusOK, gin.H{
 		"isSuccess": true,
 		"data": gin.H{
-			"list":      legacyContentMatches(matches),
-			"lastIndex": currentIndex,
-			"hasMore":   currentIndex >= 0 && currentIndex < len(chapters)-1,
-			"total":     len(chapters),
+			"list":                legacyContentMatches(matches),
+			"lastIndex":           currentIndex,
+			"hasMore":             currentIndex >= 0 && currentIndex < len(chapters)-1,
+			"total":               len(chapters),
+			"incomplete":          scan.UnavailableChapters > 0 || scan.Truncated,
+			"unavailableChapters": scan.UnavailableChapters,
+			"truncated":           scan.Truncated,
 		},
 	})
 }
@@ -2180,27 +2209,45 @@ func legacyContentMatches(matches []contentMatch) []legacyContentMatch {
 }
 
 func (s *Server) collectContentMatches(book models.Book, chapters []models.Chapter, keyword string, start int, chapterLimit int, matchLimit int, perChapterLimit int) ([]contentMatch, int) {
-	matches := make([]contentMatch, 0)
+	scan := s.collectContentMatchesContext(context.Background(), book, chapters, keyword, start, chapterLimit, matchLimit, perChapterLimit)
+	return scan.Matches, scan.LastIndex
+}
+
+func (s *Server) collectContentMatchesContext(ctx context.Context, book models.Book, chapters []models.Chapter, keyword string, start int, chapterLimit int, matchLimit int, perChapterLimit int) contentSearchScan {
+	scan := contentSearchScan{Matches: make([]contentMatch, 0), LastIndex: -1}
 	if start < 0 {
 		start = 0
 	}
 	if start >= len(chapters) || chapterLimit <= 0 || matchLimit <= 0 || perChapterLimit <= 0 {
-		return matches, -1
+		return scan
 	}
+	// `perChapterLimit` used to silently discard a dense chapter and then move
+	// its cursor forward. Reader-dev completes the final scanned chapter first;
+	// retain the input for deployed clients but use the explicit safe cap below.
+	_ = perChapterLimit
 	end := start + chapterLimit
 	if end > len(chapters) {
 		end = len(chapters)
 	}
-	lastIndex := start - 1
 	for i := start; i < end; i++ {
-		lastIndex = i
-		content := s.loadChapterText(book, &chapters[i])
-		if content == "" {
+		if err := ctx.Err(); err != nil {
+			scan.Canceled = true
+			return scan
+		}
+		scan.LastIndex = i
+		content, err := s.loadChapterTextContextResult(ctx, book, &chapters[i])
+		if err != nil {
+			if ctx.Err() != nil {
+				scan.Canceled = true
+				return scan
+			}
+			scan.UnavailableChapters++
 			continue
 		}
-		positions := searchContentPositions(content, keyword, perChapterLimit)
+		positions, chapterTruncated := searchContentPositionsBounded(content, keyword, contentSearchMaxMatchesPerChapter)
+		scan.Truncated = scan.Truncated || chapterTruncated
 		for matchIndex, position := range positions {
-			matches = append(matches, contentMatch{
+			scan.Matches = append(scan.Matches, contentMatch{
 				ChapterID:                chapters[i].ID,
 				ChapterIndex:             chapters[i].Index,
 				ChapterTitle:             chapters[i].Title,
@@ -2211,27 +2258,33 @@ func (s *Server) collectContentMatches(book models.Book, chapters []models.Chapt
 				LineIndex:                lineIndexAtByte(content, position),
 				Percent:                  float64(position) / float64(max(len(content), 1)),
 			})
-			if len(matches) >= matchLimit {
-				break
-			}
 		}
-		if len(matches) >= matchLimit {
+		// Like reader-dev, the requested page size is a threshold checked after
+		// a complete chapter, so a dense final chapter is never skipped by the
+		// next cursor. The explicit safety cap above is surfaced as `truncated`.
+		if len(scan.Matches) >= matchLimit {
 			break
 		}
 	}
 
-	return matches, lastIndex
+	return scan
 }
 
 func searchContentPositions(content string, keyword string, limit int) []int {
+	positions, _ := searchContentPositionsBounded(content, keyword, limit)
+	return positions
+}
+
+func searchContentPositionsBounded(content string, keyword string, limit int) ([]int, bool) {
 	if content == "" || keyword == "" || limit <= 0 {
-		return nil
+		return nil, false
 	}
+	capacity := limit + 1
 	seen := make(map[int]struct{})
 	lowerContent := strings.ToLower(content)
 	needle := strings.ToLower(keyword)
 	positions := make([]int, 0)
-	for offset := 0; offset < len(lowerContent) && len(positions) < limit; {
+	for offset := 0; offset < len(lowerContent) && len(positions) < capacity; {
 		position := strings.Index(lowerContent[offset:], needle)
 		if position < 0 {
 			break
@@ -2248,12 +2301,13 @@ func searchContentPositions(content string, keyword string, limit int) []int {
 	normalizedKeyword, _ := normalizeSearchText(keyword)
 	if normalizedKeyword == "" {
 		sort.Ints(positions)
-		if len(positions) > limit {
-			return positions[:limit]
+		truncated := len(positions) > limit
+		if truncated {
+			positions = positions[:limit]
 		}
-		return positions
+		return positions, truncated
 	}
-	for offset := 0; offset < len(normalizedContent) && len(positions) < limit; {
+	for offset := 0; offset < len(normalizedContent) && len(positions) < capacity; {
 		position := strings.Index(normalizedContent[offset:], normalizedKeyword)
 		if position < 0 {
 			break
@@ -2268,7 +2322,7 @@ func searchContentPositions(content string, keyword string, limit int) []int {
 		}
 		offset = absolute + len(normalizedKeyword)
 	}
-	if len(positions) < limit {
+	if len(positions) < capacity {
 		termPosition := searchContentTermPosition(normalizedContent, contentMap, keyword)
 		if termPosition >= 0 {
 			if _, ok := seen[termPosition]; !ok {
@@ -2277,7 +2331,11 @@ func searchContentPositions(content string, keyword string, limit int) []int {
 		}
 	}
 	sort.Ints(positions)
-	return positions
+	truncated := len(positions) > limit
+	if truncated {
+		positions = positions[:limit]
+	}
+	return positions, truncated
 }
 
 func searchContentTermPosition(normalizedContent string, contentMap []int, keyword string) int {
@@ -2380,8 +2438,13 @@ func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) stri
 }
 
 func (s *Server) loadChapterTextContext(ctx context.Context, book models.Book, chapter *models.Chapter) string {
+	content, _ := s.loadChapterTextContextResult(ctx, book, chapter)
+	return content
+}
+
+func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.Book, chapter *models.Chapter) (string, error) {
 	if err := ctx.Err(); err != nil {
-		return ""
+		return "", err
 	}
 	content := ""
 	if chapter.CachePath != "" {
@@ -2409,22 +2472,26 @@ func (s *Server) loadChapterTextContext(ctx context.Context, book models.Book, c
 
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
 		var source models.BookSource
-		if err := s.db.First(&source, book.SourceID).Error; err == nil {
-			fetched, fetchErr := engine.FetchChapterContentContext(ctx, chapter.URL, source)
-			if fetchErr == nil && fetched != "" {
-				content = fetched
-				cachePath, cacheErr := engine.WriteChapterCache(s.cfg.CacheDir, book.URL, chapter.URL, content)
-				if cacheErr == nil {
-					chapter.CachePath = cachePath
-					_ = s.db.Save(chapter)
-				}
+		if err := s.db.First(&source, book.SourceID).Error; err != nil {
+			return "", err
+		}
+		fetched, fetchErr := engine.FetchChapterContentContext(ctx, chapter.URL, source)
+		if fetchErr != nil {
+			return "", fetchErr
+		}
+		if fetched != "" {
+			content = fetched
+			cachePath, cacheErr := engine.WriteChapterCache(s.cfg.CacheDir, book.URL, chapter.URL, content)
+			if cacheErr == nil {
+				chapter.CachePath = cachePath
+				_ = s.db.Save(chapter)
 			}
 		}
 	}
 	if !epubreader.IsLocalEPUB(book) && book.Type != 1 {
 		content = s.applyUserReplaceRules(book, content)
 	}
-	return content
+	return content, nil
 }
 
 func (s *Server) localChapterCachePath(book models.Book, fullPath string) string {
@@ -2699,25 +2766,25 @@ func (s *Server) applyUserReplaceRules(book models.Book, content string) string 
 		return content
 	}
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Order("id asc").Find(&rules).Error; err != nil {
 		return content
 	}
-	replacements := make([]models.TextReplaceRule, 0, len(rules))
 	for _, rule := range rules {
 		if !replaceRuleAppliesToBook(rule.Scope, book) {
 			continue
 		}
-		isRegex := true
+		isRegex := false
 		if rule.IsRegex != nil {
 			isRegex = *rule.IsRegex
 		}
-		replacements = append(replacements, models.TextReplaceRule{
-			Pattern:     rule.Pattern,
-			Replacement: rule.Replacement,
-			IsRegex:     &isRegex,
-		})
+		if err := validateReaderReplaceRulePattern(rule.Pattern, isRegex); err != nil {
+			// reader-dev aborts the remaining pipeline when a malformed regex is
+			// encountered; it never treats the malformed pattern as plain text.
+			break
+		}
+		content = applyReaderReplaceRule(content, rule.Pattern, rule.Replacement, isRegex)
 	}
-	return engine.ApplyTextReplacements(content, replacements)
+	return content
 }
 
 func replaceRuleAppliesToBook(scope string, book models.Book) bool {

@@ -1,8 +1,8 @@
 export function bookContentSearchPagingParams(book) {
   if (Number(book?.sourceId || 0) > 0) {
-    return { chapterLimit: 10, scanLimit: 10, matchLimit: 120, perChapterLimit: 20 }
+    return { chapterLimit: 10, scanLimit: 10, matchLimit: 120 }
   }
-  return { chapterLimit: 160, scanLimit: 480, matchLimit: 1000, perChapterLimit: 100, localFull: 1 }
+  return { chapterLimit: 160, scanLimit: 480, matchLimit: 1000, localFull: 1 }
 }
 
 export function bookContentSearchMaxRounds({ append = false, scanAll = false, remote = false } = {}) {
@@ -23,6 +23,21 @@ export function bookContentSearchStatus({
   const availableTotal = Number(total) || Number(chapterCount) || 0
   if (!availableTotal) return `${Number(resultCount) || 0} 条结果`
   return `已搜索 ${Math.min(scanned, availableTotal)} / ${availableTotal} 章，${Number(resultCount) || 0} 条结果`
+}
+
+export function bookContentSearchNotice({
+  incomplete = false,
+  unavailableChapters = 0,
+  truncated = false,
+} = {}) {
+  if (!incomplete && !truncated && Number(unavailableChapters) <= 0) return ''
+  const notices = []
+  const unavailable = Math.max(0, Math.floor(Number(unavailableChapters) || 0))
+  if (unavailable > 0) {
+    notices.push(`有 ${unavailable} 章加载失败，搜索结果不完整，请检查书源或网络后重试`)
+  }
+  if (truncated) notices.push('单章匹配结果过多，已安全截断，搜索结果不完整')
+  return notices.join('；') || '搜索结果不完整，请检查书源或网络后重试'
 }
 
 export function countBookContentMatches(text, keyword) {

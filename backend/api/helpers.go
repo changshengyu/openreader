@@ -3,13 +3,18 @@ package api
 import (
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"openreader/backend/engine"
+	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
+
+const storeUserContextKey = "openreader.store-user"
 
 // ---- unified error helpers ----
 
@@ -79,6 +84,57 @@ func (s *Server) currentUserName(c *gin.Context, userID uint) (string, bool) {
 		return "", false
 	}
 	return user.Username, true
+}
+
+// requireStoreAccess is the common authorization boundary for all workspace
+// storage operations. Local-store, raw WebDAV and backup endpoints all touch
+// mounted files, so a UI-only permission check would be insufficient.
+func (s *Server) requireStoreAccess(c *gin.Context) bool {
+	userID, ok := middleware.UserID(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, errResp("UNAUTHORIZED", "login required"))
+		return false
+	}
+
+	var user models.User
+	if err := s.db.Select("id", "username", "role", "can_access_store").First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errResp("UNAUTHORIZED", "user not found"))
+			return false
+		}
+		c.AbortWithStatusJSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "failed to load user"))
+		return false
+	}
+	if !user.CanAccessStore {
+		c.AbortWithStatusJSON(http.StatusForbidden, errResp("FORBIDDEN", "store access denied"))
+		return false
+	}
+	c.Set(storeUserContextKey, user)
+	return true
+}
+
+func storeUser(c *gin.Context) (models.User, bool) {
+	value, ok := c.Get(storeUserContextKey)
+	if !ok {
+		return models.User{}, false
+	}
+	user, ok := value.(models.User)
+	return user, ok
+}
+
+// storeRoot keeps the pre-multi-user tree as the administrator's compatible
+// root while every regular user is contained beneath a private child directory.
+// No existing mounted files are moved or deleted by this compatibility layer.
+func (s *Server) storeRoot(c *gin.Context, root string) (string, bool) {
+	user, ok := storeUser(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, errResp("UNAUTHORIZED", "store user missing"))
+		return "", false
+	}
+	if user.Role == "admin" {
+		return root, true
+	}
+	return filepath.Join(root, "users", engine.SafeFilename(user.Username)), true
 }
 
 func (s *Server) validateCategory(c *gin.Context, userID uint, categoryID *uint) bool {

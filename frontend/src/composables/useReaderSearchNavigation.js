@@ -1,5 +1,6 @@
 import { nextTick, unref } from 'vue'
 import { bookContentSearchParagraphIndex } from '../utils/readerBookSearch.js'
+import { findReaderBookmarkParagraph } from '../utils/readerBookmarkContext.js'
 
 export function useReaderSearchNavigation(options) {
   function paragraphScope() {
@@ -40,6 +41,20 @@ export function useReaderSearchNavigation(options) {
     )
     if (paragraphIndex < 0) return false
     jumpToParagraph(paragraphs[paragraphIndex])
+    return true
+  }
+
+  function jumpToBookmarkContext(context) {
+    const text = String(context || '').trim()
+    if (!text || options.canMatchBookmark?.() === false) return false
+    const paragraphs = [...(paragraphScope()?.querySelectorAll('h3, p') || [])]
+    const match = findReaderBookmarkParagraph({
+      selectedText: text,
+      paragraphs,
+      minSimilarity: 0.6,
+    })
+    if (!match) return false
+    jumpToParagraph(paragraphs[match.index])
     return true
   }
 
@@ -93,6 +108,12 @@ export function useReaderSearchNavigation(options) {
 
   async function jumpToRouteLine() {
     const routeQuery = options.getRouteQuery?.() || {}
+    const bookmarkContext = String(routeQuery.bookmark || '').trim()
+    if (bookmarkContext) {
+      await nextTick()
+      if (jumpToBookmarkContext(bookmarkContext)) return
+      if (options.canMatchBookmark?.() !== false) options.onBookmarkNotFound?.()
+    }
     if (routeQuery.q !== undefined && routeQuery.match !== undefined) {
       await nextTick()
       if (jumpToMatch({
@@ -114,6 +135,7 @@ export function useReaderSearchNavigation(options) {
     jumpToFirstSearchMatch,
     jumpToLine,
     jumpToMatch,
+    jumpToBookmarkContext,
     jumpToParagraph,
     jumpToResult,
     jumpToRouteLine,

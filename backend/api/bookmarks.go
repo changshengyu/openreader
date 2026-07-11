@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -9,6 +10,12 @@ import (
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+)
+
+const (
+	maxBookmarkTitleBytes   = 320
+	maxBookmarkExcerptBytes = 16 * 1024
+	maxBookmarkNoteBytes    = 16 * 1024
 )
 
 type bookmarkRequest struct {
@@ -33,7 +40,7 @@ func (s *Server) listBookmarks(c *gin.Context) {
 
 	var bookmarks []models.Bookmark
 	if err := s.db.Where("user_id = ? AND book_id = ?", userID, bookID).
-		Order("chapter_index asc, offset asc, created_at asc").
+		Order("id asc").
 		Find(&bookmarks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list bookmarks"})
 		return
@@ -47,7 +54,8 @@ func (s *Server) createBookmark(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, ok := s.ensureBook(c, userID, bookID); !ok {
+	book, ok := s.ensureBook(c, userID, bookID)
+	if !ok {
 		return
 	}
 
@@ -57,7 +65,11 @@ func (s *Server) createBookmark(c *gin.Context) {
 		return
 	}
 
-	bookmark := bookmarkFromRequest(userID, bookID, request)
+	bookmark, err := s.bookmarkFromRequest(userID, book, request)
+	if err != nil {
+		writeBookmarkValidationError(c, err)
+		return
+	}
 
 	if err := s.db.Create(&bookmark).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create bookmark"})
@@ -67,10 +79,10 @@ func (s *Server) createBookmark(c *gin.Context) {
 	c.JSON(http.StatusCreated, bookmark)
 }
 
-func bookmarkFromRequest(userID, bookID uint, request bookmarkRequest) models.Bookmark {
+func (s *Server) bookmarkFromRequest(userID uint, book models.Book, request bookmarkRequest) (models.Bookmark, error) {
 	bookmark := models.Bookmark{
 		UserID:       userID,
-		BookID:       bookID,
+		BookID:       book.ID,
 		ChapterID:    request.ChapterID,
 		ChapterIndex: request.ChapterIndex,
 		Offset:       request.Offset,
@@ -79,10 +91,36 @@ func bookmarkFromRequest(userID, bookID uint, request bookmarkRequest) models.Bo
 		Excerpt:      strings.TrimSpace(request.Excerpt),
 		Note:         strings.TrimSpace(request.Note),
 	}
+	if bookmark.ChapterIndex < 0 {
+		bookmark.ChapterIndex = 0
+	}
+	if bookmark.Offset < 0 {
+		bookmark.Offset = 0
+	}
+	if bookmark.Percent < 0 {
+		bookmark.Percent = 0
+	} else if bookmark.Percent > 1 {
+		bookmark.Percent = 1
+	}
+	if bookmark.Excerpt == "" {
+		return models.Bookmark{}, errors.New("bookmark context is required")
+	}
+	if len(bookmark.Title) > maxBookmarkTitleBytes ||
+		len(bookmark.Excerpt) > maxBookmarkExcerptBytes ||
+		len(bookmark.Note) > maxBookmarkNoteBytes {
+		return models.Bookmark{}, errors.New("bookmark is too large")
+	}
+	if bookmark.ChapterID > 0 {
+		var chapter models.Chapter
+		if err := s.db.Where("id = ? AND book_id = ?", bookmark.ChapterID, book.ID).First(&chapter).Error; err != nil {
+			return models.Bookmark{}, errors.New("bookmark chapter not found")
+		}
+		bookmark.ChapterIndex = chapter.Index
+	}
 	if bookmark.Title == "" {
 		bookmark.Title = "书签"
 	}
-	return bookmark
+	return bookmark, nil
 }
 
 func (s *Server) createBookmarks(c *gin.Context) {
@@ -91,7 +129,8 @@ func (s *Server) createBookmarks(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, ok := s.ensureBook(c, userID, bookID); !ok {
+	book, ok := s.ensureBook(c, userID, bookID)
+	if !ok {
 		return
 	}
 
@@ -103,7 +142,12 @@ func (s *Server) createBookmarks(c *gin.Context) {
 
 	bookmarks := make([]models.Bookmark, 0, len(requests))
 	for _, request := range requests {
-		bookmarks = append(bookmarks, bookmarkFromRequest(userID, bookID, request))
+		bookmark, err := s.bookmarkFromRequest(userID, book, request)
+		if err != nil {
+			writeBookmarkValidationError(c, err)
+			return
+		}
+		bookmarks = append(bookmarks, bookmark)
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		return tx.CreateInBatches(&bookmarks, 100).Error
@@ -134,11 +178,14 @@ func (s *Server) updateBookmark(c *gin.Context) {
 		return
 	}
 
-	if title := strings.TrimSpace(request.Title); title != "" {
-		bookmark.Title = title
+	note := strings.TrimSpace(request.Note)
+	if len(note) > maxBookmarkNoteBytes {
+		writeBookmarkValidationError(c, errors.New("bookmark is too large"))
+		return
 	}
-	bookmark.Excerpt = strings.TrimSpace(request.Excerpt)
-	bookmark.Note = strings.TrimSpace(request.Note)
+	// Reader-dev's form exposes the saved reading context as read-only. Keep
+	// the ID-backed OpenReader location/context immutable on note edits too.
+	bookmark.Note = note
 
 	if err := s.db.Save(&bookmark).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update bookmark"})
@@ -146,6 +193,14 @@ func (s *Server) updateBookmark(c *gin.Context) {
 	}
 	s.broadcastBookmarksUpdate(userID, "update", bookmark.BookID, gin.H{"bookmark": bookmark})
 	c.JSON(http.StatusOK, bookmark)
+}
+
+func writeBookmarkValidationError(c *gin.Context, err error) {
+	message := "invalid bookmark payload"
+	if err != nil {
+		message = err.Error()
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": message})
 }
 
 func (s *Server) deleteBookmark(c *gin.Context) {

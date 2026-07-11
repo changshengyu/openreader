@@ -1,22 +1,21 @@
-import axios from 'axios'
-import api from './client'
+import api, { rootApi } from './client'
 
 export function listWebDAV(path = '') {
-  return axios.get(webdavURL(path), { responseType: 'text' })
+  return rootApi.get(webdavURL(path), { responseType: 'text' })
 }
 
 export function uploadWebDAV({ path = '', file }) {
-  return axios.put(webdavURL(joinPath(path, file.name)), file, {
+  return rootApi.put(webdavURL(joinPath(path, file.name)), file, {
     headers: { 'Content-Type': file.type || 'application/octet-stream' },
   })
 }
 
 export function createWebDAVDirectory({ path = '', name }) {
-  return axios({ method: 'MKCOL', url: webdavURL(joinPath(path, name)) })
+  return rootApi({ method: 'MKCOL', url: webdavURL(joinPath(path, name)) })
 }
 
 export function renameWebDAV({ path, newPath }) {
-  return axios({
+  return rootApi({
     method: 'MOVE',
     url: webdavURL(path),
     headers: { Destination: webdavURL(newPath) },
@@ -24,11 +23,11 @@ export function renameWebDAV({ path, newPath }) {
 }
 
 export function deleteWebDAV(path) {
-  return axios.delete(webdavURL(path))
+  return rootApi.delete(webdavURL(path))
 }
 
 export function downloadWebDAV(path) {
-  return axios.get(webdavURL(path), { responseType: 'blob' })
+  return rootApi.get(webdavURL(path), { responseType: 'blob' })
 }
 
 export function importFromWebDAV(paths, categoryIds = []) {

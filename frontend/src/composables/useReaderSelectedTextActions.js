@@ -1,32 +1,27 @@
+export function createReaderSelectedTextReplaceRuleDraft({ text, book, now = new Date() } = {}) {
+  const pattern = String(text || '')
+  if (!pattern.trim()) return null
+  const timestamp = now instanceof Date && !Number.isNaN(now.getTime())
+    ? now
+    : new Date()
+  return {
+    name: `文本替换 ${formatReaderSelectedTextRuleTime(timestamp)}`,
+    pattern,
+    replacement: '',
+    scope: `${book?.title || ''};${book?.url || ''}`,
+    isRegex: false,
+    enabled: true,
+  }
+}
+
 export function useReaderSelectedTextActions(options) {
-  async function createReplaceRuleFromText(text) {
-    const prompt = await options.prompt(
-      '替换为留空时表示直接过滤该文字。',
-      '添加过滤规则',
-      {
-        confirmButtonText: '保存',
-        cancelButtonText: '取消',
-        inputValue: '',
-        inputPlaceholder: '替换为',
-      },
-    ).catch(() => null)
-    if (!prompt) return
-    const cleanText = String(text || '').trim()
-    if (!cleanText) return
-    const name = cleanText.length > 24
-      ? `${cleanText.slice(0, 24)}...`
-      : cleanText
-    const book = options.getBook()
-    await options.createReplaceRule({
-      name,
-      pattern: cleanText,
-      replacement: String(prompt.value || ''),
-      scope: `${book?.title || ''};${book?.url || ''}`,
-      isRegex: false,
-      enabled: true,
+  function createReplaceRuleFromText(text) {
+    const draft = createReaderSelectedTextReplaceRuleDraft({
+      text,
+      book: options.getBook?.(),
+      now: options.now?.(),
     })
-    options.dispatchRulesUpdated()
-    options.onSuccess('过滤规则已添加')
+    if (draft) options.openReplaceRuleEditor?.(draft)
   }
 
   async function operate(text) {
@@ -54,4 +49,13 @@ export function useReaderSelectedTextActions(options) {
     createReplaceRuleFromText,
     operate,
   }
+}
+
+function formatReaderSelectedTextRuleTime(value) {
+  const pad = number => String(number).padStart(2, '0')
+  return [
+    value.getFullYear(),
+    pad(value.getMonth() + 1),
+    pad(value.getDate()),
+  ].join('-') + ` ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
 }

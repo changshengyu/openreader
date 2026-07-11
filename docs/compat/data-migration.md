@@ -36,6 +36,36 @@ Before changing storage for a module, document:
 - Local store/WebDAV path normalization and permissions.
 - Cache invalidation rules for local and remote books.
 
+## P1-E2 workspace storage scope and staged import compatibility
+
+Status: implemented in-progress; no database migration is required.
+
+### Mounted-root mapping
+
+| Caller | LocalStore root | WebDAV and backup root | Compatibility rule |
+|---|---|---|---|
+| Administrator | Existing `library/localStore/` | Existing `data/webdav/` | The legacy tree stays where it is. Existing files and backups remain readable without a move. |
+| Regular user | `library/localStore/users/<safe-username>/` | `data/webdav/users/<safe-username>/` | New writes, browse/import/download/delete operations and generated backups are private descendants of the same mounts. |
+
+- The mapping is determined from the authenticated persisted user after `canAccessStore` authorization. It introduces no new SQLite column and does not rewrite old rows or paths.
+- Scheduled backup runs once per persisted user and filters all user-owned export rows. Administrator `RunNow()` remains the legacy-root compatibility path.
+- LocalStore/WebDAV uploads are atomically staged in their destination directory and accept at most `OPENREADER_MAX_IMPORT_BYTES` (default 128 MiB), so a rejected replacement does not truncate an existing file. A preview copies at most that same amount into `cache/import-previews/<user-id>/<random-token>.book` plus metadata; direct upload and every confirmation reread use the same bound. The cache location is user-private, token entropy is 192 bits, metadata expires after 24 hours, and success/expired-token access removes both files. It is safe to clear this derived cache; it is never part of the source file or library archive.
+- An old client that does not send an `importToken` retains the path-based import fallback. Current Vue clients always forward preview tokens, so a confirmation never reparses a changed mounted source.
+- Remaining migration/release work: archive expanded-size/entry-count and parser-work limits, expiry cleanup independent of a future request, plus Docker mounted-volume verification.
+
+## P2 replace-rule persistence compatibility
+
+Status: implemented without a schema or mounted-volume migration.
+
+- Existing `replace_rules` rows stay in the same SQLite table with the same `id`, `user_id`, `name`, `pattern`, `replacement`, `scope`, `is_regex`, `enabled`, and timestamps. No row is deleted, deduplicated, rewritten, or moved during startup.
+- Reader-visible execution order is now the durable insertion order (`id ASC`) rather than the previous accidental `updated_at DESC` API order. Editing an existing row does not change its ID or its pipeline position. Backup writes the same `user_id, id` order, so restore into an empty database recreates the reader pipeline in the same sequence.
+- Old rows whose nullable `is_regex` value is absent are interpreted as upstream's plain-text default (`false`) at read/execution time. This corrects a prior OpenReader default without changing the stored nullable value.
+- Old rows with an empty scope remain global only as a read-compatibility shim for already-deployed OpenReader data. The new editor/API requires an explicit scope; the next successful edit/import writes `*` (or a book-specific scope) instead of another empty value.
+- Backup restore accepts both `enabled` and legacy `isEnabled`. Missing `isRegex` restores as plain text; empty legacy scope stays readable through the shim. No new table/column and no `data/`, `cache/`, or `library/` path is introduced.
+- New/updated inputs are bounded (name 120 bytes, scope 800 bytes, pattern 16 KiB, replacement 64 KiB) and regular expressions are compiled before a write. A rejected write leaves existing rows and mounted volumes untouched.
+
+Required evidence: `backend/api/replace_rules_contract_test.go` covers defaults, ordering, scope compatibility and invalid regex rejection; full backend tests cover backup/restore. A Docker volume/backup smoke remains required before publishing this slice.
+
 ## P1-D4 book deletion, cache and refresh lifecycle
 
 Status: extracted 2026-07-10; implementation must not add a destructive schema migration.
@@ -155,3 +185,16 @@ library/<Book.LibraryPath>/.epub-resources/<source-fingerprint>/
 - Remove `.epub-resources/` and verify deterministic rebuild: covered by the same API test through a repeated resource request after deleting the derived directory.
 - Replace the source archive and verify old capability/version rejection: covered by the same API test.
 - Run full backend tests and `scripts/docker-volume-backup-smoke.sh` before an EPUB release image.
+
+## P2 bookmark ordering and backup compatibility
+
+Status: implemented in the bookmark API/Reader slice; browser interaction and Docker volume gates remain pending.
+
+- No table, column, mounted root, or JSON filename changes. Existing `bookmarks` rows and `bookmarks.json` remain readable.
+- Bookmarks now present/export in `id ASC` creation order. A note edit changes `updated_at` only and must never reorder the manager or a later backup.
+- Modern OpenReader exports keep their original `createdAt`. Restore maps the exported book URL/title to the destination user's book, then uses the location, saved context, and `createdAt` as an idempotency identity. This preserves multiple independent bookmarks that share a chapter and offset while a repeat restore does not duplicate them.
+- Older reader-dev/OpenReader rows without a creation timestamp use a narrower location/content identity for compatibility. Their original source IDs are not reused, so a destination database never suffers cross-user primary-key collisions.
+- Restore safely drops a stale source `chapterId` and rebinds the destination book's chapter at the saved chapter index when it exists. Missing catalogue entries retain index/offset recovery with `chapterId: 0`.
+- The change introduces no destructive migration and does not access `data/`, `cache/`, or `library/` outside the existing backup archive workflow.
+
+Required evidence: `backend/api/bookmarks_contract_test.go` covers stable export order, independent same-location restore, repeat-restore idempotency, and destination chapter rebinding; full backend tests remain required. A Docker volume/backup smoke is still required before release.

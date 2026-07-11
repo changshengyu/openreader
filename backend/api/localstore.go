@@ -1,7 +1,7 @@
 package api
 
 import (
-	"io"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +24,9 @@ type localStoreItem struct {
 }
 
 func (s *Server) listLocalStore(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	targetDir, relativePath, ok := s.localStorePath(c, c.Query("path"))
 	if !ok {
 		return
@@ -102,6 +105,9 @@ func makeLocalStoreItem(name string, itemPath string, info os.FileInfo, isDir bo
 }
 
 func (s *Server) uploadToLocalStore(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	targetDir, _, ok := s.localStorePath(c, c.PostForm("path"))
 	if !ok {
 		return
@@ -114,6 +120,10 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		return
+	}
+	if file.Size > s.maxLocalImportBytes() {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": errLocalImportTooLarge.Error()})
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(file.Filename))
@@ -133,13 +143,32 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	dst, err := os.Create(dstPath)
+	dst, err := os.CreateTemp(filepath.Dir(dstPath), ".localstore-upload-")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 		return
 	}
-	defer dst.Close()
-	if _, err := io.Copy(dst, src); err != nil {
+	stagedPath := dst.Name()
+	defer os.Remove(stagedPath)
+	if err := s.copyBoundedLocalImport(dst, src); err != nil {
+		_ = dst.Close()
+		if errors.Is(err, errLocalImportTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+		return
+	}
+	if err := dst.Chmod(0o644); err != nil {
+		_ = dst.Close()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+		return
+	}
+	if err := dst.Close(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+		return
+	}
+	if err := os.Rename(stagedPath, dstPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 		return
 	}
@@ -148,6 +177,9 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 }
 
 func (s *Server) downloadFromLocalStore(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	targetPath, relativePath, ok := s.localStorePath(c, c.Query("path"))
 	if !ok {
 		return
@@ -169,6 +201,9 @@ func (s *Server) downloadFromLocalStore(c *gin.Context) {
 }
 
 func (s *Server) createLocalStoreDirectory(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	var req struct {
 		Path string `json:"path"`
 		Name string `json:"name" binding:"required"`
@@ -197,6 +232,9 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 }
 
 func (s *Server) renameLocalStoreItem(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	var req struct {
 		Path string `json:"path" binding:"required"`
 		Name string `json:"name" binding:"required"`
@@ -229,6 +267,9 @@ func (s *Server) renameLocalStoreItem(c *gin.Context) {
 }
 
 func (s *Server) deleteFromLocalStore(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	targetPath, relativePath, ok := s.localStorePath(c, c.Query("path"))
 	if !ok {
 		return
@@ -245,6 +286,9 @@ func (s *Server) deleteFromLocalStore(c *gin.Context) {
 }
 
 func (s *Server) importFromLocalStore(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	userID, _ := middleware.UserID(c)
 
 	var req localBookImportRequest
@@ -282,16 +326,49 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 	itemByPath := req.itemByPath()
 
 	for _, rawPath := range paths {
+		_, requestedPath, ok := s.localStorePath(c, rawPath)
+		if !ok {
+			return
+		}
+		override := itemByPath[requestedPath]
+		if override.ImportToken != "" {
+			if seen[requestedPath] {
+				continue
+			}
+			seen[requestedPath] = true
+			importRequest, err := s.stagedStorageImportRequest(userID, userName, override.ImportToken, override, primaryCategoryID)
+			if err != nil {
+				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
+				continue
+			}
+			book, err := importer.Import(importRequest)
+			if err != nil {
+				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
+				continue
+			}
+			s.removeStagedLocalImport(userID, override.ImportToken)
+			if len(categoryIDs) > 0 {
+				_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
+			}
+			item := s.bookShelfListItem(userID, book)
+			imported = append(imported, gin.H{"path": requestedPath, "book": item})
+			importedBooks = append(importedBooks, item)
+			continue
+		}
 		files, ok := s.localStoreImportFiles(c, rawPath)
 		if !ok {
-			continue
+			return
 		}
 		for _, file := range files {
 			if seen[file.relativePath] {
 				continue
 			}
 			seen[file.relativePath] = true
-			data, err := os.ReadFile(file.filePath)
+			if file.validationError != "" {
+				imported = append(imported, gin.H{"path": file.relativePath, "error": file.validationError})
+				continue
+			}
+			data, err := s.readBoundedLocalImportFile(file.filePath)
 			if err != nil {
 				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
 				continue
@@ -326,6 +403,10 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 }
 
 func (s *Server) previewLocalStoreImport(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
+	userID, _ := middleware.UserID(c)
 	var req localBookImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
@@ -336,7 +417,6 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
 		return
 	}
-	importer := localbook.NewImporter(s.cfg, s.db)
 	results := make([]gin.H, 0)
 	seen := make(map[string]bool)
 	itemByPath := req.itemByPath()
@@ -350,34 +430,27 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 				continue
 			}
 			seen[file.relativePath] = true
-			data, err := os.ReadFile(file.filePath)
-			if err != nil {
-				results = append(results, gin.H{"path": file.relativePath, "error": err.Error()})
+			if file.validationError != "" {
+				results = append(results, gin.H{"path": file.relativePath, "error": file.validationError})
 				continue
 			}
 			override := itemByPath[file.relativePath]
-			preview, err := importer.Preview(localbook.ImportRequest{
-				FileName:  filepath.Base(file.filePath),
-				Extension: file.extension,
-				Data:      data,
-				Title:     override.Title,
-				Author:    override.Author,
-				TOCRule:   override.TOCRule,
-			})
+			preview, importToken, err := s.previewStagedStorageImport(userID, file, override)
 			if err != nil {
-				results = append(results, gin.H{"path": file.relativePath, "error": err.Error()})
+				results = append(results, gin.H{"path": file.relativePath, "error": err.Error(), "importToken": importToken})
 				continue
 			}
-			results = append(results, gin.H{"path": file.relativePath, "book": preview})
+			results = append(results, gin.H{"path": file.relativePath, "book": preview, "importToken": importToken})
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"items": results})
 }
 
 type localStoreImportFile struct {
-	filePath     string
-	relativePath string
-	extension    string
+	filePath        string
+	relativePath    string
+	extension       string
+	validationError string
 }
 
 func (s *Server) localStoreImportFiles(c *gin.Context, rawPath string) ([]localStoreImportFile, bool) {
@@ -392,7 +465,7 @@ func (s *Server) localStoreImportFiles(c *gin.Context, rawPath string) ([]localS
 	if !info.IsDir() {
 		ext := strings.ToLower(filepath.Ext(filePath))
 		if !isImportableExtension(ext) {
-			return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
+			return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext, validationError: "unsupported file type"}}, true
 		}
 		return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
 	}
@@ -423,7 +496,11 @@ func (s *Server) localStoreImportFiles(c *gin.Context, rawPath string) ([]localS
 }
 
 func (s *Server) localStorePath(c *gin.Context, rawPath string) (string, string, bool) {
-	storeDir, err := filepath.Abs(s.cfg.LocalStoreDir)
+	storeRoot, ok := s.storeRoot(c, s.cfg.LocalStoreDir)
+	if !ok {
+		return "", "", false
+	}
+	storeDir, err := filepath.Abs(storeRoot)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid local store directory"})
 		return "", "", false

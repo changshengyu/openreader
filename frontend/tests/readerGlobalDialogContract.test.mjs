@@ -34,6 +34,8 @@ test('shared bookmarks and content search use upstream-style dialogs, including 
   assert.match(search, /<el-dialog/)
   assert.match(search, /:fullscreen="isMobile"/)
   assert.doesNotMatch(search, /<el-drawer/)
+  assert.match(search, /searchNotice/)
+  assert.match(search, /incomplete/)
   assert.match(host, /<OverlayBookContentSearch[\s\S]*:is-mobile="isMobileOverlay"/)
 })
 

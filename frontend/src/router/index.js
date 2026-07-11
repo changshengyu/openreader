@@ -3,13 +3,40 @@ import { createRouter, createWebHistory } from 'vue-router'
 const Home = () => import('../views/Home.vue')
 const Login = () => import('../views/Login.vue')
 const Reader = () => import('../views/Reader.vue')
-const LocalStore = () => import('../views/LocalStore.vue')
-const Settings = () => import('../views/Settings.vue')
 
 function sourceOverlayIntentFromLegacy(to) {
   if (to.query.panel === 'remote') return 'remote'
   if (['import', 'health', 'debug'].includes(to.query.action)) return to.query.action
   return 'manage'
+}
+
+function workspaceOverlayIntentFromLegacy(to, kind) {
+  const { panel, ...query } = to.query
+  if (kind === 'local-store') {
+    return {
+      path: '/',
+      query: { ...query, overlay: 'local-store' },
+    }
+  }
+  const settingsPanel = ['account', 'backup', 'cache', 'webdav', 'reader', 'replace', 'rss', 'admin'].includes(panel)
+    ? panel
+    : 'account'
+  const overlayByPanel = {
+    backup: 'backup',
+    webdav: 'webdav',
+    replace: 'replace-rules',
+    rss: 'rss',
+    admin: 'user-manage',
+  }
+  const overlay = overlayByPanel[settingsPanel] || 'workspace-settings'
+  return {
+    path: '/',
+    query: {
+      ...query,
+      overlay,
+      ...(overlay === 'workspace-settings' ? { settingsPanel } : {}),
+    },
+  }
 }
 
 const router = createRouter({
@@ -39,7 +66,11 @@ const router = createRouter({
         },
       }),
     },
-    { path: '/local-store', name: 'local-store', component: LocalStore },
+    {
+      path: '/local-store',
+      name: 'local-store',
+      redirect: to => workspaceOverlayIntentFromLegacy(to, 'local-store'),
+    },
     {
       path: '/sources',
       name: 'sources',
@@ -55,7 +86,11 @@ const router = createRouter({
         }
       },
     },
-    { path: '/settings', name: 'settings', component: Settings },
+    {
+      path: '/settings',
+      name: 'settings',
+      redirect: to => workspaceOverlayIntentFromLegacy(to, 'settings'),
+    },
     {
       path: '/books/:id',
       name: 'book-detail',

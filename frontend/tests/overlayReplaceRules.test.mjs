@@ -66,7 +66,7 @@ test('normalizes legacy stored rules and imported rule fields separately', () =>
     pattern: 'ad',
     scope: '*',
     isEnabled: false,
-    isRegex: true,
+    isRegex: false,
     enabled: false,
   })
   assert.deepEqual(normalizeOverlayReplaceRuleImport({
@@ -133,7 +133,9 @@ test('opens fresh and existing editors and saves create or update payloads', asy
   const fixture = createController()
   fixture.controller.openEditor()
   assert.equal(fixture.controller.editingId.value, null)
+  fixture.controller.draft.value.name = '广告规则'
   fixture.controller.draft.value.pattern = ' ad '
+  fixture.controller.draft.value.scope = '*'
   await fixture.controller.save()
   assert.equal(fixture.calls[0][0], 'create')
   assert.equal(fixture.calls[0][1].pattern, 'ad')
@@ -149,6 +151,19 @@ test('opens fresh and existing editors and saves create or update payloads', asy
   await fixture.controller.save()
   assert.equal(fixture.calls[0][0], 'update')
   assert.equal(fixture.calls[0][1], 2)
+})
+
+test('requires the same name, pattern, and scope fields as the upstream editor', async () => {
+  const fixture = createController()
+  fixture.controller.openEditor()
+  fixture.controller.draft.value.pattern = '广告'
+  await fixture.controller.save()
+  assert.deepEqual(fixture.calls, [['warning', '规则名不能为空']])
+
+  fixture.calls.length = 0
+  fixture.controller.draft.value.name = '广告规则'
+  await fixture.controller.save()
+  assert.deepEqual(fixture.calls, [['warning', '替换范围不能为空']])
 })
 
 test('tests and toggles rules while preserving failure reload semantics', async () => {

@@ -138,6 +138,7 @@ function resetDrafts() {
   drafts.value = props.items.map(item => ({
     path: item.path || '',
     error: item.error || '',
+    importToken: item.importToken || item.book?.importToken || '',
     title: item.book?.title || '',
     author: item.book?.author || '',
     chapterCount: Number(item.book?.chapterCount || 0),
@@ -160,6 +161,7 @@ function confirmImport() {
     .filter(row => row.selected)
     .map(row => ({
       path: row.path,
+      importToken: row.importToken,
       title: row.title.trim(),
       author: row.author.trim(),
       tocRule: row.tocRule || '',

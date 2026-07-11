@@ -108,19 +108,42 @@ func (s *Server) webdavPut(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if c.Request.ContentLength > s.maxLocalImportBytes() {
+		c.Status(http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	data, err := io.ReadAll(c.Request.Body)
+	staged, err := os.CreateTemp(filepath.Dir(filePath), ".webdav-upload-")
 	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	stagedPath := staged.Name()
+	defer os.Remove(stagedPath)
+	if err := s.copyBoundedLocalImport(staged, c.Request.Body); err != nil {
+		_ = staged.Close()
+		if errors.Is(err, errLocalImportTooLarge) {
+			c.Status(http.StatusRequestEntityTooLarge)
+			return
+		}
 		c.Status(http.StatusBadRequest)
 		return
 	}
-
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	if err := staged.Chmod(0o644); err != nil {
+		_ = staged.Close()
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if err := staged.Close(); err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if err := os.Rename(stagedPath, filePath); err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -210,6 +233,9 @@ func webdavDestinationPath(value string) (string, bool) {
 // ---------- Reading app backup restoration ----------
 
 func (s *Server) importLegadoBackup(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	userID, _ := middleware.UserID(c)
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -243,6 +269,9 @@ type restoreWebDAVBackupRequest struct {
 }
 
 func (s *Server) restoreWebDAVBackup(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	userID, _ := middleware.UserID(c)
 	var req restoreWebDAVBackupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -272,6 +301,9 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 }
 
 func (s *Server) importFromWebDAV(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
 	userID, _ := middleware.UserID(c)
 
 	var req localBookImportRequest
@@ -309,17 +341,50 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 	itemByPath := req.itemByPath()
 
 	for _, rawPath := range paths {
+		_, requestedPath, ok := s.webdavPath(c, rawPath)
+		if !ok {
+			return
+		}
+		override := itemByPath[requestedPath]
+		if override.ImportToken != "" {
+			if seen[requestedPath] {
+				continue
+			}
+			seen[requestedPath] = true
+			importRequest, err := s.stagedStorageImportRequest(userID, userName, override.ImportToken, override, primaryCategoryID)
+			if err != nil {
+				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
+				continue
+			}
+			book, err := importer.Import(importRequest)
+			if err != nil {
+				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
+				continue
+			}
+			s.removeStagedLocalImport(userID, override.ImportToken)
+			if len(categoryIDs) > 0 {
+				_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
+			}
+			item := s.bookShelfListItem(userID, book)
+			imported = append(imported, gin.H{"path": requestedPath, "book": item})
+			importedBooks = append(importedBooks, item)
+			continue
+		}
 		files, ok := s.webDAVImportFiles(c, rawPath)
 		if !ok {
-			continue
+			return
 		}
 		for _, file := range files {
 			if seen[file.relativePath] {
 				continue
 			}
 			seen[file.relativePath] = true
+			if file.validationError != "" {
+				imported = append(imported, gin.H{"path": file.relativePath, "error": file.validationError})
+				continue
+			}
 
-			data, err := os.ReadFile(file.filePath)
+			data, err := s.readBoundedLocalImportFile(file.filePath)
 			if err != nil {
 				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
 				continue
@@ -355,6 +420,10 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 }
 
 func (s *Server) previewWebDAVImport(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
+	userID, _ := middleware.UserID(c)
 	var req localBookImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
@@ -365,7 +434,6 @@ func (s *Server) previewWebDAVImport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
 		return
 	}
-	importer := localbook.NewImporter(s.cfg, s.db)
 	results := make([]gin.H, 0)
 	seen := make(map[string]bool)
 	itemByPath := req.itemByPath()
@@ -379,25 +447,17 @@ func (s *Server) previewWebDAVImport(c *gin.Context) {
 				continue
 			}
 			seen[file.relativePath] = true
-			data, err := os.ReadFile(file.filePath)
-			if err != nil {
-				results = append(results, gin.H{"path": file.relativePath, "error": err.Error()})
+			if file.validationError != "" {
+				results = append(results, gin.H{"path": file.relativePath, "error": file.validationError})
 				continue
 			}
 			override := itemByPath[file.relativePath]
-			preview, err := importer.Preview(localbook.ImportRequest{
-				FileName:  filepath.Base(file.filePath),
-				Extension: file.extension,
-				Data:      data,
-				Title:     override.Title,
-				Author:    override.Author,
-				TOCRule:   override.TOCRule,
-			})
+			preview, importToken, err := s.previewStagedStorageImport(userID, file, override)
 			if err != nil {
-				results = append(results, gin.H{"path": file.relativePath, "error": err.Error()})
+				results = append(results, gin.H{"path": file.relativePath, "error": err.Error(), "importToken": importToken})
 				continue
 			}
-			results = append(results, gin.H{"path": file.relativePath, "book": preview})
+			results = append(results, gin.H{"path": file.relativePath, "book": preview, "importToken": importToken})
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"items": results})
@@ -415,7 +475,7 @@ func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStore
 	if !info.IsDir() {
 		ext := strings.ToLower(filepath.Ext(filePath))
 		if !isImportableExtension(ext) {
-			return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
+			return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext, validationError: "unsupported file type"}}, true
 		}
 		return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
 	}
@@ -873,22 +933,57 @@ func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, erro
 		if !ok {
 			continue
 		}
+		chapterIndex := row.ChapterIndex
+		if chapterIndex < 0 {
+			chapterIndex = 0
+		}
+		offset := row.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		chapterID := uint(0)
+		var chapter models.Chapter
+		if err := s.db.Where("book_id = ? AND `index` = ?", book.ID, chapterIndex).First(&chapter).Error; err == nil {
+			chapterID = chapter.ID
+		}
+		createdAt := row.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = time.Now()
+		}
+		updatedAt := row.UpdatedAt
+		if updatedAt.IsZero() {
+			updatedAt = createdAt
+		}
 		bookmark := models.Bookmark{
 			UserID:       userID,
 			BookID:       book.ID,
-			ChapterID:    0,
-			ChapterIndex: row.ChapterIndex,
-			Offset:       row.Offset,
+			ChapterID:    chapterID,
+			ChapterIndex: chapterIndex,
+			Offset:       offset,
 			Percent:      clampProgressPercent(row.Percent),
-			Title:        row.Title,
-			Excerpt:      row.Excerpt,
-			Note:         row.Note,
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			Title:        strings.TrimSpace(row.Title),
+			Excerpt:      strings.TrimSpace(row.Excerpt),
+			Note:         strings.TrimSpace(row.Note),
+			CreatedAt:    createdAt,
+			UpdatedAt:    updatedAt,
 		}
-		query := s.db.Where("user_id = ? AND book_id = ? AND chapter_index = ? AND offset = ? AND title = ?",
-			userID, book.ID, bookmark.ChapterIndex, bookmark.Offset, bookmark.Title)
-		if err := query.Assign(bookmark).FirstOrCreate(&bookmark).Error; err == nil {
+		// Modern OpenReader exports include CreatedAt, which is the stable identity
+		// needed to retain more than one bookmark at the same chapter/offset.  Old
+		// reader-dev exports may omit it, so their narrower, legacy identity remains
+		// available as a read-compatibility fallback.
+		identity := models.Bookmark{
+			UserID:       userID,
+			BookID:       book.ID,
+			ChapterIndex: bookmark.ChapterIndex,
+			Offset:       bookmark.Offset,
+			Title:        bookmark.Title,
+			Excerpt:      bookmark.Excerpt,
+			Note:         bookmark.Note,
+		}
+		if !row.CreatedAt.IsZero() {
+			identity.CreatedAt = row.CreatedAt
+		}
+		if err := s.db.Where(&identity).FirstOrCreate(&bookmark).Error; err == nil {
 			count++
 		}
 	}
@@ -937,16 +1032,20 @@ func (s *Server) restoreReplaceRulesFromZip(file *zip.File, userID uint) (int, e
 		if rule.IsEnabled != nil {
 			enabled = *rule.IsEnabled
 		}
-		isRegex := true
+		isRegex := false
 		if rule.IsRegex != nil {
 			isRegex = *rule.IsRegex
+		}
+		scope := strings.TrimSpace(rule.Scope)
+		if scope == "" {
+			scope = "*"
 		}
 		next := models.ReplaceRule{
 			UserID:      userID,
 			Name:        name,
 			Pattern:     pattern,
 			Replacement: rule.Replacement,
-			Scope:       normalizeReplaceRuleScope(rule.Scope),
+			Scope:       scope,
 			IsRegex:     &isRegex,
 			Enabled:     enabled,
 			CreatedAt:   time.Now(),
@@ -1121,7 +1220,11 @@ func (s *Server) webdavDir() string {
 }
 
 func (s *Server) webdavPath(c *gin.Context, rawPath string) (string, string, bool) {
-	baseDir, err := filepath.Abs(s.webdavDir())
+	storeRoot, ok := s.storeRoot(c, s.webdavDir())
+	if !ok {
+		return "", "", false
+	}
+	baseDir, err := filepath.Abs(storeRoot)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return "", "", false

@@ -30,9 +30,16 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-alert
+        v-if="searchNotice"
+        class="reader-search-notice"
+        type="warning"
+        :closable="false"
+        :title="searchNotice"
+      />
       <el-empty
         v-if="keyword && searched && !loading && !results.length"
-        :description="hasMore ? '当前已搜索章节没有匹配，可继续搜索后续章节' : '没有匹配内容'"
+        :description="searchNotice || (hasMore ? '当前已搜索章节没有匹配，可继续搜索后续章节' : '没有匹配内容')"
       />
       <el-empty v-else-if="!keyword && !results.length" description="输入关键词搜索整本书正文" />
     </div>
@@ -85,6 +92,10 @@ const {
   loading,
   searched,
   hasMore,
+  incomplete,
+  unavailableChapters,
+  truncated,
+  notice: searchNotice,
   reset,
   search,
   loadMore,
@@ -190,6 +201,10 @@ function readError(error, fallback) {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.reader-search-notice {
+  margin-top: 12px;
 }
 
 @media (max-width: 750px) {

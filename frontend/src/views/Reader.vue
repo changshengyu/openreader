@@ -358,7 +358,6 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
 import { refreshBook, refreshLocalBook } from '../api/books'
-import { createReplaceRule } from '../api/replaceRules'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
@@ -425,6 +424,10 @@ import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
+import {
+  captureReaderBookmarkExcerpt,
+  selectedTextBookmarkContext,
+} from '../utils/readerBookmarkContext'
 import { readerTTSBarVisible } from '../utils/readerTTS'
 import {
   readerScrollBehaviorForDuration,
@@ -483,6 +486,8 @@ const {
   getOffset: () => currentOffset(),
   getPercent: () => currentChapterPercent(),
   getExcerpt: currentVisibleExcerpt,
+  getSelectedTextContext: selectedBookmarkContextFromText,
+  onSelectedTextNotFound: () => ElMessage.error('选择1-2段整段文字才能定位段落'),
   openForm: (...args) => overlay.openBookmarkForm(...args),
 })
 const {
@@ -490,13 +495,8 @@ const {
 } = useReaderSelectedTextActions({
   getBook: () => book.value,
   confirm: (...args) => ElMessageBox.confirm(...args),
-  prompt: (...args) => ElMessageBox.prompt(...args),
   createBookmark: createBookmarkFromSelectedText,
-  createReplaceRule,
-  dispatchRulesUpdated: () => {
-    window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated'))
-  },
-  onSuccess: message => ElMessage.success(message),
+  openReplaceRuleEditor: draft => overlay.openReplaceRuleEditor(draft),
 })
 const content = ref('')
 const chapterFormat = ref('text')
@@ -913,6 +913,8 @@ const {
     query,
   }),
   loadChapter: (index, loadOptions) => loadChapter(index, 0, loadOptions),
+  canMatchBookmark: () => chapterFormat.value === 'text',
+  onBookmarkNotFound: () => ElMessage.error('无法定位内容所在段落'),
   flashParagraph,
   saveProgress: () => saveCurrentProgress(),
 })
@@ -1518,7 +1520,7 @@ useReaderRouteSync({
   bookId,
   currentIndex,
   positionQuery: () => [route.query.chapter, route.query.offset, route.query.percent],
-  searchQuery: () => [route.query.line, route.query.match, route.query.q],
+  searchQuery: () => [route.query.line, route.query.match, route.query.q, route.query.bookmark],
   loadBook: () => loadReaderBook(),
   loadChapter: (index, offset, options) => loadChapter(index, offset, options),
   jumpToRouteLine,
@@ -1743,9 +1745,30 @@ function currentVisibleExcerpt() {
     return chapter.value?.title || book.value?.title || ''
   }
   const paragraph = currentVisibleParagraph()
-  const text = paragraph?.textContent?.replace(/\s+/g, ' ').trim()
-  if (text) return text.slice(0, 140)
+  const paragraphs = readerBookmarkParagraphs()
+  const index = paragraphs.findIndex(item => item.element === paragraph)
+  if (index >= 0) {
+    const excerpt = captureReaderBookmarkExcerpt(paragraphs, index)
+    if (excerpt) return excerpt
+  }
   return lines.value.slice(0, 2).join(' ').slice(0, 140)
+}
+
+function readerBookmarkParagraphs() {
+  const root = contentBody.value
+    ?.querySelector(`.chapter-content[data-index="${currentIndex.value}"]`)
+    || contentBody.value
+  return [...(root?.querySelectorAll('h3, p') || [])].map(element => ({
+    element,
+    text: element.innerText || element.textContent || '',
+  }))
+}
+
+function selectedBookmarkContextFromText(text) {
+  return selectedTextBookmarkContext({
+    selectedText: text,
+    paragraphs: readerBookmarkParagraphs(),
+  })
 }
 
 function currentAudioProgressPayload() {

@@ -38,3 +38,17 @@ test('builds reader bookmark routes and parses optional percentages', () => {
   assert.equal(parseBookmarkPercent(''), null)
   assert.equal(parseBookmarkPercent('invalid'), null)
 })
+
+test('carries bookmark paragraph context so Reader can recover after stale offsets', () => {
+  assert.deepEqual(bookmarkReaderQuery({
+    chapterIndex: 2,
+    offset: 18,
+    percent: 0.2,
+    excerpt: '第一段\n第二段',
+  }), {
+    chapter: 2,
+    offset: 18,
+    percent: 0.2,
+    bookmark: '第一段\n第二段',
+  })
+})

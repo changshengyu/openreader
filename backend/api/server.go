@@ -155,6 +155,14 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/explore/:sourceId", server.exploreBooks)
 
 	webdav := router.Group("/webdav")
+	webdav.Use(middleware.AuthRequired(cfg.JWTSecret))
+	webdav.Use(middleware.TrackActivity(database))
+	webdav.Use(func(c *gin.Context) {
+		if !server.requireStoreAccess(c) {
+			return
+		}
+		c.Next()
+	})
 	webdav.GET("/*path", server.webdavGetOrList)
 	webdav.PUT("/*path", server.webdavPut)
 	webdav.Handle("MKCOL", "/*path", server.webdavMkcol)

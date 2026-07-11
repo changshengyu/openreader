@@ -5,9 +5,10 @@ import {
   readerSelectionBelongsToRoot,
 } from '../src/utils/readerSelection.js'
 
-test('normalizes and limits selected reader text', () => {
-  assert.equal(normalizeReaderSelectionText('  第一段\n\n第二段  '), '第一段 第二段')
+test('preserves original selected reader text while rejecting whitespace-only selections', () => {
+  assert.equal(normalizeReaderSelectionText('  第一段\n\n第二段  '), '  第一段\n\n第二段  ')
   assert.equal(normalizeReaderSelectionText('abcdef', 4), 'abcd')
+  assert.equal(normalizeReaderSelectionText(' \n '), '')
 })
 
 test('accepts selection containers only inside the reader root', () => {

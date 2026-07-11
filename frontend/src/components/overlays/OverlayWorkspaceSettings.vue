@@ -1,18 +1,20 @@
 <template>
   <el-drawer
-    v-model="overlay.rssVisible"
-    title="RSS"
+    v-model="overlay.workspaceSettingsVisible"
+    title="设置"
     :direction="direction"
     :size="size"
-    class="global-rss-drawer"
+    class="global-workspace-settings-drawer"
+    destroy-on-close
+    @closed="overlay.closeWorkspaceSettings()"
   >
-    <RSSManager :is-mobile="isMobile" :visible="overlay.rssVisible" />
+    <Settings :panel="overlay.workspaceSettingsPanel" />
   </el-drawer>
 </template>
 
 <script setup>
 import { useOverlayStore } from '../../stores/overlay'
-import RSSManager from '../RSSManager.vue'
+import Settings from '../../views/Settings.vue'
 
 defineProps({
   direction: {
@@ -22,10 +24,6 @@ defineProps({
   size: {
     type: [String, Number],
     required: true,
-  },
-  isMobile: {
-    type: Boolean,
-    default: false,
   },
 })
 
