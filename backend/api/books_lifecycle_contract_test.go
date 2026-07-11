@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"openreader/backend/engine"
 	"openreader/backend/models"
 )
 
@@ -328,5 +331,594 @@ func TestShelfBatchOperationsRejectForeignBookIDs(t *testing.T) {
 	}
 	if otherCount != 1 {
 		t.Fatalf("foreign batch operation must not remove the other user's book, got %d rows", otherCount)
+	}
+}
+
+func TestRemoteRefreshReplacesCatalogueAndClearsSupersededCaches(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	const upstream = "https://refresh-replace.test"
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != upstream+"/book" {
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<span class="rename">1</span><h1 class="name">刷新后的目录</h1>
+					<div class="chapter"><span class="title">新第一章</span><a href="/new-0">阅读</a></div>
+					<div class="chapter"><span class="title">新第二章</span><a href="/new-1">阅读</a></div>
+				</body></html>`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{Name: "完整刷新书源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoCanRenameRule: ".rename",
+		BookInfoNameRule:      ".name",
+		ChapterListRule:       ".chapter",
+		ChapterNameRule:       ".title|text",
+		ChapterURLRule:        "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, SourceID: source.ID, Title: "旧目录", URL: upstream + "/book"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	oldPaths := []string{
+		filepath.Join("refresh-replace", "old-0.txt"),
+		filepath.Join("refresh-replace", "old-1.txt"),
+		filepath.Join("refresh-replace", "old-2.txt"),
+	}
+	for _, path := range oldPaths {
+		writeLifecycleCache(t, server.cfg.CacheDir, path, "obsolete cached chapter")
+	}
+	oldChapters := []models.Chapter{
+		{BookID: book.ID, Index: 0, Title: "旧第一章", URL: upstream + "/old-0", CachePath: oldPaths[0]},
+		{BookID: book.ID, Index: 1, Title: "旧第二章", URL: upstream + "/old-1", CachePath: oldPaths[1]},
+		{BookID: book.ID, Index: 2, Title: "已删除章节", URL: upstream + "/old-2", CachePath: oldPaths[2]},
+	}
+	for index := range oldChapters {
+		if err := server.db.Create(&oldChapters[index]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.db.Create(&models.ReadingProgress{
+		UserID: user.ID, BookID: book.ID, ChapterID: oldChapters[0].ID, ChapterIndex: 0, Offset: 73, Percent: 0.41,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookmarks := []models.Bookmark{
+		{UserID: user.ID, BookID: book.ID, ChapterID: oldChapters[0].ID, ChapterIndex: 0, Offset: 19, Title: "保留位置"},
+		{UserID: user.ID, BookID: book.ID, ChapterID: oldChapters[2].ID, ChapterIndex: 2, Offset: 91, Title: "移除章节位置"},
+	}
+	if err := server.db.Create(&bookmarks).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("refresh remote catalogue: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].Index != 0 || chapters[1].Index != 1 ||
+		chapters[0].URL != upstream+"/new-0" || chapters[1].URL != upstream+"/new-1" {
+		t.Fatalf("refresh must replace, not merge, the catalogue: %+v", chapters)
+	}
+	for _, chapter := range chapters {
+		if chapter.CachePath != "" {
+			t.Fatalf("refreshed chapter %d retained stale cache path %q", chapter.Index, chapter.CachePath)
+		}
+	}
+	for _, oldPath := range oldPaths {
+		if _, err := os.Stat(filepath.Join(server.cfg.CacheDir, oldPath)); !os.IsNotExist(err) {
+			t.Fatalf("superseded remote cache %q should be removed after commit, stat err=%v", oldPath, err)
+		}
+	}
+	if chapters[0].ID == oldChapters[0].ID {
+		t.Fatalf("full catalogue replacement must not reuse old chapter row id %d", oldChapters[0].ID)
+	}
+	var progress models.ReadingProgress
+	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).First(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.ChapterID != chapters[0].ID || progress.ChapterIndex != 0 || progress.Offset != 73 || progress.Percent != 0.41 {
+		t.Fatalf("progress should be rebound without losing position: %+v", progress)
+	}
+	var refreshedBookmarks []models.Bookmark
+	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).Order("chapter_index asc").Find(&refreshedBookmarks).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(refreshedBookmarks) != 2 || refreshedBookmarks[0].ChapterID != chapters[0].ID || refreshedBookmarks[0].Offset != 19 ||
+		refreshedBookmarks[1].ChapterID != 0 || refreshedBookmarks[1].ChapterIndex != 2 || refreshedBookmarks[1].Offset != 91 {
+		t.Fatalf("bookmarks should retain positions but never reference deleted chapter rows: %+v", refreshedBookmarks)
+	}
+}
+
+func TestChangeSourceReplacesCatalogueAndPrunesOldRemoteCache(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	const upstream = "https://source-change-replace.test"
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != upstream+"/new-book" {
+				return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader("not found")), Header: make(http.Header), Request: req}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<span class="rename">1</span><h1 class="name">替换书源后的书</h1>
+					<div class="chapter"><span class="title">换源第一章</span><a href="/source-b-0">阅读</a></div>
+				</body></html>`)),
+				Header: make(http.Header), Request: req,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	oldSource := models.BookSource{Name: "旧书源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := server.db.Create(&oldSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	newSource := models.BookSource{Name: "新书源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := newSource.SetRules(models.BookSourceRule{
+		BookInfoCanRenameRule: ".rename",
+		BookInfoNameRule:      ".name",
+		ChapterListRule:       ".chapter",
+		ChapterNameRule:       ".title|text",
+		ChapterURLRule:        "a|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&newSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, SourceID: oldSource.ID, Title: "旧书源书籍", URL: upstream + "/old-book"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("source-change-replace", "old.txt")
+	writeLifecycleCache(t, server.cfg.CacheDir, cachePath, "旧书源正文")
+	oldChapter := models.Chapter{BookID: book.ID, Index: 0, Title: "旧章节", URL: upstream + "/old-chapter", CachePath: cachePath}
+	if err := server.db.Create(&oldChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	staleChapter := models.Chapter{BookID: book.ID, Index: 1, Title: "旧章节二", URL: upstream + "/old-chapter-1"}
+	if err := server.db.Create(&staleChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.ReadingProgress{UserID: user.ID, BookID: book.ID, ChapterID: oldChapter.ID, ChapterIndex: 0, Offset: 37}).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookmark := models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterID: staleChapter.ID, ChapterIndex: 1, Offset: 64, Title: "旧章节书签"}
+	if err := server.db.Create(&bookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"sourceId":` + strconv.FormatUint(uint64(newSource.ID), 10) + `,"bookUrl":` + strconv.Quote(upstream+"/new-book") + `}`
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/change-source", strings.NewReader(body))
+	req.Header.Set("Authorization", token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("change source: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].URL != upstream+"/source-b-0" || chapters[0].CachePath != "" || chapters[0].ID == oldChapter.ID {
+		t.Fatalf("source change did not publish a clean replacement catalogue: %+v", chapters)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.CacheDir, cachePath)); !os.IsNotExist(err) {
+		t.Fatalf("old source cache must be removed after source change, stat err=%v", err)
+	}
+	var progress models.ReadingProgress
+	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).First(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.ChapterID != chapters[0].ID || progress.ChapterIndex != 0 || progress.Offset != 37 {
+		t.Fatalf("source change should rebind progress to the replacement chapter: %+v", progress)
+	}
+	var refreshedBookmark models.Bookmark
+	if err := server.db.First(&refreshedBookmark, bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refreshedBookmark.ChapterID != 0 || refreshedBookmark.ChapterIndex != 1 || refreshedBookmark.Offset != 64 {
+		t.Fatalf("removed source chapter should clear bookmark id but preserve its position: %+v", refreshedBookmark)
+	}
+}
+
+func TestRemoteRefreshFetchFailureLeavesCatalogueAndCacheReadable(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	const upstream = "https://refresh-failure.test"
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("forced remote refresh fetch failure")
+		}),
+	})
+	defer restoreHTTPClient()
+
+	source := models.BookSource{Name: "刷新失败书源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{ChapterListRule: ".chapter", ChapterNameRule: "a|text", ChapterURLRule: "a|attr:href"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, SourceID: source.ID, Title: "刷新前目录", URL: upstream + "/book", ChapterCount: 1}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("refresh-failure", "chapter.txt")
+	cacheFile := writeLifecycleCache(t, server.cfg.CacheDir, cachePath, "刷新前缓存正文")
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "刷新前章节", URL: upstream + "/old", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("failed refresh: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	var persistedBook models.Book
+	if err := server.db.First(&persistedBook, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var persistedChapter models.Chapter
+	if err := server.db.First(&persistedChapter, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persistedBook.Title != book.Title || persistedBook.ChapterCount != 1 || persistedChapter.CachePath != cachePath || persistedChapter.URL != chapter.URL {
+		t.Fatalf("failed refresh must retain the readable catalogue: book=%+v chapter=%+v", persistedBook, persistedChapter)
+	}
+	if content, err := os.ReadFile(cacheFile); err != nil || string(content) != "刷新前缓存正文" {
+		t.Fatalf("failed refresh must retain cached content, content=%q err=%v", string(content), err)
+	}
+}
+
+func TestChangeSourceFetchFailureLeavesCatalogueAndCacheReadable(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	const upstream = "https://source-change-failure.test"
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("forced source-change fetch failure")
+		}),
+	})
+	defer restoreHTTPClient()
+
+	oldSource := models.BookSource{Name: "换源失败旧源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := server.db.Create(&oldSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	newSource := models.BookSource{Name: "换源失败新源", BaseURL: upstream, Charset: "utf-8", Enabled: true}
+	if err := newSource.SetRules(models.BookSourceRule{ChapterListRule: ".chapter", ChapterNameRule: "a|text", ChapterURLRule: "a|attr:href"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&newSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, SourceID: oldSource.ID, Title: "换源前目录", URL: upstream + "/old-book", ChapterCount: 1}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	cachePath := filepath.Join("source-change-failure", "chapter.txt")
+	cacheFile := writeLifecycleCache(t, server.cfg.CacheDir, cachePath, "换源前缓存正文")
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "换源前章节", URL: upstream + "/old-chapter", CachePath: cachePath}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"sourceId":` + strconv.FormatUint(uint64(newSource.ID), 10) + `,"bookUrl":` + strconv.Quote(upstream+"/new-book") + `}`
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/change-source", strings.NewReader(body))
+	req.Header.Set("Authorization", token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("failed source change: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	var persistedBook models.Book
+	if err := server.db.First(&persistedBook, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var persistedChapter models.Chapter
+	if err := server.db.First(&persistedChapter, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persistedBook.SourceID != oldSource.ID || persistedBook.URL != book.URL || persistedChapter.CachePath != cachePath || persistedChapter.URL != chapter.URL {
+		t.Fatalf("failed source change must retain current source catalogue: book=%+v chapter=%+v", persistedBook, persistedChapter)
+	}
+	if content, err := os.ReadFile(cacheFile); err != nil || string(content) != "换源前缓存正文" {
+		t.Fatalf("failed source change must retain cached content, content=%q err=%v", string(content), err)
+	}
+}
+
+func TestLocalRefreshClearsStaleChapterReferencesWithoutDeletingOriginal(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	libraryPath := filepath.Join("data", "testuser", "local-refresh-reference-contract")
+	originalFile := filepath.Join(libraryPath, "source.txt")
+	originalPath := filepath.Join(server.cfg.LibraryDir, originalFile)
+	originalContent := "第一章 新内容\n这是唯一保留章节。\n"
+	if err := os.MkdirAll(filepath.Dir(originalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(originalPath, []byte(originalContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID: user.ID, Title: "本地刷新引用", URL: "local://refresh-reference", LibraryPath: libraryPath,
+		OriginalFile: originalFile, TOCRule: `^第.+章.*$`, ChapterCount: 2,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	oldChapters := []models.Chapter{
+		{BookID: book.ID, Index: 0, Title: "旧第一章", URL: book.URL + "/chapter_0", CachePath: filepath.Join("content", "old-0.txt")},
+		{BookID: book.ID, Index: 1, Title: "旧第二章", URL: book.URL + "/chapter_1", CachePath: filepath.Join("content", "old-1.txt")},
+	}
+	for index := range oldChapters {
+		if err := server.db.Create(&oldChapters[index]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.db.Create(&models.ReadingProgress{UserID: user.ID, BookID: book.ID, ChapterID: oldChapters[1].ID, ChapterIndex: 1, Offset: 88, Percent: 0.63}).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookmark := models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterID: oldChapters[0].ID, ChapterIndex: 0, Offset: 12, Title: "首章书签"}
+	if err := server.db.Create(&bookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("refresh local book: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if data, err := os.ReadFile(originalPath); err != nil || string(data) != originalContent {
+		t.Fatalf("local refresh must retain the original archive, data=%q err=%v", string(data), err)
+	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Index != 0 || chapters[0].ID == oldChapters[0].ID || chapters[0].CachePath == "" {
+		t.Fatalf("local refresh must replace catalogue rows and publish derived cache: %+v", chapters)
+	}
+	var progress models.ReadingProgress
+	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).First(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.ChapterID != 0 || progress.ChapterIndex != 1 || progress.Offset != 88 || progress.Percent != 0.63 {
+		t.Fatalf("removed local chapter should clear progress id but preserve resume position: %+v", progress)
+	}
+	var refreshedBookmark models.Bookmark
+	if err := server.db.First(&refreshedBookmark, bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refreshedBookmark.ChapterID != chapters[0].ID || refreshedBookmark.ChapterIndex != 0 || refreshedBookmark.Offset != 12 {
+		t.Fatalf("surviving local chapter bookmark should be rebound: %+v", refreshedBookmark)
+	}
+}
+
+func TestLocalRefreshStageFailurePreservesActiveCatalogueAndArchive(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	libraryPath := filepath.Join("data", "testuser", "local-refresh-stage-failure")
+	originalFile := filepath.Join(libraryPath, "source.txt")
+	originalPath := filepath.Join(server.cfg.LibraryDir, originalFile)
+	if err := os.MkdirAll(filepath.Dir(originalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	originalContent := "第一章 新正文\n这次刷新不应写入活动目录。\n"
+	if err := os.WriteFile(originalPath, []byte(originalContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldTOC := []byte("[\n  {\"title\": \"旧目录\"}\n]\n")
+	oldSource := []byte("[{\"name\":\"旧书源元数据\"}]\n")
+	if err := os.WriteFile(filepath.Join(server.cfg.LibraryDir, libraryPath, "chapters.json"), oldTOC, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.cfg.LibraryDir, libraryPath, "bookSource.json"), oldSource, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldCachePath := filepath.Join("content", "previous", "chapter.txt")
+	oldContentPath := writeLifecycleCache(t, filepath.Join(server.cfg.LibraryDir, libraryPath), oldCachePath, "旧活动正文")
+	book := models.Book{
+		UserID: user.ID, Title: "本地刷新写入失败", URL: "local://stage-failure", LibraryPath: libraryPath,
+		OriginalFile: originalFile, TOCFile: filepath.Join(libraryPath, "chapters.json"), SourceFile: filepath.Join(libraryPath, "bookSource.json"),
+		TOCRule: `^第.+章.*$`, LastChapter: "旧目录", ChapterCount: 1,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	oldChapter := models.Chapter{BookID: book.ID, Index: 0, Title: "旧目录", URL: book.URL + "/chapter_0", CachePath: oldCachePath}
+	if err := server.db.Create(&oldChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	localRefreshStageTestHook = func(string) error {
+		return errors.New("forced staged artifact write failure")
+	}
+	defer func() { localRefreshStageTestHook = nil }()
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("staged write failure: expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var persistedBook models.Book
+	if err := server.db.First(&persistedBook, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persistedBook.ChapterCount != 1 || persistedBook.LastChapter != "旧目录" || persistedBook.TOCRule != `^第.+章.*$` {
+		t.Fatalf("failed staging must retain the previous catalogue metadata: %+v", persistedBook)
+	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].ID != oldChapter.ID || chapters[0].CachePath != oldCachePath {
+		t.Fatalf("failed staging must retain the active chapter row: %+v", chapters)
+	}
+	if content, err := os.ReadFile(oldContentPath); err != nil || string(content) != "旧活动正文" {
+		t.Fatalf("failed staging must retain active derived content, content=%q err=%v", string(content), err)
+	}
+	if content, err := os.ReadFile(filepath.Join(server.cfg.LibraryDir, libraryPath, "chapters.json")); err != nil || string(content) != string(oldTOC) {
+		t.Fatalf("failed staging must retain chapters metadata, content=%q err=%v", string(content), err)
+	}
+	if content, err := os.ReadFile(filepath.Join(server.cfg.LibraryDir, libraryPath, "bookSource.json")); err != nil || string(content) != string(oldSource) {
+		t.Fatalf("failed staging must retain book-source metadata, content=%q err=%v", string(content), err)
+	}
+	if content, err := os.ReadFile(originalPath); err != nil || string(content) != originalContent {
+		t.Fatalf("failed staging must retain original import, content=%q err=%v", string(content), err)
+	}
+	entries, err := os.ReadDir(filepath.Join(server.cfg.LibraryDir, libraryPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".refresh-") {
+			t.Fatalf("failed staging left an inactive refresh directory %q", entry.Name())
+		}
+	}
+}
+
+func TestLocalRefreshPromotesNewGenerationAndPrunesOldDerivedContent(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+
+	libraryPath := filepath.Join("data", "testuser", "local-refresh-promote")
+	originalFile := filepath.Join(libraryPath, "source.txt")
+	originalPath := filepath.Join(server.cfg.LibraryDir, originalFile)
+	if err := os.MkdirAll(filepath.Dir(originalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	originalContent := "第一章 新目录\n新的活动正文。\n"
+	if err := os.WriteFile(originalPath, []byte(originalContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID: user.ID, Title: "本地刷新切换", URL: "local://refresh-promote", LibraryPath: libraryPath,
+		OriginalFile: originalFile, TOCFile: filepath.Join(libraryPath, "chapters.json"), SourceFile: filepath.Join(libraryPath, "bookSource.json"),
+		TOCRule: `^第.+章.*$`, LastChapter: "旧目录", ChapterCount: 1,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	oldCachePath := filepath.Join("content", "old-generation", "chapter.txt")
+	oldContentPath := writeLifecycleCache(t, filepath.Join(server.cfg.LibraryDir, libraryPath), oldCachePath, "旧活动正文")
+	oldChapter := models.Chapter{BookID: book.ID, Index: 0, Title: "旧目录", URL: book.URL + "/chapter_0", CachePath: oldCachePath}
+	if err := server.db.Create(&oldChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.cfg.LibraryDir, libraryPath, "chapters.json"), []byte("[{\"title\":\"旧目录\"}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.cfg.LibraryDir, libraryPath, "bookSource.json"), []byte("[{\"name\":\"旧元数据\"}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("refresh local book: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var refreshedBook models.Book
+	if err := server.db.First(&refreshedBook, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refreshedBook.LastChapter != "第一章 新目录" || refreshedBook.ChapterCount != 1 {
+		t.Fatalf("local refresh did not commit the new catalogue metadata: %+v", refreshedBook)
+	}
+	var chapter models.Chapter
+	if err := server.db.Where("book_id = ? AND `index` = 0", book.ID).First(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if chapter.ID == oldChapter.ID || !strings.HasPrefix(chapter.CachePath, "content"+string(os.PathSeparator)) || chapter.CachePath == oldCachePath {
+		t.Fatalf("local refresh should point at a new content generation: %+v", chapter)
+	}
+	newContentPath := filepath.Join(server.cfg.LibraryDir, libraryPath, chapter.CachePath)
+	if content, err := os.ReadFile(newContentPath); err != nil || !strings.Contains(string(content), "新的活动正文") {
+		t.Fatalf("new generation should contain refreshed content, content=%q err=%v", string(content), err)
+	}
+	if _, err := os.Stat(oldContentPath); !os.IsNotExist(err) {
+		t.Fatalf("obsolete derived content should be pruned after promotion, stat err=%v", err)
+	}
+
+	var archived []engine.ArchivedChapter
+	tocData, err := os.ReadFile(filepath.Join(server.cfg.LibraryDir, refreshedBook.TOCFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(tocData, &archived); err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != 1 || archived[0].ID != chapter.ID || archived[0].CachePath != chapter.CachePath || archived[0].Title != chapter.Title {
+		t.Fatalf("active chapters metadata must match committed chapter rows: %+v", archived)
+	}
+	var archivedSource []engine.ArchivedBookSource
+	sourceData, err := os.ReadFile(filepath.Join(server.cfg.LibraryDir, refreshedBook.SourceFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(sourceData, &archivedSource); err != nil {
+		t.Fatal(err)
+	}
+	if len(archivedSource) != 1 || archivedSource[0].LatestChapterTitle != refreshedBook.LastChapter {
+		t.Fatalf("active source metadata must match committed book metadata: %+v", archivedSource)
+	}
+	if content, err := os.ReadFile(originalPath); err != nil || string(content) != originalContent {
+		t.Fatalf("refresh must retain original archive, content=%q err=%v", string(content), err)
 	}
 }

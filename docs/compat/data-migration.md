@@ -56,6 +56,12 @@ Status: extracted 2026-07-10; implementation must not add a destructive schema m
 5. User-wide cache statistics and clear operations query only remote books belonging to the authenticated user. A clear operation resets only that user's chapter cache references in a transaction, then does reference-aware post-commit filesystem cleanup. It never returns an absolute cache-directory path.
 6. Existing deployments may contain absolute/legacy cache paths. Treat them as read-compatibility candidates only; cleanup may remove them solely after resolving them safely below the appropriate `cache/` or owned book-library root. Unsafe/unresolved paths are left untouched and their rows are cleared only when the caller explicitly clears/deletes the book.
 
+### P1-D4-B1 current implementation boundary (2026-07-11)
+
+- Remote refresh and source change now replace `chapters` rows transactionally and reconcile the existing user-owned `reading_progress.chapter_id` and `bookmarks.chapter_id` fields in that transaction. The schema and JSON backup shape are unchanged; a removed catalogue index is represented by its existing position row with `chapter_id = 0`, so old backups and clients retain a recoverable index/offset.
+- The former remote cache paths are captured before row replacement and are removed only after commit, only when they still resolve below `cache/`, and only when no remote chapter row references the same file. Existing cache volumes therefore remain readable after a failed fetch or SQLite transaction.
+- Local refresh now writes a new content generation and its archive metadata into an inactive `.refresh-*` directory. The chapter/book/reference transaction commits before same-filesystem renames promote that content and metadata; previous unreferenced private `content/` files are then pruned. A forced staging failure removes only the inactive directory and leaves the previous rows, content, metadata and `OriginalFile` usable. Legacy local rows without a verified private archive use a new scoped cache generation and never delete an external LocalStore/WebDAV source.
+
 ### Backup and Docker impact
 
 - No table, column, or mounted root changes. Existing `data/`, `cache/`, and `library/` volumes remain compatible.

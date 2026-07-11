@@ -100,6 +100,81 @@ func (s *Server) clearRemoteBookCacheRows(tx *gorm.DB, bookIDs []uint) (int, []s
 	return len(paths), paths, nil
 }
 
+// replaceBookChapterRows is the durable catalogue boundary used by refresh and
+// source-change operations. Chapter rows are intentionally replaced instead of
+// patched by index: a source can remove a chapter or change its URL, and a
+// retained CachePath would otherwise make the reader serve content from the
+// former catalogue. The caller may prune the returned paths only after this
+// transaction commits.
+func (s *Server) replaceBookChapterRows(tx *gorm.DB, userID, bookID uint, next []models.Chapter) ([]string, map[int]uint, error) {
+	var previous []models.Chapter
+	if err := tx.Select("cache_path").Where("book_id = ? AND cache_path <> ''", bookID).Find(&previous).Error; err != nil {
+		return nil, nil, err
+	}
+	previousCachePaths := make([]string, 0, len(previous))
+	for _, chapter := range previous {
+		previousCachePaths = append(previousCachePaths, chapter.CachePath)
+	}
+
+	if err := tx.Where("book_id = ?", bookID).Delete(&models.Chapter{}).Error; err != nil {
+		return nil, nil, err
+	}
+	nextChapterIDs := make(map[int]uint, len(next))
+	for index := range next {
+		chapter := next[index]
+		chapter.ID = 0
+		chapter.BookID = bookID
+		// Replacement catalogues never carry cached source content forward.
+		// Local callers create their derived CachePath explicitly after parsing.
+		if err := tx.Create(&chapter).Error; err != nil {
+			return nil, nil, err
+		}
+		if _, exists := nextChapterIDs[chapter.Index]; exists {
+			return nil, nil, gorm.ErrDuplicatedKey
+		}
+		nextChapterIDs[chapter.Index] = chapter.ID
+	}
+	if err := reconcileBookChapterReferences(tx, userID, bookID, nextChapterIDs); err != nil {
+		return nil, nil, err
+	}
+	return previousCachePaths, nextChapterIDs, nil
+}
+
+// reconcileBookChapterReferences keeps a recoverable book-level position
+// after a catalogue replacement. Existing offsets/indexes are deliberately
+// retained; only the foreign row id is rebound to its new counterpart or
+// cleared when that index no longer exists.
+func reconcileBookChapterReferences(tx *gorm.DB, userID, bookID uint, chapterIDs map[int]uint) error {
+	var progresses []models.ReadingProgress
+	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Find(&progresses).Error; err != nil {
+		return err
+	}
+	for _, progress := range progresses {
+		chapterID := chapterIDs[progress.ChapterIndex]
+		if progress.ChapterID == chapterID {
+			continue
+		}
+		if err := tx.Model(&models.ReadingProgress{}).Where("id = ?", progress.ID).Update("chapter_id", chapterID).Error; err != nil {
+			return err
+		}
+	}
+
+	var bookmarks []models.Bookmark
+	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Find(&bookmarks).Error; err != nil {
+		return err
+	}
+	for _, bookmark := range bookmarks {
+		chapterID := chapterIDs[bookmark.ChapterIndex]
+		if bookmark.ChapterID == chapterID {
+			continue
+		}
+		if err := tx.Model(&models.Bookmark{}).Where("id = ?", bookmark.ID).Update("chapter_id", chapterID).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) pruneUnreferencedRemoteCachePaths(cachePaths []string) (int, int64) {
 	paths := make(map[string]struct{})
 	for _, cachePath := range cachePaths {
