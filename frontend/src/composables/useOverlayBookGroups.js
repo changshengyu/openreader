@@ -83,6 +83,10 @@ export function useOverlayBookGroups(options) {
       const categoryIds = selectedCategoryIds.value
         .map(id => Number(id))
         .filter(Boolean)
+      if (!categoryIds.length) {
+        options.onWarning('请选择书籍分组')
+        return
+      }
       const { data } = await options.updateBookCategory(book.id, categoryIds)
       options.bookshelf.upsertBook(data)
       options.overlay.bookInfoBook = data

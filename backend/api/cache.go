@@ -7,61 +7,53 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
+	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
 
 func (s *Server) cacheStats(c *gin.Context) {
-	stats, err := s.remoteCacheStats()
+	userID, _ := middleware.UserID(c)
+	stats, err := s.remoteCacheStats(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count cached chapters"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"path":           s.cfg.CacheDir,
 		"files":          stats.files,
 		"size":           stats.size,
 		"cachedChapters": stats.chapters,
+		"scope":          "current-user",
 	})
 }
 
 func (s *Server) clearCache(c *gin.Context) {
-	cacheDir, err := filepath.Abs(s.cfg.CacheDir)
-	if err != nil || cacheDir == string(os.PathSeparator) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid cache directory"})
+	userID, _ := middleware.UserID(c)
+	var books []models.Book
+	if err := s.db.Where("user_id = ? AND source_id > 0", userID).Find(&books).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list cached books"})
 		return
 	}
-
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to recreate cache directory"})
-		return
+	bookIDs := make([]uint, 0, len(books))
+	for _, book := range books {
+		bookIDs = append(bookIDs, book.ID)
 	}
-
-	var chapters []models.Chapter
-	if err := s.db.
-		Joins("JOIN books ON books.id = chapters.book_id").
-		Where("books.source_id > 0 AND chapters.cache_path <> ''").
-		Find(&chapters).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list cached chapters"})
-		return
-	}
-
-	files := 0
-	size := int64(0)
-	for _, chapter := range chapters {
-		if deleted, deletedSize := s.deleteRemoteCacheFile(chapter.CachePath); deleted {
-			files++
-			size += deletedSize
-		}
-	}
-
-	if err := s.db.Model(&models.Chapter{}).
-		Where("book_id IN (?)", s.db.Model(&models.Book{}).Select("id").Where("source_id > 0")).
-		Where("cache_path <> ''").
-		Update("cache_path", "").Error; err != nil {
+	var cachePaths []string
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		_, paths, err := s.clearRemoteBookCacheRows(tx, bookIDs)
+		cachePaths = paths
+		return err
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset chapter cache state"})
 		return
+	}
+	files, size := s.pruneUnreferencedRemoteCachePaths(cachePaths)
+	if items, err := s.listAllBookShelfItems(userID); err == nil {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": items})
+	} else {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update"})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"clearedFiles": files, "clearedSize": size})
@@ -73,11 +65,11 @@ type cacheStatSummary struct {
 	chapters int64
 }
 
-func (s *Server) remoteCacheStats() (cacheStatSummary, error) {
+func (s *Server) remoteCacheStats(userID uint) (cacheStatSummary, error) {
 	var chapters []models.Chapter
 	if err := s.db.
 		Joins("JOIN books ON books.id = chapters.book_id").
-		Where("books.source_id > 0 AND chapters.cache_path <> ''").
+		Where("books.user_id = ? AND books.source_id > 0 AND chapters.cache_path <> ''", userID).
 		Find(&chapters).Error; err != nil {
 		return cacheStatSummary{}, err
 	}
@@ -120,10 +112,13 @@ func (s *Server) deleteRemoteCacheFile(cachePath string) (bool, int64) {
 }
 
 func (s *Server) remoteCacheFilePath(cachePath string) (string, bool) {
-	if cachePath == "" || filepath.IsAbs(cachePath) {
+	if cachePath == "" {
 		return "", false
 	}
-	fullPath := filepath.Join(s.cfg.CacheDir, cachePath)
+	fullPath := cachePath
+	if !filepath.IsAbs(fullPath) {
+		fullPath = filepath.Join(s.cfg.CacheDir, cachePath)
+	}
 	cleanPath, err := filepath.Abs(fullPath)
 	if err != nil {
 		return "", false

@@ -90,7 +90,7 @@
               <h2>远程章节缓存</h2>
             </div>
             <dl class="info-list">
-              <div><dt>缓存目录</dt><dd>{{ cacheStats.path || '-' }}</dd></div>
+              <div><dt>缓存范围</dt><dd>当前账号</dd></div>
               <div><dt>缓存文件</dt><dd>{{ cacheStats.files || 0 }}</dd></div>
               <div><dt>缓存大小</dt><dd>{{ formatSize(cacheStats.size || 0) }}</dd></div>
               <div><dt>章节状态</dt><dd>{{ cacheStats.cachedChapters || 0 }} 章已缓存</dd></div>

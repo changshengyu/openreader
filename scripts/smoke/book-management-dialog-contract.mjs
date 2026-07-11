@@ -146,6 +146,24 @@ async function runViewport(browser, viewport) {
   await page.waitForFunction(() => !document.querySelector('.book-info-dialog .el-dialog'))
   assert(await manager.isVisible(), `${viewport.width}: closing BookInfo must leave BookManage open`)
 
+  const remoteManageRow = viewport.width <= 750
+    ? manager.locator('.mobile-manage-card').filter({ hasText: '远程书架书' })
+    : manager.locator('.desktop-manage-table tbody tr').filter({ hasText: '远程书架书' })
+  await remoteManageRow.getByRole('button', { name: '分组', exact: true }).click()
+  const groupSet = page.locator('.global-book-group-dialog')
+  await groupSet.waitFor({ state: 'visible', timeout: 10000 })
+  await assertMobileFullscreen(page, viewport, '.global-book-group-dialog', 'BookGroup set')
+  const groupCheckbox = groupSet.locator('.group-set-table .el-checkbox__input').first()
+  assert(await groupCheckbox.evaluate(node => node.classList.contains('is-checked')), `${viewport.width}: BookGroup set must preselect the book's existing categories`)
+  await groupCheckbox.click()
+  await page.waitForFunction(() => !document.querySelector('.group-set-table .el-checkbox__input')?.classList.contains('is-checked'))
+  await groupSet.getByRole('button', { name: '确认', exact: true }).click()
+  await page.waitForTimeout(250)
+  assert(await groupSet.isVisible(), `${viewport.width}: an empty BookGroup selection must keep its dialog open`)
+  await groupSet.getByRole('button', { name: '取消', exact: true }).click()
+  await groupSet.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await manager.isVisible(), `${viewport.width}: closing BookGroup set must leave BookManage open`)
+
   await manager.getByRole('button', { name: '取消', exact: true }).click()
   await manager.waitFor({ state: 'hidden', timeout: 10000 })
 

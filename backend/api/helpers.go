@@ -119,6 +119,26 @@ func (s *Server) validateCategoryIDs(c *gin.Context, userID uint, categoryIDs []
 	return true
 }
 
+func (s *Server) requireOwnedBookIDs(c *gin.Context, userID uint, bookIDs []uint) ([]uint, bool) {
+	ids := uniquePositiveUintIDs(bookIDs)
+	if len(ids) == 0 || len(ids) != len(bookIDs) {
+		badRequest(c, "bookIds must contain unique positive ids")
+		return nil, false
+	}
+	var count int64
+	if err := s.db.Model(&models.Book{}).
+		Where("user_id = ? AND id IN ?", userID, ids).
+		Count(&count).Error; err != nil {
+		internalError(c, "failed to validate books")
+		return nil, false
+	}
+	if count != int64(len(ids)) {
+		notFound(c, "book not found")
+		return nil, false
+	}
+	return ids, true
+}
+
 func uniquePositiveUintIDs(ids []uint) []uint {
 	seen := make(map[uint]struct{}, len(ids))
 	unique := make([]uint, 0, len(ids))

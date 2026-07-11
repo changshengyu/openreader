@@ -36,6 +36,32 @@ Before changing storage for a module, document:
 - Local store/WebDAV path normalization and permissions.
 - Cache invalidation rules for local and remote books.
 
+## P1-D4 book deletion, cache and refresh lifecycle
+
+Status: extracted 2026-07-10; implementation must not add a destructive schema migration.
+
+### Existing representation
+
+- `books`, `chapters`, `book_categories`, `bookmarks`, and `reading_progress` are SQLite rows. Book/category/progress/bookmark rows are user scoped; chapter rows are owned by their book.
+- Remote `Chapter.CachePath` is a relative path under `cache/`, calculated from the book/chapter URLs. A physical cache path can be referenced by more than one chapter row and must therefore be reference-checked before removal.
+- Direct, LocalStore, and WebDAV imports are copied by `ArchiveImportedBook` into a private `library/data/<safe-user>/<unique-book>/` archive. `OriginalFile`, `chapters.json`, `bookSource.json`, `content/`, and derived EPUB/CBZ resources live under that archive.
+- Browser chapter cache keys are user-scoped in current clients but are not database rows; they must be explicitly removed by the shelf/browser store when a book-delete sync event arrives.
+
+### Required lifecycle and compatibility shim
+
+1. Delete database relationships in one SQLite transaction. Do not remove physical files before commit.
+2. After a successful commit, prune captured remote cache paths only when no remaining `chapters.cache_path` references them. Cleanup is idempotent and may be retried; it must never walk outside `cache/`.
+3. Delete an imported archive only when `Book.LibraryPath` is a normalized descendant of that owner's `library/data/<safe-user>/` root. Do not delete a LocalStore/WebDAV source path merely because it was used to create an import copy. Preserve unrelated user archives and all mounted roots.
+4. Refresh/source-change captures old derived cache references, commits the replacement chapter rows first, then prunes unreferenced stale entries. For local refresh retain `OriginalFile`, `chapters.json`, and `bookSource.json`; only replace/prune derived chapter content as required.
+5. User-wide cache statistics and clear operations query only remote books belonging to the authenticated user. A clear operation resets only that user's chapter cache references in a transaction, then does reference-aware post-commit filesystem cleanup. It never returns an absolute cache-directory path.
+6. Existing deployments may contain absolute/legacy cache paths. Treat them as read-compatibility candidates only; cleanup may remove them solely after resolving them safely below the appropriate `cache/` or owned book-library root. Unsafe/unresolved paths are left untouched and their rows are cleared only when the caller explicitly clears/deletes the book.
+
+### Backup and Docker impact
+
+- No table, column, or mounted root changes. Existing `data/`, `cache/`, and `library/` volumes remain compatible.
+- Backup/restore remains sufficient because original local imports and SQLite rows retain their existing paths/fields. Derived remote cache files need not be backed up.
+- The release gate requires API fixtures for cross-user cache/delete isolation and `scripts/docker-volume-backup-smoke.sh` to prove a mounted volume survives restart after the cleanup changes.
+
 ## Reader `themeType` persisted-setting compatibility
 
 Status: implemented and validated in the Reader custom-theme semantic mode slice.

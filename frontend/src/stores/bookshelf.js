@@ -3,6 +3,7 @@ import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../a
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
 import { useReaderStore } from './reader'
+import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
 import { newestProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { getBrowserCache, listBrowserCacheKeys, setBrowserCache } from '../utils/browserCache'
 import { bookCategoryIds } from '../utils/bookCategory'
@@ -28,6 +29,16 @@ function sortBooks(books) {
 
 function sortCategories(categories) {
   return asList(categories).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || '')))
+}
+
+async function clearDeletedBookBrowserCache(book, bookId) {
+  if (!book) return
+  try {
+    await clearBookBrowserChapterCache(book, bookId)
+  } catch {
+    // Deletion has already succeeded remotely; stale browser entries are
+    // cache-only data and will be retried/overwritten on the next read.
+  }
 }
 
 function normalizeLoadOptions(options = {}) {
@@ -213,12 +224,16 @@ export const useBookshelfStore = defineStore('bookshelf', {
       return data
     },
     async removeBook(bookId) {
+      const book = this.books.find(item => Number(item.id) === Number(bookId))
       await deleteBook(bookId)
+      await clearDeletedBookBrowserCache(book, bookId)
       this.books = this.books.filter(book => book.id !== bookId)
       this.invalidateBooks()
       syncCachedBookRemoval(bookId)
     },
     removeBookLocal(bookId) {
+      const book = this.books.find(item => Number(item.id) === Number(bookId))
+      clearDeletedBookBrowserCache(book, bookId)
       this.books = this.books.filter(book => Number(book.id) !== Number(bookId))
       this.invalidateBooks()
       syncCachedBookRemoval(bookId)
@@ -277,9 +292,13 @@ export const useBookshelfStore = defineStore('bookshelf', {
       }
     },
     async batchDeleteBooks(bookIds) {
+      const booksByID = new Map(this.books.map(book => [Number(book.id), book]))
       const { data } = await batchBooks({ action: 'delete', bookIds })
       const deletedIds = Array.isArray(data?.deletedIds) && data.deletedIds.length ? data.deletedIds : bookIds
       const deletedSet = new Set(deletedIds.map(id => Number(id)))
+      await Promise.all(deletedIds.map(bookId => (
+        clearDeletedBookBrowserCache(booksByID.get(Number(bookId)), bookId)
+      )))
       this.books = this.books.filter(book => !deletedSet.has(Number(book.id)))
       this.invalidateBooks()
       deletedIds.forEach(bookId => syncCachedBookRemoval(bookId))
