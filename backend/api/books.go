@@ -2376,6 +2376,13 @@ func excerptAround(content string, bytePosition int, keyword string) string {
 }
 
 func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) string {
+	return s.loadChapterTextContext(context.Background(), book, chapter)
+}
+
+func (s *Server) loadChapterTextContext(ctx context.Context, book models.Book, chapter *models.Chapter) string {
+	if err := ctx.Err(); err != nil {
+		return ""
+	}
 	content := ""
 	if chapter.CachePath != "" {
 		if bytes, path, err := s.readChapterCache(book, chapter.CachePath); err == nil {
@@ -2403,7 +2410,7 @@ func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) stri
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
 		var source models.BookSource
 		if err := s.db.First(&source, book.SourceID).Error; err == nil {
-			fetched, fetchErr := engine.FetchChapterContent(chapter.URL, source)
+			fetched, fetchErr := engine.FetchChapterContentContext(ctx, chapter.URL, source)
 			if fetchErr == nil && fetched != "" {
 				content = fetched
 				cachePath, cacheErr := engine.WriteChapterCache(s.cfg.CacheDir, book.URL, chapter.URL, content)

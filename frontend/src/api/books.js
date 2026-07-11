@@ -65,6 +65,88 @@ export function cacheBookContent(id, payload) {
   return api.post(`/books/${id}/cache`, payload)
 }
 
+export async function cacheBookContentStream(id, payload, options = {}) {
+  const token = typeof localStorage === 'undefined'
+    ? ''
+    : localStorage.getItem('openreader_token')
+  const response = await fetch(`/api/books/${id}/cache/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload || {}),
+    signal: options.signal,
+  })
+  if (!response.ok) {
+    let data = null
+    try {
+      data = await response.json()
+    } catch {
+      // Keep proxy-generated non-JSON errors client-safe.
+    }
+    if (response.status === 401 && token && typeof window !== 'undefined') {
+      if (localStorage.getItem('openreader_token') === token) {
+        localStorage.removeItem('openreader_token')
+      }
+      window.__openreaderAuthRequired = { reason: 'session', rejectedToken: token }
+      window.dispatchEvent(new CustomEvent('openreader:auth-required', {
+        detail: window.__openreaderAuthRequired,
+      }))
+    }
+    const error = new Error(data?.error || '缓存章节失败')
+    error.response = { status: response.status, data }
+    throw error
+  }
+  if (!response.body) throw new Error('缓存进度流不可用')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let terminal = null
+  const dispatch = block => {
+    const lines = block.split(/\r?\n/)
+    let event = 'message'
+    const dataLines = []
+    for (const line of lines) {
+      if (line.startsWith('event:')) event = line.slice(6).trim() || 'message'
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+    }
+    if (!dataLines.length) return
+    let data
+    try {
+      data = JSON.parse(dataLines.join('\n'))
+    } catch {
+      return
+    }
+    options.onEvent?.({ event, data })
+    if (event === 'error') {
+      const error = new Error(data?.error || '缓存章节失败')
+      error.stream = data
+      throw error
+    }
+    if (event === 'end') terminal = data
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        dispatch(buffer.slice(0, boundary))
+        buffer = buffer.slice(boundary + 2)
+        boundary = buffer.indexOf('\n\n')
+      }
+      if (done) break
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  if (!terminal) throw new Error('缓存进度流意外结束')
+  return terminal
+}
+
 export function updateBookCategory(id, categoryIdOrIds) {
   if (Array.isArray(categoryIdOrIds)) {
     return api.put(`/books/${id}/category`, { categoryIds: categoryIdOrIds })

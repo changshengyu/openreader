@@ -46,6 +46,16 @@ Use this checklist for security-sensitive changes and release reviews.
 
 For each release, record which checklist sections were relevant and which tests/probes covered them.
 
+## P1-D4 cache stream review
+
+- [x] `POST /api/books/:id/cache/stream` remains behind the normal Bearer-token middleware and verifies the requested book belongs to that authenticated user before opening an SSE response.
+- [x] The browser uses an authenticated `fetch` header; no JWT, source header, cookie, cache path, or host path is placed in an SSE query parameter or event payload.
+- [x] The stream retains existing cache request limits (`count <= 300`) and source-request timeout/redirect/body-size controls; batch limits remain unchanged.
+- [x] Request cancellation propagates through context-aware chapter/pagination fetching and stops scheduling later chapters. Already written bounded cache files remain normal cache data and no terminal shelf broadcast is emitted for a cancelled stream.
+- [x] Errors sent after stream opening are client-safe generic text. Authorization/validation failures happen as ordinary JSON before an event stream opens.
+
+Evidence: `backend/api/cache_stream_contract_test.go`, `frontend/tests/bookCacheStream.test.mjs`, `frontend/tests/overlayBookManagement.test.mjs`, full backend tests and frontend build/test gate. The three-viewport BookManage SSE click smoke must be rerun after the local browser-runner authorization channel is available.
+
 ## EPUB iframe/resource review
 
 Apply this section to Reader P0 EPUB work:

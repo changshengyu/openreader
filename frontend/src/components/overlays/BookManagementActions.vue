@@ -19,10 +19,11 @@
     <el-button
       :size="buttonSize"
       text
-      :class="{ 'text-button': !compact }"
-      :loading="caching"
+      :class="{ 'text-button': !compact, 'cache-stop-button': caching }"
+      @click="handleCacheButtonClick"
     >
-      缓存<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+      <template v-if="caching">停止{{ cacheProgress ? ` ${cacheProgress}` : '' }}</template>
+      <template v-else>缓存<el-icon class="el-icon--right"><ArrowDown /></el-icon></template>
     </el-button>
     <template #dropdown>
       <el-dropdown-menu>
@@ -75,15 +76,26 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  cacheProgress: {
+    type: String,
+    default: '',
+  },
   compact: {
     type: Boolean,
     default: false,
   },
 })
 
-const emit = defineEmits(['edit', 'group', 'cache', 'export'])
+const emit = defineEmits(['edit', 'group', 'cache', 'cancel-cache', 'export'])
 const isLocalBook = computed(() => Number(props.book.sourceId || 0) === 0)
 const buttonSize = computed(() => props.compact ? 'small' : undefined)
+
+function handleCacheButtonClick(event) {
+  if (!props.caching) return
+  event.preventDefault()
+  event.stopPropagation()
+  emit('cancel-cache')
+}
 </script>
 
 <style scoped>

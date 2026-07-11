@@ -17,6 +17,7 @@
       <BookManagementDesktopTable
         :books="filteredManagedBooks"
         :caching-book-id="cachingBookId"
+        :cache-progress-label="cacheProgressLabel"
         :category-name="categoryName"
         :progress-label="progressLabel"
         :server-cache-count="serverCacheCount"
@@ -26,6 +27,7 @@
         @open-edit="overlay.openBookEdit"
         @set-group="setBookGroup"
         @cache="cacheBook"
+        @cancel-cache="cancelServerCache"
         @export="exportBook"
       />
 
@@ -33,6 +35,7 @@
         :books="filteredManagedBooks"
         :selected-book-ids="selectedBookIds"
         :caching-book-id="cachingBookId"
+        :cache-progress-label="cacheProgressLabel"
         :category-name="categoryName"
         :progress-label="progressLabel"
         :server-cache-count="serverCacheCount"
@@ -42,6 +45,7 @@
         @open-edit="overlay.openBookEdit"
         @set-group="setBookGroup"
         @cache="cacheBook"
+        @cancel-cache="cancelServerCache"
         @export="exportBook"
       />
 
@@ -62,7 +66,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { cacheBookContent, listChapters } from '../../api/books'
+import { cacheBookContent, cacheBookContentStream, listChapters } from '../../api/books'
 import { useOverlayBookCacheState } from '../../composables/useOverlayBookCacheState'
 import { useOverlayBookManagement } from '../../composables/useOverlayBookManagement'
 import { useBookshelfStore } from '../../stores/bookshelf'
@@ -118,6 +122,7 @@ const {
   selectedBookIds,
   batchBusy,
   cachingBookId,
+  cacheProgressLabel,
   onManageSelectionChange,
   toggleManagedBook,
   selectAllManagedBooks,
@@ -127,6 +132,7 @@ const {
   batchDeleteBooks,
   handleBatchMoreCommand,
   cacheBook,
+  cancelServerCache,
   exportBook,
 } = useOverlayBookManagement({
   bookshelf,
@@ -134,6 +140,7 @@ const {
   getFilteredManagedBooks: () => filteredManagedBooks.value,
   getBookProgress: bookProgress,
   cacheBookContent,
+  cacheBookContentStream,
   listChapters,
   cacheBrowserChapters: cacheBookChaptersToBrowser,
   clearBrowserChapterCache: clearBookBrowserChapterCache,

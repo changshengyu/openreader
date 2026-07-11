@@ -102,6 +102,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.POST("/books/:id/refresh", server.refreshBook)
 	protected.POST("/books/:id/refresh-local", server.refreshLocalBook)
 	protected.POST("/books/:id/cache", server.cacheBookContent)
+	protected.POST("/books/:id/cache/stream", server.cacheBookContentStream)
 	protected.GET("/books/:id/source-candidates", server.listBookSourceCandidates)
 	protected.PUT("/books/:id/category", server.updateBookCategory)
 	protected.POST("/books/:id/change-source", server.changeBookSource)

@@ -55,6 +55,18 @@ async function installApiMocks(page) {
     if (path === '/books') return route.fulfill(json(shelfBooks()))
     if (path === '/books/1') return route.fulfill(json(shelfBooks()[0]))
     if (path === '/books/2') return route.fulfill(json(shelfBooks()[1]))
+    if (path === '/books/1/cache/stream' && method === 'POST') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: [
+          'event: message\n',
+          'data: {"bookId":1,"cached":1,"requested":1,"total":2,"chapterIndex":0,"failed":0}\n\n',
+          'event: end\n',
+          'data: {"bookId":1,"cached":2,"requested":2,"failed":0,"book":{"id":1,"title":"远程书架书","author":"OpenReader","sourceId":1,"categoryIds":[1],"chapterCount":3,"cachedChapterCount":2,"lastChapter":"第三章"}}\n\n',
+        ].join(''),
+      })
+    }
     if (path === '/categories') return route.fulfill(json([{ id: 1, name: '测试分组', show: true, sortOrder: 10 }]))
     if (path === '/sources') return route.fulfill(json([{ id: 1, name: '测试书源', enabled: true }]))
     if (path.startsWith('/cache')) return route.fulfill(json({ total: 0, books: 0, chapters: 0 }))
@@ -149,6 +161,10 @@ async function runViewport(browser, viewport) {
   const remoteManageRow = viewport.width <= 750
     ? manager.locator('.mobile-manage-card').filter({ hasText: '远程书架书' })
     : manager.locator('.desktop-manage-table tbody tr').filter({ hasText: '远程书架书' })
+  await remoteManageRow.getByRole('button', { name: '缓存', exact: true }).click()
+  await page.getByRole('menuitem', { name: '缓存到服务器', exact: true }).click()
+  await page.getByText('已缓存 2/2 章', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+  assert(await manager.isVisible(), `${viewport.width}: streamed cache completion must leave BookManage open`)
   await remoteManageRow.getByRole('button', { name: '分组', exact: true }).click()
   const groupSet = page.locator('.global-book-group-dialog')
   await groupSet.waitFor({ state: 'visible', timeout: 10000 })

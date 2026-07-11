@@ -182,6 +182,43 @@ test('routes server and browser caching while starting from reading progress', a
   ])
 })
 
+test('streams per-book server-cache progress and cancels it from the active control', async () => {
+  let aborted = false
+  const fixture = createController({
+    cacheBookContentStream: (id, payload, { signal, onEvent }) => {
+      fixture.calls.push(['cache-stream', id, payload])
+      onEvent({
+        event: 'message',
+        data: { bookId: id, cached: 1, requested: 1, total: 3, chapterIndex: 4, failed: 0 },
+      })
+      return new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          aborted = true
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        })
+      })
+    },
+  })
+  const book = fixture.books[1]
+  const pending = fixture.controller.cacheBook(book, 'cacheBook')
+
+  assert.equal(fixture.controller.cachingBookId.value, 2)
+  assert.equal(fixture.controller.cacheProgressLabel(book), '1/3')
+  assert.equal(fixture.controller.cancelServerCache(book), true)
+  await pending
+
+  assert.equal(aborted, true)
+  assert.equal(fixture.controller.cachingBookId.value, null)
+  assert.equal(fixture.controller.cacheProgressLabel(book), '')
+  assert.deepEqual(fixture.calls, [
+    ['cache-stream', 2, { all: true, count: 20, chapterIndex: 4 }],
+    ['info', '正在停止服务器缓存'],
+    ['info', '已取消服务器缓存'],
+  ])
+})
+
 test('clears both cache layers and sanitizes single-book export names', async () => {
   const fixture = createController()
   await fixture.controller.cacheBook(fixture.books[1], 'deleteBookCache')

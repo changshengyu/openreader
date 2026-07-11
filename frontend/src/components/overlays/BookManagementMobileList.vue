@@ -41,10 +41,12 @@
         <BookManagementActions
           :book="book"
           :caching="cachingBookId === book.id"
+          :cache-progress="cacheProgressLabel(book)"
           compact
           @edit="emit('open-edit', book)"
           @group="emit('set-group', book)"
           @cache="command => emit('cache', book, command)"
+          @cancel-cache="emit('cancel-cache', book)"
           @export="format => emit('export', book, format)"
         />
       </footer>
@@ -90,6 +92,10 @@ defineProps({
     type: Function,
     required: true,
   },
+  cacheProgressLabel: {
+    type: Function,
+    required: true,
+  },
 })
 
 const emit = defineEmits([
@@ -98,6 +104,7 @@ const emit = defineEmits([
   'open-edit',
   'set-group',
   'cache',
+  'cancel-cache',
   'export',
 ])
 

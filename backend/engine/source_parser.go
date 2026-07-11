@@ -713,6 +713,16 @@ func extractResolvedURLs(selection *goquery.Selection, rule string, baseURL stri
 
 // FetchChapterContent fetches and parses a single chapter's content.
 func FetchChapterContent(chapterURL string, source models.BookSource) (string, error) {
+	return FetchChapterContentContext(context.Background(), chapterURL, source)
+}
+
+// FetchChapterContentContext is the cancellable counterpart used by bounded
+// cache jobs. A client disconnect can therefore stop source pagination before
+// another remote chapter request is scheduled.
+func FetchChapterContentContext(ctx context.Context, chapterURL string, source models.BookSource) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	rule, err := source.ParsedRules()
 	if err != nil {
 		return "", fmt.Errorf("parse rules: %w", err)
@@ -746,7 +756,7 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	}
 
 	fetchDocument := func(request sourceRequest) (*goquery.Document, sourceRequest, error) {
-		return fetchSourceDocumentContext(context.Background(), request)
+		return fetchSourceDocumentContext(ctx, request)
 	}
 	doc, contentRequest, err := fetchDocument(contentRequest)
 	if err != nil {
@@ -762,12 +772,18 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 	pageCount := 1
 	parts := make([]string, 0)
 	for len(queue) > 0 {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		page := queue[0]
 		queue = queue[1:]
 		if text := extractChapterContent(page.doc, rule, page.request.URL, source.SourceType); text != "" {
 			parts = append(parts, text)
 		}
 		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextContentURLRule, page.request.URL) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
 			nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
 			if prepareErr != nil {
 				return "", fmt.Errorf("prepare content page request: %w", prepareErr)
