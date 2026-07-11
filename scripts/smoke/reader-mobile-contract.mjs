@@ -223,6 +223,50 @@ async function closeGlobalReaderDialog(page, selector) {
   await dialog.waitFor({ state: 'hidden', timeout: 10000 })
 }
 
+async function assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen }) {
+  const paragraph = page.locator('.reader-body p').first()
+  const selectedText = (await paragraph.textContent())?.trim() || ''
+  assert(selectedText, `${viewport.width}: reader fixture must include selectable text`)
+  await paragraph.evaluate((node) => {
+    const selection = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+  })
+
+  const chooser = page.locator('.el-message-box').last()
+  await chooser.getByRole('button', { name: '添加过滤规则', exact: true }).click()
+
+  const editor = page.locator('.el-dialog').filter({ hasText: '新增替换规则' }).last()
+  await editor.waitFor({ state: 'visible', timeout: 10000 })
+  assert(await page.locator('.global-replace-dialog').count() === 0, `${viewport.width}: selected text must open only the direct editor, not the rule manager`)
+
+  const pattern = editor.locator('.el-form-item').filter({ hasText: '匹配正则或文本' }).locator('input')
+  const scope = editor.locator('.el-form-item').filter({ hasText: '替换范围' }).locator('input')
+  assert(await pattern.inputValue() === selectedText, `${viewport.width}: direct editor must retain the exact selected text`)
+  assert((await scope.inputValue()).startsWith('移动阅读契约测试;'), `${viewport.width}: direct editor must retain the active book scope`)
+
+  const geometry = await editor.evaluate((node) => {
+    const rect = node.getBoundingClientRect()
+    return { width: Math.round(rect.width), height: Math.round(rect.height) }
+  })
+  if (fullscreen) {
+    assert(geometry.width === viewport.width && geometry.height === viewport.height, `${viewport.width}: selected-text editor must be fullscreen on mobile`)
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: selected-text editor must preserve the reader toolbar`)
+    await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: selected-text editor click must not pass through to reader chrome`)
+  } else {
+    assert(geometry.width >= 500 && geometry.width <= 540, `desktop: selected-text editor width ${geometry.width}`)
+    assert(await page.locator('.reader-left-rail').count() === 1, 'desktop: selected-text editor must preserve reader rails')
+  }
+
+  await editor.getByRole('button', { name: '取消', exact: true }).click()
+  await editor.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.locator('.global-replace-dialog').count() === 0, `${viewport.width}: closing the direct editor must not reveal a manager`)
+}
+
 async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {
   const selector = '.book-info-dialog'
   await page.waitForSelector(selector, { timeout: 10000 })
@@ -541,6 +585,7 @@ async function runDesktopViewport(browser) {
   await installApiMocks(page)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
+  await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: false })
   await page.locator('.reader-left-rail button[title="设置"]').click()
   await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 10000 })
   await page.locator('.theme-custom-button').click()
@@ -599,6 +644,7 @@ async function runViewport(browser, viewport) {
     throw new Error(`${error.message}\nState: ${JSON.stringify(state, null, 2)}\nFailures: ${failures.join('\n')}`)
   }
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
+  await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: true })
 
   const initialTopVisible = await page.locator('.reader-mobile-top.visible').count()
   assert(initialTopVisible === 1, `${viewport.width}: mobile toolbar should be visible by default`)
