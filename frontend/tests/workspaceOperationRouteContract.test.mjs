@@ -7,6 +7,9 @@ const layoutSource = readFileSync(new URL('../src/layouts/AppLayout.vue', import
 const overlaySource = readFileSync(new URL('../src/stores/overlay.js', import.meta.url), 'utf8')
 const hostSource = readFileSync(new URL('../src/components/GlobalOverlayHost.vue', import.meta.url), 'utf8')
 const settingsSource = readFileSync(new URL('../src/views/Settings.vue', import.meta.url), 'utf8')
+const localStoreOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayLocalStore.vue', import.meta.url), 'utf8')
+const webdavOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayWebDAV.vue', import.meta.url), 'utf8')
+const backupOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayBackups.vue', import.meta.url), 'utf8')
 
 test('keeps LocalStore and every legacy Settings panel as root-workspace overlay intents', () => {
   assert.match(routerSource, /function\s+workspaceOverlayIntentFromLegacy\s*\(/, 'router must centralize legacy local-store/settings intent normalization')
@@ -41,4 +44,21 @@ test('keeps settings as one workspace body while operation panels use their cano
 test('shows the manager-only user workspace entry only to administrators', () => {
   assert.match(layoutSource, /userStore\.profile\?\.role\s*===\s*'admin'/, 'the upstream manager-mode entry must be derived from the current role')
   assert.match(layoutSource, /key:\s*'userManage'/, 'the admin entry remains available to administrators')
+})
+
+test('keeps upstream-style file operations in root dialogs instead of side drawers', () => {
+  for (const [name, source, state] of [
+    ['LocalStore', localStoreOverlaySource, 'localStoreVisible'],
+    ['WebDAV', webdavOverlaySource, 'webdavVisible'],
+    ['backup', backupOverlaySource, 'backupVisible'],
+  ]) {
+    assert.match(source, /<el-dialog/, `${name} must use the upstream workspace dialog shell`)
+    assert.doesNotMatch(source, /<el-drawer/, `${name} must not retain a side/bottom drawer shell`)
+    assert.match(source, new RegExp(`v-model="overlay\\.${state}"`), `${name} must retain the shared overlay state`)
+    assert.match(source, /:fullscreen="isMobile"/, `${name} must be fullscreen on the compact/mobile interface`)
+    assert.match(source, /destroy-on-close/, `${name} must recreate its root state after close`)
+  }
+  assert.match(hostSource, /<OverlayLocalStore\s+:is-mobile="isMobileOverlay"/, 'LocalStore must receive the shared compact-interface state')
+  assert.match(hostSource, /<OverlayWebDAV\s+:is-mobile="isMobileOverlay"/, 'WebDAV must receive the shared compact-interface state')
+  assert.match(hostSource, /<OverlayBackups\s+:is-mobile="isMobileOverlay"/, 'backup must receive the shared compact-interface state')
 })

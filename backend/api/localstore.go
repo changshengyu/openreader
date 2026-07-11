@@ -421,6 +421,24 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 	seen := make(map[string]bool)
 	itemByPath := req.itemByPath()
 	for _, rawPath := range paths {
+		_, requestedPath, ok := s.localStorePath(c, rawPath)
+		if !ok {
+			continue
+		}
+		if override, exists := itemByPath[requestedPath]; exists && override.ImportToken != "" {
+			if seen[requestedPath] {
+				continue
+			}
+			seen[requestedPath] = true
+			preview, importToken, err := s.reparseStagedStorageImport(userID, override.ImportToken, override)
+			if err != nil {
+				results = append(results, gin.H{"path": requestedPath, "error": err.Error(), "importToken": importToken})
+				continue
+			}
+			results = append(results, gin.H{"path": requestedPath, "book": preview, "importToken": importToken})
+			continue
+		}
+
 		files, ok := s.localStoreImportFiles(c, rawPath)
 		if !ok {
 			continue

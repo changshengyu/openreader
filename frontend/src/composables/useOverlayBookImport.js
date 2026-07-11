@@ -8,6 +8,7 @@ export function useOverlayBookImport(options) {
   const importing = ref(false)
   const previewing = ref(false)
   const previewData = ref(null)
+  const previewError = ref('')
   const importToken = ref('')
   const draft = reactive({
     title: '',
@@ -31,6 +32,7 @@ export function useOverlayBookImport(options) {
       tocRule: '',
     })
     previewData.value = null
+    previewError.value = ''
     importToken.value = ''
   }
 
@@ -71,6 +73,7 @@ export function useOverlayBookImport(options) {
   async function preview() {
     if (!draft.file) return
     previewing.value = true
+    previewError.value = ''
     try {
       const { data } = await options.previewBook(draft.file, {
         title: draft.title,
@@ -85,7 +88,8 @@ export function useOverlayBookImport(options) {
     } catch (error) {
       previewData.value = null
       importToken.value = error?.response?.data?.importToken || importToken.value
-      options.onError(error, '解析书籍失败')
+      previewError.value = importPreviewErrorMessage(error)
+      options.onError(error, previewError.value)
     } finally {
       previewing.value = false
     }
@@ -135,6 +139,7 @@ export function useOverlayBookImport(options) {
     importing,
     previewing,
     previewData,
+    previewError,
     importToken,
     draft,
     tocRuleOptions,
@@ -149,4 +154,12 @@ export function useOverlayBookImport(options) {
     importBook,
     reset,
   }
+}
+
+function importPreviewErrorMessage(error) {
+  const message = String(error?.response?.data?.error || error?.message || '')
+  if (message.includes('no readable chapters')) {
+    return '未找到匹配的目录，请调整目录规则后重新解析'
+  }
+  return '解析书籍失败'
 }

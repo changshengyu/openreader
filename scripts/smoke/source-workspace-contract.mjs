@@ -50,11 +50,13 @@ function source(id = 1, name = '工作台书源') {
 
 async function installApiMocks(page) {
   let sources = [source()]
+  let batchTestCalls = 0
   await page.exposeFunction('__sourceSmokeReplaceSources', names => {
     sources = Array.isArray(names)
       ? names.map((name, index) => source(index + 1, String(name)))
       : sources
   })
+  await page.exposeFunction('__sourceSmokeBatchTestCalls', () => batchTestCalls)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async route => {
     const request = route.request()
@@ -71,6 +73,7 @@ async function installApiMocks(page) {
     if (path === '/sources' && method === 'GET') return route.fulfill(json(sources))
     if (path === '/sources/default') return route.fulfill(json({ configured: false, count: 0 }))
     if (path === '/sources/batch-test') {
+      batchTestCalls += 1
       return route.fulfill(json({ results: [{ sourceId: 1, name: sources[0].name, group: '测试', enabled: true, ok: false, count: 0, message: '模拟失败' }] }))
     }
     if (path === '/sources/remote-preview') return route.fulfill(json({ count: 1, names: ['远程预览书源'], sources: [source(2, '远程预览书源')] }))
@@ -179,12 +182,15 @@ async function runViewport(browser, viewport) {
   })
   await page.getByText('本地预览书源', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
   await page.getByRole('button', { name: '确定导入' }).click()
-  await page.waitForFunction(() => !Array.from(document.querySelectorAll('.el-dialog')).some(node => node.textContent?.includes('导入书源') && getComputedStyle(node).display !== 'none'))
+  await page.locator('.source-import-preview').waitFor({ state: 'hidden', timeout: 10000 })
   await assertNoHorizontalOverflow(page, `${viewport.width} import-preview`)
 
   await page.goto(`${root}/sources?action=health`, { waitUntil: 'networkidle' })
-  await page.getByText('已检 1 · 可用 0 · 失败 1').waitFor({ state: 'visible', timeout: 10000 })
   await assertOverlayRoute(page, 'health')
+  assert(await page.evaluate(() => window.__sourceSmokeBatchTestCalls()) === 0, `${viewport.width}: health intent must not start a live batch test`)
+  await page.getByRole('button', { name: '失效检测' }).click()
+  await page.getByText('已检 1 · 可用 0 · 失败 1').waitFor({ state: 'visible', timeout: 10000 })
+  assert(await page.evaluate(() => window.__sourceSmokeBatchTestCalls()) === 1, `${viewport.width}: explicit health command must start one live batch test`)
 
   await page.goto(`${root}/sources?action=debug`, { waitUntil: 'networkidle' })
   await page.getByText('书源调试', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })

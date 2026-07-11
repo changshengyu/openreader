@@ -1,7 +1,12 @@
 import { nextTick, unref, watch } from 'vue'
 
-export function readerEffectiveMode(mode, isEPUB, isAudio = false) {
-  return isEPUB || isAudio ? 'page' : mode
+export function readerEffectiveMode(mode, isEPUB, isAudio = false, isReadBarOpen = false) {
+  if (isEPUB || isAudio) return 'page'
+  // reader-dev disables slide reading while its read-aloud bar is open. Its
+  // non-slide branch is the vertical page interaction, while scroll modes
+  // remain native scrolling.
+  if (isReadBarOpen && mode === 'flip') return 'page'
+  return mode
 }
 
 export function useReaderMode(options) {

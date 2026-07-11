@@ -1,10 +1,11 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.backupVisible"
     title="备份恢复"
-    :direction="direction"
-    :size="size"
-    class="global-backup-drawer"
+    width="min(980px, calc(100vw - 48px))"
+    :fullscreen="isMobile"
+    class="global-backup-dialog"
+    destroy-on-close
     @open="loadBackups"
   >
     <section class="backup-overlay">
@@ -89,25 +90,21 @@
         description="暂无备份文件"
       />
     </section>
-  </el-drawer>
+  </el-dialog>
 </template>
 
 <script setup>
 import { Refresh, Upload } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import * as backupApi from '../../api/backup'
 import { useOverlayBackups } from '../../composables/useOverlayBackups'
 import { useOverlayStore } from '../../stores/overlay'
 import { applyRestoreResult } from '../../utils/restoreSync'
 
 defineProps({
-  direction: {
-    type: String,
-    required: true,
-  },
-  size: {
-    type: [String, Number],
-    required: true,
+  isMobile: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -128,6 +125,16 @@ const {
   applyRestoreResult,
   saveBlob: downloadBlob,
   createFormData: () => new FormData(),
+  confirmBeforeRun: () => ElMessageBox.confirm(
+    '确认要用当前书源和书架信息覆盖 WebDAV 中的备份文件吗？',
+    '保存备份',
+    { type: 'warning' },
+  ),
+  confirmBeforeRestore: () => ElMessageBox.confirm(
+    '恢复备份会覆盖当前用户的书架、分组、进度和设置，是否继续？',
+    '恢复备份',
+    { type: 'warning' },
+  ),
   onSuccess: message => ElMessage.success(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })

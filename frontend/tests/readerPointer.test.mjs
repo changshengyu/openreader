@@ -19,6 +19,7 @@ function createController(overrides = {}) {
     pageEl,
     isMobileReader: ref(true),
     isOverlayOpen: ref(false),
+    ttsBarVisible: ref(false),
     isAudio: ref(false),
     autoReading: ref(false),
     mobileChromeVisible: ref(true),
@@ -164,5 +165,34 @@ test('audio chapters only toggle chrome from the center and never page', () => {
     ['selection', 0],
     ['chrome'],
     ['chrome'],
+  ])
+})
+
+test('keeps page actions but not mobile chrome toggles while the upstream-style TTS bar is open', () => {
+  const fixture = createController({
+    ttsBarVisible: ref(true),
+    reader: reactive({ clickMethod: 'slide', mode: 'page' }),
+  })
+  fixture.controller.handleContentClick({
+    button: 0,
+    defaultPrevented: false,
+    clientX: 150,
+    clientY: 300,
+    target: { closest: () => null },
+  })
+  fixture.controller.handleTapZone('center')
+  fixture.controller.handleContentClick({
+    button: 0,
+    defaultPrevented: false,
+    clientX: 150,
+    clientY: 520,
+    target: { closest: () => null },
+  })
+  fixture.controller.handleTapZone('lower')
+  assert.deepEqual(fixture.calls, [
+    ['selection', 0],
+    ['selection', 0],
+    ['next'],
+    ['next'],
   ])
 })

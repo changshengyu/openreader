@@ -242,6 +242,29 @@ func (s *Server) previewStagedStorageImport(userID uint, file localStoreImportFi
 	return preview, importToken, nil
 }
 
+// reparseStagedStorageImport keeps the immutable preview snapshot authoritative
+// when a user changes the TOC rule. In particular, it must not fall back to a
+// mutable LocalStore/WebDAV path after the preview has already succeeded.
+func (s *Server) reparseStagedStorageImport(userID uint, importToken string, override localBookImportItem) (localbook.PreviewResult, string, error) {
+	metadata, data, err := s.loadStagedLocalImport(userID, importToken)
+	if err != nil {
+		return localbook.PreviewResult{}, "", err
+	}
+	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
+		FileName:  metadata.FileName,
+		Extension: metadata.Extension,
+		Data:      data,
+		Title:     override.Title,
+		Author:    override.Author,
+		TOCRule:   override.TOCRule,
+	})
+	if err != nil {
+		return localbook.PreviewResult{}, importToken, err
+	}
+	preview.ImportToken = importToken
+	return preview, importToken, nil
+}
+
 func (s *Server) stagedStorageImportRequest(userID uint, userName string, importToken string, override localBookImportItem, categoryID *uint) (localbook.ImportRequest, error) {
 	metadata, data, err := s.loadStagedLocalImport(userID, importToken)
 	if err != nil {

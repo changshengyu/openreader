@@ -4368,7 +4368,7 @@ func TestChapterContentRebuildsMissingLocalBookCacheFromSourceFile(t *testing.T)
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(sourcePath, []byte("第一章 起\n第一章正文。\n第二章 承\n第二章正文。"), 0o644); err != nil {
+	if err := os.WriteFile(sourcePath, []byte("第一章 起\n这是第一章的内容。\n第二章 承\n这是第二章的内容。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4402,7 +4402,7 @@ func TestChapterContentRebuildsMissingLocalBookCacheFromSourceFile(t *testing.T)
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Content != "第二章正文。" {
+	if resp.Content != "这是第二章的内容。" {
 		t.Fatalf("unexpected rebuilt content %q", resp.Content)
 	}
 
@@ -5970,7 +5970,7 @@ func TestLocalStoreImportAcceptsCategory(t *testing.T) {
 	if err := os.MkdirAll(server.cfg.LocalStoreDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(server.cfg.LocalStoreDir, "store.txt"), []byte("第一章 开始\n正文"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(server.cfg.LocalStoreDir, "store.txt"), []byte("第一章 开始\n这是正文内容"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -6243,6 +6243,94 @@ func TestDirectImportReusesStagedUploadForReparseAndImport(t *testing.T) {
 	}
 	if _, err := os.Stat(metadataPath); !os.IsNotExist(err) {
 		t.Fatalf("staged metadata should be removed after import, got %v", err)
+	}
+}
+
+func TestDirectTXTPreviewRetainsStageWhenExplicitRuleFindsNoChapters(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	request := func(path string, fields map[string]string, withFile bool) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		if withFile {
+			part, err := writer.CreateFormFile("file", "retry-rule.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := part.Write([]byte("== 第一章 ==\n正文内容。")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for key, value := range fields {
+			if err := writer.WriteField(key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		return response
+	}
+
+	first := request("/api/imports/books/preview", nil, true)
+	if first.Code != http.StatusOK {
+		t.Fatalf("automatic preview: expected 200, got %d: %s", first.Code, first.Body.String())
+	}
+	var firstPreview struct {
+		ImportToken string `json:"importToken"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &firstPreview); err != nil {
+		t.Fatal(err)
+	}
+	if !validLocalImportToken(firstPreview.ImportToken) {
+		t.Fatalf("automatic preview must stage retryable input, got %+v", firstPreview)
+	}
+	dataPath, metadataPath := localImportStagePaths(server.localImportStageDir(1), firstPreview.ImportToken)
+
+	failed := request("/api/imports/books/preview", map[string]string{
+		"importToken": firstPreview.ImportToken,
+		"tocRule":     `^不存在的目录$`,
+	}, false)
+	if failed.Code != http.StatusBadRequest {
+		t.Fatalf("explicit nonmatching rule: expected 400, got %d: %s", failed.Code, failed.Body.String())
+	}
+	var failure struct {
+		Error       string `json:"error"`
+		ImportToken string `json:"importToken"`
+	}
+	if err := json.Unmarshal(failed.Body.Bytes(), &failure); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(failure.Error, "no readable chapters") || failure.ImportToken != firstPreview.ImportToken {
+		t.Fatalf("failed reparse must retain token and clear error, got %+v", failure)
+	}
+	if _, err := os.Stat(dataPath); err != nil {
+		t.Fatalf("failed reparse must retain staged data: %v", err)
+	}
+	if _, err := os.Stat(metadataPath); err != nil {
+		t.Fatalf("failed reparse must retain staged metadata: %v", err)
+	}
+
+	retry := request("/api/imports/books/preview", map[string]string{
+		"importToken": firstPreview.ImportToken,
+		"tocRule":     `^== .+ ==$`,
+	}, false)
+	if retry.Code != http.StatusOK || !strings.Contains(retry.Body.String(), `"chapterCount":1`) {
+		t.Fatalf("valid retry must reparse staged data: got %d: %s", retry.Code, retry.Body.String())
+	}
+
+	imported := request("/api/imports/books", map[string]string{
+		"importToken": firstPreview.ImportToken,
+		"tocRule":     `^== .+ ==$`,
+	}, false)
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("valid staged import: expected 201, got %d: %s", imported.Code, imported.Body.String())
 	}
 }
 
@@ -9059,7 +9147,7 @@ func TestImportFromWebDAVImportsBook(t *testing.T) {
 	if err := os.MkdirAll(webdavDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(webdavDir, "webdav-book.txt"), []byte("第一章 开始\n正文内容"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(webdavDir, "webdav-book.txt"), []byte("第一章 开始\n这是正文内容"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

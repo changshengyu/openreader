@@ -53,7 +53,7 @@ export function useReaderPointer(options) {
       if (inCenter) options.toggleChrome()
       return
     }
-    applyAction(readerTapPointAction({
+    const action = readerTapPointAction({
       mobile,
       pointX,
       pointY,
@@ -62,7 +62,11 @@ export function useReaderPointer(options) {
       clickMethod: options.reader.clickMethod,
       mode: options.reader.mode,
       autoReading: unref(options.autoReading),
-    }), {
+    })
+    // The upstream read bar only guards the menu-toggle branch. It keeps the
+    // normal non-slide page actions available outside the center zone.
+    if (action === 'toggle-chrome' && unref(options.ttsBarVisible)) return
+    applyAction(action, {
       hideChrome: mobile,
     })
   }
@@ -73,12 +77,14 @@ export function useReaderPointer(options) {
       if (zone === 'center') options.toggleChrome()
       return
     }
-    applyAction(readerTapZoneAction({
+    const action = readerTapZoneAction({
       zone,
       clickMethod: options.reader.clickMethod,
       mode: options.reader.mode,
       autoReading: unref(options.autoReading),
-    }), {
+    })
+    if (action === 'toggle-chrome' && unref(options.ttsBarVisible)) return
+    applyAction(action, {
       hideChrome: options.reader.clickMethod === 'next',
       mobileOnly: true,
     })

@@ -14,6 +14,8 @@ test('forces EPUB documents through the upstream vertical page branch', () => {
   assert.equal(readerEffectiveMode('scroll2', true), 'page')
   assert.equal(readerEffectiveMode('scroll2', false), 'scroll2')
   assert.equal(readerEffectiveMode('scroll2', false, true), 'page')
+  assert.equal(readerEffectiveMode('flip', false, false, true), 'page')
+  assert.equal(readerEffectiveMode('scroll', false, false, true), 'scroll')
 })
 
 test('rebuilds continuous chapter windows and restores reading position', async () => {

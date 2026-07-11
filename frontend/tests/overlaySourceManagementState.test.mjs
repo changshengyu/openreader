@@ -47,3 +47,16 @@ test('hosts SourceManager as a single overlay body instead of creating a paralle
   assert.match(sourceManager, /embedded:\s*\{ type: Boolean, default: false \}/)
   assert.match(sourceManager, /intent:\s*\{ type: String, default: 'manage' \}/)
 })
+
+test('opens the upstream-style failure view without starting a live test', () => {
+  const sourceManager = readFileSync(sourceManagerPath, 'utf8')
+  const healthIntent = sourceManager.match(/if \(intent === 'health'\) \{([\s\S]*?)\n  \}/)?.[1] || ''
+
+  assert.match(healthIntent, /failedOnly\.value = true/)
+  assert.doesNotMatch(healthIntent, /checkInvalidSources\(/)
+  assert.match(
+    sourceManager,
+    /selection\.value\.length \? selection\.value : \(failedOnly\.value \? sources\.value : shownSources\.value\)/,
+    'an explicit test from an empty failure view must still be able to test the source set',
+  )
+})

@@ -19,6 +19,10 @@ export function useOverlayBackups(options) {
   }
 
   async function run() {
+    if (options.confirmBeforeRun) {
+      const confirmed = await options.confirmBeforeRun().then(() => true, () => false)
+      if (!confirmed) return
+    }
     backupLoading.value = true
     try {
       const { data } = await options.triggerBackup()
@@ -45,6 +49,10 @@ export function useOverlayBackups(options) {
   async function restore(data) {
     const file = data.raw
     if (!file) return
+    if (options.confirmBeforeRestore) {
+      const confirmed = await options.confirmBeforeRestore().then(() => true, () => false)
+      if (!confirmed) return
+    }
     restoreLoading.value = true
     try {
       const form = options.createFormData()

@@ -34,6 +34,8 @@ function fakeToken() {
 }
 
 async function installApiMocks(page) {
+  let webdavRootRequests = 0
+  await page.exposeFunction('__workspaceOperationWebDAVRootRequests', () => webdavRootRequests)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/webdav\/.*$/, async route => {
     const authorization = route.request().headers().authorization || ''
@@ -41,6 +43,7 @@ async function installApiMocks(page) {
       return route.fulfill(json({ error: 'missing bearer token' }, 401))
     }
     if (route.request().method() === 'GET') {
+      if (new URL(route.request().url()).pathname === '/webdav/') webdavRootRequests += 1
       return route.fulfill({
         status: 207,
         contentType: 'application/xml',
@@ -89,6 +92,11 @@ async function assertRouteIntent(page, expectedOverlay, keep = 'operation-contra
   assert(state.keep === keep, 'legacy redirect must preserve unrelated query values')
 }
 
+async function closeDialog(page, selector, expectedOverlay) {
+  await page.locator(`${selector} .el-dialog__headerbtn`).click()
+  await page.waitForFunction((overlay) => new URLSearchParams(location.search).get('overlay') !== overlay, expectedOverlay)
+}
+
 async function closeDrawer(page, selector, expectedOverlay) {
   await page.locator(`${selector} .el-drawer__headerbtn`).click()
   await page.waitForFunction((overlay) => new URLSearchParams(location.search).get('overlay') !== overlay, expectedOverlay)
@@ -111,14 +119,30 @@ async function assertMobilePanelDoesNotCloseSidebar(page, viewport, selector) {
   assert(Math.abs(margin) < 0.5, `${viewport.width}: operation-panel click must not pass through and close the sidebar`)
 }
 
-async function openLegacyOperation(page, root, viewport, path, selector, overlay, title) {
+async function openLegacyOperation(page, root, viewport, path, selector, overlay, title, usesUpstreamDialog = false) {
   await page.goto(`${root}${path}`, { waitUntil: 'networkidle' })
   await page.waitForSelector(selector, { timeout: 10000 })
   await page.locator(selector).getByText(title, { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 })
   await assertRouteIntent(page, overlay)
   await assertNoHorizontalOverflow(page, `${viewport.width} ${overlay}`)
+  if (usesUpstreamDialog) {
+    const geometry = await page.locator(selector).evaluate(node => {
+      const rect = node.getBoundingClientRect()
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, viewportWidth: innerWidth, viewportHeight: innerHeight }
+    })
+    if (viewport.width <= 750) {
+      assert(Math.abs(geometry.left) <= 1 && Math.abs(geometry.top) <= 1, `${viewport.width}: ${overlay} must start at the mobile viewport origin`)
+      assert(Math.abs(geometry.width - geometry.viewportWidth) <= 1 && Math.abs(geometry.height - geometry.viewportHeight) <= 1, `${viewport.width}: ${overlay} must be fullscreen`)
+    } else {
+      assert(Math.abs(geometry.left - (geometry.viewportWidth - geometry.width) / 2) <= 1, `${viewport.width}: ${overlay} must be centered like the upstream dialog`)
+    }
+  }
   await assertMobilePanelDoesNotCloseSidebar(page, viewport, selector)
-  await closeDrawer(page, selector, overlay)
+  if (usesUpstreamDialog) {
+    await closeDialog(page, selector, overlay)
+  } else {
+    await closeDrawer(page, selector, overlay)
+  }
 }
 
 async function runViewport(browser, viewport) {
@@ -137,11 +161,17 @@ async function runViewport(browser, viewport) {
   await installApiMocks(page)
 
   const root = targetUrl.replace(/\/$/, '')
-  await openLegacyOperation(page, root, viewport, '/local-store?keep=operation-contract', '.global-local-store-drawer', 'local-store', '本地书仓')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=backup&keep=operation-contract', '.global-backup-drawer', 'backup', '备份恢复')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=webdav&keep=operation-contract', '.global-file-drawer', 'webdav', 'WebDAV')
+  await openLegacyOperation(page, root, viewport, '/local-store?keep=operation-contract', '.global-local-store-dialog', 'local-store', '本地书仓', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=backup&keep=operation-contract', '.global-backup-dialog', 'backup', '备份恢复', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=webdav&keep=operation-contract', '.global-webdav-dialog', 'webdav', 'WebDAV', true)
+  const firstWebDAVRootRequestCount = await page.evaluate(() => window.__workspaceOperationWebDAVRootRequests())
+  await page.goto(`${root}/settings?panel=webdav&keep=operation-contract`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.global-webdav-dialog', { timeout: 10000 })
+  const secondWebDAVRootRequestCount = await page.evaluate(() => window.__workspaceOperationWebDAVRootRequests())
+  assert(secondWebDAVRootRequestCount === firstWebDAVRootRequestCount + 1, `${viewport.width}: reopening WebDAV must reload its root directory`)
+  await closeDialog(page, '.global-webdav-dialog', 'webdav')
   await openLegacyOperation(page, root, viewport, '/settings?panel=replace&keep=operation-contract', '.global-replace-drawer', 'replace-rules', '替换规则')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=rss&keep=operation-contract', '.global-rss-drawer', 'rss', 'RSS')
+  await openLegacyOperation(page, root, viewport, '/settings?panel=rss&keep=operation-contract', '.global-rss-dialog', 'rss', 'RSS', true)
   await openLegacyOperation(page, root, viewport, '/settings?panel=admin&keep=operation-contract', '.global-user-drawer', 'user-manage', '用户管理')
 
   for (const panel of ['account', 'cache', 'reader']) {

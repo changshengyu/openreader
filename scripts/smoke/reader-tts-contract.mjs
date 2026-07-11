@@ -3,6 +3,11 @@
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 const readerUrl = process.env.SMOKE_READER_URL || `${targetUrl.replace(/\/$/, '')}/books/1/read?chapter=0`
 const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const viewport = {
+  width: Number(process.env.SMOKE_VIEWPORT_WIDTH || 390),
+  height: Number(process.env.SMOKE_VIEWPORT_HEIGHT || 844),
+}
+const isMobileViewport = viewport.width <= 750
 
 async function loadPlaywright() {
   try {
@@ -53,7 +58,7 @@ async function installApiMocks(page) {
         key: 'reader',
         updatedAt: '2026-07-07T00:00:00Z',
         value: {
-          mode: 'scroll',
+          mode: 'flip',
           pageMode: 'normal',
           fontSize: 18,
           lineHeight: 1.8,
@@ -113,7 +118,7 @@ async function main() {
     headless: true,
     executablePath: process.env.CHROME_PATH || defaultChromePath,
   })
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const context = await browser.newContext({ viewport })
   await context.addInitScript((token) => {
     window.localStorage.setItem('openreader_token', token)
     window.__openreaderTTS = {
@@ -187,8 +192,35 @@ async function main() {
   await installApiMocks(page)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
-  await page.locator('.reader-mobile-float-tools button[title="朗读"]').click()
+  const ttsTrigger = isMobileViewport
+    ? '.reader-mobile-float-tools button[title="朗读"]'
+    : '.reader-right-rail button[title="朗读"]'
+  if (isMobileViewport) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, 'mobile reader tools should be visible by default')
+  } else {
+    assert(await page.locator('.reader-left-rail').isVisible(), 'desktop reader rail should remain visible before opening TTS')
+  }
+  if (isMobileViewport) {
+    assert(await page.locator('.reader-shell.flip').count() === 1, 'mobile fixture must enter the flip-reading branch before opening TTS')
+  } else {
+    assert(await page.locator('.reader-shell.page').count() === 1, 'desktop reader should retain its normalized page branch before opening TTS')
+  }
+  await page.locator(ttsTrigger).click()
   await page.waitForSelector('.tts-bar', { timeout: 10000 })
+  if (isMobileViewport) {
+    assert(await page.locator('.reader-shell.page').count() === 1, 'opening the TTS bar must leave the upstream slide-reading branch')
+  }
+  const readerPaddingTarget = isMobileViewport ? '.reader-body' : '.reader-content'
+  const expandedPadding = await page.locator(readerPaddingTarget).evaluate(element => getComputedStyle(element).paddingBottom)
+  assert(Number.parseFloat(expandedPadding) >= 280, `expanded TTS bar should reserve 280px, got ${expandedPadding}`)
+  if (isMobileViewport) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === 0, 'opening the upstream TTS bar should hide mobile reader tools')
+    await page.mouse.click(viewport.width / 2, viewport.height / 2)
+    await page.waitForTimeout(100)
+    assert(await page.locator('.reader-mobile-top.visible').count() === 0, 'content taps while the TTS bar is open must not toggle mobile reader tools')
+  } else {
+    assert(await page.locator('.reader-left-rail').isVisible(), 'opening the TTS bar must not hide desktop reader rails')
+  }
 
   const afterOpen = await page.evaluate(() => ({
     speakCalls: window.__openreaderTTS.speakCalls,
@@ -221,13 +253,28 @@ async function main() {
   })
   await page.waitForFunction(() => document.body.innerText.includes('朗读错误'), null, { timeout: 10000 })
 
+  await page.locator('button[title="展开/收起朗读设置"]').click()
+  await page.waitForFunction(() => !document.querySelector('.tts-config'), null, { timeout: 10000 })
+  const collapsedPadding = await page.locator(readerPaddingTarget).evaluate(element => getComputedStyle(element).paddingBottom)
+  assert(Number.parseFloat(collapsedPadding) >= 80 && Number.parseFloat(collapsedPadding) < 100, `collapsed TTS bar should reserve 80px, got ${collapsedPadding}`)
+
   await page.locator('.tts-close').click()
   await page.waitForFunction(() => !document.querySelector('.tts-bar'), null, { timeout: 10000 })
+  if (isMobileViewport) {
+    assert(await page.locator('.reader-shell.flip').count() === 1, 'closing TTS should restore the configured flip-reading branch')
+  } else {
+    assert(await page.locator('.reader-shell.page').count() === 1, 'closing TTS should retain the desktop page branch')
+  }
+  if (isMobileViewport) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === 0, 'closing the TTS bar should not reopen mobile reader tools')
+    await page.mouse.click(viewport.width / 2, viewport.height / 2)
+    await page.waitForFunction(() => document.querySelector('.reader-mobile-top.visible'), null, { timeout: 10000 })
+  }
   const afterClose = await page.evaluate(() => window.__openreaderTTS)
   assert(afterClose.cancelCalls >= 1, 'closing TTS bar should stop active speech')
   assert(failures.length === 0, `browser errors:\n${failures.join('\n')}`)
   await browser.close()
-  console.log('reader TTS contract smoke passed')
+  console.log(`reader TTS contract smoke passed (${viewport.width}x${viewport.height})`)
 }
 
 main().catch((error) => {

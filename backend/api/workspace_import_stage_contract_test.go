@@ -45,8 +45,12 @@ func previewStorageBook(t *testing.T, router http.Handler, auth string, endpoint
 }
 
 func importStagedStorageBook(t *testing.T, router http.Handler, auth string, endpoint string, path string, importToken string, title string) models.Book {
+	return importStagedStorageBookWithTOCRule(t, router, auth, endpoint, path, importToken, title, "")
+}
+
+func importStagedStorageBookWithTOCRule(t *testing.T, router http.Handler, auth string, endpoint string, path string, importToken string, title string, tocRule string) models.Book {
 	t.Helper()
-	body := `{"items":[{"path":"` + path + `","importToken":"` + importToken + `","title":"` + title + `"}]}`
+	body := `{"items":[{"path":"` + path + `","importToken":"` + importToken + `","title":"` + title + `","tocRule":"` + tocRule + `"}]}`
 	req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(body))
 	req.Header.Set("Authorization", auth)
 	req.Header.Set("Content-Type", "application/json")
@@ -68,6 +72,27 @@ func importStagedStorageBook(t *testing.T, router http.Handler, auth string, end
 		t.Fatalf("import %s must use the staged snapshot, got %+v", endpoint, response.Imported)
 	}
 	return response.Imported[0].Book
+}
+
+func reparseStagedStorageBook(t *testing.T, router http.Handler, auth string, endpoint string, path string, importToken string, tocRule string) stagedStoragePreview {
+	t.Helper()
+	body := `{"items":[{"path":"` + path + `","importToken":"` + importToken + `","tocRule":"` + tocRule + `"}]}`
+	req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(body))
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("Content-Type", "application/json")
+	writer := httptest.NewRecorder()
+	router.ServeHTTP(writer, req)
+	if writer.Code != http.StatusOK {
+		t.Fatalf("reparse %s: expected 200, got %d: %s", endpoint, writer.Code, writer.Body.String())
+	}
+	var preview stagedStoragePreview
+	if err := json.Unmarshal(writer.Body.Bytes(), &preview); err != nil {
+		t.Fatalf("decode reparse %s: %v", endpoint, err)
+	}
+	if len(preview.Items) != 1 {
+		t.Fatalf("reparse %s must return one item, got %+v", endpoint, preview)
+	}
+	return preview
 }
 
 func TestLocalStorePreviewStagesSnapshotForConfirmImport(t *testing.T) {
@@ -126,6 +151,67 @@ func TestWebDAVPreviewStagesSnapshotForConfirmImport(t *testing.T) {
 	book := importStagedStorageBook(t, router, auth, "/api/webdav/import", "snapshot.txt", preview.Items[0].ImportToken, "WebDAV 快照导入")
 	if book.ChapterCount != expectedChapters {
 		t.Fatalf("confirm must import the preview snapshot (%d chapters), got %+v", expectedChapters, book)
+	}
+}
+
+func TestStoragePreviewStageReparsesAfterMountedSourceIsRemoved(t *testing.T) {
+	tests := []struct {
+		name            string
+		previewEndpoint string
+		importEndpoint  string
+		filePath        func(*Server) string
+	}{
+		{
+			name:            "local store",
+			previewEndpoint: "/api/local-store/import-preview",
+			importEndpoint:  "/api/local-store/import",
+			filePath: func(server *Server) string {
+				return filepath.Join(server.cfg.LocalStoreDir, "retry-rule.txt")
+			},
+		},
+		{
+			name:            "WebDAV",
+			previewEndpoint: "/api/webdav/import-preview",
+			importEndpoint:  "/api/webdav/import",
+			filePath: func(server *Server) string {
+				return filepath.Join(server.cfg.DataDir, "webdav", "retry-rule.txt")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			path := tt.filePath(server)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("create fixture root: %v", err)
+			}
+			if err := os.WriteFile(path, []byte("== 第一章 ==\n正文内容。"), 0o644); err != nil {
+				t.Fatalf("write fixture: %v", err)
+			}
+
+			initial := previewStorageBook(t, router, auth, tt.previewEndpoint, "retry-rule.txt")
+			stageToken := initial.Items[0].ImportToken
+			if err := os.Remove(path); err != nil {
+				t.Fatalf("remove mounted source after preview: %v", err)
+			}
+
+			failed := reparseStagedStorageBook(t, router, auth, tt.previewEndpoint, "retry-rule.txt", stageToken, `^不存在的目录$`)
+			if failed.Items[0].ImportToken != stageToken || !strings.Contains(failed.Items[0].Error, "no readable chapters") {
+				t.Fatalf("failed staged reparse must retain token/error, got %+v", failed.Items[0])
+			}
+
+			retry := reparseStagedStorageBook(t, router, auth, tt.previewEndpoint, "retry-rule.txt", stageToken, `^== .+ ==$`)
+			if retry.Items[0].ImportToken != stageToken || retry.Items[0].Book == nil || retry.Items[0].Book.ChapterCount != 1 {
+				t.Fatalf("valid staged reparse must use removed-source snapshot, got %+v", retry.Items[0])
+			}
+
+			book := importStagedStorageBookWithTOCRule(t, router, auth, tt.importEndpoint, "retry-rule.txt", stageToken, "目录重试导入", `^== .+ ==$`)
+			if book.ChapterCount != 1 {
+				t.Fatalf("staged reparse/import chapter count = %d, want 1", book.ChapterCount)
+			}
+		})
 	}
 }
 

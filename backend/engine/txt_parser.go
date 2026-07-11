@@ -2,8 +2,15 @@ package engine
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
+)
+
+const (
+	txtDetectionProbeBytes = 512000
+	txtNoTocChunkBytes     = 10 * 1024
+	txtNoTocShortTailBytes = 100
 )
 
 var ChapterTitlePattern = regexp.MustCompile(`^(?:第[零一二三四五六七八九十百千万两〇○0-9０-９]+[章回节卷集部]|序章|楔子|引子|前言|尾声|后记|番外(?:篇)?|第[零一二三四五六七八九十百千万两〇○0-9０-９]+卷|[上中下]卷).{0,64}$`)
@@ -99,22 +106,22 @@ func DefaultTXTTocRules() []TXTTocRule {
 }
 
 func ParseTXT(data []byte) ([]TXTChapter, error) {
-	text, err := decodeTXT(data)
+	text, probe, err := decodeTXTForCatalog(data)
 	if err != nil {
 		return nil, err
 	}
 
-	return parseTXTText(text, detectTXTTitlePattern(text)), nil
+	return parseTXTText(text, detectTXTTitlePattern(probe)), nil
 }
 
 func ParseTXTWithRule(data []byte, rule string) ([]TXTChapter, error) {
-	text, err := decodeTXT(data)
+	text, probe, err := decodeTXTForCatalog(data)
 	if err != nil {
 		return nil, err
 	}
 	rule = strings.TrimSpace(rule)
 	if rule == "" {
-		return parseTXTText(text, detectTXTTitlePattern(text)), nil
+		return parseTXTText(text, detectTXTTitlePattern(probe)), nil
 	}
 	pattern, err := compileTXTTitleMatcher(rule)
 	if err != nil {
@@ -124,65 +131,156 @@ func ParseTXTWithRule(data []byte, rule string) ([]TXTChapter, error) {
 }
 
 func parseTXTText(text string, titlePattern *txtTitleMatcher) []TXTChapter {
-	chapters := make([]TXTChapter, 0)
-	current := TXTChapter{Index: 0, Title: "正文", Start: 0}
-	sawChapterTitle := false
+	if titlePattern == nil {
+		return parseTXTWithoutToc(text)
+	}
 
+	chapters := make([]TXTChapter, 0)
+	var current TXTChapter
+	hasCurrent := false
 	contentStart := 0
 	for lineStart := 0; lineStart < len(text); {
 		lineEnd := nextLineEnd(text, lineStart)
 		lineText := strings.TrimRight(text[lineStart:lineEnd], "\r\n")
 		line := strings.TrimSpace(lineText)
-		if isChapterTitleWithRule(line, titlePattern) {
-			if lineStart > contentStart {
+		if titlePattern.MatchString(line) {
+			if hasCurrent {
 				content := strings.TrimSpace(text[contentStart:lineStart])
-				if sawChapterTitle || shouldKeepFrontMatter(content) {
-					current.Index = len(chapters)
-					current.End = lineStart
-					current.Content = content
-					chapters = append(chapters, current)
-				}
+				current.Index = len(chapters)
+				current.End = lineStart
+				current.Content = content
+				chapters = append(chapters, current)
+			} else if preface := strings.TrimSpace(text[:lineStart]); preface != "" {
+				chapters = append(chapters, TXTChapter{
+					Index:   len(chapters),
+					Title:   "前言",
+					Start:   0,
+					End:     lineStart,
+					Content: preface,
+				})
 			}
 			current = TXTChapter{Title: line, Start: lineStart}
 			contentStart = lineEnd
-			sawChapterTitle = true
+			hasCurrent = true
 		}
 		lineStart = lineEnd
 	}
 
-	if contentStart <= len(text) {
+	if hasCurrent {
 		content := strings.TrimSpace(text[contentStart:])
-		if sawChapterTitle || len(chapters) == 0 || shouldKeepFrontMatter(content) {
-			if content != "" || len(chapters) == 0 {
-				current.Index = len(chapters)
-				current.End = len(text)
-				current.Content = content
-				chapters = append(chapters, current)
-			}
-		}
+		current.Index = len(chapters)
+		current.End = len(text)
+		current.Content = content
+		chapters = append(chapters, current)
 	}
 
 	return chapters
 }
 
-func detectTXTTitlePattern(text string) *txtTitleMatcher {
-	bestPattern := &txtTitleMatcher{pattern: ChapterTitlePattern}
-	bestCount := countTXTTitleMatches(text, bestPattern)
-	compiled := make([]*txtTitleMatcher, 0, len(defaultTXTTitleRules))
-	for _, rule := range defaultTXTTitleRules {
-		pattern, err := compileTXTTitleMatcher(rule)
-		if err == nil {
-			compiled = append(compiled, pattern)
+// parseTXTWithoutToc mirrors reader-dev TextFile.analyze()'s local-text
+// fallback. OpenReader intentionally performs it over its decoded, staged
+// representation because it materializes each resulting chapter into cache
+// files rather than seeking source-encoding offsets at read time.
+func parseTXTWithoutToc(text string) []TXTChapter {
+	if text == "" {
+		return []TXTChapter{{Index: 0, Title: "第0章(0)", Start: 0, End: 0, Content: ""}}
+	}
+
+	chapters := make([]TXTChapter, 0)
+	segmentStart := 0
+	blockPos := 0
+	blockEnd := 0
+	chapterPos := 0
+
+	for blockEnd < len(text) {
+		blockPos++
+		nextBlockEnd := blockEnd + txtDetectionProbeBytes
+		if nextBlockEnd > len(text) {
+			nextBlockEnd = len(text)
+		}
+		nextBlockEnd = safeTXTBoundary(text, nextBlockEnd)
+		if nextBlockEnd <= blockEnd {
+			nextBlockEnd = len(text)
+		}
+
+		chapterPos = 0
+		for nextBlockEnd-segmentStart > txtNoTocChunkBytes {
+			chapterPos++
+			splitAt := nextTXTNoTocSplit(text, segmentStart, nextBlockEnd)
+			appendTXTChapter(&chapters, text, segmentStart, splitAt, fallbackTXTChapterTitle(blockPos, chapterPos))
+			segmentStart = splitAt
+		}
+
+		blockEnd = nextBlockEnd
+	}
+
+	tailLength := len(text) - segmentStart
+	if tailLength > txtNoTocShortTailBytes || len(chapters) == 0 {
+		chapterPos++
+		appendTXTChapter(&chapters, text, segmentStart, len(text), fallbackTXTChapterTitle(blockPos, chapterPos))
+	} else {
+		last := &chapters[len(chapters)-1]
+		last.End = len(text)
+		last.Content = text[last.Start:last.End]
+	}
+	return chapters
+}
+
+func fallbackTXTChapterTitle(blockPos, chapterPos int) string {
+	return "第" + strconv.Itoa(blockPos) + "章(" + strconv.Itoa(chapterPos) + ")"
+}
+
+func appendTXTChapter(chapters *[]TXTChapter, text string, start, end int, title string) {
+	if end < start {
+		end = start
+	}
+	*chapters = append(*chapters, TXTChapter{
+		Index:   len(*chapters),
+		Title:   title,
+		Start:   start,
+		End:     end,
+		Content: text[start:end],
+	})
+}
+
+func nextTXTNoTocSplit(text string, start, end int) int {
+	probe := start + txtNoTocChunkBytes
+	if probe >= end {
+		return safeTXTBoundary(text, end)
+	}
+	for index := probe; index < end; index++ {
+		if text[index] == '\n' {
+			return index
 		}
 	}
-	for left, right := 0, len(compiled)-1; left < right; left, right = left+1, right-1 {
-		compiled[left], compiled[right] = compiled[right], compiled[left]
+	return safeTXTBoundary(text, end)
+}
+
+func safeTXTBoundary(text string, index int) int {
+	if index >= len(text) {
+		return len(text)
 	}
-	for _, pattern := range compiled {
-		count := countTXTTitleMatches(text, pattern)
-		if count >= bestCount && count > 1 {
-			bestCount = count
-			bestPattern = pattern
+	for index > 0 && index < len(text) && (text[index]&0xc0) == 0x80 {
+		index--
+	}
+	return index
+}
+
+func detectTXTTitlePattern(text string) *txtTitleMatcher {
+	bestCount := 1
+	var bestPattern *txtTitleMatcher
+	rules := DefaultTXTTocRules()
+	for index := len(rules) - 1; index >= 0; index-- {
+		rule := rules[index]
+		if !rule.Enable {
+			continue
+		}
+		pattern, err := compileTXTTitleMatcher(rule.Rule)
+		if err == nil {
+			if count := countTXTTitleMatches(text, pattern); count >= bestCount {
+				bestCount = count
+				bestPattern = pattern
+			}
 		}
 	}
 	return bestPattern
@@ -266,14 +364,17 @@ func isChapterTitle(line string) bool {
 
 func isChapterTitleWithRule(line string, titlePattern *txtTitleMatcher) bool {
 	line = strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
-	if line == "" || utf8.RuneCountInString(line) > 72 {
-		return false
-	}
-	if strings.ContainsAny(rightmostRune(line), "。！？!?；;") {
+	if line == "" {
 		return false
 	}
 	if titlePattern != nil {
 		return titlePattern.MatchString(line)
+	}
+	if utf8.RuneCountInString(line) > 72 {
+		return false
+	}
+	if strings.ContainsAny(rightmostRune(line), "。！？!?；;") {
+		return false
 	}
 	return ChapterTitlePattern.MatchString(line)
 }
@@ -289,28 +390,23 @@ func rightmostRune(value string) string {
 	return ""
 }
 
-func shouldKeepFrontMatter(content string) bool {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return false
-	}
-
-	lines := strings.Split(content, "\n")
-	nonEmpty := 0
-	totalRunes := 0
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+func decodeTXTForCatalog(data []byte) (string, string, error) {
+	probeData := data
+	if len(probeData) > txtDetectionProbeBytes {
+		probeData = probeData[:txtDetectionProbeBytes]
+		if utf8.Valid(data) {
+			for len(probeData) > 0 && !utf8.Valid(probeData) {
+				probeData = probeData[:len(probeData)-1]
+			}
 		}
-		nonEmpty++
-		totalRunes += utf8.RuneCountInString(line)
 	}
-
-	return nonEmpty > 8 || totalRunes > 360
-}
-
-func decodeTXT(data []byte) (string, error) {
-	decoded, _, err := detectAndDecodeText(data)
-	return decoded, err
+	probe, encodingName, err := detectAndDecodeText(probeData)
+	if err != nil {
+		return "", "", err
+	}
+	text, err := decodeTextWithEncoding(data, encodingName)
+	if err != nil {
+		return "", "", err
+	}
+	return text, probe, nil
 }

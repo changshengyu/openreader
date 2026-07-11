@@ -42,29 +42,29 @@ func TestParseTXTDetectsChineseChapterTitles(t *testing.T) {
 	}
 }
 
-func TestParseTXTSkipsShortFrontMatterBeforeFirstChapter(t *testing.T) {
-	input := []byte("测试书名\n作者：某人\n分类：仙侠\n\n序章、剑宗少年\n序章正文。\n第一章、缘起\n第一章正文。\n第四十一章 夺异宝\n第四十一章正文。")
+func TestParseTXTPreservesShortFrontMatterAsUpstreamPreface(t *testing.T) {
+	input := []byte("测试书名\n作者：某人\n分类：仙侠\n\n序章、剑宗少年\n这一段是序章内容。\n第一章、缘起\n这一段是第一章内容。\n第四十一章 夺异宝\n这一段是第四十一章内容。")
 
 	chapters, err := ParseTXT(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chapters) != 3 {
-		t.Fatalf("expected 3 chapters, got %d", len(chapters))
+	if len(chapters) != 4 {
+		t.Fatalf("expected preface plus 3 chapters, got %d", len(chapters))
 	}
-	if chapters[0].Title != "序章、剑宗少年" {
-		t.Fatalf("front matter was not skipped, first title: %q", chapters[0].Title)
+	if chapters[0].Title != "前言" || chapters[0].Content != "测试书名\n作者：某人\n分类：仙侠" {
+		t.Fatalf("short front matter must be the upstream preface, got %+v", chapters[0])
 	}
-	if chapters[1].Title != "第一章、缘起" {
-		t.Fatalf("unexpected second title: %q", chapters[1].Title)
+	if chapters[1].Title != "序章、剑宗少年" {
+		t.Fatalf("unexpected first titled chapter: %q", chapters[1].Title)
 	}
-	if chapters[2].Title != "第四十一章 夺异宝" {
-		t.Fatalf("unexpected third title: %q", chapters[2].Title)
+	if chapters[2].Title != "第一章、缘起" || chapters[3].Title != "第四十一章 夺异宝" {
+		t.Fatalf("unexpected titled chapters: %+v", chapters)
 	}
 }
 
 func TestParseTXTDetectsUpstreamDefaultTitleRules(t *testing.T) {
-	input := []byte("1、初见\n第一节正文。\n2、再会\n第二节正文。")
+	input := []byte("1、初见\n这一段是普通内容。\n2、再会\n另一段也是普通内容。")
 
 	chapters, err := ParseTXT(input)
 	if err != nil {
@@ -75,6 +75,90 @@ func TestParseTXTDetectsUpstreamDefaultTitleRules(t *testing.T) {
 	}
 	if chapters[0].Title != "1、初见" || chapters[1].Title != "2、再会" {
 		t.Fatalf("unexpected detected chapters: %+v", chapters)
+	}
+}
+
+func TestParseTXTSelectsUpstreamRuleWithOneMatch(t *testing.T) {
+	input := []byte("1、唯一章节\n唯一章节正文。")
+
+	chapters, err := ParseTXT(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Title != "1、唯一章节" {
+		t.Fatalf("one matching enabled upstream rule must select a catalogue, got %+v", chapters)
+	}
+}
+
+func TestParseTXTAutomaticDetectionOnlyUsesInitialUpstreamProbe(t *testing.T) {
+	input := []byte(strings.Repeat("a", 512000) + "\n1、迟到标题\n尾部正文")
+
+	automatic, err := ParseTXT(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(automatic) == 0 {
+		t.Fatal("automatic fallback must still return readable pseudo chapters")
+	}
+	for _, chapter := range automatic {
+		if chapter.Title == "1、迟到标题" {
+			t.Fatalf("heading after the 512 KiB probe must not enable automatic TOC parsing: %+v", automatic)
+		}
+	}
+
+	explicit, err := ParseTXTWithRule(input, `^\d+、.+$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(explicit) < 2 || explicit[len(explicit)-1].Title != "1、迟到标题" {
+		t.Fatalf("explicit TOC rule must parse the full staged document, got %+v", explicit)
+	}
+}
+
+func TestParseTXTNoTocUsesUpstreamPseudoChapterChunks(t *testing.T) {
+	input := strings.Repeat("a", 10*1024) + "\n" + strings.Repeat("b", 10*1024) + "\n" + strings.Repeat("c", 400)
+
+	chapters, err := ParseTXT([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 3 {
+		t.Fatalf("expected three upstream fallback chunks, got %d: %+v", len(chapters), chapters)
+	}
+	for index, want := range []string{"第1章(1)", "第1章(2)", "第1章(3)"} {
+		if chapters[index].Title != want {
+			t.Fatalf("fallback chapter %d title = %q, want %q", index, chapters[index].Title, want)
+		}
+	}
+	if reconstructed := joinTXTChapterContents(chapters); reconstructed != input {
+		t.Fatalf("fallback chapters must preserve contiguous input\n got %q\nwant %q", reconstructed, input)
+	}
+}
+
+func TestParseTXTNoTocShortTailAppendsToPreviousChapter(t *testing.T) {
+	input := strings.Repeat("a", 10*1024) + "\n" + strings.Repeat("b", 80)
+
+	chapters, err := ParseTXT([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Title != "第1章(1)" {
+		t.Fatalf("short fallback tail must extend the preceding pseudo chapter, got %+v", chapters)
+	}
+	if chapters[0].Content != input {
+		t.Fatalf("short fallback tail was not retained: got %q want %q", chapters[0].Content, input)
+	}
+}
+
+func TestParseTXTNoTocShortFileStillHasUpstreamPseudoTitle(t *testing.T) {
+	input := "这是没有目录的短文本。"
+
+	chapters, err := ParseTXT([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Title != "第1章(1)" || chapters[0].Content != input {
+		t.Fatalf("short title-less TXT must retain the upstream pseudo chapter, got %+v", chapters)
 	}
 }
 
@@ -94,16 +178,16 @@ func TestParseTXTDetectsEnglishChapterDefaultRule(t *testing.T) {
 }
 
 func TestParseTXTWithRuleAcceptsUpstreamLookbehindPrefix(t *testing.T) {
-	input := []byte("正文前说明\n第一章 起始\n第一章正文。\n第二章 转折\n第二章正文。")
+	input := []byte("正文前说明\n第一章 起始\n这是第一章内容。\n第二章 转折\n这是第二章内容。")
 
 	chapters, err := ParseTXTWithRule(input, `(?<=[　\s])第?\s{0,4}[\d〇零一二两三四五六七八九十百千万]+?\s{0,4}章.{0,30}$`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chapters) != 2 {
-		t.Fatalf("expected 2 chapters, got %d: %+v", len(chapters), chapters)
+	if len(chapters) != 3 {
+		t.Fatalf("expected preface plus 2 chapters, got %d: %+v", len(chapters), chapters)
 	}
-	if chapters[0].Title != "第一章 起始" || chapters[1].Title != "第二章 转折" {
+	if chapters[0].Title != "前言" || chapters[1].Title != "第一章 起始" || chapters[2].Title != "第二章 转折" {
 		t.Fatalf("unexpected chapters: %+v", chapters)
 	}
 }
@@ -115,7 +199,7 @@ func TestParseTXTWithRuleAcceptsUpstreamNegativeLookahead(t *testing.T) {
 		"第一节课外讲义",
 		"正文完结说明",
 		"第二章 继续",
-		"第二章正文。",
+		"这是第二章内容。",
 	}, "\n"))
 
 	chapters, err := ParseTXTWithRule(input, rule)
@@ -130,6 +214,29 @@ func TestParseTXTWithRuleAcceptsUpstreamNegativeLookahead(t *testing.T) {
 	}
 	if strings.Contains(chapters[0].Content, "第二章正文") {
 		t.Fatalf("chapter split failed: %+v", chapters)
+	}
+}
+
+func TestParseTXTWithRuleDoesNotApplyUnrelatedTitleHeuristics(t *testing.T) {
+	title := "== " + strings.Repeat("很长的目录标题", 12) + " ==。"
+	input := []byte(title + "\n正文。")
+
+	chapters, err := ParseTXTWithRule(input, `^== .+ ==。$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Title != title {
+		t.Fatalf("explicit matching rules must retain long/punctuation-ended titles, got %+v", chapters)
+	}
+}
+
+func TestParseTXTWithExplicitNonMatchingRuleReturnsEmptyCatalog(t *testing.T) {
+	chapters, err := ParseTXTWithRule([]byte("普通正文，没有匹配的目录。"), `^== .+ ==$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 0 {
+		t.Fatalf("an explicit rule with no matches must not silently fall back to 正文: %+v", chapters)
 	}
 }
 
@@ -194,6 +301,29 @@ func TestParseTXTDetectsCommonUpstreamTextEncodings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseTXTNoTocFallbackPreservesLegacyEncodingContent(t *testing.T) {
+	input := []byte("无目录章节内容。\n第二段内容。")
+	encoded, err := simplifiedchinese.GB18030.NewEncoder().Bytes(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chapters, err := ParseTXT(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Title != "第1章(1)" || chapters[0].Content != string(input) {
+		t.Fatalf("legacy no-TOC fallback = %+v", chapters)
+	}
+}
+
+func joinTXTChapterContents(chapters []TXTChapter) string {
+	var builder strings.Builder
+	for _, chapter := range chapters {
+		builder.WriteString(chapter.Content)
+	}
+	return builder.String()
 }
 
 func TestParseEPUBUsesSpineOrder(t *testing.T) {

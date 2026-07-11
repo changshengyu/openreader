@@ -110,6 +110,9 @@
             {{ chapter.title }}
           </span>
         </div>
+        <div v-else-if="previewError" class="direct-import-preview-error">
+          {{ previewError }}
+        </div>
       </div>
     </div>
 
@@ -154,6 +157,7 @@ const {
   importing,
   previewing,
   previewData,
+  previewError,
   draft,
   tocRuleOptions,
   tocRulesLoading,
@@ -177,9 +181,10 @@ const {
 })
 
 function readError(error, fallback) {
-  return error?.response?.data?.error?.message ||
-    error?.response?.data?.error ||
-    fallback
+  const message = error?.response?.data?.error?.message ||
+    error?.response?.data?.error
+  if (String(message || '').includes('no readable chapters')) return fallback
+  return message || fallback
 }
 </script>
 
@@ -240,5 +245,11 @@ function readError(error, fallback) {
   background: var(--app-bg-soft);
   color: var(--app-text-muted);
   font-size: 12px;
+}
+
+.direct-import-preview-error {
+  color: var(--el-color-warning);
+  font-size: 13px;
+  line-height: 1.5;
 }
 </style>

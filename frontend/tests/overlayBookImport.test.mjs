@@ -91,6 +91,32 @@ test('clears stale previews and reports parsing failures', async () => {
   ])
 })
 
+test('keeps the staged token and gives a rule-retry hint for an empty explicit catalogue', async () => {
+  const failure = {
+    response: {
+      data: {
+        error: 'no readable chapters found',
+        importToken: 'retry-token',
+      },
+    },
+  }
+  const fixture = createController({
+    previewBook: async () => {
+      throw failure
+    },
+  })
+
+  await fixture.controller.pickFile({ raw: { name: 'book.txt' } })
+
+  assert.equal(fixture.controller.previewData.value, null)
+  assert.equal(fixture.controller.importToken.value, 'retry-token')
+  assert.equal(fixture.controller.previewError.value, '未找到匹配的目录，请调整目录规则后重新解析')
+  assert.deepEqual(fixture.calls, [
+    ['toc-rules'],
+    ['error', failure, '未找到匹配的目录，请调整目录规则后重新解析'],
+  ])
+})
+
 test('reuses the staged upload for TOC reparsing and final import', async () => {
   const fixture = createController()
   const file = { name: 'book.txt' }

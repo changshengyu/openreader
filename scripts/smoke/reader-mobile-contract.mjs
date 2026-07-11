@@ -223,6 +223,53 @@ async function closeGlobalReaderDialog(page, selector) {
   await dialog.waitFor({ state: 'hidden', timeout: 10000 })
 }
 
+async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {
+  const selector = '.book-info-dialog'
+  await page.waitForSelector(selector, { timeout: 10000 })
+  const state = await page.evaluate((target) => {
+    const dialog = document.querySelector(target)
+    const rect = dialog?.getBoundingClientRect()
+    const text = dialog?.innerText || ''
+    const visibleDrawers = Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
+      const drawerRect = element.getBoundingClientRect()
+      const style = window.getComputedStyle(element)
+      return drawerRect.width > 0 && drawerRect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+    }).length
+    return {
+      topTools: document.querySelectorAll('.reader-mobile-top.visible').length,
+      leftRailVisible: Boolean(document.querySelector('.reader-left-rail')),
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      workspaceCount: document.querySelectorAll('.reader-mobile-workspace').length,
+      visibleDrawers,
+      text,
+    }
+  }, selector)
+  assert(state.workspaceCount === 0, `${viewport.width}: BookInfo must remain a root dialog, not a reader workspace`)
+  assert(state.visibleDrawers === 0, `${viewport.width}: BookInfo must not use a drawer`)
+  assert(state.text.includes('书籍信息'), `${viewport.width}: BookInfo dialog title missing`)
+  assert(state.text.includes('移动阅读契约测试'), `${viewport.width}: BookInfo dialog missing active book title`)
+  assert(state.text.includes('OpenReader'), `${viewport.width}: BookInfo dialog missing active book author`)
+  if (fullscreen) {
+    assert(state.topTools === 1, `${viewport.width}: BookInfo must preserve mobile reader chrome`)
+    assert(state.width === viewport.width, `${viewport.width}: BookInfo fullscreen width ${state.width}`)
+    assert(state.height === viewport.height, `${viewport.width}: BookInfo fullscreen height ${state.height}`)
+  } else {
+    assert(state.leftRailVisible, 'desktop: BookInfo must preserve the reader left rail')
+    assert(state.width >= 460 && state.width <= 520, `desktop: BookInfo dialog width ${state.width}`)
+  }
+  await page.locator(`${selector} .book-info-main`).click()
+  if (fullscreen) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: BookInfo click must not pass through and toggle reader chrome`)
+  }
+}
+
+async function closeReaderBookInfoDialog(page) {
+  const dialog = page.locator('.book-info-dialog')
+  await dialog.locator('.el-dialog__headerbtn').click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+}
+
 async function assertInlineMobileCacheZone(page, viewport) {
   await page.waitForSelector('.reader-mobile-bottom.visible .mobile-cache-zone.reader-cache-zone', { timeout: 10000 })
   const state = await page.evaluate(() => {
@@ -512,6 +559,9 @@ async function runDesktopViewport(browser) {
   await page.locator('.reader-right-rail button[title="搜索正文"]').click()
   await assertDesktopReaderDialog(page, '.global-content-search-dialog', '搜索正文')
   await closeGlobalReaderDialog(page, '.global-content-search-dialog')
+  await page.locator('.reader-right-rail button[title="书籍信息"]').click()
+  await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })
+  await closeReaderBookInfoDialog(page)
   await page.locator('.reader-page-control .progress-box').click()
   await assertInlineDesktopCacheZone(page)
   await page.locator('.reader-page-control .progress-box').click()
@@ -583,6 +633,9 @@ async function runViewport(browser, viewport) {
   await page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')
   await closeGlobalReaderDialog(page, '.global-content-search-dialog')
+  await page.locator('.reader-mobile-float-left.visible button[title="书籍信息"]').click()
+  await assertReaderBookInfoDialog(page, viewport, { fullscreen: true })
+  await closeReaderBookInfoDialog(page)
   await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
   await assertInlineMobileCacheZone(page, viewport)
   await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()

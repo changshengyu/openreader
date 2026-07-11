@@ -1,14 +1,14 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.localStoreVisible"
     title="本地书仓"
-    :direction="direction"
-    :size="size"
-    class="global-local-store-drawer"
+    width="min(1120px, calc(100vw - 48px))"
+    :fullscreen="isMobile"
+    class="global-local-store-dialog"
     destroy-on-close
   >
     <LocalStore embedded />
-  </el-drawer>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -16,13 +16,9 @@ import { defineAsyncComponent } from 'vue'
 import { useOverlayStore } from '../../stores/overlay'
 
 defineProps({
-  direction: {
-    type: String,
-    required: true,
-  },
-  size: {
-    type: [String, Number],
-    required: true,
+  isMobile: {
+    type: Boolean,
+    default: false,
   },
 })
 

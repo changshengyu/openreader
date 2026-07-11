@@ -1,13 +1,14 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.rssVisible"
-    title="RSS"
-    :direction="direction"
-    :size="size"
-    class="global-rss-drawer"
+    title="RSS 订阅"
+    width="min(760px, calc(100vw - 48px))"
+    :fullscreen="isMobile"
+    class="global-rss-dialog"
+    destroy-on-close
   >
     <RSSManager :is-mobile="isMobile" :visible="overlay.rssVisible" />
-  </el-drawer>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -15,14 +16,6 @@ import { useOverlayStore } from '../../stores/overlay'
 import RSSManager from '../RSSManager.vue'
 
 defineProps({
-  direction: {
-    type: String,
-    required: true,
-  },
-  size: {
-    type: [String, Number],
-    required: true,
-  },
   isMobile: {
     type: Boolean,
     default: false,

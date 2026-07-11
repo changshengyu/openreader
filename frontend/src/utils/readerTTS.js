@@ -24,8 +24,8 @@ export function sortTTSVoices(voices) {
   })
 }
 
-export function readerTTSBarVisible({ requested, supported, chapterFormat, audio }) {
-  return Boolean(requested && supported && chapterFormat !== 'epub' && !audio)
+export function readerTTSBarVisible({ requested, supported, chapterFormat, audio, comic = false }) {
+  return Boolean(requested && supported && chapterFormat !== 'epub' && !audio && !comic)
 }
 
 export function readerTTSParagraphText(element) {

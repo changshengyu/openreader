@@ -39,6 +39,19 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## P0 local TXT preview and staged-reparse contract
+
+Status: implemented and backend/frontend-tested on 2026-07-11 against reader-dev `BookController.kt`, `LocalBook.kt` and `TextFile.kt`. OpenReader retains its JWT/JSON staging adaptation while restoring the upstream distinction between automatic no-TOC fallback and an explicit rule that found no headings.
+
+| Method / path | Request | Success and side effects | Errors / retry contract |
+|---|---|---|---|
+| `POST /api/imports/books/preview` | Multipart `file`, optional `title`, `author`, `tocRule`, or an existing `importToken` instead of `file`. JWT required. | A new upload creates a caller-scoped immutable stage before parsing. Successful response is `200` with `{title,author,chapterCount,chapters,importToken}`. An empty `tocRule` uses the automatic first-512,000-byte probe and may return pseudo chapters for text without a TOC. | Unsupported/invalid input and an explicit `tocRule` that finds no chapters return `400` `{error,importToken}`. The token is retained for the caller to submit another preview rule; no book rows/cache files are created. |
+| `POST /api/imports/books` | Same multipart/token fields plus existing category fields. JWT required. | `201` creates the book only from the staged bytes or submitted upload. A consumed staged token is deleted only after a successful import. | `400` for unsupported/parse/no-readable-chapter errors; failed parse/import leaves an existing stage reusable until normal expiry. |
+| `POST /api/local-store/import-preview`, `POST /api/webdav/import-preview` | JSON `{paths}` or `{items:[{path,title,author,tocRule}]}`. JWT/store permission required. | `200 {items}`. Each readable item is copied once to a caller-scoped immutable stage; success item contains `{path,book,importToken}`. | A parser failure remains an item-level `{path,error,importToken}` in the `200` envelope. The token remains valid for a later `{items:[{path,importToken,tocRule}]}` preview/import; mounted-file mutation/removal cannot affect that retry. |
+| `POST /api/local-store/import`, `POST /api/webdav/import` | Existing paths/items/category body. | Successful staged item uses the original preview bytes and deletes its token after durable import. | Item-level parser failures retain the staged token and do not create book/cache rows. A container response does not expose paths outside the caller's scoped store. |
+
+This API shape is an allowed Go/JWT adaptation: reader-dev returns an empty chapter list in its controller response for a local `TocEmptyException`; OpenReader preserves deployed REST paths and reports the direct-preview failure as a `400`, but must preserve the retryable staged context in both direct and storage-backed flows.
+
 ## P2 replace-rule API contract
 
 Status: extracted 2026-07-11 from fixed `reader-dev` `ReplaceRuleController.kt`, `ReplaceRule.vue`, `ReplaceRuleForm.vue`, and `Reader.vue`. OpenReader keeps REST/SQLite/JWT routes but must preserve the user-visible rule pipeline.

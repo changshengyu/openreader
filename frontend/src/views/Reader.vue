@@ -766,8 +766,24 @@ const chapterTextLength = computed(() => {
   return chapterBlockTextLength({ paragraphs: chapterParagraphs.value })
 })
 const isAudioChapter = computed(() => chapterFormat.value === 'audio')
+const ttsBarRequested = ref(false)
+const ttsConfigExpanded = ref(true)
+const isComicChapter = computed(() => (
+  makeChapterBlock(currentIndex.value, chapter.value, content.value).isComic === true
+))
+const ttsReadBarLayoutActive = computed(() => (
+  ttsBarRequested.value
+    && chapterFormat.value !== 'epub'
+    && !isAudioChapter.value
+    && !isComicChapter.value
+))
 const effectiveReaderMode = computed(() => (
-  readerEffectiveMode(reader.mode, chapterFormat.value === 'epub', isAudioChapter.value)
+  readerEffectiveMode(
+    reader.mode,
+    chapterFormat.value === 'epub',
+    isAudioChapter.value,
+    ttsReadBarLayoutActive.value,
+  )
 ))
 const effectiveReaderState = {
   get mode() {
@@ -1022,6 +1038,15 @@ const readerStyle = computed(() => ({
   '--reader-read-width': `${reader.columnWidth}px`,
   '--reader-bg-image': reader.customBgImage ? `url(${reader.customBgImage})` : '',
   '--reader-animate-duration': `${reader.animateDuration}ms`,
+  '--reader-tts-bottom-space': ttsReadBarLayoutActive.value
+    ? `${ttsConfigExpanded.value ? 280 : 80}px`
+    : '0px',
+  '--reader-content-bottom-space': ttsReadBarLayoutActive.value
+    ? `${ttsConfigExpanded.value ? 280 : 80}px`
+    : '180px',
+  '--reader-mobile-content-bottom-space': ttsReadBarLayoutActive.value
+    ? `${ttsConfigExpanded.value ? 280 : 80}px`
+    : '15px',
 }))
 
 const readerContentStyle = computed(() => ({
@@ -1255,6 +1280,7 @@ const {
   isAudio: isAudioChapter,
   autoReading,
   mobileChromeVisible,
+  ttsBarVisible: ttsBarRequested,
   scheduleSelectedTextOperation,
   suppressContentClick,
   consumeSuppressedContentClick,
@@ -1449,20 +1475,25 @@ const {
   notify: showReaderToast,
   isSlideRead: () => effectiveReaderMode.value === 'flip',
 })
-const ttsBarRequested = ref(false)
-const ttsConfigExpanded = ref(true)
 const ttsSupportedForChapter = computed(() => (
-  tts.state.supported && chapterFormat.value !== 'epub' && !isAudioChapter.value
+  tts.state.supported
+    && chapterFormat.value !== 'epub'
+    && !isAudioChapter.value
+    && !isComicChapter.value
 ))
 const ttsBarShown = computed(() => readerTTSBarVisible({
   requested: ttsBarRequested.value,
   supported: tts.state.supported,
   chapterFormat: chapterFormat.value,
   audio: isAudioChapter.value,
+  comic: isComicChapter.value,
 }))
 function toggleTTSBar() {
   if (!ttsSupportedForChapter.value) return
   ttsBarRequested.value = !ttsBarRequested.value
+  if (ttsBarRequested.value && isMobileReader.value) {
+    mobileChromeVisible.value = false
+  }
 }
 function closeTTSBar() {
   ttsBarRequested.value = false
@@ -1474,8 +1505,8 @@ function openReaderPrimaryTool(name, open) {
   return openDesktopToolPanel(name, open)
 }
 
-watch(chapterFormat, format => {
-  if (format === 'epub' || format === 'audio') {
+watch([chapterFormat, isComicChapter], ([format, comic]) => {
+  if (format === 'epub' || format === 'audio' || comic) {
     ttsBarRequested.value = false
     ttsStop()
     if (autoReading.value) stopAutoReading()
@@ -1901,10 +1932,10 @@ function readError(err, fallback) {
   font-size: var(--reader-font-size);
   height: 100dvh; line-height: var(--reader-line-height);
   overflow-y: auto; overflow-x: hidden;
-  padding: 44px 65px 180px;
+  padding: 44px 65px var(--reader-content-bottom-space);
   width: 100%;
   box-sizing: border-box;
-  scroll-padding-bottom: 180px;
+  scroll-padding-bottom: var(--reader-content-bottom-space);
 }
 .reader-body { transition: transform var(--reader-animate-duration, 180ms) ease; }
 .reader-shell.scroll .reader-body::after,
@@ -1978,13 +2009,13 @@ function readError(err, fallback) {
     min-width: 0;
     font-size: var(--reader-font-size);
     padding: 0;
-    scroll-padding-bottom: calc(15px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
     touch-action: pan-y pinch-zoom;
   }
   .reader-body {
     margin-top: calc(30px + env(safe-area-inset-top));
     padding-top: 15px;
-    padding-bottom: calc(15px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
     text-align: justify;
   }
   .reader-mobile-primary-popover-body {

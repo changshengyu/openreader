@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   normalizeTTSPitch,
@@ -12,6 +13,8 @@ import {
   readerTTSSleepExpired,
   sortTTSVoices,
 } from '../src/utils/readerTTS.js'
+
+const readerView = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
 
 test('normalizes reader TTS rate and pitch to upstream ranges', () => {
   assert.equal(normalizeTTSRate(0), 0.5)
@@ -78,6 +81,20 @@ test('keeps reader TTS bar visibility independent from playback state', () => {
     chapterFormat: 'text',
     audio: false,
   }), false)
+  assert.equal(readerTTSBarVisible({
+    requested: true,
+    supported: true,
+    chapterFormat: 'text',
+    audio: false,
+    comic: true,
+  }), false)
+})
+
+test('opening the TTS bar applies the upstream mobile chrome exception without reopening it on close', () => {
+  assert.match(readerView, /ttsBarRequested\.value\s*=\s*!ttsBarRequested\.value[\s\S]*?mobileChromeVisible\.value\s*=\s*false/, 'opening the TTS bar must hide mobile chrome')
+  assert.doesNotMatch(readerView, /function closeTTSBar\(\)\s*\{[\s\S]*?mobileChromeVisible\.value\s*=\s*true/, 'closing the TTS bar must not invent a chrome reopen transition')
+  assert.match(readerView, /--reader-tts-bottom-space.*?280.*?80/s, 'TTS bar must reserve upstream-like expanded and collapsed content space')
+  assert.match(readerView, /isComicChapter[\s\S]*?ttsSupportedForChapter[\s\S]*?!isComicChapter/s, 'comic chapters must not expose upstream-disabled TTS controls')
 })
 
 function fakeParagraph({ text, bottom = 100, right = 100, active = false }) {

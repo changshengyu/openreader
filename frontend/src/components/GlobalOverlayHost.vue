@@ -18,19 +18,15 @@
   <OverlayBookmarkForm :is-mobile="isMobileOverlay" />
 
   <OverlayLocalStore
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
+    :is-mobile="isMobileOverlay"
   />
 
   <OverlayWebDAV
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
     :is-mobile="isMobileOverlay"
   />
 
   <OverlayBackups
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
+    :is-mobile="isMobileOverlay"
   />
 
   <OverlayWorkspaceSettings
@@ -51,8 +47,6 @@
   />
 
   <OverlayRSS
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
     :is-mobile="isMobileOverlay"
   />
 </template>

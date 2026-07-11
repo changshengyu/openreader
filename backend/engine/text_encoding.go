@@ -115,6 +115,47 @@ func decodeKnownText(data []byte, name string, textEncoding encoding.Encoding) (
 	return string(decoded), name, nil
 }
 
+// decodeTextWithEncoding decodes the complete staged input using the charset
+// identified from TextFile's initial probe. Keeping detection and full-file
+// decoding on the same charset matches reader-dev's local TXT pipeline.
+func decodeTextWithEncoding(data []byte, name string) (string, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "utf-8", "utf8":
+		return string(bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})), nil
+	case "utf-32be":
+		data = bytes.TrimPrefix(data, []byte{0x00, 0x00, 0xFE, 0xFF})
+		decoded, err := utf32.UTF32(utf32.BigEndian, utf32.IgnoreBOM).NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "utf-32le":
+		data = bytes.TrimPrefix(data, []byte{0xFF, 0xFE, 0x00, 0x00})
+		decoded, err := utf32.UTF32(utf32.LittleEndian, utf32.IgnoreBOM).NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "utf-16be":
+		data = bytes.TrimPrefix(data, []byte{0xFE, 0xFF})
+		decoded, err := unicodeencoding.UTF16(unicodeencoding.BigEndian, unicodeencoding.IgnoreBOM).NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "utf-16le":
+		data = bytes.TrimPrefix(data, []byte{0xFF, 0xFE})
+		decoded, err := unicodeencoding.UTF16(unicodeencoding.LittleEndian, unicodeencoding.IgnoreBOM).NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "gb18030":
+		decoded, err := simplifiedchinese.GB18030.NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "big5":
+		decoded, err := traditionalchinese.Big5.NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "shift_jis":
+		decoded, err := japanese.ShiftJIS.NewDecoder().Bytes(data)
+		return string(decoded), err
+	case "euc-kr":
+		decoded, err := korean.EUCKR.NewDecoder().Bytes(data)
+		return string(decoded), err
+	default:
+		return "", fmt.Errorf("unsupported text encoding %q", name)
+	}
+}
+
 func looksLikeUTF16(data []byte, littleEndian bool) bool {
 	pairs := len(data) / 2
 	if pairs < 4 {

@@ -49,6 +49,29 @@ test('runs a backup and refreshes the WebDAV list', async () => {
   assert.equal(fixture.controller.listLoading.value, false)
 })
 
+test('requires an explicit overwrite confirmation before writing a backup', async () => {
+  const cancelled = createController({
+    confirmBeforeRun: async () => {
+      throw new Error('cancel')
+    },
+  })
+  await cancelled.controller.run()
+  assert.deepEqual(cancelled.calls, [], 'a cancelled confirmation must not write or refresh backups')
+
+  const confirmed = createController({
+    confirmBeforeRun: async () => {
+      confirmed.calls.push(['confirm'])
+    },
+  })
+  await confirmed.controller.run()
+  assert.deepEqual(confirmed.calls, [
+    ['confirm'],
+    ['trigger'],
+    ['success', '备份已保存到 WebDAV：backup-1.zip'],
+    ['list'],
+  ])
+})
+
 test('reports list failures and always releases loading state', async () => {
   const failure = new Error('offline')
   const fixture = createController({
@@ -87,4 +110,29 @@ test('restores an uploaded package and applies returned state', async () => {
   fixture.calls.length = 0
   await fixture.controller.restore({})
   assert.deepEqual(fixture.calls, [])
+})
+
+test('requires confirmation before restoring an uploaded backup package', async () => {
+  const file = { name: 'restore.zip' }
+  const cancelled = createController({
+    confirmBeforeRestore: async () => {
+      throw new Error('cancel')
+    },
+  })
+  await cancelled.controller.restore({ raw: file })
+  assert.deepEqual(cancelled.calls, [], 'a cancelled recovery must not upload or apply a backup')
+
+  const confirmed = createController({
+    confirmBeforeRestore: async () => {
+      confirmed.calls.push(['confirm-restore'])
+    },
+  })
+  await confirmed.controller.restore({ raw: file })
+  assert.deepEqual(confirmed.calls, [
+    ['confirm-restore'],
+    ['append', 'file', file],
+    ['restore', confirmed.form],
+    ['success', '恢复完成：书源 2，书籍 3，进度 4'],
+    ['apply', { sources: 2, books: 3, progress: 4 }],
+  ])
 })

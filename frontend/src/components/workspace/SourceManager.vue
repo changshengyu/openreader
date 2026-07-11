@@ -708,7 +708,6 @@ function applyRouteAction() {
   }
   if (intent === 'health') {
     failedOnly.value = true
-    if (!healthSummary.value.total && !checking.value) checkInvalidSources()
   }
   if (intent === 'import') {
     openSourceImportPicker()
@@ -1009,7 +1008,10 @@ async function restoreDefaults() {
 }
 
 async function checkInvalidSources() {
-  const list = selection.value.length ? selection.value : shownSources.value
+  // The upstream failure entry only opens its cached failure view.  Live tests
+  // are an explicit OpenReader action; when that view is empty, test the full
+  // source set instead of the empty failed-only projection.
+  const list = selection.value.length ? selection.value : (failedOnly.value ? sources.value : shownSources.value)
   if (!list.length) return
   checking.value = true
   try {

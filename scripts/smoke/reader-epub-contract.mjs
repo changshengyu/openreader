@@ -18,6 +18,20 @@ const baseURL = process.env.TARGET_URL || 'http://127.0.0.1:8080'
 const outputDir = process.env.SMOKE_OUTPUT_DIR || tmpdir()
 const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
+function smokeViewports() {
+  const requested = String(process.env.SMOKE_VIEWPORTS || '1440x900,390x844,360x800')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  return requested.map((value) => {
+    const [width, height] = value.toLowerCase().split('x').map(Number)
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+      throw new Error(`Invalid SMOKE_VIEWPORTS entry: ${value}`)
+    }
+    return { width, height }
+  })
+}
+
 async function loadPlaywright() {
   try {
     const module = await import('playwright')
@@ -257,12 +271,13 @@ async function assertFrameContract(page, viewport, resourceResponses) {
       await page.waitForTimeout(150)
     }
     assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
-    await page.getByRole('button', { name: /设置/ }).click()
+    const settingsTool = page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' })
+    await settingsTool.click()
     await page.waitForSelector('.reader-mobile-workspace')
     assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
-    await page.getByRole('button', { name: '关闭' }).click()
+    await settingsTool.click()
     await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'))
 
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
@@ -337,11 +352,7 @@ async function main() {
       executablePath: process.env.CHROME_PATH || defaultChromePath,
     })
     try {
-      for (const viewport of [
-        { width: 1440, height: 900 },
-        { width: 390, height: 844 },
-        { width: 360, height: 800 },
-      ]) {
+      for (const viewport of smokeViewports()) {
         const imported = await registerAndImport(fixture.archive)
         await runViewport(browser, viewport, imported.token, imported.book.id)
       }

@@ -1,6 +1,7 @@
 package localbook
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,18 @@ import (
 	readerdb "openreader/backend/db"
 	"openreader/backend/models"
 )
+
+func TestImporterPreviewRejectsExplicitTXTTOCRuleWithNoMatches(t *testing.T) {
+	_, err := (Importer{}).Preview(ImportRequest{
+		FileName:  "规则不匹配.txt",
+		Extension: ".txt",
+		Data:      []byte("这是正文，但不包含自定义目录。"),
+		TOCRule:   `^== .+ ==$`,
+	})
+	if !errors.Is(err, ErrNoReadableChapters) {
+		t.Fatalf("explicit no-match TOC rule error = %v, want %v", err, ErrNoReadableChapters)
+	}
+}
 
 func TestImporterArchivesLocalBookByUserNamespace(t *testing.T) {
 	root := t.TempDir()
@@ -37,7 +50,7 @@ func TestImporterArchivesLocalBookByUserNamespace(t *testing.T) {
 		UserName:  user.Username,
 		FileName:  "测试书.txt",
 		Extension: ".txt",
-		Data:      []byte("第一章 起\n第一章正文。\n第二章 承\n第二章正文。"),
+		Data:      []byte("第一章 起\n这是第一章的内容。\n第二章 承\n这是第二章的内容。"),
 	})
 	if err != nil {
 		t.Fatal(err)
