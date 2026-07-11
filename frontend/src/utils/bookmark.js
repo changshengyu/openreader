@@ -14,8 +14,8 @@ export function normalizeImportedBookmarks(rows) {
     .filter(row => row.title || row.excerpt || row.note)
 }
 
-export function prependBookmarks(current, incoming) {
-  return [...(Array.isArray(incoming) ? incoming : []), ...(Array.isArray(current) ? current : [])]
+export function appendBookmarks(current, incoming) {
+  return [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]
 }
 
 export function replaceBookmark(current, bookmark) {

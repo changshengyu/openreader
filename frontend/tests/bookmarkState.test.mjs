@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  appendBookmarks,
   bookmarkReaderQuery,
   bookmarkUpdateTargetsBook,
   parseBookmarkPercent,
-  prependBookmarks,
   removeBookmarkIds,
   replaceBookmark,
 } from '../src/utils/bookmark.js'
 
-test('updates bookmark collections without mutating unrelated rows', () => {
+test('keeps bookmark creation order while updating collections without mutating unrelated rows', () => {
   const current = [{ id: 1, title: '一' }, { id: 2, title: '二' }]
-  assert.deepEqual(prependBookmarks(current, [{ id: 3, title: '三' }]).map(item => item.id), [3, 1, 2])
+  assert.deepEqual(appendBookmarks(current, [{ id: 3, title: '三' }]).map(item => item.id), [1, 2, 3])
+  assert.deepEqual(appendBookmarks(current, [{ id: 3 }, { id: 4 }]).map(item => item.id), [1, 2, 3, 4])
   assert.deepEqual(replaceBookmark(current, { id: 2, title: '新二' }), [
     current[0],
     { id: 2, title: '新二' },

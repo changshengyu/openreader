@@ -8,8 +8,8 @@ import {
   updateBookmark,
 } from '../api/books'
 import {
+  appendBookmarks,
   bookmarkUpdateTargetsBook,
-  prependBookmarks,
   removeBookmarkIds,
   replaceBookmark,
 } from '../utils/bookmark'
@@ -52,7 +52,7 @@ export function useBookBookmarks(options) {
     try {
       const { data } = await createBookmark(id, payload)
       if (trackItems && data && String(unref(options.bookId)) === String(id)) {
-        items.value = prependBookmarks(items.value, [data])
+        items.value = appendBookmarks(items.value, [data])
       }
       return data || null
     } finally {
@@ -114,7 +114,7 @@ export function useBookBookmarks(options) {
       const { data } = await createBookmarks(id, payloads)
       const created = Array.isArray(data) ? data : []
       if (trackItems && String(unref(options.bookId)) === String(id)) {
-        items.value = prependBookmarks(items.value, created)
+        items.value = appendBookmarks(items.value, created)
       }
       return created
     } finally {
