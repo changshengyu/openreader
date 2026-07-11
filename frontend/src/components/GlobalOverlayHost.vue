@@ -35,14 +35,10 @@
   />
 
   <OverlayUserManagement
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
     :is-mobile="isMobileOverlay"
   />
 
   <OverlayReplaceRules
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
     :is-mobile="isMobileOverlay"
   />
 

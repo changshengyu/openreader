@@ -176,3 +176,16 @@ test('reloads users after a permission update fails', async () => {
     ['list'],
   ])
 })
+
+test('clears only manager list state when the user dialog closes', async () => {
+  const fixture = createController()
+  await fixture.controller.load()
+  fixture.controller.selectedUserIds.value = [3]
+  fixture.controller.openCreateDialog()
+
+  fixture.controller.resetManager()
+
+  assert.deepEqual(fixture.controller.users.value, [])
+  assert.deepEqual(fixture.controller.selectedUserIds.value, [])
+  assert.equal(fixture.controller.createDialogVisible.value, true, 'the independent create-user dialog must survive a manager-only close')
+})

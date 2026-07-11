@@ -10,6 +10,8 @@ const settingsSource = readFileSync(new URL('../src/views/Settings.vue', import.
 const localStoreOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayLocalStore.vue', import.meta.url), 'utf8')
 const webdavOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayWebDAV.vue', import.meta.url), 'utf8')
 const backupOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayBackups.vue', import.meta.url), 'utf8')
+const replaceOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayReplaceRules.vue', import.meta.url), 'utf8')
+const userOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayUserManagement.vue', import.meta.url), 'utf8')
 
 test('keeps LocalStore and every legacy Settings panel as root-workspace overlay intents', () => {
   assert.match(routerSource, /function\s+workspaceOverlayIntentFromLegacy\s*\(/, 'router must centralize legacy local-store/settings intent normalization')
@@ -61,4 +63,21 @@ test('keeps upstream-style file operations in root dialogs instead of side drawe
   assert.match(hostSource, /<OverlayLocalStore\s+:is-mobile="isMobileOverlay"/, 'LocalStore must receive the shared compact-interface state')
   assert.match(hostSource, /<OverlayWebDAV\s+:is-mobile="isMobileOverlay"/, 'WebDAV must receive the shared compact-interface state')
   assert.match(hostSource, /<OverlayBackups\s+:is-mobile="isMobileOverlay"/, 'backup must receive the shared compact-interface state')
+})
+
+test('keeps ReplaceRule and UserManage manager roots in upstream-style dialogs', () => {
+  for (const [name, source, state, loader] of [
+    ['ReplaceRule', replaceOverlaySource, 'replaceRulesVisible', 'loadReplaceRules'],
+    ['UserManage', userOverlaySource, 'userManageVisible', 'loadUsers'],
+  ]) {
+    assert.match(source, /<el-dialog/, `${name} manager must use the upstream root dialog shell`)
+    assert.doesNotMatch(source, /<el-drawer/, `${name} manager must not retain a side/bottom drawer shell`)
+    assert.match(source, new RegExp(`v-model="overlay\\.${state}"`), `${name} must retain shared overlay state`)
+    assert.match(source, /:fullscreen="isMobile"/, `${name} manager must be fullscreen on the compact interface`)
+    assert.match(source, /destroy-on-close/, `${name} manager must reset its closed surface`)
+    assert.match(source, new RegExp(`@open="${loader}"`), `${name} must freshly load when its root dialog opens`)
+    assert.match(source, /@closed="resetManager"/, `${name} must clear only manager state when it closes`)
+  }
+  assert.match(hostSource, /<OverlayReplaceRules\s+:is-mobile="isMobileOverlay"/, 'ReplaceRule must receive compact-interface state without drawer dimensions')
+  assert.match(hostSource, /<OverlayUserManagement\s+:is-mobile="isMobileOverlay"/, 'UserManage must receive compact-interface state without drawer dimensions')
 })

@@ -98,25 +98,17 @@ async function closeDialog(page, selector, expectedOverlay) {
 }
 
 async function closeDrawer(page, selector, expectedOverlay) {
-  await page.locator(`${selector} .el-drawer__headerbtn`).click()
+  await page.locator(`${selector} :is(.el-drawer__close-btn, .el-drawer__headerbtn)`).click()
   await page.waitForFunction((overlay) => new URLSearchParams(location.search).get('overlay') !== overlay, expectedOverlay)
 }
 
-async function openMobileNavigation(page, viewport) {
+async function assertMobilePanelBlocksClickThrough(page, viewport, selector) {
   if (viewport.width > 750) return
-  await page.locator('.mobile-menu-trigger').click()
-  await page.waitForFunction(() => {
-    const sidebar = document.querySelector('.app-sidebar')
-    return sidebar && Math.abs(Number.parseFloat(getComputedStyle(sidebar).marginLeft)) < 0.5
+  const pointerEvents = await page.locator(selector).evaluate(node => {
+    const overlay = node.closest('.el-overlay')
+    return overlay ? getComputedStyle(overlay).pointerEvents : 'none'
   })
-}
-
-async function assertMobilePanelDoesNotCloseSidebar(page, viewport, selector) {
-  if (viewport.width > 750) return
-  await openMobileNavigation(page, viewport)
-  await page.locator(selector).click()
-  const margin = await page.locator('.app-sidebar').evaluate(node => Number.parseFloat(getComputedStyle(node).marginLeft))
-  assert(Math.abs(margin) < 0.5, `${viewport.width}: operation-panel click must not pass through and close the sidebar`)
+  assert(pointerEvents !== 'none', `${viewport.width}: operation panel overlay must block pointer events from reaching the workspace`)
 }
 
 async function openLegacyOperation(page, root, viewport, path, selector, overlay, title, usesUpstreamDialog = false) {
@@ -137,7 +129,7 @@ async function openLegacyOperation(page, root, viewport, path, selector, overlay
       assert(Math.abs(geometry.left - (geometry.viewportWidth - geometry.width) / 2) <= 1, `${viewport.width}: ${overlay} must be centered like the upstream dialog`)
     }
   }
-  await assertMobilePanelDoesNotCloseSidebar(page, viewport, selector)
+  await assertMobilePanelBlocksClickThrough(page, viewport, selector)
   if (usesUpstreamDialog) {
     await closeDialog(page, selector, overlay)
   } else {
@@ -170,9 +162,9 @@ async function runViewport(browser, viewport) {
   const secondWebDAVRootRequestCount = await page.evaluate(() => window.__workspaceOperationWebDAVRootRequests())
   assert(secondWebDAVRootRequestCount === firstWebDAVRootRequestCount + 1, `${viewport.width}: reopening WebDAV must reload its root directory`)
   await closeDialog(page, '.global-webdav-dialog', 'webdav')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=replace&keep=operation-contract', '.global-replace-drawer', 'replace-rules', '替换规则')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=rss&keep=operation-contract', '.global-rss-dialog', 'rss', 'RSS', true)
-  await openLegacyOperation(page, root, viewport, '/settings?panel=admin&keep=operation-contract', '.global-user-drawer', 'user-manage', '用户管理')
+  await openLegacyOperation(page, root, viewport, '/settings?panel=replace&keep=operation-contract', '.global-replace-dialog', 'replace-rules', '替换规则', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=rss&keep=operation-contract', '.global-rss-dialog', 'rss', 'RSS 订阅', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=admin&keep=operation-contract', '.global-user-dialog', 'user-manage', '用户管理', true)
 
   for (const panel of ['account', 'cache', 'reader']) {
     await page.goto(`${root}/settings?panel=${panel}&keep=operation-contract`, { waitUntil: 'networkidle' })
@@ -182,7 +174,7 @@ async function runViewport(browser, viewport) {
     const expected = { account: '账户', cache: '缓存', reader: '阅读' }[panel]
     assert(active?.trim() === expected, `${viewport.width}: expected ${expected} workspace panel, got ${active}`)
     await assertNoHorizontalOverflow(page, `${viewport.width} workspace-${panel}`)
-    await assertMobilePanelDoesNotCloseSidebar(page, viewport, '.global-workspace-settings-drawer .el-tabs__content')
+    await assertMobilePanelBlocksClickThrough(page, viewport, '.global-workspace-settings-drawer .el-tabs__content')
     await closeDrawer(page, '.global-workspace-settings-drawer', 'workspace-settings')
   }
 

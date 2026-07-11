@@ -18,24 +18,28 @@ export function useOverlayUserManagement(options) {
   const scheduleTimeout = options.setTimeout || globalThis.setTimeout
   const cancelTimeout = options.clearTimeout || globalThis.clearTimeout
   let refreshTimer
+  let managerRequest = 0
 
   function isDeletable(user) {
     return user.role !== 'admin' && user.id !== options.getCurrentUserId()
   }
 
   async function load() {
+    const request = ++managerRequest
     usersLoading.value = true
     try {
       if (!options.userStore.profile) await options.userStore.loadMe()
       const { data } = await options.listUsers()
+      if (request !== managerRequest) return
       users.value = data || []
       selectedUserIds.value = selectedUserIds.value.filter(id => (
         users.value.some(user => user.id === id && isDeletable(user))
       ))
     } catch (error) {
+      if (request !== managerRequest) return
       options.onError(error, '加载用户失败')
     } finally {
-      usersLoading.value = false
+      if (request === managerRequest) usersLoading.value = false
     }
   }
 
@@ -43,6 +47,16 @@ export function useOverlayUserManagement(options) {
     if (!refreshTimer) return
     cancelTimeout(refreshTimer)
     refreshTimer = undefined
+  }
+
+  function resetManager() {
+    managerRequest += 1
+    clearRefresh()
+    users.value = []
+    selectedUserIds.value = []
+    usersLoading.value = false
+    cleanupLoading.value = false
+    deletingUsers.value = false
   }
 
   function scheduleRefresh() {
@@ -201,6 +215,7 @@ export function useOverlayUserManagement(options) {
     selectedUserIds,
     draft,
     load,
+    resetManager,
     handleUpdated,
     clearRefresh,
     isDeletable,

@@ -995,7 +995,7 @@ Allowed differences: Vue 3 root overlay instead of Vue 2 App dialogs; ID-backed 
 
 ### 2026-07-12 P2 manager visual/state re-audit: ReplaceRule and UserManage
 
-Status: audit complete; this subsection does not authorize application code until its shell and lifecycle contracts are added. The existing replace-rule semantics and selected-text editor work remain valid.
+Status: manager-shell slice implemented and validated on 2026-07-12. The existing replace-rule semantics and selected-text editor work remain valid; the Reader gesture that opens the direct editor remains a separate P2 browser scenario.
 
 | Concern | Fixed upstream behavior | Current OpenReader evidence | Classification / required result |
 |---|---|---|---|
@@ -1011,7 +1011,13 @@ Required contracts before implementation:
 3. Browser gate at 1440×900, 390×844 and 360×800: old settings intent → manager dialog → close → root; desktop centred/mobile fullscreen, no horizontal overflow or sidebar click-through. For replace rules, additionally open the direct editor from Reader context without the manager. For users, retain administrator-only sidebar visibility and backend 403 for pasted legacy intents.
 4. No API/data migration is authorized: preserve existing REST validation, ID ordering, JWT/WebSocket events, role enforcement and backup compatibility.
 
-Planned order: after RSS receives its blocked browser verification, convert the two root managers to the existing dialog/fullscreen pattern, add reset state contracts, update the shared workspace operation smoke, and then run the full release gate from a Git-traceable commit.
+### P2 manager-shell implementation record (2026-07-12)
+
+- `OverlayReplaceRules` and `OverlayUserManagement` now use the same root `el-dialog` pattern as upstream: centred desktop dialogs (`min(1120px, calc(100vw - 48px))`) and compact full-screen dialogs. The independent replacement editor and add-user dialogs remain separate surfaces.
+- Closing a manager destroys its shell and calls an explicit manager-only reset. It clears table rows, selections, pending refreshes and manager loading states without closing an active direct replacement editor or create-user form. A monotonically increasing request token also prevents an old list response from repopulating a closed/reopened manager.
+- `workspaceOperationRouteContract` statically protects the dialog/fullscreen/destroy/reset contract; composable state tests protect manager-only reset behavior. `workspace-operation-contract.mjs` now opens old settings intents, validates desktop centring/mobile fullscreen, root-route close behavior, no horizontal overflow and modal click interception at 1440×900, 390×844 and 360×800.
+- Evidence: frontend `npm test` (353 passing), production `npm run build`, `git diff --check`, and the three-viewport real-Chrome workspace-operation smoke all passed. The smoke was corrected to match the actual RSS title and current Element Plus drawer close class; its mobile assertion now verifies the modal overlay blocks click-through, rather than attempting to click a sidebar hidden behind that overlay.
+- Still remaining in P2: an end-to-end Reader text-selection gesture → direct ReplaceRule editor smoke; broader ReplaceRule semantics, role/permission API and backup contracts remain preserved and are not reopened by this manager-shell-only change.
 
 ## P2 bookmark compatibility contract
 

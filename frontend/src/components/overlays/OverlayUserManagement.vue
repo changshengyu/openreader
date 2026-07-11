@@ -1,11 +1,13 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="overlay.userManageVisible"
     title="用户管理"
-    :direction="direction"
-    :size="size"
-    class="global-user-drawer"
+    width="min(1120px, calc(100vw - 48px))"
+    :fullscreen="isMobile"
+    class="global-user-dialog"
+    destroy-on-close
     @open="loadUsers"
+    @closed="resetManager"
   >
     <section class="user-overlay">
       <header class="file-overlay-head">
@@ -82,7 +84,7 @@
       </footer>
       <el-empty v-if="!usersLoading && !users.length" description="暂无用户，或当前账号无管理员权限" />
     </section>
-  </el-drawer>
+  </el-dialog>
 
   <el-dialog
     v-model="userCreateDialog"
@@ -127,14 +129,6 @@ import { useOverlayStore } from '../../stores/overlay'
 import { useUserStore } from '../../stores/user'
 
 defineProps({
-  direction: {
-    type: String,
-    default: 'rtl',
-  },
-  size: {
-    type: [String, Number],
-    default: '82%',
-  },
   isMobile: {
     type: Boolean,
     default: false,
@@ -154,6 +148,7 @@ const {
   selectedUserIds,
   draft: userDraft,
   load: loadUsers,
+  resetManager,
   handleUpdated: handleUsersUpdated,
   clearRefresh: clearUsersRefreshTimer,
   isDeletable: isUserDeletable,

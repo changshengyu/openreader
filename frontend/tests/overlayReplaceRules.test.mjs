@@ -204,3 +204,16 @@ test('removes one or many rules and clears their selections', async () => {
   assert.deepEqual(fixture.controller.rules.value, [])
   assert.deepEqual(fixture.controller.selectedIds.value, [])
 })
+
+test('clears only manager list state when its root dialog closes', async () => {
+  const fixture = createController()
+  await fixture.controller.load()
+  fixture.controller.selectedIds.value = [1]
+  fixture.controller.openEditor({ id: 2, name: '正文', pattern: 'body' })
+
+  fixture.controller.resetManager()
+
+  assert.deepEqual(fixture.controller.rules.value, [])
+  assert.deepEqual(fixture.controller.selectedIds.value, [])
+  assert.equal(fixture.controller.dialogVisible.value, true, 'the independent editor must survive a manager-only close')
+})

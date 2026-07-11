@@ -44,11 +44,14 @@ export function useOverlayReplaceRules(options) {
   const scheduleTimeout = options.setTimeout || globalThis.setTimeout
   const cancelTimeout = options.clearTimeout || globalThis.clearTimeout
   let refreshTimer
+  let managerRequest = 0
 
   async function load() {
+    const request = ++managerRequest
     loading.value = true
     try {
       const { data } = await options.listReplaceRules()
+      if (request !== managerRequest) return
       rules.value = Array.isArray(data)
         ? data.map(normalizeOverlayReplaceRule)
         : []
@@ -56,9 +59,10 @@ export function useOverlayReplaceRules(options) {
         rules.value.some(rule => rule.id === id)
       ))
     } catch (error) {
+      if (request !== managerRequest) return
       options.onError(error, '加载替换规则失败')
     } finally {
-      loading.value = false
+      if (request === managerRequest) loading.value = false
     }
   }
 
@@ -66,6 +70,15 @@ export function useOverlayReplaceRules(options) {
     if (!refreshTimer) return
     cancelTimeout(refreshTimer)
     refreshTimer = undefined
+  }
+
+  function resetManager() {
+    managerRequest += 1
+    clearRefresh()
+    rules.value = []
+    selectedIds.value = []
+    loading.value = false
+    importing.value = false
   }
 
   function scheduleRefresh() {
@@ -297,6 +310,7 @@ export function useOverlayReplaceRules(options) {
     testText,
     testResult,
     load,
+    resetManager,
     handleUpdated,
     clearRefresh,
     changeSelection,
