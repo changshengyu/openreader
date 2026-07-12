@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 
@@ -50,7 +51,7 @@ type epubManifestItem struct {
 }
 
 func ParseEPUB(data []byte) (ParsedBook, error) {
-	return ParseEPUBWithRule(data, "")
+	return ParseEPUBWithLimits(data, "", LegacyLocalBookParseLimits())
 }
 
 type epubChapter struct {
@@ -65,17 +66,22 @@ type epubTOCEntry struct {
 }
 
 func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
-	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	return ParseEPUBWithLimits(data, rule, LegacyLocalBookParseLimits())
+}
+
+func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) (ParsedBook, error) {
+	limits = limits.normalized()
+	reader, err := openEPUBArchive(data, limits)
 	if err != nil {
 		return ParsedBook{}, err
 	}
 
-	opfPath, err := epubOPFPath(reader)
+	opfPath, err := epubOPFPath(reader, limits)
 	if err != nil {
 		return ParsedBook{}, err
 	}
 
-	opfBytes, err := readZipFile(reader, opfPath)
+	opfBytes, err := readEPUBZipFile(reader, opfPath, limits.MaxArchiveEntryBytes)
 	if err != nil {
 		return ParsedBook{}, err
 	}
@@ -100,6 +106,7 @@ func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
 	}
 
 	spineChapters := make([]epubChapter, 0, len(pkg.Spine.ItemRefs))
+	var parsedTextBytes int64
 	for _, ref := range pkg.Spine.ItemRefs {
 		item, ok := manifest[ref.IDRef]
 		if !ok || !isReadableEPUBItem(item.MediaType) {
@@ -111,7 +118,7 @@ func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
 			href = item.Href
 		}
 		chapterPath := path.Clean(path.Join(baseDir, href))
-		chapterBytes, err := readZipFile(reader, chapterPath)
+		chapterBytes, err := readEPUBZipFile(reader, chapterPath, limits.MaxArchiveEntryBytes)
 		if err != nil {
 			continue
 		}
@@ -120,6 +127,10 @@ func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
+		if int64(len(content)) > limits.MaxParsedTextBytes-parsedTextBytes {
+			return ParsedBook{}, fmt.Errorf("%w: EPUB extracted text exceeds the limit", ErrLocalBookParseLimit)
+		}
+		parsedTextBytes += int64(len(content))
 		spineChapters = append(spineChapters, epubChapter{
 			Path:    canonicalEPUBPath(chapterPath),
 			Title:   title,
@@ -130,7 +141,7 @@ func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
 	if len(spineChapters) == 0 {
 		return ParsedBook{}, errors.New("no readable epub chapters found")
 	}
-	tocEntries := epubTOCEntries(reader, pkg, manifest, baseDir)
+	tocEntries := epubTOCEntries(reader, pkg, manifest, baseDir, limits.MaxArchiveEntryBytes)
 	book.Chapters = buildEPUBChapters(spineChapters, tocEntries, rule)
 	return book, nil
 }
@@ -220,10 +231,10 @@ func normalizeEPUBRule(rule string) string {
 	}
 }
 
-func epubTOCEntries(reader *zip.Reader, pkg epubPackage, manifest map[string]epubManifestItem, baseDir string) []epubTOCEntry {
+func epubTOCEntries(reader *zip.Reader, pkg epubPackage, manifest map[string]epubManifestItem, baseDir string, maxEntryBytes int64) []epubTOCEntry {
 	for _, item := range pkg.Manifest.Items {
 		if hasEPUBProperty(item.Properties, "nav") {
-			if entries := parseEPUBNav(reader, baseDir, item.Href); len(entries) > 0 {
+			if entries := parseEPUBNav(reader, baseDir, item.Href, maxEntryBytes); len(entries) > 0 {
 				return entries
 			}
 		}
@@ -231,14 +242,14 @@ func epubTOCEntries(reader *zip.Reader, pkg epubPackage, manifest map[string]epu
 	ncxID := strings.TrimSpace(pkg.Spine.TOC)
 	if ncxID != "" {
 		if item, ok := manifest[ncxID]; ok {
-			if entries := parseEPUBNCX(reader, baseDir, item.Href); len(entries) > 0 {
+			if entries := parseEPUBNCX(reader, baseDir, item.Href, maxEntryBytes); len(entries) > 0 {
 				return entries
 			}
 		}
 	}
 	for _, item := range pkg.Manifest.Items {
 		if strings.EqualFold(item.MediaType, "application/x-dtbncx+xml") {
-			if entries := parseEPUBNCX(reader, baseDir, item.Href); len(entries) > 0 {
+			if entries := parseEPUBNCX(reader, baseDir, item.Href, maxEntryBytes); len(entries) > 0 {
 				return entries
 			}
 		}
@@ -255,9 +266,9 @@ func hasEPUBProperty(properties string, target string) bool {
 	return false
 }
 
-func parseEPUBNav(reader *zip.Reader, baseDir string, href string) []epubTOCEntry {
+func parseEPUBNav(reader *zip.Reader, baseDir string, href string, maxEntryBytes int64) []epubTOCEntry {
 	navPath := resolveEPUBPath(baseDir, href)
-	data, err := readZipFile(reader, navPath)
+	data, err := readEPUBZipFile(reader, navPath, maxEntryBytes)
 	if err != nil {
 		return nil
 	}
@@ -314,9 +325,9 @@ type epubNCXPoint struct {
 	Points []epubNCXPoint `xml:"navPoint"`
 }
 
-func parseEPUBNCX(reader *zip.Reader, baseDir string, href string) []epubTOCEntry {
+func parseEPUBNCX(reader *zip.Reader, baseDir string, href string, maxEntryBytes int64) []epubTOCEntry {
 	ncxPath := resolveEPUBPath(baseDir, href)
-	data, err := readZipFile(reader, ncxPath)
+	data, err := readEPUBZipFile(reader, ncxPath, maxEntryBytes)
 	if err != nil {
 		return nil
 	}
@@ -362,8 +373,8 @@ func canonicalEPUBPath(value string) string {
 	return path.Clean(value)
 }
 
-func epubOPFPath(reader *zip.Reader) (string, error) {
-	data, err := readZipFile(reader, "META-INF/container.xml")
+func epubOPFPath(reader *zip.Reader, limits LocalBookParseLimits) (string, error) {
+	data, err := readEPUBZipFile(reader, "META-INF/container.xml", limits.MaxArchiveEntryBytes)
 	if err != nil {
 		return "", err
 	}
@@ -374,15 +385,19 @@ func epubOPFPath(reader *zip.Reader) (string, error) {
 	}
 	for _, rootfile := range container.Rootfiles {
 		if rootfile.FullPath != "" {
-			return rootfile.FullPath, nil
+			return normalizeEPUBArchivePath(rootfile.FullPath)
 		}
 	}
 	return "", errors.New("missing opf rootfile")
 }
 
-func readZipFile(reader *zip.Reader, name string) ([]byte, error) {
+func readEPUBZipFile(reader *zip.Reader, name string, maxBytes int64) ([]byte, error) {
 	for _, file := range reader.File {
-		if file.Name != name {
+		canonical, err := normalizeEPUBArchivePath(file.Name)
+		if err != nil {
+			return nil, err
+		}
+		if canonical != name {
 			continue
 		}
 		opened, err := file.Open()
@@ -390,9 +405,91 @@ func readZipFile(reader *zip.Reader, name string) ([]byte, error) {
 			return nil, err
 		}
 		defer opened.Close()
-		return io.ReadAll(opened)
+		data, err := io.ReadAll(io.LimitReader(opened, maxBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(data)) > maxBytes {
+			return nil, fmt.Errorf("%w: EPUB entry exceeds the limit", ErrLocalBookParseLimit)
+		}
+		return data, nil
 	}
 	return nil, fmt.Errorf("zip file not found: %s", name)
+}
+
+func openEPUBArchive(data []byte, limits LocalBookParseLimits) (*zip.Reader, error) {
+	if int64(len(data)) > limits.MaxArchiveBytes {
+		return nil, fmt.Errorf("%w: EPUB archive is too large", ErrLocalBookParseLimit)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, err
+	}
+	if len(reader.File) > limits.MaxArchiveEntries {
+		return nil, fmt.Errorf("%w: EPUB contains too many entries", ErrLocalBookParseLimit)
+	}
+
+	seen := make(map[string]struct{}, len(reader.File))
+	var total uint64
+	for _, file := range reader.File {
+		canonical, err := normalizeEPUBArchivePath(file.Name)
+		if err != nil {
+			return nil, err
+		}
+		if canonical == "" {
+			continue
+		}
+		if file.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%w: EPUB symbolic links are not allowed", ErrLocalBookParseLimit)
+		}
+		key := strings.ToLower(canonical)
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("%w: duplicate EPUB archive path", ErrLocalBookParseLimit)
+		}
+		seen[key] = struct{}{}
+		if file.FileInfo().IsDir() || strings.HasSuffix(file.Name, "/") {
+			continue
+		}
+		if file.UncompressedSize64 > uint64(limits.MaxArchiveEntryBytes) {
+			return nil, fmt.Errorf("%w: EPUB entry is too large", ErrLocalBookParseLimit)
+		}
+		if ^uint64(0)-total < file.UncompressedSize64 {
+			return nil, fmt.Errorf("%w: EPUB expanded size overflows", ErrLocalBookParseLimit)
+		}
+		total += file.UncompressedSize64
+		if total > uint64(limits.MaxArchiveExpandedBytes) {
+			return nil, fmt.Errorf("%w: EPUB expands beyond the total limit", ErrLocalBookParseLimit)
+		}
+	}
+	return reader, nil
+}
+
+func normalizeEPUBArchivePath(name string) (string, error) {
+	if strings.ContainsRune(name, '\x00') || strings.Contains(name, "\\") {
+		return "", fmt.Errorf("%w: malformed EPUB archive path", ErrLocalBookParseLimit)
+	}
+	if strings.HasPrefix(name, "/") || hasEPUBWindowsDrivePrefix(name) {
+		return "", fmt.Errorf("%w: absolute EPUB archive path", ErrLocalBookParseLimit)
+	}
+	for _, segment := range strings.Split(name, "/") {
+		if segment == ".." {
+			return "", fmt.Errorf("%w: EPUB archive path traversal", ErrLocalBookParseLimit)
+		}
+	}
+	cleaned := path.Clean(name)
+	if cleaned == "." {
+		return "", nil
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") || path.IsAbs(cleaned) {
+		return "", fmt.Errorf("%w: EPUB archive path escaped root", ErrLocalBookParseLimit)
+	}
+	return cleaned, nil
+}
+
+func hasEPUBWindowsDrivePrefix(value string) bool {
+	return len(value) >= 2 &&
+		((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z')) &&
+		value[1] == ':'
 }
 
 func isReadableEPUBItem(mediaType string) bool {

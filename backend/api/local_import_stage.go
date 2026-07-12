@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 )
 
 const localImportStageLifetime = 24 * time.Hour
+const localImportStageCleanupInterval = time.Hour
 
 const defaultMaxLocalImportBytes int64 = 128 * 1024 * 1024
 
@@ -41,7 +43,7 @@ func (s *Server) stageLocalImport(userID uint, fileName string, extension string
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	s.cleanupExpiredLocalImportStages(dir)
+	cleanupLocalImportStageDir(dir, time.Now())
 
 	metadata := localImportStageMetadata{
 		FileName:  filepath.Base(fileName),
@@ -153,26 +155,88 @@ func validLocalImportToken(token string) bool {
 	return err == nil && len(decoded) == 24
 }
 
-func (s *Server) cleanupExpiredLocalImportStages(dir string) {
+func StartLocalImportStageCleanup(ctx context.Context, cacheDir string) {
+	CleanupExpiredLocalImportStages(cacheDir)
+	ticker := time.NewTicker(localImportStageCleanupInterval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				CleanupExpiredLocalImportStages(cacheDir)
+			}
+		}
+	}()
+}
+
+func CleanupExpiredLocalImportStages(cacheDir string) {
+	root := filepath.Join(cacheDir, "import-previews")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, entry := range entries {
+		if !entry.IsDir() || !validLocalImportStageDirectoryName(entry.Name()) {
+			continue
+		}
+		cleanupLocalImportStageDir(filepath.Join(root, entry.Name()), now)
+	}
+}
+
+func validLocalImportStageDirectoryName(value string) bool {
+	_, err := strconv.ParseUint(value, 10, 64)
+	return err == nil && value != ""
+}
+
+func cleanupLocalImportStageDir(dir string, now time.Time) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	cutoff := time.Now().Add(-localImportStageLifetime)
+	cutoff := now.Add(-localImportStageLifetime)
+	metadataTokens := make(map[string]bool)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		info, err := entry.Info()
-		if err != nil || info.ModTime().After(cutoff) {
+		token := strings.TrimSuffix(entry.Name(), ".json")
+		if !validLocalImportToken(token) {
 			continue
 		}
-		token := strings.TrimSuffix(entry.Name(), ".json")
-		s.removeStagedLocalImportFromDir(dir, token)
+		metadataPath := filepath.Join(dir, entry.Name())
+		encoded, err := os.ReadFile(metadataPath)
+		var metadata localImportStageMetadata
+		if err != nil || json.Unmarshal(encoded, &metadata) != nil || metadata.CreatedAt.IsZero() || metadata.CreatedAt.Before(cutoff) {
+			removeStagedLocalImportFromDir(dir, token)
+			continue
+		}
+		dataPath, _ := localImportStagePaths(dir, token)
+		if info, err := os.Stat(dataPath); err != nil || info.IsDir() {
+			removeStagedLocalImportFromDir(dir, token)
+			continue
+		}
+		metadataTokens[token] = true
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".book") {
+			continue
+		}
+		token := strings.TrimSuffix(entry.Name(), ".book")
+		if !validLocalImportToken(token) || metadataTokens[token] {
+			continue
+		}
+		info, err := entry.Info()
+		if err == nil && !info.ModTime().After(cutoff) {
+			removeStagedLocalImportFromDir(dir, token)
+		}
 	}
 }
 
-func (s *Server) removeStagedLocalImportFromDir(dir string, token string) {
+func removeStagedLocalImportFromDir(dir string, token string) {
 	if !validLocalImportToken(token) {
 		return
 	}

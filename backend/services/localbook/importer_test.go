@@ -1,6 +1,8 @@
 package localbook
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +10,7 @@ import (
 
 	"openreader/backend/config"
 	readerdb "openreader/backend/db"
+	"openreader/backend/engine"
 	"openreader/backend/models"
 )
 
@@ -133,5 +136,59 @@ func TestImporterUsesCustomTxtTocRule(t *testing.T) {
 	}
 	if chapters[0].Title != "== 第一节 ==" || chapters[1].Title != "== 第二节 ==" {
 		t.Fatalf("unexpected chapters: %+v", chapters)
+	}
+}
+
+func TestImporterRejectsArchiveLimitsBeforeCreatingBookOrLibraryArchive(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:           filepath.Join(root, "data"),
+		CacheDir:          filepath.Join(root, "cache"),
+		LibraryDir:        filepath.Join(root, "library"),
+		DatabasePath:      filepath.Join(root, "data", "openreader.db"),
+		MaxArchiveEntries: 1,
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "limit-tester", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for _, name := range []string{"001.jpg", "002.jpg"} {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = NewImporter(cfg, database).Import(ImportRequest{
+		UserID: user.ID, UserName: user.Username, FileName: "limit.cbz", Extension: ".cbz", Data: archive.Bytes(),
+	})
+	if !errors.Is(err, ErrParseFailed) || !errors.Is(err, engine.ErrLocalBookParseLimit) {
+		t.Fatalf("archive-limit import error = %v", err)
+	}
+	var books int64
+	if err := database.Model(&models.Book{}).Where("user_id = ?", user.ID).Count(&books).Error; err != nil {
+		t.Fatal(err)
+	}
+	if books != 0 {
+		t.Fatalf("rejected archive must not create a book, got %d", books)
+	}
+	if _, err := os.Stat(cfg.LibraryDir); !os.IsNotExist(err) {
+		t.Fatalf("rejected archive must not create a library archive, stat err=%v", err)
 	}
 }

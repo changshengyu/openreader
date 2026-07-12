@@ -298,3 +298,62 @@ func TestLocalImportStageRejectsOversizedInputBeforePersistingPreview(t *testing
 		t.Fatalf("oversized mounted input: expected size error, got %v", err)
 	}
 }
+
+func TestImportStageCleanupRemovesExpiredAndOrphanedFilesAcrossIdleUserDirectories(t *testing.T) {
+	_, server := setupTestServer(t)
+
+	freshToken, err := server.stageLocalImport(1, "fresh.txt", ".txt", []byte("第一章 新鲜\n正文"))
+	if err != nil {
+		t.Fatalf("stage fresh preview: %v", err)
+	}
+	expiredToken, err := server.stageLocalImport(2, "expired.txt", ".txt", []byte("第一章 过期\n正文"))
+	if err != nil {
+		t.Fatalf("stage expired preview: %v", err)
+	}
+	expiredDataPath, expiredMetadataPath := localImportStagePaths(server.localImportStageDir(2), expiredToken)
+	encoded, err := os.ReadFile(expiredMetadataPath)
+	if err != nil {
+		t.Fatalf("read expired metadata: %v", err)
+	}
+	var expiredMetadata localImportStageMetadata
+	if err := json.Unmarshal(encoded, &expiredMetadata); err != nil {
+		t.Fatalf("decode expired metadata: %v", err)
+	}
+	expiredMetadata.CreatedAt = time.Now().Add(-localImportStageLifetime - time.Minute)
+	encoded, err = json.Marshal(expiredMetadata)
+	if err != nil {
+		t.Fatalf("encode expired metadata: %v", err)
+	}
+	if err := os.WriteFile(expiredMetadataPath, encoded, 0o600); err != nil {
+		t.Fatalf("write expired metadata: %v", err)
+	}
+
+	orphanDir := server.localImportStageDir(3)
+	if err := os.MkdirAll(orphanDir, 0o700); err != nil {
+		t.Fatalf("create orphan stage directory: %v", err)
+	}
+	orphanToken := strings.Repeat("a", 48)
+	orphanDataPath, _ := localImportStagePaths(orphanDir, orphanToken)
+	if err := os.WriteFile(orphanDataPath, []byte("orphan"), 0o600); err != nil {
+		t.Fatalf("write orphan stage data: %v", err)
+	}
+	old := time.Now().Add(-localImportStageLifetime - time.Minute)
+	if err := os.Chtimes(orphanDataPath, old, old); err != nil {
+		t.Fatalf("age orphan stage data: %v", err)
+	}
+
+	CleanupExpiredLocalImportStages(server.cfg.CacheDir)
+
+	if _, err := os.Stat(expiredDataPath); !os.IsNotExist(err) {
+		t.Fatalf("expired staged data must be removed by background cleanup, got %v", err)
+	}
+	if _, err := os.Stat(expiredMetadataPath); !os.IsNotExist(err) {
+		t.Fatalf("expired staged metadata must be removed by background cleanup, got %v", err)
+	}
+	if _, err := os.Stat(orphanDataPath); !os.IsNotExist(err) {
+		t.Fatalf("expired orphan stage data must be removed, got %v", err)
+	}
+	if _, _, err := server.loadStagedLocalImport(1, freshToken); err != nil {
+		t.Fatalf("fresh staged preview must survive global cleanup: %v", err)
+	}
+}

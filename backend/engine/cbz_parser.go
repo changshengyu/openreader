@@ -38,19 +38,32 @@ type cbzComicInfo struct {
 }
 
 func ParseCBZ(data []byte) (ParsedBook, error) {
-	if int64(len(data)) > maxCBZArchiveBytes {
-		return ParsedBook{}, errors.New("cbz archive is too large")
+	return parseCBZWithLimits(data, LocalBookParseLimits{
+		MaxArchiveBytes:         maxCBZArchiveBytes,
+		MaxArchiveEntries:       maxCBZEntries,
+		MaxArchiveEntryBytes:    maxCBZEntryBytes,
+		MaxArchiveExpandedBytes: maxCBZTotalBytes,
+	})
+}
+
+func ParseCBZWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {
+	return parseCBZWithLimits(data, limits.normalized())
+}
+
+func parseCBZWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {
+	if int64(len(data)) > limits.MaxArchiveBytes {
+		return ParsedBook{}, fmt.Errorf("%w: CBZ archive is too large", ErrLocalBookParseLimit)
 	}
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return ParsedBook{}, err
 	}
-	return parseCBZReader(reader)
+	return parseCBZReaderWithLimits(reader, limits)
 }
 
-func parseCBZReader(reader *zip.Reader) (ParsedBook, error) {
-	if len(reader.File) > maxCBZEntries {
-		return ParsedBook{}, errors.New("cbz contains too many entries")
+func parseCBZReaderWithLimits(reader *zip.Reader, limits LocalBookParseLimits) (ParsedBook, error) {
+	if len(reader.File) > limits.MaxArchiveEntries {
+		return ParsedBook{}, fmt.Errorf("%w: CBZ contains too many entries", ErrLocalBookParseLimit)
 	}
 
 	seen := make(map[string]bool, len(reader.File))
@@ -78,15 +91,15 @@ func parseCBZReader(reader *zip.Reader) (ParsedBook, error) {
 		if isDir {
 			continue
 		}
-		if file.UncompressedSize64 > maxCBZEntryBytes {
-			return ParsedBook{}, fmt.Errorf("cbz entry %q is too large", canonical)
+		if file.UncompressedSize64 > uint64(limits.MaxArchiveEntryBytes) {
+			return ParsedBook{}, fmt.Errorf("%w: CBZ entry %q is too large", ErrLocalBookParseLimit, canonical)
 		}
 		if ^uint64(0)-total < file.UncompressedSize64 {
-			return ParsedBook{}, errors.New("cbz expanded size overflows")
+			return ParsedBook{}, fmt.Errorf("%w: CBZ expanded size overflows", ErrLocalBookParseLimit)
 		}
 		total += file.UncompressedSize64
-		if total > maxCBZTotalBytes {
-			return ParsedBook{}, errors.New("cbz expands beyond the total limit")
+		if total > uint64(limits.MaxArchiveExpandedBytes) {
+			return ParsedBook{}, fmt.Errorf("%w: CBZ expands beyond the total limit", ErrLocalBookParseLimit)
 		}
 
 		if strings.EqualFold(path.Base(canonical), "ComicInfo.xml") {

@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -12,6 +13,11 @@ import (
 // ParsePDF extracts readable text from a PDF file buffer.
 // It treats each page as a separate chapter and uses the PDF content as chapter text.
 func ParsePDF(data []byte) (ParsedBook, error) {
+	return ParsePDFWithLimits(data, LegacyLocalBookParseLimits())
+}
+
+func ParsePDFWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {
+	limits = limits.normalized()
 	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return ParsedBook{}, errors.New("failed to open PDF, treating as single chapter")
@@ -19,6 +25,9 @@ func ParsePDF(data []byte) (ParsedBook, error) {
 
 	var builder strings.Builder
 	pageCount := reader.NumPage()
+	if pageCount > limits.MaxPDFPages {
+		return ParsedBook{}, fmt.Errorf("%w: PDF contains too many pages", ErrLocalBookParseLimit)
+	}
 
 	for pageIndex := 1; pageIndex <= pageCount; pageIndex++ {
 		page := reader.Page(pageIndex)
@@ -34,6 +43,13 @@ func ParsePDF(data []byte) (ParsedBook, error) {
 		text = strings.TrimSpace(text)
 		if text == "" {
 			continue
+		}
+		separatorBytes := 0
+		if builder.Len() > 0 {
+			separatorBytes = 2
+		}
+		if int64(len(text)+separatorBytes) > limits.MaxParsedTextBytes-int64(builder.Len()) {
+			return ParsedBook{}, fmt.Errorf("%w: PDF extracted text exceeds the limit", ErrLocalBookParseLimit)
 		}
 
 		if builder.Len() > 0 {

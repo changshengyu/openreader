@@ -2,11 +2,9 @@ package api
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -232,14 +230,35 @@ func webdavDestinationPath(value string) (string, bool) {
 
 // ---------- Reading app backup restoration ----------
 
+const backupMultipartEnvelopeBytes int64 = 1 << 20
+
 func (s *Server) importLegadoBackup(c *gin.Context) {
 	if !s.requireStoreAccess(c) {
 		return
 	}
+	limits := s.backupRestoreLimits()
+	if c.Request.ContentLength > limits.MaxCompressedBytes+backupMultipartEnvelopeBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limits.MaxCompressedBytes+backupMultipartEnvelopeBytes)
 	userID, _ := middleware.UserID(c)
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file is required"})
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(fileHeader.Filename), ".zip") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file must be a zip archive"})
+		return
+	}
+	if fileHeader.Size > limits.MaxCompressedBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return
 	}
 
@@ -250,15 +269,15 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
+	data, err := readBoundedBackup(file, limits.MaxCompressedBytes)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read backup"})
+		writeBackupRestoreError(c, err)
 		return
 	}
 
 	result, err := s.restoreLegadoBackupData(data, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeBackupRestoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -278,6 +297,10 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
 		return
 	}
+	if !strings.EqualFold(filepath.Ext(strings.TrimSpace(req.Path)), ".zip") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file must be a zip archive"})
+		return
+	}
 	filePath, _, ok := s.webdavPath(c, req.Path)
 	if !ok {
 		return
@@ -287,17 +310,39 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file not found"})
 		return
 	}
-	data, err := os.ReadFile(filePath)
+	limits := s.backupRestoreLimits()
+	if info.Size() > limits.MaxCompressedBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
+		return
+	}
+	file, err := os.Open(filePath)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read backup file"})
 		return
 	}
+	defer file.Close()
+	data, err := readBoundedBackup(file, limits.MaxCompressedBytes)
+	if err != nil {
+		writeBackupRestoreError(c, err)
+		return
+	}
 	result, err := s.restoreLegadoBackupData(data, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeBackupRestoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func writeBackupRestoreError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, errBackupRestoreTooLarge):
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
+	case errors.Is(err, errBackupArchiveLimit):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "backup archive exceeds safety limits"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid backup package"})
+	}
 }
 
 func (s *Server) importFromWebDAV(c *gin.Context) {
@@ -525,53 +570,68 @@ func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStore
 }
 
 func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error) {
-	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	archive, err := newBackupRestoreArchive(data, s.backupRestoreLimits())
 	if err != nil {
-		return nil, errors.New("invalid backup zip")
+		return nil, err
 	}
 
 	var sourcesCount, rssSourcesCount, booksCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
 
-	for _, zipFile := range zipReader.File {
+	for _, entry := range archive.entries {
+		zipFile := entry.file
+		entryData, err := archive.dataFor(zipFile)
+		if err != nil {
+			return nil, err
+		}
 		switch {
-		case strings.HasSuffix(zipFile.Name, "bookSource.json"):
-			n, _ := s.restoreSourcesFromZip(zipFile)
+		case strings.HasSuffix(entry.name, "bookSource.json"):
+			n, _ := s.restoreSourcesFromData(entryData)
 			sourcesCount += n
-		case strings.HasSuffix(zipFile.Name, "rssSources.json"):
-			n, _ := s.restoreRSSSourcesFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "rssSources.json"):
+			n, _ := s.restoreRSSSourcesFromData(entryData, userID)
 			rssSourcesCount += n
-		case strings.HasSuffix(zipFile.Name, "userSettings.json"):
-			n, _ := s.restoreUserSettingsFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "userSettings.json"):
+			n, _ := s.restoreUserSettingsFromData(entryData, userID)
 			settingsCount += n
-		case strings.HasSuffix(zipFile.Name, "categories.json"):
-			n, _ := s.restoreCategoriesFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "categories.json"):
+			n, _ := s.restoreCategoriesFromData(entryData, userID)
 			categoriesCount += n
 		}
 	}
 
-	for _, zipFile := range zipReader.File {
+	for _, entry := range archive.entries {
+		zipFile := entry.file
+		entryData, err := archive.dataFor(zipFile)
+		if err != nil {
+			return nil, err
+		}
 		switch {
-		case strings.HasSuffix(zipFile.Name, "myBookShelf.json"),
-			strings.HasSuffix(zipFile.Name, "bookshelf.json"):
-			restoredBooks, restoredProgress, _ := s.restoreBookshelfFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "myBookShelf.json"),
+			strings.HasSuffix(entry.name, "bookshelf.json"):
+			restoredBooks, restoredProgress, _ := s.restoreBookshelfFromData(entryData, userID)
 			booksCount += restoredBooks
 			progressCount += restoredProgress
 		}
 	}
 
-	for _, zipFile := range zipReader.File {
+	for _, entry := range archive.entries {
+		zipFile := entry.file
+		entryData, err := archive.dataFor(zipFile)
+		if err != nil {
+			return nil, err
+		}
 		switch {
-		case strings.HasSuffix(zipFile.Name, "bookmarks.json"):
-			n, _ := s.restoreBookmarksFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "bookmarks.json"):
+			n, _ := s.restoreBookmarksFromData(entryData, userID)
 			bookmarksCount += n
-		case strings.HasSuffix(zipFile.Name, "replaceRules.json"):
-			n, _ := s.restoreReplaceRulesFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "replaceRules.json"):
+			n, _ := s.restoreReplaceRulesFromData(entryData, userID)
 			replaceRulesCount += n
-		case strings.HasSuffix(zipFile.Name, "readingProgress.json"):
-			n, _ := s.restoreProgressFromZip(zipFile, userID)
+		case strings.HasSuffix(entry.name, "readingProgress.json"):
+			n, _ := s.restoreProgressFromData(entryData, userID)
 			progressCount += n
-		case strings.Contains(zipFile.Name, "bookProgress/"):
-			n, _ := s.restoreProgressFromZip(zipFile, userID)
+		case strings.Contains(entry.name, "bookProgress/"):
+			n, _ := s.restoreProgressFromData(entryData, userID)
 			progressCount += n
 		}
 	}
@@ -600,17 +660,14 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 }
 
 func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreSourcesFromData(data)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreSourcesFromData(data []byte) (int, error) {
 	sources, err := decodeBookSources(data)
 	if err != nil {
 		return 0, err
@@ -621,17 +678,14 @@ func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {
 }
 
 func (s *Server) restoreRSSSourcesFromZip(file *zip.File, userID uint) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreRSSSourcesFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreRSSSourcesFromData(data []byte, userID uint) (int, error) {
 	var sources []rssSourceRequest
 	if err := json.Unmarshal(data, &sources); err != nil {
 		var source rssSourceRequest
@@ -743,17 +797,14 @@ func restoreResultCount(result gin.H, key string) int {
 }
 
 func (s *Server) restoreUserSettingsFromZip(file *zip.File, userID uint) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreUserSettingsFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreUserSettingsFromData(data []byte, userID uint) (int, error) {
 	var settings []models.UserSetting
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return 0, err
@@ -779,17 +830,14 @@ func (s *Server) restoreUserSettingsFromZip(file *zip.File, userID uint) (int, e
 }
 
 func (s *Server) restoreCategoriesFromZip(file *zip.File, userID uint) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreCategoriesFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreCategoriesFromData(data []byte, userID uint) (int, error) {
 	var categories []models.Category
 	if err := json.Unmarshal(data, &categories); err != nil {
 		return 0, err
@@ -817,17 +865,14 @@ func (s *Server) restoreCategoriesFromZip(file *zip.File, userID uint) (int, err
 }
 
 func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, 0, err
 	}
-	defer reader.Close()
+	return s.restoreBookshelfFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, 0, err
-	}
-
+func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, error) {
 	var books []struct {
 		Title           string   `json:"title"`
 		Name            string   `json:"name"`
@@ -925,17 +970,14 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 }
 
 func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreBookmarksFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreBookmarksFromData(data []byte, userID uint) (int, error) {
 	var rows []struct {
 		models.Bookmark
 		BookTitle string `json:"bookTitle"`
@@ -1009,17 +1051,14 @@ func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, erro
 }
 
 func (s *Server) restoreReplaceRulesFromZip(file *zip.File, userID uint) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreReplaceRulesFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreReplaceRulesFromData(data []byte, userID uint) (int, error) {
 	var rules []struct {
 		Name        string `json:"name"`
 		Pattern     string `json:"pattern"`
@@ -1099,17 +1138,14 @@ func (s *Server) restoreBookshelfProgress(userID uint, bookID uint, chapterIndex
 }
 
 func (s *Server) restoreProgressFromZip(file *zip.File, userID uint) (int, error) {
-	reader, err := file.Open()
+	data, err := readBackupZipFile(file)
 	if err != nil {
 		return 0, err
 	}
-	defer reader.Close()
+	return s.restoreProgressFromData(data, userID)
+}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return 0, err
-	}
-
+func (s *Server) restoreProgressFromData(data []byte, userID uint) (int, error) {
 	type progressPayload struct {
 		Name            string `json:"name"`
 		BookName        string `json:"bookName"`

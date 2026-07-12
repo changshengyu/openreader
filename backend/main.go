@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,8 @@ import (
 
 func main() {
 	cfg := config.Load()
+	cleanupContext, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
 
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		log.Fatalf("create data dir: %v", err)
@@ -43,6 +46,7 @@ func main() {
 	}
 
 	hub := readersync.NewHub()
+	api.StartLocalImportStageCleanup(cleanupContext, cfg.CacheDir)
 
 	interval, err := time.ParseDuration(cfg.CheckInterval)
 	if err != nil {

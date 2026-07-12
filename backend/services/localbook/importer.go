@@ -54,12 +54,12 @@ func NewImporter(cfg config.Config, db *gorm.DB) Importer {
 }
 
 func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
-	parsedBook, err := parseUploadedBook(request.Extension, request.Data, request.TOCRule)
+	parsedBook, err := parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedFormat) {
 			return PreviewResult{}, err
 		}
-		return PreviewResult{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		return PreviewResult{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
 	if len(parsedBook.Chapters) == 0 {
 		return PreviewResult{}, ErrNoReadableChapters
@@ -94,12 +94,12 @@ func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
 }
 
 func (importer Importer) Import(request ImportRequest) (models.Book, error) {
-	parsedBook, err := parseUploadedBook(request.Extension, request.Data, request.TOCRule)
+	parsedBook, err := parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedFormat) {
 			return models.Book{}, err
 		}
-		return models.Book{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
 	chapters := parsedBook.Chapters
 	if len(chapters) == 0 {
@@ -218,12 +218,42 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 }
 
 func parseUploadedBook(ext string, data []byte, tocRule string) (engine.ParsedBook, error) {
+	return parseUploadedBookWithLimits(ext, data, tocRule, engine.DefaultLocalBookParseLimits())
+}
+
+func (importer Importer) parseLimits() engine.LocalBookParseLimits {
+	limits := engine.DefaultLocalBookParseLimits()
+	if importer.cfg.MaxImportBytes > 0 {
+		limits.MaxArchiveBytes = importer.cfg.MaxImportBytes
+	}
+	if importer.cfg.MaxArchiveEntries > 0 {
+		limits.MaxArchiveEntries = importer.cfg.MaxArchiveEntries
+	}
+	if importer.cfg.MaxArchiveEntryBytes > 0 {
+		limits.MaxArchiveEntryBytes = importer.cfg.MaxArchiveEntryBytes
+	}
+	if importer.cfg.MaxArchiveExpandedBytes > 0 {
+		limits.MaxArchiveExpandedBytes = importer.cfg.MaxArchiveExpandedBytes
+	}
+	if importer.cfg.MaxPDFPages > 0 {
+		limits.MaxPDFPages = importer.cfg.MaxPDFPages
+	}
+	if importer.cfg.MaxParsedTextBytes > 0 {
+		limits.MaxParsedTextBytes = importer.cfg.MaxParsedTextBytes
+	}
+	if importer.cfg.MaxUMDChapters > 0 {
+		limits.MaxUMDChapters = importer.cfg.MaxUMDChapters
+	}
+	return limits
+}
+
+func parseUploadedBookWithLimits(ext string, data []byte, tocRule string, limits engine.LocalBookParseLimits) (engine.ParsedBook, error) {
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	switch ext {
 	case ".cbz":
-		return engine.ParseCBZ(data)
+		return engine.ParseCBZWithLimits(data, limits)
 	case ".epub":
-		return engine.ParseEPUBWithRule(data, tocRule)
+		return engine.ParseEPUBWithLimits(data, tocRule, limits)
 	case ".txt", ".text", ".md":
 		chapters, err := engine.ParseTXTWithRule(data, tocRule)
 		if err != nil {
@@ -231,9 +261,9 @@ func parseUploadedBook(ext string, data []byte, tocRule string) (engine.ParsedBo
 		}
 		return engine.ParsedBook{Chapters: chapters}, nil
 	case ".pdf":
-		return engine.ParsePDF(data)
+		return engine.ParsePDFWithLimits(data, limits)
 	case ".umd":
-		return engine.ParseUMD(data)
+		return engine.ParseUMDWithLimits(data, limits)
 	default:
 		return engine.ParsedBook{}, ErrUnsupportedFormat
 	}

@@ -52,7 +52,35 @@ Status: implemented in-progress; no database migration is required.
 - LocalStore/WebDAV uploads are atomically staged in their destination directory and accept at most `OPENREADER_MAX_IMPORT_BYTES` (default 128 MiB), so a rejected replacement does not truncate an existing file. A preview copies at most that same amount into `cache/import-previews/<user-id>/<random-token>.book` plus metadata; direct upload and every confirmation reread use the same bound. The cache location is user-private, token entropy is 192 bits, metadata expires after 24 hours, and success/expired-token access removes both files. It is safe to clear this derived cache; it is never part of the source file or library archive.
 - A LocalStore/WebDAV preview retry that supplies an existing `importToken` reads that staged file directly, including when the mounted source was renamed, deleted, or changed after the first preview. A no-match custom TXT rule leaves the token in place, so a later retry/import uses the same bytes. An old client that does not send an `importToken` retains the path-based import fallback.
 - Reader-dev-compatible TXT detection and fallback chunking apply only when a TXT is newly imported or explicitly refreshed/reparsed. Existing imported books, their SQLite rows, `chapters.json`, original archives, and chapter cache files are not rewritten during application startup or a Docker upgrade. This is intentionally a no-migration behavior change for future parsing operations; a user can choose an explicit local refresh/reparse for an old book.
-- Remaining migration/release work: archive expanded-size/entry-count and parser-work limits, expiry cleanup independent of a future request, plus Docker mounted-volume verification.
+- Remaining migration/release work: Docker mounted-volume/backup verification for the completed bounded parser and restore paths.
+
+## P2 import-parser limits and staged-preview cleanup
+
+Status: parser and staged-preview cleanup implementation complete. Backup ZIP restore is documented and implemented in the following section; no SQLite or mounted-root migration is authorized.
+
+- New parser-limit environment values must be additive with documented defaults. An unset deployment keeps the default bounded policy; existing `OPENREADER_MAX_IMPORT_BYTES` remains the byte limit before staging.
+- Configured import limits apply while previewing, importing or explicitly reparsing new bytes. Existing `books`, `chapters`, `chapters.json`, archived originals, cached chapter content and reader progress are never scanned, rewritten or deleted by startup cleanup; lazy recovery of a pre-existing local archive uses a documented wider but still bounded compatibility ceiling instead of retroactively applying the new-upload policy.
+- The preview cleanup worker operates only below `cache/import-previews/<user-id>/`. It may remove an expired token's `.book` and `.json` pair or a stale orphan created by an interrupted stage write. It must not remove a fresh valid pair, any LocalStore/WebDAV source, any `library/` archive, SQLite row or backup file.
+- Parser rejection happens before `ArchiveImportedBook`, category mutation, chapter-row creation, sync broadcast or staged-token consumption. A rejected input leaves the mounted source and existing shelf untouched.
+- Backup ZIP hardening is intentionally separate because it must preserve reader-dev/Legado/OpenReader JSON restore compatibility. This parser/cleanup slice adds no backup-format or restore behavior change.
+
+Required evidence: malformed EPUB/UMD/PDF fixtures; valid-format regression fixtures; expired/fresh/orphan staged-file fixtures across user directories; configuration-default test; full backend tests and mounted-volume smoke after implementation.
+
+Implementation evidence: parser-limit environment values are additive and defaulted; only newly previewed/imported/reparsed bytes use them. The cleanup worker removes only expired/invalid preview pairs and aged orphaned stage files under the existing derived cache root. `backend/engine/import_limits_contract_test.go`, `backend/services/localbook/importer_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/config/config_test.go`, and full `go test ./...` pass. The backup ZIP reader below retains every JSON format and shares the pending Docker mounted-volume smoke.
+
+## P2 backup ZIP restore compatibility and bounds
+
+Status: implemented; release validation pending. Existing backup formats, SQLite rows and mounted roots remain readable.
+
+- Valid OpenReader, reader-dev and Legado backup ZIPs continue to restore the existing sources, RSS sources, user settings, categories, shelf rows, progress, bookmarks and replace rules through their current scoped/upsert compatibility paths. The response count object and sync events remain compatible.
+- A new bounded archive reader is runtime-only: it reads from the uploaded or scoped WebDAV ZIP, validates archive structure before dispatch, and never writes a new backup format, table, column, cache tree or library file.
+- Structural archive failures (compressed cap, entry/path/count/size/total budget, duplicate canonical name, unreadable member) happen before mutation. Existing user rows and mounted files are left intact.
+- Legacy nested progress filenames remain accepted only beneath a normalized `bookProgress/` path. Unsupported names are ignored after a valid archive plan is accepted; no user-controlled ZIP path is extracted to the host filesystem.
+- Existing administrator legacy roots and regular-user private WebDAV roots remain unchanged. The backend `.zip` requirement affects only invalid direct restore requests, not existing valid backup files.
+
+Required evidence: valid reader-dev/Legado/OpenReader fixtures, invalid archive fixtures with no database mutation, multipart and stored-WebDAV size rejection, restore broadcast/count regression, and Docker mounted-volume backup smoke.
+
+Implementation evidence: uploaded and WebDAV recovery read a bounded compressed payload, then `backupRestoreArchive` validates and reads every member before any restore helper receives data. The restore dispatcher consumes that validated byte map rather than reopening ZIP members. `backend/api/backup_restore_contract_test.go` covers unsafe/over-budget structures, no-write structural failure, upload bounds and non-ZIP WebDAV targets; existing `api_test.go` and bookmark backup fixtures preserve reader-dev/Legado/OpenReader restore counts and records. Docker mounted-volume/backup smoke remains the release gate.
 
 ## P2 replace-rule persistence compatibility
 

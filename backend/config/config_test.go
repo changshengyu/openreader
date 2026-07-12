@@ -19,3 +19,57 @@ func TestLoadMaxImportBytesFallsBackForInvalidValues(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadParserLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
+	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRIES", "12")
+	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRY_BYTES", "2048")
+	t.Setenv("OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES", "4096")
+	t.Setenv("OPENREADER_MAX_PDF_PAGES", "13")
+	t.Setenv("OPENREADER_MAX_PARSED_TEXT_BYTES", "8192")
+	t.Setenv("OPENREADER_MAX_UMD_CHAPTERS", "14")
+
+	configured := Load()
+	if configured.MaxArchiveEntries != 12 || configured.MaxArchiveEntryBytes != 2048 ||
+		configured.MaxArchiveExpandedBytes != 4096 || configured.MaxPDFPages != 13 ||
+		configured.MaxParsedTextBytes != 8192 || configured.MaxUMDChapters != 14 {
+		t.Fatalf("configured parser limits = %+v", configured)
+	}
+
+	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRIES", "0")
+	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRY_BYTES", "not-a-number")
+	t.Setenv("OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES", "-1")
+	t.Setenv("OPENREADER_MAX_PDF_PAGES", "0")
+	t.Setenv("OPENREADER_MAX_PARSED_TEXT_BYTES", "not-a-number")
+	t.Setenv("OPENREADER_MAX_UMD_CHAPTERS", "-1")
+
+	defaults := Load()
+	if defaults.MaxArchiveEntries != 20_000 || defaults.MaxArchiveEntryBytes != 128*1024*1024 ||
+		defaults.MaxArchiveExpandedBytes != 512*1024*1024 || defaults.MaxPDFPages != 10_000 ||
+		defaults.MaxParsedTextBytes != 256*1024*1024 || defaults.MaxUMDChapters != 100_000 {
+		t.Fatalf("safe parser defaults = %+v", defaults)
+	}
+}
+
+func TestLoadBackupRestoreLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
+	t.Setenv("OPENREADER_MAX_BACKUP_RESTORE_BYTES", "2048")
+	t.Setenv("OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES", "12")
+	t.Setenv("OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES", "1024")
+	t.Setenv("OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES", "4096")
+
+	configured := Load()
+	if configured.MaxBackupRestoreBytes != 2048 || configured.MaxBackupArchiveEntries != 12 ||
+		configured.MaxBackupArchiveBytes != 1024 || configured.MaxBackupArchiveTotal != 4096 {
+		t.Fatalf("configured backup restore limits = %+v", configured)
+	}
+
+	t.Setenv("OPENREADER_MAX_BACKUP_RESTORE_BYTES", "0")
+	t.Setenv("OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES", "not-a-number")
+	t.Setenv("OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES", "-1")
+	t.Setenv("OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES", "0")
+
+	defaults := Load()
+	if defaults.MaxBackupRestoreBytes != 128*1024*1024 || defaults.MaxBackupArchiveEntries != 5_000 ||
+		defaults.MaxBackupArchiveBytes != 16*1024*1024 || defaults.MaxBackupArchiveTotal != 128*1024*1024 {
+		t.Fatalf("safe backup restore defaults = %+v", defaults)
+	}
+}

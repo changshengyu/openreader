@@ -39,6 +39,17 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## P2 backup restore archive contract
+
+Status: implemented on 2026-07-12 after comparison with reader-dev `Index.vue`, `WebDAV.vue`, `WebdavController.kt`, and `UserController.kt`. The upstream confirmation-before-restore workflow and both reading-app and OpenReader JSON export formats remain unchanged. OpenReader keeps its JWT/WebDAV API adaptation and adds server-side bounds before any persisted data is changed.
+
+| Method / path | Request | Success / side effects | Errors / safety contract |
+|---|---|---|---|
+| `POST /api/backup/restore-legado` | Authenticated multipart field `file`; filename must end in `.zip` (case-insensitive). | `200` preserves existing result counts for sources, RSS, settings, categories, shelf, progress, bookmarks, and replacement rules. All historical JSON locations (`myBookShelf.json`, `bookshelf.json`, nested `bookProgress/`, and OpenReader files) remain readable. | `400 {error}` for missing/non-ZIP/invalid archive, `413 {error}` when compressed input exceeds `OPENREADER_MAX_BACKUP_RESTORE_BYTES` (128 MiB default). Archive headers and fully bounded reads are checked before the first database update: unsafe traversal, symlink, duplicate normalized paths, excessive member count, member size, or total expansion fail with no partial restore. |
+| `POST /api/backup/restore-webdav` | Authenticated JSON `{path}`; the caller-scoped WebDAV path must reference a `.zip` file. | Same restore and count semantics as uploaded restore; the existing UI confirmation remains the overwrite/restore decision point. | `400` if file/path is missing, directory, non-ZIP, or archive validation fails; `413` for an oversized file. The response never exposes server paths or ZIP parser details. |
+
+Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
+
 ## P2 UserManage API contract
 
 Status: extracted on 2026-07-12 from fixed reader-dev `UserManage.vue` and `AddUser.vue`. OpenReader retains JWT/SQLite IDs and manager capability limits, but follows upstream's ordinary-user creation and protected management-account behavior.

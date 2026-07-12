@@ -14,6 +14,11 @@ import (
 var umdMagic = []byte{0x23, 0x54, 0x45, 0x58, 0x54, 0x4E, 0x4F, 0x56}
 
 func ParseUMD(data []byte) (ParsedBook, error) {
+	return ParseUMDWithLimits(data, LegacyLocalBookParseLimits())
+}
+
+func ParseUMDWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {
+	limits = limits.normalized()
 	if len(data) < 256 {
 		return ParsedBook{}, errors.New("file too small for UMD format")
 	}
@@ -75,8 +80,15 @@ func ParseUMD(data []byte) (ParsedBook, error) {
 	if pos+4 > len(umdContent) {
 		return ParsedBook{}, errors.New("truncated UMD chapter count")
 	}
-	chapterCount := int(binary.LittleEndian.Uint32(umdContent[pos : pos+4]))
+	chapterCountValue := uint64(binary.LittleEndian.Uint32(umdContent[pos : pos+4]))
 	pos += 4
+	if chapterCountValue > uint64(limits.MaxUMDChapters) {
+		return ParsedBook{}, fmt.Errorf("%w: UMD declares too many chapters", ErrLocalBookParseLimit)
+	}
+	if chapterCountValue+1 > uint64((len(umdContent)-pos)/4) {
+		return ParsedBook{}, errors.New("truncated UMD offset table")
+	}
+	chapterCount := int(chapterCountValue)
 
 	// --- chapter offsets ---
 	offsets := make([]int, chapterCount+1)
@@ -111,6 +123,9 @@ func ParseUMD(data []byte) (ParsedBook, error) {
 	for i := 0; i < chapterCount && i < len(offsets)-1; i++ {
 		startOffset := offsets[i]
 		endOffset := offsets[i+1]
+		if endOffset < startOffset {
+			return ParsedBook{}, errors.New("invalid UMD chapter offsets")
+		}
 		if startOffset >= len(umdContent) {
 			continue
 		}
