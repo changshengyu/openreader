@@ -32,19 +32,31 @@
         <el-table-column type="selection" width="44" :selectable="isUserDeletable" />
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column prop="role" label="角色" width="90" />
+        <el-table-column prop="lastActiveAt" label="最近活跃" min-width="150">
+          <template #default="{ row }">
+            {{ formatUserTime(row.lastActiveAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="注册时间" min-width="150">
+          <template #default="{ row }">
+            {{ formatUserTime(row.createdAt, '—') }}
+          </template>
+        </el-table-column>
         <el-table-column prop="bookCount" label="书籍" width="80" />
         <el-table-column prop="sourceCount" label="全局书源" width="100" />
         <el-table-column label="权限" min-width="300">
           <template #default="{ row }">
-            <div class="permission-row">
+            <div v-if="isUserMutable(row)" class="permission-row">
               <el-switch v-model="row.canEditSources" size="small" active-text="书源" @change="updateUserPermission(row)" />
               <el-switch v-model="row.canAccessStore" size="small" active-text="书仓" @change="updateUserPermission(row)" />
             </div>
+            <span v-else class="protected-user-label">受保护账号</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="110" fixed="right">
           <template #default="{ row }">
-            <el-button text @click="resetPassword(row)">重置密码</el-button>
+            <el-button v-if="isUserMutable(row)" text @click="resetPassword(row)">重置密码</el-button>
+            <span v-else class="protected-user-label">—</span>
           </template>
         </el-table-column>
       </el-table>
@@ -60,13 +72,15 @@
             <div>
               <strong>{{ user.username }}</strong>
               <span>{{ user.role }} · 书籍 {{ user.bookCount || 0 }} · 全局书源 {{ user.sourceCount || 0 }}</span>
+              <span>最近活跃：{{ formatUserTime(user.lastActiveAt) }} · 注册：{{ formatUserTime(user.createdAt, '—') }}</span>
             </div>
           </header>
-          <div class="permission-row">
+          <div v-if="isUserMutable(user)" class="permission-row">
             <el-switch v-model="user.canEditSources" size="small" active-text="书源" @change="updateUserPermission(user)" />
             <el-switch v-model="user.canAccessStore" size="small" active-text="书仓" @change="updateUserPermission(user)" />
             <el-button size="small" text @click="resetPassword(user)">重置密码</el-button>
           </div>
+          <span v-else class="protected-user-label">受保护账号</span>
         </article>
       </div>
 
@@ -98,12 +112,6 @@
       </el-form-item>
       <el-form-item label="密码">
         <el-input v-model="userDraft.password" type="password" show-password autocomplete="new-password" />
-      </el-form-item>
-      <el-form-item label="角色">
-        <el-select v-model="userDraft.role">
-          <el-option label="普通用户" value="user" />
-          <el-option label="管理员" value="admin" />
-        </el-select>
       </el-form-item>
       <el-form-item label="权限">
         <div class="permission-row">
@@ -152,6 +160,7 @@ const {
   handleUpdated: handleUsersUpdated,
   clearRefresh: clearUsersRefreshTimer,
   isDeletable: isUserDeletable,
+  isMutable: isUserMutable,
   changeSelection: onUserSelectionChange,
   toggleSelection: toggleUserSelection,
   openCreateDialog: openCreateUserDialog,
@@ -186,6 +195,20 @@ function readError(error, fallback) {
     error?.response?.data?.error ||
     fallback
 }
+
+function formatUserTime(value, emptyLabel = '未登录') {
+  if (!value) return emptyLabel
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime()) || date.getFullYear() < 2000) return emptyLabel
+  return date.toLocaleString('zh-CN', {
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 </script>
 
 <style scoped>
@@ -208,7 +231,8 @@ function readError(error, fallback) {
 
 .file-overlay-head span,
 .check-tip,
-.mobile-user-card span {
+.mobile-user-card span,
+.protected-user-label {
   color: var(--app-text-muted);
   font-size: 12px;
 }

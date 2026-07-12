@@ -63,6 +63,9 @@ test('loads users and removes protected accounts from the current selection', as
   assert.equal(fixture.controller.isDeletable(fixture.controller.users.value[0]), false)
   assert.equal(fixture.controller.isDeletable(fixture.controller.users.value[1]), false)
   assert.equal(fixture.controller.isDeletable(fixture.controller.users.value[2]), true)
+  assert.equal(fixture.controller.isMutable(fixture.controller.users.value[0]), false)
+  assert.equal(fixture.controller.isMutable(fixture.controller.users.value[1]), false)
+  assert.equal(fixture.controller.isMutable(fixture.controller.users.value[2]), true)
   assert.equal(fixture.controller.usersLoading.value, false)
 })
 
@@ -109,7 +112,6 @@ test('protects selection and validates before creating a user', async () => {
   assert.deepEqual(fixture.calls[0], ['create', {
     username: 'reader2',
     password: 'secret1',
-    role: 'user',
     canEditSources: true,
     canAccessStore: true,
   }])

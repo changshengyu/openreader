@@ -81,3 +81,11 @@ test('keeps ReplaceRule and UserManage manager roots in upstream-style dialogs',
   assert.match(hostSource, /<OverlayReplaceRules\s+:is-mobile="isMobileOverlay"/, 'ReplaceRule must receive compact-interface state without drawer dimensions')
   assert.match(hostSource, /<OverlayUserManagement\s+:is-mobile="isMobileOverlay"/, 'UserManage must receive compact-interface state without drawer dimensions')
 })
+
+test('keeps UserManage protected rows and metadata aligned with the upstream manager contract', () => {
+  assert.doesNotMatch(userOverlaySource, /<el-select v-model="userDraft\.role"/, 'manager-created users must not expose an administrator role selector')
+  assert.match(userOverlaySource, /prop="lastActiveAt" label="最近活跃"/, 'manager must display upstream-equivalent activity metadata')
+  assert.match(userOverlaySource, /prop="createdAt" label="注册时间"/, 'manager must display upstream-equivalent registration metadata')
+  assert.match(userOverlaySource, /isUserMutable\(row\)/, 'protected rows must gate mutable permission and password controls')
+  assert.match(userOverlaySource, /formatUserTime\(/, 'manager must use one deterministic time/empty-state formatter')
+})

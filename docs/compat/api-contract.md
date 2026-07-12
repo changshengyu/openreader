@@ -39,6 +39,21 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## P2 UserManage API contract
+
+Status: extracted on 2026-07-12 from fixed reader-dev `UserManage.vue` and `AddUser.vue`. OpenReader retains JWT/SQLite IDs and manager capability limits, but follows upstream's ordinary-user creation and protected management-account behavior.
+
+| Method / path | Request | Success / side effects | Auth and errors |
+|---|---|---|---|
+| `GET /api/admin/users` | None. | Returns manager-visible rows with stable current fields: `id`, `username`, `role`, limits/capabilities/counts, `lastActiveAt`, and `createdAt`. | JWT administrator only. A non-admin gets `403` `{"error":{"code":"FORBIDDEN","message":"admin access required"}}`; no user rows leak. |
+| `POST /api/admin/users` | `{username,password,canEditSources?,canAccessStore?,bookLimit?,sourceLimit?}`. `role` may be absent or `user`; `admin` is rejected. | `201` creates exactly one ordinary user and broadcasts one `users_update` after commit. Existing administrator rows are never changed/migrated. | Administrator only. `400` invalid/short username/password or role assignment; `409` duplicate username. |
+| `PUT /api/admin/users/:id` | Current ordinary-user capability/limit fields only. | Updates one ordinary user, then broadcasts one post-commit update. | Administrator only. `403` when `:id` is an administrator, `404` missing id, `400` malformed body. |
+| `PUT /api/admin/users/:id/password` | `{password}` with at least six characters. | Changes one ordinary user's password and broadcasts once. | Administrator only. `403` for administrator target, `404` missing id, `400` invalid password/body. |
+| `POST /api/admin/users/batch-delete` | `{ids:number[]}`. | Deletes only selected ordinary users and their owned database rows in one transaction; emits one update after commit. | Administrator only. `400` empty/protected-only input; the current user and every administrator are excluded. |
+| `POST /api/admin/cleanup-inactive` | None. | Removes inactive ordinary users only. | Administrator only; administrators are never deleted. |
+
+The upstream has user-specific source-default/delete actions. OpenReader's source table is intentionally global, so no equivalent endpoint is added; source editing remains governed by `canEditSources` and existing source routes. All handled errors retain the global `{error}` shape.
+
 ## P0 local TXT preview and staged-reparse contract
 
 Status: implemented and backend/frontend-tested on 2026-07-11 against reader-dev `BookController.kt`, `LocalBook.kt` and `TextFile.kt`. OpenReader retains its JWT/JSON staging adaptation while restoring the upstream distinction between automatic no-TOC fallback and an explicit rule that found no headings.

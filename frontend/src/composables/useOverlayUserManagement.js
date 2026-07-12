@@ -11,7 +11,6 @@ export function useOverlayUserManagement(options) {
   const draft = reactive({
     username: '',
     password: '',
-    role: 'user',
     canEditSources: true,
     canAccessStore: true,
   })
@@ -20,8 +19,12 @@ export function useOverlayUserManagement(options) {
   let refreshTimer
   let managerRequest = 0
 
-  function isDeletable(user) {
+  function isMutable(user) {
     return user.role !== 'admin' && user.id !== options.getCurrentUserId()
+  }
+
+  function isDeletable(user) {
+    return isMutable(user)
   }
 
   async function load() {
@@ -90,7 +93,6 @@ export function useOverlayUserManagement(options) {
     Object.assign(draft, {
       username: '',
       password: '',
-      role: 'user',
       canEditSources: true,
       canAccessStore: true,
     })
@@ -108,7 +110,6 @@ export function useOverlayUserManagement(options) {
       await options.createUser({
         username,
         password: draft.password,
-        role: draft.role,
         canEditSources: draft.canEditSources,
         canAccessStore: draft.canAccessStore,
       })
@@ -219,6 +220,7 @@ export function useOverlayUserManagement(options) {
     handleUpdated,
     clearRefresh,
     isDeletable,
+    isMutable,
     changeSelection,
     toggleSelection,
     openCreateDialog,

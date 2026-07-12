@@ -110,18 +110,15 @@ func (s *Server) createUser(c *gin.Context) {
 	}
 
 	role := strings.TrimSpace(req.Role)
-	if role == "" {
-		role = "user"
-	}
-	if role != "user" && role != "admin" {
-		badRequest(c, "invalid role")
+	if role != "" && role != "user" {
+		badRequest(c, "administrator role assignment is not allowed")
 		return
 	}
 
 	user := models.User{
 		Username:       username,
 		PasswordHash:   string(hash),
-		Role:           role,
+		Role:           "user",
 		BookLimit:      req.BookLimit,
 		SourceLimit:    req.SourceLimit,
 		CanEditSources: true,
@@ -182,6 +179,10 @@ func (s *Server) updateUser(c *gin.Context) {
 		notFound(c, "user not found")
 		return
 	}
+	if user.Role == "admin" {
+		c.JSON(http.StatusForbidden, errResp("FORBIDDEN", "protected administrator cannot be modified"))
+		return
+	}
 
 	var req updateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -240,13 +241,17 @@ func (s *Server) resetUserPassword(c *gin.Context) {
 		return
 	}
 
-	result := s.db.Model(&models.User{}).Where("id = ?", id).Update("password_hash", string(hash))
-	if result.Error != nil {
-		internalError(c, "failed to reset password")
+	var user models.User
+	if err := s.db.First(&user, id).Error; err != nil {
+		notFound(c, "user not found")
 		return
 	}
-	if result.RowsAffected == 0 {
-		notFound(c, "user not found")
+	if user.Role == "admin" {
+		c.JSON(http.StatusForbidden, errResp("FORBIDDEN", "protected administrator password cannot be reset"))
+		return
+	}
+	if err := s.db.Model(&user).Update("password_hash", string(hash)).Error; err != nil {
+		internalError(c, "failed to reset password")
 		return
 	}
 	s.broadcastUsersUpdate("password", []uint{id})
