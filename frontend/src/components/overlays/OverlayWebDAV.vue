@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="overlay.webdavVisible"
-    title="WebDAV"
+    title="WebDAV文件管理"
     width="min(1120px, calc(100vw - 48px))"
     :fullscreen="isMobile"
     class="global-webdav-dialog"

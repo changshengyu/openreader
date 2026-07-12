@@ -4,14 +4,10 @@
       <div v-if="!embedded">
         <h1 class="app-page-title">本地书仓</h1>
       </div>
-      <div v-else class="embedded-store-title">
-        <strong>文件管理</strong>
-        <span>{{ currentPath || 'localStore' }}</span>
-      </div>
       <div class="head-actions">
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button :icon="FolderOpened" @click="createDirectory">新建目录</el-button>
-        <el-upload class="store-batch-command" :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="uploadFile">
+        <el-upload class="store-batch-command" :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd,.cbz" @change="uploadFile">
           <el-button :icon="Upload" :loading="uploading">上传</el-button>
         </el-upload>
         <el-button class="store-batch-command" :disabled="!importableCount || importing" :loading="importing" @click="importCurrentDirectory">
@@ -119,7 +115,7 @@
     <div v-if="remainingItemCount" class="store-load-more">
       <span>已显示 {{ shownItems.length }} / {{ filteredItems.length }} 项</span>
       <el-button @click="showMoreItems">
-        再显示 {{ Math.min(ITEM_RENDER_BATCH_SIZE, remainingItemCount) }} 项
+        加载更多 {{ remainingItemCount }} 个结果
       </el-button>
     </div>
 
@@ -131,7 +127,7 @@
       <el-button type="primary" :disabled="!selectedImportablePaths.length || importing" :loading="importing" @click="importSelected">
         批量加入书架 {{ selectedImportablePaths.length || '' }}
       </el-button>
-      <el-upload :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd" @change="uploadFile">
+      <el-upload :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd,.cbz" @change="uploadFile">
         <el-button :loading="uploading">上传书籍</el-button>
       </el-upload>
       <el-button @click="clearSelection">取消</el-button>
@@ -168,7 +164,10 @@ import LocalBookImportPreviewDialog from '../components/LocalBookImportPreviewDi
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useReaderStore } from '../stores/reader'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
-import { filterLocalStoreItems, limitLocalStoreItems } from '../utils/localStoreItems'
+import {
+  filterLocalStoreItems,
+  visibleLocalStoreItems,
+} from '../utils/localStoreItems'
 
 defineProps({
   embedded: {
@@ -195,8 +194,7 @@ const previewItems = ref([])
 const resultDialog = ref(false)
 const importResults = ref([])
 const windowWidth = ref(currentViewportWidth())
-const ITEM_RENDER_BATCH_SIZE = 100
-const visibleItemLimit = ref(ITEM_RENDER_BATCH_SIZE)
+const showAllItems = ref(false)
 
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
 const importableCount = computed(() => items.value.filter(item => item.importable).length)
@@ -209,14 +207,14 @@ const filteredItems = computed(() => filterLocalStoreItems(items.value, {
   keyword: keyword.value,
   extension: extension.value,
 }))
-const shownItems = computed(() => limitLocalStoreItems(filteredItems.value, visibleItemLimit.value))
+const shownItems = computed(() => visibleLocalStoreItems(filteredItems.value, showAllItems.value))
 const remainingItemCount = computed(() => Math.max(0, filteredItems.value.length - shownItems.value.length))
 const filteredImportablePaths = computed(() => filteredItems.value.filter(item => item.importable).map(item => item.path))
 const selectedImportablePaths = computed(() => selectedRows.value.filter(item => item.importable).map(item => item.path))
 const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 
 watch([keyword, extension], () => {
-  visibleItemLimit.value = ITEM_RENDER_BATCH_SIZE
+  showAllItems.value = false
 })
 
 onMounted(async () => {
@@ -243,7 +241,7 @@ async function load() {
     const { data } = await listLocalStore(currentPath.value, recursiveScan.value)
     currentPath.value = data.path || ''
     items.value = data.items || []
-    visibleItemLimit.value = ITEM_RENDER_BATCH_SIZE
+    showAllItems.value = false
     clearSelection()
   } catch (err) {
     ElMessage.error(readError(err, '加载书仓失败'))
@@ -295,7 +293,7 @@ function selectShownFiles() {
 }
 
 function showMoreItems() {
-  visibleItemLimit.value += ITEM_RENDER_BATCH_SIZE
+  showAllItems.value = true
 }
 
 function clearSelection() {
@@ -528,25 +526,6 @@ function readError(err, fallback) {
 
 .store-head {
   justify-content: space-between;
-}
-
-.embedded-store-title {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.embedded-store-title strong {
-  color: var(--app-text);
-  font-size: 16px;
-}
-
-.embedded-store-title span {
-  overflow: hidden;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .head-actions {

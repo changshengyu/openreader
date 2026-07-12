@@ -12,14 +12,14 @@
         drag
         :show-file-list="false"
         :auto-upload="false"
-        accept=".txt,.text,.md,.epub,.pdf,.umd"
+        accept=".txt,.text,.md,.epub,.pdf,.umd,.cbz"
         @change="pickFile"
       >
         <el-icon class="upload-icon"><UploadFilled /></el-icon>
         <div class="upload-text">
           {{ draft.file
             ? draft.file.name
-            : '拖入或选择 TXT / EPUB / PDF / UMD 文件' }}
+            : '拖入或选择 TXT / EPUB / PDF / UMD / CBZ 文件' }}
         </div>
       </el-upload>
       <el-input

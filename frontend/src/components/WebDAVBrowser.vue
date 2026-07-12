@@ -1,10 +1,7 @@
 <template>
   <section class="webdav-browser">
     <header class="webdav-head">
-      <div>
-        <strong>{{ title }}</strong>
-        <span>{{ currentPathLabel }}</span>
-      </div>
+      <span class="webdav-current-path">{{ currentPathLabel }}</span>
       <div class="webdav-actions">
         <el-select v-model="targetCategoryIds" size="small" placeholder="导入分组（可多选）" multiple clearable class="webdav-category-select">
           <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
@@ -154,11 +151,7 @@ import LocalBookImportPreviewDialog from './LocalBookImportPreviewDialog.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { applyRestoreResult } from '../utils/restoreSync'
 
-const props = defineProps({
-  title: {
-    type: String,
-    default: 'WebDAV 文件管理',
-  },
+defineProps({
   isMobile: {
     type: Boolean,
     default: false,
@@ -431,7 +424,7 @@ function isBackupFile(row) {
 }
 
 function isImportableBookFile(name) {
-  return /\.(txt|text|md|epub|pdf|umd)$/i.test(name || '')
+  return /\.(txt|text|md|epub|pdf|umd|cbz)$/i.test(name || '')
 }
 
 function joinPath(base, name) {
@@ -465,12 +458,7 @@ function readError(err, fallback) {
   gap: 12px;
 }
 
-.webdav-head > div:first-child {
-  display: grid;
-  gap: 2px;
-}
-
-.webdav-head span,
+.webdav-current-path,
 .mobile-file-card p,
 .result-row small {
   color: var(--app-text-muted);

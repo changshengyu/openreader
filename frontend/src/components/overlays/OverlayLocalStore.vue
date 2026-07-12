@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="overlay.localStoreVisible"
-    title="本地书仓"
+    title="书仓文件管理"
     width="min(1120px, calc(100vw - 48px))"
     :fullscreen="isMobile"
     class="global-local-store-dialog"

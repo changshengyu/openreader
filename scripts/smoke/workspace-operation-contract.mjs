@@ -47,7 +47,7 @@ async function installApiMocks(page) {
       return route.fulfill({
         status: 207,
         contentType: 'application/xml',
-        body: '<multistatus><response><propstat><prop><displayname></displayname><iscollection>true</iscollection><getcontentlength>0</getcontentlength><lastmodified></lastmodified></prop></propstat></response></multistatus>',
+        body: '<multistatus><response><propstat><prop><displayname></displayname><iscollection>true</iscollection><getcontentlength>0</getcontentlength><lastmodified></lastmodified></prop></propstat></response><response><propstat><prop><displayname>comic.cbz</displayname><iscollection>false</iscollection><getcontentlength>128</getcontentlength><lastmodified>Wed, 01 Jan 2025 00:00:00 GMT</lastmodified></prop></propstat></response></multistatus>',
       })
     }
     return route.fulfill({ status: 204, body: '' })
@@ -66,7 +66,7 @@ async function installApiMocks(page) {
     if (path === '/categories') return route.fulfill(json([]))
     if (path === '/sources') return route.fulfill(json([]))
     if (path === '/cache/stats') return route.fulfill(json({ files: 0, size: 0, cachedChapters: 0 }))
-    if (path === '/local-store') return route.fulfill(json({ path: '', items: [] }))
+    if (path === '/local-store') return route.fulfill(json({ path: '', items: [{ name: 'comic.cbz', path: 'comic.cbz', extension: '.cbz', size: 128, isDir: false, importable: true }] }))
     if (path === '/backup/list') return route.fulfill(json([]))
     if (path === '/webdav/list') return route.fulfill(json({ path: '', items: [] }))
     if (path === '/rss/sources') return route.fulfill(json([]))
@@ -92,6 +92,19 @@ async function assertRouteIntent(page, expectedOverlay, keep = 'operation-contra
   assert(state.keep === keep, 'legacy redirect must preserve unrelated query values')
 }
 
+async function waitForVisibleExactText(page, selector, text) {
+  await page.waitForFunction(({ selector: rootSelector, expectedText }) => {
+    const root = document.querySelector(rootSelector)
+    if (!root) return false
+    return [...root.querySelectorAll('*')].some(node => {
+      if (node.children.length || node.textContent?.trim() !== expectedText) return false
+      const style = getComputedStyle(node)
+      const rect = node.getBoundingClientRect()
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0
+    })
+  }, { selector, expectedText: text })
+}
+
 async function closeDialog(page, selector, expectedOverlay) {
   await page.locator(`${selector} .el-dialog__headerbtn`).click()
   await page.waitForFunction((overlay) => new URLSearchParams(location.search).get('overlay') !== overlay, expectedOverlay)
@@ -111,10 +124,13 @@ async function assertMobilePanelBlocksClickThrough(page, viewport, selector) {
   assert(pointerEvents !== 'none', `${viewport.width}: operation panel overlay must block pointer events from reaching the workspace`)
 }
 
-async function openLegacyOperation(page, root, viewport, path, selector, overlay, title, usesUpstreamDialog = false) {
+async function openLegacyOperation(page, root, viewport, path, selector, overlay, title, usesUpstreamDialog = false, expectedFileName = '') {
   await page.goto(`${root}${path}`, { waitUntil: 'networkidle' })
   await page.waitForSelector(selector, { timeout: 10000 })
   await page.locator(selector).getByText(title, { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 })
+  if (expectedFileName) {
+    await waitForVisibleExactText(page, selector, expectedFileName)
+  }
   await assertRouteIntent(page, overlay)
   await assertNoHorizontalOverflow(page, `${viewport.width} ${overlay}`)
   if (usesUpstreamDialog) {
@@ -153,9 +169,9 @@ async function runViewport(browser, viewport) {
   await installApiMocks(page)
 
   const root = targetUrl.replace(/\/$/, '')
-  await openLegacyOperation(page, root, viewport, '/local-store?keep=operation-contract', '.global-local-store-dialog', 'local-store', '本地书仓', true)
+  await openLegacyOperation(page, root, viewport, '/local-store?keep=operation-contract', '.global-local-store-dialog', 'local-store', '书仓文件管理', true, 'comic.cbz')
   await openLegacyOperation(page, root, viewport, '/settings?panel=backup&keep=operation-contract', '.global-backup-dialog', 'backup', '备份恢复', true)
-  await openLegacyOperation(page, root, viewport, '/settings?panel=webdav&keep=operation-contract', '.global-webdav-dialog', 'webdav', 'WebDAV', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=webdav&keep=operation-contract', '.global-webdav-dialog', 'webdav', 'WebDAV文件管理', true, 'comic.cbz')
   const firstWebDAVRootRequestCount = await page.evaluate(() => window.__workspaceOperationWebDAVRootRequests())
   await page.goto(`${root}/settings?panel=webdav&keep=operation-contract`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.global-webdav-dialog', { timeout: 10000 })
