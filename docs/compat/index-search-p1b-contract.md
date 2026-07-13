@@ -66,3 +66,24 @@
 - `POST /api/search` 在没有任何启用/选中书源时返回 `400 {"error":"未配置书源"}`。已配置书源若被该用户的失效缓存全部临时抑制，仍返回成功空结果，保持“跳过失效书源”而非误报配置错误。
 - 覆盖了前端偏好兼容、侧栏搜索参数、服务端默认值/无源错误，以及失效书源缓存的回归。全量前端 `npm test` 为 **369 项通过**，`go test ./...` 与 `npm run build` 通过。
 - `scripts/smoke/index-workspace-contract.mjs` 已在真实 Chrome 以 `1440×900`、`390×844`、`360×800` 通过：新会话侧栏搜索发出 24 并发；旧链接的 8 并发保持；搜索、BookInfo 的取消/分组确认/阅读跳转、探索及返回书架均无页面异常和横向溢出。
+
+## 7. 后续续页与跨页结果复审（2026-07-13，仅合同；尚未改动应用代码）
+
+上游证据：`Index.vue#searchBook/#searchBookByEventStream/#loadMore/#showSearchList`、`BookController.kt#searchBookMulti`、`Explore.vue#loadMore`。当前证据：`Search.vue#requestRemoteSearch/#loadMoreRemote`、`Discover.vue#loadMoreBooks`、`indexWorkspace.js`、`backend/api/search.go`。
+
+| 合同层 | 固定上游行为 | 当前 OpenReader 行为 | 判定与改造边界 |
+|---|---|---|---|
+| 续页入口 | 搜索/探索结果均在同一 Index 标题操作区提供“加载更多”；触发时记住列表滚动位置。 | Search/Discover 各自在正文底部维护独立按钮；Search 在 `hasMore=false` 后直接隐藏/禁用。 | **must-fix**：将可见续页动作与结果标题的 Index 工作台职责收敛；保留按钮禁用这一无障碍增强，但要以“没有更多了”明确结束，而不是悄然移除动作。 |
+| 新搜索重置 | 首次搜索将 `searchPage=1`、`searchLastIndex=-1`、结果清空；SSE 新搜索会关闭前一流。 | `beginSearch` 有 revision，Search 的异步 REST 调用未以 revision/请求代号拒绝旧响应。 | **must-fix**：新搜索、返回书架或进入探索后，旧搜索及旧“加载更多”响应不得覆盖当前场景或拼入结果。 |
+| 单源分页 | `page` 是单源真实页码；多源请求携带它但服务端由 `lastIndex` 决定书源进度。 | 单源和多源都递增 `searchPage`，且多源响应的 `lastIndex` 写回，但 UI 状态未说明哪一个是权威游标。 | **技术栈等价，需显式化**：单源只以 `page` 判定续页；多源只以 `lastIndex` 判定续页。工作台 continuation 必须保存并展示服务端返回的权威字段。 |
+| 多源游标与失效缓存 | 上游游标是稳定的用户书源数组下标；一次请求从 `lastIndex + 1` 继续。 | OpenReader 会先过滤当前用户的失效书源，再把旧 `lastIndex` 套到缩短后的数组。失败缓存 TTL 变化会令下标漂移，可能跳源或重试已扫描书源。 | **must-fix（OpenReader 安全增强的兼容修复）**：游标始终指向原始排序后的已选书源序列；暂时抑制的源只在执行时跳过，不改变 ordinal。 |
+| 跨页去重 | Index 在整个搜索会话以 `bookUrl` 去重；空/无效 URL 不应把不相关结果合并。没有新增条目时提示“没有更多啦”。 | 前端以 `bookUrl`、再以带书源的 fallback key 去重，方向正确；后端每个请求另以 `title|author` 去重，跨 cursor 页不持久；重复批仍可能推进/终止状态不清晰。 | **技术栈等价但待验证**：前端会话级 key 是最终可见去重依据；后端的批内去重不得替代它。重复页仍推进安全游标，且当服务端无后续或页面无新增时显示明确反馈。 |
+| 探索续页 | Explore 递增当前入口页并把合并结果通过 `showSearchList` 写回同一 Index 场景。 | 当前按 `remoteBookKey` 合并且有 `hasMore`，但入口仍在 Discover 正文底部、并与 Search 的 continuation 动作分离。 | **must-fix（工作台结构）**：探索与搜索使用同一结果标题续页动作和 loading 防重入；保留 REST `hasMore` 作为现代适配。 |
+
+本小节允许的差异：OpenReader 继续使用 JWT REST、`sourceIds`、`hasMore` 与失败书源抑制；不复制上游的 EventSource 实现。上述差异只有在不改变可见的 Index 工作台续页流程、稳定游标、跨页去重和错误/结束反馈时才成立。
+
+实施前测试：
+
+1. Go：单源第二页只推进 `page`；多源第二批只推进 `lastIndex`；失效缓存中的中间书源不令后续 cursor 跳源或回退；全被暂时抑制仍为成功空结果。
+2. 前端：新搜索和切换到探索会使旧请求结果失效；重复 `bookUrl` 不重复显示、空 URL 保留不同书源结果；重复页无新增有明确“没有更多了”反馈。
+3. 浏览器：1440×900、390×844、360×800 依次验证单源两页、多源两批、探索两页、加载中防重入、返回书架后旧响应不污染结果及标题续页动作的可见状态。
