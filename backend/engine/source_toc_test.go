@@ -235,3 +235,12 @@ func TestParseTOCPreservesLegacyDirectCatalogURL(t *testing.T) {
 		t.Fatalf("expected direct catalog request, got %q", requested)
 	}
 }
+
+func TestIsDirectTOCURLRuleDistinguishesProtocolRelativeURLsFromRawXPath(t *testing.T) {
+	if !isDirectTOCURLRule("//catalog.source.example/chapters") {
+		t.Fatal("protocol-relative catalog URL must remain a direct URL rule")
+	}
+	if isDirectTOCURLRule("//a[@id='toc']/@href") {
+		t.Fatal("raw XPath catalog rule must be evaluated against the book document")
+	}
+}

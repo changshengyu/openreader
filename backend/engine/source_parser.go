@@ -606,12 +606,15 @@ func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookIn
 	if err != nil {
 		return RemoteBookInfo{}, nil, fmt.Errorf("prepare book info request: %w", err)
 	}
-	bookDoc, bookRequest, err := fetchSourceDocumentContext(context.Background(), bookRequest)
+	bookDocument, bookRequest, err := fetchSourceRuleDocumentContext(context.Background(), bookRequest)
 	if err != nil {
 		return RemoteBookInfo{}, nil, fmt.Errorf("fetch book info page: %w", err)
 	}
-	info := parseRemoteBookInfo(bookDoc, rule, bookRequest.URL)
-	chapters, err := parseTOCWithRule(bookURL, source.BaseURL, rule, charset, policy, bookDoc, &bookRequest)
+	info, err := parseRemoteBookInfoFromSourceDocument(bookDocument, rule, bookRequest.URL)
+	if err != nil {
+		return RemoteBookInfo{}, nil, fmt.Errorf("parse book info page: %w", err)
+	}
+	chapters, err := parseTOCWithRule(bookURL, source.BaseURL, rule, charset, policy, bookDocument, &bookRequest)
 	if err != nil {
 		return RemoteBookInfo{}, nil, err
 	}
@@ -631,6 +634,33 @@ func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, base
 		WordCount:     formatSourceWordCount(firstMatch(scope, rule.BookInfoWordCountRule)),
 		CanRename:     strings.TrimSpace(rule.BookInfoCanRenameRule) != "",
 	}
+}
+
+func parseRemoteBookInfoFromSourceDocument(document *sourceRuleDocument, rule models.BookSourceRule, baseURL string) (RemoteBookInfo, error) {
+	if !bookInfoRuleNeedsEvaluator(rule) {
+		return parseRemoteBookInfo(document.document, rule, baseURL), nil
+	}
+	return parseRemoteBookInfoWithEvaluator(document, rule, baseURL)
+}
+
+func bookInfoRuleNeedsEvaluator(rule models.BookSourceRule) bool {
+	for _, value := range []string{
+		rule.BookInfoInitRule,
+		rule.BookInfoNameRule,
+		rule.BookInfoAuthorRule,
+		rule.BookInfoCoverRule,
+		rule.BookInfoIntroRule,
+		rule.BookInfoKindRule,
+		rule.BookInfoLatestChapterRule,
+		rule.BookInfoUpdateTimeRule,
+		rule.BookInfoWordCountRule,
+		rule.BookInfoCanRenameRule,
+	} {
+		if sourceRuleNeedsEvaluator(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseRemoteBookInfoWithEvaluator(document *sourceRuleDocument, rule models.BookSourceRule, baseURL string) (RemoteBookInfo, error) {
@@ -676,6 +706,14 @@ func parseRemoteBookInfoWithEvaluator(document *sourceRuleDocument, rule models.
 	if err != nil {
 		return RemoteBookInfo{}, err
 	}
+	canRename := false
+	if strings.TrimSpace(rule.BookInfoCanRenameRule) != "" {
+		canRenameValue, err := sourceRuleString(scope, rule.BookInfoCanRenameRule)
+		if err != nil {
+			return RemoteBookInfo{}, err
+		}
+		canRename = sourceRuleBool(canRenameValue)
+	}
 	return RemoteBookInfo{
 		Title:         name,
 		Author:        author,
@@ -685,7 +723,7 @@ func parseRemoteBookInfoWithEvaluator(document *sourceRuleDocument, rule models.
 		LatestChapter: latestChapter,
 		UpdateTime:    updateTime,
 		WordCount:     formatSourceWordCount(wordCount),
-		CanRename:     strings.TrimSpace(rule.BookInfoCanRenameRule) != "",
+		CanRename:     canRename,
 	}, nil
 }
 
@@ -706,7 +744,7 @@ func bookInfoScope(doc *goquery.Document, initRule string) *goquery.Selection {
 	return scope
 }
 
-func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule, charset string, policy SourceRequestPolicy, bookDoc *goquery.Document, preparedBookRequest *sourceRequest) ([]RemoteChapter, error) {
+func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule, charset string, policy SourceRequestPolicy, bookDocument *sourceRuleDocument, preparedBookRequest *sourceRequest) ([]RemoteChapter, error) {
 	bookRequest := sourceRequest{}
 	if preparedBookRequest != nil {
 		bookRequest = *preparedBookRequest
@@ -717,25 +755,25 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 			return nil, fmt.Errorf("prepare book page request: %w", err)
 		}
 	}
-	fetchDocument := func(request sourceRequest) (*goquery.Document, sourceRequest, error) {
-		return fetchSourceDocumentContext(context.Background(), request)
+	fetchDocument := func(request sourceRequest) (*sourceRuleDocument, sourceRequest, error) {
+		return fetchSourceRuleDocumentContext(context.Background(), request)
 	}
-	ensureBookDocument := func() (*goquery.Document, error) {
-		if bookDoc != nil {
-			return bookDoc, nil
+	ensureBookDocument := func() (*sourceRuleDocument, error) {
+		if bookDocument != nil {
+			return bookDocument, nil
 		}
 		var err error
-		bookDoc, bookRequest, err = fetchDocument(bookRequest)
-		return bookDoc, err
+		bookDocument, bookRequest, err = fetchDocument(bookRequest)
+		return bookDocument, err
 	}
 
 	tocRequest := bookRequest
-	var doc *goquery.Document
+	var document *sourceRuleDocument
 	tocURLRule := strings.TrimSpace(rule.TOCURLRule)
 	switch {
 	case tocURLRule == "":
 		var err error
-		doc, err = ensureBookDocument()
+		document, err = ensureBookDocument()
 		if err != nil {
 			return nil, fmt.Errorf("fetch toc page: %w", err)
 		}
@@ -746,33 +784,36 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 			return nil, fmt.Errorf("prepare toc page request: %w", err)
 		}
 		if sourceRequestKey(tocRequest) == sourceRequestKey(bookRequest) {
-			doc, err = ensureBookDocument()
+			document, err = ensureBookDocument()
 			tocRequest = bookRequest
 		} else {
-			doc, tocRequest, err = fetchDocument(tocRequest)
+			document, tocRequest, err = fetchDocument(tocRequest)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("fetch toc page: %w", err)
 		}
 	default:
 		var err error
-		bookDoc, err = ensureBookDocument()
+		bookDocument, err = ensureBookDocument()
 		if err != nil {
 			return nil, fmt.Errorf("fetch toc page: %w", err)
 		}
-		parsedTOCURL := firstMatch(bookDoc.Selection, tocURLRule)
+		parsedTOCURL, parseErr := sourceRuleStringFromDocument(bookDocument, tocURLRule)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse toc URL rule: %w", parseErr)
+		}
 		if parsedTOCURL == "" {
-			doc = bookDoc
+			document = bookDocument
 		} else {
 			tocRequest, err = prepareResolvedSourceRequest(bookRequest.URL, parsedTOCURL, "", 1, charset, rule.Headers, policy)
 			if err != nil {
 				return nil, fmt.Errorf("prepare toc page request: %w", err)
 			}
 			if sourceRequestKey(tocRequest) == sourceRequestKey(bookRequest) {
-				doc = bookDoc
+				document = bookDocument
 				tocRequest = bookRequest
 			} else {
-				doc, tocRequest, err = fetchDocument(tocRequest)
+				document, tocRequest, err = fetchDocument(tocRequest)
 			}
 		}
 		if err != nil {
@@ -781,10 +822,10 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 	}
 
 	type tocPage struct {
-		request sourceRequest
-		doc     *goquery.Document
+		request  sourceRequest
+		document *sourceRuleDocument
 	}
-	queue := []tocPage{{request: tocRequest, doc: doc}}
+	queue := []tocPage{{request: tocRequest, document: document}}
 	visited := map[string]bool{sourceRequestKey(tocRequest): true}
 	pageCount := 1
 	chapterListRule, reverse := sourceListRule(rule.ChapterListRule)
@@ -792,8 +833,16 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 	for len(queue) > 0 {
 		page := queue[0]
 		queue = queue[1:]
-		chapters = append(chapters, parseChapterList(page.doc, rule, chapterListRule, page.request.URL)...)
-		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextTOCURLRule, page.request.URL) {
+		pageChapters, parseErr := parseChapterListFromSourceDocument(page.document, rule, chapterListRule, page.request.URL)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse toc chapters: %w", parseErr)
+		}
+		chapters = append(chapters, pageChapters...)
+		nextURLs, parseErr := extractResolvedURLsFromSourceDocument(page.document, rule.NextTOCURLRule, page.request.URL)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse toc pagination: %w", parseErr)
+		}
+		for _, nextURL := range nextURLs {
 			nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
 			if prepareErr != nil {
 				return nil, fmt.Errorf("prepare toc page request: %w", prepareErr)
@@ -805,7 +854,7 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 			if pageCount >= maxSourcePaginationPages {
 				return nil, fmt.Errorf("toc pagination exceeds %d pages", maxSourcePaginationPages)
 			}
-			nextDoc, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
+			nextDocument, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
 			if fetchErr != nil {
 				return nil, fmt.Errorf("fetch toc page: %w", fetchErr)
 			}
@@ -817,7 +866,7 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 			}
 			visited[fetchedRequestKey] = true
 			pageCount++
-			queue = append(queue, tocPage{request: fetchedNextRequest, doc: nextDoc})
+			queue = append(queue, tocPage{request: fetchedNextRequest, document: nextDocument})
 		}
 	}
 	if len(chapters) == 0 {
@@ -832,9 +881,12 @@ func isDirectTOCURLRule(rule string) bool {
 		return false
 	}
 	lower := strings.ToLower(value)
+	if strings.HasPrefix(value, "//") {
+		host := strings.SplitN(strings.TrimPrefix(value, "//"), "/", 2)[0]
+		return strings.Contains(host, ".") || strings.Contains(host, ":") || strings.EqualFold(host, "localhost")
+	}
 	return strings.HasPrefix(lower, "http://") ||
 		strings.HasPrefix(lower, "https://") ||
-		strings.HasPrefix(value, "//") ||
 		strings.HasPrefix(value, "/") ||
 		strings.HasPrefix(value, "./") ||
 		strings.HasPrefix(value, "../")
@@ -869,6 +921,78 @@ func parseChapterList(doc *goquery.Document, rule models.BookSourceRule, listRul
 		})
 	}
 	return chapters
+}
+
+func parseChapterListFromSourceDocument(document *sourceRuleDocument, rule models.BookSourceRule, listRule string, baseURL string) ([]RemoteChapter, error) {
+	if !chapterRuleNeedsEvaluator(rule, listRule) {
+		return parseChapterList(document.document, rule, listRule, baseURL), nil
+	}
+	items, err := sourceRuleElements(document.Root(), listRule)
+	if err != nil {
+		return nil, err
+	}
+	chapters := make([]RemoteChapter, 0, len(items))
+	for index, item := range items {
+		title, err := sourceRuleString(item, rule.ChapterNameRule)
+		if err != nil {
+			return nil, err
+		}
+		isVolumeValue, err := sourceRuleString(item, rule.ChapterIsVolumeRule)
+		if err != nil {
+			return nil, err
+		}
+		isVolume := sourceRuleBool(isVolumeValue)
+		chapterURL, err := sourceRuleString(item, rule.ChapterURLRule)
+		if err != nil {
+			return nil, err
+		}
+		chapterURL = resolveSourceURLTemplate(baseURL, chapterURL)
+		if chapterURL == "" {
+			if isVolume {
+				chapterURL = title + strconv.Itoa(index)
+			} else {
+				chapterURL = baseURL
+			}
+		}
+		if title == "" || chapterURL == "" {
+			continue
+		}
+		isVIPValue, err := sourceRuleString(item, rule.ChapterIsVIPRule)
+		if err != nil {
+			return nil, err
+		}
+		if sourceRuleBool(isVIPValue) {
+			title = "🔒" + title
+		}
+		updateTime, err := sourceRuleString(item, rule.ChapterUpdateTimeRule)
+		if err != nil {
+			return nil, err
+		}
+		chapters = append(chapters, RemoteChapter{
+			Title:    title,
+			URL:      chapterURL,
+			Index:    index,
+			IsVolume: isVolume,
+			Tag:      updateTime,
+		})
+	}
+	return chapters, nil
+}
+
+func chapterRuleNeedsEvaluator(rule models.BookSourceRule, listRule string) bool {
+	for _, value := range []string{
+		listRule,
+		rule.ChapterNameRule,
+		rule.ChapterURLRule,
+		rule.ChapterIsVolumeRule,
+		rule.ChapterIsVIPRule,
+		rule.ChapterUpdateTimeRule,
+	} {
+		if sourceRuleNeedsEvaluator(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func sourceRuleBool(value string) bool {
@@ -959,6 +1083,44 @@ func extractResolvedURLs(selection *goquery.Selection, rule string, baseURL stri
 	return urls
 }
 
+func sourceRuleStringFromDocument(document *sourceRuleDocument, rule string) (string, error) {
+	if strings.TrimSpace(rule) == "" {
+		return "", nil
+	}
+	if !sourceRuleNeedsEvaluator(rule) {
+		return firstMatch(document.document.Selection, rule), nil
+	}
+	return sourceRuleString(document.Root(), rule)
+}
+
+func sourceRuleStringsFromDocument(document *sourceRuleDocument, rule string) ([]string, error) {
+	if strings.TrimSpace(rule) == "" {
+		return nil, nil
+	}
+	if !sourceRuleNeedsEvaluator(rule) {
+		return Extract(document.document.Selection, rule), nil
+	}
+	return sourceRuleStrings(document.Root(), rule)
+}
+
+func extractResolvedURLsFromSourceDocument(document *sourceRuleDocument, rule string, baseURL string) ([]string, error) {
+	values, err := sourceRuleStringsFromDocument(document, rule)
+	if err != nil {
+		return nil, err
+	}
+	urls := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		resolved := resolveSourceURLTemplate(baseURL, value)
+		if resolved == "" || seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
+		urls = append(urls, resolved)
+	}
+	return urls, nil
+}
+
 // FetchChapterContent fetches and parses a single chapter's content.
 func FetchChapterContent(chapterURL string, source models.BookSource) (string, error) {
 	return FetchChapterContentContext(context.Background(), chapterURL, source)
@@ -987,35 +1149,59 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 	if err != nil {
 		return "", fmt.Errorf("prepare content page request: %w", err)
 	}
-	contentRequest := chapterRequest
-	if rule.ContentURLRule != "" {
-		contentRequest, err = prepareResolvedSourceRequest(chapterRequest.URL, rule.ContentURLRule, "", 1, source.Charset, rule.Headers, policy)
-		if err != nil {
-			return "", fmt.Errorf("prepare content page request: %w", err)
-		}
-	}
-
 	charset := source.Charset
 	if charset == "" {
 		charset = "utf-8"
 	}
-	if contentRequest.Charset == "" {
-		contentRequest.Charset = charset
+	fetchDocument := func(request sourceRequest) (*sourceRuleDocument, sourceRequest, error) {
+		if request.Charset == "" {
+			request.Charset = charset
+		}
+		return fetchSourceRuleDocumentContext(ctx, request)
 	}
 
-	fetchDocument := func(request sourceRequest) (*goquery.Document, sourceRequest, error) {
-		return fetchSourceDocumentContext(ctx, request)
+	contentRequest := chapterRequest
+	var document *sourceRuleDocument
+	contentURLRule := strings.TrimSpace(rule.ContentURLRule)
+	switch {
+	case contentURLRule == "":
+		document, contentRequest, err = fetchDocument(chapterRequest)
+	case isDirectTOCURLRule(contentURLRule):
+		contentRequest, err = prepareResolvedSourceRequest(chapterRequest.URL, contentURLRule, "", 1, charset, rule.Headers, policy)
+		if err == nil {
+			document, contentRequest, err = fetchDocument(contentRequest)
+		}
+	default:
+		chapterDocument, fetchedChapterRequest, fetchErr := fetchDocument(chapterRequest)
+		if fetchErr != nil {
+			return "", fmt.Errorf("fetch content page: %w", fetchErr)
+		}
+		contentURL, parseErr := sourceRuleStringFromDocument(chapterDocument, contentURLRule)
+		if parseErr != nil {
+			return "", fmt.Errorf("parse content URL rule: %w", parseErr)
+		}
+		if contentURL == "" {
+			document = chapterDocument
+			contentRequest = fetchedChapterRequest
+			break
+		}
+		contentRequest, err = prepareResolvedSourceRequest(fetchedChapterRequest.URL, contentURL, "", 1, charset, rule.Headers, policy)
+		if err == nil && sourceRequestKey(contentRequest) == sourceRequestKey(fetchedChapterRequest) {
+			document = chapterDocument
+			contentRequest = fetchedChapterRequest
+		} else if err == nil {
+			document, contentRequest, err = fetchDocument(contentRequest)
+		}
 	}
-	doc, contentRequest, err := fetchDocument(contentRequest)
 	if err != nil {
 		return "", fmt.Errorf("fetch content page: %w", err)
 	}
 
 	type contentPage struct {
-		request sourceRequest
-		doc     *goquery.Document
+		request  sourceRequest
+		document *sourceRuleDocument
 	}
-	queue := []contentPage{{request: contentRequest, doc: doc}}
+	queue := []contentPage{{request: contentRequest, document: document}}
 	visited := map[string]bool{sourceRequestKey(contentRequest): true}
 	pageCount := 1
 	parts := make([]string, 0)
@@ -1025,10 +1211,18 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 		}
 		page := queue[0]
 		queue = queue[1:]
-		if text := extractChapterContent(page.doc, rule, page.request.URL, source.SourceType); text != "" {
+		text, parseErr := extractChapterContentFromSourceDocument(page.document, rule, page.request.URL, source.SourceType)
+		if parseErr != nil {
+			return "", fmt.Errorf("parse content page: %w", parseErr)
+		}
+		if text != "" {
 			parts = append(parts, text)
 		}
-		for _, nextURL := range extractResolvedURLs(page.doc.Selection, rule.NextContentURLRule, page.request.URL) {
+		nextURLs, parseErr := extractResolvedURLsFromSourceDocument(page.document, rule.NextContentURLRule, page.request.URL)
+		if parseErr != nil {
+			return "", fmt.Errorf("parse content pagination: %w", parseErr)
+		}
+		for _, nextURL := range nextURLs {
 			if err := ctx.Err(); err != nil {
 				return "", err
 			}
@@ -1043,7 +1237,7 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 			if pageCount >= maxSourcePaginationPages {
 				return "", fmt.Errorf("content pagination exceeds %d pages", maxSourcePaginationPages)
 			}
-			nextDoc, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
+			nextDocument, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
 			if fetchErr != nil {
 				return "", fmt.Errorf("fetch content page: %w", fetchErr)
 			}
@@ -1055,7 +1249,7 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 			}
 			visited[fetchedRequestKey] = true
 			pageCount++
-			queue = append(queue, contentPage{request: fetchedNextRequest, doc: nextDoc})
+			queue = append(queue, contentPage{request: fetchedNextRequest, document: nextDocument})
 		}
 	}
 
@@ -1127,6 +1321,45 @@ func extractChapterContent(doc *goquery.Document, rule models.BookSourceRule, ba
 		}
 	}
 	return strings.Join(values, "\n")
+}
+
+func extractChapterContentFromSourceDocument(document *sourceRuleDocument, rule models.BookSourceRule, baseURL string, sourceType int) (string, error) {
+	if !contentRuleNeedsEvaluator(rule) {
+		return extractChapterContent(document.document, rule, baseURL, sourceType), nil
+	}
+	contentRule := strings.TrimSpace(rule.ContentRule)
+	if contentRule == "" {
+		return strings.Join(Extract(document.document.Selection, "body|text"), "\n"), nil
+	}
+	values, err := sourceRuleStringsFromDocument(document, contentRule)
+	if err != nil {
+		return "", err
+	}
+	if sourceType == 1 {
+		for index := range values {
+			values[index] = resolveAudioContentURL(baseURL, values[index])
+		}
+		return strings.Join(nonBlankStrings(values), "\n"), nil
+	}
+	if sourceRuleCSSOperation(contentRule) == "html" {
+		for index := range values {
+			values[index] = normalizeChapterHTMLWithImageStyle(values[index], baseURL, rule.ContentImageStyle)
+		}
+	}
+	return strings.Join(values, "\n"), nil
+}
+
+func contentRuleNeedsEvaluator(rule models.BookSourceRule) bool {
+	for _, value := range []string{
+		rule.ContentURLRule,
+		rule.ContentRule,
+		rule.NextContentURLRule,
+	} {
+		if sourceRuleNeedsEvaluator(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveAudioContentURL(baseURL string, value string) string {

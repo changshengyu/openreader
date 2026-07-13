@@ -63,6 +63,10 @@ func TestSourceRuleEvaluatorMatchesCoreReaderDevRuleModes(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(kinds, []string{"玄幻", "仙侠"}) {
 			t.Fatalf("JSONPath kinds = %#v, %v", kinds, err)
 		}
+		missing, err := sourceRuleStrings(document.Root(), "$.data.optional")
+		if err != nil || len(missing) != 0 {
+			t.Fatalf("JSONPath missing optional value = %#v, %v", missing, err)
+		}
 	})
 
 	t.Run("XPath elements text and attributes", func(t *testing.T) {
@@ -254,6 +258,231 @@ func TestExploreBooksExecutesReaderDevJSONPathRules(t *testing.T) {
 	if result.NextURL != "https://source.example/explore?page=2" || !result.HasMore {
 		t.Fatalf("explore JSONPath pagination = %#v", result)
 	}
+}
+
+func TestFetchBookInfoAndTOCExecutesReaderDevJSONPathRules(t *testing.T) {
+	pages := map[string]string{
+		"/book.json":  sourceCompatFixture(t, "book_detail.json"),
+		"/toc.json":   sourceCompatFixture(t, "toc.json"),
+		"/toc-2.json": sourceCompatFixture(t, "toc-2.json"),
+	}
+	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	defer restore()
+
+	source := models.BookSource{ID: 74, Name: "JSON 详情目录源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoInitRule:          "$.book",
+		BookInfoNameRule:          "$.title",
+		BookInfoAuthorRule:        "$.author",
+		BookInfoCoverRule:         "$.cover",
+		BookInfoIntroRule:         "$.intro",
+		BookInfoKindRule:          "$.kinds[*]",
+		BookInfoLatestChapterRule: "$.latest",
+		BookInfoUpdateTimeRule:    "$.updated",
+		BookInfoWordCountRule:     "$.words",
+		TOCURLRule:                "$.book.toc",
+		ChapterListRule:           "$.chapters[*]",
+		ChapterNameRule:           "$.title",
+		ChapterURLRule:            "$.url",
+		ChapterIsVIPRule:          "$.vip",
+		ChapterUpdateTimeRule:     "$.updated",
+		NextTOCURLRule:            "$.next",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, chapters, err := FetchBookInfoAndTOC("/book.json", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "JSON 详情书" || info.Author != "JSON 作者" || info.CoverURL != "https://source.example/covers/json-detail.jpg" || info.Kind != "玄幻,仙侠" || info.WordCount != "2.3万字" {
+		t.Fatalf("JSONPath book info = %+v", info)
+	}
+	if len(chapters) != 3 || chapters[0].Title != "JSON 第一章" || chapters[1].Title != "🔒JSON 第二章" || chapters[2].URL != "https://source.example/chapters/json-3" {
+		t.Fatalf("JSONPath chapters = %+v", chapters)
+	}
+}
+
+func TestFetchBookInfoAndTOCExecutesReaderDevXPathRules(t *testing.T) {
+	pages := map[string]string{
+		"/book.html":  sourceCompatFixture(t, "book_detail.html"),
+		"/toc.html":   sourceCompatFixture(t, "toc.html"),
+		"/toc-2.html": sourceCompatFixture(t, "toc-2.html"),
+	}
+	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	defer restore()
+
+	source := models.BookSource{ID: 75, Name: "XPath 详情目录源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		BookInfoInitRule:          "@XPath://section[@id='detail']",
+		BookInfoNameRule:          "@XPath:.//h1/text()",
+		BookInfoAuthorRule:        "@XPath:.//span[@class='author']/text()",
+		BookInfoCoverRule:         "@XPath:.//img[@class='cover']/@data-src",
+		BookInfoIntroRule:         "@XPath:.//p[@class='intro']/text()",
+		BookInfoKindRule:          "@XPath:.//span[@class='kind']/text()",
+		BookInfoLatestChapterRule: "@XPath:.//span[@class='latest']/text()",
+		BookInfoUpdateTimeRule:    "@XPath:.//span[@class='updated']/text()",
+		BookInfoWordCountRule:     "@XPath:.//span[@class='words']/text()",
+		TOCURLRule:                "@XPath://a[@id='toc']/@href",
+		ChapterListRule:           "@XPath://li[@class='chapter']",
+		ChapterNameRule:           "@XPath:.//a/text()",
+		ChapterURLRule:            "@XPath:.//a/@href",
+		ChapterIsVIPRule:          "@XPath:.//span[@class='vip']/text()",
+		ChapterUpdateTimeRule:     "@XPath:.//span[@class='updated']/text()",
+		NextTOCURLRule:            "@XPath://a[@id='next']/@href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, chapters, err := FetchBookInfoAndTOC("/book.html", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "XPath 详情书" || info.Author != "XPath 作者" || info.CoverURL != "https://source.example/covers/xpath-detail.jpg" || info.Kind != "历史,军事" || info.WordCount != "3.2万字" {
+		t.Fatalf("XPath book info = %+v", info)
+	}
+	if len(chapters) != 3 || chapters[0].Title != "XPath 第一章" || chapters[1].Title != "🔒XPath 第二章" || chapters[2].URL != "https://source.example/chapters/xpath-3" {
+		t.Fatalf("XPath chapters = %+v", chapters)
+	}
+}
+
+func TestFetchChapterContentExecutesReaderDevJSONPathContentURLAndPagination(t *testing.T) {
+	pages := map[string]string{
+		"/chapter.json":   sourceCompatFixture(t, "chapter.json"),
+		"/content.json":   sourceCompatFixture(t, "content.json"),
+		"/content-2.json": sourceCompatFixture(t, "content-2.json"),
+	}
+	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	defer restore()
+
+	source := models.BookSource{ID: 76, Name: "JSON 正文源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentURLRule:     "$.contentUrl",
+		ContentRule:        "$.payload.body",
+		NextContentURLRule: "$.next",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := FetchChapterContent("/chapter.json", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "JSON 正文第一页\nJSON 正文第二页" {
+		t.Fatalf("JSONPath content = %q", content)
+	}
+}
+
+func TestFetchChapterContentExecutesReaderDevXPathContentURLAndPagination(t *testing.T) {
+	pages := map[string]string{
+		"/chapter.html":   sourceCompatFixture(t, "chapter.html"),
+		"/content.html":   sourceCompatFixture(t, "content.html"),
+		"/content-2.html": sourceCompatFixture(t, "content-2.html"),
+	}
+	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	defer restore()
+
+	source := models.BookSource{ID: 78, Name: "XPath 正文源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentURLRule:     "@XPath://a[@id='content']/@href",
+		ContentRule:        "@XPath://main[@id='content']/text()",
+		NextContentURLRule: "@XPath://a[@id='next']/@href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := FetchChapterContent("/chapter.html", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "XPath 正文第一页\nXPath 正文第二页" {
+		t.Fatalf("XPath content = %q", content)
+	}
+}
+
+func TestFetchChapterContentKeepsLegacyCSSContentURLRule(t *testing.T) {
+	pages := map[string]string{
+		"/chapter.html": `<a class="content-link" href="/content.html">正文</a>`,
+		"/content.html": `<main class="content">CSS 正文</main>`,
+	}
+	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	defer restore()
+
+	source := models.BookSource{ID: 79, Name: "CSS 正文地址源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentURLRule: ".content-link|attr:href",
+		ContentRule:    ".content",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := FetchChapterContent("/chapter.html", source)
+	if err != nil || content != "CSS 正文" {
+		t.Fatalf("legacy CSS content URL = %q, %v", content, err)
+	}
+}
+
+func TestBookInfoTOCAndContentRejectUnsupportedJavaScriptRules(t *testing.T) {
+	pages := map[string]string{
+		"/book":    `<div class="chapter"><a href="/chapter">第一章</a></div>`,
+		"/toc":     `<div class="chapter"><a href="/chapter">第一章</a></div>`,
+		"/chapter": `<main class="content">正文</main>`,
+	}
+	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	defer restore()
+
+	base := models.BookSource{ID: 77, Name: "脚本规则源", BaseURL: "https://source.example", Charset: "utf-8"}
+	t.Run("book info", func(t *testing.T) {
+		source := base
+		if err := source.SetRules(models.BookSourceRule{
+			BookInfoNameRule: "@js:book.name",
+			ChapterListRule:  ".chapter",
+			ChapterNameRule:  "a|text",
+			ChapterURLRule:   "a|attr:href",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := FetchBookInfoAndTOC("/book", source)
+		if !errors.Is(err, ErrUnsupportedSourceRule) {
+			t.Fatalf("book info JavaScript error = %v", err)
+		}
+	})
+	t.Run("toc", func(t *testing.T) {
+		source := base
+		if err := source.SetRules(models.BookSourceRule{
+			TOCURLRule:      "/toc",
+			ChapterListRule: "@js:chapters",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := ParseTOC("/book", source)
+		if !errors.Is(err, ErrUnsupportedSourceRule) {
+			t.Fatalf("toc JavaScript error = %v", err)
+		}
+	})
+	t.Run("content", func(t *testing.T) {
+		source := base
+		if err := source.SetRules(models.BookSourceRule{ContentRule: "@js:content"}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := FetchChapterContent("/chapter", source)
+		if !errors.Is(err, ErrUnsupportedSourceRule) {
+			t.Fatalf("content JavaScript error = %v", err)
+		}
+	})
+}
+
+func sourceCompatTransport(t *testing.T, pages map[string]string) http.RoundTripper {
+	t.Helper()
+	return contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, ok := pages[request.URL.Path]
+		if !ok {
+			t.Fatalf("unexpected source fixture request: %s", request.URL.String())
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})
 }
 
 func sourceCompatFixture(t *testing.T, name string) string {

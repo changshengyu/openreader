@@ -2,7 +2,43 @@
 
 状态：2026-07-13 已从固定上游 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 提取；P2-Parser-0 与 P2-Parser-1 的搜索/探索子集正在实现。本文件仍是目录、正文和剩余规则链重构的前置闸门。
 
-当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器；搜索/探索的列表、字段、分页、分类多值与空详情 URL 回退；不执行 JS/WebJS 的明确错误；以及“解析错误不写入失效书源缓存”的错误边界。详情、目录、正文、组合规则、变量和结构化客户端错误仍未完成。
+当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器；搜索/探索、详情、目录、正文的基础列表/字段/分页调用链；分类多值与空详情 URL 回退；不执行 JS/WebJS 的明确错误；以及“解析错误不写入失效书源缓存”的错误边界。组合规则、变量、正文分叉顺序、普通文本空正文规则和结构化客户端错误仍未完成。
+
+## 2026-07-13 P2-Parser-1B：详情、目录、正文调用链复审
+
+本节是在 P2-Parser-0/1 搜索与探索子集之后的下一道实现闸门。上游语义仍以本文件开头列出的 `BookInfo`、`BookChapterList`、`BookContent` 和 `AnalyzeRule` 为基准；表中的“审查时 OpenReader”记录旧路径，避免把已经存在但未接入的 Go helper 误认为已完成。
+
+| 流程 | 上游语义 | 当前 OpenReader 实际调用路径 | 判定与实施约束 |
+| --- | --- | --- | --- |
+| 详情 | `ruleBookInfo.init`、全部字段和分类列表均通过通用规则解释器；封面、目录链接以最终重定向后的详情 URL 解析。 | `parseRemoteBookInfoWithEvaluator` 已存在，但 `FetchBookInfoAndTOC` 仍抓取 `*goquery.Document` 并调用旧 `parseRemoteBookInfo`；因此 JSONPath/XPath/正则详情字段从未生效，分类仍只取首项。 | `must-fix`：详情请求改为 `sourceRuleDocument`，只有纯旧 CSS 书源保留旧快路径；分类必须逗号连接，`init` 无匹配时回退根作用域。 |
+| 目录 URL | `tocUrl` 可以为空（详情页即目录）、直接 URL，或从详情文档用通用规则取值；解析后继续保留请求选项并使用最终 URL 作为相对地址基准。 | `parseTOCWithRule` 使用 `isDirectTOCURLRule + firstMatch`。`@XPath:`/JSONPath/正则不会取值；`@XPath:` 会落入 CSS `firstMatch` 后静默回退详情页。 | `must-fix`：只把明确 URL/请求选项当直接 URL；其余非空规则一律先在详情 `sourceRuleDocument` 求值，再决定是否请求另一页。空值仍复用详情页。 |
+| 章节目录 | 章节列表、标题、URL、卷/VIP/更新时间、下一页均使用通用规则；去重与顺序遵循书源规则，分页链接顺序不能因为抓取策略改变。 | `parseChapterList`、`extractResolvedURLs`、`NextTOCURLRule` 仍使用 `findItems/Extract`，只支持 CSS。现有循环检测、1000 页上限、重定向 URL、请求选项、卷/VIP 与去重是可保留安全/运行时适配。 | `must-fix`：目录页面和分页全部接入统一执行器；保留上限、取消、重定向去重和请求头。JS `chapterPreUpdateJs` 不执行且必须产生明确错误，不能伪装成空目录。 |
+| 正文 URL | `contentUrl` 是章节页上的通用取值规则，得到的 URL 才请求正文页；空规则使用章节页本身。 | `FetchChapterContentContext` 把任何非空 `ContentURLRule` 直接交给 URL 请求器，因而 XPath/JSONPath/正则会被当作 URL；没有先获取章节页供规则求值。 | `must-fix`：先抓章节 `sourceRuleDocument`，非直接 URL 规则在该文档求值；只有生成的 URL 与章节最终 URL 不同才进行第二次请求。音频空规则的“直接返回章节 URL”保留为已批准差异。 |
+| 正文/下一页 | `content`、`nextContentUrl` 走通用规则。单链按链顺序；多链接的结果按规则返回顺序拼接，不能由并发完成顺序决定。空正文规则不应被静默替换成无关的 `body` 文本。 | `extractChapterContent`、`NextContentURLRule` 都是 CSS-only；当前队列分页与上游分叉顺序不同；普通书源空正文规则会回退 `body|text`。安全 HTML 与图片 URL 过滤属于允许的安全适配。 | `must-fix`：所有正文规则接入执行器，按解析出的 URL 顺序提交/拼接；保留取消、循环检测、1000 页上限及安全 HTML。普通文本空规则改为明确的空规则/内容错误边界，不能抓取整页噪声。 |
+| 错误和失效缓存 | 规则不支持、规则语法错误和网络错误应可区分；只有真实远端请求失败可进入失效书源缓存。 | `ErrUnsupportedSourceRule` 与 `ErrSourceRequest` 已可区分，正常搜索缓存已按此过滤；详情/目录/正文迁移必须继续保留错误包装链。 | `must-fix`：黄金测试应断言 `errors.Is` 可穿透，API 不记录本地规则错误；结构化客户端错误另列 P2-Parser-2。 |
+
+### P2-Parser-1B 实施记录
+
+- `FetchBookInfoAndTOC`、`ParseTOC`、`FetchChapterContentContext` 已改为在需要时使用 `sourceRuleDocument`；旧 CSS 保留原快路径，JSONPath/XPath/正则与显式 `@CSS:` 走同一无脚本执行器。
+- `tocUrl` 与 `contentUrl` 的非直接 URL 规则先在详情/章节响应上求值，再发起第二个请求；空值复用当前已抓取页面。协议相对 URL 仍被识别为直接 URL，而裸 `//a/@href` 进入 XPath 分支。
+- 详情多分类、章节字段与正文/下一页 URL 已加入 JSONPath/XPath 黄金 fixture。JS 规则在详情、目录、正文三条路径都返回可由 `errors.Is(err, ErrUnsupportedSourceRule)` 识别的错误。
+- 当前目录/正文分页仍按受限的串行队列抓取；它保持取消、重定向去重、请求头、1000 页上限和当前安全顺序，但尚未完成上游多分叉链接的严格返回顺序契约。
+
+### 实施前测试清单
+
+新增的 fixture 和测试必须在改动调用点之前覆盖以下组合：
+
+1. HTML、JSONPath、XPath 三种详情：`init` 作用域、封面相对 URL、多分类、字数、目录链接。
+2. HTML、JSONPath、XPath 三种目录：直接目录、详情页取目录、空目录链接回退、章节字段、下一页、反序、循环/去重和最终重定向基准。
+3. HTML、JSONPath、XPath 三种正文：章节页取 `contentUrl`、同页正文、下一页单链/多链接及固定拼接顺序、相对图片和安全 HTML。
+4. `@js:`/`<js>` 用于详情、目录和正文时均得到 `ErrUnsupportedSourceRule`，且 API 的失效书源列表保持不变。
+5. 旧 CSS、直接 URL 与带 POST/headers/charset 请求选项的既有 fixture 全量通过，避免为了新规则回退已发布书源。
+
+### 允许的差异
+
+- Go 服务继续不执行 `preUpdateJs`、`webJs`、`sourceRegex`；字段无损保存，执行点返回明确不支持错误。
+- 远端抓取继续使用当前超时、响应大小、重定向、限速、上下文取消与 1000 页上限；这些安全边界优先于上游的无限脚本/分页能力。
+- 正文 HTML 继续做图片 URL 校验与主动内容清理；这是浏览器安全适配，不改变文本与安全图片的可读顺序。
 
 ## 审查范围与上游证据
 

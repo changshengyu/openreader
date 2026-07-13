@@ -205,6 +205,12 @@ func sourceRuleJSONElements(value sourceRuleValue, path string) ([]sourceRuleVal
 	}
 	matched, err := jsonpath.Get(path, input)
 	if err != nil {
+		// The upstream analyzer treats an absent optional JSON field as no match.
+		// Paessler's JSONPath reports that normal case as "unknown key"; keep
+		// malformed expressions as errors so source authors can repair them.
+		if strings.Contains(strings.ToLower(err.Error()), "unknown key") {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("parse JSONPath rule: %w", err)
 	}
 	values := sourceRuleFlattenJSON(matched)

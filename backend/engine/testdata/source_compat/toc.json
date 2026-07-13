@@ -1,0 +1,7 @@
+{
+  "chapters": [
+    {"title": "JSON 第一章", "url": "/chapters/json-1", "vip": false, "updated": "上午"},
+    {"title": "JSON 第二章", "url": "/chapters/json-2", "vip": true, "updated": "中午"}
+  ],
+  "next": "/toc-2.json"
+}

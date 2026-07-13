@@ -1,0 +1,13 @@
+{
+  "book": {
+    "title": "JSON 详情书",
+    "author": "JSON 作者",
+    "cover": "/covers/json-detail.jpg",
+    "intro": "JSON 详情简介",
+    "kinds": ["玄幻", "仙侠"],
+    "latest": "JSON 最新章",
+    "updated": "刚刚",
+    "words": 23456,
+    "toc": "/toc.json"
+  }
+}

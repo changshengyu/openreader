@@ -53,8 +53,8 @@ Evidence: `backend/api/source_failure_contract_test.go`, `frontend/tests/sourceF
 
 ## P2 online-source evaluator review (partial)
 
-- [x] CSS, JSONPath, XPath and regex evaluation continue to use the existing bounded source-request path; a parser error cannot enter the user-scoped invalid-source cache and suppress a source that may be repaired locally.
-- [x] JavaScript/WebJS rules are preserved but fail explicitly with `ErrUnsupportedSourceRule`; no user-supplied script executes in the Go process, browser, filesystem or server network context.
+- [x] CSS, JSONPath, XPath and regex evaluation for search, explore, details, TOC and content continue to use the existing bounded source-request path; a parser error cannot enter the user-scoped invalid-source cache and suppress a source that may be repaired locally.
+- [x] JavaScript/WebJS rules are preserved but fail explicitly with `ErrUnsupportedSourceRule` at details, TOC and content as well as search; no user-supplied script executes in the Go process, browser, filesystem or server network context.
 - [x] The raw `//` XPath shorthand is recognized, while an ordinary relative URL is never reinterpreted as XPath.
 - [ ] Rule size/chain/variable semantics, TOC/content evaluation and structured client error categories remain in the subsequent parser slices.
 
