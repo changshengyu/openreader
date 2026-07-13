@@ -466,9 +466,19 @@ async function openRouteBookInfoOverlay() {
     routeBookInfoOpenedKey.value = key
   } catch (error) {
     ElMessage.error(readError(error, '加载书籍信息失败'))
+    if ([403, 404].includes(Number(error?.response?.status))) {
+      clearRouteBookInfoOverlayIntent()
+    }
   } finally {
     routeBookInfoLoadingId.value = null
   }
+}
+
+function clearRouteBookInfoOverlayIntent() {
+  if (overlay.bookInfoVisible || !route.query.bookInfo || route.name === 'reader' || route.name === 'remote-reader') return
+  routeBookInfoOpenedKey.value = ''
+  const { bookInfo: _bookInfo, ...query } = route.query
+  router.replace({ name: 'home', query })
 }
 
 function openRouteSourceManageOverlay() {
@@ -603,6 +613,11 @@ watch(
     openRouteBookInfoOverlay()
   },
   { immediate: true },
+)
+
+watch(
+  () => overlay.bookInfoVisible,
+  () => clearRouteBookInfoOverlayIntent(),
 )
 
 watch(

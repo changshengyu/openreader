@@ -16,6 +16,7 @@ export function useReaderLocalProgress(options) {
   }
 
   function currentPayload() {
+    if (unref(options.isTemporaryReader)) return null
     const override = options.getCurrentPayload?.()
     if (override) return override
     const snapshot = options.getVisibleSnapshot()

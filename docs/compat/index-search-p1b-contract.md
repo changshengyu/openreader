@@ -121,8 +121,8 @@
 | 入口 | 上游状态转换 | 当前 OpenReader 证据 | 本轮判定与改造边界 |
 |---|---|---|---|
 | 书架 | 封面 → 全局 BookInfo；条目正文 → 已保存书籍的 Reader。关闭信息框仍留在书架。 | `Home.vue#openDetail/#handleBookRowClick` 分别调用 `overlay.openBookInfo` 与 Reader 路由；`OverlayBookInfo` 以书架记录判定封面/追更/分组/本地更新权限。 | **已复核一致**。保留当前进度 query、用户隔离与安全的纯文本简介；新增浏览器断言确保关闭后不产生路由变化。 |
-| 搜索远程结果 | 封面 → 非书架 BookInfo；卡片其他区域 → 临时 Reader（`?search=1`），不创建书架记录；对话框中的唯一非书架动作是加入书架。 | `RemoteBookResultGroups.vue` 将整张卡和“查看信息”都发为 `preview`；`Search.vue#openPreview` 总是打开信息框，并按上下文注入“查看详情/继续阅读”或“加入书架/加入并阅读”。 | **必须重建**。恢复封面/正文两个入口；实现不落库的远程阅读会话，不能把“加入并阅读”当作临时阅读的替代品。BookInfo 本身收敛为书架状态动作，而非搜索动作菜单。分组确认是 OpenReader 的多分类安全适配，可保留在“加入书架”事务中。 |
-| 探索远程结果 | 与搜索相同：封面信息、正文临时阅读、同一 BookInfo/加入书架分支。 | `Discover.vue#openPreview` 与 Search 使用同一上下文按钮模型；`RemoteBookResultGroups.vue` 使整卡只能预览。 | **必须重建**，与搜索共用同一远程临时阅读与 BookInfo 策略；不得复制第二个 Explore 专用状态机。 |
+| 搜索远程结果 | 封面 → 非书架 BookInfo；卡片其他区域 → 临时 Reader（`?search=1`），不创建书架记录；对话框中的唯一非书架动作是加入书架。 | `RemoteBookResultGroups.vue` 已分离 `preview/read`；`Search.vue` 创建用户绑定的 `/reader/remote/:sessionId` 会话；Reader 不写书架、目录、进度、书签或缓存。 | **临时阅读切片已对齐**。保留多分类确认作为安全适配；BookInfo 仍须删除当前按入口注入的“查看详情/继续阅读/加入并阅读”第二套动作，收敛成书架状态分支。 |
+| 探索远程结果 | 与搜索相同：封面信息、正文临时阅读、同一 BookInfo/加入书架分支。 | `Discover.vue` 复用相同的 `RemoteBookResultGroups` read 事件、payload 和临时会话路由。 | **临时阅读切片已对齐**；与 Search 共用同一个临时阅读契约。BookInfo 动作统一仍未完成。 |
 | 阅读器 | 合并当前阅读记录和同 URL 的书架记录 → 全局 BookInfo；工具层与 Reader 路由保持不变。 | `useReaderPanels#openBookInfo` 直接打开共享 overlay；`Reader.vue` 把目录刷新结果同步到 `overlay.bookInfoBook`。没有额外读/加书架按钮。 | **技术栈等价，待回归**。当前“阅读中”上下文状态不替代上游字段；须验证已加入/临时远程阅读两种 Reader 状态都能正确显示书架权限，且关闭不影响移动工具层。 |
 | 旧 `/books/:id` 链接 | 上游没有详情页路由。 | `router/index.js` 重定向到 `/?bookInfo=:id`，`AppLayout#openRouteBookInfoOverlay` 拉取当前用户书籍并以共享 BookInfo 打开；对话框关闭后未清除查询参数。 | **允许兼容入口 + 必须修复关闭语义**。保留旧链接和一个“开始阅读”兼容动作，但关闭、无权/不存在和再次导航后必须仅清理 `bookInfo` intent，不能令 overlay 重新弹出或污染其他工作台 query。 |
 
@@ -138,12 +138,12 @@
 ### 后续测试闸门（先测试，再实现）
 
 1. 为 `RemoteBookResultGroups` 写交互契约：封面仅发 `preview`，正文发 `read`；在 1440×900、390×844、360×800 三种尺寸验证没有点击穿透。
-2. 为远程临时阅读建立 API/Pinia 合同：搜索和探索共享同一 payload、临时阅读不执行 `POST /books/remote`、Reader 可加载目录/章节并保存临时进度；加入书架后再切换为用户书架记录。该项先用 `api-contract-compat` 提取当前 Go 可承载的接口，禁止为 UI 临时绕过授权或把远程数据写入其他用户书架。
+2. 远程临时阅读已建立 API/Reader 合同：搜索和探索共享同一 payload，正文不执行 `POST /books/remote`，Reader 可加载目录/章节，但不保存临时进度；加入书架后才切换为用户书架记录。下一步补齐过期、变量跨章和安全错误的后端测试。
 3. 重写当前 `bookInfoRouteContract`：旧详情链接加载成功、404/403、关闭清 query、保留其他 query、再次导航不重开；兼容链接唯一允许“开始阅读”动作。
 4. 浏览器：书架封面/正文、搜索和探索的封面/正文、阅读器信息按钮、旧链接共五条流程；同时验证加入取消零写入、加入成功一写入、关闭不改 Reader/mobile 工具层与无水平溢出。
 
 在上述测试和实现完成前，P1-B 只能称为“搜索续页已完成，BookInfo 五入口仍在重建”，不能称为工作台搜索流程完全对齐。
 
-### API 设计结论（2026-07-13；仍未实现）
+### 临时阅读实施记录（2026-07-13）
 
-现有 `/books/:id` Reader 管线只能读取已保存书籍，且 `POST /books/remote` 会创建 Book/Chapter 行、写入书架并广播，不能作为上游临时阅读的替代。已在 `docs/compat/api-contract.md` 定义三个新增的用户绑定远程会话端点：创建会话、读取会话目录、读取会话章节正文。会话只保存于有 TTL 的服务端运行时内存，复用现有受限书源抓取/变量规则，不把客户端传入的章节 URL 当作抓取目标，也不写书架、目录、进度、书签、缓存或备份。下一步必须先为该合同新增 Go/前端失败测试，再写 handler 或 Reader 分支。
+现有 `/books/:id` Reader 管线只能读取已保存书籍，且 `POST /books/remote` 会创建 Book/Chapter 行、写入书架并广播，不能作为上游临时阅读的替代。现已实现三个用户绑定远程会话端点：创建会话、读取会话目录、读取会话章节正文。会话只保存于 TTL 运行时内存，复用现有受限书源抓取/变量规则，不把客户端传入的章节 URL 当作抓取目标，也不写书架、目录、进度、书签、缓存或备份。`remote_reader_contract_test.go` 与三视口浏览器 smoke 已覆盖本切片；BookInfo 动作统一和五入口完整回归仍在后续 P1-B。

@@ -16,11 +16,13 @@ export function useReaderChapterContent(options) {
   }
 
   function get(index, targetCacheKey = cacheKey()) {
+    if (options.shouldCache?.() === false) return null
     const cached = options.memoryCache.get(targetCacheKey, index)
     return isValidChapterContentResponse(cached) ? cached : null
   }
 
   function set(index, data, targetCacheKey = cacheKey()) {
+    if (options.shouldCache?.() === false) return
     if (!isValidChapterContentResponse(data)) return
     options.memoryCache.set(targetCacheKey, index, data)
   }
@@ -51,8 +53,10 @@ export function useReaderChapterContent(options) {
         index,
         { refresh: Boolean(loadOptions.refresh) },
       )
-      set(index, data, targetCacheKey)
+      if (options.shouldCache?.() !== false) set(index, data, targetCacheKey)
       if (
+        options.shouldCache?.() !== false
+        &&
         isValidChapterContentResponse(data)
         && Number(unref(options.bookId)) === Number(targetBookId)
         && cacheKey() === targetCacheKey

@@ -2,6 +2,7 @@ import { unref } from 'vue'
 
 export function useReaderChapterMaintenance(options) {
   async function loadChapters() {
+    if (unref(options.isTemporaryReader)) return unref(options.chapters)
     const targetBookId = unref(options.bookId)
     const data = await options.fetchChapters(targetBookId)
     if (unref(options.bookId) !== targetBookId) return unref(options.chapters)
@@ -45,6 +46,10 @@ export function useReaderChapterMaintenance(options) {
   }
 
   async function clearCurrentBookCache() {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     if (!unref(options.isRemoteBook)) return
     try {
       const data = await options.clearServerCache([unref(options.bookId)])

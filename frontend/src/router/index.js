@@ -103,6 +103,7 @@ const router = createRouter({
       }),
     },
     { path: '/books/:id/read', name: 'reader', component: Reader },
+    { path: '/reader/remote/:sessionId', name: 'remote-reader', component: Reader },
   ],
 })
 

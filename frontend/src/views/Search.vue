@@ -21,6 +21,7 @@
         v-if="searchMode === 'remote' && groupedResults.length"
         :groups="groupedResults"
         @preview="openPreview"
+        @read="openRemoteReader"
       />
 
       <div v-else-if="searchMode === 'local' && shownLocalResults.length" class="local-result-list">
@@ -61,6 +62,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import { createRemoteBook } from '../api/books'
+import { createRemoteReaderSession } from '../api/remoteReader'
 import { importFromLocalStore, listLocalStore } from '../api/localStore'
 import api from '../api/client'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
@@ -86,6 +88,7 @@ import {
 import {
   remoteBookCreatePayload,
   remoteBookKey,
+  remoteBookReaderPayload,
   remoteBookSourceId,
   remoteBookSourceName,
   remoteBookUrl,
@@ -574,6 +577,19 @@ function openLocalShelfDetail(book) {
     statusLabel: '本地书籍',
     statusType: 'info',
   })
+}
+
+async function openRemoteReader(item) {
+  try {
+    const { data } = await createRemoteReaderSession(remoteBookReaderPayload(item, {
+      sourceId: remoteBookSourceId(item),
+      sourceName: remoteBookSourceName(item),
+    }))
+    if (!data?.id) throw new Error('远程阅读会话无效')
+    router.push({ name: 'remote-reader', params: { sessionId: data.id }, query: { chapter: 0 } })
+  } catch (error) {
+    ElMessage.error(readError(error, '打开临时阅读失败'))
+  }
 }
 
 function formatSize(bytes) {

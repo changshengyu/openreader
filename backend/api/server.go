@@ -29,10 +29,11 @@ type Server struct {
 	cbzReader      *cbzreader.Service
 	epubReader     *epubreader.Service
 	sourceFailures *sourcefailure.Service
+	remoteReaders  *remoteReaderSessionStore
 	registerMu     sync.Mutex
 }
 
-func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) {
+func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) *Server {
 	server := &Server{
 		cfg:            cfg,
 		db:             database,
@@ -43,6 +44,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		cbzReader:      cbzreader.New(cfg, database),
 		epubReader:     epubreader.New(cfg, database),
 		sourceFailures: sourcefailure.New(database),
+		remoteReaders:  newRemoteReaderSessionStore(),
 	}
 
 	api := router.Group("/api")
@@ -97,6 +99,9 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/books", server.listBooks)
 	protected.POST("/books", server.createBook)
 	protected.POST("/books/remote", server.createRemoteBook)
+	protected.POST("/reader/remote-sessions", server.createRemoteReaderSession)
+	protected.GET("/reader/remote-sessions/:id", server.getRemoteReaderSession)
+	protected.GET("/reader/remote-sessions/:id/chapters/:index/content", server.remoteReaderSessionChapterContent)
 	protected.POST("/books/check-updates", server.checkUpdates)
 	protected.POST("/books/batch", server.batchBooks)
 	protected.POST("/books/export", server.exportBooks)
@@ -188,4 +193,5 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	if err := os.MkdirAll(uploadsDir, 0o755); err == nil {
 		router.Static("/uploads", uploadsDir)
 	}
+	return server
 }

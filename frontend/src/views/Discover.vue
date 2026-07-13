@@ -54,7 +54,7 @@
 
       <section>
         <div ref="discoverResults" v-loading="loadingBooks" class="discover-results">
-          <RemoteBookResultGroups v-if="books.length" :groups="exploreResultGroups" @preview="openPreview" />
+          <RemoteBookResultGroups v-if="books.length" :groups="exploreResultGroups" @preview="openPreview" @read="openRemoteReader" />
           <el-empty v-if="!loadingBooks && !books.length" :description="sources.length ? '选择左侧书源入口开始探索' : '没有配置 exploreUrl 的书源'" />
         </div>
       </section>
@@ -68,6 +68,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createRemoteBook } from '../api/books'
+import { createRemoteReaderSession } from '../api/remoteReader'
 import { exploreBooks, listExploreSources } from '../api/explore'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
@@ -86,6 +87,7 @@ import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import {
   remoteBookCreatePayload,
   remoteBookKey,
+  remoteBookReaderPayload,
   remoteBookSourceId,
   remoteBookSourceName,
   remoteBookUrl,
@@ -392,6 +394,19 @@ function openPreview(book) {
           loading: addingBook.value === activeRemoteKey(book),
         }),
   })
+}
+
+async function openRemoteReader(book) {
+  try {
+    const { data } = await createRemoteReaderSession(remoteBookReaderPayload(book, {
+      sourceId: activeRemoteSourceId(book),
+      sourceName: activeRemoteSourceName(book),
+    }))
+    if (!data?.id) throw new Error('远程阅读会话无效')
+    router.push({ name: 'remote-reader', params: { sessionId: data.id }, query: { chapter: 0 } })
+  } catch (error) {
+    ElMessage.error(readError(error, '打开临时阅读失败'))
+  }
 }
 
 async function addRemoteBook(book, shouldRead) {

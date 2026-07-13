@@ -356,6 +356,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
 import { refreshBook, refreshLocalBook } from '../api/books'
+import { getRemoteReaderChapterContent, getRemoteReaderSession } from '../api/remoteReader'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
 import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
@@ -418,7 +419,7 @@ import { useReaderTypographySync } from '../composables/useReaderTypographySync'
 import { useReaderViewportProgress } from '../composables/useReaderViewportProgress'
 import { useReaderWheel } from '../composables/useReaderWheel'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
-import { clearBookBrowserChapterCache } from '../utils/bookChapterCache'
+import { clearBookBrowserChapterCache, loadBrowserChapterContent } from '../utils/bookChapterCache'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
@@ -441,7 +442,23 @@ const reader = useReaderStore()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
-const bookId = computed(() => Number(route.params.id))
+const remoteSessionId = computed(() => (
+  route.name === 'remote-reader' ? String(route.params.sessionId || '') : ''
+))
+const isTemporaryRemoteReader = computed(() => Boolean(remoteSessionId.value))
+const bookId = computed(() => (
+  isTemporaryRemoteReader.value ? `remote:${remoteSessionId.value}` : Number(route.params.id)
+))
+
+function readerRouteLocation(query = {}) {
+  return isTemporaryRemoteReader.value
+    ? { name: 'remote-reader', params: { sessionId: remoteSessionId.value }, query }
+    : { name: 'reader', params: { id: bookId.value }, query }
+}
+
+function temporaryReaderUnavailable() {
+  showReaderToast('临时阅读请先加入书架后使用此功能', 2200)
+}
 const {
   clearBgImage,
   clearFontFile,
@@ -624,6 +641,8 @@ const {
 } = useReaderToc({
   chapters,
   isRemoteBook,
+  isTemporaryReader: isTemporaryRemoteReader,
+  onUnavailable: temporaryReaderUnavailable,
   refreshCachedChapters: (...args) => computeBrowserCachedChapters(...args),
   syncCurrentChapter: (...args) => updateCurrentChapterFromScroll(...args),
   goChapter: (...args) => goChapter(...args),
@@ -646,10 +665,12 @@ const {
   chapters,
   currentIndex,
   isRemoteBook,
+  isTemporaryReader: isTemporaryRemoteReader,
   afterCache: (...args) => loadChapters(...args),
   onClearMemory: () => clearChapterContentMemory(),
   notify: message => showReaderToast(message, 1600),
   onNoTargets: () => ElMessage.error('不需要缓存'),
+  onUnavailable: temporaryReaderUnavailable,
   onError: error => ElMessage.error(readError(error, '缓存章节失败')),
 })
 const {
@@ -664,6 +685,14 @@ const {
   memoryCache: chapterContentCache,
   markCached: markBrowserChapterCached,
   preloadRadius: NEARBY_PRELOAD_RADIUS,
+  shouldCache: () => !isTemporaryRemoteReader.value,
+  loadBrowserContent: async (targetBook, targetBookId, index, options) => {
+    if (isTemporaryRemoteReader.value && targetBookId === bookId.value) {
+      const { data } = await getRemoteReaderChapterContent(remoteSessionId.value, index)
+      return data
+    }
+    return loadBrowserChapterContent(targetBook, targetBookId, index, options)
+  },
 })
 const {
   clearCurrentBookCache,
@@ -676,6 +705,8 @@ const {
   chapters,
   currentIndex,
   isRemoteBook,
+  isTemporaryReader: isTemporaryRemoteReader,
+  onUnavailable: temporaryReaderUnavailable,
   fetchChapters: async targetBookId => {
     const { data } = await api.get(`/books/${targetBookId}/chapters`)
     return data
@@ -860,6 +891,7 @@ const {
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,
   mergeBook: mergeShelfBook,
+  isTemporaryReader: isTemporaryRemoteReader,
 })
 const {
   compute: computeShowChapterList,
@@ -921,11 +953,7 @@ const {
   pageWidth,
   getMode: () => effectiveReaderMode.value,
   getRouteQuery: () => route.query,
-  navigate: query => router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query,
-  }),
+  navigate: query => router.replace(readerRouteLocation(query)),
   loadChapter: (index, loadOptions) => loadChapter(index, 0, loadOptions),
   canMatchBookmark: () => chapterFormat.value === 'text',
   onBookmarkNotFound: () => ElMessage.error('无法定位内容所在段落'),
@@ -966,11 +994,7 @@ const {
   closeToc: () => {
     showTocDrawer.value = false
   },
-  navigate: query => router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query,
-  }),
+  navigate: query => router.replace(readerRouteLocation(query)),
   saveProgress: () => saveCurrentProgress(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
 })
@@ -1007,11 +1031,7 @@ const {
   isContinuousScrollRead,
   getMode: () => effectiveReaderMode.value,
   getCurrentChapterPercent: currentChapterPercent,
-  navigate: query => router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query,
-  }),
+  navigate: query => router.replace(readerRouteLocation(query)),
   applyLocalProgress: () => applyLocalProgressSnapshot(),
   saveProgress: () => saveCurrentProgress(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
@@ -1338,6 +1358,8 @@ const {
   closeBookInfo: () => overlay.closeBookInfo(),
   openBookInfoOverlay: (...args) => overlay.openBookInfo(...args),
   openReplaceRulesOverlay: () => overlay.openReplaceRules(),
+  isTemporaryReader: isTemporaryRemoteReader,
+  onUnavailable: temporaryReaderUnavailable,
   openToc: openTocDrawer,
   ensureCategoriesLoaded: () => bookshelf.ensureCategoriesLoaded(),
   openBookGroup: (...args) => overlay.openBookGroup(...args),
@@ -1411,6 +1433,11 @@ const {
   chapters,
   currentIndex,
   getRouteQuery: () => route.query,
+  isTemporaryReader: isTemporaryRemoteReader,
+  loadTemporaryReader: async () => {
+    const { data } = await getRemoteReaderSession(remoteSessionId.value)
+    return data
+  },
   cancelProgressSave,
   loadCachedBook: targetBookId => cacheFirstRequest(
     () => api.get(`/books/${targetBookId}`),
@@ -1441,11 +1468,7 @@ const {
   loadChapter,
   progressKey: progressSaveKey,
   getCurrentProgress: currentProgressPayload,
-  navigate: query => router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query,
-  }),
+  navigate: query => router.replace(readerRouteLocation(query)),
   markProgressSaved,
   jumpToRouteLine,
 })
@@ -1527,7 +1550,10 @@ const {
     bookmarks: openBookmarkDialog,
     search: openContentSearch,
     info: openReaderBookInfo,
-    note: openNoteDialog,
+    note: () => {
+      if (isTemporaryRemoteReader.value) return temporaryReaderUnavailable()
+      return openNoteDialog()
+    },
     cache: toggleCacheContentZone,
     'clear-cache': () => runWithDesktopWorkspaceClosed(clearCurrentBookCache),
     reload: () => runWithDesktopWorkspaceClosed(reloadChapter),
@@ -1591,11 +1617,7 @@ const {
   progressKey: progressSaveKey,
   getCurrentProgress: currentProgressPayload,
   cancelProgressSave,
-  navigate: query => router.replace({
-    name: 'reader',
-    params: { id: bookId.value },
-    query,
-  }),
+  navigate: query => router.replace(readerRouteLocation(query)),
   loadChapter,
   markProgressSaved,
   getCurrentOffset: currentOffset,
@@ -1801,7 +1823,7 @@ function selectedBookmarkContextFromText(text) {
 }
 
 function currentAudioProgressPayload() {
-  if (!isAudioChapter.value || !chapter.value) return null
+  if (isTemporaryRemoteReader.value || !isAudioChapter.value || !chapter.value) return null
   const totalChapters = Math.max(chapters.value.length || 0, 1)
   const currentSecond = Math.max(0, Math.floor(Number(audioCurrentTime.value) || 0))
   const duration = Math.max(0, Number(audioDuration.value) || 0)

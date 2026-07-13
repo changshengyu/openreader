@@ -69,6 +69,12 @@ export function remoteBookCreatePayload(book = {}, categoryIds = [], options = {
   }
 }
 
+export function remoteBookReaderPayload(book = {}, options = {}) {
+  const payload = remoteBookCreatePayload(book, [], options)
+  const { categoryIds, sourceName, ...readerPayload } = payload
+  return readerPayload
+}
+
 function normalizeCategoryIds(value) {
   const values = Array.isArray(value) ? value : [value]
   return [...new Set(values.map(Number).filter(id => Number.isInteger(id) && id > 0))]

@@ -16,6 +16,10 @@ export function useReaderChapterCache(options) {
   let cancelled = false
 
   async function refresh() {
+    if (unref(options.isTemporaryReader)) {
+      cachedChapters.value = {}
+      return cachedChapters.value
+    }
     try {
       cachedChapters.value = await listBookBrowserCachedChapters(
         unref(options.book),
@@ -38,6 +42,10 @@ export function useReaderChapterCache(options) {
   }
 
   async function cacheFollowing(count) {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     if (!unref(options.isRemoteBook) || caching.value) return
     await refresh()
     const chapters = unref(options.chapters) || []
@@ -92,6 +100,7 @@ export function useReaderChapterCache(options) {
   }
 
   async function clearBrowserCache() {
+    if (unref(options.isTemporaryReader)) return 0
     const removed = await clearBookBrowserChapterCache(
       unref(options.book),
       unref(options.bookId),

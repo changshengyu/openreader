@@ -17,6 +17,10 @@ export function useReaderPanels(options) {
   }
 
   function openCache() {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     if (!unref(options.isRemoteBook)) return
     options.refreshBrowserCachedChapters()
     options.cacheVisible.value = !options.cacheVisible.value
@@ -28,21 +32,37 @@ export function useReaderPanels(options) {
   }
 
   function openSource() {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     options.sourceVisible.value = true
   }
 
   function openBookmarks() {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     const currentBook = unref(options.book)
     if (!currentBook) return
     options.openBookmarksOverlay(currentBook)
   }
 
   function openReplaceRules() {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     options.settingsVisible.value = false
     options.openReplaceRulesOverlay()
   }
 
   function openContentSearch() {
+    if (unref(options.isTemporaryReader)) {
+      options.onUnavailable?.()
+      return
+    }
     const currentBook = unref(options.book)
     if (!currentBook) return
     options.openContentSearchOverlay(currentBook)

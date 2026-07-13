@@ -68,6 +68,10 @@ export function useReaderToc(options) {
 
   async function refresh() {
     return runRefreshing(async () => {
+      if (unref(options.isTemporaryReader)) {
+        options.onUnavailable?.()
+        return
+      }
       if (unref(options.isRemoteBook)) {
         await options.refreshRemoteCatalog()
       } else {

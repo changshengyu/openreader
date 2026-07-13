@@ -84,6 +84,28 @@ export function useReaderBookLoad(options) {
   async function load() {
     options.cancelProgressSave()
     const targetBookId = unref(options.bookId)
+    if (unref(options.isTemporaryReader)) {
+      const response = await options.loadTemporaryReader(targetBookId)
+      if (unref(options.bookId) !== targetBookId) return
+      const temporaryBook = response?.book
+      const temporaryChapters = response?.chapters
+      if (!temporaryBook || !Array.isArray(temporaryChapters)) {
+        throw new Error('remote reader session is invalid')
+      }
+      options.book.value = temporaryBook
+      options.chapters.value = temporaryChapters
+      options.resetSourceCandidates()
+      const routeQuery = options.getRouteQuery()
+      options.currentIndex.value = Math.max(0, Number(routeQuery.chapter || 0))
+      const restorePercent = parseReaderRoutePercent(routeQuery.percent)
+      await options.loadChapter(options.currentIndex.value, Number(routeQuery.offset || 0), {
+        restorePercent,
+        saveAfterLoad: false,
+      })
+      options.markProgressSaved(options.getCurrentProgress())
+      await options.jumpToRouteLine()
+      return
+    }
     const bookmarksRequest = typeof options.loadBookmarks === 'function'
       ? options.loadBookmarks(targetBookId).catch(() => [])
       : null

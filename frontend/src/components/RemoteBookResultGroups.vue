@@ -10,9 +10,9 @@
           v-for="item in group.items || []"
           :key="bookKey(item, group)"
           class="result-card app-panel"
-          @click="$emit('preview', item)"
+          @click="$emit('read', item)"
         >
-          <BookCover :book="item" />
+          <BookCover :book="item" @click.stop="$emit('preview', item)" />
           <div class="result-main">
             <div class="result-title">
               <h3>{{ remoteBookTitle(item) }}</h3>
@@ -51,7 +51,7 @@ defineProps({
   groups: { type: Array, default: () => [] },
 })
 
-defineEmits(['preview'])
+defineEmits(['preview', 'read'])
 
 function bookKey(item, group) {
   return remoteBookKey(item, group?.sourceId)
