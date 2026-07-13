@@ -1,6 +1,6 @@
 <template>
-  <section class="app-page discover-page" :class="{ 'workspace-result-page': embedded }">
-    <header v-if="embedded" class="workspace-result-head">
+  <section class="app-page discover-page workspace-result-page">
+    <header class="workspace-result-head">
       <div>
         <h1 class="app-page-title">探索 ({{ books.length }})</h1>
         <p class="workspace-result-subtitle">{{ activeSource ? `${activeSource.name} · ${activeExploreName || '默认'}` : '选择书源入口开始探索' }}</p>
@@ -9,23 +9,6 @@
         <button type="button" @click="backToShelf">书架</button>
       </div>
     </header>
-
-    <header v-else class="discover-head">
-      <div>
-        <h1 class="app-page-title">书海</h1>
-        <p class="discover-subtitle">{{ sourceCountText }}</p>
-      </div>
-      <el-button :icon="Refresh" :loading="loadingSources" @click="loadSources">刷新书源</el-button>
-    </header>
-
-    <section v-if="!embedded" class="discover-toolbar app-panel">
-      <el-select v-model="targetCategoryIds" placeholder="加入书架分组（可多选）" multiple collapse-tags collapse-tags-tooltip clearable>
-        <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-      </el-select>
-      <span v-if="activeSource" class="source-status">
-        {{ activeSource.name }} · {{ activeExploreName || '默认' }} · 第 {{ page }} 页
-      </span>
-    </section>
 
     <section v-if="sourceGroups.length" class="source-group-tabs">
       <button
@@ -84,7 +67,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
 import { createRemoteBook } from '../api/books'
 import { exploreBooks, listExploreSources } from '../api/explore'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
@@ -110,9 +92,6 @@ import {
 } from '../utils/remoteBookResult'
 
 const router = useRouter()
-const props = defineProps({
-  embedded: { type: Boolean, default: false },
-})
 const emit = defineEmits(['back-to-shelf'])
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
@@ -140,14 +119,9 @@ const page = ref(1)
 const hasMore = ref(false)
 const loadingMore = ref(false)
 const expandedSources = ref('')
-const embeddedExploreReady = ref(false)
+const workspaceExploreReady = ref(false)
 
 const activeSource = computed(() => sources.value.find(source => source.id === selectedSourceId.value))
-const sourceCountText = computed(() => {
-  if (!sources.value.length) return '暂无可用书源'
-  if (!selectedGroup.value) return `共 ${sources.value.length} 个可用书源`
-  return `${selectedGroup.value} · ${filteredSources.value.length} / ${sources.value.length} 个可用书源`
-})
 const exploreResultGroups = computed(() => {
   const groups = new Map()
   for (const book of books.value) {
@@ -186,7 +160,7 @@ const filteredSources = computed(() => {
 })
 
 onMounted(async () => {
-  if (props.embedded) applyWorkspaceExploreIntent()
+  applyWorkspaceExploreIntent()
   const [sourcesResult, shelfResult] = await Promise.allSettled([
     loadSources(),
     warmDiscoverShelf(),
@@ -197,16 +171,16 @@ onMounted(async () => {
   if (sourcesResult.status === 'rejected') {
     ElMessage.warning(readError(sourcesResult.reason, '加载探索书源失败'))
   }
-  embeddedExploreReady.value = true
+  workspaceExploreReady.value = true
   if (selectedSourceId.value) await loadBooks()
 })
 
 watch(
   () => [workspace.mode, workspace.exploreRevision],
   () => {
-    if (!props.embedded || workspace.mode !== 'explore') return
+    if (workspace.mode !== 'explore') return
     applyWorkspaceExploreIntent()
-    if (embeddedExploreReady.value && selectedSourceId.value) loadBooks()
+    if (workspaceExploreReady.value && selectedSourceId.value) loadBooks()
   },
 )
 

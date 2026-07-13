@@ -139,17 +139,22 @@ test('keeps result pagination and scroll restoration in the workspace state with
   assert.doesNotMatch(source, /vue-router|router\.push|router\.replace/, 'the shared workspace state must be usable without a route scene transition')
 })
 
-test('keeps legacy Search and Discover pages as adapters of the shared workspace state during P1-A', () => {
+test('keeps Search and Discover as root-workspace result bodies rather than standalone pages', () => {
   const searchView = readFileSync(searchViewPath, 'utf8')
   const discoverView = readFileSync(discoverViewPath, 'utf8')
   const homeView = readFileSync(homeViewPath, 'utf8')
 
   assert.match(searchView, /useIndexWorkspaceStore/)
-  assert.match(searchView, /workspace\.beginSearch\(/)
   assert.match(searchView, /workspace\.replaceResultRows\(/)
+  assert.match(searchView, /workspace\.mode\s*!==\s*'search'/)
+  assert.doesNotMatch(searchView, /defineProps\s*\(/, 'Search must not preserve an optional standalone-page prop')
+  assert.doesNotMatch(searchView, /!embedded|v-else\s+class="search-head"/, 'Search must not preserve a standalone page branch')
+  assert.doesNotMatch(searchView, /route\.query\.(?:mode|q|searchType|group|sourceId|concurrent)/, 'Search must initialize only from the shared workspace intent')
   assert.match(discoverView, /useIndexWorkspaceStore/)
   assert.match(discoverView, /workspace\.showExploreResults\(/)
   assert.match(discoverView, /workspace\.appendResultRows\(/)
+  assert.doesNotMatch(discoverView, /defineProps\s*\(/, 'Discover must not preserve an optional standalone-page prop')
+  assert.doesNotMatch(discoverView, /!embedded|v-else\s+class="discover-head"/, 'Discover must not preserve a standalone page branch')
   assert.match(homeView, /useIndexWorkspaceStore/)
   assert.match(homeView, /workspace\.backToShelf\(\)/)
 })

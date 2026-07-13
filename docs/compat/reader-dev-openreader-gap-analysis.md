@@ -533,6 +533,22 @@ Fixed upstream authority: `web/src/views/Index.vue` and the root dialogs in `web
 - Real-browser execution passed: `index-workspace-contract.mjs` covered old-link redirects, a second sidebar search in the same scene, BookInfo → add-and-read, Explore, shelf return, and horizontal-overflow checks at 1440×900, 390×844, and 360×800. The existing `index-mobile-sidebar-contract.mjs` also passed at 390×844 and 360×800, confirming the 260px width, 270px drag range, fixed bottom controls, and shelf geometry remain intact.
 - P1-B is therefore suitable for a local Docker release and user verification. P1-C/P1-D remain separate work: canonical source, local-store, WebDAV, user-space, and settings overlays have not yet been converged.
 
+### P1-B follow-up inventory: retire unreachable standalone result shells (2026-07-13)
+
+The route and overlay work completed after the original P1-B record means several rows in the initial matrix are now historical evidence, not outstanding work: `/search` and `/discover` already redirect to the root workspace; `/sources`, `/settings`, `/local-store`, and `/books/:id` likewise resolve to root workspace overlay/intents; and the shared `OverlayBookInfo` remains the only BookInfo owner.
+
+The remaining structural gap is narrower but real. `Search.vue` and `Discover.vue` are now mounted only by `Home.vue` as root-workspace result bodies, yet both still carry their former `embedded` / non-embedded templates, route watchers, and page-only controls. Those branches are unreachable from the product router and preserve an incorrect second-page architecture that can drift from `Index.vue`.
+
+| Concern | Upstream contract | Current evidence | Classification | Required test before code |
+|---|---|---|---|---|
+| Result-body ownership | `Index.vue` owns search and Explore as in-place shelf replacements; no standalone result product page exists. | `Home.vue` is canonical, and `Search.vue` / `Discover.vue` are only imported there, but both expose an obsolete optional standalone mode. | `must-fix` | Static contract: neither result body accepts an `embedded` prop, renders a `!embedded` branch, nor observes legacy page-route queries. |
+| Legacy links | Old URLs may survive only as redirects preserving query intent. | Router already redirects `/search` and `/discover` to `/?workspace=…`; sidebar calls the workspace state directly. | `aligned` | Retain redirect and root-body assertions; prove no result component needs a route scene to initialize. |
+| Result behavior | Search, local search, Explore, pagination, BookInfo/add/read, and return-to-shelf stay in the one Index scene. | The shared Pinia workspace state already supplies those transitions. | `aligned` pending cleanup | Existing state/route contracts plus the P1-B browser smoke must continue to pass after deletion. |
+
+Allowed difference: the Vue 3 components remain separate implementation files for maintainability, but they are strictly root-workspace result bodies, not routable pages. No API, data, parser, user preference, or reader-route behavior changes in this cleanup.
+
+Implementation record: completed on 2026-07-13. `Home.vue` now mounts the two result bodies without an `embedded` compatibility prop. `Search.vue` and `Discover.vue` always initialize from `indexWorkspace`, render only the root-workspace header/body structure, and no longer retain legacy route-query watchers or standalone page controls. The dead local-result bulk-selection widgets were removed with that unreachable page shell; the still-supported per-book import action remains. Static contracts protect the no-prop/no-standalone/no-route-query boundary. Validation passed: backend `go test ./...`, frontend 360-test suite, production build, and `index-workspace-contract.mjs` against real Chrome at 1440×900, 390×844, and 360×800 (legacy redirects, repeated sidebar search, BookInfo group confirmation, Explore, shelf return, and overflow).
+
 ## P1-C full audit: source-management workspace convergence
 
 Status: audit completed on 2026-07-10. This section is an implementation gate: no source-management application code changes are allowed until the listed state, route, and browser contracts are added.

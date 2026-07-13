@@ -1,6 +1,6 @@
 <template>
-  <SearchWorkspace v-if="workspace.isSearchResult" embedded @back-to-shelf="backToShelf" />
-  <DiscoverWorkspace v-else-if="workspace.isExploreResult" embedded @back-to-shelf="backToShelf" />
+  <SearchWorkspace v-if="workspace.isSearchResult" @back-to-shelf="backToShelf" />
+  <DiscoverWorkspace v-else-if="workspace.isExploreResult" @back-to-shelf="backToShelf" />
   <section v-else class="app-page shelf-page" :class="{ 'mobile-shelf': isMobileShelf }">
     <div class="shelf-title">
       <div class="shelf-title-main">
