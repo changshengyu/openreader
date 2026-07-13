@@ -9,7 +9,25 @@ BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 PLATFORMS="${PLATFORMS:-}"
 PUSH="${PUSH:-1}"
 RELEASE="${RELEASE:-0}"
-HOST_OCI_PUSH="${HOST_OCI_PUSH:-0}"
+# Docker Desktop/OrbStack's buildx --push can report a successful local build
+# without leaving a remote GHCR manifest. Formal multi-arch releases therefore
+# default to the host-network OCI publisher. Set HOST_OCI_PUSH=0 to opt back
+# into buildx --push, or HOST_OCI_PUSH=1 to use this path for a non-release tag.
+HOST_OCI_PUSH="${HOST_OCI_PUSH:-}"
+if [ -z "$HOST_OCI_PUSH" ]; then
+  if [ "$RELEASE" = "1" ]; then
+    HOST_OCI_PUSH=1
+  else
+    HOST_OCI_PUSH=0
+  fi
+fi
+case "$HOST_OCI_PUSH" in
+  0|1) ;;
+  *)
+    echo "HOST_OCI_PUSH must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
 OCI_ARCHIVE="${OCI_ARCHIVE:-}"
 GO_VENDOR_DIR="${GO_VENDOR_DIR:-}"
 BUILD_PROGRESS="${BUILD_PROGRESS:-auto}"

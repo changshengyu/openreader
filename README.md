@@ -65,13 +65,13 @@ The script passes `VERSION`, `VCS_REF`, and `BUILD_DATE` into the Go binary and 
 
 For reproducible local builds, the script creates a temporary Go vendor context from the host module cache before the Docker build. The build container therefore does not need to download Go modules itself (useful when OrbStack's VM network differs from the host). The temporary directory is removed automatically; it is not committed to the repository. Set `GO_VENDOR_DIR=/absolute/path` only when you need to inspect or reuse that generated context; `BUILD_PROGRESS=plain` prints detailed Buildx diagnostics when a local build needs investigation.
 
-If an OrbStack/Docker registry proxy returns a transient `502` during the final push while the local build itself succeeds, use the host-network OCI fallback. It still builds locally and reads the existing Docker credential helper only in memory; no token is written to logs or the repository:
+Formal `RELEASE=1` builds automatically use the host-network OCI publisher because some OrbStack/Docker `buildx --push` runs can complete the local build without leaving a GHCR manifest. It still builds locally and reads the existing Docker credential helper only in memory; no token is written to logs or the repository. The non-release command keeps Docker's ordinary push path; opt in explicitly when needed:
 
 ```bash
-HOST_OCI_PUSH=1 RELEASE=1 ./scripts/docker-build-push.sh
+HOST_OCI_PUSH=1 ./scripts/docker-build-push.sh
 ```
 
-The OCI publisher prints blob/manifest progress, bounds each registry request to 45 seconds, and retries transient network/5xx failures three times. If a known slow connection needs different values, set `OPENREADER_OCI_REQUEST_TIMEOUT_MS` and `OPENREADER_OCI_REQUEST_ATTEMPTS`; credentials are still read only from the local Docker helper and never logged.
+The OCI publisher prints blob/manifest progress, bounds each registry request to 45 seconds, and retries transient network/5xx failures three times. If a known slow connection needs different values, set `OPENREADER_OCI_REQUEST_TIMEOUT_MS` and `OPENREADER_OCI_REQUEST_ATTEMPTS`. Set `HOST_OCI_PUSH=0 RELEASE=1` only when a working Docker buildx registry push is specifically required; credentials are still read only from the local Docker helper and never logged.
 
 ### Local Development
 
