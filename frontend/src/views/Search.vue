@@ -61,7 +61,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
-import { createRemoteBook } from '../api/books'
 import { createRemoteReaderSession } from '../api/remoteReader'
 import { importFromLocalStore, listLocalStore } from '../api/localStore'
 import api from '../api/client'
@@ -71,13 +70,6 @@ import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
-import { useBookInfoAddToShelf } from '../composables/useBookInfoAddToShelf'
-import {
-  buildBookInfoReadActions,
-  buildBookInfoStartReadActions,
-  buildSearchAddBookActions,
-  buildSearchExistingBookActions,
-} from '../utils/bookInfoOverlayActions'
 import { newestBookProgress } from '../utils/bookOrder'
 import { isLocalBook, localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
@@ -86,12 +78,9 @@ import {
   normalizeSearchConcurrent,
 } from '../utils/searchPreference.js'
 import {
-  remoteBookCreatePayload,
-  remoteBookKey,
   remoteBookReaderPayload,
   remoteBookSourceId,
   remoteBookSourceName,
-  remoteBookUrl,
 } from '../utils/remoteBookResult'
 import {
   captureWorkspaceRequest,
@@ -130,15 +119,6 @@ const activeConcurrentCount = ref(1)
 const activeSearchIsSingleSource = ref(false)
 const resultArea = ref(null)
 const remoteRequestGate = createAsyncRequestGate()
-const addToShelf = useBookInfoAddToShelf({
-  selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
-  buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
-  createRemoteBook,
-  upsertBook: book => bookshelf.upsertBook(book),
-  onSuccess: message => ElMessage.success(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
-})
-const addingBook = addToShelf.addingBookKey
 const localItems = ref([])
 const localRecursiveScan = ref(true)
 const importingLocal = ref(false)
@@ -599,69 +579,12 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-async function addRemoteBook(item, shouldRead) {
-  const key = remoteBookKey(item)
-  const data = await addToShelf.addRemoteBook(item, {
-    key,
-    categoryIds: targetCategoryIds.value,
-    sourceId: remoteBookSourceId(item),
-    sourceName: remoteBookSourceName(item),
-  })
-  if (!data) return
-  if (shouldRead) {
-    overlay.closeBookInfo()
-    router.push({ name: 'reader', params: { id: data.id } })
-    return
-  }
-  overlay.openBookInfo(data, {
-    sourceName: remoteBookSourceName(item),
-    statusLabel: '已加入书架',
-    statusType: 'success',
-    progress: 0,
-    actions: buildBookInfoStartReadActions({ read: () => openExistingReader(data) }),
-  })
-}
-
 function openPreview(item) {
-  const existing = findExistingBook(item)
   overlay.openBookInfo(item, {
     sourceName: remoteBookSourceName(item),
-    statusLabel: existing ? '已在书架' : '搜索结果',
-    statusType: existing ? 'warning' : 'success',
-    progress: readerProgressForBook(existing)?.percent || 0,
-    actions: existing
-      ? buildSearchExistingBookActions({
-          openInfo: () => openExistingInfo(existing, remoteBookSourceName(item)),
-          read: () => openExistingReader(existing),
-        })
-      : buildSearchAddBookActions({
-          add: () => addRemoteBook(item, false),
-          addAndRead: () => addRemoteBook(item, true),
-          loading: addingBook.value === remoteBookKey(item),
-        }),
+    statusLabel: '搜索结果',
+    statusType: 'info',
   })
-}
-
-function findExistingBook(item) {
-  return bookshelf.books.find(book => (
-    Number(book.sourceId || 0) === Number(remoteBookSourceId(item) || 0)
-    && String(book.url || book.bookUrl || '') === String(remoteBookUrl(item) || '')
-  )) || null
-}
-
-function openExistingInfo(book, sourceName = '') {
-  overlay.openBookInfo(book, {
-    sourceName,
-    statusLabel: '已在书架',
-    statusType: 'warning',
-    progress: readerProgressForBook(book)?.percent || 0,
-    actions: buildBookInfoReadActions({ read: () => openExistingReader(book) }),
-  })
-}
-
-function openExistingReader(book) {
-  overlay.closeBookInfo()
-  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQueryForLocalBook(book) })
 }
 
 function readError(err, fallback) {

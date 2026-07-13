@@ -27,11 +27,14 @@
       :category-action-label="categoryActionLabel"
       :show-local-refresh-action="showLocalRefreshAction"
       :local-refresh-loading="localRefreshLoading"
+      :show-add-action="showAddAction"
+      :add-loading="addLoading"
       variant="dialog"
       @cover-upload="$emit('coverUpload', $event)"
       @can-update-change="$emit('canUpdateChange', $event)"
       @category-action="$emit('categoryAction')"
       @local-refresh="$emit('localRefresh')"
+      @add="$emit('add')"
     >
       <slot />
     </BookInfoPanel>
@@ -121,9 +124,17 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  showAddAction: {
+    type: Boolean,
+    default: false,
+  },
+  addLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange', 'categoryAction', 'localRefresh'])
+defineEmits(['update:modelValue', 'coverUpload', 'canUpdateChange', 'categoryAction', 'localRefresh', 'add'])
 
 const reader = useReaderStore()
 const windowWidth = ref(currentViewportWidth())

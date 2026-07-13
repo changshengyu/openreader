@@ -53,8 +53,11 @@ function remoteBook() {
 async function installApiMocks(page) {
   const requests = []
   let sessionCreates = 0
+  let remoteBookCreates = 0
+  let shelfBooks = []
   await page.exposeFunction('__remoteReaderRequests', () => requests)
   await page.exposeFunction('__remoteReaderSessionCreates', () => sessionCreates)
+  await page.exposeFunction('__remoteReaderBookCreates', () => remoteBookCreates)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
     const request = route.request()
@@ -83,7 +86,7 @@ async function installApiMocks(page) {
     if (path === '/settings/preferences') return route.fulfill(json({ key: 'preferences', value: {} }))
     if (path === '/categories') return route.fulfill(json([]))
     if (path === '/sources') return route.fulfill(json([{ id: 1, name: '临时阅读测试书源', enabled: true }]))
-    if (path === '/books') return route.fulfill(json([]))
+    if (path === '/books') return route.fulfill(json(shelfBooks))
     if (path === '/search' && method === 'POST') {
       return route.fulfill(json({ list: [remoteBook()], page: 1, lastIndex: -1, hasMore: false }))
     }
@@ -106,6 +109,20 @@ async function installApiMocks(page) {
         },
         chapters: [{ id: 0, index: 0, title: '第一章', url: 'https://source.example/chapter/1' }],
       }, 201))
+    }
+    if (path === '/books/remote' && method === 'POST') {
+      remoteBookCreates += 1
+      const payload = request.postDataJSON()
+      shelfBooks = [{
+        id: 99,
+        title: payload.title,
+        author: payload.author,
+        sourceId: payload.sourceId,
+        url: payload.bookUrl,
+        chapterCount: 1,
+        categoryIds: payload.categoryIds || [],
+      }]
+      return route.fulfill(json(shelfBooks[0], 201))
     }
     if (path === '/reader/remote-sessions/smoke-temporary-session') {
       return route.fulfill(json({
@@ -157,6 +174,27 @@ async function runViewport(browser, viewport) {
   await page.locator('.workspace-result-page .result-card .book-cover-shared').click()
   await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
   assert(await page.evaluate(() => window.__remoteReaderSessionCreates()) === 0, `${viewport.width}: cover must only open BookInfo`)
+  const bookInfo = page.locator('.book-info-dialog')
+  assert(await bookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: unshelved BookInfo must expose one add action`)
+  assert(await bookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: BookInfo must not expose an add-and-read branch`)
+  assert(await bookInfo.getByText('继续阅读', { exact: true }).count() === 0, `${viewport.width}: BookInfo must not expose a read branch`)
+  await bookInfo.getByText('加入书架', { exact: true }).click()
+  const categoryDialog = page.locator('.book-add-category-dialog')
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '取消', exact: true }).click()
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 0, `${viewport.width}: cancelled BookInfo add must not persist a shelf book`)
+  await bookInfo.getByText('加入书架', { exact: true }).click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  const remoteCreateRequest = page.waitForRequest(request => {
+    const url = new URL(request.url())
+    return request.method() === 'POST' && url.pathname === '/api/books/remote'
+  }, { timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '确定', exact: true }).click()
+  await remoteCreateRequest
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: confirmed BookInfo add must create one shelf book`)
+  assert(await bookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: saved BookInfo must leave the add state`)
+  assert(await bookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: saved BookInfo must not gain an add-and-read branch`)
   await page.locator('.book-info-dialog .el-dialog__headerbtn').click()
   await page.locator('.book-info-dialog').waitFor({ state: 'hidden', timeout: 10000 })
 
@@ -168,12 +206,12 @@ async function runViewport(browser, viewport) {
 
   const requests = await page.evaluate(() => window.__remoteReaderRequests())
   const forbidden = requests.filter(value => (
-    value === 'POST /books/remote'
-    || value === 'PUT /progress'
+    value === 'PUT /progress'
     || /^(POST|PUT|DELETE) \/(?:books\/[^/]+\/bookmarks|bookmarks)(?:$|\/)/.test(value)
     || /^(POST|DELETE) \/(?:books\/[^/]+\/cache|cache)(?:$|\/)/.test(value)
   ))
   assert(forbidden.length === 0, `${viewport.width}: temporary reader made persistent requests: ${forbidden.join(', ')}`)
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: temporary reader must not create another shelf book after explicit BookInfo add`)
   if (viewport.width <= 750) {
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: remote reader must keep the default mobile toolbar visible`)
   } else {
@@ -195,7 +233,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`remote-reader: ok ${checks.join(', ')} coverInfo=true bodyTemporaryRead=true noPersistentWrites=true`)
+    console.log(`remote-reader: ok ${checks.join(', ')} coverInfo=true canonicalAdd=true bodyTemporaryRead=true noImplicitWrites=true`)
   } finally {
     await browser.close()
   }

@@ -144,7 +144,6 @@ import { clearCache, getCacheStats } from '../api/cache'
 import { listSources } from '../api/sources'
 import api from '../api/client'
 import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
-import { buildBookInfoReadActions } from '../utils/bookInfoOverlayActions'
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
@@ -456,12 +455,6 @@ async function openRouteBookInfoOverlay() {
     if (shelfBook) bookshelf.upsertBook(mergedBook)
     overlay.openBookInfo(mergedBook, {
       progress: routeBookProgress(mergedBook)?.percent || 0,
-      actions: buildBookInfoReadActions({
-        read: () => {
-          overlay.closeBookInfo()
-          router.push({ name: 'reader', params: { id: mergedBook.id }, query: routeReaderQuery(mergedBook) })
-        },
-      }),
     })
     routeBookInfoOpenedKey.value = key
   } catch (error) {
@@ -538,15 +531,6 @@ function clearRouteWorkspaceOperationOverlayIntent() {
 
 function routeBookProgress(book) {
   return reader.progressByBook?.[book?.id] || book?.progress || null
-}
-
-function routeReaderQuery(book) {
-  const progress = routeBookProgress(book)
-  const chapterIndex = Number(progress?.chapterIndex)
-  if (Number.isInteger(chapterIndex) && chapterIndex >= 0) {
-    return { resume: '1', chapter: chapterIndex }
-  }
-  return { resume: '1' }
 }
 
 function mergeShelfBookForRoute(current, incoming) {

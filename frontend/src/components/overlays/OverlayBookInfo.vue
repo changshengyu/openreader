@@ -18,25 +18,14 @@
     :show-category-action="bookInfoInShelf"
     :show-local-refresh-action="bookInfoInShelf && Number(overlay.bookInfoBook?.sourceId || 0) <= 0"
     :local-refresh-loading="refreshingBookId === overlay.bookInfoBook?.id"
+    :show-add-action="canAddBookInfoToShelf"
+    :add-loading="addingBookInfoToShelf"
     @cover-upload="uploadBookInfoCover"
     @can-update-change="toggleBookCanUpdate"
     @category-action="setBookGroup(overlay.bookInfoBook)"
     @local-refresh="refreshLocalBookInfo(overlay.bookInfoBook)"
-  >
-    <div v-if="overlay.bookInfoOptions.actions?.length" class="overlay-actions">
-      <el-button
-        v-for="action in overlay.bookInfoOptions.actions"
-        :key="action.label"
-        :type="action.type || 'default'"
-        :plain="action.plain"
-        :loading="!!action.loading"
-        :disabled="!!action.disabled"
-        @click="action.handler?.(overlay.bookInfoBook)"
-      >
-        {{ action.label }}
-      </el-button>
-    </div>
-  </BookInfoDialog>
+    @add="addBookInfoToShelf"
+  />
 
   <BookEditDialog
     v-model="overlay.bookEditVisible"
@@ -49,7 +38,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listChapters, refreshLocalBook, updateBook } from '../../api/books'
+import { createRemoteBook, listChapters, refreshLocalBook, updateBook } from '../../api/books'
+import { useBookInfoAddToShelf } from '../../composables/useBookInfoAddToShelf'
 import { listSources } from '../../api/sources'
 import { uploadAsset } from '../../api/uploads'
 import { useOverlayBookInfo } from '../../composables/useOverlayBookInfo'
@@ -63,6 +53,7 @@ import {
 } from '../../utils/bookChapterCache'
 import { createBookCategoryNameResolver } from '../../utils/bookCategory'
 import { newestBookProgress, sortByShelfOrder } from '../../utils/bookOrder'
+import { remoteBookCreatePayload, remoteBookKey } from '../../utils/remoteBookResult'
 import {
   invalidateReaderDataCache,
   writeReaderDataCache,
@@ -100,6 +91,20 @@ const bookInfoBrowserCacheCount = computed(() => (
 const bookInfoInShelf = computed(() => isShelfBook(overlay.bookInfoBook))
 const sourceStatusLabel = computed(() => (
   overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍'
+))
+const addToShelf = useBookInfoAddToShelf({
+  selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
+  buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
+  createRemoteBook,
+  upsertBook: book => bookshelf.upsertBook(book),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const addingBookInfoToShelf = computed(() => (
+  addToShelf.addingBookKey.value === bookInfoKey(overlay.bookInfoBook)
+))
+const canAddBookInfoToShelf = computed(() => (
+  !bookInfoInShelf.value && isRemoteBookInfo(overlay.bookInfoBook)
 ))
 
 const {
@@ -146,10 +151,10 @@ watch(
   () => overlay.bookInfoVisible,
   async (visible) => {
     if (!visible) return
-    const warmTasks = [bookshelf.ensureCategoriesLoaded()]
-    if (overlay.bookInfoBook?.id) {
-      warmTasks.push(bookshelf.ensureBooksLoaded({ all: true }))
-    }
+    const warmTasks = [
+      bookshelf.ensureCategoriesLoaded(),
+      bookshelf.ensureBooksLoaded({ all: true }),
+    ]
     const [categoryResult, booksResult] = await Promise.allSettled(warmTasks)
     if (categoryResult.status === 'rejected') {
       ElMessage.warning(
@@ -161,6 +166,7 @@ watch(
         readError(booksResult.reason, '书架状态加载失败，书籍信息仍可查看'),
       )
     }
+    resolveBookInfoShelfRecord()
     if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
       await loadSourceRows().catch((error) => {
         ElMessage.warning(
@@ -196,6 +202,56 @@ function isShelfBook(book) {
   return bookshelf.books.some(item => (
     String(item.url || item.bookUrl || '').trim() === bookUrl
   ))
+}
+
+function findShelfBook(book) {
+  if (!book) return null
+  if (book.id) {
+    const byID = bookshelf.books.find(item => Number(item.id) === Number(book.id))
+    if (byID) return byID
+  }
+  const bookURL = String(book.url || book.bookUrl || '').trim()
+  if (!bookURL) return null
+  return bookshelf.books.find(item => (
+    String(item.url || item.bookUrl || '').trim() === bookURL
+  )) || null
+}
+
+function resolveBookInfoShelfRecord() {
+  const shelfBook = findShelfBook(overlay.bookInfoBook)
+  if (!shelfBook) return
+  if (overlay.bookInfoBook !== shelfBook) {
+    overlay.bookInfoBook = shelfBook
+  }
+}
+
+function isRemoteBookInfo(book) {
+  return Boolean(
+    Number(book?.sourceId || 0) > 0
+    && String(book?.url || book?.bookUrl || '').trim(),
+  )
+}
+
+function bookInfoKey(book) {
+  return remoteBookKey(book || {})
+}
+
+async function addBookInfoToShelf() {
+  const currentBook = overlay.bookInfoBook
+  if (!canAddBookInfoToShelf.value || !currentBook) return
+  const addedBook = await addToShelf.addRemoteBook(currentBook, {
+    key: bookInfoKey(currentBook),
+    sourceId: currentBook.sourceId,
+    sourceName: bookInfoSourceName.value,
+  })
+  if (!addedBook) return
+  overlay.bookInfoBook = addedBook
+  overlay.bookInfoOptions = {
+    ...overlay.bookInfoOptions,
+    categoryName: categoryName(addedBook),
+    statusLabel: '已加入书架',
+    statusType: 'success',
+  }
 }
 
 function setBookGroup(book) {
@@ -246,24 +302,3 @@ function readError(error, fallback) {
     fallback
 }
 </script>
-
-<style scoped>
-.overlay-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-@media (max-width: 750px) {
-  .overlay-actions {
-    display: grid;
-  }
-
-  .overlay-actions :deep(.el-button) {
-    width: 100%;
-    min-height: 38px;
-    margin-left: 0;
-  }
-}
-</style>

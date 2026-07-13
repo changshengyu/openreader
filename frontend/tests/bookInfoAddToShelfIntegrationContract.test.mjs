@@ -10,20 +10,26 @@ function read(relative) {
   return readFileSync(resolve(__dirname, relative), 'utf8')
 }
 
-test('Search and Discover route BookInfo additions through the shared category-confirmation controller', () => {
+test('OverlayBookInfo owns the one shared BookInfo add-to-shelf transaction', () => {
   const search = read('../src/views/Search.vue')
   const discover = read('../src/views/Discover.vue')
   const overlay = read('../src/stores/overlay.js')
-  const host = read('../src/components/GlobalOverlayHost.vue')
+  const bookInfoOverlay = read('../src/components/overlays/OverlayBookInfo.vue')
+  const panel = read('../src/components/BookInfoPanel.vue')
 
   for (const source of [search, discover]) {
-    assert.match(source, /useBookInfoAddToShelf/)
-    assert.match(source, /addToShelf\.addRemoteBook\(/)
-    assert.match(source, /overlay\.selectBookAddCategories/)
-    assert.doesNotMatch(source, /remoteBookCreatePayload\([^\n]*targetCategoryIds\.value/)
+    assert.doesNotMatch(source, /useBookInfoAddToShelf/)
+    assert.doesNotMatch(source, /addToShelf\.addRemoteBook\(/)
+    assert.doesNotMatch(source, /buildSearch(Add|Existing)BookActions/)
   }
 
   assert.match(overlay, /selectBookAddCategories\(initialCategoryIds = \[\]\)/)
   assert.match(overlay, /finishBookAddCategories\(categoryIds = null\)/)
-  assert.match(host, /OverlayBookAddToShelf/)
+  assert.match(bookInfoOverlay, /useBookInfoAddToShelf/)
+  assert.match(bookInfoOverlay, /addToShelf\.addRemoteBook\(/)
+  assert.match(bookInfoOverlay, /overlay\.selectBookAddCategories/)
+  assert.match(bookInfoOverlay, /:show-add-action="canAddBookInfoToShelf"/)
+  assert.match(panel, /v-else-if="showAddAction"/)
+  assert.match(panel, /加入书架/)
+  assert.doesNotMatch(panel, /加入并阅读/)
 })

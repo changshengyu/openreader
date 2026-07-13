@@ -1782,3 +1782,20 @@ Implementation status:
 4. Implement OpenReader changes.
 5. Run module gate and record allowed differences.
 6. Publish Git commits promptly. Publish Docker after any coherent, fully verified slice suitable for user validation; a complete module boundary remains preferred.
+## 2026-07-13 BookInfo action-state audit (P1-B implementation gate)
+
+Upstream authority is `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
+`web/src/components/BookInfo.vue`. Its `isInShelf` computed value compares the
+active book URL to the shelf list and is the sole action predicate. `Index.vue`
+and `Reader.vue` only select the book then open the same global BookInfo dialog.
+
+| Behavior | Upstream contract | Current OpenReader | Classification |
+|---|---|---|---|
+| Existing shelf book | Shows existing shelf properties (cover update, follow update, group/local actions); no read/detail action in the dialog. | Search/Discover and legacy detail hydration inject read/detail action arrays. | `must-fix` |
+| Unshelved result | The BookInfo property area shows only `加入书架`; it is not a “join and read” menu. | Search/Discover inject `加入书架` and `加入并阅读`; temporary Reader lacks the same shared add path. | `must-fix` |
+| Add success | The saved shelf record becomes the new BookInfo state without changing the current scene. | Each source screen reopens a separate BookInfo configuration with `开始阅读`. | `must-fix` |
+| Reader entry | Merges current reading book with matching shelf record then opens the global dialog; no Reader route/tool state change. | Saved Reader is close; temporary Reader must receive the same unshelved add branch. | `must-fix` |
+| `/books/:id` | No upstream route exists. | OpenReader redirect is required compatibility, but its injected `开始阅读` action is not. | `acceptable-change` |
+
+Required implementation and tests are recorded in
+`docs/compat/index-search-p1b-contract.md#10-2026-07-13-bookinfo-动作状态机复审实现前矩阵`.

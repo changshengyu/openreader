@@ -35,29 +35,19 @@ test('AppLayout owns route bookInfo query hydration into the shared overlay', ()
   assert.match(layout, /route\.query\.bookInfo/)
   assert.match(layout, /api\.get\(`\/books\/\$\{id\}`\)/)
   assert.match(layout, /overlay\.openBookInfo\(mergedBook/)
-  assert.match(layout, /buildBookInfoReadActions\(/)
+  assert.doesNotMatch(layout, /buildBookInfo(Read|StartRead)Actions/)
 })
 
-test('centralizes contextual BookInfo overlay action labels', () => {
-  const policy = read('../src/utils/bookInfoOverlayActions.js')
+test('keeps BookInfo action state in the shared overlay instead of entry contexts', () => {
   const search = read('../src/views/Search.vue')
   const discover = read('../src/views/Discover.vue')
   const layout = read('../src/layouts/AppLayout.vue')
-  const readerPanels = read('../src/composables/useReaderPanels.js')
-  const duplicatedLabelPattern = /label:\s*['`](查看详情|继续阅读|加入并阅读|开始阅读|目录|书签|搜正文|书源|刷新目录|缓存章节|清缓存|设置)['`]/
+  const bookInfoOverlay = read('../src/components/overlays/OverlayBookInfo.vue')
 
-  assert.match(policy, /BOOK_INFO_ACTION_LABELS/)
-  assert.match(policy, /buildSearchExistingBookActions/)
-  assert.match(policy, /buildSearchAddBookActions/)
-  assert.match(search, /buildSearchExistingBookActions\(/)
-  assert.match(search, /buildSearchAddBookActions\(/)
-  assert.match(discover, /buildSearchExistingBookActions\(/)
-  assert.match(discover, /buildSearchAddBookActions\(/)
-  assert.match(layout, /buildBookInfoReadActions\(/)
-  assert.doesNotMatch(policy, /buildReaderBookInfoActions/)
-  assert.doesNotMatch(readerPanels, /actions,\s*$/m)
-  assert.doesNotMatch(search, duplicatedLabelPattern)
-  assert.doesNotMatch(discover, duplicatedLabelPattern)
-  assert.doesNotMatch(layout, duplicatedLabelPattern)
-  assert.doesNotMatch(readerPanels, duplicatedLabelPattern)
+  for (const source of [search, discover, layout]) {
+    assert.doesNotMatch(source, /build(BookInfo(Read|StartRead)|Search(Add|Existing))BookActions/)
+    assert.doesNotMatch(source, /actions:\s*build/)
+  }
+  assert.doesNotMatch(bookInfoOverlay, /overlay\.bookInfoOptions\.actions/)
+  assert.match(bookInfoOverlay, /function addBookInfoToShelf\(\)/)
 })

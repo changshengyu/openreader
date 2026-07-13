@@ -62,6 +62,21 @@
             {{ categoryActionLabel }}
           </button>
         </div>
+        <div v-else-if="showAddAction" class="book-operate-zone">
+          <el-tag
+            type="success"
+            effect="light"
+            class="book-operate-btn"
+            :class="{ loading: addLoading }"
+            role="button"
+            tabindex="0"
+            @click.stop="emit('add')"
+            @keydown.enter.prevent="emit('add')"
+            @keydown.space.prevent="emit('add')"
+          >
+            {{ addLoading ? '加入中…' : '加入书架' }}
+          </el-tag>
+        </div>
         <div v-if="showStats">
           <span>章节：</span>
           <strong>{{ chapterCount }}</strong>
@@ -171,6 +186,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showAddAction: {
+    type: Boolean,
+    default: false,
+  },
+  addLoading: {
+    type: Boolean,
+    default: false,
+  },
   variant: {
     type: String,
     default: 'detail',
@@ -178,7 +201,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['cover-upload', 'can-update-change', 'category-action', 'local-refresh'])
+const emit = defineEmits(['cover-upload', 'can-update-change', 'category-action', 'local-refresh', 'add'])
 const coverInput = ref(null)
 
 const bookTitle = computed(() => props.book?.title || props.book?.name || props.book?.bookName || '未命名书籍')
@@ -392,6 +415,26 @@ function handleCoverFileChange(event) {
   border: 0;
   cursor: pointer;
   font-size: 13px;
+}
+
+.book-props .book-operate-zone {
+  min-height: 28px;
+  align-items: center;
+}
+
+.book-operate-btn {
+  cursor: pointer;
+  user-select: none;
+}
+
+.book-operate-btn.loading {
+  cursor: progress;
+  pointer-events: none;
+}
+
+.book-operate-btn:focus-visible {
+  outline: 2px solid var(--el-color-success-light-5);
+  outline-offset: 2px;
 }
 
 .inline-update-switch {

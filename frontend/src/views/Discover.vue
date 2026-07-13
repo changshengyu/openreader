@@ -67,30 +67,16 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { createRemoteBook } from '../api/books'
 import { createRemoteReaderSession } from '../api/remoteReader'
 import { exploreBooks, listExploreSources } from '../api/explore'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
-import { useReaderStore } from '../stores/reader'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
-import { useBookInfoAddToShelf } from '../composables/useBookInfoAddToShelf'
 import {
-  buildBookInfoReadActions,
-  buildBookInfoStartReadActions,
-  buildSearchAddBookActions,
-  buildSearchExistingBookActions,
-} from '../utils/bookInfoOverlayActions'
-import { newestBookProgress } from '../utils/bookOrder'
-import { readerRouteQueryFromBook } from '../utils/readerRoute'
-import {
-  remoteBookCreatePayload,
-  remoteBookKey,
   remoteBookReaderPayload,
   remoteBookSourceId,
   remoteBookSourceName,
-  remoteBookUrl,
 } from '../utils/remoteBookResult'
 import {
   captureWorkspaceRequest,
@@ -103,7 +89,6 @@ const router = useRouter()
 const emit = defineEmits(['back-to-shelf'])
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
-const reader = useReaderStore()
 const workspace = useIndexWorkspaceStore()
 const sources = ref([])
 const books = ref([])
@@ -111,18 +96,8 @@ const selectedSourceId = ref('')
 const selectedGroup = ref('')
 const activeExploreUrl = ref('')
 const activeExploreName = ref('')
-const targetCategoryIds = ref([])
 const loadingSources = ref(false)
 const loadingBooks = ref(false)
-const addToShelf = useBookInfoAddToShelf({
-  selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
-  buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
-  createRemoteBook,
-  upsertBook: book => bookshelf.upsertBook(book),
-  onSuccess: message => ElMessage.success(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
-})
-const addingBook = addToShelf.addingBookKey
 const page = ref(1)
 const hasMore = ref(false)
 const loadingMore = ref(false)
@@ -377,22 +352,10 @@ function normalizeExploreResult(data, fallbackPage) {
 }
 
 function openPreview(book) {
-  const existing = findExistingBook(book)
   overlay.openBookInfo(book, {
     sourceName: activeRemoteSourceName(book),
-    statusLabel: existing ? '已在书架' : '探索结果',
-    statusType: existing ? 'warning' : 'success',
-    progress: existingProgress(existing)?.percent || 0,
-    actions: existing
-      ? buildSearchExistingBookActions({
-          openInfo: () => openExistingInfo(existing, activeRemoteSourceName(book)),
-          read: () => openExistingReader(existing),
-        })
-      : buildSearchAddBookActions({
-          add: () => addRemoteBook(book, false),
-          addAndRead: () => addRemoteBook(book, true),
-          loading: addingBook.value === activeRemoteKey(book),
-        }),
+    statusLabel: '探索结果',
+    statusType: 'info',
   })
 }
 
@@ -409,35 +372,6 @@ async function openRemoteReader(book) {
   }
 }
 
-async function addRemoteBook(book, shouldRead) {
-  const data = await addToShelf.addRemoteBook(book, {
-    key: activeRemoteKey(book),
-    categoryIds: targetCategoryIds.value,
-    sourceId: activeRemoteSourceId(book),
-    sourceName: activeRemoteSourceName(book),
-  })
-  if (!data) return
-  if (shouldRead) {
-    overlay.closeBookInfo()
-    router.push({ name: 'reader', params: { id: data.id } })
-    return
-  }
-  overlay.openBookInfo(data, {
-    sourceName: activeRemoteSourceName(book),
-    statusLabel: '已加入书架',
-    statusType: 'success',
-    progress: 0,
-    actions: buildBookInfoStartReadActions({ read: () => openExistingReader(data) }),
-  })
-}
-
-function findExistingBook(book) {
-  return bookshelf.books.find(item => (
-    Number(item.sourceId || 0) === Number(activeRemoteSourceId(book) || 0)
-    && String(item.url || item.bookUrl || '') === String(remoteBookUrl(book) || '')
-  )) || null
-}
-
 function activeRemoteSourceId(book) {
   return remoteBookSourceId(book, activeSource.value?.id) || 'unknown'
 }
@@ -446,32 +380,6 @@ function activeRemoteSourceName(book) {
   return remoteBookSourceName(book, activeSource.value?.name)
 }
 
-function activeRemoteKey(book) {
-  return remoteBookKey(book, activeRemoteSourceId(book))
-}
-
-function openExistingInfo(book, sourceName = '') {
-  overlay.openBookInfo(book, {
-    sourceName,
-    statusLabel: '已在书架',
-    statusType: 'warning',
-    progress: existingProgress(book)?.percent || 0,
-    actions: buildBookInfoReadActions({ read: () => openExistingReader(book) }),
-  })
-}
-
-function openExistingReader(book) {
-  overlay.closeBookInfo()
-  router.push({ name: 'reader', params: { id: book.id }, query: readerRouteQuery(book) })
-}
-
-function readerRouteQuery(book) {
-  return readerRouteQueryFromBook(book, existingProgress(book))
-}
-
-function existingProgress(book) {
-  return newestBookProgress(book, reader.progressByBook)
-}
 
 function readError(err, fallback) {
   return err?.response?.data?.error?.message || err?.response?.data?.error || fallback
