@@ -11,9 +11,21 @@ GOSUMDB="${GOSUMDB:-sum.golang.org}"
 PLATFORMS="${PLATFORMS:-}"
 PUSH="${PUSH:-1}"
 RELEASE="${RELEASE:-0}"
+HOST_OCI_PUSH="${HOST_OCI_PUSH:-0}"
+OCI_ARCHIVE="${OCI_ARCHIVE:-}"
 
 if [ "$PUSH" = "1" ]; then
-  OUTPUT_FLAG="--push"
+  if [ "$HOST_OCI_PUSH" = "1" ]; then
+    if [ -z "$OCI_ARCHIVE" ]; then
+      OCI_ARCHIVE="$(mktemp -t openreader-oci)"
+      REMOVE_OCI_ARCHIVE=1
+    else
+      REMOVE_OCI_ARCHIVE=0
+    fi
+    OUTPUT_FLAG="--output type=oci,dest=$OCI_ARCHIVE"
+  else
+    OUTPUT_FLAG="--push"
+  fi
   if [ -z "$PLATFORMS" ]; then
     if [ "$RELEASE" = "1" ]; then
       PLATFORMS="linux/amd64,linux/arm64"
@@ -37,3 +49,11 @@ docker buildx build \
   --build-arg "GOSUMDB=$GOSUMDB" \
   $OUTPUT_FLAG \
   .
+
+if [ "$PUSH" = "1" ] && [ "$HOST_OCI_PUSH" = "1" ]; then
+  OCI_CLEANUP_FLAG=""
+  if [ "${REMOVE_OCI_ARCHIVE:-0}" = "1" ]; then
+    OCI_CLEANUP_FLAG="--remove-archive"
+  fi
+  node ./scripts/docker-oci-push.mjs --archive "$OCI_ARCHIVE" --image "$IMAGE" --tag "$TAG" --tag latest $OCI_CLEANUP_FLAG
+fi

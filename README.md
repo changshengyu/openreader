@@ -63,6 +63,12 @@ docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 
 The script passes `VERSION`, `VCS_REF`, and `BUILD_DATE` into the Go binary and OCI image labels, so `/api/health` and the Settings page show the actual build metadata instead of `unknown`.
 
+If an OrbStack/Docker registry proxy returns a transient `502` during the final push while the local build itself succeeds, use the host-network OCI fallback. It still builds locally and reads the existing Docker credential helper only in memory; no token is written to logs or the repository:
+
+```bash
+HOST_OCI_PUSH=1 RELEASE=1 ./scripts/docker-build-push.sh
+```
+
 ### Local Development
 
 **Backend:**

@@ -151,3 +151,9 @@ Evidence for the checked EPUB items:
 - Backend tests: `go test ./services/epubreader ./api ./db ./engine ./services/localbook` and full `go test ./...`.
 - Frontend tests: `npm test`.
 - Browser test: `scripts/smoke/reader-epub-contract.mjs` against 1440×900, 390×844, and 360×800.
+
+# 2026-07-13 Docker OCI fallback
+
+- [x] The host-network OCI fallback reads registry credentials only through Docker's configured credential helper or the existing Docker config, retains the credential only in memory, and never logs an authorization header, password, or token.
+- [x] OCI archive extraction rejects every path except the fixed OCI layout paths, verifies every SHA-256 descriptor before upload, and removes only its own `mkdtemp` workspace (and its opt-in temporary archive).
+- [x] Uploads are limited to the explicit image/repository/tag arguments produced by the local release command; it never derives an arbitrary registry target from an archive.
