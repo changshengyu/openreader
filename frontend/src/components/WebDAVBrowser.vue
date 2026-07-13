@@ -3,9 +3,6 @@
     <header class="webdav-head">
       <span class="webdav-current-path">{{ currentPathLabel }}</span>
       <div class="webdav-actions">
-        <el-select v-model="targetCategoryIds" size="small" placeholder="导入分组（可多选）" multiple clearable class="webdav-category-select">
-          <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
-        </el-select>
         <el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button size="small" :icon="FolderOpened" @click="createFolder">新建目录</el-button>
         <el-upload class="webdav-batch-command" :show-file-list="false" :auto-upload="false" @change="uploadFile">
@@ -14,7 +11,7 @@
         <el-button class="webdav-batch-command" size="small" type="danger" plain :disabled="!selection.length" @click="deleteSelected">
           删除 {{ selection.length }}
         </el-button>
-        <el-button class="webdav-batch-command" size="small" type="primary" :disabled="!importSelection.length" :loading="importing" @click="importSelected">
+        <el-button class="webdav-batch-command" size="small" type="primary" :disabled="!importSelection.length || storageImportPending" :loading="storageImportPending" @click="importSelected">
           加入书架 {{ importSelection.length }}
         </el-button>
       </div>
@@ -58,8 +55,8 @@
         <template #default="{ row }">
           <el-button v-if="!row.isDir && isBackupFile(row)" text type="primary" :loading="restoring === row.name" @click="restoreBackupFile(row)">恢复</el-button>
           <el-button v-if="!row.isDir" text type="primary" @click="downloadFile(row)">下载</el-button>
-          <el-button v-if="row.importable" text type="primary" :loading="importing" @click="importBook(row)">加入书架</el-button>
-          <el-button v-else-if="row.isDir" text type="primary" :loading="importing" @click="importDirectory(row)">加入目录</el-button>
+          <el-button v-if="row.importable" text type="primary" :loading="storageImportPending" @click="importBook(row)">加入书架</el-button>
+          <el-button v-else-if="row.isDir" text type="primary" :loading="storageImportPending" @click="importDirectory(row)">加入目录</el-button>
           <el-button text @click="renameItem(row)">重命名</el-button>
           <el-button text type="danger" @click="deleteItem(row)">删除</el-button>
         </template>
@@ -97,8 +94,8 @@
         <footer>
           <el-button v-if="!row.isDir && isBackupFile(row)" size="small" text type="primary" :loading="restoring === row.name" @click="restoreBackupFile(row)">恢复</el-button>
           <el-button v-if="!row.isDir" size="small" text type="primary" @click="downloadFile(row)">下载</el-button>
-          <el-button v-if="row.importable" size="small" text type="primary" :loading="importing" @click="importBook(row)">加入书架</el-button>
-          <el-button v-else-if="row.isDir" size="small" text type="primary" :loading="importing" @click="importDirectory(row)">加入目录</el-button>
+          <el-button v-if="row.importable" size="small" text type="primary" :loading="storageImportPending" @click="importBook(row)">加入书架</el-button>
+          <el-button v-else-if="row.isDir" size="small" text type="primary" :loading="storageImportPending" @click="importDirectory(row)">加入目录</el-button>
           <el-button size="small" text @click="renameItem(row)">重命名</el-button>
           <el-button size="small" text type="danger" @click="deleteItem(row)">删除</el-button>
         </footer>
@@ -110,7 +107,7 @@
     <div v-if="items.length" class="webdav-batch-footer">
       <span class="check-tip">已选择 {{ selection.length }} 个</span>
       <el-button type="primary" plain :disabled="!selection.length" @click="deleteSelected">批量删除</el-button>
-      <el-button type="primary" :disabled="!importSelection.length" :loading="importing" @click="importSelected">
+      <el-button type="primary" :disabled="!importSelection.length || storageImportPending" :loading="storageImportPending" @click="importSelected">
         批量加入书架 {{ importSelection.length || '' }}
       </el-button>
       <el-upload :show-file-list="false" :auto-upload="false" @change="uploadFile">
@@ -119,26 +116,6 @@
       <el-button @click="selection = []">取消</el-button>
     </div>
 
-    <LocalBookImportPreviewDialog
-      v-model="previewDialog"
-      title="WebDAV 导入预览"
-      :items="previewItems"
-      :categories="bookshelf.categories"
-      :category-ids="targetCategoryIds"
-      :loading="importing"
-      @confirm="confirmPreviewImport"
-      @reparse="reparsePreviewItem"
-    />
-
-    <el-dialog v-model="importResultDialog" title="WebDAV 导入结果" width="560px" :fullscreen="isMobile">
-      <div class="result-list">
-        <div v-for="(item, index) in importResults" :key="index" class="result-row">
-          <el-tag :type="item.book ? 'success' : 'danger'" effect="plain">{{ item.book ? '成功' : '失败' }}</el-tag>
-          <span>{{ item.book?.title || item.path }}</span>
-          <small>{{ item.error || `${item.book?.chapterCount || 0} 章` }}</small>
-        </div>
-      </div>
-    </el-dialog>
   </section>
 </template>
 
@@ -147,9 +124,8 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened, Refresh, Upload } from '@element-plus/icons-vue'
 import { restoreWebDAVBackup } from '../api/backup'
-import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, importFromWebDAV, listWebDAV, previewWebDAVImport, renameWebDAV, uploadWebDAV } from '../api/webdav'
-import LocalBookImportPreviewDialog from './LocalBookImportPreviewDialog.vue'
-import { useBookshelfStore } from '../stores/bookshelf'
+import { createWebDAVDirectory, deleteWebDAV, downloadWebDAV, listWebDAV, renameWebDAV, uploadWebDAV } from '../api/webdav'
+import { useOverlayStore } from '../stores/overlay'
 import { applyRestoreResult } from '../utils/restoreSync'
 
 defineProps({
@@ -159,21 +135,13 @@ defineProps({
   },
 })
 
-const emit = defineEmits(['imported'])
-
-const bookshelf = useBookshelfStore()
+const overlay = useOverlayStore()
 const path = ref('')
 const items = ref([])
 const selection = ref([])
 const loading = ref(false)
 const uploading = ref(false)
 const restoring = ref('')
-const importing = ref(false)
-const previewDialog = ref(false)
-const previewItems = ref([])
-const importResultDialog = ref(false)
-const importResults = ref([])
-const targetCategoryIds = ref([])
 
 const currentPathLabel = computed(() => path.value || '/')
 const breadcrumbs = computed(() => {
@@ -182,15 +150,13 @@ const breadcrumbs = computed(() => {
   return parts.map((name, index) => ({ name, path: parts.slice(0, index + 1).join('/') }))
 })
 const importSelection = computed(() => selection.value.filter(row => row.importable))
+const storageImportPending = computed(() => overlay.storageImportVisible)
 
 onMounted(load)
 
 async function load() {
   loading.value = true
   try {
-    await warmWebDAVCategories().catch((err) => {
-      ElMessage.warning(readError(err, '分组加载失败，仍可浏览 WebDAV'))
-    })
     const { data } = await listWebDAV(path.value)
     items.value = parseWebDAVListing(data)
     selection.value = []
@@ -199,10 +165,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-async function warmWebDAVCategories() {
-  return bookshelf.ensureCategoriesLoaded()
 }
 
 async function goPath(nextPath) {
@@ -349,60 +311,7 @@ async function importSelected() {
 }
 
 async function importBooks(paths) {
-  importing.value = true
-  try {
-    const { data } = await previewWebDAVImport(paths)
-    previewItems.value = data.items || []
-    if (!previewItems.value.some(item => item.book)) {
-      ElMessage.warning('没有可导入的书籍')
-      return
-    }
-    previewDialog.value = true
-  } catch (err) {
-    ElMessage.error(readError(err, '解析 WebDAV 文件失败'))
-  } finally {
-    importing.value = false
-  }
-}
-
-async function reparsePreviewItem(item, done) {
-  try {
-    const { data } = await previewWebDAVImport([item])
-    const result = (data.items || []).find(candidate => candidate.path === item.path)
-    done(result || {
-      path: item.path,
-      importToken: item.importToken,
-      error: '重新解析未返回结果',
-    })
-  } catch (err) {
-    done({
-      path: item.path,
-      importToken: item.importToken,
-      error: readError(err, '重新解析失败'),
-    })
-  }
-}
-
-async function confirmPreviewImport({ items: selectedItems, categoryIds }) {
-  importing.value = true
-  try {
-    const { data } = await importFromWebDAV(selectedItems, categoryIds)
-    importResults.value = data.imported || []
-    const success = importResults.value.filter(item => item.book).length
-    const failed = importResults.value.filter(item => item.error).length
-    ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
-    importResultDialog.value = true
-    previewDialog.value = false
-    importResults.value.forEach(item => {
-      if (item.book) bookshelf.upsertBook(item.book)
-    })
-    emit('imported', importResults.value)
-    await load()
-  } catch (err) {
-    ElMessage.error(readError(err, '导入 WebDAV 文件失败'))
-  } finally {
-    importing.value = false
-  }
+  overlay.openStorageImport('webdav', paths)
 }
 
 function parseWebDAVListing(xml) {
@@ -478,8 +387,7 @@ function readError(err, fallback) {
 }
 
 .webdav-current-path,
-.mobile-file-card p,
-.result-row small {
+.mobile-file-card p {
   color: var(--app-text-muted);
   font-size: 12px;
 }
@@ -490,10 +398,6 @@ function readError(err, fallback) {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.webdav-category-select {
-  width: 140px;
 }
 
 .webdav-breadcrumb button,
@@ -516,9 +420,7 @@ function readError(err, fallback) {
 
 .file-name span,
 .mobile-file-name span,
-.mobile-file-card p,
-.result-row span,
-.result-row small {
+.mobile-file-card p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -579,22 +481,6 @@ function readError(err, fallback) {
 
 .mobile-file-card footer {
   flex-wrap: wrap;
-}
-
-.result-list {
-  display: grid;
-  gap: 8px;
-}
-
-.result-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  background: var(--app-bg-soft);
 }
 
 @media (max-width: 750px) {

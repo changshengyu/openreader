@@ -126,6 +126,7 @@ async function assertMobilePanelBlocksClickThrough(page, viewport, selector) {
 
 async function openLegacyOperation(page, root, viewport, path, selector, overlay, title, usesUpstreamDialog = false, expectedFileName = '') {
   await page.goto(`${root}${path}`, { waitUntil: 'networkidle' })
+  await page.waitForFunction((expectedOverlay) => new URLSearchParams(location.search).get('overlay') === expectedOverlay, overlay)
   await page.waitForSelector(selector, { timeout: 10000 })
   await page.locator(selector).getByText(title, { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 })
   if (expectedFileName) {

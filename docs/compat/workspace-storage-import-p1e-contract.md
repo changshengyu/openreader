@@ -1,9 +1,9 @@
 # P1-E 工作台书仓、WebDAV 与本地导入兼容合同
 
-状态：**P1-E1 已实现并完成回归；P1-E2~P1-E4 仍未开始。**
+状态：**P1-E1、P1-E2 已实现并完成前端/浏览器回归；P1-E3、P1-E4 仍未开始。**
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游证据：`web/src/views/Index.vue`、`web/src/components/LocalStore.vue`、`web/src/components/WebDAV.vue`、`BookController.kt`、`LocalBook.kt`、`TextFile.kt`。  
-当前映射：`OverlayLocalStore.vue`、`LocalStore.vue`、`OverlayWebDAV.vue`、`WebDAVBrowser.vue`、`LocalBookImportPreviewDialog.vue`、`backend/api/localstore.go`、`backend/api/webdav.go`、`backend/api/local_import_stage.go`、`backend/services/localbook/*`。
+当前映射：`OverlayLocalStore.vue`、`LocalStore.vue`、`OverlayWebDAV.vue`、`WebDAVBrowser.vue`、`OverlayStorageImport.vue`、`useStorageImportWorkflow.js`、`backend/api/localstore.go`、`backend/api/webdav.go`、`backend/api/local_import_stage.go`、`backend/services/localbook/*`。
 
 本合同不以既有“已实现”记录或静态测试为对齐证据。先固定上游的可见操作与导入状态转换，再决定哪些 Go/多用户/安全适配能够保留。
 
@@ -25,9 +25,8 @@
 | Index 宿主与旧链接 | `GlobalOverlayHost.vue` 在根工作台挂载两个 `el-dialog`；`/local-store` 重定向至 `/?overlay=local-store`，`/settings?panel=webdav` 转为 `/?overlay=webdav`。 | `aligned` | 真实浏览器验证：打开、关闭、旧链接清理 query 后仍在原书架。 |
 | 根目录重置/移动全屏 | Overlay 使用 `destroy-on-close`，`LocalStore`/`WebDAVBrowser` 的初始路径为空，根 dialog 使用 `:fullscreen="isMobile"`。 | `technical-stack-equivalent` | 浏览器断言关闭后重新打开为根路径、无残留选择/结果，并在 390×844/360×800 无横向溢出。 |
 | 安全的不可变输入 | `previewLocalStoreImport` / `previewWebDAVImport` 将每个文件复制到用户私有 `cache/import-previews/<user>/<token>`；确认导入和规则重试可只读取 token。令牌有 24 小时生命周期、大小上限和用户隔离。 | `acceptable-change` | 必须保留；这是多用户、挂载卷和源文件可变性的安全/稳定性适配，不能退回到确认时重读源路径。 |
-| 当前成功预览后的规则编辑 | `LocalBookImportPreviewDialog` 允许编辑 TXT/EPUB `tocRule`，但只在“确认导入”时随请求发送；预览章节数仍是旧规则的结果。 | `must-fix` | 规则改动必须显式使用原 token 调用 preview/reparse，刷新章节数、目录和错误状态，然后才允许确认导入。 |
-| 当前失败预览后的规则重试 | 失败行仅渲染错误文字；`previewLocalStoreImport(paths)` / `previewWebDAVImport(paths)` 只能发送 `paths`，虽然后端已支持 `{items:[{path, importToken, tocRule}]}`。 | `must-fix` | 失败的 TXT 行必须保留令牌并可填写规则、点击“重新解析”。不得要求用户重新上传或重新读取 LocalStore/WebDAV 源文件。此缺口是“目录解析失败后看似受网速影响”的首要 UI 候选原因。 |
-| 导入确认链路 | 当前 LocalStore/WebDAV 各自直接打开同一个批量预览 dialog，然后一次性确认、展示结果；不复刻上游“单本逐本 dialog / 多本选择批量或逐一确认”的状态机。 | `must-fix` | 下一阶段必须把两者收敛到一个工作台导入控制器，并先恢复上游单本/多本/取消/统一分组状态转换。保留可编辑表格式预览只能作为不替换这些分支的安全增强。 |
+| 规则编辑与失败重试 | `OverlayStorageImport` 的预检和单书确认均可编辑 TXT/EPUB `tocRule`，每次“重新解析/刷新目录”携带原 token 并替换当前行章节预览。 | `acceptable-change` | 这是 P1-E1 的稳定性增强；失败不重新读取 LocalStore/WebDAV 原文件，也不替代后续上游确认分支。 |
+| 导入确认链路 | LocalStore/WebDAV 只创建 `{source, paths}` 请求；唯一的根工作台 controller 实现单书直达、多书方式选择、统一分组、逐本取消后继续与稳定的单项 token 写入。 | `aligned` | `OverlayStorageImport` 关闭只重置临时 UI；文件管理 dialog 仍保持打开。 |
 | 当前额外书仓动作 | 当前 UI 新增递归导入当前目录、导入筛选、导入目录、新建目录、重命名和 LocalStore 下载；这些均不在固定上游 LocalStore 可见流程中。 | `must-fix` | 在没有用户明确授权的前提下，不能把额外产品流当作上游重构成果。先从主 UI 移除或放到不干扰上游操作的兼容入口；后端端点仅可因旧客户端兼容而保留。 |
 | 当前格式范围 | 当前 LocalStore/WebDAV 界面将 `.text/.md/.pdf/.cbz` 等同于上游可导入书籍；与两个上游组件的入口范围不同。 | `unknown` | 对照上游对应 parser/controller 的真实格式支持及用户显式要求后再决定。CBZ 已有独立上游格式审计；其余格式不能仅凭当前解析器支持而作为对齐依据。 |
 | WebDAV 备份 | 当前恢复操作有确认、统一 `applyRestoreResult`，并由后端执行带界限的 ZIP 验证。 | `technical-stack-equivalent` | P1-E2 复验恢复后书架/书源/RSS/进度同步、旧备份格式、错误不泄露路径。 |
@@ -90,9 +89,9 @@
 
 | 当前实现 | 判定 | P1-E2 处置 |
 |---|---|---|
-| `LocalStore.vue` 与 `WebDAVBrowser.vue` 各自持有 `previewItems/previewDialog/resultDialog`，直接把所有有效项和预选分组一次性提交。 | `must-fix` | 提取一个唯一的 storage-import controller/dialog；两个存储入口只提供来源、预览与单项导入适配，不能再维护两份选择/确认/结果状态机。 |
-| `LocalBookImportPreviewDialog` 是全量表格勾选/统一分组/一次确认。 | `must-fix` | 正常有效预览改为上游的单本直达、方式选择、批量分组、逐本确认四状态；失败/重试行只作为 P1-E1 预检安全层。 |
-| `targetCategoryIds` 会由当前书仓/WebDAV UI 的筛选状态预填导入分组。 | `must-fix` | 进入上游导入状态机时分组默认空；只有用户在单书或统一分组 dialog 中显式选择才写 `categoryIds`。 |
+| `LocalStore.vue` 与 `WebDAVBrowser.vue` 曾各自持有预览、确认和结果状态。 | `resolved` | 两者现只调用 `overlay.openStorageImport(source, paths)`；`GlobalOverlayHost` 是唯一 controller 宿主。 |
+| `LocalBookImportPreviewDialog` 曾是全量表格勾选/统一分组/一次确认。 | `resolved` | 已删除；正常有效预览按单书直达、方式选择、批量分组、逐本确认四状态运行；失败/重试行只作为 P1-E1 预检安全层。 |
+| `targetCategoryIds` 会由当前书仓/WebDAV UI 的筛选状态预填导入分组。 | `resolved` | controller 初始和每次方式选择均显式重置为 `[]`；只有单书或统一分组 dialog 的用户选择会写 `categoryIds`。 |
 | 后端 `/local-store/import`、`/webdav/import` 已能接受多项或单项 token，按循环返回每项结果，且成功后才消费 token。 | `technical-stack-equivalent` | UI 批量和逐本模式均按上游顺序逐项调用现有 endpoint（每次只传一项）；不能为了减少请求而把上游逐本副作用变成一笔不可区分的批量写入。 |
 | P1-E1 失败项可编辑规则、同 token 重试。 | `acceptable-change` | 保留为上游没有显式错误表时的稳定性/可恢复性增强；正常成功项不可因此跳过上游确认分支。 |
 | 当前“导入结果”列表。 | `must-fix` | 不能替代逐项成功/失败提示或改变下一个确认的时机。可保留一个非阻塞汇总仅作所有项完成后的安全提示，前提是不增加额外确认路径。 |
@@ -118,6 +117,13 @@
 
 - Vue 3/Pinia 的单一 controller、Gin/JWT 多用户 token、全屏移动 dialog 与上游 Vuex/Element messagebox 的内部结构不同，但上表的可见选择、默认值、取消语义和写入顺序不可改变。
 - P1-E1 的失败预检可以提供比上游更多的错误/重试信息；它只能在写入前帮助恢复，不能替代上游单本/多本选择或自动导入。
+
+### P1-E2 实施与验证记录
+
+- 新增 `useStorageImportWorkflow.js`，固定 `预检 → 单书 / 方式选择 → 批量分组或逐本确认` 的状态转换；批量与逐本都按预览顺序一次请求一项。
+- `OverlayStorageImport.vue` 是唯一全局导入界面。LocalStore、WebDAV 不再持有第二份预览、分组或结果 dialog；关闭/取消只清理 controller 临时状态。
+- `storageImportWorkflow.test.mjs` 和 `storageImportOverlayContract.test.mjs` 覆盖单书默认未分组、批量/逐本/关闭取消、逐项 token 写入、失败项留在当前确认和根宿主唯一性。
+- 真实浏览器 `workspace-storage-import-state-machine.mjs` 在 1440×900、390×844、360×800 对 LocalStore 与 WebDAV 分别覆盖单本直达、批量分组、逐本跳过、关闭方式选择零写入、移动全屏和无横向溢出；`workspace-storage-retry-contract.mjs` 同时复验两来源的同 token 规则重试。
 
 ## 5. P1-E 后续顺序
 

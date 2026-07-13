@@ -126,18 +126,18 @@ async function openAndRetry(page, root, viewport, source) {
   const path = isLocal ? '/local-store?storageRetry=1' : '/settings?panel=webdav&storageRetry=1'
   const dialog = isLocal ? '.global-local-store-dialog' : '.global-webdav-dialog'
   const startLabel = isLocal ? '导入' : '加入书架'
-  const resultTitle = isLocal ? '导入结果' : 'WebDAV 导入结果'
 
   await page.goto(`${root}${path}`, { waitUntil: 'networkidle' })
   await page.waitForSelector(dialog, { timeout: 10000 })
   await page.getByRole('button', { name: startLabel, exact: true }).first().click()
-  await page.getByText('失败', { exact: true }).waitFor()
-  const rule = page.locator('.local-book-preview-dialog').getByPlaceholder('TXT 目录规则（可选）')
+  await page.locator('.storage-import-preflight-dialog').getByText('待修复', { exact: true }).waitFor()
+  const rule = page.locator('.storage-import-preflight-dialog').getByPlaceholder('TXT 目录规则（可选）')
   await rule.fill('^== .+ ==$')
-  await page.locator('.local-book-preview-dialog').getByRole('button', { name: '重新解析', exact: true }).click()
-  await page.locator('.local-book-preview-dialog').getByText('共 1 章', { exact: true }).waitFor()
-  await page.locator('.local-book-preview-dialog').getByRole('button', { name: /确认导入 1/ }).click()
-  await page.getByText(resultTitle, { exact: true }).last().waitFor()
+  await page.locator('.storage-import-preflight-dialog').getByRole('button', { name: '重新解析', exact: true }).click()
+  await page.locator('.storage-import-preflight-dialog').getByText('已解析 1 章', { exact: true }).waitFor()
+  await page.locator('.storage-import-preflight-dialog').getByRole('button', { name: '继续导入 1 本', exact: true }).click()
+  await page.locator('.storage-import-single-dialog').getByRole('button', { name: '确定导入', exact: true }).click()
+  await page.locator('.storage-import-single-dialog').waitFor({ state: 'hidden' })
   await assertNoHorizontalOverflow(page, `${viewport.width} ${source} staged retry`)
 
   if (viewport.width <= 750) {

@@ -14,6 +14,9 @@ export const useOverlayStore = defineStore('overlay', {
     bookGroupVisible: false,
     bookGroupMode: 'manage',
     importBookVisible: false,
+    storageImportVisible: false,
+    storageImportRequest: null,
+    storageImportRequestSerial: 0,
     sourceManageVisible: false,
     sourceManageIntent: 'manage',
     bookmarkVisible: false,
@@ -82,6 +85,24 @@ export const useOverlayStore = defineStore('overlay', {
     },
     openImportBook() {
       this.importBookVisible = true
+    },
+    openStorageImport(source, paths) {
+      const normalizedSource = ['local-store', 'webdav'].includes(source) ? source : ''
+      const normalizedPaths = Array.isArray(paths)
+        ? [...new Set(paths.map(path => String(path || '').trim()).filter(Boolean))]
+        : []
+      if (!normalizedSource || !normalizedPaths.length) return
+      this.storageImportRequestSerial += 1
+      this.storageImportRequest = {
+        requestId: this.storageImportRequestSerial,
+        source: normalizedSource,
+        paths: normalizedPaths,
+      }
+      this.storageImportVisible = true
+    },
+    closeStorageImport() {
+      this.storageImportVisible = false
+      this.storageImportRequest = null
     },
     openSourceManage(intent = 'manage') {
       this.sourceManageIntent = normalizeSourceManageIntent(intent)

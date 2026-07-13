@@ -10,13 +10,13 @@
         <el-upload class="store-batch-command" :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd,.cbz" @change="uploadFile">
           <el-button :icon="Upload" :loading="uploading">上传</el-button>
         </el-upload>
-        <el-button class="store-batch-command" :disabled="!importableCount || importing" :loading="importing" @click="importCurrentDirectory">
+        <el-button class="store-batch-command" :disabled="!importableCount || storageImportPending" :loading="storageImportPending" @click="importCurrentDirectory">
           导入当前目录 ({{ importableCount }})
         </el-button>
-        <el-button class="store-batch-command" :disabled="!filteredImportablePaths.length || importing" :loading="importing" @click="importFiltered">
+        <el-button class="store-batch-command" :disabled="!filteredImportablePaths.length || storageImportPending" :loading="storageImportPending" @click="importFiltered">
           导入筛选 ({{ filteredImportablePaths.length }})
         </el-button>
-        <el-button class="store-batch-command" type="primary" :disabled="!selectedImportablePaths.length || importing" :loading="importing" @click="importSelected">
+        <el-button class="store-batch-command" type="primary" :disabled="!selectedImportablePaths.length || storageImportPending" :loading="storageImportPending" @click="importSelected">
           导入选中 ({{ selectedImportablePaths.length }})
         </el-button>
       </div>
@@ -36,9 +36,6 @@
       </el-input>
       <el-select v-model="extension" placeholder="全部格式" clearable>
         <el-option v-for="ext in extensions" :key="ext" :label="ext" :value="ext" />
-      </el-select>
-      <el-select v-model="targetCategoryIds" placeholder="导入到分组（可多选）" multiple clearable>
-        <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="String(category.id)" />
       </el-select>
       <el-switch v-model="recursiveScan" inline-prompt active-text="子目录" inactive-text="当前层" @change="load" />
     </section>
@@ -67,7 +64,7 @@
       <el-table-column prop="path" label="路径" min-width="260" show-overflow-tooltip />
       <el-table-column label="操作" width="250" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.importable" size="small" text type="primary" @click="importOne(row)">导入</el-button>
+          <el-button v-if="row.importable" size="small" text type="primary" :loading="storageImportPending" @click="importOne(row)">导入</el-button>
           <el-button v-else-if="row.isDir" size="small" text type="primary" @click="importDirectory(row)">导入目录</el-button>
           <el-button v-if="!row.isDir" size="small" text @click="downloadItem(row)">下载</el-button>
           <el-button size="small" text @click="renameItem(row)">重命名</el-button>
@@ -103,7 +100,7 @@
           <el-tag v-if="row.importable" size="small" type="success" effect="plain">可导入</el-tag>
         </div>
         <footer>
-          <el-button v-if="row.importable" size="small" text type="primary" @click="importOne(row)">导入</el-button>
+          <el-button v-if="row.importable" size="small" text type="primary" :loading="storageImportPending" @click="importOne(row)">导入</el-button>
           <el-button v-else-if="row.isDir" size="small" text type="primary" @click="importDirectory(row)">导入目录</el-button>
           <el-button v-if="!row.isDir" size="small" text @click="downloadItem(row)">下载</el-button>
           <el-button size="small" text @click="renameItem(row)">重命名</el-button>
@@ -124,7 +121,7 @@
     <div v-if="items.length" class="store-batch-footer app-panel">
       <span class="check-tip">已选择 {{ selectedRows.length }} 个</span>
       <el-button type="primary" plain :disabled="!selectedRows.length" @click="deleteSelected">批量删除</el-button>
-      <el-button type="primary" :disabled="!selectedImportablePaths.length || importing" :loading="importing" @click="importSelected">
+      <el-button type="primary" :disabled="!selectedImportablePaths.length || storageImportPending" :loading="storageImportPending" @click="importSelected">
         批量加入书架 {{ selectedImportablePaths.length || '' }}
       </el-button>
       <el-upload :show-file-list="false" :auto-upload="false" accept=".txt,.text,.md,.epub,.pdf,.umd,.cbz" @change="uploadFile">
@@ -133,38 +130,15 @@
       <el-button @click="clearSelection">取消</el-button>
     </div>
 
-    <LocalBookImportPreviewDialog
-      v-model="previewDialog"
-      title="本地书仓导入预览"
-      :items="previewItems"
-      :categories="bookshelf.categories"
-      :category-ids="targetCategoryIds"
-      :loading="importing"
-      @confirm="confirmPreviewImport"
-      @reparse="reparsePreviewItem"
-    />
-
-    <el-dialog v-model="resultDialog" title="导入结果" width="560px" :fullscreen="isMobileDialog">
-      <div class="result-list">
-        <div v-for="(item, index) in importResults" :key="index" class="result-row">
-          <el-tag :type="item.book ? 'success' : 'danger'" effect="plain">{{ item.book ? '成功' : '失败' }}</el-tag>
-          <span>{{ item.book?.title || item.path }}</span>
-          <small>{{ item.error || `${item.book?.chapterCount || 0} 章` }}</small>
-        </div>
-      </div>
-    </el-dialog>
   </section>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened, Refresh, Search, Upload } from '@element-plus/icons-vue'
-import { createLocalStoreDirectory, deleteFromLocalStore, downloadFromLocalStore, importFromLocalStore, listLocalStore, previewLocalStoreImport, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
-import LocalBookImportPreviewDialog from '../components/LocalBookImportPreviewDialog.vue'
-import { useBookshelfStore } from '../stores/bookshelf'
-import { useReaderStore } from '../stores/reader'
-import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
+import { createLocalStoreDirectory, deleteFromLocalStore, downloadFromLocalStore, listLocalStore, renameLocalStoreItem, uploadToLocalStore } from '../api/localStore'
+import { useOverlayStore } from '../stores/overlay'
 import {
   filterLocalStoreItems,
   visibleLocalStoreItems,
@@ -177,24 +151,16 @@ defineProps({
   },
 })
 
-const bookshelf = useBookshelfStore()
-const reader = useReaderStore()
+const overlay = useOverlayStore()
 const items = ref([])
 const checkedRows = ref([])
 const selectedRows = ref([])
 const currentPath = ref('')
 const keyword = ref('')
 const extension = ref('')
-const targetCategoryIds = ref([])
 const recursiveScan = ref(false)
 const loading = ref(false)
-const importing = ref(false)
 const uploading = ref(false)
-const previewDialog = ref(false)
-const previewItems = ref([])
-const resultDialog = ref(false)
-const importResults = ref([])
-const windowWidth = ref(currentViewportWidth())
 const showAllItems = ref(false)
 
 const extensions = computed(() => [...new Set(items.value.filter(item => item.importable).map(item => item.extension).filter(Boolean))].sort())
@@ -212,29 +178,13 @@ const shownItems = computed(() => visibleLocalStoreItems(filteredItems.value, sh
 const remainingItemCount = computed(() => Math.max(0, filteredItems.value.length - shownItems.value.length))
 const filteredImportablePaths = computed(() => filteredItems.value.filter(item => item.importable).map(item => item.path))
 const selectedImportablePaths = computed(() => selectedRows.value.filter(item => item.importable).map(item => item.path))
-const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
+const storageImportPending = computed(() => overlay.storageImportVisible)
 
 watch([keyword, extension], () => {
   showAllItems.value = false
 })
 
-onMounted(async () => {
-  window.addEventListener('resize', handleResize)
-  const [, categoriesResult] = await Promise.allSettled([load(), warmLocalStoreCategories()])
-  if (categoriesResult.status === 'rejected') {
-    ElMessage.warning(readError(categoriesResult.reason, '加载分组失败，导入时可能暂时无法选择分组'))
-  }
-})
-
-onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
-
-function handleResize() {
-  windowWidth.value = currentViewportWidth()
-}
-
-async function warmLocalStoreCategories() {
-  return bookshelf.ensureCategoriesLoaded()
-}
+onMounted(load)
 
 async function load() {
   loading.value = true
@@ -331,16 +281,9 @@ async function createDirectory() {
   }
 }
 
-async function importSelected() {
+function importSelected() {
   if (!selectedImportablePaths.value.length) return
-  importing.value = true
-  try {
-    await importPaths(selectedImportablePaths.value)
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importing.value = false
-  }
+  importPaths(selectedImportablePaths.value)
 }
 
 async function importCurrentDirectory() {
@@ -352,50 +295,22 @@ async function importCurrentDirectory() {
     if (err === 'cancel' || err === 'close') return
     throw err
   }
-  importing.value = true
-  try {
-    await importPaths([currentPath.value])
-  } catch (err) {
-    ElMessage.error(readError(err, '导入目录失败'))
-  } finally {
-    importing.value = false
-  }
+  importPaths([currentPath.value])
 }
 
-async function importFiltered() {
+function importFiltered() {
   if (!filteredImportablePaths.value.length) return
-  importing.value = true
-  try {
-    await importPaths(filteredImportablePaths.value)
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importing.value = false
-  }
+  importPaths(filteredImportablePaths.value)
 }
 
-async function importOne(row) {
+function importOne(row) {
   if (!row.importable) return
-  importing.value = true
-  try {
-    await importPaths([row.path])
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importing.value = false
-  }
+  importPaths([row.path])
 }
 
-async function importDirectory(row) {
+function importDirectory(row) {
   if (!row.isDir) return
-  importing.value = true
-  try {
-    await importPaths([row.path])
-  } catch (err) {
-    ElMessage.error(readError(err, '导入目录失败'))
-  } finally {
-    importing.value = false
-  }
+  importPaths([row.path])
 }
 
 async function downloadItem(row) {
@@ -408,58 +323,8 @@ async function downloadItem(row) {
   }
 }
 
-async function importPaths(paths) {
-  const { data } = await previewLocalStoreImport(paths)
-  previewItems.value = data.items || []
-  if (!previewItems.value.some(item => item.book)) {
-    ElMessage.warning('没有可导入的书籍')
-    return
-  }
-  previewDialog.value = true
-}
-
-async function reparsePreviewItem(item, done) {
-  try {
-    const { data } = await previewLocalStoreImport([item])
-    const result = (data.items || []).find(candidate => candidate.path === item.path)
-    done(result || {
-      path: item.path,
-      importToken: item.importToken,
-      error: '重新解析未返回结果',
-    })
-  } catch (err) {
-    done({
-      path: item.path,
-      importToken: item.importToken,
-      error: readError(err, '重新解析失败'),
-    })
-  }
-}
-
-async function confirmPreviewImport({ items: selectedItems, categoryIds }) {
-  importing.value = true
-  try {
-    const { data } = await importFromLocalStore(selectedItems, categoryIds)
-    applyImportResults(data)
-    previewDialog.value = false
-    clearSelection()
-    await load()
-  } catch (err) {
-    ElMessage.error(readError(err, '导入失败'))
-  } finally {
-    importing.value = false
-  }
-}
-
-function applyImportResults(data) {
-  importResults.value = data.imported || []
-  importResults.value.forEach(item => {
-    if (item.book) bookshelf.upsertBook(item.book)
-  })
-  const success = importResults.value.filter(item => item.book).length
-  const failed = importResults.value.filter(item => item.error).length
-  ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
-  resultDialog.value = true
+function importPaths(paths) {
+  overlay.openStorageImport('local-store', paths)
 }
 
 function downloadBlob(blob, filename) {
@@ -550,10 +415,6 @@ function readError(err, fallback) {
 .head-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.result-row small {
-  color: var(--app-text-muted);
 }
 
 .store-toolbar {
@@ -676,25 +537,6 @@ function readError(err, fallback) {
 
 .mobile-file-card footer {
   justify-content: flex-end;
-}
-
-.result-list {
-  display: grid;
-  gap: 8px;
-}
-
-.result-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px 10px;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-}
-
-.result-row small {
-  grid-column: 2;
 }
 
 @media (max-width: 750px) {

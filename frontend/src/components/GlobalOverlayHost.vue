@@ -5,6 +5,8 @@
 
   <OverlayBookImport :is-mobile="isMobileOverlay" />
 
+  <OverlayStorageImport :is-mobile="isMobileOverlay" />
+
   <OverlaySources :is-mobile="isMobileOverlay" />
 
   <OverlayBookManagement :is-mobile="isMobileOverlay" />
@@ -61,6 +63,7 @@ import OverlayBookGroups from './overlays/OverlayBookGroups.vue'
 import OverlayBookImport from './overlays/OverlayBookImport.vue'
 import OverlayBookInfo from './overlays/OverlayBookInfo.vue'
 import OverlayBookManagement from './overlays/OverlayBookManagement.vue'
+import OverlayStorageImport from './overlays/OverlayStorageImport.vue'
 import OverlayBookmarks from './overlays/OverlayBookmarks.vue'
 import OverlayBookmarkForm from './overlays/OverlayBookmarkForm.vue'
 import OverlayLocalStore from './overlays/OverlayLocalStore.vue'
