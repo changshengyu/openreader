@@ -82,6 +82,22 @@ func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, 
 	if rule == "" {
 		return nil, nil
 	}
+	if parts, operator := sourceRuleCompositeParts(rule); len(parts) > 1 {
+		lists := make([][]sourceRuleValue, 0, len(parts))
+		for _, part := range parts {
+			items, err := sourceRuleElements(value, part)
+			if err != nil {
+				return nil, err
+			}
+			if operator == "||" && len(items) > 0 {
+				return items, nil
+			}
+			if len(items) > 0 {
+				lists = append(lists, items)
+			}
+		}
+		return combineSourceRuleValueLists(lists, operator), nil
+	}
 	if sourceRuleUsesJavaScript(rule) {
 		return nil, fmt.Errorf("%w: JavaScript/WebJS execution is disabled", ErrUnsupportedSourceRule)
 	}
@@ -98,6 +114,26 @@ func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, 
 }
 
 func sourceRuleStrings(value sourceRuleValue, rule string) ([]string, error) {
+	rule = strings.TrimSpace(rule)
+	if rule == "" {
+		return nil, nil
+	}
+	if parts, operator := sourceRuleCompositeParts(rule); len(parts) > 1 {
+		lists := make([][]string, 0, len(parts))
+		for _, part := range parts {
+			values, err := sourceRuleStrings(value, part)
+			if err != nil {
+				return nil, err
+			}
+			if operator == "||" && len(values) > 0 {
+				return values, nil
+			}
+			if len(values) > 0 {
+				lists = append(lists, values)
+			}
+		}
+		return combineSourceRuleStringLists(lists, operator), nil
+	}
 	items, err := sourceRuleElements(value, rule)
 	if err != nil {
 		return nil, err
@@ -113,6 +149,50 @@ func sourceRuleStrings(value sourceRuleValue, rule string) ([]string, error) {
 		}
 	}
 	return values, nil
+}
+
+func combineSourceRuleValueLists(lists [][]sourceRuleValue, operator string) []sourceRuleValue {
+	if len(lists) == 0 {
+		return nil
+	}
+	if operator != "%%" {
+		result := make([]sourceRuleValue, 0)
+		for _, list := range lists {
+			result = append(result, list...)
+		}
+		return result
+	}
+	result := make([]sourceRuleValue, 0)
+	for index := range lists[0] {
+		for _, list := range lists {
+			if index < len(list) {
+				result = append(result, list[index])
+			}
+		}
+	}
+	return result
+}
+
+func combineSourceRuleStringLists(lists [][]string, operator string) []string {
+	if len(lists) == 0 {
+		return nil
+	}
+	if operator != "%%" {
+		result := make([]string, 0)
+		for _, list := range lists {
+			result = append(result, list...)
+		}
+		return result
+	}
+	result := make([]string, 0)
+	for index := range lists[0] {
+		for _, list := range lists {
+			if index < len(list) {
+				result = append(result, list[index])
+			}
+		}
+	}
+	return result
 }
 
 func sourceRuleString(value sourceRuleValue, rule string) (string, error) {
@@ -396,10 +476,127 @@ func sourceRuleUsesJavaScript(rule string) bool {
 	return strings.HasPrefix(lower, "@js:") || strings.Contains(lower, "<js>")
 }
 
+// sourceRuleCompositeParts mirrors reader-dev's RuleAnalyzer for the three
+// collection operators. Only top-level operators split a rule: XPath and
+// JSONPath filters may contain the same tokens inside brackets, parentheses,
+// braces or quoted strings.
+func sourceRuleCompositeParts(rule string) ([]string, string) {
+	trimmed := strings.TrimSpace(rule)
+	if trimmed == "" {
+		return nil, ""
+	}
+	prefix := ""
+	lower := strings.ToLower(trimmed)
+	for _, candidate := range []string{"@css:", "@xpath:", "@json:"} {
+		if strings.HasPrefix(lower, candidate) {
+			prefix = trimmed[:len(candidate)]
+			trimmed = strings.TrimSpace(trimmed[len(candidate):])
+			break
+		}
+	}
+
+	operator := ""
+	parts := make([]string, 0)
+	start := 0
+	brackets, parentheses, braces := 0, 0, 0
+	var quote byte
+	escaped := false
+	for index := 0; index < len(trimmed); index++ {
+		current := trimmed[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if current == '\\' {
+				escaped = true
+				continue
+			}
+			if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch current {
+		case '\'', '"':
+			quote = current
+		case '[':
+			brackets++
+		case ']':
+			if brackets > 0 {
+				brackets--
+			}
+		case '(':
+			parentheses++
+		case ')':
+			if parentheses > 0 {
+				parentheses--
+			}
+		case '{':
+			braces++
+		case '}':
+			if braces > 0 {
+				braces--
+			}
+		}
+		if brackets != 0 || parentheses != 0 || braces != 0 || index+1 >= len(trimmed) {
+			continue
+		}
+		candidate := trimmed[index : index+2]
+		if candidate != "&&" && candidate != "||" && candidate != "%%" {
+			continue
+		}
+		if operator == "" {
+			operator = candidate
+			parts = append(parts, strings.TrimSpace(trimmed[start:index]))
+			start = index + 2
+			index++
+			continue
+		}
+		if candidate == operator {
+			parts = append(parts, strings.TrimSpace(trimmed[start:index]))
+			start = index + 2
+			index++
+		}
+	}
+	if operator == "" {
+		return nil, ""
+	}
+	parts = append(parts, strings.TrimSpace(trimmed[start:]))
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if prefix != "" && !sourceRuleHasExplicitMode(part) {
+			part = prefix + part
+		}
+		filtered = append(filtered, part)
+	}
+	if len(filtered) < 2 {
+		return nil, ""
+	}
+	return filtered, operator
+}
+
+func sourceRuleHasExplicitMode(rule string) bool {
+	lower := strings.ToLower(strings.TrimSpace(rule))
+	return strings.HasPrefix(lower, "@css:") ||
+		strings.HasPrefix(lower, "@xpath:") ||
+		strings.HasPrefix(lower, "@json:") ||
+		strings.HasPrefix(lower, "@js:") ||
+		strings.HasPrefix(rule, "$.") ||
+		strings.HasPrefix(rule, "$[") ||
+		strings.HasPrefix(rule, "//")
+}
+
 func sourceRuleNeedsEvaluator(rule string) bool {
 	trimmed := strings.TrimSpace(rule)
 	if trimmed == "" {
 		return false
+	}
+	if parts, _ := sourceRuleCompositeParts(trimmed); len(parts) > 1 {
+		return true
 	}
 	if sourceRuleUsesJavaScript(trimmed) || strings.HasPrefix(trimmed, ":") ||
 		(len(trimmed) >= len("@css:") && strings.EqualFold(trimmed[:len("@css:")], "@css:")) {

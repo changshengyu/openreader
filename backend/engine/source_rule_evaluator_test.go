@@ -115,6 +115,53 @@ func TestSourceRuleEvaluatorMatchesCoreReaderDevRuleModes(t *testing.T) {
 			t.Fatal("bare relative URL must not be inferred as XPath")
 		}
 	})
+
+	t.Run("CSS XPath and JSONPath combined rules", func(t *testing.T) {
+		htmlDocument, err := newSourceRuleDocument(htmlBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cssItems, err := sourceRuleElements(htmlDocument.Root(), "@CSS:article.book")
+		if err != nil || len(cssItems) == 0 {
+			t.Fatalf("CSS list = %#v, %v", cssItems, err)
+		}
+		fallback, err := sourceRuleString(cssItems[0], "@CSS:.missing@text||.name@text")
+		if err != nil || fallback != "第一本书" {
+			t.Fatalf("CSS fallback = %q, %v", fallback, err)
+		}
+		combined, err := sourceRuleStrings(cssItems[0], "@CSS:.name@text&&.kind@text")
+		if err != nil || !reflect.DeepEqual(combined, []string{"第一本书", "玄幻", "仙侠"}) {
+			t.Fatalf("CSS combined = %#v, %v", combined, err)
+		}
+		interleaved, err := sourceRuleStrings(cssItems[0], "@CSS:.name@text%%.kind@text")
+		if err != nil || !reflect.DeepEqual(interleaved, []string{"第一本书", "玄幻"}) {
+			t.Fatalf("CSS interleaved = %#v, %v", interleaved, err)
+		}
+		xpath, err := sourceRuleString(htmlDocument.Root(), "@XPath://missing/text()||//article[@data-id='two']/h2/text()")
+		if err != nil || xpath != "第二本书" {
+			t.Fatalf("XPath fallback = %q, %v", xpath, err)
+		}
+
+		jsonDocument, err := newSourceRuleDocument(jsonBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jsonFallback, err := sourceRuleString(jsonDocument.Root(), "$.data.absent||$.data.books[0].name")
+		if err != nil || jsonFallback != "JSON 第一书" {
+			t.Fatalf("JSONPath fallback = %q, %v", jsonFallback, err)
+		}
+		jsonCombined, err := sourceRuleStrings(jsonDocument.Root(), "$.data.books[0].name&&$.data.books[0].kinds[*]")
+		if err != nil || !reflect.DeepEqual(jsonCombined, []string{"JSON 第一书", "玄幻", "仙侠"}) {
+			t.Fatalf("JSONPath combined = %#v, %v", jsonCombined, err)
+		}
+		parts, operator := sourceRuleCompositeParts("$.data.books[?(@.name == 'JSON 第一书' && @.url == '/json/one')].name||$.data.books[1].name")
+		if operator != "||" || !reflect.DeepEqual(parts, []string{
+			"$.data.books[?(@.name == 'JSON 第一书' && @.url == '/json/one')].name",
+			"$.data.books[1].name",
+		}) {
+			t.Fatalf("JSONPath nested condition split = %#v, operator = %q", parts, operator)
+		}
+	})
 }
 
 func TestSearchBooksExecutesReaderDevJSONPathAndXPathRules(t *testing.T) {
