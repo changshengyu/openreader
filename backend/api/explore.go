@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"openreader/backend/engine"
+	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
 
@@ -46,6 +47,7 @@ func (s *Server) listExploreSources(c *gin.Context) {
 }
 
 func (s *Server) exploreBooks(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
 	sourceID, ok := parseUintParam(c, "sourceId")
 	if !ok {
 		return
@@ -70,6 +72,7 @@ func (s *Server) exploreBooks(c *gin.Context) {
 	}
 	results, err := engine.ExploreBooksPageWithURL(source, exploreURL, page)
 	if err != nil {
+		s.recordSourceFailure(userID, source, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

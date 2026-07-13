@@ -399,6 +399,7 @@ import {
   deleteSource as deleteSourceApi,
   exportSources as exportSourcesApi,
   importSources,
+  listInvalidSources,
   listSources,
   previewRemoteSource,
   restoreDefaultSources,
@@ -617,7 +618,7 @@ onMounted(async () => {
   if (defaultResult.status === 'rejected') {
     ElMessage.warning(readError(defaultResult.reason, '默认书源状态加载失败'))
   }
-  applyRouteAction()
+  await applyRouteAction()
 })
 
 onBeforeUnmount(() => {
@@ -696,7 +697,7 @@ function clearSourceReloadTimer() {
   sourceReloadTimer = undefined
 }
 
-function applyRouteAction() {
+async function applyRouteAction() {
   const intent = sourceManageIntent()
   const signature = props.embedded
     ? `overlay:${intent}`
@@ -708,12 +709,34 @@ function applyRouteAction() {
   }
   if (intent === 'health') {
     failedOnly.value = true
+    await loadInvalidSourceHealth()
   }
   if (intent === 'import') {
     openSourceImportPicker()
   }
   if (intent === 'debug') {
     openFirstDebugSource()
+  }
+}
+
+async function loadInvalidSourceHealth() {
+  try {
+    const { data } = await listInvalidSources()
+    health.value = {}
+    for (const item of data || []) {
+      if (!item?.id) continue
+      health.value[item.id] = {
+        ok: false,
+        message: item.errorMessage || '请求书源失败',
+        name: item.name,
+        group: item.group || '默认分组',
+        enabled: item.enabled,
+        failedAt: item.failedAt,
+        expiresAt: item.expiresAt,
+      }
+    }
+  } catch {
+    health.value = {}
   }
 }
 

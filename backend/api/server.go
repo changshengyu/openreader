@@ -15,31 +15,34 @@ import (
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 	"openreader/backend/services/scheduler"
+	"openreader/backend/services/sourcefailure"
 	readersync "openreader/backend/sync"
 )
 
 type Server struct {
-	cfg         config.Config
-	db          *gorm.DB
-	hub         *readersync.Hub
-	scheduler   *scheduler.Scheduler
-	backupSvc   *backup.Service
-	audioReader *audioreader.Service
-	cbzReader   *cbzreader.Service
-	epubReader  *epubreader.Service
-	registerMu  sync.Mutex
+	cfg            config.Config
+	db             *gorm.DB
+	hub            *readersync.Hub
+	scheduler      *scheduler.Scheduler
+	backupSvc      *backup.Service
+	audioReader    *audioreader.Service
+	cbzReader      *cbzreader.Service
+	epubReader     *epubreader.Service
+	sourceFailures *sourcefailure.Service
+	registerMu     sync.Mutex
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) {
 	server := &Server{
-		cfg:         cfg,
-		db:          database,
-		hub:         hub,
-		scheduler:   sched,
-		backupSvc:   backupSvc,
-		audioReader: audioreader.New(cfg, database),
-		cbzReader:   cbzreader.New(cfg, database),
-		epubReader:  epubreader.New(cfg, database),
+		cfg:            cfg,
+		db:             database,
+		hub:            hub,
+		scheduler:      sched,
+		backupSvc:      backupSvc,
+		audioReader:    audioreader.New(cfg, database),
+		cbzReader:      cbzreader.New(cfg, database),
+		epubReader:     epubreader.New(cfg, database),
+		sourceFailures: sourcefailure.New(database),
 	}
 
 	api := router.Group("/api")
@@ -68,6 +71,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.PUT("/admin/users/:id/password", server.resetUserPassword)
 	protected.POST("/admin/cleanup-inactive", server.cleanupInactiveUsers)
 	protected.GET("/sources", server.listSources)
+	protected.GET("/sources/invalid", server.listInvalidSources)
 	protected.POST("/sources", server.createSource)
 	protected.DELETE("/sources", server.clearSources)
 	protected.GET("/sources/default", server.defaultSourcesStatus)
@@ -109,6 +113,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/books/:id/search", server.searchBookContent)
 	protected.GET("/reader3/searchBookContent", server.legacySearchBookContent)
 	protected.POST("/reader3/searchBookContent", server.legacySearchBookContent)
+	protected.POST("/reader3/getInvalidBookSources", server.legacyInvalidBookSources)
 	protected.GET("/books/:id/chapters", server.listChapters)
 	protected.POST("/search", server.search)
 	protected.GET("/books/:id/chapters/:index/content", server.chapterContent)

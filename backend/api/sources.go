@@ -503,6 +503,7 @@ func (s *Server) updateSource(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update source"})
 		return
 	}
+	s.clearSourceFailureIDs([]uint{source.ID})
 	s.broadcastSourcesUpdate("update")
 	c.JSON(http.StatusOK, source)
 }
@@ -530,6 +531,7 @@ func (s *Server) deleteSource(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
 		return
 	}
+	s.clearSourceFailureIDs([]uint{uint(id)})
 	s.broadcastSourcesUpdate("delete")
 	c.Status(http.StatusNoContent)
 }
@@ -544,6 +546,7 @@ func (s *Server) clearSources(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear sources"})
 		return
 	}
+	s.clearAllSourceFailures()
 	s.broadcastSourcesUpdate("clear")
 	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected})
 }
@@ -660,6 +663,7 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to restore default sources"})
 		return
 	}
+	s.clearAllSourceFailures()
 	s.broadcastSourcesUpdate("restore-default")
 	c.JSON(http.StatusOK, result)
 }
@@ -691,6 +695,7 @@ func (s *Server) batchSources(c *gin.Context) {
 
 	var result *gorm.DB
 	skippedUsed := 0
+	deletedIDs := make([]uint, 0)
 	switch req.Action {
 	case "enable":
 		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("enabled", true)
@@ -711,6 +716,7 @@ func (s *Server) batchSources(c *gin.Context) {
 			return
 		}
 		result = s.db.Where("id IN ?", deletableIDs).Delete(&models.BookSource{})
+		deletedIDs = deletableIDs
 	case "group":
 		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("group", strings.TrimSpace(req.Group))
 	default:
@@ -720,6 +726,9 @@ func (s *Server) batchSources(c *gin.Context) {
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update sources"})
 		return
+	}
+	if len(deletedIDs) > 0 {
+		s.clearSourceFailureIDs(deletedIDs)
 	}
 
 	s.broadcastSourcesUpdate("batch-" + req.Action)
@@ -757,6 +766,7 @@ func (s *Server) importSources(c *gin.Context) {
 	}
 
 	result := s.importBookSources(sources)
+	s.clearAllSourceFailures()
 	s.broadcastSourcesUpdate("import")
 	c.JSON(http.StatusOK, result)
 }
@@ -937,6 +947,7 @@ func (s *Server) importRemoteSource(c *gin.Context) {
 	}
 
 	result := s.importBookSources(sources)
+	s.clearAllSourceFailures()
 	s.broadcastSourcesUpdate("remote-import")
 	c.JSON(http.StatusOK, result)
 }

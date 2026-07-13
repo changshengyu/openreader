@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"openreader/backend/engine"
+	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
 
@@ -37,6 +38,10 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 	}
 
 	results, err := engine.SearchBooks(source, strings.TrimSpace(req.Keyword))
+	if err != nil {
+		userID, _ := middleware.UserID(c)
+		s.recordSourceFailure(userID, source, err)
+	}
 	c.JSON(http.StatusOK, gin.H{"results": results, "error": errToString(err)})
 }
 
@@ -63,6 +68,10 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 	}
 
 	chapters, err := engine.ParseTOC(strings.TrimSpace(req.BookURL), source)
+	if err != nil {
+		userID, _ := middleware.UserID(c)
+		s.recordSourceFailure(userID, source, err)
+	}
 	c.JSON(http.StatusOK, gin.H{"chapters": chapters, "count": len(chapters), "error": errToString(err)})
 }
 
@@ -89,6 +98,10 @@ func (s *Server) testSourceContent(c *gin.Context) {
 	}
 
 	content, err := engine.FetchChapterContent(strings.TrimSpace(req.ChapterURL), source)
+	if err != nil {
+		userID, _ := middleware.UserID(c)
+		s.recordSourceFailure(userID, source, err)
+	}
 	preview := content
 	if len([]rune(preview)) > 2000 {
 		preview = string([]rune(preview)[:2000]) + "..."
@@ -114,6 +127,7 @@ type batchTestSourceResult struct {
 }
 
 func (s *Server) batchTestSources(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
 	var req batchTestSourcesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid batch test payload"})
@@ -156,6 +170,7 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	}
 
 	results := make([]batchTestSourceResult, len(sources))
+	failureCauses := make([]error, len(sources))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, concurrent)
 	for index, source := range sources {
@@ -170,6 +185,7 @@ func (s *Server) batchTestSources(c *gin.Context) {
 			if errors.Is(err, context.DeadlineExceeded) {
 				err = errTimeout
 			}
+			failureCauses[index] = err
 			results[index] = batchTestSourceResult{
 				SourceID: source.ID,
 				Name:     source.Name,
@@ -185,6 +201,11 @@ func (s *Server) batchTestSources(c *gin.Context) {
 		}(index, source)
 	}
 	wg.Wait()
+	for index, cause := range failureCauses {
+		if cause != nil {
+			s.recordSourceFailure(userID, sources[index], cause)
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }

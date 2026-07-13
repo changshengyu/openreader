@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"openreader/backend/engine"
+	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
 
@@ -31,6 +32,7 @@ type searchResponse struct {
 }
 
 func (s *Server) search(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
 	var req searchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "keyword is required"})
@@ -52,6 +54,7 @@ func (s *Server) search(c *gin.Context) {
 		return
 	}
 	sources = orderSearchSources(sources, req.SourceIDs)
+	sources = s.filterActiveSourceFailures(userID, sources)
 	pagedRequest := req.Page != nil || req.LastIndex != nil || req.SearchSize != nil
 	if len(sources) == 0 {
 		if pagedRequest {
@@ -67,7 +70,7 @@ func (s *Server) search(c *gin.Context) {
 	}
 
 	if !pagedRequest {
-		results := concurrentSearch(c.Request.Context(), sources, req.Keyword, req.ConcurrentCount)
+		results := s.concurrentSearch(c.Request.Context(), userID, sources, req.Keyword, req.ConcurrentCount)
 		c.JSON(http.StatusOK, results)
 		return
 	}
@@ -76,6 +79,7 @@ func (s *Server) search(c *gin.Context) {
 	if len(sources) == 1 {
 		result, err := searchSingleSourcePage(c.Request.Context(), sources[0], req.Keyword, page)
 		if err != nil {
+			s.recordSourceFailure(userID, sources[0], err)
 			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
 		}
@@ -92,8 +96,9 @@ func (s *Server) search(c *gin.Context) {
 	if req.LastIndex != nil {
 		lastIndex = *req.LastIndex
 	}
-	results, nextIndex := concurrentSearchFrom(
+	results, nextIndex := s.concurrentSearchFrom(
 		c.Request.Context(),
+		userID,
 		sources,
 		req.Keyword,
 		req.ConcurrentCount,
@@ -108,12 +113,12 @@ func (s *Server) search(c *gin.Context) {
 	})
 }
 
-func concurrentSearch(parent context.Context, sources []models.BookSource, keyword string, concurrentCount int) []engine.SearchResult {
-	results, _ := concurrentSearchFrom(parent, sources, keyword, concurrentCount, -1, 0)
+func (s *Server) concurrentSearch(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount int) []engine.SearchResult {
+	results, _ := s.concurrentSearchFrom(parent, userID, sources, keyword, concurrentCount, -1, 0)
 	return results
 }
 
-func concurrentSearchFrom(parent context.Context, sources []models.BookSource, keyword string, concurrentCount, lastIndex, searchSize int) ([]engine.SearchResult, int) {
+func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount, lastIndex, searchSize int) ([]engine.SearchResult, int) {
 	start := lastIndex + 1
 	if start < 0 {
 		start = 0
@@ -135,6 +140,9 @@ func concurrentSearchFrom(parent context.Context, sources []models.BookSource, k
 		nextIndex = end - 1
 		for _, outcome := range outcomes {
 			if outcome.Error != nil {
+				if outcome.Index >= 0 && outcome.Index < end-start {
+					s.recordSourceFailure(userID, sources[start+outcome.Index], outcome.Error)
+				}
 				continue
 			}
 			for _, result := range outcome.Results {

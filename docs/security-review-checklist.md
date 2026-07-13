@@ -42,6 +42,15 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] Source pagination has a stop condition.
 - [ ] A bad source cannot block unrelated searches indefinitely.
 
+## P2 invalid-source cache follow-up
+
+- [x] Failure records are scoped by authenticated user and source ID; a global source failure never leaks to another user.
+- [x] Cached error messages are bounded and client-safe: no JWT, cookie, authorization header, WebDAV credential, full URL query, response body or host path is stored or returned.
+- [x] Expiry, source edit and source delete make stale rows ineligible before normal-source suppression or failed-only UI rendering.
+- [x] Client cancellation and empty source results do not create a cache entry that could suppress a healthy source.
+
+Evidence: `backend/api/source_failure_contract_test.go`, `frontend/tests/sourceFailureCacheContract.test.mjs`, and three-viewport `scripts/smoke/source-workspace-contract.mjs`.
+
 ## Release note
 
 For each release, record which checklist sections were relevant and which tests/probes covered them.

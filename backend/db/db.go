@@ -40,6 +40,7 @@ func AutoMigrate(database *gorm.DB) error {
 		&models.User{},
 		&models.UserSetting{},
 		&models.BookSource{},
+		&models.SourceFailure{},
 		&models.ReplaceRule{},
 		&models.RSSSource{},
 		&models.RSSArticle{},

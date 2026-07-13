@@ -55,6 +55,19 @@ type BookSource struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
+// SourceFailure is a short-lived, user-scoped runtime cache for reader-dev
+// compatible invalid-source handling. It is deliberately not part of source
+// export, backup, or source configuration.
+type SourceFailure struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	UserID    uint      `json:"userId" gorm:"not null;uniqueIndex:idx_source_failure_user_source;index"`
+	SourceID  uint      `json:"sourceId" gorm:"not null;uniqueIndex:idx_source_failure_user_source;index"`
+	SourceURL string    `json:"-" gorm:"size:500;not null"`
+	Message   string    `json:"message" gorm:"size:160;not null"`
+	FailedAt  time.Time `json:"failedAt" gorm:"not null;index"`
+	ExpiresAt time.Time `json:"expiresAt" gorm:"not null;index"`
+}
+
 func (s BookSource) IsExploreEnabled() bool {
 	return s.EnabledExplore == nil || *s.EnabledExplore
 }

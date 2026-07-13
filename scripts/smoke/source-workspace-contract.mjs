@@ -51,12 +51,14 @@ function source(id = 1, name = '工作台书源') {
 async function installApiMocks(page) {
   let sources = [source()]
   let batchTestCalls = 0
+  let invalidSourceCalls = 0
   await page.exposeFunction('__sourceSmokeReplaceSources', names => {
     sources = Array.isArray(names)
       ? names.map((name, index) => source(index + 1, String(name)))
       : sources
   })
   await page.exposeFunction('__sourceSmokeBatchTestCalls', () => batchTestCalls)
+  await page.exposeFunction('__sourceSmokeInvalidSourceCalls', () => invalidSourceCalls)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async route => {
     const request = route.request()
@@ -71,6 +73,10 @@ async function installApiMocks(page) {
     if (path === '/books') return route.fulfill(json([]))
     if (path === '/categories') return route.fulfill(json([]))
     if (path === '/sources' && method === 'GET') return route.fulfill(json(sources))
+    if (path === '/sources/invalid' && method === 'GET') {
+      invalidSourceCalls += 1
+      return route.fulfill(json([{ ...sources[0], errorMessage: '缓存失败', failedAt: '2026-07-12T00:00:00Z', expiresAt: '2026-07-12T00:10:00Z' }]))
+    }
     if (path === '/sources/default') return route.fulfill(json({ configured: false, count: 0 }))
     if (path === '/sources/batch-test') {
       batchTestCalls += 1
@@ -187,8 +193,17 @@ async function runViewport(browser, viewport) {
 
   await page.goto(`${root}/sources?action=health`, { waitUntil: 'networkidle' })
   await assertOverlayRoute(page, 'health')
+  const cachedFailureMessage = viewport.width <= 750
+    ? page.locator('.mobile-source-card').getByText('缓存失败', { exact: true })
+    : page.locator('.desktop-source-table').getByText('缓存失败', { exact: true })
+  await cachedFailureMessage.waitFor({ state: 'visible', timeout: 10000 })
+  assert(await page.evaluate(() => window.__sourceSmokeInvalidSourceCalls()) === 1, `${viewport.width}: health intent must load the cached invalid-source list once`)
   assert(await page.evaluate(() => window.__sourceSmokeBatchTestCalls()) === 0, `${viewport.width}: health intent must not start a live batch test`)
-  await page.getByRole('button', { name: '失效检测' }).click()
+  const manualHealthCommand = viewport.width <= 750
+    ? page.locator('.source-batch-footer').getByRole('button', { name: '检测书源' })
+    : page.getByRole('button', { name: '失效检测' })
+  await manualHealthCommand.scrollIntoViewIfNeeded()
+  await manualHealthCommand.click()
   await page.getByText('已检 1 · 可用 0 · 失败 1').waitFor({ state: 'visible', timeout: 10000 })
   assert(await page.evaluate(() => window.__sourceSmokeBatchTestCalls()) === 1, `${viewport.width}: explicit health command must start one live batch test`)
 
@@ -197,6 +212,8 @@ async function runViewport(browser, viewport) {
   await assertOverlayRoute(page, 'debug')
   await assertNoHorizontalOverflow(page, `${viewport.width} debug`)
 
+  await page.getByRole('dialog', { name: '书源调试' }).getByRole('button', { name: '关闭此对话框' }).click()
+  await page.getByRole('dialog', { name: '书源调试' }).waitFor({ state: 'hidden', timeout: 10000 })
   await page.locator('.global-source-manage-dialog .el-dialog__headerbtn').first().click()
   await page.waitForFunction(() => new URLSearchParams(location.search).get('overlay') !== 'sources')
   assert(failures.length === 0, failures.join('\n'))

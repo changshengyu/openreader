@@ -1130,6 +1130,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 	}
 	remoteInfo, remoteChapters, err := engine.FetchBookInfoAndTOC(book.URL, source)
 	if err != nil {
+		s.recordSourceFailure(userID, source, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters: %v", err)})
 		return
 	}
@@ -1540,6 +1541,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 
 	remoteInfo, chapters, err := engine.FetchBookInfoAndTOC(req.BookURL, source)
 	if err != nil {
+		s.recordSourceFailure(userID, source, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters: %v", err)})
 		return
 	}
@@ -1666,6 +1668,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
 		return
 	}
+	sources = s.filterActiveSourceFailures(userID, sources)
 
 	type sourceCandidate struct {
 		SourceID           uint   `json:"sourceId"`
@@ -1686,7 +1689,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	type sourceCandidateBatch struct {
 		Index      int
 		Candidates []sourceCandidate
-		Failed     bool
+		Failure    error
 		Empty      bool
 	}
 
@@ -1729,7 +1732,7 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 			cancel()
 			elapsed := time.Since(started).Milliseconds()
 			if err != nil {
-				channel <- sourceCandidateBatch{Index: index, Failed: true}
+				channel <- sourceCandidateBatch{Index: index, Failure: err}
 				return
 			}
 			candidates := make([]sourceCandidate, 0)
@@ -1776,8 +1779,11 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 		batches[batch.Index] = batch
 	}
 	for _, batch := range batches {
-		if batch.Failed {
+		if batch.Failure != nil {
 			failedSources++
+			if batch.Index >= 0 && batch.Index < len(sources) {
+				s.recordSourceFailure(userID, sources[batch.Index], batch.Failure)
+			}
 			continue
 		}
 		if batch.Empty {
@@ -1855,6 +1861,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 	}
 	remoteInfo, newChapters, err := engine.FetchBookInfoAndTOC(newBookURL, newSource)
 	if err != nil {
+		s.recordSourceFailure(userID, newSource, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters from new source: %v", err)})
 		return
 	}
@@ -1943,7 +1950,20 @@ func (s *Server) chapterContent(c *gin.Context) {
 		return
 	}
 
-	content := s.loadChapterText(book, &chapter)
+	content, contentErr := s.loadChapterTextContextResult(c.Request.Context(), book, &chapter)
+	if contentErr != nil {
+		if book.SourceID > 0 {
+			var source models.BookSource
+			if err := s.db.First(&source, book.SourceID).Error; err == nil {
+				s.recordSourceFailure(userID, source, contentErr)
+			}
+		}
+		if errors.Is(contentErr, context.Canceled) {
+			return
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to load chapter content"})
+		return
+	}
 	response := gin.H{
 		"chapter": chapter,
 		"content": content,

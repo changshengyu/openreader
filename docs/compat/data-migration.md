@@ -36,6 +36,18 @@ Before changing storage for a module, document:
 - Local store/WebDAV path normalization and permissions.
 - Cache invalidation rules for local and remote books.
 
+## P2 invalid-source runtime cache
+
+Status: implemented and tested. This is a derived, caller-scoped runtime cache and is not part of a reader backup format.
+
+- Existing `data/`, `cache/`, `library/`, `book_sources`, shelf, category, chapter, progress and backup records remain byte/schema compatible. A GORM migration may add only an additive `source_failures` SQLite table with a unique current-user/source key and expiry index.
+- No existing source row is marked disabled, mutated or removed merely because one user saw a request failure. The 600-second failure status belongs only to that JWT user; another user can still use the global source.
+- The table is intentionally excluded from backup/export/restore: it is a short-lived replacement for reader-dev's `storage/cache/invalidBookSourceCache/<userNameSpace>` files, not user-authored configuration.
+- Read/write paths prune expired records and ignore a record whose retained source URL no longer matches the source's current URL after editing. Deleting a source may delete its derived records, but no old source, book, cache or mount file may be touched.
+- Required evidence: upgrade an existing SQLite volume; verify no existing row changes; verify cross-user/expiry/edit/delete isolation; run full Go tests and Docker mounted-volume backup smoke.
+
+Implementation evidence: `db.AutoMigrate` only adds `source_failures`; it never alters existing source/user/book rows. Records are created and expired under the JWT user/source unique key and are neither exported nor restored. `backend/api/source_failure_contract_test.go` verifies isolation, expiry and source-edit invalidation; release Docker volume smoke remains required before publishing this slice.
+
 ## P1-E2 workspace storage scope and staged import compatibility
 
 Status: implemented in-progress; no database migration is required.

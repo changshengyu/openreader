@@ -31,6 +31,7 @@ import (
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 	"openreader/backend/services/scheduler"
+	"openreader/backend/services/sourcefailure"
 	readersync "openreader/backend/sync"
 )
 
@@ -80,14 +81,15 @@ func setupTestServerWithConfig(t *testing.T, configure func(*config.Config)) (*g
 	RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
 
 	server := &Server{
-		cfg:         cfg,
-		db:          database,
-		hub:         hub,
-		scheduler:   sched,
-		backupSvc:   backupSvc,
-		audioReader: audioreader.New(cfg, database),
-		cbzReader:   cbzreader.New(cfg, database),
-		epubReader:  epubreader.New(cfg, database),
+		cfg:            cfg,
+		db:             database,
+		hub:            hub,
+		scheduler:      sched,
+		backupSvc:      backupSvc,
+		audioReader:    audioreader.New(cfg, database),
+		cbzReader:      cbzreader.New(cfg, database),
+		epubReader:     epubreader.New(cfg, database),
+		sourceFailures: sourcefailure.New(database),
 	}
 	return router, server
 }
