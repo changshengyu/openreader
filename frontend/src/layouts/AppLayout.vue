@@ -65,16 +65,6 @@
         <el-select v-model="sidebarConcurrent" size="small" class="setting-select">
           <el-option v-for="count in concurrentOptions" :key="count" :label="`${count}并发线程`" :value="count" />
         </el-select>
-        <div class="sidebar-search-actions">
-          <button type="button" @click="goSearchRoute('remote')">
-            <el-icon><Search /></el-icon>
-            <span>书源搜索</span>
-          </button>
-          <button type="button" @click="goSearchRoute('local')">
-            <el-icon><FolderOpened /></el-icon>
-            <span>本地书籍</span>
-          </button>
-        </div>
       </section>
 
       <section class="sidebar-recent">
@@ -138,12 +128,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  FolderOpened,
-  Moon,
-  Search,
-  Sunny,
-} from '@element-plus/icons-vue'
+import { Moon, Search, Sunny } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import { useOverlayStore } from '../stores/overlay'
 import { useBookshelfStore } from '../stores/bookshelf'
@@ -303,10 +288,7 @@ const {
   concurrent: sidebarConcurrent,
   enabledSources: sidebarEnabledSources,
   sourceGroups: sidebarSourceGroups,
-  searchRouteQuery,
-  localSearchRouteQuery,
   goSearch,
-  goSearchRoute,
   clearSearchQuery,
   loadSources: loadSidebarSources,
   handleSourcesUpdated,
@@ -391,8 +373,6 @@ function withoutWorkspaceQuery(query = {}) {
 }
 
 function navRouteQuery(item) {
-  if (item.key === 'search') return searchRouteQuery()
-  if (item.key === 'localSearch') return localSearchRouteQuery()
   return item.query || (item.panel ? { panel: item.panel } : {})
 }
 
@@ -784,7 +764,6 @@ function readError(err, fallback) {
 
 :global(html.dark-reader) .setting-select :deep(.el-select__wrapper),
 :global(html.dark-reader) .app-shell-search :deep(.el-input__wrapper),
-:global(html.dark-reader) .sidebar-search-actions button,
 :global(html.dark-reader) .app-nav-item,
 :global(html.dark-reader) .sidebar-recent-book,
 :global(html.dark-reader) .sidebar-bottom-icon {
@@ -796,7 +775,6 @@ function readError(err, fallback) {
 
 :global(html.dark-reader) .app-nav-item:hover,
 :global(html.dark-reader) .app-nav-item.active,
-:global(html.dark-reader) .sidebar-search-actions button:hover,
 :global(html.dark-reader) .sidebar-bottom-icon:hover {
   color: var(--app-primary-strong);
   background: #243b37;
@@ -897,43 +875,6 @@ function readError(err, fallback) {
   box-shadow: 0 0 0 1px #e6e6e6 inset;
 }
 
-.sidebar-search-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-}
-
-.sidebar-search-actions button {
-  display: flex;
-  min-width: 0;
-  min-height: 32px;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 7px 8px;
-  color: #9aa1aa;
-  background: #fafafa;
-  border: 1px solid #e6e9ef;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.sidebar-search-actions button:hover {
-  color: #1f6feb;
-  background: #fff;
-}
-
-.sidebar-search-actions span {
-  min-width: 0;
-  overflow: visible;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  line-height: 1.25;
-  text-overflow: clip;
-  white-space: normal;
-  word-break: break-word;
-}
-
 .sidebar-recent {
   display: grid;
   gap: 18px;
@@ -1006,8 +947,7 @@ function readError(err, fallback) {
 }
 
 .app-nav {
-  display: grid;
-  gap: 36px;
+  display: block;
   padding: 0 0 20px;
 }
 
@@ -1024,13 +964,11 @@ function readError(err, fallback) {
 }
 
 .app-nav-section {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(78px, 1fr));
-  gap: 12px 14px;
+  display: block;
+  margin-bottom: 36px;
 }
 
 .app-nav-title {
-  grid-column: 1 / -1;
   margin: 0 0 4px;
   color: #b5b5b5;
   font-size: 14px;
@@ -1042,7 +980,7 @@ function readError(err, fallback) {
 }
 
 .app-nav-item {
-  display: flex;
+  display: inline-flex;
   width: fit-content;
   max-width: 100%;
   min-height: 32px;
@@ -1054,6 +992,8 @@ function readError(err, fallback) {
   border: 1px solid #e6e9ef;
   border-radius: 4px;
   cursor: pointer;
+  margin-right: 15px;
+  margin-bottom: 15px;
   text-align: center;
 }
 
@@ -1193,37 +1133,18 @@ function readError(err, fallback) {
   gap: 10px;
 }
 
-.app-shell.mobile-shell .sidebar-search-actions {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-}
-
-.app-shell.mobile-shell .sidebar-search-actions button {
-  min-width: 0;
-  min-height: 38px;
-  padding: 8px;
-  background: #fffdf8;
-  border-color: #e4d9c8;
-}
-
-.app-shell.mobile-shell .sidebar-search-actions span {
-  font-size: 13px;
-}
-
 .app-shell.mobile-shell .app-brand-mark {
   display: none;
 }
 
 .app-shell.mobile-shell .app-nav {
-  min-width: 0;
-  max-width: 100%;
-  gap: 36px;
+  display: block;
   padding: 0 0 20px;
 }
 
 .app-shell.mobile-shell .app-nav-section {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  display: block;
+  margin-bottom: 36px;
 }
 
 .app-shell.mobile-shell .app-nav-title {
@@ -1238,29 +1159,28 @@ function readError(err, fallback) {
 }
 
 .app-shell.mobile-shell .app-nav-item {
-  display: flex;
-  width: 100%;
+  display: inline-flex;
+  width: fit-content;
   min-width: 0;
-  min-height: 34px;
+  min-height: 32px;
   height: auto;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  margin: 0;
-  padding: 6px 8px;
+  margin-right: 15px;
+  margin-bottom: 15px;
+  padding: 7px 12px;
   background: #fffdf8;
   border: 1px solid #e4d9c8;
   border-radius: 4px;
 }
 
 .app-shell.mobile-shell .app-nav-item span {
-  overflow: visible;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   font-size: 12px;
-  line-height: 1.25;
-  text-overflow: clip;
-  white-space: normal;
-  word-break: break-word;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .app-shell.mobile-shell .sidebar-recent {

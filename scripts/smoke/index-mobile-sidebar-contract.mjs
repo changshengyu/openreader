@@ -146,6 +146,32 @@ async function assertShelfGeometry(page, viewport) {
   assert(geometry.scrollWidth <= geometry.innerWidth + 1, `${viewport.width}: page should not horizontally overflow: ${geometry.scrollWidth} > ${geometry.innerWidth}`)
 }
 
+async function assertSidebarTagFlow(page, viewport) {
+  const layout = await page.evaluate(() => {
+    const nav = document.querySelector('.app-nav')
+    const section = document.querySelector('.app-nav-section')
+    const item = document.querySelector('.app-nav-item')
+    const shortcutActions = document.querySelector('.sidebar-search-actions')
+    if (!nav || !section || !item) return null
+    const itemStyle = window.getComputedStyle(item)
+    return {
+      navDisplay: window.getComputedStyle(nav).display,
+      sectionDisplay: window.getComputedStyle(section).display,
+      itemDisplay: itemStyle.display,
+      marginRight: Number.parseFloat(itemStyle.marginRight),
+      marginBottom: Number.parseFloat(itemStyle.marginBottom),
+      hasShortcutActions: Boolean(shortcutActions),
+    }
+  })
+  assert(layout, `${viewport.width}: sidebar tag-flow elements should exist`)
+  assert(layout.navDisplay === 'block', `${viewport.width}: sidebar navigation should not use a grid, got ${layout.navDisplay}`)
+  assert(layout.sectionDisplay === 'block', `${viewport.width}: sidebar section should use upstream block flow, got ${layout.sectionDisplay}`)
+  assert(layout.itemDisplay === 'inline-flex', `${viewport.width}: sidebar operation should size to its tag content, got ${layout.itemDisplay}`)
+  assert(Math.abs(layout.marginRight - 15) < 0.5, `${viewport.width}: sidebar operation right gap should be 15px, got ${layout.marginRight}`)
+  assert(Math.abs(layout.marginBottom - 15) < 0.5, `${viewport.width}: sidebar operation bottom gap should be 15px, got ${layout.marginBottom}`)
+  assert(!layout.hasShortcutActions, `${viewport.width}: sidebar should not render non-upstream remote/local shortcut buttons`)
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.newContext({
     viewport,
@@ -189,6 +215,7 @@ async function runViewport(browser, viewport) {
   await waitForSidebarMargin(page, 0)
   const openedSidebar = await rect(page, '.app-sidebar')
   assert(Math.abs(openedSidebar.width - 260) < 0.5, `${viewport.width}: sidebar width should be 260px, got ${openedSidebar.width}`)
+  await assertSidebarTagFlow(page, viewport)
 
   const beforeScroll = await rect(page, '.sidebar-bottom-icons')
   await page.locator('.app-sidebar-scroll').evaluate(node => {
