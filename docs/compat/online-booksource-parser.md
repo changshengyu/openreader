@@ -152,9 +152,9 @@
 - `{{...}}` 与 JavaScript 仍然明确返回 `ErrUnsupportedSourceRule`；变量值不落库、不进入章节缓存键、不写入调试响应或失效书源缓存。
 - 新增 `source_rule_variables_contract_test.go`，覆盖结果/操作隔离、详情→目录、正文单链、缺失键、坏 JSON、非字符串值、超长键和模板禁用；API source-debug 回归继续验证本地变量规则错误不会写入 `source_failures`。
 
-## 2026-07-13 P2-Parser-1G：持久变量与结构化错误审查（仅审查，未改应用代码）
+## 2026-07-13 P2-Parser-1G：持久变量与结构化错误审查、实施与发布记录
 
-本节重新从固定上游 `fa22f271849d45f93349ae1636223e27b16a4691` 提取证据，使用 `AnalyzeRule.kt`、`AnalyzeUrl.kt`、`RuleData.kt`、`RuleDataInterface.kt`、`Book.kt`、`BookChapter.kt`、`SearchBook.kt`、`BookList.kt`、`BookChapterList.kt`、`BookContent.kt` 与 `WebBook.kt`。它替代此前“变量只能请求级”的临时结论，但不授权直接添加列或修改 API。
+本节重新从固定上游 `fa22f271849d45f93349ae1636223e27b16a4691` 提取证据，使用 `AnalyzeRule.kt`、`AnalyzeUrl.kt`、`RuleData.kt`、`RuleDataInterface.kt`、`Book.kt`、`BookChapter.kt`、`SearchBook.kt`、`BookList.kt`、`BookChapterList.kt`、`BookContent.kt` 与 `WebBook.kt`。下表保留实施前证据；其差距已由随后 `P2-Parser-1G 实施记录` 覆盖，并随提交 `a45053a` 本地构建、推送和发布。
 
 | 范围 | 上游确切语义 | 当前 OpenReader | 判定 |
 | --- | --- | --- | --- |
@@ -171,7 +171,7 @@
 1. 先为 `Book.Variable`、`Chapter.Variable` 写 SQLite 加列、空旧值、无效/过大 JSON、来源切换清空、用户隔离和回滚测试；不得对旧 `data/`、`cache/`、`library/` 做扫描或改写。
 2. 搜索 fixture 必须证明每项从临时变量继承初值后独立写入；“搜索 → BookInfo → 加书 → 重开目录 → 正文”必须保留正确的书籍/章节变量，正文多分叉不相互写入。
 3. 备份/恢复 fixture 必须同时覆盖新 `variable`、`chapterVariables.json`、旧 OpenReader/reader-dev 备份缺失字段、重复恢复幂等性和目标用户隔离。
-4. P2-Parser-2A 已在不改 HTTP 状态码的前提下覆盖正文、单书源分页搜索、探索、加书/换源和 `/api/sources/:id/test*`；旧客户端继续只读 `error`，现代客户端可读取 `code`/`stage`。P2-Parser-1G 持久变量仍未实施。
+4. P2-Parser-2A 已在不改 HTTP 状态码的前提下覆盖正文、单书源分页搜索、探索、加书/换源和 `/api/sources/:id/test*`；旧客户端继续只读 `error`，现代客户端可读取 `code`/`stage`。P2-Parser-1G 持久变量已经实施、全量验证并发布；后续脚本入口的差距由下节单独处理。
 5. 任何变量或错误实现完成后都必须跑完整 Go/前端测试、真实浏览器书源流程和 Docker 挂载卷/备份烟测；本节未完成前不得称为持久变量对齐。
 
 ### P2-Parser-2A 实施记录
@@ -188,6 +188,34 @@
 - 刷新目录、切换来源、刷新本地书、编辑/导入/清空/恢复书源都会清空不再具有同一语义的远程变量。规则、基础 URL、请求头、编码、登录地址或来源类型的改变都在源配置写入的同一事务里清空关联 Book/Chapter map；本地书永远导出和恢复为空变量。
 - 备份仍使用兼容的 `bookshelf.json`，新增可选 `sourceName` 和 `variable` 字段；同时新增 `chapterVariables.json`，按目标用户的来源名、书 URL/title、章节 URL/index/title 还原变量，绝不重用来源数据库 ID、章节 ID、缓存路径、请求头或凭证。恢复先验证所有新增 map，先恢复书源和书架，再在事务中恢复章节变量；旧备份缺失新字段时保持原有行为。
 - 契约覆盖见 `backend/engine/source_rule_variables_contract_test.go`、`backend/api/persistent_source_variables_contract_test.go`、`backend/api/backup_restore_contract_test.go` 与 `frontend/tests/remoteBookResultVariableContract.test.mjs`：结果隔离、特殊变量优先级、目录/正文持久化、请求前拒绝坏值、来源语义切换清空和跨实例备份恢复都已验证。
+
+### 2026-07-13 P2-Parser-3A：书源脚本入口复审、实施与验证记录
+
+本轮重新核对固定上游的 `BaseSource.kt`、`AnalyzeUrl.kt`、`WebBook.kt`、`BookChapterList.kt`、`BookContent.kt` 与当前 `models.go`、`source_parser.go`。结论只依据实际调用链，不把字段名当成已运行的功能。
+
+| 脚本入口 | 上游固定基准的实际行为 | 当前 OpenReader | 判定与下一步 |
+| --- | --- | --- | --- |
+| `header: "@js:…"` / `<js>…</js>` | `BaseSource.getHeaderMap()` 在每次请求前调用 `evalJS`，把返回 JSON 转为请求头；`AnalyzeUrl` 将其用于搜索、探索、详情、目录和正文请求。脚本能访问上游 cookie/cache/source 上下文。 | `models.parseBookSourceHeader()` 识别这两种前缀后直接返回 `nil`；请求照常发出但丢失动态头。 | `must-fix`：在任一远端请求前返回 `ErrUnsupportedSourceRule`，禁止发出半配置请求、禁止静默空结果，且不得记录为远端失效书源。静态 JSON header 保持不变。 |
+| `loginCheckJs` | `WebBook.searchBook`、`exploreBook`、`getBookInfo`、`getChapterList` 都在收到响应后调用 `AnalyzeUrl.evalJS(checkJs, response)`；可将未登录响应转换为有效响应或抛出登录状态错误。 | 字段导入、导出、备份均保留，但 Go 没有上游的登录 cookie/session 或脚本运行时，正常书源流程从未调用。 | `must-fix security adaptation`：在相关搜索、探索、详情/目录和正文流程启动前返回明确不支持，避免把登录页误解析为书籍/目录/正文。原字段无损保存；不实现宿主可访问 JS。 |
+| `ruleToc.preUpdateJs` | 固定上游中 `TocRule` 有此字段，但 `WebBook` → `BookChapterList` 的目录调用链没有引用它。 | 字段无损保存但未执行。 | `aligned-dormant`：本批不把一个上游未调用的字段改为失败，也不执行它；保留到后续发现实际 WebView/插件调用点时再立契约。 |
+| `ruleContent.webJs`、URL 选项 `webJs` 与 `sourceRegex` | `WebBook.getBookContent` 把 `content.webJs/sourceRegex` 传给 `AnalyzeUrl.getStrResponseAwait`；但固定基准该方法当前普通 HTTP 分支未消费这些参数，`BookContent` 也未引用字段。URL 选项仅被解析到私有值，当前调用链未见消费。 | 字段无损保存但未执行。 | `aligned-dormant / unknown`：不可因字段存在就声称上游执行，也不可静默宣称兼容。后续若发现独立 WebView/插件调用点，再先建立隔离运行时契约；本批不改其行为。 |
+| URL/字段规则中的 `@js:`、`<js>`、`{{…}}` | 上游在 `AnalyzeUrl`/`AnalyzeRule` 内执行，且可访问 book/chapter/cookie/cache/network。 | 统一求值器已返回 `ErrUnsupportedSourceRule`，不触发远端失效缓存，并由 API 映射为安全的 `source_rule_unsupported`。 | `implemented security difference`：保持显式拒绝。 |
+
+本批的 API/测试契约：
+
+1. `Header` 脚本或非空 `loginCheckJs` 必须在搜索、探索、详情/目录、正文和 source-debug 对应请求**前**失败；fixture transport 的请求计数必须为零。普通静态 header 的五条调用链仍各自发送且保持原有头覆盖/安全过滤。
+2. 引擎错误必须满足 `errors.Is(err, ErrUnsupportedSourceRule)`；`recordSourceFailure` 与 `recordSourceHealthFailure` 均不得创建 `source_failures` 行。
+3. 不改稳定路由、HTTP 状态或顶层 `error` 字段：既有 API 继续添加 `code: "source_rule_unsupported"` 和对应 `stage`；debug 保持 `200` 包络，常规书源路由沿用既有状态码。响应不能回显 JavaScript、header、cookie、URL query 或远端内容。
+4. `preUpdateJs`、`content.webJs`、URL option `webJs`、`sourceRegex` 的上述“固定基准未消费”事实必须有回归说明；本批不凭猜测改变其无损导入/导出和普通静态书源行为。
+
+允许差异是 Go/JWT 多用户服务端不运行能读取 cookie、缓存或网络的上游 JS。只有在脚本运行时与 Go 进程、文件系统、内网、用户凭据隔离，并具备 CPU/内存/超时/网络白名单和回归夹具后，才可重新评估执行支持。
+
+实施结果：
+
+- `backend/engine/source_parser.go` 新增唯一的 `ensureSourceScriptEntryPointsSupported` 闸门。搜索、探索、详情/目录和非空正文请求均在构造远端请求之前检查动态 `Header` 与 `loginCheckJs`，并返回 `ErrUnsupportedSourceRule`。没有搜索/探索 URL、文本空正文规则和音频空正文直链继续保留原有的无请求语义。
+- 没有变更路由、请求体、SQLite schema、导入/导出字段或静态 header 合并。动态字段仍可无损保存、备份和导出；它们首次被使用时得到确定的安全错误，不会再伪装成请求失败或空结果。
+- `backend/engine/source_script_entrypoints_contract_test.go` 覆盖 `@js:`、`<js>` 和 `loginCheckJs` 在搜索、探索、详情/目录、目录和正文五条引擎链路上均零网络请求；`backend/api/source_error_contract_test.go` 覆盖所有稳定 API 错误 stage、零请求、零失效源缓存和敏感脚本文本不回显。
+- `backend/api/api_test.go` 的上游书源导入全链路 fixture 继续验证静态 `headerMap` 的搜索、探索、详情、目录、正文和加书流程；登录检查脚本不再被该静态路径误当成可执行依赖。
 
 ## 审查范围与上游证据
 

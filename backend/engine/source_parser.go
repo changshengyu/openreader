@@ -95,6 +95,22 @@ func bookSourceRequestPolicy(source models.BookSource) SourceRequestPolicy {
 	}
 }
 
+// ensureSourceScriptEntryPointsSupported fails closed for the two source-level
+// JavaScript entry points that reader-dev invokes around every remote request.
+// Running them in the Go server would expose cookies, cache and network access
+// outside the bounded source-request model. They must therefore fail before a
+// request is prepared instead of silently dropping authentication/header logic.
+func ensureSourceScriptEntryPointsSupported(source models.BookSource) error {
+	header := strings.ToLower(strings.TrimSpace(source.Header))
+	if strings.HasPrefix(header, "@js:") || strings.HasPrefix(header, "<js>") {
+		return fmt.Errorf("%w: dynamic source header JavaScript is disabled", ErrUnsupportedSourceRule)
+	}
+	if strings.TrimSpace(source.LoginCheckJS) != "" {
+		return fmt.Errorf("%w: login-check JavaScript is disabled", ErrUnsupportedSourceRule)
+	}
+	return nil
+}
+
 func fetchSourceDocumentContext(ctx context.Context, request sourceRequest) (*goquery.Document, sourceRequest, error) {
 	document, responseURL, err := FetchSourceDocumentWithURLContext(ctx, request)
 	if responseURL != "" {
@@ -130,6 +146,9 @@ func SearchBooksPageContext(ctx context.Context, source models.BookSource, keywo
 	}
 	if rule.SearchURL == "" {
 		return SearchPageResult{}, fmt.Errorf("source %q has no search URL", source.Name)
+	}
+	if err := ensureSourceScriptEntryPointsSupported(source); err != nil {
+		return SearchPageResult{}, err
 	}
 	searchURLTemplate := resolveSourceURLTemplate(source.BaseURL, rule.SearchURL)
 
@@ -257,6 +276,9 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 	}
 	if activeExploreURL == "" {
 		return ExploreResult{}, fmt.Errorf("source %q has no explore URL", source.Name)
+	}
+	if err := ensureSourceScriptEntryPointsSupported(source); err != nil {
+		return ExploreResult{}, err
 	}
 	charset := source.Charset
 	if charset == "" {
@@ -619,6 +641,9 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 	if err != nil {
 		return nil, fmt.Errorf("parse rules: %w", err)
 	}
+	if err := ensureSourceScriptEntryPointsSupported(source); err != nil {
+		return nil, err
+	}
 
 	charset := source.Charset
 	if charset == "" {
@@ -639,6 +664,9 @@ func FetchBookInfoAndTOCWithVariables(bookURL string, source models.BookSource, 
 	rule, err := source.ParsedRules()
 	if err != nil {
 		return RemoteBookInfo{}, nil, "", fmt.Errorf("parse rules: %w", err)
+	}
+	if err := ensureSourceScriptEntryPointsSupported(source); err != nil {
+		return RemoteBookInfo{}, nil, "", err
 	}
 	// Validate persisted input before opening a remote request. A corrupt SQLite
 	// row or a forged add-to-shelf payload must fail as a local rule error, not
@@ -1295,6 +1323,9 @@ func fetchChapterContentContextWithNextChapterRuntime(ctx context.Context, chapt
 	}
 	if strings.TrimSpace(rule.ContentRule) == "" {
 		return "", fmt.Errorf("%w: content rule is empty for a text source", ErrInvalidSourceRule)
+	}
+	if err := ensureSourceScriptEntryPointsSupported(source); err != nil {
+		return "", err
 	}
 
 	policy := bookSourceRequestPolicy(source)

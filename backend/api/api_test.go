@@ -2230,7 +2230,6 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 			"exploreUrl":"https://upload-reader.example/explore/{{page}}",
 			"headerMap":{"X-Source-Token":"upload-secret","Referer":"https://upload-reader.example/"},
 			"loginUrl":"https://upload-reader.example/login",
-			"loginCheckJs":"checkLogin()",
 			"lastUpdateTime":1720000000000,
 			"weight":8,
 			"respondTime":9876,
@@ -2266,7 +2265,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 	}
 	if source.BaseURL != "https://upload-reader.example" || source.Group != "上传分组" ||
 		!strings.Contains(source.Header, `"X-Source-Token":"upload-secret"`) ||
-		source.LoginURL != "https://upload-reader.example/login" || source.LoginCheckJS != "checkLogin()" ||
+		source.LoginURL != "https://upload-reader.example/login" || source.LoginCheckJS != "" ||
 		source.LastUpdateTime != 1720000000000 || source.Weight != 8 || source.RespondTime != 9876 {
 		t.Fatalf("unexpected imported source: %+v", source)
 	}

@@ -39,6 +39,19 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## P2-Parser-3A source-script error contract
+
+Status: implemented and verified on 2026-07-13 against fixed reader-dev `BaseSource.kt`, `AnalyzeUrl.kt` and `WebBook.kt`. This is a Go/JWT security adaptation, not a route redesign.
+
+| Affected existing route family | Trigger | Required response and side effect |
+| --- | --- | --- |
+| Search and explore (`/api/search`, `/api/explore/*`) | Source `header` starts with `@js:`/`<js>` or `loginCheckJs` is non-blank. | Keep the route's current status and top-level `error`; append `code: "source_rule_unsupported"` and `stage: "search"` or `"explore"`. Reject before any remote request and do not create a source-failure cache row. |
+| Remote add/refresh/change-source and reader catalogue | The same source-script trigger. | Keep existing route status and `error`; append `code: "source_rule_unsupported"`, `stage: "book_info"`. No remote request, cache mutation or source-failure row. |
+| Reader chapter content | The same source-script trigger. | Keep the existing `502` response and `error`; append `code: "source_rule_unsupported"`, `stage: "content"`. No remote request, chapter-cache write or source-failure row. |
+| Source debug (`/api/sources/:id/test*`) | The same source-script trigger. | Retain authenticated `200` debug envelopes with their existing result field plus redacted `error`, `code: "source_rule_unsupported"` and the relevant stage. No remote request and no source-failure row. |
+
+The response must never contain the script, source header, cookie, URL query, remote response body or a host path. Static JSON headers remain supported. `preUpdateJs`, `content.webJs`, option `webJs`, and `sourceRegex` are preserved but are not included in this trigger because the fixed upstream call graph does not consume them; a later implementation needs a fresh contract.
+
 ## P2 invalid-source cache API contract
 
 Status: implemented and tested on 2026-07-12 from fixed reader-dev `BookController.kt`, `Index.vue` and `vuex.js`. See [source-failure-cache.md](source-failure-cache.md) for data and state details.
