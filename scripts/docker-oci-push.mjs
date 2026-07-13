@@ -240,8 +240,8 @@ async function putManifest(registry, repository, token, reference, descriptor, b
 
 async function extractArchive(archive) {
   const entries = (await run('tar', ['-tf', archive])).split('\n').filter(Boolean)
-  const allowed = /^(oci-layout|index\.json|blobs\/sha256\/[a-f0-9]{64})$/
-  if (entries.length === 0 || entries.some(entry => !allowed.test(entry))) {
+  const allowed = /^(oci-layout|index\.json|blobs|blobs\/sha256|blobs\/sha256\/[a-f0-9]{64})$/
+  if (entries.length === 0 || entries.some(entry => !allowed.test(entry.replace(/\/$/, '')))) {
     throw new Error('OCI archive contains an unsupported or unsafe path')
   }
   const root = await mkdtemp(join(tmpdir(), 'openreader-oci-'))
@@ -258,6 +258,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2))
   const { registry, repository } = splitImage(options.image)
   const root = await extractArchive(options.archive)
+  let published = false
   try {
     const index = JSON.parse(await readFile(join(root, 'index.json'), 'utf8'))
     if (index?.schemaVersion !== 2 || !Array.isArray(index.manifests) || index.manifests.length !== 1) {
@@ -296,10 +297,11 @@ async function main() {
     const rootPayload = JSON.parse(rootBody)
     for (const descriptor of rootPayload.manifests || []) await registerDescriptor(descriptor)
     for (const tag of [...new Set(options.tags)]) await putManifest(registry, repository, token, tag, rootDescriptor, rootBody)
+    published = true
     console.log(`OCI publish complete: ${options.image}:${[...new Set(options.tags)].join(', ')}`)
   } finally {
     await rm(root, { recursive: true, force: true })
-    if (options.removeArchive) await rm(options.archive, { force: true })
+    if (options.removeArchive && published) await rm(options.archive, { force: true })
   }
 }
 
