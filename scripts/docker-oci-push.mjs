@@ -261,10 +261,12 @@ async function main() {
   let published = false
   try {
     const index = JSON.parse(await readFile(join(root, 'index.json'), 'utf8'))
-    if (index?.schemaVersion !== 2 || !Array.isArray(index.manifests) || index.manifests.length !== 1) {
-      throw new Error('OCI archive must contain exactly one root image index descriptor')
+    if (index?.schemaVersion !== 2 || !Array.isArray(index.manifests) || index.manifests.length === 0) {
+      throw new Error('OCI archive does not contain a root image index descriptor')
     }
-    const rootDescriptor = index.manifests[0]
+    const rootDescriptor = index.manifests.find(descriptor =>
+      descriptor?.annotations?.['org.opencontainers.image.ref.name'] === options.tags[0],
+    ) || index.manifests[0]
     const token = await registryToken(registry, repository)
     const blobDir = join(root, 'blobs', 'sha256')
     const blobNames = (await readdir(blobDir)).filter(name => /^[a-f0-9]{64}$/i.test(name)).sort()
