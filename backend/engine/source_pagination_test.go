@@ -80,6 +80,46 @@ func TestParseTOCFollowsNextPagesWithoutLoopsOrDuplicates(t *testing.T) {
 	}
 }
 
+func TestParseTOCOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages(t *testing.T) {
+	pages := map[string]string{
+		"/branch-root.html": sourceCompatFixture(t, "branch-root.html"),
+		"/branch-a.html":    sourceCompatFixture(t, "branch-a.html"),
+		"/branch-b.html":    sourceCompatFixture(t, "branch-b.html"),
+		"/branch-c.html":    sourceCompatFixture(t, "branch-c.html"),
+	}
+	requested := make([]string, 0, 4)
+	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requested = append(requested, request.URL.Path)
+		body, ok := pages[request.URL.Path]
+		if !ok {
+			t.Fatalf("unexpected toc branch page: %s", request.URL.String())
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: request}, nil
+	})})
+	defer restore()
+
+	source := models.BookSource{Name: "目录分叉源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		TOCURLRule:      "/branch-root.html",
+		ChapterListRule: ".chapter",
+		ChapterNameRule: "a|text",
+		ChapterURLRule:  "a|attr:href",
+		NextTOCURLRule:  ".toc-next|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chapters, err := ParseTOC("/book", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 3 || chapters[0].Title != "目录首页" || chapters[1].Title != "目录 A" || chapters[2].Title != "目录 B" {
+		t.Fatalf("multi-next toc must retain only first-level branches: %+v", chapters)
+	}
+	if got := strings.Join(requested, ","); got != "/branch-root.html,/branch-a.html,/branch-b.html" {
+		t.Fatalf("multi-next toc requests = %s", got)
+	}
+}
+
 func TestParseTOCHonorsChapterFlagsAndFallbackURLs(t *testing.T) {
 	restore := SetHTTPClient(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -228,6 +268,43 @@ func TestFetchChapterContentFollowsNextPagesInOrder(t *testing.T) {
 	}
 	if len(requested) != 3 {
 		t.Fatalf("expected three content requests without loops, got %+v", requested)
+	}
+}
+
+func TestFetchChapterContentOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages(t *testing.T) {
+	pages := map[string]string{
+		"/branch-root.html": sourceCompatFixture(t, "branch-root.html"),
+		"/branch-a.html":    sourceCompatFixture(t, "branch-a.html"),
+		"/branch-b.html":    sourceCompatFixture(t, "branch-b.html"),
+		"/branch-c.html":    sourceCompatFixture(t, "branch-c.html"),
+	}
+	requested := make([]string, 0, 4)
+	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requested = append(requested, request.URL.Path)
+		body, ok := pages[request.URL.Path]
+		if !ok {
+			t.Fatalf("unexpected content branch page: %s", request.URL.String())
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: request}, nil
+	})})
+	defer restore()
+
+	source := models.BookSource{Name: "正文分叉源", BaseURL: "https://source.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		ContentRule:        ".content",
+		NextContentURLRule: ".content-next|attr:href",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := FetchChapterContent("/branch-root.html", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "正文首页\n正文 A\n正文 B" {
+		t.Fatalf("multi-next content must retain only first-level branches: %q", content)
+	}
+	if got := strings.Join(requested, ","); got != "/branch-root.html,/branch-a.html,/branch-b.html" {
+		t.Fatalf("multi-next content requests = %s", got)
 	}
 }
 

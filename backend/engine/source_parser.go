@@ -821,52 +821,87 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 		}
 	}
 
-	type tocPage struct {
-		request  sourceRequest
-		document *sourceRuleDocument
-	}
-	queue := []tocPage{{request: tocRequest, document: document}}
 	visited := map[string]bool{sourceRequestKey(tocRequest): true}
 	pageCount := 1
 	chapterListRule, reverse := sourceListRule(rule.ChapterListRule)
 	chapters := make([]RemoteChapter, 0)
-	for len(queue) > 0 {
-		page := queue[0]
-		queue = queue[1:]
-		pageChapters, parseErr := parseChapterListFromSourceDocument(page.document, rule, chapterListRule, page.request.URL)
+	parsePage := func(pageDocument *sourceRuleDocument, pageRequest sourceRequest, includeNext bool) ([]string, error) {
+		pageChapters, parseErr := parseChapterListFromSourceDocument(pageDocument, rule, chapterListRule, pageRequest.URL)
 		if parseErr != nil {
 			return nil, fmt.Errorf("parse toc chapters: %w", parseErr)
 		}
 		chapters = append(chapters, pageChapters...)
-		nextURLs, parseErr := extractResolvedURLsFromSourceDocument(page.document, rule.NextTOCURLRule, page.request.URL)
+		if !includeNext {
+			return nil, nil
+		}
+		nextURLs, parseErr := extractResolvedURLsFromSourceDocument(pageDocument, rule.NextTOCURLRule, pageRequest.URL)
 		if parseErr != nil {
 			return nil, fmt.Errorf("parse toc pagination: %w", parseErr)
 		}
-		for _, nextURL := range nextURLs {
-			nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
-			if prepareErr != nil {
-				return nil, fmt.Errorf("prepare toc page request: %w", prepareErr)
-			}
-			requestKey := sourceRequestKey(nextRequest)
-			if visited[requestKey] {
-				continue
-			}
-			if pageCount >= maxSourcePaginationPages {
-				return nil, fmt.Errorf("toc pagination exceeds %d pages", maxSourcePaginationPages)
-			}
-			nextDocument, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
+		return nextURLs, nil
+	}
+	fetchNextPage := func(nextURL string) (*sourceRuleDocument, sourceRequest, bool, error) {
+		nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
+		if prepareErr != nil {
+			return nil, sourceRequest{}, false, fmt.Errorf("prepare toc page request: %w", prepareErr)
+		}
+		requestKey := sourceRequestKey(nextRequest)
+		if visited[requestKey] {
+			return nil, sourceRequest{}, false, nil
+		}
+		if pageCount >= maxSourcePaginationPages {
+			return nil, sourceRequest{}, false, fmt.Errorf("toc pagination exceeds %d pages", maxSourcePaginationPages)
+		}
+		nextDocument, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
+		if fetchErr != nil {
+			return nil, sourceRequest{}, false, fmt.Errorf("fetch toc page: %w", fetchErr)
+		}
+		fetchedRequestKey := sourceRequestKey(fetchedNextRequest)
+		alreadyVisited := visited[fetchedRequestKey]
+		visited[requestKey] = true
+		if alreadyVisited {
+			return nil, sourceRequest{}, false, nil
+		}
+		visited[fetchedRequestKey] = true
+		pageCount++
+		return nextDocument, fetchedNextRequest, true, nil
+	}
+
+	nextURLs, parseErr := parsePage(document, tocRequest, true)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	if len(nextURLs) == 1 {
+		nextURL := nextURLs[0]
+		for nextURL != "" {
+			nextDocument, nextRequest, fetched, fetchErr := fetchNextPage(nextURL)
 			if fetchErr != nil {
-				return nil, fmt.Errorf("fetch toc page: %w", fetchErr)
+				return nil, fetchErr
 			}
-			fetchedRequestKey := sourceRequestKey(fetchedNextRequest)
-			alreadyVisited := visited[fetchedRequestKey]
-			visited[requestKey] = true
-			if alreadyVisited {
+			if !fetched {
+				break
+			}
+			pageNextURLs, pageErr := parsePage(nextDocument, nextRequest, true)
+			if pageErr != nil {
+				return nil, pageErr
+			}
+			nextURL = ""
+			if len(pageNextURLs) > 0 {
+				nextURL = pageNextURLs[0]
+			}
+		}
+	} else {
+		for _, nextURL := range nextURLs {
+			nextDocument, nextRequest, fetched, fetchErr := fetchNextPage(nextURL)
+			if fetchErr != nil {
+				return nil, fetchErr
+			}
+			if !fetched {
 				continue
 			}
-			visited[fetchedRequestKey] = true
-			pageCount++
-			queue = append(queue, tocPage{request: fetchedNextRequest, document: nextDocument})
+			if _, pageErr := parsePage(nextDocument, nextRequest, false); pageErr != nil {
+				return nil, pageErr
+			}
 		}
 	}
 	if len(chapters) == 0 {
@@ -1197,59 +1232,94 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 		return "", fmt.Errorf("fetch content page: %w", err)
 	}
 
-	type contentPage struct {
-		request  sourceRequest
-		document *sourceRuleDocument
-	}
-	queue := []contentPage{{request: contentRequest, document: document}}
 	visited := map[string]bool{sourceRequestKey(contentRequest): true}
 	pageCount := 1
 	parts := make([]string, 0)
-	for len(queue) > 0 {
+	parsePage := func(pageDocument *sourceRuleDocument, pageRequest sourceRequest, includeNext bool) ([]string, error) {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return nil, err
 		}
-		page := queue[0]
-		queue = queue[1:]
-		text, parseErr := extractChapterContentFromSourceDocument(page.document, rule, page.request.URL, source.SourceType)
+		text, parseErr := extractChapterContentFromSourceDocument(pageDocument, rule, pageRequest.URL, source.SourceType)
 		if parseErr != nil {
-			return "", fmt.Errorf("parse content page: %w", parseErr)
+			return nil, fmt.Errorf("parse content page: %w", parseErr)
 		}
 		if text != "" {
 			parts = append(parts, text)
 		}
-		nextURLs, parseErr := extractResolvedURLsFromSourceDocument(page.document, rule.NextContentURLRule, page.request.URL)
-		if parseErr != nil {
-			return "", fmt.Errorf("parse content pagination: %w", parseErr)
+		if !includeNext {
+			return nil, nil
 		}
-		for _, nextURL := range nextURLs {
-			if err := ctx.Err(); err != nil {
-				return "", err
-			}
-			nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
-			if prepareErr != nil {
-				return "", fmt.Errorf("prepare content page request: %w", prepareErr)
-			}
-			requestKey := sourceRequestKey(nextRequest)
-			if visited[requestKey] {
-				continue
-			}
-			if pageCount >= maxSourcePaginationPages {
-				return "", fmt.Errorf("content pagination exceeds %d pages", maxSourcePaginationPages)
-			}
-			nextDocument, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
+		nextURLs, parseErr := extractResolvedURLsFromSourceDocument(pageDocument, rule.NextContentURLRule, pageRequest.URL)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse content pagination: %w", parseErr)
+		}
+		return nextURLs, nil
+	}
+	fetchNextPage := func(nextURL string) (*sourceRuleDocument, sourceRequest, bool, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, sourceRequest{}, false, err
+		}
+		nextRequest, prepareErr := prepareSourceRequest(nextURL, "", 1, charset, rule.Headers, policy)
+		if prepareErr != nil {
+			return nil, sourceRequest{}, false, fmt.Errorf("prepare content page request: %w", prepareErr)
+		}
+		requestKey := sourceRequestKey(nextRequest)
+		if visited[requestKey] {
+			return nil, sourceRequest{}, false, nil
+		}
+		if pageCount >= maxSourcePaginationPages {
+			return nil, sourceRequest{}, false, fmt.Errorf("content pagination exceeds %d pages", maxSourcePaginationPages)
+		}
+		nextDocument, fetchedNextRequest, fetchErr := fetchDocument(nextRequest)
+		if fetchErr != nil {
+			return nil, sourceRequest{}, false, fmt.Errorf("fetch content page: %w", fetchErr)
+		}
+		fetchedRequestKey := sourceRequestKey(fetchedNextRequest)
+		alreadyVisited := visited[fetchedRequestKey]
+		visited[requestKey] = true
+		if alreadyVisited {
+			return nil, sourceRequest{}, false, nil
+		}
+		visited[fetchedRequestKey] = true
+		pageCount++
+		return nextDocument, fetchedNextRequest, true, nil
+	}
+
+	nextURLs, parseErr := parsePage(document, contentRequest, true)
+	if parseErr != nil {
+		return "", parseErr
+	}
+	if len(nextURLs) == 1 {
+		nextURL := nextURLs[0]
+		for nextURL != "" {
+			nextDocument, nextRequest, fetched, fetchErr := fetchNextPage(nextURL)
 			if fetchErr != nil {
-				return "", fmt.Errorf("fetch content page: %w", fetchErr)
+				return "", fetchErr
 			}
-			fetchedRequestKey := sourceRequestKey(fetchedNextRequest)
-			alreadyVisited := visited[fetchedRequestKey]
-			visited[requestKey] = true
-			if alreadyVisited {
+			if !fetched {
+				break
+			}
+			pageNextURLs, pageErr := parsePage(nextDocument, nextRequest, true)
+			if pageErr != nil {
+				return "", pageErr
+			}
+			nextURL = ""
+			if len(pageNextURLs) > 0 {
+				nextURL = pageNextURLs[0]
+			}
+		}
+	} else {
+		for _, nextURL := range nextURLs {
+			nextDocument, nextRequest, fetched, fetchErr := fetchNextPage(nextURL)
+			if fetchErr != nil {
+				return "", fetchErr
+			}
+			if !fetched {
 				continue
 			}
-			visited[fetchedRequestKey] = true
-			pageCount++
-			queue = append(queue, contentPage{request: fetchedNextRequest, document: nextDocument})
+			if _, pageErr := parsePage(nextDocument, nextRequest, false); pageErr != nil {
+				return "", pageErr
+			}
 		}
 	}
 

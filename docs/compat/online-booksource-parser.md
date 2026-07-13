@@ -40,6 +40,40 @@
 - 远端抓取继续使用当前超时、响应大小、重定向、限速、上下文取消与 1000 页上限；这些安全边界优先于上游的无限脚本/分页能力。
 - 正文 HTML 继续做图片 URL 校验与主动内容清理；这是浏览器安全适配，不改变文本与安全图片的可读顺序。
 
+## 2026-07-13 P2-Parser-1C：上游规则组合与分叉分页复审
+
+本节已直接复核新的固定上游副本 `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`：
+
+- `src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt`
+- `src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSoup.kt`
+- `src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt`
+- `src/main/java/io/legado/app/model/analyzeRule/AnalyzeByXPath.kt`
+- `src/main/java/io/legado/app/model/webBook/BookChapterList.kt`
+- `src/main/java/io/legado/app/model/webBook/BookContent.kt`
+
+| 行为 | 上游确切实现 | 当前 OpenReader | 判定 / 下一步 |
+| --- | --- | --- | --- |
+| 单一下一页 | `BookChapterList` 与 `BookContent` 在初页只得到一个 next URL 时使用 `while` 串行跟随；循环由已访问 URL 列表停止。 | 当前队列能得到相同常见结果，并额外保留 1000 页、取消、重定向去重。 | `acceptable-change`：保留安全上限和取消，但改为显式单链分支，保证不与多分叉混用。 |
+| 多个下一页 | 上游在初页 next URL 数量大于 1 时并发请求每个一级 URL，按原规则数组顺序 `await` 拼接；对子页调用关闭 `getNextUrl`/`printLog`，因此不再递归子链接。 | 当前 FIFO 队列会继续抓取每个分叉页的 next URL，既可能多读页面，又会输出 `首页 → 分叉 A → 分叉 B → A 的子页`，与上游不同。 | `must-fix`：目录/正文建立“单链递归 vs 首层多分叉”状态机；可保持串行抓取作为资源安全适配，但结果和请求顺序必须是上游规则顺序，且多分叉不继续展开。 |
+| 章节边界 | 上游正文单链遇到下一章节 URL 时停止，避免章节分页跳进下一章。 | 当前 `FetchChapterContent` 没有下章 URL 参数，无法执行同一比较。 | `known Go API gap`：保留 URL 去重与页数上限；后续在缓存/章节上下文调用处传入 next chapter URL，再增加边界测试。 |
+| `&&` / `||` / `%%` | JSoup、JSONPath、XPath 的 `RuleAnalyzer` 在嵌套/过滤语法外拆分：`&&` 合并，`||` 首个非空回退，`%%` 按索引交错合并。JSONPath 使用平衡代码组，避免把过滤表达式中的 `&&`/`||` 错切。 | 当前执行器只解释一个 CSS/JSONPath/XPath/正则表达式，错误地把多数组合交给底层解析器。 | `must-fix`：先为 CSS/XPath/JSONPath 组合写黄金测试和安全分割器；JSONPath 过滤式内部的逻辑运算不得切开。 |
+| 正则与替换 | 上游 all-in-one `:regex` 提供捕获组，后续 `$1..$n`、`##pattern##replacement[##first]` 在同一 `SourceRule` 阶段生效。 | 当前 `:regex` 与单次 `$n` 有基础支持；常规字段的 `##` 只在正文替换的旧专用路径实现。 | `must-fix`：把受限 RE2 的捕获与替换并入统一执行器；非法正则明确报错，不能静默按 CSS。 |
+| `@put` / `@get` / `{{ }}` | 上游以书籍/章节变量保存、读取和执行 JS 表达式；JS 可访问网络、cookie、缓存和本地对象。 | 当前没有上下文变量，也不执行 JS。 | `split`：`@put/@get` 可在后续作为无脚本、请求级变量适配单独实现；`{{ }}` 继续作为 `ErrUnsupportedSourceRule`，除非获得隔离沙箱。 |
+
+### P2-Parser-1C 先行测试
+
+1. 目录/正文：初页有两个 next，第一分叉又声明子页；结果只能包含初页和两个一级分叉，且请求/拼接顺序稳定。
+2. 单链分页仍会完整跟随到末页，循环和 1000 页上限保持。
+3. CSS、XPath、JSONPath 的 `||` 回退与 `&&` 合并；JSONPath 过滤表达式内的 `&&` / `||` 不被错误分割。
+4. 正则捕获、全局替换、只替换首项与非法规则错误。
+5. `@put/@get` 与 `{{ }}` 不在本小批实现；必须有明确的不支持测试，不能产生空结果或错误失效缓存。
+
+### P2-Parser-1C 实施记录
+
+- 目录与正文已不再使用 FIFO 递归队列：初页返回一个 URL 时继续单链；初页返回多个 URL 时按规则原顺序抓取每个一级页并禁止继续展开其 next 链接。
+- 为了保持现有的 Go 请求限速、取消与资源上限，多分叉目前串行抓取而非上游协程并发；输出和请求顺序与上游 `await` 顺序一致，因此这是允许的运行时安全适配。
+- 重定向后的 URL 仍参与去重，单链循环与 1000 页上限保持。下章 URL 边界、规则组合、变量和通用替换继续留在后续子批。
+
 ## 审查范围与上游证据
 
 上游并非把书源规则当作单一 CSS selector。其通用解释器由下列文件共同定义，并被搜索、详情、目录和正文共用：
