@@ -19,7 +19,7 @@
 
 | 范围 | 上游权威文件 / 动作 | 当前映射 | 本轮结论 | 后续门禁 |
 |---|---|---|---|---|
-| Index 工作台、搜索、探索、侧边栏 | `web/src/views/Index.vue` | `layouts/AppLayout.vue`、`views/Home.vue`、`Search.vue`、`Discover.vue`、`stores/indexWorkspace.js` | **尚未验证**：历史路由/覆盖层收敛记录需要重新逐个比对；不能因旧 URL 仍可用就视为 Index 场景已对齐。 | `readerdev-compat-inventory` → 页面/状态表 → 390/360/1440 浏览器流。 |
+| Index 工作台、搜索、探索、侧边栏 | `web/src/views/Index.vue` | `layouts/AppLayout.vue`、`views/Home.vue`、`Search.vue`、`Discover.vue`、`stores/indexWorkspace.js` | **P1-A 契约已提取**：根场景/旧链接收敛、三态结果与 260/270 手势具备技术栈等价基础；搜索默认值及侧栏内容布局仍为 **must-fix**，全局操作仍待逐个复审。 | `docs/compat/index-workspace-p1-contract.md` → P1-A 测试 → 390/360/1440 浏览器流。 |
 | 书架、BookManage、BookGroup、BookInfo | `BookShelf.vue`、`BookManage.vue`、`BookGroup.vue`、`BookInfo.vue` | `Home.vue`、`OverlayBookManagement.vue`、`OverlayBookGroups.vue`、`BookInfoDialog.vue`/`BookInfoPanel.vue` | **尚未验证**：已有共享 BookInfo 与覆盖层的记录，但重复壳与操作归属必须重新核对。 | 统一 BookInfo 动作表、书架增删分组事务和浏览器流程。 |
 | 书源与搜索结果 | `Index.vue`、`Explore.vue`、`BookSource.vue`、`BookSourceController.kt` | `SourceManager.vue`、`Search.vue`、`Discover.vue`、`SourceSwitchPanel.vue`、`backend/api/sources.go` | **尚未验证**：阅读内书源的工具入口已发现偏差；工作台书源/API 另行复核。 | 书源请求/响应/失败语义表和搜索→BookInfo→阅读流。 |
 | 本地导入、书仓、WebDAV | `BookController.kt`、`LocalBook.kt`、`TextFile.kt`、`LocalStore.vue`、`WebDAV.vue` | `OverlayBookImport.vue`、`LocalStore.vue`、`WebDAVBrowser.vue`、`backend/services/localbook/*`、`engine/*_parser.go` | **技术栈等价，待回归**：TXT 与标准 UMD 有本轮之前的专门契约；仍需把 EPUB/CBZ/PDF、书仓/WebDAV 预览和升级数据纳入一次完整复验。 | `booksource-parser-compat` + `data-migration-compat` + 真实文件夹/卷 smoke。 |
