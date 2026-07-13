@@ -2,7 +2,7 @@
 
 状态：2026-07-13 已从固定上游 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 提取；P2-Parser-0 与 P2-Parser-1 的搜索/探索子集正在实现。本文件仍是目录、正文和剩余规则链重构的前置闸门。
 
-当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器和规则级 `##` 替换；搜索/探索、详情、目录、正文的基础列表/字段/分页调用链；分类多值与空详情 URL 回退；不执行 JS/WebJS/变量模板的明确错误；以及“解析错误不写入失效书源缓存”、跨章节正文分页边界和空文本正文规则的错误边界。受限变量执行与结构化客户端错误仍未完成。
+当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器和规则级 `##` 替换；搜索/探索、详情、目录、正文的基础列表/字段/分页调用链；分类多值与空详情 URL 回退；受限、请求级的 `@put`/`@get` 变量；不执行 JS/WebJS/`{{...}}` 模板的明确错误；以及“解析错误不写入失效书源缓存”、跨章节正文分页边界和空文本正文规则的错误边界。跨请求持久变量与结构化客户端错误仍未完成。
 
 ## 2026-07-13 P2-Parser-1B：详情、目录、正文调用链复审
 
@@ -58,7 +58,7 @@
 | 章节边界 | 上游正文单链遇到下一章节 URL 时停止，避免章节分页跳进下一章。 | 当前 `FetchChapterContent` 没有下章 URL 参数，无法执行同一比较。 | `known Go API gap`：保留 URL 去重与页数上限；后续在缓存/章节上下文调用处传入 next chapter URL，再增加边界测试。 |
 | `&&` / `||` / `%%` | JSoup、JSONPath、XPath 的 `RuleAnalyzer` 在嵌套/过滤语法外拆分：`&&` 合并，`||` 首个非空回退，`%%` 按索引交错合并。JSONPath 使用平衡代码组，避免把过滤表达式中的 `&&`/`||` 错切。 | 当前执行器只解释一个 CSS/JSONPath/XPath/正则表达式，错误地把多数组合交给底层解析器。 | `must-fix`：先为 CSS/XPath/JSONPath 组合写黄金测试和安全分割器；JSONPath 过滤式内部的逻辑运算不得切开。 |
 | 正则与替换 | 上游 all-in-one `:regex` 提供捕获组，后续 `$1..$n`、`##pattern##replacement[##first]` 在同一 `SourceRule` 阶段生效。 | 当前 `:regex` 与单次 `$n` 有基础支持；常规字段的 `##` 只在正文替换的旧专用路径实现。 | `must-fix`：把受限 RE2 的捕获与替换并入统一执行器；非法正则明确报错，不能静默按 CSS。 |
-| `@put` / `@get` / `{{ }}` | 上游以书籍/章节变量保存、读取和执行 JS 表达式；JS 可访问网络、cookie、缓存和本地对象。 | 当前没有上下文变量，也不执行 JS。 | `split`：`@put/@get` 可在后续作为无脚本、请求级变量适配单独实现；`{{ }}` 继续作为 `ErrUnsupportedSourceRule`，除非获得隔离沙箱。 |
+| `@put` / `@get` / `{{ }}` | 上游以书籍/章节变量保存、读取和执行 JS 表达式；JS 可访问网络、cookie、缓存和本地对象。 | P2-Parser-1C 审查时没有上下文变量，也不执行 JS。 | `split`：`@put/@get` 已在后续 1F 作为无脚本、请求级变量实现；`{{ }}` 继续作为 `ErrUnsupportedSourceRule`，除非获得隔离沙箱。 |
 
 ### P2-Parser-1C 先行测试
 
@@ -80,20 +80,20 @@
 
 上游 `AnalyzeRule.SourceRule` 在每一段规则求值后才执行 `##`：第一段为取值规则，第二段是正则，第三段是替换文本，存在第四段即仅替换首个匹配。规则主体为空时仍可将替换作用于当前输入；捕获组 `$1..$n` 同样先取值再替换。非法正则应当是可定位的规则错误，不应退化为普通字符串替换。
 
-`@put:{...}`、`@get:{...}` 与 `{{...}}` 在上游绑定书籍或章节的可变状态，并可进入 JS 引擎；其中 JS 能访问请求、cookie、缓存和本地对象。OpenReader 不得在 Go 服务进程内直接实现这种权限模型。本子批的安全契约是：识别这三类语法，并返回 `ErrUnsupportedSourceRule`，而不是当 CSS 解析后默默为空；变量的受限、请求级设计如要实现，必须另有数据生命周期、隔离和多用户测试。
+`@put:{...}`、`@get:{...}` 与 `{{...}}` 在上游绑定书籍或章节的可变状态，并可进入 JS 引擎；其中 JS 能访问请求、cookie、缓存和本地对象。OpenReader 不得在 Go 服务进程内直接实现这种权限模型。P2-Parser-1D 当时的安全契约是把三类语法都拒绝，而不是当 CSS 解析后默默为空；后续 1F 已在独立生命周期、隔离和多用户测试下接入前两者的受限请求级版本。
 
 ### P2-Parser-1D 测试闸门
 
 1. CSS、JSONPath、XPath 和正则捕获结果都能执行全局 `##pattern##replacement` 与首个替换标记。
 2. 规则主体为空时替换当前文本；无匹配时保持原文本；无效 RE2 正则返回可由 `errors.Is(err, ErrInvalidSourceRule)` 区分的规则错误，且与“不支持”错误不同。
-3. `@put:`、`@get:` 与 `{{ }}` 分别返回明确不支持错误，且不能触发远端请求失败缓存。
+3. P2-Parser-1D 时，`@put:`、`@get:` 与 `{{ }}` 分别返回明确不支持错误，且不能触发远端请求失败缓存；此条已由 1F 的受限变量契约替代。
 4. 旧 `ContentReplaceRegex` 行为保持，直到其单独迁移至同一 helper 并通过正文 fixture。
 
 ### P2-Parser-1D 实施记录
 
 - 统一执行器现在先解析并校验 `##` 尾部变换，再求值 CSS/JSONPath/XPath/正则，最后对每个字符串结果单独应用 RE2 全局替换或首个替换。搜索、详情、目录和正文已用现有上游 fixture 做真实调用链验证。
 - 空规则主体可变换当前字符串；捕获组 `$1..$n` 会先取值再变换。首个替换没有匹配时保留原字符串，而不是上游 Android 实现的空字符串，这是为避免书名、章节标题和 URL 因无害规则失配消失的显式可用性适配。
-- 新增 `ErrInvalidSourceRule` 区分错误正则与 `ErrUnsupportedSourceRule`。`@put:`、`@get:`、`{{ }}` 现统一返回后者，既不执行脚本，也不作为 CSS 静默解析。
+- 新增 `ErrInvalidSourceRule` 区分错误正则与 `ErrUnsupportedSourceRule`。P2-Parser-1D 时，`@put:`、`@get:`、`{{ }}` 统一返回后者，既不执行脚本，也不作为 CSS 静默解析；P2-Parser-1F 已替代前两者为有界请求级实现，模板仍返回后者。
 - `/api/sources/:id/test*` 维持原有的成功响应形状，但本地无效/不支持规则不再写入 `source_failures`；只有远端请求错误可以让书源被短暂抑制。
 
 ## 2026-07-13 P2-Parser-1E：正文跨章节与空规则复审
@@ -123,15 +123,15 @@
 - 非音频空 `contentRule` 在任何远端请求前返回 `ErrInvalidSourceRule`，因此既不会把整个 HTML 页面写入章节缓存，也不会把本地规则错误写入 `source_failures`。音频源空规则仍返回已解析的章节媒体 URL。
 - 新增 engine 与 API 契约测试，覆盖相对的下一章节 URL、缓存未命中目录传递、分叉不变、空规则无缓存/无失效源记录及音频回归。
 
-## 2026-07-13 P2-Parser-1F：变量规则与结构化错误复审（仅审查，未改应用代码）
+## 2026-07-13 P2-Parser-1F：变量规则与结构化错误复审
 
 本轮上游证据来自固定基准的 `AnalyzeRule.kt`、`AnalyzeUrl.kt`、`RuleDataInterface.kt`、`RuleData.kt`、`Book.kt` 与 `BookChapter.kt`。结论是 `@put:`/`@get:` 与 `{{...}}` 不能视为同一项能力：前者是可在无脚本解释器中收敛的规则变量，后者能调用上游 JavaScript 运行时并获得 cookie、缓存、书源、书籍、章节及网络访问能力。
 
 | 行为 | 上游确切语义 | 当前 OpenReader | 判定 / 后续边界 |
 | --- | --- | --- | --- |
-| `@put:{...}` | 每个 `SourceRule` 在选择器求值前取出 JSON object；每个 value 再通过 `getString` 作为规则求值后写入变量。`AnalyzeRule` 写入优先级为 chapter → book → 临时 `RuleData`。 | 统一执行器在任何变量语法出现时返回 `ErrUnsupportedSourceRule`。 | `must-fix`：P2-Parser-1F 只增加受限、请求级 map；仅接受 JSON object、字符串键和值规则，值仍经过已支持的 CSS/JSONPath/XPath/正则求值。不得执行 JS、访问 cookie、文件或网络。 |
-| `@get:{key}` | 可嵌入规则字符串；读取 `bookName`、`title` 特殊值，随后按 chapter → book → `RuleData` 查找，缺失为空字符串。 | 同上，当前被整体拒绝。 | `must-fix`：在同一顶层解析操作内替换受限变量；`bookName`/`title` 只有在明确传入安全的 book/chapter 元数据时才提供。禁止从 HTTP header、cookie、JWT、WebDAV 凭证或环境变量取值。 |
-| 变量生存期 | `RuleData` 是一次调用内存 map；`Book.variable` 与 `BookChapter.variable` 是序列化 JSON，模型保存后可跨请求保留。上游 map 无顺序合同，不能依赖同一 `@put` object 内键的写入顺序。 | `models.Book`、`models.Chapter` 没有变量列；当前读者缓存、搜索并发和多用户模型也不携带变量上下文。 | `split`：1F 先实现一次 API/解析操作内的 map（搜索单次、详情→目录、正文分页链）；跨请求 book/chapter 变量需要单独的 P2-Parser-1G 数据契约、迁移、用户隔离、删除/备份/导出策略和冲突测试，不能暗中加入。 |
+| `@put:{...}` | 每个 `SourceRule` 在选择器求值前取出 JSON object；每个 value 再通过 `getString` 作为规则求值后写入变量。`AnalyzeRule` 写入优先级为 chapter → book → 临时 `RuleData`。 | 已实现受限请求级 map：仅 JSON object、字符串键和值规则；value 仍经过无脚本 CSS/JSONPath/XPath/正则求值。键按字典序处理，不依赖上游无顺序 map 的偶然顺序。 | `aligned for request scope`：值、键、总字节、数量和嵌套深度均受限；不执行 JS、不访问 cookie、文件或网络。 |
+| `@get:{key}` | 可嵌入规则字符串；读取 `bookName`、`title` 特殊值，随后按 chapter → book → `RuleData` 查找，缺失为空字符串。 | 已在同一顶层解析操作内替换受限 map 的键；缺失值为空字符串，替换结果作为字面量而不被二次执行为选择器或 URL 规则。 | `acceptable security difference`：尚未注入 `bookName`/`title` 特殊值，避免把未审查的模型数据暴露进请求规则；绝不从 HTTP header、cookie、JWT、WebDAV 凭证或环境变量取值。 |
+| 变量生存期 | `RuleData` 是一次调用内存 map；`Book.variable` 与 `BookChapter.variable` 是序列化 JSON，模型保存后可跨请求保留。上游 map 无顺序合同，不能依赖同一 `@put` object 内键的写入顺序。 | 搜索、详情→目录、正文单链各自创建请求级 map；搜索结果和正文多分叉各自克隆 map，map 不进缓存、数据库或 API 响应。 | `split`：跨请求 book/chapter 变量仍需要单独的 P2-Parser-1G 数据契约、迁移、用户隔离、删除/备份/导出策略和冲突测试，不能暗中加入。 |
 | `{{...}}` | 若内容是规则，上游继续递归解析；否则交给 JS 引擎。URL 模板也能执行 JS；绑定包含 cookie、cache、source、book、chapter、result，且 JS 扩展可发网络请求。 | 识别并返回 `ErrUnsupportedSourceRule`。 | `acceptable security difference`：保持明确不支持，不把它降格为空字符串或 CSS。任何未来支持须有隔离运行时、时间/内存/网络白名单、无宿主文件访问和多用户秘密隔离；它不属于 1F。 |
 | 错误响应 | 上游 UI 可显示调试链；规则与请求异常并不以 Go REST 为边界。 | 阅读接口稳定返回 `{error:"failed to load chapter content"}`；其他入口有混合的 400/502 原文错误。 | `deferred P2-Parser-2`：先保持部署客户端的状态码和字段；增加不泄露 URL query/header/cookie 的 `code`/`stage` 前，必须写 API 契约和端到端测试。 |
 
@@ -143,6 +143,14 @@
 4. 在详情→目录及正文分页中验证同一操作的变量可用；缓存命中、重新进入阅读页、另一个章节、刷新书源和 source-debug 的独立步骤不得意外复用临时 map。
 5. `/api/sources/:id/test*`、搜索、详情、目录、正文遇到变量语法/大小/递归错误时都不写 `source_failures`；日志、debug 响应与结构化错误不得回显变量值、URL query、cookie 或授权 header。
 6. P2-Parser-1G 开始前，必须由 `data-migration-compat` 单独审查 book/chapter 持久变量：旧 SQLite、备份恢复、书籍删除、source change、章节刷新、导入导出、缓存键和用户所有权均需有测试。未经这道闸门，1F 的 map 不落库。
+
+### P2-Parser-1F 实施记录
+
+- 新增不可导出的 `sourceRuleRuntime`，每个顶层解析操作新建；变量最多 32 项，单个键最多 128 字节、单个值最多 4096 字节、总量最多 16 KiB、嵌套最多 8 层。坏 JSON、非字符串值、超限和递归深度都会返回 `ErrInvalidSourceRule`。
+- `@put:` 只接受 JSON object；每个 value 通过既有无脚本规则解释器取值。`@get:` 缺失时为空，命中时作为字面量返回，不能把变量内容重新解释成选择器、JavaScript 或请求 URL。
+- 搜索中每个结果克隆 runtime，独立搜索操作绝不继承变量；详情与目录共享同一 runtime，正文单链分页共享同一 runtime，多分叉正文各自克隆 runtime。这是对上游可变对象并发行为的多用户安全适配。
+- `{{...}}` 与 JavaScript 仍然明确返回 `ErrUnsupportedSourceRule`；变量值不落库、不进入章节缓存键、不写入调试响应或失效书源缓存。
+- 新增 `source_rule_variables_contract_test.go`，覆盖结果/操作隔离、详情→目录、正文单链、缺失键、坏 JSON、非字符串值、超长键和模板禁用；API source-debug 回归继续验证本地变量规则错误不会写入 `source_failures`。
 
 ## 审查范围与上游证据
 

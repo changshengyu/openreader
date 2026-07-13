@@ -195,7 +195,7 @@ func TestSourceDebugDoesNotCacheLocalParserRuleErrors(t *testing.T) {
 
 	for index, rule := range []string{
 		"@CSS:.name@text##[",
-		`@put:{"token":"value"}@CSS:.name@text`,
+		`@put:{"token":1}@CSS:.name@text`,
 	} {
 		source := models.BookSource{Name: "本地规则错误源", BaseURL: "https://local-rule-error.example", Enabled: true, Charset: "utf-8"}
 		if err := source.SetRules(models.BookSourceRule{

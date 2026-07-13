@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +25,55 @@ var (
 	// ErrInvalidSourceRule marks a local source-rule syntax error. Callers use
 	// this to keep author-fixable rules out of remote-source failure caches.
 	ErrInvalidSourceRule = errors.New("invalid book source rule")
+	sourceRuleGetPattern = regexp.MustCompile(`(?i)@get:\{([^{}]+)\}`)
 )
+
+const (
+	maxSourceRuleVariables       = 32
+	maxSourceRuleVariableKeySize = 128
+	maxSourceRuleVariableValue   = 4096
+	maxSourceRuleVariableBytes   = 16 * 1024
+	maxSourceRuleVariableDepth   = 8
+)
+
+// sourceRuleRuntime is confined to one parser operation. It is never written
+// to cache/database state or shared by concurrent requests.
+type sourceRuleRuntime struct {
+	variables map[string]string
+	depth     int
+}
+
+func newSourceRuleRuntime() *sourceRuleRuntime {
+	return &sourceRuleRuntime{variables: make(map[string]string)}
+}
+
+func (r *sourceRuleRuntime) clone() *sourceRuleRuntime {
+	if r == nil {
+		return newSourceRuleRuntime()
+	}
+	cloned := &sourceRuleRuntime{variables: make(map[string]string, len(r.variables)), depth: r.depth}
+	for key, value := range r.variables {
+		cloned.variables[key] = value
+	}
+	return cloned
+}
+
+func (r *sourceRuleRuntime) enterVariableRule() error {
+	if r == nil {
+		return fmt.Errorf("%w: missing variable runtime", ErrInvalidSourceRule)
+	}
+	if r.depth >= maxSourceRuleVariableDepth {
+		return fmt.Errorf("%w: variable rule nesting exceeds %d", ErrInvalidSourceRule, maxSourceRuleVariableDepth)
+	}
+	r.depth++
+	return nil
+}
+
+func (r *sourceRuleRuntime) leaveVariableRule() {
+	if r != nil && r.depth > 0 {
+		r.depth--
+	}
+}
 
 type sourceRuleDocument struct {
 	raw       string
@@ -43,6 +92,7 @@ type sourceRuleValue struct {
 	jsonData  any
 	text      string
 	captures  []string
+	runtime   *sourceRuleRuntime
 }
 
 // sourceRuleTransform is the trailing ##regex##replacement[##first] stage of
@@ -82,7 +132,26 @@ func fetchSourceRuleDocumentContext(ctx context.Context, request sourceRequest) 
 }
 
 func (d *sourceRuleDocument) Root() sourceRuleValue {
-	return sourceRuleValue{document: d, selection: d.document.Selection, xpathNode: d.xpathRoot}
+	return d.RootWithRuntime(nil)
+}
+
+func (d *sourceRuleDocument) RootWithRuntime(runtime *sourceRuleRuntime) sourceRuleValue {
+	if runtime == nil {
+		runtime = newSourceRuleRuntime()
+	}
+	return sourceRuleValue{document: d, selection: d.document.Selection, xpathNode: d.xpathRoot, runtime: runtime}
+}
+
+func (v sourceRuleValue) withRuntime(runtime *sourceRuleRuntime) sourceRuleValue {
+	v.runtime = runtime
+	return v
+}
+
+func sourceRuleRuntimeFor(value *sourceRuleValue) *sourceRuleRuntime {
+	if value.runtime == nil {
+		value.runtime = newSourceRuleRuntime()
+	}
+	return value.runtime
 }
 
 func (d *sourceRuleDocument) jsonValue() (any, error) {
@@ -96,13 +165,19 @@ func (d *sourceRuleDocument) jsonValue() (any, error) {
 }
 
 func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, error) {
-	transform, err := parseSourceRuleTransform(rule)
+	prepared, err := prepareSourceRule(&value, rule)
 	if err != nil {
 		return nil, err
 	}
-	rule = transform.rule
+	rule = prepared.rule
+	if prepared.literal {
+		if rule == "" {
+			return nil, nil
+		}
+		return []sourceRuleValue{{document: value.document, text: rule, runtime: value.runtime}}, nil
+	}
 	if rule == "" {
-		if transform.hasTransform {
+		if prepared.transform.hasTransform {
 			return []sourceRuleValue{value}, nil
 		}
 		return nil, nil
@@ -136,11 +211,19 @@ func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, 
 }
 
 func sourceRuleStrings(value sourceRuleValue, rule string) ([]string, error) {
-	transform, err := parseSourceRuleTransform(rule)
+	prepared, err := prepareSourceRule(&value, rule)
 	if err != nil {
 		return nil, err
 	}
-	rule = transform.rule
+	transform := prepared.transform
+	rule = prepared.rule
+	if prepared.literal {
+		parsed, err := transform.apply(rule)
+		if err != nil {
+			return nil, err
+		}
+		return []string{parsed}, nil
+	}
 	if rule == "" {
 		if !transform.hasTransform {
 			return nil, nil
@@ -253,6 +336,208 @@ func sourceRuleString(value sourceRuleValue, rule string) (string, error) {
 		return "", err
 	}
 	return values[0], nil
+}
+
+type preparedSourceRule struct {
+	rule      string
+	transform sourceRuleTransform
+	literal   bool
+}
+
+func prepareSourceRule(value *sourceRuleValue, rawRule string) (preparedSourceRule, error) {
+	runtime := sourceRuleRuntimeFor(value)
+	rule, putRules, err := sourceRuleExtractPutRules(rawRule)
+	if err != nil {
+		return preparedSourceRule{}, err
+	}
+	if err := sourceRuleUnsupportedError(rule); err != nil {
+		return preparedSourceRule{}, err
+	}
+	if err := sourceRuleApplyPuts(*value, runtime, putRules); err != nil {
+		return preparedSourceRule{}, err
+	}
+	transform, err := parseSourceRuleTransform(rule)
+	if err != nil {
+		return preparedSourceRule{}, err
+	}
+	if !sourceRuleGetPattern.MatchString(transform.rule) {
+		return preparedSourceRule{rule: transform.rule, transform: transform}, nil
+	}
+	literal, err := sourceRuleInterpolateGets(transform.rule, runtime)
+	if err != nil {
+		return preparedSourceRule{}, err
+	}
+	transform.rule = literal
+	return preparedSourceRule{rule: literal, transform: transform, literal: true}, nil
+}
+
+func sourceRuleExtractPutRules(rawRule string) (string, []map[string]string, error) {
+	lowerRule := strings.ToLower(rawRule)
+	putRules := make([]map[string]string, 0)
+	var result strings.Builder
+	for offset := 0; offset < len(rawRule); {
+		match := strings.Index(lowerRule[offset:], "@put:")
+		if match < 0 {
+			result.WriteString(rawRule[offset:])
+			break
+		}
+		start := offset + match
+		result.WriteString(rawRule[offset:start])
+		objectStart := start + len("@put:")
+		if objectStart >= len(rawRule) || rawRule[objectStart] != '{' {
+			return "", nil, fmt.Errorf("%w: @put requires a JSON object", ErrInvalidSourceRule)
+		}
+		objectEnd, err := sourceRuleJSONObjectEnd(rawRule, objectStart)
+		if err != nil {
+			return "", nil, fmt.Errorf("%w: invalid @put JSON object: %v", ErrInvalidSourceRule, err)
+		}
+		object := rawRule[objectStart:objectEnd]
+		if len(object) > maxSourceRuleVariableBytes {
+			return "", nil, fmt.Errorf("%w: @put JSON exceeds %d bytes", ErrInvalidSourceRule, maxSourceRuleVariableBytes)
+		}
+		values := make(map[string]string)
+		if err := json.Unmarshal([]byte(object), &values); err != nil {
+			return "", nil, fmt.Errorf("%w: invalid @put JSON: %v", ErrInvalidSourceRule, err)
+		}
+		if err := validateSourceRuleVariables(values); err != nil {
+			return "", nil, err
+		}
+		putRules = append(putRules, values)
+		offset = objectEnd
+	}
+	return result.String(), putRules, nil
+}
+
+func sourceRuleJSONObjectEnd(value string, start int) (int, error) {
+	depth := 0
+	inString := false
+	escaped := false
+	for index := start; index < len(value); index++ {
+		character := value[index]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if character == '\\' {
+				escaped = true
+			} else if character == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch character {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return index + 1, nil
+			}
+			if depth < 0 {
+				return 0, errors.New("unexpected closing brace")
+			}
+		}
+	}
+	return 0, errors.New("unterminated object")
+}
+
+func validateSourceRuleVariables(values map[string]string) error {
+	if len(values) == 0 || len(values) > maxSourceRuleVariables {
+		return fmt.Errorf("%w: @put requires 1 to %d string variables", ErrInvalidSourceRule, maxSourceRuleVariables)
+	}
+	total := 0
+	for key, value := range values {
+		if key != strings.TrimSpace(key) || key == "" || len(key) > maxSourceRuleVariableKeySize {
+			return fmt.Errorf("%w: variable key must be 1 to %d bytes", ErrInvalidSourceRule, maxSourceRuleVariableKeySize)
+		}
+		if len(value) > maxSourceRuleVariableValue {
+			return fmt.Errorf("%w: variable value rule exceeds %d bytes", ErrInvalidSourceRule, maxSourceRuleVariableValue)
+		}
+		total += len(key) + len(value)
+	}
+	if total > maxSourceRuleVariableBytes {
+		return fmt.Errorf("%w: @put variables exceed %d bytes", ErrInvalidSourceRule, maxSourceRuleVariableBytes)
+	}
+	return nil
+}
+
+func sourceRuleApplyPuts(value sourceRuleValue, runtime *sourceRuleRuntime, putRules []map[string]string) error {
+	if len(putRules) == 0 {
+		return nil
+	}
+	working := runtime.clone()
+	if err := working.enterVariableRule(); err != nil {
+		return err
+	}
+	defer working.leaveVariableRule()
+	for _, putRule := range putRules {
+		keys := make([]string, 0, len(putRule))
+		for key := range putRule {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			parsed, err := sourceRuleString(value.withRuntime(working), putRule[key])
+			if err != nil {
+				return err
+			}
+			if err := sourceRuleSetVariable(working, key, parsed); err != nil {
+				return err
+			}
+		}
+	}
+	runtime.variables = working.variables
+	return nil
+}
+
+func sourceRuleSetVariable(runtime *sourceRuleRuntime, key, value string) error {
+	if runtime == nil {
+		return fmt.Errorf("%w: missing variable runtime", ErrInvalidSourceRule)
+	}
+	if _, exists := runtime.variables[key]; !exists && len(runtime.variables) >= maxSourceRuleVariables {
+		return fmt.Errorf("%w: variable runtime exceeds %d entries", ErrInvalidSourceRule, maxSourceRuleVariables)
+	}
+	total := 0
+	for existingKey, existingValue := range runtime.variables {
+		total += len(existingKey)
+		if existingKey == key {
+			total += len(value)
+			continue
+		}
+		total += len(existingValue)
+	}
+	if _, exists := runtime.variables[key]; !exists {
+		total += len(key) + len(value)
+	}
+	if total > maxSourceRuleVariableBytes {
+		return fmt.Errorf("%w: variable runtime exceeds %d bytes", ErrInvalidSourceRule, maxSourceRuleVariableBytes)
+	}
+	runtime.variables[key] = value
+	return nil
+}
+
+func sourceRuleInterpolateGets(rule string, runtime *sourceRuleRuntime) (string, error) {
+	matches := sourceRuleGetPattern.FindAllStringSubmatchIndex(rule, -1)
+	if len(matches) == 0 {
+		return rule, nil
+	}
+	var result strings.Builder
+	result.Grow(len(rule))
+	offset := 0
+	for _, match := range matches {
+		key := strings.TrimSpace(rule[match[2]:match[3]])
+		if key == "" || len(key) > maxSourceRuleVariableKeySize {
+			return "", fmt.Errorf("%w: invalid @get variable key", ErrInvalidSourceRule)
+		}
+		result.WriteString(rule[offset:match[0]])
+		result.WriteString(runtime.variables[key])
+		offset = match[1]
+	}
+	result.WriteString(rule[offset:])
+	return result.String(), nil
 }
 
 func parseSourceRuleTransform(rule string) (sourceRuleTransform, error) {
@@ -376,7 +661,7 @@ func sourceRuleCSSElements(value sourceRuleValue, selector string) ([]sourceRule
 		if item.Length() > 0 {
 			node = item.Get(0)
 		}
-		items = append(items, sourceRuleValue{document: value.document, selection: item, xpathNode: node})
+		items = append(items, sourceRuleValue{document: value.document, selection: item, xpathNode: node, runtime: value.runtime})
 	})
 	return items, nil
 }
@@ -406,7 +691,7 @@ func sourceRuleJSONElements(value sourceRuleValue, path string) ([]sourceRuleVal
 	values := sourceRuleFlattenJSON(matched)
 	items := make([]sourceRuleValue, 0, len(values))
 	for _, item := range values {
-		items = append(items, sourceRuleValue{document: value.document, jsonData: item})
+		items = append(items, sourceRuleValue{document: value.document, jsonData: item, runtime: value.runtime})
 	}
 	return items, nil
 }
@@ -435,7 +720,7 @@ func sourceRuleXPathElements(value sourceRuleValue, expression string) ([]source
 	}
 	items := make([]sourceRuleValue, 0, len(matched))
 	for _, item := range matched {
-		items = append(items, sourceRuleValue{document: value.document, xpathNode: item})
+		items = append(items, sourceRuleValue{document: value.document, xpathNode: item, runtime: value.runtime})
 	}
 	return items, nil
 }
@@ -455,7 +740,7 @@ func sourceRuleRegexElements(value sourceRuleValue, expression string) ([]source
 		if len(match) > 1 {
 			text = match[1]
 		}
-		items = append(items, sourceRuleValue{document: value.document, text: text, captures: match})
+		items = append(items, sourceRuleValue{document: value.document, text: text, captures: match, runtime: value.runtime})
 	}
 	return items, nil
 }
@@ -590,8 +875,8 @@ func sourceRuleUnsupportedError(rule string) error {
 	if sourceRuleUsesJavaScript(rule) {
 		return fmt.Errorf("%w: JavaScript/WebJS execution is disabled", ErrUnsupportedSourceRule)
 	}
-	if sourceRuleUsesVariables(rule) {
-		return fmt.Errorf("%w: @put/@get/template variables require an isolated request-scoped runtime", ErrUnsupportedSourceRule)
+	if sourceRuleUsesTemplate(rule) {
+		return fmt.Errorf("%w: template JavaScript requires an isolated runtime", ErrUnsupportedSourceRule)
 	}
 	return nil
 }
@@ -600,7 +885,11 @@ func sourceRuleUsesVariables(rule string) bool {
 	lower := strings.ToLower(rule)
 	return strings.Contains(lower, "@put:") ||
 		strings.Contains(lower, "@get:") ||
-		(strings.Contains(rule, "{{") && strings.Contains(rule, "}}"))
+		sourceRuleUsesTemplate(rule)
+}
+
+func sourceRuleUsesTemplate(rule string) bool {
+	return strings.Contains(rule, "{{") && strings.Contains(rule, "}}")
 }
 
 // IsSourceRuleError reports a local, author-fixable rule failure. It is

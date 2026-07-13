@@ -163,7 +163,7 @@ func TestSourceRuleEvaluatorMatchesCoreReaderDevRuleModes(t *testing.T) {
 		}
 	})
 
-	t.Run("rule replacement and unsupported variable syntax", func(t *testing.T) {
+	t.Run("rule replacement and unsupported template syntax", func(t *testing.T) {
 		htmlDocument, err := newSourceRuleDocument(htmlBody)
 		if err != nil {
 			t.Fatal(err)
@@ -212,13 +212,9 @@ func TestSourceRuleEvaluatorMatchesCoreReaderDevRuleModes(t *testing.T) {
 		if _, err := sourceRuleString(cssItems[0], "@CSS:.name@text##["); !errors.Is(err, ErrInvalidSourceRule) {
 			t.Fatalf("invalid replacement error = %v, want ErrInvalidSourceRule", err)
 		}
-		for _, rule := range []string{
-			`@put:{"token":"value"}@CSS:.name@text`,
-			`@get:{token}`,
-			`{{result}}`,
-		} {
+		for _, rule := range []string{`{{result}}`} {
 			if _, err := sourceRuleString(cssItems[0], rule); !errors.Is(err, ErrUnsupportedSourceRule) {
-				t.Fatalf("variable rule %q error = %v, want ErrUnsupportedSourceRule", rule, err)
+				t.Fatalf("template rule %q error = %v, want ErrUnsupportedSourceRule", rule, err)
 			}
 		}
 	})
