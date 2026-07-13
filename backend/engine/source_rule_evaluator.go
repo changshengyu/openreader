@@ -16,9 +16,15 @@ import (
 	"golang.org/x/net/html"
 )
 
-// ErrUnsupportedSourceRule distinguishes a preserved upstream rule that cannot
-// safely run in the Go process from a selector that simply has no matches.
-var ErrUnsupportedSourceRule = errors.New("unsupported book source rule")
+var (
+	// ErrUnsupportedSourceRule distinguishes a preserved upstream rule that
+	// cannot safely run in the Go process from a selector that simply has no
+	// matches.
+	ErrUnsupportedSourceRule = errors.New("unsupported book source rule")
+	// ErrInvalidSourceRule marks a local source-rule syntax error. Callers use
+	// this to keep author-fixable rules out of remote-source failure caches.
+	ErrInvalidSourceRule = errors.New("invalid book source rule")
+)
 
 type sourceRuleDocument struct {
 	raw       string
@@ -37,6 +43,18 @@ type sourceRuleValue struct {
 	jsonData  any
 	text      string
 	captures  []string
+}
+
+// sourceRuleTransform is the trailing ##regex##replacement[##first] stage of
+// reader-dev's SourceRule. It intentionally runs after selector evaluation so
+// every scalar value is transformed independently.
+type sourceRuleTransform struct {
+	rule         string
+	pattern      string
+	replacement  string
+	replaceFirst bool
+	compiled     *regexp.Regexp
+	hasTransform bool
 }
 
 func newSourceRuleDocument(raw string) (*sourceRuleDocument, error) {
@@ -78,8 +96,15 @@ func (d *sourceRuleDocument) jsonValue() (any, error) {
 }
 
 func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, error) {
-	rule = strings.TrimSpace(rule)
+	transform, err := parseSourceRuleTransform(rule)
+	if err != nil {
+		return nil, err
+	}
+	rule = transform.rule
 	if rule == "" {
+		if transform.hasTransform {
+			return []sourceRuleValue{value}, nil
+		}
 		return nil, nil
 	}
 	if parts, operator := sourceRuleCompositeParts(rule); len(parts) > 1 {
@@ -98,9 +123,6 @@ func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, 
 		}
 		return combineSourceRuleValueLists(lists, operator), nil
 	}
-	if sourceRuleUsesJavaScript(rule) {
-		return nil, fmt.Errorf("%w: JavaScript/WebJS execution is disabled", ErrUnsupportedSourceRule)
-	}
 	if strings.HasPrefix(rule, ":") {
 		return sourceRuleRegexElements(value, strings.TrimSpace(rule[1:]))
 	}
@@ -114,9 +136,34 @@ func sourceRuleElements(value sourceRuleValue, rule string) ([]sourceRuleValue, 
 }
 
 func sourceRuleStrings(value sourceRuleValue, rule string) ([]string, error) {
-	rule = strings.TrimSpace(rule)
+	transform, err := parseSourceRuleTransform(rule)
+	if err != nil {
+		return nil, err
+	}
+	rule = transform.rule
 	if rule == "" {
-		return nil, nil
+		if !transform.hasTransform {
+			return nil, nil
+		}
+		parsed, err := sourceRuleValueString(value, "")
+		if err != nil || parsed == "" {
+			return nil, err
+		}
+		parsed, err = transform.apply(parsed)
+		if err != nil {
+			return nil, err
+		}
+		return []string{parsed}, nil
+	}
+	if capture, ok := sourceRuleCapture(rule); ok {
+		if capture >= len(value.captures) {
+			return nil, nil
+		}
+		parsed, err := transform.apply(value.captures[capture])
+		if err != nil || parsed == "" {
+			return nil, err
+		}
+		return []string{parsed}, nil
 	}
 	if parts, operator := sourceRuleCompositeParts(rule); len(parts) > 1 {
 		lists := make([][]string, 0, len(parts))
@@ -132,7 +179,8 @@ func sourceRuleStrings(value sourceRuleValue, rule string) ([]string, error) {
 				lists = append(lists, values)
 			}
 		}
-		return combineSourceRuleStringLists(lists, operator), nil
+		values := combineSourceRuleStringLists(lists, operator)
+		return sourceRuleApplyTransform(values, transform)
 	}
 	items, err := sourceRuleElements(value, rule)
 	if err != nil {
@@ -145,6 +193,10 @@ func sourceRuleStrings(value sourceRuleValue, rule string) ([]string, error) {
 			return nil, err
 		}
 		if parsed != "" {
+			parsed, err = transform.apply(parsed)
+			if err != nil {
+				return nil, err
+			}
 			values = append(values, parsed)
 		}
 	}
@@ -196,17 +248,75 @@ func combineSourceRuleStringLists(lists [][]string, operator string) []string {
 }
 
 func sourceRuleString(value sourceRuleValue, rule string) (string, error) {
-	if capture, ok := sourceRuleCapture(rule); ok {
-		if capture < len(value.captures) {
-			return value.captures[capture], nil
-		}
-		return "", nil
-	}
 	values, err := sourceRuleStrings(value, rule)
 	if err != nil || len(values) == 0 {
 		return "", err
 	}
 	return values[0], nil
+}
+
+func parseSourceRuleTransform(rule string) (sourceRuleTransform, error) {
+	rawRule := strings.TrimSpace(rule)
+	if err := sourceRuleUnsupportedError(rawRule); err != nil {
+		return sourceRuleTransform{}, err
+	}
+	parts := strings.Split(rawRule, "##")
+	transform := sourceRuleTransform{rule: strings.TrimSpace(parts[0])}
+	if len(parts) < 2 {
+		return transform, nil
+	}
+	transform.hasTransform = true
+	transform.pattern = parts[1]
+	if len(parts) > 2 {
+		transform.replacement = parts[2]
+	}
+	transform.replaceFirst = len(parts) > 3
+	if transform.pattern == "" {
+		return transform, nil
+	}
+	compiled, err := regexp.Compile(transform.pattern)
+	if err != nil {
+		return sourceRuleTransform{}, fmt.Errorf("%w: replacement regex %q: %v", ErrInvalidSourceRule, transform.pattern, err)
+	}
+	transform.compiled = compiled
+	return transform, nil
+}
+
+func (t sourceRuleTransform) apply(value string) (string, error) {
+	if !t.hasTransform || t.pattern == "" {
+		return value, nil
+	}
+	if t.compiled == nil {
+		return "", fmt.Errorf("%w: replacement regex was not compiled", ErrInvalidSourceRule)
+	}
+	if !t.replaceFirst {
+		return t.compiled.ReplaceAllString(value, t.replacement), nil
+	}
+	match := t.compiled.FindStringIndex(value)
+	if match == nil {
+		// reader-dev returns an empty string here. Keeping the original value is
+		// the documented safety/usability adaptation: a harmless no-match must
+		// not make a book title, chapter title or URL disappear.
+		return value, nil
+	}
+	return value[:match[0]] + t.compiled.ReplaceAllString(value[match[0]:match[1]], t.replacement) + value[match[1]:], nil
+}
+
+func sourceRuleApplyTransform(values []string, transform sourceRuleTransform) ([]string, error) {
+	if !transform.hasTransform || len(values) == 0 {
+		return values, nil
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		parsed, err := transform.apply(value)
+		if err != nil {
+			return nil, err
+		}
+		if parsed != "" {
+			result = append(result, parsed)
+		}
+	}
+	return result, nil
 }
 
 func sourceRuleValueString(value sourceRuleValue, rule string) (string, error) {
@@ -476,6 +586,30 @@ func sourceRuleUsesJavaScript(rule string) bool {
 	return strings.HasPrefix(lower, "@js:") || strings.Contains(lower, "<js>")
 }
 
+func sourceRuleUnsupportedError(rule string) error {
+	if sourceRuleUsesJavaScript(rule) {
+		return fmt.Errorf("%w: JavaScript/WebJS execution is disabled", ErrUnsupportedSourceRule)
+	}
+	if sourceRuleUsesVariables(rule) {
+		return fmt.Errorf("%w: @put/@get/template variables require an isolated request-scoped runtime", ErrUnsupportedSourceRule)
+	}
+	return nil
+}
+
+func sourceRuleUsesVariables(rule string) bool {
+	lower := strings.ToLower(rule)
+	return strings.Contains(lower, "@put:") ||
+		strings.Contains(lower, "@get:") ||
+		(strings.Contains(rule, "{{") && strings.Contains(rule, "}}"))
+}
+
+// IsSourceRuleError reports a local, author-fixable rule failure. It is
+// intentionally distinct from ErrSourceRequest so APIs can avoid caching it
+// as an unhealthy remote source.
+func IsSourceRuleError(err error) bool {
+	return errors.Is(err, ErrUnsupportedSourceRule) || errors.Is(err, ErrInvalidSourceRule)
+}
+
 // sourceRuleCompositeParts mirrors reader-dev's RuleAnalyzer for the three
 // collection operators. Only top-level operators split a rule: XPath and
 // JSONPath filters may contain the same tokens inside brackets, parentheses,
@@ -594,6 +728,9 @@ func sourceRuleNeedsEvaluator(rule string) bool {
 	trimmed := strings.TrimSpace(rule)
 	if trimmed == "" {
 		return false
+	}
+	if strings.Contains(trimmed, "##") || sourceRuleUsesVariables(trimmed) {
+		return true
 	}
 	if parts, _ := sourceRuleCompositeParts(trimmed); len(parts) > 1 {
 		return true

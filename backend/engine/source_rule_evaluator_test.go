@@ -162,6 +162,66 @@ func TestSourceRuleEvaluatorMatchesCoreReaderDevRuleModes(t *testing.T) {
 			t.Fatalf("JSONPath nested condition split = %#v, operator = %q", parts, operator)
 		}
 	})
+
+	t.Run("rule replacement and unsupported variable syntax", func(t *testing.T) {
+		htmlDocument, err := newSourceRuleDocument(htmlBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cssItems, err := sourceRuleElements(htmlDocument.Root(), "@CSS:article.book")
+		if err != nil || len(cssItems) == 0 {
+			t.Fatalf("CSS list = %#v, %v", cssItems, err)
+		}
+		cssValue, err := sourceRuleString(cssItems[0], "@CSS:.name@text##第##新")
+		if err != nil || cssValue != "新一本书" {
+			t.Fatalf("CSS replacement = %q, %v", cssValue, err)
+		}
+		firstOnly, err := sourceRuleStrings(cssItems[0], "@CSS:.kind@text##幻##X##first")
+		if err != nil || !reflect.DeepEqual(firstOnly, []string{"玄X", "仙侠"}) {
+			t.Fatalf("first replacement = %#v, %v", firstOnly, err)
+		}
+		noMatch, err := sourceRuleString(cssItems[0], "@CSS:.name@text##不存在##替换##first")
+		if err != nil || noMatch != "第一本书" {
+			t.Fatalf("first replacement without match = %q, %v", noMatch, err)
+		}
+
+		jsonDocument, err := newSourceRuleDocument(jsonBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jsonValue, err := sourceRuleString(jsonDocument.Root(), "$.data.books[0].name##第##新")
+		if err != nil || jsonValue != "JSON 新一书" {
+			t.Fatalf("JSONPath replacement = %q, %v", jsonValue, err)
+		}
+		xpathValue, err := sourceRuleString(htmlDocument.Root(), "@XPath://article[@data-id='two']/h2/text()##第二##第三")
+		if err != nil || xpathValue != "第三本书" {
+			t.Fatalf("XPath replacement = %q, %v", xpathValue, err)
+		}
+		regexItems, err := sourceRuleElements(htmlDocument.Root(), `:(?s)<entry>(.*?)</entry>`)
+		if err != nil || len(regexItems) != 1 {
+			t.Fatalf("regex list = %#v, %v", regexItems, err)
+		}
+		captureValue, err := sourceRuleString(regexItems[0], "$1##标题##正文")
+		if err != nil || captureValue != "正则正文" {
+			t.Fatalf("capture replacement = %q, %v", captureValue, err)
+		}
+		emptyRuleValue, err := sourceRuleString(sourceRuleValue{text: "第一第一"}, "##第一##第")
+		if err != nil || emptyRuleValue != "第第" {
+			t.Fatalf("empty rule replacement = %q, %v", emptyRuleValue, err)
+		}
+		if _, err := sourceRuleString(cssItems[0], "@CSS:.name@text##["); !errors.Is(err, ErrInvalidSourceRule) {
+			t.Fatalf("invalid replacement error = %v, want ErrInvalidSourceRule", err)
+		}
+		for _, rule := range []string{
+			`@put:{"token":"value"}@CSS:.name@text`,
+			`@get:{token}`,
+			`{{result}}`,
+		} {
+			if _, err := sourceRuleString(cssItems[0], rule); !errors.Is(err, ErrUnsupportedSourceRule) {
+				t.Fatalf("variable rule %q error = %v, want ErrUnsupportedSourceRule", rule, err)
+			}
+		}
+	})
 }
 
 func TestSearchBooksExecutesReaderDevJSONPathAndXPathRules(t *testing.T) {
@@ -464,6 +524,70 @@ func TestFetchChapterContentKeepsLegacyCSSContentURLRule(t *testing.T) {
 	if err != nil || content != "CSS 正文" {
 		t.Fatalf("legacy CSS content URL = %q, %v", content, err)
 	}
+}
+
+func TestSourceRuleReplacementFlowsThroughSearchInfoTOCAndContent(t *testing.T) {
+	t.Run("search", func(t *testing.T) {
+		restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
+			"/search": sourceCompatFixture(t, "books.html"),
+		})})
+		defer restore()
+		source := models.BookSource{ID: 80, Name: "替换搜索源", BaseURL: "https://source.example", Charset: "utf-8"}
+		if err := source.SetRules(models.BookSourceRule{
+			SearchURL:    "/search",
+			BookListRule: ".book",
+			BookNameRule: "@CSS:.name@text##第##新",
+			BookURLRule:  ".detail|attr:href",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		items, err := SearchBooks(source, "测试")
+		if err != nil || len(items) != 2 || items[0].Title != "新一本书" {
+			t.Fatalf("replacement search items = %#v, %v", items, err)
+		}
+	})
+
+	t.Run("book info and toc", func(t *testing.T) {
+		restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
+			"/book.json": sourceCompatFixture(t, "book_detail.json"),
+			"/toc.json":  sourceCompatFixture(t, "toc.json"),
+		})})
+		defer restore()
+		source := models.BookSource{ID: 81, Name: "替换详情目录源", BaseURL: "https://source.example", Charset: "utf-8"}
+		if err := source.SetRules(models.BookSourceRule{
+			BookInfoInitRule: "$.book",
+			BookInfoNameRule: "$.title##详情##重构",
+			TOCURLRule:       "$.book.toc",
+			ChapterListRule:  "$.chapters[*]",
+			ChapterNameRule:  "$.title##第##新",
+			ChapterURLRule:   "$.url",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		info, chapters, err := FetchBookInfoAndTOC("/book.json", source)
+		if err != nil || info.Title != "JSON 重构书" || len(chapters) != 2 || chapters[0].Title != "JSON 新一章" {
+			t.Fatalf("replacement info/toc = %+v %#v, %v", info, chapters, err)
+		}
+	})
+
+	t.Run("content", func(t *testing.T) {
+		restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
+			"/chapter.json": sourceCompatFixture(t, "chapter.json"),
+			"/content.json": sourceCompatFixture(t, "content.json"),
+		})})
+		defer restore()
+		source := models.BookSource{ID: 82, Name: "替换正文源", BaseURL: "https://source.example", Charset: "utf-8"}
+		if err := source.SetRules(models.BookSourceRule{
+			ContentURLRule: "$.contentUrl",
+			ContentRule:    "$.payload.body##正文##内容",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		content, err := FetchChapterContent("/chapter.json", source)
+		if err != nil || content != "JSON 内容第一页" {
+			t.Fatalf("replacement content = %q, %v", content, err)
+		}
+	})
 }
 
 func TestBookInfoTOCAndContentRejectUnsupportedJavaScriptRules(t *testing.T) {

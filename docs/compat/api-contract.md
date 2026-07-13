@@ -24,7 +24,7 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Group | Representative paths | Contract notes |
 |---|---|---|
 | User/settings/admin | `/api/me`, `/api/settings/:key`, `/api/admin/users` | Settings are per user. Admin endpoints require admin role. |
-| Sources | `/api/sources`, `/api/sources/import`, `/api/sources/:id/test*` | Preserve reader3-compatible source fields and parser semantics. |
+| Sources | `/api/sources`, `/api/sources/import`, `/api/sources/:id/test*` | Preserve reader3-compatible source fields and parser semantics. Test endpoints keep their existing authenticated `200` response shape (`results`/`chapters`/`content` plus `error`), but may write `source_failures` only for remote request errors. Local unsupported or invalid parser rules remain visible in `error` and never suppress the source. |
 | Bookshelf | `/api/books`, `/api/books/:id`, `/api/books/batch`, `/api/books/export` | Book operations must not cross user boundaries. |
 | Reader content | `/api/books/:id/chapters`, `/api/books/:id/chapters/:index/content` | Content fetch should use cache when valid and return stable chapter data. |
 | Reader legacy search | `/api/reader3/searchBookContent` | Compatibility endpoint; keep until old clients/routes no longer need it. |

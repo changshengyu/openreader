@@ -113,7 +113,7 @@ func (s *Server) recordSourceFailure(userID uint, source models.BookSource, caus
 // Normal reading/search flows must not suppress a source for a local parser or
 // configuration error that a user can correct without waiting for cache expiry.
 func (s *Server) recordSourceHealthFailure(userID uint, source models.BookSource, cause error) {
-	if userID == 0 || source.ID == 0 || cause == nil || errors.Is(cause, context.Canceled) {
+	if userID == 0 || source.ID == 0 || cause == nil || errors.Is(cause, context.Canceled) || engine.IsSourceRuleError(cause) {
 		return
 	}
 	if s.sourceFailures == nil {
