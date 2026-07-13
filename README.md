@@ -71,6 +71,8 @@ If an OrbStack/Docker registry proxy returns a transient `502` during the final 
 HOST_OCI_PUSH=1 RELEASE=1 ./scripts/docker-build-push.sh
 ```
 
+The OCI publisher prints blob/manifest progress, bounds each registry request to 45 seconds, and retries transient network/5xx failures three times. If a known slow connection needs different values, set `OPENREADER_OCI_REQUEST_TIMEOUT_MS` and `OPENREADER_OCI_REQUEST_ATTEMPTS`; credentials are still read only from the local Docker helper and never logged.
+
 ### Local Development
 
 **Backend:**
