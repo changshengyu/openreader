@@ -157,6 +157,38 @@ func TestInvalidSourceCacheIncludesExplicitHealthFailuresOnly(t *testing.T) {
 	}
 }
 
+func TestInvalidSourceCacheDoesNotSuppressUnsupportedParserRules(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := registerSourceFailureUser(t, router, "failure-rule-user")
+	source := models.BookSource{Name: "脚本规则源", BaseURL: "https://rule-failure.example", Enabled: true, Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{
+		SearchURL:    "https://rule-failure.example/search?q={keyword}",
+		BookListRule: "@js:result",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<html></html>`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	callSourceFailureSearch(t, router, token, source.ID)
+	if rows := getInvalidSourceRows(t, router, token); len(rows) != 0 {
+		t.Fatalf("unsupported parser rule must not suppress a source: %#v", rows)
+	}
+}
+
 func sourceFailureTestSource(t *testing.T, name, baseURL string) models.BookSource {
 	t.Helper()
 	source := models.BookSource{Name: name, BaseURL: baseURL, Enabled: true, Charset: "utf-8"}

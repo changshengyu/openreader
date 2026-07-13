@@ -40,7 +40,7 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 	results, err := engine.SearchBooks(source, strings.TrimSpace(req.Keyword))
 	if err != nil {
 		userID, _ := middleware.UserID(c)
-		s.recordSourceFailure(userID, source, err)
+		s.recordSourceHealthFailure(userID, source, err)
 	}
 	c.JSON(http.StatusOK, gin.H{"results": results, "error": errToString(err)})
 }
@@ -70,7 +70,7 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 	chapters, err := engine.ParseTOC(strings.TrimSpace(req.BookURL), source)
 	if err != nil {
 		userID, _ := middleware.UserID(c)
-		s.recordSourceFailure(userID, source, err)
+		s.recordSourceHealthFailure(userID, source, err)
 	}
 	c.JSON(http.StatusOK, gin.H{"chapters": chapters, "count": len(chapters), "error": errToString(err)})
 }
@@ -100,7 +100,7 @@ func (s *Server) testSourceContent(c *gin.Context) {
 	content, err := engine.FetchChapterContent(strings.TrimSpace(req.ChapterURL), source)
 	if err != nil {
 		userID, _ := middleware.UserID(c)
-		s.recordSourceFailure(userID, source, err)
+		s.recordSourceHealthFailure(userID, source, err)
 	}
 	preview := content
 	if len([]rune(preview)) > 2000 {
@@ -203,7 +203,7 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	wg.Wait()
 	for index, cause := range failureCauses {
 		if cause != nil {
-			s.recordSourceFailure(userID, sources[index], cause)
+			s.recordSourceHealthFailure(userID, sources[index], cause)
 		}
 	}
 

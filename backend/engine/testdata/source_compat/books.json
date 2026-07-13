@@ -1,0 +1,9 @@
+{
+  "data": {
+    "next": "/explore?page=2",
+    "books": [
+      {"name": "JSON 第一书", "url": "/json/one", "kinds": ["玄幻", "仙侠"]},
+      {"name": "JSON 第二书", "url": "/json/two", "kinds": ["科幻"]}
+    ]
+  }
+}

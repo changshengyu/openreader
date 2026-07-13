@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,6 +25,11 @@ import (
 var defaultClient = &http.Client{Timeout: 12 * time.Second}
 var sourceProxyPattern = regexp.MustCompile(`^(http|socks4|socks5)://(.+):([0-9]{2,5})(?:@([^@]*)@([^@]*))?$`)
 var sourceRateLimiters sync.Map
+
+// ErrSourceRequest marks a failure that occurred while OpenReader was making
+// a remote source request. Parser/configuration errors deliberately do not
+// carry this marker, so callers do not suppress a source for a bad rule.
+var ErrSourceRequest = errors.New("source request failed")
 
 type sourceRateLimiter struct {
 	serial     chan struct{}
@@ -116,10 +122,10 @@ func FetchTextRequestWithURLContext(ctx context.Context, method, url, body, char
 func FetchSourceTextWithURLContext(ctx context.Context, request SourceRequest) (string, string, error) {
 	release, err := acquireSourceRate(ctx, request.SourceKey, request.ConcurrentRate)
 	if err != nil {
-		return "", request.URL, err
+		return "", request.URL, sourceRequestError(err)
 	}
 	defer release()
-	return fetchTextRequestWithURLContext(
+	text, responseURL, err := fetchTextRequestWithURLContext(
 		ctx,
 		request.Method,
 		request.URL,
@@ -130,6 +136,23 @@ func FetchSourceTextWithURLContext(ctx context.Context, request SourceRequest) (
 		request.Type,
 		request.Proxy,
 	)
+	if err != nil {
+		return "", responseURL, sourceRequestError(err)
+	}
+	return text, responseURL, nil
+}
+
+func sourceRequestError(err error) error {
+	if err == nil || errors.Is(err, ErrSourceRequest) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrSourceRequest, err)
+}
+
+// IsSourceRequestError reports whether err came from a remote source fetch,
+// rather than a local rule/configuration/parser failure.
+func IsSourceRequestError(err error) bool {
+	return errors.Is(err, ErrSourceRequest)
 }
 
 func fetchTextRequestWithURLContext(

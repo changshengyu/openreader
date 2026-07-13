@@ -275,3 +275,5 @@ var errTimeout = &searchTimeoutError{}
 type searchTimeoutError struct{}
 
 func (e *searchTimeoutError) Error() string { return "search timeout" }
+
+func (e *searchTimeoutError) Unwrap() error { return engine.ErrSourceRequest }

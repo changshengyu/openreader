@@ -48,7 +48,7 @@ Status: implemented and tested on 2026-07-12 from fixed reader-dev `BookControll
 | `GET /api/sources/invalid` | None. | Returns `[]` or current-user, unexpired source records merged with `{errorMessage,failedAt,expiresAt}`. It never starts a source request. Expired/deleted/edited-source rows are pruned/ignored. | JWT required. `401` invalid/missing session; `500` only before a database read can complete. No source credentials, query string, remote response body, host path or internal error appears in `errorMessage`. |
 | `POST /api/reader3/getInvalidBookSources` | No body. | Compatibility adapter for the same caller-scoped 600-second failures; no new frontend flow may depend on this legacy path. | JWT required and same isolation/error rules as the canonical route. |
 
-Source-facing routes retain their current response schemas. A real source request failure may create/update exactly one current-user failure cache row after its request has failed; a blank result and a client-cancelled context do not. During its 600-second TTL the same caller's normal multi-source search/candidate flow skips that source, while an explicit health check may still probe it.
+Source-facing routes retain their current response schemas. Only a real remote source-request failure may create/update exactly one current-user failure cache row after its request has failed; a blank result, a rule syntax/unsupported-rule/configuration error, and a client-cancelled context do not. During its 600-second TTL the same caller's normal multi-source search/candidate flow skips that source, while an explicit health check may still probe it and may record a configuration failure for its health result.
 
 ## P2 backup restore archive contract
 
