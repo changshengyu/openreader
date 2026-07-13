@@ -22,7 +22,7 @@
 - `FetchBookInfoAndTOC`、`ParseTOC`、`FetchChapterContentContext` 已改为在需要时使用 `sourceRuleDocument`；旧 CSS 保留原快路径，JSONPath/XPath/正则与显式 `@CSS:` 走同一无脚本执行器。
 - `tocUrl` 与 `contentUrl` 的非直接 URL 规则先在详情/章节响应上求值，再发起第二个请求；空值复用当前已抓取页面。协议相对 URL 仍被识别为直接 URL，而裸 `//a/@href` 进入 XPath 分支。
 - 详情多分类、章节字段与正文/下一页 URL 已加入 JSONPath/XPath 黄金 fixture。JS 规则在详情、目录、正文三条路径都返回可由 `errors.Is(err, ErrUnsupportedSourceRule)` 识别的错误。
-- 当前目录/正文分页仍按受限的串行队列抓取；它保持取消、重定向去重、请求头、1000 页上限和当前安全顺序，但尚未完成上游多分叉链接的严格返回顺序契约。
+- 目录/正文分页已由后续 P2-Parser-1C 改为显式状态机：单链接继续跟随；多个初始链接严格按规则返回顺序抓取一级页面，并禁止展开分叉页面的子链接。Go 实现为串行抓取，替代上游协程并发，但请求和拼接顺序保持一致；保留取消、重定向去重、请求头与 1000 页安全上限。
 
 ### 实施前测试清单
 
@@ -75,6 +75,18 @@
 - 重定向后的 URL 仍参与去重，单链循环与 1000 页上限保持。下章 URL 边界和变量继续留在后续子批。
 - `&&`、`||`、`%%` 已由统一执行器在顶层组合：分别合并非空结果、选择首个非空结果、按索引交错非空结果。分割器会跟踪引号、方括号、圆括号和花括号；JSONPath/XPath 过滤表达式内部的逻辑操作符不会被当作规则边界。CSS、XPath 和 JSONPath 的前缀会传播到同一组合中的简写后续分段，避免退化为 CSS。
 - 新增黄金测试覆盖 CSS/XPath/JSONPath 的回退、合并、交错以及 JSONPath 嵌套 `&&` 的分割保护。规则级 `##` 替换、`@put/@get` 变量和 `{{ }}` 的安全诊断仍在下一子批。
+
+### 2026-07-13 P2-Parser-1C 复核记录
+
+本轮重新读取固定上游的 `BookChapterList.analyzeChapterList` 与 `BookContent.analyzeContent`，并逐项核对当前 `parseTOCWithRule`、`fetchChapterContentContextWithNextChapterRuntime` 和 `source_pagination_test.go`。此前 P2-Parser-1B 的“仍未完成”表述已被本节实施记录覆盖，不能再作为新的重构缺口。
+
+| 分页状态 | 上游固定行为 | 当前 OpenReader | 结论 |
+| --- | --- | --- | --- |
+| 初页恰有一个下一页链接 | `while` 跟随下一页，直到空链接或已访问链接。 | 单链接分支持续解析下一页；请求 URL 和最终重定向 URL 均进入 visited 集合。 | 对齐；额外保留取消与 1000 页上限。 |
+| 初页有多个下一页链接 | 依次 `await` 每个初始分叉的并发任务；子页调用关闭下一页解析，故不递归展开。 | 按规则数组顺序串行抓取每个一级分叉，`includeNext=false`，不读取分叉的子链接。 | 对齐的安全运行时适配：不使用上游并发，但可见内容与请求顺序相同。 |
+| 正文越过章节边界 | 仅单链接路径中，将下一页绝对 URL 与下一章节 URL 比较，相同即停止。 | 仅单链接分支调用 `contentNextURLIsCatalogChapter`；多分叉保持只取一级的上游语义。 | 对齐。 |
+
+`TestParseTOCOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages` 与 `TestFetchChapterContentOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages` 分别验证目录和正文只请求 `root → A → B`、不访问 `A` 的子页，并断言输出顺序；相关单链、循环、章节边界测试同在 `source_pagination_test.go`。因此本项不修改生产代码，也不重新发布 Docker；下一轮应审查真实尚未验证的上游差距，而不是重复实现本状态机。
 
 ## 2026-07-13 P2-Parser-1D：规则级替换与变量安全复审
 
