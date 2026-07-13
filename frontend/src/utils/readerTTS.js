@@ -34,7 +34,7 @@ export function readerTTSParagraphText(element) {
 
 export function readerTTSParagraphElements(root) {
   if (!root?.querySelectorAll) return []
-  return Array.from(root.querySelectorAll('h1,h2,h3,p'))
+  return Array.from(root.querySelectorAll('h3,p'))
     .filter(element => readerTTSParagraphText(element))
 }
 

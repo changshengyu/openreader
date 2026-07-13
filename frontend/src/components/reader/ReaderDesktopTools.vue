@@ -4,7 +4,7 @@
       <el-icon :size="18"><Notebook /></el-icon>
       <span>书架</span>
     </button>
-    <button class="rail-item" :class="{ active: activePanel === 'source' }" type="button" :disabled="!remoteBook" :title="remoteBook ? '书源' : '本地书无可切换书源'" @click="$emit('action', 'source')">
+    <button class="rail-item" :class="{ active: activePanel === 'source' }" type="button" title="书源" @click="$emit('action', 'source')">
       <el-icon :size="18"><Grid /></el-icon>
       <span>书源</span>
     </button>
@@ -78,10 +78,6 @@ import {
 } from '@element-plus/icons-vue'
 
 defineProps({
-  remoteBook: {
-    type: Boolean,
-    default: false,
-  },
   autoReading: {
     type: Boolean,
     default: false,

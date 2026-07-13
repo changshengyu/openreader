@@ -28,7 +28,6 @@ export function useReaderPanels(options) {
   }
 
   function openSource() {
-    if (!unref(options.isRemoteBook)) return
     options.sourceVisible.value = true
   }
 

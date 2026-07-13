@@ -47,16 +47,16 @@
       :data-index="block.index"
     >
       <div v-if="block.isVolume" class="volume-content">
-        <h1 data-pos="0">{{ block.title || '正文' }}</h1>
+        <h3 data-pos="0">{{ block.title || '正文' }}</h3>
         <p v-if="block.volumeText" class="volume-tag" data-reader-block>{{ block.volumeText }}</p>
       </div>
       <div v-else-if="block.error" class="chapter-inline-error">
-        <h1 data-pos="0">{{ block.title || '正文' }}</h1>
+        <h3 data-pos="0">{{ block.title || '正文' }}</h3>
         <p data-pos="0" data-reader-block>{{ block.error }}</p>
         <button type="button" @click.stop="emit('retry-block', block.index)">重新加载</button>
       </div>
       <template v-else>
-        <h1 v-if="!block.hideTitle" data-pos="0">{{ block.title || '正文' }}</h1>
+        <h3 v-if="!block.hideTitle" data-pos="0">{{ block.title || '正文' }}</h3>
         <template v-for="(line, index) in block.paragraphs" :key="`${block.index}-${index}`">
         <figure
           v-if="line.type === 'image'"
@@ -203,10 +203,10 @@ const emit = defineEmits([
   white-space: pre-line;
 }
 
-h1 {
-  font-size: var(--reader-heading-size);
-  line-height: 1.35;
-  margin: 0 0 76px;
+h3 {
+  font-size: 28px;
+  line-height: 1.2;
+  margin: 1em 0;
   text-align: center;
 }
 
@@ -214,10 +214,12 @@ p {
   margin: var(--reader-paragraph-space) 0;
   font-weight: var(--reader-font-weight);
   text-align: inherit;
+  word-wrap: break-word;
+  word-break: break-all;
   text-indent: 2em;
 }
 
-.chapter-content.flip h1,
+.chapter-content.flip h3,
 .chapter-content.flip p {
   break-inside: avoid;
 }
@@ -294,7 +296,7 @@ p {
   text-align: center;
 }
 
-.chapter-inline-error h1,
+.chapter-inline-error h3,
 .chapter-inline-error p {
   margin: 0;
   text-indent: 0;
@@ -330,10 +332,6 @@ p.reader-search-active {
 @media (max-width: 750px) {
   .chapter-content {
     text-align: justify;
-  }
-  h1 {
-    font-size: var(--reader-heading-size);
-    margin-bottom: 28px;
   }
 }
 </style>

@@ -202,6 +202,18 @@ function mobileTopTool(page, label) {
   return page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: label })
 }
 
+async function assertMobileTopToolContract(page, viewport) {
+  const state = await page.evaluate(() => [...document.querySelectorAll('.reader-mobile-top.visible .mobile-tool-button')].map(button => ({
+    label: button.innerText.trim(),
+    disabled: button.disabled,
+  })))
+  assert(
+    JSON.stringify(state.map(item => item.label)) === JSON.stringify(['首页', '书架', '书源', '目录', '设置']),
+    `${viewport.width}: mobile Reader top-tool order must match reader-dev`,
+  )
+  assert(state.find(item => item.label === '书源')?.disabled === false, `${viewport.width}: Reader source entry must remain available`)
+}
+
 async function assertWorkspaceClosed(page, viewport, label) {
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: toolbar should remain visible after closing ${label}`)
@@ -733,6 +745,7 @@ async function runViewport(browser, viewport) {
 
   const initialTopVisible = await page.locator('.reader-mobile-top.visible').count()
   assert(initialTopVisible === 1, `${viewport.width}: mobile toolbar should be visible by default`)
+  await assertMobileTopToolContract(page, viewport)
   const initialGeometry = await readerGeometry(page)
   assertReaderGeometry(initialGeometry, viewport, 'initial')
 

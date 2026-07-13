@@ -108,14 +108,14 @@ function fakeParagraph({ text, bottom = 100, right = 100, active = false }) {
   }
 }
 
-test('selects reader TTS paragraphs from rendered heading and paragraph DOM', () => {
+test('selects reader TTS paragraphs from the upstream h3 and paragraph DOM contract', () => {
   const elements = [
     fakeParagraph({ text: '标题' }),
     fakeParagraph({ text: '' }),
     fakeParagraph({ text: '第一段' }),
   ]
   const root = {
-    querySelectorAll: selector => (selector === 'h1,h2,h3,p' ? elements : []),
+    querySelectorAll: selector => (selector === 'h3,p' ? elements : []),
   }
 
   assert.equal(readerTTSParagraphText(elements[0]), '标题')

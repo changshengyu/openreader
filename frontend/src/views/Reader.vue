@@ -1,7 +1,6 @@
 <template>
   <main ref="shellEl" class="reader-shell" :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
     <ReaderDesktopTools
-      :remote-book="isRemoteBook"
       :auto-reading="autoReading"
       :auto-reading-supported="!isAudioChapter"
       :tts-playing="tts.state.playing"
@@ -93,7 +92,6 @@
 
     <ReaderMobileChrome
       :visible="mobileChromeVisible"
-      :remote-book="isRemoteBook"
       :auto-reading="autoReading"
       :auto-reading-supported="!isAudioChapter"
       :tts-playing="tts.state.playing"
