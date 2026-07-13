@@ -41,14 +41,6 @@
           <template v-if="!row.error">
             <el-input v-model="row.title" placeholder="书名" />
             <el-input v-model="row.author" placeholder="作者（可选）" />
-            <el-input
-              v-if="isTextLocalPath(row.path)"
-              v-model="row.tocRule"
-              placeholder="TXT 目录规则（可选，导入时重新解析）"
-            />
-            <el-select v-if="isEPUBLocalPath(row.path)" v-model="row.tocRule" placeholder="EPUB 目录规则">
-              <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
-            </el-select>
             <div class="preview-meta">
               <span>共 {{ row.chapterCount }} 章</span>
               <el-button v-if="row.chapters.length" text @click="row.expanded = !row.expanded">
@@ -60,6 +52,19 @@
             </div>
           </template>
           <p v-else>{{ row.error }}</p>
+          <div v-if="isRuleConfigurable(row.path)" class="toc-rule-control">
+            <el-input
+              v-if="isTextLocalPath(row.path)"
+              v-model="row.tocRule"
+              placeholder="TXT 目录规则（可选）"
+            />
+            <el-select v-else v-model="row.tocRule" placeholder="EPUB 目录规则">
+              <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
+            </el-select>
+            <el-button :loading="row.reparsing" :disabled="!row.importToken" @click="reparse(row)">
+              重新解析
+            </el-button>
+          </div>
         </div>
       </article>
     </div>
@@ -106,7 +111,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue', 'confirm'])
+const emit = defineEmits(['update:modelValue', 'confirm', 'reparse'])
 const reader = useReaderStore()
 const windowWidth = ref(currentViewportWidth())
 const drafts = ref([])
@@ -146,6 +151,7 @@ function resetDrafts() {
     tocRule: item.tocRule || (isEPUBLocalPath(item.path) ? 'spin+toc' : ''),
     selected: !item.error,
     expanded: false,
+    reparsing: false,
   }))
   selectedCategoryIds.value = props.categoryIds.map(id => String(id))
 }
@@ -154,6 +160,47 @@ function toggleAll(value) {
   importableRows.value.forEach((row) => {
     row.selected = Boolean(value)
   })
+}
+
+function isRuleConfigurable(path) {
+  return isTextLocalPath(path) || isEPUBLocalPath(path)
+}
+
+function toReparseRequest(row) {
+  return {
+    path: row.path,
+    importToken: row.importToken,
+    title: row.title.trim(),
+    author: row.author.trim(),
+    tocRule: row.tocRule || '',
+  }
+}
+
+function reparse(row) {
+  row.reparsing = true
+  emit('reparse', toReparseRequest(row), applyReparseResult)
+}
+
+function applyReparseResult(result) {
+  const row = drafts.value.find(draft => draft.path === result?.path)
+  if (!row) return
+
+  const wasFailed = Boolean(row.error)
+  row.reparsing = false
+  row.importToken = result.importToken || result.book?.importToken || row.importToken
+  row.error = result.error || ''
+  if (result.book) {
+    row.title = result.book.title || row.title
+    row.author = result.book.author || row.author
+    row.chapterCount = Number(result.book.chapterCount || 0)
+    row.chapters = Array.isArray(result.book.chapters) ? result.book.chapters : []
+    row.expanded = false
+  }
+  if (row.error) {
+    row.selected = false
+  } else if (wasFailed) {
+    row.selected = true
+  }
 }
 
 function confirmImport() {
@@ -221,6 +268,7 @@ function confirmImport() {
 
 .preview-fields > strong,
 .preview-fields > p,
+.toc-rule-control,
 .preview-meta,
 .chapter-preview {
   grid-column: 1 / -1;
@@ -234,6 +282,16 @@ function confirmImport() {
 .preview-fields > p {
   margin: 0;
   color: var(--el-color-danger);
+}
+
+.toc-rule-control {
+  display: flex;
+  gap: 8px;
+}
+
+.toc-rule-control > :first-child {
+  min-width: 0;
+  flex: 1;
 }
 
 .preview-meta {
@@ -265,6 +323,7 @@ function confirmImport() {
   .preview-toolbar > span,
   .preview-fields > strong,
   .preview-fields > p,
+  .toc-rule-control,
   .preview-meta,
   .chapter-preview {
     grid-column: 1;
@@ -272,6 +331,11 @@ function confirmImport() {
 
   .preview-list {
     max-height: none;
+  }
+
+  .toc-rule-control {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 }
 </style>

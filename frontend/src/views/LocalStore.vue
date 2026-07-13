@@ -141,6 +141,7 @@
       :category-ids="targetCategoryIds"
       :loading="importing"
       @confirm="confirmPreviewImport"
+      @reparse="reparsePreviewItem"
     />
 
     <el-dialog v-model="resultDialog" title="导入结果" width="560px" :fullscreen="isMobileDialog">
@@ -415,6 +416,24 @@ async function importPaths(paths) {
     return
   }
   previewDialog.value = true
+}
+
+async function reparsePreviewItem(item, done) {
+  try {
+    const { data } = await previewLocalStoreImport([item])
+    const result = (data.items || []).find(candidate => candidate.path === item.path)
+    done(result || {
+      path: item.path,
+      importToken: item.importToken,
+      error: '重新解析未返回结果',
+    })
+  } catch (err) {
+    done({
+      path: item.path,
+      importToken: item.importToken,
+      error: readError(err, '重新解析失败'),
+    })
+  }
 }
 
 async function confirmPreviewImport({ items: selectedItems, categoryIds }) {

@@ -1,6 +1,6 @@
 # P1-E 工作台书仓、WebDAV 与本地导入兼容合同
 
-状态：**2026-07-13 已完成源码审查；尚未开始本批应用代码改动。**  
+状态：**P1-E1 已实现并完成回归；P1-E2~P1-E4 仍未开始。**
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游证据：`web/src/views/Index.vue`、`web/src/components/LocalStore.vue`、`web/src/components/WebDAV.vue`、`BookController.kt`、`LocalBook.kt`、`TextFile.kt`。  
 当前映射：`OverlayLocalStore.vue`、`LocalStore.vue`、`OverlayWebDAV.vue`、`WebDAVBrowser.vue`、`LocalBookImportPreviewDialog.vue`、`backend/api/localstore.go`、`backend/api/webdav.go`、`backend/api/local_import_stage.go`、`backend/services/localbook/*`。
@@ -59,6 +59,16 @@
 | Go API | 自定义 TXT 规则首次无目录后，以同一 token 重试成功；每次重试仅使用已暂存字节；预览后删除/改名源文件仍可重试及导入；失败导入不消费 token；跨用户 token 返回无内部路径的错误。 |
 | 浏览器 | 在根 Index dialog 中完成 LocalStore 和 WebDAV 各一次“失败 → 填规则 → 重新解析 → 确认导入”；检查请求先 preview、再 token preview、最后 token import，且关闭/错误不离开工作台。390×844 与 360×800 同时验证全屏、无点击穿透和无横向溢出。 |
 | 发布/数据 | 全量 Go、前端测试、生产构建；已有数据卷上验证缓存书籍不变、暂存 token 正常重试、导入 archive 可读；本地 Docker volume/backup smoke。 |
+
+### P1-E1 实现证据（2026-07-13）
+
+- `LocalBookImportPreviewDialog.vue` 现在对 TXT/EPUB 的成功或失败预览行都保留规则输入和“重新解析”。失败行保留服务端的 `importToken`；成功重试会原位刷新章节数和目录，失败重试保留规则、错误和 token。
+- LocalStore 与 WebDAV 的 preview API helper 都接受 token 化 `items`；两个根工作台 dialog 都把重试行原样回传给对应 `*-import-preview` 接口。确认导入仍只发送同一 token，不会以原路径重新读取挂载文件。
+- 新增 `frontend/tests/localBookImportRetryContract.test.mjs`；前端全量 `npm test` 通过（376 个测试），生产 `npm run build` 通过。
+- `backend/api/workspace_import_stage_contract_test.go` 的 LocalStore/WebDAV 回归通过：第一次预览后删除原始文件，先以错误规则失败、再以正确规则使用同一 token 成功重解析并导入。完整 `go test ./...` 通过。
+- 真实浏览器 `scripts/smoke/workspace-storage-retry-contract.mjs` 和既有 `workspace-operation-contract.mjs` 均在 1440×900、390×844、360×800 的生产预览中通过；前者验证两种入口的失败→重试→确认 token 请求链，后者验证根 dialog、旧链接、重新打开根目录和移动全屏不回归。
+
+本实现不改变 parser、SQLite、备份格式、`data/`/`cache/`/`library/` 目录或 token 生命周期；Docker 卷/备份烟测是本批发布前的剩余门禁。
 
 ## 4. P1-E 后续顺序
 

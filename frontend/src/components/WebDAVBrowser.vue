@@ -127,6 +127,7 @@
       :category-ids="targetCategoryIds"
       :loading="importing"
       @confirm="confirmPreviewImport"
+      @reparse="reparsePreviewItem"
     />
 
     <el-dialog v-model="importResultDialog" title="WebDAV 导入结果" width="560px" :fullscreen="isMobile">
@@ -361,6 +362,24 @@ async function importBooks(paths) {
     ElMessage.error(readError(err, '解析 WebDAV 文件失败'))
   } finally {
     importing.value = false
+  }
+}
+
+async function reparsePreviewItem(item, done) {
+  try {
+    const { data } = await previewWebDAVImport([item])
+    const result = (data.items || []).find(candidate => candidate.path === item.path)
+    done(result || {
+      path: item.path,
+      importToken: item.importToken,
+      error: '重新解析未返回结果',
+    })
+  } catch (err) {
+    done({
+      path: item.path,
+      importToken: item.importToken,
+      error: readError(err, '重新解析失败'),
+    })
   }
 }
 

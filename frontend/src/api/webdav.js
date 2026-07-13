@@ -36,7 +36,8 @@ export function importFromWebDAV(paths, categoryIds = []) {
 }
 
 export function previewWebDAVImport(paths) {
-  return api.post('/webdav/import-preview', { paths })
+  const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
+  return api.post('/webdav/import-preview', items.length ? { items } : { paths })
 }
 
 function webdavURL(path) {
