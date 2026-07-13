@@ -1,11 +1,13 @@
-FROM node:22-alpine AS frontend-builder
+# Pin official base image digests so local builds remain reproducible when a
+# registry's mutable-tag metadata endpoint is temporarily unavailable.
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS frontend-builder
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS backend-builder
 RUN apk add --no-cache build-base
 WORKDIR /src/backend
 ARG TARGETOS=linux
@@ -22,7 +24,7 @@ ARG VERSION=dev
 COPY backend/ ./
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} go build -trimpath -ldflags="-s -w -X openreader/backend/api.Version=${VERSION} -X openreader/backend/api.Commit=${VCS_REF} -X openreader/backend/api.BuildDate=${BUILD_DATE}" -o /out/openreader .
 
-FROM alpine:3.20
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
 ARG BUILD_DATE=unknown
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="OpenReader" \
@@ -30,7 +32,6 @@ LABEL org.opencontainers.image.title="OpenReader" \
       org.opencontainers.image.source="https://github.com/changshengyu/openreader" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
-RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 ENV OPENREADER_ADDR=:8080 \
     OPENREADER_DATA_DIR=/app/data \
@@ -40,6 +41,9 @@ ENV OPENREADER_ADDR=:8080 \
     OPENREADER_DB=/app/data/openreader.db \
     OPENREADER_PUBLIC_DIR=/app/public \
     GIN_MODE=release
+# The Go builder includes the standard CA bundle; time/tzdata is embedded in
+# the binary so this runtime stage needs no network package installation.
+COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=backend-builder /out/openreader /app/openreader
 COPY --from=frontend-builder /src/frontend/dist /app/public
 RUN mkdir -p /app/data /app/cache /app/library
