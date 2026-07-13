@@ -58,7 +58,8 @@ Evidence: `backend/api/source_failure_contract_test.go`, `frontend/tests/sourceF
 - [x] Rule-level `##regex##replacement[##first]` transforms compile with Go RE2 after selector evaluation; invalid patterns are `ErrInvalidSourceRule`, and neither invalid nor unsupported local rules are written to `source_failures`, including source-manager test endpoints.
 - [x] `@put:`/`@get:`/`{{ }}` are detected and rejected as `ErrUnsupportedSourceRule`; no parser variable can acquire cross-request, cross-user, cookie, filesystem or server-network access.
 - [x] The raw `//` XPath shorthand is recognized, while an ordinary relative URL is never reinterpreted as XPath.
-- [ ] Rule size/chain limits, safe variable design, next-chapter content boundary and structured client error categories remain in the subsequent parser slices.
+- [x] A single next-content URL is compared to the adjacent catalog chapter after final-URL normalization; a matching URL stops the current chapter before any next-chapter request. Empty text content rules fail locally without page-cache or failure-cache writes.
+- [ ] Rule size/chain limits, the P2-Parser-1F bounded request-scoped variable runtime, persistent variable migration design and structured client error categories remain in subsequent parser slices. `{{...}}` remains outside that runtime and must stay disabled without an isolated JS sandbox.
 
 Evidence: `backend/engine/source_rule_evaluator_test.go`, `backend/api/source_failure_contract_test.go`, and the full backend suite required before release.
 

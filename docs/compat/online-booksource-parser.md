@@ -123,6 +123,27 @@
 - 非音频空 `contentRule` 在任何远端请求前返回 `ErrInvalidSourceRule`，因此既不会把整个 HTML 页面写入章节缓存，也不会把本地规则错误写入 `source_failures`。音频源空规则仍返回已解析的章节媒体 URL。
 - 新增 engine 与 API 契约测试，覆盖相对的下一章节 URL、缓存未命中目录传递、分叉不变、空规则无缓存/无失效源记录及音频回归。
 
+## 2026-07-13 P2-Parser-1F：变量规则与结构化错误复审（仅审查，未改应用代码）
+
+本轮上游证据来自固定基准的 `AnalyzeRule.kt`、`AnalyzeUrl.kt`、`RuleDataInterface.kt`、`RuleData.kt`、`Book.kt` 与 `BookChapter.kt`。结论是 `@put:`/`@get:` 与 `{{...}}` 不能视为同一项能力：前者是可在无脚本解释器中收敛的规则变量，后者能调用上游 JavaScript 运行时并获得 cookie、缓存、书源、书籍、章节及网络访问能力。
+
+| 行为 | 上游确切语义 | 当前 OpenReader | 判定 / 后续边界 |
+| --- | --- | --- | --- |
+| `@put:{...}` | 每个 `SourceRule` 在选择器求值前取出 JSON object；每个 value 再通过 `getString` 作为规则求值后写入变量。`AnalyzeRule` 写入优先级为 chapter → book → 临时 `RuleData`。 | 统一执行器在任何变量语法出现时返回 `ErrUnsupportedSourceRule`。 | `must-fix`：P2-Parser-1F 只增加受限、请求级 map；仅接受 JSON object、字符串键和值规则，值仍经过已支持的 CSS/JSONPath/XPath/正则求值。不得执行 JS、访问 cookie、文件或网络。 |
+| `@get:{key}` | 可嵌入规则字符串；读取 `bookName`、`title` 特殊值，随后按 chapter → book → `RuleData` 查找，缺失为空字符串。 | 同上，当前被整体拒绝。 | `must-fix`：在同一顶层解析操作内替换受限变量；`bookName`/`title` 只有在明确传入安全的 book/chapter 元数据时才提供。禁止从 HTTP header、cookie、JWT、WebDAV 凭证或环境变量取值。 |
+| 变量生存期 | `RuleData` 是一次调用内存 map；`Book.variable` 与 `BookChapter.variable` 是序列化 JSON，模型保存后可跨请求保留。上游 map 无顺序合同，不能依赖同一 `@put` object 内键的写入顺序。 | `models.Book`、`models.Chapter` 没有变量列；当前读者缓存、搜索并发和多用户模型也不携带变量上下文。 | `split`：1F 先实现一次 API/解析操作内的 map（搜索单次、详情→目录、正文分页链）；跨请求 book/chapter 变量需要单独的 P2-Parser-1G 数据契约、迁移、用户隔离、删除/备份/导出策略和冲突测试，不能暗中加入。 |
+| `{{...}}` | 若内容是规则，上游继续递归解析；否则交给 JS 引擎。URL 模板也能执行 JS；绑定包含 cookie、cache、source、book、chapter、result，且 JS 扩展可发网络请求。 | 识别并返回 `ErrUnsupportedSourceRule`。 | `acceptable security difference`：保持明确不支持，不把它降格为空字符串或 CSS。任何未来支持须有隔离运行时、时间/内存/网络白名单、无宿主文件访问和多用户秘密隔离；它不属于 1F。 |
+| 错误响应 | 上游 UI 可显示调试链；规则与请求异常并不以 Go REST 为边界。 | 阅读接口稳定返回 `{error:"failed to load chapter content"}`；其他入口有混合的 400/502 原文错误。 | `deferred P2-Parser-2`：先保持部署客户端的状态码和字段；增加不泄露 URL query/header/cookie 的 `code`/`stage` 前，必须写 API 契约和端到端测试。 |
+
+### P2-Parser-1F 推荐运行时与测试闸门
+
+1. 新增不可导出的 `sourceRuleRuntime`，生命周期只能由单次顶层操作创建并显式传递；搜索的并行书源任务、不同用户、不同 HTTP 请求和章节缓存任务绝不共用 map。
+2. `@put:` 只接受大小受限的 JSON object：键和值规则数量、键长度、值长度、总字节数和递归深度都必须有上限；空/非字符串值、坏 JSON、循环/过深规则返回 `ErrInvalidSourceRule`，而不是远端失败。
+3. fixture 分别覆盖 HTML、JSONPath、XPath 与正则 value 规则，`@put` 后的 `@get`、缺失键、特殊 `bookName`/`title`、正文单链与多分叉的 map 隔离，以及并发两个书源/两个用户的无泄漏。
+4. 在详情→目录及正文分页中验证同一操作的变量可用；缓存命中、重新进入阅读页、另一个章节、刷新书源和 source-debug 的独立步骤不得意外复用临时 map。
+5. `/api/sources/:id/test*`、搜索、详情、目录、正文遇到变量语法/大小/递归错误时都不写 `source_failures`；日志、debug 响应与结构化错误不得回显变量值、URL query、cookie 或授权 header。
+6. P2-Parser-1G 开始前，必须由 `data-migration-compat` 单独审查 book/chapter 持久变量：旧 SQLite、备份恢复、书籍删除、source change、章节刷新、导入导出、缓存键和用户所有权均需有测试。未经这道闸门，1F 的 map 不落库。
+
 ## 审查范围与上游证据
 
 上游并非把书源规则当作单一 CSS selector。其通用解释器由下列文件共同定义，并被搜索、详情、目录和正文共用：
