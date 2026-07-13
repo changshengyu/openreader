@@ -73,28 +73,28 @@ func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 	if err := AutoMigrate(database); err != nil {
 		t.Fatal(err)
 	}
+	book := models.Book{UserID: 1, Title: "旧 EPUB"}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一章", URL: "local://book/chapter_0", CachePath: "content/one.txt"}
+	if err := database.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := database.Migrator().DropColumn(&models.Chapter{}, "ResourcePath"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrator().DropColumn(&models.Chapter{}, "Variable"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrator().DropColumn(&models.Book{}, "Variable"); err != nil {
 		t.Fatal(err)
 	}
 	if database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") {
 		t.Fatal("resource_path should be absent in the legacy fixture")
 	}
-
-	book := models.Book{UserID: 1, Title: "旧 EPUB"}
-	if err := database.Create(&book).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := database.Exec(
-		"INSERT INTO chapters (book_id, `index`, title, url, is_volume, tag, cache_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-		book.ID,
-		0,
-		"第一章",
-		"local://book/chapter_0",
-		false,
-		"",
-		"content/one.txt",
-	).Error; err != nil {
-		t.Fatal(err)
+	if database.Migrator().HasColumn(&models.Book{}, "Variable") || database.Migrator().HasColumn(&models.Chapter{}, "Variable") {
+		t.Fatal("variable columns should be absent in the legacy fixture")
 	}
 
 	if err := AutoMigrate(database); err != nil {
@@ -103,11 +103,21 @@ func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 	if !database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") {
 		t.Fatal("resource_path was not added")
 	}
-	var chapter models.Chapter
-	if err := database.Where("book_id = ?", book.ID).First(&chapter).Error; err != nil {
+	if !database.Migrator().HasColumn(&models.Book{}, "Variable") || !database.Migrator().HasColumn(&models.Chapter{}, "Variable") {
+		t.Fatal("variable columns were not added")
+	}
+	var migratedBook models.Book
+	var migratedChapter models.Chapter
+	if err := database.First(&migratedBook, book.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if chapter.Title != "第一章" || chapter.CachePath != "content/one.txt" || chapter.ResourcePath != "" {
-		t.Fatalf("legacy chapter changed during migration: %+v", chapter)
+	if err := database.Where("book_id = ?", book.ID).First(&migratedChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migratedBook.Title != "旧 EPUB" || migratedBook.Variable != "" {
+		t.Fatalf("legacy book changed during migration: %+v", migratedBook)
+	}
+	if migratedChapter.Title != "第一章" || migratedChapter.CachePath != "content/one.txt" || migratedChapter.ResourcePath != "" || migratedChapter.Variable != "" {
+		t.Fatalf("legacy chapter changed during migration: %+v", migratedChapter)
 	}
 }

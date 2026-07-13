@@ -462,6 +462,7 @@ func (s *Server) updateSource(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
 		return
 	}
+	previous := source
 
 	var req models.BookSource
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -499,7 +500,15 @@ func (s *Server) updateSource(c *gin.Context) {
 		source.EnabledExplore = req.EnabledExplore
 	}
 
-	if err := s.db.Save(&source).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&source).Error; err != nil {
+			return err
+		}
+		if sourceVariableSemanticsChanged(previous, source) {
+			return clearPersistentVariablesForSource(tx, source.ID)
+		}
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update source"})
 		return
 	}
@@ -541,14 +550,21 @@ func (s *Server) clearSources(c *gin.Context) {
 		return
 	}
 
-	result := s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.BookSource{})
-	if result.Error != nil {
+	var affected int64
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := clearAllPersistentSourceVariables(tx); err != nil {
+			return err
+		}
+		result := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.BookSource{})
+		affected = result.RowsAffected
+		return result.Error
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear sources"})
 		return
 	}
 	s.clearAllSourceFailures()
 	s.broadcastSourcesUpdate("clear")
-	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected})
+	c.JSON(http.StatusOK, gin.H{"affected": affected})
 }
 
 func (s *Server) attachBookSourceUsage(sources []models.BookSource) {
@@ -654,6 +670,9 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 
 	var result gin.H
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := clearAllPersistentSourceVariables(tx); err != nil {
+			return err
+		}
 		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.BookSource{}).Error; err != nil {
 			return err
 		}
@@ -1028,6 +1047,7 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 
 		var existing models.BookSource
 		if err := db.Where("name = ?", source.Name).First(&existing).Error; err == nil {
+			previous := existing
 			existing.BaseURL = source.BaseURL
 			existing.SearchURL = source.SearchURL
 			existing.BookURLPattern = source.BookURLPattern
@@ -1046,7 +1066,15 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 			existing.Enabled = source.Enabled
 			existing.EnabledExplore = source.EnabledExplore
 			existing.Group = source.Group
-			if err := db.Save(&existing).Error; err == nil {
+			if err := db.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Save(&existing).Error; err != nil {
+					return err
+				}
+				if sourceVariableSemanticsChanged(previous, existing) {
+					return clearPersistentVariablesForSource(tx, existing.ID)
+				}
+				return nil
+			}); err == nil {
 				updated++
 				continue
 			}

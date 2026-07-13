@@ -286,6 +286,7 @@ type Book struct {
 	Kind           string    `json:"kind" gorm:"size:400"`
 	WordCount      string    `json:"wordCount" gorm:"size:120"`
 	URL            string    `json:"url" gorm:"size:800;index"`
+	Variable       string    `json:"variable,omitempty" gorm:"type:text"`
 	LibraryPath    string    `json:"libraryPath" gorm:"size:600"`
 	OriginalFile   string    `json:"originalFile" gorm:"size:600"`
 	TOCFile        string    `json:"tocFile" gorm:"size:600"`
@@ -327,6 +328,7 @@ type Chapter struct {
 	Tag          string    `json:"tag" gorm:"size:240"`
 	CachePath    string    `json:"cachePath" gorm:"size:500"`
 	ResourcePath string    `json:"resourcePath,omitempty" gorm:"size:1000"`
+	Variable     string    `json:"variable,omitempty" gorm:"type:text"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 }

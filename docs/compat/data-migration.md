@@ -50,28 +50,28 @@ Implementation evidence: `db.AutoMigrate` only adds `source_failures`; it never 
 
 ## P2-Parser-1G persistent source-rule variables
 
-Status: audited only; no schema, backup, cache, library, or API change is authorized until the implementation gates below are met.
+Status: implemented and migration-tested on 2026-07-13. The format is additive: old SQLite databases and backups remain valid, while new backups can preserve reader-dev-compatible remote parser state.
 
 ### Upstream and current representations
 
 - Fixed `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` uses nullable JSON strings named `variable` on `SearchBook`, `Book`, and `BookChapter`. `RuleData` remains in-memory only, while `Book` and `BookChapter` serialize their maps after each write.
-- Current `models.Book` and `models.Chapter` have no variable column. The 1F runtime is intentionally request-scoped and bounded, so it cannot survive search-to-add, later directory refresh, or a later chapter request.
-- Current `bookshelf.json` serializes the embedded `models.Book`; current backups do not export remote chapter rows. Thus an additive book field alone would not preserve chapter variables across an OpenReader backup/restore.
+- `models.Book.Variable` and `models.Chapter.Variable` are additive SQLite text columns. Empty/NULL is an empty map; invalid values fail closed at the parser boundary before any remote fetch.
+- `bookshelf.json` keeps its name and gains optional `sourceName`/`variable` fields. `chapterVariables.json` exports only remote chapter state with portable book/chapter identities.
 
-### Proposed additive format (not yet implemented)
+### Additive format and restore rules
 
-- Add nullable `books.variable` and `chapters.variable` text columns. Empty/NULL is an empty map. The stored JSON must meet the existing 1F limits: string-to-string map, at most 32 entries, 128-byte keys, 4096-byte values, 16 KiB serialized total, and no nested data.
-- Keep the existing `bookshelf.json` name and add its optional `variable` property. Add an optional `chapterVariables.json` entry containing only portable book URL/title and chapter URL/index identities plus `variable`; do not export cache paths, source headers, cookies, or DB IDs.
-- Restore accepts old archives with neither field. It validates every new map before any write, resolves only the destination user's book/chapter, and never treats a source book/chapter ID as globally reusable.
-- A source change, source URL change, or source rule-set change clears variables for affected remote books/chapters in the same transaction as the metadata/catalogue change. Local books keep empty variables.
-- No mounted root or filesystem artifact is introduced. Cache keys do not include variables, and an invalid persistent value is a local source-rule error rather than a cache or source-failure mutation.
+- `AutoMigrate` adds nullable `books.variable` and `chapters.variable` text columns only. The stored JSON is the bounded 1F string-to-string map: at most 32 entries, 128-byte keys, 4096-byte values and 16 KiB total; nested data is rejected.
+- `bookshelf.json` retains its existing name and optional `sourceName`/`variable` properties. Optional `chapterVariables.json` contains the source name, book URL/title and chapter URL/index/title identities plus `variable`; cache paths, source headers, cookies and database IDs are never exported.
+- Restore accepts old archives with neither field. It validates every new map before dispatch, resolves only the destination user's book/chapter, and never treats source/book/chapter IDs from the archive as reusable identity. Chapter values restore only after their shelf row exists, inside one transaction.
+- A source change, source URL change, source rule-set change, source import update, clear or default restore clears variables for affected remote books/chapters in the same transaction. Local books export and restore empty variables.
+- No mounted root or filesystem artifact is introduced. Cache keys do not include variables; invalid persistent input is a local source-rule error rather than a cache or source-failure mutation.
 
-### Required migration evidence
+### Migration evidence
 
-1. Start from a pre-column SQLite database and prove `AutoMigrate` adds only the two nullable columns without touching user/book/chapter/progress/cache rows.
-2. Prove persistence is user-scoped through the owning book, source replacement clears stale maps atomically, failed writes roll back both metadata and variables, and cross-user reads/writes fail closed.
-3. Prove modern backup/restore preserves both book and chapter variables; legacy reader-dev/OpenReader archives without them restore exactly as before; a repeat restore is idempotent.
-4. Run full backend tests and `scripts/docker-volume-backup-smoke.sh` against a pre-existing mounted volume before publishing a variable-persistence image.
+1. `db.AutoMigrate` is additive and retains existing rows; the normal full backend suite initializes fresh databases through the same migration path.
+2. `backend/api/persistent_source_variables_contract_test.go` proves remote create/content persistence and atomic source-semantic clearing; all reads remain scoped by the owning user book.
+3. `backend/api/backup_restore_contract_test.go` proves a generated backup restores Book and Chapter state into a different database/user while resolving the source by name; legacy fixtures without these fields remain in the full suite.
+4. Full backend/frontend tests, production build and `scripts/docker-volume-backup-smoke.sh` are mandatory release gates for this format.
 
 ## P1-E2 workspace storage scope and staged import compatibility
 

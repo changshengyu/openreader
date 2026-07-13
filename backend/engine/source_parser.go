@@ -34,6 +34,7 @@ type SearchResult struct {
 	SourceName    string `json:"sourceName"`
 	OriginOrder   int    `json:"originOrder"`
 	Type          int    `json:"type"`
+	Variable      string `json:"variable,omitempty"`
 }
 
 type SearchPageResult struct {
@@ -70,6 +71,17 @@ type RemoteChapter struct {
 	Index    int    `json:"index"`
 	IsVolume bool   `json:"isVolume"`
 	Tag      string `json:"tag"`
+	Variable string `json:"variable,omitempty"`
+}
+
+// SourceRuleVariableState is the bounded persistent parser state associated
+// with one shelf book and one chapter. It is deliberately not an API response
+// schema; API handlers persist it only after a successful parser operation.
+type SourceRuleVariableState struct {
+	BookVariable    string
+	ChapterVariable string
+	BookName        string
+	ChapterTitle    string
 }
 
 func bookSourceRequestPolicy(source models.BookSource) SourceRequestPolicy {
@@ -398,7 +410,7 @@ func parseBookResultsWithEvaluatorWithRuntime(document *sourceRuleDocument, rule
 
 	results := make([]SearchResult, 0, len(items))
 	for _, item := range items {
-		item = item.withRuntime(runtime.clone())
+		item = item.withRuntime(runtime.asSearchBookRuntime())
 		title, err := sourceRuleString(item, rule.BookNameRule)
 		if err != nil {
 			return nil, err
@@ -406,6 +418,7 @@ func parseBookResultsWithEvaluatorWithRuntime(document *sourceRuleDocument, rule
 		if title == "" {
 			continue
 		}
+		item.runtime.setBookName(title)
 		author, err := sourceRuleString(item, rule.BookAuthorRule)
 		if err != nil {
 			return nil, err
@@ -456,6 +469,7 @@ func parseBookResultsWithEvaluatorWithRuntime(document *sourceRuleDocument, rule
 			SourceName:    source.Name,
 			OriginOrder:   source.CustomOrder,
 			Type:          source.SourceType,
+			Variable:      item.runtime.persistentBookVariables(),
 		})
 	}
 	if reverse {
@@ -552,6 +566,7 @@ func parseDirectBookResultWithEvaluator(document *sourceRuleDocument, rule model
 }
 
 func parseDirectBookResultWithEvaluatorWithRuntime(document *sourceRuleDocument, rule models.BookSourceRule, source models.BookSource, request sourceRequest, runtime *sourceRuleRuntime) (SearchResult, bool, error) {
+	runtime = runtime.asSearchBookRuntime()
 	info, err := parseRemoteBookInfoWithEvaluatorWithRuntime(document, rule, request.URL, runtime)
 	if err != nil {
 		return SearchResult{}, false, err
@@ -577,6 +592,7 @@ func parseDirectBookResultWithEvaluatorWithRuntime(document *sourceRuleDocument,
 		SourceName:    source.Name,
 		OriginOrder:   source.CustomOrder,
 		Type:          source.SourceType,
+		Variable:      runtime.persistentBookVariables(),
 	}, true, nil
 }
 
@@ -612,9 +628,24 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 }
 
 func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookInfo, []RemoteChapter, error) {
+	info, chapters, _, err := FetchBookInfoAndTOCWithVariables(bookURL, source, "", "")
+	return info, chapters, err
+}
+
+// FetchBookInfoAndTOCWithVariables carries the reader-dev Book.variable map
+// across detail and catalogue parsing. The returned map is already bounded and
+// normalized for one durable book row; each returned chapter owns its own map.
+func FetchBookInfoAndTOCWithVariables(bookURL string, source models.BookSource, bookVariable, bookName string) (RemoteBookInfo, []RemoteChapter, string, error) {
 	rule, err := source.ParsedRules()
 	if err != nil {
-		return RemoteBookInfo{}, nil, fmt.Errorf("parse rules: %w", err)
+		return RemoteBookInfo{}, nil, "", fmt.Errorf("parse rules: %w", err)
+	}
+	// Validate persisted input before opening a remote request. A corrupt SQLite
+	// row or a forged add-to-shelf payload must fail as a local rule error, not
+	// trigger a network fetch or poison the remote-source failure cache.
+	runtime, err := newSourceRuleRuntimeWithBookVariables(bookVariable, bookName)
+	if err != nil {
+		return RemoteBookInfo{}, nil, "", err
 	}
 	charset := source.Charset
 	if charset == "" {
@@ -623,22 +654,21 @@ func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookIn
 	policy := bookSourceRequestPolicy(source)
 	bookRequest, err := prepareResolvedSourceRequest(source.BaseURL, bookURL, "", 1, charset, rule.Headers, policy)
 	if err != nil {
-		return RemoteBookInfo{}, nil, fmt.Errorf("prepare book info request: %w", err)
+		return RemoteBookInfo{}, nil, "", fmt.Errorf("prepare book info request: %w", err)
 	}
 	bookDocument, bookRequest, err := fetchSourceRuleDocumentContext(context.Background(), bookRequest)
 	if err != nil {
-		return RemoteBookInfo{}, nil, fmt.Errorf("fetch book info page: %w", err)
+		return RemoteBookInfo{}, nil, "", fmt.Errorf("fetch book info page: %w", err)
 	}
-	runtime := newSourceRuleRuntime()
 	info, err := parseRemoteBookInfoFromSourceDocumentWithRuntime(bookDocument, rule, bookRequest.URL, runtime)
 	if err != nil {
-		return RemoteBookInfo{}, nil, fmt.Errorf("parse book info page: %w", err)
+		return RemoteBookInfo{}, nil, "", fmt.Errorf("parse book info page: %w", err)
 	}
 	chapters, err := parseTOCWithRule(bookURL, source.BaseURL, rule, charset, policy, bookDocument, &bookRequest, runtime)
 	if err != nil {
-		return RemoteBookInfo{}, nil, err
+		return RemoteBookInfo{}, nil, "", err
 	}
-	return info, chapters, nil
+	return info, chapters, runtime.persistentBookVariables(), nil
 }
 
 func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, baseURL string) RemoteBookInfo {
@@ -706,6 +736,7 @@ func parseRemoteBookInfoWithEvaluatorWithRuntime(document *sourceRuleDocument, r
 	if err != nil {
 		return RemoteBookInfo{}, err
 	}
+	runtime.setBookName(name)
 	author, err := sourceRuleString(scope, rule.BookInfoAuthorRule)
 	if err != nil {
 		return RemoteBookInfo{}, err
@@ -1000,11 +1031,16 @@ func parseChapterListFromSourceDocumentWithRuntime(document *sourceRuleDocument,
 	}
 	chapters := make([]RemoteChapter, 0, len(items))
 	for index, item := range items {
-		item = item.withRuntime(runtime.clone())
+		chapterRuntime, err := item.runtime.withChapterVariables("", "")
+		if err != nil {
+			return nil, err
+		}
+		item = item.withRuntime(chapterRuntime)
 		title, err := sourceRuleString(item, rule.ChapterNameRule)
 		if err != nil {
 			return nil, err
 		}
+		chapterRuntime.setChapterTitle(title)
 		isVolumeValue, err := sourceRuleString(item, rule.ChapterIsVolumeRule)
 		if err != nil {
 			return nil, err
@@ -1042,6 +1078,7 @@ func parseChapterListFromSourceDocumentWithRuntime(document *sourceRuleDocument,
 			Index:    index,
 			IsVolume: isVolume,
 			Tag:      updateTime,
+			Variable: chapterRuntime.persistentChapterVariables(),
 		})
 	}
 	return chapters, nil
@@ -1218,6 +1255,31 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 // following chapter. Empty nextChapterURL preserves the legacy public API for
 // callers that do not have a catalog row available.
 func FetchChapterContentContextWithNextChapter(ctx context.Context, chapterURL, nextChapterURL string, source models.BookSource) (string, error) {
+	return fetchChapterContentContextWithNextChapterRuntime(ctx, chapterURL, nextChapterURL, source, newSourceRuleRuntime())
+}
+
+// FetchChapterContentContextWithState applies the persisted Book.variable and
+// BookChapter.variable maps to one content operation. Callers must persist the
+// returned state atomically with any derived chapter cache metadata.
+func FetchChapterContentContextWithState(ctx context.Context, chapterURL, nextChapterURL string, source models.BookSource, state SourceRuleVariableState) (string, SourceRuleVariableState, error) {
+	runtime, err := newSourceRuleRuntimeWithBookVariables(state.BookVariable, state.BookName)
+	if err != nil {
+		return "", state, err
+	}
+	runtime, err = runtime.withChapterVariables(state.ChapterVariable, state.ChapterTitle)
+	if err != nil {
+		return "", state, err
+	}
+	content, err := fetchChapterContentContextWithNextChapterRuntime(ctx, chapterURL, nextChapterURL, source, runtime)
+	if err != nil {
+		return "", state, err
+	}
+	state.BookVariable = runtime.persistentBookVariables()
+	state.ChapterVariable = runtime.persistentChapterVariables()
+	return content, state, nil
+}
+
+func fetchChapterContentContextWithNextChapterRuntime(ctx context.Context, chapterURL, nextChapterURL string, source models.BookSource, runtime *sourceRuleRuntime) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -1236,7 +1298,6 @@ func FetchChapterContentContextWithNextChapter(ctx context.Context, chapterURL, 
 	}
 
 	policy := bookSourceRequestPolicy(source)
-	runtime := newSourceRuleRuntime()
 	chapterRequest, err := prepareResolvedSourceRequest(source.BaseURL, chapterURL, "", 1, source.Charset, rule.Headers, policy)
 	if err != nil {
 		return "", fmt.Errorf("prepare content page request: %w", err)

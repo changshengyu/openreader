@@ -366,7 +366,7 @@ If a refactor changes frontend routes, API paths should stay stable unless an ol
 
 ## P2 parser structured-error contract (P2-Parser-2A implemented)
 
-Status: implemented and API-tested on 2026-07-13. Reader-dev has no equivalent REST envelope, so OpenReader preserves deployed transport semantics while making parser failures machine-readable and safe. This is independent from the still-audited P2-Parser-1G persistent-variable migration.
+Status: implemented and API-tested on 2026-07-13. Reader-dev has no equivalent REST envelope, so OpenReader preserves deployed transport semantics while making parser failures machine-readable and safe. This remains independent from the separately implemented P2-Parser-1G persistent-variable migration.
 
 | Path family | Existing stable behavior | Additive contract |
 |---|---|---|
@@ -375,3 +375,12 @@ Status: implemented and API-tested on 2026-07-13. Reader-dev has no equivalent R
 | `/api/sources/:id/test*` and batch test | Existing authenticated `200` shape includes its result payload plus `error`/`message`. | Implemented optional `code`/`stage` (`search`, `toc`, `content`) without changing `200` or result fields. Debug messages never include variable values, rule source, request URL query, response body, cookie, authorization header, JWT, WebDAV secret or filesystem path. |
 
 `code` and `stage` are optional additive fields. Legacy frontend paths continue to use `error`; no parser error becomes an authentication failure, and only `engine.IsSourceRequestError` may enter `source_failures`. `backend/api/source_error_contract_test.go` proves remote request failures are redacted for paged search, explore, source debug and remote-book creation, while an invalid content rule keeps its existing `502` text and receives `source_rule_invalid` / `content`.
+
+## P2 parser persistent-variable contract (P2-Parser-1G implemented)
+
+| Path / payload | Additive behavior | Compatibility and safety |
+| --- | --- | --- |
+| Search / explore result | Result objects may include opaque `variable` JSON. | Existing consumers may ignore it. The frontend forwards it only through the existing add-remote-book payload; it is never rendered as HTML or interpreted by JavaScript. |
+| `POST /api/books/remote` | Optional `variable` accepts the bounded JSON string map and seeds BookInfo/TOC parsing. Returned book keeps normal shape with optional `variable`. | Omitted values remain empty. Malformed/non-string/oversized maps return existing-style `400` with safe `error`/`code`/`stage`, before a remote request. |
+| Remote refresh/change-source and chapter content | The server reads/writes optional Book/Chapter variables around existing parser calls. Chapter content stores the returned Book/Chapter map atomically with its cache path. | Existing paths and successful response bodies do not change. A source semantics change clears obsolete state rather than translating or exposing it. |
+| Backup restore | `bookshelf.json.variable` and optional `chapterVariables.json` are accepted. | Old archives need neither field. New maps are fully validated before restore mutation and target only the authenticated destination user's source-name-resolved book/chapters; source/book/chapter database IDs are never variable identity. |

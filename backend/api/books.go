@@ -1128,7 +1128,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
 		return
 	}
-	remoteInfo, remoteChapters, err := engine.FetchBookInfoAndTOC(book.URL, source)
+	remoteInfo, remoteChapters, variable, err := engine.FetchBookInfoAndTOCWithVariables(book.URL, source, book.Variable, book.Title)
 	if err != nil {
 		s.recordSourceFailure(userID, source, err)
 		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters", err, "book_info")
@@ -1150,6 +1150,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 				URL:      remoteChapter.URL,
 				IsVolume: remoteChapter.IsVolume,
 				Tag:      remoteChapter.Tag,
+				Variable: remoteChapter.Variable,
 			})
 		}
 		var err error
@@ -1165,6 +1166,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 		book.WordCount = firstNonBlank(remoteInfo.WordCount, book.WordCount)
 		book.LastChapter = remoteChapters[len(remoteChapters)-1].Title
 		book.ChapterCount = len(remoteChapters)
+		book.Variable = variable
 		return tx.Save(&book).Error
 	})
 	if err != nil {
@@ -1257,6 +1259,7 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 		}
 		book.ChapterCount = len(parsed)
 		book.TOCRule = tocRule
+		book.Variable = ""
 		if err := tx.Save(&book).Error; err != nil {
 			return err
 		}
@@ -1480,6 +1483,7 @@ type remoteBookRequest struct {
 	BookURL     string `json:"bookUrl" binding:"required"`
 	SourceID    uint   `json:"sourceId" binding:"required"`
 	SourceName  string `json:"sourceName"`
+	Variable    string `json:"variable"`
 	Type        int    `json:"type"`
 	CategoryID  *uint  `json:"categoryId"`
 	CategoryIDs []uint `json:"categoryIds"`
@@ -1513,6 +1517,11 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		return
 	}
 	categoryIDs := categoryIDsFromRequest(req.CategoryID, req.CategoryIDs)
+	variable, err := engine.NormalizeSourceRuleVariables(req.Variable)
+	if err != nil {
+		writeSourceError(c, http.StatusBadRequest, "book source variables are invalid", err, "book_info")
+		return
+	}
 
 	var source models.BookSource
 	if err := s.db.First(&source, req.SourceID).Error; err != nil {
@@ -1539,7 +1548,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		return
 	}
 
-	remoteInfo, chapters, err := engine.FetchBookInfoAndTOC(req.BookURL, source)
+	remoteInfo, chapters, variable, err := engine.FetchBookInfoAndTOCWithVariables(req.BookURL, source, variable, req.Title)
 	if err != nil {
 		s.recordSourceFailure(userID, source, err)
 		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters", err, "book_info")
@@ -1561,6 +1570,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		Kind:         firstNonBlank(remoteInfo.Kind, req.Kind),
 		WordCount:    firstNonBlank(remoteInfo.WordCount, req.WordCount),
 		URL:          req.BookURL,
+		Variable:     variable,
 		LastChapter:  chapters[len(chapters)-1].Title,
 		ChapterCount: len(chapters),
 		CanUpdate:    true,
@@ -1584,6 +1594,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 				URL:      ch.URL,
 				IsVolume: ch.IsVolume,
 				Tag:      ch.Tag,
+				Variable: ch.Variable,
 			}
 			if err := tx.Create(&chapter).Error; err != nil {
 				return err
@@ -1859,7 +1870,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 	if newBookURL == "" {
 		newBookURL = book.URL
 	}
-	remoteInfo, newChapters, err := engine.FetchBookInfoAndTOC(newBookURL, newSource)
+	remoteInfo, newChapters, variable, err := engine.FetchBookInfoAndTOCWithVariables(newBookURL, newSource, "", book.Title)
 	if err != nil {
 		s.recordSourceFailure(userID, newSource, err)
 		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters from new source", err, "book_info")
@@ -1881,6 +1892,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 				URL:      ch.URL,
 				IsVolume: ch.IsVolume,
 				Tag:      ch.Tag,
+				Variable: ch.Variable,
 			})
 		}
 		var err error
@@ -1891,6 +1903,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		book.SourceID = req.SourceID
 		book.Type = newSource.SourceType
 		book.URL = newBookURL
+		book.Variable = variable
 		if title := firstNonBlankCanRename(remoteInfo.Title, firstNonBlank(req.Title, book.Title), remoteInfo.CanRename); title != "" {
 			book.Title = title
 		}
@@ -2505,17 +2518,35 @@ func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.B
 				return "", nextErr
 			}
 		}
-		fetched, fetchErr := engine.FetchChapterContentContextWithNextChapter(ctx, chapter.URL, nextChapterURL, source)
+		fetched, variableState, fetchErr := engine.FetchChapterContentContextWithState(ctx, chapter.URL, nextChapterURL, source, engine.SourceRuleVariableState{
+			BookVariable:    book.Variable,
+			ChapterVariable: chapter.Variable,
+			BookName:        book.Title,
+			ChapterTitle:    chapter.Title,
+		})
 		if fetchErr != nil {
 			return "", fetchErr
 		}
+		book.Variable = variableState.BookVariable
+		chapter.Variable = variableState.ChapterVariable
 		if fetched != "" {
 			content = fetched
 			cachePath, cacheErr := engine.WriteChapterCache(s.cfg.CacheDir, book.URL, chapter.URL, content)
 			if cacheErr == nil {
 				chapter.CachePath = cachePath
-				_ = s.db.Save(chapter)
 			}
+		}
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&models.Book{}).
+				Where("id = ? AND user_id = ?", book.ID, book.UserID).
+				Update("variable", book.Variable).Error; err != nil {
+				return err
+			}
+			return tx.Model(&models.Chapter{}).
+				Where("id = ? AND book_id = ?", chapter.ID, book.ID).
+				Updates(map[string]any{"variable": chapter.Variable, "cache_path": chapter.CachePath}).Error
+		}); err != nil {
+			return "", err
 		}
 	}
 	if !epubreader.IsLocalEPUB(book) && book.Type != 1 {

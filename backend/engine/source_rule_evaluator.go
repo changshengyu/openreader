@@ -15,6 +15,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/antchfx/htmlquery"
 	"golang.org/x/net/html"
+
+	"openreader/backend/models"
 )
 
 var (
@@ -29,33 +31,184 @@ var (
 )
 
 const (
-	maxSourceRuleVariables       = 32
-	maxSourceRuleVariableKeySize = 128
-	maxSourceRuleVariableValue   = 4096
-	maxSourceRuleVariableBytes   = 16 * 1024
+	maxSourceRuleVariables       = models.MaxSourceRuleVariables
+	maxSourceRuleVariableKeySize = models.MaxSourceRuleVariableKeySize
+	maxSourceRuleVariableValue   = models.MaxSourceRuleVariableValue
+	maxSourceRuleVariableBytes   = models.MaxSourceRuleVariableBytes
 	maxSourceRuleVariableDepth   = 8
 )
 
-// sourceRuleRuntime is confined to one parser operation. It is never written
-// to cache/database state or shared by concurrent requests.
+// sourceRuleRuntime represents reader-dev's variable lookup order. Temporary
+// variables are confined to one parser operation. Book and chapter maps are
+// loaded from, and later returned to, explicitly supplied persistent state;
+// the runtime itself never writes a database/cache row or crosses requests.
 type sourceRuleRuntime struct {
-	variables map[string]string
-	depth     int
+	variables        map[string]string
+	bookVariables    map[string]string
+	chapterVariables map[string]string
+	bookName         string
+	chapterTitle     string
+	depth            int
 }
 
 func newSourceRuleRuntime() *sourceRuleRuntime {
 	return &sourceRuleRuntime{variables: make(map[string]string)}
 }
 
+func newSourceRuleRuntimeWithBookVariables(raw, bookName string) (*sourceRuleRuntime, error) {
+	variables, err := sourceRuleVariableMap(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: persisted book variables", ErrInvalidSourceRule)
+	}
+	return &sourceRuleRuntime{
+		variables:     make(map[string]string),
+		bookVariables: variables,
+		bookName:      bookName,
+	}, nil
+}
+
 func (r *sourceRuleRuntime) clone() *sourceRuleRuntime {
 	if r == nil {
 		return newSourceRuleRuntime()
 	}
-	cloned := &sourceRuleRuntime{variables: make(map[string]string, len(r.variables)), depth: r.depth}
-	for key, value := range r.variables {
-		cloned.variables[key] = value
+	return &sourceRuleRuntime{
+		variables:        cloneSourceRuleVariableMap(r.variables),
+		bookVariables:    cloneSourceRuleVariableMap(r.bookVariables),
+		chapterVariables: cloneSourceRuleVariableMap(r.chapterVariables),
+		bookName:         r.bookName,
+		chapterTitle:     r.chapterTitle,
+		depth:            r.depth,
+	}
+}
+
+func cloneSourceRuleVariableMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
 	}
 	return cloned
+}
+
+// asSearchBookRuntime copies list/request variables into the individual
+// search result's persistent book map. This is the same boundary used by
+// reader-dev's BookList before it evaluates per-item rules.
+func (r *sourceRuleRuntime) asSearchBookRuntime() *sourceRuleRuntime {
+	cloned := r.clone()
+	cloned.bookVariables = cloneSourceRuleVariableMap(cloned.variables)
+	cloned.variables = make(map[string]string)
+	cloned.chapterVariables = nil
+	cloned.chapterTitle = ""
+	return cloned
+}
+
+func (r *sourceRuleRuntime) withChapterVariables(raw, title string) (*sourceRuleRuntime, error) {
+	if r == nil {
+		r = newSourceRuleRuntime()
+	}
+	chapterVariables, err := sourceRuleVariableMap(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: persisted chapter variables", ErrInvalidSourceRule)
+	}
+	cloned := r.clone()
+	cloned.chapterVariables = chapterVariables
+	cloned.chapterTitle = title
+	return cloned, nil
+}
+
+// NormalizeSourceRuleVariables is the API-safe boundary for values received
+// from a search result, a restore archive, or a persisted database row.
+func NormalizeSourceRuleVariables(raw string) (string, error) {
+	normalized, err := models.NormalizeSourceRuleVariables(raw)
+	if err != nil {
+		return "", fmt.Errorf("%w: persisted source variables", ErrInvalidSourceRule)
+	}
+	return normalized, nil
+}
+
+func sourceRuleVariableMap(raw string) (map[string]string, error) {
+	variables, err := models.SourceRuleVariableMap(raw)
+	if err != nil {
+		return nil, err
+	}
+	return variables, nil
+}
+
+func (r *sourceRuleRuntime) setBookName(name string) {
+	if r != nil && r.bookVariables != nil {
+		r.bookName = name
+	}
+}
+
+func (r *sourceRuleRuntime) setChapterTitle(title string) {
+	if r != nil && r.chapterVariables != nil {
+		r.chapterTitle = title
+	}
+}
+
+func (r *sourceRuleRuntime) persistentBookVariables() string {
+	return sourceRuleVariableJSON(r.bookVariables)
+}
+
+func (r *sourceRuleRuntime) persistentChapterVariables() string {
+	return sourceRuleVariableJSON(r.chapterVariables)
+}
+
+func sourceRuleVariableJSON(values map[string]string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	encoded, err := models.NormalizeSourceRuleVariables(mustMarshalSourceRuleVariables(values))
+	if err != nil {
+		return ""
+	}
+	return encoded
+}
+
+func mustMarshalSourceRuleVariables(values map[string]string) string {
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func (r *sourceRuleRuntime) variableTarget() map[string]string {
+	if r.chapterVariables != nil {
+		return r.chapterVariables
+	}
+	if r.bookVariables != nil {
+		return r.bookVariables
+	}
+	if r.variables == nil {
+		r.variables = make(map[string]string)
+	}
+	return r.variables
+}
+
+func (r *sourceRuleRuntime) variableValue(key string) string {
+	if r == nil {
+		return ""
+	}
+	if key == "bookName" && r.bookVariables != nil {
+		return r.bookName
+	}
+	if key == "title" && r.chapterVariables != nil {
+		return r.chapterTitle
+	}
+	if r.chapterVariables != nil {
+		if value, ok := r.chapterVariables[key]; ok {
+			return value
+		}
+	}
+	if r.bookVariables != nil {
+		if value, ok := r.bookVariables[key]; ok {
+			return value
+		}
+	}
+	return r.variables[key]
 }
 
 func (r *sourceRuleRuntime) enterVariableRule() error {
@@ -490,6 +643,10 @@ func sourceRuleApplyPuts(value sourceRuleValue, runtime *sourceRuleRuntime, putR
 		}
 	}
 	runtime.variables = working.variables
+	runtime.bookVariables = working.bookVariables
+	runtime.chapterVariables = working.chapterVariables
+	runtime.bookName = working.bookName
+	runtime.chapterTitle = working.chapterTitle
 	return nil
 }
 
@@ -497,11 +654,15 @@ func sourceRuleSetVariable(runtime *sourceRuleRuntime, key, value string) error 
 	if runtime == nil {
 		return fmt.Errorf("%w: missing variable runtime", ErrInvalidSourceRule)
 	}
-	if _, exists := runtime.variables[key]; !exists && len(runtime.variables) >= maxSourceRuleVariables {
+	if key == "" || len(key) > maxSourceRuleVariableKeySize || len(value) > maxSourceRuleVariableValue {
+		return fmt.Errorf("%w: variable key or value exceeds persistent bounds", ErrInvalidSourceRule)
+	}
+	target := runtime.variableTarget()
+	if _, exists := target[key]; !exists && len(target) >= maxSourceRuleVariables {
 		return fmt.Errorf("%w: variable runtime exceeds %d entries", ErrInvalidSourceRule, maxSourceRuleVariables)
 	}
 	total := 0
-	for existingKey, existingValue := range runtime.variables {
+	for existingKey, existingValue := range target {
 		total += len(existingKey)
 		if existingKey == key {
 			total += len(value)
@@ -509,13 +670,13 @@ func sourceRuleSetVariable(runtime *sourceRuleRuntime, key, value string) error 
 		}
 		total += len(existingValue)
 	}
-	if _, exists := runtime.variables[key]; !exists {
+	if _, exists := target[key]; !exists {
 		total += len(key) + len(value)
 	}
 	if total > maxSourceRuleVariableBytes {
 		return fmt.Errorf("%w: variable runtime exceeds %d bytes", ErrInvalidSourceRule, maxSourceRuleVariableBytes)
 	}
-	runtime.variables[key] = value
+	target[key] = value
 	return nil
 }
 
@@ -533,7 +694,7 @@ func sourceRuleInterpolateGets(rule string, runtime *sourceRuleRuntime) (string,
 			return "", fmt.Errorf("%w: invalid @get variable key", ErrInvalidSourceRule)
 		}
 		result.WriteString(rule[offset:match[0]])
-		result.WriteString(runtime.variables[key])
+		result.WriteString(runtime.variableValue(key))
 		offset = match[1]
 	}
 	result.WriteString(rule[offset:])

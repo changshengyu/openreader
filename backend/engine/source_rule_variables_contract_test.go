@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +12,15 @@ import (
 
 	"openreader/backend/models"
 )
+
+func sourceRuleVariableMapForTest(t *testing.T, raw string) map[string]string {
+	t.Helper()
+	values := make(map[string]string)
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		t.Fatalf("decode persisted variables %q: %v", raw, err)
+	}
+	return values
+}
 
 func TestSourceRuleVariablesAreItemAndOperationScoped(t *testing.T) {
 	const searchBody = `
@@ -153,5 +164,118 @@ func TestSourceRuleVariablesRejectMalformedWritesAndKeepTemplatesDisabled(t *tes
 	}
 	if _, err := sourceRuleString(document.RootWithRuntime(runtime), `@put:{"overflow":".content|text"}.content|text`); !errors.Is(err, ErrInvalidSourceRule) {
 		t.Fatalf("runtime variable count error = %v, want ErrInvalidSourceRule", err)
+	}
+}
+
+func TestPersistentSourceRuleVariablesFollowReaderDevScopes(t *testing.T) {
+	t.Run("search copies request variables into every result book", func(t *testing.T) {
+		const searchBody = `
+			<div class="scope">搜索令牌</div>
+			<article class="book"><span class="token">第一令牌</span><h2 class="name">第一本书</h2><a href="/books/one">详情</a></article>
+			<article class="book"><span class="token">第二令牌</span><h2 class="name">第二本书</h2><a href="/books/two">详情</a></article>`
+		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(searchBody)), Header: make(http.Header), Request: request}, nil
+		})})
+		defer restore()
+
+		source := models.BookSource{Name: "持久变量搜索源", BaseURL: "https://variables.example", Charset: "utf-8"}
+		if err := source.SetRules(models.BookSourceRule{
+			SearchURL:      "/search",
+			BookListRule:   `@put:{"scope":".scope|text"}.book`,
+			BookNameRule:   `@put:{"item":".token|text"}.name|text`,
+			BookAuthorRule: "@get:{bookName}",
+			BookURLRule:    "a|attr:href",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		items, err := SearchBooks(source, "变量")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(items) != 2 || items[0].Author != "第一本书" || items[1].Author != "第二本书" {
+			t.Fatalf("search result special variables = %#v", items)
+		}
+		first := sourceRuleVariableMapForTest(t, items[0].Variable)
+		second := sourceRuleVariableMapForTest(t, items[1].Variable)
+		if first["scope"] != "搜索令牌" || first["item"] != "第一令牌" || second["scope"] != "搜索令牌" || second["item"] != "第二令牌" {
+			t.Fatalf("per-result persisted variables = %#v %#v", first, second)
+		}
+	})
+
+	t.Run("book, chapter and content variables retain reader-dev precedence", func(t *testing.T) {
+		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			var body string
+			switch request.URL.Path {
+			case "/book":
+				body = `<h1 class="name">持久书</h1><a class="toc" href="/toc">目录</a>`
+			case "/toc":
+				body = `<div class="chapter"><span class="token">/chapter/one</span><a class="name">第一章</a></div>`
+			case "/chapter/one":
+				body = `<main class="content">忽略正文</main><span class="token">正文令牌</span>`
+			default:
+				t.Fatalf("unexpected request %s", request.URL.String())
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: request}, nil
+		})})
+		defer restore()
+
+		source := models.BookSource{Name: "持久变量目录源", BaseURL: "https://variables.example", Charset: "utf-8"}
+		if err := source.SetRules(models.BookSourceRule{
+			BookInfoNameRule:   `@put:{"tocPath":".toc|attr:href"}.name|text`,
+			BookInfoAuthorRule: "@get:{searchToken}",
+			TOCURLRule:         "@get:{tocPath}",
+			ChapterListRule:    ".chapter",
+			ChapterNameRule:    `@put:{"chapterPath":".token|text"}.name|text`,
+			ChapterURLRule:     "@get:{chapterPath}",
+			ContentRule:        `@put:{"contentToken":".token|text"}@get:{bookName}:@get:{title}`,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		info, chapters, bookVariable, err := FetchBookInfoAndTOCWithVariables("/book", source, `{"searchToken":"搜索结果令牌"}`, "搜索书名")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Title != "持久书" || info.Author != "搜索结果令牌" || len(chapters) != 1 || chapters[0].URL != "https://variables.example/chapter/one" {
+			t.Fatalf("persistent book/toc parse = %+v %#v", info, chapters)
+		}
+		bookValues := sourceRuleVariableMapForTest(t, bookVariable)
+		chapterValues := sourceRuleVariableMapForTest(t, chapters[0].Variable)
+		if bookValues["searchToken"] != "搜索结果令牌" || bookValues["tocPath"] != "/toc" || chapterValues["chapterPath"] != "/chapter/one" {
+			t.Fatalf("book/chapter state = %#v %#v", bookValues, chapterValues)
+		}
+
+		content, nextState, err := FetchChapterContentContextWithState(context.Background(), chapters[0].URL, "", source, SourceRuleVariableState{
+			BookVariable:    bookVariable,
+			ChapterVariable: chapters[0].Variable,
+			BookName:        info.Title,
+			ChapterTitle:    chapters[0].Title,
+		})
+		if err != nil || content != "持久书:第一章" {
+			t.Fatalf("content special-variable precedence = %q, %v", content, err)
+		}
+		nextBookValues := sourceRuleVariableMapForTest(t, nextState.BookVariable)
+		nextChapterValues := sourceRuleVariableMapForTest(t, nextState.ChapterVariable)
+		if nextBookValues["tocPath"] != "/toc" || nextChapterValues["chapterPath"] != "/chapter/one" || nextChapterValues["contentToken"] != "正文令牌" {
+			t.Fatalf("content state persistence = %#v %#v", nextBookValues, nextChapterValues)
+		}
+	})
+}
+
+func TestPersistentSourceRuleVariablesRejectInvalidStateBeforeFetch(t *testing.T) {
+	requests := 0
+	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		return nil, fmt.Errorf("a malformed persisted variable must not make a request")
+	})})
+	defer restore()
+
+	source := models.BookSource{Name: "持久变量校验源", BaseURL: "https://variables.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{BookInfoNameRule: "h1|text"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, err := FetchBookInfoAndTOCWithVariables("/book", source, `{"bad":1}`, "书名")
+	if !errors.Is(err, ErrInvalidSourceRule) || requests != 0 {
+		t.Fatalf("invalid persisted state error = %v, requests = %d", err, requests)
 	}
 }

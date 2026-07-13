@@ -42,6 +42,13 @@ export function remoteBookUpdateTime(book = {}) {
   return book.updateTime || book.updated || book.lastUpdateTime || ''
 }
 
+// Search results may carry reader-dev Book.variable state. It is opaque to
+// the UI, but must survive the "search → book info → add to shelf" flow so
+// later detail/catalogue rules can reuse the source tokens that created it.
+export function remoteBookVariable(book = {}) {
+  return typeof book.variable === 'string' ? book.variable : ''
+}
+
 export function remoteBookKey(book = {}, fallbackSourceId = '') {
   return `${remoteBookSourceId(book, fallbackSourceId)}-${remoteBookUrl(book)}`
 }
@@ -57,6 +64,7 @@ export function remoteBookCreatePayload(book = {}, categoryIds = [], options = {
     bookUrl: remoteBookUrl(book),
     sourceId: remoteBookSourceId(book, options.sourceId),
     sourceName: remoteBookSourceName(book, options.sourceName),
+    variable: remoteBookVariable(book),
     categoryIds: normalizeCategoryIds(categoryIds),
   }
 }

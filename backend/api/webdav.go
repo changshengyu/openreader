@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
@@ -575,7 +577,26 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		return nil, err
 	}
 
-	var sourcesCount, rssSourcesCount, booksCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
+	var sourcesCount, rssSourcesCount, booksCount, chapterVariablesCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
+
+	// Validate all additive variable artifacts before any source/settings/shelf
+	// mutation. A malformed value must not leave a partly restored account.
+	for _, entry := range archive.entries {
+		entryData, err := archive.dataFor(entry.file)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case strings.HasSuffix(entry.name, "myBookShelf.json"), strings.HasSuffix(entry.name, "bookshelf.json"):
+			if err := validateRestoredBookshelfVariables(entryData); err != nil {
+				return nil, errInvalidBackupArchive
+			}
+		case strings.HasSuffix(entry.name, "chapterVariables.json"):
+			if err := validateRestoredChapterVariables(entryData); err != nil {
+				return nil, errInvalidBackupArchive
+			}
+		}
+	}
 
 	for _, entry := range archive.entries {
 		zipFile := entry.file
@@ -614,6 +635,24 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		}
 	}
 
+	// Chapter variables belong to book/chapter records. Restore them only after
+	// the shelf has materialized those rows, so a valid backup cannot silently
+	// lose parser state merely because archive entries are sorted differently.
+	for _, entry := range archive.entries {
+		if !strings.HasSuffix(entry.name, "chapterVariables.json") {
+			continue
+		}
+		entryData, err := archive.dataFor(entry.file)
+		if err != nil {
+			return nil, err
+		}
+		n, restoreErr := s.restoreChapterVariablesFromData(entryData, userID)
+		if restoreErr != nil {
+			return nil, restoreErr
+		}
+		chapterVariablesCount += n
+	}
+
 	for _, entry := range archive.entries {
 		zipFile := entry.file
 		entryData, err := archive.dataFor(zipFile)
@@ -637,25 +676,27 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 	}
 
 	s.broadcastRestoreUpdates(userID, gin.H{
-		"sources":      sourcesCount,
-		"rssSources":   rssSourcesCount,
-		"books":        booksCount,
-		"progress":     progressCount,
-		"settings":     settingsCount,
-		"categories":   categoriesCount,
-		"bookmarks":    bookmarksCount,
-		"replaceRules": replaceRulesCount,
+		"sources":          sourcesCount,
+		"rssSources":       rssSourcesCount,
+		"books":            booksCount,
+		"chapterVariables": chapterVariablesCount,
+		"progress":         progressCount,
+		"settings":         settingsCount,
+		"categories":       categoriesCount,
+		"bookmarks":        bookmarksCount,
+		"replaceRules":     replaceRulesCount,
 	})
 
 	return gin.H{
-		"sources":      sourcesCount,
-		"rssSources":   rssSourcesCount,
-		"books":        booksCount,
-		"progress":     progressCount,
-		"settings":     settingsCount,
-		"categories":   categoriesCount,
-		"bookmarks":    bookmarksCount,
-		"replaceRules": replaceRulesCount,
+		"sources":          sourcesCount,
+		"rssSources":       rssSourcesCount,
+		"books":            booksCount,
+		"chapterVariables": chapterVariablesCount,
+		"progress":         progressCount,
+		"settings":         settingsCount,
+		"categories":       categoriesCount,
+		"bookmarks":        bookmarksCount,
+		"replaceRules":     replaceRulesCount,
 	}, nil
 }
 
@@ -872,28 +913,83 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 	return s.restoreBookshelfFromData(data, userID)
 }
 
-func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, error) {
-	var books []struct {
-		Title           string   `json:"title"`
-		Name            string   `json:"name"`
-		Author          string   `json:"author"`
-		URL             string   `json:"url"`
-		BookURL         string   `json:"bookUrl"`
-		CoverURL        string   `json:"coverUrl"`
-		CustomCoverURL  string   `json:"customCoverUrl"`
-		Intro           string   `json:"intro"`
-		LastChapter     string   `json:"lastChapter"`
-		ChapterCount    int      `json:"chapterCount"`
-		CanUpdate       *bool    `json:"canUpdate"`
-		CategoryName    string   `json:"categoryName"`
-		CategoryNames   []string `json:"categoryNames"`
-		OriginName      string   `json:"originName"`
-		DurChapter      int      `json:"durChapter"`
-		DurChapterPos   int      `json:"durChapterPos"`
-		DurChapterTitle string   `json:"durChapterTitle"`
+type restoredBookshelfRow struct {
+	Title           string   `json:"title"`
+	Name            string   `json:"name"`
+	Author          string   `json:"author"`
+	URL             string   `json:"url"`
+	BookURL         string   `json:"bookUrl"`
+	SourceID        uint     `json:"sourceId"`
+	SourceName      string   `json:"sourceName"`
+	Type            int      `json:"type"`
+	CoverURL        string   `json:"coverUrl"`
+	CustomCoverURL  string   `json:"customCoverUrl"`
+	Intro           string   `json:"intro"`
+	Kind            string   `json:"kind"`
+	WordCount       string   `json:"wordCount"`
+	Variable        string   `json:"variable"`
+	LastChapter     string   `json:"lastChapter"`
+	ChapterCount    int      `json:"chapterCount"`
+	CanUpdate       *bool    `json:"canUpdate"`
+	CategoryName    string   `json:"categoryName"`
+	CategoryNames   []string `json:"categoryNames"`
+	OriginName      string   `json:"originName"`
+	DurChapter      int      `json:"durChapter"`
+	DurChapterPos   int      `json:"durChapterPos"`
+	DurChapterTitle string   `json:"durChapterTitle"`
+}
+
+type restoredChapterVariableRow struct {
+	SourceName   string `json:"sourceName"`
+	BookURL      string `json:"bookUrl"`
+	BookTitle    string `json:"bookTitle"`
+	ChapterURL   string `json:"chapterUrl"`
+	ChapterTitle string `json:"chapterTitle"`
+	ChapterIndex int    `json:"chapterIndex"`
+	Variable     string `json:"variable"`
+}
+
+func validateRestoredBookshelfVariables(data []byte) error {
+	var books []restoredBookshelfRow
+	if err := json.Unmarshal(data, &books); err != nil {
+		return err
 	}
+	for index := range books {
+		variable, err := models.NormalizeSourceRuleVariables(books[index].Variable)
+		if err != nil {
+			return err
+		}
+		books[index].Variable = variable
+	}
+	return nil
+}
+
+func validateRestoredChapterVariables(data []byte) error {
+	var rows []restoredChapterVariableRow
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return err
+	}
+	for index := range rows {
+		variable, err := models.NormalizeSourceRuleVariables(rows[index].Variable)
+		if err != nil {
+			return err
+		}
+		rows[index].Variable = variable
+	}
+	return nil
+}
+
+func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, error) {
+	var books []restoredBookshelfRow
 	if err := json.Unmarshal(data, &books); err != nil {
 		return 0, 0, err
+	}
+	if err := validateRestoredBookshelfVariables(data); err != nil {
+		return 0, 0, errInvalidBackupArchive
+	}
+	for index := range books {
+		variable, _ := models.NormalizeSourceRuleVariables(books[index].Variable)
+		books[index].Variable = variable
 	}
 
 	count := 0
@@ -914,14 +1010,27 @@ func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, e
 		if b.CanUpdate != nil {
 			canUpdate = *b.CanUpdate
 		}
+		sourceID := s.restoredBookSourceID(b.SourceName, b.SourceID)
+		variable := b.Variable
+		if sourceID == 0 || strings.TrimSpace(b.SourceName) == "" {
+			// A source token is meaningful only with a resolved remote source. This
+			// also makes old/local backups safe when they contain unknown fields or
+			// only a legacy numeric source ID.
+			variable = ""
+		}
 		book := models.Book{
 			UserID:         userID,
+			SourceID:       sourceID,
+			Type:           b.Type,
 			Title:          title,
 			Author:         strings.TrimSpace(b.Author),
 			URL:            bookURL,
 			CoverURL:       strings.TrimSpace(b.CoverURL),
 			CustomCoverURL: strings.TrimSpace(b.CustomCoverURL),
 			Intro:          strings.TrimSpace(b.Intro),
+			Kind:           strings.TrimSpace(b.Kind),
+			WordCount:      strings.TrimSpace(b.WordCount),
+			Variable:       variable,
 			LastChapter:    strings.TrimSpace(b.LastChapter),
 			ChapterCount:   b.ChapterCount,
 			CanUpdate:      canUpdate,
@@ -936,10 +1045,15 @@ func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, e
 		}
 		var existing models.Book
 		if query.First(&existing).Error == nil {
+			existing.SourceID = book.SourceID
+			existing.Type = book.Type
 			existing.Author = book.Author
 			existing.CoverURL = book.CoverURL
 			existing.CustomCoverURL = book.CustomCoverURL
 			existing.Intro = book.Intro
+			existing.Kind = book.Kind
+			existing.WordCount = book.WordCount
+			existing.Variable = book.Variable
 			existing.LastChapter = book.LastChapter
 			existing.ChapterCount = book.ChapterCount
 			existing.CanUpdate = book.CanUpdate
@@ -967,6 +1081,100 @@ func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, e
 		count++
 	}
 	return count, progressCount, nil
+}
+
+func (s *Server) restoreChapterVariablesFromData(data []byte, userID uint) (int, error) {
+	var rows []restoredChapterVariableRow
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return 0, err
+	}
+	if err := validateRestoredChapterVariables(data); err != nil {
+		return 0, errInvalidBackupArchive
+	}
+	for index := range rows {
+		variable, _ := models.NormalizeSourceRuleVariables(rows[index].Variable)
+		rows[index].Variable = variable
+	}
+
+	count := 0
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		for _, row := range rows {
+			if row.ChapterIndex < 0 || strings.TrimSpace(row.Variable) == "" || strings.TrimSpace(row.SourceName) == "" {
+				continue
+			}
+			book, ok := s.findRestoredBook(userID, row.BookURL, row.BookTitle)
+			if !ok || book.SourceID == 0 {
+				continue
+			}
+			var source models.BookSource
+			if err := tx.Select("name").First(&source, book.SourceID).Error; err != nil || source.Name != strings.TrimSpace(row.SourceName) {
+				continue
+			}
+
+			chapterURL := strings.TrimSpace(row.ChapterURL)
+			chapterTitle := strings.TrimSpace(row.ChapterTitle)
+			var chapter models.Chapter
+			query := tx.Where("book_id = ? AND `index` = ?", book.ID, row.ChapterIndex)
+			if err := query.First(&chapter).Error; err == nil {
+				if chapterURL != "" && strings.TrimSpace(chapter.URL) != "" && chapter.URL != chapterURL {
+					continue
+				}
+				chapter.Variable = row.Variable
+				if chapter.URL == "" {
+					chapter.URL = chapterURL
+				}
+				if chapter.Title == "" {
+					chapter.Title = chapterTitle
+				}
+				if err := tx.Save(&chapter).Error; err != nil {
+					return err
+				}
+				count++
+				continue
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+
+			if chapterURL == "" {
+				continue
+			}
+			if chapterTitle == "" {
+				chapterTitle = fmt.Sprintf("第 %d 章", row.ChapterIndex+1)
+			}
+			chapter = models.Chapter{
+				BookID:   book.ID,
+				Index:    row.ChapterIndex,
+				Title:    chapterTitle,
+				URL:      chapterURL,
+				Variable: row.Variable,
+			}
+			if err := tx.Create(&chapter).Error; err != nil {
+				return err
+			}
+			count++
+		}
+		return nil
+	})
+	return count, err
+}
+
+func (s *Server) restoredBookSourceID(sourceName string, fallback uint) uint {
+	name := strings.TrimSpace(sourceName)
+	if name != "" {
+		var source models.BookSource
+		if err := s.db.Select("id").Where("name = ?", name).First(&source).Error; err == nil {
+			return source.ID
+		}
+		return 0
+	}
+	if fallback == 0 {
+		return 0
+	}
+	var source models.BookSource
+	if err := s.db.Select("id").First(&source, fallback).Error; err == nil {
+		return source.ID
+	}
+	return 0
 }
 
 func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, error) {

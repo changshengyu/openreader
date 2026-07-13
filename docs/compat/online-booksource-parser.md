@@ -2,7 +2,7 @@
 
 状态：2026-07-13 已从固定上游 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 提取；P2-Parser-0 与 P2-Parser-1 的搜索/探索子集正在实现。本文件仍是目录、正文和剩余规则链重构的前置闸门。
 
-当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器和规则级 `##` 替换；搜索/探索、详情、目录、正文的基础列表/字段/分页调用链；分类多值与空详情 URL 回退；受限、请求级的 `@put`/`@get` 变量；不执行 JS/WebJS/`{{...}}` 模板的明确错误；以及“解析错误不写入失效书源缓存”、跨章节正文分页边界和空文本正文规则的错误边界。跨请求持久变量与结构化客户端错误仍未完成。
+当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器和规则级 `##` 替换；搜索/探索、详情、目录、正文的基础列表/字段/分页调用链；分类多值与空详情 URL 回退；受限的 `@put`/`@get` 变量及其搜索→书架→目录→正文的持久状态；不执行 JS/WebJS/`{{...}}` 模板的明确错误；以及“解析错误不写入失效书源缓存”、跨章节正文分页边界、空文本正文规则和结构化安全错误边界。上游 JavaScript/模板及其隔离执行策略仍未完成。
 
 ## 2026-07-13 P2-Parser-1B：详情、目录、正文调用链复审
 
@@ -180,6 +180,14 @@
 - 正文、单书源分页搜索、探索、远端加书、书籍刷新、换源、三步 source debug 和批量测试均保留已有 HTTP 状态和顶层 `error`，并按需要附加 `stage`。因此部署中的旧客户端不需要改动。
 - `backend/api/source_error_contract_test.go` 使用带用户名、密码和 query token 的模拟上游错误，证明这些值不会泄露到搜索、探索、debug 或远端加书响应；同时覆盖正文规则错误的 `source_rule_invalid` / `content`。
 - 本项是 Go/JWT 多用户运行时的安全适配，不执行上游 JavaScript，也不改变仍待 P2-Parser-1G 完成的 `Book.variable` / `BookChapter.variable` 数据迁移。
+
+### P2-Parser-1G 实施记录
+
+- `models.Book.Variable` 和 `models.Chapter.Variable` 以 GORM 的纯加列迁移加入 SQLite；空值就是空 map。读写统一经过 `models.NormalizeSourceRuleVariables`，只允许 32 项以内、键 128 字节、值 4096 字节、合计 16 KiB 以内的 `map[string]string`。无效持久值在任何远端请求之前返回本地 `ErrInvalidSourceRule`，不会触发抓取或失效书源缓存。
+- 搜索列表级临时变量在每个结果边界复制为独立 Book 变量；前端仅把不透明 JSON 字符串透传到既有“加入书架”请求。详情与目录更新同一 Book map；目录每一章获得独立 Chapter map；正文严格按 `chapter → book → temporary` 读取，并把成功结果与章节缓存元数据在同一数据库事务内写回。
+- 刷新目录、切换来源、刷新本地书、编辑/导入/清空/恢复书源都会清空不再具有同一语义的远程变量。规则、基础 URL、请求头、编码、登录地址或来源类型的改变都在源配置写入的同一事务里清空关联 Book/Chapter map；本地书永远导出和恢复为空变量。
+- 备份仍使用兼容的 `bookshelf.json`，新增可选 `sourceName` 和 `variable` 字段；同时新增 `chapterVariables.json`，按目标用户的来源名、书 URL/title、章节 URL/index/title 还原变量，绝不重用来源数据库 ID、章节 ID、缓存路径、请求头或凭证。恢复先验证所有新增 map，先恢复书源和书架，再在事务中恢复章节变量；旧备份缺失新字段时保持原有行为。
+- 契约覆盖见 `backend/engine/source_rule_variables_contract_test.go`、`backend/api/persistent_source_variables_contract_test.go`、`backend/api/backup_restore_contract_test.go` 与 `frontend/tests/remoteBookResultVariableContract.test.mjs`：结果隔离、特殊变量优先级、目录/正文持久化、请求前拒绝坏值、来源语义切换清空和跨实例备份恢复都已验证。
 
 ## 审查范围与上游证据
 

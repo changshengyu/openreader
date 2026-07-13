@@ -108,6 +108,7 @@ func (s *Service) run(userID *uint, backupDir string) (string, error) {
 	s.addUserSettings(zipWriter, userID)
 	s.addCategories(zipWriter, userID)
 	s.addBookshelf(zipWriter, userID)
+	s.addChapterVariables(zipWriter, userID)
 	s.addBookmarks(zipWriter, userID)
 	s.addProgress(zipWriter, userID)
 	s.addReplaceRules(zipWriter, userID)
@@ -220,6 +221,7 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 		models.Book
 		CategoryName  string   `json:"categoryName,omitempty"`
 		CategoryNames []string `json:"categoryNames,omitempty"`
+		SourceName    string   `json:"sourceName,omitempty"`
 	}
 	var books []models.Book
 	query := s.db.Order("id asc")
@@ -231,7 +233,22 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 	}
 	rows := make([]bookExport, 0, len(books))
 	for _, book := range books {
+		if book.SourceID == 0 {
+			// Local/imported books have no reader-dev source-rule context. Do not
+			// turn a stale legacy database value into a portable remote token.
+			book.Variable = ""
+		} else if variable, err := models.NormalizeSourceRuleVariables(book.Variable); err == nil {
+			book.Variable = variable
+		} else {
+			book.Variable = ""
+		}
 		row := bookExport{Book: book}
+		if book.SourceID > 0 {
+			var source models.BookSource
+			if err := s.db.Select("name").First(&source, book.SourceID).Error; err == nil {
+				row.SourceName = source.Name
+			}
+		}
 		var categoryRows []models.Category
 		_ = s.db.
 			Joins("JOIN book_categories ON book_categories.category_id = categories.id").
@@ -257,6 +274,66 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 		return
 	}
 	writeZipEntry(zipWriter, "bookshelf.json", data)
+}
+
+func (s *Service) addChapterVariables(zipWriter *zip.Writer, userID *uint) {
+	type chapterVariableExport struct {
+		SourceName   string `json:"sourceName"`
+		BookURL      string `json:"bookUrl"`
+		BookTitle    string `json:"bookTitle"`
+		ChapterURL   string `json:"chapterUrl"`
+		ChapterTitle string `json:"chapterTitle"`
+		ChapterIndex int    `json:"chapterIndex"`
+		Variable     string `json:"variable"`
+	}
+	type chapterVariableRow struct {
+		SourceName   string
+		BookURL      string
+		BookTitle    string
+		ChapterURL   string
+		ChapterTitle string
+		ChapterIndex int
+		Variable     string
+	}
+
+	var rows []chapterVariableRow
+	query := s.db.Table("chapters").
+		Select("book_sources.name AS source_name, books.url AS book_url, books.title AS book_title, chapters.url AS chapter_url, chapters.title AS chapter_title, chapters.`index` AS chapter_index, chapters.variable").
+		Joins("JOIN books ON books.id = chapters.book_id").
+		Joins("JOIN book_sources ON book_sources.id = books.source_id").
+		Where("books.source_id > 0 AND chapters.variable <> ''").
+		Order("books.id ASC, chapters.`index` ASC")
+	if userID != nil {
+		query = query.Where("books.user_id = ?", *userID)
+	}
+	if err := query.Scan(&rows).Error; err != nil {
+		return
+	}
+
+	exported := make([]chapterVariableExport, 0, len(rows))
+	for _, row := range rows {
+		variable, err := models.NormalizeSourceRuleVariables(row.Variable)
+		if err != nil {
+			continue
+		}
+		exported = append(exported, chapterVariableExport{
+			SourceName:   row.SourceName,
+			BookURL:      row.BookURL,
+			BookTitle:    row.BookTitle,
+			ChapterURL:   row.ChapterURL,
+			ChapterTitle: row.ChapterTitle,
+			ChapterIndex: row.ChapterIndex,
+			Variable:     variable,
+		})
+	}
+	if len(exported) == 0 {
+		return
+	}
+	data, err := json.MarshalIndent(exported, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "chapterVariables.json", data)
 }
 
 func (s *Service) addBookmarks(zipWriter *zip.Writer, userID *uint) {

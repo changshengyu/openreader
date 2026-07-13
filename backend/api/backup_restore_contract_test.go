@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -80,6 +81,103 @@ func TestBackupArchiveStructuralFailureDoesNotMutateUserData(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("invalid archive must not mutate sources, got %d", count)
+	}
+}
+
+func TestBackupRoundTripsPersistentSourceVariables(t *testing.T) {
+	_, sourceServer := setupTestServer(t)
+	user := models.User{Username: "variable-backup-user", PasswordHash: "hash"}
+	if err := sourceServer.db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{Name: "变量备份书源", BaseURL: "https://backup-variables.example", Charset: "utf-8", Enabled: true}
+	if err := source.SetRules(models.BookSourceRule{BookInfoNameRule: "h1|text", ContentRule: ".content|text"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceServer.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID:   user.ID,
+		SourceID: source.ID,
+		Title:    "变量备份书",
+		URL:      source.BaseURL + "/book/1",
+		Variable: `{"bookToken":"book-backup"}`,
+	}
+	if err := sourceServer.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{
+		BookID:   book.ID,
+		Index:    0,
+		Title:    "第一章",
+		URL:      source.BaseURL + "/chapter/1",
+		Variable: `{"chapterToken":"chapter-backup"}`,
+	}
+	if err := sourceServer.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	backupPath, err := sourceServer.backupSvc.RunNowForUser(user.ID, user.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.OpenReader(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	var hasBookshelf, hasChapterVariables bool
+	for _, file := range reader.File {
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		contents, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch file.Name {
+		case "bookshelf.json":
+			hasBookshelf = strings.Contains(string(contents), `"sourceName": "变量备份书源"`) && strings.Contains(string(contents), "book-backup")
+		case "chapterVariables.json":
+			hasChapterVariables = strings.Contains(string(contents), "chapter-backup")
+		}
+	}
+	if !hasBookshelf || !hasChapterVariables {
+		t.Fatalf("backup must include portable source variables: shelf=%v chapter=%v", hasBookshelf, hasChapterVariables)
+	}
+
+	_, destinationServer := setupTestServer(t)
+	destinationUser := models.User{Username: "variable-restore-user", PasswordHash: "hash"}
+	if err := destinationServer.db.Create(&destinationUser).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := destinationServer.restoreLegadoBackupData(archive, destinationUser.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["chapterVariables"] != 1 {
+		t.Fatalf("restored chapter variable count = %#v", result)
+	}
+	var restoredBook models.Book
+	if err := destinationServer.db.Where("user_id = ? AND url = ?", destinationUser.ID, book.URL).First(&restoredBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	if restoredBook.SourceID == 0 || restoredBook.Variable != book.Variable {
+		t.Fatalf("restored book source state = %+v", restoredBook)
+	}
+	var restoredChapter models.Chapter
+	if err := destinationServer.db.Where("book_id = ? AND `index` = ?", restoredBook.ID, 0).First(&restoredChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if restoredChapter.Variable != chapter.Variable || restoredChapter.URL != chapter.URL {
+		t.Fatalf("restored chapter source state = %+v", restoredChapter)
 	}
 }
 
