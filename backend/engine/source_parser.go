@@ -1165,6 +1165,14 @@ func FetchChapterContent(chapterURL string, source models.BookSource) (string, e
 // cache jobs. A client disconnect can therefore stop source pagination before
 // another remote chapter request is scheduled.
 func FetchChapterContentContext(ctx context.Context, chapterURL string, source models.BookSource) (string, error) {
+	return FetchChapterContentContextWithNextChapter(ctx, chapterURL, "", source)
+}
+
+// FetchChapterContentContextWithNextChapter adds the catalog context used by
+// reader-dev to prevent a single next-content link from crossing into the
+// following chapter. Empty nextChapterURL preserves the legacy public API for
+// callers that do not have a catalog row available.
+func FetchChapterContentContextWithNextChapter(ctx context.Context, chapterURL, nextChapterURL string, source models.BookSource) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -1177,6 +1185,9 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 			return resolved, nil
 		}
 		return strings.TrimSpace(chapterURL), nil
+	}
+	if strings.TrimSpace(rule.ContentRule) == "" {
+		return "", fmt.Errorf("%w: content rule is empty for a text source", ErrInvalidSourceRule)
 	}
 
 	policy := bookSourceRequestPolicy(source)
@@ -1292,6 +1303,9 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 	if len(nextURLs) == 1 {
 		nextURL := nextURLs[0]
 		for nextURL != "" {
+			if contentNextURLIsCatalogChapter(contentRequest.URL, nextURL, nextChapterURL, charset, rule.Headers, policy) {
+				break
+			}
 			nextDocument, nextRequest, fetched, fetchErr := fetchNextPage(nextURL)
 			if fetchErr != nil {
 				return "", fetchErr
@@ -1327,6 +1341,18 @@ func FetchChapterContentContext(ctx context.Context, chapterURL string, source m
 	text = applyContentReplaceRegex(text, rule.ContentReplaceRegex)
 	text = ApplyTextReplacements(text, rule.TextReplaceRules)
 	return text, nil
+}
+
+func contentNextURLIsCatalogChapter(baseURL, nextURL, nextChapterURL, charset string, headers map[string]string, policy SourceRequestPolicy) bool {
+	if strings.TrimSpace(nextURL) == "" || strings.TrimSpace(nextChapterURL) == "" {
+		return false
+	}
+	nextRequest, nextErr := prepareResolvedSourceRequest(baseURL, nextURL, "", 1, charset, headers, policy)
+	nextChapterRequest, chapterErr := prepareResolvedSourceRequest(baseURL, nextChapterURL, "", 1, charset, headers, policy)
+	if nextErr != nil || chapterErr != nil {
+		return false
+	}
+	return sourceRequestKey(nextRequest) == sourceRequestKey(nextChapterRequest)
 }
 
 func applyContentReplaceRegex(text string, rule string) string {
@@ -1376,7 +1402,7 @@ func applyContentReplaceRegex(text string, rule string) string {
 func extractChapterContent(doc *goquery.Document, rule models.BookSourceRule, baseURL string, sourceType int) string {
 	contentRule := rule.ContentRule
 	if contentRule == "" {
-		return strings.Join(Extract(doc.Selection, "body|text"), "\n")
+		return ""
 	}
 	values := Extract(doc.Selection, contentRule)
 	if sourceType == 1 {
@@ -1399,7 +1425,7 @@ func extractChapterContentFromSourceDocument(document *sourceRuleDocument, rule 
 	}
 	contentRule := strings.TrimSpace(rule.ContentRule)
 	if contentRule == "" {
-		return strings.Join(Extract(document.document.Selection, "body|text"), "\n"), nil
+		return "", nil
 	}
 	values, err := sourceRuleStringsFromDocument(document, contentRule)
 	if err != nil {

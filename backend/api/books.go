@@ -2495,7 +2495,17 @@ func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.B
 		if err := s.db.First(&source, book.SourceID).Error; err != nil {
 			return "", err
 		}
-		fetched, fetchErr := engine.FetchChapterContentContext(ctx, chapter.URL, source)
+		nextChapterURL := ""
+		if source.SourceType != 1 {
+			var nextChapter models.Chapter
+			nextErr := s.db.Select("url").Where("book_id = ? AND `index` = ?", book.ID, chapter.Index+1).First(&nextChapter).Error
+			if nextErr == nil {
+				nextChapterURL = nextChapter.URL
+			} else if !errors.Is(nextErr, gorm.ErrRecordNotFound) {
+				return "", nextErr
+			}
+		}
+		fetched, fetchErr := engine.FetchChapterContentContextWithNextChapter(ctx, chapter.URL, nextChapterURL, source)
 		if fetchErr != nil {
 			return "", fetchErr
 		}
