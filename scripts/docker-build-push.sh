@@ -6,13 +6,28 @@ TAG="${TAG:-$(git rev-parse --short HEAD)}"
 VERSION="${VERSION:-$TAG}"
 VCS_REF="${VCS_REF:-$(git rev-parse HEAD)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}"
-GOSUMDB="${GOSUMDB:-sum.golang.org}"
 PLATFORMS="${PLATFORMS:-}"
 PUSH="${PUSH:-1}"
 RELEASE="${RELEASE:-0}"
 HOST_OCI_PUSH="${HOST_OCI_PUSH:-0}"
 OCI_ARCHIVE="${OCI_ARCHIVE:-}"
+GO_VENDOR_DIR="${GO_VENDOR_DIR:-}"
+
+if [ -z "$GO_VENDOR_DIR" ]; then
+  GO_VENDOR_DIR="$(mktemp -d -t openreader-go-vendor)"
+  REMOVE_GO_VENDOR_DIR=1
+else
+  REMOVE_GO_VENDOR_DIR=0
+fi
+
+cleanup() {
+  if [ "${REMOVE_GO_VENDOR_DIR:-0}" = "1" ]; then
+    rm -rf "$GO_VENDOR_DIR"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+(cd backend && go mod vendor -o "$GO_VENDOR_DIR")
 
 if [ "$PUSH" = "1" ]; then
   if [ "$HOST_OCI_PUSH" = "1" ]; then
@@ -40,13 +55,12 @@ fi
 
 docker buildx build \
   --platform "$PLATFORMS" \
+  --build-context "go_vendor=$GO_VENDOR_DIR" \
   -t "$IMAGE:latest" \
   -t "$IMAGE:$TAG" \
   --build-arg "VERSION=$VERSION" \
   --build-arg "VCS_REF=$VCS_REF" \
   --build-arg "BUILD_DATE=$BUILD_DATE" \
-  --build-arg "GOPROXY=$GOPROXY" \
-  --build-arg "GOSUMDB=$GOSUMDB" \
   $OUTPUT_FLAG \
   .
 

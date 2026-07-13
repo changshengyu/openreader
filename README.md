@@ -63,6 +63,8 @@ docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 
 The script passes `VERSION`, `VCS_REF`, and `BUILD_DATE` into the Go binary and OCI image labels, so `/api/health` and the Settings page show the actual build metadata instead of `unknown`.
 
+For reproducible local builds, the script creates a temporary Go vendor context from the host module cache before the Docker build. The build container therefore does not need to download Go modules itself (useful when OrbStack's VM network differs from the host). The temporary directory is removed automatically; it is not committed to the repository. Set `GO_VENDOR_DIR=/absolute/path` only when you need to inspect or reuse that generated context.
+
 If an OrbStack/Docker registry proxy returns a transient `502` during the final push while the local build itself succeeds, use the host-network OCI fallback. It still builds locally and reads the existing Docker credential helper only in memory; no token is written to logs or the repository:
 
 ```bash
