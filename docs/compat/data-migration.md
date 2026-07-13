@@ -176,6 +176,30 @@ Status: extracted 2026-07-10; implementation must not add a destructive schema m
 - Backup/restore remains sufficient because original local imports and SQLite rows retain their existing paths/fields. Derived remote cache files need not be backed up.
 - The release gate requires API fixtures for cross-user cache/delete isolation and `scripts/docker-volume-backup-smoke.sh` to prove a mounted volume survives restart after the cleanup changes.
 
+## P1-B search preference compatibility
+
+Status: extracted on 2026-07-13; implementation is pending. This is a JSON-setting read/write compatibility shim only. It does not add a table or modify mounted `data/`, `cache/`, or `library/` files.
+
+### Existing representation
+
+- The per-user SQLite `user_settings` row with `key = "search"` stores JSON unchanged; browser Pinia persistence and legacy `openreader_sidebar_search` also contain the same logical fields.
+- Existing OpenReader payloads use `{searchType:"all"|"group"|"single", group, sourceId, concurrent}` and may contain `8`, `16`, `32`, or `60`.
+- Existing backup restore deliberately preserves a `concurrent:32` payload; startup and restore must not rewrite that row.
+
+### Read and write compatibility
+
+- Missing, malformed, zero or negative concurrency reads as the upstream new-user default `24`.
+- Canonical upstream values `12/18/24/30/36/42/48/54/60` are retained unchanged.
+- Historical OpenReader values `8/16/32` remain readable and selectable as explicitly labelled legacy values. They are not silently reset; the first user-selected canonical value replaces them through the normal setting-write and conflict mechanism.
+- `all`, `group`, and `single` remain stored because they are the deployed source-ID adapter for upstream multi/group/single selection. No migration changes `sourceId` or attempts to resolve a historical source URL at startup.
+- No background update, Docker upgrade, backup restore, scope switch, or login is allowed to write a new search preference merely because it was read. Only the existing explicit user preference save path writes normalized JSON.
+
+### Required evidence
+
+- Frontend tests must cover defaults, canonical values, legacy 8/16/32 preservation, server preference loading and explicit replacement.
+- Existing backup restore tests retain `concurrent:32`; an added test verifies loading that restored setting does not reset it.
+- The release gate runs the existing Docker volume/backup smoke to confirm the unchanged `user_settings` and mounted volume survive restart.
+
 ## Reader `themeType` persisted-setting compatibility
 
 Status: implemented and validated in the Reader custom-theme semantic mode slice.

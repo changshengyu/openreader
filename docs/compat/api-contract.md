@@ -39,6 +39,16 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## P1-B workspace search API contract
+
+Status: extracted on 2026-07-13 from fixed reader-dev `Index.vue`, `config.js`, and `BookController.kt`; implementation is pending. OpenReader keeps its authenticated REST path and source-ID representation, but restores the upstream search defaults and error semantics.
+
+| Method / path | Request | Success / side effects | Errors / compatibility adapter |
+|---|---|---|---|
+| `POST /api/search` | Authenticated JSON `{keyword, sourceIds?, concurrentCount?, page?, lastIndex?, searchSize?}`. `sourceIds` is the current user-scoped adaptation of upstream all/group/single source selection. | A single selected source uses `page`; multiple selected sources use `lastIndex` as a cursor and preserve requested source order. Response stays `{list,page,lastIndex,hasMore}`. Multi-source results are deduplicated; individual failed sources are recorded/skipped under the existing source-failure contract. | Blank keyword is `400 {error:"keyword is required"}`. No enabled/selected source must return a handled error whose frontend semantics are **“未配置书源”**, rather than a successful empty list. Existing direct clients retain the top-level `{error}` shape. |
+
+The omitted/zero `concurrentCount` default is **24**. This is the upstream workspace default; a positive caller-provided count remains bounded by the selected source count. OpenReader does not add a `/reader3/searchBookMulti` product dependency: the frontend maps upstream `multi`/`bookSourceGroup` to ordered `sourceIds` and keeps the deployed REST response shape.
+
 ## P2-Parser-3A source-script error contract
 
 Status: implemented and verified on 2026-07-13 against fixed reader-dev `BaseSource.kt`, `AnalyzeUrl.kt` and `WebBook.kt`. This is a Go/JWT security adaptation, not a route redesign.
