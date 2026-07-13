@@ -71,7 +71,10 @@ async function installApiMocks(page) {
     if (path === '/settings/reader' && method === 'PUT') return route.fulfill(json({ key: 'reader', value: {} }))
     if (path === '/settings/preferences') return route.fulfill(json({ key: 'preferences', value: {} }))
     if (path === '/categories') return route.fulfill(json([]))
-    if (path === '/sources') return route.fulfill(json([{ id: 1, name: '工作台测试书源', enabled: true, group: '测试' }]))
+    if (path === '/sources') return route.fulfill(json([
+      { id: 1, name: '工作台测试书源一', enabled: true, group: '测试' },
+      { id: 2, name: '工作台测试书源二', enabled: true, group: '测试' },
+    ]))
     if (path === '/explore/sources') {
       return route.fulfill(json([{
         id: 1,
@@ -81,11 +84,44 @@ async function installApiMocks(page) {
         exploreGroups: [[{ name: '热门', url: 'https://source.example/explore' }]],
       }]))
     }
-    if (path === '/explore/1') return route.fulfill(json({ items: [remoteBook('工作台探索结果')], page: 1, hasMore: false }))
+    if (path === '/explore/1') {
+      const page = Number(url.searchParams.get('page') || 1)
+      return route.fulfill(json({
+        items: page > 1
+          ? [remoteBook('工作台探索重复结果'), remoteBook('工作台探索续页结果')]
+          : [remoteBook('工作台探索重复结果')],
+        page,
+        hasMore: page === 1,
+      }))
+    }
     if (path === '/search' && method === 'POST') {
       const body = request.postDataJSON() || {}
       searchRequests.push(body)
-      return route.fulfill(json({ list: [remoteBook(body.keyword || '工作台搜索结果')], page: 1, lastIndex: -1, hasMore: false }))
+      if (body.keyword === '陈旧请求') {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        return route.fulfill(json({ list: [remoteBook('陈旧结果')], page: 1, lastIndex: 1, hasMore: false }))
+      }
+      const sourceIDs = Array.isArray(body.sourceIds) ? body.sourceIds : []
+      if (sourceIDs.length > 1) {
+        const hasStarted = Number(body.lastIndex) >= 0
+        return route.fulfill(json({
+          list: hasStarted
+            ? [remoteBook('多源重复结果'), remoteBook('多源续页结果')]
+            : [remoteBook('多源重复结果')],
+          page: 1,
+          lastIndex: hasStarted ? 1 : 0,
+          hasMore: !hasStarted,
+        }))
+      }
+      const page = Number(body.page || 1)
+      return route.fulfill(json({
+        list: page > 1
+          ? [remoteBook('单源重复结果'), remoteBook('单源续页结果')]
+          : [remoteBook('单源重复结果')],
+        page,
+        lastIndex: -1,
+        hasMore: page === 1,
+      }))
     }
     if (path === '/books/remote' && method === 'POST') {
       remoteCreateCount += 1
@@ -148,6 +184,26 @@ async function runViewport(browser, viewport) {
   await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
   const freshDefaultSearch = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
   assert(freshDefaultSearch.concurrentCount === 24, `${viewport.width}: fresh sidebar search must use the upstream default concurrency 24`)
+  assert(!Object.hasOwn(freshDefaultSearch, 'page'), `${viewport.width}: multi-source search must not drive its continuation with page`)
+  assert(freshDefaultSearch.lastIndex === -1, `${viewport.width}: fresh multi-source search must start at cursor -1`)
+  await page.getByRole('button', { name: '加载更多' }).click()
+  await page.waitForFunction(() => document.querySelectorAll('.workspace-result-page .result-card').length === 2)
+  const multiContinuation = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
+  assert(multiContinuation.lastIndex === 0, `${viewport.width}: multi-source continuation must use the returned cursor`)
+  assert(!Object.hasOwn(multiContinuation, 'page'), `${viewport.width}: multi-source continuation must not send a page number`)
+  const multiEndButton = page.getByRole('button', { name: '没有更多了' })
+  assert(await multiEndButton.isDisabled(), `${viewport.width}: multi-source completion must remain visibly disabled`)
+
+  await page.goto(`${root}/?workspace=search&q=单源续页&searchType=single&sourceId=1&concurrent=24`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
+  const singleFirst = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
+  assert(singleFirst.page === 1, `${viewport.width}: single-source search must begin at page one`)
+  assert(!Object.hasOwn(singleFirst, 'lastIndex'), `${viewport.width}: single-source search must not send a multi-source cursor`)
+  await page.getByRole('button', { name: '加载更多' }).click()
+  await page.waitForFunction(() => document.querySelectorAll('.workspace-result-page .result-card').length === 2)
+  const singleContinuation = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
+  assert(singleContinuation.page === 2, `${viewport.width}: single-source continuation must advance page`)
+  assert(!Object.hasOwn(singleContinuation, 'lastIndex'), `${viewport.width}: single-source continuation must keep the cursor absent`)
 
   await page.goto(`${root}/search?q=旧链接搜索&searchType=all&concurrent=8`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
@@ -194,17 +250,27 @@ async function runViewport(browser, viewport) {
   assert(legacyPreferenceSearch.concurrentCount === 8, `${viewport.width}: sidebar search must retain the active legacy concurrency until the user changes it`)
   await assertNoHorizontalOverflow(page, `${viewport.width} second-search`)
 
+  await searchInput.fill('陈旧请求')
+  await searchInput.press('Enter')
+  await page.waitForTimeout(50)
   await page.getByRole('button', { name: '探索书源' }).click()
   await page.waitForSelector('.workspace-result-page .discover-results .result-card', { timeout: 10000 })
+  await page.waitForTimeout(550)
   const exploreState = await page.evaluate(() => ({
     path: window.location.pathname,
     heading: document.querySelector('.workspace-result-head h1')?.textContent || '',
+    text: document.querySelector('.workspace-result-page')?.textContent || '',
   }))
   assert(exploreState.path === '/', `${viewport.width}: Explore must remain in the root scene`)
   assert(exploreState.heading.includes('探索 (1)'), `${viewport.width}: Explore result heading is missing`)
+  assert(!exploreState.text.includes('陈旧结果'), `${viewport.width}: stale search response must not overwrite Explore`)
+  await page.locator('.workspace-result-actions').getByRole('button', { name: '加载更多', exact: true }).click()
+  await page.waitForFunction(() => document.querySelectorAll('.workspace-result-page .discover-results .result-card').length === 2)
+  const exploreEndButton = page.locator('.workspace-result-actions').getByRole('button', { name: '没有更多了', exact: true })
+  assert(await exploreEndButton.isDisabled(), `${viewport.width}: Explore completion must remain visibly disabled`)
   await assertNoHorizontalOverflow(page, `${viewport.width} explore`)
 
-  await page.locator('.workspace-result-actions button').click()
+  await page.locator('.workspace-result-actions').getByRole('button', { name: '书架', exact: true }).click()
   await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
   await assertNoHorizontalOverflow(page, `${viewport.width} shelf-return`)
   assert(failures.length === 0, failures.join('\n'))

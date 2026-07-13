@@ -1,6 +1,6 @@
 # P1-B Index 搜索、探索与 BookInfo 连续流程契约
 
-状态：**P1-B 搜索默认值、并发偏好兼容与无书源错误语义已实现并完成三种视口的搜索→探索→BookInfo smoke；加载更多、跨页去重和其余入口仍在后续 P1-B 范围内。**
+状态：**P1-B 搜索默认值、并发偏好、稳定续页 cursor、跨页去重与搜索/探索/BookInfo 三视口 smoke 已实现；其余 BookInfo 入口与结果场景外的工作台动作仍在后续 P1-B/P1-C 范围内。**
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游证据：`web/src/views/Index.vue`、`web/src/plugins/config.js`、`BookController.kt#searchBook` / `#searchBookMulti`；当前证据：`frontend/src/{stores/preferences.js,composables/useAppSidebarSearch.js,stores/indexWorkspace.js,views/Search.vue}`、`backend/api/search.go`、`backend/api/settings.go`。
 
@@ -87,3 +87,16 @@
 1. Go：单源第二页只推进 `page`；多源第二批只推进 `lastIndex`；失效缓存中的中间书源不令后续 cursor 跳源或回退；全被暂时抑制仍为成功空结果。
 2. 前端：新搜索和切换到探索会使旧请求结果失效；重复 `bookUrl` 不重复显示、空 URL 保留不同书源结果；重复页无新增有明确“没有更多了”反馈。
 3. 浏览器：1440×900、390×844、360×800 依次验证单源两页、多源两批、探索两页、加载中防重入、返回书架后旧响应不污染结果及标题续页动作的可见状态。
+
+## 8. 2026-07-13 实施记录：稳定续页与跨页结果切片
+
+- `/api/search` 的多源 `lastIndex` 现在始终对应原始排序的已选书源序列。当前用户的失效书源缓存只跳过执行，不会压缩数组或重编号 cursor；因此缓存的进入/过期不会让续页跳过或重复书源。
+- 单源请求只发送/消费 `page`；多源请求只发送/消费 `lastIndex` 与 `searchSize`。前端仍保存页面号作为工作台展示状态，但不会把它作为多源执行 cursor。
+- 搜索和探索的“加载更多”已回到结果标题操作区，并保留可见的禁用终态“没有更多了”。滚动位置会在续页前写入共享工作台状态。
+- 共享请求门同时检查本地异步代号、工作台场景和场景 revision：新搜索、进入探索、返回书架或选择另一个探索入口后，迟到的旧响应不得写入当前结果。
+- 搜索和探索使用同一会话级结果合并规则：优先以 `bookUrl` 去重；缺失 URL 时退回 `sourceId + title + author`，不会把不相关空 URL 行合并。
+- 验证：Go 覆盖失效缓存中间源的 cursor 稳定性；前端覆盖结果 key 与陈旧请求门；全量 `npm test` **371 项通过**、`go test ./...`、`npm run build` 通过；真实 Chrome `1440×900`、`390×844`、`360×800` 覆盖多源两批、单源两页、探索两页、重复结果、陈旧搜索切换探索、BookInfo 分组确认/阅读及返回书架。
+
+允许差异：OpenReader 保持 REST `hasMore`、JWT、`sourceIds` 与用户级失败缓存，而不复制上游 EventSource；这些增强已通过上列稳定 cursor 和可见工作台流程约束。
+
+仍未完成：BookInfo 从书架、搜索、探索、阅读器及旧链接五入口的完整复审，以及 P1-C 的其余全局工作台操作收敛。

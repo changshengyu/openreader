@@ -6,11 +6,17 @@
         <p class="workspace-result-subtitle">{{ searchMode === 'local' ? '本地书籍' : '书源搜索' }}</p>
       </div>
       <div class="workspace-result-actions">
+        <button
+          v-if="searchMode === 'remote' && searched"
+          type="button"
+          :disabled="loadingMore || !remoteHasMore"
+          @click="loadMoreRemote"
+        >{{ loadingMore ? '加载中...' : (remoteHasMore ? '加载更多' : '没有更多了') }}</button>
         <button type="button" @click="backToShelf">书架</button>
       </div>
     </header>
 
-    <div v-loading="searching" class="result-area">
+    <div ref="resultArea" v-loading="searching" class="result-area">
       <RemoteBookResultGroups
         v-if="searchMode === 'remote' && groupedResults.length"
         :groups="groupedResults"
@@ -46,17 +52,11 @@
       <el-empty v-else :description="searchMode === 'local' ? '输入关键词搜索本地书仓，或直接搜索显示全部可导入文件' : '输入关键词后开始搜索书源'" />
     </div>
 
-    <div v-if="searchMode === 'remote' && searched && (results.length || remoteHasMore)" class="load-more-row">
-      <el-button :loading="loadingMore" :disabled="!remoteHasMore" @click="loadMoreRemote">
-        {{ remoteHasMore ? '加载更多' : '没有更多' }}
-      </el-button>
-    </div>
-
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
@@ -90,6 +90,12 @@ import {
   remoteBookSourceName,
   remoteBookUrl,
 } from '../utils/remoteBookResult'
+import {
+  captureWorkspaceRequest,
+  createAsyncRequestGate,
+  isWorkspaceRequestCurrent,
+  mergeRemoteSearchResults,
+} from '../utils/workspaceContinuation.js'
 
 const router = useRouter()
 const emit = defineEmits(['back-to-shelf'])
@@ -118,6 +124,9 @@ const remoteHasMore = ref(false)
 const activeSearchKeyword = ref('')
 const activeSourceIds = ref([])
 const activeConcurrentCount = ref(1)
+const activeSearchIsSingleSource = ref(false)
+const resultArea = ref(null)
+const remoteRequestGate = createAsyncRequestGate()
 const addToShelf = useBookInfoAddToShelf({
   selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
   buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
@@ -189,6 +198,10 @@ onMounted(async () => {
   if (keyword.value || searchMode.value === 'local') doSearch()
 })
 
+onBeforeUnmount(() => {
+  remoteRequestGate.invalidate()
+})
+
 async function warmSearchShelf() {
   const jobs = [
     ['categories', bookshelf.ensureCategoriesLoaded()],
@@ -252,6 +265,7 @@ function saveSearchPreference() {
 
 async function doSearch() {
   if (searchMode.value === 'local') {
+    remoteRequestGate.invalidate()
     await searchLocalBooks()
     return
   }
@@ -266,75 +280,110 @@ async function doSearch() {
   searched.value = false
   results.value = []
   resetRemotePagination()
+  const requestToken = remoteRequestGate.begin()
+  const workspaceStamp = captureWorkspaceRequest(workspace, 'search')
   activeSearchKeyword.value = value
   activeSourceIds.value = [...selectedIds.value]
   activeConcurrentCount.value = searchType.value === 'single' ? 1 : concurrentCount.value
+  activeSearchIsSingleSource.value = activeSourceIds.value.length === 1
   try {
-    const added = await requestRemoteSearch(false)
+    const { added, current } = await requestRemoteSearch({
+      append: false,
+      page: 1,
+      lastIndex: -1,
+      requestToken,
+      workspaceStamp,
+    })
+    if (!current) return
     searched.value = true
     ElMessage.success(added ? `找到 ${added} 条结果` : '没有找到相关书籍')
   } catch (err) {
-    ElMessage.error(readError(err, '搜索失败'))
+    if (isActiveRemoteRequest(requestToken, workspaceStamp)) {
+      ElMessage.error(readError(err, '搜索失败'))
+    }
   } finally {
-    searching.value = false
-    workspace.setResultLoading(false)
+    if (isActiveRemoteRequest(requestToken, workspaceStamp)) {
+      searching.value = false
+      workspace.setResultLoading(false)
+    }
   }
 }
 
 async function loadMoreRemote() {
-  if (loadingMore.value || !remoteHasMore.value) return
+  if (loadingMore.value) return
+  if (!remoteHasMore.value) {
+    ElMessage.info('没有更多了')
+    return
+  }
+  const requestToken = remoteRequestGate.begin()
+  const workspaceStamp = captureWorkspaceRequest(workspace, 'search')
+  const nextPage = searchPage.value + 1
+  const nextLastIndex = activeSearchIsSingleSource.value ? -1 : searchLastIndex.value
+  rememberResultScroll()
   loadingMore.value = true
   workspace.setResultLoading(true)
   try {
-    searchPage.value += 1
-    const added = await requestRemoteSearch(true)
+    const { added, current } = await requestRemoteSearch({
+      append: true,
+      page: nextPage,
+      lastIndex: nextLastIndex,
+      requestToken,
+      workspaceStamp,
+    })
+    if (!current) return
     if (!added) {
-      ElMessage.info(remoteHasMore.value ? '本批没有新增结果' : '没有更多了')
+      ElMessage.info(remoteHasMore.value ? '本批没有新增结果，仍可继续加载' : '没有更多了')
     }
   } catch (err) {
-    searchPage.value = Math.max(1, searchPage.value - 1)
-    ElMessage.error(readError(err, '加载更多失败'))
+    if (isActiveRemoteRequest(requestToken, workspaceStamp)) {
+      ElMessage.error(readError(err, '加载更多失败'))
+    }
   } finally {
-    loadingMore.value = false
-    workspace.setResultLoading(false)
+    if (isActiveRemoteRequest(requestToken, workspaceStamp)) {
+      loadingMore.value = false
+      workspace.setResultLoading(false)
+    }
   }
 }
 
-async function requestRemoteSearch(append) {
-  const { data } = await api.post('/search', {
+function isActiveRemoteRequest(requestToken, workspaceStamp) {
+  return remoteRequestGate.isCurrent(requestToken)
+    && isWorkspaceRequestCurrent(workspace, workspaceStamp)
+}
+
+function remoteSearchPayload(page, lastIndex) {
+  const payload = {
     keyword: activeSearchKeyword.value,
     sourceIds: activeSourceIds.value,
     concurrentCount: activeConcurrentCount.value,
-    page: searchPage.value,
-    lastIndex: searchLastIndex.value,
-    searchSize: 20,
-  })
+  }
+  if (activeSearchIsSingleSource.value) {
+    payload.page = page
+  } else {
+    payload.lastIndex = lastIndex
+    payload.searchSize = 20
+  }
+  return payload
+}
+
+async function requestRemoteSearch({ append, page, lastIndex, requestToken, workspaceStamp }) {
+  const { data } = await api.post('/search', remoteSearchPayload(page, lastIndex))
+  if (!isActiveRemoteRequest(requestToken, workspaceStamp)) {
+    return { added: 0, current: false }
+  }
   const incoming = Array.isArray(data) ? data : (data?.list || [])
-  const added = appendRemoteResults(incoming, append)
-  searchPage.value = Number(data?.page || searchPage.value)
-  searchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : searchLastIndex.value
+  const { rows, added } = mergeRemoteSearchResults(append ? results.value : [], incoming)
+  results.value = rows
+  if (activeSearchIsSingleSource.value) {
+    searchPage.value = Number(data?.page || page)
+    searchLastIndex.value = -1
+  } else {
+    searchPage.value = page
+    searchLastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : lastIndex
+  }
   remoteHasMore.value = Boolean(data?.hasMore)
   workspace.replaceResultRows(results.value, remoteWorkspaceContinuation())
-  return added
-}
-
-function appendRemoteResults(incoming, append) {
-  const next = append ? [...results.value] : []
-  const seen = new Set(next.map(remoteResultDedupKey).filter(Boolean))
-  let added = 0
-  for (const item of incoming) {
-    const key = remoteResultDedupKey(item)
-    if (key && seen.has(key)) continue
-    if (key) seen.add(key)
-    next.push(item)
-    added += 1
-  }
-  results.value = next
-  return added
-}
-
-function remoteResultDedupKey(item) {
-  return remoteBookUrl(item) || remoteBookKey(item)
+  return { added, current: true }
 }
 
 function resetRemotePagination() {
@@ -345,6 +394,11 @@ function resetRemotePagination() {
   activeSearchKeyword.value = ''
   activeSourceIds.value = []
   activeConcurrentCount.value = 1
+  activeSearchIsSingleSource.value = false
+}
+
+function rememberResultScroll() {
+  workspace.rememberResultScroll(resultArea.value?.scrollTop || 0)
 }
 
 async function searchLocalBooks() {
@@ -404,6 +458,7 @@ function applyWorkspaceSearchIntent() {
 }
 
 function backToShelf() {
+  remoteRequestGate.invalidate()
   workspace.backToShelf()
   emit('back-to-shelf')
 }

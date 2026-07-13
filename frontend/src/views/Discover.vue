@@ -6,6 +6,12 @@
         <p class="workspace-result-subtitle">{{ activeSource ? `${activeSource.name} · ${activeExploreName || '默认'}` : '选择书源入口开始探索' }}</p>
       </div>
       <div class="workspace-result-actions">
+        <button
+          v-if="books.length || hasMore"
+          type="button"
+          :disabled="loadingMore || !hasMore"
+          @click="loadMoreBooks"
+        >{{ loadingMore ? '加载中...' : (hasMore ? '加载更多' : '没有更多了') }}</button>
         <button type="button" @click="backToShelf">书架</button>
       </div>
     </header>
@@ -47,15 +53,9 @@
       </aside>
 
       <section>
-        <div v-loading="loadingBooks" class="discover-results">
+        <div ref="discoverResults" v-loading="loadingBooks" class="discover-results">
           <RemoteBookResultGroups v-if="books.length" :groups="exploreResultGroups" @preview="openPreview" />
           <el-empty v-if="!loadingBooks && !books.length" :description="sources.length ? '选择左侧书源入口开始探索' : '没有配置 exploreUrl 的书源'" />
-        </div>
-
-        <div v-if="books.length" class="load-more-row">
-          <el-button :loading="loadingMore" :disabled="!hasMore" @click="loadMoreBooks">
-            {{ hasMore ? '加载更多' : '没有更多结果' }}
-          </el-button>
         </div>
       </section>
     </div>
@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createRemoteBook } from '../api/books'
@@ -90,6 +90,12 @@ import {
   remoteBookSourceName,
   remoteBookUrl,
 } from '../utils/remoteBookResult'
+import {
+  captureWorkspaceRequest,
+  createAsyncRequestGate,
+  isWorkspaceRequestCurrent,
+  mergeRemoteSearchResults,
+} from '../utils/workspaceContinuation.js'
 
 const router = useRouter()
 const emit = defineEmits(['back-to-shelf'])
@@ -120,6 +126,8 @@ const hasMore = ref(false)
 const loadingMore = ref(false)
 const expandedSources = ref('')
 const workspaceExploreReady = ref(false)
+const discoverResults = ref(null)
+const exploreRequestGate = createAsyncRequestGate()
 
 const activeSource = computed(() => sources.value.find(source => source.id === selectedSourceId.value))
 const exploreResultGroups = computed(() => {
@@ -173,6 +181,10 @@ onMounted(async () => {
   }
   workspaceExploreReady.value = true
   if (selectedSourceId.value) await loadBooks()
+})
+
+onBeforeUnmount(() => {
+  exploreRequestGate.invalidate()
 })
 
 watch(
@@ -265,58 +277,88 @@ function loadBooksFromEntry(source, entry) {
 async function loadBooks() {
   ensureActiveEntry()
   if (!selectedSourceId.value || !activeExploreUrl.value) return
-  workspace.showExploreResults([], exploreWorkspaceIntent())
+  const requestToken = exploreRequestGate.begin()
+  const workspaceStamp = captureWorkspaceRequest(workspace, 'explore')
+  const intent = exploreWorkspaceIntent({ page: 1, hasMore: false })
+  workspace.showExploreResults([], intent)
   workspace.setResultLoading(true)
   loadingBooks.value = true
   try {
-    page.value = 1
-    const { data } = await exploreBooks(selectedSourceId.value, { page: page.value, url: activeExploreUrl.value })
-    const result = normalizeExploreResult(data, page.value)
+    const { data } = await exploreBooks(intent.sourceId, { page: 1, url: intent.url })
+    if (!isActiveExploreRequest(requestToken, workspaceStamp)) return
+    const result = normalizeExploreResult(data, 1)
     books.value = result.items
+    page.value = result.page
     hasMore.value = result.hasMore
-    workspace.showExploreResults(books.value, exploreWorkspaceIntent())
+    workspace.showExploreResults(books.value, exploreWorkspaceIntent({ page: page.value, hasMore: hasMore.value }))
   } catch (err) {
-    ElMessage.error(readError(err, '加载探索结果失败'))
+    if (isActiveExploreRequest(requestToken, workspaceStamp)) {
+      ElMessage.error(readError(err, '加载探索结果失败'))
+    }
   } finally {
-    loadingBooks.value = false
-    workspace.setResultLoading(false)
+    if (isActiveExploreRequest(requestToken, workspaceStamp)) {
+      loadingBooks.value = false
+      workspace.setResultLoading(false)
+    }
   }
 }
 
 async function loadMoreBooks() {
-  if (!selectedSourceId.value || !activeExploreUrl.value || loadingMore.value || !hasMore.value) return
+  if (!selectedSourceId.value || !activeExploreUrl.value || loadingMore.value) return
+  if (!hasMore.value) {
+    ElMessage.info('没有更多了')
+    return
+  }
+  const requestToken = exploreRequestGate.begin()
+  const workspaceStamp = captureWorkspaceRequest(workspace, 'explore')
+  const nextPage = page.value + 1
+  const intent = exploreWorkspaceIntent({ page: nextPage, hasMore: hasMore.value })
+  workspace.rememberResultScroll(discoverResults.value?.scrollTop || 0)
   loadingMore.value = true
   workspace.setResultLoading(true)
   try {
-    const nextPage = page.value + 1
-    const { data } = await exploreBooks(selectedSourceId.value, { page: nextPage, url: activeExploreUrl.value })
+    const { data } = await exploreBooks(intent.sourceId, { page: nextPage, url: intent.url })
+    if (!isActiveExploreRequest(requestToken, workspaceStamp)) return
     const result = normalizeExploreResult(data, nextPage)
-    const known = new Set(books.value.map(book => activeRemoteKey(book)))
-    const nextItems = result.items.filter(book => !known.has(activeRemoteKey(book)))
-    books.value = [...books.value, ...nextItems]
+    const previousLength = books.value.length
+    const { rows, added } = mergeRemoteSearchResults(books.value, result.items, intent.sourceId)
+    books.value = rows
     page.value = result.page || nextPage
-    hasMore.value = result.hasMore && nextItems.length > 0
-    workspace.appendResultRows(nextItems, exploreWorkspaceIntent())
+    hasMore.value = result.hasMore
+    workspace.appendResultRows(rows.slice(previousLength), exploreWorkspaceIntent({ page: page.value, hasMore: hasMore.value }))
+    if (!added) {
+      ElMessage.info(hasMore.value ? '本批没有新增结果，仍可继续加载' : '没有更多了')
+    }
   } catch (err) {
-    ElMessage.error(readError(err, '加载更多失败'))
+    if (isActiveExploreRequest(requestToken, workspaceStamp)) {
+      ElMessage.error(readError(err, '加载更多失败'))
+    }
   } finally {
-    loadingMore.value = false
-    workspace.setResultLoading(false)
+    if (isActiveExploreRequest(requestToken, workspaceStamp)) {
+      loadingMore.value = false
+      workspace.setResultLoading(false)
+    }
   }
 }
 
-function exploreWorkspaceIntent() {
+function isActiveExploreRequest(requestToken, workspaceStamp) {
+  return exploreRequestGate.isCurrent(requestToken)
+    && isWorkspaceRequestCurrent(workspace, workspaceStamp)
+}
+
+function exploreWorkspaceIntent(values = {}) {
   return {
     sourceId: selectedSourceId.value,
     sourceGroup: activeSource.value?.group || selectedGroup.value,
     url: activeExploreUrl.value,
     name: activeExploreName.value,
-    page: page.value,
-    hasMore: hasMore.value,
+    page: values.page ?? page.value,
+    hasMore: values.hasMore ?? hasMore.value,
   }
 }
 
 function backToShelf() {
+  exploreRequestGate.invalidate()
   workspace.backToShelf()
   emit('back-to-shelf')
 }

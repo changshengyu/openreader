@@ -59,19 +59,31 @@ func (s *Server) search(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "未配置书源"})
 		return
 	}
-	// A caller can have configured sources that are temporarily suppressed by the
-	// per-user failure cache. That is a successful empty search result, not the
-	// configuration error used when no enabled source was selected at all.
-	sources = s.filterActiveSourceFailures(userID, sources)
+	// The failure cache is a per-user execution skip, not a different source
+	// list. Keep the original ordered list so a multi-source lastIndex remains a
+	// stable cursor even when a source expires from, or enters, suppression.
+	activeFailures, err := s.activeSourceFailures(userID, sources)
+	if err != nil {
+		activeFailures = nil
+	}
 
 	if !pagedRequest {
-		results := s.concurrentSearch(c.Request.Context(), userID, sources, req.Keyword, req.ConcurrentCount)
+		results := s.concurrentSearch(c.Request.Context(), userID, sources, req.Keyword, req.ConcurrentCount, activeFailures)
 		c.JSON(http.StatusOK, results)
 		return
 	}
 
 	page := normalizedSearchPage(req.Page)
 	if len(sources) == 1 {
+		if _, suppressed := activeFailures[sources[0].ID]; suppressed {
+			c.JSON(http.StatusOK, searchResponse{
+				List:      []engine.SearchResult{},
+				Page:      page,
+				LastIndex: -1,
+				HasMore:   false,
+			})
+			return
+		}
 		result, err := searchSingleSourcePage(c.Request.Context(), sources[0], req.Keyword, page)
 		if err != nil {
 			s.recordSourceFailure(userID, sources[0], err)
@@ -99,21 +111,22 @@ func (s *Server) search(c *gin.Context) {
 		req.ConcurrentCount,
 		lastIndex,
 		normalizedSearchSize(req.SearchSize),
+		activeFailures,
 	)
 	c.JSON(http.StatusOK, searchResponse{
 		List:      results,
 		Page:      page,
 		LastIndex: nextIndex,
-		HasMore:   nextIndex < len(sources)-1,
+		HasMore:   hasActiveSearchSourceAfter(sources, activeFailures, nextIndex),
 	})
 }
 
-func (s *Server) concurrentSearch(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount int) []engine.SearchResult {
-	results, _ := s.concurrentSearchFrom(parent, userID, sources, keyword, concurrentCount, -1, 0)
+func (s *Server) concurrentSearch(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount int, activeFailures map[uint]models.SourceFailure) []engine.SearchResult {
+	results, _ := s.concurrentSearchFrom(parent, userID, sources, keyword, concurrentCount, -1, 0, activeFailures)
 	return results
 }
 
-func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount, lastIndex, searchSize int) ([]engine.SearchResult, int) {
+func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount, lastIndex, searchSize int, activeFailures map[uint]models.SourceFailure) ([]engine.SearchResult, int) {
 	start := lastIndex + 1
 	if start < 0 {
 		start = 0
@@ -121,22 +134,33 @@ func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sourc
 	if start >= len(sources) {
 		return []engine.SearchResult{}, len(sources) - 1
 	}
-	limit := normalizedConcurrentCount(concurrentCount, len(sources)-start)
 	seen := make(map[string]bool)
 	aggregated := make([]engine.SearchResult, 0)
 	nextIndex := lastIndex
 
 	for start < len(sources) {
-		end := start + limit
-		if end > len(sources) {
-			end = len(sources)
+		remaining := len(sources) - start
+		limit := normalizedConcurrentCount(concurrentCount, remaining)
+		batch := make([]models.BookSource, 0, limit)
+		end := start
+		for end < len(sources) && len(batch) < limit {
+			source := sources[end]
+			end += 1
+			if _, suppressed := activeFailures[source.ID]; suppressed {
+				continue
+			}
+			batch = append(batch, source)
 		}
-		outcomes := searchSourceBatch(parent, sources[start:end], keyword, limit)
 		nextIndex = end - 1
+		if len(batch) == 0 {
+			start = end
+			continue
+		}
+		outcomes := searchSourceBatch(parent, batch, keyword, len(batch))
 		for _, outcome := range outcomes {
 			if outcome.Error != nil {
-				if outcome.Index >= 0 && outcome.Index < end-start {
-					s.recordSourceFailure(userID, sources[start+outcome.Index], outcome.Error)
+				if outcome.Index >= 0 && outcome.Index < len(batch) {
+					s.recordSourceFailure(userID, batch[outcome.Index], outcome.Error)
 				}
 				continue
 			}
@@ -155,6 +179,15 @@ func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sourc
 		start = end
 	}
 	return aggregated, nextIndex
+}
+
+func hasActiveSearchSourceAfter(sources []models.BookSource, activeFailures map[uint]models.SourceFailure, lastIndex int) bool {
+	for index := lastIndex + 1; index < len(sources); index++ {
+		if _, suppressed := activeFailures[sources[index].ID]; !suppressed {
+			return true
+		}
+	}
+	return false
 }
 
 type searchOutcome struct {
