@@ -363,3 +363,15 @@ OpenReader retains bounded remote/local scanning and case-insensitive normalized
 ## Compatibility rule
 
 If a refactor changes frontend routes, API paths should stay stable unless an old path is kept as a redirect/shim. Document removals before deleting compatibility behavior.
+
+## P2 parser structured-error contract (audited, not yet implemented)
+
+Reader-dev has no equivalent REST envelope, so OpenReader preserves deployed transport semantics while making parser failures machine-readable and safe.
+
+| Path family | Existing stable behavior | Additive contract |
+|---|---|---|
+| `GET /api/books/:id/chapters/:index/content` | Remote failure is `502 {"error":"failed to load chapter content"}`. | Keep that status and error text. Add optional `code` (`source_rule_invalid`, `source_rule_unsupported`, `source_request_failed`, `content_unavailable`) and `stage` (`content_url`, `content`, `next_content`). |
+| `POST /api/search` (single paged source), `GET /api/explore/:sourceId`, `POST /api/books/remote`, source change/refresh | Existing status and `error` key stay stable, but several handlers currently concatenate the raw Go error. | Keep status and top-level `error` key, replace unsafe raw detail with a stable client-safe message, and add optional `code`/`stage`. |
+| `/api/sources/:id/test-search`, `/test-chapters`, `/test-content` | Existing authenticated `200` shape includes result payload plus `error`. | Keep `200`, payload fields and `error`; add optional `code`/`stage`. Debug messages may name the parser stage but never include variable values, rule source, request URL query, response body, cookie, authorization header, JWT, WebDAV secret or filesystem path. |
+
+`code` and `stage` are optional additive fields. Legacy frontend paths must continue to use `error`; no parser error becomes an authentication failure, and only `engine.IsSourceRequestError` may enter `source_failures`.

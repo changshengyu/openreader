@@ -152,6 +152,28 @@
 - `{{...}}` 与 JavaScript 仍然明确返回 `ErrUnsupportedSourceRule`；变量值不落库、不进入章节缓存键、不写入调试响应或失效书源缓存。
 - 新增 `source_rule_variables_contract_test.go`，覆盖结果/操作隔离、详情→目录、正文单链、缺失键、坏 JSON、非字符串值、超长键和模板禁用；API source-debug 回归继续验证本地变量规则错误不会写入 `source_failures`。
 
+## 2026-07-13 P2-Parser-1G：持久变量与结构化错误审查（仅审查，未改应用代码）
+
+本节重新从固定上游 `fa22f271849d45f93349ae1636223e27b16a4691` 提取证据，使用 `AnalyzeRule.kt`、`AnalyzeUrl.kt`、`RuleData.kt`、`RuleDataInterface.kt`、`Book.kt`、`BookChapter.kt`、`SearchBook.kt`、`BookList.kt`、`BookChapterList.kt`、`BookContent.kt` 与 `WebBook.kt`。它替代此前“变量只能请求级”的临时结论，但不授权直接添加列或修改 API。
+
+| 范围 | 上游确切语义 | 当前 OpenReader | 判定 |
+| --- | --- | --- | --- |
+| 搜索变量 | `WebBook.searchBook` 先以临时 `SearchBook` 承接 URL/列表级变量；`BookList` 为每项建立独立 `SearchBook(variable = variableBook.variable)`，再把该 JSON 字符串复制到 `Book`。 | `SearchResult` 只有可见书籍字段；请求级 runtime 在搜索响应结束即丢弃。 | `must-fix`：可选 `variable` 必须随搜索结果并在“加入书架”请求中显式传递；结果之间不得共享写入。 |
+| 书籍变量 | `Book.variable` 是 JSON 字符串；`AnalyzeRule.put/get` 的优先级为章节 → 书籍 → 临时 `RuleData`，`bookName` 是书名特殊值。详情、目录、正文的同一 `Book` 会持续携带其变量。 | `models.Book` 没有变量列；详情→目录只在一次请求的 map 内共享，后续刷新/阅读会重新开始。 | `must-fix`：增加可为空的 `books.variable` 文本列，作为受限变量 JSON 的唯一持久来源；旧空列必须等价为空 map。 |
+| 章节变量 | `BookChapter.variable` 是 JSON 字符串。目录逐项新建章节后，字段规则可写入该章节；正文读取/写入该章节，`title` 是章节特殊值。 | `models.Chapter` 没有变量列，正文没有章节变量输入/输出。 | `must-fix`：增加可为空的 `chapters.variable` 文本列；刷新目录时在同一事务中替换章节变量，正文只更新当前书籍下的当前章节。 |
+| 变量写入 | 上游 map 未限制大小、并发分叉共享可变 `Book`。 | 1F 已有 32 项、128/4096 字节、16 KiB、8 层的受限 runtime；分叉克隆 map。 | `acceptable security difference`：持久化只能接受并输出同一受限 JSON map，保持单链共享、分叉克隆；不复制上游无界/并发共享写入。 |
+| 生命周期与切换 | 上游 `Book` 的变量会保留；来源切换的实际对象更新不提供跨来源隔离。 | 多用户 `Book` 以 `user_id` 所有；来源可能变更，备份/恢复按 URL 合并。 | `must-fix with security adaptation`：变量必须通过 `Book.UserID` 与 `Chapter.BookID` 间接隔离；来源 ID 改变、书源 URL 变更或规则集变更时清空该书变量与章节变量，避免把旧来源令牌带入新来源。 |
+| 备份/恢复 | 上游 Book/BookChapter JSON 含 `variable`；SearchBook 序列化也保留 `variable`。 | `bookshelf.json` 由 `models.Book` 导出，但当前无此列；章节不在备份中。 | `must-fix`：`bookshelf.json` 增加可选 `variable`；新增可选 `chapterVariables.json`，按目标用户的书 URL + 章节 URL/index 恢复。旧备份缺失字段/文件必须保持可恢复。 |
+| 错误反馈 | 上游是应用内异常/调试链，不存在 OpenReader REST 响应形状。 | 阅读正文固定 `502 {error:"failed to load chapter content"}`；搜索、探索、加书和换源有时直接回显 `err.Error()`；调试接口固定 `200` 并含原始 error。 | `must-fix`：保留状态码和 `error` 字段，新增可选安全 `code`/`stage`；禁止回显规则字面量、变量值、URL query、cookie、headers、JWT、文件路径或响应正文。 |
+
+### P2-Parser-1G/2 测试与实施门槛
+
+1. 先为 `Book.Variable`、`Chapter.Variable` 写 SQLite 加列、空旧值、无效/过大 JSON、来源切换清空、用户隔离和回滚测试；不得对旧 `data/`、`cache/`、`library/` 做扫描或改写。
+2. 搜索 fixture 必须证明每项从临时变量继承初值后独立写入；“搜索 → BookInfo → 加书 → 重开目录 → 正文”必须保留正确的书籍/章节变量，正文多分叉不相互写入。
+3. 备份/恢复 fixture 必须同时覆盖新 `variable`、`chapterVariables.json`、旧 OpenReader/reader-dev 备份缺失字段、重复恢复幂等性和目标用户隔离。
+4. 结构化错误先在不改 HTTP 状态码的前提下，覆盖正文、单书源分页搜索、探索、加书/换源和 `/api/sources/:id/test*`；旧客户端只读 `error` 时行为不变，现代客户端可读取 `code`/`stage`。
+5. 任何变量或错误实现完成后都必须跑完整 Go/前端测试、真实浏览器书源流程和 Docker 挂载卷/备份烟测；本节未完成前不得称为持久变量对齐。
+
 ## 审查范围与上游证据
 
 上游并非把书源规则当作单一 CSS selector。其通用解释器由下列文件共同定义，并被搜索、详情、目录和正文共用：

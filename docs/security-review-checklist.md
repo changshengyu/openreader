@@ -60,6 +60,7 @@ Evidence: `backend/api/source_failure_contract_test.go`, `frontend/tests/sourceF
 - [x] The raw `//` XPath shorthand is recognized, while an ordinary relative URL is never reinterpreted as XPath.
 - [x] A single next-content URL is compared to the adjacent catalog chapter after final-URL normalization; a matching URL stops the current chapter before any next-chapter request. Empty text content rules fail locally without page-cache or failure-cache writes.
 - [ ] Broader rule size/chain limits, persistent variable migration design and structured client error categories remain in subsequent parser slices. `{{...}}` remains outside the bounded runtime and must stay disabled without an isolated JS sandbox.
+- [ ] Persistent parser variables require additive `books.variable`/`chapters.variable` columns, bounded JSON validation, source-change clearing, user-scoped restore and a portable chapter-variable backup artifact. Parser-facing API errors require stable `code`/`stage` categories without raw rule, variable, URL-query, credential, JWT, response-body or filesystem-path disclosure.
 
 Evidence: `backend/engine/source_rule_evaluator_test.go`, `backend/api/source_failure_contract_test.go`, and the full backend suite required before release.
 
