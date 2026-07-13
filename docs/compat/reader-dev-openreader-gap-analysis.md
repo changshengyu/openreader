@@ -28,7 +28,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, read-aloud, and cross-chapter behavior. | Current `ReaderChapterContent.vue` handles text/images/volume blocks, CBZ image resources, EPUB iframe resources, a dedicated audio branch for `type === 1` chapters, and the extracted TTS/read-bar state machine. | EPUB, image/CBZ rendering/import/resource serving, continuous cross-chapter behavior, audio playback/capabilities and the TTS state branch are implemented; remaining risk is periodic whole-suite regression rather than an identified missing Reader format. | `aligned` for extracted Reader formats | Keep EPUB/image/CBZ/continuous/audio/TTS browser contracts in every release candidate. |
 | BookInfo | Upstream has one `web/src/components/BookInfo.vue` used from workspace and reader flows. | Current has shared `BookInfoDialog.vue` / `BookInfoPanel.vue` / `OverlayBookInfo.vue`; the old `/books/:id` URL redirects to the Index workspace and opens the shared dialog. | The independent `BookDetail.vue` route structure has been removed from the product path; search/discover/route actions are centralized; Reader opens plain BookInfo without injecting toolbar shortcut actions. Remaining P1 work is Index-scene placement and search/discover/source flow convergence. | `partial` for P1 | Single BookInfo action contract; search/shelf/reader reuse tests. |
 | Bookshelf/BookManage/BookGroup | Upstream: `BookShelf.vue`, `BookManage.vue`, `BookGroup.vue` under Index workspace. | Current: `Home.vue`, overlay management components, categories/store utilities. | Some enhancements may be valid, but workflow and mobile sidebar behavior need upstream comparison. | `unknown` | Workspace browser flows; category/order tests. |
-| Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons must be extracted from `Index.vue` and related CSS. | Current `AppLayout.vue` and mobile navigation had reported drag/fixed-button mismatch. | User-visible mismatch: GitHub/day-night buttons should not slide with drawer content. | `must-fix` for P1 | Mobile drag smoke; fixed-bottom button geometry probe. |
+| Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons are defined by `Index.vue` and related CSS. | `AppLayout.vue` and `useAppMobileNavigation.js` now separate 260px visual width from the 270px gesture window, with bottom controls outside the scroll container. | The user-requested stable bottom controls during drag are an explicit OpenReader UX adaptation; the extracted upstream interaction contract is browser-validated. | `aligned` for extracted P1 sidebar slice | Mobile drag/fixed-bottom/shelf-geometry smoke at 390×844 and 360×800. |
 | Search/explore/source flow | Upstream Index integrates search/explore/source and BookInfo transitions. | Current has separate `Search.vue`, `Discover.vue`, `Sources.vue` pages. | Flow fragmentation can change API order, panel state, and back behavior. | `must-fix` for P1 | Search → result group → BookInfo → add/read browser test. |
 | Online source parsing | Upstream reader3-compatible source semantics live across `AnalyzeRule` plus `BookList/BookInfo/BookChapterList/BookContent`. | Current Go parser executes the extracted CSS/JSONPath/XPath/regex/composite/replace/pagination subsets, bounded `@put`/`@get`, and persisted bounded book/chapter variables; rule-level JS/templates already fail explicitly. | P2-Parser-1G delivered user-scoped SQLite/backup variable persistence and P2-Parser-2A supplies redacted additive parser `code`/`stage` errors without changing legacy statuses or `error`. The 2026-07-13 script-entry audit found a remaining correctness gap: dynamic `Header` and `loginCheckJs` are active upstream script entry points but Go silently ignores them. `{{...}}` JavaScript remains a security-gated difference, never a silent empty result. | `partial` for P2 parser | Dynamic-header/login-check rejection before fetch, request/user isolation tests, source-debug/error-redaction tests, browser source flow. |
 | Local import catalog parsing | Upstream `BookController.kt` imports local files through `Book.initLocalBook(...)` and `LocalBook.getChapterList(...)`; TXT parsing uses `TextFile.kt` with a 512-KiB detection probe, enabled-rule reverse scoring with a one-match threshold, direct Java multiline matching, `前言`, and deterministic 10-KiB no-TOC pseudo chapters. | Go now probes the first 512 KiB, applies the enabled-rule reverse scoring/one-match semantics, preserves matching custom titles and `前言`, creates upstream-style no-TOC pseudo chapters, and makes upload/LocalStore/WebDAV rule retries reuse immutable user-scoped staged bytes. | Materialized per-chapter cache remains an allowed Go/multi-user adaptation; TXT parsing behavior is aligned for the extracted slice. | `aligned` for TXT P0; `partial` for non-TXT parser audit | Engine/import/API fixtures, frontend retry-state contract, full backend/frontend tests, and mounted-volume smoke before release. |
@@ -79,7 +79,7 @@ This slice changed only TXT automatic detection, matcher gating, preface/fallbac
 
 ## Immediate P1 contract: Index mobile sidebar and workspace shell
 
-Status: extracted on 2026-07-07 before implementation.
+Status: implemented and browser-revalidated on 2026-07-13 for the extracted sidebar and mobile-shelf slice. The larger Index-scene convergence is recorded separately below.
 
 This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`, primarily `web/src/views/Index.vue`.
 
@@ -118,23 +118,23 @@ This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e
 
 | Layer | Current evidence | Difference | Classification |
 |---|---|---|---|
-| Title spacing/scale | `Home.vue` mobile CSS uses `padding: 22px 16px 10px`, and narrower breakpoints override to `18px 14px 0`; title font is 30px/28px. | Too large and too narrow compared with upstream 20px title and 24px side inset. | `must-fix` |
-| Group wrapper | Mobile `.book-group-wrapper` has `margin-left: 0`, `margin-right: 0`, and later `padding: 5px 0`. | Groups span edge-to-edge instead of upstream 24px margins. | `must-fix` |
-| Book rows | Mobile `.book-row` uses viewport-clamped cover columns, 14/16px or 12/clamped padding, and no fixed 84×112 cover. | Visible row geometry differs from upstream and can drift across 360/390px screens. | `must-fix` |
+| Title spacing/scale | Real-browser computed style is 24px left/right padding and 20px title font at both 390px and 360px viewports. | Matches the extracted upstream mobile geometry. | `aligned` |
+| Group wrapper | Real-browser group bounds retain 24px left and right insets at both target mobile widths. | Matches the extracted upstream group geometry. | `aligned` |
+| Book rows | Real-browser computed style is 20px horizontal row padding with an 84×112 cover at both target mobile widths. | Matches the extracted upstream visible geometry without horizontal overflow. | `aligned` |
 | Layout model | OpenReader uses CSS grid/list rows and chip buttons instead of Element tabs/desktop `.book` flex. | Acceptable only if visible geometry and operations remain upstream-compatible. | `technical-stack-equivalent` |
 | Empty/loading rows | OpenReader adds skeleton/empty states. | Acceptable enhancement; must not alter normal loaded shelf geometry. | `acceptable-change` |
 
-Required implementation gates for this shelf-geometry slice:
+### Completed verification gates for this shelf-geometry slice
 
-1. Change mobile Home CSS to upstream insets and dimensions: title 24px side inset, compact 20px title, group 24px side margins, rows `10px 20px`, covers `84px × 112px`, info margin/gap equivalent to 20px.
-2. Add source-level CSS tests for these constants so future refactors do not drift back.
-3. Extend the Index mobile browser smoke to verify at 390×844 and 360×800:
+1. Mobile Home CSS resolves to the upstream insets and dimensions: title 24px side inset, compact 20px title, group 24px side margins, rows `10px 20px`, and `84px × 112px` covers.
+2. The browser contract locks these rendered values, guarding future visual drift without tying assertions to one CSS implementation.
+3. The Index mobile browser smoke verifies at 390×844 and 360×800:
    - title left/right insets are approximately 24px;
    - group wrapper side insets are approximately 24px;
    - first book row left/right padding is approximately 20px;
    - cover box is approximately 84×112;
    - no horizontal overflow.
-4. Keep the larger Index scene convergence and BookInfo consolidation as separate P1 slices.
+4. The larger Index scene convergence and BookInfo consolidation remain separate P1 slices.
 
 ### Current OpenReader evidence and classification
 
@@ -143,29 +143,39 @@ Required implementation gates for this shelf-geometry slice:
 | Sidebar frame | `frontend/src/layouts/AppLayout.vue` uses `.app-sidebar` fixed left, width `var(--app-sidebar-width)`, and `.app-sidebar-scroll` for the scrollable content. | Structurally capable of matching upstream. Need assert width source and mobile transitions. | `technical-stack-equivalent` |
 | Bottom icons | `sidebar-bottom-icons` is outside `.app-sidebar-scroll`, so scroll does not move it. | This is already aligned with the upstream fixed-bottom structure, but tests should lock it so future edits do not regress. | `aligned` |
 | Bottom icon drag behavior | Mobile CSS applies a counter-transform using `--mobile-nav-drag-offset`. | Upstream moves the whole navigation frame during drag, but the user explicitly requested GitHub/day-night controls not to slide with side-panel dragging. Keep this as a documented OpenReader UX difference. | `acceptable-change` |
-| Gesture width | `useAppMobileNavigation.js` uses `navigationWidth = 260` for both CSS width and drag clamp. | Upstream drag window is 270px while the sidebar width is 260px. | `must-fix` |
-| Drag style | Current opening drag style uses `marginLeft: moveX - width`, producing `-180px` for an 80px drag from hidden state. | Upstream uses `moveX - 270`; after changing only the drag bound, an 80px drag should be `-190px`. | `must-fix` |
+| Gesture width | `useAppMobileNavigation.js` uses `navigationWidth = 260` and a separate `dragLimit = 270`. | Upstream drag window and visual sidebar width are independently preserved. | `aligned` |
+| Drag style | Hidden + 80px drag yields `marginLeft: -190px`; the 270px endpoint yields `0px`. | Matches upstream `moveX - 270` behavior. | `aligned` |
 | Touch guards | Current composable keeps the 20px edge guard and vertical-dominance passthrough. | Aligned and should be retained. | `aligned` |
 | Route/action close | `runNavAction()` and sidebar search navigation close mobile sidebar after every route/action. | Upstream Index does not navigate between separate pages for these workspace panels, but shelf click does close the sidebar. This is part of the larger P1 scene-convergence work; for this slice, do not add new closures beyond the existing workspace click behavior. | `partial` |
 | Workspace click close | `.app-workspace @click="closeMobileNavigation"` mirrors upstream shelf click close. | Keep, but make sure sidebar controls/bottom buttons do not pass the click into workspace. | `aligned` |
-| Tests | `frontend/tests/appMobileNavigation.test.mjs` currently asserts 260px drag clamp/style. | Tests encode the wrong drag contract and must be updated to upstream 270px gesture semantics while preserving 260px visual width. | `must-fix` |
+| Tests | `frontend/tests/appMobileNavigation.test.mjs` asserts 260px visual width, 270px gesture boundary, -190px at 80px opening drag, and edge/vertical guards. | `scripts/smoke/index-mobile-sidebar-contract.mjs` verifies rendered geometry and interactions at 390×844 and 360×800. | `aligned` |
 
-### Required implementation gates
+### Completed sidebar verification gates
 
-1. Split the mobile sidebar visual width (260px) from the upstream gesture window (270px).
-2. Update `useAppMobileNavigation` drag style and clamp tests:
+1. The mobile sidebar visual width (260px) is separated from the upstream gesture window (270px).
+2. `useAppMobileNavigation` drag style and clamp tests assert:
    - static `navigationStyle` keeps `--mobile-nav-width: 260px`;
    - hidden + 80px right-drag yields `marginLeft: -190px`;
    - hidden + 270px right-drag is accepted;
    - hidden + 271px right-drag is ignored/clamped according to the upstream window;
    - open + 270px left-drag is accepted.
-3. Add a source/DOM-level test locking `.sidebar-bottom-icons` outside `.app-sidebar-scroll`, with fixed/absolute positioning and child pointer events.
-4. Add or update a real-browser mobile smoke that:
+3. DOM/CSS structure keeps `.sidebar-bottom-icons` outside `.app-sidebar-scroll`, with absolute fixed-bottom positioning and interactive children.
+4. The real-browser mobile smoke verifies that it:
    - opens the sidebar by menu and by drag at 390×844;
    - verifies content scrolling does not move GitHub/day-night buttons relative to the sidebar frame;
    - verifies workspace tap closes the sidebar;
    - verifies bottom icon click does not close the sidebar by propagation.
-5. Keep this as an incremental P1 shell-alignment slice. Larger Index convergence remains pending: merging Search/Discover/Sources/Settings into the upstream single workspace scene and consolidating BookInfo.
+5. This remains an incremental P1 shell-alignment slice. Larger Index convergence is separately tracked.
+
+### 2026-07-13 sidebar revalidation
+
+This review revisited the fixed upstream `Index.vue` touch handler and CSS, then compared it with `useAppMobileNavigation.js`, `AppLayout.vue`, `appMobileNavigation.test.mjs`, and the real-browser sidebar contract. The earlier `must-fix` evidence above was historical: the implementation and its tests already contain the required separation of a 260px sidebar from the 270px gesture window.
+
+- Unit contract: all five navigation tests pass, including `80px → -190px`, acceptance at 270px, rejection beyond the range, the 20px edge guard, and vertical-scroll passthrough.
+- Browser contract: `index-mobile-sidebar-contract.mjs` passed at 390×844 and 360×800. It confirms default `-260px` hidden state, 260px rendered width, 270px drag endpoint, workspace close behavior, zero scroll movement for bottom controls, and no click-through from the theme button.
+- Allowed difference: OpenReader counter-transforms the bottom GitHub/theme controls during a drawer drag so they remain visually fixed. This follows the user's explicit request and does not alter their fixed-bottom/independent-scroll relationship to the sidebar.
+
+This is verification only; it does not create a new Docker candidate because no production code changed.
 
 ## Immediate P1 contract: shared BookInfo and old detail URL compatibility
 
