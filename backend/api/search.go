@@ -54,20 +54,15 @@ func (s *Server) search(c *gin.Context) {
 		return
 	}
 	sources = orderSearchSources(sources, req.SourceIDs)
-	sources = s.filterActiveSourceFailures(userID, sources)
 	pagedRequest := req.Page != nil || req.LastIndex != nil || req.SearchSize != nil
 	if len(sources) == 0 {
-		if pagedRequest {
-			c.JSON(http.StatusOK, searchResponse{
-				List:      []engine.SearchResult{},
-				Page:      normalizedSearchPage(req.Page),
-				LastIndex: -1,
-			})
-		} else {
-			c.JSON(http.StatusOK, []engine.SearchResult{})
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未配置书源"})
 		return
 	}
+	// A caller can have configured sources that are temporarily suppressed by the
+	// per-user failure cache. That is a successful empty search result, not the
+	// configuration error used when no enabled source was selected at all.
+	sources = s.filterActiveSourceFailures(userID, sources)
 
 	if !pagedRequest {
 		results := s.concurrentSearch(c.Request.Context(), userID, sources, req.Keyword, req.ConcurrentCount)
@@ -221,7 +216,7 @@ func searchSingleSourcePage(parent context.Context, source models.BookSource, ke
 
 func normalizedConcurrentCount(value, sourceCount int) int {
 	if value <= 0 {
-		value = 60
+		value = 24
 	}
 	if value > sourceCount {
 		value = sourceCount

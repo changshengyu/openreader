@@ -11,7 +11,7 @@ function createController(overrides = {}) {
       searchType: 'all',
       group: '',
       sourceId: '',
-      concurrent: 60,
+      concurrent: 24,
     },
     setSearchConfig(config) {
       Object.assign(this.search, config)
@@ -58,6 +58,7 @@ test('loads enabled source groups and initializes empty search choices', async (
   assert.equal(fixture.preferences.search.group, '分组甲')
   assert.equal(fixture.preferences.search.sourceId, 1)
   assert.equal(fixture.controller.sourceCacheKey(), 'bookSourceList@user-7')
+  assert.deepEqual(fixture.controller.concurrentOptions.value, [12, 18, 24, 30, 36, 42, 48, 54, 60])
 })
 
 test('builds remote and local routes from the active search preference', () => {
@@ -107,11 +108,19 @@ test('uses the shared Index workspace callback without replacing the current rou
     ['workspace-search', {
       q: '工作台搜索',
       searchType: 'single',
-      concurrent: 60,
+      concurrent: 24,
       sourceId: 8,
     }],
     ['workspace-search', { mode: 'local', q: '工作台搜索' }],
   ])
+})
+
+test('keeps a restored legacy concurrency value visible until the user explicitly replaces it', () => {
+  const fixture = createController()
+  fixture.preferences.search.concurrent = 32
+
+  assert.ok(fixture.controller.concurrentOptions.value.includes(32))
+  assert.match(fixture.controller.concurrentLabel(32), /旧配置/)
 })
 
 test('warns for a blank primary search and synchronizes route keywords', async () => {

@@ -1,6 +1,6 @@
 # P1-B Index 搜索、探索与 BookInfo 连续流程契约
 
-状态：**上游契约已提取；本批尚未改动应用代码**。  
+状态：**P1-B 搜索默认值、并发偏好兼容与无书源错误语义已实现并完成三种视口的搜索→探索→BookInfo smoke；加载更多、跨页去重和其余入口仍在后续 P1-B 范围内。**
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游证据：`web/src/views/Index.vue`、`web/src/plugins/config.js`、`BookController.kt#searchBook` / `#searchBookMulti`；当前证据：`frontend/src/{stores/preferences.js,composables/useAppSidebarSearch.js,stores/indexWorkspace.js,views/Search.vue}`、`backend/api/search.go`、`backend/api/settings.go`。
 
@@ -58,3 +58,11 @@
 3. 改正前端无书源提示和 Go 默认/空源错误，随后验证单源、多源、分组和连续分页。
 4. 最后再做真实浏览器及 BookInfo 五入口回归；P1-B 完整通过后才将其标为对齐。
 
+## 6. 2026-07-13 实施记录：搜索默认值与错误语义切片
+
+- 前端统一从 `searchPreference.js` 读取默认值和选项：新设置为 `all + 24`，标准上游候选为 `12/18/24/30/36/42/48/54/60`。
+- 已部署的 `8/16/32` 不会被读取逻辑静默重置；下拉继续显示该值并明确标注“旧配置”，只有用户主动选择标准档位才会更新。
+- 工作台意图、搜索视图、侧栏搜索和服务端的缺省并发全部收敛为 24；正数仍按实际书源数限流。
+- `POST /api/search` 在没有任何启用/选中书源时返回 `400 {"error":"未配置书源"}`。已配置书源若被该用户的失效缓存全部临时抑制，仍返回成功空结果，保持“跳过失效书源”而非误报配置错误。
+- 覆盖了前端偏好兼容、侧栏搜索参数、服务端默认值/无源错误，以及失效书源缓存的回归。全量前端 `npm test` 为 **369 项通过**，`go test ./...` 与 `npm run build` 通过。
+- `scripts/smoke/index-workspace-contract.mjs` 已在真实 Chrome 以 `1440×900`、`390×844`、`360×800` 通过：新会话侧栏搜索发出 24 并发；旧链接的 8 并发保持；搜索、BookInfo 的取消/分组确认/阅读跳转、探索及返回书架均无页面异常和横向溢出。

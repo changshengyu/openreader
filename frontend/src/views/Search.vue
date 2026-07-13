@@ -80,6 +80,10 @@ import { newestBookProgress } from '../utils/bookOrder'
 import { isLocalBook, localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import {
+  DEFAULT_SEARCH,
+  normalizeSearchConcurrent,
+} from '../utils/searchPreference.js'
+import {
   remoteBookCreatePayload,
   remoteBookKey,
   remoteBookSourceId,
@@ -103,8 +107,7 @@ const selectedGroup = ref(preferences.search.group)
 const singleSourceId = ref(Number(preferences.search.sourceId || 0) || null)
 const targetCategoryIds = ref([])
 const searchType = ref(preferences.search.searchType)
-const concurrentOptions = [8, 16, 32, 60]
-const concurrentCount = ref(concurrentOptions.includes(Number(preferences.search.concurrent)) ? Number(preferences.search.concurrent) : 60)
+const concurrentCount = ref(normalizeSearchConcurrent(preferences.search.concurrent))
 const results = ref([])
 const searching = ref(false)
 const loadingMore = ref(false)
@@ -255,7 +258,7 @@ async function doSearch() {
   const value = keyword.value.trim()
   if (!value) return
   if (!selectedIds.value.length) {
-    ElMessage.warning('请至少选择一个书源')
+    ElMessage.warning('未配置书源')
     return
   }
   workspace.setResultLoading(true)
@@ -392,10 +395,12 @@ function applyWorkspaceSearchIntent() {
   const intent = workspace.search
   searchMode.value = intent.mode === 'local' ? 'local' : 'remote'
   keyword.value = intent.keyword || ''
-  searchType.value = ['all', 'group', 'single', 'custom'].includes(intent.searchType) ? intent.searchType : 'all'
+  searchType.value = ['all', 'group', 'single', 'custom'].includes(intent.searchType)
+    ? intent.searchType
+    : DEFAULT_SEARCH.searchType
   selectedGroup.value = intent.group || ''
   singleSourceId.value = Number(intent.sourceId || 0) || null
-  concurrentCount.value = concurrentOptions.includes(Number(intent.concurrent)) ? Number(intent.concurrent) : 60
+  concurrentCount.value = normalizeSearchConcurrent(intent.concurrent)
 }
 
 function backToShelf() {

@@ -63,7 +63,7 @@
           <el-option v-for="source in sidebarEnabledSources" :key="source.id" :label="source.name" :value="source.id" />
         </el-select>
         <el-select v-model="sidebarConcurrent" size="small" class="setting-select">
-          <el-option v-for="count in concurrentOptions" :key="count" :label="`${count}并发线程`" :value="count" />
+          <el-option v-for="count in concurrentOptions" :key="count" :label="concurrentLabel(count)" :value="count" />
         </el-select>
       </section>
 
@@ -288,6 +288,7 @@ const {
   concurrent: sidebarConcurrent,
   enabledSources: sidebarEnabledSources,
   sourceGroups: sidebarSourceGroups,
+  concurrentLabel,
   goSearch,
   clearSearchQuery,
   loadSources: loadSidebarSources,

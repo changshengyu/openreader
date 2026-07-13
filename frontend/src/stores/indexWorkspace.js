@@ -1,4 +1,8 @@
 import { defineStore } from 'pinia'
+import {
+  DEFAULT_SEARCH,
+  normalizeSearchConcurrent,
+} from '../utils/searchPreference.js'
 
 const RESULT_MODES = new Set(['search', 'explore'])
 
@@ -15,10 +19,10 @@ function freshSearch() {
   return {
     keyword: '',
     mode: 'remote',
-    searchType: 'all',
+    searchType: DEFAULT_SEARCH.searchType,
     group: '',
     sourceId: '',
-    concurrent: 60,
+    concurrent: DEFAULT_SEARCH.concurrent,
   }
 }
 
@@ -85,10 +89,10 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
       this.search = {
         keyword: normalizedText(intent.keyword),
         mode: intent.mode === 'local' ? 'local' : 'remote',
-        searchType: normalizedText(intent.searchType) || 'all',
+        searchType: normalizedText(intent.searchType) || DEFAULT_SEARCH.searchType,
         group: normalizedText(intent.group),
         sourceId: intent.sourceId ?? '',
-        concurrent: normalizedPositivePage(intent.concurrent, 60),
+        concurrent: normalizeSearchConcurrent(intent.concurrent),
       }
       this.clearResultState()
       this.searchRevision += 1

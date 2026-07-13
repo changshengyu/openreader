@@ -1,9 +1,12 @@
 import { computed, ref, watch } from 'vue'
+import {
+  searchConcurrentLabel,
+  searchConcurrentOptions,
+} from '../utils/searchPreference.js'
 
 export function useAppSidebarSearch(options) {
   const quickSearch = ref('')
   const sources = ref([])
-  const concurrentOptions = [8, 16, 32, 60]
 
   const searchType = computed({
     get: () => options.preferences.search.searchType,
@@ -21,6 +24,7 @@ export function useAppSidebarSearch(options) {
     get: () => options.preferences.search.concurrent,
     set: value => options.preferences.setSearchConfig({ concurrent: value }),
   })
+  const concurrentOptions = computed(() => searchConcurrentOptions(concurrent.value))
   const enabledSources = computed(() => (
     sources.value.filter(source => source.enabled)
   ))
@@ -159,6 +163,7 @@ export function useAppSidebarSearch(options) {
     concurrent,
     enabledSources,
     sourceGroups,
+    concurrentLabel: searchConcurrentLabel,
     searchRouteQuery,
     localSearchRouteQuery,
     goSearch,

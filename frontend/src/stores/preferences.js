@@ -1,12 +1,19 @@
 import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
+import { DEFAULT_SEARCH, sanitizeSearchPreference } from '../utils/searchPreference.js'
+
+export {
+  DEFAULT_SEARCH,
+  SEARCH_CONCURRENT_OPTIONS,
+  searchConcurrentLabel,
+  searchConcurrentOptions,
+  sanitizeSearchPreference,
+} from '../utils/searchPreference.js'
 
 const PREFERENCE_KEYS = ['shelf', 'search']
 const SHELF_LAYOUT_VERSION = 2
 const DEFAULT_SHELF = { view: 'grid', layoutVersion: SHELF_LAYOUT_VERSION }
-const DEFAULT_SEARCH = { searchType: 'all', group: '', sourceId: '', concurrent: 60 }
-const concurrentOptions = [8, 16, 32, 60]
 const syncTimers = new Map()
 
 export const usePreferencesStore = defineStore('preferences', {
@@ -135,17 +142,6 @@ function sanitizeShelfPreference(value = {}) {
   return {
     ...DEFAULT_SHELF,
     view: !migrated && value.view === 'list' ? 'list' : 'grid',
-  }
-}
-
-function sanitizeSearchPreference(value = {}) {
-  const searchType = ['all', 'group', 'single'].includes(value.searchType) ? value.searchType : DEFAULT_SEARCH.searchType
-  return {
-    ...DEFAULT_SEARCH,
-    searchType,
-    group: typeof value.group === 'string' ? value.group : '',
-    sourceId: value.sourceId === undefined || value.sourceId === null ? '' : value.sourceId,
-    concurrent: concurrentOptions.includes(Number(value.concurrent)) ? Number(value.concurrent) : DEFAULT_SEARCH.concurrent,
   }
 }
 

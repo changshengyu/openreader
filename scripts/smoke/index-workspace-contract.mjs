@@ -53,7 +53,9 @@ function remoteBook(title = '工作台搜索结果') {
 async function installApiMocks(page) {
   let shelfBooks = [{ id: 1, title: '书架测试书', author: 'OpenReader', chapterCount: 1 }]
   let remoteCreateCount = 0
+  const searchRequests = []
   await page.exposeFunction('__workspaceRemoteCreateCount', () => remoteCreateCount)
+  await page.exposeFunction('__workspaceSearchRequests', () => searchRequests)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
     const request = route.request()
@@ -82,6 +84,7 @@ async function installApiMocks(page) {
     if (path === '/explore/1') return route.fulfill(json({ items: [remoteBook('工作台探索结果')], page: 1, hasMore: false }))
     if (path === '/search' && method === 'POST') {
       const body = request.postDataJSON() || {}
+      searchRequests.push(body)
       return route.fulfill(json({ list: [remoteBook(body.keyword || '工作台搜索结果')], page: 1, lastIndex: -1, hasMore: false }))
     }
     if (path === '/books/remote' && method === 'POST') {
@@ -136,6 +139,16 @@ async function runViewport(browser, viewport) {
   await installApiMocks(page)
 
   const root = targetUrl.replace(/\/$/, '')
+  await page.goto(root, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
+  await openMobileNavigation(page, viewport)
+  const freshSearchInput = page.locator('.app-shell-search input')
+  await freshSearchInput.fill('默认侧栏搜索')
+  await freshSearchInput.press('Enter')
+  await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
+  const freshDefaultSearch = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
+  assert(freshDefaultSearch.concurrentCount === 24, `${viewport.width}: fresh sidebar search must use the upstream default concurrency 24`)
+
   await page.goto(`${root}/search?q=旧链接搜索&searchType=all&concurrent=8`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
   const legacyState = await page.evaluate(() => ({
@@ -145,7 +158,9 @@ async function runViewport(browser, viewport) {
   }))
   assert(legacyState.path === '/', `${viewport.width}: /search must redirect to /`)
   assert(legacyState.workspace === 'search', `${viewport.width}: redirected search must retain workspace=search`)
-  assert(legacyState.heading.includes('搜索 (1)'), `${viewport.width}: search result heading is missing`) 
+  assert(legacyState.heading.includes('搜索 (1)'), `${viewport.width}: search result heading is missing`)
+  const legacySearch = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
+  assert(legacySearch.concurrentCount === 8, `${viewport.width}: legacy concurrency must remain 8 until the user changes it`)
   await assertNoHorizontalOverflow(page, `${viewport.width} search`)
 
   await page.getByRole('button', { name: '查看信息' }).click()
@@ -175,6 +190,8 @@ async function runViewport(browser, viewport) {
   }))
   assert(directSearchState.path === '/', `${viewport.width}: sidebar search must retain the root scene`)
   assert(directSearchState.heading.includes('搜索 (1)'), `${viewport.width}: second sidebar search did not refresh results`)
+  const legacyPreferenceSearch = (await page.evaluate(() => window.__workspaceSearchRequests())).at(-1)
+  assert(legacyPreferenceSearch.concurrentCount === 8, `${viewport.width}: sidebar search must retain the active legacy concurrency until the user changes it`)
   await assertNoHorizontalOverflow(page, `${viewport.width} second-search`)
 
   await page.getByRole('button', { name: '探索书源' }).click()
