@@ -14,6 +14,7 @@ test('remote result cards preserve upstream cover-info and body-read entry split
   assert.match(component, /class="result-card app-panel"[\s\S]*@click="\$emit\('read', item\)"/)
   assert.match(component, /<BookCover[^>]*@click\.stop="\$emit\('preview', item\)"/)
   assert.match(component, /defineEmits\(\['preview', 'read'\]\)/)
+  assert.doesNotMatch(component, /result-actions|查看信息/)
   assert.match(search, /@read="openRemoteReader"/)
   assert.match(discover, /@read="openRemoteReader"/)
   assert.match(search, /function openRemoteReader\(item\)/)

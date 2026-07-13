@@ -1782,14 +1782,14 @@ Implementation status:
 4. Implement OpenReader changes.
 5. Run module gate and record allowed differences.
 6. Publish Git commits promptly. Publish Docker after any coherent, fully verified slice suitable for user validation; a complete module boundary remains preferred.
-## 2026-07-13 BookInfo action-state audit (P1-B implementation gate)
+## 2026-07-13 BookInfo action-state audit (historical pre-fix baseline)
 
 Upstream authority is `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 `web/src/components/BookInfo.vue`. Its `isInShelf` computed value compares the
 active book URL to the shelf list and is the sole action predicate. `Index.vue`
 and `Reader.vue` only select the book then open the same global BookInfo dialog.
 
-| Behavior | Upstream contract | Current OpenReader | Classification |
+| Behavior | Upstream contract | Pre-fix OpenReader | Classification at audit time |
 |---|---|---|---|
 | Existing shelf book | Shows existing shelf properties (cover update, follow update, group/local actions); no read/detail action in the dialog. | Search/Discover and legacy detail hydration inject read/detail action arrays. | `must-fix` |
 | Unshelved result | The BookInfo property area shows only `加入书架`; it is not a “join and read” menu. | Search/Discover inject `加入书架` and `加入并阅读`; temporary Reader lacks the same shared add path. | `must-fix` |
@@ -1797,5 +1797,31 @@ and `Reader.vue` only select the book then open the same global BookInfo dialog.
 | Reader entry | Merges current reading book with matching shelf record then opens the global dialog; no Reader route/tool state change. | Saved Reader is close; temporary Reader must receive the same unshelved add branch. | `must-fix` |
 | `/books/:id` | No upstream route exists. | OpenReader redirect is required compatibility, but its injected `开始阅读` action is not. | `acceptable-change` |
 
-Required implementation and tests are recorded in
-`docs/compat/index-search-p1b-contract.md#10-2026-07-13-bookinfo-动作状态机复审实现前矩阵`.
+The implemented result and verification are recorded in section 10 of
+`docs/compat/index-search-p1b-contract.md` and in the following browser inventory.
+
+## 2026-07-13 P1-B BookInfo five-entry browser inventory and result
+
+Upstream evidence was rechecked before changing the current browser contracts:
+
+- `reader-dev/web/src/views/Index.vue#toDetail` sends a result card's non-cover
+  area into Reader, while the cover uses `@click.stop="showBookInfoDialog(book)"`.
+  `Index.vue#showBookInfoDialog` only opens the shared dialog.
+- `reader-dev/web/src/views/Reader.vue#showReadingBookInfo` merges the current
+  reading book with the same-URL shelf book, then opens that same dialog without
+  changing the Reader route or tool layer.
+- `reader-dev/web/src/components/BookInfo.vue#isInShelf` is the only action
+  predicate; the unshelved property area contains a single `加入书架` action.
+
+| Entry / contract | Implemented OpenReader evidence | Classification | Verification |
+|---|---|---|---|
+| Search and explore result card | `RemoteBookResultGroups.vue` now has only cover `preview` and card `read`; the non-upstream `查看信息` button is removed. | `resolved must-fix` | `remoteReaderEntryContract` plus `index-workspace-contract` click the cover for BookInfo and the body for temporary Reader. |
+| Search BookInfo add | `OverlayBookInfo` remains the only transaction owner; the workspace smoke now checks cancel = zero write, confirm = one write, shelf-state replacement and no Reader navigation. | `resolved must-fix` | 1440×900, 390×844, 360×800. |
+| Explore BookInfo | The explore smoke opens the cover's shared BookInfo and checks no secondary action and no route change on close. | `resolved must-fix` | 1440×900, 390×844, 360×800. |
+| Saved Reader BookInfo | `reader-mobile-contract.mjs` supplies a same-URL shelf row and checks no `加入书架` or navigation action while preserving reader UI. | `resolved must-fix` | Desktop, 390×844, 360×800. |
+| Temporary Reader BookInfo | `remote-reader-contract.mjs` opens BookInfo from the temporary Reader before persistence, verifies the single add action and unchanged temporary route/tool state. | `resolved must-fix` | 1440×900, 390×844, 360×800. |
+| Legacy `/books/:id` | The mobile sidebar contract now closes BookInfo, verifies `bookInfo` query removal and checks no injected read action. | `resolved must-fix` | 390×844, 360×800. |
+
+Allowed differences remain limited to the compatibility redirect and the user-approved
+multi-category confirmation. This inventory and its real-browser contracts are the
+completion evidence for the P1-B BookInfo five-entry slice.

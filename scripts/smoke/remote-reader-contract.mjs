@@ -184,17 +184,6 @@ async function runViewport(browser, viewport) {
   await categoryDialog.getByRole('button', { name: '取消', exact: true }).click()
   await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
   assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 0, `${viewport.width}: cancelled BookInfo add must not persist a shelf book`)
-  await bookInfo.getByText('加入书架', { exact: true }).click()
-  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
-  const remoteCreateRequest = page.waitForRequest(request => {
-    const url = new URL(request.url())
-    return request.method() === 'POST' && url.pathname === '/api/books/remote'
-  }, { timeout: 10000 })
-  await categoryDialog.getByRole('button', { name: '确定', exact: true }).click()
-  await remoteCreateRequest
-  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: confirmed BookInfo add must create one shelf book`)
-  assert(await bookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: saved BookInfo must leave the add state`)
-  assert(await bookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: saved BookInfo must not gain an add-and-read branch`)
   await page.locator('.book-info-dialog .el-dialog__headerbtn').click()
   await page.locator('.book-info-dialog').waitFor({ state: 'hidden', timeout: 10000 })
 
@@ -203,6 +192,35 @@ async function runViewport(browser, viewport) {
   await page.waitForSelector('.reader-body', { timeout: 10000 })
   await page.getByText('临时阅读正文验证内容。', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
   assert(await page.evaluate(() => window.__remoteReaderSessionCreates()) === 1, `${viewport.width}: result body must create exactly one temporary reader session`)
+
+  const temporaryReaderURL = await page.url()
+  const bookInfoButton = page.locator('button[title="书籍信息"]:visible').first()
+  await bookInfoButton.click()
+  await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
+  const temporaryReaderBookInfo = page.locator('.book-info-dialog')
+  assert(await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: temporary Reader BookInfo must expose the shared unshelved add action`)
+  assert(await temporaryReaderBookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: temporary Reader BookInfo must not expose add-and-read`)
+  if (viewport.width <= 750) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: temporary Reader BookInfo must preserve the mobile toolbar`)
+  }
+  await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '取消', exact: true }).click()
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 0, `${viewport.width}: temporary Reader cancellation must not persist a shelf book`)
+  await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  const remoteCreateRequest = page.waitForRequest(request => {
+    const url = new URL(request.url())
+    return request.method() === 'POST' && url.pathname === '/api/books/remote'
+  }, { timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '确定', exact: true }).click()
+  await remoteCreateRequest
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: temporary Reader confirmation must create one shelf book`)
+  assert(await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: saved temporary Reader BookInfo must leave the add state`)
+  assert(await page.url() === temporaryReaderURL, `${viewport.width}: temporary Reader BookInfo add must not replace the temporary route`)
+  await temporaryReaderBookInfo.locator('.el-dialog__headerbtn').click()
+  await temporaryReaderBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
 
   const requests = await page.evaluate(() => window.__remoteReaderRequests())
   const forbidden = requests.filter(value => (
@@ -233,7 +251,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`remote-reader: ok ${checks.join(', ')} coverInfo=true canonicalAdd=true bodyTemporaryRead=true noImplicitWrites=true`)
+    console.log(`remote-reader: ok ${checks.join(', ')} coverInfo=true temporaryReaderInfo=true canonicalAdd=true noImplicitWrites=true`)
   } finally {
     await browser.close()
   }

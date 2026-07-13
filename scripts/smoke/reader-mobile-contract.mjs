@@ -45,6 +45,21 @@ function fakeToken() {
   return `open.${payload}.reader`
 }
 
+function savedReaderBook() {
+  return {
+    id: 1,
+    title: '移动阅读契约测试',
+    author: 'OpenReader',
+    sourceId: 2,
+    sourceName: '测试书源',
+    url: 'https://source.example/book/mobile-reader-contract',
+    bookUrl: 'https://source.example/book/mobile-reader-contract',
+    chapterCount: 2,
+    categoryIds: [],
+    progress: null,
+  }
+}
+
 async function installApiMocks(page) {
   const bookmarks = [{
     id: 101,
@@ -92,15 +107,9 @@ async function installApiMocks(page) {
       }))
     }
     if (path === '/books/1') {
-      return route.fulfill(json({
-        id: 1,
-        title: '移动阅读契约测试',
-        author: 'OpenReader',
-        sourceId: 2,
-        chapterCount: 2,
-        progress: null,
-      }))
+      return route.fulfill(json(savedReaderBook()))
     }
+    if (path === '/books') return route.fulfill(json([savedReaderBook()]))
     if (path === '/books/1/chapters') {
       return route.fulfill(json([
         { id: 11, index: 0, title: '第一章' },
@@ -325,6 +334,10 @@ async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {
   assert(state.text.includes('书籍信息'), `${viewport.width}: BookInfo dialog title missing`)
   assert(state.text.includes('移动阅读契约测试'), `${viewport.width}: BookInfo dialog missing active book title`)
   assert(state.text.includes('OpenReader'), `${viewport.width}: BookInfo dialog missing active book author`)
+  const dialog = page.locator(selector)
+  assert(await dialog.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: URL-matched shelf Reader BookInfo must not expose add`)
+  assert(await dialog.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: shelf Reader BookInfo must not expose add-and-read`)
+  assert(await dialog.getByText('开始阅读', { exact: true }).count() === 0, `${viewport.width}: shelf Reader BookInfo must not expose a second read action`)
   if (fullscreen) {
     assert(state.topTools === 1, `${viewport.width}: BookInfo must preserve mobile reader chrome`)
     assert(state.width === viewport.width, `${viewport.width}: BookInfo fullscreen width ${state.width}`)
@@ -340,9 +353,11 @@ async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {
 }
 
 async function closeReaderBookInfoDialog(page) {
+  const readerURL = await page.url()
   const dialog = page.locator('.book-info-dialog')
   await dialog.locator('.el-dialog__headerbtn').click()
   await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.url() === readerURL, 'closing Reader BookInfo must not change the reader route')
 }
 
 async function assertInlineMobileCacheZone(page, viewport) {

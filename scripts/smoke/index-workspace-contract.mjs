@@ -125,7 +125,18 @@ async function installApiMocks(page) {
     }
     if (path === '/books/remote' && method === 'POST') {
       remoteCreateCount += 1
-      const created = { id: 99, title: '已加入的工作台书籍', author: 'OpenReader', sourceId: 1, chapterCount: 1 }
+      const payload = request.postDataJSON() || {}
+      const created = {
+        id: 99,
+        title: payload.title || '已加入的工作台书籍',
+        author: payload.author || 'OpenReader',
+        sourceId: payload.sourceId || 1,
+        sourceName: payload.sourceName || '工作台测试书源',
+        url: payload.bookUrl,
+        bookUrl: payload.bookUrl,
+        chapterCount: 1,
+        categoryIds: payload.categoryIds || [],
+      }
       shelfBooks = [created, ...shelfBooks]
       return route.fulfill(json(created))
     }
@@ -177,6 +188,16 @@ async function runViewport(browser, viewport) {
   const root = targetUrl.replace(/\/$/, '')
   await page.goto(root, { waitUntil: 'networkidle' })
   await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
+  const shelfRoute = await page.url()
+  await page.locator('.shelf-page .book-row .list-cover').first().click()
+  await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
+  const shelfBookInfo = page.locator('.book-info-dialog')
+  assert(await shelfBookInfo.getByText('书架测试书', { exact: true }).count() === 1, `${viewport.width}: shelf cover must open the shared BookInfo record`)
+  assert(await shelfBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: shelf BookInfo must not expose an unshelved add action`)
+  assert(await shelfBookInfo.getByText('开始阅读', { exact: true }).count() === 0, `${viewport.width}: shelf BookInfo must not expose a second read action`)
+  await shelfBookInfo.locator('.el-dialog__headerbtn').click()
+  await shelfBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.url() === shelfRoute, `${viewport.width}: closing shelf BookInfo must stay on the shelf route`)
   await openMobileNavigation(page, viewport)
   const freshSearchInput = page.locator('.app-shell-search input')
   await freshSearchInput.fill('默认侧栏搜索')
@@ -219,19 +240,34 @@ async function runViewport(browser, viewport) {
   assert(legacySearch.concurrentCount === 8, `${viewport.width}: legacy concurrency must remain 8 until the user changes it`)
   await assertNoHorizontalOverflow(page, `${viewport.width} search`)
 
-  await page.getByRole('button', { name: '查看信息' }).click()
-  await page.waitForSelector('.book-info-dialog .overlay-actions', { timeout: 10000 })
-  await page.getByRole('button', { name: '加入并阅读' }).click()
+  assert(await page.locator('.workspace-result-page .result-actions').count() === 0, `${viewport.width}: result cards must not add a non-upstream preview button`)
+  await page.locator('.workspace-result-page .result-card .book-cover-shared').first().click()
+  await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
+  const searchBookInfo = page.locator('.book-info-dialog')
+  assert(await searchBookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: search cover must open the single unshelved BookInfo action`)
+  assert(await searchBookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: search BookInfo must not expose add-and-read`)
+  assert(await searchBookInfo.getByText('开始阅读', { exact: true }).count() === 0, `${viewport.width}: search BookInfo must not expose a read action`)
+  const searchBookInfoURL = await page.url()
+  await searchBookInfo.getByText('加入书架', { exact: true }).click()
   const categoryDialog = page.locator('.book-add-category-dialog')
   await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
   await categoryDialog.getByRole('button', { name: '取消' }).click()
-  await page.waitForFunction(() => !document.querySelector('.book-add-category-dialog .el-dialog'))
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
   assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 0, `${viewport.width}: cancelling BookInfo groups must not add a book`)
-  await page.waitForSelector('.book-info-dialog .overlay-actions', { timeout: 10000 })
-  await page.getByRole('button', { name: '加入并阅读' }).click()
+  await searchBookInfo.getByText('加入书架', { exact: true }).click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  const createRequest = page.waitForRequest(request => {
+    const requestURL = new URL(request.url())
+    return request.method() === 'POST' && requestURL.pathname === '/api/books/remote'
+  }, { timeout: 10000 })
   await categoryDialog.getByRole('button', { name: '确定' }).click()
-  await page.waitForURL(/\/books\/99\/read/, { timeout: 10000 })
+  await createRequest
   assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 1, `${viewport.width}: confirming BookInfo groups must add exactly once`)
+  assert(await searchBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: confirmed search BookInfo must become the shelf state`)
+  assert(await searchBookInfo.getByText('分组：', { exact: false }).count() === 1, `${viewport.width}: confirmed search BookInfo must expose shelf properties`)
+  assert(await page.url() === searchBookInfoURL, `${viewport.width}: confirming BookInfo add must not navigate to Reader`)
+  await searchBookInfo.locator('.el-dialog__headerbtn').click()
+  await searchBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
 
   await page.goto(root, { waitUntil: 'networkidle' })
   await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
@@ -264,6 +300,15 @@ async function runViewport(browser, viewport) {
   assert(exploreState.path === '/', `${viewport.width}: Explore must remain in the root scene`)
   assert(exploreState.heading.includes('探索 (1)'), `${viewport.width}: Explore result heading is missing`)
   assert(!exploreState.text.includes('陈旧结果'), `${viewport.width}: stale search response must not overwrite Explore`)
+  await page.locator('.workspace-result-page .discover-results .result-card .book-cover-shared').first().click()
+  await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
+  const exploreBookInfo = page.locator('.book-info-dialog')
+  assert(await exploreBookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: explore cover must open the shared unshelved BookInfo action`)
+  assert(await exploreBookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: explore BookInfo must not expose add-and-read`)
+  const exploreBookInfoURL = await page.url()
+  await exploreBookInfo.locator('.el-dialog__headerbtn').click()
+  await exploreBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.url() === exploreBookInfoURL, `${viewport.width}: closing explore BookInfo must preserve the workspace route`)
   await page.locator('.workspace-result-actions').getByRole('button', { name: '加载更多', exact: true }).click()
   await page.waitForFunction(() => document.querySelectorAll('.workspace-result-page .discover-results .result-card').length === 2)
   const exploreEndButton = page.locator('.workspace-result-actions').getByRole('button', { name: '没有更多了', exact: true })
@@ -289,7 +334,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`index-workspace: ok ${checks.join(', ')} legacyRedirects=true sidebarSearch=true bookInfoGroupConfirm=true explore=true`)
+    console.log(`index-workspace: ok ${checks.join(', ')} legacyRedirects=true sidebarSearch=true canonicalBookInfo=true exploreCoverInfo=true`)
   } finally {
     await browser.close()
   }

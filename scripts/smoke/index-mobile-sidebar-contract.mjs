@@ -202,6 +202,15 @@ async function runViewport(browser, viewport) {
   assert(routeState.pathname === '/', `${viewport.width}: /books/1 should redirect to /, got ${routeState.pathname}`)
   assert(routeState.bookInfo === '1', `${viewport.width}: redirected URL should preserve bookInfo=1, got ${routeState.bookInfo}`)
   assert(routeState.dialogTitle.includes('侧栏契约测试'), `${viewport.width}: shared BookInfo dialog should show loaded book`)
+  const legacyBookInfo = page.locator('.book-info-dialog')
+  assert(await legacyBookInfo.getByText('开始阅读', { exact: true }).count() === 0, `${viewport.width}: legacy BookInfo must not inject a second read action`)
+  assert(await legacyBookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: legacy BookInfo must not inject add-and-read`)
+  await legacyBookInfo.locator('.el-dialog__headerbtn').click()
+  await legacyBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
+  await page.waitForFunction(() => {
+    const current = new URL(window.location.href)
+    return current.pathname === '/' && !current.searchParams.has('bookInfo')
+  }, null, { timeout: 10000 })
 
   await page.goto(targetUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.app-shell.mobile-shell .app-sidebar', { timeout: 10000 })

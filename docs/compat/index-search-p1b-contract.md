@@ -1,6 +1,6 @@
 # P1-B Index 搜索、探索与 BookInfo 连续流程契约
 
-状态：**P1-B 搜索默认值、并发偏好、稳定续页 cursor、跨页去重与搜索/探索/BookInfo 三视口 smoke 已实现；其余 BookInfo 入口与结果场景外的工作台动作仍在后续 P1-B/P1-C 范围内。**
+状态：**P1-B 搜索默认值、并发偏好、稳定续页 cursor、跨页去重，以及书架/搜索/探索/阅读器/旧链接 BookInfo 入口矩阵均已通过；结果场景外的工作台操作继续在 P1-C 范围内。**
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游证据：`web/src/views/Index.vue`、`web/src/plugins/config.js`、`BookController.kt#searchBook` / `#searchBookMulti`；当前证据：`frontend/src/{stores/preferences.js,composables/useAppSidebarSearch.js,stores/indexWorkspace.js,views/Search.vue}`、`backend/api/search.go`、`backend/api/settings.go`。
 
@@ -28,7 +28,7 @@
 | 已有并发设置 | `preferences` 目前只接受 `8,16,32,60`，`Search.vue` / workspace 对其它值回退 60；服务器设置和备份把 search JSON 原样保存。 | **must-fix（数据兼容）**。不能为了恢复上游候选把已存 `8/16/32/60` 静默丢失或改为 24；尤其备份恢复已验证保存 `concurrent:32`。 |
 | 空书源错误 | 当前 Search 在 `sourceIds` 为空时提前提示“请至少选择一个书源”，后端无 source 时返回空数组/空分页。 | **must-fix（错误语义）**。上游多源/分组无可用书源最终反馈“未配置书源”；当前错误文案和 API 空成功会掩盖配置问题。Go 的 HTTP 状态可适配，但前端必须稳定呈现该语义。 |
 | 搜索结果去重 | `Search.vue` 优先以 `bookUrl` 去重，空 URL 才用 `sourceId-bookUrl` key；Go 每个多源批次也用 `title|author` 去重。 | **技术栈等价，待跨页合同**。上游前端以 `bookUrl` 合并；要测试跨游标页仍不重复，不能把不同书源的空 URL 错误合并。 |
-| BookInfo 交接 | `Search.vue`、`Discover.vue`、`Home.vue`、Reader 统一调用 `overlay.openBookInfo()`，并用 `useBookInfoAddToShelf` 完成选择分组→创建→阅读。 | **技术栈等价，待五入口浏览器回归**。此前实现记录不是最终签收证据。 |
+| BookInfo 交接 | `Search.vue`、`Discover.vue`、`Home.vue`、Reader 统一调用 `overlay.openBookInfo()`；仅 `OverlayBookInfo` 承担选择分组→创建→切换为真实书架记录。 | **技术栈等价，已完成五入口浏览器回归**。加入不再隐式进入 Reader。 |
 | 本地书籍搜索 | `mode=local` 复用结果场景搜索本地书仓/书架。 | **intentional-redesign**。保留为当前运行环境增强，但不得成为 Enter 远程多源搜索的默认分支、不得改变远程搜索请求或 BookInfo 动作。 |
 
 ## 3. 数据迁移合同
@@ -65,7 +65,7 @@
 - 工作台意图、搜索视图、侧栏搜索和服务端的缺省并发全部收敛为 24；正数仍按实际书源数限流。
 - `POST /api/search` 在没有任何启用/选中书源时返回 `400 {"error":"未配置书源"}`。已配置书源若被该用户的失效缓存全部临时抑制，仍返回成功空结果，保持“跳过失效书源”而非误报配置错误。
 - 覆盖了前端偏好兼容、侧栏搜索参数、服务端默认值/无源错误，以及失效书源缓存的回归。全量前端 `npm test` 为 **369 项通过**，`go test ./...` 与 `npm run build` 通过。
-- `scripts/smoke/index-workspace-contract.mjs` 已在真实 Chrome 以 `1440×900`、`390×844`、`360×800` 通过：新会话侧栏搜索发出 24 并发；旧链接的 8 并发保持；搜索、BookInfo 的取消/分组确认/阅读跳转、探索及返回书架均无页面异常和横向溢出。
+- `scripts/smoke/index-workspace-contract.mjs` 已在真实 Chrome 以 `1440×900`、`390×844`、`360×800` 通过：新会话侧栏搜索发出 24 并发；旧链接的 8 并发保持；书架、搜索和探索封面都打开共享 BookInfo，取消零写入、确认一次写入且不跳转 Reader，探索及返回书架均无页面异常和横向溢出。
 
 ## 7. 后续续页与跨页结果复审（2026-07-13，仅合同；尚未改动应用代码）
 
@@ -99,9 +99,9 @@
 
 允许差异：OpenReader 保持 REST `hasMore`、JWT、`sourceIds` 与用户级失败缓存，而不复制上游 EventSource；这些增强已通过上列稳定 cursor 和可见工作台流程约束。
 
-仍未完成：BookInfo 从书架、搜索、探索、阅读器及旧链接五入口的完整复审，以及 P1-C 的其余全局工作台操作收敛。
+已完成：BookInfo 从书架、搜索、探索、已保存/临时阅读器及旧链接的入口复审。仍未完成的是 P1-C 的其余全局工作台操作收敛。
 
-## 9. 2026-07-13 BookInfo 五入口复审（仅合同；尚未改动应用代码）
+## 9. 2026-07-13 BookInfo 五入口复审与实施记录
 
 本小节以 `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 的
 `web/src/views/Index.vue#toDetail/#showBookInfoDialog`、
@@ -121,10 +121,10 @@
 | 入口 | 上游状态转换 | 当前 OpenReader 证据 | 本轮判定与改造边界 |
 |---|---|---|---|
 | 书架 | 封面 → 全局 BookInfo；条目正文 → 已保存书籍的 Reader。关闭信息框仍留在书架。 | `Home.vue#openDetail/#handleBookRowClick` 分别调用 `overlay.openBookInfo` 与 Reader 路由；`OverlayBookInfo` 以书架记录判定封面/追更/分组/本地更新权限。 | **已复核一致**。保留当前进度 query、用户隔离与安全的纯文本简介；新增浏览器断言确保关闭后不产生路由变化。 |
-| 搜索远程结果 | 封面 → 非书架 BookInfo；卡片其他区域 → 临时 Reader（`?search=1`），不创建书架记录；对话框中的唯一非书架动作是加入书架。 | `RemoteBookResultGroups.vue` 已分离 `preview/read`；`Search.vue` 创建用户绑定的 `/reader/remote/:sessionId` 会话；Reader 不写书架、目录、进度、书签或缓存；`OverlayBookInfo` 按书架状态统一渲染操作。 | **临时阅读与 BookInfo 动作切片已对齐**。保留多分类确认作为安全适配；五入口人工浏览器回归仍属于 P1-B。 |
+| 搜索远程结果 | 封面 → 非书架 BookInfo；卡片其他区域 → 临时 Reader（`?search=1`），不创建书架记录；对话框中的唯一非书架动作是加入书架。 | `RemoteBookResultGroups.vue` 仅保留封面 `preview` 和卡片 `read`；`Search.vue` 创建用户绑定的 `/reader/remote/:sessionId` 会话；Reader 不写书架、目录、进度、书签或缓存；`OverlayBookInfo` 按书架状态统一渲染操作。 | **已完成三视口浏览器验收**。保留多分类确认作为安全适配。 |
 | 探索远程结果 | 与搜索相同：封面信息、正文临时阅读、同一 BookInfo/加入书架分支。 | `Discover.vue` 复用相同的 `RemoteBookResultGroups` read 事件、payload 和临时会话路由；不再拥有独立加入/阅读动作。 | **临时阅读与 BookInfo 动作切片已对齐**；与 Search 共用同一个临时阅读契约。 |
-| 阅读器 | 合并当前阅读记录和同 URL 的书架记录 → 全局 BookInfo；工具层与 Reader 路由保持不变。 | `useReaderPanels#openBookInfo` 直接打开共享 overlay；`Reader.vue` 把目录刷新结果同步到 `overlay.bookInfoBook`。没有额外读/加书架按钮。 | **技术栈等价，待回归**。当前“阅读中”上下文状态不替代上游字段；须验证已加入/临时远程阅读两种 Reader 状态都能正确显示书架权限，且关闭不影响移动工具层。 |
-| 旧 `/books/:id` 链接 | 上游没有详情页路由。 | `router/index.js` 重定向到 `/?bookInfo=:id`，`AppLayout#openRouteBookInfoOverlay` 拉取当前用户书籍并以共享 BookInfo 打开；关闭后已清除查询参数，但仍注入“开始阅读”动作。 | **允许兼容入口 + 动作必须收敛**。保留旧链接，但它只能打开与书架相同的 BookInfo；关闭、无权/不存在和再次导航后必须仅清理 `bookInfo` intent，不能令 overlay 重新弹出或污染其他工作台 query。 |
+| 阅读器 | 合并当前阅读记录和同 URL 的书架记录 → 全局 BookInfo；工具层与 Reader 路由保持不变。 | `useReaderPanels#openBookInfo` 直接打开共享 overlay；已保存 Reader 使用 URL 匹配书架记录，临时 Reader 复用未入架的单一加入操作。 | **已完成桌面和两种移动尺寸回归**。打开/关闭不改 Reader 路由；移动工具层保持显示且点击不穿透。 |
+| 旧 `/books/:id` 链接 | 上游没有详情页路由。 | `router/index.js` 重定向到 `/?bookInfo=:id`，`AppLayout#openRouteBookInfoOverlay` 拉取当前用户书籍并以共享 BookInfo 打开；关闭后清除 `bookInfo` 查询参数，不注入阅读动作。 | **允许兼容入口，已完成移动回归**。关闭、无权/不存在和再次导航后只清理 `bookInfo` intent，不能令 overlay 重新弹出或污染其他工作台 query。 |
 
 ### 当前 BookInfo 壳与数据门槛
 
@@ -135,18 +135,18 @@
 3. 字数、进度、浏览器缓存、纯文本简介及多分类选择均为允许的 Vue 3/多用户/安全适配，但不得挤掉上游字段、改变已在书架判定或绕过取消加入。
 4. `bookInfoVisible=false` 后应清除已消耗的旧链接 query intent；保留 `bookInfoBook` 缓存可以作为实现细节，但不得在后续 watcher 中重新打开已关闭的对话框。
 
-### 后续测试闸门（先测试，再实现）
+### 测试闸门与实施结果
 
 1. 为 `RemoteBookResultGroups` 写交互契约：封面仅发 `preview`，正文发 `read`；在 1440×900、390×844、360×800 三种尺寸验证没有点击穿透。
 2. 远程临时阅读已建立 API/Reader 合同：搜索和探索共享同一 payload，正文不执行 `POST /books/remote`，Reader 可加载目录/章节，但不保存临时进度；加入书架后才切换为用户书架记录。下一步补齐过期、变量跨章和安全错误的后端测试。
 3. 重写当前 `bookInfoRouteContract`：旧详情链接加载成功、404/403、关闭清 query、保留其他 query、再次导航不重开；兼容入口不得重新引入“开始阅读”第二套 BookInfo 动作。
-4. 浏览器：书架封面/正文、搜索和探索的封面/正文、阅读器信息按钮、旧链接共五条流程；同时验证加入取消零写入、加入成功一写入、关闭不改 Reader/mobile 工具层与无水平溢出。
+4. **已完成，浏览器**：书架封面、搜索和探索封面/正文、已保存和临时阅读器信息按钮、旧链接均在对应三视口或移动视口通过；验证加入取消零写入、加入成功一写入、关闭不改 Reader/mobile 工具层与无水平溢出。
 
-在五入口的人工浏览器回归完成前，P1-B 只能称为“搜索续页、临时阅读与 BookInfo 动作状态机已完成，完整入口验收仍在进行”，不能称为工作台搜索流程完全对齐。
+因此，P1-B 的搜索、探索和 BookInfo 连续流程可以标记为对齐；P1-C 仍需继续审查结果场景以外的工作台操作。
 
 ### 临时阅读实施记录（2026-07-13）
 
-现有 `/books/:id` Reader 管线只能读取已保存书籍，且 `POST /books/remote` 会创建 Book/Chapter 行、写入书架并广播，不能作为上游临时阅读的替代。现已实现三个用户绑定远程会话端点：创建会话、读取会话目录、读取会话章节正文。会话只保存于 TTL 运行时内存，复用现有受限书源抓取/变量规则，不把客户端传入的章节 URL 当作抓取目标，也不写书架、目录、进度、书签、缓存或备份。`remote_reader_contract_test.go` 与三视口浏览器 smoke 已覆盖本切片；BookInfo 动作统一和五入口完整回归仍在后续 P1-B。
+现有 `/books/:id` Reader 管线只能读取已保存书籍，且 `POST /books/remote` 会创建 Book/Chapter 行、写入书架并广播，不能作为上游临时阅读的替代。现已实现三个用户绑定远程会话端点：创建会话、读取会话目录、读取会话章节正文。会话只保存于 TTL 运行时内存，复用现有受限书源抓取/变量规则，不把客户端传入的章节 URL 当作抓取目标，也不写书架、目录、进度、书签、缓存或备份。`remote_reader_contract_test.go` 与三视口浏览器 smoke 已覆盖本切片；临时 Reader 内的共享 BookInfo 加入/取消、路线保持和移动工具层也已完成回归。
 
 ## 10. 2026-07-13 BookInfo 动作状态机复审与实施记录
 
@@ -157,11 +157,11 @@
 
 | 状态 | 上游可见操作 | 当前 OpenReader 偏差 | 判定与改造 |
 |---|---|---|---|
-| 同 URL 已在书架 | 封面更新、来源/本地更新、追更、分组；**没有**“继续阅读”“查看详情”“开始阅读”按钮。 | Search/Discover 通过 `buildSearchExistingBookActions` 注入“查看详情/继续阅读”；旧链接通过 `buildBookInfoReadActions` 注入“开始阅读”。 | `must-fix`：`OverlayBookInfo` 以 URL/书架记录为唯一判断并自行渲染，不接受入口动作数组。 |
-| 同 URL 不在书架 | BookInfo 属性区内仅一个“加入书架”；加入要先选择分组，取消零写入。 | Search/Discover 通过 `buildSearchAddBookActions` 注入“加入书架/加入并阅读”；临时 Reader 的 BookInfo 没有共享的加入入口。 | `must-fix`：把加入事务移至全局 Overlay，并将按钮放进 `BookInfoPanel` 的属性/操作区；保留多分类确认作为允许安全适配。 |
-| 加入成功 | 书架刷新；对话框不被“开始阅读”流程替换。 | Search/Discover 再打开带“开始阅读”的对话框，形成第三套分支。 | `must-fix`：用创建后的真实书架记录替换 Overlay 当前书籍，动作自然切换为书架状态。 |
-| Reader 打开 BookInfo | 当前 readingBook 与同 URL 书架记录合并后复用相同组件；不会改变 Reader 或移动工具层。 | 已保存 Reader 基本复用；临时 Reader 必须获得同一“加入书架”分支，且打开/关闭不能改变临时会话路由。 | `must-fix`：共享 Overlay 动作控制器；在 1440/390/360 验证移动工具层不被改变。 |
-| 旧 `/books/:id` 兼容入口 | 上游无此入口。 | 当前为兼容而注入阅读按钮。 | `acceptable-change`：只保留 URL → 共享 BookInfo 的重定向与关闭 query 清理，不保留额外动作。 |
+| 同 URL 已在书架 | 封面更新、来源/本地更新、追更、分组；**没有**“继续阅读”“查看详情”“开始阅读”按钮。 | `OverlayBookInfo` 以 URL/书架记录为唯一判断；Search、Discover 与旧链接不再注入动作数组。 | **已完成**。 |
+| 同 URL 不在书架 | BookInfo 属性区内仅一个“加入书架”；加入要先选择分组，取消零写入。 | 全局 Overlay 承担加入事务，`BookInfoPanel` 属性区只显示一个动作；临时 Reader 复用该分支。 | **已完成**；多分类确认是允许安全适配。 |
+| 加入成功 | 书架刷新；对话框不被“开始阅读”流程替换。 | 创建结果替换 Overlay 当前书籍，动作切换为书架状态，当前场景与路由不变。 | **已完成**。 |
+| Reader 打开 BookInfo | 当前 readingBook 与同 URL 的书架记录合并后复用相同组件；不会改变 Reader 或移动工具层。 | 已保存和临时 Reader 都打开共享 Overlay；临时 Reader 可加入但不替换其会话路由。 | **已完成，三视口回归**。 |
+| 旧 `/books/:id` 兼容入口 | 上游无此入口。 | URL → 共享 BookInfo 的兼容重定向；关闭只清理 query。 | **允许兼容入口，已完成移动回归**。 |
 
 实施结果与测试门禁：
 
@@ -170,4 +170,4 @@
    `useBookInfoAddToShelf`；`OverlayBookInfo` 是唯一创建远程书架记录的宿主。
 2. **已完成，静态/单元**：`BookInfoPanel` 的非书架属性区仅显示一个“加入书架”动作；在书架状态不得渲染任一阅读/详情动作。
 3. **已完成，三视口浏览器**：取消分组选择零写入；确认只创建一次，Overlay 更新为真实书架记录，且不改临时 Reader 路由。覆盖 1440×900、390×844、360×800。
-4. **待完成，P1-B 入口矩阵**：书架、搜索、探索、已保存 Reader、临时 Reader 和旧链接入口分别验证上述状态；移动端 BookInfo 打开/关闭时工具层仍可见且点击不穿透。
+4. **已完成，P1-B 入口矩阵**：书架、搜索、探索、已保存 Reader、临时 Reader 和旧链接入口分别验证上述状态；移动端 BookInfo 打开/关闭时工具层仍可见且点击不穿透。
