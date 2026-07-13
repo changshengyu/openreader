@@ -383,6 +383,31 @@ Storage resolves without destructive migration: administrators continue to use t
 
 OpenReader retains bounded remote/local scanning and case-insensitive normalized matching as runtime/security adaptations. A bound may never silently advance `lastIndex` past omitted same-chapter matches: it must set `truncated: true`, and the UI must say that results are incomplete. Unavailable remote content is likewise surfaced by `incomplete/unavailableChapters` rather than as a false “没有匹配内容”.
 
+## P1-B remote temporary-reader contract (design gate; not implemented)
+
+Reader-dev permits a search/explore result to enter Reader before it has been
+added to the shelf. Its Vuex `readingBook` is an in-memory reading context, not
+a saved shelf row. OpenReader's current Reader only accepts a persisted numeric
+`/books/:id`; using `POST /api/books/remote` merely to make a result readable
+would incorrectly create a shelf book, emit a bookshelf update, and persist
+catalogue/progress data. The following additive API is the required translation
+layer before the corresponding Reader/UI implementation is allowed.
+
+| Method / path | Request | Success / side effects | Auth and errors |
+|---|---|---|---|
+| `POST /api/reader/remote-sessions` | `{ sourceId, bookUrl, title, author?, coverUrl?, intro?, kind?, wordCount?, variable?, type? }`. `sourceName` is display-only and ignored for authorization. | Validates the caller-visible source and normalized bounded variable map; resolves BookInfo + TOC once with the current source snapshot; returns `201 { id, expiresAt, book, chapters }`. `book` has no persistent shelf ID and includes the normalized opaque variable needed by a later explicit add-to-shelf. The server stores only a user-bound, opaque, expiring runtime session; it creates **no** Book, Chapter, Progress, Bookmark, cache file, backup record, or websocket bookshelf event. | JWT required. Missing `sourceId`/`bookUrl`/`title` or invalid variables: `400`; unavailable source: `404`; parser/request failure: safe `502 { error, code?, stage: "book_info" }`; no raw rule/header/cookie/URL-query detail is exposed. Source-request failures may enter the caller's existing short-lived source-failure cache. |
+| `GET /api/reader/remote-sessions/:id` | Opaque session id. | Returns the original normalized `{ id, expiresAt, book, chapters }` without reparsing or persisting it. `Cache-Control: no-store`. | JWT required. Unknown or another user's id: `404`; expired id: `410 { error: "remote reader session expired" }`. |
+| `GET /api/reader/remote-sessions/:id/chapters/:index/content` | Opaque session id and non-negative chapter ordinal. | Uses only the server-stored source snapshot, book variables and chapter variables to fetch/parse that TOC row. Returns the normal Reader `{ chapter, content, format }` shape (and the existing safe remote-audio fields when applicable). It must never accept a client-supplied chapter URL or source rule. Refreshes the bounded idle expiry but never writes a shelf cache/chapter/progress row. | JWT/session binding required; malformed index `400`; unknown/foreign session `404`; expired `410`; missing chapter `404`; parser/request failure `502 { error, code?, stage: "content" }`. Cancellation stops further source work and returns no synthetic success. |
+
+### Runtime and frontend boundary
+
+- Session IDs are high-entropy opaque values, held server-side only; they are never JWTs, never appear in a source URL, never enter backup/WebDAV/export data, and use `Cache-Control: no-store`. The session has a bounded idle TTL (initial proposal: 30 minutes) and a bounded absolute lifetime (initial proposal: four hours). Expiration yields a clear return-to-search recovery, not a silent account/session logout.
+- The source snapshot and variable maps stay server-side. The frontend may retain only the returned presentation metadata plus opaque session id in a user-scoped volatile Reader state. It may use browser-local position for that session, but must not call `/progress/:bookId`, bookmark, cache, category, source-change, refresh, or any other shelf-ID endpoint with a fabricated ID.
+- Search and Explore must call this same session creation endpoint and use the same reader route form, e.g. `/reader/remote/:sessionId`; neither flow may call `POST /books/remote` until the user explicitly chooses the canonical BookInfo “加入书架” action. Adding later remains the existing category-confirmed transaction and can forward the returned opaque `variable` field.
+- Reader controls that require a durable shelf record (bookmark creation, group editing, cache/clear cache, durable progress, source change/refresh) must be either temporarily unavailable with an explicit “加入书架后可用” state or receive a separately documented temporary-session contract. They must never fail as a hidden `404` caused by a synthetic book ID.
+
+Mandatory API tests before implementation: request validation before fetch; source/user/session isolation; zero `books`/`chapters`/`progress` writes and zero shelf broadcasts; variable propagation across TOC/content; safe parser error redaction and source-failure handling; foreign/expired/no-longer-valid session responses; cancellation; and no client-selected URL escaping the server-stored TOC.
+
 ## Compatibility rule
 
 If a refactor changes frontend routes, API paths should stay stable unless an old path is kept as a redirect/shim. Document removals before deleting compatibility behavior.
