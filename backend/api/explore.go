@@ -73,7 +73,7 @@ func (s *Server) exploreBooks(c *gin.Context) {
 	results, err := engine.ExploreBooksPageWithURL(source, exploreURL, page)
 	if err != nil {
 		s.recordSourceFailure(userID, source, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeSourceError(c, http.StatusBadRequest, "failed to explore source", err, "explore")
 		return
 	}
 	c.JSON(http.StatusOK, results)

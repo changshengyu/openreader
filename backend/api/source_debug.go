@@ -42,7 +42,7 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 		userID, _ := middleware.UserID(c)
 		s.recordSourceHealthFailure(userID, source, err)
 	}
-	c.JSON(http.StatusOK, gin.H{"results": results, "error": errToString(err)})
+	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"results": results}, err, "search"))
 }
 
 type testChapterRequest struct {
@@ -72,7 +72,7 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 		userID, _ := middleware.UserID(c)
 		s.recordSourceHealthFailure(userID, source, err)
 	}
-	c.JSON(http.StatusOK, gin.H{"chapters": chapters, "count": len(chapters), "error": errToString(err)})
+	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"chapters": chapters, "count": len(chapters)}, err, "toc"))
 }
 
 type testContentRequest struct {
@@ -106,7 +106,7 @@ func (s *Server) testSourceContent(c *gin.Context) {
 	if len([]rune(preview)) > 2000 {
 		preview = string([]rune(preview)[:2000]) + "..."
 	}
-	c.JSON(http.StatusOK, gin.H{"content": preview, "fullLength": len([]rune(content)), "error": errToString(err)})
+	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"content": preview, "fullLength": len([]rune(content))}, err, "content"))
 }
 
 type batchTestSourcesRequest struct {
@@ -124,6 +124,8 @@ type batchTestSourceResult struct {
 	OK       bool   `json:"ok"`
 	Count    int    `json:"count"`
 	Message  string `json:"message"`
+	Code     string `json:"code,omitempty"`
+	Stage    string `json:"stage,omitempty"`
 }
 
 func (s *Server) batchTestSources(c *gin.Context) {
@@ -193,7 +195,11 @@ func (s *Server) batchTestSources(c *gin.Context) {
 				Enabled:  source.Enabled,
 				OK:       err == nil,
 				Count:    len(searchResults),
-				Message:  errToString(err),
+				Message:  sourceErrorMessage(err),
+			}
+			if details := sourceErrorDetailsFor(err, "search"); details.Code != "" {
+				results[index].Code = details.Code
+				results[index].Stage = details.Stage
 			}
 			if err == nil {
 				results[index].Message = "可用"
@@ -208,11 +214,4 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"results": results})
-}
-
-func errToString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }

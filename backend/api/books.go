@@ -1131,7 +1131,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 	remoteInfo, remoteChapters, err := engine.FetchBookInfoAndTOC(book.URL, source)
 	if err != nil {
 		s.recordSourceFailure(userID, source, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters: %v", err)})
+		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters", err, "book_info")
 		return
 	}
 	if len(remoteChapters) == 0 {
@@ -1542,7 +1542,7 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 	remoteInfo, chapters, err := engine.FetchBookInfoAndTOC(req.BookURL, source)
 	if err != nil {
 		s.recordSourceFailure(userID, source, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters: %v", err)})
+		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters", err, "book_info")
 		return
 	}
 	if len(chapters) == 0 {
@@ -1862,7 +1862,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 	remoteInfo, newChapters, err := engine.FetchBookInfoAndTOC(newBookURL, newSource)
 	if err != nil {
 		s.recordSourceFailure(userID, newSource, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch chapters from new source: %v", err)})
+		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters from new source", err, "book_info")
 		return
 	}
 	if len(newChapters) == 0 {
@@ -1961,7 +1961,7 @@ func (s *Server) chapterContent(c *gin.Context) {
 		if errors.Is(contentErr, context.Canceled) {
 			return
 		}
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to load chapter content"})
+		writeSourceError(c, http.StatusBadGateway, "failed to load chapter content", contentErr, "content")
 		return
 	}
 	response := gin.H{

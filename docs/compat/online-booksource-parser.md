@@ -164,15 +164,22 @@
 | 变量写入 | 上游 map 未限制大小、并发分叉共享可变 `Book`。 | 1F 已有 32 项、128/4096 字节、16 KiB、8 层的受限 runtime；分叉克隆 map。 | `acceptable security difference`：持久化只能接受并输出同一受限 JSON map，保持单链共享、分叉克隆；不复制上游无界/并发共享写入。 |
 | 生命周期与切换 | 上游 `Book` 的变量会保留；来源切换的实际对象更新不提供跨来源隔离。 | 多用户 `Book` 以 `user_id` 所有；来源可能变更，备份/恢复按 URL 合并。 | `must-fix with security adaptation`：变量必须通过 `Book.UserID` 与 `Chapter.BookID` 间接隔离；来源 ID 改变、书源 URL 变更或规则集变更时清空该书变量与章节变量，避免把旧来源令牌带入新来源。 |
 | 备份/恢复 | 上游 Book/BookChapter JSON 含 `variable`；SearchBook 序列化也保留 `variable`。 | `bookshelf.json` 由 `models.Book` 导出，但当前无此列；章节不在备份中。 | `must-fix`：`bookshelf.json` 增加可选 `variable`；新增可选 `chapterVariables.json`，按目标用户的书 URL + 章节 URL/index 恢复。旧备份缺失字段/文件必须保持可恢复。 |
-| 错误反馈 | 上游是应用内异常/调试链，不存在 OpenReader REST 响应形状。 | 阅读正文固定 `502 {error:"failed to load chapter content"}`；搜索、探索、加书和换源有时直接回显 `err.Error()`；调试接口固定 `200` 并含原始 error。 | `must-fix`：保留状态码和 `error` 字段，新增可选安全 `code`/`stage`；禁止回显规则字面量、变量值、URL query、cookie、headers、JWT、文件路径或响应正文。 |
+| 错误反馈 | 上游是应用内异常/调试链，不存在 OpenReader REST 响应形状。 | P2-Parser-2A 已为正文、单书源分页搜索、探索、加书/刷新/换源和 source debug 实现稳定 `error`、可选 `code`/`stage`，并移除原始 error 序列化。 | `aligned security adaptation`：保留状态码和 `error` 字段；禁止回显规则字面量、变量值、URL query、cookie、headers、JWT、文件路径或响应正文。 |
 
 ### P2-Parser-1G/2 测试与实施门槛
 
 1. 先为 `Book.Variable`、`Chapter.Variable` 写 SQLite 加列、空旧值、无效/过大 JSON、来源切换清空、用户隔离和回滚测试；不得对旧 `data/`、`cache/`、`library/` 做扫描或改写。
 2. 搜索 fixture 必须证明每项从临时变量继承初值后独立写入；“搜索 → BookInfo → 加书 → 重开目录 → 正文”必须保留正确的书籍/章节变量，正文多分叉不相互写入。
 3. 备份/恢复 fixture 必须同时覆盖新 `variable`、`chapterVariables.json`、旧 OpenReader/reader-dev 备份缺失字段、重复恢复幂等性和目标用户隔离。
-4. 结构化错误先在不改 HTTP 状态码的前提下，覆盖正文、单书源分页搜索、探索、加书/换源和 `/api/sources/:id/test*`；旧客户端只读 `error` 时行为不变，现代客户端可读取 `code`/`stage`。
+4. P2-Parser-2A 已在不改 HTTP 状态码的前提下覆盖正文、单书源分页搜索、探索、加书/换源和 `/api/sources/:id/test*`；旧客户端继续只读 `error`，现代客户端可读取 `code`/`stage`。P2-Parser-1G 持久变量仍未实施。
 5. 任何变量或错误实现完成后都必须跑完整 Go/前端测试、真实浏览器书源流程和 Docker 挂载卷/备份烟测；本节未完成前不得称为持久变量对齐。
+
+### P2-Parser-2A 实施记录
+
+- `backend/api/source_errors.go` 将远端请求、无效规则、未支持规则和其他正文不可用错误映射为稳定 `code`；底层错误只保留给服务端的失效书源记录，绝不进入 JSON 响应。
+- 正文、单书源分页搜索、探索、远端加书、书籍刷新、换源、三步 source debug 和批量测试均保留已有 HTTP 状态和顶层 `error`，并按需要附加 `stage`。因此部署中的旧客户端不需要改动。
+- `backend/api/source_error_contract_test.go` 使用带用户名、密码和 query token 的模拟上游错误，证明这些值不会泄露到搜索、探索、debug 或远端加书响应；同时覆盖正文规则错误的 `source_rule_invalid` / `content`。
+- 本项是 Go/JWT 多用户运行时的安全适配，不执行上游 JavaScript，也不改变仍待 P2-Parser-1G 完成的 `Book.variable` / `BookChapter.variable` 数据迁移。
 
 ## 审查范围与上游证据
 

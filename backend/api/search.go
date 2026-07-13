@@ -80,7 +80,7 @@ func (s *Server) search(c *gin.Context) {
 		result, err := searchSingleSourcePage(c.Request.Context(), sources[0], req.Keyword, page)
 		if err != nil {
 			s.recordSourceFailure(userID, sources[0], err)
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			writeSourceError(c, http.StatusBadGateway, "failed to search source", err, "search")
 			return
 		}
 		c.JSON(http.StatusOK, searchResponse{

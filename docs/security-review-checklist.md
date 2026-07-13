@@ -59,10 +59,11 @@ Evidence: `backend/api/source_failure_contract_test.go`, `frontend/tests/sourceF
 - [x] `@put:`/`@get:` use a bounded request-scoped runtime only: JSON string-map writes, key/value/count/byte/depth limits, cloned search-result and multi-branch maps, no persistence, and literal-only reads. `{{ }}` remains `ErrUnsupportedSourceRule`; no variable can acquire cookie, filesystem or server-network access.
 - [x] The raw `//` XPath shorthand is recognized, while an ordinary relative URL is never reinterpreted as XPath.
 - [x] A single next-content URL is compared to the adjacent catalog chapter after final-URL normalization; a matching URL stops the current chapter before any next-chapter request. Empty text content rules fail locally without page-cache or failure-cache writes.
-- [ ] Broader rule size/chain limits, persistent variable migration design and structured client error categories remain in subsequent parser slices. `{{...}}` remains outside the bounded runtime and must stay disabled without an isolated JS sandbox.
-- [ ] Persistent parser variables require additive `books.variable`/`chapters.variable` columns, bounded JSON validation, source-change clearing, user-scoped restore and a portable chapter-variable backup artifact. Parser-facing API errors require stable `code`/`stage` categories without raw rule, variable, URL-query, credential, JWT, response-body or filesystem-path disclosure.
+- [ ] Broader rule size/chain limits and persistent variable migration design remain in subsequent parser slices. `{{...}}` remains outside the bounded runtime and must stay disabled without an isolated JS sandbox.
+- [x] Parser-facing API errors preserve existing status/top-level `error` while adding safe `code`/`stage`; remote request, rule and unavailable-content errors never disclose raw rule, variable, URL query, credential, JWT, response body or filesystem path.
+- [ ] Persistent parser variables still require additive `books.variable`/`chapters.variable` columns, bounded JSON validation, source-change clearing, user-scoped restore and a portable chapter-variable backup artifact.
 
-Evidence: `backend/engine/source_rule_evaluator_test.go`, `backend/api/source_failure_contract_test.go`, and the full backend suite required before release.
+Evidence: `backend/engine/source_rule_evaluator_test.go`, `backend/api/source_failure_contract_test.go`, `backend/api/source_error_contract_test.go`, and the full backend suite required before release.
 
 ## Release note
 
