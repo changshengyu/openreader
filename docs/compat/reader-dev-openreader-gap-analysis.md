@@ -784,12 +784,12 @@ Status: implemented and parser/API-validated on 2026-07-11.
 
 ### P1-D4-B3 implementation record: streaming cache progress and cancellation
 
-Status: implemented and contract-tested on 2026-07-11; the three-viewport browser rerun with the new SSE click path is pending because the local browser-runner authorization disconnected during launch.
+Status: implemented and browser-validated on 2026-07-13.
 
 - **Authenticated stream contract.** `POST /books/:id/cache/stream` validates the same owner/bounded request as the legacy REST cache endpoint before opening `text/event-stream`. It emits a per-chapter `message`, terminal `end`, or client-safe terminal `error`. The legacy `/cache` endpoint remains for deployed clients and bounded batch cache operations remain an explicit OpenReader extension.
 - **Cancellation boundary.** The stream's request context is propagated into source content fetch and pagination. Browser `AbortController` cancellation or a client disconnect stops before scheduling another chapter fetch, retains only already completed cache files, and deliberately skips a final shelf-update broadcast for the incomplete operation.
 - **BookManage interaction.** The current remote book's cache button now becomes `停止 n/total`; activating it a second time aborts only that book's stream. Vue uses authenticated `fetch` SSE parsing rather than `EventSource`, so the JWT is never placed in a URL. A terminal stream error is surfaced through the existing BookManage error path; successful completion merges the returned shelf item.
-- **Evidence.** Go contracts cover success/progress/end, owner rejection before stream opening, total source failure/error and cancellation without next-chapter scheduling. Frontend contracts cover SSE framing/error handling plus active-book progress and stop behavior. Full backend, frontend unit and production build gates passed before the browser-runner transport interruption.
+- **Evidence.** Go contracts cover success/progress/end, owner rejection before stream opening, total source failure/error and cancellation without next-chapter scheduling. Frontend contracts cover SSE framing/error handling plus active-book progress and stop behavior. The real-Chrome `book-management-dialog-contract.mjs` passed at 1440×900, 390×844 and 360×800: streamed completion reaches `已缓存 2/2 章`, BookManage remains mounted while BookInfo/BookGroup coexist, compact dialogs are fullscreen, panel clicks do not close the mobile sidebar, and no horizontal overflow is present.
 
 ## P1-E pre-implementation audit: remaining Index operation routes
 
