@@ -105,6 +105,16 @@ Required evidence: malformed EPUB/UMD/PDF fixtures; valid-format regression fixt
 
 Implementation evidence: parser-limit environment values are additive and defaulted; only newly previewed/imported/reparsed bytes use them. The cleanup worker removes only expired/invalid preview pairs and aged orphaned stage files under the existing derived cache root. `backend/engine/import_limits_contract_test.go`, `backend/services/localbook/importer_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/config/config_test.go`, and full `go test ./...` pass. The backup ZIP reader below retains every JSON format and shares the pending Docker mounted-volume smoke.
 
+### UMD reader-dev binary parser follow-up (audited 2026-07-13)
+
+The current UMD parser recognizes an early OpenReader-only `#TEXTNOV` layout, whereas the fixed reader-dev upstream writes and reads the segmented `0xde9a9b89` UMD format with UTF-16LE metadata/content and zlib body chunks. This is an import/parser compatibility correction, not a data migration.
+
+- No startup scan, SQLite schema change, cache rewrite, library move or backup-format change is authorized. Existing imported books continue reading their archived chapter/cache files unchanged.
+- Newly staged or explicitly refreshed `.umd` inputs must first use the bounded reader-dev parser. A narrowly isolated legacy fallback may remain only for an actual `#TEXTNOV` input, so historical OpenReader pseudo-UMD files are not made unreadable by the correction.
+- The standard parser must cap segment count, declared chapter count, section lengths and total decompressed bytes before materializing title/offset/content arrays. Any failure occurs before `ArchiveImportedBook`, chapter rows, category writes, sync broadcasts or staged-token consumption.
+- Direct upload, LocalStore and WebDAV retries continue to reuse the same immutable, caller-scoped staged bytes. Parsing never consults the original mounted path after staging, so observed catalogue failures cannot depend on network speed or later source-file changes.
+- Required migration evidence is an existing-volume regression containing cached local books plus an unconsumed staged `.umd` preview: upgrade leaves the cached books intact, the staged standard UMD can be previewed/imported, and a failed reparse retains only its caller's retry token.
+
 ## P2 backup ZIP restore compatibility and bounds
 
 Status: implemented; release validation pending. Existing backup formats, SQLite rows and mounted roots remain readable.
