@@ -12,6 +12,7 @@ RELEASE="${RELEASE:-0}"
 HOST_OCI_PUSH="${HOST_OCI_PUSH:-0}"
 OCI_ARCHIVE="${OCI_ARCHIVE:-}"
 GO_VENDOR_DIR="${GO_VENDOR_DIR:-}"
+BUILD_PROGRESS="${BUILD_PROGRESS:-auto}"
 
 if [ -z "$GO_VENDOR_DIR" ]; then
   GO_VENDOR_DIR="$(mktemp -d -t openreader-go-vendor)"
@@ -54,6 +55,7 @@ else
 fi
 
 docker buildx build \
+  --progress "$BUILD_PROGRESS" \
   --platform "$PLATFORMS" \
   --build-context "go_vendor=$GO_VENDOR_DIR" \
   -t "$IMAGE:latest" \
@@ -65,6 +67,10 @@ docker buildx build \
   .
 
 if [ "$PUSH" = "1" ] && [ "$HOST_OCI_PUSH" = "1" ]; then
+  if [ ! -s "$OCI_ARCHIVE" ]; then
+    echo "Docker OCI archive is empty; refusing to publish" >&2
+    exit 1
+  fi
   OCI_CLEANUP_FLAG=""
   if [ "${REMOVE_OCI_ARCHIVE:-0}" = "1" ]; then
     OCI_CLEANUP_FLAG="--remove-archive"

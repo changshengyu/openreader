@@ -63,7 +63,7 @@ docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 
 脚本会把 `VERSION`、`VCS_REF` 和 `BUILD_DATE` 写入 Go 二进制和 OCI 镜像标签，设置页显示的构建信息不再是 `unknown`。
 
-为保证本地构建可复现，脚本会在 Docker 构建前从宿主机 Go 模块缓存生成临时 vendor 上下文。因此构建容器无需自行下载 Go 依赖，适用于 OrbStack 虚拟机网络与宿主机网络不同的情况。临时目录会在结束时自动删除，不会提交进仓库；只有在需要检查或复用该上下文时才设置 `GO_VENDOR_DIR=/绝对路径`。
+为保证本地构建可复现，脚本会在 Docker 构建前从宿主机 Go 模块缓存生成临时 vendor 上下文。因此构建容器无需自行下载 Go 依赖，适用于 OrbStack 虚拟机网络与宿主机网络不同的情况。临时目录会在结束时自动删除，不会提交进仓库；只有在需要检查或复用该上下文时才设置 `GO_VENDOR_DIR=/绝对路径`，本地构建排障时可通过 `BUILD_PROGRESS=plain` 输出 Buildx 详细日志。
 
 ### 本地开发
 
