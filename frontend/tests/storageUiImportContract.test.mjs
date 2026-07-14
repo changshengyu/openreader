@@ -15,12 +15,8 @@ test('uses the upstream storage-manager dialog labels without a competing embedd
   assert.doesNotMatch(webdav, /<strong>\{\{ title \}\}<\/strong>/, 'WebDAV body must not duplicate the root dialog title')
 })
 
-test('keeps CBZ reachable from every frontend local-import entry point', () => {
-  for (const [name, source] of [
-    ['direct import', directImport],
-    ['LocalStore', localStore],
-  ]) {
-    assert.match(source, /accept="[^"]*\.cbz[^"]*"/i, `${name} upload chooser must allow CBZ`)
-  }
-  assert.match(webdav, /\(txt\|text\|md\|epub\|pdf\|umd\|cbz\)/i, 'WebDAV listing must mark CBZ as importable')
+test('keeps direct CBZ import while storage managers use their distinct upstream format gates', () => {
+  assert.match(directImport, /accept="[^"]*\.cbz[^"]*"/i, 'direct import remains an approved OpenReader parser entry')
+  assert.doesNotMatch(localStore, /accept=/, 'upstream LocalStore upload must manage arbitrary files instead of filtering chooser extensions')
+  assert.doesNotMatch(webdav, /\(txt\|text\|md\|epub\|pdf\|umd\|cbz\)/i, 'WebDAV must not expose the OpenReader-only CBZ/PDF/Markdown import set')
 })

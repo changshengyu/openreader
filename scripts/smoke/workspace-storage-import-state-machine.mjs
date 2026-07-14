@@ -57,6 +57,7 @@ async function installApiMocks(page) {
   const imports = []
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/webdav\/.*$/, async route => {
+    assert(route.request().headers().authorization === `Bearer ${fakeToken()}`, 'every WebDAV file-manager request must retain bearer auth')
     if (route.request().method() === 'GET') {
       return route.fulfill({ status: 207, contentType: 'application/xml', body: webdavListing() })
     }
@@ -126,23 +127,23 @@ const sources = {
   local: {
     route: '/local-store?storageState=1',
     dialog: '.global-local-store-dialog',
-    oneButton: '导入',
-    openMulti: page => page.getByRole('button', { name: '导入筛选 (2)', exact: true }).click(),
+    oneButton: '加入书架',
   },
   webdav: {
     route: '/settings?panel=webdav&storageState=1',
     dialog: '.global-webdav-dialog',
     oneButton: '加入书架',
-    openMulti: async (page, dialog, isMobile) => {
-      const rows = page.locator(isMobile
-        ? `${dialog} .mobile-file-card .el-checkbox`
-        : `${dialog} .el-table__body-wrapper .el-checkbox`)
-      assert(await rows.count() >= 2, 'WebDAV must expose two selectable imported files')
-      await rows.nth(0).click()
-      await rows.nth(1).click()
-      await page.locator(dialog).getByRole('button', { name: '加入书架 2', exact: true }).click()
-    },
   },
+}
+
+for (const source of Object.values(sources)) {
+  source.openMulti = async (page, dialog) => {
+    const rows = page.locator(`${dialog} .el-table__body-wrapper .el-checkbox`)
+    assert(await rows.count() >= 2, 'workspace file manager must expose two selectable imported files')
+    await rows.nth(0).click()
+    await rows.nth(1).click()
+    await page.locator(dialog).getByRole('button', { name: '加入书架 2', exact: true }).click()
+  }
 }
 
 async function openMulti(page, source, dialog, isMobile) {
@@ -155,6 +156,14 @@ async function runSource(page, viewport, imports, source) {
   const importedAtStart = imports.length
   await page.goto(`${targetUrl}${config.route}`, { waitUntil: 'networkidle' })
   await page.locator(config.dialog).waitFor({ timeout: 10000 })
+
+  const forbiddenActions = source === 'local'
+    ? ['新建目录', '重命名', '下载', '导入当前目录', '导入筛选', '导入目录']
+    : ['新建目录', '重命名', '加入目录']
+  const actionLabels = await page.locator(`${config.dialog} button`).allTextContents()
+  for (const action of forbiddenActions) {
+    assert(!actionLabels.some(label => label.trim() === action), `${viewport.width} ${source}: removed operation ${action} must not be reachable`)
+  }
 
   await page.locator(config.dialog).getByRole('button', { name: config.oneButton, exact: true }).first().click()
   await page.locator('.storage-import-single-dialog').waitFor()

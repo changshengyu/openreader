@@ -110,6 +110,19 @@ Status: implemented and backend/frontend-tested on 2026-07-11 against reader-dev
 | `POST /api/local-store/import-preview`, `POST /api/webdav/import-preview` | JSON `{paths}` or `{items:[{path,title,author,tocRule}]}`. JWT/store permission required. | `200 {items}`. Each readable item is copied once to a caller-scoped immutable stage; success item contains `{path,book,importToken}`. | A parser failure remains an item-level `{path,error,importToken}` in the `200` envelope. The token remains valid for a later `{items:[{path,importToken,tocRule}]}` preview/import; mounted-file mutation/removal cannot affect that retry. |
 | `POST /api/local-store/import`, `POST /api/webdav/import` | Existing paths/items/category body. | Successful staged item uses the original preview bytes and deletes its token after durable import. | Item-level parser failures retain the staged token and do not create book/cache rows. A container response does not expose paths outside the caller's scoped store. |
 
+## P1-E3 workspace file-manager API compatibility
+
+Status: implemented and regression-tested on 2026-07-13. The fixed reader-dev contract is represented by the P1-E3 workspace UI; existing OpenReader paths remain available for deployed clients even when their corresponding operation is removed from the new workbench.
+
+| Method / path | Workbench request / response contract | Compatibility and security rule |
+|---|---|---|
+| `GET /api/local-store?path=<relative>` | The rebuilt LocalStore sends only the current relative directory and expects `{path,items}`. Every item includes `name`, `path`, `size`, `lastModified`, `isDir`, and an internal parser-capability `importable` flag. | The normal UI never sends `recursive`; hidden dot-name entries are omitted. A legacy client may still send `recursive=1` until separately retired. All paths remain caller-rooted. |
+| `POST /api/local-store/upload` | Authenticated multipart body has `path` plus one or more `file` parts. A successful multi-file write returns `201 {paths:[...]}` in submitted order; one-file callers also receive the stable `path` first item field during the compatibility window. | Upload is file management, not parser admission: any basename-safe regular file may be stored. Each file remains bounded and atomically staged beside its target; invalid/oversized data returns a client-safe `400`/`413` and must not truncate an existing destination. |
+| `POST /api/local-store/directory`, `PUT /api/local-store/rename`, `GET /api/local-store/download` | Existing authenticated request/response shapes stay unchanged. | They are legacy/API compatibility routes only; P1-E3 LocalStore UI must not create these calls. |
+| `PUT /webdav/<path>` | The rebuilt WebDAV picker performs one authenticated, bounded PUT per selected file and refreshes the current directory after all successful writes. | Multiple visible selections are an UI-level sequence over the existing raw WebDAV contract. Every PUT retains normal bearer auth, caller-rooting and atomic staging. |
+| `MKCOL /webdav/<path>`, `MOVE /webdav/<path>` | Existing raw WebDAV compatibility methods remain unchanged. | P1-E3 WebDAV UI must not surface new-directory or rename controls. |
+| `POST /api/local-store/import-preview`, `POST /api/webdav/import-preview` | The P1-E2 controller may only be launched by reader-dev-visible suffixes: LocalStore `txt/epub/umd/cbz`, WebDAV `txt/epub/umd`. | Go can retain additional direct-parser formats for existing books/clients, but they cannot reappear as a workbench button without a later documented product decision. |
+
 This API shape is an allowed Go/JWT adaptation: reader-dev returns an empty chapter list in its controller response for a local `TocEmptyException`; OpenReader preserves deployed REST paths and reports the direct-preview failure as a `400`, but must preserve the retryable staged context in both direct and storage-backed flows.
 
 ## P2 replace-rule API contract

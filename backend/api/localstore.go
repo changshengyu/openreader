@@ -2,11 +2,13 @@ package api
 
 import (
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,12 +17,13 @@ import (
 )
 
 type localStoreItem struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	Extension  string `json:"extension"`
-	Size       int64  `json:"size"`
-	IsDir      bool   `json:"isDir"`
-	Importable bool   `json:"importable"`
+	Name         string    `json:"name"`
+	Path         string    `json:"path"`
+	Extension    string    `json:"extension"`
+	Size         int64     `json:"size"`
+	LastModified time.Time `json:"lastModified"`
+	IsDir        bool      `json:"isDir"`
+	Importable   bool      `json:"importable"`
 }
 
 func (s *Server) listLocalStore(c *gin.Context) {
@@ -48,6 +51,12 @@ func (s *Server) listLocalStore(c *gin.Context) {
 			if path == targetDir {
 				return nil
 			}
+			if strings.HasPrefix(entry.Name(), ".") {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			info, err := entry.Info()
 			if err != nil {
 				return nil
@@ -70,6 +79,9 @@ func (s *Server) listLocalStore(c *gin.Context) {
 			return
 		}
 		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
 			info, err := entry.Info()
 			if err != nil {
 				continue
@@ -95,12 +107,13 @@ func (s *Server) listLocalStore(c *gin.Context) {
 func makeLocalStoreItem(name string, itemPath string, info os.FileInfo, isDir bool) localStoreItem {
 	ext := strings.ToLower(filepath.Ext(name))
 	return localStoreItem{
-		Name:       name,
-		Path:       itemPath,
-		Extension:  ext,
-		Size:       info.Size(),
-		IsDir:      isDir,
-		Importable: !isDir && isImportableExtension(ext),
+		Name:         name,
+		Path:         itemPath,
+		Extension:    ext,
+		Size:         info.Size(),
+		LastModified: info.ModTime().UTC(),
+		IsDir:        isDir,
+		Importable:   !isDir && isImportableExtension(ext),
 	}
 }
 
@@ -117,63 +130,77 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 		return
 	}
 
-	file, err := c.FormFile("file")
+	form, err := c.MultipartForm()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
 	}
-	if file.Size > s.maxLocalImportBytes() {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": errLocalImportTooLarge.Error()})
+	files := form.File["file"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
 	}
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if !isImportableExtension(ext) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported file type"})
-		return
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		path, err := s.saveLocalStoreUpload(c, c.PostForm("path"), file)
+		if err != nil {
+			if errors.Is(err, errLocalImportTooLarge) {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
+				return
+			}
+			if errors.Is(err, errInvalidLocalStoreUploadName) {
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+			return
+		}
+		paths = append(paths, path)
 	}
 
+	c.JSON(http.StatusCreated, gin.H{"path": paths[0], "paths": paths})
+}
+
+var errInvalidLocalStoreUploadName = errors.New("invalid local store upload name")
+
+func (s *Server) saveLocalStoreUpload(c *gin.Context, parentPath string, file *multipart.FileHeader) (string, error) {
+	if file.Size > s.maxLocalImportBytes() {
+		return "", errLocalImportTooLarge
+	}
+	name, ok := cleanLocalStoreName(c, file.Filename)
+	if !ok {
+		return "", errInvalidLocalStoreUploadName
+	}
 	src, err := file.Open()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open upload"})
-		return
+		return "", err
 	}
 	defer src.Close()
 
-	dstPath, _, ok := s.localStorePath(c, filepath.Join(c.PostForm("path"), filepath.Base(file.Filename)))
+	dstPath, relativePath, ok := s.localStorePath(c, filepath.Join(parentPath, name))
 	if !ok {
-		return
+		return "", errInvalidLocalStoreUploadName
 	}
 	dst, err := os.CreateTemp(filepath.Dir(dstPath), ".localstore-upload-")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
-		return
+		return "", err
 	}
 	stagedPath := dst.Name()
 	defer os.Remove(stagedPath)
 	if err := s.copyBoundedLocalImport(dst, src); err != nil {
 		_ = dst.Close()
-		if errors.Is(err, errLocalImportTooLarge) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
-		return
+		return "", err
 	}
 	if err := dst.Chmod(0o644); err != nil {
 		_ = dst.Close()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
-		return
+		return "", err
 	}
 	if err := dst.Close(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
-		return
+		return "", err
 	}
 	if err := os.Rename(stagedPath, dstPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
-		return
+		return "", err
 	}
-
-	c.JSON(http.StatusCreated, gin.H{"path": cleanRelativePath(filepath.Join(c.PostForm("path"), filepath.Base(file.Filename)))})
+	return relativePath, nil
 }
 
 func (s *Server) downloadFromLocalStore(c *gin.Context) {
