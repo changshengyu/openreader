@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/text/encoding/simplifiedchinese"
 
 	"openreader/backend/config"
 	readerdb "openreader/backend/db"
@@ -91,6 +92,35 @@ func authHeader(t *testing.T, router *gin.Engine) string {
 	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	return "Bearer " + resp.Token
+}
+
+func directLocalBookMultipartRequest(t *testing.T, router http.Handler, auth string, endpoint string, fileName string, data []byte, fields map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if data != nil {
+		part, err := writer.CreateFormFile("file", fileName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, endpoint, &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", auth)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, req)
+	return response
 }
 
 func TestHealthIncludesBuildInfo(t *testing.T) {
@@ -6400,6 +6430,146 @@ func TestDirectTXTEmptyCatalogPreviewCanBeConfirmed(t *testing.T) {
 	}
 	if _, err := os.Stat(metadataPath); !os.IsNotExist(err) {
 		t.Fatalf("empty-catalog import must consume its staged metadata, got %v", err)
+	}
+}
+
+func TestDirectTXTEncodingAndLongRuleCatalogRemainReadableAcrossStageImport(t *testing.T) {
+	gb18030Text := "无目录 GB18030 正文。\n第二段仍然必须可读。"
+	gb18030Data, err := simplifiedchinese.GB18030.NewEncoder().Bytes([]byte(gb18030Text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gbkText := "无目录 GBK 正文。\nGBK 编码也必须完整恢复。"
+	gbkData, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(gbkText))
+	if err != nil {
+		t.Fatal(err)
+	}
+	utf8BOMText := "无目录 UTF-8 BOM 正文。\nBOM 不能出现在阅读正文中。"
+	utf8BOMData := append([]byte{0xEF, 0xBB, 0xBF}, []byte(utf8BOMText)...)
+	longBody := strings.Repeat("这是超过一百 KiB 的第一章正文。", 4_000)
+	if len(longBody) <= 100*1024 {
+		t.Fatalf("long-rule fixture must exceed reader-dev's disabled 100 KiB split threshold, got %d bytes", len(longBody))
+	}
+	longText := "== 第一章 ==\n" + longBody + "\n第一章结尾标记。\n== 第二章 ==\n第二章正文。"
+
+	tests := []struct {
+		name              string
+		fileName          string
+		data              []byte
+		tocRule           string
+		wantChapterCount  int
+		wantFirstTitle    string
+		wantContentMarker string
+	}{
+		{
+			name:              "UTF-8 BOM no toc",
+			fileName:          "utf8-bom-no-toc.txt",
+			data:              utf8BOMData,
+			wantChapterCount:  1,
+			wantFirstTitle:    "第1章(1)",
+			wantContentMarker: "BOM 不能出现在阅读正文中。",
+		},
+		{
+			name:              "GBK no toc",
+			fileName:          "gbk-no-toc.txt",
+			data:              gbkData,
+			wantChapterCount:  1,
+			wantFirstTitle:    "第1章(1)",
+			wantContentMarker: "GBK 编码也必须完整恢复。",
+		},
+		{
+			name:              "GB18030 no toc",
+			fileName:          "gb18030-no-toc.txt",
+			data:              gb18030Data,
+			wantChapterCount:  1,
+			wantFirstTitle:    "第1章(1)",
+			wantContentMarker: "第二段仍然必须可读。",
+		},
+		{
+			name:              "explicit long chapter stays whole",
+			fileName:          "long-rule.txt",
+			data:              []byte(longText),
+			tocRule:           `^== .+ ==$`,
+			wantChapterCount:  2,
+			wantFirstTitle:    "== 第一章 ==",
+			wantContentMarker: "第一章结尾标记。",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			previewW := directLocalBookMultipartRequest(t, router, auth, "/api/imports/books/preview", tt.fileName, tt.data, map[string]string{"tocRule": tt.tocRule})
+			if previewW.Code != http.StatusOK {
+				t.Fatalf("preview: expected 200, got %d: %s", previewW.Code, previewW.Body.String())
+			}
+			var preview struct {
+				ChapterCount int `json:"chapterCount"`
+				ImportToken  string `json:"importToken"`
+				Chapters     []struct {
+					Title string `json:"title"`
+				} `json:"chapters"`
+			}
+			if err := json.Unmarshal(previewW.Body.Bytes(), &preview); err != nil {
+				t.Fatal(err)
+			}
+			if preview.ChapterCount != tt.wantChapterCount || len(preview.Chapters) != tt.wantChapterCount || !validLocalImportToken(preview.ImportToken) {
+				t.Fatalf("preview = %+v, want %d staged chapters", preview, tt.wantChapterCount)
+			}
+			if preview.Chapters[0].Title != tt.wantFirstTitle {
+				t.Fatalf("preview first title = %q, want %q", preview.Chapters[0].Title, tt.wantFirstTitle)
+			}
+
+			importW := directLocalBookMultipartRequest(t, router, auth, "/api/imports/books", tt.fileName, nil, map[string]string{
+				"importToken": preview.ImportToken,
+				"tocRule":     tt.tocRule,
+			})
+			if importW.Code != http.StatusCreated {
+				t.Fatalf("stage import: expected 201, got %d: %s", importW.Code, importW.Body.String())
+			}
+			var imported bookListItem
+			if err := json.Unmarshal(importW.Body.Bytes(), &imported); err != nil {
+				t.Fatal(err)
+			}
+			var book models.Book
+			if err := server.db.First(&book, imported.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			var chapters []models.Chapter
+			if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(chapters) != tt.wantChapterCount || chapters[0].Title != tt.wantFirstTitle {
+				t.Fatalf("imported chapters = %+v", chapters)
+			}
+			if err := os.Remove(filepath.Join(server.cfg.LibraryDir, book.LibraryPath, chapters[0].CachePath)); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("remove derived chapter cache: %v", err)
+			}
+
+			contentReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+			contentReq.Header.Set("Authorization", auth)
+			contentW := httptest.NewRecorder()
+			router.ServeHTTP(contentW, contentReq)
+			if contentW.Code != http.StatusOK {
+				t.Fatalf("rebuild local reader content: expected 200, got %d: %s", contentW.Code, contentW.Body.String())
+			}
+			var content struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal(contentW.Body.Bytes(), &content); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(content.Content, tt.wantContentMarker) {
+				t.Fatalf("recovered content lost marker %q: %q", tt.wantContentMarker, content.Content)
+			}
+			if tt.name == "UTF-8 BOM no toc" && strings.Contains(content.Content, "\ufeff") {
+				t.Fatalf("UTF-8 BOM leaked into recovered reader content: %q", content.Content)
+			}
+			if tt.tocRule != "" && strings.Contains(content.Content, "第二章正文。") {
+				t.Fatalf("first explicit long-rule chapter was implicitly split or merged: %q", content.Content[len(content.Content)-min(256, len(content.Content)):])
+			}
+		})
 	}
 }
 
