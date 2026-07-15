@@ -89,6 +89,14 @@ Evidence for the checked items: `backend/api/workspace_storage_access_contract_t
 
 Evidence: `backend/api/workspace_file_manager_p1e3_contract_test.go` covers private rooted listing fields, multi-file ordinary-file storage and a rejected later part preserving its old destination. `frontend/tests/workspaceFileManagerParity.test.mjs` keeps source-specific presentation gates separated from direct parser support. `scripts/smoke/workspace-storage-import-state-machine.mjs` validates authenticated WebDAV requests and removed actions across desktop and both required mobile sizes.
 
+## P1-E4 TXT empty-catalogue follow-up
+
+- [x] A valid staged TXT with an unmatched user TOC rule is no longer misclassified as a parser or transport failure. The response retains only the opaque caller-scoped stage token and returns no mounted path, parser internals, credentials or source bytes.
+- [x] Confirmation consumes only that caller's staged file, archives the original safely, and creates a zero-chapter local book without fabricating a chapter or dereferencing a missing final chapter. Foreign/expired-token rejection remains covered by the existing stage-token contract.
+- [x] Direct, LocalStore and WebDAV UI keep the empty catalogue distinct from an actual parser failure, so a user can retry against the immutable staged data or deliberately confirm the upstream-compatible zero-chapter state.
+
+Evidence: `backend/services/localbook/importer_test.go`, `backend/api/api_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `frontend/tests/overlayBookImport.test.mjs`, `frontend/tests/storageImportWorkflow.test.mjs`, and `scripts/smoke/local-book-import-contract.mjs` / `workspace-storage-retry-contract.mjs` at desktop and both mobile viewports.
+
 ## P2 import parser and staged-preview follow-up
 
 - [x] Initial EPUB parsing now validates ZIP paths/symlinks/duplicates/count/per-entry/expanded-size before local import work; every archive-member read is bounded.

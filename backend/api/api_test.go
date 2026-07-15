@@ -6278,28 +6278,29 @@ func TestDirectTXTPreviewRetainsStageWhenExplicitRuleFindsNoChapters(t *testing.
 	}
 	dataPath, metadataPath := localImportStagePaths(server.localImportStageDir(1), firstPreview.ImportToken)
 
-	failed := request("/api/imports/books/preview", map[string]string{
+	emptyCatalog := request("/api/imports/books/preview", map[string]string{
 		"importToken": firstPreview.ImportToken,
 		"tocRule":     `^不存在的目录$`,
 	}, false)
-	if failed.Code != http.StatusBadRequest {
-		t.Fatalf("explicit nonmatching rule: expected 400, got %d: %s", failed.Code, failed.Body.String())
+	if emptyCatalog.Code != http.StatusOK {
+		t.Fatalf("explicit nonmatching rule: expected 200 empty preview, got %d: %s", emptyCatalog.Code, emptyCatalog.Body.String())
 	}
-	var failure struct {
-		Error       string `json:"error"`
-		ImportToken string `json:"importToken"`
+	var emptyPreview struct {
+		ImportToken  string     `json:"importToken"`
+		ChapterCount int        `json:"chapterCount"`
+		Chapters     []struct{} `json:"chapters"`
 	}
-	if err := json.Unmarshal(failed.Body.Bytes(), &failure); err != nil {
+	if err := json.Unmarshal(emptyCatalog.Body.Bytes(), &emptyPreview); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(failure.Error, "no readable chapters") || failure.ImportToken != firstPreview.ImportToken {
-		t.Fatalf("failed reparse must retain token and clear error, got %+v", failure)
+	if emptyPreview.ImportToken != firstPreview.ImportToken || emptyPreview.ChapterCount != 0 || len(emptyPreview.Chapters) != 0 {
+		t.Fatalf("empty reparse must retain token and return an empty catalogue, got %+v", emptyPreview)
 	}
 	if _, err := os.Stat(dataPath); err != nil {
-		t.Fatalf("failed reparse must retain staged data: %v", err)
+		t.Fatalf("empty reparse must retain staged data: %v", err)
 	}
 	if _, err := os.Stat(metadataPath); err != nil {
-		t.Fatalf("failed reparse must retain staged metadata: %v", err)
+		t.Fatalf("empty reparse must retain staged metadata: %v", err)
 	}
 
 	retry := request("/api/imports/books/preview", map[string]string{
@@ -6316,6 +6317,89 @@ func TestDirectTXTPreviewRetainsStageWhenExplicitRuleFindsNoChapters(t *testing.
 	}, false)
 	if imported.Code != http.StatusCreated {
 		t.Fatalf("valid staged import: expected 201, got %d: %s", imported.Code, imported.Body.String())
+	}
+}
+
+func TestDirectTXTEmptyCatalogPreviewCanBeConfirmed(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	request := func(path string, fields map[string]string, withFile bool) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		if withFile {
+			part, err := writer.CreateFormFile("file", "empty-catalog.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := part.Write([]byte("这是没有匹配目录的正文。")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for key, value := range fields {
+			if err := writer.WriteField(key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		return response
+	}
+
+	preview := request("/api/imports/books/preview", map[string]string{
+		"tocRule": `^不存在的目录$`,
+	}, true)
+	if preview.Code != http.StatusOK {
+		t.Fatalf("empty-catalog preview: expected 200, got %d: %s", preview.Code, preview.Body.String())
+	}
+	var staged struct {
+		ImportToken  string `json:"importToken"`
+		ChapterCount int    `json:"chapterCount"`
+	}
+	if err := json.Unmarshal(preview.Body.Bytes(), &staged); err != nil {
+		t.Fatal(err)
+	}
+	if !validLocalImportToken(staged.ImportToken) || staged.ChapterCount != 0 {
+		t.Fatalf("unexpected empty-catalog preview: %+v", staged)
+	}
+	dataPath, metadataPath := localImportStagePaths(server.localImportStageDir(1), staged.ImportToken)
+
+	imported := request("/api/imports/books", map[string]string{
+		"importToken": staged.ImportToken,
+		"tocRule":     `^不存在的目录$`,
+	}, false)
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("empty-catalog import: expected 201, got %d: %s", imported.Code, imported.Body.String())
+	}
+	var book struct {
+		ID           uint   `json:"id"`
+		ChapterCount int    `json:"chapterCount"`
+		LastChapter  string `json:"lastChapter"`
+	}
+	if err := json.Unmarshal(imported.Body.Bytes(), &book); err != nil {
+		t.Fatal(err)
+	}
+	if book.ID == 0 || book.ChapterCount != 0 || book.LastChapter != "" {
+		t.Fatalf("empty-catalog import response = %+v", book)
+	}
+	var chapterCount int64
+	if err := server.db.Model(&models.Chapter{}).Where("book_id = ?", book.ID).Count(&chapterCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if chapterCount != 0 {
+		t.Fatalf("empty-catalog import wrote %d chapters", chapterCount)
+	}
+	if _, err := os.Stat(dataPath); !os.IsNotExist(err) {
+		t.Fatalf("empty-catalog import must consume its staged data, got %v", err)
+	}
+	if _, err := os.Stat(metadataPath); !os.IsNotExist(err) {
+		t.Fatalf("empty-catalog import must consume its staged metadata, got %v", err)
 	}
 }
 

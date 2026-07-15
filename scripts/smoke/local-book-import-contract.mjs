@@ -2,7 +2,7 @@
 
 const targetURL = (process.env.TARGET_URL || 'http://127.0.0.1:8080').replace(/\/$/, '')
 const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const retryHint = '未找到匹配的目录，请调整目录规则后重新解析'
+const emptyCatalogHint = '未匹配到目录。你可以修改目录规则后重新解析，或保留空目录导入，之后再从书籍信息中刷新目录。'
 const fixture = Buffer.from('== 第一章 ==\n这是正文内容。', 'utf8')
 const runID = Date.now()
 
@@ -52,7 +52,7 @@ async function runViewport(browser, viewport) {
   const errors = []
   page.on('pageerror', error => errors.push(`pageerror: ${error.message}`))
   page.on('console', message => {
-    if (message.type() === 'error' && !message.text().includes('status of 400')) {
+    if (message.type() === 'error') {
       errors.push(`console.error: ${message.text()}`)
     }
   })
@@ -76,15 +76,15 @@ async function runViewport(browser, viewport) {
     const rule = page.getByPlaceholder('TXT目录规则（可选，留空使用默认规则，例如：^第.+章.*$）')
     await rule.fill('^不存在的目录$')
     await page.getByText('重新解析', { exact: true }).click()
-    await page.locator('.direct-import-preview-error').getByText(retryHint, { exact: true }).waitFor()
-    assert(!await page.getByRole('button', { name: '导入', exact: true }).isEnabled(), 'import must stay disabled after an unmatched explicit rule')
+    await page.locator('.direct-import-preview-empty').getByText(emptyCatalogHint, { exact: true }).waitFor()
+    assert(await page.getByRole('button', { name: '导入', exact: true }).isEnabled(), 'upstream-compatible empty catalogue must remain confirmable')
 
     await rule.fill('^== .+ ==$')
     await page.getByText('重新解析', { exact: true }).click()
     await page.getByText('已解析 1 章', { exact: true }).waitFor()
     assert(await page.getByRole('button', { name: '导入', exact: true }).isEnabled(), 'import must re-enable after the valid staged retry')
     assert(errors.length === 0, errors.join('\n'))
-    console.log(`${viewport.width}x${viewport.height}: direct TXT staged-retry UI ok`)
+    console.log(`${viewport.width}x${viewport.height}: direct TXT empty-catalog staged-retry UI ok`)
   } finally {
     await context.close()
   }

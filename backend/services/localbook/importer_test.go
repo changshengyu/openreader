@@ -14,15 +14,66 @@ import (
 	"openreader/backend/models"
 )
 
-func TestImporterPreviewRejectsExplicitTXTTOCRuleWithNoMatches(t *testing.T) {
-	_, err := (Importer{}).Preview(ImportRequest{
+func TestImporterPreviewAllowsExplicitTXTTOCRuleWithNoMatches(t *testing.T) {
+	preview, err := (Importer{}).Preview(ImportRequest{
 		FileName:  "规则不匹配.txt",
 		Extension: ".txt",
 		Data:      []byte("这是正文，但不包含自定义目录。"),
 		TOCRule:   `^== .+ ==$`,
 	})
-	if !errors.Is(err, ErrNoReadableChapters) {
-		t.Fatalf("explicit no-match TOC rule error = %v, want %v", err, ErrNoReadableChapters)
+	if err != nil {
+		t.Fatalf("explicit no-match TOC preview error = %v", err)
+	}
+	if preview.Title != "规则不匹配" || preview.ChapterCount != 0 || len(preview.Chapters) != 0 {
+		t.Fatalf("explicit no-match TOC preview = %+v, want a normal empty catalog", preview)
+	}
+}
+
+func TestImporterImportsExplicitTXTTOCRuleWithNoMatches(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "empty-catalog", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	book, err := NewImporter(cfg, database).Import(ImportRequest{
+		UserID:    user.ID,
+		UserName:  user.Username,
+		FileName:  "规则不匹配.txt",
+		Extension: ".txt",
+		Data:      []byte("这是正文，但不包含自定义目录。"),
+		TOCRule:   `^== .+ ==$`,
+	})
+	if err != nil {
+		t.Fatalf("explicit no-match TOC import error = %v", err)
+	}
+	if book.ChapterCount != 0 || book.LastChapter != "" || book.TOCRule != `^== .+ ==$` {
+		t.Fatalf("empty-catalog book = %+v", book)
+	}
+	var chapterCount int64
+	if err := database.Model(&models.Chapter{}).Where("book_id = ?", book.ID).Count(&chapterCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if chapterCount != 0 {
+		t.Fatalf("empty-catalog import created %d chapters", chapterCount)
+	}
+	for _, relativePath := range []string{book.OriginalFile, book.SourceFile, book.TOCFile} {
+		if _, err := os.Stat(filepath.Join(cfg.LibraryDir, relativePath)); err != nil {
+			t.Fatalf("empty-catalog %s was not archived: %v", relativePath, err)
+		}
 	}
 }
 

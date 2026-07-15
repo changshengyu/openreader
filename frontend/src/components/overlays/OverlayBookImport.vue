@@ -110,6 +110,9 @@
             {{ chapter.title }}
           </span>
         </div>
+        <div v-else-if="previewData?.chapterCount === 0" class="direct-import-preview-empty">
+          未匹配到目录。你可以修改目录规则后重新解析，或保留空目录导入，之后再从书籍信息中刷新目录。
+        </div>
         <div v-else-if="previewError" class="direct-import-preview-error">
           {{ previewError }}
         </div>
@@ -249,6 +252,12 @@ function readError(error, fallback) {
 
 .direct-import-preview-error {
   color: var(--el-color-warning);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.direct-import-preview-empty {
+  color: var(--app-text-muted);
   font-size: 13px;
   line-height: 1.5;
 }

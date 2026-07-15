@@ -86,8 +86,7 @@ func (s *Server) importTXT(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, localbook.ErrUnsupportedFormat) ||
-			errors.Is(err, localbook.ErrParseFailed) ||
-			errors.Is(err, localbook.ErrNoReadableChapters) {
+			errors.Is(err, localbook.ErrParseFailed) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}

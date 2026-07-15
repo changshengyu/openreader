@@ -49,6 +49,20 @@ test('opens one valid staged preview directly in the single-book confirmation wi
   assert.deepEqual(calls, [['preview', ['one.txt']]])
 })
 
+test('treats a staged empty catalogue as a valid upstream local-book preview', async () => {
+  const { workflow } = createWorkflow({
+    previewItems: [previewRow('empty.txt', 'z'.repeat(48), {
+      book: { chapterCount: 0, chapters: [] },
+    })],
+  })
+
+  await workflow.start({ source: 'local-store', paths: ['empty.txt'] })
+
+  assert.equal(workflow.phase.value, 'single')
+  assert.equal(workflow.currentRow.value.chapterCount, 0)
+  assert.equal(workflow.currentRow.value.valid, true)
+})
+
 test('distinguishes multi-book batch, sequential, and close cancellation transitions', async () => {
   const rows = [previewRow('one.txt', 'a'.repeat(48)), previewRow('two.txt', 'b'.repeat(48))]
 

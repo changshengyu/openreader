@@ -197,9 +197,9 @@ func TestStoragePreviewStageReparsesAfterMountedSourceIsRemoved(t *testing.T) {
 				t.Fatalf("remove mounted source after preview: %v", err)
 			}
 
-			failed := reparseStagedStorageBook(t, router, auth, tt.previewEndpoint, "retry-rule.txt", stageToken, `^不存在的目录$`)
-			if failed.Items[0].ImportToken != stageToken || !strings.Contains(failed.Items[0].Error, "no readable chapters") {
-				t.Fatalf("failed staged reparse must retain token/error, got %+v", failed.Items[0])
+			emptyCatalog := reparseStagedStorageBook(t, router, auth, tt.previewEndpoint, "retry-rule.txt", stageToken, `^不存在的目录$`)
+			if emptyCatalog.Items[0].ImportToken != stageToken || emptyCatalog.Items[0].Book == nil || emptyCatalog.Items[0].Book.ChapterCount != 0 || emptyCatalog.Items[0].Error != "" {
+				t.Fatalf("empty staged reparse must retain token and return a normal empty preview, got %+v", emptyCatalog.Items[0])
 			}
 
 			retry := reparseStagedStorageBook(t, router, auth, tt.previewEndpoint, "retry-rule.txt", stageToken, `^== .+ ==$`)

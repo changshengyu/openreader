@@ -17,7 +17,7 @@ test('preserves a preview import token through LocalStore/WebDAV confirmation', 
   assert.match(webdavApi, /items\.length\s*\?\s*\{ items, categoryIds \}/, 'WebDAV must forward preview rows without rebuilding them')
 })
 
-test('keeps direct TXT rule-retry context visible after an empty catalogue response', () => {
-  assert.match(directDialog, /v-else-if="previewError"/, 'the direct-import preview must retain a visible retry hint instead of a blank state')
-  assert.match(directDialog, /no readable chapters.*return fallback/s, 'server no-readable-chapter errors must use the actionable retry message')
+test('keeps direct TXT empty catalogues visible as a recoverable successful preview', () => {
+	assert.match(directDialog, /previewData\?\.chapterCount\s*===\s*0/, 'a successful empty catalogue must be distinct from a parser failure')
+	assert.match(directDialog, /direct-import-preview-empty/, 'the direct-import dialog must explain that users can adjust the rule or retain the empty catalogue')
 })

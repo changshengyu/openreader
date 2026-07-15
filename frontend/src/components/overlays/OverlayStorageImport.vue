@@ -16,6 +16,7 @@
         <div>
           <strong>{{ row.path }}</strong>
           <p v-if="row.error">{{ row.error }}</p>
+          <span v-else-if="row.chapterCount === 0">未匹配到目录；可调整规则后重新解析，或保留空目录继续导入。</span>
           <span v-else>已解析 {{ row.chapterCount }} 章</span>
         </div>
         <div v-if="isRuleConfigurable(row.path)" class="storage-import-rule-row">
@@ -94,6 +95,9 @@
           </el-select>
           <el-button :loading="currentRow.reparsing" :disabled="!currentRow.importToken" @click="reparse(currentRow)">刷新目录</el-button>
         </div>
+        <p v-if="currentRow.chapterCount === 0" class="storage-import-empty-catalog">
+          未匹配到目录；可调整规则后刷新目录，或保留空目录继续导入。
+        </p>
         <p v-if="currentRow.lastError" class="storage-import-error">{{ currentRow.lastError }}</p>
       </div>
       <div class="storage-import-chapter-title">章节列表（{{ currentRow.chapters.length }}）</div>

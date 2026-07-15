@@ -14,9 +14,8 @@ import (
 )
 
 var (
-	ErrUnsupportedFormat  = errors.New("unsupported local book format")
-	ErrParseFailed        = errors.New("failed to parse local book")
-	ErrNoReadableChapters = errors.New("no readable chapters found")
+	ErrUnsupportedFormat = errors.New("unsupported local book format")
+	ErrParseFailed       = errors.New("failed to parse local book")
 )
 
 type Importer struct {
@@ -61,10 +60,6 @@ func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
 		}
 		return PreviewResult{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
-	if len(parsedBook.Chapters) == 0 {
-		return PreviewResult{}, ErrNoReadableChapters
-	}
-
 	title := strings.TrimSpace(request.Title)
 	if title == "" {
 		title = strings.TrimSpace(parsedBook.Title)
@@ -102,9 +97,6 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 		return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
 	chapters := parsedBook.Chapters
-	if len(chapters) == 0 {
-		return models.Book{}, ErrNoReadableChapters
-	}
 
 	title := strings.TrimSpace(request.Title)
 	if title == "" {
@@ -126,6 +118,10 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 
 	var book models.Book
 	err = importer.db.Transaction(func(tx *gorm.DB) error {
+		lastChapter := ""
+		if len(chapters) > 0 {
+			lastChapter = chapters[len(chapters)-1].Title
+		}
 		book = models.Book{
 			UserID:       request.UserID,
 			SourceID:     0,
@@ -138,7 +134,7 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 			TOCFile:      archive.TOCFile,
 			TOCRule:      strings.TrimSpace(request.TOCRule),
 			SourceFile:   archive.SourceFile,
-			LastChapter:  chapters[len(chapters)-1].Title,
+			LastChapter:  lastChapter,
 			ChapterCount: len(chapters),
 		}
 		if err := tx.Create(&book).Error; err != nil {

@@ -82,7 +82,7 @@ async function installApiMocks(page) {
         return route.fulfill(json({ items: [{ path: 'retry-rule.txt', importToken: localToken, book: { title: '本地重试', author: '', chapterCount: 1, chapters: [{ index: 0, title: '== 第一章 ==' }] } }] }))
       }
       assert(Array.isArray(body.paths), 'LocalStore initial preview must be path based')
-      return route.fulfill(json({ items: [{ path: 'retry-rule.txt', importToken: localToken, error: 'failed to parse local book: no readable chapters' }] }))
+      return route.fulfill(json({ items: [{ path: 'retry-rule.txt', importToken: localToken, book: { title: '本地重试', author: '', chapterCount: 0, chapters: [] } }] }))
     }
     if (path === '/local-store/import') {
       const body = requestBody(request)
@@ -101,7 +101,7 @@ async function installApiMocks(page) {
         return route.fulfill(json({ items: [{ path: 'retry-rule.txt', importToken: webdavToken, book: { title: 'WebDAV 重试', author: '', chapterCount: 1, chapters: [{ index: 0, title: '== 第一章 ==' }] } }] }))
       }
       assert(Array.isArray(body.paths), 'WebDAV initial preview must be path based')
-      return route.fulfill(json({ items: [{ path: 'retry-rule.txt', importToken: webdavToken, error: 'failed to parse local book: no readable chapters' }] }))
+      return route.fulfill(json({ items: [{ path: 'retry-rule.txt', importToken: webdavToken, book: { title: 'WebDAV 重试', author: '', chapterCount: 0, chapters: [] } }] }))
     }
     if (path === '/webdav/import') {
       const body = requestBody(request)
@@ -130,12 +130,13 @@ async function openAndRetry(page, root, viewport, source) {
   await page.goto(`${root}${path}`, { waitUntil: 'networkidle' })
   await page.waitForSelector(dialog, { timeout: 10000 })
   await page.getByRole('button', { name: startLabel, exact: true }).first().click()
-  await page.locator('.storage-import-preflight-dialog').getByText('待修复', { exact: true }).waitFor()
-  const rule = page.locator('.storage-import-preflight-dialog').getByPlaceholder('TXT 目录规则（可选）')
+  await page.locator('.storage-import-single-dialog').waitFor()
+  await page.locator('.storage-import-single-dialog').getByText('未匹配到目录；可调整规则后刷新目录，或保留空目录继续导入。', { exact: true }).waitFor()
+  assert(await page.locator('.storage-import-single-dialog').getByRole('button', { name: '确定导入', exact: true }).isEnabled(), `${viewport.width} ${source}: empty catalogue must remain confirmable`)
+  const rule = page.locator('.storage-import-single-dialog').getByPlaceholder('TXT 目录规则（可选）')
   await rule.fill('^== .+ ==$')
-  await page.locator('.storage-import-preflight-dialog').getByRole('button', { name: '重新解析', exact: true }).click()
-  await page.locator('.storage-import-preflight-dialog').getByText('已解析 1 章', { exact: true }).waitFor()
-  await page.locator('.storage-import-preflight-dialog').getByRole('button', { name: '继续导入 1 本', exact: true }).click()
+  await page.locator('.storage-import-single-dialog').getByRole('button', { name: '刷新目录', exact: true }).click()
+  await page.locator('.storage-import-single-dialog').getByText('章节列表（1）', { exact: true }).waitFor()
   await page.locator('.storage-import-single-dialog').getByRole('button', { name: '确定导入', exact: true }).click()
   await page.locator('.storage-import-single-dialog').waitFor({ state: 'hidden' })
   await assertNoHorizontalOverflow(page, `${viewport.width} ${source} staged retry`)
@@ -181,7 +182,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`workspace-storage-retry: ok ${checks.join(', ')} localStore=true webdav=true tokenReparse=true`)
+    console.log(`workspace-storage-retry: ok ${checks.join(', ')} localStore=true webdav=true emptyCatalog=true tokenReparse=true`)
   } finally {
     await browser.close()
   }
