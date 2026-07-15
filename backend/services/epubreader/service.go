@@ -86,20 +86,41 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 	}
 
 	resourcePath := strings.TrimSpace(chapter.ResourcePath)
-	if resourcePath == "" {
-		resourcePath, err = s.recoverChapterResourcePath(sourcePath, book, chapter.Index)
-		if err != nil {
-			return PreparedChapter{}, err
+	resourceFragment, err := normalizeResourceFragment(chapter.ResourceFragment)
+	if err != nil {
+		return PreparedChapter{}, ErrUnsafePath
+	}
+	resourceEndFragment, err := normalizeResourceFragment(chapter.ResourceEndFragment)
+	if err != nil {
+		return PreparedChapter{}, ErrUnsafePath
+	}
+	if resourcePath == "" || (resourceFragment == "" && resourceEndFragment == "" && epubTOCRuleCanCarryFragments(book.TOCRule)) {
+		recovered, recoverErr := s.recoverChapterResourceMetadata(sourcePath, book, chapter.Index)
+		if recoverErr != nil && resourcePath == "" {
+			return PreparedChapter{}, recoverErr
 		}
-		chapter.ResourcePath = resourcePath
-		if err := s.db.Model(chapter).Update("resource_path", resourcePath).Error; err != nil {
-			return PreparedChapter{}, err
+		if recoverErr == nil && (resourcePath == "" || resourcePath == recovered.ResourcePath) {
+			resourcePath = recovered.ResourcePath
+			resourceFragment = recovered.ResourceFragment
+			resourceEndFragment = recovered.ResourceEndFragment
 		}
-		s.backfillArchivedChapter(book, chapter.Index, resourcePath)
 	}
 	resourcePath, err = normalizeArchivePath(resourcePath)
 	if err != nil || resourcePath == "" {
 		return PreparedChapter{}, ErrUnsafePath
+	}
+	if resourcePath != chapter.ResourcePath || resourceFragment != chapter.ResourceFragment || resourceEndFragment != chapter.ResourceEndFragment {
+		chapter.ResourcePath = resourcePath
+		chapter.ResourceFragment = resourceFragment
+		chapter.ResourceEndFragment = resourceEndFragment
+		if err := s.db.Model(chapter).Updates(map[string]any{
+			"resource_path":         resourcePath,
+			"resource_fragment":     resourceFragment,
+			"resource_end_fragment": resourceEndFragment,
+		}).Error; err != nil {
+			return PreparedChapter{}, err
+		}
+		s.backfillArchivedChapter(book, chapter.Index, resourcePath, resourceFragment, resourceEndFragment)
 	}
 	if _, err := s.resourceFile(extractionRoot, resourcePath); err != nil {
 		return PreparedChapter{}, err
@@ -107,17 +128,24 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 
 	expiresAt := s.now().UTC().Add(resourceCapabilityTTL)
 	capability, err := signResourceCapability(s.cfg.JWTSecret, resourceClaims{
-		UserID:      book.UserID,
-		BookID:      book.ID,
-		Fingerprint: fingerprint,
-		Purpose:     resourceCapabilityPurpose,
-		ExpiresAt:   expiresAt.Unix(),
+		UserID:              book.UserID,
+		BookID:              book.ID,
+		Fingerprint:         fingerprint,
+		Purpose:             resourceCapabilityPurpose,
+		ExpiresAt:           expiresAt.Unix(),
+		DocumentPath:        resourcePath,
+		ResourceFragment:    resourceFragment,
+		ResourceEndFragment: resourceEndFragment,
 	})
 	if err != nil {
 		return PreparedChapter{}, err
 	}
+	resourceURL := "/api/epub-resource/" + url.PathEscape(capability) + "/" + escapeResourcePath(resourcePath)
+	if resourceFragment != "" {
+		resourceURL += "#" + url.PathEscape(resourceFragment)
+	}
 	return PreparedChapter{
-		ResourceURL: "/api/epub-resource/" + url.PathEscape(capability) + "/" + escapeResourcePath(resourcePath),
+		ResourceURL: resourceURL,
 		ExpiresAt:   expiresAt,
 	}, nil
 }
@@ -184,7 +212,13 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 	if len(data) > maxDocumentBytes {
 		return Resource{}, ErrExtractionLimit
 	}
-	resource.Data, err = sanitizeAndInjectDocument(data)
+	fragment := ""
+	endFragment := ""
+	if claims.DocumentPath == resourcePath {
+		fragment = claims.ResourceFragment
+		endFragment = claims.ResourceEndFragment
+	}
+	resource.Data, err = sanitizeAndInjectDocument(data, fragment, endFragment)
 	if err != nil {
 		return Resource{}, err
 	}
@@ -323,30 +357,38 @@ func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string,
 	return fingerprint, finalRoot, nil
 }
 
-func (s *Service) recoverChapterResourcePath(sourcePath string, book models.Book, chapterIndex int) (string, error) {
+func (s *Service) recoverChapterResourceMetadata(sourcePath string, book models.Book, chapterIndex int) (engine.TXTChapter, error) {
 	info, err := os.Stat(sourcePath)
 	if err != nil {
-		return "", ErrNotFound
+		return engine.TXTChapter{}, ErrNotFound
 	}
 	if info.Size() > s.limits.MaxArchiveBytes {
-		return "", ErrExtractionLimit
+		return engine.TXTChapter{}, ErrExtractionLimit
 	}
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return "", err
+		return engine.TXTChapter{}, err
 	}
 	parsed, err := engine.ParseEPUBWithRule(data, book.TOCRule)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidArchive, err)
+		return engine.TXTChapter{}, fmt.Errorf("%w: %v", ErrInvalidArchive, err)
 	}
 	if chapterIndex < 0 || chapterIndex >= len(parsed.Chapters) {
-		return "", ErrNotFound
+		return engine.TXTChapter{}, ErrNotFound
 	}
-	resourcePath, err := normalizeArchivePath(parsed.Chapters[chapterIndex].ResourcePath)
+	chapter := parsed.Chapters[chapterIndex]
+	resourcePath, err := normalizeArchivePath(chapter.ResourcePath)
 	if err != nil || resourcePath == "" {
-		return "", ErrNotFound
+		return engine.TXTChapter{}, ErrNotFound
 	}
-	return resourcePath, nil
+	chapter.ResourcePath = resourcePath
+	if chapter.ResourceFragment, err = normalizeResourceFragment(chapter.ResourceFragment); err != nil {
+		return engine.TXTChapter{}, ErrUnsafePath
+	}
+	if chapter.ResourceEndFragment, err = normalizeResourceFragment(chapter.ResourceEndFragment); err != nil {
+		return engine.TXTChapter{}, ErrUnsafePath
+	}
+	return chapter, nil
 }
 
 func (s *Service) resourceFile(extractionRoot, resourcePath string) (string, error) {
@@ -371,7 +413,7 @@ func (s *Service) resourceFile(extractionRoot, resourcePath string) (string, err
 	return resolved, nil
 }
 
-func (s *Service) backfillArchivedChapter(book models.Book, chapterIndex int, resourcePath string) {
+func (s *Service) backfillArchivedChapter(book models.Book, chapterIndex int, resourcePath, resourceFragment, resourceEndFragment string) {
 	tocPath := strings.TrimSpace(book.TOCFile)
 	if tocPath == "" || filepath.IsAbs(tocPath) {
 		return
@@ -390,8 +432,10 @@ func (s *Service) backfillArchivedChapter(book models.Book, chapterIndex int, re
 	}
 	changed := false
 	for index := range chapters {
-		if chapters[index].Index == chapterIndex && chapters[index].ResourcePath != resourcePath {
+		if chapters[index].Index == chapterIndex && (chapters[index].ResourcePath != resourcePath || chapters[index].ResourceFragment != resourceFragment || chapters[index].ResourceEndFragment != resourceEndFragment) {
 			chapters[index].ResourcePath = resourcePath
+			chapters[index].ResourceFragment = resourceFragment
+			chapters[index].ResourceEndFragment = resourceEndFragment
 			changed = true
 		}
 	}
@@ -421,6 +465,19 @@ func (s *Service) backfillArchivedChapter(book models.Book, chapterIndex int, re
 		return
 	}
 	_ = os.Rename(tempPath, fullPath)
+}
+
+func epubTOCRuleCanCarryFragments(rule string) bool {
+	switch strings.ToLower(strings.TrimSpace(rule)) {
+	case "toc", "toc+spin", "toc<spin":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeResourceFragment(value string) (string, error) {
+	return engine.NormalizeEPUBFragment(value)
 }
 
 func fingerprintFile(filePath string) (string, error) {

@@ -16,6 +16,7 @@
     @height="emit('epub-height', $event)"
     @click-point="emit('epub-click', $event)"
     @hash="emit('epub-hash', $event)"
+    @navigate="emit('epub-navigate', $event)"
     @keydown="emit('epub-keydown', $event)"
     @preview="emit('epub-preview', $event)"
     @error="emit('epub-error', $event)"
@@ -161,6 +162,7 @@ const emit = defineEmits([
   'epub-height',
   'epub-click',
   'epub-hash',
+  'epub-navigate',
   'epub-keydown',
   'epub-preview',
   'epub-error',

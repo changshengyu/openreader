@@ -63,6 +63,10 @@ export function useReaderEpubFrame(options) {
       options.onHash?.(message.data)
       return true
     }
+    if (message.event === 'navigate') {
+      options.onNavigate?.(message.data)
+      return true
+    }
     if (message.event === 'keydown') {
       options.onKeydown?.(message.data)
       return true
@@ -82,26 +86,44 @@ export function useReaderEpubFrame(options) {
   }
 }
 
-export function epubResourcePathFromURL(resourceURL) {
+export function epubResourceLocationFromURL(resourceURL) {
   const raw = String(resourceURL || '')
-  if (!raw) return ''
+  if (!raw) return { resourcePath: '', fragment: '' }
   let pathname = raw
+  let hash = ''
   try {
-    pathname = new URL(raw, 'https://openreader.local').pathname
+    const parsed = new URL(raw, 'https://openreader.local')
+    pathname = parsed.pathname
+    hash = parsed.hash.slice(1)
   } catch {
     pathname = raw.split(/[?#]/, 1)[0]
+    hash = raw.includes('#') ? raw.slice(raw.indexOf('#') + 1) : ''
   }
   const match = pathname.match(/^\/api\/epub-resource\/[^/]+\/(.*)$/)
-  if (!match) return ''
+  if (!match) return { resourcePath: '', fragment: '' }
   try {
-    return decodeURIComponent(match[1])
+    return {
+      resourcePath: decodeURIComponent(match[1]),
+      fragment: hash ? decodeURIComponent(hash) : '',
+    }
   } catch {
-    return match[1]
+    return { resourcePath: match[1], fragment: hash }
   }
 }
 
+export function epubResourcePathFromURL(resourceURL) {
+  return epubResourceLocationFromURL(resourceURL).resourcePath
+}
+
 export function epubChapterIndexForResourceURL(resourceURL, chapters = []) {
-  const resourcePath = epubResourcePathFromURL(resourceURL)
+  const { resourcePath, fragment } = epubResourceLocationFromURL(resourceURL)
   if (!resourcePath) return -1
+  if (fragment) {
+    const exactIndex = chapters.findIndex(chapter => (
+      String(chapter?.resourcePath || '') === resourcePath &&
+      String(chapter?.resourceFragment || '') === fragment
+    ))
+    if (exactIndex >= 0) return exactIndex
+  }
   return chapters.findIndex(chapter => String(chapter?.resourcePath || '') === resourcePath)
 }

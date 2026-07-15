@@ -178,12 +178,15 @@ Apply this section to Reader P0 EPUB work:
 - [x] MIME types are allowlisted and responses set `nosniff` and `no-referrer`.
 - [x] Multi-user tests prove one user's capability cannot read another user's book or resource tree.
 - [x] Parent `message` handlers verify both the active iframe window and expected same-origin resource origin.
+- [x] EPUB fragment values are decoded once, bounded, UTF-8/NUL-checked, and signed together with their canonical XHTML document path; a capability cannot move a slice to another resource.
+- [x] Slice lookup compares DOM ids directly rather than interpolating a fragment into a CSS selector. Missing ids preserve a sanitized readable document; same-resource links to an omitted slice re-enter the parent Reader transaction instead of exposing an unrestricted resource.
 
 Evidence for the checked EPUB items:
 
 - Backend tests: `go test ./services/epubreader ./api ./db ./engine ./services/localbook` and full `go test ./...`; `TestDirectEPUBImageOnlyTitlepagePreviewImportAndReaderResource` proves the cover route remains capability-protected.
 - Frontend tests: `npm test`.
 - Browser test: `scripts/smoke/reader-epub-contract.mjs` against 1440×900, 390×844, and 360×800.
+- E4-EPUB-2 additions: `backend/services/epubreader/capability_test.go`, `document_test.go`, `backend/api/api_test.go`, `backend/db/db_test.go`, `frontend/tests/readerEpubFrame.test.mjs`, and the same three-viewport browser smoke cover signed fragment bounds, migration/lazy recovery, document slicing and cross-resource navigation.
 
 # 2026-07-13 Docker OCI fallback
 

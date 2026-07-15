@@ -248,18 +248,25 @@ Status: implemented for the Reader P0 EPUB slice; remaining Reader P0 work is ou
 - The original imported EPUB is already archived below `library/<Book.LibraryPath>` and referenced by `Book.OriginalFile`.
 - `Book.LibraryPath`, `Book.OriginalFile`, `Book.TOCFile`, and `Book.SourceFile` are persistent source-of-truth fields.
 - `Chapter.CachePath` points to the flattened plain-text chapter copy used by existing reader/search/cache flows.
-- Existing EPUB chapter rows do not retain the canonical XHTML resource path from the archive.
+- Older installed EPUB chapter rows may not retain canonical XHTML paths or fragment boundaries from the archive.
 
 ### Additive representation
 
 - Add nullable/empty `Chapter.ResourcePath` (`resourcePath` in JSON) through GORM auto-migration. It stores a normalized POSIX EPUB path such as `OEBPS/Text/chapter-1.xhtml`; it is never an absolute host path.
 - Add optional `resourcePath` to archived `chapters.json` entries. Old archives without it remain valid.
+- E4-EPUB-2 additionally adds nullable `Chapter.ResourceFragment` and `Chapter.ResourceEndFragment` (`resourceFragment` and `resourceEndFragment` in JSON and `chapters.json`). They hold bounded decoded DOM ids only; they never form filesystem paths. A missing value preserves the current whole-XHTML behavior for old rows/backups.
 - EPUB import writes both:
   - the existing plain-text `CachePath`;
-  - the canonical XHTML `ResourcePath`.
+  - the canonical XHTML `ResourcePath` and, when a TOC/NCX entry targets it, nullable fragment bounds.
 - Existing imported EPUBs are lazily backfilled from the archived original file and current TOC rule when first opened/refreshed. Backfill updates only matching chapter rows and the optional portable `chapters.json` metadata.
 
 No table or column is removed. Text, PDF, UMD, Markdown, remote, and existing EPUB rows remain readable when `ResourcePath` is empty.
+
+Migration evidence: `TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters` drops the three EPUB
+resource columns from a populated SQLite fixture and proves auto-migration restores them without changing
+the existing chapter. `TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters` proves a legacy empty
+fragment row and its `chapters.json` companion are lazily restored from the archived EPUB. Docker mounted
+volume/backup smoke remains required before publishing the release image.
 
 ### Derived extracted resources
 

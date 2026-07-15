@@ -13,11 +13,14 @@ import (
 const resourceCapabilityPurpose = "openreader:epub-resource:v1"
 
 type resourceClaims struct {
-	UserID      uint   `json:"u"`
-	BookID      uint   `json:"b"`
-	Fingerprint string `json:"f"`
-	Purpose     string `json:"p"`
-	ExpiresAt   int64  `json:"e"`
+	UserID              uint   `json:"u"`
+	BookID              uint   `json:"b"`
+	Fingerprint         string `json:"f"`
+	Purpose             string `json:"p"`
+	ExpiresAt           int64  `json:"e"`
+	DocumentPath        string `json:"d,omitempty"`
+	ResourceFragment    string `json:"s,omitempty"`
+	ResourceEndFragment string `json:"z,omitempty"`
 }
 
 func signResourceCapability(secret string, claims resourceClaims) (string, error) {
@@ -75,6 +78,22 @@ func validateResourceClaims(claims resourceClaims) error {
 		return ErrInvalidCapability
 	}
 	if _, err := hex.DecodeString(claims.Fingerprint); err != nil {
+		return ErrInvalidCapability
+	}
+	if claims.DocumentPath == "" {
+		if claims.ResourceFragment != "" || claims.ResourceEndFragment != "" {
+			return ErrInvalidCapability
+		}
+		return nil
+	}
+	canonical, err := normalizeArchivePath(claims.DocumentPath)
+	if err != nil || canonical != claims.DocumentPath {
+		return ErrInvalidCapability
+	}
+	if fragment, err := normalizeResourceFragment(claims.ResourceFragment); err != nil || fragment != claims.ResourceFragment {
+		return ErrInvalidCapability
+	}
+	if fragment, err := normalizeResourceFragment(claims.ResourceEndFragment); err != nil || fragment != claims.ResourceEndFragment {
 		return ErrInvalidCapability
 	}
 	return nil

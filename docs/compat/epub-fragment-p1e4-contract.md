@@ -1,6 +1,6 @@
 # P1-E4 EPUB fragment、跨资源与相对资源兼容合同
 
-状态：**已完成上游提取；尚未进入实现。**
+状态：**已实现；Docker 发布验证待执行。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -24,11 +24,11 @@ parser、归档或 Reader；当前 OpenReader 实现不构成正确性依据。
 
 | 合同层 | 当前 OpenReader 证据 | 判定 |
 |---|---|---|
-| TOC fragment | `backend/engine/epub_parser.go` 的 `resolveEPUBPath`/`canonicalEPUBPath` 去除 `#` 与 query；`epubTOCEntry` 只存路径，`buildEPUBChapters` 用路径 map/去重。不同 `one.xhtml#part-a`、`one.xhtml#part-b` 因而合并为一个目录项。 | **must-fix** |
-| 章节边界数据 | `models.Chapter` 与 `engine.ArchivedChapter` 只有 `ResourcePath`，本地导入把 URL 固定成 `local://…/chapter_N`；不存在起止 fragment 或相邻 resource 边界。 | **must-fix** |
-| iframe 文档切片 | `epubreader.OpenResource` 对同一 XHTML 总是送出完整、已消毒的 document；无法根据当前目录项裁剪 fragment，重复章节会显示相同全文。 | **must-fix** |
-| 链接与相对资源 | capability 根目录保持稳定，`ReaderEpubContent`/bridge 已能让浏览器加载相对 CSS、图片、字体和跨资源 iframe URL；`Reader.handleEpubLoad` 能按 resource path 更新章节。 | **partial**：对于唯一 resource 已等价；有多个 fragment 的 resource 无法选择正确目录项，必须随本项修复。 |
-| 同资源锚点 | bridge 对存在于当前 iframe document 的 hash 发送几何位置；父 Reader 据此滚动。当前资源未切片时可用，但切片后链接到另一个目录 fragment 不能仅滚动到一个已被截出的节点。 | **must-fix** |
+| TOC fragment | NAV/NCX 使用 `(path, fragment)` 去重；同一 XHTML 的不同 fragment 保留为独立目录项，并按下一个同资源 TOC 项生成终止边界。 | **aligned** |
+| 章节边界数据 | `models.Chapter`、`TXTChapter` 与 `ArchivedChapter` 均保存起止 fragment；导入、刷新与惰性恢复同步 SQLite 和 `chapters.json`。 | **aligned** |
+| iframe 文档切片 | `epubreader.OpenResource` 仅在 capability 绑定的 XHTML 资源上应用已签名的 DOM 边界；同资源静态资源不切片，源 archive 不写回。 | **aligned（安全适配）** |
+| 链接与相对资源 | capability 根目录保持稳定；Reader 先精确匹配 `(resourcePath, resourceFragment)`，再按 resource 回退。跨 XHTML 和同 XHTML 的已截出锚点都进入完整 Reader 跳章事务。 | **aligned** |
+| 同资源锚点 | 当前 slice 内的目标继续原地滚动；不在当前 slice 的目标发送受验证 `navigate` bridge 事件并重载目标章节资源。 | **aligned** |
 
 ## 3. 目标数据、API 与状态合同
 
@@ -87,5 +87,18 @@ parser、归档或 Reader；当前 OpenReader 实现不构成正确性依据。
 | E4-EPUB-2D | fixture 含相对 CSS、图片、字体、当前 slice hash、到另一个 fragment 的 hash 和跨 `two.xhtml#opening` 链接。三视口下验证正确目录索引、URL、iframe 内容、工具层不隐藏、无 console/page error。 | 真实 Go + Playwright：1440×900、390×844、360×800 |
 | E4-EPUB-2E | 恶意 archive path、恶意/超长 fragment、篡改 capability/slice、过期 capability、其他用户和已替换 archive 均被拒绝或安全降级；不得泄露 archive/library 路径或 JWT。 | parser/service/API/security |
 
-在 E4-EPUB-2A 至 E4-EPUB-2E 未通过前，不能把 EPUB fragment/跨资源列为已对齐，也不能以
-现有 image-only cover smoke 取代该门禁。
+## 6. 实现与验证记录
+
+- `backend/engine/parser_test.go` 覆盖 NAV 和 NCX 的同 XHTML 多 fragment 目录、纯文本边界与
+  spine 回退；`backend/api/api_test.go` 覆盖 preview→token import、SQLite/`chapters.json`
+  metadata、受签名 iframe slice 与旧 metadata 的惰性恢复。
+- `backend/db/db_test.go` 使用缺失旧列的 SQLite fixture，证明 GORM 只新增
+  `resource_path`、`resource_fragment`、`resource_end_fragment`，不改变已有 chapter 数据。
+- `backend/services/epubreader/document_test.go` 与 `capability_test.go` 覆盖 document slice、
+  缺失 id 的可读降级、bridge 导航、规范 path、NUL/超长 fragment 拒绝和 capability 绑定。
+- `frontend/tests/readerEpubFrame.test.mjs` 覆盖相同 resource 的精确 fragment 目录映射及
+  `navigate` bridge 事件。`scripts/smoke/reader-epub-contract.mjs` 在 1440×900、390×844、
+  360×800 验证 slice、同 XHTML 跳转、跨 XHTML 跳转、相对 CSS/图片/字体、移动工具层和
+  无 console/page error。
+
+Docker 构建、挂载卷/备份 smoke 和 GHCR 发布仍是本切片的最终发布门禁。

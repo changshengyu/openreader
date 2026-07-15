@@ -98,7 +98,12 @@ function createEPUB() {
   <spine><itemref idref="titlepage"/><itemref idref="one"/><itemref idref="two"/></spine>
 </package>`)
   writeFileSync(join(source, 'OPS/nav.xhtml'), `<html xmlns="http://www.w3.org/1999/xhtml"><body>
-    <nav epub:type="toc"><a href="Text/one.xhtml">第一章</a><a href="Text/two.xhtml">第二章</a></nav>
+    <nav epub:type="toc">
+      <a href="Text/titlepage.xhtml">封面</a>
+      <a href="Text/one.xhtml#part-a">第一章（上）</a>
+      <a href="Text/one.xhtml#part-b">第一章（下）</a>
+      <a href="Text/two.xhtml#opening">第二章</a>
+    </nav>
   </body></html>`)
   const paragraphs = Array.from({ length: 36 }, (_, index) => (
     `<p id="p${index + 1}">第 ${index + 1} 段：春风过处，纸页微明，用于验证 EPUB iframe 高度、连续滚动与位置恢复。</p>`
@@ -112,17 +117,24 @@ function createEPUB() {
     <script id="epub-authored-script">window.epubAuthoredScript = true</script>
   </head>
   <body>
-    <h1 id="start">第一章 EPUB 文档</h1>
-    <p class="fixture-marker"><span class="font-probe">相对 CSS、字体和图片资源。</span></p>
-    <img id="fixture-image" src="../images/cover.svg" alt="测试图片"/>
-    <p><a id="hash-link" href="#p20">跳到第二十段</a></p>
-    ${paragraphs}
-    <p><a id="next-chapter" href="two.xhtml">下一章</a></p>
+    <section id="part-a">
+      <h1 id="start">第一章 EPUB 文档</h1>
+      <p class="fixture-marker"><span class="font-probe">相对 CSS、字体和图片资源。</span></p>
+      <img id="fixture-image" src="../images/cover.svg" alt="测试图片"/>
+      <p><a id="hash-link" href="#p20">跳到第二十段</a></p>
+      ${paragraphs}
+      <p><a id="part-b-link" href="#part-b">下一节</a></p>
+    </section>
+    <section id="part-b">
+      <h1>第一章 EPUB 第二节</h1>
+      <p id="part-b-content">这是同一 XHTML 的第二个目录片段，不能在第一节 iframe 中出现。</p>
+      <p><a id="next-chapter" href="two.xhtml#opening">下一章</a></p>
+    </section>
   </body>
 </html>`)
   writeFileSync(join(source, 'OPS/Text/two.xhtml'), `<html xmlns="http://www.w3.org/1999/xhtml">
   <head><link rel="stylesheet" href="../styles/book.css"/></head>
-  <body><h1>第二章 EPUB 文档</h1><p>跨文档链接已经更新目录状态。</p><a href="one.xhtml">上一章</a></body>
+  <body><h1 id="opening">第二章 EPUB 文档</h1><p>跨文档链接已经更新目录状态。</p><a href="one.xhtml#part-a">上一章</a></body>
 </html>`)
   writeFileSync(join(source, 'OPS/styles/book.css'), `
     @font-face { font-family: FixtureFont; src: url("../fonts/Fixture.ttf") format("truetype"); }
@@ -157,7 +169,7 @@ async function registerAndImport(archive) {
 
   const form = new FormData()
   form.append('file', new Blob([readFileSync(archive)], { type: 'application/epub+zip' }), 'fixture.epub')
-  form.append('tocRule', 'spin')
+  form.append('tocRule', 'toc')
   const imported = await fetch(`${baseURL}/api/imports/books`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${auth.token}` },
@@ -232,7 +244,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     const bodyStyle = getComputedStyle(body)
     const paragraphStyle = getComputedStyle(marker)
     return {
-      text: body.innerText.slice(0, 120),
+    text: body.innerText,
       bridge: Boolean(document.querySelector('#openreader-epub-bridge')),
       authoredScript: Boolean(document.querySelector('#epub-authored-script')),
       authoredGlobal: Boolean(window.epubAuthoredScript),
@@ -245,6 +257,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     }
   })
   assert.match(frameState.text, /第一章 EPUB 文档/)
+  assert.doesNotMatch(frameState.text, /第一章 EPUB 第二节/)
   assert.equal(frameState.bridge, true)
   assert.equal(frameState.authoredScript, false)
   assert.equal(frameState.authoredGlobal, false)
@@ -326,13 +339,17 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     await page.waitForTimeout(150)
     assert.equal(await page.locator('.reader-mobile-top.visible').count(), 0)
   }
+  await frame.locator('#part-b-link').click()
+  await frame.locator('#part-b-content').waitFor({ timeout: 10_000 })
+  assert.equal(await frame.locator('#part-a').count(), 0)
+
   await frame.locator('#next-chapter').click()
   await frame.locator('h1').filter({ hasText: '第二章 EPUB 文档' }).waitFor({ timeout: 10_000 })
   if (viewport.width <= 750 && !await page.locator('.reader-mobile-top.visible').count()) {
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     await page.waitForTimeout(150)
   }
-  await page.waitForFunction(() => document.body.innerText.includes('3 / 3'))
+  await page.waitForFunction(() => document.body.innerText.includes('4 / 4'))
 }
 
 async function runViewport(browser, viewport, token, bookID) {

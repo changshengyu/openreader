@@ -170,8 +170,8 @@ The upstream uses namespace-specific JSON storage and SSE cache progress. OpenRe
 | Auth | Existing `Authorization: Bearer <jwt>` requirement. The book lookup remains scoped to the authenticated user. |
 | Request | Existing numeric book ID and zero-based chapter index. |
 | Text response | `200` JSON keeps `chapter` and `content`; adds `"format": "text"`. |
-| EPUB response | `200` JSON keeps `chapter` and searchable plain-text `content`; adds `"format": "epub"`, `resourceUrl`, and RFC3339 `resourceExpiresAt`. |
-| Side effects | For EPUB, may safely extract/rebuild a derived resource tree and backfill the chapter's canonical `resourcePath`. It must not alter the archived source EPUB. |
+| EPUB response | `200` JSON keeps `chapter` and searchable plain-text `content`; adds `"format": "epub"`, `resourceUrl`, and RFC3339 `resourceExpiresAt`. A fragment chapter keeps canonical `chapter.resourcePath` plus nullable `resourceFragment`/`resourceEndFragment`; its `resourceUrl` includes an encoded `#resourceFragment` for iframe location. |
+| Side effects | For EPUB, may safely extract/rebuild a derived resource tree and backfill canonical `resourcePath` plus nullable fragment metadata. It must not alter the archived source EPUB. |
 | `400` | Invalid book/chapter parameter. |
 | `404` | Book/chapter/source archive is not available to the current user. |
 | `422` | EPUB exists but is corrupt, unsafe, unsupported, or exceeds extraction limits. |
@@ -204,10 +204,10 @@ Example:
 | Field | Contract |
 |---|---|
 | Auth | Does not accept or require the login Bearer token. Authorization is the signed path capability returned by the protected chapter endpoint. |
-| Capability scope | One user ID, one book ID, one source fingerprint/extracted version, read-only access, and a bounded expiration. It is signed with a purpose-separated key derived from `OPENREADER_JWT_SECRET`; it is never interchangeable with a login JWT. |
+| Capability scope | One user ID, one book ID, one source fingerprint/extracted version, read-only access, and a bounded expiration. For a fragment chapter it additionally signs the canonical XHTML path and nullable start/end fragment ids used to slice that one document; it is never interchangeable with a login JWT. |
 | Path | `resourcePath` is URL-decoded once, normalized as an EPUB POSIX path, and resolved strictly below that book/version's derived extraction root. |
 | Success | `200` with a supported XHTML/HTML, CSS, image, SVG, or font MIME type. `HEAD` may return the same headers without a body. |
-| XHTML | Dynamically receives the OpenReader iframe bridge and restrictive security headers. The archived/extracted source file is not modified in place. |
+| XHTML | Dynamically receives the OpenReader iframe bridge and restrictive security headers. When the capability is for a fragment chapter, the served document contains only the upstream-equivalent start/end DOM range; sibling CSS/image/font resources retain the same capability root and are not sliced. The archived/extracted source file is not modified in place. |
 | Relative assets | The capability remains a stable path segment so relative chapter CSS/image/font/link URLs stay within the same authorized root. |
 | `400` | Malformed capability or unsafe/malformed resource path. |
 | `403` | Invalid signature, expired capability, wrong purpose, wrong archive version, or book ownership no longer matches. |

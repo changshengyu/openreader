@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -56,14 +57,18 @@ func ParseEPUB(data []byte) (ParsedBook, error) {
 }
 
 type epubChapter struct {
-	Path    string
-	Title   string
-	Content string
+	Path        string
+	Title       string
+	Content     string
+	Data        []byte
+	Fragment    string
+	EndFragment string
 }
 
 type epubTOCEntry struct {
-	Path  string
-	Title string
+	Path     string
+	Fragment string
+	Title    string
 }
 
 func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
@@ -141,6 +146,7 @@ func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) 
 			Path:    canonicalEPUBPath(chapterPath),
 			Title:   title,
 			Content: content,
+			Data:    chapterBytes,
 		})
 	}
 
@@ -170,15 +176,35 @@ func buildEPUBChapters(spine []epubChapter, toc []epubTOCEntry, rule string) []T
 	ordered := make([]epubChapter, 0, len(spine))
 	if strings.HasPrefix(rule, "toc") && len(toc) > 0 {
 		seen := make(map[string]struct{}, len(toc))
+		selected := make([]epubTOCEntry, 0, len(toc))
 		for _, entry := range toc {
+			if _, ok := spineByPath[entry.Path]; !ok {
+				continue
+			}
+			fragmentKey := entry.Path + "\x00" + entry.Fragment
+			if _, exists := seen[fragmentKey]; exists {
+				continue
+			}
+			seen[fragmentKey] = struct{}{}
+			selected = append(selected, entry)
+		}
+		for tocIndex, entry := range selected {
 			chapter, ok := spineByPath[entry.Path]
 			if !ok {
 				continue
 			}
-			if _, exists := seen[entry.Path]; exists {
-				continue
+			chapterEndFragment := ""
+			if tocIndex+1 < len(selected) && selected[tocIndex+1].Path == entry.Path {
+				chapterEndFragment = selected[tocIndex+1].Fragment
 			}
-			seen[entry.Path] = struct{}{}
+			chapter.Content = extractEPUBChapterRange(chapter.Data, entry.Fragment, chapterEndFragment)
+			chapterFragment := entry.Fragment
+			chapter.Path = canonicalEPUBPath(chapter.Path)
+			chapter.Title = strings.TrimSpace(chapter.Title)
+			chapter.Content = strings.TrimSpace(chapter.Content)
+			chapter.Data = nil
+			chapter.Fragment = chapterFragment
+			chapter.EndFragment = chapterEndFragment
 			tocTitle := strings.TrimSpace(entry.Title)
 			switch rule {
 			case "toc":
@@ -219,10 +245,12 @@ func buildEPUBChapters(spine []epubChapter, toc []epubTOCEntry, rule string) []T
 			title = fmt.Sprintf("第 %d 章", index+1)
 		}
 		chapters = append(chapters, TXTChapter{
-			Index:        index,
-			Title:        title,
-			Content:      chapter.Content,
-			ResourcePath: chapter.Path,
+			Index:               index,
+			Title:               title,
+			Content:             chapter.Content,
+			ResourcePath:        chapter.Path,
+			ResourceFragment:    chapter.Fragment,
+			ResourceEndFragment: chapter.EndFragment,
 		})
 	}
 	return chapters
@@ -303,13 +331,17 @@ func parseEPUBNav(reader *zip.Reader, baseDir string, href string, maxEntryBytes
 		if !ok {
 			return
 		}
-		resolved := canonicalEPUBPath(resolveEPUBPath(navDir, target))
+		resolved, fragment, ok := resolveEPUBReference(navDir, target)
+		if !ok {
+			return
+		}
 		if resolved == "." || resolved == "" {
 			return
 		}
 		entries = append(entries, epubTOCEntry{
-			Path:  resolved,
-			Title: strings.Join(strings.Fields(link.Text()), " "),
+			Path:     resolved,
+			Fragment: fragment,
+			Title:    strings.Join(strings.Fields(link.Text()), " "),
 		})
 	})
 	return entries
@@ -349,11 +381,16 @@ func parseEPUBNCX(reader *zip.Reader, baseDir string, href string, maxEntryBytes
 	var appendPoints func([]epubNCXPoint)
 	appendPoints = func(points []epubNCXPoint) {
 		for _, point := range points {
-			resolved := canonicalEPUBPath(resolveEPUBPath(ncxDir, point.Content.Src))
+			resolved, fragment, ok := resolveEPUBReference(ncxDir, point.Content.Src)
+			if !ok {
+				appendPoints(point.Points)
+				continue
+			}
 			if resolved != "." && resolved != "" {
 				entries = append(entries, epubTOCEntry{
-					Path:  resolved,
-					Title: strings.Join(strings.Fields(point.Label.Text), " "),
+					Path:     resolved,
+					Fragment: fragment,
+					Title:    strings.Join(strings.Fields(point.Label.Text), " "),
 				})
 			}
 			appendPoints(point.Points)
@@ -371,6 +408,44 @@ func resolveEPUBPath(baseDir string, href string) string {
 	href = strings.SplitN(href, "#", 2)[0]
 	href = strings.SplitN(href, "?", 2)[0]
 	return path.Clean(path.Join(baseDir, href))
+}
+
+func resolveEPUBReference(baseDir string, href string) (string, string, bool) {
+	href = strings.TrimSpace(href)
+	resourceHref, rawFragment, hasFragment := strings.Cut(href, "#")
+	resourceHref = strings.SplitN(resourceHref, "?", 2)[0]
+	resourceHref, err := url.PathUnescape(resourceHref)
+	if err != nil {
+		return "", "", false
+	}
+	resourcePath := canonicalEPUBPath(path.Clean(path.Join(baseDir, resourceHref)))
+	if resourcePath == "" || resourcePath == "." {
+		return "", "", false
+	}
+	if !hasFragment || rawFragment == "" {
+		return resourcePath, "", true
+	}
+	fragment, err := NormalizeEPUBFragment(rawFragment)
+	if err != nil {
+		return "", "", false
+	}
+	return resourcePath, fragment, true
+}
+
+// NormalizeEPUBFragment accepts only a bounded decoded DOM id. EPUB fragments
+// are display metadata, never archive paths, and must remain safe to persist.
+func NormalizeEPUBFragment(value string) (string, error) {
+	decoded, err := url.PathUnescape(strings.TrimSpace(value))
+	if err != nil {
+		return "", err
+	}
+	if decoded == "" {
+		return "", nil
+	}
+	if len(decoded) > 512 || strings.ContainsRune(decoded, '\x00') || !utf8.ValidString(decoded) {
+		return "", errors.New("invalid EPUB fragment")
+	}
+	return decoded, nil
 }
 
 func canonicalEPUBPath(value string) string {
@@ -508,6 +583,45 @@ func extractEPUBChapter(data []byte) (string, string) {
 	if err != nil {
 		return "", ""
 	}
+	return extractEPUBChapterDocument(doc)
+}
+
+func extractEPUBChapterRange(data []byte, startFragment, endFragment string) string {
+	if startFragment == "" && endFragment == "" {
+		_, content := extractEPUBChapter(data)
+		return content
+	}
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(data))
+	if err != nil {
+		return ""
+	}
+	body := doc.Find("body").First()
+	if body.Length() == 0 {
+		return ""
+	}
+	if start := findEPUBElementByID(body, startFragment); start.Length() > 0 {
+		start.PrevAll().Remove()
+	}
+	if endFragment != "" && endFragment != startFragment {
+		if end := findEPUBElementByID(body, endFragment); end.Length() > 0 {
+			end.NextAll().Remove()
+			end.Remove()
+		}
+	}
+	_, content := extractEPUBChapterDocument(doc)
+	return content
+}
+
+func findEPUBElementByID(root *goquery.Selection, id string) *goquery.Selection {
+	if root == nil || id == "" {
+		return &goquery.Selection{}
+	}
+	return root.Find("[id]").FilterFunction(func(_ int, selection *goquery.Selection) bool {
+		return selection.AttrOr("id", "") == id
+	}).First()
+}
+
+func extractEPUBChapterDocument(doc *goquery.Document) (string, string) {
 	doc.Find("script, style, nav").Remove()
 
 	title := strings.TrimSpace(doc.Find("h1, h2, title").First().Text())

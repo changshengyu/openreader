@@ -36,6 +36,7 @@ const emit = defineEmits([
   'height',
   'click-point',
   'hash',
+  'navigate',
   'keydown',
   'preview',
   'error',
@@ -69,6 +70,7 @@ const bridge = useReaderEpubFrame({
   },
   onClick: point => emit('click-point', point),
   onHash: rect => emit('hash', rect),
+  onNavigate: location => emit('navigate', location),
   onKeydown: event => emit('keydown', event),
   onPreview: data => emit('preview', data),
 })

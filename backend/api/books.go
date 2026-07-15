@@ -1279,17 +1279,19 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 			chapter := nextChapters[index]
 			chapter.ID = nextChapterIDs[chapter.Index]
 			archivedChapters = append(archivedChapters, engine.ArchivedChapter{
-				ID:           chapter.ID,
-				URL:          chapter.URL,
-				Title:        chapter.Title,
-				IsVolume:     false,
-				BaseURL:      "",
-				BookURL:      book.OriginalFile,
-				Index:        chapter.Index,
-				Start:        parsedChapter.Start,
-				End:          parsedChapter.End,
-				CachePath:    chapter.CachePath,
-				ResourcePath: chapter.ResourcePath,
+				ID:                  chapter.ID,
+				URL:                 chapter.URL,
+				Title:               chapter.Title,
+				IsVolume:            false,
+				BaseURL:             "",
+				BookURL:             book.OriginalFile,
+				Index:               chapter.Index,
+				Start:               parsedChapter.Start,
+				End:                 parsedChapter.End,
+				CachePath:           chapter.CachePath,
+				ResourcePath:        chapter.ResourcePath,
+				ResourceFragment:    chapter.ResourceFragment,
+				ResourceEndFragment: chapter.ResourceEndFragment,
 			})
 		}
 		return stage.stageArchiveMetadata(s.cfg.LibraryDir, archive, archivedChapters, engine.ArchivedBookSource{

@@ -80,11 +80,15 @@ const epubBridgeScript = `(function () {
         return;
       }
       if (targetURL.pathname === window.location.pathname && targetURL.hash) {
-        var target = document.getElementById(decodeURIComponent(targetURL.hash.slice(1))) ||
-          document.querySelector(targetURL.hash);
+        var fragment = "";
+        try { fragment = decodeURIComponent(targetURL.hash.slice(1)); } catch (_) { fragment = targetURL.hash.slice(1); }
+        var target = document.getElementById(fragment);
         if (target) {
           event.preventDefault();
           notify("clickHash", target.getBoundingClientRect());
+        } else {
+          event.preventDefault();
+          notify("navigate", { href: targetURL.href });
         }
       }
       return;
@@ -118,7 +122,7 @@ const epubBridgeScript = `(function () {
   }
 })();`
 
-func sanitizeAndInjectDocument(data []byte) ([]byte, error) {
+func sanitizeAndInjectDocument(data []byte, startFragment, endFragment string) ([]byte, error) {
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid XHTML document", ErrInvalidArchive)
@@ -144,6 +148,7 @@ func sanitizeAndInjectDocument(data []byte) ([]byte, error) {
 		}
 		node.Attr = attributes
 	})
+	sliceDocumentToFragments(doc, startFragment, endFragment)
 
 	head := doc.Find("head").First()
 	if head.Length() == 0 {
@@ -160,6 +165,34 @@ func sanitizeAndInjectDocument(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return []byte(rendered), nil
+}
+
+func sliceDocumentToFragments(doc *goquery.Document, startFragment, endFragment string) {
+	if doc == nil || (startFragment == "" && endFragment == "") {
+		return
+	}
+	body := doc.Find("body").First()
+	if body.Length() == 0 {
+		return
+	}
+	if start := findDocumentElementByID(body, startFragment); start.Length() > 0 {
+		start.PrevAll().Remove()
+	}
+	if endFragment != "" && endFragment != startFragment {
+		if end := findDocumentElementByID(body, endFragment); end.Length() > 0 {
+			end.NextAll().Remove()
+			end.Remove()
+		}
+	}
+}
+
+func findDocumentElementByID(root *goquery.Selection, id string) *goquery.Selection {
+	if root == nil || id == "" {
+		return &goquery.Selection{}
+	}
+	return root.Find("[id]").FilterFunction(func(_ int, selection *goquery.Selection) bool {
+		return selection.AttrOr("id", "") == id
+	}).First()
 }
 
 func documentCSP() string {

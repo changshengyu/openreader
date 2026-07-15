@@ -157,6 +157,7 @@
             @epub-height="handleEpubHeight"
             @epub-click="handleEpubClick"
             @epub-hash="handleEpubHash"
+            @epub-navigate="handleEpubNavigate"
             @epub-keydown="handleEpubKeydown"
             @epub-preview="handleEpubPreview"
             @epub-error="handleEpubError"
@@ -1663,30 +1664,7 @@ function nextFrame() {
 
 async function handleEpubLoad(location) {
   const resourceLocation = location?.href || location?.path || ''
-  const navigatedIndex = epubChapterIndexForResourceURL(resourceLocation, chapters.value)
-  if (navigatedIndex >= 0 && navigatedIndex !== currentIndex.value) {
-    currentIndex.value = navigatedIndex
-    chapter.value = chapters.value[navigatedIndex] || chapter.value
-    page.value = 0
-    chapterBlocks.value = []
-    epubPendingRestore.value = {
-      chapterIndex: navigatedIndex,
-      offset: 0,
-      restoreOptions: { restorePercent: 0, saveAfterLoad: false },
-    }
-    const cached = getChapterContentFromMemory(navigatedIndex)
-    if (cached?.content !== undefined) {
-      content.value = cached.content || ''
-    } else {
-      loadChapterContent(navigatedIndex)
-        .then(data => {
-          if (currentIndex.value === navigatedIndex) {
-            content.value = data.content || ''
-          }
-        })
-        .catch(() => {})
-    }
-  }
+  if (navigateEpubChapterFromLocation(resourceLocation)) return
 
   const pending = epubPendingRestore.value
   await nextTick()
@@ -1698,6 +1676,22 @@ async function handleEpubLoad(location) {
   chapterLoaded.value = true
   progressVersion.value += 1
   scheduleProgressSave(120)
+}
+
+function navigateEpubChapterFromLocation(resourceLocation) {
+  const navigatedIndex = epubChapterIndexForResourceURL(resourceLocation, chapters.value)
+  if (navigatedIndex < 0 || navigatedIndex === currentIndex.value) return false
+
+  // Fragment navigation must enter through the regular Reader transaction.
+  // It refreshes the signed iframe resource URL as well as the chapter state;
+  // merely loading cached text leaves the previous XHTML slice visible.
+  void loadChapter(navigatedIndex, 0, { restorePercent: 0, saveAfterLoad: false })
+  return true
+}
+
+function handleEpubNavigate(location) {
+  const resourceLocation = location?.href || location?.path || ''
+  navigateEpubChapterFromLocation(resourceLocation)
 }
 
 function handleEpubHeight() {

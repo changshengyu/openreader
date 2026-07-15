@@ -74,12 +74,14 @@ func (matcher *txtTitleMatcher) MatchString(line string) bool {
 }
 
 type TXTChapter struct {
-	Index        int    `json:"index"`
-	Title        string `json:"title"`
-	Start        int    `json:"start"`
-	End          int    `json:"end"`
-	Content      string `json:"content"`
-	ResourcePath string `json:"resourcePath,omitempty"`
+	Index               int    `json:"index"`
+	Title               string `json:"title"`
+	Start               int    `json:"start"`
+	End                 int    `json:"end"`
+	Content             string `json:"content"`
+	ResourcePath        string `json:"resourcePath,omitempty"`
+	ResourceFragment    string `json:"resourceFragment,omitempty"`
+	ResourceEndFragment string `json:"resourceEndFragment,omitempty"`
 }
 
 type TXTTocRule struct {

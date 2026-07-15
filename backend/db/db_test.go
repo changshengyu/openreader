@@ -84,14 +84,22 @@ func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 	if err := database.Migrator().DropColumn(&models.Chapter{}, "ResourcePath"); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.Migrator().DropColumn(&models.Chapter{}, "ResourceFragment"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrator().DropColumn(&models.Chapter{}, "ResourceEndFragment"); err != nil {
+		t.Fatal(err)
+	}
 	if err := database.Migrator().DropColumn(&models.Chapter{}, "Variable"); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrator().DropColumn(&models.Book{}, "Variable"); err != nil {
 		t.Fatal(err)
 	}
-	if database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") {
-		t.Fatal("resource_path should be absent in the legacy fixture")
+	if database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") ||
+		database.Migrator().HasColumn(&models.Chapter{}, "ResourceFragment") ||
+		database.Migrator().HasColumn(&models.Chapter{}, "ResourceEndFragment") {
+		t.Fatal("EPUB resource metadata columns should be absent in the legacy fixture")
 	}
 	if database.Migrator().HasColumn(&models.Book{}, "Variable") || database.Migrator().HasColumn(&models.Chapter{}, "Variable") {
 		t.Fatal("variable columns should be absent in the legacy fixture")
@@ -100,8 +108,10 @@ func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 	if err := AutoMigrate(database); err != nil {
 		t.Fatal(err)
 	}
-	if !database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") {
-		t.Fatal("resource_path was not added")
+	if !database.Migrator().HasColumn(&models.Chapter{}, "ResourcePath") ||
+		!database.Migrator().HasColumn(&models.Chapter{}, "ResourceFragment") ||
+		!database.Migrator().HasColumn(&models.Chapter{}, "ResourceEndFragment") {
+		t.Fatal("EPUB resource metadata columns were not added")
 	}
 	if !database.Migrator().HasColumn(&models.Book{}, "Variable") || !database.Migrator().HasColumn(&models.Chapter{}, "Variable") {
 		t.Fatal("variable columns were not added")
@@ -117,7 +127,9 @@ func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 	if migratedBook.Title != "旧 EPUB" || migratedBook.Variable != "" {
 		t.Fatalf("legacy book changed during migration: %+v", migratedBook)
 	}
-	if migratedChapter.Title != "第一章" || migratedChapter.CachePath != "content/one.txt" || migratedChapter.ResourcePath != "" || migratedChapter.Variable != "" {
+	if migratedChapter.Title != "第一章" || migratedChapter.CachePath != "content/one.txt" ||
+		migratedChapter.ResourcePath != "" || migratedChapter.ResourceFragment != "" ||
+		migratedChapter.ResourceEndFragment != "" || migratedChapter.Variable != "" {
 		t.Fatalf("legacy chapter changed during migration: %+v", migratedChapter)
 	}
 }

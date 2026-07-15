@@ -3,6 +3,7 @@ import test from 'node:test'
 import { ref, shallowRef } from 'vue'
 import {
   epubChapterIndexForResourceURL,
+  epubResourceLocationFromURL,
   useReaderEpubFrame,
 } from '../src/composables/useReaderEpubFrame.js'
 
@@ -23,6 +24,7 @@ function createController() {
     onHeight: height => calls.push(['height', height]),
     onClick: point => calls.push(['click', point]),
     onHash: rect => calls.push(['hash', rect]),
+    onNavigate: location => calls.push(['navigate', location]),
     onKeydown: event => calls.push(['keydown', event]),
     onPreview: data => calls.push(['preview', data]),
   })
@@ -59,6 +61,7 @@ test('initializes style/height and forwards the upstream EPUB bridge events', ()
   message(fixture, 'setHeight', 320)
   message(fixture, 'click', { clientX: 10, clientY: 20 })
   message(fixture, 'clickHash', { top: 45 })
+  message(fixture, 'navigate', { href: 'https://reader.example/api/epub-resource/token/OPS/one.xhtml#part-b' })
   message(fixture, 'keydown', { key: 'ArrowRight', keyCode: 39 })
   message(fixture, 'previewImageList', { imageList: ['/one.jpg'], imageIndex: 0 })
   assert.deepEqual(fixture.calls, [
@@ -66,22 +69,32 @@ test('initializes style/height and forwards the upstream EPUB bridge events', ()
     ['height', 640],
     ['click', { clientX: 10, clientY: 20 }],
     ['hash', { top: 45 }],
+    ['navigate', { href: 'https://reader.example/api/epub-resource/token/OPS/one.xhtml#part-b' }],
     ['keydown', { key: 'ArrowRight', keyCode: 39 }],
     ['preview', { imageList: ['/one.jpg'], imageIndex: 0 }],
   ])
 })
 
-test('maps a navigated resource URL back to the matching chapter', () => {
+test('maps a navigated resource URL back to the exact fragment chapter before the resource fallback', () => {
   const chapters = [
-    { index: 0, resourcePath: 'OPS/one.xhtml' },
-    { index: 1, resourcePath: 'OPS/Text/two.xhtml' },
+    { index: 0, resourcePath: 'OPS/one.xhtml', resourceFragment: 'part-a' },
+    { index: 1, resourcePath: 'OPS/one.xhtml', resourceFragment: 'part-b' },
+    { index: 2, resourcePath: 'OPS/Text/two.xhtml' },
   ]
+  assert.deepEqual(
+    epubResourceLocationFromURL('/api/epub-resource/token/OPS/one.xhtml#part-b'),
+    { resourcePath: 'OPS/one.xhtml', fragment: 'part-b' },
+  )
   assert.equal(
     epubChapterIndexForResourceURL(
-      '/api/epub-resource/token/OPS/Text/two.xhtml#part',
+      '/api/epub-resource/token/OPS/one.xhtml#part-b',
       chapters,
     ),
     1,
+  )
+  assert.equal(
+    epubChapterIndexForResourceURL('/api/epub-resource/token/OPS/one.xhtml#unknown', chapters),
+    0,
   )
   assert.equal(
     epubChapterIndexForResourceURL('/api/epub-resource/token/OPS/missing.xhtml', chapters),

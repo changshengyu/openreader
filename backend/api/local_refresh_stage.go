@@ -92,12 +92,14 @@ func (s *Server) stageLocalRefresh(book models.Book, archiveRoot string, parsed 
 			return nil, nil, err
 		}
 		chapters = append(chapters, models.Chapter{
-			BookID:       book.ID,
-			Index:        index,
-			Title:        title,
-			URL:          chapterURL,
-			CachePath:    filepath.Join(stage.cachePathPrefix, cachePath),
-			ResourcePath: parsedChapter.ResourcePath,
+			BookID:              book.ID,
+			Index:               index,
+			Title:               title,
+			URL:                 chapterURL,
+			CachePath:           filepath.Join(stage.cachePathPrefix, cachePath),
+			ResourcePath:        parsedChapter.ResourcePath,
+			ResourceFragment:    parsedChapter.ResourceFragment,
+			ResourceEndFragment: parsedChapter.ResourceEndFragment,
 		})
 	}
 	if localRefreshStageTestHook != nil {
