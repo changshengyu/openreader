@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -144,6 +145,188 @@ func directUMDImportRequest(t *testing.T, router http.Handler, auth, endpoint, i
 	return response
 }
 
+// legacyOpenReaderUMDArchiveFixture deliberately uses the pre-reader-dev
+// #TEXTNOV layout that early OpenReader versions wrote. It is not an
+// upstream UMD sample and must never become the normal import format; it
+// represents an already-mounted historical library archive whose generated
+// chapter cache was lost during an upgrade or cleanup.
+func legacyOpenReaderUMDArchiveFixture(t *testing.T) []byte {
+	t.Helper()
+	var result bytes.Buffer
+	result.WriteString("#TEXTNOV")
+	result.Write(make([]byte, 6)) // declared length + legacy key
+	writeString := func(value string) {
+		result.WriteByte(byte(len(value)))
+		result.WriteString(value)
+	}
+	writeString("Legacy pseudo UMD")
+	writeString("OpenReader")
+	result.Write(make([]byte, 5)) // legacy date
+	result.WriteByte(0)           // no legacy content-type table
+	var chapterCount [4]byte
+	binary.LittleEndian.PutUint32(chapterCount[:], 2)
+	result.Write(chapterCount[:])
+
+	offsetPosition := result.Len()
+	result.Write(make([]byte, 12)) // two chapter starts and one final end
+	writeString("Legacy One")
+	writeString("Legacy Two")
+	contentStart := result.Len()
+	first := "legacy body one"
+	second := "legacy body two"
+	result.WriteString(first)
+	result.WriteString(second)
+	contentEnd := result.Len()
+
+	data := result.Bytes()
+	binary.LittleEndian.PutUint32(data[offsetPosition:], uint32(contentStart))
+	binary.LittleEndian.PutUint32(data[offsetPosition+4:], uint32(contentStart+len(first)))
+	binary.LittleEndian.PutUint32(data[offsetPosition+8:], uint32(contentEnd))
+	for len(data) < 256 {
+		data = append(data, 0)
+	}
+	return data
+}
+
+func localUMDChapterContent(t *testing.T, router http.Handler, auth string, bookID uint, index int) string {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(bookID), 10)+"/chapters/"+strconv.Itoa(index)+"/content", nil)
+	request.Header.Set("Authorization", auth)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("UMD chapter content: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload.Content
+}
+
+func removeDerivedUMDChapterCache(t *testing.T, server *Server, book models.Book, chapter models.Chapter) {
+	t.Helper()
+	if strings.TrimSpace(chapter.CachePath) == "" {
+		t.Fatalf("UMD chapter %d has no derived cache path", chapter.Index)
+	}
+	path := filepath.Join(server.cfg.LibraryDir, book.LibraryPath, chapter.CachePath)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove UMD derived chapter cache %q: %v", path, err)
+	}
+}
+
+func assertUMDChapterCacheRebuild(t *testing.T, router http.Handler, server *Server, auth string, book models.Book, index int, want string) {
+	t.Helper()
+	var chapter models.Chapter
+	if err := server.db.Where("book_id = ? AND `index` = ?", book.ID, index).First(&chapter).Error; err != nil {
+		t.Fatalf("load UMD chapter %d: %v", index, err)
+	}
+	removeDerivedUMDChapterCache(t, server, book, chapter)
+	if got := localUMDChapterContent(t, router, auth, book.ID, index); got != want {
+		t.Fatalf("rebuilt UMD chapter %d content = %q, want %q", index, got, want)
+	}
+	if err := server.db.Where("id = ?", chapter.ID).First(&chapter).Error; err != nil {
+		t.Fatalf("reload rebuilt UMD chapter %d: %v", index, err)
+	}
+	if strings.TrimSpace(chapter.CachePath) == "" {
+		t.Fatalf("rebuilt UMD chapter %d has no cache path", index)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.LibraryDir, book.LibraryPath, chapter.CachePath)); err != nil {
+		t.Fatalf("rebuilt UMD chapter %d cache: %v", index, err)
+	}
+}
+
+func TestReaderDevUMDRebuildsArchivedChaptersAndRefreshes(t *testing.T) {
+	router, server := setupTestServer(t)
+	auth := authHeader(t, router)
+	data := readerDevUMDImportFixture(t)
+
+	preview := directUMDImportRequest(t, router, auth, "/api/imports/books/preview", "", data)
+	if preview.Code != http.StatusOK {
+		t.Fatalf("standard UMD preview: expected 200, got %d: %s", preview.Code, preview.Body.String())
+	}
+	var staged struct {
+		ImportToken string `json:"importToken"`
+	}
+	if err := json.Unmarshal(preview.Body.Bytes(), &staged); err != nil {
+		t.Fatal(err)
+	}
+	imported := directUMDImportRequest(t, router, auth, "/api/imports/books", staged.ImportToken, nil)
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("standard UMD import: expected 201, got %d: %s", imported.Code, imported.Body.String())
+	}
+	var book models.Book
+	if err := server.db.Where("title = ?", "上游 UMD 导入").First(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	originalPath := filepath.Join(server.cfg.LibraryDir, book.OriginalFile)
+	original, err := os.ReadFile(originalPath)
+	if err != nil {
+		t.Fatalf("read standard UMD archive: %v", err)
+	}
+
+	assertUMDChapterCacheRebuild(t, router, server, auth, book, 0, "第一段\n第二段")
+	refresh := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", nil)
+	refresh.Header.Set("Authorization", auth)
+	refreshResponse := httptest.NewRecorder()
+	router.ServeHTTP(refreshResponse, refresh)
+	if refreshResponse.Code != http.StatusOK {
+		t.Fatalf("standard UMD refresh: expected 200, got %d: %s", refreshResponse.Code, refreshResponse.Body.String())
+	}
+	if current, err := os.ReadFile(originalPath); err != nil || !bytes.Equal(current, original) {
+		t.Fatalf("standard UMD refresh must not rewrite archive, data equal=%t err=%v", bytes.Equal(current, original), err)
+	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].Index != 0 || chapters[0].Title != "第一章" || chapters[1].Index != 1 || chapters[1].Title != "第二章" {
+		t.Fatalf("refreshed UMD chapters = %+v", chapters)
+	}
+	assertUMDChapterCacheRebuild(t, router, server, auth, book, 1, "第二章正文")
+}
+
+func TestLegacyPseudoUMDArchiveRebuildsWithoutMigration(t *testing.T) {
+	router, server := setupTestServer(t)
+	auth := authHeader(t, router)
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	libraryPath := filepath.Join("data", "testuser", "legacy-pseudo-umd")
+	originalFile := filepath.Join(libraryPath, "legacy.umd")
+	archivePath := filepath.Join(server.cfg.LibraryDir, originalFile)
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(archivePath, legacyOpenReaderUMDArchiveFixture(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "Legacy pseudo UMD", Author: "OpenReader", URL: "local://legacy-pseudo-umd", LibraryPath: libraryPath, OriginalFile: originalFile, ChapterCount: 2}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "Legacy One", URL: "local://legacy-pseudo-umd/chapter_0", CachePath: filepath.Join("content", "missing.txt")}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if got := localUMDChapterContent(t, router, auth, book.ID, 0); got != "legacy body one" {
+		t.Fatalf("legacy pseudo UMD rebuilt content = %q", got)
+	}
+	if err := server.db.First(&chapter, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if chapter.CachePath == filepath.Join("content", "missing.txt") || strings.TrimSpace(chapter.CachePath) == "" {
+		t.Fatalf("legacy pseudo UMD cache path was not migrated lazily: %+v", chapter)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.LibraryDir, book.LibraryPath, chapter.CachePath)); err != nil {
+		t.Fatalf("legacy pseudo UMD rebuilt cache: %v", err)
+	}
+}
+
 func TestReaderDevUMDImportsAcrossAllLocalEntrypoints(t *testing.T) {
 	data := readerDevUMDImportFixture(t)
 
@@ -276,6 +459,7 @@ func TestReaderDevUMDImportsAcrossAllLocalEntrypoints(t *testing.T) {
 			if book.ChapterCount != 2 {
 				t.Fatalf("%s staged UMD import = %+v", entrypoint.name, book)
 			}
+			assertUMDChapterCacheRebuild(t, router, server, auth, book, 0, "第一段\n第二段")
 		})
 	}
 }
