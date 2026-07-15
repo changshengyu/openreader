@@ -246,6 +246,26 @@ The route must not log the capability value. Application access logs should reda
 
 The CBZ additions are backward-compatible JSON fields. Existing clients that only consume `content` will see upstream-style image HTML.
 
+### CBZ bookshelf and book-detail cover projection
+
+`POST /api/imports/books`, `POST /api/local-store/import`, `POST /api/webdav/import`,
+`GET /api/books`, `GET /api/books/:id`, and any existing `bookshelf_update` payload retain their
+current book/book-list JSON shapes. For a local CBZ with no `customCoverUrl`, the existing
+`coverUrl` field is projected at response time to
+`/api/cbz-resource/<capability>/<first-safe-archive-image>`.
+
+The source image is the first safe image encountered in CBZ archive order, matching
+reader-dev `CbzFile.parseBookInfo`; it is intentionally independent of the lexicographically
+sorted chapter catalogue. The response capability is bound to the current user, book and
+archive fingerprint, expires normally, and remains readable without appending the login JWT.
+`coverUrl` capability values and archive member paths are **not** written to `books`,
+`chapters.json`, `bookSource.json`, backups, WebDAV metadata, or logs. A user-supplied
+`customCoverUrl` remains the frontend's first-choice cover and is never overwritten.
+
+If the archived CBZ is unavailable, malformed, unsafe, over budget, or has no supported image,
+the stable book endpoint stays successful with its stored/empty `coverUrl`; it must not turn a
+normal bookshelf response into an archive or host-path error.
+
 Example:
 
 ```json

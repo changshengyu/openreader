@@ -93,11 +93,6 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 	if err != nil {
 		return PreparedChapter{}, err
 	}
-	fingerprint, err := fingerprintFile(sourcePath)
-	if err != nil {
-		return PreparedChapter{}, err
-	}
-
 	resourcePath := strings.TrimSpace(chapter.ResourcePath)
 	if resourcePath == "" {
 		resourcePath, err = s.recoverChapterResourcePath(sourcePath, chapter.Index)
@@ -113,7 +108,37 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 	if err != nil || resourcePath == "" {
 		return PreparedChapter{}, ErrUnsafePath
 	}
+	return s.prepareResource(book, sourcePath, resourcePath)
+}
+
+// PrepareCover exposes reader-dev's first-safe-image CBZ cover through the
+// existing same-origin resource capability. The generated URL is response
+// data only: callers must not save it to the Book row or archived metadata.
+func (s *Service) PrepareCover(book models.Book) (PreparedChapter, error) {
+	if !IsLocalCBZ(book) {
+		return PreparedChapter{}, ErrNotCBZ
+	}
+	sourcePath, err := s.sourcePath(book)
+	if err != nil {
+		return PreparedChapter{}, err
+	}
+	resourcePath, err := firstImageResourcePath(sourcePath)
+	if err != nil {
+		return PreparedChapter{}, err
+	}
+	return s.prepareResource(book, sourcePath, resourcePath)
+}
+
+func (s *Service) prepareResource(book models.Book, sourcePath, resourcePath string) (PreparedChapter, error) {
+	resourcePath, err := engine.NormalizeCBZResourcePath(resourcePath)
+	if err != nil || resourcePath == "" {
+		return PreparedChapter{}, ErrUnsafePath
+	}
 	if _, _, err := readImageEntry(sourcePath, resourcePath); err != nil {
+		return PreparedChapter{}, err
+	}
+	fingerprint, err := fingerprintFile(sourcePath)
+	if err != nil {
 		return PreparedChapter{}, err
 	}
 
@@ -249,6 +274,74 @@ func (s *Service) recoverChapterResourcePath(sourcePath string, chapterIndex int
 		return "", ErrNotFound
 	}
 	return resourcePath, nil
+}
+
+func firstImageResourcePath(sourcePath string) (string, error) {
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if info.Size() > maxCBZArchiveBytes {
+		return "", ErrExtractionLimit
+	}
+	reader, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return "", ErrInvalidArchive
+	}
+	if len(reader.File) > maxCBZEntries {
+		return "", ErrExtractionLimit
+	}
+
+	seen := make(map[string]bool, len(reader.File))
+	var total uint64
+	coverPath := ""
+	for _, entry := range reader.File {
+		canonical, err := engine.NormalizeCBZResourcePath(entry.Name)
+		if err != nil {
+			return "", ErrUnsafePath
+		}
+		if canonical == "" {
+			continue
+		}
+		if entry.Mode()&os.ModeSymlink != 0 {
+			return "", ErrUnsafePath
+		}
+		key := strings.ToLower(canonical)
+		if seen[key] {
+			return "", ErrUnsafePath
+		}
+		seen[key] = true
+		if entry.FileInfo().IsDir() || strings.HasSuffix(entry.Name, "/") {
+			continue
+		}
+		if entry.UncompressedSize64 > uint64(maxCBZEntryBytes) {
+			return "", ErrExtractionLimit
+		}
+		if ^uint64(0)-total < entry.UncompressedSize64 {
+			return "", ErrExtractionLimit
+		}
+		total += entry.UncompressedSize64
+		if total > uint64(maxCBZTotalBytes) {
+			return "", ErrExtractionLimit
+		}
+		if coverPath == "" {
+			if _, ok := engine.CBZImageContentType(canonical); ok {
+				coverPath = canonical
+			}
+		}
+	}
+	if coverPath == "" {
+		return "", ErrNotFound
+	}
+	return coverPath, nil
 }
 
 func readImageEntry(sourcePath, resourcePath string) (string, []byte, error) {

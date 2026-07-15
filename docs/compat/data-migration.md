@@ -155,6 +155,7 @@ Status: extracted 2026-07-10; implementation must not add a destructive schema m
 - `books`, `chapters`, `book_categories`, `bookmarks`, and `reading_progress` are SQLite rows. Book/category/progress/bookmark rows are user scoped; chapter rows are owned by their book.
 - Remote `Chapter.CachePath` is a relative path under `cache/`, calculated from the book/chapter URLs. A physical cache path can be referenced by more than one chapter row and must therefore be reference-checked before removal.
 - Direct, LocalStore, and WebDAV imports are copied by `ArchiveImportedBook` into a private `library/data/<safe-user>/<unique-book>/` archive. `OriginalFile`, `chapters.json`, `bookSource.json`, `content/`, and derived EPUB/CBZ resources live under that archive.
+- E4-CBZ-1 keeps this persisted layout and SQLite schema unchanged. A CBZ's upstream-compatible first-image cover is derived from the bounded private archive walk only while serializing an import, shelf or detail response; the resulting signed resource URL and ZIP member path are never written back to `books`, `chapters.json`, `bookSource.json`, backups or WebDAV metadata. Old archives therefore remain readable without migration, while malformed/missing archives retain the existing empty-cover response.
 - Browser chapter cache keys are user-scoped in current clients but are not database rows; they must be explicitly removed by the shelf/browser store when a book-delete sync event arrives.
 
 ### Required lifecycle and compatibility shim

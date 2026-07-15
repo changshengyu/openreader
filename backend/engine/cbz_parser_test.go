@@ -38,6 +38,28 @@ func TestParseCBZBuildsSortedImageChaptersAndComicInfo(t *testing.T) {
 	}
 }
 
+func TestParseCBZKeepsFirstArchiveImageAsCoverSeparateFromSortedCatalogue(t *testing.T) {
+	data := makeOrderedCBZFixture(t, []struct {
+		name    string
+		content string
+	}{
+		{name: "ComicInfo.xml", content: `<ComicInfo><Title>封面顺序</Title></ComicInfo>`},
+		{name: "pages/002.png", content: "archive-first-cover"},
+		{name: "pages/001.jpg", content: "sorted-first-chapter"},
+	})
+
+	book, err := ParseCBZ(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if book.CoverResourcePath != "pages/002.png" {
+		t.Fatalf("CBZ cover = %q, want first archive image", book.CoverResourcePath)
+	}
+	if len(book.Chapters) != 2 || book.Chapters[0].ResourcePath != "pages/001.jpg" || book.Chapters[1].ResourcePath != "pages/002.png" {
+		t.Fatalf("CBZ sorted catalogue = %+v", book.Chapters)
+	}
+}
+
 func TestParseCBZRejectsUnsafeArchivePaths(t *testing.T) {
 	for _, name := range []string{
 		"../escape.jpg",
@@ -75,6 +97,28 @@ func makeCBZFixture(t *testing.T, files map[string]string) []byte {
 			t.Fatal(err)
 		}
 		if _, err := file.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body.Bytes()
+}
+
+func makeOrderedCBZFixture(t *testing.T, files []struct {
+	name    string
+	content string
+}) []byte {
+	t.Helper()
+	var body bytes.Buffer
+	writer := zip.NewWriter(&body)
+	for _, fileData := range files {
+		file, err := writer.Create(fileData.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(fileData.content)); err != nil {
 			t.Fatal(err)
 		}
 	}

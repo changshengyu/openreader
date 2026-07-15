@@ -69,9 +69,9 @@ func (s *Server) bookShelfListItem(userID uint, book models.Book) bookListItem {
 	cachedCount := s.cachedChapterCount(book.ID, book.SourceID)
 	categoryIDs := s.bookCategoryIDs(userID, book)
 	if err != nil {
-		return bookShelfListItem(book, categoryIDs, models.ReadingProgress{}, cachedCount)
+		return s.projectBookShelfListItem(book, categoryIDs, models.ReadingProgress{}, cachedCount)
 	}
-	return bookShelfListItem(book, categoryIDs, progress, cachedCount)
+	return s.projectBookShelfListItem(book, categoryIDs, progress, cachedCount)
 }
 
 func (s *Server) listAllBookShelfItems(userID uint) ([]bookListItem, error) {
@@ -100,7 +100,7 @@ func (s *Server) bookShelfListItems(userID uint, books []models.Book) []bookList
 
 	items := make([]bookListItem, 0, len(books))
 	for _, book := range books {
-		items = append(items, bookShelfListItem(book, categoryIDsByBookID[book.ID], progressByBookID[book.ID], cacheCountByBookID[book.ID]))
+		items = append(items, s.projectBookShelfListItem(book, categoryIDsByBookID[book.ID], progressByBookID[book.ID], cacheCountByBookID[book.ID]))
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		iShelfAt := items[i].ShelfOrderAt
@@ -111,6 +111,17 @@ func (s *Server) bookShelfListItems(userID uint, books []models.Book) []bookList
 		return items[i].ID > items[j].ID
 	})
 	return items
+}
+
+func (s *Server) projectBookShelfListItem(book models.Book, categoryIDs []uint, progress models.ReadingProgress, cachedChapterCount int64) bookListItem {
+	if strings.TrimSpace(book.CoverURL) == "" && strings.TrimSpace(book.CustomCoverURL) == "" && cbzreader.IsLocalCBZ(book) {
+		if prepared, err := s.cbzReader.PrepareCover(book); err == nil {
+			// This is an ephemeral, user/book/archive-scoped response projection.
+			// Do not save the capability into SQLite, archives, backups or events.
+			book.CoverURL = prepared.ResourceURL
+		}
+	}
+	return bookShelfListItem(book, categoryIDs, progress, cachedChapterCount)
 }
 
 func bookShelfListItem(book models.Book, categoryIDs []uint, progress models.ReadingProgress, cachedChapterCount int64) bookListItem {

@@ -16,9 +16,10 @@ import (
 )
 
 type ParsedBook struct {
-	Title    string
-	Author   string
-	Chapters []TXTChapter
+	Title             string
+	Author            string
+	CoverResourcePath string
+	Chapters          []TXTChapter
 }
 
 type epubContainer struct {

@@ -6505,7 +6505,7 @@ func TestDirectTXTEncodingAndLongRuleCatalogRemainReadableAcrossStageImport(t *t
 				t.Fatalf("preview: expected 200, got %d: %s", previewW.Code, previewW.Body.String())
 			}
 			var preview struct {
-				ChapterCount int `json:"chapterCount"`
+				ChapterCount int    `json:"chapterCount"`
 				ImportToken  string `json:"importToken"`
 				Chapters     []struct {
 					Title string `json:"title"`
@@ -6904,8 +6904,8 @@ func TestDirectEPUBImageOnlyTitlepagePreviewImportAndReaderResource(t *testing.T
 		t.Fatalf("image-only titlepage content: expected 200, got %d: %s", contentW.Code, contentW.Body.String())
 	}
 	var content struct {
-		Format      string `json:"format"`
-		ResourceURL string `json:"resourceUrl"`
+		Format      string         `json:"format"`
+		ResourceURL string         `json:"resourceUrl"`
 		Chapter     models.Chapter `json:"chapter"`
 	}
 	if err := json.Unmarshal(contentW.Body.Bytes(), &content); err != nil {
@@ -6983,6 +6983,69 @@ func TestDirectCBZImportAndResourceCapability(t *testing.T) {
 	}
 	if book.Title != "CBZ 标题" || book.Author != "CBZ 作者" || book.ChapterCount != 2 {
 		t.Fatalf("imported CBZ metadata mismatch: %+v", book)
+	}
+	if book.CoverURL != "" {
+		t.Fatalf("CBZ cover capability must not be persisted in the book row: %+v", book)
+	}
+	assertCBZCover := func(label, coverURL string) {
+		t.Helper()
+		if !strings.HasPrefix(coverURL, "/api/cbz-resource/") || strings.Contains(coverURL, strings.TrimPrefix(token, "Bearer ")) {
+			t.Fatalf("%s CBZ cover URL must be a same-origin capability without a login JWT: %q", label, coverURL)
+		}
+		coverReq := httptest.NewRequest(http.MethodGet, coverURL, nil)
+		coverW := httptest.NewRecorder()
+		router.ServeHTTP(coverW, coverReq)
+		if coverW.Code != http.StatusOK || !strings.Contains(coverW.Header().Get("Content-Type"), "image/png") || coverW.Body.String() != "second" {
+			t.Fatalf("%s CBZ cover must be the first archive image rather than the sorted chapter: got %d %q %q", label, coverW.Code, coverW.Header().Get("Content-Type"), coverW.Body.String())
+		}
+	}
+	assertCBZCover("import response", imported.CoverURL)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/books", nil)
+	listReq.Header.Set("Authorization", token)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("CBZ shelf list: expected 200, got %d: %s", listW.Code, listW.Body.String())
+	}
+	var shelfItems []bookListItem
+	if err := json.Unmarshal(listW.Body.Bytes(), &shelfItems); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range shelfItems {
+		if item.ID == book.ID {
+			assertCBZCover("shelf list", item.CoverURL)
+			break
+		}
+	}
+
+	bookReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10), nil)
+	bookReq.Header.Set("Authorization", token)
+	bookW := httptest.NewRecorder()
+	router.ServeHTTP(bookW, bookReq)
+	if bookW.Code != http.StatusOK {
+		t.Fatalf("CBZ book detail: expected 200, got %d: %s", bookW.Code, bookW.Body.String())
+	}
+	var detail bookListItem
+	if err := json.Unmarshal(bookW.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	assertCBZCover("book detail", detail.CoverURL)
+	if err := server.db.Model(&models.Book{}).Where("id = ?", book.ID).Update("custom_cover_url", "/uploads/covers/user-choice.jpg").Error; err != nil {
+		t.Fatal(err)
+	}
+	customCoverReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10), nil)
+	customCoverReq.Header.Set("Authorization", token)
+	customCoverW := httptest.NewRecorder()
+	router.ServeHTTP(customCoverW, customCoverReq)
+	if customCoverW.Code != http.StatusOK {
+		t.Fatalf("CBZ custom cover detail: expected 200, got %d: %s", customCoverW.Code, customCoverW.Body.String())
+	}
+	if err := json.Unmarshal(customCoverW.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.CustomCoverURL != "/uploads/covers/user-choice.jpg" || detail.CoverURL != "" {
+		t.Fatalf("custom cover must remain first-choice without generated CBZ fallback: %+v", detail.Book)
 	}
 	var chapters []models.Chapter
 	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {

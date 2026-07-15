@@ -107,6 +107,12 @@ func parseCBZReaderWithLimits(reader *zip.Reader, limits LocalBookParseLimits) (
 			continue
 		}
 		if _, ok := CBZImageContentType(canonical); ok {
+			// reader-dev picks the first valid image encountered while walking
+			// the archive as its cover. This is intentionally distinct from the
+			// lexicographic chapter catalogue built below.
+			if parsed.CoverResourcePath == "" {
+				parsed.CoverResourcePath = canonical
+			}
 			images = append(images, canonical)
 		}
 	}
