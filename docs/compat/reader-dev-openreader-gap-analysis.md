@@ -284,11 +284,12 @@ Implemented in commit work following this contract:
 - EPUB resources are served through scoped, expiring capabilities instead of exposing the login JWT to iframe/resource requests.
 - The 2026-07-15 P1-E4 audit restored the upstream first image-only spine cover: a title-less `titlepage.xhtml` is now kept as “封面” through preview, import, chapter rows and the protected iframe resource route.
 - The EPUB browser contract is covered by `scripts/smoke/reader-epub-contract.mjs` at 1440×900, 390×844, and 360×800.
+- E4-EPUB-2 was committed and published after the full local gate: Git `8f5e979`, GHCR `ghcr.io/changshengyu/openreader:8f5e979` and `:latest`, multi-architecture index `sha256:1f17a4a028742515c065d00995df8e2f109a87386f9e5e221f4033851663de34`.
 
 Remaining Reader P0 release gate:
 
 - Browser suite completed from the fresh production build on 2026-07-11: `reader-mobile-contract.mjs`, `reader-tts-contract.mjs`, `reader-image-contract.mjs`, `reader-audio-contract.mjs`, and `reader-continuous-contract.mjs` passed at desktop `1440×900` plus mobile `390×844` / `360×800`; `reader-epub-contract.mjs` passed at those same viewports against a temporary isolated Go API/import service. The EPUB smoke now accepts `SMOKE_VIEWPORTS` so each viewport can be run independently without losing a real failure to the runner time limit.
-- Create the Git-traceable commit, then run the local Docker/volume compatibility gate and publish the locally built image. This remains blocked only by the workspace Git-write credit refusal, not by the Reader or Docker build chain.
+- Git-traceable commit and local Docker/volume compatibility gate are complete for the E4-EPUB-2 slice; its GHCR release is recorded in [`epub-fragment-p1e4-contract.md`](epub-fragment-p1e4-contract.md). The remaining P1-E4 work is PDF/Markdown historical-data coverage and the complete old-volume fixture, not a release-chain blocker.
 
 ### 2026-07-11 focused audit: Reader tool-layer exceptions and TTS bar
 

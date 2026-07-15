@@ -101,4 +101,13 @@ parser、归档或 Reader；当前 OpenReader 实现不构成正确性依据。
   360×800 验证 slice、同 XHTML 跳转、跨 XHTML 跳转、相对 CSS/图片/字体、移动工具层和
   无 console/page error。
 
-Docker 构建、挂载卷/备份 smoke 和 GHCR 发布仍是本切片的最终发布门禁。
+## 7. 发布记录
+
+2026-07-15 已完成本地 Docker 构建、`docker-volume-backup-smoke.sh` 与 GHCR 发布：
+
+- Git：`8f5e979 fix: align EPUB fragment reader navigation`；
+- tags：`ghcr.io/changshengyu/openreader:8f5e979`、`ghcr.io/changshengyu/openreader:latest`；
+- remote multi-architecture index digest：`sha256:1f17a4a028742515c065d00995df8e2f109a87386f9e5e221f4033851663de34`；
+- architectures：linux/amd64 `sha256:aa8ad7e258bf7e393cac636ccdf1212b0e5fc98eabc4dfaedb3472195557ec72`，linux/arm64 `sha256:b9cb926970bd22bb82511b3a5d620a8ad92a25f3a95d1df3c7cc13e7b9627a59`。
+
+本次合同记录提交不改变镜像内容，故不为纯文档更新重新发布 Docker。
