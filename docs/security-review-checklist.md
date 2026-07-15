@@ -172,6 +172,7 @@ Apply this section to Reader P0 EPUB work:
 - [x] Entry count, per-entry expanded size, and total expanded size are bounded before/during extraction.
 - [x] Extraction uses a staging directory and only exposes an atomically completed version.
 - [x] XHTML is served without EPUB-authored active scripts; the reader bridge is injected dynamically rather than written into the archived source.
+- [x] A title-less, image-only first spine resource is retained as the upstream-compatible cover chapter, but it is still served only through the same per-user, signed EPUB capability and XHTML/media allowlist; import never exposes an archive path or raw ZIP member directly.
 - [x] CSP blocks remote network loads and untrusted scripts while allowing scoped local CSS/images/fonts and required inline reader styles.
 - [x] MIME types are allowlisted and responses set `nosniff` and `no-referrer`.
 - [x] Multi-user tests prove one user's capability cannot read another user's book or resource tree.
@@ -179,7 +180,7 @@ Apply this section to Reader P0 EPUB work:
 
 Evidence for the checked EPUB items:
 
-- Backend tests: `go test ./services/epubreader ./api ./db ./engine ./services/localbook` and full `go test ./...`.
+- Backend tests: `go test ./services/epubreader ./api ./db ./engine ./services/localbook` and full `go test ./...`; `TestDirectEPUBImageOnlyTitlepagePreviewImportAndReaderResource` proves the cover route remains capability-protected.
 - Frontend tests: `npm test`.
 - Browser test: `scripts/smoke/reader-epub-contract.mjs` against 1440×900, 390×844, and 360×800.
 

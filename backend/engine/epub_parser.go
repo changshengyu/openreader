@@ -107,7 +107,7 @@ func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) 
 
 	spineChapters := make([]epubChapter, 0, len(pkg.Spine.ItemRefs))
 	var parsedTextBytes int64
-	for _, ref := range pkg.Spine.ItemRefs {
+	for spineIndex, ref := range pkg.Spine.ItemRefs {
 		item, ok := manifest[ref.IDRef]
 		if !ok || !isReadableEPUBItem(item.MediaType) {
 			continue
@@ -124,8 +124,13 @@ func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) 
 		}
 
 		title, content := extractEPUBChapter(chapterBytes)
-		if strings.TrimSpace(content) == "" {
-			continue
+		// reader-dev keeps every readable spine resource. In particular, its
+		// first title-less resource is the cover page, even when the XHTML has
+		// only an image and therefore has no extractable text. Keep that
+		// resource path for the protected EPUB iframe instead of silently
+		// deleting the user's cover chapter during import.
+		if spineIndex == 0 && strings.TrimSpace(title) == "" {
+			title = "封面"
 		}
 		if int64(len(content)) > limits.MaxParsedTextBytes-parsedTextBytes {
 			return ParsedBook{}, fmt.Errorf("%w: EPUB extracted text exceeds the limit", ErrLocalBookParseLimit)

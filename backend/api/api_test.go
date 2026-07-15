@@ -6664,6 +6664,94 @@ func TestDirectEPUBImportAndRefreshUseTocRule(t *testing.T) {
 	}
 }
 
+func TestDirectEPUBImageOnlyTitlepagePreviewImportAndReaderResource(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	epubData := testEPUBArchiveWithImageOnlyTitlepage(t)
+
+	request := func(path string) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "cover.epub")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(epubData); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteField("tocRule", "spin"); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		return response
+	}
+
+	previewW := request("/api/imports/books/preview")
+	if previewW.Code != http.StatusOK {
+		t.Fatalf("image-only titlepage preview: expected 200, got %d: %s", previewW.Code, previewW.Body.String())
+	}
+	var preview struct {
+		ChapterCount int `json:"chapterCount"`
+		Chapters     []struct {
+			Title string `json:"title"`
+		} `json:"chapters"`
+	}
+	if err := json.Unmarshal(previewW.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.ChapterCount != 2 || len(preview.Chapters) != 2 || preview.Chapters[0].Title != "封面" || preview.Chapters[1].Title != "第一章" {
+		t.Fatalf("image-only titlepage preview lost upstream cover chapter: %+v", preview)
+	}
+
+	importW := request("/api/imports/books")
+	if importW.Code != http.StatusCreated {
+		t.Fatalf("image-only titlepage import: expected 201, got %d: %s", importW.Code, importW.Body.String())
+	}
+	var imported bookListItem
+	if err := json.Unmarshal(importW.Body.Bytes(), &imported); err != nil {
+		t.Fatal(err)
+	}
+	var chapters []models.Chapter
+	if err := server.db.Where("book_id = ?", imported.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].Title != "封面" || chapters[0].ResourcePath != "OPS/titlepage.xhtml" {
+		t.Fatalf("imported image-only titlepage = %+v", chapters)
+	}
+
+	contentReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(imported.ID), 10)+"/chapters/0/content", nil)
+	contentReq.Header.Set("Authorization", token)
+	contentW := httptest.NewRecorder()
+	router.ServeHTTP(contentW, contentReq)
+	if contentW.Code != http.StatusOK {
+		t.Fatalf("image-only titlepage content: expected 200, got %d: %s", contentW.Code, contentW.Body.String())
+	}
+	var content struct {
+		Format      string `json:"format"`
+		ResourceURL string `json:"resourceUrl"`
+		Chapter     models.Chapter `json:"chapter"`
+	}
+	if err := json.Unmarshal(contentW.Body.Bytes(), &content); err != nil {
+		t.Fatal(err)
+	}
+	if content.Format != "epub" || content.ResourceURL == "" || content.Chapter.ResourcePath != "OPS/titlepage.xhtml" {
+		t.Fatalf("image-only titlepage content response = %+v", content)
+	}
+	resourceReq := httptest.NewRequest(http.MethodGet, content.ResourceURL, nil)
+	resourceW := httptest.NewRecorder()
+	router.ServeHTTP(resourceW, resourceReq)
+	if resourceW.Code != http.StatusOK || !strings.Contains(resourceW.Body.String(), "images/cover.svg") {
+		t.Fatalf("image-only titlepage resource: got %d: %s", resourceW.Code, resourceW.Body.String())
+	}
+}
+
 func TestDirectCBZImportAndResourceCapability(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -6895,6 +6983,38 @@ func testEPUBArchiveWithBody(t *testing.T, firstChapterBody string) []byte {
 	write("OPS/styles/book.css", `body { color: rgb(12, 34, 56); }`)
 	write("OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20"/></svg>`)
 	write("OPS/scripts/evil.js", `window.epubAuthoredScript = true`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func testEPUBArchiveWithImageOnlyTitlepage(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	write := func(name string, content string) {
+		file, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("META-INF/container.xml", `<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`)
+	write("OPS/content.opf", `<package>
+  <metadata><title>封面 EPUB</title></metadata>
+  <manifest>
+    <item id="cover" href="titlepage.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="image" href="images/cover.svg" media-type="image/svg+xml"/>
+  </manifest>
+  <spine><itemref idref="cover"/><itemref idref="chapter"/></spine>
+</package>`)
+	write("OPS/titlepage.xhtml", `<html><body><img src="images/cover.svg" alt="封面"/></body></html>`)
+	write("OPS/chapter.xhtml", `<html><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
+	write("OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

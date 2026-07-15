@@ -390,9 +390,12 @@ func TestParseEPUBWithRuleCombinesSpineAndNav(t *testing.T) {
 		bodies []string
 	}{
 		{rule: "spin", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
+		{rule: "spin+toc", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
 		{rule: "spin<toc", titles: []string{"目录一", "目录二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
 		{rule: "toc", titles: []string{"目录二", "目录一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
+		{rule: "toc+spin", titles: []string{"目录二", "目录一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
 		{rule: "toc<spin", titles: []string{"正文二", "正文一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
+		{rule: "", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.rule, func(t *testing.T) {
@@ -415,6 +418,43 @@ func TestParseEPUBWithRuleCombinesSpineAndNav(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseEPUBRetainsFirstImageOnlyTitlepageAsCover(t *testing.T) {
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+	writeZipFile(t, zipWriter, "META-INF/container.xml", `<?xml version="1.0"?>
+<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`)
+	writeZipFile(t, zipWriter, "OPS/content.opf", `<?xml version="1.0"?>
+<package>
+  <metadata><title>封面 EPUB</title></metadata>
+  <manifest>
+    <item id="cover" href="titlepage.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="image" href="images/cover.svg" media-type="image/svg+xml"/>
+  </manifest>
+  <spine><itemref idref="cover"/><itemref idref="chapter"/></spine>
+</package>`)
+	writeZipFile(t, zipWriter, "OPS/titlepage.xhtml", `<html><body><img src="images/cover.svg" alt="封面"/></body></html>`)
+	writeZipFile(t, zipWriter, "OPS/chapter.xhtml", `<html><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`)
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	book, err := ParseEPUBWithRule(buffer.Bytes(), "spin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(book.Chapters) != 2 {
+		t.Fatalf("first image-only titlepage must remain a readable EPUB chapter, got %+v", book.Chapters)
+	}
+	if book.Chapters[0].Title != "封面" || book.Chapters[0].ResourcePath != "OPS/titlepage.xhtml" {
+		t.Fatalf("image-only titlepage = %+v, want upstream cover resource", book.Chapters[0])
+	}
+	if book.Chapters[1].Title != "第一章" || book.Chapters[1].ResourcePath != "OPS/chapter.xhtml" {
+		t.Fatalf("ordinary chapter after titlepage = %+v", book.Chapters[1])
 	}
 }
 
