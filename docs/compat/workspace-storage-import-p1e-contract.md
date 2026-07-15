@@ -1,6 +1,6 @@
 # P1-E 工作台书仓、WebDAV 与本地导入兼容合同
 
-状态：**P1-E1、P1-E2、P1-E3 已实现并完成前端/浏览器回归；P1-E4 仍未开始。**
+状态：**P1-E1、P1-E2、P1-E3 已实现并完成前端/浏览器回归；P1-E4 的上游审查合同已完成，尚未开始测试或实现。**
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游证据：`web/src/views/Index.vue`、`web/src/components/LocalStore.vue`、`web/src/components/WebDAV.vue`、`BookController.kt`、`LocalBook.kt`、`TextFile.kt`。  
 当前映射：`OverlayLocalStore.vue`、`LocalStore.vue`、`OverlayWebDAV.vue`、`WebDAVBrowser.vue`、`OverlayStorageImport.vue`、`useStorageImportWorkflow.js`、`backend/api/localstore.go`、`backend/api/webdav.go`、`backend/api/local_import_stage.go`、`backend/services/localbook/*`。
@@ -130,4 +130,4 @@
 1. **P1-E1**：暂存 token 的可见重试桥接（已发布）。
 2. **P1-E2**：将 LocalStore/WebDAV 的单本/多本确认状态机收敛到 Index 共享导入控制器，重新审查取消、统一分组与结果刷新。
 3. **P1-E3**：已完成，见 `docs/compat/workspace-storage-import-p1e3-contract.md`；已移除未获授权的递归/目录/重命名/下载/格式扩展 UI，补回上游列表、上传和格式入口语义，并保留 P1-E2 的共享确认状态机。
-4. **P1-E4**：以真实 EPUB、CBZ、PDF、TXT、标准 UMD 及旧挂载卷做格式、资源、升级和 Docker 回归；此前的历史 smoke 不能替代此门禁。
+4. **P1-E4**：以真实 EPUB、CBZ、PDF、TXT、标准 UMD 及旧挂载卷做格式、资源、升级和 Docker 回归；此前的历史 smoke 不能替代此门禁。详见 `docs/compat/local-book-p1e4-contract.md`；该合同已确认 TXT 显式规则无匹配预览和规则目录长章节切分是必须先补测试再修复的上游差异。
