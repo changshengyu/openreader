@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -275,4 +276,125 @@ func TestHistoricalMountedVolumeRemainsPrivateAfterMigration(t *testing.T) {
 	if chapterResponse.Code != http.StatusNotFound {
 		t.Fatalf("other user read historical local book: expected 404, got %d: %s", chapterResponse.Code, chapterResponse.Body.String())
 	}
+}
+
+func TestHistoricalMountedVolumeRebuildsEPUBUMDAndCBZArchives(t *testing.T) {
+	router, server, fixture := setupHistoricalLocalVolume(t)
+	auth := historicalVolumeAuth(t, router, fixture)
+
+	tests := []struct {
+		name        string
+		filename    string
+		archive     []byte
+		tocRule     string
+		wantFormat  string
+		wantContent string
+	}{
+		{
+			name:       "EPUB",
+			filename:   "legacy.epub",
+			archive:    testEPUBArchive(t),
+			tocRule:    "toc",
+			wantFormat: "epub",
+		},
+		{
+			name:        "reader-dev UMD",
+			filename:    "legacy.umd",
+			archive:     readerDevUMDImportFixture(t),
+			wantContent: "第一段",
+		},
+		{
+			name:       "CBZ",
+			filename:   "legacy.cbz",
+			archive:    testCBZArchive(t, "old-volume-first-page"),
+			wantFormat: "cbz",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			book, archivePath := addHistoricalFormatArchive(t, server, fixture, test.filename, test.archive, test.tocRule)
+			archiveHash := sha256.Sum256(test.archive)
+
+			contentRequest := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+			contentRequest.Header.Set("Authorization", auth)
+			contentResponse := httptest.NewRecorder()
+			router.ServeHTTP(contentResponse, contentRequest)
+			if contentResponse.Code != http.StatusOK {
+				t.Fatalf("read %s historical archive: expected 200, got %d: %s", test.name, contentResponse.Code, contentResponse.Body.String())
+			}
+			var content struct {
+				Content     string `json:"content"`
+				Format      string `json:"format"`
+				ResourceURL string `json:"resourceUrl"`
+			}
+			if err := json.Unmarshal(contentResponse.Body.Bytes(), &content); err != nil {
+				t.Fatal(err)
+			}
+			if test.wantFormat != "" && (content.Format != test.wantFormat || content.ResourceURL == "") {
+				t.Fatalf("historical %s content response = %+v", test.name, content)
+			}
+			if test.wantContent != "" && !strings.Contains(content.Content, test.wantContent) {
+				t.Fatalf("historical %s content = %q, want %q", test.name, content.Content, test.wantContent)
+			}
+
+			refreshRequest := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", nil)
+			refreshRequest.Header.Set("Authorization", auth)
+			refreshResponse := httptest.NewRecorder()
+			router.ServeHTTP(refreshResponse, refreshRequest)
+			if refreshResponse.Code != http.StatusOK {
+				t.Fatalf("refresh %s historical archive: expected 200, got %d: %s", test.name, refreshResponse.Code, refreshResponse.Body.String())
+			}
+			archiveAfter, err := os.ReadFile(archivePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sha256.Sum256(archiveAfter) != archiveHash {
+				t.Fatalf("refresh %s rewrote the old original archive", test.name)
+			}
+		})
+	}
+}
+
+func addHistoricalFormatArchive(t *testing.T, server *Server, fixture historicalLocalVolume, filename string, archive []byte, tocRule string) (models.Book, string) {
+	t.Helper()
+	stem := strings.TrimSuffix(filename, filepath.Ext(filename))
+	libraryPath := filepath.Join("data", fixture.username, "old-volume-"+stem)
+	archivePath := filepath.Join(server.cfg.LibraryDir, libraryPath, filename)
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(archivePath, archive, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(archivePath), "chapters.json"), []byte("[{\"title\":\"旧目录\",\"index\":0}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(archivePath), "bookSource.json"), []byte("[{\"name\":\"旧卷格式夹具\"}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	book := models.Book{
+		UserID:       fixture.book.UserID,
+		SourceID:     0,
+		Title:        "旧卷 " + filename,
+		Author:       "格式夹具",
+		URL:          "local://old-volume-" + stem,
+		LibraryPath:  libraryPath,
+		OriginalFile: filepath.Join("/retired-host", libraryPath, filename),
+		TOCFile:      filepath.Join(libraryPath, "chapters.json"),
+		SourceFile:   filepath.Join(libraryPath, "bookSource.json"),
+		TOCRule:      tocRule,
+		LastChapter:  "旧目录",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "旧目录", URL: book.URL + "/chapter_0", CachePath: filepath.Join("content", "missing.txt")}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	return book, archivePath
 }

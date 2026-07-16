@@ -160,6 +160,9 @@ tests and production build pass. The all-format EPUB/UMD/CBZ old-volume fixture 
 before P1-E4 can be called fully complete. The validated first Docker slice was published from
 Git `885c8b7` as `ghcr.io/changshengyu/openreader:885c8b7` and `:latest`, both pointing to
 multi-architecture index `sha256:3a417024275d5b2be412b6d1a9d02f663bf041f38b6131ef9b1cbb4a5025a3c5`.
+`TestHistoricalMountedVolumeRebuildsEPUBUMDAndCBZArchives` additionally covers stale absolute
+archive paths and missing derived content for all remaining E4 formats at the API boundary; their
+container fixture remains pending.
 
 ## P2 backup ZIP restore compatibility and bounds
 
