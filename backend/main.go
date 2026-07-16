@@ -58,7 +58,7 @@ func main() {
 	sched.Start()
 	defer sched.Stop()
 
-	backupSvc := backup.New(database, filepath.Join(cfg.DataDir, "webdav"))
+	backupSvc := backup.New(database, filepath.Join(cfg.DataDir, "webdav"), cfg)
 	backupSvc.Start()
 	defer backupSvc.Stop()
 

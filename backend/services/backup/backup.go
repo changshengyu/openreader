@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
 )
@@ -19,14 +20,23 @@ import (
 type Service struct {
 	db        *gorm.DB
 	webdavDir string
+	cfg       config.Config
 	stopCh    chan struct{}
 }
 
 // New creates a backup service.
-func New(db *gorm.DB, webdavDir string) *Service {
+//
+// config is optional only to keep older in-process callers source compatible. Portable local
+// archive backup requires cfg.LibraryDir and is unavailable until the production caller passes it.
+func New(db *gorm.DB, webdavDir string, configs ...config.Config) *Service {
+	cfg := config.Config{}
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 	return &Service{
 		db:        db,
 		webdavDir: webdavDir,
+		cfg:       cfg,
 		stopCh:    make(chan struct{}),
 	}
 }
