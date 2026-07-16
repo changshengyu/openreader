@@ -363,7 +363,7 @@ function toggleMobileNavigation() {
 }
 
 function openExploreWorkspace() {
-  workspace.beginExplore()
+  workspace.requestExplore()
 }
 
 function backToShelf() {
@@ -398,7 +398,7 @@ function applyRouteWorkspaceIntent() {
     return
   }
   if (route.query.workspace === 'explore') {
-    workspace.beginExplore({
+    workspace.requestExplore({
       sourceId: route.query.sourceId,
       sourceGroup: route.query.group,
       url: route.query.url,

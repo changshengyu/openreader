@@ -97,6 +97,7 @@ test('uses one upstream-style result scene for shelf, search, explore, and back-
     sourceGroup: '推荐',
     url: 'https://source.example/explore',
     name: '热门',
+    sourceName: '',
   })
   assert.deepEqual(workspace.continuation, {
     page: 1,
@@ -120,6 +121,37 @@ test('uses one upstream-style result scene for shelf, search, explore, and back-
   assert.equal(workspace.search.keyword, '雪中悍刀行', 'returning only clears result state, not the saved search configuration')
 })
 
+test('opens Explore as a chooser request and only enters result mode after an entry resolves', () => {
+  const workspace = createWorkspace()
+
+  workspace.requestExplore({
+    sourceId: 7,
+    sourceGroup: '推荐',
+    url: 'https://source.example/explore',
+    name: '热门',
+    sourceName: '示例书源',
+  })
+
+  assert.equal(workspace.mode, 'shelf', 'opening Explore must leave the current Index body intact')
+  assert.equal(workspace.exploreChooserRevision, 1, 'each Explore trigger must be observable by the long-lived chooser')
+  assert.deepEqual(workspace.explore, {
+    sourceId: 7,
+    sourceGroup: '推荐',
+    url: 'https://source.example/explore',
+    name: '热门',
+    sourceName: '示例书源',
+  })
+
+  workspace.showExploreResults([{ key: 'source-b:1', title: '诡秘之主' }], {
+    ...workspace.explore,
+    page: 1,
+    hasMore: true,
+  })
+
+  assert.equal(workspace.mode, 'explore', 'only a selected/resolved entry may replace the shelf with Explore results')
+  assert.equal(workspace.exploreChooserRevision, 1, 'result updates must not reopen the chooser')
+})
+
 test('keeps result pagination and scroll restoration in the workspace state without a route dependency', () => {
   const workspace = createWorkspace()
   workspace.beginSearch({ keyword: '长夜', sourceId: 4, searchType: 'single' })
@@ -139,7 +171,7 @@ test('keeps result pagination and scroll restoration in the workspace state with
   assert.doesNotMatch(source, /vue-router|router\.push|router\.replace/, 'the shared workspace state must be usable without a route scene transition')
 })
 
-test('keeps Search and Discover as root-workspace result bodies rather than standalone pages', () => {
+test('keeps Search and Explore result cards as root-workspace bodies rather than standalone pages or source choosers', () => {
   const searchView = readFileSync(searchViewPath, 'utf8')
   const discoverView = readFileSync(discoverViewPath, 'utf8')
   const homeView = readFileSync(homeViewPath, 'utf8')
@@ -151,10 +183,10 @@ test('keeps Search and Discover as root-workspace result bodies rather than stan
   assert.doesNotMatch(searchView, /!embedded|v-else\s+class="search-head"/, 'Search must not preserve a standalone page branch')
   assert.doesNotMatch(searchView, /route\.query\.(?:mode|q|searchType|group|sourceId|concurrent)/, 'Search must initialize only from the shared workspace intent')
   assert.match(discoverView, /useIndexWorkspaceStore/)
-  assert.match(discoverView, /workspace\.showExploreResults\(/)
   assert.match(discoverView, /workspace\.appendResultRows\(/)
   assert.doesNotMatch(discoverView, /defineProps\s*\(/, 'Discover must not preserve an optional standalone-page prop')
   assert.doesNotMatch(discoverView, /!embedded|v-else\s+class="discover-head"/, 'Discover must not preserve a standalone page branch')
+  assert.doesNotMatch(discoverView, /listExploreSources|source-panel|source-group-tabs|el-collapse-item/, 'Discover result body must not recreate the upstream Explore chooser')
   assert.match(homeView, /useIndexWorkspaceStore/)
   assert.match(homeView, /workspace\.backToShelf\(\)/)
 })

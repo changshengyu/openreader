@@ -2022,3 +2022,104 @@ Upstream evidence was rechecked before changing the current browser contracts:
 Allowed differences remain limited to the compatibility redirect and the user-approved
 multi-category confirmation. This inventory and its real-browser contracts are the
 completion evidence for the P1-B BookInfo five-entry slice.
+
+## 2026-07-16 P1 final re-audit: Index Explore popover and workspace-config ownership
+
+Status: **Explore implementation completed on 2026-07-16; workspace-configuration follow-up remains pending.** This section supersedes
+the conflicting parts of the earlier P1-B/P1-E implementation notes. Those records
+correctly established a root workspace and legacy URL redirects, but their passing
+browser contracts did not prove the exact upstream Explore entry structure or the
+Index-owned configuration placement. They must not be cited as parity proof for the
+following rows.
+
+Fixed upstream authority:
+
+- `reader-dev/web/src/views/Index.vue`: sidebar template, `showExplorePop`,
+  `showSearchList`, `loadMore`, `backToShelf`, and mobile navigation gesture
+  handlers.
+- `reader-dev/web/src/components/Explore.vue`: the Explore chooser popup, source
+  grouping, selection, result emission, pagination, and retained popup scroll
+  position.
+
+### Revalidated upstream state table
+
+| Trigger / state | Upstream transition | Required OpenReader transition |
+|---|---|---|
+| Sidebar `探索书源` | Click closes the compact mobile navigation, then opens the `Explore` Popover anchored to the Index navigation. It does **not** immediately replace the shelf. | Close the mobile sidebar for this explicit action, then show an Explore chooser Popover. Do not set the workspace to `explore` until an entry is selected. |
+| Shelf-header `书海` | Opens the same `Explore` Popover, without first changing the shelf/result state. | Reuse the same chooser and its retained source/group/scroll state; do not render a second full-page Explore selector. |
+| Explore group/source entry | `Explore.exploreBookSource()` resets page to `1`, fetches the chosen entry, emits the rows to `Index.showSearchList()`, and the Index body becomes `isSearchResult=true, isExploreResult=true`. | After selection, close the chooser and transition the root workspace body to `explore`; preserve the selected source, entry URL/name, rows, continuation, and shared BookInfo/read actions. |
+| Explore load more | Root Index `loadMore()` delegates to the same Popover instance's `loadMore()`, which increments its retained page and emits deduplicated rows again. | Root result-body load-more must use the chooser-owned selected entry/page state (or an equivalent shared controller), preserve scroll position, and append deduplicated rows. |
+| Return to shelf | `backToShelf()` clears only search/explore result state. The long-lived navigation and Explore chooser state remain available. | Clear workspace result state/query only. Do not remount the entire shell or discard chooser state. |
+| Account/cache/user configuration | `Index.vue` exposes user-space backup/sync/user-management and browser-cache actions as sidebar controls in its long-lived navigation. Reader preferences are opened by Reader's own settings control. | Keep account/cache actions in the Index/sidebar ownership. Do not present an unrelated general-settings product page/drawer as the canonical UI; legacy `/settings?panel=...` links may still resolve to compatible root intents. |
+
+### Current-source comparison
+
+| Concern | Current evidence | Classification | Required correction |
+|---|---|---|---|
+| Root shelf/search scene | `AppLayout.vue` persists around `Home.vue`; `Home.vue` switches shelf/search result bodies through `indexWorkspace`; `/search` redirects to `/?workspace=search`. | `aligned` | Retain. |
+| Search result body | Sidebar search calls `beginWorkspaceSearch`; `Search.vue` is mounted only by `Home.vue` and uses shared BookInfo. | `aligned` | Retain existing regression coverage. |
+| Explore entry chooser | `AppLayout.beginWorkspaceExplore()` directly calls `workspace.beginExplore()`. `Home.vue` renders `Discover.vue` as a full root-body source picker. No component is anchored to the sidebar/header trigger. | `must-fix` | Replace the full-body source picker with one upstream-style `Explore` Popover. Only a selected entry may transition the root body to Explore results. |
+| Explore pagination ownership | `Discover.vue` owns source selection, page, loading and source-panel UI. The root `加载更多` button consequently depends on a full-page selector that upstream does not show. | `must-fix` | Move selection/page/scroll controller to the shared Explore Popover/controller while preserving the Go `/explore/sources` and `/explore/:id` APIs. |
+| Workspace configuration | `OverlayWorkspaceSettings.vue` opens `Settings.vue` in a global Element Drawer. `Settings.vue` contains account, cache, and a second global reader-preference editor; `AppLayout` already separately owns the upstream-style sidebar actions. | `must-fix` | Retire the Drawer as canonical UI. Rehome account/cache commands in the sidebar/appropriate operation overlays, keep Reader preferences in the Reader control surface, and retain legacy `/settings` only as a narrow compatibility intent. |
+| Mobile sidebar gesture | `useAppMobileNavigation.js` and `AppLayout.vue` retain 260px width, 270px drag range, 20px edge guard and fixed bottom GitHub/theme buttons. | `aligned` with user-requested fixed-bottom enhancement | Retain; verify Explore's deliberate close does not affect fixed bottom controls or result-body geometry. |
+| Existing Explore/browser tests | `index-workspace-contract.mjs` asserts that clicking `探索书源` immediately yields `.discover-results`; earlier P1-B prose describes this as acceptable. | `incorrect regression contract` | Delete/replace this assumption with Popover-before-selection contracts. Passing the old test is not evidence of upstream parity. |
+| Existing workspace-settings/browser tests | `workspace-operation-contract.mjs` asserts that account/cache/reader legacy links open `.global-workspace-settings-drawer`. | `stale compatibility-only contract` | Keep tests for old-link non-breakage only after a new root-compatible target is chosen; remove the Drawer-as-canonical assertions. |
+
+### Allowed implementation differences
+
+- The Vue 3 implementation may use a local popover/dialog primitive rather than
+  Vue 2 `el-popover`, as long as desktop anchoring and compact/mobile full-screen
+  behavior retain the state transitions above.
+- The Go Explore API may return normalized `exploreGroups` instead of executing the
+  upstream client-side `new Function` parser. Source parsing and SSRF constraints
+  remain governed by the parser/security contracts.
+- Existing multi-user permissions, browser-cache accounting, and user-requested
+  fixed sidebar-bottom controls remain valid enhancements; they must not change
+  the visible Index state machine.
+
+### Required pre-implementation test replacement
+
+1. Static/unit: `beginWorkspaceExplore()` (or its replacement) may open a chooser
+   but must not set `workspace.mode = 'explore'` before an entry selection.
+2. Real browser at 1440×900, 390×844, and 360×800: sidebar `探索书源` and shelf
+   `书海` open the same chooser; the shelf stays visible until selecting an entry;
+   selected entry transitions to the shared root result body; `书架` clears only
+   result state; and load-more delegates to the selected entry state.
+3. Real browser: mobile Explore trigger closes the sidebar once, chooser interaction
+   cannot click through to the shelf, and GitHub/theme buttons remain fixed while
+   the sidebar scrolls/drags.
+4. Legacy URL: `/discover` must retain its query intent, but it must hydrate the
+   same chooser/selected-entry controller rather than recreate a full-page source
+   selector.
+5. Static/browser: canonical account/cache/reader operations must not require
+   `.global-workspace-settings-drawer`; legacy `/settings` behavior must be
+   explicitly documented before its Drawer assertion is removed.
+
+Implementation order: (1) Explore chooser contract/tests, (2) chooser/controller
+and root-result transition, (3) real-browser verification and coherent Docker
+release, (4) separate workspace-configuration extraction audit. The configuration
+work is intentionally separated so the Explore correction cannot silently alter
+reader preference persistence or user-data compatibility.
+
+### 2026-07-16 Explore chooser implementation record
+
+- `indexWorkspace.requestExplore()` now records an Explore chooser request without
+  changing `mode`; `showExploreResults()` remains the only transition that turns
+  the root body into Explore results. The selected source name is retained with
+  the existing source/group/URL/name continuation metadata.
+- `ExploreWorkspacePopover.vue` is the single long-lived chooser. It keeps the
+  upstream source-group/collapse/entry layout and loads the first result page only
+  after an entry is selected. The root `Discover.vue` is now result-only and
+  delegates pagination to the selected entry saved in the workspace state.
+- The sidebar `探索书源`, shelf `书海`, and legacy `/discover` intent all open the
+  same chooser. The compact sidebar trigger still closes the navigation; opening
+  the chooser itself does not preemptively replace shelf/search results.
+- Replaced the stale browser assertion that treated immediate `.discover-results`
+  as correct. The new real-browser contract checks Popover-before-selection,
+  root-result transition, load-more, shared BookInfo, old `/discover` hydration,
+  mobile fullscreen/click isolation, and 1440×900 / 390×844 / 360×800 geometry.
+- Validation passed before release: backend `go test ./...`; frontend `npm test`
+  (396 tests); production build; `index-workspace-contract.mjs` at all three
+  desktop/mobile sizes; and `index-mobile-sidebar-contract.mjs` at 390×844 and
+  360×800. The latter confirms the 260px sidebar, 270px drag range, fixed bottom
+  GitHub/theme controls, and aligned shelf geometry still hold.

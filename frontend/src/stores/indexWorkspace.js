@@ -32,6 +32,7 @@ function freshExplore() {
     sourceGroup: '',
     url: '',
     name: '',
+    sourceName: '',
   }
 }
 
@@ -51,6 +52,16 @@ function normalizedLastIndex(value, fallback = -1) {
 
 function normalizedRows(rows) {
   return Array.isArray(rows) ? [...rows] : []
+}
+
+function normalizedExplore(intent = {}, fallback = freshExplore()) {
+  return {
+    sourceId: intent.sourceId ?? fallback.sourceId ?? '',
+    sourceGroup: normalizedText(intent.sourceGroup ?? fallback.sourceGroup),
+    url: normalizedText(intent.url ?? fallback.url),
+    name: normalizedText(intent.name ?? fallback.name),
+    sourceName: normalizedText(intent.sourceName ?? fallback.sourceName),
+  }
 }
 
 function mergeContinuation(current, values = {}, { completed = false } = {}) {
@@ -75,6 +86,7 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
     resultScrollTop: 0,
     searchRevision: 0,
     exploreRevision: 0,
+    exploreChooserRevision: 0,
     search: freshSearch(),
     explore: freshExplore(),
   }),
@@ -97,25 +109,16 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
       this.clearResultState()
       this.searchRevision += 1
     },
+    requestExplore(intent = {}) {
+      this.explore = normalizedExplore(intent, this.explore)
+      this.exploreChooserRevision += 1
+    },
     beginExplore(intent = {}) {
-      this.mode = 'explore'
-      this.explore = {
-        sourceId: intent.sourceId ?? '',
-        sourceGroup: normalizedText(intent.sourceGroup),
-        url: normalizedText(intent.url),
-        name: normalizedText(intent.name),
-      }
-      this.clearResultState()
-      this.exploreRevision += 1
+      this.requestExplore(intent)
     },
     showExploreResults(rows, intent = {}) {
       this.mode = 'explore'
-      this.explore = {
-        sourceId: intent.sourceId ?? '',
-        sourceGroup: normalizedText(intent.sourceGroup),
-        url: normalizedText(intent.url),
-        name: normalizedText(intent.name),
-      }
+      this.explore = normalizedExplore(intent, this.explore)
       this.resultRows = normalizedRows(rows)
       this.continuation = {
         page: normalizedPositivePage(intent.page),

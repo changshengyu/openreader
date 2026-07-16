@@ -198,6 +198,29 @@ async function runViewport(browser, viewport) {
   await shelfBookInfo.locator('.el-dialog__headerbtn').click()
   await shelfBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
   assert(await page.url() === shelfRoute, `${viewport.width}: closing shelf BookInfo must stay on the shelf route`)
+
+  await page.getByRole('button', { name: '书海', exact: true }).click()
+  await page.waitForSelector('.explore-workspace-popover', { timeout: 10000 })
+  const shelfBeforeExploreSelection = await page.locator('.shelf-page').count()
+  assert(shelfBeforeExploreSelection === 1, `${viewport.width}: opening 书海 must keep the shelf body visible before selecting an entry`)
+  await page.getByRole('button', { name: '关闭书海' }).click()
+  await page.locator('.explore-workspace-popover').waitFor({ state: 'hidden', timeout: 10000 })
+
+  await page.goto(`${root}/discover?sourceId=1&url=https%3A%2F%2Fsource.example%2Fexplore&name=%E7%83%AD%E9%97%A8`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.explore-workspace-popover', { timeout: 10000 })
+  const legacyExploreState = await page.evaluate(() => ({
+    path: location.pathname,
+    workspace: new URLSearchParams(location.search).get('workspace'),
+    shelfVisible: Boolean(document.querySelector('.shelf-page')),
+  }))
+  assert(legacyExploreState.path === '/', `${viewport.width}: /discover must redirect to the root workspace`)
+  assert(legacyExploreState.workspace === 'explore', `${viewport.width}: legacy discover intent must retain workspace=explore`)
+  assert(legacyExploreState.shelfVisible, `${viewport.width}: legacy discover must hydrate the chooser before replacing the shelf`)
+  await page.getByRole('button', { name: '关闭书海' }).click()
+  await page.locator('.explore-workspace-popover').waitFor({ state: 'hidden', timeout: 10000 })
+
+  await page.goto(root, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
   await openMobileNavigation(page, viewport)
   const freshSearchInput = page.locator('.app-shell-search input')
   await freshSearchInput.fill('默认侧栏搜索')
@@ -290,6 +313,28 @@ async function runViewport(browser, viewport) {
   await searchInput.press('Enter')
   await page.waitForTimeout(50)
   await page.getByRole('button', { name: '探索书源' }).click()
+  await page.waitForSelector('.explore-workspace-popover', { timeout: 10000 })
+  const chooserState = await page.evaluate(() => ({
+    heading: document.querySelector('.workspace-result-head h1')?.textContent || '',
+    sidebarMargin: Number.parseFloat(getComputedStyle(document.querySelector('.app-sidebar')).marginLeft),
+    popover: (() => {
+      const node = document.querySelector('.explore-workspace-popover')
+      const rect = node?.getBoundingClientRect()
+      return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null
+    })(),
+  }))
+  assert(chooserState.heading.includes('搜索'), `${viewport.width}: opening Explore must retain the current root result scene until an entry is selected`)
+  if (viewport.width <= 750) {
+    assert(Math.abs(chooserState.sidebarMargin + 260) < 0.5, `${viewport.width}: sidebar Explore trigger must close the compact navigation`)
+    assert(Math.abs(chooserState.popover.left) <= 1 && Math.abs(chooserState.popover.top) <= 1, `${viewport.width}: compact Explore chooser must start at the viewport origin`)
+    assert(Math.abs(chooserState.popover.width - viewport.width) <= 1 && Math.abs(chooserState.popover.height - viewport.height) <= 1, `${viewport.width}: compact Explore chooser must be fullscreen`)
+    const hitOwner = await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest('.explore-workspace-popover')?.className || '')
+    assert(hitOwner.includes('explore-workspace-popover'), `${viewport.width}: compact Explore chooser must block clicks through to the workspace`)
+  } else {
+    assert(chooserState.popover.width <= 520.5, `${viewport.width}: desktop Explore chooser should remain a compact popover`)
+  }
+  await page.locator('.explore-workspace-popover .explore-entry-row button').first().click()
+  await page.locator('.explore-workspace-popover').waitFor({ state: 'hidden', timeout: 10000 })
   await page.waitForSelector('.workspace-result-page .discover-results .result-card', { timeout: 10000 })
   await page.waitForTimeout(550)
   const exploreState = await page.evaluate(() => ({

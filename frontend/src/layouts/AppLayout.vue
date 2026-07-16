@@ -89,6 +89,7 @@
           <button
             v-for="item in section.items"
             :key="item.key"
+            :ref="node => captureExploreTrigger(item, node)"
             class="app-nav-item"
             :class="{ active: isNavActive(item) }"
             type="button"
@@ -116,6 +117,15 @@
       </div>
     </aside>
 
+    <div v-show="exploreChooserVisible" class="explore-popover-backdrop" aria-hidden="true" @click="closeExploreChooser" />
+    <ExploreWorkspacePopover
+      v-show="exploreChooserVisible"
+      :is-mobile="isMobileShell"
+      :style="exploreChooserStyle"
+      @close="closeExploreChooser"
+      @selected="handleExploreSelected"
+    />
+
     <div class="app-workspace" @click="closeMobileNavigation">
       <main class="app-content">
         <slot />
@@ -125,7 +135,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Moon, Search, Sunny } from '@element-plus/icons-vue'
@@ -140,6 +150,7 @@ import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppRecentReading } from '../composables/useAppRecentReading'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
 import { useSync } from '../composables/useSync'
+import ExploreWorkspacePopover from '../components/workspace/ExploreWorkspacePopover.vue'
 import { clearCache, getCacheStats } from '../api/cache'
 import { listSources } from '../api/sources'
 import api from '../api/client'
@@ -156,6 +167,9 @@ const bookshelf = useBookshelfStore()
 const reader = useReaderStore()
 const preferences = usePreferencesStore()
 const workspace = useIndexWorkspaceStore()
+const exploreChooserVisible = ref(false)
+const exploreChooserStyle = ref({})
+const exploreTrigger = ref(null)
 const offline = ref(false)
 const healthInfo = ref(null)
 const routeBookInfoLoadingId = ref(null)
@@ -352,8 +366,47 @@ function beginWorkspaceSearch(query = {}) {
 }
 
 function beginWorkspaceExplore() {
-  workspace.beginExplore()
+  workspace.requestExplore()
   if (route.name !== 'home') router.push({ name: 'home' })
+}
+
+function captureExploreTrigger(item, node) {
+  if (item?.key === 'discover' && node) exploreTrigger.value = node
+}
+
+function openExploreChooser() {
+  nextTick(() => {
+    positionExploreChooser()
+    exploreChooserVisible.value = true
+  })
+}
+
+function closeExploreChooser() {
+  exploreChooserVisible.value = false
+}
+
+function handleExploreSelected() {
+  closeExploreChooser()
+  if (route.name !== 'home') router.push({ name: 'home' })
+}
+
+function positionExploreChooser() {
+  if (isMobileShell.value) {
+    exploreChooserStyle.value = {}
+    return
+  }
+  const trigger = exploreTrigger.value
+  const rect = trigger?.getBoundingClientRect?.()
+  const top = rect
+    ? Math.max(16, Math.min(rect.top, window.innerHeight - 440))
+    : 48
+  const left = rect
+    ? Math.min(rect.right + 12, window.innerWidth - 544)
+    : 272
+  exploreChooserStyle.value = {
+    top: `${top}px`,
+    left: `${Math.max(12, left)}px`,
+  }
 }
 
 function withoutWorkspaceQuery(query = {}) {
@@ -591,6 +644,14 @@ watch(
 )
 
 watch(
+  () => workspace.exploreChooserRevision,
+  (revision) => {
+    if (!revision) return
+    openExploreChooser()
+  },
+)
+
+watch(
   () => [route.name, route.query.bookInfo, userStore.token, bookshelf.books.length],
   () => {
     if (!userStore.token) return
@@ -637,6 +698,8 @@ onMounted(() => {
   window.addEventListener('online', setOnline)
   window.addEventListener('resize', updateViewportFlags)
   window.addEventListener('orientationchange', updateViewportFlags)
+  window.addEventListener('resize', positionExploreChooser)
+  window.addEventListener('orientationchange', positionExploreChooser)
   window.addEventListener('focus', refreshShelfInForeground)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('openreader:toggle-mobile-nav', toggleMobileNavigation)
@@ -658,6 +721,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('online', setOnline)
   window.removeEventListener('resize', updateViewportFlags)
   window.removeEventListener('orientationchange', updateViewportFlags)
+  window.removeEventListener('resize', positionExploreChooser)
+  window.removeEventListener('orientationchange', positionExploreChooser)
   window.removeEventListener('focus', refreshShelfInForeground)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('openreader:toggle-mobile-nav', toggleMobileNavigation)
@@ -1057,6 +1122,18 @@ function readError(err, fallback) {
   overflow-x: hidden;
 }
 
+.explore-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 34;
+  background: transparent;
+}
+
+.explore-workspace-popover {
+  position: fixed;
+  z-index: 35;
+}
+
 .app-content {
   min-height: 100vh;
   width: 100%;
@@ -1100,6 +1177,19 @@ function readError(err, fallback) {
   min-width: 0;
   padding-left: 0;
   overflow-x: hidden;
+}
+
+.app-shell.mobile-shell .explore-popover-backdrop {
+  z-index: 34;
+  background: rgba(36, 32, 27, 0.18);
+}
+
+.app-shell.mobile-shell .explore-workspace-popover {
+  inset: 0;
+  z-index: 35;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .app-shell.mobile-shell .app-content {
