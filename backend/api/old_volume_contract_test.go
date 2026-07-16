@@ -42,6 +42,12 @@ type historicalLocalVolume struct {
 	hostCachePath    string
 	archiveSource    string
 	archiveDirectory string
+	cacheBook        models.Book
+	cacheChapter     models.Chapter
+	cacheArchivePath string
+	cacheArchiveBody string
+	legacyCachePath  string
+	legacyCacheBody  string
 }
 
 func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalLocalVolume) {
@@ -146,6 +152,59 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 		t.Fatal(err)
 	}
 
+	cacheArchiveDirectory := filepath.Join("data", fixture.username, "历史相对缓存书")
+	fixture.cacheArchivePath = filepath.Join(fixture.cfg.LibraryDir, cacheArchiveDirectory, "legacy.txt")
+	fixture.cacheArchiveBody = "第一章\narchive 回退正文，不应覆盖旧 cache。\n"
+	if err := os.MkdirAll(filepath.Dir(fixture.cacheArchivePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fixture.cacheArchivePath, []byte(fixture.cacheArchiveBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(fixture.cacheArchivePath), "chapters.json"), []byte("[{\"title\":\"第一章\",\"index\":0}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(fixture.cacheArchivePath), "bookSource.json"), []byte("[{\"name\":\"历史相对缓存书\"}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fixture.legacyCachePath = filepath.Join("legacy-cache", "chapter.txt")
+	fixture.legacyCacheBody = "历史相对 cache 正文必须优先于 archive。"
+	legacyCacheFile := filepath.Join(fixture.cfg.CacheDir, fixture.legacyCachePath)
+	if err := os.MkdirAll(filepath.Dir(legacyCacheFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyCacheFile, []byte(fixture.legacyCacheBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fixture.cacheBook = models.Book{
+		UserID:       user.ID,
+		SourceID:     0,
+		Title:        "历史相对缓存书",
+		Author:       "迁移测试",
+		URL:          "local://historical-relative-cache",
+		LibraryPath:  cacheArchiveDirectory,
+		OriginalFile: filepath.Join(cacheArchiveDirectory, "legacy.txt"),
+		TOCFile:      filepath.Join(cacheArchiveDirectory, "chapters.json"),
+		SourceFile:   filepath.Join(cacheArchiveDirectory, "bookSource.json"),
+		TOCRule:      `^第.+章.*$`,
+		LastChapter:  "第一章",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	if err := database.Create(&fixture.cacheBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	fixture.cacheChapter = models.Chapter{
+		BookID:    fixture.cacheBook.ID,
+		Index:     0,
+		Title:     "第一章",
+		URL:       fixture.cacheBook.URL + "/chapter_0",
+		CachePath: fixture.legacyCachePath,
+	}
+	if err := database.Create(&fixture.cacheChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
 	// Persist the older schema before the test performs the same migration order
 	// as a process opening a mounted volume after an upgrade.
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
@@ -184,6 +243,12 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 		t.Fatal(err)
 	}
 	if err := database.First(&fixture.bookmark, fixture.bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.First(&fixture.cacheBook, fixture.cacheBook.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.First(&fixture.cacheChapter, fixture.cacheChapter.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -275,6 +340,42 @@ func TestHistoricalMountedVolumeRemainsPrivateAfterMigration(t *testing.T) {
 	router.ServeHTTP(chapterResponse, chapterRequest)
 	if chapterResponse.Code != http.StatusNotFound {
 		t.Fatalf("other user read historical local book: expected 404, got %d: %s", chapterResponse.Code, chapterResponse.Body.String())
+	}
+}
+
+func TestHistoricalMountedVolumeMigratesRelativeCacheOnce(t *testing.T) {
+	router, server, fixture := setupHistoricalLocalVolume(t)
+	expectedCachePath := filepath.Join("content", fixture.legacyCachePath)
+	if fixture.cacheChapter.CachePath != expectedCachePath {
+		t.Fatalf("historical relative cache was not normalized: got %q want %q", fixture.cacheChapter.CachePath, expectedCachePath)
+	}
+	migratedCachePath := filepath.Join(filepath.Dir(fixture.cacheArchivePath), expectedCachePath)
+	if content, err := os.ReadFile(migratedCachePath); err != nil || string(content) != fixture.legacyCacheBody {
+		t.Fatalf("historical relative cache was not copied byte-for-byte: content=%q err=%v", string(content), err)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.cfg.CacheDir, fixture.legacyCachePath)); !os.IsNotExist(err) {
+		t.Fatalf("historical cache source remained after successful migration: %v", err)
+	}
+	if err := readerdb.MigrateLocalBookCache(server.db, fixture.cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.First(&fixture.cacheChapter, fixture.cacheChapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if fixture.cacheChapter.CachePath != expectedCachePath {
+		t.Fatalf("second migration changed cache path to %q", fixture.cacheChapter.CachePath)
+	}
+
+	auth := historicalVolumeAuth(t, router, fixture)
+	request := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(fixture.cacheBook.ID), 10)+"/chapters/0/content", nil)
+	request.Header.Set("Authorization", auth)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), fixture.legacyCacheBody) {
+		t.Fatalf("migrated historical cache was not served: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if archive, err := os.ReadFile(fixture.cacheArchivePath); err != nil || string(archive) != fixture.cacheArchiveBody {
+		t.Fatalf("relative-cache migration changed original archive: content=%q err=%v", string(archive), err)
 	}
 }
 

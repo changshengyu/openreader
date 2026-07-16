@@ -29,11 +29,14 @@ const (
 )
 
 type historicalArchiveFixture struct {
-	title     string
-	directory string
-	filename  string
-	tocRule   string
-	archive   []byte
+	title            string
+	directory        string
+	filename         string
+	tocRule          string
+	archive          []byte
+	relativeOriginal bool
+	cachePath        string
+	cacheContent     string
 }
 
 func main() {
@@ -114,10 +117,21 @@ func main() {
 		}
 
 		originalFile := filepath.Join("/retired-host", libraryPath, fixture.filename)
-		if fixture.directory == "old-volume-txt" {
+		if fixture.relativeOriginal {
 			// Older TXT imports commonly retained a portable relative field, while
 			// the binary formats below exercise stale host-absolute rebasing.
 			originalFile = filepath.Join(libraryPath, fixture.filename)
+		}
+		chapterCachePath := filepath.Join("/retired-host", "cache", fixture.directory+".txt")
+		if fixture.cachePath != "" {
+			chapterCachePath = fixture.cachePath
+			legacyCachePath := filepath.Join(cfg.CacheDir, fixture.cachePath)
+			if err := os.MkdirAll(filepath.Dir(legacyCachePath), 0o755); err != nil {
+				log.Fatalf("create %s legacy cache directory: %v", fixture.title, err)
+			}
+			if err := os.WriteFile(legacyCachePath, []byte(fixture.cacheContent), 0o644); err != nil {
+				log.Fatalf("write %s legacy cache: %v", fixture.title, err)
+			}
 		}
 		book := models.Book{
 			UserID:       user.ID,
@@ -142,7 +156,7 @@ func main() {
 			Index:     0,
 			Title:     "旧目录",
 			URL:       book.URL + "/chapter_0",
-			CachePath: filepath.Join("/retired-host", "cache", fixture.directory+".txt"),
+			CachePath: chapterCachePath,
 		}
 		if err := database.Create(&chapter).Error; err != nil {
 			log.Fatalf("create %s fixture chapter: %v", fixture.title, err)
@@ -174,7 +188,7 @@ func main() {
 		log.Fatalf("close fixture database: %v", err)
 	}
 
-	fmt.Printf("created old mounted-volume fixture: user=%s password=%s archives=txt,epub,umd,cbz\n", fixtureUsername, fixturePassword)
+	fmt.Printf("created old mounted-volume fixture: user=%s password=%s archives=txt,epub,umd,cbz,relative-cache\n", fixtureUsername, fixturePassword)
 }
 
 func writeFixtureMetadata(directory, title string) error {
@@ -207,11 +221,12 @@ func historicalArchiveFixtures() ([]historicalArchiveFixture, error) {
 	}
 	return []historicalArchiveFixture{
 		{
-			title:     "旧卷 TXT 验证书",
-			directory: "old-volume-txt",
-			filename:  "legacy.txt",
-			tocRule:   `^第.+章.*$`,
-			archive:   []byte("第一章\n旧卷归档正文只能从 library 读取。\n"),
+			title:            "旧卷 TXT 验证书",
+			directory:        "old-volume-txt",
+			filename:         "legacy.txt",
+			tocRule:          `^第.+章.*$`,
+			archive:          []byte("第一章\n旧卷归档正文只能从 library 读取。\n"),
+			relativeOriginal: true,
 		},
 		{
 			title:     "旧卷 EPUB 验证书",
@@ -231,6 +246,16 @@ func historicalArchiveFixtures() ([]historicalArchiveFixture, error) {
 			directory: "old-volume-cbz",
 			filename:  "legacy.cbz",
 			archive:   cbz,
+		},
+		{
+			title:            "旧卷 相对缓存验证书",
+			directory:        "old-volume-relative-cache",
+			filename:         "legacy.txt",
+			tocRule:          `^第.+章.*$`,
+			archive:          []byte("第一章\narchive 回退正文，不应覆盖旧 cache。\n"),
+			relativeOriginal: true,
+			cachePath:        filepath.Join("legacy-cache", "chapter.txt"),
+			cacheContent:     "历史相对 cache 正文必须优先于 archive。",
 		},
 	}, nil
 }

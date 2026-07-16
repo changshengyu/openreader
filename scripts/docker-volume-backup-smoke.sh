@@ -38,6 +38,7 @@ need() {
 need docker
 need curl
 need python3
+need cmp
 
 mkdir -p "$ROOT/data" "$ROOT/cache" "$ROOT/library" "$ROOT/retired-host"
 
@@ -149,6 +150,40 @@ refresh_historical_book() {
     -H "Authorization: Bearer ${TOKEN}" >/dev/null
 }
 
+historical_cache_path() {
+  python3 -c '
+import sqlite3, sys
+connection = sqlite3.connect(sys.argv[1])
+row = connection.execute(
+    "SELECT chapters.cache_path FROM chapters JOIN books ON books.id = chapters.book_id WHERE books.title = ? AND chapters.\"index\" = 0",
+    (sys.argv[2],),
+).fetchone()
+if row is None:
+    raise SystemExit("historical cache fixture chapter was not found")
+print(row[0])
+' "$ROOT/data/openreader.db" "$1"
+}
+
+assert_relative_cache_migration() {
+  if [ -e "$RELATIVE_CACHE_SOURCE" ]; then
+    echo "historical relative cache source survived migration: $RELATIVE_CACHE_SOURCE" >&2
+    exit 1
+  fi
+  if [ ! -f "$RELATIVE_CACHE_TARGET" ]; then
+    echo "historical relative cache target was not created: $RELATIVE_CACHE_TARGET" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$RELATIVE_CACHE_CONTENT" | cmp -s - "$RELATIVE_CACHE_TARGET"; then
+    echo "historical relative cache target bytes changed during migration" >&2
+    exit 1
+  fi
+  cache_path="$(historical_cache_path '旧卷 相对缓存验证书')"
+  if [ "$cache_path" != "content/legacy-cache/chapter.txt" ]; then
+    echo "historical relative cache path is not portable: $cache_path" >&2
+    exit 1
+  fi
+}
+
 start_container
 wait_health
 
@@ -163,19 +198,27 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   EPUB_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 EPUB 验证书')"
   UMD_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 UMD 验证书')"
   CBZ_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 CBZ 验证书')"
+  RELATIVE_CACHE_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 相对缓存验证书')"
 
   TXT_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-txt/legacy.txt"
   EPUB_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-epub/legacy.epub"
   UMD_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-umd/legacy.umd"
   CBZ_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-cbz/legacy.cbz"
+  RELATIVE_CACHE_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-relative-cache/legacy.txt"
+  RELATIVE_CACHE_SOURCE="$ROOT/cache/legacy-cache/chapter.txt"
+  RELATIVE_CACHE_TARGET="$ROOT/library/data/${USERNAME}/old-volume-relative-cache/content/legacy-cache/chapter.txt"
+  RELATIVE_CACHE_CONTENT='历史相对 cache 正文必须优先于 archive。'
   TXT_HASH="$(archive_hash "$TXT_ARCHIVE")"
   EPUB_HASH="$(archive_hash "$EPUB_ARCHIVE")"
   UMD_HASH="$(archive_hash "$UMD_ARCHIVE")"
   CBZ_HASH="$(archive_hash "$CBZ_ARCHIVE")"
+  RELATIVE_CACHE_HASH="$(archive_hash "$RELATIVE_CACHE_ARCHIVE")"
 
+  assert_relative_cache_migration
   read_historical_book "$TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
   read_historical_book "$EPUB_BOOK_ID" "epub" "" >/dev/null
   read_historical_book "$UMD_BOOK_ID" "" '第一段' >/dev/null
+  read_historical_book "$RELATIVE_CACHE_BOOK_ID" "" "$RELATIVE_CACHE_CONTENT" >/dev/null
   CBZ_RESPONSE="$(read_historical_book "$CBZ_BOOK_ID" "cbz" "")"
   CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
   curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
@@ -187,6 +230,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   assert_archive_hash "$EPUB_ARCHIVE" "$EPUB_HASH" 'historical volume refresh'
   assert_archive_hash "$UMD_ARCHIVE" "$UMD_HASH" 'historical volume refresh'
   assert_archive_hash "$CBZ_ARCHIVE" "$CBZ_HASH" 'historical volume refresh'
+  assert_archive_hash "$RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'historical volume refresh'
 
   BACKUP_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/backup/trigger" \
     -H "Authorization: Bearer ${TOKEN}")"
@@ -200,6 +244,8 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   assert_archive_hash "$EPUB_ARCHIVE" "$EPUB_HASH" 'historical backup restore'
   assert_archive_hash "$UMD_ARCHIVE" "$UMD_HASH" 'historical backup restore'
   assert_archive_hash "$CBZ_ARCHIVE" "$CBZ_HASH" 'historical backup restore'
+  assert_archive_hash "$RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'historical backup restore'
+  assert_relative_cache_migration
 
   docker stop "$NAME" >/dev/null
   wait_removed
@@ -213,10 +259,12 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   read_historical_book "$TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
   read_historical_book "$EPUB_BOOK_ID" "epub" "" >/dev/null
   read_historical_book "$UMD_BOOK_ID" "" '第一段' >/dev/null
+  assert_relative_cache_migration
+  read_historical_book "$RELATIVE_CACHE_BOOK_ID" "" "$RELATIVE_CACHE_CONTENT" >/dev/null
   CBZ_RESPONSE="$(read_historical_book "$CBZ_BOOK_ID" "cbz" "")"
   CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
   curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
-  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz)"
+  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz, relative-cache)"
   exit 0
 fi
 

@@ -50,14 +50,28 @@ func TestMigrateLocalBookCacheMovesLocalContentToLibrary(t *testing.T) {
 	if err := database.First(&updated, chapter.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !filepath.IsAbs(updated.CachePath) {
-		t.Fatalf("expected absolute library path, got %q", updated.CachePath)
+	expectedCachePath := filepath.Join("content", cachePath)
+	if updated.CachePath != expectedCachePath {
+		t.Fatalf("expected portable cache path %q, got %q", expectedCachePath, updated.CachePath)
 	}
-	if _, err := os.Stat(updated.CachePath); err != nil {
+	migratedPath := filepath.Join(cfg.LibraryDir, book.LibraryPath, expectedCachePath)
+	if content, err := os.ReadFile(migratedPath); err != nil || string(content) != "本地正文" {
+		t.Fatalf("expected byte-for-byte migrated content, content=%q err=%v", string(content), err)
+	}
+	if _, err := os.Stat(migratedPath); err != nil {
 		t.Fatalf("expected migrated content file, stat err=%v", err)
 	}
 	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
 		t.Fatalf("expected old cache file removed, stat err=%v", err)
+	}
+	if err := MigrateLocalBookCache(database, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.First(&updated, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if updated.CachePath != expectedCachePath {
+		t.Fatalf("second migration changed portable cache path to %q", updated.CachePath)
 	}
 }
 

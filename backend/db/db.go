@@ -101,6 +101,7 @@ func MigrateLocalBookCache(database *gorm.DB, cfg config.Config) error {
 			if !pathInside(contentDir, newPath) {
 				continue
 			}
+			newCachePath := filepath.Join("content", cacheRelativePath)
 			if _, err := os.Stat(newPath); err != nil && !os.IsNotExist(err) {
 				return err
 			}
@@ -113,11 +114,16 @@ func MigrateLocalBookCache(database *gorm.DB, cfg config.Config) error {
 					return writeErr
 				}
 			}
-			_ = os.Remove(oldPath)
-			chapter.CachePath = newPath
+			// Persist a relative path so a later Docker host move does not turn a
+			// successfully migrated chapter into another stale absolute path. Keep
+			// the old cache until the SQLite row points at its private archive copy:
+			// a database failure may leave a harmless duplicate, but never loses the
+			// only readable chapter body.
+			chapter.CachePath = newCachePath
 			if err := database.Save(&chapter).Error; err != nil {
 				return err
 			}
+			_ = os.Remove(oldPath)
 		}
 	}
 	return nil
