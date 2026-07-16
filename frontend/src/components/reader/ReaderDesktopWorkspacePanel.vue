@@ -123,14 +123,8 @@ defineEmits(['close'])
 }
 
 .reader-desktop-workspace.workspace-panel-settings .reader-workspace-body {
-  max-height: calc(45vh + 50px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.reader-desktop-workspace.workspace-panel-settings .reader-workspace-body::-webkit-scrollbar {
-  display: none;
+  max-height: none;
+  overflow: visible;
 }
 
 @media (max-width: 750px) {

@@ -325,6 +325,13 @@ Implementation order resulting from this inventory:
 3. Use the matrix failures to decide whether each mode is repaired or replaced; do not infer parity
    from the current composable split.
 
+Settings slice result: `ReaderSettingsPanel` now has the upstream-shaped fixed title plus
+scrollable list siblings. Both desktop and mobile outer settings shells deliberately have visible
+overflow, while `.settings-list` owns `max-height:45vh` scrolling. The explicit numeric
+minus/value/plus controls remain the documented user-requested difference. Static contracts and
+the real-browser Reader smoke now scroll the list at 1440×900, 390×844, and 360×800 and assert
+that the title top and outer scroll position remain unchanged.
+
 The previous tests are evidence only where they assert the table above. In particular,
 `readerToolOrderContract.test.mjs` and the primary-panel exclusivity test must not be used as proof
 of upstream parity until rewritten against this contract.

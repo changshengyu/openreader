@@ -2062,10 +2062,8 @@ function readError(err, fallback) {
     overflow: visible;
   }
   .reader-mobile-primary-settings {
-    max-height: calc(45vh + 96px);
-    overflow: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
+    max-height: none;
+    overflow: visible;
   }
   .reader-mobile-primary-title-zone {
     display: flex;

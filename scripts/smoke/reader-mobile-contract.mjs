@@ -663,6 +663,67 @@ async function assertSettingsRowGeometry(page, viewport) {
   assertClose(geometry.firstFontOptionHeight, 34, 1, `${viewport.width}: settings font option height`)
 }
 
+async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}) {
+  const state = await page.evaluate(({ desktop }) => {
+    const title = document.querySelector('.settings-title')
+    const list = document.querySelector('.settings-list')
+    const outer = desktop
+      ? document.querySelector('.reader-desktop-workspace .reader-workspace-body')
+      : document.querySelector('.reader-mobile-primary-settings')
+    const titleRect = title?.getBoundingClientRect()
+    const listRect = list?.getBoundingClientRect()
+    const titleStyle = title ? window.getComputedStyle(title) : null
+    const listStyle = list ? window.getComputedStyle(list) : null
+    const outerStyle = outer ? window.getComputedStyle(outer) : null
+    return {
+      titleTop: titleRect?.top ?? null,
+      titleBottom: titleRect?.bottom ?? null,
+      listTop: listRect?.top ?? null,
+      listHeight: listRect?.height ?? null,
+      listClientHeight: list?.clientHeight ?? 0,
+      listScrollHeight: list?.scrollHeight ?? 0,
+      listOverflowY: listStyle?.overflowY ?? '',
+      outerOverflowY: outerStyle?.overflowY ?? '',
+      titleFontSize: titleStyle?.fontSize ?? '',
+      titleLineHeight: titleStyle?.lineHeight ?? '',
+      titleFontWeight: titleStyle?.fontWeight ?? '',
+    }
+  }, { desktop })
+  assert(state.titleTop !== null && state.listTop !== null, `${viewport.width}: settings title/list missing`)
+  assert(state.titleBottom < state.listTop, `${viewport.width}: fixed title must precede the scroll list`)
+  assert(state.listHeight === state.listClientHeight, `${viewport.width}: settings list must not have a nested height mismatch`)
+  assert(state.listScrollHeight > state.listClientHeight + 20, `${viewport.width}: settings fixture must require list scrolling`)
+  assert(state.listOverflowY === 'auto', `${viewport.width}: settings list overflow ${state.listOverflowY}`)
+  assert(state.outerOverflowY === 'visible', `${viewport.width}: outer settings shell overflow ${state.outerOverflowY}`)
+  assert(state.titleFontSize === '18px', `${viewport.width}: settings title font size ${state.titleFontSize}`)
+  assert(state.titleLineHeight === '22px', `${viewport.width}: settings title line height ${state.titleLineHeight}`)
+  assert(state.titleFontWeight === '400', `${viewport.width}: settings title font weight ${state.titleFontWeight}`)
+
+  const beforeTop = state.titleTop
+  const moved = await page.evaluate(() => {
+    const list = document.querySelector('.settings-list')
+    if (!list) return null
+    list.scrollTop = Math.min(180, Math.max(1, list.scrollHeight - list.clientHeight))
+    return list.scrollTop
+  })
+  assert(moved > 0, `${viewport.width}: settings list did not scroll`)
+  const after = await page.evaluate(({ desktop }) => {
+    const title = document.querySelector('.settings-title')
+    const list = document.querySelector('.settings-list')
+    const outer = desktop
+      ? document.querySelector('.reader-desktop-workspace .reader-workspace-body')
+      : document.querySelector('.reader-mobile-primary-settings')
+    return {
+      titleTop: title?.getBoundingClientRect().top ?? null,
+      listScrollTop: list?.scrollTop ?? 0,
+      outerScrollTop: outer?.scrollTop ?? 0,
+    }
+  }, { desktop })
+  assertClose(after.titleTop, beforeTop, 1, `${viewport.width}: settings title must stay fixed while list scrolls`)
+  assert(after.listScrollTop > 0, `${viewport.width}: settings list scroll position must change`)
+  assert(after.outerScrollTop === 0, `${viewport.width}: outer settings shell must not scroll`)
+}
+
 async function assertSettingsBackgroundGeometry(page, viewport) {
   await page.locator('.theme-custom-button').click()
   await page.waitForSelector('.content-bg-preview', { timeout: 10000 })
@@ -780,6 +841,7 @@ async function runDesktopViewport(browser) {
   await page.locator('.reader-left-rail button[title="设置"]').click()
   await assertDesktopPrimaryPopover(page, '设置', [470, 520])
   await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 10000 })
+  await assertSettingsFixedTitle(page, viewport, { desktop: true })
   await page.locator('.theme-custom-button').click()
 
   const themeModeButtons = page.locator('.custom-theme-mode .selection-button')
@@ -860,6 +922,7 @@ async function runViewport(browser, viewport) {
   await mobileTopTool(page, '设置').click()
   await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [430, 530] })
   await assertPrimaryPopoverBlocksChrome(page, viewport, '设置')
+  await assertSettingsFixedTitle(page, viewport)
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)
 

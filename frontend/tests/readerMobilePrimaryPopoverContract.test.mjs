@@ -44,7 +44,7 @@ test('primary mobile popovers reproduce upstream click blocking and content-size
   )
   assert.match(
     readerSource,
-    /reader-mobile-primary-settings\s*\{[\s\S]*?max-height:\s*calc\(45vh\s*\+\s*96px\)[\s\S]*?overflow:\s*auto/,
-    'settings keeps its upstream-style bounded scroll region instead of a fullscreen drawer',
+    /reader-mobile-primary-settings\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible/,
+    'mobile settings shell must leave scrolling to the upstream-style inner settings list',
   )
 })

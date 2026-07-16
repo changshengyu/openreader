@@ -1,10 +1,11 @@
 <template>
   <div class="settings-body">
-    <div class="settings-title-row">
-      <strong>设置</strong>
+    <div class="settings-title">
+      设置
       <button type="button" @click="resetReaderSettings">重置为默认配置</button>
     </div>
 
+    <div class="settings-list">
     <div class="setting-row">
       <label class="setting-label">特殊模式</label>
       <div class="selection-zone">
@@ -460,6 +461,7 @@
       <small v-if="!tts.state.supported" class="setting-help">当前浏览器不支持系统朗读。</small>
       <small v-else-if="!ttsVoices.length" class="setting-help">浏览器尚未返回可用语音，稍后再打开设置会自动刷新。</small>
     </div>
+    </div>
   </div>
 </template>
 
@@ -743,33 +745,43 @@ function resetReaderSettings() {
 
 <style scoped>
 .settings-body {
-  display: grid;
-  gap: 20px;
   min-width: 0;
+  text-align: left;
+  user-select: none;
 }
 
-.settings-title-row {
-  display: flex;
+.settings-title {
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.settings-title-row strong {
-  color: #ed4259;
-  border-bottom: 1px solid #ed4259;
   font-size: 18px;
-  font-weight: 600;
+  line-height: 22px;
+  margin-bottom: 28px;
+  font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, "Nimbus Sans L", Arial, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Source Han Sans CN", "Microsoft YaHei", "Wenquanyi Micro Hei", "WenQuanYi Zen Hei", "ST Heiti", SimHei, sans-serif;
+  font-weight: 400;
 }
 
-.settings-title-row button {
+.settings-title button {
+  float: right;
   padding: 0;
   color: #ed4259;
   background: transparent;
   border: 0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.settings-list {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.settings-list::-webkit-scrollbar {
+  display: none;
 }
 
 .selection-zone {
@@ -1139,9 +1151,8 @@ function resetReaderSettings() {
 }
 
 @media (min-width: 751px) {
-  .settings-body {
+  .settings-list {
     gap: 18px;
-    padding: 0 0 24px;
   }
 
   .setting-row {
@@ -1180,9 +1191,8 @@ function resetReaderSettings() {
 }
 
 @media (max-width: 750px) {
-  .settings-body {
+  .settings-list {
     gap: 20px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .setting-row {

@@ -24,7 +24,7 @@ test('desktop primary panels use the fixed-baseline top-anchored popover frame',
   assert.doesNotMatch(css, /bottom:\s*0/, 'desktop primary panel must not retain the rewritten full-height workspace')
 })
 
-test('desktop primary panel internals retain upstream 300px lists and 45vh settings scroll semantics', () => {
+test('desktop primary panel internals retain upstream 300px lists while settings owns its inner scroll', () => {
   assert.match(
     workspaceSource,
     /workspace-panel-shelf[\s\S]*?workspace-panel-toc[\s\S]*?workspace-panel-source[\s\S]*?height:\s*300px/,
@@ -32,7 +32,7 @@ test('desktop primary panel internals retain upstream 300px lists and 45vh setti
   )
   assert.match(
     workspaceSource,
-    /workspace-panel-settings[\s\S]*?\.reader-workspace-body\s*\{[\s\S]*?max-height:\s*calc\(45vh\s*\+\s*50px\)[\s\S]*?overflow-y:\s*auto/,
-    'desktop settings must use the upstream 45vh scrolling core plus its title allowance',
+    /workspace-panel-settings[\s\S]*?\.reader-workspace-body\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible/,
+    'desktop settings shell must leave scrolling to the upstream-style inner settings list',
   )
 })
