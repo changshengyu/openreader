@@ -152,9 +152,12 @@ file without the current EPUB resource/fragment/variable columns, closes it, the
 production migration order before serving a deleted-cache local chapter. It locks old
 progress/bookmark preservation, archive-root-only rebasing of a stale absolute source/cache path
 and cross-user 404 behavior. `backend/db.TestMigrateLocalBookCacheSkipsUnsafeHistoricalCachePath`
-locks that startup never copies or deletes `cache/../...` host data. Full Go tests, frontend tests
-and production build pass; the all-format volume fixture and Docker verification remain required
-before a release image.
+locks that startup never copies or deletes `cache/../...` host data. The local
+`HISTORICAL_VOLUME=1` Docker smoke creates the same kind of old SQLite/TXT/archive fixture,
+mounts readable stale `/retired-host` decoys, then proves archive recovery, refresh, backup/restore
+non-mutation and restart; the ordinary fresh-volume smoke also passes. Full Go tests, frontend
+tests and production build pass. The all-format EPUB/UMD/CBZ old-volume fixture remains required
+before P1-E4 can be called fully complete.
 
 ## P2 backup ZIP restore compatibility and bounds
 
