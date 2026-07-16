@@ -48,6 +48,12 @@ type historicalLocalVolume struct {
 	cacheArchiveBody string
 	legacyCachePath  string
 	legacyCacheBody  string
+	otherUsername    string
+	otherPassword    string
+	otherBook        models.Book
+	otherChapter     models.Chapter
+	otherArchivePath string
+	otherArchiveBody string
 }
 
 func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalLocalVolume) {
@@ -64,8 +70,10 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 			JWTSecret:     "old-volume-test-secret",
 			LocalStoreDir: filepath.Join(root, "library", "localStore"),
 		},
-		username: "legacy_owner",
-		password: "legacy-secret",
+		username:      "legacy_owner",
+		password:      "legacy-secret",
+		otherUsername: "legacy_other",
+		otherPassword: "other-secret",
 	}
 
 	database, err := readerdb.Open(fixture.cfg)
@@ -205,6 +213,58 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 		t.Fatal(err)
 	}
 
+	otherPasswordHash, err := bcrypt.GenerateFromPassword([]byte(fixture.otherPassword), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherUser := models.User{Username: fixture.otherUsername, PasswordHash: string(otherPasswordHash)}
+	if err := database.Create(&otherUser).Error; err != nil {
+		t.Fatal(err)
+	}
+	otherArchiveDirectory := filepath.Join("data", fixture.otherUsername, "历史隔离书")
+	fixture.otherArchivePath = filepath.Join(fixture.cfg.LibraryDir, otherArchiveDirectory, "legacy.txt")
+	fixture.otherArchiveBody = "第一章\n用户 B 的旧卷正文必须保持私有。\n"
+	if err := os.MkdirAll(filepath.Dir(fixture.otherArchivePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fixture.otherArchivePath, []byte(fixture.otherArchiveBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(fixture.otherArchivePath), "chapters.json"), []byte("[{\"title\":\"第一章\",\"index\":0}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(fixture.otherArchivePath), "bookSource.json"), []byte("[{\"name\":\"历史隔离书\"}]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fixture.otherBook = models.Book{
+		UserID:       otherUser.ID,
+		SourceID:     0,
+		Title:        "历史隔离书",
+		Author:       "迁移测试",
+		URL:          "local://historical-other-user",
+		LibraryPath:  otherArchiveDirectory,
+		OriginalFile: filepath.Join(otherArchiveDirectory, "legacy.txt"),
+		TOCFile:      filepath.Join(otherArchiveDirectory, "chapters.json"),
+		SourceFile:   filepath.Join(otherArchiveDirectory, "bookSource.json"),
+		TOCRule:      `^第.+章.*$`,
+		LastChapter:  "第一章",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	if err := database.Create(&fixture.otherBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	fixture.otherChapter = models.Chapter{
+		BookID:    fixture.otherBook.ID,
+		Index:     0,
+		Title:     "第一章",
+		URL:       fixture.otherBook.URL + "/chapter_0",
+		CachePath: filepath.Join("content", "missing.txt"),
+	}
+	if err := database.Create(&fixture.otherChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
 	// Persist the older schema before the test performs the same migration order
 	// as a process opening a mounted volume after an upgrade.
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
@@ -251,6 +311,12 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 	if err := database.First(&fixture.cacheChapter, fixture.cacheChapter.ID).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := database.First(&fixture.otherBook, fixture.otherBook.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.First(&fixture.otherChapter, fixture.otherChapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	hub := readersync.NewHub()
 	sched := scheduler.New(database, time.Second)
@@ -262,7 +328,12 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 
 func historicalVolumeAuth(t *testing.T, router *gin.Engine, fixture historicalLocalVolume) string {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"`+fixture.username+`","password":"`+fixture.password+`"}`))
+	return historicalVolumeAuthAs(t, router, fixture.username, fixture.password)
+}
+
+func historicalVolumeAuthAs(t *testing.T, router *gin.Engine, username, password string) string {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"`+username+`","password":"`+password+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -320,26 +391,101 @@ func TestHistoricalMountedVolumeMigratesRowsAndNeverReadsRetiredHostPaths(t *tes
 
 func TestHistoricalMountedVolumeRemainsPrivateAfterMigration(t *testing.T) {
 	router, _, fixture := setupHistoricalLocalVolume(t)
-	request := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"legacy_other","password":"other-secret"}`))
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("register second historical-volume user: expected 200, got %d: %s", response.Code, response.Body.String())
-	}
-	var login struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &login); err != nil || login.Token == "" {
-		t.Fatalf("second user response = %s, err=%v", response.Body.String(), err)
-	}
-
+	auth := historicalVolumeAuthAs(t, router, fixture.otherUsername, fixture.otherPassword)
 	chapterRequest := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(fixture.book.ID), 10)+"/chapters/0/content", nil)
-	chapterRequest.Header.Set("Authorization", "Bearer "+login.Token)
+	chapterRequest.Header.Set("Authorization", auth)
 	chapterResponse := httptest.NewRecorder()
 	router.ServeHTTP(chapterResponse, chapterRequest)
 	if chapterResponse.Code != http.StatusNotFound {
 		t.Fatalf("other user read historical local book: expected 404, got %d: %s", chapterResponse.Code, chapterResponse.Body.String())
+	}
+}
+
+func TestHistoricalMountedVolumeExistingUsersStayIsolated(t *testing.T) {
+	router, server, fixture := setupHistoricalLocalVolume(t)
+	ownerAuth := historicalVolumeAuth(t, router, fixture)
+	otherAuth := historicalVolumeAuthAs(t, router, fixture.otherUsername, fixture.otherPassword)
+
+	for _, test := range []struct {
+		name         string
+		auth         string
+		ownTitle     string
+		foreignTitle string
+	}{
+		{name: "owner", auth: ownerAuth, ownTitle: fixture.book.Title, foreignTitle: fixture.otherBook.Title},
+		{name: "other", auth: otherAuth, ownTitle: fixture.otherBook.Title, foreignTitle: fixture.book.Title},
+	} {
+		t.Run(test.name+" list", func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/api/books", nil)
+			request.Header.Set("Authorization", test.auth)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), test.ownTitle) || strings.Contains(response.Body.String(), test.foreignTitle) {
+				t.Fatalf("historical user list leaked or omitted books: status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name      string
+		auth      string
+		foreignID uint
+	}{
+		{name: "owner cannot read or refresh other", auth: ownerAuth, foreignID: fixture.otherBook.ID},
+		{name: "other cannot read or refresh owner", auth: otherAuth, foreignID: fixture.book.ID},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, methodPath := range []struct {
+				method string
+				path   string
+			}{
+				{method: http.MethodGet, path: "/api/books/" + strconv.FormatUint(uint64(test.foreignID), 10) + "/chapters/0/content"},
+				{method: http.MethodPost, path: "/api/books/" + strconv.FormatUint(uint64(test.foreignID), 10) + "/refresh-local"},
+			} {
+				request := httptest.NewRequest(methodPath.method, methodPath.path, nil)
+				request.Header.Set("Authorization", test.auth)
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), "legacy.txt") {
+					t.Fatalf("cross-user %s %s: expected safe 404, got %d: %s", methodPath.method, methodPath.path, response.Code, response.Body.String())
+				}
+			}
+		})
+	}
+
+	otherRead := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(fixture.otherBook.ID), 10)+"/chapters/0/content", nil)
+	otherRead.Header.Set("Authorization", otherAuth)
+	otherReadResponse := httptest.NewRecorder()
+	router.ServeHTTP(otherReadResponse, otherRead)
+	if otherReadResponse.Code != http.StatusOK || !strings.Contains(otherReadResponse.Body.String(), "用户 B 的旧卷正文必须保持私有。") {
+		t.Fatalf("other user's historical archive was not readable: status=%d body=%s", otherReadResponse.Code, otherReadResponse.Body.String())
+	}
+	if err := server.db.First(&fixture.otherChapter, fixture.otherChapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	otherCachePath := fixture.otherChapter.CachePath
+	otherArchive, err := os.ReadFile(fixture.otherArchivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherArchiveHash := sha256.Sum256(otherArchive)
+
+	ownerRefresh := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(fixture.book.ID), 10)+"/refresh-local", nil)
+	ownerRefresh.Header.Set("Authorization", ownerAuth)
+	ownerRefreshResponse := httptest.NewRecorder()
+	router.ServeHTTP(ownerRefreshResponse, ownerRefresh)
+	if ownerRefreshResponse.Code != http.StatusOK {
+		t.Fatalf("owner historical refresh: expected 200, got %d: %s", ownerRefreshResponse.Code, ownerRefreshResponse.Body.String())
+	}
+	if err := server.db.First(&fixture.otherChapter, fixture.otherChapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if fixture.otherChapter.CachePath != otherCachePath {
+		t.Fatalf("owner refresh changed other user's cache path from %q to %q", otherCachePath, fixture.otherChapter.CachePath)
+	}
+	otherArchiveAfter, err := os.ReadFile(fixture.otherArchivePath)
+	if err != nil || sha256.Sum256(otherArchiveAfter) != otherArchiveHash {
+		t.Fatalf("owner refresh changed other user's archive: err=%v", err)
 	}
 }
 

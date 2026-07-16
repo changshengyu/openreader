@@ -24,8 +24,10 @@ import (
 )
 
 const (
-	fixtureUsername = "legacy_owner"
-	fixturePassword = "legacy-volume-secret"
+	fixtureUsername      = "legacy_owner"
+	fixturePassword      = "legacy-volume-secret"
+	fixtureOtherUsername = "legacy_other"
+	fixtureOtherPassword = "legacy-other-volume-secret"
 )
 
 type historicalArchiveFixture struct {
@@ -172,6 +174,54 @@ func main() {
 		}
 	}
 
+	otherPasswordHash, err := bcrypt.GenerateFromPassword([]byte(fixtureOtherPassword), bcrypt.MinCost)
+	if err != nil {
+		log.Fatalf("hash other fixture password: %v", err)
+	}
+	otherUser := models.User{Username: fixtureOtherUsername, PasswordHash: string(otherPasswordHash)}
+	if err := database.Create(&otherUser).Error; err != nil {
+		log.Fatalf("create other fixture user: %v", err)
+	}
+	otherLibraryPath := filepath.Join("data", fixtureOtherUsername, "old-volume-other")
+	otherArchivePath := filepath.Join(cfg.LibraryDir, otherLibraryPath, "legacy.txt")
+	otherArchiveContent := "第一章\n用户 B 的旧卷正文必须保持私有。\n"
+	if err := os.MkdirAll(filepath.Dir(otherArchivePath), 0o755); err != nil {
+		log.Fatalf("create other archive directory: %v", err)
+	}
+	if err := os.WriteFile(otherArchivePath, []byte(otherArchiveContent), 0o644); err != nil {
+		log.Fatalf("write other archive: %v", err)
+	}
+	if err := writeFixtureMetadata(filepath.Dir(otherArchivePath), "旧卷 用户B隔离验证书"); err != nil {
+		log.Fatalf("write other archive metadata: %v", err)
+	}
+	otherBook := models.Book{
+		UserID:       otherUser.ID,
+		SourceID:     0,
+		Title:        "旧卷 用户B隔离验证书",
+		Author:       "OpenReader 旧卷夹具",
+		URL:          "local://old-volume-other",
+		LibraryPath:  otherLibraryPath,
+		OriginalFile: filepath.Join(otherLibraryPath, "legacy.txt"),
+		TOCFile:      filepath.Join(otherLibraryPath, "chapters.json"),
+		SourceFile:   filepath.Join(otherLibraryPath, "bookSource.json"),
+		TOCRule:      `^第.+章.*$`,
+		LastChapter:  "第一章",
+		ChapterCount: 1,
+		CanUpdate:    true,
+	}
+	if err := database.Create(&otherBook).Error; err != nil {
+		log.Fatalf("create other fixture book: %v", err)
+	}
+	if err := database.Create(&models.Chapter{
+		BookID:    otherBook.ID,
+		Index:     0,
+		Title:     "第一章",
+		URL:       otherBook.URL + "/chapter_0",
+		CachePath: filepath.Join("content", "missing.txt"),
+	}).Error; err != nil {
+		log.Fatalf("create other fixture chapter: %v", err)
+	}
+
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
 		if err := database.Migrator().DropColumn(&models.Chapter{}, field); err != nil {
 			log.Fatalf("downgrade fixture chapter column %s: %v", field, err)
@@ -188,7 +238,7 @@ func main() {
 		log.Fatalf("close fixture database: %v", err)
 	}
 
-	fmt.Printf("created old mounted-volume fixture: user=%s password=%s archives=txt,epub,umd,cbz,relative-cache\n", fixtureUsername, fixturePassword)
+	fmt.Printf("created old mounted-volume fixture: owner=%s archives=txt,epub,umd,cbz,relative-cache other=%s\n", fixtureUsername, fixtureOtherUsername)
 }
 
 func writeFixtureMetadata(directory, title string) error {

@@ -150,6 +150,42 @@ refresh_historical_book() {
     -H "Authorization: Bearer ${TOKEN}" >/dev/null
 }
 
+historical_login() {
+  curl -fsS -X POST "${BASE_URL}/api/auth/login" \
+    -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$1\",\"password\":\"$2\"}" | json_field token
+}
+
+assert_historical_list_scope() {
+  token="$1"
+  own_title="$2"
+  foreign_title="$3"
+  books="$(curl -fsS "${BASE_URL}/api/books" -H "Authorization: Bearer ${token}")"
+  printf '%s' "$books" | grep -F "$own_title" >/dev/null
+  if printf '%s' "$books" | grep -q -F "$foreign_title"; then
+    echo "historical user list leaked foreign book: $foreign_title" >&2
+    exit 1
+  fi
+}
+
+assert_historical_owner_denied() {
+  token="$1"
+  book_id="$2"
+  for path in \
+    "/api/books/${book_id}/chapters/0/content" \
+    "/api/books/${book_id}/refresh-local"; do
+    method=GET
+    case "$path" in
+      */refresh-local) method=POST ;;
+    esac
+    status="$(curl -sS -o /dev/null -w '%{http_code}' -X "$method" "${BASE_URL}${path}" -H "Authorization: Bearer ${token}")"
+    if [ "$status" != "404" ]; then
+      echo "historical cross-user ${method} ${path} returned ${status}, expected 404" >&2
+      exit 1
+    fi
+  done
+}
+
 historical_cache_path() {
   python3 -c '
 import sqlite3, sys
@@ -188,10 +224,11 @@ start_container
 wait_health
 
 if [ "$HISTORICAL_VOLUME" = "1" ]; then
-  LOGIN_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/auth/login" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
-  TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | json_field token)"
+  TOKEN="$(historical_login "$USERNAME" "$PASSWORD")"
+  OWNER_TOKEN="$TOKEN"
+  OTHER_USERNAME="legacy_other"
+  OTHER_PASSWORD="legacy-other-volume-secret"
+  OTHER_TOKEN="$(historical_login "$OTHER_USERNAME" "$OTHER_PASSWORD")"
 
   BOOKS_RESPONSE="$(curl -fsS "${BASE_URL}/api/books" -H "Authorization: Bearer ${TOKEN}")"
   TXT_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 TXT 验证书')"
@@ -199,12 +236,16 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   UMD_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 UMD 验证书')"
   CBZ_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 CBZ 验证书')"
   RELATIVE_CACHE_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 相对缓存验证书')"
+  OTHER_BOOK_TITLE='旧卷 用户B隔离验证书'
+  OTHER_BOOKS_RESPONSE="$(curl -fsS "${BASE_URL}/api/books" -H "Authorization: Bearer ${OTHER_TOKEN}")"
+  OTHER_BOOK_ID="$(printf '%s' "$OTHER_BOOKS_RESPONSE" | json_book_id "$OTHER_BOOK_TITLE")"
 
   TXT_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-txt/legacy.txt"
   EPUB_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-epub/legacy.epub"
   UMD_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-umd/legacy.umd"
   CBZ_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-cbz/legacy.cbz"
   RELATIVE_CACHE_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-relative-cache/legacy.txt"
+  OTHER_ARCHIVE="$ROOT/library/data/${OTHER_USERNAME}/old-volume-other/legacy.txt"
   RELATIVE_CACHE_SOURCE="$ROOT/cache/legacy-cache/chapter.txt"
   RELATIVE_CACHE_TARGET="$ROOT/library/data/${USERNAME}/old-volume-relative-cache/content/legacy-cache/chapter.txt"
   RELATIVE_CACHE_CONTENT='历史相对 cache 正文必须优先于 archive。'
@@ -213,6 +254,25 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   UMD_HASH="$(archive_hash "$UMD_ARCHIVE")"
   CBZ_HASH="$(archive_hash "$CBZ_ARCHIVE")"
   RELATIVE_CACHE_HASH="$(archive_hash "$RELATIVE_CACHE_ARCHIVE")"
+  OTHER_HASH="$(archive_hash "$OTHER_ARCHIVE")"
+
+  assert_historical_list_scope "$OWNER_TOKEN" '旧卷 TXT 验证书' "$OTHER_BOOK_TITLE"
+  for owner_title in \
+    '旧卷 TXT 验证书' \
+    '旧卷 EPUB 验证书' \
+    '旧卷 UMD 验证书' \
+    '旧卷 CBZ 验证书' \
+    '旧卷 相对缓存验证书'; do
+    assert_historical_list_scope "$OTHER_TOKEN" "$OTHER_BOOK_TITLE" "$owner_title"
+  done
+  assert_historical_owner_denied "$OWNER_TOKEN" "$OTHER_BOOK_ID"
+  for owner_book_id in "$TXT_BOOK_ID" "$EPUB_BOOK_ID" "$UMD_BOOK_ID" "$CBZ_BOOK_ID" "$RELATIVE_CACHE_BOOK_ID"; do
+    assert_historical_owner_denied "$OTHER_TOKEN" "$owner_book_id"
+  done
+  TOKEN="$OTHER_TOKEN"
+  read_historical_book "$OTHER_BOOK_ID" "" '用户 B 的旧卷正文必须保持私有。' >/dev/null
+  OTHER_CACHE_PATH="$(historical_cache_path "$OTHER_BOOK_TITLE")"
+  TOKEN="$OWNER_TOKEN"
 
   assert_relative_cache_migration
   read_historical_book "$TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
@@ -245,6 +305,14 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   assert_archive_hash "$UMD_ARCHIVE" "$UMD_HASH" 'historical backup restore'
   assert_archive_hash "$CBZ_ARCHIVE" "$CBZ_HASH" 'historical backup restore'
   assert_archive_hash "$RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'historical backup restore'
+  assert_archive_hash "$OTHER_ARCHIVE" "$OTHER_HASH" 'owner backup restore'
+  if [ "$(historical_cache_path "$OTHER_BOOK_TITLE")" != "$OTHER_CACHE_PATH" ]; then
+    echo "owner backup restore changed other user's chapter cache path" >&2
+    exit 1
+  fi
+  TOKEN="$OTHER_TOKEN"
+  read_historical_book "$OTHER_BOOK_ID" "" '用户 B 的旧卷正文必须保持私有。' >/dev/null
+  TOKEN="$OWNER_TOKEN"
   assert_relative_cache_migration
 
   docker stop "$NAME" >/dev/null
@@ -252,10 +320,24 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   start_container
   wait_health
 
-  LOGIN_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/auth/login" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
-  TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | json_field token)"
+  TOKEN="$(historical_login "$USERNAME" "$PASSWORD")"
+  OWNER_TOKEN="$TOKEN"
+  OTHER_TOKEN="$(historical_login "$OTHER_USERNAME" "$OTHER_PASSWORD")"
+  assert_historical_list_scope "$OWNER_TOKEN" '旧卷 TXT 验证书' "$OTHER_BOOK_TITLE"
+  for owner_title in \
+    '旧卷 TXT 验证书' \
+    '旧卷 EPUB 验证书' \
+    '旧卷 UMD 验证书' \
+    '旧卷 CBZ 验证书' \
+    '旧卷 相对缓存验证书'; do
+    assert_historical_list_scope "$OTHER_TOKEN" "$OTHER_BOOK_TITLE" "$owner_title"
+  done
+  assert_historical_owner_denied "$OWNER_TOKEN" "$OTHER_BOOK_ID"
+  assert_historical_owner_denied "$OTHER_TOKEN" "$TXT_BOOK_ID"
+  assert_archive_hash "$OTHER_ARCHIVE" "$OTHER_HASH" 'historical restart'
+  TOKEN="$OTHER_TOKEN"
+  read_historical_book "$OTHER_BOOK_ID" "" '用户 B 的旧卷正文必须保持私有。' >/dev/null
+  TOKEN="$OWNER_TOKEN"
   read_historical_book "$TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
   read_historical_book "$EPUB_BOOK_ID" "epub" "" >/dev/null
   read_historical_book "$UMD_BOOK_ID" "" '第一段' >/dev/null
@@ -264,7 +346,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   CBZ_RESPONSE="$(read_historical_book "$CBZ_BOOK_ID" "cbz" "")"
   CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
   curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
-  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz, relative-cache)"
+  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz, relative-cache, owner-isolation)"
   exit 0
 fi
 
