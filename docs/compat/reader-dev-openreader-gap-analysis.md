@@ -332,6 +332,33 @@ minus/value/plus controls remain the documented user-requested difference. Stati
 the real-browser Reader smoke now scroll the list at 1440×900, 390×844, and 360×800 and assert
 that the title top and outer scroll position remain unchanged.
 
+#### 2026-07-16 focused inventory: rendered text-mode geometry and state
+
+The following probe used the fixed upstream commit and the same 44-paragraph, three-chapter text
+fixture against OpenReader's production preview. It measured a 1440×900 desktop page and 390×844 /
+360×800 mobile pages. It is the authoritative rendered evidence for the next P0 slice; no
+application code was changed while collecting it.
+
+| Mode / contract | Fixed upstream rendered evidence | Current rendered evidence | Classification / required action |
+|---|---|---|---|
+| Desktop availability of `左右滑动` | `vuex.js#getters.isSlideRead` requires both `miniInterface` and `readMethod === '左右滑动'`; at 1440×900 it deliberately remains the ordinary vertical branch. `ReadSettings.vue` still exposes the selection only through the mini reader semantics. | `ReaderSettingsPanel` marks `flip` as `mobileOnly`; `useReaderMode` converts a persisted desktop `flip` value to `page`. The 1440×900 probe rendered `page` for both persisted `page` and `flip`. | **aligned.** The old matrix wording that implied desktop slide reading was too broad; retain the desktop conversion contract. |
+| Desktop vertical text frame | Upstream 1440×900: chapter outer `x=319,w=802`; content and title/paragraph box `x=385,w=670`; heading begins at `y=72`, first paragraph at `y=134`. Paragraph is 18px/32.4px with 36px indent and 3.6px top/bottom margins. | OpenReader: reader page `x=320,w=800`; text box `x=386,w=668`; heading/paragraph start at the same `y=72/134`, typography values match. | **must-fix geometry.** Current global border-box sizing consumes the two border pixels from the configured reading width, shifting the text box right 1px and making it 2px narrower. Restore the upstream `670 + 65px × 2 + two borders` desktop frame, then recheck the already-aligned desktop Popover offsets. |
+| Mobile `上下滑动` / `page` | 390×844 and 360×800: chapter/content/inner left-right edges are 16px symmetric; heading `y=73`, first paragraph `y=135`; lower click advances document scroll by `772px` / `728px` (viewport minus the upstream scroll offset). | Same mobile bounds, title/paragraph top positions, typography, and lower click page step in OpenReader's inner scroller. Native finger/wheel movement remains continuous by explicit user requirement. | **aligned visible geometry and allowed scroll-host adaptation.** Preserve page click segmentation and the continuous native finger/wheel exception. Add the final real-browser contract rather than relying only on this audit probe. |
+| Mobile `左右滑动` first page | Upstream 390×844: outer content `x=0,w=390,y=30,h=790`; clipped inner content `x=16,w=358`; heading `y=58`, first paragraph `y=120`. At 360×800 these are `x=0,w=360,y=30,h=746`, inner `x=16,w=328`, and the same heading/paragraph tops. | OpenReader currently keeps the ordinary page's padded content `x=16,w=358/328`, has heading `y=73` and first paragraph `y=135`, and its body extends below the viewport. | **wrong structure / P0 must-fix.** The flip mode needs the upstream-specific outer content viewport and inner clipping layout; it must not inherit normal mobile reader padding and 15px content-body top padding. |
+| Mobile `左右滑动` page stride | Upstream increments the current page and applies `translateX(-(windowWidth - 16px))`: `-374px` at 390px and `-344px` at 360px. Its column content keeps the 16px inter-page relationship while the visible text stays at 16px left/right edges. | OpenReader currently calculates the page width from the already-padded 358px/328px content viewport, translating `-358px` / `-328px`. | **wrong pagination contract / P0 must-fix.** Make mobile flip pagination use the upstream `viewportWidth - 16px` stride and matching column gap, then verify next/previous click and horizontal swipe before chapter transitions. |
+| `上下滚动` and `上下滚动2` visible text | Both upstream variants retain the same 16px mobile / 670px desktop text geometry and vertical click step. `scroll` holds the visible start while extending forward; `scroll2` can include prior chapters and removes read chapters after its anchor-preserving rebuild. | OpenReader uses the same text geometry and has a separate chapter-window controller. Existing browser checks cover the user-approved native wheel/finger continuity and anchor restoration; the fixture also confirmed lower click advances one vertical page step. | **partial / final state transitions unverified.** Add the mode browser contract for forward extension, `scroll2` eviction, and chapter-boundary click paging. Do not change these branches until that contract exposes an observable mismatch. |
+| Common typography | Upstream probes give `h3: 28px/33.6px, margin 28px`, and `p: 18px/32.4px, margin 3.6px, indent 36px`, with desktop `text-align:left` and mini `justify`. | Current values matched except the desktop computed inherited value is `start` rather than upstream `left`; it renders equivalently in the tested LTR fixture. | **minor must-normalize with the frame fix.** Set desktop text alignment explicitly to `left` so saved themes and inherited direction cannot alter the upstream contract. |
+
+Next implementation gate from this rendered inventory:
+
+1. Add red unit and browser contracts for the mobile flip outer viewport, heading top, page stride,
+   click paging and horizontal swipe at 390×844 and 360×800.
+2. Rebuild only the mobile flip CSS and its page-width calculation; it must stay mobile-only.
+3. In the same release slice, correct the two-pixel desktop content frame and explicit desktop
+   alignment, then re-run the desktop Popover bounds because they are frame-relative.
+4. Only after those failures are resolved, add the remaining continuous-window transition contract
+   before deciding whether `scroll`/`scroll2` need code changes.
+
 The previous tests are evidence only where they assert the table above. In particular,
 `readerToolOrderContract.test.mjs` and the primary-panel exclusivity test must not be used as proof
 of upstream parity until rewritten against this contract.
