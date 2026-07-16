@@ -38,6 +38,7 @@ export function useReaderLayout(options) {
     if (options.reader.mode === 'flip') {
       const layout = readerFlipPageLayout({
         viewportWidth: viewport.width,
+        pageStride: Math.max(1, viewport.width - 16),
         viewportHeight: viewport.height,
         scrollWidth: body.scrollWidth,
         currentPage: options.page.value,

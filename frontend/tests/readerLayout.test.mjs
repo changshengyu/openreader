@@ -41,10 +41,10 @@ function createController() {
   return { controller, state }
 }
 
-test('calculates flip pages from the readable content box', () => {
+test('calculates mobile flip pages from the upstream readable stride minus 16px', () => {
   const fixture = createController()
   fixture.controller.update()
-  assert.equal(fixture.state.pageWidth.value, 600)
+  assert.equal(fixture.state.pageWidth.value, 584)
   assert.equal(fixture.state.pageHeight.value, 460)
   assert.equal(fixture.state.pageCount.value, 4)
   assert.equal(fixture.state.page.value, 3)
@@ -68,5 +68,5 @@ test('updates responsive width before recalculating layout on resize', () => {
   const fixture = createController()
   fixture.controller.resize()
   assert.equal(fixture.state.windowWidth.value, 1024)
-  assert.equal(fixture.state.pageWidth.value, 600)
+  assert.equal(fixture.state.pageWidth.value, 584)
 })

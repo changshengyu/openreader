@@ -47,11 +47,18 @@ export function readerScrollBehaviorForDuration(animateDuration) {
 
 export function readerFlipPageLayout({
   viewportWidth,
+  pageStride,
   viewportHeight,
   scrollWidth,
   currentPage,
 }) {
-  const width = Math.max(1, Number(viewportWidth) || 0)
+  const requestedStride = Number(pageStride)
+  const width = Math.max(
+    1,
+    Number.isFinite(requestedStride) && requestedStride > 0
+      ? requestedStride
+      : Number(viewportWidth) || 0,
+  )
   const height = Math.max(1, Number(viewportHeight) || 0)
   const pageCount = Math.max(1, Math.ceil((Number(scrollWidth) || 0) / width))
   return {

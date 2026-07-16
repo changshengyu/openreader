@@ -50,11 +50,12 @@ test('calculates reader scroll steps and animation behavior', () => {
 test('clamps flip pagination when content or viewport changes', () => {
   assert.deepEqual(readerFlipPageLayout({
     viewportWidth: 400,
+    pageStride: 384,
     viewportHeight: 700,
-    scrollWidth: 1200,
+    scrollWidth: 1152,
     currentPage: 5,
   }), {
-    pageWidth: 400,
+    pageWidth: 384,
     pageHeight: 700,
     pageCount: 3,
     page: 2,

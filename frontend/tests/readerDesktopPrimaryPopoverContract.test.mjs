@@ -17,7 +17,7 @@ test('desktop primary panels use the fixed-baseline top-anchored popover frame',
   assert.match(workspaceSource, /workspace-panel-\$\{panel\}/, 'desktop shell must expose a panel-specific class for upstream bounds')
   assert.match(css, /position:\s*fixed/, 'desktop primary panel must remain anchored to the viewport')
   assert.match(css, /top:\s*0/, 'upstream desktop popovers begin at the reader top edge')
-  assert.match(css, /left:\s*calc\(50vw\s*-\s*var\(--reader-frame-width\)\s*\/\s*2\s*\+\s*5px\)/, 'desktop popover must begin 5px inside the reader frame')
+  assert.match(css, /left:\s*calc\(50vw\s*-\s*var\(--reader-frame-width\)\s*\/\s*2\s*\+\s*4px\)/, 'desktop popover must preserve the upstream absolute x coordinate beside the restored text frame')
   assert.match(css, /width:\s*calc\(var\(--reader-frame-width\)\s*-\s*9px\)/, 'desktop popover must preserve the upstream frame-right inset')
   assert.match(css, /height:\s*auto/, 'desktop primary panel must size to its content')
   assert.match(css, /max-height:\s*100dvh/, 'desktop primary panel needs a viewport safety cap')

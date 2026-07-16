@@ -51,7 +51,7 @@ defineEmits(['close'])
   position: fixed;
   z-index: 3;
   top: 0;
-  left: calc(50vw - var(--reader-frame-width) / 2 + 5px);
+  left: calc(50vw - var(--reader-frame-width) / 2 + 4px);
   width: calc(var(--reader-frame-width) - 9px);
   height: auto;
   min-height: 0;

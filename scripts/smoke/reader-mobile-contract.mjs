@@ -489,7 +489,7 @@ async function assertDesktopPrimaryPopover(page, label, [minHeight, maxHeight]) 
   assert(state.top === 0, `desktop: ${label} popover top ${state.top}`)
   assert(state.left >= state.railRight + 10, `desktop: ${label} must begin after the left rail (${state.left}/${state.railRight})`)
   assert(Math.abs(state.left - (state.pageLeft + 5)) <= 1, `desktop: ${label} left ${state.left}, expected reader frame + 5 (${state.pageLeft})`)
-  assert(Math.abs((state.left + state.width) - (state.pageRight - 5)) <= 1, `desktop: ${label} right ${state.left + state.width}, expected reader frame - 5 (${state.pageRight})`)
+  assert(Math.abs((state.left + state.width) - (state.pageRight - 6)) <= 1, `desktop: ${label} right ${state.left + state.width}, expected reader frame - 6 (${state.pageRight})`)
   assert(state.height >= minHeight && state.height <= maxHeight, `desktop: ${label} height ${state.height}, expected ${minHeight}-${maxHeight}`)
   assert(state.height < 560, `desktop: ${label} must be a content-sized Popover, not a full-height workspace (${state.height})`)
 }

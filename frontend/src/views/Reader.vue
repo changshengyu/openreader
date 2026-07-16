@@ -1944,6 +1944,7 @@ function readError(err, fallback) {
     inset -24px 0 44px rgba(90, 71, 28, 0.05);
   height: 100vh;
   overflow: hidden;
+  box-sizing: content-box;
   position: relative;
   width: var(--reader-frame-width);
 }
@@ -1983,6 +1984,12 @@ function readError(err, fallback) {
 }
 .reader-shell.flip .reader-body {
   transition: transform var(--reader-animate-duration, 180ms) ease;
+}
+
+@media (min-width: 751px) {
+  .reader-body {
+    text-align: left;
+  }
 }
 
 /* ---- Toast ---- */
@@ -2044,6 +2051,30 @@ function readError(err, fallback) {
     padding-top: 15px;
     padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
     text-align: justify;
+  }
+  .reader-shell.flip .reader-page {
+    padding: 0;
+  }
+  .reader-shell.flip .reader-content {
+    position: absolute;
+    top: calc(30px + env(safe-area-inset-top));
+    right: 0;
+    bottom: 24px;
+    left: 0;
+    width: 100%;
+    height: auto;
+    padding: 0;
+    overflow: hidden;
+    scroll-padding-bottom: 0;
+  }
+  .reader-shell.flip .reader-body {
+    height: 100%;
+    margin: 0 16px;
+    padding: 0;
+    text-align: justify;
+    column-width: calc(100vw - 16px);
+    column-gap: 16px;
+    column-fill: auto;
   }
   .reader-mobile-primary-popover-body {
     box-sizing: border-box;

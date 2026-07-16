@@ -359,6 +359,14 @@ Next implementation gate from this rendered inventory:
 4. Only after those failures are resolved, add the remaining continuous-window transition contract
    before deciding whether `scroll`/`scroll2` need code changes.
 
+Text-frame and flip slice result: the desktop page now uses a content-box 800px reading frame with
+the two borders outside it, restoring the `x=319,w=802` outer page and `x=385,w=670` text box.
+Desktop text alignment is explicit `left`. Mobile flip now owns the upstream-style unpadded outer
+viewport (`top:30px`, `bottom:24px`), 16px clipped text edges, and `viewportWidth - 16px` column
+stride. `reader-text-modes-contract.mjs` passed against the production preview at 1440×900,
+390×844, and 360×800; the existing mobile primary-panel and continuous-scroll browser contracts
+also passed after the frame change.
+
 The previous tests are evidence only where they assert the table above. In particular,
 `readerToolOrderContract.test.mjs` and the primary-panel exclusivity test must not be used as proof
 of upstream parity until rewritten against this contract.
