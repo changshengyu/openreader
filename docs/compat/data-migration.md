@@ -121,8 +121,8 @@ Implementation evidence: the runtime now recognizes the standard segmented reade
 
 ## P1-E4 old mounted local-book volume recovery
 
-Status: compatibility inventory complete; fixture-first implementation pending. The focused
-contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
+Status: first old-SQLite/path/cache implementation complete; full-format and Docker fixtures
+pending. The focused contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
 
 - A recoverable installation is the mounted tuple `data/`, `cache/`, and `library/`, not a
   new database plus an application-level backup ZIP. `data/openreader.db` may retain old
@@ -146,6 +146,15 @@ derived content; prove reading, scoped lazy recovery, refresh atomicity, unchang
 hashes, user isolation, safe handling of stale absolute paths, and Docker stop/restart. The
 release image must also run a backup trigger/list and safe restore that leaves the mounted
 local archive and chapter rows unchanged.
+
+Implementation evidence so far: `backend/api/old_volume_contract_test.go` creates an old SQLite
+file without the current EPUB resource/fragment/variable columns, closes it, then performs the
+production migration order before serving a deleted-cache local chapter. It locks old
+progress/bookmark preservation, archive-root-only rebasing of a stale absolute source/cache path
+and cross-user 404 behavior. `backend/db.TestMigrateLocalBookCacheSkipsUnsafeHistoricalCachePath`
+locks that startup never copies or deletes `cache/../...` host data. Full Go tests, frontend tests
+and production build pass; the all-format volume fixture and Docker verification remain required
+before a release image.
 
 ## P2 backup ZIP restore compatibility and bounds
 

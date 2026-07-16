@@ -3,6 +3,7 @@ package db
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -54,26 +55,53 @@ func AutoMigrate(database *gorm.DB) error {
 }
 
 func MigrateLocalBookCache(database *gorm.DB, cfg config.Config) error {
+	cacheRoot, err := canonicalDirectory(cfg.CacheDir)
+	if err != nil {
+		return err
+	}
+	libraryRoot, err := canonicalDirectory(cfg.LibraryDir)
+	if err != nil {
+		return err
+	}
 	var books []models.Book
 	if err := database.Where("source_id = 0 AND library_path <> ''").Find(&books).Error; err != nil {
 		return err
 	}
 	for _, book := range books {
+		bookRelativePath, ok := cleanRelativeLocalPath(book.LibraryPath)
+		if !ok {
+			continue
+		}
 		var chapters []models.Chapter
 		if err := database.Where("book_id = ? AND cache_path <> ''", book.ID).Find(&chapters).Error; err != nil {
 			return err
 		}
-		contentDir := filepath.Join(cfg.LibraryDir, book.LibraryPath, "content")
 		for _, chapter := range chapters {
-			if filepath.IsAbs(chapter.CachePath) {
+			cacheRelativePath, ok := cleanRelativeLocalPath(chapter.CachePath)
+			if !ok {
 				continue
 			}
-			oldPath := filepath.Join(cfg.CacheDir, chapter.CachePath)
-			if _, err := os.Stat(oldPath); err != nil {
+			oldPath, ok := existingRegularFileUnder(cacheRoot, cacheRelativePath)
+			if !ok {
 				continue
 			}
-			newPath := filepath.Join(contentDir, chapter.CachePath)
-			if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+			bookRoot, ok := ensureDirectoryUnder(libraryRoot, bookRelativePath)
+			if !ok {
+				continue
+			}
+			contentDir, ok := ensureDirectoryUnder(bookRoot, "content")
+			if !ok {
+				continue
+			}
+			newParent, ok := ensureDirectoryUnder(contentDir, filepath.Dir(cacheRelativePath))
+			if !ok {
+				continue
+			}
+			newPath := filepath.Join(newParent, filepath.Base(cacheRelativePath))
+			if !pathInside(contentDir, newPath) {
+				continue
+			}
+			if _, err := os.Stat(newPath); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 			if _, err := os.Stat(newPath); err != nil {
@@ -93,4 +121,105 @@ func MigrateLocalBookCache(database *gorm.DB, cfg config.Config) error {
 		}
 	}
 	return nil
+}
+
+func cleanRelativeLocalPath(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || filepath.IsAbs(value) || strings.ContainsRune(value, 0) {
+		return "", false
+	}
+	clean := filepath.Clean(value)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return clean, true
+}
+
+func canonicalDirectory(path string) (string, error) {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		if err == nil {
+			err = os.ErrNotExist
+		}
+		return "", err
+	}
+	return resolved, nil
+}
+
+func existingRegularFileUnder(root, relativePath string) (string, bool) {
+	path, ok := joinUnder(root, relativePath)
+	if !ok {
+		return "", false
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || info.IsDir() || !pathInside(root, resolved) {
+		return "", false
+	}
+	return resolved, true
+}
+
+func ensureDirectoryUnder(root, relativePath string) (string, bool) {
+	if relativePath == "." || relativePath == "" {
+		return root, true
+	}
+	clean, ok := cleanRelativeLocalPath(relativePath)
+	if !ok {
+		return "", false
+	}
+	current := root
+	for _, segment := range strings.Split(clean, string(filepath.Separator)) {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", false
+		}
+		candidate := filepath.Join(current, segment)
+		if err := os.Mkdir(candidate, 0o755); err != nil && !os.IsExist(err) {
+			return "", false
+		}
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil || !pathInside(root, resolved) {
+			return "", false
+		}
+		info, err := os.Stat(resolved)
+		if err != nil || !info.IsDir() {
+			return "", false
+		}
+		current = resolved
+	}
+	return current, true
+}
+
+func joinUnder(root, relativePath string) (string, bool) {
+	clean, ok := cleanRelativeLocalPath(relativePath)
+	if !ok {
+		return "", false
+	}
+	candidate := filepath.Join(root, clean)
+	if !pathInside(root, candidate) {
+		return "", false
+	}
+	return candidate, true
+}
+
+func pathInside(root, candidate string) bool {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(rootAbs, candidateAbs)
+	return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }

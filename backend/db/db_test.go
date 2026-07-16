@@ -61,6 +61,57 @@ func TestMigrateLocalBookCacheMovesLocalContentToLibrary(t *testing.T) {
 	}
 }
 
+func TestMigrateLocalBookCacheSkipsUnsafeHistoricalCachePath(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+	}
+	database, err := Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+
+	// This file mimics a stale cache_path from a historical SQLite volume. It
+	// resolves outside cache/ and must therefore never be copied or removed by
+	// startup migration.
+	unsafeCachePath := filepath.Join("..", "retired-host-cache.txt")
+	hostPath := filepath.Join(root, "retired-host-cache.txt")
+	if err := os.WriteFile(hostPath, []byte("must remain outside migration"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	libraryPath := filepath.Join("data", "testuser", "unsafe-cache")
+	book := models.Book{UserID: 1, SourceID: 0, Title: "unsafe cache", LibraryPath: libraryPath}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "第一章", CachePath: unsafeCachePath}
+	if err := database.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MigrateLocalBookCache(database, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(hostPath); err != nil || string(content) != "must remain outside migration" {
+		t.Fatalf("unsafe cache path was touched: content=%q err=%v", string(content), err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.LibraryDir, libraryPath, "retired-host-cache.txt")); !os.IsNotExist(err) {
+		t.Fatalf("unsafe cache path was copied into library, stat err=%v", err)
+	}
+	var updated models.Chapter
+	if err := database.First(&updated, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if updated.CachePath != unsafeCachePath {
+		t.Fatalf("unsafe cache path was rewritten to %q", updated.CachePath)
+	}
+}
+
 func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 	root := t.TempDir()
 	cfg := config.Config{

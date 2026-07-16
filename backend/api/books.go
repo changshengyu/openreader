@@ -750,7 +750,8 @@ func (s *Server) exportOriginalLocalBook(c *gin.Context, book models.Book) bool 
 	if !ok {
 		return false
 	}
-	if _, ok := relativePathInside(s.cfg.LibraryDir, path); !ok {
+	libraryRoot, err := filepath.EvalSymlinks(s.cfg.LibraryDir)
+	if err != nil || !pathInside(libraryRoot, path) {
 		return false
 	}
 	content, err := os.ReadFile(path)
@@ -2576,6 +2577,14 @@ func (s *Server) localChapterCachePath(book models.Book, fullPath string) string
 	if !filepath.IsAbs(fullPath) {
 		return fullPath
 	}
+	if book.SourceID == 0 {
+		if archiveRoot, ok := s.localBookArchiveRoot(book); ok {
+			if rel, ok := relativePathInside(archiveRoot, fullPath); ok {
+				return rel
+			}
+		}
+		return ""
+	}
 	if strings.TrimSpace(book.LibraryPath) != "" {
 		libraryRoot := filepath.Join(s.cfg.LibraryDir, book.LibraryPath)
 		if rel, ok := relativePathInside(libraryRoot, fullPath); ok {
@@ -2612,6 +2621,10 @@ func relativePathInside(root string, path string) (string, bool) {
 }
 
 func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapter) string {
+	archiveRoot, archiveOK := s.localBookArchiveRoot(book)
+	if !archiveOK {
+		return ""
+	}
 	sourcePath, ok := s.localBookSourcePath(book)
 	if !ok {
 		return ""
@@ -2638,12 +2651,10 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 	if bookURL == "" {
 		bookURL = fmt.Sprintf("local://book_%d", book.ID)
 	}
-	if strings.TrimSpace(book.LibraryPath) != "" {
-		contentDir := filepath.Join(s.cfg.LibraryDir, book.LibraryPath, "content")
-		if cachePath, err := engine.WriteChapterCache(contentDir, bookURL, chapterURL, content); err == nil {
-			chapter.CachePath = filepath.Join("content", cachePath)
-			_ = s.db.Save(chapter)
-		}
+	contentDir := filepath.Join(archiveRoot, "content")
+	if cachePath, err := engine.WriteChapterCache(contentDir, bookURL, chapterURL, content); err == nil {
+		chapter.CachePath = filepath.Join("content", cachePath)
+		_ = s.db.Save(chapter)
 	}
 	return content
 }
@@ -2670,6 +2681,11 @@ func parseLocalBookChapters(ext string, data []byte, tocRule string) ([]engine.T
 }
 
 func (s *Server) localBookSourcePath(book models.Book) (string, bool) {
+	archiveRoot, ok := s.localBookArchiveRoot(book)
+	if !ok {
+		return "", false
+	}
+
 	candidates := make([]string, 0, 4)
 	add := func(path string) {
 		path = strings.TrimSpace(path)
@@ -2684,35 +2700,24 @@ func (s *Server) localBookSourcePath(book models.Book) (string, bool) {
 		candidates = append(candidates, path)
 	}
 
-	libraryRoot := ""
-	if strings.TrimSpace(book.LibraryPath) != "" {
-		libraryRoot = filepath.Join(s.cfg.LibraryDir, book.LibraryPath)
-	}
 	originalFile := strings.TrimSpace(book.OriginalFile)
 	if filepath.IsAbs(originalFile) {
-		add(originalFile)
-		if libraryRoot != "" {
-			if suffix, ok := suffixAfterPathSegment(originalFile, book.LibraryPath); ok {
-				add(filepath.Join(libraryRoot, suffix))
-			}
-			add(filepath.Join(libraryRoot, filepath.Base(originalFile)))
+		if suffix, ok := suffixAfterPathSegment(originalFile, book.LibraryPath); ok {
+			add(filepath.Join(archiveRoot, suffix))
 		}
+		add(filepath.Join(archiveRoot, filepath.Base(originalFile)))
 	} else if originalFile != "" {
 		add(filepath.Join(s.cfg.LibraryDir, originalFile))
-		if libraryRoot != "" {
-			add(filepath.Join(libraryRoot, filepath.Base(originalFile)))
-		}
+		add(filepath.Join(archiveRoot, originalFile))
+		add(filepath.Join(archiveRoot, filepath.Base(originalFile)))
 	}
 
 	for _, path := range candidates {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && isSupportedLocalBookFile(path) {
-			return path, true
+		if resolved, ok := existingRegularPathInside(archiveRoot, path); ok && isSupportedLocalBookFile(resolved) {
+			return resolved, true
 		}
 	}
-	if libraryRoot == "" {
-		return "", false
-	}
-	entries, err := os.ReadDir(libraryRoot)
+	entries, err := os.ReadDir(archiveRoot)
 	if err != nil {
 		return "", false
 	}
@@ -2720,12 +2725,73 @@ func (s *Server) localBookSourcePath(book models.Book) (string, bool) {
 		if entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(libraryRoot, entry.Name())
-		if isSupportedLocalBookFile(path) {
-			return path, true
+		path := filepath.Join(archiveRoot, entry.Name())
+		if resolved, ok := existingRegularPathInside(archiveRoot, path); ok && isSupportedLocalBookFile(resolved) {
+			return resolved, true
 		}
 	}
 	return "", false
+}
+
+// localBookArchiveRoot is the sole authority for local-book filesystem access.
+// Old SQLite rows are persisted input: a historical absolute OriginalFile or
+// CachePath can describe a former Docker host, but must never authorize a read
+// outside the current owner's private library root.
+func (s *Server) localBookArchiveRoot(book models.Book) (string, bool) {
+	if book.SourceID != 0 || strings.TrimSpace(book.LibraryPath) == "" {
+		return "", false
+	}
+	var owner models.User
+	if err := s.db.Select("username").First(&owner, book.UserID).Error; err != nil {
+		return "", false
+	}
+	candidate, ok := s.privateImportedBookDirectory(owner.Username, book.LibraryPath)
+	if !ok {
+		return "", false
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	ownerRoot := filepath.Join(s.cfg.LibraryDir, "data", engine.SafeFilename(owner.Username))
+	resolvedOwnerRoot, err := filepath.EvalSymlinks(ownerRoot)
+	if err != nil || !pathInside(resolvedOwnerRoot, resolved) {
+		return "", false
+	}
+	return resolved, true
+}
+
+func existingRegularPathInside(root, candidate string) (string, bool) {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", false
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || info.IsDir() || !pathInside(resolvedRoot, resolved) {
+		return "", false
+	}
+	return resolved, true
+}
+
+func pathInside(root, path string) bool {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(rootAbs, pathAbs)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func isSupportedLocalBookFile(path string) bool {
@@ -2772,29 +2838,59 @@ func (s *Server) chapterCacheCandidates(book models.Book, cachePath string) []st
 		candidates = append(candidates, path)
 	}
 
+	if book.SourceID != 0 {
+		if filepath.IsAbs(cachePath) {
+			add(cachePath)
+		} else {
+			add(filepath.Join(s.cfg.CacheDir, cachePath))
+		}
+		return candidates
+	}
+
+	archiveRoot, ok := s.localBookArchiveRoot(book)
+	if !ok {
+		// Early OpenReader data and audio-library records can have only a
+		// relative cache path, with no imported-book archive directory. Keep
+		// that narrow recovery path while refusing absolute cache paths and
+		// refusing non-audio books that claim an invalid archive directory.
+		if strings.TrimSpace(book.LibraryPath) != "" && book.Type != 1 {
+			return nil
+		}
+		if filepath.IsAbs(cachePath) {
+			return nil
+		}
+		if resolved, ok := existingRegularPathInside(s.cfg.CacheDir, filepath.Join(s.cfg.CacheDir, cachePath)); ok {
+			return []string{resolved}
+		}
+		return nil
+	}
+	contentRoot := filepath.Join(archiveRoot, "content")
 	if filepath.IsAbs(cachePath) {
-		add(cachePath)
+		if suffix, ok := suffixAfterPathSegment(cachePath, "content"); ok {
+			add(filepath.Join(contentRoot, suffix))
+		}
+		if suffix, ok := suffixAfterPathSegment(cachePath, book.LibraryPath); ok {
+			add(filepath.Join(archiveRoot, suffix))
+		}
 	} else {
+		add(filepath.Join(archiveRoot, cachePath))
+		add(filepath.Join(contentRoot, cachePath))
 		add(filepath.Join(s.cfg.CacheDir, cachePath))
 	}
 
-	if book.SourceID == 0 && strings.TrimSpace(book.LibraryPath) != "" {
-		libraryRoot := filepath.Join(s.cfg.LibraryDir, book.LibraryPath)
-		contentRoot := filepath.Join(libraryRoot, "content")
-		if filepath.IsAbs(cachePath) {
-			if suffix, ok := suffixAfterPathSegment(cachePath, "content"); ok {
-				add(filepath.Join(contentRoot, suffix))
+	trusted := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := existingRegularPathInside(archiveRoot, candidate); ok {
+			trusted = append(trusted, candidate)
+			continue
+		}
+		if !filepath.IsAbs(cachePath) {
+			if _, ok := existingRegularPathInside(s.cfg.CacheDir, candidate); ok {
+				trusted = append(trusted, candidate)
 			}
-			if suffix, ok := suffixAfterPathSegment(cachePath, book.LibraryPath); ok {
-				add(filepath.Join(libraryRoot, suffix))
-			}
-		} else {
-			add(filepath.Join(libraryRoot, cachePath))
-			add(filepath.Join(contentRoot, cachePath))
 		}
 	}
-
-	return candidates
+	return trusted
 }
 
 func suffixAfterPathSegment(path string, segment string) (string, bool) {
