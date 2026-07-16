@@ -37,7 +37,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | RSS | Upstream `RssSourceList.vue`, `RssArticleList.vue`, `RssArticle.vue`. | Current root source dialog, independent article-list/content dialogs, `RSSManager.vue`, overlays and Go RSS parser. | The three-dialog transition, reset/refresh ordering and compact fullscreen behavior have been rebuilt; persistent per-user cache/filtering and sanitization remain allowed adaptations. | `aligned` for extracted P2 RSS | RSS fixture/parser tests; source/article browser smoke. |
 | WebDAV/local store | Upstream `WebDAV.vue`, `LocalStore.vue` and server storage behavior. | Current Go endpoints, private mounted-root adaptation and workspace dialogs exist. | P2 storage UI/import audit found CBZ reachability and LocalStore result-gate differences despite the prior path/security alignment. | `partial` | Storage UI/import contract, path traversal tests, upload/list/import browser smoke, Docker volume smoke. |
 | Backup/restore | Upstream backup flows and reader-dev formats require extraction. | Current OpenReader backup service and Legado restore exist. | Must preserve OpenReader data and document reader-dev/Legado import semantics. | `unknown` | Restore testdata; backup list/download/restore tests. |
-| Auth/user management | Upstream user management components include `AddUser.vue`, `UserManage.vue`; OpenReader adds JWT. | Current JWT/multi-user/admin endpoints are intentional runtime adaptation. | Root dialog, ordinary-user creation, protected-account controls, time metadata and direct legacy-intent behavior have been rebuilt and verified for the extracted P2 slice. | `aligned` for extracted P2 + intentional runtime redesign | Auth dialog and admin/non-admin browser smoke; protected-account API tests. |
+| Auth/user management | Upstream user management components include `AddUser.vue`, `UserManage.vue`; OpenReader adds JWT. | Current JWT/multi-user/admin endpoints retain a root Dialog and protected administrator adaptation, but use 3-character unrestricted usernames, 6-character passwords, one merged storage permission, incomplete user cleanup and a global BookSource model. | JWT and protected `admin` are allowed runtime/security adaptations; the listed input, authorization, deletion and source-ownership differences are not aligned. | `partial` — [`user-management-p2-contract.md`](user-management-p2-contract.md) extracted; implementation/tests pending | Input contract, protected-account API, independent WebDAV/LocalStore route authorization, full user data/file deletion and admin/non-admin browser smoke. |
 | Docker/runtime | Upstream ships Java/Gradle/Docker variants. | Current single Go binary + frontend dist in Alpine, env-driven volumes. Official Node/Go/Alpine base digests are pinned; CA roots are copied from the Go builder and the Go binary embeds IANA time-zone data, so the final stage has no mutable registry/APK package step. | Intentional deployment redesign. The digest pinning and embedded runtime assets are an allowed reproducibility/security adaptation; mounted-volume behavior remains unchanged. | `intentional-redesign` | `PUSH=0 ./scripts/docker-build-push.sh`; `scripts/docker-volume-backup-smoke.sh`. |
 
 ## Immediate parser contract: TXT local import catalog rules
@@ -2312,3 +2312,10 @@ the same scoped user settings through their established backend contracts.
   `1440×900`, `390×844`, and `360×800`, including old-link focus/notice,
   mobile click isolation, no horizontal overflow, direct config backup/restore,
   and the retained root operation dialogs.
+## 2026-07-16 P2 用户管理复审边界
+
+固定上游 `UserManage.vue` / `UserController.kt` 复审已经完成，结论记录在
+[`user-management-p2-contract.md`](user-management-p2-contract.md)。当前用户管理不能视为
+“多用户增强即可保留”：其短用户名规则/短密码、合并存储权限、用户删除遗漏 user-owned rows/files
+以及只删 `users` 行的 cleanup 都是必须修复的数据边界。全局 `BookSource` 与上游私有
+用户书源/默认书源模型的差异需要单独书源所有权合同，不能用无效果按钮伪装已对齐。
