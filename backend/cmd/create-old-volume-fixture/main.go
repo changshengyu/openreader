@@ -5,6 +5,11 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	"compress/zlib"
+	"encoding/binary"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -19,10 +24,17 @@ import (
 )
 
 const (
-	fixtureUsername  = "legacy_owner"
-	fixturePassword  = "legacy-volume-secret"
-	fixtureBookTitle = "旧卷 TXT 验证书"
+	fixtureUsername = "legacy_owner"
+	fixturePassword = "legacy-volume-secret"
 )
+
+type historicalArchiveFixture struct {
+	title     string
+	directory string
+	filename  string
+	tocRule   string
+	archive   []byte
+}
 
 func main() {
 	root := flag.String("root", "", "mounted-volume root containing data, cache, and library")
@@ -68,71 +80,82 @@ func main() {
 		log.Fatalf("create fixture user: %v", err)
 	}
 
-	libraryPath := filepath.Join("data", fixtureUsername, "old-volume-txt")
-	archivePath := filepath.Join(cfg.LibraryDir, libraryPath, "legacy.txt")
-	archiveContent := "第一章\n旧卷归档正文只能从 library 读取。\n"
-	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
-		log.Fatalf("create archive directory: %v", err)
+	fixtures, err := historicalArchiveFixtures()
+	if err != nil {
+		log.Fatalf("build archive fixtures: %v", err)
 	}
-	if err := os.WriteFile(archivePath, []byte(archiveContent), 0o644); err != nil {
-		log.Fatalf("write archive: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(filepath.Dir(archivePath), "chapters.json"), []byte("[{\"title\":\"第一章\",\"index\":0}]\n"), 0o644); err != nil {
-		log.Fatalf("write chapter metadata: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(filepath.Dir(archivePath), "bookSource.json"), []byte("[{\"name\":\"旧卷 TXT 验证书\"}]\n"), 0o644); err != nil {
-		log.Fatalf("write source metadata: %v", err)
-	}
-
-	// The smoke mounts this directory at /retired-host. A vulnerable release
-	// would prefer these readable absolute paths over the current library root.
-	retiredSource := filepath.Join(rootPath, "retired-host", libraryPath, "legacy.txt")
-	retiredCache := filepath.Join(rootPath, "retired-host", "cache", "chapter.txt")
-	for path, content := range map[string]string{
-		retiredSource: "绝不能读取 retired host source",
-		retiredCache:  "绝不能读取 retired host cache",
-	} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			log.Fatalf("create retired-host fixture: %v", err)
+	for _, fixture := range fixtures {
+		libraryPath := filepath.Join("data", fixtureUsername, fixture.directory)
+		archivePath := filepath.Join(cfg.LibraryDir, libraryPath, fixture.filename)
+		if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+			log.Fatalf("create %s archive directory: %v", fixture.title, err)
 		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			log.Fatalf("write retired-host fixture: %v", err)
+		if err := os.WriteFile(archivePath, fixture.archive, 0o644); err != nil {
+			log.Fatalf("write %s archive: %v", fixture.title, err)
 		}
-	}
+		if err := writeFixtureMetadata(filepath.Dir(archivePath), fixture.title); err != nil {
+			log.Fatalf("write %s metadata: %v", fixture.title, err)
+		}
 
-	book := models.Book{
-		UserID:       user.ID,
-		SourceID:     0,
-		Title:        fixtureBookTitle,
-		Author:       "OpenReader 旧卷夹具",
-		URL:          "local://old-volume-txt",
-		LibraryPath:  libraryPath,
-		OriginalFile: filepath.Join("/retired-host", libraryPath, "legacy.txt"),
-		TOCFile:      filepath.Join(libraryPath, "chapters.json"),
-		SourceFile:   filepath.Join(libraryPath, "bookSource.json"),
-		TOCRule:      `^第.+章.*$`,
-		LastChapter:  "第一章",
-		ChapterCount: 1,
-		CanUpdate:    true,
-	}
-	if err := database.Create(&book).Error; err != nil {
-		log.Fatalf("create fixture book: %v", err)
-	}
-	chapter := models.Chapter{
-		BookID:    book.ID,
-		Index:     0,
-		Title:     "第一章",
-		URL:       book.URL + "/chapter_0",
-		CachePath: "/retired-host/cache/chapter.txt",
-	}
-	if err := database.Create(&chapter).Error; err != nil {
-		log.Fatalf("create fixture chapter: %v", err)
-	}
-	if err := database.Create(&models.ReadingProgress{UserID: user.ID, BookID: book.ID, ChapterID: chapter.ID, ChapterIndex: 0, Offset: 6, Percent: 0.3, ChapterTitle: chapter.Title}).Error; err != nil {
-		log.Fatalf("create fixture progress: %v", err)
-	}
-	if err := database.Create(&models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterID: chapter.ID, ChapterIndex: 0, Offset: 3, Percent: 0.1, Title: "旧卷书签", Excerpt: "旧卷"}).Error; err != nil {
-		log.Fatalf("create fixture bookmark: %v", err)
+		// The smoke mounts this directory at /retired-host. A vulnerable release
+		// would prefer these readable absolute paths over the current library root.
+		retiredSource := filepath.Join(rootPath, "retired-host", libraryPath, fixture.filename)
+		retiredCache := filepath.Join(rootPath, "retired-host", "cache", fixture.directory+".txt")
+		for path, content := range map[string]string{
+			retiredSource: "绝不能读取 retired host source: " + fixture.title,
+			retiredCache:  "绝不能读取 retired host cache: " + fixture.title,
+		} {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				log.Fatalf("create %s retired-host fixture: %v", fixture.title, err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				log.Fatalf("write %s retired-host fixture: %v", fixture.title, err)
+			}
+		}
+
+		originalFile := filepath.Join("/retired-host", libraryPath, fixture.filename)
+		if fixture.directory == "old-volume-txt" {
+			// Older TXT imports commonly retained a portable relative field, while
+			// the binary formats below exercise stale host-absolute rebasing.
+			originalFile = filepath.Join(libraryPath, fixture.filename)
+		}
+		book := models.Book{
+			UserID:       user.ID,
+			SourceID:     0,
+			Title:        fixture.title,
+			Author:       "OpenReader 旧卷夹具",
+			URL:          "local://" + fixture.directory,
+			LibraryPath:  libraryPath,
+			OriginalFile: originalFile,
+			TOCFile:      filepath.Join(libraryPath, "chapters.json"),
+			SourceFile:   filepath.Join(libraryPath, "bookSource.json"),
+			TOCRule:      fixture.tocRule,
+			LastChapter:  "旧目录",
+			ChapterCount: 1,
+			CanUpdate:    true,
+		}
+		if err := database.Create(&book).Error; err != nil {
+			log.Fatalf("create %s fixture book: %v", fixture.title, err)
+		}
+		chapter := models.Chapter{
+			BookID:    book.ID,
+			Index:     0,
+			Title:     "旧目录",
+			URL:       book.URL + "/chapter_0",
+			CachePath: filepath.Join("/retired-host", "cache", fixture.directory+".txt"),
+		}
+		if err := database.Create(&chapter).Error; err != nil {
+			log.Fatalf("create %s fixture chapter: %v", fixture.title, err)
+		}
+		if fixture.directory != "old-volume-txt" {
+			continue
+		}
+		if err := database.Create(&models.ReadingProgress{UserID: user.ID, BookID: book.ID, ChapterID: chapter.ID, ChapterIndex: 0, Offset: 6, Percent: 0.3, ChapterTitle: chapter.Title}).Error; err != nil {
+			log.Fatalf("create fixture progress: %v", err)
+		}
+		if err := database.Create(&models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterID: chapter.ID, ChapterIndex: 0, Offset: 3, Percent: 0.1, Title: "旧卷书签", Excerpt: "旧卷"}).Error; err != nil {
+			log.Fatalf("create fixture bookmark: %v", err)
+		}
 	}
 
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
@@ -151,5 +174,246 @@ func main() {
 		log.Fatalf("close fixture database: %v", err)
 	}
 
-	fmt.Printf("created old mounted-volume fixture: user=%s password=%s title=%s\n", fixtureUsername, fixturePassword, fixtureBookTitle)
+	fmt.Printf("created old mounted-volume fixture: user=%s password=%s archives=txt,epub,umd,cbz\n", fixtureUsername, fixturePassword)
+}
+
+func writeFixtureMetadata(directory, title string) error {
+	chapters, err := json.Marshal([]map[string]any{{"title": "旧目录", "index": 0}})
+	if err != nil {
+		return err
+	}
+	source, err := json.Marshal([]map[string]string{{"name": title}})
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(directory, "chapters.json"), append(chapters, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(directory, "bookSource.json"), append(source, '\n'), 0o644)
+}
+
+func historicalArchiveFixtures() ([]historicalArchiveFixture, error) {
+	epub, err := historicalEPUBArchive()
+	if err != nil {
+		return nil, err
+	}
+	umd, err := historicalReaderDevUMDArchive()
+	if err != nil {
+		return nil, err
+	}
+	cbz, err := historicalCBZArchive()
+	if err != nil {
+		return nil, err
+	}
+	return []historicalArchiveFixture{
+		{
+			title:     "旧卷 TXT 验证书",
+			directory: "old-volume-txt",
+			filename:  "legacy.txt",
+			tocRule:   `^第.+章.*$`,
+			archive:   []byte("第一章\n旧卷归档正文只能从 library 读取。\n"),
+		},
+		{
+			title:     "旧卷 EPUB 验证书",
+			directory: "old-volume-epub",
+			filename:  "legacy.epub",
+			tocRule:   "toc",
+			archive:   epub,
+		},
+		{
+			title:     "旧卷 UMD 验证书",
+			directory: "old-volume-umd",
+			filename:  "legacy.umd",
+			archive:   umd,
+		},
+		{
+			title:     "旧卷 CBZ 验证书",
+			directory: "old-volume-cbz",
+			filename:  "legacy.cbz",
+			archive:   cbz,
+		},
+	}, nil
+}
+
+func historicalEPUBArchive() ([]byte, error) {
+	var result bytes.Buffer
+	writer := zip.NewWriter(&result)
+	write := func(name, content string) error {
+		file, err := writer.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = file.Write([]byte(content))
+		return err
+	}
+	for _, entry := range []struct{ name, content string }{
+		{"META-INF/container.xml", `<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`},
+		{"OPS/content.opf", `<package><metadata><title>旧卷 EPUB</title></metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/></spine></package>`},
+		{"OPS/one.xhtml", `<html><body><h1>旧卷 EPUB 第一章</h1><p>旧卷 EPUB archive 正文。</p></body></html>`},
+	} {
+		if err := write(entry.name, entry.content); err != nil {
+			return nil, err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return result.Bytes(), nil
+}
+
+func historicalCBZArchive() ([]byte, error) {
+	var result bytes.Buffer
+	writer := zip.NewWriter(&result)
+	write := func(name, content string) error {
+		file, err := writer.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = file.Write([]byte(content))
+		return err
+	}
+	for _, entry := range []struct{ name, content string }{
+		{"ComicInfo.xml", `<ComicInfo><Title>旧卷 CBZ</Title><Writer>OpenReader</Writer></ComicInfo>`},
+		{"pages/002.png", "old-volume-second-page"},
+		{"pages/001.jpg", "old-volume-first-page"},
+	} {
+		if err := write(entry.name, entry.content); err != nil {
+			return nil, err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return result.Bytes(), nil
+}
+
+func historicalReaderDevUMDArchive() ([]byte, error) {
+	type chapter struct {
+		title   string
+		content string
+	}
+	chapters := []chapter{
+		{title: "第一章", content: "第一段\u2029第二段"},
+		{title: "第二章", content: "第二章正文"},
+	}
+	utf16le := func(value string) ([]byte, error) {
+		encoded := make([]byte, 0, len(value)*2)
+		for _, unit := range value {
+			if unit > 0xffff {
+				return nil, fmt.Errorf("historical UMD fixture only supports BMP runes: %q", value)
+			}
+			encoded = append(encoded, byte(unit), byte(unit>>8))
+		}
+		return encoded, nil
+	}
+
+	var result bytes.Buffer
+	writeSection := func(segmentType uint16, flag byte, payload []byte) error {
+		if len(payload)+5 > 0xff {
+			return fmt.Errorf("historical UMD section payload too large: %d", len(payload))
+		}
+		result.WriteByte('#')
+		var number [2]byte
+		binary.LittleEndian.PutUint16(number[:], segmentType)
+		result.Write(number[:])
+		result.WriteByte(flag)
+		result.WriteByte(byte(len(payload) + 5))
+		_, err := result.Write(payload)
+		return err
+	}
+	writeAdditional := func(check uint32, payload []byte) error {
+		result.WriteByte('$')
+		var number [4]byte
+		binary.LittleEndian.PutUint32(number[:], check)
+		result.Write(number[:])
+		binary.LittleEndian.PutUint32(number[:], uint32(len(payload)+9))
+		result.Write(number[:])
+		_, err := result.Write(payload)
+		return err
+	}
+	uint32Payload := func(value uint32) []byte {
+		var payload [4]byte
+		binary.LittleEndian.PutUint32(payload[:], value)
+		return payload[:]
+	}
+
+	result.Write([]byte{0x89, 0x9b, 0x9a, 0xde})
+	if err := writeSection(0x01, 0, []byte{0x01, 0x11, 0x22}); err != nil {
+		return nil, err
+	}
+	for _, value := range []string{"上游 UMD 导入", "导入作者"} {
+		encoded, err := utf16le(value)
+		if err != nil {
+			return nil, err
+		}
+		segmentType := uint16(0x02)
+		if value == "导入作者" {
+			segmentType = 0x03
+		}
+		if err := writeSection(segmentType, 0, encoded); err != nil {
+			return nil, err
+		}
+	}
+
+	var contents bytes.Buffer
+	offsets := make([]uint32, 0, len(chapters))
+	titles := make([]byte, 0)
+	for _, chapter := range chapters {
+		offsets = append(offsets, uint32(contents.Len()))
+		content, err := utf16le(chapter.content)
+		if err != nil {
+			return nil, err
+		}
+		contents.Write(content)
+		title, err := utf16le(chapter.title)
+		if err != nil {
+			return nil, err
+		}
+		titles = append(titles, byte(len(title)))
+		titles = append(titles, title...)
+	}
+	if err := writeSection(0x0b, 0, uint32Payload(uint32(contents.Len()))); err != nil {
+		return nil, err
+	}
+	const offsetCheck uint32 = 0x11223344
+	if err := writeSection(0x83, 0, uint32Payload(offsetCheck)); err != nil {
+		return nil, err
+	}
+	offsetPayload := make([]byte, len(offsets)*4)
+	for index, offset := range offsets {
+		binary.LittleEndian.PutUint32(offsetPayload[index*4:], offset)
+	}
+	if err := writeAdditional(offsetCheck, offsetPayload); err != nil {
+		return nil, err
+	}
+
+	const titleCheck uint32 = 0x55667788
+	if err := writeSection(0x84, 1, uint32Payload(titleCheck)); err != nil {
+		return nil, err
+	}
+	if err := writeAdditional(titleCheck, titles); err != nil {
+		return nil, err
+	}
+	var compressed bytes.Buffer
+	compressor := zlib.NewWriter(&compressed)
+	if _, err := compressor.Write(contents.Bytes()); err != nil {
+		return nil, err
+	}
+	if err := compressor.Close(); err != nil {
+		return nil, err
+	}
+	const chunkCheck uint32 = 0x99aabbcc
+	if err := writeAdditional(chunkCheck, compressed.Bytes()); err != nil {
+		return nil, err
+	}
+	if err := writeSection(0x00f1, 0, make([]byte, 16)); err != nil {
+		return nil, err
+	}
+	if err := writeSection(0x0081, 1, make([]byte, 4)); err != nil {
+		return nil, err
+	}
+	if err := writeAdditional(0, uint32Payload(chunkCheck)); err != nil {
+		return nil, err
+	}
+	return result.Bytes(), nil
 }

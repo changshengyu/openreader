@@ -34,18 +34,18 @@ HISTORICAL_VOLUME=1 IMAGE=ghcr.io/changshengyu/openreader:latest scripts/docker-
 - Health and login still work after restart.
 
 When `HISTORICAL_VOLUME=1` is set, the script additionally builds an old on-disk
-SQLite fixture (with newer EPUB columns removed), a local TXT archive with no
-derived content, and a separately mounted `/retired-host` directory containing
-readable stale absolute source/cache decoys. The container must:
+SQLite fixture (with newer EPUB columns removed), a relative-path TXT archive plus stale-absolute
+EPUB/standard reader-dev UMD/CBZ archives with no derived content, and a separately mounted
+`/retired-host` directory containing readable source/cache decoys. The container must:
 
 - migrate the old SQLite rows without losing progress or bookmarks;
-- recover chapter text from `library/`, not either retired-host decoy;
-- refresh without changing the archive SHA-256;
+- recover each format from `library/`, not either retired-host decoy (including a CBZ resource read);
+- refresh every archive without changing its SHA-256;
 - trigger and restore a logical backup without changing the mounted archive;
 - remain readable after a full container restart.
 
-The historical fixture intentionally covers the old-volume path/security and
-transaction boundary. EPUB, UMD and CBZ old-volume format fixtures remain
-separate P1-E4 work and must not be claimed by this TXT smoke.
+The historical fixture covers the old-volume path/security and transaction boundary for all four
+supported local archive formats. It does not replace dedicated relative-cache migration,
+cross-user Docker, or portable archive-backup contracts.
 
 This is not a substitute for full restore validation. It is the minimum release gate for Docker volume and backup regressions.

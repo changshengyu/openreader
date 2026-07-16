@@ -111,6 +111,44 @@ else:
 ' "$1"
 }
 
+archive_hash() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+assert_archive_hash() {
+  archive="$1"
+  expected="$2"
+  phase="$3"
+  actual="$(archive_hash "$archive")"
+  if [ "$actual" != "$expected" ]; then
+    echo "${phase} rewrote original archive: $archive" >&2
+    exit 1
+  fi
+}
+
+read_historical_book() {
+  book_id="$1"
+  expected_format="$2"
+  expected_content="$3"
+  response="$(curl -fsS "${BASE_URL}/api/books/${book_id}/chapters/0/content" -H "Authorization: Bearer ${TOKEN}")"
+  if [ -n "$expected_format" ]; then
+    printf '%s' "$response" | grep "\"format\":\"${expected_format}\"" >/dev/null
+  fi
+  if [ -n "$expected_content" ]; then
+    printf '%s' "$response" | grep -F "$expected_content" >/dev/null
+  fi
+  if printf '%s' "$response" | grep -q 'retired host'; then
+    echo "historical volume read the retired-host mount" >&2
+    exit 1
+  fi
+  printf '%s' "$response"
+}
+
+refresh_historical_book() {
+  curl -fsS -X POST "${BASE_URL}/api/books/$1/refresh-local" \
+    -H "Authorization: Bearer ${TOKEN}" >/dev/null
+}
+
 start_container
 wait_health
 
@@ -121,23 +159,34 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | json_field token)"
 
   BOOKS_RESPONSE="$(curl -fsS "${BASE_URL}/api/books" -H "Authorization: Bearer ${TOKEN}")"
-  BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 TXT 验证书')"
-  ORIGINAL_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-txt/legacy.txt"
-  ORIGINAL_HASH="$(shasum -a 256 "$ORIGINAL_ARCHIVE" | awk '{print $1}')"
+  TXT_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 TXT 验证书')"
+  EPUB_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 EPUB 验证书')"
+  UMD_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 UMD 验证书')"
+  CBZ_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 CBZ 验证书')"
 
-  CONTENT_RESPONSE="$(curl -fsS "${BASE_URL}/api/books/${BOOK_ID}/chapters/0/content" -H "Authorization: Bearer ${TOKEN}")"
-  printf '%s' "$CONTENT_RESPONSE" | grep '旧卷归档正文只能从 library 读取' >/dev/null
-  if printf '%s' "$CONTENT_RESPONSE" | grep -q 'retired host'; then
-    echo "historical volume read the retired-host mount" >&2
-    exit 1
-  fi
+  TXT_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-txt/legacy.txt"
+  EPUB_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-epub/legacy.epub"
+  UMD_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-umd/legacy.umd"
+  CBZ_ARCHIVE="$ROOT/library/data/${USERNAME}/old-volume-cbz/legacy.cbz"
+  TXT_HASH="$(archive_hash "$TXT_ARCHIVE")"
+  EPUB_HASH="$(archive_hash "$EPUB_ARCHIVE")"
+  UMD_HASH="$(archive_hash "$UMD_ARCHIVE")"
+  CBZ_HASH="$(archive_hash "$CBZ_ARCHIVE")"
 
-  curl -fsS -X POST "${BASE_URL}/api/books/${BOOK_ID}/refresh-local" \
-    -H "Authorization: Bearer ${TOKEN}" >/dev/null
-  if [ "$(shasum -a 256 "$ORIGINAL_ARCHIVE" | awk '{print $1}')" != "$ORIGINAL_HASH" ]; then
-    echo "historical volume refresh rewrote the original archive" >&2
-    exit 1
-  fi
+  read_historical_book "$TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
+  read_historical_book "$EPUB_BOOK_ID" "epub" "" >/dev/null
+  read_historical_book "$UMD_BOOK_ID" "" '第一段' >/dev/null
+  CBZ_RESPONSE="$(read_historical_book "$CBZ_BOOK_ID" "cbz" "")"
+  CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
+  curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
+
+  for book_id in "$TXT_BOOK_ID" "$EPUB_BOOK_ID" "$UMD_BOOK_ID" "$CBZ_BOOK_ID"; do
+    refresh_historical_book "$book_id"
+  done
+  assert_archive_hash "$TXT_ARCHIVE" "$TXT_HASH" 'historical volume refresh'
+  assert_archive_hash "$EPUB_ARCHIVE" "$EPUB_HASH" 'historical volume refresh'
+  assert_archive_hash "$UMD_ARCHIVE" "$UMD_HASH" 'historical volume refresh'
+  assert_archive_hash "$CBZ_ARCHIVE" "$CBZ_HASH" 'historical volume refresh'
 
   BACKUP_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/backup/trigger" \
     -H "Authorization: Bearer ${TOKEN}")"
@@ -147,10 +196,10 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   curl -fsS -X POST "${BASE_URL}/api/backup/restore-legado" \
     -H "Authorization: Bearer ${TOKEN}" \
     -F "file=@${BACKUP_PATH}" >/dev/null
-  if [ "$(shasum -a 256 "$ORIGINAL_ARCHIVE" | awk '{print $1}')" != "$ORIGINAL_HASH" ]; then
-    echo "historical backup restore rewrote the original archive" >&2
-    exit 1
-  fi
+  assert_archive_hash "$TXT_ARCHIVE" "$TXT_HASH" 'historical backup restore'
+  assert_archive_hash "$EPUB_ARCHIVE" "$EPUB_HASH" 'historical backup restore'
+  assert_archive_hash "$UMD_ARCHIVE" "$UMD_HASH" 'historical backup restore'
+  assert_archive_hash "$CBZ_ARCHIVE" "$CBZ_HASH" 'historical backup restore'
 
   docker stop "$NAME" >/dev/null
   wait_removed
@@ -161,9 +210,13 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
     -H 'Content-Type: application/json' \
     -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
   TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | json_field token)"
-  CONTENT_RESPONSE="$(curl -fsS "${BASE_URL}/api/books/${BOOK_ID}/chapters/0/content" -H "Authorization: Bearer ${TOKEN}")"
-  printf '%s' "$CONTENT_RESPONSE" | grep '旧卷归档正文只能从 library 读取' >/dev/null
-  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE}"
+  read_historical_book "$TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
+  read_historical_book "$EPUB_BOOK_ID" "epub" "" >/dev/null
+  read_historical_book "$UMD_BOOK_ID" "" '第一段' >/dev/null
+  CBZ_RESPONSE="$(read_historical_book "$CBZ_BOOK_ID" "cbz" "")"
+  CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
+  curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
+  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz)"
   exit 0
 fi
 

@@ -121,8 +121,9 @@ Implementation evidence: the runtime now recognizes the standard segmented reade
 
 ## P1-E4 old mounted local-book volume recovery
 
-Status: first old-SQLite/path/cache implementation complete; full-format and Docker fixtures
-pending. The focused contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
+Status: old-SQLite/path/cache implementation and four-format Docker fixture complete; legal
+relative-cache migration, cross-user Docker fixture and portable archive backup remain pending.
+The focused contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
 
 - A recoverable installation is the mounted tuple `data/`, `cache/`, and `library/`, not a
   new database plus an application-level backup ZIP. `data/openreader.db` may retain old
@@ -147,22 +148,24 @@ hashes, user isolation, safe handling of stale absolute paths, and Docker stop/r
 release image must also run a backup trigger/list and safe restore that leaves the mounted
 local archive and chapter rows unchanged.
 
-Implementation evidence so far: `backend/api/old_volume_contract_test.go` creates an old SQLite
+Implementation evidence: `backend/api/old_volume_contract_test.go` creates an old SQLite
 file without the current EPUB resource/fragment/variable columns, closes it, then performs the
 production migration order before serving a deleted-cache local chapter. It locks old
 progress/bookmark preservation, archive-root-only rebasing of a stale absolute source/cache path
 and cross-user 404 behavior. `backend/db.TestMigrateLocalBookCacheSkipsUnsafeHistoricalCachePath`
 locks that startup never copies or deletes `cache/../...` host data. The local
-`HISTORICAL_VOLUME=1` Docker smoke creates the same kind of old SQLite/TXT/archive fixture,
-mounts readable stale `/retired-host` decoys, then proves archive recovery, refresh, backup/restore
-non-mutation and restart; the ordinary fresh-volume smoke also passes. Full Go tests, frontend
-tests and production build pass. The all-format EPUB/UMD/CBZ old-volume fixture remains required
-before P1-E4 can be called fully complete. The validated first Docker slice was published from
+`HISTORICAL_VOLUME=1` Docker smoke creates the same kind of old SQLite fixture with relative-path
+TXT plus stale-absolute EPUB, standard reader-dev UMD and CBZ archives, mounts readable
+`/retired-host` decoys for every archive/cache pair, then proves every archive can recover, refresh, survive backup/restore without
+mutation and remain readable after restart; the ordinary fresh-volume smoke also passes. Full Go
+tests, frontend tests and production build pass. This completes the all-format Docker portion, but
+not the separate legal relative-cache, Docker cross-user and portable archive-backup contracts. The
+validated first Docker slice was published from
 Git `885c8b7` as `ghcr.io/changshengyu/openreader:885c8b7` and `:latest`, both pointing to
 multi-architecture index `sha256:3a417024275d5b2be412b6d1a9d02f663bf041f38b6131ef9b1cbb4a5025a3c5`.
 `TestHistoricalMountedVolumeRebuildsEPUBUMDAndCBZArchives` additionally covers stale absolute
-archive paths and missing derived content for all remaining E4 formats at the API boundary; their
-container fixture remains pending.
+archive paths and missing derived content for all remaining E4 formats at the API boundary; the
+container fixture now exercises the equivalent four-format volume.
 
 ## P2 backup ZIP restore compatibility and bounds
 
