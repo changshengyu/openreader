@@ -1,9 +1,5 @@
 <template>
   <header class="reader-mobile-top" :class="{ visible }">
-    <button class="mobile-tool-button" type="button" @click="$emit('action', 'home')">
-      <el-icon :size="19"><ArrowLeft /></el-icon>
-      <span>首页</span>
-    </button>
     <button class="mobile-tool-button" type="button" @click="$emit('action', 'shelf')">
       <el-icon :size="19"><Notebook /></el-icon>
       <span>书架</span>
@@ -19,6 +15,10 @@
     <button class="mobile-tool-button" type="button" @click="$emit('action', 'settings')">
       <el-icon :size="19"><Setting /></el-icon>
       <span>设置</span>
+    </button>
+    <button class="mobile-tool-button" type="button" @click="$emit('action', 'home')">
+      <el-icon :size="19"><ArrowLeft /></el-icon>
+      <span>首页</span>
     </button>
   </header>
 

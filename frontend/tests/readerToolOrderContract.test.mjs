@@ -17,7 +17,7 @@ const panels = readFileSync(
 
 function visibleTopToolOrder(source) {
   const template = source.slice(0, source.indexOf('</template>'))
-  return ['首页', '书架', '书源', '目录', '设置'].map(label => template.indexOf(`<span>${label}</span>`))
+  return ['书架', '书源', '目录', '设置', '首页'].map(label => template.indexOf(`<span>${label}</span>`))
 }
 
 test('mobile Reader uses the upstream visible top-tool order', () => {

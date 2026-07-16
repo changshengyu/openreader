@@ -41,10 +41,10 @@ export const useReaderStore = defineStore('reader', {
     customBgImage: '',
     customBgImageList: [],
     brightness: 100,
-    autoReadSpeed: 12,
+    autoReadSpeed: 1,
     autoReadingMethod: '像素滚动',
-    autoReadingPixel: 12,
-    autoReadingLineTime: 260,
+    autoReadingPixel: 1,
+    autoReadingLineTime: 1000,
     animateDuration: 300,
     ttsRate: 1,
     ttsPitch: 1,
@@ -326,12 +326,12 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setAutoReadingPixel(pixel) {
-      this.autoReadingPixel = clampNumber(pixel, 1, 80, 12)
+      this.autoReadingPixel = clampNumber(pixel, 1, 80, 1)
       this.autoReadSpeed = this.autoReadingPixel
       this.markSettingsDirty()
     },
     setAutoReadingLineTime(lineTime) {
-      this.autoReadingLineTime = clampNumber(lineTime, 10, 3000, 260)
+      this.autoReadingLineTime = clampNumber(lineTime, 10, 3000, 1000)
       this.markSettingsDirty()
     },
     setAnimateDuration(duration) {
@@ -395,9 +395,9 @@ export const useReaderStore = defineStore('reader', {
       this.columnWidth = clampNumber(this.columnWidth, 320, 1200, 800)
       this.brightness = clampNumber(this.brightness, 50, 150, 100)
       if (!['像素滚动', '段落滚动'].includes(this.autoReadingMethod)) this.autoReadingMethod = '像素滚动'
-      this.autoReadingPixel = clampNumber(this.autoReadingPixel ?? this.autoReadSpeed, 1, 80, 12)
+      this.autoReadingPixel = clampNumber(this.autoReadingPixel ?? this.autoReadSpeed, 1, 80, 1)
       this.autoReadSpeed = this.autoReadingPixel
-      this.autoReadingLineTime = clampNumber(this.autoReadingLineTime, 10, 3000, 260)
+      this.autoReadingLineTime = clampNumber(this.autoReadingLineTime, 10, 3000, 1000)
       this.animateDuration = clampNumber(this.animateDuration, 0, 500, 300)
       if (this.pageType === 'kindle') {
         this.animateDuration = 0
@@ -824,10 +824,10 @@ function defaultReaderSettings() {
     customConfigList: defaultCustomConfigList(),
     autoTheme: false,
     brightness: 100,
-    autoReadSpeed: 12,
+    autoReadSpeed: 1,
     autoReadingMethod: '像素滚动',
-    autoReadingPixel: 12,
-    autoReadingLineTime: 260,
+    autoReadingPixel: 1,
+    autoReadingLineTime: 1000,
     animateDuration: 300,
     ttsRate: 1,
     ttsPitch: 1,
@@ -869,9 +869,9 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.fontColor = typeof payload.fontColor === 'string' ? payload.fontColor : ''
   settings.brightness = clampNumber(payload.brightness, 50, 150, 100)
   settings.autoReadingMethod = payload.autoReadingMethod === '段落滚动' ? '段落滚动' : '像素滚动'
-  settings.autoReadingPixel = clampNumber(payload.autoReadingPixel ?? payload.autoReadSpeed, 1, 80, 12)
+  settings.autoReadingPixel = clampNumber(payload.autoReadingPixel ?? payload.autoReadSpeed, 1, 80, 1)
   settings.autoReadSpeed = settings.autoReadingPixel
-  settings.autoReadingLineTime = clampNumber(payload.autoReadingLineTime, 10, 3000, 260)
+  settings.autoReadingLineTime = clampNumber(payload.autoReadingLineTime, 10, 3000, 1000)
   settings.animateDuration = clampNumber(payload.animateDuration, 0, 500, 300)
   settings.ttsRate = normalizeTTSRate(payload.ttsRate)
   settings.ttsPitch = normalizeTTSPitch(payload.ttsPitch)
@@ -933,10 +933,10 @@ function defaultCustomConfigList() {
       customConfigName: '内置白天',
       customConfigList: [],
       brightness: 100,
-      autoReadSpeed: 12,
+      autoReadSpeed: 1,
       autoReadingMethod: '像素滚动',
-      autoReadingPixel: 12,
-      autoReadingLineTime: 260,
+      autoReadingPixel: 1,
+      autoReadingLineTime: 1000,
       animateDuration: 300,
       ttsRate: 1,
       ttsPitch: 1,
@@ -970,10 +970,10 @@ function defaultCustomConfigList() {
       customConfigName: '内置黑夜',
       customConfigList: [],
       brightness: 100,
-      autoReadSpeed: 12,
+      autoReadSpeed: 1,
       autoReadingMethod: '像素滚动',
-      autoReadingPixel: 12,
-      autoReadingLineTime: 260,
+      autoReadingPixel: 1,
+      autoReadingLineTime: 1000,
       animateDuration: 300,
       ttsRate: 1,
       ttsPitch: 1,

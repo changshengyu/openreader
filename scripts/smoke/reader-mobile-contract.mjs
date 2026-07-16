@@ -217,7 +217,7 @@ async function assertMobileTopToolContract(page, viewport) {
     disabled: button.disabled,
   })))
   assert(
-    JSON.stringify(state.map(item => item.label)) === JSON.stringify(['首页', '书架', '书源', '目录', '设置']),
+    JSON.stringify(state.map(item => item.label)) === JSON.stringify(['书架', '书源', '目录', '设置', '首页']),
     `${viewport.width}: mobile Reader top-tool order must match reader-dev`,
   )
   assert(state.find(item => item.label === '书源')?.disabled === false, `${viewport.width}: Reader source entry must remain available`)
