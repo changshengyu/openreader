@@ -20,9 +20,9 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Module | reader-dev original behavior/files | OpenReader current behavior/files | Difference/risk | Status | Recommended tests |
 |---|---|---|---|---|---|
 | Frontend scene structure | `web/src/views/Index.vue`, `web/src/views/Reader.vue`; router has `/` and `/reader`. | Canonical Index work stays at `/`; historical search/discover/source/settings/storage/detail URLs now preserve their intent through root-workspace redirects/overlays, while Reader remains a separate scene. | Vue Router has more compatibility routes than upstream, but they no longer create independent product pages. | `aligned` for extracted P1 scene convergence | Router redirect tests; browser flow search → BookInfo → read. |
-| Reader mobile toolbar state | `web/src/views/Reader.vue`: `showToolBar: true`; center tap toggles; panel open branches return without hiding toolbar, with a read-aloud-bar exception. | `frontend/src/views/Reader.vue` uses `mobileChromeVisible = ref(true)`; primary panels/global dialogs retain it, while TTS opening hides it and TTS center taps do not retoggle it. | Default-visible toolbar, panel/dialog coexistence and the extracted TTS exception are implemented. | `aligned` for Reader P0 tool-layer states | Unit contracts plus `reader-mobile-contract.mjs` and `reader-tts-contract.mjs` at desktop/390/360. |
-| Reader mobile panel structure | Primary shelf/source/catalog/settings use Element popovers; bookmarks/search-content are App-level dialogs; cache is an inline read-bar zone. | OpenReader uses `ReaderMobileWorkspacePanel.primary` for the four primary panels, shared root dialogs for bookmark/search/BookInfo, and an inline cache zone. | The Vue/Element structure differs but ownership, geometry, coexistence and click protection are verified. | `technical-stack-equivalent` | `reader-mobile-contract.mjs` covers all branches at desktop/390/360. |
-| Reader mobile content geometry | Upstream mini `.chapter` uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, `text-align: justify`; slide mode also uses 16px content margins. | Current mobile `.reader-page` uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, and justified reader body/paragraphs. | Base geometry is implemented; acceptance requires actual rendered paragraph left/right gap checks, not only CSS value checks. | `aligned` for base P0 | DOM geometry probe for page/body/paragraph left/right gaps within 1px across 390×844 and 360×800; ensure toolbar show/hide does not shift content. |
+| Reader mobile toolbar state | `web/src/views/Reader.vue`: `showToolBar: true`; center tap toggles; panel open branches return without hiding toolbar, with a read-aloud-bar exception. | `frontend/src/views/Reader.vue` uses `mobileChromeVisible = ref(true)`; primary panels/global dialogs retain it, while TTS opening hides it and TTS center taps do not retoggle it. | Base state is present, but the renewed P0 audit found an incorrect mobile button order and coverage that mistakes current assertions for upstream proof. | `partial` — re-audit in progress | Real DOM/state assertions at desktop/390/360, including exact button order, panel interaction and TTS exception. |
+| Reader mobile panel structure | Primary shelf/source/catalog/settings use Element popovers; bookmarks/search-content are App-level dialogs; cache is an inline read-bar zone. | OpenReader uses `ReaderMobileWorkspacePanel.primary` for the four primary panels, shared root dialogs for bookmark/search/BookInfo, and an inline cache zone. | The full-width technical adaptation is viable, but current mutual-exclusion and global-dialog click-through claims need source/runtime evidence, not previous unit-test assumptions. | `partial` — re-audit in progress | Compare each panel transition to upstream and add browser evidence for every primary/global panel. |
+| Reader mobile content geometry | Upstream mini `.chapter` uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, `text-align: justify`; slide mode also uses 16px content margins. | Current mobile `.reader-page` uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, and justified reader body/paragraphs. | Static values match, but no current proof establishes that every mode/tool state keeps left/right paragraph gaps equal. | `partial` — re-audit in progress | DOM geometry probe for page/body/paragraph left/right gaps within 1px across 390×844 and 360×800; ensure toolbar show/hide and panel changes do not shift content. |
 | Reader scrolling vs click paging | Upstream has page/scroll modes with discrete click navigation. | User requested continuous native finger/wheel scrolling while click paging remains segmented. | Intentional UX improvement if it does not change mode selection semantics. | `acceptable-change` | Browser scroll continuity probe; click paging regression tests. |
 | Reader settings controls | Upstream uses controls that are easier to distinguish visually; user requested minus/value/plus controls instead of current easy-to-mis-tap slider behavior. | Current setting stepper exists but must be rechecked against upstream layout/state. | Allowed UX adaptation, but values/defaults/state must match upstream. | `acceptable-change` | Unit tests for value bounds; browser setting interaction test. |
 | Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, read-aloud, and cross-chapter behavior. `EpubFile.kt` additionally treats `BookChapter.startFragmentId`/`endFragmentId` and the next chapter URL as EPUB content boundaries. | Current `ReaderChapterContent.vue` handles text/images/volume blocks, CBZ image resources, EPUB iframe resources, a dedicated audio branch for `type === 1` chapters, and the extracted TTS/read-bar state machine. | E4 keeps the image-only first EPUB spine cover and now preserves NAV/NCX fragment directory entries, signed XHTML slices, exact `(resourcePath, resourceFragment)` matching, same-resource slice navigation and cross-XHTML chapter transitions. CSP/capability protection remains the allowed Go/Vue security adaptation. | `aligned` for E4-EPUB-2 | [`epub-fragment-p1e4-contract.md`](epub-fragment-p1e4-contract.md), parser/API/migration/security tests, and `reader-epub-contract.mjs` at 1440/390/360. |
@@ -260,6 +260,59 @@ Required implementation before claiming P1 BookInfo parity:
 - Reader-specific toolbar shortcuts are not upstream BookInfo actions and have been removed from `useReaderPanels.openBookInfo()`; Reader now opens a plain shared BookInfo overlay like upstream.
 
 ## Immediate P0 contract: Reader mobile
+
+### 2026-07-16 full re-audit — evidence replaces prior incremental claims
+
+This section supersedes the status of individual Reader micro-slices above whenever they conflict.
+It was extracted without changing application code from the fixed upstream checkout
+`/private/tmp/changshengyu-reader-dev` at `fa22f271849d45f93349ae1636223e27b16a4691` and the
+current OpenReader worktree at Git `5ad0768`.
+
+Authoritative upstream files:
+
+- `web/src/views/Reader.vue` — toolbar order, popover state flags, central tap/keyboard branches,
+  reading modes and desktop rails.
+- `web/src/components/Content.vue` — title/paragraph/volume/image DOM and typography.
+- `web/src/components/ReadSettings.vue` — setting labels, defaults, steppers and mode changes.
+- `web/src/App.vue` and `web/src/plugins/config.js` — mini popover geometry and fresh defaults.
+
+Current OpenReader scope:
+
+- `frontend/src/views/Reader.vue`, `components/reader/ReaderMobileChrome.vue`,
+  `ReaderMobileWorkspacePanel.vue`, `ReaderDesktopTools.vue`, `ReaderDesktopWorkspacePanel.vue`,
+  `ReaderChapterContent.vue`, `ReaderSettingsPanel.vue`.
+- `composables/useReaderChrome.js`, `useReaderPointer.js`, `useReaderPrimaryPanels.js`,
+  `useReaderPanels.js`, `useReaderTools.js`; `stores/reader.js`; and their existing tests/smokes.
+
+| Contract layer | Upstream fact | Current evidence | Classification and required action |
+|---|---|---|---|
+| Mobile top-tool order | Mini toolbar keeps template order **书架 → 书源 → 目录 → 设置 → 首页**; top/bottom buttons are desktop-only. | `ReaderMobileChrome.vue` renders **首页 → 书架 → 书源 → 目录 → 设置**. `readerToolOrderContract.test.mjs` incorrectly calls that order upstream. | **must-fix**. Replace the test first, then restore the exact upstream order without changing tool handlers. |
+| Tool-layer entry and center tap | `showToolBar` initializes to `true`; a center tap toggles it. Opening any primary popover returns before that toggle. TTS/read-bar is the explicit exception. | `mobileChromeVisible = ref(true)`, `useReaderPointer`, and `useReaderChrome` model these branches; primary shell has z-index 7 and chrome z-index 8. | **partial**. State code is promising, but acceptance requires one real-browser state table at 390×844 and 360×800 rather than source-only tests. |
+| Four primary popover flags | Upstream owns separate `popBookShelfVisible`, `popBookSourceVisible`, `popCataVisible`, and `readSettingsVisible` flags. It does not contain a handwritten global close-all transition. | `useReaderPrimaryPanels.toggle()` closes all four before opening a tool; its current test asserts that exclusivity. | **unknown** until the fixed upstream runtime is observed. Do not retain this coupling merely because current tests pass; record the observed behavior and then keep/rebuild the Vue 3 equivalent. |
+| Full-width primary panel geometry | Mini `.popper-component` is fixed at `top:0`, `left:0`, `width:100vw`, no border/shadow. Each inner upstream component owns its own safe-area/inset layout. It remains beneath the tool strip. | `ReaderMobileWorkspacePanel.primary` is `100vw × 100dvh`, no generic header/padding, and its content owns insets. | **technical-stack-equivalent pending visual proof**. Validate tool-strip visibility, panel scroll, and no content click-through for shelf/source/catalog/settings. |
+| Global overlays | Bookmark, text search and BookInfo are root dialogs, not reader primary popovers. They do not assign `showToolBar = false`. | OpenReader delegates them to the global overlay store, but `isOverlayOpen` only names primary panels and the bookmark form; protection relies partly on each teleported dialog backdrop. | **must-verify**. Browser tests must prove every dialog consumes panel/body clicks and leaves tools visible; add explicit guards only if the real flow exposes a hole. |
+| Desktop work area | Left rail is 58px-wide tool cells, while popovers occupy the reading work area. Floating actions retain their upstream sequence and side placement. | `ReaderDesktopTools` has equivalent labels/actions, but `ReaderDesktopWorkspacePanel` is a bespoke full-frame overlay rather than an anchored Element popover. | **partial**. Capture desktop 1440×900 geometry/order for each primary tool before judging the current structure acceptable. |
+| Text layout | Upstream text uses `h3` 28px/1.2/center, paragraphs with 2em indent and break-all wrapping; mini pages are justified with 16px edges. | `ReaderChapterContent` keeps these DOM/CSS semantics and `Reader.vue` supplies 16px mobile padding. | **partial**. Re-run rendered symmetry and title/paragraph spacing checks in page, flip, scroll and scroll2 modes; no static CSS claim is enough. |
+| Mode/default values | Upstream fresh defaults include 18px/400/1.8/0.2, `上下滑动`, `自动`, 300ms, `像素滚动`, `autoReadingPixel:1`, and `autoReadingLineTime:1000`. | OpenReader maps the base reading defaults correctly but defaults auto-reading pixel/line time to `12`/`260`. | **must-fix** for fresh-setting parity. Preserve existing persisted user settings; update only fresh/fallback defaults and their contract tests. |
+| Settings events | Upstream has one `@readMethodChange` transition per settings interaction. | The mobile `ReaderSettingsPanel` call in `Reader.vue` contains duplicate `@mode-change="onModeChange"`. | **must-fix**. Remove the duplicate binding and add an interaction regression proving one mode change causes one rebuild/save sequence. |
+| User-approved differences | Native finger/wheel scrolling remains continuous; click paging remains segmented. Numeric minus/value/plus controls replace easy-to-mis-tap sliders. | Implemented through scroll/pointer controllers and `ReaderSettingStepper`. | **acceptable-change**. Keep only after the surrounding upstream state/default/geometry contract passes. |
+
+The previous tests are evidence only where they assert the table above. In particular,
+`readerToolOrderContract.test.mjs` and the primary-panel exclusivity test must not be used as proof
+of upstream parity until rewritten against this contract.
+
+#### P0 Reader implementation gates after this inventory
+
+1. Replace incorrect unit contracts first: mobile tool order, fresh auto-read defaults, one
+   `mode-change` event, and independently documented primary-popover behavior.
+2. Rebuild only the pieces that fail those tests; preserve progress, query route, content-format,
+   TTS exception, and user-approved native scrolling contracts.
+3. Add a single real-browser matrix for 1440×900, 390×844 and 360×800 covering: entry toolbar,
+   center toggle, every primary panel, bookmark/search/BookInfo dialog click protection, tool
+   layering, paragraph left/right gap ≤1px, page/flip/scroll/scroll2 navigation, and settings
+   controls/defaults.
+4. A Docker release is eligible only after the browser matrix plus the normal frontend/backend
+   regression gates pass. It is a Reader P0 release, not a claim that P1 Index/P2 are complete.
 
 | Behavior | Upstream evidence | Current evidence | Required action |
 |---|---|---|---|
