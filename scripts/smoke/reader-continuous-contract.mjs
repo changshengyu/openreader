@@ -39,7 +39,7 @@ function fakeToken() {
 }
 
 function chapterContent(index) {
-  return Array.from({ length: 36 }, (_, paragraph) => (
+  return Array.from({ length: 110 }, (_, paragraph) => (
     `第${index + 1}章第${paragraph + 1}段。连续滚动契约正文用于验证原生滚动、跨章窗口、锚点保持与左右留白。`
   )).join('\n')
 }
@@ -60,7 +60,7 @@ async function installMocks(page, requestCounts, options = {}) {
         key: 'reader',
         updatedAt: '2026-07-06T00:00:00Z',
         value: {
-          mode: 'scroll2',
+          mode: options.mode || 'scroll2',
           pageMode: 'normal',
           fontSize: 18,
           lineHeight: 1.8,
@@ -123,20 +123,20 @@ function collectFailures(page) {
     if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
     failures.push(text)
   })
-  page.on('pageerror', error => failures.push(error.message))
+  page.on('pageerror', error => failures.push(error.stack || error.message))
   return failures
 }
 
 async function openReader(browser, viewport, options = {}) {
   const context = await browser.newContext({ viewport })
-  await context.addInitScript((token) => {
+  await context.addInitScript(({ mode, token }) => {
     localStorage.setItem('openreader_token', token)
     localStorage.setItem('reader', JSON.stringify({
-      mode: 'scroll2',
+      mode,
       settingsScope: 'user:1',
       progressScope: 'user:1',
     }))
-  }, fakeToken())
+  }, { mode: options.mode || 'scroll2', token: fakeToken() })
   const page = await context.newPage()
   const failures = collectFailures(page)
   const requestCounts = new Map()
@@ -146,8 +146,8 @@ async function openReader(browser, viewport, options = {}) {
   return { context, failures, page, requestCounts }
 }
 
-async function runContinuousViewport(browser, viewport) {
-  const fixture = await openReader(browser, viewport)
+async function runContinuousViewport(browser, viewport, mode) {
+  const fixture = await openReader(browser, viewport, { mode })
   const { context, failures, page, requestCounts } = fixture
   try {
     await page.waitForFunction(() => (
@@ -175,11 +175,46 @@ async function runContinuousViewport(browser, viewport) {
     assert(wheelTop > initial.scrollTop, `${viewport.width}: native wheel did not move`)
     assert(wheelTop - initial.scrollTop < 500, `${viewport.width}: wheel became paged movement ${wheelTop - initial.scrollTop}`)
 
+    await page.keyboard.press('ArrowDown')
+    await page.waitForTimeout(120)
+    const keyboardTop = await page.locator('.reader-content').evaluate(element => element.scrollTop)
+    assert(keyboardTop > wheelTop, `${viewport.width}/${mode}: ArrowDown did not page the vertical reader`)
+
+    await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+    await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.72))
+    await page.waitForTimeout(120)
+    const clickTop = await page.locator('.reader-content').evaluate(element => element.scrollTop)
+    assert(clickTop > 0, `${viewport.width}/${mode}: lower-region click did not page the vertical reader`)
+
+    await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+    const preExtension = await page.evaluate(() => {
+      const content = document.querySelector('.reader-content')
+      const chapter = document.querySelector('.chapter-content[data-index="1"]')
+      const threshold = content.scrollHeight - content.clientHeight * 4
+      const target = Math.min(
+        Math.max(chapter.offsetTop + 240, 0),
+        Math.max(0, threshold - 40),
+      )
+      if (target <= chapter.offsetTop) {
+        throw new Error(`fixture cannot enter chapter 2 before extension threshold (${target}/${chapter.offsetTop}/${threshold})`)
+      }
+      content.scrollTop = target
+      content.dispatchEvent(new Event('scroll'))
+      return { target, threshold }
+    })
+    await page.waitForTimeout(180)
+    const beforeExtension = await page.evaluate(() => ({
+      indexes: [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)),
+      chapterLabel: document.querySelector('.reader-page-head')?.lastElementChild?.textContent || '',
+    }))
+    assert(beforeExtension.indexes.join(',') === '0,1', `${viewport.width}/${mode}: pre-extension blocks ${beforeExtension.indexes}`)
+    assert(beforeExtension.chapterLabel.startsWith('2 /'), `${viewport.width}/${mode}: visible chapter did not advance before extension (${beforeExtension.chapterLabel})`)
+
     const anchor = await page.evaluate(() => {
       const content = document.querySelector('.reader-content')
       const chapter = document.querySelector('.chapter-content[data-index="1"]')
-      content.scrollTop = Math.max(
-        chapter.offsetTop + 320,
+      content.scrollTop = Math.min(
+        content.scrollHeight - content.clientHeight,
         content.scrollHeight - content.clientHeight * 4 + 20,
       )
       const viewport = content.getBoundingClientRect()
@@ -206,7 +241,7 @@ async function runContinuousViewport(browser, viewport) {
       await page.waitForFunction(() => {
         const indexes = [...document.querySelectorAll('.chapter-content')]
           .map(element => Number(element.dataset.index))
-        return indexes[0] === 1 && indexes.includes(2)
+        return indexes.includes(2)
       }, null, { timeout: 10_000 })
     } catch (error) {
       const state = await page.evaluate(() => {
@@ -229,7 +264,8 @@ async function runContinuousViewport(browser, viewport) {
         indexes: [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)),
       }
     }, anchor)
-    assert(after.indexes[0] === 1 && after.indexes.includes(2), `${viewport.width}: scroll2 blocks ${after.indexes}`)
+    const expectedIndexes = mode === 'scroll' ? '0,1,2' : '1,2'
+    assert(after.indexes.join(',') === expectedIndexes, `${viewport.width}/${mode}: blocks ${after.indexes}`)
     assert(Number.isFinite(after.top), `${viewport.width}: anchored paragraph disappeared`)
     assert(Math.abs(after.top - anchor.top) <= 2, `${viewport.width}: anchor jumped ${after.top - anchor.top}px`)
     assert((requestCounts.get(1) || 0) === 1, `${viewport.width}: duplicate chapter 1 requests ${requestCounts.get(1)}`)
@@ -275,7 +311,8 @@ async function main() {
       { width: 390, height: 844 },
       { width: 360, height: 800 },
     ]) {
-      await runContinuousViewport(browser, viewport)
+      await runContinuousViewport(browser, viewport, 'scroll')
+      await runContinuousViewport(browser, viewport, 'scroll2')
     }
     await runFailureRetry(browser)
     console.log('reader continuous contract smoke passed')

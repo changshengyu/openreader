@@ -367,6 +367,41 @@ stride. `reader-text-modes-contract.mjs` passed against the production preview a
 390×844, and 360×800; the existing mobile primary-panel and continuous-scroll browser contracts
 also passed after the frame change.
 
+#### 2026-07-16 focused inventory: continuous chapter-window state machine
+
+Upstream authority is `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`, principally
+`web/src/views/Reader.vue#isScrollRead`, `#computeShowChapterList`, `#scrollHandler`, and
+`components/Content.vue#renderScrollChapterList`. The following is an interaction/state contract,
+not permission to retain the existing Vue composable structure.
+
+| State / transition | Upstream behavior | Current OpenReader evidence | Classification and required contract |
+|---|---|---|---|
+| Eligibility | `上下滚动` and `上下滚动2` are continuous vertical text modes only when not EPUB, audio, or mobile-only slide reading. Comic text remains on the vertical branch. | `readerEffectiveMode`, `isContinuousScrollRead`, and the format gates make the same effective-mode decision. | **technically equivalent.** Retain the Vue adaptation only if format-mode smoke checks remain green. |
+| Initial window | Entering either scroll mode anchors at the current chapter. The upstream window initially contains the current chapter plus one next chapter (`showNextChapterSize: 1`); normal scroll remembers its explicit start while scroll2 derives its start from the active chapter minus the retained-previous count. | `useReaderChapterWindow.compute()` builds `[current, next]`; `readerChapterWindowIndexes()` retains an explicit start for `scroll` and anchors `scroll2` at the active chapter. | **aligned by source inspection.** Unit contract must cover first/middle/last chapter boundaries. |
+| Forward extension | Near the bottom (`scrollTop > scrollHeight - 4 × viewportHeight`), upstream loads exactly the next unseen chapter, extends the list, and releases its pre-cache lock whether the request succeeds or fails. | `readerChapterWindowExtension()` uses the same strict `> scrollHeight - 4 × clientHeight` threshold; `maybeExtend()` serializes the request and appends one block. OpenReader may prefetch a nearby chapter into its private cache before this point. | **aligned, with allowed robustness improvement.** OpenReader renders a retryable error block rather than silently leaving an inaccessible failed prefetch. Browser contract must assert one visible-window append per boundary crossing and no duplicate append while pending; background cache warming is intentionally not observable parity. |
+| Normal `scroll` retention | Upstream keeps the original visible start while extending forward; its disabled previous-chapter loader means ordinary continuous scrolling never invents a preceding chapter window. | OpenReader never prunes `scroll` blocks and retains the explicit start index. | **aligned.** Test a multi-chapter forward read and prove the first visible chapter is retained. |
+| `scroll2` eviction timing | Upstream warns it may jitter. After the active reading chapter advances, the next anchor-preserving window rebuild removes chapters before the active chapter; it normally occurs when forward extension/rebuild is triggered, not by an unconditional DOM replacement on every pixel of scroll. The old previous-load branch is commented out. | `syncCurrentChapter()` only updates visible progress during scroll; `appendNext()` applies the `scroll2` prune plan in the same anchored replacement that adds the next chapter. This deliberately avoids mid-scroll DOM removal. | **provisionally equivalent / must prove in browser.** A contract must show that crossed chapter state advances, no pre-extension DOM jump occurs, and the next extension evicts only read blocks while retaining the currently read paragraph's viewport offset (within 1px). |
+| Explicit chapter/search/bookmark navigation | Upstream sets `scrollStartChapterIndex` to the target and rebuilds with `reset`, then returns to the top. | OpenReader rebuilds around the selected index through `goChapter`/`computeShowChapterList`, then positions the requested paragraph/offset. | **technical adaptation / must verify.** Keep the more precise paragraph restoration if the target chapter, top/offset, and progress match the upstream-visible outcome. |
+| Click/keyboard at a boundary | Both modes keep vertical page-step behavior for top/bottom click and Arrow Up/Down. At a content boundary the action moves to the adjacent chapter rather than creating horizontal pagination. | `useReaderNavigation` pages the native vertical scroller and falls through to `goChapter`; pointer and keyboard call the shared navigation functions. | **must prove.** Browser tests need top/bottom click and Arrow Up/Down at an interior position and at both book boundaries. |
+| Scroll host and gesture physics | Upstream scrolls the document and animates click paging. | OpenReader scrolls its reader viewport and deliberately preserves native wheel/finger continuity; click/keyboard paging still uses the configured step. | **acceptable user-requested difference.** Geometry, visible chapter order, click boundaries, and saved progress remain the parity requirements. |
+
+Required test-first implementation gate:
+
+1. Add a real-browser `reader-continuous-window` contract with a deterministic three-or-more-chapter fixture at 1440×900, 390×844, and 360×800.
+2. For `scroll`, prove initial `[0,1]`, one-at-a-time visible forward extension, retained first chapter, and a lower-region click/ArrowDown page step before the chapter boundary.
+3. For `scroll2`, prove current chapter detection after crossing a chapter, no visible replacement before the forward-extension threshold, then one anchored eviction transaction that retains the active chapter and next chapter only. Background cache warming is permitted.
+4. Cover failed adjacent chapter retrieval and retry without blanking the active chapter; this is OpenReader's allowed robustness improvement.
+5. Do not alter the controller until those contracts reveal a visible discrepancy. Existing `readerChapterWindow*.test.mjs` tests are supporting evidence only; they are not sufficient upstream-parity proof.
+
+Contract result: `scripts/smoke/reader-continuous-contract.mjs` now executes both modes at
+1440×900, 390×844, and 360×800. It passed on the production preview: native wheel movement stays
+continuous; ArrowDown and lower-region click remain discrete vertical page steps; `scroll` retains
+`[0,1]` before extension then reaches `[0,1,2]`; `scroll2` does not visibly replace its window
+before the threshold, then reaches `[1,2]` with the active paragraph's viewport position preserved
+within 2px. The same script proves a failed adjacent chapter remains retryable without blanking the
+active chapter. Nearby background caching is intentionally excluded from the visible-window
+assertions.
+
 The previous tests are evidence only where they assert the table above. In particular,
 `readerToolOrderContract.test.mjs` and the primary-panel exclusivity test must not be used as proof
 of upstream parity until rewritten against this contract.
