@@ -289,7 +289,7 @@ Implemented in commit work following this contract:
 Remaining Reader P0 release gate:
 
 - Browser suite completed from the fresh production build on 2026-07-11: `reader-mobile-contract.mjs`, `reader-tts-contract.mjs`, `reader-image-contract.mjs`, `reader-audio-contract.mjs`, and `reader-continuous-contract.mjs` passed at desktop `1440×900` plus mobile `390×844` / `360×800`; `reader-epub-contract.mjs` passed at those same viewports against a temporary isolated Go API/import service. The EPUB smoke now accepts `SMOKE_VIEWPORTS` so each viewport can be run independently without losing a real failure to the runner time limit.
-- Git-traceable commit and local Docker/volume compatibility gates are complete for E4-EPUB-2 and E4-PDFMD-1; their GHCR releases are recorded in [`epub-fragment-p1e4-contract.md`](epub-fragment-p1e4-contract.md) and [`pdf-markdown-p1e4-contract.md`](pdf-markdown-p1e4-contract.md). The remaining P1-E4 functional work is the complete old-volume fixture.
+- Git-traceable commit and local Docker/volume compatibility gates are complete for E4-EPUB-2 and E4-PDFMD-1; their GHCR releases are recorded in [`epub-fragment-p1e4-contract.md`](epub-fragment-p1e4-contract.md) and [`pdf-markdown-p1e4-contract.md`](pdf-markdown-p1e4-contract.md). The remaining P1-E4 functional work is the complete old-volume fixture. Its inventory is now fixed in [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md): a legacy absolute local path may be rebased only under its owner archive root, never read from the Docker host; logical backup ZIPs preserve but do not carry local archives.
 
 ### 2026-07-11 focused audit: Reader tool-layer exceptions and TTS bar
 

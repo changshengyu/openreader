@@ -119,6 +119,34 @@ The current UMD parser recognizes an early OpenReader-only `#TEXTNOV` layout, wh
 
 Implementation evidence: the runtime now recognizes the standard segmented reader-dev UMD stream first, parses its bounded UTF-16LE/zlib sections and retains the previous OpenReader-only prefix only as an isolated fallback. No model, schema, mounted-root, archive-path or backup-format write changed. `backend/engine/umd_parser_contract_test.go` verifies actual upstream writer framing (`F1` separators and final `81` table included); `backend/api/umd_import_contract_test.go` verifies direct staged upload plus LocalStore/WebDAV preview→confirm after the original mounted UMD has been deleted, then removes the derived chapter cache and proves reader recovery from the archived UMD. The same API contract verifies standard UMD `refresh-local` preserves its original archive while rebuilding ordered chapters, and a pre-existing `#TEXTNOV` archive row recovers lazily without import or migration. Corrupted compressed input retains only its scoped retry stage and returns no host path. Full Go tests pass for this evidence; the still-pending E4-VOLUME-1 Docker/backup smoke must cover a real historical SQLite volume and the remaining formats.
 
+## P1-E4 old mounted local-book volume recovery
+
+Status: compatibility inventory complete; fixture-first implementation pending. The focused
+contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
+
+- A recoverable installation is the mounted tuple `data/`, `cache/`, and `library/`, not a
+  new database plus an application-level backup ZIP. `data/openreader.db` may retain old
+  columns and WAL companions; `library/` retains each local book's original archive and
+  metadata; `cache/` can contain only derived/staged data.
+- Startup runs additive GORM migration followed by the historical local-cache migration.
+  The latter may move a valid in-root local cache into the book's `library/.../content/`
+  area, but must not rewrite original archive bytes, metadata, progress, bookmarks or an
+  unrelated user's files.
+- `OriginalFile`, `LibraryPath`, `TOCFile`, `SourceFile`, and `CachePath` in an old SQLite
+  file are persisted input rather than authority to read arbitrary host paths. Historical
+  absolute values require a private archive-root rebase only; direct absolute candidates,
+  traversal and cross-user roots must fail closed without leaking a host path.
+- The existing logical backup ZIP deliberately contains no `library/` archives or local
+  chapter catalogue. A trigger/list/restore operation therefore must preserve an already
+  mounted local book but cannot be described as standalone local-book recovery. Export or
+  portable archive backup remains a separate compatibility item.
+
+Required evidence: start a real old SQLite file and mounted TXT/EPUB/UMD/CBZ archives; remove
+derived content; prove reading, scoped lazy recovery, refresh atomicity, unchanged original
+hashes, user isolation, safe handling of stale absolute paths, and Docker stop/restart. The
+release image must also run a backup trigger/list and safe restore that leaves the mounted
+local archive and chapter rows unchanged.
+
 ## P2 backup ZIP restore compatibility and bounds
 
 Status: implemented; release validation pending. Existing backup formats, SQLite rows and mounted roots remain readable.
