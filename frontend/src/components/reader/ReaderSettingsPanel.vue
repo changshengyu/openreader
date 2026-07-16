@@ -19,37 +19,36 @@
         >
           {{ option.label }}
         </button>
+        <small class="setting-help">开启简洁模式会关闭动画以及首页的部分功能。</small>
       </div>
-      <small class="setting-help">开启简洁模式会关闭动画以及首页的部分功能。</small>
     </div>
 
     <div class="setting-row">
       <label class="setting-label">配置方案</label>
-      <div class="config-scheme-list">
+      <div class="selection-zone config-scheme-list">
         <button
           v-for="(config, index) in reader.customConfigList"
           :key="config.name"
-          class="config-scheme"
+          class="selection-button config-scheme"
           :class="{ active: reader.customConfigName === config.name }"
           type="button"
           @click="selectCustomConfig(config.name)"
         >
           <span>{{ config.name }}</span>
-          <small v-if="config.configDefaultType">{{ config.configDefaultType }}</small>
           <el-icon v-if="index > 1 && !config.builtin && reader.customConfigName !== config.name" @click.stop="deleteCustomConfig(config.name)"><Close /></el-icon>
         </button>
-        <button class="config-scheme add" type="button" @click="addCustomConfig">新增方案</button>
-        <button class="config-scheme" :class="{ active: reader.autoTheme }" type="button" @click="reader.setAutoTheme(!reader.autoTheme)">自动切换</button>
+        <button class="selection-button config-scheme add" type="button" @click="addCustomConfig">新增方案</button>
+        <button class="selection-button config-scheme" :class="{ active: reader.autoTheme }" type="button" @click="reader.setAutoTheme(!reader.autoTheme)">自动切换</button>
       </div>
     </div>
 
     <div class="setting-row">
       <label class="setting-label">方案类型</label>
-      <div class="config-scheme-list">
+      <div class="selection-zone config-scheme-list">
         <button
           v-for="type in configDefaultTypes"
           :key="type"
-          class="config-scheme"
+          class="selection-button config-scheme"
           :class="{ active: currentCustomConfig?.configDefaultType === type }"
           type="button"
           @click="setConfigDefaultType(type)"
@@ -319,8 +318,8 @@
         >
           {{ option.label }}
         </button>
+        <small class="setting-help">上下滚动2会自动隐藏看过的章节，但是可能会抖动。</small>
       </div>
-      <small class="setting-help">上下滚动2会自动隐藏看过的章节，但是可能会抖动。</small>
     </div>
 
     <div class="setting-row stepper-setting-row">
@@ -787,13 +786,15 @@ function resetReaderSettings() {
 .selection-zone {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 5px 16px;
 }
 
 .selection-button {
+  box-sizing: border-box;
+  width: 78px;
   min-width: 78px;
   height: 34px;
-  padding: 0 12px;
+  padding: 0 6px;
   color: inherit;
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(0, 0, 0, 0.1);
@@ -817,42 +818,35 @@ function resetReaderSettings() {
 }
 
 .config-scheme-list {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: flex-start;
 }
 
 .config-scheme {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(111, 94, 54, 0.2);
-  border-radius: 6px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.5);
-  color: inherit;
-  cursor: pointer;
+  position: relative;
+  width: 78px;
+  height: 34px;
+  border-radius: 2px;
 }
 
 .config-scheme span {
-  min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.config-scheme small {
-  color: rgba(31, 41, 55, 0.55);
-  white-space: nowrap;
+.config-scheme .el-icon {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 10;
+  color: #ed4259;
+  cursor: pointer;
+  font-size: 20px;
 }
 
 .config-scheme.active {
-  border-color: #ed4259;
   color: #ed4259;
-  background: rgba(237, 66, 89, 0.08);
 }
 
 .config-scheme.add {
@@ -885,6 +879,7 @@ function resetReaderSettings() {
 }
 
 .setting-help {
+  flex-basis: 100%;
   color: #8a8171;
   font-size: 12px;
   line-height: 1.5;
@@ -1156,9 +1151,9 @@ function resetReaderSettings() {
   }
 
   .setting-row {
-    grid-template-columns: 62px minmax(0, 1fr);
+    grid-template-columns: 56px minmax(0, 1fr);
     align-items: start;
-    column-gap: 12px;
+    column-gap: 16px;
   }
 
   .setting-row > .setting-label {
@@ -1172,9 +1167,9 @@ function resetReaderSettings() {
 
   .typography-setting-row,
   .stepper-setting-row {
-    grid-template-columns: 62px minmax(0, 220px);
+    grid-template-columns: 56px minmax(0, 220px);
     align-items: center;
-    column-gap: 12px;
+    column-gap: 16px;
   }
 
   .font-family-grid {

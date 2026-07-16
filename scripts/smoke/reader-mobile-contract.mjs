@@ -628,11 +628,13 @@ async function assertSettingsRowGeometry(page, viewport) {
     const control = firstRow ? Array.from(firstRow.children).find(element => !element.classList.contains('setting-label')) : null
     const activeTheme = document.querySelector('.theme-item.active')
     const firstSelectionButton = firstRow?.querySelector('.selection-button')
+    const firstConfigScheme = document.querySelector('.config-scheme')
     const firstFontOption = document.querySelector('.font-family-option')
     const labelRect = label?.getBoundingClientRect()
     const controlRect = control?.getBoundingClientRect()
     const activeThemeRect = activeTheme?.getBoundingClientRect()
     const selectionButtonRect = firstSelectionButton?.getBoundingClientRect()
+    const configSchemeRect = firstConfigScheme?.getBoundingClientRect()
     const fontOptionRect = firstFontOption?.getBoundingClientRect()
     const labelStyle = label ? window.getComputedStyle(label) : null
     const activeThemeStyle = activeTheme ? window.getComputedStyle(activeTheme) : null
@@ -646,6 +648,9 @@ async function assertSettingsRowGeometry(page, viewport) {
       activeThemeWidth: activeThemeRect?.width ?? null,
       activeThemeHeight: activeThemeRect?.height ?? null,
       firstSelectionButtonHeight: selectionButtonRect?.height ?? null,
+      firstSelectionButtonWidth: selectionButtonRect?.width ?? null,
+      firstConfigSchemeWidth: configSchemeRect?.width ?? null,
+      firstConfigSchemeHeight: configSchemeRect?.height ?? null,
       firstFontOptionWidth: fontOptionRect?.width ?? null,
       firstFontOptionHeight: fontOptionRect?.height ?? null,
     }
@@ -657,9 +662,51 @@ async function assertSettingsRowGeometry(page, viewport) {
   assert(geometry.activeThemeBorderColor === 'rgb(237, 66, 89)', `${viewport.width}: active theme border ${geometry.activeThemeBorderColor}`)
   assertClose(geometry.activeThemeWidth, 34, 1, `${viewport.width}: settings theme item width`)
   assertClose(geometry.activeThemeHeight, 34, 1, `${viewport.width}: settings theme item height`)
+  assertClose(geometry.firstSelectionButtonWidth, 78, 1, `${viewport.width}: settings selection button width`)
   assertClose(geometry.firstSelectionButtonHeight, 34, 1, `${viewport.width}: settings selection button height`)
+  assertClose(geometry.firstConfigSchemeWidth, 78, 1, `${viewport.width}: settings configuration scheme width`)
+  assertClose(geometry.firstConfigSchemeHeight, 34, 1, `${viewport.width}: settings configuration scheme height`)
   assertClose(geometry.firstFontOptionWidth, 78, 1, `${viewport.width}: settings font option width`)
   assertClose(geometry.firstFontOptionHeight, 34, 1, `${viewport.width}: settings font option height`)
+}
+
+async function assertSettingsFirstScreenDensity(page, viewport) {
+  const state = await page.evaluate(() => {
+    const list = document.querySelector('.settings-list')
+    const listRect = list?.getBoundingClientRect()
+    const labels = ['特殊模式', '配置方案', '方案类型', '阅读主题'].map((label) => {
+      const node = [...document.querySelectorAll('.settings-body .setting-label')].find(item => item.textContent?.trim() === label)
+      const rect = node?.closest('.setting-row')?.getBoundingClientRect()
+      return { label, top: rect?.top ?? null, bottom: rect?.bottom ?? null }
+    })
+    const warning = document.querySelector('.setting-help')
+    const warningRect = warning?.getBoundingClientRect()
+    const warningZone = warning?.closest('.selection-zone')?.getBoundingClientRect()
+    const configScheme = document.querySelector('.config-scheme')
+    const configStyle = configScheme ? window.getComputedStyle(configScheme) : null
+    return {
+      listTop: listRect?.top ?? null,
+      listBottom: listRect?.bottom ?? null,
+      labels,
+      warningInsideSelectionZone: Boolean(warning?.closest('.selection-zone')),
+      warningTop: warningRect?.top ?? null,
+      warningBottom: warningRect?.bottom ?? null,
+      warningZoneTop: warningZone?.top ?? null,
+      warningZoneBottom: warningZone?.bottom ?? null,
+      configSchemeBorderRadius: configStyle?.borderTopLeftRadius ?? '',
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: innerWidth,
+    }
+  })
+  assert(state.listTop !== null && state.listBottom !== null, `${viewport.width}: settings list missing`)
+  assert(state.warningInsideSelectionZone, `${viewport.width}: special-mode warning must stay inside its option zone`)
+  assert(state.warningTop >= state.warningZoneTop && state.warningBottom <= state.warningZoneBottom, `${viewport.width}: special-mode warning must be bounded by its option zone`)
+  assert(state.configSchemeBorderRadius === '2px', `${viewport.width}: configuration scheme border radius ${state.configSchemeBorderRadius}`)
+  for (const row of state.labels) {
+    assert(row.top !== null && row.bottom !== null, `${viewport.width}: missing first-screen settings row ${row.label}`)
+    assert(row.top >= state.listTop - 1 && row.bottom <= state.listBottom + 1, `${viewport.width}: ${row.label} must remain visible in the initial settings list`)
+  }
+  assert(state.documentWidth <= state.viewportWidth + 1, `${viewport.width}: settings initial screen must not overflow horizontally`)
 }
 
 async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}) {
@@ -840,6 +887,8 @@ async function runDesktopViewport(browser) {
   await page.locator('.reader-left-rail button[title="设置"]').click()
   await assertDesktopPrimaryPopover(page, '设置', [470, 520])
   await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 10000 })
+  await assertSettingsRowGeometry(page, viewport)
+  await assertSettingsFirstScreenDensity(page, viewport)
   await assertSettingsFixedTitle(page, viewport, { desktop: true })
   await page.locator('.theme-custom-button').click()
 
@@ -921,8 +970,9 @@ async function runViewport(browser, viewport) {
   await mobileTopTool(page, '设置').click()
   await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [488, 588] })
   await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '设置')
-  await assertSettingsFixedTitle(page, viewport)
   await assertSettingsRowGeometry(page, viewport)
+  await assertSettingsFirstScreenDensity(page, viewport)
+  await assertSettingsFixedTitle(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))

@@ -44,6 +44,11 @@ test('mobile reader settings keeps upstream-like two-column row geometry', () =>
   assert.match(panelSource, /@media \(max-width: 750px\)[\s\S]*?\.setting-row > :not\(\.setting-label\) \{[\s\S]*?grid-column: 2;/, 'mobile settings controls should start in the second column')
 })
 
+test('desktop reader settings keeps the upstream 56px label plus 16px gutter', () => {
+  assert.match(panelSource, /@media \(min-width: 751px\)[\s\S]*?\.setting-row \{[\s\S]*?grid-template-columns: 56px minmax\(0, 1fr\);[\s\S]*?column-gap: 16px;/, 'desktop settings should use the upstream 56px label and 16px gutter')
+  assert.match(panelSource, /@media \(min-width: 751px\)[\s\S]*?\.typography-setting-row,[\s\S]*?\.stepper-setting-row \{[\s\S]*?grid-template-columns: 56px minmax\(0, 220px\);[\s\S]*?column-gap: 16px;/, 'desktop numeric settings should use the same upstream label gutter')
+})
+
 test('reader settings selected controls use upstream accent color', () => {
   assert.match(panelSource, /\.theme-item\.active \{[\s\S]*?#ed4259/, 'theme items should use upstream accent color')
   assert.match(panelSource, /\.content-bg-preview\.selected \{[\s\S]*?#ed4259/, 'background selections should use upstream accent color')
@@ -59,8 +64,28 @@ test('reader settings discrete options use upstream-like local buttons', () => {
   assert.doesNotMatch(panelSource, /<el-radio-button\b/, 'settings panel should not use Element radio buttons for upstream span-item options')
   assert.match(panelSource, /class="selection-zone"/, 'settings panel should expose upstream-like selection zones')
   assert.match(panelSource, /class="selection-button"/, 'settings panel should expose upstream-like selection buttons')
-  assert.match(panelSource, /\.selection-button \{[\s\S]*?min-width: 78px;[\s\S]*?height: 34px;/, 'selection buttons should keep upstream span-item dimensions')
+  assert.match(panelSource, /\.selection-button \{[\s\S]*?box-sizing: border-box;[\s\S]*?width: 78px;[\s\S]*?min-width: 78px;[\s\S]*?height: 34px;/, 'selection buttons should keep upstream 78x34 outer dimensions')
   assert.match(panelSource, /\.selection-button\.active \{[\s\S]*?color: #ed4259;[\s\S]*?border-color: #ed4259;/, 'selection buttons should keep upstream selected color')
+})
+
+test('reader settings keeps upstream warning and configuration option ownership', () => {
+  const specialModeStart = panelSource.indexOf('<label class="setting-label">特殊模式</label>')
+  const specialModeEnd = panelSource.indexOf('<div class="setting-row">', specialModeStart + 1)
+  const specialMode = panelSource.slice(specialModeStart, specialModeEnd)
+  const readerModeStart = panelSource.indexOf('<label class="setting-label">翻页方式</label>')
+  const readerModeEnd = panelSource.indexOf('<div class="setting-row', readerModeStart + 1)
+  const readerMode = panelSource.slice(readerModeStart, readerModeEnd)
+
+  assert(specialModeStart >= 0 && specialModeEnd > specialModeStart, 'special-mode setting row missing')
+  assert(readerModeStart >= 0 && readerModeEnd > readerModeStart, 'read-method setting row missing')
+  assert.match(specialMode, /<div class="selection-zone">[\s\S]*?class="setting-help"/, 'special-mode warning must belong to its selection zone')
+  assert.match(readerMode, /<div class="selection-zone">[\s\S]*?class="setting-help"/, 'read-method warning must belong to its selection zone')
+  assert.match(panelSource, /class="selection-zone config-scheme-list"/, 'configuration schemes must use the shared discrete option zone')
+  assert.match(panelSource, /class="selection-button config-scheme"/, 'configuration schemes must use compact option controls')
+  assert.doesNotMatch(panelSource, /<small v-if="config\.configDefaultType">/, 'configuration type is its own upstream row, not a card subtitle')
+  assert.match(panelSource, /\.config-scheme \{[\s\S]*?width: 78px;[\s\S]*?height: 34px;[\s\S]*?border-radius: 2px;/, 'configuration scheme controls must keep upstream 78x34 geometry')
+  assert.doesNotMatch(panelSource, /\.config-scheme\s*\{[^}]*border-radius:\s*6px;/, 'configuration scheme controls must not retain card rounding')
+  assert.match(panelSource, /\.setting-help \{[\s\S]*?flex-basis: 100%;/, 'compact warning text must wrap inside its owning option zone')
 })
 
 test('reader settings theme options use upstream theme-item geometry', () => {

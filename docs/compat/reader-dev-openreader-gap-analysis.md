@@ -1969,7 +1969,35 @@ Implementation status:
 - Completed in this slice: upstream `主题模式` now maps to persisted `themeType`; custom themes preserve the explicit day/night value, preset themes derive it, and Reader/shared-shell night-state rendering reads it.
 - Completed in this slice: settings payloads, built-in and user custom-config snapshots, old-data sanitization, and Kindle temporary state preserve normalized `themeType`; the reader settings version is now `12`.
 - Completed in this slice: desktop and mobile custom-theme controls expose `白天` / `黑夜`, and real-browser smoke verifies that switching semantic night mode does not close the active settings/tool layer.
-- Pending follow-up: detailed per-control visual pass for mobile `ReadSettings` first-screen density after the base row structure is aligned.
+- Completed follow-up: the detailed mobile `ReadSettings` first-screen density pass is recorded below.
+
+### 2026-07-16 ReadSettings mobile-density follow-up inventory
+
+Status: extracted from the fixed upstream `web/src/components/ReadSettings.vue` before the follow-up implementation. No Reader application code is changed by this inventory. The earlier label, theme, font, custom-theme and semantic `themeType` records remain valid.
+
+| Concern | Fixed upstream behavior | Current OpenReader evidence | Classification / required result |
+|---|---|---|---|
+| Outer title and scroll owner | `settings-wrapper` supplies `24px` content padding and the `设置 / 重置为默认配置` title is outside the independently scrolling `45vh` setting list. | The mobile primary panel supplies the equivalent `24px` inset; `ReaderSettingsPanel` keeps its one title row outside `.settings-list`, and the list owns scrolling. | `aligned`: retain this current wrapper adaptation. The primary Reader tool layer stays visible above it as required by the Reader mobile contract. |
+| First-screen row geometry | Each upstream list item is a `56px + 16px` label/control row; controls begin exactly `72px` after the row edge and rows are separated by `20px`. | The mobile grid uses a `72px` first column and `20px` list gap, but its help text is emitted as a separate grid child/line. | `must-fix`: retain the two-column grid, but put the special-mode and read-method warnings inside their corresponding selection zone so they remain part of that option row rather than creating an accidental extra row. |
+| Special-mode and read-method warnings | `small-tip` is inline after the discrete options inside the same `selection-zone`; it communicates the constraint without becoming a new form field. | `setting-help` follows each selection zone as its own grid item, increasing the height of the first visible settings block and making the first screen less dense than upstream. | `must-fix`: use an inline warning element in the relevant selection zone; preserve readable wrapping on 360px without changing option hit targets. |
+| Configuration scheme / type controls | `配置方案` and `方案类型` use the same compact `span-item` vocabulary as other discrete options: `78px × 34px`, `2px` corners, red selected border/text, and no card surface. | `config-scheme-list`/`config-scheme` use padded rounded cards, a secondary label, and card-style selected background. | `must-fix`: rebuild these two rows on the shared discrete option geometry. Long user-defined configuration names may ellipsize and retain their delete affordance as a Vue 3/data-preservation adaptation, but the visual surface and selected state must be upstream-like. |
+| Reader numeric controls | Upstream uses compact `34px` resize controls. | `ReaderSettingStepper` is `42px` tall on compact screens and uses larger minus/value/plus targets. | `intentional-redesign`: retain the user-requested larger, less error-prone numeric controls. Do not treat their increased individual height as a density defect. |
+| Font preview | Upstream displays only compact font choices. | OpenReader adds the non-interactive `春风过处，纸页微明。` preview below the compact choices. | `user-requested enhancement`: retain the preview shown in the user's target layout, provided it does not turn font choices back into cards or change their `78px × 34px` geometry. |
+| Compact visual gate | Upstream uses one semantic settings scene; action clicks and scrolling stay within it. | Existing smoke proves dimensions/title/scroll ownership but does not prove the warning placement, compact configuration controls, or that the four first sections fit in the compact visible settings list without a horizontal overflow. | `must-fix test gap`: add static contracts and a three-viewport browser assertion for 1440×900, 390×844, and 360×800. It must check inline warnings, compact 34px scheme/type controls, first-screen section order/visibility, horizontal overflow, persistent title/tool layer, and no click-through. |
+
+Required implementation order:
+
+1. Add the static and browser contracts above before changing the panel.
+2. Move only the two warnings into their owning selection zones and replace only the configuration scheme/type card styling/markup with shared discrete-option controls.
+3. Keep the explicit mobile stepper and font-preview adaptations unchanged; rerun all Reader interaction contracts so the mobile tool-layer coexistence state machine is not regressed.
+4. Record the three-viewport result, then commit, push, locally build and publish a Docker image only if the full Reader regression and mounted-volume release gates pass.
+
+### 2026-07-16 ReadSettings mobile-density implementation record
+
+- **Compact option ownership.** `特殊模式` and `翻页方式` warnings now live inside their own selection zones, matching upstream state/visual ownership without creating another form-field grid row. Compact screens retain readable wrapped warning text inside that zone.
+- **Scheme/type controls.** `配置方案` and `方案类型` now use the shared `78px × 34px`, `2px`-corner discrete option controls. User-defined long names are still safely ellipsized and retain the existing Vue 3 delete affordance; the redundant scheme-type card subtitle and selected-card background are removed.
+- **Exact label gutter.** Desktop settings now also use the upstream `56px` label plus `16px` gutter; both desktop and compact controls begin exactly `72px` from the row edge. The current compact `42px` minus/value/plus stepper and the font preview remain the documented user-requested anti-mistap enhancements.
+- **Evidence.** `readerSettingsPanelContract.test.mjs` protects warning ownership, discrete control geometry and desktop/mobile gutters. `reader-mobile-contract.mjs` now verifies source-order first-screen visibility, no horizontal overflow, fixed-title scrolling, tool-layer coexistence and non-click-through at `1440×900`, `390×844`, and `360×800`. Frontend tests (**398**), `npm run build`, and backend `go test ./...` pass.
 
 ## Required workflow for each future module
 
