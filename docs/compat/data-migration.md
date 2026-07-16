@@ -175,6 +175,11 @@ values remain fail-closed; copy-before-database-update/delete prevents a failed 
 losing the only readable cache. This is an OpenReader mounted-volume compatibility/security
 requirement, not an upstream reader-dev storage behavior.
 
+The next VOLUME-OWNER-5 slice must place two already-existing users and independent private local
+archives in the old SQLite fixture. Real HTTP/JWT tests and Docker smoke must prove list/read/
+refresh are mutually 404 across users, while one user's backup restore and restart leave the other
+user's archive, chapter/cache rows and readability unchanged.
+
 ## P2 backup ZIP restore compatibility and bounds
 
 Status: implemented; release validation pending. Existing backup formats, SQLite rows and mounted roots remain readable.
