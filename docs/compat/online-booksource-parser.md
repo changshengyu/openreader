@@ -324,3 +324,22 @@
 3. 真实浏览器完成“搜索 → BookInfo → 目录 → 正文”流程，并分别验证 CSS/JSON/XPath fixture 源。
 4. 失败源缓存只记录远端请求错误，不因不支持规则、语法错误或空结果错误封禁书源。
 5. 后端全量测试、前端测试/构建、Docker 卷备份门禁均通过后，才可发布 Docker。
+
+## 2026-07-16 P2-Parser-4：真实浏览器工作流验收矩阵
+
+本节是对既有 engine/API 黄金测试的补充，不重写已经完成的解析器。固定上游在 `WebBook.searchBook`、`BookList`、`BookChapterList`、`BookContent` 中把同一书源规则连续用于搜索、详情、目录与正文；OpenReader 对应路径是 `POST /api/search`、`POST /api/reader/remote-sessions` 和 `GET /api/reader/remote-sessions/:id/chapters/:index/content`。此前浏览器 smoke 只拦截这些 API 并返回模拟数据，不能证明浏览器工作台实际消费了 Go 解析器的输出。
+
+| 项目 | 上游合同 | 现有证据 | 判定 | 验收方式 |
+| --- | --- | --- | --- | --- |
+| CSS 书源 | 搜索结果可进入详情/目录，再显示章节正文；相对 URL 以响应 URL 解析。 | engine fixture 与真实浏览器/API 流程均已覆盖。 | `verified` | 本地 HTML fixture：搜索、BookInfo、远程目录会话、目录面板、正文。 |
+| JSONPath 书源 | JSON 搜索、详情、目录、正文规则在同一书源连续生效，分页正文按顺序拼接。 | engine fixture 与真实浏览器/API 流程均已覆盖。 | `verified` | 本地 JSON fixture：同一 UI 流程并断言目录数和拼接正文。 |
+| XPath 书源 | XPath 列表、属性 URL、详情 `init`、目录和正文可连续使用。 | engine fixture 与真实浏览器/API 流程均已覆盖。 | `verified` | 本地 HTML fixture：同一 UI 流程并断言 XPath 详情/目录/正文输出。 |
+| 安全边界 | 上游可联网执行脚本；OpenReader 不得在该验收中放宽 JS/模板/私密网络限制。 | `ErrUnsupportedSourceRule` 和结构化错误已有契约。 | `acceptable security difference` | 夹具仅监听 loopback、无真实凭证/外网；不为测试添加生产环境放行或跳过校验。 |
+
+实施约束：浏览器合同必须启动隔离的临时 OpenReader 数据目录和本地 fixture 服务，先经真实注册、真实书源创建和真实 HTTP API，再进入 Vue 工作台；不得 route/mock `/api`。每个规则模式至少断言搜索标题、BookInfo、三章目录和跨页正文。该合同通过后，P2-Parser 的 CSS/JSONPath/XPath 主路径可标记为已完成；JS/WebJS/模板仍维持已记录的安全差异。
+
+### P2-Parser-4 实施记录
+
+- 新增 `scripts/smoke/source-parser-workflow-contract.mjs`：脚本读取既有不联网的 `backend/engine/testdata/source_compat/` fixture，临时构建并启动 Go 服务，使用隔离 SQLite/data/cache/library 注册管理员和创建 CSS、JSONPath、XPath 三个书源。
+- Playwright 直接访问真实 Vue/API 服务，不 route/mock `/api`；每种书源依次验证工作台搜索结果、搜索结果 BookInfo、远程阅读会话详情字段、三章目录面板以及两页拼接的正文。`canReName` 未声明时保持搜索标题的上游语义，同时用详情作者断言详情规则确实被执行。
+- 2026-07-16 本地执行结果：`source-parser-workflow: ok CSS, JSONPath, XPath realApi=true fixtureOnly=true searchBookInfoTocContent=true`。夹具仅监听 `127.0.0.1`，无外网、cookie、令牌或生产数据；没有为测试放宽生产书源安全策略。
