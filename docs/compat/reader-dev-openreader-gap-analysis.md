@@ -2025,7 +2025,7 @@ completion evidence for the P1-B BookInfo five-entry slice.
 
 ## 2026-07-16 P1 final re-audit: Index Explore popover and workspace-config ownership
 
-Status: **Explore implementation completed on 2026-07-16; workspace-configuration follow-up remains pending.** This section supersedes
+Status: **Explore and workspace-configuration implementations completed on 2026-07-16.** This section supersedes
 the conflicting parts of the earlier P1-B/P1-E implementation notes. Those records
 correctly established a root workspace and legacy URL redirects, but their passing
 browser contracts did not prove the exact upstream Explore entry structure or the
