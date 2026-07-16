@@ -55,6 +55,10 @@ unchanged.
 
 The historical fixture covers old-volume path/security, relative-cache migration, existing-user
 isolation and transaction boundaries for all four supported local archive formats. It does not
-replace the portable archive-backup contract.
+replace the portable archive-backup contract. When that explicitly named OpenReader extension is
+implemented, the release smoke adds a second, fresh mounted `data/cache/library` tuple and proves
+portable export → transfer → restore → read/refresh → restart without changing either volume's
+original archive hashes; see
+[`portable-local-archive-backup-p1e4-contract.md`](compat/portable-local-archive-backup-p1e4-contract.md).
 
 This is not a substitute for full restore validation. It is the minimum release gate for Docker volume and backup regressions.

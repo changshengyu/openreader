@@ -122,8 +122,10 @@ Implementation evidence: the runtime now recognizes the standard segmented reade
 ## P1-E4 old mounted local-book volume recovery
 
 Status: old-SQLite/path/cache implementation, legal relative-cache migration, full-format and
-cross-user Docker fixtures complete; portable archive backup remains pending. The focused contract
-is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
+cross-user Docker fixtures complete. Portable archive backup has completed its contract audit but
+has no runtime implementation yet; its separate extension contract is
+[`portable-local-archive-backup-p1e4-contract.md`](portable-local-archive-backup-p1e4-contract.md).
+The mounted-volume contract remains [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
 
 - A recoverable installation is the mounted tuple `data/`, `cache/`, and `library/`, not a
   new database plus an application-level backup ZIP. `data/openreader.db` may retain old
@@ -139,8 +141,9 @@ is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contrac
   traversal and cross-user roots must fail closed without leaking a host path.
 - The existing logical backup ZIP deliberately contains no `library/` archives or local
   chapter catalogue. A trigger/list/restore operation therefore must preserve an already
-  mounted local book but cannot be described as standalone local-book recovery. Export or
-  portable archive backup remains a separate compatibility item.
+  mounted local book but cannot be described as standalone local-book recovery. The planned
+  `openreader-portable-backup` v1 ZIP is an explicit, separately named OpenReader extension;
+  it must not alter the legacy ZIP's entry set, restore path or reader-dev/Legado compatibility.
 
 Required evidence: start a real old SQLite file and mounted TXT/EPUB/UMD/CBZ archives; remove
 derived content; prove reading, scoped lazy recovery, refresh atomicity, unchanged original

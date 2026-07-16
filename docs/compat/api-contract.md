@@ -84,6 +84,17 @@ Status: implemented on 2026-07-12 after comparison with reader-dev `Index.vue`, 
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
 
+### Planned P1-E4 portable local archive extension
+
+Status: contract extracted only; not implemented. Reader-dev has no local-file backup format, so
+this is a deliberately named OpenReader extension rather than a change to either row above. The
+full route, response, scoped-root, collision, staged-restore and limit contract is
+[`portable-local-archive-backup-p1e4-contract.md`](portable-local-archive-backup-p1e4-contract.md).
+In particular, `POST /api/backup/trigger` remains a logical backup, while a future
+`POST /api/backup/portable/trigger` creates `portable_backup_*.zip`; generic upload/WebDAV restore
+must recognize v1 manifest packages and restore them fully rather than silently treating them as
+a partial logical restore.
+
 ## P2 UserManage API contract
 
 Status: extracted on 2026-07-12 from fixed reader-dev `UserManage.vue` and `AddUser.vue`. OpenReader retains JWT/SQLite IDs and manager capability limits, but follows upstream's ordinary-user creation and protected management-account behavior.
