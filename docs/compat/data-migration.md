@@ -167,6 +167,12 @@ validated all-format Docker slice was published from Git `cff8c11` as
 archive paths and missing derived content for all remaining E4 formats at the API boundary; the
 container fixture now exercises the equivalent four-format volume.
 
+The next VOLUME-CACHE-3 slice must move one legal relative cache into the owning archive's
+`content/` directory while persisting a relative `content/...` cache path. Existing absolute,
+traversal and symlink values remain fail-closed; the copy-before-database-update/delete ordering
+must prevent a failed SQLite write from losing the only readable cache. This is an OpenReader
+mounted-volume compatibility/security requirement, not an upstream reader-dev storage behavior.
+
 ## P2 backup ZIP restore compatibility and bounds
 
 Status: implemented; release validation pending. Existing backup formats, SQLite rows and mounted roots remain readable.
