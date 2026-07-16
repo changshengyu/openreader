@@ -12,6 +12,7 @@
 
     <ReaderDesktopWorkspacePanel
       v-if="!isMobileReader && desktopWorkspacePanel"
+      :panel="desktopWorkspacePanel"
       :title="desktopWorkspaceTitle"
       @close="closeDesktopWorkspace"
     >

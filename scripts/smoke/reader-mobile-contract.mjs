@@ -461,6 +461,39 @@ async function assertDesktopReaderDialog(page, selector, label) {
   assert(state.settingsOpen === 1, `desktop: ${label} must not close the active settings workspace`)
 }
 
+async function assertDesktopPrimaryPopover(page, label, [minHeight, maxHeight]) {
+  await page.waitForSelector('.reader-desktop-workspace', { timeout: 10000 })
+  const state = await page.evaluate(() => {
+    const workspace = document.querySelector('.reader-desktop-workspace')
+    const rail = document.querySelector('.reader-left-rail')
+    const pageEl = document.querySelector('.reader-page')
+    const rect = workspace?.getBoundingClientRect()
+    const railRect = rail?.getBoundingClientRect()
+    const pageRect = pageEl?.getBoundingClientRect()
+    return {
+      count: document.querySelectorAll('.reader-desktop-workspace').length,
+      left: Math.round(rect?.left || 0),
+      top: Math.round(rect?.top || 0),
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      panel: ['shelf', 'source', 'toc', 'settings'].find(panel => workspace?.classList.contains(`workspace-panel-${panel}`)) || '',
+      railRight: Math.round(railRect?.right || 0),
+      pageLeft: Math.round(pageRect?.left || 0),
+      pageRight: Math.round(pageRect?.right || 0),
+      zIndex: Number(window.getComputedStyle(workspace).zIndex || 0),
+    }
+  })
+  const expectedPanel = { 书架: 'shelf', 书源: 'source', 目录: 'toc', 设置: 'settings' }[label]
+  assert(state.count === 1, `desktop: ${label} must have exactly one primary popover`)
+  assert(state.panel === expectedPanel, `desktop: ${label} must expose ${expectedPanel}, received ${state.panel}`)
+  assert(state.top === 0, `desktop: ${label} popover top ${state.top}`)
+  assert(state.left >= state.railRight + 10, `desktop: ${label} must begin after the left rail (${state.left}/${state.railRight})`)
+  assert(Math.abs(state.left - (state.pageLeft + 5)) <= 1, `desktop: ${label} left ${state.left}, expected reader frame + 5 (${state.pageLeft})`)
+  assert(Math.abs((state.left + state.width) - (state.pageRight - 5)) <= 1, `desktop: ${label} right ${state.left + state.width}, expected reader frame - 5 (${state.pageRight})`)
+  assert(state.height >= minHeight && state.height <= maxHeight, `desktop: ${label} height ${state.height}, expected ${minHeight}-${maxHeight}`)
+  assert(state.height < 560, `desktop: ${label} must be a content-sized Popover, not a full-height workspace (${state.height})`)
+}
+
 async function assertBookmarkFormContext(page, viewport, { fullscreen, excerpt = '用于验证根级书签表单的摘录。' }) {
   const selector = '.global-bookmark-form-dialog'
   await page.waitForSelector(selector, { timeout: 10000 })
@@ -738,7 +771,14 @@ async function runDesktopViewport(browser) {
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
   await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: false })
   const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: false })
+  await page.locator('.reader-left-rail button[title="书架"]').click()
+  await assertDesktopPrimaryPopover(page, '书架', [380, 410])
+  await page.locator('.reader-left-rail button[title="书源"]').click()
+  await assertDesktopPrimaryPopover(page, '书源', [380, 410])
+  await page.locator('.reader-left-rail button[title="目录"]').click()
+  await assertDesktopPrimaryPopover(page, '目录', [380, 410])
   await page.locator('.reader-left-rail button[title="设置"]').click()
+  await assertDesktopPrimaryPopover(page, '设置', [470, 520])
   await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 10000 })
   await page.locator('.theme-custom-button').click()
 

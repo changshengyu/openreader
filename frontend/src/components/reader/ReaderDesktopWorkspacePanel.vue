@@ -7,7 +7,7 @@
   />
   <section
     class="reader-desktop-workspace"
-    :class="{ 'without-head': !title }"
+    :class="[{ 'without-head': !title }, `workspace-panel-${panel}`]"
     :aria-label="title || '阅读设置'"
   >
     <header v-if="title" class="reader-workspace-head">
@@ -24,6 +24,10 @@
 
 <script setup>
 defineProps({
+  panel: {
+    type: String,
+    default: '',
+  },
   title: {
     type: String,
     default: '',
@@ -47,11 +51,13 @@ defineEmits(['close'])
   position: fixed;
   z-index: 3;
   top: 0;
-  bottom: 0;
-  left: calc(50vw - var(--reader-frame-width) / 2);
-  width: var(--reader-frame-width);
+  left: calc(50vw - var(--reader-frame-width) / 2 + 5px);
+  width: calc(var(--reader-frame-width) - 9px);
+  height: auto;
+  min-height: 0;
+  max-height: 100dvh;
   box-sizing: border-box;
-  padding: 18px 24px 24px;
+  padding: 24px;
   color: var(--reader-text);
   background-color: var(--reader-bg);
   background-image: var(--reader-bg-image, var(--paper-texture));
@@ -62,7 +68,7 @@ defineEmits(['close'])
     inset 24px 0 44px rgba(90, 71, 28, 0.05),
     inset -24px 0 44px rgba(90, 71, 28, 0.05);
   filter: brightness(var(--reader-brightness));
-  overflow: hidden;
+  overflow: visible;
 }
 
 .reader-workspace-head {
@@ -102,22 +108,28 @@ defineEmits(['close'])
 }
 
 .reader-workspace-body {
-  height: calc(100% - 44px);
+  height: auto;
   min-height: 0;
-  overflow: hidden;
+  max-height: calc(100dvh - 48px);
+  overflow: visible;
 }
 
-.reader-desktop-workspace.without-head {
-  padding-top: 18px;
+.reader-desktop-workspace.workspace-panel-shelf :deep(.reader-shelf-list),
+.reader-desktop-workspace.workspace-panel-toc :deep(.toc-list),
+.reader-desktop-workspace.workspace-panel-source :deep(.source-switch-list) {
+  height: 300px;
+  max-height: 300px;
+  min-height: 0;
 }
 
-.reader-desktop-workspace.without-head .reader-workspace-body {
-  height: 100%;
+.reader-desktop-workspace.workspace-panel-settings .reader-workspace-body {
+  max-height: calc(45vh + 50px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: none;
 }
 
-.reader-desktop-workspace.without-head .reader-workspace-body::-webkit-scrollbar {
+.reader-desktop-workspace.workspace-panel-settings .reader-workspace-body::-webkit-scrollbar {
   display: none;
 }
 
