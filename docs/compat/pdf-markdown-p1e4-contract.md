@@ -1,7 +1,7 @@
 # P1-E4 PDF、Markdown 与 `.text` 历史本地书兼容合同
 
-状态：**已完成实现与回归；Docker 发布验证待执行。** 实现仍以固定上游清单为准，不把
-OpenReader 原有的额外 parser、API 或 UI 当作正确性依据。
+状态：**已完成实现、回归与 Docker 发布。** 实现仍以固定上游清单为准，不把 OpenReader
+原有的额外 parser、API 或 UI 当作正确性依据。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -62,3 +62,14 @@ OpenReader 原有的额外 parser、API 或 UI 当作正确性依据。
 - 不把 PDF、Markdown、`.text` 加入上游工作台，也不为其补上游不存在的书源、书仓或 WebDAV 流程。
 - 不把“当前 API 能工作”写成上游对齐。
 - 不删除用户已有本地书，也不将历史格式转换成 TXT 后覆盖原始 archive。
+
+## 6. 发布记录
+
+2026-07-16 已完成本地镜像构建、卷/备份 smoke 与 GHCR 多架构发布：
+
+- Git：`d0a0f5b fix: align visible local import formats`；
+- tags：`ghcr.io/changshengyu/openreader:d0a0f5b`、`ghcr.io/changshengyu/openreader:latest`；
+- remote multi-architecture index digest：`sha256:b55e119fbb272065f1c8b447d783a371d00c633f183f583f987d7471aab0914d`；
+- linux/amd64：`sha256:cd19fa3cd0a7c7d75ea8803af67d2897892b30785bb1083513a008ebd1927979`；linux/arm64：`sha256:8831ac5442fa5d06b7940e5bfd7ca85a18cec4d66d2723d00eddf9054d9218bd`。
+
+本合同的发布记录提交不改变镜像内容，不会重复发布 Docker。
