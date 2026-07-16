@@ -2123,3 +2123,105 @@ reader preference persistence or user-data compatibility.
   desktop/mobile sizes; and `index-mobile-sidebar-contract.mjs` at 390×844 and
   360×800. The latter confirms the 260px sidebar, 270px drag range, fixed bottom
   GitHub/theme controls, and aligned shelf geometry still hold.
+
+### 2026-07-16 P1 workspace configuration ownership re-audit
+
+Status: implemented and validated on 2026-07-16.
+
+#### Upstream authority and state transitions
+
+`reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
+`web/src/views/Index.vue` keeps all of the following inside its long-lived Index
+sidebar. It does not have a general Settings page or a settings Drawer:
+
+| Upstream action | Authority | State and durable effect |
+|---|---|---|
+| User identity / logout | `Index.vue` user-space heading | The signed-in user remains in the workspace; logout is a direct sidebar heading action. Manager-only controls are shown only in manager mode. |
+| `备份用户配置` | `Index.vue#saveUserConfig`, `UserController.kt#saveUserConfig` | After confirmation, save the current terminal's `config`, `shelfConfig`, `searchConfig`, and `customConfigList` as the authenticated user's configuration snapshot. |
+| `同步用户配置` | `Index.vue#restoreUserConfig`, `UserController.kt#getUserConfig` | After confirmation, fetch that snapshot, replace the four local cache values, then rehydrate the Vue store. |
+| WebDAV / logical backup | `Index.vue` | Open independent root dialogs; they are not sub-tabs of generic settings. |
+| Local browser cache | `Index.vue#clearCache` | Display cached counts and clear the four named browser-cache groups directly from the sidebar. |
+| Reading settings | `Reader.vue` + `components/ReadSettings.vue` | Only a Reader control opens settings. Index never hosts a second reader-settings editor. |
+
+#### Current OpenReader comparison
+
+| Concern | Current evidence | Classification | Required correction |
+|---|---|---|---|
+| Generic configuration shell | `OverlayWorkspaceSettings.vue` mounts `Settings.vue` in a `global-workspace-settings-drawer`; the overlay store, `AppLayout`, router, tests and smoke script treat it as canonical. | `must-fix` | Delete this canonical Drawer, its state, and its Drawer-specific test assertions. No replacement general-settings page/drawer is permitted. |
+| Account identity/logout | The `用户空间` item opens the Drawer merely to show profile data and logout; service health is duplicated there and on the sidebar version action. | `must-fix` | Keep current username/logout in the persistent user-space section. Keep only the existing version/health action in the sidebar; do not retain an account detail surface solely to justify a Drawer. |
+| User-config backup | Sidebar `备份用户配置` calls `overlay.openBackup()`, which opens the full logical/portable backup dialog. This is not upstream's client-configuration snapshot. | `must-fix` | Replace it with a confirmed, explicit flush of OpenReader's authenticated `reader`, `shelf`, and `search` setting records. Those records contain the upstream-equivalent reader configuration/custom schemes, shelf preference, and search preference, so a separate unbounded config-file API is not needed. The full backup dialog remains only `保存备份`. |
+| User-config restore | `syncUserConfig()` reloads profile, reader preferences, shelf/search preferences, bookshelf and cache statistics without upstream's confirmation. It currently does not intentionally distinguish configuration restore from a full shelf refresh. | `must-fix` | Retain the safe extra shelf/cache refresh as an OpenReader enhancement, but add the upstream confirmation and make the primary state transition explicit: rehydrate `reader`, `shelf`, and `search` from the current authenticated user before reporting success. |
+| Cache ownership | The same Drawer duplicates server/browser cache statistics and destructive actions that `AppLayout` already exposes in the sidebar. The server-cache half is a current-user, bounded OpenReader enhancement; upstream only has browser cache groups. | `must-fix` for duplication; `acceptable-change` for scoped server cache | Retain cache commands and counts only in the sidebar. Keep current-user server-cache accounting and browser cache groups; preserve their confirmation/error behavior. |
+| Reader preferences | `Settings.vue` embeds a second complete reader editor, including raw `el-slider` controls that conflict with the requested in-reader minus/value/plus controls. `ReaderSettingsPanel.vue` is already the authoritative reader surface. | `must-fix` | Remove the global reader editor and all of its duplicate upload/config/persistence wiring. Reader settings, including custom assets and persisted keys, remain owned by `ReaderSettingsPanel` only. |
+| Legacy `/settings` URLs | Router normalizes `account`, `cache`, and `reader` to the generic Drawer. Existing tests encode that structure as correct. | `must-fix` | Retain the old URL as a narrow root compatibility intent, never as a new product screen. `account` and `cache` focus the corresponding persistent sidebar section (and open the compact sidebar first); `reader` displays a one-shot root notice that settings have moved to an open book's Reader control, then removes only the compatibility intent. It must not silently drop the link or open a book without the user's action. |
+
+#### OpenReader data/API mapping
+
+The current `GET/PUT /settings/:key` contract accepts only `reader`, `shelf`, and
+`search`. `reader` already includes custom configuration lists/assets and strips
+local-only `pageMode`/`miniInterface`; `preferences` owns `shelf` and `search`.
+This is a deliberate multi-user adaptation of upstream's four localStorage keys:
+
+| Upstream snapshot key | OpenReader durable owner | Compatibility decision |
+|---|---|---|
+| `config` + `customConfigList` | `reader` user setting / reader Pinia store | `technical-stack-equivalent`: retain server conflict protection and current-user scope. |
+| `shelfConfig` | `shelf` user setting / preferences Pinia store | `technical-stack-equivalent`. |
+| `searchConfig` | `search` user setting / preferences Pinia store | `technical-stack-equivalent`. |
+| Terminal-only page layout | Reader's local `pageMode` | `intentional-security/usability adaptation`: never overwrite a device-specific layout during configuration restore. |
+
+No SQLite migration, setting-key rename, cache/library path change, backup format
+change, or loss of custom reader assets is authorized by this slice. Existing
+WebDAV and backup overlays remain their own operations and continue to restore
+the same scoped user settings through their established backend contracts.
+
+#### Required implementation order and tests
+
+1. Replace the stale static tests first: old `/settings` routes must retain their
+   intent but must not reference `workspace-settings`, `workspaceSettingsVisible`,
+   `global-workspace-settings-drawer`, or `Settings.vue` as a canonical body.
+2. Add a user-config action contract: confirmation precedes backup/restore;
+   backup flushes `reader`, `shelf`, and `search`; restore reloads all three;
+   a failed required write/read keeps the success message from appearing. The
+   extra shelf/cache refresh is permitted only after the primary configuration
+   action resolves.
+3. Add a route/focus contract: `/settings?panel=account|cache` preserves unrelated
+   query keys, reveals/focuses the persistent sidebar section (opening compact
+   navigation as needed), then removes only the one-shot intent. `/settings?panel=reader`
+   gives the migration notice and removes only that intent.
+4. Add a browser smoke at `1440×900`, `390×844`, and `360×800`: account/cache
+   legacy links never render a Drawer; compact sidebar focus blocks click-through;
+   backup/config sync, full backup, WebDAV, cache actions, fixed GitHub/theme
+   controls, and Reader settings ownership coexist without horizontal overflow.
+5. Only after those tests exist, remove `Settings.vue`, `OverlayWorkspaceSettings.vue`,
+   its Pinia state, and all imports/watchers. Run normal frontend/build/backend
+   gates plus a real-browser smoke before the next Docker release.
+
+#### Implementation record
+
+- **Drawer retirement.** The generic `Settings.vue` body,
+  `OverlayWorkspaceSettings.vue`, its Pinia state, GlobalOverlayHost mount, and
+  route hydration/watchers have been deleted. The root scene no longer has a
+  product Settings page or Drawer.
+- **Persistent workspace ownership.** The signed-in username and direct logout
+  now live in the `用户空间` sidebar heading. Server/browser cache actions remain
+  in the persistent cache section, which is the sole canonical owner. Reader
+  preferences remain exclusively in `ReaderSettingsPanel`.
+- **Configuration semantics.** `备份用户配置` now confirms then immediately
+  writes the authenticated `reader`, `shelf`, and `search` settings. `同步用户配置`
+  confirms then reloads those settings before performing the existing safe
+  shelf/cache refresh. This retains the upstream configuration meaning while
+  using OpenReader's durable per-user conflict-aware setting records rather than
+  incorrectly launching a full logical backup.
+- **Legacy URL behavior.** `/settings?panel=account|cache` redirects to `/` with
+  a one-shot sidebar-focus intent; on compact screens the sidebar opens first.
+  `/settings?panel=reader` redirects to root with a one-shot explanatory notice,
+  without opening a book or silently discarding the link. Backup, WebDAV,
+  replace, RSS, admin, and local-store links continue to use their established
+  root dialogs.
+- **Evidence.** The rewritten workspace-operation contracts reject Drawer
+  ownership and require all three config writes. `frontend npm test` passed
+  (396 tests), `frontend npm run build` passed, backend `go test ./...` passed,
+  and `workspace-operation-contract.mjs` completed against real Chrome at
+  `1440×900`, `390×844`, and `360×800`, including old-link focus/notice,
+  mobile click isolation, no horizontal overflow, direct config backup/restore,
+  and the retained root operation dialogs.

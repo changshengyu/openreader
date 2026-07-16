@@ -36,8 +36,6 @@ export const useOverlayStore = defineStore('overlay', {
     replaceRuleEditorDraft: null,
     replaceRuleEditorRequest: 0,
     backupVisible: false,
-    workspaceSettingsVisible: false,
-    workspaceSettingsPanel: 'account',
   }),
   actions: {
     openBookInfo(book, options = {}) {
@@ -169,14 +167,6 @@ export const useOverlayStore = defineStore('overlay', {
     openBackup() {
       this.backupVisible = true
     },
-    openWorkspaceSettings(panel = 'account') {
-      this.workspaceSettingsPanel = normalizeWorkspaceSettingsPanel(panel)
-      this.workspaceSettingsVisible = true
-    },
-    closeWorkspaceSettings() {
-      this.workspaceSettingsVisible = false
-      this.workspaceSettingsPanel = 'account'
-    },
   },
 })
 
@@ -184,12 +174,6 @@ function normalizeSourceManageIntent(intent) {
   return ['manage', 'import', 'remote', 'health', 'debug'].includes(intent)
     ? intent
     : 'manage'
-}
-
-function normalizeWorkspaceSettingsPanel(panel) {
-  return ['account', 'cache', 'reader'].includes(panel)
-    ? panel
-    : 'account'
 }
 
 function normalizeCategoryIds(categoryIds) {

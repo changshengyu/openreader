@@ -84,8 +84,23 @@
       </section>
 
       <nav class="app-nav">
-        <section v-for="section in navSections" :key="section.title" class="app-nav-section">
-          <p class="app-nav-title">{{ section.title }}</p>
+        <section
+          v-for="section in navSections"
+          :key="section.key"
+          :ref="node => captureSidebarSection(section, node)"
+          class="app-nav-section"
+          :class="{ 'is-compat-focused': compatFocusedSection === section.key }"
+          :data-sidebar-section="section.key"
+        >
+          <p class="app-nav-title">
+            <span>{{ section.title }}</span>
+            <button
+              v-if="section.headingAction"
+              class="app-nav-title-action"
+              type="button"
+              @click="section.headingAction.action"
+            >{{ section.headingAction.label }}</button>
+          </p>
           <button
             v-for="item in section.items"
             :key="item.key"
@@ -170,12 +185,15 @@ const workspace = useIndexWorkspaceStore()
 const exploreChooserVisible = ref(false)
 const exploreChooserStyle = ref({})
 const exploreTrigger = ref(null)
+const compatFocusedSection = ref('')
+const sidebarSectionNodes = new Map()
 const offline = ref(false)
 const healthInfo = ref(null)
 const routeBookInfoLoadingId = ref(null)
 const routeBookInfoOpenedKey = ref('')
 const FOREGROUND_REFRESH_INTERVAL = 30000
 let lastForegroundRefreshAt = 0
+let compatibilityFocusTimer
 const { connected: syncConnected, connect, disconnect } = useSync()
 const {
   visible: mobileNavigationVisible,
@@ -230,12 +248,14 @@ const {
 
 const navSections = computed(() => [
   {
+    key: 'backend',
     title: '后端设定',
     items: [
       { key: 'backendStatus', label: syncConnected.value ? '同步在线' : '同步未连接', action: refreshShelfData },
     ],
   },
   {
+    key: 'sources',
     title: '书源设置',
     items: [
       { key: 'sources', label: '书源管理', action: () => overlay.openSourceManage('manage') },
@@ -247,6 +267,7 @@ const navSections = computed(() => [
     ],
   },
   {
+    key: 'bookshelf',
     title: '书架设置',
     items: [
       { key: 'home', label: '书架', action: goHome, closeMobile: true },
@@ -258,10 +279,11 @@ const navSections = computed(() => [
     ],
   },
   {
-    title: '用户空间',
+    key: 'account',
+    title: userStore.profile?.username ? `用户空间 · ${userStore.profile.username}` : '用户空间',
+    headingAction: userStore.profile ? { label: '注销', action: logoutUser } : null,
     items: [
-      { key: 'account', label: userStore.profile?.username || '默认', action: () => overlay.openWorkspaceSettings('account') },
-      { key: 'backupConfig', label: '备份用户配置', action: () => overlay.openBackup() },
+      { key: 'backupConfig', label: '备份用户配置', action: backupUserConfig },
       { key: 'syncConfig', label: '同步用户配置', action: syncUserConfig },
       ...(userStore.profile?.role === 'admin'
         ? [{ key: 'userManage', label: '管理用户空间', action: () => overlay.openUserManage() }]
@@ -269,6 +291,7 @@ const navSections = computed(() => [
     ],
   },
   {
+    key: 'webdav',
     title: 'WebDAV',
     items: [
       { key: 'webdav', label: '文件管理', action: () => overlay.openWebDAV() },
@@ -276,6 +299,7 @@ const navSections = computed(() => [
     ],
   },
   {
+    key: 'cache',
     title: cacheSectionTitle.value,
     items: [
       { key: 'cacheStats', label: '刷新缓存统计', action: loadCacheStats },
@@ -284,6 +308,7 @@ const navSections = computed(() => [
     ],
   },
   {
+    key: 'other',
     title: '其它',
     items: [
       { key: 'rss', label: 'RSS', action: () => overlay.openRSS() },
@@ -374,6 +399,28 @@ function captureExploreTrigger(item, node) {
   if (item?.key === 'discover' && node) exploreTrigger.value = node
 }
 
+function captureSidebarSection(section, node) {
+  if (!section?.key) return
+  if (node) {
+    sidebarSectionNodes.set(section.key, node)
+    return
+  }
+  sidebarSectionNodes.delete(section.key)
+}
+
+function focusSidebarSection(sectionKey) {
+  if (!['account', 'cache'].includes(sectionKey)) return
+  if (isMobileShell.value) mobileNavigationVisible.value = true
+  compatFocusedSection.value = sectionKey
+  clearTimeout(compatibilityFocusTimer)
+  nextTick(() => {
+    sidebarSectionNodes.get(sectionKey)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  })
+  compatibilityFocusTimer = setTimeout(() => {
+    if (compatFocusedSection.value === sectionKey) compatFocusedSection.value = ''
+  }, 2200)
+}
+
 function openExploreChooser() {
   nextTick(() => {
     positionExploreChooser()
@@ -439,25 +486,61 @@ function isNavActive(item) {
   return String(route.query.panel || 'account') === item.panel
 }
 
+async function backupUserConfig() {
+  const confirmed = await ElMessageBox.confirm(
+    '确认要备份当前账号的阅读配置、书架设置、搜索设置和自定义配置方案吗？',
+    '备份用户配置',
+    { type: 'warning' },
+  ).catch(() => false)
+  if (!confirmed) return
+  const [readerSettings, shelfSettings, searchSettings] = await Promise.all([
+    reader.saveReaderSettings(),
+    preferences.savePreference('shelf'),
+    preferences.savePreference('search'),
+  ])
+  if (!readerSettings || !shelfSettings || !searchSettings) {
+    ElMessage.error('备份用户配置失败')
+    return
+  }
+  ElMessage.success('用户配置已备份')
+}
+
 async function syncUserConfig() {
+  const confirmed = await ElMessageBox.confirm(
+    '确认要恢复当前账号的阅读配置、书架设置、搜索设置和自定义配置方案吗？',
+    '同步用户配置',
+    { type: 'warning' },
+  ).catch(() => false)
+  if (!confirmed) return
+  const [readerSettings] = await Promise.all([
+    reader.loadReaderSettings(),
+    preferences.loadPreferences(),
+  ])
+  if (!readerSettings || Object.values(preferences.syncError).some(Boolean)) {
+    ElMessage.error(reader.settingsSyncError || Object.values(preferences.syncError).find(Boolean) || '同步用户配置失败')
+    return
+  }
   const results = await Promise.allSettled([
     userStore.loadMe(),
-    preferences.loadPreferences(),
-    reader.loadReaderSettings(),
     loadShelfForShell({ force: true, all: true }),
     loadCacheStats(),
   ])
-  const failed = results.find((result, index) => index < 4 && result.status === 'rejected')
+  const failed = results.find(result => result.status === 'rejected')
   if (failed) {
-    ElMessage.error(readError(failed.reason, '同步用户配置失败'))
+    ElMessage.warning(readError(failed.reason, '用户配置已同步，部分工作台数据刷新失败'))
     return
   }
-  const shelfResult = results[3]
-  if (shelfResult.status === 'fulfilled' && shelfResult.value?.categoryError) {
+  const shelfResult = results[1]
+  if (shelfResult.value?.categoryError) {
     ElMessage.warning(readError(shelfResult.value.categoryError, '用户配置已同步，分组刷新失败'))
     return
   }
   ElMessage.success('用户配置已同步')
+}
+
+function logoutUser() {
+  userStore.logout()
+  router.replace({ name: 'login' })
 }
 
 async function refreshHealthInfo(showMessage = false) {
@@ -559,9 +642,6 @@ function openRouteWorkspaceOperationOverlay() {
     case 'user-manage':
       overlay.openUserManage()
       break
-    case 'workspace-settings':
-      overlay.openWorkspaceSettings(route.query.settingsPanel)
-      break
   }
 }
 
@@ -575,10 +655,25 @@ function clearRouteWorkspaceOperationOverlayIntent() {
     'replace-rules': overlay.replaceRulesVisible,
     rss: overlay.rssVisible,
     'user-manage': overlay.userManageVisible,
-    'workspace-settings': overlay.workspaceSettingsVisible,
   }
   if (visibleByOverlay[overlayName] === undefined || visibleByOverlay[overlayName]) return
-  const { overlay: _overlay, settingsPanel: _settingsPanel, ...query } = route.query
+  const { overlay: _overlay, ...query } = route.query
+  router.replace({ name: 'home', query })
+}
+
+function consumeWorkspaceFocusIntent() {
+  if (route.name === 'reader') return
+  const sectionKey = String(route.query.workspaceFocus || '')
+  if (!['account', 'cache'].includes(sectionKey)) return
+  focusSidebarSection(sectionKey)
+  const { workspaceFocus: _workspaceFocus, ...query } = route.query
+  router.replace({ name: 'home', query })
+}
+
+function consumeWorkspaceNoticeIntent() {
+  if (route.name === 'reader' || String(route.query.workspaceNotice || '') !== 'reader-settings') return
+  ElMessage.info('阅读设置已迁移至书籍阅读页，请打开书籍后使用阅读器中的设置。')
+  const { workspaceNotice: _workspaceNotice, ...query } = route.query
   router.replace({ name: 'home', query })
 }
 
@@ -635,10 +730,20 @@ watch(
 )
 
 watch(
-  () => [route.name, route.query.overlay, route.query.settingsPanel, userStore.token],
+  () => [route.name, route.query.overlay, userStore.token],
   () => {
     if (!userStore.token) return
     openRouteWorkspaceOperationOverlay()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [route.name, route.query.workspaceFocus, route.query.workspaceNotice, userStore.token],
+  () => {
+    if (!userStore.token) return
+    consumeWorkspaceFocusIntent()
+    consumeWorkspaceNoticeIntent()
   },
   { immediate: true },
 )
@@ -687,7 +792,6 @@ watch(
     overlay.replaceRulesVisible,
     overlay.rssVisible,
     overlay.userManageVisible,
-    overlay.workspaceSettingsVisible,
   ],
   () => clearRouteWorkspaceOperationOverlayIntent(),
 )
@@ -717,6 +821,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(compatibilityFocusTimer)
   window.removeEventListener('offline', setOffline)
   window.removeEventListener('online', setOnline)
   window.removeEventListener('resize', updateViewportFlags)
@@ -825,6 +930,10 @@ function readError(err, fallback) {
 :global(html.dark-reader) .app-brand-subtitle,
 :global(html.dark-reader) .app-nav-title {
   color: #7f766c;
+}
+
+:global(html.dark-reader) .app-nav-title-action {
+  color: #b5b5b5;
 }
 
 :global(html.dark-reader) .setting-select :deep(.el-select__wrapper),
@@ -1031,9 +1140,14 @@ function readError(err, fallback) {
 .app-nav-section {
   display: block;
   margin-bottom: 36px;
+  scroll-margin-block: 24px;
 }
 
 .app-nav-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: 0 0 4px;
   color: #b5b5b5;
   font-size: 14px;
@@ -1042,6 +1156,37 @@ function readError(err, fallback) {
   letter-spacing: 0;
   white-space: normal;
   word-break: keep-all;
+}
+
+.app-nav-title-action {
+  flex: 0 0 auto;
+  padding: 0;
+  color: #9d9d9d;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.app-nav-title-action:hover {
+  color: var(--app-accent);
+}
+
+.app-nav-section.is-compat-focused {
+  animation: sidebar-compat-focus 2.2s ease-out both;
+}
+
+@keyframes sidebar-compat-focus {
+  0%, 55% {
+    background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-accent) 9%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
 }
 
 .app-nav-item {

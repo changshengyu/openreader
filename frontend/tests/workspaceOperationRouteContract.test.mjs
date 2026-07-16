@@ -4,43 +4,47 @@ import test from 'node:test'
 
 const routerSource = readFileSync(new URL('../src/router/index.js', import.meta.url), 'utf8')
 const layoutSource = readFileSync(new URL('../src/layouts/AppLayout.vue', import.meta.url), 'utf8')
-const overlaySource = readFileSync(new URL('../src/stores/overlay.js', import.meta.url), 'utf8')
 const hostSource = readFileSync(new URL('../src/components/GlobalOverlayHost.vue', import.meta.url), 'utf8')
-const settingsSource = readFileSync(new URL('../src/views/Settings.vue', import.meta.url), 'utf8')
 const localStoreOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayLocalStore.vue', import.meta.url), 'utf8')
 const webdavOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayWebDAV.vue', import.meta.url), 'utf8')
 const backupOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayBackups.vue', import.meta.url), 'utf8')
 const replaceOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayReplaceRules.vue', import.meta.url), 'utf8')
 const userOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayUserManagement.vue', import.meta.url), 'utf8')
 
-test('keeps LocalStore and every legacy Settings panel as root-workspace overlay intents', () => {
+test('keeps LocalStore and overlay-backed legacy Settings panels as root-workspace intents', () => {
   assert.match(routerSource, /function\s+workspaceOverlayIntentFromLegacy\s*\(/, 'router must centralize legacy local-store/settings intent normalization')
   assert.match(routerSource, /path:\s*'\/local-store'[\s\S]*?redirect:\s*to\s*=>\s*workspaceOverlayIntentFromLegacy\(to,\s*'local-store'\)/, 'local-store must be a compatibility redirect, not a product page')
   assert.match(routerSource, /path:\s*'\/settings'[\s\S]*?redirect:\s*to\s*=>\s*workspaceOverlayIntentFromLegacy\(to,\s*'settings'\)/, 'settings must be a compatibility redirect, not a product page')
   for (const panel of ['account', 'backup', 'cache', 'webdav', 'reader', 'replace', 'rss', 'admin']) {
     assert.match(routerSource, new RegExp(`['"]${panel}['"]`), `legacy settings panel ${panel} must have an explicit intent mapping`)
   }
+  assert.match(routerSource, /workspaceFocus/, 'account and cache compatibility links must focus their persistent sidebar sections')
+  assert.match(routerSource, /workspaceNotice/, 'reader compatibility links must explicitly explain that settings moved into Reader')
+  assert.doesNotMatch(routerSource, /workspace-settings/, 'legacy Settings links must not recreate the retired generic settings drawer')
 })
 
-test('hydrates and clears operation intents through shared root overlay state only', () => {
-  assert.match(overlaySource, /workspaceSettingsVisible:\s*false/, 'overlay store needs one workspace settings visibility state')
-  assert.match(overlaySource, /workspaceSettingsPanel:\s*'account'/, 'workspace settings must default to account')
-  assert.match(overlaySource, /openWorkspaceSettings\(/, 'workspace settings need a shared open action')
+test('hydrates only real root operation overlays and consumes sidebar/Reader compatibility intents', () => {
   assert.match(layoutSource, /openRouteWorkspaceOperationOverlay\(/, 'AppLayout must hydrate root operation query intents')
   assert.match(layoutSource, /clearRouteWorkspaceOperationOverlayIntent\(/, 'AppLayout must clear only closed operation intents')
   assert.match(layoutSource, /overlay\.openLocalStore\(/, 'local-store intent must reuse the existing overlay controller')
   assert.match(layoutSource, /overlay\.openWebDAV\(/, 'WebDAV intent must reuse the existing overlay controller')
   assert.match(layoutSource, /overlay\.openBackup\(/, 'backup intent must reuse the existing overlay controller')
-  assert.match(layoutSource, /overlay\.openWorkspaceSettings\(/, 'account/cache/reader intents must use one settings overlay')
+  assert.match(layoutSource, /consumeWorkspaceFocusIntent\(/, 'AppLayout must reveal the persistent account/cache sidebar section for old links')
+  assert.match(layoutSource, /consumeWorkspaceNoticeIntent\(/, 'AppLayout must surface the Reader-settings migration notice for old links')
+  assert.match(layoutSource, /backupUserConfig\(/, 'user configuration backup must be a dedicated settings flush, not a full backup dialog')
+  assert.match(layoutSource, /reader\.saveReaderSettings\(/, 'backup must flush reader/custom configuration')
+  assert.match(layoutSource, /preferences\.savePreference\('shelf'\)/, 'backup must flush shelf configuration')
+  assert.match(layoutSource, /preferences\.savePreference\('search'\)/, 'backup must flush search configuration')
+  assert.doesNotMatch(layoutSource, /openWorkspaceSettings\(/, 'sidebar account/cache actions must not open a global settings surface')
 })
 
-test('keeps settings as one workspace body while operation panels use their canonical overlays', () => {
-  assert.match(hostSource, /<OverlayWorkspaceSettings/, 'the shared overlay host must mount workspace settings once')
-  for (const panel of ['账户', '缓存', '阅读']) {
-    assert.match(settingsSource, new RegExp(`label="${panel}"`), `workspace settings must retain ${panel}`)
-  }
-  assert.doesNotMatch(settingsSource, /label="备份"|label="WebDAV"|label="替换规则"|label="RSS"|label="用户管理"/, 'non-workspace operation panels must not keep a second Settings implementation')
-  assert.doesNotMatch(settingsSource, /from '\.\.\/api\/backup'|RSSManager|WebDAVBrowser/, 'backup, RSS, and WebDAV must stay in their canonical overlays')
+test('keeps configuration in the workspace sidebar and reader settings in Reader only', () => {
+  assert.doesNotMatch(hostSource, /<OverlayWorkspaceSettings/, 'the shared overlay host must not mount a generic settings drawer')
+  assert.doesNotMatch(hostSource, /OverlayWorkspaceSettings/, 'the retired generic settings overlay must have no host import')
+  assert.match(layoutSource, /key:\s*'account'/, 'the persistent user-space section must remain addressable')
+  assert.match(layoutSource, /key:\s*'cache'/, 'the persistent cache section must remain addressable')
+  assert.match(layoutSource, /syncUserConfig\(/, 'the sidebar must retain configuration restore')
+  assert.doesNotMatch(layoutSource, /global-workspace-settings-drawer/, 'AppLayout must not retain Drawer-specific ownership')
 })
 
 test('shows the manager-only user workspace entry only to administrators', () => {

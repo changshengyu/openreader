@@ -35,7 +35,9 @@ function fakeToken() {
 
 async function installApiMocks(page) {
   let webdavRootRequests = 0
+  const savedSettingKeys = []
   await page.exposeFunction('__workspaceOperationWebDAVRootRequests', () => webdavRootRequests)
+  await page.exposeFunction('__workspaceOperationSavedSettingKeys', () => [...savedSettingKeys])
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/webdav\/.*$/, async route => {
     const authorization = route.request().headers().authorization || ''
@@ -59,9 +61,21 @@ async function installApiMocks(page) {
 
     if (path === '/me') return route.fulfill(json({ id: 1, username: 'operation-smoke', role: 'admin' }))
     if (path === '/health') return route.fulfill(json({ version: 'smoke', commit: 'workspace-operation' }))
-    if (path === '/settings/reader' && method === 'GET') return route.fulfill(json({ key: 'reader', value: { theme: 'parchment', mode: 'page', pageMode: 'auto' } }))
-    if (path === '/settings/reader' && method === 'PUT') return route.fulfill(json({ key: 'reader', value: {} }))
-    if (path === '/settings/preferences') return route.fulfill(json({ key: 'preferences', value: {} }))
+    if (['/settings/reader', '/settings/shelf', '/settings/search'].includes(path) && method === 'GET') {
+      const key = path.split('/').at(-1)
+      const values = {
+        reader: { theme: 'parchment', mode: 'page', pageMode: 'auto' },
+        shelf: { view: 'grid', layoutVersion: 2 },
+        search: { type: 'all', concurrent: 1 },
+      }
+      return route.fulfill(json({ key, value: values[key], updatedAt: '2026-07-16T00:00:00Z' }))
+    }
+    if (['/settings/reader', '/settings/shelf', '/settings/search'].includes(path) && method === 'PUT') {
+      const key = path.split('/').at(-1)
+      savedSettingKeys.push(key)
+      const body = request.postDataJSON?.() || {}
+      return route.fulfill(json({ key, value: body.value || {}, updatedAt: '2026-07-16T00:00:01Z' }))
+    }
     if (path === '/books') return route.fulfill(json([]))
     if (path === '/categories') return route.fulfill(json([]))
     if (path === '/sources') return route.fulfill(json([]))
@@ -92,6 +106,20 @@ async function assertRouteIntent(page, expectedOverlay, keep = 'operation-contra
   assert(state.keep === keep, 'legacy redirect must preserve unrelated query values')
 }
 
+async function assertRootCompatibilityState(page, keep = 'operation-contract') {
+  const state = await page.evaluate(() => ({
+    pathname: location.pathname,
+    overlay: new URLSearchParams(location.search).get('overlay'),
+    workspaceFocus: new URLSearchParams(location.search).get('workspaceFocus'),
+    workspaceNotice: new URLSearchParams(location.search).get('workspaceNotice'),
+    keep: new URLSearchParams(location.search).get('keep'),
+  }))
+  assert(state.pathname === '/', `legacy Settings URL must redirect to root, got ${state.pathname}`)
+  assert(!state.overlay, `sidebar/Reader compatibility intent must not open an overlay, got ${state.overlay}`)
+  assert(!state.workspaceFocus && !state.workspaceNotice, 'one-shot sidebar/Reader compatibility intent must be consumed')
+  assert(state.keep === keep, 'legacy redirect must preserve unrelated query values')
+}
+
 async function waitForVisibleExactText(page, selector, text) {
   await page.waitForFunction(({ selector: rootSelector, expectedText }) => {
     const root = document.querySelector(rootSelector)
@@ -107,11 +135,6 @@ async function waitForVisibleExactText(page, selector, text) {
 
 async function closeDialog(page, selector, expectedOverlay) {
   await page.locator(`${selector} .el-dialog__headerbtn`).click()
-  await page.waitForFunction((overlay) => new URLSearchParams(location.search).get('overlay') !== overlay, expectedOverlay)
-}
-
-async function closeDrawer(page, selector, expectedOverlay) {
-  await page.locator(`${selector} :is(.el-drawer__close-btn, .el-drawer__headerbtn)`).click()
   await page.waitForFunction((overlay) => new URLSearchParams(location.search).get('overlay') !== overlay, expectedOverlay)
 }
 
@@ -149,9 +172,47 @@ async function openLegacyOperation(page, root, viewport, path, selector, overlay
   await assertMobilePanelBlocksClickThrough(page, viewport, selector)
   if (usesUpstreamDialog) {
     await closeDialog(page, selector, overlay)
-  } else {
-    await closeDrawer(page, selector, overlay)
   }
+}
+
+async function openLegacySidebarFocus(page, root, viewport, panel, section) {
+  await page.goto(`${root}/settings?panel=${panel}&keep=operation-contract`, { waitUntil: 'networkidle' })
+  const selector = `[data-sidebar-section="${section}"]`
+  await page.waitForSelector(`${selector}.is-compat-focused`, { timeout: 10000 })
+  await assertRootCompatibilityState(page)
+  await assertNoHorizontalOverflow(page, `${viewport.width} legacy-${panel}`)
+  const hasDrawer = await page.locator('.global-workspace-settings-drawer').count()
+  assert(hasDrawer === 0, `${viewport.width}: ${panel} legacy link must not recreate a generic settings drawer`)
+  if (viewport.width <= 750) {
+    const shellClass = await page.locator('.app-shell').getAttribute('class')
+    assert(shellClass?.includes('mobile-nav-open'), `${viewport.width}: sidebar focus must open compact navigation`)
+    await page.locator('.app-workspace').click({ position: { x: 200, y: 200 } })
+    await page.waitForFunction(() => !document.querySelector('.app-shell')?.classList.contains('mobile-nav-open'))
+  }
+}
+
+async function openLegacyReaderSettingsNotice(page, root, viewport) {
+  await page.goto(`${root}/settings?panel=reader&keep=operation-contract`, { waitUntil: 'networkidle' })
+  await page.getByText('阅读设置已迁移至书籍阅读页，请打开书籍后使用阅读器中的设置。', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+  await assertRootCompatibilityState(page)
+  await assertNoHorizontalOverflow(page, `${viewport.width} legacy-reader`)
+  const hasDrawer = await page.locator('.global-workspace-settings-drawer').count()
+  assert(hasDrawer === 0, `${viewport.width}: reader legacy link must not recreate a generic settings drawer`)
+}
+
+async function verifyUserConfigurationActions(page) {
+  await page.getByText('备份用户配置', { exact: true }).click()
+  await page.getByRole('button', { name: '确定' }).last().click()
+  await page.waitForFunction(async () => {
+    const keys = await window.__workspaceOperationSavedSettingKeys()
+    return ['reader', 'shelf', 'search'].every(key => keys.includes(key))
+  })
+  const keys = await page.evaluate(() => window.__workspaceOperationSavedSettingKeys())
+  assert(['reader', 'shelf', 'search'].every(key => keys.includes(key)), 'configuration backup must flush reader, shelf, and search settings')
+
+  await page.getByText('同步用户配置', { exact: true }).click()
+  await page.getByRole('button', { name: '确定' }).last().click()
+  await page.getByText('用户配置已同步', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
 }
 
 async function runViewport(browser, viewport) {
@@ -182,18 +243,10 @@ async function runViewport(browser, viewport) {
   await openLegacyOperation(page, root, viewport, '/settings?panel=replace&keep=operation-contract', '.global-replace-dialog', 'replace-rules', '替换规则', true)
   await openLegacyOperation(page, root, viewport, '/settings?panel=rss&keep=operation-contract', '.global-rss-dialog', 'rss', 'RSS 订阅', true)
   await openLegacyOperation(page, root, viewport, '/settings?panel=admin&keep=operation-contract', '.global-user-dialog', 'user-manage', '用户管理', true)
-
-  for (const panel of ['account', 'cache', 'reader']) {
-    await page.goto(`${root}/settings?panel=${panel}&keep=operation-contract`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('.global-workspace-settings-drawer', { timeout: 10000 })
-    await assertRouteIntent(page, 'workspace-settings')
-    const active = await page.locator('.global-workspace-settings-drawer .el-tabs__item.is-active').textContent()
-    const expected = { account: '账户', cache: '缓存', reader: '阅读' }[panel]
-    assert(active?.trim() === expected, `${viewport.width}: expected ${expected} workspace panel, got ${active}`)
-    await assertNoHorizontalOverflow(page, `${viewport.width} workspace-${panel}`)
-    await assertMobilePanelBlocksClickThrough(page, viewport, '.global-workspace-settings-drawer .el-tabs__content')
-    await closeDrawer(page, '.global-workspace-settings-drawer', 'workspace-settings')
-  }
+  await openLegacySidebarFocus(page, root, viewport, 'account', 'account')
+  await openLegacySidebarFocus(page, root, viewport, 'cache', 'cache')
+  await openLegacyReaderSettingsNotice(page, root, viewport)
+  await verifyUserConfigurationActions(page)
 
   assert(failures.length === 0, failures.join('\n'))
   await context.close()

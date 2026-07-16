@@ -28,13 +28,18 @@ function workspaceOverlayIntentFromLegacy(to, kind) {
     rss: 'rss',
     admin: 'user-manage',
   }
-  const overlay = overlayByPanel[settingsPanel] || 'workspace-settings'
+  const workspaceFocusByPanel = {
+    account: 'account',
+    cache: 'cache',
+  }
+  const overlay = overlayByPanel[settingsPanel]
   return {
     path: '/',
     query: {
       ...query,
-      overlay,
-      ...(overlay === 'workspace-settings' ? { settingsPanel } : {}),
+      ...(overlay ? { overlay } : {}),
+      ...(workspaceFocusByPanel[settingsPanel] ? { workspaceFocus: workspaceFocusByPanel[settingsPanel] } : {}),
+      ...(settingsPanel === 'reader' ? { workspaceNotice: 'reader-settings' } : {}),
     },
   }
 }

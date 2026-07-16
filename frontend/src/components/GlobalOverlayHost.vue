@@ -31,11 +31,6 @@
     :is-mobile="isMobileOverlay"
   />
 
-  <OverlayWorkspaceSettings
-    :direction="wideDrawerDirection"
-    :size="wideDrawerSize"
-  />
-
   <OverlayUserManagement
     :is-mobile="isMobileOverlay"
   />
@@ -72,18 +67,11 @@ import OverlayRSS from './overlays/OverlayRSS.vue'
 import OverlaySources from './overlays/OverlaySources.vue'
 import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
 import OverlayWebDAV from './overlays/OverlayWebDAV.vue'
-import OverlayWorkspaceSettings from './overlays/OverlayWorkspaceSettings.vue'
 
 const reader = useReaderStore()
 const windowWidth = ref(currentViewportWidth())
 const isMobileOverlay = computed(() => (
   shouldUseMiniInterface(reader.pageMode, windowWidth.value)
-))
-const wideDrawerDirection = computed(() => (
-  isMobileOverlay.value ? 'btt' : 'rtl'
-))
-const wideDrawerSize = computed(() => (
-  isMobileOverlay.value ? '88%' : '82%'
 ))
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
