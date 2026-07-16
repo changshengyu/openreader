@@ -1,8 +1,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
+  isDirectImportableLocalPath,
   isEPUBLocalPath,
   isTextLocalPath,
 } from '../utils/localBookToc.js'
+
+const unsupportedVisibleImportMessage = '仅支持 TXT / EPUB / UMD / CBZ 格式'
 
 export function useOverlayBookImport(options) {
   const importing = ref(false)
@@ -60,11 +63,17 @@ export function useOverlayBookImport(options) {
   }
 
   function pickFile(data) {
-    draft.file = data.raw || null
+    const file = data.raw || null
+    draft.file = null
     draft.title = ''
     draft.author = ''
     previewData.value = null
     importToken.value = ''
+    if (file && !isDirectImportableLocalPath(file.name)) {
+      options.onError(new Error('unsupported visible local import format'), unsupportedVisibleImportMessage)
+      return
+    }
+    draft.file = file
     if (isEPUB.value) draft.tocRule = 'spin+toc'
     else if (!isText.value) draft.tocRule = ''
     if (draft.file) return preview()

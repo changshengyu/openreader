@@ -26,3 +26,7 @@ export function isTextLocalPath(path = '') {
 export function isEPUBLocalPath(path = '') {
   return /\.epub$/i.test(String(path))
 }
+
+export function isDirectImportableLocalPath(path = '') {
+  return /\.(txt|epub|umd|cbz)$/i.test(String(path))
+}

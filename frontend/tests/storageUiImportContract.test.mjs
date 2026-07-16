@@ -15,8 +15,9 @@ test('uses the upstream storage-manager dialog labels without a competing embedd
   assert.doesNotMatch(webdav, /<strong>\{\{ title \}\}<\/strong>/, 'WebDAV body must not duplicate the root dialog title')
 })
 
-test('keeps direct CBZ import while storage managers use their distinct upstream format gates', () => {
-  assert.match(directImport, /accept="[^"]*\.cbz[^"]*"/i, 'direct import remains an approved OpenReader parser entry')
+test('keeps the direct-import chooser on the fixed upstream format set', () => {
+  assert.match(directImport, /accept="\.txt,\.epub,\.umd,\.cbz"/i, 'direct import must expose only TXT / EPUB / UMD / CBZ')
+  assert.doesNotMatch(directImport, /accept="[^"]*\.(?:pdf|md|text)[^"]*"/i, 'direct import must not advertise legacy-only PDF/Markdown/.text formats')
   assert.doesNotMatch(localStore, /accept=/, 'upstream LocalStore upload must manage arbitrary files instead of filtering chooser extensions')
   assert.doesNotMatch(webdav, /\(txt\|text\|md\|epub\|pdf\|umd\|cbz\)/i, 'WebDAV must not expose the OpenReader-only CBZ/PDF/Markdown import set')
 })

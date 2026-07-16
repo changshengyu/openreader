@@ -74,6 +74,19 @@ test('picks an EPUB file, previews metadata, and applies its default TOC rule', 
   ])
 })
 
+test('rejects legacy-only formats before they can enter the visible import flow', async () => {
+  const fixture = createController()
+  await fixture.controller.pickFile({ raw: { name: 'legacy.pdf' } })
+  assert.equal(fixture.controller.draft.file, null)
+  assert.equal(fixture.controller.previewData.value, null)
+  assert.equal(fixture.controller.isText.value, false)
+  assert.equal(fixture.controller.isEPUB.value, false)
+  assert.equal(fixture.calls.some(call => call[0] === 'preview'), false)
+  assert.equal(fixture.calls.length, 1)
+  assert.equal(fixture.calls[0][0], 'error')
+  assert.equal(fixture.calls[0][2], '仅支持 TXT / EPUB / UMD / CBZ 格式')
+})
+
 test('clears stale previews and reports parsing failures', async () => {
   const failure = new Error('bad file')
   const fixture = createController({
