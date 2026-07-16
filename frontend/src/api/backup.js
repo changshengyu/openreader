@@ -4,6 +4,10 @@ export function triggerBackup() {
   return api.post('/backup/trigger')
 }
 
+export function triggerPortableBackup() {
+  return api.post('/backup/portable/trigger')
+}
+
 export function listBackups() {
   return api.get('/backup/list')
 }

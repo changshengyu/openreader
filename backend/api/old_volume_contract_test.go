@@ -320,7 +320,7 @@ func setupHistoricalLocalVolume(t *testing.T) (*gin.Engine, *Server, historicalL
 
 	hub := readersync.NewHub()
 	sched := scheduler.New(database, time.Second)
-	backupSvc := backup.New(database, filepath.Join(fixture.cfg.DataDir, "webdav"))
+	backupSvc := backup.New(database, filepath.Join(fixture.cfg.DataDir, "webdav"), fixture.cfg)
 	router := gin.New()
 	server := RegisterRoutes(router, fixture.cfg, database, hub, sched, backupSvc)
 	return router, server, fixture

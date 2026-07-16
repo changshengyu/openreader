@@ -73,3 +73,27 @@ func TestLoadBackupRestoreLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T
 		t.Fatalf("safe backup restore defaults = %+v", defaults)
 	}
 }
+
+func TestLoadPortableBackupLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
+	t.Setenv("OPENREADER_MAX_PORTABLE_BACKUP_BYTES", "8192")
+	t.Setenv("OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES", "12")
+	t.Setenv("OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES", "4096")
+	t.Setenv("OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES", "16384")
+
+	configured := Load()
+	if configured.MaxPortableBackupBytes != 8192 || configured.MaxPortableArchiveEntries != 12 ||
+		configured.MaxPortableArchiveBytes != 4096 || configured.MaxPortableArchiveTotal != 16384 {
+		t.Fatalf("configured portable backup limits = %+v", configured)
+	}
+
+	t.Setenv("OPENREADER_MAX_PORTABLE_BACKUP_BYTES", "0")
+	t.Setenv("OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES", "not-a-number")
+	t.Setenv("OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES", "-1")
+	t.Setenv("OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES", "0")
+
+	defaults := Load()
+	if defaults.MaxPortableBackupBytes != 512*1024*1024 || defaults.MaxPortableArchiveEntries != 10_000 ||
+		defaults.MaxPortableArchiveBytes != 256*1024*1024 || defaults.MaxPortableArchiveTotal != 512*1024*1024 {
+		t.Fatalf("safe portable backup defaults = %+v", defaults)
+	}
+}

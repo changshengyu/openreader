@@ -238,13 +238,17 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 	if !s.requireStoreAccess(c) {
 		return
 	}
-	limits := s.backupRestoreLimits()
-	if c.Request.ContentLength > limits.MaxCompressedBytes+backupMultipartEnvelopeBytes {
+	limits := s.portableLimits()
+	if c.Request.ContentLength > limits.maxCompressed+backupMultipartEnvelopeBytes {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limits.MaxCompressedBytes+backupMultipartEnvelopeBytes)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limits.maxCompressed+backupMultipartEnvelopeBytes)
 	userID, _ := middleware.UserID(c)
+	username, ok := s.currentUserName(c, userID)
+	if !ok {
+		return
+	}
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
@@ -259,25 +263,17 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file must be a zip archive"})
 		return
 	}
-	if fileHeader.Size > limits.MaxCompressedBytes {
+	if fileHeader.Size > limits.maxCompressed {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return
 	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open backup"})
-		return
-	}
-	defer file.Close()
-
-	data, err := readBoundedBackup(file, limits.MaxCompressedBytes)
+	stagedPath, err := s.stageUploadedBackup(fileHeader, userID, limits.maxCompressed)
 	if err != nil {
 		writeBackupRestoreError(c, err)
 		return
 	}
-
-	result, err := s.restoreLegadoBackupData(data, userID)
+	defer os.Remove(stagedPath)
+	result, err := s.restoreBackupFile(stagedPath, userID, username)
 	if err != nil {
 		writeBackupRestoreError(c, err)
 		return
@@ -294,6 +290,10 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		return
 	}
 	userID, _ := middleware.UserID(c)
+	username, ok := s.currentUserName(c, userID)
+	if !ok {
+		return
+	}
 	var req restoreWebDAVBackupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
@@ -312,23 +312,12 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file not found"})
 		return
 	}
-	limits := s.backupRestoreLimits()
-	if info.Size() > limits.MaxCompressedBytes {
+	limits := s.portableLimits()
+	if info.Size() > limits.maxCompressed {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return
 	}
-	file, err := os.Open(filePath)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read backup file"})
-		return
-	}
-	defer file.Close()
-	data, err := readBoundedBackup(file, limits.MaxCompressedBytes)
-	if err != nil {
-		writeBackupRestoreError(c, err)
-		return
-	}
-	result, err := s.restoreLegadoBackupData(data, userID)
+	result, err := s.restoreBackupFile(filePath, userID, username)
 	if err != nil {
 		writeBackupRestoreError(c, err)
 		return
@@ -338,6 +327,10 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 
 func writeBackupRestoreError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, errPortableBackupConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "portable backup conflicts with an existing local book"})
+	case errors.Is(err, errPortableBackupLimit):
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 	case errors.Is(err, errBackupRestoreTooLarge):
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 	case errors.Is(err, errBackupArchiveLimit):
@@ -572,6 +565,16 @@ func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStore
 }
 
 func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error) {
+	return s.restoreLegadoBackupDataWithBroadcast(data, userID, true)
+}
+
+// restoreLegadoBackupDataWithoutBroadcast lets a higher-level restore add durable local archive
+// state before reader clients are told that their restored shelf is ready to load.
+func (s *Server) restoreLegadoBackupDataWithoutBroadcast(data []byte, userID uint) (gin.H, error) {
+	return s.restoreLegadoBackupDataWithBroadcast(data, userID, false)
+}
+
+func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, broadcast bool) (gin.H, error) {
 	archive, err := newBackupRestoreArchive(data, s.backupRestoreLimits())
 	if err != nil {
 		return nil, err
@@ -675,7 +678,7 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		}
 	}
 
-	s.broadcastRestoreUpdates(userID, gin.H{
+	result := gin.H{
 		"sources":          sourcesCount,
 		"rssSources":       rssSourcesCount,
 		"books":            booksCount,
@@ -685,19 +688,11 @@ func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error
 		"categories":       categoriesCount,
 		"bookmarks":        bookmarksCount,
 		"replaceRules":     replaceRulesCount,
-	})
-
-	return gin.H{
-		"sources":          sourcesCount,
-		"rssSources":       rssSourcesCount,
-		"books":            booksCount,
-		"chapterVariables": chapterVariablesCount,
-		"progress":         progressCount,
-		"settings":         settingsCount,
-		"categories":       categoriesCount,
-		"bookmarks":        bookmarksCount,
-		"replaceRules":     replaceRulesCount,
-	}, nil
+	}
+	if broadcast {
+		s.broadcastRestoreUpdates(userID, result)
+	}
+	return result, nil
 }
 
 func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {

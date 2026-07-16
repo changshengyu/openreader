@@ -3,9 +3,12 @@ set -eu
 
 IMAGE="${IMAGE:-ghcr.io/changshengyu/openreader:latest}"
 PORT="${PORT:-18080}"
+PORTABLE_PORT="${PORTABLE_PORT:-$((PORT + 1))}"
 HISTORICAL_VOLUME="${HISTORICAL_VOLUME:-0}"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openreader-volume-smoke.XXXXXX")"
 NAME="${NAME:-openreader-volume-smoke-$(basename "$ROOT")}"
+PORTABLE_ROOT=""
+PORTABLE_NAME=""
 PASSWORD="password123"
 USERNAME="smoke_$$"
 BASE_URL="http://127.0.0.1:${PORT}"
@@ -20,10 +23,19 @@ esac
 
 cleanup() {
   docker stop "$NAME" >/dev/null 2>&1 || true
+  if [ -n "$PORTABLE_NAME" ]; then
+    docker stop "$PORTABLE_NAME" >/dev/null 2>&1 || true
+  fi
   if [ "${KEEP_OPENREADER_SMOKE:-0}" != "1" ]; then
     rm -rf "$ROOT"
+    if [ -n "$PORTABLE_ROOT" ]; then
+      rm -rf "$PORTABLE_ROOT"
+    fi
   else
     echo "kept smoke directory: $ROOT"
+    if [ -n "$PORTABLE_ROOT" ]; then
+      echo "kept portable restore directory: $PORTABLE_ROOT"
+    fi
   fi
 }
 trap cleanup EXIT INT TERM
@@ -80,6 +92,38 @@ wait_health() {
   done
   echo "container did not become healthy" >&2
   docker logs "$NAME" >&2 || true
+  exit 1
+}
+
+start_portable_destination() {
+  PORTABLE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openreader-portable-restore.XXXXXX")"
+  PORTABLE_NAME="openreader-portable-restore-$(basename "$PORTABLE_ROOT")"
+  mkdir -p "$PORTABLE_ROOT/data" "$PORTABLE_ROOT/cache" "$PORTABLE_ROOT/library"
+  docker run -d --rm \
+    --name "$PORTABLE_NAME" \
+    -p "127.0.0.1:${PORTABLE_PORT}:8080" \
+    -e OPENREADER_ADDR=":8080" \
+    -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+    -e OPENREADER_DATA_DIR="/app/data" \
+    -e OPENREADER_CACHE_DIR="/app/cache" \
+    -e OPENREADER_LIBRARY_DIR="/app/library" \
+    -v "$PORTABLE_ROOT/data:/app/data" \
+    -v "$PORTABLE_ROOT/cache:/app/cache" \
+    -v "$PORTABLE_ROOT/library:/app/library" \
+    "$IMAGE" >/dev/null
+}
+
+wait_portable_health() {
+  i=0
+  while [ "$i" -lt 60 ]; do
+    if curl -fsS "http://127.0.0.1:${PORTABLE_PORT}/api/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  echo "portable destination container did not become healthy" >&2
+  docker logs "$PORTABLE_NAME" >&2 || true
   exit 1
 }
 
@@ -220,6 +264,17 @@ assert_relative_cache_migration() {
   fi
 }
 
+portable_destination_archive() {
+  python3 -c '
+import sqlite3, sys
+connection = sqlite3.connect(sys.argv[1])
+row = connection.execute("SELECT original_file FROM books WHERE title = ?", (sys.argv[2],)).fetchone()
+if row is None:
+    raise SystemExit("portable restored book was not listed")
+print(row[0])
+' "$PORTABLE_ROOT/data/openreader.db" "$1"
+}
+
 start_container
 wait_health
 
@@ -249,6 +304,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   RELATIVE_CACHE_SOURCE="$ROOT/cache/legacy-cache/chapter.txt"
   RELATIVE_CACHE_TARGET="$ROOT/library/data/${USERNAME}/old-volume-relative-cache/content/legacy-cache/chapter.txt"
   RELATIVE_CACHE_CONTENT='历史相对 cache 正文必须优先于 archive。'
+  PORTABLE_RELATIVE_ARCHIVE_CONTENT='archive 回退正文，不应覆盖旧 cache。'
   TXT_HASH="$(archive_hash "$TXT_ARCHIVE")"
   EPUB_HASH="$(archive_hash "$EPUB_ARCHIVE")"
   UMD_HASH="$(archive_hash "$UMD_ARCHIVE")"
@@ -346,6 +402,120 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   CBZ_RESPONSE="$(read_historical_book "$CBZ_BOOK_ID" "cbz" "")"
   CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
   curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
+
+  PORTABLE_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/backup/portable/trigger" \
+    -H "Authorization: Bearer ${TOKEN}")"
+  PORTABLE_BACKUP_NAME="$(printf '%s' "$PORTABLE_RESPONSE" | json_field name)"
+  PORTABLE_LOCAL_BOOKS="$(printf '%s' "$PORTABLE_RESPONSE" | json_field localBooks)"
+  if [ "$PORTABLE_LOCAL_BOOKS" != "5" ]; then
+    echo "portable historical backup exported ${PORTABLE_LOCAL_BOOKS} local books, expected 5" >&2
+    exit 1
+  fi
+  PORTABLE_BACKUP_PATH="$ROOT/data/webdav/users/${USERNAME}/${PORTABLE_BACKUP_NAME}"
+  curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$PORTABLE_BACKUP_NAME" | grep 'openreader-portable-v1' >/dev/null
+  [ -f "$PORTABLE_BACKUP_PATH" ] || {
+    echo "portable backup was not written to the owner's private backup root" >&2
+    exit 1
+  }
+
+  start_portable_destination
+  wait_portable_health
+  PORTABLE_BASE_URL="http://127.0.0.1:${PORTABLE_PORT}"
+  PORTABLE_REGISTER_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/register" \
+    -H 'Content-Type: application/json' \
+    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
+  PORTABLE_TOKEN="$(printf '%s' "$PORTABLE_REGISTER_RESPONSE" | json_field token)"
+  PORTABLE_RESTORE_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/backup/restore-legado" \
+    -H "Authorization: Bearer ${PORTABLE_TOKEN}" \
+    -F "file=@${PORTABLE_BACKUP_PATH}")"
+  PORTABLE_RESTORED_BOOKS="$(printf '%s' "$PORTABLE_RESTORE_RESPONSE" | json_field localBooks)"
+  if [ "$PORTABLE_RESTORED_BOOKS" != "5" ]; then
+    echo "portable restore reported ${PORTABLE_RESTORED_BOOKS} local books, expected 5" >&2
+    exit 1
+  fi
+  PORTABLE_BOOKS_RESPONSE="$(curl -fsS "${PORTABLE_BASE_URL}/api/books" -H "Authorization: Bearer ${PORTABLE_TOKEN}")"
+  if printf '%s' "$PORTABLE_BOOKS_RESPONSE" | grep -q -F "$OTHER_BOOK_TITLE"; then
+    echo "portable backup leaked the second user's local shelf" >&2
+    exit 1
+  fi
+  PORTABLE_TXT_BOOK_ID="$(printf '%s' "$PORTABLE_BOOKS_RESPONSE" | json_book_id '旧卷 TXT 验证书')"
+  PORTABLE_EPUB_BOOK_ID="$(printf '%s' "$PORTABLE_BOOKS_RESPONSE" | json_book_id '旧卷 EPUB 验证书')"
+  PORTABLE_UMD_BOOK_ID="$(printf '%s' "$PORTABLE_BOOKS_RESPONSE" | json_book_id '旧卷 UMD 验证书')"
+  PORTABLE_CBZ_BOOK_ID="$(printf '%s' "$PORTABLE_BOOKS_RESPONSE" | json_book_id '旧卷 CBZ 验证书')"
+  PORTABLE_RELATIVE_CACHE_BOOK_ID="$(printf '%s' "$PORTABLE_BOOKS_RESPONSE" | json_book_id '旧卷 相对缓存验证书')"
+  PORTABLE_TXT_ARCHIVE="$PORTABLE_ROOT/library/$(portable_destination_archive '旧卷 TXT 验证书')"
+  PORTABLE_EPUB_ARCHIVE="$PORTABLE_ROOT/library/$(portable_destination_archive '旧卷 EPUB 验证书')"
+  PORTABLE_UMD_ARCHIVE="$PORTABLE_ROOT/library/$(portable_destination_archive '旧卷 UMD 验证书')"
+  PORTABLE_CBZ_ARCHIVE="$PORTABLE_ROOT/library/$(portable_destination_archive '旧卷 CBZ 验证书')"
+  PORTABLE_RELATIVE_CACHE_ARCHIVE="$PORTABLE_ROOT/library/$(portable_destination_archive '旧卷 相对缓存验证书')"
+  assert_archive_hash "$PORTABLE_TXT_ARCHIVE" "$TXT_HASH" 'portable restore'
+  assert_archive_hash "$PORTABLE_EPUB_ARCHIVE" "$EPUB_HASH" 'portable restore'
+  assert_archive_hash "$PORTABLE_UMD_ARCHIVE" "$UMD_HASH" 'portable restore'
+  assert_archive_hash "$PORTABLE_CBZ_ARCHIVE" "$CBZ_HASH" 'portable restore'
+  assert_archive_hash "$PORTABLE_RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'portable restore'
+
+  SOURCE_BASE_URL="$BASE_URL"
+  SOURCE_TOKEN="$TOKEN"
+  BASE_URL="$PORTABLE_BASE_URL"
+  TOKEN="$PORTABLE_TOKEN"
+  read_historical_book "$PORTABLE_TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
+  read_historical_book "$PORTABLE_EPUB_BOOK_ID" "epub" "" >/dev/null
+  read_historical_book "$PORTABLE_UMD_BOOK_ID" "" '第一段' >/dev/null
+  read_historical_book "$PORTABLE_RELATIVE_CACHE_BOOK_ID" "" "$PORTABLE_RELATIVE_ARCHIVE_CONTENT" >/dev/null
+  PORTABLE_CBZ_RESPONSE="$(read_historical_book "$PORTABLE_CBZ_BOOK_ID" "cbz" "")"
+  PORTABLE_CBZ_RESOURCE_URL="$(printf '%s' "$PORTABLE_CBZ_RESPONSE" | json_field resourceUrl)"
+  curl -fsS "${BASE_URL}${PORTABLE_CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
+  for portable_book_id in "$PORTABLE_TXT_BOOK_ID" "$PORTABLE_EPUB_BOOK_ID" "$PORTABLE_UMD_BOOK_ID" "$PORTABLE_CBZ_BOOK_ID"; do
+    refresh_historical_book "$portable_book_id"
+  done
+  assert_archive_hash "$PORTABLE_TXT_ARCHIVE" "$TXT_HASH" 'portable refresh'
+  assert_archive_hash "$PORTABLE_EPUB_ARCHIVE" "$EPUB_HASH" 'portable refresh'
+  assert_archive_hash "$PORTABLE_UMD_ARCHIVE" "$UMD_HASH" 'portable refresh'
+  assert_archive_hash "$PORTABLE_CBZ_ARCHIVE" "$CBZ_HASH" 'portable refresh'
+  assert_archive_hash "$PORTABLE_RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'portable refresh'
+  BASE_URL="$SOURCE_BASE_URL"
+  TOKEN="$SOURCE_TOKEN"
+  docker stop "$PORTABLE_NAME" >/dev/null
+  i=0
+  while docker inspect "$PORTABLE_NAME" >/dev/null 2>&1; do
+    if [ "$i" -ge 30 ]; then
+      echo "portable destination was stopped but not removed" >&2
+      exit 1
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  docker run -d --rm \
+    --name "$PORTABLE_NAME" \
+    -p "127.0.0.1:${PORTABLE_PORT}:8080" \
+    -e OPENREADER_ADDR=":8080" \
+    -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+    -e OPENREADER_DATA_DIR="/app/data" \
+    -e OPENREADER_CACHE_DIR="/app/cache" \
+    -e OPENREADER_LIBRARY_DIR="/app/library" \
+    -v "$PORTABLE_ROOT/data:/app/data" \
+    -v "$PORTABLE_ROOT/cache:/app/cache" \
+    -v "$PORTABLE_ROOT/library:/app/library" \
+    "$IMAGE" >/dev/null
+  wait_portable_health
+  PORTABLE_TOKEN="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/login" \
+    -H 'Content-Type: application/json' \
+    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}" | json_field token)"
+  BASE_URL="$PORTABLE_BASE_URL"
+  TOKEN="$PORTABLE_TOKEN"
+  read_historical_book "$PORTABLE_TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
+  read_historical_book "$PORTABLE_EPUB_BOOK_ID" "epub" "" >/dev/null
+  read_historical_book "$PORTABLE_UMD_BOOK_ID" "" '第一段' >/dev/null
+  PORTABLE_CBZ_RESPONSE="$(read_historical_book "$PORTABLE_CBZ_BOOK_ID" "cbz" "")"
+  PORTABLE_CBZ_RESOURCE_URL="$(printf '%s' "$PORTABLE_CBZ_RESPONSE" | json_field resourceUrl)"
+  curl -fsS "${BASE_URL}${PORTABLE_CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
+  assert_archive_hash "$PORTABLE_TXT_ARCHIVE" "$TXT_HASH" 'portable restart'
+  assert_archive_hash "$PORTABLE_EPUB_ARCHIVE" "$EPUB_HASH" 'portable restart'
+  assert_archive_hash "$PORTABLE_UMD_ARCHIVE" "$UMD_HASH" 'portable restart'
+  assert_archive_hash "$PORTABLE_CBZ_ARCHIVE" "$CBZ_HASH" 'portable restart'
+  assert_archive_hash "$PORTABLE_RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'portable restart'
+  BASE_URL="$SOURCE_BASE_URL"
+  TOKEN="$SOURCE_TOKEN"
   echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz, relative-cache, owner-isolation)"
   exit 0
 fi

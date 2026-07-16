@@ -84,16 +84,25 @@ Status: implemented on 2026-07-12 after comparison with reader-dev `Index.vue`, 
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
 
-### Planned P1-E4 portable local archive extension
+### P1-E4 portable local archive extension
 
-Status: contract extracted only; not implemented. Reader-dev has no local-file backup format, so
-this is a deliberately named OpenReader extension rather than a change to either row above. The
-full route, response, scoped-root, collision, staged-restore and limit contract is
+Status: implemented. Reader-dev has no local-file backup format, so this is a deliberately named
+OpenReader extension rather than a change to either row above. The full format, scoped-root,
+collision, staged-restore and limit contract is
 [`portable-local-archive-backup-p1e4-contract.md`](portable-local-archive-backup-p1e4-contract.md).
-In particular, `POST /api/backup/trigger` remains a logical backup, while a future
-`POST /api/backup/portable/trigger` creates `portable_backup_*.zip`; generic upload/WebDAV restore
-must recognize v1 manifest packages and restore them fully rather than silently treating them as
-a partial logical restore.
+
+| Method / path | Request | Success / side effects | Errors / compatibility |
+|---|---|---|---|
+| `POST /api/backup/portable/trigger` | Authenticated, no body. | Writes caller-scoped `portable_backup_*.zip`; returns `{message,path,name,format:"openreader-portable-v1",localBooks}`. The package retains the ordinary logical JSON entries and adds the v1 manifest plus verified private original archives. | `409` for missing/unsafe archive or Type=1 local audio, `413` for a configured output/archive limit, no host path in errors. `POST /api/backup/trigger` remains logical only. |
+| `GET /api/backup/list`, `GET /api/backup/download/:name` | Existing authentication/name path. | List adds the optional `format` (`logical` or `openreader-portable-v1`); download accepts the existing `backup_*.zip` and additive `portable_backup_*.zip` only in the caller root. | Existing clients may ignore `format`; traversal, other prefixes and cross-user files remain rejected. |
+| `POST /api/backup/restore-legado`, `POST /api/backup/restore-webdav` | Existing multipart or scoped WebDAV request. | Manifest detection dispatches v1 packages to full logical + local archive recovery and returns additive `localBooks`. Legacy reader-dev/Legado/OpenReader ZIPs retain their original restore path. | Unknown/invalid v1, collision, hash, ZIP/path or parse failure returns a client-safe error before package-controlled data mutation; a portable identity collision is `409`. |
+
+Configuration defaults are additive: `OPENREADER_MAX_PORTABLE_BACKUP_BYTES=536870912`,
+`OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES=10000`,
+`OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES=268435456`, and
+`OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES=536870912`. Portable archive parsing uses this
+independent per-file bound rather than the smaller interactive-upload cap; normal imports retain
+their own `OPENREADER_MAX_IMPORT_BYTES` policy.
 
 ## P2 UserManage API contract
 

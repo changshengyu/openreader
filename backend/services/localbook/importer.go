@@ -3,6 +3,7 @@ package localbook
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -214,6 +215,153 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 	if err != nil {
 		return models.Book{}, err
 	}
+	return book, nil
+}
+
+// RestoreExisting rehydrates a local-book shelf row from a portable backup archive. The logical
+// backup restore has already recreated the caller-owned book, progress, bookmarks and categories;
+// keeping that row and URL is what prevents those records from drifting to a newly allocated local
+// identifier. This is deliberately separate from Import, whose normal user-facing behavior creates
+// a new book and therefore a new local URL.
+func (importer Importer) RestoreExisting(existing models.Book, request ImportRequest) (models.Book, error) {
+	if existing.ID == 0 || existing.UserID == 0 || existing.UserID != request.UserID || existing.SourceID != 0 {
+		return models.Book{}, errors.New("invalid portable local book target")
+	}
+	if strings.TrimSpace(existing.URL) == "" {
+		return models.Book{}, errors.New("portable local book target has no URL")
+	}
+	parsedBook, err := parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
+	if err != nil {
+		if errors.Is(err, ErrUnsupportedFormat) {
+			return models.Book{}, err
+		}
+		return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
+	}
+	title := strings.TrimSpace(request.Title)
+	if title == "" {
+		title = strings.TrimSpace(existing.Title)
+	}
+	if title == "" {
+		title = strings.TrimSpace(parsedBook.Title)
+	}
+	if title == "" {
+		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
+	}
+	author := strings.TrimSpace(request.Author)
+	if author == "" {
+		author = strings.TrimSpace(existing.Author)
+	}
+	if author == "" {
+		author = strings.TrimSpace(parsedBook.Author)
+	}
+
+	archive, err := engine.ArchiveImportedBook(importer.cfg.LibraryDir, request.UserName, title, author, request.FileName, request.Data)
+	if err != nil {
+		return models.Book{}, err
+	}
+	archiveRoot := filepath.Join(importer.cfg.LibraryDir, archive.Directory)
+	cleanupArchive := true
+	defer func() {
+		if cleanupArchive {
+			_ = os.RemoveAll(archiveRoot)
+		}
+	}()
+
+	book := existing
+	err = importer.db.Transaction(func(tx *gorm.DB) error {
+		var target models.Book
+		if err := tx.Where("id = ? AND user_id = ? AND source_id = ?", existing.ID, request.UserID, 0).First(&target).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("book_id = ?", target.ID).Delete(&models.Chapter{}).Error; err != nil {
+			return err
+		}
+		lastChapter := ""
+		if len(parsedBook.Chapters) > 0 {
+			lastChapter = parsedBook.Chapters[len(parsedBook.Chapters)-1].Title
+		}
+		target.Type = 0
+		target.Title = title
+		target.Author = author
+		target.LibraryPath = archive.Directory
+		target.OriginalFile = archive.OriginalFile
+		target.TOCFile = archive.TOCFile
+		target.TOCRule = strings.TrimSpace(request.TOCRule)
+		target.SourceFile = archive.SourceFile
+		target.LastChapter = lastChapter
+		target.ChapterCount = len(parsedBook.Chapters)
+		if err := tx.Save(&target).Error; err != nil {
+			return err
+		}
+
+		archivedChapters := make([]engine.ArchivedChapter, 0, len(parsedBook.Chapters))
+		for index, parsedChapter := range parsedBook.Chapters {
+			chapterTitle := strings.TrimSpace(parsedChapter.Title)
+			if chapterTitle == "" {
+				chapterTitle = fmt.Sprintf("第 %d 章", index+1)
+			}
+			chapterURL := fmt.Sprintf("%s/chapter_%d", target.URL, index)
+			contentDir := filepath.Join(importer.cfg.LibraryDir, archive.Directory, "content")
+			contentPath, err := engine.WriteChapterCache(contentDir, target.URL, chapterURL, parsedChapter.Content)
+			if err != nil {
+				return err
+			}
+			cachePath := filepath.Join("content", contentPath)
+			chapter := models.Chapter{
+				BookID:              target.ID,
+				Index:               index,
+				Title:               chapterTitle,
+				URL:                 chapterURL,
+				CachePath:           cachePath,
+				ResourcePath:        parsedChapter.ResourcePath,
+				ResourceFragment:    parsedChapter.ResourceFragment,
+				ResourceEndFragment: parsedChapter.ResourceEndFragment,
+			}
+			if err := tx.Create(&chapter).Error; err != nil {
+				return err
+			}
+			archivedChapters = append(archivedChapters, engine.ArchivedChapter{
+				ID:                  chapter.ID,
+				URL:                 chapterURL,
+				Title:               chapterTitle,
+				IsVolume:            false,
+				BaseURL:             "",
+				BookURL:             archive.OriginalFile,
+				Index:               index,
+				Start:               parsedChapter.Start,
+				End:                 parsedChapter.End,
+				CachePath:           cachePath,
+				ResourcePath:        parsedChapter.ResourcePath,
+				ResourceFragment:    parsedChapter.ResourceFragment,
+				ResourceEndFragment: parsedChapter.ResourceEndFragment,
+			})
+		}
+		source := engine.ArchivedBookSource{
+			BookURL:            archive.OriginalFile,
+			Origin:             "loc_book",
+			OriginName:         archive.OriginalFile,
+			Type:               0,
+			Name:               target.Title,
+			Author:             target.Author,
+			LatestChapterTitle: target.LastChapter,
+			TOCURL:             archive.TOCFile,
+			Time:               0,
+			OriginOrder:        0,
+			UserNameSpace:      request.UserName,
+		}
+		if err := engine.WriteBookSource(importer.cfg.LibraryDir, archive, source); err != nil {
+			return err
+		}
+		if err := engine.WriteChapterArchive(importer.cfg.LibraryDir, archive, archivedChapters); err != nil {
+			return err
+		}
+		book = target
+		return nil
+	})
+	if err != nil {
+		return models.Book{}, err
+	}
+	cleanupArchive = false
 	return book, nil
 }
 

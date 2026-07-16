@@ -54,11 +54,12 @@ restore/restart must leave the second user's archive SHA-256, chapter cache path
 unchanged.
 
 The historical fixture covers old-volume path/security, relative-cache migration, existing-user
-isolation and transaction boundaries for all four supported local archive formats. It does not
-replace the portable archive-backup contract. When that explicitly named OpenReader extension is
-implemented, the release smoke adds a second, fresh mounted `data/cache/library` tuple and proves
-portable export → transfer → restore → read/refresh → restart without changing either volume's
-original archive hashes; see
+isolation and transaction boundaries for all four supported local archive formats. It also starts a
+second, fresh mounted `data/cache/library` tuple, exports the owner's portable package, restores it
+through the ordinary upload endpoint, and proves portable export → transfer → restore →
+read/refresh → restart without changing either volume's original archive hashes. The destination
+contains only the authenticated owner’s recovered local books; it never receives the second user's
+archive. See
 [`portable-local-archive-backup-p1e4-contract.md`](compat/portable-local-archive-backup-p1e4-contract.md).
 
 This is not a substitute for full restore validation. It is the minimum release gate for Docker volume and backup regressions.

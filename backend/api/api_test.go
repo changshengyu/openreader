@@ -72,7 +72,7 @@ func setupTestServerWithConfig(t *testing.T, configure func(*config.Config)) (*g
 
 	hub := readersync.NewHub()
 	sched := scheduler.New(database, 1)
-	backupSvc := backup.New(database, filepath.Join(cfg.DataDir, "webdav"))
+	backupSvc := backup.New(database, filepath.Join(cfg.DataDir, "webdav"), cfg)
 
 	router := gin.New()
 	server := RegisterRoutes(router, cfg, database, hub, sched, backupSvc)

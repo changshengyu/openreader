@@ -1,12 +1,15 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"openreader/backend/services/backup"
 )
 
 func (s *Server) triggerBackup(c *gin.Context) {
@@ -35,6 +38,41 @@ func (s *Server) triggerBackup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "backup created", "path": name, "name": name})
 }
 
+func (s *Server) triggerPortableBackup(c *gin.Context) {
+	if !s.requireStoreAccess(c) {
+		return
+	}
+	user, ok := storeUser(c)
+	if !ok {
+		unauthorized(c, "store user missing")
+		return
+	}
+	backupDir, ok := s.backupDir(c)
+	if !ok {
+		return
+	}
+	path, localBooks, err := s.backupSvc.RunPortableForUser(user.ID, user.Username, backupDir)
+	if err != nil {
+		switch {
+		case errors.Is(err, backup.ErrPortableArchiveUnavailable):
+			c.JSON(http.StatusConflict, gin.H{"error": "local archive unavailable for portable backup"})
+		case errors.Is(err, backup.ErrPortableBackupUnavailable):
+			c.JSON(http.StatusConflict, gin.H{"error": "portable backup storage is unavailable"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "portable backup failed"})
+		}
+		return
+	}
+	name := filepath.Base(path)
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "portable backup created",
+		"path":       name,
+		"name":       name,
+		"format":     "openreader-portable-v1",
+		"localBooks": localBooks,
+	})
+}
+
 func (s *Server) listBackups(c *gin.Context) {
 	if !s.requireStoreAccess(c) {
 		return
@@ -51,14 +89,19 @@ func (s *Server) listBackups(c *gin.Context) {
 
 	var backups []gin.H
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "backup_") {
+		if entry.IsDir() || !backupFileNameAllowed(entry.Name()) {
 			continue
 		}
 		info, _ := entry.Info()
+		format := "logical"
+		if strings.HasPrefix(entry.Name(), "portable_backup_") {
+			format = "openreader-portable-v1"
+		}
 		backups = append(backups, gin.H{
-			"name": entry.Name(),
-			"size": info.Size(),
-			"time": info.ModTime(),
+			"name":   entry.Name(),
+			"size":   info.Size(),
+			"time":   info.ModTime(),
+			"format": format,
 		})
 	}
 	c.JSON(http.StatusOK, backups)
@@ -69,7 +112,7 @@ func (s *Server) downloadBackup(c *gin.Context) {
 		return
 	}
 	name := filepath.Base(c.Param("name"))
-	if !strings.HasPrefix(name, "backup_") {
+	if !backupFileNameAllowed(name) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid backup name"})
 		return
 	}
@@ -79,6 +122,10 @@ func (s *Server) downloadBackup(c *gin.Context) {
 	}
 	path := filepath.Join(backupDir, name)
 	c.File(path)
+}
+
+func backupFileNameAllowed(name string) bool {
+	return strings.HasPrefix(name, "backup_") || strings.HasPrefix(name, "portable_backup_")
 }
 
 func (s *Server) backupDir(c *gin.Context) (string, bool) {

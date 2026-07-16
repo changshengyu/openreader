@@ -12,7 +12,7 @@
       <header class="file-overlay-head">
         <div>
           <strong>备份恢复</strong>
-          <span>保存当前数据到 WebDAV，或从备份包恢复</span>
+          <span>普通备份保存书架和设置；完整本地书备份另含原始书籍文件</span>
         </div>
         <div class="file-actions">
           <el-button
@@ -23,6 +23,15 @@
             @click="runBackup"
           >
             保存到 WebDAV
+          </el-button>
+          <el-button
+            size="small"
+            type="warning"
+            :icon="FolderOpened"
+            :loading="portableBackupLoading"
+            @click="runPortableBackup"
+          >
+            保存完整本地书备份
           </el-button>
           <el-upload
             :show-file-list="false"
@@ -52,6 +61,13 @@
         class="desktop-backup-table"
       >
         <el-table-column prop="name" label="文件名" min-width="220" show-overflow-tooltip />
+        <el-table-column label="类型" width="130">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.format === 'openreader-portable-v1' ? 'warning' : 'info'">
+              {{ row.format === 'openreader-portable-v1' ? '含本地书' : '书架与设置' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="大小" width="110">
           <template #default="{ row }">{{ formatSize(row.size) }}</template>
         </el-table-column>
@@ -73,7 +89,7 @@
         <article v-for="row in backups" :key="row.name" class="mobile-backup-card">
           <div>
             <strong>{{ row.name }}</strong>
-            <span>{{ formatDate(row.time) }} · {{ formatSize(row.size) }}</span>
+            <span>{{ row.format === 'openreader-portable-v1' ? '含本地书 · ' : '书架与设置 · ' }}{{ formatDate(row.time) }} · {{ formatSize(row.size) }}</span>
           </div>
           <el-button
             size="small"
@@ -94,8 +110,9 @@
 </template>
 
 <script setup>
-import { Refresh, Upload } from '@element-plus/icons-vue'
+import { FolderOpened, Refresh, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref } from 'vue'
 import * as backupApi from '../../api/backup'
 import { useOverlayBackups } from '../../composables/useOverlayBackups'
 import { useOverlayStore } from '../../stores/overlay'
@@ -109,6 +126,7 @@ defineProps({
 })
 
 const overlay = useOverlayStore()
+const portableBackupLoading = ref(false)
 
 const {
   backups,
@@ -131,13 +149,33 @@ const {
     { type: 'warning' },
   ),
   confirmBeforeRestore: () => ElMessageBox.confirm(
-    '恢复备份会覆盖当前用户的书架、分组、进度和设置，是否继续？',
+    '恢复备份会覆盖当前用户的书架、分组、进度和设置；完整本地书备份还会恢复原始书籍文件，是否继续？',
     '恢复备份',
     { type: 'warning' },
   ),
   onSuccess: message => ElMessage.success(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
+
+async function runPortableBackup() {
+  const confirmed = await ElMessageBox.confirm(
+    '完整本地书备份会保存当前用户的书架、设置和所有可恢复的本地书原文件到 WebDAV。音频目录或缺失的原文件会阻止生成，是否继续？',
+    '保存完整本地书备份',
+    { type: 'warning' },
+  ).then(() => true, () => false)
+  if (!confirmed) return
+
+  portableBackupLoading.value = true
+  try {
+    const { data } = await backupApi.triggerPortableBackup()
+    ElMessage.success(`完整本地书备份已保存：${data.name || data.path || 'portable_backup.zip'}（${data.localBooks || 0} 本）`)
+    await loadBackups()
+  } catch (error) {
+    ElMessage.error(readError(error, '保存完整本地书备份失败'))
+  } finally {
+    portableBackupLoading.value = false
+  }
+}
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)

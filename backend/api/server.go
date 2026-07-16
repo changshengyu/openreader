@@ -180,6 +180,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	webdav.DELETE("/*path", server.webdavDelete)
 
 	protected.POST("/backup/trigger", server.triggerBackup)
+	protected.POST("/backup/portable/trigger", server.triggerPortableBackup)
 	protected.GET("/backup/list", server.listBackups)
 	protected.GET("/backup/download/:name", server.downloadBackup)
 	protected.POST("/backup/restore-legado", server.importLegadoBackup)
