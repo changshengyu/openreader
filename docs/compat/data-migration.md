@@ -121,9 +121,9 @@ Implementation evidence: the runtime now recognizes the standard segmented reade
 
 ## P1-E4 old mounted local-book volume recovery
 
-Status: old-SQLite/path/cache implementation and four-format Docker fixture complete; legal
-relative-cache migration, cross-user Docker fixture and portable archive backup remain pending.
-The focused contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
+Status: old-SQLite/path/cache implementation, legal relative-cache migration and full-format
+Docker fixture complete; cross-user Docker fixture and portable archive backup remain pending. The
+focused contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
 
 - A recoverable installation is the mounted tuple `data/`, `cache/`, and `library/`, not a
   new database plus an application-level backup ZIP. `data/openreader.db` may retain old
@@ -155,23 +155,25 @@ progress/bookmark preservation, archive-root-only rebasing of a stale absolute s
 and cross-user 404 behavior. `backend/db.TestMigrateLocalBookCacheSkipsUnsafeHistoricalCachePath`
 locks that startup never copies or deletes `cache/../...` host data. The local
 `HISTORICAL_VOLUME=1` Docker smoke creates the same kind of old SQLite fixture with relative-path
-TXT plus stale-absolute EPUB, standard reader-dev UMD and CBZ archives, mounts readable
-`/retired-host` decoys for every archive/cache pair, then proves every archive can recover, refresh, survive backup/restore without
-mutation and remain readable after restart; the ordinary fresh-volume smoke also passes. Full Go
-tests, frontend tests and production build pass. This completes the all-format Docker portion, but
-not the separate legal relative-cache, Docker cross-user and portable archive-backup contracts. The
-validated all-format Docker slice was published from Git `cff8c11` as
-`ghcr.io/changshengyu/openreader:cff8c11` and `:latest`, both pointing to multi-architecture index
-`sha256:97b7d2b6aa99fbb95f1c7df5556657abb75df7883e19e2a312698c2fbecc21b0`.
+TXT plus stale-absolute EPUB, standard reader-dev UMD and CBZ archives, then adds a distinct book
+whose legal `cache/legacy-cache/chapter.txt` must become private relative
+`content/legacy-cache/chapter.txt`. It mounts readable `/retired-host` decoys, proves every archive
+can recover, refresh, survive backup/restore without mutation and remain readable after restart,
+and verifies the relative cache bytes, source removal and persisted SQLite field before and after
+restart; the ordinary fresh-volume smoke also passes. Full Go tests, frontend tests and production
+build pass. This completes the all-format and relative-cache Docker portions, but not the separate
+Docker cross-user and portable archive-backup contracts. The validated slice was published from
+Git `c7d5abb` as `ghcr.io/changshengyu/openreader:c7d5abb` and `:latest`, both pointing to
+multi-architecture index `sha256:d7000822b4a135c3ee9ab12c4cbef5c5343cfc87c125cc3e5f05f52098d46fa7`.
 `TestHistoricalMountedVolumeRebuildsEPUBUMDAndCBZArchives` additionally covers stale absolute
 archive paths and missing derived content for all remaining E4 formats at the API boundary; the
 container fixture now exercises the equivalent four-format volume.
 
-The next VOLUME-CACHE-3 slice must move one legal relative cache into the owning archive's
-`content/` directory while persisting a relative `content/...` cache path. Existing absolute,
-traversal and symlink values remain fail-closed; the copy-before-database-update/delete ordering
-must prevent a failed SQLite write from losing the only readable cache. This is an OpenReader
-mounted-volume compatibility/security requirement, not an upstream reader-dev storage behavior.
+VOLUME-CACHE-3 now moves one legal relative cache into the owning archive's `content/` directory
+while persisting a relative `content/...` cache path. Existing absolute, traversal and symlink
+values remain fail-closed; copy-before-database-update/delete prevents a failed SQLite write from
+losing the only readable cache. This is an OpenReader mounted-volume compatibility/security
+requirement, not an upstream reader-dev storage behavior.
 
 ## P2 backup ZIP restore compatibility and bounds
 
