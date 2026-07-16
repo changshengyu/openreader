@@ -121,9 +121,9 @@ Implementation evidence: the runtime now recognizes the standard segmented reade
 
 ## P1-E4 old mounted local-book volume recovery
 
-Status: old-SQLite/path/cache implementation, legal relative-cache migration and full-format
-Docker fixture complete; cross-user Docker fixture and portable archive backup remain pending. The
-focused contract is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
+Status: old-SQLite/path/cache implementation, legal relative-cache migration, full-format and
+cross-user Docker fixtures complete; portable archive backup remains pending. The focused contract
+is [`local-book-old-volume-p1e4-contract.md`](local-book-old-volume-p1e4-contract.md).
 
 - A recoverable installation is the mounted tuple `data/`, `cache/`, and `library/`, not a
   new database plus an application-level backup ZIP. `data/openreader.db` may retain old
@@ -161,8 +161,10 @@ whose legal `cache/legacy-cache/chapter.txt` must become private relative
 can recover, refresh, survive backup/restore without mutation and remain readable after restart,
 and verifies the relative cache bytes, source removal and persisted SQLite field before and after
 restart; the ordinary fresh-volume smoke also passes. Full Go tests, frontend tests and production
-build pass. This completes the all-format and relative-cache Docker portions, but not the separate
-Docker cross-user and portable archive-backup contracts. The validated slice was published from
+build pass. The fixture also contains an already-existing second user with an independent archive;
+real JWT requests verify mutual list/read/refresh isolation, and the owner backup restore/restart
+leaves the other user's archive and chapter cache path unchanged. This completes the all-format,
+relative-cache and cross-user Docker portions, but not portable archive backup. The validated slice was published from
 Git `c7d5abb` as `ghcr.io/changshengyu/openreader:c7d5abb` and `:latest`, both pointing to
 multi-architecture index `sha256:d7000822b4a135c3ee9ab12c4cbef5c5343cfc87c125cc3e5f05f52098d46fa7`.
 `TestHistoricalMountedVolumeRebuildsEPUBUMDAndCBZArchives` additionally covers stale absolute
@@ -175,10 +177,10 @@ values remain fail-closed; copy-before-database-update/delete prevents a failed 
 losing the only readable cache. This is an OpenReader mounted-volume compatibility/security
 requirement, not an upstream reader-dev storage behavior.
 
-The next VOLUME-OWNER-5 slice must place two already-existing users and independent private local
-archives in the old SQLite fixture. Real HTTP/JWT tests and Docker smoke must prove list/read/
-refresh are mutually 404 across users, while one user's backup restore and restart leave the other
-user's archive, chapter/cache rows and readability unchanged.
+VOLUME-OWNER-5 now places two already-existing users and independent private local archives in the
+old SQLite fixture. Real HTTP/JWT tests and Docker smoke prove list/read/refresh are mutually 404
+across users, while one user's backup restore and restart leave the other user's archive, chapter
+cache path and readability unchanged.
 
 ## P2 backup ZIP restore compatibility and bounds
 

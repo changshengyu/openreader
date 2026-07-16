@@ -48,8 +48,13 @@ legal `cache/legacy-cache/chapter.txt` differs from its archive fallback. The co
 - trigger and restore a logical backup without changing the mounted archive;
 - remain readable after a full container restart.
 
-The historical fixture covers old-volume path/security, relative-cache migration and transaction
-boundaries for all four supported local archive formats. It does not replace cross-user Docker or
-portable archive-backup contracts.
+The fixture also preloads a second user with an independent local archive. Both users must see only
+their own shelf entries; cross-user chapter reads and local refreshes return 404. The owner backup
+restore/restart must leave the second user's archive SHA-256, chapter cache path and readability
+unchanged.
+
+The historical fixture covers old-volume path/security, relative-cache migration, existing-user
+isolation and transaction boundaries for all four supported local archive formats. It does not
+replace the portable archive-backup contract.
 
 This is not a substitute for full restore validation. It is the minimum release gate for Docker volume and backup regressions.
