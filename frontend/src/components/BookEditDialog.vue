@@ -14,9 +14,9 @@
       <el-form-item label="作者">
         <el-input v-model="draft.author" />
       </el-form-item>
-      <el-form-item label="自定义封面">
+      <el-form-item label="自定义封面（上传）">
         <div class="cover-upload-row">
-          <el-input v-model="draft.customCoverUrl" placeholder="封面地址或上传本地图片" />
+          <el-input v-model="draft.customCoverUrl" placeholder="请上传 JPG/PNG 封面" readonly />
           <el-upload
             accept="image/jpg,image/png,image/jpeg"
             :show-file-list="false"

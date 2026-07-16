@@ -906,8 +906,16 @@ func TestUpdateBook(t *testing.T) {
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
+	customCoverURL := "/uploads/users/" + strconv.FormatUint(uint64(user.ID), 10) + "/covers/custom.jpg"
+	customCoverPath := filepath.Join(server.cfg.DataDir, "uploads", strings.TrimPrefix(customCoverURL, "/uploads/"))
+	if err := os.MkdirAll(filepath.Dir(customCoverPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(customCoverPath, []byte("cover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	body := `{"title":"新书名","author":"新作者","coverUrl":"https://example.com/cover.jpg","customCoverUrl":"/uploads/covers/custom.jpg","intro":"新简介","canUpdate":false}`
+	body := `{"title":"新书名","author":"新作者","coverUrl":"https://example.com/cover.jpg","customCoverUrl":"` + customCoverURL + `","intro":"新简介","canUpdate":false}`
 	req := httptest.NewRequest(http.MethodPut, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -924,7 +932,7 @@ func TestUpdateBook(t *testing.T) {
 	if updated.Title != "新书名" || updated.Author != "新作者" || updated.Intro != "新简介" {
 		t.Fatalf("unexpected updated book: %+v", updated)
 	}
-	if updated.CoverURL != "https://example.com/cover.jpg" || updated.CustomCoverURL != "/uploads/covers/custom.jpg" {
+	if updated.CoverURL != "https://example.com/cover.jpg" || updated.CustomCoverURL != customCoverURL {
 		t.Fatalf("unexpected cover fields after update: %+v", updated)
 	}
 	if updated.CanUpdate {
@@ -9271,7 +9279,12 @@ func TestUploadAssetStoresPublicFile(t *testing.T) {
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"/uploads/covers/`) {
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	prefix := "/uploads/users/" + strconv.FormatUint(uint64(user.ID), 10) + "/covers/"
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"`+prefix) {
 		t.Fatalf("upload asset: expected public URL, got %d: %s", w.Code, w.Body.String())
 	}
 
@@ -9281,8 +9294,7 @@ func TestUploadAssetStoresPublicFile(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	name := strings.TrimPrefix(resp.URL, "/uploads/covers/")
-	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "uploads", "covers", name)); err != nil {
+	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "uploads", strings.TrimPrefix(resp.URL, "/uploads/"))); err != nil {
 		t.Fatalf("uploaded file missing: %v", err)
 	}
 }
@@ -9342,7 +9354,12 @@ func TestUploadFontAssetStoresPublicFontFile(t *testing.T) {
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"/uploads/fonts/`) {
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	prefix := "/uploads/users/" + strconv.FormatUint(uint64(user.ID), 10) + "/fonts/"
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"`+prefix) {
 		t.Fatalf("upload font asset: expected public font URL, got %d: %s", w.Code, w.Body.String())
 	}
 
@@ -9352,8 +9369,7 @@ func TestUploadFontAssetStoresPublicFontFile(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	name := strings.TrimPrefix(resp.URL, "/uploads/fonts/")
-	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "uploads", "fonts", name)); err != nil {
+	if _, err := os.Stat(filepath.Join(server.cfg.DataDir, "uploads", strings.TrimPrefix(resp.URL, "/uploads/"))); err != nil {
 		t.Fatalf("uploaded font file missing: %v", err)
 	}
 }
@@ -9361,7 +9377,11 @@ func TestUploadFontAssetStoresPublicFontFile(t *testing.T) {
 func TestDeleteUploadAssetRemovesOnlyUploads(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
-	uploadsDir := filepath.Join(server.cfg.DataDir, "uploads", "fonts")
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	uploadsDir := filepath.Join(server.cfg.DataDir, "uploads", "users", strconv.FormatUint(uint64(user.ID), 10), "fonts")
 	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -9370,7 +9390,8 @@ func TestDeleteUploadAssetRemovesOnlyUploads(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/uploads", strings.NewReader(`{"url":"/uploads/fonts/reader.ttf"}`))
+	ownedURL := "/uploads/users/" + strconv.FormatUint(uint64(user.ID), 10) + "/fonts/reader.ttf"
+	req := httptest.NewRequest(http.MethodDelete, "/api/uploads", strings.NewReader(`{"url":"`+ownedURL+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
@@ -9380,6 +9401,26 @@ func TestDeleteUploadAssetRemovesOnlyUploads(t *testing.T) {
 	}
 	if _, err := os.Stat(fontPath); !os.IsNotExist(err) {
 		t.Fatalf("expected uploaded font to be removed, stat err=%v", err)
+	}
+
+	legacyDir := filepath.Join(server.cfg.DataDir, "uploads", "fonts")
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(legacyDir, "legacy.ttf")
+	if err := os.WriteFile(legacyPath, []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodDelete, "/api/uploads", strings.NewReader(`{"url":"/uploads/fonts/legacy.ttf"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("delete legacy upload: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		t.Fatalf("legacy upload should remain readable: %v", err)
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/api/uploads", strings.NewReader(`{"url":"/uploads/../openreader.db"}`))

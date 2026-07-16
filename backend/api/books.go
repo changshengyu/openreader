@@ -414,7 +414,12 @@ func (s *Server) updateBook(c *gin.Context) {
 		book.CoverURL = strings.TrimSpace(*request.CoverURL)
 	}
 	if request.CustomCoverURL != nil {
-		book.CustomCoverURL = strings.TrimSpace(*request.CustomCoverURL)
+		customCoverURL := strings.TrimSpace(*request.CustomCoverURL)
+		if err := s.validateBookCustomCoverURL(userID, book.CustomCoverURL, customCoverURL); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid custom cover url"})
+			return
+		}
+		book.CustomCoverURL = customCoverURL
 	}
 	if request.Intro != nil {
 		book.Intro = strings.TrimSpace(*request.Intro)
@@ -453,6 +458,21 @@ func (s *Server) updateBook(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, s.broadcastBookShelfUpdate(userID, book))
+}
+
+func (s *Server) validateBookCustomCoverURL(userID uint, currentURL string, nextURL string) error {
+	if nextURL == "" || nextURL == currentURL {
+		return nil
+	}
+	asset, err := s.userUploadAsset(nextURL)
+	if err != nil || asset.UserID != userID || asset.Kind != "covers" {
+		return os.ErrPermission
+	}
+	info, err := os.Stat(asset.Path)
+	if err != nil || !info.Mode().IsRegular() {
+		return os.ErrNotExist
+	}
+	return nil
 }
 
 func (s *Server) deleteBook(c *gin.Context) {

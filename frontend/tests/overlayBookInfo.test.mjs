@@ -216,7 +216,7 @@ test('refreshes a local book, rebuilds reader caches, and refreshes its cache co
   assert.deepEqual(fixture.calls.at(-1), ['success', '本地书已刷新，共 1 章'])
 })
 
-test('uploads custom covers and toggles remote update state with complete metadata', async () => {
+test('uploads custom covers and toggles remote update state with precise patch payloads', async () => {
   const fixture = createController()
   const file = { name: 'cover.jpg' }
   await fixture.controller.uploadBookInfoCover(file)
@@ -226,12 +226,7 @@ test('uploads custom covers and toggles remote update state with complete metada
     'update-book',
     1,
     {
-      title: '旧书名',
-      author: '作者',
       customCoverUrl: '/assets/new-cover.jpg',
-      intro: '简介',
-      categoryIds: [2, 3],
-      canUpdate: true,
     },
   ])
   assert.equal(fixture.controller.coverUploadingBookId.value, null)
@@ -242,11 +237,6 @@ test('uploads custom covers and toggles remote update state with complete metada
     'update-book',
     1,
     {
-      title: '旧书名',
-      author: '作者',
-      coverUrl: '',
-      intro: '简介',
-      categoryIds: [2, 3],
       canUpdate: false,
     },
   ])

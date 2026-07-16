@@ -26,8 +26,18 @@ export function useReaderAppearanceAssets(options) {
   async function clearBgImage(image) {
     if (!image) return false
     try {
-      await options.removeAsset(image)
+      const previousImage = options.reader.customBgImage
+      const previousImages = Array.isArray(options.reader.customBgImageList)
+        ? [...options.reader.customBgImageList]
+        : []
       options.reader.removeCustomBgImage(image)
+      if (!await persistAssetReference()) {
+        options.reader.customBgImage = previousImage
+        options.reader.customBgImageList = previousImages
+        options.reader.markSettingsDirty?.()
+        throw new Error('阅读设置同步失败')
+      }
+      await options.removeAsset(image)
       options.onSuccess?.('已删除阅读背景图')
       return true
     } catch (error) {
@@ -58,15 +68,25 @@ export function useReaderAppearanceAssets(options) {
     const url = options.reader.customFontsMap?.[font?.value]
     if (!url || !font?.value) return false
     try {
-      await options.removeAsset(url)
       options.reader.clearCustomFont(font.value)
       options.syncFonts(options.reader.customFontsMap)
+      if (!await persistAssetReference()) {
+        options.reader.setCustomFont(font.value, url)
+        options.syncFonts(options.reader.customFontsMap)
+        throw new Error('阅读设置同步失败')
+      }
+      await options.removeAsset(url)
       options.onSuccess?.(`已恢复默认${font.label}字体`)
       return true
     } catch (error) {
       options.onError?.(error, '恢复默认字体失败')
       return false
     }
+  }
+
+  async function persistAssetReference() {
+    if (typeof options.saveSettings !== 'function') return true
+    return Boolean(await options.saveSettings())
   }
 
   return {

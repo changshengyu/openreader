@@ -28,6 +28,20 @@ Before changing storage for a module, document:
 - backup/restore impact;
 - Docker volume impact.
 
+## P2 BookInfo custom assets (implemented without a migration)
+
+`docs/compat/bookinfo-shelf-mutations-p2-contract.md` defines the migration-free
+move from global new upload writes to user-rooted new asset paths. It does **not**
+authorize moving or deleting existing `data/uploads/<kind>/...` files: legacy
+Book/setting/backup URL strings must remain readable from mounted `data/` after
+an upgrade. New `/uploads/users/<user-id>/<kind>/...` values use the existing
+string fields and require no SQLite schema change; ownership is derived from the
+authenticated user and rooted filesystem path. Go API tests verify legacy/static
+readability, user-rooted writes, cross-user rejection and referenced-resource
+deletion refusal; the BookInfo real-browser contract verifies the visible
+cover/follow/group/local-refresh flow at the three release viewports. Docker
+volume/backup verification must cover both legacy and new paths before release.
+
 ## Priority unresolved areas
 
 - Reader-dev backup format import/export mapping.

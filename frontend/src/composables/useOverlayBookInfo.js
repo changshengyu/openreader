@@ -72,12 +72,7 @@ export function useOverlayBookInfo(options) {
         type: 'cover',
       })
       const { data: updatedBook } = await options.updateBook(book.id, {
-        title: book.title,
-        author: book.author || '',
         customCoverUrl: uploadResult.url,
-        intro: book.intro || '',
-        categoryIds: bookCategoryIds(book),
-        canUpdate: book.canUpdate !== false,
       })
       applyUpdatedBookToOverlay(updatedBook)
       options.onSuccess('封面已更新')
@@ -94,11 +89,6 @@ export function useOverlayBookInfo(options) {
     updatingBookId.value = book.id
     try {
       const { data: updatedBook } = await options.updateBook(book.id, {
-        title: book.title,
-        author: book.author || '',
-        coverUrl: book.coverUrl || '',
-        intro: book.intro || '',
-        categoryIds: bookCategoryIds(book),
         canUpdate: value,
       })
       applyUpdatedBookToOverlay(updatedBook)

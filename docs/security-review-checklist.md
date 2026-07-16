@@ -69,6 +69,25 @@ Evidence: `backend/engine/source_rule_evaluator_test.go`, `backend/api/source_fa
 
 For each release, record which checklist sections were relevant and which tests/probes covered them.
 
+## P2 BookInfo assets and follow-state review
+
+- [x] `POST /uploads` derives the owner only from the authenticated JWT and writes all
+  new covers/backgrounds/fonts/misc assets below `data/uploads/users/<user-id>/`.
+- [x] `PUT /books/:id` accepts a new custom cover only from the same user's `covers`
+  subtree; cross-user, escaped, missing and new external URLs fail closed. Existing
+  legacy/database values remain readable without a bulk move or migration.
+- [x] `DELETE /uploads` parses an exact user-scoped path, returns a safe non-owner
+  result, retains legacy global paths, and refuses to delete a Book or reader-setting
+  reference. The Reader saves the unreferenced setting before its delete request and
+  restores the local font/background state if that save fails.
+- [x] Upload size and extension allowlists are unchanged; rooted path checks reject
+  traversal, query and fragment variants without leaking a filesystem path.
+
+Evidence: `backend/api/bookinfo_asset_contract_test.go`, upload/update API tests,
+`frontend/tests/overlayBookInfo.test.mjs`,
+`frontend/tests/readerAppearanceAssets.test.mjs`, and the P2 BookInfo real-browser
+contract (three viewports).
+
 ## P1-E2 workspace storage audit
 
 - [x] Raw `/webdav/*` now uses the normal Bearer JWT and activity middleware before it can reach a filesystem handler.

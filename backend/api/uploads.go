@@ -3,16 +3,26 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"openreader/backend/middleware"
+	"openreader/backend/models"
 )
 
 func (s *Server) uploadAsset(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
@@ -29,7 +39,8 @@ func (s *Server) uploadAsset(c *gin.Context) {
 		return
 	}
 
-	dir := filepath.Join(s.cfg.DataDir, "uploads", uploadKindDir(kind))
+	kindDir := uploadKindDir(kind)
+	dir := filepath.Join(s.cfg.DataDir, "uploads", "users", strconv.FormatUint(uint64(userID), 10), kindDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upload directory"})
 		return
@@ -42,10 +53,10 @@ func (s *Server) uploadAsset(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"url":  "/uploads/" + uploadKindDir(kind) + "/" + name,
+		"url":  fmt.Sprintf("/uploads/users/%d/%s/%s", userID, kindDir, name),
 		"name": fileHeader.Filename,
 		"size": fileHeader.Size,
-		"type": uploadKindDir(kind),
+		"type": kindDir,
 	})
 }
 
@@ -57,36 +68,79 @@ func (s *Server) deleteAsset(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
-	target, err := s.uploadAssetPath(payload.URL)
+	userID, _ := middleware.UserID(c)
+	asset, err := s.userUploadAsset(payload.URL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported upload url"})
 		return
 	}
-	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+	if asset.UserID != userID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
+		return
+	}
+	if referenced, err := s.userUploadAssetReferenced(userID, asset.URL); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check upload references"})
+		return
+	} else if referenced {
+		c.JSON(http.StatusConflict, gin.H{"error": "upload is still in use"})
+		return
+	}
+	if err := os.Remove(asset.Path); err != nil && !os.IsNotExist(err) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete upload"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
-func (s *Server) uploadAssetPath(url string) (string, error) {
-	cleanURL := strings.TrimSpace(url)
-	if strings.HasPrefix(cleanURL, "http://") || strings.HasPrefix(cleanURL, "https://") || strings.HasPrefix(cleanURL, "//") {
-		return "", os.ErrPermission
+type userUploadAsset struct {
+	UserID uint
+	Kind   string
+	URL    string
+	Path   string
+}
+
+func (s *Server) userUploadAsset(rawURL string) (userUploadAsset, error) {
+	cleanURL := strings.TrimSpace(rawURL)
+	if strings.ContainsAny(cleanURL, "?#") || !strings.HasPrefix(cleanURL, "/uploads/users/") {
+		return userUploadAsset{}, os.ErrPermission
 	}
-	if !strings.HasPrefix(cleanURL, "/uploads/") {
-		return "", os.ErrPermission
+	parts := strings.Split(strings.TrimPrefix(cleanURL, "/uploads/"), "/")
+	if len(parts) != 4 || parts[0] != "users" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+		return userUploadAsset{}, os.ErrPermission
+	}
+	ownerID, err := strconv.ParseUint(parts[1], 10, 0)
+	if err != nil || ownerID == 0 {
+		return userUploadAsset{}, os.ErrPermission
+	}
+	kind := parts[2]
+	if !isUploadKindDir(kind) || parts[3] != filepath.Base(parts[3]) || strings.Contains(parts[3], `\\`) {
+		return userUploadAsset{}, os.ErrPermission
 	}
 	uploadsRoot := filepath.Join(s.cfg.DataDir, "uploads")
-	rel := filepath.Clean(strings.TrimPrefix(cleanURL, "/uploads/"))
-	if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
-		return "", os.ErrPermission
-	}
-	target := filepath.Join(uploadsRoot, rel)
+	target := filepath.Join(uploadsRoot, "users", parts[1], kind, parts[3])
 	if relative, err := filepath.Rel(uploadsRoot, target); err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
-		return "", os.ErrPermission
+		return userUploadAsset{}, os.ErrPermission
 	}
-	return target, nil
+	return userUploadAsset{UserID: uint(ownerID), Kind: kind, URL: cleanURL, Path: target}, nil
+}
+
+func (s *Server) userUploadAssetReferenced(userID uint, url string) (bool, error) {
+	var count int64
+	if err := s.db.Model(&models.Book{}).
+		Where("user_id = ? AND custom_cover_url = ?", userID, url).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+	escapedURL := strings.NewReplacer(`\\`, `\\\\`, `%`, `\\%`, `_`, `\\_`).Replace(url)
+	if err := s.db.Model(&models.UserSetting{}).
+		Where("user_id = ? AND value LIKE ? ESCAPE '\\'", userID, "%"+escapedURL+"%").
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func uploadSizeLimit(kind string) int64 {
@@ -106,6 +160,15 @@ func uploadKindDir(kind string) string {
 		return "fonts"
 	default:
 		return "misc"
+	}
+}
+
+func isUploadKindDir(kind string) bool {
+	switch kind {
+	case "covers", "backgrounds", "fonts", "misc":
+		return true
+	default:
+		return false
 	}
 }
 

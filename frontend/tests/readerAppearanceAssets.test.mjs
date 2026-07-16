@@ -30,6 +30,10 @@ function createAppearance(overrides = {}) {
     reader,
     upload: async ({ type }) => ({ data: { url: `/${type}.asset` } }),
     removeAsset: async url => calls.push(['delete', url]),
+    saveSettings: async () => {
+      calls.push(['save-settings'])
+      return { ok: true }
+    },
     syncFonts: fonts => calls.push(['sync-fonts', { ...fonts }]),
     onSuccess: message => calls.push(['success', message]),
     onError: (error, fallback) => calls.push(['error', error?.message, fallback]),
@@ -60,6 +64,7 @@ test('uploads and removes reader background images', async () => {
     ['add-bg', '/background.asset'],
     ['remove-bg', '/background.asset'],
   ])
+  assert.ok(calls.findIndex(call => call[0] === 'save-settings') < calls.findIndex(call => call[0] === 'delete'))
 })
 
 test('uploads, selects, synchronizes, and clears custom fonts', async () => {
@@ -73,6 +78,23 @@ test('uploads, selects, synchronizes, and clears custom fonts', async () => {
   assert.equal(await appearance.clearFontFile(font), true)
   assert.equal(reader.customFontsMap['custom-song'], undefined)
   assert.equal(calls.filter(call => call[0] === 'sync-fonts').length, 2)
+  assert.ok(calls.findIndex(call => call[0] === 'save-settings') < calls.findIndex(call => call[0] === 'delete'))
+})
+
+test('keeps the asset and restores the font when reader settings cannot be persisted', async () => {
+  const { appearance, calls, reader } = createAppearance({
+    saveSettings: async () => null,
+  })
+  reader.customFontsMap.system = '/font.asset'
+  const font = { value: 'system', label: '系统' }
+  assert.equal(await appearance.clearFontFile(font), false)
+  assert.equal(reader.customFontsMap.system, '/font.asset')
+  assert.equal(calls.some(call => call[0] === 'delete'), false)
+  assert.deepEqual(calls.find(call => call[0] === 'error'), [
+    'error',
+    '阅读设置同步失败',
+    '恢复默认字体失败',
+  ])
 })
 
 test('reports upload responses without an asset URL', async () => {

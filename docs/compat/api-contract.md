@@ -32,7 +32,7 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Bookmarks | `/api/books/:id/bookmarks`, `/api/bookmarks/:id` | Bookmark CRUD and batch operations remain user/book scoped. |
 | Local store | `/api/local-store*` | All paths must stay rooted under configured local store/library paths. |
 | Import | `/api/imports/books/preview`, `/api/imports/books`, `/api/imports/txt` | Preview may return `importToken`; import must be able to reuse staged content. |
-| Uploads | `/api/uploads` | Uploaded assets must be validated and rooted under data uploads. |
+| Uploads | `/api/uploads` | Uploaded assets must be validated, rooted under data uploads and user-scoped for new writes/deletes; legacy global upload URLs remain readable. See [`bookinfo-shelf-mutations-p2-contract.md`](bookinfo-shelf-mutations-p2-contract.md). |
 | Cache | `/api/cache/stats`, `/api/cache`, `/api/books/:id/cache` | Cache operations must not delete unrelated user data. |
 | Replace rules | `/api/replace-rules*` | See the P2 replace-rule contract below: stable name-upsert order and upstream-visible plain/regex/scope semantics. |
 | RSS | `/api/rss/sources`, `/api/rss/articles` | Remote fetch limits and parser safety apply. |

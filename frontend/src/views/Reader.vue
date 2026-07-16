@@ -483,6 +483,7 @@ const {
   reader,
   upload: uploadAsset,
   removeAsset: deleteAsset,
+  saveSettings: () => reader.saveReaderSettings(),
   syncFonts: syncReaderFontFaces,
   onSuccess: message => ElMessage.success(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
