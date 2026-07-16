@@ -160,9 +160,9 @@ TXT plus stale-absolute EPUB, standard reader-dev UMD and CBZ archives, mounts r
 mutation and remain readable after restart; the ordinary fresh-volume smoke also passes. Full Go
 tests, frontend tests and production build pass. This completes the all-format Docker portion, but
 not the separate legal relative-cache, Docker cross-user and portable archive-backup contracts. The
-validated first Docker slice was published from
-Git `885c8b7` as `ghcr.io/changshengyu/openreader:885c8b7` and `:latest`, both pointing to
-multi-architecture index `sha256:3a417024275d5b2be412b6d1a9d02f663bf041f38b6131ef9b1cbb4a5025a3c5`.
+validated all-format Docker slice was published from Git `cff8c11` as
+`ghcr.io/changshengyu/openreader:cff8c11` and `:latest`, both pointing to multi-architecture index
+`sha256:97b7d2b6aa99fbb95f1c7df5556657abb75df7883e19e2a312698c2fbecc21b0`.
 `TestHistoricalMountedVolumeRebuildsEPUBUMDAndCBZArchives` additionally covers stale absolute
 archive paths and missing derived content for all remaining E4 formats at the API boundary; the
 container fixture now exercises the equivalent four-format volume.
