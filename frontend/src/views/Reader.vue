@@ -113,6 +113,17 @@
       @book-progress-change="handleMobileBookProgressChange"
     />
 
+    <button
+      v-if="isMobileReader && isReaderPrimaryPanelOpen()"
+      class="reader-mobile-primary-dismiss"
+      type="button"
+      aria-label="关闭阅读主面板"
+      @click.stop="closeReaderPrimaryPanels"
+      @touchstart.stop
+      @touchmove.stop
+      @touchend.stop
+    />
+
     <section
       ref="pageEl"
       class="reader-page"
@@ -1225,6 +1236,7 @@ const {
 })
 const mobileChromeVisible = ref(true)
 const {
+  close: closeReaderPrimaryPanels,
   isOpen: isReaderPrimaryPanelOpen,
   toggle: toggleReaderPrimaryPanel,
 } = useReaderPrimaryPanels({
@@ -2035,8 +2047,8 @@ function readError(err, fallback) {
   .reader-mobile-primary-popover-body {
     box-sizing: border-box;
     width: 100%;
-    height: 100dvh;
-    min-height: 100dvh;
+    height: auto;
+    min-height: 0;
     padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
     color: var(--reader-text);
   }
@@ -2046,9 +2058,10 @@ function readError(err, fallback) {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 0;
-    overflow: hidden;
+    overflow: visible;
   }
   .reader-mobile-primary-settings {
+    max-height: calc(45vh + 96px);
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -2097,13 +2110,25 @@ function readError(err, fallback) {
   .reader-mobile-primary-shelf :deep(.reader-shelf-list),
   .reader-mobile-primary-toc :deep(.toc-list),
   .reader-mobile-primary-source :deep(.source-switch-list) {
-    height: 100%;
-    max-height: none;
+    height: 300px;
+    max-height: 300px;
     min-height: 0;
     padding-bottom: 0;
   }
   .reader-mobile-primary-source :deep(.title-zone) {
     margin-bottom: 20px;
+  }
+  .reader-mobile-primary-dismiss {
+    position: fixed;
+    inset: 0;
+    z-index: 9;
+    width: 100vw;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    cursor: default;
+    background: transparent;
+    border: 0;
   }
   .reader-shell.scroll .reader-content,
   .reader-shell.scroll2 .reader-content {

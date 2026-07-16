@@ -165,7 +165,7 @@ async function installApiMocks(page) {
   })
 }
 
-async function assertWorkspaceOpen(page, viewport, label, { primary = false } = {}) {
+async function assertWorkspaceOpen(page, viewport, label, { primary = false, contentSized = false, heightRange = null } = {}) {
   await page.waitForSelector('.reader-mobile-workspace', { timeout: 10000 })
   const topCount = await page.locator('.reader-mobile-top.visible').count()
   assert(topCount === 1, `${viewport.width}: toolbar should remain visible after opening ${label}`)
@@ -183,6 +183,9 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false } = 
       count: workspaces.length,
       width: Math.round(rect.width),
       left: Math.round(rect.left),
+      top: Math.round(rect.top),
+      height: Math.round(rect.height),
+      zIndex: Number(window.getComputedStyle(workspace).zIndex || 0),
       visibleDrawers,
       role: workspace.getAttribute('role'),
       text: workspace.innerText,
@@ -204,6 +207,19 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false } = 
     assert(workspaceState.paddingTop === '0px', `${viewport.width}: ${label} primary root top padding ${workspaceState.paddingTop}`)
     assert(workspaceState.paddingBottom === '0px', `${viewport.width}: ${label} primary root bottom padding ${workspaceState.paddingBottom}`)
     assert(workspaceState.hasPrimaryBody, `${viewport.width}: ${label} primary popover missing owned content body`)
+    assert(workspaceState.zIndex > 8, `${viewport.width}: ${label} primary popover must paint above reader chrome`)
+  }
+  if (contentSized) {
+    assert(workspaceState.top === 0, `${viewport.width}: ${label} primary popover top ${workspaceState.top}`)
+    assert(workspaceState.height >= 300, `${viewport.width}: ${label} primary popover height ${workspaceState.height}`)
+    assert(workspaceState.height < viewport.height - 40, `${viewport.width}: ${label} must be a content-sized popover, not a fullscreen drawer (${workspaceState.height})`)
+  }
+  if (heightRange) {
+    const [min, max] = heightRange
+    assert(
+      workspaceState.height >= min && workspaceState.height <= max,
+      `${viewport.width}: ${label} primary popover height ${workspaceState.height}, expected ${min}-${max}`,
+    )
   }
 }
 
@@ -226,6 +242,39 @@ async function assertMobileTopToolContract(page, viewport) {
 async function assertWorkspaceClosed(page, viewport, label) {
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: toolbar should remain visible after closing ${label}`)
+}
+
+async function assertPrimaryPopoverBlocksChrome(page, viewport, label) {
+  const sourceTool = mobileTopTool(page, '书源')
+  let blocked = false
+  try {
+    await sourceTool.click({ timeout: 1_000 })
+  } catch (error) {
+    blocked = /intercepts pointer events|timeout/i.test(error.message)
+  }
+  assert(blocked, `${viewport.width}: ${label} must block physical clicks on the retained toolbar`)
+  const state = await page.evaluate(() => {
+    const source = [...document.querySelectorAll('.reader-mobile-top.visible .mobile-tool-button')]
+      .find(element => element.innerText.trim() === '书源')
+    const rect = source?.getBoundingClientRect()
+    const hit = rect && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    return {
+      hitIsSource: hit === source || source?.contains(hit),
+      dismissVisible: Boolean(document.querySelector('.reader-mobile-primary-dismiss')),
+    }
+  })
+  assert(state.dismissVisible, `${viewport.width}: ${label} must install a click-away layer`)
+  assert(state.hitIsSource === false, `${viewport.width}: ${label} source tool must be covered by the primary popover`)
+}
+
+async function closePrimaryWorkspace(page, viewport, label) {
+  const bounds = await page.locator('.reader-mobile-workspace').evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { bottom: rect.bottom }
+  })
+  const y = Math.min(viewport.height - 130, Math.ceil(bounds.bottom + 24))
+  await page.mouse.click(Math.round(viewport.width / 2), y)
+  await assertWorkspaceClosed(page, viewport, label)
 }
 
 async function assertGlobalReaderDialog(page, viewport, selector, label) {
@@ -669,15 +718,6 @@ function assertReaderGeometry(geometry, viewport, label) {
   assert(geometry.paragraphTextAlign === 'justify', `${viewport.width} ${label}: paragraph text-align ${geometry.paragraphTextAlign}`)
 }
 
-async function closeWorkspace(page, method = 'close-button') {
-  if (method === 'settings-toggle') {
-    await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' }).click()
-  } else {
-    await page.getByRole('button', { name: '关闭' }).click()
-  }
-  await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
-}
-
 async function runDesktopViewport(browser) {
   const viewport = { width: 1440, height: 900 }
   const context = await browser.newContext({ viewport })
@@ -765,18 +805,21 @@ async function runViewport(browser, viewport) {
   assertReaderGeometry(initialGeometry, viewport, 'initial')
 
   await mobileTopTool(page, '书架').click()
-  await assertWorkspaceOpen(page, viewport, '书架', { primary: true })
-  await mobileTopTool(page, '书架').click()
-  await assertWorkspaceClosed(page, viewport, '书架')
+  await assertWorkspaceOpen(page, viewport, '书架', { primary: true, contentSized: true, heightRange: [360, 430] })
+  await assertPrimaryPopoverBlocksChrome(page, viewport, '书架')
+  await closePrimaryWorkspace(page, viewport, '书架')
 
-  await mobileTopTool(page, '书架').click()
-  await assertWorkspaceOpen(page, viewport, '书架', { primary: true })
   await mobileTopTool(page, '书源').click()
-  await assertWorkspaceOpen(page, viewport, '来源', { primary: true })
+  await assertWorkspaceOpen(page, viewport, '来源', { primary: true, contentSized: true, heightRange: [360, 430] })
+  await assertPrimaryPopoverBlocksChrome(page, viewport, '来源')
+  await closePrimaryWorkspace(page, viewport, '来源')
   await mobileTopTool(page, '目录').click()
-  await assertWorkspaceOpen(page, viewport, '目录', { primary: true })
+  await assertWorkspaceOpen(page, viewport, '目录', { primary: true, contentSized: true, heightRange: [360, 430] })
+  await assertPrimaryPopoverBlocksChrome(page, viewport, '目录')
+  await closePrimaryWorkspace(page, viewport, '目录')
   await mobileTopTool(page, '设置').click()
-  await assertWorkspaceOpen(page, viewport, '设置', { primary: true })
+  await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [430, 530] })
+  await assertPrimaryPopoverBlocksChrome(page, viewport, '设置')
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)
 
@@ -784,7 +827,7 @@ async function runViewport(browser, viewport) {
   const afterPanelCenterTap = await page.locator('.reader-mobile-top.visible').count()
   assert(afterPanelCenterTap === 1, `${viewport.width}: center tap with panel open must not hide toolbar`)
 
-  await closeWorkspace(page, 'settings-toggle')
+  await closePrimaryWorkspace(page, viewport, '设置')
   await page.locator('.reader-mobile-float-left.visible button[title="书签"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-bookmark-dialog', '书签')
   await exerciseBookmarkManager(page, viewport, { fullscreen: true, selectedText: selectedBookmarkText })
