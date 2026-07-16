@@ -177,8 +177,8 @@
             @audio-progress="handleAudioProgress"
             @audio-ended="handleAudioEnded"
             @audio-error="handleAudioError"
-            @audio-previous="goChapter(currentIndex - 1)"
-            @audio-next="goChapter(currentIndex + 1)"
+            @audio-previous="goAudioChapter(currentIndex - 1)"
+            @audio-next="goAudioChapter(currentIndex + 1)"
             @image-load="handleReaderImageLoad"
             @retry-block="retryContinuousChapter"
           />
@@ -399,7 +399,7 @@ import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderChapterMaintenance } from '../composables/useReaderChapterMaintenance'
-import { useReaderChapterPresentation } from '../composables/useReaderChapterPresentation'
+import { isCBZBook, useReaderChapterPresentation } from '../composables/useReaderChapterPresentation'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderChrome } from '../composables/useReaderChrome'
 import { useReaderExternalUpdates } from '../composables/useReaderExternalUpdates'
@@ -813,6 +813,9 @@ const ttsConfigExpanded = ref(true)
 const isComicChapter = computed(() => (
   makeChapterBlock(currentIndex.value, chapter.value, content.value).isComic === true
 ))
+const isOrdinaryImageComicChapter = computed(() => (
+  isComicChapter.value && !isCBZBook(book.value)
+))
 const ttsReadBarLayoutActive = computed(() => (
   ttsBarRequested.value
     && chapterFormat.value !== 'epub'
@@ -825,6 +828,7 @@ const effectiveReaderMode = computed(() => (
     chapterFormat.value === 'epub',
     isAudioChapter.value,
     ttsReadBarLayoutActive.value,
+    isOrdinaryImageComicChapter.value,
   )
 ))
 const effectiveReaderState = {
@@ -1859,6 +1863,16 @@ function handleAudioProgress(event) {
   audioCurrentTime.value = Math.max(0, Number(event?.currentTime) || 0)
   audioDuration.value = Math.max(0, Number(event?.duration) || audioDuration.value || 0)
   scheduleProgressSave(1200)
+}
+
+function goAudioChapter(index) {
+  const target = Math.max(0, Math.min(Number(index), chapters.value.length - 1))
+  if (target === currentIndex.value) return
+  // reader-dev marks both manual previous/next actions as autoplay requests
+  // before changing the chapter. The destination audio element receives that
+  // intent through its autoplay prop and clears it once metadata is available.
+  audioAutoplay.value = true
+  return goChapter(target)
 }
 
 function handleAudioEnded() {

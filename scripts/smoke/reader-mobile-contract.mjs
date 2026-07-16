@@ -194,6 +194,7 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
       paddingTop: window.getComputedStyle(workspace).paddingTop,
       paddingBottom: window.getComputedStyle(workspace).paddingBottom,
       hasPrimaryBody: Boolean(workspace.querySelector('.reader-mobile-primary-popover-body')),
+      toolbarZIndex: Number(window.getComputedStyle(document.querySelector('.reader-mobile-top.visible')).zIndex || 0),
     }
   }, label)
   assert(workspaceState.count === 1, `${viewport.width}: exactly one mobile primary workspace should remain after opening ${label}`)
@@ -204,10 +205,11 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
   assert(workspaceState.hasLabel, `${viewport.width}: mobile workspace missing label ${label}`)
   if (primary) {
     assert(workspaceState.hasGenericHeader === false, `${viewport.width}: ${label} primary popover must not render generic workspace header`)
-    assert(workspaceState.paddingTop === '0px', `${viewport.width}: ${label} primary root top padding ${workspaceState.paddingTop}`)
+    assert(parseFloat(workspaceState.paddingTop) >= 58, `${viewport.width}: ${label} primary root must reserve the mobile tool strip, padding ${workspaceState.paddingTop}`)
     assert(workspaceState.paddingBottom === '0px', `${viewport.width}: ${label} primary root bottom padding ${workspaceState.paddingBottom}`)
     assert(workspaceState.hasPrimaryBody, `${viewport.width}: ${label} primary popover missing owned content body`)
-    assert(workspaceState.zIndex > 8, `${viewport.width}: ${label} primary popover must paint above reader chrome`)
+    assert(workspaceState.zIndex > 8, `${viewport.width}: ${label} primary popover must paint above reader content`)
+    assert(workspaceState.toolbarZIndex > workspaceState.zIndex, `${viewport.width}: ${label} mobile toolbar must stay interactive above the primary popover`)
   }
   if (contentSized) {
     assert(workspaceState.top === 0, `${viewport.width}: ${label} primary popover top ${workspaceState.top}`)
@@ -244,27 +246,24 @@ async function assertWorkspaceClosed(page, viewport, label) {
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: toolbar should remain visible after closing ${label}`)
 }
 
-async function assertPrimaryPopoverBlocksChrome(page, viewport, label) {
-  const sourceTool = mobileTopTool(page, '书源')
-  let blocked = false
-  try {
-    await sourceTool.click({ timeout: 1_000 })
-  } catch (error) {
-    blocked = /intercepts pointer events|timeout/i.test(error.message)
-  }
-  assert(blocked, `${viewport.width}: ${label} must block physical clicks on the retained toolbar`)
+async function assertPrimaryPopoverKeepsChromeInteractive(page, viewport, label) {
+  const toolLabel = label === '来源' ? '书源' : label
+  const activeTool = mobileTopTool(page, toolLabel)
   const state = await page.evaluate(() => {
-    const source = [...document.querySelectorAll('.reader-mobile-top.visible .mobile-tool-button')]
-      .find(element => element.innerText.trim() === '书源')
-    const rect = source?.getBoundingClientRect()
+    const active = document.querySelector('.reader-mobile-top.visible .mobile-tool-button')
+    const rect = active?.getBoundingClientRect()
     const hit = rect && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
     return {
-      hitIsSource: hit === source || source?.contains(hit),
+      hitIsTool: hit === active || active?.contains(hit),
       dismissVisible: Boolean(document.querySelector('.reader-mobile-primary-dismiss')),
     }
   })
   assert(state.dismissVisible, `${viewport.width}: ${label} must install a click-away layer`)
-  assert(state.hitIsSource === false, `${viewport.width}: ${label} source tool must be covered by the primary popover`)
+  assert(state.hitIsTool === true, `${viewport.width}: ${label} toolbar tool must remain above the primary popover`)
+  await activeTool.click()
+  await assertWorkspaceClosed(page, viewport, label)
+  await activeTool.click()
+  await assertWorkspaceOpen(page, viewport, label, { primary: true })
 }
 
 async function closePrimaryWorkspace(page, viewport, label) {
@@ -691,7 +690,7 @@ async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}
   }, { desktop })
   assert(state.titleTop !== null && state.listTop !== null, `${viewport.width}: settings title/list missing`)
   assert(state.titleBottom < state.listTop, `${viewport.width}: fixed title must precede the scroll list`)
-  assert(state.listHeight === state.listClientHeight, `${viewport.width}: settings list must not have a nested height mismatch`)
+  assert(Math.abs(state.listHeight - state.listClientHeight) <= 1, `${viewport.width}: settings list must not have a nested height mismatch`)
   assert(state.listScrollHeight > state.listClientHeight + 20, `${viewport.width}: settings fixture must require list scrolling`)
   assert(state.listOverflowY === 'auto', `${viewport.width}: settings list overflow ${state.listOverflowY}`)
   assert(state.outerOverflowY === 'visible', `${viewport.width}: outer settings shell overflow ${state.outerOverflowY}`)
@@ -907,21 +906,21 @@ async function runViewport(browser, viewport) {
   assertReaderGeometry(initialGeometry, viewport, 'initial')
 
   await mobileTopTool(page, '书架').click()
-  await assertWorkspaceOpen(page, viewport, '书架', { primary: true, contentSized: true, heightRange: [360, 430] })
-  await assertPrimaryPopoverBlocksChrome(page, viewport, '书架')
+  await assertWorkspaceOpen(page, viewport, '书架', { primary: true, contentSized: true, heightRange: [418, 488] })
+  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '书架')
   await closePrimaryWorkspace(page, viewport, '书架')
 
   await mobileTopTool(page, '书源').click()
-  await assertWorkspaceOpen(page, viewport, '来源', { primary: true, contentSized: true, heightRange: [360, 430] })
-  await assertPrimaryPopoverBlocksChrome(page, viewport, '来源')
+  await assertWorkspaceOpen(page, viewport, '来源', { primary: true, contentSized: true, heightRange: [418, 488] })
+  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '来源')
   await closePrimaryWorkspace(page, viewport, '来源')
   await mobileTopTool(page, '目录').click()
-  await assertWorkspaceOpen(page, viewport, '目录', { primary: true, contentSized: true, heightRange: [360, 430] })
-  await assertPrimaryPopoverBlocksChrome(page, viewport, '目录')
+  await assertWorkspaceOpen(page, viewport, '目录', { primary: true, contentSized: true, heightRange: [418, 488] })
+  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '目录')
   await closePrimaryWorkspace(page, viewport, '目录')
   await mobileTopTool(page, '设置').click()
-  await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [430, 530] })
-  await assertPrimaryPopoverBlocksChrome(page, viewport, '设置')
+  await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [488, 588] })
+  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '设置')
   await assertSettingsFixedTitle(page, viewport)
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)

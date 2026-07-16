@@ -73,7 +73,10 @@ defineEmits(['close'])
   height: auto;
   min-height: 0;
   max-height: 100dvh;
-  padding: 0;
+  /* Keep primary-panel content below the interactive mobile tool strip.
+     The surface remains full-width, while the strip above it can toggle or
+     switch the open panel just like reader-dev's anchored popovers. */
+  padding: calc(58px + env(safe-area-inset-top)) 0 0;
   overflow-x: hidden;
   overflow-y: visible;
   background: color-mix(in srgb, var(--reader-popup-bg) 97%, transparent);

@@ -9,7 +9,7 @@ const mobileChromeSource = readFileSync(new URL('../src/components/reader/Reader
 test('primary reader popovers expose an upstream-like root without generic workspace chrome', () => {
   assert.match(workspaceSource, /primary:\s*\{/, 'mobile workspace must expose a primary-popover presentation')
   assert.match(workspaceSource, /reader-mobile-workspace-primary/, 'primary workspace must have a dedicated root class')
-  assert.match(workspaceSource, /\.reader-mobile-workspace-primary\s*\{[\s\S]*?padding:\s*0/, 'primary workspace root must not reserve generic toolbar padding')
+  assert.match(workspaceSource, /\.reader-mobile-workspace-primary\s*\{[\s\S]*?padding:\s*calc\(58px \+ env\(safe-area-inset-top\)\) 0 0/, 'primary workspace root must reserve the interactive mobile tool strip')
   assert.match(workspaceSource, /\.reader-mobile-workspace-primary\s*\{[\s\S]*?backdrop-filter:\s*none/, 'primary workspace must not add a glass drawer effect over the upstream popover')
 
   const primaryPanels = readerSource.match(/<ReaderMobileWorkspacePanel[\s\S]*?\/>|<ReaderMobileWorkspacePanel[\s\S]*?<\/ReaderMobileWorkspacePanel>/g) || []
@@ -18,11 +18,11 @@ test('primary reader popovers expose an upstream-like root without generic works
   assert.match(readerSource, /reader-mobile-primary-popover-body/, 'primary panels must own their inner popover padding and title layout')
 })
 
-test('primary mobile popovers reproduce upstream click blocking and content-sized bounds', () => {
+test('primary mobile popovers keep the upstream tool strip interactive and use content-sized bounds', () => {
   assert.match(
     workspaceSource,
     /\.reader-mobile-workspace-primary\s*\{[\s\S]*?z-index:\s*10/,
-    'the primary popover must paint above the retained mobile tool state',
+    'the primary popover must paint above reader content',
   )
   assert.match(
     workspaceSource,
@@ -34,7 +34,7 @@ test('primary mobile popovers reproduce upstream click blocking and content-size
     /\.reader-mobile-workspace-primary\s+\.reader-mobile-workspace-body\s*\{[\s\S]*?height:\s*auto[\s\S]*?max-height:\s*100dvh/,
     'the primary popover body must not reintroduce a forced viewport height',
   )
-  assert.match(mobileChromeSource, /z-index:\s*8/, 'reader chrome stays mounted beneath a primary popover')
+  assert.match(mobileChromeSource, /z-index:\s*11/, 'the retained mobile tool strip must stay above a primary popover')
   assert.match(readerSource, /reader-mobile-primary-dismiss/, 'outside-popover clicks need a dedicated click-away layer')
   assert.match(readerSource, /@click\.stop="closeReaderPrimaryPanels"/, 'the click-away layer must close primary popovers without reaching reader taps')
   assert.match(

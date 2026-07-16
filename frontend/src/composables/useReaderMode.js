@@ -1,7 +1,16 @@
 import { nextTick, unref, watch } from 'vue'
 
-export function readerEffectiveMode(mode, isEPUB, isAudio = false, isReadBarOpen = false) {
-  if (isEPUB || isAudio) return 'page'
+export function readerEffectiveMode(
+  mode,
+  isEPUB,
+  isAudio = false,
+  isReadBarOpen = false,
+  isOrdinaryImageComic = false,
+) {
+  // reader-dev's isCarToon excludes CBZ. Ordinary image-comic chapters use
+  // the non-slide page branch, while a CBZ keeps an explicitly selected flip
+  // mode for its image-page navigation.
+  if (isEPUB || isAudio || isOrdinaryImageComic) return 'page'
   // reader-dev disables slide reading while its read-aloud bar is open. Its
   // non-slide branch is the vertical page interaction, while scroll modes
   // remain native scrolling.

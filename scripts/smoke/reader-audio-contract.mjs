@@ -40,7 +40,7 @@ function fakeToken() {
 
 async function installMocks(page, requests) {
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
-  await page.route(/^https?:\/\/[^/]+\/media\/audio\.mp3.*$/, route => route.fulfill({
+  await page.route(/^https?:\/\/[^/]+\/media\/audio-\d+\.mp3.*$/, route => route.fulfill({
     status: 200,
     contentType: 'audio/mpeg',
     body: Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
@@ -96,18 +96,18 @@ async function installMocks(page, requests) {
     if (path === '/books/1/chapters/0/content') {
       return route.fulfill(json({
         chapter: { id: 11, index: 0, title: '第一集' },
-        content: `${targetUrl.replace(/\/$/, '')}/media/audio.mp3`,
+        content: `${targetUrl.replace(/\/$/, '')}/media/audio-0.mp3`,
         format: 'audio',
-        resourceUrl: `${targetUrl.replace(/\/$/, '')}/media/audio.mp3`,
+        resourceUrl: `${targetUrl.replace(/\/$/, '')}/media/audio-0.mp3`,
         resourceExpiresAt: '2026-07-07T12:00:00Z',
       }))
     }
     if (path === '/books/1/chapters/1/content') {
       return route.fulfill(json({
         chapter: { id: 12, index: 1, title: '第二集' },
-        content: `${targetUrl.replace(/\/$/, '')}/media/audio.mp3`,
+        content: `${targetUrl.replace(/\/$/, '')}/media/audio-1.mp3`,
         format: 'audio',
-        resourceUrl: `${targetUrl.replace(/\/$/, '')}/media/audio.mp3`,
+        resourceUrl: `${targetUrl.replace(/\/$/, '')}/media/audio-1.mp3`,
         resourceExpiresAt: '2026-07-07T12:00:00Z',
       }))
     }
@@ -188,6 +188,8 @@ async function runViewport(browser, viewport) {
     }
     audio.dispatchEvent(new Event('loadedmetadata'))
   })
+  const restored = await page.evaluate(() => Math.round(document.querySelector('.reader-audio-content audio').currentTime || 0))
+  assert(restored === 37, `${viewport.width}: saved playback second was not restored (${restored})`)
   await page.getByRole('button', { name: '播放' }).click()
   await page.waitForFunction(() => [...document.querySelectorAll('.reader-audio-actions button')].some(button => button.textContent.includes('暂停')))
   await page.getByRole('button', { name: '暂停' }).click()
@@ -202,6 +204,10 @@ async function runViewport(browser, viewport) {
     sliderValue: document.querySelector('input[aria-label="音频播放进度"]').value,
   }))
   assert(seekState.audioTime === 45, `${viewport.width}: seek did not update audio currentTime: ${JSON.stringify(seekState)}`)
+  await page.getByRole('button', { name: '+15s' }).click()
+  assert(await page.evaluate(() => Math.round(document.querySelector('.reader-audio-content audio').currentTime || 0)) === 60, `${viewport.width}: +15s did not seek audio`)
+  await page.getByRole('button', { name: '-15s' }).click()
+  assert(await page.evaluate(() => Math.round(document.querySelector('.reader-audio-content audio').currentTime || 0)) === 45, `${viewport.width}: -15s did not seek audio`)
   await page.locator('input[aria-label="音频音量"]').evaluate((input) => {
     input.value = '35'
     input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -217,6 +223,30 @@ async function runViewport(browser, viewport) {
     label: document.querySelector('.reader-audio-volume span')?.textContent || '',
   }))
   assert(volumeState.audioMuted && volumeState.label.includes('0%'), `${viewport.width}: mute failed: ${JSON.stringify(volumeState)}`)
+
+  await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '下一章' }).click()
+  await page.waitForFunction(() => document.querySelector('.reader-audio-content h1')?.textContent?.includes('第二集'))
+  let transition = await page.evaluate(() => ({
+    autoplay: document.querySelector('.reader-audio-content audio')?.autoplay,
+    src: document.querySelector('.reader-audio-content audio')?.src || '',
+  }))
+  assert(transition.autoplay && transition.src.endsWith('/media/audio-1.mp3'), `${viewport.width}: manual next must carry autoplay intent ${JSON.stringify(transition)}`)
+
+  await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '上一章' }).click()
+  await page.waitForFunction(() => document.querySelector('.reader-audio-content h1')?.textContent?.includes('第一集'))
+  transition = await page.evaluate(() => ({
+    autoplay: document.querySelector('.reader-audio-content audio')?.autoplay,
+    src: document.querySelector('.reader-audio-content audio')?.src || '',
+  }))
+  assert(transition.autoplay && transition.src.endsWith('/media/audio-0.mp3'), `${viewport.width}: manual previous must carry autoplay intent ${JSON.stringify(transition)}`)
+
+  await page.evaluate(() => document.querySelector('.reader-audio-content audio').dispatchEvent(new Event('ended')))
+  await page.waitForFunction(() => document.querySelector('.reader-audio-content h1')?.textContent?.includes('第二集'))
+  transition = await page.evaluate(() => ({
+    autoplay: document.querySelector('.reader-audio-content audio')?.autoplay,
+    src: document.querySelector('.reader-audio-content audio')?.src || '',
+  }))
+  assert(transition.autoplay && transition.src.endsWith('/media/audio-1.mp3'), `${viewport.width}: ended transition must carry autoplay intent ${JSON.stringify(transition)}`)
 
   const chapterOneRequestsBeforeKey = requests.filter(item => item === 'GET /books/1/chapters/1/content').length
   await page.keyboard.press('ArrowRight')
@@ -258,6 +288,7 @@ async function main() {
   })
   try {
     await runViewport(browser, { width: 390, height: 844 })
+    await runViewport(browser, { width: 360, height: 800 })
     await runViewport(browser, { width: 1440, height: 900 })
     console.log('reader audio contract smoke passed')
   } finally {

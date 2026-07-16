@@ -402,6 +402,43 @@ within 2px. The same script proves a failed adjacent chapter remains retryable w
 active chapter. Nearby background caching is intentionally excluded from the visible-window
 assertions.
 
+#### 2026-07-16 focused inventory: Reader content-format state transitions
+
+Upstream authority is `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`:
+`web/src/components/Content.vue` (`render`, `renderScrollChapterList`, `renderEpub`, `renderAudio`,
+and audio methods) plus `web/src/views/Reader.vue` format predicates, click/keyboard branches, and
+`showPosition`/progress logic. This review covers the final P0 format branches; transport and archive
+security contracts remain documented in their dedicated backend sections below.
+
+| Format / transition | Upstream contract | Current OpenReader evidence | Classification / required change |
+|---|---|---|---|
+| Volume chapter layout | A catalog row with `isVolume` renders a `.volume-chapter` with `min-height:100vh`, `display:flex`, `flex-direction:column`, and horizontal centering. It starts at the content top; its title is centered and its optional `volume-tag` is right aligned. | `ReaderChapterContent` now uses the same top-aligned flex column, centered title, and right-aligned tag. | **aligned for this P0 format slice.** `reader-volume-contract.mjs` verifies geometry at 1440×900, 390×844, and 360×800. |
+| Image comic / CBZ | `Reader.vue.isCarToon` is true only for non-EPUB, non-CBZ content containing `<img>`; `isSlideRead` is false for that ordinary image-comic branch. A `.cbz` is deliberately excluded from `isCarToon`, so it keeps the configured slide/page decision while still suppressing its heading. Both kinds disable TTS/auto-reading and fill images to the readable width. Image click/preview must not leak into Reader click zones. | `useReaderChapterPresentation` keeps CBZ heading suppression separate from ordinary image-comic headings. `readerEffectiveMode` now receives an ordinary-image-comic flag, forces only that branch to `page`, and leaves explicitly requested CBZ `flip` intact. | **aligned for this P0 format slice.** Preserve stricter HTML/URL sanitization and Element preview as allowed security/framework changes. `reader-image-contract.mjs` verifies both variants at all target viewports. |
+| EPUB frame | Upstream uses a same-page iframe bridge: `inited` applies style/height, `load` restores position, `setHeight` repaginates, click/hash/keydown are forwarded to Reader, and EPUB forces the non-slide vertical branch. | `ReaderEpubContent`/`useReaderEpubFrame` implement the bridge with exact iframe-source and same-origin validation; `Reader.vue` routes navigation through a full chapter load to refresh signed resources. | **acceptable security adaptation.** Same-origin source validation and resource refresh are stricter than upstream. Browser contract must still cover height/style, fragment navigation, click/keyboard forwarding, progress restore, preview, and mobile chrome behavior at all target viewports. |
+| Audio mode/input | Upstream renders a dedicated audio surface, hides ordinary text paging/TTS/auto-reading, accepts center-tap toolbar toggling only, restores a saved playback second on metadata, and saves progress in seconds. | `ReaderAudioContent`, `useReaderChapterLoader`, and Reader audio payload logic implement dedicated controls, mode forcing, saved seconds, and input guards. | **aligned for this P0 format slice.** `reader-audio-contract.mjs` now covers 1440×900, 390×844, 360×800, restored seconds, ±15 seconds, manual/ended transitions, and persisted progress. |
+| Audio manual chapter transition | `Content.prevChapter()` and `nextChapter()` set `autoPlay = true` before emitting the chapter transition. `onEnd()` also sets it before moving forward, so the destination chapter starts automatically after metadata. | Reader routes manual previous/next through `goAudioChapter()`, which sets `audioAutoplay` before changing chapters; ended advancement uses the same intent. | **aligned for this P0 format slice.** Browser assertions prove the destination audio element receives autoplay for manual and ended transitions. |
+| Format switches | Upstream disables slide for EPUB, ordinary image-comic, and audio; audio suppresses paging input and EPUB delegates input through the iframe. It deliberately does **not** classify CBZ as ordinary image-comic for this purpose. | `readerEffectiveMode` has an explicit ordinary-image-comic argument, while `isComicChapter`, `isAudioChapter`, pointer/keyboard/wheel guards, and the TTS watch retain their existing format-specific routing. | **aligned for this P0 format slice.** Unit plus three-viewport browser proof covers ordinary image-comic `page` and CBZ `flip`; the user-approved native vertical scroll host remains text-only. |
+
+Test-first gate for the required repairs:
+
+1. Add a volume real-browser contract for the three standard viewports: `min-height:100vh`, top-aligned
+   inner block, centered title, and right-aligned tag.
+2. Extend `reader-audio-contract.mjs` to all three viewports and to restore seconds, ±15s, manual
+   previous/next autoplay, ended autoplay, and persisted seconds.
+3. Add a mode unit contract and browser fixture proving ordinary image-comic leaves `flip` for the upstream vertical page branch, while the existing CBZ fixture remains in `flip` when explicitly requested.
+4. Run existing image/CBZ and EPUB contracts unchanged before code; any failure is a separate P0 repair.
+5. Only then change the volume CSS, manual audio transition wiring, and ordinary-comic mode predicate; re-run the full reader/browser
+   set before a subsequent Docker candidate.
+
+Contract result (2026-07-16): all five gates above completed. The red tests exposed and then
+locked the volume vertical-centering defect, manual audio-autoplay omission, ordinary-image/CBZ
+mode conflation, and the mobile primary-popover layer covering the visible toolbar. `npm test`
+(395/395), `go test ./...`, the production build, `reader-volume-contract.mjs`,
+`reader-audio-contract.mjs`, `reader-image-contract.mjs`, `reader-epub-contract.mjs`,
+`reader-mobile-contract.mjs`, `reader-text-modes-contract.mjs`, and
+`reader-continuous-contract.mjs` pass. The EPUB contract imports a real fixture through the Go
+server and passes at 1440×900, 390×844, and 360×800.
+
 The previous tests are evidence only where they assert the table above. In particular,
 `readerToolOrderContract.test.mjs` and the primary-panel exclusivity test must not be used as proof
 of upstream parity until rewritten against this contract.
@@ -422,8 +459,8 @@ of upstream parity until rewritten against this contract.
 | Behavior | Upstream evidence | Current evidence | Required action |
 |---|---|---|---|
 | Tool layer default | `Reader.vue` data contains `showToolBar: true`. | `Reader.vue` now contains `mobileChromeVisible = ref(true)`. | Base behavior is aligned; retain direct state and browser coverage. |
-| Panel open | Upstream click handler returns when primary popovers/settings are visible; opening a panel does not hide `showToolBar`. | `useReaderTools` and `useReaderPanels` do not hide `mobileChromeVisible` for panel actions. | Base behavior is aligned; primary-panel toggle/exclusivity remains a separate must-fix. |
-| Mobile panel container | Upstream mini `.popper-component` is `top: 0`, `left: 0`, `width: 100vw`, without border/shadow; each child owns its own `24px + safe-area` padding. | `ReaderMobileWorkspacePanel` is full viewport but centrally reserves `58px` above and `96px` below for every panel. | Rebuild generic panel geometry and let panel content own the upstream-like insets. |
+| Panel open | Upstream click handler returns when primary popovers/settings are visible; opening a panel does not hide `showToolBar`. Its Element popover is positioned beside the triggering tool, so the visible mini tool layer remains available for a same-tool close or switching panels. | `ReaderMobileChrome` now paints at `z-index:11`, above the full-width primary panel at `z-index:10`; the panel reserves `58px + safe-area` before its owned body. Same-tool close and different-tool switching retain the existing primary-panel state machine. | **aligned for this P0 mobile slice.** Browser contract proves a retained tool is physically clickable above each primary panel, while panel/click-away interactions do not reach Reader content. |
+| Mobile panel container | Upstream mini `.popper-component` is anchored beside the triggering tool and does not intercept that tool; its child owns the visible content padding. | `ReaderMobileWorkspacePanel` remains a full-width Vue presentation adaptation, but its content begins below the interactive top tool layer and the panel stays below that layer in stacking order. | **technical-stack-equivalent.** The full-width structural adaptation preserves visible tool access, content-sized panel bounds, click-away blocking, and no text-click passthrough. |
 | Horizontal layout | Upstream mini chapter padding is 16px and justified. | Current mobile reader page uses `width: 100vw`, `padding: 0 16px`, `box-sizing: border-box`, and justified body. | Base geometry is aligned; real rendered symmetry remains required. |
 | Tests | Upstream behavior is source contract. | Existing toolbar-hide tests were replaced, but not every primary tool has a same-button toggle/exclusive-panel contract. | Add state and browser coverage before implementation. |
 

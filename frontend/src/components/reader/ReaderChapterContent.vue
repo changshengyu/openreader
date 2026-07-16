@@ -190,8 +190,8 @@ const emit = defineEmits([
 .chapter-content.volume-chapter {
   display: flex;
   min-height: 100vh;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
 }
 
 .volume-content {
@@ -201,8 +201,6 @@ const emit = defineEmits([
 
 .volume-tag {
   text-align: right;
-  text-indent: 0;
-  white-space: pre-line;
 }
 
 h3 {

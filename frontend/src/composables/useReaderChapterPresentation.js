@@ -69,7 +69,7 @@ function containsImageMarkup(value) {
   return /<img\b/i.test(String(value || ''))
 }
 
-function isCBZBook(book) {
+export function isCBZBook(book) {
   const candidates = [
     book?.url,
     book?.bookUrl,

@@ -194,7 +194,9 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change', 'cache', '
     top: 0;
     right: 0;
     left: 0;
-    z-index: 8;
+    /* Primary popovers occupy the viewport, but reader-dev keeps the tool
+       strip above its popovers so the active tool can close/switch them. */
+    z-index: 11;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: max(5px, env(safe-area-inset-top)) 8px 5px;

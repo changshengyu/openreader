@@ -9,11 +9,13 @@ async function flushModeChange() {
   await nextTick()
 }
 
-test('forces EPUB documents through the upstream vertical page branch', () => {
+test('forces EPUB, audio, and ordinary image-comic documents through the upstream vertical page branch', () => {
   assert.equal(readerEffectiveMode('flip', true), 'page')
   assert.equal(readerEffectiveMode('scroll2', true), 'page')
   assert.equal(readerEffectiveMode('scroll2', false), 'scroll2')
   assert.equal(readerEffectiveMode('scroll2', false, true), 'page')
+  assert.equal(readerEffectiveMode('flip', false, false, false, true), 'page')
+  assert.equal(readerEffectiveMode('flip', false, false, false, false), 'flip')
   assert.equal(readerEffectiveMode('flip', false, false, true), 'page')
   assert.equal(readerEffectiveMode('scroll', false, false, true), 'scroll')
 })

@@ -45,7 +45,7 @@ function tallSVG() {
   </svg>`
 }
 
-async function installMocks(page, apiRequests, mode) {
+async function installMocks(page, apiRequests, mode, { isCBZ = true } = {}) {
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/comic\/tall\.svg.*$/, async (route) => {
     await new Promise(resolve => setTimeout(resolve, 600))
@@ -85,12 +85,12 @@ async function installMocks(page, apiRequests, mode) {
     if (path === '/books/1') {
       return route.fulfill(json({
         id: 1,
-        title: 'CBZ 图片契约测试',
+        title: isCBZ ? 'CBZ 图片契约测试' : '普通图片漫画契约测试',
         author: 'OpenReader',
         sourceId: 0,
-        url: '/library/demo.CBZ?cache=1#page',
-        originalFile: 'demo.CBZ',
-        libraryPath: 'imports/demo.CBZ',
+        url: isCBZ ? '/library/demo.CBZ?cache=1#page' : 'https://example.invalid/comic/1',
+        originalFile: isCBZ ? 'demo.CBZ' : '',
+        libraryPath: isCBZ ? 'imports/demo.CBZ' : '',
         chapterCount: 1,
         progress: null,
       }))
@@ -131,9 +131,11 @@ async function installMocks(page, apiRequests, mode) {
   })
 }
 
-async function runViewport(browser, viewport, requestedMode) {
+async function runViewport(browser, viewport, requestedMode, variant = {}) {
+  const { isCBZ = true } = variant
   const context = await browser.newContext({ viewport })
   const mode = requestedMode || (viewport.width > 750 ? 'page' : 'scroll')
+  const expectedMode = isCBZ ? mode : 'page'
   await context.addInitScript(({ token, mode: initialMode }) => {
     window.localStorage.setItem('openreader_token', token)
     window.localStorage.setItem('reader', JSON.stringify({
@@ -153,7 +155,7 @@ async function runViewport(browser, viewport, requestedMode) {
     failures.push(text)
   })
   page.on('pageerror', error => failures.push(error.message))
-  await installMocks(page, apiRequests, mode)
+  await installMocks(page, apiRequests, mode, variant)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-content-image img', { timeout: 10_000 })
   await page.waitForFunction(() => {
@@ -168,15 +170,18 @@ async function runViewport(browser, viewport, requestedMode) {
     const chapter = document.querySelector('.chapter-content')
     const imageBox = document.querySelector('.reader-content-image')
     const image = document.querySelector('.reader-content-image img')
-    const titleCount = document.querySelectorAll('.reader-body h1').length
+    const titleCount = document.querySelectorAll('.reader-body h3').length
     const imageRect = image.getBoundingClientRect()
     const boxRect = imageBox.getBoundingClientRect()
+    const pageRect = pageEl.getBoundingClientRect()
     const contentRect = content.getBoundingClientRect()
     const chapterRect = chapter.getBoundingClientRect()
     return {
       titleCount,
-      pagePaddingLeft: getComputedStyle(pageEl).paddingLeft,
-      pagePaddingRight: getComputedStyle(pageEl).paddingRight,
+      chapterLeftGap: Math.round(chapterRect.left - pageRect.left),
+      chapterRightGap: Math.round(pageRect.right - chapterRect.right),
+      imageLeftGap: Math.round(boxRect.left - pageRect.left),
+      imageRightGap: Math.round(pageRect.right - boxRect.right),
       imageWidth: Math.round(imageRect.width),
       boxWidth: Math.round(boxRect.width),
       contentWidth: Math.round(contentRect.width),
@@ -195,15 +200,26 @@ async function runViewport(browser, viewport, requestedMode) {
       persistedReader: window.localStorage.getItem('reader'),
     }
   })
-  assert(state.titleCount === 0, `${viewport.width}: CBZ chapter title should be hidden`)
+  assert(
+    state.titleCount === (isCBZ ? 0 : 1),
+    `${viewport.width}: ${isCBZ ? 'CBZ should hide' : 'ordinary image-comic should retain'} the chapter title`,
+  )
+  if (!isCBZ) {
+    assert(
+      state.shellClass.includes('page') && !state.shellClass.includes('flip'),
+      `${viewport.width}: ordinary image-comic must force the upstream page branch, class=${state.shellClass}`,
+    )
+  }
   assert(Math.abs(state.imageWidth - state.boxWidth) <= 1, `${viewport.width}: comic image width ${state.imageWidth}, box ${state.boxWidth}`)
-  const readableWidth = mode === 'flip' ? state.bodyClientWidth : state.chapterWidth
+  const readableWidth = expectedMode === 'flip' ? state.bodyClientWidth : state.chapterWidth
   assert(Math.abs(state.boxWidth - readableWidth) <= 1, `${viewport.width}: comic box width ${state.boxWidth}, readable column ${readableWidth}`)
 
   if (viewport.width <= 750) {
     assert(state.topVisible, `${viewport.width}: mobile toolbar should be visible by default`)
-    assert(state.pagePaddingLeft === '16px', `${viewport.width}: left padding ${state.pagePaddingLeft}`)
-    assert(state.pagePaddingRight === '16px', `${viewport.width}: right padding ${state.pagePaddingRight}`)
+    const leftGap = expectedMode === 'flip' ? state.imageLeftGap : state.chapterLeftGap
+    const rightGap = expectedMode === 'flip' ? state.imageRightGap : state.chapterRightGap
+    assert(leftGap === 16, `${viewport.width}/${expectedMode}: visible comic left gap ${leftGap}; ${JSON.stringify(state)}`)
+    assert(rightGap === 16, `${viewport.width}/${expectedMode}: visible comic right gap ${rightGap}; ${JSON.stringify(state)}`)
     await page.locator('.reader-content-image img').click()
     await page.waitForSelector('.el-image-viewer__wrapper', { timeout: 5000 })
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: image preview should not hide toolbar`)
@@ -211,7 +227,7 @@ async function runViewport(browser, viewport, requestedMode) {
     await page.waitForSelector('.el-image-viewer__wrapper', { state: 'detached' })
   }
 
-  if (mode === 'flip') {
+  if (expectedMode === 'flip') {
     assert(state.shellClass.includes('flip'), `${viewport.width}: expected flip mode, class=${state.shellClass}`)
     assert(state.bodyScrollWidth > state.bodyClientWidth, `${viewport.width}: delayed image should create another flip column`)
     await page.keyboard.press('ArrowRight')
@@ -221,13 +237,15 @@ async function runViewport(browser, viewport, requestedMode) {
       moved !== 'none' && !moved.endsWith(', 0, 0)'),
       `${viewport.width}: image load did not enable flip pagination, transform=${moved}, state=${JSON.stringify(state)}, requests=${JSON.stringify(apiRequests)}`,
     )
-  } else if (viewport.width > 750) {
+  } else if (expectedMode === 'page') {
     assert(state.shellClass.includes('page'), `desktop: expected page mode, class=${state.shellClass}`)
-    assert(state.scrollHeight > state.clientHeight, 'desktop: delayed image should extend the paged viewport')
-    await page.keyboard.press('PageDown')
-    await page.waitForTimeout(180)
-    const scrollTop = await page.evaluate(() => document.querySelector('.reader-content').scrollTop)
-    assert(scrollTop > 0, `desktop: paged image content did not advance, scrollTop=${scrollTop}`)
+    if (viewport.width > 750) {
+      assert(state.scrollHeight > state.clientHeight, 'desktop: delayed image should extend the paged viewport')
+      await page.keyboard.press('PageDown')
+      await page.waitForTimeout(180)
+      const scrollTop = await page.evaluate(() => document.querySelector('.reader-content').scrollTop)
+      assert(scrollTop > 0, `desktop: paged image content did not advance, scrollTop=${scrollTop}`)
+    }
   } else {
     assert(state.shellClass.includes('scroll'), `${viewport.width}: expected scroll mode, class=${state.shellClass}`)
     assert(state.scrollHeight > state.clientHeight, `${viewport.width}: delayed image should extend continuous scroll content`)
@@ -252,6 +270,13 @@ async function main() {
       await runViewport(browser, viewport)
     }
     await runViewport(browser, { width: 390, height: 844 }, 'flip')
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+      { width: 360, height: 800 },
+    ]) {
+      await runViewport(browser, viewport, 'flip', { isCBZ: false })
+    }
     console.log('reader image contract smoke passed')
   } finally {
     await browser.close()
