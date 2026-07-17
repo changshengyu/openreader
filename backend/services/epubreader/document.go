@@ -90,6 +90,12 @@ const epubBridgeScript = `(function () {
           event.preventDefault();
           notify("navigate", { href: targetURL.href });
         }
+        return;
+      }
+      if (insideResourceRoot) {
+        event.preventDefault();
+        notify("navigate", { href: targetURL.href });
+        return;
       }
       return;
     }

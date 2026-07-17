@@ -1,5 +1,6 @@
 <template>
   <iframe
+    :key="resource.url"
     ref="frame"
     class="epub-iframe"
     :src="resource.url"

@@ -350,6 +350,10 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     await page.waitForTimeout(150)
   }
   await page.waitForFunction(() => document.body.innerText.includes('4 / 4'))
+
+  await page.goBack({ waitUntil: 'domcontentloaded' })
+  assert.equal(new URL(page.url()).pathname, '/', 'EPUB cross-chapter navigation must not consume browser back history')
+  assert.equal(await page.locator('iframe.epub-iframe').count(), 0, 'browser back must return to the bookshelf instead of the previous EPUB chapter')
 }
 
 async function runViewport(browser, viewport, token, bookID) {
@@ -370,7 +374,11 @@ async function runViewport(browser, viewport, token, bookID) {
       resourceResponses.push({ url: response.url(), status: response.status() })
     }
   })
-  await page.goto(`${baseURL}/books/${bookID}/read?resume=1`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseURL}/`, { waitUntil: 'networkidle' })
+  const shelfBook = page.locator('.book-row')
+  await shelfBook.waitFor({ timeout: 10_000 })
+  await shelfBook.first().click()
+  await page.waitForURL(new RegExp(`/books/${bookID}/read`), { waitUntil: 'domcontentloaded' })
   await assertFrameContract(page, viewport, resourceResponses)
   await page.goto(`${baseURL}/books/${bookID}/read?chapter=0`, { waitUntil: 'networkidle' })
   await assertCoverFrameContract(page, resourceResponses)

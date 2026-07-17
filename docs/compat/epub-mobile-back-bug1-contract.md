@@ -20,14 +20,15 @@
 | 项目 | 当前证据 | 判定 |
 |---|---|---|
 | Reader 顶层章节路由 | `Reader.vue` 的普通章节导航使用 `router.replace(readerRouteLocation(query))`。 | **技术栈等价**：正常章节切换不会累积顶层历史。 |
-| EPUB iframe 的跨资源链接 | `backend/services/epubreader/document.go` 的 bridge 只拦截外链和同 XHTML hash；同 EPUB resource root 下、不同 XHTML 的 `<a>` 直接走 iframe 默认导航。 | **must-fix**：iframe 的 joint session history 被写入 EPUB 章节 URL。 |
+| EPUB iframe 的跨资源链接 | `backend/services/epubreader/document.go` 的 bridge 原先只拦截外链和同 XHTML hash；同 EPUB resource root 下、不同 XHTML 的 `<a>` 直接走 iframe 默认导航。 | **must-fix**：iframe 的 joint session history 被写入 EPUB 章节 URL。 |
+| 父 Reader 切换 resource | `ReaderEpubContent.vue` 把新的 `resource.url` 写入同一 iframe 的 `src`。 | **must-fix**：即使 bridge 拦截 anchor，复用同一 browsing context 仍可留下 iframe 历史条目；资源切换必须重建 iframe，而不是只更新 `src`。 |
 | iframe 加载回传 | bridge 在 iframe `load` 时发送 `load`；`Reader.vue#handleEpubLoad` 据此匹配 resource 并直接 `loadChapter(..., 0)`。 | **must-fix 的连锁表现**：浏览器返回先回到上一 iframe 历史条目，再被解析为上一章节开头。 |
 
-根因不是网速、目录解析或正常的 Reader `router.replace`：跨 XHTML 链接没有 `preventDefault()`，让浏览器为 iframe 写入了历史记录。
+根因不是网速、目录解析或正常的 Reader `router.replace`：跨 XHTML 链接原先没有 `preventDefault()`，且父 Reader 随后复用 iframe 的 `src`。两条路径都会让浏览器保留 iframe 子页面历史。
 
 ## 3. 目标状态转换
 
-1. 从书架进入 EPUB Reader 后，顶层浏览器历史只含书架和 Reader，而不含 iframe 内的章节资源。
+1. 从书架进入 EPUB Reader 后，顶层浏览器历史只含书架和 Reader，而不含 iframe 内的章节资源。每次 resource 切换必须替换 iframe element/browsing context，不能复用旧 iframe 的 `src` 历史。
 2. EPUB 文档内链接分支必须是：
 
    - 外部/非当前 capability 根：阻止默认行为，发送既有 `externalLink` 事件；
@@ -44,7 +45,7 @@
 | 编号 | 测试 | 断言 |
 |---|---|---|
 | EPUB-BUG1-A | `backend/services/epubreader/document_test.go` | 跨 XHTML、同 capability 根链接在 bridge 内显式 `preventDefault()` 并发出 `navigate`；同文档 slice 内 hash 仍走 `clickHash`，外链仍走 `externalLink`。 |
-| EPUB-BUG1-B | `frontend/tests/readerEpubFrame.test.mjs` | 合法 iframe `navigate` 事件仍传递给父 Reader；来源/origin 不合法时被拒绝。 |
+| EPUB-BUG1-B | `frontend/tests/readerEpubFrame.test.mjs` 与 `ReaderEpubContent` 合同测试 | 合法 iframe `navigate` 事件仍传递给父 Reader；来源/origin 不合法时被拒绝；resource URL 改变时以 `key` 替换 iframe，而非复用同一 browsing context。 |
 | EPUB-BUG1-C | `scripts/smoke/reader-epub-contract.mjs` | 真实 Go 服务 + 两章节 EPUB：从书架进入、点击跨 XHTML 链接后执行 `page.goBack()`，URL 为书架且不重新显示上一 EPUB 章节；390×844 与 360×800 必跑，1440×900 回归也应继续通过。 |
 
 ## 5. 允许差异和发布门禁

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { ref, shallowRef } from 'vue'
 import {
@@ -99,5 +100,17 @@ test('maps a navigated resource URL back to the exact fragment chapter before th
   assert.equal(
     epubChapterIndexForResourceURL('/api/epub-resource/token/OPS/missing.xhtml', chapters),
     -1,
+  )
+})
+
+test('replaces the EPUB iframe browsing context whenever the parent switches resources', () => {
+  const source = readFileSync(
+    new URL('../src/components/reader/ReaderEpubContent.vue', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    source,
+    /<iframe\s+[\s\S]*?:key="resource\.url"/,
+    'changing an EPUB resource must replace the iframe instead of adding child-history entries through src updates',
   )
 })

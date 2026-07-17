@@ -40,3 +40,19 @@ func TestSanitizeAndInjectDocumentKeepsReadableDocumentWhenFragmentIsMissing(t *
 		t.Fatalf("missing fragment must preserve readable document: %s", content)
 	}
 }
+
+func TestEPUBBridgeRoutesInternalResourceLinksThroughParentReader(t *testing.T) {
+	const parentNavigationBranch = `if (insideResourceRoot) {
+        event.preventDefault();
+        notify("navigate", { href: targetURL.href });
+        return;
+      }`
+	if !strings.Contains(epubBridgeScript, parentNavigationBranch) {
+		t.Fatal("internal EPUB resource links must prevent iframe navigation and delegate to the parent Reader")
+	}
+
+	clickHashBranch := `if (targetURL.pathname === window.location.pathname && targetURL.hash)`
+	if strings.Index(epubBridgeScript, clickHashBranch) > strings.Index(epubBridgeScript, parentNavigationBranch) {
+		t.Fatal("same-document hash handling must run before the parent navigation fallback")
+	}
+}
