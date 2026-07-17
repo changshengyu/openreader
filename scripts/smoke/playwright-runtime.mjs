@@ -1,5 +1,5 @@
 const bundledPlaywright = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-const workspacePlaywright = new URL('../../frontend/node_modules/playwright/index.js', import.meta.url).href
+const workspacePlaywright = new URL('../../node_modules/playwright/index.js', import.meta.url).href
 
 export async function loadSmokePlaywright() {
   try {
@@ -40,7 +40,7 @@ export async function openSmokeBrowser(launchOptions = {}) {
     const detail = String(error?.message || error)
     if (detail.includes('Executable doesn\'t exist')) {
       throw new Error(
-        `${detail}\nInstall the crash-safe headless browser once with: cd frontend && npm run smoke:install-browser`,
+        `${detail}\nInstall the crash-safe headless browser once with: npm run smoke:install-browser`,
       )
     }
     throw error

@@ -1,0 +1,11 @@
+{
+  "name": "openreader-tooling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke:install-browser": "playwright install chromium-headless-shell"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1"
+  }
+}

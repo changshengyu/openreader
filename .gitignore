@@ -4,6 +4,7 @@ data/
 cache/
 library/
 testfile/
+node_modules/
 
 backend/openreader
 backend/tmp/

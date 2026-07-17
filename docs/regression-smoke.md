@@ -7,7 +7,7 @@ Use this document with `openreader-regression` for UI changes.
 Install the pinned crash-safe headless browser once after `npm install`:
 
 ```bash
-cd frontend
+npm install
 npm run smoke:install-browser
 ```
 
@@ -34,7 +34,8 @@ For the mocked mobile Reader contract:
 TARGET_URL=http://127.0.0.1:5173 node scripts/smoke/reader-mobile-contract.mjs
 ```
 
-The frontend pins the Playwright version used by the shared runtime. On macOS the browser process
+The repository tooling package pins the Playwright version used by the shared runtime, independently
+from the frontend dependencies copied into Docker. On macOS the browser process
 may need to run outside a restricted sandbox so it can register its Mach rendezvous port.
 
 ## Required manual/automated coverage for reader work

@@ -60,7 +60,8 @@
   `100ms` 在短窗口完成、`500ms` 在 180ms 尚处中途而后精确到同一终点；wheel 仍是
   小步原生连续滚动。原有 1440×900、390×844、360×800 排版/翻页合同继续通过。
 - 24 个 browser smoke 删除重复 `loadPlaywright()` 与系统 Chrome 默认路径，统一到共享运行器。
-  前端固定 Playwright 1.61.1，并提供 `npm run smoke:install-browser` 安装 Headless Shell。
+  仓库根级工具清单固定 Playwright 1.61.1，并提供 `npm run smoke:install-browser` 安装
+  Headless Shell；该依赖不进入 Docker 的 frontend `npm ci`。
 - macOS 崩溃报告确认旧路径在 `RegisterApplication/TransformProcessType` 阶段 `SIGABRT`；
   新 Headless Shell 不进入 GUI 注册路径。连续启动 text-mode、mobile、continuous、audio
   四组进程全部通过，且没有生成新的系统 Chrome 崩溃报告。
