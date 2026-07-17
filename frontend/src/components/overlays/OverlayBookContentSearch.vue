@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useBookContentSearch } from '../../composables/useBookContentSearch'
@@ -96,6 +96,7 @@ const {
   unavailableChapters,
   truncated,
   notice: searchNotice,
+  cancel,
   reset,
   search,
   loadMore,
@@ -120,7 +121,10 @@ watch(
 watch(
   () => overlay.searchBookContentVisible,
   (visible) => {
-    if (!visible) return
+    if (!visible) {
+      cancel()
+      return
+    }
     const key = String(
       overlay.searchBook?.id ||
       overlay.searchBook?.bookUrl ||
@@ -131,6 +135,8 @@ watch(
     resetSearch()
   },
 )
+
+onBeforeUnmount(cancel)
 
 function resetSearch() {
   keyword.value = ''

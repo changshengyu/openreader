@@ -112,6 +112,41 @@ async function installApiMocks(page) {
         ))).join('\n'),
       }))
     }
+    if (path === '/books/1/search' && method === 'GET') {
+      const keyword = url.searchParams.get('q') || ''
+      return route.fulfill(json({
+        list: [
+          {
+            chapterId: 11,
+            chapterIndex: 0,
+            chapterTitle: '第一章',
+            excerpt: `移动工具层滚动${keyword} 1`,
+            query: keyword,
+            resultCountWithinChapter: 0,
+            lineIndex: 3,
+            offset: 80,
+            percent: 0.08,
+          },
+          {
+            chapterId: 11,
+            chapterIndex: 0,
+            chapterTitle: '第一章',
+            excerpt: `移动工具层滚动${keyword} 5`,
+            query: keyword,
+            resultCountWithinChapter: 4,
+            lineIndex: 7,
+            offset: 240,
+            percent: 0.24,
+          },
+        ],
+        lastIndex: 0,
+        hasMore: false,
+        total: 2,
+        incomplete: true,
+        unavailableChapters: 1,
+        truncated: false,
+      }))
+    }
     if (path === '/books/1/bookmarks' && method === 'GET') {
       return route.fulfill(json(bookmarks))
     }
@@ -692,33 +727,47 @@ async function createBookmarkFromSelectedText(page, viewport, { fullscreen }) {
   return selectedText
 }
 
-async function createBookmarkFromCurrentPage(page, viewport, { fullscreen }) {
+async function createBookmarkFromCurrentParagraph(page, viewport, { fullscreen }) {
   const dialog = page.locator('.global-bookmark-dialog')
-  const addButton = dialog.getByRole('button', { name: '添加当前页', exact: true })
-  assert(await addButton.count() === 1, `${viewport.width}: Reader bookmark manager must expose one add-current-page action`)
-  const visibleExcerpts = await page.locator('.reader-body h3, .reader-body p').evaluateAll((paragraphs) => (
-    paragraphs.filter((paragraph) => {
-      const rect = paragraph.getBoundingClientRect()
-      return rect.bottom > 0 && rect.top < innerHeight
-    }).map(paragraph => String(paragraph.textContent || '').trim().slice(0, 12)).filter(Boolean)
-  ))
-  assert(visibleExcerpts.length > 0, `${viewport.width}: current page must expose bookmark context`)
+  const addButton = dialog.getByRole('button', { name: '添加当前段落', exact: true })
+  assert(await addButton.count() === 1, `${viewport.width}: Reader bookmark manager must expose one add-current-paragraph action`)
+  const focusedParagraph = await page.locator('.reader-content').evaluate((viewport) => {
+    const bounds = viewport.getBoundingClientRect()
+    const anchor = bounds.top + Math.min(bounds.height * 0.32, 180)
+    const rows = [...viewport.querySelectorAll('[data-reader-block]')]
+      .map(node => ({ node, rect: node.getBoundingClientRect() }))
+      .filter(({ node, rect }) => (
+        String(node.textContent || '').trim()
+        && rect.bottom >= bounds.top + 8
+        && rect.top <= bounds.bottom - 8
+      ))
+    const anchored = rows.find(({ rect }) => rect.top <= anchor && rect.bottom >= anchor)
+    const selected = anchored || rows.sort((left, right) => (
+      Math.abs(left.rect.top - anchor) - Math.abs(right.rect.top - anchor)
+    ))[0]
+    return String(selected?.node?.textContent || '').trim()
+  })
+  assert(focusedParagraph, `${viewport.width}: current viewport must expose one bookmark paragraph`)
   await addButton.click()
   await assertBookmarkFormContext(page, viewport, {
     fullscreen,
-    excerpt: visibleExcerpts,
+    excerpt: focusedParagraph,
   })
   const form = page.locator('.global-bookmark-form-dialog')
-  await form.locator('textarea').last().fill('当前页面创建')
+  assert(
+    await form.locator('textarea[readonly]').inputValue() === focusedParagraph,
+    `${viewport.width}: current-paragraph bookmark must not append following paragraphs`,
+  )
+  await form.locator('textarea').last().fill('当前段落创建')
   await form.getByRole('button', { name: '确定', exact: true }).click()
   await form.waitFor({ state: 'hidden', timeout: 10000 })
-  assert(await dialog.isVisible(), `${viewport.width}: saving current-page bookmark must keep the manager open`)
-  await dialog.getByText('当前页面创建', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+  assert(await dialog.isVisible(), `${viewport.width}: saving current-paragraph bookmark must keep the manager open`)
+  await dialog.getByText('当前段落创建', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
 }
 
 async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedText }) {
   const dialog = page.locator('.global-bookmark-dialog')
-  await createBookmarkFromCurrentPage(page, viewport, { fullscreen })
+  await createBookmarkFromCurrentParagraph(page, viewport, { fullscreen })
   await editBookmarkWithGlobalForm(page, viewport, { fullscreen })
 
   await dialog.locator('.bookmark-file-input').setInputFiles({
@@ -733,7 +782,7 @@ async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedTex
   await dialog.getByText('导入四', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
 
   const rowTexts = await dialog.locator('.el-table__body-wrapper tbody tr').evaluateAll(rows => rows.map(row => row.innerText))
-  const orderedNotes = ['已通过根级表单更新', '选中文字创建', '当前页面创建', '导入三', '导入四']
+  const orderedNotes = ['已通过根级表单更新', '选中文字创建', '当前段落创建', '导入三', '导入四']
   let previous = -1
   for (const note of orderedNotes) {
     const index = rowTexts.findIndex((text, rowIndex) => rowIndex > previous && text.includes(note))
@@ -756,6 +805,34 @@ async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedTex
     `${viewport.width}: bookmark jump must preserve a valid saved chapter and position, got ${JSON.stringify(query)}`,
   )
   assert(String(query.bookmark || '').includes(selectedText), `${viewport.width}: bookmark jump must retain paragraph context for stale-offset recovery`)
+}
+
+async function exerciseContentSearch(page, viewport, { mobile }) {
+  const dialog = page.locator('.global-content-search-dialog')
+  const chromeWasVisible = mobile
+    ? await page.locator('.reader-mobile-top.visible').count()
+    : await page.locator('.reader-left-rail').count()
+  const input = dialog.getByPlaceholder('搜索书籍内容')
+  await input.fill('契约段落')
+  await input.press('Enter')
+  await dialog.getByText('有 1 章加载失败，搜索结果不完整，请检查书源或网络后重试', { exact: true })
+    .waitFor({ state: 'visible', timeout: 10000 })
+  const rows = dialog.locator('.el-table__body-wrapper tbody tr')
+  assert(await rows.count() === 2, `${viewport.width}: content search must render the complete mocked result page`)
+  if (mobile) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === chromeWasVisible, `${viewport.width}: search interaction must preserve mobile Reader chrome`)
+  }
+
+  await rows.nth(1).click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  const highlighted = page.locator('.reader-search-active')
+  await highlighted.waitFor({ state: 'visible', timeout: 10000 })
+  assert((await highlighted.textContent())?.includes('滚动契约段落 5'), `${viewport.width}: search must highlight the requested fifth occurrence`)
+  const query = await page.evaluate(() => Object.fromEntries(new URLSearchParams(location.search)))
+  assert(query.chapter === '0' && query.match === '4' && query.q === '契约段落', `${viewport.width}: search result route metadata ${JSON.stringify(query)}`)
+  if (mobile) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === chromeWasVisible, `${viewport.width}: result jump must preserve mobile Reader chrome`)
+  }
 }
 
 async function assertInlineDesktopCacheZone(page) {
@@ -1064,7 +1141,7 @@ async function runDesktopViewport(browser) {
   await exerciseBookmarkManager(page, viewport, { fullscreen: false, selectedText: selectedBookmarkText })
   await page.locator('.reader-right-rail button[title="搜索正文"]').click()
   await assertDesktopReaderDialog(page, '.global-content-search-dialog', '搜索正文')
-  await closeGlobalReaderDialog(page, '.global-content-search-dialog')
+  await exerciseContentSearch(page, viewport, { mobile: false })
   await page.locator('.reader-right-rail button[title="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })
   await closeReaderBookInfoDialog(page)
@@ -1147,7 +1224,7 @@ async function runViewport(browser, viewport) {
   await exerciseBookmarkManager(page, viewport, { fullscreen: true, selectedText: selectedBookmarkText })
   await page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')
-  await closeGlobalReaderDialog(page, '.global-content-search-dialog')
+  await exerciseContentSearch(page, viewport, { mobile: true })
   await page.locator('.reader-mobile-float-left.visible button[title="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: true })
   await closeReaderBookInfoDialog(page)

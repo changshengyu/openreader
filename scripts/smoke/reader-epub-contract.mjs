@@ -140,7 +140,7 @@ function createEPUB() {
 }
 
 async function registerAndImport(archive) {
-  const username = `epub_smoke_${Date.now()}_${Math.random().toString(16).slice(2)}`
+  const username = `epubsmoke${Date.now()}${Math.random().toString(16).slice(2)}`
   const register = await fetch(`${baseURL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -215,6 +215,60 @@ async function assertCoverFrameContract(page, resourceResponses) {
   assert.ok(resourceResponses.some(row => row.url.includes('/OPS/Text/titlepage.xhtml') && row.status === 200))
 }
 
+async function assertCurrentEpubParagraphBookmark(page, viewport) {
+  if (viewport.width <= 750 && !await page.locator('.reader-mobile-top.visible').count()) {
+    await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+    await page.waitForTimeout(150)
+  }
+  const expectedParagraph = await page.locator('iframe.epub-iframe').evaluate((frame) => {
+    const viewport = document.querySelector('.reader-content')?.getBoundingClientRect()
+    const frameRect = frame.getBoundingClientRect()
+    if (!viewport || !frame.contentDocument) return ''
+    const anchor = viewport.top + Math.min(viewport.height * 0.32, 180)
+    const rows = [...frame.contentDocument.querySelectorAll('p, li, blockquote')]
+      .map(node => {
+        const rect = node.getBoundingClientRect()
+        return {
+          node,
+          top: frameRect.top + rect.top,
+          bottom: frameRect.top + rect.bottom,
+        }
+      })
+      .filter(row => String(row.node.textContent || '').trim() && row.bottom >= viewport.top + 8 && row.top <= viewport.bottom - 8)
+    const anchored = rows.find(row => row.top <= anchor && row.bottom >= anchor)
+    const selected = anchored || rows.sort((left, right) => (
+      Math.abs(left.top - anchor) - Math.abs(right.top - anchor)
+    ))[0]
+    return String(selected?.node?.textContent || '').trim()
+  })
+  assert.ok(expectedParagraph, `${viewport.width}: EPUB viewport must expose a current paragraph`)
+
+  const button = viewport.width <= 750
+    ? page.locator('.reader-mobile-float-left.visible button[title="书签"]')
+    : page.locator('.reader-right-rail button[title="书签"]')
+  await button.click()
+  const manager = page.locator('.global-bookmark-dialog')
+  await manager.waitFor({ state: 'visible', timeout: 10_000 })
+  await manager.getByRole('button', { name: '添加当前段落', exact: true }).click()
+  const form = page.locator('.global-bookmark-form-dialog')
+  await form.waitFor({ state: 'visible', timeout: 10_000 })
+  assert.equal(
+    await form.locator('textarea[readonly]').inputValue(),
+    expectedParagraph,
+    `${viewport.width}: EPUB bookmark must contain exactly one current iframe paragraph`,
+  )
+  await form.locator('textarea').last().fill('EPUB 当前段落')
+  await form.getByRole('button', { name: '确定', exact: true }).click()
+  await form.waitFor({ state: 'hidden', timeout: 10_000 })
+  await manager.getByText('EPUB 当前段落', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+  assert.equal(await manager.isVisible(), true, `${viewport.width}: saving EPUB paragraph must keep bookmark manager open`)
+  await manager.getByRole('button', { name: '取消', exact: true }).click()
+  await manager.waitFor({ state: 'hidden', timeout: 10_000 })
+  if (viewport.width <= 750) {
+    assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
+  }
+}
+
 async function assertFrameContract(page, viewport, resourceResponses) {
   console.log(`checking ${viewport.width}x${viewport.height}`)
   await page.waitForSelector('iframe.epub-iframe', { timeout: 15_000 })
@@ -283,6 +337,8 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   const homeOffset = await page.locator('.reader-content').evaluate(element => element.scrollTop)
   assert.ok(homeOffset < keyboardOffset, `EPUB Home did not move toward the top: ${homeOffset}`)
 
+  await assertCurrentEpubParagraphBookmark(page, viewport)
+
   if (viewport.width <= 750) {
     if (!await page.locator('.reader-mobile-top.visible').count()) {
       await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
@@ -333,7 +389,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     await page.waitForTimeout(150)
   }
-  await page.waitForFunction(() => document.body.innerText.includes('4 / 4'))
+  await page.waitForFunction(() => document.body.textContent.includes('4 / 4'))
 
   await page.goBack({ waitUntil: 'domcontentloaded' })
   assert.equal(new URL(page.url()).pathname, '/', 'EPUB cross-chapter navigation must not consume browser back history')

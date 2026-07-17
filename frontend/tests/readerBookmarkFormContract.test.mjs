@@ -49,14 +49,17 @@ test('bookmark list delegates editing to the global form instead of nesting an e
   assert.doesNotMatch(actions, /saveEdit/)
 })
 
-test('Reader-opened bookmark manager can add the frozen current page through the shared form', () => {
+test('Reader-opened bookmark manager can add one frozen current paragraph through the shared form', () => {
   const bookmarks = read('../src/components/overlays/OverlayBookmarks.vue')
   const reader = read('../src/views/Reader.vue')
   const store = read('../src/stores/overlay.js')
 
   assert.match(store, /bookmarkCreateDraft/)
   assert.match(store, /openBookmark\(book,\s*options\s*=\s*\{\}\)/)
-  assert.match(bookmarks, /v-if="canAddCurrentPage"[\s\S]*?>添加当前页</)
+  assert.match(bookmarks, /v-if="canAddCurrentParagraph"[\s\S]*?>添加当前段落</)
   assert.match(bookmarks, /openBookmarkForm\([\s\S]*?bookmarkCreateDraft[\s\S]*?mode:\s*'create'/)
   assert.match(reader, /createDraft:\s*currentBookmarkDraft\(\)/)
+  assert.match(reader, /getCurrentContext:\s*currentBookmarkParagraphContext/)
+  assert.match(reader, /readerBookmarkText\(paragraph\)/)
+  assert.doesNotMatch(reader, /function currentVisibleExcerpt\([\s\S]*?captureReaderBookmarkExcerpt/)
 })

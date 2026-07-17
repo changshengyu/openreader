@@ -4,13 +4,16 @@ export function useReaderBookmarkActions(options) {
   function currentPayload(extra = {}) {
     const chapter = unref(options.chapter)
     if (!chapter) return null
+    const currentContext = options.getCurrentContext?.()
+    if (typeof options.getCurrentContext === 'function' && !currentContext) return null
     return {
       chapterId: chapter.id,
       chapterIndex: Number(unref(options.currentIndex) || 0),
       offset: options.getOffset(),
       percent: options.getPercent(),
       title: chapter.title,
-      excerpt: options.getExcerpt(),
+      excerpt: options.getExcerpt?.() || '',
+      ...(currentContext || {}),
       ...extra,
     }
   }

@@ -192,3 +192,63 @@ func TestContentSearchStopsSchedulingRemoteChaptersAfterCancellation(t *testing.
 		t.Fatalf("cancellation must stop the search before later chapter requests: scan=%+v requests=%v", scan, requests)
 	}
 }
+
+func TestLegacyContentSearchPropagatesRequestCancellation(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := contentSearchContractUser(t, server)
+	source := models.BookSource{Name: "兼容接口取消搜索源", BaseURL: "https://legacy-search-cancel.example", Charset: "utf-8"}
+	if err := source.SetRules(models.BookSourceRule{ContentRule: ".content"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID:   user.ID,
+		Title:    "兼容接口取消正文搜索",
+		URL:      "https://legacy-search-cancel.example/book",
+		SourceID: source.ID,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapters := []models.Chapter{
+		{BookID: book.ID, Index: 0, Title: "第一章", URL: "https://legacy-search-cancel.example/1"},
+		{BookID: book.ID, Index: 1, Title: "第二章", URL: "https://legacy-search-cancel.example/2"},
+	}
+	if err := server.db.Create(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	requests := make([]string, 0, 2)
+	restoreClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requests = append(requests, request.URL.Path)
+			cancel()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`<main class="content">没有命中</main>`)),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreClient()
+
+	body := `{"bookUrl":"https://legacy-search-cancel.example/book","keyword":"目标","lastIndex":-1,"size":20}`
+	request := httptest.NewRequest(http.MethodPost, "/api/reader3/searchBookContent", strings.NewReader(body)).WithContext(ctx)
+	request.Header.Set("Authorization", token)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if len(requests) != 1 {
+		t.Fatalf("legacy cancellation must stop before the next chapter request: %v", requests)
+	}
+	if response.Body.Len() != 0 {
+		t.Fatalf("a canceled compatibility search must not serialize false success: %s", response.Body.String())
+	}
+}

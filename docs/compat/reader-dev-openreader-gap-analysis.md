@@ -35,7 +35,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Local import catalog parsing | Upstream `BookController.kt` imports local files through `Book.initLocalBook(...)` and `LocalBook.getChapterList(...)`; TXT parsing uses `TextFile.kt` with a 512-KiB detection probe, enabled-rule reverse scoring with a one-match threshold, direct Java multiline matching, `前言`, and deterministic 10-KiB no-TOC pseudo chapters. | Go now probes the first 512 KiB, applies the enabled-rule reverse scoring/one-match semantics, preserves matching custom titles and `前言`, creates upstream-style no-TOC pseudo chapters, and makes upload/LocalStore/WebDAV rule retries reuse immutable user-scoped staged bytes. | Materialized per-chapter cache remains an allowed Go/multi-user adaptation; TXT parsing behavior is aligned for the extracted slice. | `aligned` for TXT P0; `partial` for non-TXT parser audit | Engine/import/API fixtures, frontend retry-state contract, full backend/frontend tests, and mounted-volume smoke before release. |
 | Replace rules/content cleanup | Upstream `ReplaceRule.vue`, `ReplaceRuleForm.vue`, `Reader.vue`, `ReplaceRuleController.kt`. | Current Go endpoints and overlays exist. | Default-mode, list/application order, regex flags/failure handling, form validation, manager shell and selected-text editor flow have been rebuilt and verified for the extracted P2 slice. | `aligned` for extracted P2 | Rule-semantics API tests; selected-text editor contract; browser manager/editor smoke. |
 | Bookmarks | Upstream `Bookmark.vue`, `BookmarkForm.vue`, `Reader.vue`, `BookmarkController.kt`. | Current ID-backed bookmark APIs and root overlays exist. | Form/manager ownership, paragraph context, stale-offset fallback, creation order and request validation have been rebuilt and verified for the extracted P2 slice. | `aligned` for extracted P2 | Bookmark context/jump/API contracts; three-viewport dialog smoke. |
-| Bookmark manager add-current-page | Upstream bookmark creation is reached from Reader selected-text operations; `Bookmark.vue` itself has no create button. | Reader now freezes a current-position draft when opening `OverlayBookmarks`; the manager conditionally exposes “添加当前页” and reuses the root form/API. Other entry contexts have no button, and selected-text creation remains available. | User explicitly requested this path to avoid keeping the selection-operation popup enabled. | `intentional-redesign / completed 2026-07-17` | [`reader-bookmark-current-page-redesign.md`](reader-bookmark-current-page-redesign.md); 421 frontend tests and 1440×900/390×844/360×800 Reader dialog smoke. |
+| Bookmark manager add-current-paragraph | Upstream bookmark creation is reached from Reader selected-text operations; `Bookmark.vue` itself has no create button. | Reader freezes one exact 32%-anchor paragraph from normal text or a same-origin EPUB iframe; the manager exposes “添加当前段落”. Audio/image/error/empty content has no fake fallback, and selected-text creation remains available. | User explicitly requested this path to avoid keeping the selection-operation popup enabled. | `intentional-redesign / completed 2026-07-18` | [`reader-bookmark-current-page-redesign.md`](reader-bookmark-current-page-redesign.md); 423 frontend tests plus main Reader and real EPUB browser contracts at 1440×900/390×844/360×800. |
 | RSS | Upstream `RssSourceList.vue`, `RssArticleList.vue`, `RssArticle.vue`. | Current root source dialog, independent article-list/content dialogs, `RSSManager.vue`, overlays and Go RSS parser. | The three-dialog transition, reset/refresh ordering and compact fullscreen behavior have been rebuilt; persistent per-user cache/filtering and sanitization remain allowed adaptations. | `aligned` for extracted P2 RSS | RSS fixture/parser tests; source/article browser smoke. |
 | WebDAV/local store | Upstream `WebDAV.vue`, `LocalStore.vue` and server storage behavior. | Current Go endpoints, private mounted-root adaptation and workspace dialogs exist. | P2 storage UI/import audit found CBZ reachability and LocalStore result-gate differences despite the prior path/security alignment. | `partial` | Storage UI/import contract, path traversal tests, upload/list/import browser smoke, Docker volume smoke. |
 | Backup/restore | Upstream backup flows and reader-dev formats require extraction. | Current OpenReader backup service and Legado restore exist. | Must preserve OpenReader data and document reader-dev/Legado import semantics. | `unknown` | Restore testdata; backup list/download/restore tests. |
@@ -619,6 +619,38 @@ Implementation record (2026-07-11):
 - A 2,000-match per-chapter safety cap is explicit: the API returns `truncated: true` and `incomplete: true`; remote fetch/source failures increment `unavailableChapters` and also set `incomplete`. The root dialog renders these states as a warning instead of “没有匹配内容”.
 - The legacy Reader3 URL route keeps its original response shape and gains the same status fields additively inside `data`, so existing clients continue to read `list/lastIndex/hasMore/total` unchanged.
 - Required browser follow-up remains: at 1440×900, 390×844 and 360×800, verify result selection loads/highlights the intended occurrence, the warning is visible for an unavailable chapter, and dialog clicks leave the Reader chrome unchanged.
+
+#### 2026-07-17 completion re-audit
+
+The 2026-07-11 implementation record is partial evidence, not a completed
+module gate. A source-level re-audit found two cancellation gaps and one
+missing runtime gate:
+
+| Contract | Current evidence | Classification | Required test before implementation |
+|---|---|---|---|
+| Closing or replacing a search stops its in-flight request | `useBookContentSearch` invalidates a request token, but `searchBookContent()` receives no `AbortSignal`. Closing `OverlayBookContentSearch` does not call a cancellation action. The browser may therefore continue fetching remote chapters after the result has become unobservable. | `must-fix` | A composable contract must prove keyword replacement, dialog close, book replacement, and explicit reset abort the active request while an ordinary successful request is not aborted early. |
+| Both modern and Reader3 endpoints propagate disconnect cancellation | The modern route passes `c.Request.Context()` into `collectContentMatchesContext`; the legacy adapter still passes `context.Background()`. | `must-fix` | A legacy-handler cancellation fixture must prove a disconnected request does not schedule the next remote chapter and does not serialize a false successful page. |
+| Search dialog lifecycle preserves upstream state semantics | Upstream cancel only hides the root dialog; same-book keyword/results/scroll remain available, while changing books resets them. | Current OpenReader preserves same-book state, but cancellation must be added without clearing it on close. | `acceptable-change` with constraint | Close/reopen same book retains completed state; changing book aborts and resets. |
+| Runtime result/warning contract | Unit/API tests cover dense results and warning text, but no real-browser evidence covers the complete result jump and incomplete warning at the required viewports. | `unknown`, therefore incomplete | At 1440×900, 390×844, and 360×800: search a dense fixture, select a non-first occurrence, verify chapter/highlight; exercise an unavailable chapter warning; prove dialog interaction does not alter Reader chrome. |
+
+Implementation must keep the existing App-level Dialog, route query fields,
+dense-chapter cursor semantics, and same-book saved scroll position. Cancellation
+errors caused by an intentional abort are silent; network/source failures remain
+visible. This focused contract is the gate for the next code pass.
+
+Implementation completion record (2026-07-18):
+
+- `useBookContentSearch` now owns one `AbortController` for the active multi-round search and passes its
+  signal through the API client. Dialog close, keyword replacement, book replacement, reset, and component
+  teardown abort transport work; an intentional Axios/DOM abort is silent and completed same-book state is
+  retained on close.
+- Modern paged/non-paged and Reader3 compatibility handlers all propagate `c.Request.Context()` into chapter
+  loading. A canceled scan returns without serializing a false successful page. The legacy handler fixture
+  proves that canceling during chapter one never schedules chapter two.
+- Dense chapter, explicit truncation, unavailable chapter, frontend abort, same-book lifecycle, and existing
+  legacy-shape tests pass. The main Reader browser contract at 1440×900, 390×844, and 360×800 displays the
+  unavailable-chapter warning, renders the complete page fixture, selects/highlights the fifth occurrence,
+  preserves route metadata, and leaves mobile Reader chrome unchanged.
 
 ### 2026-07-10 focused audit: Reader App-level BookmarkForm protocol
 

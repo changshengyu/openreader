@@ -2142,8 +2142,11 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		return
 	}
 
-	matches, _ := s.collectContentMatches(book, chapters, keyword, 0, len(chapters), 200, 20)
-	c.JSON(http.StatusOK, matches)
+	scan := s.collectContentMatchesContext(c.Request.Context(), book, chapters, keyword, 0, len(chapters), 200, 20)
+	if scan.Canceled {
+		return
+	}
+	c.JSON(http.StatusOK, scan.Matches)
 }
 
 type legacySearchBookContentRequest struct {
@@ -2241,7 +2244,10 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 		})
 		return
 	}
-	scan := s.collectContentMatchesContext(context.Background(), book, chapters, keyword, start, len(chapters)-start, max(size, 1), max(size, 1))
+	scan := s.collectContentMatchesContext(c.Request.Context(), book, chapters, keyword, start, len(chapters)-start, max(size, 1), max(size, 1))
+	if scan.Canceled {
+		return
+	}
 	matches, currentIndex := scan.Matches, scan.LastIndex
 	c.JSON(http.StatusOK, gin.H{
 		"isSuccess": true,

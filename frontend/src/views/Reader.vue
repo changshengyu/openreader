@@ -438,9 +438,10 @@ import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import {
-  captureReaderBookmarkExcerpt,
+  readerBookmarkText,
   selectedTextBookmarkContext,
 } from '../utils/readerBookmarkContext'
+import { readerTextProgress, selectVisibleReaderBlock } from '../utils/readerVisibility'
 import { readerTTSBarVisible } from '../utils/readerTTS'
 import { createReaderScrollAnimator } from '../utils/readerAnimation'
 import {
@@ -518,7 +519,7 @@ const {
   currentIndex,
   getOffset: () => currentOffset(),
   getPercent: () => currentChapterPercent(),
-  getExcerpt: currentVisibleExcerpt,
+  getCurrentContext: currentBookmarkParagraphContext,
   getSelectedTextContext: selectedBookmarkContextFromText,
   onSelectedTextNotFound: () => ElMessage.error('选择1-2段整段文字才能定位段落'),
   openForm: (...args) => overlay.openBookmarkForm(...args),
@@ -1819,22 +1820,71 @@ function handleReaderVisibilityChange() {
   if (document.hidden) saveCurrentProgress({ force: true, background: true })
 }
 
-function currentVisibleExcerpt() {
-  if (isAudioChapter.value) {
-    return chapter.value?.title || book.value?.title || ''
+function currentBookmarkParagraphContext() {
+  if (isAudioChapter.value) return null
+  const paragraph = chapterFormat.value === 'epub'
+    ? currentEpubBookmarkParagraph()
+    : currentVisibleParagraph()
+  if (!paragraph || paragraph.closest?.('.chapter-inline-error')) return null
+  const excerpt = readerBookmarkText(paragraph)
+  if (!excerpt) return null
+
+  if (chapterFormat.value === 'epub') {
+    const activeChapter = chapter.value
+    if (!activeChapter) return null
+    return {
+      chapterId: activeChapter.id,
+      chapterIndex: currentIndex.value,
+      offset: currentOffset(),
+      percent: currentChapterPercent(),
+      title: activeChapter.title,
+      excerpt,
+    }
   }
-  const paragraph = currentVisibleParagraph()
-  const paragraphs = readerBookmarkParagraphs()
-  const index = paragraphs.findIndex(item => item.element === paragraph)
-  if (index >= 0) {
-    const excerpt = captureReaderBookmarkExcerpt(paragraphs, index)
-    if (excerpt) return excerpt
+
+  if (String(paragraph.tagName || '').toUpperCase() !== 'P') return null
+  const chapterIndex = Number(paragraph.closest?.('.chapter-content')?.dataset?.index)
+  if (!Number.isInteger(chapterIndex)) return null
+  const activeChapter = chapters.value[chapterIndex]
+    || (chapterIndex === currentIndex.value ? chapter.value : null)
+  if (!activeChapter) return null
+  const paragraphOffset = Number(paragraph.dataset?.pos)
+  const offset = Number.isFinite(paragraphOffset) ? Math.max(0, paragraphOffset) : currentOffset()
+  const block = displayedChapterBlocks.value.find(item => item.index === chapterIndex)
+    || chapterBlocks.value.find(item => item.index === chapterIndex)
+  const textLength = block ? chapterBlockTextLength(block) : chapterTextLength.value
+  return {
+    chapterId: activeChapter.id,
+    chapterIndex,
+    offset,
+    percent: readerTextProgress(offset, textLength),
+    title: activeChapter.title,
+    excerpt,
   }
-  return lines.value.slice(0, 2).join(' ').slice(0, 140)
-    || chapter.value?.title
-    || book.value?.title
-    || book.value?.name
-    || '当前阅读位置'
+}
+
+function currentEpubBookmarkParagraph() {
+  const viewport = contentEl.value?.getBoundingClientRect()
+  const frame = contentBody.value?.querySelector('.epub-iframe')
+  const documentRoot = frame?.contentDocument
+  if (!viewport || !frame || !documentRoot) return null
+  const frameRect = frame.getBoundingClientRect()
+  const candidates = [...documentRoot.querySelectorAll('p, li, blockquote')]
+    .filter(node => readerBookmarkText(node))
+  return selectVisibleReaderBlock(candidates.map(node => {
+    const rect = node.getBoundingClientRect()
+    return {
+      node,
+      rect: {
+        top: frameRect.top + rect.top,
+        bottom: frameRect.top + rect.bottom,
+        left: frameRect.left + rect.left,
+        right: frameRect.left + rect.right,
+        width: rect.width,
+        height: rect.height,
+      },
+    }
+  }), viewport)
 }
 
 function readerBookmarkParagraphs() {

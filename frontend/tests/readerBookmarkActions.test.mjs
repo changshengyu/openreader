@@ -11,7 +11,14 @@ function createActions(overrides = {}) {
     currentIndex: ref(2),
     getOffset: () => 240,
     getPercent: () => 0.4,
-    getExcerpt: () => '当前摘录',
+    getCurrentContext: () => ({
+      chapterId: 12,
+      chapterIndex: 2,
+      offset: 200,
+      percent: 0.32,
+      title: '第三章',
+      excerpt: '当前单一段落',
+    }),
     getSelectedTextContext: () => ({ excerpt: '定位段落\n后续段落' }),
     onSelectedTextNotFound: () => formCalls.push(['not-found']),
     openForm: async (...args) => {
@@ -30,10 +37,10 @@ test('routes current, selected-text, and note bookmarks through the shared form 
   assert.deepEqual(currentDraft, {
     chapterId: 12,
     chapterIndex: 2,
-    offset: 240,
-    percent: 0.4,
+    offset: 200,
+    percent: 0.32,
     title: '第三章',
-    excerpt: '当前摘录',
+    excerpt: '当前单一段落',
     note: '',
   })
   await actions.createCurrent()
@@ -44,19 +51,19 @@ test('routes current, selected-text, and note bookmarks through the shared form 
   assert.deepEqual(formCalls[0], [{ id: 7, title: '测试书', author: '测试作者' }, {
     chapterId: 12,
     chapterIndex: 2,
-    offset: 240,
-    percent: 0.4,
+    offset: 200,
+    percent: 0.32,
     title: '第三章',
-    excerpt: '当前摘录',
+    excerpt: '当前单一段落',
     note: '',
   }, { mode: 'create' }])
   assert.equal(formCalls[1][1].excerpt, '定位段落\n后续段落')
   assert.equal(formCalls[2][1].note, '')
 })
 
-test('does not expose a current-page draft without a readable chapter or excerpt', () => {
+test('does not expose a current-paragraph draft without a readable chapter or real paragraph context', () => {
   assert.equal(createActions({ chapter: ref(null) }).actions.currentDraft(), null)
-  assert.equal(createActions({ getExcerpt: () => '' }).actions.currentDraft(), null)
+  assert.equal(createActions({ getCurrentContext: () => null }).actions.currentDraft(), null)
 })
 
 test('does not open a bookmark form when selected text cannot map to reader paragraphs', async () => {

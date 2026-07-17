@@ -162,10 +162,11 @@ export function changeBookSource(id, payload) {
   return api.post(`/books/${id}/change-source`, typeof payload === 'object' ? payload : { sourceId: payload })
 }
 
-export function searchBookContent(id, keyword, params = {}) {
+export function searchBookContent(id, keyword, params = {}, options = {}) {
   return api.get(`/books/${id}/search`, {
     params: { q: keyword, ...params },
     timeout: 60000,
+    signal: options.signal,
   })
 }
 

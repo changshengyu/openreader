@@ -1,11 +1,11 @@
 import { computed, ref, unref, watch } from 'vue'
-import { searchBookContent } from '../api/books'
+import { searchBookContent } from '../api/books.js'
 import {
   bookContentSearchMaxRounds,
   bookContentSearchNotice,
   bookContentSearchPagingParams,
   bookContentSearchStatus,
-} from '../utils/readerBookSearch'
+} from '../utils/readerBookSearch.js'
 
 export function useBookContentSearch(options) {
   const keyword = ref('')
@@ -18,7 +18,9 @@ export function useBookContentSearch(options) {
   const incomplete = ref(false)
   const unavailableChapters = ref(0)
   const truncated = ref(false)
+  const searchRequest = options.searchRequest || searchBookContent
   let requestToken = 0
+  let activeController = null
 
   const status = computed(() => bookContentSearchStatus({
     searched: searched.value,
@@ -30,6 +32,7 @@ export function useBookContentSearch(options) {
 
   function reset() {
     requestToken += 1
+    abortActiveRequest()
     loading.value = false
     lastIndex.value = -1
     hasMore.value = false
@@ -39,6 +42,17 @@ export function useBookContentSearch(options) {
     truncated.value = false
     searched.value = false
     results.value = []
+  }
+
+  function cancel() {
+    requestToken += 1
+    abortActiveRequest()
+    loading.value = false
+  }
+
+  function abortActiveRequest() {
+    activeController?.abort()
+    activeController = null
   }
 
   async function search() {
@@ -59,6 +73,8 @@ export function useBookContentSearch(options) {
 
     const token = ++requestToken
     const currentBook = unref(options.book)
+    const controller = typeof AbortController === 'undefined' ? null : new AbortController()
+    activeController = controller
     loading.value = true
     searched.value = true
     try {
@@ -71,11 +87,13 @@ export function useBookContentSearch(options) {
       })
       let previousCursor = cursor
       for (let round = 0; round < maxRounds; round += 1) {
-        const { data } = await searchBookContent(unref(options.bookId), query, {
+        const { data } = await searchRequest(unref(options.bookId), query, {
           paged: 1,
           lastIndex: cursor,
           scanUntilMatch: append ? 0 : 1,
           ...bookContentSearchPagingParams(currentBook),
+        }, {
+          signal: controller?.signal,
         })
         if (token !== requestToken) return
 
@@ -102,8 +120,9 @@ export function useBookContentSearch(options) {
         previousCursor = cursor
       }
     } catch (error) {
-      if (token === requestToken) options.onError?.(error)
+      if (token === requestToken && !isIntentionalAbort(error, controller)) options.onError?.(error)
     } finally {
+      if (activeController === controller) activeController = null
       if (token === requestToken) loading.value = false
     }
   }
@@ -125,9 +144,18 @@ export function useBookContentSearch(options) {
       truncated: truncated.value,
     })),
     status,
+    cancel,
     reset,
     search,
     loadMore,
     loadAll,
   }
+}
+
+function isIntentionalAbort(error, controller) {
+  return Boolean(
+    controller?.signal?.aborted ||
+    error?.name === 'AbortError' ||
+    error?.code === 'ERR_CANCELED',
+  )
 }

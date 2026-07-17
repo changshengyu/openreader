@@ -10,7 +10,7 @@
       <div class="reader-dialog-title">
         <span>{{ bookTitle }} 书签管理</span>
         <div class="reader-dialog-title-actions">
-          <el-button v-if="canAddCurrentPage" link type="primary" @click="addCurrentPage">添加当前页</el-button>
+          <el-button v-if="canAddCurrentParagraph" link type="primary" @click="addCurrentParagraph">添加当前段落</el-button>
           <el-button link type="primary" @click="pickImportFile">导入</el-button>
         </div>
       </div>
@@ -97,7 +97,7 @@ const bookId = computed(() => overlay.bookmarkBook?.id)
 const bookTitle = computed(() => (
   overlay.bookmarkBook?.title || overlay.bookmarkBook?.name || '书签'
 ))
-const canAddCurrentPage = computed(() => Boolean(
+const canAddCurrentParagraph = computed(() => Boolean(
   overlay.bookmarkBook?.id && String(overlay.bookmarkCreateDraft?.excerpt || '').trim(),
 ))
 
@@ -157,8 +157,8 @@ function pickImportFile() {
   fileRef.value?.click()
 }
 
-function addCurrentPage() {
-  if (!canAddCurrentPage.value) return
+function addCurrentParagraph() {
+  if (!canAddCurrentParagraph.value) return
   overlay.openBookmarkForm(
     overlay.bookmarkBook,
     overlay.bookmarkCreateDraft,
