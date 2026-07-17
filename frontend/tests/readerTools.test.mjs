@@ -15,6 +15,8 @@ function createController() {
     actions: {
       toc: () => calls.push(['toc']),
       settings: () => calls.push(['settings']),
+      top: () => calls.push(['top']),
+      bottom: () => calls.push(['bottom']),
     },
   })
   return {
@@ -48,4 +50,9 @@ test('keeps mobile chrome navigation and direct tool actions distinct', () => {
   fixture.controller.handleMobileChromeAction('toc')
   assert.equal(fixture.mobileChromeVisible.value, true)
   assert.deepEqual(fixture.calls.at(-1), ['toc'])
+
+  fixture.controller.handleMobileChromeAction('bottom')
+  fixture.controller.handleMobileChromeAction('top')
+  assert.equal(fixture.mobileChromeVisible.value, true)
+  assert.deepEqual(fixture.calls.slice(-2), [['bottom'], ['top']])
 })

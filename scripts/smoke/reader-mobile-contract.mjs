@@ -123,7 +123,9 @@ async function installApiMocks(page) {
           '春风过处，纸页微明。',
           '这一段用于验证移动端阅读正文左右留白对称，并保持两端对齐。',
           '点击中央区域应当只在没有面板时切换工具层。',
-        ].join('\n'),
+        ].concat(Array.from({ length: 48 }, (_, index) => (
+          `移动工具层滚动契约段落 ${index + 1}：正文需要足够长，才能验证顶部和底部按钮确实移动阅读容器。`
+        ))).join('\n'),
       }))
     }
     if (path === '/books/1/bookmarks' && method === 'GET') {
@@ -235,10 +237,53 @@ async function assertMobileTopToolContract(page, viewport) {
     disabled: button.disabled,
   })))
   assert(
-    JSON.stringify(state.map(item => item.label)) === JSON.stringify(['书架', '书源', '目录', '设置', '首页']),
+    JSON.stringify(state.map(item => item.label)) === JSON.stringify(['首页', '书架', '书源', '目录', '设置']),
     `${viewport.width}: mobile Reader top-tool order must match reader-dev`,
   )
   assert(state.find(item => item.label === '书源')?.disabled === false, `${viewport.width}: Reader source entry must remain available`)
+}
+
+async function assertMobileFloatNavigationContract(page, viewport, initialGeometry) {
+  const state = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll('.reader-mobile-float-left.visible button')]
+    return {
+      titles: buttons.map(button => button.title),
+      rects: buttons.map(button => {
+        const rect = button.getBoundingClientRect()
+        return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
+      }),
+    }
+  })
+  assert(
+    JSON.stringify(state.titles) === JSON.stringify(['书签', '搜索正文', '书籍信息', '顶部', '底部']),
+    `${viewport.width}: mobile left float controls ${JSON.stringify(state.titles)}`,
+  )
+  state.rects.forEach((rect, index) => {
+    assert(rect.top >= 0 && rect.bottom <= viewport.height, `${viewport.width}: float control ${index} must stay inside viewport`)
+    if (index > 0) {
+      assert(rect.top >= state.rects[index - 1].bottom, `${viewport.width}: float controls ${index - 1}/${index} must not overlap`)
+    }
+  })
+
+  const scrollState = await page.locator('.reader-content').evaluate(element => ({
+    top: element.scrollTop,
+    max: element.scrollHeight - element.clientHeight,
+  }))
+  assert(scrollState.max > 100, `${viewport.width}: fixture must be scrollable for top/bottom controls`)
+
+  await page.locator('.reader-mobile-float-left.visible button[title="底部"]').click()
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.reader-content')
+    return element && element.scrollTop >= element.scrollHeight - element.clientHeight - 2
+  })
+  assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: bottom action must keep toolbar visible`)
+
+  await page.locator('.reader-mobile-float-left.visible button[title="顶部"]').click()
+  await page.waitForFunction(() => document.querySelector('.reader-content')?.scrollTop === 0)
+  assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: top action must keep toolbar visible`)
+  const geometry = await readerGeometry(page)
+  assertClose(geometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: top/bottom actions should not shift paragraph left`)
+  assertClose(geometry.paragraphRight, initialGeometry.paragraphRight, 1, `${viewport.width}: top/bottom actions should not shift paragraph right`)
 }
 
 async function assertWorkspaceClosed(page, viewport, label) {
@@ -1034,6 +1079,7 @@ async function runViewport(browser, viewport) {
   await page.locator('.reader-mobile-float-left.visible button[title="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: true })
   await closeReaderBookInfoDialog(page)
+  await assertMobileFloatNavigationContract(page, viewport, initialGeometry)
   await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
   await assertInlineMobileCacheZone(page, viewport)
   await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()

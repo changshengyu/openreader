@@ -1,5 +1,9 @@
 <template>
   <header class="reader-mobile-top" :class="{ visible }">
+    <button class="mobile-tool-button" type="button" @click="$emit('action', 'home')">
+      <el-icon :size="19"><ArrowLeft /></el-icon>
+      <span>首页</span>
+    </button>
     <button class="mobile-tool-button" type="button" @click="$emit('action', 'shelf')">
       <el-icon :size="19"><Notebook /></el-icon>
       <span>书架</span>
@@ -16,10 +20,6 @@
       <el-icon :size="19"><Setting /></el-icon>
       <span>设置</span>
     </button>
-    <button class="mobile-tool-button" type="button" @click="$emit('action', 'home')">
-      <el-icon :size="19"><ArrowLeft /></el-icon>
-      <span>首页</span>
-    </button>
   </header>
 
   <aside class="reader-mobile-float-tools reader-mobile-float-left" :class="{ visible, 'cache-zone-visible': cacheVisible }">
@@ -31,6 +31,12 @@
     </button>
     <button type="button" title="书籍信息" @click="$emit('action', 'info')">
       <el-icon :size="18"><InfoFilled /></el-icon>
+    </button>
+    <button type="button" title="顶部" @click="$emit('action', 'top')">
+      <el-icon :size="18"><ArrowUpBold /></el-icon>
+    </button>
+    <button type="button" title="底部" @click="$emit('action', 'bottom')">
+      <el-icon :size="18"><ArrowDownBold /></el-icon>
     </button>
   </aside>
 
@@ -98,8 +104,10 @@
 
 <script setup>
 import {
+  ArrowDownBold,
   ArrowLeft,
   ArrowRight,
+  ArrowUpBold,
   CollectionTag,
   Grid,
   Headset,

@@ -24,7 +24,7 @@
 | 书源与搜索结果 | `Index.vue`、`Explore.vue`、`BookSource.vue`、`BookSourceController.kt` | `SourceManager.vue`、`Search.vue`、`Discover.vue`、`SourceSwitchPanel.vue`、`backend/api/sources.go` | **尚未验证**：阅读内书源的工具入口已发现偏差；工作台书源/API 另行复核。 | 书源请求/响应/失败语义表和搜索→BookInfo→阅读流。 |
 | 本地导入、书仓、WebDAV | `BookController.kt`、`LocalBook.kt`、`TextFile.kt`、`EpubFile.kt`、`UmdFile.kt`、`CbzFile.kt`、`WebDAV.vue` | `OverlayBookImport.vue`、`LocalStore.vue`、`WebDAVBrowser.vue`、`OverlayStorageImport.vue`、`useStorageImportWorkflow.js`、`backend/services/localbook/*`、`engine/*_parser.go` | **P1-E1、P1-E2、P1-E3 已完成；P1-E4 审查完成，E4-TXT-1、E4-TXT-2、EPUB 首封面、E4-UMD-1 与 E4-CBZ-1 已实现**：TXT UTF-8 BOM、GBK、GB18030、无目录伪章节和关闭的长章节切分已经过直接/书仓/WebDAV staged import→reader 端到端验证；显式规则无匹配是可恢复、可确认的空预览；纯图片首个 EPUB spine 资源保留为“封面”，并以受控 iframe resource 阅读；标准 reader-dev UMD 与历史 pseudo-UMD archive 均已验证 cache 缺失后的惰性重读，标准 UMD 刷新也不改写原 archive。CBZ 现在同时遵循“目录字典序、封面取归档遍历首个安全图片”：封面只在导入/书架/详情响应中投影为 capability，不写入用户数据，且自定义封面优先。PDF/Markdown 是仅直接上传的 OpenReader 扩展；CBZ 严格图片过滤是显式安全收紧。真实 EPUB fragment/跨资源、PDF 与完整旧卷夹具仍待继续。 | `docs/compat/workspace-storage-import-p1e-contract.md`、`docs/compat/workspace-storage-import-p1e3-contract.md`、`docs/compat/local-book-p1e4-contract.md` → 真实格式夹具、旧卷/Docker smoke。 |
 | 用户、备份、RSS、替换规则、书签 | `UserManage.vue`、`WebDAV.vue`、`Rss*`、`ReplaceRule*`、`Bookmark*` 及对应 Kotlin 控制器 | `OverlayUserManagement.vue`、`OverlayBackups.vue`、`RSSManager.vue`、`OverlayReplaceRules.vue`、`OverlayBookmarks.vue`、Go API/services | **用户管理已完成 P2 只读复审，发现 must-fix**：新用户规则 3 位/任意字符 ≠ 上游 5 位字母数字，密码门槛 6≠8，WebDAV/书仓权限合并，删除不完整且存在危险 cleanup；书源默认/重置动作取决于全局 BookSource 所有权审查。备份、RSS、替换规则和书签仍需单独按“Index 单工作台 + 上游操作顺序”复审。 | [`user-management-p2-contract.md`](user-management-p2-contract.md)；先写 API/数据副作用测试，再实施用户管理。 |
-| Reader：工具层、面板、正文、翻页 | `Reader.vue`、`Content.vue`、`ReadSettings.vue`、`PopCatalog.vue`、`BookShelf.vue`、`BookSource.vue` | `views/Reader.vue`、`components/reader/*`、`composables/useReader*`、`stores/reader.js` | **P0 正在复核**：见下方 Reader 分项；已发现必须重建的工具顺序/书源可用性及标题排版。 | 先替换契约测试，再实施；390×844、360×800、1440×900 实机浏览器门禁。 |
+| Reader：工具层、面板、正文、翻页 | `Reader.vue`、`Content.vue`、`ReadSettings.vue`、`PopCatalog.vue`、`BookShelf.vue`、`BookSource.vue` | `views/Reader.vue`、`components/reader/*`、`composables/useReader*`、`stores/reader.js` | **P0 继续复核**：标题排版、书源可用性、移动最终顶部顺序及移动“顶部/底部”浮动按钮已完成；工具层默认显示、四主面板并存、滚动动作和正文对称已在三视口复验。 | [`reader-mobile-controls-p0-contract.md`](reader-mobile-controls-p0-contract.md)；继续逐内容格式和剩余状态分支审查，不把本切片扩大为整个 Reader 已完成。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、格式 parser / cache | **EPUB 已发现 must-fix（Bug 1）**：跨 XHTML iframe 链接未被 bridge 阻止，写入子页面浏览历史，导致移动端返回先回上一章开头。其余格式仍尚未验证；历史 smoke 只作为待重跑的线索。 | EPUB Bug 1 合同：[`epub-mobile-back-bug1-contract.md`](epub-mobile-back-bug1-contract.md)；各格式仍需真实/fixture 阅读、缓存、进度、工具层状态及安全资源访问。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | **尚未验证**：多用户是允许适配，但默认值、同步时序、缓存失效和恢复语义必须逐接口列出。 | `api-contract-compat` + `data-migration-compat`；SQLite/备份/同步回归。 |
 | Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/auth.go`、前端 `api/*.js` | **尚未验证**：Go 路径可不同，但每项上游动作都要有参数、响应、错误、副作用映射。 | 路由契约测试、401/403/404/400、前端错误文案和多用户测试。 |
@@ -39,7 +39,8 @@
 | 主面板打开后的工具层 | `eventHandler()` 在书架、书源、目录、设置任一 popover 打开时直接返回，不改 `showToolBar`。 | `useReaderPrimaryPanels` 仅切换面板；`useReaderPointer` 在主面板打开时返回。 | **已复核一致**；补全四个面板及全局对话框的点击穿透浏览器断言。 |
 | 主 Popover 的移动端根几何 | `Reader.vue` 传入 `popperWidth = windowWidth - 33`；但 `App.vue` 的 `.mini-interface .popper-component { left:0; top:0; width:100vw !important; }` 是最终权威 CSS。 | `ReaderMobileWorkspacePanel.primary` 为无通用 padding 的 `(0,0,100vw,100dvh)` 根，内容组件自行持有内边距。 | **技术栈等价**；此前把 `windowWidth - 33` 当最终宽度的判断已撤销。不得把当前全宽根误改成抽屉或 33px 留缝。 |
 | 主面板层级/点击 | 上游工具栏 `z-index:2001`，popover 在其下；正文点击在面板状态直接返回。 | 当前工具层 `z-index:8`、主面板 `z-index:7`，主面板停传播且 pointer/keyboard 有状态保护。 | **技术栈等价，待浏览器复验**；层级数字可不同，但工具层可见、面板不穿透、同工具关闭/A→B 原子切换必须固定。 |
-| 移动顶部工具顺序 | 上游模板源顺序为书架/书源/目录/设置/首页；移动 CSS 给首页 `order:-1`，最终可见顺序为 **首页、书架、书源、目录、设置**。 | `ReaderMobileChrome.vue` 可见顺序为 **书架、书源、目录、设置、首页**。 | **必须重建**：改为上游可见顺序并更新断言。 |
+| 移动顶部工具顺序 | 上游模板源顺序为书架/书源/目录/设置/首页；mini 模式给首页内联 `order:-1`，最终可见顺序为 **首页、书架、书源、目录、设置**。 | `ReaderMobileChrome.vue` 直接按最终可见顺序渲染；桌面顺序独立保留。 | **2026-07-17 已复核一致**：源码与三视口真实 DOM 均通过；见 [`reader-mobile-controls-p0-contract.md`](reader-mobile-controls-p0-contract.md)。 |
+| 移动左侧浮动按钮 | 上游 mini 模式依次显示书签、搜索、信息、顶部、底部；顶部/底部分别调用 `toTop(0)` / `toBottom(0)`。 | 当前已补齐五项并复用 `scrollToTop` / `scrollToBottom`；不按格式隐藏、不修改工具层。 | **2026-07-17 已复核一致**：两种移动高度无重叠，滚动和正文几何浏览器合同通过。 |
 | 阅读内书源入口 | 上游 `BookSource` 工具没有按本地/远程禁用；点击后由书源流程决定可用结果。 | `ReaderMobileChrome.vue` 和 `ReaderDesktopTools.vue` 用 `:disabled="!remoteBook"`；`useReaderPanels.openSource()` 对本地书直接返回。 | **必须重建**：入口始终可点，保留安全的空结果/提示，但不能在工具层消失。 |
 | 移动正文横向几何 | 上游 mini `.chapter`: `width:100vw; padding:0 16px; box-sizing:border-box; text-align:justify`；slide 内容同样 16px 两侧留白。 | 当前 `.reader-page` 与 `.reader-body` 同样使用 100vw/16px/justify；工具层显隐不参与正文宽度。 | **已复核一致，待像素复验**：390 与 360 下首段左右可见留白误差不得超过 1px。 |
 | 移动正文纵向起点 | 上游 `.content-inner`: `margin-top: 30px + safe-area`、`padding-top:15px`。 | 当前 `.reader-body` 使用相同语义。 | **已复核一致，待像素复验**。 |
@@ -64,6 +65,10 @@
 4. P0 发布后才进入 Index；每个 P1/P2 模块先将其从“尚未验证”变成有源码证据的专门合同，再编写代码。
 
 ## 2026-07-13 Reader P0-A 实施记录：工具入口与文本排版
+
+> 2026-07-17 勘误：当时关于移动顶部顺序“已调整”的实施记录后来被回归覆盖，且遗漏了
+> mini 模式的“顶部/底部”浮动按钮。当前权威状态以上方矩阵和
+> [`reader-mobile-controls-p0-contract.md`](reader-mobile-controls-p0-contract.md) 为准。
 
 完成项：
 
