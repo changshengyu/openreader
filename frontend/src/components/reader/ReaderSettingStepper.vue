@@ -8,7 +8,30 @@
     >
       −
     </button>
-    <output>{{ displayValue }}</output>
+    <button
+      v-if="!editing"
+      class="reader-setting-stepper-value"
+      type="button"
+      :aria-label="`${editLabel}：${displayValue}`"
+      :disabled="disabled"
+      @click="startEditing"
+    >
+      {{ displayValue }}
+    </button>
+    <input
+      v-else
+      ref="inputEl"
+      v-model="draft"
+      class="reader-setting-stepper-input"
+      type="text"
+      inputmode="decimal"
+      :aria-label="editLabel"
+      :disabled="disabled"
+      @blur="commit"
+      @click.stop
+      @keydown.enter.prevent="commit"
+      @keydown.escape.prevent="cancel"
+    >
     <button
       type="button"
       :aria-label="increaseLabel"
@@ -21,8 +44,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import {
+  normalizeReaderSettingInput,
   readerSettingStepLabel,
   steppedReaderSettingValue,
 } from '../../utils/readerSettingStepper'
@@ -35,6 +59,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   decreaseLabel: { type: String, default: '减小' },
   increaseLabel: { type: String, default: '增大' },
+  editLabel: { type: String, default: '自定义数值' },
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -43,6 +68,9 @@ const canIncrease = computed(() => Number(props.modelValue) < props.max)
 const displayValue = computed(() => (
   readerSettingStepLabel(props.modelValue, props.step)
 ))
+const editing = ref(false)
+const draft = ref('')
+const inputEl = ref(null)
 
 function adjust(direction) {
   emit('update:modelValue', steppedReaderSettingValue({
@@ -52,6 +80,33 @@ function adjust(direction) {
     max: props.max,
     step: props.step,
   }))
+}
+
+function startEditing() {
+  if (props.disabled) return
+  draft.value = displayValue.value
+  editing.value = true
+  nextTick(() => {
+    inputEl.value?.focus()
+    inputEl.value?.select()
+  })
+}
+
+function commit() {
+  if (!editing.value) return
+  const next = normalizeReaderSettingInput({
+    input: draft.value,
+    fallback: props.modelValue,
+    min: props.min,
+    max: props.max,
+  })
+  editing.value = false
+  if (next !== Number(props.modelValue)) emit('update:modelValue', next)
+}
+
+function cancel() {
+  editing.value = false
+  draft.value = displayValue.value
 }
 </script>
 
@@ -69,7 +124,7 @@ function adjust(direction) {
 }
 
 .reader-setting-stepper button,
-.reader-setting-stepper output {
+.reader-setting-stepper input {
   display: grid;
   min-height: 36px;
   place-items: center;
@@ -102,9 +157,23 @@ function adjust(direction) {
   cursor: default;
 }
 
-.reader-setting-stepper output {
+.reader-setting-stepper-value,
+.reader-setting-stepper-input {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
+}
+
+.reader-setting-stepper-value {
+  cursor: text !important;
+}
+
+.reader-setting-stepper-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: center;
+  outline: 2px solid rgba(64, 158, 255, 0.42);
+  outline-offset: -2px;
 }
 
 @media (max-width: 750px) {
@@ -113,7 +182,7 @@ function adjust(direction) {
   }
 
   .reader-setting-stepper button,
-  .reader-setting-stepper output {
+  .reader-setting-stepper input {
     min-height: 42px;
   }
 }

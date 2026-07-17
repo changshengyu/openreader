@@ -1,8 +1,8 @@
-import { onBeforeUnmount, unref } from 'vue'
+import { getCurrentInstance, onBeforeUnmount, unref } from 'vue'
 import {
   normalizeReaderSelectionText,
   readerSelectionBelongsToRoot,
-} from '../utils/readerSelection'
+} from '../utils/readerSelection.js'
 
 export function useReaderSelection(options) {
   let operateTimer = null
@@ -29,10 +29,19 @@ export function useReaderSelection(options) {
     if (options.getAction?.() === '忽略') return false
     clearTimeout(operateTimer)
     const selectedNow = selectedText()
-    operateTimer = setTimeout(async () => {
+    const retryInterval = Math.max(20, Number(options.retryInterval) || 80)
+    const retryWindow = Math.max(retryInterval, Number(options.retryWindow) || 720)
+    const startedAt = Date.now()
+    const attempt = async () => {
       operateTimer = null
       const text = selectedText()
-      if (!text || operating || options.getAction?.() === '忽略') return
+      if (!text) {
+        if (Date.now() - startedAt < retryWindow && options.getAction?.() !== '忽略') {
+          operateTimer = setTimeout(attempt, retryInterval)
+        }
+        return
+      }
+      if (operating || options.getAction?.() === '忽略') return
       operating = true
       suppressContentClick()
       try {
@@ -44,7 +53,8 @@ export function useReaderSelection(options) {
         operating = false
         suppressContentClick(320)
       }
-    }, Math.max(0, Number(delay) || 0))
+    }
+    operateTimer = setTimeout(attempt, Math.max(0, Number(delay) || 0))
     return Boolean(selectedNow)
   }
 
@@ -73,10 +83,12 @@ export function useReaderSelection(options) {
     }
   }
 
-  onBeforeUnmount(() => {
-    clearTimeout(operateTimer)
-    clearTimeout(releaseTimer)
-  })
+  if (getCurrentInstance()) {
+    onBeforeUnmount(() => {
+      clearTimeout(operateTimer)
+      clearTimeout(releaseTimer)
+    })
+  }
 
   return {
     consumeSuppressedContentClick,

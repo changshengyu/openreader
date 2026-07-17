@@ -113,18 +113,28 @@ export function useReaderBookLoad(options) {
       .loadProgress(targetBookId, { preferLocal: true })
       .catch(() => null)
     const cachedProgress = options.reader.cachedProgress(targetBookId)
-    const [bookResponse, chapterResponse] = await Promise.all([
-      options.loadCachedBook(targetBookId),
-      options.loadCachedChapters(targetBookId),
-    ])
+    const shelfBook = options.getShelfBook?.(targetBookId) || null
+    if (shelfBook?.id) options.book.value = options.mergeLoadedBook(shelfBook)
+    const bookRequest = options.loadCachedBook(targetBookId)
+      .catch(error => {
+        if (shelfBook?.id) return { error }
+        throw error
+      })
+    const chapterResponse = await options.loadCachedChapters(targetBookId)
     if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+
+    let bookResponse = null
+    if (!shelfBook?.id) {
+      bookResponse = await bookRequest
+      if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+      options.book.value = options.mergeLoadedBook(bookResponse.data)
+    }
 
     const saved = cachedProgress?.bookId
       ? cachedProgress
       : await progressRequest
     if (Number(unref(options.bookId)) !== Number(targetBookId)) return
 
-    options.book.value = options.mergeLoadedBook(bookResponse.data)
     options.chapters.value = chapterResponse.data
     if (options.book.value?.progress?.bookId) {
       options.reader.applyServerProgress(options.book.value.progress)
@@ -173,18 +183,23 @@ export function useReaderBookLoad(options) {
         routePercent,
       }).catch(() => {})
     })
-    if (bookResponse.fromCache || chapterResponse.fromCache) {
-      refreshCaches({
-        book: Boolean(bookResponse.fromCache),
-        chapters: Boolean(chapterResponse.fromCache),
-      }).catch(() => {})
-    }
+    if (chapterResponse.fromCache) refreshCaches({ chapters: true }).catch(() => {})
     bookmarksRequest?.then(data => {
       if (options.bookmarks && Number(unref(options.bookId)) === Number(targetBookId)) {
         options.bookmarks.value = data
       }
     }).catch(() => {})
     await options.jumpToRouteLine()
+
+    if (!bookResponse) bookResponse = await bookRequest
+    if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+    if (bookResponse?.data?.id) {
+      options.book.value = options.mergeLoadedBook(bookResponse.data)
+      if (saved?.bookId) {
+        options.book.value = options.mergeBookProgress(options.book.value, saved)
+      }
+    }
+    if (bookResponse?.fromCache) refreshCaches({ book: true }).catch(() => {})
   }
 
   return {

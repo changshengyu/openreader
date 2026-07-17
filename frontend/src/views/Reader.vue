@@ -1458,6 +1458,9 @@ const {
     return data
   },
   cancelProgressSave,
+  getShelfBook: targetBookId => bookshelf.books.find(
+    item => Number(item.id) === Number(targetBookId),
+  ),
   loadCachedBook: targetBookId => cacheFirstRequest(
     () => api.get(`/books/${targetBookId}`),
     readerDataCacheKey(`book:${targetBookId}`),

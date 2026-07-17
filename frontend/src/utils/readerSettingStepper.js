@@ -20,6 +20,17 @@ export function readerSettingStepLabel(value, step = 1) {
   return String(Number(number.toFixed(decimalPlaces(Number(step) || 1))))
 }
 
+export function normalizeReaderSettingInput({ input, fallback, min, max }) {
+  const text = String(input ?? '').trim()
+  const fallbackValue = Number.isFinite(Number(fallback)) ? Number(fallback) : 0
+  if (!text) return fallbackValue
+  const parsed = Number(text)
+  if (!Number.isFinite(parsed)) return fallbackValue
+  const lower = Number.isFinite(Number(min)) ? Number(min) : -Infinity
+  const upper = Number.isFinite(Number(max)) ? Number(max) : Infinity
+  return Math.max(lower, Math.min(upper, parsed))
+}
+
 function decimalPlaces(value) {
   const text = String(value)
   if (text.includes('e-')) return Number(text.split('e-')[1]) || 0

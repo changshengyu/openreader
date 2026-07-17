@@ -2319,3 +2319,15 @@ the same scoped user settings through their established backend contracts.
 “多用户增强即可保留”：其短用户名规则/短密码、合并存储权限、用户删除遗漏 user-owned rows/files
 以及只删 `users` 行的 cleanup 都是必须修复的数据边界。全局 `BookSource` 与上游私有
 用户书源/默认书源模型的差异需要单独书源所有权合同，不能用无效果按钮伪装已对齐。
+
+## 2026-07-17 书架一致性与阅读器运行时复审
+
+本轮固定上游复审记录在
+[`shelf-reader-runtime-contract.md`](shelf-reader-runtime-contract.md)。确认的结构级问题包括：
+
+- `bookshelf.loadBooks(force)` 的迟到旧响应可以覆盖导入成功后的 `upsertBook`，造成新书刷新后短暂消失；其它客户端和 WebSocket 只是在增加并发请求，并非新书显示应依赖的权威状态。
+- 移动阅读器只在 `mouseup` 检查选区，违反上游 `touchend` 先检查选区、再决定是否翻页的顺序；现有 mobile smoke 使用 MouseEvent，属于错误覆盖。
+- 减号/数值/加号中间值不可编辑，未满足上游输入语义和用户新增要求。
+- 普通书首章被不必要的 book 详情请求阻塞；EPUB 每个子资源又在全局锁内重新 SHA-256 整本归档。
+
+以上均进入 `must-fix`，但 EPUB 优化必须保留 capability 指纹、用户所有权、归档路径和有界解压安全边界。合同完成后才允许添加失败测试并修改应用代码。

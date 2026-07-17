@@ -3,6 +3,7 @@ import { useReaderStore } from '../stores/reader'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { usePreferencesStore } from '../stores/preferences'
 import { useUserStore } from '../stores/user'
+import { refreshShelfAfterSyncConnect } from '../utils/shelfSyncFreshness'
 
 const connected = ref(false)
 let socket
@@ -162,10 +163,7 @@ export function useSync() {
   }
 
   function warmShelfAfterReconnect() {
-    Promise.all([
-      bookshelf.ensureCategoriesLoaded(),
-      bookshelf.ensureBooksLoaded({ all: true }),
-    ]).catch(() => {})
+    refreshShelfAfterSyncConnect(bookshelf).catch(() => {})
   }
 
   function scheduleBookshelfRefresh(options = {}) {

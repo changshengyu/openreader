@@ -132,6 +132,35 @@ test('drops cached book responses after the route switches to another book', asy
   assert.deepEqual(fixture.calls, [['cancel']])
 })
 
+test('does not let a delayed book-detail refresh block the initial chapter', async () => {
+  let resolveBook
+  const fixture = createController({
+    getShelfBook: () => ({ id: 7, title: '书架已有书名' }),
+    loadCachedBook: () => new Promise(resolve => {
+      resolveBook = resolve
+    }),
+  })
+  const pending = fixture.controller.load()
+  await flushBackgroundTasks()
+  try {
+    assert.equal(fixture.book.value.title, '书架已有书名')
+    assert.equal(
+      fixture.calls.some(call => call[0] === 'load-chapter'),
+      true,
+      'chapter content should enter its critical path before book detail resolves',
+    )
+    assert.equal(
+      fixture.calls.some(call => call[0] === 'jump'),
+      true,
+      'reader route positioning should be interactive before book detail resolves',
+    )
+  } finally {
+    resolveBook({ data: { id: 7, title: '服务端新书名' }, fromCache: false })
+    await pending
+  }
+  assert.equal(fixture.book.value.title, '服务端新书名')
+})
+
 test('reconciles only a newer server position while the baseline is unchanged', async () => {
   const fixture = createController()
   fixture.chapters.value = [{}, {}, {}, {}]

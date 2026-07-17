@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  normalizeReaderSettingInput,
   readerSettingStepLabel,
   steppedReaderSettingValue,
 } from '../src/utils/readerSettingStepper.js'
@@ -20,6 +21,40 @@ test('steps typography settings without floating-point drift', () => {
     max: 5,
     step: 0.2,
   }), 0)
+})
+
+test('accepts a directly entered finite value without forcing it onto the button step', () => {
+  assert.equal(normalizeReaderSettingInput({
+    input: '87',
+    fallback: 100,
+    min: 50,
+    max: 150,
+    step: 5,
+  }), 87)
+  assert.equal(normalizeReaderSettingInput({
+    input: '1.85',
+    fallback: 1.8,
+    min: 1,
+    max: 5,
+    step: 0.2,
+  }), 1.85)
+})
+
+test('clamps direct values and rolls invalid input back to the current setting', () => {
+  assert.equal(normalizeReaderSettingInput({
+    input: '999',
+    fallback: 100,
+    min: 50,
+    max: 150,
+    step: 5,
+  }), 150)
+  assert.equal(normalizeReaderSettingInput({
+    input: 'not-a-number',
+    fallback: 87,
+    min: 50,
+    max: 150,
+    step: 5,
+  }), 87)
 })
 
 test('clamps stepper values and formats compact labels', () => {

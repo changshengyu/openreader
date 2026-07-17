@@ -8,6 +8,7 @@ import { newestProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { getBrowserCache, listBrowserCacheKeys, setBrowserCache } from '../utils/browserCache'
 import { bookCategoryIds } from '../utils/bookCategory'
 import { currentUserScope } from '../utils/authScope'
+import { createShelfRequestRevisionGate } from '../utils/shelfRequestRevision'
 
 function asList(data) {
   if (Array.isArray(data)) return data
@@ -52,6 +53,7 @@ const CATEGORY_CACHE_KEY = 'bookshelf@getCategories'
 let booksRequest = null
 let booksRequestKey = ''
 let categoriesRequest = null
+const booksRevision = createShelfRequestRevisionGate()
 
 export const useBookshelfStore = defineStore('bookshelf', {
   state: () => ({
@@ -88,6 +90,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       booksRequest = null
       booksRequestKey = ''
       categoriesRequest = null
+      booksRevision.reset(scope)
     },
     async loadBooks(options = {}) {
       this.ensureShelfScope()
@@ -109,7 +112,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
 
       if (!force && this.books.length === 0) {
         const cached = await readShelfCache(scopedShelfCacheKey(`${SHELF_CACHE_KEY}:${requestKey}`))
-        if (cached.length) {
+        if (cached.length && this.books.length === 0) {
           this.books = sortBooks(cached)
           this.booksLoadedAt = Date.now()
           this.booksLoadedKey = requestKey
@@ -118,8 +121,10 @@ export const useBookshelfStore = defineStore('bookshelf', {
 
       this.loading = this.books.length === 0
       booksRequestKey = requestKey
+      const requestRevision = booksRevision.begin(this.shelfScope)
       const request = listBooks(params)
         .then(({ data }) => {
+          if (!booksRevision.canCommit(requestRevision, this.shelfScope)) return this.books
           const serverBooks = asList(data)
           syncServerProgressFromBooks(serverBooks)
           this.books = sortBooks(serverBooks)
@@ -218,6 +223,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
     },
     async addBook(book) {
       const { data } = await createBook(book)
+      booksRevision.mutate(this.shelfScope)
       this.books = sortBooks([data, ...this.books])
       this.invalidateBooks()
       syncCachedBookUpsert(data)
@@ -227,6 +233,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       const book = this.books.find(item => Number(item.id) === Number(bookId))
       await deleteBook(bookId)
       await clearDeletedBookBrowserCache(book, bookId)
+      booksRevision.mutate(this.shelfScope)
       this.books = this.books.filter(book => book.id !== bookId)
       this.invalidateBooks()
       syncCachedBookRemoval(bookId)
@@ -234,12 +241,14 @@ export const useBookshelfStore = defineStore('bookshelf', {
     removeBookLocal(bookId) {
       const book = this.books.find(item => Number(item.id) === Number(bookId))
       clearDeletedBookBrowserCache(book, bookId)
+      booksRevision.mutate(this.shelfScope)
       this.books = this.books.filter(book => Number(book.id) !== Number(bookId))
       this.invalidateBooks()
       syncCachedBookRemoval(bookId)
     },
     upsertBook(book) {
       if (!book?.id) return
+      booksRevision.mutate(this.shelfScope)
       const index = this.books.findIndex(item => Number(item.id) === Number(book.id))
       const nextBook = index >= 0 ? mergeShelfBook(this.books[index], book) : book
       if (nextBook?.progress?.bookId) {
@@ -299,6 +308,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       await Promise.all(deletedIds.map(bookId => (
         clearDeletedBookBrowserCache(booksByID.get(Number(bookId)), bookId)
       )))
+      booksRevision.mutate(this.shelfScope)
       this.books = this.books.filter(book => !deletedSet.has(Number(book.id)))
       this.invalidateBooks()
       deletedIds.forEach(bookId => syncCachedBookRemoval(bookId))
@@ -320,6 +330,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
         const categoryIds = nextCategoryIdsForAction(book, categoryId, action)
         return { ...book, categoryId: categoryIds[0] || null, categoryIds }
       })
+      booksRevision.mutate(this.shelfScope)
       this.books = sortBooks(nextBooks)
       this.invalidateBooks()
       nextBooks.filter(book => idSet.has(Number(book.id))).forEach(book => syncCachedBookUpsert(book))
@@ -360,6 +371,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
         const categoryIds = bookCategoryIds(book).filter(id => String(id) !== String(categoryId))
         return { ...book, categoryId: categoryIds[0] || null, categoryIds }
       })
+      booksRevision.mutate(this.shelfScope)
       this.books = sortBooks(nextBooks)
       this.invalidateShelf()
       nextBooks.filter(book => changedIds.has(Number(book.id))).forEach(book => syncCachedBookUpsert(book))

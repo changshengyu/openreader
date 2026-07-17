@@ -311,18 +311,44 @@ async function closeGlobalReaderDialog(page, selector) {
   await dialog.waitFor({ state: 'hidden', timeout: 10000 })
 }
 
-async function assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen }) {
+async function assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen, touch = false }) {
   const paragraph = page.locator('.reader-body p').first()
   const selectedText = (await paragraph.textContent())?.trim() || ''
   assert(selectedText, `${viewport.width}: reader fixture must include selectable text`)
-  await paragraph.evaluate((node) => {
-    const selection = window.getSelection()
-    const range = document.createRange()
-    range.selectNodeContents(node)
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
-  })
+  if (touch) {
+    await paragraph.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const event = new Event('touchstart', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', {
+        value: [{ clientX: rect.left + 12, clientY: rect.top + 12, identifier: 1 }],
+      })
+      node.dispatchEvent(event)
+    })
+    await page.waitForTimeout(720)
+    await paragraph.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      const event = new Event('touchend', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', { value: [] })
+      Object.defineProperty(event, 'changedTouches', {
+        value: [{ clientX: rect.left + 12, clientY: rect.top + 12, identifier: 1 }],
+      })
+      node.dispatchEvent(event)
+    })
+  } else {
+    await paragraph.evaluate((node) => {
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    })
+  }
 
   const chooser = page.locator('.el-message-box').last()
   await chooser.getByRole('button', { name: '添加过滤规则', exact: true }).click()
@@ -342,7 +368,11 @@ async function assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen 
   })
   if (fullscreen) {
     assert(geometry.width === viewport.width && geometry.height === viewport.height, `${viewport.width}: selected-text editor must be fullscreen on mobile`)
-    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: selected-text editor must preserve the reader toolbar`)
+    const chromeState = await page.evaluate(() => ({
+      topClass: document.querySelector('.reader-mobile-top')?.className || '',
+      shellClass: document.querySelector('.reader-shell')?.className || '',
+    }))
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: selected-text editor must preserve the reader toolbar (${JSON.stringify(chromeState)})`)
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: selected-text editor click must not pass through to reader chrome`)
   } else {
@@ -353,6 +383,20 @@ async function assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen 
   await editor.getByRole('button', { name: '取消', exact: true }).click()
   await editor.waitFor({ state: 'hidden', timeout: 10000 })
   assert(await page.locator('.global-replace-dialog').count() === 0, `${viewport.width}: closing the direct editor must not reveal a manager`)
+}
+
+async function assertDirectNumericSettingEdit(page, viewport) {
+  const row = page.locator('.settings-body .setting-row').filter({ hasText: '亮度' }).first()
+  const valueButton = row.locator('.reader-setting-stepper-value')
+  await valueButton.click()
+  const input = row.locator('.reader-setting-stepper-input')
+  await input.fill('87')
+  await input.press('Enter')
+  assert((await valueButton.textContent())?.trim() === '87', `${viewport.width}: brightness center value must accept direct numeric input`)
+  const brightness = await page.locator('.reader-shell').evaluate(node => (
+    node.style.getPropertyValue('--reader-brightness')
+  ))
+  assert(brightness === '87%', `${viewport.width}: direct brightness input must update the reader, got ${brightness}`)
 }
 
 async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {
@@ -945,7 +989,7 @@ async function runViewport(browser, viewport) {
     throw new Error(`${error.message}\nState: ${JSON.stringify(state, null, 2)}\nFailures: ${failures.join('\n')}`)
   }
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
-  await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: true })
+  await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: true, touch: true })
   const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: true })
 
   const initialTopVisible = await page.locator('.reader-mobile-top.visible').count()
@@ -973,6 +1017,7 @@ async function runViewport(browser, viewport) {
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsFirstScreenDensity(page, viewport)
   await assertSettingsFixedTitle(page, viewport)
+  await assertDirectNumericSettingEdit(page, viewport)
   await assertSettingsBackgroundGeometry(page, viewport)
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))

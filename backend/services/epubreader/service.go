@@ -31,11 +31,12 @@ const (
 )
 
 type Service struct {
-	cfg       config.Config
-	db        *gorm.DB
-	now       func() time.Time
-	limits    extractionLimits
-	extractMu sync.Mutex
+	cfg          config.Config
+	db           *gorm.DB
+	now          func() time.Time
+	limits       extractionLimits
+	extractLocks sync.Map
+	fingerprint  func(string) (string, error)
 }
 
 type PreparedChapter struct {
@@ -51,12 +52,19 @@ type Resource struct {
 	Document    bool
 }
 
+type extractionMarker struct {
+	Fingerprint string `json:"fingerprint"`
+	Size        int64  `json:"size"`
+	ModTimeNano int64  `json:"modTimeNano"`
+}
+
 func New(cfg config.Config, database *gorm.DB) *Service {
 	return &Service{
-		cfg:    cfg,
-		db:     database,
-		now:    time.Now,
-		limits: defaultExtractionLimits(),
+		cfg:         cfg,
+		db:          database,
+		now:         time.Now,
+		limits:      defaultExtractionLimits(),
+		fingerprint: fingerprintFile,
 	}
 }
 
@@ -165,16 +173,40 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 	if !IsLocalEPUB(book) {
 		return Resource{}, ErrNotFound
 	}
-	sourcePath, bookRoot, err := s.sourcePath(book)
+	sourcePath, bookRoot, sourceErr := s.sourcePath(book)
+	if sourceErr != nil {
+		if !errors.Is(sourceErr, ErrNotFound) {
+			return Resource{}, sourceErr
+		}
+		_, bookRoot, err = s.bookRoots(book)
+		if err != nil {
+			return Resource{}, err
+		}
+		sourcePath = ""
+	}
+	extractionRoot, err := s.extractionForFingerprint(bookRoot, claims.Fingerprint)
+	if errors.Is(err, ErrNotFound) {
+		sourcePath, sourceBookRoot, sourceErr := s.sourcePath(book)
+		if sourceErr != nil {
+			return Resource{}, sourceErr
+		}
+		fingerprint, rebuiltRoot, rebuildErr := s.ensureExtraction(sourcePath, sourceBookRoot)
+		if rebuildErr != nil {
+			return Resource{}, rebuildErr
+		}
+		if !strings.EqualFold(fingerprint, claims.Fingerprint) {
+			return Resource{}, ErrInvalidCapability
+		}
+		extractionRoot = rebuiltRoot
+		err = nil
+	}
 	if err != nil {
 		return Resource{}, err
 	}
-	fingerprint, extractionRoot, err := s.ensureExtraction(sourcePath, bookRoot)
-	if err != nil {
-		return Resource{}, err
-	}
-	if !strings.EqualFold(fingerprint, claims.Fingerprint) {
-		return Resource{}, ErrInvalidCapability
+	if sourcePath != "" {
+		if err := s.validateExtractionSource(extractionRoot, claims.Fingerprint, sourcePath); err != nil {
+			return Resource{}, err
+		}
 	}
 	resourcePath, err := normalizeArchivePath(strings.TrimPrefix(requestedPath, "/"))
 	if err != nil || resourcePath == "" {
@@ -226,37 +258,11 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 }
 
 func (s *Service) sourcePath(book models.Book) (string, string, error) {
-	libraryRoot, err := canonicalPath(s.cfg.LibraryDir)
+	libraryRoot, bookRoot, err := s.bookRoots(book)
 	if err != nil {
 		return "", "", err
 	}
-
 	original := strings.TrimSpace(book.OriginalFile)
-	libraryPathValue := strings.TrimSpace(book.LibraryPath)
-	if libraryPathValue == "" {
-		switch {
-		case original != "" && !filepath.IsAbs(original):
-			libraryPathValue = filepath.Dir(original)
-		case filepath.IsAbs(original):
-			if canonicalOriginal, canonicalErr := canonicalPath(original); canonicalErr == nil && withinPath(libraryRoot, canonicalOriginal) {
-				if relative, relativeErr := filepath.Rel(libraryRoot, filepath.Dir(canonicalOriginal)); relativeErr == nil {
-					libraryPathValue = relative
-				}
-			}
-		}
-	}
-	if strings.TrimSpace(libraryPathValue) == "" {
-		libraryPathValue = "."
-	}
-	libraryPath := filepath.Clean(libraryPathValue)
-	if filepath.IsAbs(libraryPath) ||
-		libraryPath == ".." || strings.HasPrefix(libraryPath, ".."+string(filepath.Separator)) {
-		return "", "", ErrUnsafePath
-	}
-	bookRoot, err := joinUnder(libraryRoot, libraryPath)
-	if err != nil {
-		return "", "", err
-	}
 
 	candidates := make([]string, 0, 3)
 	if original != "" && !filepath.IsAbs(original) {
@@ -299,6 +305,41 @@ func (s *Service) sourcePath(book models.Book) (string, string, error) {
 	return "", "", ErrNotFound
 }
 
+func (s *Service) bookRoots(book models.Book) (string, string, error) {
+	libraryRoot, err := canonicalPath(s.cfg.LibraryDir)
+	if err != nil {
+		return "", "", err
+	}
+
+	original := strings.TrimSpace(book.OriginalFile)
+	libraryPathValue := strings.TrimSpace(book.LibraryPath)
+	if libraryPathValue == "" {
+		switch {
+		case original != "" && !filepath.IsAbs(original):
+			libraryPathValue = filepath.Dir(original)
+		case filepath.IsAbs(original):
+			if canonicalOriginal, canonicalErr := canonicalPath(original); canonicalErr == nil && withinPath(libraryRoot, canonicalOriginal) {
+				if relative, relativeErr := filepath.Rel(libraryRoot, filepath.Dir(canonicalOriginal)); relativeErr == nil {
+					libraryPathValue = relative
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(libraryPathValue) == "" {
+		libraryPathValue = "."
+	}
+	libraryPath := filepath.Clean(libraryPathValue)
+	if filepath.IsAbs(libraryPath) ||
+		libraryPath == ".." || strings.HasPrefix(libraryPath, ".."+string(filepath.Separator)) {
+		return "", "", ErrUnsafePath
+	}
+	bookRoot, err := joinUnder(libraryRoot, libraryPath)
+	if err != nil {
+		return "", "", err
+	}
+	return libraryRoot, bookRoot, nil
+}
+
 func validEPUBSource(candidate, libraryRoot, bookRoot string) bool {
 	info, err := os.Stat(candidate)
 	if err != nil || info.IsDir() || !strings.EqualFold(filepath.Ext(candidate), ".epub") {
@@ -312,10 +353,12 @@ func validEPUBSource(candidate, libraryRoot, bookRoot string) bool {
 }
 
 func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string, error) {
-	s.extractMu.Lock()
-	defer s.extractMu.Unlock()
+	lockValue, _ := s.extractLocks.LoadOrStore(sourcePath, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
 
-	fingerprint, err := fingerprintFile(sourcePath)
+	fingerprint, err := s.fingerprint(sourcePath)
 	if err != nil {
 		return "", "", err
 	}
@@ -328,7 +371,10 @@ func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string,
 		return "", "", err
 	}
 	marker := filepath.Join(finalRoot, extractionMarkerName)
-	if data, err := os.ReadFile(marker); err == nil && strings.TrimSpace(string(data)) == fingerprint {
+	if current, err := readExtractionMarker(marker); err == nil && current.Fingerprint == fingerprint {
+		if current.Size == 0 || current.ModTimeNano == 0 {
+			_ = writeExtractionMarker(marker, fingerprint, sourcePath)
+		}
 		return fingerprint, finalRoot, nil
 	}
 	if err := os.RemoveAll(finalRoot); err != nil {
@@ -345,16 +391,126 @@ func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string,
 	if err := extractArchiveFile(sourcePath, staging, s.limits); err != nil {
 		return "", "", err
 	}
-	if err := os.WriteFile(filepath.Join(staging, extractionMarkerName), []byte(fingerprint+"\n"), 0o644); err != nil {
+	if err := writeExtractionMarker(filepath.Join(staging, extractionMarkerName), fingerprint, sourcePath); err != nil {
 		return "", "", err
 	}
 	if err := os.Rename(staging, finalRoot); err != nil {
-		if data, readErr := os.ReadFile(marker); readErr == nil && strings.TrimSpace(string(data)) == fingerprint {
+		if current, readErr := readExtractionMarker(marker); readErr == nil && current.Fingerprint == fingerprint {
 			return fingerprint, finalRoot, nil
 		}
 		return "", "", err
 	}
 	return fingerprint, finalRoot, nil
+}
+
+func (s *Service) extractionForFingerprint(bookRoot, fingerprint string) (string, error) {
+	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
+	if len(fingerprint) != sha256.Size*2 {
+		return "", ErrInvalidCapability
+	}
+	if _, err := hex.DecodeString(fingerprint); err != nil {
+		return "", ErrInvalidCapability
+	}
+	parent, err := joinUnder(bookRoot, extractionDirectoryName)
+	if err != nil {
+		return "", err
+	}
+	extractionRoot, err := joinUnder(parent, fingerprint)
+	if err != nil {
+		return "", err
+	}
+	marker, err := readExtractionMarker(filepath.Join(extractionRoot, extractionMarkerName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	if marker.Fingerprint != fingerprint {
+		return "", ErrInvalidCapability
+	}
+	return extractionRoot, nil
+}
+
+func (s *Service) validateExtractionSource(extractionRoot, fingerprint, sourcePath string) error {
+	markerPath := filepath.Join(extractionRoot, extractionMarkerName)
+	marker, err := readExtractionMarker(markerPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrNotFound
+		}
+		return err
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if marker.Size == info.Size() && marker.ModTimeNano == info.ModTime().UnixNano() {
+		return nil
+	}
+	currentFingerprint, err := s.fingerprint(sourcePath)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(currentFingerprint, fingerprint) {
+		return ErrInvalidCapability
+	}
+	return writeExtractionMarker(markerPath, currentFingerprint, sourcePath)
+}
+
+func readExtractionMarker(markerPath string) (extractionMarker, error) {
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		return extractionMarker{}, err
+	}
+	var marker extractionMarker
+	if json.Unmarshal(data, &marker) == nil && marker.Fingerprint != "" {
+		marker.Fingerprint = strings.ToLower(strings.TrimSpace(marker.Fingerprint))
+		return marker, nil
+	}
+	legacy := strings.ToLower(strings.TrimSpace(string(data)))
+	if len(legacy) == sha256.Size*2 {
+		if _, err := hex.DecodeString(legacy); err == nil {
+			return extractionMarker{Fingerprint: legacy}, nil
+		}
+	}
+	return extractionMarker{}, ErrInvalidCapability
+}
+
+func writeExtractionMarker(markerPath, fingerprint, sourcePath string) error {
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(extractionMarker{
+		Fingerprint: strings.ToLower(strings.TrimSpace(fingerprint)),
+		Size:        info.Size(),
+		ModTimeNano: info.ModTime().UnixNano(),
+	})
+	if err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(markerPath), ".marker-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if _, err := temp.Write(append(data, '\n')); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, markerPath)
 }
 
 func (s *Service) recoverChapterResourceMetadata(sourcePath string, book models.Book, chapterIndex int) (engine.TXTChapter, error) {
