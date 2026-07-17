@@ -10,7 +10,10 @@ NAME="${NAME:-openreader-volume-smoke-$(basename "$ROOT")}"
 PORTABLE_ROOT=""
 PORTABLE_NAME=""
 PASSWORD="password123"
-USERNAME="smoke_$$"
+# New registrations follow reader-dev's ASCII alphanumeric account contract.
+# Keep the temporary smoke account unique without using the older underscore
+# fixture shape, which is now intentionally rejected by the server.
+USERNAME="smoketest$$"
 BASE_URL="http://127.0.0.1:${PORT}"
 
 case "$HISTORICAL_VOLUME" in
