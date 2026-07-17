@@ -424,9 +424,14 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   start_portable_destination
   wait_portable_health
   PORTABLE_BASE_URL="http://127.0.0.1:${PORTABLE_PORT}"
+  # The historical fixture deliberately keeps its legacy underscore account
+  # name to prove existing users can still log in. A portable restore creates
+  # a brand-new destination account, so that account must satisfy the current
+  # reader-dev new-account rule instead of reusing the legacy fixture name.
+  PORTABLE_USERNAME="portabledestination$$"
   PORTABLE_REGISTER_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/register" \
     -H 'Content-Type: application/json' \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
+    -d "{\"username\":\"${PORTABLE_USERNAME}\",\"password\":\"${PASSWORD}\"}")"
   PORTABLE_TOKEN="$(printf '%s' "$PORTABLE_REGISTER_RESPONSE" | json_field token)"
   PORTABLE_RESTORE_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/backup/restore-legado" \
     -H "Authorization: Bearer ${PORTABLE_TOKEN}" \
@@ -503,7 +508,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   wait_portable_health
   PORTABLE_TOKEN="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/login" \
     -H 'Content-Type: application/json' \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}" | json_field token)"
+    -d "{\"username\":\"${PORTABLE_USERNAME}\",\"password\":\"${PASSWORD}\"}" | json_field token)"
   BASE_URL="$PORTABLE_BASE_URL"
   TOKEN="$PORTABLE_TOKEN"
   read_historical_book "$PORTABLE_TXT_BOOK_ID" "" '旧卷归档正文只能从 library 读取' >/dev/null
