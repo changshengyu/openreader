@@ -442,6 +442,7 @@ import {
   selectedTextBookmarkContext,
 } from '../utils/readerBookmarkContext'
 import { readerTTSBarVisible } from '../utils/readerTTS'
+import { createReaderScrollAnimator } from '../utils/readerAnimation'
 import {
   readerScrollBehaviorForDuration,
   readerScrollStep,
@@ -455,6 +456,7 @@ const router = useRouter()
 const reader = useReaderStore()
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
+const readerScrollAnimator = createReaderScrollAnimator()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const remoteSessionId = computed(() => (
   route.name === 'remote-reader' ? String(route.params.sessionId || '') : ''
@@ -990,6 +992,7 @@ const {
   scrollToBottom,
   scrollToTop,
 } = useReaderNavigation({
+  scrollAnimator: readerScrollAnimator,
   contentEl,
   contentBody,
   chapterBlocks,
@@ -1005,7 +1008,6 @@ const {
   getMode: () => effectiveReaderMode.value,
   getAnimateDuration: () => reader.animateDuration,
   scrollStep,
-  scrollBehavior: readerScrollBehavior,
   jumpToParagraph,
   rebuildContinuousWindow: index => computeShowChapterList({
     anchorIndex: index,
@@ -1043,6 +1045,7 @@ const {
   handleMobilePageProgressChange,
   handleMobilePageProgressInput,
 } = useReaderProgressControls({
+  scrollAnimator: readerScrollAnimator,
   contentEl,
   contentBody,
   chapters,
@@ -1052,6 +1055,7 @@ const {
   progressVersion,
   isContinuousScrollRead,
   getMode: () => effectiveReaderMode.value,
+  getAnimateDuration: () => reader.animateDuration,
   getCurrentChapterPercent: currentChapterPercent,
   navigate: query => router.replace(readerRouteLocation(query)),
   applyLocalProgress: () => applyLocalProgressSnapshot(),

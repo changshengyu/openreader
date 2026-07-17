@@ -3,9 +3,11 @@ import {
   clampReaderPercent,
   readerBookProgress,
 } from '../utils/readerPagination.js'
+import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
 
 export function useReaderProgressControls(options) {
   const mobilePageSliderDraft = ref(null)
+  const scrollAnimator = options.scrollAnimator || createReaderScrollAnimator()
 
   const bookProgress = computed(() => readerBookProgress({
     chapterIndex: options.currentIndex.value,
@@ -99,13 +101,21 @@ export function useReaderProgressControls(options) {
       0,
     )
     const pageMax = Math.max(0, mobilePageSliderMax.value - 1)
-    options.contentEl.value.scrollTop = pageMax > 0
+    const targetTop = pageMax > 0
       ? Math.round((target / pageMax) * bottom)
       : 0
     options.page.value = target
-    options.progressVersion.value += 1
-    options.applyLocalProgress()
-    options.saveProgress()
+    scrollAnimator.cancel()
+    scrollAnimator.scrollTo(
+      options.contentEl.value,
+      targetTop,
+      options.getAnimateDuration?.() || 0,
+      () => {
+        options.progressVersion.value += 1
+        options.applyLocalProgress()
+        options.saveProgress()
+      },
+    )
   }
 
   function handleMobilePageProgressInput(event) {

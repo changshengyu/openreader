@@ -116,13 +116,58 @@ async function readerGeometry(page) {
 }
 
 async function openReader(browser, viewport, mode, animateDuration = 0) {
-  const context = await browser.newContext({ viewport })
+  const context = await browser.newContext({
+    viewport,
+    hasTouch: viewport.width <= 750,
+    isMobile: viewport.width <= 750,
+  })
   await context.addInitScript(value => localStorage.setItem('openreader_token', value), token())
   const page = await context.newPage()
   await installApiMocks(page, mode, animateDuration)
   await page.goto(`${targetUrl.replace(/\/$/, '')}${readerPath}`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 15_000 })
   return { context, page }
+}
+
+async function ensureMobileChromeVisible(page, viewport) {
+  if (await page.locator('.reader-mobile-top.visible').count()) return
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+  await page.waitForTimeout(80)
+  assert(await page.locator('.reader-mobile-top.visible').count() === 1, 'mobile reader tools did not become visible')
+}
+
+async function setRuntimeAnimationDuration(page, viewport, duration) {
+  await ensureMobileChromeVisible(page, viewport)
+  await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' }).click()
+  await page.waitForSelector('.reader-mobile-primary-settings .settings-body')
+
+  const row = page.locator('.reader-mobile-primary-settings .setting-row').filter({ hasText: '动画时长' }).first()
+  const valueButton = row.locator('.reader-setting-stepper-value')
+  await valueButton.scrollIntoViewIfNeeded()
+  await valueButton.click()
+  const input = row.locator('.reader-setting-stepper-input')
+  await input.fill(String(duration))
+  await input.press('Enter')
+  assert((await valueButton.textContent())?.trim() === String(duration), `runtime duration did not update to ${duration}`)
+
+  await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' }).click()
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-primary-settings'))
+}
+
+async function resetRuntimePage(page) {
+  await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+  await page.waitForTimeout(40)
+}
+
+async function seekRuntimePageSliderToEnd(page, viewport) {
+  await ensureMobileChromeVisible(page, viewport)
+  return page.locator('.mobile-progress-slider').evaluate(element => {
+    element.value = element.max
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+    const content = document.querySelector('.reader-content')
+    return Math.max(0, (content?.scrollHeight || 0) - (content?.clientHeight || 0))
+  })
 }
 
 async function assertDesktopPage(browser) {
@@ -203,6 +248,49 @@ async function assertConfiguredPageDuration(browser) {
   await long.context.close()
 }
 
+async function assertRuntimeConfiguredPageDuration(browser) {
+  const viewport = { width: 390, height: 844 }
+  const targetTop = viewport.height - 72
+  const { context, page } = await openReader(browser, viewport, 'page', 300)
+
+  await setRuntimeAnimationDuration(page, viewport, 0)
+  await resetRuntimePage(page)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 0ms page animation')
+
+  await setRuntimeAnimationDuration(page, viewport, 100)
+  await resetRuntimePage(page)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await page.waitForTimeout(180)
+  close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 100ms page animation')
+
+  await setRuntimeAnimationDuration(page, viewport, 500)
+  await resetRuntimePage(page)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await page.waitForTimeout(180)
+  const middle = (await readerGeometry(page)).contentScrollTop
+  assert(middle > 0 && middle < targetTop - 80, `runtime 500ms animation must still be moving at 180ms: ${middle}/${targetTop}`)
+  await page.waitForTimeout(420)
+  close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 500ms page animation')
+
+  await setRuntimeAnimationDuration(page, viewport, 100)
+  await resetRuntimePage(page)
+  const shortSeekBottom = await seekRuntimePageSliderToEnd(page, viewport)
+  await page.waitForTimeout(180)
+  close((await readerGeometry(page)).contentScrollTop, shortSeekBottom, 2, 'runtime 100ms page-slider animation')
+
+  await setRuntimeAnimationDuration(page, viewport, 500)
+  await resetRuntimePage(page)
+  const longSeekBottom = await seekRuntimePageSliderToEnd(page, viewport)
+  await page.waitForTimeout(180)
+  const seekMiddle = (await readerGeometry(page)).contentScrollTop
+  assert(seekMiddle > 0 && seekMiddle < longSeekBottom - 80, `runtime 500ms page-slider animation must still be moving at 180ms: ${seekMiddle}/${longSeekBottom}`)
+  await page.waitForTimeout(420)
+  close((await readerGeometry(page)).contentScrollTop, longSeekBottom, 2, 'runtime 500ms page-slider animation')
+
+  await context.close()
+}
+
 async function main() {
   const browser = await openSmokeBrowser()
   try {
@@ -212,6 +300,7 @@ async function main() {
       await assertMobileFlip(browser, viewport)
     }
     await assertConfiguredPageDuration(browser)
+    await assertRuntimeConfiguredPageDuration(browser)
     console.log('reader text-mode contract smoke passed')
   } finally {
     await browser.close()

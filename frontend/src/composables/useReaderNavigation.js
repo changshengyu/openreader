@@ -26,6 +26,16 @@ export function useReaderNavigation(options) {
     return readerParagraphAtPosition(nodes, position)
   }
 
+  function animateContentTo(top) {
+    const element = options.contentEl.value
+    if (!element) return false
+    return scrollAnimator.scrollTo(
+      element,
+      top,
+      options.getAnimateDuration(),
+    )
+  }
+
   function jumpToLoadedChapter(index, offset = 0) {
     if (!options.contentEl.value || !options.contentBody.value) return false
     const targetIndex = targetChapterIndex(index)
@@ -39,40 +49,37 @@ export function useReaderNavigation(options) {
     options.content.value = block?.content || options.content.value
 
     if (Number(offset) === READER_CHAPTER_END_OFFSET) {
-      options.contentEl.value.scrollTo({
-        top: readerChapterBoundaryScrollTop({
+      animateContentTo(
+        readerChapterBoundaryScrollTop({
           chapterTop: chapterEl.offsetTop,
           chapterHeight: chapterEl.offsetHeight,
           clientHeight: options.contentEl.value.clientHeight,
           end: true,
         }),
-        behavior: options.scrollBehavior(),
-      })
+      )
     } else if (offset > 0) {
       const target = paragraphByChapterPosition(chapterEl, offset)
       if (target) {
         options.jumpToParagraph(target, { save: false, flash: false })
       } else {
-        options.contentEl.value.scrollTo({
-          top: readerChapterBoundaryScrollTop({
+        animateContentTo(
+          readerChapterBoundaryScrollTop({
             chapterTop: chapterEl.offsetTop,
             chapterHeight: chapterEl.offsetHeight,
             clientHeight: options.contentEl.value.clientHeight,
             end: false,
           }),
-          behavior: options.scrollBehavior(),
-        })
+        )
       }
     } else {
-      options.contentEl.value.scrollTo({
-        top: readerChapterBoundaryScrollTop({
+      animateContentTo(
+        readerChapterBoundaryScrollTop({
           chapterTop: chapterEl.offsetTop,
           chapterHeight: chapterEl.offsetHeight,
           clientHeight: options.contentEl.value.clientHeight,
           end: false,
         }),
-        behavior: options.scrollBehavior(),
-      })
+      )
     }
     options.progressVersion.value += 1
     options.scheduleProgressSave(Math.max(300, options.getAnimateDuration() + 80))
@@ -94,8 +101,8 @@ export function useReaderNavigation(options) {
     }
     if (jumpToLoadedChapter(options.currentIndex.value, offset)) return
     if (!options.contentEl.value) return
-    options.contentEl.value.scrollTo({
-      top: restoredReaderSingleChapterScrollTop({
+    animateContentTo(
+      restoredReaderSingleChapterScrollTop({
         offset: Number(offset) === READER_CHAPTER_END_OFFSET
           ? READER_CHAPTER_END_OFFSET
           : 0,
@@ -103,8 +110,7 @@ export function useReaderNavigation(options) {
         scrollHeight: options.contentEl.value.scrollHeight,
         clientHeight: options.contentEl.value.clientHeight,
       }),
-      behavior: options.scrollBehavior(),
-    })
+    )
     options.progressVersion.value += 1
     options.saveProgress()
   }

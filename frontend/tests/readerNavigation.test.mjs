@@ -28,7 +28,6 @@ function createNavigation(overrides = {}) {
     getMode: () => 'flip',
     getAnimateDuration: () => 200,
     scrollStep: () => 600,
-    scrollBehavior: () => 'smooth',
     jumpToParagraph: () => {},
     closeToc: () => {},
     navigate: async query => navigated.push(query),
@@ -128,12 +127,23 @@ test('rebuilds an explicitly selected loaded chapter before jumping in continuou
     isContinuousScrollRead: ref(true),
     getMode: () => 'scroll2',
     rebuildContinuousWindow: async index => calls.push(['rebuild', index]),
+    scrollAnimator: {
+      cancel: () => calls.push(['cancel']),
+      isActive: () => false,
+      scrollBy: () => false,
+      scrollTo: (element, top, duration) => {
+        calls.push(['animate-scroll', top, duration])
+        element.scrollTop = top
+        return true
+      },
+    },
   })
 
   await fixture.navigation.goChapter(2)
   assert.deepEqual(calls, [
+    ['cancel'],
     ['rebuild', 2],
-    ['scroll', { top: 900, behavior: 'smooth' }],
+    ['animate-scroll', 900, 200],
   ])
   assert.equal(fixture.options.currentIndex.value, 2)
   assert.deepEqual(fixture.navigated, [])

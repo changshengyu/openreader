@@ -8,6 +8,7 @@ function createControls(overrides = {}) {
   const scheduled = []
   const navigated = []
   const local = []
+  const animations = []
   const options = {
     contentEl: ref(null),
     contentBody: ref(null),
@@ -18,15 +19,26 @@ function createControls(overrides = {}) {
     progressVersion: ref(0),
     isContinuousScrollRead: ref(false),
     getMode: () => 'flip',
+    getAnimateDuration: () => 300,
     getCurrentChapterPercent: () => 0.25,
     navigate: async query => navigated.push(query),
     applyLocalProgress: () => local.push(true),
     saveProgress: () => saved.push(true),
     scheduleProgressSave: delay => scheduled.push(delay),
+    scrollAnimator: {
+      cancel: () => {},
+      scrollTo: (element, top, duration, onFinish) => {
+        animations.push({ element, top, duration })
+        element.scrollTop = top
+        onFinish?.()
+        return true
+      },
+    },
     ...overrides,
   }
   return {
     controls: useReaderProgressControls(options),
+    animations,
     local,
     navigated,
     options,
@@ -89,6 +101,9 @@ test('seeks a mobile vertical page without navigating to another chapter', () =>
   })
   fixture.controls.handleMobilePageProgressChange({ target: { value: '3' } })
   assert.equal(fixture.options.contentEl.value.scrollTop, 1067)
+  assert.deepEqual(fixture.animations.map(({ top, duration }) => ({ top, duration })), [
+    { top: 1067, duration: 300 },
+  ])
   assert.deepEqual(fixture.navigated, [])
   assert.equal(fixture.local.length, 1)
   assert.equal(fixture.saved.length, 1)

@@ -333,6 +333,7 @@
         decrease-label="缩短动画"
         increase-label="延长动画"
       />
+      <small class="setting-help">单位 ms，仅影响点击、键盘和页码定位；手指/滚轮保持连续滚动。</small>
       <small v-if="reader.pageType === 'kindle'" class="setting-help">简洁模式会关闭翻页动画。</small>
     </div>
 
