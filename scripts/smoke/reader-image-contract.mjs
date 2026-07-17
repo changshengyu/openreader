@@ -1,25 +1,9 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 const readerUrl = process.env.SMOKE_READER_URL || `${targetUrl.replace(/\/$/, '')}/books/1/read?chapter=0`
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      console.error('Playwright is required for reader image contract smoke.')
-      console.error(`Original import error: ${error.message}`)
-      process.exit(2)
-    }
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -256,11 +240,7 @@ async function runViewport(browser, viewport, requestedMode, variant = {}) {
 }
 
 async function main() {
-  const { chromium } = await loadPlaywright()
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || defaultChromePath,
-  })
+  const browser = await openSmokeBrowser()
   try {
     for (const viewport of [
       { width: 1440, height: 900 },

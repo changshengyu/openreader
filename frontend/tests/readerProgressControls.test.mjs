@@ -35,11 +35,13 @@ function createControls(overrides = {}) {
   }
 }
 
-test('derives whole-book and chapter slider values from current progress', () => {
+test('derives whole-book label plus upstream 1-based mobile page controls', () => {
   const { controls } = createControls()
   assert.equal(controls.bookProgress.value, 0.3125)
   assert.equal(controls.bookProgressLabel.value, '31%')
-  assert.equal(controls.mobileBookSliderValue.value, 313)
+  assert.equal(controls.mobilePageSliderValue.value, 2)
+  assert.equal(controls.mobilePageSliderMax.value, 5)
+  assert.equal(controls.mobilePageProgressLabel.value, '第 2/5 页')
   assert.equal(controls.desktopChapterSliderValue.value, 250)
   assert.equal(controls.desktopChapterProgressLabel.value, '25%')
 })
@@ -55,16 +57,41 @@ test('seeks flip chapter progress and preserves input versus change saving', () 
   assert.equal(fixture.saved.length, 1)
 })
 
-test('routes whole-book seeks across chapters and clears mobile draft state', async () => {
+test('keeps mobile page input as a draft and commits within the rendered flip document', () => {
   const fixture = createControls()
-  await fixture.controls.handleMobileBookProgressChange({
-    target: { value: '900' },
+  fixture.controls.handleMobilePageProgressInput({
+    target: { value: '4' },
   })
-  assert.deepEqual(fixture.navigated, [{
-    chapter: 3,
-    percent: 0.6000000000000001,
-  }])
-  assert.equal(fixture.controls.mobileBookSliderValue.value, 313)
+  assert.equal(fixture.options.page.value, 1)
+  assert.equal(fixture.controls.mobilePageSliderValue.value, 4)
+  assert.equal(fixture.controls.mobilePageProgressLabel.value, '第 4/5 页')
+  assert.deepEqual(fixture.saved, [])
+
+  fixture.controls.handleMobilePageProgressChange({
+    target: { value: '4' },
+  })
+  assert.equal(fixture.options.page.value, 3)
+  assert.equal(fixture.controls.mobilePageSliderValue.value, 4)
+  assert.deepEqual(fixture.navigated, [])
+  assert.equal(fixture.saved.length, 1)
+})
+
+test('seeks a mobile vertical page without navigating to another chapter', () => {
+  const fixture = createControls({
+    contentEl: ref({
+      scrollTop: 0,
+      scrollHeight: 2400,
+      clientHeight: 800,
+    }),
+    page: ref(0),
+    pageCount: ref(4),
+    getMode: () => 'scroll',
+  })
+  fixture.controls.handleMobilePageProgressChange({ target: { value: '3' } })
+  assert.equal(fixture.options.contentEl.value.scrollTop, 1067)
+  assert.deepEqual(fixture.navigated, [])
+  assert.equal(fixture.local.length, 1)
+  assert.equal(fixture.saved.length, 1)
 })
 
 test('seeks vertical content and schedules local progress for input', () => {

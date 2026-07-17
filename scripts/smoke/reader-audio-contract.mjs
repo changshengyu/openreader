@@ -1,25 +1,9 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 const readerUrl = process.env.SMOKE_READER_URL || `${targetUrl.replace(/\/$/, '')}/books/1/read?chapter=0&offset=37`
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      console.error('Playwright is required for reader audio contract smoke.')
-      console.error(`Original import error: ${error.message}`)
-      process.exit(2)
-    }
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -159,6 +143,8 @@ async function runViewport(browser, viewport) {
     hasCover: Boolean(document.querySelector('.reader-audio-cover img')),
     hasProgressSlider: Boolean(document.querySelector('input[aria-label="音频播放进度"]')),
     hasVolumeSlider: Boolean(document.querySelector('input[aria-label="音频音量"]')),
+    hasMobilePageSlider: Boolean(document.querySelector('.reader-mobile-bottom .mobile-progress-slider')),
+    mobileFooterHeight: Math.round(document.querySelector('.reader-mobile-bottom.visible')?.getBoundingClientRect().height || 0),
     hasPlayButton: Boolean([...document.querySelectorAll('.reader-audio-actions button')].find(button => button.textContent.includes('播放'))),
     hasMuteButton: Boolean([...document.querySelectorAll('.reader-audio-volume button')].find(button => button.textContent.includes('音量'))),
     mobileTopVisible: Boolean(document.querySelector('.reader-mobile-top.visible')),
@@ -173,6 +159,10 @@ async function runViewport(browser, viewport) {
   assert(initial.hasCover, `${viewport.width}: audio cover should render`)
   assert(initial.hasProgressSlider, `${viewport.width}: custom audio progress slider missing`)
   assert(initial.hasVolumeSlider, `${viewport.width}: custom audio volume slider missing`)
+  if (viewport.width <= 750) {
+    assert(!initial.hasMobilePageSlider, `${viewport.width}: audio reader must hide the text page slider`)
+    assert(initial.mobileFooterHeight > 0 && initial.mobileFooterHeight <= 64, `${viewport.width}: audio footer should collapse to one tool row (${initial.mobileFooterHeight}px)`)
+  }
   assert(initial.hasPlayButton, `${viewport.width}: custom play button missing`)
   assert(initial.hasMuteButton, `${viewport.width}: custom mute/volume button missing`)
 
@@ -281,11 +271,7 @@ async function runViewport(browser, viewport) {
 }
 
 async function main() {
-  const playwright = await loadPlaywright()
-  const browser = await playwright.chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || defaultChromePath,
-  })
+  const browser = await openSmokeBrowser()
   try {
     await runViewport(browser, { width: 390, height: 844 })
     await runViewport(browser, { width: 360, height: 800 })

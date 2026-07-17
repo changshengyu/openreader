@@ -1,24 +1,8 @@
 #!/usr/bin/env node
 
-const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+import { openSmokeBrowser } from './playwright-runtime.mjs'
 
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      console.error('Playwright is required for Index mobile sidebar contract smoke.')
-      console.error(`Original import error: ${error.message}`)
-      process.exit(2)
-    }
-  }
-}
+const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -257,11 +241,7 @@ async function runViewport(browser, viewport) {
 }
 
 async function run() {
-  const { chromium } = await loadPlaywright()
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || defaultChromePath,
-  })
+  const browser = await openSmokeBrowser()
   try {
     const results = []
     results.push(await runViewport(browser, { width: 390, height: 844 }))

@@ -42,6 +42,7 @@ export function useReaderWheel(options) {
 
     if (unref(options.isVerticalRead)) {
       if (!viewport) return
+      options.cancelPageAnimation?.()
       handleVertical(event, delta, viewport)
       return
     }

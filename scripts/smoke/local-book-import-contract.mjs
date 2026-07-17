@@ -1,21 +1,11 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetURL = (process.env.TARGET_URL || 'http://127.0.0.1:8080').replace(/\/$/, '')
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const emptyCatalogHint = '未匹配到目录。你可以修改目录规则后重新解析，或保留空目录导入，之后再从书籍信息中刷新目录。'
 const fixture = Buffer.from('== 第一章 ==\n这是正文内容。', 'utf8')
 const runID = Date.now()
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    const module = await import(bundled)
-    return module.chromium ? module : module.default
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -89,12 +79,7 @@ async function runViewport(browser, viewport) {
     await context.close()
   }
 }
-
-const { chromium } = await loadPlaywright()
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: process.env.CHROME_PATH || defaultChromePath,
-})
+const browser = await openSmokeBrowser()
 try {
   await runViewport(browser, { width: 1440, height: 900 })
   await runViewport(browser, { width: 390, height: 844 })

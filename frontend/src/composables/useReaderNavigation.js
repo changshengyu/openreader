@@ -6,8 +6,11 @@ import {
   restoredReaderFlipPage,
   restoredReaderSingleChapterScrollTop,
 } from '../utils/readerPosition.js'
+import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
 
 export function useReaderNavigation(options) {
+  const scrollAnimator = options.scrollAnimator || createReaderScrollAnimator()
+
   function targetChapterIndex(index) {
     return Math.max(
       0,
@@ -107,6 +110,7 @@ export function useReaderNavigation(options) {
   }
 
   async function goChapter(index, offset = 0) {
+    scrollAnimator.cancel()
     const targetIndex = targetChapterIndex(index)
     if (targetIndex === options.currentIndex.value) {
       options.closeToc?.()
@@ -137,13 +141,18 @@ export function useReaderNavigation(options) {
       return
     }
     if (unref(options.isVerticalRead) && options.contentEl.value) {
+      if (scrollAnimator.isActive()) return
       const el = options.contentEl.value
       if (el.scrollTop > 8) {
-        el.scrollBy({
-          top: -options.scrollStep(),
-          behavior: options.scrollBehavior(),
-        })
-        options.scheduleProgressSave(options.getAnimateDuration() + 60)
+        scrollAnimator.scrollBy(
+          el,
+          -options.scrollStep(),
+          options.getAnimateDuration(),
+          () => {
+            options.progressVersion.value += 1
+            options.scheduleProgressSave(60)
+          },
+        )
         return
       }
     }
@@ -163,14 +172,19 @@ export function useReaderNavigation(options) {
       return
     }
     if (unref(options.isVerticalRead) && options.contentEl.value) {
+      if (scrollAnimator.isActive()) return
       const el = options.contentEl.value
       const bottom = el.scrollHeight - el.clientHeight
       if (el.scrollTop < bottom - 8) {
-        el.scrollBy({
-          top: options.scrollStep(),
-          behavior: options.scrollBehavior(),
-        })
-        options.scheduleProgressSave(options.getAnimateDuration() + 60)
+        scrollAnimator.scrollBy(
+          el,
+          options.scrollStep(),
+          options.getAnimateDuration(),
+          () => {
+            options.progressVersion.value += 1
+            options.scheduleProgressSave(60)
+          },
+        )
         return
       }
     }
@@ -180,6 +194,7 @@ export function useReaderNavigation(options) {
   }
 
   function scrollToTop() {
+    scrollAnimator.cancel()
     if (options.getMode() === 'flip') {
       options.page.value = 0
     } else if (options.contentEl.value) {
@@ -192,6 +207,7 @@ export function useReaderNavigation(options) {
   }
 
   function scrollToBottom() {
+    scrollAnimator.cancel()
     if (options.getMode() === 'flip') {
       options.page.value = Math.max(0, options.pageCount.value - 1)
     } else if (options.contentEl.value) {
@@ -207,6 +223,7 @@ export function useReaderNavigation(options) {
   }
 
   return {
+    cancelPageAnimation: scrollAnimator.cancel,
     goChapter,
     jumpToLoadedChapter,
     jumpWithinCurrentChapter,

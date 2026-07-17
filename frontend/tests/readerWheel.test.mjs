@@ -73,17 +73,23 @@ test('turns wheel movement into throttled page navigation', () => {
 })
 
 test('leaves vertical reading movement native and crosses chapters only at boundaries', () => {
-  const fixture = createController({ isVerticalRead: ref(true) })
+  const fixture = createController({
+    isVerticalRead: ref(true),
+    cancelPageAnimation: () => fixture.calls.push(['cancel-animation']),
+  })
   fixture.controller.handle(fixture.event(100))
   assert.equal(fixture.contentEl.value.scrollTop, 300)
-  assert.deepEqual(fixture.calls, [])
+  assert.deepEqual(fixture.calls, [['cancel-animation']])
   fixture.contentEl.value.scrollTop = 800
   fixture.controller.handle(fixture.event(100))
   fixture.contentEl.value.scrollTop = 0
   fixture.controller.handle(fixture.event(-100))
   assert.deepEqual(fixture.calls, [
+    ['cancel-animation'],
+    ['cancel-animation'],
     ['prevent'],
     ['next'],
+    ['cancel-animation'],
     ['prevent'],
     ['previous'],
   ])

@@ -1,17 +1,8 @@
 #!/usr/bin/env node
 
-const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+import { openSmokeBrowser } from './playwright-runtime.mjs'
 
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch {
-    const module = await import('/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js')
-    return module.chromium ? module : module.default
-  }
-}
+const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -87,15 +78,7 @@ async function runViewport(browser, viewport) {
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
 }
-
-const { chromium } = await loadPlaywright()
-const browser = process.env.CDP_URL
-  ? await chromium.connectOverCDP(process.env.CDP_URL)
-  : await chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || defaultChromePath,
-    args: ['--disable-gpu'],
-  })
+const browser = await openSmokeBrowser()
 try {
   await runViewport(browser, { width: 1440, height: 900 })
   await runViewport(browser, { width: 390, height: 844 })

@@ -1,22 +1,12 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
-const chromePath = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const readerPath = '/books/1/read?chapter=0'
 const fixtureText = Array.from({ length: 44 }, (_, index) => (
   `第${index + 1}段。春风过处，纸页微明。用于验证阅读模式的正文宽度、首屏位置和翻页位移。`
 )).join('\n')
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    const module = await import(bundled)
-    return module.chromium ? module : module.default
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -52,7 +42,7 @@ function book() {
   }
 }
 
-async function installApiMocks(page, mode) {
+async function installApiMocks(page, mode, animateDuration = 0) {
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async route => {
     const request = route.request()
@@ -74,7 +64,7 @@ async function installApiMocks(page, mode) {
           lineHeight: 1.8,
           paragraphSpace: 0.2,
           columnWidth: 800,
-          animateDuration: 0,
+          animateDuration,
           clickMethod: 'auto',
         },
       }))
@@ -125,11 +115,11 @@ async function readerGeometry(page) {
   })
 }
 
-async function openReader(browser, viewport, mode) {
+async function openReader(browser, viewport, mode, animateDuration = 0) {
   const context = await browser.newContext({ viewport })
   await context.addInitScript(value => localStorage.setItem('openreader_token', value), token())
   const page = await context.newPage()
-  await installApiMocks(page, mode)
+  await installApiMocks(page, mode, animateDuration)
   await page.goto(`${targetUrl.replace(/\/$/, '')}${readerPath}`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 15_000 })
   return { context, page }
@@ -181,15 +171,47 @@ async function assertMobileFlip(browser, viewport) {
   await context.close()
 }
 
+async function assertConfiguredPageDuration(browser) {
+  const viewport = { width: 390, height: 844 }
+  const targetTop = viewport.height - 72
+
+  const zero = await openReader(browser, viewport, 'page', 0)
+  await zero.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  close((await readerGeometry(zero.page)).contentScrollTop, targetTop, 2, '0ms page animation')
+  await zero.context.close()
+
+  const short = await openReader(browser, viewport, 'page', 100)
+  await short.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await short.page.waitForTimeout(180)
+  close((await readerGeometry(short.page)).contentScrollTop, targetTop, 2, '100ms page animation')
+  await short.context.close()
+
+  const long = await openReader(browser, viewport, 'page', 500)
+  await long.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await long.page.waitForTimeout(180)
+  const middle = (await readerGeometry(long.page)).contentScrollTop
+  assert(middle > 0 && middle < targetTop - 80, `500ms animation must still be moving at 180ms: ${middle}/${targetTop}`)
+  await long.page.waitForTimeout(420)
+  close((await readerGeometry(long.page)).contentScrollTop, targetTop, 2, '500ms page animation')
+
+  await long.page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+  await long.page.locator('.reader-content').hover()
+  await long.page.mouse.wheel(0, 137)
+  await long.page.waitForTimeout(80)
+  const wheelTop = (await readerGeometry(long.page)).contentScrollTop
+  assert(wheelTop > 0 && wheelTop < 400, `wheel must remain native and continuous: ${wheelTop}`)
+  await long.context.close()
+}
+
 async function main() {
-  const { chromium } = await loadPlaywright()
-  const browser = await chromium.launch({ headless: true, executablePath: chromePath })
+  const browser = await openSmokeBrowser()
   try {
     await assertDesktopPage(browser)
     for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }]) {
       await assertMobilePage(browser, viewport)
       await assertMobileFlip(browser, viewport)
     }
+    await assertConfiguredPageDuration(browser)
     console.log('reader text-mode contract smoke passed')
   } finally {
     await browser.close()

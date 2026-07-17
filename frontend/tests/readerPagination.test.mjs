@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   readerBookProgress,
-  readerBookSeekTarget,
   readerFlipChapterPercent,
   readerFlipPageLayout,
   readerScrollBehaviorForDuration,
@@ -10,24 +9,14 @@ import {
   readerVerticalPageLayout,
 } from '../src/utils/readerPagination.js'
 
-test('maps book progress to chapter targets at boundaries', () => {
+test('derives smooth whole-book display progress without owning mobile navigation', () => {
   assert.equal(readerBookProgress({
     chapterIndex: 2,
     chapterPercent: 0.5,
     totalChapters: 10,
   }), 0.25)
-  assert.deepEqual(readerBookSeekTarget(0.25, 10), {
-    chapterIndex: 2,
-    chapterPercent: 0.5,
-  })
-  assert.deepEqual(readerBookSeekTarget(1, 10), {
-    chapterIndex: 9,
-    chapterPercent: 1,
-  })
-  assert.deepEqual(readerBookSeekTarget(-1, 0), {
-    chapterIndex: 0,
-    chapterPercent: 0,
-  })
+  assert.equal(readerBookProgress({ chapterIndex: 9, chapterPercent: 1, totalChapters: 10 }), 1)
+  assert.equal(readerBookProgress({ chapterIndex: -1, chapterPercent: -1, totalChapters: 0 }), 0)
 })
 
 test('calculates reader scroll steps and animation behavior', () => {

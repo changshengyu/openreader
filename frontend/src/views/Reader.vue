@@ -99,9 +99,10 @@
       :tts-supported="ttsSupportedForChapter"
       :is-night="isNightTheme"
       :book-progress-label="bookProgressLabel"
-      :chapter-label="chapterLabel"
-      :book-slider-value="mobileBookSliderValue"
-      :book-slider-label="mobileBookProgressLabel"
+      :page-slider-visible="!isAudioChapter"
+      :page-slider-value="mobilePageSliderValue"
+      :page-slider-max="mobilePageSliderMax"
+      :page-slider-label="mobilePageProgressLabel"
       :cache-visible="showCacheContentZone"
       :caching="isCachingContent"
       :cache-status-text="cachingContentTip"
@@ -110,8 +111,8 @@
       @action="handleMobileChromeAction"
       @cache="cacheFollowingChapters"
       @cache-cancel="cancelCachingContent"
-      @book-progress-input="handleMobileBookProgressInput"
-      @book-progress-change="handleMobileBookProgressChange"
+      @page-progress-input="handleMobilePageProgressInput"
+      @page-progress-change="handleMobilePageProgressChange"
     />
 
     <button
@@ -364,7 +365,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
@@ -979,6 +980,7 @@ const {
   saveProgress: () => saveCurrentProgress(),
 })
 const {
+  cancelPageAnimation,
   goChapter,
   jumpToLoadedChapter,
   jumpWithinCurrentChapter,
@@ -1016,6 +1018,7 @@ const {
   saveProgress: () => saveCurrentProgress(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
 })
+onBeforeUnmount(cancelPageAnimation)
 const {
   restore: restoreReadingPosition,
 } = useReaderPositionRestore({
@@ -1034,10 +1037,11 @@ const {
 const {
   bookProgress,
   bookProgressLabel,
-  mobileBookProgressLabel,
-  mobileBookSliderValue,
-  handleMobileBookProgressChange,
-  handleMobileBookProgressInput,
+  mobilePageProgressLabel,
+  mobilePageSliderMax,
+  mobilePageSliderValue,
+  handleMobilePageProgressChange,
+  handleMobilePageProgressInput,
 } = useReaderProgressControls({
   contentEl,
   contentBody,
@@ -1278,6 +1282,7 @@ const {
   contentEl,
   isOverlayOpen,
   isVerticalRead,
+  cancelPageAnimation,
   nextPage,
   previousPage,
 })
@@ -1321,6 +1326,7 @@ const {
   scheduleSelectedTextOperation,
   suppressContentClick,
   consumeSuppressedContentClick,
+  cancelPageAnimation,
   nextPage,
   previousPage,
   toggleChrome: toggleReaderChrome,

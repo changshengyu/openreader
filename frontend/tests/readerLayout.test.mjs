@@ -50,7 +50,7 @@ test('calculates mobile flip pages from the upstream readable stride minus 16px'
   assert.equal(fixture.state.page.value, 3)
 })
 
-test('calculates vertical pages and resets scrolling modes', () => {
+test('calculates vertical pages for paged and native continuous modes', () => {
   const fixture = createController()
   fixture.state.reader.mode = 'page'
   fixture.controller.update()
@@ -60,8 +60,14 @@ test('calculates vertical pages and resets scrolling modes', () => {
 
   fixture.state.reader.mode = 'scroll2'
   fixture.controller.update()
-  assert.equal(fixture.state.pageCount.value, 1)
-  assert.equal(fixture.state.page.value, 0)
+  assert.equal(fixture.state.pageHeight.value, 400)
+  assert.equal(fixture.state.pageCount.value, 4)
+  assert.equal(fixture.state.page.value, 1)
+
+  fixture.state.reader.mode = 'scroll'
+  fixture.controller.update()
+  assert.equal(fixture.state.pageCount.value, 4)
+  assert.equal(fixture.state.page.value, 1)
 })
 
 test('updates responsive width before recalculating layout on resize', () => {

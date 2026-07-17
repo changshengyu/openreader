@@ -1,26 +1,10 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 const readerUrl = process.env.SMOKE_READER_URL || `${targetUrl.replace(/\/$/, '')}/books/1/read?chapter=0`
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const smokeBgImage = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2236%22 height=%2236%22%3E%3Crect width=%2236%22 height=%2236%22 fill=%22%23d8c49a%22/%3E%3C/svg%3E'
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      console.error('Playwright is required for reader mobile contract smoke.')
-      console.error(`Original import error: ${error.message}`)
-      process.exit(2)
-    }
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -284,6 +268,64 @@ async function assertMobileFloatNavigationContract(page, viewport, initialGeomet
   const geometry = await readerGeometry(page)
   assertClose(geometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: top/bottom actions should not shift paragraph left`)
   assertClose(geometry.paragraphRight, initialGeometry.paragraphRight, 1, `${viewport.width}: top/bottom actions should not shift paragraph right`)
+}
+
+async function assertMobilePageProgressContract(page, viewport, initialGeometry) {
+  await page.waitForFunction(() => {
+    const input = document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider')
+    return input && Number(input.max) > 1 && /^第 \d+\/\d+ 页$/.test(input.parentElement?.innerText || '')
+  })
+  const initial = await page.evaluate(() => {
+    const input = document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider')
+    const content = document.querySelector('.reader-content')
+    const progressButton = document.querySelector('.reader-mobile-bottom.visible .mobile-chapter-progress')
+    return {
+      min: Number(input.min),
+      max: Number(input.max),
+      value: Number(input.value),
+      label: input.parentElement?.querySelector('span')?.textContent?.trim() || '',
+      scrollTop: content?.scrollTop || 0,
+      progressText: progressButton?.textContent?.trim() || '',
+    }
+  })
+  assert(initial.min === 1, `${viewport.width}: mobile page slider min ${initial.min}`)
+  assert(initial.max > 1, `${viewport.width}: mobile page slider must expose rendered pages`)
+  assert(initial.value === 1, `${viewport.width}: initial mobile page must be 1, got ${initial.value}`)
+  assert(initial.label === `第 1/${initial.max} 页`, `${viewport.width}: mobile page label ${initial.label}`)
+  assert(/^阅读进度: \d+%$/.test(initial.progressText), `${viewport.width}: bottom progress text ${initial.progressText}`)
+  assert(!initial.progressText.includes('第一章'), `${viewport.width}: bottom progress must not duplicate the chapter title`)
+
+  const routeBefore = await page.url()
+  await page.locator('.reader-mobile-bottom.visible .mobile-progress-slider').evaluate((input) => {
+    input.value = input.max
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await page.waitForFunction((max) => (
+    document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row span')?.textContent?.trim()
+      === `第 ${max}/${max} 页`
+  ), initial.max)
+  assert(await page.locator('.reader-content').evaluate(element => element.scrollTop) === initial.scrollTop, `${viewport.width}: page slider input must not move content before change`)
+  assert(await page.url() === routeBefore, `${viewport.width}: page slider input must not change the Reader route`)
+
+  await page.locator('.reader-mobile-bottom.visible .mobile-progress-slider').evaluate((input) => {
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.reader-content')
+    return element && element.scrollTop >= element.scrollHeight - element.clientHeight - 2
+  })
+  assert(await page.url() === routeBefore, `${viewport.width}: page slider change must stay in the current chapter route`)
+  assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: page slider change must keep toolbar visible`)
+
+  await page.locator('.reader-mobile-bottom.visible .mobile-progress-slider').evaluate((input) => {
+    input.value = '1'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await page.waitForFunction(() => document.querySelector('.reader-content')?.scrollTop === 0)
+  const geometry = await readerGeometry(page)
+  assertClose(geometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: page slider should not shift paragraph left`)
+  assertClose(geometry.paragraphRight, initialGeometry.paragraphRight, 1, `${viewport.width}: page slider should not shift paragraph right`)
 }
 
 async function assertWorkspaceClosed(page, viewport, label) {
@@ -1042,6 +1084,7 @@ async function runViewport(browser, viewport) {
   await assertMobileTopToolContract(page, viewport)
   const initialGeometry = await readerGeometry(page)
   assertReaderGeometry(initialGeometry, viewport, 'initial')
+  await assertMobilePageProgressContract(page, viewport, initialGeometry)
 
   await mobileTopTool(page, '书架').click()
   await assertWorkspaceOpen(page, viewport, '书架', { primary: true, contentSized: true, heightRange: [418, 488] })
@@ -1099,11 +1142,7 @@ async function runViewport(browser, viewport) {
 }
 
 async function main() {
-  const { chromium } = await loadPlaywright()
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || defaultChromePath,
-  })
+  const browser = await openSmokeBrowser()
   try {
     await runDesktopViewport(browser)
     await runViewport(browser, { width: 390, height: 844 })

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import {
@@ -16,7 +18,6 @@ import { join } from 'node:path'
 
 const baseURL = process.env.TARGET_URL || 'http://127.0.0.1:8080'
 const outputDir = process.env.SMOKE_OUTPUT_DIR || tmpdir()
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 function smokeViewports() {
   const requested = String(process.env.SMOKE_VIEWPORTS || '1440x900,390x844,360x800')
@@ -30,23 +31,6 @@ function smokeViewports() {
     }
     return { width, height }
   })
-}
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      console.error('Playwright is required for reader EPUB contract smoke.')
-      console.error(`Original import error: ${error.message}`)
-      process.exit(2)
-    }
-  }
 }
 
 function fixtureFontPath() {
@@ -394,11 +378,7 @@ async function runViewport(browser, viewport, token, bookID) {
 async function main() {
   const fixture = createEPUB()
   try {
-    const { chromium } = await loadPlaywright()
-    const browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.CHROME_PATH || defaultChromePath,
-    })
+    const browser = await openSmokeBrowser()
     try {
       for (const viewport of smokeViewports()) {
         const imported = await registerAndImport(fixture.archive)

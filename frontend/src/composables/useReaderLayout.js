@@ -49,7 +49,7 @@ export function useReaderLayout(options) {
       options.page.value = layout.page
       return
     }
-    if (options.reader.mode === 'page') {
+    if (['page', 'scroll', 'scroll2'].includes(options.reader.mode)) {
       const layout = readerVerticalPageLayout({
         scrollHeight: viewportElement.scrollHeight,
         clientHeight: viewportElement.clientHeight,

@@ -1,20 +1,10 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetUrl = (process.env.TARGET_URL || 'http://127.0.0.1:4173').replace(/\/$/, '')
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const localToken = 'a'.repeat(48)
 const webdavToken = 'b'.repeat(48)
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    const module = await import(bundled)
-    return module.chromium ? module : module.default
-  }
-}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -175,8 +165,7 @@ async function runViewport(browser, viewport) {
 }
 
 async function run() {
-  const { chromium } = await loadPlaywright()
-  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || defaultChromePath })
+  const browser = await openSmokeBrowser()
   try {
     const checks = []
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))

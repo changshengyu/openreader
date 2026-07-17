@@ -11,22 +11,6 @@ export function readerBookProgress({
   return clampReaderPercent((Number(chapterIndex) + clampReaderPercent(chapterPercent)) / total)
 }
 
-export function readerBookSeekTarget(percent, totalChapters) {
-  const total = Math.max(Number(totalChapters) || 0, 1)
-  const value = clampReaderPercent(percent)
-  if (value >= 1) {
-    return {
-      chapterIndex: total - 1,
-      chapterPercent: 1,
-    }
-  }
-  const raw = value * total
-  return {
-    chapterIndex: Math.max(0, Math.min(total - 1, Math.floor(raw))),
-    chapterPercent: clampReaderPercent(raw - Math.floor(raw)),
-  }
-}
-
 export function readerScrollStep({
   viewportHeight,
   fontSize,

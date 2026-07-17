@@ -64,20 +64,20 @@
     </button>
   </aside>
 
-  <footer class="reader-mobile-bottom" :class="{ visible }">
-    <label class="mobile-progress-slider-row" title="拖动定位阅读进度">
+  <footer class="reader-mobile-bottom" :class="{ visible, 'without-page-slider': !pageSliderVisible }">
+    <label v-if="pageSliderVisible" class="mobile-progress-slider-row" title="拖动定位当前页码">
       <input
         class="mobile-progress-slider"
         type="range"
-        min="0"
-        max="1000"
+        min="1"
+        :max="pageSliderMax"
         step="1"
-        :value="bookSliderValue"
-        :aria-label="`阅读进度 ${bookSliderLabel}`"
-        @input="$emit('book-progress-input', $event)"
-        @change="$emit('book-progress-change', $event)"
+        :value="pageSliderValue"
+        :aria-label="`页码进度 ${pageSliderLabel}`"
+        @input="$emit('page-progress-input', $event)"
+        @change="$emit('page-progress-change', $event)"
       />
-      <span>{{ bookSliderLabel }}</span>
+      <span>{{ pageSliderLabel }}</span>
     </label>
     <ReaderCachePanel
       class="mobile-cache-zone"
@@ -92,8 +92,7 @@
       <span>上一章</span>
     </button>
     <button class="mobile-chapter-progress" type="button" title="缓存章节" @click="$emit('action', 'cache')">
-      <strong>{{ bookProgressLabel }}</strong>
-      <span>{{ chapterLabel }}</span>
+      <span>阅读进度: {{ bookProgressLabel }}</span>
     </button>
     <button class="mobile-chapter-step" type="button" :disabled="nextDisabled" @click="$emit('action', 'next')">
       <span>下一章</span>
@@ -152,17 +151,21 @@ defineProps({
     type: String,
     default: '0%',
   },
-  chapterLabel: {
-    type: String,
-    default: '',
+  pageSliderVisible: {
+    type: Boolean,
+    default: true,
   },
-  bookSliderValue: {
+  pageSliderValue: {
     type: Number,
-    default: 0,
+    default: 1,
   },
-  bookSliderLabel: {
+  pageSliderMax: {
+    type: Number,
+    default: 1,
+  },
+  pageSliderLabel: {
     type: String,
-    default: '0%',
+    default: '第 1/1 页',
   },
   cacheVisible: {
     type: Boolean,
@@ -186,7 +189,7 @@ defineProps({
   },
 })
 
-defineEmits(['action', 'book-progress-input', 'book-progress-change', 'cache', 'cache-cancel'])
+defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', 'cache-cancel'])
 </script>
 
 <style scoped>
@@ -289,6 +292,10 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change', 'cache', '
     box-shadow: 0 -8px 24px rgba(73, 57, 27, 0.08);
   }
 
+  .reader-mobile-bottom.visible.without-page-slider {
+    min-height: calc(52px + env(safe-area-inset-bottom));
+  }
+
   .mobile-progress-slider-row {
     display: grid;
     grid-column: 1 / -1;
@@ -336,7 +343,6 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change', 'cache', '
     border: 0;
   }
 
-  .mobile-chapter-progress strong,
   .mobile-chapter-progress span {
     max-width: 100%;
     overflow: hidden;
@@ -344,14 +350,9 @@ defineEmits(['action', 'book-progress-input', 'book-progress-change', 'cache', '
     white-space: nowrap;
   }
 
-  .mobile-chapter-progress strong {
+  .mobile-chapter-progress span {
     color: #121212;
     font-size: 14px;
-  }
-
-  .mobile-chapter-progress span {
-    color: #756c5a;
-    font-size: 12px;
   }
 }
 </style>

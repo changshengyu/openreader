@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -11,27 +13,11 @@ import { execFile, spawn } from 'node:child_process'
 const execFileAsync = promisify(execFile)
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const backendDir = join(rootDir, 'backend')
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const configuredTarget = String(process.env.TARGET_URL || '').trim().replace(/\/$/, '')
 const backendPort = Number(process.env.OPENREADER_SOURCE_PARSER_PORT || 18088)
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
-}
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      throw new Error(`Playwright is required for the source parser workflow smoke: ${error.message}`)
-    }
-  }
 }
 
 async function fixtureText(name) {
@@ -398,11 +384,7 @@ async function run() {
     const token = registered?.token
     assert(token, 'source parser browser smoke registration did not return a token')
     const definitions = await createSources(app.root, token, fixture.root)
-    const { chromium } = await loadPlaywright()
-    const browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.CHROME_PATH || defaultChromePath,
-    })
+    const browser = await openSmokeBrowser()
     try {
       const completed = []
       for (const definition of definitions) completed.push(await assertWorkflow(browser, app.root, token, definition))

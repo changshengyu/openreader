@@ -75,25 +75,33 @@ test('routes to adjacent chapters at page boundaries', async () => {
 })
 
 test('scrolls vertical pages and schedules progress without changing chapters', async () => {
-  const scrollCalls = []
+  const animationCalls = []
   const fixture = createNavigation({
     contentEl: ref({
       scrollTop: 700,
       scrollHeight: 3000,
       clientHeight: 800,
-      scrollBy: value => scrollCalls.push(value),
+      scrollBy: () => assert.fail('native smooth scrolling must not own the configured duration'),
     }),
     isVerticalRead: ref(true),
     getMode: () => 'scroll',
+    scrollAnimator: {
+      isActive: () => false,
+      scrollBy: (element, delta, duration, onFinish) => {
+        animationCalls.push({ element, delta, duration })
+        onFinish()
+        return true
+      },
+    },
   })
   await fixture.navigation.previousPage()
   await fixture.navigation.nextPage()
 
-  assert.deepEqual(scrollCalls, [
-    { top: -600, behavior: 'smooth' },
-    { top: 600, behavior: 'smooth' },
+  assert.deepEqual(animationCalls.map(({ delta, duration }) => ({ delta, duration })), [
+    { delta: -600, duration: 200 },
+    { delta: 600, duration: 200 },
   ])
-  assert.deepEqual(fixture.scheduled, [260, 260])
+  assert.deepEqual(fixture.scheduled, [60, 60])
   assert.deepEqual(fixture.navigated, [])
 })
 

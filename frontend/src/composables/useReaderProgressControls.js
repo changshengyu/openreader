@@ -2,11 +2,10 @@ import { computed, ref, unref } from 'vue'
 import {
   clampReaderPercent,
   readerBookProgress,
-  readerBookSeekTarget,
 } from '../utils/readerPagination.js'
 
 export function useReaderProgressControls(options) {
-  const mobileBookSliderDraft = ref(null)
+  const mobilePageSliderDraft = ref(null)
 
   const bookProgress = computed(() => readerBookProgress({
     chapterIndex: options.currentIndex.value,
@@ -14,13 +13,16 @@ export function useReaderProgressControls(options) {
     totalChapters: options.chapters.value.length,
   }))
   const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
-  const mobileBookSliderValue = computed(() => (
-    mobileBookSliderDraft.value !== null
-      ? mobileBookSliderDraft.value
-      : Math.round(bookProgress.value * 1000)
-  ))
-  const mobileBookProgressLabel = computed(() => (
-    `${Math.round(Number(mobileBookSliderValue.value || 0) / 10)}%`
+  const mobilePageSliderMax = computed(() => Math.max(1, Number(options.pageCount.value) || 1))
+  const mobilePageSliderValue = computed(() => {
+    const max = mobilePageSliderMax.value
+    const value = mobilePageSliderDraft.value !== null
+      ? mobilePageSliderDraft.value
+      : Number(options.page.value || 0) + 1
+    return Math.max(1, Math.min(max, Math.round(Number(value) || 1)))
+  })
+  const mobilePageProgressLabel = computed(() => (
+    `第 ${mobilePageSliderValue.value}/${mobilePageSliderMax.value} 页`
   ))
   const desktopChapterSliderValue = computed(() => {
     options.progressVersion.value
@@ -68,18 +70,6 @@ export function useReaderProgressControls(options) {
     }
   }
 
-  async function seekBookProgress(percent) {
-    const target = readerBookSeekTarget(percent, options.chapters.value.length)
-    if (target.chapterIndex === options.currentIndex.value) {
-      seekCurrentChapterPercent(target.chapterPercent, { save: true })
-      return
-    }
-    await options.navigate({
-      chapter: target.chapterIndex,
-      percent: target.chapterPercent,
-    })
-  }
-
   function handleDesktopProgressInput(event) {
     seekCurrentChapterPercent(Number(event.target.value || 0) / 1000, { save: false })
   }
@@ -88,17 +78,46 @@ export function useReaderProgressControls(options) {
     seekCurrentChapterPercent(Number(event.target.value || 0) / 1000, { save: true })
   }
 
-  function handleMobileBookProgressInput(event) {
-    mobileBookSliderDraft.value = Number(event.target.value || 0)
+  function normalizedMobilePage(value) {
+    return Math.max(
+      1,
+      Math.min(mobilePageSliderMax.value, Math.round(Number(value) || 1)),
+    )
   }
 
-  async function handleMobileBookProgressChange(event) {
-    const value = Number(event.target.value || 0)
-    mobileBookSliderDraft.value = value
+  function seekRenderedPage(pageNumber) {
+    const target = normalizedMobilePage(pageNumber) - 1
+    if (options.getMode() === 'flip') {
+      options.page.value = target
+      options.progressVersion.value += 1
+      options.saveProgress()
+      return
+    }
+    if (!options.contentEl.value) return
+    const bottom = Math.max(
+      options.contentEl.value.scrollHeight - options.contentEl.value.clientHeight,
+      0,
+    )
+    const pageMax = Math.max(0, mobilePageSliderMax.value - 1)
+    options.contentEl.value.scrollTop = pageMax > 0
+      ? Math.round((target / pageMax) * bottom)
+      : 0
+    options.page.value = target
+    options.progressVersion.value += 1
+    options.applyLocalProgress()
+    options.saveProgress()
+  }
+
+  function handleMobilePageProgressInput(event) {
+    mobilePageSliderDraft.value = normalizedMobilePage(event.target.value)
+  }
+
+  function handleMobilePageProgressChange(event) {
+    mobilePageSliderDraft.value = normalizedMobilePage(event.target.value)
     try {
-      await seekBookProgress(value / 1000)
+      seekRenderedPage(mobilePageSliderDraft.value)
     } finally {
-      mobileBookSliderDraft.value = null
+      mobilePageSliderDraft.value = null
     }
   }
 
@@ -107,13 +126,14 @@ export function useReaderProgressControls(options) {
     bookProgressLabel,
     desktopChapterProgressLabel,
     desktopChapterSliderValue,
-    mobileBookProgressLabel,
-    mobileBookSliderValue,
+    mobilePageProgressLabel,
+    mobilePageSliderMax,
+    mobilePageSliderValue,
     handleDesktopProgressChange,
     handleDesktopProgressInput,
-    handleMobileBookProgressChange,
-    handleMobileBookProgressInput,
-    seekBookProgress,
+    handleMobilePageProgressChange,
+    handleMobilePageProgressInput,
+    seekRenderedPage,
     seekCurrentChapterPercent,
   }
 }

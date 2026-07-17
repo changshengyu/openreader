@@ -1,27 +1,9 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:8080'
 const readerUrl = process.env.SMOKE_READER_URL || ''
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      console.error('Playwright is required for this smoke test.')
-      console.error('Install it in the test environment or run an equivalent real-browser probe.')
-      console.error('Example: npm install --save-dev playwright')
-      console.error(`Original import error: ${error.message}`)
-      process.exit(2)
-    }
-  }
-}
 
 function assert(condition, message) {
   if (!condition) {
@@ -83,11 +65,7 @@ async function smokeViewport(browser, viewport, url) {
 }
 
 async function main() {
-  const { chromium } = await loadPlaywright()
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || defaultChromePath,
-  })
+  const browser = await openSmokeBrowser()
   try {
     const checks = []
     checks.push(['desktop', await smokeViewport(browser, { width: 1440, height: 900 }, targetUrl)])

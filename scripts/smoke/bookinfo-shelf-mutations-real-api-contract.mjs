@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { openSmokeBrowser } from './playwright-runtime.mjs'
+
 import { access, mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -12,25 +14,9 @@ const execFileAsync = promisify(execFile)
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const backendDir = join(rootDir, 'backend')
 const publicDir = join(rootDir, 'frontend', 'dist')
-const defaultChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
-}
-
-async function loadPlaywright() {
-  try {
-    const module = await import('playwright')
-    return module.chromium ? module : module.default
-  } catch (error) {
-    const bundled = '/Users/yuchangsheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js'
-    try {
-      const module = await import(bundled)
-      return module.chromium ? module : module.default
-    } catch {
-      throw new Error(`Playwright is required for the BookInfo real API workflow: ${error.message}`)
-    }
-  }
 }
 
 async function reserveLocalPort() {
@@ -328,11 +314,7 @@ async function runViewport(browser, root, viewport) {
 async function run() {
   const app = await startOpenReader()
   try {
-    const { chromium } = await loadPlaywright()
-    const browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.CHROME_PATH || defaultChromePath,
-    })
+    const browser = await openSmokeBrowser()
     try {
       const completed = []
       for (const viewport of [
