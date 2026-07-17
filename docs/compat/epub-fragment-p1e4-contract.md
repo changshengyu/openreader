@@ -1,6 +1,6 @@
 # P1-E4 EPUB fragment、跨资源与相对资源兼容合同
 
-状态：**已实现；Docker 发布验证待执行。**
+状态：**主资源/fragment 合同已实现；移动端返回手势 Bug 1 待修复。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -27,7 +27,7 @@ parser、归档或 Reader；当前 OpenReader 实现不构成正确性依据。
 | TOC fragment | NAV/NCX 使用 `(path, fragment)` 去重；同一 XHTML 的不同 fragment 保留为独立目录项，并按下一个同资源 TOC 项生成终止边界。 | **aligned** |
 | 章节边界数据 | `models.Chapter`、`TXTChapter` 与 `ArchivedChapter` 均保存起止 fragment；导入、刷新与惰性恢复同步 SQLite 和 `chapters.json`。 | **aligned** |
 | iframe 文档切片 | `epubreader.OpenResource` 仅在 capability 绑定的 XHTML 资源上应用已签名的 DOM 边界；同资源静态资源不切片，源 archive 不写回。 | **aligned（安全适配）** |
-| 链接与相对资源 | capability 根目录保持稳定；Reader 先精确匹配 `(resourcePath, resourceFragment)`，再按 resource 回退。跨 XHTML 和同 XHTML 的已截出锚点都进入完整 Reader 跳章事务。 | **aligned** |
+| 链接与相对资源 | capability 根目录保持稳定；Reader 先精确匹配 `(resourcePath, resourceFragment)`，再按 resource 回退。跨 XHTML 和同 XHTML 的已截出锚点应进入完整 Reader 跳章事务，但 bridge 尚未阻止跨 XHTML iframe 默认导航。 | **must-fix（EPUB Bug 1）**：详见 [`epub-mobile-back-bug1-contract.md`](epub-mobile-back-bug1-contract.md)。 |
 | 同资源锚点 | 当前 slice 内的目标继续原地滚动；不在当前 slice 的目标发送受验证 `navigate` bridge 事件并重载目标章节资源。 | **aligned** |
 
 ## 3. 目标数据、API 与状态合同
@@ -110,4 +110,4 @@ parser、归档或 Reader；当前 OpenReader 实现不构成正确性依据。
 - remote multi-architecture index digest：`sha256:1f17a4a028742515c065d00995df8e2f109a87386f9e5e221f4033851663de34`；
 - architectures：linux/amd64 `sha256:aa8ad7e258bf7e393cac636ccdf1212b0e5fc98eabc4dfaedb3472195557ec72`，linux/arm64 `sha256:b9cb926970bd22bb82511b3a5d620a8ad92a25f3a95d1df3c7cc13e7b9627a59`。
 
-本次合同记录提交不改变镜像内容，故不为纯文档更新重新发布 Docker。
+该发布早于 Bug 1 的发现，不能作为 EPUB 返回手势已对齐的证据。修复后的下一次 EPUB Docker 发布须新增 Bug 1 浏览器回归记录；纯文档提交不发布 Docker。
