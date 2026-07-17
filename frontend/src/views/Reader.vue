@@ -510,6 +510,7 @@ const {
 })
 const {
   createFromSelectedText: createBookmarkFromSelectedText,
+  currentDraft: currentBookmarkDraft,
   openNote: openNoteDialog,
 } = useReaderBookmarkActions({
   book,
@@ -1382,7 +1383,9 @@ const {
   refreshBrowserCachedChapters: computeBrowserCachedChapters,
   saveProgress: saveCurrentProgress,
   navigate: routeLocation => router.push(routeLocation),
-  openBookmarksOverlay: currentBook => overlay.openBookmark(currentBook),
+  openBookmarksOverlay: currentBook => overlay.openBookmark(currentBook, {
+    createDraft: currentBookmarkDraft(),
+  }),
   openContentSearchOverlay: currentBook => overlay.openSearchBookContent(currentBook),
   closeBookInfo: () => overlay.closeBookInfo(),
   openBookInfoOverlay: (...args) => overlay.openBookInfo(...args),
@@ -1828,6 +1831,10 @@ function currentVisibleExcerpt() {
     if (excerpt) return excerpt
   }
   return lines.value.slice(0, 2).join(' ').slice(0, 140)
+    || chapter.value?.title
+    || book.value?.title
+    || book.value?.name
+    || '当前阅读位置'
 }
 
 function readerBookmarkParagraphs() {

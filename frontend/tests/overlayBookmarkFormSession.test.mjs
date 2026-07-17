@@ -28,3 +28,24 @@ test('bookmark form opens with immutable reader context and resolves a close exa
   assert.deepEqual(await completion, { saved: true, bookmarkId: 9 })
   assert.equal(overlay.bookmarkFormVisible, false)
 })
+
+test('bookmark manager carries only the current Reader draft and clears it on close', () => {
+  setActivePinia(createPinia())
+  const overlay = useOverlayStore()
+  const book = { id: 7, title: '测试书' }
+  const draft = { chapterId: 12, chapterIndex: 2, excerpt: '当前页' }
+
+  overlay.openBookmark(book, { createDraft: draft })
+  assert.equal(overlay.bookmarkVisible, true)
+  assert.deepEqual(overlay.bookmarkBook, book)
+  assert.deepEqual(overlay.bookmarkCreateDraft, draft)
+  assert.notEqual(overlay.bookmarkCreateDraft, draft)
+
+  overlay.bookmarkVisible = false
+  overlay.clearBookmark()
+  assert.equal(overlay.bookmarkBook, null)
+  assert.equal(overlay.bookmarkCreateDraft, null)
+
+  overlay.openBookmark(book)
+  assert.equal(overlay.bookmarkCreateDraft, null)
+})

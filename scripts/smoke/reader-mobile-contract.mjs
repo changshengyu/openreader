@@ -647,7 +647,11 @@ async function assertBookmarkFormContext(page, viewport, { fullscreen, excerpt =
   assert(state.readonlyValues.includes('移动阅读契约测试'), `${viewport.width}: bookmark form missing readonly book title`)
   assert(state.readonlyValues.includes('OpenReader'), `${viewport.width}: bookmark form missing readonly author`)
   assert(state.readonlyValues.includes('第一章'), `${viewport.width}: bookmark form missing readonly chapter`)
-  assert(state.readonlyValues.some(value => value.includes(excerpt)), `${viewport.width}: bookmark form missing readonly excerpt`)
+  const expectedExcerpts = (Array.isArray(excerpt) ? excerpt : [excerpt]).filter(Boolean)
+  assert(
+    expectedExcerpts.length > 0 && state.readonlyValues.some(value => expectedExcerpts.some(expected => value.includes(expected))),
+    `${viewport.width}: bookmark form missing readonly excerpt`,
+  )
   if (fullscreen) {
     assert(state.width === viewport.width, `${viewport.width}: bookmark form fullscreen width ${state.width}`)
     assert(state.height === viewport.height, `${viewport.width}: bookmark form fullscreen height ${state.height}`)
@@ -688,8 +692,33 @@ async function createBookmarkFromSelectedText(page, viewport, { fullscreen }) {
   return selectedText
 }
 
+async function createBookmarkFromCurrentPage(page, viewport, { fullscreen }) {
+  const dialog = page.locator('.global-bookmark-dialog')
+  const addButton = dialog.getByRole('button', { name: '添加当前页', exact: true })
+  assert(await addButton.count() === 1, `${viewport.width}: Reader bookmark manager must expose one add-current-page action`)
+  const visibleExcerpts = await page.locator('.reader-body h3, .reader-body p').evaluateAll((paragraphs) => (
+    paragraphs.filter((paragraph) => {
+      const rect = paragraph.getBoundingClientRect()
+      return rect.bottom > 0 && rect.top < innerHeight
+    }).map(paragraph => String(paragraph.textContent || '').trim().slice(0, 12)).filter(Boolean)
+  ))
+  assert(visibleExcerpts.length > 0, `${viewport.width}: current page must expose bookmark context`)
+  await addButton.click()
+  await assertBookmarkFormContext(page, viewport, {
+    fullscreen,
+    excerpt: visibleExcerpts,
+  })
+  const form = page.locator('.global-bookmark-form-dialog')
+  await form.locator('textarea').last().fill('当前页面创建')
+  await form.getByRole('button', { name: '确定', exact: true }).click()
+  await form.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await dialog.isVisible(), `${viewport.width}: saving current-page bookmark must keep the manager open`)
+  await dialog.getByText('当前页面创建', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+}
+
 async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedText }) {
   const dialog = page.locator('.global-bookmark-dialog')
+  await createBookmarkFromCurrentPage(page, viewport, { fullscreen })
   await editBookmarkWithGlobalForm(page, viewport, { fullscreen })
 
   await dialog.locator('.bookmark-file-input').setInputFiles({
@@ -704,7 +733,7 @@ async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedTex
   await dialog.getByText('导入四', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
 
   const rowTexts = await dialog.locator('.el-table__body-wrapper tbody tr').evaluateAll(rows => rows.map(row => row.innerText))
-  const orderedNotes = ['已通过根级表单更新', '选中文字创建', '导入三', '导入四']
+  const orderedNotes = ['已通过根级表单更新', '选中文字创建', '当前页面创建', '导入三', '导入四']
   let previous = -1
   for (const note of orderedNotes) {
     const index = rowTexts.findIndex((text, rowIndex) => rowIndex > previous && text.includes(note))

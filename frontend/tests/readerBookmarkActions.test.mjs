@@ -25,6 +25,17 @@ function createActions(overrides = {}) {
 
 test('routes current, selected-text, and note bookmarks through the shared form without direct writes', async () => {
   const { actions, formCalls } = createActions()
+  const currentDraft = actions.currentDraft()
+  assert.equal(formCalls.length, 0)
+  assert.deepEqual(currentDraft, {
+    chapterId: 12,
+    chapterIndex: 2,
+    offset: 240,
+    percent: 0.4,
+    title: '第三章',
+    excerpt: '当前摘录',
+    note: '',
+  })
   await actions.createCurrent()
   await actions.createFromSelectedText(`  ${'选'.repeat(520)}  `)
   await actions.openNote()
@@ -41,6 +52,11 @@ test('routes current, selected-text, and note bookmarks through the shared form 
   }, { mode: 'create' }])
   assert.equal(formCalls[1][1].excerpt, '定位段落\n后续段落')
   assert.equal(formCalls[2][1].note, '')
+})
+
+test('does not expose a current-page draft without a readable chapter or excerpt', () => {
+  assert.equal(createActions({ chapter: ref(null) }).actions.currentDraft(), null)
+  assert.equal(createActions({ getExcerpt: () => '' }).actions.currentDraft(), null)
 })
 
 test('does not open a bookmark form when selected text cannot map to reader paragraphs', async () => {

@@ -21,6 +21,7 @@ export const useOverlayStore = defineStore('overlay', {
     sourceManageIntent: 'manage',
     bookmarkVisible: false,
     bookmarkBook: null,
+    bookmarkCreateDraft: null,
     bookmarkFormVisible: false,
     bookmarkFormBook: null,
     bookmarkFormDraft: null,
@@ -110,9 +111,17 @@ export const useOverlayStore = defineStore('overlay', {
       this.sourceManageVisible = false
       this.sourceManageIntent = 'manage'
     },
-    openBookmark(book) {
-      this.bookmarkBook = book
+    openBookmark(book, options = {}) {
+      this.bookmarkBook = book || null
+      this.bookmarkCreateDraft = options.createDraft && typeof options.createDraft === 'object'
+        ? { ...options.createDraft }
+        : null
       this.bookmarkVisible = true
+    },
+    clearBookmark() {
+      if (this.bookmarkVisible) return
+      this.bookmarkBook = null
+      this.bookmarkCreateDraft = null
     },
     openBookmarkForm(book, draft = {}, options = {}) {
       if (this.bookmarkFormResolve) {

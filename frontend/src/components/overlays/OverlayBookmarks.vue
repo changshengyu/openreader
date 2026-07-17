@@ -4,12 +4,15 @@
     :width="dialogWidth"
     :fullscreen="isMobile"
     class="global-bookmark-dialog"
-    @closed="selectedRows = []"
+    @closed="handleClosed"
   >
     <template #header>
       <div class="reader-dialog-title">
         <span>{{ bookTitle }} 书签管理</span>
-        <el-button link type="primary" @click="pickImportFile">导入</el-button>
+        <div class="reader-dialog-title-actions">
+          <el-button v-if="canAddCurrentPage" link type="primary" @click="addCurrentPage">添加当前页</el-button>
+          <el-button link type="primary" @click="pickImportFile">导入</el-button>
+        </div>
       </div>
     </template>
 
@@ -94,6 +97,9 @@ const bookId = computed(() => overlay.bookmarkBook?.id)
 const bookTitle = computed(() => (
   overlay.bookmarkBook?.title || overlay.bookmarkBook?.name || '书签'
 ))
+const canAddCurrentPage = computed(() => Boolean(
+  overlay.bookmarkBook?.id && String(overlay.bookmarkCreateDraft?.excerpt || '').trim(),
+))
 
 const {
   items,
@@ -151,6 +157,20 @@ function pickImportFile() {
   fileRef.value?.click()
 }
 
+function addCurrentPage() {
+  if (!canAddCurrentPage.value) return
+  overlay.openBookmarkForm(
+    overlay.bookmarkBook,
+    overlay.bookmarkCreateDraft,
+    { mode: 'create' },
+  )
+}
+
+function handleClosed() {
+  selectedRows.value = []
+  overlay.clearBookmark()
+}
+
 function openEditor(bookmark) {
   overlay.openBookmarkForm(overlay.bookmarkBook, bookmark, { mode: 'edit' })
 }
@@ -200,6 +220,13 @@ function readError(error, fallback) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reader-dialog-title-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
 }
 
 .reader-dialog-table {
