@@ -1,9 +1,9 @@
 # P2 用户管理上游复审合同
 
-状态：2026-07-16 已从固定基准
-`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
-提取；**尚未实施应用代码**。本合同只覆盖管理员的用户管理动作，不以当前
-OpenReader 的界面、路由或测试为正确性依据。
+状态：2026-07-17 已实施账户规则、独立 WebDAV/书仓权限和安全删除切片，并以
+固定基准 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
+回归验证。书源所有权动作仍是独立 P2 依赖；本合同不把当前 OpenReader 的组件、
+路由或旧测试当作正确性依据。
 
 上游权威文件：
 
@@ -25,12 +25,12 @@ OpenReader 的界面、路由或测试为正确性依据。
 |---|---|---|---|
 | 打开管理器 | Index 内单一“用户管理” Dialog；打开清空选择，移动端全屏。 | 根 Overlay Dialog，紧凑端全屏，打开加载并关闭时重置。 | **技术栈等价**；必须保留单一根 Dialog，不重新变成路由或抽屉。 |
 | 受保护用户 | `default` namespace 不可选择、不可改 WebDAV/书仓；其他用户可选。 | `admin` 与当前登录管理员不可删除；`admin` 不可修改/重置。 | **允许的多用户安全适配**：管理员不是可删除的默认 namespace；不能放松为可删/可改。 |
-| 新建用户名 | 管理员创建用户至少 5 位，仅允许 ASCII 字母/数字，且保留 `default` namespace。 | UI 与 `POST /api/admin/users` 仅要求 3 位；服务端不限制字符，也未保留 `default`。 | **must-fix**：新建用户恢复上游输入合同（至少 5 位、字母/数字、拒绝 `default`）；不能扫描、改名或锁定既有用户。 |
-| 新建/重置密码 | 管理员新建用户和重置密码均拒绝少于 **8** 位密码。 | UI、`POST /admin/users` 与 `PUT /admin/users/:id/password` 仅要求 **6** 位。 | **must-fix**：新建和重置必须一致改为 8 位；不扫描/改写已存在的密码散列。 |
-| WebDAV、书仓授权 | `enableWebdav`、`enableLocalStore` 是两个可独立切换的字段；Index 分别据此显示对应入口。 | `canAccessStore` 同时保护 Raw WebDAV、备份、LocalStore、各导入路径；UI 只显示“书仓”。 | **must-fix data/API/UI**：新增独立、加法迁移的 WebDAV/备份访问权限，旧 `canAccessStore` 作为新字段初始值；LocalStore 与 WebDAV/Backup 在后端逐路由独立授权。不得只把两个开关画在 UI 而复用同一后端权限。 |
+| 新建用户名 | 管理员创建用户至少 5 位，仅允许 ASCII 字母/数字，且保留 `default` namespace。 | 共享后端校验覆盖注册与管理员创建；UI 同步提示。旧用户名不重写、不锁定。 | **已实现**：至少 5 位、字母/数字、拒绝 `default`；旧账户仍可登录。 |
+| 新建/重置密码 | 管理员新建用户和重置密码均拒绝少于 **8** 位密码。 | 创建、重置与 UI 均改为 8 位；既有散列未重写。 | **已实现**。 |
+| WebDAV、书仓授权 | `enableWebdav`、`enableLocalStore` 是两个可独立切换的字段；Index 分别据此显示对应入口。 | 新增 nullable `can_access_webdav`；UI 与 API 显示独立 WebDAV/书仓开关。 | **已实现**：旧行 `NULL` 回退 `can_access_store`；LocalStore 与 WebDAV/Backup 在后端逐路由独立授权。 |
 | 用户书源：设为默认、删除用户书源 | 管理员可把被选用户的私有书源复制为新用户默认书源，或删除所选用户的私有文件并让其回退默认。 | `BookSource` 是全局 SQLite 表，无 `user_id`；用户表的 `sourceCount` 也明确为全局数。无对应动作。 | **依赖 P2 书源所有权审查**：不能新增一个“成功但无效果”的按钮。若全局书源模型被判定为合法技术适配，界面必须明确其全局含义并记录这两个单用户动作不适用；若恢复 user/default 书源域，则同一事务实现两个上游动作。 |
-| 批量删除 | 确认后删除用户记录和该用户 namespace 目录。 | 事务删除部分 SQLite 行；未删除 `book_categories`、`source_failures`，也未在提交后清理 regular-user 的 library/WebDAV/upload roots。 | **must-fix data transaction**：删除清单必须覆盖所有 user-owned rows；只有数据库提交成功后才清理该用户的可证明私有派生/存储根。失败不得删任何数据或文件；保护管理员/当前账户。 |
-| 清理不活跃用户 | 上游没有此产品动作。 | 顶部公开“清理不活跃用户”；当前实现只删除 `users` 行，产生孤儿用户数据。 | **must-fix**：从上游管理器 UI 移除该额外入口。兼容 API 如保留，必须复用同一完整删除计划、显示明确的管理员确认语义并有完整回归；不能保留危险的仅删 user row 行为。 |
+| 批量删除 | 确认后删除用户记录和该用户 namespace 目录。 | SQLite 事务覆盖 chapters、book categories、progress、bookmarks、RSS、rules、settings、source failures 与用户；提交后才清理 regular-user 私有 roots。 | **已实现**：保护管理员/当前账户；另一个用户和管理员 legacy 根均有回归覆盖。 |
+| 清理不活跃用户 | 上游没有此产品动作。 | 已从管理器 UI 移除；保留的兼容 API 复用完整删除计划。 | **已实现**：不再存在仅删 `users` 行的路径。 |
 | 列表/操作布局 | 表格：用户名、最后登录、注册、WebDAV、书仓、重置密码/设默认；底栏：批量删除、删除用户书源、选择数。 | 额外显示 role、书籍/全局书源计数、刷新/清理；权限只有书源/书仓，底栏只有批量删除。 | **must-fix after data contract**：恢复上游动作与选择/确认顺序；role、限额和全局计数只能作为不抢占上游操作的多用户信息。 |
 
 ## OpenReader API 与数据合同

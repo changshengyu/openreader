@@ -52,8 +52,8 @@ func TestSearchReportsNoConfiguredSourceInsteadOfEmptySuccess(t *testing.T) {
 
 func TestSearchMultiCursorKeepsOriginalSourceOrdinalsAcrossFailureSuppression(t *testing.T) {
 	router, server := setupTestServer(t)
-	token := registerSourceFailureUser(t, router, "search-cursor-failure-user")
-	userID := sourceFailureUserID(t, server, "search-cursor-failure-user")
+	token := registerSourceFailureUser(t, router, "searchcursorfailureuser")
+	userID := sourceFailureUserID(t, server, "searchcursorfailureuser")
 
 	sources := []models.BookSource{
 		sourceFailureTestSource(t, "游标源一", "https://cursor-one.example"),

@@ -27,7 +27,7 @@ type localStoreItem struct {
 }
 
 func (s *Server) listLocalStore(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	targetDir, relativePath, ok := s.localStorePath(c, c.Query("path"))
@@ -118,7 +118,7 @@ func makeLocalStoreItem(name string, itemPath string, info os.FileInfo, isDir bo
 }
 
 func (s *Server) uploadToLocalStore(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	targetDir, _, ok := s.localStorePath(c, c.PostForm("path"))
@@ -204,7 +204,7 @@ func (s *Server) saveLocalStoreUpload(c *gin.Context, parentPath string, file *m
 }
 
 func (s *Server) downloadFromLocalStore(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	targetPath, relativePath, ok := s.localStorePath(c, c.Query("path"))
@@ -228,7 +228,7 @@ func (s *Server) downloadFromLocalStore(c *gin.Context) {
 }
 
 func (s *Server) createLocalStoreDirectory(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	var req struct {
@@ -259,7 +259,7 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 }
 
 func (s *Server) renameLocalStoreItem(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	var req struct {
@@ -294,7 +294,7 @@ func (s *Server) renameLocalStoreItem(c *gin.Context) {
 }
 
 func (s *Server) deleteFromLocalStore(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	targetPath, relativePath, ok := s.localStorePath(c, c.Query("path"))
@@ -313,7 +313,7 @@ func (s *Server) deleteFromLocalStore(c *gin.Context) {
 }
 
 func (s *Server) importFromLocalStore(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	userID, _ := middleware.UserID(c)
@@ -430,7 +430,7 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 }
 
 func (s *Server) previewLocalStoreImport(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireLocalStoreAccess(c) {
 		return
 	}
 	userID, _ := middleware.UserID(c)

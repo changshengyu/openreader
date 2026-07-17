@@ -80,8 +80,8 @@ func uploadBookInfoCover(t *testing.T, router http.Handler, token string, filena
 
 func TestBookInfoAssetsAreUserScopedAndCannotCrossMutate(t *testing.T) {
 	router, server := setupTestServer(t)
-	aliceToken, alice := registerBookInfoAssetUser(t, router, "asset-alice")
-	bobToken, bob := registerBookInfoAssetUser(t, router, "asset-bob")
+	aliceToken, alice := registerBookInfoAssetUser(t, router, "assetalice")
+	bobToken, bob := registerBookInfoAssetUser(t, router, "assetbob")
 
 	aliceURL := uploadBookInfoCover(t, router, aliceToken, "alice.png")
 	bobURL := uploadBookInfoCover(t, router, bobToken, "bob.png")
@@ -195,7 +195,7 @@ func TestBookInfoAssetsAreUserScopedAndCannotCrossMutate(t *testing.T) {
 
 func TestBookInfoLegacyCoverRemainsReadableAndCannotBeDeletedAsNewAsset(t *testing.T) {
 	router, server := setupTestServer(t)
-	token, user := registerBookInfoAssetUser(t, router, "asset-legacy")
+	token, user := registerBookInfoAssetUser(t, router, "assetlegacy")
 	legacyPath := filepath.Join(server.cfg.DataDir, "uploads", "covers", "legacy-cover.png")
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
 		t.Fatal(err)

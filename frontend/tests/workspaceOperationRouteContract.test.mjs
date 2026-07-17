@@ -52,6 +52,14 @@ test('shows the manager-only user workspace entry only to administrators', () =>
   assert.match(layoutSource, /key:\s*'userManage'/, 'the admin entry remains available to administrators')
 })
 
+test('keeps LocalStore and WebDAV workspace entries independently permission-scoped', () => {
+  assert.match(layoutSource, /const canAccessLocalStore = computed\(/, 'LocalStore visibility must derive from its own permission')
+  assert.match(layoutSource, /const canAccessWebDAV = computed\(/, 'WebDAV visibility must derive from its own permission')
+  assert.match(layoutSource, /typeof explicit === 'boolean' \? explicit : canAccessLocalStore\.value/, 'legacy nullable WebDAV permission must fall back to LocalStore only until explicitly changed')
+  assert.match(layoutSource, /canAccessLocalStore\.value[\s\S]*?key: 'localStore'/, 'LocalStore menu entry must not be shown after its permission is revoked')
+  assert.match(layoutSource, /canAccessWebDAV\.value[\s\S]*?key: 'webdav'/, 'WebDAV/backup section must not be shown after WebDAV permission is revoked')
+})
+
 test('keeps upstream-style file operations in root dialogs instead of side drawers', () => {
   for (const [name, source, state] of [
     ['LocalStore', localStoreOverlaySource, 'localStoreVisible'],
@@ -92,4 +100,7 @@ test('keeps UserManage protected rows and metadata aligned with the upstream man
   assert.match(userOverlaySource, /prop="createdAt" label="注册时间"/, 'manager must display upstream-equivalent registration metadata')
   assert.match(userOverlaySource, /isUserMutable\(row\)/, 'protected rows must gate mutable permission and password controls')
   assert.match(userOverlaySource, /formatUserTime\(/, 'manager must use one deterministic time/empty-state formatter')
+  assert.match(userOverlaySource, /canAccessWebdav/, 'manager must expose the upstream WebDAV permission separately from LocalStore')
+  assert.match(userOverlaySource, /active-text="WebDAV"/, 'the WebDAV control must remain visible in desktop, mobile, and create-user flows')
+  assert.doesNotMatch(userOverlaySource, /清理不活跃用户/, 'the non-upstream destructive cleanup entry must not be exposed in the manager UI')
 })

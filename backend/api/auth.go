@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,39 @@ type authRequest struct {
 
 var errUsernameExists = errors.New("username already exists")
 
+var readerDevUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9]+$`)
+
+// validateNewAccountCredentials reproduces reader-dev's new-account contract.
+// It deliberately applies only while creating or resetting credentials: legacy
+// SQLite rows may contain older usernames/passwords and must remain loginable.
+func validateNewAccountCredentials(rawUsername, password string) (string, string) {
+	username := strings.TrimSpace(rawUsername)
+	if len(username) < 5 {
+		return "", "username must be at least 5 characters"
+	}
+	if len(password) < 8 {
+		return "", "password must be at least 8 characters"
+	}
+	if strings.EqualFold(username, "default") {
+		return "", "username is reserved"
+	}
+	if !readerDevUsernamePattern.MatchString(username) {
+		return "", "username may contain only letters and numbers"
+	}
+	return username, ""
+}
+
+func validateResetPassword(password string) string {
+	if len(password) < 8 {
+		return "password must be at least 8 characters"
+	}
+	return ""
+}
+
+func boolValue(value bool) *bool {
+	return &value
+}
+
 func (s *Server) register(c *gin.Context) {
 	var request authRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -27,9 +61,9 @@ func (s *Server) register(c *gin.Context) {
 		return
 	}
 
-	username := strings.TrimSpace(request.Username)
-	if len(username) < 3 || len(request.Password) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username or password is too short"})
+	username, validationError := validateNewAccountCredentials(request.Username, request.Password)
+	if validationError != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": validationError})
 		return
 	}
 
@@ -61,9 +95,12 @@ func (s *Server) register(c *gin.Context) {
 			role = "admin"
 		}
 		user = models.User{
-			Username:     username,
-			PasswordHash: string(hash),
-			Role:         role,
+			Username:        username,
+			PasswordHash:    string(hash),
+			Role:            role,
+			CanEditSources:  true,
+			CanAccessStore:  true,
+			CanAccessWebDAV: boolValue(true),
 		}
 		return tx.Create(&user).Error
 	})

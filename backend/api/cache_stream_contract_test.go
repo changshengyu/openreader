@@ -82,10 +82,10 @@ func TestCacheBookStreamEmitsProgressAndTerminalShelfItem(t *testing.T) {
 
 func TestCacheBookStreamRejectsAnotherUsersBook(t *testing.T) {
 	router, server := setupTestServer(t)
-	tokenA := registerLifecycleToken(t, router, "stream-owner")
-	registerLifecycleToken(t, router, "stream-other")
-	owner := lifecycleUser(t, server, "stream-owner")
-	other := lifecycleUser(t, server, "stream-other")
+	tokenA := registerLifecycleToken(t, router, "streamowner")
+	registerLifecycleToken(t, router, "streamother")
+	owner := lifecycleUser(t, server, "streamowner")
+	other := lifecycleUser(t, server, "streamother")
 	source := createCacheStreamSource(t, server, "https://cache-stream-owner.test")
 	book := models.Book{UserID: other.ID, SourceID: source.ID, Title: "他人缓存书"}
 	if err := server.db.Create(&book).Error; err != nil {

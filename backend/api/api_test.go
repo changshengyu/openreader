@@ -204,7 +204,7 @@ func TestRegisterAndLogin(t *testing.T) {
 		t.Fatalf("first registered user should have admin access: %d %s", adminW.Code, adminW.Body.String())
 	}
 
-	secondBody := `{"username":"bob","password":"secret456"}`
+	secondBody := `{"username":"bobby","password":"secret456"}`
 	secondReq := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(secondBody))
 	secondReq.Header.Set("Content-Type", "application/json")
 	secondW := httptest.NewRecorder()
@@ -243,7 +243,7 @@ func TestConcurrentRegistrationCreatesExactlyOneAdmin(t *testing.T) {
 	for index := 0; index < registrations; index++ {
 		go func(index int) {
 			defer wait.Done()
-			body := fmt.Sprintf(`{"username":"parallel%d","password":"secret%d"}`, index, index)
+			body := fmt.Sprintf(`{"username":"parallel%d","password":"secret00%d"}`, index, index)
 			req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()

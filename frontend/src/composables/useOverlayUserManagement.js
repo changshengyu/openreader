@@ -3,7 +3,6 @@ import { reactive, ref } from 'vue'
 export function useOverlayUserManagement(options) {
   const users = ref([])
   const usersLoading = ref(false)
-  const cleanupLoading = ref(false)
   const deletingUsers = ref(false)
   const creatingUser = ref(false)
   const createDialogVisible = ref(false)
@@ -13,6 +12,7 @@ export function useOverlayUserManagement(options) {
     password: '',
     canEditSources: true,
     canAccessStore: true,
+    canAccessWebdav: true,
   })
   const scheduleTimeout = options.setTimeout || globalThis.setTimeout
   const cancelTimeout = options.clearTimeout || globalThis.clearTimeout
@@ -58,7 +58,6 @@ export function useOverlayUserManagement(options) {
     users.value = []
     selectedUserIds.value = []
     usersLoading.value = false
-    cleanupLoading.value = false
     deletingUsers.value = false
   }
 
@@ -95,14 +94,15 @@ export function useOverlayUserManagement(options) {
       password: '',
       canEditSources: true,
       canAccessStore: true,
+      canAccessWebdav: true,
     })
     createDialogVisible.value = true
   }
 
   async function create() {
     const username = draft.username.trim()
-    if (username.length < 3 || draft.password.length < 6) {
-      options.onWarning('用户名至少 3 位，密码至少 6 位')
+    if (!/^[A-Za-z0-9]{5,}$/.test(username) || username.toLowerCase() === 'default' || draft.password.length < 8) {
+      options.onWarning('用户名至少 5 位且只能包含字母或数字，密码至少 8 位')
       return
     }
     creatingUser.value = true
@@ -112,6 +112,7 @@ export function useOverlayUserManagement(options) {
         password: draft.password,
         canEditSources: draft.canEditSources,
         canAccessStore: draft.canAccessStore,
+        canAccessWebdav: draft.canAccessWebdav,
       })
       options.onSuccess('新增用户成功')
       createDialogVisible.value = false
@@ -133,7 +134,7 @@ export function useOverlayUserManagement(options) {
           cancelButtonText: '取消',
           inputType: 'password',
           inputValidator(value) {
-            if (!value || value.length < 6) return '密码至少 6 位'
+            if (!value || value.length < 8) return '密码至少 8 位'
             return true
           },
         },
@@ -176,6 +177,7 @@ export function useOverlayUserManagement(options) {
       await options.updateUser(row.id, {
         canEditSources: row.canEditSources,
         canAccessStore: row.canAccessStore,
+        canAccessWebdav: row.canAccessWebdav,
         bookLimit: row.bookLimit,
         sourceLimit: row.sourceLimit,
       })
@@ -186,30 +188,9 @@ export function useOverlayUserManagement(options) {
     }
   }
 
-  async function cleanupInactive() {
-    cleanupLoading.value = true
-    try {
-      await options.confirm(
-        '确定清理不活跃用户吗？',
-        '清理用户',
-        { type: 'warning' },
-      )
-      await options.cleanupInactiveUsers()
-      options.onSuccess('清理完成')
-      await load()
-    } catch (error) {
-      if (error !== 'cancel' && error !== 'close') {
-        options.onError(error, '清理用户失败')
-      }
-    } finally {
-      cleanupLoading.value = false
-    }
-  }
-
   return {
     users,
     usersLoading,
-    cleanupLoading,
     deletingUsers,
     creatingUser,
     createDialogVisible,
@@ -228,6 +209,5 @@ export function useOverlayUserManagement(options) {
     resetPassword,
     removeSelected,
     updatePermission,
-    cleanupInactive,
   }
 }

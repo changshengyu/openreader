@@ -98,7 +98,7 @@ Status: implemented in-progress; no database migration is required.
 | Administrator | Existing `library/localStore/` | Existing `data/webdav/` | The legacy tree stays where it is. Existing files and backups remain readable without a move. |
 | Regular user | `library/localStore/users/<safe-username>/` | `data/webdav/users/<safe-username>/` | New writes, browse/import/download/delete operations and generated backups are private descendants of the same mounts. |
 
-- The mapping is determined from the authenticated persisted user after `canAccessStore` authorization. It introduces no new SQLite column and does not rewrite old rows or paths.
+- The mapping is determined from the authenticated persisted user after the relevant LocalStore or WebDAV authorization. It does not rewrite old paths.
 - Scheduled backup runs once per persisted user and filters all user-owned export rows. Administrator `RunNow()` remains the legacy-root compatibility path.
 - LocalStore/WebDAV uploads are atomically staged in their destination directory and accept at most `OPENREADER_MAX_IMPORT_BYTES` (default 128 MiB), so a rejected replacement does not truncate an existing file. A preview copies at most that same amount into `cache/import-previews/<user-id>/<random-token>.book` plus metadata; direct upload and every confirmation reread use the same bound. The cache location is user-private, token entropy is 192 bits, metadata expires after 24 hours, and success/expired-token access removes both files. It is safe to clear this derived cache; it is never part of the source file or library archive.
 - P1-E3 changes only the workbench's visible file-manager operations and makes LocalStore upload accept multiple already-supported multipart file parts. It does not move a LocalStore/WebDAV root, rename any existing source file, alter a book/library archive, or add a SQLite table/column. Each accepted part is independently staged and atomically renamed in its existing caller-scoped directory; a failure leaves other successfully written selected files and every pre-existing destination intact, matching the upstream multi-upload's per-file side effects.
@@ -393,3 +393,25 @@ Status: implemented in the bookmark API/Reader slice; browser interaction and Do
 - The change introduces no destructive migration and does not access `data/`, `cache/`, or `library/` outside the existing backup archive workflow.
 
 Required evidence: `backend/api/bookmarks_contract_test.go` covers stable export order, independent same-location restore, repeat-restore idempotency, and destination chapter rebinding; full backend tests remain required. A Docker volume/backup smoke is still required before release.
+
+## P2 user-workspace permission and deletion migration
+
+Status: implemented and regression-tested on 2026-07-17. The additive column leaves existing
+rows nullable and does not rewrite mounted-volume data.
+
+- Add only a nullable `users.can_access_webdav` column. `NULL` means an existing
+  row continues to inherit the historical `can_access_store` value. New accounts write
+  an explicit value; an administrator changing WebDAV permission makes that row
+  explicit. No existing `can_access_store` value, user name, password hash, storage
+  path, library archive, cache file, upload or backup is rewritten during migration.
+- LocalStore keeps `can_access_store`; WebDAV, WebDAV-backed backup and WebDAV import
+  use effective `can_access_webdav`. Direct local upload stays independent of those two
+  workspace-entry permissions, matching the upstream entry controls.
+- A user deletion first prepares only rooted private paths, then commits its SQLite
+  deletion transaction. After commit it may prune `data/webdav/users/<safe-username>/`,
+  `library/localStore/users/<safe-username>/`, `library/data/<safe-username>/` and
+  `data/uploads/users/<user-id>/`. It must never derive a deletion target from a raw
+  request value or delete the administrator's legacy roots.
+- An old mounted volume with no new column must auto-migrate without changing its
+  effective permissions. Required evidence is a populated SQLite fixture, a two-user
+  storage fixture, full backend tests and the Docker volume/backup smoke.

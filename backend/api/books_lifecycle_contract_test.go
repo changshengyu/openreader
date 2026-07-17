@@ -66,10 +66,10 @@ func writeLifecycleCache(t *testing.T, root, relativePath, content string) strin
 
 func TestCacheStatsAndClearAreScopedToCurrentUser(t *testing.T) {
 	router, server := setupTestServer(t)
-	tokenA := registerLifecycleToken(t, router, "cache-owner")
-	registerLifecycleToken(t, router, "cache-other")
-	userA := lifecycleUser(t, server, "cache-owner")
-	userB := lifecycleUser(t, server, "cache-other")
+	tokenA := registerLifecycleToken(t, router, "cacheowner")
+	registerLifecycleToken(t, router, "cacheother")
+	userA := lifecycleUser(t, server, "cacheowner")
+	userB := lifecycleUser(t, server, "cacheother")
 
 	source := models.BookSource{Name: "cache lifecycle source", Enabled: true}
 	if err := server.db.Create(&source).Error; err != nil {
@@ -144,10 +144,10 @@ func TestCacheStatsAndClearAreScopedToCurrentUser(t *testing.T) {
 
 func TestBookDeletionCleansOnlyOwnedDerivedFiles(t *testing.T) {
 	router, server := setupTestServer(t)
-	tokenA := registerLifecycleToken(t, router, "delete-owner")
-	registerLifecycleToken(t, router, "delete-other")
-	userA := lifecycleUser(t, server, "delete-owner")
-	userB := lifecycleUser(t, server, "delete-other")
+	tokenA := registerLifecycleToken(t, router, "deleteowner")
+	registerLifecycleToken(t, router, "deleteother")
+	userA := lifecycleUser(t, server, "deleteowner")
+	userB := lifecycleUser(t, server, "deleteother")
 
 	source := models.BookSource{Name: "delete lifecycle source", Enabled: true}
 	if err := server.db.Create(&source).Error; err != nil {
@@ -215,8 +215,8 @@ func TestBookDeletionCleansOnlyOwnedDerivedFiles(t *testing.T) {
 		}
 	}
 
-	ownerLibraryPath := filepath.Join("data", "delete-owner", "direct-import")
-	otherLibraryPath := filepath.Join("data", "delete-other", "direct-import")
+	ownerLibraryPath := filepath.Join("data", "deleteowner", "direct-import")
+	otherLibraryPath := filepath.Join("data", "deleteother", "direct-import")
 	ownerLibraryRoot := filepath.Join(server.cfg.LibraryDir, ownerLibraryPath)
 	otherLibraryRoot := filepath.Join(server.cfg.LibraryDir, otherLibraryPath)
 	writeLifecycleCache(t, ownerLibraryRoot, "source.txt", "owner local source")
@@ -248,10 +248,10 @@ func TestBookDeletionCleansOnlyOwnedDerivedFiles(t *testing.T) {
 
 func TestSingleLocalBookExportReturnsOriginalArchive(t *testing.T) {
 	router, server := setupTestServer(t)
-	token := registerLifecycleToken(t, router, "export-owner")
-	user := lifecycleUser(t, server, "export-owner")
+	token := registerLifecycleToken(t, router, "exportowner")
+	user := lifecycleUser(t, server, "exportowner")
 
-	libraryPath := filepath.Join("data", "export-owner", "original-export")
+	libraryPath := filepath.Join("data", "exportowner", "original-export")
 	originalName := "原始书籍.epub"
 	originalPath := filepath.Join(libraryPath, originalName)
 	original := []byte("original epub bytes")
@@ -284,10 +284,10 @@ func TestSingleLocalBookExportReturnsOriginalArchive(t *testing.T) {
 
 func TestShelfBatchOperationsRejectForeignBookIDs(t *testing.T) {
 	router, server := setupTestServer(t)
-	tokenA := registerLifecycleToken(t, router, "batch-owner")
-	registerLifecycleToken(t, router, "batch-other")
-	userA := lifecycleUser(t, server, "batch-owner")
-	userB := lifecycleUser(t, server, "batch-other")
+	tokenA := registerLifecycleToken(t, router, "batchowner")
+	registerLifecycleToken(t, router, "batchother")
+	userA := lifecycleUser(t, server, "batchowner")
+	userB := lifecycleUser(t, server, "batchother")
 
 	bookA := models.Book{UserID: userA.ID, Title: "owner batch book"}
 	bookB := models.Book{UserID: userB.ID, Title: "other batch book"}

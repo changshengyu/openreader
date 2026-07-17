@@ -37,13 +37,14 @@ function fakeToken(role) {
   return `open.${payload}.reader`
 }
 
-async function installApiMocks(page, role) {
+async function installApiMocks(page, role, profilePermissions = {}) {
   const users = [
     {
       id: 1,
       username: 'root-admin',
       role: 'admin',
       canEditSources: true,
+      canAccessWebdav: true,
       canAccessStore: true,
       bookCount: 3,
       sourceCount: 5,
@@ -55,6 +56,7 @@ async function installApiMocks(page, role) {
       username: 'ordinary-user',
       role: 'user',
       canEditSources: true,
+      canAccessWebdav: true,
       canAccessStore: false,
       bookCount: 1,
       sourceCount: 5,
@@ -71,8 +73,8 @@ async function installApiMocks(page, role) {
     const method = request.method()
     if (path === '/me') {
       return route.fulfill(json(role === 'admin'
-        ? { id: 1, username: 'root-admin', role: 'admin' }
-        : { id: 2, username: 'ordinary-user', role: 'user' }))
+        ? { id: 1, username: 'root-admin', role: 'admin', canAccessStore: true, canAccessWebdav: true }
+        : { id: 2, username: 'ordinary-user', role: 'user', ...profilePermissions }))
     }
     if (path === '/settings/reader' && method === 'GET') {
       return route.fulfill(json({ key: 'reader', value: {} }))
@@ -89,6 +91,7 @@ async function installApiMocks(page, role) {
           username: payload.username,
           role: 'user',
           canEditSources: payload.canEditSources ?? true,
+          canAccessWebdav: payload.canAccessWebdav ?? true,
           canAccessStore: payload.canAccessStore ?? true,
           bookCount: 0,
           sourceCount: 5,
@@ -144,7 +147,7 @@ async function assertAdminViewport(browser, viewport) {
   assert(await rootRow.locator('.el-switch').count() === 0, `${viewport.width}: protected admin must not expose permission switches`)
   assert(await rootRow.getByRole('button', { name: '重置密码', exact: true }).count() === 0, `${viewport.width}: protected admin must not expose password reset`)
   assert(await rootRow.getByText('受保护账号', { exact: true }).count() >= 1, `${viewport.width}: protected admin label missing`)
-  assert(await memberRow.locator('.el-switch').count() === 2, `${viewport.width}: ordinary row must retain capability switches`)
+  assert(await memberRow.locator('.el-switch').count() === 3, `${viewport.width}: ordinary row must retain independent source, WebDAV, and LocalStore switches`)
   assert(await memberRow.getByRole('button', { name: '重置密码', exact: true }).count() === 1, `${viewport.width}: ordinary row must retain password reset`)
   if (viewport.width > 750) {
     assert(await dialog.getByText('最近活跃', { exact: true }).count() === 1, `${viewport.width}: activity column missing`)
@@ -170,20 +173,21 @@ async function assertAdminViewport(browser, viewport) {
   await createDialog.waitFor({ state: 'visible', timeout: 10000 })
   assert(await createDialog.locator('select, .el-select').count() === 0, `${viewport.width}: create-user dialog must not expose a role selector`)
   const inputs = createDialog.locator('input')
-  await inputs.nth(0).fill('browser-member')
+  await inputs.nth(0).fill('browsermember')
   await inputs.nth(1).fill('secret123')
   await createDialog.getByRole('button', { name: '保存', exact: true }).click()
   await createDialog.waitFor({ state: 'hidden', timeout: 10000 })
-  await userRows.filter({ hasText: 'browser-member' }).first().waitFor({ state: 'visible', timeout: 10000 })
-  const createdRow = userRows.filter({ hasText: 'browser-member' }).first()
+  await userRows.filter({ hasText: 'browsermember' }).first().waitFor({ state: 'visible', timeout: 10000 })
+  const createdRow = userRows.filter({ hasText: 'browsermember' }).first()
   assert((await createdRow.innerText()).includes('user'), `${viewport.width}: manager-created account must be an ordinary user`)
+  assert(await createdRow.locator('.el-switch').count() === 3, `${viewport.width}: manager-created user must retain the independent WebDAV switch`)
 
   await closeDialog(page, '.global-user-dialog', 'user-manage')
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
 }
 
-async function assertNonAdminViewport(browser, viewport) {
+async function assertNonAdminViewport(browser, viewport, profilePermissions, expectedStorage) {
   const context = await browser.newContext({ viewport, isMobile: viewport.width <= 750, hasTouch: viewport.width <= 750 })
   await context.addInitScript(token => localStorage.setItem('openreader_token', token), fakeToken('user'))
   const page = await context.newPage()
@@ -196,10 +200,22 @@ async function assertNonAdminViewport(browser, viewport) {
       && !/Failed to load resource: the server responded with a status of 403/.test(message.text())
     ) failures.push(`console.error: ${message.text()}`)
   })
-  await installApiMocks(page, 'user')
+  await installApiMocks(page, 'user', profilePermissions)
   const root = targetUrl.replace(/\/$/, '')
   await page.goto(`${root}/`, { waitUntil: 'networkidle' })
   assert(await page.getByText('管理用户空间', { exact: true }).count() === 0, `${viewport.width}: non-admin sidebar must hide user management entry`)
+  assert(
+    await page.getByText('浏览书仓', { exact: true }).count() === (expectedStorage.localStore ? 1 : 0),
+    `${viewport.width}: LocalStore menu must follow only canAccessStore`,
+  )
+  assert(
+    await page.getByText('文件管理', { exact: true }).count() === (expectedStorage.webdav ? 1 : 0),
+    `${viewport.width}: WebDAV menu must follow only canAccessWebdav`,
+  )
+  assert(
+    await page.getByText('保存备份', { exact: true }).count() === (expectedStorage.webdav ? 1 : 0),
+    `${viewport.width}: backup menu must follow only canAccessWebdav`,
+  )
 
   const dialog = await openAdminManager(page, root)
   await dialog.getByText('暂无用户，或当前账号无管理员权限', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
@@ -216,7 +232,18 @@ async function main() {
     const checks = []
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 800 }]) {
       await assertAdminViewport(browser, viewport)
-      await assertNonAdminViewport(browser, viewport)
+      await assertNonAdminViewport(
+        browser,
+        viewport,
+        { canAccessStore: false, canAccessWebdav: true },
+        { localStore: false, webdav: true },
+      )
+      await assertNonAdminViewport(
+        browser,
+        viewport,
+        { canAccessStore: true, canAccessWebdav: false },
+        { localStore: true, webdav: false },
+      )
       checks.push(`${viewport.width}x${viewport.height}`)
     }
     console.log(`user-management: ok ${checks.join(', ')} adminAndNonAdmin=true`)

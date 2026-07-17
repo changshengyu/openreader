@@ -302,7 +302,7 @@ func TestStoragePreviewTokensAreUserScopedAndExpireSafely(t *testing.T) {
 	preview := previewStorageBook(t, router, adminAuth, "/api/local-store/import-preview", "token-scope.txt")
 	token := preview.Items[0].ImportToken
 
-	memberAuth := registerStorageTestUser(t, router, "token-other-user")
+	memberAuth := registerStorageTestUser(t, router, "tokenotheruser")
 	foreign := httptest.NewRequest(http.MethodPost, "/api/local-store/import", strings.NewReader(`{"items":[{"path":"token-scope.txt","importToken":"`+token+`"}]}`))
 	foreign.Header.Set("Authorization", memberAuth)
 	foreign.Header.Set("Content-Type", "application/json")
@@ -312,7 +312,7 @@ func TestStoragePreviewTokensAreUserScopedAndExpireSafely(t *testing.T) {
 		t.Fatalf("foreign staged token must be rejected without filesystem fallback, got %d: %s", foreignWriter.Code, foreignWriter.Body.String())
 	}
 	var member models.User
-	if err := server.db.Where("username = ?", "token-other-user").First(&member).Error; err != nil {
+	if err := server.db.Where("username = ?", "tokenotheruser").First(&member).Error; err != nil {
 		t.Fatalf("load member: %v", err)
 	}
 	var memberBooks int64

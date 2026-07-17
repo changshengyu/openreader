@@ -106,16 +106,16 @@ their own `OPENREADER_MAX_IMPORT_BYTES` policy.
 
 ## P2 UserManage API contract
 
-Status: extracted on 2026-07-12 from fixed reader-dev `UserManage.vue` and `AddUser.vue`. OpenReader retains JWT/SQLite IDs and manager capability limits, but follows upstream's ordinary-user creation and protected management-account behavior.
+Status: implemented for the account/permission/deletion slice on 2026-07-17 from fixed reader-dev `UserManage.vue`, `AddUser.vue`, and `UserController.kt`. Book-source ownership actions remain a separate P2 dependency because OpenReader's source table is global.
 
 | Method / path | Request | Success / side effects | Auth and errors |
 |---|---|---|---|
 | `GET /api/admin/users` | None. | Returns manager-visible rows with stable current fields: `id`, `username`, `role`, limits/capabilities/counts, `lastActiveAt`, and `createdAt`. | JWT administrator only. A non-admin gets `403` `{"error":{"code":"FORBIDDEN","message":"admin access required"}}`; no user rows leak. |
-| `POST /api/admin/users` | `{username,password,canEditSources?,canAccessStore?,bookLimit?,sourceLimit?}`. `role` may be absent or `user`; `admin` is rejected. | `201` creates exactly one ordinary user and broadcasts one `users_update` after commit. Existing administrator rows are never changed/migrated. | Administrator only. `400` invalid/short username/password or role assignment; `409` duplicate username. |
-| `PUT /api/admin/users/:id` | Current ordinary-user capability/limit fields only. | Updates one ordinary user, then broadcasts one post-commit update. | Administrator only. `403` when `:id` is an administrator, `404` missing id, `400` malformed body. |
-| `PUT /api/admin/users/:id/password` | `{password}` with at least six characters. | Changes one ordinary user's password and broadcasts once. | Administrator only. `403` for administrator target, `404` missing id, `400` invalid password/body. |
-| `POST /api/admin/users/batch-delete` | `{ids:number[]}`. | Deletes only selected ordinary users and their owned database rows in one transaction; emits one update after commit. | Administrator only. `400` empty/protected-only input; the current user and every administrator are excluded. |
-| `POST /api/admin/cleanup-inactive` | None. | Removes inactive ordinary users only. | Administrator only; administrators are never deleted. |
+| `POST /api/admin/users` | `{username,password,canEditSources?,canAccessStore?,canAccessWebdav?,bookLimit?,sourceLimit?}`. `role` may be absent or `user`; `admin` is rejected. | `201` creates exactly one ordinary user and broadcasts one `users_update` after commit. New LocalStore/WebDAV permissions default to `true` unless explicitly set; results expose effective `canAccessStore` and `canAccessWebdav`. Existing administrator rows are never changed/migrated. | Administrator only. Username must be at least 5 ASCII letters/digits and not `default`; password must be at least 8 characters. Invalid input/role assignment `400`; duplicate `409`. |
+| `PUT /api/admin/users/:id` | Any explicit subset of ordinary-user capability/limit fields, including independent `canAccessStore` and `canAccessWebdav`. | Updates only supplied fields, returns effective permissions, then broadcasts one post-commit update. Updating either workspace permission never changes the other. | Administrator only. `403` when `:id` is an administrator, `404` missing id, `400` malformed body. |
+| `PUT /api/admin/users/:id/password` | `{password}` with at least eight characters. | Changes one ordinary user's password and broadcasts once. | Administrator only. `403` for administrator target, `404` missing id, `400` invalid password/body. |
+| `POST /api/admin/users/batch-delete` | `{ids:number[]}`. | Deletes only selected ordinary users and every user-owned SQLite row in one transaction. Only after commit it removes the validated private WebDAV, LocalStore, imported-library, and upload descendants; response includes safe numeric `cleanupFailures` without a host path. Emits one update after commit. | Administrator only. `400` empty/protected-only input; the current user and every administrator are excluded. A post-commit cleanup failure never rolls back the completed row deletion. |
+| `POST /api/admin/cleanup-inactive` | None. | Compatibility-only background action: finds inactive ordinary users and calls the same complete deletion plan; it is not exposed in the upstream-aligned UI. | Administrator only; administrators are never deleted. |
 
 The upstream has user-specific source-default/delete actions. OpenReader's source table is intentionally global, so no equivalent endpoint is added; source editing remains governed by `canEditSources` and existing source routes. All handled errors retain the global `{error}` shape.
 
@@ -409,13 +409,19 @@ Implementation tests must cover:
 | `MOVE` | `/webdav/*path` | Rename/move. |
 | `DELETE` | `/webdav/*path` | Delete. |
 
-WebDAV paths must be normalized, rooted, and protected from traversal. Every raw WebDAV method requires the standard `Authorization: Bearer <JWT>` header: missing/invalid credentials return `401` before filesystem access; an authenticated user whose `canAccessStore` is false receives `403` before path parsing or file mutation. The browser uses header-based authenticated requests and must never append a JWT to a download URL.
+WebDAV paths must be normalized, rooted, and protected from traversal. Every raw WebDAV method requires the standard `Authorization: Bearer <JWT>` header: missing/invalid credentials return `401` before filesystem access; an authenticated user whose effective `canAccessWebdav` permission is false receives `403` before path parsing or file mutation. The browser uses header-based authenticated requests and must never append a JWT to a download URL.
 
 ## Workspace storage access contract
 
-`/api/local-store*`, `/api/webdav/import*`, and `/api/backup/*` require the same authenticated `canAccessStore` capability. A missing/invalid token returns `401`; a disabled capability returns `403`; handlers must perform that check before validating a supplied path, parsing a multipart body, reading an archive, or creating a backup.
+`/api/local-store*` requires authenticated `canAccessStore`; raw `/webdav/*`, `/api/webdav/import*`, and `/api/backup/*` require authenticated effective `canAccessWebdav`. A missing/invalid token returns `401`; the relevant disabled capability returns `403`; handlers must perform that check before validating a supplied path, parsing a multipart body, reading an archive, or creating a backup. Direct `/api/imports/books*` remains an authenticated bookshelf action and is not made dependent on either workspace-entry permission.
 
 Storage resolves without destructive migration: administrators continue to use the existing LocalStore/WebDAV roots so mounted legacy files remain readable; regular users resolve below `users/<safe-username>/` within the same mounts. Generated backup list/download/restore follows that same scope, and scheduled backups are generated per user. Direct LocalStore/WebDAV imports may carry a user-scoped `importToken` returned by preview; on confirmation it authoritatively selects the immutable staged bytes rather than rereading the mutable storage path.
+
+`POST /api/auth/register` uses the same new-account input rule as manager-created
+users. This does not invalidate existing data: already-persisted accounts with a short
+password or legacy username remain able to use `POST /api/auth/login`; validation runs
+only when creating a new account. The protected `admin` first-account behavior remains
+an allowed OpenReader runtime adaptation.
 
 ## Bookmark contract
 

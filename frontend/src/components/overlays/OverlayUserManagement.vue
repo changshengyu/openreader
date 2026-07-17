@@ -13,12 +13,11 @@
       <header class="file-overlay-head">
         <div>
           <strong>用户空间</strong>
-          <span>管理员可调整书源、书仓权限和用户限制</span>
+          <span>管理员可调整书源、WebDAV、书仓权限和用户限制</span>
         </div>
         <div class="file-actions">
           <el-button size="small" type="primary" :icon="Edit" @click="openCreateUserDialog">新增</el-button>
           <el-button size="small" :icon="Refresh" :loading="usersLoading" @click="loadUsers">刷新</el-button>
-          <el-button size="small" :icon="Delete" :loading="cleanupLoading" @click="cleanupInactive">清理不活跃用户</el-button>
         </div>
       </header>
 
@@ -48,6 +47,7 @@
           <template #default="{ row }">
             <div v-if="isUserMutable(row)" class="permission-row">
               <el-switch v-model="row.canEditSources" size="small" active-text="书源" @change="updateUserPermission(row)" />
+              <el-switch v-model="row.canAccessWebdav" size="small" active-text="WebDAV" @change="updateUserPermission(row)" />
               <el-switch v-model="row.canAccessStore" size="small" active-text="书仓" @change="updateUserPermission(row)" />
             </div>
             <span v-else class="protected-user-label">受保护账号</span>
@@ -77,6 +77,7 @@
           </header>
           <div v-if="isUserMutable(user)" class="permission-row">
             <el-switch v-model="user.canEditSources" size="small" active-text="书源" @change="updateUserPermission(user)" />
+            <el-switch v-model="user.canAccessWebdav" size="small" active-text="WebDAV" @change="updateUserPermission(user)" />
             <el-switch v-model="user.canAccessStore" size="small" active-text="书仓" @change="updateUserPermission(user)" />
             <el-button size="small" text @click="resetPassword(user)">重置密码</el-button>
           </div>
@@ -116,6 +117,7 @@
       <el-form-item label="权限">
         <div class="permission-row">
           <el-switch v-model="userDraft.canEditSources" active-text="书源" />
+          <el-switch v-model="userDraft.canAccessWebdav" active-text="WebDAV" />
           <el-switch v-model="userDraft.canAccessStore" active-text="书仓" />
         </div>
       </el-form-item>
@@ -130,7 +132,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Refresh } from '@element-plus/icons-vue'
+import { Edit, Refresh } from '@element-plus/icons-vue'
 import * as adminApi from '../../api/admin'
 import { useOverlayUserManagement } from '../../composables/useOverlayUserManagement'
 import { useOverlayStore } from '../../stores/overlay'
@@ -149,7 +151,6 @@ const userStore = useUserStore()
 const {
   users,
   usersLoading,
-  cleanupLoading,
   deletingUsers,
   creatingUser,
   createDialogVisible: userCreateDialog,
@@ -168,7 +169,6 @@ const {
   resetPassword,
   removeSelected: deleteSelectedUsers,
   updatePermission: updateUserPermission,
-  cleanupInactive,
 } = useOverlayUserManagement({
   userStore,
   getCurrentUserId: () => userStore.profile?.id || null,

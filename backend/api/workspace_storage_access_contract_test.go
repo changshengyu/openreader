@@ -36,15 +36,15 @@ func registerStorageTestUser(t *testing.T, router *gin.Engine, username string) 
 	return "Bearer " + response.Token
 }
 
-func TestWorkspaceStorageRequiresStorePermission(t *testing.T) {
+func TestWorkspaceStoragePermissionsSeparateLocalStoreFromWebDAVAndBackup(t *testing.T) {
 	router, server := setupTestServer(t)
-	disabledAuth := registerStorageTestUser(t, router, "store-disabled")
+	disabledAuth := registerStorageTestUser(t, router, "storedisabled")
 
-	if err := server.db.Model(&models.User{}).Where("username = ?", "store-disabled").Update("can_access_store", false).Error; err != nil {
+	if err := server.db.Model(&models.User{}).Where("username = ?", "storedisabled").Update("can_access_store", false).Error; err != nil {
 		t.Fatalf("disable store access: %v", err)
 	}
 
-	tests := []struct {
+	legacyFallbackTests := []struct {
 		name   string
 		method string
 		path   string
@@ -57,21 +57,9 @@ func TestWorkspaceStorageRequiresStorePermission(t *testing.T) {
 		{name: "local delete", method: http.MethodDelete, path: "/api/local-store?path=book.txt"},
 		{name: "local preview", method: http.MethodPost, path: "/api/local-store/import-preview", body: `{"paths":["book.txt"]}`},
 		{name: "local import", method: http.MethodPost, path: "/api/local-store/import", body: `{"paths":["book.txt"]}`},
-		{name: "webdav list", method: http.MethodGet, path: "/webdav/"},
-		{name: "webdav upload", method: http.MethodPut, path: "/webdav/book.txt", body: "chapter"},
-		{name: "webdav create directory", method: "MKCOL", path: "/webdav/books"},
-		{name: "webdav move", method: "MOVE", path: "/webdav/book.txt"},
-		{name: "webdav delete", method: http.MethodDelete, path: "/webdav/book.txt"},
-		{name: "webdav preview", method: http.MethodPost, path: "/api/webdav/import-preview", body: `{"paths":["book.txt"]}`},
-		{name: "webdav import", method: http.MethodPost, path: "/api/webdav/import", body: `{"paths":["book.txt"]}`},
-		{name: "backup trigger", method: http.MethodPost, path: "/api/backup/trigger"},
-		{name: "backup list", method: http.MethodGet, path: "/api/backup/list"},
-		{name: "backup download", method: http.MethodGet, path: "/api/backup/download/backup_fixture.zip"},
-		{name: "backup webdav restore", method: http.MethodPost, path: "/api/backup/restore-webdav", body: `{"path":"backup_fixture.zip"}`},
-		{name: "backup upload restore", method: http.MethodPost, path: "/api/backup/restore-legado"},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range legacyFallbackTests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
 			req.Header.Set("Authorization", disabledAuth)
@@ -87,6 +75,73 @@ func TestWorkspaceStorageRequiresStorePermission(t *testing.T) {
 				t.Fatalf("%s: expected 403 before any storage operation, got %d: %s", tt.name, w.Code, w.Body.String())
 			}
 		})
+	}
+
+	if err := server.db.Model(&models.User{}).Where("username = ?", "storedisabled").Update("can_access_webdav", true).Error; err != nil {
+		t.Fatalf("grant explicit WebDAV access: %v", err)
+	}
+	for _, tt := range []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{name: "local list", method: http.MethodGet, path: "/api/local-store"},
+		{name: "local create directory", method: http.MethodPost, path: "/api/local-store/directory", body: `{"path":"","name":"books"}`},
+	} {
+		t.Run("LocalStore remains disabled: "+tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", disabledAuth)
+			if tt.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			writer := httptest.NewRecorder()
+			router.ServeHTTP(writer, req)
+			if writer.Code != http.StatusForbidden {
+				t.Fatalf("%s: expected 403, got %d: %s", tt.name, writer.Code, writer.Body.String())
+			}
+		})
+	}
+	for _, tt := range []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "WebDAV list", method: http.MethodGet, path: "/webdav/"},
+		{name: "backup list", method: http.MethodGet, path: "/api/backup/list"},
+	} {
+		t.Run("explicit WebDAV grant: "+tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req.Header.Set("Authorization", disabledAuth)
+			writer := httptest.NewRecorder()
+			router.ServeHTTP(writer, req)
+			if writer.Code == http.StatusForbidden {
+				t.Fatalf("%s: explicit WebDAV grant must be independent: %s", tt.name, writer.Body.String())
+			}
+		})
+	}
+
+	if err := server.db.Model(&models.User{}).Where("username = ?", "storedisabled").Updates(map[string]any{
+		"can_access_store":  true,
+		"can_access_webdav": false,
+	}).Error; err != nil {
+		t.Fatalf("separate WebDAV and local-store permissions: %v", err)
+	}
+	localRequest := httptest.NewRequest(http.MethodGet, "/api/local-store", nil)
+	localRequest.Header.Set("Authorization", disabledAuth)
+	localWriter := httptest.NewRecorder()
+	router.ServeHTTP(localWriter, localRequest)
+	if localWriter.Code != http.StatusOK {
+		t.Fatalf("local-store must remain enabled: %d %s", localWriter.Code, localWriter.Body.String())
+	}
+	for _, path := range []string{"/webdav/", "/api/backup/list"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", disabledAuth)
+		writer := httptest.NewRecorder()
+		router.ServeHTTP(writer, req)
+		if writer.Code != http.StatusForbidden {
+			t.Fatalf("%s: explicit WebDAV denial must not inherit LocalStore grant, got %d: %s", path, writer.Code, writer.Body.String())
+		}
 	}
 }
 
@@ -113,18 +168,18 @@ func TestRawWebDAVRequiresAuthenticationBeforeFilesystemAccess(t *testing.T) {
 func TestWorkspaceStorageUsesPrivateRootsForRegularUsersAndKeepsAdminLegacyRoot(t *testing.T) {
 	router, server := setupTestServer(t)
 	adminAuth := authHeader(t, router)
-	memberAuth := registerStorageTestUser(t, router, "private-member")
+	memberAuth := registerStorageTestUser(t, router, "privatemember")
 	var admin, member models.User
 	if err := server.db.Where("username = ?", "testuser").First(&admin).Error; err != nil {
 		t.Fatalf("load administrator: %v", err)
 	}
-	if err := server.db.Where("username = ?", "private-member").First(&member).Error; err != nil {
+	if err := server.db.Where("username = ?", "privatemember").First(&member).Error; err != nil {
 		t.Fatalf("load private member: %v", err)
 	}
 	if err := server.db.Create(&models.UserSetting{UserID: admin.ID, Key: "backup-scope", Value: `{"owner":"administrator"}`}).Error; err != nil {
 		t.Fatalf("create administrator setting: %v", err)
 	}
-	if err := server.db.Create(&models.UserSetting{UserID: member.ID, Key: "backup-scope", Value: `{"owner":"private-member"}`}).Error; err != nil {
+	if err := server.db.Create(&models.UserSetting{UserID: member.ID, Key: "backup-scope", Value: `{"owner":"privatemember"}`}).Error; err != nil {
 		t.Fatalf("create member setting: %v", err)
 	}
 
@@ -147,7 +202,7 @@ func TestWorkspaceStorageUsesPrivateRootsForRegularUsersAndKeepsAdminLegacyRoot(
 	if privateDirectoryWriter.Code != http.StatusCreated {
 		t.Fatalf("member local-store directory: expected 201, got %d: %s", privateDirectoryWriter.Code, privateDirectoryWriter.Body.String())
 	}
-	memberLocalRoot := filepath.Join(server.cfg.LocalStoreDir, "users", "private-member")
+	memberLocalRoot := filepath.Join(server.cfg.LocalStoreDir, "users", "privatemember")
 	if _, err := os.Stat(filepath.Join(memberLocalRoot, "private-books")); err != nil {
 		t.Fatalf("member LocalStore must use a private root: %v", err)
 	}
@@ -162,7 +217,7 @@ func TestWorkspaceStorageUsesPrivateRootsForRegularUsersAndKeepsAdminLegacyRoot(
 	if privateWriteWriter.Code != http.StatusCreated {
 		t.Fatalf("member WebDAV write: expected 201, got %d: %s", privateWriteWriter.Code, privateWriteWriter.Body.String())
 	}
-	memberWebDAVRoot := filepath.Join(server.cfg.DataDir, "webdav", "users", "private-member")
+	memberWebDAVRoot := filepath.Join(server.cfg.DataDir, "webdav", "users", "privatemember")
 	if _, err := os.Stat(filepath.Join(memberWebDAVRoot, "private.txt")); err != nil {
 		t.Fatalf("member WebDAV must use a private root: %v", err)
 	}
@@ -216,7 +271,7 @@ func TestWorkspaceStorageUsesPrivateRootsForRegularUsersAndKeepsAdminLegacyRoot(
 		reader.Close()
 		break
 	}
-	if len(settings) != 1 || settings[0].UserID != member.ID || settings[0].Value != `{"owner":"private-member"}` {
+	if len(settings) != 1 || settings[0].UserID != member.ID || settings[0].Value != `{"owner":"privatemember"}` {
 		t.Fatalf("member backup must contain only member settings, got %+v", settings)
 	}
 }

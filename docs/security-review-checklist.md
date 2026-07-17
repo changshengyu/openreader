@@ -222,3 +222,21 @@ Evidence for the checked EPUB items:
 - [x] The host-network OCI fallback reads registry credentials only through Docker's configured credential helper or the existing Docker config, retains the credential only in memory, and never logs an authorization header, password, or token.
 - [x] OCI archive extraction rejects every path except the fixed OCI layout paths, verifies every SHA-256 descriptor before upload, and removes only its own `mkdtemp` workspace (and its opt-in temporary archive).
 - [x] Uploads are limited to the explicit image/repository/tag arguments produced by the local release command; it never derives an arbitrary registry target from an archive.
+
+## P2 user-management implementation gate
+
+- [x] New-account validation is server-side and shared by registration and manager
+  creation; existing account credentials are never revalidated or logged.
+- [x] LocalStore and WebDAV/backup permissions are independently enforced before any
+  request path/body/file access, while nullable legacy WebDAV permission falls back to
+  the existing LocalStore value.
+- [x] Batch deletion scopes every SQL row and private filesystem descendant to the
+  validated target user; administrator legacy roots and another user's data are covered
+  by regression tests.
+- [x] Post-commit cleanup failures are client-safe and cannot cause a retry to delete
+  another user or a legacy root; no password, JWT, path or credential is logged.
+
+Evidence: `backend/api/user_management_p2_contract_test.go`,
+`backend/api/workspace_storage_access_contract_test.go`,
+`backend/db/db_test.go`, `frontend/tests/overlayUserManagement.test.mjs`, and
+`frontend/tests/workspaceOperationRouteContract.test.mjs`.

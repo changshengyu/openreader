@@ -53,7 +53,7 @@ func TestAdminUserContractProtectsAdministratorRowsAndCreatesOnlyOrdinaryUsers(t
 		t.Fatalf("promote administrator: %v", err)
 	}
 
-	memberAuth := registerStorageTestUser(t, router, "admin-contract-member")
+	memberAuth := registerStorageTestUser(t, router, "admincontractmember")
 	for _, request := range []struct {
 		name   string
 		method string
@@ -81,7 +81,7 @@ func TestAdminUserContractProtectsAdministratorRowsAndCreatesOnlyOrdinaryUsers(t
 	assertAdminContractError(t, roleEscalation, http.StatusBadRequest, "BAD_REQUEST")
 
 	created := adminContractRequest(router, http.MethodPost, "/api/admin/users", `{
-		"username":"ordinary-managed",
+		"username":"ordinarymanaged",
 		"password":"secret123",
 		"canEditSources":false,
 		"canAccessStore":true

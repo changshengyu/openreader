@@ -33,8 +33,7 @@ function createController(overrides = {}) {
       return { data: { deleted: ids.length } }
     },
     updateUser: async (...args) => calls.push(['update', ...args]),
-    cleanupInactiveUsers: async () => calls.push(['cleanup']),
-    prompt: async () => ({ value: 'secret1' }),
+    prompt: async () => ({ value: 'secret12' }),
     confirm: async (...args) => calls.push(['confirm', ...args]),
     onSuccess: message => calls.push(['success', message]),
     onWarning: message => calls.push(['warning', message]),
@@ -98,22 +97,23 @@ test('protects selection and validates before creating a user', async () => {
 
   fixture.calls.length = 0
   fixture.controller.openCreateDialog()
-  fixture.controller.draft.username = 'ab'
-  fixture.controller.draft.password = '123'
+  fixture.controller.draft.username = 'user-'
+  fixture.controller.draft.password = '1234567'
   await fixture.controller.create()
   assert.deepEqual(fixture.calls, [
-    ['warning', '用户名至少 3 位，密码至少 6 位'],
+    ['warning', '用户名至少 5 位且只能包含字母或数字，密码至少 8 位'],
   ])
 
   fixture.calls.length = 0
   fixture.controller.draft.username = '  reader2  '
-  fixture.controller.draft.password = 'secret1'
+  fixture.controller.draft.password = 'secret12'
   await fixture.controller.create()
   assert.deepEqual(fixture.calls[0], ['create', {
     username: 'reader2',
-    password: 'secret1',
+    password: 'secret12',
     canEditSources: true,
     canAccessStore: true,
+    canAccessWebdav: true,
   }])
   assert.equal(fixture.controller.createDialogVisible.value, false)
   assert.equal(fixture.controller.creatingUser.value, false)
@@ -123,7 +123,7 @@ test('resets passwords while treating prompt cancellation as a no-op', async () 
   const fixture = createController()
   await fixture.controller.resetPassword({ id: 3, username: 'reader' })
   assert.deepEqual(fixture.calls, [
-    ['reset-password', 3, { password: 'secret1' }],
+    ['reset-password', 3, { password: 'secret12' }],
     ['success', '重置密码成功'],
   ])
 
@@ -136,7 +136,7 @@ test('resets passwords while treating prompt cancellation as a no-op', async () 
   assert.deepEqual(cancelled.calls, [])
 })
 
-test('deletes selected users and cleans inactive users before reloading', async () => {
+test('deletes selected users before reloading without exposing the non-upstream cleanup action', async () => {
   const fixture = createController()
   fixture.controller.selectedUserIds.value = [3]
   await fixture.controller.removeSelected()
@@ -148,15 +148,8 @@ test('deletes selected users and cleans inactive users before reloading', async 
   ])
   assert.deepEqual(fixture.controller.selectedUserIds.value, [])
 
-  fixture.calls.length = 0
-  await fixture.controller.cleanupInactive()
-  assert.deepEqual(fixture.calls.slice(0, 4), [
-    ['confirm', '确定清理不活跃用户吗？', '清理用户', { type: 'warning' }],
-    ['cleanup'],
-    ['success', '清理完成'],
-    ['list'],
-  ])
-  assert.equal(fixture.controller.cleanupLoading.value, false)
+  assert.equal('cleanupInactive' in fixture.controller, false)
+  assert.equal('cleanupLoading' in fixture.controller, false)
 })
 
 test('reloads users after a permission update fails', async () => {
@@ -170,6 +163,7 @@ test('reloads users after a permission update fails', async () => {
     id: 3,
     canEditSources: false,
     canAccessStore: true,
+    canAccessWebdav: false,
     bookLimit: 10,
     sourceLimit: 20,
   })

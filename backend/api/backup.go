@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Server) triggerBackup(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	user, ok := storeUser(c)
@@ -39,7 +39,7 @@ func (s *Server) triggerBackup(c *gin.Context) {
 }
 
 func (s *Server) triggerPortableBackup(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	user, ok := storeUser(c)
@@ -74,7 +74,7 @@ func (s *Server) triggerPortableBackup(c *gin.Context) {
 }
 
 func (s *Server) listBackups(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	webdavDir, ok := s.backupDir(c)
@@ -108,7 +108,7 @@ func (s *Server) listBackups(c *gin.Context) {
 }
 
 func (s *Server) downloadBackup(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	name := filepath.Base(c.Param("name"))

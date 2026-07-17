@@ -168,7 +168,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	webdav.Use(middleware.AuthRequired(cfg.JWTSecret))
 	webdav.Use(middleware.TrackActivity(database))
 	webdav.Use(func(c *gin.Context) {
-		if !server.requireStoreAccess(c) {
+		if !server.requireWebDAVAccess(c) {
 			return
 		}
 		c.Next()

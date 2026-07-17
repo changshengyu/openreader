@@ -1,9 +1,11 @@
 package db
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"openreader/backend/config"
 	"openreader/backend/models"
@@ -196,5 +198,49 @@ func TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters(t *testing.T) {
 		migratedChapter.ResourcePath != "" || migratedChapter.ResourceFragment != "" ||
 		migratedChapter.ResourceEndFragment != "" || migratedChapter.Variable != "" {
 		t.Fatalf("legacy chapter changed during migration: %+v", migratedChapter)
+	}
+}
+
+func TestAutoMigrateAddsNullableWebDAVPermissionWithoutRewritingLegacyStorePermission(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{DatabasePath: filepath.Join(root, "data", "openreader.db")}
+	database, err := Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	if database.Migrator().HasColumn("users", "can_access_webdav") {
+		if err := database.Exec("ALTER TABLE users DROP COLUMN can_access_webdav").Error; err != nil {
+			t.Fatalf("prepare legacy users schema: %v", err)
+		}
+	}
+
+	createdAt := time.Now().UTC()
+	if err := database.Exec(`INSERT INTO users (username, password_hash, role, book_limit, source_limit, can_edit_sources, can_access_store, last_active_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"legacy-user", "legacy-hash", "user", 0, 0, true, false, createdAt, createdAt, createdAt,
+	).Error; err != nil {
+		t.Fatalf("create legacy user schema row: %v", err)
+	}
+	if err := AutoMigrate(database); err != nil {
+		t.Fatalf("migrate legacy users schema: %v", err)
+	}
+	if !database.Migrator().HasColumn("users", "can_access_webdav") {
+		t.Fatal("WebDAV permission column was not added")
+	}
+	var webdavPermission sql.NullBool
+	if err := database.Raw("SELECT can_access_webdav FROM users WHERE username = ?", "legacy-user").Scan(&webdavPermission).Error; err != nil {
+		t.Fatalf("read migrated WebDAV permission: %v", err)
+	}
+	if webdavPermission.Valid {
+		t.Fatalf("legacy user must preserve nullable WebDAV fallback, got %+v", webdavPermission)
+	}
+	var migrated models.User
+	if err := database.Where("username = ?", "legacy-user").First(&migrated).Error; err != nil {
+		t.Fatalf("load migrated user: %v", err)
+	}
+	if migrated.CanAccessStore {
+		t.Fatalf("migration rewrote legacy local-store permission: %+v", migrated)
 	}
 }

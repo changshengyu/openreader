@@ -235,7 +235,7 @@ func webdavDestinationPath(value string) (string, bool) {
 const backupMultipartEnvelopeBytes int64 = 1 << 20
 
 func (s *Server) importLegadoBackup(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	limits := s.portableLimits()
@@ -286,7 +286,7 @@ type restoreWebDAVBackupRequest struct {
 }
 
 func (s *Server) restoreWebDAVBackup(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	userID, _ := middleware.UserID(c)
@@ -341,7 +341,7 @@ func writeBackupRestoreError(c *gin.Context, err error) {
 }
 
 func (s *Server) importFromWebDAV(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	userID, _ := middleware.UserID(c)
@@ -460,7 +460,7 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 }
 
 func (s *Server) previewWebDAVImport(c *gin.Context) {
-	if !s.requireStoreAccess(c) {
+	if !s.requireWebDAVAccess(c) {
 		return
 	}
 	userID, _ := middleware.UserID(c)

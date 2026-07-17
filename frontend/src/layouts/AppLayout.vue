@@ -246,6 +246,12 @@ const {
   navigate: route => router.push(route),
 })
 
+const canAccessLocalStore = computed(() => userStore.profile?.canAccessStore !== false)
+const canAccessWebDAV = computed(() => {
+  const explicit = userStore.profile?.canAccessWebdav
+  return typeof explicit === 'boolean' ? explicit : canAccessLocalStore.value
+})
+
 const navSections = computed(() => [
   {
     key: 'backend',
@@ -274,7 +280,9 @@ const navSections = computed(() => [
       { key: 'bookManage', label: '书籍管理', action: () => overlay.openBookManage() },
       { key: 'bookGroup', label: '分组管理', action: () => overlay.openBookGroup('manage') },
       { key: 'importBook', label: '导入书籍', action: () => overlay.openImportBook() },
-      { key: 'localStore', label: '浏览书仓', action: () => overlay.openLocalStore() },
+      ...(canAccessLocalStore.value
+        ? [{ key: 'localStore', label: '浏览书仓', action: () => overlay.openLocalStore() }]
+        : []),
       { key: 'refreshShelf', label: '刷新书架', action: refreshShelfData },
     ],
   },
@@ -290,14 +298,16 @@ const navSections = computed(() => [
         : []),
     ],
   },
-  {
-    key: 'webdav',
-    title: 'WebDAV',
-    items: [
-      { key: 'webdav', label: '文件管理', action: () => overlay.openWebDAV() },
-      { key: 'backup', label: '保存备份', action: () => overlay.openBackup() },
-    ],
-  },
+  ...(canAccessWebDAV.value
+    ? [{
+      key: 'webdav',
+      title: 'WebDAV',
+      items: [
+        { key: 'webdav', label: '文件管理', action: () => overlay.openWebDAV() },
+        { key: 'backup', label: '保存备份', action: () => overlay.openBackup() },
+      ],
+    }]
+    : []),
   {
     key: 'cache',
     title: cacheSectionTitle.value,
@@ -625,13 +635,13 @@ function openRouteWorkspaceOperationOverlay() {
   if (route.name === 'reader') return
   switch (route.query.overlay) {
     case 'local-store':
-      overlay.openLocalStore()
+      if (canAccessLocalStore.value) overlay.openLocalStore()
       break
     case 'webdav':
-      overlay.openWebDAV()
+      if (canAccessWebDAV.value) overlay.openWebDAV()
       break
     case 'backup':
-      overlay.openBackup()
+      if (canAccessWebDAV.value) overlay.openBackup()
       break
     case 'replace-rules':
       overlay.openReplaceRules()

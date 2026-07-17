@@ -15,8 +15,8 @@ import (
 
 func TestRemoteReaderSessionIsEphemeralUserBoundAndLoadsContent(t *testing.T) {
 	router, server := setupTestServer(t)
-	ownerToken := registerLifecycleToken(t, router, "remote-reader-owner")
-	otherToken := registerLifecycleToken(t, router, "remote-reader-other")
+	ownerToken := registerLifecycleToken(t, router, "remotereaderowner")
+	otherToken := registerLifecycleToken(t, router, "remotereaderother")
 
 	const upstream = "https://remote-reader-contract.test"
 	restoreHTTPClient := engine.SetHTTPClient(&http.Client{

@@ -86,10 +86,17 @@ func (s *Server) currentUserName(c *gin.Context, userID uint) (string, bool) {
 	return user.Username, true
 }
 
-// requireStoreAccess is the common authorization boundary for all workspace
-// storage operations. Local-store, raw WebDAV and backup endpoints all touch
-// mounted files, so a UI-only permission check would be insufficient.
-func (s *Server) requireStoreAccess(c *gin.Context) bool {
+func effectiveWebDAVAccess(user models.User) bool {
+	if user.CanAccessWebDAV == nil {
+		return user.CanAccessStore
+	}
+	return *user.CanAccessWebDAV
+}
+
+// requireStorageAccess loads the one user identity used to derive private
+// workspace roots. The two public wrappers deliberately choose independent
+// capability fields; a cosmetic UI switch must never be the only boundary.
+func (s *Server) requireStorageAccess(c *gin.Context, allowed func(models.User) bool, deniedMessage string) bool {
 	userID, ok := middleware.UserID(c)
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, errResp("UNAUTHORIZED", "login required"))
@@ -97,7 +104,7 @@ func (s *Server) requireStoreAccess(c *gin.Context) bool {
 	}
 
 	var user models.User
-	if err := s.db.Select("id", "username", "role", "can_access_store").First(&user, userID).Error; err != nil {
+	if err := s.db.Select("id", "username", "role", "can_access_store", "can_access_webdav").First(&user, userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, errResp("UNAUTHORIZED", "user not found"))
 			return false
@@ -105,12 +112,22 @@ func (s *Server) requireStoreAccess(c *gin.Context) bool {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "failed to load user"))
 		return false
 	}
-	if !user.CanAccessStore {
-		c.AbortWithStatusJSON(http.StatusForbidden, errResp("FORBIDDEN", "store access denied"))
+	if !allowed(user) {
+		c.AbortWithStatusJSON(http.StatusForbidden, errResp("FORBIDDEN", deniedMessage))
 		return false
 	}
 	c.Set(storeUserContextKey, user)
 	return true
+}
+
+func (s *Server) requireLocalStoreAccess(c *gin.Context) bool {
+	return s.requireStorageAccess(c, func(user models.User) bool {
+		return user.CanAccessStore
+	}, "local store access denied")
+}
+
+func (s *Server) requireWebDAVAccess(c *gin.Context) bool {
+	return s.requireStorageAccess(c, effectiveWebDAVAccess, "WebDAV access denied")
 }
 
 func storeUser(c *gin.Context) (models.User, bool) {

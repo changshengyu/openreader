@@ -1,7 +1,12 @@
 package api
 
 import (
+	"errors"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -9,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 )
@@ -39,17 +45,18 @@ func (s *Server) listUsers(c *gin.Context) {
 	}
 
 	type userSummary struct {
-		ID             uint      `json:"id"`
-		Username       string    `json:"username"`
-		Role           string    `json:"role"`
-		BookLimit      int       `json:"bookLimit"`
-		SourceLimit    int       `json:"sourceLimit"`
-		CanEditSources bool      `json:"canEditSources"`
-		CanAccessStore bool      `json:"canAccessStore"`
-		BookCount      int64     `json:"bookCount"`
-		SourceCount    int64     `json:"sourceCount"`
-		LastActiveAt   time.Time `json:"lastActiveAt"`
-		CreatedAt      time.Time `json:"createdAt"`
+		ID              uint      `json:"id"`
+		Username        string    `json:"username"`
+		Role            string    `json:"role"`
+		BookLimit       int       `json:"bookLimit"`
+		SourceLimit     int       `json:"sourceLimit"`
+		CanEditSources  bool      `json:"canEditSources"`
+		CanAccessStore  bool      `json:"canAccessStore"`
+		CanAccessWebDAV bool      `json:"canAccessWebdav"`
+		BookCount       int64     `json:"bookCount"`
+		SourceCount     int64     `json:"sourceCount"`
+		LastActiveAt    time.Time `json:"lastActiveAt"`
+		CreatedAt       time.Time `json:"createdAt"`
 	}
 
 	var sourceCount int64
@@ -60,30 +67,32 @@ func (s *Server) listUsers(c *gin.Context) {
 		var bookCount int64
 		_ = s.db.Model(&models.Book{}).Where("user_id = ?", u.ID).Count(&bookCount).Error
 		results = append(results, userSummary{
-			ID:             u.ID,
-			Username:       u.Username,
-			Role:           u.Role,
-			BookLimit:      u.BookLimit,
-			SourceLimit:    u.SourceLimit,
-			CanEditSources: u.CanEditSources,
-			CanAccessStore: u.CanAccessStore,
-			BookCount:      bookCount,
-			SourceCount:    sourceCount,
-			LastActiveAt:   u.LastActiveAt,
-			CreatedAt:      u.CreatedAt,
+			ID:              u.ID,
+			Username:        u.Username,
+			Role:            u.Role,
+			BookLimit:       u.BookLimit,
+			SourceLimit:     u.SourceLimit,
+			CanEditSources:  u.CanEditSources,
+			CanAccessStore:  u.CanAccessStore,
+			CanAccessWebDAV: effectiveWebDAVAccess(u),
+			BookCount:       bookCount,
+			SourceCount:     sourceCount,
+			LastActiveAt:    u.LastActiveAt,
+			CreatedAt:       u.CreatedAt,
 		})
 	}
 	c.JSON(http.StatusOK, results)
 }
 
 type createAdminUserRequest struct {
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	Role           string `json:"role"`
-	BookLimit      int    `json:"bookLimit"`
-	SourceLimit    int    `json:"sourceLimit"`
-	CanEditSources *bool  `json:"canEditSources"`
-	CanAccessStore *bool  `json:"canAccessStore"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Role            string `json:"role"`
+	BookLimit       int    `json:"bookLimit"`
+	SourceLimit     int    `json:"sourceLimit"`
+	CanEditSources  *bool  `json:"canEditSources"`
+	CanAccessStore  *bool  `json:"canAccessStore"`
+	CanAccessWebDAV *bool  `json:"canAccessWebdav"`
 }
 
 func (s *Server) createUser(c *gin.Context) {
@@ -97,9 +106,9 @@ func (s *Server) createUser(c *gin.Context) {
 		return
 	}
 
-	username := strings.TrimSpace(req.Username)
-	if len(username) < 3 || len(req.Password) < 6 {
-		badRequest(c, "username or password is too short")
+	username, validationError := validateNewAccountCredentials(req.Username, req.Password)
+	if validationError != "" {
+		badRequest(c, validationError)
 		return
 	}
 
@@ -116,14 +125,15 @@ func (s *Server) createUser(c *gin.Context) {
 	}
 
 	user := models.User{
-		Username:       username,
-		PasswordHash:   string(hash),
-		Role:           "user",
-		BookLimit:      req.BookLimit,
-		SourceLimit:    req.SourceLimit,
-		CanEditSources: true,
-		CanAccessStore: true,
-		LastActiveAt:   time.Now(),
+		Username:        username,
+		PasswordHash:    string(hash),
+		Role:            "user",
+		BookLimit:       req.BookLimit,
+		SourceLimit:     req.SourceLimit,
+		CanEditSources:  true,
+		CanAccessStore:  true,
+		CanAccessWebDAV: boolValue(true),
+		LastActiveAt:    time.Now(),
 	}
 	if req.CanEditSources != nil {
 		user.CanEditSources = *req.CanEditSources
@@ -131,12 +141,14 @@ func (s *Server) createUser(c *gin.Context) {
 	if req.CanAccessStore != nil {
 		user.CanAccessStore = *req.CanAccessStore
 	}
-
-	if err := s.db.Create(&user).Error; err != nil {
-		c.JSON(http.StatusConflict, errResp("CONFLICT", "username already exists"))
-		return
+	if req.CanAccessWebDAV != nil {
+		user.CanAccessWebDAV = boolValue(*req.CanAccessWebDAV)
 	}
-	if req.CanEditSources != nil || req.CanAccessStore != nil {
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
 		updates := map[string]any{}
 		if req.CanEditSources != nil {
 			updates["can_edit_sources"] = *req.CanEditSources
@@ -144,24 +156,27 @@ func (s *Server) createUser(c *gin.Context) {
 		if req.CanAccessStore != nil {
 			updates["can_access_store"] = *req.CanAccessStore
 		}
-		if err := s.db.Model(&user).Updates(updates).Error; err != nil {
-			internalError(c, "failed to update user permissions")
-			return
+		if req.CanAccessWebDAV != nil {
+			updates["can_access_webdav"] = *req.CanAccessWebDAV
 		}
-		if err := s.db.First(&user, user.ID).Error; err != nil {
-			internalError(c, "failed to reload user")
-			return
+		if len(updates) == 0 {
+			return nil
 		}
+		return tx.Model(&user).Updates(updates).Error
+	}); err != nil {
+		c.JSON(http.StatusConflict, errResp("CONFLICT", "username already exists"))
+		return
 	}
 	s.broadcastUsersUpdate("create", []uint{user.ID})
 	c.JSON(http.StatusCreated, user)
 }
 
 type updateUserRequest struct {
-	BookLimit      *int  `json:"bookLimit"`
-	SourceLimit    *int  `json:"sourceLimit"`
-	CanEditSources *bool `json:"canEditSources"`
-	CanAccessStore *bool `json:"canAccessStore"`
+	BookLimit       *int  `json:"bookLimit"`
+	SourceLimit     *int  `json:"sourceLimit"`
+	CanEditSources  *bool `json:"canEditSources"`
+	CanAccessStore  *bool `json:"canAccessStore"`
+	CanAccessWebDAV *bool `json:"canAccessWebdav"`
 }
 
 func (s *Server) updateUser(c *gin.Context) {
@@ -202,6 +217,9 @@ func (s *Server) updateUser(c *gin.Context) {
 	if req.CanAccessStore != nil {
 		user.CanAccessStore = *req.CanAccessStore
 	}
+	if req.CanAccessWebDAV != nil {
+		user.CanAccessWebDAV = boolValue(*req.CanAccessWebDAV)
+	}
 
 	if err := s.db.Save(&user).Error; err != nil {
 		internalError(c, "failed to update user")
@@ -230,8 +248,8 @@ func (s *Server) resetUserPassword(c *gin.Context) {
 		badRequest(c, "invalid payload")
 		return
 	}
-	if len(req.Password) < 6 {
-		badRequest(c, "password is too short")
+	if validationError := validateResetPassword(req.Password); validationError != "" {
+		badRequest(c, validationError)
 		return
 	}
 
@@ -260,6 +278,142 @@ func (s *Server) resetUserPassword(c *gin.Context) {
 
 type deleteUsersRequest struct {
 	IDs []uint `json:"ids"`
+}
+
+var errNoDeletableUsers = errors.New("no deletable users selected")
+
+type userWorkspaceCleanupPlan struct {
+	user  models.User
+	paths []string
+}
+
+var removeUserWorkspace = os.RemoveAll
+
+// privateUserWorkspacePath can only return a descendant below an internal
+// configured root. It is intentionally built from persisted user identity,
+// never from an HTTP path or a client-provided username.
+func privateUserWorkspacePath(root string, parts ...string) (string, error) {
+	base, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	target, err := filepath.Abs(filepath.Join(append([]string{base}, parts...)...))
+	if err != nil {
+		return "", err
+	}
+	if target == base || !strings.HasPrefix(target, base+string(os.PathSeparator)) {
+		return "", os.ErrPermission
+	}
+	return target, nil
+}
+
+func (s *Server) userWorkspaceCleanupPlans(users []models.User) ([]userWorkspaceCleanupPlan, error) {
+	plans := make([]userWorkspaceCleanupPlan, 0, len(users))
+	for _, user := range users {
+		username := engine.SafeFilename(user.Username)
+		paths := make([]string, 0, 4)
+		for _, rootAndParts := range []struct {
+			root  string
+			parts []string
+		}{
+			{root: filepath.Join(s.cfg.DataDir, "webdav", "users"), parts: []string{username}},
+			{root: filepath.Join(s.cfg.LocalStoreDir, "users"), parts: []string{username}},
+			{root: filepath.Join(s.cfg.LibraryDir, "data"), parts: []string{username}},
+			{root: filepath.Join(s.cfg.DataDir, "uploads", "users"), parts: []string{strconv.FormatUint(uint64(user.ID), 10)}},
+		} {
+			path, err := privateUserWorkspacePath(rootAndParts.root, rootAndParts.parts...)
+			if err != nil {
+				return nil, err
+			}
+			paths = append(paths, path)
+		}
+		plans = append(plans, userWorkspaceCleanupPlan{user: user, paths: paths})
+	}
+	return plans, nil
+}
+
+// deleteUserData atomically removes every SQLite row owned by the requested
+// ordinary users. Files are intentionally a post-commit cleanup: rollback can
+// protect database data, but it cannot safely undo a removed mounted file.
+func (s *Server) deleteUserData(ids []uint, protectedUserID uint) ([]models.User, []userWorkspaceCleanupPlan, error) {
+	var deletedUsers []models.User
+	var plans []userWorkspaceCleanupPlan
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		query := tx.Where("id IN ? AND role <> ?", ids, "admin")
+		if protectedUserID != 0 {
+			query = query.Where("id <> ?", protectedUserID)
+		}
+		if err := query.Find(&deletedUsers).Error; err != nil {
+			return err
+		}
+		if len(deletedUsers) == 0 {
+			return errNoDeletableUsers
+		}
+		var err error
+		plans, err = s.userWorkspaceCleanupPlans(deletedUsers)
+		if err != nil {
+			return err
+		}
+		deletedIDs := make([]uint, 0, len(deletedUsers))
+		for _, user := range deletedUsers {
+			deletedIDs = append(deletedIDs, user.ID)
+		}
+
+		var bookIDs []uint
+		if err := tx.Model(&models.Book{}).Where("user_id IN ?", deletedIDs).Pluck("id", &bookIDs).Error; err != nil {
+			return err
+		}
+		if len(bookIDs) > 0 {
+			if err := tx.Where("book_id IN ?", bookIDs).Delete(&models.Chapter{}).Error; err != nil {
+				return err
+			}
+		}
+		for _, deletion := range []struct {
+			model any
+			where string
+			args  []any
+		}{
+			{model: &models.BookCategory{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.Bookmark{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.ReadingProgress{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.Book{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.Category{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.RSSArticle{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.RSSSource{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.ReplaceRule{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.UserSetting{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.SourceFailure{}, where: "user_id IN ?", args: []any{deletedIDs}},
+		} {
+			if err := tx.Where(deletion.where, deletion.args...).Delete(deletion.model).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("id IN ?", deletedIDs).Delete(&models.User{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return deletedUsers, plans, nil
+}
+
+func cleanupUserWorkspaces(plans []userWorkspaceCleanupPlan) int {
+	failed := 0
+	for _, plan := range plans {
+		for _, path := range plan.paths {
+			if err := removeUserWorkspace(path); err != nil {
+				// Do not place an internal path or a filesystem error (which often
+				// includes that path) in the log or API response. The durable database
+				// deletion is already complete and this cleanup is safe to retry only
+				// through a future, explicitly scoped maintenance operation.
+				log.Printf("openreader: post-commit private workspace cleanup failed for deleted user id %d", plan.user.ID)
+				failed++
+			}
+		}
+	}
+	return failed
 }
 
 func (s *Server) deleteUsers(c *gin.Context) {
@@ -291,64 +445,22 @@ func (s *Server) deleteUsers(c *gin.Context) {
 		badRequest(c, "no deletable users selected")
 		return
 	}
-	var allowedIDs []uint
-	if err := s.db.Model(&models.User{}).
-		Where("id IN ? AND id <> ? AND role <> ?", ids, currentUserID, "admin").
-		Pluck("id", &allowedIDs).Error; err != nil {
-		internalError(c, "failed to check users")
+	deletedUsers, plans, err := s.deleteUserData(ids, currentUserID)
+	if errors.Is(err, errNoDeletableUsers) {
+		badRequest(c, err.Error())
 		return
 	}
-	if len(allowedIDs) == 0 {
-		badRequest(c, "no deletable users selected")
-		return
-	}
-	ids = allowedIDs
-
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var bookIDs []uint
-		if err := tx.Model(&models.Book{}).Where("user_id IN ?", ids).Pluck("id", &bookIDs).Error; err != nil {
-			return err
-		}
-		if len(bookIDs) > 0 {
-			if err := tx.Where("book_id IN ?", bookIDs).Delete(&models.Chapter{}).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.Bookmark{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.ReadingProgress{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.Book{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.Category{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.RSSArticle{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.RSSSource{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.ReplaceRule{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id IN ?", ids).Delete(&models.UserSetting{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("id IN ? AND id <> ?", ids, currentUserID).Delete(&models.User{}).Error; err != nil {
-			return err
-		}
-		return nil
-	})
 	if err != nil {
 		internalError(c, "failed to delete users")
 		return
 	}
-	s.broadcastUsersUpdate("delete", ids)
-	c.JSON(http.StatusOK, gin.H{"deleted": len(ids)})
+	cleanupFailures := cleanupUserWorkspaces(plans)
+	deletedIDs := make([]uint, 0, len(deletedUsers))
+	for _, user := range deletedUsers {
+		deletedIDs = append(deletedIDs, user.ID)
+	}
+	s.broadcastUsersUpdate("delete", deletedIDs)
+	c.JSON(http.StatusOK, gin.H{"deleted": len(deletedUsers), "cleanupFailures": cleanupFailures})
 }
 
 func (s *Server) cleanupInactiveUsers(c *gin.Context) {
@@ -357,15 +469,27 @@ func (s *Server) cleanupInactiveUsers(c *gin.Context) {
 	}
 
 	cutoff := time.Now().Add(-90 * 24 * time.Hour)
-	result := s.db.Where("role != ? AND last_active_at < ?", "admin", cutoff).Delete(&models.User{})
-	if result.Error != nil {
+	var ids []uint
+	if err := s.db.Model(&models.User{}).Where("role <> ? AND last_active_at < ?", "admin", cutoff).Pluck("id", &ids).Error; err != nil {
 		internalError(c, "cleanup failed")
 		return
 	}
-	if result.RowsAffected > 0 {
-		s.broadcastUsersUpdate("cleanup", nil)
+	if len(ids) == 0 {
+		c.JSON(http.StatusOK, gin.H{"deleted": 0})
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"deleted": result.RowsAffected})
+	deletedUsers, plans, err := s.deleteUserData(ids, 0)
+	if err != nil {
+		internalError(c, "cleanup failed")
+		return
+	}
+	cleanupFailures := cleanupUserWorkspaces(plans)
+	deletedIDs := make([]uint, 0, len(deletedUsers))
+	for _, user := range deletedUsers {
+		deletedIDs = append(deletedIDs, user.ID)
+	}
+	s.broadcastUsersUpdate("cleanup", deletedIDs)
+	c.JSON(http.StatusOK, gin.H{"deleted": len(deletedUsers), "cleanupFailures": cleanupFailures})
 }
 
 func (s *Server) broadcastUsersUpdate(kind string, userIDs []uint) {

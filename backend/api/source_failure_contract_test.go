@@ -19,8 +19,8 @@ import (
 
 func TestInvalidSourceCacheIsCallerScopedSuppressesRetryAndExpires(t *testing.T) {
 	router, server := setupTestServer(t)
-	tokenA := registerSourceFailureUser(t, router, "failure-user-a")
-	tokenB := registerSourceFailureUser(t, router, "failure-user-b")
+	tokenA := registerSourceFailureUser(t, router, "failureusera")
+	tokenB := registerSourceFailureUser(t, router, "failureuserb")
 
 	source := sourceFailureTestSource(t, "失败隔离源", "https://failure-scope.example")
 	if err := server.db.Create(&source).Error; err != nil {
@@ -87,7 +87,7 @@ func TestInvalidSourceCacheIsCallerScopedSuppressesRetryAndExpires(t *testing.T)
 
 func TestInvalidSourceCacheIgnoresCanceledRequestsAndStaleSourceURL(t *testing.T) {
 	router, server := setupTestServer(t)
-	token := registerSourceFailureUser(t, router, "failure-cancel-user")
+	token := registerSourceFailureUser(t, router, "failurecanceluser")
 	source := sourceFailureTestSource(t, "取消源", "https://cancel-failure.example")
 	if err := server.db.Create(&source).Error; err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestInvalidSourceCacheIgnoresCanceledRequestsAndStaleSourceURL(t *testing.T
 		t.Fatalf("canceled request must not create a failure cache row, got %d", count)
 	}
 
-	userID := sourceFailureUserID(t, server, "failure-cancel-user")
+	userID := sourceFailureUserID(t, server, "failurecanceluser")
 	stale := models.SourceFailure{
 		UserID:    userID,
 		SourceID:  source.ID,
@@ -138,7 +138,7 @@ func TestInvalidSourceCacheIgnoresCanceledRequestsAndStaleSourceURL(t *testing.T
 
 func TestInvalidSourceCacheIncludesExplicitHealthFailuresOnly(t *testing.T) {
 	router, server := setupTestServer(t)
-	token := registerSourceFailureUser(t, router, "failure-health-user")
+	token := registerSourceFailureUser(t, router, "failurehealthuser")
 	source := models.BookSource{Name: "无搜索地址", BaseURL: "https://health-failure.example", Enabled: true}
 	if err := server.db.Create(&source).Error; err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func TestInvalidSourceCacheIncludesExplicitHealthFailuresOnly(t *testing.T) {
 
 func TestInvalidSourceCacheDoesNotSuppressUnsupportedParserRules(t *testing.T) {
 	router, server := setupTestServer(t)
-	token := registerSourceFailureUser(t, router, "failure-rule-user")
+	token := registerSourceFailureUser(t, router, "failureruleuser")
 	source := models.BookSource{Name: "脚本规则源", BaseURL: "https://rule-failure.example", Enabled: true, Charset: "utf-8"}
 	if err := source.SetRules(models.BookSourceRule{
 		SearchURL:    "https://rule-failure.example/search?q={keyword}",
@@ -191,7 +191,7 @@ func TestInvalidSourceCacheDoesNotSuppressUnsupportedParserRules(t *testing.T) {
 
 func TestSourceDebugDoesNotCacheLocalParserRuleErrors(t *testing.T) {
 	router, server := setupTestServer(t)
-	token := registerSourceFailureUser(t, router, "failure-debug-rule-user")
+	token := registerSourceFailureUser(t, router, "failuredebugruleuser")
 
 	for index, rule := range []string{
 		"@CSS:.name@text##[",

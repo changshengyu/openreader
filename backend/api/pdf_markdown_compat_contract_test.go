@@ -152,7 +152,7 @@ func TestLegacyLocalBookStageCannotCrossUsers(t *testing.T) {
 		t.Fatalf("owner preview did not return a valid stage token: %+v", staged)
 	}
 
-	otherAuth := registerLegacyFormatTestUser(t, router, "legacy-other", "secret5678")
+	otherAuth := registerLegacyFormatTestUser(t, router, "legacyother", "secret5678")
 	response := directLocalBookMultipartRequest(t, router, otherAuth, "/api/imports/books", "", nil, map[string]string{
 		"importToken": staged.ImportToken,
 	})

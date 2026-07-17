@@ -8,17 +8,21 @@ import (
 )
 
 type User struct {
-	ID             uint      `json:"id" gorm:"primaryKey"`
-	Username       string    `json:"username" gorm:"size:80;not null;uniqueIndex"`
-	PasswordHash   string    `json:"-" gorm:"size:120;not null"`
-	Role           string    `json:"role" gorm:"size:20;default:user"`
-	BookLimit      int       `json:"bookLimit" gorm:"default:0"`
-	SourceLimit    int       `json:"sourceLimit" gorm:"default:0"`
-	CanEditSources bool      `json:"canEditSources" gorm:"default:true"`
-	CanAccessStore bool      `json:"canAccessStore" gorm:"default:true"`
-	LastActiveAt   time.Time `json:"lastActiveAt"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             uint   `json:"id" gorm:"primaryKey"`
+	Username       string `json:"username" gorm:"size:80;not null;uniqueIndex"`
+	PasswordHash   string `json:"-" gorm:"size:120;not null"`
+	Role           string `json:"role" gorm:"size:20;default:user"`
+	BookLimit      int    `json:"bookLimit" gorm:"default:0"`
+	SourceLimit    int    `json:"sourceLimit" gorm:"default:0"`
+	CanEditSources bool   `json:"canEditSources" gorm:"default:true"`
+	CanAccessStore bool   `json:"canAccessStore" gorm:"default:true"`
+	// CanAccessWebDAV is nullable so a volume created before the separate
+	// WebDAV permission existed retains the historical CanAccessStore behavior
+	// until an administrator explicitly chooses a distinct value.
+	CanAccessWebDAV *bool     `json:"canAccessWebdav,omitempty" gorm:"column:can_access_webdav"`
+	LastActiveAt    time.Time `json:"lastActiveAt"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 type UserSetting struct {
