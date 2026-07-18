@@ -97,3 +97,5 @@ OpenReader 当前映射：
 - TTS 浏览器合同：三个标准视口全部通过，覆盖残缺 speech API、显式 voice、数值 steppers、贴底几何、参数持久化、4.1 秒延迟跨章、错误提示、工具层例外和 flip 关闭定位。
 - Reader 回归：mobile、text modes、continuous 全部通过；真实 Go 服务上的 EPUB 与 CBZ 导入/阅读三视口合同通过。
 - 共享分栏定位改为使用 rendered column geometry；这是上游 `showParagraph()` 的 Vue 等价实现，同时修复 TTS、书签和正文搜索跳到分栏段落时 `offsetLeft` 不可靠的问题。
+- 源码 commit `5260efd083dea8002bed491eed7c2cc039d6cf0f` 已在本机构建 `linux/amd64` 与 `linux/arm64`，发布为 `ghcr.io/changshengyu/openreader:5260efd` 和 `latest`。两 tag 的 OCI index digest 均为 `sha256:5c8c7d9ab186ec80b26ed709123c1c88fe37261f18cf937988c4ffbfdc9a4df4`；amd64 manifest 为 `sha256:dd30334f4e301d283980d0f9cb1877e984218f47602dec1987755a54ebd755bf`，arm64 manifest 为 `sha256:30376bc19ca4941bc0a2cf56ce0430363ad69bee7d6132c5e13f23f46163a9f6`。
+- 当前镜像的历史 volume/portable backup 脚本因 Codex 自动授权额度拒绝 OrbStack socket 而未能重复执行。此项不记为“当次通过”；兼容判断继承 `370d0f7` 已通过的旧 TXT、EPUB、UMD、CBZ、相对 cache、owner isolation 和 portable restore 证据，并额外确认 `370d0f7..5260efd` 的 backend、Dockerfile、volume/backup 脚本均为零差异。

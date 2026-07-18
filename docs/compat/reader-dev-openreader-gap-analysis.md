@@ -1992,6 +1992,7 @@ Implementation status:
 - Completed in this slice: `speechSynthesis` utterance errors are surfaced as `朗读错误: ...`.
 - Completed in the 2026-07-18 fixed-baseline correction: incomplete speech APIs are guarded; voice selection is explicit; the bar is aligned/attached to the upstream frame; numeric settings use editable steppers; cross-chapter continuation waits on a cancellable chapter-ready transaction; and closing maps the frozen paragraph back to its actual flip page.
 - Validation note: `scripts/smoke/reader-tts-contract.mjs` passed in Chrome at `1440×900`, `390×844`, and `360×800`, including a deliberately delayed 4.1-second adjacent chapter, missing speech API, persisted voice/rate, rendered geometry, error handling and close positioning. Frontend `444/444`, Go full tests, build, mobile/text/continuous, audio, real EPUB and real CBZ regressions also passed.
+- Release note: commit `5260efd` was built locally for amd64/arm64 and published as `5260efd` plus `latest` at OCI index `sha256:5c8c7d9ab186ec80b26ed709123c1c88fe37261f18cf937988c4ffbfdc9a4df4`. The current historical-volume script was not rerun because Codex authorization quota denied the OrbStack socket; persistence compatibility inherits the passed `370d0f7` gate because backend, Dockerfile, database/backup and volume scripts have no intervening diff.
 
 ### 2026-07-08 follow-up contract: Reader settings panel labels and first-screen structure
 
