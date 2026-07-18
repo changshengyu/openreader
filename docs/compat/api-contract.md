@@ -42,6 +42,19 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+## P2 reading-progress API contract
+
+Status: audited on 2026-07-18; implementation is pending. The complete route, concurrency,
+chapter-identity, WebSocket and existing-directory WebDAV mirror contract is
+[`reading-progress-p2-contract.md`](reading-progress-p2-contract.md).
+
+The deployed `GET /api/progress/:bookID` and `PUT /api/progress` paths remain stable. The
+implementation must replace its non-atomic read/check/upsert sequence with a database CAS,
+derive chapter ID/title from the caller-owned book catalogue, preserve the existing `200` plus
+`X-OpenReader-Progress-Conflict: 1` compatibility response, and broadcast only after one winner
+commits. Existing `bookProgress/` or `legado/bookProgress/` directories regain upstream-compatible
+per-book JSON mirrors without weakening OpenReader's private WebDAV roots.
+
 ## P1-B workspace search API contract
 
 Status: implemented for the P1-B search-default/error slice on 2026-07-13 from fixed reader-dev `Index.vue`, `config.js`, and `BookController.kt`. OpenReader keeps its authenticated REST path and source-ID representation, but restores the upstream search defaults and error semantics.

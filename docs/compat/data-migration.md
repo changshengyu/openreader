@@ -2,6 +2,20 @@
 
 Status: initial scaffold.
 
+## P2 reading-progress CAS and WebDAV mirror (audit pending implementation)
+
+The 2026-07-18 fixed-baseline audit in
+[`reading-progress-p2-contract.md`](reading-progress-p2-contract.md) does not authorize a schema
+migration. `reading_progresses` retains its existing `(user_id,book_id)` unique index and precise
+chapter/offset/percent fields. Atomicity is implemented with conditional writes against the
+existing row ID and `updated_at`, not a replacement table or destructive migration.
+
+The planned upstream-compatible live progress mirror is additive filesystem output only. It may
+write a safe `bookProgress/<book>_<author>.json` or `legado/bookProgress/...` file when that
+directory already exists in the caller's WebDAV root. It must not move/delete historical files,
+create the feature directory implicitly, cross the administrator/regular-user root boundary, or
+change `readingProgress.json` backup/restore behavior.
+
 ## Persistent roots
 
 | Root | Purpose | Compatibility rule |

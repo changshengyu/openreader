@@ -2,6 +2,15 @@
 
 Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 
+## 2026-07-18 P2 阅读进度 API、并发与 WebDAV 复审
+
+固定上游 `Reader.vue#saveBookProgress` 与 `BookController#saveBookProgress` 的合同已经抽取到
+[`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)。当前独立进度表、精确章节
+位置、JWT 用户隔离和 WebSocket 同步属于技术栈等价/增强，但审查确认四类 `must-fix`：
+章节身份/标题仍由客户端决定；版本检查与 upsert 之间没有原子 CAS，失败者可能广播；
+退出时 keepalive 与普通请求重复；普通阅读保存没有恢复上游对既有 `bookProgress` WebDAV
+目录的逐书 JSON 镜像。下一阶段先写上述失败测试，再修改应用代码。
+
 Local upstream checkout used for this pass: `/private/tmp/reader-dev-upstream-audit`.
 
 Status labels:
