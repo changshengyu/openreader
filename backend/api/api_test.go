@@ -4821,7 +4821,7 @@ func TestCacheBookContentUsesCachedChapter(t *testing.T) {
 	}
 }
 
-func TestCacheBookContentDefaultsToFiftyChapters(t *testing.T) {
+func TestCacheBookContentCachesWholeCatalogueByDefault(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
@@ -4860,8 +4860,51 @@ func TestCacheBookContentDefaultsToFiftyChapters(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("cache book: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"requested":50`) || !strings.Contains(w.Body.String(), `"cached":50`) {
-		t.Fatalf("expected default cache window of 50 chapters, got %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), `"requested":60`) || !strings.Contains(w.Body.String(), `"cached":60`) {
+		t.Fatalf("expected the default whole-catalogue cache of 60 chapters, got %s", w.Body.String())
+	}
+}
+
+func TestCacheBookContentRetainsExplicitBoundedWindow(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{Name: "显式缓存窗口源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "显式缓存窗口书", SourceID: source.ID}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 60; i++ {
+		cachePath := filepath.Join("explicit-cache-limit", fmt.Sprintf("chapter-%d.txt", i))
+		fullPath := filepath.Join(server.cfg.CacheDir, cachePath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte("已缓存正文"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.db.Create(&models.Chapter{BookID: book.ID, Index: i, Title: fmt.Sprintf("第%d章", i+1), CachePath: cachePath}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/cache", strings.NewReader(`{"all":true,"count":20}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("cache book: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"requested":20`) || !strings.Contains(w.Body.String(), `"cached":20`) {
+		t.Fatalf("expected explicit 20-chapter compatibility window, got %s", w.Body.String())
 	}
 }
 

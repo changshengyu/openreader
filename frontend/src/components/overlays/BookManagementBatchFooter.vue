@@ -43,25 +43,6 @@
       </template>
     </el-dropdown>
     <span class="check-tip">已选择 {{ selectedCount }} 个</span>
-    <el-dropdown @command="command => emit('more-command', command)">
-      <el-button :disabled="!selectedCount" :loading="busy">
-        更多批量操作
-        <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-      </el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="cache">
-            批量缓存到服务器
-          </el-dropdown-item>
-          <el-dropdown-item command="clear-cache">
-            批量清服务器缓存
-          </el-dropdown-item>
-          <el-dropdown-item command="export">
-            批量导出
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
     <el-button @click="emit('close')">取消</el-button>
   </div>
 </template>
@@ -88,7 +69,6 @@ const emit = defineEmits([
   'delete-selected',
   'add-category',
   'remove-category',
-  'more-command',
   'close',
 ])
 </script>

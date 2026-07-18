@@ -35,3 +35,21 @@ test('keeps management state as one overlay controller rather than a route or pa
   assert.match(manager, /\(\) => overlay\.bookManageVisible/)
   assert.doesNotMatch(layout, /\{ key: 'bookManage',[^\n]*route:/)
 })
+
+test('matches the upstream BookManage cache menu and footer surface', () => {
+  const manager = read('../src/components/overlays/OverlayBookManagement.vue')
+  const actions = read('../src/components/overlays/BookManagementActions.vue')
+  const footer = read('../src/components/overlays/BookManagementBatchFooter.vue')
+
+  assert.match(manager, /❗️只能缓存文本内容/)
+  const server = actions.indexOf('缓存到服务器')
+  const browser = actions.indexOf('缓存到浏览器')
+  const deleteServer = actions.indexOf('删除服务器缓存')
+  const deleteBrowser = actions.indexOf('删除浏览器缓存')
+  assert(server >= 0 && server < browser && browser < deleteServer && deleteServer < deleteBrowser)
+  assert.doesNotMatch(actions, /导出书籍数据/)
+  assert.doesNotMatch(footer, /更多批量操作|批量缓存到服务器|批量清服务器缓存|批量导出/)
+  assert.match(footer, /批量删除/)
+  assert.match(footer, /批量添加分组/)
+  assert.match(footer, /批量移除分组/)
+})

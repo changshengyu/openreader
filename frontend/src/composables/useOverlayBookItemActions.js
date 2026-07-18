@@ -1,43 +1,61 @@
-import { ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { currentUserScope } from '../utils/authScope.js'
+
+// Cache jobs outlive the BookManage dialog body. The dialog uses
+// destroy-on-close, while upstream keeps per-book jobs visible after reopen.
+const cacheJobs = reactive(new Map())
+const serverControllers = new Map()
+
+export function cancelAllBookManagementCacheJobs() {
+  for (const token of cacheJobs.values()) {
+    if (token.kind === 'browser') token.cancelled = true
+  }
+  for (const controller of serverControllers.values()) controller.abort()
+  cacheJobs.clear()
+  serverControllers.clear()
+}
+
+function jobKey(bookId) {
+  return `${currentUserScope()}:${bookId}`
+}
+
+function isCancelled(error) {
+  return error === 'cancel' || error === 'close'
+}
+
+function isCacheAbort(error) {
+  return error?.name === 'AbortError' || error?.code === 'ERR_CANCELED'
+}
 
 export function useOverlayBookItemActions(options, sharedState = {}) {
-  const cachingBookId = ref(null)
-  const cacheProgressByBook = ref({})
   const batchBusy = sharedState.batchBusy || ref(false)
-  let activeCacheController = null
+  const cachingBookId = computed(() => {
+    const scopePrefix = `${currentUserScope()}:`
+    const key = [...cacheJobs.keys()].find(value => value.startsWith(scopePrefix))
+    return key ? Number(key.slice(scopePrefix.length)) : null
+  })
 
-  function setCacheProgress(bookId, progress) {
-    cacheProgressByBook.value = {
-      ...cacheProgressByBook.value,
-      [bookId]: progress,
-    }
+  function currentJob(book) {
+    return cacheJobs.get(jobKey(book?.id)) || null
   }
 
-  function clearCacheProgress(bookId) {
-    const next = { ...cacheProgressByBook.value }
-    delete next[bookId]
-    cacheProgressByBook.value = next
+  function isCachingBook(book) {
+    return Boolean(currentJob(book))
+  }
+
+  function setJobProgress(book, token, progress) {
+    const key = jobKey(book.id)
+    if (cacheJobs.get(key) !== token) return
+    token.progress = { ...progress }
   }
 
   function cacheProgressLabel(book) {
-    const progress = cacheProgressByBook.value[book?.id]
+    const progress = currentJob(book)?.progress
     if (!progress) return ''
-    const total = Number(progress.total || progress.requested || 0)
-    const requested = Number(progress.requested || 0)
+    const total = Number(progress.total || 0)
+    const processed = Number(progress.processed ?? progress.requested ?? progress.finished ?? 0)
     if (!total) return '准备中'
-    return `${requested}/${total}`
-  }
-
-  function isCacheAbort(error) {
-    return error?.name === 'AbortError' || error?.code === 'ERR_CANCELED'
-  }
-
-  function cacheStartChapterIndex(book) {
-    const progress = options.getBookProgress(book)
-    const chapterIndex = Number(progress?.chapterIndex)
-    return Number.isInteger(chapterIndex) && chapterIndex > 0
-      ? chapterIndex
-      : 0
+    return `${processed}/${total}`
   }
 
   async function cacheBook(book, command) {
@@ -57,112 +75,137 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
       await clearBookLocalCache(book)
       return
     }
+    if (currentJob(book)) {
+      cancelBookCache(book)
+      return
+    }
     if (command === 'cacheBookLocal') {
       await cacheBookLocal(book)
       return
     }
-    if (cachingBookId.value === book.id && activeCacheController) {
-      cancelServerCache(book)
-      return
-    }
-    if (cachingBookId.value && cachingBookId.value !== book.id) {
-      options.onInfo('请先停止当前书籍的服务器缓存')
-      return
-    }
+    await cacheBookServer(book)
+  }
 
-    const controller = typeof options.cacheBookContentStream !== 'function' || typeof AbortController === 'undefined'
-      ? null
-      : new AbortController()
-    activeCacheController = controller
-    cachingBookId.value = book.id
-    setCacheProgress(book.id, { requested: 0, total: 0, cached: 0, failed: 0 })
+  async function cacheBookServer(book) {
+    const key = jobKey(book.id)
+    const controller = typeof options.cacheBookContentStream === 'function' && typeof AbortController !== 'undefined'
+      ? new AbortController()
+      : null
+    const token = reactive({ kind: 'server', progress: { processed: 0, total: 0 } })
+    cacheJobs.set(key, token)
+    if (controller) serverControllers.set(key, controller)
     try {
-      const chapterIndex = cacheStartChapterIndex(book)
-      const payload = {
-        all: true,
-        count: 20,
-        chapterIndex,
-      }
+      const payload = { all: true, chapterIndex: 0, refresh: false }
       const data = typeof options.cacheBookContentStream === 'function'
         ? await options.cacheBookContentStream(book.id, payload, {
           signal: controller?.signal,
           onEvent: ({ event, data: progress }) => {
-            if (event === 'message') setCacheProgress(book.id, progress)
+            if (event === 'message') setJobProgress(book, token, progress)
           },
         })
         : (await options.cacheBookContent(book.id, payload)).data
       if (data?.book) options.bookshelf.upsertBook(data.book)
-      options.onSuccess(`已缓存 ${data.cached || 0}/${data.requested || 0} 章${data.failed ? `，失败 ${data.failed} 章` : ''}`)
+      const cached = Number(data?.cachedCount ?? data?.cached ?? 0)
+      const total = Number(data?.total ?? data?.requested ?? 0)
+      const failed = Number(data?.failedCount ?? data?.failed ?? 0)
+      options.onSuccess(`已缓存 ${cached}/${total} 章${failed ? `，失败 ${failed} 章` : ''}`)
     } catch (error) {
-      if (isCacheAbort(error)) {
-        options.onInfo('已取消服务器缓存')
-      } else {
-        options.onError(error, '缓存失败')
-      }
+      if (isCacheAbort(error)) options.onInfo('已取消服务器缓存')
+      else options.onError(error, '缓存失败')
     } finally {
-      if (activeCacheController === controller || controller === null) {
-        activeCacheController = null
-        cachingBookId.value = null
-        clearCacheProgress(book.id)
-      }
+      if (cacheJobs.get(key) === token) cacheJobs.delete(key)
+      if (serverControllers.get(key) === controller) serverControllers.delete(key)
     }
   }
 
-  function cancelServerCache(book) {
-    if (cachingBookId.value !== book?.id || !activeCacheController) return false
-    activeCacheController.abort()
-    options.onInfo('正在停止服务器缓存')
-    return true
-  }
-
   async function cacheBookLocal(book) {
-    cachingBookId.value = book.id
+    const key = jobKey(book.id)
+    const token = reactive({ kind: 'browser', cancelled: false, progress: { processed: 0, total: 0 } })
+    cacheJobs.set(key, token)
     try {
       const { data } = await options.listChapters(book.id)
-      const chapterIndex = cacheStartChapterIndex(book)
+      if (token.cancelled) {
+        options.onInfo('已取消浏览器缓存')
+        return
+      }
       const result = await options.cacheBrowserChapters(
         book,
         book.id,
         Array.isArray(data) ? data : [],
         {
-          startIndex: chapterIndex,
-          count: 100,
+          startIndex: 0,
+          count: true,
+          concurrency: 2,
+          cancelled: () => token.cancelled,
+          onProgress: progress => setJobProgress(book, token, {
+            ...progress,
+            processed: progress.finished,
+          }),
         },
       )
-      options.onSuccess(
-        `已缓存到浏览器 ${result.cached}/${result.requested} 章`,
-      )
+      if (result.cancelled || token.cancelled) {
+        options.onInfo('已取消浏览器缓存')
+      } else {
+        options.onSuccess(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)
+      }
       await refreshBrowserCacheCounts()
     } catch (error) {
       options.onError(error, '缓存到浏览器失败')
     } finally {
-      cachingBookId.value = null
+      if (cacheJobs.get(key) === token) cacheJobs.delete(key)
     }
   }
 
+  function cancelBookCache(book) {
+    const key = jobKey(book?.id)
+    const token = cacheJobs.get(key)
+    if (!token) return false
+    if (token.kind === 'server') {
+      const controller = serverControllers.get(key)
+      if (!controller) return false
+      controller.abort()
+      options.onInfo('正在停止服务器缓存')
+      return true
+    }
+    token.cancelled = true
+    options.onInfo('正在停止浏览器缓存')
+    return true
+  }
+
+  // Compatibility name for callers outside the aligned BookManage surface.
+  function cancelServerCache(book) {
+    return cancelBookCache(book)
+  }
+
   async function clearBookCache(book) {
-    cachingBookId.value = book.id
     try {
+      await options.confirm(
+        `确认要删除服务器上《${book.title}》的缓存章节吗？`,
+        '提示',
+        { type: 'warning' },
+      )
       const data = await options.bookshelf.batchClearCache([book.id])
       options.updateServerCacheCount(book, 0)
       options.onSuccess(`已清理 ${data.cleared || 0} 个章节缓存`)
     } catch (error) {
+      if (isCancelled(error)) return
       options.onError(error, '清理缓存失败')
-    } finally {
-      cachingBookId.value = null
     }
   }
 
   async function clearBookLocalCache(book) {
-    cachingBookId.value = book.id
     try {
+      await options.confirm(
+        `确认要删除浏览器中《${book.title}》的缓存章节吗？`,
+        '提示',
+        { type: 'warning' },
+      )
       const removed = await options.clearBrowserChapterCache(book, book.id)
       await refreshBrowserCacheCounts()
       options.onSuccess(`已清理浏览器缓存 ${removed} 章`)
     } catch (error) {
+      if (isCancelled(error)) return
       options.onError(error, '清理浏览器缓存失败')
-    } finally {
-      cachingBookId.value = null
     }
   }
 
@@ -173,13 +216,8 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
   async function exportBook(book, format = 'txt') {
     batchBusy.value = true
     try {
-      const normalizedFormat = ['json', 'txt', 'epub'].includes(format)
-        ? format
-        : 'txt'
-      const blob = await options.bookshelf.exportSelectedBooks(
-        [book.id],
-        normalizedFormat,
-      )
+      const normalizedFormat = format === 'epub' ? 'epub' : 'txt'
+      const blob = await options.bookshelf.exportSelectedBooks([book.id], normalizedFormat)
       options.saveBlob(blob, exportBookFilename(book, normalizedFormat))
       options.onSuccess(`已导出《${book.title}》`)
     } catch (error) {
@@ -194,20 +232,16 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
     const title = String(book?.title || fallback)
       .replace(/[\\/:*?"<>|]/g, '-')
       .trim() || fallback
-    const extension = format === 'json'
-      ? 'json'
-      : format === 'epub'
-        ? 'epub'
-        : 'txt'
-    return `${title}.${extension}`
+    return `${title}.${format === 'epub' ? 'epub' : 'txt'}`
   }
 
   return {
     cachingBookId,
-    cacheProgressByBook,
-    cacheStartChapterIndex,
+    cacheJobs,
     cacheProgressLabel,
+    isCachingBook,
     cacheBook,
+    cancelBookCache,
     cancelServerCache,
     cacheBookLocal,
     clearBookCache,

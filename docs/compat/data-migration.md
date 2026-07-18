@@ -513,3 +513,22 @@ The same multi-client gate makes first-time settings writes atomic through the a
 `user_settings(user_id,key)`. It adds no table, column, index, default row, mounted file, or backup field. Existing
 rows keep their IDs/values/timestamps; only two concurrent attempts to create the same missing row stop surfacing a
 UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existing `-wal`/`-shm` files do not change.
+
+## P2 whole-book chapter text cache compatibility (2026-07-18)
+
+- No SQLite table/column/index, mounted root, backup member, WebDAV file, browser cache key or chapter-cache
+  filename format changes. Existing `data/`, `cache/` and `library/` volumes remain the only persistent roots.
+- Existing non-empty rooted chapter files and their `chapters.cache_path` values remain readable and are skipped
+  when `refresh=false`. `refresh=true` overwrites through the existing chapter-cache writer; it does not first
+  delete the previous usable file or migrate unrelated chapter rows.
+- A `cache_path` is cleared only when the rooted read proves the file is missing or empty. A failed refetch then
+  leaves that row accurately uncached instead of letting shelf statistics count a dead reference. Permission or
+  unexpected filesystem errors are not treated as authorization to delete a path.
+- Whole-book selection, canonical progress counters, frontend task maps and cancellation state are runtime-only.
+  They create no durable job table and are absent from backup/restore. Old clients may continue using positive
+  max-300 windows and legacy response aliases.
+- Embedded chapter-image persistence is not introduced by this slice. Therefore there is no new image directory,
+  capability, backup rule or cleanup migration to preserve; those contracts must be designed before that feature.
+
+Required release evidence: current and historical mounted-volume restart plus portable backup/restore,
+TXT/EPUB/UMD/CBZ and relative-cache/owner-isolation smoke using the final locally built image.

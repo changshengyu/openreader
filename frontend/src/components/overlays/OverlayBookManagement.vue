@@ -7,6 +7,12 @@
     destroy-on-close
     class="global-book-manage-dialog"
   >
+    <template #header>
+      <span class="book-manage-title">
+        <span>书架管理</span>
+        <span class="book-manage-cache-tip">❗️只能缓存文本内容</span>
+      </span>
+    </template>
     <section class="book-manage-dialog-body">
       <BookManagementToolbar
         v-model="manageKeyword"
@@ -16,7 +22,7 @@
 
       <BookManagementDesktopTable
         :books="filteredManagedBooks"
-        :caching-book-id="cachingBookId"
+        :is-caching-book="isCachingBook"
         :cache-progress-label="cacheProgressLabel"
         :category-name="categoryName"
         :progress-label="progressLabel"
@@ -27,14 +33,14 @@
         @open-edit="overlay.openBookEdit"
         @set-group="setBookGroup"
         @cache="cacheBook"
-        @cancel-cache="cancelServerCache"
+        @cancel-cache="cancelBookCache"
         @export="exportBook"
       />
 
       <BookManagementMobileList
         :books="filteredManagedBooks"
         :selected-book-ids="selectedBookIds"
-        :caching-book-id="cachingBookId"
+        :is-caching-book="isCachingBook"
         :cache-progress-label="cacheProgressLabel"
         :category-name="categoryName"
         :progress-label="progressLabel"
@@ -45,7 +51,7 @@
         @open-edit="overlay.openBookEdit"
         @set-group="setBookGroup"
         @cache="cacheBook"
-        @cancel-cache="cancelServerCache"
+        @cancel-cache="cancelBookCache"
         @export="exportBook"
       />
 
@@ -56,7 +62,6 @@
         @delete-selected="batchDeleteBooks"
         @add-category="batchAddCategory"
         @remove-category="batchRemoveCategory"
-        @more-command="handleBatchMoreCommand"
         @close="overlay.bookManageVisible = false"
       />
     </section>
@@ -121,8 +126,8 @@ const {
 const {
   selectedBookIds,
   batchBusy,
-  cachingBookId,
   cacheProgressLabel,
+  isCachingBook,
   onManageSelectionChange,
   toggleManagedBook,
   selectAllManagedBooks,
@@ -130,9 +135,8 @@ const {
   batchAddCategory,
   batchRemoveCategory,
   batchDeleteBooks,
-  handleBatchMoreCommand,
   cacheBook,
-  cancelServerCache,
+  cancelBookCache,
   exportBook,
 } = useOverlayBookManagement({
   bookshelf,
@@ -224,5 +228,27 @@ function readError(error, fallback) {
   display: grid;
   min-width: 0;
   gap: 12px;
+}
+
+.book-manage-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-right: 32px;
+}
+
+.book-manage-cache-tip {
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+@media (max-width: 750px) {
+  .book-manage-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 </style>

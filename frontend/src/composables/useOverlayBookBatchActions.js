@@ -79,61 +79,6 @@ export function useOverlayBookBatchActions(options) {
     }
   }
 
-  function selectedRemoteBookIds() {
-    const selected = new Set(selectedBookIds.value)
-    return options.getManagedBooks()
-      .filter(book => selected.has(book.id) && Number(book.sourceId || 0) > 0)
-      .map(book => book.id)
-  }
-
-  async function batchCacheBooks() {
-    if (!selectedBookIds.value.length) return
-    const remoteBookIds = selectedRemoteBookIds()
-    if (!remoteBookIds.length) {
-      options.onInfo('选中的本地书无需服务器缓存')
-      return
-    }
-    batchBusy.value = true
-    try {
-      const data = await options.bookshelf.batchCacheBooks(remoteBookIds)
-      options.onSuccess(`已缓存 ${data.cached || 0}/${data.requested || 0} 章`)
-      await options.bookshelf.loadBooks({ force: true, all: true })
-    } catch (error) {
-      options.onError(error, '批量缓存失败')
-    } finally {
-      batchBusy.value = false
-    }
-  }
-
-  async function batchClearCache() {
-    if (!selectedBookIds.value.length) return
-    const remoteBookIds = selectedRemoteBookIds()
-    if (!remoteBookIds.length) {
-      options.onInfo('选中的本地书没有服务器缓存')
-      return
-    }
-    try {
-      await options.confirm(
-        `确定清理选中 ${remoteBookIds.length} 本远程书的章节缓存吗？`,
-        '清理缓存',
-        { type: 'warning' },
-      )
-      batchBusy.value = true
-      const data = await options.bookshelf.batchClearCache(remoteBookIds)
-      options.onSuccess(`已清理 ${data.cleared || 0} 个章节缓存`)
-      for (const bookId of remoteBookIds) {
-        const book = options.getManagedBooks()
-          .find(item => Number(item.id) === Number(bookId))
-        if (book) options.updateServerCacheCount(book, 0)
-      }
-    } catch (error) {
-      if (isCancelled(error)) return
-      options.onError(error, '清理缓存失败')
-    } finally {
-      batchBusy.value = false
-    }
-  }
-
   async function batchDeleteBooks() {
     if (!selectedBookIds.value.length) return
     try {
@@ -154,31 +99,6 @@ export function useOverlayBookBatchActions(options) {
     }
   }
 
-  async function batchExportBooks() {
-    if (!selectedBookIds.value.length) return
-    batchBusy.value = true
-    try {
-      const bookIds = [...selectedBookIds.value]
-      const blob = await options.bookshelf.exportSelectedBooks(bookIds, 'json')
-      options.saveBlob(blob, `openreader-books-${bookIds.length}.json`)
-      options.onSuccess(`已导出 ${bookIds.length} 本书`)
-    } catch (error) {
-      options.onError(error, '批量导出失败')
-    } finally {
-      batchBusy.value = false
-    }
-  }
-
-  function handleBatchMoreCommand(command) {
-    if (command === 'cache') {
-      batchCacheBooks()
-    } else if (command === 'clear-cache') {
-      batchClearCache()
-    } else if (command === 'export') {
-      batchExportBooks()
-    }
-  }
-
   return {
     selectedBookIds,
     batchBusy,
@@ -188,11 +108,6 @@ export function useOverlayBookBatchActions(options) {
     clearManagedSelection,
     batchAddCategory,
     batchRemoveCategory,
-    selectedRemoteBookIds,
-    batchCacheBooks,
-    batchClearCache,
     batchDeleteBooks,
-    batchExportBooks,
-    handleBatchMoreCommand,
   }
 }

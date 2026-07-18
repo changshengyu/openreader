@@ -46,7 +46,7 @@
       <template #default="{ row }">
         <BookManagementActions
           :book="row"
-          :caching="cachingBookId === row.id"
+          :caching="isCachingBook(row)"
           :cache-progress="cacheProgressLabel(row)"
           @edit="emit('open-edit', row)"
           @group="emit('set-group', row)"
@@ -67,9 +67,9 @@ defineProps({
     type: Array,
     default: () => [],
   },
-  cachingBookId: {
-    type: [String, Number],
-    default: null,
+  isCachingBook: {
+    type: Function,
+    required: true,
   },
   categoryName: {
     type: Function,

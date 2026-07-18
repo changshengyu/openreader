@@ -912,7 +912,7 @@ Status: audit completed on 2026-07-10. This is a compatibility gate: implementat
 | Edit ownership | `BookEditDialog` is shared through `OverlayBookInfo`; Home and BookManage open it directly. | `partial`: structured edit is `acceptable-change`, but its preconditions, post-save shelf/reader/BookInfo synchronization and non-shelf prohibition need contract tests. |
 | Single/batch deletion | `bookshelf.removeBook` and `batchDeleteBooks` update local shelf/cache state after REST actions. Backend scopes all rows by user. | `partial`: retain the hardened backend cleanup, then add API and browser tests proving progress/bookmarks/categories/chapters/cache cleanup plus active overlay/reader handling. |
 | Book management shell | `OverlayBookManagement.vue` is a Drawer with desktop table and mobile card list. | `must-fix`: upstream ownership is a root workbench dialog (fullscreen on compact UI), not a side/bottom Drawer. Rebuild shell only; preserve the current shared controller and safe card/table rendering. |
-| Batch cache/export | Current controller adds batch cache/clear/JSON export and uses bounded REST operations beyond the upstream footer. | **2026-07-18 re-audited:** remove these controls from the visible BookManage footer; retain the deployed backend actions as an undocumented compatibility extension with their existing limits. Restore upstream per-book whole-catalogue server/browser cache, independent cancellation and TXT/EPUB-only menu. See [`book-management-cache-p2-contract.md`](book-management-cache-p2-contract.md). |
+| Batch cache/export | The former controller added batch cache/clear/JSON export and bounded single-book windows beyond the upstream footer. | **2026-07-18 fixed for the visible BookManage surface:** footer no longer exposes those controls; deployed backend actions retain their limits as hidden compatibility extensions. Per-book server/browser actions now cover the whole catalogue, own independent cancellable tasks and expose only TXT/EPUB. Embedded chapter-image persistence remains open. See [`book-management-cache-p2-contract.md`](book-management-cache-p2-contract.md). |
 | Group shell and data | `OverlayBookGroups.vue` is a Drawer; `useOverlayBookGroups` has correct set/manage modes, empty guard, visibility, sort and live BookInfo update. Categories are user-scoped rows/many-to-many relations. | `must-fix` for dialog/fullscreen-mobile shell; `aligned`/`acceptable-change` for controller and data model. |
 | Backend/API | Go routes map book/category operations to authenticated REST endpoints and broadcasts. | `acceptable-change` architecture, subject to action-by-action response/error/side-effect tests; no schema migration or endpoint rewrite is authorized solely for UI convergence. |
 
@@ -1050,6 +1050,22 @@ required contract is [`book-management-cache-p2-contract.md`](book-management-ca
 The evidence above remains valid for transport/cancellation mechanics only. It must not be used to
 claim product parity while the UI starts from reading progress, caps work at 20/100 chapters, owns one
 global task, omits browser cancellation and confirmations, or exposes non-upstream batch actions.
+
+### P2 whole-BookManage正文缓存 implementation record (2026-07-18)
+
+- `{all:true,count<=0}` now selects the whole remaining catalogue in both authenticated cache paths;
+  explicit positive windows remain max 300 and deployed batch limits are unchanged. Valid existing files,
+  newly fetched successes and failures have separate canonical counts while legacy aliases remain additive.
+- BookManage owns user/book-scoped server and browser jobs outside the destroyed dialog body. Different books
+  run independently, one book can be cancelled without stopping another, logout aborts old-scope work, and
+  reopen restores active indicators. Browser work starts at zero with concurrency two.
+- The visible cache order, text-only warning, two deletion confirmations, TXT/EPUB menu and batch footer now
+  match upstream. Three-viewport browser tests cover two simultaneous books, close/reopen, target-only cancel,
+  a 25-chapter whole-book payload, browser cancellation and confirmation side effects. Full Go/frontend/build
+  and Reader cache regressions pass.
+- Remaining gap: upstream `cacheBookSSE` also invokes `BookHelp.saveImages`. OpenReader still returns remote
+  image URLs inside cached text and has no safe authenticated local image capability. That SSRF/size/MIME/path/
+  owner-lifecycle design is the next cache slice; this record claims whole-book text cache parity only.
 
 ### 2026-07-16 P2 re-audit: BookManage / BookGroup real-API browser boundary
 

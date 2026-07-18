@@ -12,9 +12,9 @@ test('parses authenticated cache SSE progress and terminal events', async () => 
     assert.deepEqual(JSON.parse(init.body), { all: true, count: 2, chapterIndex: 4 })
     return new Response([
       'event: message\n',
-      'data: {"bookId":7,"cached":1,"requested":1,"total":2,"chapterIndex":4,"failed":0}\n\n',
+      'data: {"bookId":7,"cachedCount":3,"successCount":1,"failedCount":0,"processed":1,"cached":3,"requested":1,"total":2,"chapterIndex":4,"failed":0}\n\n',
       'event: end\n',
-      'data: {"bookId":7,"cached":2,"requested":2,"failed":0,"book":{"id":7}}\n\n',
+      'data: {"bookId":7,"cachedCount":4,"successCount":2,"failedCount":0,"processed":2,"cached":4,"requested":2,"total":2,"failed":0,"book":{"id":7}}\n\n',
     ].join(''), {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
@@ -31,14 +31,14 @@ test('parses authenticated cache SSE progress and terminal events', async () => 
     assert.deepEqual(events, [
       {
         event: 'message',
-        data: { bookId: 7, cached: 1, requested: 1, total: 2, chapterIndex: 4, failed: 0 },
+        data: { bookId: 7, cachedCount: 3, successCount: 1, failedCount: 0, processed: 1, cached: 3, requested: 1, total: 2, chapterIndex: 4, failed: 0 },
       },
       {
         event: 'end',
-        data: { bookId: 7, cached: 2, requested: 2, failed: 0, book: { id: 7 } },
+        data: { bookId: 7, cachedCount: 4, successCount: 2, failedCount: 0, processed: 2, cached: 4, requested: 2, total: 2, failed: 0, book: { id: 7 } },
       },
     ])
-    assert.deepEqual(result, { bookId: 7, cached: 2, requested: 2, failed: 0, book: { id: 7 } })
+    assert.deepEqual(result, { bookId: 7, cachedCount: 4, successCount: 2, failedCount: 0, processed: 2, cached: 4, requested: 2, total: 2, failed: 0, book: { id: 7 } })
   } finally {
     globalThis.fetch = previousFetch
   }

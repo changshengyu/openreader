@@ -29,6 +29,7 @@ import (
 	"openreader/backend/models"
 	"openreader/backend/services/audioreader"
 	"openreader/backend/services/cbzreader"
+	"openreader/backend/services/chaptercache"
 	"openreader/backend/services/epubreader"
 )
 
@@ -654,9 +655,9 @@ func (s *Server) batchCacheBooks(c *gin.Context, userID uint, bookIDs []uint) {
 		if books[i].SourceID == 0 {
 			continue
 		}
-		bookCached, bookRequested, err := s.cacheBookChapters(books[i], nil, true, 10)
-		cached += bookCached
-		requested += bookRequested
+		result, err := s.cacheBookChapters(context.Background(), books[i], nil, true, 10, false, nil)
+		cached += result.SelectedCached
+		requested += result.Total
 		if err != nil {
 			failed++
 		}
@@ -1345,6 +1346,7 @@ type cacheBookRequest struct {
 	ChapterIndex *int `json:"chapterIndex"`
 	All          bool `json:"all"`
 	Count        int  `json:"count"`
+	Refresh      bool `json:"refresh"`
 }
 
 func (s *Server) cacheBookContent(c *gin.Context) {
@@ -1372,44 +1374,33 @@ func (s *Server) cacheBookContent(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"cached": 0, "requested": 0, "message": "local books do not need server cache"})
 		return
 	}
-	cached, requested, err := s.cacheBookChapters(book, request.ChapterIndex, request.All, request.Count)
+	result, err := s.cacheBookChapters(c.Request.Context(), book, request.ChapterIndex, request.All, request.Count, request.Refresh, nil)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list chapters"})
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cache chapters"})
 		return
 	}
 	item := s.broadcastBookShelfUpdate(userID, book)
-	c.JSON(http.StatusOK, gin.H{"cached": cached, "requested": requested, "book": item})
+	c.JSON(http.StatusOK, cacheBookResponse(result, item))
 }
 
-func (s *Server) cacheBookChapters(book models.Book, chapterIndex *int, all bool, count int) (int, int, error) {
-	query := s.db.Where("book_id = ?", book.ID).Order("`index` asc")
-	if all {
-		if chapterIndex != nil {
-			query = query.Where("`index` >= ?", *chapterIndex)
-		}
-		if count <= 0 {
-			count = 50
-		}
-		if count > 300 {
-			count = 300
-		}
-		query = query.Limit(count)
-	} else {
-		query = query.Where("`index` = ?", *chapterIndex)
+func cacheBookResponse(result chaptercache.Progress, book any) gin.H {
+	response := gin.H{
+		"cachedCount":  result.CachedCount,
+		"successCount": result.SuccessCount,
+		"failedCount":  result.FailedCount,
+		"processed":    result.Processed,
+		"total":        result.Total,
+		"cached":       result.SelectedCached,
+		"requested":    result.Total,
+		"failed":       result.FailedCount,
 	}
-
-	var chapters []models.Chapter
-	if err := query.Find(&chapters).Error; err != nil {
-		return 0, 0, err
+	if book != nil {
+		response["book"] = book
 	}
-	cached := 0
-	for i := range chapters {
-		content := s.loadChapterText(book, &chapters[i])
-		if content != "" {
-			cached++
-		}
-	}
-	return cached, len(chapters), nil
+	return response
 }
 
 func deleteBookRecords(tx *gorm.DB, userID, bookID uint, book *models.Book) error {
@@ -2516,15 +2507,19 @@ func (s *Server) loadChapterTextContext(ctx context.Context, book models.Book, c
 }
 
 func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.Book, chapter *models.Chapter) (string, error) {
+	return s.loadChapterTextContextResultWithOptions(ctx, &book, chapter, false)
+}
+
+func (s *Server) loadChapterTextContextResultWithOptions(ctx context.Context, book *models.Book, chapter *models.Chapter, refresh bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	content := ""
-	if chapter.CachePath != "" {
-		if bytes, path, err := s.readChapterCache(book, chapter.CachePath); err == nil {
+	if !refresh && chapter.CachePath != "" {
+		if bytes, path, err := s.readChapterCache(*book, chapter.CachePath); err == nil {
 			content = string(bytes)
 			if book.SourceID == 0 {
-				if normalizedPath := s.localChapterCachePath(book, path); normalizedPath != "" && normalizedPath != chapter.CachePath {
+				if normalizedPath := s.localChapterCachePath(*book, path); normalizedPath != "" && normalizedPath != chapter.CachePath {
 					chapter.CachePath = normalizedPath
 					_ = s.db.Save(chapter)
 				}
@@ -2540,7 +2535,7 @@ func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.B
 	}
 
 	if content == "" && book.SourceID == 0 {
-		content = s.rebuildLocalChapterText(book, chapter)
+		content = s.rebuildLocalChapterText(*book, chapter)
 	}
 
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
@@ -2589,8 +2584,8 @@ func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.B
 			return "", err
 		}
 	}
-	if !epubreader.IsLocalEPUB(book) && book.Type != 1 {
-		content = s.applyUserReplaceRules(book, content)
+	if !epubreader.IsLocalEPUB(*book) && book.Type != 1 {
+		content = s.applyUserReplaceRules(*book, content)
 	}
 	return content, nil
 }

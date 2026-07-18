@@ -40,7 +40,7 @@
       <footer>
         <BookManagementActions
           :book="book"
-          :caching="cachingBookId === book.id"
+          :caching="isCachingBook(book)"
           :cache-progress="cacheProgressLabel(book)"
           compact
           @edit="emit('open-edit', book)"
@@ -72,9 +72,9 @@ defineProps({
     type: Array,
     default: () => [],
   },
-  cachingBookId: {
-    type: [String, Number],
-    default: null,
+  isCachingBook: {
+    type: Function,
+    required: true,
   },
   categoryName: {
     type: Function,

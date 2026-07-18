@@ -305,11 +305,24 @@ Evidence: `backend/api/content_search_contract_test.go`, existing legacy/modern 
 
 - [x] `POST /api/books/:id/cache/stream` remains behind the normal Bearer-token middleware and verifies the requested book belongs to that authenticated user before opening an SSE response.
 - [x] The browser uses an authenticated `fetch` header; no JWT, source header, cookie, cache path, or host path is placed in an SSE query parameter or event payload.
-- [x] The stream retains existing cache request limits (`count <= 300`) and source-request timeout/redirect/body-size controls; batch limits remain unchanged.
+- [x] Explicit cache windows retain `count <= 300`; authenticated BookManage whole-book requests are deliberately unbounded by chapter count but execute sequentially, remain request-cancellable, and retain source timeout/redirect/body-size controls. Batch limits remain unchanged.
 - [x] Request cancellation propagates through context-aware chapter/pagination fetching and stops scheduling later chapters. Already written bounded cache files remain normal cache data and no terminal shelf broadcast is emitted for a cancelled stream.
 - [x] Errors sent after stream opening are client-safe generic text. Authorization/validation failures happen as ordinary JSON before an event stream opens.
 
-Evidence: `backend/api/cache_stream_contract_test.go`, `frontend/tests/bookCacheStream.test.mjs`, `frontend/tests/overlayBookManagement.test.mjs`, full backend tests and frontend build/test gate. The three-viewport BookManage SSE click smoke must be rerun after the local browser-runner authorization channel is available.
+Evidence: `backend/api/cache_stream_contract_test.go`, `frontend/tests/bookCacheStream.test.mjs`, `frontend/tests/overlayBookManagement.test.mjs`, full backend tests and frontend build/test gate. The later whole-book follow-up below supersedes the old pending browser note.
+
+### 2026-07-18 whole-book cache follow-up
+
+- [x] Owner, local-book and missing-source checks finish before SSE headers are opened. Missing/foreign data cannot create a background job or partial cross-user cache state.
+- [x] Existing cache files are counted only after rooted reads prove they exist and are non-empty. Missing/empty references are cleared under the same book before refetch; no absolute path is returned.
+- [x] Canonical progress and all-failure events contain counts and fixed client text only. Raw parser/network errors, source headers, cookies, JWT, WebDAV credentials and host paths are never serialized.
+- [x] Frontend job keys include the authenticated scope; logout aborts server controllers, marks browser queues cancelled and clears the in-memory registry before removing credentials. No controller, token or response body is persisted.
+- [x] The whole-book browser/API smoke verifies target-only cancellation and no request on cancelled deletion confirmation at all three required viewports.
+- [ ] Embedded chapter-image download is intentionally deferred. It must not be implemented until remote image fetches have SSRF host/scheme policy, timeout, redirect and byte limits, MIME validation, rooted user/book storage, authenticated read capability, reference cleanup and tests proving one user cannot read another user's image.
+
+Evidence: `backend/api/cache_stream_contract_test.go`, whole-catalogue cases in `backend/api/api_test.go`,
+`frontend/tests/overlayBookManagement.test.mjs`, `scripts/smoke/book-management-dialog-contract.mjs`, and
+the full Go/frontend gates. The unchecked image item is a release-noted gap rather than an implicit exception.
 
 ## EPUB iframe/resource review
 

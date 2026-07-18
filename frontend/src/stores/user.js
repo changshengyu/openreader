@@ -4,6 +4,7 @@ import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperati
 import { useBookshelfStore } from './bookshelf'
 import { usePreferencesStore } from './preferences'
 import { useReaderStore } from './reader'
+import { cancelAllBookManagementCacheJobs } from '../composables/useOverlayBookItemActions'
 
 const profileOperations = createAuthenticatedOperationGuard()
 
@@ -45,6 +46,7 @@ export const useUserStore = defineStore('user', {
     },
     clearSession() {
       profileOperations.reset()
+      cancelAllBookManagementCacheJobs()
       this.token = ''
       this.profile = null
       localStorage.removeItem('openreader_token')
