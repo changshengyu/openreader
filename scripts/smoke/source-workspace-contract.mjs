@@ -36,6 +36,7 @@ async function installApiMocks(page) {
   let sources = [source()]
   let batchTestCalls = 0
   let invalidSourceCalls = 0
+  let debugUnsupported = false
   await page.exposeFunction('__sourceSmokeReplaceSources', names => {
     sources = Array.isArray(names)
       ? names.map((name, index) => source(index + 1, String(name)))
@@ -43,6 +44,10 @@ async function installApiMocks(page) {
   })
   await page.exposeFunction('__sourceSmokeBatchTestCalls', () => batchTestCalls)
   await page.exposeFunction('__sourceSmokeInvalidSourceCalls', () => invalidSourceCalls)
+  await page.exposeFunction('__sourceSmokeUseScriptSource', () => {
+    sources = [{ ...source(), name: '调试脚本源', header: '<js>private-script</js>' }]
+    debugUnsupported = true
+  })
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async route => {
     const request = route.request()
@@ -68,10 +73,14 @@ async function installApiMocks(page) {
     }
     if (path === '/sources/remote-preview') return route.fulfill(json({ count: 1, names: ['远程预览书源'], sources: [source(2, '远程预览书源')] }))
     if (path === '/sources/import') {
-      sources = [...sources, source(2, '导入书源')]
+      sources = [...sources, { ...source(2, '导入脚本源'), header: '<js>private-header</js>' }]
       return route.fulfill(json({ imported: 1, updated: 0, skipped: 0 }))
     }
-    if (path === '/sources/1/test') return route.fulfill(json({ results: [{ title: '调试结果', bookUrl: 'https://source.example/book/1' }], error: '' }))
+    if (path === '/sources/1/test') {
+      return route.fulfill(json(debugUnsupported
+        ? { error: 'book source rule is unsupported', code: 'source_rule_unsupported', stage: 'search' }
+        : { results: [{ title: '调试结果', bookUrl: 'https://source.example/book/1' }], error: '' }))
+    }
     if (path === '/sources/1/test-chapter') return route.fulfill(json({ chapters: [{ title: '第一章', url: 'https://source.example/chapter/1' }], count: 1, error: '' }))
     if (path === '/sources/1/test-content') return route.fulfill(json({ content: '调试正文', fullLength: 4, error: '' }))
     if (path.startsWith('/cache')) return route.fulfill(json({ total: 0, books: 0, chapters: 0 }))
@@ -168,12 +177,44 @@ async function runViewport(browser, viewport) {
   await uploadInput.setInputFiles({
     name: 'bookSources.json',
     mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify([source(3, '本地预览书源')])),
+    buffer: Buffer.from(JSON.stringify([
+      source(3, '本地预览书源'),
+      { ...source(4, '动态头源'), header: '<js>private-header</js>' },
+      { ...source(5, '登录检测源'), loginCheckJs: 'return privateLogin' },
+      { ...source(6, '保留字段源'), ruleToc: { preUpdateJs: 'return chapterList' } },
+    ])),
   })
   await page.getByText('本地预览书源', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+  const previewRows = page.locator('.source-import-item')
+  assert(await previewRows.count() === 4, `${viewport.width}: source compatibility preview must keep every row`)
+  const previewChecked = async name => previewRows.filter({ hasText: name }).locator('input[type="checkbox"]').isChecked()
+  const previewState = await previewRows.evaluateAll(rows => rows.map(row => ({
+    text: row.innerText,
+    checked: row.querySelector('input[type="checkbox"]')?.checked,
+    className: row.className,
+  })))
+  assert(await previewChecked('本地预览书源'), `${viewport.width}: supported source must be selected by default ${JSON.stringify(previewState)}`)
+  assert(!(await previewChecked('动态头源')), `${viewport.width}: dynamic header source must not be selected by default`)
+  assert(!(await previewChecked('登录检测源')), `${viewport.width}: login-check source must not be selected by default`)
+  assert(await previewChecked('保留字段源'), `${viewport.width}: fixed-baseline dormant fields must not block import`)
+  await previewRows.filter({ hasText: '动态头源' }).getByText('@Javascript', { exact: true }).waitFor({ state: 'visible' })
+  await previewRows.filter({ hasText: '登录检测源' }).getByText('登录检测依赖 JavaScript', { exact: false }).waitFor({ state: 'visible' })
+  await previewRows.filter({ hasText: '保留字段源' }).getByText('仅无损保存', { exact: false }).waitFor({ state: 'visible' })
+  await previewRows.filter({ hasText: '动态头源' }).locator('.el-checkbox__inner').click()
+  await page.getByText('已选择 3 / 4 个', { exact: true }).waitFor({ state: 'visible' })
   await page.getByRole('button', { name: '确定导入' }).click()
   await page.locator('.source-import-preview').waitFor({ state: 'hidden', timeout: 10000 })
   await assertNoHorizontalOverflow(page, `${viewport.width} import-preview`)
+
+  const importedSourceRow = viewport.width <= 750
+    ? page.locator('.mobile-source-card').filter({ hasText: '导入脚本源' })
+    : page.locator('.desktop-source-table tbody tr').filter({ hasText: '导入脚本源' })
+  await importedSourceRow.getByRole('button', { name: '编辑' }).click()
+  const editorWarning = page.locator('.source-compatibility-warning').filter({ hasText: '当前服务不会执行' })
+  await editorWarning.waitFor({ state: 'visible', timeout: 10000 })
+  assert((await editorWarning.innerText()).includes('配置会保留'), `${viewport.width}: editor must explain lossless preservation`)
+  await page.keyboard.press('Escape')
+  await editorWarning.waitFor({ state: 'hidden', timeout: 10000 })
 
   await page.goto(`${root}/sources?action=health`, { waitUntil: 'networkidle' })
   await assertOverlayRoute(page, 'health')
@@ -191,12 +232,20 @@ async function runViewport(browser, viewport) {
   await page.getByText('已检 1 · 可用 0 · 失败 1').waitFor({ state: 'visible', timeout: 10000 })
   assert(await page.evaluate(() => window.__sourceSmokeBatchTestCalls()) === 1, `${viewport.width}: explicit health command must start one live batch test`)
 
+  await page.evaluate(() => window.__sourceSmokeUseScriptSource())
   await page.goto(`${root}/sources?action=debug`, { waitUntil: 'networkidle' })
   await page.getByText('书源调试', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
   await assertOverlayRoute(page, 'debug')
   await assertNoHorizontalOverflow(page, `${viewport.width} debug`)
+  const debugDialog = page.getByRole('dialog', { name: '书源调试' })
+  await debugDialog.getByPlaceholder('搜索关键词').fill('脚本')
+  await debugDialog.getByRole('button', { name: '测试搜索' }).click()
+  const debugWarning = debugDialog.locator('.debug-compatibility-warning')
+  await debugWarning.getByText('当前服务不会执行此书源在搜索阶段需要的 JavaScript 或 WebView', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
+  await debugDialog.getByText('source_rule_unsupported', { exact: false }).waitFor({ state: 'visible' })
+  assert(!(await debugDialog.innerText()).includes('private-script'), `${viewport.width}: debug must not echo the configured script`)
 
-  await page.getByRole('dialog', { name: '书源调试' }).getByRole('button', { name: '关闭此对话框' }).click()
+  await debugDialog.getByRole('button', { name: '关闭此对话框' }).click()
   await page.getByRole('dialog', { name: '书源调试' }).waitFor({ state: 'hidden', timeout: 10000 })
   await page.locator('.global-source-manage-dialog .el-dialog__headerbtn').first().click()
   await page.waitForFunction(() => new URLSearchParams(location.search).get('overlay') !== 'sources')

@@ -1,4 +1,16 @@
 import { ref } from 'vue'
+import {
+  analyzeSourceCompatibility,
+  importSourceCompatibilityHint,
+  importSourceTags,
+} from '../utils/bookSourceCompatibility.js'
+
+export {
+  analyzeSourceCompatibility,
+  importSourceCompatibilityHint,
+  importSourceTags,
+  sourceCompatibilityMessage,
+} from '../utils/bookSourceCompatibility.js'
 
 export function useSourceTransfer(options) {
   const showRemote = ref(false)
@@ -162,6 +174,7 @@ export function useSourceTransfer(options) {
     importSourceName,
     importSourceURL,
     importSourceTags,
+    importSourceCompatibilityHint,
     saveSelectedImportSources,
     exportSources,
   }
@@ -169,7 +182,7 @@ export function useSourceTransfer(options) {
 
 function selectableIndexes(sources) {
   return sources
-    .map((source, index) => importSourceTags(source) ? null : index)
+    .map((source, index) => analyzeSourceCompatibility(source).blocking ? null : index)
     .filter(index => index !== null)
 }
 
@@ -187,14 +200,6 @@ export function importSourceName(source) {
 
 export function importSourceURL(source) {
   return source?.baseUrl || source?.bookSourceUrl || source?.searchUrl || ''
-}
-
-export function importSourceTags(source) {
-  const sourceText = JSON.stringify(source || {})
-  const tags = []
-  if (sourceText.includes('@js:')) tags.push('@Javascript')
-  if (sourceText.includes('webView:')) tags.push('@WebView')
-  return tags.join(' ')
 }
 
 export function createSourceImportForm(sources) {

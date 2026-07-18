@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  analyzeSourceCompatibility,
   importSourceName,
   importSourceTags,
   importSourceURL,
@@ -57,15 +58,71 @@ test('normalizes supported source JSON shapes and display fields', () => {
   )
 })
 
+test('classifies only executable source fields and keeps dormant fields non-blocking', () => {
+  const supported = analyzeSourceCompatibility({
+    bookSourceName: '名称里提到 JavaScript 和 {{普通文字}}',
+    bookSourceComment: '注释中的 @js: 与 webView: 不是执行入口',
+    header: '{"User-Agent":"OpenReader"}',
+    searchUrl: 'https://example.com/search?key={{key}}&page={{page}}',
+    ruleSearch: { name: '.name@text' },
+    rules: JSON.stringify({
+      searchUrl: 'https://example.com/search?key={{key}}',
+      exploreUrl: 'https://example.com/explore?page={{page}}',
+      bookNameRule: '.name|text',
+    }),
+  })
+  assert.equal(supported.blocking, false)
+  assert.equal(supported.status, 'supported')
+  assert.deepEqual(supported.tags, [])
+
+  const dormant = analyzeSourceCompatibility({
+    ruleToc: { preUpdateJs: 'return chapterList' },
+    ruleContent: { webJs: 'return response', sourceRegex: 'window.DATA' },
+  })
+  assert.equal(dormant.blocking, false)
+  assert.equal(dormant.status, 'preserved-dormant')
+  assert.deepEqual(dormant.tags, [])
+  assert.deepEqual(dormant.dormantFields.sort(), [
+    'ruleContent.sourceRegex',
+    'ruleContent.webJs',
+    'ruleToc.preUpdateJs',
+  ])
+})
+
+test('detects every source entry point rejected by the current runtime', () => {
+  const fixtures = [
+    [{ header: '@js:return headers' }, 'dynamic-header'],
+    [{ header: '<js>return headers</js>' }, 'dynamic-header'],
+    [{ header: '', headerMap: '<js>return headers</js>' }, 'dynamic-header'],
+    [{ loginCheckJs: 'return result' }, 'login-check'],
+    [{ loginCheckJs: '', loginCheckJS: 'return result' }, 'login-check'],
+    [{ ruleSearch: { name: '@js:return book.name' } }, 'rule-script'],
+    [{ ruleBookInfo: { name: '<js>return book.name</js>' } }, 'rule-script'],
+    [{ rules: JSON.stringify({ bookNameRule: '{{book.name}}' }) }, 'rule-template'],
+    [{ loginUrl: 'webView:https://example.com/login' }, 'webview'],
+  ]
+
+  for (const [source, reason] of fixtures) {
+    const result = analyzeSourceCompatibility(source)
+    assert.equal(result.blocking, true, `${reason} must not be selected by default`)
+    assert.ok(result.reasons.includes(reason), `${reason} must have a stable reason`)
+  }
+  assert.equal(importSourceTags(fixtures[0][0]), '@Javascript')
+  assert.equal(importSourceTags(fixtures.at(-1)[0]), '@WebView')
+})
+
 test('preselects compatible sources and preserves check-all semantics', () => {
   const fixture = createController()
   fixture.controller.openImportPreview([
     { name: '普通源' },
     { name: '脚本源', rule: '@js: return true' },
     { name: 'WebView 源', login: 'webView:https://example.com' },
+    { name: '动态头源', header: '<js>return headers</js>' },
+    { name: '登录检测源', loginCheckJs: 'return result' },
+    { name: '固定基准未消费字段', ruleToc: { preUpdateJs: 'return list' } },
   ])
 
-  assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [0])
+  assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [0, 5])
   assert.equal(fixture.controller.importCheckAll.value, true)
   assert.equal(fixture.controller.importCheckIndeterminate.value, false)
   assert.deepEqual(fixture.calls, [[
@@ -76,7 +133,7 @@ test('preselects compatible sources and preserves check-all semantics', () => {
   fixture.controller.toggleImportCheckAll(false)
   assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [])
   fixture.controller.toggleImportCheckAll(true)
-  assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [0])
+  assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [0, 5])
 })
 
 test('imports a local file through preview and saves only selected sources', async () => {

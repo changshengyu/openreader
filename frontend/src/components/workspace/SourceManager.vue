@@ -203,6 +203,9 @@
             <strong>{{ importSourceName(source) || '未命名书源' }}</strong>
             <span>{{ importSourceURL(source) || '未设置地址' }}</span>
             <em v-if="importSourceTags(source)">{{ importSourceTags(source) }}</em>
+            <small v-if="importSourceCompatibilityHint(source)" class="source-compatibility-hint">
+              {{ importSourceCompatibilityHint(source) }}
+            </small>
           </el-checkbox>
         </el-checkbox-group>
       </div>
@@ -216,6 +219,24 @@
 
     <el-drawer v-model="showEditor" :title="editingSourceId ? '编辑书源' : '新增书源'" :direction="drawerDirection" :size="editorDrawerSize">
       <el-form label-position="top">
+        <el-alert
+          v-if="editorCompatibility.blocking"
+          class="source-compatibility-warning"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="此书源包含当前服务不会执行的配置"
+          :description="editorCompatibilityMessage"
+        />
+        <el-alert
+          v-else-if="editorCompatibility.status === 'preserved-dormant'"
+          class="source-compatibility-warning"
+          type="info"
+          :closable="false"
+          show-icon
+          title="包含固定基准普通 HTTP 流程未消费的字段"
+          description="配置会保留，当前服务不会擅自执行这些兼容字段。"
+        />
         <el-form-item label="名称"><el-input v-model="sourceForm.name" /></el-form-item>
         <el-form-item label="分组"><el-input v-model="sourceForm.group" placeholder="默认分组" /></el-form-item>
         <el-form-item label="基础地址"><el-input v-model="sourceForm.baseUrl" /></el-form-item>
@@ -380,6 +401,7 @@
         <span>目录返回 {{ debugChapterRows.length }} 章</span>
         <el-button size="small" type="primary" plain @click="useChapterForContent(debugChapterRows[0])">用第一章测试正文</el-button>
       </div>
+      <p v-if="debugCompatibilityMessage" class="debug-compatibility-warning">{{ debugCompatibilityMessage }}</p>
       <pre v-if="debugResult" class="debug-pre">{{ debugResultText }}</pre>
     </el-dialog>
   </section>
@@ -413,6 +435,10 @@ import {
   sourceImportMessage,
   useSourceTransfer,
 } from '../../composables/useSourceTransfer'
+import {
+  analyzeSourceCompatibility,
+  sourceCompatibilityMessage,
+} from '../../utils/bookSourceCompatibility.js'
 import { useReaderStore } from '../../stores/reader'
 import { currentViewportWidth, shouldUseMiniInterface } from '../../utils/responsive'
 
@@ -456,6 +482,7 @@ const {
   importSourceName,
   importSourceURL,
   importSourceTags,
+  importSourceCompatibilityHint,
   saveSelectedImportSources,
   exportSources,
 } = useSourceTransfer({
@@ -599,11 +626,18 @@ const pagedSources = computed(() => {
   return shownSources.value.slice(start, start + sourcePageSize.value)
 })
 const debugResultText = computed(() => debugResult.value ? JSON.stringify(debugResult.value, null, 2) : '')
+const debugCompatibilityMessage = computed(() => {
+  if (debugResult.value?.code !== 'source_rule_unsupported') return ''
+  const stage = sourceDebugStageLabel(debugResult.value?.stage)
+  return `当前服务不会执行此书源在${stage}阶段需要的 JavaScript 或 WebView；配置会保留。`
+})
 const debugSearchRows = computed(() => Array.isArray(debugResult.value?.results) ? debugResult.value.results : [])
 const debugChapterRows = computed(() => Array.isArray(debugResult.value?.chapters) ? debugResult.value.chapters : [])
 const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const drawerDirection = computed(() => isMobileDialog.value ? 'btt' : 'rtl')
 const editorDrawerSize = computed(() => isMobileDialog.value ? '88%' : '520px')
+const editorCompatibility = computed(() => analyzeSourceCompatibility(editorSourceSnapshot()))
+const editorCompatibilityMessage = computed(() => sourceCompatibilityMessage(editorCompatibility.value))
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
@@ -1125,10 +1159,48 @@ async function runDebug(fn) {
     const { data } = await fn()
     debugResult.value = data
   } catch (err) {
-    debugResult.value = { error: readError(err, '失败') }
+    const response = err?.response?.data
+    debugResult.value = response && typeof response === 'object'
+      ? {
+          error: readError(err, '失败'),
+          ...(response.code ? { code: response.code } : {}),
+          ...(response.stage ? { stage: response.stage } : {}),
+        }
+      : { error: readError(err, '失败') }
   } finally {
     testing.value = false
   }
+}
+
+function editorSourceSnapshot() {
+  let rules = {}
+  try {
+    rules = parseRules(sourceForm.rules)
+  } catch {
+    rules = {}
+  }
+  for (const key of ruleKeys) {
+    const value = String(ruleForm[key] || '').trim()
+    if (value) rules[key] = value
+    else delete rules[key]
+  }
+  return {
+    header: sourceForm.header,
+    loginUrl: sourceForm.loginUrl,
+    loginCheckJs: sourceForm.loginCheckJs,
+    rules,
+  }
+}
+
+function sourceDebugStageLabel(stage) {
+  const labels = {
+    search: '搜索',
+    explore: '探索',
+    book_info: '书籍详情',
+    toc: '目录',
+    content: '正文',
+  }
+  return labels[String(stage || '').trim()] || '当前'
 }
 
 async function useSearchResultForChapter(row) {
@@ -1414,6 +1486,29 @@ function readError(err, fallback) {
   color: var(--app-text-muted);
   font-size: 12px;
   font-style: normal;
+}
+
+.source-compatibility-hint {
+  display: block;
+  max-width: 100%;
+  margin-top: 4px;
+  color: #b26a00;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.source-compatibility-warning {
+  margin-bottom: 16px;
+}
+
+.debug-compatibility-warning {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  color: #8a4b00;
+  background: #fff7e6;
+  border: 1px solid #f3d19e;
+  border-radius: 4px;
+  line-height: 1.55;
 }
 
 .replace-rule-editor {

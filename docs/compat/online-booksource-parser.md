@@ -228,6 +228,9 @@
 - 没有变更路由、请求体、SQLite schema、导入/导出字段或静态 header 合并。动态字段仍可无损保存、备份和导出；它们首次被使用时得到确定的安全错误，不会再伪装成请求失败或空结果。
 - `backend/engine/source_script_entrypoints_contract_test.go` 覆盖 `@js:`、`<js>` 和 `loginCheckJs` 在搜索、探索、详情/目录、目录和正文五条引擎链路上均零网络请求；`backend/api/source_error_contract_test.go` 覆盖所有稳定 API 错误 stage、零请求、零失效源缓存和敏感脚本文本不回显。
 - `backend/api/api_test.go` 的上游书源导入全链路 fixture 继续验证静态 `headerMap` 的搜索、探索、详情、目录、正文和加书流程；登录检查脚本不再被该静态路径误当成可执行依赖。
+- 2026-07-18 已完成前端能力透明化：导入预览、编辑器和调试统一使用结构化兼容结论；动态 Header、
+  `loginCheckJs`、规则脚本/模板和 WebView 不再被默认选为可运行源，固定基准未消费字段仍可无损保存且不被
+  误判阻断。完整合同与三视口证据见 [`booksource-script-transparency-p2-contract.md`](booksource-script-transparency-p2-contract.md)。
 
 ## 审查范围与上游证据
 
