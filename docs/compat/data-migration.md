@@ -471,3 +471,20 @@ rows nullable and does not rewrite mounted-volume data.
 - An old mounted volume with no new column must auto-migrate without changing its
   effective permissions. Required evidence is a populated SQLite fixture, a two-user
   storage fixture, full backend tests and the Docker volume/backup smoke.
+
+## P2 bookshelf browser-cache freshness compatibility (2026-07-18)
+
+- No SQLite, mounted-volume, backup, WebDAV, book/category/progress row or API response migration is introduced.
+- Existing IndexedDB/localStorage keys named
+  `localCache@bookshelf@getBookshelf:<request-key>:<user-scope>` remain readable and are not cleared on upgrade.
+- Their role changes only in runtime ordering: a cold load requests the authenticated `/api/books` snapshot first;
+  the scoped persistent list is committed only when that network request fails and no newer request/local/WebSocket
+  mutation has invalidated its revision.
+- A successful network result continues to replace the same cache key. A fallback cache result must not be copied
+  across user scopes or persisted as a new server-fresh revision.
+- Hub backpressure handling and foreground reconciliation carry no persisted state. Closing a slow WebSocket client
+  is a transport recovery action; reconnect reuses the existing authenticated full-shelf API and does not rewrite data.
+
+Required evidence before release: old scoped browser cache remains a usable offline fallback; stale cache never
+precedes a successful delayed server response; two same-user clients converge after import and reconnect; current
+Docker volume/backup smoke remains byte/data compatible.
