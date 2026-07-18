@@ -75,3 +75,7 @@
   保持 `chapter=2` 并显示边界提示。
 - Reader desktop/mobile、continuous、image、volume 浏览器合同通过；隔离 Go+SQLite 实例的
   EPUB 1440×900/390×844/360×800 真实上传解析阅读和 CBZ 合同通过。
+- 已在本机完成多架构 Docker 构建和历史卷/可移植备份门禁，并推送
+  `ghcr.io/changshengyu/openreader:79645c8` 与 `latest`；两标签共同指向索引
+  `sha256:075a69352e7aa862383408a765c35f4638dc1bbbc45fc4e6dde8d11095803670`，
+  包含 `linux/amd64` 和 `linux/arm64`。
