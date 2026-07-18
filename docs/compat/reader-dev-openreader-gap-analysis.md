@@ -1509,7 +1509,9 @@ Allowed differences: Vue 3 root dialogs, SQLite IDs/multiple-bookmark support, J
 
 ## Immediate P0 contract: continuous cross-chapter reading
 
-Status: implemented and validated on 2026-07-06.
+Status: **2026-07-18 fixed-baseline re-audit supersedes the broad “completed” claim.** The visible image
+layout is partially aligned, but real CBZ archive/runtime and Reader control-state parity remain incomplete;
+see [`reader-cbz-fixed-baseline-p0-contract.md`](reader-cbz-fixed-baseline-p0-contract.md).
 
 This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. It replaces earlier audit notes and tests that treated a fixed previous-1/next-2 window as upstream behavior.
 
@@ -1593,7 +1595,7 @@ Status: implemented and validated on 2026-07-06.
 | Image parsing | `frontend/src/utils/readerContent.js` parses `<img>` into `type: "image"` blocks and reads `src`, `data-src`, `data-original`, `data-url`, including a non-browser parser path for deterministic tests. | `aligned` | Covered by parser contract tests for `__API_ROOT__`, mixed text+image lines, unsafe image URLs, and source positions. |
 | CBZ detection | `useReaderChapterPresentation.js` checks `url`, `bookUrl`, `libraryPath`, and `originalFile`, ignoring query/hash. | `acceptable-change` | Keep broader detection because Go/Vue data shape differs from upstream `bookUrl`; document as compatibility adaptation. |
 | Image layout | `ReaderChapterContent.vue` keeps the generic illustration cap but overrides comic/CBZ image boxes and image elements to fill the readable column width. | `aligned` | Browser geometry checks cover desktop page mode, mobile continuous scroll, and mobile flip mode. |
-| CBZ heading | `hideTitle` is set for CBZ and `h1` is skipped. | `aligned` | Tests cover query/hash `.CBZ`, `originalFile`, and `libraryPath` shapes. |
+| CBZ heading | `hideTitle` is set for CBZ and `h3` is skipped. | `aligned` | Tests cover query/hash `.CBZ`, `originalFile`, and `libraryPath` shapes. |
 | Image-load relayout | `ReaderChapterContent.vue` emits `image-load`; Reader calls `updateFlipLayout()` and refreshes progress state after every successful image load. | `aligned` | Static wiring test plus delayed-image browser checks cover page/flip recalculation. |
 | Preview | Element Plus image preview is used for ordinary image blocks; the image block stops click propagation before the Reader center-tap handler. | `acceptable-change` | Browser checks prove preview opens without hiding the default-visible mobile toolbar. |
 | Security | Current parser strips unsafe inline HTML and rejects non-http(s) image URLs. | `acceptable-change` | Keep the stricter allowlist; tests should prove `javascript:` and script attributes do not survive. |
@@ -1722,6 +1724,12 @@ Deferred from this EPUB slice:
 - Remaining CBZ archive/import and lazy-loading edge cases.
 
 ## Immediate P0 contract: CBZ/comic image and audio chapter reading
+
+> 2026-07-18 correction: this combined historical section remains useful for audio history, but its CBZ
+> completion claims are superseded by
+> [`reader-cbz-fixed-baseline-p0-contract.md`](reader-cbz-fixed-baseline-p0-contract.md). In particular,
+> current CBZ resource requests still rehash/rescan the archive and current `isComic` state incorrectly hides
+> the upstream-visible CBZ TTS entry.
 
 ### Upstream evidence
 
