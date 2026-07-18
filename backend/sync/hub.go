@@ -67,8 +67,7 @@ func (h *Hub) Broadcast(userID uint, except *Client, event any) error {
 	}
 
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	backpressured := make([]*Client, 0)
 	for client := range h.clients[userID] {
 		if client == except {
 			continue
@@ -76,8 +75,11 @@ func (h *Hub) Broadcast(userID uint, except *Client, event any) error {
 		select {
 		case client.Send <- payload:
 		default:
+			backpressured = append(backpressured, client)
 		}
 	}
+	h.mu.RUnlock()
+	h.evictBackpressured(backpressured)
 	return nil
 }
 
@@ -88,8 +90,7 @@ func (h *Hub) BroadcastAll(except *Client, event any) error {
 	}
 
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	backpressured := make([]*Client, 0)
 	for _, userClients := range h.clients {
 		for client := range userClients {
 			if client == except {
@@ -98,10 +99,22 @@ func (h *Hub) BroadcastAll(except *Client, event any) error {
 			select {
 			case client.Send <- payload:
 			default:
+				backpressured = append(backpressured, client)
 			}
 		}
 	}
+	h.mu.RUnlock()
+	h.evictBackpressured(backpressured)
 	return nil
+}
+
+func (h *Hub) evictBackpressured(clients []*Client) {
+	for _, client := range clients {
+		h.RemoveClient(client)
+		if client.Conn != nil {
+			_ = client.Conn.Close()
+		}
+	}
 }
 
 func (c *Client) ReadPump() {

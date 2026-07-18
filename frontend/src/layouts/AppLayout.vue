@@ -173,6 +173,7 @@ import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../u
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
+import { createShelfForegroundReconciler } from '../utils/shelfSyncFreshness'
 
 const router = useRouter()
 const route = useRoute()
@@ -191,10 +192,12 @@ const offline = ref(false)
 const healthInfo = ref(null)
 const routeBookInfoLoadingId = ref(null)
 const routeBookInfoOpenedKey = ref('')
-const FOREGROUND_REFRESH_INTERVAL = 30000
-let lastForegroundRefreshAt = 0
 let compatibilityFocusTimer
 const { connected: syncConnected, connect, disconnect } = useSync()
+const shelfForegroundReconciler = createShelfForegroundReconciler({
+  loadShelf: options => loadShelfForShell(options),
+  isVisible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+})
 const {
   visible: mobileNavigationVisible,
   isMobile: isMobileShell,
@@ -703,12 +706,7 @@ function mergeShelfBookForRoute(current, incoming) {
 
 function refreshShelfInForeground() {
   if (!userStore.token) return
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-  if (syncConnected.value && bookshelf.books.length) return
-  const now = Date.now()
-  if (now - lastForegroundRefreshAt < FOREGROUND_REFRESH_INTERVAL) return
-  lastForegroundRefreshAt = now
-  loadShelfForShell({ all: true }).catch(() => {})
+  shelfForegroundReconciler.refresh().catch(() => {})
 }
 
 function handleVisibilityChange() {
@@ -724,6 +722,7 @@ function setOffline() {
 
 function setOnline() {
   offline.value = false
+  refreshShelfInForeground()
 }
 
 watch(

@@ -2,7 +2,7 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 完成上游/当前实现复审；本文件是实施前合同，尚未代表修复完成。
+状态：2026-07-18 已按测试先行合同实施并通过全量/真实浏览器验证；本批 Docker 发布门禁待完成。
 本切片只处理“冷启动先显示旧书架”和“同步事件丢失后缺少权威校准”。7 月 17 日已经完成的
 请求 revision、本地导入即时 `upsert`、用户 scope 隔离和 WebSocket 重连强刷继续保留，
 不重新设计书架、BookInfo、导入 UI 或 SQLite 数据。
@@ -91,6 +91,26 @@
    的同步链后导入第二本，B 恢复前台/网络后通过 full refresh 收敛。桌面、390×844、360×800
    至少各覆盖 UI 几何，双客户端链至少在一个视口运行真实 WebSocket。
 6. 全量 `go test ./...`、前端测试/build；若本切片发布 Docker，再跑当前卷/备份 smoke。
+
+## 实施记录（2026-07-18）
+
+- `bookshelf.loadBooks` 现等待 `/api/books` 权威结果；IndexedDB/localStorage 只在网络失败、作用域
+  和 revision 仍有效且没有更新内存状态时作为 fallback。fallback 不写入服务器新鲜时间，后续
+  `ensureBooksLoaded`、恢复网络、前台或同步重连仍会重新校准。
+- 前台校准不再把 WebSocket `connected` 当成数据新鲜证明。它按最近一次成功结果节流 30 秒，
+  合并并发刷新，失败不消耗节流窗口，`online` 会立即触发可见页面的下一次尝试。
+- Hub 的单用户和全局广播遇到满发送队列时移除并关闭慢客户端；健康客户端仍收到事件，浏览器
+  既有重连流程随后强制拉取完整书架，因而不再静默保留已经漏掉状态事件的“健康”连接。
+- `PUT /api/settings/:key` 使用现有 `(user_id,key)` 唯一键执行 SQLite conflict upsert，并在返回和
+  广播前重新读取实际持久化行；不改变路由、JSON、校验、陈旧写保护、schema 或连接配置。
+- 新增网络挂起/失败/revision、前台节流与重试、Hub backpressure、八路首次设置并发契约测试。
+  前端全量 **457/457**、生产构建和后端 `go test ./...` 均通过。
+- `scripts/smoke/bookshelf-multiclient-contract.mjs` 使用真实 Go、SQLite、WebSocket 与两个同账号
+  Chrome 上下文验证：1440×900、390×844、360×800 均不会在延迟网络结果前渲染旧书架；客户端
+  A 导入 TXT 后，客户端 B 无需重载即可显示新书；所有 API 无 500，页面无横向溢出或控制台错误。
+
+本记录只关闭本合同列出的 P2 书架新鲜度/收敛切片。其它 Pinia store、缓存与事务仍按全量矩阵
+逐项复审；Docker 卷/备份及 GHCR 摘要将在本提交发布后回填。
 
 ## 不授权的变化
 

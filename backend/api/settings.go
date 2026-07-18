@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
@@ -79,9 +80,17 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		return
 	}
 
-	if err := s.db.Where("user_id = ? AND key = ?", userID, key).
-		Assign(setting).
-		FirstOrCreate(&setting).Error; err != nil {
+	if err := s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"value":      setting.Value,
+			"updated_at": setting.UpdatedAt,
+		}),
+	}).Create(&setting).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
+		return
+	}
+	if err := s.db.Where("user_id = ? AND key = ?", userID, key).First(&setting).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}
