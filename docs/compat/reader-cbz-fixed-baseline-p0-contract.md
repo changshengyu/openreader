@@ -1,6 +1,6 @@
 # Reader CBZ 固定基准运行时合同（P0）
 
-状态：**2026-07-18 契约、测试与实现完成；历史卷/portable backup 和本地 Docker 发布闸门待执行。**
+状态：**2026-07-18 已完成契约、失败测试、实现、全量自动化、三视口真实浏览器验证、历史卷/portable backup 门禁和本地双架构 Docker 发布。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -30,7 +30,7 @@
 | 资源运行时 | `cbzreader` 现在使用 user/book 私有的不可变 `.cbz-resources/<fingerprint>/`；完整 marker 的 size/mtime 命中时不再重哈希或重开源 CBZ，资源直接映射到 allow-listed 派生图片。 | `aligned technical equivalent` | 保持一次有界安全解压和 capability 流式读取。 |
 | 首次打开 | importer 在新分配 archive 内调用 `PrepareBookResources`；数据库失败沿用整目录补偿。旧书没有派生树时仍惰性创建。 | `aligned technical equivalent` | 保持原 archive、rows 和备份格式不变。 |
 | 资源响应 | `GET/HEAD /api/cbz-resource/...` 通过标准文件响应服务派生图片，支持 Content-Length、Last-Modified、Range/206/416；不再整张读入 Go 内存。 | `aligned technical equivalent` | 保持 capability、headers 和 client-safe error。 |
-| 原 archive 与 capability | 当前 capability 绑定 user/book/fingerprint/expiry，资源 path 再归一化；source bytes 是权威数据。 | `partial` | capability 可读取对应已完成的不可变 fingerprint；source 缺失时已存在的已签名派生版本在有效期内仍可读。source 变化产生新 fingerprint，旧能力不能切到新内容。 |
+| 原 archive 与 capability | 当前 capability 绑定 user/book/fingerprint/expiry，资源 path 再归一化；source bytes 是权威数据。 | `aligned technical equivalent` | capability 可读取对应已完成的不可变 fingerprint；source 缺失时已存在的已签名派生版本在有效期内仍可读。source 变化产生新 fingerprint，旧能力不能切到新内容。 |
 | 前端图片布局 | `ReaderChapterContent.vue` 为 `isComic` 图片全宽，CBZ 隐藏 `h3`；image load 通知 Reader 重排。 | `aligned` | 保持 Element Plus preview/lazy 适配和点击阻断。 |
 | Reader 控制状态 | `comicPresentation`/`isComicChapter` 继续负责图片布局；`isOrdinaryImageComicChapter` 和共享 capability helper 单独负责 mode、自动阅读与 TTS。CBZ flip 开启 auto/read-bar 临时转 page，关闭恢复持久 flip。 | `aligned` | 保持两类图片状态分离。 |
 | 真实浏览器证据 | `scripts/smoke/reader-cbz-contract.mjs` 使用真实 Go、真实 multipart import、ComicInfo、archive-first cover、字典序目录和非图片成员；已通过 1440×900 page、390×844/360×800 scroll 和 390×844 flip。 | `verified` | Docker 发布前继续作为浏览器闸门。 |
@@ -119,5 +119,13 @@ auto-reading 或 TTS read bar 打开 + mode=flip -> 临时 page
 - CBZ-FIX-5：`frontend/tests/readerMode.test.mjs`、`readerTTS.test.mjs` 与全量 427 项前端测试。
 - CBZ-FIX-6：`scripts/smoke/reader-cbz-contract.mjs` 在 1440×900、390×844、360×800，另加
   390×844 flip，真实资源请求无 4xx/5xx/console error；截图已人工检查。
-- 当前全量 `go test ./...`、`npm test`、`npm run build` 已通过。CBZ-FIX-7 将由当前提交的
-  历史卷/portable backup smoke 和本地多架构 Docker 发布完成。
+- 当前全量 `go test ./...`、`npm test`（427 项）、`npm run build` 已通过。
+- CBZ-FIX-7 已由 `HISTORICAL_VOLUME=1` Docker 门禁验证：旧 SQLite 卷中的 TXT、EPUB、UMD、
+  CBZ 和相对 cache 均可读取/刷新，原 archive 哈希不变，用户隔离成立；portable backup 导出到
+  空卷、恢复、重启后仍可重建派生 CBZ 资源。
+- 源码 commit `d1bc05af14f8a6b930f396fb87071c910753f1ed` 已在本机完成 `linux/amd64` 与
+  `linux/arm64` 构建，并发布为 `ghcr.io/changshengyu/openreader:d1bc05a` 与 `latest`。两 tag
+  的远端 OCI index digest 均为
+  `sha256:97c5fe40e7c6d66a2bca6d98939000862b9c7ca835fb5c039c3c36be05017f23`；包含
+  `linux/amd64@sha256:bd5c1765d9fd4f16c8a3f086a6a8a37da5d0558554941aff4e958fb28c74e75d`
+  和 `linux/arm64@sha256:d7e4d522528d1583e59831dcbd07a1b1d030eae8a0cb07183794ddb1e8eace1a`。

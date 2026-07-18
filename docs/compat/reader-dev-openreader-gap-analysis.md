@@ -1509,9 +1509,10 @@ Allowed differences: Vue 3 root dialogs, SQLite IDs/multiple-bookmark support, J
 
 ## Immediate P0 contract: continuous cross-chapter reading
 
-Status: **2026-07-18 fixed-baseline re-audit supersedes the broad “completed” claim.** The visible image
-layout is partially aligned, but real CBZ archive/runtime and Reader control-state parity remain incomplete;
-see [`reader-cbz-fixed-baseline-p0-contract.md`](reader-cbz-fixed-baseline-p0-contract.md).
+Status: **2026-07-18 CBZ fixed-baseline correction is implemented, verified and published.** The real CBZ
+archive/runtime and Reader control-state parity are complete under
+[`reader-cbz-fixed-baseline-p0-contract.md`](reader-cbz-fixed-baseline-p0-contract.md); the continuous
+cross-chapter contract below remains a separate scope and is not signed off by the CBZ release.
 
 This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. It replaces earlier audit notes and tests that treated a fixed previous-1/next-2 window as upstream behavior.
 
