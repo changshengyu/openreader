@@ -1,7 +1,8 @@
 # P2 阅读进度 API、并发与 WebDAV 合同
 
-状态：2026-07-18 已完成固定上游与当前实现审查，尚未实施本合同列出的
-`must-fix`。本文件只覆盖已加入书架书籍的阅读进度；临时远程阅读不得创建
+状态：2026-07-18 已完成固定上游审查、失败测试和应用实现；Go/前端单元门禁及
+1440×900、390×844、360×800 真实双客户端合同已通过，完整卷与 Docker 发布门禁
+仍在执行。本文件只覆盖已加入书架书籍的阅读进度；临时远程阅读不得创建
 `ReadingProgress`、书架行或 WebDAV 文件。
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -29,6 +30,7 @@
 | 冲突响应 | 无 REST 并发版本。 | 旧客户端依赖成功体；冲突使用 `200`、现有进度和 `X-OpenReader-Progress-Conflict: 1`。 | `acceptable deployed API`；保持形状，不改为破坏性的 `409`。 |
 | WebDAV 进度 | 仅当用户 WebDAV 根下已存在 `bookProgress/` 或 `legado/bookProgress/` 时，在书架保存后写入书名/作者对应 JSON；不会为了保存进度自动创建功能目录。 | 能从备份 ZIP 的 `bookProgress/` 恢复，也会在整包备份中导出 `readingProgress.json`，但普通阅读保存不写现存目录。 | `must-fix`：恢复既有目录的逐书进度镜像；多用户私有根和权限是允许且必须的收紧。 |
 | 页面退出请求 | 上游只发一次保存请求。 | `background` 分支先发 `fetch(...keepalive)`，随后又调用普通 `flush()`，同一快照可能并发写两次。 | `must-fix`：keepalive 成功排队时不得再发送普通请求；无法排队时才回退普通保存。 |
+| 远端进度收敛 | 上游没有 OpenReader 多浏览器 WebSocket；读取服务器进度本身不得产生新的用户阅读动作。 | 旧实现收到进度后先 `router.replace`，路由 watcher 以 `saveAfterLoad:true` 加载一次，随后外部同步又以 `false` 加载一次，造成每个在线 Reader 回声保存。 | `must-fix runtime adaptation`：服务器确认的位置只恢复一次并标记已保存；不得产生额外 PUT/广播。 |
 | 临时阅读 | 未入书架会返回“书籍未加入书架”，不保存。 | 临时远程 Reader 不调用书架进度 API。 | `aligned`；保持无持久化。 |
 
 ## OpenReader API 合同
@@ -101,7 +103,9 @@
 - 收到冲突时先采用服务器赢家；只有本地 pending 快照确实更新且内容不同，才用新基线
   重试一次。重试仍受 operation scope 约束，不允许跨账号或无限循环。
 - 其他客户端的 committed WebSocket 进度更新当前书时，Reader 只在不处于恢复/保存临界区
-  时跳转；同 clientId 回声忽略。书架投影必须与 Reader 使用同一赢家。
+  时跳转；同 clientId 回声忽略。外部位置更新路由时必须一次性抑制普通路由 watcher 的
+  `saveAfterLoad`，由外部恢复事务加载一次并 `markProgressSaved`；下一次真正的用户路由
+  变化恢复正常保存。书架投影必须与 Reader 使用同一赢家。
 
 ## 必须先写的失败测试
 
@@ -114,10 +118,23 @@
    普通用户不能触碰管理员或另一用户文件；失败不回滚已提交进度。
 5. 前端：background 保存产生一次 keepalive、零次普通 API；无法使用 keepalive 时只回退
    一次普通 API。冲突最多重试一次，过期 auth operation 不能提交。
-6. 真实浏览器：两个登录同一账号的 390×844 客户端从同一基线保存不同位置，最终
-   SQLite、两个 Reader、两个书架与重开恢复位置一致；1440×900 和 360×800 保持正常。
+6. 真实浏览器：两个登录同一账号的 390×844 客户端从同一基线保存不同位置，必须恰好
+   一胜一冲突；SQLite、两个 Reader、本地 scoped 快照与全新上下文重开恢复位置一致，且
+   远端恢复不回声 PUT。1440×900 和 360×800 执行同一合同。
 7. 备份/卷：`readingProgress.json` 与新写入的单书 `bookProgress/*.json` 都能恢复；历史
    TXT/EPUB/UMD/CBZ archive 和用户隔离门禁不回归。
 
 只有合同、失败测试、实现、全量测试、真实双客户端浏览器和卷门禁都通过后，才可把
 阅读进度 API 从总矩阵的“尚未验证”改为 P2 对齐并发布 Docker。
+
+## 2026-07-18 实施中证据
+
+- `backend/services/readingprogress` 已接管用户/章节规范化、已有行和首次行的原子 CAS，
+  API 仅为提交赢家广播；既有 WebDAV 进度目录在数据库提交后安全原子镜像。
+- 页面退出现在只选择 keepalive 或普通保存之一；认证 scoped pending 快照继续保留。
+- `useReaderRouteSync` 增加精确一次的位置重载抑制，BookLoad、搜索结果和外部进度这种
+  “更新 URL 后自行加载”的事务不再与普通路由 watcher 双重加载。普通目录/翻章路由仍
+  由 watcher 加载并保存，抑制不会延续到下一次用户操作。
+- `reader-progress-multiclient-contract.mjs` 在三个目标视口使用真实 Go、SQLite、WebSocket、
+  两个隔离上下文和全新重开上下文，已证明一胜一冲突、两端收敛、冷恢复及磁盘
+  `bookProgress` JSON 一致。

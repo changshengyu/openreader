@@ -55,17 +55,20 @@ export function useReaderProgressPersistence(options) {
     pendingPayload = nextPayload
 
     if (background) {
-      sendKeepAlive(nextPayload)
-      flush(force).catch(() => {})
+      if (sendKeepAlive(nextPayload)) {
+        pendingPayload = null
+        return
+      }
+      await flush(force)
       return
     }
     await flush(force)
   }
 
   function sendKeepAlive(payload) {
-    if (typeof window === 'undefined' || typeof fetch !== 'function') return
+    if (typeof window === 'undefined' || typeof fetch !== 'function') return false
     const token = window.localStorage?.getItem('openreader_token')
-    if (!token) return
+    if (!token) return false
     const progress = options.getStoredProgress?.(payload.bookId)
     try {
       fetch('/api/progress', {
@@ -82,8 +85,10 @@ export function useReaderProgressPersistence(options) {
           clientId: options.ensureClientId?.(),
         }),
       }).catch(() => {})
+      return true
     } catch {
       // The optimistic local snapshot remains pending for the next sync attempt.
+      return false
     }
   }
 

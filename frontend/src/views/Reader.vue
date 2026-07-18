@@ -491,6 +491,12 @@ function readerRouteLocation(query = {}) {
     : { name: 'reader', params: { id: bookId.value }, query }
 }
 
+let suppressNextReaderPositionReload = () => {}
+function replaceReaderPositionWithoutReload(query = {}) {
+  suppressNextReaderPositionReload(query)
+  return router.replace(readerRouteLocation(query))
+}
+
 function temporaryReaderUnavailable() {
   showReaderToast('临时阅读请先加入书架后使用此功能', 2200)
 }
@@ -1040,7 +1046,7 @@ const {
   pageWidth,
   getMode: () => effectiveReaderMode.value,
   getRouteQuery: () => route.query,
-  navigate: query => router.replace(readerRouteLocation(query)),
+  navigate: replaceReaderPositionWithoutReload,
   loadChapter: (index, loadOptions) => loadChapter(index, 0, loadOptions),
   canMatchBookmark: () => chapterFormat.value === 'text',
   onBookmarkNotFound: () => ElMessage.error('无法定位内容所在段落'),
@@ -1577,7 +1583,7 @@ const {
   loadChapter,
   progressKey: progressSaveKey,
   getCurrentProgress: currentProgressPayload,
-  navigate: query => router.replace(readerRouteLocation(query)),
+  navigate: replaceReaderPositionWithoutReload,
   markProgressSaved,
   jumpToRouteLine,
 })
@@ -1696,7 +1702,7 @@ const {
   },
 })
 
-useReaderRouteSync({
+const readerRouteSync = useReaderRouteSync({
   bookId,
   currentIndex,
   positionQuery: () => [route.query.chapter, route.query.offset, route.query.percent],
@@ -1712,6 +1718,7 @@ useReaderRouteSync({
     chapterLoading.value = false
   },
 })
+suppressNextReaderPositionReload = readerRouteSync.suppressNextPositionReload
 
 useReaderTypographySync({
   reader,
@@ -1742,7 +1749,7 @@ const {
   progressKey: progressSaveKey,
   getCurrentProgress: currentProgressPayload,
   cancelProgressSave,
-  navigate: query => router.replace(readerRouteLocation(query)),
+  navigate: replaceReaderPositionWithoutReload,
   loadChapter,
   markProgressSaved,
   getCurrentOffset: currentOffset,

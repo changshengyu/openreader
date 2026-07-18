@@ -1217,9 +1217,18 @@ func TestUpdateProgressRejectsStaleClientBase(t *testing.T) {
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
+	staleCandidateChapter := models.Chapter{BookID: book.ID, Index: 3, Title: "第四章"}
+	existingChapter := models.Chapter{BookID: book.ID, Index: 12, Title: "第十三章"}
+	if err := server.db.Create(&staleCandidateChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&existingChapter).Error; err != nil {
+		t.Fatal(err)
+	}
 	existing := models.ReadingProgress{
 		UserID:         user.ID,
 		BookID:         book.ID,
+		ChapterID:      existingChapter.ID,
 		ChapterIndex:   12,
 		Offset:         4096,
 		Percent:        0.4,
@@ -1232,7 +1241,7 @@ func TestUpdateProgressRejectsStaleClientBase(t *testing.T) {
 	}
 
 	staleBase := existing.UpdatedAt.Add(-time.Minute).Format(time.RFC3339Nano)
-	body := fmt.Sprintf(`{"bookId":%d,"chapterIndex":3,"offset":128,"percent":0.1,"chapterPercent":0.2,"chapterTitle":"第四章","baseUpdatedAt":%q}`, book.ID, staleBase)
+	body := fmt.Sprintf(`{"bookId":%d,"chapterId":%d,"chapterIndex":3,"offset":128,"percent":0.1,"chapterPercent":0.2,"chapterTitle":"第四章","baseUpdatedAt":%q}`, book.ID, staleCandidateChapter.ID, staleBase)
 	req := httptest.NewRequest(http.MethodPut, "/api/progress", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
@@ -1274,9 +1283,18 @@ func TestUpdateProgressRejectsOlderClientWithoutBase(t *testing.T) {
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
+	staleCandidateChapter := models.Chapter{BookID: book.ID, Index: 2, Title: "第三章"}
+	existingChapter := models.Chapter{BookID: book.ID, Index: 20, Title: "第二十一章"}
+	if err := server.db.Create(&staleCandidateChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&existingChapter).Error; err != nil {
+		t.Fatal(err)
+	}
 	existing := models.ReadingProgress{
 		UserID:         user.ID,
 		BookID:         book.ID,
+		ChapterID:      existingChapter.ID,
 		ChapterIndex:   20,
 		Offset:         8000,
 		Percent:        0.6,
@@ -1289,7 +1307,7 @@ func TestUpdateProgressRejectsOlderClientWithoutBase(t *testing.T) {
 	}
 
 	clientUpdatedAt := existing.UpdatedAt.Add(-2 * time.Minute).Format(time.RFC3339Nano)
-	body := fmt.Sprintf(`{"bookId":%d,"chapterIndex":2,"offset":12,"percent":0.02,"chapterPercent":0.03,"chapterTitle":"第三章","clientUpdatedAt":%q}`, book.ID, clientUpdatedAt)
+	body := fmt.Sprintf(`{"bookId":%d,"chapterId":%d,"chapterIndex":2,"offset":12,"percent":0.02,"chapterPercent":0.03,"chapterTitle":"第三章","clientUpdatedAt":%q}`, book.ID, staleCandidateChapter.ID, clientUpdatedAt)
 	req := httptest.NewRequest(http.MethodPut, "/api/progress", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)

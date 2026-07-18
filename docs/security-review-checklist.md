@@ -27,6 +27,35 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] Backup downloads only expose expected backup files.
 - [ ] API errors do not leak host filesystem paths.
 
+## P2 reading-progress CAS and WebDAV mirror review (2026-07-18)
+
+- [x] Progress GET/PUT resolves the book through `(authenticated user_id, book_id)` and resolves
+  the canonical chapter through that book before any write. A supplied chapter ID cannot select a
+  chapter from another book or user; negative/missing catalogue positions fail before persistence.
+- [x] Existing-row progress writes use an `id + updated_at` conditional update and first writes use
+  the existing `(user_id,book_id)` unique index. A losing concurrent request reloads the committed
+  winner and cannot emit a second WebSocket event.
+- [x] Live `bookProgress` output is attempted only after the database commit and only when the
+  caller's existing WebDAV feature directory is enabled. Administrators retain the historical root;
+  regular users remain under `webdav/users/<safe-username>`.
+- [x] The WebDAV root and feature directory are resolved and checked; a feature-directory symlink,
+  non-directory or resolved path outside the caller root fails closed. Output uses a sanitized
+  filename, same-directory temporary file, bounded JSON fields and atomic rename.
+- [x] A mirror failure returns only a path-free diagnostic header, never a host path, credential or
+  token. It cannot roll back or falsify the already committed SQLite progress.
+- [x] Real dual-client browser checks pass at 1440×900, 390×844 and 360×800 with one CAS
+  winner, one conflict, both active readers converged, a clean-context restore and the WebDAV file
+  matching the SQLite winner. Remote application no longer echoes an additional progress write.
+- [x] Full Go tests, 474 frontend tests, production build, Reader text/mobile/continuous, shelf
+  multiclient and real EPUB/CBZ browser gates pass on the implementation commit candidate.
+- [ ] Historical-volume/backup and Docker release gates remain required before this slice is marked
+  released.
+
+Targeted evidence: `backend/api/progress_p2_contract_test.go`,
+`frontend/tests/readerProgressPersistence.test.mjs`, `frontend/tests/readerRouteSync.test.mjs` and
+`scripts/smoke/reader-progress-multiclient-contract.mjs`. Release evidence will be appended after
+the remaining gates pass.
+
 ## Uploads and archive formats
 
 - [ ] File size limits are enforced before expensive parsing.

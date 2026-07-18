@@ -14,6 +14,7 @@ import (
 	"openreader/backend/services/backup"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
+	"openreader/backend/services/readingprogress"
 	"openreader/backend/services/scheduler"
 	"openreader/backend/services/sourcefailure"
 	readersync "openreader/backend/sync"
@@ -28,6 +29,7 @@ type Server struct {
 	audioReader    *audioreader.Service
 	cbzReader      *cbzreader.Service
 	epubReader     *epubreader.Service
+	progressSvc    *readingprogress.Service
 	sourceFailures *sourcefailure.Service
 	remoteReaders  *remoteReaderSessionStore
 	registerMu     sync.Mutex
@@ -43,6 +45,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		audioReader:    audioreader.New(cfg, database),
 		cbzReader:      cbzreader.New(cfg, database),
 		epubReader:     epubreader.New(cfg, database),
+		progressSvc:    readingprogress.New(database, cfg.DataDir),
 		sourceFailures: sourcefailure.New(database),
 		remoteReaders:  newRemoteReaderSessionStore(),
 	}

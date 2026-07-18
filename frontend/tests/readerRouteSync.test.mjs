@@ -16,19 +16,22 @@ function createController(overrides = {}) {
   const query = reactive({})
   const calls = []
   const scope = effectScope()
-  scope.run(() => useReaderRouteSync({
-    bookId,
-    currentIndex,
-    positionQuery: () => [query.chapter, query.offset, query.percent],
-    searchQuery: () => [query.line, query.match, query.q],
-    loadBook: async () => calls.push(['book']),
-    loadChapter: async (...args) => calls.push(['chapter', ...args]),
-    jumpToRouteLine: async () => calls.push(['jump']),
-    onBookLoadStart: () => calls.push(['start']),
-    onBookLoadError: error => calls.push(['error', error.message]),
-    ...overrides,
-  }))
-  return { bookId, calls, currentIndex, query, scope }
+  let routeSync
+  scope.run(() => {
+    routeSync = useReaderRouteSync({
+      bookId,
+      currentIndex,
+      positionQuery: () => [query.chapter, query.offset, query.percent],
+      searchQuery: () => [query.line, query.match, query.q],
+      loadBook: async () => calls.push(['book']),
+      loadChapter: async (...args) => calls.push(['chapter', ...args]),
+      jumpToRouteLine: async () => calls.push(['jump']),
+      onBookLoadStart: () => calls.push(['start']),
+      onBookLoadError: error => calls.push(['error', error.message]),
+      ...overrides,
+    })
+  })
+  return { bookId, calls, currentIndex, query, routeSync, scope }
 }
 
 test('reloads a changed book and reports load failures', async () => {
@@ -59,6 +62,31 @@ test('loads explicit route positions before applying search location', async () 
   await flushRouteSync()
   assert.deepEqual(controller.calls, [
     ['chapter', 3, 120, { restorePercent: 1, saveAfterLoad: true }],
+    ['jump'],
+  ])
+  controller.scope.stop()
+})
+
+test('suppresses the route reload for an externally applied position exactly once', async () => {
+  const controller = createController()
+  controller.routeSync.suppressNextPositionReload({
+    chapter: 2,
+    offset: 88,
+    percent: 0.4,
+  })
+  Object.assign(controller.query, {
+    chapter: '2',
+    offset: '88',
+    percent: '0.4',
+  })
+  await flushRouteSync()
+  assert.deepEqual(controller.calls, [['jump']])
+
+  controller.query.offset = '99'
+  await flushRouteSync()
+  assert.deepEqual(controller.calls, [
+    ['jump'],
+    ['chapter', 2, 99, { restorePercent: 0.4, saveAfterLoad: true }],
     ['jump'],
   ])
   controller.scope.stop()
