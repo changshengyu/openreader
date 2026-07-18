@@ -338,19 +338,21 @@ Status: implemented for the Reader P0 EPUB slice; remaining Reader P0 work is ou
 
 - Add nullable/empty `Chapter.ResourcePath` (`resourcePath` in JSON) through GORM auto-migration. It stores a normalized POSIX EPUB path such as `OEBPS/Text/chapter-1.xhtml`; it is never an absolute host path.
 - Add optional `resourcePath` to archived `chapters.json` entries. Old archives without it remain valid.
-- E4-EPUB-2 additionally adds nullable `Chapter.ResourceFragment` and `Chapter.ResourceEndFragment` (`resourceFragment` and `resourceEndFragment` in JSON and `chapters.json`). They hold bounded decoded DOM ids only; they never form filesystem paths. A missing value preserves the current whole-XHTML behavior for old rows/backups.
-- EPUB import writes both:
-  - the existing plain-text `CachePath`;
-  - the canonical XHTML `ResourcePath` and, when a TOC/NCX entry targets it, nullable fragment bounds.
-- Existing imported EPUBs are lazily backfilled from the archived original file and current TOC rule when first opened/refreshed. Backfill updates only matching chapter rows and the optional portable `chapters.json` metadata.
+- E4-EPUB-2 additionally added nullable `Chapter.ResourceFragment` and `Chapter.ResourceEndFragment` (`resourceFragment` and `resourceEndFragment` in JSON and `chapters.json`). They hold bounded decoded DOM ids only; they never form filesystem paths. The 2026-07-18 fixed-baseline correction keeps these columns solely for already published rows/staged snapshots; newly parsed local EPUB catalogues leave both empty and use whole-XHTML behavior.
+- Newly parsed EPUB import writes both the existing plain-text `CachePath` and canonical XHTML
+  `ResourcePath`, with empty fragment fields. An upgrade-time prepared snapshot created by the prior version
+  remains confirmable and may still write its historical fragment metadata; rejecting it as `invalid token`
+  is forbidden.
+- Existing imported EPUBs are not reparsed or collapsed on startup/read. Missing canonical paths may still be lazily backfilled without changing chapter count. Only an explicit `refresh-local` rebuilds the catalogue by canonical href; before replacement, old progress/bookmarks with a known EPUB resource path are mapped to the matching new row, while unknown references retain their existing index/offset and clear only an invalid row id.
 
 No table or column is removed. Text, PDF, UMD, Markdown, remote, and existing EPUB rows remain readable when `ResourcePath` is empty.
 
 Migration evidence: `TestAutoMigrateAddsEPUBResourcePathWithoutLosingChapters` drops the three EPUB
 resource columns from a populated SQLite fixture and proves auto-migration restores them without changing
-the existing chapter. `TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters` proves a legacy empty
-fragment row and its `chapters.json` companion are lazily restored from the archived EPUB. Docker mounted
-volume/backup smoke remains required before publishing the release image.
+the existing chapter. EPUB-FIXED-2/3 replace the former incorrect “new fragment import” assertion: they must
+prove new imports write href-deduped rows, historical fragment rows/staged snapshots remain readable, and
+explicit refresh performs resource-aware reference reconciliation. Docker mounted-volume/backup smoke
+remains required before publishing the release image.
 
 ### Derived extracted resources
 
@@ -376,9 +378,10 @@ library/<Book.LibraryPath>/.epub-resources/<source-fingerprint>/
 ### EPUB catalogue-only preview and prepared extraction compatibility (2026-07-18)
 
 - The staged `<token>.parsed.json` remains versioned plain JSON at the same user-scoped cache path. A new
-  EPUB snapshot may omit chapter `content` while retaining title/order/resource/fragment metadata. An older
-  full-content EPUB snapshot is still valid input to confirmation; absence of body content is not an invalid
-  token and does not require a browser re-upload.
+  EPUB snapshot omits chapter `content`, stores one entry per canonical href and leaves fragment metadata empty.
+  Older full-content and catalogue-only snapshots—including snapshots containing the prior multi-fragment
+  catalogue—remain valid input to confirmation; absence of body content is not an invalid token and does not
+  require a browser re-upload.
 - New EPUB confirmation may create `.epub-resources/<sha256>/` under the newly allocated book archive before
   committing its SQLite rows. This is derived data at the existing location, not a new mounted root or backup
   requirement. If extraction or transaction work fails, the existing new-archive compensation removes that

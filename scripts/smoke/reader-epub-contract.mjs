@@ -111,7 +111,7 @@ function createEPUB() {
     </section>
     <section id="part-b">
       <h1>第一章 EPUB 第二节</h1>
-      <p id="part-b-content">这是同一 XHTML 的第二个目录片段，不能在第一节 iframe 中出现。</p>
+      <p id="part-b-content">这是同一 XHTML 的第二个目录片段，应与第一节在同一个 iframe 中连续显示。</p>
       <p><a id="next-chapter" href="two.xhtml#opening">下一章</a></p>
     </section>
   </body>
@@ -173,6 +173,9 @@ async function seedProgress(token, bookID) {
   const chaptersBody = await chaptersResponse.text()
   assert.equal(chaptersResponse.status, 200, chaptersBody)
   const chapters = JSON.parse(chaptersBody)
+  assert.equal(chapters.length, 3, 'fixed upstream EPUB catalog must contain one row per XHTML href')
+  assert.deepEqual(chapters.map(chapter => chapter.title), ['封面', '第一章（下）', '第二章'])
+  assert.ok(chapters.every(chapter => !chapter.resourceFragment && !chapter.resourceEndFragment))
   const target = chapters[1]
   assert.ok(target?.id, 'the image-only titlepage must precede the saved first text chapter')
 
@@ -273,7 +276,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   console.log(`checking ${viewport.width}x${viewport.height}`)
   await page.waitForSelector('iframe.epub-iframe', { timeout: 15_000 })
   const frame = page.frameLocator('iframe.epub-iframe')
-  await frame.locator('h1').waitFor({ timeout: 10_000 })
+  await frame.locator('#start').waitFor({ timeout: 10_000 })
   await page.waitForTimeout(300)
 
   const frameState = await frame.locator('body').evaluate((body) => {
@@ -295,7 +298,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     }
   })
   assert.match(frameState.text, /第一章 EPUB 文档/)
-  assert.doesNotMatch(frameState.text, /第一章 EPUB 第二节/)
+  assert.match(frameState.text, /第一章 EPUB 第二节/)
   assert.equal(frameState.bridge, true)
   assert.equal(frameState.authoredScript, false)
   assert.equal(frameState.authoredGlobal, false)
@@ -381,7 +384,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   }
   await frame.locator('#part-b-link').click()
   await frame.locator('#part-b-content').waitFor({ timeout: 10_000 })
-  assert.equal(await frame.locator('#part-a').count(), 0)
+  assert.equal(await frame.locator('#part-a').count(), 1)
 
   await frame.locator('#next-chapter').click()
   await frame.locator('h1').filter({ hasText: '第二章 EPUB 文档' }).waitFor({ timeout: 10_000 })
@@ -389,7 +392,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     await page.waitForTimeout(150)
   }
-  await page.waitForFunction(() => document.body.textContent.includes('4 / 4'))
+  await page.waitForFunction(() => document.body.textContent.includes('3 / 3'))
 
   await page.goBack({ waitUntil: 'domcontentloaded' })
   assert.equal(new URL(page.url()).pathname, '/', 'EPUB cross-chapter navigation must not consume browser back history')

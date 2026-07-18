@@ -188,6 +188,22 @@ Evidence: `backend/engine/parser_test.go`, `backend/services/localbook/importer_
 the local `HISTORICAL_VOLUME=1` Docker volume/portable-backup smoke. Archive-policy failures are returned through
 a client-safe parse error while host storage failures remain generic server errors.
 
+### Fixed EPUB href catalogue correction
+
+- [x] A TOC-only chapter is accepted only when its canonical path matches a manifest item whose media type is
+  XHTML/HTML-compatible; an arbitrary NAV/NCX href cannot make a non-manifest ZIP entry readable.
+- [x] Manifest and TOC paths pass the existing NUL/backslash/absolute/drive/`..` normalization. Central-directory
+  duplicate, symlink, entry-count, per-entry and total-expanded limits still run before any TOC-only title read.
+- [x] TOC-only title fallback uses `readEPUBZipFile` with `MaxArchiveEntryBytes`; the fixed href dedupe does not
+  add network access, public archive URLs, host-path errors or unbounded body materialization.
+- [x] Historical fragment capabilities remain scoped to their signed user/book/fingerprint/path. New rows leave
+  fragment fields empty; resource-aware progress/bookmark reconciliation compares normalized metadata only and
+  never opens a filesystem path.
+
+Evidence: fixed EPUB engine/import/API contracts, full Go tests, 426 frontend tests, production build, and both
+three-viewport EPUB/import browser smokes. Docker historical-volume/portable-backup evidence is recorded after
+the local release gate.
+
 ## P2 backup restore follow-up
 
 - [x] Multipart and WebDAV backup restore enforce one compressed input bound before an allocation or restore mutation.

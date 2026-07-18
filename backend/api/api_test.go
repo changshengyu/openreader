@@ -7048,7 +7048,7 @@ func TestDirectEPUBImageOnlyTitlepagePreviewImportAndReaderResource(t *testing.T
 	}
 }
 
-func TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters(t *testing.T) {
+func TestDirectEPUBTOCHrefsImportAsWholeResourcesAndRefreshLegacyFragments(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 	epubData := testEPUBArchiveWithFragments(t)
@@ -7067,8 +7067,8 @@ func TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters(t *testing.T) {
 	if err := json.Unmarshal(previewW.Body.Bytes(), &preview); err != nil {
 		t.Fatal(err)
 	}
-	if preview.ChapterCount != 3 || len(preview.Chapters) != 3 || preview.Chapters[0].Title != "第一节" || preview.Chapters[1].Title != "第二节" || preview.Chapters[2].Title != "第三节" {
-		t.Fatalf("fragment EPUB preview must retain three TOC entries, got %+v", preview)
+	if preview.ChapterCount != 2 || len(preview.Chapters) != 2 || preview.Chapters[0].Title != "第二节" || preview.Chapters[1].Title != "第三节" {
+		t.Fatalf("EPUB preview must dedupe TOC fragments by href and keep the final TOC title: %+v", preview)
 	}
 
 	importW := directLocalBookMultipartRequest(t, router, token, "/api/imports/books", "fragments.epub", nil, map[string]string{
@@ -7090,11 +7090,10 @@ func TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters(t *testing.T) {
 	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(chapters) != 3 ||
-		chapters[0].ResourcePath != "OPS/Text/one.xhtml" || chapters[0].ResourceFragment != "part-a" || chapters[0].ResourceEndFragment != "part-b" ||
-		chapters[1].ResourcePath != "OPS/Text/one.xhtml" || chapters[1].ResourceFragment != "part-b" || chapters[1].ResourceEndFragment != "" ||
-		chapters[2].ResourcePath != "OPS/Text/two.xhtml" || chapters[2].ResourceFragment != "opening" || chapters[2].ResourceEndFragment != "" {
-		t.Fatalf("imported fragment EPUB chapters = %+v", chapters)
+	if len(chapters) != 2 ||
+		chapters[0].Title != "第二节" || chapters[0].ResourcePath != "OPS/Text/one.xhtml" || chapters[0].ResourceFragment != "" || chapters[0].ResourceEndFragment != "" ||
+		chapters[1].Title != "第三节" || chapters[1].ResourcePath != "OPS/Text/two.xhtml" || chapters[1].ResourceFragment != "" || chapters[1].ResourceEndFragment != "" {
+		t.Fatalf("new EPUB import did not persist the fixed href-deduped catalogue: %+v", chapters)
 	}
 	archivePath := filepath.Join(server.cfg.LibraryDir, book.TOCFile)
 	archiveData, err := os.ReadFile(archivePath)
@@ -7105,8 +7104,8 @@ func TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters(t *testing.T) {
 	if err := json.Unmarshal(archiveData, &archived); err != nil {
 		t.Fatal(err)
 	}
-	if len(archived) != 3 || archived[0].ResourceFragment != "part-a" || archived[0].ResourceEndFragment != "part-b" || archived[1].ResourceFragment != "part-b" || archived[2].ResourceFragment != "opening" {
-		t.Fatalf("chapters.json fragment metadata = %+v", archived)
+	if len(archived) != 2 || archived[0].ResourceFragment != "" || archived[0].ResourceEndFragment != "" || archived[1].ResourceFragment != "" || archived[1].ResourceEndFragment != "" {
+		t.Fatalf("new chapters.json retained obsolete fragment metadata: %+v", archived)
 	}
 
 	contentReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
@@ -7123,30 +7122,71 @@ func TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters(t *testing.T) {
 	if err := json.Unmarshal(contentW.Body.Bytes(), &content); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(content.Content, "片段一正文") || strings.Contains(content.Content, "片段二正文") || !strings.HasSuffix(content.ResourceURL, "#part-a") {
-		t.Fatalf("first fragment content must not overlap the second fragment: %+v", content)
+	if !strings.Contains(content.Content, "片段一正文") || !strings.Contains(content.Content, "片段二正文") || strings.Contains(content.Content, "跨资源正文") || strings.Contains(content.ResourceURL, "#") {
+		t.Fatalf("first chapter must contain the whole current XHTML and no next resource: %+v", content)
 	}
 	resourceW := httptest.NewRecorder()
-	// A browser keeps a document fragment client-side and never sends it in the
-	// resource request. httptest accepts a raw URL, so model that transport
-	// boundary explicitly instead of accidentally routing `#part-a` as a file.
-	resourceRequestURL := strings.SplitN(content.ResourceURL, "#", 2)[0]
-	router.ServeHTTP(resourceW, httptest.NewRequest(http.MethodGet, resourceRequestURL, nil))
-	if resourceW.Code != http.StatusOK || !strings.Contains(resourceW.Body.String(), "片段一正文") || strings.Contains(resourceW.Body.String(), "片段二正文") {
-		t.Fatalf("first fragment resource must be bounded to its TOC section: %d %s", resourceW.Code, resourceW.Body.String())
+	router.ServeHTTP(resourceW, httptest.NewRequest(http.MethodGet, content.ResourceURL, nil))
+	if resourceW.Code != http.StatusOK || !strings.Contains(resourceW.Body.String(), "片段一正文") || !strings.Contains(resourceW.Body.String(), "片段二正文") || strings.Contains(resourceW.Body.String(), "跨资源正文") {
+		t.Fatalf("first EPUB resource response crossed its XHTML boundary: %d %s", resourceW.Code, resourceW.Body.String())
 	}
 
-	// Older installed databases and archives have no fragment fields. Loading an
-	// EPUB TOC chapter must recover them lazily without rebuilding the book.
-	if err := server.db.Model(&models.Chapter{}).Where("book_id = ?", book.ID).Updates(map[string]any{
-		"resource_fragment":     "",
-		"resource_end_fragment": "",
-	}).Error; err != nil {
+	search := func(keyword string) []struct {
+		ChapterIndex int `json:"chapterIndex"`
+	} {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape(keyword), nil)
+		request.Header.Set("Authorization", token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("search %q: expected 200, got %d: %s", keyword, response.Code, response.Body.String())
+		}
+		var matches []struct {
+			ChapterIndex int `json:"chapterIndex"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &matches); err != nil {
+			t.Fatal(err)
+		}
+		return matches
+	}
+	if matches := search("片段二正文"); len(matches) == 0 || matches[0].ChapterIndex != 0 {
+		t.Fatalf("same-resource search result = %+v, want chapter 0", matches)
+	}
+	if matches := search("跨资源正文"); len(matches) == 0 || matches[0].ChapterIndex != 1 {
+		t.Fatalf("next-resource search result = %+v, want chapter 1", matches)
+	}
+
+	// Simulate a book created by the already-published fragment parser. Reading
+	// it must not silently rewrite its catalogue; explicit refresh is the only
+	// operation that converges the rows to the fixed upstream href contract.
+	sourcePath := filepath.Join(server.cfg.LibraryDir, book.OriginalFile)
+	sourceBefore, err := os.ReadFile(sourcePath)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for index := range archived {
-		archived[index].ResourceFragment = ""
-		archived[index].ResourceEndFragment = ""
+	if err := server.db.Where("book_id = ?", book.ID).Delete(&models.Chapter{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacy := []models.Chapter{
+		{BookID: book.ID, Index: 0, Title: "第一节", URL: book.URL + "/chapter_0", ResourcePath: "OPS/Text/one.xhtml", ResourceFragment: "part-a", ResourceEndFragment: "part-b"},
+		{BookID: book.ID, Index: 1, Title: "第二节", URL: book.URL + "/chapter_1", ResourcePath: "OPS/Text/one.xhtml", ResourceFragment: "part-b"},
+		{BookID: book.ID, Index: 2, Title: "第三节", URL: book.URL + "/chapter_2", ResourcePath: "OPS/Text/two.xhtml", ResourceFragment: "opening"},
+	}
+	for index := range legacy {
+		if err := server.db.Create(&legacy[index]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.db.Model(&models.Book{}).Where("id = ?", book.ID).Updates(map[string]any{"chapter_count": 3, "last_chapter": "第三节"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	archived = make([]engine.ArchivedChapter, 0, len(legacy))
+	for _, chapter := range legacy {
+		archived = append(archived, engine.ArchivedChapter{
+			ID: chapter.ID, URL: chapter.URL, Title: chapter.Title, BookURL: book.OriginalFile, Index: chapter.Index,
+			ResourcePath: chapter.ResourcePath, ResourceFragment: chapter.ResourceFragment, ResourceEndFragment: chapter.ResourceEndFragment,
+		})
 	}
 	archiveData, err = json.MarshalIndent(archived, "", "  ")
 	if err != nil {
@@ -7155,29 +7195,85 @@ func TestDirectEPUBTOCFragmentsImportAsBoundedReaderChapters(t *testing.T) {
 	if err := os.WriteFile(archivePath, append(archiveData, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	recoveredReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
-	recoveredReq.Header.Set("Authorization", token)
-	recoveredW := httptest.NewRecorder()
-	router.ServeHTTP(recoveredW, recoveredReq)
-	if recoveredW.Code != http.StatusOK {
-		t.Fatalf("legacy fragment metadata recovery: expected 200, got %d: %s", recoveredW.Code, recoveredW.Body.String())
-	}
-	var recovered models.Chapter
-	if err := server.db.Where("book_id = ? AND `index` = ?", book.ID, 0).First(&recovered).Error; err != nil {
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	if recovered.ResourceFragment != "part-a" || recovered.ResourceEndFragment != "part-b" {
-		t.Fatalf("legacy SQLite fragments were not recovered: %+v", recovered)
+	progress := models.ReadingProgress{UserID: user.ID, BookID: book.ID, ChapterID: legacy[2].ID, ChapterIndex: 2, Offset: 37, Percent: 0.64}
+	bookmark := models.Bookmark{UserID: user.ID, BookID: book.ID, ChapterID: legacy[1].ID, ChapterIndex: 1, Offset: 19, Title: "旧第二节"}
+	if err := server.db.Create(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&bookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	legacyReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+	legacyReq.Header.Set("Authorization", token)
+	legacyW := httptest.NewRecorder()
+	router.ServeHTTP(legacyW, legacyReq)
+	if legacyW.Code != http.StatusOK {
+		t.Fatalf("historical fragment row: expected 200, got %d: %s", legacyW.Code, legacyW.Body.String())
+	}
+	var legacyContent struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(legacyW.Body.Bytes(), &legacyContent); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(legacyContent.Content, "片段一正文") || strings.Contains(legacyContent.Content, "片段二正文") {
+		t.Fatalf("historical fragment slice changed before explicit refresh: %+v", legacyContent)
+	}
+	var legacyCount int64
+	if err := server.db.Model(&models.Chapter{}).Where("book_id = ?", book.ID).Count(&legacyCount).Error; err != nil || legacyCount != 3 {
+		t.Fatalf("ordinary read silently collapsed historical rows: count=%d err=%v", legacyCount, err)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", strings.NewReader(`{"tocRule":"toc"}`))
+	refreshReq.Header.Set("Content-Type", "application/json")
+	refreshReq.Header.Set("Authorization", token)
+	refreshW := httptest.NewRecorder()
+	router.ServeHTTP(refreshW, refreshReq)
+	if refreshW.Code != http.StatusOK {
+		t.Fatalf("refresh historical fragment EPUB: expected 200, got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+	sourceAfter, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sourceBefore, sourceAfter) {
+		t.Fatal("explicit EPUB refresh rewrote the original archive")
+	}
+	chapters = nil
+	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].ResourcePath != "OPS/Text/one.xhtml" || chapters[1].ResourcePath != "OPS/Text/two.xhtml" ||
+		chapters[0].ResourceFragment != "" || chapters[1].ResourceFragment != "" {
+		t.Fatalf("explicit refresh did not converge the historical catalogue: %+v", chapters)
+	}
+	if err := server.db.First(&progress, progress.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.ChapterIndex != 1 || progress.ChapterID != chapters[1].ID || progress.Offset != 37 || progress.Percent != 0.64 {
+		t.Fatalf("historical progress was not mapped by EPUB resource path: %+v", progress)
+	}
+	if err := server.db.First(&bookmark, bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bookmark.ChapterIndex != 0 || bookmark.ChapterID != chapters[0].ID || bookmark.Offset != 19 {
+		t.Fatalf("historical bookmark was not mapped by EPUB resource path: %+v", bookmark)
 	}
 	archiveData, err = os.ReadFile(archivePath)
 	if err != nil {
 		t.Fatal(err)
 	}
+	archived = nil
 	if err := json.Unmarshal(archiveData, &archived); err != nil {
 		t.Fatal(err)
 	}
-	if archived[0].ResourceFragment != "part-a" || archived[0].ResourceEndFragment != "part-b" {
-		t.Fatalf("legacy chapters.json fragments were not recovered: %+v", archived[0])
+	if len(archived) != 2 || archived[0].ResourceFragment != "" || archived[1].ResourceFragment != "" {
+		t.Fatalf("refreshed chapters.json = %+v", archived)
 	}
 }
 
@@ -7537,11 +7633,11 @@ func testEPUBArchiveWithFragments(t *testing.T) []byte {
   <li><a href="Text/one.xhtml#part-b">第二节</a></li>
   <li><a href="Text/two.xhtml#opening">第三节</a></li>
 </ol></nav></body></html>`)
-	write("OPS/Text/one.xhtml", `<html><body>
+	write("OPS/Text/one.xhtml", `<html><head><title>文档标题一</title></head><body>
   <section id="part-a"><h1>第一节</h1><p>片段一正文</p><a href="#part-b">下一节</a></section>
   <section id="part-b"><h1>第二节</h1><p>片段二正文</p><a href="two.xhtml#opening">跨资源章节</a></section>
 </body></html>`)
-	write("OPS/Text/two.xhtml", `<html><body><section id="opening"><h1>第三节</h1><p>跨资源正文</p></section></body></html>`)
+	write("OPS/Text/two.xhtml", `<html><head><title>文档标题二</title></head><body><section id="opening"><h1>第三节</h1><p>跨资源正文</p></section></body></html>`)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

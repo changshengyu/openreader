@@ -1,6 +1,6 @@
 # EPUB 本地导入与首次阅读性能兼容合同
 
-状态：**性能批次已实施并通过门禁；“跨 resource Reader 必须合并”已被固定基准复审否定，下一项是纠正新目录的 href 去重。**
+状态：**性能批次已实施；固定基准二次复审纠正的 href 去重、TOC-only resource、标题副作用与历史 fragment 兼容也已实现并通过自动化/三视口浏览器门禁，Docker 门禁进行中。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 

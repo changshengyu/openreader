@@ -58,12 +58,9 @@ func ParseEPUB(data []byte) (ParsedBook, error) {
 }
 
 type epubChapter struct {
-	Path        string
-	Title       string
-	Content     string
-	Data        []byte
-	Fragment    string
-	EndFragment string
+	Path    string
+	Title   string
+	Content string
 }
 
 type epubTOCEntry struct {
@@ -125,8 +122,20 @@ func ParseEPUBCatalogWithLimits(data []byte, rule string, limits LocalBookParseL
 	}
 	tocEntries := epubTOCEntries(reader, pkg, manifest, baseDir, limits.MaxArchiveEntryBytes)
 
+	readableManifestPaths := make(map[string]struct{}, len(pkg.Manifest.Items))
+	for _, item := range pkg.Manifest.Items {
+		if !isReadableEPUBItem(item.MediaType) {
+			continue
+		}
+		itemPath, normalizeErr := normalizeEPUBArchivePath(resolveEPUBPath(baseDir, item.Href))
+		if normalizeErr == nil && itemPath != "" {
+			readableManifestPaths[canonicalEPUBPath(itemPath)] = struct{}{}
+		}
+	}
+
 	spineChapters := make([]epubChapter, 0, len(pkg.Spine.ItemRefs))
-	for spineIndex, ref := range pkg.Spine.ItemRefs {
+	resourcesByPath := make(map[string]epubChapter, len(readableManifestPaths))
+	for _, ref := range pkg.Spine.ItemRefs {
 		item, ok := manifest[ref.IDRef]
 		if !ok || !isReadableEPUBItem(item.MediaType) {
 			continue
@@ -141,32 +150,43 @@ func ParseEPUBCatalogWithLimits(data []byte, rule string, limits LocalBookParseL
 		if err != nil {
 			continue
 		}
-		// reader-dev keeps every readable spine resource. In particular, its
-		// first title-less resource is the cover page, even when the XHTML has
-		// only an image and therefore has no extractable text. Keep that
-		// resource path for the protected EPUB iframe instead of silently
-		// deleting the user's cover chapter during import.
-		if spineIndex == 0 && strings.TrimSpace(title) == "" {
-			title = "封面"
-		}
-		spineChapters = append(spineChapters, epubChapter{
+		chapter := epubChapter{
 			Path:  canonicalEPUBPath(chapterPath),
 			Title: title,
-		})
+		}
+		spineChapters = append(spineChapters, chapter)
+		resourcesByPath[chapter.Path] = chapter
 	}
 
-	if len(spineChapters) == 0 {
-		return ParsedBook{}, errors.New("no readable epub chapters found")
+	// reader-dev's TOC is backed by the complete resource collection, not only
+	// the spine. A valid TOC-only XHTML therefore remains visible for toc-first
+	// rules. Read only titles for such resources; body materialization stays in
+	// MaterializeEPUBCatalogWithLimits.
+	for _, entry := range tocEntries {
+		entryPath := canonicalEPUBPath(entry.Path)
+		if _, exists := resourcesByPath[entryPath]; exists {
+			continue
+		}
+		if _, readable := readableManifestPaths[entryPath]; !readable {
+			continue
+		}
+		title, readErr := readEPUBDocumentTitle(reader, entryPath, limits.MaxArchiveEntryBytes)
+		if readErr != nil {
+			continue
+		}
+		resourcesByPath[entryPath] = epubChapter{Path: entryPath, Title: title}
 	}
-	book.Chapters = buildEPUBChapters(spineChapters, tocEntries, rule)
+
+	book.Chapters = buildEPUBChaptersWithResources(spineChapters, resourcesByPath, tocEntries, rule)
 	return book, nil
 }
 
 // MaterializeEPUBCatalogWithLimits fills searchable chapter text for an
 // already validated catalogue. Every unique XHTML resource is decompressed
-// once per call, while separate fragment chapters retain their own boundaries.
-// The catalogue order/title is authoritative because staged snapshots are
-// bound to the exact source SHA-256 and TOC rule before this function is used.
+// once per call. New catalogues are one row per href; upgrade-time staged
+// snapshots may still contain historical fragment rows, whose boundaries stay
+// readable here. The catalogue order/title is authoritative because staged
+// snapshots are bound to the exact source SHA-256 and TOC rule.
 func MaterializeEPUBCatalogWithLimits(data []byte, catalog ParsedBook, limits LocalBookParseLimits) (ParsedBook, error) {
 	limits = limits.normalized()
 	reader, err := openEPUBArchive(data, limits)
@@ -217,98 +237,96 @@ func MaterializeEPUBCatalogWithLimits(data []byte, catalog ParsedBook, limits Lo
 }
 
 func buildEPUBChapters(spine []epubChapter, toc []epubTOCEntry, rule string) []TXTChapter {
+	resourcesByPath := make(map[string]epubChapter, len(spine))
+	for _, chapter := range spine {
+		resourcesByPath[canonicalEPUBPath(chapter.Path)] = chapter
+	}
+	return buildEPUBChaptersWithResources(spine, resourcesByPath, toc, rule)
+}
+
+func buildEPUBChaptersWithResources(spine []epubChapter, resourcesByPath map[string]epubChapter, toc []epubTOCEntry, rule string) []TXTChapter {
 	rule = normalizeEPUBRule(rule)
 	tocTitleByPath := make(map[string]string, len(toc))
+	validTOC := make([]epubTOCEntry, 0, len(toc))
 	for _, entry := range toc {
-		if entry.Path != "" && strings.TrimSpace(entry.Title) != "" {
-			if _, exists := tocTitleByPath[entry.Path]; !exists {
-				tocTitleByPath[entry.Path] = strings.TrimSpace(entry.Title)
-			}
+		entry.Path = canonicalEPUBPath(entry.Path)
+		if entry.Path == "" {
+			continue
 		}
-	}
-	spineByPath := make(map[string]epubChapter, len(spine))
-	for _, chapter := range spine {
-		spineByPath[chapter.Path] = chapter
+		if _, exists := resourcesByPath[entry.Path]; !exists {
+			continue
+		}
+		validTOC = append(validTOC, entry)
+		// TitledResourceReference#getResource writes every non-null reference
+		// title back to the shared Resource, including an empty string. The Go
+		// parsers represent NAV/NCX labels as strings, so every visited valid
+		// entry replaces the previous value. A final blank falls back to the
+		// document title below.
+		tocTitleByPath[entry.Path] = strings.TrimSpace(entry.Title)
 	}
 
-	ordered := make([]epubChapter, 0, len(spine))
-	if strings.HasPrefix(rule, "toc") && len(toc) > 0 {
-		seen := make(map[string]struct{}, len(toc))
-		selected := make([]epubTOCEntry, 0, len(toc))
-		for _, entry := range toc {
-			if _, ok := spineByPath[entry.Path]; !ok {
-				continue
-			}
-			fragmentKey := entry.Path + "\x00" + entry.Fragment
-			if _, exists := seen[fragmentKey]; exists {
-				continue
-			}
-			seen[fragmentKey] = struct{}{}
-			selected = append(selected, entry)
+	tocOrdered := make([]epubChapter, 0, len(validTOC))
+	seenTOCPath := make(map[string]struct{}, len(validTOC))
+	for _, entry := range validTOC {
+		if _, exists := seenTOCPath[entry.Path]; exists {
+			continue
 		}
-		for tocIndex, entry := range selected {
-			chapter, ok := spineByPath[entry.Path]
-			if !ok {
-				continue
-			}
-			chapterEndFragment := ""
-			if tocIndex+1 < len(selected) && selected[tocIndex+1].Path == entry.Path {
-				chapterEndFragment = selected[tocIndex+1].Fragment
-			}
-			chapter.Content = extractEPUBChapterRange(chapter.Data, entry.Fragment, chapterEndFragment)
-			chapterFragment := entry.Fragment
-			chapter.Path = canonicalEPUBPath(chapter.Path)
-			chapter.Title = strings.TrimSpace(chapter.Title)
-			chapter.Content = strings.TrimSpace(chapter.Content)
-			chapter.Data = nil
-			chapter.Fragment = chapterFragment
-			chapter.EndFragment = chapterEndFragment
-			tocTitle := strings.TrimSpace(entry.Title)
-			switch rule {
-			case "toc":
-				chapter.Title = tocTitle
-			case "toc+spin":
-				if tocTitle != "" {
-					chapter.Title = tocTitle
-				}
-			case "toc<spin":
-				// Keep the title extracted from the spine document.
-			}
-			ordered = append(ordered, chapter)
+		seenTOCPath[entry.Path] = struct{}{}
+		chapter := resourcesByPath[entry.Path]
+		chapter.Path = entry.Path
+		if tocTitle := tocTitleByPath[entry.Path]; tocTitle != "" {
+			chapter.Title = tocTitle
 		}
-	} else {
-		for _, chapter := range spine {
-			tocTitle := tocTitleByPath[chapter.Path]
-			switch rule {
-			case "spin+toc":
-				if strings.TrimSpace(chapter.Title) == "" && tocTitle != "" {
-					chapter.Title = tocTitle
-				}
-			case "spin<toc":
-				if tocTitle != "" {
-					chapter.Title = tocTitle
-				}
-			}
-			ordered = append(ordered, chapter)
-		}
+		tocOrdered = append(tocOrdered, chapter)
 	}
-	if len(ordered) == 0 {
-		ordered = append(ordered, spine...)
+
+	spineWithTOCTitles := make([]epubChapter, 0, len(spine))
+	for _, chapter := range spine {
+		chapter.Path = canonicalEPUBPath(chapter.Path)
+		if tocTitle, exists := tocTitleByPath[chapter.Path]; exists && tocTitle != "" {
+			chapter.Title = tocTitle
+		}
+		spineWithTOCTitles = append(spineWithTOCTitles, chapter)
+	}
+
+	ordered := make([]epubChapter, 0, max(len(spine), len(tocOrdered)))
+	switch rule {
+	case "spin":
+		for _, chapter := range spine {
+			chapter.Path = canonicalEPUBPath(chapter.Path)
+			ordered = append(ordered, chapter)
+		}
+	case "toc":
+		ordered = append(ordered, tocOrdered...)
+	case "toc+spin", "toc<spin":
+		if len(tocOrdered) > 0 {
+			ordered = append(ordered, tocOrdered...)
+		} else {
+			ordered = append(ordered, spine...)
+		}
+	default: // normalized spin+toc and spin<toc
+		if len(spineWithTOCTitles) > 0 {
+			ordered = append(ordered, spineWithTOCTitles...)
+		} else {
+			ordered = append(ordered, tocOrdered...)
+		}
 	}
 
 	chapters := make([]TXTChapter, 0, len(ordered))
 	for index, chapter := range ordered {
 		title := strings.TrimSpace(chapter.Title)
 		if title == "" {
-			title = fmt.Sprintf("第 %d 章", index+1)
+			if index == 0 {
+				title = "封面"
+			} else {
+				title = fmt.Sprintf("第 %d 章", index+1)
+			}
 		}
 		chapters = append(chapters, TXTChapter{
-			Index:               index,
-			Title:               title,
-			Content:             chapter.Content,
-			ResourcePath:        chapter.Path,
-			ResourceFragment:    chapter.Fragment,
-			ResourceEndFragment: chapter.EndFragment,
+			Index:        index,
+			Title:        title,
+			Content:      strings.TrimSpace(chapter.Content),
+			ResourcePath: canonicalEPUBPath(chapter.Path),
 		})
 	}
 	return chapters

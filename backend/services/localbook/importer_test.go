@@ -223,6 +223,51 @@ func TestImporterAcceptsLegacyFullContentEPUBPreparedSnapshot(t *testing.T) {
 	}
 }
 
+func TestImporterAcceptsUpgradeTimeCatalogueOnlyEPUBFragmentSnapshot(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+		JWTSecret:    "legacy-epub-catalogue-secret",
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "legacy-epub-catalogue", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	request := ImportRequest{
+		UserID: user.ID, UserName: user.Username, FileName: "legacy-catalogue.epub", Extension: ".epub", Data: localBookTestEPUB(t), TOCRule: "toc",
+	}
+	prepared := NewPreparedImport(request, engine.ParsedBook{
+		Title: "升级前目录快照",
+		Chapters: []engine.TXTChapter{
+			{Index: 0, Title: "旧第一节", ResourcePath: "OPS/one.xhtml", ResourceFragment: "old-start", ResourceEndFragment: "old-end"},
+			{Index: 1, Title: "旧第二章", ResourcePath: "OPS/two.xhtml"},
+		},
+	})
+	prepared.EPUBCatalogOnly = true
+
+	book, err := NewImporter(cfg, database).ImportPrepared(request, prepared)
+	if err != nil {
+		t.Fatalf("upgrade-time catalogue-only snapshot became invalid: %v", err)
+	}
+	var chapters []models.Chapter
+	if err := database.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 2 || chapters[0].Title != "旧第一节" || chapters[0].ResourceFragment != "old-start" || chapters[0].ResourceEndFragment != "old-end" {
+		t.Fatalf("upgrade-time fragment snapshot was not preserved: %+v", chapters)
+	}
+}
+
 func TestImporterEPUBExtractionIsCompensatedWhenDatabaseCommitCannotStart(t *testing.T) {
 	root := t.TempDir()
 	cfg := config.Config{

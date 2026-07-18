@@ -2,6 +2,7 @@ package api
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -108,7 +109,7 @@ func (s *Server) clearRemoteBookCacheRows(tx *gorm.DB, bookIDs []uint) (int, []s
 // transaction commits.
 func (s *Server) replaceBookChapterRows(tx *gorm.DB, userID, bookID uint, next []models.Chapter) ([]string, map[int]uint, error) {
 	var previous []models.Chapter
-	if err := tx.Select("cache_path").Where("book_id = ? AND cache_path <> ''", bookID).Find(&previous).Error; err != nil {
+	if err := tx.Where("book_id = ?", bookID).Order("`index` asc").Find(&previous).Error; err != nil {
 		return nil, nil, err
 	}
 	previousCachePaths := make([]string, 0, len(previous))
@@ -133,28 +134,64 @@ func (s *Server) replaceBookChapterRows(tx *gorm.DB, userID, bookID uint, next [
 			return nil, nil, gorm.ErrDuplicatedKey
 		}
 		nextChapterIDs[chapter.Index] = chapter.ID
+		next[index] = chapter
 	}
-	if err := reconcileBookChapterReferences(tx, userID, bookID, nextChapterIDs); err != nil {
+	if err := reconcileBookChapterReferences(tx, userID, bookID, previous, next, nextChapterIDs); err != nil {
 		return nil, nil, err
 	}
 	return previousCachePaths, nextChapterIDs, nil
 }
 
 // reconcileBookChapterReferences keeps a recoverable book-level position
-// after a catalogue replacement. Existing offsets/indexes are deliberately
-// retained; only the foreign row id is rebound to its new counterpart or
-// cleared when that index no longer exists.
-func reconcileBookChapterReferences(tx *gorm.DB, userID, bookID uint, chapterIDs map[int]uint) error {
+// after a catalogue replacement. EPUB catalogues previously emitted multiple
+// fragment rows for one XHTML, so matching only the old numeric index would
+// move progress/bookmarks to another resource when an explicit refresh
+// collapses those rows. Prefer a canonical resource-path match when the old
+// and new rows expose one; all other formats retain the existing index-based
+// fallback. Offsets and percentages are never reset here.
+func reconcileBookChapterReferences(tx *gorm.DB, userID, bookID uint, previous, next []models.Chapter, chapterIDs map[int]uint) error {
+	previousByID := make(map[uint]models.Chapter, len(previous))
+	previousByIndex := make(map[int]models.Chapter, len(previous))
+	for _, chapter := range previous {
+		previousByID[chapter.ID] = chapter
+		previousByIndex[chapter.Index] = chapter
+	}
+	nextByResourcePath := make(map[string]models.Chapter, len(next))
+	for _, chapter := range next {
+		if resourcePath := chapterResourceIdentity(chapter.ResourcePath); resourcePath != "" {
+			if _, exists := nextByResourcePath[resourcePath]; !exists {
+				nextByResourcePath[resourcePath] = chapter
+			}
+		}
+	}
+	resolve := func(chapterID uint, chapterIndex int) (uint, int) {
+		oldChapter, exists := previousByID[chapterID]
+		if !exists {
+			oldChapter, exists = previousByIndex[chapterIndex]
+		}
+		if exists {
+			if resourcePath := chapterResourceIdentity(oldChapter.ResourcePath); resourcePath != "" {
+				if replacement, ok := nextByResourcePath[resourcePath]; ok {
+					return replacement.ID, replacement.Index
+				}
+			}
+		}
+		return chapterIDs[chapterIndex], chapterIndex
+	}
+
 	var progresses []models.ReadingProgress
 	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Find(&progresses).Error; err != nil {
 		return err
 	}
 	for _, progress := range progresses {
-		chapterID := chapterIDs[progress.ChapterIndex]
-		if progress.ChapterID == chapterID {
+		chapterID, chapterIndex := resolve(progress.ChapterID, progress.ChapterIndex)
+		if progress.ChapterID == chapterID && progress.ChapterIndex == chapterIndex {
 			continue
 		}
-		if err := tx.Model(&models.ReadingProgress{}).Where("id = ?", progress.ID).Update("chapter_id", chapterID).Error; err != nil {
+		if err := tx.Model(&models.ReadingProgress{}).Where("id = ?", progress.ID).Updates(map[string]any{
+			"chapter_id":    chapterID,
+			"chapter_index": chapterIndex,
+		}).Error; err != nil {
 			return err
 		}
 	}
@@ -164,15 +201,30 @@ func reconcileBookChapterReferences(tx *gorm.DB, userID, bookID uint, chapterIDs
 		return err
 	}
 	for _, bookmark := range bookmarks {
-		chapterID := chapterIDs[bookmark.ChapterIndex]
-		if bookmark.ChapterID == chapterID {
+		chapterID, chapterIndex := resolve(bookmark.ChapterID, bookmark.ChapterIndex)
+		if bookmark.ChapterID == chapterID && bookmark.ChapterIndex == chapterIndex {
 			continue
 		}
-		if err := tx.Model(&models.Bookmark{}).Where("id = ?", bookmark.ID).Update("chapter_id", chapterID).Error; err != nil {
+		if err := tx.Model(&models.Bookmark{}).Where("id = ?", bookmark.ID).Updates(map[string]any{
+			"chapter_id":    chapterID,
+			"chapter_index": chapterIndex,
+		}).Error; err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func chapterResourceIdentity(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" {
+		return ""
+	}
+	value = path.Clean(value)
+	if value == "." || value == "/" || strings.HasPrefix(value, "../") || strings.HasPrefix(value, "/") {
+		return ""
+	}
+	return value
 }
 
 func (s *Server) pruneUnreferencedRemoteCachePaths(cachePaths []string) (int, int64) {
