@@ -1,6 +1,6 @@
 # Reader 连续跨章固定基准合同（P0）
 
-状态：**2026-07-18 已完成固定上游二次复审；窗口范围、扩章阈值、原生滚动和失败重试已对齐，但当前段落选择、扩章期间进度隔离和异步事务失效仍为 `must-fix`。本合同提交不修改生产代码。**
+状态：**2026-07-18 已按固定上游完成 CONT-FIX-1…6：连续模式使用顶部安全区后的 `h3/p` 确定章节和进度，窗口事务在锚点恢复前禁止保存，append/retry/compute 均受书籍、模式和 generation 约束。生产实现、单元测试和三视口真实浏览器合同均已通过；等待本批 Docker 发布。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -33,10 +33,10 @@
 | 模式/窗口 | `readerEffectiveMode()`、`readerChapterWindowIndexes()` 和 `useReaderChapterWindow.compute()` 初始生成 `[current, next]`；`scroll` 保留显式起点，`scroll2` 在追加时 prune。 | `aligned` | 保留现有窗口测试。 |
 | 阈值/边界 | `readerChapterWindowExtension()` 使用严格的 `top > height - 4 * viewport`；`adjacentReaderChapterIndex()` 限制书籍边界。 | `aligned` | 保留阈值两侧和书末不请求测试。 |
 | 原生与分段输入 | 浏览器 wheel/touch 操作原生滚动容器；点击区和键盘调用 viewport-sized animator。 | `user-requested acceptable-change` | 原生滚动不得套动画时长；点击/键盘仍使用用户动画时长。 |
-| 当前段落 | `selectVisibleReaderBlock()` 在视口 32%（最大 180px）锚点附近选择 `[data-reader-block]`，标题 `h3` 不参与。 | `must-fix` | 连续模式增加上游顶部边界选择；标题参与章身份/位置 0。其它需要中部锚点的场景必须显式分开，不能继续共用一个含糊 helper。 |
+| 当前段落 | `currentProgressElement()` 在连续模式按顶部 50px 边界选择 `h3[data-pos], [data-reader-block]`；`currentVisibleParagraph()` 仍单独服务书签、选择文字和自动阅读。 | `aligned` | 标题参与章身份并固定为位置 0；中部可见段落与进度边界不再混用。 |
 | 位置精度 | `readerBlockTextOffset()` 可按段落内部可见比例细化 offset；服务端另存 chapter/full-book percent。 | `acceptable-change with guard` | 可保留更细 offset，但标题可见时必须为 0，且不得改变上游当前章切换边界。 |
-| 扩章进度隔离 | `extending` 只阻止重复 `maybeExtend()`；`useReaderScrollSync` 仍会在异步追加及 DOM 替换期间更新本地状态并调度 PUT。 | `must-fix` | 暴露一个窗口事务 busy 状态；滚动同步/保存忽略瞬态，锚点恢复后从稳定快照同步并保存一次。 |
-| 异步失效 | `computeVersion` 只保护 `compute()`；`appendNext()` 和 `retry()` 在请求后直接读取/覆盖当前 `chapterBlocks`，没有 book/window generation。 | `must-fix` | 所有窗口事务绑定 book cache key、mode、generation 和目标邻接关系；显式 compute、换书、切模式、卸载后旧结果不得写回。 |
+| 扩章进度隔离 | `useReaderChapterWindow` 暴露共享 `busy`；`useReaderScrollSync` 和 `useReaderProgressPersistence` 在 busy 期间不写本地快照、不调度/发送 PUT，锚点恢复后由 `onStable` 保存一次稳定快照。 | `aligned` | 保留 busy 从请求开始覆盖到 DOM 替换及锚点恢复结束的测试。 |
+| 异步失效 | compute/append/retry 共享 generation 与 scope key；书籍、远程会话、来源、mode、显式加载和卸载都会使旧事务失效。 | `aligned` | 保留延迟 append/retry 在 rebuild、换书和切 mode 后不得写回的测试。 |
 | 后台预取 | `useReaderChapterContent` 在当前章可见后后台预取半径 2，按 book/chapter/refresh 去重；额外章只进内存，不进入 DOM。 | `acceptable-change` | 不阻塞当前章，不产生重复请求，不得绕过 generation 写入另一书窗口。 |
 | 错误/重试 | 相邻失败生成 `.chapter-inline-error`；自动扩章暂停，按钮可 refresh 重试。 | `acceptable-change` | 比上游更明确的重试入口保留；重试同样受 generation 约束。 |
 | 内部滚动容器 | 上游滚动 document；OpenReader 滚动 `.reader-content`。 | `technical-stack-equivalent` | 几何、阈值、锚点、键鼠触摸和安全区结果须等价。 |
@@ -76,3 +76,20 @@
 - 保留 Vue 3/Pinia、内部滚动容器、Go 多用户 progress、精细 percent/offset、后台有界预取和
   显式错误重试，但它们不得改变上游当前章边界或保存瞬态状态。
 - 本批不顺带签收 EPUB、CBZ、audio、TTS、自动阅读引擎或 Index 工作台；相邻模块只跑回归。
+
+## 7. 2026-07-18 实施与验证结果
+
+- CONT-FIX-1：新增顶部边界选择器；标题位于安全区时章节 offset 为 0，上一章末段越过边界后才切换到下一章。
+- CONT-FIX-2：窗口 busy 覆盖相邻章请求、DOM 替换和锚点恢复；瞬态滚动不再写本地或服务端进度，稳定后只保存一次。
+- CONT-FIX-3：compute、append 和 retry 绑定 generation、book/session/source scope 与 mode；显式跳章、换书、切模式和卸载均使旧结果失效。
+- CONT-FIX-4…5：保留已对齐的四视口阈值、`scroll` 保留、`scroll2` prune、书末稳定、内联错误和手动重试。
+- CONT-FIX-6：`reader-continuous-contract.mjs` 在 1440×900、390×844、360×800 验证两种连续模式、顶部章切换、137px 原生滚动、离散点击/键盘、失败重试、锚点稳定和延迟事务期间无错误 progress PUT。
+
+回归证据：
+
+- `backend/go test ./...`：通过。
+- `frontend/npm test`：434/434 通过。
+- `frontend/npm run build`：通过。
+- mock 浏览器：continuous、mobile、image、text modes、TTS、volume、audio 合同通过。
+- 真实 Go 导入/阅读：EPUB 三视口与 CBZ 合同通过。
+- macOS 首次启动 text-modes Chrome 时曾因 Mach port 权限在测试执行前失败；获准重启相同合同后通过，未发现产品崩溃。

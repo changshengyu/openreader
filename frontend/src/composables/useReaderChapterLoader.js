@@ -9,6 +9,7 @@ export function useReaderChapterLoader(options) {
   }
 
   async function load(index, offset = 0, loadOptions = {}) {
+    options.invalidateChapterWindow?.()
     options.currentIndex.value = Math.max(
       0,
       Math.min(index, Math.max(options.chapters.value.length - 1, 0)),

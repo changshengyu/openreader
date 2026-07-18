@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { useReaderProgressPersistence } from '../src/composables/useReaderProgressPersistence.js'
 import {
   readerProgressBaseUpdatedAt,
   readerProgressPayload,
@@ -80,4 +81,39 @@ test('falls back to the current chapter and clamps whole-book progress', () => {
     chapterPercent: 1,
     chapterTitle: '末章',
   })
+})
+
+test('does not apply or upload a transient progress snapshot while the reader window is busy', async () => {
+  let blocked = true
+  const local = []
+  const remote = []
+  const controller = useReaderProgressPersistence({
+    minimumInterval: 0,
+    isBlocked: () => blocked,
+    getPayload: () => ({
+      bookId: 7,
+      chapterId: 13,
+      chapterIndex: 3,
+      offset: 240,
+      percent: 0.325,
+      chapterPercent: 0.25,
+    }),
+    getBaseUpdatedAt: () => 'server-v1',
+    applyLocal: payload => local.push(payload),
+    saveRemote: async payload => {
+      remote.push(payload)
+      return payload
+    },
+    onSaved: () => {},
+  })
+
+  await controller.save({ force: true })
+  assert.deepEqual(local, [])
+  assert.deepEqual(remote, [])
+
+  blocked = false
+  await controller.save({ force: true })
+  assert.equal(local.length, 1)
+  assert.equal(remote.length, 1)
+  controller.cancelScheduled()
 })

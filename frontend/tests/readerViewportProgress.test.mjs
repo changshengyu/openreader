@@ -74,6 +74,64 @@ test('assembles the visible chapter progress snapshot', () => {
   assert.equal(controller.currentChapterPercent(), 0.2)
 })
 
+test('uses a visible chapter heading as upstream position zero before a middle paragraph', () => {
+  const firstChapter = {
+    dataset: { index: '0' },
+    querySelector: () => null,
+  }
+  const secondChapter = {
+    dataset: { index: '1' },
+    querySelector: () => null,
+  }
+  const heading = {
+    dataset: { pos: '0' },
+    textContent: '第一章',
+    closest: selector => selector === '.chapter-content' ? firstChapter : null,
+    getBoundingClientRect: () => ({
+      top: 110,
+      bottom: 170,
+      left: 10,
+      right: 590,
+      height: 60,
+    }),
+  }
+  const paragraph = {
+    dataset: { pos: '100' },
+    textContent: '第二章正文',
+    closest: selector => selector === '.chapter-content' ? secondChapter : null,
+    getBoundingClientRect: () => ({
+      top: 240,
+      bottom: 420,
+      left: 10,
+      right: 590,
+      height: 180,
+    }),
+  }
+  const { controller } = createController({
+    contentBody: ref({
+      querySelectorAll: () => [heading, paragraph],
+      querySelector: () => firstChapter,
+    }),
+    chapterBlocks: ref([
+      { index: 0, id: 10, title: '第一章', content: '正文 0' },
+      { index: 1, id: 11, title: '第二章', content: '正文 1' },
+    ]),
+    displayedChapterBlocks: ref([
+      { index: 0, id: 10, title: '第一章', content: '正文 0' },
+      { index: 1, id: 11, title: '第二章', content: '正文 1' },
+    ]),
+    currentIndex: ref(0),
+    chapter: ref({ id: 10, title: '第一章' }),
+  })
+
+  assert.deepEqual(controller.visibleChapterProgressSnapshot(), {
+    chapterIndex: 0,
+    chapter: { id: 10, title: '第一章' },
+    offset: 0,
+    chapterPercent: 0,
+  })
+})
+
 test('uses flip page state without requiring rendered paragraphs', () => {
   const { controller } = createController({
     contentEl: ref(null),

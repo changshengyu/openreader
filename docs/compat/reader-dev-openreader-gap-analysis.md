@@ -1509,11 +1509,11 @@ Allowed differences: Vue 3 root dialogs, SQLite IDs/multiple-bookmark support, J
 
 ## Immediate P0 contract: continuous cross-chapter reading
 
-Status: **2026-07-18 fixed-baseline second audit found three remaining `must-fix` gaps.** Window range,
-four-viewport extension, scroll/scroll2 retention, native input and visible retry are aligned, but current
-paragraph selection uses a 32% viewport anchor instead of the upstream top boundary, progress writes are not
-isolated during DOM replacement, and async append/retry results lack a book/window generation guard. The
-authoritative correction and test-first plan are in
+Status: **2026-07-18 fixed-baseline second-audit corrections are implemented and verified.** Window range,
+four-viewport extension, scroll/scroll2 retention, native input and visible retry remain aligned; continuous
+chapter identity now follows the upstream top boundary, progress writes are isolated during anchored DOM
+replacement, and compute/append/retry share a book/mode/generation guard. The authoritative contract and
+current evidence are in
 [`reader-continuous-fixed-baseline-p0-contract.md`](reader-continuous-fixed-baseline-p0-contract.md).
 
 This contract is tied to `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. It replaces earlier audit notes and tests that treated a fixed previous-1/next-2 window as upstream behavior.
@@ -1574,9 +1574,12 @@ Validation evidence:
 - The browser contract verifies initial `[current, next]` rendering, native 137px wheel movement, symmetric readable geometry, `scroll2` read-chapter removal, paragraph anchor drift within 2px, no duplicate adjacent requests, current-content survival on failure, and successful retry.
 - Existing `scripts/smoke/reader-mobile-contract.mjs` and `scripts/smoke/reader-image-contract.mjs` both passed after this change.
 
-The evidence above remains regression evidence for the already-aligned window policy, but it predates the
-2026-07-18 second audit and does not test top-boundary chapter identity, progress suppression during anchored
-DOM replacement, or stale async append/retry invalidation. It therefore cannot close CONT-FIX-1…3.
+The earlier evidence above remains regression evidence for the window policy. The 2026-07-18 correction adds
+unit contracts for top-boundary chapter identity, progress suppression during anchored DOM replacement, and
+stale async append/retry invalidation. The expanded continuous browser contract now covers all three target
+viewports plus a delayed adjacent transaction and verifies that no transient progress PUT is sent. Frontend
+tests are 434/434; production build, backend tests, mobile/image/text/TTS/volume/audio smoke, and real Go
+EPUB/CBZ reader contracts all pass. CONT-FIX-1…6 are closed pending Docker publication of this source commit.
 
 ## Immediate P0 contract: Content image/comic/CBZ reading
 

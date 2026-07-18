@@ -47,4 +47,28 @@ test('ignores scroll events outside vertical mode or during restoration', () => 
   const loading = createController({ chapterLoading: ref(true) })
   loading.controller.handle()
   assert.deepEqual(loading.calls, [])
+
+  const replacingWindow = createController({ windowBusy: ref(true) })
+  replacingWindow.controller.handle()
+  assert.deepEqual(replacingWindow.calls, [])
+  assert.equal(replacingWindow.progressVersion.value, 3)
+})
+
+test('does not persist the scroll event that starts a window transaction', () => {
+  const windowBusy = ref(false)
+  const fixture = createController({
+    windowBusy,
+    maybeExtendChapterWindow: () => {
+      fixture.calls.push(['extend-window'])
+      windowBusy.value = true
+    },
+  })
+
+  fixture.controller.handle()
+  assert.deepEqual(fixture.calls, [
+    ['sync-chapter'],
+    ['extend-window'],
+    ['layout'],
+  ])
+  assert.equal(fixture.progressVersion.value, 3)
 })

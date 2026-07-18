@@ -550,6 +550,7 @@ const epubPreviewVisible = ref(false)
 const epubPreviewImages = ref([])
 const epubPreviewIndex = ref(0)
 const chapterBlocks = ref([])
+const chapterWindowBusy = ref(false)
 const chapterLoading = ref(true)
 const chapterLoadError = ref('')
 const chapterLoaded = ref(false)
@@ -929,7 +930,9 @@ const {
   isTemporaryReader: isTemporaryRemoteReader,
 })
 const {
+  busy: continuousWindowBusy,
   compute: computeShowChapterList,
+  invalidate: invalidateShowChapters,
   maybeExtend: maybeExtendShowChapters,
   retry: retryContinuousChapter,
   syncCurrentChapter: updateCurrentChapterFromScroll,
@@ -950,8 +953,22 @@ const {
   visibleProgressSnapshot: visibleChapterProgressSnapshot,
   nextFrame,
   nextSize: 1,
+  busy: chapterWindowBusy,
+  getScopeKey: () => [
+    bookId.value,
+    remoteSessionId.value,
+    book.value?.url || book.value?.bookUrl || book.value?.libraryPath || '',
+    book.value?.sourceId || '',
+  ].join('|'),
+  onStable: () => {
+    updateCurrentChapterFromScroll()
+    progressVersion.value += 1
+    applyLocalProgressSnapshot()
+    scheduleProgressSave(120)
+  },
   formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
 })
+onBeforeUnmount(invalidateShowChapters)
 const {
   readableViewportSize,
   resize: handleResize,
@@ -1261,6 +1278,7 @@ const {
   updateLayout: updateFlipLayout,
   restorePosition: restoreReadingPosition,
   saveProgress: () => saveCurrentProgress(),
+  invalidateChapterWindow: invalidateShowChapters,
 })
 const mobileChromeVisible = ref(true)
 const {
@@ -1359,6 +1377,7 @@ const {
   schedule: scheduleProgressSave,
 } = useReaderProgressPersistence({
   minimumInterval: 1200,
+  isBlocked: () => continuousWindowBusy.value,
   getPayload: () => chapter.value ? currentProgressPayload() : null,
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
   applyLocal: applyLocalProgressSnapshot,
@@ -1444,6 +1463,7 @@ const {
   markProgressSaved,
   getCurrentProgress: currentProgressPayload,
   computeChapterWindow: computeShowChapterList,
+  invalidateChapterWindow: invalidateShowChapters,
   formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
   nextFrame,
   onEpubPrepared: pending => {
@@ -1461,6 +1481,7 @@ const {
   isVerticalRead,
   restoringPosition,
   chapterLoading,
+  windowBusy: continuousWindowBusy,
   progressVersion,
   syncCurrentChapter: updateCurrentChapterFromScroll,
   maybeExtendChapterWindow: maybeExtendShowChapters,

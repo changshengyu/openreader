@@ -5,6 +5,7 @@ import {
   readerBlockTextOffset,
   readerScrollTextOffset,
   readerTextProgress,
+  selectTopVisibleReaderBlock,
   selectVisibleReaderBlock,
 } from '../utils/readerVisibility.js'
 
@@ -23,7 +24,22 @@ export function useReaderViewportProgress(options) {
     )
   }
 
+  function currentProgressElement() {
+    if (!options.isContinuousScrollRead.value) return currentVisibleParagraph()
+    const viewport = options.contentEl.value?.getBoundingClientRect()
+    const elements = [...(
+      options.contentBody.value?.querySelectorAll('h3[data-pos], [data-reader-block]') || []
+    )]
+    if (!viewport || !elements.length) return null
+    return selectTopVisibleReaderBlock(
+      elements.map(node => ({ node, rect: node.getBoundingClientRect() })),
+      viewport,
+      options.continuousTopInset ?? 50,
+    )
+  }
+
   function visibleParagraphOffset(paragraph, paragraphPos) {
+    if (Number(paragraphPos) <= 0) return 0
     const viewport = options.contentEl.value?.getBoundingClientRect()
     return readerBlockTextOffset({
       blockPosition: paragraphPos,
@@ -35,7 +51,7 @@ export function useReaderViewportProgress(options) {
 
   function visibleChapterProgressSnapshot() {
     if (!options.contentEl.value || !options.contentBody.value) return null
-    const paragraph = currentVisibleParagraph()
+    const paragraph = currentProgressElement()
     if (!paragraph) return null
     const chapterEl = paragraph.closest?.('.chapter-content')
     const chapterIndex = Number(chapterEl?.dataset?.index)
@@ -66,7 +82,7 @@ export function useReaderViewportProgress(options) {
   }
 
   function activeChapterElement() {
-    const paragraph = currentVisibleParagraph()
+    const paragraph = currentProgressElement()
     const chapterEl = paragraph?.closest?.('.chapter-content')
     if (chapterEl) return chapterEl
     return options.contentBody.value
@@ -83,11 +99,11 @@ export function useReaderViewportProgress(options) {
     const el = options.contentEl.value
     if (!el) return 0
     const activeChapter = activeChapterElement()
-    const heading = activeChapter?.querySelector('h1') || options.contentBody.value?.querySelector('h1')
+    const heading = activeChapter?.querySelector('h3') || options.contentBody.value?.querySelector('h3')
     const viewport = el.getBoundingClientRect()
     const headingRect = heading?.getBoundingClientRect()
     if (headingRect && headingRect.bottom >= viewport.top && headingRect.top <= viewport.bottom) return 0
-    const paragraph = currentVisibleParagraph()
+    const paragraph = currentProgressElement()
     const paragraphPos = Number(paragraph?.dataset?.pos)
     if (Number.isFinite(paragraphPos)) {
       return readerBlockTextOffset({
@@ -145,7 +161,7 @@ export function useReaderViewportProgress(options) {
 
   function captureReaderScrollAnchor() {
     if (!options.isContinuousScrollRead.value || !options.contentEl.value) return null
-    const paragraph = currentVisibleParagraph()
+    const paragraph = currentProgressElement()
     const chapterEl = paragraph?.closest?.('.chapter-content')
     const chapterIndex = Number(chapterEl?.dataset?.index)
     const paragraphPos = Number(paragraph?.dataset?.pos)
@@ -165,7 +181,7 @@ export function useReaderViewportProgress(options) {
     const chapterEl = options.contentBody.value
       .querySelector(`.chapter-content[data-index="${anchor.chapterIndex}"]`)
     const paragraph = chapterEl
-      ?.querySelector(`[data-reader-block][data-pos="${anchor.paragraphPos}"]`)
+      ?.querySelector(`[data-pos="${anchor.paragraphPos}"]`)
     if (!paragraph || !options.contentEl.value) return
     const viewport = options.contentEl.value.getBoundingClientRect()
     const currentOffset = paragraph.getBoundingClientRect().top - viewport.top
@@ -186,6 +202,7 @@ export function useReaderViewportProgress(options) {
     captureReaderScrollAnchor,
     currentChapterPercent,
     currentChapterPosition,
+    currentProgressElement,
     currentOffset,
     currentVisibleParagraph,
     restoreReaderScrollAnchor,

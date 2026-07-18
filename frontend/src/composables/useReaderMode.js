@@ -44,6 +44,7 @@ export function useReaderMode(options) {
   watch(
     () => options.reader.mode,
     async () => {
+      options.invalidateChapterWindow?.()
       const offset = options.getCurrentOffset()
       options.page.value = 0
       if (unref(options.isEPUB) || unref(options.isAudio)) {

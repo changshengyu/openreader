@@ -1,8 +1,8 @@
-import { onBeforeUnmount } from 'vue'
+import { getCurrentInstance, onBeforeUnmount } from 'vue'
 import {
   readerProgressSaveKey,
   readerProgressThrottleDelay,
-} from '../utils/readerProgressPersistence'
+} from '../utils/readerProgressPersistence.js'
 
 export function useReaderProgressPersistence(options) {
   const minimumInterval = Math.max(0, Number(options.minimumInterval) || 1200)
@@ -38,6 +38,7 @@ export function useReaderProgressPersistence(options) {
   }
 
   async function save(saveOptions = {}) {
+    if (options.isBlocked?.()) return
     const payload = options.getPayload?.()
     if (!payload?.bookId) return
 
@@ -131,7 +132,7 @@ export function useReaderProgressPersistence(options) {
     })
   }
 
-  onBeforeUnmount(cancelScheduled)
+  if (getCurrentInstance()) onBeforeUnmount(cancelScheduled)
 
   return {
     cancelScheduled,

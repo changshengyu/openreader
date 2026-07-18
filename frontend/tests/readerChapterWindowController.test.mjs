@@ -22,6 +22,7 @@ function createController(overrides = {}) {
   const contentBody = ref({
     querySelector: () => null,
   })
+  const scopeKey = ref('book:1')
   const controller = useReaderChapterWindow({
     reader,
     contentEl,
@@ -50,6 +51,7 @@ function createController(overrides = {}) {
     visibleProgressSnapshot: () => ({ chapterIndex: 2, chapter: chapters.value[2] }),
     nextFrame: async () => calls.push(['frame']),
     formatError: error => `加载失败：${error.message}`,
+    getScopeKey: () => scopeKey.value,
     ...overrides,
   })
   return {
@@ -63,6 +65,7 @@ function createController(overrides = {}) {
     controller,
     currentIndex,
     reader,
+    scopeKey,
   }
 }
 
@@ -201,4 +204,118 @@ test('serializes boundary extension and releases its lock after completion', asy
   fixture.controller.maybeExtend()
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(attempts, [4, 5])
+})
+
+test('keeps the window transaction busy through anchor restoration', async () => {
+  let resolveLoad
+  let resolveRestore
+  const fixture = createController({
+    loadContent: index => new Promise(resolve => {
+      resolveLoad = () => resolve({
+        chapter: fixture.chapters.value[index],
+        content: `正文 ${index}`,
+      })
+    }),
+    restoreScrollAnchor: () => new Promise(resolve => {
+      resolveRestore = resolve
+    }),
+  })
+  fixture.currentIndex.value = 3
+  fixture.chapterBlocks.value = [{
+    index: 3,
+    id: 4,
+    title: '第四章',
+    content: '正文 3',
+  }]
+
+  const pending = fixture.controller.appendNext()
+  assert.equal(fixture.controller.busy.value, true)
+  resolveLoad()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(fixture.controller.busy.value, true)
+  resolveRestore()
+  await pending
+  assert.equal(fixture.controller.busy.value, false)
+})
+
+test('drops a delayed append after an explicit chapter-window rebuild', async () => {
+  let resolveAppend
+  const fixture = createController({
+    loadContent: index => {
+      if (index === 4) {
+        return new Promise(resolve => {
+          resolveAppend = () => resolve({
+            chapter: fixture.chapters.value[index],
+            content: `旧事务正文 ${index}`,
+          })
+        })
+      }
+      return Promise.resolve({
+        chapter: fixture.chapters.value[index],
+        content: `正文 ${index}`,
+      })
+    },
+  })
+  fixture.currentIndex.value = 3
+  fixture.chapter.value = fixture.chapters.value[3]
+  fixture.content.value = '正文 3'
+  fixture.chapterBlocks.value = [{
+    index: 3,
+    id: 4,
+    title: '第四章',
+    content: '正文 3',
+  }]
+
+  const staleAppend = fixture.controller.appendNext()
+  fixture.currentIndex.value = 0
+  fixture.chapter.value = fixture.chapters.value[0]
+  fixture.content.value = '正文 0'
+  await fixture.controller.compute({ anchorIndex: 0, activate: true })
+  resolveAppend()
+  await staleAppend
+
+  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [0, 1])
+  assert.equal(fixture.chapterBlocks.value.some(block => block.content.includes('旧事务正文')), false)
+})
+
+test('drops delayed append and retry results after the book scope changes', async () => {
+  let resolveAppend
+  let resolveRetry
+  const fixture = createController({
+    loadContent: (index, options = {}) => new Promise(resolve => {
+      const finish = () => resolve({
+        chapter: fixture.chapters.value[index],
+        content: `${options.refresh ? '重试' : '追加'}正文 ${index}`,
+      })
+      if (options.refresh) resolveRetry = finish
+      else resolveAppend = finish
+    }),
+  })
+  fixture.currentIndex.value = 3
+  fixture.chapterBlocks.value = [{
+    index: 3,
+    id: 4,
+    title: '第四章',
+    content: '正文 3',
+  }]
+  const append = fixture.controller.appendNext()
+  fixture.scopeKey.value = 'book:2'
+  resolveAppend()
+  await append
+  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [3])
+
+  fixture.chapterBlocks.value = [{
+    index: 3,
+    id: 4,
+    title: '第四章',
+    content: '旧错误',
+    error: '旧错误',
+  }]
+  fixture.scopeKey.value = 'book:2'
+  const retry = fixture.controller.retry(3)
+  fixture.scopeKey.value = 'book:3'
+  resolveRetry()
+  await retry
+  assert.equal(fixture.chapterBlocks.value[0].error, '旧错误')
+  assert.equal(fixture.chapterBlocks.value[0].content, '旧错误')
 })

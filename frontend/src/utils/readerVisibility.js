@@ -40,6 +40,19 @@ export function selectVisibleReaderBlock(entries, viewport, inset = 8) {
     ))[0]?.node || null
 }
 
+export function selectTopVisibleReaderBlock(entries, viewport, topInset = 50, sideInset = 8) {
+  if (!viewport || !Array.isArray(entries) || !entries.length) return null
+  const boundary = finiteNumber(viewport.top) + Math.max(0, finiteNumber(topInset))
+  const visibleLeft = finiteNumber(viewport.left) + Math.max(0, finiteNumber(sideInset))
+  const visibleRight = finiteNumber(viewport.right) - Math.max(0, finiteNumber(sideInset))
+  return entries.find(({ rect }) => (
+    rect
+    && finiteNumber(rect.bottom) > boundary
+    && finiteNumber(rect.right) >= visibleLeft
+    && finiteNumber(rect.left) <= visibleRight
+  ))?.node || null
+}
+
 export function readerBlockTextOffset({
   blockPosition,
   textLength,

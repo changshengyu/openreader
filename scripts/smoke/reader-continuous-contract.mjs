@@ -28,7 +28,7 @@ function chapterContent(index) {
   )).join('\n')
 }
 
-async function installMocks(page, requestCounts, options = {}) {
+async function installMocks(page, requestCounts, progressWrites, options = {}) {
   const attempts = new Map()
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
@@ -79,6 +79,9 @@ async function installMocks(page, requestCounts, options = {}) {
       const index = Number(contentMatch[1])
       requestCounts.set(index, (requestCounts.get(index) || 0) + 1)
       attempts.set(index, (attempts.get(index) || 0) + 1)
+      if (options.delayAt === index && options.delayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, options.delayMs))
+      }
       if (options.failOnceAt === index && attempts.get(index) === 1) {
         return route.fulfill(json({ error: 'fixture adjacent chapter failure' }, 502))
       }
@@ -92,6 +95,7 @@ async function installMocks(page, requestCounts, options = {}) {
     if (path === '/progress/1') return route.fulfill(json({}))
     if (path === '/progress' && method === 'PUT') {
       const body = request.postDataJSON?.() || {}
+      progressWrites.push(body)
       return route.fulfill(json({ ...body, bookId: 1 }))
     }
     if (path === '/sources' || path === '/categories') return route.fulfill(json([]))
@@ -124,10 +128,11 @@ async function openReader(browser, viewport, options = {}) {
   const page = await context.newPage()
   const failures = collectFailures(page)
   const requestCounts = new Map()
-  await installMocks(page, requestCounts, options)
+  const progressWrites = []
+  await installMocks(page, requestCounts, progressWrites, options)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.chapter-content[data-index="0"] [data-reader-block]', { timeout: 10_000 })
-  return { context, failures, page, requestCounts }
+  return { context, failures, page, progressWrites, requestCounts }
 }
 
 async function runContinuousViewport(browser, viewport, mode) {
@@ -169,6 +174,43 @@ async function runContinuousViewport(browser, viewport, mode) {
     await page.waitForTimeout(120)
     const clickTop = await page.locator('.reader-content').evaluate(element => element.scrollTop)
     assert(clickTop > 0, `${viewport.width}/${mode}: lower-region click did not page the vertical reader`)
+
+    await page.locator('.reader-content').evaluate((element) => {
+      element.scrollTop = 0
+      element.dispatchEvent(new Event('scroll'))
+    })
+    await page.waitForFunction(() => (
+      document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('1 /')
+    ))
+    const topBoundary = await page.evaluate(() => {
+      const content = document.querySelector('.reader-content')
+      const viewport = content.getBoundingClientRect()
+      const blocks = [...document.querySelectorAll(
+        '.chapter-content[data-index="0"] h3[data-pos], .chapter-content[data-index="0"] [data-reader-block]',
+      )]
+      const tail = blocks.at(-1)
+      const boundary = viewport.top + 50
+      const delta = tail.getBoundingClientRect().bottom - boundary - 1
+      content.scrollTop += delta
+      content.dispatchEvent(new Event('scroll'))
+      return {
+        boundary,
+        scrollTop: content.scrollTop,
+        tailBottom: tail.getBoundingClientRect().bottom,
+      }
+    })
+    await page.waitForTimeout(120)
+    const beforeBoundaryLabel = await page.locator('.reader-page-head').evaluate(
+      element => element.lastElementChild?.textContent || '',
+    )
+    assert(beforeBoundaryLabel.startsWith('1 /'), `${viewport.width}/${mode}: chapter switched before top boundary (${beforeBoundaryLabel}, ${JSON.stringify(topBoundary)})`)
+    await page.locator('.reader-content').evaluate((element) => {
+      element.scrollTop += 2
+      element.dispatchEvent(new Event('scroll'))
+    })
+    await page.waitForFunction(() => (
+      document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('2 /')
+    ))
 
     await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
     const preExtension = await page.evaluate(() => {
@@ -260,6 +302,62 @@ async function runContinuousViewport(browser, viewport, mode) {
   }
 }
 
+async function runProgressTransaction(browser) {
+  const fixture = await openReader(browser, { width: 390, height: 844 }, {
+    mode: 'scroll2',
+    delayAt: 3,
+    delayMs: 900,
+  })
+  const { context, failures, page, progressWrites, requestCounts } = fixture
+  try {
+    await page.waitForFunction(() => (
+      [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)).join(',') === '0,1'
+    ))
+    await page.locator('.reader-content').evaluate((element) => {
+      element.scrollTop = Math.min(
+        element.scrollHeight - element.clientHeight,
+        element.scrollHeight - element.clientHeight * 4 + 20,
+      )
+      element.dispatchEvent(new Event('scroll'))
+    })
+    await page.waitForFunction(() => (
+      [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)).join(',') === '1,2'
+    ))
+    await page.waitForTimeout(1400)
+    const baselineWrites = progressWrites.length
+
+    await page.locator('.reader-content').evaluate((element) => {
+      element.scrollTop = Math.min(
+        element.scrollHeight - element.clientHeight,
+        element.scrollHeight - element.clientHeight * 4 + 20,
+      )
+      element.dispatchEvent(new Event('scroll'))
+    })
+    await page.waitForFunction(() => (
+      document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('3 /')
+    ))
+    await page.waitForTimeout(180)
+    assert((requestCounts.get(3) || 0) === 1, `delayed extension request count ${requestCounts.get(3) || 0}`)
+    await page.locator('.reader-content').evaluate((element) => {
+      element.scrollTop += 60
+      element.dispatchEvent(new Event('scroll'))
+    })
+    await page.waitForTimeout(320)
+    assert(progressWrites.length === baselineWrites, `progress PUT leaked during window transaction (${baselineWrites} -> ${progressWrites.length})`)
+
+    await page.waitForFunction(() => (
+      [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)).join(',') === '2,3'
+    ), null, { timeout: 10_000 })
+    await page.waitForTimeout(1400)
+    assert(progressWrites.length > baselineWrites, 'stable window did not persist progress after anchor restoration')
+    const latest = progressWrites.at(-1)
+    assert(latest.chapterIndex === 2, `stable progress saved wrong chapter ${latest.chapterIndex}`)
+    assert(failures.length === 0, failures.join('\n'))
+  } finally {
+    await context.close()
+  }
+}
+
 async function runFailureRetry(browser) {
   const fixture = await openReader(browser, { width: 390, height: 844 }, { failOnceAt: 1 })
   const { context, failures, page, requestCounts } = fixture
@@ -295,6 +393,7 @@ async function main() {
       await runContinuousViewport(browser, viewport, 'scroll2')
     }
     await runFailureRetry(browser)
+    await runProgressTransaction(browser)
     console.log('reader continuous contract smoke passed')
   } finally {
     await browser.close()

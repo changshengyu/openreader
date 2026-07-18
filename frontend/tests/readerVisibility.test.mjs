@@ -5,6 +5,7 @@ import {
   readerScrollTextOffset,
   readerTextProgress,
   readerViewportAnchorY,
+  selectTopVisibleReaderBlock,
   selectVisibleReaderBlock,
 } from '../src/utils/readerVisibility.js'
 
@@ -56,6 +57,34 @@ test('falls back to the nearest visible block and rejects horizontal misses', ()
       rect: { top: 260, bottom: 320, left: 700, right: 800 },
     },
   ], viewport), near)
+})
+
+test('selects the first heading or paragraph below the upstream top boundary', () => {
+  const heading = { id: 'heading' }
+  const middleParagraph = { id: 'middle' }
+  assert.equal(selectTopVisibleReaderBlock([
+    {
+      node: heading,
+      rect: { top: 110, bottom: 170, left: 10, right: 590 },
+    },
+    {
+      node: middleParagraph,
+      rect: { top: 240, bottom: 420, left: 10, right: 590 },
+    },
+  ], viewport, 50), heading)
+
+  const previousChapterTail = { id: 'previous-tail' }
+  const nextChapterHeading = { id: 'next-heading' }
+  assert.equal(selectTopVisibleReaderBlock([
+    {
+      node: previousChapterTail,
+      rect: { top: 80, bottom: 149, left: 10, right: 590 },
+    },
+    {
+      node: nextChapterHeading,
+      rect: { top: 160, bottom: 220, left: 10, right: 590 },
+    },
+  ], viewport, 50), nextChapterHeading)
 })
 
 test('converts paragraph and scroll geometry into text progress', () => {
