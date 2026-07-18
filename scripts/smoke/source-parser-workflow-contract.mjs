@@ -42,6 +42,24 @@ async function startFixtureServer() {
     'content-2.json',
   ].map(async name => [name, await fixtureText(name)])))
 
+  fixtures['books.html'] = fixtures['books.html'].replace('>第一本书</h2>', '>第一本书 作者：夹具</h2>')
+  fixtures['book_detail.html'] = fixtures['book_detail.html']
+    .replace('>XPath 详情书</h1>', '>XPath 详情书 作者：夹具</h1>')
+    .replace('>XPath 作者</span>', '>作者：XPath 作者 著</span>')
+    .replace(
+      '<p class="intro">XPath 详情简介</p>',
+      '<p class="intro" data-intro="XPath 第一段&lt;br&gt;XPath 第二段">XPath 详情简介</p>',
+    )
+  const jsonBooks = JSON.parse(fixtures['books.json'])
+  jsonBooks.data.books[0].name = 'JSON 第一书 作者：夹具'
+  fixtures['books.json'] = JSON.stringify(jsonBooks)
+  const jsonDetail = JSON.parse(fixtures['book_detail.json'])
+  jsonDetail.book.title = 'JSON 详情书 作者：夹具'
+  jsonDetail.book.author = '作者：JSON 作者 著'
+  jsonDetail.book.intro = 'JSON 第一段<br>JSON 第二段'
+  jsonDetail.book.rename = false
+  fixtures['book_detail.json'] = JSON.stringify(jsonDetail)
+
   const pages = new Map([
     ['/css/search', ['books.html', 'text/html; charset=utf-8']],
     ['/xpath/search', ['books.html', 'text/html; charset=utf-8']],
@@ -199,11 +217,12 @@ function cssRules(fixtureRoot) {
     bookInfoNameRule: '@CSS:h1@text',
     bookInfoAuthorRule: '@CSS:.author@text',
     bookInfoCoverRule: '@CSS:.cover@data-src',
-    bookInfoIntroRule: '@CSS:.intro@text',
+    bookInfoIntroRule: '@CSS:.intro@data-intro',
     bookInfoKindRule: '@CSS:.kind@text',
     bookInfoLatestChapterRule: '@CSS:.latest@text',
     bookInfoUpdateTimeRule: '@CSS:.updated@text',
     bookInfoWordCountRule: '@CSS:.words@text',
+    bookInfoCanRenameRule: '@CSS:.missing@text',
     tocUrlRule: '@CSS:#toc@href',
     chapterListRule: '@CSS:li.chapter',
     chapterNameRule: '@CSS:a@text',
@@ -233,6 +252,7 @@ function jsonPathRules(fixtureRoot) {
     bookInfoLatestChapterRule: '$.latest',
     bookInfoUpdateTimeRule: '$.updated',
     bookInfoWordCountRule: '$.words',
+    bookInfoCanRenameRule: '$.rename',
     tocUrlRule: '$.book.toc',
     chapterListRule: '$.chapters[*]',
     chapterNameRule: '$.title',
@@ -257,11 +277,12 @@ function xpathRules(fixtureRoot) {
     bookInfoNameRule: '@XPath:.//h1/text()',
     bookInfoAuthorRule: "@XPath:.//span[@class='author']/text()",
     bookInfoCoverRule: "@XPath:.//img[@class='cover']/@data-src",
-    bookInfoIntroRule: "@XPath:.//p[@class='intro']/text()",
+    bookInfoIntroRule: "@XPath:.//p[@class='intro']/@data-intro",
     bookInfoKindRule: "@XPath:.//span[@class='kind']/text()",
     bookInfoLatestChapterRule: "@XPath:.//span[@class='latest']/text()",
     bookInfoUpdateTimeRule: "@XPath:.//span[@class='updated']/text()",
     bookInfoWordCountRule: "@XPath:.//span[@class='words']/text()",
+    bookInfoCanRenameRule: "@XPath:.//missing/text()",
     tocUrlRule: "@XPath://a[@id='toc']/@href",
     chapterListRule: "@XPath://li[@class='chapter']",
     chapterNameRule: '@XPath:.//a/text()',
@@ -280,7 +301,9 @@ async function createSources(root, token, fixtureRoot) {
     {
       mode: 'CSS',
       searchTitle: '第一本书',
+      detailTitle: 'XPath 详情书',
       detailAuthor: 'XPath 作者',
+      detailIntro: 'XPath 第一段\n　　XPath 第二段',
       chapterTitle: 'XPath 第一章',
       content: ['XPath 正文第一页', 'XPath 正文第二页'],
       rules: cssRules(fixtureRoot),
@@ -288,7 +311,9 @@ async function createSources(root, token, fixtureRoot) {
     {
       mode: 'JSONPath',
       searchTitle: 'JSON 第一书',
+      detailTitle: 'JSON 详情书',
       detailAuthor: 'JSON 作者',
+      detailIntro: 'JSON 第一段\n　　JSON 第二段',
       chapterTitle: 'JSON 第一章',
       content: ['JSON 正文第一页', 'JSON 正文第二页'],
       rules: jsonPathRules(fixtureRoot),
@@ -296,7 +321,9 @@ async function createSources(root, token, fixtureRoot) {
     {
       mode: 'XPath',
       searchTitle: '第一本书',
+      detailTitle: 'XPath 详情书',
       detailAuthor: 'XPath 作者',
+      detailIntro: 'XPath 第一段\n　　XPath 第二段',
       chapterTitle: 'XPath 第一章',
       content: ['XPath 正文第一页', 'XPath 正文第二页'],
       rules: xpathRules(fixtureRoot),
@@ -355,11 +382,11 @@ async function assertWorkflow(browser, root, token, definition) {
   const sessionID = new URL(page.url()).pathname.split('/').filter(Boolean).at(-1)
   assert(sessionID, `${definition.mode}: missing remote reader session id`)
   const session = await api(root, `/reader/remote-sessions/${sessionID}`, { token })
-  // reader-dev only lets detail data rename a search title when canReName says so.
-  // The fixtures intentionally omit that optional rule, so title must retain the
-  // search result while author proves the real detail document was parsed.
-  assert(session?.book?.title === definition.searchTitle, `${definition.mode}: remote title = ${session?.book?.title}, want ${definition.searchTitle}`)
+  // canReName is a configured marker in the fixed upstream, not a rule whose
+  // missing/false result is interpreted as a boolean.
+  assert(session?.book?.title === definition.detailTitle, `${definition.mode}: remote title = ${session?.book?.title}, want ${definition.detailTitle}`)
   assert(session?.book?.author === definition.detailAuthor, `${definition.mode}: detail author = ${session?.book?.author}, want ${definition.detailAuthor}`)
+  assert(session?.book?.intro === definition.detailIntro, `${definition.mode}: detail intro = ${JSON.stringify(session?.book?.intro)}, want ${JSON.stringify(definition.detailIntro)}`)
   assert(Array.isArray(session?.chapters) && session.chapters.length === 3, `${definition.mode}: expected three parsed chapters`)
   assert(session.chapters[0]?.title === definition.chapterTitle, `${definition.mode}: first chapter = ${session.chapters[0]?.title}, want ${definition.chapterTitle}`)
 
@@ -379,7 +406,7 @@ async function run() {
   try {
     const registered = await api(app.root, '/auth/register', {
       method: 'POST',
-      body: { username: 'parser-browser-smoke', password: 'source-parser-browser' },
+      body: { username: 'parserbrowsersmoke', password: 'source-parser-browser' },
     })
     const token = registered?.token
     assert(token, 'source parser browser smoke registration did not return a token')
@@ -388,7 +415,7 @@ async function run() {
     try {
       const completed = []
       for (const definition of definitions) completed.push(await assertWorkflow(browser, app.root, token, definition))
-      console.log(`source-parser-workflow: ok ${completed.join(', ')} realApi=true fixtureOnly=true searchBookInfoTocContent=true`)
+      console.log(`source-parser-workflow: ok ${completed.join(', ')} realApi=true fixtureOnly=true searchBookInfoTocContent=true metadata=true canReName=presence`)
     } finally {
       await browser.close()
     }

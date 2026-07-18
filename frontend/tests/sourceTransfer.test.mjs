@@ -87,6 +87,12 @@ test('classifies only executable source fields and keeps dormant fields non-bloc
     'ruleContent.webJs',
     'ruleToc.preUpdateJs',
   ])
+
+  const canRenameMarker = analyzeSourceCompatibility({
+    ruleBookInfo: { canReName: '@js:this field is a presence marker, not an executable rule' },
+  })
+  assert.equal(canRenameMarker.blocking, false)
+  assert.equal(canRenameMarker.status, 'supported')
 })
 
 test('detects every source entry point rejected by the current runtime', () => {

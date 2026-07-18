@@ -182,11 +182,12 @@ async function runViewport(browser, viewport) {
       { ...source(4, '动态头源'), header: '<js>private-header</js>' },
       { ...source(5, '登录检测源'), loginCheckJs: 'return privateLogin' },
       { ...source(6, '保留字段源'), ruleToc: { preUpdateJs: 'return chapterList' } },
+      { ...source(7, '改名标志源'), ruleBookInfo: { canReName: '@js:presence-marker' } },
     ])),
   })
   await page.getByText('本地预览书源', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
   const previewRows = page.locator('.source-import-item')
-  assert(await previewRows.count() === 4, `${viewport.width}: source compatibility preview must keep every row`)
+  assert(await previewRows.count() === 5, `${viewport.width}: source compatibility preview must keep every row`)
   const previewChecked = async name => previewRows.filter({ hasText: name }).locator('input[type="checkbox"]').isChecked()
   const previewState = await previewRows.evaluateAll(rows => rows.map(row => ({
     text: row.innerText,
@@ -197,11 +198,12 @@ async function runViewport(browser, viewport) {
   assert(!(await previewChecked('动态头源')), `${viewport.width}: dynamic header source must not be selected by default`)
   assert(!(await previewChecked('登录检测源')), `${viewport.width}: login-check source must not be selected by default`)
   assert(await previewChecked('保留字段源'), `${viewport.width}: fixed-baseline dormant fields must not block import`)
+  assert(await previewChecked('改名标志源'), `${viewport.width}: canReName presence marker must not be treated as executable script`)
   await previewRows.filter({ hasText: '动态头源' }).getByText('@Javascript', { exact: true }).waitFor({ state: 'visible' })
   await previewRows.filter({ hasText: '登录检测源' }).getByText('登录检测依赖 JavaScript', { exact: false }).waitFor({ state: 'visible' })
   await previewRows.filter({ hasText: '保留字段源' }).getByText('仅无损保存', { exact: false }).waitFor({ state: 'visible' })
   await previewRows.filter({ hasText: '动态头源' }).locator('.el-checkbox__inner').click()
-  await page.getByText('已选择 3 / 4 个', { exact: true }).waitFor({ state: 'visible' })
+  await page.getByText('已选择 4 / 5 个', { exact: true }).waitFor({ state: 'visible' })
   await page.getByRole('button', { name: '确定导入' }).click()
   await page.locator('.source-import-preview').waitFor({ state: 'hidden', timeout: 10000 })
   await assertNoHorizontalOverflow(page, `${viewport.width} import-preview`)

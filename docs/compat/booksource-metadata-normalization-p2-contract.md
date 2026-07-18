@@ -2,8 +2,8 @@
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 已完成固定上游与当前调用链盘点；本文件是测试和实现的前置闸门，
-本阶段未修改应用代码。
+状态：2026-07-18 已完成固定上游盘点、测试先行、实现、全量回归与真实浏览器验证；
+等待当前提交的 Docker 卷/备份发布门禁。
 
 ## 权威文件
 
@@ -88,3 +88,20 @@ authorRegex = ^\s*作\s*者[:：\s]+|\s+著
 - OpenReader 可以用等价、线性时间且有界的 Go 字符串处理实现 Kotlin 正则与 `htmlFormat`，但黄金输出
   必须一致。
 - 出于浏览器安全，简介始终作为文本数据消费；不复制上游 WebView/HTML 注入能力。
+
+## 2026-07-18 实施与验证记录
+
+- 新增 `backend/engine/source_metadata.go`，集中实现固定基准的书名后缀、作者前后缀和简介分段转换；
+  CSS 快路径与统一 evaluator 的搜索、探索、详情和详情式回退均只经过这一出口。
+- `bookInfoRuleNeedsEvaluator` 不再把 `canReName` 作为执行规则；详情结果只按配置字段是否非空设置
+  `CanRename`。因此 JSONPath 返回 `false`、XPath 无匹配、CSS 空文本和脚本样式标志都不会改变语义或
+  触发求值错误。
+- 前端能力分析器同步把 `canReName` / `bookInfoCanRenameRule` 排除在执行入口外，导入预览不再把这类
+  无害配置误标为 JavaScript；后端对真正的动态 Header、登录检查和规则脚本仍保持原安全拒绝。
+- 新增 engine 黄金合同，覆盖 CSS、JSONPath、XPath 的列表、详情、详情式回退、格式化输出和配置存在
+  语义；新增真实 API 合同，覆盖创建书架、刷新、换源和临时 Reader，并证明临时 Reader 不落库。
+- Go 全量、前端 448/448 和生产构建通过。`source-parser-workflow-contract.mjs` 以真实 Go、本地夹具和
+  Chromium 完成 CSS/JSONPath/XPath 的搜索→BookInfo→目录→正文，并断言规范化元数据与
+  `canReName=presence`；`source-workspace-contract.mjs` 在 1440×900、390×844、360×800 验证导入预览、
+  手动选择、编辑/debug、非执行改名标志及无横向溢出。
+- 旧 SQLite 行没有被扫描或改写；只有用户以后执行搜索、添加、刷新、换源或临时阅读时才得到修正值。

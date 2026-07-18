@@ -231,6 +231,10 @@
 - 2026-07-18 已完成前端能力透明化：导入预览、编辑器和调试统一使用结构化兼容结论；动态 Header、
   `loginCheckJs`、规则脚本/模板和 WebView 不再被默认选为可运行源，固定基准未消费字段仍可无损保存且不被
   误判阻断。完整合同与三视口证据见 [`booksource-script-transparency-p2-contract.md`](booksource-script-transparency-p2-contract.md)。
+- 2026-07-18 已完成远端元数据后处理与 `canReName` 语义统一：CSS、JSONPath、XPath 的搜索/详情共享
+  固定基准书名、作者和简介格式化；`canReName` 只按配置存在决定是否允许详情覆盖已有书名/作者，不再
+  执行规则取布尔值。API、存量数据与安全边界见
+  [`booksource-metadata-normalization-p2-contract.md`](booksource-metadata-normalization-p2-contract.md)。
 
 ## 审查范围与上游证据
 

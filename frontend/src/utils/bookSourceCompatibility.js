@@ -33,6 +33,8 @@ const NON_EXECUTABLE_RULE_FIELDS = new Set([
   'contentreplaceregex',
   'contentimagestyle',
   'headers',
+  'canrename',
+  'bookinfocanrenamerule',
 ])
 const URL_TEMPLATE_RULE_FIELDS = new Set(['searchurl', 'exploreurl'])
 

@@ -437,6 +437,7 @@ func parseBookResultsWithEvaluatorWithRuntime(document *sourceRuleDocument, rule
 		if err != nil {
 			return nil, err
 		}
+		title = formatSourceBookName(title)
 		if title == "" {
 			continue
 		}
@@ -445,6 +446,7 @@ func parseBookResultsWithEvaluatorWithRuntime(document *sourceRuleDocument, rule
 		if err != nil {
 			return nil, err
 		}
+		author = formatSourceBookAuthor(author)
 		coverURL, err := sourceRuleString(item, rule.BookCoverRule)
 		if err != nil {
 			return nil, err
@@ -453,6 +455,7 @@ func parseBookResultsWithEvaluatorWithRuntime(document *sourceRuleDocument, rule
 		if err != nil {
 			return nil, err
 		}
+		intro = formatSourceBookIntro(intro)
 		kinds, err := sourceRuleStrings(item, rule.BookKindRule)
 		if err != nil {
 			return nil, err
@@ -533,10 +536,10 @@ func parseBookResults(doc *goquery.Document, rule models.BookSourceRule, source 
 			OriginOrder: source.CustomOrder,
 			Type:        source.SourceType,
 		}
-		result.Title = firstMatch(sel, rule.BookNameRule)
-		result.Author = firstMatch(sel, rule.BookAuthorRule)
+		result.Title = formatSourceBookName(firstMatch(sel, rule.BookNameRule))
+		result.Author = formatSourceBookAuthor(firstMatch(sel, rule.BookAuthorRule))
 		result.CoverURL = resolveURL(baseURL, firstMatch(sel, rule.BookCoverRule))
-		result.Intro = firstMatch(sel, rule.BookIntroRule)
+		result.Intro = formatSourceBookIntro(firstMatch(sel, rule.BookIntroRule))
 		result.Kind = strings.Join(Extract(sel, rule.BookKindRule), ",")
 		result.WordCount = formatSourceWordCount(firstMatch(sel, rule.BookWordCountRule))
 		result.LatestChapter = firstMatch(sel, rule.LatestChapterRule)
@@ -702,10 +705,10 @@ func FetchBookInfoAndTOCWithVariables(bookURL string, source models.BookSource, 
 func parseRemoteBookInfo(doc *goquery.Document, rule models.BookSourceRule, baseURL string) RemoteBookInfo {
 	scope := bookInfoScope(doc, rule.BookInfoInitRule)
 	return RemoteBookInfo{
-		Title:         firstMatch(scope, rule.BookInfoNameRule),
-		Author:        firstMatch(scope, rule.BookInfoAuthorRule),
+		Title:         formatSourceBookName(firstMatch(scope, rule.BookInfoNameRule)),
+		Author:        formatSourceBookAuthor(firstMatch(scope, rule.BookInfoAuthorRule)),
 		CoverURL:      resolveURL(baseURL, firstMatch(scope, rule.BookInfoCoverRule)),
-		Intro:         firstMatch(scope, rule.BookInfoIntroRule),
+		Intro:         formatSourceBookIntro(firstMatch(scope, rule.BookInfoIntroRule)),
 		Kind:          firstMatch(scope, rule.BookInfoKindRule),
 		LatestChapter: firstMatch(scope, rule.BookInfoLatestChapterRule),
 		UpdateTime:    firstMatch(scope, rule.BookInfoUpdateTimeRule),
@@ -736,7 +739,6 @@ func bookInfoRuleNeedsEvaluator(rule models.BookSourceRule) bool {
 		rule.BookInfoLatestChapterRule,
 		rule.BookInfoUpdateTimeRule,
 		rule.BookInfoWordCountRule,
-		rule.BookInfoCanRenameRule,
 	} {
 		if sourceRuleNeedsEvaluator(value) {
 			return true
@@ -764,11 +766,13 @@ func parseRemoteBookInfoWithEvaluatorWithRuntime(document *sourceRuleDocument, r
 	if err != nil {
 		return RemoteBookInfo{}, err
 	}
+	name = formatSourceBookName(name)
 	runtime.setBookName(name)
 	author, err := sourceRuleString(scope, rule.BookInfoAuthorRule)
 	if err != nil {
 		return RemoteBookInfo{}, err
 	}
+	author = formatSourceBookAuthor(author)
 	coverURL, err := sourceRuleString(scope, rule.BookInfoCoverRule)
 	if err != nil {
 		return RemoteBookInfo{}, err
@@ -777,6 +781,7 @@ func parseRemoteBookInfoWithEvaluatorWithRuntime(document *sourceRuleDocument, r
 	if err != nil {
 		return RemoteBookInfo{}, err
 	}
+	intro = formatSourceBookIntro(intro)
 	kinds, err := sourceRuleStrings(scope, rule.BookInfoKindRule)
 	if err != nil {
 		return RemoteBookInfo{}, err
@@ -793,14 +798,6 @@ func parseRemoteBookInfoWithEvaluatorWithRuntime(document *sourceRuleDocument, r
 	if err != nil {
 		return RemoteBookInfo{}, err
 	}
-	canRename := false
-	if strings.TrimSpace(rule.BookInfoCanRenameRule) != "" {
-		canRenameValue, err := sourceRuleString(scope, rule.BookInfoCanRenameRule)
-		if err != nil {
-			return RemoteBookInfo{}, err
-		}
-		canRename = sourceRuleBool(canRenameValue)
-	}
 	return RemoteBookInfo{
 		Title:         name,
 		Author:        author,
@@ -810,7 +807,7 @@ func parseRemoteBookInfoWithEvaluatorWithRuntime(document *sourceRuleDocument, r
 		LatestChapter: latestChapter,
 		UpdateTime:    updateTime,
 		WordCount:     formatSourceWordCount(wordCount),
-		CanRename:     canRename,
+		CanRename:     strings.TrimSpace(rule.BookInfoCanRenameRule) != "",
 	}, nil
 }
 
