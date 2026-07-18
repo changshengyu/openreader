@@ -10,6 +10,63 @@ import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
 
 export function useReaderNavigation(options) {
   const scrollAnimator = options.scrollAnimator || createReaderScrollAnimator()
+  let activeVerticalDirection = 0
+  let queuedVerticalDirection = 0
+  let animationGeneration = 0
+
+  function cancelPageAnimation() {
+    animationGeneration += 1
+    activeVerticalDirection = 0
+    queuedVerticalDirection = 0
+    scrollAnimator.cancel()
+  }
+
+  function verticalAnimationOptions() {
+    if (
+      options.getMode() !== 'page'
+      || !options.useCompositedPageAnimation?.()
+      || !options.contentBody.value
+    ) return undefined
+    return { visualElement: options.contentBody.value }
+  }
+
+  function queueActiveVerticalPage(direction) {
+    if (!scrollAnimator.isActive()) return false
+    queuedVerticalDirection = activeVerticalDirection === direction ? direction : 0
+    return true
+  }
+
+  function runVerticalPageAnimation(element, direction) {
+    if (queueActiveVerticalPage(direction)) return true
+    const generation = animationGeneration
+    activeVerticalDirection = direction
+    const started = scrollAnimator.scrollBy(
+      element,
+      direction * options.scrollStep(),
+      options.getAnimateDuration(),
+      () => {
+        if (generation !== animationGeneration) return
+        activeVerticalDirection = 0
+        if (options.onVerticalPageSettled) {
+          options.onVerticalPageSettled()
+        } else {
+          options.progressVersion.value += 1
+          options.scheduleProgressSave(60)
+        }
+        const queuedDirection = queuedVerticalDirection
+        queuedVerticalDirection = 0
+        if (queuedDirection !== direction) return
+        queueMicrotask(() => {
+          if (generation !== animationGeneration) return
+          if (direction > 0) void nextPage()
+          else void previousPage()
+        })
+      },
+      verticalAnimationOptions(),
+    )
+    if (!started) activeVerticalDirection = 0
+    return started
+  }
 
   function targetChapterIndex(index) {
     return Math.max(
@@ -116,7 +173,7 @@ export function useReaderNavigation(options) {
   }
 
   async function goChapter(index, offset = 0) {
-    scrollAnimator.cancel()
+    cancelPageAnimation()
     const targetIndex = targetChapterIndex(index)
     if (targetIndex === options.currentIndex.value) {
       options.closeToc?.()
@@ -147,22 +204,9 @@ export function useReaderNavigation(options) {
       return
     }
     if (unref(options.isVerticalRead) && options.contentEl.value) {
-      if (scrollAnimator.isActive()) return
       const el = options.contentEl.value
       if (el.scrollTop > 8) {
-        scrollAnimator.scrollBy(
-          el,
-          -options.scrollStep(),
-          options.getAnimateDuration(),
-          () => {
-            if (options.onVerticalPageSettled) {
-              options.onVerticalPageSettled()
-            } else {
-              options.progressVersion.value += 1
-              options.scheduleProgressSave(60)
-            }
-          },
-        )
+        runVerticalPageAnimation(el, -1)
         return
       }
     }
@@ -182,23 +226,10 @@ export function useReaderNavigation(options) {
       return
     }
     if (unref(options.isVerticalRead) && options.contentEl.value) {
-      if (scrollAnimator.isActive()) return
       const el = options.contentEl.value
       const bottom = el.scrollHeight - el.clientHeight
       if (el.scrollTop < bottom - 8) {
-        scrollAnimator.scrollBy(
-          el,
-          options.scrollStep(),
-          options.getAnimateDuration(),
-          () => {
-            if (options.onVerticalPageSettled) {
-              options.onVerticalPageSettled()
-            } else {
-              options.progressVersion.value += 1
-              options.scheduleProgressSave(60)
-            }
-          },
-        )
+        runVerticalPageAnimation(el, 1)
         return
       }
     }
@@ -208,7 +239,7 @@ export function useReaderNavigation(options) {
   }
 
   function scrollToTop() {
-    scrollAnimator.cancel()
+    cancelPageAnimation()
     if (options.getMode() === 'flip') {
       options.page.value = 0
     } else if (options.contentEl.value) {
@@ -221,7 +252,7 @@ export function useReaderNavigation(options) {
   }
 
   function scrollToBottom() {
-    scrollAnimator.cancel()
+    cancelPageAnimation()
     if (options.getMode() === 'flip') {
       options.page.value = Math.max(0, options.pageCount.value - 1)
     } else if (options.contentEl.value) {
@@ -237,7 +268,7 @@ export function useReaderNavigation(options) {
   }
 
   return {
-    cancelPageAnimation: scrollAnimator.cancel,
+    cancelPageAnimation,
     goChapter,
     jumpToLoadedChapter,
     jumpWithinCurrentChapter,

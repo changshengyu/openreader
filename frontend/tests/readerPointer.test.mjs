@@ -91,6 +91,34 @@ test('handles horizontal flip swipes without triggering taps', () => {
   ])
 })
 
+test('keeps a running click animation for taps and only cancels after a real drag begins', () => {
+  const fixture = createController({
+    reader: reactive({ clickMethod: 'slide', mode: 'page' }),
+    cancelPageAnimation: () => fixture.calls.push(['cancel-animation']),
+  })
+  fixture.controller.handleTouchStart({
+    touches: [{ clientX: 150, clientY: 500 }],
+  })
+  fixture.controller.handleTouchMove({
+    touches: [{ clientX: 155, clientY: 493 }],
+    preventDefault: () => fixture.calls.push(['prevent']),
+    stopPropagation: () => fixture.calls.push(['stop']),
+  })
+  assert.deepEqual(fixture.calls, [])
+
+  fixture.controller.handleTouchMove({
+    touches: [{ clientX: 151, clientY: 470 }],
+    preventDefault: () => fixture.calls.push(['prevent']),
+    stopPropagation: () => fixture.calls.push(['stop']),
+  })
+  fixture.controller.handleTouchMove({
+    touches: [{ clientX: 150, clientY: 430 }],
+    preventDefault: () => fixture.calls.push(['prevent']),
+    stopPropagation: () => fixture.calls.push(['stop']),
+  })
+  assert.deepEqual(fixture.calls, [['cancel-animation']])
+})
+
 test('gives selected text priority over touch navigation', () => {
   const fixture = createController({
     scheduleSelectedTextOperation: delay => {

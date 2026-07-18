@@ -234,8 +234,17 @@ async function assertConfiguredPageDuration(browser) {
   const long = await openReader(browser, viewport, 'page', 500)
   await long.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await long.page.waitForTimeout(180)
-  const middle = (await readerGeometry(long.page)).contentScrollTop
-  assert(middle > 0 && middle < targetTop - 80, `500ms animation must still be moving at 180ms: ${middle}/${targetTop}`)
+  const middle = await long.page.evaluate(() => {
+    const content = document.querySelector('.reader-content')
+    const body = document.querySelector('.reader-body')
+    return {
+      animationCount: body?.getAnimations?.().length || 0,
+      scrollTop: content?.scrollTop || 0,
+      transform: body ? getComputedStyle(body).transform : 'none',
+    }
+  })
+  assert(middle.scrollTop === 0, `500ms animation must defer scrollTop settlement: ${middle.scrollTop}`)
+  assert(middle.animationCount === 1 && middle.transform !== 'none', `500ms animation must still be composited at 180ms: ${JSON.stringify(middle)}`)
   await long.page.waitForTimeout(420)
   close((await readerGeometry(long.page)).contentScrollTop, targetTop, 2, '500ms page animation')
 
@@ -268,8 +277,17 @@ async function assertRuntimeConfiguredPageDuration(browser) {
   await resetRuntimePage(page)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(180)
-  const middle = (await readerGeometry(page)).contentScrollTop
-  assert(middle > 0 && middle < targetTop - 80, `runtime 500ms animation must still be moving at 180ms: ${middle}/${targetTop}`)
+  const middle = await page.evaluate(() => {
+    const content = document.querySelector('.reader-content')
+    const body = document.querySelector('.reader-body')
+    return {
+      animationCount: body?.getAnimations?.().length || 0,
+      scrollTop: content?.scrollTop || 0,
+      transform: body ? getComputedStyle(body).transform : 'none',
+    }
+  })
+  assert(middle.scrollTop === 0, `runtime 500ms mobile page animation must defer scrollTop settlement: ${middle.scrollTop}`)
+  assert(middle.animationCount === 1 && middle.transform !== 'none', `runtime 500ms mobile page animation must still be composited at 180ms: ${JSON.stringify(middle)}`)
   await page.waitForTimeout(420)
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 500ms page animation')
 
@@ -296,13 +314,26 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
   const targetTop = viewport.height - 72
   await page.evaluate(() => {
     const content = document.querySelector('.reader-content')
+    const body = document.querySelector('.reader-body')
     content.scrollTop = 0
     const samples = []
-    const startedAt = performance.now()
+    const bodyTop = body.getBoundingClientRect().top
+    let touchEndAt = null
+    document.querySelector('.reader-page').addEventListener('touchend', () => {
+      touchEndAt = performance.now()
+    }, { once: true })
     window.__openReaderMotionSamples = samples
-    const sample = (timestamp) => {
-      samples.push({ at: timestamp - startedAt, top: content.scrollTop })
-      if (timestamp - startedAt < 430) requestAnimationFrame(sample)
+    const startedAt = performance.now()
+    const sample = () => {
+      const now = performance.now()
+      samples.push({
+        at: now - startedAt,
+        afterInput: touchEndAt === null ? null : now - touchEndAt,
+        animationCount: body.getAnimations().length,
+        scrollTop: content.scrollTop,
+        visualOffset: bodyTop - body.getBoundingClientRect().top,
+      })
+      if (now - startedAt < 430) requestAnimationFrame(sample)
     }
     requestAnimationFrame(sample)
   })
@@ -310,21 +341,34 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
   await page.waitForTimeout(480)
   const samples = await page.evaluate(() => window.__openReaderMotionSamples || [])
   const moving = samples.filter(sample => (
-    sample.top > targetTop * 0.03 && sample.top < targetTop * 0.97
+    sample.visualOffset > targetTop * 0.03 && sample.visualOffset < targetTop * 0.97
   ))
   assert(moving.length >= 8, `${viewport.width}: page animation exposed too few moving frames (${moving.length})`)
+  assert(moving.some(sample => sample.animationCount === 1), `${viewport.width}: page motion did not use a compositor animation`)
+  assert(moving.every(sample => sample.scrollTop === 0), `${viewport.width}: page motion wrote scrollTop before compositor settlement`)
   for (let index = 1; index < moving.length; index += 1) {
     assert(
-      moving[index].top >= moving[index - 1].top,
+      moving[index].visualOffset >= moving[index - 1].visualOffset,
       `${viewport.width}: page animation moved backwards at sample ${index}`,
     )
   }
-  const distinctPositions = new Set(moving.map(sample => Math.round(sample.top * 10))).size
+  const distinctPositions = new Set(moving.map(sample => Math.round(sample.visualOffset * 10))).size
   assert(
     distinctPositions >= Math.min(8, moving.length),
     `${viewport.width}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
   )
+  const firstVisible = samples.find(sample => sample.afterInput !== null && sample.visualOffset >= 1)
+  assert(firstVisible && firstVisible.afterInput <= 50, `${viewport.width}: input-to-motion latency is too high: ${firstVisible?.afterInput}`)
+  const movingGaps = moving.slice(1).map((sample, index) => sample.at - moving[index].at)
+  assert(Math.max(...movingGaps) <= 50, `${viewport.width}: page motion has a visible frame stall: ${Math.max(...movingGaps)}ms`)
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}: sampled page animation`)
+
+  await resetRuntimePage(page)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await page.waitForTimeout(60)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await page.waitForTimeout(650)
+  close((await readerGeometry(page)).contentScrollTop, targetTop * 2, 3, `${viewport.width}: buffered repeated page tap`)
   await context.close()
 }
 

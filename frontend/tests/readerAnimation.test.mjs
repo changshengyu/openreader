@@ -70,3 +70,100 @@ test('blocks overlapping page animations and supports cancellation', () => {
   assert.equal(completed, 0)
   assert.equal(animator.isActive(), false)
 })
+
+function createVisualAnimationFixture() {
+  const calls = []
+  const animation = {
+    currentTime: 0,
+    effect: {
+      getComputedTiming: () => ({ progress: 0 }),
+    },
+    cancel() {
+      calls.push(['cancel'])
+    },
+    onfinish: null,
+  }
+  const visualElement = {
+    style: {
+      willChange: '',
+    },
+    animate(keyframes, timing) {
+      calls.push(['animate', keyframes, timing])
+      return animation
+    },
+  }
+  return { animation, calls, visualElement }
+}
+
+test('runs mobile page motion on the composited body and commits scrollTop once at settlement', () => {
+  const fixture = createVisualAnimationFixture()
+  let scrollTop = 100
+  const writes = []
+  const element = {
+    get scrollTop() {
+      return scrollTop
+    },
+    set scrollTop(value) {
+      scrollTop = value
+      writes.push(value)
+    },
+    scrollHeight: 2000,
+    clientHeight: 800,
+  }
+  let completed = 0
+  const animator = createReaderScrollAnimator()
+
+  assert.equal(animator.scrollBy(
+    element,
+    600,
+    300,
+    () => { completed += 1 },
+    { visualElement: fixture.visualElement },
+  ), true)
+  assert.equal(fixture.calls[0][0], 'animate')
+  assert.equal(fixture.calls[0][2].duration, 300)
+  assert.equal(writes.length, 0, 'composited motion must not write scrollTop on every frame')
+  assert.equal(fixture.visualElement.style.willChange, 'transform')
+
+  fixture.animation.onfinish()
+  assert.deepEqual(writes, [700])
+  assert.equal(completed, 1)
+  assert.equal(animator.isActive(), false)
+  assert.equal(fixture.visualElement.style.willChange, '')
+})
+
+test('commits the visible composited offset before a touch or wheel cancellation', () => {
+  const fixture = createVisualAnimationFixture()
+  fixture.animation.currentTime = 150
+  let scrollTop = 100
+  const writes = []
+  const element = {
+    get scrollTop() {
+      return scrollTop
+    },
+    set scrollTop(value) {
+      scrollTop = value
+      writes.push(value)
+    },
+    scrollHeight: 2000,
+    clientHeight: 800,
+  }
+  let completed = 0
+  const animator = createReaderScrollAnimator()
+
+  animator.scrollBy(
+    element,
+    600,
+    300,
+    () => { completed += 1 },
+    { visualElement: fixture.visualElement },
+  )
+  animator.cancel()
+
+  assert.equal(Math.round(scrollTop), 400)
+  assert.deepEqual(writes.map(Math.round), [400])
+  assert.equal(completed, 0)
+  assert.equal(animator.isActive(), false)
+  assert.equal(fixture.visualElement.style.willChange, '')
+  assert.deepEqual(fixture.calls.map(call => call[0]), ['animate', 'cancel'])
+})

@@ -1079,6 +1079,12 @@ const {
   isVerticalRead,
   getMode: () => effectiveReaderMode.value,
   getAnimateDuration: () => reader.animateDuration,
+  useCompositedPageAnimation: () => (
+    isMobileReader.value
+    && effectiveReaderMode.value === 'page'
+    && chapterFormat.value === 'text'
+    && !isOrdinaryImageComicChapter.value
+  ),
   scrollStep,
   jumpToParagraph,
   rebuildContinuousWindow: index => computeShowChapterList({
@@ -2175,7 +2181,6 @@ function readError(err, fallback) {
   box-sizing: border-box;
   scroll-padding-bottom: var(--reader-content-bottom-space);
 }
-.reader-body { transition: transform var(--reader-animate-duration, 180ms) ease; }
 .reader-chapter-end {
   position: relative;
   z-index: 3;

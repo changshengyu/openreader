@@ -110,7 +110,6 @@ export function useReaderPointer(options) {
 
   function handleTouchStart(event) {
     if (!unref(options.isMobileReader) || event.touches?.length !== 1) return
-    options.cancelPageAnimation?.()
     const touch = event.touches[0]
     touchStart = { x: touch.clientX, y: touch.clientY, at: now() }
     touchMoved = false
@@ -127,8 +126,12 @@ export function useReaderPointer(options) {
     const moveX = touch.clientX - touchStart.x
     const moveY = touch.clientY - touchStart.y
     touchMove = { x: moveX, y: moveY }
-    if (didReaderTouchMove(touchMove, MOBILE_READER_TAP_MOVE_TOLERANCE)) {
+    if (
+      !touchMoved
+      && didReaderTouchMove(touchMove, MOBILE_READER_TAP_MOVE_TOLERANCE)
+    ) {
       touchMoved = true
+      options.cancelPageAnimation?.()
     }
     if (shouldPreventReaderTouchMove({
       mode: options.reader.mode,
