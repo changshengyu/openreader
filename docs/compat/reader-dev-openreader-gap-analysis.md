@@ -1579,7 +1579,9 @@ unit contracts for top-boundary chapter identity, progress suppression during an
 stale async append/retry invalidation. The expanded continuous browser contract now covers all three target
 viewports plus a delayed adjacent transaction and verifies that no transient progress PUT is sent. Frontend
 tests are 434/434; production build, backend tests, mobile/image/text/TTS/volume/audio smoke, and real Go
-EPUB/CBZ reader contracts all pass. CONT-FIX-1…6 are closed pending Docker publication of this source commit.
+EPUB/CBZ reader contracts all pass. CONT-FIX-1…6 are closed. Source commit `370d0f7` was locally built,
+passed the historical volume/portable-backup gate, and published for amd64/arm64 as both `370d0f7` and
+`latest` at OCI index `sha256:4f47a2d658ea324a2482c8b86cd8cffe3158bdba67b3255a98c4710295cd0311`.
 
 ## Immediate P0 contract: Content image/comic/CBZ reading
 

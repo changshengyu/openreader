@@ -1,6 +1,6 @@
 # Reader 连续跨章固定基准合同（P0）
 
-状态：**2026-07-18 已按固定上游完成 CONT-FIX-1…6：连续模式使用顶部安全区后的 `h3/p` 确定章节和进度，窗口事务在锚点恢复前禁止保存，append/retry/compute 均受书籍、模式和 generation 约束。生产实现、单元测试和三视口真实浏览器合同均已通过；等待本批 Docker 发布。**
+状态：**2026-07-18 已按固定上游完成 CONT-FIX-1…6：连续模式使用顶部安全区后的 `h3/p` 确定章节和进度，窗口事务在锚点恢复前禁止保存，append/retry/compute 均受书籍、模式和 generation 约束。生产实现、单元测试、三视口真实浏览器、历史卷/portable backup 和本地双架构 Docker 发布均已通过。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -93,3 +93,5 @@
 - mock 浏览器：continuous、mobile、image、text modes、TTS、volume、audio 合同通过。
 - 真实 Go 导入/阅读：EPUB 三视口与 CBZ 合同通过。
 - macOS 首次启动 text-modes Chrome 时曾因 Mach port 权限在测试执行前失败；获准重启相同合同后通过，未发现产品崩溃。
+- 历史 Docker 卷门禁通过：旧 TXT、EPUB、UMD、CBZ、相对 cache 路径和 owner isolation 均可升级读取，portable backup 可恢复到空卷。
+- 源码 commit `370d0f770c90be4f0b5a66bbd68c651382300b74` 已在本机完成 `linux/amd64` 与 `linux/arm64` 构建，并发布为 `ghcr.io/changshengyu/openreader:370d0f7` 与 `latest`。两 tag 的远端 OCI index digest 均为 `sha256:4f47a2d658ea324a2482c8b86cd8cffe3158bdba67b3255a98c4710295cd0311`；包含 `linux/amd64@sha256:08a65d17f7d46bbb13a387be71fed85a6102465835412103dbf626cb782ec70f` 和 `linux/arm64@sha256:049f899dba0c95e27eae1bcccfc995d4a9c38524f9109ac8b6c699fa89be581a`。
