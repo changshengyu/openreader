@@ -319,8 +319,29 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
     const samples = []
     const bodyTop = body.getBoundingClientRect().top
     let touchEndAt = null
+    const originalGetSelection = window.getSelection.bind(window)
+    window.__openReaderSelectionChecks = 0
+    window.getSelection = (...args) => {
+      window.__openReaderSelectionChecks += 1
+      return originalGetSelection(...args)
+    }
+    window.__openReaderLongTasks = []
+    window.__openReaderInputTimes = { touchStartAt: null, touchEndAt: null }
+    if (globalThis.PerformanceObserver?.supportedEntryTypes?.includes('longtask')) {
+      window.__openReaderLongTaskObserver = new PerformanceObserver(list => {
+        window.__openReaderLongTasks.push(...list.getEntries().map(entry => ({
+          duration: entry.duration,
+          startTime: entry.startTime,
+        })))
+      })
+      window.__openReaderLongTaskObserver.observe({ type: 'longtask', buffered: true })
+    }
+    document.querySelector('.reader-page').addEventListener('touchstart', () => {
+      window.__openReaderInputTimes.touchStartAt = performance.now()
+    }, { once: true })
     document.querySelector('.reader-page').addEventListener('touchend', () => {
       touchEndAt = performance.now()
+      window.__openReaderInputTimes.touchEndAt = touchEndAt
     }, { once: true })
     window.__openReaderMotionSamples = samples
     const startedAt = performance.now()
@@ -337,7 +358,20 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
     }
     requestAnimationFrame(sample)
   })
-  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  const tapX = Math.round(viewport.width / 2)
+  const tapY = Math.round(viewport.height * 0.8)
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: tapX, y: tapY, radiusX: 1, radiusY: 1, force: 1, id: 0 }],
+  })
+  await page.waitForTimeout(48)
+  const preparedWillChange = await page.locator('.reader-body').evaluate(element => element.style.willChange)
+  assert(preparedWillChange === 'transform', `${viewport.width}: touchstart did not prewarm the page layer (${preparedWillChange})`)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  })
   await page.waitForTimeout(480)
   const samples = await page.evaluate(() => window.__openReaderMotionSamples || [])
   const moving = samples.filter(sample => (
@@ -357,10 +391,31 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
     distinctPositions >= Math.min(8, moving.length),
     `${viewport.width}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
   )
-  const firstVisible = samples.find(sample => sample.afterInput !== null && sample.visualOffset >= 1)
-  assert(firstVisible && firstVisible.afterInput <= 50, `${viewport.width}: input-to-motion latency is too high: ${firstVisible?.afterInput}`)
+  const earlySamples = samples.filter(sample => (
+    sample.afterInput !== null
+    && sample.afterInput >= 0
+    && sample.afterInput <= 40
+  ))
+  const earlyVisibleOffset = Math.max(0, ...earlySamples.map(sample => sample.visualOffset))
+  assert(
+    earlyVisibleOffset >= targetTop * 0.01,
+    `${viewport.width}: first 40ms remained in a perceptual dead zone (${earlyVisibleOffset}/${targetTop})`,
+  )
   const movingGaps = moving.slice(1).map((sample, index) => sample.at - moving[index].at)
   assert(Math.max(...movingGaps) <= 50, `${viewport.width}: page motion has a visible frame stall: ${Math.max(...movingGaps)}ms`)
+  const runtimeWork = await page.evaluate(() => ({
+    inputTimes: window.__openReaderInputTimes || {},
+    longTasks: window.__openReaderLongTasks || [],
+    selectionChecks: window.__openReaderSelectionChecks || 0,
+    willChange: document.querySelector('.reader-body')?.style.willChange || '',
+  }))
+  assert(runtimeWork.selectionChecks <= 1, `${viewport.width}: ordinary page tap polled text selection ${runtimeWork.selectionChecks} times`)
+  const inputLongTasks = runtimeWork.longTasks.filter(task => (
+    task.startTime >= Number(runtimeWork.inputTimes.touchStartAt || Infinity) - 1
+    && task.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 300
+  ))
+  assert(inputLongTasks.every(task => task.duration < 50), `${viewport.width}: page tap exposed a long task ${JSON.stringify({ inputLongTasks, ...runtimeWork.inputTimes })}`)
+  assert(runtimeWork.willChange === '', `${viewport.width}: settled animation leaked will-change (${runtimeWork.willChange})`)
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}: sampled page animation`)
 
   await resetRuntimePage(page)

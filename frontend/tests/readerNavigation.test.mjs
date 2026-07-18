@@ -153,6 +153,8 @@ test('uses the composited body for mobile page clicks and buffers one repeated d
     scrollAnimator: {
       cancel: () => {},
       isActive: () => finishes.length > 0,
+      prepare: visualElement => animationCalls.push({ prepare: visualElement }),
+      releasePreparation: () => animationCalls.push({ release: true }),
       scrollBy: (_element, delta, duration, onFinish, animationOptions) => {
         animationCalls.push({ delta, duration, animationOptions })
         finishes.push(onFinish)
@@ -161,17 +163,22 @@ test('uses the composited body for mobile page clicks and buffers one repeated d
     },
   })
 
+  assert.equal(fixture.navigation.prepareVerticalPageAnimation(), true)
+  assert.equal(animationCalls[0].prepare, fixture.options.contentBody.value)
   await fixture.navigation.nextPage()
   await fixture.navigation.nextPage()
-  assert.equal(animationCalls.length, 1, 'the repeated tap must be bounded while motion is active')
-  assert.equal(animationCalls[0].animationOptions.visualElement, fixture.options.contentBody.value)
+  assert.equal(animationCalls.length, 2, 'the repeated tap must be bounded while motion is active')
+  assert.equal(animationCalls[1].animationOptions.visualElement, fixture.options.contentBody.value)
 
   finishes.shift()()
   await Promise.resolve()
-  assert.equal(animationCalls.length, 2, 'one repeated next-page tap must run immediately after settlement')
-  assert.equal(animationCalls[1].animationOptions.visualElement, fixture.options.contentBody.value)
+  assert.equal(animationCalls.length, 3, 'one repeated next-page tap must run immediately after settlement')
+  assert.equal(animationCalls[2].animationOptions.visualElement, fixture.options.contentBody.value)
   finishes.shift()()
   assert.deepEqual(settled, ['settled', 'settled'])
+
+  fixture.navigation.releaseVerticalPageAnimationPreparation()
+  assert.equal(animationCalls.at(-1).release, true)
 })
 
 test('native gesture cancellation clears a buffered page click', async () => {

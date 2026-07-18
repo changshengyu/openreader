@@ -704,18 +704,44 @@ async function editBookmarkWithGlobalForm(page, viewport, { fullscreen }) {
   await page.locator('.global-bookmark-form-dialog').waitFor({ state: 'hidden', timeout: 10000 })
 }
 
-async function createBookmarkFromSelectedText(page, viewport, { fullscreen }) {
+async function createBookmarkFromSelectedText(page, viewport, { fullscreen, touch = false }) {
   const paragraph = page.locator('.reader-body p').first()
   const selectedText = (await paragraph.textContent())?.trim() || ''
   assert(selectedText, `${viewport.width}: reader fixture must include bookmark-selectable text`)
-  await paragraph.evaluate((node) => {
-    const selection = window.getSelection()
-    const range = document.createRange()
-    range.selectNodeContents(node)
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
-  })
+  if (touch) {
+    await paragraph.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const event = new Event('touchstart', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', {
+        value: [{ clientX: rect.left + 12, clientY: rect.top + 12, identifier: 1 }],
+      })
+      node.dispatchEvent(event)
+    })
+    await page.waitForTimeout(420)
+    await paragraph.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      const event = new Event('touchend', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', { value: [] })
+      Object.defineProperty(event, 'changedTouches', {
+        value: [{ clientX: rect.left + 12, clientY: rect.top + 12, identifier: 1 }],
+      })
+      node.dispatchEvent(event)
+    })
+  } else {
+    await paragraph.evaluate((node) => {
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    })
+  }
 
   const chooser = page.locator('.el-message-box').last()
   await chooser.getByRole('button', { name: '添加书签', exact: true }).click()
@@ -1183,7 +1209,7 @@ async function runViewport(browser, viewport) {
   }
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
   await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: true, touch: true })
-  const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: true })
+  const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: true, touch: true })
 
   const initialTopVisible = await page.locator('.reader-mobile-top.visible').count()
   assert(initialTopVisible === 1, `${viewport.width}: mobile toolbar should be visible by default`)

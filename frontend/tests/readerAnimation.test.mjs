@@ -113,6 +113,9 @@ test('runs mobile page motion on the composited body and commits scrollTop once 
   let completed = 0
   const animator = createReaderScrollAnimator()
 
+  assert.equal(animator.prepare(fixture.visualElement), true)
+  assert.equal(fixture.visualElement.style.willChange, 'transform')
+
   assert.equal(animator.scrollBy(
     element,
     600,
@@ -122,6 +125,11 @@ test('runs mobile page motion on the composited body and commits scrollTop once 
   ), true)
   assert.equal(fixture.calls[0][0], 'animate')
   assert.equal(fixture.calls[0][2].duration, 300)
+  const firstMovingFrame = fixture.calls[0][1][1]
+  const secondMovingFrame = fixture.calls[0][1][2]
+  const translated = frame => Math.abs(Number(frame.transform.match(/,\s*(-?[\d.]+)px/)?.[1] || 0))
+  assert(translated(firstMovingFrame) >= 10, 'the first refresh interval must have visible motion')
+  assert(translated(secondMovingFrame) >= 25, 'the second refresh interval must not remain in a dead zone')
   assert.equal(writes.length, 0, 'composited motion must not write scrollTop on every frame')
   assert.equal(fixture.visualElement.style.willChange, 'transform')
 
@@ -166,4 +174,16 @@ test('commits the visible composited offset before a touch or wheel cancellation
   assert.equal(animator.isActive(), false)
   assert.equal(fixture.visualElement.style.willChange, '')
   assert.deepEqual(fixture.calls.map(call => call[0]), ['animate', 'cancel'])
+})
+
+test('releases a prepared mobile page layer when no animation consumes it', () => {
+  const fixture = createVisualAnimationFixture()
+  fixture.visualElement.style.willChange = 'opacity'
+  const animator = createReaderScrollAnimator()
+
+  assert.equal(animator.prepare(fixture.visualElement), true)
+  assert.equal(fixture.visualElement.style.willChange, 'transform')
+  animator.releasePreparation()
+  assert.equal(fixture.visualElement.style.willChange, 'opacity')
+  assert.equal(animator.isActive(), false)
 })

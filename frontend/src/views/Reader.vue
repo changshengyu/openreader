@@ -133,6 +133,7 @@
       @touchstart.passive="handleReaderTouchStart"
       @touchmove="handleReaderTouchMove"
       @touchend.passive="handleReaderTouchEnd"
+      @touchcancel.passive="handleReaderTouchCancel"
       @wheel="handleReaderWheel"
       @click="handleReaderContentClick"
     >
@@ -599,7 +600,11 @@ const {
   onOperate: operateSelectedText,
   onError: error => ElMessage.error(readError(error, '处理选中文字失败')),
 })
-const handleReaderSelectionEnd = () => scheduleSelectedTextOperation(180)
+const handleReaderSelectionEnd = () => (
+  isMobileReader.value
+    ? false
+    : scheduleSelectedTextOperation(180)
+)
 const pageEl = ref(null)
 const shellEl = ref(null)
 const page = ref(0)
@@ -1060,7 +1065,9 @@ const {
   jumpWithinCurrentChapter,
   nextPage,
   paragraphByChapterPosition,
+  prepareVerticalPageAnimation,
   previousPage,
+  releaseVerticalPageAnimationPreparation,
   scrollToBottom,
   scrollToTop,
 } = useReaderNavigation({
@@ -1394,6 +1401,7 @@ const {
 const {
   handleContentClick: handleReaderContentClick,
   handleTapZone,
+  handleTouchCancel: handleReaderTouchCancel,
   handleTouchEnd: handleReaderTouchEnd,
   handleTouchMove: handleReaderTouchMove,
   handleTouchStart: handleReaderTouchStart,
@@ -1411,6 +1419,8 @@ const {
   suppressContentClick,
   consumeSuppressedContentClick,
   cancelPageAnimation,
+  preparePageAnimation: prepareVerticalPageAnimation,
+  releasePageAnimationPreparation: releaseVerticalPageAnimationPreparation,
   nextPage,
   previousPage,
   toggleChrome: toggleReaderChrome,

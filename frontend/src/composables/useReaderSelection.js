@@ -25,10 +25,12 @@ export function useReaderSelection(options) {
     return readerSelectionBelongsToRoot(root, container) ? text : ''
   }
 
-  function schedule(delay = 0) {
+  function schedule(delay = 0, scheduleOptions = {}) {
     if (options.getAction?.() === '忽略') return false
     clearTimeout(operateTimer)
     const selectedNow = selectedText()
+    const retry = scheduleOptions?.retry !== false
+    if (!selectedNow && !retry) return false
     const retryInterval = Math.max(20, Number(options.retryInterval) || 80)
     const retryWindow = Math.max(retryInterval, Number(options.retryWindow) || 720)
     const startedAt = Date.now()
@@ -36,7 +38,11 @@ export function useReaderSelection(options) {
       operateTimer = null
       const text = selectedText()
       if (!text) {
-        if (Date.now() - startedAt < retryWindow && options.getAction?.() !== '忽略') {
+        if (
+          retry
+          && Date.now() - startedAt < retryWindow
+          && options.getAction?.() !== '忽略'
+        ) {
           operateTimer = setTimeout(attempt, retryInterval)
         }
         return

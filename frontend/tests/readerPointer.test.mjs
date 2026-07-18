@@ -23,10 +23,12 @@ function createController(overrides = {}) {
     isAudio: ref(false),
     autoReading: ref(false),
     mobileChromeVisible: ref(true),
-    scheduleSelectedTextOperation: delay => {
-      calls.push(['selection', delay])
+    scheduleSelectedTextOperation: (delay, selectionOptions) => {
+      calls.push(['selection', delay, selectionOptions])
       return false
     },
+    preparePageAnimation: () => calls.push(['prepare-animation']),
+    releasePageAnimationPreparation: () => calls.push(['release-animation']),
     suppressContentClick: delay => calls.push(['suppress', delay]),
     consumeSuppressedContentClick: () => false,
     nextPage: () => calls.push(['next']),
@@ -62,9 +64,10 @@ test('treats small finger movement as a center tap', () => {
     changedTouches: [{ clientX: 158, clientY: 305 }],
   })
   assert.deepEqual(fixture.calls, [
-    ['selection', 200],
+    ['prepare-animation'],
+    ['selection', 0, { retry: false }],
     ['suppress', 360],
-    ['selection', 0],
+    ['release-animation'],
     ['chrome'],
   ])
 })
@@ -83,10 +86,12 @@ test('handles horizontal flip swipes without triggering taps', () => {
     changedTouches: [{ clientX: 120, clientY: 305 }],
   })
   assert.deepEqual(fixture.calls, [
+    ['prepare-animation'],
     ['prevent'],
     ['stop'],
-    ['selection', 200],
+    ['selection', 0, { retry: false }],
     ['suppress', 360],
+    ['release-animation'],
     ['next'],
   ])
 })
@@ -104,7 +109,7 @@ test('keeps a running click animation for taps and only cancels after a real dra
     preventDefault: () => fixture.calls.push(['prevent']),
     stopPropagation: () => fixture.calls.push(['stop']),
   })
-  assert.deepEqual(fixture.calls, [])
+  assert.deepEqual(fixture.calls, [['prepare-animation']])
 
   fixture.controller.handleTouchMove({
     touches: [{ clientX: 151, clientY: 470 }],
@@ -116,14 +121,14 @@ test('keeps a running click animation for taps and only cancels after a real dra
     preventDefault: () => fixture.calls.push(['prevent']),
     stopPropagation: () => fixture.calls.push(['stop']),
   })
-  assert.deepEqual(fixture.calls, [['cancel-animation']])
+  assert.deepEqual(fixture.calls, [['prepare-animation'], ['cancel-animation']])
 })
 
 test('gives selected text priority over touch navigation', () => {
   const fixture = createController({
-    scheduleSelectedTextOperation: delay => {
-      fixture.calls.push(['selection', delay])
-      return delay === 200
+    scheduleSelectedTextOperation: (delay, selectionOptions) => {
+      fixture.calls.push(['selection', delay, selectionOptions])
+      return true
     },
   })
   fixture.controller.handleTouchStart({
@@ -133,8 +138,10 @@ test('gives selected text priority over touch navigation', () => {
     changedTouches: [{ clientX: 120, clientY: 300 }],
   })
   assert.deepEqual(fixture.calls, [
-    ['selection', 200],
+    ['prepare-animation'],
+    ['selection', 0, { retry: false }],
     ['suppress', undefined],
+    ['release-animation'],
   ])
 })
 
@@ -165,7 +172,7 @@ test('ignores synthetic touch clicks and maps desktop reader clicks', () => {
     target: { closest: () => null },
   })
   assert.deepEqual(desktop.calls, [
-    ['selection', 0],
+    ['selection', 0, { retry: false }],
     ['next'],
   ])
 })
@@ -189,9 +196,13 @@ test('audio chapters only toggle chrome from the center and never page', () => {
   fixture.controller.handleTapZone('right')
   fixture.controller.handleTapZone('center')
   assert.deepEqual(fixture.calls, [
-    ['selection', 0],
-    ['selection', 0],
+    ['selection', 0, { retry: false }],
+    ['release-animation'],
+    ['selection', 0, { retry: false }],
+    ['release-animation'],
     ['chrome'],
+    ['release-animation'],
+    ['release-animation'],
     ['chrome'],
   ])
 })
@@ -218,9 +229,44 @@ test('keeps page actions but not mobile chrome toggles while the upstream-style 
   })
   fixture.controller.handleTapZone('lower')
   assert.deepEqual(fixture.calls, [
-    ['selection', 0],
-    ['selection', 0],
+    ['selection', 0, { retry: false }],
+    ['release-animation'],
+    ['release-animation'],
+    ['selection', 0, { retry: false }],
     ['next'],
     ['next'],
+  ])
+})
+
+test('keeps delayed selection retries for a long press without turning it into a page tap', () => {
+  const fixture = createController({
+    reader: reactive({ clickMethod: 'slide', mode: 'page' }),
+  })
+  fixture.controller.handleTouchStart({
+    touches: [{ clientX: 150, clientY: 500 }],
+  })
+  fixture.setTimestamp(1500)
+  fixture.controller.handleTouchEnd({
+    changedTouches: [{ clientX: 150, clientY: 500 }],
+  })
+  assert.deepEqual(fixture.calls, [
+    ['prepare-animation'],
+    ['selection', 0, { retry: true }],
+    ['suppress', undefined],
+    ['release-animation'],
+  ])
+})
+
+test('releases an unused prepared layer when the browser cancels the touch sequence', () => {
+  const fixture = createController({
+    reader: reactive({ clickMethod: 'slide', mode: 'page' }),
+  })
+  fixture.controller.handleTouchStart({
+    touches: [{ clientX: 150, clientY: 500 }],
+  })
+  fixture.controller.handleTouchCancel()
+  assert.deepEqual(fixture.calls, [
+    ['prepare-animation'],
+    ['release-animation'],
   ])
 })

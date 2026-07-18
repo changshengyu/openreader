@@ -9,6 +9,12 @@ function easeInOutCubic(progress) {
     : 1 - ((-2 * progress + 2) ** 3) / 2
 }
 
+function easeInOutFast(progress) {
+  return progress < 0.5
+    ? ((2 * progress) ** 1.5) / 2
+    : 1 - (((2 * (1 - progress)) ** 1.5) / 2)
+}
+
 function clampProgress(value) {
   return Math.max(0, Math.min(1, finiteNumber(value)))
 }
@@ -17,7 +23,7 @@ function compositeKeyframes(distance, duration) {
   const sampleCount = Math.max(2, Math.min(60, Math.ceil(duration / 16)))
   return Array.from({ length: sampleCount + 1 }, (_, index) => {
     const offset = index / sampleCount
-    const translated = -distance * easeInOutCubic(offset)
+    const translated = -distance * easeInOutFast(offset)
     return {
       offset,
       transform: `translate3d(0, ${translated}px, 0)`,
@@ -39,6 +45,43 @@ export function createReaderScrollAnimator(options = {}) {
   let frameId = null
   let running = false
   let compositeRun = null
+  let preparation = null
+
+  function releasePreparation() {
+    if (!preparation) return false
+    if (preparation.visualElement?.style) {
+      preparation.visualElement.style.willChange = preparation.previousWillChange
+    }
+    preparation = null
+    return true
+  }
+
+  function prepare(visualElement) {
+    if (
+      running
+      || typeof visualElement?.animate !== 'function'
+      || !visualElement?.style
+    ) return false
+    if (preparation?.visualElement === visualElement) return true
+    releasePreparation()
+    preparation = {
+      previousWillChange: visualElement.style.willChange,
+      visualElement,
+    }
+    visualElement.style.willChange = 'transform'
+    return true
+  }
+
+  function consumePreparation(visualElement) {
+    if (preparation?.visualElement === visualElement) {
+      const previousWillChange = preparation.previousWillChange
+      preparation = null
+      return previousWillChange
+    }
+    const previousWillChange = visualElement.style.willChange
+    visualElement.style.willChange = 'transform'
+    return previousWillChange
+  }
 
   function restoreCompositeStyle(run) {
     if (!run?.visualElement?.style) return
@@ -60,7 +103,7 @@ export function createReaderScrollAnimator(options = {}) {
     const currentTime = run.animation.currentTime == null
       ? Math.max(0, now() - run.startedAt)
       : finiteNumber(run.animation.currentTime)
-    const progress = easeInOutCubic(clampProgress(currentTime / run.duration))
+    const progress = easeInOutFast(clampProgress(currentTime / run.duration))
     stopComposite(
       run,
       Math.max(0, Math.min(run.bottom, run.startTop + run.distance * progress)),
@@ -76,6 +119,7 @@ export function createReaderScrollAnimator(options = {}) {
     if (frameId !== null) cancelFrame(frameId)
     frameId = null
     running = false
+    releasePreparation()
   }
 
   function scrollTo(element, requestedTop, requestedDuration, onFinish, animationOptions = {}) {
@@ -90,14 +134,14 @@ export function createReaderScrollAnimator(options = {}) {
 
     if (duration === 0 || targetTop === startTop) {
       element.scrollTop = targetTop
+      releasePreparation()
       onFinish?.()
       return true
     }
 
     const visualElement = animationOptions?.visualElement
     if (typeof visualElement?.animate === 'function' && visualElement.style) {
-      const previousWillChange = visualElement.style.willChange
-      visualElement.style.willChange = 'transform'
+      const previousWillChange = consumePreparation(visualElement)
       const distance = targetTop - startTop
       const animation = visualElement.animate(
         compositeKeyframes(distance, duration),
@@ -149,6 +193,8 @@ export function createReaderScrollAnimator(options = {}) {
   return {
     cancel,
     isActive: () => running,
+    prepare,
+    releasePreparation,
     scrollBy(element, delta, duration, onFinish, animationOptions) {
       return scrollTo(
         element,

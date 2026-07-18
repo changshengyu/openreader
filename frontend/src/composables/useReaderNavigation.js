@@ -30,6 +30,16 @@ export function useReaderNavigation(options) {
     return { visualElement: options.contentBody.value }
   }
 
+  function prepareVerticalPageAnimation() {
+    const animationOptions = verticalAnimationOptions()
+    if (!animationOptions?.visualElement) return false
+    return Boolean(scrollAnimator.prepare?.(animationOptions.visualElement))
+  }
+
+  function releaseVerticalPageAnimationPreparation() {
+    return Boolean(scrollAnimator.releasePreparation?.())
+  }
+
   function queueActiveVerticalPage(direction) {
     if (!scrollAnimator.isActive()) return false
     queuedVerticalDirection = activeVerticalDirection === direction ? direction : 0
@@ -274,7 +284,9 @@ export function useReaderNavigation(options) {
     jumpWithinCurrentChapter,
     nextPage,
     paragraphByChapterPosition,
+    prepareVerticalPageAnimation,
     previousPage,
+    releaseVerticalPageAnimationPreparation,
     scrollToBottom,
     scrollToTop,
   }
