@@ -10,6 +10,9 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 - Sync WebSocket: `/ws/sync`.
 - Expected error shape for handled failures: JSON object with `error`.
 - User-owned resources must be scoped to the authenticated user unless documented as admin/global.
+- Protected concurrent reads must not fail because the post-request activity update uses another SQLite connection.
+  WAL, the 5-second busy timeout, and NORMAL synchronous mode apply to every pooled connection; this is runtime
+  durability/availability configuration and does not change response schemas.
 
 ## Public endpoints
 
