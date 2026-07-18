@@ -2,9 +2,9 @@
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 第二次用户实测后重新打开并完成第二批实现。第一批实现已经移除逐帧重型
-同步并恢复章末入口；第二批把移动端“上下滑动”的点击分页移到浏览器合成层，并补齐输入延迟、
-取消位置和连续点击合同，等待 Docker 人工验证。
+状态：2026-07-18 第二次用户实测后重新打开并完成第二批实现与 Docker 发布。第一批实现已经
+移除逐帧重型同步并恢复章末入口；第二批把移动端“上下滑动”的点击分页移到浏览器合成层，
+并补齐输入延迟、取消位置和连续点击合同，等待用户人工验证体感。
 
 ## 权威文件
 
@@ -126,3 +126,12 @@
   772px / 728px，60ms 间隔双触摸最终到达两页距离。
 - Reader desktop/mobile、continuous、image 合同通过；隔离 Go+SQLite 服务的真实 EPUB
   上传、解析、iframe 阅读和返回行为在两个移动视口通过。
+- Git 提交 `18d9183` 已推送 `main`；本机完成 ARM64 预构建和 `data/cache/library` 卷、
+  可移植备份兼容门禁后，再本地生成并上传 AMD64+ARM64 OCI 镜像。
+- `ghcr.io/changshengyu/openreader:18d9183` 与 `latest` 共同指向索引
+  `sha256:25a3ec40992b2804e68d2bfee9d2137110d6a022ff63fe4fafec65ba8d9b4eed`；
+  AMD64 manifest 为 `sha256:b391dc6b9f3c2f210def19d0d0d23dcbeb0c0d582f99c3fdb5d04d8e0aed9143`，
+  ARM64 manifest 为 `sha256:3475cae614407bcef99f3607e1286601e3d75600350eb0ec6548f18f02ea1f32`。
+- 两个远端标签均通过 host-network `docker buildx imagetools inspect` 核验。OrbStack daemon
+  随后的 `docker pull` 三次在 GHCR `HEAD` 请求处返回 `502 Bad Gateway`；这条本机 daemon
+  网络路径异常不改变已验证的远端索引，未伪报为远端拉取通过。
