@@ -1,9 +1,8 @@
 # P2 阅读进度 API、并发与 WebDAV 合同
 
-状态：2026-07-18 已完成固定上游审查、失败测试和应用实现；Go/前端单元门禁及
-1440×900、390×844、360×800 真实双客户端合同已通过，完整卷与 Docker 发布门禁
-仍在执行。本文件只覆盖已加入书架书籍的阅读进度；临时远程阅读不得创建
-`ReadingProgress`、书架行或 WebDAV 文件。
+状态：2026-07-18 已完成固定上游审查、失败测试、应用实现、全量回归、历史卷与
+本地 Docker 发布门禁，并以 `9f19d21` 发布。本文件只覆盖已加入书架书籍的阅读进度；
+临时远程阅读不得创建 `ReadingProgress`、书架行或 WebDAV 文件。
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -138,3 +137,9 @@
 - `reader-progress-multiclient-contract.mjs` 在三个目标视口使用真实 Go、SQLite、WebSocket、
   两个隔离上下文和全新重开上下文，已证明一胜一冲突、两端收敛、冷恢复及磁盘
   `bookProgress` JSON 一致。
+- 全量 Go、474 个前端测试、生产构建、Reader text/mobile/continuous、书架多客户端以及
+  真实 EPUB/CBZ 三视口合同通过；并发 CAS/WebDAV 重点测试连续 20 轮通过。
+- 本地候选镜像通过全新卷/可移植备份恢复，以及历史 TXT、EPUB、UMD、CBZ、相对缓存和
+  owner 隔离门禁。随后从本机构建并推送 `ghcr.io/changshengyu/openreader:9f19d21`
+  与 `latest`；两个标签共同指向 amd64/arm64 索引
+  `sha256:433f64126c65bc82b456da2be8e1cea644b1c53affcfbb98e3a8a4326cfc57cb`。

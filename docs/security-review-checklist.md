@@ -48,8 +48,8 @@ Use this checklist for security-sensitive changes and release reviews.
   matching the SQLite winner. Remote application no longer echoes an additional progress write.
 - [x] Full Go tests, 474 frontend tests, production build, Reader text/mobile/continuous, shelf
   multiclient and real EPUB/CBZ browser gates pass on the implementation commit candidate.
-- [ ] Historical-volume/backup and Docker release gates remain required before this slice is marked
-  released.
+- [x] Fresh-volume/portable restore and historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation
+  Docker gates pass; the locally built amd64/arm64 image is published as `9f19d21` and `latest`.
 
 Targeted evidence: `backend/api/progress_p2_contract_test.go`,
 `frontend/tests/readerProgressPersistence.test.mjs`, `frontend/tests/readerRouteSync.test.mjs` and
