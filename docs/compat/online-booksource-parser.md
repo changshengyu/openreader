@@ -1,6 +1,6 @@
 # 在线书源解析兼容契约
 
-状态：2026-07-13 已从固定上游 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 提取；P2-Parser-0 与 P2-Parser-1 的搜索/探索子集正在实现。本文件仍是目录、正文和剩余规则链重构的前置闸门。
+状态：CSS、JSONPath、XPath、正则、组合、分页、持久变量与安全结构化错误主链均已实施，并于 2026-07-16 通过真实 Go API 浏览器验收。任意 JavaScript/WebView 仍是明确的安全差异；当前剩余用户可见缺口转入 [`booksource-script-transparency-p2-contract.md`](booksource-script-transparency-p2-contract.md)，不再把已完成的 P2-Parser-0/1 主链标为“正在实现”。
 
 当前已落地（尚未宣告整模块对齐）：统一的无脚本 CSS、JSONPath、XPath、正则基础求值器和规则级 `##` 替换；搜索/探索、详情、目录、正文的基础列表/字段/分页调用链；分类多值与空详情 URL 回退；受限的 `@put`/`@get` 变量及其搜索→书架→目录→正文的持久状态；不执行 JS/WebJS/`{{...}}` 模板的明确错误；以及“解析错误不写入失效书源缓存”、跨章节正文分页边界、空文本正文规则和结构化安全错误边界。上游 JavaScript/模板及其隔离执行策略仍未完成。
 
