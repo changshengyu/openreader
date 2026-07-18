@@ -318,7 +318,11 @@ Evidence: `backend/api/cache_stream_contract_test.go`, `frontend/tests/bookCache
 - [x] Canonical progress and all-failure events contain counts and fixed client text only. Raw parser/network errors, source headers, cookies, JWT, WebDAV credentials and host paths are never serialized.
 - [x] Frontend job keys include the authenticated scope; logout aborts server controllers, marks browser queues cancelled and clears the in-memory registry before removing credentials. No controller, token or response body is persisted.
 - [x] The whole-book browser/API smoke verifies target-only cancellation and no request on cancelled deletion confirmation at all three required viewports.
-- [ ] Embedded chapter-image download is intentionally deferred. It must not be implemented until remote image fetches have SSRF host/scheme policy, timeout, redirect and byte limits, MIME validation, rooted user/book storage, authenticated read capability, reference cleanup and tests proving one user cannot read another user's image.
+- [ ] Embedded chapter-image implementation is pending. The required SSRF host/scheme policy, timeout/redirect/
+      byte/count limits, MIME allowlist, rooted user/book storage, HMAC read capability, reference cleanup,
+      credential-forwarding rules and cross-user tests are now fixed in
+      [`compat/book-cache-images-p2-contract.md`](compat/book-cache-images-p2-contract.md); do not mark this item
+      complete until those tests and the Docker historical-volume gate pass.
 
 Evidence: `backend/api/cache_stream_contract_test.go`, whole-catalogue cases in `backend/api/api_test.go`,
 `frontend/tests/overlayBookManagement.test.mjs`, `scripts/smoke/book-management-dialog-contract.mjs`, and
