@@ -491,8 +491,9 @@ Docker volume/backup smoke remains byte/data compatible.
 
 Implementation evidence: network-pending/fallback/revision unit contracts and the real two-context Go/SQLite/
 WebSocket Chrome smoke pass at 1440×900, 390×844 and 360×800. The browser retains the same scoped cache key and
-the server uses the unchanged shelf/settings rows. The current-image Docker mounted-volume/backup smoke remains the
-only pending persistence gate before publishing this slice.
+the server uses the unchanged shelf/settings rows. The locally built `ff4cd9d` candidate passed the historical
+mounted-volume restart, backup/portable restore, TXT/EPUB/UMD/CBZ, relative-cache and owner-isolation smoke before
+the same commit was published for amd64/arm64. No persistence migration was required.
 
 The same multi-client gate makes first-time settings writes atomic through the already existing unique index on
 `user_settings(user_id,key)`. It adds no table, column, index, default row, mounted file, or backup field. Existing

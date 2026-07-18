@@ -2461,5 +2461,12 @@ Hub 对满队列客户端执行断开/重连恢复，不再静默丢弃状态事
 upsert；八路确定性并发 API 契约、Hub backpressure、网络挂起/离线 fallback 和前台重试测试均
 通过。真实 Go + SQLite + WebSocket 的两个同账号 Chrome 上下文在 1440×900、390×844、
 360×800 全部验证：延迟 `/api/books` 期间不会展示旧持久书架，A 导入 TXT 后 B 即时出现新书，
-且没有设置 500、控制台错误或横向溢出。前端 457/457、生产构建和后端全量测试通过；本批本地
-Docker 构建、卷/备份 smoke 与 GHCR 发布仍是最后发布门禁。
+且没有设置 500、控制台错误或横向溢出。前端 457/457、生产构建和后端全量测试通过；在该验证
+时点，本地 Docker 构建、卷/备份 smoke 与 GHCR 发布是最后发布门禁。
+
+发布门禁随后完成：提交 `ff4cd9d` 已推送 `main`；本地 arm64 候选通过历史卷重启、备份/可移植
+恢复、四种本地格式、相对缓存和用户隔离 smoke。本机生成的 amd64/arm64 镜像已上传为
+`ghcr.io/changshengyu/openreader:ff4cd9d` 与 `latest`，远端 OCI index 为
+`sha256:31c3432d2d93242cde73bd38af1ff72a6e645a80f87551d2f4293c45099bb8e9`。两个标签和两个
+平台清单均由 `imagetools inspect` 核验；发布后 Docker daemon 回拉因 GHCR 502 未能复跑远端
+制品的第二次卷 smoke，此网络限制已显式记录，不影响已完成的远端清单与本地候选证据。

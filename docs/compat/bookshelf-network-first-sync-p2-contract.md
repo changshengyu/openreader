@@ -2,7 +2,7 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 已按测试先行合同实施并通过全量/真实浏览器验证；本批 Docker 发布门禁待完成。
+状态：2026-07-18 已按测试先行合同实施、验证并发布 Docker。
 本切片只处理“冷启动先显示旧书架”和“同步事件丢失后缺少权威校准”。7 月 17 日已经完成的
 请求 revision、本地导入即时 `upsert`、用户 scope 隔离和 WebSocket 重连强刷继续保留，
 不重新设计书架、BookInfo、导入 UI 或 SQLite 数据。
@@ -110,7 +110,16 @@
   A 导入 TXT 后，客户端 B 无需重载即可显示新书；所有 API 无 500，页面无横向溢出或控制台错误。
 
 本记录只关闭本合同列出的 P2 书架新鲜度/收敛切片。其它 Pinia store、缓存与事务仍按全量矩阵
-逐项复审；Docker 卷/备份及 GHCR 摘要将在本提交发布后回填。
+逐项复审。
+
+发布记录：应用提交 `ff4cd9def5f26912f86fcfdc4da638be84a5c910` 已推送 `main`。本机
+arm64 候选构建通过历史挂载卷重启、backup/portable restore、TXT/EPUB/UMD/CBZ、relative-cache
+和 owner isolation smoke；随后本机生成并上传 amd64/arm64 OCI，标签为 `ff4cd9d` 与 `latest`，
+远端 index 为 `sha256:31c3432d2d93242cde73bd38af1ff72a6e645a80f87551d2f4293c45099bb8e9`
+（amd64 `sha256:6223dc26c957809acadb9f3d4071c062ddafa382e71839ec01c84cc10fbd0678`；
+arm64 `sha256:332817cf92739c07ee27141a8941b719ede072f29bf25118a5390ec876f2f990`）。
+`imagetools inspect` 已确认两个标签同指该远端索引；Docker daemon 的发布后回拉连续遇到 GHCR
+`502 Bad Gateway`，因此没有把本地已通过的卷 smoke 伪报为“远端回拉后重跑”。
 
 ## 不授权的变化
 
