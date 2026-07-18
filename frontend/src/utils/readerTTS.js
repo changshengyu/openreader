@@ -3,6 +3,10 @@ export function normalizeTTSRate(value) {
   return Math.max(0.5, Math.min(2, Number.isFinite(numeric) ? numeric : 1))
 }
 
+export function readerSpeechSynthesisSupported(synth) {
+  return Boolean(synth && typeof synth.getVoices === 'function')
+}
+
 export function normalizeTTSPitch(value) {
   const numeric = Number(value)
   return Math.max(0, Math.min(2, Number.isFinite(numeric) ? numeric : 1))

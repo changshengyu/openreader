@@ -71,9 +71,18 @@ export function useReaderSearchNavigation(options) {
       options.content.value = block?.content || options.content.value
     }
     if (options.getMode() === 'flip') {
+      const stride = Math.max(options.pageWidth.value, 1)
+      const lineRect = lineEl.getBoundingClientRect?.()
+      const viewportRect = options.contentEl.value?.getBoundingClientRect?.()
+      const renderedPosition = Number.isFinite(lineRect?.left) && Number.isFinite(viewportRect?.left)
+        ? options.page.value * stride + lineRect.left - viewportRect.left
+        : Number.NaN
+      const paragraphPage = Number.isFinite(renderedPosition)
+        ? Math.round(renderedPosition / stride)
+        : Math.floor(Number(lineEl.offsetLeft || 0) / stride)
       options.page.value = Math.min(
         options.pageCount.value - 1,
-        Math.floor(lineEl.offsetLeft / Math.max(options.pageWidth.value, 1)),
+        Math.max(0, paragraphPage),
       )
     } else if (options.contentEl.value) {
       options.contentEl.value.scrollTop = Math.max(0, lineEl.offsetTop - 80)

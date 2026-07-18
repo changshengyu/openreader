@@ -13,8 +13,13 @@ import {
   readerTTSSleepExpired,
   sortTTSVoices,
 } from '../src/utils/readerTTS.js'
+import * as readerTTSUtilsModule from '../src/utils/readerTTS.js'
 
 const readerView = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
+const ttsBar = readFileSync(new URL('../src/components/reader/ReaderTTSBar.vue', import.meta.url), 'utf8')
+const ttsController = readFileSync(new URL('../src/composables/useReaderTTS.js', import.meta.url), 'utf8')
+const ttsEngine = readFileSync(new URL('../src/composables/useTTS.js', import.meta.url), 'utf8')
+const ttsUtils = readFileSync(new URL('../src/utils/readerTTS.js', import.meta.url), 'utf8')
 
 test('normalizes reader TTS rate and pitch to upstream ranges', () => {
   assert.equal(normalizeTTSRate(0), 0.5)
@@ -148,4 +153,46 @@ test('detects expiration only for an active reader TTS deadline', () => {
   assert.equal(readerTTSSleepExpired(0, 1000), false)
   assert.equal(readerTTSSleepExpired(900, 1000), true)
   assert.equal(readerTTSSleepExpired(1100, 1000), false)
+})
+
+test('guards Reader setup against an incomplete speech synthesis API', () => {
+  assert.equal(typeof readerTTSUtilsModule.readerSpeechSynthesisSupported, 'function')
+  assert.equal(readerTTSUtilsModule.readerSpeechSynthesisSupported(null), false)
+  assert.equal(readerTTSUtilsModule.readerSpeechSynthesisSupported({}), false)
+  assert.equal(readerTTSUtilsModule.readerSpeechSynthesisSupported({
+    getVoices() {
+      return []
+    },
+  }), true)
+  assert.match(ttsUtils, /export function readerSpeechSynthesisSupported\(/)
+  assert.match(ttsEngine, /readerSpeechSynthesisSupported\(synth/)
+  assert.match(ttsEngine, /typeof synth\.addEventListener === 'function'/)
+  assert.match(ttsEngine, /typeof synth\.removeEventListener === 'function'/)
+  assert.doesNotMatch(ttsEngine, /supported:\s*!!synth/)
+  assert.doesNotMatch(ttsEngine, /if \(!synth\) return\s+const availableVoices = synth\.getVoices\(\)/)
+})
+
+test('uses the upstream bottom read-bar structure with user-requested numeric steppers', () => {
+  assert.match(ttsBar, /import ReaderSettingStepper/)
+  assert.match(ttsBar, /class="tts-voice-list"/)
+  assert.match(ttsBar, /class="tts-voice-option"/)
+  assert.doesNotMatch(ttsBar, /<select|type="range"/)
+  assert.match(ttsBar, /\.tts-bar\s*\{[\s\S]*bottom:\s*0/)
+  assert.match(ttsBar, /width:\s*min\(500px,\s*100vw\)/)
+  assert.match(ttsBar, /@media \(max-width: 750px\)[\s\S]*\.tts-bar\s*\{[\s\S]*right:\s*0[\s\S]*left:\s*0[\s\S]*width:\s*100vw/)
+})
+
+test('waits for a cancellable chapter-ready transaction instead of a fixed TTS poll timeout', () => {
+  assert.match(ttsController, /waitForChapterReady/)
+  assert.match(ttsController, /AbortController/)
+  assert.doesNotMatch(ttsController, /attempt\s*<\s*30/)
+  assert.doesNotMatch(ttsController, /setTimeout\(resolve,\s*120\)/)
+  assert.match(ttsController, /currentParagraphElement/)
+  assert.match(readerView, /waitForReaderChapterReady/)
+})
+
+test('captures and restores the active TTS paragraph when leaving the temporary page branch', () => {
+  assert.match(readerView, /function closeTTSBar\(\)[\s\S]*currentTTSParagraphElement\(\)/)
+  assert.match(readerView, /function closeTTSBar\(\)[\s\S]*ttsBarRequested\.value\s*=\s*false[\s\S]*updateFlipLayout\([\s\S]*jumpToParagraph\(/)
+  assert.doesNotMatch(readerView, /function closeTTSBar\(\)[\s\S]*mobileChromeVisible\.value\s*=\s*true/)
 })

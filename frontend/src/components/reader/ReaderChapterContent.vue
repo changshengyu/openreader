@@ -27,12 +27,14 @@
     :resource="audioResource"
     :initial-time="audioInitialTime"
     :title="audioTitle"
+    :book-title="audioBookTitle"
+    :author="audioAuthor"
     :cover-url="audioCoverUrl"
-    :previous-disabled="previousDisabled"
-    :next-disabled="nextDisabled"
     :autoplay="audioAutoplay"
     @loaded="emit('audio-loaded', $event)"
     @progress="emit('audio-progress', $event)"
+    @play="emit('audio-play')"
+    @autoplay-blocked="emit('audio-autoplay-blocked', $event)"
     @ended="emit('audio-ended')"
     @error="emit('audio-error')"
     @previous="emit('audio-previous')"
@@ -129,19 +131,19 @@ defineProps({
     type: String,
     default: '',
   },
+  audioBookTitle: {
+    type: String,
+    default: '',
+  },
+  audioAuthor: {
+    type: String,
+    default: '',
+  },
   audioCoverUrl: {
     type: String,
     default: '',
   },
   audioAutoplay: {
-    type: Boolean,
-    default: false,
-  },
-  previousDisabled: {
-    type: Boolean,
-    default: false,
-  },
-  nextDisabled: {
     type: Boolean,
     default: false,
   },
@@ -168,6 +170,8 @@ const emit = defineEmits([
   'epub-error',
   'audio-loaded',
   'audio-progress',
+  'audio-play',
+  'audio-autoplay-blocked',
   'audio-ended',
   'audio-error',
   'audio-previous',

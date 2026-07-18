@@ -134,7 +134,8 @@ async function runViewport(browser, viewport) {
 
   const initial = await page.evaluate(() => ({
     shellClass: document.querySelector('.reader-shell')?.className || '',
-    audioTitle: document.querySelector('.reader-audio-content h1')?.textContent || '',
+    audioTitle: document.querySelector('.reader-audio-book-title')?.textContent || '',
+    audioBookInfo: document.querySelector('.reader-audio-author')?.textContent || '',
     hasTextBlocks: Boolean(document.querySelector('.reader-body [data-reader-block]')),
     hasChapterContent: Boolean(document.querySelector('.chapter-content')),
     hasAutoReading: Boolean(document.querySelector('[title="自动阅读"]')),
@@ -151,6 +152,7 @@ async function runViewport(browser, viewport) {
   }))
   assert(initial.shellClass.includes('page'), `${viewport.width}: audio reader should force page mode, class=${initial.shellClass}`)
   assert(initial.audioTitle.includes('第一集'), `${viewport.width}: audio title missing: ${initial.audioTitle}`)
+  assert(initial.audioBookInfo.includes('音频契约测试') && initial.audioBookInfo.includes('OpenReader'), `${viewport.width}: audio book/author info missing: ${initial.audioBookInfo}`)
   assert(!initial.hasTextBlocks, `${viewport.width}: audio should not render text reader blocks`)
   assert(!initial.hasChapterContent, `${viewport.width}: audio should not render ordinary chapter-content sections`)
   assert(!initial.hasAutoReading, `${viewport.width}: audio should hide auto-reading control`)
@@ -166,10 +168,25 @@ async function runViewport(browser, viewport) {
   assert(initial.hasPlayButton, `${viewport.width}: custom play button missing`)
   assert(initial.hasMuteButton, `${viewport.width}: custom mute/volume button missing`)
 
+  const firstChapterRequestsBeforeBoundary = requests.filter(item => item === 'GET /books/1/chapters/0/content').length
+  await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '上一章' }).click()
+  await page.waitForFunction(() => document.body.innerText.includes('本章是第一章'))
+  assert(
+    requests.filter(item => item === 'GET /books/1/chapters/0/content').length === firstChapterRequestsBeforeBoundary,
+    `${viewport.width}: first-chapter boundary must not issue another content request`,
+  )
+
   await page.evaluate(() => {
+    window.__openreaderAudio = { attemptCalls: 0, playCalls: 0, rejectNext: false }
     const audio = document.querySelector('.reader-audio-content audio')
     Object.defineProperty(audio, 'duration', { configurable: true, value: 120 })
     audio.play = () => {
+      window.__openreaderAudio.attemptCalls += 1
+      if (window.__openreaderAudio.rejectNext) {
+        window.__openreaderAudio.rejectNext = false
+        return Promise.reject(new DOMException('autoplay blocked', 'NotAllowedError'))
+      }
+      window.__openreaderAudio.playCalls += 1
       audio.dispatchEvent(new Event('play'))
       return Promise.resolve()
     }
@@ -214,29 +231,73 @@ async function runViewport(browser, viewport) {
   }))
   assert(volumeState.audioMuted && volumeState.label.includes('0%'), `${viewport.width}: mute failed: ${JSON.stringify(volumeState)}`)
 
+  let playCallsBeforeTransition = await page.evaluate(() => window.__openreaderAudio.playCalls)
+  if (viewport.width === 390) {
+    await page.evaluate(() => {
+      window.__openreaderAudio.rejectNext = true
+    })
+  }
   await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '下一章' }).click()
-  await page.waitForFunction(() => document.querySelector('.reader-audio-content h1')?.textContent?.includes('第二集'))
+  await page.waitForFunction(() => document.querySelector('.reader-audio-book-title')?.textContent?.includes('第二集'))
   let transition = await page.evaluate(() => ({
     autoplay: document.querySelector('.reader-audio-content audio')?.autoplay,
     src: document.querySelector('.reader-audio-content audio')?.src || '',
+    playCalls: window.__openreaderAudio.playCalls,
   }))
-  assert(transition.autoplay && transition.src.endsWith('/media/audio-1.mp3'), `${viewport.width}: manual next must carry autoplay intent ${JSON.stringify(transition)}`)
+  assert(transition.src.endsWith('/media/audio-1.mp3'), `${viewport.width}: manual next did not enter the destination audio ${JSON.stringify(transition)}`)
+  if (viewport.width === 390) {
+    await page.waitForFunction(() => document.body.innerText.includes('自动播放被浏览器阻止'))
+    assert(!await page.locator('.reader-audio-content audio').evaluate(audio => audio.autoplay), '390: blocked autoplay intent must settle visibly')
+    assert(await page.evaluate(() => window.__openreaderAudio.playCalls) === playCallsBeforeTransition, '390: a rejected autoplay attempt must not report a successful play')
+    await page.getByRole('button', { name: '播放' }).click()
+  } else if (transition.playCalls === playCallsBeforeTransition) {
+    assert(transition.autoplay, `${viewport.width}: pending autoplay intent disappeared before play ${JSON.stringify(transition)}`)
+    await page.evaluate(() => {
+      const audio = document.querySelector('.reader-audio-content audio')
+      Object.defineProperty(audio, 'duration', { configurable: true, value: 90 })
+      audio.dispatchEvent(new Event('loadedmetadata'))
+    })
+  }
+  await page.waitForFunction(calls => window.__openreaderAudio.playCalls > calls, playCallsBeforeTransition)
+  assert(!await page.locator('.reader-audio-content audio').evaluate(audio => audio.autoplay), `${viewport.width}: autoplay intent must clear only after the destination really plays`)
 
+  playCallsBeforeTransition = await page.evaluate(() => window.__openreaderAudio.playCalls)
   await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '上一章' }).click()
-  await page.waitForFunction(() => document.querySelector('.reader-audio-content h1')?.textContent?.includes('第一集'))
+  await page.waitForFunction(() => document.querySelector('.reader-audio-book-title')?.textContent?.includes('第一集'))
   transition = await page.evaluate(() => ({
     autoplay: document.querySelector('.reader-audio-content audio')?.autoplay,
     src: document.querySelector('.reader-audio-content audio')?.src || '',
+    playCalls: window.__openreaderAudio.playCalls,
   }))
-  assert(transition.autoplay && transition.src.endsWith('/media/audio-0.mp3'), `${viewport.width}: manual previous must carry autoplay intent ${JSON.stringify(transition)}`)
+  assert(transition.src.endsWith('/media/audio-0.mp3') && (transition.autoplay || transition.playCalls > playCallsBeforeTransition), `${viewport.width}: manual previous must retain autoplay until a real play ${JSON.stringify(transition)}`)
+  if (transition.playCalls === playCallsBeforeTransition) {
+    await page.evaluate(() => document.querySelector('.reader-audio-content audio').dispatchEvent(new Event('loadedmetadata')))
+  }
+  await page.waitForFunction(calls => window.__openreaderAudio.playCalls > calls, playCallsBeforeTransition)
 
+  playCallsBeforeTransition = await page.evaluate(() => window.__openreaderAudio.playCalls)
   await page.evaluate(() => document.querySelector('.reader-audio-content audio').dispatchEvent(new Event('ended')))
-  await page.waitForFunction(() => document.querySelector('.reader-audio-content h1')?.textContent?.includes('第二集'))
+  await page.waitForFunction(() => document.querySelector('.reader-audio-book-title')?.textContent?.includes('第二集'))
   transition = await page.evaluate(() => ({
     autoplay: document.querySelector('.reader-audio-content audio')?.autoplay,
     src: document.querySelector('.reader-audio-content audio')?.src || '',
+    playCalls: window.__openreaderAudio.playCalls,
   }))
-  assert(transition.autoplay && transition.src.endsWith('/media/audio-1.mp3'), `${viewport.width}: ended transition must carry autoplay intent ${JSON.stringify(transition)}`)
+  assert(transition.src.endsWith('/media/audio-1.mp3') && (transition.autoplay || transition.playCalls > playCallsBeforeTransition), `${viewport.width}: ended transition must retain autoplay until a real play ${JSON.stringify(transition)}`)
+  if (transition.playCalls === playCallsBeforeTransition) {
+    await page.evaluate(() => document.querySelector('.reader-audio-content audio').dispatchEvent(new Event('loadedmetadata')))
+  }
+  await page.waitForFunction(calls => window.__openreaderAudio.playCalls > calls, playCallsBeforeTransition)
+
+  const finalChapterRequestsBeforeBoundary = requests.filter(item => item === 'GET /books/1/chapters/1/content').length
+  await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '下一章' }).click()
+  await page.waitForFunction(() => document.body.innerText.includes('本章是最后一章'))
+  await page.evaluate(() => document.querySelector('.reader-audio-content audio').dispatchEvent(new Event('ended')))
+  await page.waitForTimeout(120)
+  assert(
+    requests.filter(item => item === 'GET /books/1/chapters/1/content').length === finalChapterRequestsBeforeBoundary,
+    `${viewport.width}: final-chapter boundary and ended event must not issue another content request`,
+  )
 
   const chapterOneRequestsBeforeKey = requests.filter(item => item === 'GET /books/1/chapters/1/content').length
   await page.keyboard.press('ArrowRight')
@@ -251,7 +312,7 @@ async function runViewport(browser, viewport) {
     await page.mouse.click(viewport.width - 20, Math.round(viewport.height / 2))
     await page.waitForTimeout(160)
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: side tap should not hide toolbar for audio`)
-    const titleTapPoint = await page.locator('.reader-audio-content h1').evaluate((element) => {
+    const titleTapPoint = await page.locator('.reader-audio-book-title').evaluate((element) => {
       const rect = element.getBoundingClientRect()
       return {
         x: Math.round(rect.left + rect.width / 2),

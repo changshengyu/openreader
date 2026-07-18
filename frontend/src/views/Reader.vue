@@ -159,10 +159,10 @@
             :audio-resource="audioResource"
             :audio-initial-time="audioInitialTime"
             :audio-title="chapter?.title || book?.title || ''"
+            :audio-book-title="book?.title || ''"
+            :audio-author="book?.author || ''"
             :audio-cover-url="book?.customCoverUrl || book?.coverUrl || ''"
             :audio-autoplay="audioAutoplay"
-            :previous-disabled="currentIndex <= 0"
-            :next-disabled="currentIndex >= chapters.length - 1"
             :epub-style="epubStyleText"
             :viewport-height="readerViewportHeight"
             @reload="reloadChapter"
@@ -176,6 +176,8 @@
             @epub-error="handleEpubError"
             @audio-loaded="handleAudioLoaded"
             @audio-progress="handleAudioProgress"
+            @audio-play="handleAudioPlay"
+            @audio-autoplay-blocked="handleAudioAutoplayBlocked"
             @audio-ended="handleAudioEnded"
             @audio-error="handleAudioError"
             @audio-previous="goAudioChapter(currentIndex - 1)"
@@ -400,6 +402,7 @@ import { useReaderChapterCache } from '../composables/useReaderChapterCache'
 import { useReaderChapterContent } from '../composables/useReaderChapterContent'
 import { useReaderChapterLoader } from '../composables/useReaderChapterLoader'
 import { useReaderChapterMaintenance } from '../composables/useReaderChapterMaintenance'
+import { useReaderChapterReady } from '../composables/useReaderChapterReady'
 import { isCBZBook, useReaderChapterPresentation } from '../composables/useReaderChapterPresentation'
 import { useReaderChapterWindow } from '../composables/useReaderChapterWindow'
 import { useReaderChrome } from '../composables/useReaderChrome'
@@ -556,6 +559,20 @@ const chapterLoadError = ref('')
 const chapterLoaded = ref(false)
 const contentEl = ref(null)
 const contentBody = ref(null)
+const {
+  wait: waitForReaderChapterReady,
+} = useReaderChapterReady({
+  currentIndex,
+  chapterLoaded,
+  chapterLoading,
+  chapterLoadError,
+  getScopeKey: () => [
+    bookId.value,
+    remoteSessionId.value,
+    book.value?.url || book.value?.bookUrl || book.value?.libraryPath || '',
+    book.value?.sourceId || '',
+  ].join('|'),
+})
 const {
   consumeSuppressedContentClick,
   schedule: scheduleSelectedTextOperation,
@@ -1555,6 +1572,7 @@ const {
   previous: ttsPrevious,
   next: ttsNext,
   stop: ttsStop,
+  currentParagraphElement: currentTTSParagraphElement,
 } = useReaderTTS({
   reader,
   content,
@@ -1562,8 +1580,13 @@ const {
   currentIndex,
   chapters,
   goChapter,
+  waitForChapterReady: waitForReaderChapterReady,
   notify: showReaderToast,
   isSlideRead: () => effectiveReaderMode.value === 'flip',
+  topOffset: () => Math.max(
+    Number(contentEl.value?.getBoundingClientRect?.().top || 0) + 50,
+    Number(contentBody.value?.getBoundingClientRect?.().top || 0) + 5,
+  ),
 })
 const ttsSupportedForChapter = computed(() => readerTTSSupported({
   speechSupported: tts.state.supported,
@@ -1586,8 +1609,18 @@ function toggleTTSBar() {
   }
 }
 function closeTTSBar() {
+  const activeParagraph = currentTTSParagraphElement()
   ttsBarRequested.value = false
   ttsStop()
+  return (async () => {
+    await nextTick()
+    updateFlipLayout()
+    await nextFrame()
+    if (reader.mode !== 'flip' || !activeParagraph?.isConnected) return
+    updateFlipLayout()
+    await nextFrame()
+    jumpToParagraph(activeParagraph, { save: false, flash: false })
+  })()
 }
 
 function openReaderPrimaryTool(name, open) {
@@ -1959,8 +1992,16 @@ function currentAudioProgressPayload() {
 function handleAudioLoaded(event) {
   audioCurrentTime.value = Math.max(0, Number(event?.currentTime) || audioCurrentTime.value || 0)
   audioDuration.value = Math.max(0, Number(event?.duration) || 0)
-  audioAutoplay.value = false
   markProgressSaved(currentAudioProgressPayload())
+}
+
+function handleAudioPlay() {
+  audioAutoplay.value = false
+}
+
+function handleAudioAutoplayBlocked() {
+  audioAutoplay.value = false
+  showReaderToast('自动播放被浏览器阻止，请点击播放继续')
 }
 
 function handleAudioProgress(event) {
@@ -1970,21 +2011,34 @@ function handleAudioProgress(event) {
 }
 
 function goAudioChapter(index) {
-  const target = Math.max(0, Math.min(Number(index), chapters.value.length - 1))
+  const target = Number(index)
+  if (!Number.isInteger(target) || target < 0) {
+    showReaderToast('本章是第一章')
+    return false
+  }
+  if (target >= chapters.value.length) {
+    showReaderToast('本章是最后一章')
+    return false
+  }
   if (target === currentIndex.value) return
   // reader-dev marks both manual previous/next actions as autoplay requests
   // before changing the chapter. The destination audio element receives that
-  // intent through its autoplay prop and clears it once metadata is available.
+  // intent through its autoplay prop and clears it on play or visible rejection.
   audioAutoplay.value = true
-  return goChapter(target)
+  const transition = goChapter(target)
+  Promise.resolve(transition).catch(() => {
+    audioAutoplay.value = false
+  })
+  return transition
 }
 
 function handleAudioEnded() {
   audioCurrentTime.value = Math.max(0, Number(audioDuration.value) || audioCurrentTime.value || 0)
   saveCurrentProgress({ force: true }).catch(() => {})
   if (currentIndex.value < chapters.value.length - 1) {
-    audioAutoplay.value = true
-    goChapter(currentIndex.value + 1)
+    goAudioChapter(currentIndex.value + 1)
+  } else {
+    showReaderToast('本章是最后一章')
   }
 }
 

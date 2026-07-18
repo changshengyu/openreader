@@ -14,6 +14,7 @@ export function useReaderTTS(options) {
   const sleepMinutes = ref(0)
   const sleepEndAt = ref(0)
   let continueToken = 0
+  let chapterWaitController = null
 
   const voices = computed(() => tts.voices.value)
   const progressLabel = computed(() => readerTTSProgressLabel({
@@ -51,24 +52,48 @@ export function useReaderTTS(options) {
     return readerTTSSleepExpired(sleepEndAt.value)
   }
 
+  function chapterRoot() {
+    const root = unref(options.contentBody)
+    const index = Number(unref(options.currentIndex))
+    return root?.querySelector?.(`.chapter-content[data-index="${index}"]`) || root || null
+  }
+
   function currentParagraphPayload() {
-    const elements = readerTTSParagraphElements(unref(options.contentBody))
+    const elements = readerTTSParagraphElements(chapterRoot())
     return {
       elements,
       texts: elements.map(readerTTSParagraphText),
     }
   }
 
-  function clearActiveParagraph(elements = currentParagraphPayload().elements) {
+  function clearActiveParagraph() {
+    const root = unref(options.contentBody)
+    const elements = readerTTSParagraphElements(root)
     elements.forEach((paragraph) => {
       paragraph.classList?.remove?.('tts-active')
       paragraph.classList?.remove?.('reading')
     })
   }
 
+  function currentVisibleParagraphIndex() {
+    const { elements } = currentParagraphPayload()
+    return readerTTSCurrentParagraphIndex(elements, {
+      slide: options.isSlideRead?.() === true,
+      topOffset: options.topOffset?.() ?? 50,
+    })
+  }
+
+  function currentParagraphElement() {
+    const root = unref(options.contentBody)
+    const active = root?.querySelector?.('.tts-active, .reading')
+    if (active) return active
+    const { elements } = currentParagraphPayload()
+    return elements[currentVisibleParagraphIndex()] || null
+  }
+
   function markActiveParagraph(index, scroll = true) {
     const { elements } = currentParagraphPayload()
-    clearActiveParagraph(elements)
+    clearActiveParagraph()
     const target = elements[index]
     if (!target) return
     target.classList?.add?.('tts-active')
@@ -77,16 +102,42 @@ export function useReaderTTS(options) {
   }
 
   function handleSpeechError(event) {
-    const reason = event?.error || event?.name || event?.type || event?.toString?.() || ''
+    const reason = event?.error || event?.message || event?.name || event?.type || event?.toString?.() || ''
     options.notify?.(`朗读错误: ${reason}`.trim(), 2400)
   }
 
   function handleParagraphStart(index) {
     markActiveParagraph(index)
     if (!sleepExpired()) return
-    continueToken += 1
-    tts.stop()
+    stop()
     options.notify?.('定时关闭朗读', 1400)
+  }
+
+  function selectedVoiceAvailable() {
+    return Boolean(tts.hasSelectedVoice.value)
+  }
+
+  function canStartSpeech() {
+    if (!tts.state.supported) {
+      options.notify?.('当前浏览器不支持朗读')
+      return false
+    }
+    if (!selectedVoiceAvailable()) {
+      options.notify?.('请先选择语音库')
+      return false
+    }
+    return true
+  }
+
+  function cancelChapterWait() {
+    chapterWaitController?.abort()
+    chapterWaitController = null
+  }
+
+  function beginCommand() {
+    cancelChapterWait()
+    continueToken += 1
+    return continueToken
   }
 
   function toggle() {
@@ -98,72 +149,74 @@ export function useReaderTTS(options) {
       stop()
       return
     }
+    if (!canStartSpeech()) return
 
-    const token = ++continueToken
+    const token = beginCommand()
     if (sleepMinutes.value > 0 && !sleepEndAt.value) setSleepMinutes(sleepMinutes.value)
     speakCurrentContent(token, currentVisibleParagraphIndex())
   }
 
-  function currentVisibleParagraphIndex() {
-    const { elements } = currentParagraphPayload()
-    return readerTTSCurrentParagraphIndex(elements, {
-      slide: options.isSlideRead?.() === true,
-      topOffset: options.topOffset?.() ?? 50,
-    })
-  }
-
   function speakCurrentContent(token, startIndex = 0) {
+    if (token !== continueToken) return
     const { texts } = currentParagraphPayload()
     if (texts.length > 0) {
       tts.speakList(texts, Math.max(0, startIndex), () => {
+        if (token !== continueToken) return
         if (sleepExpired()) {
           handleParagraphStart(tts.currentIndex.value)
           return
         }
         const index = Number(unref(options.currentIndex))
         const chapters = unref(options.chapters) || []
-        if (index < chapters.length - 1) speakChapter(index + 1, token, 'first')
+        if (index < chapters.length - 1) void speakChapter(index + 1, token, 'first')
       }, markActiveParagraph, handleSpeechError)
       return
     }
     tts.speak(unref(options.content), () => {
+      if (token !== continueToken) return
       if (sleepExpired()) {
         handleParagraphStart()
         return
       }
       const index = Number(unref(options.currentIndex))
       const chapters = unref(options.chapters) || []
-      if (index < chapters.length - 1) speakChapter(index + 1, token, 'first')
+      if (index < chapters.length - 1) void speakChapter(index + 1, token, 'first')
     }, handleParagraphStart, handleSpeechError)
   }
 
   function stop() {
-    continueToken += 1
+    beginCommand()
     tts.stop()
     clearActiveParagraph()
   }
 
   async function speakChapter(index, token, position = 'first') {
-    await options.goChapter(index)
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    cancelChapterWait()
+    if (token !== continueToken) return
+    const controller = new AbortController()
+    chapterWaitController = controller
+    tts.stop()
+    clearActiveParagraph()
+    try {
+      await options.goChapter(index)
       if (token !== continueToken) return
-      await new Promise(resolve => setTimeout(resolve, 120))
+      await options.waitForChapterReady(index, { signal: controller.signal })
+      if (token !== continueToken || controller.signal.aborted) return
       const { texts } = currentParagraphPayload()
-      const content = String(unref(options.content) || '')
-      if (Number(unref(options.currentIndex)) === index && (texts.length || content.trim())) {
-        const startIndex = position === 'last' && texts.length ? texts.length - 1 : 0
-        speakCurrentContent(token, startIndex)
-        return
-      }
+      const startIndex = position === 'last' && texts.length ? texts.length - 1 : 0
+      speakCurrentContent(token, startIndex)
+    } catch (error) {
+      if (error?.name === 'AbortError' || token !== continueToken) return
+      const reason = error?.response?.data?.error || error?.message || String(error || '章节加载失败')
+      options.notify?.(`朗读章节加载失败: ${reason}`, 2400)
+    } finally {
+      if (chapterWaitController === controller) chapterWaitController = null
     }
   }
 
   function speakRelative(delta) {
-    if (!tts.state.supported) {
-      options.notify?.('当前浏览器不支持朗读')
-      return
-    }
-    const token = ++continueToken
+    if (!canStartSpeech()) return
+    const token = beginCommand()
     const { texts } = currentParagraphPayload()
     const baseIndex = tts.currentIndex.value >= 0
       ? tts.currentIndex.value
@@ -176,16 +229,16 @@ export function useReaderTTS(options) {
     const chapterIndex = Number(unref(options.currentIndex))
     const chapters = unref(options.chapters) || []
     if (targetIndex < 0 && chapterIndex > 0) {
-      speakChapter(chapterIndex - 1, token, 'last')
+      void speakChapter(chapterIndex - 1, token, 'last')
       return
     }
     if (targetIndex >= texts.length && chapterIndex < chapters.length - 1) {
-      speakChapter(chapterIndex + 1, token, 'first')
+      void speakChapter(chapterIndex + 1, token, 'first')
     }
   }
 
   onBeforeUnmount(() => {
-    continueToken += 1
+    beginCommand()
   })
 
   return {
@@ -193,6 +246,7 @@ export function useReaderTTS(options) {
     voices,
     sleepMinutes,
     progressLabel,
+    currentParagraphElement,
     setRate,
     setPitch,
     setVoice,

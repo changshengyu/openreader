@@ -68,6 +68,24 @@ test('jumps to the requested occurrence and scrolls the matching paragraph', () 
   assert.equal(saved.length, 1)
 })
 
+test('maps a fragmented flip paragraph from rendered column geometry instead of offsetLeft', () => {
+  const fixture = createFixture({
+    getMode: () => 'flip',
+    contentEl: ref({
+      getBoundingClientRect: () => ({ left: 0 }),
+    }),
+    page: ref(0),
+    pageCount: ref(5),
+    pageWidth: ref(374),
+  })
+  fixture.paragraphs[1].offsetLeft = 0
+  fixture.paragraphs[1].getBoundingClientRect = () => ({ left: 390 })
+
+  fixture.controller.jumpToParagraph(fixture.paragraphs[1], { save: false, flash: false })
+
+  assert.equal(fixture.options.page.value, 1)
+})
+
 test('loads same chapter directly and navigates before loading another chapter', async () => {
   const same = createFixture()
   await same.controller.jumpToResult({

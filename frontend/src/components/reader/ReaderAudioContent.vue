@@ -1,63 +1,77 @@
 <template>
-  <section class="reader-audio-content">
-    <div class="reader-audio-card">
-      <div class="reader-audio-cover" :class="{ empty: !coverUrl }">
-        <img v-if="coverUrl" :src="coverUrl" :alt="title || '音频封面'" @click.stop />
+  <section class="reader-audio-content content-audio">
+    <audio
+      ref="audioEl"
+      class="reader-audio-element"
+      :src="resource.url"
+      preload="metadata"
+      :autoplay="autoplay"
+      @click.stop
+      @play="handlePlay"
+      @pause="handlePause"
+      @loadedmetadata="handleLoadedMetadata"
+      @timeupdate="handleTimeUpdate"
+      @ended="handleEnded"
+      @error="handleError"
+    />
+
+    <div class="reader-audio-cover primary">
+      <img v-if="coverUrl" :src="coverUrl" :alt="bookTitle || title || '音频封面'" @click.stop />
+      <span v-else>有声</span>
+    </div>
+
+    <div class="reader-audio-progress book-progress" @click.stop>
+      <span class="reader-audio-time progress-tip">{{ elapsedLabel }}</span>
+      <input
+        type="range"
+        min="0"
+        :max="durationSliderMax"
+        step="1"
+        :value="currentTimeSliderValue"
+        aria-label="音频播放进度"
+        @input="handleSeekInput"
+        @change="handleSeekChange"
+      />
+      <span class="reader-audio-time progress-tip total-time">{{ durationLabel }}</span>
+    </div>
+
+    <div class="reader-audio-actions primary book-operation" @click.stop>
+      <button type="button" @click="seekBy(-15)">-15s</button>
+      <button type="button" @click="handlePrevious">上一章</button>
+      <button class="reader-audio-play" type="button" :aria-pressed="playing" @click="togglePlay">
+        {{ playing ? '暂停' : '播放' }}
+      </button>
+      <button type="button" @click="handleNext">下一章</button>
+      <button type="button" @click="seekBy(15)">+15s</button>
+    </div>
+
+    <div class="reader-audio-volume book-operation" @click.stop>
+      <button type="button" :aria-pressed="muted" @click="toggleMute">
+        {{ muted || volume <= 0 ? '静音' : '音量' }}
+      </button>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        :value="volume"
+        aria-label="音频音量"
+        @input="handleVolumeInput"
+        @change="handleVolumeInput"
+      />
+      <span>{{ volume }}%</span>
+    </div>
+
+    <div class="reader-audio-info book-info">
+      <div class="reader-audio-info-cover book-cover">
+        <img v-if="coverUrl" :src="coverUrl" :alt="bookTitle || title || '音频封面'" @click.stop />
         <span v-else>有声</span>
       </div>
-      <p class="reader-audio-kicker">有声阅读</p>
-      <h1>{{ title || '音频章节' }}</h1>
-      <p class="reader-audio-time">{{ elapsedLabel }} / {{ durationLabel }}</p>
-      <audio
-        ref="audioEl"
-        class="reader-audio-element"
-        :src="resource.url"
-        preload="metadata"
-        :autoplay="autoplay"
-        @click.stop
-        @play="handlePlay"
-        @pause="handlePause"
-        @loadedmetadata="handleLoadedMetadata"
-        @timeupdate="handleTimeUpdate"
-        @ended="handleEnded"
-        @error="handleError"
-      />
-      <div class="reader-audio-progress" @click.stop>
-        <input
-          type="range"
-          min="0"
-          :max="durationSliderMax"
-          step="1"
-          :value="currentTimeSliderValue"
-          aria-label="音频播放进度"
-          @input="handleSeekInput"
-          @change="handleSeekChange"
-        />
-      </div>
-      <div class="reader-audio-actions primary" @click.stop>
-        <button type="button" @click="seekBy(-15)">-15s</button>
-        <button type="button" :disabled="previousDisabled" @click="handlePrevious">上一章</button>
-        <button class="reader-audio-play" type="button" :aria-pressed="playing" @click="togglePlay">
-          {{ playing ? '暂停' : '播放' }}
-        </button>
-        <button type="button" :disabled="nextDisabled" @click="handleNext">下一章</button>
-        <button type="button" @click="seekBy(15)">+15s</button>
-      </div>
-      <div class="reader-audio-volume" @click.stop>
-        <button type="button" :aria-pressed="muted" @click="toggleMute">
-          {{ muted || volume <= 0 ? '静音' : '音量' }}
-        </button>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          step="1"
-          :value="volume"
-          aria-label="音频音量"
-          @input="handleVolumeInput"
-          @change="handleVolumeInput"
-        />
-        <span>{{ volume }}%</span>
+      <div class="reader-audio-intro book-intro">
+        <div class="reader-audio-book-title title">{{ title || '音频章节' }}</div>
+        <div class="reader-audio-author subtitle">
+          {{ bookTitle || '有声阅读' }}<template v-if="author"> · {{ author }}</template>
+        </div>
       </div>
     </div>
   </section>
@@ -79,17 +93,17 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  coverUrl: {
+  bookTitle: {
     type: String,
     default: '',
   },
-  previousDisabled: {
-    type: Boolean,
-    default: false,
+  author: {
+    type: String,
+    default: '',
   },
-  nextDisabled: {
-    type: Boolean,
-    default: false,
+  coverUrl: {
+    type: String,
+    default: '',
   },
   autoplay: {
     type: Boolean,
@@ -98,10 +112,12 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'autoplay-blocked',
   'ended',
   'error',
   'loaded',
   'next',
+  'play',
   'previous',
   'progress',
 ])
@@ -114,6 +130,8 @@ const volume = ref(100)
 const muted = ref(false)
 const previousVolume = ref(100)
 let restoredForURL = ''
+let metadataReadyForURL = ''
+let autoplayAttemptedForURL = ''
 
 const elapsedLabel = computed(() => formatAudioTime(currentTime.value))
 const durationLabel = computed(() => (
@@ -126,6 +144,8 @@ watch(
   () => props.resource.url,
   async () => {
     restoredForURL = ''
+    metadataReadyForURL = ''
+    autoplayAttemptedForURL = ''
     currentTime.value = 0
     duration.value = 0
     playing.value = false
@@ -140,8 +160,16 @@ watch(
   () => restoreInitialTime(),
 )
 
-function handleLoadedMetadata() {
+watch(
+  () => props.autoplay,
+  (requested) => {
+    if (requested) void attemptAutoplay()
+  },
+)
+
+async function handleLoadedMetadata() {
   duration.value = Number(audioEl.value?.duration || 0)
+  metadataReadyForURL = props.resource.url
   restoreInitialTime()
   syncAudioVolume()
   emitProgress()
@@ -149,6 +177,7 @@ function handleLoadedMetadata() {
     currentTime: currentTime.value,
     duration: duration.value,
   })
+  await attemptAutoplay()
 }
 
 function handleTimeUpdate() {
@@ -159,6 +188,7 @@ function handleTimeUpdate() {
 
 function handlePlay() {
   playing.value = true
+  emit('play')
 }
 
 function handlePause() {
@@ -170,9 +200,28 @@ function handleEnded() {
   emit('ended')
 }
 
-function handleError() {
+function handleError(event) {
   playing.value = false
-  emit('error')
+  emit('error', event)
+}
+
+async function attemptAutoplay() {
+  const audio = audioEl.value
+  const url = props.resource.url
+  if (
+    !audio
+    || !props.autoplay
+    || !url
+    || metadataReadyForURL !== url
+    || autoplayAttemptedForURL === url
+  ) return
+  autoplayAttemptedForURL = url
+  try {
+    await audio.play()
+  } catch (error) {
+    playing.value = false
+    emit('autoplay-blocked', error)
+  }
 }
 
 async function togglePlay() {
@@ -184,8 +233,9 @@ async function togglePlay() {
   }
   try {
     await audio.play()
-  } catch {
+  } catch (error) {
     playing.value = false
+    emit('error', error)
   }
 }
 
@@ -211,12 +261,10 @@ function handleSeekChange(event) {
 }
 
 function handlePrevious() {
-  playing.value = false
   emit('previous')
 }
 
 function handleNext() {
-  playing.value = false
   emit('next')
 }
 
@@ -287,72 +335,32 @@ function formatAudioTime(value) {
 
 <style scoped>
 .reader-audio-content {
-  display: grid;
+  width: 100%;
   min-height: min(680px, calc(100vh - 168px));
-  padding: 40px 0;
-  place-items: center;
+  margin: 0 auto;
+  padding: 24px 0;
+  color: var(--reader-text);
 }
 
-.reader-audio-card {
+.reader-audio-cover.primary {
   display: grid;
-  width: min(100%, 520px);
-  gap: 18px;
-  padding: 34px 32px;
-  border: 1px solid rgba(70, 56, 25, 0.16);
-  border-radius: 20px;
-  background: rgba(255, 252, 239, 0.46);
-  box-shadow: 0 18px 50px rgba(44, 32, 12, 0.12);
-  text-align: center;
-}
-
-.reader-audio-cover {
-  display: grid;
-  width: 148px;
-  height: 196px;
-  margin: 0 auto 4px;
+  width: min(200px, 58vw);
+  aspect-ratio: 3 / 4;
+  margin: 0 auto;
   overflow: hidden;
-  border-radius: 14px;
-  background:
-    linear-gradient(135deg, rgba(77, 57, 24, 0.22), rgba(255, 255, 255, 0.34)),
-    var(--reader-bg);
-  box-shadow: 0 12px 32px rgba(32, 22, 8, 0.2);
-  color: rgba(46, 38, 24, 0.58);
+  background: rgba(70, 56, 25, 0.1);
+  color: color-mix(in srgb, var(--reader-text) 58%, transparent);
   font-size: 28px;
   font-weight: 700;
   place-items: center;
 }
 
-.reader-audio-cover img {
+.reader-audio-cover.primary img,
+.reader-audio-info-cover img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.reader-audio-cover.empty span {
-  letter-spacing: 0.18em;
-}
-
-.reader-audio-kicker {
-  margin: 0;
-  color: rgba(46, 38, 24, 0.58);
-  font-size: 14px;
-  letter-spacing: 0.18em;
-  text-indent: 0;
-}
-
-h1 {
-  margin: 0;
-  color: var(--reader-text);
-  font-size: var(--reader-heading-size);
-  line-height: 1.35;
-}
-
-.reader-audio-time {
-  margin: 0;
-  color: rgba(46, 38, 24, 0.62);
-  font-variant-numeric: tabular-nums;
-  text-indent: 0;
 }
 
 .reader-audio-element {
@@ -363,85 +371,131 @@ h1 {
   pointer-events: none;
 }
 
+.reader-audio-progress {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  gap: 10px;
+  align-items: center;
+  padding: 25px 15px;
+}
+
 .reader-audio-progress input,
 .reader-audio-volume input {
   width: 100%;
   accent-color: #409eff;
 }
 
-.reader-audio-actions {
+.reader-audio-time {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-indent: 0;
+}
+
+.reader-audio-time.total-time {
+  text-align: right;
+}
+
+.reader-audio-actions,
+.reader-audio-volume {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+  align-items: center;
+  padding: 0 15px 25px;
+}
+
+.reader-audio-actions {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.reader-audio-volume {
+  grid-template-columns: 58px minmax(0, 180px) 48px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .reader-audio-actions button,
 .reader-audio-volume button {
   min-height: 38px;
-  border: 1px solid rgba(70, 56, 25, 0.18);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.56);
+  border: 0;
+  background: transparent;
   color: var(--reader-text);
   cursor: pointer;
 }
 
 .reader-audio-play {
-  border-color: rgba(64, 158, 255, 0.45) !important;
-  background: rgba(64, 158, 255, 0.14) !important;
+  color: #409eff !important;
   font-weight: 700;
-}
-
-.reader-audio-actions button:disabled,
-.reader-audio-volume button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.reader-audio-volume {
-  display: grid;
-  grid-template-columns: 58px 1fr 48px;
-  gap: 10px;
-  align-items: center;
-  color: rgba(46, 38, 24, 0.62);
-  font-variant-numeric: tabular-nums;
 }
 
 .reader-audio-volume span {
   text-align: right;
 }
 
+.reader-audio-info {
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
+}
+
+.reader-audio-info-cover {
+  display: grid;
+  width: 50px;
+  height: 66px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: rgba(70, 56, 25, 0.1);
+  font-size: 12px;
+  place-items: center;
+}
+
+.reader-audio-intro {
+  min-width: 0;
+  padding-left: 15px;
+}
+
+.reader-audio-book-title {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-audio-author {
+  margin-top: 5px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--reader-text) 62%, transparent);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .reader-audio-content {
     min-height: calc(100vh - 150px);
-    padding: 24px 0;
+    padding-top: 16px;
   }
 
-  .reader-audio-card {
-    gap: 14px;
-    padding: 26px 18px;
-    border-radius: 16px;
+  .reader-audio-progress {
+    padding: 20px 8px;
   }
 
-  .reader-audio-cover {
-    width: 118px;
-    height: 156px;
-  }
-
-  .reader-audio-actions {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 7px;
+  .reader-audio-actions,
+  .reader-audio-volume {
+    gap: 6px;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .reader-audio-actions button,
   .reader-audio-volume button {
     min-height: 34px;
-    padding: 0 4px;
+    padding: 0 2px;
     font-size: 12px;
   }
 
   .reader-audio-volume {
-    grid-template-columns: 48px 1fr 42px;
-    gap: 8px;
+    grid-template-columns: 48px minmax(0, 180px) 42px;
   }
 }
 </style>
