@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { computed, effectScope, nextTick, reactive, ref } from 'vue'
-import { readerEffectiveMode, useReaderMode } from '../src/composables/useReaderMode.js'
+import {
+  readerAutoReadingSupported,
+  readerEffectiveMode,
+  readerTTSSupported,
+  useReaderMode,
+} from '../src/composables/useReaderMode.js'
 
 async function flushModeChange() {
   await nextTick()
@@ -18,6 +23,22 @@ test('forces EPUB, audio, and ordinary image-comic documents through the upstrea
   assert.equal(readerEffectiveMode('flip', false, false, false, false), 'flip')
   assert.equal(readerEffectiveMode('flip', false, false, true), 'page')
   assert.equal(readerEffectiveMode('scroll', false, false, true), 'scroll')
+  assert.equal(readerEffectiveMode('flip', false, false, false, false, true), 'page')
+  assert.equal(readerEffectiveMode('scroll', false, false, false, false, true), 'scroll')
+})
+
+test('separates CBZ comic presentation from upstream ordinary-image control exclusions', () => {
+  assert.equal(readerAutoReadingSupported({}), true, 'plain text keeps auto reading')
+  assert.equal(readerAutoReadingSupported({ isCBZ: true }), true, 'CBZ keeps auto reading')
+  assert.equal(readerAutoReadingSupported({ isEPUB: true }), false)
+  assert.equal(readerAutoReadingSupported({ isAudio: true }), false)
+  assert.equal(readerAutoReadingSupported({ isOrdinaryImageComic: true }), false)
+
+  assert.equal(readerTTSSupported({ speechSupported: true, isCBZ: true }), true, 'CBZ keeps TTS')
+  assert.equal(readerTTSSupported({ speechSupported: true, isEPUB: true }), false)
+  assert.equal(readerTTSSupported({ speechSupported: true, isAudio: true }), false)
+  assert.equal(readerTTSSupported({ speechSupported: true, isOrdinaryImageComic: true }), false)
+  assert.equal(readerTTSSupported({ speechSupported: false, isCBZ: true }), false)
 })
 
 test('rebuilds continuous chapter windows and restores reading position', async () => {

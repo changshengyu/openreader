@@ -256,7 +256,7 @@ The route must not log the capability value. Application access logs should reda
 | Auth | Existing `Authorization: Bearer <jwt>` requirement. The book lookup remains scoped to the authenticated user. |
 | Request | Existing numeric book ID and zero-based chapter index. |
 | CBZ response | `200` JSON keeps `chapter` and `content`; adds `"format": "cbz"`, `resourceUrl`, and RFC3339 `resourceExpiresAt`. `content` remains compatible with the upstream image chapter shape and contains an `<img>` tag pointing at `resourceUrl`. |
-| Side effects | May verify/recover the chapter `resourcePath` from the preserved archive. It must not modify the original CBZ archive. |
+| Side effects | May verify/recover the chapter `resourcePath` and create/reuse a bounded immutable `.cbz-resources/<source-fingerprint>/` generation below the private book root. A complete generation is selected by its marker and matching source identity without reopening or rehashing the CBZ on every chapter. It must not modify the original CBZ archive. |
 | `400` | Invalid book/chapter parameter or unsafe archive path. |
 | `404` | Book/chapter/source archive/page is not available to the current user. |
 | `415` | The selected CBZ entry is not a supported image media type. |
@@ -276,13 +276,16 @@ current book/book-list JSON shapes. For a local CBZ with no `customCoverUrl`, th
 
 The source image is the first safe image encountered in CBZ archive order, matching
 reader-dev `CbzFile.parseBookInfo`; it is intentionally independent of the lexicographically
-sorted chapter catalogue. The response capability is bound to the current user, book and
-archive fingerprint, expires normally, and remains readable without appending the login JWT.
+sorted chapter catalogue. A new import prepares that same bounded immutable image generation
+before committing the book, so projecting a cover or opening the first page does not rescan the
+archive. The response capability is bound to the current user, book and archive fingerprint,
+expires normally, and remains readable without appending the login JWT.
 `coverUrl` capability values and archive member paths are **not** written to `books`,
 `chapters.json`, `bookSource.json`, backups, WebDAV metadata, or logs. A user-supplied
 `customCoverUrl` remains the frontend's first-choice cover and is never overwritten.
 
-If the archived CBZ is unavailable, malformed, unsafe, over budget, or has no supported image,
+If both the archived CBZ and its last complete derived generation are unavailable, malformed,
+unsafe, over budget, or have no supported image,
 the stable book endpoint stays successful with its stored/empty `coverUrl`; it must not turn a
 normal bookshelf response into an archive or host-path error.
 
@@ -306,14 +309,16 @@ Example:
 
 ### Capability-protected CBZ image resources
 
-`GET /api/cbz-resource/:capability/*resourcePath`
+`GET|HEAD /api/cbz-resource/:capability/*resourcePath`
 
 | Field | Contract |
 |---|---|
 | Auth | Does not accept or require the login Bearer token. Authorization is the signed path capability returned by the protected chapter endpoint. |
 | Capability scope | One user ID, one book ID, one source fingerprint, read-only access, and a bounded expiration. It is signed with a purpose-separated key derived from `OPENREADER_JWT_SECRET`; it is never interchangeable with a login JWT or EPUB capability. |
-| Path | `resourcePath` is URL-decoded once, normalized as a ZIP/POSIX path, and resolved strictly to an image entry inside that book's preserved CBZ archive. |
-| Success | `200` with a supported image MIME type. `HEAD` may return the same headers without a body. |
+| Path | `resourcePath` is URL-decoded once, normalized as a ZIP/POSIX path, and resolved strictly below that book/fingerprint's complete immutable derived generation. Only supported image media are extracted or served. |
+| Source identity | A complete marker records fingerprint, source size and modification time. Matching identity selects the generation without hashing; changed identity is hashed once and invalidates a mismatched old capability. If the archived source is temporarily absent, an already complete generation for the signed fingerprint remains readable. |
+| Recovery | If the signed generation/resource is absent and the current archived source is available, the service may run the bounded atomic extraction once. It serves the rebuilt file only when its fingerprint still matches the signed capability. |
+| Success | `200` with a supported image MIME type, `Content-Length`, `Last-Modified`, and byte-range support. A valid single range returns `206` plus `Content-Range`; an unsatisfiable range returns `416`. `HEAD` returns the corresponding headers and no body. Responses stream the derived file and do not load the whole image or reopen the CBZ. |
 | `400` | Malformed capability or unsafe/malformed resource path. |
 | `403` | Invalid signature, expired capability, wrong purpose, wrong archive fingerprint, or book ownership no longer matches. |
 | `404` | Scoped book/resource no longer exists. |

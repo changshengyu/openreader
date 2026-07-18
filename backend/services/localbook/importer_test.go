@@ -13,6 +13,7 @@ import (
 	readerdb "openreader/backend/db"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 )
 
@@ -171,6 +172,98 @@ func TestImporterEPUBPreviewStoresCatalogueOnlyAndConfirmationPreparesReaderReso
 	entries, err := os.ReadDir(extractionParent)
 	if err != nil || len(entries) != 1 || !entries[0].IsDir() {
 		t.Fatalf("confirmed EPUB did not prepare one immutable resource tree: entries=%+v err=%v", entries, err)
+	}
+}
+
+func TestImporterCBZConfirmationPreparesReaderResources(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+		JWTSecret:    "cbz-import-secret",
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "cbz-import", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	book, err := NewImporter(cfg, database).Import(ImportRequest{
+		UserID: user.ID, UserName: user.Username, FileName: "prepared.cbz", Extension: ".cbz", Data: localBookTestCBZ(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(cfg.LibraryDir, book.LibraryPath, ".cbz-resources"))
+	if err != nil || len(entries) != 1 || !entries[0].IsDir() {
+		t.Fatalf("confirmed CBZ did not prepare one immutable image tree: entries=%+v err=%v", entries, err)
+	}
+}
+
+func TestImporterCBZExtractionIsCompensatedWhenDatabaseCommitCannotStart(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+		JWTSecret:    "failed-cbz-import-secret",
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "failed-cbz-import", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	request := ImportRequest{
+		UserID: user.ID, UserName: user.Username, FileName: "failed.cbz", Extension: ".cbz", Data: localBookTestCBZ(t),
+	}
+	importer := NewImporter(cfg, database)
+	_, prepared, err := importer.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := importer.ImportPrepared(request, prepared); err == nil {
+		t.Fatal("CBZ import with a closed database must fail")
+	}
+	userLibrary := filepath.Join(cfg.LibraryDir, "data", user.Username)
+	entries, readErr := os.ReadDir(userLibrary)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed CBZ import left archive/extraction entries: %+v", entries)
+	}
+}
+
+func TestClassifyCBZPreparationErrorKeepsClientMessageSafe(t *testing.T) {
+	cause := errors.Join(cbzreader.ErrUnsafePath, errors.New("/private/library/secret.cbz"))
+	err := classifyCBZPreparationError(cause)
+	if !errors.Is(err, ErrParseFailed) || !errors.Is(err, cbzreader.ErrUnsafePath) {
+		t.Fatalf("classified error = %v, want parse and unsafe-path identity", err)
+	}
+	if strings.Contains(err.Error(), "/private/library") || strings.Contains(err.Error(), "secret.cbz") {
+		t.Fatalf("client-visible CBZ preparation error leaked a host path: %q", err)
 	}
 }
 
@@ -352,6 +445,30 @@ func localBookTestEPUB(t *testing.T) []byte {
 	write("OPS/nav.xhtml", `<html><body><nav epub:type="toc"><a href="one.xhtml">目录一</a><a href="two.xhtml">目录二</a></nav></body></html>`)
 	write("OPS/one.xhtml", `<html><head><title>文档一</title></head><body><h1>正文一</h1><p>第一章正文。</p></body></html>`)
 	write("OPS/two.xhtml", `<html><head><title>文档二</title></head><body><h1>正文二</h1><p>第二章正文。</p></body></html>`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return archive.Bytes()
+}
+
+func localBookTestCBZ(t *testing.T) []byte {
+	t.Helper()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for _, item := range []struct{ name, body string }{
+		{"ComicInfo.xml", `<ComicInfo><Title>CBZ prepared</Title><Writer>作者</Writer></ComicInfo>`},
+		{"pages/002.png", "second"},
+		{"pages/001.jpg", "first"},
+		{"notes/readme.txt", "ignored"},
+	} {
+		entry, err := writer.Create(item.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(item.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

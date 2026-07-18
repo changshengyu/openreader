@@ -6,6 +6,7 @@ export function readerEffectiveMode(
   isAudio = false,
   isReadBarOpen = false,
   isOrdinaryImageComic = false,
+  isAutoReading = false,
 ) {
   // reader-dev's isCarToon excludes CBZ. Ordinary image-comic chapters use
   // the non-slide page branch, while a CBZ keeps an explicitly selected flip
@@ -14,8 +15,25 @@ export function readerEffectiveMode(
   // reader-dev disables slide reading while its read-aloud bar is open. Its
   // non-slide branch is the vertical page interaction, while scroll modes
   // remain native scrolling.
-  if (isReadBarOpen && mode === 'flip') return 'page'
+  if ((isReadBarOpen || isAutoReading) && mode === 'flip') return 'page'
   return mode
+}
+
+export function readerAutoReadingSupported({
+  isEPUB = false,
+  isAudio = false,
+  isOrdinaryImageComic = false,
+} = {}) {
+  return !isEPUB && !isAudio && !isOrdinaryImageComic
+}
+
+export function readerTTSSupported({
+  speechSupported = false,
+  isEPUB = false,
+  isAudio = false,
+  isOrdinaryImageComic = false,
+} = {}) {
+  return Boolean(speechSupported) && !isEPUB && !isAudio && !isOrdinaryImageComic
 }
 
 export function useReaderMode(options) {

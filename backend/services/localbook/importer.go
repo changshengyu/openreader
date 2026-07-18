@@ -14,6 +14,7 @@ import (
 	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 )
 
@@ -220,9 +221,14 @@ func (importer Importer) importParsedBook(request ImportRequest, parsedBook engi
 		LastChapter:  lastChapter,
 		ChapterCount: len(chapters),
 	}
-	if normalizedLocalBookExtension(request.Extension) == ".epub" {
+	switch normalizedLocalBookExtension(request.Extension) {
+	case ".epub":
 		if err := epubreader.New(importer.cfg, importer.db).PrepareBookResources(book); err != nil {
 			return models.Book{}, classifyEPUBPreparationError(err)
+		}
+	case ".cbz":
+		if err := cbzreader.New(importer.cfg, importer.db).PrepareBookResources(book); err != nil {
+			return models.Book{}, classifyCBZPreparationError(err)
 		}
 	}
 	contentDir := filepath.Join(importer.cfg.LibraryDir, archive.Directory, "content")
@@ -325,6 +331,29 @@ func classifyEPUBPreparationError(err error) error {
 		errors.Is(err, epubreader.ErrUnsafePath) ||
 		errors.Is(err, epubreader.ErrUnsupportedMedia) {
 		return epubPreparationParseError{cause: err}
+	}
+	return err
+}
+
+type cbzPreparationParseError struct {
+	cause error
+}
+
+func (err cbzPreparationParseError) Error() string {
+	return ErrParseFailed.Error() + ": CBZ archive cannot be prepared safely"
+}
+
+func (err cbzPreparationParseError) Unwrap() []error {
+	return []error{ErrParseFailed, err.cause}
+}
+
+func classifyCBZPreparationError(err error) error {
+	if errors.Is(err, cbzreader.ErrInvalidArchive) ||
+		errors.Is(err, cbzreader.ErrExtractionLimit) ||
+		errors.Is(err, cbzreader.ErrUnsafePath) ||
+		errors.Is(err, cbzreader.ErrUnsupportedMedia) ||
+		errors.Is(err, cbzreader.ErrNotFound) {
+		return cbzPreparationParseError{cause: err}
 	}
 	return err
 }

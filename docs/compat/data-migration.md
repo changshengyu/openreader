@@ -239,7 +239,7 @@ Status: extracted 2026-07-10; implementation must not add a destructive schema m
 - `books`, `chapters`, `book_categories`, `bookmarks`, and `reading_progress` are SQLite rows. Book/category/progress/bookmark rows are user scoped; chapter rows are owned by their book.
 - Remote `Chapter.CachePath` is a relative path under `cache/`, calculated from the book/chapter URLs. A physical cache path can be referenced by more than one chapter row and must therefore be reference-checked before removal.
 - Direct, LocalStore, and WebDAV imports are copied by `ArchiveImportedBook` into a private `library/data/<safe-user>/<unique-book>/` archive. `OriginalFile`, `chapters.json`, `bookSource.json`, `content/`, and derived EPUB/CBZ resources live under that archive.
-- E4-CBZ-1 keeps this persisted layout and SQLite schema unchanged. A CBZ's upstream-compatible first-image cover is derived from the bounded private archive walk only while serializing an import, shelf or detail response; the resulting signed resource URL and ZIP member path are never written back to `books`, `chapters.json`, `bookSource.json`, backups or WebDAV metadata. Old archives therefore remain readable without migration, while malformed/missing archives retain the existing empty-cover response.
+- E4-CBZ-1 keeps this persisted layout and SQLite schema unchanged. A CBZ's upstream-compatible first-image cover is selected during one bounded extraction into `library/<Book.LibraryPath>/.cbz-resources/<sha256>/`; the resulting signed resource URL and derived path are never written back to `books`, `chapters.json`, `bookSource.json`, backups or WebDAV metadata. Old archives remain lazy-readable without migration, while malformed/missing archives with no complete generation retain the existing empty-cover response.
 - Browser chapter cache keys are user-scoped in current clients but are not database rows; they must be explicitly removed by the shelf/browser store when a book-delete sync event arrives.
 
 ### Required lifecycle and compatibility shim
@@ -403,6 +403,31 @@ no-marker fixtures, source-replacement capability invalidation, full backend tes
 `HISTORICAL_VOLUME=1` mounted-volume/portable-backup smoke. The source EPUB remains authoritative; derived
 extraction may always be deleted and rebuilt.
 - Docker volumes: all new files remain under the existing `library/` mount. No new volume is introduced.
+
+### CBZ immutable image generation compatibility (2026-07-18)
+
+- CBZ extraction uses the existing private imported-book root and adds only derived data:
+
+```text
+library/<Book.LibraryPath>/.cbz-resources/<source-sha256>/
+```
+
+- The original CBZ, SQLite schema, `chapters.json`, `bookSource.json`, LocalStore/WebDAV source,
+  portable backup format and mounted roots do not change. Only supported normalized image members
+  are extracted; ComicInfo remains parser metadata and arbitrary ZIP members are not exposed.
+- A sibling staging directory is renamed into place only after archive entry count, path, symlink,
+  duplicate, per-entry and aggregate expansion limits pass and a complete marker has been written.
+  Interrupted/failed generations are not active.
+- New confirmation may prepare the generation before the existing transaction. Its existing
+  caller-owned archive compensation removes the whole new allocation if preparation or database
+  work fails. It never removes an old book or mounted source.
+- Existing books require no migration: missing generations are rebuilt lazily from `OriginalFile`.
+  A signed capability may continue reading an existing complete generation while the source is
+  temporarily absent. If source size/mtime changes, SHA-256 is recomputed before reuse; a different
+  fingerprint invalidates the old capability and creates a new generation.
+- Portable backup intentionally continues to carry the original CBZ and metadata only. Restore to
+  an empty volume must rebuild `.cbz-resources` deterministically. Deleting the derived directory is
+  always recoverable while the original archive remains valid.
 
 ### Required migration evidence
 

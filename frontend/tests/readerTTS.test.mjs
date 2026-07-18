@@ -94,7 +94,7 @@ test('opening the TTS bar applies the upstream mobile chrome exception without r
   assert.match(readerView, /ttsBarRequested\.value\s*=\s*!ttsBarRequested\.value[\s\S]*?mobileChromeVisible\.value\s*=\s*false/, 'opening the TTS bar must hide mobile chrome')
   assert.doesNotMatch(readerView, /function closeTTSBar\(\)\s*\{[\s\S]*?mobileChromeVisible\.value\s*=\s*true/, 'closing the TTS bar must not invent a chrome reopen transition')
   assert.match(readerView, /--reader-tts-bottom-space.*?280.*?80/s, 'TTS bar must reserve upstream-like expanded and collapsed content space')
-  assert.match(readerView, /isComicChapter[\s\S]*?ttsSupportedForChapter[\s\S]*?!isComicChapter/s, 'comic chapters must not expose upstream-disabled TTS controls')
+  assert.match(readerView, /ttsSupportedForChapter[\s\S]*?readerTTSSupported\([\s\S]*?isOrdinaryImageComic:\s*isOrdinaryImageComicChapter\.value/s, 'ordinary image comics must use the shared upstream-disabled TTS capability contract')
 })
 
 function fakeParagraph({ text, bottom = 100, right = 100, active = false }) {

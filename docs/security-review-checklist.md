@@ -121,6 +121,20 @@ Evidence: `backend/services/localbook/importer_test.go`, `backend/api/api_test.g
 - [x] Initial EPUB parsing now validates ZIP paths/symlinks/duplicates/count/per-entry/expanded-size before local import work; every archive-member read is bounded.
 - [x] Initial CBZ parsing retains its existing safe checks while using the same local-import limit policy.
 - [x] E4-CBZ-1 derives its first image only from the bounded/normalized archive walk and returns a short-lived CBZ capability at serialization time. It does not persist a capability, ZIP member path, raw archive path, or JWT in SQLite, archive metadata, backup/WebDAV data, sync payload storage, or logs; malformed/missing archives degrade to an empty cover without failing the bookshelf response. Evidence: `TestDirectCBZImportAndResourceCapability`, `TestParseCBZKeepsFirstArchiveImageAsCoverSeparateFromSortedCatalogue`, full backend tests and the Docker volume/backup smoke for this release.
+- [x] CBZ fixed-baseline runtime extracts only supported image media below a private
+  `.cbz-resources/<sha256>/` generation after normalized-path, symlink, duplicate,
+  file/directory-conflict, entry-count, per-entry and aggregate expansion checks. Activation is an
+  atomic same-directory rename with a complete marker; no partial tree is served.
+- [x] A CBZ capability remains scoped to one user/book/fingerprint and cannot select another
+  generation or arbitrary host path. Source replacement invalidates old capabilities; temporary
+  source absence may expose only an already complete signed generation. GET/HEAD/Range stream the
+  allowlisted derived file and never log the capability or disclose a filesystem path.
+
+Evidence: `backend/services/cbzreader/service_test.go` covers atomic activation, conflict rejection,
+warm no-rehash selection, one-time recovery, source absence and source replacement invalidation;
+`backend/api.TestDirectCBZImportAndResourceCapability` covers import preparation, GET/HEAD/Range,
+security headers, unsupported paths and stale capabilities; full Go/frontend suites and real-Go
+`scripts/smoke/reader-cbz-contract.mjs` pass at 1440×900, 390×844 and 360×800.
 - [x] Standard reader-dev UMD uses a bounded `#`/`$` section reader: signature/type, section/additional lengths, segment count, offsets/titles, zlib output and total decoded text are validated before archive/database writes. Image, malformed and corrupt zlib UMD inputs fail closed; the legacy OpenReader-only prefix is isolated to its existing fallback.
 - [x] Expired and orphaned preview tokens are cleaned from every user directory at startup and hourly, without touching active previews or any mounted source/library data.
 - [x] Backup ZIP restore now receives a separately tested compressed/entry/expanded-size budget; it remains a distinct compatibility slice from parser/stage handling.

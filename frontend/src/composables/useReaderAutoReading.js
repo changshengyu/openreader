@@ -20,6 +20,7 @@ export function useReaderAutoReading(options) {
   }
 
   return createAutoReading({
+    active: options.active,
     contentEl: options.contentEl,
     contentBody: options.contentBody,
     isVerticalRead: options.isVerticalRead,

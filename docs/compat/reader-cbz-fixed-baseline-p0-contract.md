@@ -1,6 +1,6 @@
 # Reader CBZ 固定基准运行时合同（P0）
 
-状态：**2026-07-18 固定上游与当前实现复审完成；测试与实现待下一阶段。**
+状态：**2026-07-18 契约、测试与实现完成；历史卷/portable backup 和本地 Docker 发布闸门待执行。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -27,13 +27,13 @@
 |---|---|---|---|
 | parser 顺序/元数据 | `engine/cbz_parser.go` 保留支持图片，字典序建章；封面是 archive 首张图片；解析 ComicInfo Title/Writer。 | `aligned + security adaptation` | 保持顺序和封面差异。非图片项不进入目录，作为安全/质量修正显式保留，避免暴露任意 ZIP 文件和上游“URL 当正文”的缺陷。 |
 | archive 安全 | parser/resource 拒绝 NUL、反斜杠、绝对/盘符/`..`、symlink、大小写冲突和解压预算超限。 | `acceptable-change` | 不为复刻上游公开解压目录而放松。 |
-| 资源运行时 | `cbzreader.PrepareChapter/PrepareCover` 先读取 ZIP entry，再 SHA-256 整本；`OpenResource` 又 SHA-256 整本并再次遍历 ZIP、整张读入内存。没有派生资源目录。 | **must-fix** | 增加 user/book 私有的不可变 `.cbz-resources/<fingerprint>/`；一次有界安全解压，后续 capability 直接流式读取已验证文件。 |
-| 首次打开 | importer 仅对 EPUB 调用 `PrepareBookResources`；CBZ 确认后第一章请求才开始 archive 扫描。 | **must-fix** | 新 CBZ confirm 在新分配 archive 内预建派生资源；失败沿用整目录补偿，不留下 Book/Chapter/事件。旧书惰性创建。 |
-| 资源响应 | `GET/HEAD /api/cbz-resource/...` 返回 capability 保护的数据，但 HEAD 也先读取整张图片；没有标准文件 Range。 | **must-fix technical equivalent** | 直接服务派生文件；HEAD 不读 body，GET 流式，Range 可由标准文件响应处理。headers/error 继续安全稳定。 |
+| 资源运行时 | `cbzreader` 现在使用 user/book 私有的不可变 `.cbz-resources/<fingerprint>/`；完整 marker 的 size/mtime 命中时不再重哈希或重开源 CBZ，资源直接映射到 allow-listed 派生图片。 | `aligned technical equivalent` | 保持一次有界安全解压和 capability 流式读取。 |
+| 首次打开 | importer 在新分配 archive 内调用 `PrepareBookResources`；数据库失败沿用整目录补偿。旧书没有派生树时仍惰性创建。 | `aligned technical equivalent` | 保持原 archive、rows 和备份格式不变。 |
+| 资源响应 | `GET/HEAD /api/cbz-resource/...` 通过标准文件响应服务派生图片，支持 Content-Length、Last-Modified、Range/206/416；不再整张读入 Go 内存。 | `aligned technical equivalent` | 保持 capability、headers 和 client-safe error。 |
 | 原 archive 与 capability | 当前 capability 绑定 user/book/fingerprint/expiry，资源 path 再归一化；source bytes 是权威数据。 | `partial` | capability 可读取对应已完成的不可变 fingerprint；source 缺失时已存在的已签名派生版本在有效期内仍可读。source 变化产生新 fingerprint，旧能力不能切到新内容。 |
 | 前端图片布局 | `ReaderChapterContent.vue` 为 `isComic` 图片全宽，CBZ 隐藏 `h3`；image load 通知 Reader 重排。 | `aligned` | 保持 Element Plus preview/lazy 适配和点击阻断。 |
-| Reader 控制状态 | `makeChapterBlock()` 把 CBZ 标为 `isComic`；TTS 和 watcher 直接按 `isComicChapter` 禁用/停止。自动阅读按钮只排除 audio，EPUB/普通漫画也错误显示；flip 下启动自动阅读不会像上游临时切 page。 | **must-fix** | 分离 `comicPresentation` 与 `ordinaryImageComic`；可用性和 mode state 严格使用后者/EPUB/audio/auto/read-bar 条件。 |
-| 真实浏览器证据 | `reader-image-contract.mjs` mock `/books/.../content` 和 SVG；只在 390 宽单独测 CBZ flip，没有真实 import、sorted catalog、capability 或 archive I/O。 | **insufficient evidence** | 新增真实 Go + 实际 CBZ fixture；三视口覆盖 page/scroll，并在移动覆盖 flip、工具层、预览、进度和资源请求次数。 |
+| Reader 控制状态 | `comicPresentation`/`isComicChapter` 继续负责图片布局；`isOrdinaryImageComicChapter` 和共享 capability helper 单独负责 mode、自动阅读与 TTS。CBZ flip 开启 auto/read-bar 临时转 page，关闭恢复持久 flip。 | `aligned` | 保持两类图片状态分离。 |
+| 真实浏览器证据 | `scripts/smoke/reader-cbz-contract.mjs` 使用真实 Go、真实 multipart import、ComicInfo、archive-first cover、字典序目录和非图片成员；已通过 1440×900 page、390×844/360×800 scroll 和 390×844 flip。 | `verified` | Docker 发布前继续作为浏览器闸门。 |
 | 数据兼容 | 原 CBZ、chapter resource path、portable backup 已存在；历史卷能惰性恢复 path。 | `must-preserve` | 不迁移/重写 archive 和 rows；`.cbz-resources` 是可删除派生数据，portable backup 仍只携带原 CBZ。 |
 
 ## 3. 状态机合同
@@ -111,3 +111,13 @@ auto-reading 或 TTS read bar 打开 + mode=flip -> 临时 page
 3. 分离 Reader 图片布局状态与普通漫画控制状态。
 4. 新增真实 Go CBZ smoke，跑三视口与历史 volume/portable backup。
 5. 全量 Go、前端测试、生产构建通过后，本地构建并决定中途 Docker 发布。
+
+## 8. 2026-07-18 实施证据
+
+- CBZ-FIX-1…4：`backend/services/cbzreader/service_test.go`、
+  `backend/services/localbook/importer_test.go`、`backend/api/api_test.go` 和既有 engine/历史卷测试。
+- CBZ-FIX-5：`frontend/tests/readerMode.test.mjs`、`readerTTS.test.mjs` 与全量 427 项前端测试。
+- CBZ-FIX-6：`scripts/smoke/reader-cbz-contract.mjs` 在 1440×900、390×844、360×800，另加
+  390×844 flip，真实资源请求无 4xx/5xx/console error；截图已人工检查。
+- 当前全量 `go test ./...`、`npm test`、`npm run build` 已通过。CBZ-FIX-7 将由当前提交的
+  历史卷/portable backup smoke 和本地多架构 Docker 发布完成。

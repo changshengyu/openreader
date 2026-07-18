@@ -2,7 +2,7 @@
   <main ref="shellEl" class="reader-shell" :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
     <ReaderDesktopTools
       :auto-reading="autoReading"
-      :auto-reading-supported="!isAudioChapter"
+      :auto-reading-supported="autoReadingSupportedForChapter"
       :tts-playing="tts.state.playing"
       :tts-supported="ttsSupportedForChapter"
       :active-panel="desktopWorkspacePanel"
@@ -94,7 +94,7 @@
     <ReaderMobileChrome
       :visible="mobileChromeVisible"
       :auto-reading="autoReading"
-      :auto-reading-supported="!isAudioChapter"
+      :auto-reading-supported="autoReadingSupportedForChapter"
       :tts-playing="tts.state.playing"
       :tts-supported="ttsSupportedForChapter"
       :is-night="isNightTheme"
@@ -413,7 +413,12 @@ import { useReaderProgressPersistence } from '../composables/useReaderProgressPe
 import { useReaderProgressControls } from '../composables/useReaderProgressControls'
 import { useReaderBookmarkActions } from '../composables/useReaderBookmarkActions'
 import { useReaderNavigation } from '../composables/useReaderNavigation'
-import { readerEffectiveMode, useReaderMode } from '../composables/useReaderMode'
+import {
+  readerAutoReadingSupported,
+  readerEffectiveMode,
+  readerTTSSupported,
+  useReaderMode,
+} from '../composables/useReaderMode'
 import { useReaderPageLifecycle } from '../composables/useReaderPageLifecycle'
 import { useReaderPanels } from '../composables/useReaderPanels'
 import { useReaderPrimaryPanels } from '../composables/useReaderPrimaryPanels'
@@ -816,17 +821,23 @@ const chapterTextLength = computed(() => {
 const isAudioChapter = computed(() => chapterFormat.value === 'audio')
 const ttsBarRequested = ref(false)
 const ttsConfigExpanded = ref(true)
+const autoReading = ref(false)
 const isComicChapter = computed(() => (
   makeChapterBlock(currentIndex.value, chapter.value, content.value).isComic === true
 ))
 const isOrdinaryImageComicChapter = computed(() => (
   isComicChapter.value && !isCBZBook(book.value)
 ))
+const autoReadingSupportedForChapter = computed(() => readerAutoReadingSupported({
+  isEPUB: chapterFormat.value === 'epub',
+  isAudio: isAudioChapter.value,
+  isOrdinaryImageComic: isOrdinaryImageComicChapter.value,
+}))
 const ttsReadBarLayoutActive = computed(() => (
   ttsBarRequested.value
     && chapterFormat.value !== 'epub'
     && !isAudioChapter.value
-    && !isComicChapter.value
+    && !isOrdinaryImageComicChapter.value
 ))
 const effectiveReaderMode = computed(() => (
   readerEffectiveMode(
@@ -835,6 +846,7 @@ const effectiveReaderMode = computed(() => (
     isAudioChapter.value,
     ttsReadBarLayoutActive.value,
     isOrdinaryImageComicChapter.value,
+    autoReading.value,
   )
 ))
 const effectiveReaderState = {
@@ -1294,10 +1306,10 @@ const {
 })
 
 const {
-  active: autoReading,
   stop: stopAutoReading,
   toggle: toggleAutoReading,
 } = useReaderAutoReading({
+  active: autoReading,
   reader,
   contentEl,
   contentBody,
@@ -1532,18 +1544,18 @@ const {
   notify: showReaderToast,
   isSlideRead: () => effectiveReaderMode.value === 'flip',
 })
-const ttsSupportedForChapter = computed(() => (
-  tts.state.supported
-    && chapterFormat.value !== 'epub'
-    && !isAudioChapter.value
-    && !isComicChapter.value
-))
+const ttsSupportedForChapter = computed(() => readerTTSSupported({
+  speechSupported: tts.state.supported,
+  isEPUB: chapterFormat.value === 'epub',
+  isAudio: isAudioChapter.value,
+  isOrdinaryImageComic: isOrdinaryImageComicChapter.value,
+}))
 const ttsBarShown = computed(() => readerTTSBarVisible({
   requested: ttsBarRequested.value,
   supported: tts.state.supported,
   chapterFormat: chapterFormat.value,
   audio: isAudioChapter.value,
-  comic: isComicChapter.value,
+  comic: isOrdinaryImageComicChapter.value,
 }))
 function toggleTTSBar() {
   if (!ttsSupportedForChapter.value) return
@@ -1562,8 +1574,8 @@ function openReaderPrimaryTool(name, open) {
   return openDesktopToolPanel(name, open)
 }
 
-watch([chapterFormat, isComicChapter], ([format, comic]) => {
-  if (format === 'epub' || format === 'audio' || comic) {
+watch([chapterFormat, isOrdinaryImageComicChapter], ([format, ordinaryImageComic]) => {
+  if (format === 'epub' || format === 'audio' || ordinaryImageComic) {
     ttsBarRequested.value = false
     ttsStop()
     if (autoReading.value) stopAutoReading()

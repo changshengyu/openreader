@@ -7342,6 +7342,10 @@ func TestDirectCBZImportAndResourceCapability(t *testing.T) {
 	if book.CoverURL != "" {
 		t.Fatalf("CBZ cover capability must not be persisted in the book row: %+v", book)
 	}
+	extractionEntries, extractionErr := os.ReadDir(filepath.Join(server.cfg.LibraryDir, book.LibraryPath, ".cbz-resources"))
+	if extractionErr != nil || len(extractionEntries) != 1 || !extractionEntries[0].IsDir() {
+		t.Fatalf("CBZ confirmation did not prepare one immutable image generation: entries=%+v err=%v", extractionEntries, extractionErr)
+	}
 	assertCBZCover := func(label, coverURL string) {
 		t.Helper()
 		if !strings.HasPrefix(coverURL, "/api/cbz-resource/") || strings.Contains(coverURL, strings.TrimPrefix(token, "Bearer ")) {
@@ -7453,6 +7457,19 @@ func TestDirectCBZImportAndResourceCapability(t *testing.T) {
 		resourceW.Header().Get("Referrer-Policy") != "no-referrer" {
 		t.Fatalf("missing CBZ security headers: %v", resourceW.Header())
 	}
+	rangeReq := httptest.NewRequest(http.MethodGet, contentResponse.ResourceURL, nil)
+	rangeReq.Header.Set("Range", "bytes=1-3")
+	rangeW := httptest.NewRecorder()
+	router.ServeHTTP(rangeW, rangeReq)
+	if rangeW.Code != http.StatusPartialContent || rangeW.Header().Get("Content-Range") != "bytes 1-3/5" || rangeW.Body.String() != "irs" {
+		t.Fatalf("CBZ range response: got %d %q %q", rangeW.Code, rangeW.Header().Get("Content-Range"), rangeW.Body.String())
+	}
+	headReq := httptest.NewRequest(http.MethodHead, contentResponse.ResourceURL, nil)
+	headW := httptest.NewRecorder()
+	router.ServeHTTP(headW, headReq)
+	if headW.Code != http.StatusOK || headW.Body.Len() != 0 || headW.Header().Get("Content-Length") != "5" {
+		t.Fatalf("CBZ HEAD response: got %d length=%q body=%q", headW.Code, headW.Header().Get("Content-Length"), headW.Body.String())
+	}
 
 	resourcePrefix := strings.TrimSuffix(contentResponse.ResourceURL, "pages/001.jpg")
 	unsupportedReq := httptest.NewRequest(http.MethodGet, resourcePrefix+"notes/readme.txt", nil)
@@ -7504,6 +7521,19 @@ func TestDirectCBZImportAndResourceCapability(t *testing.T) {
 	}
 
 	sourcePath := filepath.Join(server.cfg.LibraryDir, book.OriginalFile)
+	offlinePath := sourcePath + ".offline"
+	if err := os.Rename(sourcePath, offlinePath); err != nil {
+		t.Fatal(err)
+	}
+	offlineReq := httptest.NewRequest(http.MethodGet, contentResponse.ResourceURL, nil)
+	offlineW := httptest.NewRecorder()
+	router.ServeHTTP(offlineW, offlineReq)
+	if offlineW.Code != http.StatusOK || offlineW.Body.String() != "first" {
+		t.Fatalf("complete CBZ generation did not survive source absence: got %d %q", offlineW.Code, offlineW.Body.String())
+	}
+	if err := os.Rename(offlinePath, sourcePath); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(sourcePath, testCBZArchive(t, "changed"), 0o644); err != nil {
 		t.Fatal(err)
 	}
