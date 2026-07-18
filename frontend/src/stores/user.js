@@ -1,8 +1,11 @@
 import { defineStore } from 'pinia'
 import { getMe, loginUser } from '../api/user'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { useBookshelfStore } from './bookshelf'
 import { usePreferencesStore } from './preferences'
 import { useReaderStore } from './reader'
+
+const profileOperations = createAuthenticatedOperationGuard()
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -14,6 +17,7 @@ export const useUserStore = defineStore('user', {
   actions: {
     async login(username, password, mode = 'login') {
       const { data } = await loginUser(mode, { username, password })
+      profileOperations.reset()
       this.token = data.token
       this.profile = data.user
       this.authDialogVisible = false
@@ -22,8 +26,11 @@ export const useUserStore = defineStore('user', {
       if (typeof window !== 'undefined') delete window.__openreaderAuthRequired
     },
     async loadMe() {
+      const operation = profileOperations.begin('profile')
       const { data } = await getMe()
+      if (!profileOperations.canCommit(operation)) return null
       this.profile = data
+      return data
     },
     logout() {
       this.clearSession()
@@ -37,6 +44,7 @@ export const useUserStore = defineStore('user', {
       this.authDialogVisible = true
     },
     clearSession() {
+      profileOperations.reset()
       this.token = ''
       this.profile = null
       localStorage.removeItem('openreader_token')

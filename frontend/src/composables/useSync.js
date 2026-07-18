@@ -3,10 +3,14 @@ import { useReaderStore } from '../stores/reader'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { usePreferencesStore } from '../stores/preferences'
 import { useUserStore } from '../stores/user'
+import { currentUserScope } from '../utils/authScope'
 import { refreshShelfAfterSyncConnect } from '../utils/shelfSyncFreshness'
 
 const connected = ref(false)
 let socket
+let socketGeneration = 0
+let socketToken = ''
+let socketScope = ''
 let reconnectTimer
 let bookshelfRefreshTimer
 let replaceRulesUpdateTimer
@@ -27,27 +31,41 @@ export function useSync() {
 
   function connect() {
     const token = localStorage.getItem('openreader_token')
-    if (!token || socket) return
+    if (!token) return
+    const scope = currentUserScope()
+    if (socket && socketToken === token && socketScope === scope) return
+    if (socket) supersedeCurrentSocket()
     manualDisconnect = false
     clearReconnectTimer()
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    socket = new WebSocket(`${protocol}://${window.location.host}/ws/sync?token=${encodeURIComponent(token)}`)
+    const candidate = new WebSocket(`${protocol}://${window.location.host}/ws/sync?token=${encodeURIComponent(token)}`)
+    const generation = socketGeneration + 1
+    socketGeneration = generation
+    socket = candidate
+    socketToken = token
+    socketScope = scope
 
-    socket.addEventListener('open', () => {
+    candidate.addEventListener('open', () => {
+      if (!isCurrentSocket(candidate, generation, token, scope)) return
       connected.value = true
       reconnectDelay = 1500
       warmShelfAfterReconnect()
     })
-    socket.addEventListener('close', () => {
+    candidate.addEventListener('close', () => {
+      if (!isCurrentSocket(candidate, generation, token, scope)) return
       connected.value = false
       socket = undefined
-      scheduleReconnect()
+      socketToken = ''
+      socketScope = ''
+      scheduleReconnect({ generation, token, scope })
     })
-    socket.addEventListener('error', () => {
-      socket?.close()
+    candidate.addEventListener('error', () => {
+      if (!isCurrentSocket(candidate, generation, token, scope)) return
+      candidate.close()
     })
-    socket.addEventListener('message', (event) => {
+    candidate.addEventListener('message', (event) => {
+      if (!isCurrentSocket(candidate, generation, token, scope)) return
       let message
       try {
         message = JSON.parse(event.data)
@@ -128,14 +146,18 @@ export function useSync() {
 
   function disconnect() {
     manualDisconnect = true
+    const candidate = socket
+    socketGeneration += 1
+    socket = undefined
+    socketToken = ''
+    socketScope = ''
     clearReconnectTimer()
     clearBookshelfRefreshTimer()
     clearReplaceRulesUpdateTimer()
     clearRSSUpdateTimer()
     clearBookmarksUpdateTimer()
-    socket?.close()
-    socket = undefined
     connected.value = false
+    candidate?.close()
   }
 
   function send(type, payload) {
@@ -146,11 +168,12 @@ export function useSync() {
 
   return { connected, connect, disconnect, send }
 
-  function scheduleReconnect() {
+  function scheduleReconnect(expected) {
     if (manualDisconnect || reconnectTimer) return
-    if (!localStorage.getItem('openreader_token')) return
+    if (!isExpectedSocketSession(expected)) return
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = undefined
+      if (manualDisconnect || socket || !isExpectedSocketSession(expected)) return
       connect()
       reconnectDelay = Math.min(MAX_RECONNECT_DELAY, reconnectDelay * 1.7)
     }, reconnectDelay)
@@ -160,6 +183,32 @@ export function useSync() {
     if (!reconnectTimer) return
     window.clearTimeout(reconnectTimer)
     reconnectTimer = undefined
+  }
+
+  function supersedeCurrentSocket() {
+    const candidate = socket
+    socketGeneration += 1
+    socket = undefined
+    socketToken = ''
+    socketScope = ''
+    connected.value = false
+    candidate?.close()
+  }
+
+  function isCurrentSocket(candidate, generation, token, scope) {
+    return socket === candidate
+      && socketGeneration === generation
+      && socketToken === token
+      && socketScope === scope
+      && localStorage.getItem('openreader_token') === token
+      && currentUserScope() === scope
+  }
+
+  function isExpectedSocketSession(expected) {
+    return Boolean(expected?.token)
+      && socketGeneration === expected.generation
+      && localStorage.getItem('openreader_token') === expected.token
+      && currentUserScope() === expected.scope
   }
 
   function warmShelfAfterReconnect() {

@@ -1,12 +1,15 @@
 import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { newestProgress as pickNewestProgress, progressUpdatedAt } from '../utils/bookOrder'
 import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThemeType'
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
 let readerSettingsSyncTimer
 const READER_CLIENT_ID = readerClientId()
+const readerSettingsOperations = createAuthenticatedOperationGuard()
+const readerProgressOperations = createAuthenticatedOperationGuard()
 
 export const themePresets = {
   parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c' },
@@ -93,6 +96,7 @@ export const useReaderStore = defineStore('reader', {
         return scope
       }
       if (this.progressScope !== scope) {
+        readerProgressOperations.reset()
         this.progressByBook = {}
         this.progressScope = scope
       }
@@ -111,6 +115,7 @@ export const useReaderStore = defineStore('reader', {
     },
     resetReaderSettingsState(scope = currentUserScope()) {
       clearTimeout(readerSettingsSyncTimer)
+      readerSettingsOperations.reset()
       const pageMode = this.pageMode === 'mobile' ? 'mobile' : 'auto'
       Object.assign(this, defaultReaderSettings(), {
         pageMode,
@@ -456,20 +461,22 @@ export const useReaderStore = defineStore('reader', {
     async loadReaderSettings() {
       this.ensureReaderSettingsScope()
       if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
+      const operation = readerSettingsOperations.begin('reader')
+      this.settingsSyncing = false
       try {
         const { data } = await api.get('/settings/reader')
+        if (!readerSettingsOperations.canCommit(operation)) return null
         const serverUpdatedAt = data?.updatedAt || ''
         if (data?.value && typeof data.value === 'object') {
           if (this.settingsUpdatedAt && serverUpdatedAt && this.settingsUpdatedAt > serverUpdatedAt && this.settingsSyncBaseUpdatedAt !== serverUpdatedAt) {
-            await this.saveReaderSettings()
-            return readerSettingsPayload(this)
+            return await this.saveReaderSettings()
           }
           this.applyReaderSettings(data.value, serverUpdatedAt)
           return data.value
         }
-        await this.saveReaderSettings()
-        return readerSettingsPayload(this)
+        return await this.saveReaderSettings()
       } catch (err) {
+        if (!readerSettingsOperations.canCommit(operation)) return null
         this.settingsSyncError = readErrorMessage(err)
         return null
       }
@@ -478,6 +485,7 @@ export const useReaderStore = defineStore('reader', {
       this.ensureReaderSettingsScope()
       if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
       clearTimeout(readerSettingsSyncTimer)
+      const operation = readerSettingsOperations.begin('reader')
       this.settingsSyncing = true
       this.settingsSyncError = ''
       try {
@@ -485,6 +493,7 @@ export const useReaderStore = defineStore('reader', {
           value: readerSettingsPayload(this),
           baseUpdatedAt: this.settingsSyncBaseUpdatedAt || '',
         })
+        if (!readerSettingsOperations.canCommit(operation)) return null
         if (data?.value && headers?.['x-openreader-setting-conflict']) {
           this.applyReaderSettings(data.value, data.updatedAt || '')
           return data.value
@@ -495,10 +504,11 @@ export const useReaderStore = defineStore('reader', {
         }
         return data?.value || readerSettingsPayload(this)
       } catch (err) {
+        if (!readerSettingsOperations.canCommit(operation)) return null
         this.settingsSyncError = readErrorMessage(err)
         return null
       } finally {
-        this.settingsSyncing = false
+        if (readerSettingsOperations.canCommit(operation)) this.settingsSyncing = false
       }
     },
     applyProgress(progress) {
@@ -535,6 +545,7 @@ export const useReaderStore = defineStore('reader', {
     },
     async saveProgress(payload) {
       this.ensureProgressScope()
+      const operation = readerProgressOperations.begin(`book:${payload.bookId}`)
       const currentProgress = this.progressByBook[payload.bookId]
       const optimistic = {
         ...payload,
@@ -551,21 +562,27 @@ export const useReaderStore = defineStore('reader', {
         clientUpdatedAt: optimistic.updatedAt,
         clientId: this.ensureClientId(),
       })
+      if (!readerProgressOperations.canCommit(operation)) return null
       const merged = mergeProgressResponse(response.data, optimistic)
       if (isProgressConflict(response) && shouldRetryProgressConflict(optimistic, merged)) {
-        const retried = await this.syncLocalProgress(optimistic, merged?.updatedAt || optimistic.baseUpdatedAt || '', { force: true })
+        const retried = await this.syncLocalProgress(optimistic, merged?.updatedAt || optimistic.baseUpdatedAt || '', {
+          force: true,
+          operation,
+        })
         if (retried?.bookId) return retried
       }
+      if (!readerProgressOperations.canCommit(operation)) return null
       this.replaceProgress(merged)
       return merged
     },
     async loadProgress(bookId, options = {}) {
       this.ensureProgressScope()
+      const operation = readerProgressOperations.begin(`book:${bookId}`)
       const local = newestProgress(this.progressByBook[bookId], readLocalChapterProgress(bookId))
       if (options.preferLocal && local?.bookId && local.pendingSync) {
         api.get(`/progress/${bookId}`)
           .then(({ data }) => {
-            if (data?.bookId) this.applyServerProgress(data)
+            if (readerProgressOperations.canCommit(operation) && data?.bookId) this.applyServerProgress(data)
           })
           .catch(() => {})
         return local
@@ -573,24 +590,30 @@ export const useReaderStore = defineStore('reader', {
       let data = null
       try {
         const res = await api.get(`/progress/${bookId}`)
+        if (!readerProgressOperations.canCommit(operation)) return null
         data = res.data
       } catch {
+        if (!readerProgressOperations.canCommit(operation)) return null
         return local || null
       }
       if (data?.bookId) {
         if (local?.pendingSync && progressUpdatedAt(local) > progressUpdatedAt(data)) {
-          this.syncLocalProgress(local, local.baseUpdatedAt || data.updatedAt)
+          this.syncLocalProgress(local, local.baseUpdatedAt || data.updatedAt, { operation })
           return local
         }
         this.replaceProgress(data)
         return data
       }
-      if (local?.bookId && local.pendingSync) this.syncLocalProgress(local, local.baseUpdatedAt || data?.updatedAt)
+      if (local?.bookId && local.pendingSync) {
+        this.syncLocalProgress(local, local.baseUpdatedAt || data?.updatedAt, { operation })
+      }
       return local || data
     },
     async syncLocalProgress(progress, baseUpdatedAt = '', options = {}) {
       if (!progress?.bookId) return null
       this.ensureProgressScope()
+      const operation = options.operation || readerProgressOperations.begin(`book:${progress.bookId}`)
+      if (!readerProgressOperations.canCommit(operation)) return null
       try {
         const response = await api.put('/progress', {
           bookId: progress.bookId,
@@ -605,10 +628,15 @@ export const useReaderStore = defineStore('reader', {
           clientUpdatedAt: progress.updatedAt || '',
           clientId: this.ensureClientId(),
         })
+        if (!readerProgressOperations.canCommit(operation)) return null
         const next = mergeProgressResponse(response.data, progress)
         if (isProgressConflict(response) && shouldRetryProgressConflict(progress, next) && !options.force) {
-          return await this.syncLocalProgress(progress, next?.updatedAt || progress.baseUpdatedAt || '', { force: true })
+          return await this.syncLocalProgress(progress, next?.updatedAt || progress.baseUpdatedAt || '', {
+            force: true,
+            operation,
+          })
         }
+        if (!readerProgressOperations.canCommit(operation)) return null
         this.replaceProgress(next)
         return next
       } catch {

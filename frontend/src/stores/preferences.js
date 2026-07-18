@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { DEFAULT_SEARCH, sanitizeSearchPreference } from '../utils/searchPreference.js'
 
 export {
@@ -15,6 +16,7 @@ const PREFERENCE_KEYS = ['shelf', 'search']
 const SHELF_LAYOUT_VERSION = 2
 const DEFAULT_SHELF = { view: 'grid', layoutVersion: SHELF_LAYOUT_VERSION }
 const syncTimers = new Map()
+const preferenceOperations = createAuthenticatedOperationGuard()
 
 export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
@@ -40,6 +42,7 @@ export const usePreferencesStore = defineStore('preferences', {
     },
     resetPreferenceState(scope = currentUserScope()) {
       clearPreferenceSyncTimers()
+      preferenceOperations.reset()
       this.preferenceScope = scope
       this.shelf = { ...DEFAULT_SHELF }
       this.search = { ...DEFAULT_SEARCH }
@@ -71,15 +74,18 @@ export const usePreferencesStore = defineStore('preferences', {
     async loadPreference(key) {
       this.ensurePreferenceScope()
       if (!PREFERENCE_KEYS.includes(key) || !hasAuthToken()) return null
+      const operation = preferenceOperations.begin(key)
+      this.syncing[key] = false
       try {
         const { data } = await api.get(`/settings/${key}`)
+        if (!preferenceOperations.canCommit(operation)) return null
         if (data?.value && typeof data.value === 'object') {
           this.applyPreference(key, data.value, data.updatedAt || '')
           return data.value
         }
-        await this.savePreference(key)
-        return preferencePayload(this, key)
+        return await this.savePreference(key)
       } catch (err) {
+        if (!preferenceOperations.canCommit(operation)) return null
         this.syncError[key] = readErrorMessage(err)
         return null
       }
@@ -101,6 +107,7 @@ export const usePreferencesStore = defineStore('preferences', {
         clearTimeout(syncTimers.get(key))
         syncTimers.delete(key)
       }
+      const operation = preferenceOperations.begin(key)
       this.syncing[key] = true
       this.syncError[key] = ''
       try {
@@ -108,6 +115,7 @@ export const usePreferencesStore = defineStore('preferences', {
           value: preferencePayload(this, key),
           baseUpdatedAt: this.syncBaseUpdatedAt[key] || '',
         })
+        if (!preferenceOperations.canCommit(operation)) return null
         if (data?.value && headers?.['x-openreader-setting-conflict']) {
           this.applyPreference(key, data.value, data.updatedAt || '')
           return data.value
@@ -115,10 +123,11 @@ export const usePreferencesStore = defineStore('preferences', {
         if (data?.updatedAt) this.syncBaseUpdatedAt[key] = data.updatedAt
         return data?.value || preferencePayload(this, key)
       } catch (err) {
+        if (!preferenceOperations.canCommit(operation)) return null
         this.syncError[key] = readErrorMessage(err)
         return null
       } finally {
-        this.syncing[key] = false
+        if (preferenceOperations.canCommit(operation)) this.syncing[key] = false
       }
     },
   },
