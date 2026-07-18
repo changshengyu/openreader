@@ -2,8 +2,8 @@
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 已完成固定上游盘点、测试先行、实现、全量回归与真实浏览器验证；
-等待当前提交的 Docker 卷/备份发布门禁。
+状态：2026-07-18 已完成固定上游盘点、测试先行、实现、全量回归、真实浏览器验证、
+当前卷/备份门禁与本地双架构 Docker 发布。
 
 ## 权威文件
 
@@ -105,3 +105,9 @@ authorRegex = ^\s*作\s*者[:：\s]+|\s+著
   `canReName=presence`；`source-workspace-contract.mjs` 在 1440×900、390×844、360×800 验证导入预览、
   手动选择、编辑/debug、非执行改名标志及无横向溢出。
 - 旧 SQLite 行没有被扫描或改写；只有用户以后执行搜索、添加、刷新、换源或临时阅读时才得到修正值。
+- 源码提交 `e2f9f315e32979d63f3d079531f2500ad01d8005` 已同步 GitHub，并以当前后端在本机完成
+  arm64 加载构建、`data/cache/library` 挂载与备份恢复烟测，再从本地 OCI 归档发布
+  `ghcr.io/changshengyu/openreader:e2f9f31` 和 `latest`。两 tag 的 OCI index digest 均为
+  `sha256:71241114608d4489ff21aebdfd6af1415780e3291b1781321df83e509e0e62e3`；amd64 manifest 为
+  `sha256:231c508bfc05f9140dec221cf84c23f3b87204a0b317daf4eb64bea2676e9318`，arm64 manifest 为
+  `sha256:537012b869ef31c8a49fceef30a30777ec129e9572e81b0707666fa92839a822`。
