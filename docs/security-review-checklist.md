@@ -199,6 +199,9 @@ a client-safe parse error while host storage failures remain generic server erro
 - [x] Historical fragment capabilities remain scoped to their signed user/book/fingerprint/path. New rows leave
   fragment fields empty; resource-aware progress/bookmark reconciliation compares normalized metadata only and
   never opens a filesystem path.
+- [x] The legacy pure-`toc`/no-TOC fallback runs only while recovering an existing row with missing metadata,
+  reuses the bounded local EPUB parser, selects a normalized manifest/spine resource at the same numeric index,
+  and neither broadens archive access nor changes new import/refresh catalogues.
 
 Evidence: fixed EPUB engine/import/API contracts, full Go tests, 426 frontend tests, production build, and both
 three-viewport EPUB/import browser smokes. Docker historical-volume/portable-backup evidence is recorded after

@@ -665,6 +665,17 @@ func (s *Service) recoverChapterResourceMetadata(sourcePath string, book models.
 	if err != nil {
 		return engine.TXTChapter{}, fmt.Errorf("%w: %v", ErrInvalidArchive, err)
 	}
+	// Older OpenReader volumes can contain EPUB chapter rows created before
+	// resource_path existed. Some of those books persisted the pure `toc` rule
+	// even when the archive had no NAV/NCX, while the old parser still exposed a
+	// spine chapter. Keep that upgrade-only row recovery readable without
+	// changing the fixed-upstream contract for new pure-TOC imports/refreshes.
+	if len(parsed.Chapters) == 0 && strings.EqualFold(strings.TrimSpace(book.TOCRule), "toc") {
+		parsed, err = engine.ParseEPUBWithRule(data, "spin")
+		if err != nil {
+			return engine.TXTChapter{}, fmt.Errorf("%w: %v", ErrInvalidArchive, err)
+		}
+	}
 	if chapterIndex < 0 || chapterIndex >= len(parsed.Chapters) {
 		return engine.TXTChapter{}, ErrNotFound
 	}
