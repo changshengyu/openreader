@@ -28,6 +28,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/backup"
+	"openreader/backend/services/localbook"
 	"openreader/backend/services/scheduler"
 	readersync "openreader/backend/sync"
 )
@@ -6245,6 +6246,26 @@ func TestDirectImportReusesStagedUploadForReparseAndImport(t *testing.T) {
 	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), `"chapterCount":2`) {
 		t.Fatalf("token reparse: expected 2 chapters, got %d: %s", second.Code, second.Body.String())
 	}
+	preparedPath := localImportPreparedStagePath(server.localImportStageDir(1), preview.ImportToken)
+	preparedData, err := os.ReadFile(preparedPath)
+	if err != nil {
+		t.Fatalf("successful preview must persist its parsed snapshot: %v", err)
+	}
+	var prepared localbook.PreparedImport
+	if err := json.Unmarshal(preparedData, &prepared); err != nil {
+		t.Fatalf("decode parsed snapshot: %v", err)
+	}
+	if len(prepared.Book.Chapters) != 2 {
+		t.Fatalf("parsed snapshot chapters = %+v", prepared.Book.Chapters)
+	}
+	prepared.Book.Chapters[0].Title = "已确认使用预览快照"
+	preparedData, err = json.Marshal(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(preparedPath, preparedData, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	imported := request("/api/imports/books", map[string]string{
 		"importToken": preview.ImportToken,
@@ -6261,11 +6282,63 @@ func TestDirectImportReusesStagedUploadForReparseAndImport(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected imported book, got %d", count)
 	}
+	var confirmedChapter models.Chapter
+	if err := server.db.Joins("JOIN books ON books.id = chapters.book_id").Where("books.title = ?", "复用上传测试").Order("chapters.`index` asc").First(&confirmedChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if confirmedChapter.Title != "已确认使用预览快照" {
+		t.Fatalf("confirmed import reparsed raw bytes instead of consuming preview snapshot: %+v", confirmedChapter)
+	}
 	if _, err := os.Stat(dataPath); !os.IsNotExist(err) {
 		t.Fatalf("staged data should be removed after import, got %v", err)
 	}
 	if _, err := os.Stat(metadataPath); !os.IsNotExist(err) {
 		t.Fatalf("staged metadata should be removed after import, got %v", err)
+	}
+	if _, err := os.Stat(preparedPath); !os.IsNotExist(err) {
+		t.Fatalf("staged parsed snapshot should be removed after import, got %v", err)
+	}
+}
+
+func TestDirectImportLazilyAcceptsLegacyTwoFileStage(t *testing.T) {
+	router, server := setupTestServer(t)
+	auth := authHeader(t, router)
+	importToken, err := server.stageLocalImport(1, "legacy-stage.txt", ".txt", []byte("第一章 旧缓存\n正文"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedPath := localImportPreparedStagePath(server.localImportStageDir(1), importToken)
+	if _, err := os.Stat(preparedPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy two-file stage unexpectedly has parsed snapshot: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("importToken", importToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("title", "旧两文件缓存"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/imports/books", &body)
+	request.Header.Set("Authorization", auth)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("legacy two-file stage import = %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"title":"旧两文件缓存"`) || strings.Contains(response.Body.String(), `"chapterCount":0`) {
+		t.Fatalf("legacy two-file stage response = %s", response.Body.String())
+	}
+	dataPath, metadataPath := localImportStagePaths(server.localImportStageDir(1), importToken)
+	for _, path := range []string{dataPath, metadataPath, preparedPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("successful lazy stage import must consume %s: %v", path, err)
+		}
 	}
 }
 
@@ -6347,6 +6420,25 @@ func TestDirectTXTPreviewRetainsStageWhenExplicitRuleFindsNoChapters(t *testing.
 	}, false)
 	if retry.Code != http.StatusOK || !strings.Contains(retry.Body.String(), `"chapterCount":1`) {
 		t.Fatalf("valid retry must reparse staged data: got %d: %s", retry.Code, retry.Body.String())
+	}
+	preparedPath := localImportPreparedStagePath(server.localImportStageDir(1), firstPreview.ImportToken)
+	preparedBeforeFailure, err := os.ReadFile(preparedPath)
+	if err != nil {
+		t.Fatalf("read successful retry snapshot: %v", err)
+	}
+	failedRetry := request("/api/imports/books/preview", map[string]string{
+		"importToken": firstPreview.ImportToken,
+		"tocRule":     `(?<=broken`,
+	}, false)
+	if failedRetry.Code != http.StatusBadRequest {
+		t.Fatalf("invalid rule retry = %d, want 400: %s", failedRetry.Code, failedRetry.Body.String())
+	}
+	preparedAfterFailure, err := os.ReadFile(preparedPath)
+	if err != nil {
+		t.Fatalf("failed retry removed last successful snapshot: %v", err)
+	}
+	if !bytes.Equal(preparedAfterFailure, preparedBeforeFailure) {
+		t.Fatal("failed retry replaced the last successful parsed snapshot")
 	}
 
 	imported := request("/api/imports/books", map[string]string{

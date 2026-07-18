@@ -396,7 +396,7 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
 				continue
 			}
-			book, err := importer.Import(importRequest)
+			book, err := s.importStagedLocalBook(userID, override.ImportToken, importer, importRequest)
 			if err != nil {
 				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
 				continue

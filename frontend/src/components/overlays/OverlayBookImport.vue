@@ -124,7 +124,7 @@
       <el-button
         type="primary"
         :loading="importing"
-        :disabled="!draft.file || !previewData"
+        :disabled="!draft.file || !previewData || previewing"
         @click="importBook"
       >
         导入

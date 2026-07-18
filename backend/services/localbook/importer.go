@@ -1,6 +1,8 @@
 package localbook
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -15,9 +17,13 @@ import (
 )
 
 var (
-	ErrUnsupportedFormat = errors.New("unsupported local book format")
-	ErrParseFailed       = errors.New("failed to parse local book")
+	ErrUnsupportedFormat      = errors.New("unsupported local book format")
+	ErrParseFailed            = errors.New("failed to parse local book")
+	ErrPreparedImportMismatch = errors.New("prepared local book does not match staged input")
 )
+
+const PreparedImportVersion = 1
+const maxLocalBookTOCRuleBytes = 16 * 1024
 
 type Importer struct {
 	cfg config.Config
@@ -49,18 +55,64 @@ type PreviewResult struct {
 	ImportToken  string           `json:"importToken,omitempty"`
 }
 
+// PreparedImport is a versioned, data-only snapshot of one successful local
+// parser run. API staging persists it as caller-scoped derived cache so
+// confirmation can materialize the exact catalogue the user reviewed without
+// parsing the whole source a second time.
+type PreparedImport struct {
+	Version      int               `json:"version"`
+	Extension    string            `json:"extension"`
+	TOCRule      string            `json:"tocRule"`
+	SourceSHA256 string            `json:"sourceSha256"`
+	Book         engine.ParsedBook `json:"book"`
+}
+
 func NewImporter(cfg config.Config, db *gorm.DB) Importer {
 	return Importer{cfg: cfg, db: db}
 }
 
 func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
+	preview, _, err := importer.Prepare(request)
+	return preview, err
+}
+
+func (importer Importer) Prepare(request ImportRequest) (PreviewResult, PreparedImport, error) {
+	if len(strings.TrimSpace(request.TOCRule)) > maxLocalBookTOCRuleBytes {
+		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: local book TOC rule exceeds the limit", ErrParseFailed)
+	}
 	parsedBook, err := parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedFormat) {
-			return PreviewResult{}, err
+			return PreviewResult{}, PreparedImport{}, err
 		}
-		return PreviewResult{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
+		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
+	prepared := NewPreparedImport(request, parsedBook)
+	return previewResult(request, parsedBook), prepared, nil
+}
+
+func NewPreparedImport(request ImportRequest, parsedBook engine.ParsedBook) PreparedImport {
+	sourceHash := sha256.Sum256(request.Data)
+	return PreparedImport{
+		Version:      PreparedImportVersion,
+		Extension:    normalizedLocalBookExtension(request.Extension),
+		TOCRule:      strings.TrimSpace(request.TOCRule),
+		SourceSHA256: hex.EncodeToString(sourceHash[:]),
+		Book:         parsedBook,
+	}
+}
+
+func (prepared PreparedImport) Matches(request ImportRequest) bool {
+	if prepared.Version != PreparedImportVersion ||
+		prepared.Extension != normalizedLocalBookExtension(request.Extension) ||
+		prepared.TOCRule != strings.TrimSpace(request.TOCRule) {
+		return false
+	}
+	sourceHash := sha256.Sum256(request.Data)
+	return prepared.SourceSHA256 == hex.EncodeToString(sourceHash[:])
+}
+
+func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewResult {
 	title := strings.TrimSpace(request.Title)
 	if title == "" {
 		title = strings.TrimSpace(parsedBook.Title)
@@ -86,17 +138,25 @@ func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
 		Author:       author,
 		ChapterCount: len(chapters),
 		Chapters:     chapters,
-	}, nil
+	}
 }
 
 func (importer Importer) Import(request ImportRequest) (models.Book, error) {
-	parsedBook, err := parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
+	_, prepared, err := importer.Prepare(request)
 	if err != nil {
-		if errors.Is(err, ErrUnsupportedFormat) {
-			return models.Book{}, err
-		}
-		return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
+		return models.Book{}, err
 	}
+	return importer.ImportPrepared(request, prepared)
+}
+
+func (importer Importer) ImportPrepared(request ImportRequest, prepared PreparedImport) (models.Book, error) {
+	if !prepared.Matches(request) {
+		return models.Book{}, ErrPreparedImportMismatch
+	}
+	return importer.importParsedBook(request, prepared.Book)
+}
+
+func (importer Importer) importParsedBook(request ImportRequest, parsedBook engine.ParsedBook) (models.Book, error) {
 	chapters := parsedBook.Chapters
 
 	title := strings.TrimSpace(request.Title)
@@ -116,6 +176,13 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 	if err != nil {
 		return models.Book{}, err
 	}
+	archiveRoot := filepath.Join(importer.cfg.LibraryDir, archive.Directory)
+	cleanupArchive := true
+	defer func() {
+		if cleanupArchive {
+			_ = os.RemoveAll(archiveRoot)
+		}
+	}()
 
 	var book models.Book
 	err = importer.db.Transaction(func(tx *gorm.DB) error {
@@ -215,7 +282,12 @@ func (importer Importer) Import(request ImportRequest) (models.Book, error) {
 	if err != nil {
 		return models.Book{}, err
 	}
+	cleanupArchive = false
 	return book, nil
+}
+
+func normalizedLocalBookExtension(extension string) string {
+	return strings.ToLower(strings.TrimSpace(extension))
 }
 
 // RestoreExisting rehydrates a local-book shelf row from a portable backup archive. The logical

@@ -42,6 +42,16 @@ function createController(overrides = {}) {
   return { calls, controller, visible }
 }
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 test('loads categories and filters enabled TXT TOC rules once', async () => {
   const fixture = createController()
   await fixture.controller.open()
@@ -188,4 +198,124 @@ test('resets import state when the dialog closes', async () => {
   assert.equal(fixture.controller.draft.file, null)
   assert.equal(fixture.controller.draft.title, '')
   assert.equal(fixture.controller.previewData.value, null)
+})
+
+test('a superseded file preview cannot overwrite the latest selected file', async () => {
+  const first = deferred()
+  const second = deferred()
+  const requests = []
+  const fixture = createController({
+    previewBook: (file, payload, options) => {
+      requests.push({ file, payload, options })
+      return requests.length === 1 ? first.promise : second.promise
+    },
+  })
+
+  const firstRun = fixture.controller.pickFile({ raw: { name: 'first.txt' } })
+  await nextTick()
+  const secondRun = fixture.controller.pickFile({ raw: { name: 'second.txt' } })
+  await nextTick()
+
+  assert.equal(requests.length, 2)
+  second.resolve({
+    data: {
+      title: '第二本',
+      author: '第二作者',
+      chapterCount: 2,
+      importToken: 'second-token',
+    },
+  })
+  await secondRun
+  first.resolve({
+    data: {
+      title: '第一本',
+      author: '第一作者',
+      chapterCount: 1,
+      importToken: 'first-token',
+    },
+  })
+  await firstRun
+
+  assert.equal(fixture.controller.draft.file.name, 'second.txt')
+  assert.equal(fixture.controller.draft.title, '第二本')
+  assert.equal(fixture.controller.draft.author, '第二作者')
+  assert.equal(fixture.controller.previewData.value.chapterCount, 2)
+  assert.equal(fixture.controller.importToken.value, 'second-token')
+  assert.equal(fixture.controller.previewing.value, false)
+  assert.equal(fixture.calls.some(call => call[0] === 'error'), false)
+  assert.equal(requests[0].options.signal.aborted, true)
+})
+
+test('only the latest TOC reparse may mutate data, error, token, or loading state', async () => {
+  const oldRequest = deferred()
+  const latestRequest = deferred()
+  const requests = []
+  const fixture = createController({
+    previewBook: (file, payload, options) => {
+      requests.push({ file, payload, options })
+      return requests.length === 1 ? oldRequest.promise : latestRequest.promise
+    },
+  })
+  fixture.controller.draft.file = { name: 'rules.txt' }
+  fixture.controller.importToken.value = 'stage-token'
+
+  fixture.controller.draft.tocRule = '^旧规则$'
+  const oldRun = fixture.controller.preview()
+  await nextTick()
+  fixture.controller.draft.tocRule = '^新规则$'
+  const latestRun = fixture.controller.preview()
+  await nextTick()
+
+  oldRequest.reject(new Error('旧请求失败'))
+  await oldRun
+  assert.equal(fixture.controller.previewing.value, true)
+  assert.equal(fixture.controller.previewError.value, '')
+  assert.equal(fixture.controller.importToken.value, 'stage-token')
+  assert.equal(fixture.calls.some(call => call[0] === 'error'), false)
+
+  latestRequest.resolve({
+    data: {
+      title: '新规则结果',
+      chapterCount: 4,
+      importToken: 'stage-token',
+    },
+  })
+  await latestRun
+  assert.equal(fixture.controller.previewing.value, false)
+  assert.equal(fixture.controller.previewData.value.chapterCount, 4)
+  assert.equal(fixture.controller.draft.title, '新规则结果')
+  assert.equal(requests[0].options.signal.aborted, true)
+})
+
+test('closing the dialog invalidates an in-flight preview and keeps reset state', async () => {
+  const request = deferred()
+  let requestOptions
+  const fixture = createController({
+    previewBook: (file, payload, options) => {
+      requestOptions = options
+      return request.promise
+    },
+  })
+
+  const run = fixture.controller.pickFile({ raw: { name: 'closing.epub' } })
+  await nextTick()
+  fixture.visible.value = false
+  await nextTick()
+  assert.equal(requestOptions.signal.aborted, true)
+
+  request.resolve({
+    data: {
+      title: '不应恢复',
+      chapterCount: 9,
+      importToken: 'late-token',
+    },
+  })
+  await run
+
+  assert.equal(fixture.controller.draft.file, null)
+  assert.equal(fixture.controller.draft.title, '')
+  assert.equal(fixture.controller.previewData.value, null)
+  assert.equal(fixture.controller.importToken.value, '')
+  assert.equal(fixture.controller.previewing.value, false)
+  assert.equal(fixture.calls.some(call => call[0] === 'error'), false)
 })

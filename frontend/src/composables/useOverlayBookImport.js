@@ -1,4 +1,11 @@
-import { computed, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  getCurrentScope,
+  onScopeDispose,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
 import {
   isDirectImportableLocalPath,
   isEPUBLocalPath,
@@ -22,11 +29,21 @@ export function useOverlayBookImport(options) {
   })
   const tocRuleOptions = ref([])
   const tocRulesLoading = ref(false)
+  let previewGeneration = 0
+  let previewController = null
   const isText = computed(() => isTextLocalPath(draft.file?.name))
   const isEPUB = computed(() => isEPUBLocalPath(draft.file?.name))
   const supportsTocRule = computed(() => isText.value || isEPUB.value)
 
+  function invalidatePreview() {
+    previewGeneration += 1
+    previewController?.abort()
+    previewController = null
+    previewing.value = false
+  }
+
   function reset() {
+    invalidatePreview()
     Object.assign(draft, {
       title: '',
       author: '',
@@ -64,6 +81,7 @@ export function useOverlayBookImport(options) {
 
   function pickFile(data) {
     const file = data.raw || null
+    invalidatePreview()
     draft.file = null
     draft.title = ''
     draft.author = ''
@@ -81,26 +99,36 @@ export function useOverlayBookImport(options) {
 
   async function preview() {
     if (!draft.file) return
+    const generation = ++previewGeneration
+    previewController?.abort()
+    const controller = new AbortController()
+    previewController = controller
+    const previewFile = draft.file
     previewing.value = true
     previewError.value = ''
     try {
-      const { data } = await options.previewBook(draft.file, {
+      const { data } = await options.previewBook(previewFile, {
         title: draft.title,
         author: draft.author,
         tocRule: supportsTocRule.value ? draft.tocRule : '',
         ...(importToken.value ? { importToken: importToken.value } : {}),
-      })
+      }, { signal: controller.signal })
+      if (generation !== previewGeneration) return
       previewData.value = data
       importToken.value = data.importToken || importToken.value
       if (!draft.title && data.title) draft.title = data.title
       if (!draft.author && data.author) draft.author = data.author
     } catch (error) {
+      if (generation !== previewGeneration || isCancelledPreview(error)) return
       previewData.value = null
       importToken.value = error?.response?.data?.importToken || importToken.value
       previewError.value = importPreviewErrorMessage(error)
       options.onError(error, previewError.value)
     } finally {
-      previewing.value = false
+      if (generation === previewGeneration) {
+        previewing.value = false
+        previewController = null
+      }
     }
   }
 
@@ -137,6 +165,10 @@ export function useOverlayBookImport(options) {
     },
   )
 
+  if (getCurrentScope()) {
+    onScopeDispose(invalidatePreview)
+  }
+
   watch(
     options.visible,
     visible => {
@@ -163,6 +195,12 @@ export function useOverlayBookImport(options) {
     importBook,
     reset,
   }
+}
+
+function isCancelledPreview(error) {
+  return error?.name === 'AbortError' ||
+    error?.name === 'CanceledError' ||
+    error?.code === 'ERR_CANCELED'
 }
 
 function importPreviewErrorMessage(error) {

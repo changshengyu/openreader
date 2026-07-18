@@ -127,6 +127,40 @@ Evidence: `backend/services/localbook/importer_test.go`, `backend/api/api_test.g
 
 Evidence: `backend/engine/import_limits_contract_test.go`, `backend/engine/umd_parser_contract_test.go`, `backend/services/localbook/importer_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/api/umd_import_contract_test.go`, `backend/config/config_test.go`, and full `go test ./...`. Docker mounted-volume/backup validation remains required before this slice is released.
 
+## P0 parsed local-import snapshot lifecycle (2026-07-18)
+
+- [x] A successful local-book preview writes an optional versioned
+  `<token>.parsed.json` only below the existing authenticated user's
+  `cache/import-previews/<user-id>/` directory. The token remains a validated
+  192-bit random hex basename; no request field can select another path or
+  user's directory.
+- [x] The snapshot is plain JSON data with no executable/type-polymorphic
+  decoder. Its raw file size, chapter count and aggregate
+  title/content/resource string bytes are bounded before save and after load.
+  Limit arithmetic saturates instead of wrapping for extreme environment
+  values.
+- [x] The snapshot records its format version, normalized extension, exact TOC
+  rule and SHA-256 of the immutable staged `.book`. A mismatched snapshot is
+  never consumed; the bounded parser reconstructs it from the caller's own raw
+  stage. Malformed or over-limit derived snapshots are removed.
+- [x] Snapshot replacement uses a `0600` temporary file and same-directory
+  atomic rename. A failed parse cannot replace the last successful snapshot.
+  Expiry, successful confirmation and explicit token removal delete `.book`,
+  metadata and parsed snapshot together; aged interrupted temporary files are
+  confined to and cleaned from the stage directory.
+- [x] Confirmation retains existing EPUB/CBZ archive limits, TXT/UMD/PDF
+  parser bounds and user-scoped library path construction. It does not trust
+  MIME type, expose a host path, log a token, or broaden LocalStore/WebDAV
+  access. A failed database transaction compensates by removing only the newly
+  allocated durable archive directory.
+
+Evidence: `backend/api/api_test.go`,
+`backend/api/workspace_import_stage_contract_test.go`,
+`backend/services/localbook/importer_test.go`,
+`frontend/tests/overlayBookImport.test.mjs`, and
+`scripts/smoke/local-book-import-contract.mjs` at 1440x900, 390x844 and
+360x800.
+
 ## P2 backup restore follow-up
 
 - [x] Multipart and WebDAV backup restore enforce one compressed input bound before an allocation or restore mutation.

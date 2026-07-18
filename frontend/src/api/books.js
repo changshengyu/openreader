@@ -12,7 +12,7 @@ export function createRemoteBook(payload) {
   return api.post('/books/remote', payload)
 }
 
-export function previewLocalBook(file, payload = {}) {
+export function previewLocalBook(file, payload = {}, options = {}) {
   const form = new FormData()
   if (payload.importToken) form.append('importToken', payload.importToken)
   else if (file) form.append('file', file)
@@ -22,6 +22,7 @@ export function previewLocalBook(file, payload = {}) {
   return api.post('/imports/books/preview', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 10 * 60 * 1000,
+    signal: options.signal,
   })
 }
 

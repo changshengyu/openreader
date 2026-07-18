@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"openreader/backend/config"
@@ -26,6 +27,124 @@ func TestImporterPreviewAllowsExplicitTXTTOCRuleWithNoMatches(t *testing.T) {
 	}
 	if preview.Title != "规则不匹配" || preview.ChapterCount != 0 || len(preview.Chapters) != 0 {
 		t.Fatalf("explicit no-match TOC preview = %+v, want a normal empty catalog", preview)
+	}
+}
+
+func TestImporterRejectsOversizedLocalTOCRuleBeforeRegexCompilation(t *testing.T) {
+	_, err := (Importer{}).Preview(ImportRequest{
+		FileName:  "oversized-rule.txt",
+		Extension: ".txt",
+		Data:      []byte("第一章 正文"),
+		TOCRule:   strings.Repeat("a", maxLocalBookTOCRuleBytes+1),
+	})
+	if !errors.Is(err, ErrParseFailed) {
+		t.Fatalf("oversized TOC rule error = %v, want ErrParseFailed", err)
+	}
+}
+
+func TestImporterPreparedPreviewIsTheConfirmedChapterSource(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "prepared-import", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	request := ImportRequest{
+		UserID:    user.ID,
+		UserName:  user.Username,
+		FileName:  "prepared.txt",
+		Extension: ".txt",
+		Data:      []byte("第一章 原目录\n原正文"),
+		TOCRule:   `^第.+章.*$`,
+	}
+	importer := NewImporter(cfg, database)
+	preview, prepared, err := importer.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.ChapterCount != 1 || len(prepared.Book.Chapters) != 1 {
+		t.Fatalf("prepared preview = %+v / %+v", preview, prepared)
+	}
+	prepared.Book.Chapters[0].Title = "快照章节"
+	prepared.Book.Chapters[0].Content = "快照正文"
+
+	book, err := importer.ImportPrepared(request, prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chapter models.Chapter
+	if err := database.Where("book_id = ?", book.ID).First(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if chapter.Title != "快照章节" {
+		t.Fatalf("confirmed chapter title = %q, want prepared snapshot", chapter.Title)
+	}
+	content, err := os.ReadFile(filepath.Join(cfg.LibraryDir, book.LibraryPath, chapter.CachePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "快照正文" {
+		t.Fatalf("confirmed chapter content = %q, want prepared snapshot", content)
+	}
+}
+
+func TestImporterRemovesNewArchiveWhenDatabaseCommitCannotStart(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "failed-import", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = NewImporter(cfg, database).Import(ImportRequest{
+		UserID:    user.ID,
+		UserName:  user.Username,
+		FileName:  "failed.txt",
+		Extension: ".txt",
+		Data:      []byte("第一章 失败\n正文"),
+	})
+	if err == nil {
+		t.Fatal("import with a closed database must fail")
+	}
+	userLibrary := filepath.Join(cfg.LibraryDir, "data", user.Username)
+	entries, readErr := os.ReadDir(userLibrary)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed import left durable library entries: %+v", entries)
 	}
 }
 

@@ -17,10 +17,10 @@ import (
 )
 
 type ParsedBook struct {
-	Title             string
-	Author            string
-	CoverResourcePath string
-	Chapters          []TXTChapter
+	Title             string       `json:"title"`
+	Author            string       `json:"author"`
+	CoverResourcePath string       `json:"coverResourcePath,omitempty"`
+	Chapters          []TXTChapter `json:"chapters"`
 }
 
 type epubContainer struct {

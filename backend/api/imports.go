@@ -12,6 +12,7 @@ import (
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
+	"openreader/backend/models"
 	"openreader/backend/services/localbook"
 )
 
@@ -26,16 +27,21 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		writeLocalImportError(c, err)
 		return
 	}
-	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
+	request := localbook.ImportRequest{
 		FileName:  fileName,
 		Extension: ext,
 		Data:      data,
 		Title:     c.PostForm("title"),
 		Author:    c.PostForm("author"),
 		TOCRule:   c.PostForm("tocRule"),
-	})
+	}
+	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "importToken": importToken})
+		return
+	}
+	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stage parsed import", "importToken": importToken})
 		return
 	}
 	preview.ImportToken = importToken
@@ -73,7 +79,7 @@ func (s *Server) importTXT(c *gin.Context) {
 	}
 
 	importer := localbook.NewImporter(s.cfg, s.db)
-	book, err := importer.Import(localbook.ImportRequest{
+	request := localbook.ImportRequest{
 		UserID:     userID,
 		UserName:   userName,
 		FileName:   fileName,
@@ -83,7 +89,13 @@ func (s *Server) importTXT(c *gin.Context) {
 		Author:     c.PostForm("author"),
 		CategoryID: categoryID,
 		TOCRule:    c.PostForm("tocRule"),
-	})
+	}
+	var book models.Book
+	if importToken != "" {
+		book, err = s.importStagedLocalBook(userID, importToken, importer, request)
+	} else {
+		book, err = importer.Import(request)
+	}
 	if err != nil {
 		if errors.Is(err, localbook.ErrUnsupportedFormat) ||
 			errors.Is(err, localbook.ErrParseFailed) {
@@ -226,15 +238,19 @@ func (s *Server) previewStagedStorageImport(userID uint, file localStoreImportFi
 	if err != nil {
 		return localbook.PreviewResult{}, "", errors.New("failed to stage import")
 	}
-	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
+	request := localbook.ImportRequest{
 		FileName:  filepath.Base(file.filePath),
 		Extension: file.extension,
 		Data:      data,
 		Title:     override.Title,
 		Author:    override.Author,
 		TOCRule:   override.TOCRule,
-	})
+	}
+	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
 	if err != nil {
+		return localbook.PreviewResult{}, importToken, err
+	}
+	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
 		return localbook.PreviewResult{}, importToken, err
 	}
 	preview.ImportToken = importToken
@@ -249,15 +265,19 @@ func (s *Server) reparseStagedStorageImport(userID uint, importToken string, ove
 	if err != nil {
 		return localbook.PreviewResult{}, "", err
 	}
-	preview, err := localbook.NewImporter(s.cfg, s.db).Preview(localbook.ImportRequest{
+	request := localbook.ImportRequest{
 		FileName:  metadata.FileName,
 		Extension: metadata.Extension,
 		Data:      data,
 		Title:     override.Title,
 		Author:    override.Author,
 		TOCRule:   override.TOCRule,
-	})
+	}
+	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
 	if err != nil {
+		return localbook.PreviewResult{}, importToken, err
+	}
+	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
 		return localbook.PreviewResult{}, importToken, err
 	}
 	preview.ImportToken = importToken
@@ -280,4 +300,18 @@ func (s *Server) stagedStorageImportRequest(userID uint, userName string, import
 		CategoryID: categoryID,
 		TOCRule:    override.TOCRule,
 	}, nil
+}
+
+func (s *Server) importStagedLocalBook(userID uint, importToken string, importer localbook.Importer, request localbook.ImportRequest) (models.Book, error) {
+	if prepared, ok := s.loadStagedPreparedImport(userID, importToken, request); ok {
+		return importer.ImportPrepared(request, prepared)
+	}
+	_, prepared, err := importer.Prepare(request)
+	if err != nil {
+		return models.Book{}, err
+	}
+	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
+		return models.Book{}, err
+	}
+	return importer.ImportPrepared(request, prepared)
 }

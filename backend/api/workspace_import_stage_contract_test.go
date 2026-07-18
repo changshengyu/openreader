@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +15,9 @@ import (
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 
+	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/localbook"
 )
 
 type stagedStoragePreview struct {
@@ -373,6 +377,31 @@ func TestLocalImportStageRejectsOversizedInputBeforePersistingPreview(t *testing
 	}
 }
 
+func TestPreparedImportStageEnforcesParsedBoundsAndSaturatesConfiguredLimit(t *testing.T) {
+	_, server := setupTestServer(t)
+	token, err := server.stageLocalImport(1, "bounded.txt", ".txt", []byte("正文"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := localbook.ImportRequest{Extension: ".txt", Data: []byte("正文")}
+	prepared := localbook.NewPreparedImport(request, engine.ParsedBook{
+		Chapters: []engine.TXTChapter{{Title: "标题", Content: "超过"}},
+	})
+	server.cfg.MaxParsedTextBytes = 1
+	if err := server.saveStagedPreparedImport(1, token, prepared); !errors.Is(err, errLocalImportTooLarge) {
+		t.Fatalf("over-limit parsed snapshot error = %v", err)
+	}
+	if _, err := os.Stat(localImportPreparedStagePath(server.localImportStageDir(1), token)); !os.IsNotExist(err) {
+		t.Fatalf("over-limit parsed snapshot must not be persisted: %v", err)
+	}
+
+	server.cfg.MaxParsedTextBytes = math.MaxInt64
+	server.cfg.MaxImportBytes = math.MaxInt64
+	if got := server.maxLocalPreparedImportBytes(); got != math.MaxInt64 {
+		t.Fatalf("overflowing configured prepared limit = %d, want MaxInt64", got)
+	}
+}
+
 func TestImportStageCleanupRemovesExpiredAndOrphanedFilesAcrossIdleUserDirectories(t *testing.T) {
 	_, server := setupTestServer(t)
 
@@ -385,6 +414,10 @@ func TestImportStageCleanupRemovesExpiredAndOrphanedFilesAcrossIdleUserDirectori
 		t.Fatalf("stage expired preview: %v", err)
 	}
 	expiredDataPath, expiredMetadataPath := localImportStagePaths(server.localImportStageDir(2), expiredToken)
+	expiredPreparedPath := localImportPreparedStagePath(server.localImportStageDir(2), expiredToken)
+	if err := os.WriteFile(expiredPreparedPath, []byte(`{"version":1}`), 0o600); err != nil {
+		t.Fatalf("write expired parsed snapshot: %v", err)
+	}
 	encoded, err := os.ReadFile(expiredMetadataPath)
 	if err != nil {
 		t.Fatalf("read expired metadata: %v", err)
@@ -408,12 +441,23 @@ func TestImportStageCleanupRemovesExpiredAndOrphanedFilesAcrossIdleUserDirectori
 	}
 	orphanToken := strings.Repeat("a", 48)
 	orphanDataPath, _ := localImportStagePaths(orphanDir, orphanToken)
+	orphanPreparedPath := localImportPreparedStagePath(orphanDir, orphanToken)
 	if err := os.WriteFile(orphanDataPath, []byte("orphan"), 0o600); err != nil {
 		t.Fatalf("write orphan stage data: %v", err)
+	}
+	if err := os.WriteFile(orphanPreparedPath, []byte(`{"version":1}`), 0o600); err != nil {
+		t.Fatalf("write orphan parsed snapshot: %v", err)
 	}
 	old := time.Now().Add(-localImportStageLifetime - time.Minute)
 	if err := os.Chtimes(orphanDataPath, old, old); err != nil {
 		t.Fatalf("age orphan stage data: %v", err)
+	}
+	if err := os.Chtimes(orphanPreparedPath, old, old); err != nil {
+		t.Fatalf("age orphan parsed snapshot: %v", err)
+	}
+	freshPreparedPath := localImportPreparedStagePath(server.localImportStageDir(1), freshToken)
+	if err := os.WriteFile(freshPreparedPath, []byte(`{"version":1}`), 0o600); err != nil {
+		t.Fatalf("write fresh parsed snapshot: %v", err)
 	}
 
 	CleanupExpiredLocalImportStages(server.cfg.CacheDir)
@@ -424,10 +468,19 @@ func TestImportStageCleanupRemovesExpiredAndOrphanedFilesAcrossIdleUserDirectori
 	if _, err := os.Stat(expiredMetadataPath); !os.IsNotExist(err) {
 		t.Fatalf("expired staged metadata must be removed by background cleanup, got %v", err)
 	}
+	if _, err := os.Stat(expiredPreparedPath); !os.IsNotExist(err) {
+		t.Fatalf("expired parsed snapshot must be removed by background cleanup, got %v", err)
+	}
 	if _, err := os.Stat(orphanDataPath); !os.IsNotExist(err) {
 		t.Fatalf("expired orphan stage data must be removed, got %v", err)
 	}
+	if _, err := os.Stat(orphanPreparedPath); !os.IsNotExist(err) {
+		t.Fatalf("expired orphan parsed snapshot must be removed, got %v", err)
+	}
 	if _, _, err := server.loadStagedLocalImport(1, freshToken); err != nil {
 		t.Fatalf("fresh staged preview must survive global cleanup: %v", err)
+	}
+	if _, err := os.Stat(freshPreparedPath); err != nil {
+		t.Fatalf("fresh parsed snapshot must survive global cleanup: %v", err)
 	}
 }
