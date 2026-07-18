@@ -2450,8 +2450,8 @@ Hub backpressure 和多客户端状态合同已记录在
 [`bookshelf-network-first-sync-p2-contract.md`](bookshelf-network-first-sync-p2-contract.md)。本阶段仍只
 修改审计文档；下一阶段必须先写网络优先、前台校准和慢客户端断开的失败测试，再改应用代码。
 
-测试先行后的真实双客户端启动又发现 SQLite 连接级缺口：`db.Open` 只在池建立后执行一次
-`PRAGMA busy_timeout`，而 `TrackActivity` 会在每个保护请求后写用户活动时间；新账号两个客户端
-并发加载 settings 时已实际出现 `500 failed to load setting`。该项已经补进同一合同，必须用
-连接级 DSN 保持每条池连接的 WAL/busy timeout 语义，并以并发 Go API 测试证明，不能在 smoke
-中预先创建设置行或过滤 500 绕过。
+测试先行后的真实双客户端启动又发现 settings 首次写竞态：两个客户端同时读到不存在的 Reader
+默认设置，`SELECT -> FirstOrCreate` 随后让第二个 INSERT 撞上 `(user_id,key)` 唯一键，实际产生
+`PUT /api/settings/reader` 的 `500 failed to save setting`。该项已经补进同一合同，必须改为保留
+现有校验/陈旧写保护的原子 conflict upsert，并以并发 Go API 测试证明；不能在 smoke 中预先创建
+设置行或过滤 500 绕过。日志复核否定了上一版“连接级 busy timeout”推断，SQLite 连接配置不改。

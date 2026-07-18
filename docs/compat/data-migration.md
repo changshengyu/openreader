@@ -489,8 +489,7 @@ Required evidence before release: old scoped browser cache remains a usable offl
 precedes a successful delayed server response; two same-user clients converge after import and reconnect; current
 Docker volume/backup smoke remains byte/data compatible.
 
-The same multi-client gate also requires SQLite connection-level WAL/busy-timeout configuration. Moving the existing
-`journal_mode=WAL`, `busy_timeout=5000`, and `synchronous=NORMAL` values into the driver DSN changes no database path,
-schema, row, journal format, mounted directory, or backup payload. It only guarantees that later pooled connections
-receive the same settings as the first connection. An existing database and its `-wal`/`-shm` companions remain
-directly openable; no one-time rewrite or single-connection downgrade is authorized.
+The same multi-client gate makes first-time settings writes atomic through the already existing unique index on
+`user_settings(user_id,key)`. It adds no table, column, index, default row, mounted file, or backup field. Existing
+rows keep their IDs/values/timestamps; only two concurrent attempts to create the same missing row stop surfacing a
+UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existing `-wal`/`-shm` files do not change.

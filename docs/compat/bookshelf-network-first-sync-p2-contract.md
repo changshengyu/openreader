@@ -29,7 +29,7 @@
 | 远端同步 | `useSync` 对有 payload 的 `bookshelf_update` 即时 upsert，对断线重连强制加载书架/分组。 | **技术栈等价，必须保留**。 |
 | 同步可靠性 | `backend/sync/Hub.Broadcast` 的发送队列容量为 16；队列满时 `default` 分支静默丢弃事件。`AppLayout#refreshShelfInForeground` 又在 `syncConnected && books.length` 时直接返回。于是“显示已连接”被错误当成“肯定没有漏事件”。 | **must-fix**：服务端不能静默维持一个已丢状态事件的健康连接；慢客户端应断开并通过重连强刷恢复。前端进入前台/恢复网络时也必须做有节流的权威校准，不以 connected 状态跳过。 |
 | 书架 API | `GET /api/books` 每次按当前用户直接查询 SQLite、投影分类/进度/缓存计数并排序；没有服务端书架结果缓存。 | **aligned**：路径和 JSON 不变；前端持久缓存不能改变该响应的权威性。 |
-| 双客户端首次启动 | 真实 Go + 两个浏览器上下文同时启动时，保护路由结束后的 `TrackActivity` 写入会与另一连接的 settings 读取竞争；当前 `db.Open` 在池建立后只执行一次 `PRAGMA busy_timeout=5000`，SQLite PRAGMA 并未保证应用到池内以后创建的每条连接。实测 `/api/settings/reader`、`/api/settings/search` 偶发 `500 failed to load setting`。 | **must-fix**：WAL、busy timeout 和 synchronous 必须通过 SQLite DSN/逐连接机制对连接池中的每条连接生效。相同用户并发只读与 activity 写不得产生产品 500；不能靠浏览器串行化或忽略错误规避。 |
+| 双客户端首次启动 | 真实 Go + 两个浏览器上下文同时启动时，两端都先读取空 `reader/shelf/search` 设置并保存默认值。`updateUserSetting` 的 `SELECT -> FirstOrCreate` 不是原子 upsert：两个请求都读到不存在后，第二个 INSERT 触发 `(user_id,key)` UNIQUE constraint，实测 `PUT /api/settings/reader` 返回 `500 failed to save setting`。 | **must-fix**：同一用户/键首次并发保存必须使用 SQLite 原子 conflict upsert；两个请求都返回现有 200 形状，数据库只保留一行。不能靠浏览器串行化、预建设置行或过滤 500 规避。 |
 
 ## 目标状态机
 
@@ -55,16 +55,16 @@
    `online` 或下一次前台事件可重试。
 5. 本地导入/upsert 的 mutation revision 继续阻止校准前发出的旧响应删除新书。
 
-### SQLite 多客户端启动边界
+### 设置多客户端启动边界
 
 1. `GET /api/settings/reader|shelf|search` 在不存在设置行时仍返回现有 `200 {}`；存在时返回既有
    `{key,value,updatedAt}`，并发读取不创建默认行。
-2. `TrackActivity` 继续在保护路由后更新当前用户，但不得让同时发生的书架/设置读取暴露
-   `database is locked` 或通用 500。
-3. SQLite WAL、5 秒 busy timeout 与 NORMAL synchronous 必须对连接池每条连接生效，而不只对
-   `gorm.Open` 恰好使用的第一条连接。数据库路径、schema、WAL 文件和备份均不变。
-4. 不把 `SetMaxOpenConns(1)` 作为默认掩盖方案：Reader/书架的并行只读能力应保留；SQLite 仍由
-   busy timeout 和短事务串行写入。
+2. `PUT /api/settings/:key` 继续执行既有 key/JSON 校验、Reader 本地布局字段清理和
+   `baseUpdatedAt` 陈旧写保护。首次不存在行的并发写必须在数据库唯一键上原子 upsert，不能暴露
+   UNIQUE 错误；无 base 的并发初始值按数据库提交顺序 last-write-wins。
+3. 成功后仍返回实际持久化的 `{key,value,updatedAt}` 并发布既有 `settings_update`；数据库中
+   `(user_id,key)` 始终只有一行。另一个用户的同名 key 不参与冲突。
+4. 不改 SQLite 连接数、WAL/busy timeout、数据库路径或 schema；本问题不是读写锁超时。
 
 ## API、缓存与数据兼容边界
 
@@ -74,7 +74,7 @@
   它们只从“抢先首屏数据”降级为网络失败 fallback；成功网络响应继续原 key 覆盖。
 - 不把 WebSocket payload、JWT 或用户名写入新的持久位置；不增加公开跨用户事件。
 - 分类仍沿用现有 `cacheFirst`/同步事件语义，本切片不扩展为分类或设置缓存重写。
-- SQLite 连接参数可以改为等价 DSN 形式，但数据库文件位置、表、列、WAL 模式和 5 秒等待语义不变。
+- 原子 upsert 只使用现有 `user_settings(user_id,key)` 唯一索引；不新增表、列或迁移。
 
 ## 测试先行闸门
 
@@ -84,9 +84,9 @@
    并发事件合并；失败后 online/下一次 focus 可重试。
 3. Go 单元：填满 Hub 客户端发送队列后再次广播会移除/关闭慢客户端，而其它同用户客户端仍收到
    事件；不同用户不收到；`BroadcastAll` 同样不静默保留慢连接。
-4. Go API/DB：同一用户并发请求 `reader/shelf/search` 设置和书架，且保护路由持续写 activity；
-   每个请求只能得到既有 200 形状，不得出现 locked/500。新池连接读取 `busy_timeout` 仍为 5000，
-   journal mode 为 WAL。
+4. Go API/DB：同一用户并发首次 PUT 同一个 `reader/shelf/search` key；每个请求都得到既有 200
+   形状，不出现 UNIQUE/500，最终只有一行且值是其中一个完整请求。不同用户同 key 保持隔离，
+   已有 `baseUpdatedAt` 冲突测试继续通过。
 5. 真实 Go + 两浏览器上下文：客户端 A 导入，客户端 B 在不刷新路由的情况下看到新书；断开 B
    的同步链后导入第二本，B 恢复前台/网络后通过 full refresh 收敛。桌面、390×844、360×800
    至少各覆盖 UI 几何，双客户端链至少在一个视口运行真实 WebSocket。
