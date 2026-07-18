@@ -373,6 +373,8 @@ library/<Book.LibraryPath>/.epub-resources/<source-fingerprint>/
 - Old `chapters.json`: missing `resourcePath` is treated as unknown and recovered from the source EPUB.
 - Old pure-`toc` books without NAV/NCX: if a persisted row also lacks `resourcePath`, only that runtime
   recovery may use the spine at the same index and backfill the normalized path. New pure-`toc` catalogues stay empty.
+  A default explicit refresh therefore rejects the empty replacement without mutating the old rows; an explicit
+  `spin` refresh may then rebuild and persist the spine catalogue.
 - Missing derived directory: rebuild transparently from `OriginalFile`.
 - Missing/corrupt source EPUB: preserve all database rows and plain-text caches; return a reader error instead of deleting/reimporting the book.
 - Backup/restore and WebDAV: the existing original EPUB and metadata remain sufficient. Derived `.epub-resources/` need not be present in a backup to recover the book.

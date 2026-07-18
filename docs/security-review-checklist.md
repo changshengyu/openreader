@@ -203,9 +203,9 @@ a client-safe parse error while host storage failures remain generic server erro
   reuses the bounded local EPUB parser, selects a normalized manifest/spine resource at the same numeric index,
   and neither broadens archive access nor changes new import/refresh catalogues.
 
-Evidence: fixed EPUB engine/import/API contracts, full Go tests, 426 frontend tests, production build, and both
-three-viewport EPUB/import browser smokes. Docker historical-volume/portable-backup evidence is recorded after
-the local release gate.
+Evidence: fixed EPUB engine/import/API contracts, full Go tests, 426 frontend tests, production build, both
+three-viewport EPUB/import browser smokes, and the local `HISTORICAL_VOLUME=1` Docker gate covering rejected
+empty-TOC replacement preservation, explicit spine refresh, owner isolation and portable backup/restore/restart.
 
 ## P2 backup restore follow-up
 

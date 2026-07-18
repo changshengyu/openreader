@@ -197,6 +197,26 @@ refresh_historical_book() {
     -H "Authorization: Bearer ${TOKEN}" >/dev/null
 }
 
+refresh_historical_book_with_rule() {
+  curl -fsS -X POST "${BASE_URL}/api/books/$1/refresh-local" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -d "{\"tocRule\":\"$2\"}" >/dev/null
+}
+
+assert_empty_toc_refresh_preserves_historical_epub() {
+  response_path="$ROOT/epub-empty-toc-refresh.json"
+  status="$(curl -sS -o "$response_path" -w '%{http_code}' -X POST \
+    "${BASE_URL}/api/books/$1/refresh-local" \
+    -H "Authorization: Bearer ${TOKEN}")"
+  if [ "$status" != "400" ]; then
+    echo "historical pure-TOC EPUB refresh returned ${status}, expected 400" >&2
+    exit 1
+  fi
+  grep -F 'local book has no readable chapters' "$response_path" >/dev/null
+  read_historical_book "$1" "epub" '旧卷 EPUB archive 正文。' >/dev/null
+}
+
 historical_login() {
   curl -fsS -X POST "${BASE_URL}/api/auth/login" \
     -H 'Content-Type: application/json' \
@@ -342,9 +362,11 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   CBZ_RESOURCE_URL="$(printf '%s' "$CBZ_RESPONSE" | json_field resourceUrl)"
   curl -fsS "${BASE_URL}${CBZ_RESOURCE_URL}" | grep -F 'old-volume-first-page' >/dev/null
 
-  for book_id in "$TXT_BOOK_ID" "$EPUB_BOOK_ID" "$UMD_BOOK_ID" "$CBZ_BOOK_ID"; do
-    refresh_historical_book "$book_id"
-  done
+  refresh_historical_book "$TXT_BOOK_ID"
+  assert_empty_toc_refresh_preserves_historical_epub "$EPUB_BOOK_ID"
+  refresh_historical_book_with_rule "$EPUB_BOOK_ID" "spin"
+  refresh_historical_book "$UMD_BOOK_ID"
+  refresh_historical_book "$CBZ_BOOK_ID"
   assert_archive_hash "$TXT_ARCHIVE" "$TXT_HASH" 'historical volume refresh'
   assert_archive_hash "$EPUB_ARCHIVE" "$EPUB_HASH" 'historical volume refresh'
   assert_archive_hash "$UMD_ARCHIVE" "$UMD_HASH" 'historical volume refresh'
