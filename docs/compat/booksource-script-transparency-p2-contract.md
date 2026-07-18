@@ -2,7 +2,7 @@
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 已完成固定基准盘点、测试先行、实现与三视口验证。
+状态：2026-07-18 已完成固定基准盘点、测试先行、实现、三视口验证、卷/备份门禁与本地双架构 Docker 发布。
 
 ## 权威文件
 
@@ -94,3 +94,9 @@ preserved-dormant
 - 单元/静态合同覆盖所有阻断入口、旧别名、保留字段、误报边界和全选语义；
   `source-workspace-contract.mjs` 覆盖 1440×900、390×844、360×800 的预览、手动导入、重新编辑、
   debug 安全反馈、旧路由返回和横向溢出。
+- 源码提交 `cad1f405af1340784baeb725eedaa3c792fe864d` 已同步 GitHub，并在本机完成 arm64 加载构建、
+  当前提交的 `data/cache/library` 挂载与备份恢复烟测，再以本地 OCI 归档发布
+  `ghcr.io/changshengyu/openreader:cad1f40` 和 `latest`。两 tag 的 OCI index digest 均为
+  `sha256:9ebe3763476f79bd7b745e03efd5f50ff07a83e9eb0b8e705df6f98f49112bc9`；amd64 manifest 为
+  `sha256:96105a2b25d98684ff526e5ea43d5623e5b5f2811490c8f1fc1454ff907b6d64`，arm64 manifest 为
+  `sha256:3ca32d12878383593b0d7ef6c6d67f856053800fe6070f3dda29972776f40b4a`。
