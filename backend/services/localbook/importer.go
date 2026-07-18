@@ -14,6 +14,7 @@ import (
 	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/epubreader"
 )
 
 var (
@@ -60,11 +61,12 @@ type PreviewResult struct {
 // confirmation can materialize the exact catalogue the user reviewed without
 // parsing the whole source a second time.
 type PreparedImport struct {
-	Version      int               `json:"version"`
-	Extension    string            `json:"extension"`
-	TOCRule      string            `json:"tocRule"`
-	SourceSHA256 string            `json:"sourceSha256"`
-	Book         engine.ParsedBook `json:"book"`
+	Version         int               `json:"version"`
+	Extension       string            `json:"extension"`
+	TOCRule         string            `json:"tocRule"`
+	SourceSHA256    string            `json:"sourceSha256"`
+	EPUBCatalogOnly bool              `json:"epubCatalogOnly,omitempty"`
+	Book            engine.ParsedBook `json:"book"`
 }
 
 func NewImporter(cfg config.Config, db *gorm.DB) Importer {
@@ -80,7 +82,13 @@ func (importer Importer) Prepare(request ImportRequest) (PreviewResult, Prepared
 	if len(strings.TrimSpace(request.TOCRule)) > maxLocalBookTOCRuleBytes {
 		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: local book TOC rule exceeds the limit", ErrParseFailed)
 	}
-	parsedBook, err := parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
+	var parsedBook engine.ParsedBook
+	var err error
+	if normalizedLocalBookExtension(request.Extension) == ".epub" {
+		parsedBook, err = engine.ParseEPUBCatalogWithLimits(request.Data, request.TOCRule, importer.parseLimits())
+	} else {
+		parsedBook, err = parseUploadedBookWithLimits(request.Extension, request.Data, request.TOCRule, importer.parseLimits())
+	}
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedFormat) {
 			return PreviewResult{}, PreparedImport{}, err
@@ -88,6 +96,7 @@ func (importer Importer) Prepare(request ImportRequest) (PreviewResult, Prepared
 		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
 	prepared := NewPreparedImport(request, parsedBook)
+	prepared.EPUBCatalogOnly = normalizedLocalBookExtension(request.Extension) == ".epub"
 	return previewResult(request, parsedBook), prepared, nil
 }
 
@@ -153,7 +162,15 @@ func (importer Importer) ImportPrepared(request ImportRequest, prepared Prepared
 	if !prepared.Matches(request) {
 		return models.Book{}, ErrPreparedImportMismatch
 	}
-	return importer.importParsedBook(request, prepared.Book)
+	parsedBook := prepared.Book
+	if prepared.EPUBCatalogOnly {
+		var err error
+		parsedBook, err = engine.MaterializeEPUBCatalogWithLimits(request.Data, parsedBook, importer.parseLimits())
+		if err != nil {
+			return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
+		}
+	}
+	return importer.importParsedBook(request, parsedBook)
 }
 
 func (importer Importer) importParsedBook(request ImportRequest, parsedBook engine.ParsedBook) (models.Book, error) {
@@ -184,27 +201,32 @@ func (importer Importer) importParsedBook(request ImportRequest, parsedBook engi
 		}
 	}()
 
-	var book models.Book
+	lastChapter := ""
+	if len(chapters) > 0 {
+		lastChapter = chapters[len(chapters)-1].Title
+	}
+	book := models.Book{
+		UserID:       request.UserID,
+		SourceID:     0,
+		CategoryID:   request.CategoryID,
+		Title:        title,
+		Author:       author,
+		URL:          fmt.Sprintf("local://pending/%d", request.UserID),
+		LibraryPath:  archive.Directory,
+		OriginalFile: archive.OriginalFile,
+		TOCFile:      archive.TOCFile,
+		TOCRule:      strings.TrimSpace(request.TOCRule),
+		SourceFile:   archive.SourceFile,
+		LastChapter:  lastChapter,
+		ChapterCount: len(chapters),
+	}
+	if normalizedLocalBookExtension(request.Extension) == ".epub" {
+		if err := epubreader.New(importer.cfg, importer.db).PrepareBookResources(book); err != nil {
+			return models.Book{}, classifyEPUBPreparationError(err)
+		}
+	}
+	contentDir := filepath.Join(importer.cfg.LibraryDir, archive.Directory, "content")
 	err = importer.db.Transaction(func(tx *gorm.DB) error {
-		lastChapter := ""
-		if len(chapters) > 0 {
-			lastChapter = chapters[len(chapters)-1].Title
-		}
-		book = models.Book{
-			UserID:       request.UserID,
-			SourceID:     0,
-			CategoryID:   request.CategoryID,
-			Title:        title,
-			Author:       author,
-			URL:          fmt.Sprintf("local://pending/%d", request.UserID),
-			LibraryPath:  archive.Directory,
-			OriginalFile: archive.OriginalFile,
-			TOCFile:      archive.TOCFile,
-			TOCRule:      strings.TrimSpace(request.TOCRule),
-			SourceFile:   archive.SourceFile,
-			LastChapter:  lastChapter,
-			ChapterCount: len(chapters),
-		}
 		if err := tx.Create(&book).Error; err != nil {
 			return err
 		}
@@ -221,7 +243,6 @@ func (importer Importer) importParsedBook(request ImportRequest, parsedBook engi
 				chapterTitle = fmt.Sprintf("第 %d 章", index+1)
 			}
 			chapterURL := fmt.Sprintf("%s/chapter_%d", book.URL, index)
-			contentDir := filepath.Join(importer.cfg.LibraryDir, archive.Directory, "content")
 			contentPath, err := engine.WriteChapterCache(contentDir, book.URL, chapterURL, parsedChapter.Content)
 			if err != nil {
 				return err
@@ -284,6 +305,28 @@ func (importer Importer) importParsedBook(request ImportRequest, parsedBook engi
 	}
 	cleanupArchive = false
 	return book, nil
+}
+
+type epubPreparationParseError struct {
+	cause error
+}
+
+func (err epubPreparationParseError) Error() string {
+	return ErrParseFailed.Error() + ": EPUB archive cannot be prepared safely"
+}
+
+func (err epubPreparationParseError) Unwrap() []error {
+	return []error{ErrParseFailed, err.cause}
+}
+
+func classifyEPUBPreparationError(err error) error {
+	if errors.Is(err, epubreader.ErrInvalidArchive) ||
+		errors.Is(err, epubreader.ErrExtractionLimit) ||
+		errors.Is(err, epubreader.ErrUnsafePath) ||
+		errors.Is(err, epubreader.ErrUnsupportedMedia) {
+		return epubPreparationParseError{cause: err}
+	}
+	return err
 }
 
 func normalizedLocalBookExtension(extension string) string {

@@ -3,6 +3,7 @@ package engine
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -350,8 +351,8 @@ func TestParseEPUBUsesSpineOrder(t *testing.T) {
     <itemref idref="chapter2"/>
   </spine>
 </package>`)
-	writeZipFile(t, zipWriter, "OEBPS/chapter1.xhtml", `<html><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
-	writeZipFile(t, zipWriter, "OEBPS/chapter2.xhtml", `<html><body><h1>第二章</h1><p>第二章正文。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OEBPS/chapter1.xhtml", `<html><head><title>第一章</title></head><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OEBPS/chapter2.xhtml", `<html><head><title>第二章</title></head><body><h1>第二章</h1><p>第二章正文。</p></body></html>`)
 	if err := zipWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -389,13 +390,13 @@ func TestParseEPUBWithRuleCombinesSpineAndNav(t *testing.T) {
 		titles []string
 		bodies []string
 	}{
-		{rule: "spin", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
-		{rule: "spin+toc", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
+		{rule: "spin", titles: []string{"文档标题一", "文档标题二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
+		{rule: "spin+toc", titles: []string{"文档标题一", "文档标题二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
 		{rule: "spin<toc", titles: []string{"目录一", "目录二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
 		{rule: "toc", titles: []string{"目录二", "目录一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
 		{rule: "toc+spin", titles: []string{"目录二", "目录一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
-		{rule: "toc<spin", titles: []string{"正文二", "正文一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
-		{rule: "", titles: []string{"正文一", "正文二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
+		{rule: "toc<spin", titles: []string{"文档标题二", "文档标题一"}, bodies: []string{"第二章内容。", "第一章内容。"}},
+		{rule: "", titles: []string{"文档标题一", "文档标题二"}, bodies: []string{"第一章内容。", "第二章内容。"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.rule, func(t *testing.T) {
@@ -421,6 +422,65 @@ func TestParseEPUBWithRuleCombinesSpineAndNav(t *testing.T) {
 	}
 }
 
+func TestParseEPUBCatalogDoesNotMaterializeSpineBodies(t *testing.T) {
+	data := testEPUBWithNav(t)
+	limits := DefaultLocalBookParseLimits()
+	limits.MaxParsedTextBytes = 1
+
+	catalog, err := ParseEPUBCatalogWithLimits(data, "spin+toc", limits)
+	if err != nil {
+		t.Fatalf("catalog-only EPUB preview must not apply the body text limit: %v", err)
+	}
+	if len(catalog.Chapters) != 2 {
+		t.Fatalf("catalog chapter count = %d, want 2", len(catalog.Chapters))
+	}
+	for index, chapter := range catalog.Chapters {
+		if chapter.Content != "" {
+			t.Fatalf("catalog chapter %d materialized body content: %q", index, chapter.Content)
+		}
+		if chapter.ResourcePath == "" {
+			t.Fatalf("catalog chapter %d lost its EPUB resource path: %+v", index, chapter)
+		}
+	}
+	if _, err := ParseEPUBWithLimits(data, "spin+toc", limits); !errors.Is(err, ErrLocalBookParseLimit) {
+		t.Fatalf("full EPUB parse error = %v, want body text limit", err)
+	}
+}
+
+func TestParseEPUBCatalogUsesDocumentTitleInsteadOfBodyHeading(t *testing.T) {
+	data := testEPUBWithNav(t)
+	tests := []struct {
+		rule   string
+		titles []string
+	}{
+		{rule: "spin", titles: []string{"文档标题一", "文档标题二"}},
+		{rule: "spin+toc", titles: []string{"文档标题一", "文档标题二"}},
+		{rule: "spin<toc", titles: []string{"目录一", "目录二"}},
+		{rule: "toc", titles: []string{"目录二", "目录一"}},
+		{rule: "toc+spin", titles: []string{"目录二", "目录一"}},
+		{rule: "toc<spin", titles: []string{"文档标题二", "文档标题一"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.rule, func(t *testing.T) {
+			catalog, err := ParseEPUBCatalogWithLimits(data, tt.rule, DefaultLocalBookParseLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(catalog.Chapters) != len(tt.titles) {
+				t.Fatalf("chapter count = %d, want %d", len(catalog.Chapters), len(tt.titles))
+			}
+			for index, want := range tt.titles {
+				if got := catalog.Chapters[index].Title; got != want {
+					t.Fatalf("chapter %d title = %q, want %q", index, got, want)
+				}
+				if strings.Contains(catalog.Chapters[index].Title, "正文标题") {
+					t.Fatalf("body heading leaked into catalogue title: %+v", catalog.Chapters[index])
+				}
+			}
+		})
+	}
+}
+
 func TestParseEPUBRetainsFirstImageOnlyTitlepageAsCover(t *testing.T) {
 	var buffer bytes.Buffer
 	zipWriter := zip.NewWriter(&buffer)
@@ -437,7 +497,7 @@ func TestParseEPUBRetainsFirstImageOnlyTitlepageAsCover(t *testing.T) {
   <spine><itemref idref="cover"/><itemref idref="chapter"/></spine>
 </package>`)
 	writeZipFile(t, zipWriter, "OPS/titlepage.xhtml", `<html><body><img src="images/cover.svg" alt="封面"/></body></html>`)
-	writeZipFile(t, zipWriter, "OPS/chapter.xhtml", `<html><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OPS/chapter.xhtml", `<html><head><title>第一章</title></head><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
 	writeZipFile(t, zipWriter, "OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`)
 	if err := zipWriter.Close(); err != nil {
 		t.Fatal(err)
@@ -564,8 +624,8 @@ func testEPUBWithNav(t *testing.T) []byte {
 	writeZipFile(t, zipWriter, "OEBPS/nav.xhtml", `<html><body><nav epub:type="toc">
   <ol><li><a href="text/two.xhtml#start">目录二</a></li><li><a href="text/one.xhtml">目录一</a></li></ol>
 </nav></body></html>`)
-	writeZipFile(t, zipWriter, "OEBPS/text/one.xhtml", `<html><body><h1>正文一</h1><p>第一章内容。</p></body></html>`)
-	writeZipFile(t, zipWriter, "OEBPS/text/two.xhtml", `<html><body><h1>正文二</h1><p>第二章内容。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OEBPS/text/one.xhtml", `<html><head><title>文档标题一</title></head><body><h1>正文标题一</h1><p>第一章内容。</p></body></html>`)
+	writeZipFile(t, zipWriter, "OEBPS/text/two.xhtml", `<html><head><title>文档标题二</title></head><body><h1>正文标题二</h1><p>第二章内容。</p></body></html>`)
 	if err := zipWriter.Close(); err != nil {
 		t.Fatal(err)
 	}

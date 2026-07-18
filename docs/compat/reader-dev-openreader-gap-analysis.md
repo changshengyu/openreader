@@ -2366,3 +2366,17 @@ the same scoped user settings through their established backend contracts.
 - 普通书首章被不必要的 book 详情请求阻塞；EPUB 每个子资源又在全局锁内重新 SHA-256 整本归档。
 
 以上均进入 `must-fix`，但 EPUB 优化必须保留 capability 指纹、用户所有权、归档路径和有界解压安全边界。合同完成后才允许添加失败测试并修改应用代码。
+
+## 2026-07-18 EPUB 导入与首次阅读性能复审
+
+固定上游的 lazy-resource、六种目录规则、确认导入和首次解压数据流已经记录在
+[`epub-import-first-read-performance-contract.md`](epub-import-first-read-performance-contract.md)。
+当前预览无条件物化所有 spine 正文、标题回退误用 `h1/h2`、首次 Reader 再次哈希/解压整本
+archive，以及单章 cache miss 重跑整本 parser，均为 `must-fix`。允许在确认导入期提前准备
+有界、caller-owned 的 immutable extraction，但必须保留 ZIP 限制、SHA-256 capability 绑定、
+事务补偿和旧 volume 惰性升级。
+
+实施结果：本批已拆分 catalogue/materialize，恢复上游 `<title>` 回退，确认导入预热受限 extraction，
+完整 marker 快路径避免重复 SHA-256，且 EPUB 单章 cache miss 只读取当前已验证 resource。全量后端、
+426 项前端测试、生产构建、三视口 EPUB/导入 smoke 及历史 Docker volume/backup smoke 均通过。
+跨 resource 章节的可见正文与纯文本合并仍保留为后续 `must-fix`，本批不宣称 EPUB 全量对齐。

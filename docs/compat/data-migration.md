@@ -372,6 +372,29 @@ library/<Book.LibraryPath>/.epub-resources/<source-fingerprint>/
 - Missing derived directory: rebuild transparently from `OriginalFile`.
 - Missing/corrupt source EPUB: preserve all database rows and plain-text caches; return a reader error instead of deleting/reimporting the book.
 - Backup/restore and WebDAV: the existing original EPUB and metadata remain sufficient. Derived `.epub-resources/` need not be present in a backup to recover the book.
+
+### EPUB catalogue-only preview and prepared extraction compatibility (2026-07-18)
+
+- The staged `<token>.parsed.json` remains versioned plain JSON at the same user-scoped cache path. A new
+  EPUB snapshot may omit chapter `content` while retaining title/order/resource/fragment metadata. An older
+  full-content EPUB snapshot is still valid input to confirmation; absence of body content is not an invalid
+  token and does not require a browser re-upload.
+- New EPUB confirmation may create `.epub-resources/<sha256>/` under the newly allocated book archive before
+  committing its SQLite rows. This is derived data at the existing location, not a new mounted root or backup
+  requirement. If extraction or transaction work fails, the existing new-archive compensation removes that
+  whole allocation; no old archive or mounted LocalStore/WebDAV source is modified.
+- A complete extraction marker continues to record the SHA-256 fingerprint plus archived source size and
+  modification time. Matching size/mtime can select this process-created immutable extraction without hashing
+  again; a changed source identity, malformed marker, missing resource, or old marker falls back to the existing
+  bounded SHA-256 and atomic rebuild path.
+- Old books with no extraction, an old plain-fingerprint marker, missing chapter cache, or missing fragment
+  columns remain lazy-readable. EPUB chapter cache recovery must derive only the requested chapter from the
+  verified resource tree; it must not rewrite unrelated rows or require a destructive migration.
+
+Evidence completed 2026-07-18: old/new parsed snapshot confirmation, failed-confirm compensation, old marker and
+no-marker fixtures, source-replacement capability invalidation, full backend tests, and the local
+`HISTORICAL_VOLUME=1` mounted-volume/portable-backup smoke. The source EPUB remains authoritative; derived
+extraction may always be deleted and rebuilt.
 - Docker volumes: all new files remain under the existing `library/` mount. No new volume is introduced.
 
 ### Required migration evidence

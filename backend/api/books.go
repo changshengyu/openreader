@@ -2651,6 +2651,13 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 	if !archiveOK {
 		return ""
 	}
+	if epubreader.IsLocalEPUB(book) {
+		content, err := s.epubReader.ReadChapterText(book, chapter)
+		if err != nil || strings.TrimSpace(content) == "" {
+			return ""
+		}
+		return s.persistRebuiltLocalChapterText(book, chapter, archiveRoot, content)
+	}
 	sourcePath, ok := s.localBookSourcePath(book)
 	if !ok {
 		return ""
@@ -2667,7 +2674,10 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 	if content == "" {
 		return ""
 	}
+	return s.persistRebuiltLocalChapterText(book, chapter, archiveRoot, content)
+}
 
+func (s *Server) persistRebuiltLocalChapterText(book models.Book, chapter *models.Chapter, archiveRoot, content string) string {
 	chapterURL := strings.TrimSpace(chapter.URL)
 	if chapterURL == "" {
 		chapterURL = fmt.Sprintf("local://book_%d/chapter_%d", book.ID, chapter.Index)

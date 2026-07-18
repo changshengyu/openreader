@@ -201,6 +201,28 @@ func findDocumentElementByID(root *goquery.Selection, id string) *goquery.Select
 	}).First()
 }
 
+func extractDocumentPlainText(data []byte, startFragment, endFragment string) (string, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("%w: invalid XHTML document", ErrInvalidArchive)
+	}
+	sliceDocumentToFragments(doc, startFragment, endFragment)
+	doc.Find("script, style, nav").Remove()
+	lines := make([]string, 0)
+	doc.Find("h1, h2, h3, p, li, blockquote").Each(func(_ int, selection *goquery.Selection) {
+		text := strings.Join(strings.Fields(selection.Text()), " ")
+		if text != "" {
+			lines = append(lines, text)
+		}
+	})
+	if len(lines) == 0 {
+		if text := strings.Join(strings.Fields(doc.Find("body").Text()), " "); text != "" {
+			lines = append(lines, text)
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n")), nil
+}
+
 func documentCSP() string {
 	sum := sha256.Sum256([]byte(epubBridgeScript))
 	hash := base64.StdEncoding.EncodeToString(sum[:])

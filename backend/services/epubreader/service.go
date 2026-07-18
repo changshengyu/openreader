@@ -80,6 +80,22 @@ func IsLocalEPUB(book models.Book) bool {
 	return false
 }
 
+// PrepareBookResources eagerly creates the same bounded immutable extraction
+// that PrepareChapter would otherwise build on the first Reader request. Local
+// import calls this only for a newly allocated caller-owned archive, so a later
+// database failure can compensate by deleting that whole archive directory.
+func (s *Service) PrepareBookResources(book models.Book) error {
+	if !IsLocalEPUB(book) {
+		return ErrNotEPUB
+	}
+	sourcePath, bookRoot, err := s.sourcePath(book)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.ensureExtraction(sourcePath, bookRoot)
+	return err
+}
+
 func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (PreparedChapter, error) {
 	if chapter == nil || chapter.BookID != book.ID || !IsLocalEPUB(book) {
 		return PreparedChapter{}, ErrNotEPUB
@@ -131,7 +147,16 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 		s.backfillArchivedChapter(book, chapter.Index, resourcePath, resourceFragment, resourceEndFragment)
 	}
 	if _, err := s.resourceFile(extractionRoot, resourcePath); err != nil {
-		return PreparedChapter{}, err
+		if !errors.Is(err, ErrNotFound) {
+			return PreparedChapter{}, err
+		}
+		fingerprint, extractionRoot, err = s.rebuildExtraction(sourcePath, bookRoot)
+		if err != nil {
+			return PreparedChapter{}, err
+		}
+		if _, err := s.resourceFile(extractionRoot, resourcePath); err != nil {
+			return PreparedChapter{}, err
+		}
 	}
 
 	expiresAt := s.now().UTC().Add(resourceCapabilityTTL)
@@ -156,6 +181,52 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 		ResourceURL: resourceURL,
 		ExpiresAt:   expiresAt,
 	}, nil
+}
+
+// ReadChapterText rebuilds only the requested EPUB chapter's searchable text
+// from the verified immutable extraction. It is used when an old or manually
+// cleared chapter cache is missing; unlike the legacy recovery path it does not
+// parse every spine resource in the source archive.
+func (s *Service) ReadChapterText(book models.Book, chapter *models.Chapter) (string, error) {
+	if _, err := s.PrepareChapter(book, chapter); err != nil {
+		return "", err
+	}
+	sourcePath, bookRoot, err := s.sourcePath(book)
+	if err != nil {
+		return "", err
+	}
+	_, extractionRoot, err := s.ensureExtraction(sourcePath, bookRoot)
+	if err != nil {
+		return "", err
+	}
+	resourcePath, err := normalizeArchivePath(strings.TrimSpace(chapter.ResourcePath))
+	if err != nil || resourcePath == "" {
+		return "", ErrUnsafePath
+	}
+	filePath, err := s.resourceFile(extractionRoot, resourcePath)
+	if err != nil {
+		return "", err
+	}
+	contentType, document, ok := resourceMediaType(resourcePath)
+	if !ok || !document || !strings.Contains(contentType, "html") {
+		return "", ErrUnsupportedMedia
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxDocumentBytes {
+		return "", ErrExtractionLimit
+	}
+	return extractDocumentPlainText(data, chapter.ResourceFragment, chapter.ResourceEndFragment)
 }
 
 func (s *Service) OpenResource(capability, requestedPath string) (Resource, error) {
@@ -213,6 +284,17 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 		return Resource{}, ErrUnsafePath
 	}
 	filePath, err := s.resourceFile(extractionRoot, resourcePath)
+	if errors.Is(err, ErrNotFound) && sourcePath != "" {
+		fingerprint, rebuiltRoot, rebuildErr := s.rebuildExtraction(sourcePath, bookRoot)
+		if rebuildErr != nil {
+			return Resource{}, rebuildErr
+		}
+		if !strings.EqualFold(fingerprint, claims.Fingerprint) {
+			return Resource{}, ErrInvalidCapability
+		}
+		extractionRoot = rebuiltRoot
+		filePath, err = s.resourceFile(extractionRoot, resourcePath)
+	}
 	if err != nil {
 		return Resource{}, err
 	}
@@ -353,10 +435,23 @@ func validEPUBSource(candidate, libraryRoot, bookRoot string) bool {
 }
 
 func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string, error) {
+	return s.ensureExtractionMode(sourcePath, bookRoot, false)
+}
+
+func (s *Service) rebuildExtraction(sourcePath, bookRoot string) (string, string, error) {
+	return s.ensureExtractionMode(sourcePath, bookRoot, true)
+}
+
+func (s *Service) ensureExtractionMode(sourcePath, bookRoot string, forceRebuild bool) (string, string, error) {
 	lockValue, _ := s.extractLocks.LoadOrStore(sourcePath, &sync.Mutex{})
 	lock := lockValue.(*sync.Mutex)
 	lock.Lock()
 	defer lock.Unlock()
+	if !forceRebuild {
+		if fingerprint, extractionRoot, ok := s.reusableExtraction(sourcePath, bookRoot); ok {
+			return fingerprint, extractionRoot, nil
+		}
+	}
 
 	fingerprint, err := s.fingerprint(sourcePath)
 	if err != nil {
@@ -372,10 +467,12 @@ func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string,
 	}
 	marker := filepath.Join(finalRoot, extractionMarkerName)
 	if current, err := readExtractionMarker(marker); err == nil && current.Fingerprint == fingerprint {
-		if current.Size == 0 || current.ModTimeNano == 0 {
-			_ = writeExtractionMarker(marker, fingerprint, sourcePath)
+		if !forceRebuild {
+			if current.Size == 0 || current.ModTimeNano == 0 {
+				_ = writeExtractionMarker(marker, fingerprint, sourcePath)
+			}
+			return fingerprint, finalRoot, nil
 		}
-		return fingerprint, finalRoot, nil
 	}
 	if err := os.RemoveAll(finalRoot); err != nil {
 		return "", "", err
@@ -401,6 +498,45 @@ func (s *Service) ensureExtraction(sourcePath, bookRoot string) (string, string,
 		return "", "", err
 	}
 	return fingerprint, finalRoot, nil
+}
+
+func (s *Service) reusableExtraction(sourcePath, bookRoot string) (string, string, bool) {
+	info, err := os.Stat(sourcePath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", "", false
+	}
+	parent, err := joinUnder(bookRoot, extractionDirectoryName)
+	if err != nil {
+		return "", "", false
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return "", "", false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		fingerprint := strings.ToLower(strings.TrimSpace(entry.Name()))
+		if len(fingerprint) != sha256.Size*2 {
+			continue
+		}
+		if _, err := hex.DecodeString(fingerprint); err != nil {
+			continue
+		}
+		extractionRoot, err := joinUnder(parent, fingerprint)
+		if err != nil {
+			continue
+		}
+		marker, err := readExtractionMarker(filepath.Join(extractionRoot, extractionMarkerName))
+		if err != nil || marker.Fingerprint != fingerprint || marker.Size <= 0 || marker.ModTimeNano == 0 {
+			continue
+		}
+		if marker.Size == info.Size() && marker.ModTimeNano == info.ModTime().UnixNano() {
+			return fingerprint, extractionRoot, true
+		}
+	}
+	return "", "", false
 }
 
 func (s *Service) extractionForFingerprint(bookRoot, fingerprint string) (string, error) {

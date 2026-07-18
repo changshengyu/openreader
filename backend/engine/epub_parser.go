@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 )
 
 type ParsedBook struct {
@@ -76,6 +77,18 @@ func ParseEPUBWithRule(data []byte, rule string) (ParsedBook, error) {
 }
 
 func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) (ParsedBook, error) {
+	catalog, err := ParseEPUBCatalogWithLimits(data, rule, limits)
+	if err != nil {
+		return ParsedBook{}, err
+	}
+	return MaterializeEPUBCatalogWithLimits(data, catalog, limits)
+}
+
+// ParseEPUBCatalogWithLimits reads only the package/catalogue metadata and the
+// document <title> fallback required by reader-dev. It intentionally leaves
+// chapter Content empty so upload preview and rule refresh do not build DOMs or
+// serialize the whole book body before the user confirms the import.
+func ParseEPUBCatalogWithLimits(data []byte, rule string, limits LocalBookParseLimits) (ParsedBook, error) {
 	limits = limits.normalized()
 	reader, err := openEPUBArchive(data, limits)
 	if err != nil {
@@ -110,26 +123,24 @@ func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) 
 	if baseDir == "." {
 		baseDir = ""
 	}
+	tocEntries := epubTOCEntries(reader, pkg, manifest, baseDir, limits.MaxArchiveEntryBytes)
 
 	spineChapters := make([]epubChapter, 0, len(pkg.Spine.ItemRefs))
-	var parsedTextBytes int64
 	for spineIndex, ref := range pkg.Spine.ItemRefs {
 		item, ok := manifest[ref.IDRef]
 		if !ok || !isReadableEPUBItem(item.MediaType) {
 			continue
 		}
 
-		href, err := url.PathUnescape(item.Href)
-		if err != nil {
-			href = item.Href
-		}
-		chapterPath := path.Clean(path.Join(baseDir, href))
-		chapterBytes, err := readEPUBZipFile(reader, chapterPath, limits.MaxArchiveEntryBytes)
+		chapterPath := resolveEPUBPath(baseDir, item.Href)
+		chapterPath, err = normalizeEPUBArchivePath(chapterPath)
 		if err != nil {
 			continue
 		}
-
-		title, content := extractEPUBChapter(chapterBytes)
+		title, err := readEPUBDocumentTitle(reader, chapterPath, limits.MaxArchiveEntryBytes)
+		if err != nil {
+			continue
+		}
 		// reader-dev keeps every readable spine resource. In particular, its
 		// first title-less resource is the cover page, even when the XHTML has
 		// only an image and therefore has no extractable text. Keep that
@@ -138,24 +149,71 @@ func ParseEPUBWithLimits(data []byte, rule string, limits LocalBookParseLimits) 
 		if spineIndex == 0 && strings.TrimSpace(title) == "" {
 			title = "封面"
 		}
-		if int64(len(content)) > limits.MaxParsedTextBytes-parsedTextBytes {
-			return ParsedBook{}, fmt.Errorf("%w: EPUB extracted text exceeds the limit", ErrLocalBookParseLimit)
-		}
-		parsedTextBytes += int64(len(content))
 		spineChapters = append(spineChapters, epubChapter{
-			Path:    canonicalEPUBPath(chapterPath),
-			Title:   title,
-			Content: content,
-			Data:    chapterBytes,
+			Path:  canonicalEPUBPath(chapterPath),
+			Title: title,
 		})
 	}
 
 	if len(spineChapters) == 0 {
 		return ParsedBook{}, errors.New("no readable epub chapters found")
 	}
-	tocEntries := epubTOCEntries(reader, pkg, manifest, baseDir, limits.MaxArchiveEntryBytes)
 	book.Chapters = buildEPUBChapters(spineChapters, tocEntries, rule)
 	return book, nil
+}
+
+// MaterializeEPUBCatalogWithLimits fills searchable chapter text for an
+// already validated catalogue. Every unique XHTML resource is decompressed
+// once per call, while separate fragment chapters retain their own boundaries.
+// The catalogue order/title is authoritative because staged snapshots are
+// bound to the exact source SHA-256 and TOC rule before this function is used.
+func MaterializeEPUBCatalogWithLimits(data []byte, catalog ParsedBook, limits LocalBookParseLimits) (ParsedBook, error) {
+	limits = limits.normalized()
+	reader, err := openEPUBArchive(data, limits)
+	if err != nil {
+		return ParsedBook{}, err
+	}
+	result := catalog
+	result.Chapters = append([]TXTChapter(nil), catalog.Chapters...)
+	indexesByPath := make(map[string][]int, len(result.Chapters))
+	pathOrder := make([]string, 0, len(result.Chapters))
+	for index, chapter := range result.Chapters {
+		resourcePath, err := normalizeEPUBArchivePath(strings.TrimSpace(chapter.ResourcePath))
+		if err != nil || resourcePath == "" {
+			return ParsedBook{}, fmt.Errorf("%w: invalid EPUB chapter resource path", ErrLocalBookParseLimit)
+		}
+		result.Chapters[index].ResourcePath = resourcePath
+		if _, exists := indexesByPath[resourcePath]; !exists {
+			pathOrder = append(pathOrder, resourcePath)
+		}
+		indexesByPath[resourcePath] = append(indexesByPath[resourcePath], index)
+	}
+
+	var parsedTextBytes int64
+	for _, resourcePath := range pathOrder {
+		chapterBytes, err := readEPUBZipFile(reader, resourcePath, limits.MaxArchiveEntryBytes)
+		if err != nil {
+			return ParsedBook{}, err
+		}
+		doc, err := goquery.NewDocumentFromReader(bytes.NewReader(chapterBytes))
+		if err != nil {
+			return ParsedBook{}, fmt.Errorf("invalid EPUB chapter document: %w", err)
+		}
+		for _, index := range indexesByPath[resourcePath] {
+			chapter := &result.Chapters[index]
+			content := strings.TrimSpace(extractEPUBChapterRangeFromDocument(
+				doc,
+				chapter.ResourceFragment,
+				chapter.ResourceEndFragment,
+			))
+			if int64(len(content)) > limits.MaxParsedTextBytes-parsedTextBytes {
+				return ParsedBook{}, fmt.Errorf("%w: EPUB extracted text exceeds the limit", ErrLocalBookParseLimit)
+			}
+			parsedTextBytes += int64(len(content))
+			chapter.Content = content
+		}
+	}
+	return result, nil
 }
 
 func buildEPUBChapters(spine []epubChapter, toc []epubTOCEntry, rule string) []TXTChapter {
@@ -472,6 +530,54 @@ func epubOPFPath(reader *zip.Reader, limits LocalBookParseLimits) (string, error
 	return "", errors.New("missing opf rootfile")
 }
 
+func readEPUBDocumentTitle(reader *zip.Reader, name string, maxBytes int64) (string, error) {
+	for _, file := range reader.File {
+		canonical, err := normalizeEPUBArchivePath(file.Name)
+		if err != nil {
+			return "", err
+		}
+		if canonical != name {
+			continue
+		}
+		opened, err := file.Open()
+		if err != nil {
+			return "", err
+		}
+		defer opened.Close()
+		limited := &io.LimitedReader{R: opened, N: maxBytes + 1}
+		tokenizer := html.NewTokenizer(limited)
+		insideTitle := false
+		var title strings.Builder
+		for {
+			switch tokenizer.Next() {
+			case html.ErrorToken:
+				if limited.N <= 0 {
+					return "", fmt.Errorf("%w: EPUB entry exceeds the limit", ErrLocalBookParseLimit)
+				}
+				if err := tokenizer.Err(); err != nil && !errors.Is(err, io.EOF) {
+					return "", err
+				}
+				return strings.Join(strings.Fields(title.String()), " "), nil
+			case html.StartTagToken:
+				token := tokenizer.Token()
+				if strings.EqualFold(token.Data, "title") {
+					insideTitle = true
+				}
+			case html.TextToken:
+				if insideTitle {
+					title.Write(tokenizer.Text())
+				}
+			case html.EndTagToken:
+				token := tokenizer.Token()
+				if insideTitle && strings.EqualFold(token.Data, "title") {
+					return strings.Join(strings.Fields(title.String()), " "), nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("zip file not found: %s", name)
+}
+
 func readEPUBZipFile(reader *zip.Reader, name string, maxBytes int64) ([]byte, error) {
 	for _, file := range reader.File {
 		canonical, err := normalizeEPUBArchivePath(file.Name)
@@ -587,15 +693,31 @@ func extractEPUBChapter(data []byte) (string, string) {
 }
 
 func extractEPUBChapterRange(data []byte, startFragment, endFragment string) string {
-	if startFragment == "" && endFragment == "" {
-		_, content := extractEPUBChapter(data)
-		return content
-	}
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(data))
 	if err != nil {
 		return ""
 	}
-	body := doc.Find("body").First()
+	return extractEPUBChapterRangeFromDocument(doc, startFragment, endFragment)
+}
+
+// extractEPUBChapterRangeFromDocument clones the already parsed resource before
+// applying fragment slicing and text cleanup. A resource shared by multiple TOC
+// fragments therefore incurs one HTML parse while each chapter keeps an
+// isolated mutable tree and the existing fragment semantics.
+func extractEPUBChapterRangeFromDocument(doc *goquery.Document, startFragment, endFragment string) string {
+	if doc == nil || doc.Selection == nil {
+		return ""
+	}
+	cloned := doc.Selection.Clone()
+	if cloned.Length() == 0 {
+		return ""
+	}
+	chapterDoc := goquery.NewDocumentFromNode(cloned.Get(0))
+	if startFragment == "" && endFragment == "" {
+		_, content := extractEPUBChapterDocument(chapterDoc)
+		return content
+	}
+	body := chapterDoc.Find("body").First()
 	if body.Length() == 0 {
 		return ""
 	}
@@ -608,7 +730,7 @@ func extractEPUBChapterRange(data []byte, startFragment, endFragment string) str
 			end.Remove()
 		}
 	}
-	_, content := extractEPUBChapterDocument(doc)
+	_, content := extractEPUBChapterDocument(chapterDoc)
 	return content
 }
 

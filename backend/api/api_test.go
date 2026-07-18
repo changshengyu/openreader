@@ -6743,6 +6743,15 @@ func TestDirectEPUBImportAndRefreshUseTocRule(t *testing.T) {
 	if chapters[0].ResourcePath != "OPS/one.xhtml" || chapters[1].ResourcePath != "OPS/two.xhtml" {
 		t.Fatalf("epub resource paths were not imported: %+v", chapters)
 	}
+	firstCachePath := filepath.Join(server.cfg.LibraryDir, book.LibraryPath, chapters[0].CachePath)
+	if err := os.Remove(firstCachePath); err != nil {
+		t.Fatalf("remove first EPUB chapter cache: %v", err)
+	}
+	secondCachePath := filepath.Join(server.cfg.LibraryDir, book.LibraryPath, chapters[1].CachePath)
+	secondCacheBefore, err := os.ReadFile(secondCachePath)
+	if err != nil {
+		t.Fatalf("read neighboring EPUB chapter cache: %v", err)
+	}
 
 	contentReq := httptest.NewRequest(
 		http.MethodGet,
@@ -6770,6 +6779,23 @@ func TestDirectEPUBImportAndRefreshUseTocRule(t *testing.T) {
 	}
 	if !strings.Contains(contentResponse.Content, "内容一") || contentResponse.Chapter.ResourcePath != "OPS/one.xhtml" {
 		t.Fatalf("epub response lost text/resource path: %+v", contentResponse)
+	}
+	var rebuiltChapter models.Chapter
+	if err := server.db.First(&rebuiltChapter, chapters[0].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rebuiltChapter.CachePath == "" {
+		t.Fatal("missing EPUB chapter cache was not rebuilt")
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.LibraryDir, book.LibraryPath, rebuiltChapter.CachePath)); err != nil {
+		t.Fatalf("rebuilt EPUB chapter cache: %v", err)
+	}
+	secondCacheAfter, err := os.ReadFile(secondCachePath)
+	if err != nil {
+		t.Fatalf("read neighboring EPUB chapter cache after recovery: %v", err)
+	}
+	if !bytes.Equal(secondCacheAfter, secondCacheBefore) {
+		t.Fatal("single-chapter EPUB recovery rewrote the neighboring chapter cache")
 	}
 	if strings.Contains(contentResponse.ResourceURL, strings.TrimPrefix(token, "Bearer ")) {
 		t.Fatal("resource URL leaked the login JWT")
@@ -7435,7 +7461,7 @@ func testEPUBArchiveWithBody(t *testing.T, firstChapterBody string) []byte {
   <spine><itemref idref="one"/><itemref idref="two"/></spine>
 </package>`)
 	write("OPS/nav.xhtml", `<html><body><nav epub:type="toc"><a href="two.xhtml">目录二</a><a href="one.xhtml">目录一</a></nav></body></html>`)
-	write("OPS/one.xhtml", `<html><head>
+	write("OPS/one.xhtml", `<html><head><title>正文一</title>
   <link rel="stylesheet" href="styles/book.css"/>
   <script id="epub-authored-script">window.evil = true</script>
 </head><body>
@@ -7445,7 +7471,7 @@ func testEPUBArchiveWithBody(t *testing.T, firstChapterBody string) []byte {
   <a href="#start">页内链接</a>
   <a href="two.xhtml">下一章</a>
 </body></html>`)
-	write("OPS/two.xhtml", `<html><body><h1>正文二</h1><p>内容二。</p><a href="one.xhtml">上一章</a></body></html>`)
+	write("OPS/two.xhtml", `<html><head><title>正文二</title></head><body><h1>正文二</h1><p>内容二。</p><a href="one.xhtml">上一章</a></body></html>`)
 	write("OPS/styles/book.css", `body { color: rgb(12, 34, 56); }`)
 	write("OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20"/></svg>`)
 	write("OPS/scripts/evil.js", `window.epubAuthoredScript = true`)
@@ -7479,7 +7505,7 @@ func testEPUBArchiveWithImageOnlyTitlepage(t *testing.T) []byte {
   <spine><itemref idref="cover"/><itemref idref="chapter"/></spine>
 </package>`)
 	write("OPS/titlepage.xhtml", `<html><body><img src="images/cover.svg" alt="封面"/></body></html>`)
-	write("OPS/chapter.xhtml", `<html><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
+	write("OPS/chapter.xhtml", `<html><head><title>第一章</title></head><body><h1>第一章</h1><p>第一章正文。</p></body></html>`)
 	write("OPS/images/cover.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)

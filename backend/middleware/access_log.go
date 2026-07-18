@@ -29,6 +29,9 @@ func AccessLogger() gin.HandlerFunc {
 }
 
 func RedactAccessPath(requestPath string) string {
+	if strings.HasPrefix(requestPath, "/ws/sync?") {
+		return "/ws/sync?<redacted>"
+	}
 	for _, prefix := range capabilityResourceLogPrefixes {
 		index := strings.Index(requestPath, prefix)
 		if index < 0 {

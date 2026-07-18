@@ -161,6 +161,33 @@ Evidence: `backend/api/api_test.go`,
 `scripts/smoke/local-book-import-contract.mjs` at 1440x900, 390x844 and
 360x800.
 
+## EPUB catalogue/prepared-extraction performance review (2026-07-18)
+
+- [x] Catalogue-only preview validates every central-directory path, duplicate, symlink, entry count,
+  per-entry size and total expanded size before trusting OPF/NAV/NCX metadata; skipping body materialization
+  must not skip archive-bomb validation.
+- [x] A new prepared extraction is written only below the caller-owned newly allocated library archive, via a
+  sibling temporary directory and atomic rename. Failed import compensation cannot select or remove an old book,
+  mounted LocalStore/WebDAV source, or another user's directory.
+- [x] The extraction marker fast path accepts only a valid SHA-256 fingerprint and exact regular-source
+  size/mtime match. Any mismatch, corrupt marker, missing resource or source replacement falls back to bounded
+  hashing/rebuild and invalidates capabilities for the old archive identity.
+- [x] Catalogue-only and legacy full-content parsed snapshots share the existing owner/token/rule/source-hash
+  checks and deserialization bounds. Empty EPUB body fields are never interpreted as authority to read a request
+  path or another user's source.
+- [x] One-chapter EPUB text recovery uses only normalized persisted archive paths/fragments below the verified
+  extraction root, remains bounded by document/text limits, and never logs a capability, stage token, host path
+  or EPUB body.
+- [x] The real-browser gate must not print the WebSocket login JWT. `/ws/sync?token=...` remains a transport
+  compatibility path, but access logging renders its entire query as `<redacted>` while leaving the actual
+  request available to authentication middleware.
+
+Evidence: `backend/engine/parser_test.go`, `backend/services/localbook/importer_test.go`,
+`backend/services/epubreader/resource_runtime_test.go`, `backend/api/api_test.go`,
+`backend/middleware/access_log_test.go`, full backend tests, both three-viewport EPUB/import browser smokes, and
+the local `HISTORICAL_VOLUME=1` Docker volume/portable-backup smoke. Archive-policy failures are returned through
+a client-safe parse error while host storage failures remain generic server errors.
+
 ## P2 backup restore follow-up
 
 - [x] Multipart and WebDAV backup restore enforce one compressed input bound before an allocation or restore mutation.

@@ -22,3 +22,13 @@ func TestRedactAccessPathHidesEPUBCapability(t *testing.T) {
 		t.Fatal("ordinary API path should remain unchanged")
 	}
 }
+
+func TestRedactAccessPathHidesWebSocketLoginToken(t *testing.T) {
+	input := "/ws/sync?token=secret.login.jwt&clientId=reader"
+	if got := RedactAccessPath(input); got != "/ws/sync?<redacted>" {
+		t.Fatalf("redacted websocket path = %q", got)
+	}
+	if got := RedactAccessPath("/ws/sync"); got != "/ws/sync" {
+		t.Fatalf("websocket path without query = %q", got)
+	}
+}
