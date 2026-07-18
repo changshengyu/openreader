@@ -291,6 +291,73 @@ async function assertRuntimeConfiguredPageDuration(browser) {
   await context.close()
 }
 
+async function assertMobilePageAnimationCadence(browser, viewport) {
+  const { context, page } = await openReader(browser, viewport, 'page', 300)
+  const targetTop = viewport.height - 72
+  await page.evaluate(() => {
+    const content = document.querySelector('.reader-content')
+    content.scrollTop = 0
+    const samples = []
+    const startedAt = performance.now()
+    window.__openReaderMotionSamples = samples
+    const sample = (timestamp) => {
+      samples.push({ at: timestamp - startedAt, top: content.scrollTop })
+      if (timestamp - startedAt < 430) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await page.waitForTimeout(480)
+  const samples = await page.evaluate(() => window.__openReaderMotionSamples || [])
+  const moving = samples.filter(sample => (
+    sample.top > targetTop * 0.03 && sample.top < targetTop * 0.97
+  ))
+  assert(moving.length >= 8, `${viewport.width}: page animation exposed too few moving frames (${moving.length})`)
+  for (let index = 1; index < moving.length; index += 1) {
+    assert(
+      moving[index].top >= moving[index - 1].top,
+      `${viewport.width}: page animation moved backwards at sample ${index}`,
+    )
+  }
+  const distinctPositions = new Set(moving.map(sample => Math.round(sample.top * 10))).size
+  assert(
+    distinctPositions >= Math.min(8, moving.length),
+    `${viewport.width}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
+  )
+  close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}: sampled page animation`)
+  await context.close()
+}
+
+async function assertMobileChapterEndPrompt(browser, viewport) {
+  const { context, page } = await openReader(browser, viewport, 'page', 0)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-top.visible'))
+
+  const prompt = page.locator('.reader-chapter-end')
+  await prompt.waitFor({ state: 'attached' })
+  await page.locator('.reader-content').evaluate(element => {
+    element.scrollTop = element.scrollHeight
+  })
+  await prompt.tap()
+  await page.waitForURL(/chapter=1(?:&|$)/)
+  await page.waitForFunction(() => document.querySelector('.reader-body h3')?.textContent?.includes('第2章'))
+
+  await page.locator('.reader-content').evaluate(element => {
+    element.scrollTop = element.scrollHeight
+  })
+  await prompt.tap()
+  await page.waitForURL(/chapter=2(?:&|$)/)
+  await page.waitForFunction(() => document.querySelector('.reader-body h3')?.textContent?.includes('第3章'))
+
+  await page.locator('.reader-content').evaluate(element => {
+    element.scrollTop = element.scrollHeight
+  })
+  await prompt.tap()
+  await page.waitForFunction(() => document.querySelector('.reader-toast')?.textContent?.includes('本章是最后一章'))
+  assert(new URL(page.url()).searchParams.get('chapter') === '2', `${viewport.width}: final prompt navigated out of range`)
+  await context.close()
+}
+
 async function main() {
   const browser = await openSmokeBrowser()
   try {
@@ -298,6 +365,8 @@ async function main() {
     for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }]) {
       await assertMobilePage(browser, viewport)
       await assertMobileFlip(browser, viewport)
+      await assertMobilePageAnimationCadence(browser, viewport)
+      await assertMobileChapterEndPrompt(browser, viewport)
     }
     await assertConfiguredPageDuration(browser)
     await assertRuntimeConfiguredPageDuration(browser)

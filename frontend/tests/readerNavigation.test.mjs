@@ -104,6 +104,36 @@ test('scrolls vertical pages and schedules progress without changing chapters', 
   assert.deepEqual(fixture.navigated, [])
 })
 
+test('settles vertical synchronization only after the click animation finishes', async () => {
+  const settled = []
+  let finishAnimation
+  const fixture = createNavigation({
+    contentEl: ref({
+      scrollTop: 0,
+      scrollHeight: 3000,
+      clientHeight: 800,
+    }),
+    isVerticalRead: ref(true),
+    getMode: () => 'page',
+    onVerticalPageSettled: () => settled.push('settled'),
+    scrollAnimator: {
+      isActive: () => Boolean(finishAnimation),
+      scrollBy: (_element, _delta, _duration, onFinish) => {
+        finishAnimation = () => {
+          finishAnimation = null
+          onFinish()
+        }
+        return true
+      },
+    },
+  })
+
+  await fixture.navigation.nextPage()
+  assert.deepEqual(settled, [])
+  finishAnimation()
+  assert.deepEqual(settled, ['settled'])
+})
+
 test('rebuilds an explicitly selected loaded chapter before jumping in continuous mode', async () => {
   const calls = []
   const targetChapter = {

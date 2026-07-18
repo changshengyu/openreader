@@ -155,8 +155,12 @@ export function useReaderNavigation(options) {
           -options.scrollStep(),
           options.getAnimateDuration(),
           () => {
-            options.progressVersion.value += 1
-            options.scheduleProgressSave(60)
+            if (options.onVerticalPageSettled) {
+              options.onVerticalPageSettled()
+            } else {
+              options.progressVersion.value += 1
+              options.scheduleProgressSave(60)
+            }
           },
         )
         return
@@ -187,8 +191,12 @@ export function useReaderNavigation(options) {
           options.scrollStep(),
           options.getAnimateDuration(),
           () => {
-            options.progressVersion.value += 1
-            options.scheduleProgressSave(60)
+            if (options.onVerticalPageSettled) {
+              options.onVerticalPageSettled()
+            } else {
+              options.progressVersion.value += 1
+              options.scheduleProgressSave(60)
+            }
           },
         )
         return

@@ -72,3 +72,41 @@ test('does not persist the scroll event that starts a window transaction', () =>
   ])
   assert.equal(fixture.progressVersion.value, 3)
 })
+
+test('defers heavy scroll synchronization during page animation and settles it once', () => {
+  const pageAnimationActive = ref(true)
+  const scrollTop = ref(772)
+  const fixture = createController({
+    pageAnimationActive,
+    scrollPosition: () => scrollTop.value,
+  })
+
+  fixture.controller.handle()
+  fixture.controller.handle()
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.progressVersion.value, 3)
+
+  pageAnimationActive.value = false
+  assert.equal(fixture.controller.flush(), true)
+  assert.equal(fixture.controller.flush(), false)
+  fixture.controller.handle()
+  assert.equal(fixture.progressVersion.value, 4)
+  assert.deepEqual(fixture.calls, [
+    ['sync-chapter'],
+    ['extend-window'],
+    ['layout'],
+    ['local-progress'],
+    ['schedule', 500],
+  ])
+})
+
+test('settles a completed page animation even before its browser scroll event arrives', () => {
+  const fixture = createController({
+    pageAnimationActive: ref(false),
+    scrollPosition: () => 600,
+  })
+
+  assert.equal(fixture.controller.flush(), true)
+  assert.equal(fixture.controller.flush(), false)
+  assert.equal(fixture.progressVersion.value, 4)
+})

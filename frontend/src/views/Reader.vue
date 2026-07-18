@@ -185,6 +185,16 @@
             @image-load="handleReaderImageLoad"
             @retry-block="retryContinuousChapter"
           />
+          <button
+            v-if="showChapterEndPrompt"
+            class="reader-chapter-end"
+            type="button"
+            @click.stop="handleChapterEndNext"
+            @touchstart.stop
+            @touchend.stop
+          >
+            加载下一章
+          </button>
         </div>
       </article>
       <ReaderClickZones
@@ -892,11 +902,19 @@ const isVerticalRead = computed(() => isVerticalPagedRead.value || isScrollRead.
 const isContinuousScrollRead = computed(() => (
   !isAudioChapter.value && (effectiveReaderMode.value === 'scroll' || effectiveReaderMode.value === 'scroll2')
 ))
+const showChapterEndPrompt = computed(() => (
+  effectiveReaderMode.value === 'page'
+  && chapterLoaded.value
+  && !chapterLoading.value
+  && !chapterLoadError.value
+  && !isAudioChapter.value
+))
 const displayedChapterBlocks = computed(() => {
   if (chapterFormat.value === 'epub' || isAudioChapter.value) return []
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
 })
+let settleVerticalPageScroll = () => false
 const {
   activeChapterElement,
   captureReaderScrollAnchor,
@@ -1067,6 +1085,7 @@ const {
   navigate: query => router.replace(readerRouteLocation(query)),
   saveProgress: () => saveCurrentProgress(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
+  onVerticalPageSettled: () => settleVerticalPageScroll(),
 })
 onBeforeUnmount(cancelPageAnimation)
 const {
@@ -1493,6 +1512,7 @@ const {
   },
 })
 const {
+  flush: flushReaderScrollSync,
   handle: onScroll,
 } = useReaderScrollSync({
   isVerticalRead,
@@ -1505,7 +1525,10 @@ const {
   updateLayout: updateFlipLayout,
   applyLocalProgress: applyLocalProgressSnapshot,
   scheduleProgressSave,
+  pageAnimationActive: () => readerScrollAnimator.isActive(),
+  scrollPosition: () => contentEl.value?.scrollTop,
 })
+settleVerticalPageScroll = flushReaderScrollSync
 const {
   load: loadReaderBook,
 } = useReaderBookLoad({
@@ -2032,6 +2055,14 @@ function goAudioChapter(index) {
   return transition
 }
 
+function handleChapterEndNext() {
+  if (currentIndex.value >= chapters.value.length - 1) {
+    showReaderToast('本章是最后一章')
+    return
+  }
+  goChapter(currentIndex.value + 1)
+}
+
 function handleAudioEnded() {
   audioCurrentTime.value = Math.max(0, Number(audioDuration.value) || audioCurrentTime.value || 0)
   saveCurrentProgress({ force: true }).catch(() => {})
@@ -2138,6 +2169,26 @@ function readError(err, fallback) {
   scroll-padding-bottom: var(--reader-content-bottom-space);
 }
 .reader-body { transition: transform var(--reader-animate-duration, 180ms) ease; }
+.reader-chapter-end {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: 80%;
+  box-sizing: border-box;
+  margin: 25px auto 30px;
+  padding: 10px 40px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  text-align: center;
+}
+.reader-chapter-end:focus-visible {
+  outline: 2px solid #ed4259;
+  outline-offset: 2px;
+}
 .reader-shell.scroll .reader-body::after,
 .reader-shell.scroll2 .reader-body::after {
   content: "";
