@@ -912,7 +912,7 @@ Status: audit completed on 2026-07-10. This is a compatibility gate: implementat
 | Edit ownership | `BookEditDialog` is shared through `OverlayBookInfo`; Home and BookManage open it directly. | `partial`: structured edit is `acceptable-change`, but its preconditions, post-save shelf/reader/BookInfo synchronization and non-shelf prohibition need contract tests. |
 | Single/batch deletion | `bookshelf.removeBook` and `batchDeleteBooks` update local shelf/cache state after REST actions. Backend scopes all rows by user. | `partial`: retain the hardened backend cleanup, then add API and browser tests proving progress/bookmarks/categories/chapters/cache cleanup plus active overlay/reader handling. |
 | Book management shell | `OverlayBookManagement.vue` is a Drawer with desktop table and mobile card list. | `must-fix`: upstream ownership is a root workbench dialog (fullscreen on compact UI), not a side/bottom Drawer. Rebuild shell only; preserve the current shared controller and safe card/table rendering. |
-| Batch cache/export | Current controller adds batch cache/clear/JSON export and uses bounded REST operations instead of upstream SSE cancellation. | `unknown` pending exact cache-state audit: preserve Go resource limits, but either restore an explicit cancel/progress contract or record the bounded behavior as an approved security difference. |
+| Batch cache/export | Current controller adds batch cache/clear/JSON export and uses bounded REST operations beyond the upstream footer. | **2026-07-18 re-audited:** remove these controls from the visible BookManage footer; retain the deployed backend actions as an undocumented compatibility extension with their existing limits. Restore upstream per-book whole-catalogue server/browser cache, independent cancellation and TXT/EPUB-only menu. See [`book-management-cache-p2-contract.md`](book-management-cache-p2-contract.md). |
 | Group shell and data | `OverlayBookGroups.vue` is a Drawer; `useOverlayBookGroups` has correct set/manage modes, empty guard, visibility, sort and live BookInfo update. Categories are user-scoped rows/many-to-many relations. | `must-fix` for dialog/fullscreen-mobile shell; `aligned`/`acceptable-change` for controller and data model. |
 | Backend/API | Go routes map book/category operations to authenticated REST endpoints and broadcasts. | `acceptable-change` architecture, subject to action-by-action response/error/side-effect tests; no schema migration or endpoint rewrite is authorized solely for UI convergence. |
 
@@ -1037,12 +1037,19 @@ Status: implemented and parser/API-validated on 2026-07-11.
 
 ### P1-D4-B3 implementation record: streaming cache progress and cancellation
 
-Status: implemented and browser-validated on 2026-07-13.
+Status: implemented and browser-validated on 2026-07-13, then **reclassified as partial** by the
+2026-07-18 whole-BookManage re-audit. It restored one bounded stream but not the upstream whole-book,
+multi-book, browser-cancel, confirmation, visible-menu, or canonical-count contracts. The current
+required contract is [`book-management-cache-p2-contract.md`](book-management-cache-p2-contract.md).
 
 - **Authenticated stream contract.** `POST /books/:id/cache/stream` validates the same owner/bounded request as the legacy REST cache endpoint before opening `text/event-stream`. It emits a per-chapter `message`, terminal `end`, or client-safe terminal `error`. The legacy `/cache` endpoint remains for deployed clients and bounded batch cache operations remain an explicit OpenReader extension.
 - **Cancellation boundary.** The stream's request context is propagated into source content fetch and pagination. Browser `AbortController` cancellation or a client disconnect stops before scheduling another chapter fetch, retains only already completed cache files, and deliberately skips a final shelf-update broadcast for the incomplete operation.
 - **BookManage interaction.** The current remote book's cache button now becomes `停止 n/total`; activating it a second time aborts only that book's stream. Vue uses authenticated `fetch` SSE parsing rather than `EventSource`, so the JWT is never placed in a URL. A terminal stream error is surfaced through the existing BookManage error path; successful completion merges the returned shelf item.
 - **Evidence.** Go contracts cover success/progress/end, owner rejection before stream opening, total source failure/error and cancellation without next-chapter scheduling. Frontend contracts cover SSE framing/error handling plus active-book progress and stop behavior. The real-Chrome `book-management-dialog-contract.mjs` passed at 1440×900, 390×844 and 360×800: streamed completion reaches `已缓存 2/2 章`, BookManage remains mounted while BookInfo/BookGroup coexist, compact dialogs are fullscreen, panel clicks do not close the mobile sidebar, and no horizontal overflow is present.
+
+The evidence above remains valid for transport/cancellation mechanics only. It must not be used to
+claim product parity while the UI starts from reading progress, caps work at 20/100 chapters, owns one
+global task, omits browser cancellation and confirmations, or exposes non-upstream batch actions.
 
 ### 2026-07-16 P2 re-audit: BookManage / BookGroup real-API browser boundary
 
