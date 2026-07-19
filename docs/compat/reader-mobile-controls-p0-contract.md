@@ -25,7 +25,7 @@
 | 工具层状态 | `showToolBar` 初始为 `true`。上述工具按钮位于正文事件层之外；点击首页/顶部/底部不先隐藏工具层。 | 初始显示与主面板并存已一致；新增动作必须沿用当前不强制隐藏 chrome 的工具分发器。 | `aligned`，增加回归保护。 |
 | 主面板并存 | 书架、书源、目录、设置打开时，正文 `eventHandler()` 先返回，工具层仍显示。 | `useReaderPrimaryPanels` 与 pointer guard 已保持工具层；按钮变更不得破坏。 | `aligned`，三视口重跑。 |
 | 格式可达性 | 顶部/底部按钮只按 mini 模式显示，不按 EPUB、图片、音频或远程/本地书隐藏。 | 新增按钮不得加格式/书籍类型禁用条件。 | `must-preserve`。 |
-| iPad / 宽屏手机模式 | 上游只用 `window.innerWidth <= 750` 决定 mini；OpenReader 额外支持移动浏览器识别和用户手动“手机模式”。这两个入口必须驱动同一套 Reader 模板与样式。 | 2026-07-19 复审发现 JS 会把 iPad Pro 判为 mini，但 `Reader.vue` 和 `ReaderMobileChrome.vue` 的关键 CSS 仍只在 `max-width:750px` 生效；宽屏 iPad 因此渲染移动主面板却隐藏移动顶部工具，四个主面板都失去同按钮关闭路径。现已由 Reader 根节点语义 class 统一模板和样式状态。 | `resolved 2026-07-19`：移动/桌面工具按同一状态挂载；移动布局不再以独立宽度 media query 作为生效前提。1024×1366 与 1366×1024 已证明四面板均可由顶部同按钮关闭。 |
+| iPad / 宽屏手机模式 | 上游自适应模式只用 `window.innerWidth <= 750` 决定 mini；非自适应模式才强制 mini。 | `b8b70f9` 已统一选中状态和 DOM/CSS，但共享 predicate 仍用移动 UA/touch 把 1024/1366px iPad 自动判成 mini，导致阅读主面板及其它 Dialog 使用手机/全宽形态。 | `reopened 2026-07-19 / must-fix`：自适应宽屏 iPad 恢复桌面形态；只有用户明确选择手机模式时才在宽屏保持 mini。详见 [`reader-ipad-responsive-p0-contract.md`](reader-ipad-responsive-p0-contract.md)。 |
 
 ## 状态转换
 
@@ -88,6 +88,10 @@
   既有 Element Plus 大 chunk 警告。
 
 ## 2026-07-19 iPad Pro 宽屏修复记录
+
+> 复审更正：下列 `b8b70f9` 记录只证明“选中 mini 后 CSS/DOM 状态一致”，不能证明
+> 宽屏 iPad 在自适应模式下应被选为 mini。实机反馈已把响应判定重新列为 P0；当前权威
+> 后续合同为 [`reader-ipad-responsive-p0-contract.md`](reader-ipad-responsive-p0-contract.md)。
 
 - 根因是响应状态分裂：`shouldUseMiniInterface()` 会按移动 UA / iPad touch platform 将
   1024px 或 1366px 的 iPad 判为 mini，但 Reader 主布局和 `ReaderMobileChrome` 仍各自
