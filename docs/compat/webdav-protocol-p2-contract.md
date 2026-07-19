@@ -38,7 +38,7 @@
 | 认证 | secure 模式接受用户名/密码 Basic，验证用户及 `enable_webdav`。 | 只接受 Bearer JWT；常见 WebDAV 客户端无法登录。 | `must-fix with security adaptation`：同一路径接受 Bearer 或 Basic。Basic 用现有 bcrypt hash，成功后设置同一个 user id；随后仍检查 `CanAccessWebDAV`。无凭据/坏密码 `401`，有效身份无权限 `403`。密码、Authorization 和 token 不得记录。只建议在 HTTPS 反向代理后使用 Basic。 |
 | 用户根 | 上游按用户名 namespace 取根，但以字符串拼接路径。 | 管理员保留历史 `data/webdav/`，普通用户使用 `data/webdav/users/<safe-name>/`。 | `acceptable security/data adaptation`：必须保留当前根，不移动或合并旧卷，不允许 Basic 切换到另一用户目录。 |
 | `PROPFIND` | 文件或目录返回 `207` DAV multistatus；目录包含自身和一级子项。 | 无该方法；网页端用 `GET` 目录得到 OpenReader 私有 XML。 | `must-fix`：新增标准 namespaced `PROPFIND`，支持常用 `Depth: 0/1`，无效/`infinity` 安全夹紧到 1。保留现有目录 `GET` 形状给网页端，不强迫当前前端迁移。 |
-| 只读不得写盘 | 不存在路径返回 `404`。 | `webdavList()` 对请求目录调用 `MkdirAll`，读取一个不存在的嵌套路径会创建目录并返回 `207`。 | `must-fix`：只有当前用户 WebDAV 根可在授权后的显式入口初始化；读取不存在的子路径必须 `404` 且零文件副作用。 |
+| 只读不得写盘 | 不存在路径返回 `404`。 | `webdavGetOrList()` 只对根或已经 `Stat` 为目录的目标调用列表；根会按需初始化，不存在的嵌套路径进入文件 GET 并返回 `404`。 | `aligned with regression constraint`：保留根的惰性初始化；PROPFIND/GET 读取不存在的子路径必须继续 `404` 且零文件副作用。 |
 | `GET` | 只下载普通文件；缺失 `404`，目录 `405`。 | 文件可下载；目录被复用为网页端列表。 | `deployed compatibility adapter`：外部协议以 `PROPFIND` 列目录；现有 `/webdav` 目录 `GET` 继续返回当前列表，`/reader3/webdav` 的目录 `GET` 可保持上游 `405`。 |
 | `MKCOL` | 创建目录，已存在仍返回 `201`。 | 只创建最后一级，父目录缺失时先创建父目录；已存在返回 `409`。 | `must-fix visible status`：兼容别名恢复上游幂等 `201`；当前路径也采用同一安全、可预测语义，根目录仍禁止作为创建目标。 |
 | `PUT` | 父目录缺失 `409`，目录目标 `405`，成功 `201`；覆盖已有文件。 | 会自动创建父目录；已有原子 staging、128 MiB 默认上限。 | `must-fix + security difference`：父目录必须先存在；保留有界、同目录 staging 和原子替换，不复制上游无界整包读取。 |
