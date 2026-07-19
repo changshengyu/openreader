@@ -7,6 +7,8 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 - Public API root: `/api`.
 - Auth: `Authorization: Bearer <jwt>` for protected `/api` endpoints.
 - WebDAV root: `/webdav`.
+- Upstream WebDAV compatibility root: `/reader3/webdav` (P2 protocol implementation pending;
+  see [`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md)).
 - Sync WebSocket: `/ws/sync`.
 - Expected error shape for handled failures: JSON object with `error`.
 - User-owned resources must be scoped to the authenticated user unless documented as admin/global.
@@ -41,6 +43,24 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | RSS | `/api/rss/sources`, `/api/rss/articles` | Remote fetch limits and parser safety apply. |
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
+
+## P2 raw WebDAV protocol contract
+
+Status: audited on 2026-07-19; implementation is pending. The complete compatibility, authentication,
+filesystem and migration contract is
+[`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md).
+
+| Method / path | Request | Success / side effects | Auth and errors |
+|---|---|---|---|
+| `OPTIONS /webdav/*`, `/reader3/webdav/*` | No body. An unauthenticated capability probe is allowed. | `200`; advertises `DAV: 1,2`, `Allow` and `MS-Author-Via`. | A supplied invalid Authorization returns `401` with Basic challenge. No filesystem access. |
+| `PROPFIND /webdav/*`, `/reader3/webdav/*` | Bearer JWT or Basic credentials; `Depth: 0/1` (infinity safely bounded to 1). | `207` DAV-namespace multistatus for the target and at most one child level; no physical path. | `401` missing/bad identity, `403` valid identity without WebDAV permission, `404` missing target. Read never creates a directory. |
+| `GET/PUT/MKCOL/DELETE` on both roots | Bearer or Basic; PUT remains bounded by `OPENREADER_MAX_IMPORT_BYTES`. | Current user root only. Existing `/webdav` directory GET remains a deployed frontend listing adapter; upstream alias uses PROPFIND for listing. | Root/path/symlink checks precede I/O. Parent/type/missing errors use the focused contract statuses. |
+| `MOVE/COPY` on both roots | Safe Destination within the same caller root; `Overwrite: T` is required to replace. | `201` after a complete validated rename/copy; recursive COPY does not follow symlinks. | `400` missing/invalid Destination, `403` unsafe/root operation, `409` missing parent, `412` missing source or forbidden overwrite. Failure preserves source and old target. |
+| `LOCK/UNLOCK` on both roots | LOCK may include Timeout; UNLOCK requires Lock-Token. | Upstream-compatible stateless lock response: LOCK `200` plus random `urn:uuid:` token; UNLOCK `204`. | No lock table/file and no token logging; missing unlock token `400`. |
+
+Both roots retain current caller-scoped storage: the administrator sees the historical WebDAV root and a
+regular user sees only `data/webdav/users/<safe-username>/`. Basic validates the existing bcrypt password;
+it is not a new stored credential and should only be exposed through HTTPS.
 
 ## P2 reading-progress API contract
 

@@ -24,6 +24,25 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] Every user path is cleaned and joined under an allowed root.
 - [ ] Final resolved path is verified to remain under the allowed root.
 - [ ] Local store, uploads, cache, backups, and WebDAV all use rooted paths.
+
+## P2 raw WebDAV protocol review (2026-07-19 audit; implementation pending)
+
+- [ ] `/webdav/*` and `/reader3/webdav/*` authenticate before reading path, Destination, Depth or body;
+  Bearer JWT and bcrypt-backed Basic both resolve to the same persisted user id and permission check.
+- [ ] Missing/bad Basic credentials return one generic `401` plus challenge; a valid user without WebDAV
+  permission returns `403`. Passwords, Authorization headers, JWTs and lock tokens never enter logs/errors.
+- [ ] Every existing source/target/parent/COPY descendant is checked with `Lstat`; traversal, symlink,
+  cross-root, root deletion and directory-into-descendant operations fail before mutation.
+- [ ] PROPFIND is read-only: a missing nested directory returns `404` and is not created. DAV XML contains
+  only encoded logical hrefs and bounded one-level metadata, never host paths.
+- [ ] PUT keeps the configured byte cap and atomic same-directory staging. COPY/MOVE validate the full plan
+  before replacing a destination, and failure preserves the source and old target.
+- [ ] Basic is documented for HTTPS-only exposure; upstream's wildcard-origin plus credentialed CORS headers
+  are not copied. Existing same-origin Bearer WebDAVBrowser requests remain compatible.
+
+Required evidence is fixed in
+[`docs/compat/webdav-protocol-p2-contract.md`](compat/webdav-protocol-p2-contract.md): auth/permission,
+two-prefix, PROPFIND, mutation/status, symlink, LOCK, browser regression, curl and mounted-volume tests.
 - [ ] Backup downloads only expose expected backup files.
 - [ ] API errors do not leak host filesystem paths.
 

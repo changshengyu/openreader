@@ -24,6 +24,20 @@ change `readingProgress.json` backup/restore behavior.
 | `cache/` | Chapter/content cache. | May be regenerated, but broad deletion requires explicit user action or migration note. |
 | `library/` | Imported original files and local store. | Must not be moved or deleted without migration. |
 
+## P2 raw WebDAV protocol compatibility (audit pending implementation)
+
+[`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md) adds protocol routes and authentication,
+not a storage migration. `/webdav/*` and the upstream-compatible `/reader3/webdav/*` must resolve to the
+same existing caller-scoped directory: administrators keep the historical `data/webdav/` root and regular
+users keep `data/webdav/users/<safe-username>/`. No startup scan, move, copy, rename or cleanup is allowed.
+
+Basic authentication validates the existing bcrypt `users.password_hash`; it adds no credential column,
+token file or setting. Stateless LOCK tokens are response-only and never enter SQLite, mounted volumes,
+backups or logs. COPY/MOVE/MKCOL/PUT may change only paths explicitly requested under the authenticated
+caller's existing root, after traversal and symlink rejection. The Docker gate must mount a historical
+administrator root and two regular-user roots, exercise both URL prefixes, restart, and prove that backup
+and import files remain in place and isolated.
+
 ## SQLite rules
 
 - Use non-destructive migrations.
