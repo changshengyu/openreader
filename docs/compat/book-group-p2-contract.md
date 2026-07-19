@@ -1,6 +1,7 @@
 # BookGroup P2 固定上游契约
 
-状态：2026-07-19 已按合同完成应用实现、全量自动测试、真实 Go/SQLite 三视口与多客户端验证。
+状态：2026-07-19 已按合同完成应用实现、全量自动测试、真实 Go/SQLite 三视口与多客户端验证，
+并从干净提交本地构建、通过卷/备份门禁后发布双架构 Docker。
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 本合同覆盖书架分组标签、`BookGroup` 设置/管理两种模式、API、SQLite、同步和备份恢复。
@@ -190,3 +191,15 @@ Category 与 BookCategory 的表、ID 和现有关系不迁移。删除用户时
   与刷新后的持久化。
 - 允许差异保持不变：自定义分组继续使用 Category/BookCategory 多对多；本地书继续使用增强的
   `isLocalBook` 判断；空组删除、跨用户 token 与不完整排序受到更强服务端校验。
+
+## 9. Docker 发布
+
+- 实现提交：`785a93a9565c967b4631ae5074685ff91e008321`，已推送 `origin/main`。
+- 镜像：`ghcr.io/changshengyu/openreader:785a93a` 与
+  `ghcr.io/changshengyu/openreader:latest`。
+- OCI index：`sha256:1b9e5214c03055395c6a49c5080fd8bfed551ed7d8f66c975bc2f44ceafff19b`；
+  amd64 manifest：`sha256:2a27429b2a8563fae7ab648136505ea9eba67f9a431e4e76ba47b8195bcf3c8d`；
+  arm64 manifest：`sha256:00cc4e4b7d0f7d5ecac28c55b40d360bd4f4272c8800a3ecd09842187d9b8e7b`。
+- 构建在本机 buildx 完成，再由 host OCI publisher 推送 GHCR；未使用云端构建。
+- 普通 mounted volume、portable backup restore，以及历史 TXT/EPUB/UMD/CBZ、相对缓存路径和
+  owner isolation 全部通过。新增数据库表是加法迁移，既有 `data/cache/library` 未被重写。
