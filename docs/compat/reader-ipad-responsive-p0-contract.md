@@ -64,3 +64,26 @@ and the expected desktop close/switch controls are replaced by the mobile intera
   widths and must not be reverted.
 - If phone-mode panel overflow is reproduced after the scene-selection fix, bound the common
   workspace root/body and keep scrolling inside the panel; do not hide the close control.
+
+## Implementation and release evidence
+
+Completed on 2026-07-19 in `39a5244`:
+
+- `isMobileLikeViewport()` is now the fixed-upstream width-only `<=750px` decision. The shared
+  `shouldUseMiniInterface()` still lets an explicit persisted `mobile` mode force the coherent
+  phone scene at a wide tablet width.
+- Reader, Index, BookInfo, BookEdit, global overlays and SourceManager continue to consume that
+  one shared decision; no iPad-specific component CSS or UA exception was added.
+- The responsive contract was replaced test-first. The full frontend suite passed `503/503`, the
+  full Go suite passed, and the production frontend build passed.
+- The real-browser contract passed at adaptive iPad Pro portrait `1024x1366`, landscape
+  `1366x1024`, phone `390x844` and `360x800`, plus explicit mobile mode at `1024x1366`. It opened
+  and closed all four primary Reader panels and the bookmark, search and BookInfo dialogs while
+  checking that their close controls remained visible.
+- The image was built locally from a clean detached worktree so the unfinished WebDAV P2 draft was
+  not included. New-volume portable backup and historical TXT/EPUB/UMD/CBZ, relative-cache and
+  owner-isolation gates passed before upload.
+- Published tags: `ghcr.io/changshengyu/openreader:39a5244` and `latest`. Both resolve to OCI index
+  `sha256:0d6f2f65366690a92b79e8b41569eb36e16c1a6b1697b2f2af543e18a8331fc3`; platform manifests
+  are amd64 `sha256:3d455dcdaca33b4b7636f2cea582ff9ac38cec816f11ee5ede55f9e31858cd64`
+  and arm64 `sha256:d3de256a291d2547e6ab79aa2b42ff9ab1483eda28c9ec634965bc9f77d6291b`.
