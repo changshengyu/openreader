@@ -1,6 +1,9 @@
 package chaptercache
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // Item is the persistence-independent input for one selected catalogue row.
 // Existing means a non-empty cache file was verified before the job started.
@@ -41,6 +44,18 @@ func Run(
 			return progress, err
 		}
 		if !refresh && item.Existing {
+			// A valid text cache remains successful even when optional derived
+			// work (for example embedded-image hydration) fails. It still runs so
+			// old mounted text caches can gain newly supported derived artifacts
+			// without refetching chapter text from the source.
+			if err := fetch(ctx, item); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return progress, err
+				}
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return progress, ctxErr
+				}
+			}
 			progress.SelectedCached++
 		} else if err := fetch(ctx, item); err != nil {
 			progress.FailedCount++

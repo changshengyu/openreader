@@ -558,6 +558,7 @@ const {
   openReplaceRuleEditor: draft => overlay.openReplaceRuleEditor(draft),
 })
 const content = ref('')
+const chapterCachedImages = ref({})
 const chapterFormat = ref('text')
 const epubResource = ref(null)
 const audioResource = ref(null)
@@ -862,7 +863,7 @@ const ttsBarRequested = ref(false)
 const ttsConfigExpanded = ref(true)
 const autoReading = ref(false)
 const isComicChapter = computed(() => (
-  makeChapterBlock(currentIndex.value, chapter.value, content.value).isComic === true
+  makeChapterBlock(currentIndex.value, chapter.value, content.value, chapterCachedImages.value).isComic === true
 ))
 const isOrdinaryImageComicChapter = computed(() => (
   isComicChapter.value && !isCBZBook(book.value)
@@ -923,7 +924,7 @@ const showChapterEndPrompt = computed(() => (
 const displayedChapterBlocks = computed(() => {
   if (chapterFormat.value === 'epub' || isAudioChapter.value) return []
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
-  return [makeChapterBlock(currentIndex.value, chapter.value, content.value)]
+  return [makeChapterBlock(currentIndex.value, chapter.value, content.value, chapterCachedImages.value)]
 })
 let settleVerticalPageScroll = () => false
 const {
@@ -944,6 +945,7 @@ const {
   currentIndex,
   chapter,
   content,
+  cachedImages: chapterCachedImages,
   chapterTextLength,
   progressVersion,
   page,
@@ -990,6 +992,7 @@ const {
   currentIndex,
   chapter,
   content,
+  cachedImages: chapterCachedImages,
   chapterBlocks,
   isContinuousScrollRead,
   loadContent: loadChapterContent,
@@ -1065,9 +1068,7 @@ const {
   jumpWithinCurrentChapter,
   nextPage,
   paragraphByChapterPosition,
-  prepareVerticalPageAnimation,
   previousPage,
-  releaseVerticalPageAnimationPreparation,
   scrollToBottom,
   scrollToTop,
 } = useReaderNavigation({
@@ -1086,7 +1087,7 @@ const {
   isVerticalRead,
   getMode: () => effectiveReaderMode.value,
   getAnimateDuration: () => reader.animateDuration,
-  useCompositedPageAnimation: () => (
+  useFastPageAnimation: () => (
     isMobileReader.value
     && effectiveReaderMode.value === 'page'
     && chapterFormat.value === 'text'
@@ -1327,6 +1328,7 @@ const {
   currentIndex,
   chapter,
   content,
+  cachedImages: chapterCachedImages,
   getCurrentOffset: currentOffset,
   computeChapterWindow: computeShowChapterList,
   makeChapterBlock,
@@ -1419,8 +1421,6 @@ const {
   suppressContentClick,
   consumeSuppressedContentClick,
   cancelPageAnimation,
-  preparePageAnimation: prepareVerticalPageAnimation,
-  releasePageAnimationPreparation: releaseVerticalPageAnimationPreparation,
   nextPage,
   previousPage,
   toggleChrome: toggleReaderChrome,
@@ -1503,6 +1503,7 @@ const {
   chapterLoading,
   chapter,
   content,
+  cachedImages: chapterCachedImages,
   chapterFormat,
   epubResource,
   audioResource,

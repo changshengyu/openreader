@@ -83,6 +83,26 @@ test('builds a continuous chapter window around the active chapter', async () =>
   ])
 })
 
+test('passes each adjacent chapter cached-image mapping into its block', async () => {
+  const remote = 'https://cdn.example.test/next.png'
+  const capability = '/api/chapter-image/next.capability'
+  const presented = []
+  const fixture = createController({
+    loadContent: async index => ({
+      chapter: fixture.chapters.value[index],
+      content: `<img src="${remote}">`,
+      cachedImages: { [remote]: capability },
+    }),
+    makeChapterBlock: (index, row, text, cachedImages) => {
+      presented.push({ index, cachedImages })
+      return { index, id: row.id, content: text, cachedImages }
+    },
+  })
+
+  await fixture.controller.compute()
+  assert.deepEqual(presented.find(item => item.index === 3)?.cachedImages, { [remote]: capability })
+})
+
 test('syncs the visible chapter without replacing the chapter window mid-scroll', async () => {
   const fixture = createController({
     visibleProgressSnapshot: () => ({

@@ -166,6 +166,12 @@ func (s *Server) cacheBookChapters(
 	}
 
 	selected := selectCacheChapters(catalogue, chapterIndex, all, count)
+	var source models.BookSource
+	if len(selected) > 0 {
+		if err := s.db.First(&source, book.SourceID).Error; err != nil {
+			return chaptercache.Progress{}, err
+		}
+	}
 	items := make([]chaptercache.Item, 0, len(selected))
 	chapterByIndex := make(map[int]*models.Chapter, len(selected))
 	for i := range selected {
@@ -184,6 +190,11 @@ func (s *Server) cacheBookChapters(
 		}
 		if strings.TrimSpace(content) == "" {
 			return errors.New("empty chapter content")
+		}
+		if _, imageErr := s.chapterImages.CacheChapter(ctx, source, book, *chapter, content); imageErr != nil {
+			if errors.Is(imageErr, context.Canceled) || errors.Is(imageErr, context.DeadlineExceeded) {
+				return imageErr
+			}
 		}
 		return nil
 	}, func(progress chaptercache.Progress) error {

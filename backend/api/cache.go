@@ -50,6 +50,13 @@ func (s *Server) clearCache(c *gin.Context) {
 		return
 	}
 	files, size := s.pruneUnreferencedRemoteCachePaths(cachePaths)
+	for _, book := range books {
+		imageStats, imageErr := s.chapterImages.RemoveBook(book)
+		if imageErr == nil {
+			files += imageStats.Files
+			size += imageStats.Bytes
+		}
+	}
 	if items, err := s.listAllBookShelfItems(userID); err == nil {
 		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": items})
 	} else {
@@ -92,6 +99,12 @@ func (s *Server) remoteCacheStats(userID uint) (cacheStatSummary, error) {
 		summary.files++
 		summary.size += info.Size()
 	}
+	imageStats, err := s.chapterImages.StatsUser(userID)
+	if err != nil {
+		return cacheStatSummary{}, err
+	}
+	summary.files += imageStats.Files
+	summary.size += imageStats.Bytes
 	return summary, nil
 }
 

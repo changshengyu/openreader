@@ -2,7 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 已完成上游/当前实现审查；尚未修改业务代码。此合同是
+状态：2026-07-19 已完成上游/当前实现审查、失败测试、实现、全量自动化和三视口图片 Reader
+验证；Docker 历史卷/备份与发布记录待本批提交后补充。此合同是
 [`book-management-cache-p2-contract.md`](book-management-cache-p2-contract.md) 中“整本正文缓存”
 之后的下一切片，实施前必须先写失败测试。
 
@@ -40,7 +41,7 @@
 | 去重 | 上游按图片绝对 URL 的 MD5 在同一书目录复用，并用进程集合避免同 URL 并发重复下载。 | 无图片缓存。 | `must-fix`：按 `userID + bookID + SHA-256(normalized URL)` 隔离/去重；写临时文件后原子 rename，绝不能使用 URL 后缀或标题作为路径。 |
 | 文件布局 | 图片位于该书章节缓存目录的 `images/`，删除书缓存会递归删除正文和图片。 | 正文文件位于 `CacheDir` 的可移植相对路径，删除/统计只追踪章节行。 | `technology-equivalent`：新增派生根 `cache/chapter-images/user-<id>/book-<id>/`，含共享 blobs 和按章节引用；不新增 SQLite 字段。单书清缓存、全局清缓存、删书、删用户、换源/目录替换必须清理对应引用和无引用 blob。 |
 | 正文持久化 | 上游 `.txt` 保留远程图片 URL；图片文件另外保存。 | `.txt` 同样保留规范远程 URL。 | `aligned invariant`：不得把短期 capability、JWT 或主机绝对路径写入正文、SQLite、备份、WebSocket 或导出中间状态。 |
-| 阅读使用 | 上游 Web Reader 仍按正文远程 URL 渲染；缓存图片主要供 EPUB 导出使用。 | 浏览器无法带 JWT 读取私有缓存文件，直接暴露文件目录又会跨用户泄漏。 | `allowed Go/browser adaptation`：章节响应可把“已存在且属于当前书”的图片 URL 临时改写为短期 HMAC capability；缺失/失败图片保留原远程 URL。资源端点重新核对用户/书、blob key、指纹、MIME 与 rooted path。 |
+| 阅读使用 | 上游 Web Reader 仍按正文远程 URL 渲染；缓存图片主要供 EPUB 导出使用。 | 浏览器无法带 JWT 读取私有缓存文件，直接暴露文件目录又会跨用户泄漏。 | `allowed Go/browser adaptation`：章节响应保持原正文并另带“原 URL → 短期 HMAC capability”的可选映射；前端在完成稳定位置解析后只替换图片 `src`。缺失/失败图片保留原远程 URL。资源端点重新核对用户/书、blob key、指纹、MIME 与 rooted path。 |
 | EPUB 导出 | `fixPic()` 把已缓存图片写入 `Images/` 并改写章节引用；缺失图片不阻止导出。 | 当前 EPUB 导出把整行 `<img>` HTML 转义为普通文本，不携带图片。 | `must-fix`：仅把已缓存、验证过的图片写入 EPUB `OEBPS/Images/` 和 OPF manifest，并改写对应章节 `<img src>`；缺图保持安全文本/远程回退，不读取网络、不泄漏 capability。 |
 | 样式与预览 | 正文图片保留顺序；`ContentImageStyle=FULL` 影响显示。 | `readerContent.js` 保留 `alt` 和 `data-image-style=FULL`，`el-image` 负责预览。 | `must-preserve`：URL 替换不得丢失 alt、FULL、段落位置、图片顺序、预览列表和 image-load 分页重算。 |
 | 旧卷/备份 | 图片是可删除派生缓存；上游删除缓存可重建。 | `cache/` 独立挂载且不属于逻辑 portable backup。 | `technology-equivalent`：旧卷无需迁移；缺失图片根按空缓存处理。备份/恢复不携带 capability 或图片 blob，重启后已挂载 `cache/` 可继续读。 |
@@ -49,9 +50,10 @@
 
 1. 现有 `POST /api/books/:id/cache`、`POST /api/books/:id/cache/stream` 请求和进度字段不变。
    图片失败不改变章节成功/失败计数；请求取消继续以当前上下文为任务生命周期。
-2. `GET /api/books/:id/chapters/:index/content` 的 JSON schema 保持兼容。`content` 可以只在响应时
-   含 `/api/chapter-image/<capability>`；SQLite/cache 文件仍保存原 URL。可以增加非必需统计字段，
-   但前端不得依赖它才能渲染正文。
+2. `GET /api/books/:id/chapters/:index/content` 的 JSON schema 保持兼容，`content` 必须继续等于
+   持久化的原 URL 正文。可选 `cachedImages` 映射以原 URL 为 key、`/api/chapter-image/<capability>`
+   为 value，并可带统一过期时间；旧客户端忽略它仍能渲染远程图片。前端必须先按原正文计算
+   `data-pos`，再把已命中的图片对象 `src` 替换为映射值，不能把 capability 混入位置计算。
 3. 新增无需登录 header 的 `GET|HEAD /api/chapter-image/:capability`。capability 是短期、用途隔离、
    HMAC 签名的 bearer，仅绑定一个 `userID/bookID/blobKey/fingerprint/expiry`。端点不得接受文件路径、
    原 URL 或 JWT query；日志必须把 token 全部抹除。
@@ -80,8 +82,8 @@
    保留旧引用，成功替换；清缓存、删书、删用户、换源/目录替换删除正确引用且不碰其它书。
 5. capability：正常 GET/HEAD、MIME/nosniff；篡改、过期、错误 purpose/blob、所有权变化、文件变更、
    traversal/symlink、另一用户均不可读；access log 不出现 token。
-6. chapter API：有 blob 时只改写响应，无 blob/失败时保留远程 URL；缓存文件、SQLite、WebSocket
-   不含 capability；alt/FULL/位置和图片预览列表不变。
+6. chapter API：有 blob 时只增加可选映射，无 blob/失败时映射为空且正文仍保留远程 URL；缓存文件、
+   SQLite、WebSocket 不含 capability；前端映射后 alt/FULL/位置和图片预览列表不变。
 7. EPUB：已缓存图片出现在 `OEBPS/Images` 和 OPF，章节引用正确；缺图不使导出失败；导出不联网，
    不包含 capability、绝对路径或凭证。
 8. Docker 历史卷：旧 TXT/EPUB/UMD/CBZ/相对缓存继续读取；`cache/` 图片根在重启后可用，portable
@@ -96,3 +98,22 @@
 4. 更新配置/README/API/data/security 文档，运行 targeted Go、Go 全量、前端全量/构建，以及
    1440×900、390×844、360×800 的真实远程图片 Reader/BookManage 合同。
 5. 形成可验收切片后立即提交 GitHub；本地构建镜像，跑历史 volume/backup，再决定发布 Docker。
+
+## 2026-07-19 实施与验证结果
+
+- 新增 `backend/services/chapterimage`：按用户/书/规范 URL 的 SHA-256 隔离并复用 blob，章节引用
+  清单原子替换；刷新部分失败时保留旧可用引用，成功后才清理无引用文件。
+- 图片请求只接受 HTTP(S)；同书源主机保留私有网络书源兼容，跨主机逐次校验 DNS/重定向并拒绝
+  私网、回环、链路本地、多播和保留地址。凭证头只发往精确同源，跨源仅保留安全请求头并把
+  Referer 降为 origin。
+- 默认限制为每章 64 图、单图 8 MiB、单章 32 MiB、12 秒、3 次重定向；只接收实际字节可识别
+  的 JPEG/PNG/GIF/WebP/BMP/AVIF。单图超时、超限或类型失败不使正文缓存任务失败。
+- `GET|HEAD /api/chapter-image/:capability` 使用用途隔离的短期 HMAC capability，并在读取时重新
+  验证用户/书/source、引用、MIME、指纹和 rooted path；访问日志只记录固定前缀。
+- 章节 JSON 保持原始 `content` 不变，仅可选返回原 URL 到 capability 的 `cachedImages`；前端先
+  计算稳定 `data-pos` 再替换图片 `src`，capability 失败时回退原远程 URL。
+- EPUB 仅嵌入已缓存且重新验证过的图片，不在导出期间联网；OPF/XHTML 不含 capability、主机路径、
+  查询凭证或源头 URL。单书/全局清缓存、删书、删用户、换源和刷新目录均接入派生根清理。
+- targeted Go 合同和 `go test ./...` 通过；前端全量 489/489、生产 build 通过；
+  `reader-image-contract.mjs` 在 1440×900、390×844、360×800 验证缓存命中、404 远程回退、位置
+  不变和图片/CBZ 几何。Docker 卷/备份门禁仍须在提交后的可追踪镜像上执行。

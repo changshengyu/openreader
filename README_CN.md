@@ -124,6 +124,11 @@ cd frontend && npm run build
 | `OPENREADER_JWT_SECRET` | *(必填)* | JWT 签名密钥 — 请使用长随机字符串 |
 | `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | CORS 允许来源 |
 | `OPENREADER_PUBLIC_DIR` | `public` | 前端静态文件目录 |
+| `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | 单章节最多处理的内嵌图片数量 |
+| `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608`（8 MiB） | 单张章节缓存图片的最大字节数 |
+| `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432`（32 MiB） | 单章节缓存图片的总字节上限 |
+| `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` | 单次内嵌图片请求超时秒数 |
+| `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` | 单次内嵌图片请求最多重定向次数 |
 
 ## 技术栈
 

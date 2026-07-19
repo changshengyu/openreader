@@ -23,18 +23,10 @@ export function useReaderPointer(options) {
     touchMove = { x: 0, y: 0 }
   }
 
-  function releasePageAnimationPreparation() {
-    options.releasePageAnimationPreparation?.()
-  }
-
   function applyAction(action, actionOptions = {}) {
-    if (!action) {
-      releasePageAnimationPreparation()
-      return
-    }
+    if (!action) return
     if (action === 'toggle-chrome') {
       if (actionOptions.mobileOnly && !unref(options.isMobileReader)) return
-      releasePageAnimationPreparation()
       options.toggleChrome()
       return
     }
@@ -44,16 +36,12 @@ export function useReaderPointer(options) {
   }
 
   function tapPoint(point, mobile, tapOptions = {}) {
-    if (unref(options.isOverlayOpen) || !point?.rect) {
-      releasePageAnimationPreparation()
-      return
-    }
+    if (unref(options.isOverlayOpen) || !point?.rect) return
     if (
       !tapOptions.selectionChecked
       && options.scheduleSelectedTextOperation(0, { retry: false })
     ) {
       options.suppressContentClick()
-      releasePageAnimationPreparation()
       return
     }
     const viewportWidth = windowTarget.innerWidth || point.rect.width
@@ -65,7 +53,6 @@ export function useReaderPointer(options) {
       const midY = viewportHeight / 2
       const inCenter = Math.abs(pointX - midX) <= viewportWidth * 0.2
         && Math.abs(pointY - midY) <= viewportHeight * 0.2
-      releasePageAnimationPreparation()
       if (inCenter) options.toggleChrome()
       return
     }
@@ -82,7 +69,6 @@ export function useReaderPointer(options) {
     // The upstream read bar only guards the menu-toggle branch. It keeps the
     // normal non-slide page actions available outside the center zone.
     if (action === 'toggle-chrome' && unref(options.ttsBarVisible)) {
-      releasePageAnimationPreparation()
       return
     }
     applyAction(action, {
@@ -91,12 +77,8 @@ export function useReaderPointer(options) {
   }
 
   function handleTapZone(zone) {
-    if (unref(options.isOverlayOpen)) {
-      releasePageAnimationPreparation()
-      return
-    }
+    if (unref(options.isOverlayOpen)) return
     if (unref(options.isAudio)) {
-      releasePageAnimationPreparation()
       if (zone === 'center') options.toggleChrome()
       return
     }
@@ -107,7 +89,6 @@ export function useReaderPointer(options) {
       autoReading: unref(options.autoReading),
     })
     if (action === 'toggle-chrome' && unref(options.ttsBarVisible)) {
-      releasePageAnimationPreparation()
       return
     }
     applyAction(action, {
@@ -140,7 +121,6 @@ export function useReaderPointer(options) {
     touchStart = { x: touch.clientX, y: touch.clientY, at: now() }
     touchMoved = false
     touchMove = { x: 0, y: 0 }
-    if (!unref(options.isOverlayOpen)) options.preparePageAnimation?.()
   }
 
   function handleTouchMove(event) {
@@ -177,13 +157,11 @@ export function useReaderPointer(options) {
     const retrySelection = elapsed >= 350
     if (options.scheduleSelectedTextOperation(0, { retry: retrySelection })) {
       options.suppressContentClick()
-      releasePageAnimationPreparation()
       resetTouch()
       return
     }
     if (retrySelection) {
       options.suppressContentClick()
-      releasePageAnimationPreparation()
       resetTouch()
       return
     }
@@ -204,7 +182,6 @@ export function useReaderPointer(options) {
         move: touchMove,
       })
     ) {
-      releasePageAnimationPreparation()
       if (touchMove.x > 0) options.previousPage()
       else options.nextPage()
     } else if (
@@ -221,14 +198,11 @@ export function useReaderPointer(options) {
         clientX: touch.clientX,
         clientY: touch.clientY,
       }, true, { selectionChecked: true })
-    } else {
-      releasePageAnimationPreparation()
     }
     resetTouch()
   }
 
   function handleTouchCancel() {
-    releasePageAnimationPreparation()
     resetTouch()
   }
 

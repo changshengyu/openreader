@@ -22,6 +22,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	xhtml "golang.org/x/net/html"
 	"gorm.io/gorm"
 
 	"openreader/backend/engine"
@@ -30,6 +31,7 @@ import (
 	"openreader/backend/services/audioreader"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chaptercache"
+	"openreader/backend/services/chapterimage"
 	"openreader/backend/services/epubreader"
 )
 
@@ -705,6 +707,9 @@ func (s *Server) batchClearBookCache(c *gin.Context, userID uint, bookIDs []uint
 		return
 	}
 	s.pruneUnreferencedRemoteCachePaths(cachePaths)
+	for _, book := range books {
+		_, _ = s.chapterImages.RemoveBook(book)
+	}
 	items := make([]bookListItem, 0, len(books))
 	for _, book := range books {
 		items = append(items, s.bookShelfListItem(userID, book))
@@ -942,8 +947,17 @@ func (s *Server) exportBookPlainText(book models.Book) (string, error) {
 }
 
 type exportedChapterContent struct {
-	Title   string
-	Content string
+	Title      string
+	Content    string
+	ChapterURL string
+	Images     map[string]string
+}
+
+type exportedChapterImage struct {
+	Key         string
+	Href        string
+	ContentType string
+	Data        []byte
 }
 
 func (s *Server) exportBookEPUB(book models.Book) ([]byte, error) {
@@ -952,12 +966,40 @@ func (s *Server) exportBookEPUB(book models.Book) ([]byte, error) {
 		return nil, err
 	}
 	contents := make([]exportedChapterContent, 0, len(chapters))
+	imagesByKey := make(map[string]exportedChapterImage)
 	for _, chapter := range chapters {
+		content := strings.TrimSpace(s.loadChapterText(book, &chapter))
+		imageHrefs := make(map[string]string)
+		if book.SourceID > 0 {
+			if cachedFiles, imageErr := s.chapterImages.CachedFiles(book, chapter, content); imageErr == nil {
+				for _, cachedFile := range cachedFiles {
+					extension := chapterimage.ExtensionForContentType(cachedFile.ContentType)
+					if extension == "" {
+						continue
+					}
+					href := "Images/" + cachedFile.Key + extension
+					imageHrefs[cachedFile.OriginalURL] = href
+					imagesByKey[cachedFile.Key] = exportedChapterImage{
+						Key:         cachedFile.Key,
+						Href:        href,
+						ContentType: cachedFile.ContentType,
+						Data:        cachedFile.Data,
+					}
+				}
+			}
+		}
 		contents = append(contents, exportedChapterContent{
-			Title:   strings.TrimSpace(chapter.Title),
-			Content: strings.TrimSpace(s.loadChapterText(book, &chapter)),
+			Title:      strings.TrimSpace(chapter.Title),
+			Content:    content,
+			ChapterURL: strings.TrimSpace(chapter.URL),
+			Images:     imageHrefs,
 		})
 	}
+	images := make([]exportedChapterImage, 0, len(imagesByKey))
+	for _, image := range imagesByKey {
+		images = append(images, image)
+	}
+	sort.Slice(images, func(i, j int) bool { return images[i].Key < images[j].Key })
 
 	var buffer bytes.Buffer
 	zipWriter := zip.NewWriter(&buffer)
@@ -969,13 +1011,19 @@ func (s *Server) exportBookEPUB(book models.Book) ([]byte, error) {
 		_ = zipWriter.Close()
 		return nil, err
 	}
-	if err := writeEPUBFile(zipWriter, "OEBPS/content.opf", []byte(epubContentOPF(book, contents))); err != nil {
+	if err := writeEPUBFile(zipWriter, "OEBPS/content.opf", []byte(epubContentOPF(book, contents, images))); err != nil {
 		_ = zipWriter.Close()
 		return nil, err
 	}
 	if err := writeEPUBFile(zipWriter, "OEBPS/nav.xhtml", []byte(epubNavXHTML(book, contents))); err != nil {
 		_ = zipWriter.Close()
 		return nil, err
+	}
+	for _, image := range images {
+		if err := writeEPUBFile(zipWriter, "OEBPS/"+image.Href, image.Data); err != nil {
+			_ = zipWriter.Close()
+			return nil, err
+		}
 	}
 	for index, chapter := range contents {
 		if err := writeEPUBFile(zipWriter, fmt.Sprintf("OEBPS/chapter-%04d.xhtml", index+1), []byte(epubChapterXHTML(book, chapter, index))); err != nil {
@@ -1020,7 +1068,7 @@ func epubContainerXML() string {
 </container>`
 }
 
-func epubContentOPF(book models.Book, chapters []exportedChapterContent) string {
+func epubContentOPF(book models.Book, chapters []exportedChapterContent, images []exportedChapterImage) string {
 	title := html.EscapeString(strings.TrimSpace(book.Title))
 	if title == "" {
 		title = "OpenReader Book"
@@ -1036,6 +1084,10 @@ func epubContentOPF(book models.Book, chapters []exportedChapterContent) string 
 		href := fmt.Sprintf("chapter-%04d.xhtml", index+1)
 		manifest.WriteString(fmt.Sprintf(`    <item id="%s" href="%s" media-type="application/xhtml+xml"/>`+"\n", id, href))
 		spine.WriteString(fmt.Sprintf(`    <itemref idref="%s"/>`+"\n", id))
+	}
+	for index, image := range images {
+		manifest.WriteString(fmt.Sprintf(`    <item id="image-%04d" href="%s" media-type="%s"/>`+"\n",
+			index+1, html.EscapeString(image.Href), html.EscapeString(image.ContentType)))
 	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
@@ -1085,16 +1137,7 @@ func epubChapterXHTML(book models.Book, chapter exportedChapterContent, index in
 	if title == "" {
 		title = fmt.Sprintf("第%d章", index+1)
 	}
-	var paragraphs strings.Builder
-	for _, line := range strings.Split(chapter.Content, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		paragraphs.WriteString("    <p>")
-		paragraphs.WriteString(html.EscapeString(line))
-		paragraphs.WriteString("</p>\n")
-	}
+	paragraphs := epubChapterParagraphs(chapter)
 	bookTitle := html.EscapeString(strings.TrimSpace(book.Title))
 	if bookTitle == "" {
 		bookTitle = "OpenReader Book"
@@ -1104,14 +1147,103 @@ func epubChapterXHTML(book models.Book, chapter exportedChapterContent, index in
 <html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN">
 <head>
   <title>%s - %s</title>
-  <style>body{line-height:1.8;font-family:serif;}p{text-indent:2em;margin:0 0 1em;}</style>
+  <style>body{line-height:1.8;font-family:serif;}p{text-indent:2em;margin:0 0 1em;}img{display:block;max-width:100%%;height:auto;margin:0.8em auto;}img.full-image{width:100%%;}</style>
 </head>
 <body>
   <section>
     <h1>%s</h1>
 %s  </section>
 </body>
-</html>`, bookTitle, title, title, paragraphs.String())
+</html>`, bookTitle, title, title, paragraphs)
+}
+
+func epubChapterParagraphs(chapter exportedChapterContent) string {
+	var paragraphs strings.Builder
+	for _, rawLine := range strings.Split(chapter.Content, "\n") {
+		if strings.TrimSpace(rawLine) == "" {
+			continue
+		}
+		tokenizer := xhtml.NewTokenizer(strings.NewReader(rawLine))
+		var body strings.Builder
+		for {
+			tokenType := tokenizer.Next()
+			if tokenType == xhtml.ErrorToken {
+				break
+			}
+			token := tokenizer.Token()
+			switch tokenType {
+			case xhtml.TextToken:
+				body.WriteString(html.EscapeString(token.Data))
+			case xhtml.StartTagToken, xhtml.SelfClosingTagToken:
+				if strings.EqualFold(token.Data, "br") {
+					body.WriteString("<br/>")
+					continue
+				}
+				if !strings.EqualFold(token.Data, "img") {
+					continue
+				}
+				source := epubImageAttribute(token.Attr, "src", "data-src", "data-original", "data-url")
+				normalized := normalizeEPUBImageURL(source, chapter.ChapterURL)
+				href := chapter.Images[normalized]
+				alt := epubImageAttribute(token.Attr, "alt")
+				if href == "" {
+					if alt != "" {
+						body.WriteString(`<span class="missing-image">`)
+						body.WriteString(html.EscapeString(alt))
+						body.WriteString(`</span>`)
+					}
+					continue
+				}
+				body.WriteString(`<img src="`)
+				body.WriteString(html.EscapeString(href))
+				body.WriteString(`" alt="`)
+				body.WriteString(html.EscapeString(alt))
+				if strings.EqualFold(epubImageAttribute(token.Attr, "data-image-style"), "FULL") {
+					body.WriteString(`" class="full-image`)
+				}
+				body.WriteString(`"/>`)
+			}
+		}
+		if strings.TrimSpace(body.String()) == "" {
+			continue
+		}
+		paragraphs.WriteString("    <p>")
+		paragraphs.WriteString(body.String())
+		paragraphs.WriteString("</p>\n")
+	}
+	return paragraphs.String()
+}
+
+func epubImageAttribute(attributes []xhtml.Attribute, names ...string) string {
+	for _, name := range names {
+		for _, attribute := range attributes {
+			if strings.EqualFold(strings.TrimSpace(attribute.Key), name) {
+				if value := strings.TrimSpace(attribute.Val); value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeEPUBImageURL(raw, chapterURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	if !parsed.IsAbs() {
+		base, baseErr := url.Parse(strings.TrimSpace(chapterURL))
+		if baseErr != nil || base.Scheme == "" || base.Host == "" {
+			return ""
+		}
+		parsed = base.ResolveReference(parsed)
+	}
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+		return ""
+	}
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func safeDownloadFilename(name string, ext string) string {
@@ -1207,6 +1339,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 		return
 	}
 	s.pruneUnreferencedRemoteCachePaths(supersededCachePaths)
+	_, _ = s.chapterImages.RemoveBook(book)
 
 	c.JSON(http.StatusOK, gin.H{"book": s.broadcastBookShelfUpdate(userID, book), "added": len(remoteChapters), "chapterCount": len(remoteChapters)})
 }
@@ -1956,6 +2089,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		return
 	}
 	s.pruneUnreferencedRemoteCachePaths(supersededCachePaths)
+	_, _ = s.chapterImages.RemoveBook(book)
 
 	c.JSON(http.StatusOK, s.broadcastBookShelfUpdate(userID, book))
 }
@@ -2006,6 +2140,12 @@ func (s *Server) chapterContent(c *gin.Context) {
 		"chapter": chapter,
 		"content": content,
 		"format":  "text",
+	}
+	if book.SourceID > 0 && book.Type != 1 {
+		if cachedImages, expiresAt, imageErr := s.chapterImages.CachedImages(book, chapter, content); imageErr == nil && len(cachedImages) > 0 {
+			response["cachedImages"] = cachedImages
+			response["cachedImagesExpiresAt"] = expiresAt.UTC().Format(time.RFC3339)
+		}
 	}
 	if book.Type == 1 {
 		prepared, err := audioreader.PrepareDirectOrLocal(s.audioReader, book, &chapter, content)

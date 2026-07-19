@@ -70,14 +70,15 @@
           @click.stop
         >
           <el-image
-            :src="line.src"
+            :src="displayImageSource(line)"
             :alt="line.alt"
-            :preview-src-list="block.imageUrls"
-            :initial-index="Math.max(0, (block.imageUrls || []).indexOf(line.src))"
+            :preview-src-list="previewImageURLs(block)"
+            :initial-index="Math.max(0, previewImageURLs(block).indexOf(displayImageSource(line)))"
             fit="contain"
             lazy
             preview-teleported
             @load="emit('image-load', { blockIndex: block.index, pos: line.pos, src: line.src })"
+            @error="handleImageError(line)"
           />
           <figcaption v-if="line.alt">{{ line.alt }}</figcaption>
         </figure>
@@ -91,6 +92,7 @@
 </template>
 
 <script setup>
+import { reactive } from 'vue'
 import ReaderAudioContent from './ReaderAudioContent.vue'
 import ReaderEpubContent from './ReaderEpubContent.vue'
 
@@ -179,6 +181,25 @@ const emit = defineEmits([
   'image-load',
   'retry-block',
 ])
+
+const failedCachedImages = reactive(new Set())
+
+function displayImageSource(line) {
+  if (line?.fallbackSrc && failedCachedImages.has(line.src)) return line.fallbackSrc
+  return line?.src || ''
+}
+
+function previewImageURLs(block) {
+  return (block?.paragraphs || [])
+    .filter(line => line?.type === 'image')
+    .map(displayImageSource)
+    .filter(Boolean)
+}
+
+function handleImageError(line) {
+  if (!line?.fallbackSrc || line.fallbackSrc === line.src) return
+  failedCachedImages.add(line.src)
+}
 </script>
 
 <style scoped>

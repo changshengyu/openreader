@@ -24,20 +24,9 @@ export function useReaderNavigation(options) {
   function verticalAnimationOptions() {
     if (
       options.getMode() !== 'page'
-      || !options.useCompositedPageAnimation?.()
-      || !options.contentBody.value
+      || !options.useFastPageAnimation?.()
     ) return undefined
-    return { visualElement: options.contentBody.value }
-  }
-
-  function prepareVerticalPageAnimation() {
-    const animationOptions = verticalAnimationOptions()
-    if (!animationOptions?.visualElement) return false
-    return Boolean(scrollAnimator.prepare?.(animationOptions.visualElement))
-  }
-
-  function releaseVerticalPageAnimationPreparation() {
-    return Boolean(scrollAnimator.releasePreparation?.())
+    return { easing: 'fast' }
   }
 
   function queueActiveVerticalPage(direction) {
@@ -284,9 +273,7 @@ export function useReaderNavigation(options) {
     jumpWithinCurrentChapter,
     nextPage,
     paragraphByChapterPosition,
-    prepareVerticalPageAnimation,
     previousPage,
-    releaseVerticalPageAnimationPreparation,
     scrollToBottom,
     scrollToTop,
   }

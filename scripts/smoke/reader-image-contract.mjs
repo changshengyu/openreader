@@ -29,9 +29,14 @@ function tallSVG() {
   </svg>`
 }
 
-async function installMocks(page, apiRequests, mode, { isCBZ = true } = {}) {
+async function installMocks(page, apiRequests, imageRequests, mode, {
+  isCBZ = true,
+  useCachedMapping = false,
+  capabilityFails = false,
+} = {}) {
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/comic\/tall\.svg.*$/, async (route) => {
+    imageRequests.push('remote')
     await new Promise(resolve => setTimeout(resolve, 600))
     return route.fulfill({
       status: 200,
@@ -45,6 +50,16 @@ async function installMocks(page, apiRequests, mode, { isCBZ = true } = {}) {
     const path = url.pathname.replace(/^\/api/, '')
     const method = request.method()
     apiRequests.push(`${method} ${path}`)
+    if (path === '/chapter-image/smoke-capability') {
+      imageRequests.push('capability')
+      if (capabilityFails) return route.fulfill(json({ error: 'expired' }, 404))
+      await new Promise(resolve => setTimeout(resolve, 120))
+      return route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body: tallSVG(),
+      })
+    }
     if (path === '/me') {
       return route.fulfill(json({ id: 1, username: 'smoke', role: 'admin' }))
     }
@@ -71,7 +86,7 @@ async function installMocks(page, apiRequests, mode, { isCBZ = true } = {}) {
         id: 1,
         title: isCBZ ? 'CBZ 图片契约测试' : '普通图片漫画契约测试',
         author: 'OpenReader',
-        sourceId: 0,
+        sourceId: isCBZ ? 0 : 9,
         url: isCBZ ? '/library/demo.CBZ?cache=1#page' : 'https://example.invalid/comic/1',
         originalFile: isCBZ ? 'demo.CBZ' : '',
         libraryPath: isCBZ ? 'imports/demo.CBZ' : '',
@@ -83,10 +98,11 @@ async function installMocks(page, apiRequests, mode, { isCBZ = true } = {}) {
       return route.fulfill(json([{ id: 11, index: 0, title: '图片章' }]))
     }
     if (path === '/books/1/chapters/0/content') {
-      return route.fulfill(json({
+      const imageURL = new URL('/comic/tall.svg', targetUrl).href
+      const payload = {
         chapter: { id: 11, index: 0, title: '图片章' },
         content: [
-          '<img data-src="__API_ROOT__/comic/tall.svg" alt="漫画页">',
+          `<img data-src="${imageURL}" alt="漫画页">`,
           '页尾文字一用于确认图片加载后的分页位置。',
           '页尾文字二用于确认图片加载后的分页位置。',
           '页尾文字三用于确认图片加载后的分页位置。',
@@ -94,7 +110,12 @@ async function installMocks(page, apiRequests, mode, { isCBZ = true } = {}) {
           '页尾文字五用于确认图片加载后的分页位置。',
         ].join('\n'),
         format: 'text',
-      }))
+      }
+      if (useCachedMapping) {
+        payload.cachedImages = { [imageURL]: '/api/chapter-image/smoke-capability' }
+        payload.cachedImagesExpiresAt = '2026-07-20T00:00:00Z'
+      }
+      return route.fulfill(json(payload))
     }
     if (path === '/books/1/bookmarks') {
       return route.fulfill(json([]))
@@ -132,14 +153,16 @@ async function runViewport(browser, viewport, requestedMode, variant = {}) {
   const page = await context.newPage()
   const failures = []
   const apiRequests = []
+  const imageRequests = []
   page.on('console', (message) => {
     if (message.type() !== 'error') return
     const text = message.text()
     if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    if (variant.capabilityFails && text.includes('status of 404')) return
     failures.push(text)
   })
   page.on('pageerror', error => failures.push(error.message))
-  await installMocks(page, apiRequests, mode, variant)
+  await installMocks(page, apiRequests, imageRequests, mode, variant)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-content-image img', { timeout: 10_000 })
   await page.waitForFunction(() => {
@@ -182,8 +205,20 @@ async function runViewport(browser, viewport, requestedMode, variant = {}) {
       clientHeight: content.clientHeight,
       topVisible: Boolean(document.querySelector('.reader-mobile-top.visible')),
       persistedReader: window.localStorage.getItem('reader'),
+      imageSrc: image.currentSrc || image.src,
+      imagePosition: imageBox.dataset.pos,
     }
   })
+
+  if (variant.useCachedMapping && !variant.capabilityFails) {
+    assert(state.imageSrc.includes('/api/chapter-image/smoke-capability'), `${viewport.width}: cached capability was not used: ${state.imageSrc}`)
+    assert(imageRequests.includes('capability') && !imageRequests.includes('remote'), `${viewport.width}: cached image unexpectedly fetched remote source: ${JSON.stringify(imageRequests)}`)
+  }
+  if (variant.useCachedMapping && variant.capabilityFails) {
+    assert(state.imageSrc.includes('/comic/tall.svg'), `${viewport.width}: failed capability did not fall back: ${state.imageSrc}`)
+    assert(imageRequests.includes('capability') && imageRequests.includes('remote'), `${viewport.width}: fallback request sequence missing: ${JSON.stringify(imageRequests)}`)
+  }
+  assert(Number(state.imagePosition) > 0, `${viewport.width}: image source mapping lost original data-pos: ${state.imagePosition}`)
   assert(
     state.titleCount === (isCBZ ? 0 : 1),
     `${viewport.width}: ${isCBZ ? 'CBZ should hide' : 'ordinary image-comic should retain'} the chapter title`,
@@ -257,6 +292,15 @@ async function main() {
     ]) {
       await runViewport(browser, viewport, 'flip', { isCBZ: false })
     }
+    await runViewport(browser, { width: 390, height: 844 }, 'scroll', {
+      isCBZ: false,
+      useCachedMapping: true,
+    })
+    await runViewport(browser, { width: 390, height: 844 }, 'scroll', {
+      isCBZ: false,
+      useCachedMapping: true,
+      capabilityFails: true,
+    })
     console.log('reader image contract smoke passed')
   } finally {
     await browser.close()

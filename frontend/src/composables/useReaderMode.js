@@ -57,6 +57,7 @@ export function useReaderMode(options) {
             options.currentIndex.value,
             options.chapter.value,
             options.content.value,
+            unref(options.cachedImages) || {},
           ),
         ]
       }

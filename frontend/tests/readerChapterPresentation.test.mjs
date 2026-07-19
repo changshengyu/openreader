@@ -115,6 +115,28 @@ test('marks image and cbz chapters with upstream comic semantics', () => {
   assert.equal(fixture.controller.makeChapterBlock(0, null, '正文').hideTitle, true)
 })
 
+test('maps cached image capabilities only after preserving original paragraph positions', () => {
+  const fixture = createController()
+  const remote = 'https://cdn.example.test/illustration?chapter=1'
+  const content = `开头<img src="${remote}" alt="插图" data-image-style="FULL">结尾`
+  const original = fixture.controller.makeChapterBlock(0, null, content)
+  const cached = fixture.controller.makeChapterBlock(0, null, content, {
+    [remote]: '/api/chapter-image/signed.capability',
+  })
+
+  assert.deepEqual(
+    cached.paragraphs.map(block => ({ type: block.type, pos: block.pos, endPos: block.endPos })),
+    original.paragraphs.map(block => ({ type: block.type, pos: block.pos, endPos: block.endPos })),
+  )
+  const originalImage = original.paragraphs.find(block => block.type === 'image')
+  const cachedImage = cached.paragraphs.find(block => block.type === 'image')
+  assert.equal(cachedImage.originalSrc, originalImage.src)
+  assert.equal(cachedImage.fallbackSrc, originalImage.src)
+  assert.equal(cachedImage.src, 'http://localhost/api/chapter-image/signed.capability')
+  assert.deepEqual(cached.imageUrls, ['http://localhost/api/chapter-image/signed.capability'])
+  assert.equal(cached.content, content)
+})
+
 test('reads the final paragraph boundary as chapter text length', () => {
   const fixture = createController()
   assert.equal(fixture.controller.chapterBlockTextLength({ paragraphs: [] }), 0)

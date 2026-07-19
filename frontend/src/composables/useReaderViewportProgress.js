@@ -64,6 +64,7 @@ export function useReaderViewportProgress(options) {
               options.currentIndex.value,
               options.chapter.value,
               options.content.value,
+              options.cachedImages?.value || {},
             )
           : null
       )

@@ -4,7 +4,7 @@ import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 const readerPath = '/books/1/read?chapter=0'
-const fixtureText = Array.from({ length: 44 }, (_, index) => (
+const fixtureText = Array.from({ length: 360 }, (_, index) => (
   `第${index + 1}段。春风过处，纸页微明。用于验证阅读模式的正文宽度、首屏位置和翻页位移。`
 )).join('\n')
 
@@ -243,8 +243,8 @@ async function assertConfiguredPageDuration(browser) {
       transform: body ? getComputedStyle(body).transform : 'none',
     }
   })
-  assert(middle.scrollTop === 0, `500ms animation must defer scrollTop settlement: ${middle.scrollTop}`)
-  assert(middle.animationCount === 1 && middle.transform !== 'none', `500ms animation must still be composited at 180ms: ${JSON.stringify(middle)}`)
+  assert(middle.scrollTop > targetTop * 0.12 && middle.scrollTop < targetTop * 0.82, `500ms frame scroll must still be moving at 180ms: ${JSON.stringify(middle)}`)
+  assert(middle.animationCount === 0 && middle.transform === 'none', `500ms frame scroll must not promote the full chapter: ${JSON.stringify(middle)}`)
   await long.page.waitForTimeout(420)
   close((await readerGeometry(long.page)).contentScrollTop, targetTop, 2, '500ms page animation')
 
@@ -286,8 +286,8 @@ async function assertRuntimeConfiguredPageDuration(browser) {
       transform: body ? getComputedStyle(body).transform : 'none',
     }
   })
-  assert(middle.scrollTop === 0, `runtime 500ms mobile page animation must defer scrollTop settlement: ${middle.scrollTop}`)
-  assert(middle.animationCount === 1 && middle.transform !== 'none', `runtime 500ms mobile page animation must still be composited at 180ms: ${JSON.stringify(middle)}`)
+  assert(middle.scrollTop > targetTop * 0.12 && middle.scrollTop < targetTop * 0.82, `runtime 500ms frame scroll must still be moving at 180ms: ${JSON.stringify(middle)}`)
+  assert(middle.animationCount === 0 && middle.transform === 'none', `runtime 500ms frame scroll must not promote the full chapter: ${JSON.stringify(middle)}`)
   await page.waitForTimeout(420)
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 500ms page animation')
 
@@ -317,7 +317,6 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
     const body = document.querySelector('.reader-body')
     content.scrollTop = 0
     const samples = []
-    const bodyTop = body.getBoundingClientRect().top
     let touchEndAt = null
     const originalGetSelection = window.getSelection.bind(window)
     window.__openReaderSelectionChecks = 0
@@ -352,7 +351,8 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
         afterInput: touchEndAt === null ? null : now - touchEndAt,
         animationCount: body.getAnimations().length,
         scrollTop: content.scrollTop,
-        visualOffset: bodyTop - body.getBoundingClientRect().top,
+        transform: getComputedStyle(body).transform,
+        willChange: body.style.willChange,
       })
       if (now - startedAt < 430) requestAnimationFrame(sample)
     }
@@ -366,8 +366,14 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
     touchPoints: [{ x: tapX, y: tapY, radiusX: 1, radiusY: 1, force: 1, id: 0 }],
   })
   await page.waitForTimeout(48)
-  const preparedWillChange = await page.locator('.reader-body').evaluate(element => element.style.willChange)
-  assert(preparedWillChange === 'transform', `${viewport.width}: touchstart did not prewarm the page layer (${preparedWillChange})`)
+  const preparedLayer = await page.locator('.reader-body').evaluate(element => ({
+    animationCount: element.getAnimations().length,
+    height: element.getBoundingClientRect().height,
+    transform: getComputedStyle(element).transform,
+    willChange: element.style.willChange,
+  }))
+  assert(preparedLayer.height > viewport.height * 10, `${viewport.width}: long chapter fixture is too short (${preparedLayer.height})`)
+  assert(preparedLayer.animationCount === 0 && preparedLayer.transform === 'none' && preparedLayer.willChange === '', `${viewport.width}: touchstart promoted the full chapter layer ${JSON.stringify(preparedLayer)}`)
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchEnd',
     touchPoints: [],
@@ -375,18 +381,17 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
   await page.waitForTimeout(480)
   const samples = await page.evaluate(() => window.__openReaderMotionSamples || [])
   const moving = samples.filter(sample => (
-    sample.visualOffset > targetTop * 0.03 && sample.visualOffset < targetTop * 0.97
+    sample.scrollTop > targetTop * 0.03 && sample.scrollTop < targetTop * 0.97
   ))
   assert(moving.length >= 8, `${viewport.width}: page animation exposed too few moving frames (${moving.length})`)
-  assert(moving.some(sample => sample.animationCount === 1), `${viewport.width}: page motion did not use a compositor animation`)
-  assert(moving.every(sample => sample.scrollTop === 0), `${viewport.width}: page motion wrote scrollTop before compositor settlement`)
+  assert(moving.every(sample => sample.animationCount === 0 && sample.transform === 'none' && sample.willChange === ''), `${viewport.width}: page motion promoted the full chapter ${JSON.stringify(moving.find(sample => sample.animationCount || sample.transform !== 'none' || sample.willChange))}`)
   for (let index = 1; index < moving.length; index += 1) {
     assert(
-      moving[index].visualOffset >= moving[index - 1].visualOffset,
+      moving[index].scrollTop >= moving[index - 1].scrollTop,
       `${viewport.width}: page animation moved backwards at sample ${index}`,
     )
   }
-  const distinctPositions = new Set(moving.map(sample => Math.round(sample.visualOffset * 10))).size
+  const distinctPositions = new Set(moving.map(sample => Math.round(sample.scrollTop * 10))).size
   assert(
     distinctPositions >= Math.min(8, moving.length),
     `${viewport.width}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
@@ -396,7 +401,7 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
     && sample.afterInput >= 0
     && sample.afterInput <= 40
   ))
-  const earlyVisibleOffset = Math.max(0, ...earlySamples.map(sample => sample.visualOffset))
+  const earlyVisibleOffset = Math.max(0, ...earlySamples.map(sample => sample.scrollTop))
   assert(
     earlyVisibleOffset >= targetTop * 0.01,
     `${viewport.width}: first 40ms remained in a perceptual dead zone (${earlyVisibleOffset}/${targetTop})`,

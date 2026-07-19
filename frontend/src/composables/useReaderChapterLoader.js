@@ -45,6 +45,10 @@ export function useReaderChapterLoader(options) {
           ? 'audio'
           : 'text'
       options.chapterFormat.value = format
+      const cachedImages = format === 'text' && data.cachedImages && typeof data.cachedImages === 'object'
+        ? { ...data.cachedImages }
+        : {}
+      if (options.cachedImages) options.cachedImages.value = cachedImages
       options.epubResource.value = format === 'epub'
         ? {
             url: data.resourceUrl,
@@ -68,6 +72,7 @@ export function useReaderChapterLoader(options) {
               options.currentIndex.value,
               options.chapter.value,
               options.content.value,
+              cachedImages,
             ),
           ]
       if (format === 'epub') {
@@ -102,6 +107,7 @@ export function useReaderChapterLoader(options) {
     } catch (error) {
       options.epubResource.value = null
       if (options.audioResource) options.audioResource.value = null
+      if (options.cachedImages) options.cachedImages.value = {}
       options.chapterLoadError.value = options.formatError(error)
     } finally {
       clearLoadingTimer()

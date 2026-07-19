@@ -125,6 +125,11 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | CORS allowed origin |
 | `OPENREADER_PUBLIC_DIR` | `public` | Frontend static files directory |
 | `OPENREADER_MAX_IMPORT_BYTES` | `134217728` (128 MiB) | Maximum bytes accepted for one local-book or LocalStore/WebDAV upload, preview, or import; adjust only when the host has sufficient memory/disk |
+| `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | Maximum embedded images processed for one chapter |
+| `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum bytes for one cached chapter image |
+| `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432` (32 MiB) | Maximum aggregate cached image bytes for one chapter |
+| `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` | Timeout for one embedded-image request |
+| `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` | Maximum redirects for an embedded-image request |
 
 ## Tech Stack
 

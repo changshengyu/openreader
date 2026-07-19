@@ -13,6 +13,8 @@ test('reader image loads trigger pagination and progress recomputation', async (
     /@load="emit\('image-load', \{ blockIndex: block\.index, pos: line\.pos, src: line\.src \}\)"/,
   )
   assert.match(contentSource, /class="reader-content-image"[\s\S]*?@click\.stop/)
+  assert.match(contentSource, /@error="handleImageError\(line\)"/)
+  assert.match(contentSource, /line\.fallbackSrc/)
   assert.match(contentSource, /'image-load'/)
   assert.match(readerSource, /@image-load="handleReaderImageLoad"/)
   assert.match(

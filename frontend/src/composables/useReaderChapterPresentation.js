@@ -18,10 +18,11 @@ export function useReaderChapterPresentation(options) {
     return formatChineseText(title || '')
   }
 
-  function makeChapterBlock(index, chapterRow, text) {
+  function makeChapterBlock(index, chapterRow, text, cachedImages = {}) {
     const fallback = unref(options.chapters)?.[index] || {}
     const title = chapterRow?.title || fallback.title || `第 ${index + 1} 章`
-    const paragraphs = makeParagraphs(text, title)
+    const parsedParagraphs = makeParagraphs(text, title)
+    const paragraphs = mapCachedImageSources(parsedParagraphs, cachedImages)
     const isVolume = Boolean(chapterRow?.isVolume ?? fallback.isVolume)
     const isCBZ = isCBZBook(unref(options.book))
     const isComic = isCBZ || containsImageMarkup(text) || paragraphs.some(item => item.type === 'image')
@@ -35,6 +36,7 @@ export function useReaderChapterPresentation(options) {
         ? paragraphs.filter(item => item.type === 'text').map(item => item.text).join('\n')
         : '',
       paragraphs,
+      cachedImages: { ...(cachedImages || {}) },
       imageUrls: paragraphs
         .filter(item => item.type === 'image')
         .map(item => item.src),
@@ -63,6 +65,55 @@ export function useReaderChapterPresentation(options) {
     makeChapterBlock,
     makeParagraphs,
   }
+}
+
+function mapCachedImageSources(paragraphs, cachedImages) {
+  if (!cachedImages || typeof cachedImages !== 'object') return paragraphs
+  const normalized = new Map()
+  for (const [source, capability] of Object.entries(cachedImages)) {
+    const sourceURL = normalizedURL(source)
+    const capabilityURL = normalizedChapterImageCapability(capability)
+    if (sourceURL && capabilityURL) normalized.set(sourceURL, capabilityURL)
+  }
+  if (!normalized.size) return paragraphs
+  return paragraphs.map(paragraph => {
+    if (paragraph?.type !== 'image') return paragraph
+    const originalSrc = normalizedURL(paragraph.src)
+    const cachedSrc = normalized.get(originalSrc)
+    if (!cachedSrc) return paragraph
+    return {
+      ...paragraph,
+      originalSrc: paragraph.src,
+      fallbackSrc: paragraph.src,
+      src: cachedSrc,
+    }
+  })
+}
+
+function normalizedURL(value) {
+  try {
+    return new URL(String(value || ''), runtimeOrigin()).href
+  } catch {
+    return ''
+  }
+}
+
+function normalizedChapterImageCapability(value) {
+  try {
+    const origin = new URL(runtimeOrigin())
+    const parsed = new URL(String(value || ''), origin)
+    if (parsed.origin !== origin.origin || parsed.username || parsed.password || parsed.search || parsed.hash) return ''
+    if (!/^\/api\/chapter-image\/[^/]+$/.test(parsed.pathname)) return ''
+    return parsed.href
+  } catch {
+    return ''
+  }
+}
+
+function runtimeOrigin() {
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin
+  if (typeof globalThis.location !== 'undefined' && globalThis.location?.origin) return globalThis.location.origin
+  return 'http://localhost'
 }
 
 function containsImageMarkup(value) {

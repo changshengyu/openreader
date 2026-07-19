@@ -491,6 +491,19 @@ Implemented tests: `backend/api/remote_reader_contract_test.go` proves user isol
 
 If a refactor changes frontend routes, API paths should stay stable unless an old path is kept as a redirect/shim. Document removals before deleting compatibility behavior.
 
+## P2 embedded chapter-image cache contract (implementation in progress)
+
+Reader-dev downloads embedded chapter images while caching text and reuses those files during EPUB export. OpenReader keeps the existing authenticated chapter path and adds an optional browser-safe mapping rather than changing persisted text or text-position semantics.
+
+| Method / path | Request | Success / side effects | Auth and errors |
+|---|---|---|---|
+| `GET /api/books/:id/chapters/:index/content` | Existing path and Bearer JWT. | Existing `chapter`, `content`, and `format` remain unchanged. For a remote text chapter with verified cached images, optional `cachedImages` maps normalized original HTTP(S) URLs to `/api/chapter-image/<capability>` and optional `cachedImagesExpiresAt` is RFC3339. Text cache writes retain original URLs. A failed image fetch never fails readable chapter text. | Existing ownership and chapter errors remain unchanged. Image-cache absence/corruption omits the optional mapping; it does not become a chapter `401`, `404`, or `502`. |
+| `GET|HEAD /api/chapter-image/:capability` | One opaque path capability; no JWT header, query token, source URL, or filesystem path. | Serves one verified raster blob with its detected MIME, exact `Content-Length`, `X-Content-Type-Options: nosniff`, same-origin/no-referrer policy, and private short-lived cache headers. `HEAD` returns identical relevant headers and no body. | Malformed, invalid, expired, wrong-purpose, or unsafe capability: `403`; deleted book/owner/source or missing blob: `404`; unexpected storage/DB failure: `500`. Errors are stable JSON and never expose token/path/source credentials. |
+| Existing cache/clear/delete/refresh/source-change routes | Existing request and response fields. | Successful text cache work also attempts bounded image caching. Image failures do not alter chapter success/failure counters. Cache clearing, book/user deletion, catalogue replacement, refresh, and source change remove that book's derived image references after the database transaction commits. | Existing auth/status behavior remains stable. A cleanup filesystem failure is never permission to roll back or corrupt committed user rows, and must not delete another user's root. |
+| Existing EPUB export | Existing authenticated export request. | Includes only already-cached verified blobs below `OEBPS/Images/`, adds OPF image manifest entries, and rewrites matching chapter image elements. It performs no export-time network fetch. Missing images do not fail export and never place capabilities or host paths in the archive. | Existing export error envelope remains unchanged. |
+
+Capabilities are HMAC purpose-separated from login/EPUB/CBZ/audio tokens and bind user ID, book ID, source ID, blob key, fingerprint, and expiry. The resource handler rechecks the current database owner/source and file fingerprint on every open. Access logs redact the entire capability segment.
+
 ## P2 parser structured-error contract (P2-Parser-2A implemented)
 
 Status: implemented and API-tested on 2026-07-13. Reader-dev has no equivalent REST envelope, so OpenReader preserves deployed transport semantics while making parser failures machine-readable and safe. This remains independent from the separately implemented P2-Parser-1G persistent-variable migration.

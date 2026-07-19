@@ -532,3 +532,15 @@ UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existi
 
 Required release evidence: current and historical mounted-volume restart plus portable backup/restore,
 TXT/EPUB/UMD/CBZ and relative-cache/owner-isolation smoke using the final locally built image.
+
+## P2 embedded chapter-image derived cache compatibility (implementation in progress)
+
+- No SQLite table, column, index, model field, backup member, WebDAV file, local-book archive, browser key, or existing chapter-text filename changes.
+- New files are rebuildable derived data only, rooted under
+  `cache/chapter-images/user-<user-id>/book-<book-id>/`. `blobs/<sha256-normalized-url>` stores allow-listed raster bytes; `refs/chapter-<chapter-id>.json` stores only key/MIME/fingerprint/size. Neither location stores the source URL, source header, JWT, capability, host path, or user-controlled filename.
+- Existing mounted volumes require no migration. A missing image root means an empty image cache; existing text cache remains readable. `cache/` continues to be the only Docker mount involved, so restart can reuse verified files and portable logical backup/restore intentionally omits them.
+- Image capabilities are generated only while serializing a response and are never durable data. The frontend consumes the optional mapping after parsing the original text so offsets, bookmarks, progress, and `data-pos` remain compatible with pre-feature clients.
+- Cache cleanup is compensating post-commit file work: database changes commit first, then the exact rooted user/book image tree or obsolete chapter references are removed. A failed database transaction must never delete image files; malformed reference metadata makes blob pruning fail closed.
+- Source/catalogue changes may delete only the affected book's derived image root after the replacement rows are durable. Shared blobs are deduplicated only inside one user/book root, never across owners or books.
+
+Required release evidence: service/API ownership and malformed-cache tests, old-volume restart, portable backup/restore, TXT/EPUB/UMD/CBZ and relative-cache/owner-isolation smoke using the final locally built image.

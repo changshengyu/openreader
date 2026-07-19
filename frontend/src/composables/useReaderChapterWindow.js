@@ -57,6 +57,11 @@ export function useReaderChapterWindow(options) {
       index,
       data?.chapter || chapterRows[index],
       data?.content || '',
+      data?.cachedImages || (
+        index === unref(options.currentIndex)
+          ? unref(options.cachedImages) || {}
+          : {}
+      ),
     )
   }
 
@@ -105,6 +110,9 @@ export function useReaderChapterWindow(options) {
             ? { id: activatedBlock.id, title: activatedBlock.title, index: anchorIndex }
             : unref(options.chapter))
         options.content.value = activatedBlock?.content || unref(options.content)
+        if (options.cachedImages) {
+          options.cachedImages.value = { ...(activatedBlock?.cachedImages || {}) }
+        }
       }
       const indexes = readerChapterWindowIndexes({
         mode: options.reader.mode,
@@ -208,6 +216,9 @@ export function useReaderChapterWindow(options) {
         ? { id: block.id, title: block.title, index: nextIndex }
         : options.chapter.value)
     options.content.value = block?.content || options.content.value
+    if (options.cachedImages) {
+      options.cachedImages.value = { ...(block?.cachedImages || {}) }
+    }
   }
 
   async function retry(index) {

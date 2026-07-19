@@ -17,6 +17,7 @@ import (
 // committed, so a failed database write cannot delete readable user data.
 type bookCleanupPlan struct {
 	remoteCachePaths []string
+	remoteImageBook  *models.Book
 	privateLibrary   string
 }
 
@@ -27,6 +28,8 @@ func (s *Server) captureBookCleanup(tx *gorm.DB, userID uint, book models.Book) 
 		return plan, err
 	}
 	if book.SourceID > 0 {
+		bookCopy := book
+		plan.remoteImageBook = &bookCopy
 		for _, chapter := range chapters {
 			plan.remoteCachePaths = append(plan.remoteCachePaths, chapter.CachePath)
 		}
@@ -68,6 +71,9 @@ func (s *Server) cleanupDeletedBookArtifacts(plans []bookCleanupPlan) {
 	directories := make(map[string]struct{})
 	for _, plan := range plans {
 		paths = append(paths, plan.remoteCachePaths...)
+		if plan.remoteImageBook != nil {
+			_, _ = s.chapterImages.RemoveBook(*plan.remoteImageBook)
+		}
 		if plan.privateLibrary != "" {
 			directories[plan.privateLibrary] = struct{}{}
 		}

@@ -11,6 +11,7 @@ var capabilityResourceLogPrefixes = []string{
 	"/api/epub-resource/",
 	"/api/cbz-resource/",
 	"/api/audio-resource/",
+	"/api/chapter-image/",
 }
 
 func AccessLogger() gin.HandlerFunc {

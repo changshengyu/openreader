@@ -97,3 +97,31 @@ func TestLoadPortableBackupLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.
 		t.Fatalf("safe portable backup defaults = %+v", defaults)
 	}
 }
+
+func TestLoadChapterImageLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGES", "7")
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGE_BYTES", "2048")
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES", "8192")
+	t.Setenv("OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS", "4")
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS", "2")
+
+	configured := Load()
+	if configured.MaxChapterImages != 7 || configured.MaxChapterImageBytes != 2048 ||
+		configured.MaxChapterImageTotalBytes != 8192 || configured.ChapterImageTimeoutSeconds != 4 ||
+		configured.MaxChapterImageRedirects != 2 {
+		t.Fatalf("configured chapter image limits = %+v", configured)
+	}
+
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGES", "0")
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGE_BYTES", "invalid")
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES", "-1")
+	t.Setenv("OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS", "0")
+	t.Setenv("OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS", "invalid")
+
+	defaults := Load()
+	if defaults.MaxChapterImages != 64 || defaults.MaxChapterImageBytes != 8*1024*1024 ||
+		defaults.MaxChapterImageTotalBytes != 32*1024*1024 || defaults.ChapterImageTimeoutSeconds != 12 ||
+		defaults.MaxChapterImageRedirects != 3 {
+		t.Fatalf("safe chapter image defaults = %+v", defaults)
+	}
+}

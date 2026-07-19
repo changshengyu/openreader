@@ -15,6 +15,7 @@ function createController(overrides = {}) {
     chapterLoading: ref(false),
     chapter: ref(null),
     content: ref(''),
+    cachedImages: ref({}),
     chapterFormat: ref('text'),
     epubResource: ref(null),
     audioResource: ref(null),
@@ -181,4 +182,27 @@ test('renders CBZ image chapter responses through the ordinary image block path'
     id: 3,
     content: '<img src="/api/cbz-resource/token/pages/001.jpg" />',
   }])
+})
+
+test('stores cached image mappings and passes them to presentation after loading text', async () => {
+  const remote = 'https://cdn.example.test/one.png'
+  const capability = '/api/chapter-image/signed.capability'
+  let presented
+  const fixture = createController({
+    loadContent: async () => ({
+      chapter: { id: 1, title: '第一章' },
+      content: `<img src="${remote}">`,
+      format: 'text',
+      cachedImages: { [remote]: capability },
+      cachedImagesExpiresAt: '2026-07-20T00:00:00Z',
+    }),
+    makeChapterBlock: (index, chapter, content, cachedImages) => {
+      presented = { index, chapter, content, cachedImages }
+      return presented
+    },
+  })
+
+  await fixture.controller.load(0)
+  assert.deepEqual(fixture.state.cachedImages.value, { [remote]: capability })
+  assert.deepEqual(presented.cachedImages, { [remote]: capability })
 })
