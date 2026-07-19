@@ -102,3 +102,25 @@
 - `scripts/smoke/reader-mobile-contract.mjs` 已扩展 iPad Safari UA + touch 合同；
   1440×900、390×844、360×800、1024×1366 和 1366×1024 全部通过。iPad 两种方向
   均验证四个主面板可打开/关闭、顶部工具可命中、桌面工具不挂载、正文 16px 对称。
+
+### iPad Pro 修复 Docker 发布
+
+- 实现提交 `b8b70f969cef068b9102c69c12bab38faeb6565e` 已推送 `main`；镜像从该干净
+  提交在本机完成 linux/amd64 与 linux/arm64 构建，再由本机 OCI 发布器上传，未使用
+  云端构建。
+- `ghcr.io/changshengyu/openreader:b8b70f9` 与 `latest` 共同指向 OCI index
+  `sha256:2711516edc2587ef14cdf4f84be26f950365928ff10f5a3f5d3004a084ef5759`；
+  amd64 manifest 为
+  `sha256:d3d732940adc4ae67addcff8f31b188116abb2819ec3e97f0aca62ad17f24b35`，
+  arm64 manifest 为
+  `sha256:a9352c1a7bc7a80137f78ad3bbb99a875dbd08b95843b1e1e3cba5634f5422ac`。
+  远端两个标签均已检查并确认平台清单一致。
+- 干净提交门禁：前端 494/494、Go 全量、Vite 生产构建，以及五视口 Reader 浏览器
+  合同全部通过。Go 测试初次仅因 Codex 沙箱禁止 `httptest` 监听 localhost 失败，按原命令
+  在授权环境重跑通过。
+- Docker daemon 从 GHCR 拉取 manifest 连续三次遇到网关 `502 Bad Gateway`；远端
+  `imagetools inspect` 同期仍能确认 tag 与 digest。为不跳过兼容闸门，使用同一提交在本机
+  `--load` 当前架构镜像，普通 mounted-volume/portable backup/restore 以及历史
+  TXT/EPUB/UMD/CBZ、相对缓存、owner 隔离门禁全部通过。
+- 本批允许差异仅是既有 iPad/移动浏览器识别、用户手机模式、原生连续滚动和数值 stepper；
+  BookGroup P2 仍未完成，不属于该镜像完成范围。
