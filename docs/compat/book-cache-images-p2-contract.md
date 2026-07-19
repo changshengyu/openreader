@@ -2,8 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-19 已完成上游/当前实现审查、失败测试、实现、全量自动化和三视口图片 Reader
-验证；Docker 历史卷/备份与发布记录待本批提交后补充。此合同是
+状态：2026-07-19 已完成上游/当前实现审查、失败测试、实现、全量自动化、三视口图片 Reader、
+Docker 历史卷/备份门禁和本地双架构 GHCR 发布。此合同是
 [`book-management-cache-p2-contract.md`](book-management-cache-p2-contract.md) 中“整本正文缓存”
 之后的下一切片，实施前必须先写失败测试。
 
@@ -116,4 +116,12 @@
   查询凭证或源头 URL。单书/全局清缓存、删书、删用户、换源和刷新目录均接入派生根清理。
 - targeted Go 合同和 `go test ./...` 通过；前端全量 489/489、生产 build 通过；
   `reader-image-contract.mjs` 在 1440×900、390×844、360×800 验证缓存命中、404 远程回退、位置
-  不变和图片/CBZ 几何。Docker 卷/备份门禁仍须在提交后的可追踪镜像上执行。
+  不变和图片/CBZ 几何。
+- 实现提交 `32dc6161e4fe559b21855b4b9f963b538098313a` 已推送 `main`。本地 ARM64 镜像通过
+  历史 TXT/EPUB/UMD/CBZ、相对缓存、owner 隔离、`data/cache/library` 挂载和 portable
+  backup/restore 门禁；图片派生根不修改旧卷或逻辑备份格式。
+- 本机生成并上传 `ghcr.io/changshengyu/openreader:32dc616` 与 `latest`；两标签共同指向 OCI
+  index `sha256:e5db5dd67e9dafc93803230ec2dba9c4ce09dc39632fcec3d9882b47a6ae781d`。
+  AMD64 manifest 为 `sha256:cd0566859e17a7b89f6a739e62d165af8ced674e614c0571996aff8f5f55010b`，
+  ARM64 manifest 为 `sha256:80d1c1d89fa7a952b8ec4dc4780e55684409b6af2d500bb4940edd92e970f79a`；
+  两个远端标签均由 `docker buildx imagetools inspect` 核验。

@@ -2,7 +2,8 @@
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-19 第四次用户实测仍能感到移动端点击分页停顿，当前重新打开 P0。前三批分别
+状态：2026-07-19 第四次用户实测后的修复、全量门禁和 Docker 发布已完成，等待真实手机体感
+复验。前三批分别
 移除逐帧重型同步、尝试合成层分页、清理普通点击选文轮询并缩短起步死区；第四次复审确认
 “把整章正文提升为合成层”本身会在真实移动设备制造不可由 Long Task 观测的栅格化/GPU 压力，
 不能继续以当前 WAAPI 轨迹通过作为丝滑度证据。第一批
@@ -246,4 +247,8 @@
   分离 touchstart/touchend 合同中没有正文 Animation/transform/`will-change`，运动轨迹单调、
   前 40ms 可见、无超过两个刷新周期停帧并精确落点；desktop/mobile、长按选文、工具层、
   continuous 原生手势和章末入口继续通过。
-- 当前只记录发布前证据；提交 SHA、Docker 历史卷/备份与 GHCR digest 在本地发布成功后补充。
+- 修复随提交 `32dc6161e4fe559b21855b4b9f963b538098313a` 推送 `main`；本地 ARM64 镜像通过历史
+  TXT/EPUB/UMD/CBZ、相对缓存、owner 隔离、挂载卷和 portable backup/restore 门禁。
+- 本机发布的 `ghcr.io/changshengyu/openreader:32dc616` 与 `latest` 同指 OCI index
+  `sha256:e5db5dd67e9dafc93803230ec2dba9c4ce09dc39632fcec3d9882b47a6ae781d`，包含已核验的
+  linux/amd64 与 linux/arm64 manifest。自动轨迹不能代替用户在真实手机上的最终体感复验。
