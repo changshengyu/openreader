@@ -1087,9 +1087,9 @@ const {
   isVerticalRead,
   getMode: () => effectiveReaderMode.value,
   getAnimateDuration: () => reader.animateDuration,
-  useFastPageAnimation: () => (
+  useResponsiveVerticalAnimation: () => (
     isMobileReader.value
-    && effectiveReaderMode.value === 'page'
+    && isVerticalRead.value
     && chapterFormat.value === 'text'
     && !isOrdinaryImageComicChapter.value
   ),

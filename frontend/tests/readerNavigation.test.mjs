@@ -134,7 +134,7 @@ test('settles vertical synchronization only after the click animation finishes',
   assert.deepEqual(settled, ['settled'])
 })
 
-test('uses lightweight fast frame scrolling for mobile page clicks and buffers one repeated direction', async () => {
+test('uses responsive vertical scrolling and settles a buffered page chain only once', async () => {
   const settled = []
   const animationCalls = []
   const finishes = []
@@ -150,8 +150,8 @@ test('uses lightweight fast frame scrolling for mobile page clicks and buffers o
     }),
     contentBody: ref(body),
     isVerticalRead: ref(true),
-    getMode: () => 'page',
-    useFastPageAnimation: () => true,
+    getMode: () => 'scroll',
+    useResponsiveVerticalAnimation: () => true,
     onVerticalPageSettled: () => settled.push('settled'),
     scrollAnimator: {
       cancel: () => {},
@@ -167,15 +167,16 @@ test('uses lightweight fast frame scrolling for mobile page clicks and buffers o
   await fixture.navigation.nextPage()
   await fixture.navigation.nextPage()
   assert.equal(animationCalls.length, 1, 'the repeated tap must be bounded while motion is active')
-  assert.deepEqual(animationCalls[0].animationOptions, { easing: 'fast' })
+  assert.deepEqual(animationCalls[0].animationOptions, { easing: 'responsive' })
   assert.equal(body.style.willChange, '')
 
   finishes.shift()()
   await Promise.resolve()
-  assert.equal(animationCalls.length, 2, 'one repeated next-page tap must run immediately after settlement')
-  assert.deepEqual(animationCalls[1].animationOptions, { easing: 'fast' })
+  assert.equal(animationCalls.length, 2, 'one repeated next-page tap must run before final settlement')
+  assert.deepEqual(settled, [], 'the buffered page boundary must not run heavy settlement work')
+  assert.deepEqual(animationCalls[1].animationOptions, { easing: 'responsive' })
   finishes.shift()()
-  assert.deepEqual(settled, ['settled', 'settled'])
+  assert.deepEqual(settled, ['settled'])
 })
 
 test('native gesture cancellation clears a buffered page click', async () => {

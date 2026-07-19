@@ -9,10 +9,8 @@ function easeInOutCubic(progress) {
     : 1 - ((-2 * progress + 2) ** 3) / 2
 }
 
-function easeInOutFast(progress) {
-  return progress < 0.5
-    ? ((2 * progress) ** 1.5) / 2
-    : 1 - (((2 * (1 - progress)) ** 1.5) / 2)
+function easeOutResponsive(progress) {
+  return 1 - ((1 - progress) ** 1.5)
 }
 
 export function createReaderScrollAnimator(options = {}) {
@@ -54,12 +52,20 @@ export function createReaderScrollAnimator(options = {}) {
     running = true
     const startedAt = now()
     const distance = targetTop - startTop
-    const easing = animationOptions?.easing === 'fast'
-      ? easeInOutFast
+    const responsive = animationOptions?.easing === 'responsive'
+    const easing = responsive
+      ? easeOutResponsive
       : easeInOutCubic
+    const minimumProgress = responsive ? Math.min(1, 1 / duration) : 0
+    if (minimumProgress > 0) {
+      element.scrollTop = startTop + distance * easing(minimumProgress)
+    }
     const draw = (timestamp) => {
       if (!running) return
-      const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration))
+      const progress = Math.max(
+        minimumProgress,
+        Math.max(0, Math.min(1, (timestamp - startedAt) / duration)),
+      )
       element.scrollTop = startTop + distance * easing(progress)
       if (progress < 1) {
         frameId = requestFrame(draw)

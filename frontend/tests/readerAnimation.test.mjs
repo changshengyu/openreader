@@ -71,7 +71,7 @@ test('blocks overlapping page animations and supports cancellation', () => {
   assert.equal(animator.isActive(), false)
 })
 
-test('runs mobile page motion as lightweight frame scroll without promoting the chapter body', () => {
+test('starts responsive mobile page motion before a zero-timestamp first frame', () => {
   const clock = createClock()
   let scrollTop = 100
   const writes = []
@@ -100,12 +100,16 @@ test('runs mobile page motion as lightweight frame scroll without promoting the 
     600,
     300,
     () => { completed += 1 },
-    { easing: 'fast', visualElement },
+    { easing: 'responsive', visualElement },
   ), true)
+  assert(scrollTop > 100, `touchend left the first painted position at the origin: ${scrollTop}`)
+  const startedTop = scrollTop
+  clock.step(0)
+  assert(scrollTop >= startedTop, `the first rAF moved back to the origin: ${scrollTop}/${startedTop}`)
   clock.step(16)
-  assert(scrollTop >= 110, `the first refresh interval remained in a dead zone: ${scrollTop}`)
+  assert(scrollTop >= 120, `the first refresh interval remained in a dead zone: ${scrollTop}`)
   clock.step(32)
-  assert(scrollTop >= 125, `the second refresh interval remained in a dead zone: ${scrollTop}`)
+  assert(scrollTop >= 145, `the second refresh interval remained in a dead zone: ${scrollTop}`)
   assert.equal(visualElement.style.willChange, '')
   clock.step(150)
   assert(scrollTop > 300 && scrollTop < 500)
@@ -139,7 +143,7 @@ test('keeps the visible frame-scroll position after a touch or wheel cancellatio
     600,
     300,
     () => { completed += 1 },
-    { easing: 'fast' },
+    { easing: 'responsive' },
   )
   clock.step(150)
   const visibleTop = scrollTop

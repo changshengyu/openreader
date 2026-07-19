@@ -309,8 +309,8 @@ async function assertRuntimeConfiguredPageDuration(browser) {
   await context.close()
 }
 
-async function assertMobilePageAnimationCadence(browser, viewport) {
-  const { context, page } = await openReader(browser, viewport, 'page', 300)
+async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
+  const { context, page } = await openReader(browser, viewport, mode, 300)
   const targetTop = viewport.height - 72
   await page.evaluate(() => {
     const content = document.querySelector('.reader-content')
@@ -383,18 +383,23 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
   const moving = samples.filter(sample => (
     sample.scrollTop > targetTop * 0.03 && sample.scrollTop < targetTop * 0.97
   ))
-  assert(moving.length >= 8, `${viewport.width}: page animation exposed too few moving frames (${moving.length})`)
-  assert(moving.every(sample => sample.animationCount === 0 && sample.transform === 'none' && sample.willChange === ''), `${viewport.width}: page motion promoted the full chapter ${JSON.stringify(moving.find(sample => sample.animationCount || sample.transform !== 'none' || sample.willChange))}`)
+  assert(moving.length >= 8, `${viewport.width}/${mode}: page animation exposed too few moving frames (${moving.length})`)
+  assert(moving.every(sample => sample.animationCount === 0 && sample.transform === 'none' && sample.willChange === ''), `${viewport.width}/${mode}: page motion promoted the full chapter ${JSON.stringify(moving.find(sample => sample.animationCount || sample.transform !== 'none' || sample.willChange))}`)
   for (let index = 1; index < moving.length; index += 1) {
     assert(
       moving[index].scrollTop >= moving[index - 1].scrollTop,
-      `${viewport.width}: page animation moved backwards at sample ${index}`,
+      `${viewport.width}/${mode}: page animation moved backwards at sample ${index}`,
     )
   }
   const distinctPositions = new Set(moving.map(sample => Math.round(sample.scrollTop * 10))).size
   assert(
     distinctPositions >= Math.min(8, moving.length),
-    `${viewport.width}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
+    `${viewport.width}/${mode}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
+  )
+  const firstVisibleFrame = samples.find(sample => sample.afterInput !== null && sample.afterInput >= 0)
+  assert(
+    firstVisibleFrame?.scrollTop > 0,
+    `${viewport.width}/${mode}: first observable frame remained at the origin ${JSON.stringify(firstVisibleFrame)}`,
   )
   const earlySamples = samples.filter(sample => (
     sample.afterInput !== null
@@ -404,31 +409,31 @@ async function assertMobilePageAnimationCadence(browser, viewport) {
   const earlyVisibleOffset = Math.max(0, ...earlySamples.map(sample => sample.scrollTop))
   assert(
     earlyVisibleOffset >= targetTop * 0.01,
-    `${viewport.width}: first 40ms remained in a perceptual dead zone (${earlyVisibleOffset}/${targetTop})`,
+    `${viewport.width}/${mode}: first 40ms remained in a perceptual dead zone (${earlyVisibleOffset}/${targetTop})`,
   )
   const movingGaps = moving.slice(1).map((sample, index) => sample.at - moving[index].at)
-  assert(Math.max(...movingGaps) <= 50, `${viewport.width}: page motion has a visible frame stall: ${Math.max(...movingGaps)}ms`)
+  assert(Math.max(...movingGaps) <= 50, `${viewport.width}/${mode}: page motion has a visible frame stall: ${Math.max(...movingGaps)}ms`)
   const runtimeWork = await page.evaluate(() => ({
     inputTimes: window.__openReaderInputTimes || {},
     longTasks: window.__openReaderLongTasks || [],
     selectionChecks: window.__openReaderSelectionChecks || 0,
     willChange: document.querySelector('.reader-body')?.style.willChange || '',
   }))
-  assert(runtimeWork.selectionChecks <= 1, `${viewport.width}: ordinary page tap polled text selection ${runtimeWork.selectionChecks} times`)
+  assert(runtimeWork.selectionChecks <= 1, `${viewport.width}/${mode}: ordinary page tap polled text selection ${runtimeWork.selectionChecks} times`)
   const inputLongTasks = runtimeWork.longTasks.filter(task => (
     task.startTime >= Number(runtimeWork.inputTimes.touchStartAt || Infinity) - 1
     && task.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 300
   ))
-  assert(inputLongTasks.every(task => task.duration < 50), `${viewport.width}: page tap exposed a long task ${JSON.stringify({ inputLongTasks, ...runtimeWork.inputTimes })}`)
-  assert(runtimeWork.willChange === '', `${viewport.width}: settled animation leaked will-change (${runtimeWork.willChange})`)
-  close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}: sampled page animation`)
+  assert(inputLongTasks.every(task => task.duration < 50), `${viewport.width}/${mode}: page tap exposed a long task ${JSON.stringify({ inputLongTasks, ...runtimeWork.inputTimes })}`)
+  assert(runtimeWork.willChange === '', `${viewport.width}/${mode}: settled animation leaked will-change (${runtimeWork.willChange})`)
+  close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}/${mode}: sampled page animation`)
 
   await resetRuntimePage(page)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(60)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(650)
-  close((await readerGeometry(page)).contentScrollTop, targetTop * 2, 3, `${viewport.width}: buffered repeated page tap`)
+  close((await readerGeometry(page)).contentScrollTop, targetTop * 2, 3, `${viewport.width}/${mode}: buffered repeated page tap`)
   await context.close()
 }
 
@@ -469,7 +474,9 @@ async function main() {
     for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }]) {
       await assertMobilePage(browser, viewport)
       await assertMobileFlip(browser, viewport)
-      await assertMobilePageAnimationCadence(browser, viewport)
+      for (const mode of ['page', 'scroll', 'scroll2']) {
+        await assertMobileVerticalAnimationCadence(browser, viewport, mode)
+      }
       await assertMobileChapterEndPrompt(browser, viewport)
     }
     await assertConfiguredPageDuration(browser)
