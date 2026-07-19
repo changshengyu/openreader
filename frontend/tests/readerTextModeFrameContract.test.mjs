@@ -31,17 +31,17 @@ test('desktop text frame preserves reader-dev 670px content inside the configure
 test('mobile flip mode owns its upstream viewport, inner clip, and page stride', () => {
   assert.match(
     readerSource,
-    /\.reader-shell\.flip \.reader-page\s*\{[\s\S]*?padding:\s*0;/,
+    /\.reader-shell\.mini-interface\.flip \.reader-page\s*\{[\s\S]*?padding:\s*0;/,
     'mobile flip must not inherit normal reader page padding',
   )
   assert.match(
     readerSource,
-    /\.reader-shell\.flip \.reader-content\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*calc\(30px \+ env\(safe-area-inset-top\)\);[\s\S]*?bottom:\s*24px;[\s\S]*?width:\s*100%;[\s\S]*?height:\s*auto;/,
+    /\.reader-shell\.mini-interface\.flip \.reader-content\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*calc\(30px \+ env\(safe-area-inset-top\)\);[\s\S]*?bottom:\s*24px;[\s\S]*?width:\s*100%;[\s\S]*?height:\s*auto;/,
     'mobile flip content must use the upstream top/bottom viewport instead of a normal full-height scroller',
   )
   assert.match(
     readerSource,
-    /\.reader-shell\.flip \.reader-body\s*\{[\s\S]*?margin:\s*0 16px;[\s\S]*?padding:\s*0;[\s\S]*?column-width:\s*calc\(100vw - 16px\);[\s\S]*?column-gap:\s*16px;/,
+    /\.reader-shell\.mini-interface\.flip \.reader-body\s*\{[\s\S]*?margin:\s*0 16px;[\s\S]*?padding:\s*0;[\s\S]*?column-width:\s*calc\(100vw - 16px\);[\s\S]*?column-gap:\s*16px;/,
     'mobile flip must keep upstream 16px inner edges and its width-minus-16 page relationship',
   )
   assert.match(

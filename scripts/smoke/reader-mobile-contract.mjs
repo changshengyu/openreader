@@ -1273,13 +1273,69 @@ async function runViewport(browser, viewport) {
   await context.close()
 }
 
+async function runIPadViewport(browser, viewport) {
+  const context = await browser.newContext({
+    viewport,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+    userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+  })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+  }, fakeToken())
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    failures.push(text)
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  await installApiMocks(page)
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-mobile-top.visible', { timeout: 10000 })
+  await page.waitForSelector('.reader-body p', { timeout: 10000 })
+
+  const initial = await page.evaluate(() => ({
+    shellMini: document.querySelector('.reader-shell')?.classList.contains('mini-interface'),
+    desktopRails: document.querySelectorAll('.reader-left-rail, .reader-right-rail').length,
+    desktopProgress: document.querySelectorAll('.reader-page-control').length,
+    toolbarDisplay: window.getComputedStyle(document.querySelector('.reader-mobile-top.visible')).display,
+  }))
+  assert(initial.shellMini, `${viewport.width}x${viewport.height}: iPad Reader must expose semantic mini mode`)
+  assert(initial.desktopRails === 0, `${viewport.width}x${viewport.height}: iPad mini mode must not mount desktop rails`)
+  assert(initial.desktopProgress === 0, `${viewport.width}x${viewport.height}: iPad mini mode must not mount desktop progress`)
+  assert(initial.toolbarDisplay === 'grid', `${viewport.width}x${viewport.height}: iPad mobile toolbar display ${initial.toolbarDisplay}`)
+  assertReaderGeometry(await readerGeometry(page), viewport, 'iPad mini')
+  await assertMobileTopToolContract(page, viewport)
+
+  for (const [toolLabel, panelLabel] of [
+    ['书架', '书架'],
+    ['书源', '来源'],
+    ['目录', '目录'],
+    ['设置', '设置'],
+  ]) {
+    await mobileTopTool(page, toolLabel).click()
+    await assertWorkspaceOpen(page, viewport, panelLabel, { primary: true, contentSized: true })
+    await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, panelLabel)
+    await mobileTopTool(page, toolLabel).click()
+    await assertWorkspaceClosed(page, viewport, panelLabel)
+  }
+
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
 async function main() {
   const browser = await openSmokeBrowser()
   try {
     await runDesktopViewport(browser)
     await runViewport(browser, { width: 390, height: 844 })
     await runViewport(browser, { width: 360, height: 800 })
-    console.log('reader desktop/mobile contract smoke passed')
+    await runIPadViewport(browser, { width: 1024, height: 1366 })
+    await runIPadViewport(browser, { width: 1366, height: 1024 })
+    console.log('reader desktop/mobile/iPad contract smoke passed')
   } finally {
     await browser.close()
   }

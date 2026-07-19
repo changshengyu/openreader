@@ -1,6 +1,12 @@
 <template>
-  <main ref="shellEl" class="reader-shell" :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible }]" :style="readerStyle">
+  <main
+    ref="shellEl"
+    class="reader-shell"
+    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader }]"
+    :style="readerStyle"
+  >
     <ReaderDesktopTools
+      v-if="!isMobileReader"
       :auto-reading="autoReading"
       :auto-reading-supported="autoReadingSupportedForChapter"
       :tts-playing="tts.state.playing"
@@ -92,6 +98,7 @@
     </ReaderDesktopWorkspacePanel>
 
     <ReaderMobileChrome
+      v-if="isMobileReader"
       :visible="mobileChromeVisible"
       :auto-reading="autoReading"
       :auto-reading-supported="autoReadingSupportedForChapter"
@@ -208,6 +215,7 @@
     </section>
 
     <ReaderDesktopProgress
+      v-if="!isMobileReader"
       :book-progress-label="bookProgressLabel"
       :cache-visible="showCacheContentZone"
       :caching="isCachingContent"
@@ -2258,164 +2266,184 @@ function readError(err, fallback) {
 .reader-shell :deep(.el-drawer__body) {
   background: var(--reader-popup-bg);
 }
-/* ---- 响应式 ---- */
-@media (max-width: 750px) {
-  .reader-shell {
-    --reader-frame-width: 100%;
-    --reader-content-width: calc(100% - 44px);
-    min-height: 100dvh;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    overflow: hidden;
-    padding: 0;
-  }
-  .reader-page {
-    height: 100dvh;
-    border: 0;
-    width: 100vw;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    padding: 0 16px;
-    text-align: justify;
-  }
-  .reader-page-head { display: none; }
-  .reader-content {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    font-size: var(--reader-font-size);
-    padding: 0;
-    scroll-padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
-    touch-action: pan-y pinch-zoom;
-  }
-  .reader-body {
-    margin-top: calc(30px + env(safe-area-inset-top));
-    padding-top: 15px;
-    padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
-    text-align: justify;
-  }
-  .reader-shell.flip .reader-page {
-    padding: 0;
-  }
-  .reader-shell.flip .reader-content {
-    position: absolute;
-    top: calc(30px + env(safe-area-inset-top));
-    right: 0;
-    bottom: 24px;
-    left: 0;
-    width: 100%;
-    height: auto;
-    padding: 0;
-    overflow: hidden;
-    scroll-padding-bottom: 0;
-  }
-  .reader-shell.flip .reader-body {
-    height: 100%;
-    margin: 0 16px;
-    padding: 0;
-    text-align: justify;
-    column-width: calc(100vw - 16px);
-    column-gap: 16px;
-    column-fill: auto;
-  }
-  .reader-mobile-primary-popover-body {
-    box-sizing: border-box;
-    width: 100%;
-    height: auto;
-    min-height: 0;
-    padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
-    color: var(--reader-text);
-  }
-  .reader-mobile-primary-shelf,
-  .reader-mobile-primary-toc,
-  .reader-mobile-primary-source {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 0;
-    overflow: visible;
-  }
-  .reader-mobile-primary-settings {
-    max-height: none;
-    overflow: visible;
-  }
-  .reader-mobile-primary-title-zone {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    width: 100%;
-    margin: 0 0 20px;
-  }
-  .reader-mobile-primary-title {
-    width: fit-content;
-    color: #ed4259;
-    border-bottom: 1px solid #ed4259;
-    font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
-    font-size: 18px;
-    font-weight: 400;
-  }
-  .reader-mobile-primary-actions {
-    display: flex;
-    flex: 1;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0 15px;
-    min-width: 0;
-    color: #ed4259;
-    font-size: 14px;
-    line-height: 26px;
-  }
-  .reader-mobile-primary-actions button {
-    padding: 0;
-    color: inherit;
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-    font: inherit;
-    line-height: inherit;
-  }
-  .reader-mobile-primary-actions button:disabled {
-    color: #606266;
-    cursor: default;
-  }
-  .reader-mobile-primary-shelf :deep(.reader-shelf-list),
-  .reader-mobile-primary-toc :deep(.toc-list),
-  .reader-mobile-primary-source :deep(.source-switch-list) {
-    height: 300px;
-    max-height: 300px;
-    min-height: 0;
-    padding-bottom: 0;
-  }
-  .reader-mobile-primary-source :deep(.title-zone) {
-    margin-bottom: 20px;
-  }
-  .reader-mobile-primary-dismiss {
-    position: fixed;
-    inset: 0;
-    z-index: 9;
-    width: 100vw;
-    height: 100dvh;
-    margin: 0;
-    padding: 0;
-    cursor: default;
-    background: transparent;
-    border: 0;
-  }
-  .reader-shell.scroll .reader-content,
-  .reader-shell.scroll2 .reader-content {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .reader-shell.scroll .reader-content::-webkit-scrollbar,
-  .reader-shell.scroll2 .reader-content::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
-  }
+/* Mini Reader is a semantic state. It can be selected by width, mobile-browser
+   detection, or the persisted phone-mode setting, so these rules must not use
+   an independent viewport media query. */
+.reader-shell.mini-interface {
+  --reader-frame-width: 100%;
+  --reader-content-width: calc(100% - 44px);
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+}
+
+.reader-shell.mini-interface .reader-page {
+  height: 100dvh;
+  border: 0;
+  width: 100vw;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 16px;
+  text-align: justify;
+}
+
+.reader-shell.mini-interface .reader-page-head { display: none; }
+
+.reader-shell.mini-interface .reader-content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  font-size: var(--reader-font-size);
+  padding: 0;
+  scroll-padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
+  touch-action: pan-y pinch-zoom;
+}
+
+.reader-shell.mini-interface .reader-body {
+  margin-top: calc(30px + env(safe-area-inset-top));
+  padding-top: 15px;
+  padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
+  text-align: justify;
+}
+
+.reader-shell.mini-interface.flip .reader-page {
+  padding: 0;
+}
+
+.reader-shell.mini-interface.flip .reader-content {
+  position: absolute;
+  top: calc(30px + env(safe-area-inset-top));
+  right: 0;
+  bottom: 24px;
+  left: 0;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  overflow: hidden;
+  scroll-padding-bottom: 0;
+}
+
+.reader-shell.mini-interface.flip .reader-body {
+  height: 100%;
+  margin: 0 16px;
+  padding: 0;
+  text-align: justify;
+  column-width: calc(100vw - 16px);
+  column-gap: 16px;
+  column-fill: auto;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-popover-body {
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  color: var(--reader-text);
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-shelf,
+.reader-shell.mini-interface .reader-mobile-primary-toc,
+.reader-shell.mini-interface .reader-mobile-primary-source {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  overflow: visible;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-settings {
+  max-height: none;
+  overflow: visible;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-title-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 20px;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-title {
+  width: fit-content;
+  color: #ed4259;
+  border-bottom: 1px solid #ed4259;
+  font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-actions {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0 15px;
+  min-width: 0;
+  color: #ed4259;
+  font-size: 14px;
+  line-height: 26px;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-actions button {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-actions button:disabled {
+  color: #606266;
+  cursor: default;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-shelf :deep(.reader-shelf-list),
+.reader-shell.mini-interface .reader-mobile-primary-toc :deep(.toc-list),
+.reader-shell.mini-interface .reader-mobile-primary-source :deep(.source-switch-list) {
+  height: 300px;
+  max-height: 300px;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-source :deep(.title-zone) {
+  margin-bottom: 20px;
+}
+
+.reader-shell.mini-interface .reader-mobile-primary-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  cursor: default;
+  background: transparent;
+  border: 0;
+}
+
+.reader-shell.mini-interface.scroll .reader-content,
+.reader-shell.mini-interface.scroll2 .reader-content {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.reader-shell.mini-interface.scroll .reader-content::-webkit-scrollbar,
+.reader-shell.mini-interface.scroll2 .reader-content::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 </style>
