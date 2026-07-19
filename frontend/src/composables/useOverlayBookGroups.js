@@ -1,19 +1,16 @@
 import { computed, ref } from 'vue'
 import { bookCategoryIds } from '../utils/bookCategory.js'
+import { bookGroupBookCount } from '../utils/bookGroups.js'
 
 function isCancelled(error) {
   return error === 'cancel' || error === 'close'
-}
-
-function bookHasCategory(book, categoryId) {
-  return bookCategoryIds(book).some(id => String(id) === String(categoryId))
 }
 
 export function useOverlayBookGroups(options) {
   const selectedCategoryIds = ref([])
   const settingCategorySaving = ref(false)
   const visibilitySavingId = ref(null)
-  const groupOrderDraftIds = ref([])
+  const groupOrderDraftKeys = ref([])
   const groupOrderSaving = ref(false)
   const groupManageTableRef = ref(null)
   let sortable
@@ -27,29 +24,32 @@ export function useOverlayBookGroups(options) {
   ))
 
   const groupManageRows = computed(() => {
-    const categoryById = new Map(
-      options.bookshelf.categories.map(category => [String(category.id), category]),
+    const groupByKey = new Map(
+      options.bookshelf.bookGroups.map(group => [String(group.key), group]),
     )
     const rows = []
-    for (const id of groupOrderDraftIds.value) {
-      const category = categoryById.get(String(id))
-      if (category) rows.push(category)
+    for (const key of groupOrderDraftKeys.value) {
+      const group = groupByKey.get(String(key))
+      if (group) rows.push(group)
     }
-    for (const category of options.bookshelf.categories) {
-      if (!groupOrderDraftIds.value.includes(String(category.id))) rows.push(category)
+    for (const group of options.bookshelf.bookGroups) {
+      if (!groupOrderDraftKeys.value.includes(String(group.key))) rows.push(group)
     }
     return rows
   })
 
   const isGroupOrderDirty = computed(() => (
-    groupManageRows.value.map(category => String(category.id)).join(',') !==
-    options.bookshelf.categories.map(category => String(category.id)).join(',')
+    groupManageRows.value.map(group => String(group.key)).join(',') !==
+    options.bookshelf.bookGroups.map(group => String(group.key)).join(',')
   ))
 
-  function groupBookCount(category) {
-    return options.getManagedBooks()
-      .filter(book => bookHasCategory(book, category.id))
-      .length
+  function groupBookCount(group) {
+    return bookGroupBookCount(group, options.getManagedBooks())
+  }
+
+  function displayBookGroupName(group) {
+    if (group?.kind !== 'builtin') return group?.name || ''
+    return `${group.name}(${group.defaultName})`
   }
 
   function prepareOpen(mode = options.overlay.bookGroupMode) {
@@ -129,7 +129,11 @@ export function useOverlayBookGroups(options) {
       })
       const name = value.trim()
       if (!name || name === category.name) return
-      await options.bookshelf.renameCategory(category.id, { name })
+      if (category.kind === 'builtin') {
+        await options.bookshelf.updateBuiltInBookGroup(category.semantic, { name })
+      } else {
+        await options.bookshelf.renameCategory(category.categoryId || category.id, { name })
+      }
       resetGroupOrderDraft()
       options.onSuccess('分组已重命名')
     } catch (error) {
@@ -139,12 +143,16 @@ export function useOverlayBookGroups(options) {
   }
 
   async function toggleGroupVisibility(category, show) {
-    visibilitySavingId.value = category.id
+    visibilitySavingId.value = category.key || category.id
     try {
-      await options.bookshelf.setCategoryVisible(category.id, show)
+      if (category.kind === 'builtin') {
+        await options.bookshelf.updateBuiltInBookGroup(category.semantic, { show })
+      } else {
+        await options.bookshelf.setCategoryVisible(category.categoryId || category.id, show)
+      }
       options.onSuccess(show ? '分组已显示' : '分组已隐藏')
     } catch (error) {
-      await options.bookshelf.loadCategories({ force: true }).catch(() => {})
+      await options.bookshelf.loadBookGroups({ force: true }).catch(() => {})
       options.onError(error, '修改分组显示状态失败')
     } finally {
       visibilitySavingId.value = null
@@ -152,6 +160,10 @@ export function useOverlayBookGroups(options) {
   }
 
   async function deleteGroup(category) {
+    if (category.kind !== 'category') {
+      options.onWarning('内置分组不能删除')
+      return
+    }
     if (groupBookCount(category) > 0) {
       options.onWarning('分组内还有书籍，清空后才能删除')
       return
@@ -162,7 +174,7 @@ export function useOverlayBookGroups(options) {
         '删除分组',
         { type: 'warning' },
       )
-      await options.bookshelf.removeCategory(category.id)
+      await options.bookshelf.removeCategory(category.categoryId || category.id)
       resetGroupOrderDraft()
       options.onSuccess('分组已删除')
     } catch (error) {
@@ -172,8 +184,8 @@ export function useOverlayBookGroups(options) {
   }
 
   function resetGroupOrderDraft() {
-    groupOrderDraftIds.value = options.bookshelf.categories
-      .map(category => String(category.id))
+    groupOrderDraftKeys.value = options.bookshelf.bookGroups
+      .map(group => String(group.key))
   }
 
   function moveGroupOrder(oldIndex, newIndex) {
@@ -182,11 +194,11 @@ export function useOverlayBookGroups(options) {
       newIndex == null ||
       oldIndex === newIndex
     ) return
-    const ids = groupManageRows.value.map(category => String(category.id))
-    const [moved] = ids.splice(oldIndex, 1)
+    const keys = groupManageRows.value.map(group => String(group.key))
+    const [moved] = keys.splice(oldIndex, 1)
     if (!moved) return
-    ids.splice(newIndex, 0, moved)
-    groupOrderDraftIds.value = ids
+    keys.splice(newIndex, 0, moved)
+    groupOrderDraftKeys.value = keys
   }
 
   async function handleBookGroupOpened() {
@@ -220,10 +232,10 @@ export function useOverlayBookGroups(options) {
 
   async function saveGroupOrderDraft() {
     if (!isGroupOrderDirty.value) return
-    const orderedIds = groupManageRows.value.map(item => item.id)
+    const orderedKeys = groupManageRows.value.map(item => item.key)
     groupOrderSaving.value = true
     try {
-      await options.bookshelf.reorderCategoryIds(orderedIds)
+      await options.bookshelf.reorderBookGroupKeys(orderedKeys)
       resetGroupOrderDraft()
       options.onSuccess('分组排序已更新')
     } catch (error) {
@@ -237,13 +249,14 @@ export function useOverlayBookGroups(options) {
     selectedCategoryIds,
     settingCategorySaving,
     visibilitySavingId,
-    groupOrderDraftIds,
+    groupOrderDraftKeys,
     groupOrderSaving,
     groupManageTableRef,
     groupSetRows,
     groupManageRows,
     isGroupOrderDirty,
     groupBookCount,
+    displayBookGroupName,
     prepareOpen,
     isBookGroupSelected,
     toggleBookGroupSelection,

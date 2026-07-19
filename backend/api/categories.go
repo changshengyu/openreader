@@ -46,15 +46,18 @@ func (s *Server) createCategory(c *gin.Context) {
 		return
 	}
 
-	var maxSort int
-	_ = s.db.Model(&models.Category{}).Where("user_id = ?", userID).Select("COALESCE(MAX(sort_order), 0)").Scan(&maxSort).Error
+	nextSort, err := s.bookGroups.NextSortOrder(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create category"})
+		return
+	}
 
 	category := models.Category{
 		UserID:    userID,
 		Name:      strings.TrimSpace(request.Name),
 		Color:     strings.TrimSpace(request.Color),
 		Show:      true,
-		SortOrder: maxSort + 10,
+		SortOrder: nextSort,
 	}
 	if category.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category name is required"})
@@ -69,6 +72,7 @@ func (s *Server) createCategory(c *gin.Context) {
 		return
 	}
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "category_update", "payload": category})
+	s.broadcastBookGroupsUpdate(userID)
 	c.JSON(http.StatusCreated, category)
 }
 
@@ -114,6 +118,7 @@ func (s *Server) updateCategory(c *gin.Context) {
 		return
 	}
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "category_update", "payload": category})
+	s.broadcastBookGroupsUpdate(userID)
 	c.JSON(http.StatusOK, category)
 }
 
@@ -150,6 +155,7 @@ func (s *Server) reorderCategories(c *gin.Context) {
 		return
 	}
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "categories_update", "payload": categories})
+	s.broadcastBookGroupsUpdate(userID)
 	c.JSON(http.StatusOK, categories)
 }
 
@@ -192,5 +198,6 @@ func (s *Server) deleteCategory(c *gin.Context) {
 	}
 
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "category_delete", "payload": gin.H{"id": categoryID}})
+	s.broadcastBookGroupsUpdate(userID)
 	c.Status(http.StatusNoContent)
 }

@@ -38,14 +38,14 @@
     <div class="book-group-wrapper" role="tablist" aria-label="书架分组">
       <button
         v-for="item in groupItems"
-        :key="item.id"
+        :key="item.key"
         class="group-chip"
-        :class="{ active: selectedGroup === item.id }"
+        :class="{ active: selectedGroup === item.key }"
         type="button"
         role="tab"
-        :aria-selected="selectedGroup === item.id"
+        :aria-selected="selectedGroup === item.key"
         :title="`${item.name} (${item.count})`"
-        @click="selectedGroup = item.id"
+        @click="selectedGroup = item.key"
       >
         <span>{{ item.name }}</span>
       </button>
@@ -115,17 +115,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Edit, Grid, List, Menu, Search } from '@element-plus/icons-vue'
-import { bookHasCategory, useBookshelfStore } from '../stores/bookshelf'
+import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
 import { usePreferencesStore } from '../stores/preferences'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import SearchWorkspace from './Search.vue'
 import DiscoverWorkspace from './Discover.vue'
-import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
+import { createBookCategoryNameResolver } from '../utils/bookCategory'
+import { filterBooksByBookGroup, resolveBookGroupSelection, visibleBookGroups } from '../utils/bookGroups'
 import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
-import { isLocalBook, normalizeLocalBookSearch } from '../utils/localBook'
+import { normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 
@@ -138,55 +139,24 @@ const preferences = usePreferencesStore()
 const workspace = useIndexWorkspaceStore()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 
-const selectedGroup = ref('')
+const selectedGroup = computed({
+  get: () => resolveBookGroupSelection(bookshelf.bookGroups, bookshelf.books, preferences.shelf.groupKey),
+  set: value => preferences.setShelfGroup(value),
+})
 const showBookEditButton = ref(false)
 const shelfKeyword = ref('')
 const refreshLoading = ref(false)
 const shelfView = computed(() => preferences.shelf.view)
 const windowWidth = ref(currentViewportWidth())
 
-const groupItems = computed(() => {
-  const countByCategory = new Map()
-  const books = Array.isArray(bookshelf.books) ? bookshelf.books : []
-  const categories = Array.isArray(bookshelf.categories) ? bookshelf.categories : []
-  const localCount = books.filter(isLocalBook).length
-  for (const book of books) {
-    const categoryIds = bookCategoryIds(book)
-    if (!categoryIds.length) {
-      countByCategory.set('none', (countByCategory.get('none') || 0) + 1)
-      continue
-    }
-    categoryIds.forEach(id => {
-      const key = String(id)
-      countByCategory.set(key, (countByCategory.get(key) || 0) + 1)
-    })
-  }
-  const noneCount = countByCategory.get('none') || 0
-  return [
-    { id: '', name: '全部', count: books.length, builtin: true },
-    localCount ? { id: 'local', name: '本地', count: localCount, builtin: true } : null,
-    noneCount ? { id: 'none', name: '未分组', count: noneCount, builtin: true } : null,
-    ...categories.filter(category => category.show !== false && (countByCategory.get(String(category.id)) || 0) > 0).map(category => ({
-      id: String(category.id),
-      name: category.name,
-      count: countByCategory.get(String(category.id)) || 0,
-      sortOrder: category.sortOrder || 0,
-      builtin: false,
-    })),
-  ].filter(Boolean)
-})
+const groupItems = computed(() => visibleBookGroups(bookshelf.bookGroups, bookshelf.books))
 
 const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.books) ? bookshelf.books : [], reader.progressByBook))
 const totalBookCount = computed(() => Array.isArray(bookshelf.books) ? bookshelf.books.length : 0)
 
 const displayedBooks = computed(() => {
   const keyword = showBookEditButton.value ? normalizeLocalBookSearch(shelfKeyword.value) : ''
-  const filtered = sortedBooks.value.filter(book => {
-    if (!selectedGroup.value) return true
-    if (selectedGroup.value === 'local') return isLocalBook(book)
-    if (selectedGroup.value === 'none') return bookCategoryIds(book).length === 0
-    return bookHasCategory(book, selectedGroup.value)
-  })
+  const filtered = filterBooksByBookGroup(sortedBooks.value, selectedGroup.value)
   if (!keyword) return filtered
   return filtered.filter(book => normalizeLocalBookSearch(`${book.title || ''} ${book.author || ''}`).includes(keyword))
 })
@@ -227,11 +197,15 @@ watch(
   { immediate: true },
 )
 
-watch(groupItems, (items) => {
-  if (selectedGroup.value && !items.some(item => item.id === selectedGroup.value)) {
-    selectedGroup.value = ''
-  }
-})
+watch(
+  () => [bookshelf.bookGroups, bookshelf.books, preferences.shelf.groupKey],
+  () => {
+    if (!bookshelf.bookGroupsLoadedAt || !bookshelf.booksLoadedAt) return
+    const resolved = resolveBookGroupSelection(bookshelf.bookGroups, bookshelf.books, preferences.shelf.groupKey)
+    if (resolved !== preferences.shelf.groupKey) preferences.setShelfGroup(resolved)
+  },
+  { deep: true },
+)
 
 watch(isNormalPage, (normal) => {
   if (!normal) showBookEditButton.value = false
@@ -251,13 +225,15 @@ async function deleteManagedBook(book) {
 async function refreshShelf() {
   refreshLoading.value = true
   try {
-    const [categoryResult, booksResult] = await Promise.allSettled([
+    const [categoryResult, bookGroupResult, booksResult] = await Promise.allSettled([
       bookshelf.loadCategories({ force: true }),
+      bookshelf.loadBookGroups({ force: true }),
       bookshelf.loadBooks({ force: true, all: true }),
     ])
     if (booksResult.status === 'rejected') throw booksResult.reason
-    if (categoryResult.status === 'rejected') {
-      ElMessage.warning(readError(categoryResult.reason, '书架已刷新，分组刷新失败'))
+    if (categoryResult.status === 'rejected' || bookGroupResult.status === 'rejected') {
+      const groupError = categoryResult.status === 'rejected' ? categoryResult.reason : bookGroupResult.reason
+      ElMessage.warning(readError(groupError, '书架已刷新，分组刷新失败'))
     } else {
       ElMessage.success('书架已刷新')
     }
@@ -412,6 +388,7 @@ function applyRouteWorkspaceIntent() {
 async function warmHomeShelf() {
   const jobs = [
     ['categories', bookshelf.ensureCategoriesLoaded()],
+    ['bookGroups', bookshelf.ensureBookGroupsLoaded()],
     ['books', bookshelf.ensureBooksLoaded({ all: true })],
   ]
   const results = await Promise.allSettled(jobs.map(([, job]) => job))

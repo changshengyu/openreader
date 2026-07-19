@@ -9,10 +9,12 @@ test('forces a server shelf refresh after sync reconnect instead of trusting a r
   const calls = []
   await refreshShelfAfterSyncConnect({
     loadCategories: options => calls.push(['categories', options]),
+    loadBookGroups: options => calls.push(['book-groups', options]),
     loadBooks: options => calls.push(['books', options]),
   })
   assert.deepEqual(calls, [
     ['categories', { force: true }],
+    ['book-groups', { force: true }],
     ['books', { force: true, all: true }],
   ])
 })

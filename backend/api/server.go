@@ -12,6 +12,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/services/audioreader"
 	"openreader/backend/services/backup"
+	"openreader/backend/services/bookgroups"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chapterimage"
 	"openreader/backend/services/epubreader"
@@ -27,6 +28,7 @@ type Server struct {
 	hub            *readersync.Hub
 	scheduler      *scheduler.Scheduler
 	backupSvc      *backup.Service
+	bookGroups     *bookgroups.Service
 	audioReader    *audioreader.Service
 	cbzReader      *cbzreader.Service
 	chapterImages  *chapterimage.Service
@@ -44,6 +46,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		hub:            hub,
 		scheduler:      sched,
 		backupSvc:      backupSvc,
+		bookGroups:     bookgroups.New(database),
 		audioReader:    audioreader.New(cfg, database),
 		cbzReader:      cbzreader.New(cfg, database),
 		chapterImages:  chapterimage.New(cfg, database),
@@ -104,6 +107,9 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.PUT("/categories/reorder", server.reorderCategories)
 	protected.PUT("/categories/:id", server.updateCategory)
 	protected.DELETE("/categories/:id", server.deleteCategory)
+	protected.GET("/book-groups", server.listBookGroups)
+	protected.PUT("/book-groups/reorder", server.reorderBookGroups)
+	protected.PUT("/book-groups/:key", server.updateBuiltInBookGroup)
 	protected.GET("/books", server.listBooks)
 	protected.POST("/books", server.createBook)
 	protected.POST("/books/remote", server.createRemoteBook)

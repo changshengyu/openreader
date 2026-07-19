@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../api/books'
+import { listBookGroups, reorderBookGroups, updateBuiltInBookGroup as updateBuiltInBookGroupAPI } from '../api/bookGroups'
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
 import { useReaderStore } from './reader'
@@ -34,6 +35,10 @@ function sortCategories(categories) {
   return asList(categories).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || '')))
 }
 
+function sortBookGroups(groups) {
+  return asList(groups).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.key || '').localeCompare(String(b.key || '')))
+}
+
 async function clearDeletedBookBrowserCache(book, bookId) {
   if (!book) return
   try {
@@ -52,22 +57,27 @@ const REFRESH_DEDUPE_MS = 1200
 const MEMORY_CACHE_MS = 5000
 const SHELF_CACHE_KEY = 'bookshelf@getBookshelf'
 const CATEGORY_CACHE_KEY = 'bookshelf@getCategories'
+const BOOK_GROUP_CACHE_KEY = 'bookshelf@getBookGroups'
 let booksRequest = null
 let booksRequestKey = ''
 let categoriesRequest = null
+let bookGroupsRequest = null
 const booksRevision = createShelfRequestRevisionGate()
 const categoryOperations = createAuthenticatedOperationGuard()
+const bookGroupOperations = createAuthenticatedOperationGuard()
 
 export const useBookshelfStore = defineStore('bookshelf', {
   state: () => ({
     shelfScope: currentUserScope(),
     books: [],
     categories: [],
+    bookGroups: [],
     selectedCategoryId: '',
     loading: false,
     booksLoadedAt: 0,
     booksLoadedKey: '',
     categoriesLoadedAt: 0,
+    bookGroupsLoadedAt: 0,
   }),
   actions: {
     ensureShelfScope() {
@@ -85,16 +95,20 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.shelfScope = scope
       this.books = []
       this.categories = []
+      this.bookGroups = []
       this.selectedCategoryId = ''
       this.loading = false
       this.booksLoadedAt = 0
       this.booksLoadedKey = ''
       this.categoriesLoadedAt = 0
+      this.bookGroupsLoadedAt = 0
       booksRequest = null
       booksRequestKey = ''
       categoriesRequest = null
+      bookGroupsRequest = null
       booksRevision.reset(scope)
       categoryOperations.reset()
+      bookGroupOperations.reset()
     },
     async loadBooks(options = {}) {
       this.ensureShelfScope()
@@ -188,6 +202,45 @@ export const useBookshelfStore = defineStore('bookshelf', {
       categoriesRequest = request
       return categoriesRequest
     },
+    async loadBookGroups(options = {}) {
+      const scope = this.ensureShelfScope()
+      const force = options === true || Boolean(options?.force)
+      const now = Date.now()
+      if (!force && this.bookGroupsLoadedAt > 0 && now - this.bookGroupsLoadedAt < REFRESH_DEDUPE_MS) {
+        return this.bookGroups
+      }
+      if (!force && bookGroupsRequest) return bookGroupsRequest
+
+      const operation = bookGroupOperations.begin('book-groups')
+      const cacheKey = scopedShelfCacheKey(BOOK_GROUP_CACHE_KEY, scope)
+      if (!force && this.bookGroups.length === 0) {
+        const cached = await readShelfCache(cacheKey)
+        if (!bookGroupOperations.canCommit(operation)) return this.bookGroups
+        if (cached.length) {
+          this.bookGroups = sortBookGroups(cached)
+          this.bookGroupsLoadedAt = Date.now()
+        }
+      }
+
+      const request = listBookGroups()
+        .then(({ data }) => {
+          if (!bookGroupOperations.canCommit(operation)) return this.bookGroups
+          this.bookGroups = sortBookGroups(data)
+          this.bookGroupsLoadedAt = Date.now()
+          writeShelfCache(cacheKey, this.bookGroups)
+          return this.bookGroups
+        })
+        .catch((err) => {
+          if (!bookGroupOperations.canCommit(operation)) return this.bookGroups
+          if (this.bookGroups.length) return this.bookGroups
+          throw err
+        })
+        .finally(() => {
+          if (bookGroupsRequest === request) bookGroupsRequest = null
+        })
+      bookGroupsRequest = request
+      return bookGroupsRequest
+    },
     async ensureBooksLoaded(options = {}) {
       this.ensureShelfScope()
       const force = options === true || Boolean(options?.force)
@@ -204,6 +257,14 @@ export const useBookshelfStore = defineStore('bookshelf', {
       }
       return this.categories
     },
+    async ensureBookGroupsLoaded(options = {}) {
+      this.ensureShelfScope()
+      const force = options === true || Boolean(options?.force)
+      if (force || (!this.bookGroups.length && !this.bookGroupsLoadedAt)) {
+        return this.loadBookGroups(normalizeLoadOptions(options))
+      }
+      return this.bookGroups
+    },
     invalidateBooks() {
       this.booksLoadedAt = 0
       this.booksLoadedKey = ''
@@ -211,9 +272,13 @@ export const useBookshelfStore = defineStore('bookshelf', {
     invalidateCategories() {
       this.categoriesLoadedAt = 0
     },
+    invalidateBookGroups() {
+      this.bookGroupsLoadedAt = 0
+    },
     invalidateShelf() {
       this.invalidateBooks()
       this.invalidateCategories()
+      this.invalidateBookGroups()
     },
     async addCategory(category) {
       const { data } = await createCategory(category)
@@ -222,6 +287,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
         ? this.categories.map(item => Number(item.id) === Number(data.id) ? data : item)
         : [...this.categories, data])
       this.invalidateCategories()
+      await this.loadBookGroups({ force: true })
       return data
     },
     async selectCategory(categoryId) {
@@ -275,6 +341,12 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.categoriesLoadedAt = Date.now()
       writeShelfCache(scopedShelfCacheKey(CATEGORY_CACHE_KEY), this.categories)
     },
+    replaceBookGroups(groups) {
+      bookGroupOperations.invalidate('book-groups')
+      this.bookGroups = sortBookGroups(groups)
+      this.bookGroupsLoadedAt = Date.now()
+      writeShelfCache(scopedShelfCacheKey(BOOK_GROUP_CACHE_KEY), this.bookGroups)
+    },
     upsertCategory(category) {
       if (!category?.id) return
       categoryOperations.invalidate('categories')
@@ -294,6 +366,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       }
       this.invalidateCategories()
       writeShelfCache(scopedShelfCacheKey(CATEGORY_CACHE_KEY), this.categories)
+      this.invalidateBookGroups()
     },
     applyBookProgress(progress, options = {}) {
       if (!progress?.bookId) return
@@ -364,6 +437,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       const index = this.categories.findIndex(category => category.id === data.id)
       if (index >= 0) this.categories[index] = data
       this.invalidateCategories()
+      await this.loadBookGroups({ force: true })
       return data
     },
     async setCategoryVisible(categoryId, show) {
@@ -371,6 +445,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       const index = this.categories.findIndex(category => category.id === data.id)
       if (index >= 0) this.categories[index] = data
       this.invalidateCategories()
+      await this.loadBookGroups({ force: true })
       return data
     },
     async removeCategory(categoryId) {
@@ -386,12 +461,25 @@ export const useBookshelfStore = defineStore('bookshelf', {
       booksRevision.mutate(this.shelfScope)
       this.books = sortBooks(nextBooks)
       this.invalidateShelf()
+      await this.loadBookGroups({ force: true })
       nextBooks.filter(book => changedIds.has(Number(book.id))).forEach(book => syncCachedBookUpsert(book))
     },
     async reorderCategoryIds(ids) {
       const { data } = await reorderCategories(ids)
       this.categories = asList(data)
       this.invalidateCategories()
+      await this.loadBookGroups({ force: true })
+      return data
+    },
+    async updateBuiltInBookGroup(key, payload) {
+      const { data } = await updateBuiltInBookGroupAPI(key, payload)
+      const token = `builtin:${key}`
+      this.replaceBookGroups(this.bookGroups.map(group => group.key === token ? data : group))
+      return data
+    },
+    async reorderBookGroupKeys(keys) {
+      const { data } = await reorderBookGroups(keys)
+      this.replaceBookGroups(data)
       return data
     },
     async importTXT({ file, importToken, title, author, categoryId, categoryIds = [], tocRule }) {

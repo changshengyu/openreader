@@ -14,7 +14,7 @@ export {
 
 const PREFERENCE_KEYS = ['shelf', 'search']
 const SHELF_LAYOUT_VERSION = 2
-const DEFAULT_SHELF = { view: 'grid', layoutVersion: SHELF_LAYOUT_VERSION }
+const DEFAULT_SHELF = { view: 'grid', layoutVersion: SHELF_LAYOUT_VERSION, groupKey: 'builtin:all' }
 const syncTimers = new Map()
 const preferenceOperations = createAuthenticatedOperationGuard()
 
@@ -53,6 +53,11 @@ export const usePreferencesStore = defineStore('preferences', {
     setShelfView(view) {
       this.ensurePreferenceScope()
       this.shelf = { ...this.shelf, layoutVersion: SHELF_LAYOUT_VERSION, view: view === 'list' ? 'list' : 'grid' }
+      this.schedulePreferenceSync('shelf')
+    },
+    setShelfGroup(groupKey) {
+      this.ensurePreferenceScope()
+      this.shelf = { ...this.shelf, groupKey: normalizeBookGroupKey(groupKey) }
       this.schedulePreferenceSync('shelf')
     },
     setSearchConfig(config = {}) {
@@ -151,7 +156,15 @@ function sanitizeShelfPreference(value = {}) {
   return {
     ...DEFAULT_SHELF,
     view: !migrated && value.view === 'list' ? 'list' : 'grid',
+    groupKey: normalizeBookGroupKey(value.groupKey),
   }
+}
+
+function normalizeBookGroupKey(value) {
+  const key = String(value || '').trim()
+  if (/^builtin:(all|local|audio|ungrouped)$/.test(key)) return key
+  if (/^category:[1-9]\d*$/.test(key)) return key
+  return 'builtin:all'
 }
 
 function readLocalShelfPreference() {

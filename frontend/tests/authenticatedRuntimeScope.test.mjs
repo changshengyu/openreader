@@ -265,6 +265,32 @@ test('a delayed category response cannot replace the next user shelf state', { c
   })
 })
 
+test('a delayed unified book-group response cannot replace the next user shelf state', { concurrency: false }, async () => {
+  const request = deferred()
+  const { bookshelf } = freshStores(1)
+
+  await withAPI('get', () => request.promise, async () => {
+    const loading = bookshelf.loadBookGroups({ force: true })
+    activateUser(2, 'next')
+    bookshelf.resetShelfState()
+    bookshelf.bookGroups = [{ key: 'builtin:all', name: '用户 B 全部' }]
+
+    request.resolve({ data: [{ key: 'builtin:all', name: '用户 A 全部' }] })
+    await loading
+
+    assert.deepEqual(bookshelf.bookGroups, [{ key: 'builtin:all', name: '用户 B 全部' }])
+  })
+})
+
+test('shelf preferences persist the stable selected book-group token', { concurrency: false }, () => {
+  const { preferences } = freshStores(1)
+  preferences.applyPreference('shelf', { view: 'list', layoutVersion: 2, groupKey: 'category:9' })
+  assert.deepEqual(preferences.shelf, { view: 'list', layoutVersion: 2, groupKey: 'category:9' })
+
+  preferences.setShelfGroup('builtin:audio')
+  assert.equal(preferences.shelf.groupKey, 'builtin:audio')
+})
+
 test('a delayed profile response cannot overwrite a later login profile', { concurrency: false }, async () => {
   const request = deferred()
   const tokenB = tokenFor(2, 'next')
@@ -319,6 +345,7 @@ test('callbacks from a superseded websocket cannot close, clear, reconnect, or d
   const { bookshelf } = freshStores(1)
   bookshelf.loadBooks = async () => []
   bookshelf.loadCategories = async () => []
+  bookshelf.loadBookGroups = async () => []
   const sync = useSync()
 
   sync.connect()

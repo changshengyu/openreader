@@ -34,8 +34,14 @@
               </span>
             </template>
           </el-table-column>
+          <el-table-column label="操作" width="84">
+            <template #default="{ row }">
+              <el-button size="small" text @click.stop="renameGroup(row)">编辑</el-button>
+            </template>
+          </el-table-column>
         </el-table>
         <div class="manage-footer group-set-footer">
+          <el-button type="primary" plain @click="createCategory">添加分组</el-button>
           <el-button
             type="primary"
             :loading="settingCategorySaving"
@@ -51,7 +57,7 @@
         <el-table
           ref="groupManageTableRef"
           :data="groupManageRows"
-          row-key="id"
+          row-key="key"
           class="group-manage-table"
         >
           <el-table-column width="46">
@@ -68,7 +74,7 @@
           <el-table-column prop="name" label="分组名" min-width="130">
             <template #default="{ row }">
               <span class="group-table-name">
-                <span>{{ row.name }}</span>
+                <span>{{ displayBookGroupName(row) }}</span>
                 <small>{{ groupBookCount(row) }} 本</small>
               </span>
             </template>
@@ -77,7 +83,7 @@
             <template #default="{ row }">
               <el-switch
                 :model-value="row.show !== false"
-                :loading="visibilitySavingId === row.id"
+                :loading="visibilitySavingId === (row.key || row.id)"
                 active-text="显示"
                 inactive-text="隐藏"
                 @change="value => toggleVisibility(row, value)"
@@ -90,7 +96,7 @@
                 编辑
               </el-button>
               <el-button
-                v-if="groupBookCount(row) === 0"
+                v-if="row.kind === 'category' && groupBookCount(row) === 0"
                 size="small"
                 text
                 type="danger"
@@ -102,7 +108,7 @@
           </el-table-column>
         </el-table>
         <el-empty
-          v-if="!bookshelf.categories.length"
+          v-if="!bookshelf.bookGroups.some(row => row.kind === 'category')"
           description="还没有自定义分组"
         />
         <div class="manage-footer group-manage-footer">
@@ -159,6 +165,7 @@ const {
   groupManageRows,
   isGroupOrderDirty,
   groupBookCount,
+  displayBookGroupName,
   prepareOpen,
   isBookGroupSelected: isSelected,
   toggleBookGroupSelection: toggleSelection,
@@ -197,7 +204,11 @@ watch(
   async (visible) => {
     if (!visible) return
     try {
-      await bookshelf.ensureCategoriesLoaded()
+      await Promise.all([
+        bookshelf.ensureCategoriesLoaded(),
+        bookshelf.ensureBookGroupsLoaded(),
+        bookshelf.ensureBooksLoaded({ all: true }),
+      ])
     } catch (error) {
       ElMessage.error(readError(error, '加载分组失败'))
       return

@@ -1,6 +1,6 @@
 # BookGroup P2 固定上游契约
 
-状态：2026-07-19 完成源码与数据流审查，尚未进入应用代码修改。
+状态：2026-07-19 已按合同完成应用实现、全量自动测试、真实 Go/SQLite 三视口与多客户端验证。
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 本合同覆盖书架分组标签、`BookGroup` 设置/管理两种模式、API、SQLite、同步和备份恢复。
@@ -169,3 +169,24 @@ Category 与 BookCategory 的表、ID 和现有关系不迁移。删除用户时
 - Dialog compact fullscreen、无横向溢出、关闭后仍停留 Index 工作台。
 
 只有上述证据同时通过，BookGroup 才能重新标记为对齐。
+
+## 8. 2026-07-19 实现记录
+
+- 后端新增每用户 `book_group_preferences` 加法表，以及统一的
+  `GET /api/book-groups`、内置项更新、完整混合排序接口。四项缺失数据惰性补齐，Category 与
+  BookCategory 的既有 ID/关系不迁移。
+- 新分类追加到统一最大顺序之后；分类增删改、旧分类排序和恢复操作都会广播完整
+  `book_groups_update`。前端投影缓存和迟到响应均按认证用户 scope 隔离。
+- Home 只展示可见且非空的统一投影，支持全部、本地、音频、未分组和多对多自定义筛选；稳定 token
+  写入 shelf preference，并按首个可见非空项回退。
+- 设置模式继续只列可分配的自定义分组，并恢复添加/编辑；管理模式统一显示四内置项与自定义项，支持
+  内置改名/显隐、空自定义删除和全量混合拖拽排序。
+- 备份新增 `bookGroup.json` 和一致的 bookshelf `group` 位掩码；保留 `categories.json` 与
+  `categoryNames`。OpenReader 往返和仅含 reader-dev `bookGroup.json + bookshelf.json` 的恢复 fixture
+  均通过。
+- 自动门禁：前端 `502/502`、生产构建、后端 `go test ./...` 全部通过。
+- 真实浏览器：`scripts/smoke/book-group-real-api-contract.mjs` 使用真实 Go/SQLite 在 1440×900、
+  390×844、360×800 通过；覆盖四内置标签、音频筛选数据、内置改名、显隐、多客户端同步、混合拖拽
+  与刷新后的持久化。
+- 允许差异保持不变：自定义分组继续使用 Category/BookCategory 多对多；本地书继续使用增强的
+  `isLocalBook` 判断；空组删除、跨用户 token 与不完整排序受到更强服务端校验。

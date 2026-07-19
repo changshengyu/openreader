@@ -17,17 +17,29 @@ function createController(overrides = {}) {
       { id: 2, name: '历史', show: true },
       { id: 3, name: '科幻', show: true },
     ],
+    bookGroups: [
+      { key: 'builtin:all', kind: 'builtin', semantic: 'all', name: '全部', defaultName: '全部', show: true, sortOrder: -10 },
+      { key: 'builtin:local', kind: 'builtin', semantic: 'local', name: '本地', defaultName: '本地', show: true, sortOrder: -9 },
+      { key: 'builtin:audio', kind: 'builtin', semantic: 'audio', name: '音频', defaultName: '音频', show: true, sortOrder: -8 },
+      { key: 'builtin:ungrouped', kind: 'builtin', semantic: 'ungrouped', name: '未分组', defaultName: '未分组', show: true, sortOrder: -7 },
+      { key: 'category:1', kind: 'category', semantic: 'category', categoryId: 1, name: '玄幻', show: true, sortOrder: 10 },
+      { key: 'category:2', kind: 'category', semantic: 'category', categoryId: 2, name: '历史', show: true, sortOrder: 20 },
+      { key: 'category:3', kind: 'category', semantic: 'category', categoryId: 3, name: '科幻', show: true, sortOrder: 30 },
+    ],
     books: [
-      { id: 11, categoryIds: [1] },
-      { id: 12, categoryIds: [1, 2] },
+      { id: 11, sourceId: 0, type: 0, categoryIds: [1] },
+      { id: 12, sourceId: 9, type: 1, categoryIds: [1, 2] },
+      { id: 13, sourceId: 9, type: 0, categoryIds: [] },
     ],
     upsertBook: book => calls.push(['upsert', book]),
     addCategory: async payload => calls.push(['add', payload]),
     renameCategory: async (id, payload) => calls.push(['rename', id, payload]),
     setCategoryVisible: async (id, show) => calls.push(['visible', id, show]),
     loadCategories: async options => calls.push(['load-categories', options]),
+    loadBookGroups: async options => calls.push(['load-book-groups', options]),
+    updateBuiltInBookGroup: async (key, payload) => calls.push(['update-builtin', key, payload]),
     removeCategory: async id => calls.push(['remove', id]),
-    reorderCategoryIds: async ids => calls.push(['reorder', ids]),
+    reorderBookGroupKeys: async keys => calls.push(['reorder-groups', keys]),
   })
   let sortableOptions
   const sortable = {
@@ -121,7 +133,7 @@ test('prepares the current book selection when an open drawer changes mode', asy
   assert.equal(fixture.controller.isBookGroupSelected({ id: 3 }), true)
 })
 
-test('creates and renames groups while preserving cancellation semantics', async () => {
+test('creates and renames custom groups while preserving cancellation semantics', async () => {
   const fixture = createController()
   await fixture.controller.createCategory()
   await fixture.controller.renameGroup({ id: 2, name: '旧名称' })
@@ -143,6 +155,34 @@ test('creates and renames groups while preserving cancellation semantics', async
   assert.deepEqual(cancelled.calls, [])
 })
 
+test('manages four built-in groups together with custom groups', async () => {
+  const fixture = createController()
+  fixture.controller.prepareOpen()
+
+  assert.deepEqual(
+    fixture.controller.groupManageRows.value.map(group => group.key),
+    fixture.bookshelf.bookGroups.map(group => group.key),
+  )
+  assert.deepEqual(
+    fixture.controller.groupManageRows.value.map(group => fixture.controller.groupBookCount(group)),
+    [3, 1, 1, 1, 2, 1, 0],
+  )
+  assert.equal(
+    fixture.controller.displayBookGroupName(fixture.bookshelf.bookGroups[0]),
+    '全部(全部)',
+  )
+
+  await fixture.controller.renameGroup(fixture.bookshelf.bookGroups[2])
+  await fixture.controller.toggleGroupVisibility(fixture.bookshelf.bookGroups[0], false)
+
+  assert.deepEqual(fixture.calls, [
+    ['update-builtin', 'audio', { name: '新分组' }],
+    ['success', '分组已重命名'],
+    ['update-builtin', 'all', { show: false }],
+    ['success', '分组已隐藏'],
+  ])
+})
+
 test('reloads category state when visibility changes fail', async () => {
   const failure = new Error('save failed')
   const fixture = createController()
@@ -153,7 +193,7 @@ test('reloads category state when visibility changes fail', async () => {
   await fixture.controller.toggleGroupVisibility({ id: 2 }, false)
 
   assert.deepEqual(fixture.calls, [
-    ['load-categories', { force: true }],
+    ['load-book-groups', { force: true }],
     ['error', failure, '修改分组显示状态失败'],
   ])
   assert.equal(fixture.controller.visibilitySavingId.value, null)
@@ -161,10 +201,12 @@ test('reloads category state when visibility changes fail', async () => {
 
 test('protects non-empty groups and deletes empty confirmed groups', async () => {
   const fixture = createController()
-  await fixture.controller.deleteGroup({ id: 1, name: '玄幻' })
-  await fixture.controller.deleteGroup({ id: 3, name: '科幻' })
+  await fixture.controller.deleteGroup(fixture.bookshelf.bookGroups[0])
+  await fixture.controller.deleteGroup(fixture.bookshelf.bookGroups[4])
+  await fixture.controller.deleteGroup(fixture.bookshelf.bookGroups[6])
 
   assert.deepEqual(fixture.calls, [
+    ['warning', '内置分组不能删除'],
     ['warning', '分组内还有书籍，清空后才能删除'],
     ['confirm', '确定删除分组“科幻”吗？', '删除分组', { type: 'warning' }],
     ['remove', 3],
@@ -188,7 +230,15 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
   await fixture.controller.handleBookGroupOpened()
   fixture.getSortableOptions().onEnd({ oldIndex: 0, newIndex: 2 })
 
-  assert.deepEqual(fixture.controller.groupOrderDraftIds.value, ['2', '3', '1'])
+  assert.deepEqual(fixture.controller.groupOrderDraftKeys.value, [
+    'builtin:local',
+    'builtin:audio',
+    'builtin:all',
+    'builtin:ungrouped',
+    'category:1',
+    'category:2',
+    'category:3',
+  ])
   assert.equal(fixture.controller.isGroupOrderDirty.value, true)
   await fixture.controller.saveGroupOrderDraft()
   await fixture.controller.handleModeChange('set')
@@ -196,7 +246,15 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
   assert.deepEqual(fixture.calls, [
     ['next-frame'],
     ['create-sortable', tableBody],
-    ['reorder', [2, 3, 1]],
+    ['reorder-groups', [
+      'builtin:local',
+      'builtin:audio',
+      'builtin:all',
+      'builtin:ungrouped',
+      'category:1',
+      'category:2',
+      'category:3',
+    ]],
     ['success', '分组排序已更新'],
     ['destroy-sortable'],
   ])

@@ -314,6 +314,20 @@ type Category struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// BookGroupPreference stores only the four user-editable built-in shelf groups.
+// Custom groups continue to use Category and BookCategory so existing data and
+// many-to-many memberships remain untouched.
+type BookGroupPreference struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	UserID    uint      `json:"userId" gorm:"not null;uniqueIndex:idx_user_book_group_preference"`
+	Key       string    `json:"key" gorm:"size:24;not null;uniqueIndex:idx_user_book_group_preference"`
+	Name      string    `json:"name" gorm:"size:80;not null"`
+	Show      bool      `json:"show" gorm:"not null;default:true"`
+	SortOrder int       `json:"sortOrder" gorm:"not null;default:0"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type BookCategory struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
 	UserID     uint      `json:"userId" gorm:"not null;uniqueIndex:idx_user_book_category"`

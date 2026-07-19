@@ -14,6 +14,7 @@ import (
 	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/bookgroups"
 )
 
 // Service handles automated backups.
@@ -117,6 +118,7 @@ func (s *Service) run(userID *uint, backupDir string) (string, error) {
 	s.addRSSSources(zipWriter, userID)
 	s.addUserSettings(zipWriter, userID)
 	s.addCategories(zipWriter, userID)
+	s.addBookGroups(zipWriter, userID)
 	s.addBookshelf(zipWriter, userID)
 	s.addChapterVariables(zipWriter, userID)
 	s.addBookmarks(zipWriter, userID)
@@ -226,12 +228,35 @@ func (s *Service) addCategories(zipWriter *zip.Writer, userID *uint) {
 	writeZipEntry(zipWriter, "categories.json", data)
 }
 
+func (s *Service) addBookGroups(zipWriter *zip.Writer, userID *uint) {
+	if userID == nil {
+		return
+	}
+	rows, _, err := bookgroups.New(s.db).Backup(*userID)
+	if err != nil {
+		return
+	}
+	data, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		return
+	}
+	writeZipEntry(zipWriter, "bookGroup.json", data)
+}
+
 func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 	type bookExport struct {
 		models.Book
 		CategoryName  string   `json:"categoryName,omitempty"`
 		CategoryNames []string `json:"categoryNames,omitempty"`
+		Group         int      `json:"group,omitempty"`
 		SourceName    string   `json:"sourceName,omitempty"`
+	}
+	maskByCategory := make(map[uint]int)
+	if userID != nil {
+		_, masks, err := bookgroups.New(s.db).Backup(*userID)
+		if err == nil {
+			maskByCategory = masks
+		}
 	}
 	var books []models.Book
 	query := s.db.Order("id asc")
@@ -267,6 +292,7 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 			Find(&categoryRows).Error
 		for _, category := range categoryRows {
 			row.CategoryNames = append(row.CategoryNames, category.Name)
+			row.Group |= maskByCategory[category.ID]
 		}
 		if len(row.CategoryNames) > 0 {
 			row.CategoryName = row.CategoryNames[0]
@@ -275,6 +301,7 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 			if err := s.db.Select("name").First(&category, *book.CategoryID).Error; err == nil {
 				row.CategoryName = category.Name
 				row.CategoryNames = []string{category.Name}
+				row.Group |= maskByCategory[category.ID]
 			}
 		}
 		rows = append(rows, row)

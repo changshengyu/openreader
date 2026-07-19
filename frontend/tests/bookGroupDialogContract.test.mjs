@@ -22,7 +22,27 @@ test('hosts BookGroup set and manage modes in one upstream-style root dialog', (
   assert.match(groups, /class="global-book-group-dialog"/)
   assert.match(groups, /v-if="overlay\.bookGroupMode === 'set'"/)
   assert.match(groups, /v-else/)
+  const setBranch = groups.slice(
+    groups.indexOf(`<template v-if="overlay.bookGroupMode === 'set'">`),
+    groups.indexOf('<template v-else>'),
+  )
+  assert.match(setBranch, /@click="createCategory"/, 'set mode must retain upstream add-group')
+  assert.match(setBranch, /renameGroup\(row\)/, 'set mode rows must retain upstream edit action')
+  assert.ok(setBranch.indexOf('@click="createCategory"') < setBranch.indexOf('@click="saveSetting"'), 'add-group must precede confirm')
   assert.match(host, /<OverlayBookGroups\s+:is-mobile="isMobileOverlay"\s*\/>/)
+})
+
+test('manages built-ins and custom categories as one ordered projection', () => {
+  const groups = read('../src/components/overlays/OverlayBookGroups.vue')
+  const controller = read('../src/composables/useOverlayBookGroups.js')
+  const shelf = read('../src/stores/bookshelf.js')
+
+  assert.match(controller, /bookshelf\.bookGroups/)
+  assert.match(controller, /displayBookGroupName/)
+  assert.match(controller, /reorderBookGroupKeys/)
+  assert.match(groups, /row\.kind === 'category'/)
+  assert.match(shelf, /bookGroups:/)
+  assert.match(shelf, /loadBookGroups/)
 })
 
 test('keeps book-group state as one global overlay controller instead of a route or drawer', () => {

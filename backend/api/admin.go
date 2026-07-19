@@ -378,6 +378,7 @@ func (s *Server) deleteUserData(ids []uint, protectedUserID uint) ([]models.User
 			{model: &models.ReadingProgress{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.Book{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.Category{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.BookGroupPreference{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.RSSArticle{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.RSSSource{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.ReplaceRule{}, where: "user_id IN ?", args: []any{deletedIDs}},

@@ -87,6 +87,7 @@ func (s *Service) RunPortableForUser(userID uint, username, backupDir string) (s
 	s.addRSSSources(writer, &userID)
 	s.addUserSettings(writer, &userID)
 	s.addCategories(writer, &userID)
+	s.addBookGroups(writer, &userID)
 	s.addBookshelf(writer, &userID)
 	s.addChapterVariables(writer, &userID)
 	s.addBookmarks(writer, &userID)

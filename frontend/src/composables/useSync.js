@@ -16,7 +16,7 @@ let bookshelfRefreshTimer
 let replaceRulesUpdateTimer
 let rssUpdateTimer
 let bookmarksUpdateTimer
-let bookshelfRefreshPending = { books: false, categories: false }
+let bookshelfRefreshPending = { books: false, categories: false, bookGroups: false }
 let rssUpdatePending = { sources: false, articles: false, payload: null }
 let bookmarksUpdatePending = { bookIds: new Set(), payload: null }
 let reconnectDelay = 1500
@@ -105,15 +105,25 @@ export function useSync() {
       }
       if (message.type === 'category_update') {
         bookshelf.upsertCategory(message.payload)
+        bookshelf.invalidateBookGroups()
+        scheduleBookshelfRefresh({ books: false, categories: false, bookGroups: true })
       }
       if (message.type === 'category_delete') {
         bookshelf.removeCategoryLocal(message.payload?.id)
+        scheduleBookshelfRefresh({ books: false, categories: false, bookGroups: true })
       }
       if (message.type === 'categories_update') {
         if (Array.isArray(message.payload)) {
           bookshelf.replaceCategories(message.payload)
         } else {
           scheduleBookshelfRefresh({ books: false, categories: true })
+        }
+      }
+      if (message.type === 'book_groups_update') {
+        if (Array.isArray(message.payload)) {
+          bookshelf.replaceBookGroups(message.payload)
+        } else {
+          scheduleBookshelfRefresh({ books: false, categories: false, bookGroups: true })
         }
       }
       if (message.type === 'settings_update' && message.payload?.key === 'reader') {
@@ -218,15 +228,18 @@ export function useSync() {
   function scheduleBookshelfRefresh(options = {}) {
     const refreshBooks = options.books !== false
     const refreshCategories = options.categories !== false
+    const refreshBookGroups = options.bookGroups !== false
     bookshelfRefreshPending.books = bookshelfRefreshPending.books || refreshBooks
     bookshelfRefreshPending.categories = bookshelfRefreshPending.categories || refreshCategories
+    bookshelfRefreshPending.bookGroups = bookshelfRefreshPending.bookGroups || refreshBookGroups
     if (bookshelfRefreshTimer) return
     bookshelfRefreshTimer = window.setTimeout(() => {
       bookshelfRefreshTimer = undefined
       const pending = bookshelfRefreshPending
-      bookshelfRefreshPending = { books: false, categories: false }
+      bookshelfRefreshPending = { books: false, categories: false, bookGroups: false }
       const jobs = []
       if (pending.categories) jobs.push(bookshelf.loadCategories({ force: true }))
+      if (pending.bookGroups) jobs.push(bookshelf.loadBookGroups({ force: true }))
       if (pending.books) jobs.push(bookshelf.loadBooks({ force: true, all: true }))
       Promise.all(jobs).catch(() => {})
     }, 500)
@@ -236,7 +249,7 @@ export function useSync() {
     if (!bookshelfRefreshTimer) return
     window.clearTimeout(bookshelfRefreshTimer)
     bookshelfRefreshTimer = undefined
-    bookshelfRefreshPending = { books: false, categories: false }
+    bookshelfRefreshPending = { books: false, categories: false, bookGroups: false }
   }
 
   function dispatchWindowEvent(name, detail) {

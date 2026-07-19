@@ -401,7 +401,7 @@ func portableArchiveEntryName(entry, extension string) bool {
 
 func portableLogicalEntryName(name string) bool {
 	switch name {
-	case "booksource.json", "rsssources.json", "usersettings.json", "categories.json", "bookshelf.json", "chaptervariables.json", "bookmarks.json", "readingprogress.json", "replacerules.json":
+	case "booksource.json", "rsssources.json", "usersettings.json", "categories.json", "bookgroup.json", "bookshelf.json", "chaptervariables.json", "bookmarks.json", "readingprogress.json", "replacerules.json":
 		return true
 	default:
 		return false

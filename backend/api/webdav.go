@@ -19,6 +19,7 @@ import (
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/bookgroups"
 	"openreader/backend/services/localbook"
 )
 
@@ -580,7 +581,8 @@ func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, 
 		return nil, err
 	}
 
-	var sourcesCount, rssSourcesCount, booksCount, chapterVariablesCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
+	var sourcesCount, rssSourcesCount, booksCount, bookGroupsCount, chapterVariablesCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
+	groupCategoryMap := make(map[int]uint)
 
 	// Validate all additive variable artifacts before any source/settings/shelf
 	// mutation. A malformed value must not leave a partly restored account.
@@ -596,6 +598,11 @@ func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, 
 			}
 		case strings.HasSuffix(entry.name, "chapterVariables.json"):
 			if err := validateRestoredChapterVariables(entryData); err != nil {
+				return nil, errInvalidBackupArchive
+			}
+		case isBookGroupBackupEntry(entry.name):
+			var rows []bookgroups.RestoreRow
+			if err := json.Unmarshal(entryData, &rows); err != nil {
 				return nil, errInvalidBackupArchive
 			}
 		}
@@ -623,6 +630,27 @@ func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, 
 		}
 	}
 
+	// Restore the ordinary Category rows first, then let bookGroup.json own the
+	// unified name/show/order state and build the portable mask mapping used by
+	// the bookshelf phase below.
+	for _, entry := range archive.entries {
+		if !isBookGroupBackupEntry(entry.name) {
+			continue
+		}
+		entryData, err := archive.dataFor(entry.file)
+		if err != nil {
+			return nil, err
+		}
+		mapping, restored, restoreErr := s.restoreBookGroupsFromData(entryData, userID)
+		if restoreErr != nil {
+			return nil, restoreErr
+		}
+		for groupID, categoryID := range mapping {
+			groupCategoryMap[groupID] = categoryID
+		}
+		bookGroupsCount += restored
+	}
+
 	for _, entry := range archive.entries {
 		zipFile := entry.file
 		entryData, err := archive.dataFor(zipFile)
@@ -632,7 +660,7 @@ func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, 
 		switch {
 		case strings.HasSuffix(entry.name, "myBookShelf.json"),
 			strings.HasSuffix(entry.name, "bookshelf.json"):
-			restoredBooks, restoredProgress, _ := s.restoreBookshelfFromData(entryData, userID)
+			restoredBooks, restoredProgress, _ := s.restoreBookshelfFromDataWithGroupMap(entryData, userID, groupCategoryMap)
 			booksCount += restoredBooks
 			progressCount += restoredProgress
 		}
@@ -682,6 +710,7 @@ func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, 
 		"sources":          sourcesCount,
 		"rssSources":       rssSourcesCount,
 		"books":            booksCount,
+		"bookGroups":       bookGroupsCount,
 		"chapterVariables": chapterVariablesCount,
 		"progress":         progressCount,
 		"settings":         settingsCount,
@@ -793,13 +822,14 @@ func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
 	if restoreResultCount(result, "settings") > 0 {
 		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "settings_update", "payload": gin.H{"key": "all"}})
 	}
-	if restoreResultCount(result, "categories") > 0 {
+	if restoreResultCount(result, "categories")+restoreResultCount(result, "bookGroups") > 0 {
 		var categories []models.Category
 		if err := s.db.Where("user_id = ?", userID).Order("sort_order asc, name asc").Find(&categories).Error; err == nil {
 			_ = s.hub.Broadcast(userID, nil, gin.H{"type": "categories_update", "payload": categories})
 		} else {
 			_ = s.hub.Broadcast(userID, nil, gin.H{"type": "categories_update"})
 		}
+		s.broadcastBookGroupsUpdate(userID)
 	}
 	if restoreResultCount(result, "books")+restoreResultCount(result, "progress") > 0 {
 		if items, err := s.listAllBookShelfItems(userID); err == nil {
@@ -928,6 +958,7 @@ type restoredBookshelfRow struct {
 	CanUpdate       *bool    `json:"canUpdate"`
 	CategoryName    string   `json:"categoryName"`
 	CategoryNames   []string `json:"categoryNames"`
+	Group           int      `json:"group"`
 	OriginName      string   `json:"originName"`
 	DurChapter      int      `json:"durChapter"`
 	DurChapterPos   int      `json:"durChapterPos"`
@@ -975,6 +1006,10 @@ func validateRestoredChapterVariables(data []byte) error {
 }
 
 func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, error) {
+	return s.restoreBookshelfFromDataWithGroupMap(data, userID, nil)
+}
+
+func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, groupCategoryMap map[int]uint) (int, int, error) {
 	var books []restoredBookshelfRow
 	if err := json.Unmarshal(data, &books); err != nil {
 		return 0, 0, err
@@ -1031,6 +1066,9 @@ func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, e
 			CanUpdate:      canUpdate,
 		}
 		categoryIDs := s.restoredCategoryIDs(userID, b.CategoryName, b.CategoryNames)
+		if len(categoryIDs) == 0 && b.Group > 0 {
+			categoryIDs = restoredCategoryIDsFromGroupMask(b.Group, groupCategoryMap)
+		}
 		if len(categoryIDs) > 0 {
 			book.CategoryID = &categoryIDs[0]
 		}
@@ -1076,6 +1114,45 @@ func (s *Server) restoreBookshelfFromData(data []byte, userID uint) (int, int, e
 		count++
 	}
 	return count, progressCount, nil
+}
+
+func (s *Server) restoreBookGroupsFromData(data []byte, userID uint) (map[int]uint, int, error) {
+	var rows []bookgroups.RestoreRow
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return nil, 0, err
+	}
+	return s.bookGroups.Restore(userID, rows)
+}
+
+func restoredCategoryIDsFromGroupMask(group int, mapping map[int]uint) []uint {
+	if group <= 0 || len(mapping) == 0 {
+		return nil
+	}
+	masks := make([]int, 0, len(mapping))
+	for mask := range mapping {
+		if mask > 0 && group&mask != 0 {
+			masks = append(masks, mask)
+		}
+	}
+	sort.Ints(masks)
+	ids := make([]uint, 0, len(masks))
+	seen := make(map[uint]struct{}, len(masks))
+	for _, mask := range masks {
+		id := mapping[mask]
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func isBookGroupBackupEntry(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), "bookgroup.json")
 }
 
 func (s *Server) restoreChapterVariablesFromData(data []byte, userID uint) (int, error) {
