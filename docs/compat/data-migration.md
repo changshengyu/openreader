@@ -544,3 +544,29 @@ TXT/EPUB/UMD/CBZ and relative-cache/owner-isolation smoke using the final locall
 - Source/catalogue changes may delete only the affected book's derived image root after the replacement rows are durable. Shared blobs are deduplicated only inside one user/book root, never across owners or books.
 
 Required release evidence: service/API ownership and malformed-cache tests, old-volume restart, portable backup/restore, TXT/EPUB/UMD/CBZ and relative-cache/owner-isolation smoke using the final locally built image.
+
+## P2 BookGroup built-in preference and backup compatibility (2026-07-19 extracted)
+
+- Existing `categories`, `book_categories`, `books.category_id`, user settings, `data/`, `cache/`, and `library/`
+  remain unchanged and readable. Custom group membership stays many-to-many; no deployed Category ID is converted
+  to a reader-dev bit mask.
+- Add only `book_group_preferences`, uniquely keyed by `(user_id,key)`, for the four built-in semantic keys. Rows
+  are lazily completed with names `全部/本地/音频/未分组`, show=true and orders `-10/-9/-8/-7`; this is an
+  additive AutoMigrate operation with no rewrite of existing rows or files.
+- Built-in and Category sort values share one logical order. A mixed reorder updates both tables atomically. A
+  failed validation/write leaves the previous full order intact. Deleting a user removes preference rows in the
+  same transaction as all other user-owned SQLite rows.
+- New backups retain every existing member and add `bookGroup.json`. Fixed negative IDs represent built-ins;
+  custom rows receive deterministic positive power-of-two portable IDs plus OpenReader `categoryId`/stable-key
+  extensions. `bookshelf.json.group` uses the same temporary map, while existing `categoryNames` remains the
+  lossless OpenReader round-trip field.
+- Restore accepts three generations without destructive conversion: old OpenReader archives with only
+  categories/categoryNames, reader-dev archives with bookGroup/group masks, and new archives containing both.
+  It restores groups before shelf memberships, prefers categoryNames when present, and otherwise translates the
+  reader-dev mask through `bookGroup.json`. Missing built-ins are completed with defaults.
+- `bookGroup.json` is added to the portable logical allowlist but stays under the existing ZIP entry/count/size/
+  expansion bounds. Restore broadcasts only the destination user's categories, book-group projection and shelf.
+
+Required evidence before release: populated old SQLite migration, two-user projection/isolation, transaction
+rollback, user deletion, old OpenReader restore, reader-dev group-mask restore, new round-trip, full backend tests,
+and the Docker mounted-volume/backup compatibility smoke.

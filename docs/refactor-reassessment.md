@@ -37,7 +37,7 @@
 | P1 | `Sources.vue` | `Index.vue` 内书源管理对话框、阅读器 `BookSource.vue` | 结构需重建 | 本地/远程导入 controller 可复用；桌面管理表格、失效视图、编辑/调试和入口形态按上游内嵌管理界面重做 |
 | P1 | `OverlayBookInfo.vue`、`BookInfoPanel.vue`、`BookDetail.vue` | `BookInfo.vue` | 需要重建 | 先建立唯一共享 BookInfo，再让书架、搜索、阅读器复用；路由详情不再拥有另一套操作逻辑 |
 | P1 | `OverlayBookManagement.vue` 及拆分子组件 | `BookManage.vue` | 重新审查后重建外壳 | 已拆 controller 不等于对齐；保留真实批量 API，重新核对搜索、选中、分组、缓存、导出和桌面/移动布局 |
-| P1 | `OverlayBookGroups.vue` | `BookGroup.vue` | 暂可保留 controller，重审 UI | 多分组和排序是当前增强；上游显隐、排序、增删和给书设组流程必须逐项验证 |
+| P1 | `OverlayBookGroups.vue` | `BookGroup.vue` | 结构级错误，按聚焦合同重建 | 旧 controller 只覆盖自定义分类；必须补四内置分组、音频筛选、统一排序、内置改名/显隐、设置模式添加/编辑、tab 持久化及 `bookGroup.json`，详见 `docs/compat/book-group-p2-contract.md` |
 | P2 | `Settings.vue` | `Index.vue` 用户空间/WebDAV入口、`ReadSettings.vue` | 倾向拆散重建 | 阅读设置归阅读器；账户、用户、备份、WebDAV 按上游入口和弹层职责回归，不保留“后台设置中心”作为默认信息架构 |
 | P2 | `LocalStore.vue`、`WebDAVBrowser.vue` | `LocalStore.vue`、`WebDAV.vue` | 逐组件重审 | 后端增强可保留；目录导航、上传、删除、导入、备份恢复及移动布局按上游核对 |
 | P2 | RSS、替换规则、书签 overlays | 对应上游独立组件 | 逐组件重审 | 全局注册中心可保留，业务组件和打开/关闭链路按上游逐项替换 |

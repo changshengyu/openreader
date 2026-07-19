@@ -491,6 +491,24 @@ Implemented tests: `backend/api/remote_reader_contract_test.go` proves user isol
 
 If a refactor changes frontend routes, API paths should stay stable unless an old path is kept as a redirect/shim. Document removals before deleting compatibility behavior.
 
+## P2 BookGroup unified projection contract (2026-07-19 extracted)
+
+The fixed reader-dev baseline persists four editable built-in groups together with custom groups. OpenReader keeps
+its deployed `/categories` and many-to-many membership APIs, and adds one user-scoped projection instead of
+changing existing category response shapes. Full behavior and backup mapping are defined in
+`book-group-p2-contract.md`.
+
+| Method / path | Request | Success / side effects | Auth and errors |
+|---|---|---|---|
+| `GET /api/book-groups` | None. | `200` ordered array containing the four lazily seeded built-ins and every current custom Category. Stable keys are `builtin:all`, `builtin:local`, `builtin:audio`, `builtin:ungrouped`, and `category:<id>`. | JWT/current user only. No cross-user Category may enter the projection. Unexpected persistence failure is `500 {error}`. |
+| `PUT /api/book-groups/:key` | Built-in semantic key `all`, `local`, `audio`, or `ungrouped`; body contains at least one of `{name,show}`. | `200` updated built-in projection row. Commit precedes `book_groups_update`. | Unknown key, empty body, or blank normalized name is `400`; no row from another user is addressable. |
+| `PUT /api/book-groups/reorder` | `{ "keys": ["builtin:...", "category:<id>", ...] }`, containing the current projection exactly once. | One SQLite transaction assigns the complete mixed order to built-in preferences and Categories, then returns the full ordered projection. After commit it emits `book_groups_update` and the existing `categories_update` compatibility event. | Missing, duplicate, extra, malformed, or foreign token is `400` and rolls back every order write; persistence failure is `500`. |
+
+Existing category create/update/delete/reorder paths retain their current request and response contracts. Their
+post-commit sync side effects additionally invalidate or broadcast the unified projection. New Categories append
+after the maximum order across both data sources; the old custom-only reorder endpoint remains compatible for old
+clients but is not used by the rebuilt mixed manager.
+
 ## P2 embedded chapter-image cache contract (implementation in progress)
 
 Reader-dev downloads embedded chapter images while caching text and reuses those files during EPUB export. OpenReader keeps the existing authenticated chapter path and adds an optional browser-safe mapping rather than changing persisted text or text-position semantics.
