@@ -23,13 +23,22 @@ export function createReaderScrollAnimator(options = {}) {
   const now = options.now
     || globalThis.performance?.now?.bind(globalThis.performance)
     || Date.now
+  const scheduleTask = options.scheduleTask
+    || globalThis.setTimeout?.bind(globalThis)
+    || (callback => callback())
+  const cancelTask = options.cancelTask
+    || globalThis.clearTimeout?.bind(globalThis)
+    || (() => {})
 
   let frameId = null
+  let finishTaskId = null
   let running = false
 
   function cancel() {
     if (frameId !== null) cancelFrame(frameId)
+    if (finishTaskId !== null) cancelTask(finishTaskId)
     frameId = null
+    finishTaskId = null
     running = false
   }
 
@@ -66,13 +75,22 @@ export function createReaderScrollAnimator(options = {}) {
         minimumProgress,
         Math.max(0, Math.min(1, (timestamp - startedAt) / duration)),
       )
-      element.scrollTop = startTop + distance * easing(progress)
+      element.scrollTop = progress >= 1
+        ? targetTop
+        : startTop + distance * easing(progress)
       if (progress < 1) {
         frameId = requestFrame(draw)
         return
       }
-      element.scrollTop = targetTop
       frameId = null
+      if (animationOptions?.finish === 'after-paint') {
+        finishTaskId = scheduleTask(() => {
+          finishTaskId = null
+          running = false
+          onFinish?.()
+        }, 0)
+        return
+      }
       running = false
       onFinish?.()
     }

@@ -167,14 +167,20 @@ test('uses responsive vertical scrolling and settles a buffered page chain only 
   await fixture.navigation.nextPage()
   await fixture.navigation.nextPage()
   assert.equal(animationCalls.length, 1, 'the repeated tap must be bounded while motion is active')
-  assert.deepEqual(animationCalls[0].animationOptions, { easing: 'responsive' })
+  assert.deepEqual(animationCalls[0].animationOptions, {
+    easing: 'responsive',
+    finish: 'after-paint',
+  })
   assert.equal(body.style.willChange, '')
 
   finishes.shift()()
   await Promise.resolve()
   assert.equal(animationCalls.length, 2, 'one repeated next-page tap must run before final settlement')
   assert.deepEqual(settled, [], 'the buffered page boundary must not run heavy settlement work')
-  assert.deepEqual(animationCalls[1].animationOptions, { easing: 'responsive' })
+  assert.deepEqual(animationCalls[1].animationOptions, {
+    easing: 'responsive',
+    finish: 'after-paint',
+  })
   finishes.shift()()
   assert.deepEqual(settled, ['settled'])
 })

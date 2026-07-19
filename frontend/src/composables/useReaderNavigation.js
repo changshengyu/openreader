@@ -23,7 +23,10 @@ export function useReaderNavigation(options) {
 
   function verticalAnimationOptions() {
     if (!options.useResponsiveVerticalAnimation?.()) return undefined
-    return { easing: 'responsive' }
+    return {
+      easing: 'responsive',
+      finish: 'after-paint',
+    }
   }
 
   function queueActiveVerticalPage(direction) {

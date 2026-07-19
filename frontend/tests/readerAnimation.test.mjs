@@ -6,6 +6,7 @@ function createClock() {
   let now = 0
   let nextId = 0
   const frames = new Map()
+  const tasks = new Map()
   return {
     now: () => now,
     requestFrame(callback) {
@@ -16,11 +17,24 @@ function createClock() {
     cancelFrame(id) {
       frames.delete(id)
     },
+    scheduleTask(callback) {
+      nextId += 1
+      tasks.set(nextId, callback)
+      return nextId
+    },
+    cancelTask(id) {
+      tasks.delete(id)
+    },
     step(time) {
       now = time
       const pending = [...frames.values()]
       frames.clear()
       pending.forEach(callback => callback(time))
+    },
+    flushTasks() {
+      const pending = [...tasks.values()]
+      tasks.clear()
+      pending.forEach(callback => callback())
     },
   }
 }
@@ -153,5 +167,70 @@ test('keeps the visible frame-scroll position after a touch or wheel cancellatio
   assert.equal(Math.round(scrollTop), Math.round(visibleTop))
   assert(writes.length >= 1)
   assert.equal(completed, 0)
+  assert.equal(animator.isActive(), false)
+})
+
+test('presents the responsive target before running heavy completion work in a later task', () => {
+  const clock = createClock()
+  const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }
+  const completed = []
+  const animator = createReaderScrollAnimator(clock)
+
+  animator.scrollBy(
+    element,
+    600,
+    300,
+    () => completed.push(element.scrollTop),
+    { easing: 'responsive', finish: 'after-paint' },
+  )
+  clock.step(300)
+
+  assert.equal(element.scrollTop, 600, 'the visual target must be committed in the final animation frame')
+  assert.deepEqual(completed, [], 'chapter/layout settlement must not run inside the final animation frame')
+  assert.equal(animator.isActive(), true, 'the handoff window must remain cancellable and block overlap')
+
+  clock.flushTasks()
+  assert.deepEqual(completed, [600])
+  assert.equal(animator.isActive(), false)
+})
+
+test('cancels an after-paint completion before stale settlement can run', () => {
+  const clock = createClock()
+  const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }
+  let completed = 0
+  const animator = createReaderScrollAnimator(clock)
+
+  animator.scrollBy(
+    element,
+    600,
+    300,
+    () => { completed += 1 },
+    { easing: 'responsive', finish: 'after-paint' },
+  )
+  clock.step(300)
+  animator.cancel()
+  clock.flushTasks()
+
+  assert.equal(element.scrollTop, 600)
+  assert.equal(completed, 0)
+  assert.equal(animator.isActive(), false)
+})
+
+test('keeps zero-duration paging synchronous even when the positive path finishes after paint', () => {
+  const clock = createClock()
+  const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }
+  let completed = 0
+  const animator = createReaderScrollAnimator(clock)
+
+  animator.scrollBy(
+    element,
+    600,
+    0,
+    () => { completed += 1 },
+    { easing: 'responsive', finish: 'after-paint' },
+  )
+
+  assert.equal(element.scrollTop, 600)
+  assert.equal(completed, 1)
   assert.equal(animator.isActive(), false)
 })
