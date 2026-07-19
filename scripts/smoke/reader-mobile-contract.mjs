@@ -1273,7 +1273,50 @@ async function runViewport(browser, viewport) {
   await context.close()
 }
 
-async function runIPadViewport(browser, viewport) {
+async function assertIPadAdaptiveWorkspace(page, viewport, label) {
+  await page.waitForSelector('.reader-desktop-workspace', { timeout: 10000 })
+  const state = await page.evaluate(() => {
+    const workspace = document.querySelector('.reader-desktop-workspace')
+    const rect = workspace?.getBoundingClientRect()
+    const settingsList = workspace?.querySelector('.settings-list')
+    const listStyle = settingsList ? window.getComputedStyle(settingsList) : null
+    return {
+      count: document.querySelectorAll('.reader-desktop-workspace').length,
+      left: rect?.left ?? 0,
+      right: rect?.right ?? 0,
+      top: rect?.top ?? 0,
+      bottom: rect?.bottom ?? 0,
+      width: rect?.width ?? 0,
+      height: rect?.height ?? 0,
+      mobileWorkspaceCount: document.querySelectorAll('.reader-mobile-workspace').length,
+      settingsOverflow: listStyle?.overflowY || '',
+    }
+  })
+  assert(state.count === 1, `${viewport.width}x${viewport.height}: ${label} must open one desktop workspace`)
+  assert(state.mobileWorkspaceCount === 0, `${viewport.width}x${viewport.height}: ${label} must not open a mobile workspace`)
+  assert(state.left >= 0 && state.right <= viewport.width + 1, `${viewport.width}x${viewport.height}: ${label} horizontal bounds ${state.left}-${state.right}`)
+  assert(state.top >= 0 && state.bottom <= viewport.height + 1, `${viewport.width}x${viewport.height}: ${label} vertical bounds ${state.top}-${state.bottom}`)
+  assert(state.width < viewport.width - 40, `${viewport.width}x${viewport.height}: ${label} must not be a full-width phone panel (${state.width})`)
+  assert(state.height < viewport.height, `${viewport.width}x${viewport.height}: ${label} must leave a close path (${state.height})`)
+  if (label === '设置') {
+    assert(state.settingsOverflow === 'auto', `${viewport.width}x${viewport.height}: settings list overflow ${state.settingsOverflow}`)
+  }
+}
+
+async function closeDesktopDialogWithHeader(page, selector, viewport, label) {
+  const dialog = page.locator(selector)
+  const close = dialog.locator('.el-dialog__headerbtn')
+  const closeBounds = await close.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
+  })
+  assert(closeBounds.left >= 0 && closeBounds.right <= viewport.width, `${viewport.width}: ${label} close button must stay horizontally visible`)
+  assert(closeBounds.top >= 0 && closeBounds.bottom <= viewport.height, `${viewport.width}: ${label} close button must stay vertically visible`)
+  await close.click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+}
+
+async function runIPadAdaptiveViewport(browser, viewport) {
   const context = await browser.newContext({
     viewport,
     hasTouch: true,
@@ -1294,22 +1337,62 @@ async function runIPadViewport(browser, viewport) {
   page.on('pageerror', error => failures.push(error.message))
   await installApiMocks(page)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
-  await page.waitForSelector('.reader-mobile-top.visible', { timeout: 10000 })
+  await page.waitForSelector('.reader-left-rail', { timeout: 10000 })
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
 
   const initial = await page.evaluate(() => ({
     shellMini: document.querySelector('.reader-shell')?.classList.contains('mini-interface'),
-    desktopRails: document.querySelectorAll('.reader-left-rail, .reader-right-rail').length,
+    leftRail: document.querySelectorAll('.reader-left-rail').length,
+    rightRail: document.querySelectorAll('.reader-right-rail').length,
     desktopProgress: document.querySelectorAll('.reader-page-control').length,
-    toolbarDisplay: window.getComputedStyle(document.querySelector('.reader-mobile-top.visible')).display,
+    mobileChrome: document.querySelectorAll('.reader-mobile-top').length,
+    documentWidth: document.documentElement.scrollWidth,
   }))
-  assert(initial.shellMini, `${viewport.width}x${viewport.height}: iPad Reader must expose semantic mini mode`)
-  assert(initial.desktopRails === 0, `${viewport.width}x${viewport.height}: iPad mini mode must not mount desktop rails`)
-  assert(initial.desktopProgress === 0, `${viewport.width}x${viewport.height}: iPad mini mode must not mount desktop progress`)
-  assert(initial.toolbarDisplay === 'grid', `${viewport.width}x${viewport.height}: iPad mobile toolbar display ${initial.toolbarDisplay}`)
-  assertReaderGeometry(await readerGeometry(page), viewport, 'iPad mini')
-  await assertMobileTopToolContract(page, viewport)
+  assert(initial.shellMini === false, `${viewport.width}x${viewport.height}: adaptive iPad must not expose mini-interface`)
+  assert(initial.leftRail === 1 && initial.rightRail === 1, `${viewport.width}x${viewport.height}: adaptive iPad must mount both desktop rails`)
+  assert(initial.desktopProgress === 1, `${viewport.width}x${viewport.height}: adaptive iPad must mount desktop progress`)
+  assert(initial.mobileChrome === 0, `${viewport.width}x${viewport.height}: adaptive iPad must not mount mobile chrome`)
+  assert(initial.documentWidth <= viewport.width + 1, `${viewport.width}x${viewport.height}: adaptive iPad document overflow ${initial.documentWidth}`)
 
+  for (const label of ['书架', '书源', '目录', '设置']) {
+    const tool = page.locator(`.reader-left-rail button[title="${label}"]`)
+    await tool.click()
+    await assertIPadAdaptiveWorkspace(page, viewport, label)
+    await tool.click()
+    await page.waitForFunction(() => !document.querySelector('.reader-desktop-workspace'))
+  }
+
+  await page.locator('.reader-right-rail button[title="书签"]').click()
+  await page.waitForSelector('.global-bookmark-dialog', { timeout: 10000 })
+  await closeDesktopDialogWithHeader(page, '.global-bookmark-dialog', viewport, '书签')
+  await page.locator('.reader-right-rail button[title="搜索正文"]').click()
+  await page.waitForSelector('.global-content-search-dialog', { timeout: 10000 })
+  await closeDesktopDialogWithHeader(page, '.global-content-search-dialog', viewport, '搜索正文')
+  await page.locator('.reader-right-rail button[title="书籍信息"]').click()
+  await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })
+  await closeDesktopDialogWithHeader(page, '.book-info-dialog', viewport, '书籍信息')
+
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
+async function runIPadForcedMobileViewport(browser, viewport) {
+  const context = await browser.newContext({
+    viewport,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+    userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+  })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+    window.localStorage.setItem('reader', JSON.stringify({ pageMode: 'mobile' }))
+  }, fakeToken())
+  const page = await context.newPage()
+  await installApiMocks(page)
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-mobile-top.visible', { timeout: 10000 })
+  assert(await page.locator('.reader-shell.mini-interface').count() === 1, `${viewport.width}: explicit phone mode must retain mini scene`)
+  assert(await page.locator('.reader-left-rail, .reader-right-rail').count() === 0, `${viewport.width}: explicit phone mode must not mix desktop rails`)
   for (const [toolLabel, panelLabel] of [
     ['书架', '书架'],
     ['书源', '来源'],
@@ -1322,8 +1405,6 @@ async function runIPadViewport(browser, viewport) {
     await mobileTopTool(page, toolLabel).click()
     await assertWorkspaceClosed(page, viewport, panelLabel)
   }
-
-  assert(failures.length === 0, failures.join('\n'))
   await context.close()
 }
 
@@ -1333,9 +1414,10 @@ async function main() {
     await runDesktopViewport(browser)
     await runViewport(browser, { width: 390, height: 844 })
     await runViewport(browser, { width: 360, height: 800 })
-    await runIPadViewport(browser, { width: 1024, height: 1366 })
-    await runIPadViewport(browser, { width: 1366, height: 1024 })
-    console.log('reader desktop/mobile/iPad contract smoke passed')
+    await runIPadAdaptiveViewport(browser, { width: 1024, height: 1366 })
+    await runIPadAdaptiveViewport(browser, { width: 1366, height: 1024 })
+    await runIPadForcedMobileViewport(browser, { width: 1024, height: 1366 })
+    console.log('reader desktop/mobile/adaptive-iPad/forced-mobile-iPad contract smoke passed')
   } finally {
     await browser.close()
   }
