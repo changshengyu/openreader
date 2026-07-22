@@ -574,3 +574,17 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
 - 状态进入 **browser-validated / awaiting device verification**；用户真机确认之前不再声称
   体感问题已完全关闭。保留的差异仅是原生手指/滚轮连续滚动、数值 stepper 和
   Vue 3 的独立 `.reader-content` 滚动宿主。
+
+### 第十批 Docker 发布
+
+- 实现提交 `0a77632a4368d26f9774f77cfcd2b4b5c0d7149b` 已推送 `main`。本地 ARM64
+  候选镜像通过新旧 `data/cache/library`、重启、TXT/EPUB/UMD/CBZ、相对缓存、用户隔离
+  和 portable backup/restore 完整门禁。
+- 镜像在本机完成 linux/amd64、linux/arm64 构建并上传 GHCR，未使用云端构建。
+  `ghcr.io/changshengyu/openreader:0a77632` 与 `latest` 共同指向 OCI index
+  `sha256:226f982cf31ef20d5d6c9c2e6e5c03c18da19bcc8a23db38acc3fcb43a177c11`；amd64 manifest 为
+  `sha256:815e0d27623e9ce6f02bcd9bf3880916e24af8843476e45e6c5f11acbb030393`，arm64 manifest 为
+  `sha256:70aa13fcaa9b6ebee1a27391003168df20ac25dbc4fb601645fbf139066ff609`。两个远程标签已
+  分别核验且平台清单一致。
+- 当前状态为 **Docker-published / awaiting device verification**。全量重构的其它模块不因
+  本批发布而视为完成。
