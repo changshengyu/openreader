@@ -178,20 +178,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.GET("/explore/sources", server.listExploreSources)
 	protected.GET("/explore/:sourceId", server.exploreBooks)
 
-	webdav := router.Group("/webdav")
-	webdav.Use(middleware.AuthRequired(cfg.JWTSecret))
-	webdav.Use(middleware.TrackActivity(database))
-	webdav.Use(func(c *gin.Context) {
-		if !server.requireWebDAVAccess(c) {
-			return
-		}
-		c.Next()
-	})
-	webdav.GET("/*path", server.webdavGetOrList)
-	webdav.PUT("/*path", server.webdavPut)
-	webdav.Handle("MKCOL", "/*path", server.webdavMkcol)
-	webdav.Handle("MOVE", "/*path", server.webdavMove)
-	webdav.DELETE("/*path", server.webdavDelete)
+	server.registerWebDAVRoutes(router, "/webdav")
+	server.registerWebDAVRoutes(router, "/reader3/webdav")
 
 	protected.POST("/backup/trigger", server.triggerBackup)
 	protected.POST("/backup/portable/trigger", server.triggerPortableBackup)

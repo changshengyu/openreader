@@ -2,8 +2,9 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-19 已完成上游与当前实现审查；实施尚未开始。本阶段遵守
-`readerdev-compat-inventory`，只记录合同，不修改应用代码。
+状态：2026-07-19 已完成实施与非 Docker 验证。认证、双路由、DAV 方法、调用者私有根、
+原子文件事务、symlink 防护、真实 Basic curl 和三视口工作台均已通过；历史卷与候选镜像门禁
+仍须在发布前执行。
 
 本合同只处理外部 WebDAV 客户端协议兼容。工作台 `WebDAVBrowser`、书籍导入预览、逻辑/可移植
 备份恢复、用户私有目录和独立 WebDAV 权限已经由此前 P1/P2 合同完成；本批不得重建这些界面或
@@ -132,3 +133,21 @@ MS-Author-Via: DAV
 3. 增加 Bearer-or-Basic 中间件、两个路由前缀和 DAV 响应头；保留网页端 GET adapter；
 4. 运行 targeted Go、Go 全量、前端全量/build、真实浏览器 WebDAV 工作台与真实 Basic curl；
 5. 提交并推送形成可验收切片；若历史卷/备份门禁通过，本地构建 amd64/arm64 并发布 Docker。
+
+## 实施记录（2026-07-19）
+
+- `backend/middleware/webdav_auth.go` 统一 Bearer/Basic 身份解析，认证成功后复用现有用户 id、
+  活动记录和 WebDAV 权限检查；匿名 OPTIONS 保留发现能力。
+- `backend/services/webdavfs` 集中 caller-scoped 根解析、逐组件 `Lstat`、有界原子 PUT、递归
+  COPY 和可回滚 MOVE；不会跟随 `webdav/users` 或用户目录中的 symlink。
+- `backend/api/webdav.go` 和 `server.go` 同时注册 `/webdav`、`/reader3/webdav`，实现本合同中的
+  OPTIONS/PROPFIND/GET/PUT/MKCOL/MOVE/COPY/LOCK/UNLOCK/DELETE 状态和 DAV 响应头；现有网页端
+  `/webdav` 目录 GET 与 `204` DELETE 作为部署兼容层保留。
+- `backend/main.go` 让 WebDAV OPTIONS 到达协议路由并公开 DAV 方法/响应头；普通 CORS preflight
+  保持原行为，字面量通配 origin 不再错误地同时允许 credentials。
+- 允许差异：JWT/Bearer、管理员历史根与普通用户私有根、上传字节上限、原子替换、symlink/便携
+  路径硬化均保留；不复制上游不安全的通配 credential CORS，也不持久化兼容 LOCK。
+
+已通过：WebDAV API/service/CORS 合同、Go 全量、503 项前端测试、生产构建、真实生产中间件下的
+Basic curl 协议 smoke，以及 1440×900、390×844、360×800 WebDAVBrowser 浏览器 smoke。发布前
+仍需运行本地候选镜像、历史卷/便携备份 smoke，并再次对候选容器执行协议 curl。

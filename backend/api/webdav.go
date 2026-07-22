@@ -2,10 +2,13 @@ package api
 
 import (
 	"archive/zip"
+	"context"
+	"crypto/rand"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,21 +24,88 @@ import (
 	"openreader/backend/models"
 	"openreader/backend/services/bookgroups"
 	"openreader/backend/services/localbook"
+	"openreader/backend/services/webdavfs"
 )
 
 // ---------- WebDAV endpoints ----------
 
+const webDAVAllow = "OPTIONS, DELETE, GET, PUT, PROPFIND, MKCOL, MOVE, COPY, LOCK, UNLOCK"
+
+func (s *Server) registerWebDAVRoutes(router *gin.Engine, prefix string) {
+	group := router.Group(prefix)
+	group.Use(webDAVResponseHeaders)
+	group.Use(middleware.WebDAVAuthRequired(s.cfg.JWTSecret, s.db))
+	group.Use(middleware.TrackActivity(s.db))
+	group.Use(func(c *gin.Context) {
+		if c.Request.Method == http.MethodOptions {
+			c.Next()
+			return
+		}
+		if !s.requireWebDAVAccess(c) {
+			return
+		}
+		c.Next()
+	})
+	group.Handle(http.MethodOptions, "/*path", s.webdavOptions)
+	group.Handle("PROPFIND", "/*path", s.webdavPropfind)
+	group.GET("/*path", s.webdavGetOrList)
+	group.PUT("/*path", s.webdavPut)
+	group.Handle("MKCOL", "/*path", s.webdavMkcol)
+	group.Handle("MOVE", "/*path", s.webdavMove)
+	group.Handle("COPY", "/*path", s.webdavCopy)
+	group.Handle("LOCK", "/*path", s.webdavLock)
+	group.Handle("UNLOCK", "/*path", s.webdavUnlock)
+	group.DELETE("/*path", s.webdavDelete)
+}
+
+func webDAVResponseHeaders(c *gin.Context) {
+	c.Header("DAV", "1,2")
+	c.Header("Allow", webDAVAllow)
+	c.Header("MS-Author-Via", "DAV")
+	c.Next()
+}
+
+func (s *Server) webdavOptions(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (s *Server) webDAVFileService(c *gin.Context) (*webdavfs.Service, bool) {
+	root, ok := s.storeRoot(c, s.webdavDir())
+	if !ok {
+		return nil, false
+	}
+	service, err := webdavfs.NewScoped(s.webdavDir(), root)
+	if err != nil {
+		writeWebDAVServiceError(c, err)
+		return nil, false
+	}
+	if err := service.EnsureRoot(); err != nil {
+		writeWebDAVServiceError(c, err)
+		return nil, false
+	}
+	return service, true
+}
+
+func isUpstreamWebDAVRequest(c *gin.Context) bool {
+	return strings.HasPrefix(c.Request.URL.Path, "/reader3/webdav/") || c.Request.URL.Path == "/reader3/webdav"
+}
+
 func (s *Server) webdavGetOrList(c *gin.Context) {
 	relPath := strings.TrimPrefix(c.Param("path"), "/")
-	filePath, _, ok := s.webdavPath(c, relPath)
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
-	if relPath == "" {
-		s.webdavList(c, "")
+	resource, err := service.Stat(relPath)
+	if err != nil {
+		writeWebDAVServiceError(c, err)
 		return
 	}
-	if info, err := os.Stat(filePath); err == nil && info.IsDir() {
+	if resource.Info.IsDir() {
+		if isUpstreamWebDAVRequest(c) {
+			c.Status(http.StatusMethodNotAllowed)
+			return
+		}
 		s.webdavList(c, relPath)
 		return
 	}
@@ -43,18 +113,13 @@ func (s *Server) webdavGetOrList(c *gin.Context) {
 }
 
 func (s *Server) webdavList(c *gin.Context, relPath string) {
-	baseDir, cleanRel, ok := s.webdavPath(c, relPath)
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-
-	entries, err := os.ReadDir(baseDir)
+	resources, err := service.List(relPath, 1)
 	if err != nil {
-		c.Status(http.StatusInternalServerError)
+		writeWebDAVServiceError(c, err)
 		return
 	}
 
@@ -69,25 +134,19 @@ func (s *Server) webdavList(c *gin.Context, relPath string) {
 		XMLName  xml.Name    `xml:"multistatus"`
 		Response []fileEntry `xml:"response>propstat>prop"`
 	}{
-		Response: []fileEntry{
-			{Name: cleanRel, IsDir: true},
-		},
+		Response: []fileEntry{{Name: "", IsDir: true}},
 	}
 
-	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		size := info.Size()
-		if e.IsDir() {
+	for _, resource := range resources[1:] {
+		size := resource.Info.Size()
+		if resource.Info.IsDir() {
 			size = 0
 		}
 		response.Response = append(response.Response, fileEntry{
-			Name:         e.Name(),
-			IsDir:        e.IsDir(),
+			Name:         filepath.Base(filepath.FromSlash(resource.RelativePath)),
+			IsDir:        resource.Info.IsDir(),
 			Size:         size,
-			LastModified: info.ModTime().Format(time.RFC1123),
+			LastModified: resource.Info.ModTime().Format(time.RFC1123),
 		})
 	}
 
@@ -96,16 +155,21 @@ func (s *Server) webdavList(c *gin.Context, relPath string) {
 
 func (s *Server) webdavGet(c *gin.Context) {
 	relPath := strings.TrimPrefix(c.Param("path"), "/")
-	filePath, _, ok := s.webdavPath(c, relPath)
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
-
-	c.File(filePath)
+	file, info, err := service.Open(relPath)
+	if err != nil {
+		writeWebDAVServiceError(c, err)
+		return
+	}
+	defer file.Close()
+	http.ServeContent(c.Writer, c.Request, info.Name(), info.ModTime(), file)
 }
 
 func (s *Server) webdavPut(c *gin.Context) {
-	filePath, _, ok := s.webdavPath(c, strings.TrimPrefix(c.Param("path"), "/"))
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
@@ -113,106 +177,69 @@ func (s *Server) webdavPut(c *gin.Context) {
 		c.Status(http.StatusRequestEntityTooLarge)
 		return
 	}
-
-	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
-		c.Status(http.StatusInternalServerError)
+	if err := service.Put(c.Request.Context(), strings.TrimPrefix(c.Param("path"), "/"), c.Request.Body, s.maxLocalImportBytes()); err != nil {
+		writeWebDAVServiceError(c, err)
 		return
 	}
-
-	staged, err := os.CreateTemp(filepath.Dir(filePath), ".webdav-upload-")
-	if err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	stagedPath := staged.Name()
-	defer os.Remove(stagedPath)
-	if err := s.copyBoundedLocalImport(staged, c.Request.Body); err != nil {
-		_ = staged.Close()
-		if errors.Is(err, errLocalImportTooLarge) {
-			c.Status(http.StatusRequestEntityTooLarge)
-			return
-		}
-		c.Status(http.StatusBadRequest)
-		return
-	}
-	if err := staged.Chmod(0o644); err != nil {
-		_ = staged.Close()
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	if err := staged.Close(); err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	if err := os.Rename(stagedPath, filePath); err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-
 	c.Status(http.StatusCreated)
 }
 
 func (s *Server) webdavMkcol(c *gin.Context) {
-	filePath, relPath, ok := s.webdavPath(c, strings.TrimPrefix(c.Param("path"), "/"))
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
-	if relPath == "" {
-		c.Status(http.StatusForbidden)
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	if err := os.Mkdir(filePath, 0o755); err != nil {
-		c.Status(http.StatusConflict)
+	if err := service.Mkdir(strings.TrimPrefix(c.Param("path"), "/")); err != nil {
+		writeWebDAVServiceError(c, err)
 		return
 	}
 	c.Status(http.StatusCreated)
 }
 
 func (s *Server) webdavMove(c *gin.Context) {
-	sourcePath, sourceRelPath, ok := s.webdavPath(c, strings.TrimPrefix(c.Param("path"), "/"))
+	s.webdavTransfer(c, false)
+}
+
+func (s *Server) webdavCopy(c *gin.Context) {
+	s.webdavTransfer(c, true)
+}
+
+func (s *Server) webdavTransfer(c *gin.Context, copyResource bool) {
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
-	if sourceRelPath == "" {
-		c.Status(http.StatusForbidden)
-		return
-	}
-
 	destinationRelPath, ok := webdavDestinationPath(c.GetHeader("Destination"))
 	if !ok {
 		c.Status(http.StatusBadRequest)
 		return
 	}
-	destinationPath, _, ok := s.webdavPath(c, destinationRelPath)
-	if !ok {
-		return
+	overwrite := strings.EqualFold(strings.TrimSpace(c.GetHeader("Overwrite")), "T")
+	sourceRelPath := strings.TrimPrefix(c.Param("path"), "/")
+	var err error
+	if copyResource {
+		err = service.Copy(c.Request.Context(), sourceRelPath, destinationRelPath, overwrite)
+	} else {
+		err = service.Move(sourceRelPath, destinationRelPath, overwrite)
 	}
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-	if err := os.Rename(sourcePath, destinationPath); err != nil {
-		c.Status(http.StatusConflict)
+	if err != nil {
+		writeWebDAVServiceError(c, err)
 		return
 	}
 	c.Status(http.StatusCreated)
 }
 
 func (s *Server) webdavDelete(c *gin.Context) {
-	filePath, relPath, ok := s.webdavPath(c, strings.TrimPrefix(c.Param("path"), "/"))
+	service, ok := s.webDAVFileService(c)
 	if !ok {
 		return
 	}
-	if relPath == "" {
-		c.Status(http.StatusForbidden)
+	if err := service.Remove(strings.TrimPrefix(c.Param("path"), "/")); err != nil {
+		writeWebDAVServiceError(c, err)
 		return
 	}
-	if err := os.RemoveAll(filePath); err != nil {
-		c.Status(http.StatusInternalServerError)
+	if isUpstreamWebDAVRequest(c) {
+		c.Status(http.StatusOK)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -223,12 +250,225 @@ func webdavDestinationPath(value string) (string, bool) {
 	if value == "" {
 		return "", false
 	}
-	if parsed, err := url.Parse(value); err == nil && parsed.Path != "" {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", false
+	}
+	if parsed.Path != "" {
 		value = parsed.Path
 	}
+	hadLeadingSlash := strings.HasPrefix(value, "/")
 	value = strings.TrimPrefix(value, "/")
-	value = strings.TrimPrefix(value, "webdav/")
-	return cleanRelativePath(value), true
+	switch {
+	case strings.HasPrefix(value, "reader3/webdav/"):
+		value = strings.TrimPrefix(value, "reader3/webdav/")
+	case value == "reader3/webdav":
+		value = ""
+	case strings.HasPrefix(value, "webdav/"):
+		value = strings.TrimPrefix(value, "webdav/")
+	case value == "webdav":
+		value = ""
+	case hadLeadingSlash:
+		return "", false
+	}
+	return value, true
+}
+
+type davMultiStatus struct {
+	XMLName   xml.Name      `xml:"DAV: multistatus"`
+	Responses []davResponse `xml:"response"`
+}
+
+type davResponse struct {
+	Href     string      `xml:"href"`
+	PropStat davPropStat `xml:"propstat"`
+}
+
+type davPropStat struct {
+	Status string  `xml:"status"`
+	Prop   davProp `xml:"prop"`
+}
+
+type davProp struct {
+	DisplayName   string          `xml:"displayname"`
+	LastModified  string          `xml:"getlastmodified"`
+	CreationDate  string          `xml:"creationdate"`
+	ResourceType  davResourceType `xml:"resourcetype"`
+	ContentLength *int64          `xml:"getcontentlength,omitempty"`
+	ContentType   string          `xml:"getcontenttype,omitempty"`
+}
+
+type davResourceType struct {
+	Collection *struct{} `xml:"collection,omitempty"`
+}
+
+func (s *Server) webdavPropfind(c *gin.Context) {
+	service, ok := s.webDAVFileService(c)
+	if !ok {
+		return
+	}
+	depth := 1
+	if strings.TrimSpace(c.GetHeader("Depth")) == "0" {
+		depth = 0
+	}
+	resources, err := service.List(strings.TrimPrefix(c.Param("path"), "/"), depth)
+	if err != nil {
+		writeWebDAVServiceError(c, err)
+		return
+	}
+	response := davMultiStatus{Responses: make([]davResponse, 0, len(resources))}
+	for _, resource := range resources {
+		property := davProp{
+			DisplayName:  webDAVDisplayName(resource.RelativePath),
+			LastModified: resource.Info.ModTime().UTC().Format(http.TimeFormat),
+			CreationDate: resource.Info.ModTime().UTC().Format(time.RFC3339),
+		}
+		if resource.Info.IsDir() {
+			property.ResourceType.Collection = &struct{}{}
+		} else {
+			length := resource.Info.Size()
+			property.ContentLength = &length
+			property.ContentType = mime.TypeByExtension(filepath.Ext(resource.Info.Name()))
+			if property.ContentType == "" {
+				property.ContentType = "application/octet-stream"
+			}
+		}
+		response.Responses = append(response.Responses, davResponse{
+			Href: webDAVHref(c, resource.RelativePath, resource.Info.IsDir()),
+			PropStat: davPropStat{
+				Status: "HTTP/1.1 200 OK",
+				Prop:   property,
+			},
+		})
+	}
+	c.Header("Content-Type", "application/xml; charset=utf-8")
+	c.Status(http.StatusMultiStatus)
+	_, _ = c.Writer.Write([]byte(xml.Header))
+	_ = xml.NewEncoder(c.Writer).Encode(response)
+}
+
+func webDAVDisplayName(relative string) string {
+	if relative == "" {
+		return ""
+	}
+	return filepath.Base(filepath.FromSlash(relative))
+}
+
+func webDAVHref(c *gin.Context, relative string, directory bool) string {
+	prefix := "/webdav/"
+	if isUpstreamWebDAVRequest(c) {
+		prefix = "/reader3/webdav/"
+	}
+	if relative == "" {
+		return prefix
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	for index, part := range parts {
+		parts[index] = url.PathEscape(part)
+	}
+	href := prefix + strings.Join(parts, "/")
+	if directory && !strings.HasSuffix(href, "/") {
+		href += "/"
+	}
+	return href
+}
+
+type davLockProperty struct {
+	XMLName       xml.Name         `xml:"DAV: prop"`
+	LockDiscovery davLockDiscovery `xml:"lockdiscovery"`
+}
+
+type davLockDiscovery struct {
+	ActiveLock davActiveLock `xml:"activelock"`
+}
+
+type davActiveLock struct {
+	LockType  davWriteLock     `xml:"locktype"`
+	LockScope davExclusiveLock `xml:"lockscope"`
+	LockToken davHref          `xml:"locktoken"`
+	LockRoot  davHref          `xml:"lockroot"`
+	Depth     string           `xml:"depth"`
+	Owner     davHref          `xml:"owner"`
+	Timeout   string           `xml:"timeout"`
+}
+
+type davWriteLock struct {
+	Write *struct{} `xml:"write"`
+}
+
+type davExclusiveLock struct {
+	Exclusive *struct{} `xml:"exclusive"`
+}
+
+type davHref struct {
+	Href string `xml:"href"`
+}
+
+func (s *Server) webdavLock(c *gin.Context) {
+	token, err := randomWebDAVLockToken()
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	timeout := strings.TrimSpace(c.GetHeader("Timeout"))
+	if timeout == "" || (!strings.EqualFold(timeout, "Infinite") && !strings.HasPrefix(strings.ToLower(timeout), "second-")) {
+		timeout = "Second-3600"
+	}
+	body := davLockProperty{LockDiscovery: davLockDiscovery{ActiveLock: davActiveLock{
+		LockType:  davWriteLock{Write: &struct{}{}},
+		LockScope: davExclusiveLock{Exclusive: &struct{}{}},
+		LockToken: davHref{Href: token},
+		LockRoot:  davHref{Href: webDAVHref(c, strings.TrimPrefix(c.Param("path"), "/"), false)},
+		Depth:     "infinity",
+		Owner:     davHref{Href: "http://www.apple.com/webdav_fs/"},
+		Timeout:   timeout,
+	}}}
+	c.Header("Lock-Token", token)
+	c.Header("Content-Type", "application/xml; charset=utf-8")
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.Write([]byte(xml.Header))
+	_ = xml.NewEncoder(c.Writer).Encode(body)
+}
+
+func (s *Server) webdavUnlock(c *gin.Context) {
+	token := strings.TrimSpace(c.GetHeader("Lock-Token"))
+	if token == "" {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	c.Header("Lock-Token", token)
+	c.Status(http.StatusNoContent)
+}
+
+func randomWebDAVLockToken() (string, error) {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	return fmt.Sprintf("urn:uuid:%x-%x-%x-%x-%x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
+}
+
+func writeWebDAVServiceError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, webdavfs.ErrUnsafePath):
+		c.Status(http.StatusForbidden)
+	case errors.Is(err, webdavfs.ErrNotFound):
+		c.Status(http.StatusNotFound)
+	case errors.Is(err, webdavfs.ErrConflict), errors.Is(err, webdavfs.ErrNotDirectory):
+		c.Status(http.StatusConflict)
+	case errors.Is(err, webdavfs.ErrPrecondition):
+		c.Status(http.StatusPreconditionFailed)
+	case errors.Is(err, webdavfs.ErrIsDirectory):
+		c.Status(http.StatusMethodNotAllowed)
+	case errors.Is(err, webdavfs.ErrTooLarge):
+		c.Status(http.StatusRequestEntityTooLarge)
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return
+	default:
+		c.Status(http.StatusInternalServerError)
+	}
 }
 
 // ---------- Reading app backup restoration ----------
@@ -1558,21 +1798,15 @@ func (s *Server) webdavPath(c *gin.Context, rawPath string) (string, string, boo
 	if !ok {
 		return "", "", false
 	}
-	baseDir, err := filepath.Abs(storeRoot)
+	service, err := webdavfs.NewScoped(s.webdavDir(), storeRoot)
 	if err != nil {
-		c.Status(http.StatusInternalServerError)
+		writeWebDAVServiceError(c, err)
 		return "", "", false
 	}
-	relPath := cleanRelativePath(rawPath)
-	targetPath := filepath.Join(baseDir, relPath)
-	targetAbs, err := filepath.Abs(targetPath)
+	target, relative, err := service.Resolve(rawPath)
 	if err != nil {
-		c.Status(http.StatusBadRequest)
+		writeWebDAVServiceError(c, err)
 		return "", "", false
 	}
-	if targetAbs != baseDir && !strings.HasPrefix(targetAbs, baseDir+string(os.PathSeparator)) {
-		c.Status(http.StatusForbidden)
-		return "", "", false
-	}
-	return targetAbs, relPath, true
+	return target, relative, true
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	_ "time/tzdata"
 
@@ -76,25 +77,37 @@ func main() {
 
 func cors(cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		origin := cfg.CORSOrigin
+		origin := strings.TrimSpace(cfg.CORSOrigin)
 		if origin == "" {
-			origin = c.GetHeader("Origin")
+			origin = strings.TrimSpace(c.GetHeader("Origin"))
 		}
 		if origin == "" {
 			origin = "*"
 		}
 
 		c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		if origin != "*" {
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Depth, Destination, Overwrite, Timeout, Lock-Token, If")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, PROPFIND, MKCOL, MOVE, COPY, LOCK, UNLOCK")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "DAV, Allow, MS-Author-Via, Lock-Token, Content-Length")
 
 		if c.Request.Method == http.MethodOptions {
+			if isWebDAVProtocolPath(c.Request.URL.Path) {
+				c.Next()
+				return
+			}
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 		c.Next()
 	}
+}
+
+func isWebDAVProtocolPath(path string) bool {
+	return path == "/webdav" || strings.HasPrefix(path, "/webdav/") ||
+		path == "/reader3/webdav" || strings.HasPrefix(path, "/reader3/webdav/")
 }
 
 func serveFrontend(router *gin.Engine, publicDir string) {

@@ -170,7 +170,9 @@ async function openLegacySidebarFocus(page, root, viewport, panel, section) {
   if (viewport.width <= 750) {
     const shellClass = await page.locator('.app-shell').getAttribute('class')
     assert(shellClass?.includes('mobile-nav-open'), `${viewport.width}: sidebar focus must open compact navigation`)
-    await page.locator('.app-workspace').click({ position: { x: 200, y: 200 } })
+    // The upstream-width sidebar occupies the first 260px. Click the visible
+    // workspace region instead of asking Playwright to click a covered point.
+    await page.mouse.click(Math.max(300, viewport.width - 40), 200)
     await page.waitForFunction(() => !document.querySelector('.app-shell')?.classList.contains('mobile-nav-open'))
   }
 }
@@ -184,7 +186,14 @@ async function openLegacyReaderSettingsNotice(page, root, viewport) {
   assert(hasDrawer === 0, `${viewport.width}: reader legacy link must not recreate a generic settings drawer`)
 }
 
-async function verifyUserConfigurationActions(page) {
+async function verifyUserConfigurationActions(page, viewport) {
+  if (viewport.width <= 750) {
+    const mobileNavigationOpen = await page.locator('.app-shell').evaluate(node => node.classList.contains('mobile-nav-open'))
+    if (!mobileNavigationOpen) {
+      await page.locator('.mobile-menu-trigger').click()
+      await page.waitForFunction(() => document.querySelector('.app-shell')?.classList.contains('mobile-nav-open'))
+    }
+  }
   await page.getByText('备份用户配置', { exact: true }).click()
   await page.getByRole('button', { name: '确定' }).last().click()
   await page.waitForFunction(async () => {
@@ -230,7 +239,7 @@ async function runViewport(browser, viewport) {
   await openLegacySidebarFocus(page, root, viewport, 'account', 'account')
   await openLegacySidebarFocus(page, root, viewport, 'cache', 'cache')
   await openLegacyReaderSettingsNotice(page, root, viewport)
-  await verifyUserConfigurationActions(page)
+  await verifyUserConfigurationActions(page, viewport)
 
   assert(failures.length === 0, failures.join('\n'))
   await context.close()

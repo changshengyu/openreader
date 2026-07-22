@@ -6,8 +6,8 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 
 - Public API root: `/api`.
 - Auth: `Authorization: Bearer <jwt>` for protected `/api` endpoints.
-- WebDAV root: `/webdav`.
-- Upstream WebDAV compatibility root: `/reader3/webdav` (P2 protocol implementation pending;
+- WebDAV roots: `/webdav` and upstream-compatible `/reader3/webdav`.
+- The upstream WebDAV compatibility root is implemented and shares the same caller-scoped storage;
   see [`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md)).
 - Sync WebSocket: `/ws/sync`.
 - Expected error shape for handled failures: JSON object with `error`.
@@ -46,7 +46,7 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 
 ## P2 raw WebDAV protocol contract
 
-Status: audited on 2026-07-19; implementation is pending. The complete compatibility, authentication,
+Status: implemented and non-Docker validation complete on 2026-07-19. The complete compatibility, authentication,
 filesystem and migration contract is
 [`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md).
 
@@ -440,17 +440,21 @@ Implementation tests must cover:
 - modified, expired, wrong-purpose, wrong-user/book, traversal, missing-file, and unsupported-media requests fail with client-safe errors;
 - access logs redact `/api/audio-resource/<capability>/...` the same way EPUB/CBZ resource capabilities are redacted.
 
-## WebDAV contract
+## Legacy WebDAV summary
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/webdav/*path` | List/download. |
-| `PUT` | `/webdav/*path` | Upload/write. |
-| `MKCOL` | `/webdav/*path` | Create directory. |
-| `MOVE` | `/webdav/*path` | Rename/move. |
-| `DELETE` | `/webdav/*path` | Delete. |
+| `OPTIONS/PROPFIND` | `/webdav/*path`, `/reader3/webdav/*path` | Discover and list with standard DAV metadata. |
+| `GET` | both roots | Download; `/webdav` additionally retains the deployed browser directory-list adapter. |
+| `PUT/MKCOL/MOVE/COPY/DELETE` | both roots | Caller-scoped file mutations with fixed protocol statuses. |
+| `LOCK/UNLOCK` | both roots | Upstream-compatible stateless lock handshake. |
 
-WebDAV paths must be normalized, rooted, and protected from traversal. Every raw WebDAV method requires the standard `Authorization: Bearer <JWT>` header: missing/invalid credentials return `401` before filesystem access; an authenticated user whose effective `canAccessWebdav` permission is false receives `403` before path parsing or file mutation. The browser uses header-based authenticated requests and must never append a JWT to a download URL.
+WebDAV paths are normalized, caller-rooted, and protected from traversal and symlinks. Protected methods accept
+`Authorization: Bearer <JWT>` or HTTPS-only Basic credentials; missing/invalid credentials return `401` before
+filesystem access, while an authenticated user whose effective `canAccessWebdav` permission is false receives
+`403` before path parsing or file mutation. Anonymous OPTIONS remains available for discovery. The browser uses
+header-based authenticated requests and never appends a JWT to a download URL. The focused table above and
+[`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md) supersede this summary.
 
 ## Workspace storage access contract
 

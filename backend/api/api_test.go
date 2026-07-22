@@ -7928,6 +7928,22 @@ func TestWebDAVPutListGetAndDelete(t *testing.T) {
 	router, _ := setupTestServer(t)
 	auth := authHeader(t, router)
 
+	missingParent := httptest.NewRequest(http.MethodPut, "/webdav/backups/sample.txt", strings.NewReader("must not create parents"))
+	missingParent.Header.Set("Authorization", auth)
+	missingParentWriter := httptest.NewRecorder()
+	router.ServeHTTP(missingParentWriter, missingParent)
+	if missingParentWriter.Code != http.StatusConflict {
+		t.Fatalf("webdav put without parent: expected 409, got %d", missingParentWriter.Code)
+	}
+
+	mkdir := httptest.NewRequest("MKCOL", "/webdav/backups", nil)
+	mkdir.Header.Set("Authorization", auth)
+	mkdirWriter := httptest.NewRecorder()
+	router.ServeHTTP(mkdirWriter, mkdir)
+	if mkdirWriter.Code != http.StatusCreated {
+		t.Fatalf("webdav create parent: expected 201, got %d", mkdirWriter.Code)
+	}
+
 	req := httptest.NewRequest(http.MethodPut, "/webdav/backups/sample.txt", strings.NewReader("hello webdav"))
 	req.Header.Set("Authorization", auth)
 	w := httptest.NewRecorder()
