@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -37,7 +38,7 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 }
 
 func AutoMigrate(database *gorm.DB) error {
-	return database.AutoMigrate(
+	if err := database.AutoMigrate(
 		&models.User{},
 		&models.UserSetting{},
 		&models.BookSource{},
@@ -52,7 +53,38 @@ func AutoMigrate(database *gorm.DB) error {
 		&models.Chapter{},
 		&models.ReadingProgress{},
 		&models.Bookmark{},
-	)
+	); err != nil {
+		return err
+	}
+	return backfillBookLastCheckTimes(database)
+}
+
+func backfillBookLastCheckTimes(database *gorm.DB) error {
+	var books []models.Book
+	if err := database.Where("last_check_time IS NULL OR last_check_time <= ?", 0).Find(&books).Error; err != nil {
+		return err
+	}
+	if len(books) == 0 {
+		return nil
+	}
+	now := time.Now().UnixMilli()
+	return database.Transaction(func(tx *gorm.DB) error {
+		for _, book := range books {
+			lastCheckTime := book.CreatedAt.UnixMilli()
+			if book.CreatedAt.IsZero() || lastCheckTime <= 0 {
+				lastCheckTime = book.UpdatedAt.UnixMilli()
+			}
+			if lastCheckTime <= 0 {
+				lastCheckTime = now
+			}
+			if err := tx.Model(&models.Book{}).
+				Where("id = ? AND (last_check_time IS NULL OR last_check_time <= ?)", book.ID, 0).
+				UpdateColumn("last_check_time", lastCheckTime).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func MigrateLocalBookCache(database *gorm.DB, cfg config.Config) error {

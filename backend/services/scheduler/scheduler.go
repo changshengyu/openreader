@@ -131,8 +131,12 @@ func (s *Scheduler) checkBook(book models.Book) (int, error) {
 		}
 	}
 
+	chapterCountGrew := len(remoteChapters) > book.ChapterCount
 	book.LastChapter = newChapters[len(newChapters)-1].Title
 	book.ChapterCount = len(remoteChapters)
+	if chapterCountGrew {
+		book.LastCheckTime = time.Now().UnixMilli()
+	}
 	if err := s.db.Save(&book).Error; err != nil {
 		return 0, err
 	}

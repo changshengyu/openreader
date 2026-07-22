@@ -515,6 +515,22 @@ Implemented tests: `backend/api/remote_reader_contract_test.go` proves user isol
 
 If a refactor changes frontend routes, API paths should stay stable unless an old path is kept as a redirect/shim. Document removals before deleting compatibility behavior.
 
+## P1 bookshelf latest-chapter timestamp contract (2026-07-22 extracted)
+
+Existing methods, paths, auth, status codes and error envelopes remain unchanged. Shelf book response objects gain
+one additive `lastCheckTime` integer containing Unix milliseconds.
+
+| Path family | Response / side effect | Compatibility rule |
+|---|---|---|
+| `GET /api/books`, `GET /api/books/:id`, and existing book mutation/import responses | Each shelf-book projection includes non-zero `lastCheckTime`; existing `shelfOrderAt`, `progress`, `createdAt` and `updatedAt` remain present. | `shelfOrderAt` is progress time when read, otherwise insertion time. Generic metadata `updatedAt` neither reorders the shelf nor changes `lastCheckTime`. |
+| `POST /api/books/:id/refresh`, scheduled/manual update check | If the fetched catalogue contains more chapters than the persisted pre-refresh count, commit the new chapter data and current `lastCheckTime` together. | Same-size/smaller result, metadata-only edit and failed refresh do not advance `lastCheckTime`; current statuses/errors remain stable. |
+| `POST /api/books/:id/change-source` | A successful source replacement commits the newly resolved latest chapter and current `lastCheckTime` while retaining independent reading progress. | Failed source selection does not change either timestamp; existing request/status/error behavior remains stable. |
+| Book create/import and legacy/portable restore | New rows initialize the field. A positive reader-dev `lastCheckTime` is retained on restore and later export. | Old payloads may omit it. Invalid/non-positive values fall back to destination insertion time rather than producing an error. |
+
+The frontend latest-chapter label consumes only `lastCheckTime`. It must not infer this display value from
+`shelfOrderAt`, progress or generic `updatedAt`. Full rationale and migration rules are in
+`bookshelf-last-check-time-p1-contract.md`.
+
 ## P2 BookGroup unified projection contract (2026-07-19 extracted)
 
 The fixed reader-dev baseline persists four editable built-in groups together with custom groups. OpenReader keeps

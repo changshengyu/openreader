@@ -1203,6 +1203,7 @@ type restoredBookshelfRow struct {
 	DurChapter      int      `json:"durChapter"`
 	DurChapterPos   int      `json:"durChapterPos"`
 	DurChapterTitle string   `json:"durChapterTitle"`
+	LastCheckTime   int64    `json:"lastCheckTime"`
 }
 
 type restoredChapterVariableRow struct {
@@ -1213,6 +1214,13 @@ type restoredChapterVariableRow struct {
 	ChapterTitle string `json:"chapterTitle"`
 	ChapterIndex int    `json:"chapterIndex"`
 	Variable     string `json:"variable"`
+}
+
+func positiveTimestamp(value int64) int64 {
+	if value > 0 {
+		return value
+	}
+	return 0
 }
 
 func validateRestoredBookshelfVariables(data []byte) error {
@@ -1303,6 +1311,7 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 			Variable:       variable,
 			LastChapter:    strings.TrimSpace(b.LastChapter),
 			ChapterCount:   b.ChapterCount,
+			LastCheckTime:  positiveTimestamp(b.LastCheckTime),
 			CanUpdate:      canUpdate,
 		}
 		categoryIDs := s.restoredCategoryIDs(userID, b.CategoryName, b.CategoryNames)
@@ -1329,6 +1338,9 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 			existing.Variable = book.Variable
 			existing.LastChapter = book.LastChapter
 			existing.ChapterCount = book.ChapterCount
+			if book.LastCheckTime > 0 {
+				existing.LastCheckTime = book.LastCheckTime
+			}
 			existing.CanUpdate = book.CanUpdate
 			existing.CategoryID = book.CategoryID
 			if book.URL != "" {

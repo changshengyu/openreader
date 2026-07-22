@@ -606,7 +606,8 @@ func TestBackupIncludesUserData(t *testing.T) {
 	if err := server.db.Create(&categoryExtra).Error; err != nil {
 		t.Fatal(err)
 	}
-	book := models.Book{UserID: 1, CategoryID: &category.ID, Title: "备份书", URL: "https://book.example/backup"}
+	lastCheckTime := time.Date(2025, time.March, 4, 5, 6, 7, 0, time.UTC).UnixMilli()
+	book := models.Book{UserID: 1, CategoryID: &category.ID, Title: "备份书", URL: "https://book.example/backup", LastCheckTime: lastCheckTime}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -669,6 +670,9 @@ func TestBackupIncludesUserData(t *testing.T) {
 	}
 	if !strings.Contains(entries["bookshelf.json"], `"categoryName": "备份分组"`) || !strings.Contains(entries["bookshelf.json"], `"categoryNames":`) || !strings.Contains(entries["bookshelf.json"], `"备份分组二"`) {
 		t.Fatalf("unexpected bookshelf backup: %s", entries["bookshelf.json"])
+	}
+	if !strings.Contains(entries["bookshelf.json"], fmt.Sprintf(`"lastCheckTime": %d`, lastCheckTime)) {
+		t.Fatalf("bookshelf backup lost lastCheckTime: %s", entries["bookshelf.json"])
 	}
 	if !strings.Contains(entries["bookmarks.json"], `"bookTitle": "备份书"`) || !strings.Contains(entries["bookmarks.json"], `"title": "备份书签"`) {
 		t.Fatalf("unexpected bookmarks backup: %s", entries["bookmarks.json"])

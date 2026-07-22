@@ -43,7 +43,8 @@ export function compareByShelfOrder(a, b) {
 export function shelfOrderTime(book, progressByBook) {
   const explicitShelfAt = toTime(book?.shelfOrderAt)
   const progressAt = toTime(progressFor(book, progressByBook)?.updatedAt)
-  const shelfAt = Math.max(toTime(book?.updatedAt), toTime(book?.createdAt))
+  const createdAt = toTime(book?.createdAt)
+  const shelfAt = createdAt || toTime(book?.updatedAt)
   return Math.max(explicitShelfAt, progressAt, shelfAt)
 }
 

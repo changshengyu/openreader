@@ -584,3 +584,22 @@ Required release evidence: service/API ownership and malformed-cache tests, old-
 Required evidence before release: populated old SQLite migration, two-user projection/isolation, transaction
 rollback, user deletion, old OpenReader restore, reader-dev group-mask restore, new round-trip, full backend tests,
 and the Docker mounted-volume/backup compatibility smoke.
+
+## P1 bookshelf latest-chapter timestamp compatibility (2026-07-22 extracted)
+
+- Add only `books.last_check_time` as an integer millisecond timestamp matching reader-dev's
+  `lastCheckTime`. Existing `created_at`, `updated_at`, reading-progress rows and `shelfOrderAt` projection remain
+  unchanged.
+- After additive AutoMigrate, rows with zero `last_check_time` are backfilled once from `created_at`; use
+  `updated_at` only when creation time is unavailable. Reading progress must never seed this field.
+- New shelf rows receive a non-zero insertion timestamp. `shelfOrderAt` uses reading progress or creation time,
+  never generic `updated_at`. Remote refresh/scheduler advance `last_check_time` only when chapter
+  count grows; metadata edits, reading, failed refresh and no-growth refresh do not.
+- Legacy reader-dev restore accepts a positive `lastCheckTime`. Missing, zero, negative or malformed values use
+  the destination insertion time. Embedded OpenReader `Book` backup JSON then round-trips it automatically.
+- This migration does not touch archives, derived content, chapter/cache paths, category membership, bookmarks,
+  progress, `data/`, `cache/` or `library/`.
+
+Required evidence: old-table migration plus idempotent second run, progress/update separation, growing/no-growth
+refresh, reader-dev restore and re-export, frontend source-field contract, and mounted-volume/backup smoke before
+Docker release. See `bookshelf-last-check-time-p1-contract.md`.

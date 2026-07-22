@@ -35,7 +35,16 @@ function remoteBook(title = '工作台搜索结果') {
 }
 
 async function installApiMocks(page) {
-  let shelfBooks = [{ id: 1, title: '书架测试书', author: 'OpenReader', chapterCount: 1 }]
+  let shelfBooks = [{
+    id: 1,
+    title: '书架测试书',
+    author: 'OpenReader',
+    chapterCount: 1,
+    lastChapter: '更新章节',
+    lastCheckTime: Date.now() - (2 * 60 * 60 * 1000),
+    shelfOrderAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }]
   let remoteCreateCount = 0
   const searchRequests = []
   await page.exposeFunction('__workspaceRemoteCreateCount', () => remoteCreateCount)
@@ -172,6 +181,13 @@ async function runViewport(browser, viewport) {
   const root = targetUrl.replace(/\/$/, '')
   await page.goto(root, { waitUntil: 'networkidle' })
   await page.waitForSelector('.shelf-page .book-row', { timeout: 10000 })
+  const shelfCardText = await page.locator('.shelf-page .book-row').first().innerText()
+  assert(shelfCardText.includes('2小时前：更新章节'), `${viewport.width}: latest chapter must use lastCheckTime instead of recent shelfOrderAt/updatedAt: ${shelfCardText}`)
+  if (process.env.BOOKSHELF_TIME_ONLY === '1') {
+    assert(failures.length === 0, failures.join('\n'))
+    await context.close()
+    return `${viewport.width}x${viewport.height}`
+  }
   const shelfRoute = await page.url()
   await page.locator('.shelf-page .book-row .list-cover').first().click()
   await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
@@ -359,7 +375,11 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`index-workspace: ok ${checks.join(', ')} legacyRedirects=true sidebarSearch=true canonicalBookInfo=true exploreCoverInfo=true`)
+    if (process.env.BOOKSHELF_TIME_ONLY === '1') {
+      console.log(`bookshelf latest-chapter time: ok ${checks.join(', ')} source=lastCheckTime`)
+    } else {
+      console.log(`index-workspace: ok ${checks.join(', ')} legacyRedirects=true sidebarSearch=true canonicalBookInfo=true exploreCoverInfo=true`)
+    }
   } finally {
     await browser.close()
   }

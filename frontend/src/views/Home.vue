@@ -297,7 +297,7 @@ function latestChapterTitle(book) {
 }
 
 function latestChapterLabel(book) {
-  const rawTime = book.lastCheckTime || book.shelfOrderAt || book.updatedAt
+  const rawTime = book.lastCheckTime
   return rawTime ? relativeTimeLabel(rawTime) : '最新'
 }
 

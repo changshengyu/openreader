@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"openreader/backend/engine"
 	"openreader/backend/models"
@@ -92,6 +93,10 @@ func TestSourceMetadataSemanticsReachShelfRefreshSourceChangeAndTemporaryReader(
 		t.Fatal(err)
 	}
 	assertMetadataBook(t, refreshed, "刷新详情", "详情作者", "第一段\n　　第二段")
+	oldSourceChangeTime := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	if err := server.db.Model(&models.Book{}).Where("id = ?", created.ID).UpdateColumn("last_check_time", oldSourceChangeTime).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	changeBody := fmt.Sprintf(`{"sourceId":%d,"bookUrl":"https://metadata-b.test/book","title":"换源请求标题","author":"换源请求作者"}`, sourceB.ID)
 	changeRequest := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(created.ID), 10)+"/change-source", strings.NewReader(changeBody))
@@ -107,6 +112,9 @@ func TestSourceMetadataSemanticsReachShelfRefreshSourceChangeAndTemporaryReader(
 		t.Fatal(err)
 	}
 	assertMetadataBook(t, changed, "详情乙", "详情作者", "第一段\n　　第二段")
+	if changed.LastCheckTime <= oldSourceChangeTime {
+		t.Fatalf("successful source change did not advance lastCheckTime: %+v", changed)
+	}
 
 	var beforeSessions int64
 	if err := server.db.Model(&models.Book{}).Count(&beforeSessions).Error; err != nil {

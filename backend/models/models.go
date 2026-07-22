@@ -298,6 +298,7 @@ type Book struct {
 	SourceFile     string    `json:"sourceFile" gorm:"size:600"`
 	LastChapter    string    `json:"lastChapter" gorm:"size:240"`
 	ChapterCount   int       `json:"chapterCount"`
+	LastCheckTime  int64     `json:"lastCheckTime" gorm:"autoCreateTime:milli"`
 	CanUpdate      bool      `json:"canUpdate" gorm:"default:true"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`

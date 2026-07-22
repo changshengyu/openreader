@@ -285,9 +285,9 @@ func (s *Server) broadcastBookShelfUpdate(userID uint, book models.Book) bookLis
 }
 
 func shelfOrderAt(book models.Book, progress *models.ReadingProgress) time.Time {
-	orderAt := book.UpdatedAt
-	if book.CreatedAt.After(orderAt) {
-		orderAt = book.CreatedAt
+	orderAt := book.CreatedAt
+	if orderAt.IsZero() {
+		orderAt = book.UpdatedAt
 	}
 	if progress != nil && progress.UpdatedAt.After(orderAt) {
 		orderAt = progress.UpdatedAt
@@ -1306,6 +1306,7 @@ func (s *Server) refreshBook(c *gin.Context) {
 
 	var supersededCachePaths []string
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		previousChapterCount := book.ChapterCount
 		nextChapters := make([]models.Chapter, 0, len(remoteChapters))
 		for _, remoteChapter := range remoteChapters {
 			nextChapters = append(nextChapters, models.Chapter{
@@ -1331,6 +1332,9 @@ func (s *Server) refreshBook(c *gin.Context) {
 		book.WordCount = firstNonBlank(remoteInfo.WordCount, book.WordCount)
 		book.LastChapter = remoteChapters[len(remoteChapters)-1].Title
 		book.ChapterCount = len(remoteChapters)
+		if len(remoteChapters) > previousChapterCount {
+			book.LastCheckTime = time.Now().UnixMilli()
+		}
 		book.Variable = variable
 		return tx.Save(&book).Error
 	})
@@ -2082,6 +2086,7 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		}
 		book.LastChapter = newChapters[len(newChapters)-1].Title
 		book.ChapterCount = len(newChapters)
+		book.LastCheckTime = time.Now().UnixMilli()
 		return tx.Save(&book).Error
 	})
 	if err != nil {
