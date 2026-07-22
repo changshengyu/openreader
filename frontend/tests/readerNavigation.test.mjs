@@ -167,22 +167,125 @@ test('uses responsive vertical scrolling and settles a buffered page chain only 
   await fixture.navigation.nextPage()
   await fixture.navigation.nextPage()
   assert.equal(animationCalls.length, 1, 'the repeated tap must be bounded while motion is active')
-  assert.deepEqual(animationCalls[0].animationOptions, {
+  assert.deepEqual({
+    ...animationCalls[0].animationOptions,
+    onVisualFinish: undefined,
+  }, {
     easing: 'responsive',
     finish: 'after-paint',
+    onVisualFinish: undefined,
   })
+  assert.equal(typeof animationCalls[0].animationOptions.onVisualFinish, 'function')
   assert.equal(body.style.willChange, '')
 
   finishes.shift()()
   await Promise.resolve()
   assert.equal(animationCalls.length, 2, 'one repeated next-page tap must run before final settlement')
   assert.deepEqual(settled, [], 'the buffered page boundary must not run heavy settlement work')
-  assert.deepEqual(animationCalls[1].animationOptions, {
+  assert.deepEqual({
+    ...animationCalls[1].animationOptions,
+    onVisualFinish: undefined,
+  }, {
     easing: 'responsive',
     finish: 'after-paint',
+    onVisualFinish: undefined,
   })
+  assert.equal(typeof animationCalls[1].animationOptions.onVisualFinish, 'function')
   finishes.shift()()
   assert.deepEqual(settled, ['settled'])
+})
+
+test('starts the buffered vertical page from visual completion before after-paint settlement', async () => {
+  const settled = []
+  const segments = []
+  let active = false
+  const fixture = createNavigation({
+    contentEl: ref({
+      scrollTop: 0,
+      scrollHeight: 4000,
+      clientHeight: 800,
+    }),
+    isVerticalRead: ref(true),
+    getMode: () => 'scroll2',
+    useResponsiveVerticalAnimation: () => true,
+    onVerticalPageSettled: () => settled.push('settled'),
+    scrollAnimator: {
+      cancel: () => { active = false },
+      isActive: () => active,
+      scrollBy: (_element, delta, duration, onFinish, animationOptions) => {
+        active = true
+        segments.push({ delta, duration, onFinish, animationOptions })
+        return true
+      },
+    },
+  })
+
+  await fixture.navigation.nextPage()
+  await fixture.navigation.nextPage()
+  assert.equal(segments.length, 1)
+  assert.equal(typeof segments[0].animationOptions.onVisualFinish, 'function')
+
+  active = false
+  assert.equal(segments[0].animationOptions.onVisualFinish(), true)
+  assert.equal(segments.length, 2, 'the queued visual segment must start synchronously at the first endpoint')
+  assert.equal(settled.length, 0)
+
+  active = false
+  assert.equal(segments[1].animationOptions.onVisualFinish(), false)
+  assert.equal(settled.length, 0)
+  active = true
+  active = false
+  segments[1].onFinish()
+  assert.deepEqual(settled, ['settled'])
+})
+
+test('a tap during the after-paint handoff immediately takes over its pending settlement', async () => {
+  const settled = []
+  const segments = []
+  let active = false
+  let finishing = false
+  let takeoverCalls = 0
+  const fixture = createNavigation({
+    contentEl: ref({
+      scrollTop: 0,
+      scrollHeight: 4000,
+      clientHeight: 800,
+    }),
+    isVerticalRead: ref(true),
+    getMode: () => 'page',
+    useResponsiveVerticalAnimation: () => true,
+    onVerticalPageSettled: () => settled.push('settled'),
+    scrollAnimator: {
+      cancel: () => {
+        active = false
+        finishing = false
+      },
+      isActive: () => active,
+      takeOverPendingFinish: () => {
+        if (!finishing) return false
+        finishing = false
+        active = false
+        takeoverCalls += 1
+        return true
+      },
+      scrollBy: (_element, delta, duration, onFinish, animationOptions) => {
+        active = true
+        segments.push({ delta, duration, onFinish, animationOptions })
+        return true
+      },
+    },
+  })
+
+  await fixture.navigation.nextPage()
+  active = false
+  assert.equal(segments[0].animationOptions.onVisualFinish(), false)
+  active = true
+  finishing = true
+
+  await fixture.navigation.nextPage()
+  assert.equal(takeoverCalls, 1)
+  assert.equal(segments.length, 2, 'the handoff tap must start its visual page in the input task')
+  assert.deepEqual(settled, [])
 })
 
 test('native gesture cancellation clears a buffered page click', async () => {

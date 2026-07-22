@@ -113,7 +113,7 @@ defineEmits(['action'])
   top: 0;
   bottom: 0;
   left: max(8px, var(--reader-left-x));
-  z-index: 4;
+  z-index: 5;
   display: grid;
   width: 58px;
   align-content: start;
@@ -169,7 +169,7 @@ defineEmits(['action'])
   right: auto;
   bottom: 150px;
   left: var(--reader-right-x);
-  z-index: 4;
+  z-index: 5;
   display: grid;
   max-height: max(120px, calc(100vh - 170px));
   grid-template-columns: 36px;

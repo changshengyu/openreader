@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs'
 
 const workspaceSource = readFileSync(new URL('../src/components/reader/ReaderDesktopWorkspacePanel.vue', import.meta.url), 'utf8')
 const readerSource = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
+const toolsSource = readFileSync(new URL('../src/components/reader/ReaderDesktopTools.vue', import.meta.url), 'utf8')
+const clickZonesSource = readFileSync(new URL('../src/components/reader/ReaderClickZones.vue', import.meta.url), 'utf8')
 
 function desktopWorkspaceBlock() {
   const match = workspaceSource.match(/\.reader-desktop-workspace\s*\{([\s\S]*?)\n\}/)
@@ -35,4 +37,30 @@ test('desktop primary panel internals retain upstream 300px lists while settings
     /workspace-panel-settings[\s\S]*?\.reader-workspace-body\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible/,
     'desktop settings shell must leave scrolling to the upstream-style inner settings list',
   )
+})
+
+test('desktop primary panels retain both upstream dismissal paths and add one visible iPad close target', () => {
+  assert.match(
+    workspaceSource,
+    /class="reader-desktop-workspace-close"[\s\S]*?aria-label="关闭阅读工具面板"[\s\S]*?@click\.stop="\$emit\('close'\)"/,
+    'the shared workspace must expose one explicit close control for shelf, source, catalog, and settings',
+  )
+  assert.match(
+    workspaceSource,
+    /\.reader-desktop-workspace-close\s*\{[\s\S]*?width:\s*44px[\s\S]*?height:\s*44px/,
+    'the visible iPad close control must keep a 44px touch target',
+  )
+  assert.match(
+    workspaceSource,
+    /class="reader-workspace-dismiss"[\s\S]*?@pointerdown\.stop[\s\S]*?@click\.stop="\$emit\('close'\)"/,
+    'outside pointer input must be consumed by the shared dismiss surface',
+  )
+})
+
+test('desktop panel stack is explicit above content hit zones and below retained rails', () => {
+  assert.match(clickZonesSource, /\.reader-tap-zones\s*\{[\s\S]*?z-index:\s*2;/)
+  assert.match(workspaceSource, /\.reader-workspace-dismiss\s*\{[\s\S]*?z-index:\s*3;/)
+  assert.match(workspaceSource, /\.reader-desktop-workspace\s*\{[\s\S]*?z-index:\s*4;/)
+  assert.match(toolsSource, /\.reader-left-rail\s*\{[\s\S]*?z-index:\s*5;/)
+  assert.match(toolsSource, /\.reader-right-rail\s*\{[\s\S]*?z-index:\s*5;/)
 })

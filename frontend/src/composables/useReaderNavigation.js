@@ -21,34 +21,55 @@ export function useReaderNavigation(options) {
     scrollAnimator.cancel()
   }
 
-  function verticalAnimationOptions() {
+  function verticalAnimationOptions(onVisualFinish) {
     if (!options.useResponsiveVerticalAnimation?.()) return undefined
     return {
       easing: 'responsive',
       finish: 'after-paint',
+      onVisualFinish,
     }
   }
 
-  function queueActiveVerticalPage(direction) {
+  function queueActiveVerticalPage(element, direction) {
     if (!scrollAnimator.isActive()) return false
     queuedVerticalDirection = activeVerticalDirection === direction ? direction : 0
+    if (
+      queuedVerticalDirection === direction
+      && scrollAnimator.takeOverPendingFinish?.()
+    ) {
+      queuedVerticalDirection = 0
+      activeVerticalDirection = 0
+      runVerticalPageAnimation(element, direction)
+    }
     return true
   }
 
   function runVerticalPageAnimation(element, direction) {
-    if (queueActiveVerticalPage(direction)) return true
+    if (queueActiveVerticalPage(element, direction)) return true
     const generation = animationGeneration
+    const responsive = Boolean(options.useResponsiveVerticalAnimation?.())
     activeVerticalDirection = direction
+
+    const startQueuedPage = () => {
+      if (generation !== animationGeneration) return true
+      if (queuedVerticalDirection !== direction) return false
+      queuedVerticalDirection = 0
+      activeVerticalDirection = 0
+      if (direction > 0) void nextPage()
+      else void previousPage()
+      return generation !== animationGeneration || scrollAnimator.isActive()
+    }
+
     const started = scrollAnimator.scrollBy(
       element,
       direction * options.scrollStep(),
       options.getAnimateDuration(),
       () => {
         if (generation !== animationGeneration) return
+        if (responsive && startQueuedPage()) return
         activeVerticalDirection = 0
-        const queuedDirection = queuedVerticalDirection
-        queuedVerticalDirection = 0
-        if (queuedDirection === direction) {
+        if (!responsive && queuedVerticalDirection === direction) {
+          queuedVerticalDirection = 0
           queueMicrotask(() => {
             if (generation !== animationGeneration) return
             if (direction > 0) void nextPage()
@@ -56,6 +77,7 @@ export function useReaderNavigation(options) {
           })
           return
         }
+        queuedVerticalDirection = 0
         if (options.onVerticalPageSettled) {
           options.onVerticalPageSettled()
         } else {
@@ -63,7 +85,7 @@ export function useReaderNavigation(options) {
           options.scheduleProgressSave(60)
         }
       },
-      verticalAnimationOptions(),
+      verticalAnimationOptions(startQueuedPage),
     )
     if (!started) activeVerticalDirection = 0
     return started

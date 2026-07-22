@@ -42,6 +42,14 @@ export function createReaderScrollAnimator(options = {}) {
     running = false
   }
 
+  function takeOverPendingFinish() {
+    if (finishTaskId === null) return false
+    cancelTask(finishTaskId)
+    finishTaskId = null
+    running = false
+    return true
+  }
+
   function scrollTo(element, requestedTop, requestedDuration, onFinish, animationOptions = {}) {
     if (!element || running) return false
     const startTop = Math.max(0, finiteNumber(element.scrollTop))
@@ -83,7 +91,11 @@ export function createReaderScrollAnimator(options = {}) {
         return
       }
       frameId = null
+      running = false
+      const visualContinued = animationOptions?.onVisualFinish?.() === true
+      if (visualContinued || running) return
       if (animationOptions?.finish === 'after-paint') {
+        running = true
         finishTaskId = scheduleTask(() => {
           finishTaskId = null
           running = false
@@ -91,7 +103,6 @@ export function createReaderScrollAnimator(options = {}) {
         }, 0)
         return
       }
-      running = false
       onFinish?.()
     }
     frameId = requestFrame(draw)
@@ -101,6 +112,7 @@ export function createReaderScrollAnimator(options = {}) {
   return {
     cancel,
     isActive: () => running,
+    takeOverPendingFinish,
     scrollBy(element, delta, duration, onFinish, animationOptions) {
       return scrollTo(
         element,

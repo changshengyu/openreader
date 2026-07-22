@@ -3,13 +3,24 @@
     class="reader-workspace-dismiss"
     type="button"
     aria-label="关闭阅读工具面板"
-    @click="$emit('close')"
+    @pointerdown.stop
+    @click.stop="$emit('close')"
   />
   <section
     class="reader-desktop-workspace"
     :class="[{ 'without-head': !title }, `workspace-panel-${panel}`]"
     :aria-label="title || '阅读设置'"
   >
+    <button
+      class="reader-desktop-workspace-close"
+      type="button"
+      aria-label="关闭阅读工具面板"
+      title="关闭"
+      @pointerdown.stop
+      @click.stop="$emit('close')"
+    >
+      ×
+    </button>
     <header v-if="title" class="reader-workspace-head">
       <strong>{{ title }}</strong>
       <div class="reader-workspace-actions">
@@ -40,7 +51,7 @@ defineEmits(['close'])
 <style scoped>
 .reader-workspace-dismiss {
   position: fixed;
-  z-index: 2;
+  z-index: 3;
   inset: 0;
   padding: 0;
   background: transparent;
@@ -49,7 +60,7 @@ defineEmits(['close'])
 
 .reader-desktop-workspace {
   position: fixed;
-  z-index: 3;
+  z-index: 4;
   top: 0;
   left: calc(50vw - var(--reader-frame-width) / 2 + 4px);
   width: calc(var(--reader-frame-width) - 9px);
@@ -57,7 +68,7 @@ defineEmits(['close'])
   min-height: 0;
   max-height: 100dvh;
   box-sizing: border-box;
-  padding: 24px;
+  padding: 24px 60px 24px 24px;
   color: var(--reader-text);
   background-color: var(--reader-bg);
   background-image: var(--reader-bg-image, var(--paper-texture));
@@ -69,6 +80,32 @@ defineEmits(['close'])
     inset -24px 0 44px rgba(90, 71, 28, 0.05);
   filter: brightness(var(--reader-brightness));
   overflow: visible;
+}
+
+.reader-desktop-workspace-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  color: #ed4259;
+  background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
+  border: 1px solid rgba(237, 66, 89, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 26px;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.reader-desktop-workspace-close:focus-visible {
+  outline: 2px solid #ed4259;
+  outline-offset: 2px;
 }
 
 .reader-workspace-head {

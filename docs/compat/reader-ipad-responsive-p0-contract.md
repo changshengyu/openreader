@@ -87,3 +87,12 @@ Completed on 2026-07-19 in `39a5244`:
   `sha256:0d6f2f65366690a92b79e8b41569eb36e16c1a6b1697b2f2af543e18a8331fc3`; platform manifests
   are amd64 `sha256:3d455dcdaca33b4b7636f2cea582ff9ac38cec816f11ee5ede55f9e31858cd64`
   and arm64 `sha256:d3de256a291d2547e6ab79aa2b42ff9ab1483eda28c9ec634965bc9f77d6291b`.
+
+## 2026-07-19 close-path regression addendum
+
+The scene-selection result above remains valid, but the claimed “all panels close” evidence was
+incomplete: it exercised the active rail/tool button and did not exercise a touch outside the
+panel. A real iPad Pro report exposed the missing visible close target and the unverified stacking
+order between the desktop dismiss surface and Reader click zones. The focused correction and test gate are recorded in
+[`reader-ipad-panel-dismiss-p0-contract.md`](reader-ipad-panel-dismiss-p0-contract.md); release
+`39a5244` must not be cited as evidence for the outside-touch path.

@@ -1303,6 +1303,57 @@ async function assertIPadAdaptiveWorkspace(page, viewport, label) {
   }
 }
 
+async function closeIPadWorkspaceByOutsideTouch(page, viewport, label) {
+  const before = await page.evaluate(() => {
+    const workspace = document.querySelector('.reader-desktop-workspace')
+    const content = document.querySelector('.reader-content')
+    const body = document.querySelector('.reader-body')
+    const rect = workspace?.getBoundingClientRect()
+    return {
+      workspaceBottom: rect?.bottom ?? 0,
+      scrollTop: content?.scrollTop ?? 0,
+      transform: body ? window.getComputedStyle(body).transform : '',
+      url: window.location.href,
+    }
+  })
+  const outsideY = Math.min(viewport.height - 24, Math.ceil(before.workspaceBottom + 32))
+  assert(outsideY > before.workspaceBottom, `${viewport.width}x${viewport.height}: ${label} needs a visible outside-touch target`)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), outsideY)
+  await page.waitForFunction(() => !document.querySelector('.reader-desktop-workspace'), null, { timeout: 10000 })
+  const after = await page.evaluate(() => {
+    const content = document.querySelector('.reader-content')
+    const body = document.querySelector('.reader-body')
+    return {
+      scrollTop: content?.scrollTop ?? 0,
+      transform: body ? window.getComputedStyle(body).transform : '',
+      url: window.location.href,
+    }
+  })
+  assert(after.scrollTop === before.scrollTop, `${viewport.width}x${viewport.height}: ${label} outside touch changed scroll ${before.scrollTop} -> ${after.scrollTop}`)
+  assert(after.transform === before.transform, `${viewport.width}x${viewport.height}: ${label} outside touch changed page transform`)
+  assert(after.url === before.url, `${viewport.width}x${viewport.height}: ${label} outside touch changed Reader route`)
+}
+
+async function closeIPadWorkspaceByVisibleControl(page, viewport, label) {
+  const close = page.locator('.reader-desktop-workspace-close')
+  const bounds = await close.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    }
+  })
+  assert(bounds.width >= 44 && bounds.height >= 44, `${viewport.width}x${viewport.height}: ${label} close target ${bounds.width}x${bounds.height}`)
+  assert(bounds.left >= 0 && bounds.right <= viewport.width, `${viewport.width}x${viewport.height}: ${label} close target horizontal bounds`)
+  assert(bounds.top >= 0 && bounds.bottom <= viewport.height, `${viewport.width}x${viewport.height}: ${label} close target vertical bounds`)
+  await page.touchscreen.tap(Math.round((bounds.left + bounds.right) / 2), Math.round((bounds.top + bounds.bottom) / 2))
+  await page.waitForFunction(() => !document.querySelector('.reader-desktop-workspace'), null, { timeout: 10000 })
+}
+
 async function closeDesktopDialogWithHeader(page, selector, viewport, label) {
   const dialog = page.locator(selector)
   const close = dialog.locator('.el-dialog__headerbtn')
@@ -1356,6 +1407,12 @@ async function runIPadAdaptiveViewport(browser, viewport) {
 
   for (const label of ['书架', '书源', '目录', '设置']) {
     const tool = page.locator(`.reader-left-rail button[title="${label}"]`)
+    await tool.click()
+    await assertIPadAdaptiveWorkspace(page, viewport, label)
+    await closeIPadWorkspaceByVisibleControl(page, viewport, label)
+    await tool.click()
+    await assertIPadAdaptiveWorkspace(page, viewport, label)
+    await closeIPadWorkspaceByOutsideTouch(page, viewport, label)
     await tool.click()
     await assertIPadAdaptiveWorkspace(page, viewport, label)
     await tool.click()

@@ -429,10 +429,38 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}/${mode}: sampled page animation`)
 
   await resetRuntimePage(page)
+  await page.evaluate(() => {
+    const content = document.querySelector('.reader-content')
+    const startedAt = performance.now()
+    window.__openReaderBufferedMotionSamples = []
+    const sample = () => {
+      const now = performance.now()
+      window.__openReaderBufferedMotionSamples.push({
+        at: now - startedAt,
+        scrollTop: content?.scrollTop || 0,
+      })
+      if (now - startedAt < 760) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(60)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
-  await page.waitForTimeout(650)
+  await page.waitForTimeout(720)
+  const bufferedSamples = await page.evaluate(() => window.__openReaderBufferedMotionSamples || [])
+  const firstBoundaryIndex = bufferedSamples.findIndex(sample => sample.scrollTop >= targetTop - 1)
+  assert(firstBoundaryIndex >= 0, `${viewport.width}/${mode}: buffered chain never reached the first page boundary`)
+  const firstBoundaryFrames = bufferedSamples.slice(firstBoundaryIndex, firstBoundaryIndex + 3)
+  assert(
+    firstBoundaryFrames.some(sample => sample.scrollTop >= targetTop * 1.01),
+    `${viewport.width}/${mode}: buffered chain painted a stationary first-page endpoint ${JSON.stringify(firstBoundaryFrames)}`,
+  )
+  for (let index = firstBoundaryIndex + 1; index < bufferedSamples.length; index += 1) {
+    assert(
+      bufferedSamples[index].scrollTop >= bufferedSamples[index - 1].scrollTop,
+      `${viewport.width}/${mode}: buffered chain moved backwards at sample ${index}`,
+    )
+  }
   close((await readerGeometry(page)).contentScrollTop, targetTop * 2, 3, `${viewport.width}/${mode}: buffered repeated page tap`)
   await context.close()
 }
