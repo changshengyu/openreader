@@ -15,8 +15,9 @@ Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 
 实施状态：服务器快照协调已加入 Reader/Bookshelf store；未来时间的非 pending 旧值和服务器
 空进度均有失败后转绿的 Pinia 合同，pending 保留有纯状态合同。前端 520/520、Go 全量、生产
-构建和 1440×900/390×844/360×800 的真实 Go + Chromium 刷新合同通过；Docker 发布待本地
-镜像门禁完成。
+构建和 1440×900/390×844/360×800 的真实 Go + Chromium 刷新合同通过。应用提交 `ed4ee27`
+已推送并从本机完成新旧卷/备份门禁及 amd64/arm64 发布；`ed4ee27`、`latest` 共同指向
+`sha256:f369cc6610312987e068dcdd015887e27569a9dcbe6c048525de12bb5ab95d89`。
 
 ## 2026-07-18 P2 阅读进度 API、并发与 WebDAV 复审
 
