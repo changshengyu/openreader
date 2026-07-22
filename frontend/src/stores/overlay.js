@@ -65,8 +65,11 @@ export const useOverlayStore = defineStore('overlay', {
       resolve?.(categoryIds === null ? null : normalizeCategoryIds(categoryIds))
     },
     openBookEdit(book) {
+      const bookId = Number(book?.id)
+      if (!Number.isInteger(bookId) || bookId <= 0) return false
       this.bookEditBook = book
       this.bookEditVisible = true
+      return true
     },
     closeBookEdit() {
       this.bookEditVisible = false

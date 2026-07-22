@@ -1,5 +1,4 @@
 import { ref } from 'vue'
-import { bookCategoryIds } from '../utils/bookCategory.js'
 import { useOverlayBookCacheState } from './useOverlayBookCacheState.js'
 
 export function useOverlayBookInfo(options) {
@@ -17,15 +16,20 @@ export function useOverlayBookInfo(options) {
   } = cacheState
 
   async function saveEditedBook(payload) {
-    const book = options.overlay.bookEditBook
-    if (!book?.id) return
+    const draftBook = options.overlay.bookEditBook
+    const book = options.getManagedBooks().find(item => (
+      Number(item?.id) === Number(draftBook?.id)
+    ))
+    if (!book?.id) {
+      options.onError(
+        new Error('book edit target is no longer in the shelf'),
+        '书籍已不在书架中，请重新打开编辑器',
+      )
+      return
+    }
     editingBookSaving.value = true
     try {
-      const { data } = await options.updateBook(book.id, {
-        ...payload,
-        categoryIds: bookCategoryIds(book),
-        canUpdate: book.canUpdate !== false,
-      })
+      const { data } = await options.updateBook(book.id, editableBookMetadata(payload))
       const nextBook = applyUpdatedBookToOverlay(data)
       options.overlay.bookEditBook = nextBook
       options.overlay.bookEditVisible = false
@@ -110,5 +114,14 @@ export function useOverlayBookInfo(options) {
     refreshLocalBookInfo,
     uploadBookInfoCover,
     toggleBookCanUpdate,
+  }
+}
+
+function editableBookMetadata(payload = {}) {
+  return {
+    title: String(payload.title || '').trim(),
+    author: String(payload.author || '').trim(),
+    customCoverUrl: String(payload.customCoverUrl || '').trim(),
+    intro: String(payload.intro || ''),
   }
 }

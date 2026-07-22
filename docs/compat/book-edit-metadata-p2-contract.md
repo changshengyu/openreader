@@ -1,6 +1,6 @@
 # P2 书籍编辑元数据与并发保存合同
 
-状态：**2026-07-22 已完成固定基准与当前实现审查；待先补失败测试，再实施。**
+状态：**2026-07-22 已完成固定基准审查、失败测试、实现、全量自动化和三视口真实浏览器验证；本地 Docker 发布待当前应用提交后执行。**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -69,3 +69,16 @@
   [`bookinfo-shelf-mutations-p2-contract.md`](bookinfo-shelf-mutations-p2-contract.md)，本批不得放宽。
 - 通过前端/Go 全量、生产构建和三视口真实浏览器后，本切片适合作为独立 Docker 用户验收批次。
 
+## 6. 2026-07-22 实施与验证记录
+
+- `useOverlayBookInfo#saveEditedBook` 现在先从完整书架投影重新解析当前目标，再只构造
+  `title/author/customCoverUrl/intro` 四字段请求；旧 `categoryIds/canUpdate` 不再进入事务。
+- `overlay.openBookEdit` 拒绝缺失或非法持久 ID；目标在编辑期间被删除时，保存前 guard
+  保留编辑器并显示安全错误，不发请求、不 upsert、不发送 Reader 事件。
+- 后端既有 `PUT /api/books/:id` 精确 key 语义由新 Go 合同锁定：元数据 patch 保留已经保存的
+  分组关系与追更值，空标题 400、跨用户 404，均不产生数据副作用。
+- 成功响应仍走唯一共享 merge/broadcast 路径；Reader 元数据事件只替换 book，不重新加载章节，
+  当前章、offset、percent 和章节数组保持不变。
+- `npm test` 523/523、`go test ./...`、`npm run build` 均通过；真实 Go API 的
+  `book-management-real-api-contract.mjs` 在 1440×900、390×844、360×800 模拟并发分组/追更
+  后保存元数据，确认精确请求、服务端最终值、BookManage 留存和横向溢出均通过。

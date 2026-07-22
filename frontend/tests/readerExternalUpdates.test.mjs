@@ -97,6 +97,16 @@ test('updates book metadata without reloading and refreshes changed chapter list
     detail: { bookId: 7, book: { id: 7, title: '新书名' } },
   })
   assert.equal(fixture.book.value.title, '新书名')
+  assert.equal(fixture.currentIndex.value, 1)
+  assert.deepEqual(fixture.chapter.value, { id: 12 })
+  assert.deepEqual(fixture.chapters.value, [{ id: 11 }, { id: 12 }, { id: 13 }])
+  assert.deepEqual(fixture.currentProgress, {
+    bookId: 7,
+    chapterId: 12,
+    chapterIndex: 1,
+    offset: 80,
+    chapterPercent: 0.4,
+  })
   assert.deepEqual(fixture.calls, [])
 
   await fixture.controller.handleBookDataUpdated({

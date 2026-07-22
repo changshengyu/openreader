@@ -182,9 +182,22 @@ async function seedWorkspace(root, viewport) {
       type: 0,
     },
   })
+  const editTarget = await api(root, '/books', {
+    token,
+    method: 'POST',
+    body: {
+      title: `验收编辑书 ${suffix}`,
+      author: '编辑前作者',
+      intro: '编辑前简介',
+      url: `local://book-manage/${suffix}/edit`,
+      sourceId: 0,
+      type: 0,
+      categoryIds: [primary.id],
+    },
+  })
   assert(equalIDs(categoryIDs(grouped), [Number(primary.id)]), `${suffix}: seeded grouped book did not retain its category`)
   assert(categoryIDs(batchTarget).length === 0, `${suffix}: seeded batch book should start ungrouped`)
-  return { token, primary, secondary, grouped, batchTarget }
+  return { token, primary, secondary, grouped, batchTarget, editTarget }
 }
 
 async function openMobileNavigation(page, viewport) {
@@ -228,6 +241,7 @@ async function runViewport(browser, root, viewport) {
   const page = await context.newPage()
   const failures = []
   const mutationRequests = []
+  const metadataMutationBodies = []
   page.on('pageerror', error => failures.push(`pageerror: ${error.message}`))
   page.on('console', message => {
     if (message.type() === 'error' && !/WebSocket connection to .*\/ws\/sync/.test(message.text())) {
@@ -238,6 +252,13 @@ async function runViewport(browser, root, viewport) {
     const path = new URL(request.url()).pathname
     if (path.startsWith('/api/books') && ['POST', 'PUT', 'DELETE'].includes(request.method())) {
       mutationRequests.push(`${request.method()} ${path}`)
+    }
+    if (request.method() === 'PUT' && path === `/api/books/${seeded.editTarget.id}`) {
+      try {
+        metadataMutationBodies.push(request.postDataJSON())
+      } catch {
+        metadataMutationBodies.push(null)
+      }
     }
   })
 
@@ -253,8 +274,45 @@ async function runViewport(browser, root, viewport) {
     await manager.waitFor({ state: 'visible', timeout: 15_000 })
     const groupedRow = managerRow(manager, seeded.grouped.title, viewport)
     const batchRow = managerRow(manager, seeded.batchTarget.title, viewport)
+    const editRow = managerRow(manager, seeded.editTarget.title, viewport)
     await groupedRow.waitFor({ state: 'visible', timeout: 15_000 })
     await batchRow.waitFor({ state: 'visible', timeout: 15_000 })
+    await editRow.waitFor({ state: 'visible', timeout: 15_000 })
+
+    await editRow.getByRole('button', { name: '编辑', exact: true }).click()
+    const editor = page.locator('.el-dialog').filter({ hasText: '编辑书籍' })
+    await editor.waitFor({ state: 'visible', timeout: 10_000 })
+    const editedTitle = `并发编辑后 ${viewport.width}x${viewport.height}`
+    await editor.locator('.el-form-item').filter({ hasText: '书名' }).locator('input').fill(editedTitle)
+    await editor.locator('.el-form-item').filter({ hasText: '作者' }).locator('input').fill('并发编辑作者')
+    await editor.locator('.el-form-item').filter({ hasText: '简介' }).locator('textarea').fill('并发编辑简介')
+
+    await api(root, `/books/${seeded.editTarget.id}/category`, {
+      token: seeded.token,
+      method: 'PUT',
+      body: { categoryIds: [seeded.secondary.id] },
+    })
+    await api(root, `/books/${seeded.editTarget.id}`, {
+      token: seeded.token,
+      method: 'PUT',
+      body: { canUpdate: false },
+    })
+    await editor.getByRole('button', { name: '保存', exact: true }).click()
+    await editor.waitFor({ state: 'hidden', timeout: 10_000 })
+    await page.getByText('书籍已更新', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+
+    assert(metadataMutationBodies.length === 1, `${viewport.width}: editor must issue one metadata PUT, got ${JSON.stringify(metadataMutationBodies)}`)
+    assert(
+      JSON.stringify(Object.keys(metadataMutationBodies[0] || {}).sort()) === JSON.stringify(['author', 'customCoverUrl', 'intro', 'title']),
+      `${viewport.width}: editor leaked non-metadata fields into PUT: ${JSON.stringify(metadataMutationBodies[0])}`,
+    )
+    const edited = await freshBook(root, seeded.token, seeded.editTarget.id)
+    assert(edited?.title === editedTitle && edited?.author === '并发编辑作者' && edited?.intro === '并发编辑简介', `${viewport.width}: confirmed metadata was not persisted: ${JSON.stringify(edited)}`)
+    assert(equalIDs(categoryIDs(edited), [Number(seeded.secondary.id)]), `${viewport.width}: metadata edit overwrote the concurrent category`)
+    assert(edited.canUpdate === false, `${viewport.width}: metadata edit overwrote the concurrent follow state`)
+    assert(await manager.isVisible(), `${viewport.width}: editing metadata must leave BookManage open`)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    assert(overflow <= 1, `${viewport.width}: editor introduced ${overflow}px horizontal overflow`)
 
     await groupedRow.getByRole('button', { name: '分组', exact: true }).click()
     const groupSet = page.locator('.global-book-group-dialog')
@@ -335,7 +393,7 @@ async function run() {
       ]) {
         completed.push(await runViewport(browser, app.root, viewport))
       }
-      console.log(`book-management-real-api: ok ${completed.join(', ')} realApi=true apiMocked=false groupSet=true batchCategory=true batchDelete=true`)
+      console.log(`book-management-real-api: ok ${completed.join(', ')} realApi=true apiMocked=false metadataEdit=true groupSet=true batchCategory=true batchDelete=true`)
     } finally {
       await browser.close()
     }

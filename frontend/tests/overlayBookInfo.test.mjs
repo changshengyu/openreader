@@ -23,6 +23,12 @@ function createController(overrides = {}) {
       {
         id: 1,
         title: '书架书名',
+        author: '书架作者',
+        intro: '书架简介',
+        customCoverUrl: '/assets/current-cover.jpg',
+        categoryIds: [8],
+        canUpdate: true,
+        sourceId: 8,
         progress: { bookId: 1, chapterIndex: 4 },
       },
       { id: 2, title: '第二本' },
@@ -71,7 +77,8 @@ function createController(overrides = {}) {
     },
     updateBook: async (id, payload) => {
       calls.push(['update-book', id, payload])
-      return { data: { ...overlay.bookInfoBook, ...payload, id } }
+      const current = bookshelf.books.find(book => Number(book.id) === Number(id))
+      return { data: { ...current, ...payload, id } }
     },
     mergeBook: (current, incoming) => ({
       ...current,
@@ -174,6 +181,8 @@ test('saves edited metadata through the shared merge and broadcast path', async 
   await fixture.controller.saveEditedBook({
     title: '编辑后',
     author: '新作者',
+    customCoverUrl: '/assets/edited-cover.jpg',
+    intro: '新简介',
   })
 
   assert.deepEqual(fixture.calls[0], [
@@ -182,14 +191,68 @@ test('saves edited metadata through the shared merge and broadcast path', async 
     {
       title: '编辑后',
       author: '新作者',
-      categoryIds: [2, 3],
-      canUpdate: false,
+      customCoverUrl: '/assets/edited-cover.jpg',
+      intro: '新简介',
     },
   ])
   assert.equal(fixture.overlay.bookEditBook.title, '编辑后')
+  assert.deepEqual(fixture.overlay.bookEditBook.categoryIds, [8])
+  assert.equal(fixture.overlay.bookEditBook.canUpdate, true)
   assert.equal(fixture.overlay.bookEditVisible, false)
   assert.equal(fixture.controller.editingBookSaving.value, false)
   assert.deepEqual(fixture.calls.at(-1), ['success', '书籍已更新'])
+})
+
+test('refuses to save a stale or non-shelf edit target', async () => {
+  const fixture = createController()
+  fixture.overlay.bookEditBook = {
+    id: 99,
+    title: '已不在书架中的书',
+    categoryIds: [2],
+    canUpdate: false,
+  }
+  fixture.overlay.bookEditVisible = true
+
+  await fixture.controller.saveEditedBook({
+    title: '不应保存',
+    author: '',
+    customCoverUrl: '',
+    intro: '',
+  })
+
+  assert.equal(fixture.calls.some(call => call[0] === 'update-book'), false)
+  assert.equal(fixture.calls.some(call => call[0] === 'upsert'), false)
+  assert.equal(fixture.calls.some(call => call[0] === 'emit-reader'), false)
+  assert.equal(fixture.overlay.bookEditVisible, true)
+  assert.equal(fixture.overlay.bookEditBook.title, '已不在书架中的书')
+  assert.equal(fixture.calls.at(-1)?.[0], 'error')
+  assert.equal(fixture.calls.at(-1)?.[2], '书籍已不在书架中，请重新打开编辑器')
+})
+
+test('keeps the edit session and confirmed shelf state when metadata save fails', async () => {
+  const failure = new Error('update failed')
+  const fixture = createController({
+    updateBook: async () => {
+      throw failure
+    },
+  })
+  fixture.overlay.bookEditBook = { id: 1, title: '未保存草稿' }
+  fixture.overlay.bookEditVisible = true
+
+  await fixture.controller.saveEditedBook({
+    title: '失败后的草稿',
+    author: '新作者',
+    customCoverUrl: '',
+    intro: '新简介',
+  })
+
+  assert.equal(fixture.overlay.bookEditVisible, true)
+  assert.equal(fixture.overlay.bookEditBook.title, '未保存草稿')
+  assert.equal(fixture.bookshelf.books[0].title, '书架书名')
+  assert.equal(fixture.calls.some(call => call[0] === 'upsert'), false)
+  assert.equal(fixture.calls.some(call => call[0] === 'emit-reader'), false)
+  assert.deepEqual(fixture.calls.at(-1), ['error', failure, '更新书籍失败'])
+  assert.equal(fixture.controller.editingBookSaving.value, false)
 })
 
 test('refreshes a local book, rebuilds reader caches, and refreshes its cache count', async () => {
