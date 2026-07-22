@@ -9,8 +9,13 @@ function easeInOutCubic(progress) {
     : 1 - ((-2 * progress + 2) ** 3) / 2
 }
 
-function easeOutResponsive(progress) {
-  return 1 - ((1 - progress) ** 1.5)
+function easeResponsive(progress) {
+  const initialVelocity = 0.35
+  return (
+    initialVelocity * progress
+    + (3 - 2 * initialVelocity) * progress * progress
+    + (initialVelocity - 2) * progress * progress * progress
+  )
 }
 
 export function createReaderScrollAnimator(options = {}) {
@@ -71,7 +76,7 @@ export function createReaderScrollAnimator(options = {}) {
     const distance = targetTop - startTop
     const responsive = animationOptions?.easing === 'responsive'
     const easing = responsive
-      ? easeOutResponsive
+      ? easeResponsive
       : easeInOutCubic
     const minimumProgress = responsive ? Math.min(1, 1 / duration) : 0
     if (minimumProgress > 0) {

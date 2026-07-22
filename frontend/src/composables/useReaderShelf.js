@@ -75,7 +75,7 @@ export function useReaderShelf(options) {
   async function refresh() {
     loading.value = true
     try {
-      await options.bookshelf.loadBooks({ force: true, all: true })
+      await options.bookshelf.loadBooks({ force: true, all: true, settleProgress: true })
       locateCurrentBook()
     } catch (error) {
       options.onError?.(error, '刷新书架失败')

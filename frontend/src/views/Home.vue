@@ -228,7 +228,7 @@ async function refreshShelf() {
     const [categoryResult, bookGroupResult, booksResult] = await Promise.allSettled([
       bookshelf.loadCategories({ force: true }),
       bookshelf.loadBookGroups({ force: true }),
-      bookshelf.loadBooks({ force: true, all: true }),
+      bookshelf.loadBooks({ force: true, all: true, settleProgress: true }),
     ])
     if (booksResult.status === 'rejected') throw booksResult.reason
     if (categoryResult.status === 'rejected' || bookGroupResult.status === 'rejected') {

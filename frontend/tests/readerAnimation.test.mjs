@@ -118,12 +118,18 @@ test('starts responsive mobile page motion before a zero-timestamp first frame',
   ), true)
   assert(scrollTop > 100, `touchend left the first painted position at the origin: ${scrollTop}`)
   const startedTop = scrollTop
+  assert(
+    startedTop - 100 <= 2,
+    `the synchronous seed jumped too much text before the first frame: ${startedTop}`,
+  )
   clock.step(0)
   assert(scrollTop >= startedTop, `the first rAF moved back to the origin: ${scrollTop}/${startedTop}`)
   clock.step(16)
-  assert(scrollTop >= 120, `the first refresh interval remained in a dead zone: ${scrollTop}`)
+  assert(scrollTop >= 106, `the first refresh interval remained in a dead zone: ${scrollTop}`)
+  assert(scrollTop <= 124, `the first refresh interval jumped too much text: ${scrollTop}`)
   clock.step(32)
-  assert(scrollTop >= 145, `the second refresh interval remained in a dead zone: ${scrollTop}`)
+  assert(scrollTop >= 130, `the second refresh interval remained in a dead zone: ${scrollTop}`)
+  assert(scrollTop <= 150, `the second refresh interval accelerated too abruptly: ${scrollTop}`)
   assert.equal(visualElement.style.willChange, '')
   clock.step(150)
   assert(scrollTop > 300 && scrollTop < 500)

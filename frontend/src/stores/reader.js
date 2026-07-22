@@ -535,11 +535,11 @@ export const useReaderStore = defineStore('reader', {
       this.replaceProgress(progress)
       return progress
     },
-    reconcileShelfProgress(books) {
+    async reconcileShelfProgress(books, options = {}) {
       this.ensureProgressScope()
       const reconciled = {}
       const serverBooks = Array.isArray(books) ? books : []
-      serverBooks.forEach(book => {
+      await Promise.all(serverBooks.map(async (book) => {
         const bookId = Number(book?.id || book?.progress?.bookId || 0)
         if (!bookId) return
         const local = newestProgress(this.progressByBook[bookId], readLocalChapterProgress(bookId))
@@ -548,11 +548,22 @@ export const useReaderStore = defineStore('reader', {
         if (decision.retryPending) {
           this.progressByBook[bookId] = decision.progress
           persistLocalChapterProgress(decision.progress)
-          this.syncLocalProgress(
+          const synchronization = this.syncLocalProgress(
             decision.progress,
             decision.progress.baseUpdatedAt || server?.updatedAt || '',
-          ).catch(() => {})
-          reconciled[bookId] = decision.progress
+            options.awaitPending
+              ? { acceptConflict: true, throwOnError: true }
+              : {},
+          )
+          if (options.awaitPending) {
+            const winner = await synchronization
+            reconciled[bookId] = winner?.bookId
+              ? winner
+              : this.progressByBook[bookId] || decision.progress
+          } else {
+            synchronization.catch(() => {})
+            reconciled[bookId] = decision.progress
+          }
           return
         }
         if (decision.progress) {
@@ -562,7 +573,7 @@ export const useReaderStore = defineStore('reader', {
         }
         this.clearProgress(bookId)
         reconciled[bookId] = null
-      })
+      }))
       return reconciled
     },
     cachedProgress(bookId) {
@@ -670,7 +681,12 @@ export const useReaderStore = defineStore('reader', {
         })
         if (!readerProgressOperations.canCommit(operation)) return null
         const next = mergeProgressResponse(response.data, progress)
-        if (isProgressConflict(response) && shouldRetryProgressConflict(progress, next) && !options.force) {
+        if (
+          isProgressConflict(response)
+          && shouldRetryProgressConflict(progress, next)
+          && !options.force
+          && !options.acceptConflict
+        ) {
           return await this.syncLocalProgress(progress, next?.updatedAt || progress.baseUpdatedAt || '', {
             force: true,
             operation,
@@ -679,7 +695,8 @@ export const useReaderStore = defineStore('reader', {
         if (!readerProgressOperations.canCommit(operation)) return null
         this.replaceProgress(next)
         return next
-      } catch {
+      } catch (error) {
+        if (options.throwOnError) throw error
         return null
       }
     },

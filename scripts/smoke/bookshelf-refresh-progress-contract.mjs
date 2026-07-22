@@ -217,6 +217,11 @@ async function runViewport(browser, root, viewport) {
 
   const page = await context.newPage()
   const errors = collectPageErrors(page, suffix)
+  let pageProgressWrites = 0
+  page.on('request', request => {
+    const url = new URL(request.url())
+    if (request.method() === 'PUT' && url.pathname === '/api/progress') pageProgressWrites += 1
+  })
   let navigationCount = 0
   page.on('framenavigated', frame => {
     if (frame === page.mainFrame()) navigationCount += 1
@@ -238,6 +243,8 @@ async function runViewport(browser, root, viewport) {
         chapterIndex: 0,
         chapterTitle: chapters[0].title,
         updatedAt: '2099-07-22T00:00:00Z',
+        pendingSync: true,
+        baseUpdatedAt: initial.updatedAt,
       },
     })
 
@@ -260,17 +267,72 @@ async function runViewport(browser, root, viewport) {
     assert(serverProgress.chapterIndex === 2, `${suffix}: server did not commit the remote position`)
     assert(await page.getByText(`已读：${chapters[2].title}`, { exact: true }).count() === 0, `${suffix}: silent client received an unexpected live update`)
 
+    const progressWritesBeforeRefresh = pageProgressWrites
     await page.getByRole('button', { name: '刷新', exact: true }).click()
     await page.getByText(`已读：${chapters[2].title}`, { exact: true }).waitFor({ timeout: 10_000 })
     assert(navigationCount === navigationBaseline, `${suffix}: refresh reloaded or replaced the document`)
+    assert(pageProgressWrites === progressWritesBeforeRefresh + 1, `${suffix}: refresh did not settle the pending progress with one CAS request`)
 
     const stored = await page.evaluate(key => JSON.parse(localStorage.getItem(key) || 'null'), localKey)
     assert(stored?.chapterIndex === 2, `${suffix}: scoped local progress did not converge to the server snapshot`)
     assert(stored?.updatedAt === serverProgress.updatedAt, `${suffix}: future-dated stale progress still owns localStorage`)
     const geometry = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: window.innerWidth }))
     assert(geometry.body <= geometry.viewport + 1, `${suffix}: shelf refresh introduced horizontal overflow`)
+
+    await page.goto(`${root}/books/${book.id}/read?chapter=0`, { waitUntil: 'networkidle' })
+    await page.locator('.reader-body h3').filter({ hasText: chapters[0].title }).waitFor()
+    if (viewport.width <= 750) {
+      await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '书架' }).click()
+      await page.locator('.reader-mobile-primary-shelf').waitFor()
+    } else {
+      await page.locator('.rail-item[title="书架"]').click()
+      await page.locator('.reader-desktop-workspace.workspace-panel-shelf').waitFor()
+    }
+
+    await page.evaluate(({ key, progress }) => {
+      localStorage.setItem(key, JSON.stringify(progress))
+    }, {
+      key: localKey,
+      progress: {
+        ...serverProgress,
+        chapterId: chapters[0].id,
+        chapterIndex: 0,
+        chapterTitle: chapters[0].title,
+        updatedAt: '2099-07-22T00:00:01Z',
+        pendingSync: true,
+        baseUpdatedAt: serverProgress.updatedAt,
+      },
+    })
+    const readerShelfProgress = await api(root, '/progress', {
+      token,
+      method: 'PUT',
+      body: {
+        bookId: book.id,
+        chapterId: chapters[1].id,
+        chapterIndex: 1,
+        offset: 9,
+        percent: 0.45,
+        chapterPercent: 0.3,
+        chapterTitle: chapters[1].title,
+        baseUpdatedAt: serverProgress.updatedAt,
+        clientUpdatedAt: new Date().toISOString(),
+        clientId: `reader-remote-${suffix}`,
+      },
+    })
+    assert(readerShelfProgress.chapterIndex === 1, `${suffix}: reader-shelf fixture did not commit its remote position`)
+    const readerShelfCard = page.locator(`.reader-shelf-card[data-book-id="${book.id}"]`)
+    assert(await readerShelfCard.locator('.reader-shelf-chapter').textContent() !== chapters[1].title, `${suffix}: silent Reader shelf received an unexpected live update`)
+    const readerProgressWritesBeforeRefresh = pageProgressWrites
+    const readerRefresh = viewport.width <= 750
+      ? page.locator('.reader-mobile-primary-shelf .reader-mobile-primary-actions button').filter({ hasText: '刷新' })
+      : page.locator('.reader-desktop-workspace.workspace-panel-shelf .reader-workspace-actions button').filter({ hasText: '刷新' })
+    await readerRefresh.click()
+    await readerShelfCard.locator('.reader-shelf-chapter').filter({ hasText: chapters[1].title }).waitFor({ timeout: 10_000 })
+    assert(pageProgressWrites === readerProgressWritesBeforeRefresh + 1, `${suffix}: Reader shelf refresh did not settle its pending progress with one CAS request`)
+    assert(await page.locator('.reader-body h3').filter({ hasText: chapters[0].title }).count() === 1, `${suffix}: Reader shelf refresh changed the active chapter`)
+    assert(new URL(page.url()).searchParams.get('chapter') === '0', `${suffix}: Reader shelf refresh rewrote the active route`)
     assert(errors.length === 0, errors.join('\n'))
-    console.log(`${viewport.width}x${viewport.height}: refresh replaced future-dated cached progress without page reload`)
+    console.log(`${viewport.width}x${viewport.height}: Home and Reader shelf refresh settled pending progress without page reload or chapter jump`)
   } finally {
     await context.close()
   }

@@ -108,3 +108,20 @@
    最终结果；活动正文不能被书架列表刷新偷偷跳章。
 4. 网络失败继续保留本地 pending 并明确报错；其他用户 scoped localStorage、书架缓存和进度不变。
 5. 1440×900、390×844、360×800 真实浏览器覆盖两入口，前端全量、构建和 Go 全量通过。
+
+## 2026-07-22 第二次实施与发布前验证记录
+
+- Reader 的 keepalive 保存现在按阅读位置指纹合并同一次路由离开/卸载产生的重复后台请求；
+  成功响应仍会经过 generation 门并调用既有 `onSaved`，从 Pinia 和 scoped localStorage 清除
+  已被服务器确认的 `pendingSync`。页面已切换到新用户/新阅读会话时，旧响应不会提交。
+- `bookshelf.loadBooks` 为可见刷新增加 `settleProgress` 事务语义。首页书架和 Reader 内书架
+  都要求等待 pending CAS；冲突直接接受服务器赢家并一次性写入书架、Reader store 和浏览器
+  缓存，不再先显示旧 pending、等下次整页加载才收敛。
+- 后台 WebSocket/前台自动校准仍保持非阻塞；显式同步失败会拒绝刷新、保留本地 pending 并
+  进入原有可见错误提示，不会把暂时断网解释为服务器删除了阅读位置。
+- `bookshelf-refresh-progress-contract.mjs` 使用真实 Go、SQLite 和 Chromium，在 1440×900、
+  390×844、360×800 分别验证首页和 Reader 内两个刷新入口：未来时间 pending 与远端更新
+  冲突时，每个入口只发出一次 CAS，最终显示服务器赢家；主文档不 reload，Reader 正文章节
+  和路由不跳转。WebSocket 在 fixture 中保持静默，因此结果不依赖推送补救。
+- 针对性 28 项测试、前端全量 537/537、Vite 生产构建和 Go 全量通过。本批未改 API、Go、
+  SQLite schema、持久目录、WebDAV 或备份格式。

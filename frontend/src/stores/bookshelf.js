@@ -116,6 +116,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.ensureShelfScope()
       const force = options === true || Boolean(options?.force)
       const all = Boolean(options?.all)
+      const settleProgress = Boolean(options?.settleProgress)
       const params = {}
       if (!all && this.selectedCategoryId) {
         params.categoryId = this.selectedCategoryId
@@ -140,9 +141,12 @@ export const useBookshelfStore = defineStore('bookshelf', {
         isCurrent: () => booksRevision.canCommit(requestRevision, this.shelfScope),
         hasCurrent: () => this.books.length > 0,
       })
-        .then((result) => {
+        .then(async (result) => {
           if (result.source === 'network') {
-            const reconciledBooks = reconcileServerProgressFromBooks(result.value)
+            const reconciledBooks = await reconcileServerProgressFromBooks(result.value, {
+              awaitPending: settleProgress,
+            })
+            if (!booksRevision.canCommit(requestRevision, this.shelfScope)) return this.books
             this.books = sortBooks(reconciledBooks)
             this.booksLoadedAt = Date.now()
             this.booksLoadedKey = requestKey
@@ -545,13 +549,17 @@ function scopedShelfCacheKey(key, scope = currentUserScope()) {
   return `${key}:${scope}`
 }
 
-function reconcileServerProgressFromBooks(books) {
+async function reconcileServerProgressFromBooks(books, options = {}) {
   const reader = useReaderStore()
   const serverBooks = asList(books)
-  const progressByBook = reader.reconcileShelfProgress(serverBooks)
+  const progressByBook = await reader.reconcileShelfProgress(serverBooks, options)
   return serverBooks.map(book => {
     const progress = progressByBook[Number(book?.id || 0)]
-    if (!progress?.pendingSync) return book
+    if (progress === undefined) return book
+    if (progress === null) {
+      const { progress: _progress, ...withoutProgress } = book
+      return withoutProgress
+    }
     return { ...book, progress }
   })
 }

@@ -13,6 +13,7 @@ export function useReaderProgressPersistence(options) {
   let lastRequestAt = 0
   let suspended = false
   let generation = 0
+  let backgroundRequest = null
 
   function key(payload) {
     return readerProgressSaveKey(payload, options.getMode?.())
@@ -73,8 +74,11 @@ export function useReaderProgressPersistence(options) {
     const token = window.localStorage?.getItem('openreader_token')
     if (!token) return false
     const progress = options.getStoredProgress?.(payload.bookId)
+    const payloadKey = key(payload)
+    if (backgroundRequest?.key === payloadKey) return true
+    const requestGeneration = generation
     try {
-      fetch('/api/progress', {
+      const request = fetch('/api/progress', {
         method: 'PUT',
         keepalive: true,
         headers: {
@@ -87,7 +91,21 @@ export function useReaderProgressPersistence(options) {
           clientUpdatedAt: progress?.updatedAt || new Date().toISOString(),
           clientId: options.ensureClientId?.(),
         }),
-      }).catch(() => {})
+      })
+        .then(async (response) => {
+          if (!response?.ok || requestGeneration !== generation) return
+          if (typeof response.json !== 'function') return
+          const savedProgress = await response.json().catch(() => null)
+          if (requestGeneration !== generation || !savedProgress?.bookId) return
+          options.onSaved?.(savedProgress)
+          lastSavedKey = payloadKey
+        })
+        .catch(() => {})
+      const tracked = { key: payloadKey, request }
+      backgroundRequest = tracked
+      request.finally(() => {
+        if (backgroundRequest === tracked) backgroundRequest = null
+      })
       return true
     } catch {
       // The optimistic local snapshot remains pending for the next sync attempt.
@@ -153,6 +171,7 @@ export function useReaderProgressPersistence(options) {
   function suspend() {
     suspended = true
     generation += 1
+    backgroundRequest = null
     pendingPayload = null
     cancelScheduled()
   }
@@ -160,6 +179,7 @@ export function useReaderProgressPersistence(options) {
   function resume() {
     suspended = false
     generation += 1
+    backgroundRequest = null
     pendingPayload = null
     lastSavedKey = ''
     lastRequestAt = 0

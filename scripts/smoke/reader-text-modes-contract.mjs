@@ -325,6 +325,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
       return originalGetSelection(...args)
     }
     window.__openReaderLongTasks = []
+    window.__openReaderLayoutShifts = []
     window.__openReaderInputTimes = { touchStartAt: null, touchEndAt: null }
     if (globalThis.PerformanceObserver?.supportedEntryTypes?.includes('longtask')) {
       window.__openReaderLongTaskObserver = new PerformanceObserver(list => {
@@ -335,6 +336,21 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
       })
       window.__openReaderLongTaskObserver.observe({ type: 'longtask', buffered: true })
     }
+    if (globalThis.PerformanceObserver?.supportedEntryTypes?.includes('layout-shift')) {
+      window.__openReaderLayoutShiftObserver = new PerformanceObserver(list => {
+        window.__openReaderLayoutShifts.push(...list.getEntries().map(entry => ({
+          value: entry.value,
+          startTime: entry.startTime,
+          hadRecentInput: entry.hadRecentInput,
+        })))
+      })
+      window.__openReaderLayoutShiftObserver.observe({ type: 'layout-shift', buffered: true })
+    }
+    const measuredParagraph = body.querySelector('[data-reader-block]')
+    window.__openReaderParagraphGeometry = measuredParagraph ? {
+      height: measuredParagraph.getBoundingClientRect().height,
+      width: measuredParagraph.getBoundingClientRect().width,
+    } : null
     document.querySelector('.reader-page').addEventListener('touchstart', () => {
       window.__openReaderInputTimes.touchStartAt = performance.now()
     }, { once: true })
@@ -411,11 +427,31 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     earlyVisibleOffset >= targetTop * 0.01,
     `${viewport.width}/${mode}: first 40ms remained in a perceptual dead zone (${earlyVisibleOffset}/${targetTop})`,
   )
+  const firstCadenceSamples = samples.filter(sample => (
+    sample.afterInput !== null
+    && sample.afterInput >= 8
+    && sample.afterInput <= 24
+  ))
+  const firstCadenceOffset = Math.max(0, ...firstCadenceSamples.map(sample => sample.scrollTop))
+  assert(
+    !firstCadenceSamples.length || firstCadenceOffset <= targetTop * 0.04,
+    `${viewport.width}/${mode}: first refresh interval jumped too much text (${firstCadenceOffset}/${targetTop})`,
+  )
   const movingGaps = moving.slice(1).map((sample, index) => sample.at - moving[index].at)
   assert(Math.max(...movingGaps) <= 50, `${viewport.width}/${mode}: page motion has a visible frame stall: ${Math.max(...movingGaps)}ms`)
   const runtimeWork = await page.evaluate(() => ({
     inputTimes: window.__openReaderInputTimes || {},
+    layoutShifts: window.__openReaderLayoutShifts || [],
     longTasks: window.__openReaderLongTasks || [],
+    paragraphGeometry: (() => {
+      const paragraph = document.querySelector('.reader-body [data-reader-block]')
+      const initial = window.__openReaderParagraphGeometry
+      const rect = paragraph?.getBoundingClientRect()
+      return {
+        initial,
+        current: rect ? { height: rect.height, width: rect.width } : null,
+      }
+    })(),
     selectionChecks: window.__openReaderSelectionChecks || 0,
     willChange: document.querySelector('.reader-body')?.style.willChange || '',
   }))
@@ -425,8 +461,74 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     && task.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 300
   ))
   assert(inputLongTasks.every(task => task.duration < 50), `${viewport.width}/${mode}: page tap exposed a long task ${JSON.stringify({ inputLongTasks, ...runtimeWork.inputTimes })}`)
+  const inputLayoutShifts = runtimeWork.layoutShifts.filter(shift => (
+    shift.startTime >= Number(runtimeWork.inputTimes.touchStartAt || Infinity) - 1
+    && shift.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 360
+  ))
+  assert(inputLayoutShifts.every(shift => shift.value === 0), `${viewport.width}/${mode}: page tap changed layout ${JSON.stringify(inputLayoutShifts)}`)
+  assert(
+    Math.abs(Number(runtimeWork.paragraphGeometry.current?.width || 0) - Number(runtimeWork.paragraphGeometry.initial?.width || 0)) <= 0.1
+      && Math.abs(Number(runtimeWork.paragraphGeometry.current?.height || 0) - Number(runtimeWork.paragraphGeometry.initial?.height || 0)) <= 0.1,
+    `${viewport.width}/${mode}: text geometry changed during paging ${JSON.stringify(runtimeWork.paragraphGeometry)}`,
+  )
   assert(runtimeWork.willChange === '', `${viewport.width}/${mode}: settled animation leaked will-change (${runtimeWork.willChange})`)
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}/${mode}: sampled page animation`)
+
+  await page.evaluate(() => {
+    const content = document.querySelector('.reader-content')
+    const startedAt = performance.now()
+    let touchEndAt = null
+    window.__openReaderReverseMotionSamples = []
+    document.querySelector('.reader-page').addEventListener('touchend', () => {
+      touchEndAt = performance.now()
+    }, { once: true })
+    const sample = () => {
+      const now = performance.now()
+      window.__openReaderReverseMotionSamples.push({
+        at: now - startedAt,
+        afterInput: touchEndAt === null ? null : now - touchEndAt,
+        scrollTop: content?.scrollTop || 0,
+      })
+      if (now - startedAt < 430) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  const reverseTapX = Math.round(viewport.width / 2)
+  const reverseTapY = Math.round(viewport.height * 0.2)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: reverseTapX, y: reverseTapY, radiusX: 1, radiusY: 1, force: 1, id: 0 }],
+  })
+  await page.waitForTimeout(48)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  })
+  await page.waitForTimeout(480)
+  const reverseSamples = await page.evaluate(() => window.__openReaderReverseMotionSamples || [])
+  const reverseMoving = reverseSamples.filter(sample => (
+    sample.scrollTop > targetTop * 0.03 && sample.scrollTop < targetTop * 0.97
+  ))
+  assert(reverseMoving.length >= 8, `${viewport.width}/${mode}: previous-page animation exposed too few moving frames (${reverseMoving.length})`)
+  for (let index = 1; index < reverseMoving.length; index += 1) {
+    assert(
+      reverseMoving[index].scrollTop <= reverseMoving[index - 1].scrollTop,
+      `${viewport.width}/${mode}: previous-page animation moved forward at sample ${index}`,
+    )
+  }
+  const reverseGaps = reverseMoving.slice(1).map((sample, index) => sample.at - reverseMoving[index].at)
+  assert(Math.max(...reverseGaps) <= 50, `${viewport.width}/${mode}: previous-page motion has a visible frame stall: ${Math.max(...reverseGaps)}ms`)
+  const reverseFirstInterval = reverseSamples.filter(sample => (
+    sample.afterInput !== null
+    && sample.afterInput >= 8
+    && sample.afterInput <= 24
+  ))
+  const reverseFirstOffset = Math.max(0, ...reverseFirstInterval.map(sample => targetTop - sample.scrollTop))
+  assert(
+    !reverseFirstInterval.length || reverseFirstOffset <= targetTop * 0.04,
+    `${viewport.width}/${mode}: previous-page first refresh interval jumped too much text (${reverseFirstOffset}/${targetTop})`,
+  )
+  close((await readerGeometry(page)).contentScrollTop, 0, 2, `${viewport.width}/${mode}: sampled previous-page animation`)
 
   await resetRuntimePage(page)
   await page.evaluate(() => {

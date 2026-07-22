@@ -206,6 +206,59 @@ test('background progress save queues one keepalive without a duplicate ordinary
   }
 })
 
+test('deduplicates the same background snapshot and confirms its keepalive response', async () => {
+  const previousWindow = globalThis.window
+  const previousFetch = globalThis.fetch
+  const keepalive = []
+  const saved = []
+  let resolveFetch
+  globalThis.window = {
+    localStorage: {
+      getItem: key => key === 'openreader_token' ? 'progress-token' : null,
+    },
+  }
+  globalThis.fetch = (url, options) => {
+    keepalive.push({ url, options })
+    return new Promise(resolve => { resolveFetch = resolve })
+  }
+  try {
+    const progress = {
+      bookId: 7,
+      chapterId: 13,
+      chapterIndex: 3,
+      offset: 240,
+      updatedAt: 'server-v2',
+    }
+    const controller = useReaderProgressPersistence({
+      minimumInterval: 0,
+      getPayload: () => ({ bookId: 7, chapterId: 13, chapterIndex: 3, offset: 240 }),
+      getBaseUpdatedAt: () => 'server-v1',
+      getStoredProgress: () => ({ updatedAt: 'local-v2' }),
+      getMode: () => 'scroll',
+      ensureClientId: () => 'client-a',
+      applyLocal: () => {},
+      saveRemote: async payload => payload,
+      onSaved: value => saved.push(value),
+    })
+
+    await controller.save({ force: true, background: true })
+    await controller.save({ force: true, background: true })
+    assert.equal(keepalive.length, 1, 'route navigation and unmount must share one keepalive')
+
+    resolveFetch({
+      ok: true,
+      headers: { get: () => null },
+      json: async () => progress,
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.deepEqual(saved, [progress], 'an accepted keepalive must clear the optimistic pending state')
+    controller.cancelScheduled()
+  } finally {
+    globalThis.window = previousWindow
+    globalThis.fetch = previousFetch
+  }
+})
+
 test('background progress save falls back once when keepalive is unavailable', async () => {
   const previousWindow = globalThis.window
   const previousFetch = globalThis.fetch

@@ -24,6 +24,12 @@ Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 最终赢家，更没有覆盖 Reader 内书架按钮。修订合同与测试门禁见
 [`bookshelf-refresh-progress-p1-contract.md`](bookshelf-refresh-progress-p1-contract.md)。
 
+第二次实施状态：上述缺口已修复并进入 **browser-validated / awaiting device verification**。
+keepalive 响应会确认本地 pending，同一快照不会因路由离开与卸载重复提交；首页和 Reader 内
+书架的显式刷新都会等待 CAS 最终赢家。真实 Go/SQLite/Chromium 在 1440×900、390×844、
+360×800 覆盖两个入口，证明无需 reload，且 Reader 正文不跳章。前端 537/537、构建和 Go
+全量通过；发布信息待本批本地 Docker 门禁完成后补记。
+
 ## 2026-07-22 P0 移动点击翻页视觉节奏复审
 
 第七批已消除连续双击在两段动画之间等待 after-paint task 的空窗，但用户实机仍观察到点击上下
@@ -32,6 +38,12 @@ Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 显得像卡顿。第八批先同时测量帧间隔、速度轮廓、layout-shift 和顶部文字锚点，再把移动曲线改为
 有界非零初速/零终速；未测出证据前不改亮度滤镜或章节窗口。详见
 [`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md)。
+
+第八批实施状态：移动竖向文本使用初速 `0.35`、末速 `0` 的连续 Hermite 曲线；同步种子不超过
+2px，首刷新周期不超过页面步长 4%。390×844、360×800 的 `page/scroll/scroll2` 已分别通过
+向上/向下点击、连续双击、帧间隔、Long Task、LayoutShift 和段落几何合同；没有观测到正文
+重排或图层提升。前端 537/537、构建和 Go 全量通过，状态为
+**browser-validated / awaiting device verification**，发布信息随后补记。
 
 ## 2026-07-18 P2 阅读进度 API、并发与 WebDAV 复审
 
