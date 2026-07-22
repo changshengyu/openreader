@@ -94,3 +94,10 @@ Authoritative upstream evidence:
   `lastCheckTime` is shown even when `shelfOrderAt` and `updatedAt` are current. The broader Index smoke continues
   past this proof and currently stops at its pre-existing unrelated “confirmed search BookInfo group property”
   assertion; that failure is not used as evidence for this slice.
+- Commit `a10ad14` was pushed before release. The candidate passed fresh volume/backup and historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation/portable-restore gates. The historical script's first run hit its
+  known post-restart transient `404`; a clean immediate rerun completed every assertion.
+- The image was built locally for linux/amd64 and linux/arm64 and published as `a10ad14` and `latest`; both point
+  to OCI index `sha256:76c9851fb5a10d44722fff35986cd78d7aa43176faf8b1658d4d3f134a740a0d`.
+  Platform manifests are amd64 `sha256:01377a52853ede692f50c940b53dc586e44886d704eeaed76f7fd9500b3123cb`
+  and arm64 `sha256:b78c0689d8483e51177c79c2f9e262aa5ab08c92f9432d86454c5fbdea59e2da`.
