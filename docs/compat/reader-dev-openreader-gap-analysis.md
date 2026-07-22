@@ -19,6 +19,20 @@ Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 已推送并从本机完成新旧卷/备份门禁及 amd64/arm64 发布；`ed4ee27`、`latest` 共同指向
 `sha256:f369cc6610312987e068dcdd015887e27569a9dcbe6c048525de12bb5ab95d89`。
 
+实机回归状态：本项重新标记为 **must-fix**。旧浏览器合同没有覆盖 Reader 离开时
+`background keepalive` 已提交但仍保留的 `pendingSync`，也没有让显式刷新等待 pending CAS 的
+最终赢家，更没有覆盖 Reader 内书架按钮。修订合同与测试门禁见
+[`bookshelf-refresh-progress-p1-contract.md`](bookshelf-refresh-progress-p1-contract.md)。
+
+## 2026-07-22 P0 移动点击翻页视觉节奏复审
+
+第七批已消除连续双击在两段动画之间等待 after-paint task 的空窗，但用户实机仍观察到点击上下
+翻页的明显顿挫。复审确认旧测试只排除了停帧，没有约束响应曲线造成的首帧文字大跳：当前
+`1-(1-t)^1.5` 在 300ms/772px 下首个约 16.7ms 周期理论移动约 64px。该现象即使没有掉帧也会
+显得像卡顿。第八批先同时测量帧间隔、速度轮廓、layout-shift 和顶部文字锚点，再把移动曲线改为
+有界非零初速/零终速；未测出证据前不改亮度滤镜或章节窗口。详见
+[`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md)。
+
 ## 2026-07-18 P2 阅读进度 API、并发与 WebDAV 复审
 
 固定上游 `Reader.vue#saveBookProgress` 与 `BookController#saveBookProgress` 的合同已经抽取到
