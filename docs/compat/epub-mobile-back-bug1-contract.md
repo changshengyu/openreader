@@ -1,6 +1,6 @@
 # EPUB 移动端返回手势 Bug 1 兼容合同
 
-状态：**已完成上游审查；待先补回归用例，再实施。**
+状态：**2026-07-15 已完成失败测试、实现、三视口真实浏览器回归并随 `28eb413` 发布。**
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -53,3 +53,15 @@
 - 允许差异仅是 OpenReader 的受签名 iframe resource/CSP 与 Vue Router 适配；它们不得暴露 archive 路径或修改顶层返回语义。
 - 本 Bug 不增加 SQLite 字段、持久化设置、API 路径或 mounted volume 内容，因此无数据迁移。
 - 实施后至少运行 Go 全量测试、前端全量测试与生产构建，并在真实浏览器运行 EPUB smoke。通过后此切片可作为独立 Docker 用户验收批次；发布记录必须单列 Bug 1 及镜像 digest。
+
+## 6. 实施记录
+
+- EPUB bridge 对同 capability 根内的跨 XHTML/当前 slice 外 fragment 链接执行
+  `preventDefault()` 并向父 Reader 发送 `navigate`；外链和当前 slice hash 分支保持独立。
+- `ReaderEpubContent.vue` 使用 `:key="resource.url"` 在资源切换时替换 iframe browsing
+  context，避免子 frame 历史消费移动端返回手势。
+- Go bridge 测试、`readerEpubFrame.test.mjs` 和真实 Go 的
+  `reader-epub-contract.mjs` 已覆盖来源/origin 校验、跨 XHTML 和 `page.goBack()` 返回书架；
+  1440×900、390×844、360×800 均通过。
+- 源码提交 `28eb413 fix: return EPUB reader back to shelf` 已同步 GitHub；后续 EPUB
+  目录/旧卷修复继续保留该返回合同。
