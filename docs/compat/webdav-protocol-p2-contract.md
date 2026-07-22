@@ -148,6 +148,9 @@ MS-Author-Via: DAV
 - 允许差异：JWT/Bearer、管理员历史根与普通用户私有根、上传字节上限、原子替换、symlink/便携
   路径硬化均保留；不复制上游不安全的通配 credential CORS，也不持久化兼容 LOCK。
 
-已通过：WebDAV API/service/CORS 合同、Go 全量、503 项前端测试、生产构建、真实生产中间件下的
-Basic curl 协议 smoke，以及 1440×900、390×844、360×800 WebDAVBrowser 浏览器 smoke。发布前
-仍需运行本地候选镜像、历史卷/便携备份 smoke，并再次对候选容器执行协议 curl。
+已通过：WebDAV API/service/CORS 合同、Go 全量、509 项前端测试、生产构建、真实生产中间件下的
+Basic curl 协议 smoke，以及 1440×900、390×844、360×800 WebDAVBrowser 浏览器 smoke。候选镜像
+进一步通过新卷、历史 TXT/EPUB/UMD/CBZ/相对缓存、用户隔离、便携备份恢复和完整 WebDAV 协议
+curl。实现提交 `86630ca` 已推送；随 Reader 提交 `544e1fb` 从本机完成双架构发布，未使用云构建。
+`544e1fb` 与 `latest` 的 OCI index 均为
+`sha256:ad083dc1e996c62fbf88ee7367a4c08330912088bb144848886daa1fe2fb8966`。

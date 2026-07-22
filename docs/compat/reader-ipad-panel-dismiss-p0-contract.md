@@ -74,3 +74,6 @@ outside-tap close path on a touch iPad.
   Chromium passes at iPad Pro `1024×1366` and `1366×1024`, phone `390×844` and `360×800`, and
   forced-mobile iPad `1024×1366` (`reader desktop/mobile/adaptive-iPad/forced-mobile-iPad contract
   smoke passed`).
+- The merged Reader slice is published in locally built multi-architecture image `544e1fb` and
+  `latest`, both at OCI index
+  `sha256:ad083dc1e996c62fbf88ee7367a4c08330912088bb144848886daa1fe2fb8966`.
