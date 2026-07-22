@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  findVisibleReaderBlock,
   readerBlockTextOffset,
   readerScrollTextOffset,
   readerTextProgress,
@@ -57,6 +58,20 @@ test('falls back to the nearest visible block and rejects horizontal misses', ()
       rect: { top: 260, bottom: 320, left: 700, right: 800 },
     },
   ], viewport), near)
+})
+
+test('keeps searching wrapped flip columns after a vertically low offscreen block', () => {
+  const wrapped = { id: 'wrapped' }
+  const nodes = [
+    {
+      getBoundingClientRect: () => ({ top: 980, bottom: 1080, left: -400, right: -20 }),
+    },
+    {
+      ...wrapped,
+      getBoundingClientRect: () => ({ top: 200, bottom: 360, left: 10, right: 590 }),
+    },
+  ]
+  assert.equal(findVisibleReaderBlock(nodes, viewport, 8, false), nodes[1])
 })
 
 test('selects the first heading or paragraph below the upstream top boundary', () => {

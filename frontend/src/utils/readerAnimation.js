@@ -9,15 +9,6 @@ function easeInOutCubic(progress) {
     : 1 - ((-2 * progress + 2) ** 3) / 2
 }
 
-function easeResponsive(progress) {
-  const initialVelocity = 0.35
-  return (
-    initialVelocity * progress
-    + (3 - 2 * initialVelocity) * progress * progress
-    + (initialVelocity - 2) * progress * progress * progress
-  )
-}
-
 export function createReaderScrollAnimator(options = {}) {
   const requestFrame = options.requestFrame
     || globalThis.requestAnimationFrame?.bind(globalThis)
@@ -28,34 +19,16 @@ export function createReaderScrollAnimator(options = {}) {
   const now = options.now
     || globalThis.performance?.now?.bind(globalThis.performance)
     || Date.now
-  const scheduleTask = options.scheduleTask
-    || globalThis.setTimeout?.bind(globalThis)
-    || (callback => callback())
-  const cancelTask = options.cancelTask
-    || globalThis.clearTimeout?.bind(globalThis)
-    || (() => {})
-
   let frameId = null
-  let finishTaskId = null
   let running = false
 
   function cancel() {
     if (frameId !== null) cancelFrame(frameId)
-    if (finishTaskId !== null) cancelTask(finishTaskId)
     frameId = null
-    finishTaskId = null
     running = false
   }
 
-  function takeOverPendingFinish() {
-    if (finishTaskId === null) return false
-    cancelTask(finishTaskId)
-    finishTaskId = null
-    running = false
-    return true
-  }
-
-  function scrollTo(element, requestedTop, requestedDuration, onFinish, animationOptions = {}) {
+  function scrollTo(element, requestedTop, requestedDuration, onFinish) {
     if (!element || running) return false
     const startTop = Math.max(0, finiteNumber(element.scrollTop))
     const bottom = Math.max(
@@ -74,40 +47,18 @@ export function createReaderScrollAnimator(options = {}) {
     running = true
     const startedAt = now()
     const distance = targetTop - startTop
-    const responsive = animationOptions?.easing === 'responsive'
-    const easing = responsive
-      ? easeResponsive
-      : easeInOutCubic
-    const minimumProgress = responsive ? Math.min(1, 1 / duration) : 0
-    if (minimumProgress > 0) {
-      element.scrollTop = startTop + distance * easing(minimumProgress)
-    }
     const draw = (timestamp) => {
       if (!running) return
-      const progress = Math.max(
-        minimumProgress,
-        Math.max(0, Math.min(1, (timestamp - startedAt) / duration)),
-      )
+      const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration))
       element.scrollTop = progress >= 1
         ? targetTop
-        : startTop + distance * easing(progress)
+        : startTop + distance * easeInOutCubic(progress)
       if (progress < 1) {
         frameId = requestFrame(draw)
         return
       }
       frameId = null
       running = false
-      const visualContinued = animationOptions?.onVisualFinish?.() === true
-      if (visualContinued || running) return
-      if (animationOptions?.finish === 'after-paint') {
-        running = true
-        finishTaskId = scheduleTask(() => {
-          finishTaskId = null
-          running = false
-          onFinish?.()
-        }, 0)
-        return
-      }
       onFinish?.()
     }
     frameId = requestFrame(draw)
@@ -117,14 +68,12 @@ export function createReaderScrollAnimator(options = {}) {
   return {
     cancel,
     isActive: () => running,
-    takeOverPendingFinish,
-    scrollBy(element, delta, duration, onFinish, animationOptions) {
+    scrollBy(element, delta, duration, onFinish) {
       return scrollTo(
         element,
         finiteNumber(element?.scrollTop) + finiteNumber(delta),
         duration,
         onFinish,
-        animationOptions,
       )
     },
     scrollTo,

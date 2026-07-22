@@ -84,6 +84,10 @@ test('scrolls vertical pages and schedules progress without changing chapters', 
     }),
     isVerticalRead: ref(true),
     getMode: () => 'scroll',
+    scheduleSettlementTask: callback => {
+      callback()
+      return 1
+    },
     scrollAnimator: {
       isActive: () => false,
       scrollBy: (element, delta, duration, onFinish) => {
@@ -104,18 +108,26 @@ test('scrolls vertical pages and schedules progress without changing chapters', 
   assert.deepEqual(fixture.navigated, [])
 })
 
-test('settles vertical synchronization only after the click animation finishes', async () => {
+test('delays vertical settlement like upstream after the visual animation finishes', async () => {
   const settled = []
+  const tasks = new Map()
+  let nextTaskId = 0
   let finishAnimation
   const fixture = createNavigation({
     contentEl: ref({
-      scrollTop: 0,
+      scrollTop: 1000,
       scrollHeight: 3000,
       clientHeight: 800,
     }),
     isVerticalRead: ref(true),
     getMode: () => 'page',
     onVerticalPageSettled: () => settled.push('settled'),
+    scheduleSettlementTask: (callback, delay) => {
+      nextTaskId += 1
+      tasks.set(nextTaskId, { callback, delay })
+      return nextTaskId
+    },
+    cancelSettlementTask: id => tasks.delete(id),
     scrollAnimator: {
       isActive: () => Boolean(finishAnimation),
       scrollBy: (_element, _delta, _duration, onFinish) => {
@@ -131,90 +143,41 @@ test('settles vertical synchronization only after the click animation finishes',
   await fixture.navigation.nextPage()
   assert.deepEqual(settled, [])
   finishAnimation()
+  assert.deepEqual(settled, [])
+  assert.equal(tasks.size, 1)
+  const [{ callback, delay }] = tasks.values()
+  assert.equal(delay, 200, 'upstream defers progress work by the configured duration after motion')
+  callback()
   assert.deepEqual(settled, ['settled'])
 })
 
-test('uses responsive vertical scrolling and settles a buffered page chain only once', async () => {
-  const settled = []
-  const animationCalls = []
-  const finishes = []
-  const body = {
-    style: { willChange: '' },
-    animate: () => assert.fail('navigation must not promote the full reader body'),
-  }
-  const fixture = createNavigation({
-    contentEl: ref({
-      scrollTop: 0,
-      scrollHeight: 4000,
-      clientHeight: 800,
-    }),
-    contentBody: ref(body),
-    isVerticalRead: ref(true),
-    getMode: () => 'scroll',
-    useResponsiveVerticalAnimation: () => true,
-    onVerticalPageSettled: () => settled.push('settled'),
-    scrollAnimator: {
-      cancel: () => {},
-      isActive: () => finishes.length > 0,
-      scrollBy: (_element, delta, duration, onFinish, animationOptions) => {
-        animationCalls.push({ delta, duration, animationOptions })
-        finishes.push(onFinish)
-        return true
-      },
-    },
-  })
-
-  await fixture.navigation.nextPage()
-  await fixture.navigation.nextPage()
-  assert.equal(animationCalls.length, 1, 'the repeated tap must be bounded while motion is active')
-  assert.deepEqual({
-    ...animationCalls[0].animationOptions,
-    onVisualFinish: undefined,
-  }, {
-    easing: 'responsive',
-    finish: 'after-paint',
-    onVisualFinish: undefined,
-  })
-  assert.equal(typeof animationCalls[0].animationOptions.onVisualFinish, 'function')
-  assert.equal(body.style.willChange, '')
-
-  finishes.shift()()
-  await Promise.resolve()
-  assert.equal(animationCalls.length, 2, 'one repeated next-page tap must run before final settlement')
-  assert.deepEqual(settled, [], 'the buffered page boundary must not run heavy settlement work')
-  assert.deepEqual({
-    ...animationCalls[1].animationOptions,
-    onVisualFinish: undefined,
-  }, {
-    easing: 'responsive',
-    finish: 'after-paint',
-    onVisualFinish: undefined,
-  })
-  assert.equal(typeof animationCalls[1].animationOptions.onVisualFinish, 'function')
-  finishes.shift()()
-  assert.deepEqual(settled, ['settled'])
-})
-
-test('starts the buffered vertical page from visual completion before after-paint settlement', async () => {
-  const settled = []
-  const segments = []
+test('uses upstream cubic paging, rejects overlap, and accepts a new tap after motion', async () => {
+  const animations = []
+  const tasks = new Map()
+  let nextTaskId = 0
   let active = false
+  let settled = 0
   const fixture = createNavigation({
     contentEl: ref({
-      scrollTop: 0,
+      scrollTop: 1000,
       scrollHeight: 4000,
       clientHeight: 800,
     }),
     isVerticalRead: ref(true),
     getMode: () => 'scroll2',
-    useResponsiveVerticalAnimation: () => true,
-    onVerticalPageSettled: () => settled.push('settled'),
+    onVerticalPageSettled: () => { settled += 1 },
+    scheduleSettlementTask: (callback, delay) => {
+      nextTaskId += 1
+      tasks.set(nextTaskId, { callback, delay })
+      return nextTaskId
+    },
+    cancelSettlementTask: id => tasks.delete(id),
     scrollAnimator: {
       cancel: () => { active = false },
       isActive: () => active,
       scrollBy: (_element, delta, duration, onFinish, animationOptions) => {
         active = true
-        segments.push({ delta, duration, onFinish, animationOptions })
+        animations.push({ delta, duration, onFinish, animationOptions })
         return true
       },
     },
@@ -222,105 +185,26 @@ test('starts the buffered vertical page from visual completion before after-pain
 
   await fixture.navigation.nextPage()
   await fixture.navigation.nextPage()
-  assert.equal(segments.length, 1)
-  assert.equal(typeof segments[0].animationOptions.onVisualFinish, 'function')
+  await fixture.navigation.previousPage()
+  assert.equal(animations.length, 1, 'upstream transforming guard must reject both overlap directions')
+  assert.equal(animations[0].animationOptions, undefined, 'vertical click paging must use the default upstream cubic curve')
 
   active = false
-  assert.equal(segments[0].animationOptions.onVisualFinish(), true)
-  assert.equal(segments.length, 2, 'the queued visual segment must start synchronously at the first endpoint')
-  assert.equal(settled.length, 0)
+  animations[0].onFinish()
+  assert.equal(tasks.size, 1)
+  assert.equal(fixture.navigation.isVerticalScrollSyncSuppressed(), true)
+
+  await fixture.navigation.nextPage()
+  assert.equal(animations.length, 2, 'a new tap after visual completion must start immediately')
+  assert.equal(tasks.size, 0, 'new motion must cancel stale delayed settlement')
+  assert.equal(settled, 0)
 
   active = false
-  assert.equal(segments[1].animationOptions.onVisualFinish(), false)
-  assert.equal(settled.length, 0)
-  active = true
-  active = false
-  segments[1].onFinish()
-  assert.deepEqual(settled, ['settled'])
-})
-
-test('a tap during the after-paint handoff immediately takes over its pending settlement', async () => {
-  const settled = []
-  const segments = []
-  let active = false
-  let finishing = false
-  let takeoverCalls = 0
-  const fixture = createNavigation({
-    contentEl: ref({
-      scrollTop: 0,
-      scrollHeight: 4000,
-      clientHeight: 800,
-    }),
-    isVerticalRead: ref(true),
-    getMode: () => 'page',
-    useResponsiveVerticalAnimation: () => true,
-    onVerticalPageSettled: () => settled.push('settled'),
-    scrollAnimator: {
-      cancel: () => {
-        active = false
-        finishing = false
-      },
-      isActive: () => active,
-      takeOverPendingFinish: () => {
-        if (!finishing) return false
-        finishing = false
-        active = false
-        takeoverCalls += 1
-        return true
-      },
-      scrollBy: (_element, delta, duration, onFinish, animationOptions) => {
-        active = true
-        segments.push({ delta, duration, onFinish, animationOptions })
-        return true
-      },
-    },
-  })
-
-  await fixture.navigation.nextPage()
-  active = false
-  assert.equal(segments[0].animationOptions.onVisualFinish(), false)
-  active = true
-  finishing = true
-
-  await fixture.navigation.nextPage()
-  assert.equal(takeoverCalls, 1)
-  assert.equal(segments.length, 2, 'the handoff tap must start its visual page in the input task')
-  assert.deepEqual(settled, [])
-})
-
-test('native gesture cancellation clears a buffered page click', async () => {
-  const finishes = []
-  let active = false
-  let cancelCalls = 0
-  const fixture = createNavigation({
-    contentEl: ref({
-      scrollTop: 0,
-      scrollHeight: 4000,
-      clientHeight: 800,
-    }),
-    isVerticalRead: ref(true),
-    getMode: () => 'page',
-    scrollAnimator: {
-      cancel: () => {
-        active = false
-        cancelCalls += 1
-      },
-      isActive: () => active,
-      scrollBy: (_element, _delta, _duration, onFinish) => {
-        active = true
-        finishes.push(onFinish)
-        return true
-      },
-    },
-  })
-
-  await fixture.navigation.nextPage()
-  await fixture.navigation.nextPage()
-  fixture.navigation.cancelPageAnimation()
-  assert.equal(cancelCalls, 1)
-  finishes.shift()()
-  await Promise.resolve()
-  assert.equal(finishes.length, 0, 'cancelled native handoff must not run the buffered tap')
+  animations[1].onFinish()
+  const [{ callback }] = tasks.values()
+  callback()
+  assert.equal(settled, 1)
+  assert.equal(fixture.navigation.isVerticalScrollSyncSuppressed(), false)
 })
 
 test('rebuilds an explicitly selected loaded chapter before jumping in continuous mode', async () => {

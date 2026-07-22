@@ -936,6 +936,7 @@ const displayedChapterBlocks = computed(() => {
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value, chapterCachedImages.value)]
 })
 let settleVerticalPageScroll = () => false
+let isVerticalPageScrollSyncSuppressed = () => readerScrollAnimator.isActive()
 const {
   activeChapterElement,
   captureReaderScrollAnchor,
@@ -1075,6 +1076,7 @@ const {
   goChapter,
   jumpToLoadedChapter,
   jumpWithinCurrentChapter,
+  isVerticalScrollSyncSuppressed,
   nextPage,
   paragraphByChapterPosition,
   previousPage,
@@ -1096,12 +1098,6 @@ const {
   isVerticalRead,
   getMode: () => effectiveReaderMode.value,
   getAnimateDuration: () => reader.animateDuration,
-  useResponsiveVerticalAnimation: () => (
-    isMobileReader.value
-    && isVerticalRead.value
-    && chapterFormat.value === 'text'
-    && !isOrdinaryImageComicChapter.value
-  ),
   scrollStep,
   jumpToParagraph,
   rebuildContinuousWindow: index => computeShowChapterList({
@@ -1116,6 +1112,7 @@ const {
   scheduleProgressSave: delay => scheduleProgressSave(delay),
   onVerticalPageSettled: () => settleVerticalPageScroll(),
 })
+isVerticalPageScrollSyncSuppressed = isVerticalScrollSyncSuppressed
 onBeforeUnmount(cancelPageAnimation)
 const {
   restore: restoreReadingPosition,
@@ -1557,9 +1554,10 @@ const {
   syncCurrentChapter: updateCurrentChapterFromScroll,
   maybeExtendChapterWindow: maybeExtendShowChapters,
   updateLayout: updateFlipLayout,
-  applyLocalProgress: applyLocalProgressSnapshot,
+  captureProgressSnapshot: visibleChapterProgressSnapshot,
+  applyLocalProgress: snapshot => applyLocalProgressSnapshot(currentProgressPayload(snapshot)),
   scheduleProgressSave,
-  pageAnimationActive: () => readerScrollAnimator.isActive(),
+  pageAnimationActive: () => isVerticalPageScrollSyncSuppressed(),
   scrollPosition: () => contentEl.value?.scrollTop,
 })
 settleVerticalPageScroll = flushReaderScrollSync

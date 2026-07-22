@@ -10,85 +10,66 @@ import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
 
 export function useReaderNavigation(options) {
   const scrollAnimator = options.scrollAnimator || createReaderScrollAnimator()
-  let activeVerticalDirection = 0
-  let queuedVerticalDirection = 0
+  const scheduleSettlementTask = options.scheduleSettlementTask
+    || globalThis.setTimeout?.bind(globalThis)
+    || (callback => callback())
+  const cancelSettlementTask = options.cancelSettlementTask
+    || globalThis.clearTimeout?.bind(globalThis)
+    || (() => {})
   let animationGeneration = 0
+  let settlementTask = null
+
+  function cancelVerticalSettlement() {
+    if (!settlementTask) return
+    cancelSettlementTask(settlementTask.id)
+    settlementTask = null
+  }
 
   function cancelPageAnimation() {
     animationGeneration += 1
-    activeVerticalDirection = 0
-    queuedVerticalDirection = 0
+    cancelVerticalSettlement()
     scrollAnimator.cancel()
   }
 
-  function verticalAnimationOptions(onVisualFinish) {
-    if (!options.useResponsiveVerticalAnimation?.()) return undefined
-    return {
-      easing: 'responsive',
-      finish: 'after-paint',
-      onVisualFinish,
+  function settleVerticalPage(generation) {
+    if (generation !== animationGeneration) return
+    if (options.onVerticalPageSettled) {
+      options.onVerticalPageSettled()
+    } else {
+      options.progressVersion.value += 1
+      options.scheduleProgressSave(60)
     }
   }
 
-  function queueActiveVerticalPage(element, direction) {
-    if (!scrollAnimator.isActive()) return false
-    queuedVerticalDirection = activeVerticalDirection === direction ? direction : 0
-    if (
-      queuedVerticalDirection === direction
-      && scrollAnimator.takeOverPendingFinish?.()
-    ) {
-      queuedVerticalDirection = 0
-      activeVerticalDirection = 0
-      runVerticalPageAnimation(element, direction)
-    }
-    return true
+  function scheduleVerticalSettlement(generation) {
+    cancelVerticalSettlement()
+    const token = { id: null }
+    settlementTask = token
+    token.id = scheduleSettlementTask(() => {
+      if (settlementTask !== token) return
+      settlementTask = null
+      settleVerticalPage(generation)
+    }, Math.max(0, Number(options.getAnimateDuration()) || 0))
   }
 
   function runVerticalPageAnimation(element, direction) {
-    if (queueActiveVerticalPage(element, direction)) return true
+    if (scrollAnimator.isActive()) return false
+    cancelVerticalSettlement()
     const generation = animationGeneration
-    const responsive = Boolean(options.useResponsiveVerticalAnimation?.())
-    activeVerticalDirection = direction
-
-    const startQueuedPage = () => {
-      if (generation !== animationGeneration) return true
-      if (queuedVerticalDirection !== direction) return false
-      queuedVerticalDirection = 0
-      activeVerticalDirection = 0
-      if (direction > 0) void nextPage()
-      else void previousPage()
-      return generation !== animationGeneration || scrollAnimator.isActive()
-    }
-
     const started = scrollAnimator.scrollBy(
       element,
       direction * options.scrollStep(),
       options.getAnimateDuration(),
       () => {
         if (generation !== animationGeneration) return
-        if (responsive && startQueuedPage()) return
-        activeVerticalDirection = 0
-        if (!responsive && queuedVerticalDirection === direction) {
-          queuedVerticalDirection = 0
-          queueMicrotask(() => {
-            if (generation !== animationGeneration) return
-            if (direction > 0) void nextPage()
-            else void previousPage()
-          })
-          return
-        }
-        queuedVerticalDirection = 0
-        if (options.onVerticalPageSettled) {
-          options.onVerticalPageSettled()
-        } else {
-          options.progressVersion.value += 1
-          options.scheduleProgressSave(60)
-        }
+        scheduleVerticalSettlement(generation)
       },
-      verticalAnimationOptions(startQueuedPage),
     )
-    if (!started) activeVerticalDirection = 0
     return started
+  }
+
+  function isVerticalScrollSyncSuppressed() {
+    return scrollAnimator.isActive() || Boolean(settlementTask)
   }
 
   function targetChapterIndex(index) {
@@ -296,6 +277,7 @@ export function useReaderNavigation(options) {
     jumpToLoadedChapter,
     jumpWithinCurrentChapter,
     nextPage,
+    isVerticalScrollSyncSuppressed,
     paragraphByChapterPosition,
     previousPage,
     scrollToBottom,

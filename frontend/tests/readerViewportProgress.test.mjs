@@ -132,6 +132,38 @@ test('uses a visible chapter heading as upstream position zero before a middle p
   })
 })
 
+test('stops measuring paragraph geometry as soon as the upstream visible block is found', () => {
+  let geometryReads = 0
+  const chapterEl = {
+    dataset: { index: '1' },
+    querySelector: () => null,
+  }
+  const nodes = Array.from({ length: 720 }, (_, index) => ({
+    dataset: { pos: String(index * 100) },
+    textContent: `第 ${index + 1} 段`,
+    closest: selector => selector === '.chapter-content' ? chapterEl : null,
+    getBoundingClientRect: () => {
+      geometryReads += 1
+      return index === 0
+        ? { top: 120, bottom: 220, left: 10, right: 590, height: 100 }
+        : { top: 920 + index * 100, bottom: 1000 + index * 100, left: 10, right: 590, height: 80 }
+    },
+  }))
+  const { controller } = createController({
+    contentBody: ref({
+      querySelectorAll: () => nodes,
+      querySelector: () => chapterEl,
+    }),
+  })
+
+  const snapshot = controller.visibleChapterProgressSnapshot()
+  assert.equal(snapshot.chapterIndex, 1)
+  assert(
+    geometryReads <= 3,
+    `visible paragraph lookup measured the whole long chapter (${geometryReads} reads)`,
+  )
+})
+
 test('uses flip page state without requiring rendered paragraphs', () => {
   const { controller } = createController({
     contentEl: ref(null),

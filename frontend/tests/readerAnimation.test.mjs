@@ -85,7 +85,7 @@ test('blocks overlapping page animations and supports cancellation', () => {
   assert.equal(animator.isActive(), false)
 })
 
-test('starts responsive mobile page motion before a zero-timestamp first frame', () => {
+test('matches the upstream power-cubic ease-in-out without a synchronous seed', () => {
   const clock = createClock()
   let scrollTop = 100
   const writes = []
@@ -100,12 +100,6 @@ test('starts responsive mobile page motion before a zero-timestamp first frame',
     scrollHeight: 2000,
     clientHeight: 800,
   }
-  const visualElement = {
-    style: { willChange: '' },
-    animate() {
-      assert.fail('mobile text paging must not animate the full chapter body')
-    },
-  }
   let completed = 0
   const animator = createReaderScrollAnimator(clock)
 
@@ -114,28 +108,19 @@ test('starts responsive mobile page motion before a zero-timestamp first frame',
     600,
     300,
     () => { completed += 1 },
-    { easing: 'responsive', visualElement },
   ), true)
-  assert(scrollTop > 100, `touchend left the first painted position at the origin: ${scrollTop}`)
-  const startedTop = scrollTop
-  assert(
-    startedTop - 100 <= 2,
-    `the synchronous seed jumped too much text before the first frame: ${startedTop}`,
-  )
+  assert.equal(scrollTop, 100, 'upstream does not mutate scrollTop before the first animation frame')
   clock.step(0)
-  assert(scrollTop >= startedTop, `the first rAF moved back to the origin: ${scrollTop}/${startedTop}`)
-  clock.step(16)
-  assert(scrollTop >= 106, `the first refresh interval remained in a dead zone: ${scrollTop}`)
-  assert(scrollTop <= 124, `the first refresh interval jumped too much text: ${scrollTop}`)
-  clock.step(32)
-  assert(scrollTop >= 130, `the second refresh interval remained in a dead zone: ${scrollTop}`)
-  assert(scrollTop <= 150, `the second refresh interval accelerated too abruptly: ${scrollTop}`)
-  assert.equal(visualElement.style.willChange, '')
+  assert.equal(scrollTop, 100)
+  clock.step(75)
+  assert.equal(scrollTop, 137.5)
   clock.step(150)
-  assert(scrollTop > 300 && scrollTop < 500)
+  assert.equal(scrollTop, 400)
+  clock.step(225)
+  assert.equal(scrollTop, 662.5)
   clock.step(300)
   assert.equal(scrollTop, 700)
-  assert(writes.length >= 4, 'the lightweight path must advance scrollTop on refresh frames')
+  assert.equal(writes.length, 5)
   assert.equal(completed, 1)
   assert.equal(animator.isActive(), false)
 })
@@ -163,7 +148,6 @@ test('keeps the visible frame-scroll position after a touch or wheel cancellatio
     600,
     300,
     () => { completed += 1 },
-    { easing: 'responsive' },
   )
   clock.step(150)
   const visibleTop = scrollTop
@@ -173,144 +157,5 @@ test('keeps the visible frame-scroll position after a touch or wheel cancellatio
   assert.equal(Math.round(scrollTop), Math.round(visibleTop))
   assert(writes.length >= 1)
   assert.equal(completed, 0)
-  assert.equal(animator.isActive(), false)
-})
-
-test('presents the responsive target before running heavy completion work in a later task', () => {
-  const clock = createClock()
-  const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }
-  const completed = []
-  const animator = createReaderScrollAnimator(clock)
-
-  animator.scrollBy(
-    element,
-    600,
-    300,
-    () => completed.push(element.scrollTop),
-    { easing: 'responsive', finish: 'after-paint' },
-  )
-  clock.step(300)
-
-  assert.equal(element.scrollTop, 600, 'the visual target must be committed in the final animation frame')
-  assert.deepEqual(completed, [], 'chapter/layout settlement must not run inside the final animation frame')
-  assert.equal(animator.isActive(), true, 'the handoff window must remain cancellable and block overlap')
-
-  clock.flushTasks()
-  assert.deepEqual(completed, [600])
-  assert.equal(animator.isActive(), false)
-})
-
-test('continues a buffered visual page in the final frame without an intermediate settlement task', () => {
-  const clock = createClock()
-  const element = { scrollTop: 0, scrollHeight: 3000, clientHeight: 800 }
-  const animator = createReaderScrollAnimator(clock)
-  let visualSegments = 0
-  let settled = 0
-
-  const startSegment = () => animator.scrollBy(
-    element,
-    600,
-    300,
-    () => { settled += 1 },
-    {
-      easing: 'responsive',
-      finish: 'after-paint',
-      onVisualFinish: () => {
-        visualSegments += 1
-        if (visualSegments !== 1) return false
-        return startSegment()
-      },
-    },
-  )
-
-  assert.equal(startSegment(), true)
-  clock.step(300)
-  assert(
-    element.scrollTop > 600,
-    `the buffered page must seed visible movement before the first endpoint can paint: ${element.scrollTop}`,
-  )
-  assert.equal(settled, 0)
-  assert.equal(animator.isActive(), true)
-
-  clock.flushTasks()
-  assert.equal(settled, 0, 'the first visual segment must not schedule business settlement')
-
-  clock.step(600)
-  assert.equal(element.scrollTop, 1200)
-  assert.equal(settled, 0)
-  clock.flushTasks()
-  assert.equal(settled, 1, 'the buffered chain must settle exactly once after its final visual segment')
-  assert.equal(animator.isActive(), false)
-})
-
-test('cancels an after-paint completion before stale settlement can run', () => {
-  const clock = createClock()
-  const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }
-  let completed = 0
-  const animator = createReaderScrollAnimator(clock)
-
-  animator.scrollBy(
-    element,
-    600,
-    300,
-    () => { completed += 1 },
-    { easing: 'responsive', finish: 'after-paint' },
-  )
-  clock.step(300)
-  animator.cancel()
-  clock.flushTasks()
-
-  assert.equal(element.scrollTop, 600)
-  assert.equal(completed, 0)
-  assert.equal(animator.isActive(), false)
-})
-
-test('lets a new visual page take over an after-paint settlement handoff', () => {
-  const clock = createClock()
-  const element = { scrollTop: 0, scrollHeight: 3000, clientHeight: 800 }
-  let settled = 0
-  const animator = createReaderScrollAnimator(clock)
-
-  animator.scrollBy(
-    element,
-    600,
-    300,
-    () => { settled += 1 },
-    { easing: 'responsive', finish: 'after-paint' },
-  )
-  clock.step(300)
-  assert.equal(element.scrollTop, 600)
-  assert.equal(animator.isActive(), true)
-  assert.equal(animator.takeOverPendingFinish(), true)
-  assert.equal(animator.isActive(), false)
-
-  assert.equal(animator.scrollBy(
-    element,
-    600,
-    300,
-    () => { settled += 1 },
-    { easing: 'responsive', finish: 'after-paint' },
-  ), true)
-  assert(element.scrollTop > 600, 'the replacement page must seed motion in the takeover input task')
-  clock.flushTasks()
-  assert.equal(settled, 0, 'the superseded handoff must never run its old settlement')
-})
-
-test('keeps zero-duration paging synchronous even when the positive path finishes after paint', () => {
-  const clock = createClock()
-  const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }
-  let completed = 0
-  const animator = createReaderScrollAnimator(clock)
-
-  animator.scrollBy(
-    element,
-    600,
-    0,
-    () => { completed += 1 },
-    { easing: 'responsive', finish: 'after-paint' },
-  )
-
-  assert.equal(element.scrollTop, 600)
-  assert.equal(completed, 1)
   assert.equal(animator.isActive(), false)
 })

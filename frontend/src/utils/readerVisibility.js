@@ -40,6 +40,38 @@ export function selectVisibleReaderBlock(entries, viewport, inset = 8) {
     ))[0]?.node || null
 }
 
+export function findVisibleReaderBlock(nodes, viewport, inset = 8, verticallyOrdered = true) {
+  if (!viewport || !nodes?.length) return null
+  const padding = Math.max(0, finiteNumber(inset))
+  const visibleTop = finiteNumber(viewport.top) + padding
+  const visibleBottom = finiteNumber(viewport.bottom) - padding
+  const visibleLeft = finiteNumber(viewport.left) + padding
+  const visibleRight = finiteNumber(viewport.right) - padding
+  const anchorY = readerViewportAnchorY(viewport)
+  let nearest = null
+  let nearestDistance = Infinity
+
+  for (const node of nodes) {
+    const rect = node?.getBoundingClientRect?.()
+    if (!rect) continue
+    if (verticallyOrdered && finiteNumber(rect.top) > visibleBottom) break
+    if (
+      finiteNumber(rect.bottom) < visibleTop
+      || finiteNumber(rect.right) < visibleLeft
+      || finiteNumber(rect.left) > visibleRight
+    ) continue
+    if (finiteNumber(rect.top) <= anchorY && finiteNumber(rect.bottom) >= anchorY) {
+      return node
+    }
+    const distance = Math.abs(finiteNumber(rect.top) - anchorY)
+    if (distance < nearestDistance) {
+      nearest = node
+      nearestDistance = distance
+    }
+  }
+  return nearest
+}
+
 export function selectTopVisibleReaderBlock(entries, viewport, topInset = 50, sideInset = 8) {
   if (!viewport || !Array.isArray(entries) || !entries.length) return null
   const boundary = finiteNumber(viewport.top) + Math.max(0, finiteNumber(topInset))
@@ -51,6 +83,23 @@ export function selectTopVisibleReaderBlock(entries, viewport, topInset = 50, si
     && finiteNumber(rect.right) >= visibleLeft
     && finiteNumber(rect.left) <= visibleRight
   ))?.node || null
+}
+
+export function findTopVisibleReaderBlock(nodes, viewport, topInset = 50, sideInset = 8) {
+  if (!viewport || !nodes?.length) return null
+  const boundary = finiteNumber(viewport.top) + Math.max(0, finiteNumber(topInset))
+  const visibleLeft = finiteNumber(viewport.left) + Math.max(0, finiteNumber(sideInset))
+  const visibleRight = finiteNumber(viewport.right) - Math.max(0, finiteNumber(sideInset))
+  for (const node of nodes) {
+    const rect = node?.getBoundingClientRect?.()
+    if (!rect) continue
+    if (
+      finiteNumber(rect.bottom) > boundary
+      && finiteNumber(rect.right) >= visibleLeft
+      && finiteNumber(rect.left) <= visibleRight
+    ) return node
+  }
+  return null
 }
 
 export function readerBlockTextOffset({

@@ -2,11 +2,11 @@ import { nextTick } from 'vue'
 import { readerFlipChapterPercent } from '../utils/readerPagination.js'
 import { restoredReaderScrollTop } from '../utils/readerScrollAnchor.js'
 import {
+  findTopVisibleReaderBlock,
+  findVisibleReaderBlock,
   readerBlockTextOffset,
   readerScrollTextOffset,
   readerTextProgress,
-  selectTopVisibleReaderBlock,
-  selectVisibleReaderBlock,
 } from '../utils/readerVisibility.js'
 
 export function useReaderViewportProgress(options) {
@@ -18,10 +18,7 @@ export function useReaderViewportProgress(options) {
     const viewport = options.contentEl.value?.getBoundingClientRect()
     const paragraphs = [...(options.contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
     if (!viewport || !paragraphs.length) return null
-    return selectVisibleReaderBlock(
-      paragraphs.map(node => ({ node, rect: node.getBoundingClientRect() })),
-      viewport,
-    )
+    return findVisibleReaderBlock(paragraphs, viewport, 8, options.getMode() !== 'flip')
   }
 
   function currentProgressElement() {
@@ -31,11 +28,7 @@ export function useReaderViewportProgress(options) {
       options.contentBody.value?.querySelectorAll('h3[data-pos], [data-reader-block]') || []
     )]
     if (!viewport || !elements.length) return null
-    return selectTopVisibleReaderBlock(
-      elements.map(node => ({ node, rect: node.getBoundingClientRect() })),
-      viewport,
-      options.continuousTopInset ?? 50,
-    )
+    return findTopVisibleReaderBlock(elements, viewport, options.continuousTopInset ?? 50)
   }
 
   function visibleParagraphOffset(paragraph, paragraphPos) {

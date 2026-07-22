@@ -326,6 +326,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     }
     window.__openReaderLongTasks = []
     window.__openReaderLayoutShifts = []
+    window.__openReaderBlockRectReads = []
     window.__openReaderInputTimes = { touchStartAt: null, touchEndAt: null }
     if (globalThis.PerformanceObserver?.supportedEntryTypes?.includes('longtask')) {
       window.__openReaderLongTaskObserver = new PerformanceObserver(list => {
@@ -351,6 +352,13 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
       height: measuredParagraph.getBoundingClientRect().height,
       width: measuredParagraph.getBoundingClientRect().width,
     } : null
+    for (const block of body.querySelectorAll('h3[data-pos], [data-reader-block]')) {
+      const readRect = block.getBoundingClientRect.bind(block)
+      block.getBoundingClientRect = () => {
+        window.__openReaderBlockRectReads.push(performance.now())
+        return readRect()
+      }
+    }
     document.querySelector('.reader-page').addEventListener('touchstart', () => {
       window.__openReaderInputTimes.touchStartAt = performance.now()
     }, { once: true })
@@ -394,7 +402,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     type: 'touchEnd',
     touchPoints: [],
   })
-  await page.waitForTimeout(480)
+  await page.waitForTimeout(700)
   const samples = await page.evaluate(() => window.__openReaderMotionSamples || [])
   const moving = samples.filter(sample => (
     sample.scrollTop > targetTop * 0.03 && sample.scrollTop < targetTop * 0.97
@@ -412,21 +420,6 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     distinctPositions >= Math.min(8, moving.length),
     `${viewport.width}/${mode}: page animation stalled inside its visible motion (${distinctPositions}/${moving.length})`,
   )
-  const firstVisibleFrame = samples.find(sample => sample.afterInput !== null && sample.afterInput >= 0)
-  assert(
-    firstVisibleFrame?.scrollTop > 0,
-    `${viewport.width}/${mode}: first observable frame remained at the origin ${JSON.stringify(firstVisibleFrame)}`,
-  )
-  const earlySamples = samples.filter(sample => (
-    sample.afterInput !== null
-    && sample.afterInput >= 0
-    && sample.afterInput <= 40
-  ))
-  const earlyVisibleOffset = Math.max(0, ...earlySamples.map(sample => sample.scrollTop))
-  assert(
-    earlyVisibleOffset >= targetTop * 0.01,
-    `${viewport.width}/${mode}: first 40ms remained in a perceptual dead zone (${earlyVisibleOffset}/${targetTop})`,
-  )
   const firstCadenceSamples = samples.filter(sample => (
     sample.afterInput !== null
     && sample.afterInput >= 8
@@ -441,6 +434,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   assert(Math.max(...movingGaps) <= 50, `${viewport.width}/${mode}: page motion has a visible frame stall: ${Math.max(...movingGaps)}ms`)
   const runtimeWork = await page.evaluate(() => ({
     inputTimes: window.__openReaderInputTimes || {},
+    blockRectReads: window.__openReaderBlockRectReads || [],
     layoutShifts: window.__openReaderLayoutShifts || [],
     longTasks: window.__openReaderLongTasks || [],
     paragraphGeometry: (() => {
@@ -458,9 +452,17 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   assert(runtimeWork.selectionChecks <= 1, `${viewport.width}/${mode}: ordinary page tap polled text selection ${runtimeWork.selectionChecks} times`)
   const inputLongTasks = runtimeWork.longTasks.filter(task => (
     task.startTime >= Number(runtimeWork.inputTimes.touchStartAt || Infinity) - 1
-    && task.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 300
+    && task.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 700
   ))
   assert(inputLongTasks.every(task => task.duration < 50), `${viewport.width}/${mode}: page tap exposed a long task ${JSON.stringify({ inputLongTasks, ...runtimeWork.inputTimes })}`)
+  const settlementRectReads = runtimeWork.blockRectReads.filter(at => (
+    at >= Number(runtimeWork.inputTimes.touchEndAt || Infinity) + 300
+    && at <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 700
+  ))
+  assert(
+    settlementRectReads.length < 100,
+    `${viewport.width}/${mode}: delayed settlement measured the full long chapter (${settlementRectReads.length})`,
+  )
   const inputLayoutShifts = runtimeWork.layoutShifts.filter(shift => (
     shift.startTime >= Number(runtimeWork.inputTimes.touchStartAt || Infinity) - 1
     && shift.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 360
@@ -504,7 +506,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     type: 'touchEnd',
     touchPoints: [],
   })
-  await page.waitForTimeout(480)
+  await page.waitForTimeout(700)
   const reverseSamples = await page.evaluate(() => window.__openReaderReverseMotionSamples || [])
   const reverseMoving = reverseSamples.filter(sample => (
     sample.scrollTop > targetTop * 0.03 && sample.scrollTop < targetTop * 0.97
@@ -534,10 +536,10 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   await page.evaluate(() => {
     const content = document.querySelector('.reader-content')
     const startedAt = performance.now()
-    window.__openReaderBufferedMotionSamples = []
+    window.__openReaderOverlapMotionSamples = []
     const sample = () => {
       const now = performance.now()
-      window.__openReaderBufferedMotionSamples.push({
+      window.__openReaderOverlapMotionSamples.push({
         at: now - startedAt,
         scrollTop: content?.scrollTop || 0,
       })
@@ -549,21 +551,19 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   await page.waitForTimeout(60)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(720)
-  const bufferedSamples = await page.evaluate(() => window.__openReaderBufferedMotionSamples || [])
-  const firstBoundaryIndex = bufferedSamples.findIndex(sample => sample.scrollTop >= targetTop - 1)
-  assert(firstBoundaryIndex >= 0, `${viewport.width}/${mode}: buffered chain never reached the first page boundary`)
-  const firstBoundaryFrames = bufferedSamples.slice(firstBoundaryIndex, firstBoundaryIndex + 3)
-  assert(
-    firstBoundaryFrames.some(sample => sample.scrollTop >= targetTop * 1.01),
-    `${viewport.width}/${mode}: buffered chain painted a stationary first-page endpoint ${JSON.stringify(firstBoundaryFrames)}`,
-  )
-  for (let index = firstBoundaryIndex + 1; index < bufferedSamples.length; index += 1) {
+  const overlapSamples = await page.evaluate(() => window.__openReaderOverlapMotionSamples || [])
+  const firstBoundaryIndex = overlapSamples.findIndex(sample => sample.scrollTop >= targetTop - 1)
+  assert(firstBoundaryIndex >= 0, `${viewport.width}/${mode}: upstream animation never reached the first page boundary`)
+  for (let index = firstBoundaryIndex + 1; index < overlapSamples.length; index += 1) {
     assert(
-      bufferedSamples[index].scrollTop >= bufferedSamples[index - 1].scrollTop,
-      `${viewport.width}/${mode}: buffered chain moved backwards at sample ${index}`,
+      overlapSamples[index].scrollTop >= overlapSamples[index - 1].scrollTop,
+      `${viewport.width}/${mode}: overlap guard moved backwards at sample ${index}`,
     )
   }
-  close((await readerGeometry(page)).contentScrollTop, targetTop * 2, 3, `${viewport.width}/${mode}: buffered repeated page tap`)
+  close((await readerGeometry(page)).contentScrollTop, targetTop, 3, `${viewport.width}/${mode}: overlapping page tap must be ignored`)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await page.waitForTimeout(380)
+  close((await readerGeometry(page)).contentScrollTop, targetTop * 2, 3, `${viewport.width}/${mode}: post-animation page tap`)
   await context.close()
 }
 

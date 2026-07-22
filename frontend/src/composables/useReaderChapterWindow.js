@@ -203,9 +203,8 @@ export function useReaderChapterWindow(options) {
     }
   }
 
-  function syncCurrentChapter() {
+  function syncCurrentChapter(snapshot = options.visibleProgressSnapshot()) {
     if (!unref(options.isContinuousScrollRead)) return
-    const snapshot = options.visibleProgressSnapshot()
     const nextIndex = Number(snapshot?.chapterIndex)
     if (!Number.isInteger(nextIndex) || nextIndex === unref(options.currentIndex)) return
     const block = options.chapterBlocks.value.find(item => item.index === nextIndex)
