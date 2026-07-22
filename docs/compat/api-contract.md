@@ -15,6 +15,9 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 - Concurrent first writes to the same authenticated `settings/:key` use the existing `(user_id,key)` unique key as
   an atomic upsert. They retain validation, stale-base conflict behavior, response shape and scoped sync events;
   a normal same-user startup race must never expose a UNIQUE error as `500`.
+- `PUT /api/settings/:key` may receive additive `force:true` only for the confirmed “备份用户配置” action.
+  It bypasses stale-base comparison for that authenticated user's legal `reader/shelf/search` row only; ordinary
+  background writes keep CAS. Explicit restore never creates a missing row as a side effect of reading it.
 
 ## Public endpoints
 
@@ -111,12 +114,13 @@ Source-facing routes retain their current response schemas. Only a real remote s
 
 ## P2 backup restore archive contract
 
-Status: implemented on 2026-07-12 after comparison with reader-dev `Index.vue`, `WebDAV.vue`, `WebdavController.kt`, and `UserController.kt`. The upstream confirmation-before-restore workflow and both reading-app and OpenReader JSON export formats remain unchanged. OpenReader keeps its JWT/WebDAV API adaptation and adds server-side bounds before any persisted data is changed.
+Status: **structure/budget preflight implemented; logical content/transaction/permission compatibility reopened on 2026-07-22.** The archive bounds below remain authoritative. The actual upstream filename/field bridge, atomic generation/restore and source-edit capability contract are now defined by
+[`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
 | Method / path | Request | Success / side effects | Errors / safety contract |
 |---|---|---|---|
-| `POST /api/backup/restore-legado` | Authenticated multipart field `file`; filename must end in `.zip` (case-insensitive). | `200` preserves existing result counts for sources, RSS, settings, categories, shelf, progress, bookmarks, and replacement rules. All historical JSON locations (`myBookShelf.json`, `bookshelf.json`, nested `bookProgress/`, and OpenReader files) remain readable. | `400 {error}` for missing/non-ZIP/invalid archive, `413 {error}` when compressed input exceeds `OPENREADER_MAX_BACKUP_RESTORE_BYTES` (128 MiB default). Archive headers and fully bounded reads are checked before the first database update: unsafe traversal, symlink, duplicate normalized paths, excessive member count, member size, or total expansion fail with no partial restore. |
-| `POST /api/backup/restore-webdav` | Authenticated JSON `{path}`; the caller-scoped WebDAV path must reference a `.zip` file. | Same restore and count semantics as uploaded restore; the existing UI confirmation remains the overwrite/restore decision point. | `400` if file/path is missing, directory, non-ZIP, or archive validation fails; `413` for an oversized file. The response never exposes server paths or ZIP parser details. |
+| `POST /api/backup/restore-legado` | Authenticated multipart field `file`; filename must end in `.zip` (case-insensitive). | Existing counts remain; restore must accept `myBookShelf.json`/`bookshelf.json`, nested `bookProgress/`, upstream `bookmark.json`/`replaceRule.json` and old OpenReader plural aliases without double-processing. Additive `sourcesSkipped` reports a denied global-source mutation. | Existing structural `400/413` rules remain. Supported content is fully planned before one SQLite transaction; decode/DB error returns client-safe `400/500`, rolls back all logical writes and emits no sync event. |
+| `POST /api/backup/restore-webdav` | Authenticated JSON `{path}`; the caller-scoped WebDAV path must reference a `.zip` file. | Same planner/transaction/count/permission semantics as uploaded restore; the sole WebDAV manager owns the confirmation. | `400` if file/path is missing, directory, non-ZIP, or archive validation fails; `413` for an oversized file. The response never exposes server paths or ZIP parser details. |
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
 

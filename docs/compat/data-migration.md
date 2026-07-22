@@ -233,9 +233,10 @@ cache path and readability unchanged.
 
 ## P2 backup ZIP restore compatibility and bounds
 
-Status: implemented; release validation pending. Existing backup formats, SQLite rows and mounted roots remain readable.
+Status: archive structure/bounds implemented. Ordinary backup format aliases, stable generation, content transaction and source permission were reopened by the 2026-07-22
+[`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md); release validation is pending.
 
-- Valid OpenReader, reader-dev and Legado backup ZIPs continue to restore the existing sources, RSS sources, user settings, categories, shelf rows, progress, bookmarks and replace rules through their current scoped/upsert compatibility paths. The response count object and sync events remain compatible.
+- Old OpenReader plural aliases, reader-dev singular `bookmark.json`/`replaceRule.json`, `bookshelf.json`, Legado `myBookShelf.json` and nested progress must remain readable. The current implementation does not yet satisfy the singular bookmark/rule claim; the focused contract requires alias planning without duplicate writes.
 - A new bounded archive reader is runtime-only: it reads from the uploaded or scoped WebDAV ZIP, validates archive structure before dispatch, and never writes a new backup format, table, column, cache tree or library file.
 - Structural archive failures (compressed cap, entry/path/count/size/total budget, duplicate canonical name, unreadable member) happen before mutation. Existing user rows and mounted files are left intact.
 - Legacy nested progress filenames remain accepted only beneath a normalized `bookProgress/` path. Unsupported names are ignored after a valid archive plan is accepted; no user-controlled ZIP path is extracted to the host filesystem.
@@ -243,7 +244,7 @@ Status: implemented; release validation pending. Existing backup formats, SQLite
 
 Required evidence: valid reader-dev/Legado/OpenReader fixtures, invalid archive fixtures with no database mutation, multipart and stored-WebDAV size rejection, restore broadcast/count regression, and Docker mounted-volume backup smoke.
 
-Implementation evidence: uploaded and WebDAV recovery read a bounded compressed payload, then `backupRestoreArchive` validates and reads every member before any restore helper receives data. The restore dispatcher consumes that validated byte map rather than reopening ZIP members. `backend/api/backup_restore_contract_test.go` covers unsafe/over-budget structures, no-write structural failure, upload bounds and non-ZIP WebDAV targets; existing `api_test.go` and bookmark backup fixtures preserve reader-dev/Legado/OpenReader restore counts and records. Docker mounted-volume/backup smoke remains the release gate.
+Implementation evidence for the completed part: uploaded and WebDAV recovery read a bounded compressed payload, then `backupRestoreArchive` validates and reads every member before any restore helper receives data. `backend/api/backup_restore_contract_test.go` covers unsafe/over-budget structures, no-write structural failure, upload bounds and non-ZIP WebDAV targets. It does not cover content-error rollback, atomic generation, source-edit permission or the fixed upstream singular artifacts; those are mandatory before the next backup release.
 
 ## P2 replace-rule persistence compatibility
 
