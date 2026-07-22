@@ -1,5 +1,21 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-07-23 P0 移动点击翻页全设置与滚动宿主复审
+
+`0a77632` 的真实设备验收仍未达到固定上游体感，因此此前把独立 `.reader-content` 认定为
+`technical-stack-equivalent` 的结论撤销。固定上游的普通竖向点击始终写
+`document.documentElement/body.scrollTop`，而当前移动 Reader 仍在固定高度页面内滚动第二层
+元素；当前还把动画结束后的整个章节/布局/进度结算再推迟一个 `animateDuration`，不是上游只
+延迟保存进度的语义。
+
+完整设置复审也确认：`pageType/Kindle` 会强制 0ms 和左右滑动；配置方案及 `autoTheme` 会整套
+覆盖翻页方式、时长和排版；字号、行高、段距共同决定每页距离；自定义字体/背景可能影响绘制。
+自动阅读速度、全屏点击和选择文字只改变各自入口，不改变普通点击动画曲线。当前另有三项明确
+偏差：`autoTheme` 默认 false（上游 true）、`pageMode` 不进入方案/同步、Kindle 额外强制
+`clickMethod:none`。下一阶段按
+[`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十一次矩阵，
+先写根滚动/有效设置/结算调度失败测试，再实施，不继续以单独调动画参数试错。
+
 Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 
 ## 2026-07-22 P1 书架刷新阅读进度复审
