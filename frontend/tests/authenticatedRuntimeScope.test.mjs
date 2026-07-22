@@ -248,6 +248,63 @@ test('a delayed progress response cannot create a local progress key in the next
   })
 })
 
+test('a forced network shelf refresh replaces future-dated confirmed client progress', { concurrency: false }, async () => {
+  const { bookshelf, reader } = freshStores(1)
+  const stale = {
+    bookId: 7,
+    chapterIndex: 2,
+    offset: 20,
+    percent: 0.2,
+    chapterTitle: '旧客户端章节',
+    updatedAt: '2099-07-22T00:00:00Z',
+  }
+  const authoritative = {
+    bookId: 7,
+    chapterIndex: 8,
+    offset: 80,
+    percent: 0.8,
+    chapterTitle: '服务器最新章节',
+    updatedAt: '2026-07-22T00:00:00Z',
+  }
+  reader.applyProgress(stale)
+  bookshelf.books = [{ id: 7, title: '进度测试书', progress: stale }]
+
+  await withAPI('get', async (path) => {
+    assert.equal(path, '/books')
+    return { data: [{ id: 7, title: '进度测试书', progress: authoritative }] }
+  }, async () => {
+    await bookshelf.loadBooks({ force: true, all: true })
+  })
+
+  assert.equal(bookshelf.books[0].progress.chapterIndex, 8)
+  assert.equal(reader.progressByBook[7].chapterIndex, 8)
+  assert.equal(
+    JSON.parse(storage.getItem('openreader_chapter_progress@user:1@7')).chapterIndex,
+    8,
+  )
+})
+
+test('a forced network shelf refresh removes confirmed progress absent from the server', { concurrency: false }, async () => {
+  const { bookshelf, reader } = freshStores(1)
+  const stale = {
+    bookId: 7,
+    chapterIndex: 2,
+    offset: 20,
+    percent: 0.2,
+    updatedAt: '2099-07-22T00:00:00Z',
+  }
+  reader.applyProgress(stale)
+  bookshelf.books = [{ id: 7, title: '已清空进度', progress: stale }]
+
+  await withAPI('get', async () => ({ data: [{ id: 7, title: '已清空进度' }] }), async () => {
+    await bookshelf.loadBooks({ force: true, all: true })
+  })
+
+  assert.equal(bookshelf.books[0].progress, undefined)
+  assert.equal(reader.progressByBook[7], undefined)
+  assert.equal(storage.getItem('openreader_chapter_progress@user:1@7'), null)
+})
+
 test('a delayed category response cannot replace the next user shelf state', { concurrency: false }, async () => {
   const request = deferred()
   const { bookshelf } = freshStores(1)

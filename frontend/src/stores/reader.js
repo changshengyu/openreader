@@ -2,7 +2,11 @@ import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
-import { newestProgress as pickNewestProgress, progressUpdatedAt } from '../utils/bookOrder'
+import {
+  newestProgress as pickNewestProgress,
+  progressUpdatedAt,
+  reconcileAuthoritativeShelfProgress,
+} from '../utils/bookOrder'
 import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThemeType'
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
@@ -531,6 +535,36 @@ export const useReaderStore = defineStore('reader', {
       this.replaceProgress(progress)
       return progress
     },
+    reconcileShelfProgress(books) {
+      this.ensureProgressScope()
+      const reconciled = {}
+      const serverBooks = Array.isArray(books) ? books : []
+      serverBooks.forEach(book => {
+        const bookId = Number(book?.id || book?.progress?.bookId || 0)
+        if (!bookId) return
+        const local = newestProgress(this.progressByBook[bookId], readLocalChapterProgress(bookId))
+        const server = book?.progress?.bookId ? book.progress : null
+        const decision = reconcileAuthoritativeShelfProgress(local, server)
+        if (decision.retryPending) {
+          this.progressByBook[bookId] = decision.progress
+          persistLocalChapterProgress(decision.progress)
+          this.syncLocalProgress(
+            decision.progress,
+            decision.progress.baseUpdatedAt || server?.updatedAt || '',
+          ).catch(() => {})
+          reconciled[bookId] = decision.progress
+          return
+        }
+        if (decision.progress) {
+          this.replaceProgress(decision.progress)
+          reconciled[bookId] = this.progressByBook[bookId]
+          return
+        }
+        this.clearProgress(bookId)
+        reconciled[bookId] = null
+      })
+      return reconciled
+    },
     cachedProgress(bookId) {
       if (!bookId) return null
       this.ensureProgressScope()
@@ -542,6 +576,12 @@ export const useReaderStore = defineStore('reader', {
       const next = clearLocalProgressFlags(progress)
       this.progressByBook[progress.bookId] = next
       persistLocalChapterProgress(next)
+    },
+    clearProgress(bookId) {
+      if (!bookId) return
+      this.ensureProgressScope()
+      delete this.progressByBook[bookId]
+      removeLocalChapterProgress(bookId)
     },
     async saveProgress(payload) {
       this.ensureProgressScope()
@@ -762,6 +802,16 @@ function readLocalChapterProgress(bookId) {
     return progress
   } catch {
     return null
+  }
+}
+
+function removeLocalChapterProgress(bookId) {
+  if (typeof localStorage === 'undefined' || !bookId) return
+  try {
+    localStorage.removeItem(localChapterProgressKey(bookId))
+    localStorage.removeItem(legacyLocalChapterProgressKey(bookId))
+  } catch {
+    // localStorage may be unavailable in private or restricted browser modes.
   }
 }
 

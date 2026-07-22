@@ -19,6 +19,16 @@ export function newestProgress(a, b) {
   return a
 }
 
+export function reconcileAuthoritativeShelfProgress(local, server) {
+  if (
+    local?.pendingSync
+    && (!server || progressUpdatedAt(local) > progressUpdatedAt(server))
+  ) {
+    return { progress: local, retryPending: true }
+  }
+  return { progress: server || null, retryPending: false }
+}
+
 export function newestBookProgress(book, progressByBook) {
   return newestProgress(book?.progress || null, progressByBook?.[book?.id] || null)
 }

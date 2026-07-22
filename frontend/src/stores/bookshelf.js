@@ -140,8 +140,8 @@ export const useBookshelfStore = defineStore('bookshelf', {
       })
         .then((result) => {
           if (result.source === 'network') {
-            syncServerProgressFromBooks(result.value)
-            this.books = sortBooks(result.value)
+            const reconciledBooks = reconcileServerProgressFromBooks(result.value)
+            this.books = sortBooks(reconciledBooks)
             this.booksLoadedAt = Date.now()
             this.booksLoadedKey = requestKey
             writeShelfCache(cacheKey, this.books)
@@ -533,10 +533,14 @@ function scopedShelfCacheKey(key, scope = currentUserScope()) {
   return `${key}:${scope}`
 }
 
-function syncServerProgressFromBooks(books) {
+function reconcileServerProgressFromBooks(books) {
   const reader = useReaderStore()
-  asList(books).forEach(book => {
-    if (book?.progress?.bookId) reader.applyServerProgress(book.progress)
+  const serverBooks = asList(books)
+  const progressByBook = reader.reconcileShelfProgress(serverBooks)
+  return serverBooks.map(book => {
+    const progress = progressByBook[Number(book?.id || 0)]
+    if (!progress?.pendingSync) return book
+    return { ...book, progress }
   })
 }
 
