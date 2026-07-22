@@ -1,6 +1,6 @@
 # P2 书籍编辑元数据与并发保存合同
 
-状态：**2026-07-22 已完成固定基准审查、失败测试、实现、全量自动化和三视口真实浏览器验证；本地 Docker 发布待当前应用提交后执行。**
+状态：**2026-07-22 已完成固定基准审查、失败测试、实现、全量自动化、三视口真实浏览器验证、本地双架构 Docker 构建、卷/备份门禁和 GHCR 发布。**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -82,3 +82,13 @@
 - `npm test` 523/523、`go test ./...`、`npm run build` 均通过；真实 Go API 的
   `book-management-real-api-contract.mjs` 在 1440×900、390×844、360×800 模拟并发分组/追更
   后保存元数据，确认精确请求、服务端最终值、BookManage 留存和横向溢出均通过。
+- 应用提交 `9614538b9ce527afd334f39bdbd3acca1f4e1b6f` 已同步 GitHub；本机完成
+  linux/amd64、linux/arm64 构建并发布 `ghcr.io/changshengyu/openreader:9614538` 与 `latest`。
+  两个 tag 的远端 OCI index digest 均为
+  `sha256:2ea7c5db548f6fb27f78ca9a17903f5ffe2a14b35dbd0569d998379d98dc8b9b`；amd64 manifest
+  为 `sha256:d2b39b3e0627fc8925336dcf09471e497658512ea571a22decd76f594a478c09`，arm64 manifest
+  为 `sha256:d31a491ff7aecc7c03f80be33c92f1480587e90fbd16adacd53fa68289489070`。
+- `docker-volume-backup-smoke.sh` 已对本机加载的同提交 arm64 候选镜像通过历史
+  `data/cache/library` 挂载与便携备份恢复。OrbStack 内部仍保留失效的
+  `127.0.0.1:7890` 代理，曾使 daemon 从 GHCR 回拉返回 Bad Gateway；这不影响本地构建、
+  host OCI 上传或远端 digest 核验，但属于后续本机 Docker 网络环境问题。
