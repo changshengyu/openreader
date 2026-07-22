@@ -125,3 +125,7 @@
   和路由不跳转。WebSocket 在 fixture 中保持静默，因此结果不依赖推送补救。
 - 针对性 28 项测试、前端全量 537/537、Vite 生产构建和 Go 全量通过。本批未改 API、Go、
   SQLite schema、持久目录、WebDAV 或备份格式。
+- 实现提交 `a54bd725991bc19535fb8263ab4a17efbc7d7f87` 已推送，并从本机发布
+  `ghcr.io/changshengyu/openreader:a54bd72` 与 `latest`；两标签指向 OCI index
+  `sha256:5caae8c4277459431c9265e159e85702d8b1433e11d4083af8fb413d0aeedb96`。候选镜像的新卷、
+  历史卷、重启、用户隔离和便携备份恢复全链通过；最终仍等待用户真实多设备书架复验。
