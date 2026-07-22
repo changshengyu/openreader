@@ -72,11 +72,11 @@ export const usePreferencesStore = defineStore('preferences', {
       if (updatedAt) this.syncBaseUpdatedAt[key] = updatedAt
       this.syncError[key] = ''
     },
-    async loadPreferences() {
+    async loadPreferences(options = {}) {
       this.ensurePreferenceScope()
-      await Promise.all(PREFERENCE_KEYS.map(key => this.loadPreference(key)))
+      return Promise.all(PREFERENCE_KEYS.map(key => this.loadPreference(key, options)))
     },
-    async loadPreference(key) {
+    async loadPreference(key, options = {}) {
       this.ensurePreferenceScope()
       if (!PREFERENCE_KEYS.includes(key) || !hasAuthToken()) return null
       const operation = preferenceOperations.begin(key)
@@ -87,6 +87,10 @@ export const usePreferencesStore = defineStore('preferences', {
         if (data?.value && typeof data.value === 'object') {
           this.applyPreference(key, data.value, data.updatedAt || '')
           return data.value
+        }
+        if (options.createIfMissing === false) {
+          this.syncError[key] = '没有备份文件'
+          return null
         }
         return await this.savePreference(key)
       } catch (err) {
@@ -105,7 +109,7 @@ export const usePreferencesStore = defineStore('preferences', {
         this.savePreference(key).catch(() => {})
       }, 700))
     },
-    async savePreference(key) {
+    async savePreference(key, options = {}) {
       this.ensurePreferenceScope()
       if (!PREFERENCE_KEYS.includes(key) || !hasAuthToken()) return null
       if (syncTimers.has(key)) {
@@ -119,6 +123,7 @@ export const usePreferencesStore = defineStore('preferences', {
         const { data, headers } = await api.put(`/settings/${key}`, {
           value: preferencePayload(this, key),
           baseUpdatedAt: this.syncBaseUpdatedAt[key] || '',
+          ...(options.force === true ? { force: true } : {}),
         })
         if (!preferenceOperations.canCommit(operation)) return null
         if (data?.value && headers?.['x-openreader-setting-conflict']) {

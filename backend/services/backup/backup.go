@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,6 +16,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/bookgroups"
+	"openreader/backend/services/sourcecompat"
 )
 
 // Service handles automated backups.
@@ -23,6 +25,7 @@ type Service struct {
 	webdavDir string
 	cfg       config.Config
 	stopCh    chan struct{}
+	mu        sync.Mutex
 }
 
 // New creates a backup service.
@@ -100,48 +103,109 @@ func (s *Service) runScheduled() {
 }
 
 func (s *Service) run(userID *uint, backupDir string) (string, error) {
-	backupPath := filepath.Join(backupDir, fmt.Sprintf("backup_%s.zip", time.Now().Format("20060102_150405")))
-	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return "", err
 	}
-
-	zipFile, err := os.Create(backupPath)
+	backupPath, err := nextBackupPath(backupDir, "backup_"+time.Now().Format("20060102_150405"))
 	if err != nil {
 		return "", err
 	}
-	defer zipFile.Close()
+	temporary, err := os.CreateTemp(backupDir, ".backup-*.tmp")
+	if err != nil {
+		return "", err
+	}
+	temporaryPath := temporary.Name()
+	completed := false
+	defer func() {
+		_ = temporary.Close()
+		if !completed {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err := temporary.Chmod(0o600); err != nil {
+		return "", err
+	}
 
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	s.addSources(zipWriter)
-	s.addRSSSources(zipWriter, userID)
-	s.addUserSettings(zipWriter, userID)
-	s.addCategories(zipWriter, userID)
-	s.addBookGroups(zipWriter, userID)
-	s.addBookshelf(zipWriter, userID)
-	s.addChapterVariables(zipWriter, userID)
-	s.addBookmarks(zipWriter, userID)
-	s.addProgress(zipWriter, userID)
-	s.addReplaceRules(zipWriter, userID)
+	zipWriter := zip.NewWriter(temporary)
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.writeLogicalEntries(tx, zipWriter, userID); err != nil {
+			_ = zipWriter.Close()
+			return err
+		}
+		return zipWriter.Close()
+	}); err != nil {
+		return "", err
+	}
+	if err := temporary.Sync(); err != nil {
+		return "", err
+	}
+	if err := temporary.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(temporaryPath, backupPath); err != nil {
+		return "", err
+	}
+	completed = true
 
 	log.Printf("backup created: %s", backupPath)
 	return backupPath, nil
 }
 
-func (s *Service) addSources(zipWriter *zip.Writer) {
-	var sources []models.BookSource
-	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
-		return
+func nextBackupPath(backupDir, stem string) (string, error) {
+	for suffix := 0; suffix < 10000; suffix++ {
+		name := stem + ".zip"
+		if suffix > 0 {
+			name = fmt.Sprintf("%s_%02d.zip", stem, suffix)
+		}
+		path := filepath.Join(backupDir, name)
+		_, err := os.Lstat(path)
+		switch {
+		case os.IsNotExist(err):
+			return path, nil
+		case err != nil:
+			return "", err
+		}
 	}
-	data, err := json.MarshalIndent(sources, "", "  ")
-	if err != nil {
-		return
-	}
-	writeZipEntry(zipWriter, "bookSource.json", data)
+	return "", fmt.Errorf("backup filename space exhausted")
 }
 
-func (s *Service) addRSSSources(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) writeLogicalEntries(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
+	steps := []func() error{
+		func() error { return s.addSources(db, zipWriter) },
+		func() error { return s.addRSSSources(db, zipWriter, userID) },
+		func() error { return s.addUserSettings(db, zipWriter, userID) },
+		func() error { return s.addCategories(db, zipWriter, userID) },
+		func() error { return s.addBookGroups(db, zipWriter, userID) },
+		func() error { return s.addBookshelf(db, zipWriter, userID) },
+		func() error { return s.addChapterVariables(db, zipWriter, userID) },
+		func() error { return s.addBookmarks(db, zipWriter, userID) },
+		func() error { return s.addProgress(db, zipWriter, userID) },
+		func() error { return s.addReplaceRules(db, zipWriter, userID) },
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) addSources(db *gorm.DB, zipWriter *zip.Writer) error {
+	var sources []models.BookSource
+	if err := db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(sourcecompat.Export(sources), "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeZipEntry(zipWriter, "bookSource.json", data)
+}
+
+func (s *Service) addRSSSources(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	type rssSourceExport struct {
 		models.RSSSource
 		SourceName    string `json:"sourceName,omitempty"`
@@ -151,12 +215,12 @@ func (s *Service) addRSSSources(zipWriter *zip.Writer, userID *uint) {
 		SourceComment string `json:"sourceComment,omitempty"`
 	}
 	var sources []models.RSSSource
-	query := s.db.Order("user_id, custom_order, updated_at")
+	query := db.Order("user_id, custom_order, updated_at")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&sources).Error; err != nil {
-		return
+		return err
 	}
 	rows := make([]rssSourceExport, 0, len(sources))
 	for _, source := range sources {
@@ -171,28 +235,28 @@ func (s *Service) addRSSSources(zipWriter *zip.Writer, userID *uint) {
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "rssSources.json", data)
+	return writeZipEntry(zipWriter, "rssSources.json", data)
 }
 
-func (s *Service) addUserSettings(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addUserSettings(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	var settings []models.UserSetting
-	query := s.db.Order("user_id, key")
+	query := db.Order("user_id, key")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&settings).Error; err != nil {
-		return
+		return err
 	}
 	for i := range settings {
 		settings[i].Value = sanitizeBackupUserSettingValue(settings[i].Key, settings[i].Value)
 	}
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "userSettings.json", data)
+	return writeZipEntry(zipWriter, "userSettings.json", data)
 }
 
 func sanitizeBackupUserSettingValue(key string, value string) string {
@@ -212,59 +276,82 @@ func sanitizeBackupUserSettingValue(key string, value string) string {
 	return string(encoded)
 }
 
-func (s *Service) addCategories(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addCategories(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	var categories []models.Category
-	query := s.db.Order("user_id, sort_order, name")
+	query := db.Order("user_id, sort_order, name")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&categories).Error; err != nil {
-		return
+		return err
 	}
 	data, err := json.MarshalIndent(categories, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "categories.json", data)
+	return writeZipEntry(zipWriter, "categories.json", data)
 }
 
-func (s *Service) addBookGroups(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addBookGroups(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	if userID == nil {
-		return
+		return nil
 	}
-	rows, _, err := bookgroups.New(s.db).Backup(*userID)
+	rows, _, err := bookgroups.New(db).Backup(*userID)
 	if err != nil {
-		return
+		return err
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "bookGroup.json", data)
+	return writeZipEntry(zipWriter, "bookGroup.json", data)
 }
 
-func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addBookshelf(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	type bookExport struct {
 		models.Book
-		CategoryName  string   `json:"categoryName,omitempty"`
-		CategoryNames []string `json:"categoryNames,omitempty"`
-		Group         int      `json:"group,omitempty"`
-		SourceName    string   `json:"sourceName,omitempty"`
+		CategoryName       string   `json:"categoryName,omitempty"`
+		CategoryNames      []string `json:"categoryNames,omitempty"`
+		Group              int      `json:"group,omitempty"`
+		SourceName         string   `json:"sourceName,omitempty"`
+		Name               string   `json:"name"`
+		BookURL            string   `json:"bookUrl"`
+		Origin             string   `json:"origin"`
+		OriginName         string   `json:"originName"`
+		LatestChapterTitle string   `json:"latestChapterTitle,omitempty"`
+		TotalChapterNum    int      `json:"totalChapterNum"`
+		DurChapterIndex    int      `json:"durChapterIndex"`
+		DurChapterPos      int      `json:"durChapterPos"`
+		DurChapterTitle    string   `json:"durChapterTitle,omitempty"`
+		DurChapterTime     int64    `json:"durChapterTime"`
 	}
 	maskByCategory := make(map[uint]int)
 	if userID != nil {
-		_, masks, err := bookgroups.New(s.db).Backup(*userID)
-		if err == nil {
-			maskByCategory = masks
+		_, masks, err := bookgroups.New(db).Backup(*userID)
+		if err != nil {
+			return err
 		}
+		maskByCategory = masks
 	}
 	var books []models.Book
-	query := s.db.Order("id asc")
+	query := db.Order("id asc")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&books).Error; err != nil {
-		return
+		return err
+	}
+	var progresses []models.ReadingProgress
+	progressQuery := db.Order("user_id, book_id")
+	if userID != nil {
+		progressQuery = progressQuery.Where("user_id = ?", *userID)
+	}
+	if err := progressQuery.Find(&progresses).Error; err != nil {
+		return err
+	}
+	progressByBook := make(map[uint]models.ReadingProgress, len(progresses))
+	for _, progress := range progresses {
+		progressByBook[progress.BookID] = progress
 	}
 	rows := make([]bookExport, 0, len(books))
 	for _, book := range books {
@@ -277,19 +364,39 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 		} else {
 			book.Variable = ""
 		}
-		row := bookExport{Book: book}
+		row := bookExport{
+			Book:               book,
+			Name:               book.Title,
+			BookURL:            book.URL,
+			Origin:             "loc_book",
+			OriginName:         book.OriginalFile,
+			LatestChapterTitle: book.LastChapter,
+			TotalChapterNum:    book.ChapterCount,
+		}
+		if progress, ok := progressByBook[book.ID]; ok {
+			row.DurChapterIndex = progress.ChapterIndex
+			row.DurChapterPos = progress.Offset
+			row.DurChapterTitle = progress.ChapterTitle
+			row.DurChapterTime = progress.UpdatedAt.UnixMilli()
+		}
 		if book.SourceID > 0 {
 			var source models.BookSource
-			if err := s.db.Select("name").First(&source, book.SourceID).Error; err == nil {
+			if err := db.Select("name", "base_url").First(&source, book.SourceID).Error; err == nil {
 				row.SourceName = source.Name
+				row.Origin = source.BaseURL
+				row.OriginName = source.Name
+			} else {
+				return err
 			}
 		}
 		var categoryRows []models.Category
-		_ = s.db.
+		if err := db.
 			Joins("JOIN book_categories ON book_categories.category_id = categories.id").
 			Where("book_categories.user_id = ? AND book_categories.book_id = ?", book.UserID, book.ID).
 			Order("book_categories.id asc").
-			Find(&categoryRows).Error
+			Find(&categoryRows).Error; err != nil {
+			return err
+		}
 		for _, category := range categoryRows {
 			row.CategoryNames = append(row.CategoryNames, category.Name)
 			row.Group |= maskByCategory[category.ID]
@@ -298,22 +405,24 @@ func (s *Service) addBookshelf(zipWriter *zip.Writer, userID *uint) {
 			row.CategoryName = row.CategoryNames[0]
 		} else if book.CategoryID != nil {
 			var category models.Category
-			if err := s.db.Select("name").First(&category, *book.CategoryID).Error; err == nil {
+			if err := db.Select("name").First(&category, *book.CategoryID).Error; err == nil {
 				row.CategoryName = category.Name
 				row.CategoryNames = []string{category.Name}
 				row.Group |= maskByCategory[category.ID]
+			} else {
+				return err
 			}
 		}
 		rows = append(rows, row)
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "bookshelf.json", data)
+	return writeZipEntry(zipWriter, "bookshelf.json", data)
 }
 
-func (s *Service) addChapterVariables(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addChapterVariables(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	type chapterVariableExport struct {
 		SourceName   string `json:"sourceName"`
 		BookURL      string `json:"bookUrl"`
@@ -334,7 +443,7 @@ func (s *Service) addChapterVariables(zipWriter *zip.Writer, userID *uint) {
 	}
 
 	var rows []chapterVariableRow
-	query := s.db.Table("chapters").
+	query := db.Table("chapters").
 		Select("book_sources.name AS source_name, books.url AS book_url, books.title AS book_title, chapters.url AS chapter_url, chapters.title AS chapter_title, chapters.`index` AS chapter_index, chapters.variable").
 		Joins("JOIN books ON books.id = chapters.book_id").
 		Joins("JOIN book_sources ON book_sources.id = books.source_id").
@@ -344,7 +453,7 @@ func (s *Service) addChapterVariables(zipWriter *zip.Writer, userID *uint) {
 		query = query.Where("books.user_id = ?", *userID)
 	}
 	if err := query.Scan(&rows).Error; err != nil {
-		return
+		return err
 	}
 
 	exported := make([]chapterVariableExport, 0, len(rows))
@@ -364,16 +473,16 @@ func (s *Service) addChapterVariables(zipWriter *zip.Writer, userID *uint) {
 		})
 	}
 	if len(exported) == 0 {
-		return
+		return nil
 	}
 	data, err := json.MarshalIndent(exported, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "chapterVariables.json", data)
+	return writeZipEntry(zipWriter, "chapterVariables.json", data)
 }
 
-func (s *Service) addBookmarks(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addBookmarks(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	type bookmarkExport struct {
 		models.Bookmark
 		BookTitle string `json:"bookTitle"`
@@ -383,84 +492,149 @@ func (s *Service) addBookmarks(zipWriter *zip.Writer, userID *uint) {
 	// Reader-dev exposes its persisted bookmark array in insertion order.  Keep
 	// that ordering in exports too: an edit changes updated_at but must not move
 	// a bookmark in the manager or in the next restored backup.
-	query := s.db.Order("user_id, id")
+	query := db.Order("user_id, id")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&bookmarks).Error; err != nil {
-		return
+		return err
 	}
 	rows := make([]bookmarkExport, 0, len(bookmarks))
+	upstreamRows := make([]upstreamBookmarkExport, 0, len(bookmarks))
 	for _, bookmark := range bookmarks {
 		row := bookmarkExport{Bookmark: bookmark}
 		var book models.Book
-		if err := s.db.Select("title", "url").First(&book, bookmark.BookID).Error; err == nil {
-			row.BookTitle = book.Title
-			row.BookURL = book.URL
+		if err := db.Select("title", "author", "url").First(&book, bookmark.BookID).Error; err != nil {
+			return err
 		}
+		row.BookTitle = book.Title
+		row.BookURL = book.URL
 		rows = append(rows, row)
+		upstreamRows = append(upstreamRows, upstreamBookmarkExport{
+			Time:         bookmark.CreatedAt.UnixMilli(),
+			BookName:     book.Title,
+			BookAuthor:   book.Author,
+			ChapterIndex: bookmark.ChapterIndex,
+			ChapterPos:   bookmark.Offset,
+			ChapterName:  bookmark.Title,
+			BookText:     bookmark.Excerpt,
+			Content:      bookmark.Note,
+		})
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "bookmarks.json", data)
+	upstreamData, err := json.MarshalIndent(upstreamRows, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writeZipEntry(zipWriter, "bookmark.json", upstreamData); err != nil {
+		return err
+	}
+	return writeZipEntry(zipWriter, "bookmarks.json", data)
 }
 
-func (s *Service) addProgress(zipWriter *zip.Writer, userID *uint) {
+type upstreamBookmarkExport struct {
+	Time         int64  `json:"time"`
+	BookName     string `json:"bookName"`
+	BookAuthor   string `json:"bookAuthor"`
+	ChapterIndex int    `json:"chapterIndex"`
+	ChapterPos   int    `json:"chapterPos"`
+	ChapterName  string `json:"chapterName"`
+	BookText     string `json:"bookText"`
+	Content      string `json:"content"`
+}
+
+func (s *Service) addProgress(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	type progressExport struct {
 		models.ReadingProgress
 		BookTitle string `json:"bookTitle"`
 		BookURL   string `json:"bookUrl"`
 	}
 	var progresses []models.ReadingProgress
-	query := s.db.Order("user_id, book_id")
+	query := db.Order("user_id, book_id")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&progresses).Error; err != nil {
-		return
+		return err
 	}
 	rows := make([]progressExport, 0, len(progresses))
 	for _, progress := range progresses {
 		row := progressExport{ReadingProgress: progress}
 		var book models.Book
-		if err := s.db.Select("title", "url").First(&book, progress.BookID).Error; err == nil {
-			row.BookTitle = book.Title
-			row.BookURL = book.URL
+		if err := db.Select("title", "url").First(&book, progress.BookID).Error; err != nil {
+			return err
 		}
+		row.BookTitle = book.Title
+		row.BookURL = book.URL
 		rows = append(rows, row)
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "readingProgress.json", data)
+	return writeZipEntry(zipWriter, "readingProgress.json", data)
 }
 
-func (s *Service) addReplaceRules(zipWriter *zip.Writer, userID *uint) {
+func (s *Service) addReplaceRules(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	var rules []models.ReplaceRule
 	// Replacement order is user-visible: a backup must preserve the same
 	// insertion pipeline that the reader applies, not reorder rows by a recent
 	// edit timestamp.
-	query := s.db.Order("user_id, id")
+	query := db.Order("user_id, sort_order, id")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 	if err := query.Find(&rules).Error; err != nil {
-		return
+		return err
 	}
 	data, err := json.MarshalIndent(rules, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	writeZipEntry(zipWriter, "replaceRules.json", data)
+	upstreamRows := make([]upstreamReplaceRuleExport, 0, len(rules))
+	for _, rule := range rules {
+		upstreamRows = append(upstreamRows, upstreamReplaceRuleExport{
+			ID:          int64(rule.ID),
+			Name:        rule.Name,
+			Group:       rule.Group,
+			Pattern:     rule.Pattern,
+			Replacement: rule.Replacement,
+			Scope:       rule.Scope,
+			IsEnabled:   rule.Enabled,
+			IsRegex:     rule.IsRegex != nil && *rule.IsRegex,
+			Order:       rule.Order,
+		})
+	}
+	upstreamData, err := json.MarshalIndent(upstreamRows, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writeZipEntry(zipWriter, "replaceRule.json", upstreamData); err != nil {
+		return err
+	}
+	return writeZipEntry(zipWriter, "replaceRules.json", data)
 }
 
-func writeZipEntry(zipWriter *zip.Writer, name string, data []byte) {
+type upstreamReplaceRuleExport struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Group       string `json:"group,omitempty"`
+	Pattern     string `json:"pattern"`
+	Replacement string `json:"replacement"`
+	Scope       string `json:"scope,omitempty"`
+	IsEnabled   bool   `json:"isEnabled"`
+	IsRegex     bool   `json:"isRegex"`
+	Order       int    `json:"order"`
+}
+
+func writeZipEntry(zipWriter *zip.Writer, name string, data []byte) error {
 	writer, err := zipWriter.Create(name)
 	if err != nil {
-		return
+		return err
 	}
-	_, _ = writer.Write(data)
+	_, err = writer.Write(data)
+	return err
 }

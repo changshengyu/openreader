@@ -22,7 +22,7 @@ function workspaceOverlayIntentFromLegacy(to, kind) {
     ? panel
     : 'account'
   const overlayByPanel = {
-    backup: 'backup',
+    backup: 'webdav',
     webdav: 'webdav',
     replace: 'replace-rules',
     rss: 'rss',

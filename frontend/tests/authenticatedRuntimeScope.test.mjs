@@ -176,6 +176,39 @@ test('a delayed preference load cannot mix user A into user B persisted preferen
   })
 })
 
+test('explicit reader configuration sync reports a missing backup without creating one', { concurrency: false }, async () => {
+  const { reader } = freshStores(1)
+  let writes = 0
+  await withAPI('get', async () => ({ data: { key: 'reader', value: null, updatedAt: '' } }), async () => {
+    await withAPI('put', async () => {
+      writes += 1
+      return { data: {} }
+    }, async () => {
+      const restored = await reader.loadReaderSettings({ createIfMissing: false })
+      assert.equal(restored, null)
+      assert.equal(reader.settingsSyncError, '没有备份文件')
+      assert.equal(writes, 0)
+    })
+  })
+})
+
+test('explicit preference sync reports missing snapshots without writing them back', { concurrency: false }, async () => {
+  const { preferences } = freshStores(1)
+  let writes = 0
+  await withAPI('get', async path => ({ data: { key: path.split('/').at(-1), value: null, updatedAt: '' } }), async () => {
+    await withAPI('put', async () => {
+      writes += 1
+      return { data: {} }
+    }, async () => {
+      const restored = await preferences.loadPreferences({ createIfMissing: false })
+      assert.deepEqual(restored, [null, null])
+      assert.equal(preferences.syncError.shelf, '没有备份文件')
+      assert.equal(preferences.syncError.search, '没有备份文件')
+      assert.equal(writes, 0)
+    })
+  })
+})
+
 test('an older preference save cannot settle a newer same-key operation in another scope', { concurrency: false }, async () => {
   const requestA = deferred()
   const requestB = deferred()

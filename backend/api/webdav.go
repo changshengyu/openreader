@@ -486,6 +486,11 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limits.maxCompressed+backupMultipartEnvelopeBytes)
 	userID, _ := middleware.UserID(c)
+	user, ok := storeUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		return
+	}
 	username, ok := s.currentUserName(c, userID)
 	if !ok {
 		return
@@ -514,7 +519,7 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 		return
 	}
 	defer os.Remove(stagedPath)
-	result, err := s.restoreBackupFile(stagedPath, userID, username)
+	result, err := s.restoreBackupFileWithPermissions(stagedPath, userID, username, user.CanEditSources)
 	if err != nil {
 		writeBackupRestoreError(c, err)
 		return
@@ -531,6 +536,11 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		return
 	}
 	userID, _ := middleware.UserID(c)
+	user, ok := storeUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		return
+	}
 	username, ok := s.currentUserName(c, userID)
 	if !ok {
 		return
@@ -558,7 +568,7 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return
 	}
-	result, err := s.restoreBackupFile(filePath, userID, username)
+	result, err := s.restoreBackupFileWithPermissions(filePath, userID, username, user.CanEditSources)
 	if err != nil {
 		writeBackupRestoreError(c, err)
 		return
@@ -576,6 +586,8 @@ func writeBackupRestoreError(c *gin.Context, err error) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 	case errors.Is(err, errBackupArchiveLimit):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "backup archive exceeds safety limits"})
+	case errors.Is(err, errBackupRestorePersistence):
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "backup restore failed"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid backup package"})
 	}
@@ -816,170 +828,7 @@ func (s *Server) restoreLegadoBackupDataWithoutBroadcast(data []byte, userID uin
 }
 
 func (s *Server) restoreLegadoBackupDataWithBroadcast(data []byte, userID uint, broadcast bool) (gin.H, error) {
-	archive, err := newBackupRestoreArchive(data, s.backupRestoreLimits())
-	if err != nil {
-		return nil, err
-	}
-
-	var sourcesCount, rssSourcesCount, booksCount, bookGroupsCount, chapterVariablesCount, progressCount, settingsCount, categoriesCount, bookmarksCount, replaceRulesCount int
-	groupCategoryMap := make(map[int]uint)
-
-	// Validate all additive variable artifacts before any source/settings/shelf
-	// mutation. A malformed value must not leave a partly restored account.
-	for _, entry := range archive.entries {
-		entryData, err := archive.dataFor(entry.file)
-		if err != nil {
-			return nil, err
-		}
-		switch {
-		case strings.HasSuffix(entry.name, "myBookShelf.json"), strings.HasSuffix(entry.name, "bookshelf.json"):
-			if err := validateRestoredBookshelfVariables(entryData); err != nil {
-				return nil, errInvalidBackupArchive
-			}
-		case strings.HasSuffix(entry.name, "chapterVariables.json"):
-			if err := validateRestoredChapterVariables(entryData); err != nil {
-				return nil, errInvalidBackupArchive
-			}
-		case isBookGroupBackupEntry(entry.name):
-			var rows []bookgroups.RestoreRow
-			if err := json.Unmarshal(entryData, &rows); err != nil {
-				return nil, errInvalidBackupArchive
-			}
-		}
-	}
-
-	for _, entry := range archive.entries {
-		zipFile := entry.file
-		entryData, err := archive.dataFor(zipFile)
-		if err != nil {
-			return nil, err
-		}
-		switch {
-		case strings.HasSuffix(entry.name, "bookSource.json"):
-			n, _ := s.restoreSourcesFromData(entryData)
-			sourcesCount += n
-		case strings.HasSuffix(entry.name, "rssSources.json"):
-			n, _ := s.restoreRSSSourcesFromData(entryData, userID)
-			rssSourcesCount += n
-		case strings.HasSuffix(entry.name, "userSettings.json"):
-			n, _ := s.restoreUserSettingsFromData(entryData, userID)
-			settingsCount += n
-		case strings.HasSuffix(entry.name, "categories.json"):
-			n, _ := s.restoreCategoriesFromData(entryData, userID)
-			categoriesCount += n
-		}
-	}
-
-	// Restore the ordinary Category rows first, then let bookGroup.json own the
-	// unified name/show/order state and build the portable mask mapping used by
-	// the bookshelf phase below.
-	for _, entry := range archive.entries {
-		if !isBookGroupBackupEntry(entry.name) {
-			continue
-		}
-		entryData, err := archive.dataFor(entry.file)
-		if err != nil {
-			return nil, err
-		}
-		mapping, restored, restoreErr := s.restoreBookGroupsFromData(entryData, userID)
-		if restoreErr != nil {
-			return nil, restoreErr
-		}
-		for groupID, categoryID := range mapping {
-			groupCategoryMap[groupID] = categoryID
-		}
-		bookGroupsCount += restored
-	}
-
-	for _, entry := range archive.entries {
-		zipFile := entry.file
-		entryData, err := archive.dataFor(zipFile)
-		if err != nil {
-			return nil, err
-		}
-		switch {
-		case strings.HasSuffix(entry.name, "myBookShelf.json"),
-			strings.HasSuffix(entry.name, "bookshelf.json"):
-			restoredBooks, restoredProgress, _ := s.restoreBookshelfFromDataWithGroupMap(entryData, userID, groupCategoryMap)
-			booksCount += restoredBooks
-			progressCount += restoredProgress
-		}
-	}
-
-	// Chapter variables belong to book/chapter records. Restore them only after
-	// the shelf has materialized those rows, so a valid backup cannot silently
-	// lose parser state merely because archive entries are sorted differently.
-	for _, entry := range archive.entries {
-		if !strings.HasSuffix(entry.name, "chapterVariables.json") {
-			continue
-		}
-		entryData, err := archive.dataFor(entry.file)
-		if err != nil {
-			return nil, err
-		}
-		n, restoreErr := s.restoreChapterVariablesFromData(entryData, userID)
-		if restoreErr != nil {
-			return nil, restoreErr
-		}
-		chapterVariablesCount += n
-	}
-
-	for _, entry := range archive.entries {
-		zipFile := entry.file
-		entryData, err := archive.dataFor(zipFile)
-		if err != nil {
-			return nil, err
-		}
-		switch {
-		case strings.HasSuffix(entry.name, "bookmarks.json"):
-			n, _ := s.restoreBookmarksFromData(entryData, userID)
-			bookmarksCount += n
-		case strings.HasSuffix(entry.name, "replaceRules.json"):
-			n, _ := s.restoreReplaceRulesFromData(entryData, userID)
-			replaceRulesCount += n
-		case strings.HasSuffix(entry.name, "readingProgress.json"):
-			n, _ := s.restoreProgressFromData(entryData, userID)
-			progressCount += n
-		case strings.Contains(entry.name, "bookProgress/"):
-			n, _ := s.restoreProgressFromData(entryData, userID)
-			progressCount += n
-		}
-	}
-
-	result := gin.H{
-		"sources":          sourcesCount,
-		"rssSources":       rssSourcesCount,
-		"books":            booksCount,
-		"bookGroups":       bookGroupsCount,
-		"chapterVariables": chapterVariablesCount,
-		"progress":         progressCount,
-		"settings":         settingsCount,
-		"categories":       categoriesCount,
-		"bookmarks":        bookmarksCount,
-		"replaceRules":     replaceRulesCount,
-	}
-	if broadcast {
-		s.broadcastRestoreUpdates(userID, result)
-	}
-	return result, nil
-}
-
-func (s *Server) restoreSourcesFromZip(file *zip.File) (int, error) {
-	data, err := readBackupZipFile(file)
-	if err != nil {
-		return 0, err
-	}
-	return s.restoreSourcesFromData(data)
-}
-
-func (s *Server) restoreSourcesFromData(data []byte) (int, error) {
-	sources, err := decodeBookSources(data)
-	if err != nil {
-		return 0, err
-	}
-
-	result := s.importBookSources(sources)
-	return (result["imported"].(int) + result["updated"].(int)), nil
+	return s.restoreLegadoBackupDataWithPermissions(data, userID, true, broadcast)
 }
 
 func (s *Server) restoreRSSSourcesFromZip(file *zip.File, userID uint) (int, error) {
@@ -991,13 +840,9 @@ func (s *Server) restoreRSSSourcesFromZip(file *zip.File, userID uint) (int, err
 }
 
 func (s *Server) restoreRSSSourcesFromData(data []byte, userID uint) (int, error) {
-	var sources []rssSourceRequest
-	if err := json.Unmarshal(data, &sources); err != nil {
-		var source rssSourceRequest
-		if err := json.Unmarshal(data, &source); err != nil {
-			return 0, err
-		}
-		sources = []rssSourceRequest{source}
+	sources, err := decodeRestoredRSSSources(data)
+	if err != nil {
+		return 0, err
 	}
 
 	count := 0
@@ -1015,6 +860,10 @@ func (s *Server) restoreRSSSourcesFromData(data []byte, userID uint) (int, error
 		if sourceReq.Enabled != nil {
 			enabled = *sourceReq.Enabled
 		}
+		customOrder, err := sourceReq.orderOrDefaultStrict(s, userID)
+		if err != nil {
+			return count, err
+		}
 		source := models.RSSSource{
 			UserID:          userID,
 			Title:           title,
@@ -1022,7 +871,7 @@ func (s *Server) restoreRSSSourcesFromData(data []byte, userID uint) (int, error
 			Icon:            strings.TrimSpace(sourceReq.Icon),
 			Group:           strings.TrimSpace(sourceReq.Group),
 			Comment:         strings.TrimSpace(sourceReq.Comment),
-			CustomOrder:     sourceReq.orderOrDefault(s, userID),
+			CustomOrder:     customOrder,
 			ConcurrentRate:  strings.TrimSpace(sourceReq.ConcurrentRate),
 			Header:          sourceReq.headerText(),
 			LoginURL:        strings.TrimSpace(sourceReq.LoginURL),
@@ -1045,11 +894,24 @@ func (s *Server) restoreRSSSourcesFromData(data []byte, userID uint) (int, error
 			UpdatedAt:       time.Now(),
 		}
 		query := s.db.Where("user_id = ? AND url = ?", userID, url)
-		if err := query.Assign(source).FirstOrCreate(&source).Error; err == nil {
-			count++
+		if err := query.Assign(source).FirstOrCreate(&source).Error; err != nil {
+			return count, err
 		}
+		count++
 	}
 	return count, nil
+}
+
+func decodeRestoredRSSSources(data []byte) ([]rssSourceRequest, error) {
+	var sources []rssSourceRequest
+	if err := json.Unmarshal(data, &sources); err != nil {
+		var source rssSourceRequest
+		if err := json.Unmarshal(data, &source); err != nil {
+			return nil, err
+		}
+		sources = []rssSourceRequest{source}
+	}
+	return sources, nil
 }
 
 func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
@@ -1128,9 +990,10 @@ func (s *Server) restoreUserSettingsFromData(data []byte, userID uint) (int, err
 			Value:     string(sanitizeUserSettingValue(key, json.RawMessage(setting.Value))),
 			UpdatedAt: time.Now(),
 		}
-		if err := s.db.Where("user_id = ? AND key = ?", userID, key).Assign(next).FirstOrCreate(&next).Error; err == nil {
-			count++
+		if err := s.db.Where("user_id = ? AND key = ?", userID, key).Assign(next).FirstOrCreate(&next).Error; err != nil {
+			return count, err
 		}
+		count++
 	}
 	return count, nil
 }
@@ -1163,9 +1026,10 @@ func (s *Server) restoreCategoriesFromData(data []byte, userID uint) (int, error
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		if err := s.db.Where("user_id = ? AND name = ?", userID, name).Assign(next).FirstOrCreate(&next).Error; err == nil {
-			count++
+		if err := s.db.Where("user_id = ? AND name = ?", userID, name).Assign(next).FirstOrCreate(&next).Error; err != nil {
+			return count, err
 		}
+		count++
 	}
 	return count, nil
 }
@@ -1179,31 +1043,78 @@ func (s *Server) restoreBookshelfFromZip(file *zip.File, userID uint) (int, int,
 }
 
 type restoredBookshelfRow struct {
-	Title           string   `json:"title"`
-	Name            string   `json:"name"`
-	Author          string   `json:"author"`
-	URL             string   `json:"url"`
-	BookURL         string   `json:"bookUrl"`
-	SourceID        uint     `json:"sourceId"`
-	SourceName      string   `json:"sourceName"`
-	Type            int      `json:"type"`
-	CoverURL        string   `json:"coverUrl"`
-	CustomCoverURL  string   `json:"customCoverUrl"`
-	Intro           string   `json:"intro"`
-	Kind            string   `json:"kind"`
-	WordCount       string   `json:"wordCount"`
-	Variable        string   `json:"variable"`
-	LastChapter     string   `json:"lastChapter"`
-	ChapterCount    int      `json:"chapterCount"`
-	CanUpdate       *bool    `json:"canUpdate"`
-	CategoryName    string   `json:"categoryName"`
-	CategoryNames   []string `json:"categoryNames"`
-	Group           int      `json:"group"`
-	OriginName      string   `json:"originName"`
-	DurChapter      int      `json:"durChapter"`
-	DurChapterPos   int      `json:"durChapterPos"`
-	DurChapterTitle string   `json:"durChapterTitle"`
-	LastCheckTime   int64    `json:"lastCheckTime"`
+	Title              string   `json:"title"`
+	Name               string   `json:"name"`
+	Author             string   `json:"author"`
+	URL                string   `json:"url"`
+	BookURL            string   `json:"bookUrl"`
+	Origin             string   `json:"origin"`
+	SourceID           uint     `json:"sourceId"`
+	SourceName         string   `json:"sourceName"`
+	Type               int      `json:"type"`
+	CoverURL           string   `json:"coverUrl"`
+	CustomCoverURL     string   `json:"customCoverUrl"`
+	Intro              string   `json:"intro"`
+	Kind               string   `json:"kind"`
+	WordCount          string   `json:"wordCount"`
+	Variable           string   `json:"variable"`
+	LastChapter        string   `json:"lastChapter"`
+	LatestChapterTitle string   `json:"latestChapterTitle"`
+	ChapterCount       int      `json:"chapterCount"`
+	TotalChapterNum    int      `json:"totalChapterNum"`
+	CanUpdate          *bool    `json:"canUpdate"`
+	CategoryName       string   `json:"categoryName"`
+	CategoryNames      []string `json:"categoryNames"`
+	Group              int      `json:"group"`
+	OriginName         string   `json:"originName"`
+	DurChapter         int      `json:"durChapter"`
+	DurChapterIndex    int      `json:"durChapterIndex"`
+	DurChapterPos      int      `json:"durChapterPos"`
+	DurChapterTitle    string   `json:"durChapterTitle"`
+	DurChapterTime     int64    `json:"durChapterTime"`
+	LastCheckTime      int64    `json:"lastCheckTime"`
+}
+
+type restoredBookmarkRow struct {
+	models.Bookmark
+	BookTitle   string `json:"bookTitle"`
+	BookURL     string `json:"bookUrl"`
+	Time        int64  `json:"time"`
+	BookName    string `json:"bookName"`
+	BookAuthor  string `json:"bookAuthor"`
+	ChapterPos  int    `json:"chapterPos"`
+	ChapterName string `json:"chapterName"`
+	BookText    string `json:"bookText"`
+	Content     string `json:"content"`
+}
+
+type restoredReplaceRuleRow struct {
+	Name        string `json:"name"`
+	Group       string `json:"group"`
+	Pattern     string `json:"pattern"`
+	Replacement string `json:"replacement"`
+	Scope       string `json:"scope"`
+	IsRegex     *bool  `json:"isRegex"`
+	Enabled     *bool  `json:"enabled"`
+	IsEnabled   *bool  `json:"isEnabled"`
+	Order       int    `json:"order"`
+}
+
+type restoredProgressPayload struct {
+	models.ReadingProgress
+	Name            string `json:"name"`
+	BookName        string `json:"bookName"`
+	BookTitle       string `json:"bookTitle"`
+	Title           string `json:"title"`
+	BookURL         string `json:"bookUrl"`
+	URL             string `json:"url"`
+	DurChapter      int    `json:"durChapter"`
+	DurChapterIndex int    `json:"durChapterIndex"`
+	ChapterIndex    int    `json:"chapterIndex"`
+	DurChapterPos   int    `json:"durChapterPos"`
+	Offset          int    `json:"offset"`
+	DurChapterTitle string `json:"durChapterTitle"`
+	DurChapterTime  int64  `json:"durChapterTime"`
 }
 
 type restoredChapterVariableRow struct {
@@ -1288,13 +1199,24 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 		if b.CanUpdate != nil {
 			canUpdate = *b.CanUpdate
 		}
-		sourceID := s.restoredBookSourceID(b.SourceName, b.SourceID)
+		sourceName := strings.TrimSpace(firstNonBlank(b.SourceName, b.OriginName))
+		sourceID, err := s.restoredBookSourceIDStrict(sourceName, b.Origin)
+		if err != nil {
+			return count, progressCount, err
+		}
+		if strings.EqualFold(strings.TrimSpace(b.Origin), "loc_book") {
+			sourceID = 0
+		}
 		variable := b.Variable
-		if sourceID == 0 || strings.TrimSpace(b.SourceName) == "" {
+		if sourceID == 0 || sourceName == "" {
 			// A source token is meaningful only with a resolved remote source. This
 			// also makes old/local backups safe when they contain unknown fields or
 			// only a legacy numeric source ID.
 			variable = ""
+		}
+		chapterCount := b.ChapterCount
+		if chapterCount == 0 && b.TotalChapterNum > 0 {
+			chapterCount = b.TotalChapterNum
 		}
 		book := models.Book{
 			UserID:         userID,
@@ -1309,12 +1231,15 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 			Kind:           strings.TrimSpace(b.Kind),
 			WordCount:      strings.TrimSpace(b.WordCount),
 			Variable:       variable,
-			LastChapter:    strings.TrimSpace(b.LastChapter),
-			ChapterCount:   b.ChapterCount,
+			LastChapter:    strings.TrimSpace(firstNonBlank(b.LastChapter, b.LatestChapterTitle)),
+			ChapterCount:   chapterCount,
 			LastCheckTime:  positiveTimestamp(b.LastCheckTime),
 			CanUpdate:      canUpdate,
 		}
-		categoryIDs := s.restoredCategoryIDs(userID, b.CategoryName, b.CategoryNames)
+		categoryIDs, err := s.restoredCategoryIDsStrict(userID, b.CategoryName, b.CategoryNames)
+		if err != nil {
+			return count, progressCount, err
+		}
 		if len(categoryIDs) == 0 && b.Group > 0 {
 			categoryIDs = restoredCategoryIDsFromGroupMask(b.Group, groupCategoryMap)
 		}
@@ -1326,7 +1251,8 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 			query = s.db.Where("user_id = ? AND url = ?", userID, book.URL)
 		}
 		var existing models.Book
-		if query.First(&existing).Error == nil {
+		existingErr := query.First(&existing).Error
+		if existingErr == nil {
 			existing.SourceID = book.SourceID
 			existing.Type = book.Type
 			existing.Author = book.Author
@@ -1347,20 +1273,43 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 				existing.URL = book.URL
 			}
 			if err := s.db.Save(&existing).Error; err != nil {
-				continue
+				return count, progressCount, err
 			}
-			_ = s.setBookCategories(s.db, userID, existing.ID, categoryIDs)
+			if err := s.setBookCategories(s.db, userID, existing.ID, categoryIDs); err != nil {
+				return count, progressCount, err
+			}
 			count++
-			if s.restoreBookshelfProgress(userID, existing.ID, b.DurChapter, b.DurChapterPos, b.DurChapterTitle) {
+			chapterIndex := b.DurChapter
+			if b.DurChapterIndex > 0 || chapterIndex == 0 {
+				chapterIndex = b.DurChapterIndex
+			}
+			restoredProgress, err := s.restoreBookshelfProgressStrictAt(userID, existing.ID, chapterIndex, b.DurChapterPos, b.DurChapterTitle, timeFromUnixMilli(b.DurChapterTime))
+			if err != nil {
+				return count, progressCount, err
+			}
+			if restoredProgress {
 				progressCount++
 			}
 			continue
 		}
-		if err := s.db.Create(&book).Error; err != nil {
-			continue
+		if !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+			return count, progressCount, existingErr
 		}
-		_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
-		if s.restoreBookshelfProgress(userID, book.ID, b.DurChapter, b.DurChapterPos, b.DurChapterTitle) {
+		if err := s.db.Create(&book).Error; err != nil {
+			return count, progressCount, err
+		}
+		if err := s.setBookCategories(s.db, userID, book.ID, categoryIDs); err != nil {
+			return count, progressCount, err
+		}
+		chapterIndex := b.DurChapter
+		if b.DurChapterIndex > 0 || chapterIndex == 0 {
+			chapterIndex = b.DurChapterIndex
+		}
+		restoredProgress, err := s.restoreBookshelfProgressStrictAt(userID, book.ID, chapterIndex, b.DurChapterPos, b.DurChapterTitle, timeFromUnixMilli(b.DurChapterTime))
+		if err != nil {
+			return count, progressCount, err
+		}
+		if restoredProgress {
 			progressCount++
 		}
 		count++
@@ -1426,12 +1375,21 @@ func (s *Server) restoreChapterVariablesFromData(data []byte, userID uint) (int,
 			if row.ChapterIndex < 0 || strings.TrimSpace(row.Variable) == "" || strings.TrimSpace(row.SourceName) == "" {
 				continue
 			}
-			book, ok := s.findRestoredBook(userID, row.BookURL, row.BookTitle)
+			book, ok, err := findRestoredBookWithDB(tx, userID, row.BookURL, row.BookTitle)
+			if err != nil {
+				return err
+			}
 			if !ok || book.SourceID == 0 {
 				continue
 			}
 			var source models.BookSource
-			if err := tx.Select("name").First(&source, book.SourceID).Error; err != nil || source.Name != strings.TrimSpace(row.SourceName) {
+			if err := tx.Select("name").First(&source, book.SourceID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				}
+				return err
+			}
+			if source.Name != strings.TrimSpace(row.SourceName) {
 				continue
 			}
 
@@ -1482,23 +1440,27 @@ func (s *Server) restoreChapterVariablesFromData(data []byte, userID uint) (int,
 	return count, err
 }
 
-func (s *Server) restoredBookSourceID(sourceName string, fallback uint) uint {
+func (s *Server) restoredBookSourceIDStrict(sourceName string, sourceURL string) (uint, error) {
 	name := strings.TrimSpace(sourceName)
 	if name != "" {
 		var source models.BookSource
 		if err := s.db.Select("id").Where("name = ?", name).First(&source).Error; err == nil {
-			return source.ID
+			return source.ID, nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
 		}
-		return 0
 	}
-	if fallback == 0 {
-		return 0
+	url := strings.TrimSpace(sourceURL)
+	if url == "" || strings.EqualFold(url, "loc_book") {
+		return 0, nil
 	}
 	var source models.BookSource
-	if err := s.db.Select("id").First(&source, fallback).Error; err == nil {
-		return source.ID
+	if err := s.db.Select("id").Where("base_url = ?", url).First(&source).Error; err == nil {
+		return source.ID, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
 	}
-	return 0
+	return 0, nil
 }
 
 func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, error) {
@@ -1510,18 +1472,25 @@ func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, erro
 }
 
 func (s *Server) restoreBookmarksFromData(data []byte, userID uint) (int, error) {
-	var rows []struct {
-		models.Bookmark
-		BookTitle string `json:"bookTitle"`
-		BookURL   string `json:"bookUrl"`
-	}
+	return s.restoreBookmarksFromDataWithFormat(data, userID, false)
+}
+
+func (s *Server) restoreBookmarksFromDataWithFormat(data []byte, userID uint, upstream bool) (int, error) {
+	var rows []restoredBookmarkRow
 	if err := json.Unmarshal(data, &rows); err != nil {
 		return 0, err
 	}
 
 	count := 0
 	for _, row := range rows {
-		book, ok := s.findRestoredBook(userID, row.BookURL, row.BookTitle)
+		bookTitle := strings.TrimSpace(row.BookTitle)
+		if bookTitle == "" {
+			bookTitle = strings.TrimSpace(row.BookName)
+		}
+		book, ok, err := s.findRestoredBookStrict(userID, row.BookURL, bookTitle)
+		if err != nil {
+			return count, err
+		}
 		if !ok {
 			continue
 		}
@@ -1530,6 +1499,9 @@ func (s *Server) restoreBookmarksFromData(data []byte, userID uint) (int, error)
 			chapterIndex = 0
 		}
 		offset := row.Offset
+		if upstream || (offset == 0 && row.ChapterPos > 0) {
+			offset = row.ChapterPos
+		}
 		if offset < 0 {
 			offset = 0
 		}
@@ -1537,8 +1509,13 @@ func (s *Server) restoreBookmarksFromData(data []byte, userID uint) (int, error)
 		var chapter models.Chapter
 		if err := s.db.Where("book_id = ? AND `index` = ?", book.ID, chapterIndex).First(&chapter).Error; err == nil {
 			chapterID = chapter.ID
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return count, err
 		}
 		createdAt := row.CreatedAt
+		if createdAt.IsZero() && row.Time > 0 {
+			createdAt = time.UnixMilli(row.Time)
+		}
 		if createdAt.IsZero() {
 			createdAt = time.Now()
 		}
@@ -1553,9 +1530,9 @@ func (s *Server) restoreBookmarksFromData(data []byte, userID uint) (int, error)
 			ChapterIndex: chapterIndex,
 			Offset:       offset,
 			Percent:      clampProgressPercent(row.Percent),
-			Title:        strings.TrimSpace(row.Title),
-			Excerpt:      strings.TrimSpace(row.Excerpt),
-			Note:         strings.TrimSpace(row.Note),
+			Title:        strings.TrimSpace(firstNonBlank(row.Title, row.ChapterName)),
+			Excerpt:      strings.TrimSpace(firstNonBlank(row.Excerpt, row.BookText)),
+			Note:         strings.TrimSpace(firstNonBlank(row.Note, row.Content)),
 			CreatedAt:    createdAt,
 			UpdatedAt:    updatedAt,
 		}
@@ -1572,12 +1549,13 @@ func (s *Server) restoreBookmarksFromData(data []byte, userID uint) (int, error)
 			Excerpt:      bookmark.Excerpt,
 			Note:         bookmark.Note,
 		}
-		if !row.CreatedAt.IsZero() {
-			identity.CreatedAt = row.CreatedAt
+		if !createdAt.IsZero() && (!row.CreatedAt.IsZero() || row.Time > 0) {
+			identity.CreatedAt = createdAt
 		}
-		if err := s.db.Where(&identity).FirstOrCreate(&bookmark).Error; err == nil {
-			count++
+		if err := s.db.Where(&identity).FirstOrCreate(&bookmark).Error; err != nil {
+			return count, err
 		}
+		count++
 	}
 	return count, nil
 }
@@ -1591,15 +1569,7 @@ func (s *Server) restoreReplaceRulesFromZip(file *zip.File, userID uint) (int, e
 }
 
 func (s *Server) restoreReplaceRulesFromData(data []byte, userID uint) (int, error) {
-	var rules []struct {
-		Name        string `json:"name"`
-		Pattern     string `json:"pattern"`
-		Replacement string `json:"replacement"`
-		Scope       string `json:"scope"`
-		IsRegex     *bool  `json:"isRegex"`
-		Enabled     *bool  `json:"enabled"`
-		IsEnabled   *bool  `json:"isEnabled"`
-	}
+	var rules []restoredReplaceRuleRow
 	if err := json.Unmarshal(data, &rules); err != nil {
 		return 0, err
 	}
@@ -1632,24 +1602,36 @@ func (s *Server) restoreReplaceRulesFromData(data []byte, userID uint) (int, err
 		next := models.ReplaceRule{
 			UserID:      userID,
 			Name:        name,
+			Group:       strings.TrimSpace(rule.Group),
 			Pattern:     pattern,
 			Replacement: rule.Replacement,
 			Scope:       scope,
 			IsRegex:     &isRegex,
 			Enabled:     enabled,
+			Order:       rule.Order,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}
-		if err := s.db.Where("user_id = ? AND pattern = ?", userID, pattern).Assign(next).FirstOrCreate(&next).Error; err == nil {
-			count++
+		if err := s.db.Where("user_id = ? AND pattern = ?", userID, pattern).Assign(next).FirstOrCreate(&next).Error; err != nil {
+			return count, err
 		}
+		count++
 	}
 	return count, nil
 }
 
 func (s *Server) restoreBookshelfProgress(userID uint, bookID uint, chapterIndex int, offset int, chapterTitle string) bool {
+	restored, _ := s.restoreBookshelfProgressStrict(userID, bookID, chapterIndex, offset, chapterTitle)
+	return restored
+}
+
+func (s *Server) restoreBookshelfProgressStrict(userID uint, bookID uint, chapterIndex int, offset int, chapterTitle string) (bool, error) {
+	return s.restoreBookshelfProgressStrictAt(userID, bookID, chapterIndex, offset, chapterTitle, time.Time{})
+}
+
+func (s *Server) restoreBookshelfProgressStrictAt(userID uint, bookID uint, chapterIndex int, offset int, chapterTitle string, restoredAt time.Time) (bool, error) {
 	if chapterIndex <= 0 && offset <= 0 && strings.TrimSpace(chapterTitle) == "" {
-		return false
+		return false, nil
 	}
 	if chapterIndex < 0 {
 		chapterIndex = 0
@@ -1657,16 +1639,67 @@ func (s *Server) restoreBookshelfProgress(userID uint, bookID uint, chapterIndex
 	if offset < 0 {
 		offset = 0
 	}
-	progress := models.ReadingProgress{
+	return s.restoreReadingProgressStrict(models.ReadingProgress{
 		UserID:       userID,
 		BookID:       bookID,
 		ChapterIndex: chapterIndex,
 		Offset:       offset,
-		ChapterTitle: chapterTitle,
+		ChapterTitle: strings.TrimSpace(chapterTitle),
 		Mode:         "scroll",
-		UpdatedAt:    time.Now(),
+		UpdatedAt:    restoredAt,
+	}, !restoredAt.IsZero())
+}
+
+func (s *Server) restoreReadingProgressStrict(progress models.ReadingProgress, hasArchiveTime bool) (bool, error) {
+	if progress.UserID == 0 || progress.BookID == 0 {
+		return false, nil
 	}
-	return s.db.Where("user_id = ? AND book_id = ?", userID, bookID).Assign(progress).FirstOrCreate(&progress).Error == nil
+	if progress.Mode == "" {
+		progress.Mode = "scroll"
+	}
+	if !hasArchiveTime || progress.UpdatedAt.IsZero() {
+		progress.UpdatedAt = time.Now()
+		hasArchiveTime = false
+	}
+
+	var existing models.ReadingProgress
+	err := s.db.Where("user_id = ? AND book_id = ?", progress.UserID, progress.BookID).First(&existing).Error
+	if err == nil {
+		if hasArchiveTime && progress.UpdatedAt.UnixMilli() <= existing.UpdatedAt.UnixMilli() {
+			return false, nil
+		}
+		updates := map[string]any{
+			"chapter_id":      progress.ChapterID,
+			"chapter_index":   progress.ChapterIndex,
+			"offset":          progress.Offset,
+			"percent":         clampProgressPercent(progress.Percent),
+			"chapter_percent": clampProgressPercent(progress.ChapterPercent),
+			"chapter_title":   progress.ChapterTitle,
+			"mode":            progress.Mode,
+			"updated_at":      progress.UpdatedAt,
+		}
+		if err := s.db.Model(&existing).Updates(updates).Error; err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+	progress.ID = 0
+	progress.Percent = clampProgressPercent(progress.Percent)
+	progress.ChapterPercent = clampProgressPercent(progress.ChapterPercent)
+	if err := s.db.Create(&progress).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func timeFromUnixMilli(value int64) time.Time {
+	if value <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(value)
 }
 
 func (s *Server) restoreProgressFromZip(file *zip.File, userID uint) (int, error) {
@@ -1678,29 +1711,9 @@ func (s *Server) restoreProgressFromZip(file *zip.File, userID uint) (int, error
 }
 
 func (s *Server) restoreProgressFromData(data []byte, userID uint) (int, error) {
-	type progressPayload struct {
-		Name            string `json:"name"`
-		BookName        string `json:"bookName"`
-		BookTitle       string `json:"bookTitle"`
-		Title           string `json:"title"`
-		BookURL         string `json:"bookUrl"`
-		URL             string `json:"url"`
-		DurChapter      int    `json:"durChapter"`
-		DurChapterIndex int    `json:"durChapterIndex"`
-		ChapterIndex    int    `json:"chapterIndex"`
-		DurChapterPos   int    `json:"durChapterPos"`
-		Offset          int    `json:"offset"`
-		DurChapterTitle string `json:"durChapterTitle"`
-		ChapterTitle    string `json:"chapterTitle"`
-	}
-
-	var payloads []progressPayload
-	if err := json.Unmarshal(data, &payloads); err != nil {
-		var payload progressPayload
-		if err := json.Unmarshal(data, &payload); err != nil {
-			return 0, err
-		}
-		payloads = []progressPayload{payload}
+	payloads, err := decodeRestoredProgressPayloads(data)
+	if err != nil {
+		return 0, err
 	}
 
 	count := 0
@@ -1720,7 +1733,10 @@ func (s *Server) restoreProgressFromData(data []byte, userID uint) (int, error) 
 			title = strings.TrimSpace(payload.Title)
 		}
 
-		book, ok := s.findRestoredBook(userID, bookURL, title)
+		book, ok, err := s.findRestoredBookStrict(userID, bookURL, title)
+		if err != nil {
+			return count, err
+		}
 		if !ok {
 			continue
 		}
@@ -1736,30 +1752,74 @@ func (s *Server) restoreProgressFromData(data []byte, userID uint) (int, error) 
 		if offset == 0 && payload.DurChapterPos > 0 {
 			offset = payload.DurChapterPos
 		}
-		chapterTitle := strings.TrimSpace(payload.ChapterTitle)
+		chapterTitle := strings.TrimSpace(payload.ReadingProgress.ChapterTitle)
 		if chapterTitle == "" {
 			chapterTitle = strings.TrimSpace(payload.DurChapterTitle)
 		}
-		if s.restoreBookshelfProgress(userID, book.ID, chapterIndex, offset, chapterTitle) {
+		restoredAt := payload.UpdatedAt
+		if restoredAt.IsZero() {
+			restoredAt = timeFromUnixMilli(payload.DurChapterTime)
+		}
+		progress := models.ReadingProgress{
+			UserID:         userID,
+			BookID:         book.ID,
+			ChapterIndex:   chapterIndex,
+			Offset:         offset,
+			Percent:        payload.Percent,
+			ChapterPercent: payload.ChapterPercent,
+			ChapterTitle:   chapterTitle,
+			Mode:           payload.Mode,
+			UpdatedAt:      restoredAt,
+		}
+		restored, err := s.restoreReadingProgressStrict(progress, !restoredAt.IsZero())
+		if err != nil {
+			return count, err
+		}
+		if restored {
 			count++
 		}
 	}
 	return count, nil
 }
 
+func decodeRestoredProgressPayloads(data []byte) ([]restoredProgressPayload, error) {
+	var payloads []restoredProgressPayload
+	if err := json.Unmarshal(data, &payloads); err == nil {
+		return payloads, nil
+	}
+	var payload restoredProgressPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	return []restoredProgressPayload{payload}, nil
+}
+
 func (s *Server) findRestoredCategoryID(userID uint, categoryName string) *uint {
+	categoryID, _, _ := s.findRestoredCategoryIDStrict(userID, categoryName)
+	return categoryID
+}
+
+func (s *Server) findRestoredCategoryIDStrict(userID uint, categoryName string) (*uint, bool, error) {
 	categoryName = strings.TrimSpace(categoryName)
 	if categoryName == "" {
-		return nil
+		return nil, false, nil
 	}
 	var category models.Category
 	if err := s.db.Where("user_id = ? AND name = ?", userID, categoryName).First(&category).Error; err != nil {
-		return nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
 	}
-	return &category.ID
+	return &category.ID, true, nil
 }
 
 func (s *Server) restoredCategoryIDs(userID uint, categoryName string, categoryNames []string) []uint {
+	ids, _ := s.restoredCategoryIDsStrict(userID, categoryName, categoryNames)
+	return ids
+}
+
+func (s *Server) restoredCategoryIDsStrict(userID uint, categoryName string, categoryNames []string) ([]uint, error) {
 	names := make([]string, 0, len(categoryNames)+1)
 	names = append(names, categoryNames...)
 	if strings.TrimSpace(categoryName) != "" {
@@ -1776,29 +1836,45 @@ func (s *Server) restoredCategoryIDs(userID uint, categoryName string, categoryN
 			continue
 		}
 		seen[name] = struct{}{}
-		if categoryID := s.findRestoredCategoryID(userID, name); categoryID != nil {
+		categoryID, found, err := s.findRestoredCategoryIDStrict(userID, name)
+		if err != nil {
+			return nil, err
+		}
+		if found {
 			ids = append(ids, *categoryID)
 		}
 	}
-	return ids
+	return ids, nil
 }
 
 func (s *Server) findRestoredBook(userID uint, bookURL string, title string) (models.Book, bool) {
+	book, found, _ := s.findRestoredBookStrict(userID, bookURL, title)
+	return book, found
+}
+
+func (s *Server) findRestoredBookStrict(userID uint, bookURL string, title string) (models.Book, bool, error) {
+	return findRestoredBookWithDB(s.db, userID, bookURL, title)
+}
+
+func findRestoredBookWithDB(db *gorm.DB, userID uint, bookURL string, title string) (models.Book, bool, error) {
 	bookURL = strings.TrimSpace(bookURL)
 	title = strings.TrimSpace(title)
 	var book models.Book
-	query := s.db.Where("user_id = ?", userID)
+	query := db.Where("user_id = ?", userID)
 	if bookURL != "" {
 		query = query.Where("url = ?", bookURL)
 	} else if title != "" {
 		query = query.Where("title = ?", title)
 	} else {
-		return book, false
+		return book, false, nil
 	}
 	if err := query.First(&book).Error; err != nil {
-		return book, false
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return book, false, nil
+		}
+		return book, false, err
 	}
-	return book, true
+	return book, true, nil
 }
 
 func (s *Server) webdavDir() string {

@@ -227,12 +227,19 @@ func (r *rssSourceRequest) normalize() {
 }
 
 func (r rssSourceRequest) orderOrDefault(s *Server, userID uint) int {
+	order, _ := r.orderOrDefaultStrict(s, userID)
+	return order
+}
+
+func (r rssSourceRequest) orderOrDefaultStrict(s *Server, userID uint) (int, error) {
 	if r.CustomOrder != nil && *r.CustomOrder > 0 {
-		return *r.CustomOrder
+		return *r.CustomOrder, nil
 	}
 	var maxOrder int
-	_ = s.db.Model(&models.RSSSource{}).Where("user_id = ?", userID).Select("COALESCE(MAX(custom_order), 0)").Scan(&maxOrder).Error
-	return maxOrder + 1
+	if err := s.db.Model(&models.RSSSource{}).Where("user_id = ?", userID).Select("COALESCE(MAX(custom_order), 0)").Scan(&maxOrder).Error; err != nil {
+		return 0, err
+	}
+	return maxOrder + 1, nil
 }
 
 func (r rssSourceRequest) singleURLOr(fallback bool) bool {

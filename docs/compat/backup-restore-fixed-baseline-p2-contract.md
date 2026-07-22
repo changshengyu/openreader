@@ -1,6 +1,6 @@
 # P2 备份、恢复与 WebDAV 工作台固定基线合同
 
-状态：**2026-07-22 已完成固定上游审查；测试与实现待完成。**
+状态：**2026-07-22 固定上游审查、测试与实现已完成；三视口浏览器和 Docker/旧卷发布门禁待完成。**
 
 本合同以 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 为唯一产品基线，纠正此前把“ZIP 结构预检通过”概括成“备份/WebDAV 已完成”的审计结论。
@@ -177,6 +177,25 @@ Authorization、WebDAV 凭证或主机路径。
 - 上述三视口真实浏览器合同。
 - 本地 Docker build、真实旧 SQLite/三卷重启、普通及 portable trigger/list/download/restore、
   reader-dev/旧 OpenReader fixture、用户隔离和备份失败无半包检查。
+
+## 8. 实现记录（2026-07-22）
+
+- 工作台已删除 `OverlayBackups`/`useOverlayBackups` 第二管理器；`保存备份` 与明确命名的
+  `保存完整本地书备份` 现在均为确认后的直接动作，旧 `panel=backup` 只打开唯一 WebDAV 管理器。
+- 显式用户配置备份以 `force:true` 写当前用户的三个合法 setting；普通后台同步仍使用 CAS。
+  显式同步以 `createIfMissing:false` 读取，缺失时显示“没有备份文件”且不反向创建。
+- 普通逻辑 ZIP 复用上游书源 encoder，书架写双字段，书签/替换规则同时写单数上游文件和
+  复数 OpenReader 文件。恢复 planner 固定别名优先级，每类只执行一次；进度以毫秒时间合并，
+  旧包不能倒退较新的当前阅读位置。
+- 生成使用同目录私有临时文件、完整错误传播、`Sync/Close` 和原子 rename；同进程触发串行且
+  同秒文件名不覆盖。恢复在写前解码所有选中 artifact，并在一个 SQLite 事务内执行；数据库
+  错误回滚，提交后才广播。
+- 无 `canEditSources` 的 WebDAV 用户恢复个人数据但跳过全局书源，并返回
+  `sourcesSkipped:true`。替换规则仅增加 `group_name`、`sort_order` 两个默认值列；旧行仍按
+  `sort_order=0,id ASC` 执行，不删除或改写已有数据。
+- 自动证据：后端 `go test ./...`、前端 534/534、Vite production build、smoke 脚本语法和
+  `git diff --check` 均通过。真实 Chromium 三视口启动需要沙箱外权限，本次自动审批因 Codex
+  使用额度耗尽被拒；因此浏览器、旧卷 Docker 与镜像发布仍明确保持待完成状态。
 
 这些门禁全部通过前，不再把“用户、备份、RSS、替换规则、书签”整行概括为已完成；
 RSS、替换规则、书签自身已验收的交互/API 合同保持有效，只有它们的 archive bridge 被本合同重新打开。

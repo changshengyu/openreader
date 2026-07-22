@@ -37,7 +37,6 @@ export const useOverlayStore = defineStore('overlay', {
     replaceRulesVisible: false,
     replaceRuleEditorDraft: null,
     replaceRuleEditorRequest: 0,
-    backupVisible: false,
   }),
   actions: {
     openBookInfo(book, options = {}) {
@@ -176,9 +175,6 @@ export const useOverlayStore = defineStore('overlay', {
     },
     openWebDAV() {
       this.webdavVisible = true
-    },
-    openBackup() {
-      this.backupVisible = true
     },
     reconcileDeletedBooks(bookIds) {
       const deleted = new Set(normalizeDeletedBookIds(bookIds))

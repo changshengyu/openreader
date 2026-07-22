@@ -17,6 +17,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/sourcecompat"
 )
 
 func (s *Server) listSources(c *gin.Context) {
@@ -109,33 +110,7 @@ type legacySourceContentRule struct {
 	ImageStyle     string `json:"imageStyle,omitempty"`
 }
 
-type exportedBookSource struct {
-	BookSourceName    string                   `json:"bookSourceName"`
-	BookSourceGroup   string                   `json:"bookSourceGroup,omitempty"`
-	BookSourceURL     string                   `json:"bookSourceUrl"`
-	BookSourceType    int                      `json:"bookSourceType"`
-	BookURLPattern    string                   `json:"bookUrlPattern,omitempty"`
-	BookSourceComment string                   `json:"bookSourceComment,omitempty"`
-	Enabled           bool                     `json:"enabled"`
-	EnabledExplore    bool                     `json:"enabledExplore"`
-	SearchURL         string                   `json:"searchUrl,omitempty"`
-	ExploreURL        string                   `json:"exploreUrl,omitempty"`
-	Header            string                   `json:"header,omitempty"`
-	RuleSearch        legacySourceSearchRule   `json:"ruleSearch"`
-	RuleExplore       legacySourceSearchRule   `json:"ruleExplore"`
-	RuleBookInfo      legacySourceBookInfoRule `json:"ruleBookInfo"`
-	RuleTOC           legacySourceTOCRule      `json:"ruleToc"`
-	RuleContent       legacySourceContentRule  `json:"ruleContent"`
-	Charset           string                   `json:"charset,omitempty"`
-	ConcurrentRate    string                   `json:"concurrentRate,omitempty"`
-	LoginURL          string                   `json:"loginUrl,omitempty"`
-	LoginCheckJS      string                   `json:"loginCheckJs,omitempty"`
-	CustomOrder       int                      `json:"customOrder"`
-	LastUpdateTime    int64                    `json:"lastUpdateTime"`
-	Weight            int                      `json:"weight"`
-	RespondTime       int64                    `json:"respondTime"`
-	Rules             string                   `json:"rules,omitempty"`
-}
+type exportedBookSource = sourcecompat.BookSource
 
 func (p bookSourcePayload) toModel() models.BookSource {
 	enabled := true
@@ -811,99 +786,7 @@ func (s *Server) exportSources(c *gin.Context) {
 }
 
 func exportBookSources(sources []models.BookSource) []exportedBookSource {
-	exported := make([]exportedBookSource, 0, len(sources))
-	for _, source := range sources {
-		rule, err := source.ParsedRules()
-		if err != nil {
-			rule = models.BookSourceRule{}
-		}
-		searchRule := legacySourceSearchRule{
-			BookList:    exportUpstreamSelectorRule(rule.BookListRule),
-			Name:        exportUpstreamSelectorRule(rule.BookNameRule),
-			Author:      exportUpstreamSelectorRule(rule.BookAuthorRule),
-			CoverURL:    exportUpstreamSelectorRule(rule.BookCoverRule),
-			Intro:       exportUpstreamSelectorRule(rule.BookIntroRule),
-			Kind:        exportUpstreamSelectorRule(rule.BookKindRule),
-			WordCount:   exportUpstreamSelectorRule(rule.BookWordCountRule),
-			LastChapter: exportUpstreamSelectorRule(rule.LatestChapterRule),
-			UpdateTime:  exportUpstreamSelectorRule(rule.BookUpdateTimeRule),
-			BookURL:     exportUpstreamSelectorRule(rule.BookURLRule),
-		}
-		exploreRule := legacySourceSearchRule{
-			BookList:    exportUpstreamSelectorRule(rule.ExploreBookListRule),
-			Name:        exportUpstreamSelectorRule(rule.ExploreBookNameRule),
-			Author:      exportUpstreamSelectorRule(rule.ExploreBookAuthorRule),
-			CoverURL:    exportUpstreamSelectorRule(rule.ExploreBookCoverRule),
-			Intro:       exportUpstreamSelectorRule(rule.ExploreBookIntroRule),
-			Kind:        exportUpstreamSelectorRule(rule.ExploreBookKindRule),
-			WordCount:   exportUpstreamSelectorRule(rule.ExploreBookWordCountRule),
-			LastChapter: exportUpstreamSelectorRule(rule.ExploreLatestChapterRule),
-			UpdateTime:  exportUpstreamSelectorRule(rule.ExploreBookUpdateTimeRule),
-			BookURL:     exportUpstreamSelectorRule(rule.ExploreBookURLRule),
-		}
-		header := strings.TrimSpace(source.Header)
-		if header == "" && len(rule.Headers) > 0 {
-			if data, marshalErr := json.Marshal(rule.Headers); marshalErr == nil {
-				header = string(data)
-			}
-		}
-		exported = append(exported, exportedBookSource{
-			BookSourceName:    source.Name,
-			BookSourceGroup:   source.Group,
-			BookSourceURL:     source.BaseURL,
-			BookSourceType:    source.SourceType,
-			BookURLPattern:    source.BookURLPattern,
-			BookSourceComment: source.Comment,
-			Enabled:           source.Enabled,
-			EnabledExplore:    source.IsExploreEnabled(),
-			SearchURL:         exportUpstreamURLTemplate(firstNonBlank(rule.SearchURL, source.SearchURL)),
-			ExploreURL:        exportUpstreamURLTemplate(rule.ExploreURL),
-			Header:            header,
-			RuleSearch:        searchRule,
-			RuleExplore:       exploreRule,
-			RuleBookInfo: legacySourceBookInfoRule{
-				Init:        exportUpstreamSelectorRule(rule.BookInfoInitRule),
-				Name:        exportUpstreamSelectorRule(rule.BookInfoNameRule),
-				Author:      exportUpstreamSelectorRule(rule.BookInfoAuthorRule),
-				CoverURL:    exportUpstreamSelectorRule(rule.BookInfoCoverRule),
-				Intro:       exportUpstreamSelectorRule(rule.BookInfoIntroRule),
-				Kind:        exportUpstreamSelectorRule(rule.BookInfoKindRule),
-				LastChapter: exportUpstreamSelectorRule(rule.BookInfoLatestChapterRule),
-				UpdateTime:  exportUpstreamSelectorRule(rule.BookInfoUpdateTimeRule),
-				WordCount:   exportUpstreamSelectorRule(rule.BookInfoWordCountRule),
-				TOCURL:      exportUpstreamSelectorRule(rule.TOCURLRule),
-				CanRename:   exportUpstreamSelectorRule(rule.BookInfoCanRenameRule),
-			},
-			RuleTOC: legacySourceTOCRule{
-				PreUpdateJS: rule.ChapterPreUpdateJSRule,
-				ChapterList: exportUpstreamSelectorRule(rule.ChapterListRule),
-				ChapterName: exportUpstreamSelectorRule(rule.ChapterNameRule),
-				ChapterURL:  exportUpstreamSelectorRule(rule.ChapterURLRule),
-				IsVolume:    exportUpstreamSelectorRule(rule.ChapterIsVolumeRule),
-				IsVIP:       exportUpstreamSelectorRule(rule.ChapterIsVIPRule),
-				UpdateTime:  exportUpstreamSelectorRule(rule.ChapterUpdateTimeRule),
-				NextTOCURL:  exportUpstreamSelectorRule(rule.NextTOCURLRule),
-			},
-			RuleContent: legacySourceContentRule{
-				Content:        exportUpstreamSelectorRule(rule.ContentRule),
-				NextContentURL: exportUpstreamSelectorRule(rule.NextContentURLRule),
-				WebJS:          rule.ContentWebJSRule,
-				SourceRegex:    rule.ContentSourceRegex,
-				ReplaceRegex:   rule.ContentReplaceRegex,
-				ImageStyle:     rule.ContentImageStyle,
-			},
-			Charset:        source.Charset,
-			ConcurrentRate: source.ConcurrentRate,
-			LoginURL:       source.LoginURL,
-			LoginCheckJS:   source.LoginCheckJS,
-			CustomOrder:    source.CustomOrder,
-			LastUpdateTime: source.LastUpdateTime,
-			Weight:         source.Weight,
-			RespondTime:    source.RespondTime,
-			Rules:          source.Rules,
-		})
-	}
-	return exported
+	return sourcecompat.Export(sources)
 }
 
 func parseSourceIDsQuery(c *gin.Context) ([]uint, bool) {
@@ -1089,6 +972,78 @@ func importBookSourcesWithDB(db *gorm.DB, sources []models.BookSource) gin.H {
 		imported++
 	}
 	return gin.H{"imported": imported, "updated": updated, "skipped": skipped}
+}
+
+func importBookSourcesStrictWithDB(db *gorm.DB, sources []models.BookSource) (gin.H, error) {
+	imported := 0
+	updated := 0
+	skipped := 0
+	seen := make(map[string]bool)
+	for _, source := range sources {
+		source.ID = 0
+		source.Name = strings.TrimSpace(source.Name)
+		if source.Name == "" || seen[source.Name] {
+			skipped++
+			continue
+		}
+		seen[source.Name] = true
+		source.BaseURL = strings.TrimSpace(source.BaseURL)
+		source.SearchURL = strings.TrimSpace(source.SearchURL)
+		source.BookURLPattern = strings.TrimSpace(source.BookURLPattern)
+		source.Comment = strings.TrimSpace(source.Comment)
+		source.Rules = strings.TrimSpace(source.Rules)
+		source.Group = strings.TrimSpace(source.Group)
+		source.Charset = strings.TrimSpace(source.Charset)
+		source.ConcurrentRate = strings.TrimSpace(source.ConcurrentRate)
+		source.Header = strings.TrimSpace(source.Header)
+		source.LoginURL = strings.TrimSpace(source.LoginURL)
+		source.LoginCheckJS = strings.TrimSpace(source.LoginCheckJS)
+		if source.Charset == "" {
+			source.Charset = "utf-8"
+		}
+
+		var existing models.BookSource
+		err := db.Where("name = ?", source.Name).First(&existing).Error
+		switch {
+		case err == nil:
+			previous := existing
+			existing.BaseURL = source.BaseURL
+			existing.SearchURL = source.SearchURL
+			existing.BookURLPattern = source.BookURLPattern
+			existing.SourceType = source.SourceType
+			existing.Comment = source.Comment
+			existing.Charset = source.Charset
+			existing.ConcurrentRate = source.ConcurrentRate
+			existing.Header = source.Header
+			existing.LoginURL = source.LoginURL
+			existing.LoginCheckJS = source.LoginCheckJS
+			existing.CustomOrder = source.CustomOrder
+			existing.LastUpdateTime = source.LastUpdateTime
+			existing.Weight = source.Weight
+			existing.RespondTime = source.RespondTime
+			existing.Rules = source.Rules
+			existing.Enabled = source.Enabled
+			existing.EnabledExplore = source.EnabledExplore
+			existing.Group = source.Group
+			if err := db.Save(&existing).Error; err != nil {
+				return nil, err
+			}
+			if sourceVariableSemanticsChanged(previous, existing) {
+				if err := clearPersistentVariablesForSource(db, existing.ID); err != nil {
+					return nil, err
+				}
+			}
+			updated++
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			if err := db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "Header", "LoginURL", "LoginCheckJS", "CustomOrder", "LastUpdateTime", "Weight", "RespondTime", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+				return nil, err
+			}
+			imported++
+		default:
+			return nil, err
+		}
+	}
+	return gin.H{"imported": imported, "updated": updated, "skipped": skipped}, nil
 }
 
 func (s *Server) defaultBookSourcesPath() string {

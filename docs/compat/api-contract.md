@@ -114,7 +114,7 @@ Source-facing routes retain their current response schemas. Only a real remote s
 
 ## P2 backup restore archive contract
 
-Status: **structure/budget preflight implemented; logical content/transaction/permission compatibility reopened on 2026-07-22.** The archive bounds below remain authoritative. The actual upstream filename/field bridge, atomic generation/restore and source-edit capability contract are now defined by
+Status: **structure/budget preflight and logical content/transaction/permission compatibility implemented on 2026-07-22; browser/Docker release gate pending.** The archive bounds below remain authoritative. The upstream filename/field bridge, atomic generation/restore and source-edit capability contract are defined by
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
 | Method / path | Request | Success / side effects | Errors / safety contract |

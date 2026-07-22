@@ -89,13 +89,17 @@ func (s *Server) portableLimits() portableBackupLimits {
 }
 
 func (s *Server) restorePortableBackupFile(archivePath string, userID uint, username string) (gin.H, error) {
+	return s.restorePortableBackupFileWithPermissions(archivePath, userID, username, true)
+}
+
+func (s *Server) restorePortableBackupFileWithPermissions(archivePath string, userID uint, username string, canEditSources bool) (gin.H, error) {
 	packageData, err := s.preparePortableBackup(archivePath, userID, username)
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(packageData.stagingDir)
 
-	result, err := s.restoreLegadoBackupDataWithoutBroadcast(packageData.logicalData, userID)
+	result, err := s.restoreLegadoBackupDataWithPermissions(packageData.logicalData, userID, canEditSources, false)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +172,10 @@ func (s *Server) stageUploadedBackup(fileHeader *multipart.FileHeader, userID ui
 }
 
 func (s *Server) restoreBackupFile(path string, userID uint, username string) (gin.H, error) {
+	return s.restoreBackupFileWithPermissions(path, userID, username, true)
+}
+
+func (s *Server) restoreBackupFileWithPermissions(path string, userID uint, username string, canEditSources bool) (gin.H, error) {
 	info, statErr := os.Stat(path)
 	if statErr != nil || info.IsDir() {
 		return nil, errInvalidBackupArchive
@@ -181,7 +189,7 @@ func (s *Server) restoreBackupFile(path string, userID uint, username string) (g
 		return nil, err
 	}
 	if portable {
-		return s.restorePortableBackupFile(path, userID, username)
+		return s.restorePortableBackupFileWithPermissions(path, userID, username, canEditSources)
 	}
 	if info.Size() > legacyLimit {
 		return nil, errBackupRestoreTooLarge
@@ -195,7 +203,7 @@ func (s *Server) restoreBackupFile(path string, userID uint, username string) (g
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreLegadoBackupData(data, userID)
+	return s.restoreLegadoBackupDataWithPermissions(data, userID, canEditSources, true)
 }
 
 func isPortableBackupFile(path string) (bool, error) {
@@ -401,7 +409,7 @@ func portableArchiveEntryName(entry, extension string) bool {
 
 func portableLogicalEntryName(name string) bool {
 	switch name {
-	case "booksource.json", "rsssources.json", "usersettings.json", "categories.json", "bookgroup.json", "bookshelf.json", "chaptervariables.json", "bookmarks.json", "readingprogress.json", "replacerules.json":
+	case "booksource.json", "rsssources.json", "usersettings.json", "categories.json", "bookgroup.json", "bookshelf.json", "chaptervariables.json", "bookmark.json", "bookmarks.json", "readingprogress.json", "replacerule.json", "replacerules.json":
 		return true
 	default:
 		return false

@@ -22,12 +22,14 @@ const (
 
 type replaceRuleRequest struct {
 	Name        string `json:"name"`
+	Group       string `json:"group"`
 	Pattern     string `json:"pattern"`
 	Replacement string `json:"replacement"`
 	Scope       string `json:"scope"`
 	IsRegex     *bool  `json:"isRegex"`
 	IsEnabled   *bool  `json:"isEnabled"`
 	Enabled     *bool  `json:"enabled"`
+	Order       int    `json:"order"`
 }
 
 type replaceRuleTestRequest struct {
@@ -60,7 +62,7 @@ func replacementRuleResponses(rules []models.ReplaceRule) []replaceRuleResponse 
 func (s *Server) listReplaceRules(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ?", userID).Order("id asc").Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ?", userID).Order("sort_order asc, id asc").Find(&rules).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list replace rules"})
 		return
 	}
@@ -84,11 +86,13 @@ func (s *Server) createReplaceRule(c *gin.Context) {
 	err = s.db.Where("user_id = ? AND name = ?", userID, rule.Name).Order("id asc").First(&existing).Error
 	switch {
 	case err == nil:
+		existing.Group = rule.Group
 		existing.Pattern = rule.Pattern
 		existing.Replacement = rule.Replacement
 		existing.Scope = rule.Scope
 		existing.IsRegex = rule.IsRegex
 		existing.Enabled = rule.Enabled
+		existing.Order = rule.Order
 		if err := s.db.Save(&existing).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save replace rule"})
 			return
@@ -122,11 +126,13 @@ func replaceRuleFromRequest(userID uint, req replaceRuleRequest) (models.Replace
 	rule := models.ReplaceRule{
 		UserID:      userID,
 		Name:        strings.TrimSpace(req.Name),
+		Group:       strings.TrimSpace(req.Group),
 		Pattern:     strings.TrimSpace(req.Pattern),
 		Replacement: req.Replacement,
 		Scope:       strings.TrimSpace(req.Scope),
 		IsRegex:     &isRegex,
 		Enabled:     enabled,
+		Order:       req.Order,
 	}
 	if rule.Name == "" {
 		return models.ReplaceRule{}, errors.New("name is required")
@@ -181,11 +187,13 @@ func (s *Server) upsertReplaceRules(c *gin.Context) {
 			err := tx.Where("user_id = ? AND name = ?", userID, next.Name).Order("id asc").First(&existing).Error
 			switch {
 			case err == nil:
+				existing.Group = next.Group
 				existing.Pattern = next.Pattern
 				existing.Replacement = next.Replacement
 				existing.Scope = next.Scope
 				existing.IsRegex = next.IsRegex
 				existing.Enabled = next.Enabled
+				existing.Order = next.Order
 				if err := tx.Save(&existing).Error; err != nil {
 					return err
 				}
@@ -250,11 +258,13 @@ func (s *Server) updateReplaceRule(c *gin.Context) {
 		}
 	}
 	rule.Name = next.Name
+	rule.Group = next.Group
 	rule.Pattern = next.Pattern
 	rule.Replacement = next.Replacement
 	rule.Scope = next.Scope
 	rule.IsRegex = next.IsRegex
 	rule.Enabled = next.Enabled
+	rule.Order = next.Order
 	if err := s.db.Save(&rule).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update replace rule"})
 		return

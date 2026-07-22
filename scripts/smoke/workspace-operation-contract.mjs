@@ -19,9 +19,13 @@ function fakeToken() {
 
 async function installApiMocks(page) {
   let webdavRootRequests = 0
-  const savedSettingKeys = []
+  let backupTriggerRequests = 0
+  let portableBackupTriggerRequests = 0
+  const savedSettings = []
   await page.exposeFunction('__workspaceOperationWebDAVRootRequests', () => webdavRootRequests)
-  await page.exposeFunction('__workspaceOperationSavedSettingKeys', () => [...savedSettingKeys])
+  await page.exposeFunction('__workspaceOperationBackupTriggerRequests', () => backupTriggerRequests)
+  await page.exposeFunction('__workspaceOperationPortableBackupTriggerRequests', () => portableBackupTriggerRequests)
+  await page.exposeFunction('__workspaceOperationSavedSettings', () => savedSettings.map(item => ({ ...item })))
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/webdav\/.*$/, async route => {
     const authorization = route.request().headers().authorization || ''
@@ -56,8 +60,8 @@ async function installApiMocks(page) {
     }
     if (['/settings/reader', '/settings/shelf', '/settings/search'].includes(path) && method === 'PUT') {
       const key = path.split('/').at(-1)
-      savedSettingKeys.push(key)
       const body = request.postDataJSON?.() || {}
+      savedSettings.push({ key, force: body.force === true })
       return route.fulfill(json({ key, value: body.value || {}, updatedAt: '2026-07-16T00:00:01Z' }))
     }
     if (path === '/books') return route.fulfill(json([]))
@@ -65,6 +69,14 @@ async function installApiMocks(page) {
     if (path === '/sources') return route.fulfill(json([]))
     if (path === '/cache/stats') return route.fulfill(json({ files: 0, size: 0, cachedChapters: 0 }))
     if (path === '/local-store') return route.fulfill(json({ path: '', items: [{ name: 'comic.cbz', path: 'comic.cbz', extension: '.cbz', size: 128, isDir: false, importable: true }] }))
+    if (path === '/backup/trigger' && method === 'POST') {
+      backupTriggerRequests += 1
+      return route.fulfill(json({ name: 'backup-smoke.zip' }))
+    }
+    if (path === '/backup/portable/trigger' && method === 'POST') {
+      portableBackupTriggerRequests += 1
+      return route.fulfill(json({ name: 'portable-smoke.zip', localBooks: 1 }))
+    }
     if (path === '/backup/list') return route.fulfill(json([]))
     if (path === '/webdav/list') return route.fulfill(json({ path: '', items: [] }))
     if (path === '/rss/sources') return route.fulfill(json([]))
@@ -197,15 +209,37 @@ async function verifyUserConfigurationActions(page, viewport) {
   await page.getByText('备份用户配置', { exact: true }).click()
   await page.getByRole('button', { name: '确定' }).last().click()
   await page.waitForFunction(async () => {
-    const keys = await window.__workspaceOperationSavedSettingKeys()
-    return ['reader', 'shelf', 'search'].every(key => keys.includes(key))
+    const settings = await window.__workspaceOperationSavedSettings()
+    return ['reader', 'shelf', 'search'].every(key => settings.some(item => item.key === key && item.force))
   })
-  const keys = await page.evaluate(() => window.__workspaceOperationSavedSettingKeys())
-  assert(['reader', 'shelf', 'search'].every(key => keys.includes(key)), 'configuration backup must flush reader, shelf, and search settings')
+  const settings = await page.evaluate(() => window.__workspaceOperationSavedSettings())
+  assert(['reader', 'shelf', 'search'].every(key => settings.some(item => item.key === key && item.force)), 'configuration backup must force reader, shelf, and search snapshots')
 
   await page.getByText('同步用户配置', { exact: true }).click()
   await page.getByRole('button', { name: '确定' }).last().click()
   await page.getByText('用户配置已同步', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+}
+
+async function verifyDirectBackupActions(page, viewport) {
+  if (viewport.width <= 750) {
+    const mobileNavigationOpen = await page.locator('.app-shell').evaluate(node => node.classList.contains('mobile-nav-open'))
+    if (!mobileNavigationOpen) {
+      await page.locator('.mobile-menu-trigger').click()
+      await page.waitForFunction(() => document.querySelector('.app-shell')?.classList.contains('mobile-nav-open'))
+    }
+  }
+
+  await page.getByText('保存备份', { exact: true }).click()
+  await page.getByRole('button', { name: '确定' }).last().click()
+  await page.waitForFunction(async () => await window.__workspaceOperationBackupTriggerRequests() === 1)
+  await page.getByText('当前账户备份已保存：backup-smoke.zip', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+
+  await page.getByText('保存完整本地书备份', { exact: true }).click()
+  await page.getByRole('button', { name: '确定' }).last().click()
+  await page.waitForFunction(async () => await window.__workspaceOperationPortableBackupTriggerRequests() === 1)
+  await page.getByText('完整本地书备份已保存：portable-smoke.zip（1 本）', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+
+  assert(await page.locator('.global-backup-dialog').count() === 0, `${viewport.width}: direct backup actions must not create a second manager`)
 }
 
 async function runViewport(browser, viewport) {
@@ -225,7 +259,7 @@ async function runViewport(browser, viewport) {
 
   const root = targetUrl.replace(/\/$/, '')
   await openLegacyOperation(page, root, viewport, '/local-store?keep=operation-contract', '.global-local-store-dialog', 'local-store', '书仓文件管理', true, 'comic.cbz')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=backup&keep=operation-contract', '.global-backup-dialog', 'backup', '备份恢复', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=backup&keep=operation-contract', '.global-webdav-dialog', 'webdav', 'WebDAV文件管理', true, 'comic.cbz')
   await openLegacyOperation(page, root, viewport, '/settings?panel=webdav&keep=operation-contract', '.global-webdav-dialog', 'webdav', 'WebDAV文件管理', true, 'comic.cbz')
   const firstWebDAVRootRequestCount = await page.evaluate(() => window.__workspaceOperationWebDAVRootRequests())
   await page.goto(`${root}/settings?panel=webdav&keep=operation-contract`, { waitUntil: 'networkidle' })
@@ -239,6 +273,7 @@ async function runViewport(browser, viewport) {
   await openLegacySidebarFocus(page, root, viewport, 'account', 'account')
   await openLegacySidebarFocus(page, root, viewport, 'cache', 'cache')
   await openLegacyReaderSettingsNotice(page, root, viewport)
+  await verifyDirectBackupActions(page, viewport)
   await verifyUserConfigurationActions(page, viewport)
 
   assert(failures.length === 0, failures.join('\n'))
@@ -253,7 +288,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`workspace-operation: ok ${checks.join(', ')} legacyRoutes=true sharedBodies=true mobileSidebar=true`)
+    console.log(`workspace-operation: ok ${checks.join(', ')} legacyRoutes=true directBackup=true sharedBodies=true mobileSidebar=true`)
   } finally {
     await browser.close()
   }

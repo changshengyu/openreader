@@ -164,9 +164,11 @@ import { useAppCacheManagement } from '../composables/useAppCacheManagement'
 import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppRecentReading } from '../composables/useAppRecentReading'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
+import { useWorkspaceBackupActions } from '../composables/useWorkspaceBackupActions'
 import { useSync } from '../composables/useSync'
 import ExploreWorkspacePopover from '../components/workspace/ExploreWorkspacePopover.vue'
 import { clearCache, getCacheStats } from '../api/cache'
+import { triggerBackup, triggerPortableBackup } from '../api/backup'
 import { listSources } from '../api/sources'
 import api from '../api/client'
 import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
@@ -248,6 +250,27 @@ const {
   now: () => Date.now(),
   navigate: route => router.push(route),
 })
+const {
+  backupLoading,
+  portableBackupLoading,
+  runBackup: runWorkspaceBackup,
+  runPortableBackup: runWorkspacePortableBackup,
+} = useWorkspaceBackupActions({
+  triggerBackup,
+  triggerPortableBackup,
+  confirmBackup: () => ElMessageBox.confirm(
+    '确认创建当前账户的书源、书架、分组、RSS、设置、书签、进度和替换规则备份吗？',
+    '保存备份',
+    { type: 'warning' },
+  ),
+  confirmPortable: () => ElMessageBox.confirm(
+    '完整本地书备份会额外保存当前账户可恢复的本地书原文件。音频目录或缺失的原文件会阻止生成，是否继续？',
+    '保存完整本地书备份',
+    { type: 'warning' },
+  ),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
 
 const canAccessLocalStore = computed(() => userStore.profile?.canAccessStore !== false)
 const canAccessWebDAV = computed(() => {
@@ -307,7 +330,8 @@ const navSections = computed(() => [
       title: 'WebDAV',
       items: [
         { key: 'webdav', label: '文件管理', action: () => overlay.openWebDAV() },
-        { key: 'backup', label: '保存备份', action: () => overlay.openBackup() },
+        { key: 'backup', label: backupLoading.value ? '正在保存备份' : '保存备份', action: runWorkspaceBackup },
+        { key: 'portableBackup', label: portableBackupLoading.value ? '正在保存完整备份' : '保存完整本地书备份', action: runWorkspacePortableBackup },
       ],
     }]
     : []),
@@ -507,9 +531,9 @@ async function backupUserConfig() {
   ).catch(() => false)
   if (!confirmed) return
   const [readerSettings, shelfSettings, searchSettings] = await Promise.all([
-    reader.saveReaderSettings(),
-    preferences.savePreference('shelf'),
-    preferences.savePreference('search'),
+    reader.saveReaderSettings({ force: true }),
+    preferences.savePreference('shelf', { force: true }),
+    preferences.savePreference('search', { force: true }),
   ])
   if (!readerSettings || !shelfSettings || !searchSettings) {
     ElMessage.error('备份用户配置失败')
@@ -526,8 +550,8 @@ async function syncUserConfig() {
   ).catch(() => false)
   if (!confirmed) return
   const [readerSettings] = await Promise.all([
-    reader.loadReaderSettings(),
-    preferences.loadPreferences(),
+    reader.loadReaderSettings({ createIfMissing: false }),
+    preferences.loadPreferences({ createIfMissing: false }),
   ])
   if (!readerSettings || Object.values(preferences.syncError).some(Boolean)) {
     ElMessage.error(reader.settingsSyncError || Object.values(preferences.syncError).find(Boolean) || '同步用户配置失败')
@@ -643,9 +667,6 @@ function openRouteWorkspaceOperationOverlay() {
     case 'webdav':
       if (canAccessWebDAV.value) overlay.openWebDAV()
       break
-    case 'backup':
-      if (canAccessWebDAV.value) overlay.openBackup()
-      break
     case 'replace-rules':
       overlay.openReplaceRules()
       break
@@ -664,7 +685,6 @@ function clearRouteWorkspaceOperationOverlayIntent() {
   const visibleByOverlay = {
     'local-store': overlay.localStoreVisible,
     webdav: overlay.webdavVisible,
-    backup: overlay.backupVisible,
     'replace-rules': overlay.replaceRulesVisible,
     rss: overlay.rssVisible,
     'user-manage': overlay.userManageVisible,
@@ -797,7 +817,6 @@ watch(
   () => [
     overlay.localStoreVisible,
     overlay.webdavVisible,
-    overlay.backupVisible,
     overlay.replaceRulesVisible,
     overlay.rssVisible,
     overlay.userManageVisible,

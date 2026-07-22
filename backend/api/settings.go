@@ -18,6 +18,7 @@ import (
 type userSettingRequest struct {
 	Value         json.RawMessage `json:"value" binding:"required"`
 	BaseUpdatedAt string          `json:"baseUpdatedAt"`
+	Force         bool            `json:"force"`
 }
 
 func (s *Server) getUserSetting(c *gin.Context) {
@@ -70,7 +71,7 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 
 	var existing models.UserSetting
 	err := s.db.Where("user_id = ? AND key = ?", userID, key).First(&existing).Error
-	if err == nil && isStaleProgressUpdate(existing.UpdatedAt, req.BaseUpdatedAt, "") {
+	if err == nil && !req.Force && isStaleProgressUpdate(existing.UpdatedAt, req.BaseUpdatedAt, "") {
 		c.Header("X-OpenReader-Setting-Conflict", "1")
 		c.JSON(http.StatusOK, userSettingResponse(existing))
 		return

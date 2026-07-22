@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	errInvalidBackupArchive  = errors.New("invalid backup archive")
-	errBackupArchiveLimit    = errors.New("backup archive exceeds safety limits")
-	errBackupRestoreTooLarge = errors.New("backup file exceeds size limit")
+	errInvalidBackupArchive     = errors.New("invalid backup archive")
+	errBackupArchiveLimit       = errors.New("backup archive exceeds safety limits")
+	errBackupRestoreTooLarge    = errors.New("backup file exceeds size limit")
+	errBackupRestorePersistence = errors.New("backup restore persistence failed")
 )
 
 type backupRestoreLimits struct {

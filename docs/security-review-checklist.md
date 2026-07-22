@@ -277,12 +277,12 @@ empty-TOC replacement preservation, explicit spine refresh, owner isolation and 
 - [x] ZIP member paths, duplicate canonical names, count, per-member bytes and cumulative expanded bytes are validated before restore dispatch; restore dispatch receives only the bounded preflight data.
 - [x] Backend accepts only normalized `.zip` WebDAV restore targets and does not disclose a mounted path or archive member in client errors.
 - [x] Structural archive failure has no user-data mutation.
-- [ ] Supported JSON decode or database-write failure rolls back the complete logical restore and emits no sync event.
-- [ ] A caller without `canEditSources` cannot mutate the global source table through backup restore; personal restore reports the skipped source artifact explicitly.
-- [ ] Logical backup generation propagates query/encode/ZIP/close/rename failures and never exposes a partial final ZIP.
-- [ ] Fixed upstream `bookmark.json` and `replaceRule.json` plus old OpenReader plural aliases are fixture-tested without duplicate execution.
+- [x] Supported JSON decode or database-write failure rolls back the complete logical restore and emits no sync event.
+- [x] A caller without `canEditSources` cannot mutate the global source table through backup restore; personal restore reports the skipped source artifact explicitly.
+- [x] Logical backup generation propagates query/encode/ZIP/close/rename failures and never exposes a partial final ZIP.
+- [x] Fixed upstream `bookmark.json` and `replaceRule.json` plus old OpenReader plural aliases are fixture-tested without duplicate execution.
 
-Current evidence covers only archive structure/bounds. Remaining evidence and release gates are specified in
+Current automated evidence covers archive structure/bounds, typed-content predecode, SQLite rollback, permission isolation, atomic generation and alias fixtures. Remaining browser and release gates are specified in
 `docs/compat/backup-restore-fixed-baseline-p2-contract.md`; mounted-volume Docker smoke remains mandatory.
 
 ## P1-E4 portable local archive backup review

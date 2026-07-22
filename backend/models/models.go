@@ -215,11 +215,13 @@ type ReplaceRule struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	UserID      uint      `json:"userId" gorm:"not null;index"`
 	Name        string    `json:"name" gorm:"size:120;not null"`
+	Group       string    `json:"group,omitempty" gorm:"column:group_name;size:120"`
 	Pattern     string    `json:"pattern" gorm:"type:text;not null"`
 	Replacement string    `json:"replacement" gorm:"type:text"`
 	Scope       string    `json:"scope" gorm:"size:800;default:*"`
 	IsRegex     *bool     `json:"isRegex"`
 	Enabled     bool      `json:"enabled"`
+	Order       int       `json:"order" gorm:"column:sort_order;default:0"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }

@@ -181,6 +181,7 @@ func portableBackupTestDB(t *testing.T) *gorm.DB {
 		&models.ReadingProgress{},
 		&models.ReplaceRule{},
 		&models.BookCategory{},
+		&models.BookGroupPreference{},
 	); err != nil {
 		t.Fatal(err)
 	}

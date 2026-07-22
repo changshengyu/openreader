@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"openreader/backend/engine"
 	"openreader/backend/models"
 )
@@ -54,6 +56,9 @@ type portableArchiveInput struct {
 // intentionally not used by RunNow/RunNowForUser: reader-dev-compatible logical backups must not
 // start carrying library files as an accidental schema change.
 func (s *Service) RunPortableForUser(userID uint, username, backupDir string) (string, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if strings.TrimSpace(s.cfg.LibraryDir) == "" {
 		return "", 0, ErrPortableBackupUnavailable
 	}
@@ -65,8 +70,10 @@ func (s *Service) RunPortableForUser(userID uint, username, backupDir string) (s
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return "", 0, err
 	}
-	name := fmt.Sprintf("portable_backup_%s.zip", time.Now().Format("20060102_150405"))
-	finalPath := filepath.Join(backupDir, name)
+	finalPath, err := nextBackupPath(backupDir, "portable_backup_"+time.Now().Format("20060102_150405"))
+	if err != nil {
+		return "", 0, err
+	}
 	temporary, err := os.CreateTemp(backupDir, ".portable-backup-*.tmp")
 	if err != nil {
 		return "", 0, err
@@ -79,20 +86,19 @@ func (s *Service) RunPortableForUser(userID uint, username, backupDir string) (s
 			_ = os.Remove(temporaryPath)
 		}
 	}()
+	if err := temporary.Chmod(0o600); err != nil {
+		return "", 0, err
+	}
 
 	writer := zip.NewWriter(temporary)
 	// Keep exactly the same logical entries as the ordinary per-user backup. The portable
 	// manifest and archive entries are additive only to this explicit format.
-	s.addSources(writer)
-	s.addRSSSources(writer, &userID)
-	s.addUserSettings(writer, &userID)
-	s.addCategories(writer, &userID)
-	s.addBookGroups(writer, &userID)
-	s.addBookshelf(writer, &userID)
-	s.addChapterVariables(writer, &userID)
-	s.addBookmarks(writer, &userID)
-	s.addProgress(writer, &userID)
-	s.addReplaceRules(writer, &userID)
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		return s.writeLogicalEntries(tx, writer, &userID)
+	}); err != nil {
+		_ = writer.Close()
+		return "", 0, err
+	}
 
 	manifest := portableManifest{
 		Format:    "openreader-portable-backup",
@@ -146,6 +152,9 @@ func (s *Service) RunPortableForUser(userID uint, username, backupDir string) (s
 		return "", 0, err
 	}
 	if err := writer.Close(); err != nil {
+		return "", 0, err
+	}
+	if err := temporary.Sync(); err != nil {
 		return "", 0, err
 	}
 	if err := temporary.Close(); err != nil {

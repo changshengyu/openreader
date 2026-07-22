@@ -7,7 +7,6 @@ const layoutSource = readFileSync(new URL('../src/layouts/AppLayout.vue', import
 const hostSource = readFileSync(new URL('../src/components/GlobalOverlayHost.vue', import.meta.url), 'utf8')
 const localStoreOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayLocalStore.vue', import.meta.url), 'utf8')
 const webdavOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayWebDAV.vue', import.meta.url), 'utf8')
-const backupOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayBackups.vue', import.meta.url), 'utf8')
 const replaceOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayReplaceRules.vue', import.meta.url), 'utf8')
 const userOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayUserManagement.vue', import.meta.url), 'utf8')
 
@@ -20,6 +19,7 @@ test('keeps LocalStore and overlay-backed legacy Settings panels as root-workspa
   }
   assert.match(routerSource, /workspaceFocus/, 'account and cache compatibility links must focus their persistent sidebar sections')
   assert.match(routerSource, /workspaceNotice/, 'reader compatibility links must explicitly explain that settings moved into Reader')
+  assert.match(routerSource, /backup:\s*'webdav'/, 'legacy backup management links must open the sole WebDAV manager')
   assert.doesNotMatch(routerSource, /workspace-settings/, 'legacy Settings links must not recreate the retired generic settings drawer')
 })
 
@@ -28,13 +28,17 @@ test('hydrates only real root operation overlays and consumes sidebar/Reader com
   assert.match(layoutSource, /clearRouteWorkspaceOperationOverlayIntent\(/, 'AppLayout must clear only closed operation intents')
   assert.match(layoutSource, /overlay\.openLocalStore\(/, 'local-store intent must reuse the existing overlay controller')
   assert.match(layoutSource, /overlay\.openWebDAV\(/, 'WebDAV intent must reuse the existing overlay controller')
-  assert.match(layoutSource, /overlay\.openBackup\(/, 'backup intent must reuse the existing overlay controller')
+  assert.doesNotMatch(layoutSource, /overlay\.openBackup\(/, 'upstream direct backup must not open a second manager')
+  assert.match(layoutSource, /action:\s*runWorkspaceBackup/, 'ordinary backup must be a direct confirmed workspace action')
+  assert.match(layoutSource, /action:\s*runWorkspacePortableBackup/, 'the portable extension must remain a separately named direct action')
   assert.match(layoutSource, /consumeWorkspaceFocusIntent\(/, 'AppLayout must reveal the persistent account/cache sidebar section for old links')
   assert.match(layoutSource, /consumeWorkspaceNoticeIntent\(/, 'AppLayout must surface the Reader-settings migration notice for old links')
   assert.match(layoutSource, /backupUserConfig\(/, 'user configuration backup must be a dedicated settings flush, not a full backup dialog')
-  assert.match(layoutSource, /reader\.saveReaderSettings\(/, 'backup must flush reader/custom configuration')
-  assert.match(layoutSource, /preferences\.savePreference\('shelf'\)/, 'backup must flush shelf configuration')
-  assert.match(layoutSource, /preferences\.savePreference\('search'\)/, 'backup must flush search configuration')
+  assert.match(layoutSource, /reader\.saveReaderSettings\(\{\s*force:\s*true\s*\}\)/, 'explicit backup must force only the current reader snapshot')
+  assert.match(layoutSource, /preferences\.savePreference\('shelf',\s*\{\s*force:\s*true\s*\}\)/, 'explicit backup must force the shelf snapshot')
+  assert.match(layoutSource, /preferences\.savePreference\('search',\s*\{\s*force:\s*true\s*\}\)/, 'explicit backup must force the search snapshot')
+  assert.match(layoutSource, /reader\.loadReaderSettings\(\{\s*createIfMissing:\s*false\s*\}\)/, 'explicit sync must not create a missing reader backup')
+  assert.match(layoutSource, /preferences\.loadPreferences\(\{\s*createIfMissing:\s*false\s*\}\)/, 'explicit sync must not create missing preference backups')
   assert.doesNotMatch(layoutSource, /openWorkspaceSettings\(/, 'sidebar account/cache actions must not open a global settings surface')
 })
 
@@ -60,11 +64,10 @@ test('keeps LocalStore and WebDAV workspace entries independently permission-sco
   assert.match(layoutSource, /canAccessWebDAV\.value[\s\S]*?key: 'webdav'/, 'WebDAV/backup section must not be shown after WebDAV permission is revoked')
 })
 
-test('keeps upstream-style file operations in root dialogs instead of side drawers', () => {
+test('keeps upstream-style file operations in one root manager instead of a duplicate backup dialog', () => {
   for (const [name, source, state] of [
     ['LocalStore', localStoreOverlaySource, 'localStoreVisible'],
     ['WebDAV', webdavOverlaySource, 'webdavVisible'],
-    ['backup', backupOverlaySource, 'backupVisible'],
   ]) {
     assert.match(source, /<el-dialog/, `${name} must use the upstream workspace dialog shell`)
     assert.doesNotMatch(source, /<el-drawer/, `${name} must not retain a side/bottom drawer shell`)
@@ -74,7 +77,7 @@ test('keeps upstream-style file operations in root dialogs instead of side drawe
   }
   assert.match(hostSource, /<OverlayLocalStore\s+:is-mobile="isMobileOverlay"/, 'LocalStore must receive the shared compact-interface state')
   assert.match(hostSource, /<OverlayWebDAV\s+:is-mobile="isMobileOverlay"/, 'WebDAV must receive the shared compact-interface state')
-  assert.match(hostSource, /<OverlayBackups\s+:is-mobile="isMobileOverlay"/, 'backup must receive the shared compact-interface state')
+  assert.doesNotMatch(hostSource, /OverlayBackups/, 'the shared host must not mount a second backup manager')
 })
 
 test('keeps ReplaceRule and UserManage manager roots in upstream-style dialogs', () => {

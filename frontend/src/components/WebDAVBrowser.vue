@@ -144,7 +144,12 @@ async function restoreBackupFile(row) {
     await ElMessageBox.confirm(`确定从 WebDAV 文件“${row.name}”恢复备份吗？`, '恢复 WebDAV 备份', { type: 'warning' })
     restoring.value = row.path
     const { data } = await restoreWebDAVBackup(row.path)
-    ElMessage.success(`恢复完成：书源 ${data.sources || 0}，书籍 ${data.books || 0}，进度 ${data.progress || 0}`)
+    const summary = `恢复完成：书源 ${data.sources || 0}，书籍 ${data.books || 0}，进度 ${data.progress || 0}`
+    if (data.sourcesSkipped) {
+      ElMessage.warning(`${summary}。个人数据已恢复，书源因权限未恢复`)
+    } else {
+      ElMessage.success(summary)
+    }
     await applyRestoreResult(data)
     await load()
   } catch (err) {

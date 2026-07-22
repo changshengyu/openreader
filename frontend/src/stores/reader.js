@@ -462,7 +462,7 @@ export const useReaderStore = defineStore('reader', {
       }
       this.settingsSyncError = ''
     },
-    async loadReaderSettings() {
+    async loadReaderSettings(options = {}) {
       this.ensureReaderSettingsScope()
       if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
       const operation = readerSettingsOperations.begin('reader')
@@ -472,11 +472,15 @@ export const useReaderStore = defineStore('reader', {
         if (!readerSettingsOperations.canCommit(operation)) return null
         const serverUpdatedAt = data?.updatedAt || ''
         if (data?.value && typeof data.value === 'object') {
-          if (this.settingsUpdatedAt && serverUpdatedAt && this.settingsUpdatedAt > serverUpdatedAt && this.settingsSyncBaseUpdatedAt !== serverUpdatedAt) {
+          if (options.createIfMissing !== false && this.settingsUpdatedAt && serverUpdatedAt && this.settingsUpdatedAt > serverUpdatedAt && this.settingsSyncBaseUpdatedAt !== serverUpdatedAt) {
             return await this.saveReaderSettings()
           }
           this.applyReaderSettings(data.value, serverUpdatedAt)
           return data.value
+        }
+        if (options.createIfMissing === false) {
+          this.settingsSyncError = '没有备份文件'
+          return null
         }
         return await this.saveReaderSettings()
       } catch (err) {
@@ -485,7 +489,7 @@ export const useReaderStore = defineStore('reader', {
         return null
       }
     },
-    async saveReaderSettings() {
+    async saveReaderSettings(options = {}) {
       this.ensureReaderSettingsScope()
       if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
       clearTimeout(readerSettingsSyncTimer)
@@ -496,6 +500,7 @@ export const useReaderStore = defineStore('reader', {
         const { data, headers } = await api.put('/settings/reader', {
           value: readerSettingsPayload(this),
           baseUpdatedAt: this.settingsSyncBaseUpdatedAt || '',
+          ...(options.force === true ? { force: true } : {}),
         })
         if (!readerSettingsOperations.canCommit(operation)) return null
         if (data?.value && headers?.['x-openreader-setting-conflict']) {

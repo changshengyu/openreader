@@ -3112,7 +3112,7 @@ func (s *Server) applyUserReplaceRules(book models.Book, content string) string 
 		return content
 	}
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Order("id asc").Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Order("sort_order asc, id asc").Find(&rules).Error; err != nil {
 		return content
 	}
 	for _, rule := range rules {
