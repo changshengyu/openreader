@@ -132,6 +132,7 @@ const {
   toggleManagedBook,
   selectAllManagedBooks,
   clearManagedSelection,
+  pruneManagedSelection,
   batchAddCategory,
   batchRemoveCategory,
   batchDeleteBooks,
@@ -181,6 +182,12 @@ watch(
     }
     await refreshManagedBrowserCacheCounts()
   },
+)
+
+watch(
+  () => managedBooks.value.map(book => Number(book.id)),
+  bookIds => pruneManagedSelection(bookIds),
+  { flush: 'sync' },
 )
 
 function manageBookSearchText(book) {

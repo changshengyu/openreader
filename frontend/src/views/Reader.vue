@@ -527,6 +527,7 @@ const {
 })
 
 const book = ref(null)
+const readerBookDeleted = ref(false)
 const chapters = ref([])
 const chapter = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
@@ -1441,9 +1442,11 @@ const {
   markSaved: markProgressSaved,
   save: saveCurrentProgress,
   schedule: scheduleProgressSave,
+  suspend: suspendProgressSaving,
+  resume: resumeProgressSaving,
 } = useReaderProgressPersistence({
   minimumInterval: 1200,
-  isBlocked: () => continuousWindowBusy.value,
+  isBlocked: () => continuousWindowBusy.value || readerBookDeleted.value,
   getPayload: () => chapter.value ? currentProgressPayload() : null,
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
   applyLocal: applyLocalProgressSnapshot,
@@ -1736,6 +1739,8 @@ const readerRouteSync = useReaderRouteSync({
   loadChapter: (index, offset, options) => loadChapter(index, offset, options),
   jumpToRouteLine,
   onBookLoadStart: () => {
+    readerBookDeleted.value = false
+    resumeProgressSaving()
     chapterLoadError.value = ''
   },
   onBookLoadError: error => {
@@ -1760,6 +1765,7 @@ useReaderTypographySync({
 })
 
 const {
+  handleBooksDeleted,
   handleBookDataUpdated: handleReaderBookDataUpdated,
   handleProgressUpdated,
   handleReplaceRulesUpdated,
@@ -1784,6 +1790,17 @@ const {
   refreshCachedChapters: computeBrowserCachedChapters,
   onReplaceSuccess: () => ElMessage.success('已按最新替换规则刷新当前章节'),
   onReplaceError: error => ElMessage.error(readError(error, '刷新当前章节失败')),
+  isTemporaryReader: () => isTemporaryRemoteReader.value,
+  isBookDeleted: () => readerBookDeleted.value,
+  markBookDeleted: () => {
+    readerBookDeleted.value = true
+  },
+  suspendProgressSaving,
+  stopAutoReading,
+  closeDeletedBookOverlays: ids => overlay.reconcileDeletedBooks(ids),
+  navigateHome: () => router.replace({ name: 'home' }),
+  onBookDeleted: () => ElMessage.info('书籍已从书架删除'),
+  onBookDeletionError: error => ElMessage.error(readError(error, '返回书架失败')),
 })
 
 useReaderPageLifecycle({
@@ -1808,6 +1825,7 @@ useReaderPageLifecycle({
   onBookDataUpdated: handleReaderBookDataUpdated,
   onReplaceRulesUpdated: handleReplaceRulesUpdated,
   onBookmarksUpdated: () => {},
+  onBooksDeleted: handleBooksDeleted,
 })
 
 onBeforeRouteLeave(() => {

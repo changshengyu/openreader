@@ -13,6 +13,7 @@ export function createReaderPageLifecycle(options) {
     windowTarget.addEventListener('openreader:reader-book-data-updated', options.onBookDataUpdated)
     windowTarget.addEventListener('openreader:replace-rules-updated', options.onReplaceRulesUpdated)
     windowTarget.addEventListener('openreader:bookmarks-updated', options.onBookmarksUpdated)
+    windowTarget.addEventListener('openreader:books-deleted', options.onBooksDeleted)
   }
 
   function unregisterListeners() {
@@ -24,17 +25,18 @@ export function createReaderPageLifecycle(options) {
     windowTarget.removeEventListener('openreader:reader-book-data-updated', options.onBookDataUpdated)
     windowTarget.removeEventListener('openreader:replace-rules-updated', options.onReplaceRulesUpdated)
     windowTarget.removeEventListener('openreader:bookmarks-updated', options.onBookmarksUpdated)
+    windowTarget.removeEventListener('openreader:books-deleted', options.onBooksDeleted)
   }
 
   async function mount() {
     options.reader.normalizeSettings()
     options.syncFonts(options.reader.customFontsMap)
+    registerListeners()
     try {
       await options.loadBook()
     } catch (error) {
       options.onBookLoadError(error)
     }
-    registerListeners()
     options.customBg.value = options.reader.customBgColor
     options.sliderLineHeight.value = options.reader.lineHeight
   }

@@ -40,6 +40,14 @@ function createController(overrides = {}) {
     refreshCachedChapters: async () => calls.push(['refresh-cache']),
     onReplaceSuccess: () => calls.push(['replace-success']),
     onReplaceError: error => calls.push(['replace-error', error.message]),
+    isTemporaryReader: () => false,
+    isBookDeleted: () => false,
+    markBookDeleted: () => calls.push(['mark-deleted']),
+    suspendProgressSaving: () => calls.push(['suspend-progress']),
+    stopAutoReading: () => calls.push(['stop-auto']),
+    closeDeletedBookOverlays: ids => calls.push(['close-overlays', ids]),
+    navigateHome: async () => calls.push(['home-replace']),
+    onBookDeleted: () => calls.push(['deleted-notice']),
     ...overrides,
   })
   return {
@@ -89,6 +97,39 @@ test('ignores progress for other books, matching positions, or busy restoration'
     detail: { progress: { ...busy.currentProgress, offset: 120 } },
   })
   assert.deepEqual(busy.calls, [])
+})
+
+test('matching book deletion suppresses saving and replaces Reader with Home exactly once', async () => {
+  let deleted = false
+  const fixture = createController({
+    isBookDeleted: () => deleted,
+    markBookDeleted: () => {
+      deleted = true
+      fixture.calls.push(['mark-deleted'])
+    },
+  })
+
+  assert.equal(await fixture.controller.handleBooksDeleted({ detail: { ids: [8, 7, 7] } }), true)
+  assert.equal(await fixture.controller.handleBooksDeleted({ detail: { ids: [7] } }), true)
+  assert.deepEqual(fixture.calls, [
+    ['mark-deleted'],
+    ['suspend-progress'],
+    ['cancel'],
+    ['stop-auto'],
+    ['close-overlays', [7]],
+    ['home-replace'],
+    ['deleted-notice'],
+  ])
+})
+
+test('deletion ignores another persisted book and temporary remote Reader', async () => {
+  const other = createController()
+  assert.equal(await other.controller.handleBooksDeleted({ detail: { ids: [8] } }), false)
+  assert.deepEqual(other.calls, [])
+
+  const temporary = createController({ isTemporaryReader: () => true })
+  assert.equal(await temporary.controller.handleBooksDeleted({ detail: { ids: [7] } }), false)
+  assert.deepEqual(temporary.calls, [])
 })
 
 test('updates book metadata without reloading and refreshes changed chapter lists', async () => {

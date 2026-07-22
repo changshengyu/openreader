@@ -11,6 +11,8 @@ export function useReaderProgressPersistence(options) {
   let pendingPayload = null
   let lastSavedKey = ''
   let lastRequestAt = 0
+  let suspended = false
+  let generation = 0
 
   function key(payload) {
     return readerProgressSaveKey(payload, options.getMode?.())
@@ -21,7 +23,7 @@ export function useReaderProgressPersistence(options) {
   }
 
   function isBusy() {
-    return saving || Boolean(pendingPayload)
+    return !suspended && (saving || Boolean(pendingPayload))
   }
 
   function cancelScheduled() {
@@ -30,6 +32,7 @@ export function useReaderProgressPersistence(options) {
   }
 
   function schedule(delay = 0) {
+    if (suspended) return
     cancelScheduled()
     saveTimer = setTimeout(() => {
       saveTimer = null
@@ -38,7 +41,7 @@ export function useReaderProgressPersistence(options) {
   }
 
   async function save(saveOptions = {}) {
-    if (options.isBlocked?.()) return
+    if (suspended || options.isBlocked?.()) return
     const payload = options.getPayload?.()
     if (!payload?.bookId) return
 
@@ -93,6 +96,7 @@ export function useReaderProgressPersistence(options) {
   }
 
   async function flush(force = false) {
+    if (suspended) return
     if (saving) {
       if (!force) return
       await waitForIdle()
@@ -101,7 +105,7 @@ export function useReaderProgressPersistence(options) {
 
     saving = true
     try {
-      while (pendingPayload) {
+      while (pendingPayload && !suspended) {
         const delay = readerProgressThrottleDelay(lastRequestAt, Date.now(), minimumInterval)
         if (!force && delay > 0) {
           schedule(delay)
@@ -114,12 +118,21 @@ export function useReaderProgressPersistence(options) {
         if (nextKey === lastSavedKey && !force) continue
 
         lastRequestAt = Date.now()
-        const savedProgress = await options.saveRemote(nextPayload)
+        const requestGeneration = generation
+        let savedProgress
+        try {
+          savedProgress = await options.saveRemote(nextPayload)
+        } catch (error) {
+          if (suspended || requestGeneration !== generation) break
+          throw error
+        }
+        if (suspended || requestGeneration !== generation) break
         options.onSaved?.(savedProgress)
         lastSavedKey = nextKey
       }
     } finally {
       saving = false
+      if (pendingPayload && !suspended && !saveTimer) schedule(0)
     }
   }
 
@@ -137,6 +150,21 @@ export function useReaderProgressPersistence(options) {
     })
   }
 
+  function suspend() {
+    suspended = true
+    generation += 1
+    pendingPayload = null
+    cancelScheduled()
+  }
+
+  function resume() {
+    suspended = false
+    generation += 1
+    pendingPayload = null
+    lastSavedKey = ''
+    lastRequestAt = 0
+  }
+
   if (getCurrentInstance()) onBeforeUnmount(cancelScheduled)
 
   return {
@@ -146,5 +174,7 @@ export function useReaderProgressPersistence(options) {
     markSaved,
     save,
     schedule,
+    suspend,
+    resume,
   }
 }

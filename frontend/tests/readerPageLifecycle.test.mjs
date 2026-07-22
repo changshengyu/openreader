@@ -44,6 +44,7 @@ function createLifecycle(overrides = {}) {
     'BookDataUpdated',
     'ReplaceRulesUpdated',
     'BookmarksUpdated',
+    'BooksDeleted',
   ].map(name => [`on${name}`, () => calls.push([name])]))
   const customBg = ref('')
   const sliderLineHeight = ref(0)
@@ -73,12 +74,26 @@ function createLifecycle(overrides = {}) {
   }
 }
 
-test('initializes the reader before registering page listeners', async () => {
-  const controller = createLifecycle()
-  await controller.lifecycle.mount()
+test('registers deletion and page listeners before awaiting the initial book load', async () => {
+  let finishLoad
+  const controller = createLifecycle({
+    loadBook: () => new Promise(resolve => {
+      finishLoad = () => {
+        controller.calls.push(['load'])
+        resolve()
+      }
+    }),
+  })
+  const mounting = controller.lifecycle.mount()
+  await Promise.resolve()
+  controller.windowTarget.emit('openreader:books-deleted')
+  assert.equal(controller.calls.at(-1)?.[0], 'BooksDeleted')
+  finishLoad()
+  await mounting
   assert.deepEqual(controller.calls, [
     ['normalize'],
     ['fonts', { reader: '/fonts/reader.woff2' }],
+    ['BooksDeleted'],
     ['load'],
   ])
   assert.equal(controller.customBg.value, '#f5ecd2')
@@ -91,6 +106,7 @@ test('initializes the reader before registering page listeners', async () => {
     ['openreader:reader-book-data-updated', undefined],
     ['openreader:replace-rules-updated', undefined],
     ['openreader:bookmarks-updated', undefined],
+    ['openreader:books-deleted', undefined],
   ])
   assert.deepEqual(controller.documentTarget.added, [
     ['visibilitychange', undefined],
@@ -132,6 +148,7 @@ test('saves progress and removes every listener during teardown', async () => {
     'openreader:reader-book-data-updated',
     'openreader:replace-rules-updated',
     'openreader:bookmarks-updated',
+    'openreader:books-deleted',
   ])
   assert.deepEqual(controller.documentTarget.removed, ['visibilitychange'])
   controller.windowTarget.emit('resize')

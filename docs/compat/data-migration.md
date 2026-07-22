@@ -603,3 +603,25 @@ and the Docker mounted-volume/backup compatibility smoke.
 Required evidence: old-table migration plus idempotent second run, progress/update separation, growing/no-growth
 refresh, reader-dev restore and re-export, frontend source-field contract, and mounted-volume/backup smoke before
 Docker release. See `bookshelf-last-check-time-p1-contract.md`.
+
+## P1 book-deletion browser-state convergence compatibility (2026-07-22)
+
+- No SQLite table/column/index, mounted directory, backup member, browser cache
+  key or local-progress key changes. Existing scoped shelf snapshots,
+  `openreader_chapter_progress@<scope>@<book-id>` entries and chapter-content
+  keys retain their deployed formats.
+- Successful server deletion now removes matching browser state as derived/user
+  state cleanup; failed or cancelled deletion removes nothing. Legacy unscoped
+  chapter/progress keys remain readable and are removed only for the confirmed
+  deleted book as before.
+- Async cleanup captures the authenticated scope that received/initiated the
+  deletion. Shelf snapshot lookup/removal and scoped chapter-prefix generation
+  use that frozen scope even if another account becomes current before
+  IndexedDB/localStorage work completes. It cannot migrate or delete another
+  user's scoped keys.
+- Reader suspension, overlay reconciliation, BookManage selection pruning and
+  the deletion event carry no durable state and require no migration.
+
+Required release evidence: scoped cache/progress unit contracts, real
+two-client WebSocket deletion at desktop and both mobile viewports, full
+frontend/backend/build gates, and the unchanged mounted-volume/backup smoke.

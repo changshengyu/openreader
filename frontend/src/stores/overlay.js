@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { normalizeDeletedBookIds } from '../utils/bookDeletion.js'
 
 export const useOverlayStore = defineStore('overlay', {
   state: () => ({
@@ -178,6 +179,42 @@ export const useOverlayStore = defineStore('overlay', {
     },
     openBackup() {
       this.backupVisible = true
+    },
+    reconcileDeletedBooks(bookIds) {
+      const deleted = new Set(normalizeDeletedBookIds(bookIds))
+      if (!deleted.size) return false
+      const targets = book => deleted.has(Number(book?.id))
+      let matched = false
+
+      if (targets(this.bookEditBook)) {
+        matched = true
+        this.bookEditVisible = false
+        this.bookEditBook = null
+      }
+      if (targets(this.bookmarkBook)) {
+        matched = true
+        this.bookmarkVisible = false
+        this.bookmarkBook = null
+        this.bookmarkCreateDraft = null
+      }
+      if (targets(this.bookmarkFormBook)) {
+        matched = true
+        this.finishBookmarkForm({ saved: false, reason: 'book-deleted' })
+        this.clearBookmarkForm()
+      }
+      if (targets(this.searchBook)) {
+        matched = true
+        this.searchBookContentVisible = false
+        this.searchBook = null
+      }
+      if (targets(this.bookInfoBook)) {
+        matched = true
+        if (this.bookGroupMode === 'set') this.bookGroupVisible = false
+        this.bookInfoVisible = false
+        this.bookInfoBook = null
+        this.bookInfoOptions = {}
+      }
+      return matched
     },
   },
 })

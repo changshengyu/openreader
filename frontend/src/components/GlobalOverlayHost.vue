@@ -47,6 +47,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useReaderStore } from '../stores/reader'
+import { useOverlayStore } from '../stores/overlay'
+import { deletedBookIdsFromEvent } from '../utils/bookDeletion'
 import {
   currentViewportWidth,
   shouldUseMiniInterface,
@@ -69,19 +71,26 @@ import OverlayUserManagement from './overlays/OverlayUserManagement.vue'
 import OverlayWebDAV from './overlays/OverlayWebDAV.vue'
 
 const reader = useReaderStore()
+const overlay = useOverlayStore()
 const windowWidth = ref(currentViewportWidth())
 const isMobileOverlay = computed(() => (
   shouldUseMiniInterface(reader.pageMode, windowWidth.value)
 ))
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth, { passive: true })
+  window.addEventListener('openreader:books-deleted', handleBooksDeleted)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateWindowWidth)
+  window.removeEventListener('openreader:books-deleted', handleBooksDeleted)
 })
 
 function updateWindowWidth() {
   windowWidth.value = currentViewportWidth()
+}
+
+function handleBooksDeleted(event) {
+  overlay.reconcileDeletedBooks(deletedBookIdsFromEvent(event))
 }
 </script>

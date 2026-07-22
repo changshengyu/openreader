@@ -91,6 +91,16 @@ test('owns desktop and mobile book selection state', () => {
   assert.deepEqual(fixture.controller.selectedBookIds.value, [])
 })
 
+test('prunes remotely deleted rows from the active manager selection', () => {
+  const fixture = createController()
+  fixture.controller.selectedBookIds.value = [1, 2, 3]
+  fixture.books.splice(1, 1)
+
+  fixture.controller.pruneManagedSelection(fixture.books.map(book => book.id))
+
+  assert.deepEqual(fixture.controller.selectedBookIds.value, [1, 3])
+})
+
 test('adds and removes categories only for matching selected books', async () => {
   const fixture = createController()
   fixture.controller.selectedBookIds.value = [1, 2]

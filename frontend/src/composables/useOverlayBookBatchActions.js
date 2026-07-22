@@ -35,6 +35,15 @@ export function useOverlayBookBatchActions(options) {
     selectedBookIds.value = []
   }
 
+  function pruneManagedSelection(bookIds = []) {
+    const available = new Set(
+      (Array.isArray(bookIds) ? bookIds : [])
+        .map(id => Number(id))
+        .filter(id => Number.isInteger(id) && id > 0),
+    )
+    selectedBookIds.value = selectedBookIds.value.filter(id => available.has(Number(id)))
+  }
+
   async function batchAddCategory(category) {
     if (!selectedBookIds.value.length) return
     batchBusy.value = true
@@ -106,6 +115,7 @@ export function useOverlayBookBatchActions(options) {
     toggleManagedBook,
     selectAllManagedBooks,
     clearManagedSelection,
+    pruneManagedSelection,
     batchAddCategory,
     batchRemoveCategory,
     batchDeleteBooks,

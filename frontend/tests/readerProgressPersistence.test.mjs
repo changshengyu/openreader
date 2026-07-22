@@ -118,6 +118,51 @@ test('does not apply or upload a transient progress snapshot while the reader wi
   controller.cancelScheduled()
 })
 
+test('suspends pending and in-flight progress after deletion until a new book resumes it', async () => {
+  let finishRemote
+  const saved = []
+  const controller = useReaderProgressPersistence({
+    minimumInterval: 0,
+    getPayload: () => ({
+      bookId: 7,
+      chapterId: 13,
+      chapterIndex: 3,
+      offset: 240,
+      percent: 0.325,
+      chapterPercent: 0.25,
+    }),
+    applyLocal: progress => saved.push(['local', progress.bookId]),
+    saveRemote: progress => new Promise(resolve => {
+      saved.push(['remote', progress.bookId])
+      finishRemote = () => resolve({ ...progress, updatedAt: 'server' })
+    }),
+    onSaved: progress => saved.push(['saved', progress.bookId]),
+  })
+
+  const inFlight = controller.save({ force: true })
+  await Promise.resolve()
+  controller.suspend()
+  finishRemote()
+  await inFlight
+  await controller.save({ force: true })
+
+  assert.deepEqual(saved, [
+    ['local', 7],
+    ['remote', 7],
+  ])
+
+  controller.resume()
+  const resumed = controller.save({ force: true })
+  await Promise.resolve()
+  finishRemote()
+  await resumed
+  assert.deepEqual(saved.slice(2), [
+    ['local', 7],
+    ['remote', 7],
+    ['saved', 7],
+  ])
+})
+
 test('background progress save queues one keepalive without a duplicate ordinary request', async () => {
   const previousWindow = globalThis.window
   const previousFetch = globalThis.fetch

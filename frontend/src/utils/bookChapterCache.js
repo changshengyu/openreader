@@ -7,10 +7,10 @@ export function chapterCacheBookKey(book, fallbackBookId) {
   return currentBook.url || currentBook.bookUrl || currentBook.libraryPath || `book:${fallbackBookId}`
 }
 
-export function chapterCacheKeyPrefix(book, fallbackBookId) {
+export function chapterCacheKeyPrefix(book, fallbackBookId, scope = currentUserScope()) {
   const currentBook = book || {}
   return [
-    currentUserScope(),
+    scope,
     `${currentBook.title || currentBook.name || 'book'}_${currentBook.author || ''}`,
     chapterCacheBookKey(currentBook, fallbackBookId),
   ].join('@')
@@ -88,9 +88,10 @@ export async function countBooksBrowserCachedChapters(books = []) {
   return Object.fromEntries(prefixRows.map(row => [row.book.id, row.indexes.size]))
 }
 
-export async function clearBookBrowserChapterCache(book, bookId) {
+export async function clearBookBrowserChapterCache(book, bookId, options = {}) {
+  const scope = options.scope || currentUserScope()
   const [scoped, legacy] = await Promise.all([
-    removeBrowserCacheKeys(`${chapterCacheKeyPrefix(book, bookId)}@chapterContent-`),
+    removeBrowserCacheKeys(`${chapterCacheKeyPrefix(book, bookId, scope)}@chapterContent-`),
     removeBrowserCacheKeys(`${legacyChapterCacheKeyPrefix(book, bookId)}@chapterContent-`),
   ])
   return scoped + legacy

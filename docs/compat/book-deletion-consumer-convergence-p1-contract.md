@@ -1,10 +1,10 @@
 # Book deletion consumer convergence P1 contract
 
-Status: extracted on 2026-07-22 from the fixed upstream baseline
+Status: implemented and validated on 2026-07-22 against the fixed upstream baseline
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
-This inventory pass changes no application code. It narrows the next P1-D
-implementation slice to the state that survives after a successful single or
-batch book deletion.
+The initial inventory pass changed no application code and narrowed P1-D to the
+state that survives after a successful single or batch book deletion. The
+implementation record below is the later test-first result.
 
 ## Upstream authority
 
@@ -103,4 +103,47 @@ For a normalized, unique set of positive `deletedIds`:
   another user's cleanup, or redesign of delete confirmation copy is authorized
   in this slice.
 - This contract does not reopen already validated cache/source refresh or book
-  metadata editing behavior.
+metadata editing behavior.
+
+## Implementation record
+
+- Direct, batch and WebSocket deletion now converge through one normalized
+  `bookshelf.reconcileDeletedBooks()` transaction. It clears Pinia and persisted
+  shelf rows, scoped/legacy local progress and browser chapter cache, then emits
+  one idempotent `openreader:books-deleted` event. A failed direct API mutation
+  still changes no local consumer.
+- The deletion transaction freezes the authenticated scope before asynchronous
+  cache work. Persisted shelf lookup/removal and scoped chapter-prefix cleanup
+  cannot drift into a newly authenticated account if login state changes while
+  cleanup is pending; cache key formats remain unchanged.
+- `GlobalOverlayHost` delegates the event to the sole overlay store. Matching
+  BookInfo, BookEdit, BookGroup(set), bookmarks, bookmark form and content search
+  are closed and cleared; bookmark creation resolves unsaved with
+  `book-deleted`. BookManage, BookGroup(manage) and scenes for other ids remain.
+- Reader registers deletion listeners before awaiting its initial book load.
+  A matching persisted id suspends the progress controller by generation,
+  cancels queued saves and auto-reading, ignores a late in-flight result, closes
+  the target overlays and replaces the route with Home. Route-leave/page-hide/
+  unmount save calls observe the suspension. Temporary remote and other-book
+  Readers are unchanged.
+- BookManage prunes only selection ids that disappear remotely. A successful
+  local batch delete retains the upstream behavior of clearing its full
+  selection and leaving the manager usable.
+
+Validation evidence:
+
+1. Frontend unit/contracts pass `534/534`, including direct/batch/sync cleanup,
+   cache identity recovery, frozen scope prefixes, failed-delete immutability,
+   overlay targeting, manager selection, listener-before-load, Reader deletion
+   routing and suspended in-flight progress.
+2. `cd frontend && npm run build` and `cd backend && go test ./...` pass. No Go
+   route, response, schema or cleanup implementation changed in this slice; the
+   existing lifecycle contracts retain cascade, ownership and file-isolation
+   coverage.
+3. `scripts/smoke/book-deletion-convergence-contract.mjs` passes against one
+   isolated real Go binary, SQLite database and two authenticated Chromium
+   contexts at `1440x900`, `390x844` and `360x800`. It intercepts no API:
+   client B deletes through real `DELETE /api/books/:id`; client A proves
+   BookInfo/bookmark/content-search closure, Reader-to-Home replacement, local
+   progress removal, zero post-delete `PUT /api/progress`, no API/console errors
+   and no horizontal overflow.

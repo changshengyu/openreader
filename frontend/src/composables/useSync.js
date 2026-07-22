@@ -101,7 +101,7 @@ export function useSync() {
         const ids = Array.isArray(message.payload?.ids)
           ? message.payload.ids
           : [message.payload?.id]
-        ids.filter(Boolean).forEach(id => bookshelf.removeBookLocal(id))
+        bookshelf.reconcileDeletedBooks(ids).catch(() => {})
       }
       if (message.type === 'category_update') {
         bookshelf.upsertCategory(message.payload)

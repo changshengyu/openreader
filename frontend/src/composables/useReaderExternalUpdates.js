@@ -1,4 +1,5 @@
 import { unref } from 'vue'
+import { deletedBookIdsFromEvent } from '../utils/bookDeletion.js'
 
 export function useReaderExternalUpdates(options) {
   async function handleProgressUpdated(event) {
@@ -83,8 +84,31 @@ export function useReaderExternalUpdates(options) {
     }
   }
 
+  async function handleBooksDeleted(event) {
+    if (options.isTemporaryReader?.()) return false
+    const targetBookId = Number(unref(options.bookId))
+    if (!Number.isInteger(targetBookId) || targetBookId <= 0) return false
+    const deletedIds = deletedBookIdsFromEvent(event)
+    if (!deletedIds.includes(targetBookId)) return false
+    if (options.isBookDeleted?.()) return true
+
+    options.markBookDeleted?.()
+    options.suspendProgressSaving?.()
+    options.cancelProgressSave()
+    options.stopAutoReading?.()
+    options.closeDeletedBookOverlays?.([targetBookId])
+    try {
+      await options.navigateHome?.()
+      options.onBookDeleted?.()
+    } catch (error) {
+      options.onBookDeletionError?.(error)
+    }
+    return true
+  }
+
   return {
     handleBookDataUpdated,
+    handleBooksDeleted,
     handleProgressUpdated,
     handleReplaceRulesUpdated,
   }
