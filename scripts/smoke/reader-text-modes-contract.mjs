@@ -327,7 +327,21 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
     window.__openReaderLongTasks = []
     window.__openReaderLayoutShifts = []
     window.__openReaderBlockRectReads = []
+    window.__openReaderScrollWrites = []
     window.__openReaderInputTimes = { touchStartAt: null, touchEndAt: null }
+    const scrollDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    if (scrollDescriptor?.get && scrollDescriptor?.set) {
+      Object.defineProperty(content, 'scrollTop', {
+        configurable: true,
+        get() {
+          return scrollDescriptor.get.call(this)
+        },
+        set(value) {
+          window.__openReaderScrollWrites.push({ at: performance.now(), value: Number(value) })
+          scrollDescriptor.set.call(this, value)
+        },
+      })
+    }
     if (globalThis.PerformanceObserver?.supportedEntryTypes?.includes('longtask')) {
       window.__openReaderLongTaskObserver = new PerformanceObserver(list => {
         window.__openReaderLongTasks.push(...list.getEntries().map(entry => ({
@@ -398,6 +412,14 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   }))
   assert(preparedLayer.height > viewport.height * 10, `${viewport.width}: long chapter fixture is too short (${preparedLayer.height})`)
   assert(preparedLayer.animationCount === 0 && preparedLayer.transform === 'none' && preparedLayer.willChange === '', `${viewport.width}: touchstart promoted the full chapter layer ${JSON.stringify(preparedLayer)}`)
+  const renderLayer = await page.locator('.reader-page').evaluate(element => ({
+    filter: getComputedStyle(element).filter,
+    overlayBackground: getComputedStyle(element, '::after').backgroundColor,
+    overlayPointerEvents: getComputedStyle(element, '::after').pointerEvents,
+  }))
+  assert(renderLayer.filter === 'none', `${viewport.width}/${mode}: scrolling text remains inside a filter layer ${JSON.stringify(renderLayer)}`)
+  assert(renderLayer.overlayBackground === 'rgba(0, 0, 0, 0)', `${viewport.width}/${mode}: 100% brightness overlay must be transparent ${JSON.stringify(renderLayer)}`)
+  assert(renderLayer.overlayPointerEvents === 'none', `${viewport.width}/${mode}: brightness overlay intercepts reader input ${JSON.stringify(renderLayer)}`)
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchEnd',
     touchPoints: [],
@@ -446,10 +468,18 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
         current: rect ? { height: rect.height, width: rect.width } : null,
       }
     })(),
+    scrollWrites: window.__openReaderScrollWrites || [],
     selectionChecks: window.__openReaderSelectionChecks || 0,
     willChange: document.querySelector('.reader-body')?.style.willChange || '',
   }))
   assert(runtimeWork.selectionChecks <= 1, `${viewport.width}/${mode}: ordinary page tap polled text selection ${runtimeWork.selectionChecks} times`)
+  const firstAnimationWrite = runtimeWork.scrollWrites.find(write => (
+    write.at >= Number(runtimeWork.inputTimes.touchEndAt || Infinity) - 1
+  ))
+  assert(
+    Number(firstAnimationWrite?.value) > 0,
+    `${viewport.width}/${mode}: first animation callback repeated a zero-progress frame ${JSON.stringify(firstAnimationWrite)}`,
+  )
   const inputLongTasks = runtimeWork.longTasks.filter(task => (
     task.startTime >= Number(runtimeWork.inputTimes.touchStartAt || Infinity) - 1
     && task.startTime <= Number(runtimeWork.inputTimes.touchEndAt || 0) + 700

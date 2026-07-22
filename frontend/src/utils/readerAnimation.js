@@ -47,9 +47,13 @@ export function createReaderScrollAnimator(options = {}) {
     running = true
     const startedAt = now()
     const distance = targetTop - startTop
-    const draw = (timestamp) => {
+    const draw = () => {
       if (!running) return
-      const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration))
+      // reader-dev reads Date.now() inside every animation callback. The rAF
+      // timestamp describes the frame timeline and can be older than a start
+      // captured from an input handler in the same frame, which would add an
+      // artificial zero-progress frame before the cubic easing even begins.
+      const progress = Math.max(0, Math.min(1, (now() - startedAt) / duration))
       element.scrollTop = progress >= 1
         ? targetTop
         : startTop + distance * easeInOutCubic(progress)

@@ -555,3 +555,22 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
 4. 三次幂 ease-in-out、一个视口减两行/段距的步长、动画互斥、延迟结算、原生手指/滚轮、
    选文、工具层、章末入口、EPUB/图片/音频/flip 和持久数据都不在本批改变范围。
 5. 只有上述失败合同转绿并通过真实浏览器后，才能再次把设备状态写为待验收并考虑发布 Docker。
+
+### 第十批实施与发布前验证结果
+
+- `createReaderScrollAnimator()` 不再使用 rAF 传入的时间戳，而是像固定上游
+  `plugins/animate.js` 一样，在每个回调实际执行时读取时钟。注入“旧帧时间戳 + 16ms 回调
+  执行时钟”的先失败单元合同已转绿，首回调不再人为重写起点。
+- `.reader-page` 上的 `filter:brightness(...)` 已移除。亮度改为等价黑色伪元素遮罩：
+  100% 时透明，87% 时 alpha 为 0.13，`pointer-events:none`；因此滚动正文不再处于 CSS
+  过滤/合成边界中，同时不会截获点击、触摸、章末按钮或工具层。
+- 前端全量 `534/534`、Go 全量、Vite 生产构建通过。真实浏览器已覆盖
+  1440×900、390×844、360×800 和 iPad 自适应；`page/scroll/scroll2` 分别覆盖
+  100/300/500ms、首次 animator 写入、滚动祖先样式、向上/向下、连续跨章、图片与
+  真实 Go 后端 EPUB 流程，全部通过。
+- 音频扩展 smoke 在切章后的测试桩绑定了已替换的旧 `<audio>` 实例，因此卡在
+  测试自身的 `playCalls` 等待；它未命中本批动画或亮度遮罩的产品断言，不作为
+  本批失败。音频测试桩可在后续独立合同中改为原型级或按新实例重新安装。
+- 状态进入 **browser-validated / awaiting device verification**；用户真机确认之前不再声称
+  体感问题已完全关闭。保留的差异仅是原生手指/滚轮连续滚动、数值 stepper 和
+  Vue 3 的独立 `.reader-content` 滚动宿主。

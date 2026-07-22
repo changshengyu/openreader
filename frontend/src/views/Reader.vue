@@ -1170,6 +1170,7 @@ const readerStyle = computed(() => ({
   '--reader-text': reader.fontColor || reader.currentTheme.text,
   '--reader-font-weight': reader.fontWeight,
   '--reader-brightness': `${reader.brightness}%`,
+  '--reader-dim-opacity': Math.max(0, 1 - reader.brightness / 100),
   '--reader-line-height': reader.lineHeight,
   '--reader-paragraph-space': `${reader.paragraphSpace}em`,
   '--reader-read-width': `${reader.columnWidth}px`,
@@ -2186,7 +2187,6 @@ function readError(err, fallback) {
   background-color: var(--reader-bg);
   background-image: var(--reader-bg-image, var(--paper-texture));
   background-size: cover; background-position: center;
-  filter: brightness(var(--reader-brightness));
   color: var(--reader-text);
   border-left: 1px solid rgba(109,95,55,0.28);
   border-right: 1px solid rgba(109,95,55,0.28);
@@ -2198,6 +2198,15 @@ function readError(err, fallback) {
   box-sizing: content-box;
   position: relative;
   width: var(--reader-frame-width);
+}
+
+.reader-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: rgba(0, 0, 0, var(--reader-dim-opacity));
+  pointer-events: none;
 }
 
 .reader-page-head {

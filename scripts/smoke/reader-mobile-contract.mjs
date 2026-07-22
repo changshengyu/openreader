@@ -519,6 +519,16 @@ async function assertDirectNumericSettingEdit(page, viewport) {
     node.style.getPropertyValue('--reader-brightness')
   ))
   assert(brightness === '87%', `${viewport.width}: direct brightness input must update the reader, got ${brightness}`)
+  const renderLayer = await page.locator('.reader-page').evaluate(node => ({
+    dimOpacity: node.style.getPropertyValue('--reader-dim-opacity'),
+    filter: getComputedStyle(node).filter,
+    overlayBackground: getComputedStyle(node, '::after').backgroundColor,
+    overlayPointerEvents: getComputedStyle(node, '::after').pointerEvents,
+  }))
+  assert(Math.abs(Number(renderLayer.dimOpacity) - 0.13) < 0.001, `${viewport.width}: brightness overlay alpha mismatch ${JSON.stringify(renderLayer)}`)
+  assert(renderLayer.filter === 'none', `${viewport.width}: brightness must not filter the scrolling reader ${JSON.stringify(renderLayer)}`)
+  assert(renderLayer.overlayBackground === 'rgba(0, 0, 0, 0.13)', `${viewport.width}: brightness overlay color mismatch ${JSON.stringify(renderLayer)}`)
+  assert(renderLayer.overlayPointerEvents === 'none', `${viewport.width}: brightness overlay must not intercept input ${JSON.stringify(renderLayer)}`)
 }
 
 async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {

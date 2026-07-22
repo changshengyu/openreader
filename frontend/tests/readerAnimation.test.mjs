@@ -25,8 +25,8 @@ function createClock() {
     cancelTask(id) {
       tasks.delete(id)
     },
-    step(time) {
-      now = time
+    step(time, executionTime = time) {
+      now = executionTime
       const pending = [...frames.values()]
       frames.clear()
       pending.forEach(callback => callback(time))
@@ -123,6 +123,33 @@ test('matches the upstream power-cubic ease-in-out without a synchronous seed', 
   assert.equal(writes.length, 5)
   assert.equal(completed, 1)
   assert.equal(animator.isActive(), false)
+})
+
+test('uses the callback execution clock when the browser supplies a stale frame timestamp', () => {
+  const clock = createClock()
+  let scrollTop = 100
+  const element = {
+    get scrollTop() {
+      return scrollTop
+    },
+    set scrollTop(value) {
+      scrollTop = value
+    },
+    scrollHeight: 2000,
+    clientHeight: 800,
+  }
+  const animator = createReaderScrollAnimator(clock)
+
+  assert.equal(animator.scrollBy(element, 600, 300), true)
+  clock.step(0, 16)
+
+  const progress = 16 / 300
+  const expected = 100 + 600 * (4 * progress * progress * progress)
+  assert.equal(
+    scrollTop,
+    expected,
+    'reader-dev reads Date.now() inside the callback instead of treating a stale rAF argument as elapsed=0',
+  )
 })
 
 test('keeps the visible frame-scroll position after a touch or wheel cancellation', () => {

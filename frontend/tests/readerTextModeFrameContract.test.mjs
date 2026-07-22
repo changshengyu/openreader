@@ -50,3 +50,21 @@ test('mobile flip mode owns its upstream viewport, inner clip, and page stride',
     'flip pagination must move by the upstream viewport width minus 16px',
   )
 })
+
+test('keeps the scrolling text outside a CSS filter while preserving brightness with a passive overlay', () => {
+  assert.doesNotMatch(
+    readerSource,
+    /\.reader-page\s*\{[\s\S]*?filter:\s*brightness\(/,
+    'the fixed upstream scroll path has no filtered scrolling ancestor',
+  )
+  assert.match(
+    readerSource,
+    /['"]--reader-dim-opacity['"]:\s*Math\.max\(0,\s*1 - reader\.brightness \/ 100\)/,
+    'reader brightness must be converted to an equivalent black-overlay alpha',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-page::after\s*\{[\s\S]*?background:\s*rgba\(0,\s*0,\s*0,\s*var\(--reader-dim-opacity\)\);[\s\S]*?pointer-events:\s*none;/,
+    'brightness overlay must not intercept touch/click paging',
+  )
+})
