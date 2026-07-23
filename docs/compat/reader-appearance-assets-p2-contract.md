@@ -141,5 +141,8 @@ P2-A 不授权修改 portable format。P2-B 开始前必须另行确定：
   内容签名，并限制图片尺寸/像素；API 路径、大小限制、响应和用户目录不变。
 - 前端 558/558、Go 全量、生产构建通过。真实 Go + Chromium 外观资产合同、
   BookInfo 受影响合同均在 1440×900、390×844、360×800 通过；Reader
-  桌面/两种手机/自适应与强制移动 iPad 全矩阵通过。Docker 卷门禁及镜像发布
-  尚未在本节完成。
+  桌面/两种手机/自适应与强制移动 iPad 全矩阵通过。
+- 本地 arm64 候选通过新卷重启/备份/portable 恢复，以及历史卷 TXT、EPUB、
+  UMD、CBZ、相对缓存和用户隔离 smoke。本机完成 amd64/arm64 正式构建并发布
+  `ghcr.io/changshengyu/openreader:9cae206` 与 `latest`；两个标签均核验为
+  OCI index `sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`。

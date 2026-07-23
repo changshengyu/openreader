@@ -162,8 +162,10 @@ contract (three viewports).
   1440×900, 390×844 and 360×800; the affected BookInfo flow and Reader
   desktop/mobile/iPad matrix also pass. Frontend 558/558, full Go tests and production
   build are green.
-- [ ] Candidate Docker volume/backup smoke and local multi-platform image publication
-  remain the P2-A release gate.
+- [x] The local `9cae206` candidate passed new and historical mounted-volume,
+  restart, backup/portable restore, local-format and owner-isolation smoke. Locally
+  built amd64/arm64 `9cae206` and `latest` indexes were published and independently
+  resolved to `sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`.
 - [ ] Logical/portable-v1 backups still contain URL strings only. Versioned, bounded,
   cross-user-ID asset byte packaging/remapping remains the separate P2-B contract and
   must not be claimed by this runtime slice.
