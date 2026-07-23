@@ -70,6 +70,18 @@ deletion refusal; the BookInfo real-browser contract verifies the visible
 cover/follow/group/local-refresh flow at the three release viewports. Docker
 volume/backup verification must cover both legacy and new paths before release.
 
+### 2026-07-23 custom asset backup correction
+
+The preceding statement proves mounted-`data/` volume survival and URL-string
+compatibility only. Ordinary logical backups and `openreader-portable-v1`
+currently serialize Reader/Book URL fields but do not package
+`data/uploads/users/<user-id>/` bytes or rewrite user IDs on restore. They must
+not be described as cross-instance custom-asset restore. Runtime upload
+consistency is P2-A; a separately versioned, bounded and transactional portable
+asset manifest is P2-B in
+`docs/compat/reader-appearance-assets-p2-contract.md`. No existing upload path,
+SQLite row, backup ZIP or mounted file may be moved or deleted during P2-A.
+
 ## Priority unresolved areas
 
 - Reader-dev backup format import/export mapping.
