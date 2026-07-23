@@ -90,3 +90,15 @@
 - 未计为通过：`reader-tts-contract.mjs` 与 `reader-audio-contract.mjs` 在创建浏览器上下文前被 macOS 终止（Chrome `SIGABRT`）；没有触发任何产品断言，且 TTS 的 `h3,p` 单元合同已通过。此环境限制必须在后续独立浏览器窗口重跑，不能作为完整 Reader P0 完成的证据。
 
 本批适合进行 Docker 的用户验收，范围仅是上述工具入口与文本阅读排版；EPUB、漫画、音频、TTS、连续跨章的最终 Reader P0 签收仍需完成各自的真实浏览器复跑。
+
+## 2026-07-23 Reader 设置变更位置事务复审
+
+| 模块 | 上游权威点 | 当前状态 | 裁决 | 后续测试 |
+|---|---|---|---|---|
+| 直接翻页方式切换 | `ReadSettings.vue#setReadMethod` 先 emit；`Reader.vue#beforeReadMethodChange` 先保存可见段落；`isSlideRead` 重分页后恢复该段落。 | `useReaderMode` 在 raw mode 已改变后从新宿主读取 offset。 | **错误重构 / must-fix** | page/scroll/scroll2 ↔ flip 中段切换保持章节与 `data-pos`。 |
+| Kindle、配置方案、自动昼夜 | 整套配置可同时改变阅读方式和排版；slide 分支变化后优先恢复已维护的 `currentParagraph`。 | mode restore 与 typography restore 可并发，`App.vue` 自动昼夜还绕过设置面板入口。 | **错误重构 / must-fix** | 同批多字段只执行一个可取消的位置事务；旧事务不得回拉。 |
+| 页面模式与有效滚动宿主 | mini interface/窗口重排后保持当前页；文本横竖模式分别使用既定宿主。 | auto/mobile 或横竖切换可能在捕获前改变 document/internal viewport。 | **错误重构 / must-fix** | 手机双尺寸与 iPad 验证根/内部 scrollTop 和首可见段落。 |
+| EPUB/音频/普通图片 | raw readMethod 不改变这些格式的有效非 slide 分支。 | raw `reader.mode` watcher 仍可重建/恢复。 | **技术栈适配过宽 / must-fix** | 仅有效 mode/宿主变化才运行事务，格式内容不被清空。 |
+
+本轮仅完成固定上游合同提取和当前实现映射，未修改应用或测试代码。权威细节见
+[`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十二次复审。

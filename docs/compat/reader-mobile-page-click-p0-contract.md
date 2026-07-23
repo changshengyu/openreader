@@ -673,3 +673,57 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
   清单已分别核验一致。
 - 当前状态为 **Docker-published / awaiting device verification**。自动门禁只证明执行路径已
   回到固定上游结构，最终丝滑度仍由用户设备验收。
+
+## 2026-07-23 第十二次设置切换与当前位置连续性复审
+
+第十一次恢复根滚动宿主后，`Reader` 仍把“读取当前位置”放在 `reader.mode` 已经改变之后。
+这与固定上游的状态顺序相反：上游 `ReadSettings#setReadMethod()` 会先发出
+`readMethodChange`，`Reader#beforeReadMethodChange()` 同步保存当前可见段落，然后才写入新的
+`readMethod`；`pageType` 在整套 Kindle/正常配置生效前也会先走相同预捕获。随后
+`Reader` 的 `isSlideRead` watcher 重新分页，并优先 `showParagraph(currentParagraph, true)`，
+只有没有段落锚点时才退回 `showPage(currentPage, 0)`。
+
+配置方案和自动昼夜没有单独发出 `readMethodChange`，但它们会整套覆盖配置；一旦
+`isSlideRead` 改变，仍进入同一个“重新分页后优先恢复 `currentParagraph`”分支。上游滚动保存
+也持续维护 `currentParagraph`。因此 OpenReader 的等价实现不能只修“翻页方式”按钮，必须覆盖
+所有可能隐式改变有效阅读模式或滚动宿主的配置入口。
+
+### 状态与入口矩阵
+
+| 入口 | 固定上游状态顺序 | 当前 `99e3e43` | 第十二次判定 |
+|---|---|---|---|
+| 直接切换翻页方式 | 变更前同步保存当前可见 `h3,p`；变更后重分页并恢复同一段落。 | `setMode()` 先改 Pinia；默认 watcher 随后调用 `currentOffset()`。此时 computed 已指向新 mode/新宿主。 | **must-fix**：捕获顺序反了。 |
+| 正常 ↔ Kindle | `setPageType()` 在整套配置覆盖前触发段落预捕获，再触发 mode/pageMode 变化。 | store 一次同步改 `pageType/pageMode/mode/font/theme`；Reader 只事后观察 `mode` 和排版字段。 | **must-fix**：可能同时启动 mode restore 与 typography restore，后完成者覆盖前者。 |
+| 配置方案 | 方案整套覆盖；若横/竖分支变化，Reader 重分页并优先恢复已维护的当前段落。 | `setCustomConfig()` 可同时改 mode、pageMode、字体和段距，没有统一的 Reader 位置事务。 | **must-fix**：不能由多个 watcher 对同一批变更并发恢复。 |
+| 自动昼夜 | 系统主题选择默认白天/黑夜方案，语义与选择配置方案相同。 | `App.vue` 在 Reader 外部直接调用 `applyAutoTheme()` → `setCustomConfig()`。 | **must-fix**：面板 emit 无法覆盖这一入口，必须由 Reader/Store 边界统一处理。 |
+| 页面模式 | 改变 mini interface；由重排/窗口尺寸路径保持当前页。 | `pageMode` 可在 auto/mobile 间改变移动判定和 document/internal viewport 选择，但没有独立位置事务。 | **must-fix**：宿主改变时也要使用变更前锚点。 |
+| EPUB、音频、普通图片漫画 | 有效模式固定为非 slide 分支；配置中的 readMethod 不应重建文本章节窗口。 | `readerEffectiveMode()` 已做格式门禁，但 raw `reader.mode` watcher 仍会执行重建/恢复。 | **must-fix**：只在有效模式或有效宿主变化时执行文本模式事务。 |
+
+### 已确认的错误机制
+
+1. `useReaderMode()` 的 watcher 是默认 flush；回调执行时 `reader.mode` 已是新值。
+   `scrollViewport`、`isContinuousScrollRead` 和 `currentOffset()` 也都按新状态解释旧 DOM。
+2. 移动竖向 → flip 时，旧位置在 `document.scrollingElement`，事后读取却切到内部
+   `.reader-content`/`page`；flip → 竖向则可能读到根页面遗留的 `scrollTop`。两者都可能回到
+   本章开头或错误页。
+3. `restoreReadingPosition()` 的 `offset` 不是跨模式同一种量纲：flip 把它当页号，竖向文本把
+   它当章节文本位置。把旧模式 offset 直接交给新模式恢复，即使捕获时机正确也不等价。
+4. 配置方案/Kindle 会在一个同步批次内同时改变 mode 与字号、行高、段距；
+   `useReaderMode()` 和 `useReaderTypographySync()` 当前可并发执行两套异步恢复，没有代际或
+   单事务所有权。
+
+### 第十二批先失败测试与实施边界
+
+1. 建立统一的“设置布局事务”：在任何有效 mode/viewport/排版变更写入 DOM 前，从旧宿主同步
+   捕获 `{chapterIndex, paragraphPos, paragraph identity/viewport offset}`；重排后按段落锚点
+   恢复。只有锚点不存在时才允许退回旧页/章节百分比。
+2. 覆盖 `page ↔ flip`、`scroll/scroll2 ↔ flip`、normal ↔ Kindle、自定义方案、系统自动昼夜
+   和 auto ↔ mobile；每项都断言章节不变、恢复后首个可见段落不回退到章首。
+3. 同一同步批次内 mode、pageMode、字号、行高、段距同时变化时只允许一个恢复事务；较旧的
+   异步事务必须失效，不能在新事务完成后把页面拉回旧位置。
+4. 普通文本以段落位置为跨模式权威语义，不把 flip 页号与文本 offset 混用。EPUB/音频/普通
+   图片漫画仅在自身有效宿主实际改变时恢复，不因 raw mode 配置变化清空或重建内容。
+5. 390×844、360×800 和 iPad 1024×1366 真实浏览器从章节中段分别执行上述入口；记录变更前后
+   `data-pos`、章节索引、根/内部 `scrollTop`、工具层/设置面板并存和控制台错误。
+6. 本批不改变用户正在验收的 cubic 点击动画、分页步长、根滚动、原生手指/滚轮、配置值或
+   后端进度格式；它只修复设置变化造成的位置跳转和竞态。
