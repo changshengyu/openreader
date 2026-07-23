@@ -661,5 +661,15 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
   Long Task/LayoutShift）、`reader-mobile-contract`（桌面、双手机、自适应/强制手机 iPad）、
   `reader-continuous-contract`（三视口、scroll/scroll2、跨章锚点/事务）和
   `reader-image-contract`。
-- 本节当前为 **release candidate**；Docker 标签、卷/备份门禁和实机体感结论在本地镜像发布后
-  补记。自动门禁只证明执行路径已回到固定上游结构，最终丝滑度仍由用户设备验收。
+- 实现提交 `99e3e433b4a52f4aded9192a3182e083ffbdf3be` 已推送 `main`。本地 ARM64
+  候选镜像通过新卷、历史卷、重启、TXT/EPUB/UMD/CBZ、相对缓存、用户隔离和 portable
+  backup/restore 门禁；候选容器另通过真实 EPUB 上传、解析、1440×900/390×844/360×800
+  iframe 阅读与浏览器返回合同。
+- 未使用云端构建；本机完成 linux/amd64、linux/arm64 构建并上传
+  `ghcr.io/changshengyu/openreader:99e3e43` 与 `latest`。两个标签共同指向 OCI index
+  `sha256:345a32db535c95e601dd19152e635e47e15a8d4f9b02bbf38467eb8140ebae3b`；amd64 manifest 为
+  `sha256:65fa88ae9dcfbfa0967a4c3b0a1073e53aed5e5a7e54c53f299c4997249a53a6`，arm64 manifest 为
+  `sha256:fe44b78dbaa6b5d0c9e7ae07578ed1cfced948acf9fce35edd5b01b83888dc00`。远端两标签和平台
+  清单已分别核验一致。
+- 当前状态为 **Docker-published / awaiting device verification**。自动门禁只证明执行路径已
+  回到固定上游结构，最终丝滑度仍由用户设备验收。

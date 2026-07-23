@@ -14,8 +14,9 @@
 偏差：`autoTheme` 默认 false（上游 true）、`pageMode` 不进入方案/同步、Kindle 额外强制
 `clickMethod:none`。上述偏差和移动竖向文本根滚动已在第十一次候选实现中修复；同时修复了
 “默认自动主题先写、远端设置后读”导致远端动画/排版配置被启动竞态丢弃的问题。前端 544 项、
-Go、生产构建以及文字/移动工具层/连续跨章/图片真实浏览器合同均已通过，当前等待 Docker
-卷/备份门禁和用户实机体感复验。完整证据见
+Go、生产构建以及文字/移动工具层/连续跨章/图片真实浏览器合同均已通过；实现 `99e3e43` 已从
+本机完成新旧卷/备份门禁、真实 EPUB 三视口合同及 amd64/arm64 发布，当前等待用户实机体感
+复验。完整证据见
 [`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十一次矩阵与结果。
 
 Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
