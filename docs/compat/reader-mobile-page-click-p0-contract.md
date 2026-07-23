@@ -751,3 +751,20 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
   `reader-epub-contract` 指向纯 Vite preview 时在导入 API 得到预期的代理 502，因此未把该次
   启动计作 EPUB 产品回归；本批对固定格式“不因 raw mode 重建”的单元合同已通过，Docker 候选
   仍须运行真实 Go 后端 EPUB 门禁。
+
+### 第十二批 Docker 发布记录
+
+- 实现提交：`a7254e3d224a0995d46688a4eab9efbeab2843d2`。
+- 本机 ARM64 候选通过普通持久卷重启/备份门禁，以及历史 TXT、EPUB、UMD、CBZ、相对缓存、
+  多用户隔离和便携备份恢复门禁。
+- 候选容器的真实 Go API + Chromium EPUB 合同在 1440×900、390×844、360×800 全部通过，
+  覆盖实际导入、目录、iframe 资源、位置恢复和浏览器返回书架。
+- 镜像：`ghcr.io/changshengyu/openreader:a7254e3`、`ghcr.io/changshengyu/openreader:latest`。
+  两个标签均指向 OCI 索引
+  `sha256:fd4c84bb9da97d4bbab39783d3949d610543195d169756cc2faa13a8e1c2722c`；
+  `linux/amd64` 为
+  `sha256:b86db78afb55dcfec0a9d1e6d1a9a7b78618abd402c0b4c9bb99d14b63c2b624`，
+  `linux/arm64` 为
+  `sha256:c58335b1d6f0beee1507e620fcd3459ac206cd0fce0dc7d49159c5d22dca3c12`。
+- 首次 GHCR blob 上传在第 19/23 项收到一次注册表 `404` 并中止，未将失败误报为发布成功；
+  完整重试成功后又分别反查两个远端标签，确认清单和摘要一致。
