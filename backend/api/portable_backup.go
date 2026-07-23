@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -28,7 +29,7 @@ var (
 	errPortableBackupConflict = errors.New("portable backup conflicts with an existing local book")
 )
 
-const portableBackupManifestName = "openreader-portable-v1.json"
+const portableAssetPlaceholder = "openreader-asset://"
 
 type portableBackupLimits struct {
 	maxCompressed int64
@@ -38,9 +39,12 @@ type portableBackupLimits struct {
 }
 
 type portableBackupManifest struct {
-	Format  string                       `json:"format"`
-	Version int                          `json:"version"`
-	Books   []portableBackupManifestBook `json:"books"`
+	Format       string                        `json:"format"`
+	Version      int                           `json:"version"`
+	CreatedAt    *time.Time                    `json:"createdAt,omitempty"`
+	Books        []portableBackupManifestBook  `json:"books"`
+	Assets       []portableBackupManifestAsset `json:"assets"`
+	LegacyAssets int                           `json:"legacyAssets"`
 }
 
 type portableBackupManifestBook struct {
@@ -60,10 +64,28 @@ type portableStagedBook struct {
 	reuse    bool
 }
 
+type portableBackupManifestAsset struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Extension string `json:"extension"`
+	Entry     string `json:"entry"`
+	Size      int64  `json:"size"`
+	SHA256    string `json:"sha256"`
+}
+
+type portableStagedAsset struct {
+	manifest  portableBackupManifestAsset
+	path      string
+	finalURL  string
+	finalPath string
+}
+
 type portableBackupPackage struct {
-	logicalData []byte
-	books       []portableStagedBook
-	stagingDir  string
+	logicalData  []byte
+	books        []portableStagedBook
+	assets       []portableStagedAsset
+	legacyAssets int
+	stagingDir   string
 }
 
 func (s *Server) portableLimits() portableBackupLimits {
@@ -99,10 +121,32 @@ func (s *Server) restorePortableBackupFileWithPermissions(archivePath string, us
 	}
 	defer os.RemoveAll(packageData.stagingDir)
 
+	journalPath, err := s.writePortableAssetRestoreJournal(packageData.assets, userID)
+	if err != nil {
+		return nil, err
+	}
+	if journalPath != "" {
+		defer os.Remove(journalPath)
+	}
+	promotedAssets, err := s.promotePortableAssets(packageData.assets, userID)
+	if err != nil {
+		return nil, err
+	}
+	keepAssets := false
+	defer func() {
+		if !keepAssets {
+			removePortablePromotedAssets(promotedAssets)
+		}
+	}()
+
 	result, err := s.restoreLegadoBackupDataWithPermissions(packageData.logicalData, userID, canEditSources, false)
 	if err != nil {
 		return nil, err
 	}
+	// From this point the rewritten rows durably reference the promoted files. A later local-book
+	// rehydrate failure follows the existing v1 compensation boundary and must not delete assets
+	// that the committed Reader/Book rows now use.
+	keepAssets = true
 	limits := s.portableLimits()
 	importer := s.portableLocalBookImporter(limits)
 	for _, staged := range packageData.books {
@@ -131,6 +175,8 @@ func (s *Server) restorePortableBackupFileWithPermissions(archivePath string, us
 		}
 	}
 	result["localBooks"] = len(packageData.books)
+	result["assets"] = len(packageData.assets)
+	result["legacyAssets"] = packageData.legacyAssets
 	s.broadcastRestoreUpdates(userID, result)
 	return result, nil
 }
@@ -212,16 +258,17 @@ func isPortableBackupFile(path string) (bool, error) {
 		return false, errInvalidBackupArchive
 	}
 	defer reader.Close()
+	found := 0
 	for _, file := range reader.File {
 		name, err := normalizeBackupArchivePath(file.Name)
 		if err != nil {
 			return false, errInvalidBackupArchive
 		}
-		if strings.EqualFold(name, portableBackupManifestName) {
-			return true, nil
+		if _, ok := portableManifestVersion(name); ok {
+			found++
 		}
 	}
-	return false, nil
+	return found > 0, nil
 }
 
 func (s *Server) preparePortableBackup(archivePath string, userID uint, username string) (*portableBackupPackage, error) {
@@ -260,25 +307,61 @@ func (s *Server) preparePortableBackup(archivePath string, userID uint, username
 		files[key] = file
 	}
 
-	manifestFile := files[portableBackupManifestName]
-	if manifestFile == nil {
+	manifestName := ""
+	manifestVersion := 0
+	for key, file := range files {
+		name, err := normalizeBackupArchivePath(file.Name)
+		if err != nil {
+			return nil, errInvalidPortableBackup
+		}
+		if version, ok := portableManifestVersion(name); ok {
+			if manifestName != "" {
+				return nil, errInvalidPortableBackup
+			}
+			if name != canonicalPortableManifestName(version) {
+				return nil, errInvalidPortableBackup
+			}
+			manifestName = key
+			manifestVersion = version
+		}
+	}
+	if manifestName == "" || (manifestVersion != 1 && manifestVersion != 2) {
 		return nil, errInvalidPortableBackup
 	}
+	manifestFile := files[manifestName]
 	manifestData, err := readPortableZipEntry(manifestFile, minInt64(limits.maxEntryBytes, 1024*1024))
 	if err != nil {
 		return nil, err
 	}
-	var manifest portableBackupManifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil || manifest.Format != "openreader-portable-backup" || manifest.Version != 1 {
+	manifest, err := decodePortableManifest(manifestData)
+	if err != nil ||
+		manifest.Format != "openreader-portable-backup" ||
+		manifest.Version != manifestVersion ||
+		manifest.LegacyAssets < 0 {
+		return nil, errInvalidPortableBackup
+	}
+	if manifestVersion == 2 && manifest.CreatedAt == nil {
 		return nil, errInvalidPortableBackup
 	}
 	if err := validatePortableManifest(manifest, files); err != nil {
 		return nil, err
 	}
+	if manifestVersion == 1 {
+		if len(manifest.Assets) != 0 || manifest.LegacyAssets != 0 {
+			return nil, errInvalidPortableBackup
+		}
+		for key := range files {
+			if strings.HasPrefix(key, "appearance-assets/") {
+				return nil, errInvalidPortableBackup
+			}
+		}
+	} else if err := validatePortableAssetManifest(manifest, files); err != nil {
+		return nil, err
+	}
 
 	logicalEntries := make(map[string][]byte)
 	for key, file := range files {
-		if key == portableBackupManifestName || strings.HasPrefix(key, "local-books/") {
+		if key == manifestName || strings.HasPrefix(key, "local-books/") || strings.HasPrefix(key, "appearance-assets/") {
 			continue
 		}
 		if !portableLogicalEntryName(key) {
@@ -343,12 +426,46 @@ func (s *Server) preparePortableBackup(archivePath string, userID uint, username
 		}
 		staged = append(staged, portableStagedBook{manifest: book, path: stagePath, reuse: reuse})
 	}
+	stagedAssets := make([]portableStagedAsset, 0, len(manifest.Assets))
+	for index, asset := range manifest.Assets {
+		file := files[strings.ToLower(asset.Entry)]
+		stagePath := filepath.Join(stagingDir, fmt.Sprintf("a%04d%s", index+1, asset.Extension))
+		if err := copyAndValidatePortableAsset(file, stagePath, asset, limits.maxEntryBytes); err != nil {
+			return nil, err
+		}
+		finalURL, finalPath, err := s.allocatePortableAssetTarget(userID, asset)
+		if err != nil {
+			return nil, err
+		}
+		stagedAssets = append(stagedAssets, portableStagedAsset{
+			manifest:  asset,
+			path:      stagePath,
+			finalURL:  finalURL,
+			finalPath: finalPath,
+		})
+	}
+	if manifestVersion == 2 {
+		destinations := make(map[string]string, len(stagedAssets))
+		for _, asset := range stagedAssets {
+			destinations[asset.manifest.ID] = asset.finalURL
+		}
+		legacyAssets, err := rewritePortableAssetLogicalEntries(logicalEntries, destinations)
+		if err != nil || legacyAssets != manifest.LegacyAssets {
+			return nil, errInvalidPortableBackup
+		}
+	}
 	logicalData, err := makePortableLogicalZIP(logicalEntries)
 	if err != nil {
 		return nil, err
 	}
 	cleanup = false
-	return &portableBackupPackage{logicalData: logicalData, books: staged, stagingDir: stagingDir}, nil
+	return &portableBackupPackage{
+		logicalData:  logicalData,
+		books:        staged,
+		assets:       stagedAssets,
+		legacyAssets: manifest.LegacyAssets,
+		stagingDir:   stagingDir,
+	}, nil
 }
 
 // portableLocalBookImporter keeps the parser budget aligned with the independently bounded
@@ -390,6 +507,13 @@ func validatePortableManifest(manifest portableBackupManifest, files map[string]
 		}
 		seenURL[book.BookURL] = struct{}{}
 		seenEntry[key] = struct{}{}
+	}
+	for key := range files {
+		if strings.HasPrefix(key, "local-books/") {
+			if _, ok := seenEntry[key]; !ok {
+				return errInvalidPortableBackup
+			}
+		}
 	}
 	return nil
 }

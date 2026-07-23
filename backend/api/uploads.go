@@ -161,48 +161,19 @@ func (s *Server) userUploadAssetReferenced(userID uint, url string) (bool, error
 }
 
 func uploadSizeLimit(kind string) int64 {
-	if kind == "font" {
-		return 32 * 1024 * 1024
-	}
-	return 8 * 1024 * 1024
+	return assetservice.SizeLimitForKind(kind)
 }
 
 func uploadKindDir(kind string) string {
-	switch kind {
-	case "cover":
-		return "covers"
-	case "background":
-		return "backgrounds"
-	case "font":
-		return "fonts"
-	default:
-		return "misc"
-	}
+	return assetservice.KindDirectory(kind)
 }
 
 func isUploadKindDir(kind string) bool {
-	switch kind {
-	case "covers", "backgrounds", "fonts", "misc":
-		return true
-	default:
-		return false
-	}
+	return assetservice.IsKindDirectory(kind)
 }
 
 func allowedUploadExtension(kind, ext string) bool {
-	imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
-	coverExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true}
-	fontExts := map[string]bool{".ttf": true, ".otf": true, ".woff": true, ".woff2": true}
-	switch kind {
-	case "cover":
-		return coverExts[ext]
-	case "background":
-		return imageExts[ext]
-	case "font":
-		return fontExts[ext]
-	default:
-		return imageExts[ext] || fontExts[ext]
-	}
+	return assetservice.AllowedExtension(kind, ext)
 }
 
 func randomHex(bytesLen int) string {

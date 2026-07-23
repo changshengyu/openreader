@@ -77,13 +77,13 @@ compatibility only. Ordinary logical backups and `openreader-portable-v1`
 currently serialize Reader/Book URL fields but do not package
 `data/uploads/users/<user-id>/` bytes or rewrite user IDs on restore. They must
 not be described as cross-instance custom-asset restore. Runtime upload
-consistency is P2-A; a separately versioned, bounded and transactional portable
-asset manifest is P2-B in
-`docs/compat/portable-appearance-assets-p2b-contract.md`. The P2-B contract was
-extracted on 2026-07-23 but is not implemented yet: new packages will be v2,
-existing v1 remains restorable, and ordinary logical ZIPs remain URL-only. No
-existing upload path, SQLite row, backup ZIP or mounted file may be moved or
-deleted during P2-A/P2-B migration.
+consistency is P2-A; P2-B is the separately versioned, bounded and transactional
+asset format in `docs/compat/portable-appearance-assets-p2b-contract.md`.
+P2-B runtime is now implemented: new packages are v2, existing v1 remains
+restorable without interpreting placeholders, and ordinary logical ZIPs remain
+URL-only. Restoration allocates new target-user files and URLs; it does not move,
+rename or delete existing uploads, SQLite rows, backup ZIPs or mounted files.
+Docker new/old volume proof remains a release gate.
 
 ## Priority unresolved areas
 

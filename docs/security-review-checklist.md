@@ -327,13 +327,32 @@ Current automated evidence covers archive structure/bounds, typed-content predec
 
 ## P1-E4 portable local archive backup review
 
-- [x] Portable packages are explicit `openreader-portable-v1` archives; ordinary reader-dev/Legado/OpenReader backup ZIPs do not gain `library/` data or change their meaning.
+- [x] Portable packages are explicitly versioned archives. New triggers generate v2; existing v1 remains restorable, and ordinary reader-dev/Legado/OpenReader backup ZIPs do not gain `library/`/appearance bytes or change their meaning.
 - [x] The archive reader rejects unsafe/duplicate/case-conflicting names, directories, symlinks, unknown logical entries, invalid manifest slots, unbounded compressed/member/total sizes and bad SHA-256 before logical restore dispatch.
 - [x] Original archives are streamed to a caller-private staging root, checked against the manifest, parsed under the portable per-entry budget, and never derive a destination path from an archive member or stored host path.
 - [x] Trigger and restore are caller scoped. A matching `local://` identity with a different/missing destination archive is a `409` before mutation; an identical existing archive is reused, so a package cannot overwrite another user's or an unrelated same-identity book.
 - [x] Type=1 local audio directories and missing/unsafe originals fail generation rather than being silently omitted. No JWT, WebDAV credential, archive member or host filesystem path appears in the API error or manifest.
 
 Evidence: `backend/services/backup/portable_test.go`, `backend/api/portable_backup_contract_test.go`, full backend suite, and `HISTORICAL_VOLUME=1 scripts/docker-volume-backup-smoke.sh` export/upload/fresh-volume/restart coverage.
+
+## P2-B portable appearance asset review
+
+- [x] V2 exports only exact current-user managed URLs referenced by Reader settings or
+  `Book.customCoverUrl`; missing, cross-owner, symlinked, oversized or magic-mismatched files
+  fail without a final package or path disclosure.
+- [x] Asset slots contain no source user ID/name/file name. Restore strictly validates the
+  canonical manifest, unknown fields/future versions, declared entries, size/hash/magic,
+  duplicate digest and placeholder closure before mutation.
+- [x] Target files use target-user random paths and no-overwrite promotion. A database failure
+  removes newly promoted files; a startup journal removes only crash-window files that are not
+  referenced by committed rows.
+- [x] V1 and ordinary logical ZIPs never interpret `openreader-asset://`; legacy asset URLs remain
+  strings and are reported rather than silently presented as portable bytes.
+
+Evidence: `backend/services/backup/portable_assets_test.go`,
+`backend/api/portable_appearance_assets_p2b_contract_test.go`, full Go/frontend/build gates, and
+the three-viewport real Go + Chromium portable asset smoke. Docker new/old volume execution is
+still required before publishing the release image.
 
 ## P2 replace-rule review
 

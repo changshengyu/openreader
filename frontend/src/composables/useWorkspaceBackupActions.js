@@ -28,10 +28,15 @@ export function useWorkspaceBackupActions(options) {
     portableBackupLoading.value = true
     try {
       const { data } = await options.triggerPortableBackup()
-      options.onSuccess(`完整本地书备份已保存：${data?.name || data?.path || 'portable_backup.zip'}（${data?.localBooks || 0} 本）`)
+      const legacyNotice = Number(data?.legacyAssets || 0) > 0
+        ? `；另有 ${Number(data.legacyAssets)} 个旧版资源仅保留链接`
+        : ''
+      options.onSuccess(
+        `完整可移植备份已保存：${data?.name || data?.path || 'portable_backup.zip'}（${data?.localBooks || 0} 本书，${data?.assets || 0} 个自定义资源）${legacyNotice}`,
+      )
       return true
     } catch (error) {
-      options.onError(error, '保存完整本地书备份失败')
+      options.onError(error, '保存完整可移植备份失败')
       return false
     } finally {
       portableBackupLoading.value = false

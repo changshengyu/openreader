@@ -182,14 +182,14 @@ func TestPortableBackupTriggerAndGenericUploadRestoreAPI(t *testing.T) {
 	if err := json.Unmarshal(triggerWriter.Body.Bytes(), &triggered); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(triggered.Name, "portable_backup_") || triggered.Format != "openreader-portable-v1" || triggered.LocalBooks != 1 {
+	if !strings.HasPrefix(triggered.Name, "portable_backup_") || triggered.Format != "openreader-portable-v2" || triggered.LocalBooks != 1 {
 		t.Fatalf("portable trigger payload = %+v", triggered)
 	}
 	list := httptest.NewRequest(http.MethodGet, "/api/backup/list", nil)
 	list.Header.Set("Authorization", sourceToken)
 	listWriter := httptest.NewRecorder()
 	sourceRouter.ServeHTTP(listWriter, list)
-	if listWriter.Code != http.StatusOK || !strings.Contains(listWriter.Body.String(), triggered.Name) || !strings.Contains(listWriter.Body.String(), "openreader-portable-v1") {
+	if listWriter.Code != http.StatusOK || !strings.Contains(listWriter.Body.String(), triggered.Name) || !strings.Contains(listWriter.Body.String(), "openreader-portable-v2") {
 		t.Fatalf("portable backup list: %d %s", listWriter.Code, listWriter.Body.String())
 	}
 	download := httptest.NewRequest(http.MethodGet, "/api/backup/download/"+triggered.Name, nil)

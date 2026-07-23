@@ -146,11 +146,11 @@ their own `OPENREADER_MAX_IMPORT_BYTES` policy.
 
 ### P2-B portable appearance asset v2
 
-Status: contract extracted on 2026-07-23; tests and runtime are not implemented yet. The exact
-format and transaction contract is
+Status: runtime, contract tests, full suites and three-viewport real-browser restore are implemented
+on 2026-07-23; Docker volume/release gates remain. The exact format and transaction contract is
 [`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md).
 
-| Method / path | Planned additive contract | Compatibility |
+| Method / path | Implemented additive contract | Compatibility |
 |---|---|---|
 | `POST /api/backup/portable/trigger` | New packages return `format:"openreader-portable-v2"` plus `localBooks`, `assets`, and `legacyAssets`; v2 contains caller-referenced private cover/background/font bytes and uses opaque package placeholders. | Route/auth remain unchanged. Ordinary backups remain logical-only; existing v1 files remain restorable. Invalid/missing/cross-owner referenced assets are `409`, limits are `413`, and failure creates no final package. |
 | `GET /api/backup/list` | Detect v1/v2 from the bounded root manifest instead of inferring v1 from the filename prefix. | Existing `name/size/time` fields and download basename/root checks remain. Damaged or future portable versions must not be reported or restored as v1/logical. |

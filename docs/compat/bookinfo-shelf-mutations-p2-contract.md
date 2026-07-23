@@ -81,4 +81,5 @@ P2 对齐，也不允许以清理孤儿文件为由批量删除旧 `data/uploads
 不同 user ID 时可能成为失效引用。该缺口由
 [`reader-appearance-assets-p2-contract.md`](reader-appearance-assets-p2-contract.md)
 的 P2-B 统一处理，避免为封面与 Reader 字体/背景发明两套资产迁移格式。在 P2-B
-完成前，本合同的“portable”表述仅指字符串字段兼容，不能解释为资产字节可恢复。
+后续 P2-B 已实现 portable v2 的资产字节打包和跨 user ID 重写；普通逻辑 ZIP 与已有
+portable v1 仍仅按本段记录保存字符串。Docker 发布证据见 P2-B 合同的后续状态。

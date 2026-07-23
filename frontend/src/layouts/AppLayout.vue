@@ -264,8 +264,8 @@ const {
     { type: 'warning' },
   ),
   confirmPortable: () => ElMessageBox.confirm(
-    '完整本地书备份会额外保存当前账户可恢复的本地书原文件。音频目录或缺失的原文件会阻止生成，是否继续？',
-    '保存完整本地书备份',
+    '完整可移植备份会保存当前账户可恢复的本地书原文件，以及正在引用的自定义封面、背景和字体。音频目录、缺失原文件或无效自定义资源会阻止生成，是否继续？',
+    '保存完整可移植备份',
     { type: 'warning' },
   ),
   onSuccess: message => ElMessage.success(message),
@@ -331,7 +331,7 @@ const navSections = computed(() => [
       items: [
         { key: 'webdav', label: '文件管理', action: () => overlay.openWebDAV() },
         { key: 'backup', label: backupLoading.value ? '正在保存备份' : '保存备份', action: runWorkspaceBackup },
-        { key: 'portableBackup', label: portableBackupLoading.value ? '正在保存完整备份' : '保存完整本地书备份', action: runWorkspacePortableBackup },
+        { key: 'portableBackup', label: portableBackupLoading.value ? '正在保存完整备份' : '保存完整可移植备份', action: runWorkspacePortableBackup },
       ],
     }]
     : []),

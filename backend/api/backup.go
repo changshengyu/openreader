@@ -51,25 +51,31 @@ func (s *Server) triggerPortableBackup(c *gin.Context) {
 	if !ok {
 		return
 	}
-	path, localBooks, err := s.backupSvc.RunPortableForUser(user.ID, user.Username, backupDir)
+	result, err := s.backupSvc.RunPortableV2ForUser(user.ID, user.Username, backupDir)
 	if err != nil {
 		switch {
 		case errors.Is(err, backup.ErrPortableArchiveUnavailable):
 			c.JSON(http.StatusConflict, gin.H{"error": "local archive unavailable for portable backup"})
+		case errors.Is(err, backup.ErrPortableAssetUnavailable):
+			c.JSON(http.StatusConflict, gin.H{"error": "custom asset unavailable for portable backup"})
 		case errors.Is(err, backup.ErrPortableBackupUnavailable):
 			c.JSON(http.StatusConflict, gin.H{"error": "portable backup storage is unavailable"})
+		case errors.Is(err, backup.ErrPortableBackupLimit):
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "portable backup exceeds safety limits"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "portable backup failed"})
 		}
 		return
 	}
-	name := filepath.Base(path)
+	name := filepath.Base(result.Path)
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "portable backup created",
-		"path":       name,
-		"name":       name,
-		"format":     "openreader-portable-v1",
-		"localBooks": localBooks,
+		"message":      "portable backup created",
+		"path":         name,
+		"name":         name,
+		"format":       "openreader-portable-v2",
+		"localBooks":   result.LocalBooks,
+		"assets":       result.Assets,
+		"legacyAssets": result.LegacyAssets,
 	})
 }
 
@@ -95,7 +101,7 @@ func (s *Server) listBackups(c *gin.Context) {
 		info, _ := entry.Info()
 		format := "logical"
 		if strings.HasPrefix(entry.Name(), "portable_backup_") {
-			format = "openreader-portable-v1"
+			format = portableBackupFormatFromFile(filepath.Join(webdavDir, entry.Name()))
 		}
 		backups = append(backups, gin.H{
 			"name":   entry.Name(),

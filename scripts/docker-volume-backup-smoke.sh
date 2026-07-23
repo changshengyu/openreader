@@ -159,6 +159,43 @@ else:
 ' "$1"
 }
 
+json_book_cover_url() {
+  python3 -c '
+import json, sys
+title = sys.argv[1]
+for item in json.load(sys.stdin):
+    if item.get("title") == title:
+        value = item.get("customCoverUrl", "")
+        if not value:
+            raise SystemExit("portable restored book has no custom cover")
+        print(value)
+        break
+else:
+    raise SystemExit("portable restored book was not listed")
+' "$1"
+}
+
+json_setting_asset_url() {
+  python3 -c '
+import json, sys
+kind = sys.argv[1]
+matches = set()
+def walk(value):
+    if isinstance(value, dict):
+        for child in value.values():
+            walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            walk(child)
+    elif isinstance(value, str) and value.startswith("/uploads/users/") and f"/{kind}/" in value:
+        matches.add(value)
+walk(json.load(sys.stdin).get("value", {}))
+if len(matches) != 1:
+    raise SystemExit(f"expected one restored {kind} URL, got {sorted(matches)}")
+print(next(iter(matches)))
+' "$1"
+}
+
 archive_hash() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
@@ -437,7 +474,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
     exit 1
   fi
   PORTABLE_BACKUP_PATH="$ROOT/data/webdav/users/${USERNAME}/${PORTABLE_BACKUP_NAME}"
-  curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$PORTABLE_BACKUP_NAME" | grep 'openreader-portable-v1' >/dev/null
+  curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$PORTABLE_BACKUP_NAME" | grep 'openreader-portable-v2' >/dev/null
   [ -f "$PORTABLE_BACKUP_PATH" ] || {
     echo "portable backup was not written to the owner's private backup root" >&2
     exit 1
@@ -554,6 +591,7 @@ REGISTER_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/auth/register" \
   -H 'Content-Type: application/json' \
   -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
 TOKEN="$(printf '%s' "$REGISTER_RESPONSE" | json_field token)"
+SOURCE_USER_ID="$(printf '%s' "$REGISTER_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["user"]["id"])')"
 
 curl -fsS "${BASE_URL}/api/me" -H "Authorization: Bearer ${TOKEN}" >/dev/null
 
@@ -562,6 +600,178 @@ BACKUP_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/backup/trigger" \
 BACKUP_NAME="$(printf '%s' "$BACKUP_RESPONSE" | json_field name)"
 
 curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$BACKUP_NAME" >/dev/null
+
+python3 -c '
+import base64, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+(root / "portable-background.png").write_bytes(base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+))
+(root / "portable-cover.png").write_bytes((root / "portable-background.png").read_bytes())
+(root / "portable-font.ttf").write_bytes(bytes([0, 1, 0, 0]) + bytes(12))
+(root / "portable-book.txt").write_text(
+    "第一章 Docker 可移植外观\n春风过处，纸页微明。\n", encoding="utf-8"
+)
+' "$ROOT"
+
+BACKGROUND_URL="$(curl -fsS -X POST "${BASE_URL}/api/uploads" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F type=background \
+  -F "file=@${ROOT}/portable-background.png;type=image/png" | json_field url)"
+FONT_URL="$(curl -fsS -X POST "${BASE_URL}/api/uploads" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F type=font \
+  -F "file=@${ROOT}/portable-font.ttf;type=font/ttf" | json_field url)"
+COVER_URL="$(curl -fsS -X POST "${BASE_URL}/api/uploads" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F type=cover \
+  -F "file=@${ROOT}/portable-cover.png;type=image/png" | json_field url)"
+SOURCE_ASSET_PREFIX="/uploads/users/${SOURCE_USER_ID}/"
+for source_asset_url in "$BACKGROUND_URL" "$FONT_URL" "$COVER_URL"; do
+  case "$source_asset_url" in
+    "${SOURCE_ASSET_PREFIX}"*) ;;
+    *)
+      echo "source appearance asset is not user-scoped: $source_asset_url" >&2
+      exit 1
+      ;;
+  esac
+done
+
+PORTABLE_BOOK_TITLE="Docker 可移植外观书"
+PORTABLE_BOOK_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/imports/books" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "file=@${ROOT}/portable-book.txt;type=text/plain" \
+  -F "title=${PORTABLE_BOOK_TITLE}")"
+PORTABLE_BOOK_ID="$(printf '%s' "$PORTABLE_BOOK_RESPONSE" | json_field id)"
+curl -fsS -X PUT "${BASE_URL}/api/books/${PORTABLE_BOOK_ID}" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"customCoverUrl\":\"${COVER_URL}\"}" >/dev/null
+curl -fsS -X PUT "${BASE_URL}/api/settings/reader" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"force\":true,
+    \"value\":{
+      \"fontFamily\":\"hei\",
+      \"customFontsMap\":{\"hei\":\"${FONT_URL}\"},
+      \"theme\":\"custom\",
+      \"customBgImage\":\"${BACKGROUND_URL}\",
+      \"customBgImageList\":[\"${BACKGROUND_URL}\"],
+      \"customConfigList\":[{
+        \"name\":\"Docker portable\",
+        \"customFontsMap\":{\"hei\":\"${FONT_URL}\"},
+        \"customBgImage\":\"${BACKGROUND_URL}\",
+        \"customBgImageList\":[\"${BACKGROUND_URL}\",\"/uploads/backgrounds/legacy-reference.png\"]
+      }]
+    }
+  }" >/dev/null
+
+PORTABLE_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/backup/portable/trigger" \
+  -H "Authorization: Bearer ${TOKEN}")"
+PORTABLE_BACKUP_NAME="$(printf '%s' "$PORTABLE_RESPONSE" | json_field name)"
+if [ "$(printf '%s' "$PORTABLE_RESPONSE" | json_field format)" != "openreader-portable-v2" ] ||
+   [ "$(printf '%s' "$PORTABLE_RESPONSE" | json_field localBooks)" != "1" ] ||
+   [ "$(printf '%s' "$PORTABLE_RESPONSE" | json_field assets)" != "3" ] ||
+   [ "$(printf '%s' "$PORTABLE_RESPONSE" | json_field legacyAssets)" != "1" ]; then
+  echo "portable appearance backup returned unexpected counts: $PORTABLE_RESPONSE" >&2
+  exit 1
+fi
+PORTABLE_BACKUP_PATH="$ROOT/$PORTABLE_BACKUP_NAME"
+curl -fsS "${BASE_URL}/api/backup/download/${PORTABLE_BACKUP_NAME}" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -o "$PORTABLE_BACKUP_PATH"
+curl -fsS "${BASE_URL}/api/backup/list" \
+  -H "Authorization: Bearer ${TOKEN}" |
+  grep "$PORTABLE_BACKUP_NAME" |
+  grep 'openreader-portable-v2' >/dev/null
+
+start_portable_destination
+wait_portable_health
+PORTABLE_BASE_URL="http://127.0.0.1:${PORTABLE_PORT}"
+FILLER_USERNAME="portablefiller$$"
+curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/register" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${FILLER_USERNAME}\",\"password\":\"${PASSWORD}\"}" >/dev/null
+PORTABLE_USERNAME="portabletarget$$"
+PORTABLE_REGISTER_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/register" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${PORTABLE_USERNAME}\",\"password\":\"${PASSWORD}\"}")"
+PORTABLE_TOKEN="$(printf '%s' "$PORTABLE_REGISTER_RESPONSE" | json_field token)"
+PORTABLE_USER_ID="$(printf '%s' "$PORTABLE_REGISTER_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["user"]["id"])')"
+if [ "$PORTABLE_USER_ID" = "$SOURCE_USER_ID" ]; then
+  echo "portable appearance restore did not cross user IDs" >&2
+  exit 1
+fi
+PORTABLE_RESTORE_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/backup/restore-legado" \
+  -H "Authorization: Bearer ${PORTABLE_TOKEN}" \
+  -F "file=@${PORTABLE_BACKUP_PATH}")"
+if [ "$(printf '%s' "$PORTABLE_RESTORE_RESPONSE" | json_field localBooks)" != "1" ] ||
+   [ "$(printf '%s' "$PORTABLE_RESTORE_RESPONSE" | json_field assets)" != "3" ] ||
+   [ "$(printf '%s' "$PORTABLE_RESTORE_RESPONSE" | json_field legacyAssets)" != "1" ]; then
+  echo "portable appearance restore returned unexpected counts: $PORTABLE_RESTORE_RESPONSE" >&2
+  exit 1
+fi
+
+PORTABLE_SETTING="$(curl -fsS "${PORTABLE_BASE_URL}/api/settings/reader" \
+  -H "Authorization: Bearer ${PORTABLE_TOKEN}")"
+PORTABLE_BOOKS="$(curl -fsS "${PORTABLE_BASE_URL}/api/books" \
+  -H "Authorization: Bearer ${PORTABLE_TOKEN}")"
+if printf '%s' "$PORTABLE_SETTING" | grep -q "$SOURCE_ASSET_PREFIX" ||
+   printf '%s' "$PORTABLE_SETTING" | grep -q 'openreader-asset://' ||
+   ! printf '%s' "$PORTABLE_SETTING" | grep -q '/uploads/backgrounds/legacy-reference.png'; then
+  echo "portable appearance setting retained an invalid source URL or lost its legacy link" >&2
+  exit 1
+fi
+PORTABLE_BACKGROUND_URL="$(printf '%s' "$PORTABLE_SETTING" | json_setting_asset_url backgrounds)"
+PORTABLE_FONT_URL="$(printf '%s' "$PORTABLE_SETTING" | json_setting_asset_url fonts)"
+PORTABLE_COVER_URL="$(printf '%s' "$PORTABLE_BOOKS" | json_book_cover_url "$PORTABLE_BOOK_TITLE")"
+PORTABLE_ASSET_PREFIX="/uploads/users/${PORTABLE_USER_ID}/"
+for portable_asset_url in "$PORTABLE_BACKGROUND_URL" "$PORTABLE_FONT_URL" "$PORTABLE_COVER_URL"; do
+  case "$portable_asset_url" in
+    "${PORTABLE_ASSET_PREFIX}"*) ;;
+    *)
+      echo "restored appearance asset is not target-scoped: $portable_asset_url" >&2
+      exit 1
+      ;;
+  esac
+done
+curl -fsS "${PORTABLE_BASE_URL}${PORTABLE_BACKGROUND_URL}" -o "$ROOT/restored-background.png"
+curl -fsS "${PORTABLE_BASE_URL}${PORTABLE_FONT_URL}" -o "$ROOT/restored-font.ttf"
+curl -fsS "${PORTABLE_BASE_URL}${PORTABLE_COVER_URL}" -o "$ROOT/restored-cover.png"
+cmp "$ROOT/portable-background.png" "$ROOT/restored-background.png"
+cmp "$ROOT/portable-font.ttf" "$ROOT/restored-font.ttf"
+cmp "$ROOT/portable-cover.png" "$ROOT/restored-cover.png"
+
+V1_BACKUP_PATH="$ROOT/openreader-portable-v1-smoke.zip"
+python3 -c '
+import json, sys, zipfile
+path = sys.argv[1]
+manifest = {"format": "openreader-portable-backup", "version": 1, "books": []}
+settings = [{"key": "reader", "value": json.dumps({
+    "fontSize": 21,
+    "contentBGImg": "openreader-asset://a9999"
+}, ensure_ascii=False)}]
+with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr("openreader-portable-v1.json", json.dumps(manifest))
+    archive.writestr("userSettings.json", json.dumps(settings, ensure_ascii=False))
+    archive.writestr("bookshelf.json", "[]")
+' "$V1_BACKUP_PATH"
+V1_USERNAME="portablevone$$"
+V1_REGISTER_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/register" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${V1_USERNAME}\",\"password\":\"${PASSWORD}\"}")"
+V1_TOKEN="$(printf '%s' "$V1_REGISTER_RESPONSE" | json_field token)"
+V1_RESTORE_RESPONSE="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/backup/restore-legado" \
+  -H "Authorization: Bearer ${V1_TOKEN}" \
+  -F "file=@${V1_BACKUP_PATH}")"
+if [ "$(printf '%s' "$V1_RESTORE_RESPONSE" | json_field assets)" != "0" ]; then
+  echo "portable v1 restore unexpectedly interpreted an asset placeholder" >&2
+  exit 1
+fi
+curl -fsS "${PORTABLE_BASE_URL}/api/settings/reader" \
+  -H "Authorization: Bearer ${V1_TOKEN}" |
+  grep 'openreader-asset://a9999' >/dev/null
 
 docker stop "$NAME" >/dev/null
 wait_removed
@@ -573,4 +783,38 @@ LOGIN_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/auth/login" \
   -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")"
 printf '%s' "$LOGIN_RESPONSE" | json_field token >/dev/null
 
-echo "OpenReader Docker volume/backup smoke passed for ${IMAGE}"
+docker stop "$PORTABLE_NAME" >/dev/null
+i=0
+while docker inspect "$PORTABLE_NAME" >/dev/null 2>&1; do
+  if [ "$i" -ge 30 ]; then
+    echo "portable destination was stopped but not removed" >&2
+    exit 1
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+docker run -d --rm \
+  --name "$PORTABLE_NAME" \
+  -p "127.0.0.1:${PORTABLE_PORT}:8080" \
+  -e OPENREADER_ADDR=":8080" \
+  -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+  -e OPENREADER_DATA_DIR="/app/data" \
+  -e OPENREADER_CACHE_DIR="/app/cache" \
+  -e OPENREADER_LIBRARY_DIR="/app/library" \
+  -v "$PORTABLE_ROOT/data:/app/data" \
+  -v "$PORTABLE_ROOT/cache:/app/cache" \
+  -v "$PORTABLE_ROOT/library:/app/library" \
+  "$IMAGE" >/dev/null
+wait_portable_health
+PORTABLE_TOKEN="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${PORTABLE_USERNAME}\",\"password\":\"${PASSWORD}\"}" | json_field token)"
+curl -fsS "${PORTABLE_BASE_URL}${PORTABLE_BACKGROUND_URL}" | cmp -s - "$ROOT/portable-background.png"
+curl -fsS "${PORTABLE_BASE_URL}${PORTABLE_FONT_URL}" | cmp -s - "$ROOT/portable-font.ttf"
+curl -fsS "${PORTABLE_BASE_URL}${PORTABLE_COVER_URL}" | cmp -s - "$ROOT/portable-cover.png"
+PORTABLE_RESTART_SETTING="$(curl -fsS "${PORTABLE_BASE_URL}/api/settings/reader" \
+  -H "Authorization: Bearer ${PORTABLE_TOKEN}")"
+printf '%s' "$PORTABLE_RESTART_SETTING" | grep "$PORTABLE_BACKGROUND_URL" >/dev/null
+printf '%s' "$PORTABLE_RESTART_SETTING" | grep "$PORTABLE_FONT_URL" >/dev/null
+
+echo "OpenReader Docker volume/backup smoke passed for ${IMAGE} (portable-v1, portable-v2-assets, cross-user, restart)"

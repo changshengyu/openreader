@@ -11,7 +11,7 @@ function createActions(overrides = {}) {
     },
     triggerPortableBackup: async () => {
       calls.push(['portable'])
-      return { data: { name: 'portable-1.zip', localBooks: 2 } }
+      return { data: { name: 'portable-1.zip', localBooks: 2, assets: 3, legacyAssets: 1 } }
     },
     confirmBackup: async () => calls.push(['confirm-backup']),
     confirmPortable: async () => calls.push(['confirm-portable']),
@@ -49,7 +49,7 @@ test('portable backup remains a separately confirmed and named extension', async
   assert.deepEqual(fixture.calls, [
     ['confirm-portable'],
     ['portable'],
-    ['success', '完整本地书备份已保存：portable-1.zip（2 本）'],
+    ['success', '完整可移植备份已保存：portable-1.zip（2 本书，3 个自定义资源）；另有 1 个旧版资源仅保留链接'],
   ])
   assert.equal(fixture.actions.portableBackupLoading.value, false)
 })

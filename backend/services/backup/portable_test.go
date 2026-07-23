@@ -89,7 +89,7 @@ func TestPortableBackupExportsOnlyCallerOriginalArchives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Format != "openreader-portable-backup" || manifest.Version != 1 || len(manifest.Books) != 1 {
+	if manifest.Format != "openreader-portable-backup" || manifest.Version != 2 || len(manifest.Books) != 1 || len(manifest.Assets) != 0 {
 		t.Fatalf("unexpected portable manifest: %+v", manifest)
 	}
 	entry := manifest.Books[0]

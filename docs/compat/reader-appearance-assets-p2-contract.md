@@ -120,9 +120,10 @@ P2-A 不授权修改 portable format。P2-B 的固定格式、无源 user ID 占
 限额、跨 user ID 重写、SQLite/文件补偿、旧 v1 与普通逻辑 ZIP 兼容策略及失败测试见
 [`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)。
 
-该合同目前只有审计文档，尚未实施。在 P2-B 完成前，Docker 报告仍必须写明：挂载
-`data/` 的卷级备份保存资产字节，普通逻辑/portable v1 只保存引用字符串，不能声称
-跨实例恢复自定义资产。
+P2-B 运行时、失败测试和三视口真实浏览器链路已完成：新 trigger 生成 portable v2，
+携带当前用户实际引用的资产并在恢复时改写到目标用户；普通逻辑 ZIP 仍只保存字符串，
+已有 portable v1 仍保持原 URL-only 恢复语义。Docker 新旧卷与发布门禁完成前，不把
+本切片标记为最终发布完成。
 
 ## P2-A 实施结果（2026-07-23）
 

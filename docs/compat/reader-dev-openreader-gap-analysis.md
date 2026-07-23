@@ -2690,8 +2690,8 @@ P2-A 真实后端测试进一步确认了两个实现级错误：自身 `setting
 `409` 安全保留、五字体槽位恢复及图片/字体内容签名校验。前端 558 项、Go、build、外观资产
 与 BookInfo 三视口、Reader 桌面/手机/iPad、新卷和历史卷均通过；本机发布
 `9cae206`/`latest`，远端 OCI index 为
-`sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`。P2-B
-仍未实施，portable v1 只保存 URL 引用的限制保持。
+`sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`。该镜像仍是
+P2-A 证据；后续 P2-B runtime 不反向改变 portable v1 的 URL-only 语义。
 
 ### P2-B portable 资产审计（2026-07-23）
 
@@ -2706,4 +2706,9 @@ namespace，却没有把这些字节加入备份。当前 OpenReader portable v1
 transaction/失败补偿。普通逻辑 ZIP 与 v1 均不改变，未来未知 portable 版本必须 fail
 closed，不能落入普通恢复只写书架。完整格式、API、限额、安全和测试先行闸门见
 [`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)。
-本轮仅提交合同，不包含运行时代码。
+
+实施进度（2026-07-23）：service/API 已生成和恢复 v2，普通 ZIP 与 v1 分支保持，
+manifest/资产/占位符/版本严格预检，跨 user ID 分配新 URL，并通过文件补偿和启动
+journal 收敛 SQLite/文件崩溃窗口。前端动作改名并报告资产/legacy 数量。Go 全量、
+前端 558 项、生产构建和三视口真实 Go + Chromium 跨用户恢复通过；Docker 新旧卷门禁
+与本地多架构发布尚待完成，因此当前不记录镜像标签。

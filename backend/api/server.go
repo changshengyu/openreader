@@ -55,6 +55,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		sourceFailures: sourcefailure.New(database),
 		remoteReaders:  newRemoteReaderSessionStore(),
 	}
+	server.cleanupPortableAssetRestoreJournals()
 
 	api := router.Group("/api")
 	api.GET("/health", server.health)

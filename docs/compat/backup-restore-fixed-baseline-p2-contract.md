@@ -7,7 +7,8 @@
 它重新打开的是工作台备份入口、普通逻辑 ZIP 的字段/文件名兼容、生成可靠性、恢复事务和书源权限；
 不重新打开已经单独验收的原始 WebDAV 协议，也不改变
 [`portable-local-archive-backup-p1e4-contract.md`](portable-local-archive-backup-p1e4-contract.md)
-定义的 `openreader-portable-v1` 格式。
+定义的 `openreader-portable-v1` 恢复语义。新 trigger 的 v2 资产扩展另见
+[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)。
 
 ## 1. 上游权威与当前映射
 
@@ -143,7 +144,8 @@ Authorization、WebDAV 凭证或主机路径。
   ZIP 以及新双别名 ZIP 都必须可恢复。
 - 替换规则若增加 `group`/`order`，只能是 nullable/defaulted 加性 SQLite migration；旧行继续按
   `id ASC`，不得重排、去重或删除。其它格式修复优先 DTO/encoder，不授权破坏性 schema 改动。
-- 普通逻辑 ZIP 继续不包含本地书原 archive；只有明确的 portable v1 包含受验证的原始本地书。
+- 普通逻辑 ZIP 继续不包含本地书原 archive；只有明确版本化的 portable v1/v2 包含受验证的
+  原始本地书，v2 另可包含受验证的当前用户自定义外观资产。
 
 ## 7. 实现前测试合同
 

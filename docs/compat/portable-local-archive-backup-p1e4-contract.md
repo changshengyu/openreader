@@ -3,6 +3,11 @@
 状态：**已完成。** 已实现运行时代码、契约/失败测试、真实浏览器确认流程和历史 Docker
 三卷 export → upload → restore → read/refresh → restart 冒烟验证；本次 GHCR 发布标签将在发布后记录。
 
+后续说明（2026-07-23）：v1 格式和恢复语义继续保持；新 trigger 已由
+[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)
+扩展为 portable v2，在同一本地书 archive 合同上增加显式自定义资产 manifest。本文中
+“trigger 返回 v1”仅记录首版历史实现，不应解读为当前 trigger 仍生成 v1。
+
 本合同固定比较 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。它不把
 当前 OpenReader 的逻辑 ZIP 当成完整本地书备份，也不允许为了加入 archive 而改变已部署的
 reader-dev/Legado 恢复语义。
