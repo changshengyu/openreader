@@ -14,11 +14,98 @@ export function useReaderViewportProgress(options) {
     return Boolean(options.isEPUB?.value)
   }
 
-  function currentVisibleParagraph() {
-    const viewport = options.contentEl.value?.getBoundingClientRect()
-    const paragraphs = [...(options.contentBody.value?.querySelectorAll('[data-reader-block]') || [])]
+  function visibleParagraphIn(viewportTarget, mode = options.getMode()) {
+    const viewport = viewportTarget?.getBoundingClientRect?.()
+    const paragraphs = [...(
+      options.contentBody.value?.querySelectorAll('h3[data-pos], [data-reader-block]') || []
+    )]
     if (!viewport || !paragraphs.length) return null
-    return findVisibleReaderBlock(paragraphs, viewport, 8, options.getMode() !== 'flip')
+    return findVisibleReaderBlock(paragraphs, viewport, 8, mode !== 'flip')
+  }
+
+  function currentVisibleParagraph() {
+    return visibleParagraphIn(options.contentEl.value, options.getMode())
+  }
+
+  function captureReaderLayoutPosition({
+    viewport = options.contentEl.value,
+    mode = options.getMode(),
+  } = {}) {
+    if (!viewport) return null
+    if (isEPUB()) {
+      const bottom = Math.max(viewport.scrollHeight - viewport.clientHeight, 1)
+      const offset = Math.max(0, Math.round(Number(viewport.scrollTop) || 0))
+      return {
+        chapterIndex: options.currentIndex.value,
+        offset,
+        percent: Math.max(0, Math.min(1, offset / bottom)),
+      }
+    }
+
+    const paragraph = visibleParagraphIn(viewport, mode)
+    if (!paragraph) {
+      const offset = mode === 'flip'
+        ? Math.max(0, Math.floor(options.page.value || 0))
+        : readerScrollTextOffset({
+            scrollTop: viewport.scrollTop,
+            scrollHeight: viewport.scrollHeight,
+            clientHeight: viewport.clientHeight,
+            textLength: options.chapterTextLength.value,
+          })
+      const percent = mode === 'flip'
+        ? readerFlipChapterPercent(options.page.value, options.pageCount.value)
+        : readerTextProgress(offset, options.chapterTextLength.value)
+      return {
+        chapterIndex: options.currentIndex.value,
+        offset,
+        percent,
+      }
+    }
+
+    const chapterEl = paragraph.closest?.('.chapter-content')
+    const chapterIndex = Number(chapterEl?.dataset?.index)
+    const safeChapterIndex = Number.isInteger(chapterIndex)
+      ? chapterIndex
+      : options.currentIndex.value
+    const block = options.displayedChapterBlocks.value.find(item => item.index === safeChapterIndex)
+      || options.chapterBlocks.value.find(item => item.index === safeChapterIndex)
+      || (
+        safeChapterIndex === options.currentIndex.value
+          ? options.makeChapterBlock(
+              options.currentIndex.value,
+              options.chapter.value,
+              options.content.value,
+              options.cachedImages?.value || {},
+            )
+          : null
+      )
+    const paragraphPos = Number(paragraph.dataset?.pos)
+    const viewportRect = viewport.getBoundingClientRect?.()
+    const paragraphRect = paragraph.getBoundingClientRect?.()
+    const offset = Number.isFinite(paragraphPos)
+      ? readerBlockTextOffset({
+          blockPosition: paragraphPos,
+          textLength: paragraph.textContent?.length || 0,
+          blockRect: paragraphRect,
+          viewport: viewportRect,
+        })
+      : 0
+    const textLength = Math.max(options.chapterBlockTextLength(block), 1)
+    const chapterNodes = [...(
+      chapterEl?.querySelectorAll?.('h3[data-pos], [data-reader-block]') || []
+    )]
+
+    return {
+      chapterIndex: safeChapterIndex,
+      paragraph,
+      paragraphPos: Number.isFinite(paragraphPos) ? paragraphPos : null,
+      paragraphIndex: Math.max(0, chapterNodes.indexOf(paragraph)),
+      paragraphTag: String(paragraph.tagName || '').toLowerCase(),
+      offset: mode === 'flip' ? Math.max(0, Math.floor(options.page.value || 0)) : offset,
+      percent: mode === 'flip'
+        ? readerFlipChapterPercent(options.page.value, options.pageCount.value)
+        : readerTextProgress(offset, textLength),
+    }
   }
 
   function currentProgressElement() {
@@ -193,6 +280,7 @@ export function useReaderViewportProgress(options) {
 
   return {
     activeChapterElement,
+    captureReaderLayoutPosition,
     captureReaderScrollAnchor,
     currentChapterPercent,
     currentChapterPosition,

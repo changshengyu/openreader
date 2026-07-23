@@ -727,3 +727,27 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
    `data-pos`、章节索引、根/内部 `scrollTop`、工具层/设置面板并存和控制台错误。
 6. 本批不改变用户正在验收的 cubic 点击动画、分页步长、根滚动、原生手指/滚轮、配置值或
    后端进度格式；它只修复设置变化造成的位置跳转和竞态。
+
+### 第十二批实施与发布前验证结果
+
+- `useReaderMode()` 现在观察“有效阅读模式 + 有效移动界面 + 排版字段”这一份布局状态，而不是
+  只在 raw `reader.mode` 写入后读取位置。Vue pre-flush 阶段从旧 mode 对应的 document/internal
+  viewport 同步捕获当前 `h3,p` 段落锚点；同一配置方案中 mode、pageMode、字号、字重、行高、
+  段距和宽度的同步写入只形成一个恢复事务。
+- 跨横竖模式不再传递不同量纲的 offset。锚点保存章节、段落 `data-pos`、DOM 顺序和百分比；
+  新布局稳定后优先恢复同一段落，缺失时才按同模式 offset 或跨模式 percent 回退。横向多栏
+  恢复后会检查目标实际可见性，并校正恰好落在下一栏边界的页码。
+- 配置事务带代际门禁；较旧异步恢复失效后不能再次校正页码或保存进度。原
+  `useReaderTypographySync()` 在 Reader 中只负责字体资源同步，排版位置恢复由统一事务拥有，
+  不再与 mode restore 竞跑。
+- `readerEffectiveMode()` 成为 watcher 的输入。EPUB、音频和普通图片漫画的有效模式未变化时，
+  修改 raw 阅读方式不会清空/重建内容；TTS 临时 page 分支仍通过有效模式事务和既有朗读段落
+  恢复合同验证。
+- 新增 `reader-settings-position-contract.mjs`，在 390×844、360×800、1024×1366 从章节中段
+  验证 page ↔ flip、整套配置方案（同时改变排版）、normal ↔ Kindle、系统自动昼夜及
+  auto ↔ mobile；每次以切换瞬间的当前可见段落为权威，工具层和设置面板保持并存。
+- 前端全量 **551/551**、Vite 生产构建和 Go 全量通过。真实 Chromium 通过设置位置、文本三模式、
+  桌面/双手机/自适应与强制移动 iPad、连续跨章、图片/漫画、音频和 TTS 合同。独立
+  `reader-epub-contract` 指向纯 Vite preview 时在导入 API 得到预期的代理 502，因此未把该次
+  启动计作 EPUB 产品回归；本批对固定格式“不因 raw mode 重建”的单元合同已通过，Docker 候选
+  仍须运行真实 Go 后端 EPUB 门禁。

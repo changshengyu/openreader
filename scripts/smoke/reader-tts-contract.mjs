@@ -49,7 +49,8 @@ async function installApiMocks(page, state = {}) {
         updatedAt: '2026-07-07T00:00:00Z',
         value: {
           mode: 'flip',
-          pageMode: 'normal',
+          pageMode: 'auto',
+          autoTheme: false,
           fontSize: 18,
           lineHeight: 1.8,
           paragraphSpace: 0.2,

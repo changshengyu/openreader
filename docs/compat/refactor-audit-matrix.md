@@ -102,3 +102,8 @@
 
 本轮仅完成固定上游合同提取和当前实现映射，未修改应用或测试代码。权威细节见
 [`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十二次复审。
+
+实施后状态：上述四项 Reader 设置位置偏差已进入 **browser-validated**。统一布局事务在旧
+viewport 捕获段落、合并同批 mode/pageMode/排版变化、取消陈旧恢复，并按有效模式跳过固定格式
+的 raw mode 噪声。390×844、360×800、1024×1366 的直接模式、配置方案、Kindle、自动昼夜和
+页面模式合同通过；完整发布状态以本批 Docker 门禁与发布记录为准。

@@ -19,18 +19,20 @@ export function useReaderTypographySync(options) {
     options.scheduleProgressSave(300)
   }
 
-  watch(
-    () => [
-      options.reader.fontFamily,
-      options.reader.chineseFont,
-      options.reader.fontSize,
-      options.reader.fontWeight,
-      options.reader.lineHeight,
-      options.reader.paragraphSpace,
-      options.reader.columnWidth,
-    ],
-    syncPosition,
-  )
+  if (options.watchPosition !== false) {
+    watch(
+      () => [
+        options.reader.fontFamily,
+        options.reader.chineseFont,
+        options.reader.fontSize,
+        options.reader.fontWeight,
+        options.reader.lineHeight,
+        options.reader.paragraphSpace,
+        options.reader.columnWidth,
+      ],
+      syncPosition,
+    )
+  }
 
   watch(() => options.reader.customFontsMap, customFonts => {
     options.syncFonts(customFonts)

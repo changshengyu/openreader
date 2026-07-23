@@ -956,6 +956,7 @@ let settleVerticalPageScroll = () => false
 let isVerticalPageScrollSyncSuppressed = () => readerScrollAnimator.isActive()
 const {
   activeChapterElement,
+  captureReaderLayoutPosition,
   captureReaderScrollAnchor,
   currentChapterPercent,
   currentChapterPosition,
@@ -1339,12 +1340,109 @@ watch(
 watch(showSourceDrawer, (visible) => {
   if (visible) ensureSourceCandidates()
 })
+
+function viewportForReaderLayoutState({
+  mode = effectiveReaderMode.value,
+  mobile = isMobileReader.value,
+} = {}) {
+  return shouldUseDocumentReaderScroll({
+    mobile,
+    mode,
+    format: chapterFormat.value,
+    comic: isComicChapter.value,
+  })
+    ? documentScrollViewport
+    : contentEl.value
+}
+
+function captureReaderSettingsPosition(state) {
+  return captureReaderLayoutPosition({
+    viewport: viewportForReaderLayoutState(state),
+    mode: state.mode,
+  })
+}
+
+function activateCapturedReaderPosition(snapshot) {
+  const chapterIndex = Number(snapshot?.chapterIndex)
+  if (
+    !Number.isInteger(chapterIndex)
+    || chapterIndex < 0
+    || chapterIndex >= chapters.value.length
+    || chapterIndex === currentIndex.value
+  ) return
+  const block = chapterBlocks.value.find(item => item.index === chapterIndex)
+  currentIndex.value = chapterIndex
+  chapter.value = chapters.value[chapterIndex]
+    || (block?.id ? { id: block.id, title: block.title, index: chapterIndex } : chapter.value)
+  content.value = block?.content || content.value
+}
+
+function capturedReaderParagraph(snapshot) {
+  const chapterIndex = Number(snapshot?.chapterIndex)
+  if (!Number.isInteger(chapterIndex) || !contentBody.value) return null
+  const chapterEl = contentBody.value.querySelector(
+    `.chapter-content[data-index="${chapterIndex}"]`,
+  )
+  if (!chapterEl) return null
+  if (
+    snapshot.paragraph?.isConnected
+    && snapshot.paragraph.closest?.('.chapter-content') === chapterEl
+  ) return snapshot.paragraph
+
+  const nodes = [...chapterEl.querySelectorAll('h3[data-pos], [data-reader-block]')]
+  const indexed = nodes[Number(snapshot.paragraphIndex)]
+  const hasExpectedPos = snapshot.paragraphPos !== null
+    && snapshot.paragraphPos !== undefined
+    && Number.isFinite(Number(snapshot.paragraphPos))
+  const expectedPos = hasExpectedPos ? Number(snapshot.paragraphPos) : null
+  const expectedTag = String(snapshot.paragraphTag || '').toLowerCase()
+  const matches = node => (
+    node
+    && (!hasExpectedPos || Number(node.dataset?.pos) === expectedPos)
+    && (!expectedTag || String(node.tagName || '').toLowerCase() === expectedTag)
+  )
+  if (matches(indexed)) return indexed
+  return nodes.find(matches) || null
+}
+
+async function restoreCapturedReaderPosition(snapshot, _transition, isCurrent = () => true) {
+  const target = capturedReaderParagraph(snapshot)
+  if (!target) return false
+  jumpToParagraph(target, { save: false, flash: false })
+  if (effectiveReaderMode.value === 'flip') {
+    await nextTick()
+    await nextFrame()
+    if (!isCurrent()) return true
+    const viewport = contentEl.value?.getBoundingClientRect?.()
+    const targetRect = target.getBoundingClientRect?.()
+    if (viewport && targetRect) {
+      const stride = Math.max(pageWidth.value, 1)
+      if (targetRect.left >= viewport.right) {
+        const pages = Math.max(
+          1,
+          Math.ceil((targetRect.left - viewport.right + 1) / stride),
+        )
+        page.value = Math.min(pageCount.value - 1, page.value + pages)
+      } else if (targetRect.right <= viewport.left) {
+        const pages = Math.max(
+          1,
+          Math.ceil((viewport.left - targetRect.right + 1) / stride),
+        )
+        page.value = Math.max(0, page.value - pages)
+      }
+      await nextTick()
+    }
+  }
+  return true
+}
+
 const {
   change: onModeChange,
 } = useReaderMode({
   reader,
   isMobileReader,
   isContinuousScrollRead,
+  getEffectiveMode: () => effectiveReaderMode.value,
   isEPUB: computed(() => chapterFormat.value === 'epub'),
   isAudio: isAudioChapter,
   page,
@@ -1354,12 +1452,21 @@ const {
   chapter,
   content,
   cachedImages: chapterCachedImages,
+  capturePosition: captureReaderSettingsPosition,
+  activateCapturedPosition: activateCapturedReaderPosition,
+  restoreCapturedPosition: restoreCapturedReaderPosition,
   getCurrentOffset: currentOffset,
+  getCurrentPercent: currentChapterPercent,
   computeChapterWindow: computeShowChapterList,
   makeChapterBlock,
   updateLayout: updateFlipLayout,
+  nextFrame,
   restorePosition: restoreReadingPosition,
   saveProgress: () => saveCurrentProgress(),
+  setRestoring: value => {
+    restoringPosition.value = value
+  },
+  progressVersion,
   invalidateChapterWindow: invalidateShowChapters,
 })
 const mobileChromeVisible = ref(true)
@@ -1770,6 +1877,7 @@ suppressNextReaderPositionReload = readerRouteSync.suppressNextPositionReload
 
 useReaderTypographySync({
   reader,
+  watchPosition: false,
   progressVersion,
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,

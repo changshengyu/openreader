@@ -894,7 +894,7 @@ async function exerciseContentSearch(page, viewport, { mobile }) {
 
   await rows.nth(1).click()
   await dialog.waitFor({ state: 'hidden', timeout: 10000 })
-  const highlighted = page.locator('.reader-search-active')
+  const highlighted = page.locator('.reader-search-active').filter({ hasText: '滚动契约段落 5' })
   await highlighted.waitFor({ state: 'visible', timeout: 10000 })
   assert((await highlighted.textContent())?.includes('滚动契约段落 5'), `${viewport.width}: search must highlight the requested fifth occurrence`)
   const query = await page.evaluate(() => Object.fromEntries(new URLSearchParams(location.search)))

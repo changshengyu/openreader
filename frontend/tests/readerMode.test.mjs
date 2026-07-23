@@ -187,3 +187,234 @@ test('forces flip mode back to page on desktop', async () => {
   assert.equal(reader.mode, 'page')
   scope.stop()
 })
+
+test('captures the source paragraph before a direct mode mutation and restores that anchor', async () => {
+  const calls = []
+  const reader = reactive({
+    mode: 'page',
+    fontFamily: 'system',
+    chineseFont: '简体',
+    fontSize: 18,
+    fontWeight: 400,
+    lineHeight: 1.8,
+    paragraphSpace: 0.2,
+    columnWidth: 800,
+    setMode(mode) {
+      calls.push(['set-mode', this.mode, mode])
+      this.mode = mode
+    },
+  })
+  const scope = effectScope()
+  const controller = scope.run(() => useReaderMode({
+    reader,
+    isMobileReader: ref(true),
+    isContinuousScrollRead: ref(false),
+    getEffectiveMode: () => reader.mode,
+    page: ref(3),
+    chapterLoading: ref(false),
+    chapterBlocks: ref([]),
+    currentIndex: ref(2),
+    chapter: ref({ id: 3, title: '第三章' }),
+    content: ref('正文'),
+    capturePosition: state => {
+      calls.push(['capture', state])
+      return { chapterIndex: 2, paragraphPos: 480 }
+    },
+    restoreCapturedPosition: async (snapshot, state) => {
+      calls.push(['restore-anchor', snapshot, state])
+      return true
+    },
+    getCurrentOffset: () => {
+      calls.push(['legacy-offset', reader.mode])
+      return reader.mode === 'page' ? 480 : 0
+    },
+    computeChapterWindow: async () => {},
+    makeChapterBlock: () => ({ index: 2 }),
+    updateLayout: () => calls.push(['layout']),
+    restorePosition: async (...args) => calls.push(['legacy-restore', ...args]),
+    saveProgress: () => calls.push(['save']),
+  }))
+
+  controller.change('flip')
+  await flushModeChange()
+
+  assert.deepEqual(calls, [
+    ['set-mode', 'page', 'flip'],
+    ['capture', { mode: 'page', mobile: true }],
+    ['layout'],
+    [
+      'restore-anchor',
+      { chapterIndex: 2, paragraphPos: 480 },
+      { fromMode: 'page', toMode: 'flip', fromMobile: true, toMobile: true },
+    ],
+    ['save'],
+  ])
+  scope.stop()
+})
+
+test('coalesces a scheme mode and typography update into one position transaction', async () => {
+  const reader = reactive({
+    mode: 'page',
+    fontFamily: 'system',
+    chineseFont: '简体',
+    fontSize: 18,
+    fontWeight: 400,
+    lineHeight: 1.8,
+    paragraphSpace: 0.2,
+    columnWidth: 800,
+    setMode(mode) {
+      this.mode = mode
+    },
+  })
+  const calls = []
+  const scope = effectScope()
+  scope.run(() => useReaderMode({
+    reader,
+    isMobileReader: ref(true),
+    isContinuousScrollRead: ref(false),
+    getEffectiveMode: () => reader.mode,
+    page: ref(1),
+    chapterLoading: ref(false),
+    chapterBlocks: ref([]),
+    currentIndex: ref(4),
+    chapter: ref({ id: 5, title: '第五章' }),
+    content: ref('正文'),
+    capturePosition: state => {
+      calls.push(['capture', state])
+      return { chapterIndex: 4, paragraphPos: 900 }
+    },
+    restoreCapturedPosition: async snapshot => {
+      calls.push(['restore', snapshot])
+      return true
+    },
+    getCurrentOffset: () => 0,
+    computeChapterWindow: async () => {},
+    makeChapterBlock: () => ({ index: 4 }),
+    updateLayout: () => calls.push(['layout']),
+    restorePosition: async () => calls.push(['legacy-restore']),
+    saveProgress: () => calls.push(['save']),
+  }))
+
+  Object.assign(reader, {
+    mode: 'flip',
+    fontSize: 22,
+    lineHeight: 2.2,
+    paragraphSpace: 0.6,
+  })
+  await flushModeChange()
+
+  assert.equal(calls.filter(call => call[0] === 'capture').length, 1)
+  assert.equal(calls.filter(call => call[0] === 'restore').length, 1)
+  assert.equal(calls.filter(call => call[0] === 'legacy-restore').length, 0)
+  scope.stop()
+})
+
+test('does not rebuild a fixed-format chapter when only its raw configured mode changes', async () => {
+  const reader = reactive({
+    mode: 'page',
+    fontFamily: 'system',
+    chineseFont: '简体',
+    fontSize: 18,
+    fontWeight: 400,
+    lineHeight: 1.8,
+    paragraphSpace: 0.2,
+    columnWidth: 800,
+    setMode(mode) {
+      this.mode = mode
+    },
+  })
+  const calls = []
+  const scope = effectScope()
+  scope.run(() => useReaderMode({
+    reader,
+    isMobileReader: ref(true),
+    isContinuousScrollRead: ref(false),
+    getEffectiveMode: () => readerEffectiveMode(reader.mode, true),
+    page: ref(1),
+    chapterLoading: ref(false),
+    chapterBlocks: ref([{ index: 0, content: 'EPUB' }]),
+    currentIndex: ref(0),
+    chapter: ref({ id: 1, title: 'EPUB' }),
+    content: ref('chapter.xhtml'),
+    capturePosition: () => {
+      calls.push(['capture'])
+      return {}
+    },
+    restoreCapturedPosition: async () => calls.push(['restore']),
+    getCurrentOffset: () => 0,
+    computeChapterWindow: async () => calls.push(['window']),
+    makeChapterBlock: () => ({ index: 0 }),
+    updateLayout: () => calls.push(['layout']),
+    restorePosition: async () => calls.push(['legacy-restore']),
+    saveProgress: () => calls.push(['save']),
+  }))
+
+  reader.mode = 'flip'
+  await flushModeChange()
+
+  assert.deepEqual(calls, [])
+  scope.stop()
+})
+
+test('invalidates an older asynchronous position transaction before it can save', async () => {
+  let releaseFirstRestore
+  const firstRestore = new Promise(resolve => {
+    releaseFirstRestore = resolve
+  })
+  const reader = reactive({
+    mode: 'page',
+    fontFamily: 'system',
+    chineseFont: '简体',
+    fontSize: 18,
+    fontWeight: 400,
+    lineHeight: 1.8,
+    paragraphSpace: 0.2,
+    columnWidth: 800,
+    setMode(mode) {
+      this.mode = mode
+    },
+  })
+  const calls = []
+  const scope = effectScope()
+  const controller = scope.run(() => useReaderMode({
+    reader,
+    isMobileReader: ref(true),
+    isContinuousScrollRead: ref(false),
+    getEffectiveMode: () => reader.mode,
+    page: ref(1),
+    chapterLoading: ref(false),
+    chapterBlocks: ref([]),
+    currentIndex: ref(0),
+    chapter: ref({ id: 1, title: '第一章' }),
+    content: ref('正文'),
+    capturePosition: ({ mode }) => ({ chapterIndex: 0, paragraphPos: 100, mode }),
+    restoreCapturedPosition: async (_snapshot, transition, isCurrent) => {
+      calls.push(['restore-start', transition.toMode])
+      if (transition.toMode === 'flip') await firstRestore
+      calls.push(['restore-end', transition.toMode, isCurrent()])
+      return true
+    },
+    getCurrentOffset: () => 0,
+    computeChapterWindow: async () => {},
+    makeChapterBlock: () => ({ index: 0 }),
+    updateLayout: () => {},
+    restorePosition: async () => {},
+    saveProgress: () => calls.push(['save', reader.mode]),
+  }))
+
+  controller.change('flip')
+  await flushModeChange()
+  controller.change('scroll')
+  await flushModeChange()
+  releaseFirstRestore()
+  await flushModeChange()
+
+  assert.deepEqual(calls, [
+    ['restore-start', 'flip'],
+    ['restore-start', 'scroll'],
+    ['restore-end', 'scroll', true],
+    ['save', 'scroll'],
+    ['restore-end', 'flip', false],
+  ])
+  scope.stop()
+})

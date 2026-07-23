@@ -198,3 +198,36 @@ test('stores EPUB positions as document scroll pixels like upstream', () => {
   assert.equal(controller.currentOffset(), 800)
   assert.equal(controller.currentChapterPercent(), 0.5)
 })
+
+test('captures a mode transition as one paragraph anchor instead of a mode-specific offset', () => {
+  const { controller, options, paragraph } = createController()
+  const snapshot = controller.captureReaderLayoutPosition({
+    viewport: options.contentEl.value,
+    mode: 'scroll2',
+  })
+
+  assert.equal(snapshot.chapterIndex, 1)
+  assert.equal(snapshot.paragraph, paragraph)
+  assert.equal(snapshot.paragraphPos, 100)
+  assert.equal(snapshot.paragraphIndex, 0)
+  assert.equal(snapshot.offset, 200)
+  assert.equal(snapshot.percent, 0.2)
+})
+
+test('keeps the source flip page only as a fallback beside the paragraph anchor', () => {
+  const { controller, options, paragraph } = createController({
+    page: ref(2),
+    pageCount: ref(5),
+    isContinuousScrollRead: ref(false),
+    getMode: () => 'flip',
+  })
+  const snapshot = controller.captureReaderLayoutPosition({
+    viewport: options.contentEl.value,
+    mode: 'flip',
+  })
+
+  assert.equal(snapshot.paragraph, paragraph)
+  assert.equal(snapshot.paragraphPos, 100)
+  assert.equal(snapshot.offset, 2)
+  assert.equal(snapshot.percent, 0.5)
+})

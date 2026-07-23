@@ -73,3 +73,11 @@ test('synchronizes deeply changed custom font maps', async () => {
   ])
   controller.scope.stop()
 })
+
+test('can delegate layout positioning to the unified mode transaction without duplicating restores', async () => {
+  const controller = createController({ watchPosition: false })
+  controller.reader.fontSize = 22
+  await flushTypographySync()
+  assert.deepEqual(controller.calls, [])
+  controller.scope.stop()
+})
