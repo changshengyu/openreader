@@ -121,6 +121,118 @@ async function withAPI(method, replacement, callback) {
   }
 }
 
+test('reader settings preserve all five upstream font slots plus the legacy monospace slot', { concurrency: false }, () => {
+  const { reader } = freshStores(1)
+  reader.setFontFamily('hei')
+  reader.setCustomFont('hei', '/uploads/users/1/fonts/hei.ttf')
+  reader.setCustomFont('fangsong', '/uploads/users/1/fonts/fangsong.ttf')
+  assert.equal(reader.fontFamily, 'hei')
+  assert.deepEqual(reader.customFontsMap, {
+    hei: '/uploads/users/1/fonts/hei.ttf',
+    fangsong: '/uploads/users/1/fonts/fangsong.ttf',
+  })
+
+  reader.applyReaderSettings({
+    fontFamily: 'fangsong',
+    customFontsMap: {
+      system: '/uploads/users/1/fonts/system.ttf',
+      hei: '/uploads/users/1/fonts/hei.ttf',
+      kai: '/uploads/users/1/fonts/kai.ttf',
+      serif: '/uploads/users/1/fonts/serif.ttf',
+      fangsong: '/uploads/users/1/fonts/fangsong.ttf',
+      mono: '/uploads/users/1/fonts/legacy-mono.ttf',
+      unsupported: '/uploads/users/1/fonts/unsupported.ttf',
+    },
+  })
+  assert.equal(reader.fontFamily, 'fangsong')
+  assert.deepEqual(Object.keys(reader.customFontsMap).sort(), [
+    'fangsong',
+    'hei',
+    'kai',
+    'mono',
+    'serif',
+    'system',
+  ])
+})
+
+test('a reader settings broadcast received before its own save response does not supersede that save', { concurrency: false }, async () => {
+  const request = deferred()
+  const { reader } = freshStores(1)
+  reader.theme = 'custom'
+  reader.settingsSyncBaseUpdatedAt = '2026-07-23T06:00:00Z'
+  let reads = 0
+
+  await withAPI('get', async () => {
+    reads += 1
+    return {
+      data: {
+        value: { theme: 'blue', themeType: 'day' },
+        updatedAt: '2026-07-23T06:00:01Z',
+      },
+    }
+  }, async () => {
+    await withAPI('put', () => request.promise, async () => {
+      const saving = reader.saveReaderSettings()
+      const queued = reader.reconcileReaderSettingsUpdate('2026-07-23T06:00:01Z')
+      assert.equal(queued, null)
+
+      request.resolve({
+        data: {
+          value: { theme: 'custom', themeType: 'day' },
+          updatedAt: '2026-07-23T06:00:01Z',
+        },
+        headers: {},
+      })
+      const saved = await saving
+      await Promise.resolve()
+
+      assert.deepEqual(saved, { theme: 'custom', themeType: 'day' })
+      assert.equal(reader.theme, 'custom')
+      assert.equal(reader.settingsSyncBaseUpdatedAt, '2026-07-23T06:00:01Z')
+      assert.equal(reads, 0)
+    })
+  })
+})
+
+test('a genuinely newer reader settings broadcast is loaded once after the local save settles', { concurrency: false }, async () => {
+  const request = deferred()
+  const loaded = deferred()
+  const { reader } = freshStores(1)
+  reader.theme = 'custom'
+  reader.settingsSyncBaseUpdatedAt = '2026-07-23T06:00:00Z'
+  let reads = 0
+
+  await withAPI('get', async () => {
+    reads += 1
+    loaded.resolve()
+    return {
+      data: {
+        value: { theme: 'blue', themeType: 'day' },
+        updatedAt: '2026-07-23T06:00:02Z',
+      },
+    }
+  }, async () => {
+    await withAPI('put', () => request.promise, async () => {
+      const saving = reader.saveReaderSettings()
+      reader.reconcileReaderSettingsUpdate('2026-07-23T06:00:02Z')
+      request.resolve({
+        data: {
+          value: { theme: 'custom', themeType: 'day' },
+          updatedAt: '2026-07-23T06:00:01Z',
+        },
+        headers: {},
+      })
+      assert.deepEqual(await saving, { theme: 'custom', themeType: 'day' })
+      await loaded.promise
+      await Promise.resolve()
+
+      assert.equal(reads, 1)
+      assert.equal(reader.theme, 'blue')
+      assert.equal(reader.settingsSyncBaseUpdatedAt, '2026-07-23T06:00:02Z')
+    })
+  })
+})
+
 test('a delayed reader-settings load cannot commit into a later authenticated scope', { concurrency: false }, async () => {
   const request = deferred()
   const { reader } = freshStores(1)

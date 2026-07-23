@@ -9592,7 +9592,7 @@ func TestUploadAssetStoresPublicFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write([]byte("png-data")); err != nil {
+	if _, err := part.Write(readerAppearancePNG(t, 1, 1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -9667,7 +9667,7 @@ func TestUploadFontAssetStoresPublicFontFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write([]byte("ttf-data")); err != nil {
+	if _, err := part.Write(readerAppearanceFont("ttf")); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {

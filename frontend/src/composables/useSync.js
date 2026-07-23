@@ -127,10 +127,10 @@ export function useSync() {
         }
       }
       if (message.type === 'settings_update' && message.payload?.key === 'reader') {
-        reader.loadReaderSettings().catch(() => {})
+        reader.reconcileReaderSettingsUpdate(message.payload?.updatedAt)?.catch?.(() => {})
       }
       if (message.type === 'settings_update' && message.payload?.key === 'all') {
-        reader.loadReaderSettings().catch(() => {})
+        reader.reconcileReaderSettingsUpdate(message.payload?.updatedAt)?.catch?.(() => {})
         preferences.loadPreferences().catch(() => {})
       }
       if (message.type === 'settings_update' && ['shelf', 'search'].includes(message.payload?.key)) {

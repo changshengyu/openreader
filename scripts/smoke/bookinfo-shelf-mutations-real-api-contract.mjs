@@ -19,6 +19,13 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+function tinyPNG() {
+  return Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  )
+}
+
 async function reserveLocalPort() {
   const server = createServer()
   await new Promise((resolve, reject) => {
@@ -242,7 +249,7 @@ async function runViewport(browser, root, viewport) {
       () => dialog.locator('.cover-file-input').setInputFiles({
         name: 'bookinfo-cover.png',
         mimeType: 'image/png',
-        buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        buffer: tinyPNG(),
       }),
     )
     const coverPayload = JSON.parse(coverRequest.postData() || '{}')

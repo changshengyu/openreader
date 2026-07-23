@@ -527,6 +527,7 @@ const {
   saveSettings: () => reader.saveReaderSettings(),
   syncFonts: syncReaderFontFaces,
   onSuccess: message => ElMessage.success(message),
+  onWarning: message => ElMessage.warning(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 

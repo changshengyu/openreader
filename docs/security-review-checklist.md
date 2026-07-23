@@ -130,13 +130,49 @@ For each release, record which checklist sections were relevant and which tests/
   result, retains legacy global paths, and refuses to delete a Book or reader-setting
   reference. The Reader saves the unreferenced setting before its delete request and
   restores the local font/background state if that save fails.
-- [x] Upload size and extension allowlists are unchanged; rooted path checks reject
-  traversal, query and fragment variants without leaking a filesystem path.
+- [x] Upload size and extension allowlists remain compatible; Reader appearance P2-A
+  additionally checks bounded image/font signatures before publishing a file. Rooted path
+  checks reject traversal, query and fragment variants without leaking a filesystem path.
 
 Evidence: `backend/api/bookinfo_asset_contract_test.go`, upload/update API tests,
 `frontend/tests/overlayBookInfo.test.mjs`,
 `frontend/tests/readerAppearanceAssets.test.mjs`, and the P2 BookInfo real-browser
 contract (three viewports).
+
+## P2 Reader appearance asset runtime review
+
+- [x] Cover/background/font/misc uploads still enforce the existing 8 MiB/32 MiB
+  admission caps before content inspection and continue to derive the destination owner
+  from the authenticated JWT only.
+- [x] JPEG/PNG/GIF metadata is decoded through a 1 MiB bounded header reader; WebP uses
+  a bounded RIFF/chunk/dimension parser. Empty, truncated, extension-mismatched and
+  HTML/random-byte payloads fail with a path-free `400` before the final user directory
+  or file is created.
+- [x] Raster width/height and aggregate pixel count are bounded before a directly served
+  browser asset is published. TTF/OTF/WOFF/WOFF2 extensions must match their container
+  signature; uploaded bytes are never executed or parsed as application code.
+- [x] Reader upload success now requires the returned `reader` setting to contain the
+  exact new URL. Network/CAS failure restores only the still-current local attempt and
+  best-effort removes the unique unreferenced upload; it never overwrites a server-winning
+  state.
+- [x] Reader removal persists the reference change before physical deletion. `409`
+  means another current-user setting/book still references the file and is treated as
+  safe retention; legacy/global/external URLs are never auto-deleted.
+- [x] Real Go + Chromium upload/reload/failed-save cleanup/delete runs pass at
+  1440×900, 390×844 and 360×800; the affected BookInfo flow and Reader
+  desktop/mobile/iPad matrix also pass. Frontend 558/558, full Go tests and production
+  build are green.
+- [ ] Candidate Docker volume/backup smoke and local multi-platform image publication
+  remain the P2-A release gate.
+- [ ] Logical/portable-v1 backups still contain URL strings only. Versioned, bounded,
+  cross-user-ID asset byte packaging/remapping remains the separate P2-B contract and
+  must not be claimed by this runtime slice.
+
+Targeted evidence: `backend/api/reader_appearance_assets_p2_contract_test.go`,
+`backend/api/bookinfo_asset_contract_test.go`,
+`frontend/tests/readerAppearanceAssets.test.mjs`, and
+`scripts/smoke/reader-appearance-assets-real-api-contract.mjs`,
+`docs/compat/reader-appearance-assets-p2-contract.md`.
 
 ## P1-E2 workspace storage audit
 

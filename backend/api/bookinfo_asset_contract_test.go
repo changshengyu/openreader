@@ -52,7 +52,7 @@ func uploadBookInfoCover(t *testing.T, router http.Handler, token string, filena
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write([]byte("cover-bytes")); err != nil {
+	if _, err := part.Write(readerAppearancePNG(t, 1, 1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -98,7 +98,7 @@ func TestBookInfoAssetsAreUserScopedAndCannotCrossMutate(t *testing.T) {
 	readAlice := httptest.NewRequest(http.MethodGet, aliceURL, nil)
 	readAliceResponse := httptest.NewRecorder()
 	router.ServeHTTP(readAliceResponse, readAlice)
-	if readAliceResponse.Code != http.StatusOK || readAliceResponse.Body.String() != "cover-bytes" {
+	if readAliceResponse.Code != http.StatusOK || !bytes.Equal(readAliceResponse.Body.Bytes(), readerAppearancePNG(t, 1, 1)) {
 		t.Fatalf("user-scoped cover must remain directly readable: %d %q", readAliceResponse.Code, readAliceResponse.Body.String())
 	}
 

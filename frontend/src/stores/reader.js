@@ -11,9 +11,12 @@ import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThem
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
 let readerSettingsSyncTimer
+let readerSettingsPendingRemoteUpdatedAt = ''
+let readerSettingsPendingRemoteUnknown = false
 const READER_CLIENT_ID = readerClientId()
 const readerSettingsOperations = createAuthenticatedOperationGuard()
 const readerProgressOperations = createAuthenticatedOperationGuard()
+const READER_FONT_FAMILIES = ['system', 'hei', 'kai', 'serif', 'fangsong', 'mono']
 
 export const themePresets = {
   parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c' },
@@ -119,6 +122,8 @@ export const useReaderStore = defineStore('reader', {
     },
     resetReaderSettingsState(scope = currentUserScope()) {
       clearTimeout(readerSettingsSyncTimer)
+      readerSettingsPendingRemoteUpdatedAt = ''
+      readerSettingsPendingRemoteUnknown = false
       readerSettingsOperations.reset()
       Object.assign(this, defaultReaderSettings(), {
         settingsScope: scope,
@@ -246,7 +251,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setFontFamily(fontFamily) {
-      this.fontFamily = ['system', 'serif', 'kai', 'mono'].includes(fontFamily) ? fontFamily : 'system'
+      this.fontFamily = READER_FONT_FAMILIES.includes(fontFamily) ? fontFamily : 'system'
       this.markSettingsDirty()
     },
     setChineseFont(chineseFont) {
@@ -254,7 +259,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setCustomFont(fontFamily, url) {
-      if (!['system', 'serif', 'kai', 'mono'].includes(fontFamily) || !url) return
+      if (!READER_FONT_FAMILIES.includes(fontFamily) || !url) return
       this.customFontsMap = {
         ...(this.customFontsMap || {}),
         [fontFamily]: url,
@@ -378,7 +383,7 @@ export const useReaderStore = defineStore('reader', {
       if (!['auto', 'mobile'].includes(this.pageMode)) this.pageMode = 'auto'
       if (!['next', 'auto', 'none'].includes(this.clickMethod)) this.clickMethod = 'auto'
       if (!['操作弹窗', '忽略'].includes(this.selectionAction)) this.selectionAction = '操作弹窗'
-      if (!['system', 'serif', 'kai', 'mono'].includes(this.fontFamily)) this.fontFamily = 'system'
+      if (!READER_FONT_FAMILIES.includes(this.fontFamily)) this.fontFamily = 'system'
       if (!['简体', '繁体'].includes(this.chineseFont)) this.chineseFont = '简体'
       if (!this.customFontsMap || typeof this.customFontsMap !== 'object' || Array.isArray(this.customFontsMap)) this.customFontsMap = {}
       if (!Array.isArray(this.customBgImageList)) this.customBgImageList = []
@@ -484,6 +489,24 @@ export const useReaderStore = defineStore('reader', {
         return null
       }
     },
+    reconcileReaderSettingsUpdate(updatedAt = '') {
+      this.ensureReaderSettingsScope()
+      const remoteUpdatedAt = String(updatedAt || '').trim()
+      if (remoteUpdatedAt && !readerSettingTimestampIsNewer(remoteUpdatedAt, this.settingsSyncBaseUpdatedAt)) {
+        return null
+      }
+      if (this.settingsSyncing) {
+        if (remoteUpdatedAt) {
+          if (readerSettingTimestampIsNewer(remoteUpdatedAt, readerSettingsPendingRemoteUpdatedAt)) {
+            readerSettingsPendingRemoteUpdatedAt = remoteUpdatedAt
+          }
+        } else {
+          readerSettingsPendingRemoteUnknown = true
+        }
+        return null
+      }
+      return this.loadReaderSettings({ createIfMissing: false })
+    },
     async saveReaderSettings(options = {}) {
       this.ensureReaderSettingsScope()
       if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
@@ -512,7 +535,18 @@ export const useReaderStore = defineStore('reader', {
         this.settingsSyncError = readErrorMessage(err)
         return null
       } finally {
-        if (readerSettingsOperations.canCommit(operation)) this.settingsSyncing = false
+        if (readerSettingsOperations.canCommit(operation)) {
+          this.settingsSyncing = false
+          const pendingUpdatedAt = readerSettingsPendingRemoteUpdatedAt
+          const pendingUnknown = readerSettingsPendingRemoteUnknown
+          readerSettingsPendingRemoteUpdatedAt = ''
+          readerSettingsPendingRemoteUnknown = false
+          if (pendingUnknown || readerSettingTimestampIsNewer(pendingUpdatedAt, this.settingsSyncBaseUpdatedAt)) {
+            Promise.resolve().then(() => {
+              this.reconcileReaderSettingsUpdate(pendingUnknown ? '' : pendingUpdatedAt)?.catch?.(() => {})
+            })
+          }
+        }
       }
     },
     applyProgress(progress) {
@@ -946,7 +980,7 @@ function sanitizeReaderSettings(payload, options = {}) {
   if (['auto', 'mobile'].includes(payload.pageMode)) settings.pageMode = payload.pageMode
   if (['next', 'auto', 'none'].includes(payload.clickMethod)) settings.clickMethod = payload.clickMethod
   if (['操作弹窗', '忽略'].includes(payload.selectionAction)) settings.selectionAction = payload.selectionAction
-  if (['system', 'serif', 'kai', 'mono'].includes(payload.fontFamily)) settings.fontFamily = payload.fontFamily
+  if (READER_FONT_FAMILIES.includes(payload.fontFamily)) settings.fontFamily = payload.fontFamily
   settings.customFontsMap = sanitizeCustomFontsMap(payload.customFontsMap)
   settings.chineseFont = payload.chineseFont === '繁体' ? '繁体' : '简体'
   if (typeof payload.theme === 'string') settings.theme = payload.theme
@@ -984,7 +1018,7 @@ function sanitizeReaderSettings(payload, options = {}) {
 
 function sanitizeCustomFontsMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return ['system', 'serif', 'kai', 'mono'].reduce((map, key) => {
+  return READER_FONT_FAMILIES.reduce((map, key) => {
     if (typeof value[key] === 'string' && value[key]) map[key] = value[key]
     return map
   }, {})
@@ -1106,6 +1140,19 @@ function sanitizeCustomConfigList(value) {
       }
     })
     .filter(Boolean)
+}
+
+function readerSettingTimestampIsNewer(candidate, baseline) {
+  const next = String(candidate || '').trim()
+  const current = String(baseline || '').trim()
+  if (!next) return false
+  if (!current) return true
+  const nextTime = Date.parse(next)
+  const currentTime = Date.parse(current)
+  if (Number.isFinite(nextTime) && Number.isFinite(currentTime)) {
+    return nextTime > currentTime
+  }
+  return next > current
 }
 
 function readErrorMessage(err) {

@@ -2679,3 +2679,9 @@ portable v1 只保存自定义资产 URL 字符串，不携带 `data/uploads/use
 [`reader-appearance-assets-p2-contract.md`](reader-appearance-assets-p2-contract.md)。本轮 inventory
 只修改合同；P2-A 先实现日常上传/替换/删除一致性与内容校验，P2-B 另行设计版本化资产备份，
 不得把格式变更夹带进 runtime 修复。
+
+P2-A 真实后端测试进一步确认了两个实现级错误：自身 `settings_update` 会在设置 PUT 响应
+落定前启动竞争 load，使已经提交成功的资产保存被 operation guard 错判为 `null`；设置界面
+虽展示上游五个字体槽位，store 却曾拒绝 `hei/fangsong`。两项均纳入同一 P2-A 事务闸门：
+自身/较旧广播不得抢占保存，真正较新的远端时间戳必须在保存后补载；五个上游槽位完整保留，
+既有 `mono` 仅作为兼容槽位继续接受旧数据。

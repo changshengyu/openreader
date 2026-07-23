@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	assetservice "openreader/backend/services/assets"
 )
 
 func (s *Server) uploadAsset(c *gin.Context) {
@@ -36,6 +38,21 @@ func (s *Server) uploadAsset(c *gin.Context) {
 	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 	if !allowedUploadExtension(kind, ext) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported file type"})
+		return
+	}
+	input, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file content does not match type"})
+		return
+	}
+	validationErr := assetservice.ValidateUpload(input, fileHeader.Size, kind, ext)
+	_ = input.Close()
+	if validationErr != nil {
+		if errors.Is(validationErr, assetservice.ErrImageDimensions) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "image dimensions are too large"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file content does not match type"})
 		return
 	}
 
