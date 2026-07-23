@@ -2692,3 +2692,18 @@ P2-A 真实后端测试进一步确认了两个实现级错误：自身 `setting
 `9cae206`/`latest`，远端 OCI index 为
 `sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`。P2-B
 仍未实施，portable v1 只保存 URL 引用的限制保持。
+
+### P2-B portable 资产审计（2026-07-23）
+
+固定上游 `WebdavController.backupToWebdav`/`BookController.saveToWebdav` 只合并逻辑
+JSON；`ReadSettings.vue`/`UserController.uploadFile` 虽把背景与字体保存在用户
+namespace，却没有把这些字节加入备份。当前 OpenReader portable v1 也只额外携带本地书
+原 archive。因此 P2-B 被裁决为明确版本化的 OpenReader 扩展，而不是上游格式修补。
+
+新合同固定 `openreader-portable-v2.json`、无源 user ID 的
+`openreader-asset://aNNNN` 占位符、只收集当前用户实际引用的新私有资产、legacy URL
+只保留字符串、跨 user ID 生成新目标 URL，以及资产 staging/最终随机文件/单 SQLite
+transaction/失败补偿。普通逻辑 ZIP 与 v1 均不改变，未来未知 portable 版本必须 fail
+closed，不能落入普通恢复只写书架。完整格式、API、限额、安全和测试先行闸门见
+[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)。
+本轮仅提交合同，不包含运行时代码。

@@ -166,9 +166,11 @@ contract (three viewports).
   restart, backup/portable restore, local-format and owner-isolation smoke. Locally
   built amd64/arm64 `9cae206` and `latest` indexes were published and independently
   resolved to `sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`.
-- [ ] Logical/portable-v1 backups still contain URL strings only. Versioned, bounded,
-  cross-user-ID asset byte packaging/remapping remains the separate P2-B contract and
-  must not be claimed by this runtime slice.
+- [ ] Logical/portable-v1 backups still contain URL strings only. The versioned, bounded,
+  cross-user-ID asset byte packaging/remapping contract is now extracted in
+  `docs/compat/portable-appearance-assets-p2b-contract.md`, but its failure tests and
+  runtime are not implemented. Until then, no release may claim cross-instance custom
+  asset restore.
 
 Targeted evidence: `backend/api/reader_appearance_assets_p2_contract_test.go`,
 `backend/api/bookinfo_asset_contract_test.go`,

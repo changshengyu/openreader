@@ -1,7 +1,7 @@
 # Reader 自定义外观资产 P2 合同
 
-状态：2026-07-23 已完成固定上游合同提取、P2-A runtime 实施及非 Docker
-发布门禁；本文件继续把后续 portable 资产备份作为独立 P2-B 闸门。
+状态：2026-07-23 已完成固定上游合同提取、P2-A runtime 实施和 Docker 发布；
+P2-B 已完成独立合同审计，尚未进入失败测试/运行时实施。
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -116,18 +116,13 @@
 
 ## P2-B 数据与备份闸门
 
-P2-A 不授权修改 portable format。P2-B 开始前必须另行确定：
+P2-A 不授权修改 portable format。P2-B 的固定格式、无源 user ID 占位符、资产闭包、
+限额、跨 user ID 重写、SQLite/文件补偿、旧 v1 与普通逻辑 ZIP 兼容策略及失败测试见
+[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)。
 
-- 新 manifest 版本和旧 reader-dev/OpenReader 逻辑 ZIP 的兼容策略；
-- 只打包当前用户实际引用且位于其新资产根内的文件；
-- 单文件、总字节、entry 数量、压缩比、magic、重复 digest 和路径穿越限制；
-- 恢复到不同 user ID 时，对 Reader setting、Book `customCoverUrl` 和自定义配置
-  中全部资产 URL 做同一事务内重写；
-- 任一资产校验/写入/数据库步骤失败时，目标用户原设置、书籍和文件均不变；
-- legacy 全局资产只保留原 URL，不跨用户复制或删除，并明确缺失提示。
-
-在 P2-B 完成前，Docker 报告必须写明：挂载 `data/` 的卷级备份保存资产字节，
-普通逻辑/portable v1 只保存引用字符串，不能声称跨实例恢复自定义资产。
+该合同目前只有审计文档，尚未实施。在 P2-B 完成前，Docker 报告仍必须写明：挂载
+`data/` 的卷级备份保存资产字节，普通逻辑/portable v1 只保存引用字符串，不能声称
+跨实例恢复自定义资产。
 
 ## P2-A 实施结果（2026-07-23）
 

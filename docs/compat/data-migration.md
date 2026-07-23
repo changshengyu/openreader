@@ -79,8 +79,11 @@ currently serialize Reader/Book URL fields but do not package
 not be described as cross-instance custom-asset restore. Runtime upload
 consistency is P2-A; a separately versioned, bounded and transactional portable
 asset manifest is P2-B in
-`docs/compat/reader-appearance-assets-p2-contract.md`. No existing upload path,
-SQLite row, backup ZIP or mounted file may be moved or deleted during P2-A.
+`docs/compat/portable-appearance-assets-p2b-contract.md`. The P2-B contract was
+extracted on 2026-07-23 but is not implemented yet: new packages will be v2,
+existing v1 remains restorable, and ordinary logical ZIPs remain URL-only. No
+existing upload path, SQLite row, backup ZIP or mounted file may be moved or
+deleted during P2-A/P2-B migration.
 
 ## Priority unresolved areas
 
