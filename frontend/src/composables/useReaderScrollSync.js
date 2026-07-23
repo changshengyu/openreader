@@ -31,6 +31,12 @@ export function useReaderScrollSync(options) {
     ) return false
     pendingAnimationSettlement = false
     lastSynchronizedPosition = position
+    if (!unref(options.isContinuousScrollRead)) {
+      options.updateLayout()
+      options.progressVersion.value += 1
+      options.scheduleProgressSave(500)
+      return true
+    }
     const snapshot = options.captureProgressSnapshot?.()
     options.syncCurrentChapter(snapshot)
     options.maybeExtendChapterWindow()

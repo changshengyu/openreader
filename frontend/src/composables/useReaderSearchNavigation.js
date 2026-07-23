@@ -1,6 +1,7 @@
 import { nextTick, unref } from 'vue'
 import { bookContentSearchParagraphIndex } from '../utils/readerBookSearch.js'
 import { findReaderBookmarkParagraph } from '../utils/readerBookmarkContext.js'
+import { readerElementScrollTop } from '../utils/readerScrollViewport.js'
 
 export function useReaderSearchNavigation(options) {
   function paragraphScope() {
@@ -85,7 +86,10 @@ export function useReaderSearchNavigation(options) {
         Math.max(0, paragraphPage),
       )
     } else if (options.contentEl.value) {
-      options.contentEl.value.scrollTop = Math.max(0, lineEl.offsetTop - 80)
+      options.contentEl.value.scrollTop = Math.max(
+        0,
+        readerElementScrollTop(options.contentEl.value, lineEl) - 80,
+      )
     }
     if (jumpOptions.flash !== false) options.flashParagraph?.(lineEl)
     if (jumpOptions.save !== false) options.saveProgress?.()

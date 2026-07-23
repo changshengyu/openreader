@@ -108,7 +108,7 @@ test('scrolls vertical pages and schedules progress without changing chapters', 
   assert.deepEqual(fixture.navigated, [])
 })
 
-test('delays vertical settlement like upstream after the visual animation finishes', async () => {
+test('releases vertical paging immediately and defers only the settlement task boundary', async () => {
   const settled = []
   const tasks = new Map()
   let nextTaskId = 0
@@ -146,7 +146,7 @@ test('delays vertical settlement like upstream after the visual animation finish
   assert.deepEqual(settled, [])
   assert.equal(tasks.size, 1)
   const [{ callback, delay }] = tasks.values()
-  assert.equal(delay, 200, 'upstream defers progress work by the configured duration after motion')
+  assert.equal(delay, 0, 'upstream releases transforming immediately; it only delays progress persistence')
   callback()
   assert.deepEqual(settled, ['settled'])
 })

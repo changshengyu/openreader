@@ -10,6 +10,7 @@ function createController(overrides = {}) {
     isVerticalRead: ref(true),
     restoringPosition: ref(false),
     chapterLoading: ref(false),
+    isContinuousScrollRead: ref(true),
     progressVersion,
     syncCurrentChapter: () => calls.push(['sync-chapter']),
     maybeExtendChapterWindow: () => calls.push(['extend-window']),
@@ -132,4 +133,23 @@ test('captures one visible snapshot and reuses it for one stable settlement', ()
     ['local-progress', snapshot],
     ['schedule', 500],
   ])
+})
+
+test('single-chapter page settlement updates page geometry without scanning every paragraph', () => {
+  let captures = 0
+  const fixture = createController({
+    isContinuousScrollRead: ref(false),
+    captureProgressSnapshot: () => {
+      captures += 1
+      return { chapterIndex: 1, offset: 480 }
+    },
+  })
+
+  fixture.controller.flush()
+  assert.equal(captures, 0)
+  assert.deepEqual(fixture.calls, [
+    ['layout'],
+    ['schedule', 500],
+  ])
+  assert.equal(fixture.progressVersion.value, 4)
 })

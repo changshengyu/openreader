@@ -278,7 +278,7 @@
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">页面模式（本机）</label>
+      <label class="setting-label">页面模式</label>
       <div class="selection-zone">
         <button
           v-for="option in pageModeOptions"

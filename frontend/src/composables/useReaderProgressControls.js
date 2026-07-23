@@ -4,6 +4,7 @@ import {
   readerBookProgress,
 } from '../utils/readerPagination.js'
 import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
+import { readerElementScrollTop } from '../utils/readerScrollViewport.js'
 
 export function useReaderProgressControls(options) {
   const mobilePageSliderDraft = ref(null)
@@ -47,13 +48,14 @@ export function useReaderProgressControls(options) {
       const chapterEl = options.contentBody.value
         ?.querySelector(`.chapter-content[data-index="${options.currentIndex.value}"]`)
       if (chapterEl) {
+        const chapterTop = readerElementScrollTop(options.contentEl.value, chapterEl)
         const room = Math.max(
           chapterEl.offsetHeight - options.contentEl.value.clientHeight,
           0,
         )
         options.contentEl.value.scrollTop = Math.max(
           0,
-          chapterEl.offsetTop + Math.round(value * room),
+          chapterTop + Math.round(value * room),
         )
       }
     } else {

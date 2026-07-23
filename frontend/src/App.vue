@@ -26,6 +26,7 @@ import { useReaderStore } from './stores/reader'
 import { useBookshelfStore } from './stores/bookshelf'
 import { usePreferencesStore } from './stores/preferences'
 import { useSync } from './composables/useSync'
+import { initializeReaderTheme } from './utils/readerSettingsBootstrap'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -60,10 +61,11 @@ onMounted(() => {
     preferences.ensurePreferenceScope()
     readerStore.ensureReaderSettingsScope()
     connect()
-    readerStore.loadReaderSettings().then(applyAutoThemeFromSystem).catch(() => {})
+    loadReaderSettingsAndApplyTheme()
     preferences.loadPreferences().catch(() => {})
+  } else {
+    applyAutoThemeFromSystem()
   }
-  applyAutoThemeFromSystem()
 })
 
 onBeforeUnmount(() => {
@@ -85,7 +87,7 @@ watch(isLoggedIn, (loggedIn) => {
     readerStore.ensureReaderSettingsScope()
     preferences.ensurePreferenceScope()
     connect()
-    readerStore.loadReaderSettings().then(applyAutoThemeFromSystem).catch(() => {})
+    loadReaderSettingsAndApplyTheme()
     preferences.loadPreferences().catch(() => {})
   } else {
     disconnect()
@@ -119,5 +121,13 @@ function setupAutoThemeListener() {
 function applyAutoThemeFromSystem() {
   if (!readerStore.autoTheme || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
   readerStore.applyAutoTheme(window.matchMedia('(prefers-color-scheme: dark)').matches)
+}
+
+function loadReaderSettingsAndApplyTheme() {
+  return initializeReaderTheme({
+    authenticated: Boolean(userStore.token),
+    loadSettings: () => readerStore.loadReaderSettings(),
+    applyTheme: applyAutoThemeFromSystem,
+  })
 }
 </script>

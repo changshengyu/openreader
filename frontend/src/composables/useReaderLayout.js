@@ -15,7 +15,9 @@ export function useReaderLayout(options) {
         height: windowTarget.innerHeight,
       }
     }
-    const style = windowTarget.getComputedStyle(viewport)
+    const style = windowTarget.getComputedStyle(
+      unref(options.contentElement) || viewport,
+    )
     const horizontalPadding = (
       parseFloat(style.paddingLeft || '0')
       + parseFloat(style.paddingRight || '0')

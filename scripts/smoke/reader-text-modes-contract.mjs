@@ -66,6 +66,7 @@ async function installApiMocks(page, mode, animateDuration = 0) {
           columnWidth: 800,
           animateDuration,
           clickMethod: 'auto',
+          autoTheme: false,
         },
       }))
     }
@@ -99,6 +100,10 @@ async function readerGeometry(page) {
     }
     const readerPage = document.querySelector('.reader-page')
     const content = document.querySelector('.reader-content')
+    const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+    const scrollElement = usesDocumentScroll
+      ? (document.scrollingElement || document.documentElement)
+      : content
     const body = document.querySelector('.reader-body')
     const heading = document.querySelector('.reader-body h3')
     const paragraph = document.querySelector('.reader-body p')
@@ -110,7 +115,10 @@ async function readerGeometry(page) {
       paragraph: rect(paragraph),
       transform: body ? getComputedStyle(body).transform : '',
       textAlign: paragraph ? getComputedStyle(paragraph).textAlign : '',
-      contentScrollTop: content?.scrollTop ?? 0,
+      contentScrollTop: scrollElement?.scrollTop ?? 0,
+      innerContentScrollTop: content?.scrollTop ?? 0,
+      rootScrollTop: (document.scrollingElement || document.documentElement)?.scrollTop ?? 0,
+      usesDocumentScroll,
     }
   })
 }
@@ -136,6 +144,13 @@ async function ensureMobileChromeVisible(page, viewport) {
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, 'mobile reader tools did not become visible')
 }
 
+async function ensureMobileChromeHidden(page, viewport) {
+  if (!await page.locator('.reader-mobile-top.visible').count()) return
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-top.visible'))
+  await resetRuntimePage(page)
+}
+
 async function setRuntimeAnimationDuration(page, viewport, duration) {
   await ensureMobileChromeVisible(page, viewport)
   await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' }).click()
@@ -155,7 +170,12 @@ async function setRuntimeAnimationDuration(page, viewport, duration) {
 }
 
 async function resetRuntimePage(page) {
-  await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+  await page.evaluate(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    element.scrollTop = 0
+  })
   await page.waitForTimeout(40)
 }
 
@@ -165,8 +185,10 @@ async function seekRuntimePageSliderToEnd(page, viewport) {
     element.value = element.max
     element.dispatchEvent(new Event('input', { bubbles: true }))
     element.dispatchEvent(new Event('change', { bubbles: true }))
-    const content = document.querySelector('.reader-content')
-    return Math.max(0, (content?.scrollHeight || 0) - (content?.clientHeight || 0))
+    const content = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    return Math.max(0, (content?.scrollHeight || 0) - (window.visualViewport?.height || content?.clientHeight || 0))
   })
 }
 
@@ -174,6 +196,7 @@ async function assertDesktopPage(browser) {
   const viewport = { width: 1440, height: 900 }
   const { context, page } = await openReader(browser, viewport, 'page')
   const geometry = await readerGeometry(page)
+  assert(!geometry.usesDocumentScroll, `${viewport.width}: desktop reader must retain its bounded workspace scroll host`)
   close(geometry.page.left, 319, 1, 'desktop page left')
   close(geometry.page.width, 802, 1, 'desktop page outer width')
   close(geometry.body.left, 385, 1, 'desktop text left')
@@ -187,11 +210,14 @@ async function assertDesktopPage(browser) {
 async function assertMobilePage(browser, viewport) {
   const { context, page } = await openReader(browser, viewport, 'page')
   const geometry = await readerGeometry(page)
+  assert(geometry.usesDocumentScroll, `${viewport.width}: vertical mobile text must use the document scroll host`)
+  close(geometry.innerContentScrollTop, 0, 0, `${viewport.width}: nested reader-content must stay at zero`)
   close(geometry.content.left, 16, 1, `${viewport.width}: page content left`)
   close(viewport.width - geometry.content.right, 16, 1, `${viewport.width}: page content right`)
   close(geometry.heading.top, 73, 1, `${viewport.width}: page heading top`)
   close(geometry.paragraph.top, 135, 1, `${viewport.width}: page paragraph top`)
-  await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await ensureMobileChromeHidden(page, viewport)
+  await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(60)
   const after = await readerGeometry(page)
   close(after.contentScrollTop, viewport.height - 72, 2, `${viewport.width}: page lower-click step`)
@@ -221,21 +247,24 @@ async function assertConfiguredPageDuration(browser) {
   const targetTop = viewport.height - 72
 
   const zero = await openReader(browser, viewport, 'page', 0)
-  await zero.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await ensureMobileChromeHidden(zero.page, viewport)
+  await zero.page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   close((await readerGeometry(zero.page)).contentScrollTop, targetTop, 2, '0ms page animation')
   await zero.context.close()
 
   const short = await openReader(browser, viewport, 'page', 100)
-  await short.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await ensureMobileChromeHidden(short.page, viewport)
+  await short.page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await short.page.waitForTimeout(180)
   close((await readerGeometry(short.page)).contentScrollTop, targetTop, 2, '100ms page animation')
   await short.context.close()
 
   const long = await openReader(browser, viewport, 'page', 500)
-  await long.page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
+  await ensureMobileChromeHidden(long.page, viewport)
+  await long.page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await long.page.waitForTimeout(180)
   const middle = await long.page.evaluate(() => {
-    const content = document.querySelector('.reader-content')
+    const content = document.scrollingElement || document.documentElement
     const body = document.querySelector('.reader-body')
     return {
       animationCount: body?.getAnimations?.().length || 0,
@@ -248,7 +277,7 @@ async function assertConfiguredPageDuration(browser) {
   await long.page.waitForTimeout(420)
   close((await readerGeometry(long.page)).contentScrollTop, targetTop, 2, '500ms page animation')
 
-  await long.page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+  await long.page.evaluate(() => { (document.scrollingElement || document.documentElement).scrollTop = 0 })
   await long.page.locator('.reader-content').hover()
   await long.page.mouse.wheel(0, 137)
   await long.page.waitForTimeout(80)
@@ -264,21 +293,24 @@ async function assertRuntimeConfiguredPageDuration(browser) {
 
   await setRuntimeAnimationDuration(page, viewport, 0)
   await resetRuntimePage(page)
+  await ensureMobileChromeHidden(page, viewport)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 0ms page animation')
 
   await setRuntimeAnimationDuration(page, viewport, 100)
   await resetRuntimePage(page)
+  await ensureMobileChromeHidden(page, viewport)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(180)
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, 'runtime 100ms page animation')
 
   await setRuntimeAnimationDuration(page, viewport, 500)
   await resetRuntimePage(page)
+  await ensureMobileChromeHidden(page, viewport)
   await page.touchscreen.tap(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8))
   await page.waitForTimeout(180)
   const middle = await page.evaluate(() => {
-    const content = document.querySelector('.reader-content')
+    const content = document.scrollingElement || document.documentElement
     const body = document.querySelector('.reader-body')
     return {
       animationCount: body?.getAnimations?.().length || 0,
@@ -312,8 +344,9 @@ async function assertRuntimeConfiguredPageDuration(browser) {
 async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   const { context, page } = await openReader(browser, viewport, mode, 300)
   const targetTop = viewport.height - 72
+  await ensureMobileChromeHidden(page, viewport)
   await page.evaluate(() => {
-    const content = document.querySelector('.reader-content')
+    const content = document.scrollingElement || document.documentElement
     const body = document.querySelector('.reader-body')
     content.scrollTop = 0
     const samples = []
@@ -507,7 +540,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
   close((await readerGeometry(page)).contentScrollTop, targetTop, 2, `${viewport.width}/${mode}: sampled page animation`)
 
   await page.evaluate(() => {
-    const content = document.querySelector('.reader-content')
+    const content = document.scrollingElement || document.documentElement
     const startedAt = performance.now()
     let touchEndAt = null
     window.__openReaderReverseMotionSamples = []
@@ -564,7 +597,7 @@ async function assertMobileVerticalAnimationCadence(browser, viewport, mode) {
 
   await resetRuntimePage(page)
   await page.evaluate(() => {
-    const content = document.querySelector('.reader-content')
+    const content = document.scrollingElement || document.documentElement
     const startedAt = performance.now()
     window.__openReaderOverlapMotionSamples = []
     const sample = () => {
@@ -604,21 +637,24 @@ async function assertMobileChapterEndPrompt(browser, viewport) {
 
   const prompt = page.locator('.reader-chapter-end')
   await prompt.waitFor({ state: 'attached' })
-  await page.locator('.reader-content').evaluate(element => {
+  await page.evaluate(() => {
+    const element = document.scrollingElement || document.documentElement
     element.scrollTop = element.scrollHeight
   })
   await prompt.tap()
   await page.waitForURL(/chapter=1(?:&|$)/)
   await page.waitForFunction(() => document.querySelector('.reader-body h3')?.textContent?.includes('第2章'))
 
-  await page.locator('.reader-content').evaluate(element => {
+  await page.evaluate(() => {
+    const element = document.scrollingElement || document.documentElement
     element.scrollTop = element.scrollHeight
   })
   await prompt.tap()
   await page.waitForURL(/chapter=2(?:&|$)/)
   await page.waitForFunction(() => document.querySelector('.reader-body h3')?.textContent?.includes('第3章'))
 
-  await page.locator('.reader-content').evaluate(element => {
+  await page.evaluate(() => {
+    const element = document.scrollingElement || document.documentElement
     element.scrollTop = element.scrollHeight
   })
   await prompt.tap()

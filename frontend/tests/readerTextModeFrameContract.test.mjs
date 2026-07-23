@@ -68,3 +68,21 @@ test('keeps the scrolling text outside a CSS filter while preserving brightness 
     'brightness overlay must not intercept touch/click paging',
   )
 })
+
+test('mobile vertical text restores the upstream document scroll surface', () => {
+  assert.match(
+    readerSource,
+    /'document-scroll':\s*usesDocumentScroll/,
+    'Reader must expose the effective document-scroll state on its shell',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-shell\.mini-interface\.document-scroll \.reader-content\s*\{[\s\S]*?height:\s*auto;[\s\S]*?overflow:\s*visible;/,
+    'mobile document-scroll text must not keep an independently scrolling reader-content',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-shell\.mini-interface\.document-scroll \.reader-page\s*\{[\s\S]*?height:\s*auto;[\s\S]*?overflow:\s*visible;/,
+    'the reader page must grow with the root document in vertical text modes',
+  )
+})

@@ -4,6 +4,7 @@ import {
   restoredReaderFlipPage,
   restoredReaderSingleChapterScrollTop,
 } from '../utils/readerPosition.js'
+import { readerElementScrollTop } from '../utils/readerScrollViewport.js'
 
 export function useReaderPositionRestore(options) {
   function restoreByChapterPosition(position) {
@@ -24,10 +25,11 @@ export function useReaderPositionRestore(options) {
       `.chapter-content[data-index="${unref(options.currentIndex)}"]`,
     )
     if (!viewport || !activeChapter) return
+    const chapterTop = readerElementScrollTop(viewport, activeChapter)
     const scrollTop = restoredReaderContinuousScrollTop({
       offset: chapterOffset,
       percent: restorePercent,
-      chapterTop: activeChapter.offsetTop,
+      chapterTop,
       chapterHeight: activeChapter.offsetHeight,
       clientHeight: viewport.clientHeight,
     })
@@ -36,7 +38,7 @@ export function useReaderPositionRestore(options) {
       return
     }
     if (chapterOffset > 0 && restoreByChapterPosition(chapterOffset)) return
-    viewport.scrollTop = Math.max(0, activeChapter.offsetTop)
+    viewport.scrollTop = chapterTop
   }
 
   async function restore(offset = 0, restoreOptions = {}) {

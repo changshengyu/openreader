@@ -44,7 +44,7 @@ function savedReaderBook() {
   }
 }
 
-async function installApiMocks(page) {
+async function installApiMocks(page, readerSettings = {}) {
   const bookmarks = [{
     id: 101,
     chapterId: 11,
@@ -71,7 +71,8 @@ async function installApiMocks(page) {
         updatedAt: '2026-07-06T00:00:00Z',
         value: {
           mode: 'scroll',
-          pageMode: 'normal',
+          pageMode: 'auto',
+          autoTheme: false,
           theme: 'parchment',
           themeType: 'day',
           customBgImage: smokeBgImage,
@@ -80,6 +81,7 @@ async function installApiMocks(page) {
           lineHeight: 1.8,
           paragraphSpace: 0.2,
           columnWidth: 800,
+          ...readerSettings,
         },
       }))
     }
@@ -284,21 +286,34 @@ async function assertMobileFloatNavigationContract(page, viewport, initialGeomet
     }
   })
 
-  const scrollState = await page.locator('.reader-content').evaluate(element => ({
-    top: element.scrollTop,
-    max: element.scrollHeight - element.clientHeight,
-  }))
+  const scrollState = await page.evaluate(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    return {
+      top: element?.scrollTop || 0,
+      max: (element?.scrollHeight || 0) - (window.visualViewport?.height || element?.clientHeight || 0),
+    }
+  })
   assert(scrollState.max > 100, `${viewport.width}: fixture must be scrollable for top/bottom controls`)
 
   await page.locator('.reader-mobile-float-left.visible button[title="底部"]').click()
   await page.waitForFunction(() => {
-    const element = document.querySelector('.reader-content')
-    return element && element.scrollTop >= element.scrollHeight - element.clientHeight - 2
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    const height = window.visualViewport?.height || element?.clientHeight || 0
+    return element && element.scrollTop >= element.scrollHeight - height - 2
   })
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: bottom action must keep toolbar visible`)
 
   await page.locator('.reader-mobile-float-left.visible button[title="顶部"]').click()
-  await page.waitForFunction(() => document.querySelector('.reader-content')?.scrollTop === 0)
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    return element?.scrollTop === 0
+  })
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: top action must keep toolbar visible`)
   const geometry = await readerGeometry(page)
   assertClose(geometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: top/bottom actions should not shift paragraph left`)
@@ -312,7 +327,9 @@ async function assertMobilePageProgressContract(page, viewport, initialGeometry)
   })
   const initial = await page.evaluate(() => {
     const input = document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider')
-    const content = document.querySelector('.reader-content')
+    const content = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
     const progressButton = document.querySelector('.reader-mobile-bottom.visible .mobile-chapter-progress')
     return {
       min: Number(input.min),
@@ -339,15 +356,23 @@ async function assertMobilePageProgressContract(page, viewport, initialGeometry)
     document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row span')?.textContent?.trim()
       === `第 ${max}/${max} 页`
   ), initial.max)
-  assert(await page.locator('.reader-content').evaluate(element => element.scrollTop) === initial.scrollTop, `${viewport.width}: page slider input must not move content before change`)
+  assert(await page.evaluate(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    return element?.scrollTop || 0
+  }) === initial.scrollTop, `${viewport.width}: page slider input must not move content before change`)
   assert(await page.url() === routeBefore, `${viewport.width}: page slider input must not change the Reader route`)
 
   await page.locator('.reader-mobile-bottom.visible .mobile-progress-slider').evaluate((input) => {
     input.dispatchEvent(new Event('change', { bubbles: true }))
   })
   await page.waitForFunction(() => {
-    const element = document.querySelector('.reader-content')
-    return element && element.scrollTop >= element.scrollHeight - element.clientHeight - 2
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    const height = window.visualViewport?.height || element?.clientHeight || 0
+    return element && element.scrollTop >= element.scrollHeight - height - 2
   })
   assert(await page.url() === routeBefore, `${viewport.width}: page slider change must stay in the current chapter route`)
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: page slider change must keep toolbar visible`)
@@ -357,7 +382,12 @@ async function assertMobilePageProgressContract(page, viewport, initialGeometry)
     input.dispatchEvent(new Event('input', { bubbles: true }))
     input.dispatchEvent(new Event('change', { bubbles: true }))
   })
-  await page.waitForFunction(() => document.querySelector('.reader-content')?.scrollTop === 0)
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    return element?.scrollTop === 0
+  })
   const geometry = await readerGeometry(page)
   assertClose(geometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: page slider should not shift paragraph left`)
   assertClose(geometry.paragraphRight, initialGeometry.paragraphRight, 1, `${viewport.width}: page slider should not shift paragraph right`)
@@ -767,10 +797,13 @@ async function createBookmarkFromCurrentParagraph(page, viewport, { fullscreen }
   const dialog = page.locator('.global-bookmark-dialog')
   const addButton = dialog.getByRole('button', { name: '添加当前段落', exact: true })
   assert(await addButton.count() === 1, `${viewport.width}: Reader bookmark manager must expose one add-current-paragraph action`)
-  const focusedParagraph = await page.locator('.reader-content').evaluate((viewport) => {
-    const bounds = viewport.getBoundingClientRect()
+  const focusedParagraph = await page.locator('.reader-content').evaluate((content) => {
+    const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+    const bounds = usesDocumentScroll
+      ? { top: 0, bottom: window.visualViewport?.height || window.innerHeight, height: window.visualViewport?.height || window.innerHeight }
+      : content.getBoundingClientRect()
     const anchor = bounds.top + Math.min(bounds.height * 0.32, 180)
-    const rows = [...viewport.querySelectorAll('[data-reader-block]')]
+    const rows = [...content.querySelectorAll('[data-reader-block]')]
       .map(node => ({ node, rect: node.getBoundingClientRect() }))
       .filter(({ node, rect }) => (
         String(node.textContent || '').trim()
@@ -1452,10 +1485,9 @@ async function runIPadForcedMobileViewport(browser, viewport) {
   })
   await context.addInitScript((token) => {
     window.localStorage.setItem('openreader_token', token)
-    window.localStorage.setItem('reader', JSON.stringify({ pageMode: 'mobile' }))
   }, fakeToken())
   const page = await context.newPage()
-  await installApiMocks(page)
+  await installApiMocks(page, { pageMode: 'mobile' })
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-mobile-top.visible', { timeout: 10000 })
   assert(await page.locator('.reader-shell.mini-interface').count() === 1, `${viewport.width}: explicit phone mode must retain mini scene`)

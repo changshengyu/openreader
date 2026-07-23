@@ -640,3 +640,26 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
    LayoutShift 和段落几何。当前主题与纯色诊断基线均运行，诊断基线只用于归因，不改变默认 UI。
 6. 保留用户要求的手指/滚轮原生连续滚动、数值 stepper、亮度和当前数据；不改后端阅读进度
    格式，不以恢复此前自创缓冲/easing/整章 transform 方案代替固定上游根滚动复刻。
+
+### 第十一次实施与候选验证结果
+
+- 移动普通文本 `page/scroll/scroll2` 已恢复以 `document.scrollingElement` 为权威滚动宿主；
+  `.reader-content` 在这些场景改为随文档增长且保持 `scrollTop=0`。桌面工作区、flip、EPUB、
+  audio 和图片漫画继续使用各自原有宿主。
+- 顶部/底部、页码滑条、点击分页、位置恢复、搜索定位、连续章节窗口和进度计算统一通过滚动
+  视口适配器读写；段落/章节目标使用 DOM 几何映射到当前宿主，不再混用内部 `offsetTop`。
+- 正数动画结束后立即释放分页互斥，结算任务只跨一个任务边界；单章 page 结算只更新布局和
+  延迟保存，不再扫描整章段落。连续模式仍保留章节窗口和锚点结算。
+- `autoTheme` 默认恢复为 `true`，`pageMode` 进入服务端 payload、方案快照和用户 scope，Kindle
+  不再额外强制 `clickMethod:none`；页面模式标签不再伪装成“仅本机”。
+- 启动浏览器合同额外复现并修复一条设置竞态：旧启动顺序会在远端设置读取完成前应用默认
+  自动主题方案并安排写回；重章节渲染时，该写操作可能使正在读取的设置失效，从而把接口中的
+  `0ms/autoTheme=false` 变成运行态 `300ms/autoTheme=true`。现改为登录用户先完成远端读取，
+  再按最终 `autoTheme` 应用系统主题；离线或匿名场景仍能应用本地主题。
+- 前端全量 `544/544`、生产构建和 Go 全量通过。真实 Chromium 已通过：
+  `reader-text-modes-contract`（390×844、360×800 的 0/100/500ms、双向/连续点击、章末入口、
+  Long Task/LayoutShift）、`reader-mobile-contract`（桌面、双手机、自适应/强制手机 iPad）、
+  `reader-continuous-contract`（三视口、scroll/scroll2、跨章锚点/事务）和
+  `reader-image-contract`。
+- 本节当前为 **release candidate**；Docker 标签、卷/备份门禁和实机体感结论在本地镜像发布后
+  补记。自动门禁只证明执行路径已回到固定上游结构，最终丝滑度仍由用户设备验收。

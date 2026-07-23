@@ -2,7 +2,7 @@
   <main
     ref="shellEl"
     class="reader-shell"
-    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader }]"
+    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll }]"
     :style="readerStyle"
   >
     <ReaderDesktopTools
@@ -472,6 +472,10 @@ import { readerTextProgress, selectVisibleReaderBlock } from '../utils/readerVis
 import { readerTTSBarVisible } from '../utils/readerTTS'
 import { createReaderScrollAnimator } from '../utils/readerAnimation'
 import {
+  createDocumentReaderScrollViewport,
+  shouldUseDocumentReaderScroll,
+} from '../utils/readerScrollViewport'
+import {
   readerScrollBehaviorForDuration,
   readerScrollStep,
 } from '../utils/readerPagination'
@@ -935,6 +939,19 @@ const displayedChapterBlocks = computed(() => {
   if (isContinuousScrollRead.value && chapterBlocks.value.length) return chapterBlocks.value
   return [makeChapterBlock(currentIndex.value, chapter.value, content.value, chapterCachedImages.value)]
 })
+const usesDocumentScroll = computed(() => shouldUseDocumentReaderScroll({
+  mobile: isMobileReader.value,
+  mode: effectiveReaderMode.value,
+  format: chapterFormat.value,
+  comic: isComicChapter.value,
+}))
+const documentScrollViewport = createDocumentReaderScrollViewport({
+  documentTarget: document,
+  windowTarget: window,
+})
+const scrollViewport = computed(() => (
+  usesDocumentScroll.value ? documentScrollViewport : contentEl.value
+))
 let settleVerticalPageScroll = () => false
 let isVerticalPageScrollSyncSuppressed = () => readerScrollAnimator.isActive()
 const {
@@ -947,7 +964,7 @@ const {
   restoreReaderScrollAnchor,
   visibleChapterProgressSnapshot,
 } = useReaderViewportProgress({
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   chapterBlocks,
   displayedChapterBlocks,
@@ -996,7 +1013,7 @@ const {
   syncCurrentChapter: updateCurrentChapterFromScroll,
 } = useReaderChapterWindow({
   reader,
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   chapters,
   currentIndex,
@@ -1034,7 +1051,8 @@ const {
   update: updateFlipLayout,
 } = useReaderLayout({
   reader: effectiveReaderState,
-  contentEl,
+  contentEl: scrollViewport,
+  contentElement: contentEl,
   contentBody,
   page,
   pageCount,
@@ -1052,7 +1070,7 @@ const {
   jumpToRouteLine,
 } = useReaderSearchNavigation({
   keyword: computed(() => String(route.query.q || '')),
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   currentIndex,
   chapterBlocks,
@@ -1084,7 +1102,7 @@ const {
   scrollToTop,
 } = useReaderNavigation({
   scrollAnimator: readerScrollAnimator,
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   chapterBlocks,
   chapters,
@@ -1118,7 +1136,7 @@ const {
   restore: restoreReadingPosition,
 } = useReaderPositionRestore({
   reader,
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   currentIndex,
   page,
@@ -1139,7 +1157,7 @@ const {
   handleMobilePageProgressInput,
 } = useReaderProgressControls({
   scrollAnimator: readerScrollAnimator,
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   chapters,
   currentIndex,
@@ -1194,7 +1212,7 @@ const readerContentStyle = computed(() => ({
 }))
 
 const readerViewportHeight = computed(() => (
-  contentEl.value?.clientHeight ||
+  scrollViewport.value?.clientHeight ||
   pageHeight.value ||
   (typeof window === 'undefined' ? 0 : window.innerHeight)
 ))
@@ -1379,7 +1397,7 @@ const {
 } = useReaderWheel({
   reader: effectiveReaderState,
   shellEl,
-  contentEl,
+  contentEl: scrollViewport,
   isOverlayOpen,
   isVerticalRead,
   cancelPageAnimation,
@@ -1393,7 +1411,7 @@ const {
 } = useReaderAutoReading({
   active: autoReading,
   reader,
-  contentEl,
+  contentEl: scrollViewport,
   contentBody,
   isVerticalRead,
   isOverlayOpen,
@@ -1559,7 +1577,8 @@ const {
   applyLocalProgress: snapshot => applyLocalProgressSnapshot(currentProgressPayload(snapshot)),
   scheduleProgressSave,
   pageAnimationActive: () => isVerticalPageScrollSyncSuppressed(),
-  scrollPosition: () => contentEl.value?.scrollTop,
+  isContinuousScrollRead,
+  scrollPosition: () => scrollViewport.value?.scrollTop,
 })
 settleVerticalPageScroll = flushReaderScrollSync
 const {
@@ -1640,7 +1659,7 @@ const {
   notify: showReaderToast,
   isSlideRead: () => effectiveReaderMode.value === 'flip',
   topOffset: () => Math.max(
-    Number(contentEl.value?.getBoundingClientRect?.().top || 0) + 50,
+    Number(scrollViewport.value?.getBoundingClientRect?.().top || 0) + 50,
     Number(contentBody.value?.getBoundingClientRect?.().top || 0) + 5,
   ),
 })
@@ -1818,6 +1837,9 @@ useReaderPageLifecycle({
   saveProgress: saveCurrentProgress,
   onResize: handleResize,
   onWheel: handleReaderWheel,
+  onScroll: () => {
+    if (usesDocumentScroll.value) onScroll()
+  },
   onPageHide: handleReaderPageHide,
   onVisibilityChange: handleReaderVisibilityChange,
   onProgressUpdated: handleProgressUpdated,
@@ -1825,6 +1847,9 @@ useReaderPageLifecycle({
   onReplaceRulesUpdated: handleReplaceRulesUpdated,
   onBookmarksUpdated: () => {},
   onBooksDeleted: handleBooksDeleted,
+  onUnmount: () => {
+    if (usesDocumentScroll.value) documentScrollViewport.scrollTop = 0
+  },
 })
 
 onBeforeRouteLeave(() => {
@@ -1937,7 +1962,7 @@ function handleReaderImageLoad() {
 }
 
 function scrollStep() {
-  const viewportHeight = contentEl.value?.clientHeight || window.innerHeight || readableViewportSize().height
+  const viewportHeight = scrollViewport.value?.clientHeight || window.innerHeight || readableViewportSize().height
   return readerScrollStep({
     viewportHeight,
     fontSize: reader.fontSize,
@@ -2335,6 +2360,24 @@ function readError(err, fallback) {
   padding-top: 15px;
   padding-bottom: calc(var(--reader-mobile-content-bottom-space) + env(safe-area-inset-bottom));
   text-align: justify;
+}
+
+.reader-shell.mini-interface.document-scroll {
+  min-height: 100dvh;
+  height: auto;
+  overflow: visible;
+}
+
+.reader-shell.mini-interface.document-scroll .reader-page {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+.reader-shell.mini-interface.document-scroll .reader-content {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
 }
 
 .reader-shell.mini-interface.flip .reader-page {

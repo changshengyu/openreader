@@ -45,7 +45,8 @@ async function installMocks(page, requestCounts, progressWrites, options = {}) {
         updatedAt: '2026-07-06T00:00:00Z',
         value: {
           mode: options.mode || 'scroll2',
-          pageMode: 'normal',
+          pageMode: 'auto',
+          autoTheme: false,
           fontSize: 18,
           lineHeight: 1.8,
           paragraphSpace: 0.2,
@@ -146,7 +147,9 @@ async function runContinuousViewport(browser, viewport, mode) {
     const initial = await page.evaluate(() => {
       const pageEl = document.querySelector('.reader-page').getBoundingClientRect()
       const chapter = document.querySelector('.chapter-content[data-index="0"]').getBoundingClientRect()
-      const content = document.querySelector('.reader-content')
+      const content = document.querySelector('.reader-shell.document-scroll')
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       return {
         indexes: [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)),
         leftGap: chapter.left - pageEl.left,
@@ -160,31 +163,60 @@ async function runContinuousViewport(browser, viewport, mode) {
     await page.locator('.reader-content').hover()
     await page.mouse.wheel(0, 137)
     await page.waitForTimeout(120)
-    const wheelTop = await page.locator('.reader-content').evaluate(element => element.scrollTop)
+    const wheelTop = await page.evaluate(() => {
+      const element = document.querySelector('.reader-shell.document-scroll')
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
+      return element?.scrollTop || 0
+    })
     assert(wheelTop > initial.scrollTop, `${viewport.width}: native wheel did not move`)
     assert(wheelTop - initial.scrollTop < 500, `${viewport.width}: wheel became paged movement ${wheelTop - initial.scrollTop}`)
 
     await page.keyboard.press('ArrowDown')
     await page.waitForTimeout(120)
-    const keyboardTop = await page.locator('.reader-content').evaluate(element => element.scrollTop)
+    const keyboardTop = await page.evaluate(() => {
+      const element = document.querySelector('.reader-shell.document-scroll')
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
+      return element?.scrollTop || 0
+    })
     assert(keyboardTop > wheelTop, `${viewport.width}/${mode}: ArrowDown did not page the vertical reader`)
 
-    await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+    await page.evaluate(() => {
+      const element = document.querySelector('.reader-shell.document-scroll')
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
+      element.scrollTop = 0
+    })
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.72))
     await page.waitForTimeout(120)
-    const clickTop = await page.locator('.reader-content').evaluate(element => element.scrollTop)
+    const clickTop = await page.evaluate(() => {
+      const element = document.querySelector('.reader-shell.document-scroll')
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
+      return element?.scrollTop || 0
+    })
     assert(clickTop > 0, `${viewport.width}/${mode}: lower-region click did not page the vertical reader`)
 
-    await page.locator('.reader-content').evaluate((element) => {
+    await page.evaluate(() => {
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const element = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       element.scrollTop = 0
-      element.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
       document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('1 /')
     ))
     const topBoundary = await page.evaluate(() => {
-      const content = document.querySelector('.reader-content')
-      const viewport = content.getBoundingClientRect()
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const content = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
+      const viewport = usesDocumentScroll
+        ? { top: 0 }
+        : content.getBoundingClientRect()
       const blocks = [...document.querySelectorAll(
         '.chapter-content[data-index="0"] h3[data-pos], .chapter-content[data-index="0"] [data-reader-block]',
       )]
@@ -192,7 +224,7 @@ async function runContinuousViewport(browser, viewport, mode) {
       const boundary = viewport.top + 50
       const delta = tail.getBoundingClientRect().bottom - boundary - 1
       content.scrollTop += delta
-      content.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : content).dispatchEvent(new Event('scroll'))
       return {
         boundary,
         scrollTop: content.scrollTop,
@@ -204,28 +236,41 @@ async function runContinuousViewport(browser, viewport, mode) {
       element => element.lastElementChild?.textContent || '',
     )
     assert(beforeBoundaryLabel.startsWith('1 /'), `${viewport.width}/${mode}: chapter switched before top boundary (${beforeBoundaryLabel}, ${JSON.stringify(topBoundary)})`)
-    await page.locator('.reader-content').evaluate((element) => {
+    await page.evaluate(() => {
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const element = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       element.scrollTop += 2
-      element.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
       document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('2 /')
     ))
 
-    await page.locator('.reader-content').evaluate(element => { element.scrollTop = 0 })
+    await page.evaluate(() => {
+      const element = document.querySelector('.reader-shell.document-scroll')
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
+      element.scrollTop = 0
+    })
     const preExtension = await page.evaluate(() => {
-      const content = document.querySelector('.reader-content')
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const content = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       const chapter = document.querySelector('.chapter-content[data-index="1"]')
       const threshold = content.scrollHeight - content.clientHeight * 4
+      const chapterTop = content.scrollTop + chapter.getBoundingClientRect().top
       const target = Math.min(
-        Math.max(chapter.offsetTop + 240, 0),
+        Math.max(chapterTop + 240, 0),
         Math.max(0, threshold - 40),
       )
-      if (target <= chapter.offsetTop) {
-        throw new Error(`fixture cannot enter chapter 2 before extension threshold (${target}/${chapter.offsetTop}/${threshold})`)
+      if (target <= chapterTop) {
+        throw new Error(`fixture cannot enter chapter 2 before extension threshold (${target}/${chapterTop}/${threshold})`)
       }
       content.scrollTop = target
-      content.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : content).dispatchEvent(new Event('scroll'))
       return { target, threshold }
     })
     await page.waitForTimeout(180)
@@ -237,13 +282,18 @@ async function runContinuousViewport(browser, viewport, mode) {
     assert(beforeExtension.chapterLabel.startsWith('2 /'), `${viewport.width}/${mode}: visible chapter did not advance before extension (${beforeExtension.chapterLabel})`)
 
     const anchor = await page.evaluate(() => {
-      const content = document.querySelector('.reader-content')
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const content = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       const chapter = document.querySelector('.chapter-content[data-index="1"]')
       content.scrollTop = Math.min(
         content.scrollHeight - content.clientHeight,
         content.scrollHeight - content.clientHeight * 4 + 20,
       )
-      const viewport = content.getBoundingClientRect()
+      const viewport = usesDocumentScroll
+        ? { top: 0, height: window.visualViewport?.height || window.innerHeight }
+        : content.getBoundingClientRect()
       const anchorY = viewport.top + Math.min(viewport.height * 0.32, 180)
       const paragraph = [...chapter.querySelectorAll('[data-reader-block]')]
         .find(element => {
@@ -259,7 +309,7 @@ async function runContinuousViewport(browser, viewport, mode) {
         scrollHeight: content.scrollHeight,
         clientHeight: content.clientHeight,
       }
-      content.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : content).dispatchEvent(new Event('scroll'))
       return state
     })
 
@@ -271,7 +321,9 @@ async function runContinuousViewport(browser, viewport, mode) {
       }, null, { timeout: 10_000 })
     } catch (error) {
       const state = await page.evaluate(() => {
-        const content = document.querySelector('.reader-content')
+        const content = document.querySelector('.reader-shell.document-scroll')
+          ? (document.scrollingElement || document.documentElement)
+          : document.querySelector('.reader-content')
         return {
           indexes: [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)),
           scrollTop: content.scrollTop,
@@ -313,12 +365,16 @@ async function runProgressTransaction(browser) {
     await page.waitForFunction(() => (
       [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)).join(',') === '0,1'
     ))
-    await page.locator('.reader-content').evaluate((element) => {
+    await page.evaluate(() => {
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const element = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       element.scrollTop = Math.min(
         element.scrollHeight - element.clientHeight,
         element.scrollHeight - element.clientHeight * 4 + 20,
       )
-      element.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
       [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)).join(',') === '1,2'
@@ -326,21 +382,29 @@ async function runProgressTransaction(browser) {
     await page.waitForTimeout(1400)
     const baselineWrites = progressWrites.length
 
-    await page.locator('.reader-content').evaluate((element) => {
+    await page.evaluate(() => {
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const element = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       element.scrollTop = Math.min(
         element.scrollHeight - element.clientHeight,
         element.scrollHeight - element.clientHeight * 4 + 20,
       )
-      element.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
       document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('3 /')
     ))
     await page.waitForTimeout(180)
     assert((requestCounts.get(3) || 0) === 1, `delayed extension request count ${requestCounts.get(3) || 0}`)
-    await page.locator('.reader-content').evaluate((element) => {
+    await page.evaluate(() => {
+      const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
+      const element = usesDocumentScroll
+        ? (document.scrollingElement || document.documentElement)
+        : document.querySelector('.reader-content')
       element.scrollTop += 60
-      element.dispatchEvent(new Event('scroll'))
+      ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForTimeout(320)
     assert(progressWrites.length === baselineWrites, `progress PUT leaked during window transaction (${baselineWrites} -> ${progressWrites.length})`)

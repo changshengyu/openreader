@@ -7,6 +7,7 @@ export function createReaderPageLifecycle(options) {
   function registerListeners() {
     windowTarget.addEventListener('resize', options.onResize)
     windowTarget.addEventListener('wheel', options.onWheel, { passive: false })
+    windowTarget.addEventListener('scroll', options.onScroll, { passive: true })
     windowTarget.addEventListener('pagehide', options.onPageHide)
     documentTarget.addEventListener('visibilitychange', options.onVisibilityChange)
     windowTarget.addEventListener('openreader:progress-updated', options.onProgressUpdated)
@@ -19,6 +20,7 @@ export function createReaderPageLifecycle(options) {
   function unregisterListeners() {
     windowTarget.removeEventListener('resize', options.onResize)
     windowTarget.removeEventListener('wheel', options.onWheel)
+    windowTarget.removeEventListener('scroll', options.onScroll)
     windowTarget.removeEventListener('pagehide', options.onPageHide)
     documentTarget.removeEventListener('visibilitychange', options.onVisibilityChange)
     windowTarget.removeEventListener('openreader:progress-updated', options.onProgressUpdated)
@@ -47,6 +49,7 @@ export function createReaderPageLifecycle(options) {
     options.stopAutoReading()
     options.saveProgress({ force: true, background: true })
     unregisterListeners()
+    options.onUnmount?.()
   }
 
   return {

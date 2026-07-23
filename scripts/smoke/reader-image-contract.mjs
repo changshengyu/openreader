@@ -69,7 +69,8 @@ async function installMocks(page, apiRequests, imageRequests, mode, {
         updatedAt: '2026-07-06T00:00:00Z',
         value: {
           mode,
-          pageMode: 'normal',
+          pageMode: 'auto',
+          autoTheme: false,
           fontSize: 18,
           lineHeight: 1.8,
           paragraphSpace: 0.2,

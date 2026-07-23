@@ -7,6 +7,7 @@ import {
   restoredReaderSingleChapterScrollTop,
 } from '../utils/readerPosition.js'
 import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
+import { readerElementScrollTop } from '../utils/readerScrollViewport.js'
 
 export function useReaderNavigation(options) {
   const scrollAnimator = options.scrollAnimator || createReaderScrollAnimator()
@@ -49,7 +50,7 @@ export function useReaderNavigation(options) {
       if (settlementTask !== token) return
       settlementTask = null
       settleVerticalPage(generation)
-    }, Math.max(0, Number(options.getAnimateDuration()) || 0))
+    }, 0)
   }
 
   function runVerticalPageAnimation(element, direction) {
@@ -103,6 +104,7 @@ export function useReaderNavigation(options) {
     const chapterEl = options.contentBody.value
       .querySelector(`.chapter-content[data-index="${targetIndex}"]`)
     if (!chapterEl) return false
+    const chapterTop = readerElementScrollTop(options.contentEl.value, chapterEl)
     const block = options.chapterBlocks.value.find(item => item.index === targetIndex)
     options.currentIndex.value = targetIndex
     options.chapter.value = options.chapters.value[targetIndex]
@@ -112,7 +114,7 @@ export function useReaderNavigation(options) {
     if (Number(offset) === READER_CHAPTER_END_OFFSET) {
       animateContentTo(
         readerChapterBoundaryScrollTop({
-          chapterTop: chapterEl.offsetTop,
+          chapterTop,
           chapterHeight: chapterEl.offsetHeight,
           clientHeight: options.contentEl.value.clientHeight,
           end: true,
@@ -125,7 +127,7 @@ export function useReaderNavigation(options) {
       } else {
         animateContentTo(
           readerChapterBoundaryScrollTop({
-            chapterTop: chapterEl.offsetTop,
+            chapterTop,
             chapterHeight: chapterEl.offsetHeight,
             clientHeight: options.contentEl.value.clientHeight,
             end: false,
@@ -135,7 +137,7 @@ export function useReaderNavigation(options) {
     } else {
       animateContentTo(
         readerChapterBoundaryScrollTop({
-          chapterTop: chapterEl.offsetTop,
+          chapterTop,
           chapterHeight: chapterEl.offsetHeight,
           clientHeight: options.contentEl.value.clientHeight,
           end: false,

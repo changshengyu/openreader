@@ -12,9 +12,11 @@
 覆盖翻页方式、时长和排版；字号、行高、段距共同决定每页距离；自定义字体/背景可能影响绘制。
 自动阅读速度、全屏点击和选择文字只改变各自入口，不改变普通点击动画曲线。当前另有三项明确
 偏差：`autoTheme` 默认 false（上游 true）、`pageMode` 不进入方案/同步、Kindle 额外强制
-`clickMethod:none`。下一阶段按
-[`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十一次矩阵，
-先写根滚动/有效设置/结算调度失败测试，再实施，不继续以单独调动画参数试错。
+`clickMethod:none`。上述偏差和移动竖向文本根滚动已在第十一次候选实现中修复；同时修复了
+“默认自动主题先写、远端设置后读”导致远端动画/排版配置被启动竞态丢弃的问题。前端 544 项、
+Go、生产构建以及文字/移动工具层/连续跨章/图片真实浏览器合同均已通过，当前等待 Docker
+卷/备份门禁和用户实机体感复验。完整证据见
+[`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十一次矩阵与结果。
 
 Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 
