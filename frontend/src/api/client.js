@@ -24,9 +24,10 @@ function addAuthInterceptors(client) {
       const authorization = String(error?.config?.headers?.Authorization || '')
       const rejectedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
       if (status === 401 && rejectedToken && !isAuthRequest) {
-        if (localStorage.getItem('openreader_token') === rejectedToken) {
-          localStorage.removeItem('openreader_token')
+        if (localStorage.getItem('openreader_token') !== rejectedToken) {
+          return Promise.reject(error)
         }
+        localStorage.removeItem('openreader_token')
         notifyAuthRequired({ reason: 'session', rejectedToken })
       }
       return Promise.reject(error)

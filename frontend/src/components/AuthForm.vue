@@ -63,8 +63,8 @@ function toggleMode() {
 async function submit() {
   loading.value = true
   try {
-    await user.login(username.value, password.value, mode.value)
-    emit('success')
+    const result = await user.login(username.value, password.value, mode.value)
+    emit('success', result)
   } catch (err) {
     ElMessage.error(err?.response?.data?.error?.message || err?.response?.data?.error || '请求失败')
   } finally {

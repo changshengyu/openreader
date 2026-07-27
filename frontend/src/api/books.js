@@ -89,11 +89,11 @@ export async function cacheBookContentStream(id, payload, options = {}) {
     if (response.status === 401 && token && typeof window !== 'undefined') {
       if (localStorage.getItem('openreader_token') === token) {
         localStorage.removeItem('openreader_token')
+        window.__openreaderAuthRequired = { reason: 'session', rejectedToken: token }
+        window.dispatchEvent(new CustomEvent('openreader:auth-required', {
+          detail: window.__openreaderAuthRequired,
+        }))
       }
-      window.__openreaderAuthRequired = { reason: 'session', rejectedToken: token }
-      window.dispatchEvent(new CustomEvent('openreader:auth-required', {
-        detail: window.__openreaderAuthRequired,
-      }))
     }
     const error = new Error(data?.error || '缓存章节失败')
     error.response = { status: response.status, data }

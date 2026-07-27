@@ -2,8 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-27 完成固定上游与当前实现取证；本文件是实施前合同。按照
-`readerdev-compat-inventory` 门禁，本阶段只记录行为、差异和测试，不修改应用代码。
+状态：2026-07-27 完成固定上游与当前实现取证，随后按测试先行完成候选实现。前端 599/599、
+生产构建和后端全量测试通过；真实浏览器与 Docker 发布闸门尚未完成。
 
 本切片补充已经完成的
 [`authenticated-runtime-scope-p2-contract.md`](authenticated-runtime-scope-p2-contract.md)：
@@ -106,3 +106,21 @@
   本切片不声称所有 overlay 内部请求均已自动隔离。
 - 不改变密码、注册、JWT 有效期、管理员权限或服务端会话策略。
 - 不用整页刷新、延时、吞掉 401 或隐藏测试错误作为完成证据。
+
+## 2026-07-27 候选实施记录
+
+- API 拦截器和章节缓存流只允许仍与 localStorage 当前 token 相同的 401 创建一次认证失效事件；
+  旧账号/已退出请求的迟到 401 不会清除或阻断新会话。监听器安装前发生的首个 401 仍可通过唯一
+  待处理事件恢复登录 Dialog。
+- `clearSession()` 在移除 token 前同步广播无 token 的 session generation；活动 Reader 立即
+  suspend 进度、自动阅读、TTS、音频意图和章节缓存任务。pagehide、hidden 与 teardown 在该
+  generation 下不再保存。
+- `App` 未认证时不渲染 Reader、workspace 或 GlobalOverlayHost，只显示中性阻断面/Login。
+  Reader 以非持久 session generation 为 key；同账号重新登录原路重新加载，异账号或未知旧身份
+  返回书架，不执行硬刷新。
+- 全局 overlay 会先结算书签/分类选择 Promise，再清空书籍、搜索、导入、编辑和可见状态；不删除
+  任一用户的持久缓存、SQLite 行或文件。
+- route guard 保留经过 `safeReturnTo()` 校验的站内完整路径，拒绝协议 URL 和 `//host`。
+- 聚焦 30 项状态机/接线测试、frontend 599/599、`vite build`、`go test ./...` 均通过。
+- 真实浏览器未计为通过：本地 Go 服务在 sandbox 内不能绑定 `:8080`，外部启动审批因工作区额度
+  不足被拒绝。没有尝试绕过；1440×900、390×844、360×800 和 Docker 仍是发布闸门。

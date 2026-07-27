@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { normalizeDeletedBookIds } from '../utils/bookDeletion.js'
 
-export const useOverlayStore = defineStore('overlay', {
-  state: () => ({
+function defaultOverlayState() {
+  return {
     bookInfoVisible: false,
     bookInfoBook: null,
     bookInfoOptions: {},
@@ -39,8 +39,17 @@ export const useOverlayStore = defineStore('overlay', {
     replaceRulesVisible: false,
     replaceRuleEditorDraft: null,
     replaceRuleEditorRequest: 0,
-  }),
+  }
+}
+
+export const useOverlayStore = defineStore('overlay', {
+  state: defaultOverlayState,
   actions: {
+    resetSessionState() {
+      this.finishBookAddCategories()
+      this.finishBookmarkForm({ saved: false, reason: 'session-invalidated' })
+      this.$patch(defaultOverlayState())
+    },
     openBookInfo(book, options = {}) {
       this.bookInfoBook = book
       this.bookInfoOptions = options

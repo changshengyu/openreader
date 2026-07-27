@@ -3,13 +3,29 @@ import { onBeforeUnmount, onMounted } from 'vue'
 export function createReaderPageLifecycle(options) {
   const windowTarget = options.windowTarget ?? window
   const documentTarget = options.documentTarget ?? document
+  let sessionInvalidated = false
+
+  function handlePageHide(event) {
+    if (!sessionInvalidated) options.onPageHide(event)
+  }
+
+  function handleVisibilityChange(event) {
+    if (!sessionInvalidated) options.onVisibilityChange(event)
+  }
+
+  function handleSessionInvalidated(event) {
+    if (sessionInvalidated) return
+    sessionInvalidated = true
+    options.onSessionInvalidated?.(event)
+  }
 
   function registerListeners() {
     windowTarget.addEventListener('resize', options.onResize)
     windowTarget.addEventListener('wheel', options.onWheel, { passive: false })
     windowTarget.addEventListener('scroll', options.onScroll, { passive: true })
-    windowTarget.addEventListener('pagehide', options.onPageHide)
-    documentTarget.addEventListener('visibilitychange', options.onVisibilityChange)
+    windowTarget.addEventListener('pagehide', handlePageHide)
+    windowTarget.addEventListener('openreader:session-invalidated', handleSessionInvalidated)
+    documentTarget.addEventListener('visibilitychange', handleVisibilityChange)
     windowTarget.addEventListener('openreader:progress-updated', options.onProgressUpdated)
     windowTarget.addEventListener('openreader:reader-book-data-updated', options.onBookDataUpdated)
     windowTarget.addEventListener('openreader:replace-rules-updated', options.onReplaceRulesUpdated)
@@ -21,8 +37,9 @@ export function createReaderPageLifecycle(options) {
     windowTarget.removeEventListener('resize', options.onResize)
     windowTarget.removeEventListener('wheel', options.onWheel)
     windowTarget.removeEventListener('scroll', options.onScroll)
-    windowTarget.removeEventListener('pagehide', options.onPageHide)
-    documentTarget.removeEventListener('visibilitychange', options.onVisibilityChange)
+    windowTarget.removeEventListener('pagehide', handlePageHide)
+    windowTarget.removeEventListener('openreader:session-invalidated', handleSessionInvalidated)
+    documentTarget.removeEventListener('visibilitychange', handleVisibilityChange)
     windowTarget.removeEventListener('openreader:progress-updated', options.onProgressUpdated)
     windowTarget.removeEventListener('openreader:reader-book-data-updated', options.onBookDataUpdated)
     windowTarget.removeEventListener('openreader:replace-rules-updated', options.onReplaceRulesUpdated)
@@ -47,7 +64,7 @@ export function createReaderPageLifecycle(options) {
     options.cancelProgressSave()
     options.clearChapterLoadingTimer()
     options.stopAutoReading()
-    options.saveProgress({ force: true, background: true })
+    if (!sessionInvalidated) options.saveProgress({ force: true, background: true })
     unregisterListeners()
     options.onUnmount?.()
   }

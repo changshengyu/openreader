@@ -289,3 +289,10 @@
 - 上下滚动模式手指滑动必须是原生滚动；固定步长翻页只来自点击上/下区域。
 - 新增按钮必须能对应上游组件职责；后端没有能力时隐藏或禁用并说明原因。
 - 文档和 `plan.md` 不得再保留“移动底部导航”这类已经被上游对齐否定的方案。
+
+- 2026-07-27：补齐固定上游根登录 Dialog/`loginAuth → Reader.init(true)` 在 JWT 多用户环境中的
+  安全等价状态机。当前 token 的 401 会先同步挂起旧 Reader 的进度、自动阅读、TTS、音频和缓存
+  generation，再移除凭证并清空账号 overlay；未认证时根壳不再渲染旧正文或工作台。重新登录同一
+  账号以新 Reader generation 原路加载，异账号或无法确认旧身份时返回书架，不再依赖硬刷新。
+  安全站内 returnTo 和迟到旧 401 抑制同时补齐。对应合同：
+  [reader-reauthentication-isolation-p0-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/reader-reauthentication-isolation-p0-contract.md)。

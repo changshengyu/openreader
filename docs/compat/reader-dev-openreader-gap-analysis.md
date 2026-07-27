@@ -2740,6 +2740,13 @@ visibility/unmount 强制保存可能按新 scope 写本地进度，并尝试以
 [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)。
 本轮 inventory 只修改文档，应用代码尚未变更。
 
+候选实施结果：认证失效现在先同步挂起旧 Reader generation，再移除 token、清空用户 store 和
+账号相关 overlay；未认证根场景不再渲染私有 Reader/workspace DOM。登录不再硬刷新：同账号按
+新 generation 保留 URL 重载，异账号或未知旧身份返回书架。只有仍匹配本地当前 token 的 401
+可以创建认证事件，站内 returnTo 经过开放重定向校验。聚焦 30 项、frontend 599/599、生产构建
+和 Go 全量均通过；本地服务端口审批因工作区额度不足被拒绝，因此三视口真实浏览器与 Docker
+发布尚未计为完成。
+
 ## 2026-07-23 Reader 设置切换位置连续性复审
 
 固定上游在 `ReadSettings#setReadMethod/setPageType` 写入新阅读方式前，通过

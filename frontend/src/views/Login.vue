@@ -11,13 +11,17 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import AuthForm from '../components/AuthForm.vue'
+import { useUserStore } from '../stores/user'
+import { safeReturnTo } from '../utils/authNavigation'
 
 const router = useRouter()
 const route = useRoute()
+const user = useUserStore()
 
 async function handleSuccess() {
-  const returnTo = String(route.query.returnTo || '')
-  await router.replace(returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : { name: 'home' })
+  const returnTo = safeReturnTo(route.query.returnTo)
+  await router.replace(returnTo)
+  user.completeReauthentication()
 }
 </script>
 

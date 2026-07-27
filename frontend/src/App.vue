@@ -1,8 +1,12 @@
 <template>
-  <template v-if="isReader">
-    <router-view />
-    <GlobalOverlayHost v-if="isLoggedIn" />
+  <template v-if="isReader && isLoggedIn && !readerSessionBlocked">
+    <router-view :key="readerSessionKey" />
+    <GlobalOverlayHost />
   </template>
+
+  <div v-else-if="isReader" class="reader-auth-blocked" role="status">
+    正在等待重新登录…
+  </div>
 
   <template v-else-if="isLoggedIn">
     <AppLayout>
@@ -11,13 +15,17 @@
     <GlobalOverlayHost />
   </template>
 
-  <router-view v-else />
+  <router-view v-else-if="isLoginRoute" />
+
+  <div v-else class="workspace-auth-blocked" role="status">
+    正在进入登录页面…
+  </div>
   <AuthDialog />
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppLayout from './layouts/AppLayout.vue'
 import AuthDialog from './components/AuthDialog.vue'
 import GlobalOverlayHost from './components/GlobalOverlayHost.vue'
@@ -27,8 +35,10 @@ import { useBookshelfStore } from './stores/bookshelf'
 import { usePreferencesStore } from './stores/preferences'
 import { useSync } from './composables/useSync'
 import { initializeReaderTheme } from './utils/readerSettingsBootstrap'
+import { safeReturnTo } from './utils/authNavigation'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const readerStore = useReaderStore()
 const bookshelf = useBookshelfStore()
@@ -36,7 +46,10 @@ const preferences = usePreferencesStore()
 const { connect, disconnect } = useSync()
 
 const isLoggedIn = computed(() => !!userStore.token)
-const isReader = computed(() => route.name === 'reader')
+const isReader = computed(() => ['reader', 'remote-reader'].includes(route.name))
+const isLoginRoute = computed(() => route.name === 'login')
+const readerSessionBlocked = computed(() => userStore.readerSessionBlocked)
+const readerSessionKey = computed(() => `reader-session:${userStore.sessionGeneration}`)
 let systemThemeMedia
 
 function handleAuthRequired(event) {
@@ -91,6 +104,12 @@ watch(isLoggedIn, (loggedIn) => {
     preferences.loadPreferences().catch(() => {})
   } else {
     disconnect()
+    if (!userStore.authDialogVisible && route.name !== 'login') {
+      router.replace({
+        name: 'login',
+        query: { returnTo: safeReturnTo(route.fullPath) },
+      })
+    }
   }
 })
 
@@ -131,3 +150,15 @@ function loadReaderSettingsAndApplyTheme() {
   })
 }
 </script>
+
+<style scoped>
+.reader-auth-blocked,
+.workspace-auth-blocked {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #faf8f2;
+  color: #8b8173;
+  font-size: 14px;
+}
+</style>

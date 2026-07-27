@@ -514,3 +514,26 @@ Evidence: `backend/api/user_management_p2_contract_test.go`,
 `backend/api/workspace_storage_access_contract_test.go`,
 `backend/db/db_test.go`, `frontend/tests/overlayUserManagement.test.mjs`, and
 `frontend/tests/workspaceOperationRouteContract.test.mjs`.
+
+## P0 Reader reauthentication isolation review
+
+- [x] A 401 can invalidate the session only when the rejected Bearer token still exactly matches the current
+      local token; late responses from a logged-out or superseded account are ignored.
+- [x] The pending startup-auth event is consumed once without persisting or logging its token; the Reader
+      invalidation event contains only a non-persistent generation.
+- [x] Reader progress, pagehide/visibility/unmount keepalive, automatic reading, TTS, audio intent and chapter
+      caching are suspended before credentials change.
+- [x] Unauthenticated Reader/workspace routes render no previous book, chapter, catalogue, cover, bookmark,
+      search result or global overlay DOM.
+- [x] Account-owned overlay objects and pending selection promises are settled and cleared on session reset.
+- [x] Same-account reauthentication mounts a new Reader generation; another or unknown identity returns to
+      the shelf and cannot reuse the old database book ID.
+- [x] Login return paths accept only same-origin absolute paths beginning with one `/`; protocol and
+      scheme-relative redirects fail closed to `/`.
+- [x] No API, SQLite schema, cache root, persistent setting, JWT lifetime or ownership rule changed.
+
+Evidence: `frontend/tests/authenticatedRuntimeScope.test.mjs`,
+`frontend/tests/readerPageLifecycle.test.mjs`,
+`frontend/tests/readerReauthenticationWiring.test.mjs`, frontend 599/599,
+the production build and full Go tests. Three-viewport browser confirmation and Docker publication remain
+open because the local-server external permission request was rejected when the workspace reported no credits.

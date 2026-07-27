@@ -63,6 +63,7 @@ function createLifecycle(overrides = {}) {
     stopAutoReading: () => calls.push(['stop-auto']),
     saveProgress: options => calls.push(['save', options]),
     onUnmount: () => calls.push(['unmount']),
+    onSessionInvalidated: () => calls.push(['session-invalidated']),
     ...handlers,
     ...overrides,
   })
@@ -105,6 +106,7 @@ test('registers deletion and page listeners before awaiting the initial book loa
     ['wheel', { passive: false }],
     ['scroll', { passive: true }],
     ['pagehide', undefined],
+    ['openreader:session-invalidated', undefined],
     ['openreader:progress-updated', undefined],
     ['openreader:reader-book-data-updated', undefined],
     ['openreader:replace-rules-updated', undefined],
@@ -149,6 +151,7 @@ test('saves progress and removes every listener during teardown', async () => {
     'wheel',
     'scroll',
     'pagehide',
+    'openreader:session-invalidated',
     'openreader:progress-updated',
     'openreader:reader-book-data-updated',
     'openreader:replace-rules-updated',
@@ -158,4 +161,23 @@ test('saves progress and removes every listener during teardown', async () => {
   assert.deepEqual(controller.documentTarget.removed, ['visibilitychange'])
   controller.windowTarget.emit('resize')
   assert.equal(controller.calls.length, 5)
+})
+
+test('session invalidation prevents page and teardown progress writes', async () => {
+  const controller = createLifecycle()
+  await controller.lifecycle.mount()
+  controller.calls.length = 0
+
+  controller.windowTarget.emit('openreader:session-invalidated')
+  controller.windowTarget.emit('pagehide')
+  controller.documentTarget.emit('visibilitychange')
+  controller.lifecycle.unmount()
+
+  assert.deepEqual(controller.calls, [
+    ['session-invalidated'],
+    ['cancel'],
+    ['clear-timer'],
+    ['stop-auto'],
+    ['unmount'],
+  ])
 })

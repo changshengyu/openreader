@@ -1972,6 +1972,13 @@ useReaderPageLifecycle({
   },
   onPageHide: handleReaderPageHide,
   onVisibilityChange: handleReaderVisibilityChange,
+  onSessionInvalidated: () => {
+    suspendProgressSaving()
+    stopAutoReading()
+    ttsStop()
+    cancelCachingContent()
+    audioAutoplay.value = false
+  },
   onProgressUpdated: handleProgressUpdated,
   onBookDataUpdated: handleReaderBookDataUpdated,
   onReplaceRulesUpdated: handleReplaceRulesUpdated,
