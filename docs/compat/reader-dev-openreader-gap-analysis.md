@@ -12,10 +12,12 @@
 - 远程书缺失书源会前置失败；legacy 结果补齐 UTF-16
   `queryIndexInResult/queryIndexInChapter` 与 ±20 片段。
 
-本轮状态为 **implemented / full-regression-passed / Docker-pending**。OpenReader 保留
+本轮状态为 **implemented / full-regression-passed / Docker-published**。OpenReader 保留
 JWT/用户隔离、AbortController、有界扫描、incomplete/truncated 提示和 URL 冷启动兼容；
 现场选择已改为可重复消费的 Reader intent，兼容 URL 不再充当唯一事件通道。Go 全量、frontend
 569/569、生产构建、1440×900/390×844/360×800/iPad Reader 与连续模式浏览器合同均通过。
+本地候选卷/备份门禁通过，双架构 `1aeffb9`/`latest` 已发布到 OCI index
+`sha256:f79e66be1087982f23c76c93a797d8e471f8ec3fd724098e28c6b48f75a18eb8`。
 完整合同、先失败证据和实施记录见
 [`book-content-search-p2-contract.md`](book-content-search-p2-contract.md)。
 

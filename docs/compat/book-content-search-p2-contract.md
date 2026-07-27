@@ -1,6 +1,6 @@
 # 书内正文搜索固定上游兼容合同（P2）
 
-状态：**2026-07-27 已按固定上游完成合同、先失败测试、实现与完整回归；待本批 Docker 发布记录。**
+状态：**2026-07-27 已按固定上游完成合同、先失败测试、实现、完整回归、卷/备份门禁与本地双架构 Docker 发布。**
 
 固定基准为 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 本合同替代“现有搜索测试通过即可视为与上游一致”的结论。
@@ -119,3 +119,16 @@ OpenReader 当前映射：
   索引、±20 片段、缺失书源前置失败、网络章节 unavailable、取消和显式安全截断。
 - 允许差异未扩大：继续保留 JWT/多用户、AbortController、有界扫描、完整性/截断提示与
   “搜完全书”；无数据库、缓存或持久化格式变更。
+
+## Docker 发布
+
+- 应用提交：`1aeffb97b96f2fed93ec2296b0223a5d06cbd374`。
+- 本地候选 `ghcr.io/changshengyu/openreader:1aeffb9` 通过
+  `docker-volume-backup-smoke.sh`：portable v1、portable v2 外观资产、跨用户隔离和容器重启。
+- 本机完成 `linux/amd64`、`linux/arm64` 构建并发布
+  `ghcr.io/changshengyu/openreader:1aeffb9` 与 `latest`；两者 OCI index 均为
+  `sha256:f79e66be1087982f23c76c93a797d8e471f8ec3fd724098e28c6b48f75a18eb8`。
+- amd64 manifest：
+  `sha256:2346df285ee95cd5270b44d2d8077299e2d5885da157a57c188dafa3579887e5`；
+  arm64 manifest：
+  `sha256:e7fd4b0d0566a4474fa6e274bfbe30e85deb790b160a65e6b712092dd04a45e4`。
