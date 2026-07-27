@@ -305,3 +305,12 @@
   账号以新 Reader generation 原路加载，异账号或无法确认旧身份时返回书架，不再依赖硬刷新。
   安全站内 returnTo 和迟到旧 401 抑制同时补齐。对应合同：
   [reader-reauthentication-isolation-p0-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/reader-reauthentication-isolation-p0-contract.md)。
+- 2026-07-27：继续复审根全局弹层在登录失效与账号切换时的生命周期。固定上游由
+  `App.vue` 常驻持有 BookInfo、BookManage、BookGroup、Bookmark、RSS、ReplaceRule 和
+  UserManage，Index 持有 LocalStore/WebDAV；登录恢复通过 `loginAuth/userNS → init(true)`
+  重新读取当前用户空间。当前 OpenReader 已同步清 overlay 并卸载宿主，但多数弹层旧 Promise
+  仍可在卸载后 upsert 书架、写 Reader cache、应用 WebDAV 恢复、继续批处理/写后请求、弹消息、
+  导航或操作新 overlay。该项裁决为 JWT 多用户必需的 **must-fix**：所有弹层异步提交冻结
+  scope/token/component generation，session invalidation 与卸载统一淘汰；同账号重登也不恢复
+  Dialog 中间事务。当前阶段只完成合同取证，尚未改应用代码。对应合同：
+  [workspace-overlay-authenticated-session-p1-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/workspace-overlay-authenticated-session-p1-contract.md)。

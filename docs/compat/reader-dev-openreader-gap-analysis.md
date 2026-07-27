@@ -2865,3 +2865,24 @@ URL/query 的短期同源 capability，执行私网/DNS/dial/重定向校验、3
 Go/frontend/build、三视口真实 API 浏览器和 Docker 新旧卷门禁均已完成；应用提交
 `ceb4baa` 已由本机发布为同名标签与 `latest`，OCI index 为
 `sha256:c5cace40e21a9b30b4f2f7cdd9219a59ff16525b173bcf79d5994e950ff56fd2`。
+
+## 2026-07-27 工作台全局弹层认证会话隔离复审
+
+前置认证合同已经在凭证移除前关闭全部 overlay，并在重新认证路由落定前卸载
+`GlobalOverlayHost`；本次继续向各弹层内部取证，确认 Vue 卸载不会取消已发出的 Promise。除
+StorageImport/上传预览的局部 generation、BookManage cache job cancel、ReplaceRule/UserManage
+同组件 request counter 外，BookInfo、书架/分组/书签管理、LocalStore、WebDAV、Source、RSS、
+替换规则、用户管理和备份操作均没有冻结账号 scope/token。
+
+其中 BookInfo、StorageImport、WebDAV 恢复和 UserManage 是最高风险：A 的迟到响应可在 B 会话
+upsert 书架、写 Reader cache、应用全局恢复结果、继续批量/写后请求、改变管理列表或重新操作
+overlay。其它弹层也可产生旧 toast、下载、导航和 loading 写入。固定上游通过根 Dialog 与
+`loginAuth/userNS → init(true)` 表达“重新加载当前用户空间”，但普通 Promise 没有跨用户
+generation；这是上游单命名空间缺口，不能复制到 JWT 多账号运行时。
+
+本批裁决为 **must-fix** 的前端安全适配：复用短生命周期 identity operation guard，叠加现有
+revision/abort/timer 机制，在每个跨 await 提交与后续请求前复查，并在 session invalidation/
+scope dispose 时淘汰。弹层中间事务不随同账号重登恢复，用户手动重开后从当前账号重新加载。
+完整矩阵、状态机和测试先行闸门见
+[`workspace-overlay-authenticated-session-p1-contract.md`](workspace-overlay-authenticated-session-p1-contract.md)。
+合同提取阶段不修改应用代码。
