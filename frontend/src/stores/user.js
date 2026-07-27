@@ -6,6 +6,7 @@ import { useBookshelfStore } from './bookshelf'
 import { useOverlayStore } from './overlay'
 import { usePreferencesStore } from './preferences'
 import { useReaderStore } from './reader'
+import { useIndexWorkspaceStore } from './indexWorkspace'
 import { cancelAllBookManagementCacheJobs } from '../composables/useOverlayBookItemActions'
 
 const profileOperations = createAuthenticatedOperationGuard()
@@ -31,12 +32,20 @@ export const useUserStore = defineStore('user', {
       this.authReason = ''
       localStorage.setItem('openreader_token', data.token)
       const currentScope = currentUserScope()
+      const sameAuthenticatedScope = Boolean(previousScope && previousScope === currentScope)
+      const workspace = useIndexWorkspaceStore()
+      if (sameAuthenticatedScope) {
+        workspace.resumeSuspendedSession()
+      } else {
+        workspace.discardSuspendedSession()
+        workspace.resetSessionState()
+      }
       this.sessionGeneration += 1
       if (typeof window !== 'undefined') delete window.__openreaderAuthRequired
       return {
         previousScope,
         currentScope,
-        sameAuthenticatedScope: Boolean(previousScope && previousScope === currentScope),
+        sameAuthenticatedScope,
       }
     },
     async loadMe() {
@@ -47,7 +56,7 @@ export const useUserStore = defineStore('user', {
       return data
     },
     logout() {
-      this.clearSession()
+      this.clearSession({ suspendWorkspace: false })
       this.authDialogVisible = false
       this.authReason = ''
     },
@@ -59,15 +68,21 @@ export const useUserStore = defineStore('user', {
           : window.__openreaderAuthRequired?.rejectedToken
         if (pendingToken !== rejectedToken || this.authDialogVisible) return
       }
-      this.clearSession()
+      this.clearSession({ suspendWorkspace: true })
       this.authReason = reason
       this.authDialogVisible = true
     },
-    clearSession() {
+    clearSession({ suspendWorkspace = true } = {}) {
       const scope = currentUserScope()
       if (scope !== 'anonymous') this.invalidatedScope = scope
       this.readerSessionBlocked = true
       this.sessionGeneration += 1
+      const workspace = useIndexWorkspaceStore()
+      if (suspendWorkspace) {
+        workspace.suspendSessionState()
+      } else {
+        workspace.resetSessionState()
+      }
       dispatchSessionInvalidated({
         generation: this.sessionGeneration,
       })

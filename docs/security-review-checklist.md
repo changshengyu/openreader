@@ -10,6 +10,32 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
+## P1 Index authenticated-session isolation (2026-07-27 candidate; browser gate pending)
+
+- [x] Session invalidation suspends or resets Index state before token removal. Visible search/explore rows,
+  pagination, loading, scroll, book objects, parser variables and local paths are removed synchronously.
+- [x] A suspended scene contains only a minimal non-persistent intent. It can be restored only when the JWT
+  subject proves the same user; a different or unknown account discards it and settles canonical Home before
+  the authenticated shell is unblocked. Explicit logout never preserves it.
+- [x] Search, Explore, sidebar source hydration, route BookInfo, local import and temporary-reader handoff freeze
+  authenticated scope/token plus user/workspace generation as applicable. Old callbacks cannot write another
+  account's Pinia/preferences, open overlays, show operation feedback or change routes.
+- [x] Workspace request stamps include the non-persistent session generation in addition to mode/revision.
+  Explore chooser recovery uses a one-shot pending flag, preventing both missed pre-mount recovery and later
+  replay after returning from Reader.
+- [x] Tokens remain only in short-lived operation closures and are not copied to Pinia, suspended intent, URL,
+  local/session storage, events, logs or errors. Existing same-origin `safeReturnTo()` validation remains.
+- [x] No API, JWT format, SQLite row, mounted path, backup/WebDAV format or server authorization rule changed.
+- [ ] Real Chromium must still exercise delayed Search/Explore/BookInfo callbacks across same- and
+  different-account reauthentication at 1440×900, 390×844 and 360×800. Docker release remains gated on it.
+
+Evidence: `frontend/tests/indexWorkspaceState.test.mjs`,
+`frontend/tests/authenticatedRuntimeScope.test.mjs`,
+`frontend/tests/indexSessionIsolationWiring.test.mjs`,
+`frontend/tests/appSidebarSearch.test.mjs`,
+`frontend/tests/workspaceContinuationContract.test.mjs`, and
+[`docs/compat/index-authenticated-session-p1-contract.md`](compat/index-authenticated-session-p1-contract.md).
+
 ## P1 browser-cache account isolation (2026-07-27 implementation; browser gate pending)
 
 - [x] Browser cache statistics read value bytes only after an exact key-shape check proves ownership by the

@@ -5,6 +5,10 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
 import { useIndexWorkspaceStore } from '../src/stores/indexWorkspace.js'
+import {
+  captureWorkspaceRequest,
+  isWorkspaceRequestCurrent,
+} from '../src/utils/workspaceContinuation.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const storePath = resolve(__dirname, '../src/stores/indexWorkspace.js')
@@ -134,6 +138,7 @@ test('opens Explore as a chooser request and only enters result mode after an en
 
   assert.equal(workspace.mode, 'shelf', 'opening Explore must leave the current Index body intact')
   assert.equal(workspace.exploreChooserRevision, 1, 'each Explore trigger must be observable by the long-lived chooser')
+  assert.equal(workspace.exploreChooserPending, true)
   assert.deepEqual(workspace.explore, {
     sourceId: 7,
     sourceGroup: '推荐',
@@ -150,6 +155,7 @@ test('opens Explore as a chooser request and only enters result mode after an en
 
   assert.equal(workspace.mode, 'explore', 'only a selected/resolved entry may replace the shelf with Explore results')
   assert.equal(workspace.exploreChooserRevision, 1, 'result updates must not reopen the chooser')
+  assert.equal(workspace.exploreChooserPending, false)
 })
 
 test('keeps result pagination and scroll restoration in the workspace state without a route dependency', () => {
@@ -169,6 +175,117 @@ test('keeps result pagination and scroll restoration in the workspace state with
 
   const source = readFileSync(storePath, 'utf8')
   assert.doesNotMatch(source, /vue-router|router\.push|router\.replace/, 'the shared workspace state must be usable without a route scene transition')
+})
+
+test('suspends private workspace rows and restores only a same-session search intent', () => {
+  const workspace = createWorkspace()
+  workspace.beginSearch({
+    keyword: '  长夜余火  ',
+    mode: 'remote',
+    searchType: 'single',
+    sourceId: 9,
+    concurrent: 18,
+  })
+  workspace.replaceResultRows([
+    {
+      title: '用户 A 的结果',
+      bookUrl: 'https://private.example/user-a',
+      variable: 'private-state',
+    },
+  ], {
+    page: 2,
+    lastIndex: 12,
+    hasMore: true,
+  })
+  workspace.rememberResultScroll(480)
+  const staleStamp = captureWorkspaceRequest(workspace, 'search')
+  const generation = workspace.sessionGeneration
+
+  workspace.suspendSessionState()
+
+  assert.equal(workspace.sessionGeneration, generation + 1)
+  assert.equal(workspace.mode, 'shelf')
+  assert.deepEqual(workspace.resultRows, [])
+  assert.deepEqual(workspace.search, {
+    keyword: '',
+    mode: 'remote',
+    searchType: 'all',
+    group: '',
+    sourceId: '',
+    concurrent: 24,
+  })
+  assert.deepEqual(workspace.continuation, {
+    page: 1,
+    lastIndex: -1,
+    hasMore: false,
+    loading: false,
+  })
+  assert.equal(workspace.resultScrollTop, 0)
+  assert.equal(isWorkspaceRequestCurrent(workspace, staleStamp), false)
+  assert.deepEqual(workspace.suspendedSession, {
+    mode: 'search',
+    search: {
+      keyword: '长夜余火',
+      mode: 'remote',
+      searchType: 'single',
+      group: '',
+      sourceId: 9,
+      concurrent: 18,
+    },
+  })
+
+  assert.equal(workspace.resumeSuspendedSession(), 'search')
+  assert.equal(workspace.mode, 'search')
+  assert.equal(workspace.search.keyword, '长夜余火')
+  assert.equal(workspace.search.sourceId, 9)
+  assert.deepEqual(workspace.resultRows, [])
+  assert.equal(workspace.suspendedSession, null)
+})
+
+test('reopens an interrupted Explore chooser without restoring old result rows', () => {
+  const workspace = createWorkspace()
+  workspace.showExploreResults([
+    { title: '用户 A 的探索结果', bookUrl: 'https://private.example/a' },
+  ], {
+    sourceId: 7,
+    sourceGroup: '推荐',
+    sourceName: '用户 A 书源',
+    url: 'https://source.example/explore',
+    name: '热门',
+    page: 3,
+    hasMore: true,
+  })
+
+  workspace.suspendSessionState()
+  const chooserRevision = workspace.exploreChooserRevision
+
+  assert.equal(workspace.resumeSuspendedSession(), 'explore')
+  assert.equal(workspace.mode, 'shelf')
+  assert.deepEqual(workspace.resultRows, [])
+  assert.equal(workspace.exploreChooserRevision, chooserRevision + 1)
+  assert.equal(workspace.exploreChooserPending, true)
+  assert.deepEqual(workspace.explore, {
+    sourceId: 7,
+    sourceGroup: '推荐',
+    sourceName: '用户 A 书源',
+    url: 'https://source.example/explore',
+    name: '热门',
+  })
+  assert.equal(workspace.consumeExploreChooserRequest(), true)
+  assert.equal(workspace.consumeExploreChooserRequest(), false)
+})
+
+test('an explicit workspace reset discards every suspended account intent', () => {
+  const workspace = createWorkspace()
+  workspace.beginSearch({ keyword: '不应恢复', sourceId: 4, searchType: 'single' })
+  workspace.suspendSessionState()
+
+  workspace.resetSessionState()
+
+  assert.equal(workspace.suspendedSession, null)
+  assert.equal(workspace.resumeSuspendedSession(), 'shelf')
+  assert.equal(workspace.mode, 'shelf')
+  assert.equal(workspace.search.keyword, '')
 })
 
 test('keeps Search and Explore result cards as root-workspace bodies rather than standalone pages or source choosers', () => {

@@ -2,7 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-27 已完成固定上游与当前实现取证；本阶段仅建立合同，不修改应用代码。
+状态：2026-07-27 已完成固定上游与当前实现取证，并按测试先行完成候选实现。前端
+611/611、生产构建与后端全量测试通过；真实浏览器与 Docker 发布闸门尚未完成。
 
 本合同承接：
 
@@ -174,3 +175,25 @@ scope + bearer token identity + user session generation + workspace session gene
 5. 给 Search、Explore、sidebar source load、route BookInfo、导入和远程阅读交接补齐冻结身份门。
 6. 完成自动回归后再做三视口浏览器；浏览器闸门通过前不发布本切片 Docker。
 
+## 8. 2026-07-27 候选实施记录
+
+- `indexWorkspace` 新增非持久 `sessionGeneration`、一次性挂起 intent 以及
+  suspend/resume/discard/reset 动作。清理立即移除结果、分页、loading、滚动位置、搜索/探索
+  可见 intent，并让旧 scene stamp 失效；结果行、书籍对象、本地路径和远程变量不会进入挂起态。
+- 被动认证失效会挂起一个最小工作台 intent；同账号登录只恢复 intent 并从空结果重新执行。
+  Explore 使用一次性 `exploreChooserPending`，所以认证期间产生的恢复请求可在 AppLayout 挂载后
+  消费一次，也不会在以后从 Reader 返回时重复打开。不同/未知账号和显式 logout 保持干净书架。
+- 根壳在 token 写入后仍以现有 session-blocked 状态阻止 Reader 和 AppLayout 挂载。AuthDialog
+  对不同/未知账号先 replace canonical Home，Login 对已知异账号忽略旧 returnTo；路由 settled
+  后才解除阻塞。完全匿名首次登录仍可消费经过 `safeReturnTo()` 校验的站内路径。
+- Search 的书源初始化、本地搜索、本地导入和临时阅读交接，Explore 的来源/入口/续页和临时
+  阅读，侧栏 cache-first/network 书源加载，以及 route BookInfo 都加入身份或
+  workspace-session 提交门。旧 success/error/finally 不能改新账号 store/preference/loading、
+  toast、overlay 或路由。
+- 新失败测试先在原实现得到 13 个预期失败，实施后聚焦 42/42；另有真实 deferred Promise 用例
+  验证身份变化与 dispose 后的侧栏书源响应不会设置新账号默认分组/来源。最终
+  `npm test` 为 611/611，`npm run build`、`go test ./...` 与 `git diff --check` 通过。
+- 本批不改 Go API、JWT 格式、SQLite、`data/`、`cache/`、`library/`、备份或 WebDAV。旧 token
+  只存在短生命周期 operation closure，不写 Pinia、URL、storage、日志或错误文本。
+- 三视口真实浏览器仍是未完成门禁；前一批外部浏览器/本地服务申请被环境拒绝后未使用替代路径。
+  因此本候选可以同步 GitHub，但还不能据此发布 Docker 或宣称本合同最终验收完成。

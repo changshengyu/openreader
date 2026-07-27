@@ -3,6 +3,14 @@ import test from 'node:test'
 import { reactive } from 'vue'
 import { useAppSidebarSearch } from '../src/composables/useAppSidebarSearch.js'
 
+function deferred() {
+  let resolve
+  const promise = new Promise(resolvePromise => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 function createController(overrides = {}) {
   const calls = []
   const route = reactive({ name: 'home', query: {} })
@@ -154,4 +162,47 @@ test('invalidates the scoped source cache before refreshing dependent stats', as
     ['config', { sourceId: 1 }],
     ['after-sources'],
   ])
+})
+
+test('does not apply a source list or preference defaults after the authenticated identity changes', async () => {
+  const request = deferred()
+  let identity = { scope: 'user:1', token: 'token-a' }
+  const fixture = createController({
+    getAuthenticatedIdentity: () => identity,
+    cacheFirstRequest: () => request.promise,
+  })
+
+  const loading = fixture.controller.loadSources()
+  identity = { scope: 'user:2', token: 'token-b' }
+  request.resolve({
+    data: [
+      { id: 99, name: '用户 A 私有源', group: '用户 A 分组', enabled: true },
+    ],
+  })
+
+  assert.equal(await loading, false)
+  assert.deepEqual(fixture.controller.sources.value, [])
+  assert.equal(fixture.preferences.search.group, '')
+  assert.equal(fixture.preferences.search.sourceId, '')
+  assert.deepEqual(fixture.calls, [])
+})
+
+test('disposing the sidebar source controller retires an in-flight source response', async () => {
+  const request = deferred()
+  const fixture = createController({
+    getAuthenticatedIdentity: () => ({ scope: 'user:1', token: 'token-a' }),
+    cacheFirstRequest: () => request.promise,
+  })
+
+  const loading = fixture.controller.loadSources()
+  fixture.controller.dispose()
+  request.resolve({
+    data: [
+      { id: 99, name: '已卸载来源', group: '旧分组', enabled: true },
+    ],
+  })
+
+  assert.equal(await loading, false)
+  assert.deepEqual(fixture.controller.sources.value, [])
+  assert.deepEqual(fixture.calls, [])
 })

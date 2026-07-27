@@ -175,6 +175,7 @@ import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../u
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { createShelfForegroundReconciler } from '../utils/shelfSyncFreshness'
 
 const router = useRouter()
@@ -194,6 +195,7 @@ const offline = ref(false)
 const healthInfo = ref(null)
 const routeBookInfoLoadingId = ref(null)
 const routeBookInfoOpenedKey = ref('')
+const routeBookInfoOperations = createAuthenticatedOperationGuard()
 let compatibilityFocusTimer
 const { connected: syncConnected, connect, disconnect } = useSync()
 const shelfForegroundReconciler = createShelfForegroundReconciler({
@@ -369,6 +371,7 @@ const {
   clearSearchQuery,
   loadSources: loadSidebarSources,
   handleSourcesUpdated,
+  dispose: disposeSidebarSearch,
 } = useAppSidebarSearch({
   preferences,
   route,
@@ -617,12 +620,17 @@ async function refreshShelfData() {
 async function openRouteBookInfoOverlay() {
   const rawId = route.query.bookInfo
   const id = Number(Array.isArray(rawId) ? rawId[0] : rawId)
-  if (!Number.isFinite(id) || id <= 0 || route.name === 'reader') return
+  if (!Number.isFinite(id) || id <= 0 || route.name === 'reader') {
+    routeBookInfoOperations.invalidate('route-book-info')
+    return
+  }
   const key = `${route.name || ''}:${id}`
   if (routeBookInfoOpenedKey.value === key && overlay.bookInfoVisible) return
+  const operation = routeBookInfoOperations.begin('route-book-info')
   routeBookInfoLoadingId.value = id
   try {
     const { data } = await api.get(`/books/${id}`)
+    if (!routeBookInfoOperations.canCommit(operation)) return
     if (!data?.id) return
     const shelfBook = bookshelf.books.find(book => Number(book.id) === Number(data.id))
     const mergedBook = shelfBook ? mergeShelfBookForRoute(shelfBook, data) : data
@@ -632,12 +640,13 @@ async function openRouteBookInfoOverlay() {
     })
     routeBookInfoOpenedKey.value = key
   } catch (error) {
+    if (!routeBookInfoOperations.canCommit(operation)) return
     ElMessage.error(readError(error, '加载书籍信息失败'))
     if ([403, 404].includes(Number(error?.response?.status))) {
       clearRouteBookInfoOverlayIntent()
     }
   } finally {
-    routeBookInfoLoadingId.value = null
+    if (routeBookInfoOperations.canCommit(operation)) routeBookInfoLoadingId.value = null
   }
 }
 
@@ -749,6 +758,7 @@ function setOnline() {
 watch(
   () => userStore.token,
   (token) => {
+    routeBookInfoOperations.reset()
     resetCacheScope()
     refreshRecentReadingScope()
     if (token) {
@@ -783,7 +793,7 @@ watch(
 watch(
   () => workspace.exploreChooserRevision,
   (revision) => {
-    if (!revision) return
+    if (!revision || !workspace.consumeExploreChooserRequest()) return
     openExploreChooser()
   },
 )
@@ -847,10 +857,13 @@ onMounted(() => {
     loadShelfForShell({ all: true }).catch(() => {})
   }
   if (userStore.token) loadSidebarSources()
+  if (workspace.consumeExploreChooserRequest()) openExploreChooser()
   refreshHealthInfo(false)
 })
 
 onBeforeUnmount(() => {
+  routeBookInfoOperations.reset()
+  disposeSidebarSearch()
   clearTimeout(compatibilityFocusTimer)
   window.removeEventListener('offline', setOffline)
   window.removeEventListener('online', setOnline)

@@ -41,6 +41,8 @@ test('opens the upstream Explore chooser before changing the root result body', 
   assert.match(layout, /<ExploreWorkspacePopover[\s\S]*v-show="exploreChooserVisible"/)
   assert.match(layout, /workspace\.requestExplore\(/)
   assert.match(layout, /workspace\.exploreChooserRevision/)
+  assert.match(layout, /workspace\.consumeExploreChooserRequest\(\)/)
+  assert.match(layout, /onMounted\(\(\) => \{[\s\S]*?workspace\.consumeExploreChooserRequest\(\)[\s\S]*?openExploreChooser\(\)/)
   assert.match(layout, /if \(isMobileShell\.value && item\.closeMobile\)/)
   assert.match(discover, /workspace\.appendResultRows\(/)
   assert.doesNotMatch(discover, /listExploreSources|source-panel|source-group-tabs|el-collapse-item/, 'the root Explore body must not retain the source chooser')

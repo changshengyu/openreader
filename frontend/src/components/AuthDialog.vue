@@ -15,19 +15,15 @@
 </template>
 
 <script setup>
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import AuthForm from './AuthForm.vue'
 import { useUserStore } from '../stores/user'
 
 const user = useUserStore()
-const route = useRoute()
 const router = useRouter()
 
 async function handleSuccess(result = {}) {
-  if (
-    ['reader', 'remote-reader'].includes(route.name)
-    && !result.sameAuthenticatedScope
-  ) {
+  if (!result.sameAuthenticatedScope) {
     await router.replace({ name: 'home' })
   }
   user.completeReauthentication()

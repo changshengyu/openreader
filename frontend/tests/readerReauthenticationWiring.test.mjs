@@ -16,9 +16,10 @@ const router = source('../src/router/index.js')
 const user = source('../src/stores/user.js')
 
 test('the root shell never renders authenticated Reader content while its session is blocked', () => {
-  assert.match(app, /v-if="isReader && isLoggedIn && !readerSessionBlocked"/)
+  assert.match(app, /v-if="isReader && isLoggedIn && !authenticatedSessionBlocked"/)
   assert.match(app, /<router-view\s+:key="readerSessionKey"/)
   assert.match(app, /v-else-if="isReader"[\s\S]*?reader-auth-blocked/)
+  assert.match(app, /v-else-if="isLoggedIn && !authenticatedSessionBlocked"/)
   assert.match(app, /<router-view v-else-if="isLoginRoute"/)
   assert.match(app, /v-else class="workspace-auth-blocked"/)
   assert.match(app, /readerSessionKey/)

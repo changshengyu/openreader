@@ -26,7 +26,12 @@ test('merges remote search pages by reader-dev bookUrl without collapsing unrela
 
 test('rejects stale result mutations after a new workspace request or scene transition', () => {
   const gate = createAsyncRequestGate()
-  const workspace = { mode: 'search', searchRevision: 4, exploreRevision: 1 }
+  const workspace = {
+    mode: 'search',
+    searchRevision: 4,
+    exploreRevision: 1,
+    sessionGeneration: 2,
+  }
   const first = gate.begin()
   const firstStamp = captureWorkspaceRequest(workspace, 'search')
   const second = gate.begin()
@@ -40,4 +45,12 @@ test('rejects stale result mutations after a new workspace request or scene tran
   workspace.mode = 'search'
   workspace.searchRevision += 1
   assert.equal(isWorkspaceRequestCurrent(workspace, firstStamp), false)
+
+  const nextSessionStamp = captureWorkspaceRequest(workspace, 'search')
+  workspace.sessionGeneration += 1
+  assert.equal(
+    isWorkspaceRequestCurrent(workspace, nextSessionStamp),
+    false,
+    'a matching scene revision from another authenticated session must still be stale',
+  )
 })

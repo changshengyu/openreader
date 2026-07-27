@@ -98,6 +98,7 @@ const { usePreferencesStore } = await vite.ssrLoadModule('/src/stores/preference
 const { useReaderStore } = await vite.ssrLoadModule('/src/stores/reader.js')
 const { useUserStore } = await vite.ssrLoadModule('/src/stores/user.js')
 const { useOverlayStore } = await vite.ssrLoadModule('/src/stores/overlay.js')
+const { useIndexWorkspaceStore } = await vite.ssrLoadModule('/src/stores/indexWorkspace.js')
 const { useSync } = await vite.ssrLoadModule('/src/composables/useSync.js')
 
 function activateUser(userId, nonce = '') {
@@ -118,6 +119,7 @@ function freshStores(userId = 1) {
     reader: useReaderStore(),
     user: useUserStore(),
     overlay: useOverlayStore(),
+    workspace: useIndexWorkspaceStore(),
   }
 }
 
@@ -522,7 +524,9 @@ test('a delayed profile response cannot overwrite a later login profile', { conc
 })
 
 test('session clearing invalidates the mounted reader before removing its token and resets account overlays', { concurrency: false }, async () => {
-  const { overlay, user } = freshStores(1)
+  const { overlay, user, workspace } = freshStores(1)
+  workspace.beginSearch({ keyword: '用户 A 搜索', sourceId: 8, searchType: 'single' })
+  workspace.replaceResultRows([{ title: '用户 A 结果', bookUrl: 'https://private.example/a' }])
   const bookmarkResult = overlay.openBookmarkForm(
     { id: 101, title: '用户 A 的书' },
     { chapterIndex: 3 },
@@ -548,6 +552,19 @@ test('session clearing invalidates the mounted reader before removing its token 
   assert.equal(overlay.searchBook, null)
   assert.equal(overlay.storageImportVisible, false)
   assert.equal(overlay.storageImportRequest, null)
+  assert.equal(workspace.mode, 'shelf')
+  assert.deepEqual(workspace.resultRows, [])
+  assert.deepEqual(workspace.suspendedSession, {
+    mode: 'search',
+    search: {
+      keyword: '用户 A 搜索',
+      mode: 'remote',
+      searchType: 'single',
+      group: '',
+      sourceId: 8,
+      concurrent: 24,
+    },
+  })
   assert.deepEqual(await bookmarkResult, { saved: false, reason: 'session-invalidated' })
   assert.equal(await categoryResult, null)
 })
@@ -594,8 +611,10 @@ test('reauthentication keeps the reader blocked until same-account or account-sw
 })
 
 test('same-account reauthentication is identified without exposing either token', { concurrency: false }, async () => {
-  const { user } = freshStores(7)
-  user.clearSession()
+  const { user, workspace } = freshStores(7)
+  workspace.beginSearch({ keyword: '同账号恢复', sourceId: 3, searchType: 'single' })
+  workspace.replaceResultRows([{ title: '必须丢弃的旧结果' }])
+  user.requireLogin('session')
 
   await withAPI('post', async () => ({
     data: {
@@ -615,6 +634,60 @@ test('same-account reauthentication is identified without exposing either token'
     })
     assert.equal(JSON.stringify(result).includes(tokenFor(7, 'initial')), false)
     assert.equal(user.readerSessionBlocked, true)
+    assert.equal(workspace.mode, 'search')
+    assert.equal(workspace.search.keyword, '同账号恢复')
+    assert.deepEqual(workspace.resultRows, [])
+    assert.equal(workspace.suspendedSession, null)
+  })
+})
+
+test('different-account reauthentication discards the suspended Index scene', { concurrency: false }, async () => {
+  const { user, workspace } = freshStores(7)
+  workspace.showExploreResults([{ title: '用户 A 探索结果' }], {
+    sourceId: 77,
+    sourceName: '用户 A 来源',
+    url: 'https://private.example/explore',
+    name: '用户 A 入口',
+  })
+  user.requireLogin('session')
+
+  await withAPI('post', async () => ({
+    data: {
+      token: tokenFor(8, 'renewed'),
+      user: { id: 8, username: 'user-eight' },
+    },
+  }), async () => {
+    const result = await user.login('user-eight', 'password')
+    assert.equal(result.sameAuthenticatedScope, false)
+    assert.equal(workspace.mode, 'shelf')
+    assert.deepEqual(workspace.resultRows, [])
+    assert.deepEqual(workspace.explore, {
+      sourceId: '',
+      sourceGroup: '',
+      url: '',
+      name: '',
+      sourceName: '',
+    })
+    assert.equal(workspace.suspendedSession, null)
+  })
+})
+
+test('explicit logout never restores an old Index scene after the same user logs in again', { concurrency: false }, async () => {
+  const { user, workspace } = freshStores(11)
+  workspace.beginSearch({ keyword: '退出前搜索', sourceId: 5, searchType: 'single' })
+  user.logout()
+
+  await withAPI('post', async () => ({
+    data: {
+      token: tokenFor(11, 'again'),
+      user: { id: 11, username: 'user-eleven' },
+    },
+  }), async () => {
+    const result = await user.login('user-eleven', 'password')
+    assert.equal(result.sameAuthenticatedScope, true)
+    assert.equal(workspace.mode, 'shelf')
+    assert.equal(workspace.search.keyword, '')
+    assert.equal(workspace.suspendedSession, null)
   })
 })
 

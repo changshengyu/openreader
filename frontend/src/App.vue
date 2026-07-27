@@ -1,5 +1,5 @@
 <template>
-  <template v-if="isReader && isLoggedIn && !readerSessionBlocked">
+  <template v-if="isReader && isLoggedIn && !authenticatedSessionBlocked">
     <router-view :key="readerSessionKey" />
     <GlobalOverlayHost />
   </template>
@@ -8,12 +8,16 @@
     正在等待重新登录…
   </div>
 
-  <template v-else-if="isLoggedIn">
+  <template v-else-if="isLoggedIn && !authenticatedSessionBlocked">
     <AppLayout>
       <router-view />
     </AppLayout>
     <GlobalOverlayHost />
   </template>
+
+  <div v-else-if="isLoggedIn" class="workspace-auth-blocked" role="status">
+    正在恢复当前账号…
+  </div>
 
   <router-view v-else-if="isLoginRoute" />
 
@@ -48,7 +52,7 @@ const { connect, disconnect } = useSync()
 const isLoggedIn = computed(() => !!userStore.token)
 const isReader = computed(() => ['reader', 'remote-reader'].includes(route.name))
 const isLoginRoute = computed(() => route.name === 'login')
-const readerSessionBlocked = computed(() => userStore.readerSessionBlocked)
+const authenticatedSessionBlocked = computed(() => userStore.readerSessionBlocked)
 const readerSessionKey = computed(() => `reader-session:${userStore.sessionGeneration}`)
 let systemThemeMedia
 

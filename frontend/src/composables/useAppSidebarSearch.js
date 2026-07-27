@@ -3,10 +3,16 @@ import {
   searchConcurrentLabel,
   searchConcurrentOptions,
 } from '../utils/searchPreference.js'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useAppSidebarSearch(options) {
   const quickSearch = ref('')
   const sources = ref([])
+  const sourceOperations = createAuthenticatedOperationGuard(
+    options.getAuthenticatedIdentity
+      ? { getIdentity: options.getAuthenticatedIdentity }
+      : undefined,
+  )
 
   const searchType = computed({
     get: () => options.preferences.search.searchType,
@@ -99,26 +105,38 @@ export function useAppSidebarSearch(options) {
   }
 
   async function loadSources() {
+    const operation = sourceOperations.begin('sources')
     try {
       const response = await options.cacheFirstRequest(
         () => options.listSources(),
         sourceCacheKey(),
         { validate: data => Array.isArray(data) },
       )
+      if (!sourceOperations.canCommit(operation)) return false
       applySources(response.data)
       if (response.fromCache) refreshSourcesCache().catch(() => {})
+      return true
     } catch {
-      sources.value = []
+      if (sourceOperations.canCommit(operation)) sources.value = []
+      return false
     }
   }
 
   async function refreshSourcesCache() {
-    const response = await options.networkFirstRequest(
-      () => options.listSources(),
-      sourceCacheKey(),
-      { validate: data => Array.isArray(data) },
-    )
-    applySources(response.data)
+    const operation = sourceOperations.begin('sources')
+    try {
+      const response = await options.networkFirstRequest(
+        () => options.listSources(),
+        sourceCacheKey(),
+        { validate: data => Array.isArray(data) },
+      )
+      if (!sourceOperations.canCommit(operation)) return false
+      applySources(response.data)
+      return true
+    } catch (error) {
+      if (!sourceOperations.canCommit(operation)) return false
+      throw error
+    }
   }
 
   function applySources(data) {
@@ -136,9 +154,16 @@ export function useAppSidebarSearch(options) {
   }
 
   async function handleSourcesUpdated() {
+    const operation = sourceOperations.begin('update')
     await options.removeBrowserCache(sourceCacheKey())
+    if (!sourceOperations.canCommit(operation)) return
     await loadSources()
+    if (!sourceOperations.canCommit(operation)) return
     await options.afterSourcesUpdated?.()
+  }
+
+  function dispose() {
+    sourceOperations.reset()
   }
 
   watch(
@@ -175,6 +200,7 @@ export function useAppSidebarSearch(options) {
     applySources,
     sourceCacheKey,
     handleSourcesUpdated,
+    dispose,
   }
 }
 

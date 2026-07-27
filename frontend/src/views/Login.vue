@@ -18,7 +18,12 @@ const router = useRouter()
 const route = useRoute()
 const user = useUserStore()
 
-async function handleSuccess() {
+async function handleSuccess(result = {}) {
+  if (result.previousScope && !result.sameAuthenticatedScope) {
+    await router.replace({ name: 'home' })
+    user.completeReauthentication()
+    return
+  }
   const returnTo = safeReturnTo(route.query.returnTo)
   await router.replace(returnTo)
   user.completeReauthentication()

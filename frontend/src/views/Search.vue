@@ -73,6 +73,7 @@ import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import { newestBookProgress } from '../utils/bookOrder'
 import { isLocalBook, localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import {
   DEFAULT_SEARCH,
   normalizeSearchConcurrent,
@@ -119,6 +120,7 @@ const activeConcurrentCount = ref(1)
 const activeSearchIsSingleSource = ref(false)
 const resultArea = ref(null)
 const remoteRequestGate = createAsyncRequestGate()
+const searchSessionOperations = createAuthenticatedOperationGuard()
 const localItems = ref([])
 const localRecursiveScan = ref(true)
 const importingLocal = ref(false)
@@ -165,17 +167,22 @@ const shownLocalResults = computed(() => {
   return [...shelfResults, ...storeResults]
 })
 onMounted(async () => {
+  const mountOperation = searchSessionOperations.begin('mount')
   applyWorkspaceSearchIntent()
-  await warmSearchShelf()
+  const shelfReady = await warmSearchShelf()
+  if (!shelfReady || !searchSessionOperations.canCommit(mountOperation)) return
   if (searchMode.value === 'remote') {
     try {
-      await loadSources()
+      const sourcesReady = await loadSources()
+      if (!sourcesReady || !searchSessionOperations.canCommit(mountOperation)) return
     } catch (err) {
+      if (!searchSessionOperations.canCommit(mountOperation)) return
       ElMessage.warning(readError(err, '加载书源失败'))
     }
   } else {
     loadSources().catch(() => {})
   }
+  if (!searchSessionOperations.canCommit(mountOperation)) return
   syncSelection()
   workspaceSearchReady.value = true
   if (keyword.value || searchMode.value === 'local') doSearch()
@@ -183,14 +190,17 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   remoteRequestGate.invalidate()
+  searchSessionOperations.reset()
 })
 
 async function warmSearchShelf() {
+  const operation = searchSessionOperations.begin('warm-shelf')
   const jobs = [
     ['categories', bookshelf.ensureCategoriesLoaded()],
     ['books', bookshelf.ensureBooksLoaded({ all: true })],
   ]
   const results = await Promise.allSettled(jobs.map(([, job]) => job))
+  if (!searchSessionOperations.canCommit(operation)) return false
   results.forEach((result, index) => {
     if (result.status !== 'rejected') return
     const type = jobs[index][0]
@@ -200,6 +210,7 @@ async function warmSearchShelf() {
       ElMessage.warning(readError(result.reason, '分组加载失败，部分筛选状态可能暂不可用'))
     }
   })
+  return true
 }
 
 watch(searchType, () => {
@@ -218,10 +229,18 @@ watch(
 )
 
 async function loadSources() {
-  const { data } = await api.get('/sources')
-  sources.value = data
-  if (!selectedGroup.value && sourceGroups.value.length) selectedGroup.value = sourceGroups.value[0].value
-  if (!singleSourceId.value && enabledSources.value.length) singleSourceId.value = enabledSources.value[0].id
+  const operation = searchSessionOperations.begin('sources')
+  try {
+    const { data } = await api.get('/sources')
+    if (!searchSessionOperations.canCommit(operation)) return false
+    sources.value = data
+    if (!selectedGroup.value && sourceGroups.value.length) selectedGroup.value = sourceGroups.value[0].value
+    if (!singleSourceId.value && enabledSources.value.length) singleSourceId.value = enabledSources.value[0].id
+    return true
+  } catch (error) {
+    if (!searchSessionOperations.canCommit(operation)) return false
+    throw error
+  }
 }
 
 function syncSelection() {
@@ -252,6 +271,7 @@ async function doSearch() {
     await searchLocalBooks()
     return
   }
+  searchSessionOperations.invalidate('local-search')
   const value = keyword.value.trim()
   if (!value) return
   if (!selectedIds.value.length) {
@@ -385,6 +405,8 @@ function rememberResultScroll() {
 }
 
 async function searchLocalBooks() {
+  const operation = searchSessionOperations.begin('local-search')
+  const workspaceStamp = captureWorkspaceRequest(workspace, 'search')
   workspace.setResultLoading(true)
   searching.value = true
   searched.value = false
@@ -394,6 +416,7 @@ async function searchLocalBooks() {
       listLocalStore('', localRecursiveScan.value),
       bookshelf.loadBooks({ all: true }),
     ])
+    if (!isActiveLocalSearch(operation, workspaceStamp)) return
     if (storeResult.status === 'rejected' && shelfResult.status === 'rejected') {
       throw storeResult.reason || shelfResult.reason
     }
@@ -413,11 +436,20 @@ async function searchLocalBooks() {
     }
     ElMessage.success(shownLocalResults.value.length ? `找到 ${shownLocalResults.value.length} 条本地结果` : '没有找到本地书籍')
   } catch (err) {
-    ElMessage.error(readError(err, '搜索本地书仓失败'))
+    if (isActiveLocalSearch(operation, workspaceStamp)) {
+      ElMessage.error(readError(err, '搜索本地书仓失败'))
+    }
   } finally {
-    searching.value = false
-    workspace.setResultLoading(false)
+    if (isActiveLocalSearch(operation, workspaceStamp)) {
+      searching.value = false
+      workspace.setResultLoading(false)
+    }
   }
+}
+
+function isActiveLocalSearch(operation, workspaceStamp) {
+  return searchSessionOperations.canCommit(operation)
+    && isWorkspaceRequestCurrent(workspace, workspaceStamp)
 }
 
 function remoteWorkspaceContinuation() {
@@ -442,6 +474,7 @@ function applyWorkspaceSearchIntent() {
 
 function backToShelf() {
   remoteRequestGate.invalidate()
+  searchSessionOperations.invalidate('local-search')
   workspace.backToShelf()
   emit('back-to-shelf')
 }
@@ -452,10 +485,12 @@ async function importLocalOne(item) {
 }
 
 async function importLocalPaths(paths) {
+  const operation = searchSessionOperations.begin('local-import')
   importingLocal.value = true
   try {
     const categoryIds = targetCategoryIds.value.map(Number).filter(Boolean)
     const { data } = await importFromLocalStore(paths, categoryIds)
+    if (!searchSessionOperations.canCommit(operation)) return
     const imported = data.imported || []
     imported.forEach(item => {
       if (item.book) bookshelf.upsertBook(item.book)
@@ -465,9 +500,11 @@ async function importLocalPaths(paths) {
     const failed = imported.filter(item => item.error).length
     ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
   } catch (err) {
-    ElMessage.error(readError(err, '导入本地书失败'))
+    if (searchSessionOperations.canCommit(operation)) {
+      ElMessage.error(readError(err, '导入本地书失败'))
+    }
   } finally {
-    importingLocal.value = false
+    if (searchSessionOperations.canCommit(operation)) importingLocal.value = false
   }
 }
 
@@ -560,15 +597,19 @@ function openLocalShelfDetail(book) {
 }
 
 async function openRemoteReader(item) {
+  const operation = searchSessionOperations.begin('remote-reader')
   try {
     const { data } = await createRemoteReaderSession(remoteBookReaderPayload(item, {
       sourceId: remoteBookSourceId(item),
       sourceName: remoteBookSourceName(item),
     }))
+    if (!searchSessionOperations.canCommit(operation)) return
     if (!data?.id) throw new Error('远程阅读会话无效')
     router.push({ name: 'remote-reader', params: { sessionId: data.id }, query: { chapter: 0 } })
   } catch (error) {
-    ElMessage.error(readError(error, '打开临时阅读失败'))
+    if (searchSessionOperations.canCommit(operation)) {
+      ElMessage.error(readError(error, '打开临时阅读失败'))
+    }
   }
 }
 

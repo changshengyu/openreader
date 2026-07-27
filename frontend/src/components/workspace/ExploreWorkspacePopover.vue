@@ -51,11 +51,16 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { exploreBooks, listExploreSources } from '../../api/explore'
 import { useIndexWorkspaceStore } from '../../stores/indexWorkspace'
-import { createAsyncRequestGate } from '../../utils/workspaceContinuation'
+import { createAuthenticatedOperationGuard } from '../../utils/authenticatedOperation'
+import {
+  captureWorkspaceSession,
+  createAsyncRequestGate,
+  isWorkspaceSessionCurrent,
+} from '../../utils/workspaceContinuation'
 
 const props = defineProps({
   isMobile: {
@@ -73,6 +78,7 @@ const loadingSources = ref(false)
 const loadingEntry = ref(false)
 const sourceList = ref(null)
 const requestGate = createAsyncRequestGate()
+const exploreSessionOperations = createAuthenticatedOperationGuard()
 
 const sourceGroups = computed(() => {
   const groups = new Set()
@@ -90,6 +96,11 @@ const filteredSources = computed(() => {
 
 onMounted(loadSources)
 
+onBeforeUnmount(() => {
+  requestGate.invalidate()
+  exploreSessionOperations.reset()
+})
+
 watch(
   () => workspace.exploreChooserRevision,
   () => applyWorkspaceIntent(),
@@ -97,15 +108,19 @@ watch(
 )
 
 async function loadSources() {
+  const operation = exploreSessionOperations.begin('sources')
   loadingSources.value = true
   try {
     const { data } = await listExploreSources()
+    if (!exploreSessionOperations.canCommit(operation)) return
     sources.value = Array.isArray(data) ? data : []
     applyWorkspaceIntent()
   } catch (error) {
-    ElMessage.error(readError(error, '加载探索书源失败'))
+    if (exploreSessionOperations.canCommit(operation)) {
+      ElMessage.error(readError(error, '加载探索书源失败'))
+    }
   } finally {
-    loadingSources.value = false
+    if (exploreSessionOperations.canCommit(operation)) loadingSources.value = false
   }
 }
 
@@ -133,6 +148,8 @@ function isActiveEntry(source, entry) {
 async function selectEntry(source, entry) {
   if (loadingEntry.value) return
   const requestToken = requestGate.begin()
+  const operation = exploreSessionOperations.begin('entry')
+  const workspaceStamp = captureWorkspaceSession(workspace)
   const intent = {
     sourceId: source.id,
     sourceGroup: source.group || '',
@@ -143,7 +160,7 @@ async function selectEntry(source, entry) {
   loadingEntry.value = true
   try {
     const { data } = await exploreBooks(intent.sourceId, { page: 1, url: intent.url })
-    if (!requestGate.isCurrent(requestToken)) return
+    if (!isActiveEntryRequest(requestToken, operation, workspaceStamp)) return
     const result = normalizeExploreResult(data, 1)
     workspace.showExploreResults(result.items, {
       ...intent,
@@ -152,16 +169,23 @@ async function selectEntry(source, entry) {
     })
     emit('selected')
   } catch (error) {
-    if (requestGate.isCurrent(requestToken)) {
+    if (isActiveEntryRequest(requestToken, operation, workspaceStamp)) {
       ElMessage.error(readError(error, '探索失败'))
     }
   } finally {
-    if (requestGate.isCurrent(requestToken)) loadingEntry.value = false
+    if (isActiveEntryRequest(requestToken, operation, workspaceStamp)) loadingEntry.value = false
   }
+}
+
+function isActiveEntryRequest(requestToken, operation, workspaceStamp) {
+  return requestGate.isCurrent(requestToken)
+    && exploreSessionOperations.canCommit(operation)
+    && isWorkspaceSessionCurrent(workspace, workspaceStamp)
 }
 
 function close() {
   requestGate.invalidate()
+  exploreSessionOperations.invalidate('entry')
   emit('close')
 }
 

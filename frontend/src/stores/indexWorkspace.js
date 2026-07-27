@@ -54,6 +54,22 @@ function normalizedRows(rows) {
   return Array.isArray(rows) ? [...rows] : []
 }
 
+function suspendedWorkspaceIntent(state) {
+  if (state.mode === 'search') {
+    return {
+      mode: 'search',
+      search: { ...state.search },
+    }
+  }
+  if (state.mode === 'explore') {
+    return {
+      mode: 'explore',
+      explore: { ...state.explore },
+    }
+  }
+  return { mode: 'shelf' }
+}
+
 function normalizedExplore(intent = {}, fallback = freshExplore()) {
   return {
     sourceId: intent.sourceId ?? fallback.sourceId ?? '',
@@ -87,6 +103,9 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
     searchRevision: 0,
     exploreRevision: 0,
     exploreChooserRevision: 0,
+    exploreChooserPending: false,
+    sessionGeneration: 0,
+    suspendedSession: null,
     search: freshSearch(),
     explore: freshExplore(),
   }),
@@ -112,12 +131,14 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
     requestExplore(intent = {}) {
       this.explore = normalizedExplore(intent, this.explore)
       this.exploreChooserRevision += 1
+      this.exploreChooserPending = true
     },
     beginExplore(intent = {}) {
       this.requestExplore(intent)
     },
     showExploreResults(rows, intent = {}) {
       this.mode = 'explore'
+      this.exploreChooserPending = false
       this.explore = normalizedExplore(intent, this.explore)
       this.resultRows = normalizedRows(rows)
       this.continuation = {
@@ -153,6 +174,46 @@ export const useIndexWorkspaceStore = defineStore('index-workspace', {
     backToShelf() {
       this.mode = 'shelf'
       this.clearResultState()
+    },
+    suspendSessionState() {
+      const suspended = this.suspendedSession || suspendedWorkspaceIntent(this)
+      this.resetSessionState({ discardSuspended: false })
+      this.suspendedSession = suspended
+    },
+    resumeSuspendedSession() {
+      const suspended = this.suspendedSession
+      this.suspendedSession = null
+      if (suspended?.mode === 'search') {
+        this.beginSearch(suspended.search)
+        return 'search'
+      }
+      if (suspended?.mode === 'explore') {
+        this.requestExplore(suspended.explore)
+        return 'explore'
+      }
+      return 'shelf'
+    },
+    discardSuspendedSession() {
+      this.suspendedSession = null
+    },
+    consumeExploreChooserRequest() {
+      if (!this.exploreChooserPending) return false
+      this.exploreChooserPending = false
+      return true
+    },
+    resetSessionState({ discardSuspended = true } = {}) {
+      this.sessionGeneration += 1
+      this.mode = 'shelf'
+      this.resultRows = []
+      this.continuation = freshContinuation()
+      this.resultScrollTop = 0
+      this.searchRevision += 1
+      this.exploreRevision += 1
+      this.exploreChooserRevision = 0
+      this.exploreChooserPending = false
+      this.search = freshSearch()
+      this.explore = freshExplore()
+      if (discardSuspended) this.suspendedSession = null
     },
     clearResultState() {
       this.resultRows = []

@@ -52,6 +52,7 @@ export function captureWorkspaceRequest(workspace, mode) {
   return {
     mode,
     revision: Number(workspace?.[revisionKey] || 0),
+    sessionGeneration: Number(workspace?.sessionGeneration || 0),
   }
 }
 
@@ -59,4 +60,16 @@ export function isWorkspaceRequestCurrent(workspace, stamp) {
   if (!workspace || !stamp || workspace.mode !== stamp.mode) return false
   const revisionKey = stamp.mode === 'explore' ? 'exploreRevision' : 'searchRevision'
   return Number(workspace[revisionKey] || 0) === stamp.revision
+    && Number(workspace.sessionGeneration || 0) === stamp.sessionGeneration
+}
+
+export function captureWorkspaceSession(workspace) {
+  return {
+    sessionGeneration: Number(workspace?.sessionGeneration || 0),
+  }
+}
+
+export function isWorkspaceSessionCurrent(workspace, stamp) {
+  return Boolean(workspace && stamp)
+    && Number(workspace.sessionGeneration || 0) === stamp.sessionGeneration
 }

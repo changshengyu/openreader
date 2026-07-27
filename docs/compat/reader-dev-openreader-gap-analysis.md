@@ -2765,7 +2765,11 @@ session generation 或 reset：搜索/探索结果、来源 intent、分页、�
 不恢复现场；所有迟到 callback 同时冻结 scope、token、user/workspace generation 和场景 revision。
 完整矩阵与测试先行顺序见
 [`index-authenticated-session-p1-contract.md`](index-authenticated-session-p1-contract.md)。
-本轮 inventory 只修改文档，应用代码尚未变更。
+inventory 提交后已按测试先行完成候选实现：工作台拥有非持久 session generation 和最小挂起
+intent；同账号仅恢复 intent 并重取结果，不同/未知账号与显式 logout 回到干净书架；认证路由
+settled 前 Reader/Index 均保持阻塞。Search、Explore、侧栏书源、route BookInfo、本地导入和
+临时阅读交接均有身份/会话提交门。前端 611/611、生产构建与 Go 全量通过；三视口真实浏览器及
+Docker 仍待完成，当前不得标为最终发布。
 
 ## 2026-07-23 Reader 设置切换位置连续性复审
 

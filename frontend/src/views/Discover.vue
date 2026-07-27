@@ -37,6 +37,7 @@ import { createRemoteReaderSession } from '../api/remoteReader'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
 import { useOverlayStore } from '../stores/overlay'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import {
   remoteBookReaderPayload,
   remoteBookSourceId,
@@ -56,6 +57,7 @@ const workspace = useIndexWorkspaceStore()
 const discoverResults = ref(null)
 const loadingMore = ref(false)
 const exploreRequestGate = createAsyncRequestGate()
+const discoverSessionOperations = createAuthenticatedOperationGuard()
 
 const books = computed(() => workspace.resultRows)
 const hasMore = computed(() => workspace.continuation.hasMore)
@@ -82,6 +84,7 @@ const exploreResultGroups = computed(() => {
 
 onBeforeUnmount(() => {
   exploreRequestGate.invalidate()
+  discoverSessionOperations.reset()
 })
 
 async function loadMoreBooks() {
@@ -156,15 +159,19 @@ function openPreview(book) {
 }
 
 async function openRemoteReader(book) {
+  const operation = discoverSessionOperations.begin('remote-reader')
   try {
     const { data } = await createRemoteReaderSession(remoteBookReaderPayload(book, {
       sourceId: activeRemoteSourceId(book),
       sourceName: activeRemoteSourceName(book),
     }))
+    if (!discoverSessionOperations.canCommit(operation)) return
     if (!data?.id) throw new Error('远程阅读会话无效')
     router.push({ name: 'remote-reader', params: { sessionId: data.id }, query: { chapter: 0 } })
   } catch (error) {
-    ElMessage.error(readError(error, '打开临时阅读失败'))
+    if (discoverSessionOperations.canCommit(operation)) {
+      ElMessage.error(readError(error, '打开临时阅读失败'))
+    }
   }
 }
 
