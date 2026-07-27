@@ -2,8 +2,11 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-18 完成上游/当前实现取证；本文件是实施前合同，不代表修复完成。按照
-`readerdev-compat-inventory` 门禁，本阶段只更新审计文档，不修改应用代码。
+状态：2026-07-18 完成上游/当前实现取证，随后由 `24feff5` 实施并通过对应前端契约。本文保留
+为 operation/连接代际权威合同；活动 Reader 组件在登录失效期间的正文、弹层与退出保存不在原
+范围内，后续由
+[`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)
+补充。
 
 本切片处理“旧账号异步结果/旧 WebSocket 回调在新账号运行时提交”的统一问题。它覆盖用户资料、
 Reader 设置、书架/搜索偏好、阅读进度、分类列表以及 WebSocket 连接代际。书架列表已经完成的

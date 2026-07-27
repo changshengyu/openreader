@@ -2722,6 +2722,24 @@ socket，旧 close 可清空新引用并启动重复重连，旧 message 可在�
 inventory 门禁只修改文档；下一阶段先建立迟到 load/save/progress/category/profile 和 fake
 WebSocket generation 失败测试，再修改应用代码。
 
+实施结果：`24feff5` 已为用户资料、Reader 设置、shelf/search 偏好、进度、分类和 WebSocket
+连接补齐不可变 scope/token/operation generation；旧请求和旧 socket 回调不能提交到新会话。
+原合同未覆盖活动 Reader 组件本身，不能据此宣称 401 页面生命周期已经隔离。
+
+## 2026-07-27 Reader 登录失效与账号切换隔离复审
+
+固定上游在 `NEED_LOGIN` 时显示根登录 Dialog 并把 `loginAuth` 设为 false；登录成功后保存 token、
+同步当前用户本地状态，并让 Reader `init(true)` 重新加载。当前 OpenReader 的 401 rejected-token
+保护和 store/WS operation generation 已正确，但 `App.vue` 优先按 Reader 路由渲染，token 清空
+后仍保留旧正文；全局 overlay Pinia 状态也会在新用户登录后重新挂载。
+
+更关键的是 `AuthDialog` 先写入新账号 token 再 `window.location.reload()`，旧 Reader 的 pagehide、
+visibility/unmount 强制保存可能按新 scope 写本地进度，并尝试以新 token 提交旧书位置。该问题必须
+在 token 变化前同步挂起旧 Reader，再卸载私有 DOM/弹层；同账号以新 generation 原路重载，不同
+账号返回书架。完整状态机、允许差异和测试先行门禁见
+[`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)。
+本轮 inventory 只修改文档，应用代码尚未变更。
+
 ## 2026-07-23 Reader 设置切换位置连续性复审
 
 固定上游在 `ReadSettings#setReadMethod/setPageType` 写入新阅读方式前，通过
