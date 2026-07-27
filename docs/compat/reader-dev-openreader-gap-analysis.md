@@ -2502,6 +2502,35 @@ The WebDAV file manager remains an independent root operation. The duplicate bac
 authoritative: the 2026-07-22 focused backup contract requires direct ordinary/portable save actions and keeps
 list/upload/download/restore in the single WebDAV manager. Existing setting keys and caller-scoped roots remain.
 
+### 2026-07-27 P1 Index local-cache scope re-audit
+
+Status: contract extracted; implementation pending.
+
+Focused contract:
+[`index-local-cache-scope-p1-contract.md`](./index-local-cache-scope-p1-contract.md).
+
+The fixed upstream keeps four browser-cache actions directly in the persistent
+Index sidebar. OpenReader's sidebar ownership is structurally aligned and its
+current-user server-cache action remains an allowed Go/multi-user enhancement.
+The current browser implementation is not yet safe to retain unchanged:
+
+- total statistics include every account and unknown key in the shared browser
+  store;
+- source/RSS grouping ignores account scope, chapter grouping reads scope during
+  asynchronous iteration, and group clear can therefore delete another account's
+  cache;
+- unscoped upstream-era chapter content is treated as owned by every signed-in
+  account and may be copied into that account's scoped cache;
+- overlapping stats/clear operations have no scope+token generation gate, so an
+  old account response may overwrite a new account's sidebar state.
+
+The required correction keeps all current scoped key formats and persistent data
+unchanged. It freezes identity at operation start, counts/deletes only provably
+current-user keys, excludes unowned legacy chapter content from authenticated
+reads, and applies the existing authenticated-operation guard pattern to stats,
+clear results, messages and busy state. Tests must be written before application
+code and must include a real multi-account browser-cache fixture.
+
 #### Required implementation order and tests
 
 1. Replace the stale static tests first: old `/settings` routes must retain their
