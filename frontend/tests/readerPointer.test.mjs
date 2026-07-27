@@ -118,6 +118,18 @@ test('keeps a running click animation for taps and only cancels after a real dra
   assert.deepEqual(fixture.calls, [['cancel-animation']])
 })
 
+test('touchstart cancels only deferred settlement and progress work, not active visual motion', () => {
+  const fixture = createController({
+    reader: reactive({ clickMethod: 'slide', mode: 'page' }),
+    preparePageInput: () => fixture.calls.push(['prepare-input']),
+    cancelPageAnimation: () => fixture.calls.push(['cancel-animation']),
+  })
+  fixture.controller.handleTouchStart({
+    touches: [{ clientX: 150, clientY: 500 }],
+  })
+  assert.deepEqual(fixture.calls, [['prepare-input']])
+})
+
 test('gives selected text priority over touch navigation', () => {
   const fixture = createController({
     scheduleSelectedTextOperation: (delay, selectionOptions) => {

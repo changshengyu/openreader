@@ -1,6 +1,10 @@
 import { unref } from 'vue'
 
 export function useReaderScrollSync(options) {
+  const configuredProgressIdleDelay = Number(options.progressIdleDelay)
+  const progressIdleDelay = Number.isFinite(configuredProgressIdleDelay)
+    ? Math.max(0, configuredProgressIdleDelay)
+    : 1200
   let pendingAnimationSettlement = false
   let lastSynchronizedPosition = null
 
@@ -34,7 +38,7 @@ export function useReaderScrollSync(options) {
     if (!unref(options.isContinuousScrollRead)) {
       options.updateLayout()
       options.progressVersion.value += 1
-      options.scheduleProgressSave(500)
+      options.scheduleProgressSave(progressIdleDelay)
       return true
     }
     const snapshot = options.captureProgressSnapshot?.()
@@ -44,7 +48,7 @@ export function useReaderScrollSync(options) {
     if (unref(options.windowBusy)) return true
     options.progressVersion.value += 1
     options.applyLocalProgress(snapshot)
-    options.scheduleProgressSave(500)
+    options.scheduleProgressSave(progressIdleDelay)
     return true
   }
 

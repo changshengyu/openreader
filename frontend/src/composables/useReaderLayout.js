@@ -68,7 +68,13 @@ export function useReaderLayout(options) {
   }
 
   function resize() {
-    options.windowWidth.value = options.getViewportWidth()
+    const previousWidth = Number(options.windowWidth.value) || 0
+    const nextWidth = Number(options.getViewportWidth()) || windowTarget.innerWidth
+    options.windowWidth.value = nextWidth
+    if (
+      options.shouldIgnoreHeightOnlyResize?.()
+      && Math.abs(nextWidth - previousWidth) < 1
+    ) return
     update()
   }
 

@@ -841,4 +841,30 @@ rAF 间隔，因此没有覆盖“越读到后面越重”以及 compositor/rast
 6. 保留用户要求的原生连续手指/滚轮、点击分段、数字 stepper、自定义背景和亮度；不重新引入
    whole-chapter transform/WAAPI/will-change，也不改变后端进度格式。
 
-当前状态：**contract-complete / tests-not-yet-written**。
+### 第十三批实施结果
+
+本批在不改变 300ms、power-3 ease-in-out、每页步长和根滚动宿主的前提下完成：
+
+- 默认移动正文恢复固定上游的 50×50 PNG 平铺纹理；移动 document-scroll 去除整章 inset
+  shadow，亮度遮罩限制为 fixed viewport；自定义背景在移动 document-scroll 中同样限制为视口
+  固定绘制。
+- 纵向有序正文改为边界二分定位；短章节第一项可见时仍保持上游式立即早停；flip 非单调列布局
+  保留线性语义。
+- 点击动画结束后的结算延迟到 100ms，进度远端保存延迟到 1200ms 空闲期；新 touchstart 和新
+  翻页会取消旧结算/保存，但不会取消仍在运行的可见动画，真实拖动开始时才中止动画。
+- 移动 `scroll/scroll2` 忽略宽度未变的地址栏高度 resize；宽度/方向变化和其它模式继续更新。
+
+同一 2401 块、章节 72%、6× CPU Chromium 合同的候选结果：
+
+| 场景 | RasterTask 累计 | 结算几何读取 | 总几何读取 | 可见 600ms 最大帧间隔 | 可见 750ms Long Task |
+|---|---:|---:|---:|---:|---:|
+| 390×844 默认纹理 | 1.05ms | 17 | 17 | 18.70ms | 0 |
+| 360×800 默认纹理 | 0.58ms | 17 | 17 | 18.60ms | 0 |
+| 390×844、70% 亮度、自定义背景 | 1.66ms | 17 | 17 | 18.60ms | 0 |
+
+旧候选同一位置为约 235ms RasterTask、单次 1736 次几何读取和 136ms Long Task。新的
+`scripts/smoke/reader-deep-page-contract.mjs` 固定验证绘制结构、落点、几何读取、rAF 帧间隔、
+Long Task 和 RasterTask；文字模式、移动/iPad 工具层、连续阅读和图片章节既有浏览器合同也均
+通过。
+
+当前状态：**implemented / automated-gates-passed / device-and-docker-verification-pending**。

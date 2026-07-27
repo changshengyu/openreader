@@ -31,7 +31,7 @@ test('synchronizes chapter, layout, and progress after vertical scrolling', () =
     ['extend-window'],
     ['layout'],
     ['local-progress'],
-    ['schedule', 500],
+    ['schedule', 1200],
   ])
 })
 
@@ -97,7 +97,7 @@ test('defers heavy scroll synchronization during page animation and settles it o
     ['extend-window'],
     ['layout'],
     ['local-progress'],
-    ['schedule', 500],
+    ['schedule', 1200],
   ])
 })
 
@@ -131,7 +131,7 @@ test('captures one visible snapshot and reuses it for one stable settlement', ()
     ['extend-window'],
     ['layout'],
     ['local-progress', snapshot],
-    ['schedule', 500],
+    ['schedule', 1200],
   ])
 })
 
@@ -149,7 +149,7 @@ test('single-chapter page settlement updates page geometry without scanning ever
   assert.equal(captures, 0)
   assert.deepEqual(fixture.calls, [
     ['layout'],
-    ['schedule', 500],
+    ['schedule', 1200],
   ])
   assert.equal(fixture.progressVersion.value, 4)
 })

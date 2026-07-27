@@ -3,7 +3,7 @@ import test from 'node:test'
 import { reactive, ref } from 'vue'
 import { useReaderLayout } from '../src/composables/useReaderLayout.js'
 
-function createController() {
+function createController(overrides = {}) {
   const reader = reactive({ mode: 'flip' })
   const contentEl = ref({
     clientWidth: 640,
@@ -37,6 +37,7 @@ function createController() {
     windowTarget,
     getScrollStep: () => 400,
     getViewportWidth: () => 1024,
+    ...overrides,
   })
   return { controller, state }
 }
@@ -75,4 +76,27 @@ test('updates responsive width before recalculating layout on resize', () => {
   fixture.controller.resize()
   assert.equal(fixture.state.windowWidth.value, 1024)
   assert.equal(fixture.state.pageWidth.value, 584)
+})
+
+test('ignores mobile scroll-mode address-bar height resizes while retaining width changes', () => {
+  let viewportWidth = 390
+  let updates = 0
+  const fixture = createController({
+    getViewportWidth: () => viewportWidth,
+    shouldIgnoreHeightOnlyResize: () => true,
+    getScrollStep: () => {
+      updates += 1
+      return 400
+    },
+  })
+  fixture.state.windowWidth.value = 390
+  fixture.state.reader.mode = 'scroll'
+
+  fixture.controller.resize()
+  assert.equal(updates, 0, 'height-only mobile browser chrome resize must not rebuild scroll layout')
+
+  viewportWidth = 844
+  fixture.controller.resize()
+  assert.equal(fixture.state.windowWidth.value, 844)
+  assert.equal(updates, 1, 'orientation/width changes must still update layout')
 })

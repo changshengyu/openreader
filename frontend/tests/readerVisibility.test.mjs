@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  findTopVisibleReaderBlock,
   findVisibleReaderBlock,
   readerBlockTextOffset,
   readerScrollTextOffset,
@@ -72,6 +73,50 @@ test('keeps searching wrapped flip columns after a vertically low offscreen bloc
     },
   ]
   assert.equal(findVisibleReaderBlock(nodes, viewport, 8, false), nodes[1])
+})
+
+test('locates deep vertically ordered blocks without scanning from the chapter start', () => {
+  const targetIndex = 3200
+  let visibleReads = 0
+  const nodes = Array.from({ length: 4096 }, (_, index) => ({
+    id: index,
+    getBoundingClientRect() {
+      visibleReads += 1
+      const top = 100 + (index - targetIndex) * 40
+      return {
+        top,
+        bottom: top + 40,
+        left: 10,
+        right: 590,
+      }
+    },
+  }))
+
+  assert.equal(findVisibleReaderBlock(nodes, viewport, 8, true)?.id, targetIndex + 4)
+  assert.ok(
+    visibleReads < 48,
+    `deep vertical lookup must be logarithmic plus visible blocks, got ${visibleReads} geometry reads`,
+  )
+
+  let topReads = 0
+  const topNodes = nodes.map((node, index) => ({
+    id: node.id,
+    getBoundingClientRect() {
+      topReads += 1
+      const top = 100 + (index - targetIndex) * 40
+      return {
+        top,
+        bottom: top + 40,
+        left: 10,
+        right: 590,
+      }
+    },
+  }))
+  assert.equal(findTopVisibleReaderBlock(topNodes, viewport, 50)?.id, targetIndex + 1)
+  assert.ok(
+    topReads < 32,
+    `deep top-visible lookup must not scan ${targetIndex} preceding paragraphs, got ${topReads}`,
+  )
 })
 
 test('selects the first heading or paragraph below the upstream top boundary', () => {

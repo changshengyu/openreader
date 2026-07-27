@@ -40,6 +40,24 @@ export function selectVisibleReaderBlock(entries, viewport, inset = 8) {
     ))[0]?.node || null
 }
 
+function firstOrderedBlockEndingAfter(nodes, boundary, inclusive = true) {
+  const firstRect = nodes[0]?.getBoundingClientRect?.()
+  const firstBottom = finiteNumber(firstRect?.bottom)
+  const firstEndsAfter = inclusive ? firstBottom >= boundary : firstBottom > boundary
+  if (firstEndsAfter) return 0
+  let low = 1
+  let high = nodes.length
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2)
+    const rect = nodes[middle]?.getBoundingClientRect?.()
+    const bottom = finiteNumber(rect?.bottom)
+    const endsAfter = inclusive ? bottom >= boundary : bottom > boundary
+    if (endsAfter) high = middle
+    else low = middle + 1
+  }
+  return low
+}
+
 export function findVisibleReaderBlock(nodes, viewport, inset = 8, verticallyOrdered = true) {
   if (!viewport || !nodes?.length) return null
   const padding = Math.max(0, finiteNumber(inset))
@@ -51,7 +69,11 @@ export function findVisibleReaderBlock(nodes, viewport, inset = 8, verticallyOrd
   let nearest = null
   let nearestDistance = Infinity
 
-  for (const node of nodes) {
+  const start = verticallyOrdered
+    ? firstOrderedBlockEndingAfter(nodes, visibleTop)
+    : 0
+  for (let index = start; index < nodes.length; index += 1) {
+    const node = nodes[index]
     const rect = node?.getBoundingClientRect?.()
     if (!rect) continue
     if (verticallyOrdered && finiteNumber(rect.top) > visibleBottom) break
@@ -90,7 +112,9 @@ export function findTopVisibleReaderBlock(nodes, viewport, topInset = 50, sideIn
   const boundary = finiteNumber(viewport.top) + Math.max(0, finiteNumber(topInset))
   const visibleLeft = finiteNumber(viewport.left) + Math.max(0, finiteNumber(sideInset))
   const visibleRight = finiteNumber(viewport.right) - Math.max(0, finiteNumber(sideInset))
-  for (const node of nodes) {
+  const start = firstOrderedBlockEndingAfter(nodes, boundary, false)
+  for (let index = start; index < nodes.length; index += 1) {
+    const node = nodes[index]
     const rect = node?.getBoundingClientRect?.()
     if (!rect) continue
     if (

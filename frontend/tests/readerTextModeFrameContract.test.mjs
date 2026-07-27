@@ -64,8 +64,31 @@ test('keeps the scrolling text outside a CSS filter while preserving brightness 
   )
   assert.match(
     readerSource,
-    /\.reader-page::after\s*\{[\s\S]*?background:\s*rgba\(0,\s*0,\s*0,\s*var\(--reader-dim-opacity\)\);[\s\S]*?pointer-events:\s*none;/,
-    'brightness overlay must not intercept touch/click paging',
+    /\.reader-page::after\s*\{[\s\S]*?background:\s*rgba\(0,\s*0,\s*0,\s*var\(--reader-dim-opacity\)\);[\s\S]*?pointer-events:\s*none;[\s\S]*?\.reader-shell\.mini-interface\.document-scroll \.reader-page::after\s*\{[\s\S]*?position:\s*fixed;/,
+    'brightness overlay must not intercept paging and must become viewport-sized for mobile document scrolling',
+  )
+})
+
+test('mobile document scrolling uses the upstream tiled texture without a chapter-height shadow surface', () => {
+  assert.match(
+    readerSource,
+    /--paper-texture:\s*url\(["']data:image\/png;base64,[A-Za-z0-9+/=]+["']\)/,
+    'the default paper surface must use the fixed upstream small PNG texture',
+  )
+  assert.doesNotMatch(
+    readerSource,
+    /--paper-texture:\s*[\s\S]*?radial-gradient/,
+    'the mobile root-scroll surface must not retain the multi-layer CSS gradient texture',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-shell\.mini-interface \.reader-page\s*\{[\s\S]*?box-shadow:\s*none;/,
+    'mobile text must not raster an inset shadow along the full chapter height',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-shell\.mini-interface\.document-scroll\.has-custom-background \.reader-page\s*\{[\s\S]*?background-attachment:\s*fixed;/,
+    'custom mobile backgrounds must be limited to the viewport rather than rastered as one chapter-height cover',
   )
 })
 

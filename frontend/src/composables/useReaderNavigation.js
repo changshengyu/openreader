@@ -32,6 +32,11 @@ export function useReaderNavigation(options) {
     scrollAnimator.cancel()
   }
 
+  function preparePageInput() {
+    cancelVerticalSettlement()
+    options.cancelProgressSave?.()
+  }
+
   function settleVerticalPage(generation) {
     if (generation !== animationGeneration) return
     if (options.onVerticalPageSettled) {
@@ -50,12 +55,12 @@ export function useReaderNavigation(options) {
       if (settlementTask !== token) return
       settlementTask = null
       settleVerticalPage(generation)
-    }, 0)
+    }, 100)
   }
 
   function runVerticalPageAnimation(element, direction) {
     if (scrollAnimator.isActive()) return false
-    cancelVerticalSettlement()
+    preparePageInput()
     const generation = animationGeneration
     const started = scrollAnimator.scrollBy(
       element,
@@ -279,6 +284,7 @@ export function useReaderNavigation(options) {
     jumpToLoadedChapter,
     jumpWithinCurrentChapter,
     nextPage,
+    preparePageInput,
     isVerticalScrollSyncSuppressed,
     paragraphByChapterPosition,
     previousPage,

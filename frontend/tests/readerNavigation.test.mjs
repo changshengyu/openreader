@@ -8,6 +8,7 @@ function createNavigation(overrides = {}) {
   const navigated = []
   const saved = []
   const scheduled = []
+  const cancelledProgress = []
   const options = {
     contentEl: ref(null),
     contentBody: ref(null),
@@ -33,6 +34,7 @@ function createNavigation(overrides = {}) {
     navigate: async query => navigated.push(query),
     saveProgress: () => saved.push(true),
     scheduleProgressSave: delay => scheduled.push(delay),
+    cancelProgressSave: () => cancelledProgress.push(true),
     ...overrides,
   }
   return {
@@ -41,6 +43,7 @@ function createNavigation(overrides = {}) {
     options,
     saved,
     scheduled,
+    cancelledProgress,
   }
 }
 
@@ -108,7 +111,7 @@ test('scrolls vertical pages and schedules progress without changing chapters', 
   assert.deepEqual(fixture.navigated, [])
 })
 
-test('releases vertical paging immediately and defers only the settlement task boundary', async () => {
+test('releases vertical paging immediately and defers heavy settlement until scroll idle', async () => {
   const settled = []
   const tasks = new Map()
   let nextTaskId = 0
@@ -146,7 +149,7 @@ test('releases vertical paging immediately and defers only the settlement task b
   assert.deepEqual(settled, [])
   assert.equal(tasks.size, 1)
   const [{ callback, delay }] = tasks.values()
-  assert.equal(delay, 0, 'upstream releases transforming immediately; it only delays progress persistence')
+  assert.equal(delay, 100, 'deep paragraph settlement must follow the upstream 100ms scroll-idle boundary')
   callback()
   assert.deepEqual(settled, ['settled'])
 })
@@ -187,6 +190,7 @@ test('uses upstream cubic paging, rejects overlap, and accepts a new tap after m
   await fixture.navigation.nextPage()
   await fixture.navigation.previousPage()
   assert.equal(animations.length, 1, 'upstream transforming guard must reject both overlap directions')
+  assert.equal(fixture.cancelledProgress.length, 1, 'only the accepted page input cancels stale progress work')
   assert.equal(animations[0].animationOptions, undefined, 'vertical click paging must use the default upstream cubic curve')
 
   active = false
@@ -197,6 +201,7 @@ test('uses upstream cubic paging, rejects overlap, and accepts a new tap after m
   await fixture.navigation.nextPage()
   assert.equal(animations.length, 2, 'a new tap after visual completion must start immediately')
   assert.equal(tasks.size, 0, 'new motion must cancel stale delayed settlement')
+  assert.equal(fixture.cancelledProgress.length, 2, 'new visual motion must cancel the previous deferred save')
   assert.equal(settled, 0)
 
   active = false
