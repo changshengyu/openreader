@@ -129,6 +129,10 @@ cd frontend && npm run build
 | `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432`（32 MiB） | 单章节缓存图片的总字节上限 |
 | `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` | 单次内嵌图片请求超时秒数 |
 | `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` | 单次内嵌图片请求最多重定向次数 |
+| `OPENREADER_MAX_COVER_IMAGE_BYTES` | `8388608`（8 MiB） | 单张远程书籍代理封面的最大字节数 |
+| `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456`（256 MiB） | 每位用户的远程封面派生缓存总字节上限 |
+| `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | 单次远程封面请求总超时秒数 |
+| `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | 单次远程封面请求最多重定向次数 |
 
 ## 技术栈
 

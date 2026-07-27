@@ -76,6 +76,7 @@ func (s *Server) exploreBooks(c *gin.Context) {
 		writeSourceError(c, http.StatusBadRequest, "failed to explore source", err, "explore")
 		return
 	}
+	results.Items = s.projectSearchResultCovers(userID, results.Items)
 	c.JSON(http.StatusOK, results)
 }
 

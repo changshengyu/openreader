@@ -2723,14 +2723,16 @@ HTTP(S)/协议相对封面交给 `GET /reader3/cover?path=...`；`BookController
 退回 404/内置 `noCover`。该方法并不注入书源 header/cookie；此前把封面缺口描述为
 “缺少书源请求头”不准确，现予以更正。
 
-当前 OpenReader 的 `bookCoverUrl()` 让浏览器直接请求第三方，且书架、BookInfo、移动
-管理分别用 CSS `background-image`；只要 URL 字符串非空就隐藏占位，远端失败会留下
-透明空白。该项从共享 BookInfo 已对齐的结论中拆出，裁决为独立 **must-fix**。
+审查时 OpenReader 的 `bookCoverUrl()` 会让浏览器直接请求第三方，且书架、BookInfo、
+移动管理分别用 CSS `background-image`；只要 URL 字符串非空就隐藏占位，远端失败会
+留下透明空白。该项从共享 BookInfo 已对齐的结论中拆出，裁决为独立
+**must-fix**，并已在本轮重新实现。
 
 上游公开 `path` 端点没有 SSRF、重定向、大小和图片类型限制，不能复制。OpenReader
-将保留原始 `coverUrl`，仅在可见响应增加 `coverResourceUrl`；后者使用不暴露 URL/query
-的短期同源 capability，执行私网/DNS/dial/重定向校验、3 秒/8 MiB 限额、图片 magic、
-原子 per-user 有界缓存和日志脱敏。前端所有封面入口统一使用该投影并在失败时显示占位。
+现保留原始 `coverUrl`，仅在可见响应增加三态 `coverResourceUrl`；后者使用不暴露
+URL/query 的短期同源 capability，执行私网/DNS/dial/重定向校验、3 秒/8 MiB 限额、
+图片 magic、原子 per-user 有界缓存和日志脱敏。前端所有封面入口统一使用该投影并在
+失败时显示占位；字段存在但为空明确阻止浏览器回退到被拒绝的原始 URL。
 完整 API、数据、状态和测试先行门禁见
-[`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md)。本轮 inventory
-只修改合同，下一阶段先增加失败测试，再修改应用代码。
+[`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md)。失败测试、实现、
+Go/frontend/build 及三视口真实 API 浏览器门禁已完成，等待 Docker 新旧卷发布门禁。

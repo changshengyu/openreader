@@ -41,6 +41,7 @@ type bookListItem struct {
 	Progress           *models.ReadingProgress `json:"progress,omitempty"`
 	ShelfOrderAt       time.Time               `json:"shelfOrderAt"`
 	CachedChapterCount int64                   `json:"cachedChapterCount"`
+	CoverResourceURL   *string                 `json:"coverResourceUrl,omitempty"`
 }
 
 func (s *Server) listBooks(c *gin.Context) {
@@ -124,7 +125,11 @@ func (s *Server) projectBookShelfListItem(book models.Book, categoryIDs []uint, 
 			book.CoverURL = prepared.ResourceURL
 		}
 	}
-	return bookShelfListItem(book, categoryIDs, progress, cachedChapterCount)
+	item := bookShelfListItem(book, categoryIDs, progress, cachedChapterCount)
+	if strings.TrimSpace(book.CustomCoverURL) == "" {
+		item.CoverResourceURL = s.projectCoverResource(book.UserID, book.SourceID, book.CoverURL)
+	}
+	return item
 }
 
 func bookShelfListItem(book models.Book, categoryIDs []uint, progress models.ReadingProgress, cachedChapterCount int64) bookListItem {
@@ -1844,20 +1849,21 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	sources = s.filterActiveSourceFailures(userID, sources)
 
 	type sourceCandidate struct {
-		SourceID           uint   `json:"sourceId"`
-		SourceName         string `json:"sourceName"`
-		Group              string `json:"group"`
-		Title              string `json:"title"`
-		Author             string `json:"author"`
-		CoverURL           string `json:"coverUrl"`
-		Intro              string `json:"intro"`
-		Kind               string `json:"kind"`
-		WordCount          string `json:"wordCount"`
-		LatestChapterTitle string `json:"latestChapterTitle"`
-		BookURL            string `json:"bookUrl"`
-		Time               int64  `json:"time,omitempty"`
-		Current            bool   `json:"current"`
-		Type               int    `json:"type"`
+		SourceID           uint    `json:"sourceId"`
+		SourceName         string  `json:"sourceName"`
+		Group              string  `json:"group"`
+		Title              string  `json:"title"`
+		Author             string  `json:"author"`
+		CoverURL           string  `json:"coverUrl"`
+		CoverResourceURL   *string `json:"coverResourceUrl,omitempty"`
+		Intro              string  `json:"intro"`
+		Kind               string  `json:"kind"`
+		WordCount          string  `json:"wordCount"`
+		LatestChapterTitle string  `json:"latestChapterTitle"`
+		BookURL            string  `json:"bookUrl"`
+		Time               int64   `json:"time,omitempty"`
+		Current            bool    `json:"current"`
+		Type               int     `json:"type"`
 	}
 	type sourceCandidateBatch struct {
 		Index      int
@@ -1968,6 +1974,13 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 		if len(results) >= 120 {
 			break
 		}
+	}
+	for index := range results {
+		results[index].CoverResourceURL = s.projectCoverResource(
+			userID,
+			results[index].SourceID,
+			results[index].CoverURL,
+		)
 	}
 
 	if paged {

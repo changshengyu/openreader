@@ -57,6 +57,10 @@ func (s *Server) clearCache(c *gin.Context) {
 			size += imageStats.Bytes
 		}
 	}
+	if coverStats, coverErr := s.coverImages.RemoveUser(userID); coverErr == nil {
+		files += coverStats.Files
+		size += coverStats.Bytes
+	}
 	if items, err := s.listAllBookShelfItems(userID); err == nil {
 		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": items})
 	} else {
@@ -105,6 +109,12 @@ func (s *Server) remoteCacheStats(userID uint) (cacheStatSummary, error) {
 	}
 	summary.files += imageStats.Files
 	summary.size += imageStats.Bytes
+	coverStats, err := s.coverImages.StatsUser(userID)
+	if err != nil {
+		return cacheStatSummary{}, err
+	}
+	summary.files += coverStats.Files
+	summary.size += coverStats.Bytes
 	return summary, nil
 }
 

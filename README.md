@@ -130,6 +130,10 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432` (32 MiB) | Maximum aggregate cached image bytes for one chapter |
 | `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` | Timeout for one embedded-image request |
 | `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` | Maximum redirects for an embedded-image request |
+| `OPENREADER_MAX_COVER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum bytes accepted for one proxied remote book cover |
+| `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456` (256 MiB) | Maximum derived remote-cover cache bytes per user |
+| `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | Total timeout for one remote-cover request |
+| `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | Maximum redirects for one remote-cover request |
 
 ## Tech Stack
 

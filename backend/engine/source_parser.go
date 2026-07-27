@@ -21,20 +21,21 @@ var sourceFalsePattern = regexp.MustCompile(`(?i)^\s*(false|no|not|0)\s*$`)
 
 // SearchResult represents a single book found through remote search.
 type SearchResult struct {
-	Title         string `json:"title"`
-	Author        string `json:"author"`
-	CoverURL      string `json:"coverUrl"`
-	Intro         string `json:"intro"`
-	Kind          string `json:"kind"`
-	WordCount     string `json:"wordCount"`
-	LatestChapter string `json:"latestChapter"`
-	UpdateTime    string `json:"updateTime"`
-	BookURL       string `json:"bookUrl"`
-	SourceID      uint   `json:"sourceId"`
-	SourceName    string `json:"sourceName"`
-	OriginOrder   int    `json:"originOrder"`
-	Type          int    `json:"type"`
-	Variable      string `json:"variable,omitempty"`
+	Title            string  `json:"title"`
+	Author           string  `json:"author"`
+	CoverURL         string  `json:"coverUrl"`
+	Intro            string  `json:"intro"`
+	Kind             string  `json:"kind"`
+	WordCount        string  `json:"wordCount"`
+	LatestChapter    string  `json:"latestChapter"`
+	UpdateTime       string  `json:"updateTime"`
+	BookURL          string  `json:"bookUrl"`
+	SourceID         uint    `json:"sourceId"`
+	SourceName       string  `json:"sourceName"`
+	OriginOrder      int     `json:"originOrder"`
+	Type             int     `json:"type"`
+	Variable         string  `json:"variable,omitempty"`
+	CoverResourceURL *string `json:"coverResourceUrl,omitempty"`
 }
 
 type SearchPageResult struct {

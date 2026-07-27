@@ -24,7 +24,7 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Method | Path | Purpose | Compatibility notes |
 |---|---|---|---|
 | `GET` | `/api/health` | Health and build metadata. | OpenReader runtime addition; keep stable for Docker/probes. |
-| `GET`, `HEAD` | `/api/cover/:capability` | Serve a server-projected remote book cover through a same-origin, short-lived resource capability. | P2 contract extracted; implementation pending. The path never accepts a raw URL or login JWT. Successful responses are bounded, type-verified and privately cacheable; malformed/tampered capabilities are `403`, unavailable/unsafe remote images are `404`. See [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md). |
+| `GET`, `HEAD` | `/api/cover/:capability` | Serve a server-projected remote book cover through a same-origin, short-lived resource capability. | Implemented 2026-07-27; Docker gate pending. The path never accepts a raw URL or login JWT. Successful responses are bounded, type-verified and privately cacheable; malformed/tampered capabilities are `403`, unavailable/unsafe remote images are `404`. See [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md). |
 | `POST` | `/api/auth/register` | Create user; first user becomes admin. | OpenReader multi-user addition. |
 | `POST` | `/api/auth/login` | Return JWT and user object. | OpenReader auth addition; invalid credentials return `401`. |
 
@@ -48,14 +48,16 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
-## P2 remote book-cover projection contract (extracted; implementation pending)
+## P2 remote book-cover projection contract (implemented; Docker gate pending)
 
 Reader-dev projects remote book covers through a same-origin cached `/reader3/cover?path=...`
 resource and falls back to its bundled no-cover image. OpenReader keeps deployed REST paths and
 does not copy the upstream endpoint's public arbitrary-URL SSRF surface.
 
 Authenticated book/search/explore/source-candidate/temporary-reader responses retain the raw
-`coverUrl` and may add `coverResourceUrl`. The new field is response-only: SQLite, parser state,
+`coverUrl` and may add `coverResourceUrl`. A missing field means legacy/non-remote fallback, a
+non-empty value is a capability, and a present-empty value means the new server rejected the
+remote URL and the browser must not fall back to it. The new field is response-only: SQLite, parser state,
 source-change requests, sync persistence, exports, WebDAV and every backup format continue to
 contain the original URL. The frontend displays
 `customCoverUrl → coverResourceUrl → coverUrl → placeholder`.

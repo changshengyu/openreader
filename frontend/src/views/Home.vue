@@ -71,12 +71,11 @@
               @click="handleBookRowClick(book)"
               @keyup.enter="handleBookRowClick(book)"
             >
-              <span
+              <BookCover
                 class="list-cover"
-                :class="{ 'has-cover': hasBookCover(book) }"
-                :style="coverStyle(book)"
+                :book="book"
                 @click.stop="openDetail(book)"
-              >{{ coverInitial(book) }}</span>
+              />
               <span class="list-main">
                 <span class="book-operation">
                   <button v-if="showBookEditButton" class="operation-icon danger" type="button" title="删除" @click.stop="deleteManagedBook(book)">
@@ -122,9 +121,9 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import SearchWorkspace from './Search.vue'
 import DiscoverWorkspace from './Discover.vue'
+import BookCover from '../components/BookCover.vue'
 import { createBookCategoryNameResolver } from '../utils/bookCategory'
 import { filterBooksByBookGroup, resolveBookGroupSelection, visibleBookGroups } from '../utils/bookGroups'
-import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
@@ -316,18 +315,6 @@ function relativeTimeLabel(value) {
 
 function readerRouteQuery(book) {
   return readerRouteQueryFromBook(book, bookProgress(book))
-}
-
-function coverInitial(book) {
-  return hasBookCover(book) ? '' : '暂无封面'
-}
-
-function coverStyle(book) {
-  const url = bookCoverUrl(book)
-  if (url) {
-    return { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
-  }
-  return {}
 }
 
 function updateViewportFlags() {

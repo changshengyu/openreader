@@ -286,6 +286,7 @@ async function runViewport(browser, viewport) {
   await categoryDialog.getByRole('button', { name: '确定' }).click()
   await createRequest
   assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 1, `${viewport.width}: confirming BookInfo groups must add exactly once`)
+  await searchBookInfo.getByText('分组：', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
   assert(await searchBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: confirmed search BookInfo must become the shelf state`)
   assert(await searchBookInfo.getByText('分组：', { exact: false }).count() === 1, `${viewport.width}: confirmed search BookInfo must expose shelf properties`)
   assert(await page.url() === searchBookInfoURL, `${viewport.width}: confirming BookInfo add must not navigate to Reader`)
@@ -313,12 +314,23 @@ async function runViewport(browser, viewport) {
   await searchInput.press('Enter')
   await page.waitForTimeout(50)
   await page.getByRole('button', { name: '探索书源' }).click()
-  await page.waitForSelector('.explore-workspace-popover', { timeout: 10000 })
+  const exploreChooser = page.locator('.explore-workspace-popover:visible')
+  await exploreChooser.waitFor({ state: 'visible', timeout: 10000 })
+  if (viewport.width <= 750) {
+    await page.waitForFunction(() => {
+      const sidebar = document.querySelector('.app-sidebar')
+      return sidebar && Math.abs(Number.parseFloat(getComputedStyle(sidebar).marginLeft) + 260) < 0.5
+    })
+  }
   const chooserState = await page.evaluate(() => ({
     heading: document.querySelector('.workspace-result-head h1')?.textContent || '',
     sidebarMargin: Number.parseFloat(getComputedStyle(document.querySelector('.app-sidebar')).marginLeft),
     popover: (() => {
-      const node = document.querySelector('.explore-workspace-popover')
+      const node = [...document.querySelectorAll('.explore-workspace-popover')]
+        .find(candidate => {
+          const rect = candidate.getBoundingClientRect()
+          return rect.width > 0 && rect.height > 0
+        })
       const rect = node?.getBoundingClientRect()
       return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null
     })(),
@@ -333,8 +345,13 @@ async function runViewport(browser, viewport) {
   } else {
     assert(chooserState.popover.width <= 520.5, `${viewport.width}: desktop Explore chooser should remain a compact popover`)
   }
-  await page.locator('.explore-workspace-popover .explore-entry-row button').first().click()
-  await page.locator('.explore-workspace-popover').waitFor({ state: 'hidden', timeout: 10000 })
+  const exploreEntry = exploreChooser.locator('.explore-entry-row button').first()
+  if (!await exploreEntry.isVisible()) {
+    await exploreChooser.locator('.el-collapse-item__header').first().click()
+    await exploreEntry.waitFor({ state: 'visible', timeout: 10000 })
+  }
+  await exploreEntry.click()
+  await exploreChooser.waitFor({ state: 'hidden', timeout: 10000 })
   await page.waitForSelector('.workspace-result-page .discover-results .result-card', { timeout: 10000 })
   await page.waitForTimeout(550)
   const exploreState = await page.evaluate(() => ({

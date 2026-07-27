@@ -69,7 +69,7 @@ func (s *Server) search(c *gin.Context) {
 
 	if !pagedRequest {
 		results := s.concurrentSearch(c.Request.Context(), userID, sources, req.Keyword, req.ConcurrentCount, activeFailures)
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, s.projectSearchResultCovers(userID, results))
 		return
 	}
 
@@ -91,7 +91,7 @@ func (s *Server) search(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, searchResponse{
-			List:      result.Items,
+			List:      s.projectSearchResultCovers(userID, result.Items),
 			Page:      result.Page,
 			LastIndex: -1,
 			HasMore:   result.HasMore,
@@ -114,7 +114,7 @@ func (s *Server) search(c *gin.Context) {
 		activeFailures,
 	)
 	c.JSON(http.StatusOK, searchResponse{
-		List:      results,
+		List:      s.projectSearchResultCovers(userID, results),
 		Page:      page,
 		LastIndex: nextIndex,
 		HasMore:   hasActiveSearchSourceAfter(sources, activeFailures, nextIndex),

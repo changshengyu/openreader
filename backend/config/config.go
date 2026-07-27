@@ -38,6 +38,10 @@ type Config struct {
 	MaxChapterImageTotalBytes  int64
 	ChapterImageTimeoutSeconds int
 	MaxChapterImageRedirects   int
+	MaxCoverImageBytes         int64
+	MaxCoverCacheBytes         int64
+	CoverImageTimeoutSeconds   int
+	MaxCoverImageRedirects     int
 }
 
 func Load() Config {
@@ -76,6 +80,10 @@ func Load() Config {
 		MaxChapterImageTotalBytes:  envInt64("OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES", 32*1024*1024),
 		ChapterImageTimeoutSeconds: envPositiveInt("OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS", 12),
 		MaxChapterImageRedirects:   envPositiveInt("OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS", 3),
+		MaxCoverImageBytes:         envInt64("OPENREADER_MAX_COVER_IMAGE_BYTES", 8*1024*1024),
+		MaxCoverCacheBytes:         envInt64("OPENREADER_MAX_COVER_CACHE_BYTES", 256*1024*1024),
+		CoverImageTimeoutSeconds:   envPositiveInt("OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS", 3),
+		MaxCoverImageRedirects:     envPositiveInt("OPENREADER_MAX_COVER_IMAGE_REDIRECTS", 3),
 	}
 }
 

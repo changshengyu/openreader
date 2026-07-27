@@ -222,7 +222,7 @@ func (s *Server) createRemoteReaderSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create remote reader session"})
 		return
 	}
-	writeRemoteReaderSession(c, http.StatusCreated, session)
+	s.writeRemoteReaderSession(c, http.StatusCreated, session)
 }
 
 func (s *Server) getRemoteReaderSession(c *gin.Context) {
@@ -231,7 +231,7 @@ func (s *Server) getRemoteReaderSession(c *gin.Context) {
 	if !ok {
 		return
 	}
-	writeRemoteReaderSession(c, http.StatusOK, session)
+	s.writeRemoteReaderSession(c, http.StatusOK, session)
 }
 
 func (s *Server) remoteReaderSessionChapterContent(c *gin.Context) {
@@ -308,12 +308,19 @@ func (s *Server) lookupRemoteReaderSession(c *gin.Context, userID uint) (remoteR
 	return remoteReaderSession{}, false
 }
 
-func writeRemoteReaderSession(c *gin.Context, status int, session remoteReaderSession) {
+func (s *Server) writeRemoteReaderSession(c *gin.Context, status int, session remoteReaderSession) {
+	book := struct {
+		models.Book
+		CoverResourceURL *string `json:"coverResourceUrl,omitempty"`
+	}{
+		Book:             session.Book,
+		CoverResourceURL: s.projectCoverResource(session.UserID, session.Source.ID, session.Book.CoverURL),
+	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(status, gin.H{
 		"id":        session.ID,
 		"expiresAt": session.ExpiresAt.UTC().Format(time.RFC3339),
-		"book":      session.Book,
+		"book":      book,
 		"chapters":  session.Chapters,
 	})
 }

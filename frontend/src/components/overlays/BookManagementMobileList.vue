@@ -11,11 +11,12 @@
           :model-value="selectedBookIds.includes(book.id)"
           @change="value => emit('toggle-selection', book.id, value)"
         />
-        <span
+        <BookCover
           class="mobile-manage-cover"
-          :class="{ 'has-cover': hasBookCover(book) }"
-          :style="coverStyle(book)"
-        >{{ coverInitial(book) }}</span>
+          :book="book"
+          size="small"
+          :fallback-text="coverInitial(book)"
+        />
         <button type="button" @click="emit('open-info', book)">
           <strong>{{ book.title }}</strong>
           <span>
@@ -60,7 +61,7 @@
 </template>
 
 <script setup>
-import { bookCoverUrl, hasBookCover } from '../../utils/bookCover'
+import BookCover from '../BookCover.vue'
 import BookManagementActions from './BookManagementActions.vue'
 
 defineProps({
@@ -109,13 +110,7 @@ const emit = defineEmits([
 ])
 
 function coverInitial(book) {
-  if (hasBookCover(book)) return ''
   return (book?.title || '?').slice(0, 1)
-}
-
-function coverStyle(book) {
-  const url = bookCoverUrl(book)
-  return url ? { backgroundImage: `url(${url})` } : {}
 }
 </script>
 

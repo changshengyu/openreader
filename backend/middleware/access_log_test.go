@@ -13,6 +13,7 @@ func TestRedactAccessPathHidesEPUBCapability(t *testing.T) {
 		"/api/cbz-resource/" + token + "/pages/001.jpg":    "/api/cbz-resource/<redacted>/pages/001.jpg",
 		"/api/audio-resource/" + token + "/tracks/001.mp3": "/api/audio-resource/<redacted>/tracks/001.mp3",
 		"/api/chapter-image/" + token:                      "/api/chapter-image/<redacted>",
+		"/api/cover/" + token:                              "/api/cover/<redacted>",
 	}
 	for input, want := range cases {
 		if got := RedactAccessPath(input); got != want {

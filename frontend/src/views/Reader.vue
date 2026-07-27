@@ -169,7 +169,7 @@
             :audio-title="chapter?.title || book?.title || ''"
             :audio-book-title="book?.title || ''"
             :audio-author="book?.author || ''"
-            :audio-cover-url="book?.customCoverUrl || book?.coverUrl || ''"
+            :audio-cover-url="bookCoverUrl(book)"
             :audio-autoplay="audioAutoplay"
             :epub-style="epubStyleText"
             :viewport-height="readerViewportHeight"
@@ -394,6 +394,7 @@ import { refreshBook, refreshLocalBook } from '../api/books'
 import { getRemoteReaderChapterContent, getRemoteReaderSession } from '../api/remoteReader'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
+import { bookCoverUrl } from '../utils/bookCover'
 import ReaderChapterContent from '../components/reader/ReaderChapterContent.vue'
 import ReaderClickZones from '../components/reader/ReaderClickZones.vue'
 import ReaderDesktopWorkspacePanel from '../components/reader/ReaderDesktopWorkspacePanel.vue'

@@ -1,10 +1,25 @@
 <template>
-  <span class="book-cover-shared" :class="[`size-${size}`, { 'has-cover': hasCover }]" :style="coverStyle">{{ coverText }}</span>
+  <span
+    class="book-cover-shared"
+    :class="[`size-${size}`, { 'has-cover': imageLoaded }]"
+  >
+    <img
+      v-if="coverUrl && !imageFailed"
+      :key="coverUrl"
+      :src="coverUrl"
+      :alt="decorative ? '' : coverAlt"
+      :aria-hidden="decorative ? 'true' : undefined"
+      :class="{ loaded: imageLoaded }"
+      @load="handleImageLoad"
+      @error="handleImageError"
+    />
+    <span v-if="!imageLoaded && !decorative" class="cover-fallback">{{ fallbackText }}</span>
+  </span>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { bookCoverUrl, hasBookCover } from '../utils/bookCover'
+import { computed, ref, watch } from 'vue'
+import { bookCoverUrl } from '../utils/bookCover'
 
 const props = defineProps({
   book: {
@@ -15,30 +30,46 @@ const props = defineProps({
     type: String,
     default: 'md',
   },
+  fallbackText: {
+    type: String,
+    default: '暂无封面',
+  },
+  decorative: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const hasCover = computed(() => hasBookCover(props.book))
-const coverText = computed(() => (hasCover.value ? '' : '暂无封面'))
 const coverUrl = computed(() => bookCoverUrl(props.book))
+const imageLoaded = ref(false)
+const imageFailed = ref(false)
+const coverAlt = computed(() => String(props.book?.title || props.book?.name || props.book?.bookName || '书籍封面'))
 
-const coverStyle = computed(() => {
-  if (hasCover.value) {
-    return {
-      backgroundImage: `url(${coverUrl.value})`,
-      backgroundPosition: 'center',
-      backgroundSize: 'cover',
-      color: 'transparent',
-    }
-  }
-  return {}
+watch(coverUrl, () => {
+  imageLoaded.value = false
+  imageFailed.value = false
 })
+
+function handleImageLoad(event) {
+  if (event.currentTarget?.getAttribute('src') !== coverUrl.value) return
+  imageLoaded.value = true
+  imageFailed.value = false
+}
+
+function handleImageError(event) {
+  if (event.currentTarget?.getAttribute('src') !== coverUrl.value) return
+  imageLoaded.value = false
+  imageFailed.value = true
+}
 </script>
 
 <style scoped>
 .book-cover-shared {
+  position: relative;
   display: grid;
   width: 72px;
   height: 96px;
+  overflow: hidden;
   place-items: center;
   flex: 0 0 auto;
   border-radius: 5px;
@@ -55,8 +86,28 @@ const coverStyle = computed(() => {
   writing-mode: vertical-rl;
 }
 
+.book-cover-shared img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.book-cover-shared img.loaded {
+  opacity: 1;
+}
+
+.cover-fallback {
+  position: relative;
+  z-index: 1;
+}
+
 .book-cover-shared.has-cover {
   border-color: transparent;
+  color: transparent;
   writing-mode: initial;
 }
 

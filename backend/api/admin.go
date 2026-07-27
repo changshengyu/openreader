@@ -311,7 +311,7 @@ func (s *Server) userWorkspaceCleanupPlans(users []models.User) ([]userWorkspace
 	plans := make([]userWorkspaceCleanupPlan, 0, len(users))
 	for _, user := range users {
 		username := engine.SafeFilename(user.Username)
-		paths := make([]string, 0, 4)
+		paths := make([]string, 0, 5)
 		for _, rootAndParts := range []struct {
 			root  string
 			parts []string
@@ -320,6 +320,7 @@ func (s *Server) userWorkspaceCleanupPlans(users []models.User) ([]userWorkspace
 			{root: filepath.Join(s.cfg.LocalStoreDir, "users"), parts: []string{username}},
 			{root: filepath.Join(s.cfg.LibraryDir, "data"), parts: []string{username}},
 			{root: filepath.Join(s.cfg.DataDir, "uploads", "users"), parts: []string{strconv.FormatUint(uint64(user.ID), 10)}},
+			{root: filepath.Join(s.cfg.CacheDir, "cover-images"), parts: []string{"user-" + strconv.FormatUint(uint64(user.ID), 10)}},
 		} {
 			path, err := privateUserWorkspacePath(rootAndParts.root, rootAndParts.parts...)
 			if err != nil {
@@ -455,7 +456,7 @@ func (s *Server) deleteUsers(c *gin.Context) {
 		internalError(c, "failed to delete users")
 		return
 	}
-	cleanupFailures := cleanupUserWorkspaces(plans)
+	cleanupFailures := s.cleanupDeletedUserCoverImages(deletedUsers) + cleanupUserWorkspaces(plans)
 	deletedIDs := make([]uint, 0, len(deletedUsers))
 	for _, user := range deletedUsers {
 		deletedIDs = append(deletedIDs, user.ID)
@@ -484,7 +485,7 @@ func (s *Server) cleanupInactiveUsers(c *gin.Context) {
 		internalError(c, "cleanup failed")
 		return
 	}
-	cleanupFailures := cleanupUserWorkspaces(plans)
+	cleanupFailures := s.cleanupDeletedUserCoverImages(deletedUsers) + cleanupUserWorkspaces(plans)
 	deletedIDs := make([]uint, 0, len(deletedUsers))
 	for _, user := range deletedUsers {
 		deletedIDs = append(deletedIDs, user.ID)
@@ -504,4 +505,15 @@ func (s *Server) broadcastUsersUpdate(kind string, userIDs []uint) {
 			"userIds": userIDs,
 		},
 	})
+}
+
+func (s *Server) cleanupDeletedUserCoverImages(users []models.User) int {
+	failed := 0
+	for _, user := range users {
+		if _, err := s.coverImages.RemoveUser(user.ID); err != nil {
+			log.Printf("openreader: post-commit cover cache cleanup failed for deleted user id %d", user.ID)
+			failed++
+		}
+	}
+	return failed
 }

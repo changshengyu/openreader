@@ -12,6 +12,7 @@ var capabilityResourceLogPrefixes = []string{
 	"/api/cbz-resource/",
 	"/api/audio-resource/",
 	"/api/chapter-image/",
+	"/api/cover/",
 }
 
 func AccessLogger() gin.HandlerFunc {

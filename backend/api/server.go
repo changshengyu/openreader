@@ -15,6 +15,7 @@ import (
 	"openreader/backend/services/bookgroups"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chapterimage"
+	"openreader/backend/services/coverimage"
 	"openreader/backend/services/epubreader"
 	"openreader/backend/services/readingprogress"
 	"openreader/backend/services/scheduler"
@@ -32,6 +33,7 @@ type Server struct {
 	audioReader    *audioreader.Service
 	cbzReader      *cbzreader.Service
 	chapterImages  *chapterimage.Service
+	coverImages    *coverimage.Service
 	epubReader     *epubreader.Service
 	progressSvc    *readingprogress.Service
 	sourceFailures *sourcefailure.Service
@@ -50,6 +52,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		audioReader:    audioreader.New(cfg, database),
 		cbzReader:      cbzreader.New(cfg, database),
 		chapterImages:  chapterimage.New(cfg, database),
+		coverImages:    coverimage.New(cfg, database),
 		epubReader:     epubreader.New(cfg, database),
 		progressSvc:    readingprogress.New(database, cfg.DataDir),
 		sourceFailures: sourcefailure.New(database),
@@ -67,6 +70,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	api.HEAD("/audio-resource/:capability/*resourcePath", server.audioResource)
 	api.GET("/chapter-image/:capability", server.chapterImageResource)
 	api.HEAD("/chapter-image/:capability", server.chapterImageResource)
+	api.GET("/cover/:capability", server.coverImageResource)
+	api.HEAD("/cover/:capability", server.coverImageResource)
 
 	auth := api.Group("/auth")
 	auth.POST("/register", server.register)

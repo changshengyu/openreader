@@ -22,7 +22,8 @@ test('audio reader uses upstream-style custom controls instead of native control
   assert.match(audioSource, /audio\.volume = Math\.max\(0, Math\.min\(1, volume\.value \/ 100\)\)/)
 
   assert.match(contentSource, /:cover-url="audioCoverUrl"/)
-  assert.match(readerSource, /:audio-cover-url="book\?\.customCoverUrl \|\| book\?\.coverUrl \|\| ''"/)
+  assert.match(readerSource, /:audio-cover-url="bookCoverUrl\(book\)"/)
+  assert.match(readerSource, /import \{ bookCoverUrl \} from '\.\.\/utils\/bookCover'/)
 })
 
 test('audio reader keeps the fixed upstream cover-controls-book-info structure', async () => {

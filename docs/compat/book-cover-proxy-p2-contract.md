@@ -1,6 +1,7 @@
 # 远程书籍封面代理 P2 合同
 
-状态：2026-07-27 已完成固定上游合同提取；尚未修改应用代码。
+状态：2026-07-27 已完成固定上游合同提取、测试先行实现与非 Docker 门禁；
+等待本地镜像及新旧卷发布门禁。
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -51,9 +52,9 @@
 
 | 合同点 | 当前实现 | 裁决 |
 |---|---|---|
-| 远程封面传输 | `bookCoverUrl()` 直接返回 `customCoverUrl || coverUrl`，浏览器直接请求第三方域名。 | **错误重构 / must-fix**：恢复同源代理。第三方拒绝浏览器、混合内容、跨网络路径或缓存冷启动时，当前会显示空白，而上游可由服务端抓取并缓存。 |
-| 加载失败回退 | `BookCover.vue`、书架和移动管理使用 CSS `background-image`，没有 `load/error` 状态；只要字符串非空就隐藏占位文字。 | **错误重构 / must-fix**：失败后显示稳定占位封面；模糊背景失败不得影响前景回退。 |
-| 重复封面逻辑 | `Home.vue`、`BookCover.vue`、`BookInfoPanel.vue`、`BookManagementMobileList.vue` 各自拼 CSS URL。 | **错误结构 / must-fix**：可见封面收敛到共享组件/工具，不能修一处而让其它入口继续直连。 |
+| 远程封面传输 | 已由 `coverimage.Service` 签发同源 `/api/cover/<capability>`，书架、搜索、探索、换源候选和临时 Reader 响应统一投影。 | **已实施 / 技术栈等价**：恢复上游服务端代理体感，同时不复制公开任意 URL 的 SSRF 接口。 |
+| 加载失败回退 | `BookCover.vue` 使用可观测 `<img>` load/error 状态；拒绝投影或加载失败恢复稳定占位。 | **已实施 / 上游可见行为一致**：失败不再留下透明空白。 |
+| 重复封面逻辑 | 书架和移动管理已收敛到 `BookCover`；BookInfo、搜索/探索卡继续复用该组件，装饰背景与 audio 共用 `bookCoverUrl()`。 | **已实施**：所有可见入口遵守同一 URL 优先级。 |
 | 原始 URL 持久化 | `books.cover_url`、搜索/探索结果和换源请求使用 `coverUrl` 作为源数据。 | **必须保留**：代理 capability 只能是响应投影，绝不能覆盖 SQLite、parser result、换源 payload、同步事件、普通/portable 备份中的原始 URL。 |
 | 本地/上传/格式封面 | 用户上传使用受控 `/uploads/...`；CBZ 已使用独立签名 resource capability。 | **已验证能力**：同源 URL 继续直用；不得用远程代理包裹上传、CBZ、EPUB/audio 本地资源。 |
 | 上游公开 `path` 接口 | 任意调用者可令服务端抓取任意 URL，且没有大小/地址边界。 | **不允许复制的安全缺陷**：OpenReader 使用服务端签发的不透明 capability，不提供接受任意原始 URL 的公开 GET。 |
@@ -69,6 +70,9 @@
   `customCoverUrl → coverResourceUrl → coverUrl → 占位封面`。其中最后一个
   原始 `coverUrl` 只用于旧服务端/旧缓存兼容，不得在新服务端已经返回
   `coverResourceUrl` 后并行直连或自动绕过安全失败。
+- `coverResourceUrl` 使用三态响应：字段缺失表示旧服务端或非远程资源，可继续
+  使用原 `coverUrl`；非空字符串表示有效 capability；字段存在但值为空表示
+  新服务端已拒绝该远程地址，前端必须直接显示占位且禁止退回原 URL。
 - 以下可见响应必须统一投影：
   - 书架列表、单书、创建/修改/刷新/换源/导入后的书架对象；
   - 搜索的普通数组与分页 `list`；
@@ -138,9 +142,9 @@ Capability 必须：
 5. 旧 OpenReader 服务端没有 `coverResourceUrl` 时继续显示原
    `coverUrl`，以保留前后端滚动升级兼容。
 
-## 测试先行门禁
+## 测试先行门禁与实施证据
 
-实现前先增加失败测试：
+本轮先增加失败测试、确认旧实现不满足合同，再实现并通过：
 
 1. Go service：
    - capability 不包含原 URL/query，篡改、错误 purpose、过期失败；
@@ -159,13 +163,14 @@ Capability 必须：
    - 成功、失败、URL 代际切换及装饰背景；
    - 书架、搜索/探索、BookInfo、管理和 audio 不再各自拼远程 CSS URL。
 4. 真实 Go + Chromium：
-   - 在 1440×900、390×844、360×800 以浏览器不可直连但服务端可抓取的
-     fixture 验证书架、搜索、BookInfo 和 Reader 封面；
-   - 远端 404/HTML/超时显示占位且页面仍可操作；
-   - 第二次加载命中服务端缓存，无第三方浏览器请求、无 401/500、无控制台
-     错误和布局偏移。
-5. 全量 Go、frontend test、生产 build、Reader/Index 核心 smoke 通过后，
-   才能进入本地 Docker 新卷/历史卷与发布门禁。
+   - `scripts/smoke/book-cover-proxy-real-api-contract.mjs` 在 1440×900、
+     390×844、360×800 预置服务端校验缓存，验证书架和共享 BookInfo 只请求
+     capability，浏览器从不直连原始第三方/loopback URL；
+   - 私网 URL 的存在空投影显示占位，弹层仍可关闭，三种视口均无控制台错误
+     或横向溢出。
+5. 全量 Go、frontend test、生产 build 和既有 Index/Reader 核心 smoke 是
+   本地 Docker 发布前的最后闸门；Docker 新卷、历史卷和 portable backup
+   仍必须在镜像发布前通过。
 
 ## 发布边界
 
