@@ -8,6 +8,13 @@
 
 ## 当前结论
 
+- 2026-07-27：完成 Index 工作台认证会话隔离专项取证。`indexWorkspace` 当前没有账号 scope、
+  session generation 或 reset，旧搜索/探索结果及 intent 会跨注销/401 保留；Search 书源初始化、
+  本地搜索/导入、Explore 入口、临时阅读和 route BookInfo 的迟到回调还可能在换号后修改新账号
+  偏好/store、打开弹层或跳路由。固定上游的单 Index 现场保留继续作为交互基准，但其
+  `loginAuth/userNS → init(true)` 不清结果不能复制到 JWT 多账号环境。已建立
+  `index-authenticated-session-p1-contract.md`：同账号仅恢复 intent 并重取结果，不同/未知账号
+  回到干净书架，显式 logout 不恢复；应用代码尚未修改，下一阶段先写失败测试。
 - 2026-07-27：重新审查上游 `Index.vue#scanCacheStorage/analyseLocalStorage/clearCache` 后，
   修正多用户浏览器缓存的所有权和异步事务。总量只统计可证明属于调用账号的 key，书源/RSS
   使用精确 scope，Reader 目录、章节正文和书架快照按已部署 key 形态归属；其它账号、未知格式、

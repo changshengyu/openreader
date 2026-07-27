@@ -2747,6 +2747,26 @@ visibility/unmount 强制保存可能按新 scope 写本地进度，并尝试以
 和 Go 全量均通过；本地服务端口审批因工作区额度不足被拒绝，因此三视口真实浏览器与 Docker
 发布尚未计为完成。
 
+## 2026-07-27 Index 工作台认证会话隔离复审
+
+Reader 隔离完成后继续审查同一 authenticated shell，确认 `indexWorkspace` 没有账号 scope、
+session generation 或 reset：搜索/探索结果、来源 intent、分页、滚动位置和 revision 会越过
+注销/401 保留。当前远程搜索的 scene revision 只能处理同会话切场景，不能证明账号切换安全；
+本地搜索完全没有请求戳。
+
+更严重的是旧 Search 书源初始化可在组件卸载后修改新账号的共享搜索偏好，旧 Explore 入口响应
+可把新账号切入上一账号的来源与结果，迟到的本地导入、临时阅读会话和 route BookInfo 还可能
+分别写入新书架内存、跳转旧会话路由或重新打开已清理弹层。`App.vue` 目前也只阻塞 Reader：
+认证 Dialog 写入新 token 后，Index 会在账号判定与路由清理前短暂重新挂载。
+
+固定上游仍以单一 Index 保存结果现场，并在 `loginAuth/userNS` 变化时 `init(true)`；但它不清
+`searchResult` 是单命名空间缺口，不能复制到 JWT 多账号环境。目标语义确定为：被动失效立即
+隐藏并清空结果，同账号只恢复 intent 并重新请求，不同/未知账号回到干净书架，显式 logout
+不恢复现场；所有迟到 callback 同时冻结 scope、token、user/workspace generation 和场景 revision。
+完整矩阵与测试先行顺序见
+[`index-authenticated-session-p1-contract.md`](index-authenticated-session-p1-contract.md)。
+本轮 inventory 只修改文档，应用代码尚未变更。
+
 ## 2026-07-23 Reader 设置切换位置连续性复审
 
 固定上游在 `ReadSettings#setReadMethod/setPageType` 写入新阅读方式前，通过
