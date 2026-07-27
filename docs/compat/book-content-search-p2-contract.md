@@ -1,6 +1,6 @@
 # 书内正文搜索固定上游兼容合同（P2）
 
-状态：**2026-07-27 已完成只读审计；尚未编写本批失败测试或修改应用代码。**
+状态：**2026-07-27 已按固定上游完成合同、先失败测试、实现与完整回归；待本批 Docker 发布记录。**
 
 固定基准为 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 本合同替代“现有搜索测试通过即可视为与上游一致”的结论。
@@ -30,18 +30,18 @@ OpenReader 当前映射：
 
 ## 行为与状态矩阵
 
-| 关注点 | 固定上游行为 | OpenReader `9f9bf27` | 裁决 |
+| 关注点 | 固定上游行为 | OpenReader 实施结果 | 裁决 |
 |---|---|---|---|
 | 根场景所有权 | `App.vue` 挂载一个独立 `SearchBookContent` 根 Dialog；桌面共享 dialogWidth/top，mini interface 全屏。Reader 只发出打开请求。 | `GlobalOverlayHost` 挂载一个 `OverlayBookContentSearch` 根 Dialog，移动全屏；Reader 不再拥有第二套搜索面板。 | **aligned / technology-equivalent**；不得重新放回 Reader drawer。 |
 | 初始状态与换书 | 同一本书关闭再打开保留关键词、结果、游标和上次表格 scrollTop；只有 `bookUrl` 变化才清空。 | 关闭只 abort，不清空；`id/bookUrl` 变化清空；行点击保存 scrollTop，重新打开恢复。 | **aligned + safer cancellation**。 |
 | 搜索与续页 | Enter 以 `lastIndex=-1` 新搜；“加载更多”从返回游标继续；服务端扫描完整章节，结果达到 `size` 后停止，最后扫描章节不能只返回一部分后跳过。 | 分页游标已保证完整扫描最后一章；远程初搜最多自动跑 4×10 章，本地有更大有界窗口，并额外提供“搜完全书”。 | **acceptable bounded/network adaptation**：不得跳章或把加载失败伪装成普通无结果；全书按钮是允许增强。 |
 | 取消 | 上游关 Dialog 不主动取消 Axios/服务端任务，连接断开后服务端停止。 | AbortController 贯穿浏览器请求和 Go context，关闭/换词停止后续章节。 | **acceptable reliability enhancement**。 |
-| 书籍与书源前置条件 | 必须登录、必须按 `bookUrl` 找到书架书；远程书找不到其配置书源时立即返回“未配置书源”。 | ID 路径保持 JWT/用户隔离，但远程 `SourceID` 已失效时逐章记为 unavailable 并返回 200 incomplete；legacy 路径也缺少前置书源校验。 | **must-fix**：新旧接口都应在任何章节抓取前给出明确“未配置书源”；不能产生 N 次无意义章节失败。 |
-| 搜索正文版本 | `searchChapter` 直接搜索 `BookHelp.getContent`；注释明确 `useReplace=false`，不把 Reader 全局替换规则写进搜索输入。 | `collectContentMatchesContext` 调用 `loadChapterTextContextResult`，后者对普通文本执行 `applyUserReplaceRules`。 | **错误重构 / must-fix**：搜索必须读取同一缓存/远程章节的原始文本；正文显示仍可继续应用替换规则。 |
-| 精确匹配 | Kotlin `String.indexOf(pattern, start)`，区分大小写；下一次从 `index + 1` 开始，因此允许重叠命中。例如 `aaaa` 搜 `aa` 得到 0、1、2。 | Go 先转小写，再忽略空白/标点/符号，还可把多个词按先后顺序模糊命中；直接匹配从 `position + len(keyword)` 继续，丢失重叠命中。前端定位也把这一差异固化为不区分大小写/标点的测试。 | **错误重构 / must-fix**：恢复上游精确、区分大小写、允许重叠的结果集合和 occurrence 序号。现有冲突测试必须重写。 |
-| 结果片段与字段 | 每个命中返回 `resultCountWithinChapter`、`resultText`、`chapterTitle`、`query`、`chapterIndex`、`queryIndexInResult`、`queryIndexInChapter`；片段左右各最多 20 个字符。 | 新接口返回 excerpt/offset/line/percent；legacy 虽返回 `resultText`，但缺少两个 queryIndex 字段，片段使用约左 42/右 82 rune。 | **must-fix legacy contract**：legacy 补齐 queryIndex 字段并恢复 ±20 字符片段；新接口可保留 offset/line/percent 作为 Vue/Go 跳转增强，但可见片段应与上游一致。 |
-| 行点击与浏览器历史 | 上游行点击保存表格 scrollTop、发出 `showSearchContent`、关闭 Dialog；Reader 每次都执行同章定位或跨章加载。它不新增浏览器历史，同一行重复点击也会再次定位。 | Overlay 关闭后 `router.push` 到带 chapter/line/match/q 的 Reader URL。不同位置同时触发 position/search 两个 watcher；相同 URL 再点是 no-op；每次不同结果都会增加历史层。`useReaderSearchNavigation.jumpToResult` 已存在但未接线。 | **错误重构 / must-fix**：搜索选择应成为一次可重复消费的 Reader intent，直接调用统一跳转；同一结果每次都生效，不得增加历史。兼容 URL 最多用 `replace` 镜像当前位置。 |
-| 同章/跨章定位 | 同章直接按 `resultCountWithinChapter` 扫描 `.reading-chapter h3,p`；普通跨章等内容 ready 后定位；连续模式先把目标章设为窗口锚点并重建，再定位。 | 路由 watcher 间接加载；同一结果重复选择无法触发。独立 `jumpToResult` 会加载章节再定位，但目前未处理 Overlay intent，也未由 Reader 使用。 | **must-fix**：同章不重载，跨章只加载一次；连续模式先重建目标窗口；加载 ready 后优先 occurrence，失败才使用 line/percent 安全回退。 |
+| 书籍与书源前置条件 | 必须登录、必须按 `bookUrl` 找到书架书；远程书找不到其配置书源时立即返回“未配置书源”。 | 主接口和 legacy 适配器都在章节扫描前校验非零 `SourceID`；缺失书源分别返回 REST `400` 与 legacy HTTP 200 中文错误。 | **aligned + JWT/multi-user adaptation**。 |
+| 搜索正文版本 | `searchChapter` 直接搜索 `BookHelp.getContent`；注释明确 `useReplace=false`，不把 Reader 全局替换规则写进搜索输入。 | 章节加载策略已拆分：Reader 显示继续应用替换规则，正文搜索只读取相同缓存/远程来源的原始文本。 | **aligned**。 |
+| 精确匹配 | Kotlin `String.indexOf(pattern, start)`，区分大小写；下一次从 `index + 1` 开始，因此允许重叠命中。例如 `aaaa` 搜 `aa` 得到 0、1、2。 | Go 服务和前端 occurrence 定位均恢复精确、区分大小写、从命中位置 `+1` 继续；冲突的模糊测试已替换。 | **aligned**。 |
+| 结果片段与字段 | 每个命中返回 `resultCountWithinChapter`、`resultText`、`chapterTitle`、`query`、`chapterIndex`、`queryIndexInResult`、`queryIndexInChapter`；片段左右各最多 20 个 UTF-16 code units。 | 独立 `contentsearch` service 返回字节 offset 供 Go 内部使用，同时按 Java/Kotlin UTF-16 索引生成 legacy 字段与 ±20 片段；新接口保留 additive offset/line/percent。 | **aligned + additive navigation metadata**。 |
+| 行点击与浏览器历史 | 上游行点击保存表格 scrollTop、发出 `showSearchContent`、关闭 Dialog；Reader 每次都执行同章定位或跨章加载。它不新增浏览器历史，同一行重复点击也会再次定位。 | Overlay 每次点击发出递增 Reader intent；相同结果可重复消费。同章不改路由，跨章仅 `router.replace` 镜像当前位置，不产生新的返回历史。 | **aligned / Pinia event adaptation**。 |
+| 同章/跨章定位 | 同章直接按 `resultCountWithinChapter` 扫描 `.reading-chapter h3,p`；普通跨章等内容 ready 后定位；连续模式先把目标章设为窗口锚点并重建，再定位。 | 同章直接定位且不重新加载；普通跨章只加载目标章；连续模式加载后先重建目标窗口，再按 occurrence 定位并保留 line fallback。 | **aligned**。 |
 | 无结果、章节失败与安全上限 | 普通空结果保留空表；单章读取失败会被跳过，界面没有完整性提示，也没有显式匹配上限。 | unavailable/truncated/incomplete 明确显示；单章 2000 命中安全上限可见。 | **acceptable security/reliability enhancement**；提示不得改变成功结果或游标。 |
 
 ## API 合同
@@ -67,9 +67,10 @@ OpenReader 当前映射：
 - 逻辑错误继续使用 HTTP 200、`isSuccess:false` 和上游中文 `errorMsg`。
 - 成功的 `data.list` 必须包含上游 `SearchResult` 可见字段，尤其
   `queryIndexInResult` 与 `queryIndexInChapter`。
+- 两个 query index 与片段边界按 Java/Kotlin `String` 的 UTF-16 code-unit 语义计算。
 - `lastIndex=-1` 从第 0 章开始；续页从上一 `lastIndex + 1` 开始。
 
-## 先失败测试
+## 先失败测试（已执行）
 
 ### Backend
 
@@ -104,3 +105,17 @@ OpenReader 当前映射：
 - 不做数据库迁移，不改变章节缓存、替换规则持久化或阅读进度格式。
 - 先让本合同测试失败，再修改应用代码；当前已有“标点归一化搜索成功”测试与固定上游冲突，
   必须改为明确的精确匹配合同。
+
+## 2026-07-27 实施与验证记录
+
+- 先失败证据：前端 6 项失败覆盖缺失 intent、模糊/非重叠定位、`router.push`、同章重载和
+  连续窗口；后端 3 项失败覆盖替换后正文、缺失书源和 legacy 索引/片段。
+- 自动回归：后端 `go test ./...` 通过；前端 569/569 通过；生产构建通过；`git diff --check`
+  通过。
+- 真实浏览器：`reader-mobile-contract.mjs` 在 1440×900、390×844、360×800，以及自适应/
+  强制移动 iPad 场景通过；验证同章、同一结果重复定位、跨章定位、搜索状态保留、工具层保持
+  和零 `history.pushState`。`reader-continuous-contract.mjs` 通过连续跨章窗口回归。
+- 后端合同覆盖原始正文与替换规则隔离、大小写/标点/空白精确语义、重叠结果、UTF-16 legacy
+  索引、±20 片段、缺失书源前置失败、网络章节 unavailable、取消和显式安全截断。
+- 允许差异未扩大：继续保留 JWT/多用户、AbortController、有界扫描、完整性/截断提示与
+  “搜完全书”；无数据库、缓存或持久化格式变更。

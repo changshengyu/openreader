@@ -36,6 +36,8 @@ test('shared bookmarks and content search use upstream-style dialogs, including 
   assert.doesNotMatch(search, /<el-drawer/)
   assert.match(search, /searchNotice/)
   assert.match(search, /incomplete/)
+  assert.doesNotMatch(search, /useRouter|router\.push/, 'a live result selection must not create browser history')
+  assert.match(search, /requestSearchBookContentJump/, 'every row click must emit a repeatable Reader intent')
   assert.match(host, /<OverlayBookContentSearch[\s\S]*:is-mobile="isMobileOverlay"/)
 })
 

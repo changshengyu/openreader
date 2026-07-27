@@ -64,7 +64,6 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useBookContentSearch } from '../../composables/useBookContentSearch'
 import { useOverlayStore } from '../../stores/overlay'
@@ -77,7 +76,6 @@ defineProps({
 })
 
 const dialogWidth = '880px'
-const router = useRouter()
 const overlay = useOverlayStore()
 const searchInputRef = ref(null)
 const resultTableRef = ref(null)
@@ -146,26 +144,7 @@ function resetSearch() {
 
 function jumpToResult(result) {
   captureScrollTop()
-  const currentBook = overlay.searchBook
-  if (!currentBook?.id) return
-  overlay.searchBookContentVisible = false
-  router.push({
-    name: 'reader',
-    params: { id: currentBook.id },
-    query: {
-      chapter: Number(result.chapterIndex || 0),
-      line: Number.isInteger(result.lineIndex)
-        ? result.lineIndex
-        : undefined,
-      match: Number.isInteger(result.resultCountWithinChapter)
-        ? result.resultCountWithinChapter
-        : undefined,
-      percent: Number.isFinite(Number(result.percent))
-        ? Number(result.percent)
-        : undefined,
-      q: keyword.value.trim() || undefined,
-    },
-  })
+  overlay.requestSearchBookContentJump(result, keyword.value)
 }
 
 function getResultScrollElement() {

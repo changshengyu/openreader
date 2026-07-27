@@ -7,7 +7,6 @@ import {
   bookContentSearchPagingParams,
   bookContentSearchStatus,
   countBookContentMatches,
-  normalizeBookContentSearchText,
 } from '../src/utils/readerBookSearch.js'
 
 test('uses bounded remote and expanded local book search windows', () => {
@@ -59,15 +58,16 @@ test('makes incomplete or safety-truncated chapter searches visible to the reade
   assert.equal(bookContentSearchNotice({ incomplete: false }), '')
 })
 
-test('finds the paragraph containing the requested exact or normalized match', () => {
+test('uses upstream exact case-sensitive overlapping occurrence semantics', () => {
   assert.equal(countBookContentMatches('目标目标', '目标'), 2)
+  assert.equal(countBookContentMatches('aaaa', 'aa'), 3)
+  assert.equal(countBookContentMatches('Ab', 'ab'), 0)
   assert.equal(bookContentSearchParagraphIndex([
     '第一处目标',
     '第二处目标和第三处目标',
   ], '目标', 2), 1)
-  assert.equal(normalizeBookContentSearchText('目 标，！'), '目标')
   assert.equal(bookContentSearchParagraphIndex([
     '没有',
     '目 标，出现',
-  ], '目标', 0), 1)
+  ], '目标', 0), -1)
 })

@@ -4281,14 +4281,11 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 3 || matches[0].ChapterIndex != 0 || !strings.Contains(matches[0].Excerpt, "特殊关键词") {
+	if len(matches) != 2 || matches[0].ChapterIndex != 0 || !strings.Contains(matches[0].Excerpt, "特殊关键词") {
 		t.Fatalf("unexpected matches: %+v", matches)
 	}
-	if matches[0].Query != "特殊关键词" || matches[0].ResultCountWithinChapter != 0 || matches[1].ResultCountWithinChapter != 1 || matches[2].ResultCountWithinChapter != 2 {
+	if matches[0].Query != "特殊关键词" || matches[0].ResultCountWithinChapter != 0 || matches[1].ResultCountWithinChapter != 1 {
 		t.Fatalf("unexpected match metadata: %+v", matches)
-	}
-	if !strings.Contains(matches[2].Excerpt, "特 殊 关 键 词") {
-		t.Fatalf("expected normalized mixed match, got %+v", matches[2])
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("隐藏关键词"), nil)
@@ -4302,8 +4299,8 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 || !strings.Contains(matches[0].Excerpt, "隐 藏") {
-		t.Fatalf("unexpected normalized matches: %+v", matches)
+	if len(matches) != 0 {
+		t.Fatalf("whitespace-normalized content must not match fixed-upstream exact search: %+v", matches)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("夫君御驾亲征了!"), nil)
@@ -4317,8 +4314,8 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 || matches[0].LineIndex != 6 || !strings.Contains(matches[0].Excerpt, "夫君御驾亲征了") {
-		t.Fatalf("unexpected punctuation-normalized matches: %+v", matches)
+	if len(matches) != 0 {
+		t.Fatalf("punctuation-normalized content must not match fixed-upstream exact search: %+v", matches)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("太元圣女 下-2"), nil)
@@ -4332,8 +4329,8 @@ func TestSearchBookContentUsesCachedChapter(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &matches); err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 || matches[0].LineIndex != 7 || !strings.Contains(matches[0].Excerpt, "太元圣女") {
-		t.Fatalf("unexpected split-term matches: %+v", matches)
+	if len(matches) != 0 {
+		t.Fatalf("split-term content must not match fixed-upstream exact search: %+v", matches)
 	}
 }
 

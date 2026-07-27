@@ -41,21 +41,17 @@ export function bookContentSearchNotice({
 }
 
 export function countBookContentMatches(text, keyword) {
-  const haystack = String(text || '').toLowerCase()
-  const needle = String(keyword || '').toLowerCase()
+  const haystack = String(text || '')
+  const needle = String(keyword || '')
   if (!haystack || !needle) return 0
   let count = 0
   for (let offset = 0; offset < haystack.length;) {
     const position = haystack.indexOf(needle, offset)
     if (position < 0) break
     count += 1
-    offset = position + Math.max(needle.length, 1)
+    offset = position + 1
   }
   return count
-}
-
-export function normalizeBookContentSearchText(value) {
-  return String(value || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
 }
 
 export function bookContentSearchParagraphIndex(texts, keyword, matchIndex = 0) {
@@ -66,14 +62,7 @@ export function bookContentSearchParagraphIndex(texts, keyword, matchIndex = 0) 
     ? Math.max(0, Math.floor(Number(matchIndex)))
     : 0
   const exact = paragraphIndexForMatch(rows, query, expectedIndex)
-  if (exact >= 0) return exact
-  const normalizedKeyword = normalizeBookContentSearchText(query)
-  if (!normalizedKeyword) return -1
-  return paragraphIndexForMatch(
-    rows.map(normalizeBookContentSearchText),
-    normalizedKeyword,
-    expectedIndex,
-  )
+  return exact
 }
 
 function paragraphIndexForMatch(texts, keyword, expectedIndex) {

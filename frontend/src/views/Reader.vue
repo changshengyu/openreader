@@ -451,6 +451,7 @@ import { useReaderRouteSync } from '../composables/useReaderRouteSync'
 import { useReaderScrollSync } from '../composables/useReaderScrollSync'
 import { useReaderSelectedTextActions } from '../composables/useReaderSelectedTextActions'
 import { useReaderSelection } from '../composables/useReaderSelection'
+import { useReaderContentSearchIntent } from '../composables/useReaderContentSearchIntent'
 import { useReaderSearchNavigation } from '../composables/useReaderSearchNavigation'
 import { useReaderShelf } from '../composables/useReaderShelf'
 import { useReaderToc } from '../composables/useReaderToc'
@@ -1074,6 +1075,7 @@ const {
   jumpToLine,
   jumpToMatch: jumpToSearchMatch,
   jumpToParagraph,
+  jumpToResult: jumpToSearchResult,
   jumpToRouteLine,
 } = useReaderSearchNavigation({
   keyword: computed(() => String(route.query.q || '')),
@@ -1091,10 +1093,21 @@ const {
   getRouteQuery: () => route.query,
   navigate: replaceReaderPositionWithoutReload,
   loadChapter: (index, loadOptions) => loadChapter(index, 0, loadOptions),
+  isContinuousScrollRead,
+  rebuildContinuousWindow: index => computeShowChapterList({
+    anchorIndex: index,
+    activate: true,
+  }),
   canMatchBookmark: () => chapterFormat.value === 'text',
   onBookmarkNotFound: () => ElMessage.error('无法定位内容所在段落'),
   flashParagraph,
   saveProgress: () => saveCurrentProgress(),
+})
+useReaderContentSearchIntent({
+  request: computed(() => overlay.searchBookContentJump),
+  book,
+  bookId,
+  jumpToResult: jumpToSearchResult,
 })
 const {
   cancelPageAnimation,

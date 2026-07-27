@@ -114,6 +114,16 @@ async function installApiMocks(page, readerSettings = {}) {
         ))).join('\n'),
       }))
     }
+    if (path === '/books/1/chapters/1/content') {
+      return route.fulfill(json({
+        chapter: { id: 12, index: 1, title: '第二章' },
+        content: [
+          '第二章开头。',
+          '第二章唯一契约段落，用于验证正文搜索跨章跳转。',
+          '第二章结尾。',
+        ].join('\n'),
+      }))
+    }
     if (path === '/books/1/search' && method === 'GET') {
       const keyword = url.searchParams.get('q') || ''
       return route.fulfill(json({
@@ -140,10 +150,21 @@ async function installApiMocks(page, readerSettings = {}) {
             offset: 240,
             percent: 0.24,
           },
+          {
+            chapterId: 12,
+            chapterIndex: 1,
+            chapterTitle: '第二章',
+            excerpt: `第二章唯一${keyword}`,
+            query: keyword,
+            resultCountWithinChapter: 0,
+            lineIndex: 1,
+            offset: 8,
+            percent: 0.08,
+          },
         ],
-        lastIndex: 0,
+        lastIndex: 1,
         hasMore: false,
-        total: 2,
+        total: 3,
         incomplete: true,
         unavailableChapters: 1,
         truncated: false,
@@ -881,13 +902,26 @@ async function exerciseContentSearch(page, viewport, { mobile }) {
   const chromeWasVisible = mobile
     ? await page.locator('.reader-mobile-top.visible').count()
     : await page.locator('.reader-left-rail').count()
+  await page.evaluate(() => {
+    window.__contentSearchHistoryCalls = { push: 0, replace: 0 }
+    const pushState = window.history.pushState.bind(window.history)
+    const replaceState = window.history.replaceState.bind(window.history)
+    window.history.pushState = (...args) => {
+      window.__contentSearchHistoryCalls.push += 1
+      return pushState(...args)
+    }
+    window.history.replaceState = (...args) => {
+      window.__contentSearchHistoryCalls.replace += 1
+      return replaceState(...args)
+    }
+  })
   const input = dialog.getByPlaceholder('搜索书籍内容')
   await input.fill('契约段落')
   await input.press('Enter')
   await dialog.getByText('有 1 章加载失败，搜索结果不完整，请检查书源或网络后重试', { exact: true })
     .waitFor({ state: 'visible', timeout: 10000 })
   const rows = dialog.locator('.el-table__body-wrapper tbody tr')
-  assert(await rows.count() === 2, `${viewport.width}: content search must render the complete mocked result page`)
+  assert(await rows.count() === 3, `${viewport.width}: content search must render the complete mocked result page`)
   if (mobile) {
     assert(await page.locator('.reader-mobile-top.visible').count() === chromeWasVisible, `${viewport.width}: search interaction must preserve mobile Reader chrome`)
   }
@@ -897,11 +931,60 @@ async function exerciseContentSearch(page, viewport, { mobile }) {
   const highlighted = page.locator('.reader-search-active').filter({ hasText: '滚动契约段落 5' })
   await highlighted.waitFor({ state: 'visible', timeout: 10000 })
   assert((await highlighted.textContent())?.includes('滚动契约段落 5'), `${viewport.width}: search must highlight the requested fifth occurrence`)
-  const query = await page.evaluate(() => Object.fromEntries(new URLSearchParams(location.search)))
-  assert(query.chapter === '0' && query.match === '4' && query.q === '契约段落', `${viewport.width}: search result route metadata ${JSON.stringify(query)}`)
+  let historyCalls = await page.evaluate(() => window.__contentSearchHistoryCalls)
+  assert(historyCalls.push === 0 && historyCalls.replace === 0, `${viewport.width}: same-chapter search jump must not mutate browser history`)
   if (mobile) {
     assert(await page.locator('.reader-mobile-top.visible').count() === chromeWasVisible, `${viewport.width}: result jump must preserve mobile Reader chrome`)
   }
+
+  await page.evaluate(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    if (element) element.scrollTop = 0
+  })
+  const openSearch = mobile
+    ? page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]')
+    : page.locator('.reader-right-rail button[title="搜索正文"]')
+  await openSearch.click()
+  await dialog.waitFor({ state: 'visible', timeout: 10000 })
+  assert(await input.inputValue() === '契约段落', `${viewport.width}: reopening the same book must retain the search query`)
+  await rows.nth(1).click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.reader-shell.document-scroll')
+      ? (document.scrollingElement || document.documentElement)
+      : document.querySelector('.reader-content')
+    return (element?.scrollTop || 0) > 0
+  })
+  historyCalls = await page.evaluate(() => window.__contentSearchHistoryCalls)
+  assert(historyCalls.push === 0 && historyCalls.replace === 0, `${viewport.width}: repeating the identical result must reposition without route churn`)
+
+  await openSearch.click()
+  await dialog.waitFor({ state: 'visible', timeout: 10000 })
+  await rows.nth(2).click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  await page.locator('.reader-search-active').filter({ hasText: '第二章唯一契约段落' })
+    .waitFor({ state: 'visible', timeout: 10000 })
+  const routeState = await page.evaluate(() => ({
+    query: Object.fromEntries(new URLSearchParams(location.search)),
+    historyCalls: window.__contentSearchHistoryCalls,
+  }))
+  assert(routeState.query.chapter === '1', `${viewport.width}: cross-chapter search must replace the Reader position, got ${JSON.stringify(routeState.query)}`)
+  assert(routeState.historyCalls.push === 0 && routeState.historyCalls.replace >= 1, `${viewport.width}: cross-chapter search must be history-neutral`)
+
+  await openSearch.click()
+  await dialog.waitFor({ state: 'visible', timeout: 10000 })
+  await rows.nth(0).click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  await page.locator('.reader-search-active').filter({ hasText: '滚动契约段落 1' })
+    .waitFor({ state: 'visible', timeout: 10000 })
+  const restoredRouteState = await page.evaluate(() => ({
+    query: Object.fromEntries(new URLSearchParams(location.search)),
+    historyCalls: window.__contentSearchHistoryCalls,
+  }))
+  assert(restoredRouteState.query.chapter === '0', `${viewport.width}: returning through a search result must restore chapter zero`)
+  assert(restoredRouteState.historyCalls.push === 0, `${viewport.width}: repeated cross-chapter search must never push browser history`)
 }
 
 async function assertInlineDesktopCacheZone(page) {

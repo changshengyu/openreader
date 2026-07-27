@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -87,7 +88,18 @@ func TestContentSearchReportsUnavailableRemoteChapters(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 	user := contentSearchContractUser(t, server)
-	book := models.Book{UserID: user.ID, Title: "不可用搜索书", SourceID: 99999}
+	source := models.BookSource{
+		Name:    "网络不可用搜索源",
+		BaseURL: "https://unavailable.example",
+		Charset: "utf-8",
+	}
+	if err := source.SetRules(models.BookSourceRule{ContentRule: ".content"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: user.ID, Title: "不可用搜索书", SourceID: source.ID}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +107,12 @@ func TestContentSearchReportsUnavailableRemoteChapters(t *testing.T) {
 	if err := server.db.Create(&chapter).Error; err != nil {
 		t.Fatal(err)
 	}
+	restoreClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return nil, errors.New("fixture chapter fetch unavailable")
+		}),
+	})
+	defer restoreClient()
 
 	request := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("目标")+"&paged=1&lastIndex=-1&chapterLimit=1", nil)
 	request.Header.Set("Authorization", token)
@@ -143,6 +161,181 @@ func TestContentSearchMakesSafetyTruncationExplicit(t *testing.T) {
 	}
 	if len(page.List) != contentSearchMaxMatchesPerChapter || !page.Incomplete || !page.Truncated {
 		t.Fatalf("a safety cap must remain visible instead of silently skipping matches: %+v", page)
+	}
+}
+
+func TestContentSearchUsesRawExactOverlappingChapterText(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := contentSearchContractUser(t, server)
+	book := models.Book{UserID: user.ID, Title: "原始精确正文搜索"}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	createContentSearchCacheChapter(t, server, book.ID, 0, "aaaa\n原始目标\n目 标\nAb")
+	plain := false
+	if err := server.db.Create(&models.ReplaceRule{
+		UserID:      user.ID,
+		Name:        "搜索不得套用的替换规则",
+		Pattern:     "原始目标",
+		Replacement: "替换后",
+		Scope:       "*",
+		IsRegex:     &plain,
+		Enabled:     true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	search := func(query string) []contentMatch {
+		t.Helper()
+		request := httptest.NewRequest(
+			http.MethodGet,
+			"/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape(query),
+			nil,
+		)
+		request.Header.Set("Authorization", token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("search %q: expected 200, got %d: %s", query, response.Code, response.Body.String())
+		}
+		var matches []contentMatch
+		if err := json.Unmarshal(response.Body.Bytes(), &matches); err != nil {
+			t.Fatal(err)
+		}
+		return matches
+	}
+
+	if matches := search("原始目标"); len(matches) != 1 {
+		t.Fatalf("raw text must remain searchable before Reader replacement, got %+v", matches)
+	}
+	if matches := search("替换后"); len(matches) != 0 {
+		t.Fatalf("Reader replacement output must not become search input, got %+v", matches)
+	}
+	if matches := search("aa"); len(matches) != 3 {
+		t.Fatalf("upstream exact search must keep overlapping positions 0,1,2, got %+v", matches)
+	}
+	if matches := search("目标"); len(matches) != 1 {
+		t.Fatalf("punctuation/whitespace normalization must not fabricate a second result, got %+v", matches)
+	}
+	if matches := search("ab"); len(matches) != 0 {
+		t.Fatalf("upstream exact search is case-sensitive, got %+v", matches)
+	}
+}
+
+func TestContentSearchRejectsMissingConfiguredSourceBeforeScanning(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := contentSearchContractUser(t, server)
+	book := models.Book{
+		UserID:   user.ID,
+		Title:    "缺失书源正文搜索",
+		URL:      "https://missing-source.example/book",
+		SourceID: 999999,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.Chapter{
+		BookID: book.ID,
+		Index:  0,
+		Title:  "第一章",
+		URL:    "https://missing-source.example/chapter",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	modern := httptest.NewRequest(
+		http.MethodGet,
+		"/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape("目标")+"&paged=1",
+		nil,
+	)
+	modern.Header.Set("Authorization", token)
+	modernResponse := httptest.NewRecorder()
+	router.ServeHTTP(modernResponse, modern)
+	if modernResponse.Code != http.StatusBadRequest {
+		t.Fatalf("modern missing-source search: expected 400, got %d: %s", modernResponse.Code, modernResponse.Body.String())
+	}
+	var modernBody map[string]any
+	if err := json.Unmarshal(modernResponse.Body.Bytes(), &modernBody); err != nil {
+		t.Fatal(err)
+	}
+	if modernBody["error"] != "未配置书源" {
+		t.Fatalf("modern missing-source error = %#v", modernBody["error"])
+	}
+
+	body := `{"bookUrl":"https://missing-source.example/book","keyword":"目标","lastIndex":-1,"size":20}`
+	legacy := httptest.NewRequest(http.MethodPost, "/api/reader3/searchBookContent", strings.NewReader(body))
+	legacy.Header.Set("Authorization", token)
+	legacy.Header.Set("Content-Type", "application/json")
+	legacyResponse := httptest.NewRecorder()
+	router.ServeHTTP(legacyResponse, legacy)
+	if legacyResponse.Code != http.StatusOK {
+		t.Fatalf("legacy missing-source search: expected 200, got %d: %s", legacyResponse.Code, legacyResponse.Body.String())
+	}
+	var legacyBody struct {
+		IsSuccess bool   `json:"isSuccess"`
+		ErrorMsg  string `json:"errorMsg"`
+	}
+	if err := json.Unmarshal(legacyResponse.Body.Bytes(), &legacyBody); err != nil {
+		t.Fatal(err)
+	}
+	if legacyBody.IsSuccess || legacyBody.ErrorMsg != "未配置书源" {
+		t.Fatalf("legacy missing-source response = %+v", legacyBody)
+	}
+}
+
+func TestLegacyContentSearchReturnsUpstreamIndexesAndExcerptWidth(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := contentSearchContractUser(t, server)
+	book := models.Book{
+		UserID: user.ID,
+		Title:  "兼容搜索字段",
+		URL:    "https://legacy-fields.example/book",
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	createContentSearchCacheChapter(
+		t,
+		server,
+		book.ID,
+		0,
+		strings.Repeat("L", 30)+"TARGET"+strings.Repeat("R", 30),
+	)
+
+	body := `{"bookUrl":"https://legacy-fields.example/book","keyword":"TARGET","lastIndex":-1,"size":20}`
+	request := httptest.NewRequest(http.MethodPost, "/api/reader3/searchBookContent", strings.NewReader(body))
+	request.Header.Set("Authorization", token)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("legacy content search: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		IsSuccess bool `json:"isSuccess"`
+		Data      struct {
+			List []struct {
+				ResultText          string `json:"resultText"`
+				QueryIndexInResult  int    `json:"queryIndexInResult"`
+				QueryIndexInChapter int    `json:"queryIndexInChapter"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.IsSuccess || len(payload.Data.List) != 1 {
+		t.Fatalf("legacy content search payload = %+v", payload)
+	}
+	result := payload.Data.List[0]
+	if result.QueryIndexInResult != 20 || result.QueryIndexInChapter != 30 {
+		t.Fatalf("legacy query indexes = %+v", result)
+	}
+	if result.ResultText != strings.Repeat("L", 20)+"TARGET"+strings.Repeat("R", 20) {
+		t.Fatalf("legacy excerpt width = %q", result.ResultText)
 	}
 }
 

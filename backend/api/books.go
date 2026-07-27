@@ -18,8 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	xhtml "golang.org/x/net/html"
@@ -32,6 +30,7 @@ import (
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chaptercache"
 	"openreader/backend/services/chapterimage"
+	"openreader/backend/services/contentsearch"
 	"openreader/backend/services/epubreader"
 )
 
@@ -1795,6 +1794,8 @@ type contentMatch struct {
 	Excerpt                  string  `json:"excerpt"`
 	Query                    string  `json:"query"`
 	ResultCountWithinChapter int     `json:"resultCountWithinChapter"`
+	QueryIndexInResult       int     `json:"queryIndexInResult"`
+	QueryIndexInChapter      int     `json:"queryIndexInChapter"`
 	Offset                   int     `json:"offset"`
 	LineIndex                int     `json:"lineIndex"`
 	Percent                  float64 `json:"percent"`
@@ -2216,10 +2217,17 @@ func (s *Server) searchBookContent(c *gin.Context) {
 	if !ok {
 		return
 	}
-
 	keyword := strings.TrimSpace(firstNonBlank(c.Query("q"), c.Query("keyword")))
 	if keyword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "q is required"})
+		return
+	}
+	if err := s.requireContentSearchSource(book); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "未配置书源"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 
@@ -2313,6 +2321,8 @@ type legacyContentMatch struct {
 	ResultText               string  `json:"resultText"`
 	Query                    string  `json:"query"`
 	ResultCountWithinChapter int     `json:"resultCountWithinChapter"`
+	QueryIndexInResult       int     `json:"queryIndexInResult"`
+	QueryIndexInChapter      int     `json:"queryIndexInChapter"`
 	Offset                   int     `json:"offset"`
 	LineIndex                int     `json:"lineIndex"`
 	Percent                  float64 `json:"percent"`
@@ -2359,6 +2369,14 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "加载书籍失败"})
+		return
+	}
+	if err := s.requireContentSearchSource(book); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "未配置书源"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "加载书源失败"})
 		return
 	}
 
@@ -2422,6 +2440,8 @@ func legacyContentMatches(matches []contentMatch) []legacyContentMatch {
 			ResultText:               match.Excerpt,
 			Query:                    match.Query,
 			ResultCountWithinChapter: match.ResultCountWithinChapter,
+			QueryIndexInResult:       match.QueryIndexInResult,
+			QueryIndexInChapter:      match.QueryIndexInChapter,
 			Offset:                   match.Offset,
 			LineIndex:                match.LineIndex,
 			Percent:                  match.Percent,
@@ -2457,7 +2477,7 @@ func (s *Server) collectContentMatchesContext(ctx context.Context, book models.B
 			return scan
 		}
 		scan.LastIndex = i
-		content, err := s.loadChapterTextContextResult(ctx, book, &chapters[i])
+		content, err := s.loadChapterSearchTextContextResult(ctx, book, &chapters[i])
 		if err != nil {
 			if ctx.Err() != nil {
 				scan.Canceled = true
@@ -2466,19 +2486,21 @@ func (s *Server) collectContentMatchesContext(ctx context.Context, book models.B
 			scan.UnavailableChapters++
 			continue
 		}
-		positions, chapterTruncated := searchContentPositionsBounded(content, keyword, contentSearchMaxMatchesPerChapter)
+		chapterMatches, chapterTruncated := contentsearch.Find(content, keyword, contentSearchMaxMatchesPerChapter)
 		scan.Truncated = scan.Truncated || chapterTruncated
-		for matchIndex, position := range positions {
+		for matchIndex, match := range chapterMatches {
 			scan.Matches = append(scan.Matches, contentMatch{
 				ChapterID:                chapters[i].ID,
 				ChapterIndex:             chapters[i].Index,
 				ChapterTitle:             chapters[i].Title,
-				Excerpt:                  excerptAround(content, position, keyword),
+				Excerpt:                  match.Excerpt,
 				Query:                    keyword,
 				ResultCountWithinChapter: matchIndex,
-				Offset:                   position,
-				LineIndex:                lineIndexAtByte(content, position),
-				Percent:                  float64(position) / float64(max(len(content), 1)),
+				QueryIndexInResult:       match.QueryIndexInResult,
+				QueryIndexInChapter:      match.QueryIndexInChapter,
+				Offset:                   match.ByteOffset,
+				LineIndex:                lineIndexAtByte(content, match.ByteOffset),
+				Percent:                  float64(match.ByteOffset) / float64(max(len(content), 1)),
 			})
 		}
 		// Like reader-dev, the requested page size is a threshold checked after
@@ -2490,138 +2512,6 @@ func (s *Server) collectContentMatchesContext(ctx context.Context, book models.B
 	}
 
 	return scan
-}
-
-func searchContentPositions(content string, keyword string, limit int) []int {
-	positions, _ := searchContentPositionsBounded(content, keyword, limit)
-	return positions
-}
-
-func searchContentPositionsBounded(content string, keyword string, limit int) ([]int, bool) {
-	if content == "" || keyword == "" || limit <= 0 {
-		return nil, false
-	}
-	capacity := limit + 1
-	seen := make(map[int]struct{})
-	lowerContent := strings.ToLower(content)
-	needle := strings.ToLower(keyword)
-	positions := make([]int, 0)
-	for offset := 0; offset < len(lowerContent) && len(positions) < capacity; {
-		position := strings.Index(lowerContent[offset:], needle)
-		if position < 0 {
-			break
-		}
-		absolute := offset + position
-		if _, ok := seen[absolute]; !ok {
-			seen[absolute] = struct{}{}
-			positions = append(positions, absolute)
-		}
-		offset = absolute + len(needle)
-	}
-
-	normalizedContent, contentMap := normalizeSearchText(content)
-	normalizedKeyword, _ := normalizeSearchText(keyword)
-	if normalizedKeyword == "" {
-		sort.Ints(positions)
-		truncated := len(positions) > limit
-		if truncated {
-			positions = positions[:limit]
-		}
-		return positions, truncated
-	}
-	for offset := 0; offset < len(normalizedContent) && len(positions) < capacity; {
-		position := strings.Index(normalizedContent[offset:], normalizedKeyword)
-		if position < 0 {
-			break
-		}
-		absolute := offset + position
-		if absolute >= 0 && absolute < len(contentMap) {
-			mappedPosition := contentMap[absolute]
-			if _, ok := seen[mappedPosition]; !ok {
-				seen[mappedPosition] = struct{}{}
-				positions = append(positions, mappedPosition)
-			}
-		}
-		offset = absolute + len(normalizedKeyword)
-	}
-	if len(positions) < capacity {
-		termPosition := searchContentTermPosition(normalizedContent, contentMap, keyword)
-		if termPosition >= 0 {
-			if _, ok := seen[termPosition]; !ok {
-				positions = append(positions, termPosition)
-			}
-		}
-	}
-	sort.Ints(positions)
-	truncated := len(positions) > limit
-	if truncated {
-		positions = positions[:limit]
-	}
-	return positions, truncated
-}
-
-func searchContentTermPosition(normalizedContent string, contentMap []int, keyword string) int {
-	terms := normalizeSearchTerms(keyword)
-	if len(terms) < 2 || normalizedContent == "" {
-		return -1
-	}
-	offset := 0
-	firstNormalizedPosition := -1
-	for _, term := range terms {
-		if term == "" {
-			continue
-		}
-		position := strings.Index(normalizedContent[offset:], term)
-		if position < 0 {
-			return -1
-		}
-		absolute := offset + position
-		if firstNormalizedPosition < 0 {
-			firstNormalizedPosition = absolute
-		}
-		offset = absolute + len(term)
-	}
-	if firstNormalizedPosition < 0 || firstNormalizedPosition >= len(contentMap) {
-		return -1
-	}
-	return contentMap[firstNormalizedPosition]
-}
-
-func normalizeSearchTerms(value string) []string {
-	terms := make([]string, 0)
-	var builder strings.Builder
-	flush := func() {
-		if builder.Len() == 0 {
-			return
-		}
-		terms = append(terms, builder.String())
-		builder.Reset()
-	}
-	for _, r := range value {
-		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
-			flush()
-			continue
-		}
-		builder.WriteString(strings.ToLower(string(r)))
-	}
-	flush()
-	return terms
-}
-
-func normalizeSearchText(value string) (string, []int) {
-	var builder strings.Builder
-	bytePositions := make([]int, 0, len(value))
-	for position, r := range value {
-		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
-			continue
-		}
-		lower := strings.ToLower(string(r))
-		builder.WriteString(lower)
-		for range []byte(lower) {
-			bytePositions = append(bytePositions, position)
-		}
-	}
-	return builder.String(), bytePositions
 }
 
 func lineIndexAtByte(content string, bytePosition int) int {
@@ -2640,21 +2530,6 @@ func lineIndexAtByte(content string, bytePosition int) int {
 	return lineIndex
 }
 
-func excerptAround(content string, bytePosition int, keyword string) string {
-	runes := []rune(content)
-	center := utf8.RuneCountInString(content[:bytePosition])
-	keywordWidth := utf8.RuneCountInString(keyword)
-	start := center - 42
-	if start < 0 {
-		start = 0
-	}
-	end := center + keywordWidth + 82
-	if end > len(runes) {
-		end = len(runes)
-	}
-	return strings.TrimSpace(string(runes[start:end]))
-}
-
 func (s *Server) loadChapterText(book models.Book, chapter *models.Chapter) string {
 	return s.loadChapterTextContext(context.Background(), book, chapter)
 }
@@ -2665,15 +2540,33 @@ func (s *Server) loadChapterTextContext(ctx context.Context, book models.Book, c
 }
 
 func (s *Server) loadChapterTextContextResult(ctx context.Context, book models.Book, chapter *models.Chapter) (string, error) {
-	return s.loadChapterTextContextResultWithOptions(ctx, &book, chapter, false)
+	return s.loadChapterTextContextResultWithPolicy(ctx, &book, chapter, chapterTextLoadPolicy{
+		ApplyReaderReplaceRules: true,
+	})
 }
 
 func (s *Server) loadChapterTextContextResultWithOptions(ctx context.Context, book *models.Book, chapter *models.Chapter, refresh bool) (string, error) {
+	return s.loadChapterTextContextResultWithPolicy(ctx, book, chapter, chapterTextLoadPolicy{
+		Refresh:                 refresh,
+		ApplyReaderReplaceRules: true,
+	})
+}
+
+func (s *Server) loadChapterSearchTextContextResult(ctx context.Context, book models.Book, chapter *models.Chapter) (string, error) {
+	return s.loadChapterTextContextResultWithPolicy(ctx, &book, chapter, chapterTextLoadPolicy{})
+}
+
+type chapterTextLoadPolicy struct {
+	Refresh                 bool
+	ApplyReaderReplaceRules bool
+}
+
+func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, book *models.Book, chapter *models.Chapter, policy chapterTextLoadPolicy) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	content := ""
-	if !refresh && chapter.CachePath != "" {
+	if !policy.Refresh && chapter.CachePath != "" {
 		if bytes, path, err := s.readChapterCache(*book, chapter.CachePath); err == nil {
 			content = string(bytes)
 			if book.SourceID == 0 {
@@ -2742,10 +2635,18 @@ func (s *Server) loadChapterTextContextResultWithOptions(ctx context.Context, bo
 			return "", err
 		}
 	}
-	if !epubreader.IsLocalEPUB(*book) && book.Type != 1 {
+	if policy.ApplyReaderReplaceRules && !epubreader.IsLocalEPUB(*book) && book.Type != 1 {
 		content = s.applyUserReplaceRules(*book, content)
 	}
 	return content, nil
+}
+
+func (s *Server) requireContentSearchSource(book models.Book) error {
+	if book.SourceID == 0 {
+		return nil
+	}
+	var source models.BookSource
+	return s.db.Select("id").First(&source, book.SourceID).Error
 }
 
 func (s *Server) localChapterCachePath(book models.Book, fullPath string) string {

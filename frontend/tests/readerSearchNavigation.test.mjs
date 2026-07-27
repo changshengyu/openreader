@@ -95,10 +95,16 @@ test('loads same chapter directly and navigates before loading another chapter',
     resultCountWithinChapter: 0,
   })
   assert.deepEqual(same.navigated, [])
-  assert.deepEqual(same.loaded, [{
-    index: 1,
-    loadOptions: { restorePercent: 0.3, saveAfterLoad: true },
-  }])
+  assert.deepEqual(same.loaded, [], 'an upstream same-chapter result must reposition without reloading content')
+  assert.equal(same.saved.length, 1)
+  await same.controller.jumpToResult({
+    chapterIndex: 1,
+    percent: 0.3,
+    query: '目标',
+    resultCountWithinChapter: 0,
+  })
+  assert.deepEqual(same.loaded, [], 'selecting the identical result again must still avoid a reload')
+  assert.equal(same.saved.length, 2, 'the identical result must remain a repeatable Reader event')
 
   const other = createFixture()
   await other.controller.jumpToResult({
@@ -111,6 +117,29 @@ test('loads same chapter directly and navigates before loading another chapter',
     index: 3,
     loadOptions: { restorePercent: 0.6, saveAfterLoad: true },
   }])
+})
+
+test('rebuilds the target continuous window before locating a cross-chapter result', async () => {
+  const events = []
+  const fixture = createFixture({
+    isContinuousScrollRead: ref(true),
+    navigate: async query => events.push(['navigate', query]),
+    loadChapter: async (index, loadOptions) => events.push(['load', index, loadOptions]),
+    rebuildContinuousWindow: async index => events.push(['rebuild', index]),
+  })
+
+  await fixture.controller.jumpToResult({
+    chapterIndex: 3,
+    percent: 0.4,
+    query: '目标',
+    resultCountWithinChapter: 0,
+  })
+
+  assert.deepEqual(events, [
+    ['navigate', { chapter: 3, percent: 0.4 }],
+    ['load', 3, { restorePercent: 0.4, saveAfterLoad: true }],
+    ['rebuild', 3],
+  ])
 })
 
 test('restores a bookmark by paragraph context after route offset restoration', async () => {

@@ -3,21 +3,20 @@
 ## 2026-07-27 P2 书内正文搜索固定上游复审
 
 固定上游 `SearchBookContent.vue`、`Reader.vue#showSearchContent` 与
-`BookController.searchBookContent` 的完整链路已重新提取。当前 App-level Dialog 和取消/有界
-扫描增强可保留，但四项实现偏差必须纠正：
+`BookController.searchBookContent` 的完整链路已重新提取并实施。App-level Dialog 和取消/有界
+扫描增强继续保留，四项结构级偏差已经纠正：
 
-- 搜索复用了 Reader 显示正文加载器，因此先执行用户替换规则；上游明确搜索原始章节
-  `useReplace=false`。
-- 当前后端不区分大小写、忽略空白/标点并按关键词长度推进；上游区分大小写且从命中位置
-  `+1` 继续，允许重叠命中。
-- Overlay 通过 `router.push` 把行选择当导航；同一结果再次点击可能 no-op，不同结果污染返回
-  历史，还会让 position/search watcher 对同一次选择重复响应。
-- 远程书缺失书源未前置失败；legacy 结果缺少 `queryIndexInResult/queryIndexInChapter`，片段
-  长度也偏离上游 ±20 字符。
+- 搜索加载策略已与 Reader 显示正文拆分，恢复上游原始章节 `useReplace=false` 语义。
+- 后端和前端定位都恢复区分大小写、精确且从命中位置 `+1` 继续的重叠匹配。
+- Overlay 的 `router.push` 已由递增 Reader intent 取代；同一结果重复点击仍执行，不污染返回历史。
+- 远程书缺失书源会前置失败；legacy 结果补齐 UTF-16
+  `queryIndexInResult/queryIndexInChapter` 与 ±20 片段。
 
-本轮状态为 **audit-complete / tests-not-yet-written**。保留 OpenReader 的 JWT/用户隔离、
-AbortController、有界扫描、incomplete/truncated 提示和 URL 冷启动兼容；现场选择改为可重复
-消费的 Reader intent，兼容 URL 不能继续充当唯一事件通道。完整合同与先失败测试见
+本轮状态为 **implemented / full-regression-passed / Docker-pending**。OpenReader 保留
+JWT/用户隔离、AbortController、有界扫描、incomplete/truncated 提示和 URL 冷启动兼容；
+现场选择已改为可重复消费的 Reader intent，兼容 URL 不再充当唯一事件通道。Go 全量、frontend
+569/569、生产构建、1440×900/390×844/360×800/iPad Reader 与连续模式浏览器合同均通过。
+完整合同、先失败证据和实施记录见
 [`book-content-search-p2-contract.md`](book-content-search-p2-contract.md)。
 
 ## 2026-07-27 P0 移动点击翻页绘制与空闲结算复审
@@ -719,7 +718,7 @@ Authoritative upstream files:
 | Bookmark ownership | Reader merges the reading/shelf book and asks the root App `Bookmark` dialog to open. The root dialog filters the global bookmark collection to that book. Reader itself owns the content positioning after receiving the selected bookmark. | `Reader.vue` now routes the current merged reading book through `useOverlayStore.openBookmark()`. It retains only position-scoped bookmark creation/note mutation with `trackItems:false`; `OverlayBookmarks` is the unique list/edit/import/delete UI/data owner. | `aligned` for UI ownership; position-scoped creation is a required reader responsibility. | Reader action opens exactly one global bookmark dialog with the current book; no Reader-local bookmark workspace remains; selected bookmark closes dialog and preserves reader route semantics. |
 | Bookmark dialog shell | Upstream uses App-level `el-dialog`, `dialogWidth` on desktop and `fullscreen` on mini interface; its title is `<book> 书签管理` with import, table selection, batch delete, jump, and edit. | `OverlayBookmarks` now uses one App-level `el-dialog`: 880px desktop width, `fullscreen` mini mode, title/import action, table selection, batch delete, jump, and edit. The old Reader workspace/drawer and card panel have been removed. | `aligned` | 1440×900 dialog width/title/action contract; 390×844/360×800 fullscreen dialog rect; verify no bottom drawer and no duplicate dialog. |
 | Bookmark data adaptation | Upstream stores bookmarks globally and filters by name/author; save/delete/import refresh the shared collection. | OpenReader keeps authenticated per-book APIs and user-scoped data, with `useBookBookmarks` update events. This is required for Go/multi-user isolation. | `acceptable-change` | Same-book and cross-book jump/import/delete tests; ensure one active data owner and refresh event path. |
-| Search ownership | Reader asks the root App `SearchBookContent` dialog to open with the current book. A chosen result emits `showSearchContent`; Reader loads/rebuilds the target chapter then finds/highlights the requested occurrence. | Reader now opens `useOverlayStore.openSearchBookContent()` and no longer owns a search panel or `useBookContentSearch` instance. The global dialog owns the sole search state and routes the existing `chapter`, `line`, `match`, `percent`, and `q` query fields back to Reader. | `aligned` | Reader action opens only global search dialog; result closes it, preserves route compatibility, then uses existing route-sync highlighting. |
+| Search ownership | Reader asks the root App `SearchBookContent` dialog to open with the current book. A chosen result emits `showSearchContent`; Reader loads/rebuilds the target chapter then finds/highlights the requested occurrence. | Reader opens `useOverlayStore.openSearchBookContent()` and no longer owns a search panel or `useBookContentSearch` instance. The global dialog owns the sole search state and emits a monotonic Pinia intent for every selected row; same-chapter jumps do not mutate the route, cross-chapter jumps use history-neutral replace, and old query URLs remain cold-start compatible. | `aligned` | Reader action opens only the global search dialog; each result selection closes it and executes once, including repeated selection of the identical row. |
 | Search dialog shell | Upstream uses root `el-dialog`, fullscreen on mini interface. The header is the search input; results are a table; footer provides load-more, restore-last-position when relevant, and cancel. | `OverlayBookContentSearch` now uses one App-level `el-dialog`: header input, tabular results, load-more, existing full-scan enhancement, saved-scroll restoration, cancel, and mini fullscreen. The old narrow drawer and Reader workspace/card UI have been removed. | `aligned` | Desktop/mobile dialog geometry and no-drawer assertion; search input/header, result selection, load-more, cancellation, and previous-result scroll restoration tests. |
 | Search pagination/API | Upstream posts a book URL, keyword, and `lastIndex`; its result rows carry chapter/result text and a next cursor. | OpenReader uses a per-book authenticated route plus richer `chapter/line/match/percent/q` navigation metadata, remote/local paging guards, and scoped result cache. | `acceptable-change` | Preserve current API/data fields and route compatibility while replacing only UI ownership/shell. No backend route change is required in this slice. |
 | Cache ownership | `showCacheContent()` toggles an inline `.cache-content-zone` within Reader's bottom `.read-bar`. It shows `后面50章`, `后面100章`, `后面全部`; while active it replaces actions with status and cancel. On mini interface this zone is part of the bottom reader bar, not a dialog. | `showCacheContentZone` is now the Reader state. `ReaderDesktopProgress` positions `ReaderCachePanel` beside the desktop progress control, and `ReaderMobileChrome` places it inside the bottom bar. It preserves 50/100/all/status/cancel and toggles without closing the tool layer. | `aligned` | Cache action toggles a single inline zone, does not open workspace/drawer or hide chrome, preserves 50/100/all/cancel and status, and remains reachable at desktop/mobile target viewports. |
@@ -756,7 +755,7 @@ Authoritative upstream files:
 | Dialog/state ownership | One root dialog owns keyword, result list, cursor, saved result-list scroll, load-more and result selection. It is fullscreen on mini interface; Reader only consumes a chosen result. | `OverlayBookContentSearch` + `useBookContentSearch` own one root Element Plus dialog and Reader consumes route result metadata. | `aligned` | Keep root/fullscreen/no-drawer and saved-scroll contracts. |
 | Cursor/result completeness | A page may exceed the requested size when its final scanned chapter has more matches: all of that chapter's matches are returned before `lastIndex` advances. No same-chapter matches are silently skipped. | `collectContentMatches` caps `perChapterLimit`/`matchLimit` while setting `lastIndex` to that chapter, so the next request begins at the following chapter and permanently loses the remaining matches in a dense chapter. | `must-fix` | Dense single-chapter fixture must return all matches up to an explicit visible safety cap, mark any safety truncation, and never claim the cursor can recover skipped matches. |
 | Cancellation | Browser disconnect stops subsequent upstream chapter work. A partial response is not represented as a successful completed page. | Modern `/books/:id/search` calls `loadChapterText` with `context.Background()`, so a closed dialog/request can still keep fetching remote chapters. | `must-fix` | Cancelled request fixture proves no later remote chapter is requested and no successful stale result is delivered. |
-| Search matching/result fields | Upstream searches raw chapter text in source order, returns chapter title/index, match ordinal, excerpt/result text, and position data which Reader uses to locate the result after its target chapter has loaded. | OpenReader adds case-insensitive/punctuation-normalized matching and per-book route metadata (`chapter`, `line`, `match`, `percent`, `q`). These are acceptable only if result order/ordinal and post-load locating remain stable. | `acceptable-change` | Exact, normalized, multi-match and cross-chapter fixtures; result selection loads the target chapter then highlights the requested occurrence. |
+| Search matching/result fields | Upstream searches raw chapter text in source order, returns chapter title/index, match ordinal, excerpt/result text, and UTF-16 position data which Reader uses to locate the result after its target chapter has loaded. | OpenReader now uses the same exact, case-sensitive, overlapping search and ±20 UTF-16-unit legacy excerpt/index semantics. Additive byte offset/line/percent remain internal Vue/Go navigation metadata. | `aligned + additive metadata` | Raw-vs-replaced, case/punctuation, overlapping, supplementary-character index, multi-match and cross-chapter fixtures pass. |
 | Errors and unavailable chapters | Missing book/keyword/end are visible user messages; a chapter that cannot provide content does not corrupt the cursor for following chapters. | Modern API has normal REST status codes, but unavailable remote chapters currently collapse into an indistinguishable empty result. | `must-fix` | A partially unavailable scan reports a client-safe incomplete-search state; an all-unavailable scan must not show a false “没有匹配内容”. |
 | Legacy compatibility | `/reader3/searchBookContent` accepts GET/POST URL/bookUrl aliases and returns `isSuccess/data.list/lastIndex`. | OpenReader preserves both methods as an adapter. | `aligned` adapter | Keep existing legacy route tests while modern-route tests cover current UI. |
 

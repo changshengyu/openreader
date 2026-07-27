@@ -30,7 +30,7 @@ export function useReaderSearchNavigation(options) {
       result?.query || unref(options.keyword) || routeQuery.q || '',
     ).trim()
     if (!keyword) return false
-    const paragraphs = [...(paragraphScope()?.querySelectorAll('p') || [])]
+    const paragraphs = [...(paragraphScope()?.querySelectorAll('h3, p') || [])]
     if (!paragraphs.length) return false
     const targetIndex = Number.isInteger(result?.resultCountWithinChapter)
       ? result.resultCountWithinChapter
@@ -105,11 +105,14 @@ export function useReaderSearchNavigation(options) {
         chapter: targetIndex,
         percent: restorePercent ?? undefined,
       })
+      await options.loadChapter(targetIndex, {
+        restorePercent,
+        saveAfterLoad: true,
+      })
+      if (unref(options.isContinuousScrollRead)) {
+        await options.rebuildContinuousWindow?.(targetIndex)
+      }
     }
-    await options.loadChapter(targetIndex, {
-      restorePercent,
-      saveAfterLoad: true,
-    })
     await nextTick()
     if (jumpToMatch(result)) return
     if (Number.isInteger(result?.lineIndex)) {
