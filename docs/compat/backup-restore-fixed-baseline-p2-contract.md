@@ -1,6 +1,7 @@
 # P2 备份、恢复与 WebDAV 工作台固定基线合同
 
-状态：**2026-07-22 固定上游审查、测试与实现已完成；三视口浏览器和 Docker/旧卷发布门禁待完成。**
+状态：**2026-07-27 已完成固定上游审查、测试、实现、三视口浏览器、
+Docker 新旧卷门禁与本地双架构发布。**
 
 本合同以 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 为唯一产品基线，纠正此前把“ZIP 结构预检通过”概括成“备份/WebDAV 已完成”的审计结论。
@@ -195,9 +196,18 @@ Authorization、WebDAV 凭证或主机路径。
 - 无 `canEditSources` 的 WebDAV 用户恢复个人数据但跳过全局书源，并返回
   `sourcesSkipped:true`。替换规则仅增加 `group_name`、`sort_order` 两个默认值列；旧行仍按
   `sort_order=0,id ASC` 执行，不删除或改写已有数据。
-- 自动证据：后端 `go test ./...`、前端 534/534、Vite production build、smoke 脚本语法和
-  `git diff --check` 均通过。真实 Chromium 三视口启动需要沙箱外权限，本次自动审批因 Codex
-  使用额度耗尽被拒；因此浏览器、旧卷 Docker 与镜像发布仍明确保持待完成状态。
+- 自动证据：实现批次的后端 `go test ./...`、前端测试、Vite production build 与
+  `git diff --check` 通过。2026-07-27 更新后的
+  `scripts/smoke/workspace-operation-contract.mjs` 在 1440×900、390×844、360×800
+  验证普通备份确认、portable v2 的独立确认/计数/legacy 提示、唯一 WebDAV 管理器、
+  旧链接和移动侧栏；取消分支继续由单元合同覆盖。
+- 当前新卷 smoke 验证普通 trigger/list/restore、portable v1/v2、跨用户恢复和重启；
+  历史卷 smoke 验证旧 TXT/EPUB/UMD/CBZ/相对缓存、用户隔离、普通备份恢复、
+  portable v2 跨卷恢复与重启，原 archive hash 保持。
+- 实现已包含在从远端提交 `54a528f4c0d697c72778fcd9062221629ea54fda`
+  本机构建并发布的 `ghcr.io/changshengyu/openreader:54a528f` 与 `latest` 中；
+  两个标签均为 amd64/arm64 OCI index
+  `sha256:047f9636a78604a1d5320da2972d0b16256b95d47253320b79095eaf6101a571`。
 
-这些门禁全部通过前，不再把“用户、备份、RSS、替换规则、书签”整行概括为已完成；
-RSS、替换规则、书签自身已验收的交互/API 合同保持有效，只有它们的 archive bridge 被本合同重新打开。
+至此用户、普通/可移植备份、RSS、替换规则和书签的已抽取 archive bridge 均完成；
+后续修改必须建立新的上游合同，不能把本批已关闭的别名、事务或唯一管理器重新打开。

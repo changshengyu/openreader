@@ -67,14 +67,15 @@ it is not a new stored credential and should only be exposed through HTTPS.
 
 ## P2 reading-progress API contract
 
-Status: audited on 2026-07-18; implementation is pending. The complete route, concurrency,
-chapter-identity, WebSocket and existing-directory WebDAV mirror contract is
+Status: audited, implemented, full-regression validated and Docker-published as `9f19d21`
+on 2026-07-18. The complete route, concurrency, chapter-identity, WebSocket and
+existing-directory WebDAV mirror contract is
 [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md).
 
 The deployed `GET /api/progress/:bookID` and `PUT /api/progress` paths remain stable. The
-implementation must replace its non-atomic read/check/upsert sequence with a database CAS,
-derive chapter ID/title from the caller-owned book catalogue, preserve the existing `200` plus
-`X-OpenReader-Progress-Conflict: 1` compatibility response, and broadcast only after one winner
+implementation uses a database CAS, derives chapter ID/title from the caller-owned book catalogue,
+preserves the existing `200` plus
+`X-OpenReader-Progress-Conflict: 1` compatibility response, and broadcasts only after one winner
 commits. Existing `bookProgress/` or `legado/bookProgress/` directories regain upstream-compatible
 per-book JSON mirrors without weakening OpenReader's private WebDAV roots.
 
@@ -114,7 +115,10 @@ Source-facing routes retain their current response schemas. Only a real remote s
 
 ## P2 backup restore archive contract
 
-Status: **structure/budget preflight and logical content/transaction/permission compatibility implemented on 2026-07-22; browser/Docker release gate pending.** The archive bounds below remain authoritative. The upstream filename/field bridge, atomic generation/restore and source-edit capability contract are defined by
+Status: **structure/budget preflight, logical content/transaction/permission compatibility,
+three-viewport browser validation, fresh/historical Docker volume gates and the local amd64/arm64
+release are complete as of 2026-07-27.** The archive bounds below remain authoritative. The
+upstream filename/field bridge, atomic generation/restore and source-edit capability contract are defined by
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
 | Method / path | Request | Success / side effects | Errors / safety contract |

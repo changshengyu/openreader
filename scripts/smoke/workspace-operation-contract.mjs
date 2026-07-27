@@ -75,7 +75,13 @@ async function installApiMocks(page) {
     }
     if (path === '/backup/portable/trigger' && method === 'POST') {
       portableBackupTriggerRequests += 1
-      return route.fulfill(json({ name: 'portable-smoke.zip', localBooks: 1 }))
+      return route.fulfill(json({
+        name: 'portable-smoke.zip',
+        format: 'openreader-portable-v2',
+        localBooks: 1,
+        assets: 2,
+        legacyAssets: 1,
+      }))
     }
     if (path === '/backup/list') return route.fulfill(json([]))
     if (path === '/webdav/list') return route.fulfill(json({ path: '', items: [] }))
@@ -234,10 +240,13 @@ async function verifyDirectBackupActions(page, viewport) {
   await page.waitForFunction(async () => await window.__workspaceOperationBackupTriggerRequests() === 1)
   await page.getByText('当前账户备份已保存：backup-smoke.zip', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
 
-  await page.getByText('保存完整本地书备份', { exact: true }).click()
+  await page.getByText('保存完整可移植备份', { exact: true }).click()
   await page.getByRole('button', { name: '确定' }).last().click()
   await page.waitForFunction(async () => await window.__workspaceOperationPortableBackupTriggerRequests() === 1)
-  await page.getByText('完整本地书备份已保存：portable-smoke.zip（1 本）', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+  await page.getByText(
+    '完整可移植备份已保存：portable-smoke.zip（1 本书，2 个自定义资源）；另有 1 个旧版资源仅保留链接',
+    { exact: true },
+  ).waitFor({ state: 'visible', timeout: 10000 })
 
   assert(await page.locator('.global-backup-dialog').count() === 0, `${viewport.width}: direct backup actions must not create a second manager`)
 }
