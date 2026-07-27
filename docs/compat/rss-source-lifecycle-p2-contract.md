@@ -140,3 +140,19 @@ Validation:
 - The same browser gate delayed source-one list data, closed that child dialog,
   opened source two, and verified that source-one neither overwrote rows nor
   caused a second refresh.
+
+Docker release:
+
+- Git/image version: `0f636f1`
+- Tags: `ghcr.io/changshengyu/openreader:0f636f1` and
+  `ghcr.io/changshengyu/openreader:latest`
+- Multi-architecture index:
+  `sha256:25398a86aa809b5ce1157f64dee1fd0d85673089480223a7375eae9bb86c6f5c`
+- `linux/amd64`:
+  `sha256:54a4f9eb1bb0725dca07c839ecdd3fc2b3482d92c918762cedc58e1b2d10d575`
+- `linux/arm64`:
+  `sha256:d487ee131e37dc3afa6d2518b5686e931d7dca872210b374cb6f8357c57b3c38`
+- The ordinary mounted-volume smoke passed portable v1, portable v2 assets,
+  cross-user isolation and restart recovery.
+- The historical-volume smoke passed TXT, EPUB, UMD, CBZ, relative-cache and
+  owner-isolation fixtures.
