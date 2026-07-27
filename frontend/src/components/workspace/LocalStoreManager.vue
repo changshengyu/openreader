@@ -1,9 +1,5 @@
 <template>
-  <section class="app-page store-page" :class="{ 'embedded-store': embedded }">
-    <header v-if="!embedded" class="store-head">
-      <h1 class="app-page-title">本地书仓</h1>
-    </header>
-
+  <section class="store-page">
     <el-table
       v-loading="loading"
       :data="tableItems"
@@ -82,17 +78,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened } from '@element-plus/icons-vue'
-import { deleteFromLocalStore, listLocalStore, uploadToLocalStore } from '../api/localStore'
-import { useOverlayStore } from '../stores/overlay'
-import { filterLocalStoreItems, visibleLocalStoreItems } from '../utils/localStoreItems'
-import { isLocalStoreImportable } from '../utils/storageImportable'
-
-defineProps({
-  embedded: {
-    type: Boolean,
-    default: false,
-  },
-})
+import { deleteFromLocalStore, listLocalStore, uploadToLocalStore } from '../../api/localStore'
+import { useOverlayStore } from '../../stores/overlay'
+import { filterLocalStoreItems, visibleLocalStoreItems } from '../../utils/localStoreItems'
+import { isLocalStoreImportable } from '../../utils/storageImportable'
 
 const overlay = useOverlayStore()
 const items = ref([])
@@ -269,16 +258,11 @@ function readError(err, fallback) {
   gap: 14px;
 }
 
-.store-page.embedded-store {
+.store-page {
   width: 100%;
   max-width: none;
   margin: 0;
   padding: 0;
-}
-
-.store-head {
-  display: flex;
-  align-items: center;
 }
 
 .store-table {

@@ -7,7 +7,7 @@ import {
   isWebDAVImportable,
 } from '../src/utils/storageImportable.js'
 
-const localStore = readFileSync(new URL('../src/views/LocalStore.vue', import.meta.url), 'utf8')
+const localStore = readFileSync(new URL('../src/components/workspace/LocalStoreManager.vue', import.meta.url), 'utf8')
 const webdav = readFileSync(new URL('../src/components/WebDAVBrowser.vue', import.meta.url), 'utf8')
 
 test('keeps reader-dev format gates distinct for LocalStore and WebDAV', () => {

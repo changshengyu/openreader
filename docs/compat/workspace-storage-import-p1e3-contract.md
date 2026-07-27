@@ -61,6 +61,6 @@
 
 ## 6. 后续
 
-实施证据：`frontend/src/views/LocalStore.vue` 与 `frontend/src/components/WebDAVBrowser.vue` 已重建为同一张 Element 表格语义；`frontend/src/utils/storageImportable.js` 将两个来源的可见格式入口分离；`backend/api/localstore.go` 返回 `lastModified`、跳过点文件，并将多文件上传改为逐项有界原子写入。`frontend/tests/workspaceFileManagerParity.test.mjs`、`frontend/tests/localStoreWorkflowContract.test.mjs`、`backend/api/workspace_file_manager_p1e3_contract_test.go` 覆盖结构、格式、隐藏文件、时间字段、多文件和拒绝项不覆盖旧目标。`scripts/smoke/workspace-storage-import-state-machine.mjs` 已在 1440×900、390×844、360×800 验证共享导入状态机、被移除操作不可达及 WebDAV Bearer 认证。
+实施证据：`frontend/src/components/workspace/LocalStoreManager.vue` 与 `frontend/src/components/WebDAVBrowser.vue` 已重建为同一张 Element 表格语义；LocalStore 的旧 `views` 独立页面壳已由 [`local-store-workspace-ownership-p1-contract.md`](local-store-workspace-ownership-p1-contract.md) 删除。`frontend/src/utils/storageImportable.js` 将两个来源的可见格式入口分离；`backend/api/localstore.go` 返回 `lastModified`、跳过点文件，并将多文件上传改为逐项有界原子写入。`frontend/tests/workspaceFileManagerParity.test.mjs`、`frontend/tests/localStoreWorkflowContract.test.mjs`、`backend/api/workspace_file_manager_p1e3_contract_test.go` 覆盖结构、格式、隐藏文件、时间字段、多文件和拒绝项不覆盖旧目标。`scripts/smoke/workspace-storage-import-state-machine.mjs` 已在 1440×900、390×844、360×800 验证共享导入状态机、被移除操作不可达及 WebDAV Bearer 认证。
 
 完成 P1-E3 后，再进入 P1-E4：用真实 TXT、EPUB、UMD、CBZ、PDF、Markdown 和旧挂载卷验证 parser/导入/阅读语义。P1-E4 才评估额外格式是否应通过单独、明确授权的产品入口暴露，不能绕过 reader-dev 工作台合同。

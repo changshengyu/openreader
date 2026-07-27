@@ -7,7 +7,7 @@
     class="global-local-store-dialog"
     destroy-on-close
   >
-    <LocalStore embedded />
+    <LocalStoreManager />
   </el-dialog>
 </template>
 
@@ -22,6 +22,6 @@ defineProps({
   },
 })
 
-const LocalStore = defineAsyncComponent(() => import('../../views/LocalStore.vue'))
+const LocalStoreManager = defineAsyncComponent(() => import('../workspace/LocalStoreManager.vue'))
 const overlay = useOverlayStore()
 </script>

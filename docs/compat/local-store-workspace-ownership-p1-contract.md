@@ -2,7 +2,7 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：**2026-07-27 已完成只读审计，尚未开始本批应用代码改动。**
+状态：**2026-07-27 已完成只读审计、失败测试、应用迁移、全量自动化与三视口真实浏览器验证。**
 
 本合同只处理 LocalStore 的前端所有权和不可达页面壳，不重开已经完成的目录列表、搜索阈值、
 101 项显示门槛、导入预览、权限、解析器、文件 API、旧卷或备份合同。
@@ -58,3 +58,18 @@
 这是不改变用户数据和 API 的结构收敛切片。完成前端全量测试、生产构建、三视口浏览器和
 后端全量回归后即可提交 GitHub。它本身不必单独发布 Docker；如果与下一项可见修复形成
 连贯候选，则按用户允许的半模块节奏本地构建并推送 GHCR。
+
+## 6. 实施与验证记录
+
+- `views/LocalStore.vue` 已迁移为
+  `components/workspace/LocalStoreManager.vue`；不可达的独立页头、`app-page` 和 `embedded`
+  双形态已删除。
+- `OverlayLocalStore.vue` 是唯一 Dialog 所有者，继续负责固定上游标题、desktop width、
+  compact fullscreen 和 `destroy-on-close`；Manager 只保留文件列表与操作 body。
+- `/local-store` 兼容重定向、当前目录、筛选、101 项显示门槛、上传、删除、格式门禁和共享导入
+  预览均未改变；后端 API、SQLite 和持久化目录没有变更。
+- 新增 `localStoreWorkspaceOwnership.test.mjs`。测试在实现前按预期以 Manager 缺失和旧
+  embedded 协议失败，迁移后与全部既有 LocalStore/导入/路由合同共同转绿。
+- 验证通过：后端 `go test ./...`；前端 **571/571**；Vite 生产构建；
+  `workspace-operation-contract.mjs` 在 1440×900、390×844、360×800 通过旧链接、
+  Dialog 打开/关闭、移动 fullscreen、点击拦截和横向溢出检查。

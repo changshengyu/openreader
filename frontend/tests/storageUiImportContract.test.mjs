@@ -4,7 +4,7 @@ import test from 'node:test'
 
 const localStoreOverlay = readFileSync(new URL('../src/components/overlays/OverlayLocalStore.vue', import.meta.url), 'utf8')
 const webdavOverlay = readFileSync(new URL('../src/components/overlays/OverlayWebDAV.vue', import.meta.url), 'utf8')
-const localStore = readFileSync(new URL('../src/views/LocalStore.vue', import.meta.url), 'utf8')
+const localStore = readFileSync(new URL('../src/components/workspace/LocalStoreManager.vue', import.meta.url), 'utf8')
 const webdav = readFileSync(new URL('../src/components/WebDAVBrowser.vue', import.meta.url), 'utf8')
 const directImport = readFileSync(new URL('../src/components/overlays/OverlayBookImport.vue', import.meta.url), 'utf8')
 

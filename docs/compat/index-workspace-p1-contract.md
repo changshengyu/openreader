@@ -4,10 +4,10 @@
 本文件第 2 节保留的是 2026-07-13 实施前证据，后续完成状态以
 [`index-search-p1b-contract.md`](index-search-p1b-contract.md)、
 [`reader-dev-openreader-gap-analysis.md`](reader-dev-openreader-gap-analysis.md) 和
-[`refactor-audit-matrix.md`](refactor-audit-matrix.md) 为准。2026-07-27 的文件级复审另发现
-LocalStore 仍保留不可达独立页面壳，进入
+[`refactor-audit-matrix.md`](refactor-audit-matrix.md) 为准。2026-07-27 的文件级复审另发现并
+已删除 LocalStore 的不可达独立页面壳，完成记录见
 [`local-store-workspace-ownership-p1-contract.md`](local-store-workspace-ownership-p1-contract.md)
-作为不改变用户可见流程的 P1-E5 结构收敛。
+所述不改变用户可见流程的 P1-E5 结构收敛。
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。
 

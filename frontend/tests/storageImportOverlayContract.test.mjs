@@ -5,7 +5,7 @@ import test from 'node:test'
 const host = readFileSync(new URL('../src/components/GlobalOverlayHost.vue', import.meta.url), 'utf8')
 const overlayStore = readFileSync(new URL('../src/stores/overlay.js', import.meta.url), 'utf8')
 const overlay = readFileSync(new URL('../src/components/overlays/OverlayStorageImport.vue', import.meta.url), 'utf8')
-const localStore = readFileSync(new URL('../src/views/LocalStore.vue', import.meta.url), 'utf8')
+const localStore = readFileSync(new URL('../src/components/workspace/LocalStoreManager.vue', import.meta.url), 'utf8')
 const webdav = readFileSync(new URL('../src/components/WebDAVBrowser.vue', import.meta.url), 'utf8')
 
 test('mounts one root storage-import controller and exposes a shared overlay request', () => {
