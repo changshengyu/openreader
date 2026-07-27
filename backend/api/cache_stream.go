@@ -13,6 +13,7 @@ import (
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 	"openreader/backend/services/chaptercache"
 )
 
@@ -57,13 +58,12 @@ func (s *Server) cacheBookContentStream(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "local books do not need server cache"})
 		return
 	}
-	var sourceCount int64
-	if err := s.db.Model(&models.BookSource{}).Where("id = ?", book.SourceID).Count(&sourceCount).Error; err != nil {
+	if _, err := s.bookSources.FindForBook(userID, book.SourceID); err != nil {
+		if errors.Is(err, booksources.ErrSourceNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "book source not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify book source"})
-		return
-	}
-	if sourceCount == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "book source not found"})
 		return
 	}
 
@@ -168,7 +168,9 @@ func (s *Server) cacheBookChapters(
 	selected := selectCacheChapters(catalogue, chapterIndex, all, count)
 	var source models.BookSource
 	if len(selected) > 0 {
-		if err := s.db.First(&source, book.SourceID).Error; err != nil {
+		var err error
+		source, err = s.bookSources.FindForBook(book.UserID, book.SourceID)
+		if err != nil {
 			return chaptercache.Progress{}, err
 		}
 	}

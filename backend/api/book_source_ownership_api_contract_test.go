@@ -3,14 +3,17 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
+	"openreader/backend/engine"
 	"openreader/backend/models"
 )
 
@@ -318,6 +321,223 @@ func TestBookSourceClearImportAndDefaultRestoreAreScoped(t *testing.T) {
 	restored := sourceList(t, router, bob.Auth)
 	if len(restored) != 1 || restored[0].Name != "管理员默认源" {
 		t.Fatalf("bob restored sources = %+v", restored)
+	}
+}
+
+func TestSearchAndExploreResolveOnlyCallerActiveSources(t *testing.T) {
+	router, _ := setupTestServer(t)
+	alice := registerSourceContractAccount(t, router, "sourcesearchalice")
+	bob := registerSourceContractAccount(t, router, "sourcesearchbob")
+	alice.Source = createSourceThroughAPI(t, router, alice.Auth, `{
+		"name":"Alice 搜索探索源",
+		"baseUrl":"https://alice-runtime.example",
+		"searchUrl":"https://alice-runtime.example/search?q={keyword}",
+		"rules":"{\"searchUrl\":\"https://alice-runtime.example/search?q={keyword}\",\"exploreUrl\":\"分类::https://alice-runtime.example/explore\",\"bookListRule\":\".book\",\"bookNameRule\":\".name|text\",\"bookURLRule\":\".name|attr:href\"}",
+		"enabled":true,
+		"enabledExplore":true
+	}`)
+	bob.Source = createSourceThroughAPI(t, router, bob.Auth, `{
+		"name":"Bob 搜索探索源",
+		"baseUrl":"https://bob-runtime.example",
+		"searchUrl":"https://bob-runtime.example/search?q={keyword}",
+		"rules":"{\"searchUrl\":\"https://bob-runtime.example/search?q={keyword}\",\"exploreUrl\":\"分类::https://bob-runtime.example/explore\",\"bookListRule\":\".book\",\"bookNameRule\":\".name|text\",\"bookURLRule\":\".name|attr:href\"}",
+		"enabled":true,
+		"enabledExplore":true
+	}`)
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<div class="book"><a class="name" href="/book">结果</a></div>`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	exploreListRequest := httptest.NewRequest(http.MethodGet, "/api/explore/sources", nil)
+	exploreListRequest.Header.Set("Authorization", bob.Auth)
+	exploreListResponse := httptest.NewRecorder()
+	router.ServeHTTP(exploreListResponse, exploreListRequest)
+	if exploreListResponse.Code != http.StatusOK {
+		t.Fatalf("bob explore list = %d %s", exploreListResponse.Code, exploreListResponse.Body.String())
+	}
+	var exploreSources []exploreSourceResponse
+	if err := json.Unmarshal(exploreListResponse.Body.Bytes(), &exploreSources); err != nil {
+		t.Fatal(err)
+	}
+	if len(exploreSources) != 1 || exploreSources[0].ID != bob.Source.ID {
+		t.Fatalf("bob explore list leaked alice: %+v", exploreSources)
+	}
+
+	foreignExploreRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/explore/"+uintString(alice.Source.ID)+"?url=https://alice-runtime.example/explore",
+		nil,
+	)
+	foreignExploreRequest.Header.Set("Authorization", bob.Auth)
+	foreignExploreResponse := httptest.NewRecorder()
+	router.ServeHTTP(foreignExploreResponse, foreignExploreRequest)
+	if foreignExploreResponse.Code != http.StatusNotFound {
+		t.Fatalf("bob explored alice source = %d %s, want 404", foreignExploreResponse.Code, foreignExploreResponse.Body.String())
+	}
+
+	foreignSearchRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/search",
+		strings.NewReader(`{"keyword":"隔离","sourceIds":[`+uintString(alice.Source.ID)+`]}`),
+	)
+	foreignSearchRequest.Header.Set("Authorization", bob.Auth)
+	foreignSearchRequest.Header.Set("Content-Type", "application/json")
+	foreignSearchResponse := httptest.NewRecorder()
+	router.ServeHTTP(foreignSearchResponse, foreignSearchRequest)
+	if foreignSearchResponse.Code != http.StatusBadRequest ||
+		!strings.Contains(foreignSearchResponse.Body.String(), "未配置书源") {
+		t.Fatalf("bob searched alice source = %d %s, want empty scoped selection", foreignSearchResponse.Code, foreignSearchResponse.Body.String())
+	}
+}
+
+func TestRemoteBookReaderCandidatesAndRefreshRejectForeignSources(t *testing.T) {
+	router, server := setupTestServer(t)
+	alice := registerSourceContractAccount(t, router, "sourceruntimealice")
+	bob := registerSourceContractAccount(t, router, "sourceruntimebob")
+	alice.Source = createSourceThroughAPI(t, router, alice.Auth, `{
+		"name":"Alice 运行时源",
+		"baseUrl":"https://alice-book-runtime.example",
+		"searchUrl":"https://alice-book-runtime.example/search?q={keyword}",
+		"rules":"{\"searchUrl\":\"https://alice-book-runtime.example/search?q={keyword}\",\"bookListRule\":\".book\",\"bookNameRule\":\".name|text\",\"bookURLRule\":\".name|attr:href\",\"chapterListRule\":\".chapter\",\"chapterNameRule\":\".chapter|text\",\"chapterURLRule\":\".chapter|attr:href\",\"contentRule\":\".content|text\"}",
+		"enabled":true
+	}`)
+	bob.Source = createSourceThroughAPI(t, router, bob.Auth, `{
+		"name":"Bob 运行时源",
+		"baseUrl":"https://bob-book-runtime.example",
+		"searchUrl":"https://bob-book-runtime.example/search?q={keyword}",
+		"rules":"{\"searchUrl\":\"https://bob-book-runtime.example/search?q={keyword}\",\"bookListRule\":\".book\",\"bookNameRule\":\".name|text\",\"bookURLRule\":\".name|attr:href\",\"chapterListRule\":\".chapter\",\"chapterNameRule\":\".chapter|text\",\"chapterURLRule\":\".chapter|attr:href\",\"contentRule\":\".content|text\"}",
+		"enabled":true
+	}`)
+	var requestMu sync.Mutex
+	requestHosts := make([]string, 0)
+	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestMu.Lock()
+			requestHosts = append(requestHosts, request.URL.Host)
+			requestMu.Unlock()
+			body := `<div class="book"><a class="name" href="/book">候选书</a></div>
+				<a class="chapter" href="/chapter/1">第一章</a>
+				<div class="content">正文</div>`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	defer restoreHTTPClient()
+
+	bobBook := models.Book{UserID: bob.ID, Title: "Bob 候选书", URL: "local://candidate"}
+	if err := server.db.Create(&bobBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	candidatesRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/books/"+uintString(bobBook.ID)+"/source-candidates?paged=true&limit=10",
+		nil,
+	)
+	candidatesRequest.Header.Set("Authorization", bob.Auth)
+	candidatesResponse := httptest.NewRecorder()
+	router.ServeHTTP(candidatesResponse, candidatesRequest)
+	if candidatesResponse.Code != http.StatusOK ||
+		!strings.Contains(candidatesResponse.Body.String(), `"searched":1`) ||
+		!strings.Contains(candidatesResponse.Body.String(), `"total":1`) {
+		t.Fatalf("bob candidates used a foreign source: %d %s", candidatesResponse.Code, candidatesResponse.Body.String())
+	}
+	requestMu.Lock()
+	hostsAfterCandidates := append([]string(nil), requestHosts...)
+	requestMu.Unlock()
+	if len(hostsAfterCandidates) != 1 || hostsAfterCandidates[0] != "bob-book-runtime.example" {
+		t.Fatalf("candidate requests crossed source namespaces: %v", hostsAfterCandidates)
+	}
+
+	changeRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/books/"+uintString(bobBook.ID)+"/change-source",
+		strings.NewReader(`{"sourceId":`+uintString(alice.Source.ID)+`,"bookUrl":"https://alice-book-runtime.example/book"}`),
+	)
+	changeRequest.Header.Set("Authorization", bob.Auth)
+	changeRequest.Header.Set("Content-Type", "application/json")
+	changeResponse := httptest.NewRecorder()
+	router.ServeHTTP(changeResponse, changeRequest)
+	if changeResponse.Code != http.StatusBadRequest ||
+		!strings.Contains(changeResponse.Body.String(), "source not found") {
+		t.Fatalf("bob changed to alice source = %d %s", changeResponse.Code, changeResponse.Body.String())
+	}
+
+	remoteBookRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/books/remote",
+		strings.NewReader(`{"title":"越权书","bookUrl":"https://alice-book-runtime.example/book","sourceId":`+uintString(alice.Source.ID)+`}`),
+	)
+	remoteBookRequest.Header.Set("Authorization", bob.Auth)
+	remoteBookRequest.Header.Set("Content-Type", "application/json")
+	remoteBookResponse := httptest.NewRecorder()
+	router.ServeHTTP(remoteBookResponse, remoteBookRequest)
+	if remoteBookResponse.Code != http.StatusBadRequest ||
+		!strings.Contains(remoteBookResponse.Body.String(), "source not found") {
+		t.Fatalf("bob created book with alice source = %d %s", remoteBookResponse.Code, remoteBookResponse.Body.String())
+	}
+
+	remoteReaderRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/reader/remote-sessions",
+		strings.NewReader(`{"title":"越权临时阅读","bookUrl":"https://alice-book-runtime.example/book","sourceId":`+uintString(alice.Source.ID)+`}`),
+	)
+	remoteReaderRequest.Header.Set("Authorization", bob.Auth)
+	remoteReaderRequest.Header.Set("Content-Type", "application/json")
+	remoteReaderResponse := httptest.NewRecorder()
+	router.ServeHTTP(remoteReaderResponse, remoteReaderRequest)
+	if remoteReaderResponse.Code != http.StatusNotFound {
+		t.Fatalf("bob opened reader with alice source = %d %s", remoteReaderResponse.Code, remoteReaderResponse.Body.String())
+	}
+
+	corruptBook := models.Book{
+		UserID: bob.ID, SourceID: alice.Source.ID, Title: "遗留越权引用",
+		URL: "https://alice-book-runtime.example/book",
+	}
+	if err := server.db.Create(&corruptBook).Error; err != nil {
+		t.Fatal(err)
+	}
+	contentSearchRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/books/"+uintString(corruptBook.ID)+"/search?q=%E6%AD%A3%E6%96%87&paged=1",
+		nil,
+	)
+	contentSearchRequest.Header.Set("Authorization", bob.Auth)
+	contentSearchResponse := httptest.NewRecorder()
+	router.ServeHTTP(contentSearchResponse, contentSearchRequest)
+	if contentSearchResponse.Code != http.StatusBadRequest ||
+		!strings.Contains(contentSearchResponse.Body.String(), "未配置书源") {
+		t.Fatalf(
+			"bob searched content through alice source = %d %s",
+			contentSearchResponse.Code,
+			contentSearchResponse.Body.String(),
+		)
+	}
+
+	refreshRequest := httptest.NewRequest(http.MethodPost, "/api/books/"+uintString(corruptBook.ID)+"/refresh", nil)
+	refreshRequest.Header.Set("Authorization", bob.Auth)
+	refreshResponse := httptest.NewRecorder()
+	router.ServeHTTP(refreshResponse, refreshRequest)
+	if refreshResponse.Code != http.StatusBadRequest ||
+		!strings.Contains(refreshResponse.Body.String(), "source not found") {
+		t.Fatalf("bob refreshed through alice source = %d %s", refreshResponse.Code, refreshResponse.Body.String())
+	}
+
+	requestMu.Lock()
+	defer requestMu.Unlock()
+	if len(requestHosts) != len(hostsAfterCandidates) {
+		t.Fatalf("foreign source endpoints performed remote requests: before=%v after=%v", hostsAfterCandidates, requestHosts)
 	}
 }
 

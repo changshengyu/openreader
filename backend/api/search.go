@@ -44,12 +44,8 @@ func (s *Server) search(c *gin.Context) {
 		return
 	}
 
-	var sources []models.BookSource
-	query := s.db.Where("enabled = ?", true).Order("custom_order ASC, id ASC")
-	if len(req.SourceIDs) > 0 {
-		query = query.Where("id IN ?", req.SourceIDs)
-	}
-	if err := query.Find(&sources).Error; err != nil {
+	sources, err := s.bookSources.ListActiveByIDs(userID, req.SourceIDs, true)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
 		return
 	}

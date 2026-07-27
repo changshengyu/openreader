@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	readerdb "openreader/backend/db"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 )
 
 type schedulerRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -51,6 +53,12 @@ func TestSchedulerAdvancesLastCheckTimeOnlyWhenItAddsChapters(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := database.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&models.UserBookSource{UserID: 1, SourceID: source.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&models.BookSourceNamespace{UserID: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
 	oldCheck := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
@@ -113,5 +121,41 @@ func TestSchedulerAdvancesLastCheckTimeOnlyWhenItAddsChapters(t *testing.T) {
 	}
 	if repaired.LastCheckTime != firstCheck {
 		t.Fatalf("repair below the persisted chapter count changed lastCheckTime: before=%d after=%d", firstCheck, repaired.LastCheckTime)
+	}
+}
+
+func TestSchedulerRejectsSourceOutsideBookOwnerNamespace(t *testing.T) {
+	database, err := readerdb.Open(config.Config{DatabasePath: filepath.Join(t.TempDir(), "data", "openreader.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{
+		Name: "Alice 私有定时源", BaseURL: "https://scheduler-private.test", Charset: "utf-8", Enabled: true,
+	}
+	if err := database.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&models.UserBookSource{UserID: 1, SourceID: source.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []uint{1, 2} {
+		if err := database.Create(&models.BookSourceNamespace{UserID: userID}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	book := models.Book{
+		UserID: 2, SourceID: source.ID, Title: "Bob 遗留越权书",
+		URL: "https://scheduler-private.test/toc", CanUpdate: true,
+	}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(database, time.Hour)
+	if _, err := service.checkBook(book); !errors.Is(err, booksources.ErrSourceNotFound) {
+		t.Fatalf("scheduler foreign source error = %v, want ErrSourceNotFound", err)
 	}
 }

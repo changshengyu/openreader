@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
-	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 )
 
 type exploreSourceResponse struct {
@@ -26,13 +27,17 @@ type exploreEntry struct {
 }
 
 func (s *Server) listExploreSources(c *gin.Context) {
-	var sources []models.BookSource
-	if err := s.db.Where("enabled = ? AND enabled_explore = ?", true, true).Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	sources, err := s.bookSources.ListActiveByIDs(userID, nil, true)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
 	out := make([]exploreSourceResponse, 0)
 	for _, source := range sources {
+		if !source.IsExploreEnabled() {
+			continue
+		}
 		rule, err := source.ParsedRules()
 		if err == nil && strings.TrimSpace(rule.ExploreURL) != "" {
 			out = append(out, exploreSourceResponse{
@@ -52,9 +57,13 @@ func (s *Server) exploreBooks(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var source models.BookSource
-	if err := s.db.Where("enabled = ? AND enabled_explore = ?", true, true).First(&source, sourceID).Error; err != nil {
+	source, err := s.bookSources.FindActive(userID, uint(sourceID))
+	if errors.Is(err, booksources.ErrSourceNotFound) || err == nil && (!source.Enabled || !source.IsExploreEnabled()) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 	page := 1

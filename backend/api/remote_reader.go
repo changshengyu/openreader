@@ -16,6 +16,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 	"openreader/backend/services/audioreader"
+	"openreader/backend/services/booksources"
 )
 
 const (
@@ -174,9 +175,13 @@ func (s *Server) createRemoteReaderSession(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, req.SourceID).Error; err != nil || !source.Enabled {
+	source, err := s.bookSources.FindActive(userID, req.SourceID)
+	if errors.Is(err, booksources.ErrSourceNotFound) || err == nil && !source.Enabled {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 

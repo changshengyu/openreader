@@ -22,6 +22,10 @@ associations. Shared rows created by the additive migration are storage deduplic
 copy-on-write. Full route/status/error compatibility is recorded in
 `book-source-ownership-p2-contract.md` and `api-contract.md`.
 
+Implementation status on 2026-07-27: source management/debug plus search, explore, remote-book, Reader
+content/cache and scheduler consumers are association-scoped. Backup/WebDAV restore and administrator
+count/default/reset consumers remain open and keep the module from release-complete status.
+
 ## Required extraction before backend changes
 
 For each module, record:

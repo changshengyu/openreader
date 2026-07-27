@@ -594,10 +594,12 @@ does not authorize access.
 | `GET /api/sources/default`; `POST /api/sources/default/restore` | Existing status/restore paths remain compatible. Restore reconciles only the caller against current default; initialized empty and restore-default remain distinct states. | Restore requires `CanEditSources`; used unmatched sources become detached instead of leaving dangling book references. |
 | `POST /api/sources/default/save` | Existing path remains as an admin compatibility shim and returns `{count}`. | Requires administrator role in addition to `CanEditSources`; copies the caller's active list into the default namespace. It does not rewrite initialized users or broadcast a false private-source update to every account. |
 
-Search, explore, remote-book, change-source, Reader, scheduler, backup/restore and admin source-count/default-reset
-consumers must resolve the same association service before this module can be declared isolated. Until those
-consumers and dual-account browser checks pass, a successful source-management API slice is not a Docker release
-gate by itself.
+Search, explore, remote-book, change-source, Reader content/cache and scheduler consumers now resolve the same
+association service. New/read-by-selection operations require caller-active enabled sources, while an existing
+caller-owned book may continue resolving its caller-detached snapshot; a foreign source id is treated as missing
+before any remote request. Backup/WebDAV restore and admin source-count/default-reset consumers remain pending.
+Until those consumers and dual-account browser checks pass, the implemented management/runtime API slices are not
+a Docker release gate by themselves.
 
 ## P1 bookshelf latest-chapter timestamp contract (2026-07-22 extracted)
 

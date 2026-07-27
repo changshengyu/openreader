@@ -9,11 +9,13 @@ import (
 
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 )
 
 // Scheduler periodically checks remote books for new chapters.
 type Scheduler struct {
 	db       *gorm.DB
+	sources  *booksources.Service
 	interval time.Duration
 	stopCh   chan struct{}
 }
@@ -25,6 +27,7 @@ func New(db *gorm.DB, interval time.Duration) *Scheduler {
 	}
 	return &Scheduler{
 		db:       db,
+		sources:  booksources.New(db),
 		interval: interval,
 		stopCh:   make(chan struct{}),
 	}
@@ -99,8 +102,8 @@ func (s *Scheduler) checkBooks(query any, args ...any) (int, []uint) {
 }
 
 func (s *Scheduler) checkBook(book models.Book) (int, error) {
-	var source models.BookSource
-	if err := s.db.First(&source, book.SourceID).Error; err != nil {
+	source, err := s.sources.FindForBook(book.UserID, book.SourceID)
+	if err != nil {
 		return 0, err
 	}
 

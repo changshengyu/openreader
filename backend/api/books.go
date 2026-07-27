@@ -27,6 +27,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 	"openreader/backend/services/audioreader"
+	"openreader/backend/services/booksources"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chaptercache"
 	"openreader/backend/services/chapterimage"
@@ -1292,8 +1293,8 @@ func (s *Server) refreshBook(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, book.SourceID).Error; err != nil {
+	source, err := s.bookSources.FindForBook(userID, book.SourceID)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
 		return
 	}
@@ -1689,9 +1690,13 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, req.SourceID).Error; err != nil {
+	source, err := s.bookSources.FindActive(userID, req.SourceID)
+	if errors.Is(err, booksources.ErrSourceNotFound) || err == nil && !source.Enabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 
@@ -1831,21 +1836,33 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 	offset := parseBoundedInt(c.Query("offset"), 0, 0, 10000)
 	paged := c.Query("paged") == "1" || c.Query("paged") == "true"
 
-	var sources []models.BookSource
-	query := s.db.Where("enabled = ?", true)
-	if group != "" {
-		query = query.Where("COALESCE(\"group\", '') = ?", group)
-	}
-	var totalSources int64
-	if paged {
-		if err := query.Model(&models.BookSource{}).Count(&totalSources).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count sources"})
-			return
-		}
-	}
-	if err := query.Order("custom_order asc, id asc").Offset(offset).Limit(limit).Find(&sources).Error; err != nil {
+	sources, err := s.bookSources.ListActiveByIDs(userID, nil, true)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
 		return
+	}
+	if group != "" {
+		filtered := make([]models.BookSource, 0, len(sources))
+		for _, source := range sources {
+			if source.Group == group {
+				filtered = append(filtered, source)
+			}
+		}
+		sources = filtered
+	}
+	totalSources := int64(len(sources))
+	if paged {
+		if offset >= len(sources) {
+			sources = []models.BookSource{}
+		} else {
+			end := offset + limit
+			if end > len(sources) {
+				end = len(sources)
+			}
+			sources = sources[offset:end]
+		}
+	} else if len(sources) > limit {
+		sources = sources[:limit]
 	}
 	sources = s.filterActiveSourceFailures(userID, sources)
 
@@ -1875,8 +1892,8 @@ func (s *Server) listBookSourceCandidates(c *gin.Context) {
 
 	results := make([]sourceCandidate, 0)
 	if offset == 0 && book.SourceID > 0 {
-		var currentSource models.BookSource
-		if err := s.db.First(&currentSource, book.SourceID).Error; err == nil && (group == "" || currentSource.Group == group) {
+		currentSource, err := s.bookSources.FindActive(userID, book.SourceID)
+		if err == nil && currentSource.Enabled && (group == "" || currentSource.Group == group) {
 			results = append(results, sourceCandidate{
 				SourceID:           currentSource.ID,
 				SourceName:         currentSource.Name,
@@ -2036,9 +2053,13 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		return
 	}
 
-	var newSource models.BookSource
-	if err := s.db.First(&newSource, req.SourceID).Error; err != nil {
+	newSource, err := s.bookSources.FindActive(userID, req.SourceID)
+	if errors.Is(err, booksources.ErrSourceNotFound) || err == nil && !newSource.Enabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 
@@ -2144,8 +2165,7 @@ func (s *Server) chapterContent(c *gin.Context) {
 	content, contentErr := s.loadChapterTextContextResult(c.Request.Context(), book, &chapter)
 	if contentErr != nil {
 		if book.SourceID > 0 {
-			var source models.BookSource
-			if err := s.db.First(&source, book.SourceID).Error; err == nil {
+			if source, err := s.bookSources.FindForBook(userID, book.SourceID); err == nil {
 				s.recordSourceFailure(userID, source, contentErr)
 			}
 		}
@@ -2223,7 +2243,7 @@ func (s *Server) searchBookContent(c *gin.Context) {
 		return
 	}
 	if err := s.requireContentSearchSource(book); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, booksources.ErrSourceNotFound) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "未配置书源"})
 			return
 		}
@@ -2372,7 +2392,7 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 		return
 	}
 	if err := s.requireContentSearchSource(book); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, booksources.ErrSourceNotFound) {
 			c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "未配置书源"})
 			return
 		}
@@ -2590,8 +2610,8 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 	}
 
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
-		var source models.BookSource
-		if err := s.db.First(&source, book.SourceID).Error; err != nil {
+		source, err := s.bookSources.FindForBook(book.UserID, book.SourceID)
+		if err != nil {
 			return "", err
 		}
 		nextChapterURL := ""
@@ -2645,8 +2665,8 @@ func (s *Server) requireContentSearchSource(book models.Book) error {
 	if book.SourceID == 0 {
 		return nil
 	}
-	var source models.BookSource
-	return s.db.Select("id").First(&source, book.SourceID).Error
+	_, err := s.bookSources.FindForBook(book.UserID, book.SourceID)
+	return err
 }
 
 func (s *Server) localChapterCachePath(book models.Book, fullPath string) string {
