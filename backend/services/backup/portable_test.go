@@ -172,6 +172,9 @@ func portableBackupTestDB(t *testing.T) *gorm.DB {
 	if err := database.AutoMigrate(
 		&models.User{},
 		&models.BookSource{},
+		&models.UserBookSource{},
+		&models.BookSourceNamespace{},
+		&models.SourceFailure{},
 		&models.RSSSource{},
 		&models.UserSetting{},
 		&models.Category{},

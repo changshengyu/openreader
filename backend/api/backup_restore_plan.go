@@ -13,6 +13,7 @@ import (
 
 	"openreader/backend/models"
 	"openreader/backend/services/bookgroups"
+	"openreader/backend/services/booksources"
 )
 
 type plannedBackupArtifact struct {
@@ -208,11 +209,17 @@ func (s *Server) executeLogicalBackupRestorePlan(plan logicalBackupRestorePlan, 
 
 	if len(plan.sources.data) > 0 {
 		if canEditSources {
-			n, err := s.restoreSourcesFromDataStrict(plan.sources.data)
+			sourceResult, err := s.restoreSourcesFromDataStrict(plan.sources.data, userID)
 			if err != nil {
 				return nil, err
 			}
-			result["sources"] = n
+			result["sources"] = sourceResult.Imported + sourceResult.Updated
+			if sourceResult.Detached > 0 {
+				result["sourceDetached"] = sourceResult.Detached
+			}
+			if sourceResult.Removed > 0 {
+				result["sourceRemoved"] = sourceResult.Removed
+			}
 		} else {
 			result["sourcesSkipped"] = true
 		}
@@ -287,14 +294,14 @@ func (s *Server) executeLogicalBackupRestorePlan(plan logicalBackupRestorePlan, 
 	return result, nil
 }
 
-func (s *Server) restoreSourcesFromDataStrict(data []byte) (int, error) {
+func (s *Server) restoreSourcesFromDataStrict(data []byte, userID uint) (booksources.ImportResult, error) {
 	sources, err := decodeBookSources(data)
 	if err != nil {
-		return 0, err
+		return booksources.ImportResult{}, err
 	}
-	result, err := importBookSourcesStrictWithDB(s.db, sources)
+	result, err := booksources.New(s.db).ReplaceActive(userID, sources)
 	if err != nil {
-		return 0, err
+		return booksources.ImportResult{}, err
 	}
-	return result["imported"].(int) + result["updated"].(int), nil
+	return result, nil
 }

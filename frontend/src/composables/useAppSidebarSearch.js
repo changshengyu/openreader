@@ -150,12 +150,17 @@ export function useAppSidebarSearch(options) {
   }
 
   function sourceCacheKey() {
+    return `bookSourceList@source-owner-v1@${options.getUserScope()}`
+  }
+
+  function legacySourceCacheKey() {
     return `bookSourceList@${options.getUserScope()}`
   }
 
   async function handleSourcesUpdated() {
     const operation = sourceOperations.begin('update')
     await options.removeBrowserCache(sourceCacheKey())
+    await options.removeBrowserCache(legacySourceCacheKey())
     if (!sourceOperations.canCommit(operation)) return
     await loadSources()
     if (!sourceOperations.canCommit(operation)) return

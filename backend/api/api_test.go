@@ -8371,16 +8371,23 @@ func TestRestoreWebDAVBackupImportsBookshelf(t *testing.T) {
 	if progress.ChapterIndex != 3 || progress.Offset != 120 {
 		t.Fatalf("unexpected restored progress: %+v", progress)
 	}
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
 	var source models.BookSource
-	if err := server.db.First(&source, existingSource.ID).Error; err != nil {
+	if err := server.db.Model(&models.BookSource{}).
+		Joins("JOIN user_book_sources ON user_book_sources.source_id = book_sources.id").
+		Where("user_book_sources.user_id = ? AND user_book_sources.detached = ? AND book_sources.base_url = ?",
+			user.ID, false, "https://new-source.example").
+		First(&source).Error; err != nil {
 		t.Fatal(err)
 	}
 	if source.BaseURL != "https://new-source.example" || source.Charset != "gbk" || source.Enabled {
 		t.Fatalf("unexpected restored source update: %+v", source)
 	}
-	var user models.User
-	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
-		t.Fatal(err)
+	if source.ID == existingSource.ID {
+		t.Fatalf("URL identity restore reused the old-URL snapshot: old=%d restored=%d", existingSource.ID, source.ID)
 	}
 	var setting models.UserSetting
 	if err := server.db.Where("user_id = ? AND key = ?", user.ID, "search").First(&setting).Error; err != nil {

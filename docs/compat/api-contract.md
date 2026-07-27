@@ -139,8 +139,8 @@ Source-facing routes retain their current response schemas. Only a real remote s
 ## P2 backup restore archive contract
 
 Status: **structure/budget preflight, logical content/transaction/permission compatibility and the
-previous browser/Docker gates are complete; P2-S4 has reopened only source ownership and its new
-browser/release gates.** The archive bounds below remain authoritative. The upstream filename/field bridge,
+previous browser/Docker gates are complete; P2-S4 source ownership implementation and automated tests
+are complete, while its new browser/release gates remain open.** The archive bounds below remain authoritative. The upstream filename/field bridge,
 atomic generation/restore and source-edit capability contract are defined by
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
@@ -151,6 +151,10 @@ atomic generation/restore and source-edit capability contract are defined by
 | `POST /api/backup/restore-webdav` | Authenticated JSON `{path}`; the caller-scoped WebDAV path must reference a `.zip` file. | Same planner/transaction/count/owner/permission semantics as uploaded restore; the sole WebDAV manager owns the confirmation. Bookshelf source name/URL resolves only in the caller's active associations. | `400` if file/path is missing, directory, non-ZIP, or archive validation fails; `413` for an oversized file. The response never exposes server paths, another user's source existence, or ZIP parser details. |
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
+
+P2-S4 keeps `sources` as imported/updated/reactivated count and may add
+`sourceDetached`/`sourceRemoved` when replace-style reconciliation only removes or detaches old active
+sources. Those additive fields also drive a target-user `sources_update`; old clients may ignore them.
 
 ### P1-E4 portable local archive extension
 

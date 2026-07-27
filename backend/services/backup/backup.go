@@ -3,6 +3,7 @@ package backup
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/bookgroups"
+	"openreader/backend/services/booksources"
 	"openreader/backend/services/sourcecompat"
 )
 
@@ -87,6 +89,12 @@ func (s *Service) RunNow() (string, error) {
 // all exported personal rows are filtered by the authenticated user id.
 func (s *Service) RunNowForUser(userID uint, username string) (string, error) {
 	return s.run(&userID, filepath.Join(s.webdavDir, "users", engine.SafeFilename(username)))
+}
+
+// RunNowForUserAtRoot preserves the administrator's deployed legacy WebDAV
+// location while filtering every logical artifact by the authenticated user.
+func (s *Service) RunNowForUserAtRoot(userID uint) (string, error) {
+	return s.run(&userID, s.webdavDir)
 }
 
 func (s *Service) runScheduled() {
@@ -174,7 +182,7 @@ func nextBackupPath(backupDir, stem string) (string, error) {
 
 func (s *Service) writeLogicalEntries(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	steps := []func() error{
-		func() error { return s.addSources(db, zipWriter) },
+		func() error { return s.addSources(db, zipWriter, userID) },
 		func() error { return s.addRSSSources(db, zipWriter, userID) },
 		func() error { return s.addUserSettings(db, zipWriter, userID) },
 		func() error { return s.addCategories(db, zipWriter, userID) },
@@ -193,10 +201,21 @@ func (s *Service) writeLogicalEntries(db *gorm.DB, zipWriter *zip.Writer, userID
 	return nil
 }
 
-func (s *Service) addSources(db *gorm.DB, zipWriter *zip.Writer) error {
+func (s *Service) addSources(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	var sources []models.BookSource
-	if err := db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
-		return err
+	if userID == nil {
+		if err := db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+			return err
+		}
+	} else {
+		var err error
+		sources, err = booksources.New(db).ListExistingActive(*userID)
+		if errors.Is(err, booksources.ErrNamespaceNotInitialized) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 	data, err := json.MarshalIndent(sourcecompat.Export(sources), "", "  ")
 	if err != nil {
@@ -355,9 +374,28 @@ func (s *Service) addBookshelf(db *gorm.DB, zipWriter *zip.Writer, userID *uint)
 	}
 	rows := make([]bookExport, 0, len(books))
 	for _, book := range books {
-		if book.SourceID == 0 {
+		var source models.BookSource
+		hasPortableSource := false
+		if book.SourceID > 0 {
+			var sourceErr error
+			if userID == nil {
+				sourceErr = db.First(&source, book.SourceID).Error
+				hasPortableSource = sourceErr == nil
+			} else {
+				source, sourceErr = booksources.New(db).FindExistingForBook(*userID, book.SourceID)
+				hasPortableSource = sourceErr == nil
+			}
+			if sourceErr != nil &&
+				!errors.Is(sourceErr, gorm.ErrRecordNotFound) &&
+				!errors.Is(sourceErr, booksources.ErrSourceNotFound) {
+				return sourceErr
+			}
+		}
+		if !hasPortableSource {
 			// Local/imported books have no reader-dev source-rule context. Do not
-			// turn a stale legacy database value into a portable remote token.
+			// turn a stale or cross-owner database value into a portable remote
+			// token or archive-local source id.
+			book.SourceID = 0
 			book.Variable = ""
 		} else if variable, err := models.NormalizeSourceRuleVariables(book.Variable); err == nil {
 			book.Variable = variable
@@ -379,15 +417,10 @@ func (s *Service) addBookshelf(db *gorm.DB, zipWriter *zip.Writer, userID *uint)
 			row.DurChapterTitle = progress.ChapterTitle
 			row.DurChapterTime = progress.UpdatedAt.UnixMilli()
 		}
-		if book.SourceID > 0 {
-			var source models.BookSource
-			if err := db.Select("name", "base_url").First(&source, book.SourceID).Error; err == nil {
-				row.SourceName = source.Name
-				row.Origin = source.BaseURL
-				row.OriginName = source.Name
-			} else {
-				return err
-			}
+		if hasPortableSource {
+			row.SourceName = source.Name
+			row.Origin = source.BaseURL
+			row.OriginName = source.Name
 		}
 		var categoryRows []models.Category
 		if err := db.
@@ -450,7 +483,9 @@ func (s *Service) addChapterVariables(db *gorm.DB, zipWriter *zip.Writer, userID
 		Where("books.source_id > 0 AND chapters.variable <> ''").
 		Order("books.id ASC, chapters.`index` ASC")
 	if userID != nil {
-		query = query.Where("books.user_id = ?", *userID)
+		query = query.
+			Joins("JOIN user_book_sources ON user_book_sources.source_id = books.source_id AND user_book_sources.user_id = books.user_id").
+			Where("books.user_id = ?", *userID)
 	}
 	if err := query.Scan(&rows).Error; err != nil {
 		return err

@@ -22,6 +22,8 @@ type ImportResult struct {
 	Imported int `json:"imported"`
 	Updated  int `json:"updated"`
 	Skipped  int `json:"skipped"`
+	Detached int `json:"detached,omitempty"`
+	Removed  int `json:"removed,omitempty"`
 }
 
 type RestoreUsersResult struct {
@@ -177,6 +179,37 @@ func (s *Service) ListExistingActive(userID uint) ([]models.BookSource, error) {
 	return sources, nil
 }
 
+// FindExistingActiveByIdentity resolves a source already visible in the user's
+// active namespace without initializing that namespace. URL is authoritative
+// when present; name is the compatibility fallback used by older archives.
+func (s *Service) FindExistingActiveByIdentity(userID uint, sourceURL, sourceName string) (models.BookSource, error) {
+	if s == nil || s.db == nil {
+		return models.BookSource{}, errors.New("book source service is unavailable")
+	}
+	find := func(column, value string) (models.BookSource, error) {
+		var source models.BookSource
+		err := activeSourceQuery(s.db, userID).
+			Where("book_sources."+column+" = ?", value).
+			Order("book_sources.custom_order asc, book_sources.id asc").
+			First(&source).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.BookSource{}, ErrSourceNotFound
+		}
+		return source, err
+	}
+	if sourceURL = strings.TrimSpace(sourceURL); sourceURL != "" && !strings.EqualFold(sourceURL, "loc_book") {
+		if source, err := find("base_url", sourceURL); err == nil {
+			return source, nil
+		} else if !errors.Is(err, ErrSourceNotFound) {
+			return models.BookSource{}, err
+		}
+	}
+	if sourceName = strings.TrimSpace(sourceName); sourceName != "" {
+		return find("name", sourceName)
+	}
+	return models.BookSource{}, ErrSourceNotFound
+}
+
 func (s *Service) ListActiveByIDs(userID uint, sourceIDs []uint, enabledOnly bool) ([]models.BookSource, error) {
 	if err := s.EnsureNamespace(userID); err != nil {
 		return nil, err
@@ -224,6 +257,16 @@ func (s *Service) FindActive(userID, sourceID uint) (models.BookSource, error) {
 func (s *Service) FindForBook(userID, sourceID uint) (models.BookSource, error) {
 	if err := s.EnsureNamespace(userID); err != nil {
 		return models.BookSource{}, err
+	}
+	return s.FindExistingForBook(userID, sourceID)
+}
+
+// FindExistingForBook accepts active or detached associations because an
+// existing user book may continue reading through its detached source
+// snapshot. It deliberately has no namespace-initialization side effect.
+func (s *Service) FindExistingForBook(userID, sourceID uint) (models.BookSource, error) {
+	if s == nil || s.db == nil {
+		return models.BookSource{}, errors.New("book source service is unavailable")
 	}
 	var source models.BookSource
 	err := s.db.Model(&models.BookSource{}).
@@ -491,6 +534,134 @@ func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult
 			}
 			byIdentity[identity] = created
 			result.Imported++
+		}
+		return nil
+	})
+	return result, err
+}
+
+// ReplaceActive reconciles an archive source list into exactly one user's
+// active namespace. Missing sources still used by that user's books remain as
+// detached snapshots; unused associations are removed. The caller may provide
+// a transaction-scoped DB, in which case this savepoint remains governed by
+// the caller's outer restore transaction.
+func (s *Service) ReplaceActive(userID uint, sources []models.BookSource) (ImportResult, error) {
+	if s == nil || s.db == nil {
+		return ImportResult{}, errors.New("book source service is unavailable")
+	}
+	result := ImportResult{}
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&models.BookSourceNamespace{UserID: userID}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&models.SourceFailure{}).Error; err != nil {
+			return err
+		}
+
+		var associations []models.UserBookSource
+		if err := tx.Where("user_id = ?", userID).
+			Order("detached asc, source_id asc").
+			Find(&associations).Error; err != nil {
+			return err
+		}
+		sourceIDs := make([]uint, 0, len(associations))
+		associationByID := make(map[uint]models.UserBookSource, len(associations))
+		for _, association := range associations {
+			sourceIDs = append(sourceIDs, association.SourceID)
+			associationByID[association.SourceID] = association
+		}
+		var current []models.BookSource
+		if len(sourceIDs) > 0 {
+			if err := tx.Where("id IN ?", sourceIDs).Find(&current).Error; err != nil {
+				return err
+			}
+		}
+		sourceByID := make(map[uint]models.BookSource, len(current))
+		for _, source := range current {
+			sourceByID[source.ID] = source
+		}
+		identityCandidates := make(map[string][]uint, len(current))
+		for _, association := range associations {
+			source, exists := sourceByID[association.SourceID]
+			if !exists {
+				continue
+			}
+			identity := sourceIdentity(source)
+			if identity != "" {
+				identityCandidates[identity] = append(identityCandidates[identity], source.ID)
+			}
+		}
+
+		consumed := make(map[uint]bool, len(sources))
+		seen := make(map[string]bool, len(sources))
+		scoped := New(tx)
+		for _, source := range sources {
+			source = normalizeSource(source)
+			identity := sourceIdentity(source)
+			if source.Name == "" || identity == "" || seen[identity] {
+				result.Skipped++
+				continue
+			}
+			seen[identity] = true
+
+			var existingID uint
+			for _, candidate := range identityCandidates[identity] {
+				if !consumed[candidate] {
+					existingID = candidate
+					break
+				}
+			}
+			if existingID == 0 {
+				if _, err := scoped.Create(userID, source); err != nil {
+					return err
+				}
+				result.Imported++
+				continue
+			}
+
+			association := associationByID[existingID]
+			if association.Detached {
+				if err := tx.Model(&models.UserBookSource{}).
+					Where("user_id = ? AND source_id = ?", userID, existingID).
+					Update("detached", false).Error; err != nil {
+					return err
+				}
+			}
+			if _, err := scoped.Update(userID, existingID, source); err != nil {
+				return err
+			}
+			consumed[existingID] = true
+			result.Updated++
+		}
+
+		for _, association := range associations {
+			if consumed[association.SourceID] {
+				continue
+			}
+			usage, err := sourceUsageCounts(tx, userID, []uint{association.SourceID})
+			if err != nil {
+				return err
+			}
+			if usage[association.SourceID] > 0 {
+				if !association.Detached {
+					if err := tx.Model(&models.UserBookSource{}).
+						Where("user_id = ? AND source_id = ?", userID, association.SourceID).
+						Update("detached", true).Error; err != nil {
+						return err
+					}
+					result.Skipped++
+					result.Detached++
+				}
+				continue
+			}
+			if err := tx.Delete(&association).Error; err != nil {
+				return err
+			}
+			if err := removeUnreferencedSource(tx, association.SourceID); err != nil {
+				return err
+			}
+			result.Removed++
 		}
 		return nil
 	})

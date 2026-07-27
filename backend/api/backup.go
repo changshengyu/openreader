@@ -26,7 +26,7 @@ func (s *Server) triggerBackup(c *gin.Context) {
 		err  error
 	)
 	if user.Role == "admin" {
-		path, err = s.backupSvc.RunNow()
+		path, err = s.backupSvc.RunNowForUserAtRoot(user.ID)
 	} else {
 		path, err = s.backupSvc.RunNowForUser(user.ID, user.Username)
 	}

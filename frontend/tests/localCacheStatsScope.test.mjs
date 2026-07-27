@@ -7,6 +7,8 @@ import {
 } from '../src/utils/localCacheStats.js'
 
 const VALUES = new Map([
+  ['localCache@bookSourceList@source-owner-v1@user:1', { id: 'source-a-v1' }],
+  ['localCache@bookSourceList@source-owner-v1@user:2', { id: 'source-b-v1' }],
   ['localCache@bookSourceList@user:1', { id: 'source-a' }],
   ['localCache@bookSourceList@user:2', { id: 'source-b' }],
   ['localCache@rssSources@user:1', { id: 'rss-a' }],
@@ -32,6 +34,10 @@ function cacheAdapters(removed = []) {
 }
 
 test('classifies only exact cache keys owned by the captured user scope', () => {
+  assert.deepEqual(
+    browserLocalCacheKeyMetadata('localCache@bookSourceList@source-owner-v1@user:1', 'user:1'),
+    { owned: true, group: 'bookSourceList' },
+  )
   assert.deepEqual(
     browserLocalCacheKeyMetadata('localCache@bookSourceList@user:1', 'user:1'),
     { owned: true, group: 'bookSourceList' },
@@ -60,6 +66,7 @@ test('classifies only exact cache keys owned by the captured user scope', () => 
 
 test('fails closed for other users, unowned legacy cache, and substring collisions', () => {
   for (const key of [
+    'localCache@bookSourceList@source-owner-v1@user:2',
     'localCache@bookSourceList@user:2',
     'localCache@rssSources@user:2',
     'localCache@reader@user:2@chapters:8',
@@ -78,11 +85,11 @@ test('fails closed for other users, unowned legacy cache, and substring collisio
 test('totals all provably current-user cache while grouping only the four upstream groups', async () => {
   const stats = await currentBrowserLocalCacheStats('user:1', cacheAdapters())
 
-  assert.equal(stats.total.files, 6)
+  assert.equal(stats.total.files, 7)
   assert.deepEqual(
     Object.fromEntries(Object.entries(stats.groups).map(([group, value]) => [group, value.files])),
     {
-      bookSourceList: 1,
+      bookSourceList: 2,
       rssSources: 1,
       chapterList: 1,
       chapterContent: 1,
@@ -98,7 +105,9 @@ test('clears only the requested group owned by the scope captured by the caller'
     cacheAdapters(removed),
   )
 
-  assert.equal(count, 1)
-  assert.deepEqual(removed, ['localCache@bookSourceList@user:1'])
+  assert.equal(count, 2)
+  assert.deepEqual(removed, [
+    'localCache@bookSourceList@source-owner-v1@user:1',
+    'localCache@bookSourceList@user:1',
+  ])
 })
-

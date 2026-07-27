@@ -49,7 +49,10 @@ export function browserLocalCacheKeyMetadata(key, scope) {
   const ownerScope = String(scope || '')
   if (!ownerScope) return { owned: false, group: '' }
 
-  if (value === `bookSourceList@${ownerScope}`) {
+  if (
+    value === `bookSourceList@source-owner-v1@${ownerScope}` ||
+    value === `bookSourceList@${ownerScope}`
+  ) {
     return { owned: true, group: 'bookSourceList' }
   }
   if (value === `rssSources@${ownerScope}`) {

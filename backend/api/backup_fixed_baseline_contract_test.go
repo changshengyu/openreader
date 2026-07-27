@@ -286,6 +286,14 @@ func TestFixedBaselineRestoreDatabaseFailureRollsBackEarlierArtifacts(t *testing
 	if err := server.db.Create(&user).Error; err != nil {
 		t.Fatal(err)
 	}
+	oldSource := models.BookSource{
+		Name: "回滚前书源", BaseURL: "https://rollback-source-old.example", Enabled: true,
+	}
+	if err := server.db.Create(&oldSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	client := server.hub.AddClient(user.ID, nil)
+	defer server.hub.RemoveClient(client)
 	callbackName := "test:fixed-restore-write-failure"
 	if err := server.db.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement.Table == "replace_rules" {
@@ -297,6 +305,11 @@ func TestFixedBaselineRestoreDatabaseFailureRollsBackEarlierArtifacts(t *testing
 	t.Cleanup(func() { _ = server.db.Callback().Create().Remove(callbackName) })
 
 	archive := makeBackupRestoreZIP(t, map[string]string{
+		"bookSource.json": `[{
+			"bookSourceName":"回滚中新书源",
+			"bookSourceUrl":"https://rollback-source-new.example",
+			"enabled":true
+		}]`,
 		"categories.json":  `[{"name":"must-rollback-after-write-error","sortOrder":1}]`,
 		"replaceRule.json": `[{"name":"写失败规则","pattern":"旧","replacement":"新","isEnabled":true}]`,
 	})
@@ -309,6 +322,25 @@ func TestFixedBaselineRestoreDatabaseFailureRollsBackEarlierArtifacts(t *testing
 	}
 	if count != 0 {
 		t.Fatalf("earlier category survived database rollback: %d", count)
+	}
+	if err := server.db.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND source_id = ? AND detached = ?", user.ID, oldSource.ID, false).
+		Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("source reconcile survived database rollback: old association count=%d", count)
+	}
+	if err := server.db.Model(&models.BookSource{}).
+		Where("base_url = ?", "https://rollback-source-new.example").
+		Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("new source survived database rollback: %d", count)
+	}
+	if queuedPayloadContains(client.Send, `"type":"sources_update"`) {
+		t.Fatal("failed source restore emitted a sync event")
 	}
 }
 
@@ -358,6 +390,11 @@ func TestFixedBaselineBackupQueryFailureLeavesNoVisibleArchive(t *testing.T) {
 	_, server := setupTestServer(t)
 	user := models.User{Username: "failed-backup-user", PasswordHash: "hash"}
 	if err := server.db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.BookSource{
+		Name: "query-failure-source", BaseURL: "https://query-failure.example", Enabled: true,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := server.db.Callback().Query().Before("gorm:query").Register("test:fixed-backup-query-failure", func(tx *gorm.DB) {

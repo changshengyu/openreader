@@ -4,8 +4,8 @@
 可重试迁移标记和旧卷事务迁移，P2-S2a 的 owner-scoped service，P2-S2b 的书源
 管理/调试 REST，以及 P2-S2c 的搜索、探索、远程书、Reader、正文/缓存和 scheduler
 运行时消费者以及 P2-S3 的管理员计数、目标用户设默认、批量重置和账号删除联动已经
-测试先行实施；P2-S4 的固定上游备份/WebDAV/缓存合同已完成取证，**实现、真实浏览器
-和 Docker 发布门仍未完成**。本合同不把仍存的全局查询或旧测试视为正确性依据。
+测试先行实施；P2-S4 的固定上游备份/WebDAV/缓存合同、实现与自动回归也已完成，
+**真实浏览器和 Docker 发布门仍未完成**。本合同不把旧的全局查询或测试视为正确性依据。
 
 固定上游：
 
@@ -409,3 +409,24 @@ P2-S4 测试顺序：
    旧缓存不能回显，A 备份无 B 源，A 恢复后 A 更新/B 不变。
 5. 最后才运行本地 Docker 新旧卷、logical/portable、管理员旧根/普通用户根、重启和
    amd64/arm64 发布门；全部通过前不发布镜像。
+
+### P2-S4 实施记录（2026-07-27）
+
+- 普通、scheduled 与 portable 逻辑备份只导出目标用户 active source association；
+  detached 不进入 `bookSource.json`，未初始化 namespace 省略该成员且无写副作用，
+  已初始化空 namespace 写入显式 `[]`。
+- 管理员手动 trigger 继续写管理员旧 WebDAV 根，但所有逻辑 artifact 都传入管理员
+  `userID` 过滤；认证路由不再调用 ownerless `RunNow()`。
+- 书架和章节变量导出要求当前用户 active/detached association。损坏的跨用户
+  `source_id` 被按无可移植源处理，既不输出他人源名称/规则/变量，也不输出可复用数据库 ID。
+- `booksources.Service.ReplaceActive` 在恢复外层事务内以 URL、无 URL 时名称为 identity
+  reconcile 当前用户；共享快照写时复制，归档缺失且仍被本用户书籍使用的源转 detached，
+  未使用关联移除，其他用户 association、快照和书籍保持不变。
+- 恢复书架只在目标用户 active association 中先 URL、后名称解析。显式空恢复通过加性
+  `sourceDetached/sourceRemoved` 计数触发目标用户 `sources_update`；失败回滚 source、
+  书架及后续 artifact 且不发事件。旧的全表名称导入和全用户变量清理 helper 已删除。
+- 前端读取键已改为 `bookSourceList@source-owner-v1@<scope>`；旧键永不回显，但缓存统计、
+  分组清理和 `sources_update` 仍可只针对当前账号清除新旧两键。
+- 自动证据：沙箱外完整 `go test ./...` 通过；前端 `628/628` 和 Vite production build
+  通过；fixed-baseline、portable v1/v2、双用户导出/恢复、COW、显式空、权限 skip、
+  数据库回滚和缓存键契约均已覆盖。真实三视口双账号浏览器与 Docker 新旧卷仍是发布前门禁。

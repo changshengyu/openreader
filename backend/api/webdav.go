@@ -23,6 +23,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 	"openreader/backend/services/bookgroups"
+	"openreader/backend/services/booksources"
 	"openreader/backend/services/localbook"
 	"openreader/backend/services/webdavfs"
 )
@@ -918,7 +919,9 @@ func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
 	if s.hub == nil {
 		return
 	}
-	if restoreResultCount(result, "sources") > 0 {
+	if restoreResultCount(result, "sources")+
+		restoreResultCount(result, "sourceDetached")+
+		restoreResultCount(result, "sourceRemoved") > 0 {
 		s.broadcastSourcesUpdate(userID, "restore-backup")
 	}
 	if restoreResultCount(result, "settings") > 0 {
@@ -1200,7 +1203,7 @@ func (s *Server) restoreBookshelfFromDataWithGroupMap(data []byte, userID uint, 
 			canUpdate = *b.CanUpdate
 		}
 		sourceName := strings.TrimSpace(firstNonBlank(b.SourceName, b.OriginName))
-		sourceID, err := s.restoredBookSourceIDStrict(sourceName, b.Origin)
+		sourceID, err := s.restoredBookSourceIDStrict(userID, sourceName, b.Origin)
 		if err != nil {
 			return count, progressCount, err
 		}
@@ -1440,27 +1443,15 @@ func (s *Server) restoreChapterVariablesFromData(data []byte, userID uint) (int,
 	return count, err
 }
 
-func (s *Server) restoredBookSourceIDStrict(sourceName string, sourceURL string) (uint, error) {
-	name := strings.TrimSpace(sourceName)
-	if name != "" {
-		var source models.BookSource
-		if err := s.db.Select("id").Where("name = ?", name).First(&source).Error; err == nil {
-			return source.ID, nil
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, err
-		}
-	}
-	url := strings.TrimSpace(sourceURL)
-	if url == "" || strings.EqualFold(url, "loc_book") {
+func (s *Server) restoredBookSourceIDStrict(userID uint, sourceName string, sourceURL string) (uint, error) {
+	source, err := booksources.New(s.db).FindExistingActiveByIdentity(userID, sourceURL, sourceName)
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		return 0, nil
 	}
-	var source models.BookSource
-	if err := s.db.Select("id").Where("base_url = ?", url).First(&source).Error; err == nil {
-		return source.ID, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil {
 		return 0, err
 	}
-	return 0, nil
+	return source.ID, nil
 }
 
 func (s *Server) restoreBookmarksFromZip(file *zip.File, userID uint) (int, error) {

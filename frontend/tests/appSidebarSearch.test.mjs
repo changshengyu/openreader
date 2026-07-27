@@ -65,7 +65,7 @@ test('loads enabled source groups and initializes empty search choices', async (
   ])
   assert.equal(fixture.preferences.search.group, '分组甲')
   assert.equal(fixture.preferences.search.sourceId, 1)
-  assert.equal(fixture.controller.sourceCacheKey(), 'bookSourceList@user-7')
+  assert.equal(fixture.controller.sourceCacheKey(), 'bookSourceList@source-owner-v1@user-7')
   assert.deepEqual(fixture.controller.concurrentOptions.value, [12, 18, 24, 30, 36, 42, 48, 54, 60])
 })
 
@@ -157,6 +157,7 @@ test('invalidates the scoped source cache before refreshing dependent stats', as
   await fixture.controller.handleSourcesUpdated()
 
   assert.deepEqual(fixture.calls, [
+    ['remove-cache', 'bookSourceList@source-owner-v1@user-7'],
     ['remove-cache', 'bookSourceList@user-7'],
     ['config', { group: '分组甲' }],
     ['config', { sourceId: 1 }],
