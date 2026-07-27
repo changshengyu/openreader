@@ -57,8 +57,8 @@
   regular user 的动作触碰。
 - Source 所有权的决策和迁移闸门见
   [`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)。必须通过
-  加法迁移复制旧全局行、重映射每个用户的书籍/失败缓存并保留默认快照；禁止直接给旧行
-  填一个 owner，导致其他用户的既有书籍越权或失效。
+  加法关联迁移保留旧 source ID，以用户关联和写时复制隔离后续编辑并保留默认快照；
+  禁止直接给旧行填一个 owner，导致其他用户的既有书籍越权或失效。
 
 ## 必须先写的测试
 

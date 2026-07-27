@@ -1634,9 +1634,9 @@ Required contracts before implementation:
 1. API contract: non-admin callers receive `403` for every `/admin/*` endpoint; create rejects `role: admin`; update/reset rejects protected admins; protected users remain excluded from batch delete; ordinary-user create/update/delete remains transactional and broadcasts one update event after commit.
 2. Frontend state contract: protected rows have no actionable switches/reset controls; a failed ordinary-user permission update reloads the authoritative row; manager-created draft defaults to `role: user` and has no role selector; newly created row and list reset behavior stay stable.
 3. Browser contract at 1440×900, 390×844 and 360×800: admin opens legacy intent → root dialog → create ordinary user → metadata/permission controls → close; non-admin sidebar omits the entry and pasted legacy intent shows the safe `403` state without stale content or click-through.
-4. Source ownership uses a separate additive, transactional migration: existing admins, JWT tokens,
-   settings and private storage survive unchanged; each existing user's books and source failures are
-   remapped to a private copy without losing the old global configurations or default snapshot.
+4. Source ownership uses a separate additive, transactional association migration: existing admins,
+   JWT tokens, settings, private storage, source IDs, books and source failures survive unchanged;
+   subsequent user edits use copy-on-write without changing another user's configuration or default snapshot.
 
 ### P2 UserManage implementation record (2026-07-12)
 
