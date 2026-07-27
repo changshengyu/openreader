@@ -867,4 +867,9 @@ rAF 间隔，因此没有覆盖“越读到后面越重”以及 compositor/rast
 Long Task 和 RasterTask；文字模式、移动/iPad 工具层、连续阅读和图片章节既有浏览器合同也均
 通过。
 
-当前状态：**implemented / automated-gates-passed / device-and-docker-verification-pending**。
+本地构建的 `linux/amd64`、`linux/arm64` 候选已发布为
+`ghcr.io/changshengyu/openreader:49a273e` 和 `latest`，共同指向 OCI index
+`sha256:ba7dae01f4384fb740f6ca8552cdd6d226450644aeffec4f9146d4c9031268c7`。新卷、
+portable v1/v2 外观资产、跨用户隔离和容器重启兼容门禁通过。
+
+当前状态：**implemented / docker-published / device-verification-pending**。

@@ -20,7 +20,9 @@ RasterTask 累计约 235ms；换成固定上游小纹理平铺、移动端无整
 最终 6× CPU 浏览器合同在 390×844 默认、360×800 默认和 390×844 自定义暗背景三种场景得到
 0.58–1.66ms RasterTask、17 次总几何读取、18.6–18.7ms 最大可见帧间隔和 0 个可见窗口 Long
 Task；frontend 565/565、Go、生产构建及 Reader 文本/移动/iPad/连续/图片浏览器合同通过。完整
-矩阵与实施边界见
+本地构建的双架构镜像 `49a273e`/`latest` 已发布，OCI index 为
+`sha256:ba7dae01f4384fb740f6ca8552cdd6d226450644aeffec4f9146d4c9031268c7`，卷、portable
+v1/v2、跨用户和重启门禁通过；现等待真实手机体感。完整矩阵与实施边界见
 [`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十三次复审。
 
 ## 2026-07-23 P0 移动点击翻页全设置与滚动宿主复审
