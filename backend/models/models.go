@@ -59,6 +59,35 @@ type BookSource struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
+// UserBookSource owns the visibility of one reusable BookSource snapshot in a
+// user namespace. UserID zero is reserved for the default-source template.
+// Shared snapshots are immutable from the caller's perspective: source writes
+// must use copy-on-write before changing a row referenced by another namespace.
+type UserBookSource struct {
+	UserID    uint      `json:"userId" gorm:"primaryKey;autoIncrement:false"`
+	SourceID  uint      `json:"sourceId" gorm:"primaryKey;autoIncrement:false;index"`
+	Detached  bool      `json:"detached" gorm:"not null;default:false;index"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// BookSourceNamespace distinguishes an uninitialized namespace from a user
+// that deliberately saved an empty source list. UserID zero tracks whether a
+// default template has been configured, including an explicitly empty one.
+type BookSourceNamespace struct {
+	UserID    uint      `json:"userId" gorm:"primaryKey;autoIncrement:false"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// SchemaMigration records additive data migrations that require work beyond
+// GORM's table/column creation. Keeping the marker in the same transaction as
+// migrated rows makes an interrupted migration safe to retry.
+type SchemaMigration struct {
+	Key       string    `json:"key" gorm:"primaryKey;size:120"`
+	AppliedAt time.Time `json:"appliedAt" gorm:"not null"`
+}
+
 // SourceFailure is a short-lived, user-scoped runtime cache for reader-dev
 // compatible invalid-source handling. It is deliberately not part of source
 // export, backup, or source configuration.

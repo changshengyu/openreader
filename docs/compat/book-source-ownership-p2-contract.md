@@ -1,8 +1,8 @@
 # P2 书源所有权、默认快照与用户管理联动合同
 
-状态：2026-07-27 完成固定上游取证与当前实现审查；**尚未修改业务代码**。本合同是
-后续测试和实现的前置闸门，不把当前全局 `book_sources` 表、现有 REST 路径或旧测试
-视为正确性依据。
+状态：2026-07-27 完成固定上游取证与当前实现审查；P2-S1 的关联表、namespace、
+可重试迁移标记和旧卷事务迁移已经测试先行实施，**API/运行时尚未切换到关联作用域**。
+本合同不把当前全局查询、现有 REST 路径或旧测试视为正确性依据。
 
 固定上游：
 
@@ -243,3 +243,15 @@ source 用例不能继续证明正确；应改为显式用户 fixture。测试�
 
 每个切片可独立提交并推送 GitHub；只有达到可供用户验证的连贯状态且通过对应回归后，
 才允许按本地构建流程发布 Docker。
+
+### P2-S1 实施记录（2026-07-27）
+
+- 新增 `UserBookSource`、`BookSourceNamespace` 和通用 `SchemaMigration`；没有给旧
+  `BookSource` 强填 owner，也没有复制规则行。
+- `book-source-ownership-v1` 在一个 SQLite 事务内为所有现有用户建立旧活动源关联；
+  有旧源时同时建立默认关联，无旧源时仍为现有用户保存显式空 namespace。
+- `books.source_id`、`source_failures.source_id`、章节、进度、书签和文件路径均不重写。
+- marker 与关联同事务提交；注入关联写入失败时 namespace/marker 全部回滚，第二次启动
+  会重新执行而不是因新表已存在而误判完成。
+- 当前 source handlers 仍读取全表，所以本切片只可作为后续 owner-scoped service 的
+  数据地基，不可单独发布 Docker 或宣称多用户隔离已修复。

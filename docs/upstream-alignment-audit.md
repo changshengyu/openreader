@@ -326,3 +326,8 @@
   **must-fix**，不能继续作为多用户技术适配保留。非破坏性迁移、owner-scoped API、默认
   reconcile、UserManage 两个动作、备份和双账号发布闸门见：
   [book-source-ownership-p2-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/book-source-ownership-p2-contract.md)。
+- 2026-07-27：完成书源所有权 P2-S1 数据地基。新增用户—书源关联、namespace 和事务
+  migration marker；旧全局源升级时只建立每用户/默认关联，不复制源、不改书籍或失败缓存
+  source ID。显式空列表有独立 marker，注入关联写失败会回滚并可在下次启动重试。当前
+  handlers 尚未切到 owner-scoped repository，因此这批不能单独视为隔离完成，也不发布
+  Docker；后续 P2-S2 必须一次覆盖 CRUD、搜索/探索、书籍/Reader/scheduler 与用户级广播。

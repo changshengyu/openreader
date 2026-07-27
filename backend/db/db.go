@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"openreader/backend/config"
 	"openreader/backend/models"
@@ -42,6 +43,9 @@ func AutoMigrate(database *gorm.DB) error {
 		&models.User{},
 		&models.UserSetting{},
 		&models.BookSource{},
+		&models.UserBookSource{},
+		&models.BookSourceNamespace{},
+		&models.SchemaMigration{},
 		&models.SourceFailure{},
 		&models.ReplaceRule{},
 		&models.RSSSource{},
@@ -56,7 +60,74 @@ func AutoMigrate(database *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := migrateLegacyBookSourceOwnership(database); err != nil {
+		return err
+	}
 	return backfillBookLastCheckTimes(database)
+}
+
+const bookSourceOwnershipMigrationKey = "book-source-ownership-v1"
+
+func migrateLegacyBookSourceOwnership(database *gorm.DB) error {
+	var applied int64
+	if err := database.Model(&models.SchemaMigration{}).
+		Where("key = ?", bookSourceOwnershipMigrationKey).
+		Count(&applied).Error; err != nil {
+		return err
+	}
+	if applied > 0 {
+		return nil
+	}
+
+	return database.Transaction(func(tx *gorm.DB) error {
+		var userIDs []uint
+		if err := tx.Model(&models.User{}).Order("id asc").Pluck("id", &userIDs).Error; err != nil {
+			return err
+		}
+		var sourceIDs []uint
+		if err := tx.Model(&models.BookSource{}).Order("id asc").Pluck("id", &sourceIDs).Error; err != nil {
+			return err
+		}
+
+		namespaces := make([]models.BookSourceNamespace, 0, len(userIDs)+1)
+		for _, userID := range userIDs {
+			namespaces = append(namespaces, models.BookSourceNamespace{UserID: userID})
+		}
+		if len(sourceIDs) > 0 {
+			namespaces = append(namespaces, models.BookSourceNamespace{UserID: 0})
+		}
+		if len(namespaces) > 0 {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&namespaces).Error; err != nil {
+				return err
+			}
+		}
+
+		associationUsers := userIDs
+		if len(sourceIDs) > 0 {
+			associationUsers = append(append([]uint{}, userIDs...), 0)
+		}
+		associations := make([]models.UserBookSource, 0, len(associationUsers)*len(sourceIDs))
+		for _, userID := range associationUsers {
+			for _, sourceID := range sourceIDs {
+				associations = append(associations, models.UserBookSource{
+					UserID:   userID,
+					SourceID: sourceID,
+				})
+			}
+		}
+		if len(associations) > 0 {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
+				CreateInBatches(&associations, 500).Error; err != nil {
+				return err
+			}
+		}
+
+		return tx.Create(&models.SchemaMigration{
+			Key:       bookSourceOwnershipMigrationKey,
+			AppliedAt: time.Now(),
+		}).Error
+	})
 }
 
 func backfillBookLastCheckTimes(database *gorm.DB) error {

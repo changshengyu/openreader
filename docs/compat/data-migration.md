@@ -93,6 +93,24 @@ Docker new/old volume proof remains a release gate.
 - Local store/WebDAV path normalization and permissions.
 - Cache invalidation rules for local and remote books.
 
+## P2-S1 book-source ownership association migration
+
+Status: implemented and migration-tested on 2026-07-27; API/runtime isolation remains pending.
+
+- Existing `book_sources` rows remain in place. The additive `user_book_sources` table records active
+  or detached visibility, while `book_source_namespaces` distinguishes uninitialized users from an
+  explicitly empty source list.
+- Upgrade from the global model creates active associations for every existing user without changing
+  source, book, or source-failure IDs. If legacy sources exist, user ID zero receives the initial
+  default-template associations.
+- `schema_migrations` stores `book-source-ownership-v1` in the same transaction as namespace and
+  association rows. A failed association write rolls back the marker and can be retried on restart.
+- A pre-existing user with zero global sources still gets a namespace marker; the default namespace
+  stays absent until a default template exists.
+- Contract evidence:
+  `backend/db/book_source_ownership_migration_contract_test.go`. Source CRUD/search/reader/backup
+  must not use these associations until P2-S2 switches all consumers together.
+
 ## P2 invalid-source runtime cache
 
 Status: implemented and tested. This is a derived, caller-scoped runtime cache and is not part of a reader backup format.
