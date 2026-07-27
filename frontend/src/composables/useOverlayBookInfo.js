@@ -1,11 +1,15 @@
 import { ref } from 'vue'
 import { useOverlayBookCacheState } from './useOverlayBookCacheState.js'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useOverlayBookInfo(options) {
   const refreshingBookId = ref(null)
   const coverUploadingBookId = ref(null)
   const updatingBookId = ref(null)
   const editingBookSaving = ref(false)
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const cacheState = useOverlayBookCacheState(options)
   const {
     refreshBookInfoBrowserCacheCount,
@@ -16,6 +20,7 @@ export function useOverlayBookInfo(options) {
   } = cacheState
 
   async function saveEditedBook(payload) {
+    const operation = operations.begin('save-edit')
     const draftBook = options.overlay.bookEditBook
     const book = options.getManagedBooks().find(item => (
       Number(item?.id) === Number(draftBook?.id)
@@ -30,77 +35,97 @@ export function useOverlayBookInfo(options) {
     editingBookSaving.value = true
     try {
       const { data } = await options.updateBook(book.id, editableBookMetadata(payload))
+      if (!operations.canCommit(operation)) return
       const nextBook = applyUpdatedBookToOverlay(data)
       options.overlay.bookEditBook = nextBook
       options.overlay.bookEditVisible = false
       options.onSuccess('书籍已更新')
     } catch (error) {
-      options.onError(error, '更新书籍失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '更新书籍失败')
+      }
     } finally {
-      editingBookSaving.value = false
+      if (operations.canCommit(operation)) editingBookSaving.value = false
     }
   }
 
   async function refreshLocalBookInfo(book) {
     if (!book?.id) return
+    const operation = operations.begin('refresh-local-book')
     refreshingBookId.value = book.id
     try {
       const { data } = await options.refreshLocalBook(book.id)
+      if (!operations.canCommit(operation)) return
       await invalidateBookReaderCaches(book, { clearBrowser: true })
+      if (!operations.canCommit(operation)) return
       const updatedBook = data?.book || data
       if (updatedBook?.id) {
         const mergedBook = mergedShelfBook(updatedBook)
         const chapters = await refreshBookChaptersCache(mergedBook)
+        if (!operations.canCommit(operation)) return
         applyUpdatedBookToOverlay(mergedBook, chapters)
         await refreshBookInfoBrowserCacheCount(mergedBook)
+        if (!operations.canCommit(operation)) return
       } else {
         await options.bookshelf.loadBooks({ force: true, all: true })
+        if (!operations.canCommit(operation)) return
       }
       options.onSuccess(
         `本地书已刷新，共 ${data?.chapterCount || updatedBook?.chapterCount || 0} 章`,
       )
     } catch (error) {
-      options.onError(error, '刷新本地书失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '刷新本地书失败')
+      }
     } finally {
-      refreshingBookId.value = null
+      if (operations.canCommit(operation)) refreshingBookId.value = null
     }
   }
 
   async function uploadBookInfoCover(file) {
     const book = options.overlay.bookInfoBook
     if (!book?.id || !file) return
+    const operation = operations.begin('upload-cover')
     coverUploadingBookId.value = book.id
     try {
       const { data: uploadResult } = await options.uploadAsset({
         file,
         type: 'cover',
       })
+      if (!operations.canCommit(operation)) return
       const { data: updatedBook } = await options.updateBook(book.id, {
         customCoverUrl: uploadResult.url,
       })
+      if (!operations.canCommit(operation)) return
       applyUpdatedBookToOverlay(updatedBook)
       options.onSuccess('封面已更新')
     } catch (error) {
-      options.onError(error, '更新封面失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '更新封面失败')
+      }
     } finally {
-      coverUploadingBookId.value = null
+      if (operations.canCommit(operation)) coverUploadingBookId.value = null
     }
   }
 
   async function toggleBookCanUpdate(value) {
     const book = options.overlay.bookInfoBook
     if (!book?.id || !book.sourceId) return
+    const operation = operations.begin('toggle-book-update')
     updatingBookId.value = book.id
     try {
       const { data: updatedBook } = await options.updateBook(book.id, {
         canUpdate: value,
       })
+      if (!operations.canCommit(operation)) return
       applyUpdatedBookToOverlay(updatedBook)
       options.onSuccess(value ? '已开启追更' : '已关闭追更')
     } catch (error) {
-      options.onError(error, '更新追更状态失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '更新追更状态失败')
+      }
     } finally {
-      updatingBookId.value = null
+      if (operations.canCommit(operation)) updatingBookId.value = null
     }
   }
 
@@ -114,6 +139,7 @@ export function useOverlayBookInfo(options) {
     refreshLocalBookInfo,
     uploadBookInfoCover,
     toggleBookCanUpdate,
+    resetOperations: operations.reset,
   }
 }
 

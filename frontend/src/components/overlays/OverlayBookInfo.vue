@@ -40,6 +40,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createRemoteBook, listChapters, refreshLocalBook, updateBook } from '../../api/books'
 import { useBookInfoAddToShelf } from '../../composables/useBookInfoAddToShelf'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { listSources } from '../../api/sources'
 import { uploadAsset } from '../../api/uploads'
 import { useOverlayBookInfo } from '../../composables/useOverlayBookInfo'
@@ -64,6 +65,7 @@ import BookInfoDialog from '../BookInfoDialog.vue'
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
+const operations = useAuthenticatedOperationGuard()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const sourceRows = ref([])
 const managedBooks = computed(() => (
@@ -93,6 +95,7 @@ const sourceStatusLabel = computed(() => (
   overlay.bookInfoBook?.sourceId ? '远程书籍' : '本地书籍'
 ))
 const addToShelf = useBookInfoAddToShelf({
+  operationGuard: operations,
   selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
   buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
   createRemoteBook,
@@ -119,6 +122,7 @@ const {
   uploadBookInfoCover,
   toggleBookCanUpdate,
 } = useOverlayBookInfo({
+  operationGuard: operations,
   overlay,
   bookshelf,
   getManagedBooks: () => managedBooks.value,
@@ -151,11 +155,13 @@ watch(
   () => overlay.bookInfoVisible,
   async (visible) => {
     if (!visible) return
+    const operation = operations.begin('open-book-info')
     const warmTasks = [
       bookshelf.ensureCategoriesLoaded(),
       bookshelf.ensureBooksLoaded({ all: true }),
     ]
     const [categoryResult, booksResult] = await Promise.allSettled(warmTasks)
+    if (!operations.canCommit(operation)) return
     if (categoryResult.status === 'rejected') {
       ElMessage.warning(
         readError(categoryResult.reason, '分组加载失败，书籍信息仍可查看'),
@@ -168,7 +174,8 @@ watch(
     }
     resolveBookInfoShelfRecord()
     if (overlay.bookInfoBook?.sourceId && !sourceRows.value.length) {
-      await loadSourceRows().catch((error) => {
+      await loadSourceRows(operation).catch((error) => {
+        if (!operations.canCommit(operation)) return
         ElMessage.warning(
           readError(error, '书源加载失败，书籍信息仍可查看'),
         )
@@ -237,6 +244,7 @@ function bookInfoKey(book) {
 }
 
 async function addBookInfoToShelf() {
+  const operation = operations.begin('finish-add-book-info')
   const currentBook = overlay.bookInfoBook
   if (!canAddBookInfoToShelf.value || !currentBook) return
   const addedBook = await addToShelf.addRemoteBook(currentBook, {
@@ -244,7 +252,7 @@ async function addBookInfoToShelf() {
     sourceId: currentBook.sourceId,
     sourceName: bookInfoSourceName.value,
   })
-  if (!addedBook) return
+  if (!addedBook || !operations.canCommit(operation)) return
   overlay.bookInfoBook = addedBook
   overlay.bookInfoOptions = {
     ...overlay.bookInfoOptions,
@@ -265,8 +273,11 @@ function bookProgress(book) {
   return newestBookProgress(book, reader.progressByBook)
 }
 
-async function loadSourceRows() {
+async function loadSourceRows(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return
+  const operation = operations.begin('load-book-info-sources')
   const { data } = await listSources()
+  if (!operations.canCommit(operation)) return
   sourceRows.value = data || []
 }
 

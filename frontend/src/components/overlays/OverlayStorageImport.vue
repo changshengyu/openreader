@@ -118,6 +118,7 @@ import { ElMessage } from 'element-plus'
 import { importFromLocalStore, previewLocalStoreImport } from '../../api/localStore'
 import { importFromWebDAV, previewWebDAVImport } from '../../api/webdav'
 import { useStorageImportWorkflow } from '../../composables/useStorageImportWorkflow'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useBookshelfStore } from '../../stores/bookshelf'
 import { useOverlayStore } from '../../stores/overlay'
 import { epubTocRuleOptions, isEPUBLocalPath, isTextLocalPath } from '../../utils/localBookToc'
@@ -131,7 +132,9 @@ defineProps({
 
 const overlay = useOverlayStore()
 const bookshelf = useBookshelfStore()
+const operations = useAuthenticatedOperationGuard()
 const workflow = useStorageImportWorkflow({
+  operationGuard: operations,
   loadCategories: () => bookshelf.ensureCategoriesLoaded(),
   preview: async (source, payload) => {
     const response = source === 'local-store'

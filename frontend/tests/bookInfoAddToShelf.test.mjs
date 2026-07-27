@@ -3,6 +3,16 @@ import test from 'node:test'
 import { reactive } from 'vue'
 import { useBookInfoAddToShelf } from '../src/composables/useBookInfoAddToShelf.js'
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function createController(overrides = {}) {
   const calls = []
   const controller = useBookInfoAddToShelf({
@@ -90,6 +100,36 @@ test('surfaces a failed confirmed create without leaving an in-flight BookInfo a
   assert.equal(result, null)
   assert.deepEqual(fixture.calls.at(-1), ['error', 'network down', '加入书架失败'])
   assert.equal(fixture.controller.addingBookKey.value, '')
+})
+
+test('does not upsert or announce a remote book after the authenticated operation expires', async () => {
+  const response = deferred()
+  let current = true
+  const fixture = createController({
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {
+        current = false
+      },
+    },
+    createRemoteBook: async payload => {
+      fixture.calls.push(['create-remote', payload])
+      return response.promise
+    },
+  })
+
+  const pending = fixture.controller.addRemoteBook(
+    { title: '账号 A 的书', sourceId: 8 },
+    { key: '8-book', sourceId: 8, sourceName: '测试书源' },
+  )
+  await Promise.resolve()
+  current = false
+  response.resolve({ data: { id: 61, title: '账号 A 的书' } })
+
+  assert.equal(await pending, null)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'upsert'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'success'), false)
 })
 
 test('Overlay owns one cancellable BookInfo category-selection transaction', async () => {

@@ -152,3 +152,20 @@ scope + bearer token identity + component/session generation + operation key rev
 4. 运行全量自动门禁并同步 GitHub。
 5. 完成真实浏览器闸门后，才将本切片与此前待验收的 Reader/cache/Index 候选一起纳入本地 Docker
    构建与 GHCR 发布。
+
+## 7. 2026-07-27 P1-A 候选实施记录
+
+- 新增 Vue 生命周期认证 operation guard：冻结 scope/token，监听
+  `openreader:session-invalidated`，并在 scope dispose 时统一淘汰。
+- BookInfo 的远程加书、编辑、刷新本地书、上传封面和追更更新，在每个跨 await 提交前复查；
+  失效响应不再 upsert 书架、写 Reader cache、广播、提示或关闭弹层。
+- StorageImport 的预览、重解析和确认导入叠加认证门；批量导入在身份失效后立即停止，不继续下一本、
+  不 upsert、不完成旧事务。
+- WebDAV 的目录、上传、下载、删除和恢复均冻结身份；恢复在 `applyRestoreResult` 前后复查，
+  `applyRestoreResult` 本身也支持提交门，避免迟到恢复派发全局更新事件。
+- UserManage 的加载、新增、重置密码、批量删除和权限更新均使用同一生命周期门，确认框期间换号
+  不继续写请求，迟到响应不提示或触发写后 reload。
+- 先得到 7 个预期失败，实施后聚焦 31/31、前端全量 618/618、生产构建、Go 全量与
+  `git diff --check` 通过。
+- P1-A 仍是自动门禁候选；BookManage、BookGroup、Bookmark、LocalStore、Source、
+  ReplaceRule、RSS、上传导入和备份动作属于 P1-B，真实浏览器与 Docker 均未完成。

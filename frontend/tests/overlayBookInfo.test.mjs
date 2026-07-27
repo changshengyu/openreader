@@ -3,6 +3,16 @@ import test from 'node:test'
 import { reactive } from 'vue'
 import { useOverlayBookInfo } from '../src/composables/useOverlayBookInfo.js'
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function createController(overrides = {}) {
   const calls = []
   const overlay = reactive({
@@ -305,4 +315,40 @@ test('uploads custom covers and toggles remote update state with precise patch p
   ])
   assert.equal(fixture.controller.updatingBookId.value, null)
   assert.deepEqual(fixture.calls.at(-1), ['success', '已关闭追更'])
+})
+
+test('drops a late metadata response instead of writing it into a replacement account', async () => {
+  const response = deferred()
+  let current = true
+  const fixture = createController({
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {
+        current = false
+      },
+    },
+    updateBook: async (id, payload) => {
+      fixture.calls.push(['update-book', id, payload])
+      return response.promise
+    },
+  })
+  fixture.overlay.bookEditBook = { id: 1, title: '账号 A 草稿' }
+  fixture.overlay.bookEditVisible = true
+
+  const pending = fixture.controller.saveEditedBook({
+    title: '账号 A 新书名',
+    author: '',
+    customCoverUrl: '',
+    intro: '',
+  })
+  current = false
+  response.resolve({ data: { id: 1, title: '账号 A 新书名' } })
+  await pending
+
+  assert.equal(fixture.calls.some(([kind]) => kind === 'upsert'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'emit-info'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'emit-reader'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'success'), false)
+  assert.equal(fixture.overlay.bookEditVisible, true)
 })

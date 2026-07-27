@@ -60,12 +60,14 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened } from '@element-plus/icons-vue'
 import { restoreWebDAVBackup } from '../api/backup'
+import { useAuthenticatedOperationGuard } from '../composables/useAuthenticatedOperationGuard'
 import { deleteWebDAV, downloadWebDAV, listWebDAV, uploadWebDAV } from '../api/webdav'
 import { useOverlayStore } from '../stores/overlay'
 import { applyRestoreResult } from '../utils/restoreSync'
 import { isWebDAVImportable } from '../utils/storageImportable'
 
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 const path = ref('')
 const items = ref([])
 const selection = ref([])
@@ -83,16 +85,23 @@ const storageImportPending = computed(() => overlay.storageImportVisible)
 
 onMounted(load)
 
-async function load() {
+async function load(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return false
+  const operation = operations.begin('load')
   loading.value = true
   try {
     const { data } = await listWebDAV(path.value)
+    if (!operations.canCommit(operation)) return false
     items.value = parseWebDAVListing(data)
     clearSelection()
+    return true
   } catch (err) {
-    ElMessage.error(readError(err, '加载 WebDAV 失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '加载 WebDAV 失败'))
+    }
+    return false
   } finally {
-    loading.value = false
+    if (operations.canCommit(operation)) loading.value = false
   }
 }
 
@@ -117,71 +126,107 @@ function chooseFiles() {
 async function uploadFiles(event) {
   const files = Array.from(event.target?.files || [])
   if (!files.length) return
+  const operation = operations.begin('upload')
+  const uploadPath = path.value
   uploading.value = true
   try {
-    for (const file of files) await uploadWebDAV({ path: path.value, file })
+    for (const file of files) {
+      if (!operations.canCommit(operation)) return
+      await uploadWebDAV({ path: uploadPath, file })
+      if (!operations.canCommit(operation)) return
+    }
     ElMessage.success('WebDAV 文件已上传')
-    await load()
+    await load(operation)
   } catch (err) {
-    ElMessage.error(readError(err, '上传 WebDAV 失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '上传 WebDAV 失败'))
+    }
   } finally {
-    uploading.value = false
-    if (event.target) event.target.value = ''
+    if (operations.canCommit(operation)) {
+      uploading.value = false
+      if (event.target) event.target.value = ''
+    }
   }
 }
 
 async function downloadFile(row) {
+  const operation = operations.begin('download')
   try {
     const resp = await downloadWebDAV(row.path)
+    if (!operations.canCommit(operation)) return
     downloadBlob(resp.data, row.name)
   } catch (err) {
-    ElMessage.error(readError(err, '下载 WebDAV 文件失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '下载 WebDAV 文件失败'))
+    }
   }
 }
 
 async function restoreBackupFile(row) {
+  const operation = operations.begin('restore')
   try {
     await ElMessageBox.confirm(`确定从 WebDAV 文件“${row.name}”恢复备份吗？`, '恢复 WebDAV 备份', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
     restoring.value = row.path
     const { data } = await restoreWebDAVBackup(row.path)
+    if (!operations.canCommit(operation)) return
+    await applyRestoreResult(data, {
+      canCommit: () => operations.canCommit(operation),
+    })
+    if (!operations.canCommit(operation)) return
     const summary = `恢复完成：书源 ${data.sources || 0}，书籍 ${data.books || 0}，进度 ${data.progress || 0}`
     if (data.sourcesSkipped) {
       ElMessage.warning(`${summary}。个人数据已恢复，书源因权限未恢复`)
     } else {
       ElMessage.success(summary)
     }
-    await applyRestoreResult(data)
-    await load()
+    if (!operations.canCommit(operation)) return
+    await load(operation)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '恢复 WebDAV 备份失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '恢复 WebDAV 备份失败'))
+    }
   } finally {
-    restoring.value = ''
+    if (operations.canCommit(operation)) restoring.value = ''
   }
 }
 
 async function deleteItem(row) {
+  const operation = operations.begin('delete')
   try {
     await ElMessageBox.confirm(`确定删除“${row.name}”吗？`, '删除 WebDAV 项目', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
     await deleteWebDAV(row.path)
+    if (!operations.canCommit(operation)) return
     ElMessage.success('已删除')
-    await load()
+    await load(operation)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除 WebDAV 项目失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '删除 WebDAV 项目失败'))
+    }
   }
 }
 
 async function deleteSelected() {
   if (!selection.value.length) return
+  const operation = operations.begin('delete')
+  const selected = [...selection.value]
   try {
-    await ElMessageBox.confirm(`确定删除选中的 ${selection.value.length} 个 WebDAV 项目吗？`, '批量删除 WebDAV 项目', { type: 'warning' })
-    for (const row of selection.value) await deleteWebDAV(row.path)
+    await ElMessageBox.confirm(`确定删除选中的 ${selected.length} 个 WebDAV 项目吗？`, '批量删除 WebDAV 项目', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
+    for (const row of selected) {
+      await deleteWebDAV(row.path)
+      if (!operations.canCommit(operation)) return
+    }
     ElMessage.success('已批量删除')
-    await load()
+    await load(operation)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '批量删除 WebDAV 项目失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '批量删除 WebDAV 项目失败'))
+    }
   }
 }
 

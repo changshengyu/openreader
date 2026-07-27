@@ -11,7 +11,9 @@ function dispatch(name, detail) {
   window.dispatchEvent(new CustomEvent(name, { detail }))
 }
 
-export async function applyRestoreResult(result = {}) {
+export async function applyRestoreResult(result = {}, options = {}) {
+  const canCommit = options.canCommit || (() => true)
+  if (!canCommit()) return false
   const bookshelf = useBookshelfStore()
   const reader = useReaderStore()
   const preferences = usePreferencesStore()
@@ -29,6 +31,7 @@ export async function applyRestoreResult(result = {}) {
   }
 
   await Promise.allSettled(jobs)
+  if (!canCommit()) return false
 
   if (count(result, 'sources') > 0) {
     dispatch('openreader:sources-update', { kind: 'restore-backup' })
@@ -42,4 +45,5 @@ export async function applyRestoreResult(result = {}) {
   if (count(result, 'replaceRules') > 0) {
     dispatch('openreader:replace-rules-updated', { kind: 'restore-backup' })
   }
+  return true
 }

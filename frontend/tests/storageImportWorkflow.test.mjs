@@ -3,6 +3,16 @@ import test from 'node:test'
 
 import { useStorageImportWorkflow } from '../src/composables/useStorageImportWorkflow.js'
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function previewRow(path, token, overrides = {}) {
   return {
     path,
@@ -137,4 +147,40 @@ test('keeps a failed staged item in its single dialog and reparses the same toke
   assert.equal(imported, false)
   assert.equal(workflow.phase.value, 'single', 'a failed current import must stay available for retry or cancellation')
   assert.match(workflow.currentRow.value.lastError, /temporary import failure/)
+})
+
+test('stops a batch after session invalidation without upserting or completing the old flow', async () => {
+  const firstResponse = deferred()
+  let current = true
+  const imported = []
+  const { workflow, calls, completed } = createWorkflow({
+    previewItems: [previewRow('one.txt', 'a'.repeat(48)), previewRow('two.txt', 'b'.repeat(48))],
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {
+        current = false
+      },
+    },
+    importItem: async (source, item, categoryIds) => {
+      calls.push(['import', source, item.path, item.importToken, [...categoryIds]])
+      if (item.path === 'one.txt') return firstResponse.promise
+      return { imported: [{ path: item.path, book: { id: 2, title: item.title } }] }
+    },
+    onImported: book => imported.push(book),
+  })
+
+  await workflow.start({ source: 'local-store', paths: ['one.txt', 'two.txt'] })
+  workflow.chooseBatch()
+  const pending = workflow.confirmBatch()
+  await Promise.resolve()
+  current = false
+  firstResponse.resolve({
+    imported: [{ path: 'one.txt', book: { id: 1, title: 'one' } }],
+  })
+  assert.equal(await pending, false)
+
+  assert.deepEqual(calls.filter(([kind]) => kind === 'import').map(([, , path]) => path), ['one.txt'])
+  assert.deepEqual(imported, [])
+  assert.deepEqual(completed, [])
 })

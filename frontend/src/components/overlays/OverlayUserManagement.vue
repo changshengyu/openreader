@@ -135,6 +135,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Refresh } from '@element-plus/icons-vue'
 import * as adminApi from '../../api/admin'
 import { useOverlayUserManagement } from '../../composables/useOverlayUserManagement'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayStore } from '../../stores/overlay'
 import { useUserStore } from '../../stores/user'
 
@@ -147,6 +148,7 @@ defineProps({
 
 const overlay = useOverlayStore()
 const userStore = useUserStore()
+const operations = useAuthenticatedOperationGuard()
 
 const {
   users,
@@ -170,6 +172,7 @@ const {
   removeSelected: deleteSelectedUsers,
   updatePermission: updateUserPermission,
 } = useOverlayUserManagement({
+  operationGuard: operations,
   userStore,
   getCurrentUserId: () => userStore.profile?.id || null,
   isActive: () => overlay.userManageVisible,

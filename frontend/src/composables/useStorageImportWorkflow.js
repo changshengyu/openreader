@@ -1,7 +1,11 @@
 import { computed, ref } from 'vue'
 import { isEPUBLocalPath } from '../utils/localBookToc.js'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useStorageImportWorkflow(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const phase = ref('idle')
   const source = ref('')
   const rows = ref([])
@@ -19,7 +23,8 @@ export function useStorageImportWorkflow(options) {
     : '')
 
   async function start(request) {
-    reset()
+    resetState()
+    const operation = operations.begin('start')
     source.value = String(request?.source || '')
     const paths = Array.isArray(request?.paths) ? request.paths.filter(Boolean) : []
     if (!source.value || !paths.length) return false
@@ -27,11 +32,14 @@ export function useStorageImportWorkflow(options) {
     phase.value = 'loading'
     try {
       await options.loadCategories?.()
+      if (!operations.canCommit(operation)) return false
       const response = await options.preview(source.value, paths)
+      if (!operations.canCommit(operation)) return false
       rows.value = normalizePreviewRows(response?.items || [])
       chooseInitialPhase()
       return true
     } catch (error) {
+      if (!operations.canCommit(operation)) return false
       phase.value = 'idle'
       options.onError?.(safeError(error, '解析导入预览失败'))
       return false
@@ -69,36 +77,42 @@ export function useStorageImportWorkflow(options) {
 
   async function confirmBatch() {
     if (phase.value !== 'batch-groups' || busy.value) return false
+    const operation = operations.begin('confirm')
     busy.value = true
     const categoryIds = normalizeCategoryIds(batchCategoryIds.value)
     try {
       for (const row of validRows.value) {
-        const outcome = await importRow(row, categoryIds)
+        if (!operations.canCommit(operation)) return false
+        const outcome = await importRow(row, categoryIds, operation)
+        if (outcome.aborted) return false
         if (outcome.ok) {
           summary.value.succeeded += 1
         } else {
           summary.value.failed += 1
         }
       }
+      if (!operations.canCommit(operation)) return false
       completeFlow()
       return true
     } finally {
-      busy.value = false
+      if (operations.canCommit(operation)) busy.value = false
     }
   }
 
   async function confirmCurrent() {
     const row = currentRow.value
     if (phase.value !== 'single' || !row || busy.value) return false
+    const operation = operations.begin('confirm')
     busy.value = true
     try {
-      const outcome = await importRow(row, row.categoryIds)
+      const outcome = await importRow(row, row.categoryIds, operation)
+      if (outcome.aborted) return false
       if (!outcome.ok) return false
       summary.value.succeeded += 1
       advanceCurrent()
       return true
     } finally {
-      busy.value = false
+      if (operations.canCommit(operation)) busy.value = false
     }
   }
 
@@ -110,9 +124,11 @@ export function useStorageImportWorkflow(options) {
 
   async function reparse(row) {
     if (!row?.importToken || busy.value) return false
+    const operation = operations.begin('reparse')
     row.reparsing = true
     try {
       const response = await options.preview(source.value, [toReparsePayload(row)])
+      if (!operations.canCommit(operation)) return false
       const result = (response?.items || []).find(item => item.path === row.path)
       applyPreviewResult(row, result || {
         path: row.path,
@@ -121,6 +137,7 @@ export function useStorageImportWorkflow(options) {
       })
       return !row.error
     } catch (error) {
+      if (!operations.canCommit(operation)) return false
       applyPreviewResult(row, {
         path: row.path,
         importToken: row.importToken,
@@ -128,7 +145,7 @@ export function useStorageImportWorkflow(options) {
       })
       return false
     } finally {
-      row.reparsing = false
+      if (operations.canCommit(operation)) row.reparsing = false
     }
   }
 
@@ -139,6 +156,11 @@ export function useStorageImportWorkflow(options) {
   }
 
   function reset() {
+    operations.reset()
+    resetState()
+  }
+
+  function resetState() {
     phase.value = 'idle'
     source.value = ''
     rows.value = []
@@ -172,10 +194,12 @@ export function useStorageImportWorkflow(options) {
     completeFlow()
   }
 
-  async function importRow(row, categoryIds) {
+  async function importRow(row, categoryIds, operation) {
+    if (!operations.canCommit(operation)) return { ok: false, aborted: true }
     row.lastError = ''
     try {
       const response = await options.importItem(source.value, toImportPayload(row), normalizeCategoryIds(categoryIds))
+      if (!operations.canCommit(operation)) return { ok: false, aborted: true }
       const result = (response?.imported || []).find(item => item.path === row.path) || response?.imported?.[0]
       if (!result?.book) {
         row.lastError = result?.error || '导入失败'
@@ -186,6 +210,7 @@ export function useStorageImportWorkflow(options) {
       options.onImported?.(result.book)
       return { ok: true, book: result.book }
     } catch (error) {
+      if (!operations.canCommit(operation)) return { ok: false, aborted: true }
       row.lastError = safeError(error, '导入失败')
       options.onError?.(row.lastError)
       return { ok: false, error: row.lastError }
@@ -223,6 +248,7 @@ export function useStorageImportWorkflow(options) {
     reparse,
     cancelAll,
     reset,
+    invalidate: operations.reset,
   }
 }
 

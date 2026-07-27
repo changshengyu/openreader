@@ -1,6 +1,10 @@
 import { reactive, ref } from 'vue'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useOverlayUserManagement(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const users = ref([])
   const usersLoading = ref(false)
   const deletingUsers = ref(false)
@@ -29,20 +33,24 @@ export function useOverlayUserManagement(options) {
 
   async function load() {
     const request = ++managerRequest
+    const operation = operations.begin('load')
     usersLoading.value = true
     try {
       if (!options.userStore.profile) await options.userStore.loadMe()
+      if (!operations.canCommit(operation)) return
       const { data } = await options.listUsers()
-      if (request !== managerRequest) return
+      if (request !== managerRequest || !operations.canCommit(operation)) return
       users.value = data || []
       selectedUserIds.value = selectedUserIds.value.filter(id => (
         users.value.some(user => user.id === id && isDeletable(user))
       ))
     } catch (error) {
-      if (request !== managerRequest) return
+      if (request !== managerRequest || !operations.canCommit(operation)) return
       options.onError(error, '加载用户失败')
     } finally {
-      if (request === managerRequest) usersLoading.value = false
+      if (request === managerRequest && operations.canCommit(operation)) {
+        usersLoading.value = false
+      }
     }
   }
 
@@ -53,6 +61,7 @@ export function useOverlayUserManagement(options) {
   }
 
   function resetManager() {
+    operations.reset()
     managerRequest += 1
     clearRefresh()
     users.value = []
@@ -105,6 +114,7 @@ export function useOverlayUserManagement(options) {
       options.onWarning('用户名至少 5 位且只能包含字母或数字，密码至少 8 位')
       return
     }
+    const operation = operations.begin('create')
     creatingUser.value = true
     try {
       await options.createUser({
@@ -114,17 +124,21 @@ export function useOverlayUserManagement(options) {
         canAccessStore: draft.canAccessStore,
         canAccessWebdav: draft.canAccessWebdav,
       })
+      if (!operations.canCommit(operation)) return
       options.onSuccess('新增用户成功')
       createDialogVisible.value = false
       await load()
     } catch (error) {
-      options.onError(error, '新增用户失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '新增用户失败')
+      }
     } finally {
-      creatingUser.value = false
+      if (operations.canCommit(operation)) creatingUser.value = false
     }
   }
 
   async function resetPassword(row) {
+    const operation = operations.begin('reset-password')
     try {
       const result = await options.prompt(
         '',
@@ -139,11 +153,15 @@ export function useOverlayUserManagement(options) {
           },
         },
       )
+      if (!operations.canCommit(operation)) return
       await options.resetUserPassword(row.id, { password: result.value })
+      if (!operations.canCommit(operation)) return
       options.onSuccess('重置密码成功')
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      options.onError(error, '重置密码失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '重置密码失败')
+      }
     }
   }
 
@@ -153,6 +171,7 @@ export function useOverlayUserManagement(options) {
       options.onWarning('请选择需要删除的用户')
       return
     }
+    const operation = operations.begin('delete-users')
     deletingUsers.value = true
     try {
       await options.confirm(
@@ -160,19 +179,24 @@ export function useOverlayUserManagement(options) {
         '批量删除用户',
         { type: 'warning' },
       )
+      if (!operations.canCommit(operation)) return
       const { data } = await options.deleteUsers(ids)
+      if (!operations.canCommit(operation)) return
       selectedUserIds.value = []
       options.onSuccess(`删除用户成功：${data.deleted || ids.length} 个`)
       await load()
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      options.onError(error, '删除用户失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '删除用户失败')
+      }
     } finally {
-      deletingUsers.value = false
+      if (operations.canCommit(operation)) deletingUsers.value = false
     }
   }
 
   async function updatePermission(row) {
+    const operation = operations.begin(`update-permission:${row.id}`)
     try {
       await options.updateUser(row.id, {
         canEditSources: row.canEditSources,
@@ -181,8 +205,10 @@ export function useOverlayUserManagement(options) {
         bookLimit: row.bookLimit,
         sourceLimit: row.sourceLimit,
       })
+      if (!operations.canCommit(operation)) return
       options.onSuccess('用户权限已更新')
     } catch (error) {
+      if (!operations.canCommit(operation)) return
       options.onError(error, '更新用户失败')
       await load()
     }
@@ -209,5 +235,6 @@ export function useOverlayUserManagement(options) {
     resetPassword,
     removeSelected,
     updatePermission,
+    resetOperations: operations.reset,
   }
 }

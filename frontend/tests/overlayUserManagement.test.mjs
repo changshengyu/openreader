@@ -2,6 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { useOverlayUserManagement } from '../src/composables/useOverlayUserManagement.js'
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function createController(overrides = {}) {
   const calls = []
   let timerTask
@@ -184,4 +194,34 @@ test('clears only manager list state when the user dialog closes', async () => {
   assert.deepEqual(fixture.controller.users.value, [])
   assert.deepEqual(fixture.controller.selectedUserIds.value, [])
   assert.equal(fixture.controller.createDialogVisible.value, true, 'the independent create-user dialog must survive a manager-only close')
+})
+
+test('does not announce or reload after an admin mutation crosses authenticated sessions', async () => {
+  const response = deferred()
+  let current = true
+  const fixture = createController({
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {
+        current = false
+      },
+    },
+    createUser: async payload => {
+      fixture.calls.push(['create', payload])
+      return response.promise
+    },
+  })
+  fixture.controller.openCreateDialog()
+  fixture.controller.draft.username = 'reader2'
+  fixture.controller.draft.password = 'secret12'
+
+  const pending = fixture.controller.create()
+  current = false
+  response.resolve({ data: { id: 3 } })
+  await pending
+
+  assert.equal(fixture.calls.some(([kind]) => kind === 'success'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'list'), false)
+  assert.equal(fixture.controller.createDialogVisible.value, true)
 })
