@@ -10,6 +10,27 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
+## P1 browser-cache account isolation (2026-07-27 implementation; browser gate pending)
+
+- [x] Browser cache statistics read value bytes only after an exact key-shape check proves ownership by the
+  scope captured at operation start; other users, anonymous keys, unknown formats and substring collisions fail closed.
+- [x] Source/RSS and chapter group clearing receives the captured scope explicitly and deletes only exact
+  current-user keys. Book deletion and BookManage cleanup use the same frozen scoped chapter prefix.
+- [x] Unscoped upstream-era chapter text is neither read, copied, counted nor removed by an authenticated account.
+  It is preserved as unowned rebuildable cache; no first-login owner claim can disclose one account's text to another.
+- [x] Server/browser stats, clear confirmations, result messages and busy state use scope+token+generation ownership.
+  An old operation cannot commit after another refresh or authentication change.
+- [x] No JWT, token or cache payload is logged or persisted by the operation guard; token material remains only in
+  a short-lived closure and cache values are never surfaced in labels/errors.
+- [ ] Real Chromium must still verify current-user totals, delayed-request retirement and scoped deletion at
+  1440×900, 390×844 and 360×800. The focused script exists, but its first external launch request was rejected
+  after the approval service disconnected; no alternate launch path was used.
+
+Evidence: `frontend/tests/localCacheStatsScope.test.mjs`,
+`frontend/tests/appCacheManagement.test.mjs`,
+`frontend/tests/bookChapterCacheScope.test.mjs`, and
+[`docs/compat/index-local-cache-scope-p1-contract.md`](compat/index-local-cache-scope-p1-contract.md).
+
 ## SSRF and remote fetches
 
 - [ ] Source/RSS/cover/WebDAV remote URLs validate scheme.

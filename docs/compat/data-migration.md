@@ -544,6 +544,22 @@ The same multi-client gate makes first-time settings writes atomic through the a
 rows keep their IDs/values/timestamps; only two concurrent attempts to create the same missing row stop surfacing a
 UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existing `-wal`/`-shm` files do not change.
 
+## P1 Index browser-cache scope compatibility (2026-07-27)
+
+- No SQLite table/column/index, API shape, mounted root, backup/WebDAV member, cache/library file or Docker volume
+  changes. `data/`, `cache/` and `library/` are byte-compatible with the previous image.
+- Existing current-user keys remain unchanged and readable:
+  `bookSourceList@user:<id>`, `rssSources@user:<id>`, `reader@user:<id>@...`,
+  `user:<id>@...@chapterContent-...` and `bookshelf@getBookshelf:...:user:<id>`.
+- Upstream-era browser chapter keys without a user scope are not rewritten or deleted during upgrade. Because no
+  field can prove their owner, authenticated reads/statistics/clear/delete no longer claim them for whichever
+  account happens to sign in next. They remain rebuildable derived cache rather than book, progress or bookmark data.
+- The frontend scope+token generation guard and cache statistics are runtime-only. No migration marker, owner claim,
+  background rewrite or new persistent setting is introduced.
+- Required release evidence remains full frontend/backend/build checks, the three-viewport browser-cache contract,
+  and current plus historical Docker volume/backup smoke. The first three automated code gates pass; browser and
+  Docker gates remain pending.
+
 ## P2 whole-book chapter text cache compatibility (2026-07-18)
 
 - No SQLite table/column/index, mounted root, backup member, WebDAV file, browser cache key or chapter-cache

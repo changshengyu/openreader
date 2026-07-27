@@ -40,6 +40,7 @@ OpenReader 浏览器缓存（例如书架快照和 Reader 书籍数据），但�
 | 关注点 | 当前实现 | 判定 | 要求 |
 |---|---|---|---|
 | UI 所有权 | `AppLayout.vue` 的长驻侧栏拥有统计和四个浏览器清理动作，并额外提供服务器缓存动作。 | `technical-stack-equivalent`；服务器缓存为 `acceptable-change` | 保留单一侧栏入口，不恢复已删除的通用 Settings Drawer。服务器缓存继续只作用于当前 API 用户。 |
+| 空分组可见性 | 章节列表/正文按钮始终存在，但书源/RSS 按文件数过滤；空缓存时两个上游按钮消失。 | `must-fix` | 四个上游分组动作始终显示；空分组点击只提示为空，不发起删除。 |
 | 总量作用域 | `currentBrowserLocalCacheStats()` 在分类前把 `listBrowserCacheKeys('')` 返回的每个 key 都计入 total。 | `must-fix` | total 只计入调用开始时捕获的账号可证明拥有的 key；其它账号和未知/旧版无归属 key 不得进入数量或字节数。 |
 | 书源/RSS 分组 | `cacheGroupForKey` 只判断是否包含 `bookSourceList` / `rssSources`，不判断账号。 | `must-fix` | 必须精确识别 `<group>@<captured-scope>`；不能使用包含匹配删除另一账号数据。 |
 | 章节列表分组 | 含 `chapterList` 的 key 无条件归类；`@chapters:` 分支在每次异步分类时重新读取当前 scope。 | `must-fix` | 仅 `reader@<captured-scope>@chapters:` 和明确兼容且可归属的格式进入当前账号分组。 |
@@ -124,3 +125,19 @@ OpenReader 浏览器缓存（例如书架快照和 Reader 书籍数据），但�
 5. 跑 frontend 全量测试、生产构建、backend 全量测试和真实浏览器三视口契约。
 6. 形成可独立验收批次后提交并同步 GitHub；本地构建 Docker，完成 volume/backup 闸门后再发布。
 
+## 8. 实施记录
+
+状态：代码与自动化验证完成；真实浏览器检查等待本机无头 Chrome 外部权限。
+
+- `localCacheStats.js` 现在先按调用时捕获的 scope 判定 key 所有权，再读取 value、统计或删除；
+  书源/RSS 使用精确 key，Reader/章节/书架使用各自已部署的 scoped 形态，未知和无归属 key
+  失败关闭。
+- `useAppCacheManagement` 复用 `createAuthenticatedOperationGuard`，把 server/browser stats、
+  clear、提示和 busy 状态绑定到 scope+token+generation；`AppLayout` 在 token 变化时重置旧状态
+  并触发新账号统计。
+- 四个上游浏览器缓存动作现在始终可见。服务器缓存仍是明确允许的当前用户扩展。
+- Reader、书籍管理和删除收敛只读取、计数或删除 scoped 章节正文；旧无作用域项原样保留在
+  浏览器存储中，但任何登录账号都不会自动认领。
+- 聚焦测试先在旧实现上失败，修正后 14 项缓存契约通过；frontend 全量 587 项、生产构建和
+  backend 全量测试已通过。三视口 browser smoke 已编写并通过语法检查，但首次启动无头 Chromium
+  的外部权限申请因审批服务断线被拒，未绕过审批，因此不得把 browser gate 标记为完成。

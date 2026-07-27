@@ -1,4 +1,4 @@
-import { currentUserScope } from './authScope'
+import { currentUserScope } from './authScope.js'
 
 export function currentAuthenticatedIdentity() {
   const token = typeof localStorage === 'undefined'

@@ -1120,7 +1120,9 @@ Required tests before implementation:
 1. Controller/UI: BookGroup set mode with no selected rows must show `请选择书籍分组`, make no request, and leave the dialog/book unchanged; selected multi-category save remains valid.
 2. API: category/book id validation rejects foreign ids without changing any row; category batch updates remain atomic and emit the scoped shelf event after commit.
 3. API/files: single and batch delete remove the caller's progress/bookmarks/category rows, remote cache file and direct-import `library/data/<user>/<book>` archive, while preserving another user's rows/cache/archive and local-store/WebDAV originals.
-4. Browser/store: direct and sync-driven book deletion remove scoped/legacy browser chapter cache entries, not merely the shelf-list cache.
+4. Browser/store: direct and sync-driven book deletion remove the captured user's scoped browser chapter
+   cache entries, not merely the shelf-list cache. Unscoped upstream-era entries have no provable owner and
+   are preserved but never read or claimed by an authenticated account.
 5. API: two users with remote cached chapters receive isolated `/cache/stats`; one user's `DELETE /cache` leaves the other user's cache path/database state intact and does not expose a filesystem path.
 6. API: per-book/batch cache clear is transactional from the caller's view and broadcasts only after durable state; concurrent/shared cache-path cleanup never removes a file still referenced by another chapter.
 7. API/files: remote refresh, source change and local refresh prune superseded derived cache entries after commit while retaining original imports and recovering progress/bookmark chapter ids where indices remain valid.
@@ -1135,7 +1137,7 @@ Status: implemented and validated on 2026-07-11. This is the first P1-D4 slice; 
 - **Owned request boundary.** Batch and export endpoints now require every supplied book id to belong to the authenticated user. A foreign/missing id produces a current-user `404` before any batch mutation or export occurs; foreign category ids remain a `400` validation error.
 - **Post-commit deletion cleanup.** Single and batch deletion capture remote cache references and a direct-import archive while rows still exist, commit SQLite deletion first, then prune only remote files with no remaining chapter reference and only the owner's `library/data/<user>/<book>` archive. This preserves another user's cache/archive and never treats LocalStore/WebDAV sources as delete targets.
 - **Scoped server cache.** `/api/cache/stats` and `DELETE /api/cache` now operate on the current user's remote books, omit the host cache directory, clear chapter rows transactionally, remove only unreferenced physical files, and broadcast a current-user shelf refresh after durable state changes. Per-book/batch cache writes and clears now broadcast refreshed shelf items as well.
-- **BookGroup and browser cache.** The BookGroup **set** flow rejects empty selections with `请选择书籍分组`, retaining the dialog/book state. Direct, batch, and sync-driven shelf removal clear known scoped/legacy browser chapter-cache keys after server deletion or sync receipt.
+- **BookGroup and browser cache.** The BookGroup **set** flow rejects empty selections with `请选择书籍分组`, retaining the dialog/book state. Direct, batch, and sync-driven shelf removal clear the captured account's scoped browser chapter-cache keys after server deletion or sync receipt. The later 2026-07-27 cache-scope contract preserves but does not consume or delete unowned upstream-era keys.
 - **Local export.** A single archived local book now returns its original source file for TXT/EPUB commands, matching upstream. Legacy/local rows with no safe archived original retain the existing derived TXT/EPUB fallback; JSON and multi-book ZIP stay documented OpenReader interoperability extensions.
 - **Evidence.** New Go lifecycle contracts verify cross-user cache isolation, reference-safe cleanup, private archive deletion, original-file export, and foreign-id rejection. Frontend contracts verify group selection and browser-cache invalidation. Full backend tests pass; frontend tests pass (322), production build passes, and `book-management-dialog-contract.mjs` passes at 1440×900, 390×844 and 360×800, including preselection, empty-group rejection, dialog/sidebar coexistence and overflow checks.
 - **Remaining P1-D4-B.** The upstream SSE cache progress/disconnect-cancel interaction has not been restored; the current bounded REST behavior remains under review and must not be treated as a completed parity decision.
@@ -2504,7 +2506,7 @@ list/upload/download/restore in the single WebDAV manager. Existing setting keys
 
 ### 2026-07-27 P1 Index local-cache scope re-audit
 
-Status: contract extracted; implementation pending.
+Status: implementation and automated gates complete; real-browser gate pending.
 
 Focused contract:
 [`index-local-cache-scope-p1-contract.md`](./index-local-cache-scope-p1-contract.md).

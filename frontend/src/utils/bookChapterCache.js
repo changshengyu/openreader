@@ -16,20 +16,13 @@ export function chapterCacheKeyPrefix(book, fallbackBookId, scope = currentUserS
   ].join('@')
 }
 
-function legacyChapterCacheKeyPrefix(book, fallbackBookId) {
-  const currentBook = book || {}
-  return [
-    `${currentBook.title || currentBook.name || 'book'}_${currentBook.author || ''}`,
-    chapterCacheBookKey(currentBook, fallbackBookId),
-  ].join('@')
-}
-
-export function chapterCacheKey(book, fallbackBookId, index) {
-  return `${chapterCacheKeyPrefix(book, fallbackBookId)}@chapterContent-${index}`
-}
-
-function legacyChapterCacheKey(book, fallbackBookId, index) {
-  return `${legacyChapterCacheKeyPrefix(book, fallbackBookId)}@chapterContent-${index}`
+export function chapterCacheKey(
+  book,
+  fallbackBookId,
+  index,
+  scope = currentUserScope(),
+) {
+  return `${chapterCacheKeyPrefix(book, fallbackBookId, scope)}@chapterContent-${index}`
 }
 
 export function isValidChapterContentResponse(data) {
@@ -37,28 +30,24 @@ export function isValidChapterContentResponse(data) {
 }
 
 export async function loadBrowserChapterContent(book, bookId, index, options = {}) {
-  const cacheKey = chapterCacheKey(book, bookId, index)
+  const scope = options.scope || currentUserScope()
+  const getCache = options.getCache || getBrowserCache
+  const setCache = options.setCache || setBrowserCache
+  const fetchChapter = options.getChapterContent || getChapterContent
+  const cacheKey = chapterCacheKey(book, bookId, index, scope)
   if (!options.refresh) {
-    const cached = await getValidCachedChapter(cacheKey)
+    const cached = await getValidCachedChapter(cacheKey, getCache)
     if (cached) return cached
-    const legacyCached = await getValidCachedChapter(legacyChapterCacheKey(book, bookId, index))
-    if (legacyCached) {
-      setBrowserCache(cacheKey, legacyCached).catch(() => {})
-      return legacyCached
-    }
   }
-  const { data } = await getChapterContent(bookId, index)
-  if (isValidChapterContentResponse(data)) await setBrowserCache(cacheKey, data)
+  const { data } = await fetchChapter(bookId, index)
+  if (isValidChapterContentResponse(data)) await setCache(cacheKey, data)
   return data
 }
 
 export async function listBookBrowserCachedChapters(book, bookId) {
-  const prefix = `${chapterCacheKeyPrefix(book, bookId)}@chapterContent-`
-  const legacyPrefix = `${legacyChapterCacheKeyPrefix(book, bookId)}@chapterContent-`
-  const keys = [
-    ...await listBrowserCacheKeys(prefix),
-    ...await listBrowserCacheKeys(legacyPrefix),
-  ]
+  const scope = currentUserScope()
+  const prefix = `${chapterCacheKeyPrefix(book, bookId, scope)}@chapterContent-`
+  const keys = await listBrowserCacheKeys(prefix)
   const map = {}
   keys.forEach(key => {
     const index = Number(key.slice(key.lastIndexOf('@chapterContent-') + '@chapterContent-'.length))
@@ -69,11 +58,11 @@ export async function listBookBrowserCachedChapters(book, bookId) {
 
 export async function countBooksBrowserCachedChapters(books = []) {
   const rows = Array.isArray(books) ? books : []
+  const scope = currentUserScope()
   const prefixRows = rows.map(book => ({
     book,
     prefixes: [
-      `localCache@${chapterCacheKeyPrefix(book, book.id)}@chapterContent-`,
-      `localCache@${legacyChapterCacheKeyPrefix(book, book.id)}@chapterContent-`,
+      `localCache@${chapterCacheKeyPrefix(book, book.id, scope)}@chapterContent-`,
     ],
     indexes: new Set(),
   }))
@@ -90,11 +79,10 @@ export async function countBooksBrowserCachedChapters(books = []) {
 
 export async function clearBookBrowserChapterCache(book, bookId, options = {}) {
   const scope = options.scope || currentUserScope()
-  const [scoped, legacy] = await Promise.all([
-    removeBrowserCacheKeys(`${chapterCacheKeyPrefix(book, bookId, scope)}@chapterContent-`),
-    removeBrowserCacheKeys(`${legacyChapterCacheKeyPrefix(book, bookId)}@chapterContent-`),
-  ])
-  return scoped + legacy
+  const removeKeys = options.removeKeys || removeBrowserCacheKeys
+  return removeKeys(
+    `${chapterCacheKeyPrefix(book, bookId, scope)}@chapterContent-`,
+  )
 }
 
 export async function currentUserBrowserChapterCacheStats() {
@@ -147,23 +135,21 @@ export async function cacheBookChaptersToBrowser(book, bookId, chapters, options
   return { cached, requested: total, cancelled: Boolean(options.cancelled?.()) }
 }
 
-async function getValidCachedChapter(cacheKey) {
-  const cached = await getBrowserCache(cacheKey)
+async function getValidCachedChapter(cacheKey, getCache = getBrowserCache) {
+  const cached = await getCache(cacheKey)
   return isValidChapterContentResponse(cached) ? cached : null
 }
 
 async function currentUserBrowserChapterCacheKeys() {
+  const scope = currentUserScope()
   const keys = await listBrowserCacheKeys('')
-  return keys.filter(isCurrentUserOrLegacyChapterCacheKey)
+  return keys.filter(key => isCurrentUserChapterCacheKey(key, scope))
 }
 
-function isCurrentUserOrLegacyChapterCacheKey(key) {
+function isCurrentUserChapterCacheKey(key, scope) {
   if (!String(key).includes('@chapterContent-')) return false
   const unprefixed = String(key).replace(/^localCache@/, '')
-  const scope = currentUserScope()
-  if (unprefixed.startsWith(`${scope}@`)) return true
-  if (/^(user:[^@]+|anonymous)@/.test(unprefixed)) return false
-  return true
+  return unprefixed.startsWith(`${scope}@`)
 }
 
 function estimateCacheValueSize(value) {

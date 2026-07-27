@@ -226,6 +226,7 @@ const {
   browserNavItems: browserCacheNavItems,
   loadStats: loadCacheStats,
   clearServer: clearSystemCache,
+  resetScope: resetCacheScope,
 } = useAppCacheManagement({
   getServerStats: getCacheStats,
   getBrowserStats: currentBrowserLocalCacheStats,
@@ -748,9 +749,11 @@ function setOnline() {
 watch(
   () => userStore.token,
   (token) => {
+    resetCacheScope()
     refreshRecentReadingScope()
     if (token) {
       connect()
+      loadCacheStats()
     } else {
       disconnect()
     }
@@ -844,7 +847,6 @@ onMounted(() => {
     loadShelfForShell({ all: true }).catch(() => {})
   }
   if (userStore.token) loadSidebarSources()
-  if (userStore.token) loadCacheStats()
   refreshHealthInfo(false)
 })
 
