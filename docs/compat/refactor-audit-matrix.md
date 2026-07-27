@@ -96,10 +96,10 @@
 
 | 模块 | 上游权威点 | 当前状态 | 裁决 | 后续测试 |
 |---|---|---|---|---|
-| 直接翻页方式切换 | `ReadSettings.vue#setReadMethod` 先 emit；`Reader.vue#beforeReadMethodChange` 先保存可见段落；`isSlideRead` 重分页后恢复该段落。 | `useReaderMode` 在 raw mode 已改变后从新宿主读取 offset。 | **错误重构 / must-fix** | page/scroll/scroll2 ↔ flip 中段切换保持章节与 `data-pos`。 |
-| Kindle、配置方案、自动昼夜 | 整套配置可同时改变阅读方式和排版；slide 分支变化后优先恢复已维护的 `currentParagraph`。 | mode restore 与 typography restore 可并发，`App.vue` 自动昼夜还绕过设置面板入口。 | **错误重构 / must-fix** | 同批多字段只执行一个可取消的位置事务；旧事务不得回拉。 |
-| 页面模式与有效滚动宿主 | mini interface/窗口重排后保持当前页；文本横竖模式分别使用既定宿主。 | auto/mobile 或横竖切换可能在捕获前改变 document/internal viewport。 | **错误重构 / must-fix** | 手机双尺寸与 iPad 验证根/内部 scrollTop 和首可见段落。 |
-| EPUB/音频/普通图片 | raw readMethod 不改变这些格式的有效非 slide 分支。 | raw `reader.mode` watcher 仍可重建/恢复。 | **技术栈适配过宽 / must-fix** | 仅有效 mode/宿主变化才运行事务，格式内容不被清空。 |
+| 直接翻页方式切换 | `ReadSettings.vue#setReadMethod` 先 emit；`Reader.vue#beforeReadMethodChange` 先保存可见段落；`isSlideRead` 重分页后恢复该段落。 | `useReaderMode` 现于 mutation 前从旧 viewport 捕获段落锚点，再重建并恢复；`readerMode.test.mjs` 覆盖 page/scroll/scroll2 ↔ flip。 | **resolved / aligned** | 保留直接模式切换与 `data-pos` 回归。 |
+| Kindle、配置方案、自动昼夜 | 整套配置可同时改变阅读方式和排版；slide 分支变化后优先恢复已维护的 `currentParagraph`。 | mode/pageMode/排版变化合并为一个 generation 化位置事务；新事务取消旧恢复，自动昼夜走同一 store 边界。 | **resolved / aligned** | 保留同批配置合并、自动昼夜和旧事务不得回拉合同。 |
+| 页面模式与有效滚动宿主 | mini interface/窗口重排后保持当前页；文本横竖模式分别使用既定宿主。 | auto/mobile 或横竖变化前捕获旧 viewport，变化后按新根/内部宿主恢复；390×844、360×800、1024×1366 已验证。 | **resolved / aligned** | 保留手机双尺寸与 iPad 的根/内部 scrollTop、首可见段落合同。 |
+| EPUB/音频/普通图片 | raw readMethod 不改变这些格式的有效非 slide 分支。 | 事务以 `readerEffectiveMode()`/有效宿主为门禁；固定格式仅 raw mode 变化不会重建或清空内容。 | **resolved / technical-stack-equivalent** | 保留 fixed-format raw mode no-op 回归。 |
 
 本轮仅完成固定上游合同提取和当前实现映射，未修改应用或测试代码。权威细节见
 [`reader-mobile-page-click-p0-contract.md`](reader-mobile-page-click-p0-contract.md) 第十二次复审。
