@@ -19,6 +19,27 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] Private network access is considered when server-side fetches are user-controlled.
 - [ ] Headers/cookies are not logged.
 
+## P2 remote book-cover proxy review (2026-07-27 extracted; implementation pending)
+
+- [ ] Public image route accepts only an opaque, purpose-separated, expiring server-issued
+  capability; it never accepts a caller-supplied raw URL or login JWT in path/query.
+- [ ] Capability contents do not reveal the original URL/query, user/source identity or
+  credentials and the complete token segment is redacted from access logs.
+- [ ] HTTP(S)-only URL, DNS and actual dial addresses reject private/loopback/link-local/
+  multicast/unspecified/metadata ranges; every redirect is revalidated and capped at three.
+- [ ] Fetch has a 3-second total timeout and 8-MiB body cap, accepts only verified raster
+  magic, rejects non-2xx/HTML/truncated content and never forwards Cookie/Authorization/
+  source credentials.
+- [ ] Per-user cache paths are rooted and symlink-safe; writes are atomic/coalesced, cache
+  hits are revalidated, aggregate bytes are bounded and user/global cleanup cannot cross scope.
+- [ ] Raw `coverUrl` remains the only persisted/exported value. `coverResourceUrl` cannot
+  enter SQLite, sync persistence, Book/Chapter variables, WebDAV, exports or backups.
+- [ ] Public GET/HEAD errors and frontend fallback never expose URL, query, host path or
+  credentials and never turn a cover failure into auth invalidation or source suppression.
+
+Target contract and required tests:
+[`docs/compat/book-cover-proxy-p2-contract.md`](compat/book-cover-proxy-p2-contract.md).
+
 ## Path traversal and files
 
 - [ ] Every user path is cleaned and joined under an allowed root.
