@@ -1,7 +1,9 @@
 # P2 备份、恢复与 WebDAV 工作台固定基线合同
 
-状态：**2026-07-27 已完成固定上游审查、测试、实现、三视口浏览器、
-Docker 新旧卷门禁与本地双架构发布。**
+状态：**2026-07-27 已完成原固定上游切片的测试、三视口浏览器、Docker 新旧卷门禁
+与本地双架构发布；书源 artifact 的用户所有权在后续全量复审中重新打开。** 当前
+`bookSource.json` 仍来自全局表，不能继续作为多用户备份完全对齐的证据；修复闸门见
+[`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)。
 
 本合同以 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 为唯一产品基线，纠正此前把“ZIP 结构预检通过”概括成“备份/WebDAV 已完成”的审计结论。
@@ -122,7 +124,7 @@ Portable v1 在逻辑计划前仍先完成 manifest/hash/path/容量/identity �
 |---|---|---|
 | trigger/list/download/upload/restore | JWT + effective `canAccessWebdav` | 管理员旧根或普通用户 `users/<safe-username>/`；检查必须先于 path/body/file 工作。 |
 | 恢复个人 setting/shelf/category/RSS/bookmark/rule/progress | 同上 | 只写认证 `userID`。archive 中的 user ID 永不可信。 |
-| 恢复 `bookSource.json` | 上述权限 **并且** `canEditSources` | 书源表是当前 OpenReader 的有意全局模型，只有已有书源编辑权限可修改。 |
+| 恢复 `bookSource.json` | 上述权限 **并且** `canEditSources` | 只写认证用户自己的活动书源；不得读取、覆盖或广播其他用户的书源。 |
 
 当前恢复接口只检查 WebDAV 权限，随后无条件调用全局 `importBookSources`，使
 `canEditSources=false` 的用户可以借 ZIP 绕过权限，属于安全 `must-fix`。为了不阻断同一包中的
@@ -133,9 +135,9 @@ Portable v1 在逻辑计划前仍先完成 manifest/hash/path/容量/identity �
 - 返回加性 `sourcesSkipped: true`（并可在统一 `skipped` 中计数）；
 - 前端显示“个人数据已恢复，书源因权限未恢复”，不能笼统提示全部恢复成功。
 
-备份中可保留调用者可用的全局书源快照用于可移植性，但它不携带写权限；现有书源 header/规则
+备份只保留调用者自己的活动书源快照用于可移植性，且不携带写权限；现有书源 header/规则
 脱敏与可见性合同不得因备份扩大。任何备份、错误、日志和事件都不得包含 JWT、Cookie、
-Authorization、WebDAV 凭证或主机路径。
+Authorization、WebDAV 凭证、其他用户书源或主机路径。
 
 ## 6. 数据与迁移边界
 

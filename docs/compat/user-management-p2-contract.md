@@ -1,9 +1,11 @@
 # P2 用户管理上游复审合同
 
-状态：2026-07-17 已实施账户规则、独立 WebDAV/书仓权限和安全删除切片，并以
+状态：2026-07-27 已实施账户规则、独立 WebDAV/书仓权限和安全删除切片，并以
 固定基准 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
-回归验证。书源所有权动作仍是独立 P2 依赖；本合同不把当前 OpenReader 的组件、
-路由或旧测试当作正确性依据。
+回归验证。书源所有权动作已经完成独立取证，结论见
+[`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)；当前全局
+书源模型被判定为错误重构，尚未实施修复。本合同不把当前 OpenReader 的组件、路由或
+旧测试当作正确性依据。
 
 上游权威文件：
 
@@ -28,10 +30,10 @@
 | 新建用户名 | 管理员创建用户至少 5 位，仅允许 ASCII 字母/数字，且保留 `default` namespace。 | 共享后端校验覆盖注册与管理员创建；UI 同步提示。旧用户名不重写、不锁定。 | **已实现**：至少 5 位、字母/数字、拒绝 `default`；旧账户仍可登录。 |
 | 新建/重置密码 | 管理员新建用户和重置密码均拒绝少于 **8** 位密码。 | 创建、重置与 UI 均改为 8 位；既有散列未重写。 | **已实现**。 |
 | WebDAV、书仓授权 | `enableWebdav`、`enableLocalStore` 是两个可独立切换的字段；Index 分别据此显示对应入口。 | 新增 nullable `can_access_webdav`；UI 与 API 显示独立 WebDAV/书仓开关。 | **已实现**：旧行 `NULL` 回退 `can_access_store`；LocalStore 与 WebDAV/Backup 在后端逐路由独立授权。 |
-| 用户书源：设为默认、删除用户书源 | 管理员可把被选用户的私有书源复制为新用户默认书源，或删除所选用户的私有文件并让其回退默认。 | `BookSource` 是全局 SQLite 表，无 `user_id`；用户表的 `sourceCount` 也明确为全局数。无对应动作。 | **依赖 P2 书源所有权审查**：不能新增一个“成功但无效果”的按钮。若全局书源模型被判定为合法技术适配，界面必须明确其全局含义并记录这两个单用户动作不适用；若恢复 user/default 书源域，则同一事务实现两个上游动作。 |
+| 用户书源：设为默认、删除用户书源 | 管理员可把目标用户的私有书源复制为新用户默认书源，或删除所选用户的私有文件并让其回退默认。 | `BookSource` 是全局 SQLite 表，无 `user_id`；用户表的 `sourceCount` 也明确为全局数。无对应动作。 | **P2 必修**：恢复 user/default 书源域，并以目标用户事务实现两个上游动作；全局共享不能作为多用户适配保留。 |
 | 批量删除 | 确认后删除用户记录和该用户 namespace 目录。 | SQLite 事务覆盖 chapters、book categories、progress、bookmarks、RSS、rules、settings、source failures 与用户；提交后才清理 regular-user 私有 roots。 | **已实现**：保护管理员/当前账户；另一个用户和管理员 legacy 根均有回归覆盖。 |
 | 清理不活跃用户 | 上游没有此产品动作。 | 已从管理器 UI 移除；保留的兼容 API 复用完整删除计划。 | **已实现**：不再存在仅删 `users` 行的路径。 |
-| 列表/操作布局 | 表格：用户名、最后登录、注册、WebDAV、书仓、重置密码/设默认；底栏：批量删除、删除用户书源、选择数。 | 额外显示 role、书籍/全局书源计数、刷新/清理；权限只有书源/书仓，底栏只有批量删除。 | **must-fix after data contract**：恢复上游动作与选择/确认顺序；role、限额和全局计数只能作为不抢占上游操作的多用户信息。 |
+| 列表/操作布局 | 表格：用户名、最后登录、注册、WebDAV、书仓、重置密码/设默认；底栏：批量删除、删除用户书源、选择数。 | 额外显示 role、书籍/全局书源计数、刷新；权限包含 OpenReader 的书源编辑开关，底栏只有批量删除。 | **must-fix with P2 source implementation**：恢复上游动作与选择/确认顺序；`sourceCount` 改为目标用户活动书源数，role/限额只能作为不抢占上游操作的多用户信息。 |
 
 ## OpenReader API 与数据合同
 
@@ -53,8 +55,10 @@
   user-local imported archive root 和 `data/uploads/users/<user-id>/` 只能在该用户数据库
   删除提交后清理；`data/webdav/`、`library/localStore/` 的管理员 legacy 根绝不能由删除
   regular user 的动作触碰。
-- Source 所有权是单独 P2 合同的前置决策，不在本合同中悄悄给全局 `BookSource` 加
-  `user_id` 或复制现有行。
+- Source 所有权的决策和迁移闸门见
+  [`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)。必须通过
+  加法迁移复制旧全局行、重映射每个用户的书籍/失败缓存并保留默认快照；禁止直接给旧行
+  填一个 owner，导致其他用户的既有书籍越权或失效。
 
 ## 必须先写的测试
 

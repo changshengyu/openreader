@@ -98,7 +98,9 @@ Docker new/old volume proof remains a release gate.
 Status: implemented and tested. This is a derived, caller-scoped runtime cache and is not part of a reader backup format.
 
 - Existing `data/`, `cache/`, `library/`, `book_sources`, shelf, category, chapter, progress and backup records remain byte/schema compatible. A GORM migration may add only an additive `source_failures` SQLite table with a unique current-user/source key and expiry index.
-- No existing source row is marked disabled, mutated or removed merely because one user saw a request failure. The 600-second failure status belongs only to that JWT user; another user can still use the global source.
+- No existing source row is marked disabled, mutated or removed merely because one user saw a request failure. The 600-second failure status belongs only to that JWT user. The current global source row remains unchanged until the owner migration; after
+  [`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md), each failure row
+  must be remapped to that user's private source copy and cannot suppress another user's copy.
 - The table is intentionally excluded from backup/export/restore: it is a short-lived replacement for reader-dev's `storage/cache/invalidBookSourceCache/<userNameSpace>` files, not user-authored configuration.
 - Read/write paths prune expired records and ignore a record whose retained source URL no longer matches the source's current URL after editing. Deleting a source may delete its derived records, but no old source, book, cache or mount file may be touched.
 - Required evidence: upgrade an existing SQLite volume; verify no existing row changes; verify cross-user/expiry/edit/delete isolation; run full Go tests and Docker mounted-volume backup smoke.

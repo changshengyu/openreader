@@ -318,3 +318,11 @@
   前端 626/626、生产构建、Go 全量与差异检查通过；三视口重新认证浏览器门和 Docker 待完成。
   对应合同：
   [workspace-overlay-authenticated-session-p1-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/workspace-overlay-authenticated-session-p1-contract.md)。
+- 2026-07-27：重新审查书源所有权后，撤销本文件早期“书源为全局管理能力”及
+  `sources_update` 应全账号广播的判断。固定上游把活动书源持久化在每个用户 namespace；
+  默认书源只在用户私有文件不存在时复制一次。当前无 `user_id` 的 `BookSource` 会让普通
+  用户跨账号 CRUD、搜索/探索、换源和备份恢复，管理员列表的 `sourceCount` 也只是重复
+  全局总数；默认恢复还会删除被既有书籍引用的 source ID。该差异裁决为错误重构和
+  **must-fix**，不能继续作为多用户技术适配保留。非破坏性迁移、owner-scoped API、默认
+  reconcile、UserManage 两个动作、备份和双账号发布闸门见：
+  [book-source-ownership-p2-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/book-source-ownership-p2-contract.md)。
