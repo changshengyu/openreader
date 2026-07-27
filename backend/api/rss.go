@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
@@ -85,6 +87,32 @@ func (s *Server) createRSSSource(c *gin.Context) {
 		return
 	}
 	req.normalize()
+	title := strings.TrimSpace(req.Title)
+	sourceURL := strings.TrimSpace(req.URL)
+	if title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+	if sourceURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+		return
+	}
+	var existing models.RSSSource
+	existingResult := s.db.Where("user_id = ? AND url = ?", userID, sourceURL).Order("id asc").Limit(1).Find(&existing)
+	if existingResult.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to find RSS source"})
+		return
+	}
+	if existingResult.RowsAffected > 0 {
+		applyRSSSourceUpdate(&existing, req)
+		if err := s.db.Save(&existing).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update RSS source"})
+			return
+		}
+		s.broadcastRSSUpdate(userID, "source-update", gin.H{"sourceId": existing.ID})
+		c.JSON(http.StatusOK, existing)
+		return
+	}
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -92,8 +120,8 @@ func (s *Server) createRSSSource(c *gin.Context) {
 	customOrder := req.orderOrDefault(s, userID)
 	source := models.RSSSource{
 		UserID:          userID,
-		Title:           strings.TrimSpace(req.Title),
-		URL:             strings.TrimSpace(req.URL),
+		Title:           title,
+		URL:             sourceURL,
 		Icon:            strings.TrimSpace(req.Icon),
 		Group:           strings.TrimSpace(req.Group),
 		Comment:         strings.TrimSpace(req.Comment),
@@ -117,13 +145,6 @@ func (s *Server) createRSSSource(c *gin.Context) {
 		EnableJS:        req.enableJSOrDefault(),
 		LoadWithBaseURL: req.loadWithBaseURLOrDefault(),
 		Enabled:         enabled,
-	}
-	if source.URL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
-		return
-	}
-	if source.Title == "" {
-		source.Title = source.URL
 	}
 	if err := s.db.Create(&source).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create RSS source"})
@@ -150,6 +171,37 @@ func (s *Server) updateRSSSource(c *gin.Context) {
 		return
 	}
 	req.normalize()
+	title := strings.TrimSpace(req.Title)
+	sourceURL := strings.TrimSpace(req.URL)
+	if title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+	if sourceURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+		return
+	}
+	var collisionCount int64
+	if err := s.db.Model(&models.RSSSource{}).
+		Where("user_id = ? AND url = ? AND id <> ?", userID, sourceURL, source.ID).
+		Count(&collisionCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check RSS source URL"})
+		return
+	}
+	if collisionCount > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "RSS source URL already exists"})
+		return
+	}
+	applyRSSSourceUpdate(&source, req)
+	if err := s.db.Save(&source).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update RSS source"})
+		return
+	}
+	s.broadcastRSSUpdate(userID, "source-update", gin.H{"sourceId": source.ID})
+	c.JSON(http.StatusOK, source)
+}
+
+func applyRSSSourceUpdate(source *models.RSSSource, req rssSourceRequest) {
 	source.Title = strings.TrimSpace(req.Title)
 	source.URL = strings.TrimSpace(req.URL)
 	source.Icon = strings.TrimSpace(req.Icon)
@@ -187,19 +239,6 @@ func (s *Server) updateRSSSource(c *gin.Context) {
 	if req.Enabled != nil {
 		source.Enabled = *req.Enabled
 	}
-	if source.URL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
-		return
-	}
-	if source.Title == "" {
-		source.Title = source.URL
-	}
-	if err := s.db.Save(&source).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update RSS source"})
-		return
-	}
-	s.broadcastRSSUpdate(userID, "source-update", gin.H{"sourceId": source.ID})
-	c.JSON(http.StatusOK, source)
 }
 
 func (r *rssSourceRequest) normalize() {
@@ -305,17 +344,22 @@ func (s *Server) deleteRSSSource(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := s.db.Where("user_id = ? AND source_id = ?", userID, sourceID).Delete(&models.RSSArticle{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete RSS articles"})
-		return
-	}
-	result := s.db.Where("user_id = ? AND id = ?", userID, sourceID).Delete(&models.RSSSource{})
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete RSS source"})
-		return
-	}
-	if result.RowsAffected == 0 {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var source models.RSSSource
+		if err := tx.Where("user_id = ? AND id = ?", userID, sourceID).First(&source).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ? AND source_id = ?", userID, sourceID).Delete(&models.RSSArticle{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ? AND id = ?", userID, sourceID).Delete(&models.RSSSource{}).Error
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "RSS source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete RSS source"})
 		return
 	}
 	s.broadcastRSSUpdate(userID, "source-delete", gin.H{"sourceId": sourceID})

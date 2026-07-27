@@ -67,7 +67,7 @@
             >
               <el-option v-for="option in selectedSortOptions" :key="option.value" :label="option.label" :value="option.value" />
             </el-select>
-            <el-radio-group v-model="articleFilter" size="small" @change="loadArticles">
+            <el-radio-group v-model="articleFilter" size="small" @change="handleFilterChange">
               <el-radio-button value="all">全部</el-radio-button>
               <el-radio-button value="unread">未读</el-radio-button>
               <el-radio-button value="favorite">收藏</el-radio-button>
@@ -181,6 +181,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { createRSSSource, deleteRSSSource, getRSSArticleContent, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
 import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
 import { currentUserScope } from '../utils/authScope'
+import { createRSSArticleRequestGate } from '../utils/rssArticleRequestGate'
 import { planRSSSourceImport } from '../utils/rssSourceImport'
 
 const props = defineProps({
@@ -223,6 +224,8 @@ const articlePreviewImages = ref([])
 const articlePreviewIndex = ref(0)
 let rssReloadTimer
 let articleOpenRequest = 0
+const articleListRequestGate = createRSSArticleRequestGate()
+const articleLoadMoreRequestGate = createRSSArticleRequestGate()
 
 const RSS_ADVANCED_FIELDS = [
   'singleUrl',
@@ -279,10 +282,12 @@ async function openRSSWorkspace() {
 }
 
 function resetSourceArticleState({ resetSort = false } = {}) {
+  invalidateArticleRequests()
   articleOpenRequest += 1
   articles.value = []
   articlePage.value = 1
   hasMoreArticles.value = false
+  articlesLoading.value = false
   articlesLoadingMore.value = false
   if (resetSort) selectedSortURL.value = ''
   articleDialogVisible.value = false
@@ -387,49 +392,99 @@ async function selectSource(sourceId) {
   selectedSourceId.value = sourceId
   syncSelectedSortURL(true)
   articleListDialogVisible.value = true
+  const query = articleRequestQuery(1)
   await loadArticles()
+  if (!isArticleRequestQueryCurrent(query)) return
   await refreshSelectedSource()
 }
 
 async function handleSortChange() {
   resetSourceArticleState()
+  const query = articleRequestQuery(1)
   await loadArticles()
+  if (!isArticleRequestQueryCurrent(query)) return
   await refreshSelectedSource()
 }
 
+async function handleFilterChange() {
+  resetSourceArticleState()
+  await loadArticles()
+}
+
+function invalidateArticleRequests() {
+  articleListRequestGate.invalidate()
+  articleLoadMoreRequestGate.invalidate()
+}
+
+function articleRequestQuery(page) {
+  return {
+    rootVisible: props.visible,
+    listVisible: articleListDialogVisible.value,
+    sourceId: selectedSourceId.value,
+    sort: selectedSortURL.value,
+    filter: articleFilter.value,
+    page,
+  }
+}
+
+function isArticleRequestQueryCurrent(query) {
+  const current = articleRequestQuery(query.page)
+  return current.rootVisible === query.rootVisible
+    && current.listVisible === query.listVisible
+    && current.sourceId === query.sourceId
+    && current.sort === query.sort
+    && current.filter === query.filter
+    && current.page === query.page
+}
+
 async function loadArticles() {
+  if (!props.visible || !articleListDialogVisible.value) return
+  articleLoadMoreRequestGate.invalidate()
+  articlesLoadingMore.value = false
+  const query = articleRequestQuery(1)
+  const request = articleListRequestGate.begin(query)
   articlesLoading.value = true
   articlePage.value = 1
   try {
     const { data } = await listRSSArticles(articleParams(articlePage.value))
     const result = normalizeArticleResult(data, articlePage.value)
-    if (!props.visible) return
+    if (!articleListRequestGate.isCurrent(request, articleRequestQuery(1))) return
     articles.value = result.items
     hasMoreArticles.value = result.hasMore
   } catch (err) {
-    ElMessage.error(readError(err, '加载 RSS 文章失败'))
+    if (articleListRequestGate.isCurrent(request, articleRequestQuery(1))) {
+      ElMessage.error(readError(err, '加载 RSS 文章失败'))
+    }
   } finally {
-    articlesLoading.value = false
+    if (articleListRequestGate.isCurrent(request, articleRequestQuery(1))) {
+      articlesLoading.value = false
+    }
   }
 }
 
 async function loadMoreArticles() {
-  if (!hasMoreArticles.value || articlesLoadingMore.value) return
+  if (!props.visible || !articleListDialogVisible.value || !hasMoreArticles.value || articlesLoadingMore.value) return
+  const nextPage = articlePage.value + 1
+  const query = articleRequestQuery(nextPage)
+  const request = articleLoadMoreRequestGate.begin(query)
   articlesLoadingMore.value = true
   try {
-    const nextPage = articlePage.value + 1
     const { data } = await listRSSArticles(articleParams(nextPage))
     const result = normalizeArticleResult(data, nextPage)
-    if (!props.visible) return
+    if (!articleLoadMoreRequestGate.isCurrent(request, articleRequestQuery(nextPage))) return
     const known = new Set(articles.value.map(article => article.id))
     const nextItems = result.items.filter(article => !known.has(article.id))
     articles.value = [...articles.value, ...nextItems]
     articlePage.value = result.page || nextPage
     hasMoreArticles.value = result.hasMore && nextItems.length > 0
   } catch (err) {
-    ElMessage.error(readError(err, '加载更多 RSS 文章失败'))
+    if (articleLoadMoreRequestGate.isCurrent(request, articleRequestQuery(nextPage))) {
+      ElMessage.error(readError(err, '加载更多 RSS 文章失败'))
+    }
   } finally {
-    articlesLoadingMore.value = false
+    if (articleLoadMoreRequestGate.isCurrent(request, articleRequestQuery(nextPage))) {
+      articlesLoadingMore.value = false
+    }
   }
 }
 
@@ -467,6 +522,10 @@ function openEditor(source = null) {
 }
 
 async function saveSource() {
+  if (!draft.value.title.trim()) {
+    ElMessage.warning('RSS 源名称不能为空')
+    return
+  }
   if (!draft.value.url.trim()) {
     ElMessage.warning('RSS 地址不能为空')
     return
@@ -601,7 +660,9 @@ async function refreshSource(source) {
       : {}
     const { data } = await refreshRSSSource(source.id, params)
     ElMessage.success(`已同步 ${data.imported || 0}/${data.total || 0} 篇文章`)
-    await loadArticles()
+    if (props.visible && articleListDialogVisible.value && source.id === selectedSourceId.value) {
+      await loadArticles()
+    }
   } catch (err) {
     ElMessage.error(readError(err, '刷新 RSS 源失败'))
   } finally {
@@ -611,7 +672,7 @@ async function refreshSource(source) {
 
 async function refreshSelectedSource() {
   if (!selectedSource.value) {
-    await loadArticles()
+    if (props.visible && articleListDialogVisible.value) await loadArticles()
     return
   }
   await refreshSource(selectedSource.value)
@@ -625,7 +686,7 @@ async function removeSource(source) {
     sources.value = sources.value.filter(item => item.id !== source.id)
     if (!sources.value.length) rssEditMode.value = false
     if (selectedSourceId.value === source.id) selectedSourceId.value = sources.value[0]?.id || ''
-    await loadArticles()
+    if (props.visible && articleListDialogVisible.value) await loadArticles()
     ElMessage.success('RSS 源已删除')
   } catch (err) {
     if (err === 'cancel' || err === 'close') return

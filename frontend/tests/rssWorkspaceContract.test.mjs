@@ -25,5 +25,5 @@ test('aligns RSS source-open and close transitions with the upstream modal chain
   assert.match(manager, /function resetRSSWorkspace\(\)[\s\S]*?articleListDialogVisible\.value = false[\s\S]*?resetSourceArticleState\(\)/, 'root reset must close the list dialog and delegate article-state cleanup')
   assert.match(manager, /function resetSourceArticleState\([^)]*\)[\s\S]*?articleDialogVisible\.value = false[\s\S]*?articleImagePreviewVisible\.value = false/, 'source cleanup must close article and image overlays')
   assert.match(manager, /function applyRSSSources\(data\)\s*\{\s*if \(!props\.visible\) return/, 'a source request finishing after root close must not restore stale state')
-  assert.match(manager, /async function loadArticles\(\)[\s\S]*?if \(!props\.visible\) return[\s\S]*?articles\.value = result\.items/, 'an article request finishing after root close must not restore stale rows')
+  assert.match(manager, /async function loadArticles\(\)[\s\S]*?if \(!props\.visible \|\| !articleListDialogVisible\.value\) return[\s\S]*?articleListRequestGate\.isCurrent\([\s\S]*?articles\.value = result\.items/, 'an article request finishing after child/root close or a newer query must not restore stale rows')
 })

@@ -3,6 +3,7 @@
 import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
+const fixtureImage = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%221%22 height=%221%22/%3E'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -17,26 +18,26 @@ function fakeToken() {
   return `open.${payload}.reader`
 }
 
-function rssSource() {
+function rssSource(id = 1) {
   return {
-    id: 1,
-    title: '契约 RSS 源',
-    url: 'https://rss.example/feed.xml',
-    customOrder: 1,
+    id,
+    title: id === 1 ? '契约 RSS 源' : '即时 RSS 源',
+    url: `https://rss.example/feed-${id}.xml`,
+    customOrder: id,
     enabled: true,
     singleUrl: true,
   }
 }
 
-function rssArticle() {
+function rssArticle(id = 7, sourceId = 1) {
   return {
-    id: 7,
-    sourceId: 1,
-    title: '契约 RSS 文章',
-    summary: '契约文章摘要',
+    id,
+    sourceId,
+    title: sourceId === 1 ? '契约 RSS 文章' : '即时 RSS 文章',
+    summary: sourceId === 1 ? '契约文章摘要' : '即时文章摘要',
     author: 'OpenReader',
     pubDate: '2026-07-12',
-    image: 'https://rss.example/cover.jpg',
+    image: fixtureImage,
     isRead: false,
     favorite: false,
     link: 'https://rss.example/article/7',
@@ -44,8 +45,15 @@ function rssArticle() {
 }
 
 async function installApiMocks(page) {
-  let refreshCalls = 0
-  await page.exposeFunction('__rssSmokeRefreshCalls', () => refreshCalls)
+  const refreshCalls = new Map()
+  let delayNextSourceOneList = false
+  let delayedSourceOnePending = false
+  await page.exposeFunction('__rssSmokeRefreshCalls', () => [...refreshCalls.values()].reduce((sum, count) => sum + count, 0))
+  await page.exposeFunction('__rssSmokeRefreshCallsBySource', () => Object.fromEntries(refreshCalls))
+  await page.exposeFunction('__rssSmokeStartSourceRace', () => {
+    delayNextSourceOneList = true
+  })
+  await page.exposeFunction('__rssSmokeSourceRacePending', () => delayedSourceOnePending)
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async route => {
     const request = route.request()
@@ -59,15 +67,30 @@ async function installApiMocks(page) {
     if (path === '/settings/preferences') return route.fulfill(json({ key: 'preferences', value: {} }))
     if (path === '/books' || path === '/categories' || path === '/sources') return route.fulfill(json([]))
     if (path === '/cache/stats') return route.fulfill(json({ files: 0, size: 0, cachedChapters: 0 }))
-    if (path === '/rss/sources' && method === 'GET') return route.fulfill(json([rssSource()]))
-    if (path === '/rss/sources/1/refresh' && method === 'POST') {
-      refreshCalls += 1
+    if (path === '/rss/sources' && method === 'GET') return route.fulfill(json([rssSource(1), rssSource(2)]))
+    const refreshMatch = path.match(/^\/rss\/sources\/(\d+)\/refresh$/)
+    if (refreshMatch && method === 'POST') {
+      const sourceId = Number(refreshMatch[1])
+      refreshCalls.set(sourceId, (refreshCalls.get(sourceId) || 0) + 1)
       return route.fulfill(json({ imported: 1, total: 1 }))
     }
-    if (path === '/rss/articles' && method === 'GET') return route.fulfill(json({ items: [rssArticle()], page: 1, hasMore: false }))
+    if (path === '/rss/articles' && method === 'GET') {
+      const sourceId = Number(new URL(request.url()).searchParams.get('sourceId') || 1)
+      if (sourceId === 1 && delayNextSourceOneList) {
+        delayNextSourceOneList = false
+        delayedSourceOnePending = true
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        delayedSourceOnePending = false
+      }
+      return route.fulfill(json({
+        items: [rssArticle(sourceId === 1 ? 7 : 8, sourceId)],
+        page: 1,
+        hasMore: false,
+      }))
+    }
     if (path === '/rss/articles/7/content' && method === 'GET') {
       return route.fulfill(json({
-        content: '<p>契约 RSS 正文</p><img src="https://rss.example/content.jpg" alt="契约图片">',
+        content: `<p>契约 RSS 正文</p><img src="${fixtureImage}" alt="契约图片">`,
         link: 'https://rss.example/article/7',
       }))
     }
@@ -86,6 +109,17 @@ async function assertNoHorizontalOverflow(page, label) {
 }
 
 async function assertDialogGeometry(page, selector, viewport, label) {
+  if (viewport.width <= 750) {
+    await page.waitForFunction(dialogSelector => {
+      const node = document.querySelector(dialogSelector)
+      if (!node) return false
+      const rect = node.getBoundingClientRect()
+      return Math.abs(rect.left) <= 1
+        && Math.abs(rect.top) <= 1
+        && Math.abs(rect.width - innerWidth) <= 1
+        && Math.abs(rect.height - innerHeight) <= 1
+    }, selector)
+  }
   const geometry = await page.locator(selector).evaluate(node => {
     const rect = node.getBoundingClientRect()
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, viewportWidth: innerWidth, viewportHeight: innerHeight }
@@ -99,7 +133,7 @@ async function assertDialogGeometry(page, selector, viewport, label) {
 }
 
 async function closeDialog(page, selector) {
-  await page.locator(`${selector} > .el-dialog__headerbtn`).click()
+  await page.locator(selector).locator('.el-dialog__headerbtn').first().click()
   await page.locator(selector).waitFor({ state: 'hidden', timeout: 10000 })
 }
 
@@ -127,7 +161,7 @@ async function runViewport(browser, viewport) {
   assert(await page.evaluate(() => window.__rssSmokeRefreshCalls()) === 0, `${viewport.width}: opening the source dialog must not refresh an article source`)
   assert(await page.locator('.rss-article-list-dialog').count() === 0, `${viewport.width}: source dialog must not skip directly to an article list`)
 
-  await page.locator('.rss-source-card button').click()
+  await page.locator('.rss-source-card button').nth(0).click()
   await page.locator('.rss-article-list-dialog').waitFor({ state: 'visible', timeout: 10000 })
   await page.getByText('契约 RSS 文章', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
   await assertDialogGeometry(page, '.rss-article-list-dialog', viewport, `${viewport.width} article-list`)
@@ -139,7 +173,7 @@ async function runViewport(browser, viewport) {
   await assertDialogGeometry(page, '.rss-article-content-dialog', viewport, `${viewport.width} article-content`)
   await page.locator('.rss-article-content-dialog .rss-reader-content img').click()
   await page.locator('.el-image-viewer__wrapper').waitFor({ state: 'visible', timeout: 10000 })
-  await page.keyboard.press('Escape')
+  await page.locator('.el-image-viewer__close').click()
   await page.locator('.el-image-viewer__wrapper').waitFor({ state: 'hidden', timeout: 10000 })
 
   await closeDialog(page, '.rss-article-content-dialog')
@@ -152,6 +186,21 @@ async function runViewport(browser, viewport) {
   await page.goto(`${root}/?overlay=rss&keep=rss-contract`, { waitUntil: 'networkidle' })
   await page.locator('.global-rss-dialog').waitFor({ state: 'visible', timeout: 10000 })
   assert(await page.locator('.rss-article-list-dialog').count() === 0, `${viewport.width}: reopening RSS must not restore a stale article dialog`)
+
+  await page.evaluate(() => window.__rssSmokeStartSourceRace())
+  await page.locator('.rss-source-card button').nth(0).click()
+  await page.locator('.rss-article-list-dialog').waitFor({ state: 'visible', timeout: 10000 })
+  await page.waitForFunction(() => window.__rssSmokeSourceRacePending())
+  await closeDialog(page, '.rss-article-list-dialog')
+  await page.locator('.rss-source-card button').nth(1).click()
+  await page.locator('.rss-article-list-dialog').waitFor({ state: 'visible', timeout: 10000 })
+  await page.getByText('即时 RSS 文章', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
+  await page.waitForTimeout(1600)
+  assert(await page.locator('.rss-article-list-dialog').getByText('契约 RSS 文章', { exact: true }).count() === 0, `${viewport.width}: delayed source-one rows must not overwrite source two`)
+  const refreshBySource = await page.evaluate(() => window.__rssSmokeRefreshCallsBySource())
+  assert(refreshBySource['1'] === 1, `${viewport.width}: the stale source-one continuation must not trigger another refresh (${JSON.stringify(refreshBySource)})`)
+  assert(refreshBySource['2'] === 1, `${viewport.width}: the active source-two selection must refresh exactly once (${JSON.stringify(refreshBySource)})`)
+  await closeDialog(page, '.rss-article-list-dialog')
   await closeDialog(page, '.global-rss-dialog')
 
   assert(failures.length === 0, failures.join('\n'))
@@ -166,7 +215,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`rss-workspace: ok ${checks.join(', ')} sourceArticleContentDialogs=true refreshOnce=true`)
+    console.log(`rss-workspace: ok ${checks.join(', ')} sourceArticleContentDialogs=true refreshOnce=true staleSourceGuard=true`)
   } finally {
     await browser.close()
   }

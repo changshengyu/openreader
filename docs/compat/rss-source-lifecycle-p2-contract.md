@@ -1,7 +1,7 @@
 # RSS source lifecycle P2 compatibility contract
 
-Status: audited on 2026-07-27. This contract was extracted before changing RSS
-application code.
+Status: audited, implemented and regression-validated on 2026-07-27. This
+contract was extracted before changing RSS application code.
 
 Fixed baseline:
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
@@ -105,3 +105,38 @@ The article query identity is:
    → content → close/reopen, plus delayed source-switch response ordering.
 
 Docker is eligible only after the implementation and all five gates pass.
+
+## Implementation record
+
+- The RSS editor now rejects a blank source name before submission. Go
+  create/update endpoints enforce the same trimmed name and URL contract without
+  falling back from an empty name to the URL.
+- Creating a source with a URL already owned by the authenticated user now
+  updates that row in place. An ID-based update that collides with another
+  same-user URL returns `409`; another user's matching URL is never considered.
+- Source deletion now performs the ownership lookup, article-cache deletion and
+  source deletion in one GORM/SQLite transaction. Forced source-delete failures
+  and missing-source requests leave article rows untouched.
+- Article list and load-more requests now carry independent generations and the
+  full root/list/source/sort/filter/page identity. Child/root close and every
+  query transition invalidate old work; only the current request controls rows,
+  pagination, errors and loading indicators.
+- The source-selection and sort-selection continuations also retain their
+  captured query identity, so a late old list response cannot trigger a refresh
+  for either the old or newly-selected source.
+- The upstream import distinction remains unchanged: manually-created sources
+  default `singleUrl=true`, while imported JSON without the field defaults to
+  `false`.
+
+Validation:
+
+- Frontend: `npm test` passed **579/579** tests.
+- Backend: `go test ./...` passed, including forced transaction rollback,
+  not-found preservation, same-URL replacement, cross-user isolation and
+  collision tests.
+- Production frontend build passed.
+- Real Chromium passed the complete RSS source → list → content → image →
+  close/reopen sequence at `1440x900`, `390x844`, and `360x800`.
+- The same browser gate delayed source-one list data, closed that child dialog,
+  opened source two, and verified that source-one neither overwrote rows nor
+  caused a second refresh.
