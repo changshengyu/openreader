@@ -919,7 +919,7 @@ func (s *Server) broadcastRestoreUpdates(userID uint, result gin.H) {
 		return
 	}
 	if restoreResultCount(result, "sources") > 0 {
-		s.broadcastSourcesUpdate("restore-backup")
+		s.broadcastSourcesUpdate(userID, "restore-backup")
 	}
 	if restoreResultCount(result, "settings") > 0 {
 		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "settings_update", "payload": gin.H{"key": "all"}})

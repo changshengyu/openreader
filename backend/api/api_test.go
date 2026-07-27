@@ -22,6 +22,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/text/encoding/simplifiedchinese"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"openreader/backend/config"
 	readerdb "openreader/backend/db"
@@ -70,6 +72,7 @@ func setupTestServerWithConfig(t *testing.T, configure func(*config.Config)) (*g
 	if err := readerdb.AutoMigrate(database); err != nil {
 		t.Fatal(err)
 	}
+	registerLegacyBookSourceFixtureBridge(t, database)
 
 	hub := readersync.NewHub()
 	sched := scheduler.New(database, 1)
@@ -78,6 +81,72 @@ func setupTestServerWithConfig(t *testing.T, configure func(*config.Config)) (*g
 	router := gin.New()
 	server := RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
 	return router, server
+}
+
+func registerLegacyBookSourceFixtureBridge(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	const callbackName = "test:legacy-book-source-owner-fixtures"
+	if err := database.Callback().Create().After("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Schema == nil || tx.Statement.Schema.Name != "BookSource" {
+			return
+		}
+		if managed, ok := tx.Get("openreader:book-sources:managed-create"); ok && managed == true {
+			return
+		}
+		sourceIDs := createdBookSourceIDs(tx.Statement.ReflectValue)
+		if len(sourceIDs) == 0 {
+			return
+		}
+		fixtures := tx.Session(&gorm.Session{NewDB: true, SkipHooks: true})
+		var userIDs []uint
+		if err := fixtures.Model(&models.User{}).Order("id asc").Pluck("id", &userIDs).Error; err != nil {
+			tx.AddError(err)
+			return
+		}
+		for _, userID := range userIDs {
+			if err := fixtures.Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&models.BookSourceNamespace{UserID: userID}).Error; err != nil {
+				tx.AddError(err)
+				return
+			}
+			for _, sourceID := range sourceIDs {
+				if err := fixtures.Clauses(clause.OnConflict{DoNothing: true}).
+					Create(&models.UserBookSource{UserID: userID, SourceID: sourceID}).Error; err != nil {
+					tx.AddError(err)
+					return
+				}
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createdBookSourceIDs(value reflect.Value) []uint {
+	for value.IsValid() && (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) {
+		if value.IsNil() {
+			return nil
+		}
+		value = value.Elem()
+	}
+	if !value.IsValid() {
+		return nil
+	}
+	if value.Kind() == reflect.Slice || value.Kind() == reflect.Array {
+		ids := make([]uint, 0, value.Len())
+		for index := 0; index < value.Len(); index++ {
+			ids = append(ids, createdBookSourceIDs(value.Index(index))...)
+		}
+		return ids
+	}
+	if value.Kind() != reflect.Struct {
+		return nil
+	}
+	id := value.FieldByName("ID")
+	if !id.IsValid() || !id.CanUint() || id.Uint() == 0 {
+		return nil
+	}
+	return []uint{uint(id.Uint())}
 }
 
 func authHeader(t *testing.T, router *gin.Engine) string {
@@ -3149,7 +3218,7 @@ func TestExportSourcesSupportsSelectedIDs(t *testing.T) {
 	}
 }
 
-func TestRemoteSourceImportUpdatesExistingByName(t *testing.T) {
+func TestRemoteSourceImportUsesBookSourceURLIdentity(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
@@ -3174,27 +3243,36 @@ func TestRemoteSourceImportUpdatesExistingByName(t *testing.T) {
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"updated":1`) {
-		t.Fatalf("remote source import should update existing source, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"imported":1`) ||
+		!strings.Contains(w.Body.String(), `"updated":0`) {
+		t.Fatalf("remote source import should keep a different URL as a separate source, got %d: %s", w.Code, w.Body.String())
 	}
 
 	var count int64
 	if err := server.db.Model(&models.BookSource{}).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Fatalf("expected no duplicate source, got %d", count)
+	if count != 2 {
+		t.Fatalf("same-name different-URL sources were collapsed, got %d", count)
 	}
-	var updated models.BookSource
-	if err := server.db.First(&updated, existing.ID).Error; err != nil {
+	var unchanged models.BookSource
+	if err := server.db.First(&unchanged, existing.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if updated.BaseURL != "https://new.example" || updated.Charset != "gbk" ||
-		updated.Header != "@js:return dynamicHeaders()" ||
-		updated.LoginURL != "https://new.example/login" || updated.LoginCheckJS != "check()" ||
-		updated.LastUpdateTime != 1740000000000 || updated.Weight != 9 || updated.RespondTime != 1357 ||
-		updated.Enabled {
-		t.Fatalf("source was not updated correctly: %+v", updated)
+	if unchanged.BaseURL != "https://old.example" || unchanged.Charset != "utf-8" || !unchanged.Enabled {
+		t.Fatalf("existing URL identity was mutated: %+v", unchanged)
+	}
+	var imported models.BookSource
+	if err := server.db.Where("base_url = ?", "https://new.example").First(&imported).Error; err != nil {
+		t.Fatal(err)
+	}
+	if imported.Name != "同名源" || imported.Charset != "gbk" ||
+		imported.Header != "@js:return dynamicHeaders()" ||
+		imported.LoginURL != "https://new.example/login" || imported.LoginCheckJS != "check()" ||
+		imported.LastUpdateTime != 1740000000000 || imported.Weight != 9 || imported.RespondTime != 1357 ||
+		imported.Enabled {
+		t.Fatalf("new URL identity was not imported correctly: %+v", imported)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 )
 
 type testSearchRequest struct {
@@ -25,9 +26,14 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, id).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.FindActive(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 
@@ -39,7 +45,6 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 
 	results, err := engine.SearchBooks(source, strings.TrimSpace(req.Keyword))
 	if err != nil {
-		userID, _ := middleware.UserID(c)
 		s.recordSourceHealthFailure(userID, source, err)
 	}
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"results": results}, err, "search"))
@@ -55,9 +60,14 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, id).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.FindActive(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 
@@ -69,7 +79,6 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 
 	chapters, err := engine.ParseTOC(strings.TrimSpace(req.BookURL), source)
 	if err != nil {
-		userID, _ := middleware.UserID(c)
 		s.recordSourceHealthFailure(userID, source, err)
 	}
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"chapters": chapters, "count": len(chapters)}, err, "toc"))
@@ -85,9 +94,14 @@ func (s *Server) testSourceContent(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, id).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.FindActive(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
 		return
 	}
 
@@ -99,7 +113,6 @@ func (s *Server) testSourceContent(c *gin.Context) {
 
 	content, err := engine.FetchChapterContent(strings.TrimSpace(req.ChapterURL), source)
 	if err != nil {
-		userID, _ := middleware.UserID(c)
 		s.recordSourceHealthFailure(userID, source, err)
 	}
 	preview := content
@@ -159,14 +172,8 @@ func (s *Server) batchTestSources(c *gin.Context) {
 	timeout := time.Duration(timeoutMS) * time.Millisecond
 	parentCtx := c.Request.Context()
 
-	var sources []models.BookSource
-	query := s.db.Model(&models.BookSource{})
-	if len(req.SourceIDs) > 0 {
-		query = query.Where("id IN ?", req.SourceIDs)
-	} else {
-		query = query.Where("enabled = ?", true)
-	}
-	if err := query.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+	sources, err := s.bookSources.ListActiveByIDs(userID, req.SourceIDs, len(req.SourceIDs) == 0)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}

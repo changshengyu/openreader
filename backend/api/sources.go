@@ -17,16 +17,17 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 	"openreader/backend/services/sourcecompat"
 )
 
 func (s *Server) listSources(c *gin.Context) {
-	var sources []models.BookSource
-	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	sources, err := s.bookSources.ListActive(userID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
-	s.attachBookSourceUsage(sources)
 	c.JSON(http.StatusOK, sources)
 }
 
@@ -414,11 +415,13 @@ func (s *Server) createSource(c *gin.Context) {
 		source.Charset = "utf-8"
 	}
 
-	if err := s.db.Select("Name", "BaseURL", "SearchURL", "BookURLPattern", "SourceType", "Comment", "Charset", "ConcurrentRate", "Header", "LoginURL", "LoginCheckJS", "CustomOrder", "LastUpdateTime", "Weight", "RespondTime", "Rules", "Enabled", "EnabledExplore", "Group").Create(&source).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.Create(userID, source)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
 	}
-	s.broadcastSourcesUpdate("create")
+	s.broadcastSourcesUpdate(userID, "create")
 	c.JSON(http.StatusCreated, source)
 }
 
@@ -432,12 +435,16 @@ func (s *Server) updateSource(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	if err := s.db.First(&source, id).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.FindActive(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
 		return
 	}
-	previous := source
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
+		return
+	}
 
 	var req models.BookSource
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -475,20 +482,17 @@ func (s *Server) updateSource(c *gin.Context) {
 		source.EnabledExplore = req.EnabledExplore
 	}
 
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&source).Error; err != nil {
-			return err
-		}
-		if sourceVariableSemanticsChanged(previous, source) {
-			return clearPersistentVariablesForSource(tx, source.ID)
-		}
-		return nil
-	}); err != nil {
+	source, err = s.bookSources.Update(userID, uint(id), source)
+	if errors.Is(err, booksources.ErrSourceNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update source"})
 		return
 	}
-	s.clearSourceFailureIDs([]uint{source.ID})
-	s.broadcastSourcesUpdate("update")
+	s.clearUserSourceFailureIDs(userID, []uint{source.ID})
+	s.broadcastSourcesUpdate(userID, "update")
 	c.JSON(http.StatusOK, source)
 }
 
@@ -502,21 +506,24 @@ func (s *Server) deleteSource(c *gin.Context) {
 		return
 	}
 
-	if count := s.bookSourceUsageCount(uint(id)); count > 0 {
-		c.JSON(http.StatusConflict, gin.H{"error": "source is used by bookshelf books", "usedBookCount": count})
+	userID, _ := middleware.UserID(c)
+	err := s.bookSources.Delete(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceInUse) {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":         "source is used by bookshelf books",
+			"usedBookCount": booksources.SourceUsage(err),
+		})
 		return
 	}
-	result := s.db.Delete(&models.BookSource{}, id)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete source"})
-		return
-	}
-	if result.RowsAffected == 0 {
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
 		return
 	}
-	s.clearSourceFailureIDs([]uint{uint(id)})
-	s.broadcastSourcesUpdate("delete")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete source"})
+		return
+	}
+	s.broadcastSourcesUpdate(userID, "delete")
 	c.Status(http.StatusNoContent)
 }
 
@@ -525,59 +532,18 @@ func (s *Server) clearSources(c *gin.Context) {
 		return
 	}
 
-	var affected int64
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := clearAllPersistentSourceVariables(tx); err != nil {
-			return err
-		}
-		result := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.BookSource{})
-		affected = result.RowsAffected
-		return result.Error
-	}); err != nil {
+	userID, _ := middleware.UserID(c)
+	affected, err := s.bookSources.ClearActive(userID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear sources"})
 		return
 	}
-	s.clearAllSourceFailures()
-	s.broadcastSourcesUpdate("clear")
+	s.broadcastSourcesUpdate(userID, "clear")
 	c.JSON(http.StatusOK, gin.H{"affected": affected})
 }
 
-func (s *Server) attachBookSourceUsage(sources []models.BookSource) {
-	if len(sources) == 0 {
-		return
-	}
-	counts := s.bookSourceUsageCounts(nil)
-	for i := range sources {
-		sources[i].UsedBookCount = counts[sources[i].ID]
-	}
-}
-
-func (s *Server) bookSourceUsageCount(sourceID uint) int {
-	return s.bookSourceUsageCounts([]uint{sourceID})[sourceID]
-}
-
-func (s *Server) bookSourceUsageCounts(sourceIDs []uint) map[uint]int {
-	type sourceUsage struct {
-		SourceID uint
-		Count    int
-	}
-	query := s.db.Model(&models.Book{}).Select("source_id, COUNT(*) AS count").Where("source_id > 0").Group("source_id")
-	if len(sourceIDs) > 0 {
-		query = query.Where("source_id IN ?", sourceIDs)
-	}
-	var rows []sourceUsage
-	if err := query.Scan(&rows).Error; err != nil {
-		return map[uint]int{}
-	}
-	counts := make(map[uint]int, len(rows))
-	for _, row := range rows {
-		counts[row.SourceID] = row.Count
-	}
-	return counts
-}
-
 func (s *Server) defaultSourcesStatus(c *gin.Context) {
-	sources, err := s.loadDefaultBookSources()
+	configured, count, err := s.ensureDefaultBookSourceNamespace()
 	if errors.Is(err, os.ErrNotExist) {
 		c.JSON(http.StatusOK, gin.H{"configured": false, "count": 0})
 		return
@@ -586,16 +552,20 @@ func (s *Server) defaultSourcesStatus(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"configured": false, "count": 0, "error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"configured": true, "count": len(sources)})
+	c.JSON(http.StatusOK, gin.H{"configured": configured, "count": count})
 }
 
 func (s *Server) saveDefaultSources(c *gin.Context) {
 	if !s.requireSourceEdit(c) {
 		return
 	}
+	if !s.requireAdmin(c) {
+		return
+	}
 
-	var sources []models.BookSource
-	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+	userID, _ := middleware.UserID(c)
+	sources, err := s.bookSources.ListActive(userID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
@@ -603,25 +573,37 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no sources to save as default"})
 		return
 	}
-	for i := range sources {
-		sources[i].ID = 0
+	exported := append([]models.BookSource(nil), sources...)
+	for i := range exported {
+		exported[i].ID = 0
 	}
-	data, err := json.MarshalIndent(sources, "", "  ")
+	data, err := json.MarshalIndent(exported, "", "  ")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode default sources"})
 		return
 	}
 	path := s.defaultBookSourcesPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare default sources"})
-		return
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	previous, previousErr := os.ReadFile(path)
+	hadPrevious := previousErr == nil
+	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
 		return
 	}
-	s.broadcastSourcesUpdate("save-default")
-	c.JSON(http.StatusOK, gin.H{"count": len(sources)})
+	if err := writeBookSourceFileAtomically(path, data); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
+		return
+	}
+	count, err := s.bookSources.SaveDefaultFromUser(userID)
+	if err != nil {
+		if hadPrevious {
+			_ = writeBookSourceFileAtomically(path, previous)
+		} else {
+			_ = os.Remove(path)
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"count": count})
 }
 
 func (s *Server) restoreDefaultSources(c *gin.Context) {
@@ -629,7 +611,8 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 		return
 	}
 
-	sources, err := s.loadDefaultBookSources()
+	userID, _ := middleware.UserID(c)
+	_, _, err := s.ensureDefaultBookSourceNamespace()
 	if errors.Is(err, os.ErrNotExist) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
 		return
@@ -638,27 +621,20 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "default sources are invalid"})
 		return
 	}
-	if len(sources) == 0 {
+	result, err := s.bookSources.RestoreDefault(userID)
+	if errors.Is(err, booksources.ErrNoDefault) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
+		return
+	}
+	if errors.Is(err, booksources.ErrEmptyDefault) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "default sources are empty"})
 		return
 	}
-
-	var result gin.H
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := clearAllPersistentSourceVariables(tx); err != nil {
-			return err
-		}
-		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.BookSource{}).Error; err != nil {
-			return err
-		}
-		result = importBookSourcesWithDB(tx, sources)
-		return nil
-	}); err != nil {
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to restore default sources"})
 		return
 	}
-	s.clearAllSourceFailures()
-	s.broadcastSourcesUpdate("restore-default")
+	s.broadcastSourcesUpdate(userID, "restore-default")
 	c.JSON(http.StatusOK, result)
 }
 
@@ -687,46 +663,30 @@ func (s *Server) batchSources(c *gin.Context) {
 		return
 	}
 
-	var result *gorm.DB
+	userID, _ := middleware.UserID(c)
+	affected := 0
 	skippedUsed := 0
-	deletedIDs := make([]uint, 0)
+	var err error
 	switch req.Action {
 	case "enable":
-		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("enabled", true)
+		affected, err = s.bookSources.BatchSetEnabled(userID, req.SourceIDs, true)
 	case "disable":
-		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("enabled", false)
+		affected, err = s.bookSources.BatchSetEnabled(userID, req.SourceIDs, false)
 	case "delete":
-		usageCounts := s.bookSourceUsageCounts(req.SourceIDs)
-		deletableIDs := make([]uint, 0, len(req.SourceIDs))
-		for _, sourceID := range req.SourceIDs {
-			if usageCounts[sourceID] > 0 {
-				skippedUsed++
-				continue
-			}
-			deletableIDs = append(deletableIDs, sourceID)
-		}
-		if len(deletableIDs) == 0 {
-			c.JSON(http.StatusOK, gin.H{"affected": 0, "skippedUsed": skippedUsed})
-			return
-		}
-		result = s.db.Where("id IN ?", deletableIDs).Delete(&models.BookSource{})
-		deletedIDs = deletableIDs
+		affected, skippedUsed, err = s.bookSources.BatchDelete(userID, req.SourceIDs)
 	case "group":
-		result = s.db.Model(&models.BookSource{}).Where("id IN ?", req.SourceIDs).Update("group", strings.TrimSpace(req.Group))
+		affected, err = s.bookSources.BatchSetGroup(userID, req.SourceIDs, req.Group)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported batch action"})
 		return
 	}
-	if result.Error != nil {
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update sources"})
 		return
 	}
-	if len(deletedIDs) > 0 {
-		s.clearSourceFailureIDs(deletedIDs)
-	}
 
-	s.broadcastSourcesUpdate("batch-" + req.Action)
-	c.JSON(http.StatusOK, gin.H{"affected": result.RowsAffected, "skippedUsed": skippedUsed})
+	s.broadcastSourcesUpdate(userID, "batch-"+req.Action)
+	c.JSON(http.StatusOK, gin.H{"affected": affected, "skippedUsed": skippedUsed})
 }
 
 func (s *Server) importSources(c *gin.Context) {
@@ -759,23 +719,25 @@ func (s *Server) importSources(c *gin.Context) {
 		return
 	}
 
-	result := s.importBookSources(sources)
-	s.clearAllSourceFailures()
-	s.broadcastSourcesUpdate("import")
+	userID, _ := middleware.UserID(c)
+	result, err := s.bookSources.Import(userID, sources)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import sources"})
+		return
+	}
+	s.clearUserSourceFailures(userID)
+	s.broadcastSourcesUpdate(userID, "import")
 	c.JSON(http.StatusOK, result)
 }
 
 func (s *Server) exportSources(c *gin.Context) {
-	var sources []models.BookSource
+	userID, _ := middleware.UserID(c)
 	sourceIDs, ok := parseSourceIDsQuery(c)
 	if !ok {
 		return
 	}
-	query := s.db.Order("custom_order asc, id asc")
-	if len(sourceIDs) > 0 {
-		query = query.Where("id IN ?", sourceIDs)
-	}
-	if err := query.Find(&sources).Error; err != nil {
+	sources, err := s.bookSources.ListActiveByIDs(userID, sourceIDs, false)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
@@ -848,17 +810,22 @@ func (s *Server) importRemoteSource(c *gin.Context) {
 		return
 	}
 
-	result := s.importBookSources(sources)
-	s.clearAllSourceFailures()
-	s.broadcastSourcesUpdate("remote-import")
+	userID, _ := middleware.UserID(c)
+	result, err := s.bookSources.Import(userID, sources)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import sources"})
+		return
+	}
+	s.clearUserSourceFailures(userID)
+	s.broadcastSourcesUpdate(userID, "remote-import")
 	c.JSON(http.StatusOK, result)
 }
 
-func (s *Server) broadcastSourcesUpdate(kind string) {
+func (s *Server) broadcastSourcesUpdate(userID uint, kind string) {
 	if s.hub == nil {
 		return
 	}
-	_ = s.hub.BroadcastAll(nil, gin.H{
+	_ = s.hub.Broadcast(userID, nil, gin.H{
 		"type":    "sources_update",
 		"payload": gin.H{"kind": kind},
 	})
@@ -1058,6 +1025,49 @@ func (s *Server) loadDefaultBookSources() ([]models.BookSource, error) {
 	return decodeBookSources(data)
 }
 
+func (s *Server) ensureDefaultBookSourceNamespace() (bool, int, error) {
+	configured, count, err := s.bookSources.DefaultStatus()
+	if err != nil || configured {
+		return configured, count, err
+	}
+	sources, err := s.loadDefaultBookSources()
+	if err != nil {
+		return false, 0, err
+	}
+	if _, err := s.bookSources.Import(0, sources); err != nil {
+		return false, 0, err
+	}
+	return s.bookSources.DefaultStatus()
+}
+
+func writeBookSourceFileAtomically(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".default-book-sources-*.tmp")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o644); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
+}
+
 func (s *Server) requireSourceEdit(c *gin.Context) bool {
 	userID, ok := middleware.UserID(c)
 	if !ok {
@@ -1127,9 +1137,9 @@ func (s *Server) getSource(c *gin.Context) {
 		return
 	}
 
-	var source models.BookSource
-	err := s.db.First(&source, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.FindActive(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	"openreader/backend/services/audioreader"
 	"openreader/backend/services/backup"
 	"openreader/backend/services/bookgroups"
+	"openreader/backend/services/booksources"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chapterimage"
 	"openreader/backend/services/coverimage"
@@ -30,6 +31,7 @@ type Server struct {
 	scheduler      *scheduler.Scheduler
 	backupSvc      *backup.Service
 	bookGroups     *bookgroups.Service
+	bookSources    *booksources.Service
 	audioReader    *audioreader.Service
 	cbzReader      *cbzreader.Service
 	chapterImages  *chapterimage.Service
@@ -49,6 +51,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		scheduler:      sched,
 		backupSvc:      backupSvc,
 		bookGroups:     bookgroups.New(database),
+		bookSources:    booksources.New(database),
 		audioReader:    audioreader.New(cfg, database),
 		cbzReader:      cbzreader.New(cfg, database),
 		chapterImages:  chapterimage.New(cfg, database),

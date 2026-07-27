@@ -51,8 +51,8 @@ func (s *Server) legacyInvalidBookSources(c *gin.Context) {
 }
 
 func (s *Server) invalidSourceResponses(userID uint) ([]invalidSourceResponse, error) {
-	var sources []models.BookSource
-	if err := s.db.Order("custom_order asc, id asc").Find(&sources).Error; err != nil {
+	sources, err := s.bookSources.ListActive(userID)
+	if err != nil {
 		return nil, err
 	}
 	active, err := s.activeSourceFailures(userID, sources)
@@ -127,6 +127,20 @@ func (s *Server) clearSourceFailureIDs(sourceIDs []uint) {
 		s.sourceFailures = sourcefailure.New(s.db)
 	}
 	s.sourceFailures.ClearSourceIDs(sourceIDs)
+}
+
+func (s *Server) clearUserSourceFailureIDs(userID uint, sourceIDs []uint) {
+	if s.sourceFailures == nil {
+		s.sourceFailures = sourcefailure.New(s.db)
+	}
+	s.sourceFailures.ClearUserSourceIDs(userID, sourceIDs)
+}
+
+func (s *Server) clearUserSourceFailures(userID uint) {
+	if s.sourceFailures == nil {
+		s.sourceFailures = sourcefailure.New(s.db)
+	}
+	s.sourceFailures.ClearUser(userID)
 }
 
 func (s *Server) clearAllSourceFailures() {

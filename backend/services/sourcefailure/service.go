@@ -80,6 +80,21 @@ func (s *Service) ClearSourceIDs(sourceIDs []uint) {
 	_ = s.db.Where("source_id IN ?", sourceIDs).Delete(&models.SourceFailure{}).Error
 }
 
+func (s *Service) ClearUserSourceIDs(userID uint, sourceIDs []uint) {
+	if userID == 0 || len(sourceIDs) == 0 {
+		return
+	}
+	_ = s.db.Where("user_id = ? AND source_id IN ?", userID, sourceIDs).
+		Delete(&models.SourceFailure{}).Error
+}
+
+func (s *Service) ClearUser(userID uint) {
+	if userID == 0 {
+		return
+	}
+	_ = s.db.Where("user_id = ?", userID).Delete(&models.SourceFailure{}).Error
+}
+
 func (s *Service) ClearAll() {
 	_ = s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.SourceFailure{}).Error
 }

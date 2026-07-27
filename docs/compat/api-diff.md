@@ -13,6 +13,15 @@ Reader-dev is a Java/Spring + Vue 2 application. OpenReader is a Go/Gin + Vue 3 
 | Volumes | `data/`, `cache/`, `library/`. | Stable single-container persistence. |
 | Legacy shim | `/api/reader3/searchBookContent`. | Preserve reader3-compatible search behavior for migrated UI/API clients. |
 
+## Book-source ownership correction
+
+The deployed OpenReader REST paths remain stable, but their previous global-table semantics are a `must-fix`, not
+an intentional JWT adaptation. Reader-dev resolves `bookSource.json` below each user namespace; therefore
+`/api/sources*`, debug, search/explore, Reader, scheduler, backup and admin counts must all use authenticated-user
+associations. Shared rows created by the additive migration are storage deduplication only and must use
+copy-on-write. Full route/status/error compatibility is recorded in
+`book-source-ownership-p2-contract.md` and `api-contract.md`.
+
 ## Required extraction before backend changes
 
 For each module, record:

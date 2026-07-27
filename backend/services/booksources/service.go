@@ -2,6 +2,7 @@ package booksources
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -13,7 +14,17 @@ import (
 var (
 	ErrSourceNotFound = errors.New("book source not found")
 	ErrSourceInUse    = errors.New("book source is in use")
+	ErrNoDefault      = errors.New("default book sources are not configured")
+	ErrEmptyDefault   = errors.New("default book sources are empty")
 )
+
+type ImportResult struct {
+	Imported int `json:"imported"`
+	Updated  int `json:"updated"`
+	Skipped  int `json:"skipped"`
+}
+
+const managedCreateSessionKey = "openreader:book-sources:managed-create"
 
 type sourceInUseError struct {
 	count int
@@ -86,11 +97,22 @@ func (s *Service) EnsureNamespace(userID uint) error {
 }
 
 func (s *Service) ListActive(userID uint) ([]models.BookSource, error) {
+	return s.ListActiveByIDs(userID, nil, false)
+}
+
+func (s *Service) ListActiveByIDs(userID uint, sourceIDs []uint, enabledOnly bool) ([]models.BookSource, error) {
 	if err := s.EnsureNamespace(userID); err != nil {
 		return nil, err
 	}
-	var sources []models.BookSource
-	if err := activeSourceQuery(s.db, userID).
+	sources := make([]models.BookSource, 0)
+	query := activeSourceQuery(s.db, userID)
+	if len(sourceIDs) > 0 {
+		query = query.Where("book_sources.id IN ?", sourceIDs)
+	}
+	if enabledOnly {
+		query = query.Where("book_sources.enabled = ?", true)
+	}
+	if err := query.
 		Order("book_sources.custom_order asc, book_sources.id asc").
 		Find(&sources).Error; err != nil {
 		return nil, err
@@ -146,12 +168,11 @@ func (s *Service) Create(userID uint, source models.BookSource) (models.BookSour
 	source.CreatedAt = time.Time{}
 	source.UpdatedAt = time.Time{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&source).Error; err != nil {
+		if err := tx.Set(managedCreateSessionKey, true).Create(&source).Error; err != nil {
 			return err
 		}
-		return tx.Create(&models.UserBookSource{
-			UserID:   userID,
-			SourceID: source.ID,
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.UserBookSource{
+			UserID: userID, SourceID: source.ID,
 		}).Error
 	})
 	return source, err
@@ -193,7 +214,7 @@ func (s *Service) Update(userID, sourceID uint, next models.BookSource) (models.
 			next.ID = 0
 			next.CreatedAt = time.Time{}
 			next.UpdatedAt = time.Time{}
-			if err := tx.Create(&next).Error; err != nil {
+			if err := tx.Set(managedCreateSessionKey, true).Create(&next).Error; err != nil {
 				return err
 			}
 			if err := tx.Model(&models.UserBookSource{}).
@@ -256,6 +277,374 @@ func (s *Service) Delete(userID, sourceID uint) error {
 		}
 		return removeUnreferencedSource(tx, sourceID)
 	})
+}
+
+func (s *Service) ClearActive(userID uint) (int, error) {
+	if err := s.EnsureNamespace(userID); err != nil {
+		return 0, err
+	}
+	affected := 0
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&models.SourceFailure{}).Error; err != nil {
+			return err
+		}
+		var associations []models.UserBookSource
+		if err := tx.Where("user_id = ? AND detached = ?", userID, false).
+			Order("source_id asc").
+			Find(&associations).Error; err != nil {
+			return err
+		}
+		if len(associations) == 0 {
+			return nil
+		}
+		sourceIDs := make([]uint, 0, len(associations))
+		for _, association := range associations {
+			sourceIDs = append(sourceIDs, association.SourceID)
+		}
+		usage, err := sourceUsageCounts(tx, userID, sourceIDs)
+		if err != nil {
+			return err
+		}
+		for _, association := range associations {
+			affected++
+			if usage[association.SourceID] > 0 {
+				if err := tx.Model(&models.UserBookSource{}).
+					Where("user_id = ? AND source_id = ?", userID, association.SourceID).
+					Update("detached", true).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if err := tx.Delete(&association).Error; err != nil {
+				return err
+			}
+			if err := removeUnreferencedSource(tx, association.SourceID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return affected, err
+}
+
+func (s *Service) BatchSetEnabled(userID uint, sourceIDs []uint, enabled bool) (int, error) {
+	return s.batchUpdate(userID, sourceIDs, func(source *models.BookSource) {
+		source.Enabled = enabled
+	})
+}
+
+func (s *Service) BatchSetGroup(userID uint, sourceIDs []uint, group string) (int, error) {
+	group = strings.TrimSpace(group)
+	return s.batchUpdate(userID, sourceIDs, func(source *models.BookSource) {
+		source.Group = group
+	})
+}
+
+func (s *Service) BatchDelete(userID uint, sourceIDs []uint) (int, int, error) {
+	if err := s.EnsureNamespace(userID); err != nil {
+		return 0, 0, err
+	}
+	affected := 0
+	skippedUsed := 0
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		scoped := New(tx)
+		sources, err := scoped.ListActiveByIDs(userID, sourceIDs, false)
+		if err != nil {
+			return err
+		}
+		for _, source := range sources {
+			err := scoped.Delete(userID, source.ID)
+			if errors.Is(err, ErrSourceInUse) {
+				skippedUsed++
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			affected++
+		}
+		return nil
+	})
+	return affected, skippedUsed, err
+}
+
+func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult, error) {
+	if err := s.EnsureNamespace(userID); err != nil {
+		return ImportResult{}, err
+	}
+	result := ImportResult{}
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		scoped := New(tx)
+		active := make([]models.BookSource, 0)
+		if err := activeSourceQuery(tx, userID).
+			Order("book_sources.custom_order asc, book_sources.id asc").
+			Find(&active).Error; err != nil {
+			return err
+		}
+		byIdentity := make(map[string]models.BookSource, len(active))
+		for _, source := range active {
+			byIdentity[sourceIdentity(source)] = source
+		}
+		seen := make(map[string]bool, len(sources))
+		for _, source := range sources {
+			source = normalizeSource(source)
+			if source.Name == "" {
+				result.Skipped++
+				continue
+			}
+			identity := sourceIdentity(source)
+			if identity == "" || seen[identity] {
+				result.Skipped++
+				continue
+			}
+			seen[identity] = true
+			if existing, ok := byIdentity[identity]; ok {
+				source.ID = existing.ID
+				updated, err := scoped.Update(userID, existing.ID, source)
+				if err != nil {
+					return err
+				}
+				byIdentity[identity] = updated
+				result.Updated++
+				continue
+			}
+			created, err := scoped.Create(userID, source)
+			if err != nil {
+				return err
+			}
+			byIdentity[identity] = created
+			result.Imported++
+		}
+		return nil
+	})
+	return result, err
+}
+
+func (s *Service) DefaultStatus() (bool, int, error) {
+	if s == nil || s.db == nil {
+		return false, 0, errors.New("book source service is unavailable")
+	}
+	var namespaceCount int64
+	if err := s.db.Model(&models.BookSourceNamespace{}).
+		Where("user_id = ?", 0).
+		Count(&namespaceCount).Error; err != nil {
+		return false, 0, err
+	}
+	if namespaceCount == 0 {
+		return false, 0, nil
+	}
+	var sourceCount int64
+	if err := s.db.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND detached = ?", 0, false).
+		Count(&sourceCount).Error; err != nil {
+		return false, 0, err
+	}
+	return true, int(sourceCount), nil
+}
+
+func (s *Service) SaveDefaultFromUser(userID uint) (int, error) {
+	if err := s.EnsureNamespace(userID); err != nil {
+		return 0, err
+	}
+	count := 0
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var sourceIDs []uint
+		if err := tx.Model(&models.UserBookSource{}).
+			Where("user_id = ? AND detached = ?", userID, false).
+			Order("source_id asc").
+			Pluck("source_id", &sourceIDs).Error; err != nil {
+			return err
+		}
+		var oldSourceIDs []uint
+		if err := tx.Model(&models.UserBookSource{}).
+			Where("user_id = ?", 0).
+			Pluck("source_id", &oldSourceIDs).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", 0).Delete(&models.UserBookSource{}).Error; err != nil {
+			return err
+		}
+		if len(sourceIDs) > 0 {
+			associations := make([]models.UserBookSource, 0, len(sourceIDs))
+			for _, sourceID := range sourceIDs {
+				associations = append(associations, models.UserBookSource{UserID: 0, SourceID: sourceID})
+			}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&associations).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&models.BookSourceNamespace{UserID: 0}).Error; err != nil {
+			return err
+		}
+		for _, sourceID := range oldSourceIDs {
+			if err := removeUnreferencedSource(tx, sourceID); err != nil {
+				return err
+			}
+		}
+		count = len(sourceIDs)
+		return nil
+	})
+	return count, err
+}
+
+func (s *Service) RestoreDefault(userID uint) (ImportResult, error) {
+	configured, count, err := s.DefaultStatus()
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if !configured {
+		return ImportResult{}, ErrNoDefault
+	}
+	if count == 0 {
+		return ImportResult{}, ErrEmptyDefault
+	}
+	if err := s.EnsureNamespace(userID); err != nil {
+		return ImportResult{}, err
+	}
+
+	result := ImportResult{}
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&models.SourceFailure{}).Error; err != nil {
+			return err
+		}
+		defaults := make([]models.BookSource, 0, count)
+		if err := activeSourceQuery(tx, 0).
+			Order("book_sources.custom_order asc, book_sources.id asc").
+			Find(&defaults).Error; err != nil {
+			return err
+		}
+		var associations []models.UserBookSource
+		if err := tx.Where("user_id = ?", userID).Order("source_id asc").Find(&associations).Error; err != nil {
+			return err
+		}
+		sourceIDs := make([]uint, 0, len(associations))
+		for _, association := range associations {
+			sourceIDs = append(sourceIDs, association.SourceID)
+		}
+		userSources := make([]models.BookSource, 0, len(sourceIDs))
+		if len(sourceIDs) > 0 {
+			if err := tx.Where("id IN ?", sourceIDs).Find(&userSources).Error; err != nil {
+				return err
+			}
+		}
+		sourceByID := make(map[uint]models.BookSource, len(userSources))
+		associationByID := make(map[uint]models.UserBookSource, len(associations))
+		identityToID := make(map[string]uint, len(userSources))
+		for _, source := range userSources {
+			sourceByID[source.ID] = source
+			if _, exists := identityToID[sourceIdentity(source)]; !exists {
+				identityToID[sourceIdentity(source)] = source.ID
+			}
+		}
+		for _, association := range associations {
+			associationByID[association.SourceID] = association
+		}
+
+		desiredIDs := make(map[uint]bool, len(defaults))
+		consumedIDs := make(map[uint]bool, len(defaults))
+		for _, defaultSource := range defaults {
+			desiredIDs[defaultSource.ID] = true
+			if association, ok := associationByID[defaultSource.ID]; ok {
+				consumedIDs[defaultSource.ID] = true
+				if association.Detached {
+					if err := tx.Model(&models.UserBookSource{}).
+						Where("user_id = ? AND source_id = ?", userID, defaultSource.ID).
+						Update("detached", false).Error; err != nil {
+						return err
+					}
+					result.Updated++
+				}
+				continue
+			}
+
+			oldID := identityToID[sourceIdentity(defaultSource)]
+			if oldID > 0 && !consumedIDs[oldID] {
+				oldSource := sourceByID[oldID]
+				if err := tx.Model(&models.Book{}).
+					Where("user_id = ? AND source_id = ?", userID, oldID).
+					Update("source_id", defaultSource.ID).Error; err != nil {
+					return err
+				}
+				if sourceVariableSemanticsChanged(oldSource, defaultSource) {
+					if err := clearPersistentVariables(tx, userID, defaultSource.ID); err != nil {
+						return err
+					}
+				}
+				if err := tx.Where("user_id = ? AND source_id = ?", userID, oldID).
+					Delete(&models.UserBookSource{}).Error; err != nil {
+					return err
+				}
+				consumedIDs[oldID] = true
+				if err := removeUnreferencedSource(tx, oldID); err != nil {
+					return err
+				}
+				result.Updated++
+			} else {
+				result.Imported++
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "user_id"}, {Name: "source_id"}},
+				DoUpdates: clause.Assignments(map[string]any{
+					"detached":   false,
+					"updated_at": time.Now(),
+				}),
+			}).Create(&models.UserBookSource{UserID: userID, SourceID: defaultSource.ID}).Error; err != nil {
+				return err
+			}
+			consumedIDs[defaultSource.ID] = true
+		}
+
+		for _, association := range associations {
+			if desiredIDs[association.SourceID] || consumedIDs[association.SourceID] {
+				continue
+			}
+			usage, err := sourceUsageCounts(tx, userID, []uint{association.SourceID})
+			if err != nil {
+				return err
+			}
+			if usage[association.SourceID] > 0 {
+				if err := tx.Model(&models.UserBookSource{}).
+					Where("user_id = ? AND source_id = ?", userID, association.SourceID).
+					Update("detached", true).Error; err != nil {
+					return err
+				}
+				result.Skipped++
+				continue
+			}
+			if err := tx.Delete(&association).Error; err != nil {
+				return err
+			}
+			if err := removeUnreferencedSource(tx, association.SourceID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func (s *Service) batchUpdate(userID uint, sourceIDs []uint, mutate func(*models.BookSource)) (int, error) {
+	if err := s.EnsureNamespace(userID); err != nil {
+		return 0, err
+	}
+	affected := 0
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		scoped := New(tx)
+		sources, err := scoped.ListActiveByIDs(userID, sourceIDs, false)
+		if err != nil {
+			return err
+		}
+		for _, source := range sources {
+			mutate(&source)
+			if _, err := scoped.Update(userID, source.ID, source); err != nil {
+				return err
+			}
+			affected++
+		}
+		return nil
+	})
+	return affected, err
 }
 
 func activeSourceQuery(database *gorm.DB, userID uint) *gorm.DB {
@@ -333,6 +722,39 @@ func sourceVariableSemanticsChanged(before, after models.BookSource) bool {
 		before.LoginURL != after.LoginURL ||
 		before.LoginCheckJS != after.LoginCheckJS ||
 		before.Rules != after.Rules
+}
+
+func sourceIdentity(source models.BookSource) string {
+	if value := strings.TrimSpace(source.BaseURL); value != "" {
+		return "url:" + value
+	}
+	if value := strings.TrimSpace(source.Name); value != "" {
+		return "name:" + value
+	}
+	return ""
+}
+
+func normalizeSource(source models.BookSource) models.BookSource {
+	source.ID = 0
+	source.Name = strings.TrimSpace(source.Name)
+	source.BaseURL = strings.TrimSpace(source.BaseURL)
+	source.SearchURL = strings.TrimSpace(source.SearchURL)
+	source.BookURLPattern = strings.TrimSpace(source.BookURLPattern)
+	source.Comment = strings.TrimSpace(source.Comment)
+	source.Charset = strings.TrimSpace(source.Charset)
+	source.ConcurrentRate = strings.TrimSpace(source.ConcurrentRate)
+	source.Header = strings.TrimSpace(source.Header)
+	source.LoginURL = strings.TrimSpace(source.LoginURL)
+	source.LoginCheckJS = strings.TrimSpace(source.LoginCheckJS)
+	source.Rules = strings.TrimSpace(source.Rules)
+	source.Group = strings.TrimSpace(source.Group)
+	source.CreatedAt = time.Time{}
+	source.UpdatedAt = time.Time{}
+	source.UsedBookCount = 0
+	if source.Charset == "" {
+		source.Charset = "utf-8"
+	}
+	return source
 }
 
 func removeUnreferencedSource(tx *gorm.DB, sourceID uint) error {

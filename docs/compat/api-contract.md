@@ -574,6 +574,31 @@ Implemented tests: `backend/api/remote_reader_contract_test.go` proves user isol
 
 If a refactor changes frontend routes, API paths should stay stable unless an old path is kept as a redirect/shim. Document removals before deleting compatibility behavior.
 
+## P2 owner-scoped book-source API contract (2026-07-27 extracted)
+
+Reader-dev stores active sources below each user's namespace and copies defaults only when that private source file
+does not yet exist. OpenReader keeps its deployed JWT `/api/sources*` routes and relational source IDs, but every
+lookup must first resolve the authenticated user's active association. Knowing another account's numeric source ID
+does not authorize access.
+
+| Method / path | Stable request and success response | User scope, side effects and errors |
+|---|---|---|
+| `GET /api/sources` | `200` ordered `BookSource[]`; existing JSON fields remain unchanged and `usedBookCount` counts only caller-owned books. | Lazily initializes the caller from the current default exactly once. An initialized empty namespace returns `[]`; persistence failure is `500 {"error":"failed to list sources"}`. |
+| `GET /api/sources/:id` | Existing `200 BookSource`. | Only a caller-active association is addressable. Missing, detached, or foreign ID is the same `404 {"error":"source not found"}`; no ownership detail is disclosed. |
+| `POST /api/sources` | Existing payload/default normalization and `201 BookSource`. | Requires JWT plus `CanEditSources`; creates only a caller association. Validation remains `400`, disabled editing `403`, persistence failure `500`. After commit, `sources_update` is sent only to the caller's clients. |
+| `PUT /api/sources/:id` | Existing full source payload and `200 BookSource`. The returned ID may change when an upgraded shared snapshot is copied. | Requires JWT plus `CanEditSources`; foreign/detached ID is `404`. A shared snapshot is copy-on-write and only caller books/failure rows are remapped. Semantic rule changes clear only caller variables. Persistence failure remains `500`. |
+| `DELETE /api/sources/:id` | Existing `204`; a caller-owned source used by caller books remains `409 {"error":"source is used by bookshelf books","usedBookCount":N}`. | Requires JWT plus `CanEditSources`. Foreign/detached ID is `404`. Deletion removes only caller association/failures; the shared snapshot is garbage-collected only when globally unreferenced. |
+| `GET /api/sources/export?sourceIds=...` | Existing JSON download and sourceIds validation. With no IDs, exports all caller-active sources; supplied IDs retain caller order/filter behavior. | Foreign/detached IDs are omitted and cannot be exported. A selection containing no caller source returns `200 []`; malformed input remains `400`. |
+| `POST /api/sources/:id/test`, `/test-chapter`, `/test-content`; `POST /api/sources/batch-test`; `GET /api/sources/invalid` | Existing debug payloads, optional structured parser error fields, and invalid-source response shape remain unchanged. | Single-item foreign/detached ID is `404`; batch selection silently excludes non-caller IDs. Failure-cache reads/writes are caller-scoped. |
+| `DELETE /api/sources`; `POST /api/sources/batch`; import/remote-import | Existing request validation and response envelopes remain stable. | Mutation affects only caller-active associations. Batch foreign IDs are not counted as affected. Import identity is normalized `bookSourceUrl/baseUrl` within the caller namespace; no same-name or ID match may mutate another user. |
+| `GET /api/sources/default`; `POST /api/sources/default/restore` | Existing status/restore paths remain compatible. Restore reconciles only the caller against current default; initialized empty and restore-default remain distinct states. | Restore requires `CanEditSources`; used unmatched sources become detached instead of leaving dangling book references. |
+| `POST /api/sources/default/save` | Existing path remains as an admin compatibility shim and returns `{count}`. | Requires administrator role in addition to `CanEditSources`; copies the caller's active list into the default namespace. It does not rewrite initialized users or broadcast a false private-source update to every account. |
+
+Search, explore, remote-book, change-source, Reader, scheduler, backup/restore and admin source-count/default-reset
+consumers must resolve the same association service before this module can be declared isolated. Until those
+consumers and dual-account browser checks pass, a successful source-management API slice is not a Docker release
+gate by itself.
+
 ## P1 bookshelf latest-chapter timestamp contract (2026-07-22 extracted)
 
 Existing methods, paths, auth, status codes and error envelopes remain unchanged. Shelf book response objects gain
