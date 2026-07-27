@@ -768,3 +768,77 @@ nextPage / prevPage / scrollContent` 与当前 `useReaderPointer.js`、`useReade
   `sha256:c58335b1d6f0beee1507e620fcd3459ac206cd0fce0dc7d49159c5d22dca3c12`。
 - 首次 GHCR blob 上传在第 19/23 项收到一次注册表 `404` 并中止，未将失败误报为发布成功；
   完整重试成功后又分别反查两个远端标签，确认清单和摘要一致。
+
+## 2026-07-27 第十三次移动点击完整绘制与空闲结算复审
+
+用户对第十一次根滚动候选的真实手机验收仍认为“上下滑动”点击翻页不如固定上游丝滑。本轮不再
+只比较 `animateMSTime`、easing 或滚动宿主，而是重新提取固定上游从触摸输入到保存进度的完整
+影响链，并对当前长章节的主线程、布局和栅格工作做同机对照。审计阶段不修改应用代码。
+
+固定上游权威文件仍为：
+
+- `web/src/views/Reader.vue#nextPage/prevPage/scrollContent/scrollHandler/saveReadingPosition`
+- `web/src/plugins/animate.js`
+- `web/src/plugins/config.js`
+- `web/src/components/Content.vue`
+- `web/src/App.vue` 的 `--vh`、`windowSize` 和移动地址栏 resize 处理
+
+当前映射为：
+
+- `frontend/src/utils/readerAnimation.js`
+- `frontend/src/utils/readerScrollViewport.js`
+- `frontend/src/composables/useReaderNavigation.js`
+- `frontend/src/composables/useReaderScrollSync.js`
+- `frontend/src/composables/useReaderViewportProgress.js`
+- `frontend/src/utils/readerVisibility.js`
+- `frontend/src/views/Reader.vue`
+
+### 完整影响链矩阵
+
+| 影响点 | 固定上游 | 当前 `ceb4baa` | 第十三次裁决 |
+|---|---|---|---|
+| 动画时钟与曲线 | rAF 回调内读取 `Date.now()`；power-3 ease-in-out；0ms 同步落点。 | 回调内读取 `performance.now()`，同一 cubic，0ms 同步落点。 | **aligned**；不是本轮剩余问题。 |
+| 分页距离 | `windowSize.height - 两行 - 两个段距`。 | 有效 viewport 高度减同一字体/行高/段距公式，只多一次向下取整。 | **technical-stack-equivalent**；小于 1px 的取整不解释卡顿。 |
+| 滚动宿主与每帧写入 | 移动竖向文本写 `documentElement/body.scrollTop`。 | document viewport adapter 写当前根元素及兼容的 `documentElement/body`。 | **aligned**；探针未发现额外第三滚动面。 |
+| 输入与重叠点击 | touchend 判定短按；`transforming` 时拒绝新翻页。 | touchend 判定短按；animator active 时拒绝新翻页。普通短按只同步检查一次选区。 | **aligned**；选择文字重试不会进入普通短按逐帧路径。 |
+| 正文绘制表面 | 默认主题为 50×50 PNG 平铺；移动 `.chapter` 去掉桌面边框，正文根页面滚动。 | `.reader-shell` 有三层 CSS 渐变；整章 `.reader-page` 使用 `background-size:cover`、两侧贯穿整章的 inset shadow，并由绝对定位 `::after` 覆盖整个章节实现亮度。 | **错误重构 / must-fix**：这不是无害视觉差异，会显著增加新滚动区域的栅格工作。 |
+| 动画结束后的页状态 | `currentPage` 在启动翻页前先更新；scroll handler 只做常数级页码计算，并把保存 debounce 100ms。新的滚动事件会清除旧保存 timer。 | 动画结束后立即 `updateLayout + progressVersion`；`bookProgress` 因此同步查找可见段落。另在 500ms 后重新构造进度 payload。 | **错误重构 / must-fix**：视觉动画与深章节段落扫描仍耦合，旧保存也可能在下一次输入附近执行。 |
+| 可见段落查找 | `getCurrentParagraph()` 从头线性扫描，但只在滚动空闲后的保存路径执行。 | `findVisibleReaderBlock/findTopVisibleReaderBlock` 同样从头读取几何；结算和保存都可调用，复杂度随当前章节位置增长。 | **must-optimize**：允许用单调垂直布局的二分定位实现技术栈等价，不改变段落选择语义。 |
+| 移动地址栏 resize | 上游对移动 `scroll/scroll2` 明确忽略地址栏显隐导致的 `windowSize` 变化；其余模式再计算页。 | 所有模式的 window resize 都立即 `updateFlipLayout()`。 | **must-fix for scroll/scroll2**；不能在根滚动动画中因地址栏显隐重算窗口。`page` 仍按上游处理。 |
+| 原生手指/滚轮 | 上游原生根滚动；滚动事件持续重置保存 timer。 | 用户明确要求保留原生连续手指/滚轮；移动时会取消离散动画。 | **user-requested acceptable-change**；必须同时取消待执行的重型结算/保存。 |
+| 字体、段落、主题方案、亮度 | 字体/排版会改变换行和栅格；方案可隐式覆盖时长与模式。 | 同类配置已在第十一次/第十二次复审对齐；亮度是用户要求的新增设置。 | 保留；亮度必须改成视口级遮罩，不能再建立整章高绘制表面。 |
+
+### 性能证据
+
+在 390×844、`page`、300ms、2401 个正文块、章节约 72% 位置运行真实 Chromium；以 6× CPU
+降速记录同一页点击后的 trace：
+
+| 场景 | Raster/worker 累计 | 结算几何读取 | 延迟保存几何读取 | Long Task |
+|---|---:|---:|---:|---:|
+| 当前默认绘制面 | 约 235ms | 1736 | 至少 1736 | 136ms（输入后约 809ms） |
+| 纯色诊断基线 | 约 1.2ms | 1736 | 至少 1736 | 同一未优化保存路径仍存在 |
+| 固定上游 50×50 平铺纹理 + 移动无整章阴影 + 固定视口亮度遮罩 | 约 1.4ms | 1736 | 至少 1736 | 同一未优化保存路径仍存在 |
+
+该对照把两个问题分离出来：当前大面积绘制结构造成约两个数量级的额外栅格工作；段落定位和
+进度保存造成独立的深章节主线程长任务。自动 smoke 过去只在章节开头限制几何读取并检查主线程
+rAF 间隔，因此没有覆盖“越读到后面越重”以及 compositor/raster worker 的成本。
+
+### 第十三批先失败测试与实施边界
+
+1. 增加深章节（至少 2000 段、位置大于 70%）合同：纵向有序段落的可见项定位不得从第一段
+   线性读取到当前位置；正确项、边界项、重叠项和 flip 非单调布局语义必须保持。
+2. 增加移动绘制结构合同：默认移动 document-scroll 使用固定上游小纹理平铺，不得保留整章
+   `background-size:cover`、整章 inset shadow 或整章高亮度遮罩；自定义背景仍可用，但必须把
+   绘制范围限制到视口。
+3. `page/scroll/scroll2` 动画帧只写滚动位置；结算只在视觉动画结束后进入可取消空闲任务。
+   新点击、touch/wheel、切章和卸载必须取消旧结算及旧进度保存，不能让上一次保存进入下一次
+   动画。页码可在启动时按上游常数级更新。
+4. 移动 `scroll/scroll2` 忽略仅由地址栏显隐造成的高度 resize；宽度变化、方向变化、`page`、
+   flip、EPUB、audio 和桌面仍按各自上游/格式合同更新布局。
+5. 真实浏览器在 390×844、360×800 跑 `page/scroll/scroll2` 的向上/向下与间歇连续点击；
+   同时记录主线程 Long Task、段落几何读取、RasterTask、LayoutShift、根/内部 scrollTop 和
+   最终落点。默认纹理和亮度低于 100 的分支都必须覆盖。
+6. 保留用户要求的原生连续手指/滚轮、点击分段、数字 stepper、自定义背景和亮度；不重新引入
+   whole-chapter transform/WAAPI/will-change，也不改变后端进度格式。
+
+当前状态：**contract-complete / tests-not-yet-written**。
