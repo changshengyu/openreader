@@ -1,8 +1,8 @@
 # P2 备份、恢复与 WebDAV 工作台固定基线合同
 
 状态：**2026-07-27 已完成原固定上游切片的测试、三视口浏览器、Docker 新旧卷门禁
-与本地双架构发布；书源 artifact 的用户所有权在后续全量复审中重新打开。** 当前
-`bookSource.json` 仍来自全局表，不能继续作为多用户备份完全对齐的证据；修复闸门见
+与本地双架构发布；P2-S4 已完成书源 artifact 用户所有权复审，实施仍待完成。** 当前
+`bookSource.json` 仍来自全局表，不能继续作为多用户备份完全对齐的证据；目标矩阵和修复闸门见
 [`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)。
 
 本合同以 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
@@ -64,7 +64,7 @@ WebDAV 根创建独立 `backup_*.zip`，这是容器/服务端运行方式所需
 
 | 逻辑数据 | 上游名称/关键字段 | 旧 OpenReader 名称/字段 | 新生成与恢复合同 |
 |---|---|---|---|
-| 书源 | `bookSource.json`; `bookSourceName/bookSourceUrl/ruleSearch/ruleBookInfo/ruleToc/ruleContent` | 同文件名，但当前备份错误地直接序列化 `BookSource{name,baseUrl,rules}` | 生成必须复用书源导出 API 的上游兼容 encoder；恢复继续接受上游和旧内部字段。 |
+| 书源 | `bookSource.json`; `bookSourceName/bookSourceUrl/ruleSearch/ruleBookInfo/ruleToc/ruleContent`；只来自目标用户已存在的 namespace 文件 | 同文件名，但当前备份错误地直接序列化全表 `BookSource{name,baseUrl,rules}` | 生成复用上游兼容 encoder且只导出目标用户 active source；未初始化时省略成员，初始化空时写 `[]`；恢复继续接受上游和旧内部字段并只 reconcile 目标用户。 |
 | 书架 | `bookshelf.json`; `bookUrl/origin/originName/name/latestChapterTitle/totalChapterNum/durChapterIndex/durChapterPos/durChapterTime/...` | `title/url/sourceName/lastChapter/chapterCount` 加 OpenReader 分类/变量字段 | 每行同时保留旧字段并写上游别名；恢复接受两组别名，远程书源按名称/URL解析，绝不复用来源数据库 ID。 |
 | 分组 | `bookGroup.json` | `bookGroup.json` 与 `categories.json` | 保留现有 mask/分类兼容；同一逻辑分组 artifact 只规划一次。额外 `categories.json` 是 OpenReader 扩展。 |
 | RSS | `rssSources.json` 上游 RSS 字段 | 当前已同时写内部字段和上游别名 | 保持并补齐严格错误传播。 |
@@ -106,7 +106,7 @@ writer close 和 file close 错误；同秒触发还可能碰撞。它可能返�
 
 1. 在首条写入前读取并解码所有选中的 supported artifact，验证顶层类型、变量、分组、规则和
    必需 identity；语法错误/错误顶层类型返回 `400 invalid backup package`，零写入。
-2. 书架、分类、分组、设置、RSS、书签、规则、进度以及被允许的全局书源在同一个 SQLite
+2. 书架、分类、分组、设置、RSS、书签、规则、进度以及被允许的当前用户书源在同一个 SQLite
    事务内执行。任何数据库错误回滚全部逻辑数据；不能以“跳过失败行”吞掉持久化错误。
 3. 为历史兼容，语法正确但缺少稳定 identity 的单条旧记录可计入 `skipped`/不计恢复数；
    这一规则必须逐 DTO 明确，不能把任意 decode/DB 错误降级成 skip。
@@ -159,7 +159,7 @@ Authorization、WebDAV 凭证、其他用户书源或主机路径。
 2. 真实固定上游书签、替换规则、书架和书源 fixture 恢复并可再次导出；旧 OpenReader fixture
    保持字段、顺序、变量、分类和进度。
 3. `canAccessWebdav=true, canEditSources=false` 恢复含书源+个人数据的包：个人数据成功，
-   全局书源不变，响应 `sourcesSkipped:true`，无 source broadcast。
+   当前用户和其他用户书源均不变，响应 `sourcesSkipped:true`，无 source broadcast。
 4. supported JSON 语法/顶层类型错误、注入的数据库写失败均回滚先前有效 artifact，且无 broadcast；
    未知文件仍被忽略。
 5. 注入查询、marshal/ZIP 写/close、最终 rename 失败和同秒并发触发：不出现可列出的半包，
@@ -195,7 +195,7 @@ Authorization、WebDAV 凭证、其他用户书源或主机路径。
 - 生成使用同目录私有临时文件、完整错误传播、`Sync/Close` 和原子 rename；同进程触发串行且
   同秒文件名不覆盖。恢复在写前解码所有选中 artifact，并在一个 SQLite 事务内执行；数据库
   错误回滚，提交后才广播。
-- 无 `canEditSources` 的 WebDAV 用户恢复个人数据但跳过全局书源，并返回
+- 无 `canEditSources` 的 WebDAV 用户恢复个人数据但跳过当前用户书源，并返回
   `sourcesSkipped:true`。替换规则仅增加 `group_name`、`sort_order` 两个默认值列；旧行仍按
   `sort_order=0,id ASC` 执行，不删除或改写已有数据。
 - 自动证据：实现批次的后端 `go test ./...`、前端测试、Vite production build 与
@@ -213,3 +213,9 @@ Authorization、WebDAV 凭证、其他用户书源或主机路径。
 
 至此用户、普通/可移植备份、RSS、替换规则和书签的已抽取 archive bridge 均完成；
 后续修改必须建立新的上游合同，不能把本批已关闭的别名、事务或唯一管理器重新打开。
+
+> P2-S4 勘误：上面的 2026-07-22 实现记录只证明 ZIP 字段、别名、事务、UI 和当时卷门禁，
+> 不证明 `bookSource.json` 的多用户所有权。2026-07-27 固定上游复审已确认当前
+> `addSources`、source restore 和书架 source 解析仍查询全表。后续实施只重开这三个
+> owner 边界、管理员 trigger 的内容过滤和 source cache 逻辑版本；不重开已签收的 ZIP
+> 安全预检、portable 文件/资产、唯一 WebDAV 管理器或其它个人 artifact 合同。

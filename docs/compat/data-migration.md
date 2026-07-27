@@ -163,7 +163,9 @@ Status: implemented in-progress; no database migration is required.
 | Regular user | `library/localStore/users/<safe-username>/` | `data/webdav/users/<safe-username>/` | New writes, browse/import/download/delete operations and generated backups are private descendants of the same mounts. |
 
 - The mapping is determined from the authenticated persisted user after the relevant LocalStore or WebDAV authorization. It does not rewrite old paths.
-- Scheduled backup runs once per persisted user and filters all user-owned export rows. Administrator `RunNow()` remains the legacy-root compatibility path.
+- Scheduled backup runs once per persisted user and filters all user-owned export rows. The authenticated administrator
+  trigger keeps the legacy root path but must pass the administrator `userID` into logical export; a root location is
+  not authority to include other users. The ownerless `RunNow()` helper must not be used by an authenticated API path.
 - LocalStore/WebDAV uploads are atomically staged in their destination directory and accept at most `OPENREADER_MAX_IMPORT_BYTES` (default 128 MiB), so a rejected replacement does not truncate an existing file. A preview copies at most that same amount into `cache/import-previews/<user-id>/<random-token>.book` plus metadata; direct upload and every confirmation reread use the same bound. The cache location is user-private, token entropy is 192 bits, metadata expires after 24 hours, and success/expired-token access removes both files. It is safe to clear this derived cache; it is never part of the source file or library archive.
 - The 2026-07-18 parsed-result lifecycle correction adds an optional versioned `<random-token>.parsed.json` beside the existing `.book`/`.json` pair. It contains only bounded parser output, the exact normalized extension/rule and a SHA-256 binding to the staged raw bytes. It is derived caller-scoped cache, not a database or backup format. Existing two-file stages remain valid and create the third file lazily after their next successful preview. A failed reparse cannot replace the last successful snapshot; expiry, explicit cache clearing and successful token consumption remove all three files. No existing `data/`, `library/`, SQLite row, archived source or chapter cache is rewritten.
 - P1-E3 changes only the workbench's visible file-manager operations and makes LocalStore upload accept multiple already-supported multipart file parts. It does not move a LocalStore/WebDAV root, rename any existing source file, alter a book/library archive, or add a SQLite table/column. Each accepted part is independently staged and atomically renamed in its existing caller-scoped directory; a failure leaves other successfully written selected files and every pre-existing destination intact, matching the upstream multi-upload's per-file side effects.
@@ -569,9 +571,14 @@ UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existi
 
 - No SQLite table/column/index, API shape, mounted root, backup/WebDAV member, cache/library file or Docker volume
   changes. `data/`, `cache/` and `library/` are byte-compatible with the previous image.
-- Existing current-user keys remain unchanged and readable:
-  `bookSourceList@user:<id>`, `rssSources@user:<id>`, `reader@user:<id>@...`,
+- Existing current-user keys remain unchanged and readable except for the P2-S4 source-list key:
+  `rssSources@user:<id>`, `reader@user:<id>@...`,
   `user:<id>@...@chapterContent-...` and `bookshelf@getBookshelf:...:user:<id>`.
+- P2-S4 reads source lists only from `bookSourceList@source-owner-v1@user:<id>`. The prior
+  `bookSourceList@user:<id>` value can contain pre-ownership global IDs, so it is never used as a
+  source-list fallback. It remains recognizable and clearable as current-user derived cache;
+  `sources_update` removes both current-user variants and never another user's key. IndexedDB
+  schema version and all business data remain unchanged.
 - Upstream-era browser chapter keys without a user scope are not rewritten or deleted during upgrade. Because no
   field can prove their owner, authenticated reads/statistics/clear/delete no longer claim them for whichever
   account happens to sign in next. They remain rebuildable derived cache rather than book, progress or bookmark data.

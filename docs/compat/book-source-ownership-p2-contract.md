@@ -4,8 +4,8 @@
 可重试迁移标记和旧卷事务迁移，P2-S2a 的 owner-scoped service，P2-S2b 的书源
 管理/调试 REST，以及 P2-S2c 的搜索、探索、远程书、Reader、正文/缓存和 scheduler
 运行时消费者以及 P2-S3 的管理员计数、目标用户设默认、批量重置和账号删除联动已经
-测试先行实施；**P2-S4 的备份/WebDAV 恢复和浏览器发布门仍未实施完成**。本合同不把
-仍存的全局查询或旧测试视为正确性依据。
+测试先行实施；P2-S4 的固定上游备份/WebDAV/缓存合同已完成取证，**实现、真实浏览器
+和 Docker 发布门仍未完成**。本合同不把仍存的全局查询或旧测试视为正确性依据。
 
 固定上游：
 
@@ -352,3 +352,60 @@ P2-S3 测试顺序：
   原子回滚、事件隔离与账号删除清理。全量 Go 测试、前端 628/628 和生产构建通过。
 - P2-S4 的用户级备份/WebDAV 恢复、浏览器缓存版本、双账号真实浏览器和 Docker 旧卷
   门禁仍未完成，因此本切片继续只提交 Git，不发布 Docker。
+
+### P2-S4 审查矩阵（2026-07-27，实施前）
+
+固定上游补充证据：
+
+- `BookController.kt#saveToWebdav` 只在目标用户自己的
+  `storage/data/<namespace>/bookSource.json` 已存在时把它写入 ZIP；不存在不会为了备份
+  初始化用户文件，显式空文件则作为有效 `[]` 写入。
+- `BookController.kt#syncFromWebdav` 只用 ZIP 中的 `bookSource.json` 替换目标用户文件；
+  书架、分组、RSS、规则、书签和进度也全部限定相同 namespace。
+- `WebdavController.kt#backupToWebdav/#restoreFromWebdav` 从认证用户 namespace 和
+  WebDAV home 派生路径，不存在管理员读取所有用户配置的备份语义。
+- 上游浏览器 key 含用户名但无关系模型版本；OpenReader 引入用户 ID scope 后仍需对本次
+  source ID/COW 迁移增加逻辑版本，不能读取迁移前缓存。
+
+| 动作 | 固定上游 | 当前 OpenReader | 判定与目标 |
+|---|---|---|---|
+| 用户逻辑备份书源 | 只复制目标用户已存在的 `bookSource.json`；未初始化时不创建也不写该成员，显式空时写 `[]`。 | `backup.Service.addSources` 忽略传入的 `userID`，查询整张 `book_sources` 并总是写 `bookSource.json`。 | **高危 must-fix**：只导出目标用户 active association，排除 detached；未初始化不产生成员且无写副作用，初始化空产生 `[]`。 |
+| 管理员触发备份 | 仍是当前认证 namespace。 | `triggerBackup` 对管理员调用 `RunNow()`，把所有用户的书架、设置、RSS、规则及全局书源写入管理员旧 WebDAV 根。 | **高危 must-fix + 路径兼容**：管理员文件仍写旧根，但内容只过滤管理员 `userID`；普通用户私有根不变。生产认证路由不得再调用无 owner 的全量 helper。 |
+| portable v1/v2 | 上游无此扩展。 | 两种 portable 都复用 `writeLogicalEntries(...,&userID)`，但书源步骤忽略该 ID。 | **允许扩展中的 must-fix**：本地书/资产合同不变，逻辑 `bookSource.json` 必须同样只含调用者 active sources。 |
+| ZIP/WebDAV 恢复书源 | 替换目标用户文件；archive 不影响其他 namespace。 | `restoreSourcesFromDataStrict` 调用全局 `importBookSourcesStrictWithDB`，按全表名称修改或新增；未删除 archive 中缺失的当前活动源。 | **高危 must-fix**：在外层 restore 事务内按目标 `userID` 和 URL identity reconcile；缺失且在用的旧源 detached，未使用的解除关联；A 的恢复绝不改 B。 |
+| 恢复后书架绑定 | 书架与书源来自同一用户目录，`origin/bookSourceUrl` 在该目录解析。 | `restoredBookSourceIDStrict` 按全表 `name/base_url` 查询，可能把 A 的书绑定到 B 的私有或 detached 快照。 | **高危 must-fix**：只在目标用户 active association 中先 URL、后名称解析；archive 数值 ID 继续不可信。 |
+| 备份中的书架/章节变量 | 用户文件天然只引用自己的书源。 | `addBookshelf` 和 `addChapterVariables` 直接 join/读取 `book_sources`；损坏的跨用户 `source_id` 可把他人源元数据写进 A 的 ZIP。 | **must-fix / fail closed**：每条远程书和章节变量都必须证明 `user_id + source_id` active/detached 关联；无法证明时不泄露源规则，书架按无可移植源处理。 |
+| 权限跳过 | 上游账号功能开关不授予跨 namespace 权力。 | `canEditSources=false` 已跳过书源 artifact 并恢复个人数据，但其余书架解析仍可能命中全局表。 | **部分完成**：保留 `sourcesSkipped:true`，同时让书架只解析调用者已有 active source；无匹配则 `sourceId=0`。 |
+| 同步/回滚 | 恢复只改变目标文件。 | 逻辑 artifact 已共用 SQLite 外层事务并在提交后广播，但全局 source helper 绕过 owner contract。 | **技术地基可保留**：owner reconcile 必须复用同一事务；失败回滚 source association/COW/书架全部写入且零事件，成功只通知目标用户。 |
+| 浏览器书源缓存 | key 仅承载上游 namespace。 | `bookSourceList@<user-scope>` 仍会命中迁移前保存的全局 source ID。 | **must-fix，无数据迁移**：新读取键固定为 `bookSourceList@source-owner-v1@<scope>`；旧键永不作为 source list 回退，但仍可被当前用户的缓存统计/清理识别。IndexedDB schema 版本不变。 |
+| 发布门 | 无 OpenReader Docker。 | P2-S1…S3 尚未经过本模块双账号浏览器和升级卷验证。 | **必须完成**：双账号同浏览器验证备份/恢复/缓存；本地 Docker 对旧 SQLite、默认文件、管理员旧根、普通用户根、logical/portable 往返和重启做门禁。 |
+
+P2-S4 API 与数据合同：
+
+1. `POST /api/backup/trigger` 的请求/响应保持不变。管理员继续在
+   `data/webdav/` 创建 `backup_*.zip`，普通用户继续在
+   `data/webdav/users/<safe-username>/` 创建；两者内容都只属于认证 `userID`。
+2. `POST /api/backup/restore-legado` 与 `/restore-webdav` 的路径、状态码、归档预检、
+   `sourcesSkipped` 和其它 result count 保持不变。允许写源时，`bookSource.json` 是目标
+   用户活动列表的替换/reconcile，不是全表 merge。
+3. ZIP 无 `bookSource.json` 时不得初始化、清空或修改目标 namespace；ZIP 中显式 `[]`
+   时则把目标 active 列表恢复为空，同时保留在用 detached 快照。
+4. source restore 结果 `sources` 继续表示本次成功导入/更新/重新激活的条数；可增加
+   `sourceDetached/sourceRemoved` 等加性诊断，但旧客户端不依赖它们。
+5. 书架源解析只接受恢复事务中目标用户可见的 active association。无源编辑权限或成员
+   缺失时，可恢复书架个人数据，但不能借全局名称/URL 绑定其他用户 source ID。
+6. 不增加 SQLite 表/列，不移动 `data/`、`cache/`、`library/`，不改写已有 ZIP。缓存只
+   版本化逻辑 key；旧缓存是可清理的派生数据，不迁移、不认领、不删除用户业务数据。
+
+P2-S4 测试顺序：
+
+1. service/backup 先建立双用户导出、detached 排除、未初始化省略、初始化空数组和管理员
+   旧根内容隔离测试；旧的直接全表 source fixture 必须改成 owner association fixture。
+2. restore 先建立 A replace/reconcile 不改 B、在用旧源 detached、书架 URL/名称仅在 A
+   解析、权限 skip、archive 数值 ID 忽略和注入失败全事务回滚测试。
+3. frontend 先把 source cache key 契约改为 `source-owner-v1`，证明旧键不回显但仍能被
+   当前用户清理；`sources_update` 清理新旧两个当前账号键，不触碰其他账号。
+4. 全量 Go/frontend/build 后，运行 1440×900、390×844、360×800 双账号浏览器合同：
+   旧缓存不能回显，A 备份无 B 源，A 恢复后 A 更新/B 不变。
+5. 最后才运行本地 Docker 新旧卷、logical/portable、管理员旧根/普通用户根、重启和
+   amd64/arm64 发布门；全部通过前不发布镜像。

@@ -138,16 +138,17 @@ Source-facing routes retain their current response schemas. Only a real remote s
 
 ## P2 backup restore archive contract
 
-Status: **structure/budget preflight, logical content/transaction/permission compatibility,
-three-viewport browser validation, fresh/historical Docker volume gates and the local amd64/arm64
-release are complete as of 2026-07-27.** The archive bounds below remain authoritative. The
-upstream filename/field bridge, atomic generation/restore and source-edit capability contract are defined by
+Status: **structure/budget preflight, logical content/transaction/permission compatibility and the
+previous browser/Docker gates are complete; P2-S4 has reopened only source ownership and its new
+browser/release gates.** The archive bounds below remain authoritative. The upstream filename/field bridge,
+atomic generation/restore and source-edit capability contract are defined by
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
 | Method / path | Request | Success / side effects | Errors / safety contract |
 |---|---|---|---|
-| `POST /api/backup/restore-legado` | Authenticated multipart field `file`; filename must end in `.zip` (case-insensitive). | Existing counts remain; restore must accept `myBookShelf.json`/`bookshelf.json`, nested `bookProgress/`, upstream `bookmark.json`/`replaceRule.json` and old OpenReader plural aliases without double-processing. Additive `sourcesSkipped` reports a denied global-source mutation. | Existing structural `400/413` rules remain. Supported content is fully planned before one SQLite transaction; decode/DB error returns client-safe `400/500`, rolls back all logical writes and emits no sync event. |
-| `POST /api/backup/restore-webdav` | Authenticated JSON `{path}`; the caller-scoped WebDAV path must reference a `.zip` file. | Same planner/transaction/count/permission semantics as uploaded restore; the sole WebDAV manager owns the confirmation. | `400` if file/path is missing, directory, non-ZIP, or archive validation fails; `413` for an oversized file. The response never exposes server paths or ZIP parser details. |
+| `POST /api/backup/trigger` | Authenticated, no body; effective `canAccessWebdav` required. | Existing `{message,path,name}` remains. The file stays in the administrator legacy root or regular-user private root, but every logical artifact—including `bookSource.json`—contains only the authenticated user. An uninitialized source namespace omits that member; initialized empty writes `[]`. | Existing safe `500` remains; no archive is visible before atomic completion and no other-user data or host path is exposed. |
+| `POST /api/backup/restore-legado` | Authenticated multipart field `file`; filename must end in `.zip` (case-insensitive). | Existing counts remain; restore accepts `myBookShelf.json`/`bookshelf.json`, nested `bookProgress/`, upstream `bookmark.json`/`replaceRule.json` and old OpenReader plural aliases without double-processing. Allowed source restore replaces/reconciles only the authenticated user's active namespace; additive `sourcesSkipped` reports denied current-user source mutation. | Existing structural `400/413` rules remain. Supported content is fully planned before one SQLite transaction; decode/DB error returns client-safe `400/500`, rolls back all logical writes and emits no sync event. |
+| `POST /api/backup/restore-webdav` | Authenticated JSON `{path}`; the caller-scoped WebDAV path must reference a `.zip` file. | Same planner/transaction/count/owner/permission semantics as uploaded restore; the sole WebDAV manager owns the confirmation. Bookshelf source name/URL resolves only in the caller's active associations. | `400` if file/path is missing, directory, non-ZIP, or archive validation fails; `413` for an oversized file. The response never exposes server paths, another user's source existence, or ZIP parser details. |
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
 
@@ -189,18 +190,26 @@ existing portable global entry/expanded budgets and reruns extension/magic/image
 
 ## P2 UserManage API contract
 
-Status: implemented for the account/permission/deletion slice on 2026-07-17 from fixed reader-dev `UserManage.vue`, `AddUser.vue`, and `UserController.kt`. Book-source ownership actions remain a separate P2 dependency because OpenReader's source table is global.
+Status: account/permission/deletion behavior was implemented on 2026-07-17 from fixed reader-dev
+`UserManage.vue`, `AddUser.vue`, and `UserController.kt`; the P2-S1 through P2-S3 ownership pass on
+2026-07-27 subsequently replaced the global-source assumption with per-user active/detached
+associations and restored the upstream administrator source actions.
 
 | Method / path | Request | Success / side effects | Auth and errors |
 |---|---|---|---|
-| `GET /api/admin/users` | None. | Returns manager-visible rows with stable current fields: `id`, `username`, `role`, limits/capabilities/counts, `lastActiveAt`, and `createdAt`. | JWT administrator only. A non-admin gets `403` `{"error":{"code":"FORBIDDEN","message":"admin access required"}}`; no user rows leak. |
+| `GET /api/admin/users` | None. | Returns manager-visible rows with stable current fields: `id`, `username`, `role`, limits/capabilities/counts, `lastActiveAt`, and `createdAt`. `sourceCount` is the target user's active-source count; an uninitialized namespace projects the current default count without creating rows. | JWT administrator only. A non-admin gets `403` `{"error":{"code":"FORBIDDEN","message":"admin access required"}}`; no user rows leak. |
 | `POST /api/admin/users` | `{username,password,canEditSources?,canAccessStore?,canAccessWebdav?,bookLimit?,sourceLimit?}`. `role` may be absent or `user`; `admin` is rejected. | `201` creates exactly one ordinary user and broadcasts one `users_update` after commit. New LocalStore/WebDAV permissions default to `true` unless explicitly set; results expose effective `canAccessStore` and `canAccessWebdav`. Existing administrator rows are never changed/migrated. | Administrator only. Username must be at least 5 ASCII letters/digits and not `default`; password must be at least 8 characters. Invalid input/role assignment `400`; duplicate `409`. |
 | `PUT /api/admin/users/:id` | Any explicit subset of ordinary-user capability/limit fields, including independent `canAccessStore` and `canAccessWebdav`. | Updates only supplied fields, returns effective permissions, then broadcasts one post-commit update. Updating either workspace permission never changes the other. | Administrator only. `403` when `:id` is an administrator, `404` missing id, `400` malformed body. |
 | `PUT /api/admin/users/:id/password` | `{password}` with at least eight characters. | Changes one ordinary user's password and broadcasts once. | Administrator only. `403` for administrator target, `404` missing id, `400` invalid password/body. |
-| `POST /api/admin/users/batch-delete` | `{ids:number[]}`. | Deletes only selected ordinary users and every user-owned SQLite row in one transaction. Only after commit it removes the validated private WebDAV, LocalStore, imported-library, and upload descendants; response includes safe numeric `cleanupFailures` without a host path. Emits one update after commit. | Administrator only. `400` empty/protected-only input; the current user and every administrator are excluded. A post-commit cleanup failure never rolls back the completed row deletion. |
+| `POST /api/admin/users/:id/sources/default` | No body. | Copies the target user's already-initialized active source list, including an explicit empty list, to the default template without modifying any user's namespace. Returns `{count}`. | Administrator only. `404` missing target; `409` target namespace not initialized; no lazy initialization or caller-source fallback. |
+| `POST /api/admin/users/sources/reset` | `{ids:number[]}`. | Validates all deduplicated targets, then reconciles each target to the current default in one transaction. Returns `{reset,imported,updated,skipped}`, emits one target-scoped `sources_update` per user and one administrator `users_update` after commit. | Administrator only. `400` empty IDs; `404` missing target or missing default. Any validation/write failure leaves the full batch unchanged. |
+| `POST /api/admin/users/batch-delete` | `{ids:number[]}`. | Deletes only selected ordinary users and every user-owned SQLite row, source namespace and association in one transaction. Only after commit it removes the validated private WebDAV, LocalStore, imported-library, and upload descendants; response includes safe numeric `cleanupFailures` without a host path. Unreferenced source snapshots may then be reclaimed. Emits one update after commit. | Administrator only. `400` empty/protected-only input; the current user and every administrator are excluded. A post-commit cleanup failure never rolls back the completed row deletion. |
 | `POST /api/admin/cleanup-inactive` | None. | Compatibility-only background action: finds inactive ordinary users and calls the same complete deletion plan; it is not exposed in the upstream-aligned UI. | Administrator only; administrators are never deleted. |
 
-The upstream has user-specific source-default/delete actions. OpenReader's source table is intentionally global, so no equivalent endpoint is added; source editing remains governed by `canEditSources` and existing source routes. All handled errors retain the global `{error}` shape.
+The physical `book_sources` rows are shareable immutable snapshots, not a global user-visible list.
+Visibility and mutation authority come from the target user's source namespace and associations.
+P2-S4 separately governs owner-scoped source artifacts in backup/restore and the logical browser
+cache-key version. All handled errors retain the deployed `{error}` shape.
 
 ## P0 local TXT preview and staged-reparse contract
 
