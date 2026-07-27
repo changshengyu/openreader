@@ -1,5 +1,25 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-07-27 P2 书内正文搜索固定上游复审
+
+固定上游 `SearchBookContent.vue`、`Reader.vue#showSearchContent` 与
+`BookController.searchBookContent` 的完整链路已重新提取。当前 App-level Dialog 和取消/有界
+扫描增强可保留，但四项实现偏差必须纠正：
+
+- 搜索复用了 Reader 显示正文加载器，因此先执行用户替换规则；上游明确搜索原始章节
+  `useReplace=false`。
+- 当前后端不区分大小写、忽略空白/标点并按关键词长度推进；上游区分大小写且从命中位置
+  `+1` 继续，允许重叠命中。
+- Overlay 通过 `router.push` 把行选择当导航；同一结果再次点击可能 no-op，不同结果污染返回
+  历史，还会让 position/search watcher 对同一次选择重复响应。
+- 远程书缺失书源未前置失败；legacy 结果缺少 `queryIndexInResult/queryIndexInChapter`，片段
+  长度也偏离上游 ±20 字符。
+
+本轮状态为 **audit-complete / tests-not-yet-written**。保留 OpenReader 的 JWT/用户隔离、
+AbortController、有界扫描、incomplete/truncated 提示和 URL 冷启动兼容；现场选择改为可重复
+消费的 Reader intent，兼容 URL 不能继续充当唯一事件通道。完整合同与先失败测试见
+[`book-content-search-p2-contract.md`](book-content-search-p2-contract.md)。
+
 ## 2026-07-27 P0 移动点击翻页绘制与空闲结算复审
 
 用户真实设备再次否定“动画公式和根滚动已对齐即可视为丝滑”的结论。固定上游默认使用 50×50
