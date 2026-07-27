@@ -19,7 +19,7 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] Private network access is considered when server-side fetches are user-controlled.
 - [ ] Headers/cookies are not logged.
 
-## P2 remote book-cover proxy review (2026-07-27 implemented; Docker gate pending)
+## P2 remote book-cover proxy review (2026-07-27 implemented and published)
 
 - [x] Public image route accepts only an opaque, purpose-separated, expiring server-issued
   capability; it never accepts a caller-supplied raw URL or login JWT in path/query.
@@ -39,8 +39,10 @@ Use this checklist for security-sensitive changes and release reviews.
 
 Target contract and required tests:
 [`docs/compat/book-cover-proxy-p2-contract.md`](compat/book-cover-proxy-p2-contract.md).
-Evidence: cover service/API/middleware contracts, frontend URL/component contracts and the
-real Go + Chromium three-viewport smoke. Local Docker/volume/backup evidence is still pending.
+Evidence: cover service/API/middleware contracts, frontend URL/component contracts, cover-service
+race/vet, real Go + Chromium three-viewport smoke, local new/historical volume and portable
+backup gates. Locally published `ceb4baa`/`latest` resolve to OCI index
+`sha256:c5cace40e21a9b30b4f2f7cdd9219a59ff16525b173bcf79d5994e950ff56fd2`.
 
 ## Path traversal and files
 

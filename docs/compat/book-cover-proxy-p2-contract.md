@@ -1,7 +1,7 @@
 # 远程书籍封面代理 P2 合同
 
-状态：2026-07-27 已完成固定上游合同提取、测试先行实现与非 Docker 门禁；
-等待本地镜像及新旧卷发布门禁。
+状态：2026-07-27 已完成固定上游合同提取、测试先行实现、完整门禁及本机
+双架构 Docker 发布。
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -177,3 +177,24 @@ Capability 必须：
 本切片会修改后端资源路由、远程抓取、缓存和多个可见前端入口，适合作为独立
 Docker 验证批次。发布报告必须列明 capability/SSRF/缓存验证、允许的安全差异、
 未完成的真实设备验证、镜像标签和 OCI digest。
+
+## 2026-07-27 发布结果
+
+- 应用提交：
+  `ceb4baacf7be607dc55baf1a99c76001546ec13b`。
+- 本机发布标签：
+  `ghcr.io/changshengyu/openreader:ceb4baa` 与 `latest`。
+- 两个标签均解析到 amd64/arm64 OCI index：
+  `sha256:c5cace40e21a9b30b4f2f7cdd9219a59ff16525b173bcf79d5994e950ff56fd2`。
+- amd64 manifest：
+  `sha256:08e8957484a27562a7863089002e0b0e90ad60bb09621f1bc43eaa2077ee3c98`；
+  arm64 manifest：
+  `sha256:887fc2fe7c611d31c98ed865c4d960fc92184d0b3e7e88492857d04206d64fb4`。
+- 门禁：Go 全量、frontend 561/561、生产构建、cover service race/vet、
+  真实 Go 封面/BookInfo、Index、Reader audio 三视口通过；本地新卷、
+  restart、portable v1/v2 跨用户恢复，以及历史 TXT/EPUB/UMD/CBZ/
+  relative-cache/owner-isolation 全部通过。
+- 允许差异：保留 Vue 3/Go/多用户运行时，以不透明 capability 和 SSRF/
+  大小/图片类型/缓存边界替代上游公开任意 `path` 抓取。
+- 未完成项：真实手机网络下的第三方冷缓存延迟与个别防盗链站点仍需用户实机
+  观察；固定上游没有转发 source header/cookie，本批也不会擅自加入凭证转发。

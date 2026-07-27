@@ -2735,4 +2735,6 @@ URL/query 的短期同源 capability，执行私网/DNS/dial/重定向校验、3
 失败时显示占位；字段存在但为空明确阻止浏览器回退到被拒绝的原始 URL。
 完整 API、数据、状态和测试先行门禁见
 [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md)。失败测试、实现、
-Go/frontend/build 及三视口真实 API 浏览器门禁已完成，等待 Docker 新旧卷发布门禁。
+Go/frontend/build、三视口真实 API 浏览器和 Docker 新旧卷门禁均已完成；应用提交
+`ceb4baa` 已由本机发布为同名标签与 `latest`，OCI index 为
+`sha256:c5cace40e21a9b30b4f2f7cdd9219a59ff16525b173bcf79d5994e950ff56fd2`。

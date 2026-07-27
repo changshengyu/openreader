@@ -24,7 +24,7 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Method | Path | Purpose | Compatibility notes |
 |---|---|---|---|
 | `GET` | `/api/health` | Health and build metadata. | OpenReader runtime addition; keep stable for Docker/probes. |
-| `GET`, `HEAD` | `/api/cover/:capability` | Serve a server-projected remote book cover through a same-origin, short-lived resource capability. | Implemented 2026-07-27; Docker gate pending. The path never accepts a raw URL or login JWT. Successful responses are bounded, type-verified and privately cacheable; malformed/tampered capabilities are `403`, unavailable/unsafe remote images are `404`. See [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md). |
+| `GET`, `HEAD` | `/api/cover/:capability` | Serve a server-projected remote book cover through a same-origin, short-lived resource capability. | Implemented and published in `ceb4baa` on 2026-07-27. The path never accepts a raw URL or login JWT. Successful responses are bounded, type-verified and privately cacheable; malformed/tampered capabilities are `403`, unavailable/unsafe remote images are `404`. See [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md). |
 | `POST` | `/api/auth/register` | Create user; first user becomes admin. | OpenReader multi-user addition. |
 | `POST` | `/api/auth/login` | Return JWT and user object. | OpenReader auth addition; invalid credentials return `401`. |
 
@@ -48,7 +48,7 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
-## P2 remote book-cover projection contract (implemented; Docker gate pending)
+## P2 remote book-cover projection contract (implemented and published)
 
 Reader-dev projects remote book covers through a same-origin cached `/reader3/cover?path=...`
 resource and falls back to its bundled no-cover image. OpenReader keeps deployed REST paths and
