@@ -564,14 +564,26 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 	}
 
 	userID, _ := middleware.UserID(c)
-	sources, err := s.bookSources.ListActive(userID)
+	count, err := s.saveDefaultSourceSnapshot(userID, false)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
 		return
 	}
-	if len(sources) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no sources to save as default"})
-		return
+	c.JSON(http.StatusOK, gin.H{"count": count})
+}
+
+func (s *Server) saveDefaultSourceSnapshot(userID uint, requireExisting bool) (int, error) {
+	var (
+		sources []models.BookSource
+		err     error
+	)
+	if requireExisting {
+		sources, err = s.bookSources.ListExistingActive(userID)
+	} else {
+		sources, err = s.bookSources.ListActive(userID)
+	}
+	if err != nil {
+		return 0, err
 	}
 	exported := append([]models.BookSource(nil), sources...)
 	for i := range exported {
@@ -579,31 +591,32 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 	}
 	data, err := json.MarshalIndent(exported, "", "  ")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode default sources"})
-		return
+		return 0, err
 	}
 	path := s.defaultBookSourcesPath()
 	previous, previousErr := os.ReadFile(path)
 	hadPrevious := previousErr == nil
 	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
-		return
+		return 0, previousErr
 	}
 	if err := writeBookSourceFileAtomically(path, data); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
-		return
+		return 0, err
 	}
-	count, err := s.bookSources.SaveDefaultFromUser(userID)
+	var count int
+	if requireExisting {
+		count, err = s.bookSources.SaveDefaultFromExistingUser(userID)
+	} else {
+		count, err = s.bookSources.SaveDefaultFromUser(userID)
+	}
 	if err != nil {
 		if hadPrevious {
 			_ = writeBookSourceFileAtomically(path, previous)
 		} else {
 			_ = os.Remove(path)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
-		return
+		return 0, err
 	}
-	c.JSON(http.StatusOK, gin.H{"count": count})
+	return count, nil
 }
 
 func (s *Server) restoreDefaultSources(c *gin.Context) {
@@ -624,10 +637,6 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 	result, err := s.bookSources.RestoreDefault(userID)
 	if errors.Is(err, booksources.ErrNoDefault) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
-		return
-	}
-	if errors.Is(err, booksources.ErrEmptyDefault) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "default sources are empty"})
 		return
 	}
 	if err != nil {

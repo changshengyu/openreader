@@ -17,6 +17,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/booksources"
 )
 
 func (s *Server) requireAdmin(c *gin.Context) bool {
@@ -59,8 +60,15 @@ func (s *Server) listUsers(c *gin.Context) {
 		CreatedAt       time.Time `json:"createdAt"`
 	}
 
-	var sourceCount int64
-	_ = s.db.Model(&models.BookSource{}).Count(&sourceCount).Error
+	userIDs := make([]uint, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.ID)
+	}
+	sourceCounts, err := s.bookSources.ActiveCounts(userIDs)
+	if err != nil {
+		internalError(c, "failed to count user sources")
+		return
+	}
 
 	results := make([]userSummary, 0, len(users))
 	for _, u := range users {
@@ -76,12 +84,105 @@ func (s *Server) listUsers(c *gin.Context) {
 			CanAccessStore:  u.CanAccessStore,
 			CanAccessWebDAV: effectiveWebDAVAccess(u),
 			BookCount:       bookCount,
-			SourceCount:     sourceCount,
+			SourceCount:     sourceCounts[u.ID],
 			LastActiveAt:    u.LastActiveAt,
 			CreatedAt:       u.CreatedAt,
 		})
 	}
 	c.JSON(http.StatusOK, results)
+}
+
+func (s *Server) setUserSourcesAsDefault(c *gin.Context) {
+	if !s.requireAdmin(c) {
+		return
+	}
+	userID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	var target models.User
+	if err := s.db.Select("id").First(&target, userID).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	} else if err != nil {
+		internalError(c, "failed to load user")
+		return
+	}
+	count, err := s.saveDefaultSourceSnapshot(userID, true)
+	if errors.Is(err, booksources.ErrNamespaceNotInitialized) {
+		c.JSON(http.StatusConflict, gin.H{"error": "user sources are not initialized"})
+		return
+	}
+	if err != nil {
+		internalError(c, "failed to save default sources")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"count": count})
+}
+
+type resetUserSourcesRequest struct {
+	IDs []uint `json:"ids"`
+}
+
+func (s *Server) resetUserSources(c *gin.Context) {
+	if !s.requireAdmin(c) {
+		return
+	}
+	var req resetUserSourcesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "invalid payload")
+		return
+	}
+	ids := uniqueAdminUserIDs(req.IDs)
+	if len(ids) == 0 {
+		badRequest(c, "no users selected")
+		return
+	}
+	var existing int64
+	if err := s.db.Model(&models.User{}).Where("id IN ?", ids).Count(&existing).Error; err != nil {
+		internalError(c, "failed to load users")
+		return
+	}
+	if existing != int64(len(ids)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	_, _, err := s.ensureDefaultBookSourceNamespace()
+	if errors.Is(err, os.ErrNotExist) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
+		return
+	}
+	if err != nil {
+		badRequest(c, "default sources are invalid")
+		return
+	}
+	result, err := s.bookSources.RestoreDefaultForUsers(ids)
+	if errors.Is(err, booksources.ErrNoDefault) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
+		return
+	}
+	if err != nil {
+		internalError(c, "failed to reset user sources")
+		return
+	}
+	for _, userID := range ids {
+		s.broadcastSourcesUpdate(userID, "admin-reset-default")
+	}
+	s.broadcastUsersUpdate("sources-reset", ids)
+	c.JSON(http.StatusOK, result)
+}
+
+func uniqueAdminUserIDs(userIDs []uint) []uint {
+	unique := make([]uint, 0, len(userIDs))
+	seen := make(map[uint]bool, len(userIDs))
+	for _, userID := range userIDs {
+		if userID == 0 || seen[userID] {
+			continue
+		}
+		seen[userID] = true
+		unique = append(unique, userID)
+	}
+	return unique
 }
 
 type createAdminUserRequest struct {
@@ -389,6 +490,9 @@ func (s *Server) deleteUserData(ids []uint, protectedUserID uint) ([]models.User
 			if err := tx.Where(deletion.where, deletion.args...).Delete(deletion.model).Error; err != nil {
 				return err
 			}
+		}
+		if err := booksources.New(tx).RemoveUserNamespaces(deletedIDs); err != nil {
+			return err
 		}
 		if err := tx.Where("id IN ?", deletedIDs).Delete(&models.User{}).Error; err != nil {
 			return err

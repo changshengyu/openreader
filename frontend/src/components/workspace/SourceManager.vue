@@ -13,7 +13,7 @@
           <el-button :icon="Upload">导入</el-button>
         </el-upload>
         <el-button :icon="Link" @click="showRemote = true">远程书源</el-button>
-        <el-button plain :disabled="!sources.length" :loading="defaultSaving" @click="setCurrentAsDefault">设为默认</el-button>
+        <el-button v-if="isAdmin" plain :loading="defaultSaving" @click="setCurrentAsDefault">设为默认</el-button>
         <el-button plain :disabled="!defaultSource.configured" :loading="defaultRestoring" @click="restoreDefaults">
           恢复默认{{ defaultSource.count ? ` ${defaultSource.count}` : '' }}
         </el-button>
@@ -441,6 +441,7 @@ import {
   sourceCompatibilityMessage,
 } from '../../utils/bookSourceCompatibility.js'
 import { useReaderStore } from '../../stores/reader'
+import { useUserStore } from '../../stores/user'
 import { currentViewportWidth, shouldUseMiniInterface } from '../../utils/responsive'
 
 const route = useRoute()
@@ -449,7 +450,9 @@ const props = defineProps({
   intent: { type: String, default: 'manage' },
 })
 const reader = useReaderStore()
+const userStore = useUserStore()
 const operations = useAuthenticatedOperationGuard()
+const isAdmin = computed(() => userStore.profile?.role === 'admin')
 const sources = ref([])
 const keyword = ref('')
 const selectedGroup = ref('')

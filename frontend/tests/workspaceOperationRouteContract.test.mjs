@@ -9,6 +9,7 @@ const localStoreOverlaySource = readFileSync(new URL('../src/components/overlays
 const webdavOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayWebDAV.vue', import.meta.url), 'utf8')
 const replaceOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayReplaceRules.vue', import.meta.url), 'utf8')
 const userOverlaySource = readFileSync(new URL('../src/components/overlays/OverlayUserManagement.vue', import.meta.url), 'utf8')
+const sourceManagerSource = readFileSync(new URL('../src/components/workspace/SourceManager.vue', import.meta.url), 'utf8')
 
 test('keeps LocalStore and overlay-backed legacy Settings panels as root-workspace intents', () => {
   assert.match(routerSource, /function\s+workspaceOverlayIntentFromLegacy\s*\(/, 'router must centralize legacy local-store/settings intent normalization')
@@ -106,4 +107,10 @@ test('keeps UserManage protected rows and metadata aligned with the upstream man
   assert.match(userOverlaySource, /canAccessWebdav/, 'manager must expose the upstream WebDAV permission separately from LocalStore')
   assert.match(userOverlaySource, /active-text="WebDAV"/, 'the WebDAV control must remain visible in desktop, mobile, and create-user flows')
   assert.doesNotMatch(userOverlaySource, /清理不活跃用户/, 'the non-upstream destructive cleanup entry must not be exposed in the manager UI')
+  assert.match(userOverlaySource, /@click="setDefaultSources\(row\)"/, 'every real user row must restore the upstream set-as-default-source action')
+  assert.match(userOverlaySource, /@click="resetSelectedSources"/, 'the manager footer must restore the upstream selected-user source reset action')
+  assert.match(userOverlaySource, /prop="sourceCount" label="书源"/, 'the additive per-user count must not be labelled as global')
+  assert.doesNotMatch(userOverlaySource, /全局书源/, 'the manager must not claim that private source counts are global')
+  assert.match(sourceManagerSource, /v-if="isAdmin"[\s\S]*?@click="setCurrentAsDefault"/, 'the compatibility default-save entry must be visible only to administrators')
+  assert.doesNotMatch(sourceManagerSource, /v-if="isAdmin"[^>]*:disabled="!sources\.length"/, 'an administrator must be able to save an explicit empty default snapshot')
 })

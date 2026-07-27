@@ -20,6 +20,14 @@ export function deleteUsers(ids) {
   return api.post('/admin/users/batch-delete', { ids })
 }
 
+export function setUserSourcesAsDefault(id) {
+  return api.post(`/admin/users/${id}/sources/default`)
+}
+
+export function resetUserSources(ids) {
+  return api.post('/admin/users/sources/reset', { ids })
+}
+
 export function cleanupInactiveUsers() {
   return api.post('/admin/cleanup-inactive')
 }

@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useOverlayUserManagement(options) {
@@ -8,6 +8,8 @@ export function useOverlayUserManagement(options) {
   const users = ref([])
   const usersLoading = ref(false)
   const deletingUsers = ref(false)
+  const resettingSources = ref(false)
+  const defaultingSourceUserId = ref(null)
   const creatingUser = ref(false)
   const createDialogVisible = ref(false)
   const selectedUserIds = ref([])
@@ -31,6 +33,14 @@ export function useOverlayUserManagement(options) {
     return isMutable(user)
   }
 
+  function isSelectable(user) {
+    return Number(user?.id || 0) > 0
+  }
+
+  const selectedDeletableUserIds = computed(() => selectedUserIds.value.filter(id => (
+    users.value.some(user => user.id === id && isDeletable(user))
+  )))
+
   async function load() {
     const request = ++managerRequest
     const operation = operations.begin('load')
@@ -42,7 +52,7 @@ export function useOverlayUserManagement(options) {
       if (request !== managerRequest || !operations.canCommit(operation)) return
       users.value = data || []
       selectedUserIds.value = selectedUserIds.value.filter(id => (
-        users.value.some(user => user.id === id && isDeletable(user))
+        users.value.some(user => user.id === id && isSelectable(user))
       ))
     } catch (error) {
       if (request !== managerRequest || !operations.canCommit(operation)) return
@@ -68,6 +78,8 @@ export function useOverlayUserManagement(options) {
     selectedUserIds.value = []
     usersLoading.value = false
     deletingUsers.value = false
+    resettingSources.value = false
+    defaultingSourceUserId.value = null
   }
 
   function scheduleRefresh() {
@@ -84,12 +96,12 @@ export function useOverlayUserManagement(options) {
   }
 
   function changeSelection(rows) {
-    selectedUserIds.value = rows.filter(isDeletable).map(user => user.id)
+    selectedUserIds.value = rows.filter(isSelectable).map(user => user.id)
   }
 
   function toggleSelection(id, checked) {
     const user = users.value.find(item => item.id === id)
-    if (!user || !isDeletable(user)) return
+    if (!user || !isSelectable(user)) return
     if (checked) {
       if (!selectedUserIds.value.includes(id)) selectedUserIds.value.push(id)
       return
@@ -166,7 +178,7 @@ export function useOverlayUserManagement(options) {
   }
 
   async function removeSelected() {
-    const ids = [...selectedUserIds.value]
+    const ids = [...selectedDeletableUserIds.value]
     if (!ids.length) {
       options.onWarning('请选择需要删除的用户')
       return
@@ -195,6 +207,73 @@ export function useOverlayUserManagement(options) {
     }
   }
 
+  async function setDefaultSources(row) {
+    if (!isSelectable(row)) return
+    const operation = operations.begin(`set-default-sources:${row.id}`)
+    defaultingSourceUserId.value = row.id
+    try {
+      await options.confirm(
+        `确认要将用户${row.username}的书源设为默认书源（新用户有效）吗?`,
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
+      if (!operations.canCommit(operation)) return
+      await options.setUserSourcesAsDefault(row.id)
+      if (!operations.canCommit(operation)) return
+      options.onSuccess('设置成功')
+      await load()
+    } catch (error) {
+      if (error === 'cancel' || error === 'close') return
+      if (operations.canCommit(operation)) {
+        options.onError(error, '设置失败')
+      }
+    } finally {
+      if (operations.canCommit(operation) && defaultingSourceUserId.value === row.id) {
+        defaultingSourceUserId.value = null
+      }
+    }
+  }
+
+  async function resetSelectedSources() {
+    const ids = selectedUserIds.value.filter(id => (
+      users.value.some(user => user.id === id && isSelectable(user))
+    ))
+    if (!ids.length) {
+      options.onWarning('请选择需要删除书源的用户')
+      return
+    }
+    const operation = operations.begin('reset-user-sources')
+    resettingSources.value = true
+    try {
+      await options.confirm(
+        '确认要删除所选择的用户书源吗?',
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
+      if (!operations.canCommit(operation)) return
+      await options.resetUserSources(ids)
+      if (!operations.canCommit(operation)) return
+      selectedUserIds.value = []
+      options.onSuccess('操作成功')
+      await load()
+    } catch (error) {
+      if (error === 'cancel' || error === 'close') return
+      if (operations.canCommit(operation)) {
+        options.onError(error, '操作失败')
+      }
+    } finally {
+      if (operations.canCommit(operation)) resettingSources.value = false
+    }
+  }
+
   async function updatePermission(row) {
     const operation = operations.begin(`update-permission:${row.id}`)
     try {
@@ -218,14 +297,18 @@ export function useOverlayUserManagement(options) {
     users,
     usersLoading,
     deletingUsers,
+    resettingSources,
+    defaultingSourceUserId,
     creatingUser,
     createDialogVisible,
     selectedUserIds,
+    selectedDeletableUserIds,
     draft,
     load,
     resetManager,
     handleUpdated,
     clearRefresh,
+    isSelectable,
     isDeletable,
     isMutable,
     changeSelection,
@@ -234,6 +317,8 @@ export function useOverlayUserManagement(options) {
     create,
     resetPassword,
     removeSelected,
+    setDefaultSources,
+    resetSelectedSources,
     updatePermission,
     resetOperations: operations.reset,
   }

@@ -600,7 +600,8 @@ does not authorize access.
 Search, explore, remote-book, change-source, Reader content/cache and scheduler consumers now resolve the same
 association service. New/read-by-selection operations require caller-active enabled sources, while an existing
 caller-owned book may continue resolving its caller-detached snapshot; a foreign source id is treated as missing
-before any remote request. Backup/WebDAV restore and admin source-count/default-reset consumers remain pending.
+before any remote request. Administrator source-count/default/reset/delete consumers are implemented; only
+backup/WebDAV restore plus the browser/release gates remain pending for the ownership module.
 Until those consumers and dual-account browser checks pass, the implemented management/runtime API slices are not
 a Docker release gate by themselves.
 

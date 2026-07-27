@@ -285,6 +285,179 @@ func TestDefaultSnapshotInitializesOnceAndRestoreIsExplicit(t *testing.T) {
 	}
 }
 
+func TestActiveCountsProjectDefaultWithoutInitializingUsers(t *testing.T) {
+	database := sourceServiceDatabase(t)
+	service := New(database)
+	alice := createSourceUser(t, database, "source-count-alice")
+	bob := createSourceUser(t, database, "source-count-bob")
+	empty := createSourceUser(t, database, "source-count-empty")
+
+	defaultA := createSourceSnapshot(t, database, "默认计数 A", "https://count-default-a.example")
+	defaultB := createSourceSnapshot(t, database, "默认计数 B", "https://count-default-b.example")
+	for _, sourceID := range []uint{defaultA.ID, defaultB.ID} {
+		attachSource(t, database, 0, sourceID, false)
+	}
+	markSourceNamespace(t, database, 0)
+
+	bobOnly := createSourceSnapshot(t, database, "Bob 私有计数", "https://count-bob.example")
+	attachSource(t, database, bob.ID, bobOnly.ID, false)
+	markSourceNamespace(t, database, bob.ID)
+	markSourceNamespace(t, database, empty.ID)
+
+	counts, err := service.ActiveCounts([]uint{alice.ID, bob.ID, empty.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts[alice.ID] != 2 || counts[bob.ID] != 1 || counts[empty.ID] != 0 {
+		t.Fatalf("projected active counts = %v", counts)
+	}
+	var aliceNamespaceCount int64
+	if err := database.Model(&models.BookSourceNamespace{}).
+		Where("user_id = ?", alice.ID).
+		Count(&aliceNamespaceCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if aliceNamespaceCount != 0 {
+		t.Fatalf("count projection initialized alice namespace: %d", aliceNamespaceCount)
+	}
+}
+
+func TestExistingUserDefaultRequiresInitializedNamespaceAndAllowsEmptySnapshot(t *testing.T) {
+	database := sourceServiceDatabase(t)
+	service := New(database)
+	alice := createSourceUser(t, database, "source-existing-default-alice")
+	bob := createSourceUser(t, database, "source-existing-default-bob")
+
+	if _, err := service.SaveDefaultFromExistingUser(alice.ID); !errors.Is(err, ErrNamespaceNotInitialized) {
+		t.Fatalf("uninitialized target default save = %v, want ErrNamespaceNotInitialized", err)
+	}
+	markSourceNamespace(t, database, alice.ID)
+	count, err := service.SaveDefaultFromExistingUser(alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("empty default count = %d, want 0", count)
+	}
+	configured, defaultCount, err := service.DefaultStatus()
+	if err != nil || !configured || defaultCount != 0 {
+		t.Fatalf("empty default status = configured:%v count:%d err:%v", configured, defaultCount, err)
+	}
+
+	private := createSourceSnapshot(t, database, "Bob 恢复前私有源", "https://empty-default-bob.example")
+	attachSource(t, database, bob.ID, private.ID, false)
+	markSourceNamespace(t, database, bob.ID)
+	book := models.Book{UserID: bob.ID, SourceID: private.ID, Title: "空默认保留书"}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.RestoreDefault(bob.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 0 || result.Updated != 0 || result.Skipped != 1 {
+		t.Fatalf("empty default restore result = %+v", result)
+	}
+	active, err := service.ListActive(bob.ID)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("bob active sources after empty default = %+v err=%v", active, err)
+	}
+	if _, err := service.FindForBook(bob.ID, private.ID); err != nil {
+		t.Fatalf("empty-default restore lost used detached source: %v", err)
+	}
+}
+
+func TestRestoreDefaultForUsersIsAtomic(t *testing.T) {
+	database := sourceServiceDatabase(t)
+	service := New(database)
+	alice := createSourceUser(t, database, "source-reset-alice")
+	bob := createSourceUser(t, database, "source-reset-bob")
+	defaultSource := createSourceSnapshot(t, database, "批量默认源", "https://batch-default.example")
+	attachSource(t, database, 0, defaultSource.ID, false)
+	markSourceNamespace(t, database, 0)
+
+	alicePrivate := createSourceSnapshot(t, database, "Alice 原源", "https://batch-alice.example")
+	bobPrivate := createSourceSnapshot(t, database, "Bob 原源", "https://batch-bob.example")
+	attachSource(t, database, alice.ID, alicePrivate.ID, false)
+	attachSource(t, database, bob.ID, bobPrivate.ID, false)
+	markSourceNamespace(t, database, alice.ID)
+	markSourceNamespace(t, database, bob.ID)
+
+	trigger := `CREATE TRIGGER block_bob_default_reset
+		BEFORE INSERT ON user_book_sources
+		WHEN NEW.user_id = ` + uintText(bob.ID) + ` AND NEW.source_id = ` + uintText(defaultSource.ID) + `
+		BEGIN
+			SELECT RAISE(ABORT, 'blocked');
+		END`
+	if err := database.Exec(trigger).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RestoreDefaultForUsers([]uint{alice.ID, bob.ID}); err == nil {
+		t.Fatal("batch default restore unexpectedly succeeded")
+	}
+	aliceActive, err := service.ListActive(alice.ID)
+	if err != nil || len(aliceActive) != 1 || aliceActive[0].ID != alicePrivate.ID {
+		t.Fatalf("failed batch partially changed alice: %+v err=%v", aliceActive, err)
+	}
+	if err := database.Exec("DROP TRIGGER block_bob_default_reset").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.RestoreDefaultForUsers([]uint{alice.ID, bob.ID, alice.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Reset != 2 || result.Imported != 2 || result.Updated != 0 || result.Skipped != 0 {
+		t.Fatalf("batch restore result = %+v", result)
+	}
+	for _, userID := range []uint{alice.ID, bob.ID} {
+		active, err := service.ListActive(userID)
+		if err != nil || len(active) != 1 || active[0].ID != defaultSource.ID {
+			t.Fatalf("user %d restored sources = %+v err=%v", userID, active, err)
+		}
+	}
+}
+
+func TestRemoveUserNamespacesCollectsOnlyUnreferencedSnapshots(t *testing.T) {
+	database := sourceServiceDatabase(t)
+	service := New(database)
+	alice := createSourceUser(t, database, "source-remove-alice")
+	bob := createSourceUser(t, database, "source-remove-bob")
+	shared := createSourceSnapshot(t, database, "共享删除源", "https://remove-shared.example")
+	aliceOnly := createSourceSnapshot(t, database, "Alice 独占删除源", "https://remove-alice.example")
+	for _, sourceID := range []uint{shared.ID, aliceOnly.ID} {
+		attachSource(t, database, alice.ID, sourceID, false)
+	}
+	attachSource(t, database, bob.ID, shared.ID, false)
+	markSourceNamespace(t, database, alice.ID)
+	markSourceNamespace(t, database, bob.ID)
+
+	if err := service.RemoveUserNamespaces([]uint{alice.ID}); err != nil {
+		t.Fatal(err)
+	}
+	var aliceAssociations, aliceNamespaces int64
+	if err := database.Model(&models.UserBookSource{}).Where("user_id = ?", alice.ID).Count(&aliceAssociations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Model(&models.BookSourceNamespace{}).Where("user_id = ?", alice.ID).Count(&aliceNamespaces).Error; err != nil {
+		t.Fatal(err)
+	}
+	if aliceAssociations != 0 || aliceNamespaces != 0 {
+		t.Fatalf("alice source ownership remained: associations=%d namespaces=%d", aliceAssociations, aliceNamespaces)
+	}
+	var sharedCount, aliceOnlyCount int64
+	if err := database.Model(&models.BookSource{}).Where("id = ?", shared.ID).Count(&sharedCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Model(&models.BookSource{}).Where("id = ?", aliceOnly.ID).Count(&aliceOnlyCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sharedCount != 1 || aliceOnlyCount != 0 {
+		t.Fatalf("source cleanup counts: shared=%d aliceOnly=%d", sharedCount, aliceOnlyCount)
+	}
+}
+
 func TestImportMatchesURLInsideOnlyTheTargetNamespace(t *testing.T) {
 	database := sourceServiceDatabase(t)
 	service := New(database)

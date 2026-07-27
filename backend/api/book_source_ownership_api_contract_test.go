@@ -324,6 +324,191 @@ func TestBookSourceClearImportAndDefaultRestoreAreScoped(t *testing.T) {
 	}
 }
 
+func TestAdminBookSourceDefaultAndResetActionsAreTargetScoped(t *testing.T) {
+	router, server := setupTestServer(t)
+	adminAuth := authHeader(t, router)
+	var admin models.User
+	if err := server.db.Where("username = ?", "testuser").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Model(&admin).Update("role", "admin").Error; err != nil {
+		t.Fatal(err)
+	}
+	alice := registerSourceContractAccount(t, router, "sourceadminalice")
+	bob := registerSourceContractAccount(t, router, "sourceadminbob")
+	empty := registerSourceContractAccount(t, router, "sourceadminempty")
+	alice.Source = createSourceThroughAPI(t, router, alice.Auth, `{
+		"name":"Alice 默认候选",
+		"baseUrl":"https://admin-default-alice.example",
+		"enabled":true
+	}`)
+
+	uninitializedRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/"+uintString(bob.ID)+"/sources/default",
+		nil,
+	)
+	uninitializedRequest.Header.Set("Authorization", adminAuth)
+	uninitializedResponse := httptest.NewRecorder()
+	router.ServeHTTP(uninitializedResponse, uninitializedRequest)
+	if uninitializedResponse.Code != http.StatusConflict ||
+		!strings.Contains(uninitializedResponse.Body.String(), "user sources are not initialized") {
+		t.Fatalf(
+			"uninitialized target default = %d %s, want 409",
+			uninitializedResponse.Code,
+			uninitializedResponse.Body.String(),
+		)
+	}
+
+	ordinaryRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/"+uintString(alice.ID)+"/sources/default",
+		nil,
+	)
+	ordinaryRequest.Header.Set("Authorization", bob.Auth)
+	ordinaryResponse := httptest.NewRecorder()
+	router.ServeHTTP(ordinaryResponse, ordinaryRequest)
+	if ordinaryResponse.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user set default = %d %s, want 403", ordinaryResponse.Code, ordinaryResponse.Body.String())
+	}
+
+	missingRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/99999999/sources/default",
+		nil,
+	)
+	missingRequest.Header.Set("Authorization", adminAuth)
+	missingResponse := httptest.NewRecorder()
+	router.ServeHTTP(missingResponse, missingRequest)
+	if missingResponse.Code != http.StatusNotFound {
+		t.Fatalf("missing target default = %d %s, want 404", missingResponse.Code, missingResponse.Body.String())
+	}
+
+	setDefaultRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/"+uintString(alice.ID)+"/sources/default",
+		nil,
+	)
+	setDefaultRequest.Header.Set("Authorization", adminAuth)
+	setDefaultResponse := httptest.NewRecorder()
+	router.ServeHTTP(setDefaultResponse, setDefaultRequest)
+	if setDefaultResponse.Code != http.StatusOK ||
+		!strings.Contains(setDefaultResponse.Body.String(), `"count":1`) {
+		t.Fatalf("set alice sources as default = %d %s", setDefaultResponse.Code, setDefaultResponse.Body.String())
+	}
+
+	aliceClient := server.hub.AddClient(alice.ID, nil)
+	bobClient := server.hub.AddClient(bob.ID, nil)
+	t.Cleanup(func() {
+		server.hub.RemoveClient(aliceClient)
+		server.hub.RemoveClient(bobClient)
+	})
+	resetRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/sources/reset",
+		strings.NewReader(`{"ids":[`+uintString(bob.ID)+`,`+uintString(bob.ID)+`]}`),
+	)
+	resetRequest.Header.Set("Authorization", adminAuth)
+	resetRequest.Header.Set("Content-Type", "application/json")
+	resetResponse := httptest.NewRecorder()
+	router.ServeHTTP(resetResponse, resetRequest)
+	if resetResponse.Code != http.StatusOK ||
+		!strings.Contains(resetResponse.Body.String(), `"reset":1`) {
+		t.Fatalf("reset bob sources = %d %s", resetResponse.Code, resetResponse.Body.String())
+	}
+	var bobActiveCount int64
+	if err := server.db.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND detached = ?", bob.ID, false).
+		Count(&bobActiveCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bobActiveCount != 1 {
+		t.Fatalf("bob active source count after reset = %d, want 1", bobActiveCount)
+	}
+	if !queuedPayloadContains(bobClient.Send, `"type":"sources_update"`) {
+		t.Fatal("bob did not receive his reset sources_update")
+	}
+	if queuedPayloadContains(aliceClient.Send, `"type":"sources_update"`) {
+		t.Fatal("alice received bob's reset sources_update")
+	}
+
+	createSourceThroughAPI(t, router, bob.Auth, `{
+		"name":"Bob 重置前私有源",
+		"baseUrl":"https://admin-reset-bob-private.example",
+		"enabled":true
+	}`)
+	missingBatchRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/sources/reset",
+		strings.NewReader(`{"ids":[`+uintString(bob.ID)+`,99999999]}`),
+	)
+	missingBatchRequest.Header.Set("Authorization", adminAuth)
+	missingBatchRequest.Header.Set("Content-Type", "application/json")
+	missingBatchResponse := httptest.NewRecorder()
+	router.ServeHTTP(missingBatchResponse, missingBatchRequest)
+	if missingBatchResponse.Code != http.StatusNotFound {
+		t.Fatalf("reset batch with missing target = %d %s, want 404", missingBatchResponse.Code, missingBatchResponse.Body.String())
+	}
+	if err := server.db.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND detached = ?", bob.ID, false).
+		Count(&bobActiveCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bobActiveCount != 2 {
+		t.Fatalf("missing-target batch partially reset bob: active=%d", bobActiveCount)
+	}
+
+	if err := server.db.Create(&models.BookSourceNamespace{UserID: empty.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	emptyDefaultRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/"+uintString(empty.ID)+"/sources/default",
+		nil,
+	)
+	emptyDefaultRequest.Header.Set("Authorization", adminAuth)
+	emptyDefaultResponse := httptest.NewRecorder()
+	router.ServeHTTP(emptyDefaultResponse, emptyDefaultRequest)
+	if emptyDefaultResponse.Code != http.StatusOK ||
+		!strings.Contains(emptyDefaultResponse.Body.String(), `"count":0`) {
+		t.Fatalf("set empty target as default = %d %s", emptyDefaultResponse.Code, emptyDefaultResponse.Body.String())
+	}
+
+	emptyResetRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/sources/reset",
+		strings.NewReader(`{"ids":[`+uintString(bob.ID)+`]}`),
+	)
+	emptyResetRequest.Header.Set("Authorization", adminAuth)
+	emptyResetRequest.Header.Set("Content-Type", "application/json")
+	emptyResetResponse := httptest.NewRecorder()
+	router.ServeHTTP(emptyResetResponse, emptyResetRequest)
+	if emptyResetResponse.Code != http.StatusOK {
+		t.Fatalf("reset to empty default = %d %s", emptyResetResponse.Code, emptyResetResponse.Body.String())
+	}
+	if err := server.db.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND detached = ?", bob.ID, false).
+		Count(&bobActiveCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bobActiveCount != 0 {
+		t.Fatalf("bob active sources after empty reset = %d, want 0", bobActiveCount)
+	}
+
+	emptySelectionRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/users/sources/reset",
+		strings.NewReader(`{"ids":[]}`),
+	)
+	emptySelectionRequest.Header.Set("Authorization", adminAuth)
+	emptySelectionRequest.Header.Set("Content-Type", "application/json")
+	emptySelectionResponse := httptest.NewRecorder()
+	router.ServeHTTP(emptySelectionResponse, emptySelectionRequest)
+	if emptySelectionResponse.Code != http.StatusBadRequest {
+		t.Fatalf("empty reset selection = %d %s, want 400", emptySelectionResponse.Code, emptySelectionResponse.Body.String())
+	}
+}
+
 func TestSearchAndExploreResolveOnlyCallerActiveSources(t *testing.T) {
 	router, _ := setupTestServer(t)
 	alice := registerSourceContractAccount(t, router, "sourcesearchalice")
@@ -637,4 +822,18 @@ func importSourcesThroughAPI(t *testing.T, router *gin.Engine, auth, data string
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	return response
+}
+
+func queuedPayloadContains(channel <-chan []byte, needle string) bool {
+	found := false
+	for {
+		select {
+		case payload := <-channel:
+			if strings.Contains(string(payload), needle) {
+				found = true
+			}
+		default:
+			return found
+		}
+	}
 }

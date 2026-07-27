@@ -754,40 +754,64 @@ func TestBackupIncludesUserData(t *testing.T) {
 	}
 }
 
-func TestAdminUsersIncludesGlobalSourceCount(t *testing.T) {
+func TestAdminUsersIncludesProjectedPerUserSourceCount(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	var user models.User
-	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+	var admin models.User
+	if err := server.db.Where("username = ?", "testuser").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := server.db.Model(&user).Update("role", "admin").Error; err != nil {
+	if err := server.db.Model(&admin).Update("role", "admin").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := server.db.Create(&models.BookSource{Name: "源一", Enabled: true}).Error; err != nil {
+	adminAuth := token
+	createSourceThroughAPI(t, router, adminAuth, `{"name":"管理员源一","baseUrl":"https://admin-source-one.example","enabled":true}`)
+	createSourceThroughAPI(t, router, adminAuth, `{"name":"管理员源二","baseUrl":"https://admin-source-two.example","enabled":true}`)
+	saveDefault := httptest.NewRequest(http.MethodPost, "/api/sources/default/save", nil)
+	saveDefault.Header.Set("Authorization", adminAuth)
+	saveDefaultResponse := httptest.NewRecorder()
+	router.ServeHTTP(saveDefaultResponse, saveDefault)
+	if saveDefaultResponse.Code != http.StatusOK {
+		t.Fatalf("save projected defaults = %d %s", saveDefaultResponse.Code, saveDefaultResponse.Body.String())
+	}
+	uninitialized := registerSourceContractAccount(t, router, "countprojected")
+	empty := registerSourceContractAccount(t, router, "countemptyuser")
+	if err := server.db.Create(&models.BookSourceNamespace{UserID: empty.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := server.db.Create(&models.BookSource{Name: "源二", Enabled: true}).Error; err != nil {
-		t.Fatal(err)
-	}
+	createSourceThroughAPI(t, router, adminAuth, `{"name":"管理员源三","baseUrl":"https://admin-source-three.example","enabled":true}`)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
-	req.Header.Set("Authorization", token)
+	req.Header.Set("Authorization", adminAuth)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("admin users: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var users []struct {
+		ID          uint   `json:"id"`
 		Username    string `json:"username"`
 		SourceCount int64  `json:"sourceCount"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil {
 		t.Fatal(err)
 	}
-	if len(users) != 1 || users[0].Username != "testuser" || users[0].SourceCount != 2 {
-		t.Fatalf("unexpected admin users response: %+v", users)
+	counts := make(map[uint]int64, len(users))
+	for _, user := range users {
+		counts[user.ID] = user.SourceCount
+	}
+	if counts[admin.ID] != 3 || counts[uninitialized.ID] != 2 || counts[empty.ID] != 0 {
+		t.Fatalf("per-user source counts = %v, users=%+v", counts, users)
+	}
+	var namespaceCount int64
+	if err := server.db.Model(&models.BookSourceNamespace{}).
+		Where("user_id = ?", uninitialized.ID).
+		Count(&namespaceCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if namespaceCount != 0 {
+		t.Fatalf("admin list initialized projected user namespace: %d", namespaceCount)
 	}
 }
 
@@ -866,6 +890,12 @@ func TestAdminUserManagementActions(t *testing.T) {
 	if err := server.db.Create(&models.UserSetting{UserID: managed.ID, Key: "reader", Value: `{}`}).Error; err != nil {
 		t.Fatal(err)
 	}
+	managedSource, err := server.bookSources.Create(managed.ID, models.BookSource{
+		Name: "待删用户私有源", BaseURL: "https://deleted-user-source.example", Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	deleteReq := httptest.NewRequest(http.MethodPost, "/api/admin/users/batch-delete", strings.NewReader(fmt.Sprintf(`{"ids":[%d]}`, managed.ID)))
 	deleteReq.Header.Set("Content-Type", "application/json")
@@ -915,6 +945,21 @@ func TestAdminUserManagementActions(t *testing.T) {
 		"user settings": func() int64 {
 			var count int64
 			_ = server.db.Model(&models.UserSetting{}).Where("user_id = ?", managed.ID).Count(&count).Error
+			return count
+		},
+		"source associations": func() int64 {
+			var count int64
+			_ = server.db.Model(&models.UserBookSource{}).Where("user_id = ?", managed.ID).Count(&count).Error
+			return count
+		},
+		"source namespace": func() int64 {
+			var count int64
+			_ = server.db.Model(&models.BookSourceNamespace{}).Where("user_id = ?", managed.ID).Count(&count).Error
+			return count
+		},
+		"private source snapshot": func() int64 {
+			var count int64
+			_ = server.db.Model(&models.BookSource{}).Where("id = ?", managedSource.ID).Count(&count).Error
 			return count
 		},
 	} {

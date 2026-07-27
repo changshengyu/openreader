@@ -28,7 +28,7 @@
         class="desktop-user-table"
         @selection-change="onUserSelectionChange"
       >
-        <el-table-column type="selection" width="44" :selectable="isUserDeletable" />
+        <el-table-column type="selection" width="44" :selectable="isUserSelectable" />
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column prop="role" label="角色" width="90" />
         <el-table-column prop="lastActiveAt" label="最近活跃" min-width="150">
@@ -42,7 +42,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="bookCount" label="书籍" width="80" />
-        <el-table-column prop="sourceCount" label="全局书源" width="100" />
+        <el-table-column prop="sourceCount" label="书源" width="80" />
         <el-table-column label="权限" min-width="300">
           <template #default="{ row }">
             <div v-if="isUserMutable(row)" class="permission-row">
@@ -53,10 +53,16 @@
             <span v-else class="protected-user-label">受保护账号</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="110" fixed="right">
+        <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
             <el-button v-if="isUserMutable(row)" text @click="resetPassword(row)">重置密码</el-button>
-            <span v-else class="protected-user-label">—</span>
+            <el-button
+              text
+              :loading="defaultingSourceUserId === row.id"
+              @click="setDefaultSources(row)"
+            >
+              设为默认书源
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -65,13 +71,13 @@
         <article v-for="user in users" :key="user.id" class="mobile-user-card">
           <header>
             <el-checkbox
-              :disabled="!isUserDeletable(user)"
+              :disabled="!isUserSelectable(user)"
               :model-value="selectedUserIds.includes(user.id)"
               @change="toggleUserSelection(user.id, $event)"
             />
             <div>
               <strong>{{ user.username }}</strong>
-              <span>{{ user.role }} · 书籍 {{ user.bookCount || 0 }} · 全局书源 {{ user.sourceCount || 0 }}</span>
+              <span>{{ user.role }} · 书籍 {{ user.bookCount || 0 }} · 书源 {{ user.sourceCount || 0 }}</span>
               <span>最近活跃：{{ formatUserTime(user.lastActiveAt) }} · 注册：{{ formatUserTime(user.createdAt, '—') }}</span>
             </div>
           </header>
@@ -82,6 +88,14 @@
             <el-button size="small" text @click="resetPassword(user)">重置密码</el-button>
           </div>
           <span v-else class="protected-user-label">受保护账号</span>
+          <el-button
+            size="small"
+            text
+            :loading="defaultingSourceUserId === user.id"
+            @click="setDefaultSources(user)"
+          >
+            设为默认书源
+          </el-button>
         </article>
       </div>
 
@@ -89,8 +103,16 @@
         <span class="check-tip">已选择 {{ selectedUserIds.length }} 个</span>
         <el-button
           size="small"
-          type="danger"
           :disabled="!selectedUserIds.length"
+          :loading="resettingSources"
+          @click="resetSelectedSources"
+        >
+          删除用户书源
+        </el-button>
+        <el-button
+          size="small"
+          type="danger"
+          :disabled="!selectedDeletableUserIds.length"
           :loading="deletingUsers"
           @click="deleteSelectedUsers"
         >
@@ -154,14 +176,18 @@ const {
   users,
   usersLoading,
   deletingUsers,
+  resettingSources,
+  defaultingSourceUserId,
   creatingUser,
   createDialogVisible: userCreateDialog,
   selectedUserIds,
+  selectedDeletableUserIds,
   draft: userDraft,
   load: loadUsers,
   resetManager,
   handleUpdated: handleUsersUpdated,
   clearRefresh: clearUsersRefreshTimer,
+  isSelectable: isUserSelectable,
   isDeletable: isUserDeletable,
   isMutable: isUserMutable,
   changeSelection: onUserSelectionChange,
@@ -170,6 +196,8 @@ const {
   create: createManagedUser,
   resetPassword,
   removeSelected: deleteSelectedUsers,
+  setDefaultSources,
+  resetSelectedSources,
   updatePermission: updateUserPermission,
 } = useOverlayUserManagement({
   operationGuard: operations,
