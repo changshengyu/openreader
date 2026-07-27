@@ -164,6 +164,7 @@ import { useAppCacheManagement } from '../composables/useAppCacheManagement'
 import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppRecentReading } from '../composables/useAppRecentReading'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
+import { useAuthenticatedOperationGuard } from '../composables/useAuthenticatedOperationGuard'
 import { useWorkspaceBackupActions } from '../composables/useWorkspaceBackupActions'
 import { useSync } from '../composables/useSync'
 import ExploreWorkspacePopover from '../components/workspace/ExploreWorkspacePopover.vue'
@@ -175,7 +176,6 @@ import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../u
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
-import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { createShelfForegroundReconciler } from '../utils/shelfSyncFreshness'
 
 const router = useRouter()
@@ -195,7 +195,7 @@ const offline = ref(false)
 const healthInfo = ref(null)
 const routeBookInfoLoadingId = ref(null)
 const routeBookInfoOpenedKey = ref('')
-const routeBookInfoOperations = createAuthenticatedOperationGuard()
+const routeBookInfoOperations = useAuthenticatedOperationGuard()
 let compatibilityFocusTimer
 const { connected: syncConnected, connect, disconnect } = useSync()
 const shelfForegroundReconciler = createShelfForegroundReconciler({
@@ -259,6 +259,7 @@ const {
   runBackup: runWorkspaceBackup,
   runPortableBackup: runWorkspacePortableBackup,
 } = useWorkspaceBackupActions({
+  operationGuard: routeBookInfoOperations,
   triggerBackup,
   triggerPortableBackup,
   confirmBackup: () => ElMessageBox.confirm(

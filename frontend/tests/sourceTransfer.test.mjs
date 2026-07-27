@@ -37,6 +37,31 @@ function createController(overrides = {}) {
   return { calls, controller, selection }
 }
 
+function deferred() {
+  let resolve
+  const promise = new Promise(done => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+function expiringOperationGuard() {
+  let active = true
+  return {
+    begin: key => ({ key }),
+    canCommit: () => active,
+    invalidate: () => {
+      active = false
+    },
+    reset: () => {
+      active = false
+    },
+    expire: () => {
+      active = false
+    },
+  }
+}
+
 test('normalizes supported source JSON shapes and display fields', () => {
   const source = {
     bookSourceName: '兼容源',
@@ -191,4 +216,25 @@ test('exports selected sources with the existing filename and feedback', async (
     ['download', '[{"name":"书源"}]', 'bookSources-selected.json'],
     ['success', '已导出 2 个书源'],
   ])
+})
+
+test('an imported source response cannot update or reload a later authenticated session', async () => {
+  const pending = deferred()
+  const operationGuard = expiringOperationGuard()
+  const fixture = createController({
+    operationGuard,
+    importSources: async form => {
+      fixture.calls.push(['import', form])
+      return pending.promise
+    },
+  })
+  fixture.controller.openImportPreview([{ name: '旧账号书源' }])
+
+  const importTask = fixture.controller.saveSelectedImportSources()
+  operationGuard.expire()
+  pending.resolve({ data: { imported: 1, updated: 0, skipped: 0 } })
+  await importTask
+
+  assert.deepEqual(fixture.calls.map(call => call[0]), ['import'])
+  assert.equal(fixture.controller.showImportPreview.value, true)
 })

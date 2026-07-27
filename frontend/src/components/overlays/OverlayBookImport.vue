@@ -141,6 +141,7 @@ import {
   listTXTTocRules,
   previewLocalBook,
 } from '../../api/books'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayBookImport } from '../../composables/useOverlayBookImport'
 import { useBookshelfStore } from '../../stores/bookshelf'
 import { useOverlayStore } from '../../stores/overlay'
@@ -155,6 +156,7 @@ defineProps({
 
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 
 const {
   importing,
@@ -171,6 +173,7 @@ const {
   preview,
   importBook,
 } = useOverlayBookImport({
+  operationGuard: operations,
   visible: computed(() => overlay.importBookVisible),
   loadCategories: () => bookshelf.ensureCategoriesLoaded(),
   listTocRules: () => listTXTTocRules(),

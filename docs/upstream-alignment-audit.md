@@ -312,5 +312,9 @@
   仍可在卸载后 upsert 书架、写 Reader cache、应用 WebDAV 恢复、继续批处理/写后请求、弹消息、
   导航或操作新 overlay。该项裁决为 JWT 多用户必需的 **must-fix**：所有弹层异步提交冻结
   scope/token/component generation，session invalidation 与卸载统一淘汰；同账号重登也不恢复
-  Dialog 中间事务。当前阶段只完成合同取证，尚未改应用代码。对应合同：
+  Dialog 中间事务。合同取证后已分 P1-A/P1-B 覆盖全部账号私有工作台弹层：确认框换号不再
+  dispatch，迟到回调不再写书架/Reader/cache/ref、应用恢复、继续队列/reload、下载、导航、
+  广播或提示；保留现有 abort、request revision、timer 和 BookManage 长期 cache job 语义。
+  前端 626/626、生产构建、Go 全量与差异检查通过；三视口重新认证浏览器门和 Docker 待完成。
+  对应合同：
   [workspace-overlay-authenticated-session-p1-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/workspace-overlay-authenticated-session-p1-contract.md)。

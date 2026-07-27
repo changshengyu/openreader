@@ -1,24 +1,36 @@
 import { ref } from 'vue'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useOverlayBookCacheState(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const localCacheCounts = ref({})
 
   async function refreshManagedBrowserCacheCounts() {
+    const operation = operations.begin('managed-browser-cache-counts')
     const rows = options.getManagedBooks().filter(book => book?.id)
     try {
-      localCacheCounts.value = await options.countBrowserCachedChapters(rows)
+      const counts = await options.countBrowserCachedChapters(rows)
+      if (!operations.canCommit(operation)) return
+      localCacheCounts.value = counts
     } catch {
-      localCacheCounts.value = Object.fromEntries(rows.map(book => [book.id, 0]))
+      if (operations.canCommit(operation)) {
+        localCacheCounts.value = Object.fromEntries(rows.map(book => [book.id, 0]))
+      }
+      return
     }
   }
 
   async function refreshBookInfoBrowserCacheCount(book) {
     if (!book?.id) return
+    const operation = operations.begin(`book-browser-cache-count:${book.id}`)
     try {
       const map = await options.listBrowserCachedChapters(book, book.id)
+      if (!operations.canCommit(operation)) return
       setLocalCacheCount(book.id, Object.keys(map).length)
     } catch {
-      setLocalCacheCount(book.id, 0)
+      if (operations.canCommit(operation)) setLocalCacheCount(book.id, 0)
     }
   }
 
@@ -117,5 +129,6 @@ export function useOverlayBookCacheState(options) {
     localCacheCount,
     serverCacheCount,
     updateServerCacheCount,
+    resetOperations: operations.reset,
   }
 }

@@ -134,6 +134,7 @@ import Sortable from 'sortablejs'
 import { Rank } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { updateBookCategory } from '../../api/books'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayBookGroups } from '../../composables/useOverlayBookGroups'
 import { useBookshelfStore } from '../../stores/bookshelf'
 import { useOverlayStore } from '../../stores/overlay'
@@ -151,6 +152,7 @@ defineProps({
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
+const operations = useAuthenticatedOperationGuard()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const managedBooks = computed(() => (
   sortByShelfOrder(bookshelf.books, reader.progressByBook)
@@ -179,6 +181,7 @@ const {
   handleModeChange,
   saveGroupOrderDraft: saveOrder,
 } = useOverlayBookGroups({
+  operationGuard: operations,
   overlay,
   bookshelf,
   getManagedBooks: () => managedBooks.value,
@@ -203,6 +206,7 @@ watch(
   () => overlay.bookGroupVisible,
   async (visible) => {
     if (!visible) return
+    const operation = operations.begin('open-book-groups')
     try {
       await Promise.all([
         bookshelf.ensureCategoriesLoaded(),
@@ -210,9 +214,11 @@ watch(
         bookshelf.ensureBooksLoaded({ all: true }),
       ])
     } catch (error) {
+      if (!operations.canCommit(operation)) return
       ElMessage.error(readError(error, '加载分组失败'))
       return
     }
+    if (!operations.canCommit(operation)) return
     prepareOpen()
   },
 )

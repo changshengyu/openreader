@@ -4,6 +4,7 @@ import {
   importSourceCompatibilityHint,
   importSourceTags,
 } from '../utils/bookSourceCompatibility.js'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export {
   analyzeSourceCompatibility,
@@ -13,6 +14,9 @@ export {
 } from '../utils/bookSourceCompatibility.js'
 
 export function useSourceTransfer(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const showRemote = ref(false)
   const remoteURL = ref('')
   const remoteLoading = ref(false)
@@ -27,15 +31,17 @@ export function useSourceTransfer(options) {
   async function importFile(data) {
     const file = data.raw
     if (!file) return
+    const operation = operations.begin('file-preview')
     try {
       const list = parseImportSourceList(JSON.parse(await file.text()))
+      if (!operations.canCommit(operation)) return
       if (!list.length) {
         options.onError(null, '书源文件错误')
         return
       }
       openImportPreview(list)
     } catch (error) {
-      options.onError(error, '导入失败')
+      if (operations.canCommit(operation)) options.onError(error, '导入失败')
     }
   }
 
@@ -52,11 +58,13 @@ export function useSourceTransfer(options) {
 
   async function importRemote() {
     if (!remoteURL.value.trim()) return
+    const operation = operations.begin('remote-preview')
     remoteLoading.value = true
     try {
       const { data: preview } = await options.previewRemoteSource(
         remoteURL.value.trim(),
       )
+      if (!operations.canCommit(operation)) return
       const list = parseImportSourceList(preview.sources || [])
       if (!list.length) {
         options.onError(null, '远程订阅未识别到书源')
@@ -66,9 +74,11 @@ export function useSourceTransfer(options) {
       remoteURL.value = ''
       openImportPreview(list)
     } catch (error) {
-      options.onError(error, '远程导入失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '远程导入失败')
+      }
     } finally {
-      remoteLoading.value = false
+      if (operations.canCommit(operation)) remoteLoading.value = false
     }
   }
 
@@ -116,28 +126,32 @@ export function useSourceTransfer(options) {
       options.onWarning('请选择需要导入的源')
       return
     }
+    const operation = operations.begin('save-import')
     importPreviewSaving.value = true
     try {
       const selectedSources = checkedImportSourceIndexes.value
         .map(index => importPreviewSources.value[index])
       const form = createSourceImportForm(selectedSources)
       const { data: result } = await options.importSources(form)
+      if (!operations.canCommit(operation)) return
       options.onSuccess(sourceImportMessage(result))
       closeImportPreview()
       await options.reloadSources()
     } catch (error) {
-      options.onError(error, '导入失败')
+      if (operations.canCommit(operation)) options.onError(error, '导入失败')
     } finally {
-      importPreviewSaving.value = false
+      if (operations.canCommit(operation)) importPreviewSaving.value = false
     }
   }
 
   async function exportSources() {
+    const operation = operations.begin('export')
     try {
       const selectedIds = options.getSelection()
         .map(source => source.id)
         .filter(Boolean)
       const response = await options.exportSources(selectedIds)
+      if (!operations.canCommit(operation)) return
       const filename = selectedIds.length
         ? 'bookSources-selected.json'
         : 'bookSources.json'
@@ -148,7 +162,7 @@ export function useSourceTransfer(options) {
           : '已导出全部书源',
       )
     } catch (error) {
-      options.onError(error, '导出失败')
+      if (operations.canCommit(operation)) options.onError(error, '导出失败')
     }
   }
 
@@ -177,6 +191,7 @@ export function useSourceTransfer(options) {
     importSourceCompatibilityHint,
     saveSelectedImportSources,
     exportSources,
+    resetOperations: operations.reset,
   }
 }
 

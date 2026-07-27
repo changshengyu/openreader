@@ -55,6 +55,31 @@ function createController(overrides = {}) {
   }
 }
 
+function deferred() {
+  let resolve
+  const promise = new Promise(done => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+function expiringOperationGuard() {
+  let active = true
+  return {
+    begin: key => ({ key }),
+    canCommit: () => active,
+    invalidate: () => {
+      active = false
+    },
+    reset: () => {
+      active = false
+    },
+    expire: () => {
+      active = false
+    },
+  }
+}
+
 test('normalizes legacy stored rules and imported rule fields separately', () => {
   assert.deepEqual(normalizeOverlayReplaceRule({
     id: 1,
@@ -216,4 +241,20 @@ test('clears only manager list state when its root dialog closes', async () => {
   assert.deepEqual(fixture.controller.rules.value, [])
   assert.deepEqual(fixture.controller.selectedIds.value, [])
   assert.equal(fixture.controller.dialogVisible.value, true, 'the independent editor must survive a manager-only close')
+})
+
+test('an old confirmation cannot delete rules after authentication changes', async () => {
+  const pendingConfirmation = deferred()
+  const operationGuard = expiringOperationGuard()
+  const fixture = createController({
+    operationGuard,
+    confirm: () => pendingConfirmation.promise,
+  })
+
+  const removeTask = fixture.controller.remove({ id: 7, name: '旧账号规则' })
+  operationGuard.expire()
+  pendingConfirmation.resolve()
+  await removeTask
+
+  assert.deepEqual(fixture.calls, [])
 })

@@ -72,6 +72,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cacheBookContent, cacheBookContentStream, listChapters } from '../../api/books'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayBookCacheState } from '../../composables/useOverlayBookCacheState'
 import { useOverlayBookManagement } from '../../composables/useOverlayBookManagement'
 import { useBookshelfStore } from '../../stores/bookshelf'
@@ -100,6 +101,7 @@ defineProps({
 const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
+const operations = useAuthenticatedOperationGuard()
 const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const manageKeyword = ref('')
 const managedBooks = computed(() => (
@@ -117,6 +119,7 @@ const {
   serverCacheCount,
   updateServerCacheCount,
 } = useOverlayBookCacheState({
+  operationGuard: operations,
   overlay,
   bookshelf,
   getManagedBooks: () => managedBooks.value,
@@ -140,6 +143,7 @@ const {
   cancelBookCache,
   exportBook,
 } = useOverlayBookManagement({
+  operationGuard: operations,
   bookshelf,
   getManagedBooks: () => managedBooks.value,
   getFilteredManagedBooks: () => filteredManagedBooks.value,
@@ -167,10 +171,12 @@ watch(
       clearManagedSelection()
       return
     }
+    const operation = operations.begin('open-book-manager')
     const [categoryResult, booksResult] = await Promise.allSettled([
       bookshelf.ensureCategoriesLoaded(),
       bookshelf.ensureBooksLoaded({ all: true }),
     ])
+    if (!operations.canCommit(operation)) return
     if (booksResult.status === 'rejected') {
       ElMessage.error(readError(booksResult.reason, '加载书架数据失败'))
       return

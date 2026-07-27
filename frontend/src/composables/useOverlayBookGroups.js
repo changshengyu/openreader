@@ -1,12 +1,16 @@
 import { computed, ref } from 'vue'
 import { bookCategoryIds } from '../utils/bookCategory.js'
 import { bookGroupBookCount } from '../utils/bookGroups.js'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 function isCancelled(error) {
   return error === 'cancel' || error === 'close'
 }
 
 export function useOverlayBookGroups(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const selectedCategoryIds = ref([])
   const settingCategorySaving = ref(false)
   const visibilitySavingId = ref(null)
@@ -78,6 +82,7 @@ export function useOverlayBookGroups(options) {
   async function saveBookGroupSetting() {
     const book = options.overlay.bookInfoBook
     if (!book?.id) return
+    const operation = operations.begin('set-book-groups')
     settingCategorySaving.value = true
     try {
       const categoryIds = selectedCategoryIds.value
@@ -88,6 +93,7 @@ export function useOverlayBookGroups(options) {
         return
       }
       const { data } = await options.updateBookCategory(book.id, categoryIds)
+      if (!operations.canCommit(operation)) return
       options.bookshelf.upsertBook(data)
       options.overlay.bookInfoBook = data
       options.emitBookInfoUpdated(data)
@@ -99,34 +105,43 @@ export function useOverlayBookGroups(options) {
       options.overlay.bookGroupVisible = false
       options.onSuccess('分组已设置')
     } catch (error) {
-      options.onError(error, '设置分组失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '设置分组失败')
+      }
     } finally {
-      settingCategorySaving.value = false
+      if (operations.canCommit(operation)) settingCategorySaving.value = false
     }
   }
 
   async function createCategory() {
+    const operation = operations.begin('create-group')
     try {
       const { value } = await options.prompt('输入分组名称', '添加分组', {
         inputValidator: value => !!value?.trim() || '分组名称不能为空',
       })
+      if (!operations.canCommit(operation)) return
       const name = value.trim()
       if (!name) return
       await options.bookshelf.addCategory({ name })
+      if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
       options.onSuccess('分组已创建')
     } catch (error) {
       if (isCancelled(error)) return
-      options.onError(error, '创建分组失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '创建分组失败')
+      }
     }
   }
 
   async function renameGroup(category) {
+    const operation = operations.begin(`rename-group:${category?.key || category?.id || ''}`)
     try {
       const { value } = await options.prompt('输入新的分组名称', '重命名分组', {
         inputValue: category.name,
         inputValidator: value => !!value?.trim() || '分组名称不能为空',
       })
+      if (!operations.canCommit(operation)) return
       const name = value.trim()
       if (!name || name === category.name) return
       if (category.kind === 'builtin') {
@@ -134,15 +149,19 @@ export function useOverlayBookGroups(options) {
       } else {
         await options.bookshelf.renameCategory(category.categoryId || category.id, { name })
       }
+      if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
       options.onSuccess('分组已重命名')
     } catch (error) {
       if (isCancelled(error)) return
-      options.onError(error, '重命名失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '重命名失败')
+      }
     }
   }
 
   async function toggleGroupVisibility(category, show) {
+    const operation = operations.begin(`toggle-group:${category?.key || category?.id || ''}`)
     visibilitySavingId.value = category.key || category.id
     try {
       if (category.kind === 'builtin') {
@@ -150,12 +169,15 @@ export function useOverlayBookGroups(options) {
       } else {
         await options.bookshelf.setCategoryVisible(category.categoryId || category.id, show)
       }
+      if (!operations.canCommit(operation)) return
       options.onSuccess(show ? '分组已显示' : '分组已隐藏')
     } catch (error) {
+      if (!operations.canCommit(operation)) return
       await options.bookshelf.loadBookGroups({ force: true }).catch(() => {})
+      if (!operations.canCommit(operation)) return
       options.onError(error, '修改分组显示状态失败')
     } finally {
-      visibilitySavingId.value = null
+      if (operations.canCommit(operation)) visibilitySavingId.value = null
     }
   }
 
@@ -168,18 +190,23 @@ export function useOverlayBookGroups(options) {
       options.onWarning('分组内还有书籍，清空后才能删除')
       return
     }
+    const operation = operations.begin(`delete-group:${category?.id || ''}`)
     try {
       await options.confirm(
         `确定删除分组“${category.name}”吗？`,
         '删除分组',
         { type: 'warning' },
       )
+      if (!operations.canCommit(operation)) return
       await options.bookshelf.removeCategory(category.categoryId || category.id)
+      if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
       options.onSuccess('分组已删除')
     } catch (error) {
       if (isCancelled(error)) return
-      options.onError(error, '删除分组失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '删除分组失败')
+      }
     }
   }
 
@@ -203,7 +230,9 @@ export function useOverlayBookGroups(options) {
 
   async function handleBookGroupOpened() {
     if (options.overlay.bookGroupMode !== 'manage') return
+    const operation = operations.begin('open-group-manager')
     await options.nextFrame()
+    if (!operations.canCommit(operation)) return
     destroyGroupSortable()
     const tableBody = groupManageTableRef.value?.$el
       ?.querySelector('.el-table__body-wrapper tbody')
@@ -232,16 +261,20 @@ export function useOverlayBookGroups(options) {
 
   async function saveGroupOrderDraft() {
     if (!isGroupOrderDirty.value) return
+    const operation = operations.begin('save-group-order')
     const orderedKeys = groupManageRows.value.map(item => item.key)
     groupOrderSaving.value = true
     try {
       await options.bookshelf.reorderBookGroupKeys(orderedKeys)
+      if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
       options.onSuccess('分组排序已更新')
     } catch (error) {
-      options.onError(error, '分组排序失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '分组排序失败')
+      }
     } finally {
-      groupOrderSaving.value = false
+      if (operations.canCommit(operation)) groupOrderSaving.value = false
     }
   }
 
@@ -271,5 +304,6 @@ export function useOverlayBookGroups(options) {
     destroyGroupSortable,
     handleModeChange,
     saveGroupOrderDraft,
+    resetOperations: operations.reset,
   }
 }

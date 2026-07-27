@@ -6,6 +6,7 @@ import {
   ref,
   watch,
 } from 'vue'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 import {
   isDirectImportableLocalPath,
   isEPUBLocalPath,
@@ -15,6 +16,9 @@ import {
 const unsupportedVisibleImportMessage = '仅支持 TXT / EPUB / UMD / CBZ 格式'
 
 export function useOverlayBookImport(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const importing = ref(false)
   const previewing = ref(false)
   const previewData = ref(null)
@@ -43,7 +47,9 @@ export function useOverlayBookImport(options) {
   }
 
   function reset() {
+    operations.reset()
     invalidatePreview()
+    importing.value = false
     Object.assign(draft, {
       title: '',
       author: '',
@@ -57,25 +63,33 @@ export function useOverlayBookImport(options) {
   }
 
   async function open() {
+    const operation = operations.begin('open')
     try {
       await options.loadCategories()
+      if (!operations.canCommit(operation)) return
     } catch (error) {
-      options.onError(error, '加载分组失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '加载分组失败')
+      }
     }
   }
 
   async function loadTocRules() {
     if (tocRuleOptions.value.length || tocRulesLoading.value) return
+    const operation = operations.begin('load-toc-rules')
     tocRulesLoading.value = true
     try {
       const { data } = await options.listTocRules()
+      if (!operations.canCommit(operation)) return
       tocRuleOptions.value = Array.isArray(data)
         ? data.filter(rule => rule?.enable !== false && rule?.rule)
         : []
     } catch (error) {
-      options.onError(error, '加载目录规则失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '加载目录规则失败')
+      }
     } finally {
-      tocRulesLoading.value = false
+      if (operations.canCommit(operation)) tocRulesLoading.value = false
     }
   }
 
@@ -100,6 +114,7 @@ export function useOverlayBookImport(options) {
   async function preview() {
     if (!draft.file) return
     const generation = ++previewGeneration
+    const operation = operations.begin('preview')
     previewController?.abort()
     const controller = new AbortController()
     previewController = controller
@@ -113,19 +128,23 @@ export function useOverlayBookImport(options) {
         tocRule: supportsTocRule.value ? draft.tocRule : '',
         ...(importToken.value ? { importToken: importToken.value } : {}),
       }, { signal: controller.signal })
-      if (generation !== previewGeneration) return
+      if (generation !== previewGeneration || !operations.canCommit(operation)) return
       previewData.value = data
       importToken.value = data.importToken || importToken.value
       if (!draft.title && data.title) draft.title = data.title
       if (!draft.author && data.author) draft.author = data.author
     } catch (error) {
-      if (generation !== previewGeneration || isCancelledPreview(error)) return
+      if (
+        generation !== previewGeneration ||
+        !operations.canCommit(operation) ||
+        isCancelledPreview(error)
+      ) return
       previewData.value = null
       importToken.value = error?.response?.data?.importToken || importToken.value
       previewError.value = importPreviewErrorMessage(error)
       options.onError(error, previewError.value)
     } finally {
-      if (generation === previewGeneration) {
+      if (generation === previewGeneration && operations.canCommit(operation)) {
         previewing.value = false
         previewController = null
       }
@@ -134,6 +153,7 @@ export function useOverlayBookImport(options) {
 
   async function importBook() {
     if (!draft.file || !previewData.value) return
+    const operation = operations.begin('import')
     importing.value = true
     try {
       const book = await options.importBook({
@@ -144,15 +164,18 @@ export function useOverlayBookImport(options) {
         categoryIds: draft.categoryIds,
         tocRule: supportsTocRule.value ? draft.tocRule : '',
       })
+      if (!operations.canCommit(operation)) return
       options.onSuccess(
         `已导入《${book.title}》，共 ${book.chapterCount || 0} 章`,
       )
       reset()
       options.close()
     } catch (error) {
-      options.onError(error, '导入失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '导入失败')
+      }
     } finally {
-      importing.value = false
+      if (operations.canCommit(operation)) importing.value = false
     }
   }
 
@@ -194,6 +217,7 @@ export function useOverlayBookImport(options) {
     preview,
     importBook,
     reset,
+    resetOperations: operations.reset,
   }
 }
 

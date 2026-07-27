@@ -79,11 +79,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, FolderOpened } from '@element-plus/icons-vue'
 import { deleteFromLocalStore, listLocalStore, uploadToLocalStore } from '../../api/localStore'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayStore } from '../../stores/overlay'
 import { filterLocalStoreItems, visibleLocalStoreItems } from '../../utils/localStoreItems'
 import { isLocalStoreImportable } from '../../utils/storageImportable'
 
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 const items = ref([])
 const selectedRows = ref([])
 const currentPath = ref('')
@@ -124,18 +126,25 @@ watch(keyword, () => {
 
 onMounted(load)
 
-async function load() {
+async function load(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return false
+  const operation = operations.begin('load')
   loading.value = true
   try {
     const { data } = await listLocalStore(currentPath.value)
+    if (!operations.canCommit(operation)) return false
     currentPath.value = data.path || ''
     items.value = data.items || []
     showAllItems.value = false
     clearSelection()
+    return true
   } catch (err) {
-    ElMessage.error(readError(err, '加载书仓失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '加载书仓失败'))
+    }
+    return false
   } finally {
-    loading.value = false
+    if (operations.canCommit(operation)) loading.value = false
   }
 }
 
@@ -175,16 +184,23 @@ function chooseFiles() {
 async function uploadFiles(event) {
   const files = Array.from(event.target?.files || [])
   if (!files.length) return
+  const operation = operations.begin('upload')
+  const uploadPath = currentPath.value
   uploading.value = true
   try {
-    await uploadToLocalStore({ path: currentPath.value, files })
+    await uploadToLocalStore({ path: uploadPath, files })
+    if (!operations.canCommit(operation)) return
     ElMessage.success('文件已上传')
-    await load()
+    await load(operation)
   } catch (err) {
-    ElMessage.error(readError(err, '上传失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '上传失败'))
+    }
   } finally {
-    uploading.value = false
-    if (event.target) event.target.value = ''
+    if (operations.canCommit(operation)) {
+      uploading.value = false
+      if (event.target) event.target.value = ''
+    }
   }
 }
 
@@ -201,27 +217,40 @@ function importPaths(paths) {
 }
 
 async function deleteItem(row) {
+  const operation = operations.begin('delete')
   try {
     await ElMessageBox.confirm(`确定删除“${row.name}”吗？`, '删除书仓项目', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
     await deleteFromLocalStore(row.path)
+    if (!operations.canCommit(operation)) return
     ElMessage.success('已删除')
-    await load()
+    await load(operation)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '删除失败'))
+    }
   }
 }
 
 async function deleteSelected() {
   if (!selectedRows.value.length) return
+  const operation = operations.begin('delete')
+  const selected = [...selectedRows.value]
   try {
-    await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 个书仓项目吗？`, '批量删除书仓项目', { type: 'warning' })
-    for (const row of selectedRows.value) await deleteFromLocalStore(row.path)
+    await ElMessageBox.confirm(`确定删除选中的 ${selected.length} 个书仓项目吗？`, '批量删除书仓项目', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
+    for (const row of selected) {
+      await deleteFromLocalStore(row.path)
+      if (!operations.canCommit(operation)) return
+    }
     ElMessage.success('已批量删除')
-    await load()
+    await load(operation)
   } catch (err) {
     if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '批量删除失败'))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(err, '批量删除失败'))
+    }
   }
 }
 

@@ -155,6 +155,7 @@ import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Refresh, Upload } from '@element-plus/icons-vue'
 import * as replaceRulesApi from '../../api/replaceRules'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayReplaceRules } from '../../composables/useOverlayReplaceRules'
 import { useOverlayStore } from '../../stores/overlay'
 
@@ -166,6 +167,7 @@ defineProps({
 })
 
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 
 const {
   rules: replaceRules,
@@ -196,6 +198,7 @@ const {
   remove: removeReplaceRule,
   removeSelected: deleteSelectedReplaceRules,
 } = useOverlayReplaceRules({
+  operationGuard: operations,
   isActive: () => overlay.replaceRulesVisible,
   ...replaceRulesApi,
   confirm: (...args) => ElMessageBox.confirm(...args),

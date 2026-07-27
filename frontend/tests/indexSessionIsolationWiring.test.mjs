@@ -54,7 +54,7 @@ test('Explore chooser/results and sidebar source hydration retire account-stale 
 })
 
 test('route BookInfo hydration cannot reopen a cleared account overlay', () => {
-  assert.match(layout, /routeBookInfoOperations\s*=\s*createAuthenticatedOperationGuard\(\)/)
+  assert.match(layout, /routeBookInfoOperations\s*=\s*useAuthenticatedOperationGuard\(\)/)
   assert.match(layout, /async function openRouteBookInfoOverlay\(\)[\s\S]*?routeBookInfoOperations\.begin/)
   assert.match(layout, /routeBookInfoOperations\.canCommit/)
   assert.match(layout, /routeBookInfoOperations\.reset\(\)/)

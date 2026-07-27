@@ -319,3 +319,31 @@ test('closing the dialog invalidates an in-flight preview and keeps reset state'
   assert.equal(fixture.controller.previewing.value, false)
   assert.equal(fixture.calls.some(call => call[0] === 'error'), false)
 })
+
+test('does not announce or close after a confirmed import crosses authenticated sessions', async () => {
+  const response = deferred()
+  let current = true
+  const fixture = createController({
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {},
+    },
+    importBook: async payload => {
+      fixture.calls.push(['import', payload])
+      return response.promise
+    },
+  })
+  fixture.controller.draft.file = { name: 'account-a.epub' }
+  fixture.controller.draft.title = '账号 A'
+  fixture.controller.previewData.value = { chapterCount: 1 }
+
+  const pending = fixture.controller.importBook()
+  current = false
+  response.resolve({ title: '账号 A', chapterCount: 1 })
+  await pending
+
+  assert.equal(fixture.calls.some(([kind]) => kind === 'success'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'close'), false)
+  assert.equal(fixture.controller.draft.file.name, 'account-a.epub')
+})

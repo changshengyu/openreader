@@ -68,3 +68,25 @@ test('direct backup failures release loading state and use truthful fallback tex
   ])
   assert.equal(fixture.actions.backupLoading.value, false)
 })
+
+test('does not dispatch a backup if authentication changes while confirmation is open', async () => {
+  let resolveConfirmation
+  let current = true
+  const fixture = createActions({
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {},
+    },
+    confirmBackup: () => new Promise(resolve => {
+      resolveConfirmation = resolve
+    }),
+  })
+
+  const pending = fixture.actions.runBackup()
+  current = false
+  resolveConfirmation()
+  await pending
+
+  assert.deepEqual(fixture.calls, [])
+})

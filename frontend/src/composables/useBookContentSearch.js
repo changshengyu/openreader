@@ -6,8 +6,12 @@ import {
   bookContentSearchPagingParams,
   bookContentSearchStatus,
 } from '../utils/readerBookSearch.js'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useBookContentSearch(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const keyword = ref('')
   const results = ref([])
   const loading = ref(false)
@@ -31,6 +35,7 @@ export function useBookContentSearch(options) {
   }))
 
   function reset() {
+    operations.reset()
     requestToken += 1
     abortActiveRequest()
     loading.value = false
@@ -45,6 +50,7 @@ export function useBookContentSearch(options) {
   }
 
   function cancel() {
+    operations.reset()
     requestToken += 1
     abortActiveRequest()
     loading.value = false
@@ -72,6 +78,7 @@ export function useBookContentSearch(options) {
     if (!query || loading.value) return
 
     const token = ++requestToken
+    const operation = operations.begin('search')
     const currentBook = unref(options.book)
     const controller = typeof AbortController === 'undefined' ? null : new AbortController()
     activeController = controller
@@ -95,7 +102,7 @@ export function useBookContentSearch(options) {
         }, {
           signal: controller?.signal,
         })
-        if (token !== requestToken) return
+        if (token !== requestToken || !operations.canCommit(operation)) return
 
         const rows = Array.isArray(data) ? data : (data?.list || [])
         nextResults = nextResults.concat(rows)
@@ -120,10 +127,14 @@ export function useBookContentSearch(options) {
         previousCursor = cursor
       }
     } catch (error) {
-      if (token === requestToken && !isIntentionalAbort(error, controller)) options.onError?.(error)
+      if (
+        token === requestToken &&
+        operations.canCommit(operation) &&
+        !isIntentionalAbort(error, controller)
+      ) options.onError?.(error)
     } finally {
       if (activeController === controller) activeController = null
-      if (token === requestToken) loading.value = false
+      if (token === requestToken && operations.canCommit(operation)) loading.value = false
     }
   }
 
@@ -149,6 +160,7 @@ export function useBookContentSearch(options) {
     search,
     loadMore,
     loadAll,
+    resetOperations: operations.reset,
   }
 }
 

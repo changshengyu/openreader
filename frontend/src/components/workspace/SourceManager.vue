@@ -435,6 +435,7 @@ import {
   sourceImportMessage,
   useSourceTransfer,
 } from '../../composables/useSourceTransfer'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import {
   analyzeSourceCompatibility,
   sourceCompatibilityMessage,
@@ -448,6 +449,7 @@ const props = defineProps({
   intent: { type: String, default: 'manage' },
 })
 const reader = useReaderStore()
+const operations = useAuthenticatedOperationGuard()
 const sources = ref([])
 const keyword = ref('')
 const selectedGroup = ref('')
@@ -486,6 +488,7 @@ const {
   saveSelectedImportSources,
   exportSources,
 } = useSourceTransfer({
+  operationGuard: operations,
   previewRemoteSource,
   importSources,
   exportSources: exportSourcesApi,
@@ -640,12 +643,14 @@ const editorCompatibility = computed(() => analyzeSourceCompatibility(editorSour
 const editorCompatibilityMessage = computed(() => sourceCompatibilityMessage(editorCompatibility.value))
 
 onMounted(async () => {
+  const operation = operations.begin('mount')
   window.addEventListener('resize', handleResize)
   window.addEventListener('openreader:sources-update', handleSourcesUpdate)
   const [sourcesResult, defaultResult] = await Promise.allSettled([
     loadSources(),
     loadDefaultSourceStatus(),
   ])
+  if (!operations.canCommit(operation)) return
   if (sourcesResult.status === 'rejected') {
     ElMessage.warning(readError(sourcesResult.reason, '加载书源失败'))
   }
@@ -690,19 +695,29 @@ watch(
   () => ensureSourcePageInRange(),
 )
 
-async function loadSources() {
+async function loadSources(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return false
+  const operation = operations.begin('load-sources')
   const { data } = await listSources()
+  if (!operations.canCommit(operation)) return false
   sources.value = data
+  return true
 }
 
-async function loadDefaultSourceStatus() {
+async function loadDefaultSourceStatus(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return false
+  const operation = operations.begin('load-default-source-status')
   try {
     const { data } = await defaultSourceStatus()
+    if (!operations.canCommit(operation)) return false
     defaultSource.configured = !!data?.configured
     defaultSource.count = Number(data?.count || 0)
+    return true
   } catch {
+    if (!operations.canCommit(operation)) return false
     defaultSource.configured = false
     defaultSource.count = 0
+    return false
   }
 }
 
@@ -712,12 +727,15 @@ function handleSourcesUpdate(event) {
 
 function scheduleSourcesReload(detail = {}) {
   clearSourceReloadTimer()
+  const operation = operations.begin('scheduled-reload')
   sourceReloadTimer = window.setTimeout(async () => {
     sourceReloadTimer = undefined
+    if (!operations.canCommit(operation)) return
     try {
-      await loadSources()
+      await loadSources(operation)
+      if (!operations.canCommit(operation)) return
       if (['save-default', 'restore-default'].includes(detail?.kind)) {
-        await loadDefaultSourceStatus()
+        await loadDefaultSourceStatus(operation)
       }
     } catch {
       // Keep the current list visible; the next explicit refresh or sync event can recover.
@@ -754,8 +772,10 @@ async function applyRouteAction() {
 }
 
 async function loadInvalidSourceHealth() {
+  const operation = operations.begin('load-invalid-source-health')
   try {
     const { data } = await listInvalidSources()
+    if (!operations.canCommit(operation)) return
     health.value = {}
     for (const item of data || []) {
       if (!item?.id) continue
@@ -770,6 +790,7 @@ async function loadInvalidSourceHealth() {
       }
     }
   } catch {
+    if (!operations.canCommit(operation)) return
     health.value = {}
   }
 }
@@ -788,11 +809,14 @@ function handleResize() {
 }
 
 async function toggleSource(source, enabled) {
+  const sourceId = source.id
+  const operation = operations.begin(`toggle-source:${sourceId}`)
   try {
-    const { data } = await updateSource(source.id, { ...source, enabled })
+    const { data } = await updateSource(sourceId, { ...source, enabled })
+    if (!operations.canCommit(operation)) return
     Object.assign(source, data)
   } catch (err) {
-    ElMessage.error(readError(err, '操作失败'))
+    if (operations.canCommit(operation)) ElMessage.error(readError(err, '操作失败'))
   }
 }
 
@@ -832,7 +856,7 @@ async function saveSource() {
     ElMessage.warning('书源名称不能为空')
     return
   }
-  savingSource.value = true
+  let payload
   try {
     const rules = parseRules(sourceForm.rules)
     syncRuleFormToRules(rules)
@@ -844,20 +868,30 @@ async function saveSource() {
     } else {
       delete rules.textReplaceRules
     }
-    const payload = { ...sourceForm, rules: Object.keys(rules).length ? JSON.stringify(rules, null, 2) : '' }
-    if (editingSourceId.value) {
-      await updateSource(editingSourceId.value, payload)
+    payload = { ...sourceForm, rules: Object.keys(rules).length ? JSON.stringify(rules, null, 2) : '' }
+  } catch (err) {
+    ElMessage.error(err instanceof SyntaxError ? '规则 JSON 格式不正确' : readError(err, '保存失败'))
+    return
+  }
+  const sourceId = editingSourceId.value
+  const operation = operations.begin('save-source')
+  savingSource.value = true
+  try {
+    if (sourceId) {
+      await updateSource(sourceId, payload)
+      if (!operations.canCommit(operation)) return
       ElMessage.success('书源已更新')
     } else {
       await createSource(payload)
+      if (!operations.canCommit(operation)) return
       ElMessage.success('书源已新增')
     }
     showEditor.value = false
-    await loadSources()
+    await loadSources(operation)
   } catch (err) {
-    ElMessage.error(err instanceof SyntaxError ? '规则 JSON 格式不正确' : readError(err, '保存失败'))
+    if (operations.canCommit(operation)) ElMessage.error(readError(err, '保存失败'))
   } finally {
-    savingSource.value = false
+    if (operations.canCommit(operation)) savingSource.value = false
   }
 }
 
@@ -867,12 +901,19 @@ async function deleteSource(id) {
     ElMessage.warning(`该书源仍有 ${source.usedBookCount} 本书在使用，不能删除`)
     return
   }
+  const operation = operations.begin(`delete-source:${id}`)
   try {
     await ElMessageBox.confirm('确定删除这个书源吗？', '提示', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
     await deleteSourceApi(id)
+    if (!operations.canCommit(operation)) return
     sources.value = sources.value.filter(source => source.id !== id)
     ElMessage.success('已删除')
-  } catch {
+  } catch (err) {
+    if (!operations.canCommit(operation)) return
+    if (err !== 'cancel' && err !== 'close') {
+      ElMessage.error(readError(err, '删除书源失败'))
+    }
     // canceled
   }
 }
@@ -881,16 +922,20 @@ async function batchUpdateSources(action) {
   if (!selection.value.length) return
   const sourceIds = selection.value.map(source => source.id)
   const actionName = action === 'enable' ? '启用' : action === 'disable' ? '停用' : '删除'
+  const operation = operations.begin(`batch-sources:${action}`)
   try {
     if (action === 'delete') {
       await ElMessageBox.confirm(`确定删除选中的 ${sourceIds.length} 个书源吗？`, '批量删除书源', { type: 'warning' })
+      if (!operations.canCommit(operation)) return
     }
     const { data } = await batchSources({ action, sourceIds })
+    if (!operations.canCommit(operation)) return
     const skippedUsed = Number(data.skippedUsed || 0)
     ElMessage.success(`已${actionName} ${data.affected || 0} 个书源${skippedUsed ? `，跳过 ${skippedUsed} 个使用中的书源` : ''}`)
     selection.value = []
-    await loadSources()
+    await loadSources(operation)
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, `批量${actionName}失败`))
   }
@@ -898,42 +943,51 @@ async function batchUpdateSources(action) {
 
 async function setSelectedSourceGroup() {
   if (!selection.value.length) return
+  const selectedSources = [...selection.value]
+  const sourceIds = selectedSources.map(source => source.id)
+  const operation = operations.begin('batch-source-group')
   try {
-    const currentGroups = [...new Set(selection.value.map(source => source.group || '').filter(Boolean))]
+    const currentGroups = [...new Set(selectedSources.map(source => source.group || '').filter(Boolean))]
     const res = await ElMessageBox.prompt(
       '留空将移回默认分组',
-      `设置 ${selection.value.length} 个书源的分组`,
+      `设置 ${sourceIds.length} 个书源的分组`,
       {
         inputValue: currentGroups.length === 1 ? currentGroups[0] : '',
         confirmButtonText: '确定',
         cancelButtonText: '取消',
       },
     )
-    const sourceIds = selection.value.map(source => source.id)
+    if (!operations.canCommit(operation)) return
     const group = String(res.value || '').trim()
     const { data } = await batchSources({ action: 'group', sourceIds, group })
+    if (!operations.canCommit(operation)) return
     ElMessage.success(`已设置 ${data.affected || 0} 个书源分组`)
     selection.value = []
-    await loadSources()
+    await loadSources(operation)
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '设置分组失败'))
   }
 }
 
 async function disableFailedSources() {
-  const sourceIds = failedHealthSourceIds.value
+  const sourceIds = [...failedHealthSourceIds.value]
   if (!sourceIds.length) return
+  const operation = operations.begin('disable-failed-sources')
   try {
     await ElMessageBox.confirm(`确定停用检测失败的 ${sourceIds.length} 个书源吗？`, '停用失败书源', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
     const { data } = await batchSources({ action: 'disable', sourceIds })
+    if (!operations.canCommit(operation)) return
     ElMessage.success(`已停用 ${data.affected || 0} 个失败书源`)
     for (const id of sourceIds) {
       if (health.value[id]) health.value[id].enabled = false
     }
     selection.value = []
-    await loadSources()
+    await loadSources(operation)
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '停用失败书源失败'))
   }
@@ -1006,15 +1060,20 @@ function ensureSourcePageInRange() {
 
 async function clearAllSources() {
   if (!sources.value.length) return
+  const sourceCount = sources.value.length
+  const operation = operations.begin('clear-all-sources')
   try {
-    await ElMessageBox.confirm(`确定清空全部 ${sources.value.length} 个书源吗？这个操作不可撤销。`, '清空书源', { type: 'warning' })
+    await ElMessageBox.confirm(`确定清空全部 ${sourceCount} 个书源吗？这个操作不可撤销。`, '清空书源', { type: 'warning' })
+    if (!operations.canCommit(operation)) return
     const { data } = await clearSources()
+    if (!operations.canCommit(operation)) return
     sources.value = []
     selection.value = []
     health.value = {}
     failedOnly.value = false
     ElMessage.success(`已清空 ${data.affected || 0} 个书源`)
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '清空书源失败'))
   }
@@ -1022,45 +1081,58 @@ async function clearAllSources() {
 
 async function setCurrentAsDefault() {
   if (!sources.value.length) return
+  const sourceCount = sources.value.length
+  const operation = operations.begin('save-default-sources')
   defaultSaving.value = true
   try {
     await ElMessageBox.confirm(
-      `确定将当前 ${sources.value.length} 个书源保存为默认书源吗？之后“恢复默认”会用它替换当前书源。`,
+      `确定将当前 ${sourceCount} 个书源保存为默认书源吗？之后“恢复默认”会用它替换当前书源。`,
       '设为默认书源',
       { type: 'warning' },
     )
+    if (!operations.canCommit(operation)) return
     const { data } = await saveDefaultSources()
+    if (!operations.canCommit(operation)) return
     defaultSource.configured = true
-    defaultSource.count = Number(data.count || sources.value.length)
+    defaultSource.count = Number(data.count || sourceCount)
     ElMessage.success(`已保存 ${defaultSource.count} 个默认书源`)
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '保存默认书源失败'))
   } finally {
-    defaultSaving.value = false
+    if (operations.canCommit(operation)) defaultSaving.value = false
   }
 }
 
 async function restoreDefaults() {
   if (!defaultSource.configured) return
+  const defaultCount = defaultSource.count || 0
+  const operation = operations.begin('restore-default-sources')
   defaultRestoring.value = true
   try {
     await ElMessageBox.confirm(
-      `确定恢复默认书源吗？当前书源会被默认快照中的 ${defaultSource.count || 0} 个书源替换。`,
+      `确定恢复默认书源吗？当前书源会被默认快照中的 ${defaultCount} 个书源替换。`,
       '恢复默认书源',
       { type: 'warning' },
     )
+    if (!operations.canCommit(operation)) return
     const { data } = await restoreDefaultSources()
+    if (!operations.canCommit(operation)) return
     selection.value = []
     health.value = {}
     failedOnly.value = false
     ElMessage.success(sourceImportMessage(data))
-    await Promise.all([loadSources(), loadDefaultSourceStatus()])
+    await Promise.all([
+      loadSources(operation),
+      loadDefaultSourceStatus(operation),
+    ])
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     if (err === 'cancel' || err === 'close') return
     ElMessage.error(readError(err, '恢复默认书源失败'))
   } finally {
-    defaultRestoring.value = false
+    if (operations.canCommit(operation)) defaultRestoring.value = false
   }
 }
 
@@ -1070,14 +1142,17 @@ async function checkInvalidSources() {
   // source set instead of the empty failed-only projection.
   const list = selection.value.length ? selection.value : (failedOnly.value ? sources.value : shownSources.value)
   if (!list.length) return
+  const sourceIds = list.map(source => source.id)
+  const operation = operations.begin('check-invalid-sources')
   checking.value = true
   try {
     const { data } = await batchTestSources({
-      sourceIds: list.map(source => source.id),
+      sourceIds,
       keyword: checkConfig.keyword,
       timeout: checkConfig.timeout,
       concurrent: checkConfig.concurrent,
     })
+    if (!operations.canCommit(operation)) return
     for (const item of data.results || []) {
       health.value[item.sourceId] = {
         ok: item.ok,
@@ -1091,9 +1166,9 @@ async function checkInvalidSources() {
     const failed = (data.results || []).filter(item => !item.ok).length
     ElMessage.success(`已检测 ${data.results?.length || 0} 个书源，失败 ${failed} 个`)
   } catch (err) {
-    ElMessage.error(readError(err, '批量检测失败'))
+    if (operations.canCommit(operation)) ElMessage.error(readError(err, '批量检测失败'))
   } finally {
-    checking.value = false
+    if (operations.canCommit(operation)) checking.value = false
   }
 }
 
@@ -1154,11 +1229,14 @@ async function testContent() {
 }
 
 async function runDebug(fn) {
+  const operation = operations.begin('debug-source')
   testing.value = true
   try {
     const { data } = await fn()
+    if (!operations.canCommit(operation)) return
     debugResult.value = data
   } catch (err) {
+    if (!operations.canCommit(operation)) return
     const response = err?.response?.data
     debugResult.value = response && typeof response === 'object'
       ? {
@@ -1168,7 +1246,7 @@ async function runDebug(fn) {
         }
       : { error: readError(err, '失败') }
   } finally {
-    testing.value = false
+    if (operations.canCommit(operation)) testing.value = false
   }
 }
 

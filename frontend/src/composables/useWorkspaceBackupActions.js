@@ -1,33 +1,43 @@
 import { ref } from 'vue'
+import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useWorkspaceBackupActions(options) {
+  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+    getIdentity: options.getAuthenticatedIdentity,
+  })
   const backupLoading = ref(false)
   const portableBackupLoading = ref(false)
 
   async function runBackup() {
     if (backupLoading.value) return false
+    const operation = operations.begin('backup')
     const confirmed = await confirm(options.confirmBackup)
-    if (!confirmed) return false
+    if (!confirmed || !operations.canCommit(operation)) return false
     backupLoading.value = true
     try {
       const { data } = await options.triggerBackup()
+      if (!operations.canCommit(operation)) return false
       options.onSuccess(`当前账户备份已保存：${data?.name || data?.path || 'backup.zip'}`)
       return true
     } catch (error) {
-      options.onError(error, '保存当前账户备份失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '保存当前账户备份失败')
+      }
       return false
     } finally {
-      backupLoading.value = false
+      if (operations.canCommit(operation)) backupLoading.value = false
     }
   }
 
   async function runPortableBackup() {
     if (portableBackupLoading.value) return false
+    const operation = operations.begin('portable-backup')
     const confirmed = await confirm(options.confirmPortable)
-    if (!confirmed) return false
+    if (!confirmed || !operations.canCommit(operation)) return false
     portableBackupLoading.value = true
     try {
       const { data } = await options.triggerPortableBackup()
+      if (!operations.canCommit(operation)) return false
       const legacyNotice = Number(data?.legacyAssets || 0) > 0
         ? `；另有 ${Number(data.legacyAssets)} 个旧版资源仅保留链接`
         : ''
@@ -36,10 +46,12 @@ export function useWorkspaceBackupActions(options) {
       )
       return true
     } catch (error) {
-      options.onError(error, '保存完整可移植备份失败')
+      if (operations.canCommit(operation)) {
+        options.onError(error, '保存完整可移植备份失败')
+      }
       return false
     } finally {
-      portableBackupLoading.value = false
+      if (operations.canCommit(operation)) portableBackupLoading.value = false
     }
   }
 
@@ -48,6 +60,7 @@ export function useWorkspaceBackupActions(options) {
     portableBackupLoading,
     runBackup,
     runPortableBackup,
+    resetOperations: operations.reset,
   }
 }
 

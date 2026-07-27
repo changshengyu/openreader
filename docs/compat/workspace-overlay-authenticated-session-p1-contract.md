@@ -2,7 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-27 已完成固定上游与当前实现取证；当前仅记录合同，尚未修改应用代码。
+状态：2026-07-27 已完成固定上游取证、P1-A/P1-B 实施与自动门禁；真实浏览器和 Docker
+发布闸门尚未完成。
 
 本合同承接：
 
@@ -169,3 +170,29 @@ scope + bearer token identity + component/session generation + operation key rev
   `git diff --check` 通过。
 - P1-A 仍是自动门禁候选；BookManage、BookGroup、Bookmark、LocalStore、Source、
   ReplaceRule、RSS、上传导入和备份动作属于 P1-B，真实浏览器与 Docker 均未完成。
+
+## 8. 2026-07-27 P1-B 候选实施记录
+
+- BookManage 的打开加载、批量分组/删除、单书服务器/浏览器缓存、清缓存、导出和缓存统计共用
+  生命周期认证门；模块级长期 cache job 仍按账号 scope 保存，普通关闭 Dialog 不取消，
+  `session-invalidated` 继续通过既有全局清理取消。
+- BookGroup、Bookmark、书签表单和正文搜索在加载、确认、写入、导航/关闭、广播和提示前复查
+  operation；仅有相同 book id 不再被视为相同身份。
+- 上传导入保留原有 AbortController、preview generation 和 staged token，同时覆盖分组/目录规则
+  加载与正式导入；身份变化后不再提示成功、关闭弹层或继续回填。
+- LocalStore 冻结目录、上传文件和删除集合；确认框后换号不发请求，旧响应不写路径、列表、
+  selection、toast 或后续 reload。
+- SourceManager 覆盖列表/默认状态/失败缓存、编辑、批量动作、默认快照、恢复、健康检测和调试；
+  `useSourceTransfer` 覆盖本地/远程预览、确认导入和导出。确认框、文件读取和请求每一阶段都验证
+  身份，selection/source id 在 await 前冻结。
+- ReplaceRule 在原有 manager request 与刷新 timer 之外叠加认证代际；加载、导入、编辑、测试、
+  启停和删除均不会由旧账号触发写后 reload、事件或提示。
+- RSS 保留文章 query request gate，并增加 root lifecycle identity：源缓存/加载、文章分页、
+  保存/导入/刷新/删除、正文和已读/收藏均受门禁；延迟 timer 与子 Dialog 关闭会淘汰对应请求。
+- 工作台普通/可移植备份在确认前冻结身份；确认期间换号不会 dispatch，迟到结果不会向新账号
+  显示路径或错误。
+- 测试先得到 6 个预期失败；实施后增加 deferred 行为测试，证明旧书源导入不能刷新新会话、
+  旧替换规则确认不能在新会话删除。聚焦 60/60 与补充 35/35 通过，前端全量 626/626、生产
+  构建、Go 全量和 `git diff --check` 通过。
+- P1-A/P1-B 当前均为自动门禁候选。真实浏览器需覆盖 1440×900、390×844、360×800 的
+  401/同账号重登/异账号切换；该闸门完成前不把本合同标记为最终验收，也不发布 Docker。

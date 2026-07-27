@@ -2885,4 +2885,9 @@ revision/abort/timer 机制，在每个跨 await 提交与后续请求前复查�
 scope dispose 时淘汰。弹层中间事务不随同账号重登恢复，用户手动重开后从当前账号重新加载。
 完整矩阵、状态机和测试先行闸门见
 [`workspace-overlay-authenticated-session-p1-contract.md`](workspace-overlay-authenticated-session-p1-contract.md)。
-合同提取阶段不修改应用代码。
+合同提取后已按 P1-A/P1-B 两批实施：BookInfo、StorageImport、WebDAV 恢复、UserManage、
+BookManage、BookGroup、Bookmark、LocalStore、Source、ReplaceRule、RSS、上传导入和备份
+均使用同一 scope/token/lifecycle operation 门，并保留原有 request revision、AbortController、
+timer 和长期 cache job 语义。确认框期间换号不再 dispatch，迟到响应不能写 store/ref/cache、
+导航、关闭弹层、下载、广播、提示或启动写后 reload。前端 626/626、生产构建、Go 全量与
+`git diff --check` 已通过；三视口 401/重新认证真实浏览器门和 Docker 仍待完成。

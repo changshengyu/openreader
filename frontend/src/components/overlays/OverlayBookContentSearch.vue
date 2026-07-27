@@ -65,6 +65,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useBookContentSearch } from '../../composables/useBookContentSearch'
 import { useOverlayStore } from '../../stores/overlay'
 
@@ -77,6 +78,7 @@ defineProps({
 
 const dialogWidth = '880px'
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 const searchInputRef = ref(null)
 const resultTableRef = ref(null)
 const lastScrollTop = ref(0)
@@ -100,6 +102,7 @@ const {
   loadMore,
   loadAll,
 } = useBookContentSearch({
+  operationGuard: operations,
   bookId,
   book,
   chapters: [],

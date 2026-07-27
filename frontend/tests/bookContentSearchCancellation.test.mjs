@@ -13,13 +13,14 @@ function deferredSearchRequest(calls) {
   })
 }
 
-function searchController(searchRequest, onError = () => {}) {
+function searchController(searchRequest, onError = () => {}, options = {}) {
   return useBookContentSearch({
     bookId: ref(7),
     book: ref({ id: 7, sourceId: 9 }),
     chapters: ref([]),
     searchRequest,
     onError,
+    ...options,
   })
 }
 
@@ -75,4 +76,37 @@ test('replacing the keyword aborts stale content search and a successful request
   assert.equal(calls[1].options.signal.aborted, false)
   assert.equal(controller.loading.value, false)
   assert.equal(controller.results.value.length, 1)
+})
+
+test('does not commit content rows after the authenticated operation expires', async () => {
+  const calls = []
+  let current = true
+  const controller = searchController(
+    deferredSearchRequest(calls),
+    () => {},
+    {
+      operationGuard: {
+        begin: key => ({ key }),
+        canCommit: () => current,
+        reset: () => {},
+      },
+    },
+  )
+  controller.keyword.value = '账号 A'
+  await nextTick()
+  const pending = controller.search()
+  await nextTick()
+
+  current = false
+  calls[0].resolve({
+    data: {
+      list: [{ chapterIndex: 1, excerpt: '账号 A 私有正文' }],
+      lastIndex: 1,
+      hasMore: false,
+      total: 2,
+    },
+  })
+  await pending
+
+  assert.deepEqual(controller.results.value, [])
 })

@@ -77,6 +77,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useBookBookmarks } from '../../composables/useBookBookmarks'
 import { useOverlayBookmarkActions } from '../../composables/useOverlayBookmarkActions'
 import { useOverlayStore } from '../../stores/overlay'
@@ -91,6 +92,7 @@ defineProps({
 const dialogWidth = '880px'
 const router = useRouter()
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 const fileRef = ref(null)
 const selectedRows = ref([])
 const bookId = computed(() => overlay.bookmarkBook?.id)
@@ -110,6 +112,7 @@ const {
   importPayloads,
   handleUpdated,
 } = useBookBookmarks({
+  operationGuard: operations,
   bookId,
   isActive: () => overlay.bookmarkVisible,
   onLoadError: error => ElMessage.error(readError(error, '加载书签失败')),
@@ -120,6 +123,7 @@ const {
   removeMany,
   importRows,
 } = useOverlayBookmarkActions({
+  operationGuard: operations,
   getBook: () => overlay.bookmarkBook,
   closePanel: () => {
     overlay.bookmarkVisible = false

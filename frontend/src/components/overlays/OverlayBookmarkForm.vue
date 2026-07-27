@@ -47,6 +47,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createBookmark, updateBookmark } from '../../api/books'
+import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayStore } from '../../stores/overlay'
 
 defineProps({
@@ -57,6 +58,7 @@ defineProps({
 })
 
 const overlay = useOverlayStore()
+const operations = useAuthenticatedOperationGuard()
 const saving = ref(false)
 const draft = computed(() => overlay.bookmarkFormDraft)
 const book = computed(() => overlay.bookmarkFormBook)
@@ -79,6 +81,7 @@ async function save() {
     return
   }
 
+  const operation = operations.begin('save-bookmark')
   saving.value = true
   try {
     const payload = bookmarkPayload(currentDraft)
@@ -86,10 +89,12 @@ async function save() {
     if (overlay.bookmarkFormMode === 'edit' && currentDraft.id) {
       const { data } = await updateBookmark(currentDraft.id, payload)
       bookmark = data
+      if (!operations.canCommit(operation)) return
       ElMessage.success('编辑书签成功')
     } else {
       const { data } = await createBookmark(currentBook.id, payload)
       bookmark = data
+      if (!operations.canCommit(operation)) return
       ElMessage.success('新增书签成功')
     }
     dispatchBookmarksUpdated(currentBook.id)
@@ -98,9 +103,11 @@ async function save() {
       bookmarkId: bookmark?.id || currentDraft.id,
     })
   } catch (error) {
-    ElMessage.error(readError(error, `${overlay.bookmarkFormMode === 'edit' ? '编辑' : '新增'}书签失败`))
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(error, `${overlay.bookmarkFormMode === 'edit' ? '编辑' : '新增'}书签失败`))
+    }
   } finally {
-    saving.value = false
+    if (operations.canCommit(operation)) saving.value = false
   }
 }
 

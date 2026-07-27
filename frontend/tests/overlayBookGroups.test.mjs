@@ -3,6 +3,14 @@ import test from 'node:test'
 import { reactive } from 'vue'
 import { useOverlayBookGroups } from '../src/composables/useOverlayBookGroups.js'
 
+function deferred() {
+  let resolve
+  const promise = new Promise(resolvePromise => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 function createController(overrides = {}) {
   const calls = []
   const overlay = reactive({
@@ -259,4 +267,31 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
     ['destroy-sortable'],
   ])
   assert.equal(fixture.controller.groupOrderSaving.value, false)
+})
+
+test('does not apply a group response after the authenticated operation expires', async () => {
+  const response = deferred()
+  let current = true
+  const fixture = createController({
+    operationGuard: {
+      begin: key => ({ key }),
+      canCommit: () => current,
+      reset: () => {},
+    },
+    updateBookCategory: async () => response.promise,
+  })
+  fixture.overlay.bookGroupMode = 'set'
+  fixture.overlay.bookInfoBook = { id: 9, categoryIds: [2] }
+  fixture.controller.prepareOpen()
+  fixture.controller.toggleBookGroupSelection({ id: 1 })
+
+  const pending = fixture.controller.saveBookGroupSetting()
+  current = false
+  response.resolve({ data: { id: 9, categoryIds: [1, 2] } })
+  await pending
+
+  assert.equal(fixture.calls.some(([kind]) => kind === 'upsert'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'emit'), false)
+  assert.equal(fixture.calls.some(([kind]) => kind === 'success'), false)
+  assert.equal(fixture.overlay.bookGroupVisible, true)
 })
