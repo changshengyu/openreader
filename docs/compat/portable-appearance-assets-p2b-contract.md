@@ -1,7 +1,7 @@
 # P2-B 可移植自定义外观资产合同
 
-状态：**2026-07-23 已完成固定上游审计、失败测试、运行时实现、全量自动测试与
-三视口真实 Go + Chromium 回归；本地 Docker 新旧卷门禁与镜像发布待完成。**
+状态：**2026-07-27 已完成固定上游审计、失败测试、运行时实现、全量自动测试、
+三视口真实 Go + Chromium 回归、本地 Docker 新旧卷门禁与双架构镜像发布。**
 本文件固定普通逻辑备份、portable v1 与新增 portable v2 的兼容边界。
 
 固定上游：
@@ -231,4 +231,12 @@ portable v1 既有“逻辑 transaction + 每本 archive rehydrate/补偿”保�
 - Go 全量、前端 558/558 与生产构建通过；
   `scripts/smoke/portable-appearance-assets-real-api-contract.mjs` 在
   1440×900、390×844、360×800 真实验证目标用户书架封面、Reader 背景/字体、刷新、
-  移动工具层并存和 legacy 链接。Docker 新卷、历史卷和镜像发布尚未在本状态下宣称通过。
+  移动工具层并存和 legacy 链接。
+- 本地 arm64 候选通过新卷 v2 自定义资产跨用户恢复、手工 v1 兼容、重启后资产读取，
+  以及历史 TXT、EPUB、UMD、CBZ、相对缓存、用户隔离、普通备份和 portable v2
+  跨卷恢复；历史门禁由保留现场逐项复现、带行号跟踪和正式命令复跑确认。
+- 从远端 Git 提交 `54a528f4c0d697c72778fcd9062221629ea54fda` 在本机完成
+  `linux/amd64`、`linux/arm64` 构建并推送
+  `ghcr.io/changshengyu/openreader:54a528f` 与 `latest`。两个标签均经
+  `docker buildx imagetools inspect` 核验为 OCI index
+  `sha256:047f9636a78604a1d5320da2972d0b16256b95d47253320b79095eaf6101a571`。

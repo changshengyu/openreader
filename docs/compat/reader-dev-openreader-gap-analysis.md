@@ -2707,8 +2707,10 @@ transaction/失败补偿。普通逻辑 ZIP 与 v1 均不改变，未来未知 p
 closed，不能落入普通恢复只写书架。完整格式、API、限额、安全和测试先行闸门见
 [`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)。
 
-实施进度（2026-07-23）：service/API 已生成和恢复 v2，普通 ZIP 与 v1 分支保持，
+实施结果（2026-07-27）：service/API 已生成和恢复 v2，普通 ZIP 与 v1 分支保持，
 manifest/资产/占位符/版本严格预检，跨 user ID 分配新 URL，并通过文件补偿和启动
 journal 收敛 SQLite/文件崩溃窗口。前端动作改名并报告资产/legacy 数量。Go 全量、
-前端 558 项、生产构建和三视口真实 Go + Chromium 跨用户恢复通过；Docker 新旧卷门禁
-与本地多架构发布尚待完成，因此当前不记录镜像标签。
+前端 558 项、生产构建和三视口真实 Go + Chromium 跨用户恢复通过；Docker 新卷与
+历史 TXT/EPUB/UMD/CBZ/相对缓存、用户隔离、v1/v2 跨卷恢复及重启门禁通过。本机发布
+`54a528f`/`latest`，远端 amd64/arm64 OCI index 为
+`sha256:047f9636a78604a1d5320da2972d0b16256b95d47253320b79095eaf6101a571`。

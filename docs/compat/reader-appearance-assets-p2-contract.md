@@ -1,7 +1,7 @@
 # Reader 自定义外观资产 P2 合同
 
-状态：2026-07-23 已完成固定上游合同提取、P2-A runtime 实施和 Docker 发布；
-P2-B 已完成独立合同审计，尚未进入失败测试/运行时实施。
+状态：2026-07-27 已完成固定上游合同提取、P2-A/P2-B runtime、自动化与真实浏览器
+验证，并分别完成本地 Docker 门禁和双架构发布。
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -122,8 +122,8 @@ P2-A 不授权修改 portable format。P2-B 的固定格式、无源 user ID 占
 
 P2-B 运行时、失败测试和三视口真实浏览器链路已完成：新 trigger 生成 portable v2，
 携带当前用户实际引用的资产并在恢复时改写到目标用户；普通逻辑 ZIP 仍只保存字符串，
-已有 portable v1 仍保持原 URL-only 恢复语义。Docker 新旧卷与发布门禁完成前，不把
-本切片标记为最终发布完成。
+已有 portable v1 仍保持原 URL-only 恢复语义。新卷和历史卷门禁均已覆盖 v1/v2、
+跨 user ID、重启、旧本地书格式和用户隔离；P2-B 已作为独立发布切片完成。
 
 ## P2-A 实施结果（2026-07-23）
 
@@ -142,3 +142,18 @@ P2-B 运行时、失败测试和三视口真实浏览器链路已完成：新 tr
   UMD、CBZ、相对缓存和用户隔离 smoke。本机完成 amd64/arm64 正式构建并发布
   `ghcr.io/changshengyu/openreader:9cae206` 与 `latest`；两个标签均核验为
   OCI index `sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`。
+
+## P2-B 实施与发布结果（2026-07-27）
+
+- Portable v2 携带当前用户实际引用的封面、背景和字体字节，以不含源用户信息的
+  `openreader-asset://aNNNN` 占位符跨实例恢复到目标用户随机私有 URL；普通逻辑 ZIP
+  与 portable v1 保持原语义。
+- 严格 manifest/version/path/hash/magic/引用闭包预检、资产去重、单 SQLite
+  transaction、文件失败补偿和启动 journal 均由 service/API 合同覆盖。
+- Go 全量、前端 558/558、生产构建和 1440×900、390×844、360×800 真实 Go +
+  Chromium 跨用户恢复链路通过；新卷与历史卷 Docker 门禁覆盖 v1/v2、重启、
+  TXT/EPUB/UMD/CBZ/相对缓存及用户隔离。
+- 远端提交 `54a528f4c0d697c72778fcd9062221629ea54fda` 已由本机发布
+  `ghcr.io/changshengyu/openreader:54a528f` 与 `latest`，均解析到 amd64/arm64
+  OCI index
+  `sha256:047f9636a78604a1d5320da2972d0b16256b95d47253320b79095eaf6101a571`。

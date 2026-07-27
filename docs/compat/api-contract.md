@@ -146,8 +146,9 @@ their own `OPENREADER_MAX_IMPORT_BYTES` policy.
 
 ### P2-B portable appearance asset v2
 
-Status: runtime, contract tests, full suites and three-viewport real-browser restore are implemented
-on 2026-07-23; Docker volume/release gates remain. The exact format and transaction contract is
+Status: runtime, contract tests, full suites, three-viewport real-browser restore, fresh/historical
+Docker volume gates and the local amd64/arm64 GHCR release are complete as of 2026-07-27. The exact
+format and transaction contract is
 [`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md).
 
 | Method / path | Implemented additive contract | Compatibility |

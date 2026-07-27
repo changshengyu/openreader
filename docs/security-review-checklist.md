@@ -166,11 +166,11 @@ contract (three viewports).
   restart, backup/portable restore, local-format and owner-isolation smoke. Locally
   built amd64/arm64 `9cae206` and `latest` indexes were published and independently
   resolved to `sha256:800cff1326caa8740f343cc233f7ffcd87ef38b38f744b47d1bc7712c27dc7c6`.
-- [ ] Logical/portable-v1 backups still contain URL strings only. The versioned, bounded,
-  cross-user-ID asset byte packaging/remapping contract is now extracted in
-  `docs/compat/portable-appearance-assets-p2b-contract.md`, but its failure tests and
-  runtime are not implemented. Until then, no release may claim cross-instance custom
-  asset restore.
+- [x] Logical/portable-v1 backups still contain URL strings only, while portable v2 uses
+  the separately versioned, bounded, cross-user-ID asset byte packaging/remapping
+  contract in `docs/compat/portable-appearance-assets-p2b-contract.md`. Its failure
+  tests, runtime, real-browser restore, fresh/historical volume gates and local
+  amd64/arm64 release are complete.
 
 Targeted evidence: `backend/api/reader_appearance_assets_p2_contract_test.go`,
 `backend/api/bookinfo_asset_contract_test.go`,
@@ -351,8 +351,9 @@ Evidence: `backend/services/backup/portable_test.go`, `backend/api/portable_back
 
 Evidence: `backend/services/backup/portable_assets_test.go`,
 `backend/api/portable_appearance_assets_p2b_contract_test.go`, full Go/frontend/build gates, and
-the three-viewport real Go + Chromium portable asset smoke. Docker new/old volume execution is
-still required before publishing the release image.
+the three-viewport real Go + Chromium portable asset smoke. Fresh and historical Docker volume
+execution passed, and local amd64/arm64 tags `54a528f`/`latest` were published at OCI index
+`sha256:047f9636a78604a1d5320da2972d0b16256b95d47253320b79095eaf6101a571`.
 
 ## P2 replace-rule review
 
