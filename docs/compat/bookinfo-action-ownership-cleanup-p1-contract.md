@@ -2,7 +2,7 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：**2026-07-27 已完成只读审计，尚未开始本批应用代码改动。**
+状态：**2026-07-27 已完成只读审计、失败测试、遗留删除、全量自动化与三视口真实浏览器验证。**
 
 本合同只清理共享 BookInfo 收敛后遗留的不可达动作 builder，不重开已经完成的 BookInfo
 加书、分组、封面、编辑、追更、本地刷新、缓存或旧链接行为。
@@ -45,3 +45,14 @@
 
 本切片只删除不可达代码，不产生用户可验证的运行时差异。通过门禁后立即同步 GitHub，但不应
 单独发布 Docker；应与下一项可见修复合并成验收镜像。
+
+## 实施与验证记录
+
+- 新增的所有权测试在删除前按预期仅因 `bookInfoOverlayActions.js` 仍存在而失败；五个入口
+  的唯一 OverlayBookInfo 断言当时已经通过。
+- 零引用 `bookInfoOverlayActions.js` 已删除，Home/Search/Discover/Reader/AppLayout 没有
+  应用改动；搜索/探索加书仍由 `OverlayBookInfo` 的唯一事务处理。
+- 前端 **573/573**、Vite 生产构建和后端 `go test ./...` 通过。
+- `index-workspace-contract.mjs` 在 1440×900、390×844、360×800 通过 legacy redirects、
+  sidebar search、canonical BookInfo 和 Explore cover→BookInfo 检查。
+- 本批未修改 API、路由、Pinia、SQLite、持久化目录或用户可见 UI，不单独发布 Docker。
