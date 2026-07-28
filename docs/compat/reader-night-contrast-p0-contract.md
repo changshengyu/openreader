@@ -3,7 +3,7 @@
 状态：2026-07-28 第一、二轮已经发布，但用户实机复验继续证明“外层黑色”不能代表实际
 文字承载层黑色。第三轮已完成固定上游复审、失败测试、普通正文后代重置、EPUB bridge
 作者样式接管/恢复、Go 与前端全量回归、production build，以及 1440×900、390×844、
-360×800 的 TXT/EPUB 真实渲染验证。第三轮 Git/Docker 发布门待完成。
+360×800 的 TXT/EPUB 真实渲染验证。应用提交与本地多架构 Docker 已发布，等待用户设备复验。
 
 固定上游：
 
@@ -213,3 +213,26 @@ EPUB 只向 iframe 的 `body` 和 `p` 注入字体/颜色，并不会清除 EPUB
   `main/div/span/table/td` fixture；1440×900、390×844、360×800 均证明夜间
   `html/body` 为纯黑、所有实际文字后代透明叠黑并为纯白，切回日间后作者白底、渐变与
   `#111` 文字原样恢复。
+
+### 第三轮发布记录
+
+- 夜间实际文字承载层实现提交为 `4d40487`。Docker 发布门在真实容器的首次登录并发请求中
+  额外发现 `GET /api/explore/sources` / `GET /api/sources` 的 SQLite 读事务升级可能立即
+  返回 `database is locked`。随后以确定性失败测试锁定“同命名空间并发”和“无关写事务占锁”
+  两种场景，`f9723ad` 跨 Service 串行化首次初始化，`9a13d8e` 仅对 SQLite
+  `BUSY/LOCKED` 增加有限重试。路由、成功响应、数据库结构和持久数据均未改变。
+- 最终提交 `9a13d8e8edf3059042fc9ad2bc19e017e926401b` 已推送 `main`；本地构建并发布
+  `ghcr.io/changshengyu/openreader:9a13d8e` 与 `:latest`。两者共同指向多架构 OCI 索引
+  `sha256:777bcb96fa59d718b413b22756b3b30696b891bed7826930af168ce15d0e6bed`，
+  包含 `linux/amd64` 与 `linux/arm64`。
+- 最终容器验证：
+  - EPUB 真实 API 在 1440×900、390×844、360×800 通过嵌套作者背景接管与日间恢复；
+  - 普通正文在桌面、两种手机、iPad 自适应和强制手机模式通过黑底白字、面板与工具层合同；
+  - 首次登录并发启动请求零 `500`；
+  - 新卷通过 portable v1/v2 assets、跨用户、重启和备份恢复；
+  - 历史卷通过 TXT、EPUB、UMD、CBZ、相对缓存和 owner isolation。
+- 允许差异：固定上游内置夜间仍为暗纹理和灰字；本批按用户明确要求将 OpenReader 的
+  **内置**夜间固定为纯黑/纯白。`custom` 夜间继续保留用户颜色、图片和 `4.5:1` 可读性保护，
+  不被强制改写。
+- 未完成：本批状态为 **Docker-published / awaiting device verification**；全量 Reader
+  与其余 P2 重构仍按总审查计划继续，本合同只关闭“内置夜间实际文字层”这一 P0 切片。

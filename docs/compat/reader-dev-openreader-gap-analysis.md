@@ -2821,6 +2821,22 @@ portable v1/v2 assets、跨用户、重启和备份恢复，历史卷 smoke 通�
 索引 `sha256:c0480023418b94d06f55baa8e25e3976f7aa4e9b86b8ba4854ca136d99be1b3e`。
 本批状态为 **Docker-published / awaiting device verification**。
 
+第三轮针对“外层已经黑、实际文字层仍有浅色面”的实机反馈重新取证。固定上游和第二轮实现
+都没有清除 EPUB `main/div/section/span/table` 等作者内容层的背景、渐变和文字颜色，普通
+HTML 的 `mark/span` 后代也缺少内置夜间强制合同。实现提交 `4d40487` 增加明确
+`built-in-night` 状态：内置夜间最终文字固定为 `#ffffff`；普通正文后代透明叠加纯黑页面；
+EPUB bridge 保存作者 inline value/priority，以 `important` 可逆接管现存和新增后代的前景、
+背景图与阴影，退出夜间后原样恢复。custom 夜间继续尊重用户颜色、背景和 WCAG 保护。
+
+Docker 发布门另外复现首次登录时 `GET /api/explore/sources` 与设置保存并发导致的 SQLite
+读事务升级 `database is locked`。`f9723ad` 串行化跨 Service 首次初始化，`9a13d8e`
+仅对 SQLite `BUSY/LOCKED` 做有限重试；两个确定性测试分别覆盖同命名空间并发和无关写事务
+占锁，不改变路由、响应或数据库结构。最终 Go 全量、frontend `640/640`、production build、
+普通正文桌面/手机/iPad、EPUB 1440×900/390×844/360×800、新卷及历史卷门禁全部通过。
+`9a13d8e`/`latest` 已由本机发布 amd64/arm64 OCI 索引
+`sha256:777bcb96fa59d718b413b22756b3b30696b891bed7826930af168ce15d0e6bed`。
+本批状态为 **Docker-published / awaiting device verification**；其余 Reader/P2 审查继续。
+
 ## 2026-07-27 Index 工作台认证会话隔离复审
 
 Reader 隔离完成后继续审查同一 authenticated shell，确认 `indexWorkspace` 没有账号 scope、
