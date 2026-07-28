@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -101,6 +102,7 @@ func (s *Server) register(c *gin.Context) {
 			CanEditSources:  true,
 			CanAccessStore:  true,
 			CanAccessWebDAV: boolValue(true),
+			LastActiveAt:    time.Now().UTC(),
 		}
 		return tx.Create(&user).Error
 	})
@@ -139,6 +141,14 @@ func (s *Server) login(c *gin.Context) {
 		return
 	}
 
+	loginAt := time.Now().UTC()
+	if err := s.db.Model(&models.User{}).
+		Where("id = ?", user.ID).
+		UpdateColumn("last_active_at", loginAt).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record login"})
+		return
+	}
+	user.LastActiveAt = loginAt
 	s.respondWithToken(c, user)
 }
 
@@ -159,5 +169,14 @@ func (s *Server) respondWithToken(c *gin.Context, user models.User) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"user": struct {
+			models.User
+			LastLoginAt time.Time `json:"lastLoginAt"`
+		}{
+			User:        user,
+			LastLoginAt: user.LastActiveAt,
+		},
+	})
 }

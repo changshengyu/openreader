@@ -32,6 +32,7 @@ async function installApiMocks(page, role, profilePermissions = {}) {
       canAccessStore: true,
       bookCount: 3,
       sourceCount: 5,
+      lastLoginAt: '2026-07-12T05:00:00Z',
       lastActiveAt: '2026-07-12T05:00:00Z',
       createdAt: '2026-07-01T05:00:00Z',
     },
@@ -44,6 +45,7 @@ async function installApiMocks(page, role, profilePermissions = {}) {
       canAccessStore: false,
       bookCount: 1,
       sourceCount: 5,
+      lastLoginAt: '',
       lastActiveAt: '',
       createdAt: '2026-07-02T05:00:00Z',
     },
@@ -79,6 +81,7 @@ async function installApiMocks(page, role, profilePermissions = {}) {
           canAccessStore: payload.canAccessStore ?? true,
           bookCount: 0,
           sourceCount: 5,
+          lastLoginAt: '2026-07-12T05:01:00Z',
           lastActiveAt: '2026-07-12T05:01:00Z',
           createdAt: '2026-07-12T05:01:00Z',
         }
@@ -125,7 +128,7 @@ async function assertAdminViewport(browser, viewport) {
   const root = targetUrl.replace(/\/$/, '')
   const dialog = await openAdminManager(page, root)
 
-  const userRows = dialog.locator(viewport.width <= 750 ? '.mobile-user-card' : '.el-table__body-wrapper tbody tr')
+  const userRows = dialog.locator('.el-table__body-wrapper tbody tr')
   const rootRow = userRows.filter({ hasText: 'root-admin' }).first()
   const memberRow = userRows.filter({ hasText: 'ordinary-user' }).first()
   assert(await rootRow.locator('.el-switch').count() === 0, `${viewport.width}: protected admin must not expose permission switches`)
@@ -133,14 +136,11 @@ async function assertAdminViewport(browser, viewport) {
   assert(await rootRow.getByText('受保护账号', { exact: true }).count() >= 1, `${viewport.width}: protected admin label missing`)
   assert(await memberRow.locator('.el-switch').count() === 3, `${viewport.width}: ordinary row must retain independent source, WebDAV, and LocalStore switches`)
   assert(await memberRow.getByRole('button', { name: '重置密码', exact: true }).count() === 1, `${viewport.width}: ordinary row must retain password reset`)
-  if (viewport.width > 750) {
-    assert(await dialog.getByText('最近活跃', { exact: true }).count() === 1, `${viewport.width}: activity column missing`)
-    assert(await dialog.getByText('注册时间', { exact: true }).count() === 1, `${viewport.width}: registration column missing`)
-  } else {
-    assert((await memberRow.innerText()).includes('最近活跃：'), `${viewport.width}: mobile activity metadata missing`)
-    assert((await memberRow.innerText()).includes('注册：'), `${viewport.width}: mobile registration metadata missing`)
-  }
-  assert((await memberRow.innerText()).includes('未登录'), `${viewport.width}: missing activity must use the deterministic empty label`)
+  assert(await dialog.getByText('上次登录', { exact: true }).count() === 1, `${viewport.width}: last-login column missing`)
+  assert(await dialog.getByText('注册时间', { exact: true }).count() === 1, `${viewport.width}: registration column missing`)
+  assert(await dialog.getByText('WebDAV', { exact: true }).count() >= 1, `${viewport.width}: independent WebDAV column missing`)
+  assert(await dialog.getByText('书仓', { exact: true }).count() >= 1, `${viewport.width}: independent LocalStore column missing`)
+  assert(await dialog.locator('.mobile-user-card').count() === 0, `${viewport.width}: separate mobile card flow must be removed`)
 
   const geometry = await dialog.evaluate(node => {
     const rect = node.getBoundingClientRect()
@@ -148,9 +148,17 @@ async function assertAdminViewport(browser, viewport) {
   })
   if (viewport.width <= 750) {
     assert(geometry.left === 0 && geometry.top === 0 && geometry.width === viewport.width && geometry.height === viewport.height, `${viewport.width}: admin manager must be fullscreen on mobile`)
+    assert(await dialog.locator('th.el-table-fixed-column--left').count() >= 2, `${viewport.width}: selection and username columns must remain fixed while the table scrolls`)
   } else {
     assert(Math.abs(geometry.left - (viewport.width - geometry.width) / 2) <= 1, 'desktop: admin manager must remain centered')
   }
+  const closeButton = await dialog.locator('.el-dialog__headerbtn').boundingBox()
+  assert(
+    closeButton &&
+      closeButton.y >= 0 &&
+      closeButton.y + closeButton.height <= viewport.height,
+    `${viewport.width}: dialog close button must remain inside the viewport`,
+  )
 
   await dialog.getByRole('button', { name: '新增', exact: true }).click()
   const createDialog = page.locator('.el-dialog').filter({ has: page.getByText('新增用户', { exact: true }) }).last()
@@ -159,11 +167,10 @@ async function assertAdminViewport(browser, viewport) {
   const inputs = createDialog.locator('input')
   await inputs.nth(0).fill('browsermember')
   await inputs.nth(1).fill('secret123')
-  await createDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await createDialog.getByRole('button', { name: '确定', exact: true }).click()
   await createDialog.waitFor({ state: 'hidden', timeout: 10000 })
   await userRows.filter({ hasText: 'browsermember' }).first().waitFor({ state: 'visible', timeout: 10000 })
   const createdRow = userRows.filter({ hasText: 'browsermember' }).first()
-  assert((await createdRow.innerText()).includes('user'), `${viewport.width}: manager-created account must be an ordinary user`)
   assert(await createdRow.locator('.el-switch').count() === 3, `${viewport.width}: manager-created user must retain the independent WebDAV switch`)
 
   await closeDialog(page, '.global-user-dialog', 'user-manage')
@@ -213,7 +220,12 @@ async function main() {
   const browser = await openSmokeBrowser()
   try {
     const checks = []
-    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 800 }]) {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1024, height: 1366 },
+      { width: 390, height: 844 },
+      { width: 360, height: 800 },
+    ]) {
       await assertAdminViewport(browser, viewport)
       await assertNonAdminViewport(
         browser,

@@ -98,19 +98,35 @@ test('keeps ReplaceRule and UserManage manager roots in upstream-style dialogs',
   assert.match(hostSource, /<OverlayUserManagement\s+:is-mobile="isMobileOverlay"/, 'UserManage must receive compact-interface state without drawer dimensions')
 })
 
-test('keeps UserManage protected rows and metadata aligned with the upstream manager contract', () => {
+test('keeps UserManage protected rows and the upstream single-table interaction contract', () => {
   assert.doesNotMatch(userOverlaySource, /<el-select v-model="userDraft\.role"/, 'manager-created users must not expose an administrator role selector')
-  assert.match(userOverlaySource, /prop="lastActiveAt" label="最近活跃"/, 'manager must display upstream-equivalent activity metadata')
+  assert.match(userOverlaySource, /prop="lastLoginAt" label="上次登录"/, 'manager must display the persisted upstream last-login field')
+  assert.doesNotMatch(userOverlaySource, /最近活跃|mobile-user-card|mobile-user-list/, 'manager must not keep the incorrect activity label or a separate mobile card flow')
   assert.match(userOverlaySource, /prop="createdAt" label="注册时间"/, 'manager must display upstream-equivalent registration metadata')
+  assert.match(userOverlaySource, /type="selection"[^>]*:fixed="isMobile"/, 'mobile manager must keep the selection column fixed')
+  assert.match(userOverlaySource, /prop="username"[^>]*:fixed="isMobile"/, 'mobile manager must keep the username column fixed')
+  assert.match(userOverlaySource, /prop="canAccessWebdav" label="WebDAV"/, 'WebDAV must remain an independent upstream column')
+  assert.match(userOverlaySource, /prop="canAccessStore" label="书仓"/, 'LocalStore must remain an independent upstream column')
   assert.match(userOverlaySource, /isUserMutable\(row\)/, 'protected rows must gate mutable permission and password controls')
   assert.match(userOverlaySource, /formatUserTime\(/, 'manager must use one deterministic time/empty-state formatter')
   assert.match(userOverlaySource, /canAccessWebdav/, 'manager must expose the upstream WebDAV permission separately from LocalStore')
-  assert.match(userOverlaySource, /active-text="WebDAV"/, 'the WebDAV control must remain visible in desktop, mobile, and create-user flows')
+  assert.match(userOverlaySource, /active-text="WebDAV"/, 'the WebDAV control must remain visible in the table and create-user flow')
   assert.doesNotMatch(userOverlaySource, /清理不活跃用户/, 'the non-upstream destructive cleanup entry must not be exposed in the manager UI')
   assert.match(userOverlaySource, /@click="setDefaultSources\(row\)"/, 'every real user row must restore the upstream set-as-default-source action')
   assert.match(userOverlaySource, /@click="resetSelectedSources"/, 'the manager footer must restore the upstream selected-user source reset action')
-  assert.match(userOverlaySource, /prop="sourceCount" label="书源"/, 'the additive per-user count must not be labelled as global')
-  assert.doesNotMatch(userOverlaySource, /全局书源/, 'the manager must not claim that private source counts are global')
+  assert.match(userOverlaySource, /@click="closeUserManager"/, 'the upstream footer cancel action must remain explicit')
+  assert.doesNotMatch(userOverlaySource, /:icon="Refresh"|>刷新<|用户空间|管理员可调整/, 'the table must start below the dialog title without a duplicate header or refresh action')
+  const batchDeleteIndex = userOverlaySource.indexOf('@click="deleteSelectedUsers"')
+  const resetSourcesIndex = userOverlaySource.indexOf('@click="resetSelectedSources"')
+  const selectedCountIndex = userOverlaySource.indexOf('已选择 {{ selectedUserIds.length }} 个')
+  const cancelIndex = userOverlaySource.indexOf('@click="closeUserManager"')
+  assert.ok(
+    batchDeleteIndex >= 0 &&
+      batchDeleteIndex < resetSourcesIndex &&
+      resetSourcesIndex < selectedCountIndex &&
+      selectedCountIndex < cancelIndex,
+    'footer actions must follow upstream batch-delete, source-reset, selection-count, cancel order',
+  )
   assert.match(sourceManagerSource, /v-if="isAdmin"[\s\S]*?@click="setCurrentAsDefault"/, 'the compatibility default-save entry must be visible only to administrators')
   assert.doesNotMatch(sourceManagerSource, /v-if="isAdmin"[^>]*:disabled="!sources\.length"/, 'an administrator must be able to save an explicit empty default snapshot')
 })

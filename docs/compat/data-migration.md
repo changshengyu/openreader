@@ -703,3 +703,21 @@ Docker release. See `bookshelf-last-check-time-p1-contract.md`.
 Required release evidence: scoped cache/progress unit contracts, real
 two-client WebSocket deletion at desktop and both mobile viewports, full
 frontend/backend/build gates, and the unchanged mounted-volume/backup smoke.
+
+## P2 UserManage last-login compatibility (2026-07-28)
+
+- No table, column, index, file, mounted directory or backup member is added or rewritten.
+  The deployed `users.last_active_at` column is retained as the compatible storage location;
+  successful login now gives that value its reader-dev `lastLoginAt` meaning.
+- Existing non-zero values remain readable and are not backfilled. A zero value remains a valid
+  legacy state and renders blank until the account successfully logs in.
+- `lastLoginAt` is the canonical new API field. `lastActiveAt` remains an equal response alias so
+  old clients do not break; no persisted JSON or SQLite field is renamed.
+- Failed credentials do not change the value. Successful registration initializes it like
+  reader-dev's `User` default, and later successful logins advance it.
+- User deletion, inactive-cleanup compatibility, backup/restore, WebDAV roots and every
+  `data/`, `cache/`, and `library/` path remain unchanged.
+
+Required release evidence: focused login/list API contract, full Go and frontend tests, production
+build, one-table UserManage browser smoke at 1440×900, 1024×1366, 390×844 and 360×800, followed by
+the unchanged Docker volume/backup compatibility gate.

@@ -56,6 +56,7 @@ func (s *Server) listUsers(c *gin.Context) {
 		CanAccessWebDAV bool      `json:"canAccessWebdav"`
 		BookCount       int64     `json:"bookCount"`
 		SourceCount     int64     `json:"sourceCount"`
+		LastLoginAt     time.Time `json:"lastLoginAt"`
 		LastActiveAt    time.Time `json:"lastActiveAt"`
 		CreatedAt       time.Time `json:"createdAt"`
 	}
@@ -85,6 +86,7 @@ func (s *Server) listUsers(c *gin.Context) {
 			CanAccessWebDAV: effectiveWebDAVAccess(u),
 			BookCount:       bookCount,
 			SourceCount:     sourceCounts[u.ID],
+			LastLoginAt:     u.LastActiveAt,
 			LastActiveAt:    u.LastActiveAt,
 			CreatedAt:       u.CreatedAt,
 		})

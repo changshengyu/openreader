@@ -52,7 +52,7 @@
 | `POST /api/admin/cleanup-inactive`（兼容扩展） | 仅在保留时，先找出符合条件的普通用户，再完全复用批量删除计划。 | 不在上游 UI 暴露；必须具备明确确认、审计级测试和同样的数据/文件边界。 |
 | `POST /api/admin/users/:id/sources/default` | 把目标用户已经初始化的活动书源（包括显式空列表）复制为默认模板，返回 `{count}`。 | 管理员专用；目标不存在 `404`，namespace 未初始化 `409`；不懒初始化目标，也不回退调用者书源。 |
 | `POST /api/admin/users/sources/reset` | 先校验全部去重目标和默认模板，再在一个事务内调和；提交后发目标 `sources_update` 和管理员 `users_update`。 | 管理员专用；空选择 `400`，目标/默认缺失 `404`；任一校验或写入失败时整批不变。 |
-| `POST /api/login` | 凭证成功后更新用户的兼容 `last_active_at` 存储值，响应 user 同时提供 `lastLoginAt` 和弃用中的 `lastActiveAt`。 | 错误凭证不得更新时间；更新时间失败返回 `500`，不得为未记录的登录签发 token。 |
+| `POST /api/auth/login` | 凭证成功后更新用户的兼容 `last_active_at` 存储值，响应 user 同时提供 `lastLoginAt` 和弃用中的 `lastActiveAt`。 | 错误凭证不得更新时间；更新时间失败返回 `500`，不得为未记录的登录签发 token。 |
 | `GET /api/admin/users` | 从兼容持久字段返回 `lastLoginAt`，并保留 `lastActiveAt` 旧响应别名。 | 管理员专用；零值在 UI 显示空白。 |
 
 ### 加法迁移与存储边界

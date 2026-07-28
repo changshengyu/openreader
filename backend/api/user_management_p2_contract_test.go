@@ -99,6 +99,104 @@ func TestUserManagementMatchesReaderDevNewAccountContractWithoutBreakingLegacyLo
 	}
 }
 
+func TestLoginPersistsAndReturnsReaderDevLastLoginAt(t *testing.T) {
+	router, server := setupTestServer(t)
+	adminAuth := authHeader(t, router)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("password8"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)
+	user := models.User{
+		Username:       "loginuser",
+		PasswordHash:   string(hash),
+		Role:           "user",
+		CanEditSources: true,
+		CanAccessStore: true,
+		LastActiveAt:   previous,
+	}
+	if err := server.db.Create(&user).Error; err != nil {
+		t.Fatalf("create login user: %v", err)
+	}
+
+	failed := adminContractRequest(
+		router,
+		http.MethodPost,
+		"/api/auth/login",
+		`{"username":"loginuser","password":"wrong-password"}`,
+		"",
+	)
+	if failed.Code != http.StatusUnauthorized {
+		t.Fatalf("failed login: status=%d, want 401: %s", failed.Code, failed.Body.String())
+	}
+	var unchanged models.User
+	if err := server.db.First(&unchanged, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !unchanged.LastActiveAt.Equal(previous) {
+		t.Fatalf("failed login changed persisted login time: got %s want %s", unchanged.LastActiveAt, previous)
+	}
+
+	success := adminContractRequest(
+		router,
+		http.MethodPost,
+		"/api/auth/login",
+		`{"username":"loginuser","password":"password8"}`,
+		"",
+	)
+	if success.Code != http.StatusOK {
+		t.Fatalf("successful login: status=%d: %s", success.Code, success.Body.String())
+	}
+	var loginPayload struct {
+		User struct {
+			LastLoginAt  time.Time `json:"lastLoginAt"`
+			LastActiveAt time.Time `json:"lastActiveAt"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(success.Body.Bytes(), &loginPayload); err != nil {
+		t.Fatalf("decode login payload: %v", err)
+	}
+	if !loginPayload.User.LastLoginAt.After(previous) {
+		t.Fatalf("login response did not advance lastLoginAt: %+v", loginPayload.User)
+	}
+	if !loginPayload.User.LastActiveAt.Equal(loginPayload.User.LastLoginAt) {
+		t.Fatalf("legacy lastActiveAt alias diverged: %+v", loginPayload.User)
+	}
+
+	var stored models.User
+	if err := server.db.First(&stored, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.LastActiveAt.Equal(loginPayload.User.LastLoginAt) {
+		t.Fatalf("persisted login time diverged from response: stored=%s response=%s", stored.LastActiveAt, loginPayload.User.LastLoginAt)
+	}
+
+	listed := adminContractRequest(router, http.MethodGet, "/api/admin/users", "", adminAuth)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list users: status=%d: %s", listed.Code, listed.Body.String())
+	}
+	var users []struct {
+		ID           uint      `json:"id"`
+		LastLoginAt  time.Time `json:"lastLoginAt"`
+		LastActiveAt time.Time `json:"lastActiveAt"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &users); err != nil {
+		t.Fatalf("decode user list: %v", err)
+	}
+	for _, listedUser := range users {
+		if listedUser.ID != user.ID {
+			continue
+		}
+		if !listedUser.LastLoginAt.Equal(stored.LastActiveAt) ||
+			!listedUser.LastActiveAt.Equal(stored.LastActiveAt) {
+			t.Fatalf("admin list login aliases diverged: %+v stored=%s", listedUser, stored.LastActiveAt)
+		}
+		return
+	}
+	t.Fatalf("login user %d missing from administrator list", user.ID)
+}
+
 func TestUserDeletionRemovesEveryPrivateRowAndWorkspaceWithoutTouchingOtherUsers(t *testing.T) {
 	router, server := setupTestServer(t)
 	adminAuth := authHeader(t, router)
