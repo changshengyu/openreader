@@ -151,3 +151,42 @@
 - 新卷 smoke 通过 portable v1/v2 assets、跨用户、重启和备份恢复；历史卷 smoke 通过
   TXT、EPUB、UMD、CBZ、相对缓存与 owner isolation。该批状态为
   **Docker-published / awaiting device verification**。
+
+## 第三轮实机反馈：实际文字承载层仍可覆盖黑底（2026-07-28）
+
+用户在 `a90d10b` 及其后续镜像实机复验确认：内置夜间仍没有稳定呈现为“纯黑正文背景 +
+纯白正文”，其观察是 Reader 外层已经变黑，但实际承载文字的内容层仍保留其它背景。
+
+本轮固定上游复审仍以
+`reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 的 `Content.vue`、
+`Reader.vue`、`config.js` 和 `vuex.js` 为准。上游只把主题内容面应用到 Reader 章节容器，
+EPUB 只向 iframe 的 `body` 和 `p` 注入字体/颜色，并不会清除 EPUB 作者样式中的内层
+`div/section/main/span/table` 背景。OpenReader 第二轮虽然进一步把 iframe 外壳及
+`html/body` 设为黑色，但真实 EPUB 的内层作者背景仍可盖在该黑底之上。因为“纯黑底白字”
+是用户明确要求，这一行为登记为相对上游的 `intentional-redesign`，不能继续照搬上游缺口。
+
+### 第三轮审查矩阵
+
+| 层级 | 当前实现 | 裁决 |
+|---|---|---|
+| 内置夜间文字 | `resolveReaderTextColor()` 仍会保留任何达到 `4.5:1` 的旧 `fontColor`，例如灰白色；这满足第一轮 WCAG 合同，却不满足用户要求的纯白。 | `must-fix`：`dark/black` 内置夜间直接使用 `#ffffff`，不得被旧方案字体色覆盖。自定义夜间继续保留用户颜色与对比度保护。 |
+| TXT/在线正文 | 正文 HTML 已通过 `readerContent.js` 白名单清除属性，普通文本承载层通常透明；但没有显式的内置夜间内容后代合同。 | `must-fix`：内置夜间的章节、段落及白名单内联后代都必须继承白字、透明背景，不得重新建立浅色文字面。 |
+| EPUB 根层 | iframe、`html/body` 已显式使用 Reader 页面黑底。 | 保留，但真实验收不能只读这三层。 |
+| EPUB 作者内容层 | 注入 CSS 只强制常见文字块的 `color`，未清除 `main/section/div/span/table/pre/code` 等节点的 `background/background-image`。作者 CSS 或内联样式可在黑色 `body` 上重新绘制浅色块。 | `must-fix`：只在内置夜间注入后代透明背景重置和白色前景；图片本身继续显示，custom/day 主题不得被该重置污染。 |
+| 测试证据 | 第二轮浏览器 fixture 的 EPUB 只有简单标题与段落，因此即使内层重置缺失也会通过。 | `must-fix`：fixture 必须包含带浅色 `main/div/span/table` 作者背景与深色作者文字的 EPUB，再读取这些实际节点的 computed style。 |
+
+### 第三轮测试先行门
+
+1. 纯函数/静态契约先证明当前实现会保留“可读但非白色”的内置夜间字体，并且 EPUB 注入
+   尚未清除内层作者背景；测试必须先失败。
+2. Reader 根增加明确的 `built-in-night` 语义状态；只有 `themeType === "night"` 且
+   `theme !== "custom"` 时生效。
+3. 内置夜间的最终正文色固定为 `#ffffff`，正文面固定为 `#000000`；custom 夜间仍使用
+   用户颜色、背景图和 `4.5:1` 渲染保护。
+4. EPUB 注入在内置夜间必须让 `body` 后代的文字继承白色，并把作者
+   `background/background-color/background-image` 重置为透明/无；`html/body` 自身保持
+   黑色。普通正文的白名单内联后代必须遵守同一语义。
+5. 真实浏览器在 390×844、360×800 和 1440×900 分别检查：
+   `.reader-shell`、`.reader-page`、普通段落/内联节点、EPUB iframe、
+   EPUB `html/body/main/div/span/table`；内置夜间要求实际文字面为透明叠加纯黑根面、
+   最终文字 `rgb(255,255,255)`。日间与 custom 回归不得被强制黑白。
