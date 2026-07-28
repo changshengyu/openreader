@@ -438,3 +438,35 @@ P2-S4 测试顺序：
 - 补门同时捕获并修复了登录根渲染竞态：登录路由现在保持挂载直到成功回调完成路由与账号
   settle，B 注销后登录 A 会直接收敛到 `/`，不再卡在 `/login` 或“正在恢复当前账号…”。
   Docker 新旧卷、重启和多架构发布仍是最后门禁。
+
+### P2-S4 Docker 发布门二次复审（2026-07-28）
+
+本轮只复审发布证据，不修改应用代码。固定上游没有 OpenReader Docker，因此产品合同仍以
+同一用户 namespace 的 `bookSource.json` 备份/恢复语义为准；Docker 门负责证明当前
+SQLite/目录适配在真实升级卷中没有改变该语义。
+
+| 证据层 | 当前实际覆盖 | 缺口与裁决 |
+|---|---|---|
+| 通用新卷 smoke | 第一位注册用户、portable v1/v2 外观资产、跨用户本地书、重启与备份恢复。 | 没有通过 `/api/sources` 创建任何书源；ZIP 中的 `bookSource.json` 为空或缺席都无法区分。**不能证明**管理员旧 WebDAV 根只导出自己的书源，也不能证明普通用户私有根。 |
+| 通用历史卷 fixture | `create-old-volume-fixture` 先运行当前 `AutoMigrate`，此时 `book-source-ownership-v1` marker 已写入；之后才创建两个用户。fixture 只有本地书，`Book.SourceID=0`，没有 `BookSource`、`SourceFailure` 或旧全局书源引用。 | 这不是旧全局书源数据库。容器启动时不会执行所需的旧源 ownership 数据迁移。既有 `HISTORICAL_VOLUME=1` 只证明本地书归档、相对缓存和用户书架隔离，**不能关闭 P2-S1/P2-S4 升级门**。 |
+| 通用历史卷备份 | 普通历史用户的 logical/portable 文件写入私有根，并可恢复到新账号；另一用户本地书不泄漏。 | 没有源行可泄漏，不能证明 active/detached 过滤、COW、源绑定或 `bookSource.json` owner scope。 |
+| 已发布 `a90d10b` | 包含 P2-S1…S4 实现，且通用新卷/历史卷 smoke 已通过。 | 镜像可继续作为专项验证对象，但“书源 ownership Docker 门完成”仍是未经证明的声明。必须增加专项 fixture/assertion 后重建同源码候选；不能用已经发布本身倒推门禁通过。 |
+
+专项测试合同：
+
+1. 历史 fixture 必须在关闭数据库前放入至少两个旧全局 `BookSource`，让两个既有用户的
+   远程书和失败记录保留旧 `source_id`；随后移除 ownership 关联表、namespace 表和迁移
+   marker，使镜像首次启动真实执行 `book-source-ownership-v1`。本地书夹具与旧列删除继续
+   保留，不能把旧卷缩窄成只服务本模块的假数据库。
+2. 首次启动后，两个历史账号和默认 namespace 都应得到旧全局源的 active association，
+   原书籍/失败记录 ID 不改。A 编辑共享源必须触发 COW：A 的列表、远程书和失败记录切到
+   新快照，B 与默认模板仍保留原快照。
+3. A、B 的 logical 与 portable ZIP 分别只包含各自 active sources；detached 不导出。
+   A 恢复自己的 ZIP 后恢复 A 的源状态，B 的列表、书籍和 source ID 不变。
+4. 新卷同时创建管理员和普通用户的不同书源。管理员备份继续写 `data/webdav/` 旧根，
+   普通用户备份写 `data/webdav/users/<safe-name>/`；两类 logical/portable ZIP 都只能
+   包含调用者书源，恢复后不得交叉修改。
+5. 停止并重启同一容器卷后重复核对源列表、COW 结果、书籍绑定、迁移 marker 和备份根；
+   再检查用户 0、A、B 的 association/namespace，不能仅靠 API 返回“没看到泄漏”。
+6. 专项脚本必须可独立运行并清理临时容器/卷，失败时保留明确阶段错误。通过后再运行完整
+   Go、frontend、build、通用新旧卷门；最后才把矩阵改为 Docker-published。
