@@ -2,8 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-28 已完成固定上游取证、P1-A/P1-B 实施、自动门禁和真实浏览器
-`6 场景 × 3 视口` 最终签收；本合同运行时可进入 Docker 发布闸门。
+状态：2026-07-28 已完成固定上游取证、P1-A/P1-B 实施、自动门禁、真实浏览器
+`6 场景 × 3 视口` 最终签收和本地 Docker 发布。
 
 本合同承接：
 
@@ -220,4 +220,9 @@ scope + bearer token identity + component/session generation + operation key rev
   `staleToasts=0 staleEvents=0 staleReloads=0 manualReopen=current-account`。
 - 当前自动门：frontend `645/645`、Vite production build、Go `go test ./...` 与
   `git diff --check` 全部通过。本合同由 **candidate** 转为
-  **implemented / browser-validated / Docker-eligible**。
+  **implemented / browser-validated / Docker-published**。
+- 本地候选 `ghcr.io/changshengyu/openreader:342d736` 通过 portable v1、portable v2
+  assets、cross-user、restart，以及历史 TXT/EPUB/UMD/CBZ、relative-cache 和
+  owner-isolation 两套挂载卷门禁。随后从本机发布 `342d736` 与 `latest`；二者共同指向
+  amd64/arm64 OCI index
+  `sha256:1643625269f5a04f867c56da9e3bee04c1318d807e73ca6fc0913ab408645921`。

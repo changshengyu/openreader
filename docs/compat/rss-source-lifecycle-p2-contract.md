@@ -1,9 +1,9 @@
 # RSS source lifecycle P2 compatibility contract
 
-Status: audited and implemented on 2026-07-27; reopened, fixed and
-regression-validated on 2026-07-28 for the manual-create editor transition
-described below. This contract was extracted before changing the corresponding
-RSS application behavior.
+Status: audited and implemented on 2026-07-27; reopened, fixed,
+regression-validated and Docker-published on 2026-07-28 for the manual-create
+editor transition described below. This contract was extracted before changing
+the corresponding RSS application behavior.
 
 Fixed baseline:
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
@@ -148,6 +148,10 @@ Implementation result:
   matrix at `1440x900`, `390x844`, and `360x800`. The delayed account-A write
   emitted no toast, business event or write-after-login reload, and manual
   reopen contained only account-B RSS data.
+- The locally built `342d736` candidate passed ordinary and historical mounted
+  volume/backup gates. `ghcr.io/changshengyu/openreader:342d736` and `latest`
+  were then published locally as amd64/arm64 index
+  `sha256:1643625269f5a04f867c56da9e3bee04c1318d807e73ca6fc0913ab408645921`.
 
 ## Implementation record
 

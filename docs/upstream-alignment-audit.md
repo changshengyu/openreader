@@ -14,7 +14,9 @@
   写后 reload 为零，手动重开只读取当前账号。门禁同时抓到 RSS `新增` 将 `null` 草稿交给字段
   提取而抛错的真实回归；现已按上游 falsy 默认对象状态转换修复，并保留 OpenReader 已记录的
   空标题差异。frontend 645/645、production build、Go 全量和差异检查通过，运行时进入本批
-  Docker 发布闸门。
+  Docker 发布闸门。新旧挂载卷通过后，本机已发布 `342d736` 与 `latest`，共同指向
+  amd64/arm64 OCI index
+  `sha256:1643625269f5a04f867c56da9e3bee04c1318d807e73ca6fc0913ab408645921`。
 - 2026-07-28：关闭 Index 工作台认证会话隔离的最后浏览器门。固定上游的单 Index 现场保留继续
   作为交互基准，但其 `loginAuth/userNS → init(true)` 不清结果不能复制到 JWT 多账号环境。
   当前 401 会同步卸载 authenticated shell、清空结果并只挂起最小 intent；同账号以续签 token
