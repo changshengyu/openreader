@@ -125,9 +125,9 @@ OpenReader 浏览器缓存（例如书架快照和 Reader 书籍数据），但�
 5. 跑 frontend 全量测试、生产构建、backend 全量测试和真实浏览器三视口契约。
 6. 形成可独立验收批次后提交并同步 GitHub；本地构建 Docker，完成 volume/backup 闸门后再发布。
 
-## 8. 实施记录
+## 8. 初次实施记录（历史）
 
-状态：代码与自动化验证完成；真实浏览器检查等待本机无头 Chrome 外部权限。
+状态：代码、自动化验证与三视口真实浏览器检查均已完成。
 
 - `localCacheStats.js` 现在先按调用时捕获的 scope 判定 key 所有权，再读取 value、统计或删除；
   书源/RSS 使用精确 key，Reader/章节/书架使用各自已部署的 scoped 形态，未知和无归属 key
@@ -139,5 +139,18 @@ OpenReader 浏览器缓存（例如书架快照和 Reader 书籍数据），但�
 - Reader、书籍管理和删除收敛只读取、计数或删除 scoped 章节正文；旧无作用域项原样保留在
   浏览器存储中，但任何登录账号都不会自动认领。
 - 聚焦测试先在旧实现上失败，修正后 14 项缓存契约通过；frontend 全量 587 项、生产构建和
-  backend 全量测试已通过。三视口 browser smoke 已编写并通过语法检查，但首次启动无头 Chromium
-  的外部权限申请因审批服务断线被拒，未绕过审批，因此不得把 browser gate 标记为完成。
+  backend 全量测试已通过。当时三视口 browser smoke 只完成语法检查，首次启动无头 Chromium
+  的外部权限申请因审批服务断线被拒，因此未把 browser gate 标记为完成；该缺口已由下一节闭环。
+
+## 9. 2026-07-28 浏览器门禁闭环
+
+- `scripts/smoke/index-cache-scope-contract.mjs` 已在 `1440×900`、`390×844`、`360×800`
+  真实 Chromium 中通过。
+- fixture 同时放入当前账号、其它账号、无归属旧章节和名称子串碰撞 key；统计只包含当前账号，
+  旧版错误全局书源缓存不被读取，新版 owner-v1 key 由当前账号网络响应写入。
+- 清理书源缓存只删除当前账号的 legacy/versioned 书源 key，其它账号、无归属旧章节和未知
+  碰撞 key 均保留；延迟旧统计不能覆盖较新的 generation。
+- 三个视口均无横向溢出，输出为
+  `source-key-v1=true legacy-unread=true current-only=true stale-generation=true scoped-clear=true`。
+- 本批关闭的是此前因浏览器启动权限中断留下的证据缺口；运行时代码已包含在后续
+  `59e11a9` 发布镜像中，因此不为纯测试/文档变更重复发布 Docker。

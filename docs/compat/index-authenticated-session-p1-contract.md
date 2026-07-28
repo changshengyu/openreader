@@ -2,8 +2,9 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-27 已完成固定上游与当前实现取证，并按测试先行完成候选实现。前端
-611/611、生产构建与后端全量测试通过；真实浏览器与 Docker 发布闸门尚未完成。
+状态：已完成固定上游取证、测试先行实现、全量自动回归和三视口真实浏览器闸门。实现已包含在
+本地构建并发布的 `59e11a9` 镜像中；本合同的运行时状态为
+**aligned / Docker-published**。
 
 本合同承接：
 
@@ -175,7 +176,7 @@ scope + bearer token identity + user session generation + workspace session gene
 5. 给 Search、Explore、sidebar source load、route BookInfo、导入和远程阅读交接补齐冻结身份门。
 6. 完成自动回归后再做三视口浏览器；浏览器闸门通过前不发布本切片 Docker。
 
-## 8. 2026-07-27 候选实施记录
+## 8. 2026-07-27 候选实施记录（历史）
 
 - `indexWorkspace` 新增非持久 `sessionGeneration`、一次性挂起 intent 以及
   suspend/resume/discard/reset 动作。清理立即移除结果、分页、loading、滚动位置、搜索/探索
@@ -195,5 +196,26 @@ scope + bearer token identity + user session generation + workspace session gene
   `npm test` 为 611/611，`npm run build`、`go test ./...` 与 `git diff --check` 通过。
 - 本批不改 Go API、JWT 格式、SQLite、`data/`、`cache/`、`library/`、备份或 WebDAV。旧 token
   只存在短生命周期 operation closure，不写 Pinia、URL、storage、日志或错误文本。
-- 三视口真实浏览器仍是未完成门禁；前一批外部浏览器/本地服务申请被环境拒绝后未使用替代路径。
-  因此本候选可以同步 GitHub，但还不能据此发布 Docker 或宣称本合同最终验收完成。
+- 当时候选的三视口真实浏览器门仍未完成；前一批外部浏览器/本地服务申请被环境拒绝后未使用
+  替代路径，因此当时只同步 GitHub，未据此发布 Docker 或宣称合同最终验收完成。该缺口已由
+  下一节闭环。
+
+## 9. 2026-07-28 最终浏览器与发布闭环
+
+- 新增 `scripts/smoke/index-session-isolation-contract.mjs`，使用真实 Vue、Pinia、Router、
+  Axios 拦截顺序和 Element Plus Dialog，而不是直接调用 store 动作。
+- Search 场景先显示 A 的旧结果，再悬挂 A 的新搜索请求；真实模拟拦截器先删除
+  `localStorage` token、记录 rejected token、再派发 `openreader:auth-required`。认证失效后
+  AppLayout、旧结果和私有场景同步卸载；A 的迟到成功响应不能提交结果或 toast。同账号登录
+  只恢复关键词/搜索配置，并使用续签 token 从空结果重新请求。
+- Explore 场景在 A 的入口请求悬挂时触发相同 401，再让旧请求以预期 `500` 结束。旧错误不能
+  弹 toast、打开 BookInfo 或跳转临时 Reader；改用 B 登录后只显示 B 的书架，不重开 chooser，
+  也不自动重放 A 的 Explore intent。
+- `1440×900`、`390×844`、`360×800` 均通过；三个视口同时确认无旧结果、旧 toast、旧 overlay、
+  旧 Reader 导航和水平溢出。最终输出为：
+  `searchSameAccount=true exploreDifferentAccount=true staleResults=0 staleToasts=0 staleOverlays=0`。
+- 当前前端全量为 `643/643`，Vite production build 与 Go `go test ./...` 通过。
+- 运行时代码早于本浏览器脚本写入 `main`，并已包含在本机发布的
+  `ghcr.io/changshengyu/openreader:59e11a9`；该不可变标签和 `latest` 共同指向
+  `sha256:8ce5f345fb376ac13e0b5f80d246a7421c18bb2cf0647039d73298d3255b511b`
+  (`linux/amd64`、`linux/arm64`)。本次只补测试与审计证据，不重复构建同一运行时镜像。

@@ -2877,8 +2877,16 @@ session generation 或 reset：搜索/探索结果、来源 intent、分页、�
 inventory 提交后已按测试先行完成候选实现：工作台拥有非持久 session generation 和最小挂起
 intent；同账号仅恢复 intent 并重取结果，不同/未知账号与显式 logout 回到干净书架；认证路由
 settled 前 Reader/Index 均保持阻塞。Search、Explore、侧栏书源、route BookInfo、本地导入和
-临时阅读交接均有身份/会话提交门。前端 611/611、生产构建与 Go 全量通过；三视口真实浏览器及
-Docker 仍待完成，当前不得标为最终发布。
+临时阅读交接均有身份/会话提交门。该候选当时通过前端 611/611、生产构建与 Go 全量，但三视口
+真实浏览器及 Docker 尚未完成，因此当时没有标为最终发布；后续闭环记录如下。
+
+2026-07-28 已补齐最终真实浏览器门：`index-session-isolation-contract.mjs` 在
+`1440×900`、`390×844`、`360×800` 真实运行 Search/Explore 组件，并按实际 Axios 顺序先删除
+token 再派发认证事件。A 的悬挂 Search success 和 Explore error 在失效后均无法提交；同账号
+只以续签 token 重取 Search，新账号只显示 B 书架且不重开 Explore chooser。无旧结果、toast、
+overlay、临时 Reader 跳转或水平溢出。当前 frontend 643/643、production build 与 Go 全量通过；
+运行时代码已包含在本机发布的 `59e11a9`，本合同状态改为
+**aligned / Docker-published**。
 
 ## 2026-07-23 Reader 设置切换位置连续性复审
 
