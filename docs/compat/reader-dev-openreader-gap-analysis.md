@@ -3041,3 +3041,9 @@ null-safe 草稿归一化，保留已记录的空标题差异以及 `singleUrl=t
 enabled=true/enableJs=true` 等手动新增默认值；同时补充稳定的私有弹层根标识，供重新登录
 生命周期门精确证明旧编辑器已销毁。完成条件是失败单测、RSS pending-write 换号场景和
 Overlay 六场景三视口全门，而不是仅证明点击不再抛错。
+
+实施结果（2026-07-28）：`openEditor()` 已先把 falsy 新源 sentinel 归一化为空对象，再读取
+基础和高级字段；手动新增继续保留 `singleUrl=true/articleStyle=0/enabled=true/enableJs=true`
+默认值，编辑既有源不变。RSS 编辑器新增稳定私有弹层根标识。失败单测转绿后，frontend
+645/645、production build、Go 全量及差异检查通过；Overlay 六场景在 1440×900、390×844、
+360×800 全部通过，RSS 迟到 A 写入没有 toast、事件或 reload，手动重开只显示 B 数据。

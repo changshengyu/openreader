@@ -8,6 +8,13 @@
 
 ## 当前结论
 
+- 2026-07-28：关闭工作台全部账号私有 Overlay 的认证会话隔离浏览器门。BookInfo 加书、
+  书仓导入、WebDAV 恢复、书源/RSS 保存和用户创建均让 A 写请求跨越认证失效，再以同账号续登
+  或 B 账号登录释放旧响应；`1440×900`、`390×844`、`360×800` 全部确认旧 toast、业务事件和
+  写后 reload 为零，手动重开只读取当前账号。门禁同时抓到 RSS `新增` 将 `null` 草稿交给字段
+  提取而抛错的真实回归；现已按上游 falsy 默认对象状态转换修复，并保留 OpenReader 已记录的
+  空标题差异。frontend 645/645、production build、Go 全量和差异检查通过，运行时进入本批
+  Docker 发布闸门。
 - 2026-07-28：关闭 Index 工作台认证会话隔离的最后浏览器门。固定上游的单 Index 现场保留继续
   作为交互基准，但其 `loginAuth/userNS → init(true)` 不清结果不能复制到 JWT 多账号环境。
   当前 401 会同步卸载 authenticated shell、清空结果并只挂起最小 intent；同账号以续签 token
@@ -318,12 +325,11 @@
   前端 626/626、生产构建、Go 全量与差异检查通过；三视口重新认证浏览器门和 Docker 待完成。
   对应合同：
   [workspace-overlay-authenticated-session-p1-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/workspace-overlay-authenticated-session-p1-contract.md)。
-- 2026-07-28：为上述全局弹层会话隔离补充真实 Overlay 浏览器候选门。测试让 BookInfo 加书、
-  书仓导入、WebDAV 恢复、书源/RSS 保存和用户创建的 A 请求跨越认证失效，在同账号续登或 B
-  账号登录完成后才释放，并检查旧 toast、事件、reload、行、导航和 overlay 均不能进入新会话；
-  手动重开必须读取当前账号数据。frontend 643/643、production build、Go 全量、Node 语法和
-  差异检查通过。首次实跑修正了测试夹具在整页导航时覆盖续登 token 的问题；最终三视口复跑
-  仍等待 macOS 沙箱外 Chromium 启动获批，因此未宣称浏览器闭环，也未发布 Docker。
+- 2026-07-28：上述全局弹层会话隔离的最终 Overlay 浏览器门已经签收。测试夹具先修正整页
+  导航覆盖续登 token、错误书源旧入口、响应式重复节点和移动搜索侧栏收起动作；随后真实抓到
+  并修复 RSS 手动新增 `null` 草稿崩溃。最终 BookInfo、StorageImport、WebDAV、Source、RSS、
+  UserManage 六条 pending 写流程在 1440/390/360 三视口全部通过，旧 toast/event/reload 为零，
+  手动重开只见当前账号数据。frontend 645/645、production build、Go 全量和差异检查通过。
 - 2026-07-27：重新审查书源所有权后，撤销本文件早期“书源为全局管理能力”及
   `sources_update` 应全账号广播的判断。固定上游把活动书源持久化在每个用户 namespace；
   默认书源只在用户私有文件不存在时复制一次。当前无 `user_id` 的 `BookSource` 会让普通

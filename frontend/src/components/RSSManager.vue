@@ -109,7 +109,13 @@
       </article>
     </el-dialog>
 
-    <el-dialog v-model="editorVisible" :title="editingSourceId ? '编辑 RSS 源' : '新增 RSS 源'" width="520px" :fullscreen="isMobile">
+    <el-dialog
+      v-model="editorVisible"
+      :title="editingSourceId ? '编辑 RSS 源' : '新增 RSS 源'"
+      width="520px"
+      :fullscreen="isMobile"
+      class="rss-source-editor-dialog"
+    >
       <el-form label-position="top">
         <el-form-item label="名称"><el-input v-model="draft.title" /></el-form-item>
         <el-form-item label="订阅地址"><el-input v-model="draft.url" /></el-form-item>
@@ -541,16 +547,17 @@ function normalizeArticleResult(data, fallbackPage) {
 }
 
 function openEditor(source = null) {
-  editingSourceId.value = source?.id || null
+  const normalizedSource = source || {}
+  editingSourceId.value = normalizedSource.id || null
   draft.value = {
-    title: source?.title || '',
-    url: source?.url || '',
-    icon: source?.icon || '',
-    group: source?.group || '',
-    comment: source?.comment || '',
-    customOrder: Number(source?.customOrder || 0),
-    enabled: source?.enabled ?? true,
-    ...pickRSSAdvancedFields(source),
+    title: normalizedSource.title || '',
+    url: normalizedSource.url || '',
+    icon: normalizedSource.icon || '',
+    group: normalizedSource.group || '',
+    comment: normalizedSource.comment || '',
+    customOrder: Number(normalizedSource.customOrder || 0),
+    enabled: normalizedSource.enabled ?? true,
+    ...pickRSSAdvancedFields(normalizedSource),
   }
   editorVisible.value = true
 }

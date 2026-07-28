@@ -458,6 +458,16 @@ async function runSidebarSearch(page, viewport, keyword) {
   const input = page.locator('.app-shell-search input')
   await input.fill(keyword)
   await input.press('Enter')
+  if (viewport.width <= 750) {
+    const workspace = page.locator('.app-workspace')
+    const box = await workspace.boundingBox()
+    assert(box, `${viewport.width}: workspace geometry missing while closing search sidebar`)
+    await page.mouse.click(box.x + box.width - 8, box.y + Math.min(box.height / 2, viewport.height / 2))
+    await page.waitForFunction(() => {
+      const node = document.querySelector('.app-sidebar')
+      return node && Number.parseFloat(getComputedStyle(node).marginLeft) <= -259.5
+    })
+  }
 }
 
 async function waitForMessagesToClose(page) {
@@ -588,7 +598,7 @@ async function beginWebDAVRestoreOperation(session) {
 
 async function beginSourceSaveOperation(session) {
   const { page } = session
-  await page.goto(`${targetUrl}/settings?panel=sources&overlaySession=1`, { waitUntil: 'networkidle' })
+  await page.goto(`${targetUrl}/sources?overlaySession=1`, { waitUntil: 'networkidle' })
   const dialog = page.locator('.global-source-manage-dialog')
   await dialog.waitFor({ state: 'visible', timeout: 10_000 })
   await dialog.getByRole('button', { name: '新增', exact: true }).click()
@@ -599,13 +609,37 @@ async function beginSourceSaveOperation(session) {
 }
 
 async function beginRSSSaveOperation(session) {
-  const { page } = session
+  const { errors, page } = session
   await page.goto(`${targetUrl}/settings?panel=rss&overlaySession=1`, { waitUntil: 'networkidle' })
   const dialog = page.locator('.global-rss-dialog')
   await dialog.waitFor({ state: 'visible', timeout: 10_000 })
   await dialog.getByRole('button', { name: '新增', exact: true }).click()
-  const editor = page.getByRole('dialog', { name: '新增 RSS 源' })
-  await editor.waitFor({ state: 'visible', timeout: 10_000 })
+  const editor = page.locator('.rss-source-editor-dialog')
+  try {
+    await editor.waitFor({ state: 'visible', timeout: 10_000 })
+  } catch (error) {
+    const visibleDialogs = await page.locator('.el-dialog:visible').evaluateAll(elements => (
+      elements.map(element => ({
+        ariaLabel: element.getAttribute('aria-label'),
+        title: element.querySelector('.el-dialog__title')?.textContent?.trim() || '',
+        text: element.textContent?.trim().slice(0, 300) || '',
+      }))
+    ))
+    const addButtons = await dialog.getByRole('button', { name: '新增', exact: true }).evaluateAll(elements => (
+      elements.map(element => ({
+        disabled: element.disabled,
+        text: element.textContent?.trim() || '',
+      }))
+    ))
+    const editorStates = await editor.evaluateAll(elements => (
+      elements.map(element => ({
+        display: getComputedStyle(element).display,
+        visibility: getComputedStyle(element).visibility,
+        title: element.querySelector('.el-dialog__title')?.textContent?.trim() || '',
+      }))
+    ))
+    throw new Error(`${error.message}\nRSS visible dialogs: ${JSON.stringify(visibleDialogs)}\nRSS add buttons: ${JSON.stringify(addButtons)}\nRSS editor states: ${JSON.stringify(editorStates)}\nRSS browser errors: ${JSON.stringify(errors)}`)
+  }
   const inputs = editor.locator('input')
   await inputs.nth(0).fill('A 延迟新增 RSS')
   await inputs.nth(1).fill('https://stale.example/feed.xml')
@@ -668,19 +702,56 @@ async function reopenCurrentOverlay(session) {
     return
   }
 
-  const routeAndSelector = {
-    'storage-import': ['/local-store?overlaySession=reopen', '.global-local-store-dialog', 'B-专属书籍.txt'],
-    'webdav-restore': ['/settings?panel=webdav&overlaySession=reopen', '.global-webdav-dialog', 'B-专属备份.zip'],
-    'source-save': ['/settings?panel=sources&overlaySession=reopen', '.global-source-manage-dialog', 'B 专属书源'],
-    'rss-save': ['/settings?panel=rss&overlaySession=reopen', '.global-rss-dialog', 'B 专属 RSS'],
-    'user-create': ['/settings?panel=admin&overlaySession=reopen', '.global-user-dialog', 'B 专属用户'],
+  const reopenContract = {
+    'storage-import': {
+      route: '/local-store?overlaySession=reopen',
+      selector: '.global-local-store-dialog',
+      expected: 'B-专属书籍.txt',
+      forbidden: ['a-delayed.txt', 'A 延迟导入书籍'],
+    },
+    'webdav-restore': {
+      route: '/settings?panel=webdav&overlaySession=reopen',
+      selector: '.global-webdav-dialog',
+      expected: 'B-专属备份.zip',
+      forbidden: ['A-原会话备份.zip'],
+    },
+    'source-save': {
+      route: '/sources?overlaySession=reopen',
+      selector: '.global-source-manage-dialog',
+      expected: 'B 专属书源',
+      forbidden: ['A 原会话书源', 'A 延迟新增书源'],
+    },
+    'rss-save': {
+      route: '/settings?panel=rss&overlaySession=reopen',
+      selector: '.global-rss-dialog',
+      expected: 'B 专属 RSS',
+      forbidden: ['A 原会话 RSS', 'A 延迟新增 RSS'],
+    },
+    'user-create': {
+      route: '/settings?panel=admin&overlaySession=reopen',
+      selector: '.global-user-dialog',
+      expected: 'B 专属用户',
+      forbidden: ['A 原会话用户', 'staleuser'],
+    },
   }[state.scenario]
-  await page.goto(`${targetUrl}${routeAndSelector[0]}`, { waitUntil: 'networkidle' })
-  const dialog = page.locator(routeAndSelector[1])
+  await page.goto(`${targetUrl}${reopenContract.route}`, { waitUntil: 'networkidle' })
+  const dialog = page.locator(reopenContract.selector)
   await dialog.waitFor({ state: 'visible', timeout: 10_000 })
   try {
-    await dialog.getByText(routeAndSelector[2], { exact: true })
+    const expectedRows = dialog.getByText(reopenContract.expected, { exact: true })
+    const visibleExpectedRows = expectedRows.filter({ visible: true })
+    await visibleExpectedRows.first()
       .waitFor({ state: 'visible', timeout: 10_000 })
+    assert(
+      await visibleExpectedRows.count() >= 1,
+      `${viewport.width} ${state.scenario}: visible current-account row was missing`,
+    )
+    for (const staleText of reopenContract.forbidden) {
+      assert(
+        await dialog.getByText(staleText, { exact: true }).count() === 0,
+        `${viewport.width} ${state.scenario}: stale account data remained visible (${staleText})`,
+      )
+    }
   } catch (error) {
     const text = await dialog.innerText().catch(() => '')
     const requests = state.requests.filter(row => (

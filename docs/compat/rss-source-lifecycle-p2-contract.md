@@ -1,8 +1,9 @@
 # RSS source lifecycle P2 compatibility contract
 
-Status: audited and implemented on 2026-07-27; reopened on 2026-07-28 for the
-manual-create editor transition described below. This contract was extracted
-before changing the corresponding RSS application behavior.
+Status: audited and implemented on 2026-07-27; reopened, fixed and
+regression-validated on 2026-07-28 for the manual-create editor transition
+described below. This contract was extracted before changing the corresponding
+RSS application behavior.
 
 Fixed baseline:
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
@@ -130,6 +131,23 @@ Required regression evidence before reclosing this contract:
    `390x844`, and `360x800`.
 4. Frontend full tests, production build, Go full tests and `git diff --check`
    pass before the implementation is committed.
+
+Implementation result:
+
+- `openEditor()` now normalizes the upstream falsy new-source sentinel before
+  reading identity or advanced fields. Existing-source editing is unchanged;
+  manual creation still starts with an empty OpenReader title and the upstream
+  `singleUrl=true/articleStyle=0/enabled=true/enableJs=true` defaults.
+- The nested editor now exposes `.rss-source-editor-dialog`, allowing session
+  invalidation checks to prove that it is removed together with the private RSS
+  scene.
+- The focused contract test first failed on the unsafe `null` transition and
+  passes after implementation. Frontend full tests pass `645/645`; production
+  build, Go full tests and `git diff --check` pass.
+- Real Chromium passed RSS pending-create isolation and the complete Overlay
+  matrix at `1440x900`, `390x844`, and `360x800`. The delayed account-A write
+  emitted no toast, business event or write-after-login reload, and manual
+  reopen contained only account-B RSS data.
 
 ## Implementation record
 

@@ -50,3 +50,10 @@ test('remaining async controllers accept the shared operation guard', () => {
     assert.match(source, /canCommit/)
   }
 })
+
+test('RSS source editor exposes a stable private-overlay root for browser lifecycle checks', () => {
+  assert.match(
+    read('../src/components/RSSManager.vue'),
+    /class="rss-source-editor-dialog"/,
+  )
+})

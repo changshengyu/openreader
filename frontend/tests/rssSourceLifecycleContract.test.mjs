@@ -12,7 +12,11 @@ test('RSS source editor requires both the upstream name and URL identities', () 
 })
 
 test('RSS manual and imported singleUrl defaults remain distinct like upstream', () => {
-  assert.match(manager, /function openEditor\(source = null\)[\s\S]*?\.\.\.pickRSSAdvancedFields\(source\)/)
+  assert.match(
+    manager,
+    /function openEditor\(source = null\)\s*\{\s*const normalizedSource = source \|\| \{\}[\s\S]*?\.\.\.pickRSSAdvancedFields\(normalizedSource\)/,
+    'manual create must normalize the upstream falsy new-source sentinel before reading advanced fields',
+  )
   assert.match(manager, /pickRSSAdvancedFields\(source, \{ singleURLDefault: false \}\)/)
   assert.match(manager, /function pickRSSAdvancedFields\(source = \{\}, \{ singleURLDefault = true \} = \{\}\)/)
 })
