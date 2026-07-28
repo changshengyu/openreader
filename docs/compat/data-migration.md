@@ -721,3 +721,7 @@ frontend/backend/build gates, and the unchanged mounted-volume/backup smoke.
 Required release evidence: focused login/list API contract, full Go and frontend tests, production
 build, one-table UserManage browser smoke at 1440×900, 1024×1366, 390×844 and 360×800, followed by
 the unchanged Docker volume/backup compatibility gate.
+
+Release evidence completed with `f44447f`: both ordinary and historical volume scripts passed,
+including restart, portable v1/v2 assets, cross-user isolation, TXT/EPUB/UMD/CBZ and relative-cache
+fixtures. No migration or mounted data rewrite was observed.
