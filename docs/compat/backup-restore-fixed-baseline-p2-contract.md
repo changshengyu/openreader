@@ -1,9 +1,8 @@
 # P2 备份、恢复与 WebDAV 工作台固定基线合同
 
-状态：**2026-07-27 已完成原固定上游切片的测试、三视口浏览器、Docker 新旧卷门禁
-与本地双架构发布；P2-S4 已完成书源 artifact 用户所有权实现及自动回归，新增的真实浏览器
-与 Docker 升级卷门仍待完成。** `bookSource.json` 现在来自目标用户 active association；
-目标矩阵、实现证据和剩余发布闸门见
+状态：**2026-07-28 已完成固定上游切片、P2-S4 书源 artifact 所有权、真实浏览器、
+专项 Docker 升级卷和本地双架构发布。** `bookSource.json` 只来自目标用户 active
+association；logical/portable/WebDAV 恢复只调和目标 namespace。目标矩阵与实现证据见
 [`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)。
 
 本合同以 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
@@ -223,5 +222,9 @@ Authorization、WebDAV 凭证、其他用户书源或主机路径。
 
 P2-S4 已按该勘误实施：用户逻辑/portable 备份、管理员旧根 trigger、source restore、
 书架 source 解析和浏览器缓存 key 均已 owner-scoped，并保留原 ZIP 名称、别名、事务、
-权限 skip 与 portable 文件/资产合同。自动回归已通过；本次新增的双账号浏览器和 Docker
-升级卷门完成前，旧镜像发布记录不作为 P2-S4 已发布证据。
+权限 skip 与 portable 文件/资产合同。双账号真实浏览器和专项 Docker 新旧卷门已通过，
+实现提交 `0db752e` 的双架构 index 为
+`sha256:83f53fe3aa523fc1196454d4c5f1d413648eb72ad1e87c83c838e7200859207e`。
+2026-07-28 又用当前 `f44447f` 本机镜像重跑专项门，legacy ownership migration、COW、
+管理员/普通用户备份根、logical/portable、恢复隔离和重启全部通过。P2-S4 状态为
+`aligned / Docker-published`，不再保留“全局 BookSource”或“升级卷待完成”的旧结论。
