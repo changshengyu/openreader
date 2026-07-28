@@ -3026,3 +3026,18 @@ StorageImport 并修正“整页导航重复注入 A token”的测试夹具缺�
 [`reader-night-contrast-p0-contract.md`](reader-night-contrast-p0-contract.md)。本机新卷和
 历史卷门通过后已发布 `3ee3a82`/`latest`，amd64/arm64 OCI index 为
 `sha256:23454f80db395e45c660e41b9fe5a314936be89a0acbe27eeab0e4761a332f18`。
+
+## 2026-07-28 RSS 新增编辑器状态转换复审
+
+工作台 Overlay 会话隔离真实浏览器门进入 RSS `新增` 分支后，发现此前 RSS 生命周期结论
+漏掉了一个直接影响用户的空值状态：固定上游 `RssSourceList.vue#editRssSource(false)` 会先
+把 falsy 参数替换成完整的新源默认对象，再打开编辑器；当前
+`RSSManager.vue#openEditor()` 却把默认 `null` 直接交给高级字段提取函数，最终在
+`hasOwnProperty.call(null, field)` 抛错，导致新增弹窗完全不出现。
+
+该差异重新判为 **must-fix**。实现前合同已补入
+[`rss-source-lifecycle-p2-contract.md`](rss-source-lifecycle-p2-contract.md)：修复只能做
+null-safe 草稿归一化，保留已记录的空标题差异以及 `singleUrl=true/articleStyle=0/
+enabled=true/enableJs=true` 等手动新增默认值；同时补充稳定的私有弹层根标识，供重新登录
+生命周期门精确证明旧编辑器已销毁。完成条件是失败单测、RSS pending-write 换号场景和
+Overlay 六场景三视口全门，而不是仅证明点击不再抛错。

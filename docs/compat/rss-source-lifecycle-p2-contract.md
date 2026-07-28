@@ -1,7 +1,8 @@
 # RSS source lifecycle P2 compatibility contract
 
-Status: audited, implemented and regression-validated on 2026-07-27. This
-contract was extracted before changing RSS application code.
+Status: audited and implemented on 2026-07-27; reopened on 2026-07-28 for the
+manual-create editor transition described below. This contract was extracted
+before changing the corresponding RSS application behavior.
 
 Fixed baseline:
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
@@ -105,6 +106,30 @@ The article query identity is:
    → content → close/reopen, plus delayed source-switch response ordering.
 
 Docker is eligible only after the implementation and all five gates pass.
+
+## 2026-07-28 manual-create editor transition audit
+
+The authenticated-overlay browser gate exposed a separate regression in the
+already-audited manual source flow.
+
+| Behavior | Fixed upstream contract | Current OpenReader evidence before implementation | Classification / required action |
+| --- | --- | --- | --- |
+| Click `新增` | `RssSourceList.vue#editRssSource(false)` normalizes the falsy value to a complete new-source object, then immediately opens the shared editor. No network request is required to create the draft. | `RSSManager.vue#openEditor()` defaults its argument to `null`, then passes that value to `pickRSSAdvancedFields()`. JavaScript default parameters do not replace an explicit `null`, so the helper reaches `Object.prototype.hasOwnProperty.call(null, field)` and throws before `editorVisible=true`. Real Chromium records `TypeError: Cannot convert undefined or null to object`; the editor never appears. | `must-fix`; normalize null/falsy manual-create input before every field read. |
+| New-source defaults | Upstream starts with `sourceName="新增RSS源"`, empty URL/icon/group, `enabled=true`, `singleUrl=true`, `articleStyle=0`, and `enableJs=true`. | OpenReader intentionally uses an empty visible title, but otherwise owns the same manual defaults. This difference was already accepted because both clients reject a blank title at save time. | `aligned with documented minor visible difference`; retain the current empty title and all existing defaults. |
+| Editor lifecycle observability | Upstream owns the editor as a root event-bus dialog. Closing the RSS root removes the scene. | The Vue 3 nested editor had no stable component class even though the authenticated-session browser contract already listed `.rss-source-editor-dialog` as a private overlay. | `must-fix testability adaptation`; add the stable root class without changing layout or interaction. |
+
+Required regression evidence before reclosing this contract:
+
+1. A frontend contract test proves that the manual-create path normalizes
+   `null` before advanced-field extraction and retains `singleUrl=true`.
+2. Real Chromium can click `新增`, submit a deliberately pending create
+   request, invalidate account A, authenticate account B, and prove the editor
+   closes, the delayed A result emits no toast/event/reload, and manual reopen
+   contains B data only.
+3. The complete Overlay session-isolation matrix passes at `1440x900`,
+   `390x844`, and `360x800`.
+4. Frontend full tests, production build, Go full tests and `git diff --check`
+   pass before the implementation is committed.
 
 ## Implementation record
 
