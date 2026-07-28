@@ -388,3 +388,23 @@ themeType === "night" && theme !== "custom"
 5. 只有运行版本已经升级且同一真实书籍仍复现时，才进入第五轮应用实现修改；届时必须采集
    真实文字节点的 tag/class、computed `background-*`、祖先背景链和书籍格式，不能继续用
    简单 fixture 推断。
+
+### 部署防呆与发布结果
+
+- 仓库 `docker-compose.yml` 已加入 `pull_policy: always`；中英文 README 明确已有部署必须
+  先 `docker compose pull openreader`，再
+  `docker compose up -d --force-recreate openreader`，最后查询 `/api/health`。
+- Compose 配置解析和差异检查通过；frontend `645/645`、Go 全量和 production build 通过。
+- TXT Reader 真实浏览器门通过；真实 API 导入的 EPUB 在 1440×900、390×844、360×800
+  三个视口通过夜间内容面合同。
+- 本地 `9048831` 候选通过 portable v1、portable v2 assets、cross-user、restart，以及
+  TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 历史卷门。
+- 本机发布 `ghcr.io/changshengyu/openreader:9048831` 与 `:latest`。两者共同指向
+  amd64/arm64 OCI index
+  `sha256:f021b995611b961441ed3a2cb0cb06860c41b18c90fd444f6901dcab938fa6f6`；
+  amd64 manifest 为
+  `sha256:7eecf84d8a7a5d6c1765ab8a493297898e0d6daeb14a359b35fc1345059451ba`，
+  arm64 manifest 为
+  `sha256:186e9058492a59422ed6c2930b37671d8d4082a6e30cc2b9ecaf9bad1db6bfb3`。
+- 当前状态是 **Docker-published / deployed site still requires pull**。不能在站点
+  `/api/health` 返回 `9048831` 前声称线上问题已复验关闭。

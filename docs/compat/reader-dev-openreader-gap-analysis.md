@@ -3027,6 +3027,14 @@ StorageImport 并修正“整页导航重复注入 A token”的测试夹具缺�
 历史卷门通过后已发布 `3ee3a82`/`latest`，amd64/arm64 OCI index 为
 `sha256:23454f80db395e45c660e41b9fe5a314936be89a0acbe27eeab0e4761a332f18`。
 
+第五轮用户复验时，线上 `/api/health` 实际仍返回 `59e11a9`，并未运行上述修复，也未运行
+随后包含该修复的 `342d736`。因此本轮先关闭交付链缺口：Compose 增加
+`pull_policy: always`，README 固化 pull、force-recreate、health-check 三步更新门。应用源码
+未再次修改；同一源码的 frontend 645/645、Go/build、TXT 与真实 EPUB 三视口、新旧卷复验
+通过。本机已发布 `9048831`/`latest`，共同指向 amd64/arm64 OCI index
+`sha256:f021b995611b961441ed3a2cb0cb06860c41b18c90fd444f6901dcab938fa6f6`。站点只有在
+`/api/health` 返回 `9048831` 后才能继续设备验收；单纯浏览器刷新不构成升级。
+
 ## 2026-07-28 RSS 新增编辑器状态转换复审
 
 工作台 Overlay 会话隔离真实浏览器门进入 RSS `新增` 分支后，发现此前 RSS 生命周期结论
