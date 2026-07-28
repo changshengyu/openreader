@@ -180,6 +180,9 @@ test('manual night switching applies a complete scheme without corrupting the sa
   assert.equal(reader.customConfigName, '内置黑夜')
   assert.equal(reader.theme, 'dark')
   assert.equal(reader.themeType, 'night')
+  assert.equal(reader.currentTheme.bg, '#000000')
+  assert.equal(reader.currentTheme.text, '#ffffff')
+  assert.equal(reader.currentTheme.body, '#000000')
   assert.equal(reader.customBgImage, '')
 
   const savedDay = reader.customConfigList.find(item => item.name === '内置白天')
@@ -196,6 +199,8 @@ test('browser color-scheme switching uses the same complete default-scheme trans
   assert.equal(reader.applyAutoTheme(true), true)
   assert.equal(reader.customConfigName, '内置黑夜')
   assert.equal(reader.themeType, 'night')
+  assert.equal(reader.currentTheme.bg, '#000000')
+  assert.equal(reader.currentTheme.text, '#ffffff')
 
   assert.equal(reader.applyAutoTheme(false), true)
   assert.equal(reader.customConfigName, '内置白天')

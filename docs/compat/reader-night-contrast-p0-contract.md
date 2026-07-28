@@ -1,7 +1,9 @@
 # Reader 移动夜间模式正文对比度合同
 
-状态：2026-07-28 已按固定上游完成差异提取、测试先行实现、全量自动回归和
-390×844 / 360×800 的 TXT、EPUB 真实浏览器验证；Git 与 Docker 发布门待执行。
+状态：2026-07-28 第一轮已发布，但用户实机复验确认目标定义错误：达到 WCAG 对比度不等于
+用户要求的“纯黑正文背景 + 白色正文”。第二轮已完成固定上游/当前渲染层复审、测试先行实现、
+后端与前端全量回归、production build，以及 390×844、360×800 的 TXT/EPUB 实际渲染层
+验证；Git 与 Docker 发布门待执行。
 
 固定上游：
 
@@ -68,7 +70,7 @@
    - 设置中的“内置黑夜”和 custom 黑夜语义；
    - 计算后的正文/背景对比度不低于 `4.5:1`；
    - 工具层与设置面板保持原有并存状态。
-4. 本问题与当前未提交的登录/书源浏览器补门一起提交推送；通过后再恢复 Docker 旧卷和发布门。
+4. 以独立、可追踪提交推送本问题；随后执行本地 Docker 构建、历史卷、备份恢复与 GHCR 发布门。
 
 ## 实施结果
 
@@ -90,3 +92,55 @@
 - 浏览器 `prefers-color-scheme` 入口由 store/bootstrap 契约测试覆盖；真实浏览器覆盖了
   同一动作的手动月亮入口。当前内置浏览器运行时不支持直接改写系统配色媒体查询，因此没有
   把无法执行的媒体仿真写成真实证据。
+
+## 第二轮实机反馈与修订合同
+
+用户在 `cca1320` 实机确认：从浏览器自动主题或设置切换夜间后，正文仍不是黑底白字；其判断是
+黑色被设置为阅读背景后，实际承载文字的页面层仍存在其它背景。
+
+### 重新取证
+
+| 层级 | 固定上游 | `cca1320` | 第二轮裁决 |
+|---|---|---|---|
+| 内置夜间配色 | `defaultNightConfig` 为 `fontColor: #666666`、`bodyColor: #121212`、`contentColor: #171717`；preset 6 实际使用 `body_6/content_6` 暗纹理。 | `dark` preset 为正文 `#2d2d2d`、文字 `#d8d4c8`。上一轮只验证二者对比度 `9.29:1`。 | 上游和当前都不满足用户明确要求。登记 `intentional-redesign`：内置夜间必须是 `#000000` 正文面和 `#ffffff` 默认正文。 |
+| Reader 外壳 | 上游夜间使用 `body_6` 暗纹理。 | `.reader-shell` 无条件应用 `--reader-body-texture`，即使 `themeType === "night"`。 | `must-fix`：内置夜间的外壳和正文都不得叠加日间纸张纹理。 |
+| 实际正文页 | 上游 `chapterTheme` 把当前主题 content 直接应用到 `.chapter`。 | `.reader-page` 同时声明 `background-color: --reader-bg` 和带 fallback 的 `background-image`；是否纯黑不能只由 store 色值证明。 | `must-fix`：为页面提供显式语义背景图变量；内置夜间必须计算为 `background-color: rgb(0,0,0)`、`background-image: none`。 |
+| 连续滚动 | 上游移动滚动仍由同一个 `.chapter` 主题承载。 | document-scroll 改变高度与滚动宿主，但继续复用 `.reader-page`；底层 shell 在长页面边缘仍可能露出纹理。 | `must-fix`：普通、scroll、scroll2、flip 都必须继承同一纯黑页面合同。 |
+| EPUB | 上游把字体样式注入 iframe，但 EPUB 自带 CSS 仍可参与背景。 | iframe 本身透明，`body` 强制透明；`html` 仅普通 `background: transparent`，不能压过 EPUB 作者样式，标题等非 `p` 文本也没有强制继承有效正文色。真实浏览器进一步证明透明 iframe 画布仍可能显示为白色。 | `must-fix`：iframe 外壳以及 `html/body` 必须显式绘制当前 Reader 页面背景，不能依赖透明透出；常见文本块必须继承有效正文色。 |
+| 自定义主题 | 上游允许自定义 body/content/popup/font。 | 第一轮已把 custom 资源限制在 custom。 | 保留：纯黑白强制合同只适用于内置夜间；custom 夜间继续尊重用户颜色，并保留 `4.5:1` 渲染保护。 |
+| 亮度 | 上游亮度属于单独阅读设置。 | `.reader-page::after` 以黑色遮罩实现低亮度，会同时压暗视觉文字。 | 保留亮度语义；真实浏览器验收先以默认 `100%` 验证准确黑白，再单独确认降低亮度不会引入其它色层。 |
+
+### 第二轮测试先行门
+
+1. store 契约锁定内置 `dark/black` 正文 `#000000`、默认文字 `#ffffff`、外层 `#000000`。
+2. Reader CSS 变量锁定内置夜间：
+   - `--reader-body-bg: #000000`；
+   - `--reader-body-bg-image: none`；
+   - `--reader-bg: #000000`；
+   - `--reader-bg-image: none`；
+   - `--reader-text: #ffffff`（无有效用户自定义色时）。
+3. 日间 preset 保留已有纸张纹理；custom 只加载自己的背景图，不继承日间纹理。
+4. EPUB 注入合同必须覆盖 iframe 外壳和 `html/body` 显式绘制当前页面背景，并让标题、段落、
+   列表、引用、表格文字继承有效正文色。
+5. 390×844、360×800 真实浏览器逐项读取 `.reader-shell`、`.reader-page`、正文段落和
+   EPUB iframe 的 computed style，不能再用 store 值或截图观感替代实际渲染层证据。
+
+### 第二轮实施与真实证据
+
+- 内置 `dark/black` preset 已改为 `#000000` 正文、`#ffffff` 默认文字和 `#000000` 外壳；
+  `resolveReaderSurface()` 为所有非 custom 夜间方案统一返回无纹理的纯黑页面。
+- Reader 现在分别传递 body/page 背景图、页面边框和页面阴影语义变量。内置夜间四项分别为
+  `none / none / transparent / none`；日间保留纸张纹理，custom 只使用自己的背景图。
+- EPUB iframe 外壳直接使用 `--reader-bg`。注入 iframe 的 `html/body` 不再依赖透明画布，
+  而是显式绘制有效 Reader 页面背景，并强制清除 EPUB 自带根背景图；常见文本块继承有效正文色。
+- 第一轮真实复验曾观察到：EPUB `html/body` 计算为透明、标题和段落为白色，但 iframe 画布
+  截图仍是白色，导致白字不可见。这一实际渲染证据直接触发了上述“显式绘制背景”修正。
+- 修复后 390×844：
+  - TXT shell/page 为 `rgb(0,0,0)`、`background-image: none`，段落为 `rgb(255,255,255)`；
+  - EPUB iframe、`html/body` 为 `rgb(0,0,0)`，标题与段落为 `rgb(255,255,255)`。
+- 修复后 360×800 的 TXT 与 EPUB 得到相同结果；黑白对比度为 `21:1`，浏览器控制台无错误。
+- 浏览器自动深色和手动入口仍调用同一个 `setNightTheme()`；自动入口由 store/bootstrap
+  契约测试覆盖，手动入口由上述真实浏览器流程覆盖。
+- 最终自动回归：后端 `go test ./...` 通过；前端 `639/639` 通过；Vite production build
+  通过。真实浏览器与自动回归共同覆盖 TXT、EPUB、手动/自动入口和主题资源隔离；剩余门禁为
+  Git 提交推送及 Docker 新卷/历史卷/备份发布验证。

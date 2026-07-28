@@ -25,9 +25,9 @@ export const themePresets = {
   blue:     { label: '浅蓝',   bg: '#e4f1f5', text: '#262626' },
   pink:     { label: '浅粉',   bg: '#f5e4e4', text: '#262626' },
   gray:     { label: '浅灰',   bg: '#e0e0e0', text: '#262626' },
-  dark:     { label: '深色',   bg: '#2d2d2d', text: '#d8d4c8', body: '#121212', popup: '#171717' },
+  dark:     { label: '深色',   bg: '#000000', text: '#ffffff', body: '#000000', popup: '#171717' },
   white:    { label: '纯白',   bg: '#ffffff', text: '#1f2933' },
-  black:    { label: '纯黑',   bg: '#000000', text: '#aaaaaa', body: '#000000', popup: '#121212' },
+  black:    { label: '纯黑',   bg: '#000000', text: '#ffffff', body: '#000000', popup: '#121212' },
 }
 
 export const useReaderStore = defineStore('reader', {

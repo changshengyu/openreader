@@ -468,6 +468,7 @@ import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLoca
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import {
   readerTextShadow,
+  resolveReaderSurface,
   resolveReaderTextColor,
 } from '../utils/readerThemeContrast'
 import {
@@ -1208,17 +1209,21 @@ const usesCustomReaderTheme = computed(() => reader.theme === 'custom')
 const effectiveReaderBackgroundImage = computed(() => (
   reader.theme === 'custom' && reader.customBgImage ? reader.customBgImage : ''
 ))
-const effectiveReaderBackgroundColor = computed(() => reader.currentTheme.bg)
-const effectiveReaderBodyColor = computed(() => (
-  usesCustomReaderTheme.value
-    ? reader.customBodyColor || '#d9c27f'
-    : reader.currentTheme.body || '#d9c27f'
-))
-const effectiveReaderPopupColor = computed(() => (
-  usesCustomReaderTheme.value
-    ? reader.customPopupColor || 'rgba(255, 252, 239, 0.94)'
-    : reader.currentTheme.popup || 'rgba(255, 252, 239, 0.94)'
-))
+const effectiveReaderSurface = computed(() => resolveReaderSurface({
+  theme: reader.theme,
+  themeType: reader.themeType,
+  themeBackground: reader.currentTheme.bg,
+  themeBody: usesCustomReaderTheme.value
+    ? reader.customBodyColor
+    : reader.currentTheme.body,
+  themePopup: usesCustomReaderTheme.value
+    ? reader.customPopupColor
+    : reader.currentTheme.popup,
+  customBackgroundImage: effectiveReaderBackgroundImage.value,
+}))
+const effectiveReaderBackgroundColor = computed(() => effectiveReaderSurface.value.pageColor)
+const effectiveReaderBodyColor = computed(() => effectiveReaderSurface.value.bodyColor)
+const effectiveReaderPopupColor = computed(() => effectiveReaderSurface.value.popupColor)
 const effectiveReaderTextColor = computed(() => resolveReaderTextColor({
   requestedColor: reader.fontColor,
   themeTextColor: reader.currentTheme.text,
@@ -1242,11 +1247,15 @@ const readerStyle = computed(() => ({
   '--reader-font-size': `${reader.fontSize}px`,
   '--reader-heading-size': `${Math.round(reader.fontSize * 1.36)}px`,
   '--reader-body-bg': effectiveReaderBodyColor.value,
+  '--reader-body-bg-image': effectiveReaderSurface.value.bodyImage,
   '--reader-popup-bg': effectiveReaderPopupColor.value,
   '--reader-bg': effectiveReaderBackgroundColor.value,
+  '--reader-bg-image': effectiveReaderSurface.value.pageImage,
   '--reader-text': effectiveReaderTextColor.value,
   '--reader-popup-text': effectiveReaderPopupTextColor.value,
   '--reader-text-shadow': effectiveReaderTextShadow.value,
+  '--reader-page-border': effectiveReaderSurface.value.pageBorder,
+  '--reader-page-shadow': effectiveReaderSurface.value.pageShadow,
   '--reader-control-bg': reader.themeType === 'night' ? '#303030' : 'rgba(255, 255, 255, 0.5)',
   '--reader-control-border': reader.themeType === 'night' ? '#565656' : 'rgba(0, 0, 0, 0.1)',
   '--reader-accent': reader.themeType === 'night' ? '#ff7589' : '#ed4259',
@@ -1257,7 +1266,6 @@ const readerStyle = computed(() => ({
   '--reader-line-height': reader.lineHeight,
   '--reader-paragraph-space': `${reader.paragraphSpace}em`,
   '--reader-read-width': `${reader.columnWidth}px`,
-  '--reader-bg-image': effectiveReaderBackgroundImage.value ? `url(${effectiveReaderBackgroundImage.value})` : '',
   '--reader-animate-duration': `${reader.animateDuration}ms`,
   '--reader-tts-bottom-space': ttsReadBarLayoutActive.value
     ? `${ttsConfigExpanded.value ? 280 : 80}px`
@@ -1291,11 +1299,15 @@ const epubStyleText = computed(() => `
   *:focus {
     outline: none !important;
   }
-  html {
+  html,
+  body {
     min-height: 100%;
-    color: ${effectiveReaderTextColor.value};
+    color: ${effectiveReaderTextColor.value} !important;
     text-shadow: ${effectiveReaderTextShadow.value};
-    background: transparent;
+    background-color: ${effectiveReaderBackgroundColor.value} !important;
+    background-image: none !important;
+  }
+  html {
     font-family: ${fontStack.value};
     font-size: ${reader.fontSize}px;
     font-weight: ${reader.fontWeight};
@@ -1303,9 +1315,11 @@ const epubStyleText = computed(() => `
   body {
     min-height: 100%;
     margin: 0 !important;
-    color: inherit;
-    background: transparent !important;
+    color: inherit !important;
     font: inherit;
+  }
+  body :where(p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, td, th) {
+    color: inherit !important;
   }
   body p {
     margin-top: ${reader.paragraphSpace}em !important;
@@ -2381,24 +2395,22 @@ function readError(err, fallback) {
   display: grid;
   justify-content: center;
   background-color: var(--reader-body-bg);
-  background-image: var(--reader-body-texture);
+  background-image: var(--reader-body-bg-image);
   background-repeat: repeat;
 }
 
 /* ---- 正文 ---- */
 .reader-page {
   background-color: var(--reader-bg);
-  background-image: var(--reader-bg-image, var(--paper-texture));
+  background-image: var(--reader-bg-image);
   background-position: 0 0;
   background-repeat: repeat;
   background-size: auto;
   color: var(--reader-text);
   text-shadow: var(--reader-text-shadow, none);
-  border-left: 1px solid rgba(109,95,55,0.28);
-  border-right: 1px solid rgba(109,95,55,0.28);
-  box-shadow:
-    inset 24px 0 44px rgba(90, 71, 28, 0.05),
-    inset -24px 0 44px rgba(90, 71, 28, 0.05);
+  border-left: 1px solid var(--reader-page-border);
+  border-right: 1px solid var(--reader-page-border);
+  box-shadow: var(--reader-page-shadow);
   height: 100vh;
   overflow: hidden;
   box-sizing: content-box;

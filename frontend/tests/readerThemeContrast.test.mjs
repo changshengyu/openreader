@@ -4,10 +4,13 @@ import test from 'node:test'
 import {
   readerColorContrast,
   readerTextShadow,
+  resolveReaderSurface,
   resolveReaderTextColor,
 } from '../src/utils/readerThemeContrast.js'
 
 const readerViewSource = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
+const readerStoreSource = readFileSync(new URL('../src/stores/reader.js', import.meta.url), 'utf8')
+const readerEpubSource = readFileSync(new URL('../src/components/reader/ReaderEpubContent.vue', import.meta.url), 'utf8')
 const readerSettingsSource = readFileSync(new URL('../src/components/reader/ReaderSettingsPanel.vue', import.meta.url), 'utf8')
 const readerStepperSource = readFileSync(new URL('../src/components/reader/ReaderSettingStepper.vue', import.meta.url), 'utf8')
 
@@ -50,7 +53,7 @@ test('protects custom image themes without overwriting the stored text color', (
     hasBackgroundImage: true,
   })
 
-  assert.equal(resolved, '#f2eee4')
+  assert.equal(resolved, '#ffffff')
   assert.match(readerTextShadow({
     textColor: resolved,
     hasBackgroundImage: true,
@@ -83,4 +86,88 @@ test('night settings controls use semantic surfaces instead of translucent day c
   assert.match(readerStepperSource, /background:\s*var\(--reader-control-bg\)/)
   assert.match(readerStepperSource, /border:\s*1px solid var\(--reader-control-border\)/)
   assert.ok(readerColorContrast('#ff7589', '#303030') >= 4.5)
+})
+
+test('built-in night resolves to a texture-free black page and white default text', () => {
+  assert.match(
+    readerStoreSource,
+    /dark:\s*\{[^}]*bg:\s*'#000000'[^}]*text:\s*'#ffffff'[^}]*body:\s*'#000000'/,
+  )
+  assert.match(
+    readerStoreSource,
+    /black:\s*\{[^}]*bg:\s*'#000000'[^}]*text:\s*'#ffffff'[^}]*body:\s*'#000000'/,
+  )
+
+  assert.deepEqual(resolveReaderSurface({
+    theme: 'dark',
+    themeType: 'night',
+    themeBackground: '#2d2d2d',
+    themeBody: '#121212',
+    themePopup: '#171717',
+  }), {
+    bodyColor: '#000000',
+    bodyImage: 'none',
+    pageColor: '#000000',
+    pageImage: 'none',
+    popupColor: '#171717',
+    pageBorder: 'transparent',
+    pageShadow: 'none',
+  })
+
+  assert.equal(resolveReaderTextColor({
+    requestedColor: '#262626',
+    themeTextColor: '#ffffff',
+    backgroundColor: '#000000',
+    themeType: 'night',
+  }), '#ffffff')
+  assert.equal(readerColorContrast('#ffffff', '#000000'), 21)
+})
+
+test('day and custom surfaces do not leak their textures into built-in night', () => {
+  assert.deepEqual(resolveReaderSurface({
+    theme: 'parchment',
+    themeType: 'day',
+    themeBackground: '#f4e9bd',
+    themeBody: '#d9c27f',
+    themePopup: '#fffcef',
+  }), {
+    bodyColor: '#d9c27f',
+    bodyImage: 'var(--reader-body-texture)',
+    pageColor: '#f4e9bd',
+    pageImage: 'var(--paper-texture)',
+    popupColor: '#fffcef',
+    pageBorder: 'rgba(109, 95, 55, 0.28)',
+    pageShadow: 'inset 24px 0 44px rgba(90, 71, 28, 0.05), inset -24px 0 44px rgba(90, 71, 28, 0.05)',
+  })
+  assert.deepEqual(resolveReaderSurface({
+    theme: 'custom',
+    themeType: 'night',
+    themeBackground: '#020202',
+    themeBody: '#030303',
+    themePopup: '#040404',
+    customBackgroundImage: '/uploads/users/1/backgrounds/night.png',
+  }), {
+    bodyColor: '#030303',
+    bodyImage: 'none',
+    pageColor: '#020202',
+    pageImage: 'url("/uploads/users/1/backgrounds/night.png")',
+    popupColor: '#040404',
+    pageBorder: 'transparent',
+    pageShadow: 'none',
+  })
+})
+
+test('Reader applies semantic surface variables and EPUB paints the actual reader background', () => {
+  assert.match(readerViewSource, /const effectiveReaderSurface = computed\(\(\) => resolveReaderSurface\(/)
+  assert.match(readerViewSource, /'--reader-body-bg-image': effectiveReaderSurface\.value\.bodyImage/)
+  assert.match(readerViewSource, /'--reader-bg-image': effectiveReaderSurface\.value\.pageImage/)
+  assert.match(readerViewSource, /'--reader-page-border': effectiveReaderSurface\.value\.pageBorder/)
+  assert.match(readerViewSource, /'--reader-page-shadow': effectiveReaderSurface\.value\.pageShadow/)
+  assert.match(readerViewSource, /background-image:\s*var\(--reader-body-bg-image\)/)
+  assert.match(readerViewSource, /background-image:\s*var\(--reader-bg-image\)/)
+  assert.doesNotMatch(readerViewSource, /var\(--reader-bg-image,\s*var\(--paper-texture\)\)/)
+  assert.match(readerViewSource, /html,\s*\n\s*body\s*\{[\s\S]*?background-color:\s*\$\{effectiveReaderBackgroundColor\.value\} !important;/)
+  assert.match(readerViewSource, /background-image:\s*none !important;/)
+  assert.match(readerViewSource, /body :where\(p,\s*h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6,\s*li,\s*blockquote,\s*figcaption,\s*td,\s*th\)/)
+  assert.match(readerEpubSource, /background:\s*var\(--reader-bg,\s*transparent\)/)
 })

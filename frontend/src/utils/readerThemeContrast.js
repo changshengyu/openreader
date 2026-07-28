@@ -1,6 +1,8 @@
 const MIN_READER_TEXT_CONTRAST = 4.5
 const SAFE_DARK_TEXT = '#171717'
-const SAFE_LIGHT_TEXT = '#f2eee4'
+const SAFE_LIGHT_TEXT = '#ffffff'
+const DAY_PAGE_BORDER = 'rgba(109, 95, 55, 0.28)'
+const DAY_PAGE_SHADOW = 'inset 24px 0 44px rgba(90, 71, 28, 0.05), inset -24px 0 44px rgba(90, 71, 28, 0.05)'
 
 export function readerColorContrast(foreground, background) {
   const foregroundRGB = parseCSSColor(foreground)
@@ -50,6 +52,41 @@ export function readerTextShadow({
   return readerColorContrast(textColor, '#000000') >= readerColorContrast(textColor, '#ffffff')
     ? '0 1px 2px rgba(0, 0, 0, 0.92), 0 0 1px rgba(0, 0, 0, 0.96)'
     : '0 1px 2px rgba(255, 255, 255, 0.92), 0 0 1px rgba(255, 255, 255, 0.96)'
+}
+
+export function resolveReaderSurface({
+  theme,
+  themeType = 'day',
+  themeBackground,
+  themeBody,
+  themePopup,
+  customBackgroundImage = '',
+} = {}) {
+  const custom = theme === 'custom'
+  const builtInNight = themeType === 'night' && !custom
+
+  if (builtInNight) {
+    return {
+      bodyColor: '#000000',
+      bodyImage: 'none',
+      pageColor: '#000000',
+      pageImage: 'none',
+      popupColor: normalizedColor(themePopup) || '#171717',
+      pageBorder: 'transparent',
+      pageShadow: 'none',
+    }
+  }
+
+  const customImage = custom ? normalizedColor(customBackgroundImage) : ''
+  return {
+    bodyColor: normalizedColor(themeBody) || '#d9c27f',
+    bodyImage: custom ? 'none' : 'var(--reader-body-texture)',
+    pageColor: normalizedColor(themeBackground) || '#f4e9bd',
+    pageImage: customImage ? `url(${JSON.stringify(customImage)})` : custom ? 'none' : 'var(--paper-texture)',
+    popupColor: normalizedColor(themePopup) || 'rgba(255, 252, 239, 0.94)',
+    pageBorder: custom ? 'transparent' : DAY_PAGE_BORDER,
+    pageShadow: custom ? 'none' : DAY_PAGE_SHADOW,
+  }
 }
 
 function normalizedColor(value) {

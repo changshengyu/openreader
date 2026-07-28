@@ -123,6 +123,6 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 50vh;
   border: 0;
-  background: transparent;
+  background: var(--reader-bg, transparent);
 }
 </style>
