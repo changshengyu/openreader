@@ -3012,3 +3012,16 @@ timer 和长期 cache job 语义。确认框期间换号不再 dispatch，迟到
 UserManage；最新自动门为 frontend 643/643、生产构建与 Go 全量通过。首次浏览器执行已进入
 StorageImport 并修正“整页导航重复注入 A token”的测试夹具缺陷；最终三视口复跑因 macOS
 沙箱外 Chromium 审批通道中断尚未完成，故本切片仍是 candidate，Docker 仍待完成。
+
+## 2026-07-28 Reader 纯黑自定义夜间内容面复审
+
+线上已确认运行 `59e11a9` 后，用户仍观察到黑色阅读背景上的实际文字承载层不是黑色。第四轮
+取证确认第三轮把内容面接管条件错误地绑定到 `theme !== "custom"`；固定上游却允许任意
+自定义方案成为“黑夜默认”。因此 `theme: custom + themeType: night + customBgColor:
+#000000 + 无背景图` 虽已绘制纯黑页面，普通 `mark/span` 和 EPUB 作者后代仍不会进入接管。
+
+本轮改为按最终渲染面判定：只有语义夜间、不透明纯黑页面且无背景图才共享白字/透明后代
+合同；自定义图片和非黑夜间继续保持用户资源。frontend 644/644、Go、build、TXT
+桌面/两手机/iPad 及真实 EPUB 1440/390/360 回归通过。完整矩阵、失败测试和验证证据见
+[`reader-night-contrast-p0-contract.md`](reader-night-contrast-p0-contract.md)；Docker
+仍待本地发布门。

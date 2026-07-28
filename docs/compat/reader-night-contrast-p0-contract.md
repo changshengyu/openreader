@@ -335,3 +335,24 @@ themeType === "night" && theme !== "custom"
    1440×900、390×844、360×800 验证同一四类状态及日间可逆恢复。
 5. 本轮不得通过把所有 `themeType === "night"` 无条件改黑来规避状态判断；这会破坏上游
    允许的自定义夜间方案和用户已有背景图数据。
+
+### 第四轮实施与候选验证
+
+- 新增 `isBlackNightReaderSurface()`，以最终 `themeType/pageColor/pageImage` 判定内容面
+  所有权，不再以 preset/custom 身份代替实际渲染结果。函数拒绝日间、非黑页面、透明黑和
+  任意背景图，只接受不透明纯黑夜间页面。
+- Reader 根状态统一为 `black-night-surface`。内置 dark/black 与“纯黑、无图”的自定义
+  夜间方案共同接管普通正文、`mark/span` 和 EPUB bridge；纯黑自定义方案中的旧深色
+  `fontColor` 也由渲染层改为纯白。
+- 自定义背景图夜间和非黑自定义夜间不进入该状态，继续保留用户背景资源与已有 WCAG
+  对比度保护。本轮没有改写保存的数据、配置方案或 API。
+- 测试先行已证明旧实现因缺少最终表面判定失败。实现后 frontend `644/644`、Go 全量、
+  Vite production build、脚本语法和差异检查通过。
+- 普通正文真实浏览器门通过桌面 1440×900、手机 390×844/360×800，以及既有 iPad
+  自适应/强制手机模式；新增纯黑自定义夜间 fixture 验证页面纯黑、正文/mark/span 纯白且
+  自身透明，同时带背景图的自定义夜间明确保持非接管状态。
+- 真实 API EPUB 重新导入带作者 `!important` 白底、渐变、深色文字和阴影的 fixture。
+  1440×900、390×844、360×800 均验证内置夜间和纯黑自定义夜间接管
+  `html/body/main/div/span/table/td`，并保留日间作者样式恢复。
+- 当前状态为 **implementation-validated / Docker-pending**。代码提交、GHCR 标签、digest
+  和卷兼容门在本批本地 Docker 发布完成后补录。

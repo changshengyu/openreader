@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
+  isBlackNightReaderSurface,
   readerColorContrast,
   readerTextShadow,
   resolveReaderSurface,
@@ -132,6 +133,39 @@ test('built-in night resolves to a texture-free black page and white default tex
   assert.equal(readerColorContrast('#ffffff', '#000000'), 21)
 })
 
+test('black night content ownership follows the rendered surface instead of the preset identity', () => {
+  assert.equal(isBlackNightReaderSurface({
+    themeType: 'night',
+    pageColor: '#000000',
+    pageImage: 'none',
+  }), true)
+  assert.equal(isBlackNightReaderSurface({
+    themeType: 'night',
+    pageColor: 'rgb(0, 0, 0)',
+    pageImage: 'none',
+  }), true)
+  assert.equal(isBlackNightReaderSurface({
+    themeType: 'day',
+    pageColor: '#000000',
+    pageImage: 'none',
+  }), false)
+  assert.equal(isBlackNightReaderSurface({
+    themeType: 'night',
+    pageColor: '#171717',
+    pageImage: 'none',
+  }), false)
+  assert.equal(isBlackNightReaderSurface({
+    themeType: 'night',
+    pageColor: '#000000',
+    pageImage: 'url("/night.png")',
+  }), false)
+  assert.equal(isBlackNightReaderSurface({
+    themeType: 'night',
+    pageColor: 'rgba(0, 0, 0, 0)',
+    pageImage: 'none',
+  }), false)
+})
+
 test('day and custom surfaces do not leak their textures into built-in night', () => {
   assert.deepEqual(resolveReaderSurface({
     theme: 'parchment',
@@ -184,18 +218,23 @@ test('Reader applies semantic surface variables and EPUB paints the actual reade
 test('built-in night clears author backgrounds on the actual text-bearing descendants', () => {
   assert.match(
     readerViewSource,
-    /'built-in-night':\s*isBuiltInNightTheme/,
-    'Reader root must expose a semantic built-in-night state',
+    /'black-night-surface':\s*usesBlackNightContentSurface/,
+    'Reader root must expose a rendered black-night content-surface state',
   )
   assert.match(
     readerViewSource,
-    /\.reader-shell\.built-in-night[\s\S]*?:deep\(\[data-reader-block\][^)]*\)[\s\S]*?color:\s*#ffffff !important;[\s\S]*?background(?:-color)?:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
+    /\.reader-shell\.black-night-surface[\s\S]*?:deep\(\[data-reader-block\][^)]*\)[\s\S]*?color:\s*#ffffff !important;[\s\S]*?background(?:-color)?:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
     'ordinary reader descendants must not retain a light author or user-agent surface',
   )
   assert.match(
     readerViewSource,
-    /isBuiltInNightTheme\.value[\s\S]*?body :where\(\*\)[\s\S]*?color:\s*inherit !important;[\s\S]*?background:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
-    'EPUB descendants must be reset only for the built-in night theme',
+    /usesBlackNightContentSurface\.value[\s\S]*?body :where\(\*\)[\s\S]*?color:\s*inherit !important;[\s\S]*?background:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
+    'EPUB descendants must be reset for every rendered pure-black night surface',
+  )
+  assert.match(
+    readerViewSource,
+    /:built-in-night="usesBlackNightContentSurface"/,
+    'EPUB bridge ownership must follow the rendered black-night surface state',
   )
   assert.match(
     readerChapterSource,

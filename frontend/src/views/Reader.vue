@@ -2,7 +2,7 @@
   <main
     ref="shellEl"
     class="reader-shell"
-    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll, 'has-custom-background': reader.theme === 'custom' && Boolean(reader.customBgImage), 'built-in-night': isBuiltInNightTheme }]"
+    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll, 'has-custom-background': reader.theme === 'custom' && Boolean(reader.customBgImage), 'black-night-surface': usesBlackNightContentSurface }]"
     :style="readerStyle"
   >
     <ReaderDesktopTools
@@ -172,7 +172,7 @@
             :audio-cover-url="bookCoverUrl(book)"
             :audio-autoplay="audioAutoplay"
             :epub-style="epubStyleText"
-            :built-in-night="isBuiltInNightTheme"
+            :built-in-night="usesBlackNightContentSurface"
             :viewport-height="readerViewportHeight"
             @reload="reloadChapter"
             @epub-load="handleEpubLoad"
@@ -468,6 +468,7 @@ import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
 import {
+  isBlackNightReaderSurface,
   readerTextShadow,
   resolveReaderSurface,
   resolveReaderTextColor,
@@ -545,9 +546,6 @@ const chapters = ref([])
 const chapter = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
 const isNightTheme = computed(() => reader.themeType === 'night')
-const isBuiltInNightTheme = computed(() => (
-  reader.themeType === 'night' && reader.theme !== 'custom'
-))
 const {
   cacheKey: readerDataCacheKey,
   invalidate: invalidateReaderDataCache,
@@ -1228,13 +1226,18 @@ const effectiveReaderSurface = computed(() => resolveReaderSurface({
 const effectiveReaderBackgroundColor = computed(() => effectiveReaderSurface.value.pageColor)
 const effectiveReaderBodyColor = computed(() => effectiveReaderSurface.value.bodyColor)
 const effectiveReaderPopupColor = computed(() => effectiveReaderSurface.value.popupColor)
+const usesBlackNightContentSurface = computed(() => isBlackNightReaderSurface({
+  themeType: reader.themeType,
+  pageColor: effectiveReaderSurface.value.pageColor,
+  pageImage: effectiveReaderSurface.value.pageImage,
+}))
 const effectiveReaderTextColor = computed(() => resolveReaderTextColor({
   requestedColor: reader.fontColor,
   themeTextColor: reader.currentTheme.text,
   backgroundColor: effectiveReaderBackgroundColor.value,
   themeType: reader.themeType,
   hasBackgroundImage: Boolean(effectiveReaderBackgroundImage.value),
-  builtInNight: isBuiltInNightTheme.value,
+  builtInNight: usesBlackNightContentSurface.value,
 }))
 const effectiveReaderPopupTextColor = computed(() => resolveReaderTextColor({
   requestedColor: effectiveReaderTextColor.value,
@@ -1326,7 +1329,7 @@ const epubStyleText = computed(() => `
   body :where(p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, td, th) {
     color: inherit !important;
   }
-  ${isBuiltInNightTheme.value ? `
+  ${usesBlackNightContentSurface.value ? `
   body :where(*) {
     color: inherit !important;
     -webkit-text-fill-color: currentColor !important;
@@ -2449,8 +2452,8 @@ function readError(err, fallback) {
   pointer-events: none;
 }
 
-.reader-shell.built-in-night .reader-body :deep([data-reader-block]),
-.reader-shell.built-in-night .reader-body :deep([data-reader-block] *) {
+.reader-shell.black-night-surface .reader-body :deep([data-reader-block]),
+.reader-shell.black-night-surface .reader-body :deep([data-reader-block] *) {
   color: #ffffff !important;
   -webkit-text-fill-color: currentColor !important;
   background: transparent !important;

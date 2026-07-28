@@ -15,6 +15,17 @@ export function readerColorContrast(foreground, background) {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
+export function isBlackNightReaderSurface({
+  themeType = 'day',
+  pageColor,
+  pageImage = 'none',
+} = {}) {
+  if (themeType !== 'night') return false
+  const image = normalizedColor(pageImage).toLowerCase()
+  if (image && image !== 'none') return false
+  return isOpaqueBlackCSSColor(pageColor)
+}
+
 export function resolveReaderTextColor({
   requestedColor,
   themeTextColor,
@@ -94,6 +105,34 @@ export function resolveReaderSurface({
 
 function normalizedColor(value) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function isOpaqueBlackCSSColor(value) {
+  const color = normalizedColor(value).toLowerCase()
+  if (color === 'black') return true
+
+  const hex = color.match(/^#([\da-f]{3,8})$/i)?.[1]
+  if (hex) {
+    if (hex.length === 3) return hex === '000'
+    if (hex.length === 4) return hex === '000f'
+    if (hex.length === 6) return hex === '000000'
+    if (hex.length === 8) return hex === '000000ff'
+    return false
+  }
+
+  const rgb = color.match(/^rgba?\(\s*([+-]?(?:\d+\.?\d*|\.\d+)%?)\s*[, ]\s*([+-]?(?:\d+\.?\d*|\.\d+)%?)\s*[, ]\s*([+-]?(?:\d+\.?\d*|\.\d+)%?)(?:\s*[,/]\s*([+-]?(?:\d+\.?\d*|\.\d+)%?))?\s*\)$/)
+  if (!rgb) return false
+  const channels = rgb.slice(1, 4).map(channel => {
+    if (channel.endsWith('%')) return clamp(Number.parseFloat(channel), 0, 100) * 2.55
+    return clamp(Number.parseFloat(channel), 0, 255)
+  })
+  if (!channels.every(channel => Number.isFinite(channel) && channel === 0)) return false
+  const alpha = rgb[4]
+  if (alpha === undefined) return true
+  const parsedAlpha = alpha.endsWith('%')
+    ? clamp(Number.parseFloat(alpha), 0, 100) / 100
+    : clamp(Number.parseFloat(alpha), 0, 1)
+  return Number.isFinite(parsedAlpha) && parsedAlpha === 1
 }
 
 function parseCSSColor(value) {

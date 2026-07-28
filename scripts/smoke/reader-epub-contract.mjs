@@ -209,6 +209,43 @@ async function seedProgress(token, bookID) {
   assert.equal(progressResponse.status, 200, progressBody)
 }
 
+async function setCustomBlackReaderSettings(token) {
+  const response = await fetch(`${baseURL}/api/settings/reader`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      value: {
+        mode: 'scroll',
+        pageType: 'normal',
+        pageMode: 'auto',
+        clickMethod: 'auto',
+        autoTheme: false,
+        theme: 'custom',
+        themeType: 'night',
+        customBodyColor: '#000000',
+        customPopupColor: '#121212',
+        customBgColor: '#000000',
+        customBgImage: '',
+        customBgImageList: [],
+        fontColor: '#333333',
+        fontSize: 18,
+        fontWeight: 400,
+        lineHeight: 1.8,
+        paragraphSpace: 0.2,
+        columnWidth: 800,
+        brightness: 100,
+        animateDuration: 300,
+        settingsVersion: 13,
+      },
+    }),
+  })
+  const body = await response.text()
+  assert.equal(response.status, 200, body)
+}
+
 async function assertCoverFrameContract(page, resourceResponses) {
   await page.waitForSelector('iframe.epub-iframe', { timeout: 15_000 })
   const frame = page.frameLocator('iframe.epub-iframe')
@@ -284,7 +321,7 @@ async function assertBuiltInNightSurface(page, frame, viewport) {
     ? '.reader-mobile-float-right.visible button[title="夜间模式"]'
     : '.reader-right-rail button[title="夜间模式"]'
   await page.locator(toggleSelector).click()
-  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('built-in-night'))
+  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
   await frame.locator('html.openreader-built-in-night').waitFor({ timeout: 10_000 })
 
   const parentState = await page.evaluate(() => {
@@ -346,7 +383,7 @@ async function assertBuiltInNightSurface(page, frame, viewport) {
     ? '.reader-mobile-float-right.visible button[title="日间模式"]'
     : '.reader-right-rail button[title="日间模式"]'
   await page.locator(dayToggleSelector).click()
-  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('built-in-night'))
+  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
   await frame.locator('html.openreader-built-in-night').waitFor({ state: 'detached', timeout: 10_000 })
   const restored = await frame.locator('#author-surface').evaluate((main) => {
     const text = document.querySelector('#author-text')
@@ -526,6 +563,83 @@ async function runViewport(browser, viewport, token, bookID) {
   await context.close()
 }
 
+async function runCustomBlackNightViewport(browser, viewport, token, bookID) {
+  await setCustomBlackReaderSettings(token)
+  const context = await browser.newContext({ viewport })
+  await context.addInitScript((value) => {
+    localStorage.setItem('openreader_token', value)
+  }, token)
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') failures.push(message.text())
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  await page.goto(`${baseURL}/books/${bookID}/read?chapter=1`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('iframe.epub-iframe', { timeout: 15_000 })
+  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
+  const frame = page.frameLocator('iframe.epub-iframe')
+  await frame.locator('#start').waitFor({ timeout: 10_000 })
+  await frame.locator('html.openreader-built-in-night').waitFor({ timeout: 10_000 })
+
+  const parentState = await page.evaluate(() => {
+    const style = element => window.getComputedStyle(element)
+    const shell = document.querySelector('.reader-shell')
+    const readerPage = document.querySelector('.reader-page')
+    const iframe = document.querySelector('iframe.epub-iframe')
+    return {
+      shellBackground: style(shell).backgroundColor,
+      shellImage: style(shell).backgroundImage,
+      pageBackground: style(readerPage).backgroundColor,
+      pageImage: style(readerPage).backgroundImage,
+      pageColor: style(readerPage).color,
+      iframeBackground: style(iframe).backgroundColor,
+    }
+  })
+  assert.deepEqual(parentState, {
+    shellBackground: 'rgb(0, 0, 0)',
+    shellImage: 'none',
+    pageBackground: 'rgb(0, 0, 0)',
+    pageImage: 'none',
+    pageColor: 'rgb(255, 255, 255)',
+    iframeBackground: 'rgb(0, 0, 0)',
+  }, `${viewport.width}: custom black night parent surfaces`)
+
+  const frameState = await frame.locator('body').evaluate((body) => {
+    const nodes = {
+      html: document.documentElement,
+      body,
+      main: document.querySelector('#author-surface'),
+      card: document.querySelector('#author-card'),
+      text: document.querySelector('#author-text'),
+      table: document.querySelector('#author-table'),
+      cell: document.querySelector('#author-cell'),
+    }
+    return Object.fromEntries(Object.entries(nodes).map(([name, node]) => {
+      const style = getComputedStyle(node)
+      return [name, {
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
+        boxShadow: style.boxShadow,
+      }]
+    }))
+  })
+  for (const root of ['html', 'body']) {
+    assert.equal(frameState[root].color, 'rgb(255, 255, 255)', `${viewport.width}: custom EPUB ${root} text`)
+    assert.equal(frameState[root].backgroundColor, 'rgb(0, 0, 0)', `${viewport.width}: custom EPUB ${root} background`)
+    assert.equal(frameState[root].backgroundImage, 'none', `${viewport.width}: custom EPUB ${root} image`)
+  }
+  for (const descendant of ['main', 'card', 'text', 'table', 'cell']) {
+    assert.equal(frameState[descendant].color, 'rgb(255, 255, 255)', `${viewport.width}: custom EPUB ${descendant} text`)
+    assert.equal(frameState[descendant].backgroundColor, 'rgba(0, 0, 0, 0)', `${viewport.width}: custom EPUB ${descendant} background`)
+    assert.equal(frameState[descendant].backgroundImage, 'none', `${viewport.width}: custom EPUB ${descendant} image`)
+    assert.equal(frameState[descendant].boxShadow, 'none', `${viewport.width}: custom EPUB ${descendant} shadow`)
+  }
+  assert.deepEqual(failures, [])
+  await context.close()
+}
+
 async function main() {
   const fixture = createEPUB()
   try {
@@ -534,6 +648,7 @@ async function main() {
       for (const viewport of smokeViewports()) {
         const imported = await registerAndImport(fixture.archive)
         await runViewport(browser, viewport, imported.token, imported.book.id)
+        await runCustomBlackNightViewport(browser, viewport, imported.token, imported.book.id)
       }
     } finally {
       await browser.close()

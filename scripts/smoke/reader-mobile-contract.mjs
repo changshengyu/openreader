@@ -1015,7 +1015,7 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
     ? page.locator('.reader-mobile-float-right.visible button[title="夜间模式"]')
     : page.locator('.reader-right-rail button[title="夜间模式"]')
   await nightToggle.click()
-  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('built-in-night'))
+  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
 
   const state = await page.evaluate(() => {
     const shell = document.querySelector('.reader-shell')
@@ -1057,7 +1057,7 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
     ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
     : page.locator('.reader-right-rail button[title="日间模式"]')
   await dayToggle.click()
-  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('built-in-night'))
+  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
   const restoredMarkBackground = await page.locator('.reader-body [data-reader-block] mark')
     .evaluate(element => window.getComputedStyle(element).backgroundColor)
   assert(restoredMarkBackground !== 'rgba(0, 0, 0, 0)', `${viewport.width}: day mark surface must restore`)
@@ -1248,6 +1248,8 @@ async function assertSettingsBackgroundGeometry(page, viewport) {
       deleteRight: deleteStyle?.right ?? '',
       deleteColor: deleteStyle?.color ?? '',
       hasCardOverlay: Boolean(document.querySelector('.bg-image-option, .bg-image-delete')),
+      ownsBlackNightSurface: document.querySelector('.reader-shell')?.classList.contains('black-night-surface') || false,
+      pageBackgroundImage: window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage,
     }
   })
   assertClose(geometry.previewWidth, 36, 1, `${viewport.width}: settings background preview width`)
@@ -1260,6 +1262,8 @@ async function assertSettingsBackgroundGeometry(page, viewport) {
   assert(geometry.deleteRight === '-6px', `${viewport.width}: settings background delete right ${geometry.deleteRight}`)
   assert(geometry.deleteColor === 'rgb(255, 117, 137)', `${viewport.width}: settings background delete color ${geometry.deleteColor}`)
   assert(geometry.hasCardOverlay === false, `${viewport.width}: settings background should not keep card overlay classes`)
+  assert(geometry.ownsBlackNightSurface === false, `${viewport.width}: custom image night must preserve its authored surface`)
+  assert(geometry.pageBackgroundImage !== 'none', `${viewport.width}: custom image night must retain its selected background image`)
 }
 
 async function readerGeometry(page) {
@@ -1455,6 +1459,72 @@ async function runViewport(browser, viewport) {
   assertClose(hiddenChromeGeometry.paragraphLeft, initialGeometry.paragraphLeft, 1, `${viewport.width}: toolbar hide should not shift paragraph left`)
   assertClose(hiddenChromeGeometry.paragraphRight, initialGeometry.paragraphRight, 1, `${viewport.width}: toolbar hide should not shift paragraph right`)
 
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
+async function runCustomBlackNightViewport(browser, viewport) {
+  const context = await browser.newContext({ viewport })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+  }, fakeToken())
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    failures.push(text)
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  await installApiMocks(page, {
+    theme: 'custom',
+    themeType: 'night',
+    customBodyColor: '#000000',
+    customPopupColor: '#121212',
+    customBgColor: '#000000',
+    customBgImage: '',
+    customBgImageList: [],
+    fontColor: '#333333',
+  })
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
+  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
+  const state = await page.evaluate(() => {
+    const style = element => window.getComputedStyle(element)
+    const shell = document.querySelector('.reader-shell')
+    const page = document.querySelector('.reader-page')
+    const paragraph = document.querySelector('.reader-body [data-reader-block]')
+    const mark = paragraph?.querySelector('mark')
+    const span = paragraph?.querySelector('span')
+    return {
+      shellBackground: style(shell).backgroundColor,
+      shellImage: style(shell).backgroundImage,
+      pageBackground: style(page).backgroundColor,
+      pageImage: style(page).backgroundImage,
+      paragraphColor: style(paragraph).color,
+      paragraphBackground: style(paragraph).backgroundColor,
+      markColor: style(mark).color,
+      markBackground: style(mark).backgroundColor,
+      spanColor: style(span).color,
+      spanBackground: style(span).backgroundColor,
+    }
+  })
+  const expected = {
+    shellBackground: 'rgb(0, 0, 0)',
+    shellImage: 'none',
+    pageBackground: 'rgb(0, 0, 0)',
+    pageImage: 'none',
+    paragraphColor: 'rgb(255, 255, 255)',
+    paragraphBackground: 'rgba(0, 0, 0, 0)',
+    markColor: 'rgb(255, 255, 255)',
+    markBackground: 'rgba(0, 0, 0, 0)',
+    spanColor: 'rgb(255, 255, 255)',
+    spanBackground: 'rgba(0, 0, 0, 0)',
+  }
+  for (const [key, value] of Object.entries(expected)) {
+    assert(state[key] === value, `${viewport.width}: custom black night ${key} expected ${value}, got ${state[key]}`)
+  }
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
 }
@@ -1656,6 +1726,9 @@ async function main() {
     await runDesktopViewport(browser)
     await runViewport(browser, { width: 390, height: 844 })
     await runViewport(browser, { width: 360, height: 800 })
+    await runCustomBlackNightViewport(browser, { width: 1440, height: 900 })
+    await runCustomBlackNightViewport(browser, { width: 390, height: 844 })
+    await runCustomBlackNightViewport(browser, { width: 360, height: 800 })
     await runIPadAdaptiveViewport(browser, { width: 1024, height: 1366 })
     await runIPadAdaptiveViewport(browser, { width: 1366, height: 1024 })
     await runIPadForcedMobileViewport(browser, { width: 1024, height: 1366 })
