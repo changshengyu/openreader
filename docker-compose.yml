@@ -1,6 +1,7 @@
 services:
   openreader:
     image: ghcr.io/changshengyu/openreader:latest
+    pull_policy: always
     container_name: openreader
     ports:
       - "8080:8080"

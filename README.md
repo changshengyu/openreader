@@ -36,6 +36,20 @@ docker compose up -d
 
 Open `http://localhost:8080`. Register an account and start reading.
 
+Do not update an existing deployment by only restarting its container; that can
+keep the old locally cached `latest` image:
+
+```bash
+docker compose pull openreader
+docker compose up -d --force-recreate openreader
+curl -fsS http://localhost:8080/api/health
+```
+
+The repository's `docker-compose.yml` also sets `pull_policy: always`, so
+`docker compose up -d` checks for a newer image when that file is used. Treat the
+`version` and `commit` in the health response as the authoritative running
+version; a browser hard refresh cannot upgrade the container.
+
 ### Publish Docker Image
 
 Development builds default to `linux/arm64`, which is faster for Apple Silicon Macs:

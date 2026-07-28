@@ -36,6 +36,18 @@ docker compose up -d
 
 打开 `http://localhost:8080`，注册账号即可开始阅读。
 
+更新已有部署时不要只重启容器；旧的本地 `latest` 镜像不会因此自动替换：
+
+```bash
+docker compose pull openreader
+docker compose up -d --force-recreate openreader
+curl -fsS http://localhost:8080/api/health
+```
+
+仓库自带的 `docker-compose.yml` 已设置 `pull_policy: always`，因此使用该文件执行
+`docker compose up -d` 时也会先检查新镜像。健康检查响应中的 `version` 和 `commit`
+才是当前实际运行版本；浏览器强制刷新不能升级容器。
+
 ### 发布 Docker 镜像
 
 开发期默认只构建并推送 `linux/arm64`，适合 Apple Silicon Mac，速度更快：
