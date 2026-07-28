@@ -3,6 +3,7 @@ package booksources
 import (
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -16,6 +17,7 @@ var (
 	ErrSourceInUse             = errors.New("book source is in use")
 	ErrNoDefault               = errors.New("default book sources are not configured")
 	ErrNamespaceNotInitialized = errors.New("user book sources are not initialized")
+	sourceNamespaceInitMu      sync.Mutex
 )
 
 type ImportResult struct {
@@ -67,17 +69,23 @@ func (s *Service) EnsureNamespace(userID uint) error {
 	if s == nil || s.db == nil {
 		return errors.New("book source service is unavailable")
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		var initialized int64
-		if err := tx.Model(&models.BookSourceNamespace{}).
-			Where("user_id = ?", userID).
-			Count(&initialized).Error; err != nil {
-			return err
-		}
-		if initialized > 0 {
-			return nil
-		}
+	initialized, err := s.namespaceInitialized(userID)
+	if err != nil || initialized {
+		return err
+	}
 
+	// Two root-workspace requests can discover the same new user at once.
+	// SQLite cannot upgrade both deferred read transactions to writers, so the
+	// loser receives SQLITE_BUSY immediately even with busy_timeout configured.
+	// Serialize only the rare initialization path, then recheck after waiting.
+	sourceNamespaceInitMu.Lock()
+	defer sourceNamespaceInitMu.Unlock()
+	initialized, err = s.namespaceInitialized(userID)
+	if err != nil || initialized {
+		return err
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
 		if userID != 0 {
 			var defaults []models.UserBookSource
 			if err := tx.Where("user_id = ? AND detached = ?", 0, false).

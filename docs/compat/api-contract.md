@@ -15,6 +15,11 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 - Concurrent first writes to the same authenticated `settings/:key` use the existing `(user_id,key)` unique key as
   an atomic upsert. They retain validation, stale-base conflict behavior, response shape and scoped sync events;
   a normal same-user startup race must never expose a UNIQUE error as `500`.
+- Concurrent authenticated startup reads such as `GET /api/sources` and `GET /api/explore/sources` may both
+  initialize the caller's book-source namespace. Every pooled SQLite connection must therefore inherit WAL and
+  a 5000 ms busy timeout, while all in-process book-source service instances serialize the rare uninitialized
+  namespace transaction; ordinary initialization contention must wait and retain the existing successful response
+  schemas instead of exposing `database is locked` as `500`.
 - `PUT /api/settings/:key` may receive additive `force:true` only for the confirmed “备份用户配置” action.
   It bypasses stale-base comparison for that authenticated user's legal `reader/shelf/search` row only; ordinary
   background writes keep CAS. Explicit restore never creates a missing row as a side effect of reading it.

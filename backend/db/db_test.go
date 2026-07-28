@@ -1,15 +1,60 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"openreader/backend/config"
 	"openreader/backend/models"
 )
+
+func TestOpenAppliesWALAndBusyTimeoutToEveryPooledConnection(t *testing.T) {
+	database, err := Open(config.Config{
+		DatabasePath: filepath.Join(t.TempDir(), "data", "openreader.db"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDatabase.SetMaxOpenConns(4)
+
+	ctx := context.Background()
+	first, err := sqlDatabase.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := sqlDatabase.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	for index, connection := range []*sql.Conn{first, second} {
+		var busyTimeout int
+		if err := connection.QueryRowContext(ctx, "PRAGMA busy_timeout;").Scan(&busyTimeout); err != nil {
+			t.Fatalf("connection %d busy timeout: %v", index+1, err)
+		}
+		if busyTimeout != 5000 {
+			t.Fatalf("connection %d busy timeout = %d, want 5000", index+1, busyTimeout)
+		}
+		var journalMode string
+		if err := connection.QueryRowContext(ctx, "PRAGMA journal_mode;").Scan(&journalMode); err != nil {
+			t.Fatalf("connection %d journal mode: %v", index+1, err)
+		}
+		if !strings.EqualFold(journalMode, "wal") {
+			t.Fatalf("connection %d journal mode = %q, want WAL", index+1, journalMode)
+		}
+	}
+}
 
 func TestMigrateLocalBookCacheMovesLocalContentToLibrary(t *testing.T) {
 	root := t.TempDir()
