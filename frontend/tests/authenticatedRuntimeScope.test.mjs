@@ -93,6 +93,7 @@ const { createPinia, setActivePinia } = await import('pinia')
 // Load the shared API module before stores so Vite's SSR graph gives every
 // production import the same mutable client instance used by these contracts.
 const { default: api } = await vite.ssrLoadModule('/src/api/client.js')
+const { currentUserScope } = await vite.ssrLoadModule('/src/utils/authScope.js')
 const { useBookshelfStore } = await vite.ssrLoadModule('/src/stores/bookshelf.js')
 const { usePreferencesStore } = await vite.ssrLoadModule('/src/stores/preferences.js')
 const { useReaderStore } = await vite.ssrLoadModule('/src/stores/reader.js')
@@ -563,6 +564,14 @@ test('a delayed profile response cannot overwrite a later login profile', { conc
   })
 })
 
+test('an explicit rejected token can identify its user scope after storage removal', { concurrency: false }, () => {
+  const rejectedToken = tokenFor(19, 'expired')
+  storage.removeItem('openreader_token')
+
+  assert.equal(currentUserScope(rejectedToken), 'user:19')
+  assert.equal(currentUserScope('invalid-token'), 'anonymous')
+})
+
 test('session clearing invalidates the mounted reader before removing its token and resets account overlays', { concurrency: false }, async () => {
   const { overlay, user, workspace } = freshStores(1)
   workspace.beginSearch({ keyword: '用户 A 搜索', sourceId: 8, searchType: 'single' })
@@ -609,6 +618,31 @@ test('session clearing invalidates the mounted reader before removing its token 
   assert.equal(await categoryResult, null)
 })
 
+test('the real interceptor order preserves same-account reauthentication after storage removal', { concurrency: false }, async () => {
+  const { user } = freshStores(13)
+  const rejectedToken = user.token
+  storage.removeItem('openreader_token')
+
+  user.requireLogin('session', rejectedToken)
+  assert.equal(user.invalidatedScope, 'user:13')
+
+  await withAPI('post', async () => ({
+    data: {
+      token: tokenFor(13, 'renewed'),
+      user: { id: 13, username: 'user-thirteen' },
+    },
+  }), async () => {
+    const result = await user.login('user-thirteen', 'password')
+    assert.deepEqual(result, {
+      previousScope: 'user:13',
+      currentScope: 'user:13',
+      sameAuthenticatedScope: true,
+    })
+    assert.equal(JSON.stringify(result).includes(rejectedToken), false)
+    assert.equal(JSON.stringify(result).includes(tokenFor(13, 'renewed')), false)
+  })
+})
+
 test('a pending startup 401 opens reauthentication once after localStorage has already dropped the token', { concurrency: false }, () => {
   const rejectedToken = tokenFor(5, 'expired')
   const { user } = freshStores(5)
@@ -620,7 +654,7 @@ test('a pending startup 401 opens reauthentication once after localStorage has a
   const generation = user.sessionGeneration
   assert.equal(user.authDialogVisible, true)
   assert.equal(user.readerSessionBlocked, true)
-  assert.equal(user.invalidatedScope, '')
+  assert.equal(user.invalidatedScope, 'user:5')
 
   user.requireLogin('session', rejectedToken)
   assert.equal(user.sessionGeneration, generation)

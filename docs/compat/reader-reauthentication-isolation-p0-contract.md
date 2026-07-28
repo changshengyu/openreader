@@ -3,9 +3,8 @@
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 状态：2026-07-27 完成固定上游与当前实现取证，随后按测试先行完成第一版候选实现。2026-07-28
-按真实 Axios/stream 401 调用顺序复审时发现失效账号 scope 捕获仍有缺口：拦截器先删除
-localStorage token，store 后续只从 localStorage 解码身份，因此同账号重新登录可能被误判为
-未知/不同账号。该项重新标记为 `must-fix`；真实浏览器与 Docker 发布闸门仍未完成。
+按真实 Axios/stream 401 调用顺序复审并修复失效账号 scope 捕获缺口；前端 `643/643`、生产
+构建、Go 全量以及四种视口的真实浏览器状态机均通过。Docker 发布闸门尚未执行。
 
 本切片补充已经完成的
 [`authenticated-runtime-scope-p2-contract.md`](authenticated-runtime-scope-p2-contract.md)：
@@ -170,3 +169,23 @@ Reader 重新 `init(true)`。OpenReader 的 JWT 适配多了一层“被拒绝 t
 5. 增加真实浏览器 smoke：在已加载 Reader 中先删除 storage 再派发与拦截器相同的事件；
    1440×900、1024×1366、390×844、360×800 均验证旧正文立即卸载、Dialog 不可误关闭、
    同账号原路重载、异账号返回书架、无旧进度写入和控制台错误。
+
+### 修订实施结果
+
+- `currentUserScope(token?)` 现在既保留默认读取 localStorage 的兼容调用，也能从显式 token
+  解析纯 `user:<id>` scope。无效或缺失 payload 继续闭合为 `anonymous`。
+- `requireLogin()` 只在 rejected token 通过“仍是当前请求”或唯一 pending startup 事件门禁后，
+  把它作为一次性 `tokenHint` 传给 `clearSession()`；scope 依次尝试 Pinia token、hint 和
+  storage。store 仍只保存 scope，登录结果、路由、日志和持久设置均不包含 token。
+- 已打开的 session Dialog 对重复失效事件保持幂等；旧 rejected token 在新账号 token 生效后
+  仍由原比较门禁拒绝，不能借 hint 使新会话失效。
+- 测试先行在旧实现上确定性失败四项：显式 token scope、storage 先删的同账号 401、pending
+  startup 401、store tokenHint 接线；实现后聚焦 `32/32` 和 frontend 全量 `643/643` 通过。
+- Vite production build 与后端 `go test ./...` 通过。
+- 新增 `scripts/smoke/reader-reauthentication-contract.mjs`。在 1440×900、1024×1366、
+  390×844、360×800 中均先加载 A 的 Reader，再按拦截器顺序删除 storage 并派发事件：
+  旧 Reader/书名/正文同步消失，session Dialog 不可用 Esc 或关闭按钮退出；A 重新登录保留
+  原 URL并以新 generation 加载，B 登录返回书架；A 的失效 token 产生零次进度写入，移动端
+  新 Reader 的工具层恢复默认显示，控制台无错误。
+- 本批不改 API、JWT 验证、数据库、缓存文件或任何用户数据。Docker 尚未发布；先完成提交和
+  本地容器/卷兼容门禁。

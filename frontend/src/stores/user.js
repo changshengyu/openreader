@@ -68,12 +68,15 @@ export const useUserStore = defineStore('user', {
           : window.__openreaderAuthRequired?.rejectedToken
         if (pendingToken !== rejectedToken || this.authDialogVisible) return
       }
-      this.clearSession({ suspendWorkspace: true })
+      if (reason === 'session' && this.authDialogVisible && this.readerSessionBlocked) return
+      this.clearSession({ suspendWorkspace: true, tokenHint: rejectedToken })
       this.authReason = reason
       this.authDialogVisible = true
     },
-    clearSession({ suspendWorkspace = true } = {}) {
-      const scope = currentUserScope()
+    clearSession({ suspendWorkspace = true, tokenHint = '' } = {}) {
+      let scope = currentUserScope(this.token)
+      if (scope === 'anonymous') scope = currentUserScope(tokenHint)
+      if (scope === 'anonymous') scope = currentUserScope()
       if (scope !== 'anonymous') this.invalidatedScope = scope
       this.readerSessionBlocked = true
       this.sessionGeneration += 1

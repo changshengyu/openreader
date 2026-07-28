@@ -45,6 +45,11 @@ test('session clearing dispatches invalidation before token removal and resets o
     user,
     /dispatchSessionInvalidated\([\s\S]*?this\.token = ''[\s\S]*?useOverlayStore\(\)\.resetSessionState\(\)/,
   )
+  assert.match(
+    user,
+    /clearSession\(\{\s*suspendWorkspace:\s*true,\s*tokenHint:\s*rejectedToken\s*\}\)/,
+    'the rejected request token must survive the interceptor storage-removal order as a scope-only hint',
+  )
 })
 
 test('only the currently stored rejected token can create a new auth-required event', () => {

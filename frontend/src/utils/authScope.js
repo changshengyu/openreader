@@ -1,9 +1,12 @@
-export function currentUserScope() {
-  if (typeof localStorage === 'undefined') return 'anonymous'
-  const token = localStorage.getItem('openreader_token') || ''
+export function currentUserScope(token = storedAuthToken()) {
   const payload = decodeJWTPayload(token)
   const userId = payload?.userId || payload?.sub || ''
   return userId ? `user:${userId}` : 'anonymous'
+}
+
+function storedAuthToken() {
+  if (typeof localStorage === 'undefined') return ''
+  return localStorage.getItem('openreader_token') || ''
 }
 
 function decodeJWTPayload(token) {
