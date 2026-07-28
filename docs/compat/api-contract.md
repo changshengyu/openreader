@@ -251,18 +251,27 @@ This API shape is an allowed Go/JWT adaptation: reader-dev returns an empty chap
 
 ## P2 replace-rule API contract
 
-Status: extracted 2026-07-11 from fixed `reader-dev` `ReplaceRuleController.kt`, `ReplaceRule.vue`, `ReplaceRuleForm.vue`, and `Reader.vue`. OpenReader keeps REST/SQLite/JWT routes but must preserve the user-visible rule pipeline.
+Status: re-extracted 2026-07-28 from fixed `reader-dev` `ReplaceRuleController.kt`,
+`ReplaceRule.vue`, `ReplaceRuleForm.vue`, `ReplaceRule.kt`, and `Reader.vue`. The focused current
+contract is [`replace-rule-fixed-baseline-p2-contract.md`](replace-rule-fixed-baseline-p2-contract.md).
+OpenReader keeps REST/SQLite/JWT routes but must preserve exact field bytes and the user-visible rule
+pipeline.
 
 | Method / path | Request and validation | Success / side effects | Auth and errors |
 |---|---|---|---|
-| `GET /api/replace-rules` | None. | Returns only the caller's rules in stable insertion order (`id ASC`), never update-time order. Compatibility output retains `enabled` plus legacy-readable `isEnabled`. | JWT required; `500` only for a read failure. |
-| `POST /api/replace-rules` | `{name, pattern, replacement, scope, isRegex, enabled|isEnabled}`. Name, pattern and scope are required; a missing `isRegex` means plain text; regex must compile under the reader-compatible case-insensitive mode. | Current-user name-upsert. Appending returns `201`; replacing the existing same-name row in place returns `200`, without moving pipeline order. Emits `replace_rules_update` after commit. | JWT required; `400` for missing fields/invalid regex; no cross-user lookup. |
+| `GET /api/replace-rules` | None. | Returns only the caller's rules in stable insertion order (`id ASC`), never `sort_order` or update-time order. Compatibility output retains `enabled` plus legacy-readable `isEnabled`. | JWT required; `500` only for a read failure. |
+| `POST /api/replace-rules` | `{name, pattern, replacement, scope, isRegex, enabled|isEnabled}`. Exact empty name, pattern and scope are rejected; accepted strings are not trimmed. A missing `isRegex` means plain text; regex must compile under the bounded RE2 subset. | Current-user exact-name upsert. Appending returns `201`; replacing the earliest existing same-name row in place returns `200`, without moving pipeline order. Emits `replace_rules_update` after commit. | JWT required; `400` for missing fields/invalid or unsupported regex; no cross-user lookup. |
 | `PUT /api/replace-rules/:id` | Same validated fields. | Updates only the owned ID and does not change its stable position. Emits one post-commit update event. | JWT required; `400` invalid body/regex, `404` missing/foreign ID, `409` when renaming to another existing current-user name. |
-| `POST /api/replace-rules/batch` | JSON array. Blank name/pattern rows retain the upstream-compatible `skipped` result. Every accepted rule must have a scope and valid plain/regex mode before any accepted row is written. | Transactional current-user name-upsert in input order, returning `{rules,created,updated,skipped}`. A malformed regex rejects the batch without a partial accepted-row write. | JWT required; `400` malformed array/regex/scope, `500` before a failed transaction can mutate state. |
+| `POST /api/replace-rules/batch` | JSON array. Exact empty name/pattern rows retain the upstream-compatible `skipped` result; whitespace is data, not blank normalization. Every accepted rule must have an explicit scope and valid plain/regex mode before any accepted row is written. | Transactional current-user exact-name upsert in input order, returning `{rules,created,updated,skipped}`. A malformed regex rejects the batch without a partial accepted-row write. | JWT required; `400` malformed array/regex/scope, `500` before a failed transaction can mutate state. |
 | `POST /api/replace-rules/test` | `{pattern,replacement,isRegex,text}` using the same compiler/mode as real Reader content. | Returns `{input,output,changed}` only; no persistence or sync event. | JWT required; `400` invalid regex or missing pattern/text. |
 | `DELETE /api/replace-rules/:id`, `POST /api/replace-rules/batch-delete` | Existing ID paths/payload. | Delete only owned rows, retain ordered `deletedIds`, and emit after durable deletion. | JWT required; single missing/foreign ID is `404`; invalid empty batch is `400`. |
 
-Reader content applies enabled matching rules only to text chapters, in the same listed order: plain text changes the first occurrence; regex changes every case-insensitive occurrence. EPUB and audio content bypass the pipeline. A legacy persisted empty scope remains global only to avoid breaking existing OpenReader data; any successful edit/import writes an explicit non-empty scope.
+Reader content applies enabled matching rules only to text chapters, in the same listed order: plain
+text changes the first occurrence; regex changes every case-insensitive occurrence. Scope comparison
+is exact; an explicit second segment, including an empty one, must equal the exact book URL. For the
+accepted RE2 pattern subset, replacement-string expansion must match JavaScript `String.replace`.
+EPUB and audio content bypass the pipeline. A legacy persisted empty scope remains global only to avoid
+breaking existing OpenReader data; any successful edit/import writes an explicit non-empty scope.
 
 ## P1-D4 shelf-operation API contract
 

@@ -3058,3 +3058,28 @@ Overlay 六场景三视口全门，而不是仅证明点击不再抛错。
 本地 `342d736` 候选随后通过普通与历史挂载卷/备份门，并由本机发布为同名标签与 `latest`；
 amd64/arm64 OCI index 为
 `sha256:1643625269f5a04f867c56da9e3bee04c1318d807e73ca6fc0913ab408645921`。
+
+## 2026-07-28 ReplaceRule P2 固定基准重新复审
+
+历史 ReplaceRule 记录不能继续作为完成证明。重新逐行核对固定
+`reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 后确认，`57b1dc0` 只把 manager
+外壳从 Drawer 改成 Dialog，内部仍沿用最初 OpenReader 设计：额外新增、刷新、逐行删除、
+测试器、pattern/replacement/regex 列和移动 cards 都不是上游结构；编辑器宽度、标题、
+checkbox 与 footer 也不一致。
+
+数据路径同样存在旧测试未覆盖的偏差：
+
+- 导入为缺失 name 的行伪造 `导入规则 N`，并 trim pattern；
+- 前后端保存 trim name/pattern/scope，破坏上游精确字符串规则；
+- list、Reader 与 backup 使用 `sort_order,id`，而固定上游按 JSON 数组位置执行并忽略
+  entity `order`；
+- `书名;` 被当成任意 URL，固定上游会要求空第二段精确等于 book URL；
+- restore 以 pattern 合并并用 pattern 伪造 name，固定上游身份是精确 name；
+- Go replacement string 尚未证明与 JavaScript `String.replace` 的 `$` token 语义一致。
+
+本轮已建立
+[`replace-rule-fixed-baseline-p2-contract.md`](replace-rule-fixed-baseline-p2-contract.md)，将上述
+项目全部重判为 `must-fix`。JWT/SQLite ID、批量事务、post-write WebSocket、字段大小限制和
+RE2 拒绝不安全/不支持表达式保留为明确技术或安全适配；`sort_order` 仅保留持久化/导出，
+不得再控制 Web Reader pipeline。下一阶段必须先替换会固化当前错误结构的测试，再实施代码；
+合同提交前未修改应用代码。

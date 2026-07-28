@@ -304,16 +304,26 @@ Implementation evidence: uploaded and WebDAV recovery read a bounded compressed 
 
 ## P2 replace-rule persistence compatibility
 
-Status: implemented with an additive, non-destructive schema migration; mounted-volume verification is pending for this slice.
+Status: fixed-baseline persistence contract re-opened on 2026-07-28. The additive schema is retained,
+but the current ordering and restore identity require correction before this slice is complete. See
+[`replace-rule-fixed-baseline-p2-contract.md`](replace-rule-fixed-baseline-p2-contract.md).
 
 - Existing `replace_rules` rows stay in the same SQLite table with the same `id`, `user_id`, `name`, `pattern`, `replacement`, `scope`, `is_regex`, `enabled`, and timestamps. AutoMigrate only adds `group_name` and `sort_order DEFAULT 0`; no row is deleted, deduplicated, rewritten, or moved during startup.
-- Reader-visible execution and backup order is `sort_order ASC, id ASC`. Every old row has the same zero order and therefore retains its historical insertion order; reader-dev imports can preserve explicit `group/order` without disturbing old rows.
+- Reader-visible list, execution and backup order is `id ASC`, the SQLite equivalent of the upstream
+  JSON array insertion order. `sort_order` remains stored/exported for round-trip compatibility but
+  must not reorder the fixed Web Reader pipeline.
 - Old rows whose nullable `is_regex` value is absent are interpreted as upstream's plain-text default (`false`) at read/execution time. This corrects a prior OpenReader default without changing the stored nullable value.
 - Old rows with an empty scope remain global only as a read-compatibility shim for already-deployed OpenReader data. The new editor/API requires an explicit scope; the next successful edit/import writes `*` (or a book-specific scope) instead of another empty value.
-- Backup restore accepts both `enabled` and legacy `isEnabled`. Missing `isRegex` restores as plain text; empty legacy scope stays readable through the shim. No new table/column and no `data/`, `cache/`, or `library/` path is introduced.
+- Backup restore accepts both `enabled` and legacy `isEnabled`. It processes archive rows in order and
+  upserts by the caller's exact rule name, not pattern. Missing/empty names or patterns are skipped,
+  never synthesized; missing `isRegex` restores as plain text and an external empty scope becomes
+  explicit `*`. No new table/column and no `data/`, `cache/`, or `library/` path is introduced.
 - New/updated inputs are bounded (name 120 bytes, scope 800 bytes, pattern 16 KiB, replacement 64 KiB) and regular expressions are compiled before a write. A rejected write leaves existing rows and mounted volumes untouched.
 
-Required evidence: `backend/api/replace_rules_contract_test.go` covers defaults, ordering, scope compatibility and invalid regex rejection; full backend tests cover backup/restore. A Docker volume/backup smoke remains required before publishing this slice.
+Required evidence: rewritten tests must cover exact whitespace preservation, ID order despite nonzero
+`sort_order`, exact scope second-segment behavior, name-based ordered restore, invalid-row skipping,
+JavaScript replacement tokens and old duplicate-name preservation. Full backend/frontend/browser and
+Docker mounted-volume/backup gates remain required before publishing this slice.
 
 ## P1-D4 book deletion, cache and refresh lifecycle
 
