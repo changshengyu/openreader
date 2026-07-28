@@ -15,8 +15,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"openreader/backend/config"
 	readerdb "openreader/backend/db"
@@ -221,6 +223,9 @@ func main() {
 	}).Error; err != nil {
 		log.Fatalf("create other fixture chapter: %v", err)
 	}
+	if err := createLegacyGlobalSourceFixtures(database, user, otherUser); err != nil {
+		log.Fatalf("create legacy global source fixtures: %v", err)
+	}
 
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
 		if err := database.Migrator().DropColumn(&models.Chapter{}, field); err != nil {
@@ -230,6 +235,15 @@ func main() {
 	if err := database.Migrator().DropColumn(&models.Book{}, "Variable"); err != nil {
 		log.Fatalf("downgrade fixture book column: %v", err)
 	}
+	for _, table := range []any{
+		&models.UserBookSource{},
+		&models.BookSourceNamespace{},
+		&models.SchemaMigration{},
+	} {
+		if err := database.Migrator().DropTable(table); err != nil {
+			log.Fatalf("remove post-ownership table from legacy fixture: %v", err)
+		}
+	}
 	sqlDB, err := database.DB()
 	if err != nil {
 		log.Fatalf("unwrap fixture database: %v", err)
@@ -238,7 +252,71 @@ func main() {
 		log.Fatalf("close fixture database: %v", err)
 	}
 
-	fmt.Printf("created old mounted-volume fixture: owner=%s archives=txt,epub,umd,cbz,relative-cache other=%s\n", fixtureUsername, fixtureOtherUsername)
+	fmt.Printf("created old mounted-volume fixture: owner=%s archives=txt,epub,umd,cbz,relative-cache sources=2 other=%s\n", fixtureUsername, fixtureOtherUsername)
+}
+
+func createLegacyGlobalSourceFixtures(database *gorm.DB, owner, other models.User) error {
+	exploreEnabled := true
+	sources := []models.BookSource{
+		{
+			Name:           "旧全局书源 A",
+			BaseURL:        "https://legacy-source-a.invalid",
+			SearchURL:      "https://legacy-source-a.invalid/search?q={keyword}",
+			Charset:        "utf-8",
+			Rules:          "{}",
+			Enabled:        true,
+			EnabledExplore: &exploreEnabled,
+			Group:          "旧卷",
+		},
+		{
+			Name:           "旧全局书源 B",
+			BaseURL:        "https://legacy-source-b.invalid",
+			SearchURL:      "https://legacy-source-b.invalid/search?q={keyword}",
+			Charset:        "utf-8",
+			Rules:          "{}",
+			Enabled:        true,
+			EnabledExplore: &exploreEnabled,
+			Group:          "旧卷",
+		},
+	}
+	if err := database.Create(&sources).Error; err != nil {
+		return err
+	}
+	books := []models.Book{
+		{
+			UserID:      owner.ID,
+			SourceID:    sources[0].ID,
+			Title:       "旧卷 用户A远程书",
+			Author:      "OpenReader 旧卷夹具",
+			URL:         "https://legacy-book-owner.invalid/detail",
+			LastChapter: "旧远程目录",
+			CanUpdate:   true,
+		},
+		{
+			UserID:      other.ID,
+			SourceID:    sources[0].ID,
+			Title:       "旧卷 用户B远程书",
+			Author:      "OpenReader 旧卷夹具",
+			URL:         "https://legacy-book-other.invalid/detail",
+			LastChapter: "旧远程目录",
+			CanUpdate:   true,
+		},
+	}
+	if err := database.Create(&books).Error; err != nil {
+		return err
+	}
+	failedAt := time.Now().UTC().Truncate(time.Second)
+	failures := []models.SourceFailure{
+		{
+			UserID: owner.ID, SourceID: sources[1].ID, SourceURL: sources[1].BaseURL,
+			Message: "legacy owner failure", FailedAt: failedAt, ExpiresAt: failedAt.Add(time.Hour),
+		},
+		{
+			UserID: other.ID, SourceID: sources[1].ID, SourceURL: sources[1].BaseURL,
+			Message: "legacy other failure", FailedAt: failedAt, ExpiresAt: failedAt.Add(time.Hour),
+		},
+	}
+	return database.Create(&failures).Error
 }
 
 func writeFixtureMetadata(directory, title string) error {
