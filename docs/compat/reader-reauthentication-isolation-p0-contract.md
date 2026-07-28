@@ -187,5 +187,17 @@ Reader 重新 `init(true)`。OpenReader 的 JWT 适配多了一层“被拒绝 t
   旧 Reader/书名/正文同步消失，session Dialog 不可用 Esc 或关闭按钮退出；A 重新登录保留
   原 URL并以新 generation 加载，B 登录返回书架；A 的失效 token 产生零次进度写入，移动端
   新 Reader 的工具层恢复默认显示，控制台无错误。
-- 本批不改 API、JWT 验证、数据库、缓存文件或任何用户数据。Docker 尚未发布；先完成提交和
-  本地容器/卷兼容门禁。
+- 本批不改 API、JWT 验证、数据库、缓存文件或任何用户数据。
+
+### 2026-07-28 发布记录
+
+- 实现提交 `59e11a9a6d2805233745f23960d8364d386a4d62` 已推送 `main`。
+- 发布前重新通过 frontend `643/643`、Vite production build、Go `go test ./...`；真实浏览器
+  在 1440×900、1024×1366、390×844、360×800 再次通过同账号恢复、异账号返回书架和
+  失效账号进度零写入。
+- 本地 Docker 新卷门通过 portable v1/v2 assets、跨用户、重启和备份恢复；历史卷门通过
+  TXT、EPUB、UMD、CBZ、相对缓存和 owner isolation。
+- 已从本机发布 `ghcr.io/changshengyu/openreader:59e11a9` 与 `:latest`。两者共同指向
+  `sha256:8ce5f345fb376ac13e0b5f80d246a7421c18bb2cf0647039d73298d3255b511b`，
+  包含 `linux/amd64` 与 `linux/arm64`。
+- 当前状态为 **Docker-published / awaiting device verification**。
