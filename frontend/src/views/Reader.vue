@@ -2,7 +2,7 @@
   <main
     ref="shellEl"
     class="reader-shell"
-    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll, 'has-custom-background': reader.theme === 'custom' && Boolean(reader.customBgImage) }]"
+    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll, 'has-custom-background': reader.theme === 'custom' && Boolean(reader.customBgImage), 'built-in-night': isBuiltInNightTheme }]"
     :style="readerStyle"
   >
     <ReaderDesktopTools
@@ -172,6 +172,7 @@
             :audio-cover-url="bookCoverUrl(book)"
             :audio-autoplay="audioAutoplay"
             :epub-style="epubStyleText"
+            :built-in-night="isBuiltInNightTheme"
             :viewport-height="readerViewportHeight"
             @reload="reloadChapter"
             @epub-load="handleEpubLoad"
@@ -544,6 +545,9 @@ const chapters = ref([])
 const chapter = ref(null)
 const currentIndex = ref(Number(route.query.chapter || 0))
 const isNightTheme = computed(() => reader.themeType === 'night')
+const isBuiltInNightTheme = computed(() => (
+  reader.themeType === 'night' && reader.theme !== 'custom'
+))
 const {
   cacheKey: readerDataCacheKey,
   invalidate: invalidateReaderDataCache,
@@ -1230,6 +1234,7 @@ const effectiveReaderTextColor = computed(() => resolveReaderTextColor({
   backgroundColor: effectiveReaderBackgroundColor.value,
   themeType: reader.themeType,
   hasBackgroundImage: Boolean(effectiveReaderBackgroundImage.value),
+  builtInNight: isBuiltInNightTheme.value,
 }))
 const effectiveReaderPopupTextColor = computed(() => resolveReaderTextColor({
   requestedColor: effectiveReaderTextColor.value,
@@ -1321,6 +1326,23 @@ const epubStyleText = computed(() => `
   body :where(p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, td, th) {
     color: inherit !important;
   }
+  ${isBuiltInNightTheme.value ? `
+  body :where(*) {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+  body :where(*)::before,
+  body :where(*)::after {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+  ` : ''}
   body p {
     margin-top: ${reader.paragraphSpace}em !important;
     margin-bottom: ${reader.paragraphSpace}em !important;
@@ -2425,6 +2447,15 @@ function readError(err, fallback) {
   z-index: 4;
   background: rgba(0, 0, 0, var(--reader-dim-opacity));
   pointer-events: none;
+}
+
+.reader-shell.built-in-night .reader-body :deep([data-reader-block]),
+.reader-shell.built-in-night .reader-body :deep([data-reader-block] *) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
 }
 
 .reader-page-head {

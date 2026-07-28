@@ -1,10 +1,9 @@
 # Reader 移动夜间模式正文对比度合同
 
-状态：2026-07-28 第一轮已发布，但用户实机复验确认目标定义错误：达到 WCAG 对比度不等于
-用户要求的“纯黑正文背景 + 白色正文”。第二轮已完成固定上游/当前渲染层复审、测试先行实现、
-后端与前端全量回归、production build，以及 390×844、360×800 的 TXT/EPUB 实际渲染层
-验证。实现提交 `a90d10b` 已推送并通过本地 Docker 新卷、历史卷、备份恢复门，GHCR
-`a90d10b` 与 `latest` 已发布。
+状态：2026-07-28 第一、二轮已经发布，但用户实机复验继续证明“外层黑色”不能代表实际
+文字承载层黑色。第三轮已完成固定上游复审、失败测试、普通正文后代重置、EPUB bridge
+作者样式接管/恢复、Go 与前端全量回归、production build，以及 1440×900、390×844、
+360×800 的 TXT/EPUB 真实渲染验证。第三轮 Git/Docker 发布门待完成。
 
 固定上游：
 
@@ -190,3 +189,27 @@ EPUB 只向 iframe 的 `body` 和 `p` 注入字体/颜色，并不会清除 EPUB
    `.reader-shell`、`.reader-page`、普通段落/内联节点、EPUB iframe、
    EPUB `html/body/main/div/span/table`；内置夜间要求实际文字面为透明叠加纯黑根面、
    最终文字 `rgb(255,255,255)`。日间与 custom 回归不得被强制黑白。
+
+### 第三轮实施结果
+
+- Reader 根新增 `built-in-night` 语义状态。只有非 `custom` 的语义夜间进入强制黑白；
+  `resolveReaderTextColor()` 在该分支不再接受“对比度合格但不是白色”的旧 `fontColor`。
+- 普通 TXT/在线正文的 `[data-reader-block]`、`mark/span` 等白名单后代在内置夜间统一为
+  `#ffffff`，自身背景透明并叠加 `.reader-page` 的 `#000000`；日间退出后浏览器默认
+  `mark` 背景恢复。
+- EPUB `setStyle` bridge 现在同时接收 `builtInNight`。bridge 在 iframe 内保存
+  `html/body` 和正文后代原有的 inline value/priority，再以 inline `important` 接管
+  `color/-webkit-text-fill-color/background-color/background-image/box-shadow/text-shadow`；
+  新增节点由独立 MutationObserver 接管。退出内置夜间会断开 observer 并逐项恢复原值，
+  因此日间与 custom 不会永久丢失出版物样式。
+- 测试先行证据：新增断言在旧实现分别失败于灰白 `#d8d4c8` 被保留、缺少
+  `built-in-night` 后代重置，以及 EPUB bridge 未携带/执行内置夜间状态；实现后均转绿。
+- 自动回归：Go `go test ./...` 通过；frontend `640/640` 通过；Vite production build
+  通过。
+- 普通正文完整 Reader smoke 在桌面、390×844、360×800、iPad 自适应与强制手机模式通过：
+  shell/page 为纯黑无纹理，段落、`mark`、`span` 为纯白且透明叠黑，退出夜间恢复日间
+  `mark` 表面。
+- 真实 API EPUB smoke 导入带 `!important` 白底/渐变/黑字/阴影的
+  `main/div/span/table/td` fixture；1440×900、390×844、360×800 均证明夜间
+  `html/body` 为纯黑、所有实际文字后代透明叠黑并为纯白，切回日间后作者白底、渐变与
+  `#111` 文字原样恢复。

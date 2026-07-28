@@ -20,6 +20,7 @@ function createController() {
     expectedOrigin: 'https://reader.example',
     viewportHeight: () => 800,
     styleText: () => 'body { color: #123; }',
+    builtInNight: () => true,
     onReady: () => calls.push(['ready']),
     onLoad: data => calls.push(['load', data]),
     onHeight: height => calls.push(['height', height]),
@@ -52,7 +53,11 @@ test('initializes style/height and forwards the upstream EPUB bridge events', ()
   const fixture = createController()
   message(fixture, 'inited')
   assert.deepEqual(fixture.calls, [
-    ['post', { event: 'setStyle', style: 'body { color: #123; }' }, 'https://reader.example'],
+    ['post', {
+      event: 'setStyle',
+      style: 'body { color: #123; }',
+      builtInNight: true,
+    }, 'https://reader.example'],
     ['post', { event: 'requestHeight' }, 'https://reader.example'],
     ['ready'],
   ])

@@ -25,7 +25,10 @@ export function useReaderEpubFrame(options) {
   }
 
   function syncStyle() {
-    return send('setStyle', { style: String(expectedValue(options.styleText) || '') })
+    return send('setStyle', {
+      style: String(expectedValue(options.styleText) || ''),
+      builtInNight: expectedValue(options.builtInNight, false) === true,
+    })
   }
 
   function requestHeight() {

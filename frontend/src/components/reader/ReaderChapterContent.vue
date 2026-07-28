@@ -10,6 +10,7 @@
     v-else-if="epubResource?.url"
     :resource="epubResource"
     :style-text="epubStyle"
+    :built-in-night="builtInNight"
     :viewport-height="viewportHeight"
     @ready="emit('epub-ready')"
     @load="emit('epub-load', $event)"
@@ -152,6 +153,10 @@ defineProps({
   epubStyle: {
     type: String,
     default: '',
+  },
+  builtInNight: {
+    type: Boolean,
+    default: false,
   },
   viewportHeight: {
     type: Number,

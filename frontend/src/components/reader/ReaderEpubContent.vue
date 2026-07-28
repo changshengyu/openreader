@@ -25,6 +25,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  builtInNight: {
+    type: Boolean,
+    default: false,
+  },
   viewportHeight: {
     type: Number,
     default: 0,
@@ -59,6 +63,7 @@ const bridge = useReaderEpubFrame({
   expectedOrigin: () => window.location.origin,
   viewportHeight: () => props.viewportHeight || window.innerHeight,
   styleText: () => props.styleText,
+  builtInNight: () => props.builtInNight,
   onReady: () => {
     ready = true
     clearReadinessTimer()
@@ -94,7 +99,7 @@ function handleNativeError() {
 }
 
 watch(
-  () => props.styleText,
+  [() => props.styleText, () => props.builtInNight],
   () => bridge.syncStyle(),
 )
 

@@ -18,6 +18,102 @@ const epubBridgeScript = `(function () {
   var styleElement = document.createElement("style");
   styleElement.id = "openreader-epub-reader-style";
   (document.head || document.documentElement).appendChild(styleElement);
+  var nightSurfaceState = [];
+  var nightSurfaceObserver = null;
+  var nightSurfaceEnabled = false;
+  var nightSurfaceProperties = [
+    "color",
+    "-webkit-text-fill-color",
+    "background-color",
+    "background-image",
+    "box-shadow",
+    "text-shadow"
+  ];
+
+  function nightNodeState(node) {
+    if (node.__openreaderNightSurfaceState) return node.__openreaderNightSurfaceState;
+    var state = {};
+    node.__openreaderNightSurfaceState = state;
+    nightSurfaceState.push({ node: node, styles: state });
+    return state;
+  }
+  function setNightStyle(node, property, value) {
+    if (!node || !node.style) return;
+    var state = nightNodeState(node);
+    if (!Object.prototype.hasOwnProperty.call(state, property)) {
+      state[property] = {
+        value: node.style.getPropertyValue(property),
+        priority: node.style.getPropertyPriority(property)
+      };
+    }
+    node.style.setProperty(property, value, "important");
+  }
+  function styleNightSurfaceNode(node, rootSurface) {
+    if (!node || node.nodeType !== 1) return;
+    setNightStyle(node, "color", "#ffffff");
+    setNightStyle(node, "-webkit-text-fill-color", "currentColor");
+    setNightStyle(node, "background-color", rootSurface ? "#000000" : "transparent");
+    setNightStyle(node, "background-image", "none");
+    setNightStyle(node, "box-shadow", "none");
+    setNightStyle(node, "text-shadow", "none");
+  }
+  function styleNightSurfaceTree(root, rootSurface) {
+    if (!root || root.nodeType !== 1) return;
+    styleNightSurfaceNode(root, rootSurface);
+    Array.prototype.forEach.call(root.querySelectorAll("*"), function (node) {
+      styleNightSurfaceNode(node, false);
+    });
+  }
+  function syncNightSurface() {
+    if (!nightSurfaceEnabled) return;
+    document.documentElement.classList.add("openreader-built-in-night");
+    styleNightSurfaceNode(document.documentElement, true);
+    if (!document.body) return;
+    document.body.classList.add("openreader-built-in-night");
+    styleNightSurfaceTree(document.body, true);
+    if (!nightSurfaceObserver && window.MutationObserver) {
+      nightSurfaceObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          Array.prototype.forEach.call(mutation.addedNodes || [], function (node) {
+            styleNightSurfaceTree(node, false);
+          });
+        });
+      });
+      nightSurfaceObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+  function restoreNightSurface() {
+    if (nightSurfaceObserver) nightSurfaceObserver.disconnect();
+    nightSurfaceObserver = null;
+    nightSurfaceState.forEach(function (entry) {
+      var node = entry.node;
+      if (!node || !node.style) return;
+      nightSurfaceProperties.forEach(function (property) {
+        var original = entry.styles[property];
+        if (!original) return;
+        if (original.value) {
+          node.style.setProperty(property, original.value, original.priority || "");
+        } else {
+          node.style.removeProperty(property);
+        }
+      });
+      try { delete node.__openreaderNightSurfaceState; } catch (_) {
+        node.__openreaderNightSurfaceState = null;
+      }
+    });
+    nightSurfaceState = [];
+    document.documentElement.classList.remove("openreader-built-in-night");
+    if (document.body) document.body.classList.remove("openreader-built-in-night");
+  }
+  function applyNightSurface(enabled) {
+    if (!enabled) {
+      nightSurfaceEnabled = false;
+      restoreNightSurface();
+      return;
+    }
+    nightSurfaceEnabled = true;
+    syncNightSurface();
+  }
 
   function resourcePath() {
     var match = window.location.pathname.match(/^\/api\/epub-resource\/[^/]+\/(.*)$/);
@@ -45,6 +141,7 @@ const epubBridgeScript = `(function () {
     if (!message || typeof message.event !== "string") return;
     if (message.event === "setStyle") {
       styleElement.textContent = String(message.style || "");
+      applyNightSurface(message.builtInNight === true);
       notifyHeight();
       window.setTimeout(notifyHeight, 100);
     } else if (message.event === "requestHeight") {
@@ -57,6 +154,9 @@ const epubBridgeScript = `(function () {
 
   window.addEventListener("message", receive);
   window.addEventListener("resize", notifyHeight);
+  document.addEventListener("DOMContentLoaded", function () {
+    if (nightSurfaceEnabled) syncNightSurface();
+  }, { once: true });
   window.addEventListener("keydown", function (event) {
     event.preventDefault();
     event.stopPropagation();

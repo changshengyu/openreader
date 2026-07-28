@@ -106,7 +106,7 @@ async function installApiMocks(page, readerSettings = {}) {
       return route.fulfill(json({
         chapter: { id: 11, index: 0, title: '第一章' },
         content: [
-          '春风过处，纸页微明。',
+          '春风过处，<mark>浏览器默认浅色标记面</mark><span>纸页微明。</span>',
           '这一段用于验证移动端阅读正文左右留白对称，并保持两端对齐。',
           '点击中央区域应当只在没有面板时切换工具层。',
         ].concat(Array.from({ length: 48 }, (_, index) => (
@@ -1010,6 +1010,64 @@ async function assertInlineDesktopCacheZone(page) {
   assert(state.visibleDrawers === 0, 'desktop: cache must not use a drawer')
 }
 
+async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
+  const nightToggle = mobile
+    ? page.locator('.reader-mobile-float-right.visible button[title="夜间模式"]')
+    : page.locator('.reader-right-rail button[title="夜间模式"]')
+  await nightToggle.click()
+  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('built-in-night'))
+
+  const state = await page.evaluate(() => {
+    const shell = document.querySelector('.reader-shell')
+    const page = document.querySelector('.reader-page')
+    const paragraph = document.querySelector('.reader-body [data-reader-block]')
+    const mark = paragraph?.querySelector('mark')
+    const span = paragraph?.querySelector('span')
+    const style = element => window.getComputedStyle(element)
+    return {
+      shellBackground: style(shell).backgroundColor,
+      shellImage: style(shell).backgroundImage,
+      pageBackground: style(page).backgroundColor,
+      pageImage: style(page).backgroundImage,
+      paragraphColor: style(paragraph).color,
+      paragraphBackground: style(paragraph).backgroundColor,
+      markColor: style(mark).color,
+      markBackground: style(mark).backgroundColor,
+      spanColor: style(span).color,
+      spanBackground: style(span).backgroundColor,
+    }
+  })
+  const expected = {
+    shellBackground: 'rgb(0, 0, 0)',
+    shellImage: 'none',
+    pageBackground: 'rgb(0, 0, 0)',
+    pageImage: 'none',
+    paragraphColor: 'rgb(255, 255, 255)',
+    paragraphBackground: 'rgba(0, 0, 0, 0)',
+    markColor: 'rgb(255, 255, 255)',
+    markBackground: 'rgba(0, 0, 0, 0)',
+    spanColor: 'rgb(255, 255, 255)',
+    spanBackground: 'rgba(0, 0, 0, 0)',
+  }
+  for (const [key, value] of Object.entries(expected)) {
+    assert(state[key] === value, `${viewport.width}: built-in night ${key} expected ${value}, got ${state[key]}`)
+  }
+
+  const dayToggle = mobile
+    ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
+    : page.locator('.reader-right-rail button[title="日间模式"]')
+  await dayToggle.click()
+  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('built-in-night'))
+  const restoredMarkBackground = await page.locator('.reader-body [data-reader-block] mark')
+    .evaluate(element => window.getComputedStyle(element).backgroundColor)
+  assert(restoredMarkBackground !== 'rgba(0, 0, 0, 0)', `${viewport.width}: day mark surface must restore`)
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
+  if (mobile) {
+    await page.waitForSelector('.reader-mobile-top.visible', { timeout: 10000 })
+  }
+}
+
 async function assertSettingsRowGeometry(page, viewport) {
   const geometry = await page.evaluate(() => {
     const firstRow = document.querySelector('.settings-body .setting-row')
@@ -1197,10 +1255,10 @@ async function assertSettingsBackgroundGeometry(page, viewport) {
   assert(geometry.uploadLeft !== null && geometry.previewRight !== null, `${viewport.width}: missing settings background upload geometry`)
   assert(geometry.uploadLeft >= geometry.previewRight, `${viewport.width}: settings background upload should follow preview inline`)
   assert(geometry.uploadTop >= geometry.previewTop - 1 && geometry.uploadTop <= geometry.previewBottom + 1, `${viewport.width}: settings background upload should stay on preview row`)
-  assert(geometry.uploadColor === 'rgb(237, 66, 89)', `${viewport.width}: settings background upload color ${geometry.uploadColor}`)
+  assert(geometry.uploadColor === 'rgb(255, 117, 137)', `${viewport.width}: settings background upload color ${geometry.uploadColor}`)
   assert(geometry.deleteTop === '-6px', `${viewport.width}: settings background delete top ${geometry.deleteTop}`)
   assert(geometry.deleteRight === '-6px', `${viewport.width}: settings background delete right ${geometry.deleteRight}`)
-  assert(geometry.deleteColor === 'rgb(237, 66, 89)', `${viewport.width}: settings background delete color ${geometry.deleteColor}`)
+  assert(geometry.deleteColor === 'rgb(255, 117, 137)', `${viewport.width}: settings background delete color ${geometry.deleteColor}`)
   assert(geometry.hasCardOverlay === false, `${viewport.width}: settings background should not keep card overlay classes`)
 }
 
@@ -1265,6 +1323,7 @@ async function runDesktopViewport(browser) {
   await installApiMocks(page)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
+  await assertBuiltInNightTextSurface(page, viewport, { mobile: false })
   await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: false })
   const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: false })
   await page.locator('.reader-left-rail button[title="书架"]').click()
@@ -1334,6 +1393,7 @@ async function runViewport(browser, viewport) {
     throw new Error(`${error.message}\nState: ${JSON.stringify(state, null, 2)}\nFailures: ${failures.join('\n')}`)
   }
   await page.waitForSelector('.reader-body p', { timeout: 10000 })
+  await assertBuiltInNightTextSurface(page, viewport, { mobile: true })
   await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: true, touch: true })
   const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: true, touch: true })
 

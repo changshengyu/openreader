@@ -21,7 +21,10 @@ export function resolveReaderTextColor({
   backgroundColor,
   themeType = 'day',
   hasBackgroundImage = false,
+  builtInNight = false,
 } = {}) {
+  if (builtInNight) return SAFE_LIGHT_TEXT
+
   if (hasBackgroundImage) {
     return themeType === 'night' ? SAFE_LIGHT_TEXT : SAFE_DARK_TEXT
   }

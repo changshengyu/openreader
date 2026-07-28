@@ -11,6 +11,7 @@ import {
 const readerViewSource = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
 const readerStoreSource = readFileSync(new URL('../src/stores/reader.js', import.meta.url), 'utf8')
 const readerEpubSource = readFileSync(new URL('../src/components/reader/ReaderEpubContent.vue', import.meta.url), 'utf8')
+const readerChapterSource = readFileSync(new URL('../src/components/reader/ReaderChapterContent.vue', import.meta.url), 'utf8')
 const readerSettingsSource = readFileSync(new URL('../src/components/reader/ReaderSettingsPanel.vue', import.meta.url), 'utf8')
 const readerStepperSource = readFileSync(new URL('../src/components/reader/ReaderSettingStepper.vue', import.meta.url), 'utf8')
 
@@ -115,10 +116,18 @@ test('built-in night resolves to a texture-free black page and white default tex
   })
 
   assert.equal(resolveReaderTextColor({
+    requestedColor: '#d8d4c8',
+    themeTextColor: '#ffffff',
+    backgroundColor: '#000000',
+    themeType: 'night',
+    builtInNight: true,
+  }), '#ffffff')
+  assert.equal(resolveReaderTextColor({
     requestedColor: '#262626',
     themeTextColor: '#ffffff',
     backgroundColor: '#000000',
     themeType: 'night',
+    builtInNight: true,
   }), '#ffffff')
   assert.equal(readerColorContrast('#ffffff', '#000000'), 21)
 })
@@ -170,4 +179,27 @@ test('Reader applies semantic surface variables and EPUB paints the actual reade
   assert.match(readerViewSource, /background-image:\s*none !important;/)
   assert.match(readerViewSource, /body :where\(p,\s*h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6,\s*li,\s*blockquote,\s*figcaption,\s*td,\s*th\)/)
   assert.match(readerEpubSource, /background:\s*var\(--reader-bg,\s*transparent\)/)
+})
+
+test('built-in night clears author backgrounds on the actual text-bearing descendants', () => {
+  assert.match(
+    readerViewSource,
+    /'built-in-night':\s*isBuiltInNightTheme/,
+    'Reader root must expose a semantic built-in-night state',
+  )
+  assert.match(
+    readerViewSource,
+    /\.reader-shell\.built-in-night[\s\S]*?:deep\(\[data-reader-block\][^)]*\)[\s\S]*?color:\s*#ffffff !important;[\s\S]*?background(?:-color)?:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
+    'ordinary reader descendants must not retain a light author or user-agent surface',
+  )
+  assert.match(
+    readerViewSource,
+    /isBuiltInNightTheme\.value[\s\S]*?body :where\(\*\)[\s\S]*?color:\s*inherit !important;[\s\S]*?background:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
+    'EPUB descendants must be reset only for the built-in night theme',
+  )
+  assert.match(
+    readerChapterSource,
+    /<p v-else-if="line\.html"[^>]*data-reader-block/,
+    'the ordinary HTML fixture must exercise the actual text-bearing block',
+  )
 })

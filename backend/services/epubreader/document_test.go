@@ -56,3 +56,17 @@ func TestEPUBBridgeRoutesInternalResourceLinksThroughParentReader(t *testing.T) 
 		t.Fatal("same-document hash handling must run before the parent navigation fallback")
 	}
 }
+
+func TestEPUBBridgeOwnsAndRestoresBuiltInNightAuthorSurfaces(t *testing.T) {
+	for _, want := range []string{
+		`applyNightSurface(message.builtInNight === true)`,
+		`node.style.setProperty(property, value, "important")`,
+		`nightSurfaceState`,
+		`nightSurfaceObserver`,
+		`restoreNightSurface()`,
+	} {
+		if !strings.Contains(epubBridgeScript, want) {
+			t.Fatalf("EPUB bridge missing built-in night surface behavior %q", want)
+		}
+	}
+}
