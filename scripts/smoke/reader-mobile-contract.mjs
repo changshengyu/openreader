@@ -1464,7 +1464,7 @@ async function runViewport(browser, viewport) {
   await context.close()
 }
 
-async function runCustomBlackNightViewport(browser, viewport) {
+async function runCustomBlackNightViewport(browser, viewport, themeType = 'night') {
   const context = await browser.newContext({ viewport })
   await context.addInitScript((token) => {
     window.localStorage.setItem('openreader_token', token)
@@ -1480,7 +1480,7 @@ async function runCustomBlackNightViewport(browser, viewport) {
   page.on('pageerror', error => failures.push(error.message))
   await installApiMocks(page, {
     theme: 'custom',
-    themeType: 'night',
+    themeType,
     customBodyColor: '#000000',
     customPopupColor: '#121212',
     customBgColor: '#000000',
@@ -1524,7 +1524,7 @@ async function runCustomBlackNightViewport(browser, viewport) {
     spanBackground: 'rgba(0, 0, 0, 0)',
   }
   for (const [key, value] of Object.entries(expected)) {
-    assert(state[key] === value, `${viewport.width}: custom black night ${key} expected ${value}, got ${state[key]}`)
+    assert(state[key] === value, `${viewport.width}: custom black ${themeType} ${key} expected ${value}, got ${state[key]}`)
   }
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
@@ -1730,6 +1730,7 @@ async function main() {
     await runCustomBlackNightViewport(browser, { width: 1440, height: 900 })
     await runCustomBlackNightViewport(browser, { width: 390, height: 844 })
     await runCustomBlackNightViewport(browser, { width: 360, height: 800 })
+    await runCustomBlackNightViewport(browser, { width: 390, height: 844 }, 'day')
     await runIPadAdaptiveViewport(browser, { width: 1024, height: 1366 })
     await runIPadAdaptiveViewport(browser, { width: 1366, height: 1024 })
     await runIPadForcedMobileViewport(browser, { width: 1024, height: 1366 })

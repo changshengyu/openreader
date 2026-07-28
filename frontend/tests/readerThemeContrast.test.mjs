@@ -133,7 +133,7 @@ test('built-in night resolves to a texture-free black page and white default tex
   assert.equal(readerColorContrast('#ffffff', '#000000'), 21)
 })
 
-test('black night content ownership follows the rendered surface instead of the preset identity', () => {
+test('black content ownership follows the rendered surface even when persisted day/night semantics are stale', () => {
   assert.equal(isBlackNightReaderSurface({
     themeType: 'night',
     pageColor: '#000000',
@@ -148,7 +148,7 @@ test('black night content ownership follows the rendered surface instead of the 
     themeType: 'day',
     pageColor: '#000000',
     pageImage: 'none',
-  }), false)
+  }), true)
   assert.equal(isBlackNightReaderSurface({
     themeType: 'night',
     pageColor: '#171717',
@@ -228,8 +228,18 @@ test('built-in night clears author backgrounds on the actual text-bearing descen
   )
   assert.match(
     readerViewSource,
+    /\.reader-shell\.black-night-surface \.reader-content,[\s\S]*?\.reader-shell\.black-night-surface \.reader-body,[\s\S]*?\.reader-shell\.black-night-surface \.reader-body :deep\(\.chapter-content\)[\s\S]*?background-color:\s*#000000 !important;/,
+    'the actual ordinary text-bearing structural surfaces must be explicitly black instead of relying on transparent composition',
+  )
+  assert.match(
+    readerViewSource,
     /usesBlackNightContentSurface\.value[\s\S]*?body :where\(\*\)[\s\S]*?color:\s*inherit !important;[\s\S]*?background:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
     'EPUB descendants must be reset for every rendered pure-black night surface',
+  )
+  assert.match(
+    readerViewSource,
+    /html::before,[\s\S]*?html::after,[\s\S]*?body::before,[\s\S]*?body::after[\s\S]*?background:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
+    'EPUB root pseudo-elements must not retain a light authored backdrop over the black body',
   )
   assert.match(
     readerViewSource,

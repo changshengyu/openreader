@@ -16,11 +16,9 @@ export function readerColorContrast(foreground, background) {
 }
 
 export function isBlackNightReaderSurface({
-  themeType = 'day',
   pageColor,
   pageImage = 'none',
 } = {}) {
-  if (themeType !== 'night') return false
   const image = normalizedColor(pageImage).toLowerCase()
   if (image && image !== 'none') return false
   return isOpaqueBlackCSSColor(pageColor)

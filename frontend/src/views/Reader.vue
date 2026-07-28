@@ -1227,7 +1227,6 @@ const effectiveReaderBackgroundColor = computed(() => effectiveReaderSurface.val
 const effectiveReaderBodyColor = computed(() => effectiveReaderSurface.value.bodyColor)
 const effectiveReaderPopupColor = computed(() => effectiveReaderSurface.value.popupColor)
 const usesBlackNightContentSurface = computed(() => isBlackNightReaderSurface({
-  themeType: reader.themeType,
   pageColor: effectiveReaderSurface.value.pageColor,
   pageImage: effectiveReaderSurface.value.pageImage,
 }))
@@ -1330,6 +1329,22 @@ const epubStyleText = computed(() => `
     color: inherit !important;
   }
   ${usesBlackNightContentSurface.value ? `
+  html,
+  body {
+    color-scheme: dark;
+  }
+  html::before,
+  html::after,
+  body::before,
+  body::after {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
   body :where(*) {
     color: inherit !important;
     -webkit-text-fill-color: currentColor !important;
@@ -2450,6 +2465,15 @@ function readError(err, fallback) {
   z-index: 4;
   background: rgba(0, 0, 0, var(--reader-dim-opacity));
   pointer-events: none;
+}
+
+.reader-shell.black-night-surface .reader-content,
+.reader-shell.black-night-surface .reader-body,
+.reader-shell.black-night-surface .reader-body :deep(.chapter-content) {
+  color: #ffffff !important;
+  background-color: #000000 !important;
+  background-image: none !important;
+  color-scheme: dark;
 }
 
 .reader-shell.black-night-surface .reader-body :deep([data-reader-block]),
