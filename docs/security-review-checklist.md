@@ -431,12 +431,14 @@ execution passed, and local amd64/arm64 tags `54a528f`/`latest` were published a
 
 - [x] Reader-global replacement rules remain user-scoped for list, create, update, batch upsert, delete, preview and content application.
 - [x] New and edited regex patterns compile before persistence or preview; malformed regex returns a client-safe `400` and is never silently reinterpreted as a literal replacement.
-- [x] The global Reader rule path uses Go's RE2 engine with a bounded pattern (16 KiB) and replacement (64 KiB), avoiding catastrophic-backtracking regex behavior and unbounded user-controlled rule fields.
+- [x] The global Reader rule path uses Go's RE2 engine with a bounded pattern (16 KiB), replacement (64 KiB), capture count (32), match count (20,000 per rule/chapter) and output (`max(input, 64 MiB)`), avoiding catastrophic backtracking, unbounded match-index collections and `$``/`$'` output amplification.
+- [x] The hidden compatibility test route caps the HTTP body at 4 MiB, decoded text at 1 MiB and result at 8 MiB. Execution overflow returns a client-safe `400`; Reader overflow preserves the complete input to that rule, keeps prior rule results and stops later rules instead of returning partial or truncated content.
+- [x] Single mutation bodies are capped at 512 KiB; batch upsert is capped at 16 MiB/2,000 rows; batch delete is capped at 128 KiB/2,000 IDs; the hidden group field is capped at 800 bytes. Backup restore accepts at most 2,000 rows and prevalidates the complete non-empty set with the same field/RE2/capture limits before its first write.
 - [x] Existing invalid stored regexes fail closed for the remaining reader pipeline; they never produce a literal replacement that could silently corrupt chapter content.
 - [x] Reader-global rules use a dedicated execution path, so source-parser replacement semantics are not broadened or weakened by this UI compatibility change.
 - [x] Error responses contain field/regex validation messages only; they do not expose a chapter cache path, JWT, source headers, WebDAV credentials, or database content.
 
-Evidence: `backend/api/replace_rules_contract_test.go`, `backend/api/api_test.go` replace-rule/content cases, `frontend/tests/readerSelectedTextActions.test.mjs`, `frontend/tests/overlayReplaceRules.test.mjs`, and the full Go/frontend validation gates.
+Evidence: `backend/services/replacerules/engine_test.go`, `backend/api/replace_rules_contract_test.go`, `backend/api/api_test.go` replace-rule/content cases, `frontend/tests/readerSelectedTextActions.test.mjs`, `frontend/tests/overlayReplaceRules.test.mjs`, and the full Go/frontend validation gates.
 
 ## P2 bookmark review
 

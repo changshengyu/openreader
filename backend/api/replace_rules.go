@@ -4,20 +4,28 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/replacerules"
 )
 
 const (
-	maxReplaceRuleNameBytes        = 120
-	maxReplaceRulePatternBytes     = 16 * 1024
-	maxReplaceRuleReplacementBytes = 64 * 1024
-	maxReplaceRuleScopeBytes       = 800
+	maxReplaceRuleNameBytes          = 120
+	maxReplaceRuleGroupBytes         = 800
+	maxReplaceRulePatternBytes       = 16 * 1024
+	maxReplaceRuleReplacementBytes   = 64 * 1024
+	maxReplaceRuleScopeBytes         = 800
+	maxReplaceRuleRequestBytes       = 512 << 10
+	maxReplaceRuleBatchRequestBytes  = 16 << 20
+	maxReplaceRuleBatchItems         = 2_000
+	maxReplaceRuleDeleteRequestBytes = 128 << 10
+	maxReplaceRuleTestTextBytes      = 1 << 20
+	maxReplaceRuleTestRequestBytes   = 4 << 20
+	maxReplaceRuleTestOutputBytes    = 8 << 20
 )
 
 type replaceRuleRequest struct {
@@ -62,7 +70,7 @@ func replacementRuleResponses(rules []models.ReplaceRule) []replaceRuleResponse 
 func (s *Server) listReplaceRules(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ?", userID).Order("sort_order asc, id asc").Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ?", userID).Order("id asc").Find(&rules).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list replace rules"})
 		return
 	}
@@ -71,6 +79,11 @@ func (s *Server) listReplaceRules(c *gin.Context) {
 
 func (s *Server) createReplaceRule(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		maxReplaceRuleRequestBytes,
+	)
 	var req replaceRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern is required"})
@@ -125,11 +138,11 @@ func replaceRuleFromRequest(userID uint, req replaceRuleRequest) (models.Replace
 	}
 	rule := models.ReplaceRule{
 		UserID:      userID,
-		Name:        strings.TrimSpace(req.Name),
-		Group:       strings.TrimSpace(req.Group),
-		Pattern:     strings.TrimSpace(req.Pattern),
+		Name:        req.Name,
+		Group:       req.Group,
+		Pattern:     req.Pattern,
 		Replacement: req.Replacement,
-		Scope:       strings.TrimSpace(req.Scope),
+		Scope:       req.Scope,
 		IsRegex:     &isRegex,
 		Enabled:     enabled,
 		Order:       req.Order,
@@ -144,6 +157,7 @@ func replaceRuleFromRequest(userID uint, req replaceRuleRequest) (models.Replace
 		return models.ReplaceRule{}, errors.New("scope is required")
 	}
 	if len(rule.Name) > maxReplaceRuleNameBytes ||
+		len(rule.Group) > maxReplaceRuleGroupBytes ||
 		len(rule.Pattern) > maxReplaceRulePatternBytes ||
 		len(rule.Replacement) > maxReplaceRuleReplacementBytes ||
 		len(rule.Scope) > maxReplaceRuleScopeBytes {
@@ -157,8 +171,15 @@ func replaceRuleFromRequest(userID uint, req replaceRuleRequest) (models.Replace
 
 func (s *Server) upsertReplaceRules(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		maxReplaceRuleBatchRequestBytes,
+	)
 	var requests []replaceRuleRequest
-	if err := c.ShouldBindJSON(&requests); err != nil || len(requests) == 0 {
+	if err := c.ShouldBindJSON(&requests); err != nil ||
+		len(requests) == 0 ||
+		len(requests) > maxReplaceRuleBatchItems {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid replace rules payload"})
 		return
 	}
@@ -166,7 +187,7 @@ func (s *Server) upsertReplaceRules(c *gin.Context) {
 	prepared := make([]models.ReplaceRule, 0, len(requests))
 	skipped := 0
 	for _, request := range requests {
-		if strings.TrimSpace(request.Name) == "" || strings.TrimSpace(request.Pattern) == "" {
+		if request.Name == "" || request.Pattern == "" {
 			skipped++
 			continue
 		}
@@ -214,7 +235,9 @@ func (s *Server) upsertReplaceRules(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save replace rules"})
 		return
 	}
-	s.broadcastReplaceRulesUpdate(userID, "batch-upsert")
+	if created+updated > 0 {
+		s.broadcastReplaceRulesUpdate(userID, "batch-upsert")
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"rules":   replacementRuleResponses(rules),
 		"created": created,
@@ -225,6 +248,11 @@ func (s *Server) upsertReplaceRules(c *gin.Context) {
 
 func (s *Server) updateReplaceRule(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		maxReplaceRuleRequestBytes,
+	)
 	ruleID, ok := parseUintParam(c, "id")
 	if !ok {
 		return
@@ -298,9 +326,18 @@ type replaceRuleBatchDeleteRequest struct {
 
 func (s *Server) deleteReplaceRules(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		maxReplaceRuleDeleteRequestBytes,
+	)
 	var request replaceRuleBatchDeleteRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid replace rule ids"})
+		return
+	}
+	if len(request.IDs) > maxReplaceRuleBatchItems {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "too many replace rule ids"})
 		return
 	}
 	ids := uniquePositiveUintIDs(request.IDs)
@@ -347,19 +384,43 @@ func (s *Server) broadcastReplaceRulesUpdate(userID uint, kind string) {
 }
 
 func (s *Server) testReplaceRule(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		maxReplaceRuleTestRequestBytes,
+	)
 	var req replaceRuleTestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "pattern and text are required"})
 		return
 	}
-	pattern := strings.TrimSpace(req.Pattern)
+	pattern := req.Pattern
 	isRegex := req.IsRegex != nil && *req.IsRegex
+	if len(pattern) > maxReplaceRulePatternBytes ||
+		len(req.Replacement) > maxReplaceRuleReplacementBytes ||
+		len(req.Text) > maxReplaceRuleTestTextBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "replace rule test payload is too large"})
+		return
+	}
 	if err := validateReaderReplaceRulePattern(pattern, isRegex); err != nil {
 		writeReplaceRuleValidationError(c, err)
 		return
 	}
 	input := req.Text
-	output := applyReaderReplaceRule(input, pattern, req.Replacement, isRegex)
+	output, err := replacerules.Apply(
+		input,
+		pattern,
+		req.Replacement,
+		isRegex,
+		replacerules.Limits{
+			MaxMatches:     replacerules.DefaultMaxMatches,
+			MaxOutputBytes: maxReplaceRuleTestOutputBytes,
+		},
+	)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "replace rule execution limit exceeded"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"input": input, "output": output, "changed": input != output})
 }
 
@@ -378,18 +439,22 @@ func validateReaderReplaceRulePattern(pattern string, isRegex bool) error {
 }
 
 func compileReaderReplaceRule(pattern string) (*regexp.Regexp, error) {
-	return regexp.Compile("(?i:" + pattern + ")")
+	return replacerules.Compile(pattern)
 }
 
-func applyReaderReplaceRule(content, pattern, replacement string, isRegex bool) string {
-	if !isRegex {
-		return strings.Replace(content, pattern, replacement, 1)
-	}
-	re, err := compileReaderReplaceRule(pattern)
-	if err != nil {
-		return content
-	}
-	return re.ReplaceAllString(content, replacement)
+func applyReaderReplaceRule(
+	content string,
+	pattern string,
+	replacement string,
+	isRegex bool,
+) (string, error) {
+	return replacerules.Apply(
+		content,
+		pattern,
+		replacement,
+		isRegex,
+		replacerules.DefaultLimits(len(content)),
+	)
 }
 
 func writeReplaceRuleValidationError(c *gin.Context, err error) {

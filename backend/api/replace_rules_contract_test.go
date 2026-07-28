@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"openreader/backend/models"
+	"openreader/backend/services/replacerules"
 )
 
 func replaceRuleContractBool(value bool) *bool {
@@ -105,6 +106,110 @@ func TestReplaceRuleDefaultsAndNameUpsertMatchReaderDev(t *testing.T) {
 	_ = server
 }
 
+func TestReplaceRuleAcceptedFieldsPreserveExactWhitespace(t *testing.T) {
+	router, _ := setupTestServer(t)
+	token := authHeader(t, router)
+
+	response := replaceRuleContractRequest(t, router, http.MethodPost, "/api/replace-rules", `{
+		"name":"  空白名称  ",
+		"pattern":" 广告 ",
+		"replacement":"替换",
+		"scope":" 替换契约书;local://replace-contract "
+	}`, token)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("whitespace is valid upstream rule data: %d %s", response.Code, response.Body.String())
+	}
+	var rule models.ReplaceRule
+	if err := json.Unmarshal(response.Body.Bytes(), &rule); err != nil {
+		t.Fatal(err)
+	}
+	if rule.Name != "  空白名称  " || rule.Pattern != " 广告 " ||
+		rule.Scope != " 替换契约书;local://replace-contract " {
+		t.Fatalf("accepted strings were normalized instead of preserved: %+v", rule)
+	}
+
+	whitespaceOnly := replaceRuleContractRequest(t, router, http.MethodPost, "/api/replace-rules", `{
+		"name":" ","pattern":" ","replacement":"","scope":"*"
+	}`, token)
+	if whitespaceOnly.Code != http.StatusCreated {
+		t.Fatalf("upstream only rejects exact empty strings, got %d: %s", whitespaceOnly.Code, whitespaceOnly.Body.String())
+	}
+}
+
+func TestReplaceRuleBatchWithOnlySkippedRowsDoesNotBroadcast(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := replaceRuleContractUser(t, server)
+	client := server.hub.AddClient(user.ID, nil)
+	defer server.hub.RemoveClient(client)
+
+	response := replaceRuleContractRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/replace-rules/batch",
+		`[{"name":"","pattern":"广告"},{"name":"无规则","pattern":""}]`,
+		token,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("all-skipped batch: %d %s", response.Code, response.Body.String())
+	}
+	var summary struct {
+		Created int `json:"created"`
+		Updated int `json:"updated"`
+		Skipped int `json:"skipped"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Created != 0 || summary.Updated != 0 || summary.Skipped != 2 {
+		t.Fatalf("unexpected all-skipped summary: %+v", summary)
+	}
+	select {
+	case payload := <-client.Send:
+		t.Fatalf("a request with no durable mutation broadcast an update: %s", payload)
+	default:
+	}
+}
+
+func TestReplaceRuleBatchRejectsExcessiveRowsBeforeMutation(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := replaceRuleContractUser(t, server)
+	rows := make([]replaceRuleRequest, 0, maxReplaceRuleBatchItems+1)
+	for index := 0; index <= maxReplaceRuleBatchItems; index++ {
+		enabled := true
+		rows = append(rows, replaceRuleRequest{
+			Name:      "rule-" + strconv.Itoa(index),
+			Pattern:   "a",
+			Scope:     "*",
+			IsEnabled: &enabled,
+		})
+	}
+	body, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := replaceRuleContractRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/replace-rules/batch",
+		string(body),
+		token,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("oversized batch must be rejected, got %d: %s", response.Code, response.Body.String())
+	}
+	var count int64
+	if err := server.db.Model(&models.ReplaceRule{}).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("oversized batch mutated %d rules", count)
+	}
+}
+
 func TestReplaceRuleReaderSemanticsPreserveOrderAndRegexFlags(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
@@ -113,10 +218,10 @@ func TestReplaceRuleReaderSemanticsPreserveOrderAndRegexFlags(t *testing.T) {
 	plain := false
 	regex := true
 	first := models.ReplaceRule{
-		UserID: user.ID, Name: "先替换", Pattern: "ad", Replacement: "ONE", Scope: "*", IsRegex: &plain, Enabled: true,
+		UserID: user.ID, Name: "先替换", Pattern: "ad", Replacement: "ONE", Scope: "*", IsRegex: &plain, Enabled: true, Order: 99,
 	}
 	second := models.ReplaceRule{
-		UserID: user.ID, Name: "后替换", Pattern: "one", Replacement: "TWO", Scope: "*", IsRegex: &regex, Enabled: true,
+		UserID: user.ID, Name: "后替换", Pattern: "one", Replacement: "TWO", Scope: "*", IsRegex: &regex, Enabled: true, Order: -99,
 	}
 	if err := server.db.Create(&first).Error; err != nil {
 		t.Fatal(err)
@@ -147,6 +252,139 @@ func TestReplaceRuleReaderSemanticsPreserveOrderAndRegexFlags(t *testing.T) {
 	}
 	if !strings.Contains(content.Body.String(), "Ad TWO TWO TWO") {
 		t.Fatalf("plain first-match and regex global/case-insensitive semantics diverged: %s", content.Body.String())
+	}
+}
+
+func TestReplaceRuleScopeUsesExactSecondSegment(t *testing.T) {
+	book := models.Book{Title: "目标书", URL: "https://book.example/1"}
+	if replaceRuleAppliesToBook("目标书;", book) {
+		t.Fatal("an explicit empty URL segment must not mean any non-empty book URL")
+	}
+	if !replaceRuleAppliesToBook("目标书;https://book.example/1", book) {
+		t.Fatal("the exact title and URL scope must match")
+	}
+	if replaceRuleAppliesToBook(" 目标书;https://book.example/1", book) {
+		t.Fatal("scope title whitespace must remain significant")
+	}
+	if replaceRuleAppliesToBook("目标书;https://book.example/1 ", book) {
+		t.Fatal("scope URL whitespace must remain significant")
+	}
+}
+
+func TestReplaceRuleReplacementStringMatchesJavaScript(t *testing.T) {
+	plain, err := applyReaderReplaceRule(
+		"left ad right ad",
+		"ad",
+		"[$$][$&][$`][$']",
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain != "left [$][ad][left ][ right ad] right ad" {
+		t.Fatalf("plain JavaScript replacement tokens diverged: %q", plain)
+	}
+
+	regex, err := applyReaderReplaceRule(
+		"Ad1 ad2",
+		`(ad)(\d)`,
+		"$2-$1-$&-$$",
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regex != "1-Ad-Ad1-$ 2-ad-ad2-$" {
+		t.Fatalf("regex JavaScript replacement tokens diverged: %q", regex)
+	}
+}
+
+func TestReplaceRuleTestEndpointRejectsOversizedInput(t *testing.T) {
+	router, _ := setupTestServer(t)
+	token := authHeader(t, router)
+	body := `{"pattern":"a","replacement":"b","text":"` +
+		strings.Repeat("a", maxReplaceRuleTestTextBytes+1) +
+		`"}`
+	response := replaceRuleContractRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/replace-rules/test",
+		body,
+		token,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("oversized test input must be rejected, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestReplaceRuleTestEndpointRejectsExecutionLimitOverflows(t *testing.T) {
+	router, _ := setupTestServer(t)
+	token := authHeader(t, router)
+
+	matchLimitBody := `{"pattern":"a","replacement":"b","isRegex":true,"text":"` +
+		strings.Repeat("a", replacerules.DefaultMaxMatches+1) +
+		`"}`
+	response := replaceRuleContractRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/replace-rules/test",
+		matchLimitBody,
+		token,
+	)
+	if response.Code != http.StatusBadRequest ||
+		!strings.Contains(response.Body.String(), "execution limit") {
+		t.Fatalf("match overflow must fail closed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	outputLimitBody := `{"pattern":"a","replacement":"` +
+		strings.Repeat("x", maxReplaceRuleReplacementBytes) +
+		`","isRegex":true,"text":"` +
+		strings.Repeat("a", maxReplaceRuleTestOutputBytes/maxReplaceRuleReplacementBytes+1) +
+		`"}`
+	response = replaceRuleContractRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/replace-rules/test",
+		outputLimitBody,
+		token,
+	)
+	if response.Code != http.StatusBadRequest ||
+		!strings.Contains(response.Body.String(), "execution limit") {
+		t.Fatalf("output overflow must fail closed, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestReplaceRuleExecutionLimitPreservesPriorPipelineOutput(t *testing.T) {
+	router, server := setupTestServer(t)
+	_ = authHeader(t, router)
+	user := replaceRuleContractUser(t, server)
+	plain := false
+	regex := true
+	rules := []models.ReplaceRule{
+		{
+			UserID: user.ID, Name: "first", Pattern: "prefix", Replacement: "done",
+			Scope: "*", IsRegex: &plain, Enabled: true,
+		},
+		{
+			UserID: user.ID, Name: "bounded", Pattern: "a", Replacement: "b",
+			Scope: "*", IsRegex: &regex, Enabled: true,
+		},
+		{
+			UserID: user.ID, Name: "must not run", Pattern: "suffix", Replacement: "after",
+			Scope: "*", IsRegex: &plain, Enabled: true,
+		},
+	}
+	if err := server.db.Create(&rules).Error; err != nil {
+		t.Fatal(err)
+	}
+	input := "prefix " + strings.Repeat("a", replacerules.DefaultMaxMatches+1) + " suffix"
+	got := server.applyUserReplaceRules(models.Book{UserID: user.ID}, input)
+	want := "done " + strings.Repeat("a", replacerules.DefaultMaxMatches+1) + " suffix"
+	if got != want {
+		t.Fatalf("execution overflow must preserve prior output and stop later rules")
 	}
 }
 
@@ -182,8 +420,8 @@ func TestLegacyBlankReplaceRuleScopeRemainsGlobalUntilEdited(t *testing.T) {
 func TestReplaceRuleBackupPreservesReaderPipelineOrder(t *testing.T) {
 	_, server := setupTestServer(t)
 	plain := false
-	first := models.ReplaceRule{UserID: 1, Name: "先执行", Pattern: "A", Replacement: "B", Scope: "*", IsRegex: &plain, Enabled: true}
-	second := models.ReplaceRule{UserID: 1, Name: "后执行", Pattern: "B", Replacement: "C", Scope: "*", IsRegex: &plain, Enabled: true}
+	first := models.ReplaceRule{UserID: 1, Name: "先执行", Pattern: "A", Replacement: "B", Scope: "*", IsRegex: &plain, Enabled: true, Order: 99}
+	second := models.ReplaceRule{UserID: 1, Name: "后执行", Pattern: "B", Replacement: "C", Scope: "*", IsRegex: &plain, Enabled: true, Order: -99}
 	if err := server.db.Create(&first).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -226,4 +464,83 @@ func TestReplaceRuleBackupPreservesReaderPipelineOrder(t *testing.T) {
 		return
 	}
 	t.Fatal("replaceRules.json not found in backup")
+}
+
+func TestReplaceRuleRestoreUsesExactNameAndArchiveOrder(t *testing.T) {
+	_, server := setupTestServer(t)
+	user := models.User{Username: "replace-restore-contract", PasswordHash: "hash"}
+	if err := server.db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	plain := false
+	byName := models.ReplaceRule{
+		UserID: user.ID, Name: "按名称更新", Pattern: "旧 pattern", Scope: "*",
+		IsRegex: &plain, Enabled: true,
+	}
+	samePattern := models.ReplaceRule{
+		UserID: user.ID, Name: "不可误覆盖", Pattern: "目标 pattern", Scope: "*",
+		IsRegex: &plain, Enabled: true,
+	}
+	if err := server.db.Create(&byName).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&samePattern).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := server.restoreReplaceRulesFromData([]byte(`[
+		{"name":"按名称更新","pattern":"目标 pattern","replacement":"新","scope":"*","isEnabled":true,"order":99},
+		{"name":"","pattern":"无名 pattern","replacement":"不得创建","scope":"*"},
+		{"name":"后追加一","pattern":"A","replacement":"B","scope":"*","order":50},
+		{"name":"后追加二","pattern":"B","replacement":"C","scope":"*","order":-50}
+	]`), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("restore must skip the unnamed row, count=%d", count)
+	}
+
+	var rules []models.ReplaceRule
+	if err := server.db.Where("user_id = ?", user.ID).Order("id asc").Find(&rules).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 4 {
+		t.Fatalf("restore changed the wrong identity or created an unnamed row: %+v", rules)
+	}
+	if rules[0].ID != byName.ID || rules[0].Pattern != "目标 pattern" || rules[0].Replacement != "新" {
+		t.Fatalf("same-name row was not updated in place: %+v", rules)
+	}
+	if rules[1].ID != samePattern.ID || rules[1].Name != "不可误覆盖" {
+		t.Fatalf("same-pattern different-name row was overwritten: %+v", rules)
+	}
+	if rules[2].Name != "后追加一" || rules[3].Name != "后追加二" {
+		t.Fatalf("new archive rows did not append in archive order: %+v", rules)
+	}
+}
+
+func TestReplaceRuleRestorePrevalidatesEveryRuleBeforeMutation(t *testing.T) {
+	_, server := setupTestServer(t)
+	user := models.User{Username: "replace-restore-validation", PasswordHash: "hash"}
+	if err := server.db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := server.restoreReplaceRulesFromData([]byte(`[
+		{"name":"would-write","pattern":"a","replacement":"b","scope":"*","isRegex":false},
+		{"name":"invalid-regex","pattern":"(?=unsupported)","replacement":"","scope":"*","isRegex":true}
+	]`), user.ID)
+	if err == nil {
+		t.Fatal("unsupported restored regex must fail validation")
+	}
+	if count != 0 {
+		t.Fatalf("failed prevalidation reported restored rows: %d", count)
+	}
+	var stored int64
+	if err := server.db.Model(&models.ReplaceRule{}).Where("user_id = ?", user.ID).Count(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored != 0 {
+		t.Fatalf("restore wrote %d rows before discovering an invalid rule", stored)
+	}
 }

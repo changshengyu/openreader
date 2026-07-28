@@ -3046,7 +3046,7 @@ func (s *Server) applyUserReplaceRules(book models.Book, content string) string 
 		return content
 	}
 	var rules []models.ReplaceRule
-	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Order("sort_order asc, id asc").Find(&rules).Error; err != nil {
+	if err := s.db.Where("user_id = ? AND enabled = ?", book.UserID, true).Order("id asc").Find(&rules).Error; err != nil {
 		return content
 	}
 	for _, rule := range rules {
@@ -3062,26 +3062,27 @@ func (s *Server) applyUserReplaceRules(book models.Book, content string) string 
 			// encountered; it never treats the malformed pattern as plain text.
 			break
 		}
-		content = applyReaderReplaceRule(content, rule.Pattern, rule.Replacement, isRegex)
+		next, err := applyReaderReplaceRule(content, rule.Pattern, rule.Replacement, isRegex)
+		if err != nil {
+			break
+		}
+		content = next
 	}
 	return content
 }
 
 func replaceRuleAppliesToBook(scope string, book models.Book) bool {
-	scope = strings.TrimSpace(scope)
 	if scope == "" || scope == "*" {
 		return true
 	}
 	parts := strings.Split(scope, ";")
-	name := strings.TrimSpace(parts[0])
-	if name != "*" && name != strings.TrimSpace(book.Title) {
+	if parts[0] != "*" && parts[0] != book.Title {
 		return false
 	}
 	if len(parts) < 2 {
 		return true
 	}
-	url := strings.TrimSpace(parts[1])
-	return url == "" || url == strings.TrimSpace(book.URL)
+	return parts[1] == book.URL
 }
 
 func (s *Server) checkUpdates(c *gin.Context) {

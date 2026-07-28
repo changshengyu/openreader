@@ -89,7 +89,7 @@ test('normalizes legacy stored rules and imported rule fields separately', () =>
   }), {
     id: 1,
     pattern: 'ad',
-    scope: '*',
+    scope: ' ',
     isEnabled: false,
     isRegex: false,
     enabled: false,
@@ -98,15 +98,34 @@ test('normalizes legacy stored rules and imported rule fields separately', () =>
     rules: [
       { title: '广告', regex: ' ad ', replace: '', scope: '', isEnabled: false },
       { title: '空规则' },
+      { pattern: ' missing name ' },
     ],
-  }), [{
-    name: '广告',
-    pattern: 'ad',
-    replacement: '',
-    scope: '*',
-    isRegex: false,
-    enabled: false,
-  }])
+  }), [
+    {
+      name: '广告',
+      pattern: ' ad ',
+      replacement: '',
+      scope: '*',
+      isRegex: false,
+      enabled: false,
+    },
+    {
+      name: '空规则',
+      pattern: '',
+      replacement: '',
+      scope: '*',
+      isRegex: false,
+      enabled: true,
+    },
+    {
+      name: '',
+      pattern: ' missing name ',
+      replacement: '',
+      scope: '*',
+      isRegex: false,
+      enabled: true,
+    },
+  ])
 })
 
 test('loads normalized rules and debounces only remote visible updates', async () => {
@@ -138,6 +157,7 @@ test('imports normalized JSON rules and resets the file input', async () => {
       text: async () => JSON.stringify([
         { name: '广告', pattern: 'ad' },
         { name: '正文', pattern: 'body', isRegex: true },
+        { name: '', pattern: 'invalid-but-counted' },
       ]),
     }],
     value: 'rules.json',
@@ -146,7 +166,10 @@ test('imports normalized JSON rules and resets the file input', async () => {
   assert.equal(target.value, '')
   assert.equal(fixture.controller.importing.value, false)
   assert.equal(fixture.calls[0][0], 'confirm')
+  assert.equal(fixture.calls[0][1], '确认要导入文件中的3条替换规则吗?')
   assert.equal(fixture.calls[1][0], 'upsert')
+  assert.equal(fixture.calls[1][1].length, 3)
+  assert.equal(fixture.calls[1][1][2].name, '')
   assert.deepEqual(fixture.calls.slice(-3), [
     ['success', '导入替换规则成功：新增 1，更新 1，跳过 1'],
     ['list'],
@@ -163,7 +186,7 @@ test('opens fresh and existing editors and saves create or update payloads', asy
   fixture.controller.draft.value.scope = '*'
   await fixture.controller.save()
   assert.equal(fixture.calls[0][0], 'create')
-  assert.equal(fixture.calls[0][1].pattern, 'ad')
+  assert.equal(fixture.calls[0][1].pattern, ' ad ')
   assert.equal(fixture.controller.dialogVisible.value, false)
 
   fixture.calls.length = 0
@@ -191,18 +214,21 @@ test('requires the same name, pattern, and scope fields as the upstream editor',
   assert.deepEqual(fixture.calls, [['warning', '替换范围不能为空']])
 })
 
-test('tests and toggles rules while preserving failure reload semantics', async () => {
+test('toggles rules while preserving hidden compatibility fields and failure reload semantics', async () => {
   const fixture = createController()
-  fixture.controller.draft.value.pattern = 'ad'
-  await fixture.controller.runTest()
-  assert.deepEqual(fixture.controller.testResult.value, {
-    changed: true,
-    output: '正文',
-  })
-  const rule = { id: 2, name: '正文', pattern: 'body', isRegex: false }
+  const rule = {
+    id: 2,
+    name: '正文',
+    group: '净化',
+    pattern: 'body',
+    isRegex: false,
+    order: 7,
+  }
   await fixture.controller.toggle(rule, false)
   assert.equal(rule.enabled, false)
   assert.equal(rule.isEnabled, false)
+  assert.equal(fixture.calls[0][2].group, '净化')
+  assert.equal(fixture.calls[0][2].order, 7)
 
   const failure = new Error('offline')
   const failed = createController({
@@ -217,14 +243,31 @@ test('tests and toggles rules while preserving failure reload semantics', async 
   ])
 })
 
-test('removes one or many rules and clears their selections', async () => {
+test('toggle updates the visible switch immediately like the upstream v-model', async () => {
+  const pendingUpdate = deferred()
+  const fixture = createController({
+    updateReplaceRule: async () => pendingUpdate.promise,
+  })
+  const rule = {
+    id: 2,
+    name: '正文',
+    pattern: 'body',
+    scope: '*',
+    isEnabled: true,
+  }
+
+  const toggleTask = fixture.controller.toggle(rule, false)
+  assert.equal(rule.enabled, false)
+  assert.equal(rule.isEnabled, false)
+
+  pendingUpdate.resolve()
+  await toggleTask
+})
+
+test('batch deletes selected rules and clears their selections', async () => {
   const fixture = createController()
   await fixture.controller.load()
   fixture.controller.selectedIds.value = [1, 2]
-  await fixture.controller.remove(fixture.controller.rules.value[0])
-  assert.deepEqual(fixture.controller.rules.value.map(rule => rule.id), [2])
-  assert.deepEqual(fixture.controller.selectedIds.value, [2])
-
   await fixture.controller.removeSelected()
   assert.deepEqual(fixture.controller.rules.value, [])
   assert.deepEqual(fixture.controller.selectedIds.value, [])
@@ -243,7 +286,46 @@ test('clears only manager list state when its root dialog closes', async () => {
   assert.equal(fixture.controller.dialogVisible.value, true, 'the independent editor must survive a manager-only close')
 })
 
-test('an old confirmation cannot delete rules after authentication changes', async () => {
+test('manager close does not retire an in-flight sibling editor save', async () => {
+  const pendingUpdate = deferred()
+  const managerOperationGuard = expiringOperationGuard()
+  const editorOperationGuard = expiringOperationGuard()
+  const updateCalls = []
+  let managerVisible = true
+  const fixture = createController({
+    isActive: () => managerVisible,
+    managerOperationGuard,
+    editorOperationGuard,
+    updateReplaceRule: async (...args) => {
+      updateCalls.push(args)
+      await pendingUpdate.promise
+    },
+  })
+  fixture.controller.openEditor({
+    id: 2,
+    name: '正文',
+    group: '净化',
+    pattern: 'body',
+    scope: '*',
+    order: 7,
+  })
+
+  const saveTask = fixture.controller.save()
+  managerVisible = false
+  fixture.controller.resetManager()
+  pendingUpdate.resolve()
+  await saveTask
+
+  assert.equal(updateCalls.length, 1)
+  assert.equal(fixture.controller.dialogVisible.value, false)
+  assert.equal(fixture.controller.saving.value, false)
+  assert.deepEqual(fixture.calls, [
+    ['success', '编辑替换规则成功'],
+    ['notify'],
+  ])
+})
+
+test('an old batch-delete confirmation cannot mutate after authentication changes', async () => {
   const pendingConfirmation = deferred()
   const operationGuard = expiringOperationGuard()
   const fixture = createController({
@@ -251,7 +333,8 @@ test('an old confirmation cannot delete rules after authentication changes', asy
     confirm: () => pendingConfirmation.promise,
   })
 
-  const removeTask = fixture.controller.remove({ id: 7, name: '旧账号规则' })
+  fixture.controller.selectedIds.value = [7]
+  const removeTask = fixture.controller.removeSelected()
   operationGuard.expire()
   pendingConfirmation.resolve()
   await removeTask

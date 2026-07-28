@@ -7,32 +7,25 @@ export function normalizeOverlayReplaceRuleImport(input) {
     : Array.isArray(input?.rules)
       ? input.rules
       : []
-  return rows
-    .map((rule, index) => ({
-      name: String(rule.name || rule.title || `导入规则 ${index + 1}`).trim(),
-      pattern: String(rule.pattern || rule.regex || rule.match || '').trim(),
-      replacement: String(rule.replacement ?? rule.replace ?? ''),
-      scope: String(rule.scope || '*').trim() || '*',
-      isRegex: rule.isRegex === true,
-      enabled: !(rule.enabled === false || rule.isEnabled === false),
-    }))
-    .filter(rule => rule.pattern)
+  return rows.map(normalizeImportedReplaceRule)
 }
 
 export function normalizeOverlayReplaceRule(rule = {}) {
   const source = rule || {}
   return {
     ...source,
-    scope: String(source.scope || '*').trim() || '*',
+    scope: explicitReplaceRuleScope(source.scope),
     isRegex: source.isRegex === true,
     enabled: !(source.enabled === false || source.isEnabled === false),
   }
 }
 
 export function useOverlayReplaceRules(options) {
-  const operations = options.operationGuard || createAuthenticatedOperationGuard({
+  const fallbackOperations = options.operationGuard || createAuthenticatedOperationGuard({
     getIdentity: options.getAuthenticatedIdentity,
   })
+  const managerOperations = options.managerOperationGuard || fallbackOperations
+  const editorOperations = options.editorOperationGuard || fallbackOperations
   const rules = ref([])
   const loading = ref(false)
   const importing = ref(false)
@@ -40,24 +33,21 @@ export function useOverlayReplaceRules(options) {
   const fileInput = ref(null)
   const dialogVisible = ref(false)
   const saving = ref(false)
-  const testing = ref(false)
   const editingId = ref(null)
   const draft = ref(emptyDraft())
-  const testText = ref('广告123\n正文内容')
-  const testResult = ref(null)
   const scheduleTimeout = options.setTimeout || globalThis.setTimeout
   const cancelTimeout = options.clearTimeout || globalThis.clearTimeout
   let refreshTimer
   let managerRequest = 0
 
   async function load(parentOperation = null) {
-    if (parentOperation && !operations.canCommit(parentOperation)) return false
-    const operation = operations.begin('load')
+    if (parentOperation && !managerOperations.canCommit(parentOperation)) return false
+    const operation = managerOperations.begin('load')
     const request = ++managerRequest
     loading.value = true
     try {
       const { data } = await options.listReplaceRules()
-      if (request !== managerRequest || !operations.canCommit(operation)) return false
+      if (request !== managerRequest || !managerOperations.canCommit(operation)) return false
       rules.value = Array.isArray(data)
         ? data.map(normalizeOverlayReplaceRule)
         : []
@@ -66,11 +56,11 @@ export function useOverlayReplaceRules(options) {
       ))
       return true
     } catch (error) {
-      if (request !== managerRequest || !operations.canCommit(operation)) return false
+      if (request !== managerRequest || !managerOperations.canCommit(operation)) return false
       options.onError(error, '加载替换规则失败')
       return false
     } finally {
-      if (request === managerRequest && operations.canCommit(operation)) {
+      if (request === managerRequest && managerOperations.canCommit(operation)) {
         loading.value = false
       }
     }
@@ -84,7 +74,7 @@ export function useOverlayReplaceRules(options) {
 
   function resetManager() {
     managerRequest += 1
-    operations.reset()
+    managerOperations.reset()
     clearRefresh()
     rules.value = []
     selectedIds.value = []
@@ -94,10 +84,10 @@ export function useOverlayReplaceRules(options) {
 
   function scheduleRefresh() {
     clearRefresh()
-    const operation = operations.begin('scheduled-refresh')
+    const operation = managerOperations.begin('scheduled-refresh')
     refreshTimer = scheduleTimeout(async () => {
       refreshTimer = undefined
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       await load(operation)
     }, 250)
   }
@@ -111,14 +101,6 @@ export function useOverlayReplaceRules(options) {
     selectedIds.value = rows.map(row => row.id)
   }
 
-  function toggleSelection(id, checked) {
-    if (checked) {
-      if (!selectedIds.value.includes(id)) selectedIds.value.push(id)
-      return
-    }
-    selectedIds.value = selectedIds.value.filter(item => item !== id)
-  }
-
   function triggerImport() {
     fileInput.value?.click()
   }
@@ -127,38 +109,48 @@ export function useOverlayReplaceRules(options) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    const operation = operations.begin('import')
+    const operation = managerOperations.begin('import')
     importing.value = true
     try {
       const text = await file.text()
-      if (!operations.canCommit(operation)) return
-      const parsed = JSON.parse(text)
+      if (!managerOperations.canCommit(operation)) return
+      let parsed
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        options.onError(null, '替换规则文件错误')
+        return
+      }
       const ruleList = normalizeOverlayReplaceRuleImport(parsed)
       if (!ruleList.length) {
         options.onWarning('替换规则文件中没有可导入的规则')
         return
       }
       await options.confirm(
-        `确认要导入文件中的 ${ruleList.length} 条替换规则吗？`,
-        '导入替换规则',
-        { type: 'warning' },
+        `确认要导入文件中的${ruleList.length}条替换规则吗?`,
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
       )
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       const { data } = await options.upsertReplaceRules(ruleList)
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       options.onSuccess(
         `导入替换规则成功：新增 ${data?.created || 0}，更新 ${data?.updated || 0}` +
           (data?.skipped ? `，跳过 ${data.skipped}` : ''),
       )
       await load(operation)
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       options.notifyUpdated()
     } catch (error) {
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       if (error === 'cancel' || error === 'close') return
       options.onError(error, '导入替换规则失败')
     } finally {
-      if (operations.canCommit(operation)) importing.value = false
+      if (managerOperations.canCommit(operation)) importing.value = false
     }
   }
 
@@ -166,7 +158,6 @@ export function useOverlayReplaceRules(options) {
     if (!rule) {
       editingId.value = null
       draft.value = emptyDraft()
-      testResult.value = null
       dialogVisible.value = true
       return
     }
@@ -174,26 +165,29 @@ export function useOverlayReplaceRules(options) {
     editingId.value = normalized.id || null
     draft.value = {
       name: normalized.name || '',
+      group: normalized.group || '',
       pattern: normalized.pattern || '',
       replacement: normalized.replacement || '',
       scope: normalized.scope || '*',
       isRegex: normalized.isRegex,
       enabled: normalized.enabled,
+      order: Number.isFinite(Number(normalized.order))
+        ? Number(normalized.order)
+        : 0,
     }
-    testResult.value = null
     dialogVisible.value = true
   }
 
   async function save() {
-    const name = String(draft.value.name || '').trim()
-    const pattern = String(draft.value.pattern || '').trim()
-    const scope = String(draft.value.scope || '').trim()
+    const name = String(draft.value.name ?? '')
+    const pattern = String(draft.value.pattern ?? '')
+    const scope = String(draft.value.scope ?? '')
     if (!name) {
       options.onWarning('规则名不能为空')
       return
     }
     if (!pattern) {
-      options.onWarning('匹配规则不能为空')
+      options.onWarning('规则不能为空')
       return
     }
     if (!scope) {
@@ -211,98 +205,59 @@ export function useOverlayReplaceRules(options) {
       pattern,
       scope,
     })
-    const operation = operations.begin('save')
+    const operation = editorOperations.begin('save')
     saving.value = true
     try {
       if (ruleId) {
         await options.updateReplaceRule(ruleId, payload)
-        if (!operations.canCommit(operation)) return
-        options.onSuccess('替换规则已更新')
+        if (!editorOperations.canCommit(operation)) return
+        options.onSuccess('编辑替换规则成功')
       } else {
         await options.createReplaceRule(payload)
-        if (!operations.canCommit(operation)) return
-        options.onSuccess('替换规则已创建')
+        if (!editorOperations.canCommit(operation)) return
+        options.onSuccess('新增替换规则成功')
       }
       dialogVisible.value = false
-      await load(operation)
-      if (!operations.canCommit(operation)) return
+      if (options.isActive()) await load()
+      if (!editorOperations.canCommit(operation)) return
       options.notifyUpdated()
     } catch (error) {
-      if (operations.canCommit(operation)) options.onError(error, '保存替换规则失败')
+      if (editorOperations.canCommit(operation)) {
+        options.onError(error, `${ruleId ? '编辑' : '新增'}替换规则失败`)
+      }
     } finally {
-      if (operations.canCommit(operation)) saving.value = false
+      if (editorOperations.canCommit(operation)) saving.value = false
     }
   }
 
   async function toggle(rule, enabled) {
+    const previous = normalizeOverlayReplaceRule(rule).enabled
     const normalized = normalizeOverlayReplaceRule({ ...rule, enabled })
-    const operation = operations.begin(`toggle:${normalized.id}`)
+    rule.enabled = normalized.enabled
+    rule.isEnabled = normalized.enabled
+    const operation = managerOperations.begin(`toggle:${normalized.id}`)
     try {
       await options.updateReplaceRule(normalized.id, {
         name: normalized.name,
+        group: normalized.group || '',
         pattern: normalized.pattern,
         replacement: normalized.replacement,
         scope: normalized.scope,
         isRegex: normalized.isRegex,
         enabled: normalized.enabled,
+        order: Number.isFinite(Number(normalized.order))
+          ? Number(normalized.order)
+          : 0,
       })
-      if (!operations.canCommit(operation)) return
-      rule.enabled = normalized.enabled
-      rule.isEnabled = normalized.enabled
-      options.onSuccess(normalized.enabled ? '规则已启用' : '规则已停用')
+      if (!managerOperations.canCommit(operation)) return
+      options.onSuccess('修改成功')
       options.notifyUpdated()
     } catch (error) {
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
+      rule.enabled = previous
+      rule.isEnabled = previous
       options.onError(error, '更新替换规则失败')
       await load(operation)
-    }
-  }
-
-  async function runTest() {
-    if (!draft.value.pattern.trim() || !testText.value) {
-      options.onWarning('请输入匹配规则和测试文本')
-      return
-    }
-    const payload = {
-      pattern: draft.value.pattern,
-      replacement: draft.value.replacement,
-      isRegex: draft.value.isRegex,
-      text: testText.value,
-    }
-    const operation = operations.begin('test')
-    testing.value = true
-    try {
-      const { data } = await options.testReplaceRule(payload)
-      if (!operations.canCommit(operation)) return
-      testResult.value = data
-    } catch (error) {
-      if (operations.canCommit(operation)) options.onError(error, '测试替换规则失败')
-    } finally {
-      if (operations.canCommit(operation)) testing.value = false
-    }
-  }
-
-  async function remove(rule) {
-    const ruleId = rule.id
-    const ruleName = rule.name || rule.pattern
-    const operation = operations.begin(`remove:${ruleId}`)
-    try {
-      await options.confirm(
-        `确定删除替换规则“${ruleName}”吗？`,
-        '删除替换规则',
-        { type: 'warning' },
-      )
-      if (!operations.canCommit(operation)) return
-      await options.deleteReplaceRule(ruleId)
-      if (!operations.canCommit(operation)) return
-      rules.value = rules.value.filter(item => item.id !== ruleId)
-      selectedIds.value = selectedIds.value.filter(id => id !== ruleId)
-      options.onSuccess('替换规则已删除')
-      options.notifyUpdated()
-    } catch (error) {
-      if (!operations.canCommit(operation)) return
-      if (error === 'cancel' || error === 'close') return
-      options.onError(error, '删除替换规则失败')
     }
   }
 
@@ -312,16 +267,20 @@ export function useOverlayReplaceRules(options) {
       options.onWarning('请选择需要删除的替换规则')
       return
     }
-    const operation = operations.begin('remove-selected')
+    const operation = managerOperations.begin('remove-selected')
     try {
       await options.confirm(
-        `确认要删除所选择的 ${ids.length} 条替换规则吗？`,
-        '批量删除替换规则',
-        { type: 'warning' },
+        '确认要删除所选择的替换规则吗?',
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
       )
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       const { data } = await options.deleteReplaceRules(ids)
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       const deletedIds = Array.isArray(data?.deletedIds)
         ? data.deletedIds
         : []
@@ -330,7 +289,7 @@ export function useOverlayReplaceRules(options) {
       options.onSuccess('删除替换规则成功')
       options.notifyUpdated()
     } catch (error) {
-      if (!operations.canCommit(operation)) return
+      if (!managerOperations.canCommit(operation)) return
       if (error === 'cancel' || error === 'close') return
       options.onError(error, '删除替换规则失败')
     }
@@ -344,37 +303,67 @@ export function useOverlayReplaceRules(options) {
     fileInput,
     dialogVisible,
     saving,
-    testing,
     editingId,
     draft,
-    testText,
-    testResult,
     load,
     resetManager,
     handleUpdated,
     clearRefresh,
     changeSelection,
-    toggleSelection,
     triggerImport,
     importFile,
     normalize: normalizeOverlayReplaceRule,
     openEditor,
     save,
     toggle,
-    runTest,
-    remove,
     removeSelected,
-    resetOperations: operations.reset,
+    resetOperations() {
+      managerOperations.reset()
+      if (editorOperations !== managerOperations) editorOperations.reset()
+    },
   }
 }
 
 function emptyDraft() {
   return {
     name: '',
+    group: '',
     pattern: '',
     replacement: '',
     scope: '',
     isRegex: false,
     enabled: true,
+    order: 0,
   }
+}
+
+function normalizeImportedReplaceRule(rule) {
+  const source = rule && typeof rule === 'object' ? rule : {}
+  return {
+    name: String(firstOwnedValue(source, ['name', 'title']) ?? ''),
+    pattern: String(firstOwnedValue(source, ['pattern', 'regex', 'match']) ?? ''),
+    replacement: String(source.replacement ?? source.replace ?? ''),
+    scope: explicitReplaceRuleScope(source.scope),
+    isRegex: source.isRegex === true,
+    enabled: !(source.enabled === false || source.isEnabled === false),
+    ...(Object.prototype.hasOwnProperty.call(source, 'group')
+      ? { group: String(source.group ?? '') }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, 'order')
+      ? { order: Number.isFinite(Number(source.order)) ? Number(source.order) : 0 }
+      : {}),
+  }
+}
+
+function firstOwnedValue(source, keys) {
+  if (!source || typeof source !== 'object') return undefined
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) return source[key]
+  }
+  return undefined
+}
+
+function explicitReplaceRuleScope(value) {
+  if (value === null || value === undefined || value === '') return '*'
+  return String(value)
 }

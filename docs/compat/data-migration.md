@@ -304,8 +304,8 @@ Implementation evidence: uploaded and WebDAV recovery read a bounded compressed 
 
 ## P2 replace-rule persistence compatibility
 
-Status: fixed-baseline persistence contract re-opened on 2026-07-28. The additive schema is retained,
-but the current ordering and restore identity require correction before this slice is complete. See
+Status: fixed-baseline persistence contract implemented and regression-tested on 2026-07-28. The
+additive schema is retained; ordering and restore identity now follow the fixed contract. See
 [`replace-rule-fixed-baseline-p2-contract.md`](replace-rule-fixed-baseline-p2-contract.md).
 
 - Existing `replace_rules` rows stay in the same SQLite table with the same `id`, `user_id`, `name`, `pattern`, `replacement`, `scope`, `is_regex`, `enabled`, and timestamps. AutoMigrate only adds `group_name` and `sort_order DEFAULT 0`; no row is deleted, deduplicated, rewritten, or moved during startup.
@@ -317,8 +317,12 @@ but the current ordering and restore identity require correction before this sli
 - Backup restore accepts both `enabled` and legacy `isEnabled`. It processes archive rows in order and
   upserts by the caller's exact rule name, not pattern. Missing/empty names or patterns are skipped,
   never synthesized; missing `isRegex` restores as plain text and an external empty scope becomes
-  explicit `*`. No new table/column and no `data/`, `cache/`, or `library/` path is introduced.
-- New/updated inputs are bounded (name 120 bytes, scope 800 bytes, pattern 16 KiB, replacement 64 KiB) and regular expressions are compiled before a write. A rejected write leaves existing rows and mounted volumes untouched.
+  explicit `*`. Restore accepts at most 2,000 rows and prevalidates every non-empty row before its
+  first write, so invalid field/RE2/capture data participates in the existing whole-backup rollback.
+  No new table/column and no `data/`, `cache/`, or `library/` path is introduced.
+- New/updated inputs are bounded (name 120 bytes, hidden group 800 bytes, scope 800 bytes,
+  pattern 16 KiB, replacement 64 KiB, regex captures 32) and regular expressions are compiled before
+  a write. A rejected API or restore write leaves existing rows and mounted volumes untouched.
 
 Required evidence: rewritten tests must cover exact whitespace preservation, ID order despite nonzero
 `sort_order`, exact scope second-segment behavior, name-based ordered restore, invalid-row skipping,

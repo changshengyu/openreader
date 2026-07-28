@@ -3083,3 +3083,18 @@ checkbox 与 footer 也不一致。
 RE2 拒绝不安全/不支持表达式保留为明确技术或安全适配；`sort_order` 仅保留持久化/导出，
 不得再控制 Web Reader pipeline。下一阶段必须先替换会固化当前错误结构的测试，再实施代码；
 合同提交前未修改应用代码。
+
+### 固定基准重建结果
+
+合同 pass 后已先增加失败测试，再重建应用。manager/editor 恢复固定上游 Dialog、表格、
+表单、默认值和 sibling 状态；Reader 选中文字直达同一 editor。导入与 REST 保留精确
+name/pattern/scope，按输入总数确认并由服务端只跳过精确空行；list/apply/backup 改为
+`id ASC`，scope 精确分段，restore 按 exact name 和 archive order。新的有界 RE2 引擎对
+受支持 pattern 实现 JavaScript replacement-string token 语义；无 durable write 的
+all-skipped batch 不广播。
+
+frontend 649/649、Go 全量和 production build 通过。专项浏览器在
+1440×900、1024×1366、390×844、360×800 覆盖 manager/editor/import/toggle/batch，
+工作台三视口和 Reader 桌面/手机/iPad 选中文字流程也通过。RE2 pattern 子集、JWT/SQLite、
+legacy 空 scope 及隐藏兼容 API 是唯一明确允许差异；Docker mounted-volume/backup 门在提交后
+执行。

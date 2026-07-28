@@ -1,151 +1,131 @@
 <template>
   <el-dialog
     v-model="overlay.replaceRulesVisible"
-    title="替换规则"
-    width="min(1120px, calc(100vw - 48px))"
+    title="替换规则管理"
+    width="min(1000px, max(750px, 70vw))"
+    top="max(15dvh, calc((100dvh - 584px) / 2))"
     :fullscreen="isMobile"
     class="global-replace-dialog"
     destroy-on-close
     @open="loadReplaceRules"
     @closed="resetManager"
   >
-    <section class="replace-overlay">
-      <header class="file-overlay-head">
-        <div>
-          <strong>全局替换规则</strong>
-          <span>阅读器会按启用规则处理正文内容</span>
-        </div>
-        <div class="file-actions">
-          <el-button size="small" type="primary" :icon="Edit" @click="openReplaceRuleEditor()">新增规则</el-button>
-          <el-button size="small" :icon="Upload" :loading="replaceRuleImporting" @click="triggerReplaceRuleImport">导入</el-button>
-          <el-button
-            size="small"
-            type="danger"
-            plain
-            :icon="Delete"
-            :disabled="!selectedReplaceRuleIds.length"
-            @click="deleteSelectedReplaceRules"
-          >
-            批量删除
-          </el-button>
-          <el-button size="small" :icon="Refresh" :loading="replaceRulesLoading" @click="loadReplaceRules">刷新</el-button>
-          <input
-            ref="replaceRuleFileInput"
-            class="visually-hidden-file"
-            type="file"
-            accept=".json,application/json"
-            @change="importReplaceRuleFile"
-          />
-        </div>
-      </header>
+    <template #header>
+      <div class="replace-dialog-header">
+        <span class="el-dialog__title">替换规则管理</span>
+        <el-button
+          text
+          :loading="replaceRuleImporting"
+          @click="triggerReplaceRuleImport"
+        >
+          导入
+        </el-button>
+        <input
+          ref="replaceRuleFileInput"
+          class="visually-hidden-file"
+          type="file"
+          accept=".json,application/json"
+          @change="importReplaceRuleFile"
+        />
+      </div>
+    </template>
 
+    <section class="replace-overlay">
       <el-table
         :data="replaceRules"
-        stripe
+        :height="isMobile ? 'calc(100dvh - 184px)' : 'min(400px, calc(70dvh - 184px))'"
         v-loading="replaceRulesLoading"
-        class="desktop-replace-table"
+        class="replace-rule-table"
         @selection-change="onReplaceRuleSelectionChange"
       >
-        <el-table-column type="selection" width="44" />
-        <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="scope" label="替换范围" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="pattern" label="匹配" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="replacement" label="替换为" min-width="160" show-overflow-tooltip />
-        <el-table-column label="正则" width="80">
-          <template #default="{ row }">
-            {{ normalizeReplaceRule(row).isRegex ? '是' : '否' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="启用" width="90">
+        <el-table-column type="selection" width="25" :fixed="isMobile" />
+        <el-table-column
+          prop="name"
+          label="规则名称"
+          min-width="150"
+          :fixed="isMobile"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="scope"
+          label="替换范围"
+          min-width="150"
+          show-overflow-tooltip
+        />
+        <el-table-column label="是否启用" min-width="80">
           <template #default="{ row }">
             <el-switch
               :model-value="normalizeReplaceRule(row).enabled"
-              size="small"
+              active-color="#13ce66"
+              inactive-color="#ff4949"
               @change="value => toggleReplaceRule(row, value)"
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="100">
           <template #default="{ row }">
             <el-button text @click="openReplaceRuleEditor(row)">编辑</el-button>
-            <el-button text type="danger" @click="removeReplaceRule(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-
-      <div v-if="replaceRules.length" v-loading="replaceRulesLoading" class="mobile-rule-list">
-        <article v-for="rule in replaceRules" :key="rule.id" class="mobile-rule-card">
-          <header>
-            <el-checkbox
-              :model-value="selectedReplaceRuleIds.includes(rule.id)"
-              @change="toggleReplaceRuleSelection(rule.id, $event)"
-            />
-            <div>
-              <strong>{{ rule.name || '未命名规则' }}</strong>
-              <em>{{ normalizeReplaceRule(rule).scope }}</em>
-              <span>{{ rule.pattern }}</span>
-            </div>
-            <el-switch
-              :model-value="normalizeReplaceRule(rule).enabled"
-              size="small"
-              @change="value => toggleReplaceRule(rule, value)"
-            />
-          </header>
-          <p>替换为：{{ rule.replacement || '空' }}</p>
-          <p>模式：{{ normalizeReplaceRule(rule).isRegex ? '正则表达式' : '普通文本' }}</p>
-          <footer>
-            <el-button size="small" text @click="openReplaceRuleEditor(rule)">编辑</el-button>
-            <el-button size="small" text type="danger" @click="removeReplaceRule(rule)">删除</el-button>
-          </footer>
-        </article>
-      </div>
-      <el-empty v-if="!replaceRulesLoading && !replaceRules.length" description="暂无全局替换规则" />
     </section>
+
+    <template #footer>
+      <div class="replace-manager-footer">
+        <div>
+          <el-button type="primary" @click="deleteSelectedReplaceRules">
+            批量删除
+          </el-button>
+          <span>已选择 {{ selectedReplaceRuleIds.length }} 个</span>
+        </div>
+        <el-button @click="overlay.replaceRulesVisible = false">取消</el-button>
+      </div>
+    </template>
   </el-dialog>
 
   <el-dialog
     v-model="replaceRuleDialog"
-    :title="editingReplaceRuleId ? '编辑替换规则' : '新增替换规则'"
-    width="520px"
+    title="替换规则"
+    width="min(1000px, max(750px, 70vw))"
+    top="max(15dvh, calc((100dvh - 584px) / 2))"
     :fullscreen="isMobile"
+    class="replace-rule-editor-dialog"
     @closed="overlay.clearReplaceRuleEditor()"
   >
-    <el-form label-position="top">
+    <el-form :model="replaceRuleDraft">
       <el-form-item label="名称">
         <el-input v-model="replaceRuleDraft.name" />
       </el-form-item>
-      <el-form-item label="匹配正则或文本">
+      <el-form-item label="规则">
         <el-input v-model="replaceRuleDraft.pattern" />
       </el-form-item>
       <el-form-item label="替换为">
         <el-input v-model="replaceRuleDraft.replacement" />
       </el-form-item>
       <el-form-item label="替换范围">
-        <el-input v-model="replaceRuleDraft.scope" placeholder="* 或 书名 或 书名;书籍地址" />
+        <el-input
+          v-model="replaceRuleDraft.scope"
+          placeholder="* 或 书名 或 书名;书籍地址"
+        />
       </el-form-item>
-      <el-form-item>
-        <el-switch v-model="replaceRuleDraft.isRegex" active-text="使用正则表达式" inactive-text="普通文本" />
-      </el-form-item>
-      <el-form-item>
-        <el-switch v-model="replaceRuleDraft.enabled" active-text="启用" inactive-text="停用" />
-      </el-form-item>
-      <el-form-item label="测试文本">
-        <el-input v-model="replaceRuleTestText" type="textarea" :rows="3" />
-      </el-form-item>
-      <div class="replace-test-actions">
-        <el-button size="small" :loading="replaceRuleTesting" @click="runReplaceRuleTest">测试规则</el-button>
-        <span
-          v-if="replaceRuleTestResult"
-          :class="replaceRuleTestResult.changed ? 'msg-success' : 'msg-muted'"
-        >
-          {{ replaceRuleTestResult.changed ? '已发生替换' : '未匹配' }}
-        </span>
+      <div class="replace-rule-checks">
+        <el-checkbox v-model="replaceRuleDraft.isRegex">
+          使用正则表达式
+        </el-checkbox>
+        <el-checkbox v-model="replaceRuleDraft.enabled">
+          是否启用
+        </el-checkbox>
       </div>
-      <pre v-if="replaceRuleTestResult" class="replace-test-output">{{ replaceRuleTestResult.output }}</pre>
     </el-form>
     <template #footer>
-      <el-button @click="replaceRuleDialog = false">取消</el-button>
-      <el-button type="primary" :loading="replaceRuleSaving" @click="saveReplaceRule">保存</el-button>
+      <el-button @click="replaceRuleDialog = false">取 消</el-button>
+      <el-button
+        type="primary"
+        :loading="replaceRuleSaving"
+        @click="saveReplaceRule"
+      >
+        确 定
+      </el-button>
     </template>
   </el-dialog>
 </template>
@@ -153,7 +133,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Refresh, Upload } from '@element-plus/icons-vue'
 import * as replaceRulesApi from '../../api/replaceRules'
 import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayReplaceRules } from '../../composables/useOverlayReplaceRules'
@@ -167,7 +146,8 @@ defineProps({
 })
 
 const overlay = useOverlayStore()
-const operations = useAuthenticatedOperationGuard()
+const managerOperations = useAuthenticatedOperationGuard()
+const editorOperations = useAuthenticatedOperationGuard()
 
 const {
   rules: replaceRules,
@@ -177,28 +157,22 @@ const {
   fileInput: replaceRuleFileInput,
   dialogVisible: replaceRuleDialog,
   saving: replaceRuleSaving,
-  testing: replaceRuleTesting,
-  editingId: editingReplaceRuleId,
   draft: replaceRuleDraft,
-  testText: replaceRuleTestText,
-  testResult: replaceRuleTestResult,
   load: loadReplaceRules,
   resetManager,
   handleUpdated: handleReplaceRulesUpdated,
   clearRefresh: clearReplaceRulesRefreshTimer,
   changeSelection: onReplaceRuleSelectionChange,
-  toggleSelection: toggleReplaceRuleSelection,
   triggerImport: triggerReplaceRuleImport,
   importFile: importReplaceRuleFile,
   normalize: normalizeReplaceRule,
   openEditor: openReplaceRuleEditor,
   save: saveReplaceRule,
   toggle: toggleReplaceRule,
-  runTest: runReplaceRuleTest,
-  remove: removeReplaceRule,
   removeSelected: deleteSelectedReplaceRules,
 } = useOverlayReplaceRules({
-  operationGuard: operations,
+  managerOperationGuard: managerOperations,
+  editorOperationGuard: editorOperations,
   isActive: () => overlay.replaceRulesVisible,
   ...replaceRulesApi,
   confirm: (...args) => ElMessageBox.confirm(...args),
@@ -244,43 +218,42 @@ function readError(error, fallback) {
 
 <style scoped>
 .replace-overlay {
-  display: grid;
-  gap: 12px;
+  min-height: 0;
 }
 
-.file-overlay-head {
+.replace-dialog-header,
+.replace-manager-footer,
+.replace-manager-footer > div,
+.replace-rule-checks {
   display: flex;
   align-items: center;
+}
+
+.replace-dialog-header,
+.replace-manager-footer {
   justify-content: space-between;
-  gap: 12px;
 }
 
-.file-overlay-head > div:first-child {
-  display: grid;
-  gap: 2px;
+.replace-dialog-header {
+  min-width: 0;
+  padding-right: 30px;
 }
 
-.file-overlay-head span,
-.mobile-rule-card em,
-.mobile-rule-card span,
-.mobile-rule-card p,
-.msg-muted {
+.replace-dialog-header .el-dialog__title {
+  min-width: 0;
+}
+
+.replace-manager-footer > div {
+  gap: 14px;
+}
+
+.replace-manager-footer span {
   color: var(--app-text-muted);
-  font-size: 12px;
 }
 
-.file-actions,
-.mobile-rule-card header,
-.mobile-rule-card footer,
-.replace-test-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.file-actions {
+.replace-rule-checks {
   flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 24px;
 }
 
 .visually-hidden-file {
@@ -295,84 +268,22 @@ function readError(error, fallback) {
   margin: -1px;
 }
 
-.mobile-rule-list {
-  display: none;
-}
-
-.mobile-rule-card {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-}
-
-.mobile-rule-card header {
-  justify-content: space-between;
-}
-
-.mobile-rule-card header > div {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 2px;
-}
-
-.mobile-rule-card strong,
-.mobile-rule-card em,
-.mobile-rule-card span,
-.mobile-rule-card p {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-rule-card em {
-  font-style: normal;
-}
-
-.mobile-rule-card p {
-  margin: 0;
-}
-
-.replace-test-actions {
-  margin-bottom: 8px;
-}
-
-.msg-success {
-  color: var(--el-color-success);
-  font-size: 12px;
-}
-
-.replace-test-output {
-  max-height: 180px;
-  overflow: auto;
-  margin: 0;
-  padding: 10px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  background: rgba(255, 255, 255, 0.68);
-  color: var(--app-text);
-  white-space: pre-wrap;
-}
-
 @media (max-width: 750px) {
-  .file-overlay-head {
-    align-items: flex-start;
-    display: grid;
+  .replace-dialog-header {
+    padding-right: max(30px, env(safe-area-inset-right));
   }
 
-  .file-actions {
-    justify-content: flex-start;
+  .replace-manager-footer {
+    gap: 8px;
   }
 
-  .desktop-replace-table {
-    display: none;
+  .replace-manager-footer > div {
+    min-width: 0;
+    gap: 8px;
   }
 
-  .mobile-rule-list {
-    display: grid;
-    gap: 10px;
+  .replace-manager-footer span {
+    white-space: nowrap;
   }
 }
 </style>

@@ -1,6 +1,7 @@
 # ReplaceRule P2 固定基准复审合同
 
-状态：2026-07-28 完成合同提取，应用代码与旧测试尚未按本合同重建。
+状态：2026-07-28 已按固定基准完成测试先行、应用重建、全量回归和四视口真实浏览器验证；
+Docker mounted-volume/backup 发布门待本批提交后执行。
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -150,7 +151,12 @@ content.replace(new RegExp(rule.pattern, "ig"), rule.replacement)
 Go 标准 RE2 不支持 JavaScript 的全部回溯、lookaround 和反向引用 pattern。为避免用户规则
 导致无界 CPU/内存，OpenReader 保留“写入前以 RE2 子集验证，非法/不支持表达式返回 400”
 这一安全适配；不得宣称该 pattern 语言与浏览器 RegExp 完全等价。对 RE2 可接受的 pattern，
-匹配大小写、全局性、顺序和 replacement-string 语义仍必须对齐。
+匹配大小写、全局性、顺序和 replacement-string 语义仍必须对齐。执行层进一步限制每个
+regex 最多 32 个捕获组、每条规则每章最多 20,000 个匹配；输出最多为
+`max(原章节字节数, 64 MiB)`。超限时保留进入该规则前的完整正文并停止后续 pipeline，
+不得截断或返回部分替换结果。隐藏 `/test` 兼容 API 额外限制 4 MiB 请求体、1 MiB 测试文本
+和 8 MiB 输出。普通单条 mutation 请求体限制 512 KiB；批量导入限制 16 MiB/2,000 行，
+批量删除限制 128 KiB/2,000 ID；隐藏 group 字段限制 800 字节。
 
 ### 选中文字
 
@@ -195,11 +201,13 @@ JWT REST 路径与明确 HTTP 状态。
   不移动其 pipeline，新增按 archive 顺序追加。
 - 缺失/精确空 name 或 pattern 的恢复行跳过，不得用 pattern 伪造 name。
 - 外部空 scope 规范为 `*`；missing `isRegex` 为 false，missing enabled 为 true。
+- 恢复最多接受 2,000 行，并在任何写入前使用与 API 相同的字段/RE2/捕获组验证器预检整批；
+  任一非空行无效时返回错误，由既有全备份事务回滚，不得先写入前面的有效行。
 - 当前数据库可能已有重复名称；启动和本批修复都不得删除或合并它们。新 name-upsert 只更新
   最早 ID，ID 编辑仍可逐条处理旧重复行。
 - 恢复继续处于既有全备份事务、ZIP 大小/路径/条目限制和当前用户边界内；失败不得留下部分规则。
 
-## 7. 当前差异矩阵
+## 7. 实现前差异矩阵
 
 | 层 | 当前状态 | 判定 |
 |---|---|---|
@@ -211,7 +219,7 @@ JWT REST 路径与明确 HTTP 状态。
 | scope | trim；把 `书名;` 当任意 URL | `must-fix` |
 | restore | 以 pattern upsert并用 pattern 补 name | `must-fix` |
 | replacement string | Go plain 字面 replacement、regex Go expansion，未证明 JavaScript token 等价 | `must-fix` |
-| regex pattern | RE2 拒绝部分 JS pattern | `acceptable security adaptation`，必须在 UI/API 报错而非静默改变 |
+| regex pattern/执行资源 | RE2 拒绝部分 JS pattern；执行限制 32 捕获组、20,000 匹配和有界输出 | `acceptable security adaptation`；写入/`test` 必须显式报错，Reader 超限必须保留规则前完整正文并停止后续 pipeline |
 | JWT/ID/事务/同步 | 当前用户隔离、稳定 ID、批量事务、post-write WebSocket | `acceptable technical adaptation` |
 | legacy 空 scope | 作为全局读取 | `acceptable deployed-data shim`，不得扩展到新数据 |
 | hidden single-delete/test API | 已部署但上游 UI 不暴露 | `deployed compatibility only` |
@@ -255,3 +263,55 @@ cd frontend && npm run build
 随后运行真实浏览器 smoke、普通与历史 mounted-volume/backup smoke。本模块可在 UI/API/数据完整
 切片通过后本地构建并发布 Docker；发布报告必须列出完成项、RE2 安全差异、未完成项、标签、
 digest 和验证矩阵。
+
+## 9. 实施与验证结果
+
+### 用户界面与状态
+
+- `OverlayReplaceRules.vue` 已按固定上游重建为根级 `替换规则管理` Dialog：桌面共享
+  70vw/750–1000px 宽度和共享垂直位置，mini interface 全屏；表格只保留 selection、
+  `规则名称`、`替换范围`、`是否启用`、`操作/编辑`，标题栏只保留导入，footer 只保留
+  批量删除、选择数和取消。旧新增/刷新/逐行删除/测试器/移动卡片全部从可见管理器删除。
+- sibling 编辑器固定标题和四字段/双 checkbox/`取 消`、`确 定` 结构；Reader 选中文字
+  继续直接打开该编辑器，不打开管理器。manager 与 editor 使用独立认证操作 generation，
+  关闭 manager 不再中止 editor 的在途保存；会话失效仍同时淘汰二者。
+- enable switch 恢复上游 `v-model` 的即时视觉更新，并在失败时回滚/重载。编辑和 toggle
+  都 round-trip 不可见但已部署的 `group/order` 字段。
+- 导入按输入总行数确认，不伪造 name、不 trim 字符串、不在客户端丢弃无效行；服务端只
+  skip 精确空 name/pattern。空 scope 的外部兼容输入继续显式转换为 `*`。
+
+### API、Reader 与持久化
+
+- list、Reader pipeline 和 backup 已统一为 `id ASC`；`sort_order` 继续保存和导出但不再
+  改变 Web Reader 执行顺序。
+- name/pattern/scope 接受值按精确字节保存；scope 分段精确比较，`书名;` 不再匹配非空 URL，
+  仅历史空 scope 保留全局 shim。
+- 新的 `services/replacerules` 引擎对 RE2 可接受 pattern 实现 JavaScript replacement
+  string 语义，包括 `$$`、`$&`、``$` ``、`$'`、`$01/$1/$nn`、未匹配捕获与命名捕获。
+  plain 只替换首处；regex 全局且大小写不敏感；非法 regex 中止剩余 Reader pipeline。
+- 引擎使用有上限的 RE2 匹配集合，保留 `^/$` 与零宽匹配语义，同时限制 32 个捕获组、
+  每条规则每章 20,000 个匹配和 `max(章节字节数, 64 MiB)` 输出。任何超限都返回规则输入
+  原文，Reader 保留此前规则结果并停止后续规则；隐藏测试 API 以 `400` 拒绝超限，不返回
+  截断正文或部分结果。
+- backup 按 `user_id,id` 输出；restore 在既有全备份事务内按 archive 顺序、精确 name
+  更新最早 ID或追加新行，不再按 pattern 覆盖或伪造 name。全 skipped batch 不再发出
+  无 durable mutation 的同步广播。restore 先整批验证最多 2,000 行再开始写入，不能以
+  备份入口绕过字段、RE2 或捕获组限制。
+- 没有 schema、迁移、目录或文件格式变更；旧重复 name、ID、空 scope 和丰富备份别名均保留。
+
+### 证据
+
+- 测试先行旧实现曾明确失败于：错误管理器/编辑器结构、导入伪造/trim、`sort_order` 顺序、
+  scope 空 URL、Go replacement expansion、pattern restore identity、manager/editor 共用
+  operation guard、非 mutation 广播和非即时 switch。安全复核新增测试先失败于无捕获组/
+  匹配/输出边界和隐藏测试 API 无正文上限；实现后锁定命名捕获、`^/$`、零宽匹配及超限
+  fail-closed pipeline。
+- 最终自动门：frontend `649/649`、Go `go test ./...`、Vite production build 全部通过。
+- `replace-rule-fixed-baseline-contract.mjs` 在 1440×900、1024×1366、390×844、
+  360×800 逐项验证 manager/editor 几何、并存、精确字段、import、toggle、batch delete
+  和零水平溢出。
+- `workspace-operation-contract.mjs` 三视口通过旧链接到共享 manager；更新后的
+  `reader-mobile-contract.mjs` 通过桌面、手机、自适应 iPad 和强制移动 iPad 的
+  “原始选中文字 → 操作弹窗 → shared editor → cancel”流程及不穿透合同。
+- 允许差异仍只有 JWT/REST/SQLite/事务/同步、RE2 有界 pattern/捕获/匹配/输出子集、
+  legacy 空 scope shim，以及隐藏 single-delete/test 兼容 API；它们均未重新出现在对齐 UI。

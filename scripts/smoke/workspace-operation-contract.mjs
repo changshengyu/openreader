@@ -276,7 +276,7 @@ async function runViewport(browser, viewport) {
   const secondWebDAVRootRequestCount = await page.evaluate(() => window.__workspaceOperationWebDAVRootRequests())
   assert(secondWebDAVRootRequestCount === firstWebDAVRootRequestCount + 1, `${viewport.width}: reopening WebDAV must reload its root directory`)
   await closeDialog(page, '.global-webdav-dialog', 'webdav')
-  await openLegacyOperation(page, root, viewport, '/settings?panel=replace&keep=operation-contract', '.global-replace-dialog', 'replace-rules', '替换规则', true)
+  await openLegacyOperation(page, root, viewport, '/settings?panel=replace&keep=operation-contract', '.global-replace-dialog', 'replace-rules', '替换规则管理', true)
   await openLegacyOperation(page, root, viewport, '/settings?panel=rss&keep=operation-contract', '.global-rss-dialog', 'rss', 'RSS 订阅', true)
   await openLegacyOperation(page, root, viewport, '/settings?panel=admin&keep=operation-contract', '.global-user-dialog', 'user-manage', '用户管理', true)
   await openLegacySidebarFocus(page, root, viewport, 'account', 'account')

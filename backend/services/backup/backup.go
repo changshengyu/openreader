@@ -618,7 +618,7 @@ func (s *Service) addReplaceRules(db *gorm.DB, zipWriter *zip.Writer, userID *ui
 	// Replacement order is user-visible: a backup must preserve the same
 	// insertion pipeline that the reader applies, not reorder rows by a recent
 	// edit timestamp.
-	query := db.Order("user_id, sort_order, id")
+	query := db.Order("user_id, id")
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}

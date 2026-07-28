@@ -1564,16 +1564,14 @@ func (s *Server) restoreReplaceRulesFromData(data []byte, userID uint) (int, err
 	if err := json.Unmarshal(data, &rules); err != nil {
 		return 0, err
 	}
+	if len(rules) > maxReplaceRuleBatchItems {
+		return 0, errors.New("too many replace rules")
+	}
 
-	count := 0
+	prepared := make([]models.ReplaceRule, 0, len(rules))
 	for _, rule := range rules {
-		pattern := strings.TrimSpace(rule.Pattern)
-		if pattern == "" {
+		if rule.Name == "" || rule.Pattern == "" {
 			continue
-		}
-		name := strings.TrimSpace(rule.Name)
-		if name == "" {
-			name = pattern
 		}
 		enabled := true
 		if rule.Enabled != nil {
@@ -1586,24 +1584,51 @@ func (s *Server) restoreReplaceRulesFromData(data []byte, userID uint) (int, err
 		if rule.IsRegex != nil {
 			isRegex = *rule.IsRegex
 		}
-		scope := strings.TrimSpace(rule.Scope)
+		scope := rule.Scope
 		if scope == "" {
 			scope = "*"
 		}
-		next := models.ReplaceRule{
-			UserID:      userID,
-			Name:        name,
-			Group:       strings.TrimSpace(rule.Group),
-			Pattern:     pattern,
+		next, err := replaceRuleFromRequest(userID, replaceRuleRequest{
+			Name:        rule.Name,
+			Group:       rule.Group,
+			Pattern:     rule.Pattern,
 			Replacement: rule.Replacement,
 			Scope:       scope,
 			IsRegex:     &isRegex,
-			Enabled:     enabled,
+			Enabled:     &enabled,
 			Order:       rule.Order,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+		})
+		if err != nil {
+			return 0, err
 		}
-		if err := s.db.Where("user_id = ? AND pattern = ?", userID, pattern).Assign(next).FirstOrCreate(&next).Error; err != nil {
+		next.CreatedAt = time.Now()
+		next.UpdatedAt = next.CreatedAt
+		prepared = append(prepared, next)
+	}
+
+	count := 0
+	for _, next := range prepared {
+		var existing models.ReplaceRule
+		err := s.db.Where("user_id = ? AND name = ?", userID, next.Name).
+			Order("id asc").
+			First(&existing).Error
+		switch {
+		case err == nil:
+			existing.Group = next.Group
+			existing.Pattern = next.Pattern
+			existing.Replacement = next.Replacement
+			existing.Scope = next.Scope
+			existing.IsRegex = next.IsRegex
+			existing.Enabled = next.Enabled
+			existing.Order = next.Order
+			if err := s.db.Save(&existing).Error; err != nil {
+				return count, err
+			}
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			if err := s.db.Create(&next).Error; err != nil {
+				return count, err
+			}
+		default:
 			return count, err
 		}
 		count++
