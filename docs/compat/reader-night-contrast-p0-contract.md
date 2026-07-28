@@ -236,3 +236,30 @@ EPUB 只向 iframe 的 `body` 和 `p` 注入字体/颜色，并不会清除 EPUB
   不被强制改写。
 - 未完成：本批状态为 **Docker-published / awaiting device verification**；全量 Reader
   与其余 P2 重构仍按总审查计划继续，本合同只关闭“内置夜间实际文字层”这一 P0 切片。
+
+## 线上版本漂移复验与重新发布（2026-07-28）
+
+用户再次报告“外层黑、实际文字承载层不黑”后，通过用户已登录的线上 OpenReader 页面进行
+只读取证：侧栏健康版本明确显示 `a90d10b`。该版本只包含第二轮 iframe 根层修复，早于
+`4d40487` 的普通正文后代/EPUB 作者内容层接管，因此用户观察到的现象与该旧版本的已知缺口
+完全一致。同期 GHCR `latest` 已指向第三轮镜像
+`sha256:777bcb96fa59d718b413b22756b3b30696b891bed7826930af168ce15d0e6bed`，
+说明问题是运行实例未真正换到新镜像，而不是第三轮源码或远端镜像缺失。
+
+为排除宿主机 `latest` 缓存、旧容器复用和标签歧义，当前 Git 提交
+`2c4ede639e3d80ef7b82e6ac5b5b98c20ea4380c` 已从本机重新执行完整发布门：
+
+- frontend `641/641`、Go 全量和 Vite production build 通过；
+- 本地 Docker 镜像中的普通正文在桌面、390×844、360×800、iPad 自适应与强制移动模式
+  通过纯黑页面、纯白文字和透明文字承载层检查；
+- 真实导入的 EPUB fixture 使用作者 `!important` 白底、渐变、深色文字与阴影；
+  1440×900、390×844、360×800 均通过夜间接管和日间原样恢复；
+- 新卷 smoke 通过 portable v1/v2 assets、跨用户、重启和备份恢复；历史卷 smoke 通过
+  TXT、EPUB、UMD、CBZ、相对缓存和 owner isolation；
+- 本地多架构发布完成：
+  `ghcr.io/changshengyu/openreader:2c4ede6` 与 `:latest` 共同指向
+  `sha256:04ba137d8da8988ae7e2053b6c9051d438f3357ca35df8aad371cd11aced071d`，
+  包含 `linux/amd64` 与 `linux/arm64`。
+
+设备验收必须先确认侧栏版本显示 `2c4ede6`。如果仍显示 `a90d10b`，该结果只证明宿主仍在
+运行旧容器，不能作为当前夜间实现的复验结论。
