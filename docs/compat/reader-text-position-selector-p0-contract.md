@@ -1,8 +1,8 @@
 # Reader 文本位置语义选择器 P0 合同
 
-状态：2026-07-28 完成固定上游与当前实现的只读复审。原总矩阵中“书源入口、`h3`
-标题、长词断行尚未实现”的描述已经被后续代码推翻；实际剩余缺口是标题重构遗漏的一个
-`h1[data-pos]` 位置选择器。应用代码尚未在本合同阶段修改。
+状态：2026-07-28 完成固定上游复审、失败测试、实现、全量自动回归、production build
+及文本/连续阅读真实浏览器验证。原总矩阵中“书源入口、`h3` 标题、长词断行尚未实现”的
+描述已经被后续代码推翻；标题重构遗漏的最后一个 `h1[data-pos]` 位置选择器已经关闭。
 
 固定上游：
 
@@ -54,3 +54,19 @@
 3. 实现只替换语义选择器，不改变位置算法。
 4. 运行 frontend 全量、production build、Go 全量，以及文本/连续阅读真实浏览器合同。
 5. 该修复可立即提交 Git；是否单独发布 Docker 由浏览器结果和下一 Reader 切片大小共同决定。
+
+## 实施结果
+
+- 测试先行证据：
+  - 静态排版合同在旧代码上因 `useReaderNavigation` 不包含 `h3[data-pos]` 且仍包含
+    `h1[data-pos]` 失败；
+  - 行为合同在已加载连续章节执行 `goChapter(2, 180)` 时捕获旧选择器
+    `h1[data-pos], [data-reader-block][data-pos]`，因此失败。
+- 实现只把该 consumer 改为
+  `h3[data-pos], [data-reader-block][data-pos]`；位置算法、章节顶部回退、路由和持久字段
+  均未改变。
+- 聚焦合同 9/9 通过；frontend 全量 641/641、Vite production build、Go 全量通过。
+- `reader-continuous-contract.mjs` 与 `reader-text-modes-contract.mjs` 在 production preview
+  上通过，覆盖连续章节位置跳转、普通文本三种阅读方式和 `h3` 渲染。
+- 本批没有 API、数据库、缓存或持久卷差异，暂不为这一行选择器单独发布 Docker；代码提交后
+  与下一项 Reader 完整切片合并发布。

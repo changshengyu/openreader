@@ -256,3 +256,55 @@ test('rebuilds an explicitly selected loaded chapter before jumping in continuou
   assert.equal(fixture.options.currentIndex.value, 2)
   assert.deepEqual(fixture.navigated, [])
 })
+
+test('uses the upstream h3 text sequence when jumping to a loaded chapter position', async () => {
+  const calls = []
+  const heading = { dataset: { pos: '0' } }
+  const firstParagraph = { dataset: { pos: '100' } }
+  const secondParagraph = { dataset: { pos: '220' } }
+  const targetChapter = {
+    offsetTop: 900,
+    offsetHeight: 700,
+    querySelectorAll: selector => {
+      assert.equal(
+        selector,
+        'h3[data-pos], [data-reader-block][data-pos]',
+        'every text-position consumer must use the rendered upstream h3 title',
+      )
+      return [heading, firstParagraph, secondParagraph]
+    },
+  }
+  const fixture = createNavigation({
+    contentEl: ref({
+      scrollTop: 200,
+      clientHeight: 600,
+    }),
+    contentBody: ref({
+      querySelector: selector => selector.includes('"2"') ? targetChapter : null,
+    }),
+    chapterBlocks: ref([
+      { index: 1, id: 2, title: '第二章', content: '正文 1' },
+      { index: 2, id: 3, title: '第三章', content: '正文 2' },
+    ]),
+    isContinuousScrollRead: ref(true),
+    getMode: () => 'scroll2',
+    rebuildContinuousWindow: async index => calls.push(['rebuild', index]),
+    jumpToParagraph: (element, options) => calls.push(['paragraph', element, options]),
+    scrollAnimator: {
+      cancel: () => calls.push(['cancel']),
+      isActive: () => false,
+      scrollBy: () => false,
+      scrollTo: () => assert.fail('a valid character position must not fall back to chapter top'),
+    },
+  })
+
+  await fixture.navigation.goChapter(2, 180)
+
+  assert.deepEqual(calls, [
+    ['cancel'],
+    ['rebuild', 2],
+    ['paragraph', firstParagraph, { save: false, flash: false }],
+  ])
+  assert.equal(fixture.options.currentIndex.value, 2)
+  assert.deepEqual(fixture.navigated, [])
+})

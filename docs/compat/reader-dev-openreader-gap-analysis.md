@@ -2794,6 +2794,11 @@ Docker 升级卷与发布门仍待执行。
 再实施并跑文本/连续阅读浏览器门。完整合同见
 [`reader-text-position-selector-p0-contract.md`](reader-text-position-selector-p0-contract.md)。
 
+实施已完成：旧代码分别在静态 consumer 合同和已加载连续章节 `goChapter(index, offset)`
+行为合同中失败；选择器切换为实际渲染的 `h3[data-pos]` 后聚焦 9/9、frontend 641/641、
+production build、Go 全量、文本模式与连续阅读真实浏览器合同均通过。本批不改变 API/数据，
+暂不单独发布 Docker，将与下一 Reader 完整切片合并。
+
 ## 2026-07-28 Reader 移动夜间模式正文对比度复审
 
 固定上游的浏览器自动夜间与 Reader 月亮按钮都调用 `setNightTheme`，一次应用命名为“黑夜默认”

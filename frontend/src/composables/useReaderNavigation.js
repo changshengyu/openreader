@@ -88,7 +88,7 @@ export function useReaderNavigation(options) {
   function paragraphByChapterPosition(chapterEl, position) {
     if (!chapterEl || !Number.isFinite(position) || position <= 0) return null
     const nodes = [
-      ...chapterEl.querySelectorAll('h1[data-pos], [data-reader-block][data-pos]'),
+      ...chapterEl.querySelectorAll('h3[data-pos], [data-reader-block][data-pos]'),
     ]
     return readerParagraphAtPosition(nodes, position)
   }

@@ -12,6 +12,10 @@ const bookmarkSearch = readFileSync(
   new URL('../src/composables/useReaderSearchNavigation.js', import.meta.url),
   'utf8',
 )
+const readerNavigation = readFileSync(
+  new URL('../src/composables/useReaderNavigation.js', import.meta.url),
+  'utf8',
+)
 
 test('text Reader restores the upstream h3 chapter-title contract across render and navigation', () => {
   assert.match(chapterContent, /<h3\b[^>]*data-pos="0"/)
@@ -20,6 +24,8 @@ test('text Reader restores the upstream h3 chapter-title contract across render 
   assert.match(readerView, /querySelectorAll\('h3, p'\)/)
   assert.match(bookmarkSearch, /querySelectorAll\('h3, p'\)/)
   assert.match(tts, /querySelectorAll\('h3,p'\)/)
+  assert.match(readerNavigation, /querySelectorAll\('h3\[data-pos\], \[data-reader-block\]\[data-pos\]'\)/)
+  assert.doesNotMatch(readerNavigation, /h1\[data-pos\]/)
 })
 
 test('text Reader preserves upstream paragraph wrapping semantics', () => {
