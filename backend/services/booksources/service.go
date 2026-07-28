@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -35,7 +36,11 @@ type RestoreUsersResult struct {
 	Skipped  int `json:"skipped"`
 }
 
-const managedCreateSessionKey = "openreader:book-sources:managed-create"
+const (
+	managedCreateSessionKey       = "openreader:book-sources:managed-create"
+	namespaceInitRetryLimit       = 10
+	namespaceInitRetryBaseBackoff = 10 * time.Millisecond
+)
 
 type sourceInUseError struct {
 	count int
@@ -85,6 +90,27 @@ func (s *Service) EnsureNamespace(userID uint) error {
 		return err
 	}
 
+	for attempt := 0; attempt < namespaceInitRetryLimit; attempt++ {
+		err = s.initializeNamespace(userID)
+		if err == nil {
+			return nil
+		}
+		if !isSQLiteWriteContention(err) || attempt == namespaceInitRetryLimit-1 {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * namespaceInitRetryBaseBackoff)
+		initialized, checkErr := s.namespaceInitialized(userID)
+		if checkErr == nil && initialized {
+			return nil
+		}
+		if checkErr != nil && !isSQLiteWriteContention(checkErr) {
+			return checkErr
+		}
+	}
+	return err
+}
+
+func (s *Service) initializeNamespace(userID uint) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if userID != 0 {
 			var defaults []models.UserBookSource
@@ -111,6 +137,14 @@ func (s *Service) EnsureNamespace(userID uint) error {
 		return tx.Clauses(clause.OnConflict{DoNothing: true}).
 			Create(&models.BookSourceNamespace{UserID: userID}).Error
 	})
+}
+
+func isSQLiteWriteContention(err error) bool {
+	var sqliteError sqlite3.Error
+	if !errors.As(err, &sqliteError) {
+		return false
+	}
+	return sqliteError.Code == sqlite3.ErrBusy || sqliteError.Code == sqlite3.ErrLocked
 }
 
 func (s *Service) ListActive(userID uint) ([]models.BookSource, error) {
