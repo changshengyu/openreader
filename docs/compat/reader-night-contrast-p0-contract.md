@@ -408,3 +408,27 @@ themeType === "night" && theme !== "custom"
   `sha256:186e9058492a59422ed6c2930b37671d8d4082a6e30cc2b9ecaf9bad1db6bfb3`。
 - 当前状态是 **Docker-published / deployed site still requires pull**。不能在站点
   `/api/health` 返回 `9048831` 前声称线上问题已复验关闭。
+
+## 第六轮实机反馈：新镜像已再次发布，线上仍未替换旧容器（2026-07-28）
+
+用户再次确认“黑色阅读背景下，实际文字所在背景仍不是黑色”。本轮禁缓存读取
+`https://openreader.yuchsh.top/api/health`，结果仍为 `version: 59e11a9`、
+`commit: 59e11a9a6d2805233745f23960d8364d386a4d62`、
+`buildDate: 2026-07-28T07:20:43Z`。因此设备当前加载的仍是第四轮最终表面判定修复之前的
+静态前端，现象继续与该版本已知缺口一致。
+
+为避免只引用旧发布证据，本轮直接对新候选容器重新执行：
+
+- 普通正文 Reader 在桌面、390×844、360×800、自适应 iPad 和强制移动 iPad 通过
+  纯黑 shell/page、纯白正文及透明 `p/mark/span` 内容面合同；
+- 真实导入 EPUB 在 1440×900、390×844、360×800 通过：
+  `html/body` 为纯黑，作者 `main/div/span/table/td` 的 `!important` 白底/渐变/深色文字
+  被可逆接管为透明背景、无背景图和纯白文字；
+- frontend `649/649`、Go 全量、production build、新卷 portable v1/v2 assets、
+  cross-user、restart，以及历史 TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 均通过。
+
+本机已发布 `ghcr.io/changshengyu/openreader:a7abcdd` 与 `:latest`，共同指向
+amd64/arm64 OCI index
+`sha256:93840cf72e9a0a783333ac5ab485551d892e42b9bf2e8eb2e2a1039e56b5dd53`。
+设备验收必须先把运行容器替换到不可变标签 `a7abcdd`，并确认站点 `/api/health` 返回
+`version: a7abcdd`；在此之前，浏览器刷新或重新选择黑色主题都不会加载到当前修复。

@@ -315,3 +315,19 @@ digest 和验证矩阵。
   “原始选中文字 → 操作弹窗 → shared editor → cancel”流程及不穿透合同。
 - 允许差异仍只有 JWT/REST/SQLite/事务/同步、RE2 有界 pattern/捕获/匹配/输出子集、
   legacy 空 scope shim，以及隐藏 single-delete/test 兼容 API；它们均未重新出现在对齐 UI。
+
+### Docker 发布
+
+- 实现提交 `a7abcddf223caf6dcce5609a647d16bbe2576664` 已推送 `main`。
+- 本地 arm64 候选镜像通过 portable v1、portable v2 assets、cross-user、restart；
+  历史卷通过 TXT、EPUB、UMD、CBZ、relative-cache 和 owner isolation。
+- 候选容器中的 ReplaceRule/Reader 浏览器合同通过；真实导入 EPUB 在 1440×900、
+  390×844、360×800 验证纯黑夜间接管 `html/body/main/div/span/table/td`。
+- 本机发布 `ghcr.io/changshengyu/openreader:a7abcdd` 与 `:latest`，两者共同指向
+  amd64/arm64 OCI index
+  `sha256:93840cf72e9a0a783333ac5ab485551d892e42b9bf2e8eb2e2a1039e56b5dd53`；
+  amd64 manifest 为
+  `sha256:b4438a7a393c69766292afa580fbbc82e1b8cb7c21e2c16bd51a910eb6b74829`，
+  arm64 manifest 为
+  `sha256:ff46e91d335f6e4bf86e0bbf66e78295403ee5fc60d3a7718e6e2813e8014f9d`。
+- 当前模块状态为 **aligned / Docker-published / awaiting device verification**。
