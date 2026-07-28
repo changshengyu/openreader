@@ -480,5 +480,14 @@ amd64/arm64 OCI index
 - 真实 API 重新导入含作者固定 `body::before` 白底/渐变及多层 `!important` 浅色面的
   EPUB。1440×900、390×844、360×800 均验证根面纯黑、文字纯白、作者浅色承载层透明，
   390×844 陈旧昼夜标签路径和退出夜间后的作者样式恢复也通过。
-- 当前状态为 **candidate-validated / Docker pending**；必须发布新不可变镜像后再由设备
-  验收，现有 `a7abcdd` 不包含本轮三个补丁。
+- 实现提交 `b78d39c4cb8bed0a7dfc8ec1f0f69dbf243309c8` 已推送 `main`。本地 arm64 候选
+  通过新卷 portable v1/v2 assets、cross-user、restart；历史卷通过
+  TXT/EPUB/UMD/CBZ、relative-cache 和 owner isolation。
+- 本机已发布 `ghcr.io/changshengyu/openreader:b78d39c` 与 `:latest`，共同指向
+  amd64/arm64 OCI index
+  `sha256:edcb5ec1247a21d7b439239163df41efb54335af3c68730374ee47f4f7f2e679`；
+  amd64 manifest 为
+  `sha256:547d03d5c9df70b02081e09015ebb0847c9fcf2a8c8edd8c8928c003f937bf4e`，
+  arm64 manifest 为
+  `sha256:5599c546e4e109d38ad7139bac7f8892f820ece2f3956322fa2c9c15b7b835c2`。
+  当前状态为 **Docker-published / awaiting device verification**。
