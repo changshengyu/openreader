@@ -3,7 +3,8 @@
 状态：2026-07-28 第一轮已发布，但用户实机复验确认目标定义错误：达到 WCAG 对比度不等于
 用户要求的“纯黑正文背景 + 白色正文”。第二轮已完成固定上游/当前渲染层复审、测试先行实现、
 后端与前端全量回归、production build，以及 390×844、360×800 的 TXT/EPUB 实际渲染层
-验证；Git 与 Docker 发布门待执行。
+验证。实现提交 `a90d10b` 已推送并通过本地 Docker 新卷、历史卷、备份恢复门，GHCR
+`a90d10b` 与 `latest` 已发布。
 
 固定上游：
 
@@ -142,5 +143,11 @@
 - 浏览器自动深色和手动入口仍调用同一个 `setNightTheme()`；自动入口由 store/bootstrap
   契约测试覆盖，手动入口由上述真实浏览器流程覆盖。
 - 最终自动回归：后端 `go test ./...` 通过；前端 `639/639` 通过；Vite production build
-  通过。真实浏览器与自动回归共同覆盖 TXT、EPUB、手动/自动入口和主题资源隔离；剩余门禁为
-  Git 提交推送及 Docker 新卷/历史卷/备份发布验证。
+  通过。真实浏览器与自动回归共同覆盖 TXT、EPUB、手动/自动入口和主题资源隔离。
+- 实现提交 `a90d10b` 已推送 `main`；本地构建并发布
+  `ghcr.io/changshengyu/openreader:a90d10b` 与 `:latest`。两者共同指向多架构 OCI 索引
+  `sha256:c0480023418b94d06f55baa8e25e3976f7aa4e9b86b8ba4854ca136d99be1b3e`，
+  包含 `linux/amd64` 与 `linux/arm64`。
+- 新卷 smoke 通过 portable v1/v2 assets、跨用户、重启和备份恢复；历史卷 smoke 通过
+  TXT、EPUB、UMD、CBZ、相对缓存与 owner isolation。该批状态为
+  **Docker-published / awaiting device verification**。

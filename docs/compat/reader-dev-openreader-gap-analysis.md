@@ -2805,7 +2805,11 @@ custom 主题继续尊重用户资源。详见同一夜间对比度合同的“�
 随后确认修复后的 TXT 与 EPUB 在 390×844、360×800 都由实际 shell/page/iframe/html/body
 绘制 `rgb(0,0,0)`，标题和段落为 `rgb(255,255,255)`，所有阅读背景图均为 `none`，无控制台
 错误。自动深色入口继续由与手动入口相同的 store 动作驱动。最终后端全量、前端 `639/639`
-与 production build 均通过；Git、Docker 新卷/历史卷/备份与 GHCR 发布门待执行。
+与 production build 均通过。实现提交 `a90d10b` 已推送 `main`；本地新卷 smoke 通过
+portable v1/v2 assets、跨用户、重启和备份恢复，历史卷 smoke 通过 TXT、EPUB、UMD、CBZ、
+相对缓存与 owner isolation。GHCR `a90d10b` 和 `latest` 已发布，均指向 amd64/arm64 OCI
+索引 `sha256:c0480023418b94d06f55baa8e25e3976f7aa4e9b86b8ba4854ca136d99be1b3e`。
+本批状态为 **Docker-published / awaiting device verification**。
 
 ## 2026-07-27 Index 工作台认证会话隔离复审
 
