@@ -2780,6 +2780,20 @@ visibility/unmount 强制保存可能按新 scope 写本地进度，并尝试以
 “正在恢复当前账号…”。1440×900、390×844、360×800 的双账号书源/缓存/备份恢复验证通过；
 Docker 升级卷与发布门仍待执行。
 
+## 2026-07-28 Reader 文本位置语义选择器复审
+
+原总矩阵中“书源入口、`h3` 标题、长词断行尚未实现”的当前证据已经过期：桌面/移动书源
+按钮可打开同一面板，普通/卷/错误章节均为 `h3[data-pos="0"]`，标题排版和段落断行也已
+恢复固定上游值。逐 consumer 检索仍发现 `useReaderNavigation#paragraphByChapterPosition`
+保留 7 月 13 日标题重构前的 `h1[data-pos]`。该函数参与已有连续章节的目录/书签字符位置
+跳转和进度恢复，因此不是无效文本。
+
+本轮裁决为单点 `must-fix`：位置节点序列统一为
+`h3[data-pos], [data-reader-block][data-pos]`，保持现有“最后一个 `data-pos <= offset`”
+算法、章节顶部回退、路由和持久字段不变。先让静态 consumer 合同和行为测试在旧代码失败，
+再实施并跑文本/连续阅读浏览器门。完整合同见
+[`reader-text-position-selector-p0-contract.md`](reader-text-position-selector-p0-contract.md)。
+
 ## 2026-07-28 Reader 移动夜间模式正文对比度复审
 
 固定上游的浏览器自动夜间与 Reader 月亮按钮都调用 `setNightTheme`，一次应用命名为“黑夜默认”
