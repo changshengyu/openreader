@@ -1,9 +1,9 @@
 # Reader 移动夜间模式正文对比度合同
 
-状态：2026-07-28 第一、二轮已经发布，但用户实机复验继续证明“外层黑色”不能代表实际
-文字承载层黑色。第三轮已完成固定上游复审、失败测试、普通正文后代重置、EPUB bridge
-作者样式接管/恢复、Go 与前端全量回归、production build，以及 1440×900、390×844、
-360×800 的 TXT/EPUB 真实渲染验证。应用提交与本地多架构 Docker 已发布，等待用户设备复验。
+状态：2026-07-28 已完成四轮固定上游复审与真实渲染修订。第五轮用户复验所访问的线上
+`/api/health` 仍返回 `59e11a9`，早于纯黑自定义夜间内容面修复 `3ee3a82`；GHCR
+`latest` 实际已经是包含该修复的 `342d736`。当前阻断点是部署端复用了旧本地镜像，不是
+`342d736` 中再次复现同一实现缺口。部署验收必须先升级运行容器，并以健康检查版本为准。
 
 固定上游：
 
@@ -361,3 +361,30 @@ themeType === "night" && theme !== "custom"
   两者共同指向 amd64/arm64 OCI index
   `sha256:23454f80db395e45c660e41b9fe5a314936be89a0acbe27eeab0e4761a332f18`。
   当前状态为 **Docker-published / awaiting device verification**。
+
+## 第五轮实机反馈：线上仍在运行修复前镜像（2026-07-28）
+
+用户再次报告：选用黑色阅读背景时，实际文字所在的内容面仍不是黑色。本轮先核对交付链，
+不继续假定运行中的静态资源来自当前 Git 或 GHCR `latest`。
+
+### 运行证据
+
+| 检查 | 结果 | 裁决 |
+|---|---|---|
+| 线上 `GET https://openreader.yuchsh.top/api/health` | `version: 59e11a9`、`commit: 59e11a9a6d2805233745f23960d8364d386a4d62`、`buildDate: 2026-07-28T07:20:43Z`。 | 线上仍运行第四轮修复之前的镜像。 |
+| `59e11a9` Reader 内容面判定 | 根 class 与 CSS 仍为 `built-in-night`，只在 `theme !== "custom"` 时接管正文后代。 | 与用户“黑色背景方案的文字承载层仍浅色”现象一致；纯黑自定义/黑夜默认方案仍会漏过。 |
+| GHCR `3ee3a82` | amd64/arm64 OCI index `sha256:23454f80db395e45c660e41b9fe5a314936be89a0acbe27eeab0e4761a332f18`。 | 首个包含最终表面判定修复的不可变镜像。 |
+| GHCR `342d736` 与 `latest` | 两者均为 amd64/arm64 OCI index `sha256:1643625269f5a04f867c56da9e3bee04c1318d807e73ca6fc0913ab408645921`。 | 当前推荐部署镜像，包含 `3ee3a82` 及后续已验证提交。 |
+
+### 部署验收合同
+
+1. `docker compose up -d` 本身不能证明升级；本机已存在 `latest` 时可能直接复用旧镜像。
+2. 标准更新必须先执行 `docker compose pull openreader`，再执行
+   `docker compose up -d --force-recreate openreader`。
+3. 更新后必须查询站点 `/api/health`；只有返回版本不早于 `3ee3a82` 才能开始本轮设备
+   外观验收。推荐直接核对当前不可变版本 `342d736`。
+4. 如果健康检查仍返回 `59e11a9`，应检查实际 Compose/面板使用的镜像名、tag、容器 ID 和
+   反向代理上游；浏览器强制刷新无法替换后端容器所托管的旧前端资源。
+5. 只有运行版本已经升级且同一真实书籍仍复现时，才进入第五轮应用实现修改；届时必须采集
+   真实文字节点的 tag/class、computed `background-*`、祖先背景链和书籍格式，不能继续用
+   简单 fixture 推断。
