@@ -1,15 +1,17 @@
 # P2 用户管理上游复审合同
 
-状态：2026-07-27 已实施账户规则、独立 WebDAV/书仓权限和安全删除切片，并以
-固定基准 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
-回归验证。书源所有权动作已经完成独立取证，结论见
-[`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)；当前全局
-书源模型被判定为错误重构，尚未实施修复。本合同不把当前 OpenReader 的组件、路由或
-旧测试当作正确性依据。
+状态：2026-07-28 重新取证。账户规则、独立 WebDAV/书仓权限、安全删除和 user/default
+书源所有权已经实施并发布；书源所有权的最终合同见
+[`book-source-ownership-p2-contract.md`](book-source-ownership-p2-contract.md)。本次复审
+确认剩余差距位于用户管理的可见结构和“上次登录”语义，当前移动卡片、合并权限列及
+`lastActiveAt` 旧测试均不构成保留理由。本合同以固定基准
+`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 为准。
 
 上游权威文件：
 
 - `web/src/components/UserManage.vue`
+- `web/src/components/AddUser.vue`
+- `src/main/java/com/htmake/reader/api/controller/BaseController.kt`
 - `src/main/java/com/htmake/reader/api/controller/UserController.kt`
 - `src/main/java/com/htmake/reader/api/controller/BookSourceController.kt`
 
@@ -26,14 +28,16 @@
 | 动作 | reader-dev 可见/持久语义 | 当前 OpenReader | 判定 |
 |---|---|---|---|
 | 打开管理器 | Index 内单一“用户管理” Dialog；打开清空选择，移动端全屏。 | 根 Overlay Dialog，紧凑端全屏，打开加载并关闭时重置。 | **技术栈等价**；必须保留单一根 Dialog，不重新变成路由或抽屉。 |
+| 新增用户 | Dialog 标题区右侧只有“新增”；AddUser 是独立根 Dialog，用户名/密码表单和取消/确定底栏。 | 管理器正文重复“用户空间”标题、说明、图标按钮和刷新；AddUser 是独立根 Dialog，但额外暴露三项初始权限。 | **must-fix + allowed extension**：恢复标题区“新增”和上游正文起点，移除重复标题/刷新；独立 AddUser 结构保留。初始权限是 Go 多用户扩展，可保留但不得改变普通用户角色或默认值。 |
 | 受保护用户 | `default` namespace 不可选择、不可改 WebDAV/书仓；其他用户可选。 | `admin` 与当前登录管理员不可删除；`admin` 不可修改/重置。 | **允许的多用户安全适配**：管理员不是可删除的默认 namespace；不能放松为可删/可改。 |
 | 新建用户名 | 管理员创建用户至少 5 位，仅允许 ASCII 字母/数字，且保留 `default` namespace。 | 共享后端校验覆盖注册与管理员创建；UI 同步提示。旧用户名不重写、不锁定。 | **已实现**：至少 5 位、字母/数字、拒绝 `default`；旧账户仍可登录。 |
 | 新建/重置密码 | 管理员新建用户和重置密码均拒绝少于 **8** 位密码。 | 创建、重置与 UI 均改为 8 位；既有散列未重写。 | **已实现**。 |
 | WebDAV、书仓授权 | `enableWebdav`、`enableLocalStore` 是两个可独立切换的字段；Index 分别据此显示对应入口。 | 新增 nullable `can_access_webdav`；UI 与 API 显示独立 WebDAV/书仓开关。 | **已实现**：旧行 `NULL` 回退 `can_access_store`；LocalStore 与 WebDAV/Backup 在后端逐路由独立授权。 |
-| 用户书源：设为默认、删除用户书源 | 管理员可把目标用户的私有书源复制为新用户默认书源，或删除所选用户的私有文件并让其回退默认。 | `BookSource` 是全局 SQLite 表，无 `user_id`；用户表的 `sourceCount` 也明确为全局数。无对应动作。 | **P2 必修**：恢复 user/default 书源域，并以目标用户事务实现两个上游动作；全局共享不能作为多用户适配保留。 |
+| 用户书源：设为默认、删除用户书源 | 管理员可把目标用户的私有书源复制为新用户默认书源，或删除所选用户的私有文件并让其回退默认。 | 已用 `UserBookSource`/`BookSourceNamespace` 恢复 user/default 域、目标用户计数和两个管理员动作。重置采用事务调和；仍被书籍引用但不在默认模板中的快照会 detached，不制造悬空引用。 | **已实现 / 允许的数据安全适配**：可见活动书源与上游一致，保留被书籍引用的不可见快照是 Go/SQLite 安全差异。 |
 | 批量删除 | 确认后删除用户记录和该用户 namespace 目录。 | SQLite 事务覆盖 chapters、book categories、progress、bookmarks、RSS、rules、settings、source failures 与用户；提交后才清理 regular-user 私有 roots。 | **已实现**：保护管理员/当前账户；另一个用户和管理员 legacy 根均有回归覆盖。 |
 | 清理不活跃用户 | 上游没有此产品动作。 | 已从管理器 UI 移除；保留的兼容 API 复用完整删除计划。 | **已实现**：不再存在仅删 `users` 行的路径。 |
-| 列表/操作布局 | 表格：用户名、最后登录、注册、WebDAV、书仓、重置密码/设默认；底栏：批量删除、删除用户书源、选择数。 | 额外显示 role、书籍/全局书源计数、刷新；权限包含 OpenReader 的书源编辑开关，底栏只有批量删除。 | **must-fix with P2 source implementation**：恢复上游动作与选择/确认顺序；`sourceCount` 改为目标用户活动书源数，role/限额只能作为不抢占上游操作的多用户信息。 |
+| 上次登录 | `saveUserSession` 在成功登录时写 `last_login_at`；列表显示 `lastLoginAt`，空值显示空白。 | `LastActiveAt` 只在管理员创建时写入，登录成功不更新；UI 错称“最近活跃”，空值显示“未登录”。 | **must-fix**：成功登录更新兼容列并返回 `lastLoginAt`；列表使用“上次登录”和空白值。保留 `lastActiveAt` 仅作旧 API 兼容别名。 |
+| 列表/操作布局 | 一个表格用于桌面和移动全屏：选择、用户名、上次登录、注册、WebDAV、书仓、操作；移动固定选择/用户名列并横向滚动。底栏依次为批量删除、删除用户书源、选择数、取消。 | 桌面增加 role/书籍/书源并把三项权限合在一列；移动端另造卡片；正文头含刷新；底栏次序反转且没有取消。 | **错误重构 / must-fix**：恢复单表、上游核心列顺序、移动固定列和底栏顺序；书源编辑是允许扩展的独立列。role/统计不得抢占核心列，可移除或放入非核心详情。 |
 
 ## OpenReader API 与数据合同
 
@@ -46,6 +50,10 @@
 | `PUT /api/admin/users/:id/password` | 只更新目标普通用户的密码散列。 | 8 位以下 `400`；管理员/当前账户保护、非管理员 `403`。 |
 | `POST /api/admin/users/batch-delete` | 一个 SQLite 事务删除用户、books、chapters、book categories、progress、bookmarks、RSS、rules、settings、source failure 等所有 user-owned rows；提交后清理私有 storage/library/upload descendants，广播一次用户更新。 | 输入去重；当前/管理员 ID 不可删除；若没有可删用户 `400`；事务/文件计划失败不可破坏其他用户或 legacy 管理员根。 |
 | `POST /api/admin/cleanup-inactive`（兼容扩展） | 仅在保留时，先找出符合条件的普通用户，再完全复用批量删除计划。 | 不在上游 UI 暴露；必须具备明确确认、审计级测试和同样的数据/文件边界。 |
+| `POST /api/admin/users/:id/sources/default` | 把目标用户已经初始化的活动书源（包括显式空列表）复制为默认模板，返回 `{count}`。 | 管理员专用；目标不存在 `404`，namespace 未初始化 `409`；不懒初始化目标，也不回退调用者书源。 |
+| `POST /api/admin/users/sources/reset` | 先校验全部去重目标和默认模板，再在一个事务内调和；提交后发目标 `sources_update` 和管理员 `users_update`。 | 管理员专用；空选择 `400`，目标/默认缺失 `404`；任一校验或写入失败时整批不变。 |
+| `POST /api/login` | 凭证成功后更新用户的兼容 `last_active_at` 存储值，响应 user 同时提供 `lastLoginAt` 和弃用中的 `lastActiveAt`。 | 错误凭证不得更新时间；更新时间失败返回 `500`，不得为未记录的登录签发 token。 |
+| `GET /api/admin/users` | 从兼容持久字段返回 `lastLoginAt`，并保留 `lastActiveAt` 旧响应别名。 | 管理员专用；零值在 UI 显示空白。 |
 
 ### 加法迁移与存储边界
 
@@ -63,17 +71,20 @@
 ## 必须先写的测试
 
 1. Go：管理员新建用户拒绝 4 位、非字母数字及 `default`，接受 5 位合法用户名；新建/重置密码拒绝 7 位，接受 8 位；已存在短密码或旧用户名账户仍可登录。
-2. Go：两个普通用户各自拥有 books/chapters/categories/book_categories/progress/bookmarks/
+2. Go/API：成功登录推进持久化登录时间，并在登录响应和管理员列表同时返回一致的
+   `lastLoginAt`；错误密码不推进时间，旧 `lastActiveAt` 别名继续存在。
+3. Go：两个普通用户各自拥有 books/chapters/categories/book_categories/progress/bookmarks/
    RSS/rules/settings/source-failure/私有 WebDAV、LocalStore、uploads；批量删除或兼容
    cleanup 只完整删除目标用户，管理员 legacy 根与另一个用户均不变。
-3. Go：数据库事务失败和文件清理计划失败时不删除用户行或其他数据；提交后文件清理
+4. Go：数据库事务失败和文件清理计划失败时不删除用户行或其他数据；提交后文件清理
    失败只报告/记录，不回滚已经完成的数据库删除，也不能越界。
-4. Go/API：LocalStore 禁用不阻止有 WebDAV 权限的 WebDAV/备份，反之亦然；旧卷的
+5. Go/API：LocalStore 禁用不阻止有 WebDAV 权限的 WebDAV/备份，反之亦然；旧卷的
    单权限行保持与历史 `canAccessStore` 相同的可访问性直到显式管理员变更。
-5. 前端：恢复上游用户名/8 位提示、选择保护、确认取消、批量删除、两项独立权限与对应
-   API 精确 payload；不显示危险的 cleanup 入口。
-6. 真实浏览器（1440×900、390×844、360×800）：管理员创建用户、切换两项权限、
-   重置密码、删除确认/取消的 root Dialog 操作；非管理员无管理入口且 API 返回 403。
+6. 前端：先写结构契约，要求单一表格、核心列与底栏顺序、显式取消、移动固定选择/用户名
+   列、准确的 `lastLoginAt` 字段；删除把移动卡片和“最近活跃”当成正确行为的旧测试。
+7. 真实浏览器（1440×900、390×844、360×800）：管理员创建用户、独立切换书源编辑/
+   WebDAV/书仓、重置密码、设默认、删除用户书源、批量删除确认/取消；移动端同一表格可
+   横向滚动且选择/用户名保持可见。非管理员无管理入口且 API 返回 403。
 
 本合同、上述回归和 Docker 用户卷验证未通过前，用户管理不能从“尚未验证”标记为
 P2 对齐；备份/WebDAV 文件操作与 RSS 的单独复审也不能借此宣称完成。
