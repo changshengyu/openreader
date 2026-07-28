@@ -354,5 +354,10 @@ themeType === "night" && theme !== "custom"
 - 真实 API EPUB 重新导入带作者 `!important` 白底、渐变、深色文字和阴影的 fixture。
   1440×900、390×844、360×800 均验证内置夜间和纯黑自定义夜间接管
   `html/body/main/div/span/table/td`，并保留日间作者样式恢复。
-- 当前状态为 **implementation-validated / Docker-pending**。代码提交、GHCR 标签、digest
-  和卷兼容门在本批本地 Docker 发布完成后补录。
+- 实现提交 `3ee3a82438684bb035b60ab4dc08349984e36fa1` 已推送 `main`。本机先构建
+  arm64 候选并通过新卷 portable v1/v2 assets、跨用户和重启门；历史卷通过
+  TXT/EPUB/UMD/CBZ、相对缓存和 owner isolation。
+- 随后从本机生成并发布 `ghcr.io/changshengyu/openreader:3ee3a82` 与 `:latest`。
+  两者共同指向 amd64/arm64 OCI index
+  `sha256:23454f80db395e45c660e41b9fe5a314936be89a0acbe27eeab0e4761a332f18`。
+  当前状态为 **Docker-published / awaiting device verification**。

@@ -3023,5 +3023,6 @@ StorageImport 并修正“整页导航重复注入 A token”的测试夹具缺�
 本轮改为按最终渲染面判定：只有语义夜间、不透明纯黑页面且无背景图才共享白字/透明后代
 合同；自定义图片和非黑夜间继续保持用户资源。frontend 644/644、Go、build、TXT
 桌面/两手机/iPad 及真实 EPUB 1440/390/360 回归通过。完整矩阵、失败测试和验证证据见
-[`reader-night-contrast-p0-contract.md`](reader-night-contrast-p0-contract.md)；Docker
-仍待本地发布门。
+[`reader-night-contrast-p0-contract.md`](reader-night-contrast-p0-contract.md)。本机新卷和
+历史卷门通过后已发布 `3ee3a82`/`latest`，amd64/arm64 OCI index 为
+`sha256:23454f80db395e45c660e41b9fe5a314936be89a0acbe27eeab0e4761a332f18`。
