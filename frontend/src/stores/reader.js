@@ -19,15 +19,15 @@ const readerProgressOperations = createAuthenticatedOperationGuard()
 const READER_FONT_FAMILIES = ['system', 'hei', 'kai', 'serif', 'fangsong', 'mono']
 
 export const themePresets = {
-  parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c' },
+  parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c', body: '#d9c27f', popup: 'rgba(255, 252, 239, 0.94)' },
   cream:    { label: '米黄',   bg: '#f5eacc', text: '#262626' },
   green:    { label: '护眼绿', bg: '#c8dcc8', text: '#1f2933' },
   blue:     { label: '浅蓝',   bg: '#e4f1f5', text: '#262626' },
   pink:     { label: '浅粉',   bg: '#f5e4e4', text: '#262626' },
   gray:     { label: '浅灰',   bg: '#e0e0e0', text: '#262626' },
-  dark:     { label: '深色',   bg: '#2d2d2d', text: '#d8d4c8' },
+  dark:     { label: '深色',   bg: '#2d2d2d', text: '#d8d4c8', body: '#121212', popup: '#171717' },
   white:    { label: '纯白',   bg: '#ffffff', text: '#1f2933' },
-  black:    { label: '纯黑',   bg: '#000000', text: '#aaaaaa' },
+  black:    { label: '纯黑',   bg: '#000000', text: '#aaaaaa', body: '#000000', popup: '#121212' },
 }
 
 export const useReaderStore = defineStore('reader', {
@@ -189,10 +189,29 @@ export const useReaderStore = defineStore('reader', {
     },
     applyAutoTheme(isNight) {
       if (!this.autoTheme) return false
+      return this.setNightTheme(isNight)
+    },
+    setNightTheme(isNight) {
       const type = isNight ? '黑夜默认' : '白天默认'
-      const config = (Array.isArray(this.customConfigList) ? this.customConfigList : []).find(item => item?.configDefaultType === type)
-      if (!config) return false
-      return this.setCustomConfig(config.name)
+      const fallback = defaultCustomConfigList()[isNight ? 1 : 0]
+      const current = Array.isArray(this.customConfigList) ? this.customConfigList : []
+      const configured = current.find(item => (
+        item?.configDefaultType === type
+        && typeof item?.name === 'string'
+        && item.name.trim()
+        && typeof item?.theme === 'string'
+        && item.theme.trim()
+      ))
+      const config = configured || fallback
+      if (!configured && !current.some(item => item?.name === fallback.name)) {
+        this.customConfigList = [...current, fallback]
+      }
+      const next = sanitizeReaderSettings(config, { includeCustomConfigs: false })
+      Object.assign(this, next)
+      this.customConfigName = config.name
+      this.normalizeSettings()
+      this.markSettingsDirty({ skipCustomConfigSync: true })
+      return true
     },
     setPageType(pageType) {
       const nextType = ['kindle', 'simple', 'Kindle'].includes(pageType) ? 'kindle' : 'normal'

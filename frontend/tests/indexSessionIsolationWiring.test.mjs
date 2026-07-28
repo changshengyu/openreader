@@ -22,6 +22,15 @@ test('the authenticated shell stays blocked until reauthentication routing is se
   assert.match(app, /authenticatedSessionBlocked/)
 })
 
+test('the login route stays mounted until its success callback settles routing', () => {
+  const loginRouteIndex = app.indexOf('<router-view v-if="isLoginRoute" />')
+  const authenticatedReaderIndex = app.indexOf('<template v-else-if="isReader && isLoggedIn && !authenticatedSessionBlocked">')
+  assert.notEqual(loginRouteIndex, -1)
+  assert.notEqual(authenticatedReaderIndex, -1)
+  assert(loginRouteIndex < authenticatedReaderIndex)
+  assert.doesNotMatch(app, /<router-view v-else-if="isLoginRoute"\s*\/>/)
+})
+
 test('both dialog and page login settle an account switch before unblocking the shell', () => {
   assert.match(authDialog, /if \(!result\.sameAuthenticatedScope\)[\s\S]*?router\.replace\(\{ name: 'home' \}\)/)
   assert.doesNotMatch(authDialog, /\['reader', 'remote-reader'\]\.includes\(route\.name\)[\s\S]*?!result\.sameAuthenticatedScope/)

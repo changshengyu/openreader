@@ -17,6 +17,11 @@ function createAppearance(overrides = {}) {
       reader.themeType = themeTypeForTheme(theme, reader.themeType)
       calls.push(['theme', theme])
     },
+    setNightTheme: isNight => {
+      reader.theme = isNight ? 'dark' : 'parchment'
+      reader.themeType = isNight ? 'night' : 'day'
+      calls.push(['night', isNight])
+    },
     addCustomBgImage: url => {
       reader.customBgImageList = reader.customBgImageList.includes(url)
         ? reader.customBgImageList
@@ -81,13 +86,17 @@ function readerSettingsSnapshot(reader) {
 }
 
 test('toggles night themes while allowing explicit theme selection', () => {
-  const { appearance, reader } = createAppearance()
+  const { appearance, calls, reader } = createAppearance()
   appearance.toggleNight()
   assert.equal(reader.theme, 'dark')
   appearance.toggleNight()
   assert.equal(reader.theme, 'parchment')
   appearance.setTheme('green')
   assert.equal(reader.theme, 'green')
+  assert.deepEqual(calls.filter(call => call[0] === 'night'), [
+    ['night', true],
+    ['night', false],
+  ])
 })
 
 test('uploads and removes reader background images', async () => {

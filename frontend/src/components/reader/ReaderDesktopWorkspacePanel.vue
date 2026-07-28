@@ -92,7 +92,7 @@ defineEmits(['close'])
   height: 44px;
   place-items: center;
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
   border: 1px solid rgba(237, 66, 89, 0.28);
   border-radius: 999px;
@@ -104,7 +104,7 @@ defineEmits(['close'])
 }
 
 .reader-desktop-workspace-close:focus-visible {
-  outline: 2px solid #ed4259;
+  outline: 2px solid var(--reader-accent, #ed4259);
   outline-offset: 2px;
 }
 
@@ -115,7 +115,7 @@ defineEmits(['close'])
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 10px;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
 }
 
 .reader-workspace-head strong {
@@ -132,7 +132,7 @@ defineEmits(['close'])
 
 .reader-workspace-actions :deep(button) {
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
   border: 0;
   cursor: pointer;

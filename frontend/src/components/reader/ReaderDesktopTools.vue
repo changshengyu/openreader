@@ -131,7 +131,7 @@ defineEmits(['action'])
   align-content: center;
   gap: 2px;
   padding: 7px 0 5px;
-  color: rgba(36, 33, 27, 0.62);
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   background: color-mix(in srgb, var(--reader-popup-bg) 58%, transparent);
   border: 0;
   border-bottom: 1px solid rgba(148, 132, 87, 0.35);
@@ -145,12 +145,12 @@ defineEmits(['action'])
 }
 
 .rail-item:hover {
-  color: #1e1f22;
+  color: var(--reader-popup-text, var(--reader-text));
   background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
 }
 
 .rail-item.active {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
 }
 
@@ -161,7 +161,7 @@ defineEmits(['action'])
 
 .rail-home {
   height: 60px;
-  color: #111;
+  color: var(--reader-popup-text, var(--reader-text));
 }
 
 .reader-right-rail {
@@ -190,7 +190,7 @@ defineEmits(['action'])
   width: 36px;
   height: 36px;
   place-items: center;
-  color: #121212;
+  color: var(--reader-popup-text, var(--reader-text));
   background: var(--reader-popup-bg);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 999px;
@@ -200,7 +200,7 @@ defineEmits(['action'])
 
 .round-tool:hover,
 .round-tool.active {
-  color: #0f5451;
+  color: var(--reader-active-text, #0f5451);
   background: var(--reader-popup-bg);
   box-shadow: 0 12px 26px rgba(80, 62, 28, 0.14);
 }

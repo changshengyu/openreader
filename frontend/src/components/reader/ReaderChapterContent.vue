@@ -294,7 +294,7 @@ p {
 
 .reader-content-image figcaption {
   margin-top: 8px;
-  color: rgba(36, 40, 44, 0.55);
+  color: color-mix(in srgb, var(--reader-text) 72%, transparent);
   font-size: 0.78em;
   text-align: center;
 }
@@ -309,7 +309,7 @@ p {
 
 .chapter-load-error p {
   margin: 0;
-  color: rgba(112, 48, 42, 0.8);
+  color: inherit;
   text-indent: 0;
 }
 
@@ -328,7 +328,7 @@ p {
 }
 
 .chapter-inline-error p {
-  color: rgba(112, 48, 42, 0.8);
+  color: inherit;
 }
 
 .chapter-load-error button {
@@ -348,7 +348,7 @@ p.reader-search-active {
 }
 
 .empty-hint {
-  color: #999;
+  color: color-mix(in srgb, var(--reader-text) 72%, transparent);
   text-align: center;
   padding-top: 40px;
   text-indent: 0;

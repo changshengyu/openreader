@@ -171,8 +171,8 @@ function jumpToActive() {
 
 .title {
   width: fit-content;
-  color: #ed4259;
-  border-bottom: 1px solid #ed4259;
+  color: var(--reader-accent, #ed4259);
+  border-bottom: 1px solid var(--reader-accent, #ed4259);
   font-size: 18px;
   font-weight: 400;
 }
@@ -182,7 +182,7 @@ function jumpToActive() {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   font-size: 14px;
   line-height: 26px;
 }
@@ -197,7 +197,7 @@ function jumpToActive() {
 }
 
 .title-actions button:disabled {
-  color: #999;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 62%, transparent);
   cursor: default;
 }
 
@@ -222,7 +222,7 @@ function jumpToActive() {
   max-width: 100%;
   min-width: 0;
   padding: 9px 0;
-  color: #24282c;
+  color: var(--reader-popup-text, var(--reader-text));
   background: transparent;
   border: 0;
   border-bottom: 1px solid #eee;
@@ -250,7 +250,7 @@ function jumpToActive() {
 .source-name {
   min-width: 0;
   overflow: hidden;
-  color: #24282c;
+  color: var(--reader-popup-text, var(--reader-text));
   font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -258,26 +258,26 @@ function jumpToActive() {
 
 .source-time {
   flex: 0 0 auto;
-  color: #888;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   font-size: 12px;
 }
 
 .source-latest-chapter {
   min-width: 0;
   overflow: hidden;
-  color: #888;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .source-status {
-  color: #7b715e;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   font-size: 12px;
 }
 
 .source-item.selected .source-name {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
 }
 
 @media (max-width: 750px) {

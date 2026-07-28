@@ -762,7 +762,7 @@ function resetReaderSettings() {
 .settings-title button {
   float: right;
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -797,8 +797,8 @@ function resetReaderSettings() {
   height: 34px;
   padding: 0 6px;
   color: inherit;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--reader-control-bg);
+  border: 1px solid var(--reader-control-border);
   border-radius: 2px;
   cursor: pointer;
   font: 14px / 34px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
@@ -807,14 +807,14 @@ function resetReaderSettings() {
 }
 
 .selection-button.active {
-  color: #ed4259;
-  border-color: #ed4259;
+  color: var(--reader-accent, #ed4259);
+  border-color: var(--reader-accent, #ed4259);
 }
 
 @media (hover: hover) {
   .selection-button:hover {
-    color: #ed4259;
-    border-color: #ed4259;
+    color: var(--reader-accent, #ed4259);
+    border-color: var(--reader-accent, #ed4259);
   }
 }
 
@@ -841,17 +841,17 @@ function resetReaderSettings() {
   top: -10px;
   right: -10px;
   z-index: 10;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   cursor: pointer;
   font-size: 20px;
 }
 
 .config-scheme.active {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
 }
 
 .config-scheme.add {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
 }
 
 .operation-actions {
@@ -875,13 +875,13 @@ function resetReaderSettings() {
 }
 
 .setting-label {
-  color: #666;
+  color: var(--reader-popup-text, var(--reader-text));
   font-size: 13px;
 }
 
 .setting-help {
   flex-basis: 100%;
-  color: #8a8171;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -893,7 +893,7 @@ function resetReaderSettings() {
 .theme-item {
   width: 34px;
   height: 34px;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 100%;
   cursor: pointer;
@@ -904,7 +904,7 @@ function resetReaderSettings() {
 }
 
 .theme-item.active {
-  border-color: #ed4259;
+  border-color: var(--reader-accent, #ed4259);
 }
 
 .theme-check {
@@ -922,7 +922,7 @@ function resetReaderSettings() {
 }
 
 .theme-item.active .moon-icon {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
 }
 
 .theme-custom-button {
@@ -980,8 +980,8 @@ function resetReaderSettings() {
 }
 
 .content-bg-preview.selected {
-  color: #ed4259;
-  border-color: #ed4259;
+  color: var(--reader-accent, #ed4259);
+  border-color: var(--reader-accent, #ed4259);
 }
 
 .delete-bg-icon {
@@ -990,7 +990,7 @@ function resetReaderSettings() {
   right: -6px;
   z-index: 10;
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -1007,7 +1007,7 @@ function resetReaderSettings() {
   display: inline-block;
   margin-left: 10px;
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -1017,7 +1017,7 @@ function resetReaderSettings() {
   display: inline-block;
   margin-left: 10px;
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -1036,9 +1036,9 @@ function resetReaderSettings() {
   width: 78px;
   height: 34px;
   padding: 0;
-  color: #5f564a;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: var(--reader-popup-text, var(--reader-text));
+  background: var(--reader-control-bg);
+  border: 1px solid var(--reader-control-border);
   border-radius: 2px;
   cursor: pointer;
   font: 14px / 34px PingFangSC-Regular, HelveticaNeue-Light, "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
@@ -1048,8 +1048,8 @@ function resetReaderSettings() {
 }
 
 .font-family-option.active {
-  color: #ed4259;
-  border-color: #ed4259;
+  color: var(--reader-accent, #ed4259);
+  border-color: var(--reader-accent, #ed4259);
 }
 
 .font-family-select {
@@ -1087,7 +1087,7 @@ function resetReaderSettings() {
   width: 20px;
   height: 20px;
   padding: 0;
-  color: #606266;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -1098,7 +1098,7 @@ function resetReaderSettings() {
 
 .font-action-btn.active,
 .font-action-btn:hover {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
 }
 
 .font-preview {
@@ -1131,18 +1131,18 @@ function resetReaderSettings() {
 .font-size-preset {
   min-width: 0;
   min-height: 32px;
-  color: #5f564a;
-  background: #fffaf0;
-  border: 1px solid #eadfca;
+  color: var(--reader-popup-text, var(--reader-text));
+  background: var(--reader-control-bg);
+  border: 1px solid var(--reader-control-border);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
 
 .font-size-preset.active {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: rgba(237, 66, 89, 0.08);
-  border-color: #ed4259;
+  border-color: var(--reader-accent, #ed4259);
   font-weight: 700;
 }
 

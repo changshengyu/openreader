@@ -49,7 +49,7 @@ test('desktop reader settings keeps the upstream 56px label plus 16px gutter', (
   assert.match(panelSource, /@media \(min-width: 751px\)[\s\S]*?\.typography-setting-row,[\s\S]*?\.stepper-setting-row \{[\s\S]*?grid-template-columns: 56px minmax\(0, 220px\);[\s\S]*?column-gap: 16px;/, 'desktop numeric settings should use the same upstream label gutter')
 })
 
-test('reader settings selected controls use upstream accent color', () => {
+test('reader settings selected controls use the semantic accent with the upstream day fallback', () => {
   assert.match(panelSource, /\.theme-item\.active \{[\s\S]*?#ed4259/, 'theme items should use upstream accent color')
   assert.match(panelSource, /\.content-bg-preview\.selected \{[\s\S]*?#ed4259/, 'background selections should use upstream accent color')
   assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?#ed4259/, 'font selections should use upstream accent color')
@@ -65,7 +65,7 @@ test('reader settings discrete options use upstream-like local buttons', () => {
   assert.match(panelSource, /class="selection-zone"/, 'settings panel should expose upstream-like selection zones')
   assert.match(panelSource, /class="selection-button"/, 'settings panel should expose upstream-like selection buttons')
   assert.match(panelSource, /\.selection-button \{[\s\S]*?box-sizing: border-box;[\s\S]*?width: 78px;[\s\S]*?min-width: 78px;[\s\S]*?height: 34px;/, 'selection buttons should keep upstream 78x34 outer dimensions')
-  assert.match(panelSource, /\.selection-button\.active \{[\s\S]*?color: #ed4259;[\s\S]*?border-color: #ed4259;/, 'selection buttons should keep upstream selected color')
+  assert.match(panelSource, /\.selection-button\.active \{[\s\S]*?color: var\(--reader-accent, #ed4259\);[\s\S]*?border-color: var\(--reader-accent, #ed4259\);/, 'selection buttons should use the semantic accent with the upstream day fallback')
 })
 
 test('reader settings keeps upstream warning and configuration option ownership', () => {
@@ -108,8 +108,8 @@ test('reader settings background previews use upstream thumbnail geometry', () =
   assert.doesNotMatch(panelSource, />使用中</, 'background thumbnails should not render active card overlay labels')
   assert.doesNotMatch(panelSource, />选择</, 'background thumbnails should not render selectable card overlay labels')
   assert.match(panelSource, /\.content-bg-preview \{[\s\S]*?width: 36px;[\s\S]*?height: 36px;[\s\S]*?display: inline-block;/, 'background thumbnails should keep upstream 36px inline geometry')
-  assert.match(panelSource, /\.delete-bg-icon \{[\s\S]*?top: -6px;[\s\S]*?right: -6px;[\s\S]*?color: #ed4259;/, 'background delete icons should keep upstream top-right red placement')
-  assert.match(panelSource, /\.upload-bg-btn \{[\s\S]*?display: inline-block;[\s\S]*?color: #ed4259;/, 'background upload should keep upstream inline red style')
+  assert.match(panelSource, /\.delete-bg-icon \{[\s\S]*?top: -6px;[\s\S]*?right: -6px;[\s\S]*?color: var\(--reader-accent, #ed4259\);/, 'background delete icons should keep upstream top-right placement with a night-readable accent')
+  assert.match(panelSource, /\.upload-bg-btn \{[\s\S]*?display: inline-block;[\s\S]*?color: var\(--reader-accent, #ed4259\);/, 'background upload should keep the upstream inline accent style')
 })
 
 test('reader settings custom theme block uses upstream inline structure', () => {
@@ -135,7 +135,7 @@ test('reader settings font options use upstream span-item geometry', () => {
   assert.doesNotMatch(panelSource, />已上传</, 'font upload state should be represented by the upstream-like active upload icon, not extra text')
   assert.match(panelSource, /\.font-family-option \{[\s\S]*?width: 78px;[\s\S]*?height: 34px;[\s\S]*?border-radius: 2px;/, 'font options should keep upstream 78x34 span-item geometry')
   assert.match(panelSource, /\.font-family-option \{[\s\S]*?font: 14px \/ 34px/, 'font options should keep upstream 14px/34px font shorthand')
-  assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?color: #ed4259;[\s\S]*?border-color: #ed4259;/, 'font options should keep upstream selected color')
+  assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?color: var\(--reader-accent, #ed4259\);[\s\S]*?border-color: var\(--reader-accent, #ed4259\);/, 'font options should use the semantic selected color')
   assert.match(panelSource, /\.font-family-actions \{[\s\S]*?position: absolute;[\s\S]*?top: -10px;[\s\S]*?right: -10px;/, 'font upload actions should be positioned like upstream upload icons')
-  assert.match(panelSource, /\.font-action-btn\.active,[\s\S]*?\.font-action-btn:hover \{[\s\S]*?color: #ed4259;/, 'uploaded font icons should use upstream active color')
+  assert.match(panelSource, /\.font-action-btn\.active,[\s\S]*?\.font-action-btn:hover \{[\s\S]*?color: var\(--reader-accent, #ed4259\);/, 'uploaded font icons should use the semantic active color')
 })

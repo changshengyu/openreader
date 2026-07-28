@@ -84,7 +84,7 @@ defineEmits([
   display: grid;
   height: 43px;
   place-items: center;
-  color: #121212;
+  color: var(--reader-popup-text, var(--reader-text));
   background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
   border: 0;
   border-bottom: 1px solid rgba(148, 132, 87, 0.32);

@@ -1,5 +1,7 @@
 <template>
-  <template v-if="isReader && isLoggedIn && !authenticatedSessionBlocked">
+  <router-view v-if="isLoginRoute" />
+
+  <template v-else-if="isReader && isLoggedIn && !authenticatedSessionBlocked">
     <router-view :key="readerSessionKey" />
     <GlobalOverlayHost />
   </template>
@@ -18,8 +20,6 @@
   <div v-else-if="isLoggedIn" class="workspace-auth-blocked" role="status">
     正在恢复当前账号…
   </div>
-
-  <router-view v-else-if="isLoginRoute" />
 
   <div v-else class="workspace-auth-blocked" role="status">
     正在进入登录页面…

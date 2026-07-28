@@ -2755,6 +2755,43 @@ visibility/unmount 强制保存可能按新 scope 写本地进度，并尝试以
 和 Go 全量均通过；本地服务端口审批因工作区额度不足被拒绝，因此三视口真实浏览器与 Docker
 发布尚未计为完成。
 
+2026-07-27 的真实浏览器补门发现候选实现仍有一处根渲染竞态：`AuthForm` 的
+`user.login()` 先写 token，`App.vue` 又先判断 `isLoggedIn`、最后才判断登录路由，导致原
+`Login.vue` 在发出 `success` 并完成 `router.replace()` 前被替换成
+`AppLayout + Login.vue`。首次登录会停留在 `/login?returnTo=/`，已有失效 scope 的账号切换
+则会停在“正在恢复当前账号…”。固定合同是登录页必须保持同一个挂载实例，直到成功回调完成
+安全路由和 `completeReauthentication()`；登录路由优先级必须高于 authenticated shell，
+且登录页不得嵌入私有 `AppLayout`。先增加根模板顺序失败测试，再调整 `App.vue`，最后重新运行
+真实双账号三视口门禁。
+
+补门实施结果：根模板现在首先保留 `isLoginRoute` 的公开 `router-view`，认证 Reader/workspace
+只在非登录路由分支挂载；测试先证明旧顺序失败，再锁定登录路由必须排在 authenticated shell
+之前。隔离真实后端中首次登录和 B→A 账号切换均直接收敛到 `/`，不再出现嵌套 Login 或永久
+“正在恢复当前账号…”。1440×900、390×844、360×800 的双账号书源/缓存/备份恢复验证通过；
+Docker 升级卷与发布门仍待执行。
+
+## 2026-07-28 Reader 移动夜间模式正文对比度复审
+
+固定上游的浏览器自动夜间与 Reader 月亮按钮都调用 `setNightTheme`，一次应用命名为“黑夜默认”
+或“白天默认”的完整方案；普通 preset 也不会继续读取 custom 背景图/颜色。当前 OpenReader
+只有系统自动切换会应用完整方案，Reader 和 Index 月亮按钮只换 preset，并把新主题反写进原活动
+方案；`fontColor` 与 custom 背景图又会跨 preset 保留，因此可出现暗字暗底或亮图亮字。
+
+本批裁决为 **must-fix**：统一全部昼夜入口的完整方案状态转换；custom 资源只在 custom 主题
+生效；普通正文、EPUB 和 Audio 共享经 WCAG `4.5:1` 检查后的有效正文色。用户保存颜色保持不变，
+只有渲染在对比不足时选取安全色。这是上游状态转换修复叠加用户明确要求的可读性增强。完整矩阵、
+允许差异与测试门见
+[`reader-night-contrast-p0-contract.md`](reader-night-contrast-p0-contract.md)。本轮 inventory
+完成后已按测试先行实施：浏览器自动主题、Reader 与 Index 月亮按钮现共用完整方案切换；
+custom 资源不再污染 preset；普通章节、EPUB、Audio 与阅读操作层共用经过 `4.5:1` 门槛
+保护的语义文字色。用户保存的颜色不被重写。夜间控件面与强调色采用独立语义变量，这是用户
+要求的可读性增强，日间仍保留上游 `#ed4259`。
+
+后端全量、前端 `636/636` 与 production build 均通过。390×844、360×800 的真实 TXT/EPUB
+验证中，正文对比度为 `9.29:1`，普通控件为 `8.91:1`；EPUB iframe 与普通正文颜色一致，
+设置面板和移动工具层保持并存且无控制台错误。系统媒体查询入口由 store/bootstrap 自动测试
+覆盖，手动月亮入口由真实浏览器覆盖。Git 和 Docker 发布门待执行。
+
 ## 2026-07-27 Index 工作台认证会话隔离复审
 
 Reader 隔离完成后继续审查同一 authenticated shell，确认 `indexWorkspace` 没有账号 scope、

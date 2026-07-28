@@ -179,7 +179,7 @@ function scrollToBottom() {
 }
 
 .toc-list.desktop-grid .toc-item.active {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
 }
 

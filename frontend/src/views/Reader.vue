@@ -2,7 +2,7 @@
   <main
     ref="shellEl"
     class="reader-shell"
-    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll, 'has-custom-background': Boolean(reader.customBgImage) }]"
+    :class="[effectiveReaderMode, { 'mobile-chrome-visible': mobileChromeVisible, 'mini-interface': isMobileReader, 'document-scroll': usesDocumentScroll, 'has-custom-background': reader.theme === 'custom' && Boolean(reader.customBgImage) }]"
     :style="readerStyle"
   >
     <ReaderDesktopTools
@@ -466,6 +466,10 @@ import { clearBookBrowserChapterCache, loadBrowserChapterContent } from '../util
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
+import {
+  readerTextShadow,
+  resolveReaderTextColor,
+} from '../utils/readerThemeContrast'
 import {
   readerBookmarkText,
   selectedTextBookmarkContext,
@@ -1200,21 +1204,60 @@ const fontStack = computed(() => {
   return readerFontStack(reader.fontFamily, reader.customFontsMap)
 })
 
+const usesCustomReaderTheme = computed(() => reader.theme === 'custom')
+const effectiveReaderBackgroundImage = computed(() => (
+  reader.theme === 'custom' && reader.customBgImage ? reader.customBgImage : ''
+))
+const effectiveReaderBackgroundColor = computed(() => reader.currentTheme.bg)
+const effectiveReaderBodyColor = computed(() => (
+  usesCustomReaderTheme.value
+    ? reader.customBodyColor || '#d9c27f'
+    : reader.currentTheme.body || '#d9c27f'
+))
+const effectiveReaderPopupColor = computed(() => (
+  usesCustomReaderTheme.value
+    ? reader.customPopupColor || 'rgba(255, 252, 239, 0.94)'
+    : reader.currentTheme.popup || 'rgba(255, 252, 239, 0.94)'
+))
+const effectiveReaderTextColor = computed(() => resolveReaderTextColor({
+  requestedColor: reader.fontColor,
+  themeTextColor: reader.currentTheme.text,
+  backgroundColor: effectiveReaderBackgroundColor.value,
+  themeType: reader.themeType,
+  hasBackgroundImage: Boolean(effectiveReaderBackgroundImage.value),
+}))
+const effectiveReaderPopupTextColor = computed(() => resolveReaderTextColor({
+  requestedColor: effectiveReaderTextColor.value,
+  themeTextColor: reader.currentTheme.text,
+  backgroundColor: effectiveReaderPopupColor.value,
+  themeType: reader.themeType,
+}))
+const effectiveReaderTextShadow = computed(() => readerTextShadow({
+  textColor: effectiveReaderTextColor.value,
+  hasBackgroundImage: Boolean(effectiveReaderBackgroundImage.value),
+}))
+
 const readerStyle = computed(() => ({
   '--reader-font-family': fontStack.value,
   '--reader-font-size': `${reader.fontSize}px`,
   '--reader-heading-size': `${Math.round(reader.fontSize * 1.36)}px`,
-  '--reader-body-bg': reader.customBodyColor || '#d9c27f',
-  '--reader-popup-bg': reader.customPopupColor || 'rgba(255, 252, 239, 0.94)',
-  '--reader-bg': reader.currentTheme.bg,
-  '--reader-text': reader.fontColor || reader.currentTheme.text,
+  '--reader-body-bg': effectiveReaderBodyColor.value,
+  '--reader-popup-bg': effectiveReaderPopupColor.value,
+  '--reader-bg': effectiveReaderBackgroundColor.value,
+  '--reader-text': effectiveReaderTextColor.value,
+  '--reader-popup-text': effectiveReaderPopupTextColor.value,
+  '--reader-text-shadow': effectiveReaderTextShadow.value,
+  '--reader-control-bg': reader.themeType === 'night' ? '#303030' : 'rgba(255, 255, 255, 0.5)',
+  '--reader-control-border': reader.themeType === 'night' ? '#565656' : 'rgba(0, 0, 0, 0.1)',
+  '--reader-accent': reader.themeType === 'night' ? '#ff7589' : '#ed4259',
+  '--reader-active-text': reader.themeType === 'night' ? '#7ed8d4' : '#0f5451',
   '--reader-font-weight': reader.fontWeight,
   '--reader-brightness': `${reader.brightness}%`,
   '--reader-dim-opacity': Math.max(0, 1 - reader.brightness / 100),
   '--reader-line-height': reader.lineHeight,
   '--reader-paragraph-space': `${reader.paragraphSpace}em`,
   '--reader-read-width': `${reader.columnWidth}px`,
-  '--reader-bg-image': reader.customBgImage ? `url(${reader.customBgImage})` : '',
+  '--reader-bg-image': effectiveReaderBackgroundImage.value ? `url(${effectiveReaderBackgroundImage.value})` : '',
   '--reader-animate-duration': `${reader.animateDuration}ms`,
   '--reader-tts-bottom-space': ttsReadBarLayoutActive.value
     ? `${ttsConfigExpanded.value ? 280 : 80}px`
@@ -1250,7 +1293,8 @@ const epubStyleText = computed(() => `
   }
   html {
     min-height: 100%;
-    color: ${reader.fontColor || reader.currentTheme.text};
+    color: ${effectiveReaderTextColor.value};
+    text-shadow: ${effectiveReaderTextShadow.value};
     background: transparent;
     font-family: ${fontStack.value};
     font-size: ${reader.fontSize}px;
@@ -2349,6 +2393,7 @@ function readError(err, fallback) {
   background-repeat: repeat;
   background-size: auto;
   color: var(--reader-text);
+  text-shadow: var(--reader-text-shadow, none);
   border-left: 1px solid rgba(109,95,55,0.28);
   border-right: 1px solid rgba(109,95,55,0.28);
   box-shadow:
@@ -2403,7 +2448,7 @@ function readError(err, fallback) {
   text-align: center;
 }
 .reader-chapter-end:focus-visible {
-  outline: 2px solid #ed4259;
+  outline: 2px solid var(--reader-accent, #ed4259);
   outline-offset: 2px;
 }
 .reader-shell.scroll .reader-body::after,
@@ -2440,12 +2485,12 @@ function readError(err, fallback) {
 }
 
 .reader-shell :deep(.el-drawer) {
-  color: var(--reader-text);
+  color: var(--reader-popup-text, var(--reader-text));
   background: var(--reader-popup-bg);
 }
 
 .reader-shell :deep(.el-drawer__header) {
-  color: var(--reader-text);
+  color: var(--reader-popup-text, var(--reader-text));
   margin-bottom: 14px;
 }
 
@@ -2561,7 +2606,7 @@ function readError(err, fallback) {
   height: auto;
   min-height: 0;
   padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
-  color: var(--reader-text);
+  color: var(--reader-popup-text, var(--reader-text));
 }
 
 .reader-shell.mini-interface .reader-mobile-primary-shelf,
@@ -2590,8 +2635,8 @@ function readError(err, fallback) {
 
 .reader-shell.mini-interface .reader-mobile-primary-title {
   width: fit-content;
-  color: #ed4259;
-  border-bottom: 1px solid #ed4259;
+  color: var(--reader-accent, #ed4259);
+  border-bottom: 1px solid var(--reader-accent, #ed4259);
   font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 18px;
   font-weight: 400;
@@ -2604,7 +2649,7 @@ function readError(err, fallback) {
   justify-content: flex-end;
   gap: 0 15px;
   min-width: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   font-size: 14px;
   line-height: 26px;
 }

@@ -605,7 +605,7 @@ function shortCommit(value) {
 }
 
 function toggleNightTheme() {
-  reader.setTheme(isNightTheme.value ? 'parchment' : 'dark')
+  reader.setNightTheme(!isNightTheme.value)
 }
 
 async function refreshShelfData() {

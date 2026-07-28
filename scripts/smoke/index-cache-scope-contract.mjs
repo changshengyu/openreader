@@ -23,7 +23,7 @@ function fakeToken(userId = 1) {
 
 function seededCache() {
   return {
-    'localCache@bookSourceList@user:1': [{ id: 1, name: '当前账号书源', enabled: true }],
+    'localCache@bookSourceList@user:1': [{ id: 1, name: '迁移前错误全局书源', enabled: true }],
     'localCache@rssSources@user:1': [{ id: 1, name: '当前账号 RSS', url: 'https://rss.example/a' }],
     'localCache@reader@user:1@chapters:7': [{ id: 1, title: '第一章' }],
     'localCache@reader@user:1@book:7': { id: 7, title: '当前账号书籍' },
@@ -35,6 +35,11 @@ function seededCache() {
     'localCache@bookSourceList@user:2': [{
       id: 2,
       name: `其它账号书源-${'B'.repeat(20000)}`,
+      enabled: true,
+    }],
+    'localCache@bookSourceList@source-owner-v1@user:2': [{
+      id: 22,
+      name: `其它账号新版书源-${'G'.repeat(20000)}`,
       enabled: true,
     }],
     'localCache@rssSources@user:2': [{
@@ -65,6 +70,7 @@ function parseDisplayedBytes(text) {
 
 async function installApiMocks(page, delayedStats) {
   let cacheStatsRequest = 0
+  let sourceRequestCount = 0
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async route => {
     const request = route.request()
@@ -91,7 +97,15 @@ async function installApiMocks(page, delayedStats) {
     if (path === '/health') return route.fulfill(json({ version: 'smoke', commit: 'cache-scope' }))
     if (path === '/books') return route.fulfill(json([]))
     if (path === '/categories') return route.fulfill(json([]))
-    if (path === '/sources') return route.fulfill(json([]))
+    if (path === '/sources') {
+      sourceRequestCount += 1
+      return route.fulfill(json([{
+        id: 11,
+        name: '服务端当前账号书源',
+        baseUrl: 'https://source-owner-v1.example',
+        enabled: true,
+      }]))
+    }
     if (path.startsWith('/settings/')) {
       const key = path.slice('/settings/'.length)
       if (method === 'PUT') return route.fulfill(json({ key, value: {}, updatedAt: '2026-07-27T00:00:01Z' }))
@@ -99,6 +113,49 @@ async function installApiMocks(page, delayedStats) {
     }
     return route.fulfill(json({}))
   })
+  return {
+    sourceRequestCount: () => sourceRequestCount,
+  }
+}
+
+async function readPageCache(page, key) {
+  return page.evaluate(async cacheKey => {
+    const localValue = localStorage.getItem(cacheKey)
+    const readLocal = () => {
+      if (!localValue) return null
+      try {
+        return JSON.parse(localValue)
+      } catch {
+        return null
+      }
+    }
+    if (!window.indexedDB) return readLocal()
+    try {
+      const value = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('openreader-cache', 1)
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+          const database = request.result
+          if (!database.objectStoreNames.contains('responses')) {
+            database.close()
+            resolve(null)
+            return
+          }
+          const transaction = database.transaction('responses', 'readonly')
+          const storeRequest = transaction.objectStore('responses').get(cacheKey)
+          storeRequest.onerror = () => reject(storeRequest.error)
+          storeRequest.onsuccess = () => {
+            const result = storeRequest.result?.value ?? null
+            database.close()
+            resolve(result)
+          }
+        }
+      })
+      return value ?? readLocal()
+    } catch {
+      return readLocal()
+    }
+  }, key)
 }
 
 async function openSidebar(page, viewport) {
@@ -143,7 +200,7 @@ async function runViewport(browser, viewport) {
       localStorage.setItem(key, JSON.stringify(value))
     })
   }, { token: fakeToken(1), entries: seededCache() })
-  await installApiMocks(page, delayedStats)
+  const apiState = await installApiMocks(page, delayedStats)
 
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('[data-sidebar-section="cache"]', { timeout: 10000 })
@@ -152,6 +209,29 @@ async function runViewport(browser, viewport) {
     [...document.querySelectorAll('[data-sidebar-section="cache"] .app-nav-item')]
       .some(node => node.textContent.includes('清空书源缓存'))
   ))
+  let currentSourceCache = null
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    currentSourceCache = await readPageCache(
+      page,
+      'localCache@bookSourceList@source-owner-v1@user:1',
+    )
+    if (Array.isArray(currentSourceCache) && currentSourceCache.length) break
+    await page.waitForTimeout(25)
+  }
+  assert(apiState.sourceRequestCount() > 0, `${viewport.width}: old source cache prevented network hydration`)
+  assert(
+    currentSourceCache?.length === 1 &&
+      currentSourceCache[0].id === 11 &&
+      currentSourceCache[0].name === '服务端当前账号书源',
+    `${viewport.width}: versioned source cache did not come from the current-user API`,
+  )
+  const legacySourceCache = JSON.parse(
+    await page.evaluate(() => localStorage.getItem('localCache@bookSourceList@user:1')),
+  )
+  assert(
+    legacySourceCache?.[0]?.name === '迁移前错误全局书源',
+    `${viewport.width}: smoke fixture lost the unread legacy source cache`,
+  )
 
   const initialTitle = await cacheSectionText(page)
   const initialBytes = parseDisplayedBytes(initialTitle)
@@ -191,15 +271,22 @@ async function runViewport(browser, viewport) {
   ))
 
   const remaining = await page.evaluate(() => ({
-    current: localStorage.getItem('localCache@bookSourceList@user:1'),
-    other: localStorage.getItem('localCache@bookSourceList@user:2'),
+    currentLegacy: localStorage.getItem('localCache@bookSourceList@user:1'),
+    otherLegacy: localStorage.getItem('localCache@bookSourceList@user:2'),
+    otherVersioned: localStorage.getItem('localCache@bookSourceList@source-owner-v1@user:2'),
     legacy: localStorage.getItem('localCache@Legacy_Author@legacy-url@chapterContent-0'),
     collision: localStorage.getItem('localCache@random-bookSourceList-note'),
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth: window.innerWidth,
   }))
-  assert(remaining.current === null, `${viewport.width}: current source cache was not removed`)
-  assert(remaining.other !== null, `${viewport.width}: another user's source cache was removed`)
+  const currentVersioned = await readPageCache(
+    page,
+    'localCache@bookSourceList@source-owner-v1@user:1',
+  )
+  assert(remaining.currentLegacy === null, `${viewport.width}: current legacy source cache was not removed`)
+  assert(currentVersioned === null, `${viewport.width}: current versioned source cache was not removed`)
+  assert(remaining.otherLegacy !== null, `${viewport.width}: another user's legacy source cache was removed`)
+  assert(remaining.otherVersioned !== null, `${viewport.width}: another user's versioned source cache was removed`)
   assert(remaining.legacy !== null, `${viewport.width}: unowned legacy chapter cache was removed`)
   assert(remaining.collision !== null, `${viewport.width}: substring-collision key was removed`)
   assert(
@@ -224,7 +311,7 @@ async function run() {
       results.push(await runViewport(browser, viewport))
     }
     console.log(
-      `index-cache-scope: ok ${results.join(', ')} current-only=true stale-generation=true scoped-clear=true`,
+      `index-cache-scope: ok ${results.join(', ')} source-key-v1=true legacy-unread=true current-only=true stale-generation=true scoped-clear=true`,
     )
   } finally {
     await browser.close()

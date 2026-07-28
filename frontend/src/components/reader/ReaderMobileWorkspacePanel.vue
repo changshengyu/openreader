@@ -56,7 +56,7 @@ defineEmits(['close'])
   width: 100vw;
   height: 100dvh;
   padding: calc(58px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom));
-  color: var(--reader-text);
+  color: var(--reader-popup-text, var(--reader-text));
   background: var(--reader-popup-bg);
   backdrop-filter: blur(2px);
 }
@@ -102,8 +102,8 @@ defineEmits(['close'])
 
 .reader-mobile-workspace-title {
   min-width: 0;
-  color: #ed4259;
-  border-bottom: 1px solid #ed4259;
+  color: var(--reader-accent, #ed4259);
+  border-bottom: 1px solid var(--reader-accent, #ed4259);
   font-size: 18px;
   line-height: 1.6;
   white-space: nowrap;
@@ -121,7 +121,7 @@ defineEmits(['close'])
 .reader-mobile-workspace-actions :deep(button),
 .reader-mobile-workspace-close {
   padding: 0;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -131,7 +131,7 @@ defineEmits(['close'])
 
 .reader-mobile-workspace-actions :deep(button:disabled),
 .reader-mobile-workspace-close:disabled {
-  color: #8c8c8c;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 62%, transparent);
   cursor: default;
 }
 

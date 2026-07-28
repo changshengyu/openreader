@@ -111,7 +111,7 @@ onBeforeUnmount(() => {
   max-width: 100%;
   overflow: hidden;
   padding: 8px 0;
-  color: #24282c;
+  color: var(--reader-popup-text, var(--reader-text));
   background: transparent;
   border: 0;
   border-bottom: 1px solid rgba(160, 139, 91, 0.22);
@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
 
 .reader-shelf-card:hover,
 .reader-shelf-card.active {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: transparent;
 }
 
@@ -147,13 +147,13 @@ onBeforeUnmount(() => {
 
 .reader-shelf-title-line em {
   flex: 0 0 auto;
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   font-size: 12px;
   font-style: normal;
 }
 
 .reader-shelf-chapter {
-  color: #888;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
   font-size: 14px;
 }
 

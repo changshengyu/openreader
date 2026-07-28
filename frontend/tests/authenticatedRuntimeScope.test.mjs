@@ -167,6 +167,41 @@ test('reader settings preserve all five upstream font slots plus the legacy mono
   ])
 })
 
+test('manual night switching applies a complete scheme without corrupting the saved day scheme', { concurrency: false }, () => {
+  const { reader } = freshStores(1)
+  const originalDay = {
+    ...reader.customConfigList.find(item => item.name === '内置白天'),
+  }
+  reader.fontColor = '#222222'
+  reader.customBgImage = '/uploads/users/1/backgrounds/day.png'
+  reader.syncActiveCustomConfig()
+
+  assert.equal(reader.setNightTheme(true), true)
+  assert.equal(reader.customConfigName, '内置黑夜')
+  assert.equal(reader.theme, 'dark')
+  assert.equal(reader.themeType, 'night')
+  assert.equal(reader.customBgImage, '')
+
+  const savedDay = reader.customConfigList.find(item => item.name === '内置白天')
+  assert.equal(savedDay.name, originalDay.name)
+  assert.equal(savedDay.configDefaultType, '白天默认')
+  assert.equal(savedDay.theme, 'parchment')
+  assert.equal(savedDay.themeType, 'day')
+})
+
+test('browser color-scheme switching uses the same complete default-scheme transition', { concurrency: false }, () => {
+  const { reader } = freshStores(1)
+  reader.setAutoTheme(true)
+
+  assert.equal(reader.applyAutoTheme(true), true)
+  assert.equal(reader.customConfigName, '内置黑夜')
+  assert.equal(reader.themeType, 'night')
+
+  assert.equal(reader.applyAutoTheme(false), true)
+  assert.equal(reader.customConfigName, '内置白天')
+  assert.equal(reader.themeType, 'day')
+})
+
 test('a reader settings broadcast received before its own save response does not supersede that save', { concurrency: false }, async () => {
   const request = deferred()
   const { reader } = freshStores(1)

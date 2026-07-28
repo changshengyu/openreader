@@ -223,7 +223,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   align-content: center;
   gap: 2px;
   padding: 4px 2px;
-  color: #25221d;
+  color: var(--reader-popup-text, var(--reader-text));
   background: transparent;
   border: 0;
   font-size: 12px;
@@ -258,7 +258,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   width: 38px;
   height: 38px;
   place-items: center;
-  color: #191714;
+  color: var(--reader-popup-text, var(--reader-text));
   background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 999px;
@@ -266,7 +266,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
 }
 
 .reader-mobile-float-tools button.active {
-  color: #0f5451;
+  color: var(--reader-active-text, #0f5451);
 }
 
 .reader-mobile-float-tools button:disabled {
@@ -301,7 +301,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  color: #756c5a;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 76%, transparent);
   font-size: 12px;
 }
 
@@ -322,7 +322,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   align-items: center;
   justify-content: center;
   gap: 2px;
-  color: #24201b;
+  color: var(--reader-popup-text, var(--reader-text));
   background: transparent;
   border: 0;
   font-size: 13px;
@@ -350,7 +350,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
 }
 
 .mobile-chapter-progress span {
-  color: #121212;
+  color: var(--reader-popup-text, var(--reader-text));
   font-size: 14px;
 }
 </style>

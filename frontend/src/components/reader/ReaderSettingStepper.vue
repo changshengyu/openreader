@@ -116,9 +116,9 @@ function cancel() {
   width: 100%;
   min-width: 0;
   grid-template-columns: 48px minmax(72px, 1fr) 48px;
-  color: #5f564a;
-  background: rgba(255, 255, 255, 0.52);
-  border: 1px solid #e3dccf;
+  color: var(--reader-popup-text, var(--reader-text));
+  background: var(--reader-control-bg);
+  border: 1px solid var(--reader-control-border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -140,20 +140,20 @@ function cancel() {
 }
 
 .reader-setting-stepper button:first-child {
-  border-right: 1px solid #e3dccf;
+  border-right: 1px solid var(--reader-control-border);
 }
 
 .reader-setting-stepper button:last-child {
-  border-left: 1px solid #e3dccf;
+  border-left: 1px solid var(--reader-control-border);
 }
 
 .reader-setting-stepper button:hover:not(:disabled) {
-  color: #ed4259;
+  color: var(--reader-accent, #ed4259);
   background: rgba(237, 66, 89, 0.07);
 }
 
 .reader-setting-stepper button:disabled {
-  color: #b8b0a4;
+  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 48%, transparent);
   cursor: default;
 }
 
