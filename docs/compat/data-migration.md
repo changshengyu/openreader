@@ -95,7 +95,9 @@ Docker new/old volume proof remains a release gate.
 
 ## P2-S1 book-source ownership association migration
 
-Status: implemented and migration-tested on 2026-07-27; API/runtime isolation remains pending.
+Status: application migration, API/runtime/backup isolation and browser tests were implemented by
+2026-07-27; the 2026-07-28 evidence audit reopened the Docker fixture gate because the existing
+historical fixture did not contain a legacy global source table at migration time.
 
 - Existing `book_sources` rows remain in place. The additive `user_book_sources` table records active
   or detached visibility, while `book_source_namespaces` distinguishes uninitialized users from an
@@ -109,7 +111,19 @@ Status: implemented and migration-tested on 2026-07-27; API/runtime isolation re
   stays absent until a default template exists.
 - Contract evidence:
   `backend/db/book_source_ownership_migration_contract_test.go`. Source CRUD/search/reader/backup
-  must not use these associations until P2-S2 switches all consumers together.
+  now use these associations through P2-S2…S4.
+- The release fixture must represent the actual old format, not a database that has already recorded
+  `book-source-ownership-v1`: it contains `users`, global `book_sources`, caller-owned books and
+  `source_failures` referencing those source IDs, while `user_book_sources`,
+  `book_source_namespaces` and the migration marker do not exist. Opening that mounted volume must
+  create associations for every existing user and user zero without rewriting any old source/book/
+  failure ID.
+- The fixture remains additive to the established TXT/EPUB/UMD/CBZ/relative-cache old-volume data.
+  It must not delete or simplify those records to make the ownership test easier.
+- Required Docker evidence is API-visible COW plus stopped-volume SQLite inspection: one user's edit
+  remaps only that user's association/book/failure; the other user and default template retain the old
+  snapshot. Logical and portable archives from administrator legacy root and regular-user private root
+  must contain only caller-active sources, survive restore and remain isolated after restart.
 
 ## P2 invalid-source runtime cache
 

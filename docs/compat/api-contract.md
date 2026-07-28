@@ -138,9 +138,10 @@ Source-facing routes retain their current response schemas. Only a real remote s
 
 ## P2 backup restore archive contract
 
-Status: **structure/budget preflight, logical content/transaction/permission compatibility and the
-previous browser/Docker gates are complete; P2-S4 source ownership implementation and automated tests
-are complete, while its new browser/release gates remain open.** The archive bounds below remain authoritative. The upstream filename/field bridge,
+Status: **structure/budget preflight, logical content/transaction/permission compatibility, P2-S4
+source ownership implementation, automated tests and the dual-account browser gate are complete.
+The 2026-07-28 audit found that the generic historical Docker fixture had no legacy remote sources,
+so the dedicated ownership upgrade/backup/restart release gate remains open.** The archive bounds below remain authoritative. The upstream filename/field bridge,
 atomic generation/restore and source-edit capability contract are defined by
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
@@ -613,10 +614,12 @@ does not authorize access.
 Search, explore, remote-book, change-source, Reader content/cache and scheduler consumers now resolve the same
 association service. New/read-by-selection operations require caller-active enabled sources, while an existing
 caller-owned book may continue resolving its caller-detached snapshot; a foreign source id is treated as missing
-before any remote request. Administrator source-count/default/reset/delete consumers are implemented; only
-backup/WebDAV restore plus the browser/release gates remain pending for the ownership module.
-Until those consumers and dual-account browser checks pass, the implemented management/runtime API slices are not
-a Docker release gate by themselves.
+before any remote request. Administrator source-count/default/reset/delete and owner-scoped
+logical/portable/WebDAV backup/restore consumers are implemented. No API method, body, success schema,
+status or error envelope is changed by the remaining Docker work: the dedicated smoke invokes the
+stable routes above and compares actual source IDs/lists plus ZIP members before and after restart.
+Until the old-global-source fixture, COW, administrator-root/regular-root and restore-isolation checks
+pass together, the implemented management/runtime API slices are not sufficient release evidence.
 
 ## P1 bookshelf latest-chapter timestamp contract (2026-07-22 extracted)
 
