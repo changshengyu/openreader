@@ -95,9 +95,9 @@ Docker new/old volume proof remains a release gate.
 
 ## P2-S1 book-source ownership association migration
 
-Status: application migration, API/runtime/backup isolation and browser tests were implemented by
-2026-07-27; the 2026-07-28 evidence audit reopened the Docker fixture gate because the existing
-historical fixture did not contain a legacy global source table at migration time.
+Status: **implemented, migration/browser/Docker validated and published in `0db752e`**. The
+2026-07-28 evidence audit reopened the old fixture, then added a true global-source database and
+closed the dedicated migration/COW/backup/restart gate before publication.
 
 - Existing `book_sources` rows remain in place. The additive `user_book_sources` table records active
   or detached visibility, while `book_source_namespaces` distinguishes uninitialized users from an
@@ -124,6 +124,10 @@ historical fixture did not contain a legacy global source table at migration tim
   remaps only that user's association/book/failure; the other user and default template retain the old
   snapshot. Logical and portable archives from administrator legacy root and regular-user private root
   must contain only caller-active sources, survive restore and remain isolated after restart.
+- Final evidence: `scripts/docker-source-ownership-smoke.sh` and both modes of
+  `scripts/docker-volume-backup-smoke.sh` pass against the locally built `0db752e` image. The remote
+  amd64/arm64 index is
+  `sha256:83f53fe3aa523fc1196454d4c5f1d413648eb72ad1e87c83c838e7200859207e`.
 
 ## P2 invalid-source runtime cache
 

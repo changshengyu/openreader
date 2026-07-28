@@ -2600,6 +2600,16 @@ code and must include a real multi-account browser-cache fixture.
 跨账号，且默认恢复会删除仍被书籍引用的 source ID。后续按“旧卷迁移 → owner-scoped
 API/运行时 → 默认/UserManage → 备份/浏览器/Docker”四个测试先行切片实施。
 
+实施与发布结果（2026-07-28）：P2-S1…S4 已全部关闭。关系迁移、COW、管理/搜索/Reader/
+scheduler、管理员默认动作、logical/portable/WebDAV 备份恢复和 versioned 浏览器缓存均按
+用户 namespace 运行。二次发布审计发现旧通用 fixture 没有全局远程书源且已经写入迁移 marker，
+因此新增真实旧全局源、跨用户远程书/失败引用和独立
+`docker-source-ownership-smoke.sh`。精确候选 `0db752e` 通过旧卷首次迁移、user 0/A/B
+association、COW、管理员旧根、普通用户私有根、双用户 ZIP、恢复、重启和最终 SQLite 检查，
+并通过通用新旧卷、Go 全量、frontend 639/639 与 production build。本机发布的
+`0db752e`/`latest` amd64/arm64 OCI index 为
+`sha256:83f53fe3aa523fc1196454d4c5f1d413648eb72ad1e87c83c838e7200859207e`。
+
 ## 2026-07-17 书架一致性与阅读器运行时复审
 
 本轮固定上游复审记录在

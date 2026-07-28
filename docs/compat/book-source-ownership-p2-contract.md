@@ -1,12 +1,12 @@
 # P2 书源所有权、默认快照与用户管理联动合同
 
-状态：2026-07-27 完成固定上游取证与当前实现审查；P2-S1 的关联表、namespace、
-可重试迁移标记和旧卷事务迁移，P2-S2a 的 owner-scoped service，P2-S2b 的书源
-管理/调试 REST，以及 P2-S2c 的搜索、探索、远程书、Reader、正文/缓存和 scheduler
-运行时消费者以及 P2-S3 的管理员计数、目标用户设默认、批量重置和账号删除联动已经
-测试先行实施；P2-S4 的固定上游备份/WebDAV/缓存合同、实现与自动回归也已完成，
-真实双账号三视口门已完成，**Docker 新旧卷与发布门仍未完成**。本合同不把旧的全局查询或
-测试视为正确性依据。
+状态：**P2-S1…P2-S4 implemented / full-regression-passed / Docker-published**。关联表、
+namespace、可重试旧卷迁移、owner-scoped service、管理/调试/搜索/探索/Reader/scheduler
+消费者、管理员默认动作、备份/WebDAV/缓存隔离均已测试先行实施；双账号三视口和专门的
+旧全局源 Docker 迁移/COW/备份恢复门已完成。实现与测试提交 `0db752e` 已从本机发布，
+`0db752e`/`latest` 共同指向
+`sha256:83f53fe3aa523fc1196454d4c5f1d413648eb72ad1e87c83c838e7200859207e`。
+本合同不把旧的全局查询或测试视为正确性依据。
 
 固定上游：
 
@@ -470,3 +470,23 @@ SQLite/目录适配在真实升级卷中没有改变该语义。
    再检查用户 0、A、B 的 association/namespace，不能仅靠 API 返回“没看到泄漏”。
 6. 专项脚本必须可独立运行并清理临时容器/卷，失败时保留明确阶段错误。通过后再运行完整
    Go、frontend、build、通用新旧卷门；最后才把矩阵改为 Docker-published。
+
+### P2-S4 Docker 发布结果（2026-07-28）
+
+- `create-old-volume-fixture` 现在保留既有 TXT/EPUB/UMD/CBZ/相对缓存/双用户本地书，
+  同时加入两个旧全局源、两个跨用户共享旧源 ID 的远程书和两条失败缓存；关闭前移除
+  ownership 表、namespace 和 marker，确保镜像首次启动真实执行迁移。
+- `scripts/docker-source-ownership-smoke.sh` 在新卷验证管理员旧根、普通用户私有根、
+  logical/portable 精确 `bookSource.json`、恢复隔离与重启；在旧卷验证迁移前结构、迁移后
+  user 0/A/B association、书籍/失败 ID 保留、首次共享源 COW、双用户 ZIP、恢复与最终
+  SQLite owner 关系。
+- 测试开发中明确修正两条错误假设：恢复可能为 A 创建同 URL/名称的私有快照，因此后续编辑
+  不必重复换 ID；`SourceFailure` 是不进入备份的派生缓存，A 恢复可清 A，但不得清 B。最终
+  断言通过 association 而不是全表同名查询解析身份。
+- 精确本地候选 `0db752e` 通过 ownership 专项 smoke、通用新卷 smoke 和加入旧全局源后的
+  通用历史卷 smoke；Go 全量、frontend `639/639` 和 production build 同时通过。
+- 本机发布的 `ghcr.io/changshengyu/openreader:0db752e` 与 `:latest` 均包含
+  `linux/amd64`、`linux/arm64`，远端 OCI index 为
+  `sha256:83f53fe3aa523fc1196454d4c5f1d413648eb72ad1e87c83c838e7200859207e`。
+  P2-S1…S4 至此关闭；后续书源修改必须保留本专项门，不再把物理 `book_sources.name`
+  当作跨 namespace 唯一身份。

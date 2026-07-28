@@ -139,9 +139,8 @@ Source-facing routes retain their current response schemas. Only a real remote s
 ## P2 backup restore archive contract
 
 Status: **structure/budget preflight, logical content/transaction/permission compatibility, P2-S4
-source ownership implementation, automated tests and the dual-account browser gate are complete.
-The 2026-07-28 audit found that the generic historical Docker fixture had no legacy remote sources,
-so the dedicated ownership upgrade/backup/restart release gate remains open.** The archive bounds below remain authoritative. The upstream filename/field bridge,
+source ownership implementation, automated tests, dual-account browser and dedicated
+ownership-upgrade Docker gates are complete and published in `0db752e`.** The archive bounds below remain authoritative. The upstream filename/field bridge,
 atomic generation/restore and source-edit capability contract are defined by
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md).
 
