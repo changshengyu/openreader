@@ -318,6 +318,12 @@
   前端 626/626、生产构建、Go 全量与差异检查通过；三视口重新认证浏览器门和 Docker 待完成。
   对应合同：
   [workspace-overlay-authenticated-session-p1-contract.md](/Users/yuchangsheng/Documents/OpenReader-dev/docs/compat/workspace-overlay-authenticated-session-p1-contract.md)。
+- 2026-07-28：为上述全局弹层会话隔离补充真实 Overlay 浏览器候选门。测试让 BookInfo 加书、
+  书仓导入、WebDAV 恢复、书源/RSS 保存和用户创建的 A 请求跨越认证失效，在同账号续登或 B
+  账号登录完成后才释放，并检查旧 toast、事件、reload、行、导航和 overlay 均不能进入新会话；
+  手动重开必须读取当前账号数据。frontend 643/643、production build、Go 全量、Node 语法和
+  差异检查通过。首次实跑修正了测试夹具在整页导航时覆盖续登 token 的问题；最终三视口复跑
+  仍等待 macOS 沙箱外 Chromium 启动获批，因此未宣称浏览器闭环，也未发布 Docker。
 - 2026-07-27：重新审查书源所有权后，撤销本文件早期“书源为全局管理能力”及
   `sources_update` 应全账号广播的判断。固定上游把活动书源持久化在每个用户 namespace；
   默认书源只在用户私有文件不存在时复制一次。当前无 `user_id` 的 `BookSource` 会让普通

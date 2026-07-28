@@ -2,8 +2,8 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-27 已完成固定上游取证、P1-A/P1-B 实施与自动门禁；真实浏览器和 Docker
-发布闸门尚未完成。
+状态：2026-07-28 已完成固定上游取证、P1-A/P1-B 实施、自动门禁和真实浏览器契约实现；
+最终三视口复跑因 macOS 沙箱外 Chromium 启动审批中断而尚未签收，Docker 发布闸门未开始。
 
 本合同承接：
 
@@ -196,3 +196,25 @@ scope + bearer token identity + component/session generation + operation key rev
   构建、Go 全量和 `git diff --check` 通过。
 - P1-A/P1-B 当前均为自动门禁候选。真实浏览器需覆盖 1440×900、390×844、360×800 的
   401/同账号重登/异账号切换；该闸门完成前不把本合同标记为最终验收，也不发布 Docker。
+
+## 9. 2026-07-28 真实浏览器候选门
+
+- 新增 `scripts/smoke/workspace-overlay-session-isolation-contract.mjs`，使用一个浏览器顺序运行
+  BookInfo 加书、StorageImport、WebDAV 恢复、Source 保存、RSS 保存和 UserManage 新增六条
+  真实 Overlay 流程，避免并发创建多个 Chromium 导致设备压力。
+- 每条流程让 A 的写请求保持 pending，触发与 Axios 401 拦截器相同的根认证失效事件，完成
+  同账号续登或 B 账号登录后才释放 A 的旧响应。断言覆盖：账号私有弹层保持关闭、旧 toast/
+  业务事件/写后 reload 为零、B 书架不被替换，以及手动重开只显示当前账号请求的数据。
+- 默认覆盖 `1440×900`、`390×844`、`360×800`。为降低设备排障时的单次浏览器压力，可用
+  `OVERLAY_SCENARIOS=book-info,storage-import` 和
+  `OVERLAY_VIEWPORTS=390x844` 选择受控子集；完整签收仍必须不带过滤运行全矩阵。
+- 首次浏览器执行完成 BookInfo 主链并进入 StorageImport 重开检查，发现测试夹具将首次 A token
+  在每次整页导航时重复写回；现已改为仅在 storage 无 token 时初始化，避免夹具把真实 B 登录
+  覆盖成 A。该问题只存在于新 smoke，不是应用运行时代码回归。
+- 当前自动门：frontend `643/643`、Vite production build、Go `go test ./...`、
+  `node --check` 与 `git diff --check` 全部通过。最终 Chromium 复跑尚未完成：macOS
+  `MachPortRendezvousServer` 需要沙箱外进程，后续启动审批通道断开并被拒绝；不得把部分执行
+  或自动测试替代为三视口通过结论。
+- 在完整浏览器输出
+  `workspace-overlay-session-isolation: ok ... staleToasts=0 staleEvents=0 staleReloads=0`
+  之前，本合同继续保持 **candidate / Docker not published**。

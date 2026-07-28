@@ -3007,4 +3007,8 @@ BookManage、BookGroup、Bookmark、LocalStore、Source、ReplaceRule、RSS、�
 均使用同一 scope/token/lifecycle operation 门，并保留原有 request revision、AbortController、
 timer 和长期 cache job 语义。确认框期间换号不再 dispatch，迟到响应不能写 store/ref/cache、
 导航、关闭弹层、下载、广播、提示或启动写后 reload。前端 626/626、生产构建、Go 全量与
-`git diff --check` 已通过；三视口 401/重新认证真实浏览器门和 Docker 仍待完成。
+`git diff --check` 已通过。2026-07-28 已新增真实 Overlay 浏览器门，使用 pending A 请求、
+同账号续登/异账号换号和手动重开，覆盖 BookInfo、StorageImport、WebDAV、Source、RSS、
+UserManage；最新自动门为 frontend 643/643、生产构建与 Go 全量通过。首次浏览器执行已进入
+StorageImport 并修正“整页导航重复注入 A token”的测试夹具缺陷；最终三视口复跑因 macOS
+沙箱外 Chromium 审批通道中断尚未完成，故本切片仍是 candidate，Docker 仍待完成。
