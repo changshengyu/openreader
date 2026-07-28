@@ -2,8 +2,10 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-07-27 完成固定上游与当前实现取证，随后按测试先行完成候选实现。前端 599/599、
-生产构建和后端全量测试通过；真实浏览器与 Docker 发布闸门尚未完成。
+状态：2026-07-27 完成固定上游与当前实现取证，随后按测试先行完成第一版候选实现。2026-07-28
+按真实 Axios/stream 401 调用顺序复审时发现失效账号 scope 捕获仍有缺口：拦截器先删除
+localStorage token，store 后续只从 localStorage 解码身份，因此同账号重新登录可能被误判为
+未知/不同账号。该项重新标记为 `must-fix`；真实浏览器与 Docker 发布闸门仍未完成。
 
 本切片补充已经完成的
 [`authenticated-runtime-scope-p2-contract.md`](authenticated-runtime-scope-p2-contract.md)：
@@ -27,7 +29,7 @@
 
 | 链路 | 当前证据 | 裁决 |
 |---|---|---|
-| 401 通知 | `frontend/src/api/client.js` 只在非登录请求携带的当前 token 被 `401` 拒绝时移除 localStorage token，并发送带 `rejectedToken` 的 `openreader:auth-required`。 | **aligned / hardened**：保留 rejected-token 防止旧 401 清除新登录。 |
+| 401 通知 | `frontend/src/api/client.js` 只在非登录请求携带的当前 token 被 `401` 拒绝时移除 localStorage token，并发送带 `rejectedToken` 的 `openreader:auth-required`。 | **partial / must-fix**：rejected-token 防止旧 401 清除新登录的门禁正确，但该 token 还必须只作为失效身份 scope 的一次性提示传给 store；当前先删除 storage 会让后续身份捕获退化为 anonymous。 |
 | 根场景门禁 | `App.vue` 先判断 `isReader`，后判断 `isLoggedIn`。活动 Reader 在 token 已清空后仍渲染；路由 guard 只在下一次导航时执行。 | **must-fix**：未认证时 Reader 组件和私有正文 DOM 必须立即卸载/清空，不能依靠后续导航。 |
 | 登录提示 | `AuthDialog` 会显示“登录状态已失效”，但 Element Plus 默认允许关闭、按 Esc 或点击遮罩退出。关闭后当前 Reader 仍可见。 | **must-fix**：session 失效时提示必须保持可达；若允许取消，底层只能是无私有内容的认证阻断面。 |
 | 登录成功 | `AuthForm` 先由 `user.login()` 写入新 token，再由 `AuthDialog#handleSuccess` 执行 `window.location.reload()`。 | **must-fix**：不得用整页刷新充当会话隔离；以新的认证 generation 重新挂载 Reader。 |
@@ -124,3 +126,47 @@
 - 聚焦 30 项状态机/接线测试、frontend 599/599、`vite build`、`go test ./...` 均通过。
 - 真实浏览器未计为通过：本地 Go 服务在 sandbox 内不能绑定 `:8080`，外部启动审批因工作区额度
   不足被拒绝。没有尝试绕过；1440×900、390×844、360×800 和 Docker 仍是发布闸门。
+
+## 2026-07-28 真实 401 顺序复审
+
+### 新发现的残余缺口
+
+固定上游收到 `NEED_LOGIN` 后直接在仍保留当前 Vuex 身份现场的根层打开登录框；登录成功后
+Reader 重新 `init(true)`。OpenReader 的 JWT 适配多了一层“被拒绝 token 必须仍是当前 token”
+门禁，这是正确的多用户强化，但当前实现把两个动作排成了错误顺序：
+
+1. `frontend/src/api/client.js` 和 `frontend/src/api/books.js` 确认请求 token 仍是当前 token；
+2. 两处都先执行 `localStorage.removeItem("openreader_token")`；
+3. 随后才发送携带 `rejectedToken` 的 `openreader:auth-required`；
+4. `user.requireLogin()` 调用 `clearSession()`，而 `clearSession()` 的
+   `currentUserScope()` 只读取已经为空的 localStorage。
+
+因此正常运行中的 A 账号 401、以及 App 监听器安装前暂存的 startup 401，都可能把
+`invalidatedScope` 留空。A 重新登录后 `previousScope=""`、`currentScope="user:A"`，
+`sameAuthenticatedScope=false`，`AuthDialog` 会错误返回书架；原 Reader URL 不会按上游语义
+重新初始化。现有测试直接在 token 仍存在时调用 `clearSession()`，或者明确断言 startup 401 的
+`invalidatedScope` 为空，因此没有覆盖真实拦截器顺序，后一个断言本身属于错误测试。
+
+### 修订合同
+
+| 项目 | 目标 |
+|---|---|
+| scope 解析 | `authScope` 提供从指定 token 解码 `user:<id>` 的纯函数；默认读取 localStorage 的现有调用保持兼容。JWT payload 只用于本地身份相等比较，不作为授权依据。 |
+| 失效捕获 | `requireLogin(reason, rejectedToken)` 必须把通过“仍是当前请求”门禁的 token 作为一次性 `tokenHint` 传入 `clearSession()`。`clearSession()` 优先使用 Pinia 中仍存在的 token，其次使用该 hint，最后才读取 storage。 |
+| 最小暴露 | 不持久化、记录、返回或放入路由任何 token；store 只保留解析后的 `user:<id>` scope。登录结果继续只返回 `previousScope/currentScope/sameAuthenticatedScope`。 |
+| 幂等与旧响应 | 已打开 session Dialog 的重复事件不得再次增加 generation；A 的迟到 401 在 B token 已生效后仍必须 no-op，不能借 `tokenHint` 覆盖 B。 |
+| 路由语义 | 同账号重新登录保持当前 Reader URL并以新 generation 重载；不同账号或无法安全识别旧账号时返回书架。 |
+
+### 修订测试门
+
+1. 模拟真实拦截器顺序：Pinia 已持有 A token，但 localStorage 已先删除，再调用
+   `requireLogin("session", rejectedTokenA)`；必须捕获 `invalidatedScope="user:A"`。
+2. 模拟监听器安装前 startup 401：Pinia token 和 storage 都为空，仅 pending
+   `rejectedTokenA` 可用；只打开一次 Dialog，并捕获 `user:A`。
+3. 上述两条分别完成同账号 A 登录与异账号 B 登录，断言前者
+   `sameAuthenticatedScope=true`、后者为 false，返回对象及序列化内容不包含 token。
+4. 重复事件和旧 token 事件保持 generation 不变；已有 Reader suspend、overlay reset、
+   progress 零写入和安全 `returnTo` 合同继续全量运行。
+5. 增加真实浏览器 smoke：在已加载 Reader 中先删除 storage 再派发与拦截器相同的事件；
+   1440×900、1024×1366、390×844、360×800 均验证旧正文立即卸载、Dialog 不可误关闭、
+   同账号原路重载、异账号返回书架、无旧进度写入和控制台错误。
