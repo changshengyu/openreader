@@ -223,8 +223,8 @@ test('built-in night clears author backgrounds on the actual text-bearing descen
   )
   assert.match(
     readerViewSource,
-    /\.reader-shell\.black-night-surface[\s\S]*?:deep\(\[data-reader-block\][^)]*\)[\s\S]*?color:\s*#ffffff !important;[\s\S]*?background(?:-color)?:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
-    'ordinary reader descendants must not retain a light author or user-agent surface',
+    /\.reader-shell\.black-night-surface[\s\S]*?:deep\(\[data-reader-block\][^)]*\)[\s\S]*?color:\s*#ffffff !important;[\s\S]*?background-color:\s*#000000 !important;[\s\S]*?background-image:\s*none !important;/,
+    'ordinary text-bearing descendants must own an explicit black surface instead of relying on transparent composition',
   )
   assert.match(
     readerViewSource,
@@ -233,8 +233,8 @@ test('built-in night clears author backgrounds on the actual text-bearing descen
   )
   assert.match(
     readerViewSource,
-    /usesBlackNightContentSurface\.value[\s\S]*?body :where\(\*\)[\s\S]*?color:\s*inherit !important;[\s\S]*?background:\s*transparent !important;[\s\S]*?background-image:\s*none !important;/,
-    'EPUB descendants must be reset for every rendered pure-black night surface',
+    /usesBlackNightContentSurface\.value[\s\S]*?body :where\(\*\)[\s\S]*?color:\s*inherit !important;[\s\S]*?background-color:\s*#000000 !important;[\s\S]*?background-image:\s*none !important;/,
+    'EPUB descendants must own an explicit black surface for every rendered pure-black night surface',
   )
   assert.match(
     readerViewSource,

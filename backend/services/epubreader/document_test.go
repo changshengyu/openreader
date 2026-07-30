@@ -61,6 +61,7 @@ func TestEPUBBridgeOwnsAndRestoresBuiltInNightAuthorSurfaces(t *testing.T) {
 	for _, want := range []string{
 		`applyNightSurface(message.builtInNight === true)`,
 		`node.style.setProperty(property, value, "important")`,
+		`setNightStyle(node, "background-color", "#000000")`,
 		`nightSurfaceState`,
 		`nightSurfaceObserver`,
 		`restoreNightSurface()`,

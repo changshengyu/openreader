@@ -48,34 +48,34 @@ const epubBridgeScript = `(function () {
     }
     node.style.setProperty(property, value, "important");
   }
-  function styleNightSurfaceNode(node, rootSurface) {
+  function styleNightSurfaceNode(node) {
     if (!node || node.nodeType !== 1) return;
     setNightStyle(node, "color", "#ffffff");
     setNightStyle(node, "-webkit-text-fill-color", "currentColor");
-    setNightStyle(node, "background-color", rootSurface ? "#000000" : "transparent");
+    setNightStyle(node, "background-color", "#000000");
     setNightStyle(node, "background-image", "none");
     setNightStyle(node, "box-shadow", "none");
     setNightStyle(node, "text-shadow", "none");
   }
-  function styleNightSurfaceTree(root, rootSurface) {
+  function styleNightSurfaceTree(root) {
     if (!root || root.nodeType !== 1) return;
-    styleNightSurfaceNode(root, rootSurface);
+    styleNightSurfaceNode(root);
     Array.prototype.forEach.call(root.querySelectorAll("*"), function (node) {
-      styleNightSurfaceNode(node, false);
+      styleNightSurfaceNode(node);
     });
   }
   function syncNightSurface() {
     if (!nightSurfaceEnabled) return;
     document.documentElement.classList.add("openreader-built-in-night");
-    styleNightSurfaceNode(document.documentElement, true);
+    styleNightSurfaceNode(document.documentElement);
     if (!document.body) return;
     document.body.classList.add("openreader-built-in-night");
-    styleNightSurfaceTree(document.body, true);
+    styleNightSurfaceTree(document.body);
     if (!nightSurfaceObserver && window.MutationObserver) {
       nightSurfaceObserver = new MutationObserver(function (mutations) {
         mutations.forEach(function (mutation) {
           Array.prototype.forEach.call(mutation.addedNodes || [], function (node) {
-            styleNightSurfaceTree(node, false);
+            styleNightSurfaceTree(node);
           });
         });
       });

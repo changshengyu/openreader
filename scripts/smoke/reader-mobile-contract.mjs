@@ -1044,11 +1044,11 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
     pageBackground: 'rgb(0, 0, 0)',
     pageImage: 'none',
     paragraphColor: 'rgb(255, 255, 255)',
-    paragraphBackground: 'rgba(0, 0, 0, 0)',
+    paragraphBackground: 'rgb(0, 0, 0)',
     markColor: 'rgb(255, 255, 255)',
-    markBackground: 'rgba(0, 0, 0, 0)',
+    markBackground: 'rgb(0, 0, 0)',
     spanColor: 'rgb(255, 255, 255)',
-    spanBackground: 'rgba(0, 0, 0, 0)',
+    spanBackground: 'rgb(0, 0, 0)',
   }
   for (const [key, value] of Object.entries(expected)) {
     assert(state[key] === value, `${viewport.width}: built-in night ${key} expected ${value}, got ${state[key]}`)
@@ -1369,6 +1369,28 @@ async function runDesktopViewport(browser) {
   await context.close()
 }
 
+async function runNightSurfaceViewport(browser, viewport) {
+  const context = await browser.newContext({ viewport })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+  }, fakeToken())
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    failures.push(text)
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  await installApiMocks(page)
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
+  await assertBuiltInNightTextSurface(page, viewport, { mobile: viewport.width <= 750 })
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.newContext({ viewport })
   await context.addInitScript((token) => {
@@ -1517,11 +1539,11 @@ async function runCustomBlackNightViewport(browser, viewport, themeType = 'night
     pageBackground: 'rgb(0, 0, 0)',
     pageImage: 'none',
     paragraphColor: 'rgb(255, 255, 255)',
-    paragraphBackground: 'rgba(0, 0, 0, 0)',
+    paragraphBackground: 'rgb(0, 0, 0)',
     markColor: 'rgb(255, 255, 255)',
-    markBackground: 'rgba(0, 0, 0, 0)',
+    markBackground: 'rgb(0, 0, 0)',
     spanColor: 'rgb(255, 255, 255)',
-    spanBackground: 'rgba(0, 0, 0, 0)',
+    spanBackground: 'rgb(0, 0, 0)',
   }
   for (const [key, value] of Object.entries(expected)) {
     assert(state[key] === value, `${viewport.width}: custom black ${themeType} ${key} expected ${value}, got ${state[key]}`)
@@ -1724,6 +1746,19 @@ async function runIPadForcedMobileViewport(browser, viewport) {
 async function main() {
   const browser = await openSmokeBrowser()
   try {
+    if (process.env.SMOKE_NIGHT_ONLY === '1') {
+      for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 390, height: 844 },
+        { width: 360, height: 800 },
+      ]) {
+        await runNightSurfaceViewport(browser, viewport)
+        await runCustomBlackNightViewport(browser, viewport)
+      }
+      await runCustomBlackNightViewport(browser, { width: 390, height: 844 }, 'day')
+      console.log('reader built-in/custom black night surface contract smoke passed')
+      return
+    }
     await runDesktopViewport(browser)
     await runViewport(browser, { width: 390, height: 844 })
     await runViewport(browser, { width: 360, height: 800 })

@@ -390,7 +390,7 @@ async function assertBuiltInNightSurface(page, frame, viewport) {
   }
   for (const descendant of ['main', 'card', 'text', 'table', 'cell']) {
     assert.equal(frameState[descendant].color, 'rgb(255, 255, 255)', `${viewport.width}: EPUB ${descendant} text`)
-    assert.equal(frameState[descendant].backgroundColor, 'rgba(0, 0, 0, 0)', `${viewport.width}: EPUB ${descendant} background`)
+    assert.equal(frameState[descendant].backgroundColor, 'rgb(0, 0, 0)', `${viewport.width}: EPUB ${descendant} background`)
     assert.equal(frameState[descendant].backgroundImage, 'none', `${viewport.width}: EPUB ${descendant} image`)
     assert.equal(frameState[descendant].boxShadow, 'none', `${viewport.width}: EPUB ${descendant} shadow`)
   }
@@ -661,7 +661,7 @@ async function runCustomBlackNightViewport(browser, viewport, token, bookID, the
   }
   for (const descendant of ['main', 'card', 'text', 'table', 'cell']) {
     assert.equal(frameState[descendant].color, 'rgb(255, 255, 255)', `${viewport.width}: custom EPUB ${descendant} text`)
-    assert.equal(frameState[descendant].backgroundColor, 'rgba(0, 0, 0, 0)', `${viewport.width}: custom EPUB ${descendant} background`)
+    assert.equal(frameState[descendant].backgroundColor, 'rgb(0, 0, 0)', `${viewport.width}: custom EPUB ${descendant} background`)
     assert.equal(frameState[descendant].backgroundImage, 'none', `${viewport.width}: custom EPUB ${descendant} image`)
     assert.equal(frameState[descendant].boxShadow, 'none', `${viewport.width}: custom EPUB ${descendant} shadow`)
   }

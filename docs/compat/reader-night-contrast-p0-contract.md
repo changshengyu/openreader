@@ -491,3 +491,58 @@ amd64/arm64 OCI index
   arm64 manifest 为
   `sha256:5599c546e4e109d38ad7139bac7f8892f820ece2f3956322fa2c9c15b7b835c2`。
   当前状态为 **Docker-published / awaiting device verification**。
+
+## 第八轮实机反馈：文字节点不能继续依赖透明穿透（2026-07-29）
+
+线上禁缓存健康检查已经返回 `version: b78d39c`，首页也以 `cache-control: no-cache`
+提供当前资源指纹。通过用户 Chrome 登录会话在 390×844 复验普通章节 `book 384`：
+
+- `.reader-shell/.reader-page/.reader-content/.reader-body/.chapter-content` 均已计算为
+  `rgb(0, 0, 0)`；
+- 正文 `p`、内层 `mark/span` 仍按第七轮合同计算为
+  `rgba(0, 0, 0, 0)`，其黑色观感完全依赖祖先表面的透明穿透；
+- EPUB bridge 同样把 `main/div/span/table/td` 的作者背景改为透明，只把
+  `html/body` 本身设为黑色。
+
+桌面 Chromium 能正确合成这条透明链，但用户移动设备仍观察到“外层已经黑色，实际文字
+所在背景不是黑色”。这证明第七轮“清除浅色背景后保持透明”的验收条件不足以覆盖移动
+WebKit、浏览器强制深色和 EPUB 独立合成层。
+
+### 第八轮裁决
+
+| 合同层 | 第七轮行为 | 第八轮裁决 |
+|---|---|---|
+| 普通正文文字块 | `p[data-reader-block]` 及其 `span/mark` 为透明，依赖 `.chapter-content` 黑底。 | `must-fix`：纯黑内容面下，文字块和其文本后代自身必须计算为 `#000000`，不能依赖祖先透明穿透。 |
+| EPUB 文字节点 | `html/body` 为黑，其余节点为透明。 | `must-fix`：纯黑内容面下，EPUB 后代也必须由 bridge 写入 `background-color: #000000 !important`；退出夜间后仍完整恢复作者样式。 |
+| 图片、漫画和自定义背景 | 当前会清除 CSS 背景，但不覆盖 `<img>` 像素。 | 保留：节点黑底只能位于实际图像像素之后；非黑自定义主题和任意背景图继续不进入纯黑内容面。 |
+| 根伪元素 | 透明且背景图已清除。 | 保留透明，避免固定伪元素自身形成额外黑色遮罩；其下方的 `html/body` 已明确纯黑。 |
+
+### 第八轮测试先行门
+
+1. 静态合同必须拒绝普通正文 `data-reader-block` 继续使用透明背景。
+2. 普通 Reader fixture 的 `p/mark/span` 在 1440×900、390×844、360×800 均必须计算为
+   `rgb(0, 0, 0)`，文字为 `rgb(255, 255, 255)`；切回日间后作者 `mark` 背景必须恢复。
+3. 真实 API EPUB fixture 的 `main/card/text/table/cell` 在相同视口均必须计算为纯黑；
+   切回日间后作者白底、渐变和深色文字必须恢复。
+4. 纯黑自定义方案以及昼夜标签陈旧但最终表面纯黑的路径必须执行同一合同；非黑自定义
+   方案和背景图不得被黑化。
+5. 不改写用户保存的 `fontColor`、主题方案或 EPUB 文件，只强化纯黑内容面的渲染所有权。
+
+### 第八轮实施与候选验证
+
+- 普通正文 `data-reader-block` 及其文本后代在纯黑内容面下改为显式
+  `background-color: #000000 !important`；纯白文字、无背景图和无阴影合同保持不变。
+- EPUB 注入样式与后端 bridge 同时把实际后代节点写为纯黑；bridge 继续保存原 inline
+  value/priority，退出纯黑内容面后恢复 EPUB 作者白底、渐变、阴影和深色文字。
+- 新增 `SMOKE_NIGHT_ONLY=1` 浏览器入口，使夜间内容面可独立于其它正在复审的 Reader
+  overlay 运行，仍覆盖内置黑夜、纯黑自定义黑夜和昼夜标签陈旧的纯黑自定义方案。
+- 失败测试先证明第七轮透明合同不能满足本轮要求；实现后 frontend **652/652**、Go
+  全量和 Vite production build 通过。
+- 普通 Reader 在 1440×900、390×844、360×800 验证 `p/mark/span` 均为纯黑背景、
+  纯白文字，并验证切回日间恢复作者标记面；纯黑自定义方案及陈旧昼夜标签路径同样通过。
+- 真实本地 Go API 导入的 EPUB 在上述三个视口验证
+  `html/body/main/card/text/table/cell` 均为纯黑、纯白文字和无背景图，并验证切回日间
+  完整恢复作者外观。
+- 全量 `reader-mobile-contract` 已到达独立的 Bookmark 跳转流程后失败；这是正在进行的
+  Bookmark 第二轮上游复审门，不是夜间内容面失败。本轮用新增的聚焦入口隔离证明夜间
+  合同，Bookmark 浏览器门会在恢复该模块时继续处理。

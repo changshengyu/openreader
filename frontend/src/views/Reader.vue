@@ -1348,7 +1348,7 @@ const epubStyleText = computed(() => `
   body :where(*) {
     color: inherit !important;
     -webkit-text-fill-color: currentColor !important;
-    background: transparent !important;
+    background-color: #000000 !important;
     background-image: none !important;
     box-shadow: none !important;
   }
@@ -2480,7 +2480,7 @@ function readError(err, fallback) {
 .reader-shell.black-night-surface .reader-body :deep([data-reader-block] *) {
   color: #ffffff !important;
   -webkit-text-fill-color: currentColor !important;
-  background: transparent !important;
+  background-color: #000000 !important;
   background-image: none !important;
   box-shadow: none !important;
 }
