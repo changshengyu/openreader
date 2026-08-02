@@ -1078,8 +1078,12 @@ JWT header SSE、每书独立取消和 TXT/EPUB Blob 下载仍是明确技术适
 实施已删除桌面/移动双视图并收敛为同一上游表格，恢复 normal gate、动态几何、标题/作者
 搜索、查询保留、每次 force shelf read、精确列/动作/footer/确认与缓存取消状态。测试先行旧结构
 产生 12 个聚焦失败；实现后 frontend 661/661、Go 全量、production build、mock 五视口及真实
-Go/SQLite 三视口通过。状态为 **aligned / candidate-validated / Docker pending**；BookGroup
-不在本合同内，随后独立复审。
+Go/SQLite 三视口通过。实现提交 `af4e2a47f7b6ffd3bc31912f577a94f0b7579b83` 已推送；本机
+候选进一步通过新卷、历史 TXT/EPUB/UMD/CBZ、相对缓存路径和 owner isolation 门禁，并发布
+`af4e2a4` 与 `latest`。两个标签共同指向 amd64/arm64 OCI index
+`sha256:64f594571618c232113b4211054b7c14718d3fddddc489f267333109fe20f29e`。状态为
+**aligned / Docker-published / awaiting device verification**；BookGroup 不在本合同内，随后
+独立复审。
 
 ## P1-D full audit: BookInfo and shelf-operation convergence
 

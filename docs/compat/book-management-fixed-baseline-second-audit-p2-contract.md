@@ -1,6 +1,6 @@
 # BookManage 第二轮固定上游复审合同（P2）
 
-状态：**已按第二轮固定上游合同重建并通过完整候选验证；Docker 待发布**。
+状态：**已按第二轮固定上游合同重建、通过完整验证并发布 Docker；等待设备验收**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -162,3 +162,15 @@ storage/bit-mask 不同，均为已记录技术适配；本轮没有破坏性迁
 允许差异仍只有 Vue 3/Element Plus 动态视口单位、JWT/GORM/SQLite、多用户隔离、many-to-many
 幂等移除、缓存/文件安全与 Blob 下载。数据库结构、持久数据和兼容 URL 均未改变。BookGroup
 完整管理面的第二轮固定基准复审仍是下一模块，本合同不代签其完成。
+
+## 9. Docker 发布记录（2026-08-02）
+
+- 实现提交 `af4e2a47f7b6ffd3bc31912f577a94f0b7579b83` 已推送 `main`，并由本机
+  OrbStack 构建、发布 `ghcr.io/changshengyu/openreader:af4e2a4` 与 `latest`。
+- 两个标签共同指向 amd64/arm64 OCI index
+  `sha256:64f594571618c232113b4211054b7c14718d3fddddc489f267333109fe20f29e`；远端
+  `imagetools inspect` 已核验 `linux/amd64` 与 `linux/arm64` 清单。
+- 本机 arm64 候选通过新卷 portable-v1、portable-v2-assets、跨用户、重启检查，也通过历史
+  TXT/EPUB/UMD/CBZ、相对缓存路径与 owner isolation 检查。
+- 本镜像同时包含始于 `6fde5ab` 的夜间实际文字承载层纯黑/纯白修复。部署端必须 pull 并
+  force-recreate，且 `/api/health` 返回 `af4e2a4` 后才算完成升级。
