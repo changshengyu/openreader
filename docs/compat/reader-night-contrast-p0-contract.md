@@ -586,3 +586,7 @@ amd64/arm64 OCI index
 因此本轮裁决为 **deployment-blocked-device-verification**，不新增应用实现。部署端必须拉取并
 强制重建，且只有健康接口返回不早于 `6fde5ab` 时，才进入第八轮设备验收；如果仍返回
 `b78d39c`，浏览器刷新、清缓存或切换夜间按钮均无法得到第八轮代码。
+
+本轮随后由本机发布包含第八轮修复及书内搜索第二轮重建的 `1801037` 与 `latest`，OCI index
+为 `sha256:5d2fdb171e734d5debece77f91ae31495fc1ba7ee9eec28c88aa2b3f41eeeee5`。设备部署后的
+最终验收值应为 `/api/health.version === "1801037"`；在此之前的黑夜反馈仍属于旧容器。

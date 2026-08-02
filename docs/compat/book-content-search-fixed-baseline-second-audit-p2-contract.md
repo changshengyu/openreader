@@ -4,7 +4,7 @@
 
 上游工作副本：`/private/tmp/reader-dev-content-search-audit`。
 
-状态：**2026-08-02 第二轮测试先行、实现及真实浏览器门已完成；Git 提交与 Docker 待执行。**
+状态：**2026-08-02 第二轮已实现、全量验证并由本机发布 Docker。**
 
 本合同重新检查此前已标记为完成的
 [`book-content-search-p2-contract.md`](book-content-search-p2-contract.md)。旧合同已经证明原始正文、
@@ -128,4 +128,19 @@ query 或既有宽松测试均不构成保留理由。
   同/跨章跳转、面板并存及无点击穿透。
 - 真实 Go API EPUB 浏览器合同通过 1440×900、390×844、360×800；除 EPUB 加载、资源、
   进度、书签及夜间表面外，同时验证书内搜索 shell 的同一动态几何和非自动聚焦合同。
-- 本切片不修改 SQLite、缓存、书籍文件、阅读进度或备份格式。Docker 与新旧卷门在提交后执行。
+- 本切片不修改 SQLite、缓存、书籍文件、阅读进度或备份格式。
+
+## Docker 发布结果
+
+- 实现提交 `1801037c1bff2eb1c77b694f5a90b7ca4f85e4af` 已推送 `main`。
+- 本机 arm64 候选通过新卷 portable v1/v2 assets、cross-user、restart；历史卷通过
+  TXT/EPUB/UMD/CBZ、relative-cache、owner isolation 和 portable archive hash。首次并行历史
+  请求出现一次瞬时 404，单独带 trace 完整重跑后通过，未复现产品或数据兼容错误。
+- 本机生成并发布 `ghcr.io/changshengyu/openreader:1801037` 与 `:latest`；两者共同指向
+  amd64/arm64 OCI index
+  `sha256:5d2fdb171e734d5debece77f91ae31495fc1ba7ee9eec28c88aa2b3f41eeeee5`。
+- amd64 manifest 为
+  `sha256:f18083006b91cdb883fc1e19c1b18f1eae3d3919dc1ad7ef0939c3b82013fed4`；
+  arm64 manifest 为
+  `sha256:df431711bccbceb9975ba850fe0ac3f6ac3651e439fa283e4728033549c96528`。
+- 状态：**aligned / Docker-published / awaiting device verification**。

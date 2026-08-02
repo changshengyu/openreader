@@ -12,7 +12,10 @@ Pinia intent、Reader 定位、现代 REST 与 legacy Reader3 现在均保留前
 1440×900、390×844、360×800、1024×1366、1366×1024 及强制移动 iPad 通过，真实 Go API
 EPUB 也在 1440×900、390×844、360×800 通过。完整覆盖合同见
 [`book-content-search-fixed-baseline-second-audit-p2-contract.md`](book-content-search-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **implemented / Docker-pending**。
+实现提交 `1801037` 已推送；新卷和历史卷/备份门通过后由本机发布 `1801037` 与 `latest`，
+共同指向 amd64/arm64 OCI index
+`sha256:5d2fdb171e734d5debece77f91ae31495fc1ba7ee9eec28c88aa2b3f41eeeee5`。当前状态为
+**aligned / Docker-published / awaiting device verification**。
 
 ## 2026-07-27 P2 书内正文搜索固定上游复审
 
