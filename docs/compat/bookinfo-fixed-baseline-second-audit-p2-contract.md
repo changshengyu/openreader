@@ -4,7 +4,7 @@
 
 审计日期：2026-08-02。
 
-状态：**implementation-complete / release-pending**。本文件先在不修改应用代码的只读阶段生成，
+状态：**aligned / Docker-published / awaiting-device-verification**。本文件先在不修改应用代码的只读阶段生成，
 随后按“合同 → 失败测试 → 实现 → 回归”门完成重建；旧组件、旧合同和既有测试均未作为保留依据。
 
 ## 1. 权威源码与当前映射
@@ -177,4 +177,20 @@ v1/v2 assets/跨用户/重启和历史 TXT/EPUB/UMD/CBZ/relative-cache/owner-iso
   用户资产封面、精确 patch 和分组持久化。
 - 额外的 Overlay 会话隔离浏览器重跑因本机工作区审批额度耗尽而无法启动沙箱外 Chromium；
   这不是功能失败。对应认证 generation 与迟到响应由本轮单元合同覆盖，既有六场景三视口
-  会话隔离证据保留。Docker 和卷门在提交后执行。
+  会话隔离证据保留。
+
+## 11. Docker 发布结果（2026-08-02）
+
+- 实现提交 `7f7e2ef16207ce62cda7f8d3bea1fd00c74137cc` 已推送 `main`，工作区干净后从本机
+  OrbStack 构建，未使用云端构建。
+- 本机 arm64 候选通过新卷 portable v1、portable v2 assets、cross-user、restart；历史卷
+  通过 TXT、EPUB、UMD、CBZ、relative-cache 和 owner-isolation。
+- 已发布 `ghcr.io/changshengyu/openreader:7f7e2ef` 与 `:latest`。两者共同指向
+  amd64/arm64 OCI index
+  `sha256:c1017da51c0e121e75add217be6979a2b6bba9bfd9c676590dd892644cf4702c`。
+- amd64 manifest 为
+  `sha256:d9515c5e9c208b07ef7a9f189014cb9f5057a4025f01a5cb5c87bffbaa5a74ea`；
+  arm64 manifest 为
+  `sha256:4b24b395aa0fa542be0fc689a3a2e174c4be3e4cad082e88778106b7fc42de96`。
+- `docker buildx imagetools inspect` 已分别读取不可变标签与 `latest`，确认二者 digest 和架构
+  完全一致。当前状态为 **Docker-published / awaiting device verification**。

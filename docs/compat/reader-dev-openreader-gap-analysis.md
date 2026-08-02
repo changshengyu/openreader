@@ -3202,6 +3202,12 @@ utility 但使用不同入口策略。已有 URL 的远程加书在显式分组�
 成功。frontend 668/668、Go、build、工作台/临时 Reader 三视口与真实 Go/SQLite 五视口通过。
 旧文中“BookInfo 统一确认分组”的段落全部视为历史、由本节和专项合同取代。
 
+本机随后构建 `7f7e2ef` 候选并通过 portable v1/v2 assets、cross-user、restart，以及历史
+TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 全部门禁。已发布同名不可变标签与
+`latest`，amd64/arm64 OCI index 为
+`sha256:c1017da51c0e121e75add217be6979a2b6bba9bfd9c676590dd892644cf4702c`；模块状态更新为
+`aligned / Docker-published / awaiting-device-verification`。
+
 ## 2026-07-28 ReplaceRule P2 固定基准重新复审
 
 历史 ReplaceRule 记录不能继续作为完成证明。重新逐行核对固定

@@ -639,3 +639,11 @@ index `sha256:a8d04ee3e5f6aac3e2a41b908da175e17b7a57e1fb440df51677f35d9496afe9`�
 3. 浏览器重新加载后再检查普通正文文字块和 EPUB 实际后代节点；
 4. 若这三个条件满足后仍复现，再采集具体书籍格式、节点标签/class 和完整祖先 computed
    background 链，进入新的应用实现审查。
+
+### 当前推荐部署镜像
+
+BookInfo 第二轮批次随后由本机发布为 `ghcr.io/changshengyu/openreader:7f7e2ef` 与
+`:latest`；两者共同指向 amd64/arm64 OCI index
+`sha256:c1017da51c0e121e75add217be6979a2b6bba9bfd9c676590dd892644cf4702c`，并包含始于
+`6fde5ab` 的普通正文和 EPUB 实际文字节点不透明纯黑修复。设备本轮应固定拉取
+`7f7e2ef`，并只在站点 `/api/health.version === "7f7e2ef"` 后开始夜间复验。
