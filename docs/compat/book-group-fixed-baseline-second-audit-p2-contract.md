@@ -203,5 +203,17 @@ ID、关系、volume 路径或备份成员。
 - 后端聚焦恢复合同证明 reader-dev 隐藏自定义组与 categories-only 显式 false 均可保留，缺失
   `show` 仍为 true。
 
-状态更新为 **aligned / implementation-complete / Docker pending**。允许差异仍仅限第 9 节所列
-Vue 3/Go/多用户/多对多和安全增强；双表、可见计数、扩展文案、自动切组与恢复丢失 false 已删除。
+实现提交 `5459f02c0a543b342f6ce8e722d3db0588504807` 已推送 `main`，并由本机 OrbStack
+按固定 Node/Go/Alpine 基础镜像构建和发布
+`ghcr.io/changshengyu/openreader:5459f02` 与 `ghcr.io/changshengyu/openreader:latest`。
+两个标签共同指向 amd64/arm64 OCI index
+`sha256:a8d04ee3e5f6aac3e2a41b908da175e17b7a57e1fb440df51677f35d9496afe9`；amd64 manifest 为
+`sha256:e5bac334f271f5f78b21e6d8305d1b7dfda1b7c7dc7463a5b2c2370d6b2bb4d7`，arm64 manifest 为
+`sha256:4ab465047829e9411635a25417e0595e94192868c6b670f076c25370c7cedc2a`。运行时 health 已核对
+`version=5459f02`、完整 commit 与 build date；本地验证镜像的 arm64 manifest 与远端逐字一致。
+
+新卷 portable v1/v2 assets、跨用户恢复与重启，以及历史 TXT/EPUB/UMD/CBZ、relative-cache、
+owner-isolation Docker 门禁均通过。状态更新为 **aligned / Docker-published / awaiting device
+verification**。允许差异仍仅限第 9 节所列 Vue 3/Go/多用户/多对多和安全增强；双表、可见计数、
+扩展文案、自动切组与恢复丢失 false 已删除。部署端必须 pull 并 force-recreate，且
+`/api/health` 返回 `5459f02` 后才算运行本批。

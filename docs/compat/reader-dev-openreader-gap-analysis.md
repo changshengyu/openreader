@@ -1113,7 +1113,11 @@ Element selection、同一 Sortable 的 set 禁用、单 footer、精确动作�
 Sortable 保存前只记录 draft，不再与 Vue table data 双重移动。Home 保留隐藏/未知持久 token，
 reader-dev 与 categories-only 恢复也都保留显式 `show=false`。frontend 663/663、Go/build，真实
 Go/SQLite 五视口 manager、三视口 BookManage/BookInfo set 以及 mock 五视口全部通过。当前状态为
-**aligned / implementation-complete / Docker pending**。
+**aligned / Docker-published / awaiting device verification**。实现提交
+`5459f02c0a543b342f6ce8e722d3db0588504807` 已推送，`5459f02` 与 `latest` 共同指向
+amd64/arm64 OCI index
+`sha256:a8d04ee3e5f6aac3e2a41b908da175e17b7a57e1fb440df51677f35d9496afe9`；新旧 volume/backup
+门禁和运行时 health 元数据均通过。
 
 ## P1-D full audit: BookInfo and shelf-operation convergence
 
