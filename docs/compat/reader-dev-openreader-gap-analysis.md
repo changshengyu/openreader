@@ -747,6 +747,15 @@ Implementation order after this audit gate:
 
 ### 2026-07-11 focused audit: SearchBookContent result completeness and cancellation
 
+> 2026-08-02 fixed-baseline second-audit correction: the raw-content, exact/case-sensitive/
+> overlapping match, dense cursor, cancellation, UTF-16, ownership and Reader jump conclusions below
+> remain valid. The visible shell and raw-query lifecycle were not fully compared: current fixed
+> `880px/520px`, default top, auto-focused full-width header, blocking table loading, extra empty
+> states and footer differ from upstream. The current `id || bookUrl` key also misses a URL change
+> under the same ID, while frontend, intent, Reader navigation and both Go handlers trim a query the
+> fixed upstream searches verbatim. These items are reopened as `must-fix`; the superseding contract
+> and tests are [`book-content-search-fixed-baseline-second-audit-p2-contract.md`](book-content-search-fixed-baseline-second-audit-p2-contract.md).
+
 Authoritative upstream files:
 
 - `web/src/components/SearchBookContent.vue`: Enter starts a new search at `lastIndex = -1`; `加载更多` continues from the server cursor; result-row selection emits the complete result and closes the root dialog.
