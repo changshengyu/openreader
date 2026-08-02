@@ -1057,6 +1057,25 @@ Status: implemented and validated on 2026-07-12. Authority is fixed `reader-dev@
 
 Implementation record: `SourceFailure` is an additive SQLite runtime cache keyed by JWT user/source, with UTC 600-second expiry and safe error classes. Normal source failures are recorded at authenticated request boundaries, then suppress that user's ordinary search/candidate retry; manual checking remains permitted. The health overlay reads `GET /sources/invalid` into its current failed-only UI without starting `batch-test`; a legacy reader3 read adapter is retained. Source updates/deletes/import/default restoration clean derived rows. API isolation/expiry/cancellation/edit tests, frontend state tests, production build and the 1440×900/390×844/360×800 browser smoke pass. This is an allowed Go/SQLite/JWT/security adaptation, not a backup or source-format change.
 
+## 2026-08-02 BookManage 第二轮固定基准复审
+
+早期 P1-D2 只把 Drawer 换成了 `el-dialog`，随后错误地把移动卡片、扩展搜索和额外操作状态
+视为“技术栈适配”。重新逐行核对固定上游 `BookManage.vue` 后，该结论撤销：mini interface
+只是同一张表所在的 fullscreen dialog，不是另一套移动产品结构。
+
+本轮审计还确认：当前批量按钮在无选择时禁用，导致上游三个精确错误提示不可达；批量添加/
+移除分组跳过了上游确认；搜索扩展到文件名、分组和阅读进度；关闭会清空上游本应保留的查询；
+缓存状态改成了直接“停止 n/total”。这些都是可见状态机偏差，不能再由旧 smoke 的“能打开、
+无溢出”证据代签上游一致性。
+
+底层 Go/JWT/SQLite 能力不回退：用户隔离、事务删除、派生文件安全清理、many-to-many 分组、
+JWT header SSE、每书独立取消和 TXT/EPUB Blob 下载仍是明确技术适配。可见层恢复上游后，
+这些能力继续作为实现基础。
+
+完整列宽、动态几何、精确文案、API 映射、错误旧测试与测试先行门见
+[`book-management-fixed-baseline-second-audit-p2-contract.md`](book-management-fixed-baseline-second-audit-p2-contract.md)。
+状态为 **audit-complete / implementation-pending**；BookGroup 不在本合同内，随后独立复审。
+
 ## P1-D full audit: BookInfo and shelf-operation convergence
 
 Status: audit completed on 2026-07-10. This is a compatibility gate: implementation begins only after the listed controller, API, and browser contracts are added or updated. The authority is `web/src/views/Index.vue` (`toDetail`, `addBookToShelf`, `saveBook`, `deleteBook`, `showBookManage`, `showManageBookGroup`), `web/src/components/BookInfo.vue`, `BookManage.vue`, and `BookGroup.vue` in `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
