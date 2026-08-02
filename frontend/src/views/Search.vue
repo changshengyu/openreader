@@ -20,8 +20,11 @@
       <RemoteBookResultGroups
         v-if="searchMode === 'remote' && groupedResults.length"
         :groups="groupedResults"
+        :adding-book-key="addingRemoteBookKey"
+        :is-night="reader.themeType === 'night'"
         @preview="openPreview"
         @read="openRemoteReader"
+        @add="addResultToShelf"
       />
 
       <div v-else-if="searchMode === 'local' && shownLocalResults.length" class="local-result-list">
@@ -62,9 +65,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import { createRemoteReaderSession } from '../api/remoteReader'
+import { createRemoteBook } from '../api/books'
 import { importFromLocalStore, listLocalStore } from '../api/localStore'
 import api from '../api/client'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
+import { useRemoteBookAddToShelf } from '../composables/useRemoteBookAddToShelf'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -79,6 +84,8 @@ import {
   normalizeSearchConcurrent,
 } from '../utils/searchPreference.js'
 import {
+  remoteBookCreatePayload,
+  remoteBookKey,
   remoteBookReaderPayload,
   remoteBookSourceId,
   remoteBookSourceName,
@@ -121,6 +128,16 @@ const activeSearchIsSingleSource = ref(false)
 const resultArea = ref(null)
 const remoteRequestGate = createAsyncRequestGate()
 const searchSessionOperations = createAuthenticatedOperationGuard()
+const resultAddToShelf = useRemoteBookAddToShelf({
+  operationGuard: searchSessionOperations,
+  selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
+  buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
+  createRemoteBook,
+  upsertBook: book => bookshelf.upsertBook(book),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const addingRemoteBookKey = resultAddToShelf.addingBookKey
 const localItems = ref([])
 const localRecursiveScan = ref(true)
 const importingLocal = ref(false)
@@ -625,6 +642,14 @@ function openPreview(item) {
     sourceName: remoteBookSourceName(item),
     statusLabel: '搜索结果',
     statusType: 'info',
+  })
+}
+
+async function addResultToShelf(item) {
+  await resultAddToShelf.addRemoteBookWithCategories(item, {
+    key: remoteBookKey(item),
+    sourceId: remoteBookSourceId(item),
+    sourceName: remoteBookSourceName(item),
   })
 }
 

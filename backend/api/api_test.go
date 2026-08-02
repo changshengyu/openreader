@@ -4126,7 +4126,7 @@ func TestCheckUpdatesScopesToCurrentUserAndReturnsShelfItems(t *testing.T) {
 	}
 }
 
-func TestCreateRemoteBookReusesExistingURL(t *testing.T) {
+func TestCreateRemoteBookReusesExistingURLAndPreservesCategoriesWithoutSelection(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
@@ -4187,6 +4187,97 @@ func TestCreateRemoteBookReusesExistingURL(t *testing.T) {
 	}
 	if categoryRows != 2 {
 		t.Fatalf("expected two persisted category memberships, got %d", categoryRows)
+	}
+
+	directBody := `{"title":"已有书","bookUrl":"https://book.example/existing","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `,"categoryIds":[]}`
+	directReq := httptest.NewRequest(http.MethodPost, "/api/books/remote", strings.NewReader(directBody))
+	directReq.Header.Set("Content-Type", "application/json")
+	directReq.Header.Set("Authorization", token)
+	directResponse := httptest.NewRecorder()
+	router.ServeHTTP(directResponse, directReq)
+	if directResponse.Code != http.StatusOK {
+		t.Fatalf("direct add existing remote book: expected 200, got %d: %s", directResponse.Code, directResponse.Body.String())
+	}
+	var directProjection struct {
+		models.Book
+		CategoryIDs []uint `json:"categoryIds"`
+	}
+	if err := json.Unmarshal(directResponse.Body.Bytes(), &directProjection); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(directProjection.CategoryIDs, []uint{categoryA.ID, categoryB.ID}) {
+		t.Fatalf("expected direct add without a positive category selection to preserve memberships, got %+v", directProjection.CategoryIDs)
+	}
+	if directProjection.CategoryID == nil || *directProjection.CategoryID != categoryA.ID {
+		t.Fatalf("expected direct add to preserve the compatibility category, got %+v", directProjection.Book)
+	}
+	categoryRows = 0
+	if err := server.db.Model(&models.BookCategory{}).Where("user_id = ? AND book_id = ?", user.ID, book.ID).Count(&categoryRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if categoryRows != 2 {
+		t.Fatalf("expected direct add to preserve two category memberships, got %d", categoryRows)
+	}
+}
+
+func TestCreateRemoteBookExistingURLReportsCategoryTransactionFailure(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	category := models.Category{UserID: user.ID, Name: "事务失败分组"}
+	if err := server.db.Create(&category).Error; err != nil {
+		t.Fatal(err)
+	}
+	source := models.BookSource{Name: "事务失败源", Enabled: true}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID:   user.ID,
+		SourceID: source.ID,
+		Title:    "事务失败已有书",
+		URL:      "https://book.example/existing-category-transaction-failure",
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Exec(`
+		CREATE TRIGGER fail_existing_remote_book_category_insert
+		BEFORE INSERT ON book_categories
+		BEGIN
+			SELECT RAISE(FAIL, 'forced category transaction failure');
+		END
+	`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"title":"事务失败已有书","bookUrl":"https://book.example/existing-category-transaction-failure","sourceId":` + strconv.FormatUint(uint64(source.ID), 10) + `,"categoryIds":[` + strconv.FormatUint(uint64(category.ID), 10) + `]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/books/remote", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected category transaction failure to return 500, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var persisted models.Book
+	if err := server.db.First(&persisted, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.CategoryID != nil {
+		t.Fatalf("failed category transaction changed compatibility category: %+v", persisted.CategoryID)
+	}
+	var categoryRows int64
+	if err := server.db.Model(&models.BookCategory{}).Where("user_id = ? AND book_id = ?", user.ID, book.ID).Count(&categoryRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if categoryRows != 0 {
+		t.Fatalf("failed category transaction persisted %d category rows", categoryRows)
 	}
 }
 

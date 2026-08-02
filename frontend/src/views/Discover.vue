@@ -20,8 +20,11 @@
       <RemoteBookResultGroups
         v-if="books.length"
         :groups="exploreResultGroups"
+        :adding-book-key="addingRemoteBookKey"
+        :is-night="reader.themeType === 'night'"
         @preview="openPreview"
         @read="openRemoteReader"
+        @add="addResultToShelf"
       />
       <el-empty v-else description="从书海选择书源入口开始探索" />
     </div>
@@ -33,12 +36,18 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { exploreBooks } from '../api/explore'
+import { createRemoteBook } from '../api/books'
 import { createRemoteReaderSession } from '../api/remoteReader'
 import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
+import { useRemoteBookAddToShelf } from '../composables/useRemoteBookAddToShelf'
+import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
+import { useReaderStore } from '../stores/reader'
 import { useIndexWorkspaceStore } from '../stores/indexWorkspace'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import {
+  remoteBookCreatePayload,
+  remoteBookKey,
   remoteBookReaderPayload,
   remoteBookSourceId,
   remoteBookSourceName,
@@ -52,12 +61,24 @@ import {
 
 const router = useRouter()
 const emit = defineEmits(['back-to-shelf'])
+const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
+const reader = useReaderStore()
 const workspace = useIndexWorkspaceStore()
 const discoverResults = ref(null)
 const loadingMore = ref(false)
 const exploreRequestGate = createAsyncRequestGate()
 const discoverSessionOperations = createAuthenticatedOperationGuard()
+const resultAddToShelf = useRemoteBookAddToShelf({
+  operationGuard: discoverSessionOperations,
+  selectCategories: initialCategoryIds => overlay.selectBookAddCategories(initialCategoryIds),
+  buildPayload: (book, categoryIds, context) => remoteBookCreatePayload(book, categoryIds, context),
+  createRemoteBook,
+  upsertBook: book => bookshelf.upsertBook(book),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const addingRemoteBookKey = resultAddToShelf.addingBookKey
 
 const books = computed(() => workspace.resultRows)
 const hasMore = computed(() => workspace.continuation.hasMore)
@@ -155,6 +176,14 @@ function openPreview(book) {
     sourceName: activeRemoteSourceName(book),
     statusLabel: '探索结果',
     statusType: 'info',
+  })
+}
+
+async function addResultToShelf(book) {
+  await resultAddToShelf.addRemoteBookWithCategories(book, {
+    key: remoteBookKey(book, workspace.explore.sourceId),
+    sourceId: activeRemoteSourceId(book),
+    sourceName: activeRemoteSourceName(book),
   })
 }
 

@@ -518,7 +518,7 @@ async function assertPrivateOverlaysClosed(page, viewport, scenario, phase) {
 
 async function assertNoStaleToast(page, viewport, scenario) {
   const forbidden = {
-    'book-info': ['已加入书架', 'A 原会话待加入书籍'],
+    'book-info': ['加入书架成功', 'A 原会话待加入书籍'],
     'storage-import': ['导入 1 本', 'A 延迟导入书籍'],
     'webdav-restore': ['恢复完成'],
     'source-save': ['书源已新增'],
@@ -569,9 +569,6 @@ async function beginBookInfoOperation(session) {
   const dialog = page.locator('.book-info-dialog')
   await dialog.waitFor({ state: 'visible', timeout: 10_000 })
   await dialog.getByRole('button', { name: '加入书架', exact: true }).click()
-  const categories = page.locator('.book-add-category-dialog')
-  await categories.waitFor({ state: 'visible', timeout: 10_000 })
-  await categories.getByRole('button', { name: '确定', exact: true }).click()
 }
 
 async function beginStorageImportOperation(session) {

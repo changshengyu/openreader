@@ -155,19 +155,22 @@ async function runViewport(browser, viewport) {
   await page.goto(`${root}/?workspace=search&q=临时阅读&searchType=single&sourceId=1`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
 
-  await page.locator('.workspace-result-page .result-card .book-cover-shared').click()
+  const resultCard = page.locator('.workspace-result-page .result-card')
+  const categoryDialog = page.locator('.book-add-category-dialog')
+  await resultCard.locator('.result-add-book').click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  assert(await categoryDialog.getByText('请选择分组：', { exact: true }).count() === 1, `${viewport.width}: result-card add must open the upstream group chooser`)
+  await categoryDialog.getByRole('button', { name: '暂不加入', exact: true }).click()
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 0, `${viewport.width}: cancelled result-card add must not persist a shelf book`)
+
+  await resultCard.locator('.book-cover-shared').click()
   await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
   assert(await page.evaluate(() => window.__remoteReaderSessionCreates()) === 0, `${viewport.width}: cover must only open BookInfo`)
   const bookInfo = page.locator('.book-info-dialog')
   assert(await bookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: unshelved BookInfo must expose one add action`)
   assert(await bookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: BookInfo must not expose an add-and-read branch`)
   assert(await bookInfo.getByText('继续阅读', { exact: true }).count() === 0, `${viewport.width}: BookInfo must not expose a read branch`)
-  await bookInfo.getByText('加入书架', { exact: true }).click()
-  const categoryDialog = page.locator('.book-add-category-dialog')
-  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
-  await categoryDialog.getByRole('button', { name: '取消', exact: true }).click()
-  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
-  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 0, `${viewport.width}: cancelled BookInfo add must not persist a shelf book`)
   await page.locator('.book-info-dialog .el-dialog__headerbtn').click()
   await page.locator('.book-info-dialog').waitFor({ state: 'hidden', timeout: 10000 })
 
@@ -187,20 +190,17 @@ async function runViewport(browser, viewport) {
   if (viewport.width <= 750) {
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: temporary Reader BookInfo must preserve the mobile toolbar`)
   }
-  await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).click()
-  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
-  await categoryDialog.getByRole('button', { name: '取消', exact: true }).click()
-  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
-  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 0, `${viewport.width}: temporary Reader cancellation must not persist a shelf book`)
-  await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).click()
-  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
   const remoteCreateRequest = page.waitForRequest(request => {
     const url = new URL(request.url())
     return request.method() === 'POST' && url.pathname === '/api/books/remote'
   }, { timeout: 10000 })
-  await categoryDialog.getByRole('button', { name: '确定', exact: true }).click()
-  await remoteCreateRequest
-  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: temporary Reader confirmation must create one shelf book`)
+  await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).click()
+  const directAddRequest = await remoteCreateRequest
+  const directAddPayload = directAddRequest.postDataJSON() || {}
+  assert(Array.isArray(directAddPayload.categoryIds) && directAddPayload.categoryIds.length === 0, `${viewport.width}: temporary Reader BookInfo must direct-add without categories`)
+  assert(await categoryDialog.isHidden(), `${viewport.width}: temporary Reader BookInfo direct add must not open the result-card chooser`)
+  assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: temporary Reader direct add must create one shelf book`)
+  await temporaryReaderBookInfo.getByText('分组：', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
   assert(await temporaryReaderBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: saved temporary Reader BookInfo must leave the add state`)
   assert(await page.url() === temporaryReaderURL, `${viewport.width}: temporary Reader BookInfo add must not replace the temporary route`)
   await temporaryReaderBookInfo.locator('.el-dialog__headerbtn').click()

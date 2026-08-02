@@ -614,3 +614,28 @@ amd64/arm64 OCI index：
 `5459f02` 并强制重建，而不是仅刷新浏览器或再次启动旧容器；只有线上
 `/api/health.version === "5459f02"` 后，才开始复验实际文字节点。如果健康值仍为
 `b78d39c`，则页面必然仍在执行旧静态资源。
+
+## 第十一轮实机反馈：正文文字面现象与线上旧版本再次吻合（2026-08-02）
+
+用户进一步明确：黑色阅读背景已经生效，但实际文字所在的背景不是黑色。本轮在不修改应用
+代码的 inventory 阶段再次执行禁缓存健康检查，线上仍返回：
+
+- `version: b78d39c`；
+- `commit: b78d39c4cb8bed0a7dfc8ec1f0f69dbf243309c8`；
+- `buildDate: 2026-07-28T13:58:52Z`。
+
+该现象与版本边界完全一致：`b78d39c` 只把 Reader 结构层设为纯黑，普通正文
+`p/mark/span` 与 EPUB 的实际后代节点仍使用透明背景；`6fde5ab` 才把这些文字承载节点改为
+自身 `background-color: #000000 !important`。当前源码仍保有该实现及相应 TXT/EPUB
+测试，未发现应再次覆盖的应用层差异。
+
+同一时点重新检查 GHCR，`latest` 与 `5459f02` 均指向包含 `6fde5ab` 的 amd64/arm64 OCI
+index `sha256:a8d04ee3e5f6aac3e2a41b908da175e17b7a57e1fb440df51677f35d9496afe9`。
+因此本轮继续裁决为 `deployment-blocked-device-verification`：不得把旧容器的已知现象误判为
+当前源码的新缺口，也不得为了掩盖发布链问题重复叠加 CSS。下一次设备验收必须同时满足：
+
+1. 使用新的不可变镜像标签执行 pull 和 force recreate；
+2. 站点 `/api/health.version` 不早于 `6fde5ab`；
+3. 浏览器重新加载后再检查普通正文文字块和 EPUB 实际后代节点；
+4. 若这三个条件满足后仍复现，再采集具体书籍格式、节点标签/class 和完整祖先 computed
+   background 链，进入新的应用实现审查。

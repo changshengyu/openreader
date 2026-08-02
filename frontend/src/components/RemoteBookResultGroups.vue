@@ -23,6 +23,19 @@
             <p v-if="remoteBookUpdateTime(item)" class="update-time">更新：{{ remoteBookUpdateTime(item) }}</p>
             <p v-if="remoteBookKind(item) || remoteBookWordCount(item)">{{ [remoteBookKind(item), remoteBookWordCount(item)].filter(Boolean).join(' · ') }}</p>
             <p class="result-intro">{{ remoteBookIntro(item) || '暂无简介' }}</p>
+            <div class="result-add-zone">
+              <el-tag
+                type="success"
+                :effect="isNight ? 'dark' : 'light'"
+                class="result-add-book"
+                :class="{ loading: addingBookKey === bookKey(item, group) }"
+                role="button"
+                tabindex="0"
+                @click.stop="$emit('add', item)"
+                @keydown.enter.prevent.stop="$emit('add', item)"
+                @keydown.space.prevent.stop="$emit('add', item)"
+              >加入书架</el-tag>
+            </div>
           </div>
         </article>
       </div>
@@ -46,9 +59,11 @@ import {
 
 defineProps({
   groups: { type: Array, default: () => [] },
+  addingBookKey: { type: String, default: '' },
+  isNight: { type: Boolean, default: false },
 })
 
-defineEmits(['preview', 'read'])
+defineEmits(['preview', 'read', 'add'])
 
 function bookKey(item, group) {
   return remoteBookKey(item, group?.sourceId)
@@ -131,6 +146,21 @@ function bookKey(item, group) {
   line-height: 1.6;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.result-add-zone {
+  margin-top: 7px;
+}
+
+.result-add-book {
+  cursor: pointer;
+  user-select: none;
+}
+
+.result-add-book.loading {
+  cursor: progress;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 @media (max-width: 750px) {

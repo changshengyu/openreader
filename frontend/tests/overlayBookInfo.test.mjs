@@ -265,7 +265,7 @@ test('keeps the edit session and confirmed shelf state when metadata save fails'
   assert.equal(fixture.controller.editingBookSaving.value, false)
 })
 
-test('refreshes a local book, rebuilds reader caches, and refreshes its cache count', async () => {
+test('refreshes a local book without scanning an invisible BookInfo cache count', async () => {
   const fixture = createController()
   const book = { id: 1, title: '本地书', sourceId: 0 }
 
@@ -280,13 +280,12 @@ test('refreshes a local book, rebuilds reader caches, and refreshes its cache co
     'upsert',
     'emit-info',
     'emit-reader',
-    'list-browser',
     'success',
   ])
   assert.equal(fixture.overlay.bookInfoBook.title, '刷新后')
-  assert.equal(fixture.controller.localCacheCount(book), 3)
+  assert.equal(fixture.controller.localCacheCount(book), 0)
   assert.equal(fixture.controller.refreshingBookId.value, null)
-  assert.deepEqual(fixture.calls.at(-1), ['success', '本地书已刷新，共 1 章'])
+  assert.deepEqual(fixture.calls.at(-1), ['success', '更新成功'])
 })
 
 test('uploads custom covers and toggles remote update state with precise patch payloads', async () => {
@@ -303,6 +302,7 @@ test('uploads custom covers and toggles remote update state with precise patch p
     },
   ])
   assert.equal(fixture.controller.coverUploadingBookId.value, null)
+  assert.deepEqual(fixture.calls.at(-1), ['success', '操作成功'])
 
   fixture.calls.length = 0
   await fixture.controller.toggleBookCanUpdate(false)
@@ -314,7 +314,7 @@ test('uploads custom covers and toggles remote update state with precise patch p
     },
   ])
   assert.equal(fixture.controller.updatingBookId.value, null)
-  assert.deepEqual(fixture.calls.at(-1), ['success', '已关闭追更'])
+  assert.deepEqual(fixture.calls.at(-1), ['success', '操作成功'])
 })
 
 test('drops a late metadata response instead of writing it into a replacement account', async () => {

@@ -1708,12 +1708,15 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 			} else {
 				existing.CategoryID = nil
 			}
-			_ = s.db.Transaction(func(tx *gorm.DB) error {
+			if err := s.db.Transaction(func(tx *gorm.DB) error {
 				if err := s.setBookCategories(tx, userID, existing.ID, categoryIDs); err != nil {
 					return err
 				}
 				return tx.Save(&existing).Error
-			})
+			}); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book categories"})
+				return
+			}
 		}
 		c.JSON(http.StatusOK, s.broadcastBookShelfUpdate(userID, existing))
 		return

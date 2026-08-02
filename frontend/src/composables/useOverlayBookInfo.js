@@ -12,7 +12,6 @@ export function useOverlayBookInfo(options) {
   })
   const cacheState = useOverlayBookCacheState(options)
   const {
-    refreshBookInfoBrowserCacheCount,
     invalidateBookReaderCaches,
     refreshBookChaptersCache,
     mergedShelfBook,
@@ -64,18 +63,14 @@ export function useOverlayBookInfo(options) {
         const chapters = await refreshBookChaptersCache(mergedBook)
         if (!operations.canCommit(operation)) return
         applyUpdatedBookToOverlay(mergedBook, chapters)
-        await refreshBookInfoBrowserCacheCount(mergedBook)
-        if (!operations.canCommit(operation)) return
       } else {
         await options.bookshelf.loadBooks({ force: true, all: true })
         if (!operations.canCommit(operation)) return
       }
-      options.onSuccess(
-        `本地书已刷新，共 ${data?.chapterCount || updatedBook?.chapterCount || 0} 章`,
-      )
+      options.onSuccess('更新成功')
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '刷新本地书失败')
+        options.onError(error, '更新失败')
       }
     } finally {
       if (operations.canCommit(operation)) refreshingBookId.value = null
@@ -98,10 +93,10 @@ export function useOverlayBookInfo(options) {
       })
       if (!operations.canCommit(operation)) return
       applyUpdatedBookToOverlay(updatedBook)
-      options.onSuccess('封面已更新')
+      options.onSuccess('操作成功')
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '更新封面失败')
+        options.onError(error, '操作失败')
       }
     } finally {
       if (operations.canCommit(operation)) coverUploadingBookId.value = null
@@ -119,10 +114,10 @@ export function useOverlayBookInfo(options) {
       })
       if (!operations.canCommit(operation)) return
       applyUpdatedBookToOverlay(updatedBook)
-      options.onSuccess(value ? '已开启追更' : '已关闭追更')
+      options.onSuccess('操作成功')
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '更新追更状态失败')
+        options.onError(error, '操作失败')
       }
     } finally {
       if (operations.canCommit(operation)) updatingBookId.value = null

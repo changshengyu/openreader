@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { reactive } from 'vue'
-import { useBookInfoAddToShelf } from '../src/composables/useBookInfoAddToShelf.js'
+import { useRemoteBookAddToShelf } from '../src/composables/useRemoteBookAddToShelf.js'
 
 function deferred() {
   let resolve
@@ -15,7 +14,7 @@ function deferred() {
 
 function createController(overrides = {}) {
   const calls = []
-  const controller = useBookInfoAddToShelf({
+  const controller = useRemoteBookAddToShelf({
     selectCategories: async initialCategoryIds => {
       calls.push(['select-categories', initialCategoryIds])
       return [3, 3, 0, '2']
@@ -38,7 +37,31 @@ function createController(overrides = {}) {
   return { calls, controller }
 }
 
-test('requires a shared category selection before mutating a remote shelf book', async () => {
+test('BookInfo direct add never opens the category selector', async () => {
+  const fixture = createController()
+  const added = await fixture.controller.addRemoteBook(
+    { title: '直接入架', sourceId: 8 },
+    {
+      key: '8-book',
+      categoryIds: [4, '2', 4, 0],
+      sourceId: 8,
+      sourceName: '测试书源',
+    },
+  )
+
+  assert.equal(fixture.calls.some(([kind]) => kind === 'select-categories'), false)
+  assert.deepEqual(added, {
+    id: 61,
+    title: '直接入架',
+    sourceId: 8,
+    sourceName: '测试书源',
+    categoryIds: [4, 2],
+  })
+  assert.deepEqual(fixture.calls.at(-1), ['success', '加入书架成功'])
+  assert.equal(fixture.controller.addingBookKey.value, '')
+})
+
+test('search and explore category-confirmed add resets selection and honors cancel', async () => {
   const fixture = createController({
     selectCategories: async initialCategoryIds => {
       fixture.calls.push(['select-categories', initialCategoryIds])
@@ -46,46 +69,37 @@ test('requires a shared category selection before mutating a remote shelf book',
     },
   })
 
-  const result = await fixture.controller.addRemoteBook(
-    { title: '待入架', sourceId: 8 },
-    { key: '8-book', categoryIds: [4, '2'], sourceId: 8, sourceName: '测试书源' },
+  const result = await fixture.controller.addRemoteBookWithCategories(
+    { title: '暂不加入', sourceId: 8 },
+    { key: '8-book', categoryIds: [9], sourceId: 8, sourceName: '测试书源' },
   )
 
   assert.equal(result, null)
-  assert.deepEqual(fixture.calls, [['select-categories', [4, 2]]])
+  assert.deepEqual(fixture.calls, [['select-categories', []]])
   assert.equal(fixture.controller.addingBookKey.value, '')
 })
 
-test('creates only confirmed categories, deduplicates them, and resets the shared loading key', async () => {
+test('search and explore persist only the confirmed deduplicated categories', async () => {
   const fixture = createController()
-
-  const added = await fixture.controller.addRemoteBook(
-    { title: '已确认入架', sourceId: 8 },
-    { key: '8-book', categoryIds: [4, '2'], sourceId: 8, sourceName: '测试书源' },
+  const added = await fixture.controller.addRemoteBookWithCategories(
+    { title: '确认入架', sourceId: 8 },
+    { key: '8-book', categoryIds: [9], sourceId: 8, sourceName: '测试书源' },
   )
 
-  assert.deepEqual(added, {
-    id: 61,
-    title: '已确认入架',
-    sourceId: 8,
-    sourceName: '测试书源',
-    categoryIds: [3, 2],
-  })
   assert.deepEqual(fixture.calls, [
-    ['select-categories', [4, 2]],
+    ['select-categories', []],
     ['create-remote', {
-      title: '已确认入架',
+      title: '确认入架',
       sourceId: 8,
       sourceName: '测试书源',
       categoryIds: [3, 2],
     }],
     ['upsert', added],
-    ['success', '已加入书架：《已确认入架》'],
+    ['success', '加入书架成功'],
   ])
-  assert.equal(fixture.controller.addingBookKey.value, '')
 })
 
-test('surfaces a failed confirmed create without leaving an in-flight BookInfo action', async () => {
+test('surfaces a failed create without leaving an in-flight add action', async () => {
   const fixture = createController({
     createRemoteBook: async () => {
       throw new Error('network down')
@@ -94,7 +108,7 @@ test('surfaces a failed confirmed create without leaving an in-flight BookInfo a
 
   const result = await fixture.controller.addRemoteBook(
     { title: '失败书', sourceId: 8 },
-    { key: '8-book', categoryIds: [], sourceId: 8, sourceName: '测试书源' },
+    { key: '8-book', sourceId: 8, sourceName: '测试书源' },
   )
 
   assert.equal(result, null)
@@ -130,9 +144,40 @@ test('does not upsert or announce a remote book after the authenticated operatio
   assert.equal(await pending, null)
   assert.equal(fixture.calls.some(([kind]) => kind === 'upsert'), false)
   assert.equal(fixture.calls.some(([kind]) => kind === 'success'), false)
+  assert.equal(fixture.controller.addingBookKey.value, '', 'expired operations must not leave a stale loading tag')
 })
 
-test('Overlay owns one cancellable BookInfo category-selection transaction', async () => {
+test('an older same-book response cannot clear the newer add loading state', async () => {
+  const firstResponse = deferred()
+  const secondResponse = deferred()
+  let requestCount = 0
+  const fixture = createController({
+    createRemoteBook: async payload => {
+      fixture.calls.push(['create-remote', payload])
+      requestCount += 1
+      return requestCount === 1 ? firstResponse.promise : secondResponse.promise
+    },
+  })
+
+  const first = fixture.controller.addRemoteBook(
+    { title: '同一本书', sourceId: 8 },
+    { key: '8-same-book', sourceId: 8, sourceName: '测试书源' },
+  )
+  const second = fixture.controller.addRemoteBook(
+    { title: '同一本书', sourceId: 8 },
+    { key: '8-same-book', sourceId: 8, sourceName: '测试书源' },
+  )
+
+  firstResponse.resolve({ data: { id: 61, title: '旧响应' } })
+  assert.equal(await first, null)
+  assert.equal(fixture.controller.addingBookKey.value, '8-same-book')
+
+  secondResponse.resolve({ data: { id: 61, title: '新响应' } })
+  assert.equal((await second)?.title, '新响应')
+  assert.equal(fixture.controller.addingBookKey.value, '')
+})
+
+test('Overlay owns one cancellable result-card category-selection transaction', async () => {
   const { useOverlayStore } = await import('../src/stores/overlay.js')
   const { createPinia, setActivePinia } = await import('pinia')
   setActivePinia(createPinia())

@@ -4,6 +4,11 @@
 
 状态：**2026-07-27 已完成只读审计、失败测试、遗留删除、全量自动化与三视口真实浏览器验证。**
 
+> 2026-08-02 勘误：本合同删除不可达动作 builder 的结论仍有效，但其中“搜索/探索加书由
+> OverlayBookInfo 统一选择分组”的历史判断已被固定基准第二轮复审取代。当前动作所有权是
+> “搜索/探索结果卡选择分组，BookInfo 直接加入”，详见
+> [`bookinfo-fixed-baseline-second-audit-p2-contract.md`](bookinfo-fixed-baseline-second-audit-p2-contract.md)。
+
 本合同只清理共享 BookInfo 收敛后遗留的不可达动作 builder，不重开已经完成的 BookInfo
 加书、分组、封面、编辑、追更、本地刷新、缓存或旧链接行为。
 

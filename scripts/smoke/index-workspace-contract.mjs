@@ -23,6 +23,9 @@ function fakeToken() {
 
 function remoteBook(title = '工作台搜索结果') {
   return {
+    // Search payload IDs are source-owned and may collide with a persisted
+    // shelf row. BookInfo identity must remain URL-authoritative.
+    id: 1,
     title,
     author: 'OpenReader',
     url: `https://source.example/${encodeURIComponent(title)}`,
@@ -154,10 +157,35 @@ async function assertNoHorizontalOverflow(page, name) {
 
 async function openMobileNavigation(page, viewport) {
   if (viewport.width > 750) return
-  await page.locator('.mobile-menu-trigger').click()
+  if (await page.locator('.app-shell').evaluate(node => node.classList.contains('mobile-nav-open'))) return
+  const trigger = page.locator('.mobile-menu-trigger')
+  if (await trigger.count()) {
+    await trigger.click()
+  } else {
+    const shell = page.locator('.app-shell')
+    await shell.dispatchEvent('touchstart', {
+      touches: [{ identifier: 1, clientX: 30, clientY: 180 }],
+    })
+    await shell.dispatchEvent('touchmove', {
+      touches: [{ identifier: 1, clientX: 250, clientY: 182 }],
+    })
+    await shell.dispatchEvent('touchend', {
+      touches: [],
+      changedTouches: [{ identifier: 1, clientX: 250, clientY: 182 }],
+    })
+  }
   await page.waitForFunction(() => {
     const node = document.querySelector('.app-sidebar')
     return node && Math.abs(Number.parseFloat(getComputedStyle(node).marginLeft)) < 0.5
+  })
+}
+
+async function closeMobileNavigation(page, viewport) {
+  if (viewport.width > 750) return
+  await page.locator('.app-workspace').evaluate(node => node.click())
+  await page.waitForFunction(() => {
+    const node = document.querySelector('.app-sidebar')
+    return node && Number.parseFloat(getComputedStyle(node).marginLeft) < -1
   })
 }
 
@@ -264,32 +292,38 @@ async function runViewport(browser, viewport) {
   await assertNoHorizontalOverflow(page, `${viewport.width} search`)
 
   assert(await page.locator('.workspace-result-page .result-actions').count() === 0, `${viewport.width}: result cards must not add a non-upstream preview button`)
-  await page.locator('.workspace-result-page .result-card .book-cover-shared').first().click()
+  const searchResultCard = page.locator('.workspace-result-page .result-card').first()
+  const searchResultAdd = searchResultCard.locator('.result-add-book')
+  assert(await searchResultAdd.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: search result card must expose the upstream add action`)
+  const categoryDialog = page.locator('.book-add-category-dialog')
+  await searchResultAdd.click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  assert(await categoryDialog.getByText('请选择分组：', { exact: true }).count() === 1, `${viewport.width}: result-card chooser must keep the upstream prompt`)
+  await categoryDialog.getByRole('button', { name: '暂不加入', exact: true }).click()
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 0, `${viewport.width}: cancelling result-card groups must not add a book`)
+
+  await searchResultCard.locator('.book-cover-shared').click()
   await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
   const searchBookInfo = page.locator('.book-info-dialog')
   assert(await searchBookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: search cover must open the single unshelved BookInfo action`)
   assert(await searchBookInfo.getByText('加入并阅读', { exact: true }).count() === 0, `${viewport.width}: search BookInfo must not expose add-and-read`)
   assert(await searchBookInfo.getByText('开始阅读', { exact: true }).count() === 0, `${viewport.width}: search BookInfo must not expose a read action`)
   const searchBookInfoURL = await page.url()
-  await searchBookInfo.getByText('加入书架', { exact: true }).click()
-  const categoryDialog = page.locator('.book-add-category-dialog')
-  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
-  await categoryDialog.getByRole('button', { name: '取消' }).click()
-  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
-  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 0, `${viewport.width}: cancelling BookInfo groups must not add a book`)
-  await searchBookInfo.getByText('加入书架', { exact: true }).click()
-  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
   const createRequest = page.waitForRequest(request => {
     const requestURL = new URL(request.url())
     return request.method() === 'POST' && requestURL.pathname === '/api/books/remote'
   }, { timeout: 10000 })
-  await categoryDialog.getByRole('button', { name: '确定' }).click()
-  await createRequest
-  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 1, `${viewport.width}: confirming BookInfo groups must add exactly once`)
+  await searchBookInfo.getByText('加入书架', { exact: true }).click()
+  const directAddRequest = await createRequest
+  const directAddPayload = directAddRequest.postDataJSON() || {}
+  assert(Array.isArray(directAddPayload.categoryIds) && directAddPayload.categoryIds.length === 0, `${viewport.width}: BookInfo direct add must submit no positive category selection`)
+  assert(await categoryDialog.isHidden(), `${viewport.width}: BookInfo direct add must not open the result-card category chooser`)
+  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 1, `${viewport.width}: BookInfo direct add must persist exactly once`)
   await searchBookInfo.getByText('分组：', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
-  assert(await searchBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: confirmed search BookInfo must become the shelf state`)
-  assert(await searchBookInfo.getByText('分组：', { exact: false }).count() === 1, `${viewport.width}: confirmed search BookInfo must expose shelf properties`)
-  assert(await page.url() === searchBookInfoURL, `${viewport.width}: confirming BookInfo add must not navigate to Reader`)
+  assert(await searchBookInfo.getByText('加入书架', { exact: true }).count() === 0, `${viewport.width}: direct search BookInfo add must become the shelf state`)
+  assert(await searchBookInfo.getByText('分组：', { exact: false }).count() === 1, `${viewport.width}: direct search BookInfo add must expose shelf properties`)
+  assert(await page.url() === searchBookInfoURL, `${viewport.width}: BookInfo direct add must not navigate to Reader`)
   await searchBookInfo.locator('.el-dialog__headerbtn').click()
   await searchBookInfo.waitFor({ state: 'hidden', timeout: 10000 })
 
@@ -300,6 +334,7 @@ async function runViewport(browser, viewport) {
   await searchInput.fill('二次侧栏搜索')
   await searchInput.press('Enter')
   await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
+  await closeMobileNavigation(page, viewport)
   const directSearchState = await page.evaluate(() => ({
     path: window.location.pathname,
     heading: document.querySelector('.workspace-result-head h1')?.textContent || '',
@@ -310,9 +345,23 @@ async function runViewport(browser, viewport) {
   assert(legacyPreferenceSearch.concurrentCount === 8, `${viewport.width}: sidebar search must retain the active legacy concurrency until the user changes it`)
   await assertNoHorizontalOverflow(page, `${viewport.width} second-search`)
 
+  const secondSearchURL = await page.url()
+  await page.locator('.workspace-result-page .result-card').first().locator('.result-add-book').click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  const resultCreateRequest = page.waitForRequest(request => {
+    const requestURL = new URL(request.url())
+    return request.method() === 'POST' && requestURL.pathname === '/api/books/remote'
+  }, { timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '确定', exact: true }).click()
+  await resultCreateRequest
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 2, `${viewport.width}: confirming result-card groups must add exactly once`)
+  assert(await page.url() === secondSearchURL, `${viewport.width}: result-card add must preserve the Search workspace route`)
+
   await searchInput.fill('陈旧请求')
   await searchInput.press('Enter')
   await page.waitForTimeout(50)
+  await openMobileNavigation(page, viewport)
   await page.getByRole('button', { name: '探索书源' }).click()
   const exploreChooser = page.locator('.explore-workspace-popover:visible')
   await exploreChooser.waitFor({ state: 'visible', timeout: 10000 })
@@ -362,7 +411,13 @@ async function runViewport(browser, viewport) {
   assert(exploreState.path === '/', `${viewport.width}: Explore must remain in the root scene`)
   assert(exploreState.heading.includes('探索 (1)'), `${viewport.width}: Explore result heading is missing`)
   assert(!exploreState.text.includes('陈旧结果'), `${viewport.width}: stale search response must not overwrite Explore`)
-  await page.locator('.workspace-result-page .discover-results .result-card .book-cover-shared').first().click()
+  const exploreResultCard = page.locator('.workspace-result-page .discover-results .result-card').first()
+  await exploreResultCard.locator('.result-add-book').click()
+  await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
+  await categoryDialog.getByRole('button', { name: '暂不加入', exact: true }).click()
+  await categoryDialog.waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.evaluate(() => window.__workspaceRemoteCreateCount()) === 2, `${viewport.width}: cancelling Explore result-card add must not persist`)
+  await exploreResultCard.locator('.book-cover-shared').click()
   await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
   const exploreBookInfo = page.locator('.book-info-dialog')
   assert(await exploreBookInfo.getByText('加入书架', { exact: true }).count() === 1, `${viewport.width}: explore cover must open the shared unshelved BookInfo action`)

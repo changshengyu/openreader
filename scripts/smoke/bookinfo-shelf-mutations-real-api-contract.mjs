@@ -169,6 +169,9 @@ async function seedWorkspace(root, viewport) {
     body: {
       title: remoteTitle,
       author: '真实 API',
+      intro: '第一段简介\n\n    第二段简介',
+      kind: '玄幻,热血,成长,冒险,东方,群像,长篇,连载,完整标签',
+      wordCount: '99万字',
       sourceId: 1,
       url: `https://bookinfo.example/${suffix}`,
       canUpdate: true,
@@ -227,6 +230,34 @@ async function runViewport(browser, root, viewport) {
     const dialog = page.locator('.book-info-dialog')
     await dialog.waitFor({ state: 'visible', timeout: 10_000 })
 
+    const dialogGeometry = await dialog.evaluate(node => {
+      const rect = node.getBoundingClientRect()
+      return {
+        width: rect.width,
+        fullscreen: node.classList.contains('is-fullscreen'),
+      }
+    })
+    if (viewport.width <= 750) {
+      assert(dialogGeometry.fullscreen, `${viewport.width}: mini BookInfo must be fullscreen`)
+    } else {
+      assert(!dialogGeometry.fullscreen, `${viewport.width}: desktop/iPad BookInfo must not be fullscreen`)
+      assert(Math.abs(dialogGeometry.width - 500) <= 1, `${viewport.width}: BookInfo width must be 500px, got ${dialogGeometry.width}`)
+    }
+    const propertyTops = await dialog.evaluate(node => [
+      '.book-author',
+      '.book-origin',
+      '.book-latest',
+      '.book-group',
+    ].map(selector => node.querySelector(selector)?.getBoundingClientRect().top || 0))
+    assert(propertyTops.every((top, index) => index === 0 || top >= propertyTops[index - 1]), `${viewport.width}: BookInfo property order must be author/source/latest/group`)
+    assert(await dialog.getByText('完整标签', { exact: true }).count() === 1, `${viewport.width}: BookInfo must not truncate kind tags after eight items`)
+    assert(await dialog.getByText('99万字', { exact: true }).count() === 0, `${viewport.width}: BookInfo must not expose the rewritten word-count field`)
+    assert(await dialog.getByText('更换封面', { exact: true }).count() === 0, `${viewport.width}: BookInfo must not overlay a non-upstream cover label`)
+    const introParagraphs = await dialog.locator('.book-intro p').allTextContents()
+    assert(introParagraphs.length === 3, `${viewport.width}: BookInfo intro must preserve every newline, got ${introParagraphs.length} paragraphs`)
+    assert(introParagraphs[0].startsWith('\u00a0'.repeat(6)), `${viewport.width}: BookInfo intro must keep the upstream six-space prefix`)
+    assert(introParagraphs[1] === '\u00a0'.repeat(6), `${viewport.width}: BookInfo intro must preserve the empty line`)
+
     const followRequest = await captureRequest(
       page,
       request => request.method() === 'PUT' && new URL(request.url()).pathname === `/api/books/${seeded.remote.id}`,
@@ -266,6 +297,13 @@ async function runViewport(browser, root, viewport) {
     assert(afterCover.author === '真实 API', `${viewport.width}: cover update changed the author`)
     const coverResponse = await fetch(`${root}${coverPayload.customCoverUrl}`)
     assert(coverResponse.status === 200, `${viewport.width}: user-scoped cover must remain directly loadable, got ${coverResponse.status}`)
+    const coverGeometry = await dialog.locator('.size-book-info img').evaluate(node => {
+      const rect = node.getBoundingClientRect()
+      return { width: rect.width, height: rect.height, fit: getComputedStyle(node).objectFit }
+    })
+    assert(Math.abs(coverGeometry.height - 150) <= 1, `${viewport.width}: BookInfo cover height must remain 150px, got ${coverGeometry.height}`)
+    assert(Math.abs(coverGeometry.width - 150) <= 1, `${viewport.width}: square BookInfo cover must keep its natural ratio, got ${coverGeometry.width}x${coverGeometry.height}`)
+    assert(coverGeometry.fit === 'contain', `${viewport.width}: BookInfo cover must not crop, got object-fit ${coverGeometry.fit}`)
 
     await dialog.getByRole('button', { name: '设置分组', exact: true }).click()
     const groupDialog = page.locator('.global-book-group-dialog')
@@ -296,13 +334,14 @@ async function runViewport(browser, root, viewport) {
     const localRow = shelfRow(page, seeded.local.title)
     await localRow.locator('.list-cover').click()
     await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+    assert(await dialog.locator('.inline-update-switch .el-switch').count() === 1, `${viewport.width}: local shelf BookInfo must retain the upstream follow switch`)
     const refreshRequest = await captureRequest(
       page,
       request => request.method() === 'POST' && new URL(request.url()).pathname === `/api/books/${seeded.local.id}/refresh-local`,
       () => dialog.getByRole('button', { name: '更新', exact: true }).click(),
     )
     assert((refreshRequest.postData() || '') === '', `${viewport.width}: local refresh must not send a stray body`)
-    await page.getByText('本地书已刷新，共 1 章', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 })
+    await page.getByText('更新成功', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 })
     await waitFor(
       async () => {
         const book = await api(root, `/books/${seeded.local.id}`, { token: seeded.token })
@@ -328,10 +367,12 @@ async function run() {
         { width: 1440, height: 900 },
         { width: 390, height: 844 },
         { width: 360, height: 800 },
+        { width: 1024, height: 1366 },
+        { width: 1366, height: 1024 },
       ]) {
         completed.push(await runViewport(browser, app.root, viewport))
       }
-      console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true precisePatches=true userAssets=true groupSet=true localRefresh=true`)
+      console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true localRefresh=true`)
     } finally {
       await browser.close()
     }

@@ -4,8 +4,8 @@
 
 审计日期：2026-08-02。
 
-状态：**audit-complete / implementation-pending**。本文件是在不修改应用代码的只读阶段生成；
-旧组件、旧合同和既有测试均不构成保留依据。
+状态：**implementation-complete / release-pending**。本文件先在不修改应用代码的只读阶段生成，
+随后按“合同 → 失败测试 → 实现 → 回归”门完成重建；旧组件、旧合同和既有测试均未作为保留依据。
 
 ## 1. 权威源码与当前映射
 
@@ -25,7 +25,7 @@
 - `GlobalOverlayHost.vue -> OverlayBookInfo.vue -> BookInfoDialog.vue -> BookInfoPanel.vue`。
 - `Home.vue`、`Search.vue`、`Discover.vue`、`Reader.vue`、`OverlayBookManagement.vue` 与旧链接
   hydration 均调用 `overlay.openBookInfo()`。
-- `useOverlayBookInfo.js`、`useOverlayBookCacheState.js`、`useBookInfoAddToShelf.js`、
+- `useOverlayBookInfo.js`、`useOverlayBookCacheState.js`、`useRemoteBookAddToShelf.js`、
   `OverlayBookAddToShelf.vue`、`RemoteBookResultGroups.vue`。
 - `POST /api/books/remote`、`PUT /api/books/:id`、`POST /api/uploads`、
   `POST /api/books/:id/refresh-local`、`PUT /api/books/:id/category`。
@@ -105,8 +105,9 @@ OpenReader 可继续让两条入口共用一个安全的 remote-book mutation ut
 
 本批不新增路由、不迁移 SQLite、不改 `data/cache/library`：
 
-- `POST /api/books/remote` 必须接受省略或空 `categoryIds`，创建未分组书；URL 已存在且请求未
-  提供任何 category 字段时，不得清空既有分组。来源、URL、变量和用户 namespace 仍验证。
+- `POST /api/books/remote` 必须接受省略或空 `categoryIds`，创建未分组书；URL 已存在且请求
+  没有任何正分组选择时，不得清空既有分组。明确清空继续由 category endpoint 负责。来源、
+  URL、变量和用户 namespace 仍验证。
 - URL 身份冲突测试必须证明：同用户书架 ID 与远程结果 ID 相同、URL 不同时，BookInfo 不能
   读取或更新错误书籍。
 - `PUT /api/books/:id` 的追更和封面仍只发送一个字段；其他客户端并发保存的标题、简介、分组
@@ -155,3 +156,25 @@ v1/v2 assets/跨用户/重启和历史 TXT/EPUB/UMD/CBZ/relative-cache/owner-iso
 事务化本地刷新、认证 generation guard、封面 capability 和用户资产根、纯文本简介、旧 URL
 兼容 intent、临时 Reader session、非阻塞的书架/书源后台收敛。未使用的详情 variant、480px、
 裁剪封面、额外字段/标签、ID 优先、隐形缓存扫描及加书动作互换都不是允许差异。
+
+## 10. 实施与验证结果（2026-08-02）
+
+- `BookInfoDialog/BookInfoPanel/BookCover` 已恢复唯一 500px/fullscreen 结构、150px 自然比例封面、
+  上游字段顺序、完整英文逗号 kind、逐行简介、所有书架书追更和精确来源/反馈；无调用者的
+  detail variant、额外统计、封面提示和打开时浏览器缓存扫描已删除。
+- 书架身份收敛为 URL 权威；只有无 URL 的受信任兼容记录允许 ID fallback。相同 ID、不同 URL
+  的远程结果不再误认或更新书架中的另一册。
+- 搜索/探索结果卡恢复“加入书架 → 设置分组 → 确认写入”，BookInfo 恢复直接加入；两者共用
+  `useRemoteBookAddToShelf` 的认证 generation、同 key revision 和服务端投影提交逻辑。
+- `POST /api/books/remote` 的既有 URL 分支保留“省略/空分组不清空已有分组”；显式分组事务失败
+  现在返回 `500`，不再返回虚假成功投影或广播。
+- frontend **668/668**、Go `go test ./...`、Vite production build 与 `git diff --check` 通过。
+- `index-workspace-contract` 在 1440×900、390×844、360×800 验证结果卡取消/确认、BookInfo
+  direct add、ID 碰撞、Search/Explore 和真实侧栏手势；`remote-reader-contract` 在同三视口
+  验证临时 Reader direct add 不改变 route/tool layer。
+- 无 mock 的 Go/SQLite BookInfo smoke 在 1440×900、390×844、360×800、1024×1366、
+  1366×1024 验证 500px/手机 fullscreen、自然比例封面、字段/kind/简介、本地刷新、追更、
+  用户资产封面、精确 patch 和分组持久化。
+- 额外的 Overlay 会话隔离浏览器重跑因本机工作区审批额度耗尽而无法启动沙箱外 Chromium；
+  这不是功能失败。对应认证 generation 与迟到响应由本轮单元合同覆盖，既有六场景三视口
+  会话隔离证据保留。Docker 和卷门在提交后执行。

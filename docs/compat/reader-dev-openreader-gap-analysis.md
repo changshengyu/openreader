@@ -3188,6 +3188,20 @@ Overlay 六场景三视口全门，而不是仅证明点击不再抛错。
 amd64/arm64 OCI index 为
 `sha256:1643625269f5a04f867c56da9e3bee04c1318d807e73ca6fc0913ab408645921`。
 
+## 2026-08-02 BookInfo 第二轮固定基准重建结果
+
+历史 P1-B/P1-D 记录错误地把搜索/探索结果卡和 BookInfo 的加入书架动作合并为一个
+category-confirmed transaction。重新逐方法核对固定 `Index.vue#addBookToShelf/saveBook` 与
+`BookInfo.vue` 后，权威状态机是：搜索/探索结果卡先打开“设置分组”，未入架 BookInfo 直接
+保存，不打开分组选择器。
+
+本轮已按 [`bookinfo-fixed-baseline-second-audit-p2-contract.md`](bookinfo-fixed-baseline-second-audit-p2-contract.md)
+测试先行重建：唯一 BookInfo 恢复 500px/手机 fullscreen、150px 自然比例封面、上游字段顺序、
+完整 kind、逐行简介、本地书追更、URL 权威身份和精确反馈；结果卡与 BookInfo 共用安全 mutation
+utility 但使用不同入口策略。已有 URL 的远程加书在显式分组事务失败时返回 500，不再广播虚假
+成功。frontend 668/668、Go、build、工作台/临时 Reader 三视口与真实 Go/SQLite 五视口通过。
+旧文中“BookInfo 统一确认分组”的段落全部视为历史、由本节和专项合同取代。
+
 ## 2026-07-28 ReplaceRule P2 固定基准重新复审
 
 历史 ReplaceRule 记录不能继续作为完成证明。重新逐行核对固定

@@ -8,7 +8,7 @@
     @closed="overlay.finishBookAddCategories()"
   >
     <div class="book-add-category-body">
-      <p>加入书架前选择分组（可多选，留空则不分组）。</p>
+      <span>请选择分组：</span>
       <el-select
         v-model="overlay.bookAddCategoryIds"
         multiple
@@ -26,7 +26,7 @@
     </div>
 
     <template #footer>
-      <el-button @click="overlay.finishBookAddCategories()">取消</el-button>
+      <el-button @click="overlay.finishBookAddCategories()">暂不加入</el-button>
       <el-button type="primary" @click="overlay.finishBookAddCategories(overlay.bookAddCategoryIds)">
         确定
       </el-button>
@@ -63,14 +63,7 @@ watch(
 
 <style scoped>
 .book-add-category-body {
-  display: grid;
-  gap: 12px;
-}
-
-.book-add-category-body p {
-  margin: 0;
-  color: var(--app-text-muted);
-  line-height: 1.6;
+  text-align: center;
 }
 
 .book-add-category-body :deep(.el-select) {

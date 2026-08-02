@@ -116,4 +116,22 @@ function handleImageError(event) {
   height: 58px;
   font-size: 13px;
 }
+
+.book-cover-shared.size-book-info {
+  width: auto;
+  min-width: 100px;
+  max-width: 100%;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.book-cover-shared.size-book-info img {
+  position: relative;
+  inset: auto;
+  width: auto;
+  max-width: 100%;
+  height: 150px;
+  object-fit: contain;
+}
 </style>

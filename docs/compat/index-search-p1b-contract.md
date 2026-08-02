@@ -6,6 +6,12 @@
 
 本合同仅覆盖工作台的远程搜索、探索结果与共享 BookInfo 的连续操作；阅读器内“书源”候选面板另由 Reader P0/P2 合同覆盖。
 
+> 2026-08-02 勘误：本文早期记录把搜索/探索与 BookInfo 的“加入书架”都归给 BookInfo
+> category-confirmed transaction。固定基准第二轮逐方法复审证明上游实际是：结果卡先选择分组，
+> BookInfo 直接加入。当前实现和最终证据以
+> [`bookinfo-fixed-baseline-second-audit-p2-contract.md`](bookinfo-fixed-baseline-second-audit-p2-contract.md)
+> 为准；下方旧实施记录仅保留历史上下文。
+
 ## 1. 上游行为与状态转换
 
 | 触发 | 上游状态 / 请求 | 用户可见结果 |

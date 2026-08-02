@@ -5,6 +5,10 @@
 状态：2026-07-28 已完成固定上游取证、P1-A/P1-B 实施、自动门禁、真实浏览器
 `6 场景 × 3 视口` 最终签收和本地 Docker 发布。
 
+> 2026-08-02 名称更新：BookInfo 远程加书的共享安全实现现为
+> `useRemoteBookAddToShelf`；结果卡与 BookInfo 分别调用“确认分组”和“直接加入”策略。
+> 本文关于认证 generation、迟到响应拒绝和会话重置的合同不变。
+
 本合同承接：
 
 - [`authenticated-runtime-scope-p2-contract.md`](authenticated-runtime-scope-p2-contract.md)
