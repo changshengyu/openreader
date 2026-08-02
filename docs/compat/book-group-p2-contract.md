@@ -3,6 +3,11 @@
 状态：2026-07-19 已按合同完成应用实现、全量自动测试、真实 Go/SQLite 三视口与多客户端验证，
 并从干净提交本地构建、通过卷/备份门禁后发布双架构 Docker。
 
+> 2026-08-02 第二轮固定源码审查已发现前端结构、精确状态机、失效标签和隐藏自定义组恢复
+> 仍有偏差。本合同的统一投影、多用户、排序和备份架构继续有效；前端完成状态及恢复完整性
+> 由 [`book-group-fixed-baseline-second-audit-p2-contract.md`](book-group-fixed-baseline-second-audit-p2-contract.md)
+> 取代，当前不得据此宣称 BookGroup 已完全对齐。
+
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 本合同覆盖书架分组标签、`BookGroup` 设置/管理两种模式、API、SQLite、同步和备份恢复。
 它覆盖并纠正此前把“自定义分类 CRUD + Dialog 外壳”标成 BookGroup 已对齐的结论。

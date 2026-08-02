@@ -196,7 +196,7 @@ The current risk is not framework selection. The risk is implementing from an ab
 | Reader settings controls | Upstream uses controls that are easier to distinguish visually; user requested minus/value/plus controls instead of current easy-to-mis-tap slider behavior. | Current setting stepper exists but must be rechecked against upstream layout/state. | Allowed UX adaptation, but values/defaults/state must match upstream. | `acceptable-change` | Unit tests for value bounds; browser setting interaction test. |
 | Reader content formats | Upstream `Content.vue` handles text, images/comic-like content, EPUB iframe documents, audio-related branches, read-aloud, and cross-chapter behavior. `EpubFile.kt` additionally treats `BookChapter.startFragmentId`/`endFragmentId` and the next chapter URL as EPUB content boundaries. | Current `ReaderChapterContent.vue` handles text/images/volume blocks, CBZ image resources, EPUB iframe resources, a dedicated audio branch for `type === 1` chapters, and the extracted TTS/read-bar state machine. | E4 keeps the image-only first EPUB spine cover and now preserves NAV/NCX fragment directory entries, signed XHTML slices, exact `(resourcePath, resourceFragment)` matching, same-resource slice navigation and cross-XHTML chapter transitions. CSP/capability protection remains the allowed Go/Vue security adaptation. | `aligned` for E4-EPUB-2 | [`epub-fragment-p1e4-contract.md`](epub-fragment-p1e4-contract.md), parser/API/migration/security tests, and `reader-epub-contract.mjs` at 1440/390/360. |
 | BookInfo | Upstream has one `web/src/components/BookInfo.vue` used from workspace and reader flows. | Current has shared `BookInfoDialog.vue` / `BookInfoPanel.vue` / `OverlayBookInfo.vue`; the old `/books/:id` URL redirects to the Index workspace and opens the shared dialog. | The independent product route is gone; five entry paths share one action state machine. Shelf metadata/cover edits, CAS, sync and cache side effects were subsequently completed under the P2 metadata contract. | `aligned` | Keep the shared entry/action and [`book-edit-metadata-p2-contract.md`](book-edit-metadata-p2-contract.md) tests; do not reintroduce a second BookInfo flow. |
-| Bookshelf/BookManage/BookGroup | Upstream: `BookShelf.vue`, `BookManage.vue`, `BookGroup.vue` under Index workspace. | Current: `Home.vue`, `OverlayBookManagement.vue`, `OverlayBookGroups.vue`, unified scoped BookGroup projection and Category/BookCategory assignment model. | The 2026-07-22 refresh-progress slice now makes a successful full network shelf response authoritative over confirmed client progress while retaining only genuine pending writes. BookGroup still persists and manages all built-ins/custom filters and `bookGroup.json` round-trip; many-to-many custom categories remain an allowed data adaptation. | `aligned` for refresh-progress and completed BookGroup contracts; `acceptable technical adaptation` for pending/CAS and many-to-many categories | [`bookshelf-refresh-progress-p1-contract.md`](bookshelf-refresh-progress-p1-contract.md), [`book-group-p2-contract.md`](book-group-p2-contract.md). |
+| Bookshelf/BookManage/BookGroup | Upstream: `BookShelf.vue`, `BookManage.vue`, `BookGroup.vue` under Index workspace. | Current: `Home.vue`, `OverlayBookManagement.vue`, `OverlayBookGroups.vue`, unified scoped BookGroup projection and Category/BookCategory assignment model. | The 2026-07-22 refresh-progress slice remains aligned. BookManage second audit is published. BookGroup's unified projection, built-ins, multi-user and many-to-many architecture remain valid, but its second fixed-baseline audit found visible/state-machine deviations and hidden-custom-group restore data loss. | `must-fix` for BookGroup UI/state/restore; `acceptable technical adaptation` for pending/CAS and many-to-many categories | [`bookshelf-refresh-progress-p1-contract.md`](bookshelf-refresh-progress-p1-contract.md), [`book-management-fixed-baseline-second-audit-p2-contract.md`](book-management-fixed-baseline-second-audit-p2-contract.md), [`book-group-fixed-baseline-second-audit-p2-contract.md`](book-group-fixed-baseline-second-audit-p2-contract.md). |
 | Mobile Index sidebar | Upstream sidebar width/drag/fixed bottom buttons are defined by `Index.vue` and related CSS. | `AppLayout.vue` and `useAppMobileNavigation.js` now separate 260px visual width from the 270px gesture window, with bottom controls outside the scroll container. | The user-requested stable bottom controls during drag are an explicit OpenReader UX adaptation; the extracted upstream interaction contract is browser-validated. | `aligned` for extracted P1 sidebar slice | Mobile drag/fixed-bottom/shelf-geometry smoke at 390×844 and 360×800. |
 | Search/explore/source flow | Upstream Index integrates search/explore/source and BookInfo transitions. | Root workspace owns Search/Explore bodies and source overlays; historical URLs are compatibility intents, and shared BookInfo owns the handoff. | API clients and OpenReader multi-user extensions remain, but no separate page flow remains. | `aligned` for extracted P1 scene convergence | Search → result group → BookInfo → add/read browser test. |
 | Online source parsing | Upstream reader3-compatible source semantics live across `AnalyzeRule` plus `BookList/BookInfo/BookChapterList/BookContent`. | Current Go parser executes the extracted CSS/JSONPath/XPath/regex/composite/replace/pagination subsets, bounded persisted `@put`/`@get` variables, and redacted parser errors. Dynamic headers and `loginCheckJs` now fail before any request rather than being silently ignored. | `{{...}}`/arbitrary JavaScript remain explicit security-gated unsupported behavior; this is not a silent parsing gap. | `aligned` for extracted P2 parser + explicit security difference | Parser/request-isolation and source-debug/error-redaction contracts; browser source flow. |
@@ -1085,9 +1085,34 @@ Go/SQLite 三视口通过。实现提交 `af4e2a47f7b6ffd3bc31912f577a94f0b7579b
 **aligned / Docker-published / awaiting device verification**；BookGroup 不在本合同内，随后
 独立复审。
 
+## 2026-08-02 BookGroup 第二轮固定基准复审
+
+2026-07-19 的 P2 工作正确建立了四内置分组、用户级统一投影、混合事务排序、多客户端同步、
+多对多自定义关系及 `bookGroup.json` 往返；这些后端/数据架构继续保留。但第二轮逐行核对
+固定上游 `BookGroup.vue` 后，撤销“当前前端已完全对齐”的结论。
+
+当前 set/manage 使用两张表、自绘 checkbox 与整行选择、独立拖动列、可见书籍计数、带文字
+switch、额外 empty、手机 footer 网格和扩展文案；上游是一张条件列 table，固定动态几何、
+名称内 drag icon、原生 selection、统一 `25/100/80/100` 列与单 footer。当前还缺少 normal
+page gate，manage 打开不会像上游每次 force 读取组列表，关闭不恢复默认 mode。旧静态、单元
+和 smoke 测试把这些偏差固化成了正确结果，必须测试先行替换。
+
+此前合同要求失效 shelf group token 自动跳到第一项可见组，但固定源码会保留 shelfConfig
+选择：隐藏 token 仍筛选其正文，只是不出现在 tab；仅完全没有可见非空 tab 时临时回到“全部”
+语义。因此当前自动切组属于未授权重构，也要恢复。
+
+数据复审另外通过一次性 GORM/SQLite 探针确认：带 `default:true` 的 bool 用 `Show:false`
+创建后实际存为 true。`bookgroups.Service.Restore()` 新建 reader-dev 隐藏自定义组正受此影响，
+而 `restoreCategoriesFromData()` 还完全忽略了 `Show`。现有测试只检查内置隐藏项，漏掉了两条
+自定义恢复路径。修复必须区分缺失字段与显式 false，不得改表、ID、关系或 volume。
+
+完整精确文案、几何、选择/重载状态、API/数据映射、错误旧测试与测试门见
+[`book-group-fixed-baseline-second-audit-p2-contract.md`](book-group-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **audit-complete / must-fix / implementation pending**；审计阶段没有修改应用代码。
+
 ## P1-D full audit: BookInfo and shelf-operation convergence
 
-Status: audit completed on 2026-07-10. This is a compatibility gate: implementation begins only after the listed controller, API, and browser contracts are added or updated. The authority is `web/src/views/Index.vue` (`toDetail`, `addBookToShelf`, `saveBook`, `deleteBook`, `showBookManage`, `showManageBookGroup`), `web/src/components/BookInfo.vue`, `BookManage.vue`, and `BookGroup.vue` in `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. **The BookManage shell/action rows in this historical section are superseded by the 2026-08-02 second fixed-baseline contract above; mobile cards and unconfirmed batch group mutations are no longer allowed.**
+Status: audit completed on 2026-07-10. This is a compatibility gate: implementation begins only after the listed controller, API, and browser contracts are added or updated. The authority is `web/src/views/Index.vue` (`toDetail`, `addBookToShelf`, `saveBook`, `deleteBook`, `showBookManage`, `showManageBookGroup`), `web/src/components/BookInfo.vue`, `BookManage.vue`, and `BookGroup.vue` in `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. **The BookManage and BookGroup visible-shell/action rows in this historical section are superseded by their 2026-08-02 second fixed-baseline contracts above.**
 
 ### Upstream BookInfo and shelf-operation contract
 
@@ -1113,7 +1138,7 @@ Status: audit completed on 2026-07-10. This is a compatibility gate: implementat
 | Single/batch deletion | `bookshelf.removeBook` and `batchDeleteBooks` update local shelf/cache state after REST actions. Backend scopes all rows by user. | `partial`: retain the hardened backend cleanup, then add API and browser tests proving progress/bookmarks/categories/chapters/cache cleanup plus active overlay/reader handling. |
 | Book management shell | Historical state used a Drawer with desktop table and mobile card list. | `superseded / fixed 2026-08-02`: one dialog/fullscreen-mobile host now renders the same upstream table at every viewport; the mobile-card structure was deleted. |
 | Batch cache/export | The former controller added batch cache/clear/JSON export and bounded single-book windows beyond the upstream footer. | **2026-07-18 fixed for the visible BookManage surface:** footer no longer exposes those controls; deployed backend actions retain their limits as hidden compatibility extensions. Per-book server/browser actions now cover the whole catalogue, own independent cancellable tasks and expose only TXT/EPUB. Embedded chapter-image persistence remains open; its source/request/storage/capability/export contract is now extracted in [`book-cache-images-p2-contract.md`](book-cache-images-p2-contract.md), with application code and tests still pending. |
-| Group shell and data | `OverlayBookGroups.vue` is a Drawer; `useOverlayBookGroups` has correct set/manage modes, empty guard, visibility, sort and live BookInfo update. Categories are user-scoped rows/many-to-many relations. | `must-fix` for dialog/fullscreen-mobile shell; `aligned`/`acceptable-change` for controller and data model. |
+| Group shell and data | Historical state used a Drawer before the first Dialog conversion. | `superseded`: see the second fixed-baseline BookGroup contract; the current Dialog still has one-table, geometry, exact-state and restore defects despite retaining the acceptable many-to-many model. |
 | Backend/API | Go routes map book/category operations to authenticated REST endpoints and broadcasts. | `acceptable-change` architecture, subject to action-by-action response/error/side-effect tests; no schema migration or endpoint rewrite is authorized solely for UI convergence. |
 
 ### API/data semantics that P1-D must preserve
@@ -1273,6 +1298,10 @@ global task, omits browser cancellation and confirmations, or exposes non-upstre
 ### 2026-07-16 P2 re-audit: BookManage / BookGroup real-API browser boundary
 
 Status: validated on 2026-07-16 against the fixed upstream baseline. This section supersedes the stale `unknown` summary labels above; it establishes the extracted P1-D BookManage / BookGroup boundary, not the still-separate full BookInfo action matrix.
+
+> Historical boundary evidence only. The 2026-08-02 BookManage and BookGroup second audits supersede its
+> visible-shell, exact-copy and test-sufficiency classifications; backend ownership/persistence evidence remains
+> reusable where the newer contracts do not contradict it.
 
 Authoritative upstream files:
 
