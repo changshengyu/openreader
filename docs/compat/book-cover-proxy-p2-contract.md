@@ -21,7 +21,8 @@
 - `frontend/src/components/BookCover.vue`
 - `frontend/src/views/Home.vue`
 - `frontend/src/components/BookInfoPanel.vue`
-- `frontend/src/components/overlays/BookManagementMobileList.vue`
+- `frontend/src/components/overlays/BookManagementTable.vue`（固定上游 BookManage 不显示封面；
+  本文件只记录旧移动卡片曾消费共享代理的历史）
 - `frontend/src/components/reader/ReaderAudioContent.vue`
 - `backend/api/books.go`
 - `backend/api/search.go`

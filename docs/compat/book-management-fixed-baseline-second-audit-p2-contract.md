@@ -1,6 +1,6 @@
 # BookManage 第二轮固定上游复审合同（P2）
 
-状态：**合同已提取，应用尚未按本合同重建**。
+状态：**已按第二轮固定上游合同重建并通过完整候选验证；Docker 待发布**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -134,3 +134,31 @@ storage/bit-mask 不同，均为已记录技术适配；本轮没有破坏性迁
 只有在上述测试先失败于当前结构、实现后全部通过，且旧 mobile-card/extra-field/extra-message
 代码和断言被删除后，BookManage 才可从 `错误重构` 改判为 `aligned`。BookGroup 的完整
 管理面仍是下一份独立固定基准复审，不能由本合同代签。
+
+## 8. 实施与验证记录（2026-08-02）
+
+- 删除 `BookManagementDesktopTable.vue` 与 `BookManagementMobileList.vue`，桌面、手机和
+  iPad 统一使用 `BookManagementTable.vue`。手机 fullscreen 仍是上游同一张表，selection
+  与书名列固定；不存在移动卡片、移动全选工具或额外空态。
+- `OverlayBookManagement.vue` 恢复 normal-page gate、750–1000px 动态宽度、上游内容高度与
+  顶部位置。每次打开强制获取完整书架；关闭只清选择并保留查询；搜索仅匹配书名和作者。
+- 表格恢复 `25 / 100 / 100 / 120 / 120 / 100` 的上游列语义，分组名称以空格连接；删除
+  阅读进度、类型、最新章和 fixed-right 操作列。BookInfo、编辑和 BookGroup 继续使用共享
+  overlay，并可与 BookManage 叠层共存。
+- 单书动作恢复编辑、分组、缓存、导出顺序；缓存任务继续按账号/书籍独立并可跨关闭重开，
+  但可见状态只显示 loading + `缓存中`。再次选择相同缓存命令只提示 `已取消缓存`；缓存、
+  清理和 TXT/EPUB 文案恢复上游值。
+- footer 恢复三个始终可触发的批量动作、精确无选择错误、确认文案和成功提示。分组成功后
+  table selection 保留，删除成功后清空；添加与移除都向完整选择集发送事务意图。
+- 测试先行在旧结构上产生 12 个聚焦失败；实现后聚焦 **20/20**、frontend **661/661**、
+  Go `go test ./...`、Vite production build、脚本语法和 `git diff --check` 均通过。
+- mock 生产构建浏览器合同通过 `1440×900`、`390×844`、`360×800`、`1024×1366`、
+  `1366×1024`，证明单表格、精确几何、固定列、查询保留、每次强制刷新、三个空选择错误、
+  BookInfo/BookGroup 共存、独立缓存/取消和无根横向溢出。
+- 无 API 拦截的真实 Go/SQLite 浏览器合同通过 `1440×900`、`390×844`、`360×800`；每个
+  视口使用隔离账号和临时卷，证明并发元数据编辑不覆盖分组/追更、BookGroup 空选择不写库、
+  单书分组、批量添加/移除、选择保持、批量删除及 fresh `GET /api/books` 持久化。
+
+允许差异仍只有 Vue 3/Element Plus 动态视口单位、JWT/GORM/SQLite、多用户隔离、many-to-many
+幂等移除、缓存/文件安全与 Blob 下载。数据库结构、持久数据和兼容 URL 均未改变。BookGroup
+完整管理面的第二轮固定基准复审仍是下一模块，本合同不代签其完成。

@@ -209,11 +209,8 @@ async function openMobileNavigation(page, viewport) {
   })
 }
 
-function managerRow(manager, title, viewport) {
-  if (viewport.width <= 750) {
-    return manager.locator('.mobile-manage-card').filter({ hasText: title })
-  }
-  return manager.locator('.desktop-manage-table tbody tr').filter({ hasText: title })
+function managerRow(manager, title) {
+  return manager.locator('.book-manage-table tbody tr').filter({ hasText: title })
 }
 
 async function ensureRowSelected(page, row) {
@@ -272,9 +269,11 @@ async function runViewport(browser, root, viewport) {
 
     const manager = page.locator('.global-book-manage-dialog')
     await manager.waitFor({ state: 'visible', timeout: 15_000 })
-    const groupedRow = managerRow(manager, seeded.grouped.title, viewport)
-    const batchRow = managerRow(manager, seeded.batchTarget.title, viewport)
-    const editRow = managerRow(manager, seeded.editTarget.title, viewport)
+    assert(await manager.locator('.book-manage-table').count() === 1, `${viewport.width}: BookManage must render one upstream table`)
+    assert(await manager.locator('.mobile-manage-card').count() === 0, `${viewport.width}: rebuilt BookManage must not render mobile cards`)
+    const groupedRow = managerRow(manager, seeded.grouped.title)
+    const batchRow = managerRow(manager, seeded.batchTarget.title)
+    const editRow = managerRow(manager, seeded.editTarget.title)
     await groupedRow.waitFor({ state: 'visible', timeout: 15_000 })
     await batchRow.waitFor({ state: 'visible', timeout: 15_000 })
     await editRow.waitFor({ state: 'visible', timeout: 15_000 })
@@ -338,7 +337,7 @@ async function runViewport(browser, root, viewport) {
     await secondaryGroupRow.locator('.el-checkbox').click()
     await groupSet.getByRole('button', { name: '确认', exact: true }).click()
     await groupSet.waitFor({ state: 'hidden', timeout: 10_000 })
-    await page.waitForFunction(name => [...document.querySelectorAll('.global-book-manage-dialog tbody tr, .global-book-manage-dialog .mobile-manage-card')]
+    await page.waitForFunction(name => [...document.querySelectorAll('.global-book-manage-dialog .book-manage-table tbody tr')]
       .some(row => row.textContent?.includes(name)), seeded.secondary.name)
     const groupedAfterSet = await freshBook(root, seeded.token, seeded.grouped.id)
     assert(groupedAfterSet && equalIDs(categoryIDs(groupedAfterSet), [Number(seeded.secondary.id)]), `${viewport.width}: real group set did not persist the selected category`)
@@ -350,26 +349,47 @@ async function runViewport(browser, root, viewport) {
     await ensureRowSelected(page, batchRow)
     await manager.getByRole('button', { name: '批量添加分组', exact: true }).click()
     await page.getByRole('menuitem', { name: seeded.primary.name, exact: true }).click()
-    await page.getByText(`已添加到“${seeded.primary.name}”分组`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+    const addConfirmText = `确认要将所选择的书籍添加到${seeded.primary.name}分组吗?`
+    const addConfirm = page.locator('.el-message-box').filter({ hasText: addConfirmText })
+    await addConfirm.waitFor({ state: 'visible', timeout: 10_000 })
+    await addConfirm.getByRole('button', { name: '确定', exact: true }).click()
+    const operationSuccess = page.getByText('操作成功', { exact: true })
+    await operationSuccess.waitFor({ state: 'visible', timeout: 10_000 })
     const batchAfterCategory = await freshBook(root, seeded.token, seeded.batchTarget.id)
     assert(batchAfterCategory && equalIDs(categoryIDs(batchAfterCategory), [Number(seeded.primary.id)]), `${viewport.width}: real batch category mutation did not persist`)
     assert(
       mutationRequests.some(entry => entry === 'POST /api/books/batch'),
       `${viewport.width}: batch category mutation did not issue its real POST request`,
     )
+    assert(
+      await batchRow.locator('.el-checkbox__input').first().evaluate(node => node.classList.contains('is-checked')),
+      `${viewport.width}: upstream batch category success must preserve table selection`,
+    )
+    await operationSuccess.waitFor({ state: 'hidden', timeout: 10_000 })
 
-    // The real table receives a fresh store row after the category write. Element
-    // Plus then recalculates its table selection, so a later destructive action
-    // must be selected deliberately again; upstream does not require selection
-    // persistence across an already-completed batch mutation.
-    await ensureRowSelected(page, batchRow)
+    await manager.getByRole('button', { name: '批量移除分组', exact: true }).click()
+    await page.getByRole('menuitem', { name: seeded.primary.name, exact: true }).click()
+    const removeConfirmText = `确认要将所选择的书籍从${seeded.primary.name}分组中移除吗?`
+    const removeConfirm = page.locator('.el-message-box').filter({ hasText: removeConfirmText })
+    await removeConfirm.waitFor({ state: 'visible', timeout: 10_000 })
+    await removeConfirm.getByRole('button', { name: '确定', exact: true }).click()
+    await operationSuccess.waitFor({ state: 'visible', timeout: 10_000 })
+    const batchAfterRemoval = await freshBook(root, seeded.token, seeded.batchTarget.id)
+    assert(batchAfterRemoval && categoryIDs(batchAfterRemoval).length === 0, `${viewport.width}: real batch category removal did not persist`)
+    assert(
+      await batchRow.locator('.el-checkbox__input').first().evaluate(node => node.classList.contains('is-checked')),
+      `${viewport.width}: upstream batch category removal must preserve table selection`,
+    )
+    await operationSuccess.waitFor({ state: 'hidden', timeout: 10_000 })
+
     await page.waitForFunction(() => [...document.querySelectorAll('.global-book-manage-dialog button')]
       .some(button => button.textContent?.trim() === '批量删除' && !button.hasAttribute('disabled')))
     await manager.getByRole('button', { name: '批量删除', exact: true }).click()
-    const confirm = page.locator('.el-message-box').filter({ hasText: '确定删除选中的 1 本书吗？' })
+    const confirm = page.locator('.el-message-box').filter({ hasText: '确认要删除所选择的书籍吗?' })
     await confirm.waitFor({ state: 'visible', timeout: 10_000 })
     await confirm.getByRole('button', { name: '确定', exact: true }).click()
     await batchRow.waitFor({ state: 'hidden', timeout: 10_000 })
+    await page.getByText('删除书籍成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
     assert(await manager.isVisible(), `${viewport.width}: batch deletion should leave BookManage usable`)
     assert(!(await freshBook(root, seeded.token, seeded.batchTarget.id)), `${viewport.width}: deleted shelf record remained in a fresh real API response`)
 

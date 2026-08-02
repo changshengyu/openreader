@@ -27,13 +27,11 @@ test('shared cover owns observable image failure fallback', () => {
   assert.match(component, /暂无封面/)
 })
 
-test('shelf and mobile management reuse BookCover instead of remote CSS backgrounds', () => {
+test('shelf reuses BookCover while upstream table-only BookManage adds no CSS cover surface', () => {
   const home = fs.readFileSync(new URL('../src/views/Home.vue', import.meta.url), 'utf8')
-  const mobile = fs.readFileSync(new URL('../src/components/overlays/BookManagementMobileList.vue', import.meta.url), 'utf8')
+  const managerTable = fs.readFileSync(new URL('../src/components/overlays/BookManagementTable.vue', import.meta.url), 'utf8')
   assert.match(home, /<BookCover/)
   assert.match(home, /import BookCover from/)
   assert.doesNotMatch(home, /function coverStyle\(/)
-  assert.match(mobile, /<BookCover/)
-  assert.match(mobile, /import BookCover from/)
-  assert.doesNotMatch(mobile, /function coverStyle\(/)
+  assert.doesNotMatch(managerTable, /BookCover|backgroundImage|function coverStyle\(/)
 })

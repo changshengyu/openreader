@@ -1,29 +1,18 @@
 <template>
-  <el-button
-    :size="buttonSize"
-    text
-    :class="{ 'text-button': !compact }"
-    @click="emit('edit')"
-  >
+  <el-button text class="text-button" @click="emit('edit')">
     编辑
   </el-button>
-  <el-button
-    :size="buttonSize"
-    text
-    :class="{ 'text-button': !compact }"
-    @click="emit('group')"
-  >
+  <el-button text class="text-button" @click="emit('group')">
     分组
   </el-button>
   <el-dropdown trigger="click" @command="command => emit('cache', command)">
-    <el-button
-      :size="buttonSize"
-      text
-      :class="{ 'text-button': !compact, 'cache-stop-button': caching }"
-      @click="handleCacheButtonClick"
-    >
-      <template v-if="caching">停止{{ cacheProgress ? ` ${cacheProgress}` : '' }}</template>
-      <template v-else>缓存<el-icon class="el-icon--right"><ArrowDown /></el-icon></template>
+    <el-button text class="text-button">
+      <span v-if="caching">
+        <el-icon class="is-loading"><Loading /></el-icon> 缓存中
+      </span>
+      <span v-else>
+        缓存<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+      </span>
     </el-button>
     <template #dropdown>
       <el-dropdown-menu>
@@ -43,17 +32,13 @@
     </template>
   </el-dropdown>
   <el-dropdown trigger="click" @command="command => emit('export', command)">
-    <el-button
-      :size="buttonSize"
-      text
-      :class="{ 'text-button': !compact }"
-    >
+    <el-button text class="text-button">
       导出<el-icon class="el-icon--right"><ArrowDown /></el-icon>
     </el-button>
     <template #dropdown>
       <el-dropdown-menu>
-        <el-dropdown-item command="txt">导出为 TXT</el-dropdown-item>
-        <el-dropdown-item command="epub">导出为 Epub</el-dropdown-item>
+        <el-dropdown-item command="txt">导出为TXT</el-dropdown-item>
+        <el-dropdown-item command="epub">导出为Epub</el-dropdown-item>
       </el-dropdown-menu>
     </template>
   </el-dropdown>
@@ -61,7 +46,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, Loading } from '@element-plus/icons-vue'
 
 const props = defineProps({
   book: {
@@ -72,30 +57,15 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  cacheProgress: {
-    type: String,
-    default: '',
-  },
-  compact: {
-    type: Boolean,
-    default: false,
-  },
 })
 
-const emit = defineEmits(['edit', 'group', 'cache', 'cancel-cache', 'export'])
+const emit = defineEmits(['edit', 'group', 'cache', 'export'])
 const isLocalBook = computed(() => Number(props.book.sourceId || 0) === 0)
-const buttonSize = computed(() => props.compact ? 'small' : undefined)
-
-function handleCacheButtonClick(event) {
-  if (!props.caching) return
-  event.preventDefault()
-  event.stopPropagation()
-  emit('cancel-cache')
-}
 </script>
 
 <style scoped>
 .text-button {
-  padding: 0;
+  padding: 3px 5px;
+  margin-left: 0;
 }
 </style>

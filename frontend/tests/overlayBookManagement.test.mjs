@@ -64,29 +64,27 @@ function createController(overrides = {}) {
     refreshManagedBrowserCacheCounts: async () => {
       calls.push(['refresh-managed-cache'])
     },
+    reloadManagedBooks: async () => {
+      calls.push(['reload-managed-books'])
+    },
     saveBlob: (blob, filename) => calls.push(['save-blob', blob, filename]),
     confirm: async (...args) => calls.push(['confirm', ...args]),
     now: () => 123,
     onSuccess: message => calls.push(['success', message]),
     onInfo: message => calls.push(['info', message]),
+    onValidationError: message => calls.push(['validation-error', message]),
     onError: (...args) => calls.push(['error', ...args]),
     ...overrides,
   })
   return { books, calls, controller, bookshelf }
 }
 
-test('owns desktop and mobile book selection state', () => {
+test('owns the single upstream table selection state', () => {
   const fixture = createController()
   fixture.controller.onManageSelectionChange([
     { id: 1 },
     { id: 2 },
   ])
-  fixture.controller.toggleManagedBook(3, true)
-  fixture.controller.toggleManagedBook(2, false)
-  assert.deepEqual(fixture.controller.selectedBookIds.value, [1, 3])
-
-  fixture.controller.selectAllManagedBooks()
-  assert.deepEqual(fixture.controller.selectedBookIds.value, [1, 2])
   fixture.controller.clearManagedSelection()
   assert.deepEqual(fixture.controller.selectedBookIds.value, [])
 })
@@ -101,37 +99,49 @@ test('prunes remotely deleted rows from the active manager selection', () => {
   assert.deepEqual(fixture.controller.selectedBookIds.value, [1, 3])
 })
 
-test('adds and removes categories only for matching selected books', async () => {
+test('confirms upstream batch category actions and sends the complete selected set', async () => {
   const fixture = createController()
   fixture.controller.selectedBookIds.value = [1, 2]
   await fixture.controller.batchAddCategory({ id: 7, name: '收藏' })
   await fixture.controller.batchRemoveCategory({ id: 2, name: '本地组' })
 
   assert.deepEqual(fixture.calls, [
+    ['confirm', '确认要将所选择的书籍添加到收藏分组吗?', '提示', { type: 'warning' }],
     ['set-category', [1, 2], 7, { action: 'category-add' }],
-    ['success', '已添加到“收藏”分组'],
-    ['set-category', [1], 2, { action: 'category-remove' }],
-    ['success', '已从“本地组”分组移除'],
+    ['success', '操作成功'],
+    ['reload-managed-books'],
+    ['confirm', '确认要将所选择的书籍从本地组分组中移除吗?', '提示', { type: 'warning' }],
+    ['set-category', [1, 2], 2, { action: 'category-remove' }],
+    ['success', '操作成功'],
+    ['reload-managed-books'],
   ])
   assert.equal(fixture.controller.batchBusy.value, false)
+  assert.deepEqual(fixture.controller.selectedBookIds.value, [1, 2])
+})
 
-  fixture.calls.length = 0
-  fixture.controller.selectedBookIds.value = [2]
+test('reports exact upstream empty-selection errors for every batch action', async () => {
+  const fixture = createController()
+  await fixture.controller.batchDeleteBooks()
+  await fixture.controller.batchAddCategory({ id: 7, name: '收藏' })
   await fixture.controller.batchRemoveCategory({ id: 2, name: '本地组' })
+
   assert.deepEqual(fixture.calls, [
-    ['info', '选中书籍不在该分组中'],
+    ['validation-error', '请选择需要删除的书籍'],
+    ['validation-error', '请选择需要添加分组的书籍'],
+    ['validation-error', '请选择需要移除分组的书籍'],
   ])
 })
 
-test('confirms batch deletion for the current selection', async () => {
+test('confirms batch deletion with exact upstream copy and clears selection only after success', async () => {
   const fixture = createController()
   fixture.controller.selectedBookIds.value = [1, 3]
   await fixture.controller.batchDeleteBooks()
 
   assert.deepEqual(fixture.calls, [
-    ['confirm', '确定删除选中的 2 本书吗？', '批量删除', { type: 'warning' }],
+    ['confirm', '确认要删除所选择的书籍吗?', '提示', { type: 'warning' }],
     ['batch-delete', [1, 3]],
-    ['success', '已批量删除'],
+    ['success', '删除书籍成功'],
+    ['reload-managed-books'],
   ])
   assert.deepEqual(fixture.controller.selectedBookIds.value, [])
 })
@@ -148,7 +158,7 @@ test('routes BookManage server and browser caching across the whole catalogue', 
   assert.deepEqual(fixture.calls, [
     ['cache-server', 2, { all: true, chapterIndex: 0, refresh: false }],
     ['upsert', { id: 2, cachedChapterCount: 2 }],
-    ['success', '已缓存 2/3 章'],
+    ['success', '远程书缓存到服务器完成'],
   ])
   assert.equal(fixture.controller.cachingBookId.value, null)
 
@@ -164,12 +174,12 @@ test('routes BookManage server and browser caching across the whole catalogue', 
   assert.equal(typeof fixture.calls[1][4].cancelled, 'function')
   assert.equal(typeof fixture.calls[1][4].onProgress, 'function')
   assert.deepEqual(fixture.calls.slice(2), [
-    ['success', '已缓存到浏览器 2/2 章'],
+    ['success', '缓存到浏览器完成'],
     ['refresh-managed-cache'],
   ])
 })
 
-test('streams per-book server-cache progress and cancels it from the active control', async () => {
+test('streams per-book server-cache progress and cancels through the upstream cache command', async () => {
   let aborted = false
   const fixture = createController({
     cacheBookContentStream: (id, payload, { signal, onEvent }) => {
@@ -193,7 +203,7 @@ test('streams per-book server-cache progress and cancels it from the active cont
 
   assert.equal(fixture.controller.isCachingBook(book), true)
   assert.equal(fixture.controller.cacheProgressLabel(book), '1/3')
-  assert.equal(fixture.controller.cancelBookCache(book), true)
+  await fixture.controller.cacheBook(book, 'cacheBook')
   await pending
 
   assert.equal(aborted, true)
@@ -201,8 +211,7 @@ test('streams per-book server-cache progress and cancels it from the active cont
   assert.equal(fixture.controller.cacheProgressLabel(book), '')
   assert.deepEqual(fixture.calls, [
     ['cache-stream', 2, { all: true, chapterIndex: 0, refresh: false }],
-    ['info', '正在停止服务器缓存'],
-    ['info', '已取消服务器缓存'],
+    ['info', '已取消缓存'],
   ])
 })
 
@@ -224,7 +233,7 @@ test('allows independent server cache jobs and cancels only the selected book', 
   const second = fixture.controller.cacheBook(fixture.books[2], 'cacheBook')
   assert.equal(fixture.controller.isCachingBook(fixture.books[1]), true)
   assert.equal(fixture.controller.isCachingBook(fixture.books[2]), true)
-  assert.equal(fixture.controller.cancelBookCache(fixture.books[1]), true)
+  await fixture.controller.cacheBook(fixture.books[1], 'cacheBook')
   await first
   assert.equal(pendingByBook.get(2).signal.aborted, true)
   assert.equal(fixture.controller.isCachingBook(fixture.books[1]), false)
@@ -251,7 +260,7 @@ test('cancels a browser cache queue without cancelling another book job', async 
   const pending = fixture.controller.cacheBook(fixture.books[0], 'cacheBookLocal')
   await Promise.resolve()
   assert.equal(fixture.controller.isCachingBook(fixture.books[0]), true)
-  assert.equal(fixture.controller.cancelBookCache(fixture.books[0]), true)
+  await fixture.controller.cacheBook(fixture.books[0], 'cacheBookLocal')
   finishFirstBrowser()
   await pending
   assert.equal(fixture.controller.isCachingBook(fixture.books[0]), false)
@@ -268,15 +277,14 @@ test('finishes browser cancellation while its catalogue is still loading', async
   const book = fixture.books[0]
   const pending = fixture.controller.cacheBook(book, 'cacheBookLocal')
   assert.equal(fixture.controller.isCachingBook(book), true)
-  assert.equal(fixture.controller.cancelBookCache(book), true)
+  await fixture.controller.cacheBook(book, 'cacheBookLocal')
   finishCatalogue({ data: [{ id: 10 }] })
   await pending
 
   assert.equal(fixture.controller.isCachingBook(book), false)
   assert.deepEqual(fixture.calls, [
     ['chapters', 1],
-    ['info', '正在停止浏览器缓存'],
-    ['info', '已取消浏览器缓存'],
+    ['info', '已取消缓存'],
   ])
 })
 
@@ -308,24 +316,24 @@ test('clears both cache layers and sanitizes single-book export names', async ()
   await fixture.controller.exportBook(fixture.books[0], 'epub')
 
   assert.deepEqual(fixture.calls, [
-    ['confirm', '确认要删除服务器上《远程书》的缓存章节吗？', '提示', { type: 'warning' }],
+    ['confirm', '确认要删除服务器上《远程书》的缓存章节吗?', '提示', { type: 'warning' }],
     ['batch-clear', [2]],
     ['server-count', 2, 0],
-    ['success', '已清理 2 个章节缓存'],
-    ['confirm', '确认要删除浏览器中《本地/书》的缓存章节吗？', '提示', { type: 'warning' }],
+    ['success', '删除服务器缓存成功'],
+    ['reload-managed-books'],
+    ['confirm', '确认要删除浏览器中《本地/书》的缓存章节吗?', '提示', { type: 'warning' }],
     ['clear-browser', 1, 1],
     ['refresh-managed-cache'],
-    ['success', '已清理浏览器缓存 5 章'],
+    ['success', '删除浏览器缓存成功'],
     ['export', [1], 'epub'],
     ['save-blob', { ids: [1], format: 'epub' }, '本地-书.epub'],
-    ['success', '已导出《本地/书》'],
   ])
   assert.equal(fixture.controller.exportBookFilename({ id: 9 }, 'weird'), 'book-9.txt')
   assert.equal(fixture.controller.batchBusy.value, false)
   assert.equal(fixture.controller.isCachingBook(fixture.books[0]), false)
 })
 
-test('shares busy state and normalizes unsupported single-book exports to txt', async () => {
+test('does not expose single-book export as batch busy and normalizes unsupported formats', async () => {
   const fixture = createController()
   let finishExport
   fixture.bookshelf.exportSelectedBooks = async () => new Promise((resolve) => {
@@ -333,13 +341,12 @@ test('shares busy state and normalizes unsupported single-book exports to txt', 
   })
 
   const pending = fixture.controller.exportBook(fixture.books[1], 'json')
-  assert.equal(fixture.controller.batchBusy.value, true)
+  assert.equal(fixture.controller.batchBusy.value, false)
 
   finishExport({ format: 'json' })
   await pending
   assert.equal(fixture.controller.batchBusy.value, false)
   assert.deepEqual(fixture.calls, [
     ['save-blob', { format: 'json' }, '远程书.txt'],
-    ['success', '已导出《远程书》'],
   ])
 })

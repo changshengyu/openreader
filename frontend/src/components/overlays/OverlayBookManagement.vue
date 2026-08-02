@@ -1,10 +1,11 @@
 <template>
   <el-dialog
+    v-if="isNormalPage"
     v-model="overlay.bookManageVisible"
     title="书架管理"
-    width="min(1180px, calc(100vw - 48px))"
+    width="min(1000px, max(750px, 70vw))"
+    top="max(15dvh, calc((100dvh - 584px) / 2))"
     :fullscreen="isMobile"
-    destroy-on-close
     class="global-book-manage-dialog"
   >
     <template #header>
@@ -13,19 +14,15 @@
         <span class="book-manage-cache-tip">❗️只能缓存文本内容</span>
       </span>
     </template>
-    <section class="book-manage-dialog-body">
-      <BookManagementToolbar
-        v-model="manageKeyword"
-        @select-all="selectAllManagedBooks"
-        @clear-selection="clearManagedSelection"
-      />
 
-      <BookManagementDesktopTable
+    <section class="book-manage-dialog-body">
+      <BookManagementToolbar v-model="manageKeyword" />
+      <BookManagementTable
+        ref="bookTableRef"
         :books="filteredManagedBooks"
+        :is-mobile="isMobile"
         :is-caching-book="isCachingBook"
-        :cache-progress-label="cacheProgressLabel"
         :category-name="categoryName"
-        :progress-label="progressLabel"
         :server-cache-count="serverCacheCount"
         :local-cache-count="localCacheCount"
         @selection-change="onManageSelectionChange"
@@ -33,28 +30,11 @@
         @open-edit="overlay.openBookEdit"
         @set-group="setBookGroup"
         @cache="cacheBook"
-        @cancel-cache="cancelBookCache"
         @export="exportBook"
       />
+    </section>
 
-      <BookManagementMobileList
-        :books="filteredManagedBooks"
-        :selected-book-ids="selectedBookIds"
-        :is-caching-book="isCachingBook"
-        :cache-progress-label="cacheProgressLabel"
-        :category-name="categoryName"
-        :progress-label="progressLabel"
-        :server-cache-count="serverCacheCount"
-        :local-cache-count="localCacheCount"
-        @toggle-selection="toggleManagedBook"
-        @open-info="overlay.openBookInfo"
-        @open-edit="overlay.openBookEdit"
-        @set-group="setBookGroup"
-        @cache="cacheBook"
-        @cancel-cache="cancelBookCache"
-        @export="exportBook"
-      />
-
+    <template #footer>
       <BookManagementBatchFooter
         :categories="bookshelf.categories"
         :selected-count="selectedBookIds.length"
@@ -64,12 +44,12 @@
         @remove-category="batchRemoveCategory"
         @close="overlay.bookManageVisible = false"
       />
-    </section>
+    </template>
   </el-dialog>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cacheBookContent, cacheBookContentStream, listChapters } from '../../api/books'
 import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
@@ -83,12 +63,9 @@ import {
   clearBookBrowserChapterCache,
   countBooksBrowserCachedChapters,
 } from '../../utils/bookChapterCache'
-import { createBookCategoryNameResolver } from '../../utils/bookCategory'
-import { localBookSearchText, normalizeLocalBookSearch } from '../../utils/localBook'
-import { newestBookProgress, sortByShelfOrder } from '../../utils/bookOrder'
+import { bookCategoryIds } from '../../utils/bookCategory'
 import BookManagementBatchFooter from './BookManagementBatchFooter.vue'
-import BookManagementDesktopTable from './BookManagementDesktopTable.vue'
-import BookManagementMobileList from './BookManagementMobileList.vue'
+import BookManagementTable from './BookManagementTable.vue'
 import BookManagementToolbar from './BookManagementToolbar.vue'
 
 defineProps({
@@ -102,15 +79,17 @@ const bookshelf = useBookshelfStore()
 const overlay = useOverlayStore()
 const reader = useReaderStore()
 const operations = useAuthenticatedOperationGuard()
-const categoryName = createBookCategoryNameResolver(() => bookshelf.categories)
 const manageKeyword = ref('')
-const managedBooks = computed(() => (
-  sortByShelfOrder(bookshelf.books, reader.progressByBook)
-))
+const bookTableRef = ref(null)
+const managedBooks = computed(() => bookshelf.books)
+const isNormalPage = computed(() => reader.pageType === 'normal')
 const filteredManagedBooks = computed(() => {
-  const value = normalizeLocalBookSearch(manageKeyword.value)
-  if (!value) return managedBooks.value
-  return managedBooks.value.filter(book => manageBookSearchText(book).includes(value))
+  const q = manageKeyword.value.trim().toLowerCase()
+  if (!q) return managedBooks.value
+  return managedBooks.value.filter(book => (
+    String(book.title || '').toLowerCase().includes(q) ||
+    String(book.author || '').toLowerCase().includes(q)
+  ))
 })
 
 const {
@@ -129,25 +108,19 @@ const {
 const {
   selectedBookIds,
   batchBusy,
-  cacheProgressLabel,
   isCachingBook,
   onManageSelectionChange,
-  toggleManagedBook,
-  selectAllManagedBooks,
   clearManagedSelection,
   pruneManagedSelection,
   batchAddCategory,
   batchRemoveCategory,
   batchDeleteBooks,
   cacheBook,
-  cancelBookCache,
   exportBook,
 } = useOverlayBookManagement({
   operationGuard: operations,
   bookshelf,
   getManagedBooks: () => managedBooks.value,
-  getFilteredManagedBooks: () => filteredManagedBooks.value,
-  getBookProgress: bookProgress,
   cacheBookContent,
   cacheBookContentStream,
   listChapters,
@@ -155,11 +128,13 @@ const {
   clearBrowserChapterCache: clearBookBrowserChapterCache,
   updateServerCacheCount,
   refreshManagedBrowserCacheCounts,
+  reloadManagedBooks: () => reloadManagedBooks(),
   saveBlob: downloadBlob,
   confirm: (...args) => ElMessageBox.confirm(...args),
   now: () => Date.now(),
   onSuccess: message => ElMessage.success(message),
   onInfo: message => ElMessage.info(message),
+  onValidationError: message => ElMessage.error(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 
@@ -167,28 +142,19 @@ watch(
   () => overlay.bookManageVisible,
   async (visible) => {
     if (!visible) {
-      manageKeyword.value = ''
       clearManagedSelection()
+      await nextTick()
+      bookTableRef.value?.clearSelection()
       return
     }
-    const operation = operations.begin('open-book-manager')
-    const [categoryResult, booksResult] = await Promise.allSettled([
-      bookshelf.ensureCategoriesLoaded(),
-      bookshelf.ensureBooksLoaded({ all: true }),
-    ])
-    if (!operations.canCommit(operation)) return
-    if (booksResult.status === 'rejected') {
-      ElMessage.error(readError(booksResult.reason, '加载书架数据失败'))
-      return
-    }
-    if (categoryResult.status === 'rejected') {
-      ElMessage.warning(
-        readError(categoryResult.reason, '分组加载失败，书架管理仍可使用'),
-      )
-    }
-    await refreshManagedBrowserCacheCounts()
+    await reloadManagedBooks({ categories: true })
   },
 )
+
+watch(isNormalPage, (normal) => {
+  if (normal || !overlay.bookManageVisible) return
+  overlay.bookManageVisible = false
+})
 
 watch(
   () => managedBooks.value.map(book => Number(book.id)),
@@ -196,26 +162,35 @@ watch(
   { flush: 'sync' },
 )
 
-function manageBookSearchText(book) {
-  return localBookSearchText(book, [
-    progressLabel(book),
-    categoryName(book),
+async function reloadManagedBooks({ categories = false } = {}) {
+  const operation = operations.begin('load-book-manager')
+  const [categoryResult, booksResult] = await Promise.allSettled([
+    categories ? bookshelf.ensureCategoriesLoaded() : Promise.resolve(),
+    bookshelf.loadBooks({ force: true, all: true }),
   ])
+  if (!operations.canCommit(operation)) return false
+  if (booksResult.status === 'rejected') {
+    ElMessage.error(readError(booksResult.reason, '获取书架信息失败'))
+    return false
+  }
+  if (categoryResult.status === 'rejected') {
+    ElMessage.warning(
+      readError(categoryResult.reason, '分组加载失败，书架管理仍可使用'),
+    )
+  }
+  await refreshManagedBrowserCacheCounts()
+  return operations.canCommit(operation)
 }
 
-function progressLabel(book) {
-  return `${Math.round((bookProgress(book)?.percent || 0) * 100)}%`
+function categoryName(book) {
+  const names = bookCategoryIds(book)
+    .map(id => bookshelf.categories.find(category => Number(category.id) === id)?.name)
+    .filter(Boolean)
+  return names.join(' ')
 }
 
 function setBookGroup(book) {
-  overlay.openBookGroup('set', book, {
-    categoryName: categoryName(book),
-    progress: bookProgress(book)?.percent || 0,
-  })
-}
-
-function bookProgress(book) {
-  return newestBookProgress(book, reader.progressByBook)
+  overlay.openBookGroup('set', book)
 }
 
 function downloadBlob(blob, filename) {
@@ -238,30 +213,22 @@ function readError(error, fallback) {
 
 <style scoped>
 .book-manage-dialog-body {
-  display: grid;
   min-width: 0;
-  gap: 12px;
 }
 
 .book-manage-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   gap: 16px;
   padding-right: 32px;
 }
 
 .book-manage-cache-tip {
+  margin-right: 10px;
   color: var(--app-text-muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
-}
-
-@media (max-width: 750px) {
-  .book-manage-title {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
-  }
 }
 </style>

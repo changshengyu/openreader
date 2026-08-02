@@ -1,13 +1,8 @@
 import { ref } from 'vue'
-import { bookCategoryIds } from '../utils/bookCategory.js'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 function isCancelled(error) {
   return error === 'cancel' || error === 'close'
-}
-
-function bookHasCategory(book, categoryId) {
-  return bookCategoryIds(book).some(id => String(id) === String(categoryId))
 }
 
 export function useOverlayBookBatchActions(options) {
@@ -19,20 +14,6 @@ export function useOverlayBookBatchActions(options) {
 
   function onManageSelectionChange(rows) {
     selectedBookIds.value = rows.map(row => row.id)
-  }
-
-  function toggleManagedBook(bookId, checked) {
-    if (checked) {
-      if (!selectedBookIds.value.includes(bookId)) {
-        selectedBookIds.value.push(bookId)
-      }
-      return
-    }
-    selectedBookIds.value = selectedBookIds.value.filter(id => id !== bookId)
-  }
-
-  function selectAllManagedBooks() {
-    selectedBookIds.value = options.getFilteredManagedBooks().map(book => book.id)
   }
 
   function clearManagedSelection() {
@@ -49,51 +30,43 @@ export function useOverlayBookBatchActions(options) {
   }
 
   async function batchAddCategory(category) {
-    if (!selectedBookIds.value.length) return
-    const operation = operations.begin('batch-add-category')
-    batchBusy.value = true
-    try {
-      await options.bookshelf.batchSetCategory(
-        [...selectedBookIds.value],
-        category.id,
-        { action: 'category-add' },
-      )
-      if (!operations.canCommit(operation)) return
-      options.onSuccess(`已添加到“${category.name}”分组`)
-    } catch (error) {
-      if (operations.canCommit(operation)) {
-        options.onError(error, '批量添加分组失败')
-      }
-    } finally {
-      if (operations.canCommit(operation)) batchBusy.value = false
-    }
+    return operateBookCategory(category, true)
   }
 
   async function batchRemoveCategory(category) {
-    if (!selectedBookIds.value.length) return
-    const targetIds = options.getManagedBooks()
-      .filter(book => (
-        selectedBookIds.value.includes(book.id) &&
-        bookHasCategory(book, category.id)
-      ))
-      .map(book => book.id)
-    if (!targetIds.length) {
-      options.onInfo('选中书籍不在该分组中')
+    return operateBookCategory(category, false)
+  }
+
+  async function operateBookCategory(category, isAdd) {
+    const operationName = isAdd ? '添加' : '移除'
+    if (!selectedBookIds.value.length) {
+      options.onValidationError(`请选择需要${operationName}分组的书籍`)
       return
     }
-    const operation = operations.begin('batch-remove-category')
-    batchBusy.value = true
+
+    const operation = operations.begin(isAdd ? 'batch-add-category' : 'batch-remove-category')
     try {
-      await options.bookshelf.batchSetCategory(
-        targetIds,
-        category.id,
-        { action: 'category-remove' },
+      await options.confirm(
+        isAdd
+          ? `确认要将所选择的书籍添加到${category.name}分组吗?`
+          : `确认要将所选择的书籍从${category.name}分组中移除吗?`,
+        '提示',
+        { type: 'warning' },
       )
       if (!operations.canCommit(operation)) return
-      options.onSuccess(`已从“${category.name}”分组移除`)
+      batchBusy.value = true
+      await options.bookshelf.batchSetCategory(
+        [...selectedBookIds.value],
+        category.id,
+        { action: isAdd ? 'category-add' : 'category-remove' },
+      )
+      if (!operations.canCommit(operation)) return
+      options.onSuccess('操作成功')
+      await reloadManagedBooks(operation)
     } catch (error) {
+      if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
-        options.onError(error, '批量移除分组失败')
+        options.onError(error, '操作失败')
       }
     } finally {
       if (operations.canCommit(operation)) batchBusy.value = false
@@ -101,13 +74,16 @@ export function useOverlayBookBatchActions(options) {
   }
 
   async function batchDeleteBooks() {
-    if (!selectedBookIds.value.length) return
+    if (!selectedBookIds.value.length) {
+      options.onValidationError('请选择需要删除的书籍')
+      return
+    }
     const operation = operations.begin('batch-delete-books')
     const ids = [...selectedBookIds.value]
     try {
       await options.confirm(
-        `确定删除选中的 ${ids.length} 本书吗？`,
-        '批量删除',
+        '确认要删除所选择的书籍吗?',
+        '提示',
         { type: 'warning' },
       )
       if (!operations.canCommit(operation)) return
@@ -115,14 +91,25 @@ export function useOverlayBookBatchActions(options) {
       await options.bookshelf.batchDeleteBooks(ids)
       if (!operations.canCommit(operation)) return
       selectedBookIds.value = []
-      options.onSuccess('已批量删除')
+      options.onSuccess('删除书籍成功')
+      await reloadManagedBooks(operation)
     } catch (error) {
       if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
-        options.onError(error, '批量删除失败')
+        options.onError(error, '删除书籍失败')
       }
     } finally {
       if (operations.canCommit(operation)) batchBusy.value = false
+    }
+  }
+
+  async function reloadManagedBooks(operation) {
+    try {
+      await options.reloadManagedBooks?.()
+    } catch (error) {
+      if (operations.canCommit(operation)) {
+        options.onError(error, '获取书架信息失败')
+      }
     }
   }
 
@@ -130,8 +117,6 @@ export function useOverlayBookBatchActions(options) {
     selectedBookIds,
     batchBusy,
     onManageSelectionChange,
-    toggleManagedBook,
-    selectAllManagedBooks,
     clearManagedSelection,
     pruneManagedSelection,
     batchAddCategory,

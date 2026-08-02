@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive } from 'vue'
 import { currentUserScope } from '../utils/authScope.js'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
@@ -9,7 +9,7 @@ const serverControllers = new Map()
 
 export function cancelAllBookManagementCacheJobs() {
   for (const token of cacheJobs.values()) {
-    if (token.kind === 'browser') token.cancelled = true
+    token.cancelled = true
   }
   for (const controller of serverControllers.values()) controller.abort()
   cacheJobs.clear()
@@ -28,11 +28,10 @@ function isCacheAbort(error) {
   return error?.name === 'AbortError' || error?.code === 'ERR_CANCELED'
 }
 
-export function useOverlayBookItemActions(options, sharedState = {}) {
+export function useOverlayBookItemActions(options) {
   const operations = options.operationGuard || createAuthenticatedOperationGuard({
     getIdentity: options.getAuthenticatedIdentity,
   })
-  const batchBusy = sharedState.batchBusy || ref(false)
   const cachingBookId = computed(() => {
     const scopePrefix = `${currentUserScope()}:`
     const key = [...cacheJobs.keys()].find(value => value.startsWith(scopePrefix))
@@ -80,7 +79,7 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
       return
     }
     if (currentJob(book)) {
-      cancelBookCache(book)
+      if (cancelBookCache(book)) options.onInfo('已取消缓存')
       return
     }
     if (command === 'cacheBookLocal') {
@@ -96,7 +95,7 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
     const controller = typeof options.cacheBookContentStream === 'function' && typeof AbortController !== 'undefined'
       ? new AbortController()
       : null
-    const token = reactive({ kind: 'server', progress: { processed: 0, total: 0 } })
+    const token = reactive({ kind: 'server', cancelled: false, progress: { processed: 0, total: 0 } })
     cacheJobs.set(key, token)
     if (controller) serverControllers.set(key, controller)
     try {
@@ -111,14 +110,10 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
         : (await options.cacheBookContent(book.id, payload)).data
       if (!operations.canCommit(operation)) return
       if (data?.book) options.bookshelf.upsertBook(data.book)
-      const cached = Number(data?.cachedCount ?? data?.cached ?? 0)
-      const total = Number(data?.total ?? data?.requested ?? 0)
-      const failed = Number(data?.failedCount ?? data?.failed ?? 0)
-      options.onSuccess(`已缓存 ${cached}/${total} 章${failed ? `，失败 ${failed} 章` : ''}`)
+      options.onSuccess(`${book.title}缓存到服务器完成`)
     } catch (error) {
       if (!operations.canCommit(operation)) return
-      if (isCacheAbort(error)) options.onInfo('已取消服务器缓存')
-      else options.onError(error, '缓存失败')
+      if (!isCacheAbort(error)) options.onError(error, '缓存失败')
     } finally {
       if (cacheJobs.get(key) === token) cacheJobs.delete(key)
       if (serverControllers.get(key) === controller) serverControllers.delete(key)
@@ -134,7 +129,6 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
       const { data } = await options.listChapters(book.id)
       if (!operations.canCommit(operation)) return
       if (token.cancelled) {
-        options.onInfo('已取消浏览器缓存')
         return
       }
       const result = await options.cacheBrowserChapters(
@@ -153,14 +147,10 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
         },
       )
       if (!operations.canCommit(operation)) return
-      if (result.cancelled || token.cancelled) {
-        options.onInfo('已取消浏览器缓存')
-      } else {
-        options.onSuccess(`已缓存到浏览器 ${result.cached}/${result.requested} 章`)
-      }
+      if (!result.cancelled && !token.cancelled) options.onSuccess('缓存到浏览器完成')
       await refreshBrowserCacheCounts()
     } catch (error) {
-      if (operations.canCommit(operation)) {
+      if (operations.canCommit(operation) && !token.cancelled) {
         options.onError(error, '缓存到浏览器失败')
       }
     } finally {
@@ -172,15 +162,13 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
     const key = jobKey(book?.id)
     const token = cacheJobs.get(key)
     if (!token) return false
+    token.cancelled = true
     if (token.kind === 'server') {
       const controller = serverControllers.get(key)
       if (!controller) return false
       controller.abort()
-      options.onInfo('正在停止服务器缓存')
       return true
     }
-    token.cancelled = true
-    options.onInfo('正在停止浏览器缓存')
     return true
   }
 
@@ -193,15 +181,16 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
     const operation = operations.begin(`clear-server-cache:${book.id}`)
     try {
       await options.confirm(
-        `确认要删除服务器上《${book.title}》的缓存章节吗？`,
+        `确认要删除服务器上《${book.title}》的缓存章节吗?`,
         '提示',
         { type: 'warning' },
       )
       if (!operations.canCommit(operation)) return
-      const data = await options.bookshelf.batchClearCache([book.id])
+      await options.bookshelf.batchClearCache([book.id])
       if (!operations.canCommit(operation)) return
       options.updateServerCacheCount(book, 0)
-      options.onSuccess(`已清理 ${data.cleared || 0} 个章节缓存`)
+      options.onSuccess('删除服务器缓存成功')
+      await options.reloadManagedBooks?.()
     } catch (error) {
       if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
@@ -214,16 +203,16 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
     const operation = operations.begin(`clear-browser-cache:${book.id}`)
     try {
       await options.confirm(
-        `确认要删除浏览器中《${book.title}》的缓存章节吗？`,
+        `确认要删除浏览器中《${book.title}》的缓存章节吗?`,
         '提示',
         { type: 'warning' },
       )
       if (!operations.canCommit(operation)) return
-      const removed = await options.clearBrowserChapterCache(book, book.id)
+      await options.clearBrowserChapterCache(book, book.id)
       if (!operations.canCommit(operation)) return
       await refreshBrowserCacheCounts()
       if (!operations.canCommit(operation)) return
-      options.onSuccess(`已清理浏览器缓存 ${removed} 章`)
+      options.onSuccess('删除浏览器缓存成功')
     } catch (error) {
       if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
@@ -238,19 +227,15 @@ export function useOverlayBookItemActions(options, sharedState = {}) {
 
   async function exportBook(book, format = 'txt') {
     const operation = operations.begin(`export-book:${book.id}`)
-    batchBusy.value = true
     try {
       const normalizedFormat = format === 'epub' ? 'epub' : 'txt'
       const blob = await options.bookshelf.exportSelectedBooks([book.id], normalizedFormat)
       if (!operations.canCommit(operation)) return
       options.saveBlob(blob, exportBookFilename(book, normalizedFormat))
-      options.onSuccess(`已导出《${book.title}》`)
     } catch (error) {
       if (operations.canCommit(operation)) {
         options.onError(error, '导出失败')
       }
-    } finally {
-      if (operations.canCommit(operation)) batchBusy.value = false
     }
   }
 

@@ -3,9 +3,7 @@ import { useOverlayBookItemActions } from './useOverlayBookItemActions.js'
 
 export function useOverlayBookManagement(options) {
   const batchActions = useOverlayBookBatchActions(options)
-  const itemActions = useOverlayBookItemActions(options, {
-    batchBusy: batchActions.batchBusy,
-  })
+  const itemActions = useOverlayBookItemActions(options)
 
   return {
     ...batchActions,

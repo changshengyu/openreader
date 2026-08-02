@@ -1,17 +1,23 @@
 <template>
   <el-table
+    ref="tableRef"
     :data="books"
     row-key="id"
-    height="calc(100vh - 188px)"
-    class="manage-table desktop-manage-table"
+    :height="isMobile ? 'calc(100dvh - 226px)' : 'min(358px, calc(70dvh - 226px))'"
+    class="book-manage-table"
     @selection-change="rows => emit('selection-change', rows)"
   >
-    <el-table-column type="selection" width="42" />
+    <el-table-column
+      type="selection"
+      width="25"
+      :fixed="isMobile"
+      reserve-selection
+    />
     <el-table-column
       prop="title"
-      label="书名"
-      min-width="180"
-      show-overflow-tooltip
+      label="书名名"
+      min-width="100"
+      :fixed="isMobile"
     >
       <template #default="{ row }">
         <el-button
@@ -26,32 +32,28 @@
     <el-table-column
       prop="author"
       label="作者"
-      min-width="120"
-      show-overflow-tooltip
+      min-width="100"
     />
     <el-table-column label="分组" min-width="120">
       <template #default="{ row }">{{ categoryName(row) }}</template>
     </el-table-column>
-    <el-table-column label="章节" min-width="150">
+    <el-table-column label="章节" min-width="120">
       <template #default="{ row }">
         <span>共 {{ row.chapterCount || 0 }} 章</span><br>
-        <span>阅读进度：{{ progressLabel(row) }}</span>
         <template v-if="Number(row.sourceId || 0) > 0">
-          <br><span>服务器缓存：{{ serverCacheCount(row) }} 章</span>
+          <span>服务器缓存： {{ serverCacheCount(row) }} 章</span><br>
         </template>
-        <br><span>浏览器缓存：{{ localCacheCount(row) }} 章</span>
+        <span>浏览器缓存： {{ localCacheCount(row) }} 章</span>
       </template>
     </el-table-column>
-    <el-table-column label="操作" width="150" fixed="right">
+    <el-table-column label="操作" width="100px">
       <template #default="{ row }">
         <BookManagementActions
           :book="row"
           :caching="isCachingBook(row)"
-          :cache-progress="cacheProgressLabel(row)"
           @edit="emit('open-edit', row)"
           @group="emit('set-group', row)"
           @cache="command => emit('cache', row, command)"
-          @cancel-cache="emit('cancel-cache', row)"
           @export="format => emit('export', row, format)"
         />
       </template>
@@ -60,6 +62,7 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import BookManagementActions from './BookManagementActions.vue'
 
 defineProps({
@@ -67,15 +70,15 @@ defineProps({
     type: Array,
     default: () => [],
   },
+  isMobile: {
+    type: Boolean,
+    default: false,
+  },
   isCachingBook: {
     type: Function,
     required: true,
   },
   categoryName: {
-    type: Function,
-    required: true,
-  },
-  progressLabel: {
     type: Function,
     required: true,
   },
@@ -87,10 +90,6 @@ defineProps({
     type: Function,
     required: true,
   },
-  cacheProgressLabel: {
-    type: Function,
-    required: true,
-  },
 })
 
 const emit = defineEmits([
@@ -99,23 +98,19 @@ const emit = defineEmits([
   'open-edit',
   'set-group',
   'cache',
-  'cancel-cache',
   'export',
 ])
+const tableRef = ref(null)
+
+function clearSelection() {
+  tableRef.value?.clearSelection()
+}
+
+defineExpose({ clearSelection })
 </script>
 
 <style scoped>
-.manage-table {
-  margin-bottom: 12px;
-}
-
 .text-button {
-  padding: 0;
-}
-
-@media (max-width: 750px) {
-  .desktop-manage-table {
-    display: none;
-  }
+  padding: 3px 5px;
 }
 </style>
