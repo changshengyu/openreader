@@ -1,5 +1,17 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-02 P1 Index 设置与操作面第二轮固定基准复审
+
+固定上游的 Index 侧栏和书架标题操作已重新逐项提取。当前六个书源动作、本地缓存四分组、
+JWT 用户管理和 WebDAV 主入口可以保留，但发现五项结构/语义偏差：后端状态错误绑定书架刷新；
+“刷新缓存”被缩成“刷新书架”；书架设置重复加入“书架”；RSS/替换规则被重复放入“其它”；
+普通书架标题操作顺序与上游相反。
+
+原作者公众号二维码和 Telegram 频道确认只是宣传内容，OpenReader 不复制并将其记录为
+`intentional omission`；JWT 管理员替代 namespace 冒充切换是安全适配，完整可移植备份是已记录
+的数据兼容增强。本轮先完成合同，不在审查提交中修改应用代码。测试与实施门见
+[`index-settings-action-surface-second-audit-p1-contract.md`](index-settings-action-surface-second-audit-p1-contract.md)。
+
 ## 2026-08-02 P2 书内正文搜索第二轮固定基准重建
 
 旧 `1aeffb9` 只完成搜索引擎和根级所有权，没有逐项复核固定上游 Dialog 外壳和 raw query。
