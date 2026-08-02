@@ -4,7 +4,7 @@
 
 上游工作副本：`/private/tmp/reader-dev-bookmark-audit`。
 
-状态：**2026-08-02 第二轮实现与源码/真实浏览器门完成，Docker 发布待执行。**
+状态：**2026-08-02 第二轮实现、源码/真实浏览器门与 Docker 发布均完成；等待设备验收。**
 
 本合同重新检查此前已声称完成的 Bookmark 切片。既有
 [`reader-dev-openreader-gap-analysis.md`](reader-dev-openreader-gap-analysis.md) 的 P2
@@ -139,7 +139,7 @@ portable/逻辑备份格式。
   删除隔离，以及批量写失败零持久化/零广播、成功批量写删各一次事务后广播证据；未改
   schema、备份格式或现有用户数据。
 
-## 第二轮验证结果（Docker 前）
+## 第二轮验证与发布结果
 
 - frontend 聚焦 Bookmark：16/16；frontend 全量：654/654。
 - Go 全量 `go test ./...` 通过；Vite production build 通过。
@@ -149,5 +149,14 @@ portable/逻辑备份格式。
   空/无正文/混合导入、编辑、当前段落、批量删除和上下文跳转。
 - 真实 Go API EPUB 合同通过 1440×900、390×844、360×800；验证同一管理器/表单
   几何、书名作者、当前 iframe 段落保存以及保存后管理器继续显示。
-- 本地 Docker 与新卷/历史卷兼容门将在本提交完成并保持干净后执行，结果随发布记录
-  回填；在此之前不把本轮标记为 Docker-published。
+- 干净提交 `f2f0d6e0772a5a57726152f0fcdb6ac56e2465cb` 先完成本地候选构建；新卷
+  portable v1、portable v2 assets、跨用户与重启门，以及历史 TXT、EPUB、UMD、CBZ、
+  相对缓存与 owner-isolation 升级卷门全部通过。
+- 同一提交由本机完成 `linux/amd64` 与 `linux/arm64` 构建并发布为
+  `ghcr.io/changshengyu/openreader:f2f0d6e` 和 `latest`。两个远端标签共同指向 OCI index
+  `sha256:cfaba7d453bde2a4b44198aa57ef8ef5ecbaa3b4cce0ab77b4c816311455c736`；amd64
+  manifest 为 `sha256:11cc11aa6907e2e57275e545249a65ce80dd7c1f3cb6f823df0db6f4139c010f`，
+  arm64 manifest 为 `sha256:b96a88b536af4ae5ea31265df227c5880818b78b1fa0f781d4f0b1251e1989bf`。
+- 本轮状态现在为 `aligned / Docker-published / awaiting device verification`。镜像同时包含
+  先前 `6fde5ab` 的纯黑阅读内容面与纯白文字修复；部署实例仍需 pull 并强制重建容器，
+  `/api/health` 返回 `f2f0d6e` 后才是在验证本版。

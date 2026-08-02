@@ -1656,12 +1656,15 @@ Status: re-audited, implemented and validated on 2026-07-12 for the extracted P2
 > reopened as `must-fix`. The superseding implementation contract and tests are
 > [`bookmark-fixed-baseline-second-audit-p2-contract.md`](bookmark-fixed-baseline-second-audit-p2-contract.md).
 
-> 2026-08-02 implementation update: the reopened Bookmark visible shell is now rebuilt against the
+> 2026-08-02 implementation and release update: the reopened Bookmark visible shell is now rebuilt against the
 > fixed baseline. Dynamic 750–1000px manager/form geometry, desktop/mobile table height, mini fixed
 > columns, book-author identity, direct empty fields, upstream empty-selection/delete/import copy,
 > and pre-confirm legacy-row filtering are covered by unit/API contracts plus desktop, phone, iPad
-> and real-EPUB browser gates. Docker publication remains the only pending gate for this second
-> audit; details are recorded in the superseding contract above.
+> and real-EPUB browser gates. Commit `f2f0d6e` passed the new/historical mounted-volume gates and was
+> built locally for amd64/arm64, then published as `f2f0d6e` plus `latest` at OCI index
+> `sha256:cfaba7d453bde2a4b44198aa57ef8ef5ecbaa3b4cce0ab77b4c816311455c736`.
+> The second audit is now `aligned / Docker-published / awaiting device verification`; details are
+> recorded in the superseding contract above.
 
 | Concern | Upstream behavior | Current OpenReader evidence | Required result |
 |---|---|---|---|
