@@ -23,9 +23,13 @@ mini 100vw 非全高 chooser、多开 collapse、首次出现组序与关闭重�
 安全 Go exploreUrl 解析和本地搜索是明确允许适配。
 
 frontend `701/701`、Go 全量、production build、差异检查、Index 四视口、Remote Reader 三视口、
-两套 session isolation 和真实 CSS/JSONPath/XPath 书源工作流均通过。当前状态为
-**implementation-complete / validation-complete / Docker-pending**；下文较早 P1-B 记录仅保留为
-历史，涉及 `RemoteBookResultGroups.vue` 的“当前”描述已由本节取代。
+两套 session isolation 和真实 CSS/JSONPath/XPath 书源工作流均通过。实现提交 `c851c5f` 已由
+本机 OrbStack 构建并发布；新卷 portable v1/v2 assets、cross-user、restart 与历史
+TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 门全部通过。`c851c5f` 与 `latest` 共同指向
+amd64/arm64 OCI index
+`sha256:f964b155447fe3660d72de292b100d27788812cce42bafc55f3237190bdc97e0`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**；下文较早 P1-B 记录仅保留为历史，
+涉及 `RemoteBookResultGroups.vue` 的“当前”描述已由本节取代。
 
 ## 2026-08-02 P1 书架可见布局第二轮固定基准复审
 

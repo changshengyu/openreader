@@ -8,6 +8,14 @@
 
 ## 当前结论
 
+- 2026-08-02：按固定 `Index.vue`/`Explore.vue` 完成搜索与探索可见工作区第二轮重建并发布。
+  侧栏只呈现 single/multi 条件设置，结果改为保持服务端顺序的唯一扁平 380px shelf card，恢复
+  JSON editor/add 双动作；Explore 恢复 desktop 600px/top 0、mini 100vw 非全高、无 backdrop、
+  多开 collapse 和关闭重开现场保留。错误的 `RemoteBookResultGroups`、独立结果 header/empty/
+  loading、三模式和 520px/100vh modal 已删除。frontend 701/701、Go/build、Index 四视口、
+  Remote Reader 三视口、双 session isolation、真实 CSS/JSONPath/XPath 书源流及新旧卷/备份门
+  通过；本机发布 `c851c5f`/`latest`，OCI index 为
+  `sha256:f964b155447fe3660d72de292b100d27788812cce42bafc55f3237190bdc97e0`。
 - 2026-08-02：普通书架可见布局第二轮按固定 `Index.vue` 重建并发布。恢复固定 380px grid、
   当前分组/编辑搜索计数、trim/lowercase 精确子串、独立 metadata DOM、上游 loading/空 wrapper、
   单一 750px 手机合同和 `#222` 夜间表面；历史 list 偏好迁移到 grid v3。frontend 689/689、

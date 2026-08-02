@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**implementation-complete / validation-complete / Docker-pending**
+状态：**aligned / Docker-published / awaiting-device-verification**
 
 本合同只覆盖 Index 侧栏搜索设置、远程搜索结果场景、书海入口选择器和探索结果场景的可见
 结构与状态转换。搜索/探索解析器、稳定多源 cursor、失败书源缓存、临时 Reader、BookInfo、
@@ -221,5 +221,19 @@ accordion 单开；分组 locale 排序且按是否存在未分组决定按钮�
   workspace overlay session isolation 在桌面及两个手机视口通过。
 - 真实 Go API 的 CSS/JSONPath/XPath 书源搜索、书籍信息、目录、正文和元数据工作流通过。
 
-当前切片已达到提交与本地 Docker 候选条件；Docker 标签、OCI digest、新旧卷和备份门结果将在
-本机发布完成后回填。
+实现提交 `c851c5f0bd0d576887bdaefa064db0df1dfa10ca` 已推送 `main`。镜像完全由本机 OrbStack
+构建并上传，没有使用云端构建；`linux/amd64`、`linux/arm64` 共同发布为：
+
+- `ghcr.io/changshengyu/openreader:c851c5f`
+- `ghcr.io/changshengyu/openreader:latest`
+
+两个标签经远端 registry 复查，共同指向 OCI index
+`sha256:f964b155447fe3660d72de292b100d27788812cce42bafc55f3237190bdc97e0`。
+
+发布前本机候选通过全新挂载卷的 portable v1/v2 assets、cross-user、restart 门，以及历史挂载卷
+TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 门。本批没有后端、API、SQLite 或持久化
+变更；允许差异仍只有 JWT/REST、多用户隔离、安全 Go 解析、稳定 cursor/hasMore、本地搜索和
+无障碍键盘入口。当前状态更新为 `aligned / Docker-published / awaiting-device-verification`。
+
+设备侧仍需使用真实大量书源验证搜索结果交错顺序、结果编辑/加入、Explore 长列表滚动现场和
+手机触发器手感；SourceManager、换源、书源解析器和其它 Index overlay 继续由各自合同约束。
