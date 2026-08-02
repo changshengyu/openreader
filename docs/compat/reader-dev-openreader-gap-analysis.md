@@ -9,7 +9,13 @@ JWT 用户管理和 WebDAV 主入口可以保留，但发现五项结构/语义�
 
 原作者公众号二维码和 Telegram 频道确认只是宣传内容，OpenReader 不复制并将其记录为
 `intentional omission`；JWT 管理员替代 namespace 冒充切换是安全适配，完整可移植备份是已记录
-的数据兼容增强。本轮先完成合同，不在审查提交中修改应用代码。测试与实施门见
+的数据兼容增强。审查合同 `c3a25f1` 已先行提交，随后按测试先行修复五项偏差：后端状态只检查
+health；“刷新缓存”恢复账号作用域的全工作台重取；重复入口清理；Home 操作顺序恢复；未经审查
+的视图按钮退出上游操作行。
+
+frontend `685/685`、Go 全量、production build 和差异检查通过；Index 操作面与工作台/缓存回归
+在 `1440×900`、`390×844`、`360×800` 通过，移动侧边栏在两个手机尺寸通过。合同、允许差异和
+尚未覆盖的书架卡片/overlay 内部范围见
 [`index-settings-action-surface-second-audit-p1-contract.md`](index-settings-action-surface-second-audit-p1-contract.md)。
 
 ## 2026-08-02 P2 书内正文搜索第二轮固定基准重建

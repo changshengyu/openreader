@@ -177,7 +177,7 @@ async function runViewport(browser, viewport) {
   await installApiMocks(page)
 
   await page.goto(`${targetUrl.replace(/\/$/, '')}/books/1`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('.book-info-dialog .book-info-shared', { timeout: 10000 })
+  await page.waitForSelector('.book-info-dialog .book-info-container', { timeout: 10000 })
   const routeState = await page.evaluate(() => ({
     pathname: window.location.pathname,
     bookInfo: new URLSearchParams(window.location.search).get('bookInfo'),

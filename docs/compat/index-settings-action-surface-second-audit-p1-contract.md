@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**contract-extracted / implementation-pending**
+状态：**implemented / browser-validated / Docker-pending**
 
 本文件只提取固定上游的 Index 侧栏、书架标题操作和入口所有权，并判定当前 OpenReader
 差异。按照 `readerdev-compat-inventory`，本轮审查完成并单独提交前不修改应用代码。
@@ -194,3 +194,23 @@ RSS 的固定上游入口位于书架标题栏；当前 `Home.vue` 已存在该�
 4. 跑 frontend 全量、production build、backend 全量和三视口真实浏览器。
 5. 若动作面形成可独立人工验收切片，则本地构建并发布 Docker；发布报告必须列明本合同未覆盖的
    书架卡片布局与各 overlay 内部逻辑。
+
+## 6. 2026-08-02 实施与验证记录
+
+合同提交 `c3a25f1` 已先于应用修改推送。随后先增加失败合同，再完成以下变更：
+
+- 后端状态改为同源 `/api/health` 检查，点击不再刷新或跳转书架；
+- 侧栏删除重复“书架”、RSS、替换规则和空壳“其它”，恢复固定上游书源/书架动作顺序；
+- “刷新缓存”通过独立、账号作用域化的事务并发重取书架、分类、书籍分组、书源、用户偏好、
+  阅读设置和缓存统计，并使 RSS、替换规则、书签宿主失效重取；
+- 局部书源刷新失败保留已有列表；账号切换会退役旧 refresh 的结果、toast 和 loading 所有权；
+- Home 普通书架标题恢复 `编辑 → 刷新 → RSS → 书海`，未经审查的网格/列表按钮退出该操作行；
+- 修正移动侧边栏烟测中已被 BookInfo 第二轮合同淘汰的旧根选择器。
+
+验证结果：frontend `685/685`、Go `go test ./...`、production build 和 `git diff --check` 通过；
+`index-settings-action-surface-contract.mjs` 在 `1440×900`、`390×844`、`360×800` 通过；
+`index-mobile-sidebar-contract.mjs` 在 `390×844`、`360×800` 通过；
+`index-cache-scope-contract.mjs` 与 `workspace-operation-contract.mjs` 均在三视口通过。
+
+本合同仍不宣称书架卡片布局、分组内部、RSS 内部、替换规则内部或各 overlay 内部已经完成新一轮
+复审。原作者宣传不复制、JWT 管理员、同源后端状态与可移植备份仍是上文记录的允许差异。

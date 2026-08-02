@@ -10,22 +10,14 @@
         <strong>书架 ({{ totalBookCount }})</strong>
       </div>
       <div class="title-actions">
-        <button v-if="isNormalPage" type="button" @click="openExploreWorkspace">书海</button>
-        <button v-if="isNormalPage" type="button" @click="overlay.openRSS()">RSS</button>
-        <button type="button" @click="refreshShelf">
-          {{ refreshLoading ? '刷新中...' : '刷新' }}
-        </button>
         <button v-if="isNormalPage" type="button" @click="showBookEditButton = !showBookEditButton">
           {{ showBookEditButton ? '取消' : '编辑' }}
         </button>
-        <button v-if="!isMobileShelf" class="view-switch" type="button" :class="{ active: effectiveShelfView === 'grid' }" title="网格显示" @click="setShelfView('grid')">
-          <el-icon><Grid /></el-icon>
-          <span>网格</span>
+        <button type="button" @click="refreshShelf">
+          {{ refreshLoading ? '刷新中...' : '刷新' }}
         </button>
-        <button v-if="!isMobileShelf" class="view-switch" type="button" :class="{ active: effectiveShelfView === 'list' }" title="列表显示" @click="setShelfView('list')">
-          <el-icon><List /></el-icon>
-          <span>列表</span>
-        </button>
+        <button v-if="isNormalPage" type="button" @click="overlay.openRSS()">RSS</button>
+        <button v-if="isNormalPage" type="button" @click="openExploreWorkspace">书海</button>
       </div>
     </div>
 
@@ -112,7 +104,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Edit, Grid, List, Menu, Search } from '@element-plus/icons-vue'
+import { Close, Edit, Menu, Search } from '@element-plus/icons-vue'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -249,10 +241,6 @@ function continueRead(book) {
 
 function handleBookRowClick(book) {
   continueRead(book)
-}
-
-function setShelfView(view) {
-  preferences.setShelfView(view)
 }
 
 function readChapterTitle(book) {

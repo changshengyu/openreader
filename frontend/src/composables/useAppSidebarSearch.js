@@ -117,7 +117,7 @@ export function useAppSidebarSearch(options) {
       if (response.fromCache) refreshSourcesCache().catch(() => {})
       return true
     } catch {
-      if (sourceOperations.canCommit(operation)) sources.value = []
+      if (sourceOperations.canCommit(operation) && !sources.value.length) sources.value = []
       return false
     }
   }

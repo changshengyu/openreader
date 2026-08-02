@@ -165,6 +165,7 @@ import { useAppMobileNavigation } from '../composables/useAppMobileNavigation'
 import { useAppRecentReading } from '../composables/useAppRecentReading'
 import { useAppSidebarSearch } from '../composables/useAppSidebarSearch'
 import { useAuthenticatedOperationGuard } from '../composables/useAuthenticatedOperationGuard'
+import { useIndexWorkspaceRefresh } from '../composables/useIndexWorkspaceRefresh'
 import { useWorkspaceBackupActions } from '../composables/useWorkspaceBackupActions'
 import { useSync } from '../composables/useSync'
 import ExploreWorkspacePopover from '../components/workspace/ExploreWorkspacePopover.vue'
@@ -197,7 +198,8 @@ const routeBookInfoLoadingId = ref(null)
 const routeBookInfoOpenedKey = ref('')
 const routeBookInfoOperations = useAuthenticatedOperationGuard()
 let compatibilityFocusTimer
-const { connected: syncConnected, connect, disconnect } = useSync()
+const { connect, disconnect } = useSync()
+const backendConnected = computed(() => Boolean(healthInfo.value))
 const shelfForegroundReconciler = createShelfForegroundReconciler({
   loadShelf: options => loadShelfForShell(options),
   isVisible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
@@ -287,7 +289,7 @@ const navSections = computed(() => [
     key: 'backend',
     title: '后端设定',
     items: [
-      { key: 'backendStatus', label: syncConnected.value ? '同步在线' : '同步未连接', action: refreshShelfData },
+      { key: 'backendStatus', label: backendConnected.value ? '后端在线' : '后端未连接', action: () => refreshHealthInfo(true) },
     ],
   },
   {
@@ -306,14 +308,13 @@ const navSections = computed(() => [
     key: 'bookshelf',
     title: '书架设置',
     items: [
-      { key: 'home', label: '书架', action: goHome, closeMobile: true },
       { key: 'bookManage', label: '书籍管理', action: () => overlay.openBookManage() },
       { key: 'bookGroup', label: '分组管理', action: () => overlay.openBookGroup('manage') },
       { key: 'importBook', label: '导入书籍', action: () => overlay.openImportBook() },
       ...(canAccessLocalStore.value
         ? [{ key: 'localStore', label: '浏览书仓', action: () => overlay.openLocalStore() }]
         : []),
-      { key: 'refreshShelf', label: '刷新书架', action: refreshShelfData },
+      { key: 'refreshWorkspace', label: workspaceRefreshLoading.value ? '刷新中...' : '刷新缓存', action: refreshWorkspaceData },
     ],
   },
   {
@@ -348,14 +349,6 @@ const navSections = computed(() => [
       ...browserCacheNavItems.value,
     ],
   },
-  {
-    key: 'other',
-    title: '其它',
-    items: [
-      { key: 'rss', label: 'RSS', action: () => overlay.openRSS() },
-      { key: 'replaceRules', label: '替换规则', action: () => overlay.openReplaceRules() },
-    ],
-  },
 ])
 
 const {
@@ -371,6 +364,7 @@ const {
   goSearch,
   clearSearchQuery,
   loadSources: loadSidebarSources,
+  refreshSourcesCache: refreshSidebarSourcesCache,
   handleSourcesUpdated,
   dispose: disposeSidebarSearch,
 } = useAppSidebarSearch({
@@ -388,6 +382,21 @@ const {
     if (isMobileShell.value) mobileNavigationVisible.value = false
   },
   afterSourcesUpdated: () => loadCacheStats(),
+})
+const {
+  loading: workspaceRefreshLoading,
+  refresh: refreshWorkspaceData,
+  resetScope: resetWorkspaceRefreshScope,
+} = useIndexWorkspaceRefresh({
+  refreshShelf: refreshWorkspaceShelf,
+  refreshSources: refreshWorkspaceSources,
+  refreshPreferences: refreshWorkspacePreferences,
+  refreshReaderSettings: refreshWorkspaceReaderSettings,
+  refreshOverlays: refreshWorkspaceOverlays,
+  refreshCacheStats: loadCacheStats,
+  onSuccess: message => ElMessage.success(message),
+  onWarning: message => ElMessage.warning(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const isNightTheme = computed(() => reader.themeType === 'night')
 const appVersionLabel = computed(() => {
@@ -595,6 +604,7 @@ async function refreshHealthInfo(showMessage = false) {
       ElMessage.success(`${buildText} · ${commit}`)
     }
   } catch (err) {
+    healthInfo.value = null
     if (showMessage) ElMessage.error(readError(err, '读取版本信息失败'))
   }
 }
@@ -608,14 +618,41 @@ function toggleNightTheme() {
   reader.setNightTheme(!isNightTheme.value)
 }
 
-async function refreshShelfData() {
-  try {
-    const result = await loadShelfForShell({ force: true, all: true })
-    if (result.categoryError) ElMessage.warning(readError(result.categoryError, '书架已刷新，分组刷新失败'))
-  } catch (err) {
-    ElMessage.error(readError(err, '刷新书架失败'))
+async function refreshWorkspaceShelf() {
+  const [categoryResult, bookGroupResult, booksResult] = await Promise.allSettled([
+    bookshelf.loadCategories({ force: true }),
+    bookshelf.loadBookGroups({ force: true }),
+    bookshelf.loadBooks({ force: true, all: true, settleProgress: true }),
+  ])
+  if (booksResult.status === 'rejected') throw booksResult.reason
+  const groupFailure = [categoryResult, bookGroupResult].find(result => result.status === 'rejected')
+  if (groupFailure) throw groupFailure.reason
+}
+
+async function refreshWorkspaceSources() {
+  const refreshed = await refreshSidebarSourcesCache()
+  if (!refreshed) throw new Error('书源刷新失败')
+}
+
+async function refreshWorkspacePreferences() {
+  await preferences.loadPreferences({ createIfMissing: false })
+  const error = Object.values(preferences.syncError).find(value => value && value !== '没有备份文件')
+  if (error) throw new Error(error)
+}
+
+async function refreshWorkspaceReaderSettings() {
+  await reader.loadReaderSettings({ createIfMissing: false })
+  if (reader.settingsSyncError && reader.settingsSyncError !== '没有备份文件') {
+    throw new Error(reader.settingsSyncError)
   }
-  router.push({ name: 'home' })
+}
+
+function refreshWorkspaceOverlays() {
+  window.dispatchEvent(new CustomEvent('openreader:rss-updated', {
+    detail: { sources: true, articles: true },
+  }))
+  window.dispatchEvent(new CustomEvent('openreader:replace-rules-updated'))
+  window.dispatchEvent(new CustomEvent('openreader:bookmarks-updated'))
 }
 
 async function openRouteBookInfoOverlay() {
@@ -761,6 +798,7 @@ watch(
   (token) => {
     routeBookInfoOperations.reset()
     resetCacheScope()
+    resetWorkspaceRefreshScope()
     refreshRecentReadingScope()
     if (token) {
       connect()
@@ -864,6 +902,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   routeBookInfoOperations.reset()
+  resetWorkspaceRefreshScope()
   disposeSidebarSearch()
   clearTimeout(compatibilityFocusTimer)
   window.removeEventListener('offline', setOffline)
