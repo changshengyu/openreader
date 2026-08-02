@@ -1,5 +1,24 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-02 P1 Index 搜索/探索可见工作区第二轮固定基准复审
+
+此前 P1-B 已关闭 REST cursor、迟到请求、临时 Reader、BookInfo 与加入事务，但把当前可见结果
+结构当成了正确实现。重新逐段核对固定 `Index.vue` 和 `Explore.vue` 后确认仍有结构级偏差：
+搜索/探索应复用同一个 shelf title 和固定 380px 扁平 card grid；当前却按来源 regroup，加入
+source section、来源 tag、更新时间、kind、字数和简介，改变了交错结果顺序，并缺失上游结果
+JSON 编辑入口。当前页面 header/subtitle/`el-empty`/loading overlay 也不属于固定上游。
+
+搜索设置可见上只有 single/multi 两项，multi 内选择“全部分组/具体分组”和并发；当前暴露
+all/group/single 三项并在 single 显示并发。Explore chooser 的固定桌面合同是 600px/top 0、
+桌面无内部 close；mini 是 100vw 顶部自适应高度、无 modal backdrop。当前 520px 动态 top、
+手机 100vh 遮罩、accordion 单开、locale group 排序和始终显示 × 均为 `must-fix`；现有浏览器
+测试还把这些错误几何固化成通过条件。
+
+完整状态、允许差异和先测后改门见
+[`index-search-explore-visible-workspace-fixed-baseline-second-audit-p1-contract.md`](index-search-explore-visible-workspace-fixed-baseline-second-audit-p1-contract.md)。
+本轮仅完成只读合同，状态为 **audit-complete / implementation-pending**；当前组件和旧测试不得
+作为实现正确性的依据。
+
 ## 2026-08-02 P1 书架可见布局第二轮固定基准复审
 
 历史记录把当前 320–360px 自适应网格、桌面 list 偏好、skeleton/空态和多套手机断点描述成
