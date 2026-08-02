@@ -3208,6 +3208,23 @@ TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 全部门禁。已发布同�
 `sha256:c1017da51c0e121e75add217be6979a2b6bba9bfd9c676590dd892644cf4702c`；模块状态更新为
 `aligned / Docker-published / awaiting-device-verification`。
 
+## 2026-08-02 ReaderSettings 第二轮固定基准复审
+
+历史设置记录只完成了标题、行几何、主题圆点、字体按钮和自定义块的一部分外观对齐，不能继续
+作为完整签收。重新逐方法核对固定 `ReadSettings.vue/config.js/vuex.js` 后确认当前仍有状态级
+错误：重置会清空自定义方案和资产清单；新增方案复制并激活当前配置，而不是追加内置白天副本；
+方案快照错误包含 pageType、TTS 和全局资产清单；正常/简洁模式没有跨刷新保存两套最近配置。
+
+可见层还缺少 14 张内置背景、两条 divider、精确“自动翻页”和操作区，并重复放入 TTS 控件；
+所有白天主题共用一张纸纹，也没有恢复固定上游各自的 body/content/popup 资源。亮度、可编辑
+stepper、字体预览、字号预设、纯黑白夜间，以及原生连续滚动/离散点击翻页均是用户明确要求，
+继续作为允许差异。
+
+完整状态机、字段所有权、迁移与测试先行门见
+[`reader-settings-fixed-baseline-second-audit-p0-contract.md`](reader-settings-fixed-baseline-second-audit-p0-contract.md)。
+本轮只提交审查合同，状态为 `audit-complete / implementation-pending`；下一步先写失败测试，再改
+store 和面板，不从当前组件反推产品行为。
+
 ## 2026-07-28 ReplaceRule P2 固定基准重新复审
 
 历史 ReplaceRule 记录不能继续作为完成证明。重新逐行核对固定
