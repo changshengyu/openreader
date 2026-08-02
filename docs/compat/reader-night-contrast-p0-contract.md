@@ -546,3 +546,22 @@ WebKit、浏览器强制深色和 EPUB 独立合成层。
 - 全量 `reader-mobile-contract` 已到达独立的 Bookmark 跳转流程后失败；这是正在进行的
   Bookmark 第二轮上游复审门，不是夜间内容面失败。本轮用新增的聚焦入口隔离证明夜间
   合同，Bookmark 浏览器门会在恢复该模块时继续处理。
+
+### 第八轮 Docker 发布结果（2026-08-02）
+
+- 实现提交 `6fde5abf3c5e9507c0a82d5f221b68674b318cce` 已推送 `main`；镜像从该提交的
+  干净 detached worktree 本地构建，未包含工作区中尚未完成的 Bookmark 复审改动。
+- 已发布 `ghcr.io/changshengyu/openreader:6fde5ab` 与 `:latest`，两者共同指向
+  amd64/arm64 OCI index
+  `sha256:4ace53462bc85e5f05e4441a5d250edd96f5b72d406b0ab109830501a129c4c0`。
+- amd64 manifest 为
+  `sha256:4d87fcbdad834f75a30dac5a030dafd14823d0a5134da69776790dbfa7f33a23`；
+  arm64 manifest 为
+  `sha256:c975509039663632ff69b87f92df42086b75c17a9668f5edfdeea32a1ba2c6ea`。
+- 同一干净提交的本地 arm64 候选已通过 portable v1、portable v2 assets、
+  cross-user、restart，以及历史 TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation
+  全部持久化门。
+- `docker buildx imagetools inspect` 能够连续读取上述两个 tag 及其同一 digest；
+  当次本机 Docker daemon 的 `docker pull` 路径三次收到 GHCR `502 Bad Gateway`，
+  因此卷门使用同提交本地加载镜像完成。该外部 registry 拉取抖动不改变已发布
+  manifest 和本地验证结果，但设备部署时仍应以实际 `docker compose pull` 成功为准。
