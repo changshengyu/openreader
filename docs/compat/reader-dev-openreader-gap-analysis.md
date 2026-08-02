@@ -15,7 +15,12 @@ capability、共享失败回退和 ARIA/键盘支持是允许适配。
 
 完整几何、状态、差异和测试先行门见
 [`bookshelf-visible-layout-fixed-baseline-second-audit-p1-contract.md`](bookshelf-visible-layout-fixed-baseline-second-audit-p1-contract.md)。
-本轮只完成合同，不在审查提交中修改应用代码；历史“书架已对齐”只能作为过程记录。
+审查合同 `6fa34cf` 已先行提交，随后测试先行完成重建：当前筛选计数、精确编辑搜索、固定
+380px grid、历史 list 偏好迁移、独立 metadata DOM、上游 loading/空 wrapper、单一 750px
+响应合同和夜间实际表面均已落地。真实浏览器还发现并修复了 Vue 外部 scoped CSS 把夜间后代
+选择器编译丢失的问题。frontend 689/689、Go、production build、四目标视口专项及移动侧栏、
+Index 操作面、完整工作台和刷新竞态均通过；当前状态为
+**implemented / browser-validated / release-pending**，尚未声称 Docker 已发布。
 
 ## 2026-08-02 P1 Index 设置与操作面第二轮固定基准复审
 

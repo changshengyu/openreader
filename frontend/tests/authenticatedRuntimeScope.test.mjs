@@ -544,7 +544,7 @@ test('an older preference save cannot settle a newer same-key operation in anoth
       headers: { 'x-openreader-setting-conflict': '1' },
     })
     await savingA
-    assert.equal(preferences.shelf.view, 'list')
+    assert.equal(preferences.shelf.view, 'grid')
     assert.equal(preferences.syncing.shelf, true)
     assert.notEqual(preferences.syncBaseUpdatedAt.shelf, 'user-a-updated')
 
@@ -553,7 +553,7 @@ test('an older preference save cannot settle a newer same-key operation in anoth
       headers: {},
     })
     await savingB
-    assert.equal(preferences.shelf.view, 'list')
+    assert.equal(preferences.shelf.view, 'grid')
     assert.equal(preferences.syncBaseUpdatedAt.shelf, 'user-b-updated')
     assert.equal(preferences.syncing.shelf, false)
   })
@@ -687,7 +687,7 @@ test('a delayed unified book-group response cannot replace the next user shelf s
 test('shelf preferences persist the stable selected book-group token', { concurrency: false }, () => {
   const { preferences } = freshStores(1)
   preferences.applyPreference('shelf', { view: 'list', layoutVersion: 2, groupKey: 'category:9' })
-  assert.deepEqual(preferences.shelf, { view: 'list', layoutVersion: 2, groupKey: 'category:9' })
+  assert.deepEqual(preferences.shelf, { view: 'grid', layoutVersion: 3, groupKey: 'category:9' })
 
   preferences.setShelfGroup('builtin:audio')
   assert.equal(preferences.shelf.groupKey, 'builtin:audio')

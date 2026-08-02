@@ -7,7 +7,7 @@
         <button v-if="isMobileShelf" class="mobile-menu-trigger" type="button" aria-label="打开侧边栏" @click.stop="toggleMobileNavigation">
           <el-icon><Menu /></el-icon>
         </button>
-        <strong>书架 ({{ totalBookCount }})</strong>
+        <strong>书架 ({{ displayedBooks.length }})</strong>
       </div>
       <div class="title-actions">
         <button v-if="isNormalPage" type="button" @click="showBookEditButton = !showBookEditButton">
@@ -42,57 +42,55 @@
       </button>
     </div>
 
-    <main class="shelf-main" :class="`${effectiveShelfView}-view`">
-      <div class="books-wrapper">
-        <div v-if="bookshelf.loading" class="book-list">
-          <article v-for="i in 8" :key="i" class="book-row skeleton-row">
-            <el-skeleton :rows="2" animated />
-          </article>
-        </div>
-
-        <template v-else-if="displayedBooks.length">
-          <div class="book-list">
-            <article
-              v-for="book in displayedBooks"
-              :key="book.id"
-              class="book-row"
-              :class="{ editing: showBookEditButton }"
-              role="button"
-              tabindex="0"
-              @click="handleBookRowClick(book)"
-              @keyup.enter="handleBookRowClick(book)"
-            >
+    <main class="shelf-main">
+      <div
+        v-loading="shelfLoading"
+        class="books-wrapper"
+        :element-loading-text="shelfLoadingText"
+        :element-loading-background="shelfLoadingBackground"
+      >
+        <div class="book-list wrapper">
+          <article
+            v-for="book in displayedBooks"
+            :key="book.id"
+            class="book-row book"
+            :class="{ editing: showBookEditButton }"
+            role="button"
+            tabindex="0"
+            @click="handleBookRowClick(book)"
+            @keyup.enter="handleBookRowClick(book)"
+          >
+            <span class="cover-img" @click.stop="openDetail(book)">
               <BookCover
                 class="list-cover"
                 :book="book"
-                @click.stop="openDetail(book)"
               />
-              <span class="list-main">
-                <span class="book-operation">
-                  <button v-if="showBookEditButton" class="operation-icon danger" type="button" title="删除" @click.stop="deleteManagedBook(book)">
-                    <el-icon><Close /></el-icon>
-                  </button>
-                  <button v-if="showBookEditButton" class="operation-icon" type="button" title="编辑" @click.stop="goEditBook(book)">
-                    <el-icon><Edit /></el-icon>
-                  </button>
-                  <el-badge
-                    v-if="!showBookEditButton && unreadCount(book) > 0"
-                    class="unread-num-badge"
-                    :max="99"
-                    :value="unreadCount(book)"
-                  />
-                </span>
-                <strong>{{ book.title }}</strong>
-                <small>{{ bookAuthorLine(book) }}</small>
-                <small v-if="readChapterTitle(book)">已读：{{ readChapterTitle(book) }}</small>
-                <small v-if="latestChapterTitle(book)">{{ latestChapterLabel(book) }}：{{ latestChapterTitle(book) }}</small>
+            </span>
+            <span class="list-main info">
+              <span class="book-operation">
+                <button v-if="showBookEditButton" class="operation-icon danger" type="button" title="删除" @click.stop="deleteManagedBook(book)">
+                  <el-icon><Close /></el-icon>
+                </button>
+                <button v-if="showBookEditButton" class="operation-icon" type="button" title="编辑" @click.stop="goEditBook(book)">
+                  <el-icon><Edit /></el-icon>
+                </button>
+                <el-badge
+                  v-if="!showBookEditButton && unreadCount(book) > 0"
+                  class="unread-num-badge"
+                  :max="99"
+                  :value="unreadCount(book)"
+                />
               </span>
-            </article>
-          </div>
-        </template>
-
-        <div v-else class="empty-panel">
-          <el-empty :description="emptyText" />
+              <strong class="name" :class="{ edit: showBookEditButton }">{{ book.title }}</strong>
+              <span class="sub">
+                <span class="author">{{ book.author || '' }}</span>
+                <span v-if="book.chapterCount" class="dot">•</span>
+                <span v-if="book.chapterCount" class="size">共{{ book.chapterCount }}章</span>
+              </span>
+              <span v-if="readChapterTitle(book)" class="dur-chapter">已读：{{ readChapterTitle(book) }}</span>
+              <span v-if="latestChapterTitle(book)" class="last-chapter">{{ latestChapterLabel(book) }}：{{ latestChapterTitle(book) }}</span>
+            </span>
+          </article>
         </div>
       </div>
     </main>
@@ -116,9 +114,9 @@ import BookCover from '../components/BookCover.vue'
 import { createBookCategoryNameResolver } from '../utils/bookCategory'
 import { filterBooksByBookGroup, resolveBookGroupSelection, visibleBookGroups } from '../utils/bookGroups'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
-import { normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
+import { filterShelfBooksByEditQuery } from '../utils/shelfPresentation'
 
 const router = useRouter()
 const route = useRoute()
@@ -136,30 +134,21 @@ const selectedGroup = computed({
 const showBookEditButton = ref(false)
 const shelfKeyword = ref('')
 const refreshLoading = ref(false)
-const shelfView = computed(() => preferences.shelf.view)
 const windowWidth = ref(currentViewportWidth())
 
 const groupItems = computed(() => visibleBookGroups(bookshelf.bookGroups, bookshelf.books))
 
 const sortedBooks = computed(() => sortByShelfOrder(Array.isArray(bookshelf.books) ? bookshelf.books : [], reader.progressByBook))
-const totalBookCount = computed(() => Array.isArray(bookshelf.books) ? bookshelf.books.length : 0)
-
 const displayedBooks = computed(() => {
-  const keyword = showBookEditButton.value ? normalizeLocalBookSearch(shelfKeyword.value) : ''
   const filtered = filterBooksByBookGroup(sortedBooks.value, selectedGroup.value)
-  if (!keyword) return filtered
-  return filtered.filter(book => normalizeLocalBookSearch(`${book.title || ''} ${book.author || ''}`).includes(keyword))
+  return filterShelfBooksByEditQuery(filtered, showBookEditButton.value ? shelfKeyword.value : '')
 })
 
 const isMobileShelf = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const isNormalPage = computed(() => !['kindle', 'simple', 'Kindle'].includes(reader.pageType))
-const effectiveShelfView = computed(() => isMobileShelf.value ? 'list' : shelfView.value)
-
-const emptyText = computed(() => {
-  if (showBookEditButton.value && normalizeLocalBookSearch(shelfKeyword.value)) return '没有匹配的书籍'
-  if (selectedGroup.value) return '这个分组里还没有书'
-  return '暂无书籍'
-})
+const shelfLoading = computed(() => bookshelf.loading || refreshLoading.value)
+const shelfLoadingText = computed(() => refreshLoading.value ? '正在刷新书籍信息' : '正在获取书籍信息')
+const shelfLoadingBackground = computed(() => reader.themeType === 'night' ? '#222' : '#fff')
 
 onMounted(async () => {
   updateViewportFlags()
@@ -259,13 +248,6 @@ function unreadCount(book) {
 
 function bookProgress(book) {
   return newestBookProgress(book, reader.progressByBook)
-}
-
-function bookAuthorLine(book) {
-  const parts = []
-  if (book.author) parts.push(book.author)
-  if (book.chapterCount) parts.push(`共${book.chapterCount}章`)
-  return parts.join(' · ') || '未知作者'
 }
 
 function latestChapterTitle(book) {
@@ -372,708 +354,4 @@ function readError(err, fallback) {
 }
 </script>
 
-<style scoped>
-.shelf-page,
-.shelf-main,
-.books-wrapper {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.shelf-page {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  box-sizing: border-box;
-  height: 100vh;
-  max-height: 100vh;
-  gap: 0;
-  padding: 48px 48px;
-  background: #fff;
-  overflow: hidden;
-}
-
-.shelf-title {
-  grid-row: 1;
-}
-
-.shelf-search-wrapper {
-  grid-row: 2;
-  width: min(420px, 100%);
-  padding: 0 0 8px;
-}
-
-.book-group-wrapper {
-  grid-row: 3;
-}
-
-.shelf-main {
-  grid-row: 4;
-}
-
-.shelf-main {
-  display: grid;
-  min-height: 0;
-  gap: 0;
-  overflow: hidden;
-}
-
-.shelf-title {
-  display: flex;
-  z-index: 2;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 4px 0 12px;
-  background: #fff;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.shelf-title strong {
-  color: #26394a;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.shelf-title-main {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.shelf-title-main strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-menu-trigger {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  flex: 0 0 30px;
-  padding: 0;
-  color: var(--app-text);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.title-actions {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 16px;
-}
-
-.title-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 0;
-  color: #26394a;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 28px;
-}
-
-.title-actions .view-switch {
-  color: #9aa1aa;
-  font-weight: 600;
-}
-
-.title-actions .view-switch.active {
-  color: #1f6feb;
-}
-
-.list-cover {
-  display: grid;
-  place-items: center;
-  font-weight: 900;
-  color: #8f866f;
-  background:
-    radial-gradient(circle at 76% 18%, rgba(203, 186, 132, 0.22), transparent 24%),
-    linear-gradient(135deg, #fbfaf4 0%, #f4f0df 100%);
-  border: 1px solid rgba(190, 178, 142, 0.32);
-  line-height: 1.35;
-  text-align: center;
-  writing-mode: vertical-rl;
-}
-
-.list-cover.has-cover {
-  border-color: transparent;
-  writing-mode: initial;
-}
-
-.book-group-wrapper {
-  display: flex;
-  min-width: 0;
-  max-width: 100%;
-  gap: 0;
-  padding: 0;
-  background: #fff;
-  border: 0;
-  border-bottom: 1px solid #dfe3ea;
-  border-radius: 0;
-  box-shadow: none;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.book-group-wrapper::-webkit-scrollbar {
-  display: none;
-}
-
-.group-chip {
-  display: inline-flex;
-  position: relative;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: none;
-  height: 48px;
-  flex: 1 0 126px;
-  padding: 0 16px;
-  color: #33373d;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.group-chip span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.group-chip.active {
-  color: #1f6feb;
-  background: transparent;
-}
-
-.group-chip.active::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  background: #409eff;
-  content: "";
-}
-
-.book-list {
-  min-width: 0;
-  background: #fff;
-  border: 0;
-  box-shadow: none;
-}
-
-.books-wrapper {
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.books-wrapper::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.shelf-main.grid-view .book-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 360px));
-  justify-content: space-around;
-  gap: 18px 16px;
-  padding: 22px 0 28px;
-  overflow: visible;
-}
-
-.shelf-main.grid-view .book-row {
-  grid-template-columns: 84px minmax(0, 1fr);
-  gap: 18px;
-  width: min(360px, 100%);
-  min-height: 142px;
-  align-items: start;
-  padding: 12px 8px;
-  border-bottom: 0;
-}
-
-.shelf-main.grid-view .book-row:hover,
-.shelf-main.grid-view .book-row:focus-visible {
-  background: #fafafa;
-}
-
-.shelf-main.grid-view .list-cover {
-  width: 84px;
-  height: 112px;
-  border-radius: 0;
-}
-
-.shelf-main.grid-view .list-main {
-  height: 112px;
-  align-content: space-between;
-  justify-content: start;
-  gap: 3px;
-}
-
-.shelf-main.grid-view .list-main strong {
-  display: -webkit-box;
-  max-height: 46px;
-  padding-right: 40px;
-  color: #33373d;
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.35;
-  white-space: normal;
-  word-break: break-word;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.shelf-main.grid-view .book-row.editing .list-main strong {
-  padding-right: 58px;
-}
-
-.shelf-main.grid-view .list-main small {
-  color: #6b6b6b;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.shelf-main.grid-view .book-operation {
-  position: absolute;
-  top: 4px;
-  right: 0;
-  min-height: 22px;
-}
-
-.shelf-main.grid-view .unread-num-badge :deep(.el-badge__content) {
-  border: 0;
-  background: #f56c6c;
-  font-weight: 700;
-}
-
-.book-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-  min-width: 0;
-  max-width: 100%;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 14px 0;
-  color: var(--app-text);
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--app-border);
-  cursor: pointer;
-  outline: 0;
-  text-align: left;
-}
-
-.book-row > * {
-  min-width: 0;
-}
-
-.book-row:hover,
-.book-row:focus-visible {
-  background: var(--app-bg-soft);
-}
-
-.list-cover {
-  width: 74px;
-  height: 98px;
-  border-radius: 5px;
-  cursor: zoom-in;
-}
-
-.list-main {
-  display: grid;
-  min-width: 0;
-  box-sizing: border-box;
-  align-content: start;
-  gap: 6px;
-  padding-right: 44px;
-}
-
-.list-main strong,
-.list-main small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.list-main strong {
-  color: #33373d;
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.35;
-  white-space: nowrap;
-}
-
-.list-main small {
-  color: var(--app-text-muted);
-  font-size: 13px;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.book-operation {
-  display: flex;
-  min-height: 20px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.operation-icon {
-  display: inline-grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  flex: 0 0 22px;
-  padding: 0;
-  color: #969ba3;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 18px;
-}
-
-.operation-icon:hover {
-  color: #1f6feb;
-}
-
-.operation-icon.danger:hover {
-  color: #b5463e;
-}
-
-.empty-panel {
-  display: grid;
-  min-height: 360px;
-  place-items: center;
-}
-
-.skeleton-row {
-  grid-template-columns: 1fr;
-}
-
-.shelf-page.mobile-shelf {
-  gap: 0;
-  height: auto;
-  max-height: none;
-  min-height: 100vh;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  padding: 0 0 18px;
-  overflow-x: hidden;
-  overflow-y: visible;
-}
-
-.shelf-page.mobile-shelf .shelf-main,
-.shelf-page.mobile-shelf .books-wrapper,
-.shelf-page.mobile-shelf .shelf-title,
-.shelf-page.mobile-shelf .book-group-wrapper,
-.shelf-page.mobile-shelf .book-list,
-.shelf-page.mobile-shelf .empty-panel {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  border-radius: 0;
-  border-right: 0;
-  border-left: 0;
-  box-shadow: none;
-}
-
-.shelf-page.mobile-shelf .shelf-title {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-  overflow: hidden;
-}
-
-.shelf-page.mobile-shelf .shelf-title-main {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.shelf-page.mobile-shelf .shelf-title strong {
-  font-size: 20px;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.shelf-page.mobile-shelf .title-actions {
-  max-width: 62%;
-  flex: 0 1 auto;
-  flex-wrap: nowrap;
-  justify-content: flex-start;
-  gap: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.shelf-page.mobile-shelf .title-actions::-webkit-scrollbar {
-  display: none;
-}
-
-.shelf-page.mobile-shelf .title-actions button {
-  flex: 0 0 auto;
-  font-size: 14px;
-  line-height: 28px;
-  white-space: nowrap;
-}
-
-.shelf-page.mobile-shelf .title-actions .view-switch {
-  display: none;
-}
-
-.shelf-page.mobile-shelf .book-group-wrapper {
-  margin-right: 24px;
-  margin-left: 24px;
-  padding: 0;
-}
-
-.shelf-page.mobile-shelf .shelf-search-wrapper {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 8px 24px 8px;
-}
-
-.shelf-page.mobile-shelf .group-chip {
-  height: 54px;
-  flex: 1 0 25%;
-  padding: 0 10px;
-  font-size: 16px;
-}
-
-.shelf-page.mobile-shelf .shelf-main.grid-view .book-list {
-  display: block;
-  padding: 0;
-}
-
-.shelf-page.mobile-shelf .book-row {
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  min-height: 132px;
-  align-items: start;
-  gap: 20px;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 20px;
-  border-bottom: 0;
-  contain: inline-size paint;
-}
-
-.shelf-page.mobile-shelf .list-cover {
-  width: 84px;
-  height: 112px;
-  aspect-ratio: auto;
-  border-radius: 0;
-}
-
-.shelf-page.mobile-shelf .book-operation {
-  position: absolute;
-  top: 10px;
-  right: 14px;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  justify-content: flex-end;
-  overflow: hidden;
-}
-
-.shelf-page.mobile-shelf .list-main {
-  width: auto;
-  min-height: 112px;
-  box-sizing: border-box;
-  align-content: space-between;
-  justify-content: stretch;
-  gap: 6px;
-  padding-right: 0;
-  overflow: hidden;
-}
-
-.shelf-page.mobile-shelf .list-main strong {
-  display: -webkit-box;
-  max-height: 45px;
-  font-size: 16px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  word-break: break-word;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.shelf-page.mobile-shelf .list-main small {
-  font-size: 13px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  word-break: break-word;
-}
-
-.shelf-page.mobile-shelf .read-button {
-  display: none;
-}
-
-@media (max-width: 750px) {
-  .shelf-page {
-    gap: 0;
-    height: auto;
-    max-height: none;
-    min-height: 100vh;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    padding: 0 0 18px;
-    overflow-x: hidden;
-    overflow-y: visible;
-  }
-
-  .shelf-main {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    overflow: visible;
-    overflow-x: hidden;
-  }
-
-  .books-wrapper {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    overflow-x: hidden;
-    overflow-y: visible;
-  }
-
-  .shelf-main.grid-view .book-list {
-    display: block;
-    padding: 0;
-  }
-
-  .shelf-main.grid-view .book-row {
-    width: 100%;
-  }
-
-}
-
-@media (max-width: 520px) {
-  .shelf-page.mobile-shelf .book-group-wrapper,
-  .book-group-wrapper {
-    width: auto;
-    max-width: calc(100% - 48px);
-    margin-right: 24px;
-    margin-left: 24px;
-    padding: 5px 0;
-  }
-
-  .shelf-page.mobile-shelf .group-chip,
-  .group-chip {
-    max-width: none;
-    height: 48px;
-    flex: 1 0 25%;
-    padding: 0 8px;
-    font-size: 14px;
-  }
-
-  .shelf-page.mobile-shelf .shelf-title,
-  .shelf-title {
-    padding: 20px 24px 0;
-  }
-
-  .shelf-page.mobile-shelf .shelf-title strong,
-  .shelf-title strong {
-    font-size: 20px;
-  }
-
-  .shelf-page.mobile-shelf .title-actions,
-  .title-actions {
-    gap: 10px;
-  }
-
-  .shelf-page.mobile-shelf .title-actions button,
-  .title-actions button {
-    font-size: 13px;
-  }
-
-  .shelf-page.mobile-shelf .book-row,
-  .book-row {
-    display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
-    gap: 20px;
-    min-height: 132px;
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    padding: 10px 20px;
-  }
-
-  .shelf-page.mobile-shelf .list-cover,
-  .list-cover {
-    width: 84px;
-    height: 112px;
-    aspect-ratio: auto;
-    flex-basis: auto;
-  }
-
-  .shelf-page.mobile-shelf .list-main,
-  .list-main {
-    width: auto;
-    max-width: 100%;
-    min-height: 112px;
-    box-sizing: border-box;
-    gap: 4px;
-    padding-right: 0;
-    overflow: hidden;
-  }
-
-  .shelf-page.mobile-shelf .book-operation,
-  .book-operation {
-    top: 10px;
-    right: 12px;
-  }
-
-  .shelf-page.mobile-shelf .list-main strong,
-  .list-main strong {
-    padding-right: clamp(38px, 12vw, 48px);
-  }
-
-  .shelf-page.mobile-shelf .book-row.editing .list-main strong,
-  .book-row.editing .list-main strong {
-    padding-right: clamp(48px, 14vw, 58px);
-  }
-
-  .shelf-page.mobile-shelf .list-main small,
-  .list-main small {
-    font-size: 12px;
-  }
-}
-</style>
+<style scoped src="../styles/home-shelf.css"></style>

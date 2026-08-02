@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**audit-complete / implementation-pending**
+状态：**implemented / browser-validated / release-pending**
 
 本文件只审查普通 Index 书架的标题、编辑搜索、分组标签、书籍卡片、加载/空态、昼夜和响应式
 布局。书架网络新鲜度、阅读进度、最后更新时间、BookManage、BookGroup manager、BookInfo、搜索/
@@ -173,3 +173,39 @@ grid；不能只用默认 grid 夹具。
 3. 重建 Home DOM/CSS；只在必要处调整 shelf 偏好迁移，不改书架数据、新鲜度或 API。
 4. 跑 frontend、Go、production build、四视口专项和受影响的 Index/BookGroup/多客户端烟测。
 5. 通过新旧卷/备份门后由本机构建发布 Docker；报告明确本批只签收普通书架可见布局。
+
+## 6. 2026-08-02 实施与验证记录
+
+审查合同 `6fa34cf` 已在任何应用改动前单独提交并推送。实施阶段删除了只固定移动端少量 CSS
+字符串的旧测试，以新的桌面/移动/夜间/加载/偏好合同先得到失败结果，再完成以下重建：
+
+- `Home.vue` 标题改为当前分组与编辑搜索后的 `displayedBooks.length`；编辑搜索独立恢复
+  trim/lowercase 精确子串，不再复用本地书仓的标点/空白归一化。
+- 普通书架只保留固定 380px grid；历史 `view:list/layoutVersion:2` 在账号偏好进入可见状态前迁移
+  为 `view:grid/layoutVersion:3`，稳定 `groupKey` 不丢失。
+- 卡片恢复 cover → operation → name → sub/dot/size → read → latest 的独立 DOM、84×112 封面、
+  桌面 360/24/18 和手机 100%/10×20 几何；共享安全封面回退和键盘/ARIA 能力继续保留。
+- 初载和刷新恢复 `.books-wrapper` loading overlay 与上游文案；空结果只留下空 wrapper，删除
+  skeleton 与 `el-empty`。
+- 分组恢复 stretch、5px 上下 padding、10px 下间距和 2px 选中线；只显示可见非空分组。
+- 日间/夜间恢复固定颜色。真实浏览器首次验证发现外部 scoped CSS 的
+  `:global(html.dark-reader) .child` 被编译成孤立根选择器，已改为完整
+  `:global(html.dark-reader .child)` 链路；书架、标题、卡片文字和输入框的 computed color 均已
+  由浏览器断言，而不是只检查源码。
+
+允许差异仍只有：共享 capability 封面与失败回退、ARIA/键盘支持、窄屏 `min-width:0` 和标题动作
+局部滚动；这些适配没有改变上游书架流程、计数、布局或点击所有权。
+
+最终门禁：
+
+- frontend：`689/689`；Go：`go test ./...` 全部通过；Vite production build 与
+  `git diff --check` 通过。
+- 新增 `bookshelf-visible-layout-contract.mjs`，在 `1440×900`、`1024×1366`、`390×844`、
+  `360×800` 验证固定 2/1/1/1 列、历史 list 迁移、分组/search/count、首次/刷新 loading、空
+  wrapper、metadata、badge/edit 互斥、cover/row 点击、stretch/underline、可见内容不重叠、夜间
+  computed color 和无横向溢出。
+- 既有 `index-mobile-sidebar-contract`、`index-settings-action-surface-contract`、
+  `index-workspace-contract`、`shelf-refresh-race-contract` 全部通过。
+
+当前尚未执行本地镜像构建、新旧卷/备份兼容门和 GHCR 发布，因此本合同不能标记
+`Docker-published`。

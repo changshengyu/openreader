@@ -13,7 +13,7 @@ export {
 } from '../utils/searchPreference.js'
 
 const PREFERENCE_KEYS = ['shelf', 'search']
-const SHELF_LAYOUT_VERSION = 2
+const SHELF_LAYOUT_VERSION = 3
 const DEFAULT_SHELF = { view: 'grid', layoutVersion: SHELF_LAYOUT_VERSION, groupKey: 'builtin:all' }
 const syncTimers = new Map()
 const preferenceOperations = createAuthenticatedOperationGuard()
@@ -33,10 +33,16 @@ export const usePreferencesStore = defineStore('preferences', {
       const scope = currentUserScope()
       if (!this.preferenceScope) {
         this.preferenceScope = scope
-        return scope
-      }
-      if (this.preferenceScope !== scope) {
+      } else if (this.preferenceScope !== scope) {
         this.resetPreferenceState(scope)
+      }
+      const shelf = sanitizeShelfPreference(this.shelf)
+      if (
+        this.shelf?.view !== shelf.view
+        || Number(this.shelf?.layoutVersion || 0) !== shelf.layoutVersion
+        || this.shelf?.groupKey !== shelf.groupKey
+      ) {
+        this.shelf = shelf
       }
       return scope
     },
@@ -49,11 +55,6 @@ export const usePreferencesStore = defineStore('preferences', {
       this.syncBaseUpdatedAt = {}
       this.syncing = {}
       this.syncError = {}
-    },
-    setShelfView(view) {
-      this.ensurePreferenceScope()
-      this.shelf = { ...this.shelf, layoutVersion: SHELF_LAYOUT_VERSION, view: view === 'list' ? 'list' : 'grid' }
-      this.schedulePreferenceSync('shelf')
     },
     setShelfGroup(groupKey) {
       this.ensurePreferenceScope()
@@ -157,10 +158,9 @@ function preferencePayload(state, key) {
 }
 
 function sanitizeShelfPreference(value = {}) {
-  const migrated = Number(value.layoutVersion || 0) < SHELF_LAYOUT_VERSION
   return {
     ...DEFAULT_SHELF,
-    view: !migrated && value.view === 'list' ? 'list' : 'grid',
+    view: 'grid',
     groupKey: normalizeBookGroupKey(value.groupKey),
   }
 }
