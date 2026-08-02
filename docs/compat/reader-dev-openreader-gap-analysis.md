@@ -1119,6 +1119,25 @@ amd64/arm64 OCI index
 `sha256:a8d04ee3e5f6aac3e2a41b908da175e17b7a57e1fb440df51677f35d9496afe9`；新旧 volume/backup
 门禁和运行时 health 元数据均通过。
 
+## 2026-08-02 BookInfo 第二轮固定基准复审
+
+此前 P1-D 正确收敛了唯一根级 BookInfo、五类入口、旧链接 hydration、JWT 会话清理、精确字段
+更新和安全封面能力；但它没有逐行重建固定上游 `BookInfo.vue`，并错误地把搜索结果卡的分组确认
+流程迁移到了 BookInfo 内。第二轮审计确认，上游搜索/探索结果卡自身的“加入书架”先打开分组
+选择，而未入架 BookInfo 内的同名 tag 直接保存，二者不是同一个状态机。当前结果卡没有 add，
+BookInfo 却强制 chooser，动作所有权正好互换，相关旧测试和 API 文档也把偏差固化成正确结果。
+
+可见结构还存在 480px（上游 500px）、未使用 detail variant、`100×150 object-fit:cover` 裁切、
+额外字数/更换封面提示、kind 多分隔符且最多 8 项、简介 trim/合并空行、本地书不显示追更、
+未知源文案不同等偏差。数据状态方面，当前按 ID 优先识别书架记录；远程结果 ID 与书架 ID
+碰撞且 URL 不同时会打开错误书。每次打开还扫描一个 dialog 根本不显示的浏览器缓存统计。
+
+本轮保留的技术适配是 Vue 3/Pinia/Go/JWT、Category 多对多、精确 patch、事务化本地刷新、
+账号 generation、封面 capability/用户资产根、纯文本简介、临时 Reader 和旧链接 intent。完整
+结构、状态转换、API/data 边界、冲突旧测试与五视口门禁见
+[`bookinfo-fixed-baseline-second-audit-p2-contract.md`](bookinfo-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **audit-complete / implementation-pending**，本次只完成合同，没有修改应用代码。
+
 ## P1-D full audit: BookInfo and shelf-operation convergence
 
 Status: audit completed on 2026-07-10. This is a compatibility gate: implementation begins only after the listed controller, API, and browser contracts are added or updated. The authority is `web/src/views/Index.vue` (`toDetail`, `addBookToShelf`, `saveBook`, `deleteBook`, `showBookManage`, `showManageBookGroup`), `web/src/components/BookInfo.vue`, `BookManage.vue`, and `BookGroup.vue` in `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`. **The BookManage and BookGroup visible-shell/action rows in this historical section are superseded by their 2026-08-02 second fixed-baseline contracts above.**
