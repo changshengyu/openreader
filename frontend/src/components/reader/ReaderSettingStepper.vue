@@ -54,7 +54,7 @@ import {
 const props = defineProps({
   modelValue: { type: Number, required: true },
   min: { type: Number, required: true },
-  max: { type: Number, required: true },
+  max: { type: Number, default: Number.POSITIVE_INFINITY },
   step: { type: Number, default: 1 },
   disabled: { type: Boolean, default: false },
   decreaseLabel: { type: String, default: '减小' },

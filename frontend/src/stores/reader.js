@@ -17,18 +17,66 @@ const READER_CLIENT_ID = readerClientId()
 const readerSettingsOperations = createAuthenticatedOperationGuard()
 const readerProgressOperations = createAuthenticatedOperationGuard()
 const READER_FONT_FAMILIES = ['system', 'hei', 'kai', 'serif', 'fangsong', 'mono']
+const READER_SETTINGS_VERSION = 14
+const READER_SCHEME_FIELDS = Object.freeze([
+  'mode',
+  'pageMode',
+  'clickMethod',
+  'selectionAction',
+  'fontFamily',
+  'chineseFont',
+  'fontSize',
+  'fontWeight',
+  'fontColor',
+  'theme',
+  'themeType',
+  'customBodyColor',
+  'customPopupColor',
+  'customBgColor',
+  'customBgImage',
+  'brightness',
+  'autoReadingMethod',
+  'autoReadingPixel',
+  'autoReadingLineTime',
+  'animateDuration',
+  'lineHeight',
+  'paragraphSpace',
+  'columnWidth',
+])
+const READER_PAGE_CONFIG_FIELDS = Object.freeze([
+  ...READER_SCHEME_FIELDS,
+  'customConfigName',
+  'autoTheme',
+])
 
 export const themePresets = {
-  parchment: { label: '羊皮纸', bg: '#f4e9bd', text: '#24282c', body: '#d9c27f', popup: 'rgba(255, 252, 239, 0.94)' },
-  cream:    { label: '米黄',   bg: '#f5eacc', text: '#262626' },
-  green:    { label: '护眼绿', bg: '#c8dcc8', text: '#1f2933' },
-  blue:     { label: '浅蓝',   bg: '#e4f1f5', text: '#262626' },
-  pink:     { label: '浅粉',   bg: '#f5e4e4', text: '#262626' },
-  gray:     { label: '浅灰',   bg: '#e0e0e0', text: '#262626' },
-  dark:     { label: '深色',   bg: '#000000', text: '#ffffff', body: '#000000', popup: '#171717' },
-  white:    { label: '纯白',   bg: '#ffffff', text: '#1f2933' },
-  black:    { label: '纯黑',   bg: '#000000', text: '#ffffff', body: '#000000', popup: '#121212' },
+  parchment: { label: '羊皮纸', swatch: 'rgba(250, 245, 235, 0.8)', bg: '#ffffff', text: '#262626', body: '#eadfca', popup: '#ede7da', bodyImage: '/themes/body_0.png', pageImage: '/themes/content_0.png', popupImage: '/themes/popup_0.png' },
+  cream:    { label: '米黄',   swatch: 'rgba(245, 234, 204, 0.8)', bg: '#f5eacc', text: '#262626', bodyImage: '/themes/body_1.png', pageImage: '/themes/content_1.png', popupImage: '/themes/popup_1.png' },
+  green:    { label: '护眼绿', swatch: 'rgba(230, 242, 230, 0.8)', bg: '#e6f2e6', text: '#262626', bodyImage: '/themes/body_2.png', pageImage: '/themes/content_2.png', popupImage: '/themes/popup_2.png' },
+  blue:     { label: '浅蓝',   swatch: 'rgba(228, 241, 245, 0.8)', bg: '#e4f1f5', text: '#262626', bodyImage: '/themes/body_3.png', pageImage: '/themes/content_3.png', popupImage: '/themes/popup_3.png' },
+  pink:     { label: '浅粉',   swatch: 'rgba(245, 228, 228, 0.8)', bg: '#f5e4e4', text: '#262626', body: '#ebcece', popup: '#faeceb', bodyImage: 'none', pageImage: 'none', popupImage: 'none' },
+  gray:     { label: '浅灰',   swatch: 'rgba(224, 224, 224, 0.8)', bg: '#e0e0e0', text: '#262626', bodyImage: '/themes/body_5.png', pageImage: '/themes/content_5.png', popupImage: '/themes/popup_5.png' },
+  dark:     { label: '深色',   swatch: 'rgba(0, 0, 0, 0.5)', bg: '#000000', text: '#ffffff', body: '#000000', popup: '#171717', bodyImage: '/themes/body_6.png', pageImage: '/themes/content_6.png' },
+  white:    { label: '纯白',   swatch: 'rgba(255, 255, 255, 0.8)', bg: '#ffffff', text: '#262626', body: '#f7f7f7', popup: '#f7f7f7', bodyImage: 'none', pageImage: 'none', popupImage: 'none' },
+  black:    { label: '纯黑',   bg: '#000000', text: '#ffffff', body: '#000000', popup: '#121212', bodyImage: 'none', pageImage: 'none', popupImage: 'none' },
 }
+
+export const readerBuiltInBackgrounds = Object.freeze([
+  '/bg/山水画.jpg',
+  '/bg/山水墨影.jpg',
+  '/bg/羊皮纸1.jpg',
+  '/bg/护眼漫绿.jpg',
+  '/bg/羊皮纸2.jpg',
+  '/bg/新羊皮纸.jpg',
+  '/bg/羊皮纸3.jpg',
+  '/bg/明媚倾城.jpg',
+  '/bg/羊皮纸4.jpg',
+  '/bg/深宫魅影.jpg',
+  '/bg/午后沙滩.jpg',
+  '/bg/清新时光.jpg',
+  '/bg/宁静夜色.jpg',
+  '/bg/边彩画布.jpg',
+])
 
 export const useReaderStore = defineStore('reader', {
   state: () => ({
@@ -42,12 +90,12 @@ export const useReaderStore = defineStore('reader', {
     chineseFont: '简体',
     fontSize: 18,
     fontWeight: 400,
-    fontColor: '',
+    fontColor: '#262626',
     theme: 'parchment',
     themeType: 'day',
-    customBodyColor: '',
-    customPopupColor: '',
-    customBgColor: '',
+    customBodyColor: '#eadfca',
+    customPopupColor: '#ede7da',
+    customBgColor: '#ffffff',
     customBgImage: '',
     customBgImageList: [],
     brightness: 100,
@@ -62,7 +110,7 @@ export const useReaderStore = defineStore('reader', {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 13,
+    settingsVersion: READER_SETTINGS_VERSION,
     settingsUpdatedAt: '',
     settingsSyncBaseUpdatedAt: '',
     settingsSyncing: false,
@@ -72,6 +120,8 @@ export const useReaderStore = defineStore('reader', {
     progressByBook: {},
     clientId: READER_CLIENT_ID,
     normalModeSnapshot: null,
+    normalPageConfig: null,
+    kindlePageConfig: null,
     customConfigName: '内置白天',
     customConfigList: defaultCustomConfigList(),
     autoTheme: true,
@@ -82,8 +132,8 @@ export const useReaderStore = defineStore('reader', {
       if (state.theme === 'custom') {
         return {
           label: '自定义',
-          bg: state.customBgColor || '#f4e9bd',
-          text: state.fontColor || '#24282c',
+          bg: state.customBgColor || '#ffffff',
+          text: state.fontColor || '#262626',
         }
       }
       return themePresets[state.theme] || themePresets.parchment
@@ -142,7 +192,7 @@ export const useReaderStore = defineStore('reader', {
     setCustomConfig(name) {
       const config = (Array.isArray(this.customConfigList) ? this.customConfigList : []).find(item => item?.name === name)
       if (!config) return false
-      const next = sanitizeReaderSettings(config, { includeCustomConfigs: false })
+      const next = sanitizeReaderScheme(config)
       Object.assign(this, next)
       this.customConfigName = config.name
       this.normalizeSettings()
@@ -154,9 +204,9 @@ export const useReaderStore = defineStore('reader', {
       if (!cleanName) return { ok: false, message: '方案名不能为空' }
       const current = Array.isArray(this.customConfigList) ? this.customConfigList : []
       if (current.some(item => item?.name === cleanName)) return { ok: false, message: '方案名不能重复' }
-      const config = readerConfigSnapshot(this, cleanName, '')
+      const dayConfig = current[0] || defaultCustomConfigList()[0]
+      const config = readerConfigSnapshot(dayConfig, cleanName, '')
       this.customConfigList = [...current, config]
-      this.customConfigName = cleanName
       this.markSettingsDirty({ skipCustomConfigSync: true })
       return { ok: true }
     },
@@ -206,7 +256,7 @@ export const useReaderStore = defineStore('reader', {
       if (!configured && !current.some(item => item?.name === fallback.name)) {
         this.customConfigList = [...current, fallback]
       }
-      const next = sanitizeReaderSettings(config, { includeCustomConfigs: false })
+      const next = sanitizeReaderScheme(config)
       Object.assign(this, next)
       this.customConfigName = config.name
       this.normalizeSettings()
@@ -217,41 +267,27 @@ export const useReaderStore = defineStore('reader', {
       const nextType = ['kindle', 'simple', 'Kindle'].includes(pageType) ? 'kindle' : 'normal'
       if (nextType === this.pageType) return
       if (nextType === 'kindle') {
-        this.normalModeSnapshot = {
-          pageMode: this.pageMode,
-          animateDuration: this.animateDuration,
-          mode: this.mode,
-          fontSize: this.fontSize,
-          theme: this.theme,
-          themeType: this.themeType,
-          customBodyColor: this.customBodyColor,
-          customPopupColor: this.customPopupColor,
-          fontColor: this.fontColor,
-          selectionAction: this.selectionAction,
+        this.normalPageConfig = readerPageConfigSnapshot(this)
+        const target = this.kindlePageConfig || {
+          ...readerPageConfigSnapshot(this),
+          animateDuration: 0,
+          fontSize: Math.min(this.fontSize, 20),
+          theme: 'white',
+          themeType: 'day',
+          fontColor: '#262626',
+          mode: 'flip',
+          selectionAction: '忽略',
+          pageMode: 'mobile',
         }
+        applyReaderPageConfig(this, target)
         this.pageType = 'kindle'
-        this.animateDuration = 0
-        this.pageMode = 'mobile'
-        this.mode = 'flip'
-        this.fontSize = Math.min(this.fontSize, 20)
-        this.theme = 'white'
-        this.themeType = 'day'
-        this.fontColor = ''
-        this.selectionAction = '忽略'
       } else {
-        const snapshot = this.normalModeSnapshot || {}
+        this.kindlePageConfig = readerPageConfigSnapshot(this)
+        const snapshot = this.normalPageConfig
+          || sanitizePageConfigSnapshot(this.normalModeSnapshot)
+          || readerPageConfigSnapshot(defaultReaderSettings())
+        applyReaderPageConfig(this, snapshot)
         this.pageType = 'normal'
-        this.pageMode = snapshot.pageMode === 'mobile' ? 'mobile' : 'auto'
-        this.animateDuration = clampNumber(snapshot.animateDuration, 0, 500, 300)
-        if (['scroll', 'scroll2', 'flip', 'page'].includes(snapshot.mode)) this.mode = snapshot.mode
-        if (snapshot.fontSize !== undefined) this.fontSize = clampNumber(snapshot.fontSize, 8, 36, 18)
-        if (typeof snapshot.theme === 'string') this.theme = snapshot.theme
-        this.themeType = normalizeReaderThemeType(snapshot.themeType, this.theme)
-        if (typeof snapshot.customBodyColor === 'string') this.customBodyColor = snapshot.customBodyColor
-        if (typeof snapshot.customPopupColor === 'string') this.customPopupColor = snapshot.customPopupColor
-        if (typeof snapshot.fontColor === 'string') this.fontColor = snapshot.fontColor
-        if (['操作弹窗', '忽略'].includes(snapshot.selectionAction)) this.selectionAction = snapshot.selectionAction
-        this.normalModeSnapshot = null
       }
       this.markSettingsDirty()
     },
@@ -293,7 +329,7 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setFontSize(fontSize) {
-      this.fontSize = clampNumber(fontSize, 8, 36, 18)
+      this.fontSize = numberAtLeast(fontSize, 8, 18)
       this.markSettingsDirty()
     },
     setFontWeight(fontWeight) {
@@ -339,7 +375,7 @@ export const useReaderStore = defineStore('reader', {
     removeCustomBgImage(image) {
       if (!image) return
       this.customBgImageList = (Array.isArray(this.customBgImageList) ? this.customBgImageList : []).filter(item => item !== image)
-      if (this.customBgImage === image) this.customBgImage = ''
+      if (this.customBgImage === image) this.customBgImage = readerBuiltInBackgrounds[0]
       this.markSettingsDirty()
     },
     setBrightness(brightness) {
@@ -354,16 +390,16 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setAutoReadingPixel(pixel) {
-      this.autoReadingPixel = clampNumber(pixel, 1, 80, 1)
+      this.autoReadingPixel = numberAtLeast(pixel, 1, 1)
       this.autoReadSpeed = this.autoReadingPixel
       this.markSettingsDirty()
     },
     setAutoReadingLineTime(lineTime) {
-      this.autoReadingLineTime = clampNumber(lineTime, 10, 3000, 1000)
+      this.autoReadingLineTime = numberAtLeast(lineTime, 10, 1000)
       this.markSettingsDirty()
     },
     setAnimateDuration(duration) {
-      this.animateDuration = this.pageType === 'kindle' ? 0 : clampNumber(duration, 0, 500, 300)
+      this.animateDuration = clampNumber(duration, 0, 500, 300)
       this.markSettingsDirty()
     },
     setTTSRate(rate) {
@@ -387,11 +423,24 @@ export const useReaderStore = defineStore('reader', {
       this.markSettingsDirty()
     },
     setColumnWidth(columnWidth) {
-      this.columnWidth = clampNumber(columnWidth, 320, 1200, 800)
+      this.columnWidth = numberAtLeast(columnWidth, 160, 800)
       this.markSettingsDirty()
     },
     resetReaderSettings() {
-      Object.assign(this, defaultReaderSettings())
+      const customConfigList = sanitizeCustomConfigList(this.customConfigList)
+      const customFontsMap = { ...(this.customFontsMap || {}) }
+      const customBgImageList = sanitizeStringList(this.customBgImageList)
+      const ttsRate = this.ttsRate
+      const ttsPitch = this.ttsPitch
+      const ttsVoiceURI = this.ttsVoiceURI
+      Object.assign(this, defaultReaderSettings(), {
+        customConfigList,
+        customFontsMap,
+        customBgImageList,
+        ttsRate,
+        ttsPitch,
+        ttsVoiceURI,
+      })
       this.markSettingsDirty()
     },
     normalizeSettings() {
@@ -412,7 +461,7 @@ export const useReaderStore = defineStore('reader', {
         this.customConfigName = this.customConfigList[0]?.name || '内置白天'
       }
       this.autoTheme = this.autoTheme === true
-      this.fontSize = clampNumber(this.fontSize, 8, 36, 18)
+      this.fontSize = numberAtLeast(this.fontSize, 8, 18)
       this.fontWeight = clampNumber(this.fontWeight, 100, 900, 400)
       if (typeof this.fontColor !== 'string') this.fontColor = ''
       this.themeType = normalizeReaderThemeType(this.themeType, this.theme)
@@ -420,16 +469,15 @@ export const useReaderStore = defineStore('reader', {
       if (typeof this.customPopupColor !== 'string') this.customPopupColor = ''
       this.lineHeight = clampNumber(this.lineHeight, 1, 5, 1.8)
       this.paragraphSpace = clampNumber(this.paragraphSpace, 0, 5, 0)
-      this.columnWidth = clampNumber(this.columnWidth, 320, 1200, 800)
+      this.columnWidth = numberAtLeast(this.columnWidth, 160, 800)
       this.brightness = clampNumber(this.brightness, 50, 150, 100)
       if (!['像素滚动', '段落滚动'].includes(this.autoReadingMethod)) this.autoReadingMethod = '像素滚动'
-      this.autoReadingPixel = clampNumber(this.autoReadingPixel ?? this.autoReadSpeed, 1, 80, 1)
+      this.autoReadingPixel = numberAtLeast(this.autoReadingPixel ?? this.autoReadSpeed, 1, 1)
       this.autoReadSpeed = this.autoReadingPixel
-      this.autoReadingLineTime = clampNumber(this.autoReadingLineTime, 10, 3000, 1000)
+      this.autoReadingLineTime = numberAtLeast(this.autoReadingLineTime, 10, 1000)
       this.animateDuration = clampNumber(this.animateDuration, 0, 500, 300)
-      if (this.pageType === 'kindle') {
-        this.animateDuration = 0
-      }
+      this.normalPageConfig = sanitizePageConfigSnapshot(this.normalPageConfig || this.normalModeSnapshot)
+      this.kindlePageConfig = sanitizePageConfigSnapshot(this.kindlePageConfig)
       this.ttsRate = normalizeTTSRate(this.ttsRate)
       this.ttsPitch = normalizeTTSPitch(this.ttsPitch)
       if ((this.settingsVersion || 0) < 4) {
@@ -439,7 +487,7 @@ export const useReaderStore = defineStore('reader', {
         this.paragraphSpace = 0.2
         this.columnWidth = 800
       }
-      this.settingsVersion = 13
+      this.settingsVersion = READER_SETTINGS_VERSION
       this.settingsSyncing = false
     },
     markSettingsDirty(options = {}) {
@@ -890,6 +938,11 @@ function clampNumber(value, min, max, fallback) {
   return Math.max(min, Math.min(max, Number.isFinite(number) ? number : fallback))
 }
 
+function numberAtLeast(value, min, fallback) {
+  const number = Number(value)
+  return Math.max(min, Number.isFinite(number) ? number : fallback)
+}
+
 function readerClientId() {
   if (typeof sessionStorage === 'undefined') return makeClientId()
   const key = 'openreader_reader_client_id'
@@ -946,7 +999,9 @@ function readerSettingsPayload(state) {
     lineHeight: state.lineHeight,
     paragraphSpace: state.paragraphSpace,
     columnWidth: state.columnWidth,
-    settingsVersion: 13,
+    normalPageConfig: sanitizePageConfigSnapshot(state.normalPageConfig),
+    kindlePageConfig: sanitizePageConfigSnapshot(state.kindlePageConfig),
+    settingsVersion: READER_SETTINGS_VERSION,
   }
 }
 
@@ -962,12 +1017,12 @@ function defaultReaderSettings() {
     chineseFont: '简体',
     fontSize: 18,
     fontWeight: 400,
-    fontColor: '',
+    fontColor: '#262626',
     theme: 'parchment',
     themeType: 'day',
-    customBodyColor: '',
-    customPopupColor: '',
-    customBgColor: '',
+    customBodyColor: '#eadfca',
+    customPopupColor: '#ede7da',
+    customBgColor: '#ffffff',
     customBgImage: '',
     customBgImageList: [],
     customConfigName: '内置白天',
@@ -985,8 +1040,10 @@ function defaultReaderSettings() {
     lineHeight: 1.8,
     paragraphSpace: 0.2,
     columnWidth: 800,
-    settingsVersion: 13,
+    settingsVersion: READER_SETTINGS_VERSION,
     normalModeSnapshot: null,
+    normalPageConfig: null,
+    kindlePageConfig: null,
   }
 }
 
@@ -1004,8 +1061,8 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.chineseFont = payload.chineseFont === '繁体' ? '繁体' : '简体'
   if (typeof payload.theme === 'string') settings.theme = payload.theme
   settings.themeType = normalizeReaderThemeType(payload.themeType, payload.theme)
-  settings.customBodyColor = typeof payload.customBodyColor === 'string' ? payload.customBodyColor : ''
-  settings.customPopupColor = typeof payload.customPopupColor === 'string' ? payload.customPopupColor : ''
+  settings.customBodyColor = typeof payload.customBodyColor === 'string' ? payload.customBodyColor : '#eadfca'
+  settings.customPopupColor = typeof payload.customPopupColor === 'string' ? payload.customPopupColor : '#ede7da'
   if (typeof payload.customBgColor === 'string') settings.customBgColor = payload.customBgColor
   if (typeof payload.customBgImage === 'string') settings.customBgImage = payload.customBgImage
   settings.customBgImageList = sanitizeStringList(payload.customBgImageList)
@@ -1017,21 +1074,23 @@ function sanitizeReaderSettings(payload, options = {}) {
     }
   }
   if (typeof payload.ttsVoiceURI === 'string') settings.ttsVoiceURI = payload.ttsVoiceURI
-  settings.fontSize = clampNumber(payload.fontSize, 8, 36, 18)
+  settings.fontSize = numberAtLeast(payload.fontSize, 8, 18)
   settings.fontWeight = clampNumber(payload.fontWeight, 100, 900, 400)
-  settings.fontColor = typeof payload.fontColor === 'string' ? payload.fontColor : ''
+  settings.fontColor = typeof payload.fontColor === 'string' ? payload.fontColor : '#262626'
   settings.brightness = clampNumber(payload.brightness, 50, 150, 100)
   settings.autoReadingMethod = payload.autoReadingMethod === '段落滚动' ? '段落滚动' : '像素滚动'
-  settings.autoReadingPixel = clampNumber(payload.autoReadingPixel ?? payload.autoReadSpeed, 1, 80, 1)
+  settings.autoReadingPixel = numberAtLeast(payload.autoReadingPixel ?? payload.autoReadSpeed, 1, 1)
   settings.autoReadSpeed = settings.autoReadingPixel
-  settings.autoReadingLineTime = clampNumber(payload.autoReadingLineTime, 10, 3000, 1000)
+  settings.autoReadingLineTime = numberAtLeast(payload.autoReadingLineTime, 10, 1000)
   settings.animateDuration = clampNumber(payload.animateDuration, 0, 500, 300)
   settings.ttsRate = normalizeTTSRate(payload.ttsRate)
   settings.ttsPitch = normalizeTTSPitch(payload.ttsPitch)
   settings.lineHeight = clampNumber(payload.lineHeight, 1, 5, 1.8)
   settings.paragraphSpace = clampNumber(payload.paragraphSpace, 0, 5, 0.2)
-  settings.columnWidth = clampNumber(payload.columnWidth, 320, 1200, 800)
-  settings.settingsVersion = 13
+  settings.columnWidth = numberAtLeast(payload.columnWidth, 160, 800)
+  settings.normalPageConfig = sanitizePageConfigSnapshot(payload.normalPageConfig || payload.normalModeSnapshot)
+  settings.kindlePageConfig = sanitizePageConfigSnapshot(payload.kindlePageConfig)
+  settings.settingsVersion = READER_SETTINGS_VERSION
   return settings
 }
 
@@ -1048,16 +1107,53 @@ function sanitizeStringList(value) {
   return [...new Set(value.filter(item => typeof item === 'string' && item))]
 }
 
-function readerConfigSnapshot(state, name, configDefaultType) {
-  const payload = readerSettingsPayload({
-    ...state,
-    customConfigName: name,
-    customConfigList: [],
-  })
-  delete payload.customConfigName
-  delete payload.customConfigList
+function sanitizeReaderScheme(value) {
+  const source = value && typeof value === 'object' ? value : {}
+  const sanitized = sanitizeReaderSettings(source, { includeCustomConfigs: false })
+  return pickReaderFields(sanitized, READER_SCHEME_FIELDS)
+}
+
+function readerPageConfigSnapshot(state) {
   return {
-    ...payload,
+    ...sanitizeReaderScheme(state),
+    customConfigName: typeof state?.customConfigName === 'string' && state.customConfigName
+      ? state.customConfigName
+      : '内置白天',
+    autoTheme: state?.autoTheme === true,
+  }
+}
+
+function sanitizePageConfigSnapshot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const snapshot = {
+    ...sanitizeReaderScheme(value),
+  }
+  if (typeof value.customConfigName === 'string' && value.customConfigName) {
+    snapshot.customConfigName = value.customConfigName
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'autoTheme')) {
+    snapshot.autoTheme = value.autoTheme === true
+  }
+  return snapshot
+}
+
+function applyReaderPageConfig(state, value) {
+  const snapshot = sanitizePageConfigSnapshot(value)
+  if (!snapshot) return false
+  Object.assign(state, pickReaderFields(snapshot, READER_PAGE_CONFIG_FIELDS))
+  return true
+}
+
+function pickReaderFields(value, fields) {
+  return fields.reduce((result, field) => {
+    if (Object.prototype.hasOwnProperty.call(value, field)) result[field] = value[field]
+    return result
+  }, {})
+}
+
+function readerConfigSnapshot(state, name, configDefaultType) {
+  return {
+    ...sanitizeReaderScheme(state),
     name,
     configDefaultType,
   }
@@ -1067,76 +1163,56 @@ function defaultCustomConfigList() {
   return [
     {
       mode: 'page',
-      pageType: 'normal',
       pageMode: 'auto',
       clickMethod: 'auto',
       selectionAction: '操作弹窗',
       fontFamily: 'system',
-      customFontsMap: {},
       chineseFont: '简体',
       fontSize: 18,
       fontWeight: 400,
-      fontColor: '',
+      fontColor: '#262626',
       theme: 'parchment',
       themeType: 'day',
-      customBodyColor: '',
-      customPopupColor: '',
-      customBgColor: '',
+      customBodyColor: '#eadfca',
+      customPopupColor: '#ede7da',
+      customBgColor: '#ffffff',
       customBgImage: '',
-      customBgImageList: [],
-      customConfigName: '内置白天',
-      customConfigList: [],
       brightness: 100,
-      autoReadSpeed: 1,
       autoReadingMethod: '像素滚动',
       autoReadingPixel: 1,
       autoReadingLineTime: 1000,
       animateDuration: 300,
-      ttsRate: 1,
-      ttsPitch: 1,
-      ttsVoiceURI: '',
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 13,
       name: '内置白天',
       configDefaultType: '白天默认',
       builtin: true,
     },
     {
       mode: 'page',
-      pageType: 'normal',
       pageMode: 'auto',
       clickMethod: 'auto',
       selectionAction: '操作弹窗',
       fontFamily: 'system',
-      customFontsMap: {},
       chineseFont: '简体',
       fontSize: 18,
       fontWeight: 400,
-      fontColor: '',
+      fontColor: '#ffffff',
       theme: 'dark',
       themeType: 'night',
-      customBodyColor: '',
-      customPopupColor: '',
-      customBgColor: '',
+      customBodyColor: '#121212',
+      customPopupColor: '#121212',
+      customBgColor: '#171717',
       customBgImage: '',
-      customBgImageList: [],
-      customConfigName: '内置黑夜',
-      customConfigList: [],
       brightness: 100,
-      autoReadSpeed: 1,
       autoReadingMethod: '像素滚动',
       autoReadingPixel: 1,
       autoReadingLineTime: 1000,
       animateDuration: 300,
-      ttsRate: 1,
-      ttsPitch: 1,
-      ttsVoiceURI: '',
       lineHeight: 1.8,
       paragraphSpace: 0.2,
       columnWidth: 800,
-      settingsVersion: 13,
       name: '内置黑夜',
       configDefaultType: '黑夜默认',
       builtin: true,
@@ -1152,7 +1228,7 @@ function sanitizeCustomConfigList(value) {
       const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : ''
       if (!name) return null
       return {
-        ...sanitizeReaderSettings(item, { includeCustomConfigs: false }),
+        ...sanitizeReaderScheme(item),
         name,
         configDefaultType: typeof item.configDefaultType === 'string' ? item.configDefaultType : '',
         builtin: item.builtin === true || index <= 1 && ['内置白天', '内置黑夜'].includes(name),

@@ -72,6 +72,9 @@ export function resolveReaderSurface({
   themeBackground,
   themeBody,
   themePopup,
+  themeBodyImage,
+  themePageImage,
+  themePopupImage,
   customBackgroundImage = '',
 } = {}) {
   const custom = theme === 'custom'
@@ -84,6 +87,7 @@ export function resolveReaderSurface({
       pageColor: '#000000',
       pageImage: 'none',
       popupColor: normalizedColor(themePopup) || '#171717',
+      popupImage: 'none',
       pageBorder: 'transparent',
       pageShadow: 'none',
     }
@@ -92,13 +96,25 @@ export function resolveReaderSurface({
   const customImage = custom ? normalizedColor(customBackgroundImage) : ''
   return {
     bodyColor: normalizedColor(themeBody) || '#d9c27f',
-    bodyImage: custom ? 'none' : 'var(--reader-body-texture)',
+    bodyImage: custom ? 'none' : readerSurfaceImage(themeBodyImage, 'var(--reader-body-texture)'),
     pageColor: normalizedColor(themeBackground) || '#f4e9bd',
-    pageImage: customImage ? `url(${JSON.stringify(customImage)})` : custom ? 'none' : 'var(--paper-texture)',
+    pageImage: customImage
+      ? `url(${JSON.stringify(customImage)})`
+      : custom
+        ? 'none'
+        : readerSurfaceImage(themePageImage, 'var(--paper-texture)'),
     popupColor: normalizedColor(themePopup) || 'rgba(255, 252, 239, 0.94)',
+    popupImage: custom ? 'none' : readerSurfaceImage(themePopupImage, 'none'),
     pageBorder: custom ? 'transparent' : DAY_PAGE_BORDER,
     pageShadow: custom ? 'none' : DAY_PAGE_SHADOW,
   }
+}
+
+function readerSurfaceImage(value, fallback) {
+  const image = normalizedColor(value)
+  if (!image) return fallback
+  if (image === 'none' || image.startsWith('var(') || image.startsWith('url(')) return image
+  return `url(${JSON.stringify(image)})`
 }
 
 function normalizedColor(value) {

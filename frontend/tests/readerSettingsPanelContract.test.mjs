@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const panelSource = readFileSync(new URL('../src/components/reader/ReaderSettingsPanel.vue', import.meta.url), 'utf8')
 const mobileWorkspaceSource = readFileSync(new URL('../src/components/reader/ReaderMobileWorkspacePanel.vue', import.meta.url), 'utf8')
 const readerViewSource = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
+const readerStoreSource = readFileSync(new URL('../src/stores/reader.js', import.meta.url), 'utf8')
 
 test('ReaderSettingsPanel exposes upstream canonical settings labels', () => {
   for (const label of ['阅读主题', '正文字体', '字体大小', '字体粗细', '段落行高']) {
@@ -12,6 +13,107 @@ test('ReaderSettingsPanel exposes upstream canonical settings labels', () => {
   }
   for (const shortened of ['>主题<', '>字体<', '>字号<', '>字重<', '>行高<']) {
     assert.doesNotMatch(panelSource, new RegExp(shortened), `should not expose shortened label ${shortened}`)
+  }
+})
+
+test('ReaderSettingsPanel preserves the fixed-baseline core order and exact operation zone', () => {
+  const orderedLabels = [
+    '特殊模式',
+    '配置方案',
+    '方案类型',
+    '阅读主题',
+    '正文字体',
+    '简繁转换',
+    '字体大小',
+    '字体粗细',
+    '段落行高',
+    '段落间距',
+    '字体颜色',
+    '页面模式',
+    '页面宽度',
+    '翻页方式',
+    '动画时长',
+    '自动翻页',
+    '滚动像素',
+    '翻页速度',
+    '全屏点击',
+    '选择文字',
+  ]
+  let last = -1
+  for (const label of orderedLabels) {
+    const position = panelSource.indexOf(`>${label}<`)
+    assert(position > last, `missing or out-of-order fixed-baseline setting ${label}`)
+    last = position
+  }
+
+  assert.equal((panelSource.match(/class="setting-divider"/g) || []).length, 2, 'settings must keep both upstream dividers')
+  assert.match(panelSource, /class="operation-zone"[\s\S]*?>显示翻页区域<[\s\S]*?>过滤规则管理</)
+  assert.doesNotMatch(panelSource, /<label class="setting-label">替换规则<\/label>/)
+  assert.doesNotMatch(panelSource, /管理全局替换规则/)
+})
+
+test('ReaderSettingsPanel keeps requested anti-mistap additions without duplicating the TTS bar', () => {
+  for (const requested of ['>亮度<', 'class="font-preview"', 'class="font-size-presets"']) {
+    assert.match(panelSource, new RegExp(requested), `missing requested settings affordance ${requested}`)
+  }
+  for (const duplicate of ['朗读语速', '朗读音调', '朗读语音']) {
+    assert.doesNotMatch(panelSource, new RegExp(duplicate), `ReaderSettings must not duplicate TTS bar control ${duplicate}`)
+  }
+  assert.doesNotMatch(panelSource, /ttsVoices|ttsRateChange|ttsPitchChange|ttsVoiceChange/)
+  assert.doesNotMatch(panelSource, /reader\.fontColor[\s\S]{0,160}恢复默认/)
+})
+
+test('ReaderSettingsPanel restores all fourteen built-in background choices in upstream order', () => {
+  const backgroundSources = `${readerStoreSource}\n${panelSource}`
+  const backgrounds = [
+    '山水画.jpg', '山水墨影.jpg', '羊皮纸1.jpg', '护眼漫绿.jpg', '羊皮纸2.jpg', '新羊皮纸.jpg',
+    '羊皮纸3.jpg', '明媚倾城.jpg', '羊皮纸4.jpg', '深宫魅影.jpg', '午后沙滩.jpg', '清新时光.jpg',
+    '宁静夜色.jpg', '边彩画布.jpg',
+  ]
+  let last = -1
+  for (const filename of backgrounds) {
+    const position = backgroundSources.indexOf(filename)
+    assert(position > last, `missing or out-of-order built-in background ${filename}`)
+    assert.equal(
+      existsSync(new URL(`../public/bg/${filename}`, import.meta.url)),
+      true,
+      `missing copied fixed-baseline background asset ${filename}`,
+    )
+    last = position
+  }
+  assert.match(panelSource, /readerBuiltInBackgrounds/)
+  assert.match(panelSource, /v-for="image in builtInBackgrounds"/)
+  assert.match(panelSource, /v-for="image in reader\.customBgImageList"/)
+})
+
+test('ReaderSettingsPanel uses one upstream font action and leaves animation editable in Kindle mode', () => {
+  assert.match(panelSource, /function manageFont\(font\)/)
+  assert.match(panelSource, /继续上传/)
+  assert.match(panelSource, /恢复默认/)
+  assert.doesNotMatch(panelSource, /class="font-family-actions"/)
+  assert.doesNotMatch(panelSource, /:disabled="reader\.pageType === 'kindle'"/)
+  assert.match(panelSource, /<label class="setting-label">自动翻页<\/label>/)
+})
+
+test('reader preset surfaces map every fixed-baseline theme resource while retaining pure-black night', () => {
+  for (const index of [0, 1, 2, 3, 5]) {
+    assert.match(readerStoreSource, new RegExp(`body_${index}\\.png|body-${index}\\.png`), `missing body texture ${index}`)
+    assert.match(readerStoreSource, new RegExp(`content_${index}\\.png|content-${index}\\.png`), `missing content texture ${index}`)
+    assert.match(readerStoreSource, new RegExp(`popup_${index}\\.png|popup-${index}\\.png`), `missing popup texture ${index}`)
+    for (const surface of ['body', 'content', 'popup']) {
+      assert.equal(
+        existsSync(new URL(`../public/themes/${surface}_${index}.png`, import.meta.url)),
+        true,
+        `missing copied fixed-baseline ${surface} texture ${index}`,
+      )
+    }
+  }
+  for (const surface of ['body', 'content']) {
+    assert.equal(
+      existsSync(new URL(`../public/themes/${surface}_6.png`, import.meta.url)),
+      true,
+      `missing copied fixed-baseline night ${surface} texture`,
+    )
   }
 })
 
@@ -136,6 +238,6 @@ test('reader settings font options use upstream span-item geometry', () => {
   assert.match(panelSource, /\.font-family-option \{[\s\S]*?width: 78px;[\s\S]*?height: 34px;[\s\S]*?border-radius: 2px;/, 'font options should keep upstream 78x34 span-item geometry')
   assert.match(panelSource, /\.font-family-option \{[\s\S]*?font: 14px \/ 34px/, 'font options should keep upstream 14px/34px font shorthand')
   assert.match(panelSource, /\.font-family-option\.active \{[\s\S]*?color: var\(--reader-accent, #ed4259\);[\s\S]*?border-color: var\(--reader-accent, #ed4259\);/, 'font options should use the semantic selected color')
-  assert.match(panelSource, /\.font-family-actions \{[\s\S]*?position: absolute;[\s\S]*?top: -10px;[\s\S]*?right: -10px;/, 'font upload actions should be positioned like upstream upload icons')
+  assert.match(panelSource, /\.font-action-btn \{[\s\S]*?position: absolute;[\s\S]*?top: -10px;[\s\S]*?right: -10px;/, 'the single font action should be positioned like the upstream upload icon')
   assert.match(panelSource, /\.font-action-btn\.active,[\s\S]*?\.font-action-btn:hover \{[\s\S]*?color: var\(--reader-accent, #ed4259\);/, 'uploaded font icons should use the semantic active color')
 })

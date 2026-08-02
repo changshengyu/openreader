@@ -4,9 +4,9 @@
 
 审计日期：2026-08-02。
 
-状态：**audit-complete / implementation-pending**。本文件由只读源码审查生成；在本合同提交前
-没有修改 Reader 应用代码或既有测试。历史 ReaderSettings 实施记录只能说明做过什么，不能证明
-当前组件已经与固定上游一致。
+状态：**implementation-complete / Docker-pending**。本文件最初由只读源码审查生成；审查合同以
+`609a7a1` 单独提交后，已按“失败测试 → store/面板实现 → 全量与真实浏览器”顺序完成重建。
+历史 ReaderSettings 实施记录仍只能说明做过什么，本节末尾的新证据才是本轮签收依据。
 
 ## 1. 权威源码与当前映射
 
@@ -184,3 +184,21 @@ relative-cache/owner-isolation。通过后可作为 ReaderSettings 半模块 Doc
 4. 运行单元/构建后做五视口浏览器验证；若状态与视觉切片均完整，即使 Reader 其它模块尚未开始
    下一轮，也可本地构建并发布 Docker 供设备验证。
 
+## 12. 重建结果（2026-08-02）
+
+- 方案采用显式 allowlist；新增方案复制第一项内置白天且不激活，旧方案中的 `pageType`、
+  `autoTheme`、TTS 和全局资产清单不会再覆盖活动全局状态。
+- 重置恢复内置白天，但保留全部自定义方案、字体/背景资产清单和 TTS 配置；删除当前自定义背景
+  后回到第一张内置背景，不触碰文件删除以外的持久资源。
+- normal/kindle 两套最近配置进入既有 per-user reader JSON，并兼容读取旧 `normalModeSnapshot`；
+  Kindle 动画值不再被 setter/normalize 强制归零，当前全屏点击选择保持不变。
+- 面板恢复两条 divider、固定上游核心顺序、精确操作区、14 张内置背景、五字体单上传图标和
+  “继续上传/恢复默认”分支；ReaderSettings 内重复 TTS 行及字体颜色局部重置已删除。
+- body/content/popup 使用固定基准独立纹理，粉色/纯白仍为纯色；用户要求的纯黑页面、白字和
+  无夜间纹理覆盖继续优先。数值 stepper 支持上游无产品 max 字段与动态页面宽度边界。
+
+验证证据：frontend `680/680`、Go 全量、Vite production build、`git diff --check` 通过；真实
+浏览器覆盖 1440×900、390×844、360×800、1024×1366、1366×1024，并额外覆盖 1024×1366
+强制手机模式。工具层并存、面板关闭/切换、固定标题与列表滚动、亮度 87 直接输入、背景预览、
+纯黑夜间正文、iPad 关闭路径、无横向溢出和无控制台异常均通过。Docker 新旧卷门与 GHCR 发布
+在代码提交后执行，完成前状态保持 `Docker-pending`。

@@ -75,3 +75,22 @@ test('clamps stepper values and formats compact labels', () => {
   assert.equal(readerSettingStepLabel(2, 0.2), '2')
   assert.equal(readerSettingStepLabel(400, 100), '400')
 })
+
+test('supports upstream settings that have a minimum but no product maximum', () => {
+  assert.equal(steppedReaderSettingValue({
+    value: 3000,
+    direction: 1,
+    min: 10,
+    step: 50,
+  }), 3050)
+  assert.equal(normalizeReaderSettingInput({
+    input: '120',
+    fallback: 36,
+    min: 8,
+  }), 120)
+  assert.equal(normalizeReaderSettingInput({
+    input: 'Infinity',
+    fallback: 48,
+    min: 8,
+  }), 48)
+})

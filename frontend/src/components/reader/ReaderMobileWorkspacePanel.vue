@@ -57,7 +57,9 @@ defineEmits(['close'])
   height: 100dvh;
   padding: calc(58px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom));
   color: var(--reader-popup-text, var(--reader-text));
-  background: var(--reader-popup-bg);
+  background-color: var(--reader-popup-bg);
+  background-image: var(--reader-popup-bg-image);
+  background-repeat: repeat;
   backdrop-filter: blur(2px);
 }
 
@@ -79,7 +81,7 @@ defineEmits(['close'])
   padding: calc(58px + env(safe-area-inset-top)) 0 0;
   overflow-x: hidden;
   overflow-y: visible;
-  background: color-mix(in srgb, var(--reader-popup-bg) 97%, transparent);
+  background-color: color-mix(in srgb, var(--reader-popup-bg) 97%, transparent);
   backdrop-filter: none;
 }
 

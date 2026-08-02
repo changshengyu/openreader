@@ -208,6 +208,153 @@ test('browser color-scheme switching uses the same complete default-scheme trans
   assert.equal(reader.themeType, 'day')
 })
 
+test('custom schemes copy built-in day without activating or capturing global settings', { concurrency: false }, () => {
+  const { reader } = freshStores(1)
+  const builtInDay = { ...reader.customConfigList[0] }
+  reader.customConfigList = [
+    ...reader.customConfigList,
+    { ...builtInDay, name: '当前方案', builtin: false, configDefaultType: '', theme: 'blue', fontSize: 29 },
+  ]
+  assert.equal(reader.setCustomConfig('当前方案'), true)
+  reader.pageType = 'kindle'
+  reader.autoTheme = false
+  reader.ttsRate = 1.7
+  reader.customFontsMap = { hei: '/uploads/users/1/fonts/hei.ttf' }
+  reader.customBgImageList = ['/uploads/users/1/backgrounds/paper.png']
+
+  assert.deepEqual(reader.createCustomConfig(' 新方案 '), { ok: true })
+  assert.equal(reader.customConfigName, '当前方案')
+  const created = reader.customConfigList.find(item => item.name === '新方案')
+  assert.equal(created.theme, builtInDay.theme)
+  assert.equal(created.fontSize, builtInDay.fontSize)
+  for (const forbidden of ['pageType', 'autoTheme', 'ttsRate', 'ttsPitch', 'ttsVoiceURI', 'customFontsMap', 'customBgImageList']) {
+    assert.equal(Object.hasOwn(created, forbidden), false, `scheme captured global field ${forbidden}`)
+  }
+})
+
+test('legacy polluted schemes apply only scheme fields and preserve global mode, TTS, and assets', { concurrency: false }, () => {
+  const { reader } = freshStores(1)
+  reader.customConfigList = [
+    ...reader.customConfigList,
+    {
+      ...reader.customConfigList[0],
+      name: '旧方案',
+      builtin: false,
+      configDefaultType: '',
+      theme: 'blue',
+      fontSize: 24,
+      brightness: 83,
+      pageType: 'normal',
+      autoTheme: true,
+      ttsRate: 0.5,
+      ttsPitch: 0,
+      ttsVoiceURI: 'wrong-voice',
+      customFontsMap: {},
+      customBgImageList: [],
+    },
+  ]
+  reader.pageType = 'kindle'
+  reader.autoTheme = false
+  reader.ttsRate = 1.8
+  reader.ttsPitch = 1.2
+  reader.ttsVoiceURI = 'voice-a'
+  reader.customFontsMap = { hei: '/uploads/users/1/fonts/hei.ttf' }
+  reader.customBgImageList = ['/uploads/users/1/backgrounds/paper.png']
+
+  assert.equal(reader.setCustomConfig('旧方案'), true)
+  assert.equal(reader.theme, 'blue')
+  assert.equal(reader.fontSize, 24)
+  assert.equal(reader.brightness, 83)
+  assert.equal(reader.pageType, 'kindle')
+  assert.equal(reader.autoTheme, false)
+  assert.equal(reader.ttsRate, 1.8)
+  assert.equal(reader.ttsPitch, 1.2)
+  assert.equal(reader.ttsVoiceURI, 'voice-a')
+  assert.deepEqual(reader.customFontsMap, { hei: '/uploads/users/1/fonts/hei.ttf' })
+  assert.deepEqual(reader.customBgImageList, ['/uploads/users/1/backgrounds/paper.png'])
+})
+
+test('reset restores the day configuration without deleting schemes, TTS, or uploaded assets', { concurrency: false }, () => {
+  const { reader } = freshStores(1)
+  reader.customConfigList = [
+    ...reader.customConfigList,
+    { ...reader.customConfigList[0], name: '保留方案', builtin: false, configDefaultType: '' },
+  ]
+  reader.customFontsMap = { serif: '/uploads/users/1/fonts/song.woff2' }
+  reader.customBgImageList = ['/uploads/users/1/backgrounds/paper.png']
+  reader.customBgImage = reader.customBgImageList[0]
+  reader.ttsRate = 1.6
+  reader.ttsPitch = 0.8
+  reader.ttsVoiceURI = 'voice-b'
+  reader.theme = 'custom'
+  reader.brightness = 72
+
+  reader.resetReaderSettings()
+
+  assert(reader.customConfigList.some(item => item.name === '保留方案'))
+  assert.deepEqual(reader.customFontsMap, { serif: '/uploads/users/1/fonts/song.woff2' })
+  assert.deepEqual(reader.customBgImageList, ['/uploads/users/1/backgrounds/paper.png'])
+  assert.equal(reader.customBgImage, '')
+  assert.equal(reader.ttsRate, 1.6)
+  assert.equal(reader.ttsPitch, 0.8)
+  assert.equal(reader.ttsVoiceURI, 'voice-b')
+  assert.equal(reader.customConfigName, '内置白天')
+  assert.equal(reader.theme, 'parchment')
+  assert.equal(reader.themeType, 'day')
+  assert.equal(reader.fontColor, '#262626')
+  assert.equal(reader.brightness, 100)
+})
+
+test('normal and Kindle configurations survive round trips and reader-settings reload', { concurrency: false }, async () => {
+  const { reader } = freshStores(1)
+  reader.setMode('scroll')
+  reader.setPageMode('auto')
+  reader.setAnimateDuration(450)
+  reader.setFontSize(27)
+  reader.setClickMethod('next')
+
+  reader.setPageType('kindle')
+  assert.equal(reader.mode, 'flip')
+  assert.equal(reader.animateDuration, 0)
+  assert.equal(reader.fontSize, 20)
+  assert.equal(reader.clickMethod, 'next')
+  reader.setAnimateDuration(150)
+  reader.setFontSize(19)
+  reader.setTheme('green')
+
+  reader.setPageType('normal')
+  assert.equal(reader.mode, 'scroll')
+  assert.equal(reader.animateDuration, 450)
+  assert.equal(reader.fontSize, 27)
+  reader.setPageType('kindle')
+  assert.equal(reader.mode, 'flip')
+  assert.equal(reader.animateDuration, 150)
+  assert.equal(reader.fontSize, 19)
+  assert.equal(reader.theme, 'green')
+
+  let persisted
+  await withAPI('put', async (_path, body) => {
+    persisted = body.value
+    return { data: { value: body.value, updatedAt: '2026-08-02T12:00:00Z' }, headers: {} }
+  }, async () => {
+    await reader.saveReaderSettings()
+  })
+  assert.equal(persisted.pageType, 'kindle')
+  assert.equal(persisted.normalPageConfig.mode, 'scroll')
+  assert.equal(persisted.kindlePageConfig.animateDuration, 150)
+
+  const { reader: restored } = freshStores(1)
+  restored.applyReaderSettings(persisted)
+  restored.setPageType('normal')
+  assert.equal(restored.mode, 'scroll')
+  assert.equal(restored.animateDuration, 450)
+  assert.equal(restored.fontSize, 27)
+  restored.setPageType('kindle')
+  assert.equal(restored.animateDuration, 150)
+  assert.equal(restored.fontSize, 19)
+  assert.equal(restored.theme, 'green')
+})
+
 test('a reader settings broadcast received before its own save response does not supersede that save', { concurrency: false }, async () => {
   const request = deferred()
   const { reader } = freshStores(1)

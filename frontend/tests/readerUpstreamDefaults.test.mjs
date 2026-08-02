@@ -38,10 +38,22 @@ test('Kindle mode preserves the upstream full-screen click choice', () => {
 test('existing persisted auto-reading choices are preserved during settings normalization', () => {
   assert.match(
     readerStoreSource,
-    /autoReadingPixel\s*=\s*clampNumber\(payload\.autoReadingPixel\s*\?\?\s*payload\.autoReadSpeed,\s*1,\s*80,\s*1\)/,
+    /autoReadingPixel\s*=\s*numberAtLeast\(payload\.autoReadingPixel\s*\?\?\s*payload\.autoReadSpeed,\s*1,\s*1\)/,
   )
   assert.match(
     readerStoreSource,
-    /autoReadingLineTime\s*=\s*clampNumber\(payload\.autoReadingLineTime,\s*10,\s*3000,\s*1000\)/,
+    /autoReadingLineTime\s*=\s*numberAtLeast\(payload\.autoReadingLineTime,\s*10,\s*1000\)/,
   )
+  assert.match(readerStoreSource, /fontSize\s*=\s*numberAtLeast\(payload\.fontSize,\s*8,\s*18\)/)
+  assert.doesNotMatch(readerStoreSource, /fontSize[^\n]*36/)
+  assert.doesNotMatch(readerStoreSource, /autoReadingPixel[^\n]*80/)
+  assert.doesNotMatch(readerStoreSource, /autoReadingLineTime[^\n]*3000/)
+})
+
+test('reader settings persist separate normal and Kindle recent configurations', () => {
+  assert.match(readerStoreSource, /normalPageConfig/)
+  assert.match(readerStoreSource, /kindlePageConfig/)
+  assert.match(readerStoreSource, /normalPageConfig:\s*sanitizePageConfigSnapshot/)
+  assert.match(readerStoreSource, /kindlePageConfig:\s*sanitizePageConfigSnapshot/)
+  assert.doesNotMatch(readerStoreSource, /this\.pageType === 'kindle' \? 0 : clampNumber\(duration/)
 })

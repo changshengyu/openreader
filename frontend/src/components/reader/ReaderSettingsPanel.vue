@@ -19,9 +19,11 @@
         >
           {{ option.label }}
         </button>
-        <small class="setting-help">开启简洁模式会关闭动画以及首页的部分功能。</small>
+        <small class="setting-help">❗️开启简洁模式会关闭动画以及首页的部分功能</small>
       </div>
     </div>
+
+    <div class="setting-divider" role="separator" />
 
     <div class="setting-row">
       <label class="setting-label">配置方案</label>
@@ -66,7 +68,7 @@
           :key="key"
           class="theme-item"
           :class="{ active: reader.theme === key }"
-          :style="{ background: preset.bg }"
+          :style="{ background: preset.swatch || preset.bg }"
           :title="preset.label"
           @click="$emit('themeChange', key)"
         >
@@ -108,7 +110,20 @@
             <el-color-picker v-model="localCustomBg" size="small" />
           </span>
           <span class="custom-theme-title bg-image-title">阅读背景图片
-            <span v-if="reader.customBgImageList?.length" class="content-bg-preview-list">
+            <span class="content-bg-preview-list">
+              <span
+                v-for="image in builtInBackgrounds"
+                :key="image"
+                class="content-bg-preview"
+                :class="{ selected: reader.customBgImage === image }"
+                role="button"
+                tabindex="0"
+                @click="toggleBgImage(image)"
+                @keydown.enter.prevent="toggleBgImage(image)"
+                @keydown.space.prevent="toggleBgImage(image)"
+              >
+                <img :src="image" alt="" />
+              </span>
               <span
                 v-for="image in reader.customBgImageList"
                 :key="image"
@@ -160,34 +175,24 @@
           <button class="font-family-select" type="button">
             <span>{{ font.label }}</span>
           </button>
-          <span class="font-family-actions" @click.stop>
-            <el-upload
-              accept=".ttf,.otf,.woff,.woff2"
-              :show-file-list="false"
-              :auto-upload="false"
-              @change="file => $emit('pickFontFile', { file, font })"
-            >
-              <button
-                class="font-action-btn"
-                :class="{ active: hasCustomFont(font.value) }"
-                type="button"
-                :title="hasCustomFont(font.value) ? '替换字体' : '上传字体'"
-              >
-                <el-icon><Upload /></el-icon>
-              </button>
-            </el-upload>
-            <button
-              v-if="hasCustomFont(font.value)"
-              class="font-action-btn"
-              type="button"
-              title="恢复默认字体"
-              @click="$emit('clearFontFile', font)"
-            >
-              <el-icon><RefreshLeft /></el-icon>
-            </button>
-          </span>
+          <button
+            class="font-action-btn"
+            :class="{ active: hasCustomFont(font.value) }"
+            type="button"
+            :title="hasCustomFont(font.value) ? '管理自定义字体' : '上传字体'"
+            @click.stop="manageFont(font)"
+          >
+            <el-icon><Upload /></el-icon>
+          </button>
         </div>
       </div>
+      <input
+        ref="fontFileInput"
+        class="visually-hidden-input"
+        type="file"
+        accept=".ttf,.otf,.woff,.woff2"
+        @change="onFontFileChange"
+      >
       <div class="font-preview" :style="fontPreviewStyle">
         春风过处，纸页微明。
       </div>
@@ -214,7 +219,6 @@
       <ReaderSettingStepper
         v-model="fontSizeModel"
         :min="8"
-        :max="36"
         :step="1"
         decrease-label="减小字号"
         increase-label="增大字号"
@@ -271,10 +275,7 @@
 
     <div class="setting-row">
       <label class="setting-label">字体颜色</label>
-      <div class="color-setting">
-        <el-color-picker v-model="fontColorModel" size="small" />
-        <el-button v-if="reader.fontColor" size="small" text type="danger" @click="reader.setFontColor('')">恢复默认</el-button>
-      </div>
+      <el-color-picker v-model="fontColorModel" size="small" />
     </div>
 
     <div class="setting-row">
@@ -297,8 +298,8 @@
       <label class="setting-label">页面宽度</label>
       <ReaderSettingStepper
         v-model="columnWidthModel"
-        :min="480"
-        :max="1120"
+        :min="columnWidthBounds.min"
+        :max="columnWidthBounds.max"
         :step="160"
         decrease-label="缩小页面宽度"
         increase-label="增大页面宽度"
@@ -318,7 +319,7 @@
         >
           {{ option.label }}
         </button>
-        <small class="setting-help">上下滚动2会自动隐藏看过的章节，但是可能会抖动。</small>
+        <small class="setting-help">❗️上下滚动2会自动隐藏看过的章节，但是可能会抖动</small>
       </div>
     </div>
 
@@ -329,16 +330,14 @@
         :min="0"
         :max="500"
         :step="50"
-        :disabled="reader.pageType === 'kindle'"
         decrease-label="缩短动画"
         increase-label="延长动画"
       />
       <small class="setting-help">单位 ms，仅影响点击、键盘和页码定位；手指/滚轮保持连续滚动。</small>
-      <small v-if="reader.pageType === 'kindle'" class="setting-help">简洁模式会关闭翻页动画。</small>
     </div>
 
     <div class="setting-row">
-      <label class="setting-label">自动阅读</label>
+      <label class="setting-label">自动翻页</label>
       <div class="selection-zone">
         <button
           v-for="option in autoReadingMethodOptions"
@@ -358,7 +357,6 @@
       <ReaderSettingStepper
         v-model="autoReadingPixelModel"
         :min="1"
-        :max="80"
         :step="5"
         decrease-label="减少滚动像素"
         increase-label="增加滚动像素"
@@ -370,7 +368,6 @@
       <ReaderSettingStepper
         v-model="autoReadingLineTimeModel"
         :min="10"
-        :max="3000"
         :step="50"
         decrease-label="加快翻页"
         increase-label="减慢翻页"
@@ -409,77 +406,31 @@
       </div>
     </div>
 
-    <div class="setting-row">
-      <label class="setting-label">替换规则</label>
-      <div class="operation-actions">
-        <el-button size="small" plain @click="$emit('showClickZone')">显示翻页区域</el-button>
-        <el-button size="small" plain @click="$emit('openReplaceRules')">管理全局替换规则</el-button>
-      </div>
-    </div>
+    <div class="setting-divider" role="separator" />
 
-    <div class="setting-row stepper-setting-row">
-      <label class="setting-label">朗读语速</label>
-      <ReaderSettingStepper
-        v-model="ttsRateModel"
-        :min="0.5"
-        :max="2"
-        :step="0.1"
-        decrease-label="降低朗读语速"
-        increase-label="提高朗读语速"
-      />
-    </div>
-
-    <div class="setting-row stepper-setting-row">
-      <label class="setting-label">朗读音调</label>
-      <ReaderSettingStepper
-        v-model="ttsPitchModel"
-        :min="0"
-        :max="2"
-        :step="0.1"
-        decrease-label="降低朗读音调"
-        increase-label="提高朗读音调"
-      />
-    </div>
-
-    <div class="setting-row">
-      <label class="setting-label">朗读语音</label>
-      <el-select
-        v-model="ttsVoiceModel"
-        size="small"
-        clearable
-        :disabled="!tts.state.supported || !ttsVoices.length"
-        placeholder="浏览器默认"
-      >
-        <el-option label="浏览器默认" value="" />
-        <el-option
-          v-for="voice in ttsVoices"
-          :key="voice.voiceURI"
-          :label="`${voice.name} · ${voice.lang}`"
-          :value="voice.voiceURI"
-        />
-      </el-select>
-      <small v-if="!tts.state.supported" class="setting-help">当前浏览器不支持系统朗读。</small>
-      <small v-else-if="!ttsVoices.length" class="setting-help">浏览器尚未返回可用语音，稍后再打开设置会自动刷新。</small>
+    <div class="operation-zone">
+      <button type="button" @click="$emit('showClickZone')">显示翻页区域</button>
+      <button type="button" @click="$emit('openReplaceRules')">过滤规则管理</button>
     </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, RefreshLeft, Upload } from '@element-plus/icons-vue'
+import { Close, Upload } from '@element-plus/icons-vue'
+import { readerBuiltInBackgrounds } from '../../stores/reader'
 import ReaderSettingStepper from './ReaderSettingStepper.vue'
 
 const props = defineProps({
   reader: { type: Object, required: true },
-  tts: { type: Object, required: true },
-  ttsVoices: { type: Array, default: () => [] },
   fontOptions: { type: Array, default: () => [] },
   themePresets: { type: Object, default: () => ({}) },
   customBg: { type: String, default: '' },
   lineHeight: { type: Number, default: 2.12 },
   miniInterface: { type: Boolean, default: false },
+  viewportWidth: { type: Number, default: 0 },
 })
 
 const emit = defineEmits([
@@ -491,13 +442,11 @@ const emit = defineEmits([
   'clearBgImage',
   'pickFontFile',
   'clearFontFile',
-  'ttsRateChange',
-  'ttsPitchChange',
-  'ttsVoiceChange',
   'openReplaceRules',
   'showClickZone',
 ])
 
+const builtInBackgrounds = readerBuiltInBackgrounds
 const fontSizePresets = [14, 16, 18, 20, 22, 24, 28, 32]
 const configDefaultTypes = ['白天默认', '黑夜默认']
 const themeTypeOptions = [
@@ -526,6 +475,8 @@ const clickMethodOptions = [
   { value: 'none', label: '不翻页' },
 ]
 const selectionActionOptions = ['操作弹窗', '忽略']
+const fontFileInput = ref(null)
+const pendingFont = ref(null)
 
 const fontPreviewStyle = computed(() => ({
   fontFamily: props.fontOptions.find(font => font.value === props.reader.fontFamily)?.stack,
@@ -543,6 +494,19 @@ const visibleThemePresets = computed(() => Object.fromEntries(
 const visibleReaderModeOptions = computed(() => (
   readerModeOptions.filter(option => props.miniInterface || !option.mobileOnly)
 ))
+const columnWidthBounds = computed(() => {
+  const availableWidth = Math.max(
+    160,
+    Number(props.viewportWidth)
+      || (typeof window === 'undefined' ? 800 : Number(window.innerWidth))
+      || 800,
+  )
+  const columns = Math.max(1, Math.floor(availableWidth / 160))
+  return {
+    min: Math.min(columns, 4) * 160,
+    max: columns * 160,
+  }
+})
 
 const pageModeModel = computed({
   get: () => props.reader.pageMode,
@@ -566,7 +530,7 @@ function selectCustomConfig(name) {
 }
 
 async function addCustomConfig() {
-  const res = await ElMessageBox.prompt('请输入方案名称', '新增配置方案', {
+  const res = await ElMessageBox.prompt('请输入方案名称', '添加配置方案', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     inputPattern: /\S+/,
@@ -578,11 +542,11 @@ async function addCustomConfig() {
     ElMessage.error(result.message || '新增方案失败')
     return
   }
-  ElMessage.success('已保存当前配置为新方案')
+  ElMessage.success('新增方案成功')
 }
 
 async function deleteCustomConfig(name) {
-  const confirmed = await ElMessageBox.confirm(`确定删除「${name}」方案吗？`, '删除配置方案', { type: 'warning' }).catch(() => false)
+  const confirmed = await ElMessageBox.confirm(`确认要删除${name}方案吗？`, '提示', { type: 'warning' }).catch(() => false)
   if (!confirmed) return
   const result = props.reader.deleteCustomConfig(name)
   if (!result.ok) {
@@ -593,7 +557,11 @@ async function deleteCustomConfig(name) {
 }
 
 async function setConfigDefaultType(type) {
-  const confirmed = await ElMessageBox.confirm(`确认把「${props.reader.customConfigName}」设为${type}吗？`, '设置方案类型', { type: 'warning' }).catch(() => false)
+  const confirmed = await ElMessageBox.confirm(
+    `确认要设置当前方案为${type}吗？继续操作将替换现有的${type}方案`,
+    '提示',
+    { type: 'warning' },
+  ).catch(() => false)
   if (!confirmed) return
   const result = props.reader.setCustomConfigDefaultType(type)
   if (!result.ok) {
@@ -704,21 +672,6 @@ const columnWidthModel = computed({
   set: value => props.reader.setColumnWidth(value),
 })
 
-const ttsRateModel = computed({
-  get: () => props.reader.ttsRate,
-  set: value => emit('ttsRateChange', value),
-})
-
-const ttsPitchModel = computed({
-  get: () => props.reader.ttsPitch,
-  set: value => emit('ttsPitchChange', value),
-})
-
-const ttsVoiceModel = computed({
-  get: () => props.reader.ttsVoiceURI,
-  set: value => emit('ttsVoiceChange', value),
-})
-
 function setFontFamily(value) {
   props.reader.setFontFamily(value)
 }
@@ -733,6 +686,40 @@ function toggleBgImage(image) {
 
 function hasCustomFont(value) {
   return Boolean(props.reader.customFontsMap?.[value])
+}
+
+async function manageFont(font) {
+  if (hasCustomFont(font.value)) {
+    const action = await ElMessageBox.confirm(
+      `已上传自定义的${font.label}字体?`,
+      '提示',
+      {
+        confirmButtonText: '继续上传',
+        cancelButtonText: '恢复默认',
+        type: 'warning',
+        closeOnClickModal: false,
+        closeOnPressEscape: false,
+        distinguishCancelAndClose: true,
+      },
+    ).then(() => 'confirm').catch(result => result)
+    if (action === 'close') return
+    if (action === 'cancel') {
+      emit('clearFontFile', font)
+      return
+    }
+    if (action !== 'confirm') return
+  }
+  pendingFont.value = font
+  fontFileInput.value?.click()
+}
+
+function onFontFileChange(event) {
+  const file = event.target?.files?.[0]
+  const font = pendingFont.value
+  pendingFont.value = null
+  if (event.target) event.target.value = ''
+  if (!file || !font) return
+  emit('pickFontFile', { file, font })
 }
 
 function resetReaderSettings() {
@@ -854,18 +841,27 @@ function resetReaderSettings() {
   color: var(--reader-accent, #ed4259);
 }
 
-.operation-actions {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 8px;
+.setting-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--reader-control-border);
 }
 
-.color-setting {
+.operation-zone {
   display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 10px;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.operation-zone button {
+  padding: 0;
+  color: var(--reader-accent, #ed4259);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
 }
 
 .setting-row {
@@ -947,11 +943,8 @@ function resetReaderSettings() {
 }
 
 .bg-image-title {
-  display: inline-flex;
+  display: inline-block;
   min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 0;
 }
 
 .content-bg-preview-list {
@@ -1073,17 +1066,11 @@ function resetReaderSettings() {
   white-space: nowrap;
 }
 
-.font-family-actions {
+.font-action-btn {
   position: absolute;
   top: -10px;
   right: -10px;
   z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-}
-
-.font-action-btn {
   width: 20px;
   height: 20px;
   padding: 0;
@@ -1094,6 +1081,10 @@ function resetReaderSettings() {
   display: grid;
   place-items: center;
   font-size: 20px;
+}
+
+.visually-hidden-input {
+  display: none;
 }
 
 .font-action-btn.active,

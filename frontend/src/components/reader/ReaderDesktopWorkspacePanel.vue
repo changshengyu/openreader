@@ -69,10 +69,11 @@ defineEmits(['close'])
   max-height: 100dvh;
   box-sizing: border-box;
   padding: 24px 60px 24px 24px;
-  color: var(--reader-text);
-  background-color: var(--reader-bg);
-  background-image: var(--reader-bg-image, var(--paper-texture));
-  background-size: cover;
+  color: var(--reader-popup-text, var(--reader-text));
+  background-color: var(--reader-popup-bg);
+  background-image: var(--reader-popup-bg-image);
+  background-repeat: repeat;
+  background-size: auto;
   border-right: 1px solid rgba(109, 95, 55, 0.28);
   border-left: 1px solid rgba(109, 95, 55, 0.28);
   box-shadow:

@@ -739,3 +739,26 @@ the unchanged Docker volume/backup compatibility gate.
 Release evidence completed with `f44447f`: both ordinary and historical volume scripts passed,
 including restart, portable v1/v2 assets, cross-user isolation, TXT/EPUB/UMD/CBZ and relative-cache
 fixtures. No migration or mounted data rewrite was observed.
+
+## P0 ReaderSettings scheme/snapshot compatibility (2026-08-02 extracted)
+
+- No SQLite table, column, index, mounted directory, API path, backup member or WebDAV file changes. Reader settings
+  remain JSON in the existing per-user `user_settings(key=reader)` row plus the already scoped Pinia cache.
+- Existing semantic theme keys, custom schemes, custom font/background URLs and legacy `mono` values remain readable.
+  Migration may reclassify old scheme fields but must not delete a scheme, uploaded file or global asset reference.
+- New custom-scheme serialization uses an explicit allowlist equivalent to reader-dev's `syncConfigFiled`, plus the
+  user-requested brightness value. Old scheme copies may contain `pageType`, `autoTheme`, TTS values and full asset
+  inventories; those fields are ignored when applying a scheme so they can no longer overwrite global state.
+- `customFontsMap` and `customBgImageList` remain global per-user asset inventories. `ttsRate`, `ttsPitch` and
+  `ttsVoiceURI` remain the independent TTS configuration. Reset and scheme switching never delete or empty them.
+- Normal and Kindle modes gain two per-user recent-config snapshots inside the existing reader JSON. Missing snapshots
+  use fixed-upstream defaults; old `normalModeSnapshot` is accepted as a one-way compatibility input. Snapshots never
+  use an unscoped localStorage key and cannot cross authenticated users.
+- If `settingsVersion` advances, normalization is lazy and non-destructive. Values above the old arbitrary font/
+  auto-read UI maxima remain finite and readable instead of being truncated; NaN/Infinity still fall back safely.
+- Built-in theme textures and 14 built-in reading backgrounds are immutable frontend assets. They are not upload files,
+  are not included in portable asset manifests and do not change `data/`, `cache/` or `library/`.
+
+Required evidence before release: old/current reader JSON fixtures, cross-user reset and delayed settings load,
+normal↔Kindle reload, custom scheme/asset preservation, portable v1/v2 assets, historical mounted-volume restart and
+owner-isolation smoke. See `reader-settings-fixed-baseline-second-audit-p0-contract.md`.

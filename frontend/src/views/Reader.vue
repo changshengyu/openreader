@@ -78,20 +78,16 @@
         v-model:custom-bg="customBg"
         v-model:line-height="sliderLineHeight"
         :reader="reader"
-        :tts="tts"
-        :tts-voices="ttsVoices"
         :font-options="fontOptions"
         :theme-presets="themePresets"
         :mini-interface="false"
+        :viewport-width="windowWidth"
         @mode-change="onModeChange"
         @theme-change="setTheme"
         @pick-bg-image="pickBgImage"
         @clear-bg-image="clearBgImage"
         @pick-font-file="pickFontFile"
         @clear-font-file="clearFontFile"
-        @tts-rate-change="setTTSRate"
-        @tts-pitch-change="setTTSPitch"
-        @tts-voice-change="setTTSVoice"
         @open-replace-rules="openReplaceRules"
         @show-click-zone="showClickZone"
       />
@@ -357,20 +353,16 @@
           v-model:custom-bg="customBg"
           v-model:line-height="sliderLineHeight"
           :reader="reader"
-          :tts="tts"
-          :tts-voices="ttsVoices"
           :font-options="fontOptions"
           :theme-presets="themePresets"
           :mini-interface="isMobileReader"
+          :viewport-width="windowWidth"
           @mode-change="onModeChange"
           @theme-change="setTheme"
           @pick-bg-image="pickBgImage"
           @clear-bg-image="clearBgImage"
           @pick-font-file="pickFontFile"
           @clear-font-file="clearFontFile"
-          @tts-rate-change="setTTSRate"
-          @tts-pitch-change="setTTSPitch"
-          @tts-voice-change="setTTSVoice"
           @open-replace-rules="openReplaceRules"
           @show-click-zone="showClickZone"
         />
@@ -1221,6 +1213,9 @@ const effectiveReaderSurface = computed(() => resolveReaderSurface({
   themePopup: usesCustomReaderTheme.value
     ? reader.customPopupColor
     : reader.currentTheme.popup,
+  themeBodyImage: reader.currentTheme.bodyImage,
+  themePageImage: reader.currentTheme.pageImage,
+  themePopupImage: reader.currentTheme.popupImage,
   customBackgroundImage: effectiveReaderBackgroundImage.value,
 }))
 const effectiveReaderBackgroundColor = computed(() => effectiveReaderSurface.value.pageColor)
@@ -1256,6 +1251,7 @@ const readerStyle = computed(() => ({
   '--reader-body-bg': effectiveReaderBodyColor.value,
   '--reader-body-bg-image': effectiveReaderSurface.value.bodyImage,
   '--reader-popup-bg': effectiveReaderPopupColor.value,
+  '--reader-popup-bg-image': effectiveReaderSurface.value.popupImage,
   '--reader-bg': effectiveReaderBackgroundColor.value,
   '--reader-bg-image': effectiveReaderSurface.value.pageImage,
   '--reader-text': effectiveReaderTextColor.value,
@@ -2556,7 +2552,9 @@ function readError(err, fallback) {
 
 .reader-shell :deep(.el-drawer) {
   color: var(--reader-popup-text, var(--reader-text));
-  background: var(--reader-popup-bg);
+  background-color: var(--reader-popup-bg);
+  background-image: var(--reader-popup-bg-image);
+  background-repeat: repeat;
 }
 
 .reader-shell :deep(.el-drawer__header) {
@@ -2565,7 +2563,9 @@ function readError(err, fallback) {
 }
 
 .reader-shell :deep(.el-drawer__body) {
-  background: var(--reader-popup-bg);
+  background-color: var(--reader-popup-bg);
+  background-image: var(--reader-popup-bg-image);
+  background-repeat: repeat;
 }
 /* Mini Reader is a semantic state. It can be selected by width, mobile-browser
    detection, or the persisted phone-mode setting, so these rules must not use

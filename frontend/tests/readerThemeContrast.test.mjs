@@ -112,6 +112,7 @@ test('built-in night resolves to a texture-free black page and white default tex
     pageColor: '#000000',
     pageImage: 'none',
     popupColor: '#171717',
+    popupImage: 'none',
     pageBorder: 'transparent',
     pageShadow: 'none',
   })
@@ -179,6 +180,7 @@ test('day and custom surfaces do not leak their textures into built-in night', (
     pageColor: '#f4e9bd',
     pageImage: 'var(--paper-texture)',
     popupColor: '#fffcef',
+    popupImage: 'none',
     pageBorder: 'rgba(109, 95, 55, 0.28)',
     pageShadow: 'inset 24px 0 44px rgba(90, 71, 28, 0.05), inset -24px 0 44px rgba(90, 71, 28, 0.05)',
   })
@@ -195,8 +197,31 @@ test('day and custom surfaces do not leak their textures into built-in night', (
     pageColor: '#020202',
     pageImage: 'url("/uploads/users/1/backgrounds/night.png")',
     popupColor: '#040404',
+    popupImage: 'none',
     pageBorder: 'transparent',
     pageShadow: 'none',
+  })
+})
+
+test('fixed-baseline day themes own distinct body, content, and popup textures', () => {
+  assert.deepEqual(resolveReaderSurface({
+    theme: 'parchment',
+    themeType: 'day',
+    themeBackground: '#ffffff',
+    themeBody: '#eadfca',
+    themePopup: '#ede7da',
+    themeBodyImage: '/themes/body_0.png',
+    themePageImage: '/themes/content_0.png',
+    themePopupImage: '/themes/popup_0.png',
+  }), {
+    bodyColor: '#eadfca',
+    bodyImage: 'url("/themes/body_0.png")',
+    pageColor: '#ffffff',
+    pageImage: 'url("/themes/content_0.png")',
+    popupColor: '#ede7da',
+    popupImage: 'url("/themes/popup_0.png")',
+    pageBorder: 'rgba(109, 95, 55, 0.28)',
+    pageShadow: 'inset 24px 0 44px rgba(90, 71, 28, 0.05), inset -24px 0 44px rgba(90, 71, 28, 0.05)',
   })
 })
 
@@ -204,6 +229,7 @@ test('Reader applies semantic surface variables and EPUB paints the actual reade
   assert.match(readerViewSource, /const effectiveReaderSurface = computed\(\(\) => resolveReaderSurface\(/)
   assert.match(readerViewSource, /'--reader-body-bg-image': effectiveReaderSurface\.value\.bodyImage/)
   assert.match(readerViewSource, /'--reader-bg-image': effectiveReaderSurface\.value\.pageImage/)
+  assert.match(readerViewSource, /'--reader-popup-bg-image': effectiveReaderSurface\.value\.popupImage/)
   assert.match(readerViewSource, /'--reader-page-border': effectiveReaderSurface\.value\.pageBorder/)
   assert.match(readerViewSource, /'--reader-page-shadow': effectiveReaderSurface\.value\.pageShadow/)
   assert.match(readerViewSource, /background-image:\s*var\(--reader-body-bg-image\)/)

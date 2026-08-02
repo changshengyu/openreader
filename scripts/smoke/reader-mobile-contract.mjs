@@ -844,8 +844,8 @@ async function assertReaderBookInfoDialog(page, viewport, { fullscreen }) {
     assert(state.leftRailVisible, 'desktop: BookInfo must preserve the reader left rail')
     assert(state.width >= 460 && state.width <= 520, `desktop: BookInfo dialog width ${state.width}`)
   }
-  await page.locator(`${selector} .book-info-main`).click()
   if (fullscreen) {
+    await page.locator(`${selector} .book-info-container`).click()
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: BookInfo click must not pass through and toggle reader chrome`)
   }
 }
@@ -1529,7 +1529,8 @@ async function assertSettingsBackgroundGeometry(page, viewport) {
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: custom night mode must not hide toolbar`)
   assert(await themeModeButtons.filter({ hasText: '黑夜' }).getAttribute('class').then(value => value?.includes('active')), `${viewport.width}: custom night mode should become active`)
   const geometry = await page.evaluate(() => {
-    const preview = document.querySelector('.content-bg-preview')
+    const previews = document.querySelectorAll('.content-bg-preview')
+    const preview = previews[previews.length - 1]
     const upload = document.querySelector('.upload-bg-btn')
     const deleteIcon = document.querySelector('.delete-bg-icon')
     const previewRect = preview?.getBoundingClientRect()

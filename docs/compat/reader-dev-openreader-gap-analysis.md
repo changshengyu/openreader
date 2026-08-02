@@ -3222,8 +3222,21 @@ stepper、字体预览、字号预设、纯黑白夜间，以及原生连续滚�
 
 完整状态机、字段所有权、迁移与测试先行门见
 [`reader-settings-fixed-baseline-second-audit-p0-contract.md`](reader-settings-fixed-baseline-second-audit-p0-contract.md)。
-本轮只提交审查合同，状态为 `audit-complete / implementation-pending`；下一步先写失败测试，再改
-store 和面板，不从当前组件反推产品行为。
+初始审查合同曾以 `audit-complete / implementation-pending` 单独提交，并明确要求先写失败测试、
+再改 store 和面板；下列结果是在该 gate 之后产生，不从旧组件反推产品行为。
+
+### 固定基准重建结果
+
+审查合同 `609a7a1` 后已先建立 11 个预期失败断言，再完成方案 allowlist、无损重置、
+normal/kindle 双快照、无任意 max 数值边界和动态页面宽度。可见层恢复两条 divider、精确顺序/
+操作文案、14 张内置背景、五字体单操作与固定上游主题 body/content/popup 纹理；重复 TTS 行和
+字体颜色局部重置已删除。亮度、可编辑 stepper、字体预览/字号预设、纯黑白夜间，以及原生连续
+滚动/离散点击翻页继续作为明确允许差异。
+
+frontend 680/680、Go 全量、production build 和差异检查通过。真实浏览器通过 1440×900、
+390×844、360×800、1024×1366、1366×1024，以及 1024×1366 强制手机模式，覆盖工具层并存、
+标题/列表滚动、背景、亮度直接输入、夜间正文、iPad 关闭路径和控制台。当前状态更新为
+`aligned / Docker-pending`；新旧卷与发布证据待代码提交后的本机 Docker 候选完成。
 
 ## 2026-07-28 ReplaceRule P2 固定基准重新复审
 
