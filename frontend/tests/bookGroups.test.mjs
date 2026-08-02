@@ -37,7 +37,7 @@ test('implements all four upstream built-in filters and many-to-many custom filt
   assert.deepEqual(filterBooksByBookGroup(books, 'category:999').map(book => book.id), [])
 })
 
-test('shows only visible non-empty groups in unified order and falls back to the first one', () => {
+test('shows only visible non-empty groups but preserves the upstream persisted selection state', () => {
   const visible = visibleBookGroups(groups, books)
   assert.deepEqual(visible.map(group => group.key), [
     'builtin:audio',
@@ -48,7 +48,8 @@ test('shows only visible non-empty groups in unified order and falls back to the
   ])
   assert.deepEqual(visible.map(group => group.count), [1, 1, 3, 1, 2])
   assert.equal(resolveBookGroupSelection(groups, books, 'category:2'), 'category:2')
-  assert.equal(resolveBookGroupSelection(groups, books, 'builtin:local'), 'builtin:audio')
-  assert.equal(resolveBookGroupSelection(groups, books, 'category:3'), 'builtin:audio')
+  assert.equal(resolveBookGroupSelection(groups, books, 'builtin:local'), 'builtin:local')
+  assert.equal(resolveBookGroupSelection(groups, books, 'category:3'), 'category:3')
+  assert.equal(resolveBookGroupSelection(groups, books, 'category:999'), 'category:999')
   assert.equal(resolveBookGroupSelection(groups, [], 'builtin:all'), 'builtin:all')
 })

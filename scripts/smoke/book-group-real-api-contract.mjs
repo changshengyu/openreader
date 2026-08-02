@@ -163,12 +163,12 @@ async function openGroupManager(page, viewport) {
 }
 
 function groupRow(dialog, text) {
-  return dialog.locator('.group-manage-table tbody tr').filter({ hasText: text })
+  return dialog.locator('.book-group-table tbody tr').filter({ hasText: text })
 }
 
 async function renameGroup(page, dialog, row, name) {
   await row.getByRole('button', { name: '编辑', exact: true }).click()
-  const prompt = page.locator('.el-message-box').filter({ hasText: '重命名分组' })
+  const prompt = page.locator('.el-message-box').filter({ hasText: '编辑分组' })
   await prompt.waitFor({ state: 'visible', timeout: 10_000 })
   await prompt.locator('input').fill(name)
   await prompt.getByRole('button', { name: '确定', exact: true }).click()
@@ -176,16 +176,46 @@ async function renameGroup(page, dialog, row, name) {
 }
 
 async function dragFirstRowToEnd(page, dialog) {
-  const rows = dialog.locator('.group-manage-table tbody tr')
-  const handle = rows.first().locator('.group-drag-handle')
+  const rows = dialog.locator('.book-group-table tbody tr')
+  const handle = rows.first().locator('.group-drag-icon')
   const target = rows.last()
   const from = await handle.boundingBox()
   const to = await target.boundingBox()
   assert(from && to, 'BookGroup drag geometry is unavailable')
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height - 4, { steps: 14 })
-  await page.mouse.up()
+  await handle.dragTo(target, {
+    sourcePosition: { x: from.width / 2, y: from.height / 2 },
+    targetPosition: { x: to.width / 2, y: to.height - 4 },
+  })
+}
+
+async function assertDialogGeometry(dialog, viewport, suffix) {
+  await dialog.page().waitForTimeout(350)
+  const tables = dialog.locator('.book-group-table')
+  assert(await tables.count() === 1, `${suffix}: BookGroup must own exactly one table`)
+  const box = await dialog.boundingBox()
+  const tableBox = await tables.boundingBox()
+  assert(box && tableBox, `${suffix}: BookGroup geometry is unavailable`)
+  if (viewport.width <= 750) {
+    assert(Math.abs(box.x) <= 1 && Math.abs(box.y) <= 1, `${suffix}: mobile BookGroup must be fullscreen: ${JSON.stringify(box)}`)
+    assert(Math.abs(box.width - viewport.width) <= 1, `${suffix}: mobile BookGroup width mismatch: ${JSON.stringify(box)}`)
+    assert(Math.abs(tableBox.height - (viewport.height - 184)) <= 2, `${suffix}: mobile table height mismatch: ${JSON.stringify(tableBox)}`)
+    return
+  }
+  const expectedWidth = Math.min(1000, Math.max(750, viewport.width * 0.7))
+  const expectedTop = Math.max(viewport.height * 0.15, (viewport.height - 584) / 2)
+  const expectedTableHeight = Math.min(400, viewport.height * 0.7 - 184)
+  assert(Math.abs(box.width - expectedWidth) <= 2, `${suffix}: desktop BookGroup width mismatch: expected ${expectedWidth}, got ${box.width}`)
+  assert(Math.abs(box.y - expectedTop) <= 2, `${suffix}: desktop BookGroup top mismatch: expected ${expectedTop}, got ${box.y}`)
+  assert(Math.abs(tableBox.height - expectedTableHeight) <= 2, `${suffix}: desktop table height mismatch: expected ${expectedTableHeight}, got ${tableBox.height}`)
+}
+
+async function addGroup(page, dialog, name) {
+  await dialog.getByRole('button', { name: '添加分组', exact: true }).click()
+  const prompt = page.locator('.el-message-box').filter({ hasText: '添加分组' })
+  await prompt.waitFor({ state: 'visible', timeout: 10_000 })
+  await prompt.locator('input').fill(name)
+  await prompt.getByRole('button', { name: '确定', exact: true }).click()
+  await prompt.waitFor({ state: 'hidden', timeout: 10_000 })
 }
 
 async function assertVisibleTabs(page, expected, suffix) {
@@ -225,28 +255,51 @@ async function runViewport(browser, root, viewport) {
     await assertVisibleTabs(pageB, originalTabs, seeded.suffix)
 
     const dialog = await openGroupManager(pageA, viewport)
-    const rows = dialog.locator('.group-manage-table tbody tr')
+    await assertDialogGeometry(dialog, viewport, seeded.suffix)
+    const rows = dialog.locator('.book-group-table tbody tr')
     await rows.first().waitFor({ state: 'visible', timeout: 15_000 })
     assert(await rows.count() === 5, `${seeded.suffix}: manager did not show four built-ins plus custom group`)
     assert(await groupRow(dialog, '全部(全部)').count() === 1, `${seeded.suffix}: built-in semantic suffix is missing`)
 
     const audioName = `有声 ${seeded.suffix}`
     await renameGroup(pageA, dialog, groupRow(dialog, '音频(音频)'), audioName)
-    await pageA.getByText('分组已重命名', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+    await pageA.getByText('修改成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
     await pageB.locator('.book-group-wrapper .group-chip').filter({ hasText: audioName }).waitFor({ state: 'visible', timeout: 10_000 })
+
+    const addedName = `临时分组 ${seeded.suffix}`
+    await addGroup(pageA, dialog, addedName)
+    await pageA.getByText('添加成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+    const addedRow = groupRow(dialog, addedName)
+    await addedRow.waitFor({ state: 'visible', timeout: 10_000 })
+    const afterAdd = await api(root, '/book-groups', { token: seeded.token })
+    assert(afterAdd.some(group => group.kind === 'category' && group.name === addedName), `${seeded.suffix}: added group was not persisted`)
+
+    await addedRow.getByRole('button', { name: '删除', exact: true }).click()
+    const deleteConfirm = pageA.locator('.el-message-box').filter({ hasText: '确认要删除该分组吗?' })
+    await deleteConfirm.waitFor({ state: 'visible', timeout: 10_000 })
+    await deleteConfirm.getByRole('button', { name: '确定', exact: true }).click()
+    await deleteConfirm.waitFor({ state: 'hidden', timeout: 10_000 })
+    await pageA.getByText('删除分组成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+    await addedRow.waitFor({ state: 'hidden', timeout: 10_000 })
 
     const customRow = groupRow(dialog, seeded.category.name)
     await customRow.locator('.el-switch').click()
-    await pageA.getByText('分组已隐藏', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+    await pageA.getByText('修改成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
     await pageB.locator('.book-group-wrapper .group-chip').filter({ hasText: seeded.category.name }).waitFor({ state: 'hidden', timeout: 10_000 })
 
     await dragFirstRowToEnd(pageA, dialog)
     const saveOrder = dialog.getByRole('button', { name: '保存排序', exact: true })
     await saveOrder.waitFor({ state: 'visible', timeout: 10_000 })
+    const draftedNames = (await dialog.locator('.book-group-table tbody tr .group-name-cell > span:last-child').allTextContents())
+      .map(value => value.trim())
+    assert(draftedNames[0] !== '全部(全部)', `${seeded.suffix}: drag did not move the first mixed group`)
     await saveOrder.click()
-    await pageA.getByText('分组排序已更新', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+    await pageA.getByText('保存成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
     const persisted = await api(root, '/book-groups', { token: seeded.token })
-    assert(persisted.at(-1)?.key === 'builtin:all', `${seeded.suffix}: mixed drag order was not persisted`)
+    const persistedNames = persisted.map(group => group.kind === 'builtin'
+      ? `${group.name}(${group.defaultName})`
+      : group.name)
+    assert(JSON.stringify(persistedNames) === JSON.stringify(draftedNames), `${seeded.suffix}: mixed drag order was not persisted; draft=${JSON.stringify(draftedNames)} persisted=${JSON.stringify(persistedNames)}`)
 
     const hidden = persisted.find(group => group.key === `category:${seeded.category.id}`)
     assert(hidden?.show === false, `${seeded.suffix}: custom group visibility was not persisted`)
@@ -268,10 +321,12 @@ async function run() {
         { width: 1440, height: 900 },
         { width: 390, height: 844 },
         { width: 360, height: 800 },
+        { width: 1024, height: 1366 },
+        { width: 1366, height: 1024 },
       ]) {
         completed.push(await runViewport(browser, app.root, viewport))
       }
-      console.log(`book-group-real-api: ok ${completed.join(', ')} realApi=true apiMocked=false multiClient=true mixedDrag=true`)
+      console.log(`book-group-real-api: ok ${completed.join(', ')} realApi=true apiMocked=false multiClient=true oneTable=true exactGeometry=true createRenameDelete=true mixedDrag=true`)
     } finally {
       await browser.close()
     }

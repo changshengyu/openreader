@@ -9,9 +9,10 @@ test('drives shelf tabs from the persisted unified book-group projection', () =>
   assert.match(home, /filterBooksByBookGroup\(sortedBooks\.value, selectedGroup\.value\)/)
   assert.match(home, /preferences\.shelf\.groupKey/)
   assert.match(home, /preferences\.setShelfGroup/)
-  assert.match(home, /if \(!bookshelf\.bookGroupsLoadedAt \|\| !bookshelf\.booksLoadedAt\) return/)
+  assert.equal((home.match(/preferences\.setShelfGroup/g) || []).length, 1, 'only direct tab selection may persist the group token')
   assert.doesNotMatch(home, /\{ id: '', name: '全部'/)
   assert.doesNotMatch(home, /selectedGroup\.value === 'local'/)
+  assert.doesNotMatch(home, /:title="`\$\{item\.name} \(\$\{item\.count}\)`"/)
 })
 
 test('warms the projection with the shelf instead of constructing built-ins locally', () => {

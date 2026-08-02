@@ -13,6 +13,7 @@ function deferred() {
 
 function createController(overrides = {}) {
   const calls = []
+  const promptCalls = []
   const overlay = reactive({
     bookGroupMode: 'manage',
     bookGroupVisible: true,
@@ -52,6 +53,7 @@ function createController(overrides = {}) {
   let sortableOptions
   const sortable = {
     destroy: () => calls.push(['destroy-sortable']),
+    option: (...args) => calls.push(['sortable-option', ...args]),
   }
   const controller = useOverlayBookGroups({
     overlay,
@@ -69,7 +71,10 @@ function createController(overrides = {}) {
     categoryName: book => `分组:${book.categoryIds.join(',')}`,
     getBookProgress: () => ({ percent: 0.42 }),
     emitBookInfoUpdated: book => calls.push(['emit', book]),
-    prompt: async () => ({ value: '新分组' }),
+    prompt: async (...args) => {
+      promptCalls.push(args)
+      return { value: '新分组' }
+    },
     confirm: async (...args) => calls.push(['confirm', ...args]),
     createSortable: (element, options) => {
       calls.push(['create-sortable', element])
@@ -87,6 +92,7 @@ function createController(overrides = {}) {
     controller,
     overlay,
     bookshelf,
+    promptCalls,
     getSortableOptions: () => sortableOptions,
   }
 }
@@ -97,11 +103,14 @@ test('prepares and saves the selected groups for the current book', async () => 
   fixture.overlay.bookInfoBook = { id: 9, categoryIds: [2] }
   fixture.controller.prepareOpen()
 
-  assert.equal(fixture.controller.groupSetRows.value[0].description, '2 本')
-  assert.equal(fixture.controller.groupSetRows.value[1].description, '1 本')
-  assert.equal(fixture.controller.isBookGroupSelected({ id: 2 }), true)
+  assert.equal(fixture.controller.groupSetRows.value[0].description, undefined)
+  assert.equal(fixture.controller.groupSetRows.value[1].description, undefined)
+  assert.deepEqual(fixture.controller.selectedCategoryIds.value, ['2'])
 
-  fixture.controller.toggleBookGroupSelection({ id: 1 })
+  fixture.controller.handleBookGroupSelectionChange([
+    fixture.controller.groupSetRows.value[1],
+    fixture.controller.groupSetRows.value[0],
+  ])
   await fixture.controller.saveBookGroupSetting()
 
   assert.deepEqual(fixture.calls[0], ['set-book-groups', 9, [2, 1]])
@@ -110,7 +119,28 @@ test('prepares and saves the selected groups for the current book', async () => 
   assert.equal(fixture.overlay.bookInfoOptions.progress, 0.42)
   assert.equal(fixture.overlay.bookGroupVisible, false)
   assert.equal(fixture.controller.settingCategorySaving.value, false)
-  assert.deepEqual(fixture.calls.at(-1), ['success', '分组已设置'])
+  assert.deepEqual(fixture.calls.at(-1), ['success', '设置成功'])
+})
+
+test('projects set and manage modes through one table data source', () => {
+  const fixture = createController()
+
+  fixture.overlay.bookGroupMode = 'manage'
+  assert.deepEqual(
+    fixture.controller.groupRows.value.map(row => row.key),
+    fixture.bookshelf.bookGroups.map(row => row.key),
+  )
+
+  fixture.overlay.bookGroupMode = 'set'
+  assert.deepEqual(
+    fixture.controller.groupRows.value.map(row => Number(row.id)),
+    [1, 2, 3],
+  )
+  fixture.controller.handleBookGroupSelectionChange([
+    fixture.controller.groupRows.value[0],
+    fixture.controller.groupRows.value[2],
+  ])
+  assert.deepEqual(fixture.controller.selectedCategoryIds.value, ['1', '3'])
 })
 
 test('keeps upstream BookGroup set semantics by rejecting an empty selection', async () => {
@@ -118,27 +148,25 @@ test('keeps upstream BookGroup set semantics by rejecting an empty selection', a
   fixture.overlay.bookGroupMode = 'set'
   fixture.overlay.bookInfoBook = { id: 9, categoryIds: [2] }
   fixture.controller.prepareOpen()
-  fixture.controller.toggleBookGroupSelection({ id: 2 })
+  fixture.controller.handleBookGroupSelectionChange([])
 
   await fixture.controller.saveBookGroupSetting()
 
   assert.deepEqual(fixture.calls, [
-    ['warning', '请选择书籍分组'],
+    ['error', null, '请选择书籍分组'],
   ])
   assert.equal(fixture.overlay.bookGroupVisible, true)
   assert.deepEqual(fixture.overlay.bookInfoBook.categoryIds, [2])
   assert.equal(fixture.controller.settingCategorySaving.value, false)
 })
 
-test('prepares the current book selection when an open drawer changes mode', async () => {
+test('prepares the current book selection when the shared dialog changes mode', async () => {
   const fixture = createController()
   fixture.overlay.bookInfoBook = { id: 9, categoryIds: [1, 3] }
 
   await fixture.controller.handleModeChange('set')
 
-  assert.equal(fixture.controller.isBookGroupSelected({ id: 1 }), true)
-  assert.equal(fixture.controller.isBookGroupSelected({ id: 2 }), false)
-  assert.equal(fixture.controller.isBookGroupSelected({ id: 3 }), true)
+  assert.deepEqual(fixture.controller.selectedCategoryIds.value, ['1', '3'])
 })
 
 test('creates and renames custom groups while preserving cancellation semantics', async () => {
@@ -148,10 +176,18 @@ test('creates and renames custom groups while preserving cancellation semantics'
 
   assert.deepEqual(fixture.calls, [
     ['add', { name: '新分组' }],
-    ['success', '分组已创建'],
+    ['success', '添加成功'],
     ['rename', 2, { name: '新分组' }],
-    ['success', '分组已重命名'],
+    ['load-book-groups', { force: true }],
+    ['success', '修改成功'],
   ])
+  assert.equal(fixture.promptCalls[0][0], '')
+  assert.equal(fixture.promptCalls[0][1], '添加分组')
+  assert.equal(fixture.promptCalls[0][2].inputValidator(''), '分组名不能为空')
+  assert.equal(fixture.promptCalls[0][2].inputValidator('有效'), true)
+  assert.equal(fixture.promptCalls[1][0], '')
+  assert.equal(fixture.promptCalls[1][1], '编辑分组')
+  assert.equal(fixture.promptCalls[1][2].inputValue, '旧名称')
 
   const cancelled = createController({
     prompt: async () => {
@@ -185,9 +221,11 @@ test('manages four built-in groups together with custom groups', async () => {
 
   assert.deepEqual(fixture.calls, [
     ['update-builtin', 'audio', { name: '新分组' }],
-    ['success', '分组已重命名'],
+    ['load-book-groups', { force: true }],
+    ['success', '修改成功'],
     ['update-builtin', 'all', { show: false }],
-    ['success', '分组已隐藏'],
+    ['load-book-groups', { force: true }],
+    ['success', '修改成功'],
   ])
 })
 
@@ -202,7 +240,7 @@ test('reloads category state when visibility changes fail', async () => {
 
   assert.deepEqual(fixture.calls, [
     ['load-book-groups', { force: true }],
-    ['error', failure, '修改分组显示状态失败'],
+    ['error', failure, '修改失败'],
   ])
   assert.equal(fixture.controller.visibilitySavingId.value, null)
 })
@@ -216,9 +254,13 @@ test('protects non-empty groups and deletes empty confirmed groups', async () =>
   assert.deepEqual(fixture.calls, [
     ['warning', '内置分组不能删除'],
     ['warning', '分组内还有书籍，清空后才能删除'],
-    ['confirm', '确定删除分组“科幻”吗？', '删除分组', { type: 'warning' }],
+    ['confirm', '确认要删除该分组吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }],
     ['remove', 3],
-    ['success', '分组已删除'],
+    ['success', '删除分组成功'],
   ])
 })
 
@@ -226,7 +268,7 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
   const fixture = createController()
   const tableBody = {}
   fixture.controller.prepareOpen()
-  fixture.controller.groupManageTableRef.value = {
+  fixture.controller.groupTableRef.value = {
     $el: {
       querySelector: selector => {
         assert.equal(selector, '.el-table__body-wrapper tbody')
@@ -236,8 +278,17 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
   }
 
   await fixture.controller.handleBookGroupOpened()
+  assert.equal(fixture.getSortableOptions().handle, '.group-drag-icon')
+  assert.equal(fixture.getSortableOptions().animation, undefined)
+  assert.equal(fixture.getSortableOptions().forceFallback, undefined)
+  assert.equal(fixture.getSortableOptions().fallbackTolerance, undefined)
   fixture.getSortableOptions().onEnd({ oldIndex: 0, newIndex: 2 })
 
+  assert.deepEqual(
+    fixture.controller.groupManageRows.value.map(group => group.key),
+    fixture.bookshelf.bookGroups.map(group => group.key),
+    'Sortable must own the visible DOM order until the upstream-style save refresh',
+  )
   assert.deepEqual(fixture.controller.groupOrderDraftKeys.value, [
     'builtin:local',
     'builtin:audio',
@@ -254,6 +305,7 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
   assert.deepEqual(fixture.calls, [
     ['next-frame'],
     ['create-sortable', tableBody],
+    ['sortable-option', 'disabled', false],
     ['reorder-groups', [
       'builtin:local',
       'builtin:audio',
@@ -263,10 +315,33 @@ test('owns sortable lifecycle and persists the drafted group order', async () =>
       'category:2',
       'category:3',
     ]],
-    ['success', '分组排序已更新'],
+    ['load-book-groups', { force: true }],
+    ['next-frame'],
     ['destroy-sortable'],
+    ['create-sortable', tableBody],
+    ['sortable-option', 'disabled', false],
+    ['success', '保存成功'],
+    ['sortable-option', 'disabled', true],
+    ['next-frame'],
   ])
   assert.equal(fixture.controller.groupOrderSaving.value, false)
+})
+
+test('submits an unchanged name like upstream instead of silently skipping the edit', async () => {
+  const fixture = createController({
+    prompt: async (...args) => {
+      fixture.promptCalls.push(args)
+      return { value: '旧名称' }
+    },
+  })
+
+  await fixture.controller.renameGroup({ id: 2, name: '旧名称' })
+
+  assert.deepEqual(fixture.calls, [
+    ['rename', 2, { name: '旧名称' }],
+    ['load-book-groups', { force: true }],
+    ['success', '修改成功'],
+  ])
 })
 
 test('does not apply a group response after the authenticated operation expires', async () => {
@@ -283,7 +358,10 @@ test('does not apply a group response after the authenticated operation expires'
   fixture.overlay.bookGroupMode = 'set'
   fixture.overlay.bookInfoBook = { id: 9, categoryIds: [2] }
   fixture.controller.prepareOpen()
-  fixture.controller.toggleBookGroupSelection({ id: 1 })
+  fixture.controller.handleBookGroupSelectionChange([
+    fixture.controller.groupSetRows.value[1],
+    fixture.controller.groupSetRows.value[0],
+  ])
 
   const pending = fixture.controller.saveBookGroupSetting()
   current = false

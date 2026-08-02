@@ -270,7 +270,7 @@ async function runViewport(browser, root, viewport) {
     await dialog.getByRole('button', { name: '设置分组', exact: true }).click()
     const groupDialog = page.locator('.global-book-group-dialog')
     await groupDialog.waitFor({ state: 'visible', timeout: 10_000 })
-    const categoryRow = groupDialog.locator('.group-set-table .el-table__row').filter({ hasText: seeded.category.name })
+    const categoryRow = groupDialog.locator('.book-group-table .el-table__row').filter({ hasText: seeded.category.name })
     await categoryRow.waitFor({ state: 'visible', timeout: 10_000 })
     const groupRequest = await captureRequest(
       page,

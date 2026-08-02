@@ -44,7 +44,6 @@
         type="button"
         role="tab"
         :aria-selected="selectedGroup === item.key"
-        :title="`${item.name} (${item.count})`"
         @click="selectedGroup = item.key"
       >
         <span>{{ item.name }}</span>
@@ -194,16 +193,6 @@ watch(
     if (value === '1') overlay.openImportBook()
   },
   { immediate: true },
-)
-
-watch(
-  () => [bookshelf.bookGroups, bookshelf.books, preferences.shelf.groupKey],
-  () => {
-    if (!bookshelf.bookGroupsLoadedAt || !bookshelf.booksLoadedAt) return
-    const resolved = resolveBookGroupSelection(bookshelf.bookGroups, bookshelf.books, preferences.shelf.groupKey)
-    if (resolved !== preferences.shelf.groupKey) preferences.setShelfGroup(resolved)
-  },
-  { deep: true },
 )
 
 watch(isNormalPage, (normal) => {

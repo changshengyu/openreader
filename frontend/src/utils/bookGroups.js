@@ -48,6 +48,6 @@ export function visibleBookGroups(groups, books) {
 export function resolveBookGroupSelection(groups, books, selectedKey) {
   const visible = visibleBookGroups(groups, books)
   const selected = groupKey(selectedKey)
-  if (visible.some(group => groupKey(group) === selected)) return selected
-  return groupKey(visible[0]) || 'builtin:all'
+  if (!visible.length) return 'builtin:all'
+  return selected || 'builtin:all'
 }

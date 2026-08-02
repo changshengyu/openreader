@@ -16,34 +16,30 @@ export function useOverlayBookGroups(options) {
   const visibilitySavingId = ref(null)
   const groupOrderDraftKeys = ref([])
   const groupOrderSaving = ref(false)
-  const groupManageTableRef = ref(null)
+  const groupTableRef = ref(null)
   let sortable
+  let syncingTableSelection = false
 
   const groupSetRows = computed(() => (
     options.bookshelf.categories.map(category => ({
       ...category,
       id: String(category.id),
-      description: `${groupBookCount(category)} 本`,
     }))
   ))
 
-  const groupManageRows = computed(() => {
-    const groupByKey = new Map(
-      options.bookshelf.bookGroups.map(group => [String(group.key), group]),
-    )
-    const rows = []
-    for (const key of groupOrderDraftKeys.value) {
-      const group = groupByKey.get(String(key))
-      if (group) rows.push(group)
-    }
-    for (const group of options.bookshelf.bookGroups) {
-      if (!groupOrderDraftKeys.value.includes(String(group.key))) rows.push(group)
-    }
-    return rows
-  })
+  // Sortable owns the visible tbody order until save, exactly like reader-dev.
+  // Re-projecting table data from the draft here would move the same row twice:
+  // once in Sortable's DOM and once in Vue's keyed render.
+  const groupManageRows = computed(() => options.bookshelf.bookGroups)
+
+  const groupRows = computed(() => (
+    options.overlay.bookGroupMode === 'set'
+      ? groupSetRows.value
+      : groupManageRows.value
+  ))
 
   const isGroupOrderDirty = computed(() => (
-    groupManageRows.value.map(group => String(group.key)).join(',') !==
+    groupOrderDraftKeys.value.join(',') !==
     options.bookshelf.bookGroups.map(group => String(group.key)).join(',')
   ))
 
@@ -56,27 +52,37 @@ export function useOverlayBookGroups(options) {
     return `${group.name}(${group.defaultName})`
   }
 
-  function prepareOpen(mode = options.overlay.bookGroupMode) {
+  async function prepareOpen(mode = options.overlay.bookGroupMode) {
     if (mode === 'set') {
       selectedCategoryIds.value = bookCategoryIds(options.overlay.bookInfoBook)
         .map(id => String(id))
+      await syncBookGroupTableSelection()
       return
     }
     resetGroupOrderDraft()
   }
 
-  function isBookGroupSelected(category) {
-    return selectedCategoryIds.value.includes(String(category.id))
+  async function syncBookGroupTableSelection() {
+    const table = groupTableRef.value
+    if (!table) return
+    await options.nextFrame()
+    syncingTableSelection = true
+    try {
+      table.clearSelection?.()
+      const selected = new Set(selectedCategoryIds.value.map(String))
+      groupSetRows.value.forEach(row => {
+        if (selected.has(String(row.id))) table.toggleRowSelection?.(row, true)
+      })
+    } finally {
+      syncingTableSelection = false
+    }
   }
 
-  function toggleBookGroupSelection(category) {
-    const id = String(category.id)
-    if (!id) return
-    if (selectedCategoryIds.value.includes(id)) {
-      selectedCategoryIds.value = selectedCategoryIds.value.filter(item => item !== id)
-      return
-    }
-    selectedCategoryIds.value = [...selectedCategoryIds.value, id]
+  function handleBookGroupSelectionChange(rows) {
+    if (syncingTableSelection) return
+    selectedCategoryIds.value = (Array.isArray(rows) ? rows : [])
+      .map(row => String(row?.id || ''))
+      .filter(Boolean)
   }
 
   async function saveBookGroupSetting() {
@@ -89,7 +95,7 @@ export function useOverlayBookGroups(options) {
         .map(id => Number(id))
         .filter(Boolean)
       if (!categoryIds.length) {
-        options.onWarning('请选择书籍分组')
+        options.onError(null, '请选择书籍分组')
         return
       }
       const { data } = await options.updateBookCategory(book.id, categoryIds)
@@ -103,10 +109,10 @@ export function useOverlayBookGroups(options) {
         progress: options.getBookProgress(data)?.percent || 0,
       }
       options.overlay.bookGroupVisible = false
-      options.onSuccess('分组已设置')
+      options.onSuccess('设置成功')
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '设置分组失败')
+        options.onError(error, '设置失败')
       }
     } finally {
       if (operations.canCommit(operation)) settingCategorySaving.value = false
@@ -116,8 +122,11 @@ export function useOverlayBookGroups(options) {
   async function createCategory() {
     const operation = operations.begin('create-group')
     try {
-      const { value } = await options.prompt('输入分组名称', '添加分组', {
-        inputValidator: value => !!value?.trim() || '分组名称不能为空',
+      const { value } = await options.prompt('', '添加分组', {
+        inputValue: '',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputValidator: value => !!value?.trim() || '分组名不能为空',
       })
       if (!operations.canCommit(operation)) return
       const name = value.trim()
@@ -125,11 +134,13 @@ export function useOverlayBookGroups(options) {
       await options.bookshelf.addCategory({ name })
       if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
-      options.onSuccess('分组已创建')
+      await clearSetModeSelectionAfterGroupMutation()
+      await refreshVisibleGroupTable()
+      options.onSuccess('添加成功')
     } catch (error) {
       if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
-        options.onError(error, '创建分组失败')
+        options.onError(error, '添加失败')
       }
     }
   }
@@ -137,26 +148,46 @@ export function useOverlayBookGroups(options) {
   async function renameGroup(category) {
     const operation = operations.begin(`rename-group:${category?.key || category?.id || ''}`)
     try {
-      const { value } = await options.prompt('输入新的分组名称', '重命名分组', {
+      const { value } = await options.prompt('', '编辑分组', {
         inputValue: category.name,
-        inputValidator: value => !!value?.trim() || '分组名称不能为空',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputValidator: value => !!value?.trim() || '分组名不能为空',
       })
       if (!operations.canCommit(operation)) return
       const name = value.trim()
-      if (!name || name === category.name) return
+      if (!name) return
       if (category.kind === 'builtin') {
         await options.bookshelf.updateBuiltInBookGroup(category.semantic, { name })
       } else {
         await options.bookshelf.renameCategory(category.categoryId || category.id, { name })
       }
       if (!operations.canCommit(operation)) return
+      await options.bookshelf.loadBookGroups({ force: true })
+      if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
-      options.onSuccess('分组已重命名')
+      await clearSetModeSelectionAfterGroupMutation()
+      await refreshVisibleGroupTable()
+      options.onSuccess('修改成功')
     } catch (error) {
       if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
-        options.onError(error, '重命名失败')
+        options.onError(error, '修改失败')
       }
+    }
+  }
+
+  async function clearSetModeSelectionAfterGroupMutation() {
+    if (options.overlay.bookGroupMode !== 'set') return
+    selectedCategoryIds.value = []
+    const table = groupTableRef.value
+    if (!table) return
+    await options.nextFrame()
+    syncingTableSelection = true
+    try {
+      table.clearSelection?.()
+    } finally {
+      syncingTableSelection = false
     }
   }
 
@@ -170,12 +201,16 @@ export function useOverlayBookGroups(options) {
         await options.bookshelf.setCategoryVisible(category.categoryId || category.id, show)
       }
       if (!operations.canCommit(operation)) return
-      options.onSuccess(show ? '分组已显示' : '分组已隐藏')
+      await options.bookshelf.loadBookGroups({ force: true })
+      if (!operations.canCommit(operation)) return
+      resetGroupOrderDraft()
+      await refreshVisibleGroupTable()
+      options.onSuccess('修改成功')
     } catch (error) {
       if (!operations.canCommit(operation)) return
       await options.bookshelf.loadBookGroups({ force: true }).catch(() => {})
       if (!operations.canCommit(operation)) return
-      options.onError(error, '修改分组显示状态失败')
+      options.onError(error, '修改失败')
     } finally {
       if (operations.canCommit(operation)) visibilitySavingId.value = null
     }
@@ -193,15 +228,20 @@ export function useOverlayBookGroups(options) {
     const operation = operations.begin(`delete-group:${category?.id || ''}`)
     try {
       await options.confirm(
-        `确定删除分组“${category.name}”吗？`,
-        '删除分组',
-        { type: 'warning' },
+        '确认要删除该分组吗?',
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
       )
       if (!operations.canCommit(operation)) return
       await options.bookshelf.removeCategory(category.categoryId || category.id)
       if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
-      options.onSuccess('分组已删除')
+      await refreshVisibleGroupTable()
+      options.onSuccess('删除分组成功')
     } catch (error) {
       if (isCancelled(error)) return
       if (operations.canCommit(operation)) {
@@ -221,7 +261,9 @@ export function useOverlayBookGroups(options) {
       newIndex == null ||
       oldIndex === newIndex
     ) return
-    const keys = groupManageRows.value.map(group => String(group.key))
+    const keys = groupOrderDraftKeys.value.length
+      ? [...groupOrderDraftKeys.value]
+      : groupManageRows.value.map(group => String(group.key))
     const [moved] = keys.splice(oldIndex, 1)
     if (!moved) return
     keys.splice(newIndex, 0, moved)
@@ -229,21 +271,20 @@ export function useOverlayBookGroups(options) {
   }
 
   async function handleBookGroupOpened() {
-    if (options.overlay.bookGroupMode !== 'manage') return
     const operation = operations.begin('open-group-manager')
     await options.nextFrame()
     if (!operations.canCommit(operation)) return
     destroyGroupSortable()
-    const tableBody = groupManageTableRef.value?.$el
+    groupTableRef.value?.doLayout?.()
+    const tableBody = groupTableRef.value?.$el
       ?.querySelector('.el-table__body-wrapper tbody')
     if (!tableBody) return
     sortable = options.createSortable(tableBody, {
-      handle: '.group-drag-handle',
-      animation: 150,
-      forceFallback: true,
-      fallbackTolerance: 4,
+      handle: '.group-drag-icon',
+      setData: dataTransfer => dataTransfer.setData('Text', ''),
       onEnd: ({ oldIndex, newIndex }) => moveGroupOrder(oldIndex, newIndex),
     })
+    sortable?.option?.('disabled', options.overlay.bookGroupMode === 'set')
   }
 
   function destroyGroupSortable() {
@@ -251,27 +292,32 @@ export function useOverlayBookGroups(options) {
     sortable = null
   }
 
+  async function refreshVisibleGroupTable() {
+    if (!options.overlay.bookGroupVisible || !groupTableRef.value) return
+    await handleBookGroupOpened()
+  }
+
   async function handleModeChange(mode) {
-    destroyGroupSortable()
-    prepareOpen(mode)
-    if (mode === 'manage' && options.overlay.bookGroupVisible) {
-      await handleBookGroupOpened()
-    }
+    sortable?.option?.('disabled', mode === 'set')
+    await prepareOpen(mode)
   }
 
   async function saveGroupOrderDraft() {
     if (!isGroupOrderDirty.value) return
     const operation = operations.begin('save-group-order')
-    const orderedKeys = groupManageRows.value.map(item => item.key)
+    const orderedKeys = [...groupOrderDraftKeys.value]
     groupOrderSaving.value = true
     try {
       await options.bookshelf.reorderBookGroupKeys(orderedKeys)
       if (!operations.canCommit(operation)) return
+      await options.bookshelf.loadBookGroups({ force: true })
+      if (!operations.canCommit(operation)) return
       resetGroupOrderDraft()
-      options.onSuccess('分组排序已更新')
+      await refreshVisibleGroupTable()
+      options.onSuccess('保存成功')
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '分组排序失败')
+        options.onError(error, '保存失败')
       }
     } finally {
       if (operations.canCommit(operation)) groupOrderSaving.value = false
@@ -284,15 +330,15 @@ export function useOverlayBookGroups(options) {
     visibilitySavingId,
     groupOrderDraftKeys,
     groupOrderSaving,
-    groupManageTableRef,
+    groupTableRef,
     groupSetRows,
     groupManageRows,
+    groupRows,
     isGroupOrderDirty,
     groupBookCount,
     displayBookGroupName,
     prepareOpen,
-    isBookGroupSelected,
-    toggleBookGroupSelection,
+    handleBookGroupSelectionChange,
     saveBookGroupSetting,
     createCategory,
     renameGroup,

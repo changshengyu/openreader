@@ -1010,7 +1010,13 @@ func (s *Server) restoreCategoriesFromZip(file *zip.File, userID uint) (int, err
 }
 
 func (s *Server) restoreCategoriesFromData(data []byte, userID uint) (int, error) {
-	var categories []models.Category
+	type restoredCategoryRow struct {
+		Name      string `json:"name"`
+		Color     string `json:"color"`
+		Show      *bool  `json:"show"`
+		SortOrder int    `json:"sortOrder"`
+	}
+	var categories []restoredCategoryRow
 	if err := json.Unmarshal(data, &categories); err != nil {
 		return 0, err
 	}
@@ -1021,15 +1027,32 @@ func (s *Server) restoreCategoriesFromData(data []byte, userID uint) (int, error
 		if name == "" {
 			continue
 		}
+		show := true
+		if category.Show != nil {
+			show = *category.Show
+		}
+		now := time.Now()
 		next := models.Category{
 			UserID:    userID,
 			Name:      name,
 			Color:     category.Color,
+			Show:      show,
 			SortOrder: category.SortOrder,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		if err := s.db.Where("user_id = ? AND name = ?", userID, name).Assign(next).FirstOrCreate(&next).Error; err != nil {
+			return count, err
+		}
+		// Assign(struct) and Create both omit false for a bool carrying
+		// gorm:"default:true". Update a map so explicit false survives while
+		// archives that omitted show continue to use the historical true default.
+		if err := s.db.Model(&next).Updates(map[string]any{
+			"color":      category.Color,
+			"show":       show,
+			"sort_order": category.SortOrder,
+			"updated_at": now,
+		}).Error; err != nil {
 			return count, err
 		}
 		count++

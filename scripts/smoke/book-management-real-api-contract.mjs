@@ -316,10 +316,11 @@ async function runViewport(browser, root, viewport) {
     await groupedRow.getByRole('button', { name: '分组', exact: true }).click()
     const groupSet = page.locator('.global-book-group-dialog')
     await groupSet.waitFor({ state: 'visible', timeout: 10_000 })
-    const primaryGroupRow = groupSet.locator('.group-set-table .el-table__row').filter({ hasText: seeded.primary.name })
-    const secondaryGroupRow = groupSet.locator('.group-set-table .el-table__row').filter({ hasText: seeded.secondary.name })
+    const primaryGroupRow = groupSet.locator('.book-group-table .el-table__row').filter({ hasText: seeded.primary.name })
+    const secondaryGroupRow = groupSet.locator('.book-group-table .el-table__row').filter({ hasText: seeded.secondary.name })
     await primaryGroupRow.waitFor({ state: 'visible', timeout: 10_000 })
     await secondaryGroupRow.waitFor({ state: 'visible', timeout: 10_000 })
+    await primaryGroupRow.locator('.el-checkbox__input.is-checked').waitFor({ state: 'visible', timeout: 10_000 })
     assert(
       await primaryGroupRow.locator('.el-checkbox__input').evaluate(node => node.classList.contains('is-checked')),
       `${viewport.width}: BookGroup must preselect the actual persisted category`,

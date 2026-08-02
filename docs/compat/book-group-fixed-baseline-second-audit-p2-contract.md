@@ -171,3 +171,37 @@ ID、关系、volume 路径或备份成员。
 多对多、稳定 token、严格事务与跨用户/非空删除保护、authenticated operation generation、
 增强本地书识别及兼容旧 API/备份。当前双表、额外计数/文案、自动切组和恢复丢失 false 均不是
 允许差异。
+
+## 10. 实施与验证记录（2026-08-02）
+
+本合同已按“失败测试 → 实现 → 真实浏览器”完成，不再处于 implementation pending：
+
+- `OverlayBookGroups.vue` 只保留一个 normal-page `el-dialog` 和一个 `el-table`；桌面 width/top、
+  mini fullscreen、桌面/mini table height、条件 selection/show 列、名称内 drag icon、操作列和
+  单 footer 均恢复固定上游结构。manage 每次打开 force 读取投影，关闭恢复 manage 默认 mode。
+- `useOverlayBookGroups.js` 以 Element table selection 为 set 模式权威，恢复初次预选、空选择
+  error、添加/编辑/显隐/删除/设置/排序精确文案和刷新顺序。set 模式复用同一 Sortable 并禁用；
+  组投影变化按上游 watcher 语义重置 manage draft，分类变化会清除 set 的陈旧选择。
+- 浏览器测试先发现一次真实 Vue 3 适配缺口：Sortable 已移动 tbody 后，旧实现又用响应式 draft
+  重排 table data，造成可见顺序与落库顺序“双重位移”。最终实现与上游一致：Sortable 独占
+  保存前 DOM 顺序，draft 只记录 key，强制刷新后才由服务器投影重新渲染。
+- Home 分组 tab 不再显示额外计数 title；隐藏、空组或未知的持久 token 不再被自动改写为第一项
+  可见组。仅没有任何可见非空组时临时使用 `builtin:all`，不覆写持久偏好。
+- reader-dev restore 新建隐藏自定义组后在同一事务中显式写 `show=false`；categories-only restore
+  使用 `*bool` 区分字段缺失与显式 false。旧归档缺失 `show` 仍默认可见，不改表、不改 ID/关系。
+
+最终验证证据：
+
+- frontend `663/663`；Vite production build 通过；Go `go test ./...` 全量通过；差异和脚本语法
+  检查通过。
+- `book-group-real-api-contract.mjs` 在 1440×900、390×844、360×800、1024×1366、
+  1366×1024 全部通过：真实 Go/SQLite、唯一表、精确几何、四内置、自定义添加/编辑/删除、
+  显隐、多客户端同步和可见顺序逐项落库。
+- `book-management-real-api-contract.mjs` 在 1440/390/360 通过 set 初选、空保护和保存；
+  `bookinfo-shelf-mutations-real-api-contract.mjs` 同三视口通过共享 BookInfo set 流程；mock
+  `book-management-dialog-contract.mjs` 在五视口通过父 overlay 共存及 iPad 可关闭合同。
+- 后端聚焦恢复合同证明 reader-dev 隐藏自定义组与 categories-only 显式 false 均可保留，缺失
+  `show` 仍为 true。
+
+状态更新为 **aligned / implementation-complete / Docker pending**。允许差异仍仅限第 9 节所列
+Vue 3/Go/多用户/多对多和安全增强；双表、可见计数、扩展文案、自动切组与恢复丢失 false 已删除。

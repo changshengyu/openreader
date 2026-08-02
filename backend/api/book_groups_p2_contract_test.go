@@ -298,7 +298,47 @@ func TestBookGroupBackupRoundTripAndReaderDevMaskRestore(t *testing.T) {
 	if findBookGroupContractRow(t, readerDevGroups, "builtin:all").Name != "全部藏书" || findBookGroupContractRow(t, readerDevGroups, "builtin:all").Show {
 		t.Fatalf("reader-dev built-in state was not restored: %+v", readerDevGroups)
 	}
+	hiddenReaderDevCategory := findCategoryByName(t, readerDevServer, readerDevUser.ID, "上游乙")
+	if hiddenReaderDevCategory.Show {
+		t.Fatalf("reader-dev hidden custom group was restored as visible: %+v", hiddenReaderDevCategory)
+	}
+	hiddenReaderDevGroup := findBookGroupContractRow(
+		t,
+		readerDevGroups,
+		"category:"+strconv.FormatUint(uint64(hiddenReaderDevCategory.ID), 10),
+	)
+	if hiddenReaderDevGroup.Show {
+		t.Fatalf("reader-dev hidden custom projection was restored as visible: %+v", hiddenReaderDevGroup)
+	}
 	assertRestoredBookCategoryNames(t, readerDevServer, readerDevUser.ID, "上游分组书", []string{"上游甲", "上游乙"})
+}
+
+func TestCategoriesOnlyRestorePreservesExplicitHiddenAndDefaultsMissingShowToVisible(t *testing.T) {
+	archive := makeBackupRestoreZIP(t, map[string]string{
+		"categories.json": `[
+			{"name":"旧隐藏分组","show":false,"sortOrder":10},
+			{"name":"旧默认分组","sortOrder":20}
+		]`,
+	})
+	router, server := setupTestServer(t)
+	_ = authHeader(t, router)
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := server.restoreLegadoBackupData(archive, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoreResultCount(result, "categories") != 2 {
+		t.Fatalf("categories-only restore count=%#v result=%+v", result["categories"], result)
+	}
+	if hidden := findCategoryByName(t, server, user.ID, "旧隐藏分组"); hidden.Show {
+		t.Fatalf("explicit categories.json show=false was lost: %+v", hidden)
+	}
+	if visible := findCategoryByName(t, server, user.ID, "旧默认分组"); !visible.Show {
+		t.Fatalf("missing categories.json show should default visible: %+v", visible)
+	}
 }
 
 func TestBookGroupPreferencesAreDeletedWithUserData(t *testing.T) {

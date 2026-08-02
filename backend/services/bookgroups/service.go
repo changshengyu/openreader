@@ -280,6 +280,16 @@ func (s *Service) Restore(userID uint, rows []RestoreRow) (map[int]uint, int, er
 				if err := tx.Create(&category).Error; err != nil {
 					return err
 				}
+				// Category.Show has a database default of true. GORM replaces a
+				// false zero value with that default during Create, so an explicit
+				// post-create column write is required to preserve reader-dev's
+				// persisted hidden state. This remains inside the restore transaction.
+				if !row.Show {
+					if err := tx.Model(&category).UpdateColumn("show", false).Error; err != nil {
+						return err
+					}
+					category.Show = false
+				}
 			} else if err != nil {
 				return err
 			} else if err := tx.Model(&category).Updates(map[string]any{"show": row.Show, "sort_order": row.Order}).Error; err != nil {
