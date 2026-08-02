@@ -1,5 +1,22 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-02 P1 书架可见布局第二轮固定基准复审
+
+历史记录把当前 320–360px 自适应网格、桌面 list 偏好、skeleton/空态和多套手机断点描述成
+上游对齐，但固定 `Index.vue` 不支持这些结论。第二轮逐段取证确认：1440px 桌面在 260px 侧栏
+与 48px shelf padding 后应按固定 380px 轨道形成两列，1024px 自适应桌面形成一列；手机才在
+750px 阈值内变成单列。当前可形成三列/两列，历史 `view:list` 还会让用户停在已经没有切换入口的
+全宽列表，属于结构级错误重构。
+
+同时确认标题计数应随当前分组和编辑搜索变化；编辑搜索是 trim/lowercase 精确子串；卡片必须
+恢复独立 author/dot/chapter、上游 loading overlay、空 wrapper 和 `#222` 夜间 shelf。当前固定
+总数、标点归一化搜索、自造 skeleton/el-empty、分组横线和夜间白底均为 `must-fix`。安全 cover
+capability、共享失败回退和 ARIA/键盘支持是允许适配。
+
+完整几何、状态、差异和测试先行门见
+[`bookshelf-visible-layout-fixed-baseline-second-audit-p1-contract.md`](bookshelf-visible-layout-fixed-baseline-second-audit-p1-contract.md)。
+本轮只完成合同，不在审查提交中修改应用代码；历史“书架已对齐”只能作为过程记录。
+
 ## 2026-08-02 P1 Index 设置与操作面第二轮固定基准复审
 
 固定上游的 Index 侧栏和书架标题操作已重新逐项提取。当前六个书源动作、本地缓存四分组、
