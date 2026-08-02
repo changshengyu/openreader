@@ -1,75 +1,88 @@
 <template>
-  <section class="app-page search-page workspace-result-page">
-    <header class="workspace-result-head">
-      <div>
-        <h1 class="app-page-title">搜索 ({{ searchMode === 'local' ? shownLocalResults.length : results.length }})</h1>
-        <p class="workspace-result-subtitle">{{ searchMode === 'local' ? '本地书籍' : '书源搜索' }}</p>
+  <section class="app-page shelf-page result-shelf-page search-page">
+    <div class="shelf-title">
+      <div class="shelf-title-main">
+        <strong>搜索 ({{ searchMode === 'local' ? shownLocalResults.length : results.length }})</strong>
       </div>
-      <div class="workspace-result-actions">
+      <div class="title-actions">
         <button
-          v-if="searchMode === 'remote' && searched"
+          v-if="searchMode === 'remote'"
           type="button"
-          :disabled="loadingMore || !remoteHasMore"
+          :disabled="searching || loadingMore || (searched && !remoteHasMore)"
           @click="loadMoreRemote"
-        >{{ loadingMore ? '加载中...' : (remoteHasMore ? '加载更多' : '没有更多了') }}</button>
+        >{{ remoteSearchActionLabel }}</button>
         <button type="button" @click="backToShelf">书架</button>
       </div>
-    </header>
-
-    <div ref="resultArea" v-loading="searching" class="result-area">
-      <RemoteBookResultGroups
-        v-if="searchMode === 'remote' && groupedResults.length"
-        :groups="groupedResults"
-        :adding-book-key="addingRemoteBookKey"
-        :is-night="reader.themeType === 'night'"
-        @preview="openPreview"
-        @read="openRemoteReader"
-        @add="addResultToShelf"
-      />
-
-      <div v-else-if="searchMode === 'local' && shownLocalResults.length" class="local-result-list">
-        <article
-          v-for="item in shownLocalResults"
-          :key="localResultKey(item)"
-          class="local-result-card app-panel"
-        >
-          <el-icon class="local-file-icon"><Document /></el-icon>
-          <div class="result-main">
-            <div class="result-title">
-              <h3>{{ localBookTitle(item) }}</h3>
-              <el-tag size="small" :type="item.book ? 'success' : 'info'" effect="plain">{{ item.book ? '已在书架' : (item.extension || '文件') }}</el-tag>
-            </div>
-            <p>{{ localBookSubline(item) }}</p>
-            <p class="latest-chapter">{{ localBookMeta(item) }}</p>
-          </div>
-          <div class="result-actions" @click.stop>
-            <template v-if="item.book">
-              <el-button type="primary" size="small" @click="readLocalShelfBook(item.book)">阅读</el-button>
-              <el-button size="small" @click="openLocalShelfDetail(item.book)">详情</el-button>
-            </template>
-            <el-button v-else type="primary" size="small" :loading="importingLocal" @click="importLocalOne(item)">导入书架</el-button>
-          </div>
-        </article>
-      </div>
-
-      <el-empty v-else-if="searched && !searching" :description="searchMode === 'local' ? '没有找到本地书籍文件' : '没有找到相关书籍'" />
-      <el-empty v-else :description="searchMode === 'local' ? '输入关键词搜索本地书仓，或直接搜索显示全部可导入文件' : '输入关键词后开始搜索书源'" />
     </div>
 
+    <main class="shelf-main">
+      <div ref="resultArea" class="books-wrapper">
+        <RemoteBookResultList
+          v-if="searchMode === 'remote'"
+          :books="results"
+          :adding-book-key="addingRemoteBookKey"
+          :is-night="reader.themeType === 'night'"
+          @preview="openPreview"
+          @read="openRemoteReader"
+          @add="addResultToShelf"
+          @edit="openResultEditor"
+        />
+
+        <div v-else-if="shownLocalResults.length" class="local-result-list">
+          <article
+            v-for="item in shownLocalResults"
+            :key="localResultKey(item)"
+            class="local-result-card app-panel"
+          >
+            <el-icon class="local-file-icon"><Document /></el-icon>
+            <div class="result-main">
+              <div class="result-title">
+                <h3>{{ localBookTitle(item) }}</h3>
+                <el-tag size="small" :type="item.book ? 'success' : 'info'" effect="plain">{{ item.book ? '已在书架' : (item.extension || '文件') }}</el-tag>
+              </div>
+              <p>{{ localBookSubline(item) }}</p>
+              <p class="latest-chapter">{{ localBookMeta(item) }}</p>
+            </div>
+            <div class="result-actions" @click.stop>
+              <template v-if="item.book">
+                <el-button type="primary" size="small" @click="readLocalShelfBook(item.book)">阅读</el-button>
+                <el-button size="small" @click="openLocalShelfDetail(item.book)">详情</el-button>
+              </template>
+              <el-button v-else type="primary" size="small" :loading="importingLocal" @click="importLocalOne(item)">导入书架</el-button>
+            </div>
+          </article>
+        </div>
+
+        <el-empty v-else-if="searched && !searching" description="没有找到本地书籍文件" />
+        <el-empty v-else-if="searchMode === 'local'" description="输入关键词搜索本地书仓，或直接搜索显示全部可导入文件" />
+      </div>
+    </main>
+
+    <RemoteBookJsonEditorDialog
+      :visible="resultEditorVisible"
+      :content="resultEditorContent"
+      :saving="resultEditorSaving"
+      :is-mobile="isMobileResult"
+      @update:content="resultEditorContent = $event"
+      @close="closeResultEditor"
+      @save="saveResultEditor"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import { createRemoteReaderSession } from '../api/remoteReader'
 import { createRemoteBook } from '../api/books'
 import { importFromLocalStore, listLocalStore } from '../api/localStore'
 import api from '../api/client'
-import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
+import RemoteBookResultList from '../components/RemoteBookResultList.vue'
+import RemoteBookJsonEditorDialog from '../components/RemoteBookJsonEditorDialog.vue'
 import { useRemoteBookAddToShelf } from '../composables/useRemoteBookAddToShelf'
+import { useRemoteBookResultEditor } from '../composables/useRemoteBookResultEditor'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -96,6 +109,7 @@ import {
   isWorkspaceRequestCurrent,
   mergeRemoteSearchResults,
 } from '../utils/workspaceContinuation.js'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive.js'
 
 const router = useRouter()
 const emit = defineEmits(['back-to-shelf'])
@@ -118,6 +132,7 @@ const results = ref([])
 const searching = ref(false)
 const loadingMore = ref(false)
 const searched = ref(false)
+const searchStarting = ref(false)
 const searchPage = ref(1)
 const searchLastIndex = ref(-1)
 const remoteHasMore = ref(false)
@@ -126,6 +141,7 @@ const activeSourceIds = ref([])
 const activeConcurrentCount = ref(1)
 const activeSearchIsSingleSource = ref(false)
 const resultArea = ref(null)
+const resultWindowWidth = ref(currentViewportWidth())
 const remoteRequestGate = createAsyncRequestGate()
 const searchSessionOperations = createAuthenticatedOperationGuard()
 const resultAddToShelf = useRemoteBookAddToShelf({
@@ -138,26 +154,30 @@ const resultAddToShelf = useRemoteBookAddToShelf({
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const addingRemoteBookKey = resultAddToShelf.addingBookKey
+const resultEditor = useRemoteBookResultEditor({
+  operationGuard: searchSessionOperations,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  createRemoteBook,
+  upsertBook: book => bookshelf.upsertBook(book),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
+  visible: resultEditorVisible,
+  content: resultEditorContent,
+  saving: resultEditorSaving,
+} = resultEditor
 const localItems = ref([])
 const localRecursiveScan = ref(true)
 const importingLocal = ref(false)
 const workspaceSearchReady = ref(false)
 
 const enabledSources = computed(() => sources.value.filter(source => source.enabled))
-const groupedResults = computed(() => {
-  const groups = new Map()
-  for (const item of results.value) {
-    const key = remoteBookSourceId(item) || remoteBookSourceName(item) || 'unknown'
-    if (!groups.has(key)) {
-      groups.set(key, {
-        sourceId: key,
-        sourceName: remoteBookSourceName(item),
-        items: [],
-      })
-    }
-    groups.get(key).items.push(item)
-  }
-  return [...groups.values()]
+const isMobileResult = computed(() => shouldUseMiniInterface(reader.pageMode, resultWindowWidth.value))
+const remoteSearchActionLabel = computed(() => {
+  if (searchStarting.value || searching.value || loadingMore.value) return '加载中...'
+  if (searched.value && !remoteHasMore.value) return '没有更多了'
+  return '加载更多'
 })
 
 const localShelfBooks = computed(() => (bookshelf.books || []).filter(isLocalBook))
@@ -184,6 +204,9 @@ const shownLocalResults = computed(() => {
   return [...shelfResults, ...storeResults]
 })
 onMounted(async () => {
+  updateResultViewport()
+  window.addEventListener('resize', updateResultViewport)
+  window.addEventListener('orientationchange', updateResultViewport)
   const mountOperation = searchSessionOperations.begin('mount')
   applyWorkspaceSearchIntent()
   const shelfReady = await warmSearchShelf()
@@ -206,7 +229,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateResultViewport)
+  window.removeEventListener('orientationchange', updateResultViewport)
   remoteRequestGate.invalidate()
+  resultEditor.reset()
   searchSessionOperations.reset()
 })
 
@@ -251,7 +277,6 @@ async function loadSources() {
     const { data } = await api.get('/sources')
     if (!searchSessionOperations.canCommit(operation)) return false
     sources.value = data
-    if (!selectedGroup.value && sourceGroups.value.length) selectedGroup.value = sourceGroups.value[0].value
     if (!singleSourceId.value && enabledSources.value.length) singleSourceId.value = enabledSources.value[0].id
     return true
   } catch (error) {
@@ -290,13 +315,20 @@ async function doSearch() {
   }
   searchSessionOperations.invalidate('local-search')
   const value = keyword.value.trim()
-  if (!value) return
+  if (!value) {
+    searchStarting.value = false
+    searching.value = false
+    return
+  }
   if (!selectedIds.value.length) {
+    searchStarting.value = false
+    searching.value = false
     ElMessage.warning('未配置书源')
     return
   }
   workspace.setResultLoading(true)
   searching.value = true
+  searchStarting.value = false
   searched.value = false
   results.value = []
   resetRemotePagination()
@@ -487,6 +519,8 @@ function applyWorkspaceSearchIntent() {
   selectedGroup.value = intent.group || ''
   singleSourceId.value = Number(intent.sourceId || 0) || null
   concurrentCount.value = normalizeSearchConcurrent(intent.concurrent)
+  searched.value = false
+  searchStarting.value = searchMode.value === 'remote' && Boolean(keyword.value.trim())
 }
 
 function backToShelf() {
@@ -653,97 +687,37 @@ async function addResultToShelf(item) {
   })
 }
 
+function openResultEditor(item) {
+  resultEditor.open(item, {
+    sourceId: remoteBookSourceId(item),
+    sourceName: remoteBookSourceName(item),
+  })
+}
+
+function closeResultEditor() {
+  resultEditor.close()
+}
+
+async function saveResultEditor() {
+  await resultEditor.save()
+}
+
+function updateResultViewport() {
+  resultWindowWidth.value = currentViewportWidth()
+}
+
 function readError(err, fallback) {
-  return err?.response?.data?.error?.message || err?.response?.data?.error || fallback
+  return err?.response?.data?.error?.message || err?.response?.data?.error || err?.message || fallback
 }
 </script>
 
 <style scoped>
 .search-page {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 16px;
-}
-
-.workspace-result-page {
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  box-sizing: border-box;
-  height: 100vh;
-  max-height: 100vh;
   gap: 0;
-  padding: 48px;
-  overflow: hidden;
 }
 
-.workspace-result-head {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 4px 0 18px;
-  border-bottom: 1px solid var(--app-border);
-}
-
-.workspace-result-head > div:first-child {
-  min-width: 0;
-}
-
-.workspace-result-head .app-page-title {
-  margin: 0;
-  color: #26394a;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.workspace-result-subtitle {
-  margin: 5px 0 0;
-  color: var(--app-text-muted);
-  font-size: 13px;
-}
-
-.workspace-result-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-}
-
-.workspace-result-actions button {
-  padding: 0;
-  color: #26394a;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 28px;
-}
-
-.workspace-result-actions button:hover {
-  color: var(--app-accent);
-}
-
-.workspace-result-page .result-area {
-  min-width: 0;
-  min-height: 0;
-  padding: 18px 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-.load-more-row {
-  display: flex;
-  justify-content: center;
-  padding-bottom: 8px;
-}
-
-.search-head,
-.search-console,
-.search-options,
-.search-status,
-.result-card,
 .result-title,
 .result-actions {
   display: flex;
@@ -751,84 +725,15 @@ function readError(err, fallback) {
   gap: 12px;
 }
 
-.search-head,
 .result-title {
   justify-content: space-between;
 }
-
-.search-console {
-  min-width: 0;
-  flex-wrap: wrap;
-  padding: 14px;
-}
-
-.mode-switch {
-  max-width: 100%;
-}
-
-.search-console > .el-input {
-  min-width: min(260px, 100%);
-  flex: 1;
-}
-
-.search-options {
-  min-width: 0;
-  width: 100%;
-  flex-wrap: wrap;
-}
-
-.search-options :deep(.el-select),
-.search-options :deep(.el-radio-group) {
-  max-width: 100%;
-}
-
-.source-collapse {
-  width: 100%;
-}
-
-.source-checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-}
-
-.search-status {
-  flex-wrap: wrap;
-}
-
-.source-result-list,
-.result-list,
 .local-result-list {
   display: grid;
   min-width: 0;
   gap: 12px;
 }
 
-.source-result-group {
-  display: grid;
-  gap: 10px;
-}
-
-.source-result-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.source-result-head h2 {
-  margin: 0;
-  color: var(--app-text);
-  font-size: 16px;
-}
-
-.result-card,
-.local-result-card {
-  padding: 14px;
-  align-items: start;
-  cursor: pointer;
-}
-
-.result-card:hover,
 .local-result-card:hover,
 .local-result-card.selected {
   border-color: var(--app-primary);
@@ -836,7 +741,10 @@ function readError(err, fallback) {
 
 .local-result-card {
   display: flex;
+  align-items: start;
   gap: 12px;
+  padding: 14px;
+  cursor: pointer;
 }
 
 .local-file-icon {
@@ -872,14 +780,6 @@ function readError(err, fallback) {
   font-size: 13px;
 }
 
-.result-intro {
-  display: -webkit-box;
-  overflow: hidden;
-  line-height: 1.6;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .latest-chapter {
   color: var(--app-primary-strong) !important;
 }
@@ -889,129 +789,16 @@ function readError(err, fallback) {
   justify-content: flex-end;
 }
 
-.preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 6px;
-}
-
-.preview-actions .el-select {
-  min-width: 180px;
-  flex: 1;
-}
-
 @media (max-width: 750px) {
   .search-page {
-    gap: 8px;
-    padding-bottom: 14px;
-  }
-
-  .workspace-result-page {
-    height: 100vh;
-    height: 100dvh;
-    max-height: none;
     gap: 0;
-    padding: 0;
   }
 
-  .workspace-result-head {
-    min-height: 64px;
-    padding: max(16px, env(safe-area-inset-top)) 24px 12px;
-  }
-
-  .workspace-result-head .app-page-title {
-    font-size: 20px;
-  }
-
-  .workspace-result-page .result-area {
-    padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
-  }
-
-  .search-head,
-  .search-console,
-  .search-options,
-  .result-card,
   .result-actions {
     display: grid;
   }
-
-  .search-head {
-    gap: 6px;
-  }
-
-  .search-head :deep(.el-button),
-  .search-console :deep(.el-button) {
-    min-height: 38px;
-  }
-
-  .search-console {
-    gap: 8px;
-    padding: 8px;
-  }
-
-  .search-console > .el-input,
-  .search-console > :deep(.el-button),
-  .mode-switch,
-  .search-options :deep(.el-select),
-  .search-options :deep(.el-radio-group) {
-    width: 100%;
-  }
-
-  .search-options,
-  .local-search-options {
-    gap: 8px;
-  }
-
-  .mode-switch,
-  .search-options :deep(.el-radio-group) {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .mode-switch :deep(.el-radio-button__inner),
-  .search-options :deep(.el-radio-button__inner) {
-    display: block;
-    min-height: 36px;
-    overflow: hidden;
-    padding: 8px 6px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .source-checks {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .source-checks :deep(.el-checkbox) {
-    min-width: 0;
-    margin-right: 0;
-  }
-
-  .source-checks :deep(.el-checkbox__label) {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .search-status {
-    gap: 6px;
-  }
-
-  .source-result-list,
-  .result-list,
   .local-result-list {
     gap: 8px;
-  }
-
-  .source-result-head {
-    align-items: flex-start;
-    display: grid;
-    gap: 4px;
   }
 
   .result-actions {
@@ -1024,16 +811,11 @@ function readError(err, fallback) {
     margin-left: 0;
   }
 
-  .result-card,
-  .local-result-card {
-    grid-template-columns: 42px minmax(0, 1fr);
-    gap: 10px;
-    padding: 10px;
-  }
-
   .local-result-card {
     display: grid;
-    grid-template-columns: auto 34px minmax(0, 1fr);
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 10px;
   }
 
   .local-file-icon {
@@ -1059,8 +841,5 @@ function readError(err, fallback) {
     font-size: 12px;
   }
 
-  .result-intro {
-    -webkit-line-clamp: 2;
-  }
 }
 </style>

@@ -1,45 +1,56 @@
 <template>
-  <section class="app-page discover-page workspace-result-page">
-    <header class="workspace-result-head">
-      <div>
-        <h1 class="app-page-title">探索 ({{ books.length }})</h1>
-        <p class="workspace-result-subtitle">{{ exploreSubtitle }}</p>
+  <section class="app-page shelf-page result-shelf-page discover-page">
+    <div class="shelf-title">
+      <div class="shelf-title-main">
+        <strong>探索 ({{ books.length }})</strong>
       </div>
-      <div class="workspace-result-actions">
-        <button
-          v-if="books.length || hasMore"
-          type="button"
-          :disabled="loadingMore || !hasMore"
-          @click="loadMoreBooks"
-        >{{ loadingMore ? '加载中...' : (hasMore ? '加载更多' : '没有更多了') }}</button>
+      <div class="title-actions">
+        <button type="button" @click.stop="openExploreChooser">书海</button>
+        <button type="button" :disabled="loadingMore || !hasMore" @click="loadMoreBooks">
+          {{ exploreActionLabel }}
+        </button>
         <button type="button" @click="backToShelf">书架</button>
       </div>
-    </header>
-
-    <div ref="discoverResults" v-loading="loadingMore" class="discover-results">
-      <RemoteBookResultGroups
-        v-if="books.length"
-        :groups="exploreResultGroups"
-        :adding-book-key="addingRemoteBookKey"
-        :is-night="reader.themeType === 'night'"
-        @preview="openPreview"
-        @read="openRemoteReader"
-        @add="addResultToShelf"
-      />
-      <el-empty v-else description="从书海选择书源入口开始探索" />
     </div>
+
+    <main class="shelf-main">
+      <div ref="discoverResults" class="books-wrapper">
+        <RemoteBookResultList
+          :books="books"
+          :adding-book-key="addingRemoteBookKey"
+          :fallback-source-id="workspace.explore.sourceId"
+          :is-night="reader.themeType === 'night'"
+          @preview="openPreview"
+          @read="openRemoteReader"
+          @add="addResultToShelf"
+          @edit="openResultEditor"
+        />
+      </div>
+    </main>
+
+    <RemoteBookJsonEditorDialog
+      :visible="resultEditorVisible"
+      :content="resultEditorContent"
+      :saving="resultEditorSaving"
+      :is-mobile="isMobileResult"
+      @update:content="resultEditorContent = $event"
+      @close="closeResultEditor"
+      @save="saveResultEditor"
+    />
   </section>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { exploreBooks } from '../api/explore'
 import { createRemoteBook } from '../api/books'
 import { createRemoteReaderSession } from '../api/remoteReader'
-import RemoteBookResultGroups from '../components/RemoteBookResultGroups.vue'
+import RemoteBookResultList from '../components/RemoteBookResultList.vue'
+import RemoteBookJsonEditorDialog from '../components/RemoteBookJsonEditorDialog.vue'
 import { useRemoteBookAddToShelf } from '../composables/useRemoteBookAddToShelf'
+import { useRemoteBookResultEditor } from '../composables/useRemoteBookResultEditor'
 import { useBookshelfStore } from '../stores/bookshelf'
 import { useOverlayStore } from '../stores/overlay'
 import { useReaderStore } from '../stores/reader'
@@ -58,6 +69,7 @@ import {
   isWorkspaceRequestCurrent,
   mergeRemoteSearchResults,
 } from '../utils/workspaceContinuation.js'
+import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive.js'
 
 const router = useRouter()
 const emit = defineEmits(['back-to-shelf'])
@@ -66,6 +78,7 @@ const overlay = useOverlayStore()
 const reader = useReaderStore()
 const workspace = useIndexWorkspaceStore()
 const discoverResults = ref(null)
+const resultWindowWidth = ref(currentViewportWidth())
 const loadingMore = ref(false)
 const exploreRequestGate = createAsyncRequestGate()
 const discoverSessionOperations = createAuthenticatedOperationGuard()
@@ -79,32 +92,39 @@ const resultAddToShelf = useRemoteBookAddToShelf({
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const addingRemoteBookKey = resultAddToShelf.addingBookKey
+const resultEditor = useRemoteBookResultEditor({
+  operationGuard: discoverSessionOperations,
+  confirm: (...args) => ElMessageBox.confirm(...args),
+  createRemoteBook,
+  upsertBook: book => bookshelf.upsertBook(book),
+  onSuccess: message => ElMessage.success(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+})
+const {
+  visible: resultEditorVisible,
+  content: resultEditorContent,
+  saving: resultEditorSaving,
+} = resultEditor
 
 const books = computed(() => workspace.resultRows)
 const hasMore = computed(() => workspace.continuation.hasMore)
-const exploreSubtitle = computed(() => {
-  const source = workspace.explore.sourceName || '书源'
-  const entry = workspace.explore.name || '默认'
-  return `${source} · ${entry}`
+const isMobileResult = computed(() => shouldUseMiniInterface(reader.pageMode, resultWindowWidth.value))
+const exploreActionLabel = computed(() => {
+  if (loadingMore.value) return '加载中...'
+  return hasMore.value ? '加载更多' : '没有更多了'
 })
-const exploreResultGroups = computed(() => {
-  const groups = new Map()
-  for (const book of books.value) {
-    const key = activeRemoteSourceId(book)
-    if (!groups.has(key)) {
-      groups.set(key, {
-        sourceId: key,
-        sourceName: activeRemoteSourceName(book),
-        items: [],
-      })
-    }
-    groups.get(key).items.push(book)
-  }
-  return [...groups.values()]
+
+onMounted(() => {
+  updateResultViewport()
+  window.addEventListener('resize', updateResultViewport)
+  window.addEventListener('orientationchange', updateResultViewport)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateResultViewport)
+  window.removeEventListener('orientationchange', updateResultViewport)
   exploreRequestGate.invalidate()
+  resultEditor.reset()
   discoverSessionOperations.reset()
 })
 
@@ -162,6 +182,10 @@ function backToShelf() {
   emit('back-to-shelf')
 }
 
+function openExploreChooser() {
+  workspace.requestExplore()
+}
+
 function normalizeExploreResult(data, fallbackPage) {
   if (Array.isArray(data)) return { items: data, page: fallbackPage, hasMore: false }
   return {
@@ -187,6 +211,25 @@ async function addResultToShelf(book) {
   })
 }
 
+function openResultEditor(book) {
+  resultEditor.open(book, {
+    sourceId: activeRemoteSourceId(book),
+    sourceName: activeRemoteSourceName(book),
+  })
+}
+
+function closeResultEditor() {
+  resultEditor.close()
+}
+
+async function saveResultEditor() {
+  await resultEditor.save()
+}
+
+function updateResultViewport() {
+  resultWindowWidth.value = currentViewportWidth()
+}
+
 async function openRemoteReader(book) {
   const operation = discoverSessionOperations.begin('remote-reader')
   try {
@@ -205,7 +248,7 @@ async function openRemoteReader(book) {
 }
 
 function activeRemoteSourceId(book) {
-  return remoteBookSourceId(book, workspace.explore.sourceId) || 'unknown'
+  return remoteBookSourceId(book, workspace.explore.sourceId)
 }
 
 function activeRemoteSourceName(book) {
@@ -216,112 +259,3 @@ function readError(error, fallback) {
   return error?.response?.data?.error?.message || error?.response?.data?.error || error?.message || fallback
 }
 </script>
-
-<style scoped>
-.discover-page {
-  display: grid;
-  min-width: 0;
-}
-
-.workspace-result-page {
-  grid-template-rows: auto minmax(0, 1fr);
-  box-sizing: border-box;
-  height: 100vh;
-  max-height: 100vh;
-  padding: 48px;
-  overflow: hidden;
-}
-
-.workspace-result-head {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 4px 0 18px;
-  border-bottom: 1px solid var(--app-border);
-}
-
-.workspace-result-head > div:first-child {
-  min-width: 0;
-}
-
-.workspace-result-head .app-page-title {
-  margin: 0;
-  color: #26394a;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.workspace-result-subtitle {
-  min-width: 0;
-  margin: 5px 0 0;
-  overflow: hidden;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-result-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-}
-
-.workspace-result-actions button {
-  padding: 0;
-  color: #26394a;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 28px;
-}
-
-.workspace-result-actions button:hover {
-  color: var(--app-accent);
-}
-
-.discover-results {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
-  gap: 14px;
-  padding: 18px 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.discover-results::-webkit-scrollbar {
-  display: none;
-}
-
-@media (max-width: 750px) {
-  .workspace-result-page {
-    height: 100vh;
-    height: 100dvh;
-    max-height: none;
-    padding: 0;
-  }
-
-  .workspace-result-head {
-    min-height: 64px;
-    padding: max(16px, env(safe-area-inset-top)) 24px 12px;
-  }
-
-  .workspace-result-head .app-page-title {
-    font-size: 20px;
-  }
-
-  .discover-results {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-    padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
-  }
-}
-</style>

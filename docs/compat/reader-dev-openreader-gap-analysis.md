@@ -2,22 +2,30 @@
 
 ## 2026-08-02 P1 Index 搜索/探索可见工作区第二轮固定基准复审
 
-此前 P1-B 已关闭 REST cursor、迟到请求、临时 Reader、BookInfo 与加入事务，但把当前可见结果
-结构当成了正确实现。重新逐段核对固定 `Index.vue` 和 `Explore.vue` 后确认仍有结构级偏差：
-搜索/探索应复用同一个 shelf title 和固定 380px 扁平 card grid；当前却按来源 regroup，加入
-source section、来源 tag、更新时间、kind、字数和简介，改变了交错结果顺序，并缺失上游结果
-JSON 编辑入口。当前页面 header/subtitle/`el-empty`/loading overlay 也不属于固定上游。
+此前 P1-B 已关闭 REST cursor、迟到请求、临时 Reader、BookInfo 与加入事务，但把当时的可见结果
+结构当成了正确实现。重新逐段核对固定 `Index.vue` 和 `Explore.vue` 后确认存在结构级偏差：
+搜索/探索应复用同一个 shelf title 和固定 380px 扁平 card grid；审查时实现却按来源 regroup，
+加入 source section、来源 tag、更新时间、kind、字数和简介，改变了交错结果顺序，并缺失上游
+结果 JSON 编辑入口。审查时的 page header/subtitle/`el-empty`/loading overlay 也不属于固定上游。
 
-搜索设置可见上只有 single/multi 两项，multi 内选择“全部分组/具体分组”和并发；当前暴露
+搜索设置可见上只有 single/multi 两项，multi 内选择“全部分组/具体分组”和并发；审查时暴露
 all/group/single 三项并在 single 显示并发。Explore chooser 的固定桌面合同是 600px/top 0、
-桌面无内部 close；mini 是 100vw 顶部自适应高度、无 modal backdrop。当前 520px 动态 top、
-手机 100vh 遮罩、accordion 单开、locale group 排序和始终显示 × 均为 `must-fix`；现有浏览器
-测试还把这些错误几何固化成通过条件。
+桌面无内部 close；mini 是 100vw 顶部自适应高度、无 modal backdrop。审查时的 520px 动态 top、
+手机 100vh 遮罩、accordion 单开、locale group 排序和始终显示 × 均判定为 `must-fix`，冲突浏览器
+测试必须先替换。
 
 完整状态、允许差异和先测后改门见
 [`index-search-explore-visible-workspace-fixed-baseline-second-audit-p1-contract.md`](index-search-explore-visible-workspace-fixed-baseline-second-audit-p1-contract.md)。
-本轮仅完成只读合同，状态为 **audit-complete / implementation-pending**；当前组件和旧测试不得
-作为实现正确性的依据。
+只读合同已由 `5d18871` 先行提交。随后测试先行完成重建：可见 single/multi 条件设置、修改配置
+自动重搜、扁平服务端顺序、与书架一致的 card/grid、共享 JSON editor、desktop 600px/top 0 和
+mini 100vw 非全高 chooser、多开 collapse、首次出现组序与关闭重开现场保留均已落地；错误的
+`RemoteBookResultGroups.vue` 已删除。JWT REST、稳定 cursor、`hasMore`、generation、多用户隔离、
+安全 Go exploreUrl 解析和本地搜索是明确允许适配。
+
+frontend `701/701`、Go 全量、production build、差异检查、Index 四视口、Remote Reader 三视口、
+两套 session isolation 和真实 CSS/JSONPath/XPath 书源工作流均通过。当前状态为
+**implementation-complete / validation-complete / Docker-pending**；下文较早 P1-B 记录仅保留为
+历史，涉及 `RemoteBookResultGroups.vue` 的“当前”描述已由本节取代。
 
 ## 2026-08-02 P1 书架可见布局第二轮固定基准复审
 

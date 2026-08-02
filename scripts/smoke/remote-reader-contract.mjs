@@ -153,9 +153,9 @@ async function runViewport(browser, viewport) {
 
   const root = targetUrl.replace(/\/$/, '')
   await page.goto(`${root}/?workspace=search&q=临时阅读&searchType=single&sourceId=1`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('.workspace-result-page .result-card', { timeout: 10000 })
+  await page.waitForSelector('.result-shelf-page .remote-result-book', { timeout: 10000 })
 
-  const resultCard = page.locator('.workspace-result-page .result-card')
+  const resultCard = page.locator('.result-shelf-page .remote-result-book')
   const categoryDialog = page.locator('.book-add-category-dialog')
   await resultCard.locator('.result-add-book').click()
   await categoryDialog.waitFor({ state: 'visible', timeout: 10000 })
@@ -174,7 +174,7 @@ async function runViewport(browser, viewport) {
   await page.locator('.book-info-dialog .el-dialog__headerbtn').click()
   await page.locator('.book-info-dialog').waitFor({ state: 'hidden', timeout: 10000 })
 
-  await page.locator('.workspace-result-page .result-card .result-main').click()
+  await page.locator('.result-shelf-page .remote-result-book .list-main').click()
   await page.waitForURL(/\/reader\/remote\/smoke-temporary-session\?chapter=0/, { timeout: 10000 })
   await page.waitForSelector('.reader-body', { timeout: 10000 })
   await page.getByText('临时阅读正文验证内容。', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })

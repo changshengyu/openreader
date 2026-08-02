@@ -38,6 +38,15 @@ export function remoteBookLatestChapter(book = {}) {
   return book.latestChapter || book.latestChapterTitle || book.lastChapter || ''
 }
 
+export function remoteBookChapterCount(book = {}) {
+  const value = Number(book.chapterCount || book.totalChapterNum || book.totalChapterCount || 0)
+  return Number.isInteger(value) && value > 0 ? value : 0
+}
+
+export function remoteBookLastCheckTime(book = {}) {
+  return book.lastCheckTime || ''
+}
+
 export function remoteBookUpdateTime(book = {}) {
   return book.updateTime || book.updated || book.lastUpdateTime || ''
 }

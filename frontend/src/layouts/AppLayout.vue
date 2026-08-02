@@ -39,12 +39,11 @@
       <section class="app-search-setting">
         <p class="app-nav-title">搜索设置</p>
         <el-select v-model="sidebarSearchType" size="small" class="setting-select">
-          <el-option label="多源搜索" value="all" />
-          <el-option label="分组搜索" value="group" />
           <el-option label="单源搜索" value="single" />
+          <el-option label="多源搜索(过滤书名/作者名)" value="multi" />
         </el-select>
         <el-select
-          v-if="sidebarSearchType === 'group'"
+          v-if="sidebarSearchType === 'multi'"
           v-model="sidebarSearchGroup"
           size="small"
           class="setting-select"
@@ -62,7 +61,7 @@
         >
           <el-option v-for="source in sidebarEnabledSources" :key="source.id" :label="source.name" :value="source.id" />
         </el-select>
-        <el-select v-model="sidebarConcurrent" size="small" class="setting-select">
+        <el-select v-if="sidebarSearchType === 'multi'" v-model="sidebarConcurrent" size="small" class="setting-select">
           <el-option v-for="count in concurrentOptions" :key="count" :label="concurrentLabel(count)" :value="count" />
         </el-select>
       </section>
@@ -132,7 +131,6 @@
       </div>
     </aside>
 
-    <div v-show="exploreChooserVisible" class="explore-popover-backdrop" aria-hidden="true" @click="closeExploreChooser" />
     <ExploreWorkspacePopover
       v-show="exploreChooserVisible"
       :is-mobile="isMobileShell"
@@ -141,7 +139,7 @@
       @selected="handleExploreSelected"
     />
 
-    <div class="app-workspace" @click="closeMobileNavigation">
+    <div class="app-workspace" @click="handleWorkspaceBackgroundClick">
       <main class="app-content">
         <slot />
       </main>
@@ -378,6 +376,7 @@ const {
   getUserScope: currentUserScope,
   onWarning: message => ElMessage.warning(message),
   onWorkspaceSearch: beginWorkspaceSearch,
+  onSearchConfigChange: handleSidebarSearchConfigChange,
   afterNavigate: () => {
     if (isMobileShell.value) mobileNavigationVisible.value = false
   },
@@ -417,6 +416,13 @@ function goHome() {
 }
 
 function runNavAction(item) {
+  if (exploreChooserVisible.value) {
+    closeExploreChooser()
+    if (item?.key === 'discover') {
+      if (isMobileShell.value && item.closeMobile) mobileNavigationVisible.value = false
+      return
+    }
+  }
   if (item.action) {
     item.action()
     if (isMobileShell.value && item.closeMobile) mobileNavigationVisible.value = false
@@ -441,9 +447,23 @@ function beginWorkspaceSearch(query = {}) {
   if (route.name !== 'home') router.push({ name: 'home' })
 }
 
+function handleSidebarSearchConfigChange(query = {}) {
+  if (!workspace.isSearchResult || workspace.search.mode !== 'remote' || !workspace.search.keyword) return
+  beginWorkspaceSearch({
+    ...query,
+    q: workspace.search.keyword,
+    mode: workspace.search.mode,
+  })
+}
+
 function beginWorkspaceExplore() {
   workspace.requestExplore()
   if (route.name !== 'home') router.push({ name: 'home' })
+}
+
+function handleWorkspaceBackgroundClick() {
+  closeMobileNavigation()
+  if (exploreChooserVisible.value) closeExploreChooser()
 }
 
 function captureExploreTrigger(item, node) {
@@ -490,20 +510,22 @@ function handleExploreSelected() {
 
 function positionExploreChooser() {
   if (isMobileShell.value) {
-    exploreChooserStyle.value = {}
+    exploreChooserStyle.value = {
+      top: '0px',
+      left: '0px',
+      width: '100vw',
+    }
     return
   }
   const trigger = exploreTrigger.value
   const rect = trigger?.getBoundingClientRect?.()
-  const top = rect
-    ? Math.max(16, Math.min(rect.top, window.innerHeight - 440))
-    : 48
   const left = rect
-    ? Math.min(rect.right + 12, window.innerWidth - 544)
+    ? Math.min(rect.right + 12, window.innerWidth - 612)
     : 272
   exploreChooserStyle.value = {
-    top: `${top}px`,
+    top: '0px',
     left: `${Math.max(12, left)}px`,
+    width: '600px',
   }
 }
 
@@ -833,7 +855,8 @@ watch(
   () => workspace.exploreChooserRevision,
   (revision) => {
     if (!revision || !workspace.consumeExploreChooserRequest()) return
-    openExploreChooser()
+    if (exploreChooserVisible.value) closeExploreChooser()
+    else openExploreChooser()
   },
 )
 
@@ -1350,13 +1373,6 @@ function readError(err, fallback) {
   overflow-x: hidden;
 }
 
-.explore-popover-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 34;
-  background: transparent;
-}
-
 .explore-workspace-popover {
   position: fixed;
   z-index: 35;
@@ -1407,17 +1423,11 @@ function readError(err, fallback) {
   overflow-x: hidden;
 }
 
-.app-shell.mobile-shell .explore-popover-backdrop {
-  z-index: 34;
-  background: rgba(36, 32, 27, 0.18);
-}
-
 .app-shell.mobile-shell .explore-workspace-popover {
-  inset: 0;
+  top: 0;
+  left: 0;
   z-index: 35;
   width: 100vw;
-  height: 100vh;
-  height: 100dvh;
 }
 
 .app-shell.mobile-shell .app-content {

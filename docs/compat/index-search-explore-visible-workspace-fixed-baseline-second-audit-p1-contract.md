@@ -4,23 +4,24 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**audit-complete / implementation-pending**
+状态：**implementation-complete / validation-complete / Docker-pending**
 
 本合同只覆盖 Index 侧栏搜索设置、远程搜索结果场景、书海入口选择器和探索结果场景的可见
 结构与状态转换。搜索/探索解析器、稳定多源 cursor、失败书源缓存、临时 Reader、BookInfo、
 加入书架事务和本地书仓搜索已有独立合同；本轮不得以这些能力已经可用为理由保留错误 UI。
 
-按照 `readerdev-compat-inventory`，本轮只读提取固定上游合同并更新文档。应用代码、测试和 API
-均不得在本合同单独提交前修改。
+按照 `readerdev-compat-inventory`，本轮先只读提取固定上游合同并以 `5d18871` 单独提交；随后才
+进入测试和实现。当前状态段与第 7 节记录实现结果，正文中的“当前”均保留为合同提交时的审查
+现场，不能再解释为实现后的代码现状。
 
 ## 1. 权威文件与当前映射
 
 | 合同层 | 固定上游 | OpenReader 当前映射 |
 |---|---|---|
-| 搜索设置、结果状态、标题与卡片 | `web/src/views/Index.vue` 的侧栏 search、`searchBook`、`searchBookByEventStream`、`bookList`、`loadMore`、结果 card | `layouts/AppLayout.vue`、`useAppSidebarSearch.js`、`views/Home.vue`、`views/Search.vue`、`RemoteBookResultGroups.vue` |
+| 搜索设置、结果状态、标题与卡片 | `web/src/views/Index.vue` 的侧栏 search、`searchBook`、`searchBookByEventStream`、`bookList`、`loadMore`、结果 card | `layouts/AppLayout.vue`、`useAppSidebarSearch.js`、`indexSearchPresentation.js`、`views/Home.vue`、`views/Search.vue`、`RemoteBookResultList.vue` |
 | 书海选择器 | `web/src/components/Explore.vue`、`Index.vue` 中 `el-popover` | `ExploreWorkspacePopover.vue`、`AppLayout.vue` 的 chooser host |
 | 探索结果与续页 | `Explore.vue#exploreBookSource/loadMore`、`Index.vue#showSearchList/loadMore` | `views/Discover.vue`、`stores/indexWorkspace.js`、`api/explore.js` |
-| 结果点击与加入 | `Index.vue#toDetail/showBookInfoDialog/editBook/addBookToShelf` | `RemoteBookResultGroups.vue`、Search/Discover 的 temporary Reader、共享 BookInfo 和 add transaction |
+| 结果点击与加入 | `Index.vue#toDetail/showBookInfoDialog/editBook/addBookToShelf` | `RemoteBookResultList.vue`、`RemoteBookJsonEditorDialog.vue`、`useRemoteBookResultEditor.js`、Search/Discover 的 temporary Reader、共享 BookInfo 和 add transaction |
 | API/游标/解析 | `BookController.searchBook*`、`Explore.vue#getExploreGroup` | `POST /api/search`、`GET /api/explore/*`、Go source engine |
 
 ## 2. 固定上游状态机
@@ -190,3 +191,35 @@ accordion 单开；分组 locale 排序且按是否存在未分组决定按钮�
    cursor、远程会话或多用户事务。
 5. 跑 frontend、Go、build、四视口新专项和受影响的 Index/session/BookInfo/remote Reader smokes。
 6. 形成可独立验收切片后提交推送；新旧卷/备份门通过再由本机发布 Docker。
+
+## 7. 实施与验证记录
+
+本轮按上述合同完成以下替换：
+
+- 侧栏只呈现 `单源搜索`、`多源搜索(过滤书名/作者名)`；单源只显示书源，多源才显示按首次
+  出现顺序生成的分组和并发设置。内部 `all/group/single`、旧并发值以及 local mode 继续无损
+  映射；结果现场修改设置会保留关键词并重启第一页，旧 generation 不得回写。
+- 删除 `RemoteBookResultGroups.vue`，由 Search 与 Discover 共用唯一
+  `RemoteBookResultList.vue`。远程结果保持服务端交错顺序，复用普通书架固定 grid/card/夜间
+  几何，只呈现固定上游字段和 cover/read/edit/add 四种独立动作。
+- 新增共享原始 JSON 编辑器及操作 composable。非法 JSON、缺失 name/url/source、取消确认、
+  保存失败、账号切换和成功单写均有合同；保存前仍执行上游“先加入书架”的确认。
+- Explore chooser 恢复 desktop 600px/top 0/无内部 close、mini 100vw 顶部内容高度/无 backdrop/
+  有 close；分组采用首次出现顺序并固定追加未分组，collapse 可多开，关闭重开保留筛选、展开项
+  和 scrollTop。首页与结果标题的书海触发器阻止 workspace 冒泡，避免打开后立即关闭。
+- 旧兼容路由、JWT REST、稳定 cursor、`hasMore` 终态、请求 generation、多用户隔离、安全 Go
+  exploreUrl 解析和本地书仓搜索继续作为已记录的技术适配；本批未改数据库、持久卷、API 字段
+  或解析器语义。
+
+验证结果：
+
+- frontend 单元/静态合同：`701/701`；Go：`go test ./...` 全部通过；Vite production build 与
+  `git diff --check` 通过。
+- Index 工作台专项在 `1440×900`、`1024×1366`、`390×844`、`360×800` 通过，覆盖 exact
+  搜索设置、配置重搜、交错顺序、书架/结果几何相等、编辑单写、chooser 几何/多开/状态保留。
+- Remote Reader 在 `1440×900`、`390×844`、`360×800` 通过；Index session isolation 与
+  workspace overlay session isolation 在桌面及两个手机视口通过。
+- 真实 Go API 的 CSS/JSONPath/XPath 书源搜索、书籍信息、目录、正文和元数据工作流通过。
+
+当前切片已达到提交与本地 Docker 候选条件；Docker 标签、OCI digest、新旧卷和备份门结果将在
+本机发布完成后回填。

@@ -317,23 +317,40 @@
   -webkit-line-clamp: 1;
 }
 
-.unread-num-badge :deep(.el-badge__content) {
+.unread-num-badge .el-badge__content {
   border: 0;
 }
 
-:deep(.el-loading-spinner .circular) {
+.shelf-page .el-loading-spinner .circular {
   width: 36px;
   height: 36px;
 }
 
-:deep(.el-loading-spinner .path),
-:deep(.el-loading-spinner .el-loading-text) {
+.shelf-page .el-loading-spinner .path,
+.shelf-page .el-loading-spinner .el-loading-text {
   color: #b5b5b5;
   stroke: #b5b5b5;
 }
 
-:deep(.el-loading-spinner .el-loading-text) {
+.shelf-page .el-loading-spinner .el-loading-text {
   font-weight: 500;
+}
+
+.result-add-zone {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+}
+
+.result-add-book {
+  cursor: pointer;
+  user-select: none;
+}
+
+.result-add-book.loading {
+  cursor: progress;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 @media (hover: hover) {
@@ -343,45 +360,45 @@
   }
 }
 
-:global(html.dark-reader .shelf-page),
-:global(html.dark-reader .shelf-title),
-:global(html.dark-reader .book-group-wrapper) {
+html.dark-reader .shelf-page,
+html.dark-reader .shelf-title,
+html.dark-reader .book-group-wrapper {
   background: #222;
 }
 
-:global(html.dark-reader .shelf-page),
-:global(html.dark-reader .shelf-title) {
+html.dark-reader .shelf-page,
+html.dark-reader .shelf-title {
   color: #bbb;
 }
 
-:global(html.dark-reader .shelf-page .name) {
+html.dark-reader .shelf-page .name {
   color: #bbb;
 }
 
-:global(html.dark-reader .shelf-page .book-operation),
-:global(html.dark-reader .shelf-page .sub) {
+html.dark-reader .shelf-page .book-operation,
+html.dark-reader .shelf-page .sub {
   color: #6b6b6b;
 }
 
-:global(html.dark-reader .shelf-page .dur-chapter),
-:global(html.dark-reader .shelf-page .last-chapter) {
+html.dark-reader .shelf-page .dur-chapter,
+html.dark-reader .shelf-page .last-chapter {
   color: #969ba3;
 }
 
-:global(html.dark-reader .shelf-page .group-chip) {
+html.dark-reader .shelf-page .group-chip {
   color: #bbb;
 }
 
-:global(html.dark-reader .shelf-page .group-chip.active) {
+html.dark-reader .shelf-page .group-chip.active {
   color: #409eff;
 }
 
-:global(html.dark-reader .shelf-page .shelf-search-wrapper .el-input__wrapper) {
+html.dark-reader .shelf-page .shelf-search-wrapper .el-input__wrapper {
   background: #444;
   box-shadow: 0 0 0 1px #444 inset;
 }
 
-:global(html.dark-reader .shelf-page .shelf-search-wrapper .el-input__inner) {
+html.dark-reader .shelf-page .shelf-search-wrapper .el-input__inner {
   color: #aaa;
 }
 

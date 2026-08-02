@@ -4,6 +4,11 @@ import {
   searchConcurrentOptions,
 } from '../utils/searchPreference.js'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
+import {
+  storedSearchType,
+  visibleSearchGroupOptions,
+  visibleSearchMode,
+} from '../utils/indexSearchPresentation.js'
 
 export function useAppSidebarSearch(options) {
   const quickSearch = ref('')
@@ -15,47 +20,57 @@ export function useAppSidebarSearch(options) {
   )
 
   const searchType = computed({
-    get: () => options.preferences.search.searchType,
-    set: value => options.preferences.setSearchConfig({ searchType: value }),
+    get: () => visibleSearchMode(options.preferences.search.searchType),
+    set: value => {
+      options.preferences.setSearchConfig({
+        searchType: storedSearchType(value, searchGroup.value),
+      })
+      notifySearchConfigChange()
+    },
   })
   const searchGroup = computed({
     get: () => options.preferences.search.group,
-    set: value => options.preferences.setSearchConfig({ group: value }),
+    set: value => {
+      options.preferences.setSearchConfig({
+        group: value,
+        searchType: storedSearchType('multi', value),
+      })
+      notifySearchConfigChange()
+    },
   })
   const sourceId = computed({
     get: () => options.preferences.search.sourceId,
-    set: value => options.preferences.setSearchConfig({ sourceId: value }),
+    set: value => {
+      options.preferences.setSearchConfig({ sourceId: value })
+      notifySearchConfigChange()
+    },
   })
   const concurrent = computed({
     get: () => options.preferences.search.concurrent,
-    set: value => options.preferences.setSearchConfig({ concurrent: value }),
+    set: value => {
+      options.preferences.setSearchConfig({ concurrent: value })
+      notifySearchConfigChange()
+    },
   })
   const concurrentOptions = computed(() => searchConcurrentOptions(concurrent.value))
   const enabledSources = computed(() => (
     sources.value.filter(source => source.enabled)
   ))
-  const sourceGroups = computed(() => {
-    const groups = new Map()
-    for (const source of enabledSources.value) {
-      const name = source.group || '默认分组'
-      groups.set(name, (groups.get(name) || 0) + 1)
-    }
-    return [...groups.entries()].map(([label, count]) => ({
-      label,
-      value: label,
-      count,
-    }))
-  })
+  const sourceGroups = computed(() => visibleSearchGroupOptions(sources.value))
+
+  function currentStoredSearchType() {
+    return storedSearchType(searchType.value, searchGroup.value)
+  }
 
   function searchRouteQuery(keyword = '') {
     const query = {}
     if (keyword) query.q = keyword
-    query.searchType = searchType.value
+    query.searchType = currentStoredSearchType()
     query.concurrent = concurrent.value
-    if (searchType.value === 'group' && searchGroup.value) {
+    if (query.searchType === 'group' && searchGroup.value) {
       query.group = searchGroup.value
     }
-    if (searchType.value === 'single' && sourceId.value) {
+    if (query.searchType === 'single' && sourceId.value) {
       query.sourceId = sourceId.value
     }
     return query
@@ -73,7 +88,16 @@ export function useAppSidebarSearch(options) {
       options.onWarning('请输入关键词进行搜索')
       return
     }
+    if (searchType.value === 'single' && !sourceId.value) {
+      options.onWarning('请选择书源进行搜索')
+      return
+    }
     openSearchWorkspace(searchRouteQuery(keyword))
+  }
+
+  function notifySearchConfigChange() {
+    if (typeof options.onSearchConfigChange !== 'function') return
+    options.onSearchConfigChange(searchRouteQuery(quickSearch.value.trim()))
   }
 
   function goSearchRoute(mode = 'remote') {
@@ -87,6 +111,7 @@ export function useAppSidebarSearch(options) {
   function openSearchWorkspace(query) {
     if (typeof options.onWorkspaceSearch === 'function') {
       options.onWorkspaceSearch(query)
+      options.afterNavigate?.()
       return
     }
     options.router.push({ name: 'search', query })
@@ -141,11 +166,8 @@ export function useAppSidebarSearch(options) {
 
   function applySources(data) {
     sources.value = Array.isArray(data) ? data : []
-    if (!searchGroup.value && sourceGroups.value.length) {
-      searchGroup.value = sourceGroups.value[0].value
-    }
     if (!sourceId.value && enabledSources.value.length) {
-      sourceId.value = enabledSources.value[0].id
+      options.preferences.setSearchConfig({ sourceId: enabledSources.value[0].id })
     }
   }
 

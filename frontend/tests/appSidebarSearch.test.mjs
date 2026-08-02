@@ -61,9 +61,10 @@ test('loads enabled source groups and initializes empty search choices', async (
     [1, 2],
   )
   assert.deepEqual(fixture.controller.sourceGroups.value, [
+    { label: '全部分组', value: '', count: 2 },
     { label: '分组甲', value: '分组甲', count: 2 },
   ])
-  assert.equal(fixture.preferences.search.group, '分组甲')
+  assert.equal(fixture.preferences.search.group, '')
   assert.equal(fixture.preferences.search.sourceId, 1)
   assert.equal(fixture.controller.sourceCacheKey(), 'bookSourceList@source-owner-v1@user-7')
   assert.deepEqual(fixture.controller.concurrentOptions.value, [12, 18, 24, 30, 36, 42, 48, 54, 60])
@@ -119,7 +120,9 @@ test('uses the shared Index workspace callback without replacing the current rou
       concurrent: 24,
       sourceId: 8,
     }],
+    ['after-navigate'],
     ['workspace-search', { mode: 'local', q: '工作台搜索' }],
+    ['after-navigate'],
   ])
 })
 
@@ -129,6 +132,39 @@ test('keeps a restored legacy concurrency value visible until the user explicitl
 
   assert.ok(fixture.controller.concurrentOptions.value.includes(32))
   assert.match(fixture.controller.concurrentLabel(32), /旧配置/)
+})
+
+test('maps the two visible modes to compatible stored values and notifies active result search changes', () => {
+  const changed = []
+  const fixture = createController({
+    onSearchConfigChange: query => changed.push(query),
+  })
+  fixture.controller.quickSearch.value = '当前关键词'
+
+  fixture.controller.searchType.value = 'multi'
+  assert.equal(fixture.preferences.search.searchType, 'all')
+  fixture.controller.searchGroup.value = '玄幻'
+  assert.equal(fixture.preferences.search.searchType, 'group')
+  fixture.controller.concurrent.value = 30
+  fixture.controller.searchType.value = 'single'
+  fixture.controller.sourceId.value = 8
+
+  assert.equal(fixture.preferences.search.searchType, 'single')
+  assert.deepEqual(changed.at(-1), {
+    q: '当前关键词',
+    searchType: 'single',
+    concurrent: 30,
+    sourceId: 8,
+  })
+})
+
+test('single-source search requires an explicit source after choices are unavailable', () => {
+  const fixture = createController()
+  fixture.controller.quickSearch.value = '关键词'
+  fixture.preferences.search.searchType = 'single'
+  fixture.preferences.search.sourceId = ''
+  fixture.controller.goSearch()
+  assert.deepEqual(fixture.calls, [['warning', '请选择书源进行搜索']])
 })
 
 test('warns for a blank primary search and synchronizes route keywords', async () => {
@@ -159,7 +195,6 @@ test('invalidates the scoped source cache before refreshing dependent stats', as
   assert.deepEqual(fixture.calls, [
     ['remove-cache', 'bookSourceList@source-owner-v1@user-7'],
     ['remove-cache', 'bookSourceList@user-7'],
-    ['config', { group: '分组甲' }],
     ['config', { sourceId: 1 }],
     ['after-sources'],
   ])

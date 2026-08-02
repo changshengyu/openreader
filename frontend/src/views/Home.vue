@@ -17,7 +17,7 @@
           {{ refreshLoading ? '刷新中...' : '刷新' }}
         </button>
         <button v-if="isNormalPage" type="button" @click="overlay.openRSS()">RSS</button>
-        <button v-if="isNormalPage" type="button" @click="openExploreWorkspace">书海</button>
+        <button v-if="isNormalPage" type="button" @click.stop="openExploreWorkspace">书海</button>
       </div>
     </div>
 
@@ -116,7 +116,7 @@ import { filterBooksByBookGroup, resolveBookGroupSelection, visibleBookGroups } 
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
-import { filterShelfBooksByEditQuery } from '../utils/shelfPresentation'
+import { filterShelfBooksByEditQuery, relativeShelfTimeLabel } from '../utils/shelfPresentation'
 
 const router = useRouter()
 const route = useRoute()
@@ -256,20 +256,7 @@ function latestChapterTitle(book) {
 
 function latestChapterLabel(book) {
   const rawTime = book.lastCheckTime
-  return rawTime ? relativeTimeLabel(rawTime) : '最新'
-}
-
-function relativeTimeLabel(value) {
-  const timestamp = typeof value === 'number' ? value : Date.parse(value)
-  if (!Number.isFinite(timestamp)) return '最新'
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
-  if (seconds <= 30) return '刚刚'
-  if (seconds < 60) return `${seconds}秒前`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`
-  if (seconds < 2592000) return `${Math.floor(seconds / 86400)}天前`
-  if (seconds < 31536000) return `${Math.floor(seconds / 2592000)}月前`
-  return `${Math.floor(seconds / 31536000)}年前`
+  return rawTime ? relativeShelfTimeLabel(rawTime) : '最新'
 }
 
 function readerRouteQuery(book) {
@@ -354,4 +341,4 @@ function readError(err, fallback) {
 }
 </script>
 
-<style scoped src="../styles/home-shelf.css"></style>
+<style src="../styles/home-shelf.css"></style>

@@ -252,7 +252,22 @@ async function openSidebar(page, viewport) {
   const sidebar = page.locator('.app-sidebar')
   const margin = await sidebar.evaluate(element => Number.parseFloat(getComputedStyle(element).marginLeft))
   if (Math.abs(margin) < 0.5) return
-  await page.locator('.mobile-menu-trigger').click()
+  const trigger = page.locator('.mobile-menu-trigger')
+  if (await trigger.count()) {
+    await trigger.click()
+  } else {
+    const shell = page.locator('.app-shell')
+    await shell.dispatchEvent('touchstart', {
+      touches: [{ identifier: 1, clientX: 30, clientY: 180 }],
+    })
+    await shell.dispatchEvent('touchmove', {
+      touches: [{ identifier: 1, clientX: 250, clientY: 182 }],
+    })
+    await shell.dispatchEvent('touchend', {
+      touches: [],
+      changedTouches: [{ identifier: 1, clientX: 250, clientY: 182 }],
+    })
+  }
   await page.waitForFunction(() => {
     const node = document.querySelector('.app-sidebar')
     return node && Math.abs(Number.parseFloat(getComputedStyle(node).marginLeft)) < 0.5
@@ -288,7 +303,7 @@ async function invalidateSession(session, viewport) {
     && !document.querySelector('.app-shell')
   ))
   assert(await page.locator('.app-shell').count() === 0, `${viewport.width}: invalidated Index remained mounted`)
-  assert(await page.locator('.workspace-result-page').count() === 0, `${viewport.width}: invalidated result scene remained mounted`)
+  assert(await page.locator('.result-shelf-page').count() === 0, `${viewport.width}: invalidated result scene remained mounted`)
   assert(await page.getByText('登录状态已失效，请重新登录', { exact: true }).count() === 1, `${viewport.width}: reauthentication warning is missing`)
   assert(await page.locator('.auth-dialog .el-dialog__headerbtn').count() === 0, `${viewport.width}: invalid-session dialog exposed a close button`)
 }
@@ -387,7 +402,7 @@ async function assertDifferentAccountExplore(browser, viewport) {
     await page.getByText(state.shelfB.title, { exact: true })
       .waitFor({ state: 'visible', timeout: 10_000 })
     assert(new URL(page.url()).pathname === '/', `${viewport.width}: different account retained a non-Index route`)
-    assert(await page.locator('.workspace-result-page').count() === 0, `${viewport.width}: different account retained Search/Explore results`)
+    assert(await page.locator('.result-shelf-page').count() === 0, `${viewport.width}: different account retained Search/Explore results`)
     assert(await page.locator('.explore-workspace-popover:visible').count() === 0, `${viewport.width}: different account reopened the Explore chooser`)
     assert(await page.getByText(state.shelfA.title, { exact: true }).count() === 0, `${viewport.width}: different account exposed A shelf data`)
     assert(await page.getByText('B 不应自动恢复的探索结果', { exact: true }).count() === 0, `${viewport.width}: different account automatically replayed A Explore intent`)

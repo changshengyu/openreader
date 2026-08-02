@@ -16,7 +16,7 @@ test('result cards confirm groups while BookInfo keeps the upstream direct add a
   const overlay = read('../src/stores/overlay.js')
   const bookInfoOverlay = read('../src/components/overlays/OverlayBookInfo.vue')
   const panel = read('../src/components/BookInfoPanel.vue')
-  const results = read('../src/components/RemoteBookResultGroups.vue')
+  const results = read('../src/components/RemoteBookResultList.vue')
 
   for (const source of [search, discover]) {
     assert.match(source, /useRemoteBookAddToShelf/)
@@ -28,7 +28,7 @@ test('result cards confirm groups while BookInfo keeps the upstream direct add a
 
   assert.match(overlay, /selectBookAddCategories\(initialCategoryIds = \[\]\)/)
   assert.match(overlay, /finishBookAddCategories\(categoryIds = null\)/)
-  assert.match(results, /\$emit\('add', item\)/)
+  assert.match(results, /\$emit\('add', book\)/)
   assert.match(results, /加入书架/)
   assert.match(results, /:effect="isNight \? 'dark' : 'light'"/)
   assert.match(bookInfoOverlay, /useRemoteBookAddToShelf/)

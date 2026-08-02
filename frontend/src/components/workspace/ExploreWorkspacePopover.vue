@@ -3,7 +3,6 @@
     class="explore-workspace-popover"
     :class="{ 'mobile-explore-workspace-popover': isMobile }"
     role="dialog"
-    aria-modal="true"
     aria-label="书海"
     @click.stop
   >
@@ -11,7 +10,7 @@
       <h2>书海</h2>
       <div>
         <span>共{{ filteredSources.length }}个可用书源</span>
-        <button type="button" aria-label="关闭书海" @click="close">×</button>
+        <button v-if="isMobile" type="button" aria-label="关闭书海" @click="close">×</button>
       </div>
     </header>
 
@@ -28,11 +27,10 @@
     </div>
 
     <div ref="sourceList" v-loading="loadingSources || loadingEntry" class="explore-source-list">
-      <el-collapse v-model="expandedSources" accordion>
+      <el-collapse v-model="expandedSources">
         <el-collapse-item v-for="source in filteredSources" :key="source.id" :name="String(source.id)">
           <template #title>
             <span class="explore-source-title">{{ source.name }}</span>
-            <span class="explore-source-group">{{ source.group || '未分组' }}</span>
           </template>
           <div v-for="(group, groupIndex) in sourceExploreGroups(source)" :key="`${source.id}-${groupIndex}`" class="explore-entry-row">
             <button
@@ -45,7 +43,6 @@
           </div>
         </el-collapse-item>
       </el-collapse>
-      <el-empty v-if="!loadingSources && !filteredSources.length" description="没有配置 exploreUrl 的书源" />
     </div>
   </section>
 </template>
@@ -61,6 +58,12 @@ import {
   createAsyncRequestGate,
   isWorkspaceSessionCurrent,
 } from '../../utils/workspaceContinuation'
+import {
+  expandedExploreSources,
+  exploreSourceGroupOptions,
+  filteredExploreSources,
+  toggledExploreGroup,
+} from '../../utils/exploreChooserPresentation.js'
 
 const props = defineProps({
   isMobile: {
@@ -73,26 +76,15 @@ const emit = defineEmits(['close', 'selected'])
 const workspace = useIndexWorkspaceStore()
 const sources = ref([])
 const selectedGroup = ref('')
-const expandedSources = ref('')
+const expandedSources = ref([])
 const loadingSources = ref(false)
 const loadingEntry = ref(false)
 const sourceList = ref(null)
 const requestGate = createAsyncRequestGate()
 const exploreSessionOperations = createAuthenticatedOperationGuard()
 
-const sourceGroups = computed(() => {
-  const groups = new Set()
-  for (const source of sources.value) {
-    const group = String(source.group || '').trim()
-    if (group) groups.add(group)
-  }
-  return [...groups].sort((a, b) => a.localeCompare(b)).map(value => ({ label: value, value }))
-    .concat(sources.value.some(source => !String(source.group || '').trim()) ? [{ label: '未分组', value: '未分组' }] : [])
-})
-const filteredSources = computed(() => {
-  if (!selectedGroup.value) return sources.value
-  return sources.value.filter(source => (String(source.group || '').trim() || '未分组') === selectedGroup.value)
-})
+const sourceGroups = computed(() => exploreSourceGroupOptions(sources.value))
+const filteredSources = computed(() => filteredExploreSources(sources.value, selectedGroup.value))
 
 onMounted(loadSources)
 
@@ -127,11 +119,13 @@ async function loadSources() {
 function applyWorkspaceIntent() {
   const intent = workspace.explore
   if (intent.sourceGroup) selectedGroup.value = intent.sourceGroup
-  if (intent.sourceId) expandedSources.value = String(intent.sourceId)
+  if (intent.sourceId) {
+    expandedSources.value = expandedExploreSources(expandedSources.value, intent.sourceId)
+  }
 }
 
 function toggleGroup(group) {
-  selectedGroup.value = selectedGroup.value === group ? '' : group
+  selectedGroup.value = toggledExploreGroup(selectedGroup.value, group)
 }
 
 function sourceExploreGroups(source) {
@@ -206,18 +200,18 @@ function readError(error, fallback) {
 <style scoped>
 .explore-workspace-popover {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  min-width: min(520px, calc(100vw - 32px));
-  max-width: min(520px, calc(100vw - 32px));
+  grid-template-rows: auto auto 300px;
+  width: min(600px, 100vw);
+  min-width: min(600px, 100vw);
+  max-width: 600px;
   min-height: 0;
-  max-height: min(640px, calc(100dvh - 32px));
   box-sizing: border-box;
   overflow: hidden;
   color: var(--app-text);
   background: var(--app-surface, #fff);
-  border: 1px solid var(--app-border);
-  border-radius: 4px;
-  box-shadow: var(--app-shadow-md);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .explore-popover-head {
@@ -226,7 +220,8 @@ function readError(error, fallback) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 24px 14px;
+  margin-bottom: 20px;
+  padding: calc(24px + env(safe-area-inset-top)) 24px 0;
 }
 
 .explore-popover-head h2 {
@@ -234,7 +229,7 @@ function readError(error, fallback) {
   color: #ed4259;
   border-bottom: 1px solid #ed4259;
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.45;
 }
 
@@ -273,7 +268,7 @@ function readError(error, fallback) {
   min-width: 0;
   gap: 10px;
   overflow-x: auto;
-  padding: 0 24px 10px;
+  padding: 5px 24px;
 }
 
 .explore-source-groups button,
@@ -300,8 +295,9 @@ function readError(error, fallback) {
 }
 
 .explore-source-list {
+  height: 300px;
   min-height: 0;
-  padding: 0 24px 20px;
+  padding: 0 24px 13px;
   overflow: auto;
   scrollbar-width: none;
 }
@@ -332,25 +328,22 @@ function readError(error, fallback) {
   white-space: nowrap;
 }
 
-.explore-source-group {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
 .explore-entry-row {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
-  gap: 8px 15px;
-  padding: 6px 0 12px;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 2px 0 5px;
+  overflow-x: auto;
   border-bottom: 1px dashed var(--app-border);
+  scrollbar-width: none;
 }
 
 .mobile-explore-workspace-popover {
-  min-width: 100%;
-  max-width: 100%;
-  min-height: 100%;
-  max-height: 100%;
+  width: 100vw;
+  min-width: 100vw;
+  max-width: 100vw;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -358,7 +351,7 @@ function readError(error, fallback) {
 
 @media (max-width: 750px) {
   .explore-popover-head {
-    padding: max(20px, env(safe-area-inset-top)) 24px 14px;
+    padding: calc(24px + env(safe-area-inset-top)) 24px 0;
   }
 
   .explore-source-groups {
@@ -367,7 +360,7 @@ function readError(error, fallback) {
   }
 
   .explore-source-list {
-    padding: 0 24px calc(20px + env(safe-area-inset-bottom));
+    padding: 0 24px 13px;
   }
 }
 </style>

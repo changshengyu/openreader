@@ -72,9 +72,10 @@ test('Home locks the desktop and mobile fixed-baseline geometry', () => {
 })
 
 test('Home restores the fixed-upstream night shelf surface', () => {
-  assert.match(shelfCss, /:global\(html\.dark-reader \.shelf-page\)[\s\S]*background:\s*#222;/)
-  assert.match(shelfCss, /:global\(html\.dark-reader \.shelf-title\)[\s\S]*color:\s*#bbb;/)
-  assert.match(shelfCss, /:global\(html\.dark-reader \.shelf-page \.name\)[\s\S]*color:\s*#bbb;/)
-  assert.match(shelfCss, /:global\(html\.dark-reader \.shelf-page \.sub\)[\s\S]*color:\s*#6b6b6b;/)
-  assert.match(shelfCss, /:global\(html\.dark-reader \.shelf-page \.dur-chapter\)[\s\S]*color:\s*#969ba3;/)
+  assert.match(home, /<style src="\.\.\/styles\/home-shelf\.css"><\/style>/)
+  assert.match(shelfCss, /html\.dark-reader \.shelf-page[\s\S]*background:\s*#222;/)
+  assert.match(shelfCss, /html\.dark-reader \.shelf-title[\s\S]*color:\s*#bbb;/)
+  assert.match(shelfCss, /html\.dark-reader \.shelf-page \.name[\s\S]*color:\s*#bbb;/)
+  assert.match(shelfCss, /html\.dark-reader \.shelf-page \.sub[\s\S]*color:\s*#6b6b6b;/)
+  assert.match(shelfCss, /html\.dark-reader \.shelf-page \.dur-chapter[\s\S]*color:\s*#969ba3;/)
 })

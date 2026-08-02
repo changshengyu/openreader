@@ -362,8 +362,8 @@ async function assertWorkflow(browser, root, token, definition) {
   await page.addInitScript(value => localStorage.setItem('openreader_token', value), token)
   const searchURL = `${root}/?workspace=search&q=${encodeURIComponent('解析验收')}&searchType=single&sourceId=${definition.sourceId}&concurrent=1`
   await page.goto(searchURL, { waitUntil: 'networkidle' })
-  await page.waitForSelector('.workspace-result-page .result-card', { timeout: 15_000 })
-  const result = page.locator('.workspace-result-page .result-card').first()
+  await page.waitForSelector('.result-shelf-page .remote-result-book', { timeout: 15_000 })
+  const result = page.locator('.result-shelf-page .remote-result-book').first()
   await result.getByText(definition.searchTitle, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
 
   await result.locator('.book-cover-shared').click()
@@ -373,7 +373,7 @@ async function assertWorkflow(browser, root, token, definition) {
   await bookInfo.locator('.el-dialog__headerbtn').click()
   await bookInfo.waitFor({ state: 'hidden', timeout: 10_000 })
 
-  await result.locator('.result-main').click()
+  await result.locator('.list-main').click()
   await page.waitForURL(/\/reader\/remote\/[a-f0-9]+\?chapter=0/, { timeout: 15_000 })
   await page.locator('.reader-body').waitFor({ state: 'visible', timeout: 15_000 })
   await page.getByText(definition.content[0], { exact: false }).waitFor({ state: 'visible', timeout: 15_000 })

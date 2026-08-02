@@ -563,7 +563,7 @@ async function beginBookInfoOperation(session) {
   await page.getByText(state.shelfA.title, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
   await runSidebarSearch(page, viewport, '会话隔离')
   const title = 'A 原会话待加入书籍'
-  const row = page.locator('.result-card').filter({ has: page.getByText(title, { exact: true }) })
+  const row = page.locator('.remote-result-book').filter({ has: page.getByText(title, { exact: true }) })
   await row.waitFor({ state: 'visible', timeout: 10_000 })
   await row.locator('.book-cover-shared').click()
   const dialog = page.locator('.book-info-dialog')
@@ -686,7 +686,7 @@ async function reopenCurrentOverlay(session) {
   const { page, state, viewport } = session
   state.phase = 'manual-reopen'
   if (state.scenario === 'book-info') {
-    const row = page.locator('.result-card').filter({
+    const row = page.locator('.remote-result-book').filter({
       has: page.getByText('A 续登搜索新数据', { exact: true }),
     })
     await row.locator('.book-cover-shared').click()
