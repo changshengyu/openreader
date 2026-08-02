@@ -19,8 +19,12 @@ capability、共享失败回退和 ARIA/键盘支持是允许适配。
 380px grid、历史 list 偏好迁移、独立 metadata DOM、上游 loading/空 wrapper、单一 750px
 响应合同和夜间实际表面均已落地。真实浏览器还发现并修复了 Vue 外部 scoped CSS 把夜间后代
 选择器编译丢失的问题。frontend 689/689、Go、production build、四目标视口专项及移动侧栏、
-Index 操作面、完整工作台和刷新竞态均通过；当前状态为
-**implemented / browser-validated / release-pending**，尚未声称 Docker 已发布。
+Index 操作面、完整工作台和刷新竞态均通过。实现提交 `60984b6` 已由本机 OrbStack 构建为
+amd64/arm64 镜像；新卷 portable v1/v2 assets、cross-user、restart 和历史
+TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 全部门禁通过。`60984b6` 与 `latest` 共同
+指向 OCI index
+`sha256:05c36dd96c1ba3d3a201b713a731d27bb26fe9c34988626437230d349b3e1ad8`；当前状态为
+**aligned / Docker-published / awaiting-device-verification**。
 
 ## 2026-08-02 P1 Index 设置与操作面第二轮固定基准复审
 

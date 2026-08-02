@@ -8,6 +8,12 @@
 
 ## 当前结论
 
+- 2026-08-02：普通书架可见布局第二轮按固定 `Index.vue` 重建并发布。恢复固定 380px grid、
+  当前分组/编辑搜索计数、trim/lowercase 精确子串、独立 metadata DOM、上游 loading/空 wrapper、
+  单一 750px 手机合同和 `#222` 夜间表面；历史 list 偏好迁移到 grid v3。frontend 689/689、
+  Go/build、1440×900/1024×1366/390×844/360×800 书架专项和受影响 Index smoke 通过；本机
+  OrbStack 构建发布 `60984b6`/`latest`，新旧挂载卷与 portable backup 门通过，OCI index 为
+  `sha256:05c36dd96c1ba3d3a201b713a731d27bb26fe9c34988626437230d349b3e1ad8`。
 - 2026-08-02：按固定 `Index.vue` 第二轮关闭侧栏与书架标题操作面偏差。后端连接状态只重新检查
   同源 health；“刷新缓存”恢复为账号作用域的书架、分组、书源、偏好、阅读设置、RSS、替换规则、
   书签和缓存统计重取；重复书架/RSS/替换规则入口删除；普通书架标题恢复

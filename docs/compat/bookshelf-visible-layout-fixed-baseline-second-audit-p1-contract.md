@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**implemented / browser-validated / release-pending**
+状态：**aligned / Docker-published / awaiting-device-verification**
 
 本文件只审查普通 Index 书架的标题、编辑搜索、分组标签、书籍卡片、加载/空态、昼夜和响应式
 布局。书架网络新鲜度、阅读进度、最后更新时间、BookManage、BookGroup manager、BookInfo、搜索/
@@ -207,5 +207,22 @@ grid；不能只用默认 grid 夹具。
 - 既有 `index-mobile-sidebar-contract`、`index-settings-action-surface-contract`、
   `index-workspace-contract`、`shelf-refresh-race-contract` 全部通过。
 
-当前尚未执行本地镜像构建、新旧卷/备份兼容门和 GHCR 发布，因此本合同不能标记
-`Docker-published`。
+## 7. 2026-08-02 Docker 发布结果
+
+实现提交 `60984b6c6409de2aa142047981cf524b1eb155db` 已推送 `main`。镜像完全由本机
+OrbStack 构建并上传，没有使用云端构建；`linux/amd64`、`linux/arm64` 共同发布为：
+
+- `ghcr.io/changshengyu/openreader:60984b6`
+- `ghcr.io/changshengyu/openreader:latest`
+
+两个标签指向 OCI index
+`sha256:05c36dd96c1ba3d3a201b713a731d27bb26fe9c34988626437230d349b3e1ad8`。
+
+发布后的远端镜像通过全新挂载卷的 portable v1/v2 assets、跨用户隔离和重启门；历史挂载卷通过
+TXT、EPUB、UMD、CBZ、相对 cache、owner isolation、普通/portable backup restore 和重启门。
+历史门第一次启动阶段出现一次未定位的瞬时 `404`，随后带执行轨迹的完整运行和另一组新端口的
+干净运行连续通过，未能复现，且本批没有后端、API、SQLite 或持久化改动。当前状态更新为
+`aligned / Docker-published / awaiting-device-verification`。
+
+本批只签收普通书架可见布局。设备侧仍需验证真实书目长度、封面与自定义分组组合；BookManage、
+BookGroup、BookInfo、书架 freshness、进度和 `lastCheckTime` 继续由各自已关闭合同约束。
