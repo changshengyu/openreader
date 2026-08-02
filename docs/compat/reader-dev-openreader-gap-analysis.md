@@ -1649,6 +1649,20 @@ Required contracts before implementation:
 
 Status: re-audited, implemented and validated on 2026-07-12 for the extracted P2 slice. Authority is fixed upstream `web/src/components/Bookmark.vue`, `BookmarkForm.vue`, `App.vue`, `views/Reader.vue`, `src/main/java/com/htmake/reader/api/controller/BookmarkController.kt`, and `src/main/java/io/legado/app/data/entities/Bookmark.kt`.
 
+> 2026-07-28 second-audit correction: the paragraph-context, stable-order, ID isolation and
+> backup conclusions below remain valid, but the visible manager/form shell was not fully compared
+> with the fixed upstream. The current fixed `880px`/`640px` widths, `520px` table cap, mobile fixed
+> columns, missing author cell, disabled empty-selection action and changed confirmation copy are
+> reopened as `must-fix`. The superseding implementation contract and tests are
+> [`bookmark-fixed-baseline-second-audit-p2-contract.md`](bookmark-fixed-baseline-second-audit-p2-contract.md).
+
+> 2026-08-02 implementation update: the reopened Bookmark visible shell is now rebuilt against the
+> fixed baseline. Dynamic 750–1000px manager/form geometry, desktop/mobile table height, mini fixed
+> columns, book-author identity, direct empty fields, upstream empty-selection/delete/import copy,
+> and pre-confirm legacy-row filtering are covered by unit/API contracts plus desktop, phone, iPad
+> and real-EPUB browser gates. Docker publication remains the only pending gate for this second
+> audit; details are recorded in the superseding contract above.
+
 | Concern | Upstream behavior | Current OpenReader evidence | Required result |
 |---|---|---|---|
 | Dialog ownership and scope | `App.vue` owns one Bookmark manager and one independent BookmarkForm. Reader opens the manager for its current merged shelf book; the manager filters stored rows by `bookName`/`bookAuthor`, supports import, selection delete, edit and jump. | `GlobalOverlayHost` owns `OverlayBookmarks` plus `OverlayBookmarkForm`; Reader passes the current book and the manager supports the same actions. | `technical-equivalent`: retain the root Vue 3 dialogs and current-book entry. Close/reset and panel click isolation must remain verified. |

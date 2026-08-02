@@ -19,6 +19,92 @@ import { join } from 'node:path'
 const baseURL = process.env.TARGET_URL || 'http://127.0.0.1:8080'
 const outputDir = process.env.SMOKE_OUTPUT_DIR || tmpdir()
 
+function expectedBookmarkDialogWidth(viewport) {
+  return Math.round(Math.min(1000, Math.max(750, viewport.width * 0.7)))
+}
+
+function expectedBookmarkDialogTop(viewport) {
+  return Math.round(Math.max(viewport.height * 0.15, (viewport.height - 584) / 2))
+}
+
+async function assertBookmarkDialogGeometry(
+  page,
+  viewport,
+  selector,
+  { fullscreen, form = false, expectRowIdentity = true } = {},
+) {
+  await page.waitForFunction((target) => {
+    const dialog = document.querySelector(target)
+    if (!dialog) return false
+    const settled = value => value === 'none' || value === 'matrix(1, 0, 0, 1, 0, 0)'
+    const parentTransform = dialog.parentElement
+      ? window.getComputedStyle(dialog.parentElement).transform
+      : 'none'
+    return settled(window.getComputedStyle(dialog).transform) && settled(parentTransform)
+  }, selector, { timeout: 10_000 })
+  const state = await page.locator(selector).evaluate((dialog, isForm) => {
+    const rect = dialog.getBoundingClientRect()
+    const close = dialog.querySelector('.el-dialog__headerbtn')?.getBoundingClientRect()
+    const table = isForm ? null : dialog.querySelector('.el-table')
+    const tableRect = table?.getBoundingClientRect()
+    const headers = Array.from(table?.querySelectorAll('.el-table__header-wrapper thead th') || []).map(header => ({
+      text: String(header.textContent || '').trim(),
+      fixedLeft: header.classList.contains('el-table-fixed-column--left'),
+      fixedRight: header.classList.contains('el-table-fixed-column--right'),
+    }))
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      top: Math.round(rect.top),
+      tableHeight: Math.round(tableRect?.height || 0),
+      text: dialog.innerText || '',
+      headers,
+      close: close ? { left: close.left, right: close.right, top: close.top, bottom: close.bottom } : null,
+    }
+  }, form)
+
+  if (fullscreen) {
+    assert.equal(state.width, viewport.width, `${viewport.width}: EPUB bookmark dialog width`)
+    assert.equal(state.height, viewport.height, `${viewport.width}: EPUB bookmark dialog height`)
+    assert.equal(state.top, 0, `${viewport.width}: EPUB bookmark dialog top`)
+  } else {
+    assert.ok(
+      Math.abs(state.width - expectedBookmarkDialogWidth(viewport)) <= 1,
+      `${viewport.width}: EPUB bookmark dialog width ${state.width}`,
+    )
+    assert.ok(
+      Math.abs(state.top - expectedBookmarkDialogTop(viewport)) <= 1,
+      `${viewport.width}: EPUB bookmark dialog top ${state.top}`,
+    )
+  }
+  assert.ok(state.close, `${viewport.width}: EPUB bookmark dialog close control missing`)
+  assert.ok(
+    state.close.left >= 0 && state.close.right <= viewport.width && state.close.top >= 0 && state.close.bottom <= viewport.height,
+    `${viewport.width}: EPUB bookmark dialog close control outside viewport`,
+  )
+  if (form) return
+
+  const expectedTableHeight = fullscreen
+    ? viewport.height - 184
+    : Math.min(400, viewport.height * 0.7 - 184)
+  assert.ok(
+    Math.abs(state.tableHeight - expectedTableHeight) <= 1,
+    `${viewport.width}: EPUB bookmark table height ${state.tableHeight}`,
+  )
+  assert.match(state.text, /EPUB 浏览器契约 书签管理/)
+  if (expectRowIdentity) {
+    assert.match(state.text, /EPUB 浏览器契约 - OpenReader/)
+  }
+  if (fullscreen) {
+    assert.ok(state.headers.length >= 6, `${viewport.width}: EPUB bookmark headers missing`)
+    assert.equal(state.headers[0].fixedLeft, true, `${viewport.width}: EPUB bookmark selection column fixed left`)
+    assert.equal(state.headers[1].fixedLeft, true, `${viewport.width}: EPUB bookmark book column fixed left`)
+    assert.equal(state.headers[1].text, '书籍')
+    assert.equal(state.headers.at(-1).fixedLeft, false, `${viewport.width}: EPUB bookmark operation fixed left`)
+    assert.equal(state.headers.at(-1).fixedRight, false, `${viewport.width}: EPUB bookmark operation fixed right`)
+  }
+}
+
 function smokeViewports() {
   const requested = String(process.env.SMOKE_VIEWPORTS || '1440x900,390x844,360x800')
     .split(',')
@@ -306,9 +392,17 @@ async function assertCurrentEpubParagraphBookmark(page, viewport) {
   await button.click()
   const manager = page.locator('.global-bookmark-dialog')
   await manager.waitFor({ state: 'visible', timeout: 10_000 })
+  await assertBookmarkDialogGeometry(page, viewport, '.global-bookmark-dialog', {
+    fullscreen: viewport.width <= 750,
+    expectRowIdentity: false,
+  })
   await manager.getByRole('button', { name: '添加当前段落', exact: true }).click()
   const form = page.locator('.global-bookmark-form-dialog')
   await form.waitFor({ state: 'visible', timeout: 10_000 })
+  await assertBookmarkDialogGeometry(page, viewport, '.global-bookmark-form-dialog', {
+    fullscreen: viewport.width <= 750,
+    form: true,
+  })
   assert.equal(
     await form.locator('textarea[readonly]').inputValue(),
     expectedParagraph,
@@ -319,6 +413,9 @@ async function assertCurrentEpubParagraphBookmark(page, viewport) {
   await form.waitFor({ state: 'hidden', timeout: 10_000 })
   await manager.getByText('EPUB 当前段落', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
   assert.equal(await manager.isVisible(), true, `${viewport.width}: saving EPUB paragraph must keep bookmark manager open`)
+  await assertBookmarkDialogGeometry(page, viewport, '.global-bookmark-dialog', {
+    fullscreen: viewport.width <= 750,
+  })
   await manager.getByRole('button', { name: '取消', exact: true }).click()
   await manager.waitFor({ state: 'hidden', timeout: 10_000 })
   if (viewport.width <= 750) {

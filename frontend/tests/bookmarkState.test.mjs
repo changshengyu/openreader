@@ -4,6 +4,7 @@ import {
   appendBookmarks,
   bookmarkReaderQuery,
   bookmarkUpdateTargetsBook,
+  normalizeImportedBookmarks,
   parseBookmarkPercent,
   removeBookmarkIds,
   replaceBookmark,
@@ -52,4 +53,31 @@ test('carries bookmark paragraph context so Reader can recover after stale offse
     percent: 0.2,
     bookmark: '第一段\n第二段',
   })
+})
+
+test('normalizes fixed-upstream bookmark JSON without treating chapterPos as a pixel offset', () => {
+  assert.deepEqual(normalizeImportedBookmarks([
+    {
+      time: 1785254400000,
+      bookName: '上游书',
+      bookAuthor: '作者',
+      chapterIndex: 2,
+      chapterPos: 17,
+      chapterName: '第三章',
+      bookText: '固定上游正文',
+      content: '固定上游备注',
+    },
+    {
+      chapterIndex: 3,
+      chapterName: '缺少正文',
+      content: '不能进入后端整批写入',
+    },
+  ]), [{
+    chapterIndex: 2,
+    offset: 0,
+    percent: 0,
+    title: '第三章',
+    excerpt: '固定上游正文',
+    note: '固定上游备注',
+  }])
 })

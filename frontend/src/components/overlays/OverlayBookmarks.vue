@@ -1,7 +1,8 @@
 <template>
   <el-dialog
     v-model="overlay.bookmarkVisible"
-    :width="dialogWidth"
+    width="min(1000px, max(750px, 70vw))"
+    top="max(15dvh, calc((100dvh - 584px) / 2))"
     :fullscreen="isMobile"
     class="global-bookmark-dialog"
     @closed="handleClosed"
@@ -27,27 +28,27 @@
     <div v-loading="loading" class="reader-dialog-table">
       <el-table
         :data="items"
-        max-height="520"
+        :height="isMobile ? 'calc(100dvh - 184px)' : 'min(400px, calc(70dvh - 184px))'"
         @selection-change="selectedRows = $event"
       >
-        <el-table-column type="selection" width="42" />
-        <el-table-column label="书籍" min-width="150">
+        <el-table-column type="selection" width="25" :fixed="isMobile" />
+        <el-table-column label="书籍" min-width="150" :fixed="isMobile">
           <template #default>
-            {{ bookTitle }}
+            {{ bookIdentity }}
           </template>
         </el-table-column>
         <el-table-column prop="title" label="章节" min-width="160" />
         <el-table-column label="内容" min-width="200">
           <template #default="scope">
-            {{ scope.row.excerpt || '—' }}
+            {{ scope.row.excerpt }}
           </template>
         </el-table-column>
         <el-table-column label="备注" min-width="160">
           <template #default="scope">
-            {{ scope.row.note || '—' }}
+            {{ scope.row.note }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="112" fixed="right">
+        <el-table-column label="操作" width="100">
           <template #default="scope">
             <el-button link type="primary" @click="jump(scope.row)">跳转</el-button>
             <el-button link type="primary" @click="openEditor(scope.row)">编辑</el-button>
@@ -60,7 +61,6 @@
       <div class="reader-dialog-footer">
         <el-button
           type="primary"
-          :disabled="!selectedRows.length"
           @click="removeMany(selectedRows)"
         >
           批量删除
@@ -89,7 +89,6 @@ defineProps({
   },
 })
 
-const dialogWidth = '880px'
 const router = useRouter()
 const overlay = useOverlayStore()
 const operations = useAuthenticatedOperationGuard()
@@ -99,6 +98,8 @@ const bookId = computed(() => overlay.bookmarkBook?.id)
 const bookTitle = computed(() => (
   overlay.bookmarkBook?.title || overlay.bookmarkBook?.name || '书签'
 ))
+const bookAuthor = computed(() => overlay.bookmarkBook?.author || '')
+const bookIdentity = computed(() => `${bookTitle.value} - ${bookAuthor.value}`)
 const canAddCurrentParagraph = computed(() => Boolean(
   overlay.bookmarkBook?.id && String(overlay.bookmarkCreateDraft?.excerpt || '').trim(),
 ))
@@ -133,6 +134,7 @@ const {
   importPayloads,
   confirm: (...args) => ElMessageBox.confirm(...args),
   onSuccess: message => ElMessage.success(message),
+  onInvalidSelection: message => ElMessage.error(message),
   onInvalidImport: message => ElMessage.error(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
@@ -187,7 +189,7 @@ function onImportFileChange(event) {
   reader.onload = () => {
     try {
       const rows = JSON.parse(String(reader.result || '[]'))
-      if (!Array.isArray(rows) || !rows.length) {
+      if (!Array.isArray(rows)) {
         ElMessage.error('书签文件错误')
         return
       }

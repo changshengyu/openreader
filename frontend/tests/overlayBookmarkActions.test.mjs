@@ -16,6 +16,7 @@ function createController(overrides = {}) {
     },
     confirm: async (...args) => calls.push(['confirm', ...args]),
     onSuccess: message => calls.push(['success', message]),
+    onInvalidSelection: message => calls.push(['invalid-selection', message]),
     onInvalidImport: message => calls.push(['invalid', message]),
     onError: (...args) => calls.push(['error', ...args]),
     ...overrides,
@@ -55,10 +56,54 @@ test('removes selected bookmarks with the upstream batch confirmation', async ()
   const rows = [{ id: 1 }, { id: 2 }]
   await fixture.controller.removeMany(rows)
   assert.deepEqual(fixture.calls, [
-    ['confirm', '确认要删除所选择的 2 条书签吗？', '批量删除书签', { type: 'warning' }],
+    ['confirm', '确认要删除所选择的书签吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }],
     ['remove-many', rows],
-    ['success', '书签已删除'],
+    ['success', '删除书签成功'],
   ])
+})
+
+test('reports an upstream empty-selection error without confirmation or mutation', async () => {
+  const fixture = createController()
+  await fixture.controller.removeMany([])
+  assert.deepEqual(fixture.calls, [
+    ['invalid-selection', '请选择需要删除的书签'],
+  ])
+})
+
+test('treats closed delete and import confirmations as no-op actions', async () => {
+  const deleteFixture = createController({
+    confirm: async (...args) => {
+      deleteFixture.calls.push(['confirm', ...args])
+      throw 'cancel'
+    },
+  })
+  await deleteFixture.controller.removeMany([{ id: 1 }])
+  assert.equal(deleteFixture.calls.length, 1)
+  assert.equal(deleteFixture.calls[0][0], 'confirm')
+
+  const importFixture = createController({
+    confirm: async (...args) => {
+      importFixture.calls.push(['confirm', ...args])
+      throw 'close'
+    },
+  })
+  await importFixture.controller.importRows([{ chapterIndex: 0, bookText: '正文' }])
+  assert.equal(importFixture.calls.length, 1)
+  assert.equal(importFixture.calls[0][0], 'confirm')
+})
+
+test('uses the fixed-upstream delete failure fallback after confirmation', async () => {
+  const failure = new Error('delete failed')
+  const fixture = createController({
+    removeMany: async () => { throw failure },
+  })
+  await fixture.controller.removeMany([{ id: 1 }])
+  assert.deepEqual(fixture.calls.at(-1), ['error', failure, '删除书签失败'])
+  assert.equal(fixture.calls.some(call => call[0] === 'success'), false)
 })
 
 test('normalizes imported bookmarks before confirmation and creation', async () => {
@@ -77,7 +122,27 @@ test('normalizes imported bookmarks before confirmation and creation', async () 
     excerpt: '摘录',
     note: '',
   }]])
-  assert.deepEqual(fixture.calls[2], ['success', '已导入 1 条书签'])
+  assert.deepEqual(fixture.calls[0], [
+    'confirm',
+    '确认要导入文件中的1条书签吗?',
+    '提示',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    },
+  ])
+  assert.deepEqual(fixture.calls[2], ['success', '导入书签成功'])
+
+  fixture.calls.length = 0
+  await fixture.controller.importRows([{
+    chapterIndex: 4,
+    chapterName: '只有章节',
+    content: '只有备注',
+  }])
+  assert.deepEqual(fixture.calls, [
+    ['invalid', '书签文件没有可导入内容'],
+  ])
 
   fixture.calls.length = 0
   await fixture.controller.importRows([])

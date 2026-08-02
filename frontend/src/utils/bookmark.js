@@ -11,7 +11,7 @@ export function normalizeImportedBookmarks(rows) {
         note: String(row.note || row.content || '').trim(),
       }
     })
-    .filter(row => row.title || row.excerpt || row.note)
+    .filter(row => row.excerpt)
 }
 
 export function appendBookmarks(current, incoming) {

@@ -16,6 +16,135 @@ function assertClose(actual, expected, tolerance, message) {
   }
 }
 
+function expectedBookmarkDialogWidth(viewport) {
+  return Math.round(Math.min(1000, Math.max(750, viewport.width * 0.7)))
+}
+
+function expectedBookmarkDialogTop(viewport) {
+  return Math.round(Math.max(viewport.height * 0.15, (viewport.height - 584) / 2))
+}
+
+async function assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen, form = false } = {}) {
+  await page.waitForFunction((target) => {
+    const dialog = document.querySelector(target)
+    if (!dialog) return false
+    const transform = window.getComputedStyle(dialog).transform
+    const parentTransform = dialog.parentElement
+      ? window.getComputedStyle(dialog.parentElement).transform
+      : 'none'
+    const settled = value => value === 'none' || value === 'matrix(1, 0, 0, 1, 0, 0)'
+    return settled(transform) && settled(parentTransform)
+  }, selector, { timeout: 10000 })
+  const state = await page.evaluate(({ target, isForm }) => {
+    const dialog = document.querySelector(target)
+    const rect = dialog?.getBoundingClientRect()
+    const close = dialog?.querySelector('.el-dialog__headerbtn')?.getBoundingClientRect()
+    const table = isForm ? null : dialog?.querySelector('.el-table')
+    const tableRect = table?.getBoundingClientRect()
+    const headers = Array.from(table?.querySelectorAll('.el-table__header-wrapper thead th') || []).map((header) => ({
+      text: String(header.textContent || '').trim(),
+      fixedLeft: header.classList.contains('el-table-fixed-column--left'),
+      fixedRight: header.classList.contains('el-table-fixed-column--right'),
+    }))
+    return {
+      tagName: dialog?.tagName || '',
+      className: dialog?.className || '',
+      inlineStyle: dialog?.getAttribute('style') || '',
+      marginTop: dialog ? window.getComputedStyle(dialog).marginTop : '',
+      position: dialog ? window.getComputedStyle(dialog).position : '',
+      transform: dialog ? window.getComputedStyle(dialog).transform : '',
+      parentClassName: dialog?.parentElement?.className || '',
+      parentScrollTop: dialog?.parentElement?.scrollTop || 0,
+      parentTop: Math.round(dialog?.parentElement?.getBoundingClientRect().top || 0),
+      parentTransform: dialog?.parentElement ? window.getComputedStyle(dialog.parentElement).transform : '',
+      offsetTop: dialog?.offsetTop || 0,
+      scrollY: window.scrollY,
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      top: Math.round(rect?.top || 0),
+      tableHeight: Math.round(tableRect?.height || 0),
+      text: dialog?.innerText || '',
+      headers,
+      close: close ? {
+        left: close.left,
+        right: close.right,
+        top: close.top,
+        bottom: close.bottom,
+      } : null,
+    }
+  }, { target: selector, isForm: form })
+
+  if (fullscreen) {
+    assert(state.width === viewport.width, `${viewport.width}: bookmark dialog width ${state.width}`)
+    assert(state.height === viewport.height, `${viewport.width}: bookmark dialog height ${state.height}`)
+    assert(state.top === 0, `${viewport.width}: bookmark dialog top ${state.top}`)
+  } else {
+    assertClose(
+      state.width,
+      expectedBookmarkDialogWidth(viewport),
+      1,
+      `${viewport.width}x${viewport.height}: bookmark dialog width`,
+    )
+    assertClose(
+      state.top,
+      expectedBookmarkDialogTop(viewport),
+      1,
+      `${viewport.width}x${viewport.height}: bookmark dialog top (${JSON.stringify({
+        tagName: state.tagName,
+        className: state.className,
+        inlineStyle: state.inlineStyle,
+        marginTop: state.marginTop,
+        position: state.position,
+        transform: state.transform,
+        parentClassName: state.parentClassName,
+        parentScrollTop: state.parentScrollTop,
+        parentTop: state.parentTop,
+        parentTransform: state.parentTransform,
+        offsetTop: state.offsetTop,
+        scrollY: state.scrollY,
+        height: state.height,
+      })})`,
+    )
+  }
+  assert(state.close, `${viewport.width}: bookmark dialog close control missing`)
+  assert(
+    state.close.left >= 0 && state.close.right <= viewport.width && state.close.top >= 0 && state.close.bottom <= viewport.height,
+    `${viewport.width}x${viewport.height}: bookmark dialog close control outside viewport`,
+  )
+  if (form) return state
+
+  const expectedTableHeight = fullscreen
+    ? viewport.height - 184
+    : Math.min(400, viewport.height * 0.7 - 184)
+  assertClose(
+    state.tableHeight,
+    expectedTableHeight,
+    1,
+    `${viewport.width}x${viewport.height}: bookmark table height`,
+  )
+  assert(
+    state.text.includes('移动阅读契约测试 - OpenReader'),
+    `${viewport.width}: bookmark manager missing book and author identity`,
+  )
+  if (fullscreen) {
+    assert(state.headers.length >= 6, `${viewport.width}: bookmark table headers missing`)
+    assert(state.headers[0].fixedLeft, `${viewport.width}: bookmark selection column must stay fixed left`)
+    assert(state.headers[1].fixedLeft && state.headers[1].text === '书籍', `${viewport.width}: bookmark book column must stay fixed left`)
+    assert(!state.headers.at(-1).fixedLeft && !state.headers.at(-1).fixedRight, `${viewport.width}: bookmark operation column must not be fixed`)
+  }
+  return state
+}
+
+async function assertTransientBookmarkError(page, message, viewport) {
+  const errorMessage = page.locator('.el-message--error').filter({ hasText: message })
+  await errorMessage.waitFor({ state: 'visible', timeout: 10000 })
+  assert(
+    await page.locator('.el-message-box').count() === 0,
+    `${viewport.width}: ${message} must not open a confirmation dialog`,
+  )
+  await errorMessage.waitFor({ state: 'hidden', timeout: 10000 })
+}
+
 function json(data, status = 200) {
   return {
     status,
@@ -471,6 +600,9 @@ async function assertGlobalReaderDialog(page, viewport, selector, label) {
   assert(state.drawerCount === 0, `${viewport.width}: ${label} must not use a drawer`)
   assert(state.dialogWidth === viewport.width, `${viewport.width}: ${label} dialog width ${state.dialogWidth}`)
   assert(state.dialogHeight === viewport.height, `${viewport.width}: ${label} dialog height ${state.dialogHeight}`)
+  if (label === '书签') {
+    await assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen: true })
+  }
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   assert(
     await page.locator('.reader-mobile-top.visible').count() === 1,
@@ -665,7 +797,7 @@ async function assertInlineMobileCacheZone(page, viewport) {
   assert(state.text.includes('缓存章节') && state.text.includes('后面50章'), `${viewport.width}: inline cache controls missing`)
 }
 
-async function assertDesktopReaderDialog(page, selector, label) {
+async function assertDesktopReaderDialog(page, viewport, selector, label) {
   await page.waitForSelector(selector, { timeout: 10000 })
   const state = await page.evaluate((target) => {
     const dialog = document.querySelector(target)
@@ -686,6 +818,9 @@ async function assertDesktopReaderDialog(page, selector, label) {
   assert(state.height > 200, `desktop: ${label} dialog height ${state.height}`)
   assert(state.visibleDrawers === 0, `desktop: ${label} must not use a drawer`)
   assert(state.settingsOpen === 1, `desktop: ${label} must not close the active settings workspace`)
+  if (label === '书签') {
+    await assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen: false })
+  }
 }
 
 async function assertDesktopPrimaryPopover(page, label, [minHeight, maxHeight]) {
@@ -753,8 +888,9 @@ async function assertBookmarkFormContext(page, viewport, { fullscreen, excerpt =
     assert(state.width === viewport.width, `${viewport.width}: bookmark form fullscreen width ${state.width}`)
     assert(state.height === viewport.height, `${viewport.width}: bookmark form fullscreen height ${state.height}`)
   } else {
-    assert(state.width >= 600, `desktop: bookmark form width ${state.width}`)
+    assertClose(state.width, expectedBookmarkDialogWidth(viewport), 1, `${viewport.width}: bookmark form width`)
   }
+  await assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen, form: true })
 }
 
 async function editBookmarkWithGlobalForm(page, viewport, { fullscreen }) {
@@ -858,6 +994,25 @@ async function createBookmarkFromCurrentParagraph(page, viewport, { fullscreen }
 
 async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedText }) {
   const dialog = page.locator('.global-bookmark-dialog')
+  await dialog.getByRole('button', { name: '批量删除', exact: true }).click()
+  await assertTransientBookmarkError(page, '请选择需要删除的书签', viewport)
+
+  await dialog.locator('.bookmark-file-input').setInputFiles({
+    name: 'empty-bookmarks.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('[]'),
+  })
+  await assertTransientBookmarkError(page, '书签文件没有可导入内容', viewport)
+
+  await dialog.locator('.bookmark-file-input').setInputFiles({
+    name: 'contextless-bookmarks.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify([
+      { chapterIndex: 0, chapterName: '没有正文', content: '仅备注' },
+    ])),
+  })
+  await assertTransientBookmarkError(page, '书签文件没有可导入内容', viewport)
+
   await createBookmarkFromCurrentParagraph(page, viewport, { fullscreen })
   await editBookmarkWithGlobalForm(page, viewport, { fullscreen })
 
@@ -866,10 +1021,13 @@ async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedTex
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify([
       { chapterIndex: 0, offset: 3, percent: 0.1, title: '第一章', excerpt: '导入正文三', note: '导入三' },
+      { chapterIndex: 0, chapterName: '无正文行', content: '必须在确认前过滤' },
       { chapterIndex: 0, offset: 4, percent: 0.2, title: '第一章', excerpt: '导入正文四', note: '导入四' },
     ])),
   })
-  await page.locator('.el-message-box').last().getByRole('button', { name: '确定', exact: true }).click()
+  const importConfirm = page.locator('.el-message-box').filter({ hasText: '确认要导入文件中的2条书签吗?' })
+  await importConfirm.waitFor({ state: 'visible', timeout: 10000 })
+  await importConfirm.getByRole('button', { name: '确定', exact: true }).click()
   await dialog.getByText('导入四', { exact: true }).waitFor({ state: 'visible', timeout: 10000 })
 
   const rowTexts = await dialog.locator('.el-table__body-wrapper tbody tr').evaluateAll(rows => rows.map(row => row.innerText))
@@ -888,8 +1046,25 @@ async function exerciseBookmarkManager(page, viewport, { fullscreen, selectedTex
   await dialog.getByText('导入三', { exact: true }).waitFor({ state: 'hidden', timeout: 10000 })
 
   const selectedBookmarkRow = dialog.locator('.el-table__body-wrapper tbody tr').filter({ hasText: '选中文字创建' }).first()
-  await selectedBookmarkRow.getByRole('button', { name: '跳转', exact: true }).click()
-  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  const jumpButton = selectedBookmarkRow.getByRole('button', { name: '跳转', exact: true })
+  assert(await jumpButton.count() === 1, `${viewport.width}: selected bookmark row must expose one jump action`)
+  await jumpButton.click()
+  try {
+    await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      href: window.location.href,
+      dialogClass: document.querySelector('.global-bookmark-dialog')?.className || '',
+      dialogDisplay: document.querySelector('.global-bookmark-dialog')
+        ? window.getComputedStyle(document.querySelector('.global-bookmark-dialog')).display
+        : 'missing',
+      dialogText: document.querySelector('.global-bookmark-dialog')?.innerText.slice(0, 240) || '',
+      visibleMessageBoxes: [...document.querySelectorAll('.el-message-box')]
+        .filter(element => window.getComputedStyle(element).display !== 'none')
+        .map(element => element.innerText.slice(0, 160)),
+    }))
+    throw new Error(`${error.message}\nBookmark jump state: ${JSON.stringify(state, null, 2)}`)
+  }
   const query = await page.evaluate(() => Object.fromEntries(new URLSearchParams(location.search)))
   assert(
     query.chapter === '0' && Number.isFinite(Number(query.offset)) && Number(query.offset) >= 0 && Number.isFinite(Number(query.percent)),
@@ -1353,10 +1528,10 @@ async function runDesktopViewport(browser) {
   assert(await page.locator('.reader-desktop-workspace .settings-body').count() === 1, 'desktop: switching custom night mode must keep settings open')
   assert(await page.locator('.reader-right-rail button[title="日间模式"]').count() === 1, 'desktop: semantic night mode must update the rail toggle')
   await page.locator('.reader-right-rail button[title="书签"]').click()
-  await assertDesktopReaderDialog(page, '.global-bookmark-dialog', '书签')
+  await assertDesktopReaderDialog(page, viewport, '.global-bookmark-dialog', '书签')
   await exerciseBookmarkManager(page, viewport, { fullscreen: false, selectedText: selectedBookmarkText })
   await page.locator('.reader-right-rail button[title="搜索正文"]').click()
-  await assertDesktopReaderDialog(page, '.global-content-search-dialog', '搜索正文')
+  await assertDesktopReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')
   await exerciseContentSearch(page, viewport, { mobile: false })
   await page.locator('.reader-right-rail button[title="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })
@@ -1700,6 +1875,14 @@ async function runIPadAdaptiveViewport(browser, viewport) {
 
   await page.locator('.reader-right-rail button[title="书签"]').click()
   await page.waitForSelector('.global-bookmark-dialog', { timeout: 10000 })
+  await assertBookmarkDialogGeometry(page, viewport, '.global-bookmark-dialog', { fullscreen: false })
+  const adaptiveBookmarkRow = page.locator('.global-bookmark-dialog .el-table__body-wrapper tbody tr').filter({ hasText: '原笔记' })
+  assert(await adaptiveBookmarkRow.count() === 1, `${viewport.width}: adaptive iPad bookmark fixture row missing`)
+  await adaptiveBookmarkRow.getByRole('button', { name: '编辑', exact: true }).click()
+  await assertBookmarkFormContext(page, viewport, { fullscreen: false })
+  await page.locator('.global-bookmark-form-dialog').getByRole('button', { name: '取消', exact: true }).click()
+  await page.locator('.global-bookmark-form-dialog').waitFor({ state: 'hidden', timeout: 10000 })
+  assert(await page.locator('.global-bookmark-dialog').isVisible(), `${viewport.width}: closing iPad bookmark form must retain manager`)
   await closeDesktopDialogWithHeader(page, '.global-bookmark-dialog', viewport, '书签')
   await page.locator('.reader-right-rail button[title="搜索正文"]').click()
   await page.waitForSelector('.global-content-search-dialog', { timeout: 10000 })

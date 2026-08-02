@@ -20,22 +20,29 @@ export function useOverlayBookmarkActions(options) {
   }
 
   async function removeMany(rows) {
-    if (!Array.isArray(rows) || !rows.length) return
+    if (!Array.isArray(rows) || !rows.length) {
+      options.onInvalidSelection?.('请选择需要删除的书签')
+      return
+    }
     const operation = operations.begin('remove-many')
     try {
       await options.confirm(
-        `确认要删除所选择的 ${rows.length} 条书签吗？`,
-        '批量删除书签',
-        { type: 'warning' },
+        '确认要删除所选择的书签吗?',
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
       )
       if (!operations.canCommit(operation)) return
       await options.removeMany(rows)
       if (!operations.canCommit(operation)) return
-      options.onSuccess('书签已删除')
+      options.onSuccess('删除书签成功')
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
       if (operations.canCommit(operation)) {
-        options.onError(error, '批量删除书签失败')
+        options.onError(error, '删除书签失败')
       }
     }
   }
@@ -51,14 +58,18 @@ export function useOverlayBookmarkActions(options) {
     const operation = operations.begin('import')
     try {
       await options.confirm(
-        `确认要导入文件中的 ${payloads.length} 条书签到当前书籍吗？`,
-        '导入书签',
-        { type: 'info' },
+        `确认要导入文件中的${payloads.length}条书签吗?`,
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
       )
       if (!operations.canCommit(operation)) return
-      const created = await options.importPayloads(payloads)
+      await options.importPayloads(payloads)
       if (!operations.canCommit(operation)) return
-      options.onSuccess(`已导入 ${created.length} 条书签`)
+      options.onSuccess('导入书签成功')
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
       if (operations.canCommit(operation)) {

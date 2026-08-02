@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"openreader/backend/models"
 )
@@ -80,6 +83,173 @@ func TestBookmarkCreateRejectsEmptyContextAndForeignChapter(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("rejected bookmark batch must not persist valid prefix, got %d rows", count)
+	}
+}
+
+func TestBookmarkRoutesHideRowsAcrossUsers(t *testing.T) {
+	router, server := setupTestServer(t)
+	ownerToken := registerLifecycleToken(t, router, "bookmarkowner")
+	otherToken := registerLifecycleToken(t, router, "bookmarkother")
+	owner := lifecycleUser(t, server, "bookmarkowner")
+	book, chapter := bookmarkContractBook(t, server, owner.ID, "用户隔离书签书")
+	bookmark := models.Bookmark{
+		UserID: owner.ID, BookID: book.ID, ChapterID: chapter.ID,
+		ChapterIndex: chapter.Index, Title: chapter.Title, Excerpt: "仅 owner 可见",
+	}
+	if err := server.db.Create(&bookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	bookPath := "/api/books/" + strconv.FormatUint(uint64(book.ID), 10) + "/bookmarks"
+	bookmarkPath := "/api/bookmarks/" + strconv.FormatUint(uint64(bookmark.ID), 10)
+	for _, response := range []*httptest.ResponseRecorder{
+		bookmarkContractRequest(t, router, http.MethodGet, bookPath, "", otherToken),
+		bookmarkContractRequest(t, router, http.MethodPut, bookmarkPath, `{"note":"越权编辑"}`, otherToken),
+		bookmarkContractRequest(t, router, http.MethodDelete, bookmarkPath, "", otherToken),
+		bookmarkContractRequest(t, router, http.MethodPost, bookPath+"/batch-delete", `{"ids":[`+strconv.FormatUint(uint64(bookmark.ID), 10)+`]}`, otherToken),
+	} {
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("cross-user bookmark route must return 404, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	var persisted models.Bookmark
+	if err := server.db.First(&persisted, bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Note != "" || persisted.Excerpt != bookmark.Excerpt {
+		t.Fatalf("cross-user requests mutated bookmark: %+v", persisted)
+	}
+
+	ownerList := bookmarkContractRequest(t, router, http.MethodGet, bookPath, "", ownerToken)
+	if ownerList.Code != http.StatusOK || !strings.Contains(ownerList.Body.String(), bookmark.Excerpt) {
+		t.Fatalf("owner bookmark list failed after denied requests: %d %s", ownerList.Code, ownerList.Body.String())
+	}
+}
+
+func TestBookmarkBatchDeleteScopesIDsToTheCurrentBook(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := bookmarkContractUser(t, server)
+	currentBook, currentChapter := bookmarkContractBook(t, server, user.ID, "当前书签书")
+	otherBook, otherChapter := bookmarkContractBook(t, server, user.ID, "同账号另一册书")
+	currentBookmark := models.Bookmark{
+		UserID: user.ID, BookID: currentBook.ID, ChapterID: currentChapter.ID,
+		ChapterIndex: currentChapter.Index, Title: currentChapter.Title, Excerpt: "当前书上下文",
+	}
+	otherBookmark := models.Bookmark{
+		UserID: user.ID, BookID: otherBook.ID, ChapterID: otherChapter.ID,
+		ChapterIndex: otherChapter.Index, Title: otherChapter.Title, Excerpt: "另一册书上下文",
+	}
+	if err := server.db.Create(&currentBookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&otherBookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	path := "/api/books/" + strconv.FormatUint(uint64(currentBook.ID), 10) + "/bookmarks/batch-delete"
+	response := bookmarkContractRequest(t, router, http.MethodPost, path, `{"ids":[`+
+		strconv.FormatUint(uint64(otherBookmark.ID), 10)+`,`+
+		strconv.FormatUint(uint64(currentBookmark.ID), 10)+`]}`, token)
+	if response.Code != http.StatusOK {
+		t.Fatalf("current-book batch delete: %d %s", response.Code, response.Body.String())
+	}
+	var result struct {
+		DeletedIDs []uint `json:"deletedIds"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.DeletedIDs) != 1 || result.DeletedIDs[0] != currentBookmark.ID {
+		t.Fatalf("batch delete leaked another book id: %+v", result.DeletedIDs)
+	}
+	if err := server.db.First(&models.Bookmark{}, currentBookmark.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("current-book bookmark was not deleted: %v", err)
+	}
+	var persisted models.Bookmark
+	if err := server.db.First(&persisted, otherBookmark.ID).Error; err != nil {
+		t.Fatalf("same-account other-book bookmark was deleted: %v", err)
+	}
+}
+
+func TestBookmarkBatchWritesBroadcastOnceOnlyAfterDurableMutation(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := bookmarkContractUser(t, server)
+	book, _ := bookmarkContractBook(t, server, user.ID, "书签事务广播书")
+	client := server.hub.AddClient(user.ID, nil)
+	defer server.hub.RemoveClient(client)
+	path := "/api/books/" + strconv.FormatUint(uint64(book.ID), 10) + "/bookmarks"
+
+	callbackName := "test:bookmark-batch-write-failure"
+	if err := server.db.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "bookmarks" {
+			tx.AddError(errors.New("injected bookmark write failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	failed := bookmarkContractRequest(t, router, http.MethodPost, path+"/batch", `[
+		{"chapterIndex":0,"title":"第一章","excerpt":"失败上下文一"},
+		{"chapterIndex":0,"title":"第一章","excerpt":"失败上下文二"}
+	]`, token)
+	if err := server.db.Callback().Create().Remove(callbackName); err != nil {
+		t.Fatal(err)
+	}
+	if failed.Code != http.StatusInternalServerError {
+		t.Fatalf("injected batch failure: %d %s", failed.Code, failed.Body.String())
+	}
+	if queuedPayloadContains(client.Send, `"type":"bookmarks_update"`) {
+		t.Fatal("failed bookmark batch emitted a sync event")
+	}
+	var count int64
+	if err := server.db.Model(&models.Bookmark{}).Where("book_id = ?", book.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("failed bookmark batch persisted %d rows", count)
+	}
+
+	created := bookmarkContractRequest(t, router, http.MethodPost, path+"/batch", `[
+		{"chapterIndex":0,"title":"第一章","excerpt":"成功上下文一"},
+		{"chapterIndex":0,"title":"第一章","excerpt":"成功上下文二"}
+	]`, token)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("successful bookmark batch: %d %s", created.Code, created.Body.String())
+	}
+	var createdRows []models.Bookmark
+	if err := json.Unmarshal(created.Body.Bytes(), &createdRows); err != nil {
+		t.Fatal(err)
+	}
+	assertSingleBookmarkEvent(t, client.Send, `"kind":"create_many"`)
+
+	deleted := bookmarkContractRequest(t, router, http.MethodPost, path+"/batch-delete", `{"ids":[`+
+		strconv.FormatUint(uint64(createdRows[0].ID), 10)+`,`+
+		strconv.FormatUint(uint64(createdRows[1].ID), 10)+`]}`, token)
+	if deleted.Code != http.StatusOK {
+		t.Fatalf("successful bookmark batch delete: %d %s", deleted.Code, deleted.Body.String())
+	}
+	assertSingleBookmarkEvent(t, client.Send, `"kind":"delete_many"`)
+}
+
+func assertSingleBookmarkEvent(t *testing.T, channel <-chan []byte, needle string) {
+	t.Helper()
+	count := 0
+	matched := false
+	for {
+		select {
+		case payload := <-channel:
+			count++
+			if strings.Contains(string(payload), `"type":"bookmarks_update"`) && strings.Contains(string(payload), needle) {
+				matched = true
+			}
+		default:
+			if count != 1 || !matched {
+				t.Fatalf("expected one matching bookmark event, count=%d matched=%t", count, matched)
+			}
+			return
+		}
 	}
 }
 

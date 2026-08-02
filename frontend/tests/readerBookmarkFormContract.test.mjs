@@ -28,6 +28,8 @@ test('global bookmark form preserves upstream readonly context and mobile dialog
   const form = read('../src/components/overlays/OverlayBookmarkForm.vue')
 
   assert.match(form, /<el-dialog/)
+  assert.match(form, /width="min\(1000px, max\(750px, 70vw\)\)"/)
+  assert.match(form, /top="max\(15dvh, calc\(\(100dvh - 584px\) \/ 2\)\)"/)
   assert.match(form, /:fullscreen="isMobile"/)
   assert.match(form, /label="书名"/)
   assert.match(form, /label="作者"/)
@@ -36,6 +38,26 @@ test('global bookmark form preserves upstream readonly context and mobile dialog
   assert.match(form, /readonly/)
   assert.match(form, /createBookmark\(/)
   assert.match(form, /updateBookmark\(/)
+})
+
+test('bookmark manager restores the fixed-upstream dialog geometry, columns, and direct field rendering', () => {
+  const bookmarks = read('../src/components/overlays/OverlayBookmarks.vue')
+
+  assert.match(bookmarks, /width="min\(1000px, max\(750px, 70vw\)\)"/)
+  assert.match(bookmarks, /top="max\(15dvh, calc\(\(100dvh - 584px\) \/ 2\)\)"/)
+  assert.match(
+    bookmarks,
+    /:height="isMobile \? 'calc\(100dvh - 184px\)' : 'min\(400px, calc\(70dvh - 184px\)\)'"/,
+  )
+  assert.match(bookmarks, /type="selection"\s+width="25"\s+:fixed="isMobile"/)
+  assert.match(bookmarks, /label="书籍"[\s\S]*?:fixed="isMobile"[\s\S]*?\{\{ bookIdentity \}\}/)
+  assert.match(bookmarks, /label="操作"\s+width="100"/)
+  assert.doesNotMatch(bookmarks, /label="操作"[^>]*fixed="right"/)
+  assert.doesNotMatch(bookmarks, /scope\.row\.(?:excerpt|note) \|\| '—'/)
+  assert.doesNotMatch(bookmarks, /:disabled="!selectedRows\.length"/)
+  assert.match(bookmarks, /if \(!Array\.isArray\(rows\)\)/)
+  assert.doesNotMatch(bookmarks, /!Array\.isArray\(rows\) \|\| !rows\.length/)
+  assert.match(bookmarks, /importRows\(rows\)/)
 })
 
 test('bookmark list delegates editing to the global form instead of nesting an editor dialog', () => {

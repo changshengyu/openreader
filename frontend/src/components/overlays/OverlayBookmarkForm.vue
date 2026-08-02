@@ -2,7 +2,8 @@
   <el-dialog
     :model-value="overlay.bookmarkFormVisible"
     title="书签"
-    width="640px"
+    width="min(1000px, max(750px, 70vw))"
+    top="max(15dvh, calc((100dvh - 584px) / 2))"
     :fullscreen="isMobile"
     class="global-bookmark-form-dialog"
     @update:model-value="handleVisibleChange"
@@ -16,11 +17,11 @@
         <el-input :model-value="bookAuthor" readonly />
       </el-form-item>
       <el-form-item label="章节">
-        <el-input :model-value="draft.title || '—'" readonly />
+        <el-input :model-value="draft.title || ''" readonly />
       </el-form-item>
       <el-form-item label="内容">
         <el-input
-          :model-value="draft.excerpt || '—'"
+          :model-value="draft.excerpt || ''"
           type="textarea"
           :rows="5"
           readonly
@@ -31,7 +32,6 @@
           v-model="draft.note"
           type="textarea"
           :rows="3"
-          placeholder="写下笔记（可选）"
         />
       </el-form-item>
     </el-form>
@@ -62,8 +62,8 @@ const operations = useAuthenticatedOperationGuard()
 const saving = ref(false)
 const draft = computed(() => overlay.bookmarkFormDraft)
 const book = computed(() => overlay.bookmarkFormBook)
-const bookTitle = computed(() => book.value?.title || book.value?.name || '—')
-const bookAuthor = computed(() => book.value?.author || '—')
+const bookTitle = computed(() => book.value?.title || book.value?.name || '')
+const bookAuthor = computed(() => book.value?.author || '')
 
 function handleVisibleChange(visible) {
   if (!visible) overlay.finishBookmarkForm({ saved: false, reason: 'close' })
