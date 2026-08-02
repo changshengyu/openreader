@@ -17,6 +17,10 @@ frontend `685/685`、Go 全量、production build 和差异检查通过；Index 
 在 `1440×900`、`390×844`、`360×800` 通过，移动侧边栏在两个手机尺寸通过。合同、允许差异和
 尚未覆盖的书架卡片/overlay 内部范围见
 [`index-settings-action-surface-second-audit-p1-contract.md`](index-settings-action-surface-second-audit-p1-contract.md)。
+本地候选的新卷与历史卷/备份门通过后，已由本机发布 `3746d62` 与 `latest`；两个标签共同指向
+amd64/arm64 OCI index
+`sha256:eb57e0094baeb7d0cc354a0b97e5d366059fe47032d83fd2b5f42819a3d9e23b`。当前状态为
+**aligned / Docker-published / awaiting device verification**。
 
 ## 2026-08-02 P2 书内正文搜索第二轮固定基准重建
 

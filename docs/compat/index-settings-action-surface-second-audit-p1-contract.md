@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**implemented / browser-validated / Docker-pending**
+状态：**aligned / Docker-published / awaiting-device-verification**
 
 本文件只提取固定上游的 Index 侧栏、书架标题操作和入口所有权，并判定当前 OpenReader
 差异。按照 `readerdev-compat-inventory`，本轮审查完成并单独提交前不修改应用代码。
@@ -214,3 +214,18 @@ RSS 的固定上游入口位于书架标题栏；当前 `Home.vue` 已存在该�
 
 本合同仍不宣称书架卡片布局、分组内部、RSS 内部、替换规则内部或各 overlay 内部已经完成新一轮
 复审。原作者宣传不复制、JWT 管理员、同源后端状态与可移植备份仍是上文记录的允许差异。
+
+### Docker 发布
+
+实现提交 `3746d6253223332ff72f159326c5b6799a2f52bb` 已推送 `main`。候选镜像由本机 OrbStack
+构建，先后通过新挂载卷的 portable v1、portable v2 assets、cross-user、restart，以及历史卷的
+TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 门禁；没有使用云端构建。
+
+本机随后构建并推送：
+
+- `ghcr.io/changshengyu/openreader:3746d62`
+- `ghcr.io/changshengyu/openreader:latest`
+
+两个标签共同指向 linux/amd64、linux/arm64 OCI index：
+`sha256:eb57e0094baeb7d0cc354a0b97e5d366059fe47032d83fd2b5f42819a3d9e23b`。
+自动门禁完成；当前仍等待用户设备验证侧栏动作顺序、刷新反馈和多客户端最新状态收敛。
