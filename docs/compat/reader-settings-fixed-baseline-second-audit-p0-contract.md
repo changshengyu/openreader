@@ -4,7 +4,7 @@
 
 审计日期：2026-08-02。
 
-状态：**implementation-complete / Docker-pending**。本文件最初由只读源码审查生成；审查合同以
+状态：**aligned / Docker-published / awaiting-device-verification**。本文件最初由只读源码审查生成；审查合同以
 `609a7a1` 单独提交后，已按“失败测试 → store/面板实现 → 全量与真实浏览器”顺序完成重建。
 历史 ReaderSettings 实施记录仍只能说明做过什么，本节末尾的新证据才是本轮签收依据。
 
@@ -200,5 +200,10 @@ relative-cache/owner-isolation。通过后可作为 ReaderSettings 半模块 Doc
 验证证据：frontend `680/680`、Go 全量、Vite production build、`git diff --check` 通过；真实
 浏览器覆盖 1440×900、390×844、360×800、1024×1366、1366×1024，并额外覆盖 1024×1366
 强制手机模式。工具层并存、面板关闭/切换、固定标题与列表滚动、亮度 87 直接输入、背景预览、
-纯黑夜间正文、iPad 关闭路径、无横向溢出和无控制台异常均通过。Docker 新旧卷门与 GHCR 发布
-在代码提交后执行，完成前状态保持 `Docker-pending`。
+纯黑夜间正文、iPad 关闭路径、无横向溢出和无控制台异常均通过。
+
+代码提交 `40f124f` 已推送 `main`。本机候选镜像通过 portable v1/v2 assets、cross-user、restart，
+以及历史 TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 全部门禁；随后由本机完成 amd64/arm64
+构建并推送 `ghcr.io/changshengyu/openreader:40f124f` 与 `latest`。两个远端标签共同指向 OCI index
+`sha256:d9395b19f45bfe9412facbcdcec63e776c881c13437c6049e70140f3f87e6b45`。当前只等待真实设备验收，
+不再标记 `Docker-pending`。

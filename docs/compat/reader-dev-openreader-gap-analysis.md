@@ -3235,8 +3235,13 @@ normal/kindle 双快照、无任意 max 数值边界和动态页面宽度。可�
 
 frontend 680/680、Go 全量、production build 和差异检查通过。真实浏览器通过 1440×900、
 390×844、360×800、1024×1366、1366×1024，以及 1024×1366 强制手机模式，覆盖工具层并存、
-标题/列表滚动、背景、亮度直接输入、夜间正文、iPad 关闭路径和控制台。当前状态更新为
-`aligned / Docker-pending`；新旧卷与发布证据待代码提交后的本机 Docker 候选完成。
+标题/列表滚动、背景、亮度直接输入、夜间正文、iPad 关闭路径和控制台。
+
+代码提交 `40f124f` 已推送。其本机候选通过 portable v1/v2 assets、cross-user、restart，以及历史
+TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation；本机完成 amd64/arm64 构建并推送
+`40f124f` 与 `latest`。两个标签共同指向 OCI index
+`sha256:d9395b19f45bfe9412facbcdcec63e776c881c13437c6049e70140f3f87e6b45`，状态更新为
+`aligned / Docker-published / awaiting-device-verification`。
 
 ## 2026-07-28 ReplaceRule P2 固定基准重新复审
 
