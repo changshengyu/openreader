@@ -172,7 +172,7 @@ export const useOverlayStore = defineStore('overlay', {
         requestId: this.searchBookContentJumpSerial,
         bookId: this.searchBook.id ?? null,
         bookUrl: this.searchBook.bookUrl || this.searchBook.url || '',
-        query: String(query || '').trim(),
+        query: String(query ?? ''),
         result: { ...result },
       }
       this.searchBookContentVisible = false

@@ -27,11 +27,12 @@ test('consumes repeated same-result requests and ignores another book', async ()
   request.value = {
     ...request.value,
     requestId: 2,
+    query: ' 目标 ',
   }
   await nextTick()
   assert.deepEqual(calls, [
     { ...result, query: '目标' },
-    { ...result, query: '目标' },
+    { ...result, query: ' 目标 ' },
   ])
 
   request.value = {

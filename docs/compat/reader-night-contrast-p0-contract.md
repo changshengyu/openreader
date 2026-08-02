@@ -565,3 +565,24 @@ WebKit、浏览器强制深色和 EPUB 独立合成层。
   当次本机 Docker daemon 的 `docker pull` 路径三次收到 GHCR `502 Bad Gateway`，
   因此卷门使用同提交本地加载镜像完成。该外部 registry 拉取抖动不改变已发布
   manifest 和本地验证结果，但设备部署时仍应以实际 `docker compose pull` 成功为准。
+
+## 第九轮实机反馈：部署版本仍停留在透明穿透合同（2026-08-02）
+
+用户再次报告黑色阅读背景下的实际文字承载层仍不是黑色。线上
+`GET https://openreader.yuchsh.top/api/health` 本轮返回：
+
+- `version: b78d39c`
+- `commit: b78d39c4cb8bed0a7dfc8ec1f0f69dbf243309c8`
+- `buildDate: 2026-07-28T13:58:52Z`
+
+该版本正是第七轮实现：结构层是纯黑，但 `p/mark/span` 与 EPUB 后代仍依赖透明背景穿透；
+用户本次现象与第八轮修复前的已知缺口完全一致。第八轮显式文字节点黑底从 `6fde5ab` 才进入
+镜像，并已包含在 `f2f0d6e`。GHCR 已重新核验：`latest` 与 `f2f0d6e` 共同指向
+amd64/arm64 OCI index
+`sha256:cfaba7d453bde2a4b44198aa57ef8ef5ecbaa3b4cce0ab77b4c816311455c736`。
+
+当前源码再次以真实 Go API EPUB 在 1440×900、390×844、360×800 通过：父页面、iframe、
+`html/body/main/card/text/table/cell` 均为纯黑背景、纯白文字，退出夜间恢复作者白底/渐变。
+因此本轮裁决为 **deployment-blocked-device-verification**，不新增应用实现。部署端必须拉取并
+强制重建，且只有健康接口返回不早于 `6fde5ab` 时，才进入第八轮设备验收；如果仍返回
+`b78d39c`，浏览器刷新、清缓存或切换夜间按钮均无法得到第八轮代码。

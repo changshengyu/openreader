@@ -223,6 +223,80 @@ func TestContentSearchUsesRawExactOverlappingChapterText(t *testing.T) {
 	}
 }
 
+func TestContentSearchPreservesLeadingTrailingAndAllSpaceQueries(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := contentSearchContractUser(t, server)
+	book := models.Book{
+		UserID: user.ID,
+		Title:  "原样空白正文搜索",
+		URL:    "https://raw-query.example/book",
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	createContentSearchCacheChapter(t, server, book.ID, 0, "目标\n前文 目标 后文\n一   二")
+
+	modernSearch := func(query string) []contentMatch {
+		t.Helper()
+		request := httptest.NewRequest(
+			http.MethodGet,
+			"/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/search?q="+url.QueryEscape(query),
+			nil,
+		)
+		request.Header.Set("Authorization", token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("modern raw query %q: expected 200, got %d: %s", query, response.Code, response.Body.String())
+		}
+		var matches []contentMatch
+		if err := json.Unmarshal(response.Body.Bytes(), &matches); err != nil {
+			t.Fatal(err)
+		}
+		return matches
+	}
+
+	for _, query := range []string{" 目标 ", "   "} {
+		matches := modernSearch(query)
+		if len(matches) != 1 || matches[0].Query != query {
+			t.Fatalf("modern query must remain exact %q, got %+v", query, matches)
+		}
+
+		body, err := json.Marshal(legacySearchBookContentRequest{
+			BookURL: book.URL,
+			Keyword: query,
+			LastIndex: func() *int {
+				value := -1
+				return &value
+			}(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/reader3/searchBookContent", strings.NewReader(string(body)))
+		request.Header.Set("Authorization", token)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("legacy raw query %q: expected 200, got %d: %s", query, response.Code, response.Body.String())
+		}
+		var payload struct {
+			IsSuccess bool `json:"isSuccess"`
+			Data      struct {
+				List []legacyContentMatch `json:"list"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if !payload.IsSuccess || len(payload.Data.List) != 1 || payload.Data.List[0].Query != query {
+			t.Fatalf("legacy query must remain exact %q, got %+v", query, payload)
+		}
+	}
+}
+
 func TestContentSearchRejectsMissingConfiguredSourceBeforeScanning(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

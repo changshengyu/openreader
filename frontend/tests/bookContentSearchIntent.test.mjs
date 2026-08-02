@@ -44,3 +44,11 @@ test('does not create a search jump without an active book or result', () => {
   assert.equal(overlay.requestSearchBookContentJump(null, '目标'), false)
   assert.equal(overlay.searchBookContentJump, null)
 })
+
+test('keeps the exact query in the repeatable Reader intent', () => {
+  const overlay = freshOverlay()
+  overlay.openSearchBookContent({ id: 7, bookUrl: 'https://book.example/7' })
+
+  assert.equal(overlay.requestSearchBookContentJump({ chapterIndex: 1 }, ' 目标 '), true)
+  assert.equal(overlay.searchBookContentJump.query, ' 目标 ')
+})

@@ -5,6 +5,13 @@ export function bookContentSearchPagingParams(book) {
   return { chapterLimit: 160, scanLimit: 480, matchLimit: 1000, localFull: 1 }
 }
 
+export function bookContentSearchBookIdentity(book) {
+  const id = Number(book?.id || 0)
+  const url = String(book?.bookUrl || book?.url || '')
+  if (!id && !url) return ''
+  return `${id}\u0000${url}`
+}
+
 export function bookContentSearchMaxRounds({ append = false, scanAll = false, remote = false } = {}) {
   if (scanAll) return 80
   if (append) return 1
@@ -56,8 +63,8 @@ export function countBookContentMatches(text, keyword) {
 
 export function bookContentSearchParagraphIndex(texts, keyword, matchIndex = 0) {
   const rows = Array.isArray(texts) ? texts : []
-  const query = String(keyword || '').trim()
-  if (!query) return -1
+  const query = String(keyword ?? '')
+  if (query.length === 0) return -1
   const expectedIndex = Number.isFinite(Number(matchIndex))
     ? Math.max(0, Math.floor(Number(matchIndex)))
     : 0

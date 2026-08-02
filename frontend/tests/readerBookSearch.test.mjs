@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  bookContentSearchBookIdentity,
   bookContentSearchParagraphIndex,
   bookContentSearchMaxRounds,
   bookContentSearchNotice,
@@ -8,6 +9,21 @@ import {
   bookContentSearchStatus,
   countBookContentMatches,
 } from '../src/utils/readerBookSearch.js'
+
+test('uses book URL as part of the search-session identity even when the database ID is unchanged', () => {
+  assert.notEqual(
+    bookContentSearchBookIdentity({ id: 7, bookUrl: 'https://book.example/old' }),
+    bookContentSearchBookIdentity({ id: 7, bookUrl: 'https://book.example/new' }),
+  )
+  assert.equal(
+    bookContentSearchBookIdentity({ id: 7, bookUrl: 'https://book.example/same' }),
+    bookContentSearchBookIdentity({ id: 7, bookUrl: 'https://book.example/same' }),
+  )
+  assert.notEqual(
+    bookContentSearchBookIdentity({ id: 0, url: 'local://one' }),
+    bookContentSearchBookIdentity({ id: 0, url: 'local://two' }),
+  )
+})
 
 test('uses bounded remote and expanded local book search windows', () => {
   assert.deepEqual(bookContentSearchPagingParams({ sourceId: 7 }), {
@@ -70,4 +86,12 @@ test('uses upstream exact case-sensitive overlapping occurrence semantics', () =
     '没有',
     '目 标，出现',
   ], '目标', 0), -1)
+  assert.equal(bookContentSearchParagraphIndex([
+    '目标',
+    '前文 目标 后文',
+  ], ' 目标 ', 0), 1, 'leading/trailing spaces are part of the exact upstream query')
+  assert.equal(bookContentSearchParagraphIndex([
+    '一 二',
+    '一   二',
+  ], '   ', 0), 1, 'an all-space query is valid and must not be trimmed to empty')
 })

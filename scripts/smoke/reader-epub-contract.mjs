@@ -105,6 +105,63 @@ async function assertBookmarkDialogGeometry(
   }
 }
 
+async function assertContentSearchDialogGeometry(page, viewport) {
+  const selector = '.global-content-search-dialog'
+  await page.waitForFunction((target) => {
+    const dialog = document.querySelector(target)
+    if (!dialog) return false
+    const settled = value => value === 'none' || value === 'matrix(1, 0, 0, 1, 0, 0)'
+    return settled(window.getComputedStyle(dialog).transform)
+      && settled(window.getComputedStyle(dialog.parentElement).transform)
+  }, selector, { timeout: 10_000 })
+  const state = await page.locator(selector).evaluate((dialog) => {
+    const rect = dialog.getBoundingClientRect()
+    const tableRect = dialog.querySelector('.el-table')?.getBoundingClientRect()
+    const close = dialog.querySelector('.el-dialog__headerbtn')?.getBoundingClientRect()
+    const input = dialog.querySelector('input[placeholder="搜索书籍内容"]')
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      top: Math.round(rect.top),
+      tableHeight: Math.round(tableRect?.height || 0),
+      inputFocused: document.activeElement === input,
+      loadingMasks: dialog.querySelectorAll('.el-loading-mask').length,
+      emptyStates: dialog.querySelectorAll('.el-empty').length,
+      close: close ? { left: close.left, right: close.right, top: close.top, bottom: close.bottom } : null,
+    }
+  })
+  const fullscreen = viewport.width <= 750
+  if (fullscreen) {
+    assert.equal(state.width, viewport.width, `${viewport.width}: EPUB content-search width`)
+    assert.equal(state.height, viewport.height, `${viewport.width}: EPUB content-search height`)
+    assert.equal(state.top, 0, `${viewport.width}: EPUB content-search top`)
+  } else {
+    assert.ok(
+      Math.abs(state.width - expectedBookmarkDialogWidth(viewport)) <= 1,
+      `${viewport.width}: EPUB content-search width ${state.width}`,
+    )
+    assert.ok(
+      Math.abs(state.top - expectedBookmarkDialogTop(viewport)) <= 1,
+      `${viewport.width}: EPUB content-search top ${state.top}`,
+    )
+  }
+  const expectedTableHeight = fullscreen
+    ? viewport.height - 184
+    : Math.min(400, viewport.height * 0.7 - 184)
+  assert.ok(
+    Math.abs(state.tableHeight - expectedTableHeight) <= 1,
+    `${viewport.width}: EPUB content-search table height ${state.tableHeight}`,
+  )
+  assert.ok(state.close, `${viewport.width}: EPUB content-search close control missing`)
+  assert.ok(
+    state.close.left >= 0 && state.close.right <= viewport.width && state.close.top >= 0 && state.close.bottom <= viewport.height,
+    `${viewport.width}: EPUB content-search close control outside viewport`,
+  )
+  assert.equal(state.inputFocused, false, `${viewport.width}: EPUB content-search input auto-focused`)
+  assert.equal(state.loadingMasks, 0, `${viewport.width}: EPUB content-search installed a blocking mask`)
+  assert.equal(state.emptyStates, 0, `${viewport.width}: EPUB content-search replaced the upstream empty table`)
+}
+
 function smokeViewports() {
   const requested = String(process.env.SMOKE_VIEWPORTS || '1440x900,390x844,360x800')
     .split(',')
@@ -590,6 +647,15 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   assert.ok(homeOffset < keyboardOffset, `EPUB Home did not move toward the top: ${homeOffset}`)
 
   await assertCurrentEpubParagraphBookmark(page, viewport)
+
+  const searchButton = viewport.width <= 750
+    ? page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]')
+    : page.locator('.reader-right-rail button[title="搜索正文"]')
+  await searchButton.click()
+  await assertContentSearchDialogGeometry(page, viewport)
+  const searchDialog = page.locator('.global-content-search-dialog')
+  await searchDialog.getByRole('button', { name: '取消', exact: true }).click()
+  await searchDialog.waitFor({ state: 'hidden', timeout: 10_000 })
 
   if (viewport.width <= 750) {
     if (!await page.locator('.reader-mobile-top.visible').count()) {

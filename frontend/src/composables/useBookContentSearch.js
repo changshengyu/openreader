@@ -74,8 +74,8 @@ export function useBookContentSearch(options) {
   }
 
   async function run({ append = false, scanAll = false } = {}) {
-    const query = keyword.value.trim()
-    if (!query || loading.value) return
+    const query = String(keyword.value ?? '')
+    if (query.length === 0 || loading.value) return
 
     const token = ++requestToken
     const operation = operations.begin('search')
@@ -104,7 +104,7 @@ export function useBookContentSearch(options) {
         })
         if (token !== requestToken || !operations.canCommit(operation)) return
 
-        const rows = Array.isArray(data) ? data : (data?.list || [])
+        const rows = normalizeSearchRows(Array.isArray(data) ? data : (data?.list || []))
         nextResults = nextResults.concat(rows)
         results.value = nextResults
         lastIndex.value = Number.isInteger(data?.lastIndex) ? data.lastIndex : -1
@@ -162,6 +162,13 @@ export function useBookContentSearch(options) {
     loadAll,
     resetOperations: operations.reset,
   }
+}
+
+function normalizeSearchRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map(row => ({
+    ...row,
+    resultText: row?.resultText ?? row?.excerpt ?? '',
+  }))
 }
 
 function isIntentionalAbort(error, controller) {

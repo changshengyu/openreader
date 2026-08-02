@@ -1,5 +1,19 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-02 P2 书内正文搜索第二轮固定基准重建
+
+旧 `1aeffb9` 只完成搜索引擎和根级所有权，没有逐项复核固定上游 Dialog 外壳和 raw query。
+第二轮已恢复动态 width/top/table、75% 非自动聚焦输入、100/250px 结果列、非阻塞表格及
+上游 footer；正常页面 gate、同 ID 换 URL reset、同书 scrollTop 恢复也已补齐。前端输入、
+Pinia intent、Reader 定位、现代 REST 与 legacy Reader3 现在均保留前后空格和纯空格的精确
+搜索语义，只拒绝真正的空字符串。
+
+测试先行后 frontend 659/659、Go 全量、production build 与差异检查通过；普通 Reader 在
+1440×900、390×844、360×800、1024×1366、1366×1024 及强制移动 iPad 通过，真实 Go API
+EPUB 也在 1440×900、390×844、360×800 通过。完整覆盖合同见
+[`book-content-search-fixed-baseline-second-audit-p2-contract.md`](book-content-search-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **implemented / Docker-pending**。
+
 ## 2026-07-27 P2 书内正文搜索固定上游复审
 
 固定上游 `SearchBookContent.vue`、`Reader.vue#showSearchContent` 与

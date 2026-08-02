@@ -135,6 +135,73 @@ async function assertBookmarkDialogGeometry(page, viewport, selector, { fullscre
   return state
 }
 
+async function assertContentSearchDialogGeometry(page, viewport, { fullscreen } = {}) {
+  const selector = '.global-content-search-dialog'
+  await page.waitForFunction((target) => {
+    const dialog = document.querySelector(target)
+    if (!dialog) return false
+    const settled = value => value === 'none' || value === 'matrix(1, 0, 0, 1, 0, 0)'
+    return settled(window.getComputedStyle(dialog).transform)
+      && settled(window.getComputedStyle(dialog.parentElement).transform)
+  }, selector, { timeout: 10000 })
+  const state = await page.evaluate((target) => {
+    const dialog = document.querySelector(target)
+    const rect = dialog?.getBoundingClientRect()
+    const tableRect = dialog?.querySelector('.el-table')?.getBoundingClientRect()
+    const close = dialog?.querySelector('.el-dialog__headerbtn')?.getBoundingClientRect()
+    const input = dialog?.querySelector('input[placeholder="搜索书籍内容"]')
+    const loadMore = Array.from(dialog?.querySelectorAll('button') || [])
+      .find(button => String(button.textContent || '').trim() === '加载更多')
+      ?.getBoundingClientRect()
+    const cancel = Array.from(dialog?.querySelectorAll('button') || [])
+      .find(button => String(button.textContent || '').trim() === '取消')
+      ?.getBoundingClientRect()
+    return {
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      top: Math.round(rect?.top || 0),
+      tableHeight: Math.round(tableRect?.height || 0),
+      inputFocused: document.activeElement === input,
+      loadingMasks: dialog?.querySelectorAll('.el-loading-mask').length || 0,
+      emptyStates: dialog?.querySelectorAll('.el-empty').length || 0,
+      searchAllButtons: Array.from(dialog?.querySelectorAll('button') || [])
+        .filter(button => String(button.textContent || '').trim() === '搜完全书').length,
+      loadMoreLeft: Math.round(loadMore?.left || 0),
+      cancelLeft: Math.round(cancel?.left || 0),
+      close: close ? {
+        left: close.left,
+        right: close.right,
+        top: close.top,
+        bottom: close.bottom,
+      } : null,
+    }
+  }, selector)
+
+  if (fullscreen) {
+    assert(state.width === viewport.width, `${viewport.width}: content-search dialog width ${state.width}`)
+    assert(state.height === viewport.height, `${viewport.width}: content-search dialog height ${state.height}`)
+    assert(state.top === 0, `${viewport.width}: content-search dialog top ${state.top}`)
+    assert(state.searchAllButtons === 0, `${viewport.width}: bounded full-search enhancement must not break the mobile footer`)
+  } else {
+    assertClose(state.width, expectedBookmarkDialogWidth(viewport), 1, `${viewport.width}x${viewport.height}: content-search dialog width`)
+    assertClose(state.top, expectedBookmarkDialogTop(viewport), 1, `${viewport.width}x${viewport.height}: content-search dialog top`)
+  }
+  const expectedTableHeight = fullscreen
+    ? viewport.height - 184
+    : Math.min(400, viewport.height * 0.7 - 184)
+  assertClose(state.tableHeight, expectedTableHeight, 1, `${viewport.width}x${viewport.height}: content-search table height`)
+  assert(state.close, `${viewport.width}: content-search close control missing`)
+  assert(
+    state.close.left >= 0 && state.close.right <= viewport.width && state.close.top >= 0 && state.close.bottom <= viewport.height,
+    `${viewport.width}x${viewport.height}: content-search close control outside viewport`,
+  )
+  assert(!state.inputFocused, `${viewport.width}: opening content search must not automatically focus the input`)
+  assert(state.loadingMasks === 0, `${viewport.width}: content-search table must not install a blocking loading mask`)
+  assert(state.emptyStates === 0, `${viewport.width}: content-search must retain the upstream empty-table structure`)
+  assert(state.loadMoreLeft < state.cancelLeft, `${viewport.width}: load-more must stay left of the cancel action`)
+  return state
+}
+
 async function assertTransientBookmarkError(page, message, viewport) {
   const errorMessage = page.locator('.el-message--error').filter({ hasText: message })
   await errorMessage.waitFor({ state: 'visible', timeout: 10000 })
@@ -255,6 +322,27 @@ async function installApiMocks(page, readerSettings = {}) {
     }
     if (path === '/books/1/search' && method === 'GET') {
       const keyword = url.searchParams.get('q') || ''
+      if (keyword === '滚动恢复') {
+        return route.fulfill(json({
+          list: Array.from({ length: 30 }, (_, index) => ({
+            chapterId: 11,
+            chapterIndex: 0,
+            chapterTitle: '第一章',
+            excerpt: `滚动恢复结果 ${index + 1}`,
+            query: keyword,
+            resultCountWithinChapter: index,
+            lineIndex: Math.min(3 + index, 47),
+            offset: 80 + index * 20,
+            percent: Math.min(0.95, 0.02 + index * 0.02),
+          })),
+          lastIndex: 1,
+          hasMore: false,
+          total: 2,
+          incomplete: false,
+          unavailableChapters: 0,
+          truncated: false,
+        }))
+      }
       return route.fulfill(json({
         list: [
           {
@@ -602,6 +690,8 @@ async function assertGlobalReaderDialog(page, viewport, selector, label) {
   assert(state.dialogHeight === viewport.height, `${viewport.width}: ${label} dialog height ${state.dialogHeight}`)
   if (label === '书签') {
     await assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen: true })
+  } else if (label === '搜索正文') {
+    await assertContentSearchDialogGeometry(page, viewport, { fullscreen: true })
   }
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
   assert(
@@ -820,6 +910,8 @@ async function assertDesktopReaderDialog(page, viewport, selector, label) {
   assert(state.settingsOpen === 1, `desktop: ${label} must not close the active settings workspace`)
   if (label === '书签') {
     await assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen: false })
+  } else if (label === '搜索正文') {
+    await assertContentSearchDialogGeometry(page, viewport, { fullscreen: false })
   }
 }
 
@@ -1092,6 +1184,16 @@ async function exerciseContentSearch(page, viewport, { mobile }) {
     }
   })
   const input = dialog.getByPlaceholder('搜索书籍内容')
+  const rawRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/books/1/search' && url.searchParams.get('q') === '契约段落 '
+  })
+  await input.fill('契约段落 ')
+  await input.press('Enter')
+  const rawRequest = await rawRequestPromise
+  assert(new URL(rawRequest.url()).searchParams.get('q') === '契约段落 ', `${viewport.width}: browser request trimmed the exact search query`)
+  await dialog.locator('.el-table__body-wrapper tbody tr').first().waitFor({ state: 'visible', timeout: 10000 })
+
   await input.fill('契约段落')
   await input.press('Enter')
   await dialog.getByText('有 1 章加载失败，搜索结果不完整，请检查书源或网络后重试', { exact: true })
@@ -1161,6 +1263,29 @@ async function exerciseContentSearch(page, viewport, { mobile }) {
   }))
   assert(restoredRouteState.query.chapter === '0', `${viewport.width}: returning through a search result must restore chapter zero`)
   assert(restoredRouteState.historyCalls.push === 0, `${viewport.width}: repeated cross-chapter search must never push browser history`)
+
+  await openSearch.click()
+  await dialog.waitFor({ state: 'visible', timeout: 10000 })
+  await input.fill('滚动恢复')
+  await input.press('Enter')
+  const restoreRows = dialog.locator('.el-table__body-wrapper tbody tr')
+  await restoreRows.nth(29).waitFor({ state: 'attached', timeout: 10000 })
+  const rememberedScrollTop = await dialog.locator('.el-scrollbar__wrap').first().evaluate((element) => {
+    element.scrollTop = 180
+    return element.scrollTop
+  })
+  assert(rememberedScrollTop > 0, `${viewport.width}: content-search fixture did not create a scrollable result table`)
+  await restoreRows.nth(10).evaluate(row => row.click())
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
+  await openSearch.click()
+  await dialog.waitFor({ state: 'visible', timeout: 10000 })
+  await page.waitForFunction(({ target, expected }) => {
+    const scroll = document.querySelector(target)?.querySelector('.el-scrollbar__wrap')
+    return (scroll?.scrollTop || 0) >= expected - 2
+  }, { target: '.global-content-search-dialog', expected: rememberedScrollTop }, { timeout: 10000 })
+  assert(await input.inputValue() === '滚动恢复', `${viewport.width}: reopening the same book must retain the latest search state`)
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10000 })
 }
 
 async function assertInlineDesktopCacheZone(page) {
@@ -1886,6 +2011,7 @@ async function runIPadAdaptiveViewport(browser, viewport) {
   await closeDesktopDialogWithHeader(page, '.global-bookmark-dialog', viewport, '书签')
   await page.locator('.reader-right-rail button[title="搜索正文"]').click()
   await page.waitForSelector('.global-content-search-dialog', { timeout: 10000 })
+  await assertContentSearchDialogGeometry(page, viewport, { fullscreen: false })
   await closeDesktopDialogWithHeader(page, '.global-content-search-dialog', viewport, '搜索正文')
   await page.locator('.reader-right-rail button[title="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })

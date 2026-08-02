@@ -68,6 +68,18 @@ test('jumps to the requested occurrence and scrolls the matching paragraph', () 
   assert.equal(saved.length, 1)
 })
 
+test('does not trim the exact query before locating a result', () => {
+  const { controller, options, paragraphs } = createFixture()
+  paragraphs[0].textContent = '目标'
+  paragraphs[1].textContent = '前文 目标 后文'
+
+  assert.equal(controller.jumpToMatch({
+    query: ' 目标 ',
+    resultCountWithinChapter: 0,
+  }), true)
+  assert.equal(options.contentEl.value.scrollTop, paragraphs[1].offsetTop - 80)
+})
+
 test('maps a fragmented flip paragraph from rendered column geometry instead of offsetLeft', () => {
   const fixture = createFixture({
     getMode: () => 'flip',

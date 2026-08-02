@@ -4,7 +4,7 @@
 
 上游工作副本：`/private/tmp/reader-dev-content-search-audit`。
 
-状态：**2026-08-02 第二轮源码合同已完成；测试先行、实现、真实浏览器与 Docker 均待执行。**
+状态：**2026-08-02 第二轮测试先行、实现及真实浏览器门已完成；Git 提交与 Docker 待执行。**
 
 本合同重新检查此前已标记为完成的
 [`book-content-search-p2-contract.md`](book-content-search-p2-contract.md)。旧合同已经证明原始正文、
@@ -108,3 +108,24 @@ query 或既有宽松测试均不构成保留理由。
 2. 添加会失败的前端静态/状态、Go raw-query 及浏览器几何合同。
 3. 只按失败合同重建 overlay、查询传递和 page-type/book identity 生命周期；不扩大 API/数据范围。
 4. 完成全量、真实浏览器和卷门后提交推送，并按可验证完整度决定是否发布 Docker。
+
+## 第二轮实施与发布前验证
+
+- 根级 Overlay 只在正常页面模式存在；桌面恢复固定上游动态宽度、top 和 400px 表格，
+  mini 恢复全屏及 `100dvh - 184px` 表格。标题输入恢复 75%/20% 位移、前缀图标和非自动
+  聚焦；表格恢复 100/250px 列、直接 `resultText`、无全表 loading 与无额外 empty。
+- 页脚恢复左侧“加载更多/上次位置”、右侧取消。安全增强“搜完全书”仅在桌面保留；既有
+  结果在后台加载期间仍可选择。
+- 同书会话改以 `id + bookUrl` 复合身份判断，同 ID 换源/URL 会 abort 并 reset；同一身份
+  关闭重开继续保留关键词、结果、游标及最新 table scrollTop。
+- 前端输入、Pinia intent、Reader 段落定位、现代 REST 和 legacy Reader3 接口均只拒绝
+  `""`，不再 trim 前后空格或纯空格；Go exact matcher 的 UTF-16、大小写、重叠和游标语义
+  保持不变。
+- 失败测试先证明旧代码会改写 raw query，且 shell/生命周期与固定上游冲突。实现后 frontend
+  **659/659**、Go 全量、production build 与差异检查通过。
+- 普通 Reader 浏览器合同通过 1440×900、390×844、360×800、1024×1366、
+  1366×1024，并覆盖强制移动 iPad；检查动态几何、无自动聚焦、raw query、table scrollTop、
+  同/跨章跳转、面板并存及无点击穿透。
+- 真实 Go API EPUB 浏览器合同通过 1440×900、390×844、360×800；除 EPUB 加载、资源、
+  进度、书签及夜间表面外，同时验证书内搜索 shell 的同一动态几何和非自动聚焦合同。
+- 本切片不修改 SQLite、缓存、书籍文件、阅读进度或备份格式。Docker 与新旧卷门在提交后执行。

@@ -2237,7 +2237,7 @@ func (s *Server) searchBookContent(c *gin.Context) {
 	if !ok {
 		return
 	}
-	keyword := strings.TrimSpace(firstNonBlank(c.Query("q"), c.Query("keyword")))
+	keyword := exactContentSearchQuery(c.Request.URL.Query())
 	if keyword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "q is required"})
 		return
@@ -2375,7 +2375,7 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "请输入书籍链接"})
 		return
 	}
-	keyword := strings.TrimSpace(req.Keyword)
+	keyword := req.Keyword
 	if keyword == "" {
 		c.JSON(http.StatusOK, gin.H{"isSuccess": false, "errorMsg": "请输入搜索关键词"})
 		return
@@ -2448,6 +2448,16 @@ func (s *Server) legacySearchBookContent(c *gin.Context) {
 			"truncated":           scan.Truncated,
 		},
 	})
+}
+
+func exactContentSearchQuery(values url.Values) string {
+	if query, ok := values["q"]; ok && len(query) > 0 {
+		return query[0]
+	}
+	if query, ok := values["keyword"]; ok && len(query) > 0 {
+		return query[0]
+	}
+	return ""
 }
 
 func legacyContentMatches(matches []contentMatch) []legacyContentMatch {

@@ -19,8 +19,8 @@ export function useReaderSearchNavigation(options) {
   }
 
   function jumpToFirstSearchMatch() {
-    const keyword = String(unref(options.keyword) || '').trim()
-    if (!keyword) return false
+    const keyword = String(unref(options.keyword) ?? '')
+    if (keyword.length === 0) return false
     return jumpToMatch({ query: keyword, resultCountWithinChapter: 0 })
   }
 
@@ -28,8 +28,8 @@ export function useReaderSearchNavigation(options) {
     const routeQuery = options.getRouteQuery?.() || {}
     const keyword = String(
       result?.query || unref(options.keyword) || routeQuery.q || '',
-    ).trim()
-    if (!keyword) return false
+    )
+    if (keyword.length === 0) return false
     const paragraphs = [...(paragraphScope()?.querySelectorAll('h3, p') || [])]
     if (!paragraphs.length) return false
     const targetIndex = Number.isInteger(result?.resultCountWithinChapter)

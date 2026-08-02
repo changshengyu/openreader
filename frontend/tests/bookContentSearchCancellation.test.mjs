@@ -110,3 +110,34 @@ test('does not commit content rows after the authenticated operation expires', a
 
   assert.deepEqual(controller.results.value, [])
 })
+
+test('passes leading, trailing and all-space queries unchanged and rejects only the empty string', async () => {
+  const calls = []
+  const controller = searchController(deferredSearchRequest(calls))
+
+  controller.keyword.value = ' 目标 '
+  await nextTick()
+  const padded = controller.search()
+  await nextTick()
+  assert.equal(calls[0].keyword, ' 目标 ')
+  calls[0].resolve({
+    data: { list: [], lastIndex: 0, hasMore: false, total: 1 },
+  })
+  await padded
+
+  controller.keyword.value = '   '
+  await nextTick()
+  const spaces = controller.search()
+  await nextTick()
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].keyword, '   ')
+  calls[1].resolve({
+    data: { list: [], lastIndex: 0, hasMore: false, total: 1 },
+  })
+  await spaces
+
+  controller.keyword.value = ''
+  await nextTick()
+  await controller.search()
+  assert.equal(calls.length, 2)
+})
