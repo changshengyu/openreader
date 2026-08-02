@@ -590,3 +590,27 @@ amd64/arm64 OCI index
 本轮随后由本机发布包含第八轮修复及书内搜索第二轮重建的 `1801037` 与 `latest`，OCI index
 为 `sha256:5d2fdb171e734d5debece77f91ae31495fc1ba7ee9eec28c88aa2b3f41eeeee5`。设备部署后的
 最终验收值应为 `/api/health.version === "1801037"`；在此之前的黑夜反馈仍属于旧容器。
+
+## 第十轮实机反馈：GHCR 已更新但运行容器再次未替换（2026-08-02）
+
+用户再次指出黑色阅读背景下的实际文字承载层仍不是黑色。本轮重新读取线上健康接口，结果仍为：
+
+- `version: b78d39c`
+- `commit: b78d39c4cb8bed0a7dfc8ec1f0f69dbf243309c8`
+- `buildDate: 2026-07-28T13:58:52Z`
+
+同时重新读取 GHCR，`ghcr.io/changshengyu/openreader:latest` 与不可变标签
+`ghcr.io/changshengyu/openreader:5459f02` 均指向包含第八轮不透明纯黑文字面的
+amd64/arm64 OCI index：
+
+`sha256:a8d04ee3e5f6aac3e2a41b908da175e17b7a57e1fb440df51677f35d9496afe9`。
+
+源码与镜像内容再次确认：普通正文 `[data-reader-block]` 及其后代使用
+`background-color: #000000 !important`、`color: #ffffff !important`；EPUB 注入样式和
+后端 bridge 同样把实际后代节点接管为纯黑并在退出夜间后恢复作者样式。故本次现象仍与
+`b78d39c` 的透明穿透合同完全一致，不构成新应用实现缺口。
+
+本轮裁决继续为 **deployment-blocked-device-verification**。部署时应固定拉取
+`5459f02` 并强制重建，而不是仅刷新浏览器或再次启动旧容器；只有线上
+`/api/health.version === "5459f02"` 后，才开始复验实际文字节点。如果健康值仍为
+`b78d39c`，则页面必然仍在执行旧静态资源。
