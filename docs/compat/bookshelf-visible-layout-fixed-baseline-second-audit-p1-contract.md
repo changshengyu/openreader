@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**regression-fixed / validated / awaiting Docker publish**
+状态：**aligned / Docker-published / awaiting-device-verification**
 
 > 2026-08-05 设备反馈后的勘误：`60984b6` 本批曾在 scoped Home 样式下通过移动几何合同；
 > `c851c5f` 为让搜索/探索结果复用同一书架样式，将 `Home.vue` 的外部样式从 scoped 改为全局，
@@ -262,5 +262,21 @@ BookGroup、BookInfo、书架 freshness、进度和 `lastCheckTime` 继续由各
   `git diff --check`；书架 1440×900/1024×1366/390×844/360×800、Reader 移动合同和
   Index 搜索/探索工作台合同全部通过。
 
-当前仅剩 Docker 本地多架构构建、GHCR 推送和 mounted-volume/backup 门禁；设备端仍需使用新
-镜像复核真实书目。
+上述应用门禁完成后进入发布；实际镜像与未执行门禁记录如下。设备端仍需使用新镜像复核真实书目。
+
+## 9. 2026-08-05 Docker 发布结果
+
+实现提交 `7971e232bcc0226b595f448d965e3997ef735f42` 已推送 `main`。镜像由本机
+OrbStack 完成 amd64/arm64 构建并直接上传 GHCR，没有使用云端构建：
+
+- `ghcr.io/changshengyu/openreader:7971e23`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:5b16cf1cab8a3d4750e69a8e9632450195c829be99047bbb5d0de4ca598b6f0a`
+- amd64 manifest：`sha256:1d92ef5e7e2aa37a2833fca90227c9179ee4f1bc2aaa38877ee5af127a873cac`
+- arm64 manifest：`sha256:57e4a8adc0903f7582f5a1b9da048a2170bb46ac013b882533f588d437bd2940`
+
+mounted-volume/backup 脚本本轮**未执行**：镜像发布后，Codex 对 Docker 容器门禁的主机审批因
+当前审批额度耗尽被平台拒绝，并明确禁止用替代命令绕过。该项不能写成通过。本批只修改前端 CSS、
+静态/浏览器测试与文档，没有修改 Go、SQLite、迁移、`data/`、`cache/`、`library/` 或
+backup/restore；最近一批 `c851c5f` 的同一持久化代码已经通过新旧卷门，但这只能作为继承证据，
+不能替代本镜像尚未执行的门禁。设备端可先验证移动书架宽度，审批额度恢复后补跑该镜像的卷门。

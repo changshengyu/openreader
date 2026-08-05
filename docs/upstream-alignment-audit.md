@@ -8,6 +8,13 @@
 
 ## 当前结论
 
+- 2026-08-05：修复 `c851c5f` 后普通移动书架由 scoped→global CSS 暴露的 28px 宽度回归。
+  390px 视口曾实测书籍行仅 362px；书架场景现以更高优先级恢复固定上游外层零 padding，
+  390/360px 行宽恢复为 390/360px，桌面/iPad、Reader 内书架和 Index 搜索/探索均回归通过。
+  frontend 701/701、Go/build 通过；本机发布 `7971e23`/`latest`，OCI index 为
+  `sha256:5b16cf1cab8a3d4750e69a8e9632450195c829be99047bbb5d0de4ca598b6f0a`。
+  本镜像卷/备份门因 Codex 主机审批额度耗尽未执行；本批无数据代码改动，不能把继承证据冒充
+  本镜像门禁。
 - 2026-08-02：按固定 `Index.vue`/`Explore.vue` 完成搜索与探索可见工作区第二轮重建并发布。
   侧栏只呈现 single/multi 条件设置，结果改为保持服务端顺序的唯一扁平 380px shelf card，恢复
   JSON editor/add 双动作；Explore 恢复 desktop 600px/top 0、mini 100vw 非全高、无 backdrop、

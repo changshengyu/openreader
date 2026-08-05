@@ -1,5 +1,23 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-05 P1 移动书架发布后宽度回归
+
+设备验收确认 `c851c5f` 的普通移动书架明显变窄。生产构建在 390px 视口稳定复现书籍行仅
+362px；根因是上一批为搜索/探索共享 `home-shelf.css` 将 Home 外部样式从 scoped 改为全局，
+使通用 `.mobile-shell .app-page` 的左右 14px padding 以更高优先级覆盖固定上游移动 shelf 的
+外层零 padding。标题、分组和书籍行因此整体各向内移动 14px。
+
+本轮先以固定 `Index.vue` 更新专项合同，再让静态 cascade 合同与真实浏览器合同分别失败；
+修复只以 `.app-shell.mobile-shell .shelf-page` 恢复 shelf 场景外层零 padding，不删除其它
+移动页面的通用间距。390×844/360×800 行宽恢复为 390/360px，1440×900/1024×1366、
+Reader 内书架根/内容/列表/卡片层和 Index 搜索/探索回归均通过。frontend 701/701、Go 全量和
+production build 通过。
+
+`7971e23` 已由本机 OrbStack 构建并发布为同名标签与 `latest`，OCI index 为
+`sha256:5b16cf1cab8a3d4750e69a8e9632450195c829be99047bbb5d0de4ca598b6f0a`。本镜像
+mounted-volume/backup 门因 Codex 主机审批额度耗尽未执行；本批无后端、SQLite 或持久化改动，
+上批同代码路径的门禁可作继承证据但不能替代本镜像门禁。
+
 ## 2026-08-02 P1 Index 搜索/探索可见工作区第二轮固定基准复审
 
 此前 P1-B 已关闭 REST cursor、迟到请求、临时 Reader、BookInfo 与加入事务，但把当时的可见结果
