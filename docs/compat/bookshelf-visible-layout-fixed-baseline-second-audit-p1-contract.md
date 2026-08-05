@@ -4,7 +4,14 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**aligned / Docker-published / awaiting-device-verification**
+状态：**regression-confirmed after `c851c5f` / fix in progress**
+
+> 2026-08-05 设备反馈后的勘误：`60984b6` 本批曾在 scoped Home 样式下通过移动几何合同；
+> `c851c5f` 为让搜索/探索结果复用同一书架样式，将 `Home.vue` 的外部样式从 scoped 改为全局，
+> 暴露了既有全局 `.mobile-shell .app-page { padding: 18px 14px 82px; }` 的高优先级覆盖。
+> 390px 视口中的普通书架行因此实测只有 362px，左右各错误保留 14px，违反本合同“移动
+> shelf 去除外层 padding、书籍行宽等于视口”的固定基准。原 Docker 状态不再代表当前
+> `latest` 的移动书架几何已经对齐。
 
 本文件只审查普通 Index 书架的标题、编辑搜索、分组标签、书籍卡片、加载/空态、昼夜和响应式
 布局。书架网络新鲜度、阅读进度、最后更新时间、BookManage、BookGroup manager、BookInfo、搜索/
@@ -137,6 +144,20 @@
 | 加载 | skeleton 替换真实卡片区域 | `must-fix` | 目标区域 loading overlay 与精确文案 |
 | 空态 | 自造 el-empty/三套文案 | `must-fix` | 恢复空 wrapper |
 | 夜间 | shelf/tab 仍硬编码白色 | `must-fix` | 恢复固定上游夜间表面和文字层 |
+
+## 3.1 2026-08-05 发布后移动宽度回归合同
+
+| 层 | 固定上游 | `c851c5f` 生产构建实测 | 判定与修复边界 |
+|---|---|---|---|
+| 移动 shelf 根层 | `<=750px` 时外层左右 padding 为 `0` | `.shelf-page` 同时命中全局 `.mobile-shell .app-page`，最终左右 padding 为 `14px` | `must-fix`：书架场景显式覆盖通用 app-page padding，不删除其他页面需要的通用移动间距 |
+| 书籍列表/行 | list 为纵向 flex；每行 `box-sizing:border-box;width:100%;padding:10px 20px`，行外框等于视口宽度 | 390px 视口行外框为 362px；缩窄量精确等于 `14px × 2` | `must-fix`：390/360 下分别恢复 390/360px；行内部 20px padding 不变 |
+| 标题/分组 | 标题左右 inset 24px，分组左右 margin 24px | 额外叠加根层 14px，最终可见位置整体内缩 | `must-fix`：恢复相对视口 24px，而不是相对 14px 内缩容器再加 24px |
+| 搜索/探索结果复用 | 上游结果场景可复用普通 shelf 几何 | 全局共享样式本身可保留，但不能改变普通 Home shelf 的最终 cascade | `technical-stack-equivalent`：保留一份共享样式；以场景选择器锁定普通/结果书架的上游最终几何 |
+| 阅读器内书架 | 独立 Reader Popover 合同，不受 Index `.app-page` 控制 | 当前 Reader 根层仍为 100vw；本次 28px 回归不来自 Reader | `not part of this regression`：补内层宽度浏览器断言，避免只检查根层 |
+
+测试顺序固定为：先让现有 `bookshelf-visible-layout-contract.mjs` 在 390px 报出
+`mobile row width 362`；再修最终 CSS cascade；最后要求 1440×900、1024×1366、390×844、
+360×800 全部通过，并增加 Reader 内书架根层、内容层、列表层的宽度/inset 观测。
 
 ## 4. 先测后改闸门
 
