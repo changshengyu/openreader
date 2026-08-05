@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**regression-confirmed after `c851c5f` / fix in progress**
+状态：**regression-fixed / validated / awaiting Docker publish**
 
 > 2026-08-05 设备反馈后的勘误：`60984b6` 本批曾在 scoped Home 样式下通过移动几何合同；
 > `c851c5f` 为让搜索/探索结果复用同一书架样式，将 `Home.vue` 的外部样式从 scoped 改为全局，
@@ -247,3 +247,20 @@ TXT、EPUB、UMD、CBZ、相对 cache、owner isolation、普通/portable backup
 
 本批只签收普通书架可见布局。设备侧仍需验证真实书目长度、封面与自定义分组组合；BookManage、
 BookGroup、BookInfo、书架 freshness、进度和 `lastCheckTime` 继续由各自已关闭合同约束。
+
+## 8. 2026-08-05 移动宽度回归修复结果
+
+- `home-shelf.css` 在 `<=750px` 使用书架场景选择器
+  `.app-shell.mobile-shell .shelf-page` 明确恢复 `padding: env(safe-area-inset-top) 0 0`；
+  它只覆盖普通/搜索/探索共享的 shelf 场景，不删除其他 `.app-page` 需要的通用移动间距。
+- 静态合同先在旧 CSS 上失败，再随修复转绿；真实生产构建合同先稳定复现
+  `390: mobile row width 362`，修复后 390×844/360×800 的书籍行分别恢复为 390/360px。
+- `reader-mobile-contract.mjs` 额外观察 Reader 内书架的根层、主内容层、列表层和卡片层：
+  根层/主内容层保持 100vw，列表只扣除自身已记录内边距，卡片必须填满列表。该独立 Reader
+  场景没有受到 Index CSS 回归或本次修复影响。
+- 验证：frontend `701/701`、Go `go test ./...`、Vite production build、
+  `git diff --check`；书架 1440×900/1024×1366/390×844/360×800、Reader 移动合同和
+  Index 搜索/探索工作台合同全部通过。
+
+当前仅剩 Docker 本地多架构构建、GHCR 推送和 mounted-volume/backup 门禁；设备端仍需使用新
+镜像复核真实书目。

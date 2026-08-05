@@ -435,6 +435,11 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
     const workspace = workspaces.at(-1)
     const rect = workspace.getBoundingClientRect()
     const header = workspace.querySelector('.reader-mobile-workspace-head')
+    const primaryBody = workspace.querySelector('.reader-mobile-primary-popover-body')
+    const primaryBodyRect = primaryBody?.getBoundingClientRect()
+    const primaryBodyStyle = primaryBody ? window.getComputedStyle(primaryBody) : null
+    const shelfListRect = workspace.querySelector('.reader-shelf-list')?.getBoundingClientRect()
+    const shelfCardRect = workspace.querySelector('.reader-shelf-card')?.getBoundingClientRect()
     const visibleDrawers = Array.from(document.querySelectorAll('.el-drawer')).filter((element) => {
       const drawerRect = element.getBoundingClientRect()
       const style = window.getComputedStyle(element)
@@ -455,6 +460,11 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
       paddingTop: window.getComputedStyle(workspace).paddingTop,
       paddingBottom: window.getComputedStyle(workspace).paddingBottom,
       hasPrimaryBody: Boolean(workspace.querySelector('.reader-mobile-primary-popover-body')),
+      primaryBodyWidth: Math.round(primaryBodyRect?.width || 0),
+      primaryBodyPaddingLeft: Number.parseFloat(primaryBodyStyle?.paddingLeft || '0'),
+      primaryBodyPaddingRight: Number.parseFloat(primaryBodyStyle?.paddingRight || '0'),
+      shelfListWidth: Math.round(shelfListRect?.width || 0),
+      shelfCardWidth: Math.round(shelfCardRect?.width || 0),
       toolbarZIndex: Number(window.getComputedStyle(document.querySelector('.reader-mobile-top.visible')).zIndex || 0),
     }
   }, label)
@@ -471,6 +481,14 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
     assert(workspaceState.hasPrimaryBody, `${viewport.width}: ${label} primary popover missing owned content body`)
     assert(workspaceState.zIndex > 8, `${viewport.width}: ${label} primary popover must paint above reader content`)
     assert(workspaceState.toolbarZIndex > workspaceState.zIndex, `${viewport.width}: ${label} mobile toolbar must stay interactive above the primary popover`)
+    if (label === '书架') {
+      const expectedShelfWidth = Math.round(
+        viewport.width - workspaceState.primaryBodyPaddingLeft - workspaceState.primaryBodyPaddingRight,
+      )
+      assert(workspaceState.primaryBodyWidth === viewport.width, `${viewport.width}: reader shelf primary body width ${workspaceState.primaryBodyWidth}`)
+      assert(workspaceState.shelfListWidth === expectedShelfWidth, `${viewport.width}: reader shelf list width ${workspaceState.shelfListWidth}/${expectedShelfWidth}`)
+      assert(workspaceState.shelfCardWidth === workspaceState.shelfListWidth, `${viewport.width}: reader shelf card width ${workspaceState.shelfCardWidth}/${workspaceState.shelfListWidth}`)
+    }
   }
   if (contentSized) {
     assert(workspaceState.top === 0, `${viewport.width}: ${label} primary popover top ${workspaceState.top}`)

@@ -68,6 +68,11 @@ test('Home locks the desktop and mobile fixed-baseline geometry', () => {
   assert.match(shelfCss, /\.cover-img\s*\{[\s\S]*width:\s*84px;[\s\S]*height:\s*112px;/)
   assert.match(shelfCss, /\.info\s*\{[\s\S]*height:\s*112px;[\s\S]*margin-left:\s*20px;/)
   assert.match(shelfCss, /@media \(max-width:\s*750px\)[\s\S]*\.book-row\s*\{[\s\S]*width:\s*100%;[\s\S]*box-sizing:\s*border-box;[\s\S]*margin-bottom:\s*0;[\s\S]*padding:\s*10px 20px;/)
+  assert.match(
+    shelfCss,
+    /@media \(max-width:\s*750px\)[\s\S]*\.app-shell\.mobile-shell \.shelf-page\s*\{[\s\S]*padding:\s*env\(safe-area-inset-top\) 0 0;/,
+    'mobile shelf must outrank the generic .mobile-shell .app-page padding after the shared stylesheet became global',
+  )
   assert.doesNotMatch(shelfCss, /@media \(max-width:\s*520px\)/)
 })
 

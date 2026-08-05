@@ -403,7 +403,8 @@ html.dark-reader .shelf-page .shelf-search-wrapper .el-input__inner {
 }
 
 @media (max-width: 750px) {
-  .shelf-page {
+  .shelf-page,
+  .app-shell.mobile-shell .shelf-page {
     height: 100vh;
     max-height: 100vh;
     padding: env(safe-area-inset-top) 0 0;
