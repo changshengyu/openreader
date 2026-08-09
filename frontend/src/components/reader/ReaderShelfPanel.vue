@@ -99,6 +99,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .reader-shelf-list {
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 16px;
   max-height: calc(100vh - 154px);
   overflow-y: auto;
   overscroll-behavior: contain;

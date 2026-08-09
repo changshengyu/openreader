@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**automated-upstream-geometry-aligned / Docker-published / device-feedback-open**
+状态：**browser-validated / Docker-pending / awaiting-device-verification**
 
 本合同只处理 Reader 顶部“书架”按钮打开的阅读内书架，不改变 Index 首页普通书架。普通书架在
 `7971e23` 已恢复移动书籍行等于视口宽度；两者是不同 DOM、CSS 和验收边界。
@@ -121,3 +121,48 @@ recreate 到该版本后才能验收；旧容器 restart 不能更新镜像内�
 因此本项不再以“部署滞后”关闭，而改为 **device-feedback-open**。在取得实际设备可见层证据前不得
 随意把 20px 改成 0：需要先区分 Index 普通书架（书籍行应为 390/360px）与 Reader 顶栏书架
 Popover（列表应为 350/320px），再对照截图逐层测量视口、根层、内容层和列表层。
+
+## 7. 真实账号复现与第二个结构偏差（2026-08-09）
+
+使用真实账号和 389 本书在当前线上 `77a60d8` 的 390×844 视口重新逐层测量后，确认横向几何
+本身仍是：Popover 390px、左右 20px、列表/条目 350px；首页普通书架仍为 390px 整行。设备所见的
+“明显变窄”不是这四个横向数值再次回归，而是阅读内书架的纵向轨道被压缩后形成的错误视觉结果：
+
+- `.reader-shelf-list` 固定高 300px 且使用 CSS Grid；
+- 移动分支没有锁定 `align-content:start`、内容高度行轨和 16px 行间距；
+- 当书架有 389 项时，浏览器把自动行轨压进 300px，首个 `.reader-shelf-card` 实测仅 17px 高；
+- 标题本身高 22px，章节行被压为 0px，文字溢出并互相覆盖，截图表现为所有内容挤在一条窄带内；
+- 原浏览器合同只返回一本书且只断言横向宽度，因此无法暴露多书架下的轨道坍缩。
+
+固定上游 `BookShelf.vue` 的权威结构不是可收缩的单列 Grid：移动端 `.shelfbook-list` 为纵向 flex，
+行间距 16px，每项包含 8px 上下 padding、16px 标题、12px 未读数和 14px 章节；300px 高度属于可
+滚动视口，不得拿来平均压缩所有条目。`min-width:900px` 时才切四列、24px 列间距。
+
+本次 must-fix 合同：
+
+1. 维持 20px 横向 inset，不用删除 padding 掩盖真正问题；
+2. 移动单列条目按内容高度排列、行间距 16px，章节行可见，首项高度不得小于 60px；
+3. 任意书架数量不得改变单项高度，多余项目只在 300px 列表内纵向滚动；
+4. `min-width:900px` 继续保持上游四列，每行同样按内容高度排列；
+5. 浏览器契约必须至少提供 12 本书，并同时断言条目高度、标题/章节高度、行间距和列表
+   `scrollHeight > clientHeight`，不能再用单书架假数据验收。
+
+实施顺序保持“合同 → 失败测试 → CSS 修复 → 双手机真实浏览器 → 全量回归”。本节确认的是此前
+宽度专项遗漏的第二个结构错误，不能把先前的 `automated-upstream-geometry-aligned` 视为设备验收。
+
+## 8. 行轨修复与回归结果（2026-08-09）
+
+- 浏览器合同先在旧 CSS 上稳定失败：390px 视口首个条目高度只有 25px；该失败与真实账号 389 本书
+  时实测的 17px/章节 0px 属于同一行轨坍缩。
+- `ReaderShelfPanel.vue` 给滚动列表增加 `grid-auto-rows:max-content`、`align-content:start` 和上游
+  16px 行间距。单项不再按书架总数压缩，300px 仅作为滚动视口。
+- 合同数据扩展为 12 本书，并锁定首项至少 60px、标题至少 20px、章节至少 16px、相邻行间距
+  16px、`scrollHeight > clientHeight`；原有 20px/350px 与 20px/320px 横向合同继续保留。
+- 开发构建与生产构建的完整 Reader 浏览器合同均通过 1440×900、390×844、360×800、
+  1024×1366/1366×1024 自适应 iPad 和 1024×1366 强制移动模式。
+- 首页普通书架独立回归通过 1440×900、1024×1366、390×844、360×800，移动书籍行继续保持
+  390/360px 整行宽度；本批没有混改 Index 书架。
+- frontend 713/713、production build、全量 Go 和 `git diff --check` 通过。
+
+本批没有 API、SQLite、缓存、进度、书架排序或数据迁移变化；允许差异仍只有项目既有的连续滚动与
+数值 stepper，本次行轨修复本身无上游可见差异。Docker 发布和真实设备复验仍待完成。
