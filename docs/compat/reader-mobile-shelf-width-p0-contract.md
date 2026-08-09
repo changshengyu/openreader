@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**inventory complete / must-fix / implementation pending**
+状态：**implemented / regression-validated / Docker-pending**
 
 本合同只处理 Reader 顶部“书架”按钮打开的阅读内书架，不改变 Index 首页普通书架。普通书架在
 `7971e23` 已恢复移动书籍行等于视口宽度；两者是不同 DOM、CSS 和验收边界。
@@ -58,3 +58,16 @@ padding，失去了上游外层 Popover padding 与负 margin 的抵消语义。
 
 实施仅调整 Reader 移动主 Popover 的水平内容 inset 和对应测试，不修改书架数据、排序、刷新、进度、
 API、SQLite、缓存或持久化格式。
+
+## 4. 实施与验证结果
+
+- `Reader.vue` 的移动主 Popover 只把水平 padding 从 24px 恢复为 20px；纵向 safe-area、300px
+  列表高度、工具层层级、点击关闭和正文几何未修改。
+- 静态合同先在旧实现稳定失败，修复后通过。真实浏览器在 390×844、360×800 分别得到 350px、
+  320px 的列表/单列书籍条目；根层和内容层保持 `100vw`，左右 inset 均为 20px。
+- 1024×1366 强制手机模式继续按上游 `min-width:900px` 四列规则渲染：984px 列表中每卡 228px；
+  测试不再把手机单列假设错误套到宽屏强制模式。
+- Reader 完整浏览器合同通过桌面、双手机、1024×1366/1366×1024 自适应 iPad 和 1024×1366
+  强制手机模式；Index 普通书架在 1440×900、1024×1366、390×844、360×800 继续保持固定网格、
+  390/360px 移动整行宽度、加载/空态/夜间合同。
+- frontend 706/706、production build、全量 Go 和 `git diff --check` 通过。Docker 发布证据待提交后补写。

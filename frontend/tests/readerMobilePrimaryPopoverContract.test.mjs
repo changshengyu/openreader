@@ -16,6 +16,11 @@ test('primary reader popovers expose an upstream-like root without generic works
   const markedPrimaryPanels = primaryPanels.filter(block => /\bprimary\b/.test(block) && /:show-header="false"/.test(block))
   assert.equal(markedPrimaryPanels.length, 4, 'shelf, source, toc, and settings must use the primary-popover shell without a generic header')
   assert.match(readerSource, /reader-mobile-primary-popover-body/, 'primary panels must own their inner popover padding and title layout')
+  assert.match(
+    readerSource,
+    /\.reader-shell\.mini-interface \.reader-mobile-primary-popover-body\s*\{[\s\S]*?padding:\s*calc\(24px \+ env\(safe-area-inset-top\)\) 20px calc\(24px \+ env\(safe-area-inset-bottom\)\)/,
+    'mobile primary-popover content must reproduce reader-dev final 20px horizontal inset',
+  )
 })
 
 test('primary mobile popovers keep the upstream tool strip interactive and use content-sized bounds', () => {

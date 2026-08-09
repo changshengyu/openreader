@@ -2675,7 +2675,7 @@ function readError(err, fallback) {
   width: 100%;
   height: auto;
   min-height: 0;
-  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
   color: var(--reader-popup-text, var(--reader-text));
 }
 

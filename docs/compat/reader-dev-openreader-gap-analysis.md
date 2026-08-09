@@ -3462,6 +3462,8 @@ CBZ、relative-cache、owner-isolation。OrbStack 在本机构建并推送 `92b7
 350/320px。
 
 当前主面板根虽为 `100vw`，但内容层直接使用左右各 24px，列表只有 342/312px。现有 smoke 又从
-当前 computed padding 反推 expected width，因而无法发现该偏差。裁决为 `must-fix`：先把静态和真实
-浏览器合同锁到上游固定数值，再只调整 Reader 主 Popover 水平 inset；Index 普通书架的 390/360px
-整行宽度不得改变。
+当前 computed padding 反推 expected width，因而无法发现该偏差。裁决为 `must-fix` 后已测试先行
+实施：Reader 水平 inset 恢复 20px，390/360 列表实测 350/320px；1024 强制手机模式仍按上游
+`min-width:900px` 显示四列。Reader 桌面/双手机/自适应与强制 iPad、Index 书架四视口、frontend
+706/706、全量 Go 和 production build 通过。Index 普通书架的 390/360px 整行宽度未改变；Docker
+发布证据待提交后补写。
