@@ -53,7 +53,7 @@ func TestRemoteBookPersistsSearchAndChapterSourceVariables(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := ""
 		switch request.URL.Path {
 		case "/book/1":
@@ -130,7 +130,7 @@ func TestRemoteChapterContentPersistsChapterSourceVariables(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(`<main class="content">忽略正文</main><span class="token">正文令牌</span>`)),

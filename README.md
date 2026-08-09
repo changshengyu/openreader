@@ -142,6 +142,7 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216` (16 MiB) | Maximum response bytes decoded by one shared book-source or RSS request |
 | `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` | Maximum redirects followed by one shared book-source or RSS request |
 | `OPENREADER_MAX_SOURCE_RETRIES` | `3` | Maximum URL-option retries after non-2xx source responses |
+| `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Administrator-only comma-separated exact host, bare IP, or CIDR allowed to reach non-public networks; invalid values fail startup |
 | `OPENREADER_MAX_IMPORT_BYTES` | `134217728` (128 MiB) | Maximum bytes accepted for one local-book or LocalStore/WebDAV upload, preview, or import; adjust only when the host has sufficient memory/disk |
 | `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | Maximum embedded images processed for one chapter |
 | `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum bytes for one cached chapter image |
@@ -152,6 +153,20 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456` (256 MiB) | Maximum derived remote-cover cache bytes per user |
 | `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | Total timeout for one remote-cover request |
 | `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | Maximum redirects for one remote-cover request |
+
+Book-source and RSS requests reject loopback, private, link-local, metadata, benchmark, documentation, and other
+special-use networks by default. To use a trusted NAS/LAN source, prefer an exact hostname or address, for example:
+
+```yaml
+environment:
+  OPENREADER_SOURCE_NETWORK_ALLOWLIST: "nas.home,192.168.50.20"
+```
+
+The allowlist also applies to explicit HTTP/SOCKS source-proxy endpoints and is not stored in the database or
+backups. Ambient `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` variables are intentionally ignored by the shared source
+fetcher; use the source's explicit `proxy` setting or a TUN/system route instead. DNS fake-IP modes such as the
+`198.18.0.0/15` range used by some Clash configurations require an explicit CIDR exception on a trusted deployment;
+that exception authorizes the whole fake-IP range, so prefer real-IP/Redir-Host DNS when practical.
 
 ## Tech Stack
 

@@ -22,7 +22,7 @@ func TestSourceRequestErrorsAreStructuredAndRedacted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restore := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	restore := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("upstream https://alice:supersecret@source-errors.example/data?token=private-token failed")
 	})})
 	defer restore()
@@ -90,7 +90,7 @@ func TestSharedFetcherAPIErrorsRemainRedacted(t *testing.T) {
 	}
 
 	var requests atomic.Int32
-	restore := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	restore := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		requests.Add(1)
 		return nil, errors.New("upstream https://alice:rss-password@rss-errors.example/article?session=rss-query-secret header rss-header-secret proxy rss-proxy-secret")
 	})})
@@ -231,7 +231,7 @@ func TestRemoteSourcePreviewRequiresSourceEditPermissionBeforeFetch(t *testing.T
 	}
 
 	var requests atomic.Int32
-	restore := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	restore := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		requests.Add(1)
 		return nil, errors.New("permission check must run before transport")
 	})})
@@ -308,7 +308,7 @@ func TestDynamicSourceHeaderFailsBeforeFetchWithStructuredErrors(t *testing.T) {
 	}
 
 	var requests atomic.Int32
-	restore := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	restore := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		requests.Add(1)
 		return nil, errors.New("dynamic header must be rejected before a remote request")
 	})})

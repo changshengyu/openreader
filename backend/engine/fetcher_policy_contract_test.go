@@ -34,7 +34,7 @@ func (body *policyTrackingBody) Close() error {
 
 func TestSharedFetcherRejectsUnsafeURLBeforeTransport(t *testing.T) {
 	var requests atomic.Int32
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requests.Add(1)
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -69,7 +69,7 @@ func TestSharedFetcherRejectsUnsafeURLBeforeTransport(t *testing.T) {
 func TestSharedFetcherBoundsResponseBeforeDecodeAndClosesBody(t *testing.T) {
 	t.Run("content length", func(t *testing.T) {
 		body := &policyTrackingBody{reader: strings.NewReader("must not be read")}
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode:    http.StatusOK,
 				ContentLength: contractMaxSourceResponseBytes + 1,
@@ -91,7 +91,7 @@ func TestSharedFetcherBoundsResponseBeforeDecodeAndClosesBody(t *testing.T) {
 
 	t.Run("chunked body", func(t *testing.T) {
 		body := &policyTrackingBody{reader: io.LimitReader(zeroReader{}, contractMaxSourceResponseBytes+1)}
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode:    http.StatusOK,
 				ContentLength: -1,
@@ -127,7 +127,7 @@ func TestSharedFetcherAppliesConfiguredResponseAndTimeoutLimits(t *testing.T) {
 
 		var responseText atomic.Value
 		responseText.Store("1234")
-		restoreClient := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restoreClient := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode:    http.StatusOK,
 				ContentLength: -1,
@@ -157,7 +157,7 @@ func TestSharedFetcherAppliesConfiguredResponseAndTimeoutLimits(t *testing.T) {
 			MaxRetries:       1,
 		})
 		defer restoreLimits()
-		restoreClient := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restoreClient := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			<-request.Context().Done()
 			return nil, request.Context().Err()
 		})})
@@ -182,7 +182,7 @@ func (zeroReader) Read(buffer []byte) (int, error) {
 
 func TestSharedFetcherCapsSourceRetryWithoutChangingFinalBody(t *testing.T) {
 	var attempts atomic.Int32
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		attempt := attempts.Add(1)
 		return &http.Response{
 			StatusCode: http.StatusServiceUnavailable,
@@ -207,6 +207,8 @@ func TestSharedFetcherCapsSourceRetryWithoutChangingFinalBody(t *testing.T) {
 
 func TestSharedFetcherRedirectLimitAndHeaderIsolation(t *testing.T) {
 	t.Run("allows five redirects and rejects sixth", func(t *testing.T) {
+		restore := SetHTTPClientForTesting(&http.Client{})
+		defer restore()
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			step, _ := strconv.Atoi(strings.TrimPrefix(request.URL.Path, "/"))
 			final, _ := strconv.Atoi(request.URL.Query().Get("final"))
@@ -229,6 +231,8 @@ func TestSharedFetcherRedirectLimitAndHeaderIsolation(t *testing.T) {
 	})
 
 	t.Run("same origin keeps source headers", func(t *testing.T) {
+		restore := SetHTTPClientForTesting(&http.Client{})
+		defer restore()
 		seen := make(chan http.Header, 1)
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			if request.URL.Path == "/start" {
@@ -255,6 +259,8 @@ func TestSharedFetcherRedirectLimitAndHeaderIsolation(t *testing.T) {
 	})
 
 	t.Run("cross origin drops credentials and custom source headers", func(t *testing.T) {
+		restore := SetHTTPClientForTesting(&http.Client{})
+		defer restore()
 		seen := make(chan http.Header, 1)
 		target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			seen <- request.Header.Clone()
@@ -290,7 +296,7 @@ func TestSharedFetcherRedirectLimitAndHeaderIsolation(t *testing.T) {
 
 func TestSharedFetcherRedactsTransportFailureWithoutBreakingErrorsIs(t *testing.T) {
 	secretFailure := errors.New("dial https://alice:password@secret.example/path?token=private via socks5://bob:proxy-secret@127.0.0.1")
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(*http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, secretFailure
 	})})
 	defer restore()
@@ -308,7 +314,7 @@ func TestSharedFetcherRedactsTransportFailureWithoutBreakingErrorsIs(t *testing.
 
 func TestSetHTTPClientConcurrentRestoreDoesNotLeakAnOverride(t *testing.T) {
 	outer := &http.Client{Timeout: 9 * time.Second}
-	restoreOuter := SetHTTPClient(outer)
+	restoreOuter := SetHTTPClientForTesting(outer)
 	defer restoreOuter()
 
 	const workers = 24
@@ -320,7 +326,7 @@ func TestSetHTTPClientConcurrentRestoreDoesNotLeakAnOverride(t *testing.T) {
 	for index := 0; index < workers; index++ {
 		go func(timeout time.Duration) {
 			defer finished.Done()
-			restore := SetHTTPClient(&http.Client{Timeout: timeout})
+			restore := SetHTTPClientForTesting(&http.Client{Timeout: timeout})
 			ready.Done()
 			<-release
 			restore()

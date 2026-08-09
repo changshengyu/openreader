@@ -13,7 +13,7 @@ import (
 
 func TestParseTOCFollowsNextPagesWithoutLoopsOrDuplicates(t *testing.T) {
 	requested := make([]string, 0, 3)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.Path)
 			if request.Header.Get("X-Book-Token") != "secret" {
@@ -90,7 +90,7 @@ func TestParseTOCOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages(t *testing.T
 		"/branch-c.html":    sourceCompatFixture(t, "branch-c.html"),
 	}
 	requested := make([]string, 0, 4)
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requested = append(requested, request.URL.Path)
 		body, ok := pages[request.URL.Path]
 		if !ok {
@@ -123,7 +123,7 @@ func TestParseTOCOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages(t *testing.T
 }
 
 func TestParseTOCHonorsChapterFlagsAndFallbackURLs(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := `
 				<div class="chapter">
@@ -213,7 +213,7 @@ func TestNormalizeChapterOrderHonorsListPrefixSemantics(t *testing.T) {
 
 func TestFetchChapterContentFollowsNextPagesInOrder(t *testing.T) {
 	requested := make([]string, 0, 3)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.Path)
 			if request.Header.Get("X-Book-Token") != "secret" {
@@ -281,7 +281,7 @@ func TestFetchChapterContentOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages(t
 		"/branch-c.html":    sourceCompatFixture(t, "branch-c.html"),
 	}
 	requested := make([]string, 0, 4)
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requested = append(requested, request.URL.Path)
 		body, ok := pages[request.URL.Path]
 		if !ok {
@@ -313,7 +313,7 @@ func TestFetchChapterContentOnlyUsesFirstLevelWhenRuleReturnsMultipleNextPages(t
 func TestFetchChapterContentStopsBeforeNextCatalogChapter(t *testing.T) {
 	t.Run("matching next chapter is not fetched", func(t *testing.T) {
 		requested := make([]string, 0, 2)
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.Path)
 			if request.URL.Path != "/chapter/1" {
 				t.Fatalf("next catalog chapter must not be requested: %s", request.URL.String())
@@ -343,7 +343,7 @@ func TestFetchChapterContentStopsBeforeNextCatalogChapter(t *testing.T) {
 	t.Run("different or absent next chapter keeps the single-page chain", func(t *testing.T) {
 		for _, nextChapterURL := range []string{"", "https://source.example/chapter/3"} {
 			requested := make([]string, 0, 2)
-			restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 				requested = append(requested, request.URL.Path)
 				switch request.URL.Path {
 				case "/chapter/1":
@@ -374,7 +374,7 @@ func TestFetchChapterContentStopsBeforeNextCatalogChapter(t *testing.T) {
 }
 
 func TestFetchChapterContentRejectsBlankTextContentRule(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		t.Fatalf("blank text content rule must fail before fetching: %s", request.URL.String())
 		return nil, nil
 	})})
@@ -391,7 +391,7 @@ func TestFetchChapterContentRejectsBlankTextContentRule(t *testing.T) {
 }
 
 func TestFetchChapterContentAppliesContentReplaceRegex(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -422,7 +422,7 @@ func TestFetchChapterContentAppliesContentReplaceRegex(t *testing.T) {
 }
 
 func TestFetchChapterContentAppliesFullImageStyle(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

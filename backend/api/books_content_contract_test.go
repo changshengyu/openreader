@@ -43,7 +43,7 @@ func TestRemoteChapterContentStopsAtAdjacentCatalogChapter(t *testing.T) {
 	}
 
 	requested := make([]string, 0, 2)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requested = append(requested, request.URL.Path)
 		if request.URL.Path != "/chapter/1" {
 			t.Fatalf("reader must not fetch adjacent catalog chapter as a content continuation: %s", request.URL.String())

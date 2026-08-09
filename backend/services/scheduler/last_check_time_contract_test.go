@@ -32,7 +32,7 @@ func TestSchedulerAdvancesLastCheckTimeOnlyWhenItAddsChapters(t *testing.T) {
 	}
 
 	body := `{"chapters":[{"title":"第一章","url":"/1"},{"title":"第二章","url":"/2"}]}`
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: schedulerRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

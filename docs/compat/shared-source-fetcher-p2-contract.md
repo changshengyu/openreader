@@ -2,10 +2,11 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：**P2-N1 aligned / Docker-published / awaiting-device-verification；P2-N2 pending**。
+状态：**P2-N1 aligned / Docker-published；P2-N2 implemented / regression-validated / Docker-pending**。
 2026-08-09 已完成固定上游、当前 Go 实现和调用面的源码盘点，并按两个可独立验证的安全切片推进：
 不改变合法目标可达性的 `P2-N1` 通用请求边界已经测试先行实现和发布；需要显式部署策略的
-`P2-N2` 私网地址边界仍未实施，不能宣称共享 SSRF 债务已经整体关闭。
+`P2-N2` 私网地址边界已按合同实现并通过代码级回归；真实 Docker 公网/LAN/重启门与镜像发布完成前，
+仍不能宣称共享 SSRF 债务已经整体关闭。
 
 ## 权威文件
 
@@ -100,7 +101,7 @@
 
 ## P2-N2：私网、DNS/dial 与代理边界
 
-状态：**contract-locked / tests-pending / implementation-pending**。
+状态：**implemented / regression-validated / Docker-pending**。
 
 N2 在 N1 通过后独立实施。固定上游只支持书源内显式 HTTP/SOCKS 代理，没有进程环境代理、私网阻断或
 部署白名单；因此 OpenReader 保留合法公网请求和显式代理能力，但把默认 SSRF 边界作为允许的安全差异。
@@ -245,5 +246,21 @@ P2-N1 可在完成上述门后作为半模块镜像发布，但必须在进度�
   `sha256:fd9f37f2d20c326c06cf0110fd8c6e529455523141e91383440bbb431dad06ce`，arm64 为
   `sha256:852f6ef18e7f7506c7b03ea377e35f1f3b12d0ef5cc7a6833fc871307e5a9719`。
 
-仍未完成：P2-N2 private/loopback/link-local/metadata 拒绝、DNS-rebinding-safe dial、source proxy
-目标/端点复核及部署管理员 host/IP/CIDR allowlist。
+## P2-N2 实施结果（Docker pending）
+
+- 新增 `OPENREADER_SOURCE_NETWORK_ALLOWLIST` 的 fail-closed parser、启动时安装和 README 配置说明；
+  非法配置在目录/SQLite/监听初始化前失败，错误不回显条目值。
+- 默认 direct transport 关闭 ambient process proxy，初始/redirect RoundTrip 与实际 dial 分别解析并
+  验证，mixed DNS 和 public→private rebinding 均在零私网拨号下失败；allowlisted exact host/IP/CIDR
+  恢复明确的 LAN/NAS 访问。
+- HTTP proxy endpoint 与 target 分开验证，absolute-form/CONNECT 使用本地固定 IP，原 Host、TLS SNI
+  和证书验证保持；SOCKS4/5 endpoint 复核且握手只发送本地验证 IP。
+- 测试 transport 已明确重命名为 `SetHTTPClientForTesting`；AST 合同证明生产文件无调用，既有 parser/API
+  fixture 只跳过 N2 socket policy，仍通过 N1 request/response bounds。
+- 失败测试提交 `4cb88ed` 在旧实现因配置/策略/transport 全部缺失而失败；实现后 focused engine/config/API、
+  Engine race、全量 Go、frontend 706/706、production build 和 `git diff --check` 通过。受影响包
+  `go vet . ./engine ./config` 通过；全仓 `go vet ./...` 仍有既存 `api/backup_restore_plan.go` 复制
+  `Server` mutex 警告，不属于本切片且未据此冒充全仓 vet 通过。
+
+仍未完成：真实 Docker 公网、默认 host-gateway/loopback 拒绝、exact-host allowlist、移除 allowlist 后
+重启恢复严格模式，以及 fresh/historical volume 门；通过并发布前安全清单保持未签收。

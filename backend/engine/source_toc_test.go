@@ -11,7 +11,7 @@ import (
 
 func TestParseTOCResolvesCatalogURLFromBookInfoPage(t *testing.T) {
 	requested := make([]string, 0, 2)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.String())
 			if request.Header.Get("Referer") != "https://source.example/" {
@@ -92,7 +92,7 @@ func TestParseTOCResolvesCatalogURLFromBookInfoPage(t *testing.T) {
 }
 
 func TestFetchBookInfoAndTOCHonorsBookInfoInitScope(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := `
 				<section class="recommend">
@@ -166,7 +166,7 @@ func TestFetchBookInfoAndTOCHonorsBookInfoInitScope(t *testing.T) {
 
 func TestParseTOCFallsBackToBookPageWhenCatalogRuleIsEmpty(t *testing.T) {
 	requestCount := 0
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requestCount++
 			return &http.Response{
@@ -202,7 +202,7 @@ func TestParseTOCFallsBackToBookPageWhenCatalogRuleIsEmpty(t *testing.T) {
 
 func TestParseTOCPreservesLegacyDirectCatalogURL(t *testing.T) {
 	requested := ""
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = request.URL.String()
 			return &http.Response{

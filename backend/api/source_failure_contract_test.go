@@ -29,7 +29,7 @@ func TestInvalidSourceCacheIsCallerScopedSuppressesRetryAndExpires(t *testing.T)
 
 	var requests atomic.Int32
 	fail := true
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requests.Add(1)
 			if fail {
@@ -93,7 +93,7 @@ func TestInvalidSourceCacheIgnoresCanceledRequestsAndStaleSourceURL(t *testing.T
 		t.Fatal(err)
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return nil, request.Context().Err()
 		}),
@@ -171,7 +171,7 @@ func TestInvalidSourceCacheDoesNotSuppressUnsupportedParserRules(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -209,7 +209,7 @@ func TestSourceDebugDoesNotCacheLocalParserRuleErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+		restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusOK,

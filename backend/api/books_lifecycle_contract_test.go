@@ -340,7 +340,7 @@ func TestRemoteRefreshReplacesCatalogueAndClearsSupersededCaches(t *testing.T) {
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://refresh-replace.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.URL.String() != upstream+"/book" {
 				return &http.Response{
@@ -465,7 +465,7 @@ func TestChangeSourceReplacesCatalogueAndPrunesOldRemoteCache(t *testing.T) {
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://source-change-replace.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.URL.String() != upstream+"/new-book" {
 				return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader("not found")), Header: make(http.Header), Request: req}, nil
@@ -563,7 +563,7 @@ func TestRemoteRefreshFetchFailureLeavesCatalogueAndCacheReadable(t *testing.T) 
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://refresh-failure.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("forced remote refresh fetch failure")
 		}),
@@ -617,7 +617,7 @@ func TestChangeSourceFetchFailureLeavesCatalogueAndCacheReadable(t *testing.T) {
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://source-change-failure.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("forced source-change fetch failure")
 		}),

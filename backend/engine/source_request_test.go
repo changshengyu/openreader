@@ -15,7 +15,7 @@ import (
 )
 
 func TestSearchBooksPageExecutesUpstreamPostFormOptions(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.Method != http.MethodPost {
 				t.Fatalf("method = %s, want POST", request.Method)
@@ -71,7 +71,7 @@ func TestSearchBooksPageExecutesUpstreamPostFormOptions(t *testing.T) {
 
 func TestSearchBooksPageExecutesUpstreamRetryOption(t *testing.T) {
 	attempts := 0
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			attempts++
 			if attempts == 1 {
@@ -111,7 +111,7 @@ func TestSearchBooksPageExecutesUpstreamRetryOption(t *testing.T) {
 }
 
 func TestSearchBooksPageUsesSourceCharsetForRequestAndResponse(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.RawQuery != "key=%D6%D0%CE%C4+%CA%E9" {
 				t.Fatalf("GBK search query = %q", request.URL.RawQuery)
@@ -154,7 +154,7 @@ func TestSearchBooksPageUsesSourceCharsetForRequestAndResponse(t *testing.T) {
 }
 
 func TestSearchBooksPageAutoDetectsUpstreamHTMLCharset(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := traditionalchinese.Big5.NewEncoder().Bytes([]byte(`
 				<html><head><meta charset="big5"></head><body>
@@ -196,7 +196,7 @@ func TestSearchBooksPageAutoDetectsUpstreamHTMLCharset(t *testing.T) {
 }
 
 func TestSearchBooksPageAppliesSourceConcurrentRate(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return searchPaginationResponse(request, `
 				<article class="book">
@@ -235,7 +235,7 @@ func TestSearchBooksPageAppliesSourceConcurrentRate(t *testing.T) {
 }
 
 func TestSearchBooksPageUsesBookURLPatternForDirectDetail(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -293,7 +293,7 @@ func TestSearchBooksPageUsesBookURLPatternForDirectDetail(t *testing.T) {
 }
 
 func TestSearchBooksPageFallsBackToDetailOnlyWithoutPattern(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return searchPaginationResponse(request, `<h1 class="detail-name">空列表详情</h1>`), nil
 		}),
@@ -334,7 +334,7 @@ func TestSearchBooksPageFallsBackToDetailOnlyWithoutPattern(t *testing.T) {
 }
 
 func TestSearchBooksPageRejectsInvalidBookURLPattern(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return searchPaginationResponse(request, `<html></html>`), nil
 		}),
@@ -476,7 +476,7 @@ func TestSplitSourceURLOptionLeavesOrdinaryCommasInURL(t *testing.T) {
 }
 
 func TestExploreBooksPageExecutesRelativePostOptions(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -518,7 +518,7 @@ func TestExploreBooksPageExecutesRelativePostOptions(t *testing.T) {
 }
 
 func TestSearchBooksResolvesRelativeURLBeforeOptions(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.String() != "https://source.example/api/search?q=%E6%B5%8B%E8%AF%95" {
 				t.Fatalf("relative search URL was not resolved: %s", request.URL)
@@ -545,7 +545,7 @@ func TestSearchBooksResolvesRelativeURLBeforeOptions(t *testing.T) {
 }
 
 func TestSearchBooksPreservesRequestOptionsInBookURL(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return searchPaginationResponse(request, `
 				<article class="book">
@@ -578,7 +578,7 @@ func TestSearchBooksPreservesRequestOptionsInBookURL(t *testing.T) {
 
 func TestFetchBookInfoAndTOCExecutesRequestOptionsAcrossPages(t *testing.T) {
 	requests := make([]string, 0, 3)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -661,7 +661,7 @@ func TestFetchBookInfoAndTOCExecutesRequestOptionsAcrossPages(t *testing.T) {
 }
 
 func TestParseTOCExecutesDirectPostURLRule(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -696,7 +696,7 @@ func TestParseTOCExecutesDirectPostURLRule(t *testing.T) {
 
 func TestFetchChapterContentExecutesPostOptionsWithoutHeaderLeakage(t *testing.T) {
 	requests := make([]string, 0, 2)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -750,7 +750,7 @@ func TestFetchChapterContentExecutesPostOptionsWithoutHeaderLeakage(t *testing.T
 }
 
 func TestFetchChapterContentExecutesDirectContentURLRuleOptions(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -781,7 +781,7 @@ func TestFetchChapterContentExecutesDirectContentURLRuleOptions(t *testing.T) {
 
 func TestFetchBookInfoAndTOCResolvesLinksFromRedirectedResponseURL(t *testing.T) {
 	requested := make([]string, 0, 2)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.String())
 			responseBody := ""

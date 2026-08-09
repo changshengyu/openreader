@@ -24,12 +24,9 @@ import (
 
 func main() {
 	cfg := config.Load()
-	engine.ConfigureSourceFetchLimits(engine.SourceFetchLimits{
-		Timeout:          time.Duration(cfg.SourceRequestTimeoutSeconds) * time.Second,
-		MaxResponseBytes: cfg.MaxSourceResponseBytes,
-		MaxRedirects:     cfg.MaxSourceRedirects,
-		MaxRetries:       cfg.MaxSourceRetries,
-	})
+	if err := configureSourceRuntime(cfg); err != nil {
+		log.Fatalf("configure source network policy: %v", err)
+	}
 	cleanupContext, cleanupCancel := context.WithCancel(context.Background())
 	defer cleanupCancel()
 
@@ -80,6 +77,19 @@ func main() {
 	if err := router.Run(cfg.Address); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func configureSourceRuntime(cfg config.Config) error {
+	engine.ConfigureSourceFetchLimits(engine.SourceFetchLimits{
+		Timeout:          time.Duration(cfg.SourceRequestTimeoutSeconds) * time.Second,
+		MaxResponseBytes: cfg.MaxSourceResponseBytes,
+		MaxRedirects:     cfg.MaxSourceRedirects,
+		MaxRetries:       cfg.MaxSourceRetries,
+	})
+	if _, err := engine.ConfigureSourceNetworkPolicy(cfg.SourceNetworkAllowlist); err != nil {
+		return err
+	}
+	return nil
 }
 
 func cors(cfg config.Config) gin.HandlerFunc {

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +23,7 @@ func (fn contextRoundTripFunc) RoundTrip(request *http.Request) (*http.Response,
 
 func TestFetchTextContextCancelsHTTPRequest(t *testing.T) {
 	requestCanceled := make(chan struct{}, 1)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			<-request.Context().Done()
 			requestCanceled <- struct{}{}
@@ -48,7 +47,7 @@ func TestFetchTextContextCancelsHTTPRequest(t *testing.T) {
 
 func TestFetchSourceTextRetriesHTTPFailuresAndReturnsBinaryHex(t *testing.T) {
 	attempts := 0
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			attempts++
 			status := http.StatusServiceUnavailable
@@ -85,7 +84,7 @@ func TestFetchSourceTextRetriesHTTPFailuresAndReturnsBinaryHex(t *testing.T) {
 func TestFetchSourceTextDoesNotRetryTransportErrors(t *testing.T) {
 	attempts := 0
 	expected := errors.New("network unavailable")
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			attempts++
 			return nil, expected
@@ -139,18 +138,11 @@ func TestSourceHTTPClientConfiguresAuthenticatedProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok || transport.Proxy == nil {
+	transport, ok := client.Transport.(*sourceHTTPProxyRoundTripper)
+	if !ok || transport.proxyURL == nil {
 		t.Fatalf("proxy transport was not configured: %#v", client.Transport)
 	}
-	targetURL, err := url.Parse("https://source.example/content")
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxyURL, err := transport.Proxy(&http.Request{URL: targetURL})
-	if err != nil {
-		t.Fatal(err)
-	}
+	proxyURL := transport.proxyURL
 	password, _ := proxyURL.User.Password()
 	if proxyURL.String() != "http://reader:secret@127.0.0.1:18080" ||
 		proxyURL.User.Username() != "reader" ||
@@ -211,7 +203,7 @@ func TestPerformSOCKS4HandshakeRejectsProxyFailure(t *testing.T) {
 }
 
 func TestFetchSourceTextHonorsConcurrentRateAndContext(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

@@ -11,7 +11,7 @@ import (
 )
 
 func TestSearchBooksPageUsesPagePlaceholder(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			page := request.URL.Query().Get("page")
 			body := `
@@ -48,7 +48,7 @@ func TestSearchBooksPageUsesPagePlaceholder(t *testing.T) {
 
 func TestSearchBooksPageFollowsLegacyNextPageRule(t *testing.T) {
 	requested := make([]string, 0, 2)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.Path)
 			page := 1

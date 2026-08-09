@@ -54,7 +54,7 @@ func TestSourceScriptEntryPointsRejectBeforeRemoteRequests(t *testing.T) {
 	for _, entryPoint := range entryPoints {
 		t.Run(entryPoint.name, func(t *testing.T) {
 			var requests atomic.Int32
-			restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(*http.Request) (*http.Response, error) {
 				requests.Add(1)
 				return nil, errors.New("script-configured source must not reach transport")
 			})})

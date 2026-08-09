@@ -3487,6 +3487,8 @@ redirect 和实际拨号都复核 DNS；混合答案默认整体拒绝，direct 
 握手同样只接收本地验证 IP，proxy endpoint 自身也受 policy。进程 `HTTP_PROXY/HTTPS_PROXY/ALL_PROXY`
 不进入共享 source transport，上游兼容的显式 source `proxy` 与 FlClash/TUN 系统路由继续保留。
 
-该 inventory 只修改合同，没有修改应用代码。下一步必须先添加 allowlist、IPv4/IPv6、mixed DNS、
-rebinding、redirect→metadata、HTTP CONNECT/absolute-form、SOCKS target/endpoint 和现有 API 安全错误
-的失败测试，再实施。历史 SQLite、source/RSS JSON、缓存、备份和 WebDAV 均不得迁移或重写。
+该 inventory 先以 `ff53b16` 单独提交；失败合同 `4cb88ed` 随后证明旧实现缺少 allowlist、IPv4/IPv6、
+mixed DNS、rebinding、redirect→metadata、HTTP CONNECT/absolute-form、SOCKS target/endpoint 和安全 API
+边界。当前实现已使上述专项、Engine race、全量 Go、frontend 706/706 和 production build 通过；历史
+SQLite、source/RSS JSON、缓存、备份和 WebDAV 均未迁移或重写。真实 Docker 公网/LAN/重启与新旧卷
+尚未执行，因此状态为 `implemented / regression-validated / Docker-pending`。

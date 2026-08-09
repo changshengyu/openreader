@@ -26,7 +26,7 @@ func TestSourceRuleVariablesAreItemAndOperationScoped(t *testing.T) {
 	const searchBody = `
 		<article class="book"><span class="token">第一令牌</span><h2 class="name">第一本书</h2><a href="/books/one">详情</a></article>
 		<article class="book"><h2 class="name">第二本书</h2><a href="/books/two">详情</a></article>`
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(searchBody)),
@@ -75,7 +75,7 @@ func TestSourceRuleVariablesAreItemAndOperationScoped(t *testing.T) {
 
 func TestSourceRuleVariablesFlowFromBookInfoToTOCAndAcrossContentPages(t *testing.T) {
 	t.Run("book info to toc", func(t *testing.T) {
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := ""
 			switch request.URL.Path {
 			case "/book":
@@ -109,7 +109,7 @@ func TestSourceRuleVariablesFlowFromBookInfoToTOCAndAcrossContentPages(t *testin
 	})
 
 	t.Run("single content chain", func(t *testing.T) {
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := ""
 			switch request.URL.Path {
 			case "/chapter/1":
@@ -173,7 +173,7 @@ func TestPersistentSourceRuleVariablesFollowReaderDevScopes(t *testing.T) {
 			<div class="scope">搜索令牌</div>
 			<article class="book"><span class="token">第一令牌</span><h2 class="name">第一本书</h2><a href="/books/one">详情</a></article>
 			<article class="book"><span class="token">第二令牌</span><h2 class="name">第二本书</h2><a href="/books/two">详情</a></article>`
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(searchBody)), Header: make(http.Header), Request: request}, nil
 		})})
 		defer restore()
@@ -203,7 +203,7 @@ func TestPersistentSourceRuleVariablesFollowReaderDevScopes(t *testing.T) {
 	})
 
 	t.Run("book, chapter and content variables retain reader-dev precedence", func(t *testing.T) {
-		restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			var body string
 			switch request.URL.Path {
 			case "/book":
@@ -264,7 +264,7 @@ func TestPersistentSourceRuleVariablesFollowReaderDevScopes(t *testing.T) {
 
 func TestPersistentSourceRuleVariablesRejectInvalidStateBeforeFetch(t *testing.T) {
 	requests := 0
-	restore := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restore := SetHTTPClientForTesting(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requests++
 		return nil, fmt.Errorf("a malformed persisted variable must not make a request")
 	})})

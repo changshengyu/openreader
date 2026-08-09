@@ -52,7 +52,7 @@ func TestCacheBookStreamEmitsProgressAndTerminalShelfItem(t *testing.T) {
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://cache-stream.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -156,7 +156,7 @@ func TestCacheBookStreamEmitsTerminalErrorWhenNoChapterCanBeCached(t *testing.T)
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://cache-stream-error.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("forced cache source failure")
 		}),
@@ -196,7 +196,7 @@ func TestCacheBookStreamStopsSchedulingAfterCancellation(t *testing.T) {
 
 	const upstream = "https://cache-stream-cancel.test"
 	requestedPaths := make([]string, 0, 3)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requestedPaths = append(requestedPaths, req.URL.Path)
 			return &http.Response{
@@ -250,7 +250,7 @@ func TestCacheBookStreamReportsExistingSuccessAndFailureCounts(t *testing.T) {
 
 	const upstream = "https://cache-stream-counts.test"
 	requestedPaths := make([]string, 0, 3)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requestedPaths = append(requestedPaths, req.URL.Path)
 			if req.URL.Path == "/chapter-5" {
@@ -320,7 +320,7 @@ func TestCacheBookStreamRefreshRefetchesExistingChapter(t *testing.T) {
 
 	const upstream = "https://cache-stream-refresh.test"
 	requests := 0
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requests++
 			return &http.Response{
@@ -378,7 +378,7 @@ func TestCacheBookStreamClearsMissingCacheReferenceBeforeFailedRefetch(t *testin
 	user := lifecycleUser(t, server, "testuser")
 
 	const upstream = "https://cache-stream-missing.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("forced missing-cache refetch failure")
 		}),

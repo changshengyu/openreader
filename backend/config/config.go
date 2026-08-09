@@ -22,6 +22,7 @@ type Config struct {
 	MaxSourceResponseBytes      int64
 	MaxSourceRedirects          int
 	MaxSourceRetries            int
+	SourceNetworkAllowlist      string
 	MaxImportBytes              int64
 	MaxArchiveEntries           int
 	MaxArchiveEntryBytes        int64
@@ -68,6 +69,7 @@ func Load() Config {
 		MaxSourceResponseBytes:      envInt64("OPENREADER_MAX_SOURCE_RESPONSE_BYTES", 16*1024*1024),
 		MaxSourceRedirects:          envPositiveInt("OPENREADER_MAX_SOURCE_REDIRECTS", 5),
 		MaxSourceRetries:            envPositiveInt("OPENREADER_MAX_SOURCE_RETRIES", 3),
+		SourceNetworkAllowlist:      env("OPENREADER_SOURCE_NETWORK_ALLOWLIST", ""),
 		MaxImportBytes:              envInt64("OPENREADER_MAX_IMPORT_BYTES", 128*1024*1024),
 		MaxArchiveEntries:           envPositiveInt("OPENREADER_MAX_ARCHIVE_ENTRIES", 20_000),
 		MaxArchiveEntryBytes:        envInt64("OPENREADER_MAX_ARCHIVE_ENTRY_BYTES", 128*1024*1024),

@@ -26,7 +26,7 @@ func TestRSSRefreshFetchesOnlyTheRequestedRulePage(t *testing.T) {
 	token := authHeader(t, router)
 
 	requestedBodies := make([]string, 0, 2)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -105,7 +105,7 @@ func TestRSSStandardFeedPageAfterOneIsEmptyWithoutRemoteFetch(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 	requests := 0
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requests++
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<rss><channel></channel></rss>`)), Header: make(http.Header), Request: request}, nil
 	})})
@@ -139,7 +139,7 @@ func TestRSSRefreshRejectsSortURLOutsideOwnedSourceOptions(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 	requests := 0
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requests++
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<rss><channel></channel></rss>`)), Header: make(http.Header), Request: request}, nil
 	})})

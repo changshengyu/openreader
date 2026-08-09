@@ -136,6 +136,11 @@ cd frontend && npm run build
 | `OPENREADER_JWT_SECRET` | *(必填)* | JWT 签名密钥 — 请使用长随机字符串 |
 | `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | CORS 允许来源 |
 | `OPENREADER_PUBLIC_DIR` | `public` | 前端静态文件目录 |
+| `OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS` | `15` | 单次共享书源或 RSS 请求的总超时秒数 |
+| `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216`（16 MiB） | 单次共享书源或 RSS 响应的最大解码字节数 |
+| `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` | 单次共享书源或 RSS 请求最多重定向次数 |
+| `OPENREADER_MAX_SOURCE_RETRIES` | `3` | 书源 URL option 非 2xx 响应的最大重试次数 |
+| `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | 空 | 仅管理员可配置的逗号分隔精确主机名、裸 IP 或 CIDR；用于放行非公网目标，非法值会使服务启动失败 |
 | `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | 单章节最多处理的内嵌图片数量 |
 | `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608`（8 MiB） | 单张章节缓存图片的最大字节数 |
 | `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432`（32 MiB） | 单章节缓存图片的总字节上限 |
@@ -145,6 +150,19 @@ cd frontend && npm run build
 | `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456`（256 MiB） | 每位用户的远程封面派生缓存总字节上限 |
 | `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | 单次远程封面请求总超时秒数 |
 | `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | 单次远程封面请求最多重定向次数 |
+
+书源和 RSS 请求默认拒绝回环、私网、链路本地、云 metadata、benchmark、documentation 等特殊用途网络。
+如需访问可信 NAS/局域网书源，建议只放行精确主机名或地址，例如：
+
+```yaml
+environment:
+  OPENREADER_SOURCE_NETWORK_ALLOWLIST: "nas.home,192.168.50.20"
+```
+
+该白名单也约束书源中显式配置的 HTTP/SOCKS 代理端点，不会写入数据库或备份。共享抓取器有意忽略进程
+`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，请使用书源自己的 `proxy` 设置或 TUN/系统路由。部分 Clash
+配置使用 `198.18.0.0/15` fake-IP；可信部署可以显式放行该 CIDR，但这会授权整个 fake-IP 网段，因此条件
+允许时优先使用 real-IP/Redir-Host DNS。
 
 ## 技术栈
 

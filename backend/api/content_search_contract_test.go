@@ -107,7 +107,7 @@ func TestContentSearchReportsUnavailableRemoteChapters(t *testing.T) {
 	if err := server.db.Create(&chapter).Error; err != nil {
 		t.Fatal(err)
 	}
-	restoreClient := engine.SetHTTPClient(&http.Client{
+	restoreClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return nil, errors.New("fixture chapter fetch unavailable")
 		}),
@@ -440,7 +440,7 @@ func TestContentSearchStopsSchedulingRemoteChaptersAfterCancellation(t *testing.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	requests := make([]string, 0, 2)
-	restoreClient := engine.SetHTTPClient(&http.Client{
+	restoreClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requests = append(requests, request.URL.Path)
 			cancel()
@@ -491,7 +491,7 @@ func TestLegacyContentSearchPropagatesRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	requests := make([]string, 0, 2)
-	restoreClient := engine.SetHTTPClient(&http.Client{
+	restoreClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requests = append(requests, request.URL.Path)
 			cancel()

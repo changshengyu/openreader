@@ -23,7 +23,7 @@ func TestSourceMetadataSemanticsReachShelfRefreshSourceChangeAndTemporaryReader(
 		"metadata-a.test": "详情甲 作者：网页",
 		"metadata-b.test": "详情乙 某人 著",
 	}
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			host := request.URL.Host
 			title, ok := titles[host]

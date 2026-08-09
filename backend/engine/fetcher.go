@@ -89,7 +89,10 @@ func init() {
 }
 
 func defaultSourceHTTPClient() *http.Client {
-	return &http.Client{Timeout: defaultSourceRequestTimeout}
+	return &http.Client{
+		Timeout:   defaultSourceRequestTimeout,
+		Transport: newDefaultSourceRoundTripper(),
+	}
 }
 
 func normalizeSourceFetchLimits(limits SourceFetchLimits) SourceFetchLimits {
@@ -134,7 +137,10 @@ type sourceRateLimiter struct {
 	windowUsed int
 }
 
-func SetHTTPClient(client *http.Client) func() {
+// SetHTTPClientForTesting installs a transport fixture. Production code must
+// never call it because the injected client intentionally bypasses N2 DNS and
+// dial policy while retaining the shared N1 request/response bounds.
+func SetHTTPClientForTesting(client *http.Client) func() {
 	if client == nil {
 		client = defaultSourceHTTPClient()
 	}
@@ -303,11 +309,16 @@ func fetchTextRequestWithURLContext(
 		baseClient = defaultSourceHTTPClient()
 	}
 	client := baseClient
+	proxyClientOwned := false
 	if len(sourceProxy) > 0 && strings.TrimSpace(sourceProxy[0]) != "" {
 		client, err = sourceHTTPClient(baseClient, sourceProxy[0])
 		if err != nil {
 			return "", "", redactSourceFetchError(errSourceTransport, err)
 		}
+		proxyClientOwned = true
+	}
+	if proxyClientOwned {
+		defer client.CloseIdleConnections()
 	}
 	client = sourceFetchClient(client, limits)
 
@@ -483,6 +494,8 @@ func classifySourceClientError(err error) error {
 		return redactSourceFetchError(ErrSourceRedirectLimit, err)
 	case errors.Is(err, ErrUnsafeSourceURL):
 		return redactSourceFetchError(ErrUnsafeSourceURL, err)
+	case errors.Is(err, ErrUnsafeSourceNetwork):
+		return redactSourceFetchError(ErrUnsafeSourceNetwork, err)
 	default:
 		return redactSourceFetchError(errSourceTransport, err)
 	}
@@ -575,51 +588,88 @@ func waitSourceRate(ctx context.Context, wait time.Duration) error {
 	}
 }
 
-func sourceHTTPClient(base *http.Client, value string) (*http.Client, error) {
+type sourceProxyConfig struct {
+	kind     string
+	host     string
+	port     string
+	address  string
+	username string
+	password string
+}
+
+func parseSourceProxyConfig(value string) (sourceProxyConfig, error) {
 	match := sourceProxyPattern.FindStringSubmatch(strings.TrimSpace(value))
 	if len(match) != 6 {
-		return nil, errors.New("invalid source proxy")
+		return sourceProxyConfig{}, errors.New("invalid source proxy")
 	}
 	port, err := strconv.Atoi(match[3])
 	if err != nil || port < 1 || port > 65535 {
-		return nil, errors.New("invalid source proxy port")
+		return sourceProxyConfig{}, errors.New("invalid source proxy port")
+	}
+	address := strings.TrimSpace(match[2]) + ":" + match[3]
+	host, parsedPort, err := net.SplitHostPort(address)
+	if err != nil {
+		return sourceProxyConfig{}, errors.New("invalid source proxy")
+	}
+	canonicalHost, _, _, err := canonicalSourceNetworkHost(host)
+	if err != nil {
+		return sourceProxyConfig{}, errors.New("invalid source proxy")
+	}
+	return sourceProxyConfig{
+		kind:     match[1],
+		host:     canonicalHost,
+		port:     parsedPort,
+		address:  net.JoinHostPort(canonicalHost, parsedPort),
+		username: match[4],
+		password: match[5],
+	}, nil
+}
+
+func sourceHTTPClient(base *http.Client, value string) (*http.Client, error) {
+	if base == nil {
+		base = defaultSourceHTTPClient()
+	}
+	proxyConfig, err := parseSourceProxyConfig(value)
+	if err != nil {
+		return nil, err
 	}
 	transport, err := cloneHTTPTransport(base.Transport)
 	if err != nil {
 		return nil, err
 	}
-	address := match[2] + ":" + match[3]
-	switch match[1] {
+	prepareSourceNetworkTransport(transport)
+	client := *base
+	switch proxyConfig.kind {
 	case "http":
-		proxyURL := &url.URL{Scheme: "http", Host: address}
-		if match[4] != "" || match[5] != "" {
-			proxyURL.User = url.UserPassword(match[4], match[5])
+		proxyURL := &url.URL{Scheme: "http", Host: proxyConfig.address}
+		if proxyConfig.username != "" || proxyConfig.password != "" {
+			proxyURL.User = url.UserPassword(proxyConfig.username, proxyConfig.password)
 		}
-		transport.Proxy = http.ProxyURL(proxyURL)
+		client.Transport = &sourceHTTPProxyRoundTripper{
+			template:     transport,
+			proxyURL:     proxyURL,
+			endpointHost: proxyConfig.host,
+			transports:   make(map[string]*http.Transport),
+		}
 	case "socks5":
 		var auth *proxy.Auth
-		if match[4] != "" || match[5] != "" {
-			auth = &proxy.Auth{User: match[4], Password: match[5]}
+		if proxyConfig.username != "" || proxyConfig.password != "" {
+			auth = &proxy.Auth{User: proxyConfig.username, Password: proxyConfig.password}
 		}
-		dialer, dialErr := proxy.SOCKS5("tcp", address, auth, proxy.Direct)
+		dialer, dialErr := proxy.SOCKS5("tcp", proxyConfig.address, auth, sourceProxyEndpointDialer{})
 		if dialErr != nil {
 			return nil, errors.New("invalid source proxy")
 		}
-		transport.Proxy = nil
-		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-			if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
-				return contextDialer.DialContext(ctx, network, address)
-			}
-			return dialer.Dial(network, address)
-		}
-	case "socks4":
-		transport.Proxy = nil
 		transport.DialContext = func(ctx context.Context, network, targetAddress string) (net.Conn, error) {
-			return dialSOCKS4Context(ctx, address, targetAddress, match[4])
+			return dialSourceSOCKS5Context(ctx, dialer, network, targetAddress)
 		}
+		client.Transport = &sourceValidatedRoundTripper{transport: transport, proxyEndpoint: proxyConfig.host}
+	case "socks4":
+		transport.DialContext = func(ctx context.Context, network, targetAddress string) (net.Conn, error) {
+			return dialSourceSOCKS4Context(ctx, proxyConfig.address, targetAddress, proxyConfig.username)
+		}
+		client.Transport = &sourceValidatedRoundTripper{transport: transport, proxyEndpoint: proxyConfig.host}
 	}
-	client := *base
-	client.Transport = transport
 	return &client, nil
 }
 
@@ -696,6 +746,12 @@ func performSOCKS4Handshake(ctx context.Context, connection net.Conn, targetAddr
 func cloneHTTPTransport(transport http.RoundTripper) (*http.Transport, error) {
 	if transport == nil {
 		return http.DefaultTransport.(*http.Transport).Clone(), nil
+	}
+	if sourceTransport, ok := transport.(*sourceValidatedRoundTripper); ok {
+		if sourceTransport.transport == nil {
+			return nil, errors.New("source transport is unavailable")
+		}
+		return sourceTransport.transport.Clone(), nil
 	}
 	base, ok := transport.(*http.Transport)
 	if !ok {

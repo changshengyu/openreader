@@ -83,8 +83,9 @@ reachability and therefore does not close the complete shared-fetcher SSRF revie
 The P2-N2 design is now contract-locked in `docs/compat/shared-source-fetcher-p2-contract.md` with the sole
 administrator variable `OPENREADER_SOURCE_NETWORK_ALLOWLIST`, fail-closed startup grammar, mixed-DNS rejection,
 dial-time IP pinning, explicit HTTP/SOCKS endpoint and target checks, and no ambient process proxy. This checklist
-item remains unchecked until implementation, focused race tests, public/LAN Docker fixtures and historical-volume
-gates all pass.
+item remains unchecked until public/LAN Docker fixtures and historical-volume gates pass. Implementation, focused
+engine/config/API tests, Engine race, full Go, frontend 706/706 and production build now pass; Docker is the
+remaining release gate.
 
 ## P2 RSS requested-page and import review (2026-08-09 implementation)
 

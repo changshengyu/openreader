@@ -10,7 +10,7 @@ import (
 )
 
 func TestFetchAudioChapterContentReturnsChapterURLWhenContentRuleEmpty(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			t.Fatalf("audio source with empty content rule should not fetch content page, requested %s", request.URL.String())
 			return nil, nil
@@ -38,7 +38,7 @@ func TestFetchAudioChapterContentReturnsChapterURLWhenContentRuleEmpty(t *testin
 }
 
 func TestFetchAudioChapterContentResolvesRelativeMediaURL(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.String() != "https://audio.example/chapter/1" {
 				t.Fatalf("unexpected content request: %s", request.URL.String())
@@ -97,7 +97,7 @@ func TestFetchAudioChapterContentExtractsSourceAndAnchorMediaURLs(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			restore := SetHTTPClient(&http.Client{
+			restore := SetHTTPClientForTesting(&http.Client{
 				Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusOK,

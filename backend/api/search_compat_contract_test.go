@@ -67,7 +67,7 @@ func TestSearchMultiCursorKeepsOriginalSourceOrdinalsAcrossFailureSuppression(t 
 		}
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

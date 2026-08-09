@@ -11,11 +11,16 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -266,14 +271,14 @@ func TestSourceHTTPProxyPinsAbsoluteTargetAndPreservesHost(t *testing.T) {
 			client, server := net.Pipe()
 			go func() {
 				defer server.Close()
-				request, err := http.ReadRequest(bufio.NewReader(server))
-				if err == nil && request.URL.String() != "http://8.8.8.8:8080/path?q=1" {
-					err = fmt.Errorf("proxy absolute target = %q", request.URL.String())
+				requestLine, headers, err := readSourceProxyRequestHeader(bufio.NewReader(server))
+				if err == nil && requestLine != "GET http://8.8.8.8:8080/path?q=1 HTTP/1.1" {
+					err = fmt.Errorf("proxy request line = %q", requestLine)
 				}
-				if err == nil && request.Host != "target.example:8080" {
-					err = fmt.Errorf("proxy Host = %q", request.Host)
+				if err == nil && headers.Get("Host") != "target.example:8080" {
+					err = fmt.Errorf("proxy Host = %q", headers.Get("Host"))
 				}
-				if err == nil && !strings.HasPrefix(request.Header.Get("Proxy-Authorization"), "Basic ") {
+				if err == nil && !strings.HasPrefix(headers.Get("Proxy-Authorization"), "Basic ") {
 					err = errors.New("proxy authorization header missing")
 				}
 				if err == nil {
@@ -290,17 +295,18 @@ func TestSourceHTTPProxyPinsAbsoluteTargetAndPreservesHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	request, _ := http.NewRequest(http.MethodGet, "http://target.example:8080/path?q=1", nil)
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatal(err)
+	response, requestErr := client.Do(request)
+	proxyErr := <-proxyDone
+	if proxyErr != nil {
+		t.Fatal(proxyErr)
+	}
+	if requestErr != nil {
+		t.Fatal(requestErr)
 	}
 	_, _ = io.Copy(io.Discard, response.Body)
 	response.Body.Close()
 	if response.Request == nil || response.Request.URL.Host != "target.example:8080" {
 		t.Fatalf("public response URL was not restored: %#v", response.Request)
-	}
-	if err := <-proxyDone; err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -505,6 +511,43 @@ func TestHTTPClientTestingOverrideBypassesOnlyNetworkDialPolicy(t *testing.T) {
 	}
 }
 
+func TestHTTPClientTestingOverrideHasNoProductionCallSites(t *testing.T) {
+	root := ".."
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			name := ""
+			switch function := call.Fun.(type) {
+			case *ast.Ident:
+				name = function.Name
+			case *ast.SelectorExpr:
+				name = function.Sel.Name
+			}
+			if name == "SetHTTPClientForTesting" {
+				t.Errorf("test transport override called by production file %s", path)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func installSourceNetworkPolicyForTest(t *testing.T, raw string) {
 	t.Helper()
 	restore, err := ConfigureSourceNetworkPolicy(raw)
@@ -546,6 +589,29 @@ func serveSourceNetworkHTTPPipe(connection net.Conn, status int, body, location 
 	}
 	_, err := io.WriteString(connection, response+"\r\n"+body)
 	done <- err
+}
+
+func readSourceProxyRequestHeader(reader *bufio.Reader) (string, http.Header, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return "", nil, err
+	}
+	headers := make(http.Header)
+	for {
+		headerLine, readErr := reader.ReadString('\n')
+		if readErr != nil {
+			return "", nil, readErr
+		}
+		if headerLine == "\r\n" {
+			break
+		}
+		name, value, found := strings.Cut(strings.TrimSuffix(headerLine, "\r\n"), ":")
+		if !found {
+			return "", nil, fmt.Errorf("invalid proxy header %q", headerLine)
+		}
+		headers.Add(strings.TrimSpace(name), strings.TrimSpace(value))
+	}
+	return strings.TrimSuffix(line, "\r\n"), headers, nil
 }
 
 func serveSourceSOCKSProxy(connection net.Conn, version string, done chan<- error) {

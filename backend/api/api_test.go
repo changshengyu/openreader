@@ -347,7 +347,7 @@ func TestSearchPaginationUsesPageForSingleSourceAndCursorForMultipleSources(t *t
 
 	var requestedMu sync.Mutex
 	requested := make([]string, 0)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requestedMu.Lock()
 			requested = append(requested, request.URL.Path+"?"+request.URL.RawQuery)
@@ -507,7 +507,7 @@ func TestBookSourceCustomOrderIsStableAcrossListsAndConcurrentSearch(t *testing.
 		}
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			name := strings.Trim(strings.TrimSuffix(request.URL.Path, "/explore"), "/")
 			if name == "first" {
@@ -574,7 +574,7 @@ func TestSearchExecutesImportedUpstreamPostOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.Method != http.MethodPost ||
 				request.Header.Get("Content-Type") != "application/json; charset=utf-8" ||
@@ -2453,7 +2453,7 @@ func TestImportSourcesAcceptsUpstreamReaderFields(t *testing.T) {
 		rule.Headers["Referer"] != "https://upload-reader.example/" {
 		t.Fatalf("unexpected imported rules: %+v", rule)
 	}
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.Header.Get("X-Source-Token") != "upload-secret" ||
 				request.Header.Get("Referer") != "https://upload-reader.example/" {
@@ -2617,7 +2617,7 @@ func TestBatchTestSourcesRespectsTimeout(t *testing.T) {
 	token := authHeader(t, router)
 
 	requestCanceled := make(chan struct{}, 1)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			select {
 			case <-time.After(1200 * time.Millisecond):
@@ -2948,7 +2948,7 @@ func TestImportRemoteSourceUsesRawJSON(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -2982,7 +2982,7 @@ func TestPreviewRemoteSourceDoesNotImport(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -3271,7 +3271,7 @@ func TestRemoteSourceImportUsesBookSourceURLIdentity(t *testing.T) {
 	if err := server.db.Create(&existing).Error; err != nil {
 		t.Fatal(err)
 	}
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -3328,7 +3328,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 	upstream := "https://source.test"
 	var searchMu sync.Mutex
 	searchQueries := make([]string, 0)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			var body string
 			switch req.URL.Path {
@@ -3593,7 +3593,7 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 	chapterVolume := "yes"
 	chapterVIP := "0"
 	chapterUpdated := "昨日"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -3755,7 +3755,7 @@ func TestRemoteBookInfoPreservesNameWithoutCanRename(t *testing.T) {
 	detailTitle := "详情标题"
 	detailAuthor := "详情作者"
 	detailIntro := "详情简介"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			responseBody := fmt.Sprintf(`<html><body>
 				<h1 class="detail-name">%s</h1>
@@ -3832,7 +3832,7 @@ func TestRemoteBookKeepsAndExecutesSourceRequestOptions(t *testing.T) {
 	token := authHeader(t, router)
 
 	requests := make([]string, 0, 3)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -3951,7 +3951,7 @@ func TestSchedulerSkipsBooksWithCanUpdateDisabled(t *testing.T) {
 	authHeader(t, router)
 
 	var calls int
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			calls++
 			return &http.Response{
@@ -4021,7 +4021,7 @@ func TestCheckUpdatesScopesToCurrentUserAndReturnsShelfItems(t *testing.T) {
 	token := authHeader(t, router)
 
 	var calls int
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			calls++
 			return &http.Response{
@@ -5339,7 +5339,7 @@ func TestRemoteAudioSourceChapterContentParsesPlayableURL(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.URL.String() != "https://audio-source.example/chapter/1" {
 				t.Fatalf("unexpected remote audio request: %s", req.URL.String())
@@ -8788,7 +8788,7 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -8859,7 +8859,7 @@ func TestRSSSourceRefreshImportsArticles(t *testing.T) {
 }
 
 func TestFetchRSSArticlesSupportsRDFRootItems(t *testing.T) {
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -8910,7 +8910,7 @@ func TestFetchRSSArticlesSupportsRDFRootItems(t *testing.T) {
 
 func TestFetchRSSArticlesHonorsSingleURLBeforeSortURL(t *testing.T) {
 	requestedPaths := make([]string, 0, 2)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requestedPaths = append(requestedPaths, req.URL.Path)
 			return &http.Response{
@@ -8956,7 +8956,7 @@ func TestRSSRefreshUsesGUIDWithinSortWithoutDuplicatingArticles(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -9063,7 +9063,7 @@ func TestRSSSourceRefreshUsesEmbeddedArticleImagesAsFallback(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -9242,7 +9242,7 @@ func TestAtomSourceRefreshResolvesRelativeArticleImages(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -9305,7 +9305,7 @@ func TestRSSRuleSourceRefreshesListAndLoadsContentLazily(t *testing.T) {
 	token := authHeader(t, router)
 	var listRequests int
 	var contentRequests int
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.Header.Get("X-Feed-Token") != "secret" {
 				t.Fatalf("RSS request missing custom header: %v", req.Header)
@@ -9433,7 +9433,7 @@ func TestRSSRuleSourceExecutesPageRequestsAndArticleOptions(t *testing.T) {
 
 	listBodies := make([]string, 0, 2)
 	var contentRequests int
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -9583,7 +9583,7 @@ func TestRSSRuleSourceExecutesPageRequestsAndArticleOptions(t *testing.T) {
 
 func TestFetchRSSRuleArticlesFollowsNextLinksWithoutLoops(t *testing.T) {
 	requested := make([]string, 0, 2)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requested = append(requested, request.URL.Path)
 			body := ""
@@ -9623,7 +9623,7 @@ func TestFetchRSSRuleArticlesFollowsNextLinksWithoutLoops(t *testing.T) {
 }
 
 func TestFetchRSSRuleArticlesUsesSourceURLForRelativeArticleLinks(t *testing.T) {
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.String() != "https://cdn.rss.example/categories/tech/page.html" {
 				t.Fatalf("unexpected RSS category request: %s", request.URL)
@@ -10083,7 +10083,7 @@ func TestExploreBooksUsesExploreURL(t *testing.T) {
 	token := authHeader(t, router)
 	var requested []string
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requested = append(requested, req.URL.String())
 			return &http.Response{
@@ -10141,7 +10141,7 @@ func TestEnabledExploreDisablesOnlyDiscovery(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -10230,7 +10230,7 @@ func TestExploreBooksSupportsPagePlaceholder(t *testing.T) {
 	token := authHeader(t, router)
 	var requested string
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requested = req.URL.String()
 			return &http.Response{
@@ -10275,7 +10275,7 @@ func TestExploreBooksUsesSelectedExploreURL(t *testing.T) {
 	token := authHeader(t, router)
 	var requested string
 
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requested = req.URL.String()
 			return &http.Response{

@@ -328,7 +328,7 @@ func TestChangingSourceRemovesObsoleteChapterImageTree(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	restoreHTTPClient := engine.SetHTTPClient(upstream.Client())
+	restoreHTTPClient := engine.SetHTTPClientForTesting(upstream.Client())
 	defer restoreHTTPClient()
 	router, server := setupTestServer(t)
 	auth := authHeader(t, router)

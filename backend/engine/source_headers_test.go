@@ -11,7 +11,7 @@ import (
 
 func TestBookSourceRequestsApplyConfiguredHeaders(t *testing.T) {
 	paths := make(map[string]int)
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.Header.Get("X-Source-Token") != "secret" {
 				t.Fatalf("%s request missing source token: %v", request.URL.Path, request.Header)

@@ -19,7 +19,7 @@ func TestRemoteReaderSessionIsEphemeralUserBoundAndLoadsContent(t *testing.T) {
 	otherToken := registerLifecycleToken(t, router, "remotereaderother")
 
 	const upstream = "https://remote-reader-contract.test"
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := `<main><h1 class="title">解析后的书名</h1><span class="author">解析作者</span><div class="chapter"><span class="chapter-title">第一章</span><a href="/chapter/1">阅读</a></div></main>`
 			if request.URL.Path == "/chapter/1" {

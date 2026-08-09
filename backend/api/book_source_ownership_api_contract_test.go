@@ -529,7 +529,7 @@ func TestSearchAndExploreResolveOnlyCallerActiveSources(t *testing.T) {
 		"enabled":true,
 		"enabledExplore":true
 	}`)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -603,7 +603,7 @@ func TestRemoteBookReaderCandidatesAndRefreshRejectForeignSources(t *testing.T) 
 	}`)
 	var requestMu sync.Mutex
 	requestHosts := make([]string, 0)
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requestMu.Lock()
 			requestHosts = append(requestHosts, request.URL.Host)

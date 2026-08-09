@@ -264,7 +264,7 @@ func TestSearchBooksExecutesReaderDevJSONPathAndXPathRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			restore := SetHTTPClient(&http.Client{
+			restore := SetHTTPClientForTesting(&http.Client{
 				Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusOK,
@@ -297,7 +297,7 @@ func TestSearchBooksExecutesReaderDevJSONPathAndXPathRules(t *testing.T) {
 }
 
 func TestSearchBooksFallsBackToCurrentPageWhenBookURLRuleIsEmpty(t *testing.T) {
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -328,7 +328,7 @@ func TestSearchBooksFallsBackToCurrentPageWhenBookURLRuleIsEmpty(t *testing.T) {
 
 func TestExploreBooksExecutesReaderDevJSONPathRules(t *testing.T) {
 	jsonBody := sourceCompatFixture(t, "books.json")
-	restore := SetHTTPClient(&http.Client{
+	restore := SetHTTPClientForTesting(&http.Client{
 		Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -369,7 +369,7 @@ func TestFetchBookInfoAndTOCExecutesReaderDevJSONPathRules(t *testing.T) {
 		"/toc.json":   sourceCompatFixture(t, "toc.json"),
 		"/toc-2.json": sourceCompatFixture(t, "toc-2.json"),
 	}
-	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, pages)})
 	defer restore()
 
 	source := models.BookSource{ID: 74, Name: "JSON 详情目录源", BaseURL: "https://source.example", Charset: "utf-8"}
@@ -412,7 +412,7 @@ func TestFetchBookInfoAndTOCExecutesReaderDevXPathRules(t *testing.T) {
 		"/toc.html":   sourceCompatFixture(t, "toc.html"),
 		"/toc-2.html": sourceCompatFixture(t, "toc-2.html"),
 	}
-	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, pages)})
 	defer restore()
 
 	source := models.BookSource{ID: 75, Name: "XPath 详情目录源", BaseURL: "https://source.example", Charset: "utf-8"}
@@ -455,7 +455,7 @@ func TestFetchChapterContentExecutesReaderDevJSONPathContentURLAndPagination(t *
 		"/content.json":   sourceCompatFixture(t, "content.json"),
 		"/content-2.json": sourceCompatFixture(t, "content-2.json"),
 	}
-	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, pages)})
 	defer restore()
 
 	source := models.BookSource{ID: 76, Name: "JSON 正文源", BaseURL: "https://source.example", Charset: "utf-8"}
@@ -481,7 +481,7 @@ func TestFetchChapterContentExecutesReaderDevXPathContentURLAndPagination(t *tes
 		"/content.html":   sourceCompatFixture(t, "content.html"),
 		"/content-2.html": sourceCompatFixture(t, "content-2.html"),
 	}
-	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, pages)})
 	defer restore()
 
 	source := models.BookSource{ID: 78, Name: "XPath 正文源", BaseURL: "https://source.example", Charset: "utf-8"}
@@ -506,7 +506,7 @@ func TestFetchChapterContentKeepsLegacyCSSContentURLRule(t *testing.T) {
 		"/chapter.html": `<a class="content-link" href="/content.html">正文</a>`,
 		"/content.html": `<main class="content">CSS 正文</main>`,
 	}
-	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, pages)})
 	defer restore()
 
 	source := models.BookSource{ID: 79, Name: "CSS 正文地址源", BaseURL: "https://source.example", Charset: "utf-8"}
@@ -524,7 +524,7 @@ func TestFetchChapterContentKeepsLegacyCSSContentURLRule(t *testing.T) {
 
 func TestSourceRuleReplacementFlowsThroughSearchInfoTOCAndContent(t *testing.T) {
 	t.Run("search", func(t *testing.T) {
-		restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
+		restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
 			"/search": sourceCompatFixture(t, "books.html"),
 		})})
 		defer restore()
@@ -544,7 +544,7 @@ func TestSourceRuleReplacementFlowsThroughSearchInfoTOCAndContent(t *testing.T) 
 	})
 
 	t.Run("book info and toc", func(t *testing.T) {
-		restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
+		restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
 			"/book.json": sourceCompatFixture(t, "book_detail.json"),
 			"/toc.json":  sourceCompatFixture(t, "toc.json"),
 		})})
@@ -567,7 +567,7 @@ func TestSourceRuleReplacementFlowsThroughSearchInfoTOCAndContent(t *testing.T) 
 	})
 
 	t.Run("content", func(t *testing.T) {
-		restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
+		restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, map[string]string{
 			"/chapter.json": sourceCompatFixture(t, "chapter.json"),
 			"/content.json": sourceCompatFixture(t, "content.json"),
 		})})
@@ -592,7 +592,7 @@ func TestBookInfoTOCAndContentRejectUnsupportedJavaScriptRules(t *testing.T) {
 		"/toc":     `<div class="chapter"><a href="/chapter">第一章</a></div>`,
 		"/chapter": `<main class="content">正文</main>`,
 	}
-	restore := SetHTTPClient(&http.Client{Transport: sourceCompatTransport(t, pages)})
+	restore := SetHTTPClientForTesting(&http.Client{Transport: sourceCompatTransport(t, pages)})
 	defer restore()
 
 	base := models.BookSource{ID: 77, Name: "脚本规则源", BaseURL: "https://source.example", Charset: "utf-8"}

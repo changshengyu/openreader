@@ -18,7 +18,7 @@ func TestShelfLastCheckTimeIsIndependentFromReadingOrderAndOnlyAdvancesForNewCha
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
 	chapterCount := 2
-	restoreHTTPClient := engine.SetHTTPClient(&http.Client{
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			chapters := make([]string, 0, chapterCount)
 			for index := 0; index < chapterCount; index++ {
