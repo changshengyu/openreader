@@ -61,12 +61,13 @@ func TestLoadParserLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
 	t.Setenv("OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES", "4096")
 	t.Setenv("OPENREADER_MAX_PDF_PAGES", "13")
 	t.Setenv("OPENREADER_MAX_PARSED_TEXT_BYTES", "8192")
+	t.Setenv("OPENREADER_MAX_PARSED_CHAPTERS", "15")
 	t.Setenv("OPENREADER_MAX_UMD_CHAPTERS", "14")
 
 	configured := Load()
 	if configured.MaxArchiveEntries != 12 || configured.MaxArchiveEntryBytes != 2048 ||
 		configured.MaxArchiveExpandedBytes != 4096 || configured.MaxPDFPages != 13 ||
-		configured.MaxParsedTextBytes != 8192 || configured.MaxUMDChapters != 14 {
+		configured.MaxParsedTextBytes != 8192 || configured.MaxParsedChapters != 15 || configured.MaxUMDChapters != 14 {
 		t.Fatalf("configured parser limits = %+v", configured)
 	}
 
@@ -75,13 +76,24 @@ func TestLoadParserLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
 	t.Setenv("OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES", "-1")
 	t.Setenv("OPENREADER_MAX_PDF_PAGES", "0")
 	t.Setenv("OPENREADER_MAX_PARSED_TEXT_BYTES", "not-a-number")
+	t.Setenv("OPENREADER_MAX_PARSED_CHAPTERS", "not-a-number")
 	t.Setenv("OPENREADER_MAX_UMD_CHAPTERS", "-1")
 
 	defaults := Load()
 	if defaults.MaxArchiveEntries != 20_000 || defaults.MaxArchiveEntryBytes != 128*1024*1024 ||
 		defaults.MaxArchiveExpandedBytes != 512*1024*1024 || defaults.MaxPDFPages != 10_000 ||
-		defaults.MaxParsedTextBytes != 256*1024*1024 || defaults.MaxUMDChapters != 100_000 {
+		defaults.MaxParsedTextBytes != 256*1024*1024 || defaults.MaxParsedChapters != 100_000 ||
+		defaults.MaxUMDChapters != 100_000 {
 		t.Fatalf("safe parser defaults = %+v", defaults)
+	}
+}
+
+func TestLoadParsedChapterLimitFallsBackToExplicitLegacyUMDSetting(t *testing.T) {
+	t.Setenv("OPENREADER_MAX_PARSED_CHAPTERS", "")
+	t.Setenv("OPENREADER_MAX_UMD_CHAPTERS", "321")
+	configured := Load()
+	if configured.MaxParsedChapters != 321 || configured.MaxUMDChapters != 321 {
+		t.Fatalf("parsed/UMD chapter compatibility fallback = %+v", configured)
 	}
 }
 

@@ -1608,7 +1608,10 @@ This remaining gap is now governed by
 limit, enforce decoded UTF-8 text and chapter budgets in the TXT branch, and bound historical source reads before
 full allocation. It is a security/runtime adaptation only; the fixed-upstream 512000-byte probe, explicit-rule
 order, preface behavior, 10KiB no-TOC fallback and zero-chapter explicit-rule preview remain authoritative.
-No application code changed during this inventory pass.
+The inventory pass itself changed no application code. The subsequent implementation now routes TXT/`.text`/Markdown
+through the same configured limits as the other local formats, applies the generic final-chapter ceiling to every
+parser and prepared snapshot, and bounds historical refresh/lazy reads before full allocation. Focused/race/full Go,
+frontend 706/706, production build and targeted vet pass; Docker and mounted-volume evidence remains the release gate.
 
 ### 2026-07-13 P2 local-import UMD binary compatibility audit
 

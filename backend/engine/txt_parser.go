@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ const (
 	txtDetectionProbeBytes = 512000
 	txtNoTocChunkBytes     = 10 * 1024
 	txtNoTocShortTailBytes = 100
+	MaxTXTTocRuleBytes     = 16 * 1024
 )
 
 var ChapterTitlePattern = regexp.MustCompile(`^(?:第[零一二三四五六七八九十百千万两〇○0-9０-９]+[章回节卷集部]|序章|楔子|引子|前言|尾声|后记|番外(?:篇)?|第[零一二三四五六七八九十百千万两〇○0-9０-９]+卷|[上中下]卷).{0,64}$`)
@@ -108,33 +110,46 @@ func DefaultTXTTocRules() []TXTTocRule {
 }
 
 func ParseTXT(data []byte) ([]TXTChapter, error) {
-	text, probe, err := decodeTXTForCatalog(data)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseTXTText(text, detectTXTTitlePattern(probe)), nil
+	return ParseTXTWithLimits(data, "", LegacyLocalBookParseLimits())
 }
 
 func ParseTXTWithRule(data []byte, rule string) ([]TXTChapter, error) {
+	return ParseTXTWithLimits(data, rule, LegacyLocalBookParseLimits())
+}
+
+func ParseTXTWithLimits(data []byte, rule string, limits LocalBookParseLimits) ([]TXTChapter, error) {
+	limits = limits.normalized()
+	if int64(len(data)) > limits.MaxArchiveBytes {
+		return nil, txtParseLimitError("TXT input exceeds the limit")
+	}
 	text, probe, err := decodeTXTForCatalog(data)
 	if err != nil {
 		return nil, err
 	}
+	if int64(len(text)) > limits.MaxParsedTextBytes {
+		return nil, txtParseLimitError("TXT decoded text exceeds the limit")
+	}
 	rule = strings.TrimSpace(rule)
+	if len(rule) > MaxTXTTocRuleBytes {
+		return nil, txtParseLimitError("TXT TOC rule exceeds the limit")
+	}
 	if rule == "" {
-		return parseTXTText(text, detectTXTTitlePattern(probe)), nil
+		return parseTXTText(text, detectTXTTitlePattern(probe), limits.MaxParsedChapters)
 	}
 	pattern, err := compileTXTTitleMatcher(rule)
 	if err != nil {
 		return nil, err
 	}
-	return parseTXTText(text, pattern), nil
+	return parseTXTText(text, pattern, limits.MaxParsedChapters)
 }
 
-func parseTXTText(text string, titlePattern *txtTitleMatcher) []TXTChapter {
+func txtParseLimitError(message string) error {
+	return fmt.Errorf("%w: %s", ErrLocalBookParseLimit, message)
+}
+
+func parseTXTText(text string, titlePattern *txtTitleMatcher, maxChapters int) ([]TXTChapter, error) {
 	if titlePattern == nil {
-		return parseTXTWithoutToc(text)
+		return parseTXTWithoutToc(text, maxChapters)
 	}
 
 	chapters := make([]TXTChapter, 0)
@@ -151,15 +166,19 @@ func parseTXTText(text string, titlePattern *txtTitleMatcher) []TXTChapter {
 				current.Index = len(chapters)
 				current.End = lineStart
 				current.Content = content
-				chapters = append(chapters, current)
+				if err := appendLimitedTXTChapter(&chapters, current, maxChapters); err != nil {
+					return nil, err
+				}
 			} else if preface := strings.TrimSpace(text[:lineStart]); preface != "" {
-				chapters = append(chapters, TXTChapter{
+				if err := appendLimitedTXTChapter(&chapters, TXTChapter{
 					Index:   len(chapters),
 					Title:   "前言",
 					Start:   0,
 					End:     lineStart,
 					Content: preface,
-				})
+				}, maxChapters); err != nil {
+					return nil, err
+				}
 			}
 			current = TXTChapter{Title: line, Start: lineStart}
 			contentStart = lineEnd
@@ -173,19 +192,25 @@ func parseTXTText(text string, titlePattern *txtTitleMatcher) []TXTChapter {
 		current.Index = len(chapters)
 		current.End = len(text)
 		current.Content = content
-		chapters = append(chapters, current)
+		if err := appendLimitedTXTChapter(&chapters, current, maxChapters); err != nil {
+			return nil, err
+		}
 	}
 
-	return chapters
+	return chapters, nil
 }
 
 // parseTXTWithoutToc mirrors reader-dev TextFile.analyze()'s local-text
 // fallback. OpenReader intentionally performs it over its decoded, staged
 // representation because it materializes each resulting chapter into cache
 // files rather than seeking source-encoding offsets at read time.
-func parseTXTWithoutToc(text string) []TXTChapter {
+func parseTXTWithoutToc(text string, maxChapters int) ([]TXTChapter, error) {
 	if text == "" {
-		return []TXTChapter{{Index: 0, Title: "第0章(0)", Start: 0, End: 0, Content: ""}}
+		chapters := make([]TXTChapter, 0, 1)
+		if err := appendLimitedTXTChapter(&chapters, TXTChapter{Title: "第0章(0)", Start: 0, End: 0, Content: ""}, maxChapters); err != nil {
+			return nil, err
+		}
+		return chapters, nil
 	}
 
 	chapters := make([]TXTChapter, 0)
@@ -209,7 +234,9 @@ func parseTXTWithoutToc(text string) []TXTChapter {
 		for nextBlockEnd-segmentStart > txtNoTocChunkBytes {
 			chapterPos++
 			splitAt := nextTXTNoTocSplit(text, segmentStart, nextBlockEnd)
-			appendTXTChapter(&chapters, text, segmentStart, splitAt, fallbackTXTChapterTitle(blockPos, chapterPos))
+			if err := appendTXTChapter(&chapters, text, segmentStart, splitAt, fallbackTXTChapterTitle(blockPos, chapterPos), maxChapters); err != nil {
+				return nil, err
+			}
 			segmentStart = splitAt
 		}
 
@@ -219,30 +246,41 @@ func parseTXTWithoutToc(text string) []TXTChapter {
 	tailLength := len(text) - segmentStart
 	if tailLength > txtNoTocShortTailBytes || len(chapters) == 0 {
 		chapterPos++
-		appendTXTChapter(&chapters, text, segmentStart, len(text), fallbackTXTChapterTitle(blockPos, chapterPos))
+		if err := appendTXTChapter(&chapters, text, segmentStart, len(text), fallbackTXTChapterTitle(blockPos, chapterPos), maxChapters); err != nil {
+			return nil, err
+		}
 	} else {
 		last := &chapters[len(chapters)-1]
 		last.End = len(text)
 		last.Content = text[last.Start:last.End]
 	}
-	return chapters
+	return chapters, nil
 }
 
 func fallbackTXTChapterTitle(blockPos, chapterPos int) string {
 	return "第" + strconv.Itoa(blockPos) + "章(" + strconv.Itoa(chapterPos) + ")"
 }
 
-func appendTXTChapter(chapters *[]TXTChapter, text string, start, end int, title string) {
+func appendTXTChapter(chapters *[]TXTChapter, text string, start, end int, title string, maxChapters int) error {
 	if end < start {
 		end = start
 	}
-	*chapters = append(*chapters, TXTChapter{
+	return appendLimitedTXTChapter(chapters, TXTChapter{
 		Index:   len(*chapters),
 		Title:   title,
 		Start:   start,
 		End:     end,
 		Content: text[start:end],
-	})
+	}, maxChapters)
+}
+
+func appendLimitedTXTChapter(chapters *[]TXTChapter, chapter TXTChapter, maxChapters int) error {
+	if len(*chapters) >= maxChapters {
+		return txtParseLimitError("TXT contains too many chapters")
+	}
+	chapter.Index = len(*chapters)
+	*chapters = append(*chapters, chapter)
+	return nil
 }
 
 func nextTXTNoTocSplit(text string, start, end int) int {

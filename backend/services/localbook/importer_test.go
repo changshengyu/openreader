@@ -44,6 +44,44 @@ func TestImporterRejectsOversizedLocalTOCRuleBeforeRegexCompilation(t *testing.T
 	}
 }
 
+func TestImporterAppliesGenericParsedChapterLimitToTXTAndCBZ(t *testing.T) {
+	importer := Importer{cfg: config.Config{
+		MaxParsedChapters: 1,
+		MaxUMDChapters:    10,
+	}}
+
+	for _, test := range []struct {
+		name      string
+		fileName  string
+		extension string
+		data      []byte
+		tocRule   string
+	}{
+		{
+			name:      "TXT",
+			fileName:  "two.txt",
+			extension: ".txt",
+			data:      []byte("第一章\n正文一\n第二章\n正文二"),
+			tocRule:   `^第.+章$`,
+		},
+		{
+			name:      "CBZ",
+			fileName:  "two.cbz",
+			extension: ".cbz",
+			data:      localBookTestCBZ(t),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := importer.Preview(ImportRequest{
+				FileName: test.fileName, Extension: test.extension, Data: test.data, TOCRule: test.tocRule,
+			})
+			if !errors.Is(err, ErrParseFailed) || !errors.Is(err, engine.ErrLocalBookParseLimit) {
+				t.Fatalf("generic parsed-chapter limit error = %v", err)
+			}
+		})
+	}
+}
+
 func TestImporterPreparedPreviewIsTheConfirmedChapterSource(t *testing.T) {
 	root := t.TempDir()
 	cfg := config.Config{

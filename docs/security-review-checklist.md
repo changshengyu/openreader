@@ -306,9 +306,10 @@ Targeted evidence: `backend/api/reader_appearance_assets_p2_contract_test.go`,
 - [x] Direct local-book upload, LocalStore/WebDAV upload, preview and confirmation reads are capped by `OPENREADER_MAX_IMPORT_BYTES` (128 MiB by default) before staging or parser work. LocalStore/WebDAV writes stage beside the target and rename only after the bounded copy succeeds.
 - [x] Archive entry/expanded-size、UMD/PDF parser work 和跨用户 stage cleanup 已有显式上限；cleanup
   在启动时执行并每小时重复，不依赖下一次用户请求。
-- [ ] TXT/Markdown 尚未把解码后文本和最终章节数接入统一 parser limits；历史本地归档刷新/缓存
-  重建在读取完整文件前也尚未执行文档声明的 legacy input ceiling。以
-  `docs/compat/local-text-parser-budget-p2-contract.md` 为下一条 P2 门禁。
+- [x] TXT/Markdown 已把原始输入、解码后文本、自定义规则长度和最终章节数接入统一 parser limits；
+  prepared snapshot 采用通用章节上限，历史本地归档刷新/缓存重建也在完整分配前执行 1GiB legacy
+  input ceiling。parser 错误不消费重试 stage、不产生书籍行或暴露宿主路径。证据见
+  `docs/compat/local-text-parser-budget-p2-contract.md` 及对应 engine/importer/API/config tests。
 
 Evidence for the checked items: `backend/api/workspace_storage_access_contract_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/api/import_size_contract_test.go`, `frontend/tests/webdavAuthContract.test.mjs`, full Go/frontend test suites and production frontend build. This remains not a storage/backup release approval.
 

@@ -85,12 +85,91 @@ func TestParsePDFWithLimitsRejectsExtractedTextOverBudget(t *testing.T) {
 	}
 }
 
+func TestParseTXTWithLimitsRejectsDecodedTextAndChapterBudgets(t *testing.T) {
+	decodedText := []byte{0xff, 0xfe, 0x2d, 0x4e, 0x2d, 0x4e} // UTF-16LE "中中" => 6 UTF-8 bytes.
+	textLimit := DefaultLocalBookParseLimits()
+	textLimit.MaxParsedTextBytes = 5
+	if _, err := ParseTXTWithLimits(decodedText, "", textLimit); !errors.Is(err, ErrLocalBookParseLimit) {
+		t.Fatalf("TXT decoded-text limit error = %v, want %v", err, ErrLocalBookParseLimit)
+	}
+
+	chapterLimit := DefaultLocalBookParseLimits()
+	chapterLimit.MaxParsedChapters = 1
+	explicit := []byte("第一章\n正文一\n第二章\n正文二")
+	if _, err := ParseTXTWithLimits(explicit, `^第.+章$`, chapterLimit); !errors.Is(err, ErrLocalBookParseLimit) {
+		t.Fatalf("TXT explicit chapter limit error = %v, want %v", err, ErrLocalBookParseLimit)
+	}
+
+	fallback := []byte(strings.Repeat("普通正文。\n", 3_000))
+	if _, err := ParseTXTWithLimits(fallback, "", chapterLimit); !errors.Is(err, ErrLocalBookParseLimit) {
+		t.Fatalf("TXT fallback chapter limit error = %v, want %v", err, ErrLocalBookParseLimit)
+	}
+
+	noMatch, err := ParseTXTWithLimits([]byte("普通正文，没有目录。"), `^== .+ ==$`, chapterLimit)
+	if err != nil || len(noMatch) != 0 {
+		t.Fatalf("TXT explicit no-match result = %+v, %v; want valid empty catalogue", noMatch, err)
+	}
+}
+
+func TestLocalParsersShareGenericInputAndChapterBudgets(t *testing.T) {
+	inputLimit := DefaultLocalBookParseLimits()
+	inputLimit.MaxArchiveBytes = 4
+	for name, parse := range map[string]func() error{
+		"TXT": func() error {
+			_, err := ParseTXTWithLimits([]byte("12345"), "", inputLimit)
+			return err
+		},
+		"PDF": func() error {
+			_, err := ParsePDFWithLimits(makeMinimalPDF("text"), inputLimit)
+			return err
+		},
+		"UMD": func() error {
+			_, err := ParseUMDWithLimits([]byte("12345"), inputLimit)
+			return err
+		},
+	} {
+		t.Run(name+" input", func(t *testing.T) {
+			if err := parse(); !errors.Is(err, ErrLocalBookParseLimit) {
+				t.Fatalf("%s input-limit error = %v, want %v", name, err, ErrLocalBookParseLimit)
+			}
+		})
+	}
+
+	chapterLimit := DefaultLocalBookParseLimits()
+	chapterLimit.MaxParsedChapters = 1
+	chapterLimit.MaxUMDChapters = 10
+	for name, parse := range map[string]func() error{
+		"EPUB": func() error {
+			_, err := ParseEPUBCatalogWithLimits(testEPUBWithNav(t), "spin", chapterLimit)
+			return err
+		},
+		"CBZ": func() error {
+			_, err := ParseCBZWithLimits(makeCBZFixture(t, map[string]string{"1.jpg": "one", "2.jpg": "two"}), chapterLimit)
+			return err
+		},
+		"UMD": func() error {
+			fixture := readerDevUMDFixture(t, "章节上限", "作者", []umdFixtureChapter{
+				{title: "第一章", content: "一"},
+				{title: "第二章", content: "二"},
+			}, 0)
+			_, err := ParseUMDWithLimits(fixture, chapterLimit)
+			return err
+		},
+	} {
+		t.Run(name+" chapters", func(t *testing.T) {
+			if err := parse(); !errors.Is(err, ErrLocalBookParseLimit) {
+				t.Fatalf("%s chapter-limit error = %v, want %v", name, err, ErrLocalBookParseLimit)
+			}
+		})
+	}
+}
+
 func TestLegacyLocalBookLimitsRemainWiderThanNewImportDefaults(t *testing.T) {
 	strict := DefaultLocalBookParseLimits()
 	legacy := LegacyLocalBookParseLimits()
 	if legacy.MaxArchiveBytes <= strict.MaxArchiveBytes || legacy.MaxArchiveExpandedBytes <= strict.MaxArchiveExpandedBytes ||
 		legacy.MaxPDFPages <= strict.MaxPDFPages || legacy.MaxParsedTextBytes <= strict.MaxParsedTextBytes ||
-		legacy.MaxUMDChapters <= strict.MaxUMDChapters {
+		legacy.MaxParsedChapters <= strict.MaxParsedChapters || legacy.MaxUMDChapters <= strict.MaxUMDChapters {
 		t.Fatalf("legacy limits must preserve a wider bounded recovery path: strict=%+v legacy=%+v", strict, legacy)
 	}
 }

@@ -1,6 +1,9 @@
 package engine
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var ErrLocalBookParseLimit = errors.New("local book exceeds parser safety limits")
 
@@ -11,6 +14,7 @@ type LocalBookParseLimits struct {
 	MaxArchiveExpandedBytes int64
 	MaxPDFPages             int
 	MaxParsedTextBytes      int64
+	MaxParsedChapters       int
 	MaxUMDChapters          int
 }
 
@@ -22,6 +26,7 @@ func DefaultLocalBookParseLimits() LocalBookParseLimits {
 		MaxArchiveExpandedBytes: 512 << 20,
 		MaxPDFPages:             10_000,
 		MaxParsedTextBytes:      256 << 20,
+		MaxParsedChapters:       100_000,
 		MaxUMDChapters:          100_000,
 	}
 }
@@ -35,6 +40,7 @@ func LegacyLocalBookParseLimits() LocalBookParseLimits {
 	limits.MaxArchiveExpandedBytes = 2 << 30
 	limits.MaxPDFPages = 50_000
 	limits.MaxParsedTextBytes = 2 << 30
+	limits.MaxParsedChapters = 1_000_000
 	limits.MaxUMDChapters = 1_000_000
 	return limits
 }
@@ -59,8 +65,19 @@ func (limits LocalBookParseLimits) normalized() LocalBookParseLimits {
 	if limits.MaxParsedTextBytes <= 0 {
 		limits.MaxParsedTextBytes = defaults.MaxParsedTextBytes
 	}
+	if limits.MaxParsedChapters <= 0 {
+		limits.MaxParsedChapters = defaults.MaxParsedChapters
+	}
 	if limits.MaxUMDChapters <= 0 {
 		limits.MaxUMDChapters = defaults.MaxUMDChapters
 	}
 	return limits
+}
+
+func validateParsedChapterCount(count int, limits LocalBookParseLimits, format string) error {
+	limits = limits.normalized()
+	if count > limits.MaxParsedChapters {
+		return fmt.Errorf("%w: %s contains too many parsed chapters", ErrLocalBookParseLimit, format)
+	}
+	return nil
 }

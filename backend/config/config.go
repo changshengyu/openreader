@@ -29,6 +29,7 @@ type Config struct {
 	MaxArchiveExpandedBytes     int64
 	MaxPDFPages                 int
 	MaxParsedTextBytes          int64
+	MaxParsedChapters           int
 	MaxUMDChapters              int
 	MaxBackupRestoreBytes       int64
 	MaxBackupArchiveEntries     int
@@ -52,6 +53,12 @@ type Config struct {
 func Load() Config {
 	dataDir := env("OPENREADER_DATA_DIR", "data")
 	cacheDir := env("OPENREADER_CACHE_DIR", "cache")
+	maxUMDChapters := envPositiveInt("OPENREADER_MAX_UMD_CHAPTERS", 100_000)
+	maxParsedChapters := 100_000
+	if configured, ok := explicitPositiveEnvInt("OPENREADER_MAX_UMD_CHAPTERS"); ok {
+		maxParsedChapters = configured
+	}
+	maxParsedChapters = envPositiveInt("OPENREADER_MAX_PARSED_CHAPTERS", maxParsedChapters)
 
 	return Config{
 		Address:                     env("OPENREADER_ADDR", ":8080"),
@@ -76,7 +83,8 @@ func Load() Config {
 		MaxArchiveExpandedBytes:     envInt64("OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES", 512*1024*1024),
 		MaxPDFPages:                 envPositiveInt("OPENREADER_MAX_PDF_PAGES", 10_000),
 		MaxParsedTextBytes:          envInt64("OPENREADER_MAX_PARSED_TEXT_BYTES", 256*1024*1024),
-		MaxUMDChapters:              envPositiveInt("OPENREADER_MAX_UMD_CHAPTERS", 100_000),
+		MaxParsedChapters:           maxParsedChapters,
+		MaxUMDChapters:              maxUMDChapters,
 		MaxBackupRestoreBytes:       envInt64("OPENREADER_MAX_BACKUP_RESTORE_BYTES", 128*1024*1024),
 		MaxBackupArchiveEntries:     envPositiveInt("OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES", 5_000),
 		MaxBackupArchiveBytes:       envInt64("OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES", 16*1024*1024),
@@ -127,6 +135,25 @@ func envPositiveInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func explicitPositiveEnvInt(key string) (int, bool) {
+	value := os.Getenv(key)
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	return parsed, err == nil && parsed > 0
+}
+
+func (cfg Config) ParsedChapterLimit() int {
+	if cfg.MaxParsedChapters > 0 {
+		return cfg.MaxParsedChapters
+	}
+	if cfg.MaxUMDChapters > 0 {
+		return cfg.MaxUMDChapters
+	}
+	return 100_000
 }
 
 func envInt64(key string, fallback int64) int64 {

@@ -247,10 +247,7 @@ func (s *Server) validStagedPreparedImport(prepared localbook.PreparedImport) bo
 	if _, err := hex.DecodeString(prepared.SourceSHA256); err != nil {
 		return false
 	}
-	chapterLimit := s.cfg.MaxUMDChapters
-	if chapterLimit <= 0 {
-		chapterLimit = 100_000
-	}
+	chapterLimit := s.cfg.ParsedChapterLimit()
 	if len(prepared.Book.Chapters) > chapterLimit {
 		return false
 	}

@@ -1373,8 +1373,13 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "local source file not found"})
 		return
 	}
-	data, err := os.ReadFile(sourcePath)
+	legacyLimits := engine.LegacyLocalBookParseLimits()
+	data, err := readBoundedLocalBookSource(sourcePath, legacyLimits.MaxArchiveBytes)
 	if err != nil {
+		if errors.Is(err, engine.ErrLocalBookParseLimit) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": engine.ErrLocalBookParseLimit.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read local source file"})
 		return
 	}
@@ -2749,7 +2754,8 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 	if !ok {
 		return ""
 	}
-	data, err := os.ReadFile(sourcePath)
+	legacyLimits := engine.LegacyLocalBookParseLimits()
+	data, err := readBoundedLocalBookSource(sourcePath, legacyLimits.MaxArchiveBytes)
 	if err != nil {
 		return ""
 	}

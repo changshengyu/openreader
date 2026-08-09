@@ -18,6 +18,9 @@ func ParsePDF(data []byte) (ParsedBook, error) {
 
 func ParsePDFWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {
 	limits = limits.normalized()
+	if int64(len(data)) > limits.MaxArchiveBytes {
+		return ParsedBook{}, fmt.Errorf("%w: PDF input exceeds the limit", ErrLocalBookParseLimit)
+	}
 	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return ParsedBook{}, errors.New("failed to open PDF, treating as single chapter")
@@ -64,6 +67,9 @@ func ParsePDFWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, e
 	}
 
 	chapters := splitPDFChapters(fullText)
+	if err := validateParsedChapterCount(len(chapters), limits, "PDF"); err != nil {
+		return ParsedBook{}, err
+	}
 	return ParsedBook{Chapters: chapters}, nil
 }
 

@@ -118,6 +118,9 @@ func parseCBZReaderWithLimits(reader *zip.Reader, limits LocalBookParseLimits) (
 	}
 
 	sort.Strings(images)
+	if err := validateParsedChapterCount(len(images), limits, "CBZ"); err != nil {
+		return ParsedBook{}, err
+	}
 	parsed.Chapters = make([]TXTChapter, 0, len(images))
 	for index, imagePath := range images {
 		parsed.Chapters = append(parsed.Chapters, TXTChapter{

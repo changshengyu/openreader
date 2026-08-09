@@ -141,6 +141,14 @@ cd frontend && npm run build
 | `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` | 单次共享书源或 RSS 请求最多重定向次数 |
 | `OPENREADER_MAX_SOURCE_RETRIES` | `3` | 书源 URL option 非 2xx 响应的最大重试次数 |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | 空 | 仅管理员可配置的逗号分隔精确主机名、裸 IP 或 CIDR；用于放行非公网目标，非法值会使服务启动失败 |
+| `OPENREADER_MAX_IMPORT_BYTES` | `134217728`（128 MiB） | 单本本地书或 LocalStore/WebDAV 上传、预览、导入可接受的最大字节数；仅在主机内存和磁盘充足时调大 |
+| `OPENREADER_MAX_ARCHIVE_ENTRIES` | `20000` | 单个 EPUB/CBZ 归档最多检查的条目数 |
+| `OPENREADER_MAX_ARCHIVE_ENTRY_BYTES` | `134217728`（128 MiB） | 单个 EPUB/CBZ 条目最多读取的解压字节数 |
+| `OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES` | `536870912`（512 MiB） | 单个 EPUB/CBZ 归档最多检查的累计解压字节数 |
+| `OPENREADER_MAX_PDF_PAGES` | `10000` | 单个 PDF 最多解析的页数 |
+| `OPENREADER_MAX_PARSED_TEXT_BYTES` | `268435456`（256 MiB） | 单次本地书解析最多生成的解码文本字节数 |
+| `OPENREADER_MAX_PARSED_CHAPTERS` | `100000` | 任一本地书解析器最终最多生成的章节数；未设置时兼容沿用显式配置的旧 UMD 章节上限 |
+| `OPENREADER_MAX_UMD_CHAPTERS` | `100000` | UMD 结构中的章节、标题、偏移数量上限；UMD 同时受通用章节上限约束 |
 | `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | 单章节最多处理的内嵌图片数量 |
 | `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608`（8 MiB） | 单张章节缓存图片的最大字节数 |
 | `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432`（32 MiB） | 单章节缓存图片的总字节上限 |

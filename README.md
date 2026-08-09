@@ -144,6 +144,13 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | `OPENREADER_MAX_SOURCE_RETRIES` | `3` | Maximum URL-option retries after non-2xx source responses |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Administrator-only comma-separated exact host, bare IP, or CIDR allowed to reach non-public networks; invalid values fail startup |
 | `OPENREADER_MAX_IMPORT_BYTES` | `134217728` (128 MiB) | Maximum bytes accepted for one local-book or LocalStore/WebDAV upload, preview, or import; adjust only when the host has sufficient memory/disk |
+| `OPENREADER_MAX_ARCHIVE_ENTRIES` | `20000` | Maximum entries inspected in one EPUB/CBZ archive |
+| `OPENREADER_MAX_ARCHIVE_ENTRY_BYTES` | `134217728` (128 MiB) | Maximum expanded bytes read from one EPUB/CBZ archive entry |
+| `OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES` | `536870912` (512 MiB) | Maximum aggregate expanded bytes inspected in one EPUB/CBZ archive |
+| `OPENREADER_MAX_PDF_PAGES` | `10000` | Maximum pages parsed from one PDF |
+| `OPENREADER_MAX_PARSED_TEXT_BYTES` | `268435456` (256 MiB) | Maximum decoded text bytes produced by one local-book parser |
+| `OPENREADER_MAX_PARSED_CHAPTERS` | `100000` | Maximum final chapters produced by any local-book parser; when unset, an explicitly configured legacy UMD chapter limit remains the compatibility fallback |
+| `OPENREADER_MAX_UMD_CHAPTERS` | `100000` | Maximum UMD structural chapter/title/offset count; UMD also obeys the generic parsed-chapter limit |
 | `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | Maximum embedded images processed for one chapter |
 | `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum bytes for one cached chapter image |
 | `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432` (32 MiB) | Maximum aggregate cached image bytes for one chapter |

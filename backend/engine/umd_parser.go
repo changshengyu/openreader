@@ -50,14 +50,29 @@ func ParseUMD(data []byte) (ParsedBook, error) {
 
 func ParseUMDWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {
 	limits = limits.normalized()
+	if limits.MaxParsedChapters < limits.MaxUMDChapters {
+		limits.MaxUMDChapters = limits.MaxParsedChapters
+	}
+	if int64(len(data)) > limits.MaxArchiveBytes {
+		return ParsedBook{}, fmt.Errorf("%w: UMD input exceeds the limit", ErrLocalBookParseLimit)
+	}
+	var book ParsedBook
+	var err error
 	switch {
 	case bytes.HasPrefix(data, readerDevUMDMagic):
-		return parseReaderDevUMDWithLimits(data, limits)
+		book, err = parseReaderDevUMDWithLimits(data, limits)
 	case bytes.HasPrefix(data, legacyUMDMagic):
-		return parseLegacyUMDWithLimits(data, limits)
+		book, err = parseLegacyUMDWithLimits(data, limits)
 	default:
 		return ParsedBook{}, errors.New("not a valid UMD file")
 	}
+	if err != nil {
+		return ParsedBook{}, err
+	}
+	if err := validateParsedChapterCount(len(book.Chapters), limits, "UMD"); err != nil {
+		return ParsedBook{}, err
+	}
+	return book, nil
 }
 
 func parseReaderDevUMDWithLimits(data []byte, limits LocalBookParseLimits) (ParsedBook, error) {

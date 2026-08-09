@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**fixed-baseline-audited / pre-implementation**
+状态：**fixed-baseline-audited / implemented / release-validation-in-progress**
 
 本合同只关闭本地纯文本分支仍未接入统一 parser 预算的问题，并校正旧审计中已经过时的
 “ZIP/UMD/PDF/暂存清理尚未实现”结论。它不改变可见导入格式、目录识别语义、SQLite、书架数据、
@@ -37,7 +37,7 @@ OpenReader 可以增加有界资源策略，这是 Go 多用户服务所需的�
 | 编码/目录 | `decodeTXTForCatalog` 只用 512000 字节探测；`ParseTXTWithRule` 再解码完整 staged bytes；默认规则和 10KiB fallback 已按上游恢复。 | `aligned visible behavior` | 预算内输出不能改变；显式无匹配规则仍返回合法的零章节 preview。 |
 | 解码后文本 | TXT/`.text`/Markdown 在 `parseUploadedBookWithLimits` 中调用不带 limits 的 `ParseTXTWithRule`；UTF-16/32、GB18030 等解码结果没有核对 `MaxParsedTextBytes`。 | `must-fix` | 解码后、分章前检查 UTF-8 byte 总量，超限返回 `ErrLocalBookParseLimit`。不得产生 archive、DB row、广播或消费 retry token。 |
 | 章节数量 | TXT 每个匹配标题都 append；prepared snapshot 又错误借用 `MaxUMDChapters` 作为所有格式上限，direct import 与 preview 的行为可能不同。 | `must-fix` | 增加格式无关的 `MaxParsedChapters`，所有新 parse/preview/confirm 在相同边界失败；UMD 自身仍保留独立结构上限。 |
-| 正则工作量 | 自定义规则已有 16KiB 输入限制，Go RE2 无灾难性回溯；默认规则只对 512000 字节 probe 执行多次，显式规则对完整文本线性扫描一次。 | `bounded after byte/chapter fix` | 不另设任意墙钟超时；以输入、解码文本、规则长度和章节数共同构成确定工作预算。请求取消后不得继续持久化。 |
+| 正则工作量 | 自定义规则已有 16KiB 输入限制，Go RE2 无灾难性回溯；默认规则只对 512000 字节 probe 执行多次，显式规则对完整文本线性扫描一次。 | `bounded after byte/chapter fix` | 不另设任意墙钟超时；以输入、解码文本、规则长度和章节数共同构成确定工作预算。当前不承诺在 RE2 扫描中途抢占取消；parser 失败不得进入持久化事务或消费重试 token。 |
 | 历史归档恢复 | `refreshLocalBook` 与 `rebuildLocalChapterText` 先 `os.ReadFile`，随后调用 legacy parser wrapper；文档声称“更宽但仍有界”，实际读取前没有执行 1GiB legacy ceiling。 | `must-fix implementation/documentation mismatch` | 用 bounded file reader 在分配完整字节前执行 legacy input ceiling；预算内旧 TXT/EPUB/PDF/UMD/CBZ 继续可刷新/重建，超限只使显式刷新失败或该次 lazy rebuild 返回空，不改旧行/文件。 |
 | ZIP/UMD/PDF/preview cleanup | 当前已有 archive path/symlink/duplicate/count/per-entry/expanded-size，UMD segment/zlib/text，PDF page/text，以及启动+每小时跨用户 stage cleanup。 | `already aligned` | 不重复改写；保留现有专项测试。旧 checklist 未勾选项必须勘误。 |
 
@@ -89,3 +89,14 @@ OPENREADER_MAX_PARSED_CHAPTERS=100000
 三视口 smoke，以及 fresh/historical Docker volume/portable backup 门。该切片没有前端结构变化，
 无需凭 UI 测试替代 parser/API/旧卷证据。
 
+## 6. 实施证据
+
+- `ParseTXTWithLimits` 现同时约束原始输入、解码后 UTF-8 文本、自定义目录规则和最终章节数；
+  `.txt`、`.text`、`.md` 的 direct、LocalStore、WebDAV、preview 与 confirm 共用同一配置。
+- `MaxParsedChapters` 已接入 TXT、EPUB、CBZ、PDF、UMD 及 prepared snapshot 校验；UMD 继续使用
+  结构上限与通用上限中的较严格值。显式规则零匹配仍是合法的零章节 preview。
+- 历史本地归档刷新和 lazy cache rebuild 在分配完整源文件前先执行 1GiB legacy ceiling；超限错误
+  不包含宿主路径，也不修改现有 book/chapter/cache。
+- 新配置不增加 SQLite 列、迁移 marker、备份字段或持久设置；启动时不扫描或重写既有数据。
+- focused、受影响包 race、全量 Go、frontend 706/706、production build 与 `go vet` 已通过；真实导入、
+  fresh/historical volume 和本地 Docker 发布证据待本批 release gate 完成后补录。

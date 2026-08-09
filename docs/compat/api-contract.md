@@ -697,6 +697,16 @@ stable routes above and compares actual source IDs/lists plus ZIP members before
 Until the old-global-source fixture, COW, administrator-root/regular-root and restore-isolation checks
 pass together, the implemented management/runtime API slices are not sufficient release evidence.
 
+## P2 local-text parser budget
+
+- Existing import paths, request fields and success schemas are unchanged. TXT/`.text`/Markdown direct preview,
+  LocalStore and WebDAV preview now consume the same configured decoded-text and final-chapter budgets as confirm.
+- A parser-budget failure remains `400` with the existing safe parser-limit message and caller-owned retry
+  `importToken`; raw transport overflow remains the existing `413`. Storage batch envelopes keep per-item errors.
+- `POST /api/books/:id/refresh-local` returns `400` for the bounded historical input ceiling before any mutation.
+  Lazy cache reconstruction treats the same bounded-read failure as an unavailable derived chapter and discloses no
+  host path. No route, auth rule, response field, SQLite schema, backup field or WebSocket event was added.
+
 ## P1 bookshelf latest-chapter timestamp contract (2026-07-22 extracted)
 
 Existing methods, paths, auth, status codes and error envelopes remain unchanged. Shelf book response objects gain

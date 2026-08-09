@@ -25,7 +25,7 @@ var (
 )
 
 const PreparedImportVersion = 1
-const maxLocalBookTOCRuleBytes = 16 * 1024
+const maxLocalBookTOCRuleBytes = engine.MaxTXTTocRuleBytes
 
 type Importer struct {
 	cfg config.Config
@@ -533,6 +533,7 @@ func (importer Importer) parseLimits() engine.LocalBookParseLimits {
 	if importer.cfg.MaxParsedTextBytes > 0 {
 		limits.MaxParsedTextBytes = importer.cfg.MaxParsedTextBytes
 	}
+	limits.MaxParsedChapters = importer.cfg.ParsedChapterLimit()
 	if importer.cfg.MaxUMDChapters > 0 {
 		limits.MaxUMDChapters = importer.cfg.MaxUMDChapters
 	}
@@ -547,7 +548,7 @@ func parseUploadedBookWithLimits(ext string, data []byte, tocRule string, limits
 	case ".epub":
 		return engine.ParseEPUBWithLimits(data, tocRule, limits)
 	case ".txt", ".text", ".md":
-		chapters, err := engine.ParseTXTWithRule(data, tocRule)
+		chapters, err := engine.ParseTXTWithLimits(data, tocRule, limits)
 		if err != nil {
 			return engine.ParsedBook{}, err
 		}

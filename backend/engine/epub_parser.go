@@ -178,6 +178,9 @@ func ParseEPUBCatalogWithLimits(data []byte, rule string, limits LocalBookParseL
 	}
 
 	book.Chapters = buildEPUBChaptersWithResources(spineChapters, resourcesByPath, tocEntries, rule)
+	if err := validateParsedChapterCount(len(book.Chapters), limits, "EPUB"); err != nil {
+		return ParsedBook{}, err
+	}
 	return book, nil
 }
 
@@ -195,6 +198,9 @@ func MaterializeEPUBCatalogWithLimits(data []byte, catalog ParsedBook, limits Lo
 	}
 	result := catalog
 	result.Chapters = append([]TXTChapter(nil), catalog.Chapters...)
+	if err := validateParsedChapterCount(len(result.Chapters), limits, "EPUB"); err != nil {
+		return ParsedBook{}, err
+	}
 	indexesByPath := make(map[string][]int, len(result.Chapters))
 	pathOrder := make([]string, 0, len(result.Chapters))
 	for index, chapter := range result.Chapters {
