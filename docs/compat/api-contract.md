@@ -60,6 +60,11 @@ server event names and existing business payloads remain stable.
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
+UserManage 权限部分更新的第二轮固定基准见
+[`user-management-partial-update-second-audit-p2-contract.md`](user-management-partial-update-second-audit-p2-contract.md)。
+`PUT /api/admin/users/:id` 必须只更新请求中显式存在的权限/限额列；禁止把读取到的完整 User 快照
+`Save` 回数据库，从而覆盖并发登录时间或密码重置。前端每个 switch 同样只能拥有自己的单字段 payload。
+
 ## P2 RSS source import and requested-page contract
 
 Status: implemented, regression-validated and Docker-published on 2026-08-09.

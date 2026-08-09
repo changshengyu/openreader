@@ -27,6 +27,11 @@ content/cache, scheduler, backup/WebDAV restore and administrator count/default/
 association-scoped and released. The `/ws/sync` protocol audit and implementation are recorded in
 `websocket-sync-p2-contract.md`.
 
+The UserManage second audit found that the current `PUT /api/admin/users/:id` still uses a full-row GORM
+`Save` after applying a partial request. This contradicts reader-dev's field-specific update action and can overwrite
+a concurrent password reset or successful-login timestamp. The extracted, implementation-pending contract is
+`user-management-partial-update-second-audit-p2-contract.md`.
+
 ## WebSocket synchronization direction and scope
 
 Reader-dev has no WebSocket write path. OpenReader retains `GET /ws/sync?token=<jwt>` as a multi-client runtime
