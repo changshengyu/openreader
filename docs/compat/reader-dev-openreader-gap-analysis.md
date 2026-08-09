@@ -3423,6 +3423,21 @@ Go endpoint 现在按 source/sort/page 执行一个请求页，标准 feed 的 p
 page bound、owned sort allowlist、事务和内容清洗；共享 source fetcher 仍需单独补响应体上限、
 显式重定向上限和私网 SSRF 策略。这些是跨书源/RSS 的后续 P2，不由本批可见对齐签收。
 
+### P2-N 书源 / RSS 共享远程抓取器（2026-08-09 重新开放）
+
+固定基准源码盘点已完成，详见
+[`shared-source-fetcher-p2-contract.md`](shared-source-fetcher-p2-contract.md)。上游 OkHttp 的合法请求语义
+（GET/POST、headers/body/charset/type/retry/proxy、最终 URL）继续作为兼容合同，但不复制不安全 TLS、
+无界 body 和无私网防护。当前 `backend/engine/fetcher.go` 的 12 秒 client timeout 只是间接边界；
+`io.ReadAll`、Go 默认 redirect 次数、无上限 retry、未统一 URL 校验及跨 origin header 处理均为
+`must-fix`。
+
+实施拆为两个测试先行切片：`P2-N1` 增加显式 15 秒总 timeout、16 MiB 单响应上限、5 次 redirect、
+3 次 retry 上限、HTTP(S)/host/userinfo 校验和跨 origin credential 剥离；`P2-N2` 再增加默认严格的
+private/loopback/link-local/metadata/DNS-dial policy 与仅由部署管理员配置的 host/CIDR allowlist，保留
+显式配置后的 NAS/局域网书源能力。当前只完成 inventory/contract，尚未修改应用代码，也不宣称关闭
+共享 SSRF 债务。
+
 本地候选随后通过新卷 portable v1/v2 assets、cross-user、restart，以及历史卷 TXT/EPUB/UMD/
 CBZ、relative-cache、owner-isolation。OrbStack 在本机构建并推送 `92b7034` 与 `latest`，没有使用
 云端构建；两个标签共同指向双架构 OCI index
