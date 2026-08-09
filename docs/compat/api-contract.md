@@ -754,6 +754,25 @@ Status: implemented and API-tested on 2026-07-13. Reader-dev has no equivalent R
 | `POST /api/search` (single paged source), `GET /api/explore/:sourceId`, `POST /api/books/remote`, source change/refresh | Existing status and top-level `error` remain stable. | Implemented stable `error` text plus optional `code`/`stage` (`search`, `explore`, `book_info`); raw Go/source-request detail is never serialized. |
 | `/api/sources/:id/test*` and batch test | Existing authenticated `200` shape includes its result payload plus `error`/`message`. | Implemented optional `code`/`stage` (`search`, `toc`, `content`) without changing `200` or result fields. Debug messages never include variable values, rule source, request URL query, response body, cookie, authorization header, JWT, WebDAV secret or filesystem path. |
 
+### Shared source/RSS remote-request failure boundary (P2-N1)
+
+The routes and successful response bodies remain unchanged. Search, Explore, remote BookInfo/TOC/content,
+source test, RSS source page/content and remote source JSON import all pass through the shared request boundary
+defined in [`shared-source-fetcher-p2-contract.md`](shared-source-fetcher-p2-contract.md): HTTP(S)-only absolute
+URLs without userinfo, 15-second default total request timeout, 16-MiB response cap, five redirects and at most
+three retries. Same-origin redirects retain source headers; cross-origin redirects retain only safe negotiation
+headers and never Cookie, Authorization, Proxy-Authorization or custom source credentials.
+
+| Endpoint family | Existing status / shape retained | Bounded failure behavior |
+|---|---|---|
+| `POST /api/search`, `GET /api/explore/:sourceId`, remote BookInfo/TOC/content and Reader chapter content | Existing status, top-level `error`, optional `code`/`stage` and source-failure classification remain authoritative. | Unsafe URL, response limit, redirect limit and timeout are source-request failures, but public payloads contain only stable path/query/header/body/proxy-credential-free messages. Caller cancellation remains cancellation and is not cached as a failed source. |
+| `POST /api/sources/:id/test*`, `POST /api/sources/batch-test` | Existing HTTP 200 diagnostic envelope remains. | The safe `error`/`message` and optional `code`/`stage` identify request failure without echoing the raw URL or source credentials. |
+| `POST /api/sources/remote-preview`, `POST /api/sources/remote` | Existing JWT/edit permission, 200 success shape and 400 failure shape remain. | Malformed/unsafe/oversized/redirect-limited fetches return the existing generic `{"error":"failed to fetch remote source URL"}`; remote response bytes never reach JSON decoding after the cap. |
+| `POST /api/rss/sources/:id/refresh`, `GET /api/rss/articles/:id/content` | Existing authenticated source/article ownership, requested-page semantics, success payload and current 400 failure status remain. | Fetch diagnostics are redacted before concatenation; no URL query, userinfo, header/cookie, body or proxy credential enters the `error` field or persisted RSS article/source state. |
+
+P2-N1 does not change SQLite, backup, WebSocket or frontend request schemas. Private-network/DNS/dial policy is
+the separate P2-N2 contract and remains open until its own tests and deployment allowlist grammar are signed.
+
 `code` and `stage` are optional additive fields. Legacy frontend paths continue to use `error`; no parser error becomes an authentication failure, and only `engine.IsSourceRequestError` may enter `source_failures`. `backend/api/source_error_contract_test.go` proves remote request failures are redacted for paged search, explore, source debug and remote-book creation, while an invalid content rule keeps its existing `502` text and receives `source_rule_invalid` / `content`.
 
 ## P2 parser persistent-variable contract (P2-Parser-1G implemented)
