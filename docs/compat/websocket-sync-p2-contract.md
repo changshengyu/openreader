@@ -132,6 +132,9 @@
 - 多客户端 smoke 原来等待已经从上游对齐 UI 删除的“同步在线”文案；本轮改为 init-script 包装
   浏览器原生 WebSocket、只记录 attempts/open/close/error 数字且不记录 URL/JWT，以真实 open
   作为传输门。该测试修复不重新暴露产品 UI。
-- 当前 Docker/新旧卷门尚未执行，因此不能标记 `Docker-published`。Go vet 另报
-  `backup_restore_plan.go` 复制含 Mutex 的 `Server`，属于既有备份事务实现债务，将单独修复并
-  重新运行后再决定本批 Docker。
+- Docker fresh/historical volume 与 portable backup 门已在备份事务 worker 修复后全部通过；
+  `go vet ./...` 发现的 `Server`/Mutex 浅拷贝也已改为显式 transaction worker 并通过专项 race。
+- WebSocket 实现已包含在本机构建并发布的 `ghcr.io/changshengyu/openreader:2ea6e8c` 与
+  `latest`；两个标签均为 amd64/arm64 OCI index
+  `sha256:678b019c34ac1f92a38dbd650de48867002ae6425a4206aff2e8f315e189d6ac`。状态为
+  `implemented / regression-validated / Docker-published`。

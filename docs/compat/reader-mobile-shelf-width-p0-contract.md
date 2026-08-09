@@ -101,3 +101,9 @@ API、SQLite、缓存或持久化格式。
 随后本机发布的 `e7f168e` / `latest` 继续包含相同 20px 修复，并通过 fresh/historical volume 门；
 其 OCI index 为 `sha256:8d64bbb187f65c433388bddc5385ce68d42e8b40d9b397787e4c1d354c892dac`。当前部署应直接更新到
 `e7f168e`（或该 digest），无需先部署中间镜像。
+
+本轮又在当前 `main@2ea6e8c` 对完整 Reader 合同和普通书架合同重新做真实浏览器验证：Reader 内书架
+在 390×844、360×800 仍精确保持 20px/350px 与 20px/320px，普通书架保持 390/360px 整行宽度。
+该提交已由本机发布为 `2ea6e8c` 与 `latest`，OCI index 为
+`sha256:678b019c34ac1f92a38dbd650de48867002ae6425a4206aff2e8f315e189d6ac`。线上仍需 pull 并 force
+recreate 到该版本后才能验收；旧容器 restart 不能更新镜像内容。

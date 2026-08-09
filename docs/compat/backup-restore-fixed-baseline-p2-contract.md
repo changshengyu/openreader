@@ -261,5 +261,9 @@ cache/resource services 等与本次逻辑恢复无关的长生命周期运行�
 
 实施结果：transaction closure 现构造仅含 `db:tx` 与 `bookGroups:bookgroups.New(tx)` 的最小
 `*Server` worker，不再复制 Mutex 或任何长生命周期 runtime/service。原红灯 `go vet ./...` 已转绿；
-备份/恢复 focused API 合同、全量 Go、专项 race、frontend 706/706 与 production build 均通过。
-新旧卷门完成前状态为 `implemented / regression-validated / Docker-volume-pending`。
+备份/恢复 focused API 合同、全量 Go、专项 race、frontend 706/706 与 production build 均通过；
+fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume 的 TXT、EPUB、
+UMD、CBZ、relative-cache、owner-isolation 也全部通过。实现已包含在本机多架构镜像 `2ea6e8c`
+与 `latest`，OCI index 为
+`sha256:678b019c34ac1f92a38dbd650de48867002ae6425a4206aff2e8f315e189d6ac`；状态为
+`implemented / regression-validated / Docker-published`。
