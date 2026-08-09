@@ -1148,6 +1148,22 @@ Status: implemented and validated on 2026-07-10.
 - **Allowed differences.** The current Vue 3/Pinia dialog, structured editor, bounded *user-triggered* health test, guided in-overlay debug, Go/SQLite authorization, and user-scoped persisted remote URL are retained runtime/safety improvements. No book-source API, parser, database, or backup contract changed in P1-C.
 - **Known follow-up / audit correction (2026-07-12).** Earlier P1-C evidence incorrectly treated an automatic health request on the legacy `health` intent as compatible. The upstream entry loads its existing 600-second invalid-source cache and never starts a fresh test. OpenReader's health intent was corrected to enable only failure filtering; the smoke contract now verifies zero `batch-test` calls before an explicit “失效检测” click, then verifies that the manual test creates the structured summary. P2 must still provide an equivalent user-scoped normal-use error cache for full failure-list parity.
 
+### P1-C second-audit correction (2026-08-09)
+
+The 2026-07-10 record is historical implementation evidence, not the current compatibility verdict. Its
+“Allowed differences” incorrectly accepted mobile source cards, a structured Drawer editor, manager-nested
+import/remote/debug flows, and extra batch/health controls. A line-by-line review of fixed upstream
+`Index.vue:720-890,1699-2001,2238-2244,2480-2614,2878-2952` revokes those exceptions. The visible source
+manager must return to one desktop/mobile table, upstream columns/actions/footer, dynamic normal/failure
+title, fixed group order, cached-failure entry, and the generic reader-dev JSON editor. Local import, remote
+import, failure management, and the already-rebuilt standalone debugger remain separate Index actions.
+
+The authoritative replacement contract is
+[`source-manager-fixed-baseline-second-audit-p1-contract.md`](source-manager-fixed-baseline-second-audit-p1-contract.md).
+Only Vue 3/Pinia/Element Plus mechanics, Go/JWT/SQLite multi-user isolation and transactions, secure remote
+fetch/script boundaries, user-scoped failure cache, sync events, and hidden old-URL/API adapters remain
+allowed differences. Application implementation is gated on committed contract evidence and red tests.
+
 ### 2026-07-12 P2 invalid-source cache inventory
 
 Status: implemented and validated on 2026-07-12. Authority is fixed `reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`: `BookController.kt#getInvalidBookSourceCache`, `isInvalidBookSource`, `addInvalidBookSource`, `getInvalidBookSources`, `searchBookWithSource`; `Index.vue#showFailureBookSource`; and `vuex.js#addFailureBookSource`.
