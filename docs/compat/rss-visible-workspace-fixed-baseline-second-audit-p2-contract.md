@@ -1,6 +1,6 @@
 # RSS visible workspace fixed-baseline second-audit P2 contract
 
-Status: `implemented / regression-validated / Docker-pending` on 2026-08-09. This audit
+Status: `aligned / Docker-published / awaiting-device-verification` on 2026-08-09. This audit
 supersedes every earlier conclusion that treated the richer OpenReader RSS
 cards, form editor, filters, refresh actions, article metadata, or eager
 multi-page refresh as an allowed upstream-equivalent UI. No RSS application or
@@ -223,3 +223,25 @@ fetcher still lacks a universal response-byte cap, explicit redirect cap and
 private-network SSRF rejection. Those pre-existing cross-source hardening items
 remain open in `docs/security-review-checklist.md`; this RSS alignment result
 does not claim that separate security project is complete.
+
+## Docker publication
+
+Implementation commit `92b70347ff1f6ced1381e63140bb49a8ab6cde3d` was
+pushed to `main` before publication. OrbStack built the candidate and formal
+multi-architecture release locally; no cloud build was used. Published tags:
+
+- `ghcr.io/changshengyu/openreader:92b7034`
+- `ghcr.io/changshengyu/openreader:latest`
+
+Both tags resolve to OCI index
+`sha256:095540fe28c553ab6d2cfd9ce589ec0b31809f00600cd9f59ab814b7753098ba`
+with `linux/amd64` manifest
+`sha256:48f5bf95817e46770e1b6c1f22cc41bb7fa65270b51da3650d3128ccde8ea619`
+and `linux/arm64` manifest
+`sha256:2d87fc602595ca5ae11f19ff724ba669f016b116e41e2faf9c8184adcfacab36`.
+
+Before the formal push, the local arm64 candidate passed a fresh-volume gate
+covering portable v1, portable v2 assets, cross-user isolation and restart. It
+also passed the historical mounted-volume gate for TXT, EPUB, UMD, CBZ,
+relative-cache and owner isolation. The module now awaits device verification;
+the separate shared-fetcher security debt remains explicitly unfinished.

@@ -3422,3 +3422,9 @@ Go endpoint 现在按 source/sort/page 执行一个请求页，标准 feed 的 p
 安全复核没有把旧共享 fetcher 的缺口包装成完成：本批新增 8 MiB/5000 条 import bound、100000
 page bound、owned sort allowlist、事务和内容清洗；共享 source fetcher 仍需单独补响应体上限、
 显式重定向上限和私网 SSRF 策略。这些是跨书源/RSS 的后续 P2，不由本批可见对齐签收。
+
+本地候选随后通过新卷 portable v1/v2 assets、cross-user、restart，以及历史卷 TXT/EPUB/UMD/
+CBZ、relative-cache、owner-isolation。OrbStack 在本机构建并推送 `92b7034` 与 `latest`，没有使用
+云端构建；两个标签共同指向双架构 OCI index
+`sha256:095540fe28c553ab6d2cfd9ce589ec0b31809f00600cd9f59ab814b7753098ba`。RSS 状态现更新为
+`aligned / Docker-published / awaiting-device-verification`，共享 fetcher 安全债务仍保持开放。
