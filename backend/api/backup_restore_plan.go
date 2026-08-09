@@ -50,9 +50,10 @@ func (s *Server) restoreLegadoBackupDataWithPermissions(data []byte, userID uint
 
 	var result gin.H
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		worker := *s
-		worker.db = tx
-		worker.bookGroups = bookgroups.New(tx)
+		worker := &Server{
+			db:         tx,
+			bookGroups: bookgroups.New(tx),
+		}
 		var executeErr error
 		result, executeErr = worker.executeLogicalBackupRestorePlan(plan, userID, canEditSources)
 		if executeErr != nil {

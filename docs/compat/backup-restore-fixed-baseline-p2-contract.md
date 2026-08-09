@@ -258,3 +258,8 @@ cache/resource services 等与本次逻辑恢复无关的长生命周期运行�
    build/tests 与 fresh/historical Docker volume/backup smoke。
 
 本节只授权移除运行时浅拷贝并明确事务依赖，不授权重写恢复顺序或 archive 映射。
+
+实施结果：transaction closure 现构造仅含 `db:tx` 与 `bookGroups:bookgroups.New(tx)` 的最小
+`*Server` worker，不再复制 Mutex 或任何长生命周期 runtime/service。原红灯 `go vet ./...` 已转绿；
+备份/恢复 focused API 合同、全量 Go、专项 race、frontend 706/706 与 production build 均通过。
+新旧卷门完成前状态为 `implemented / regression-validated / Docker-volume-pending`。
