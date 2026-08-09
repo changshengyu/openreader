@@ -50,9 +50,33 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 | Uploads | `/api/uploads` | Uploaded assets are content-validated before final write, rooted under data uploads and user-scoped for new writes/deletes; legacy global upload URLs remain readable. BookInfo ownership is in [`bookinfo-shelf-mutations-p2-contract.md`](bookinfo-shelf-mutations-p2-contract.md); implemented Reader upload/save/delete ordering, signature/dimension admission and the separate pending P2-B backup boundary are in [`reader-appearance-assets-p2-contract.md`](reader-appearance-assets-p2-contract.md). |
 | Cache | `/api/cache/stats`, `/api/cache`, `/api/books/:id/cache` | Cache operations must not delete unrelated user data. |
 | Replace rules | `/api/replace-rules*` | See the P2 replace-rule contract below: stable name-upsert order and upstream-visible plain/regex/scope semantics. |
-| RSS | `/api/rss/sources`, `/api/rss/articles` | Remote fetch limits and parser safety apply. |
+| RSS | `/api/rss/sources`, `/api/rss/sources/import`, `/api/rss/sources/:id/refresh`, `/api/rss/articles` | Source writes are current-user scoped. The visible article flow fetches exactly one requested remote page; remote fetch limits and parser safety apply. See the P2 RSS page contract below. |
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
+
+## P2 RSS source import and requested-page contract
+
+Status: audited on 2026-08-09; implementation pending. The complete visible,
+state and parser contract is
+[`rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md`](rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md).
+
+All routes below require `Authorization: Bearer <jwt>` and scope every source,
+article, cache write and sync event to the authenticated user.
+
+| Method / path | Request | Success / side effects | Errors |
+|---|---|---|---|
+| `POST /api/rss/sources/import` | JSON array containing only the records selected in the import dialog. Current `title/url` and upstream `sourceName/sourceUrl` aliases are accepted. Missing `singleUrl` uses the upstream import default `false`. | `200 {"created":N,"updated":N,"skipped":N}`. In one SQLite transaction, trim only identity fields, skip blank name/URL, replace same-user same-URL rows in place, create new rows in input order, and emit one source sync event only after commit. Another user's same URL is unrelated. | `400` malformed/non-array/over-limit payload; `500` rollback with no partial source changes. |
+| `POST /api/rss/sources/:id/refresh?page=N&sortName=...&sortUrl=...` | `page` is a positive bounded integer, default `1`. `sortUrl` must resolve through the owned source's allowed sort/base semantics; it is not an arbitrary fetch capability. | `200 {"items":[...],"page":N,"hasMore":bool,"imported":N,"total":N,"sortUrl":"..."}`. Fetch exactly the requested remote page/transition, preserve parser order in `items`, user-scope and upsert those rows, then emit one post-commit article sync event. It must not prefetch later pages. | `400` invalid page, unsupported rule or bounded remote/parser failure; `404` missing/cross-user source; client-safe `{ "error": "..." }`. |
+| `GET /api/rss/articles` | Existing optional `sourceId`, `sort`, `unread`, `favorite`, `page`, `limit`. | Existing user-scoped cached-list response remains for deployed/hidden clients. It is not the data source for the fixed-baseline visible RSS page list. | Existing stable `400/500` behavior; never exposes another user's rows. |
+| `GET /api/rss/articles/:id/content` | Existing owned article ID. | `200` with sanitized content/link fields after the source-owned content action. No read/favourite mutation is implied by opening content. | `404` missing/cross-user article/source; `400` bounded fetch/parser failure. |
+
+Standard RSS/Atom has one remote page: page 1 returns its items and
+`hasMore=false`; page greater than 1 returns an empty successful page without
+refetching the feed. Rule sources may return `hasMore=true` only when their
+parsed next-page state supports the next requested transition. Timeout, response
+size, redirect, scheme/host, SSRF, request-rate and parser-work limits apply to
+every page. Response/error data must not reveal credentials, request headers,
+private host paths or raw security diagnostics.
 
 ## P2 remote book-cover projection contract (implemented and published)
 
