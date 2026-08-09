@@ -1,6 +1,6 @@
 # 书源管理器第二轮固定基准兼容合同（P1）
 
-状态：`aligned / regression-validated / Docker-pending`
+状态：`aligned / regression-validated / Docker-published / awaiting-device-verification`
 
 固定权威：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -237,5 +237,20 @@ WebDAV 和历史卷格式不变。
 
 发布前门禁：frontend `730/730`、production build、全量 Go、`go vet ./...`、focused/full race 和
 `git diff --check` 均通过；生产包浏览器合同在 1440×900、1024×1366、390×844、360×800 通过，
-并确认 `singleTable=true`、`jsonEditor=true`、`importPreview=true`、`failureCache=true`。当前只剩
-本机 Docker 构建、fresh/historical volume 与 GHCR 发布，完成后在本合同补记提交、标签和 digest。
+并确认 `singleTable=true`、`jsonEditor=true`、`importPreview=true`、`failureCache=true`。
+
+## 12. Docker 发布结果（2026-08-09）
+
+实现提交 `c74be70cf114739d0f67e42c7cfc461c2ee78e6a` 已推送 `main`。镜像只使用本机 OrbStack
+构建并直接上传 GHCR，没有使用云端构建：
+
+- `ghcr.io/changshengyu/openreader:c74be70`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:3dd824fb006890504110124c48a84d0ce10aebab719eec7a3c9104f071e02eba`
+- amd64：`sha256:2c7b02e98d4208c8da8beae6fd583c47123cb57eb53bb23e26965364722d1863`
+- arm64：`sha256:613cb4ad331a00a88d56a331c36e54936cbf3133a8940d5241a9089c1de836b8`
+
+候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
+的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation。允许差异仅为 Vue 3/Element Plus、
+Go/JWT/SQLite 多用户与安全适配；管理器可见结构和状态机没有新增产品差异。当前仅等待真实设备
+签收书源管理桌面/移动表现。
