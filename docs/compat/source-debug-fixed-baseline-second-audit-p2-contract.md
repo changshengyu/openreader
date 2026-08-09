@@ -69,8 +69,10 @@
 - 同一工作区同一时刻只允许一个调试任务；再次启动先取消旧任务。
 - 控制台按发生顺序追加日志并自动滚到底部；不能用最后一个 JSON 覆盖此前阶段。
 - 每个阶段至少有 `start`、`success | empty | error` 事件，并有严格递增序号和耗时。
-- 搜索结果的 `Book.variable` 必须传入详情/目录；目录生成的 `Book.variable`、首章
-  `BookChapter.variable`、书名、章名和第二章 URL 必须传入正文。
+- 固定基准在搜索/发现后只把首条 `bookUrl` 送入 `getBookInfo(bookUrl)`，因此搜索结果自身的
+  `SearchBook.variable` **不会**进入详情；OpenReader 不得把“理想上应传递”误写成上游合同。
+- 详情解析从一个新 Book runtime 开始；详情产生的 `Book.variable` 必须进入目录，目录继续更新的
+  `Book.variable`、首章 `BookChapter.variable`、最终书名、章名和第二章 URL 必须进入正文。
 - 关闭页面、退出登录、账号切换或 AbortSignal 取消后，后端停止后续请求；取消不是失败源。
 - 完成流必须有唯一 `end`；终端错误必须有唯一 `error`，客户端不得同时显示成功结束。
 
@@ -130,8 +132,8 @@ reader-dev 的 cookie-only EventSource 身份模型。
 
 ### 后端失败合同
 
-1. 搜索 → 详情 → 目录 → 正文按顺序运行，只取第一条/第一章并传递 Book/Chapter variable 与
-   `nextChapterUrl`。
+1. 搜索 → 详情 → 目录 → 正文按顺序运行，只取第一条/第一章；搜索结果 variable 按固定基准丢弃，
+   详情/目录产生的 Book/Chapter variable 与 `nextChapterUrl` 连续传递。
 2. 绝对 URL、`::`、`++`、`--` 五种入口的阶段序列准确；空搜索/目录正常 `end`。
 3. 外账号、detached、401、非法 ID、取消、请求/规则错误状态和唯一终端事件。
 4. 调试远程失败、规则失败和取消均不创建/更新 `source_failures`；批量健康检查仍按原合同记录。

@@ -3549,12 +3549,12 @@ CIDR 部署说明。
 固定基准 `Index.vue#debugBookSource` 打开独立的 `bookSourceDebug` 工作区；该工作区同时拥有完整规则
 表单、命令栏、JSON/控制台/源列表/帮助面板、50 步撤销重做及本地源列表。调试动作先把当前表单源
 保存到当前 namespace，再建立一条 SSE。`Debugger.startDebug` 根据绝对 URL、`::`、`++`、`--` 或普通
-搜索词选择入口，并自动串联第一条结果的详情、目录和首章正文；搜索/书籍/章节变量以及第二章 URL
-沿链传递。
+搜索词选择入口，并自动串联第一条结果的详情、目录和首章正文。搜索/发现结果只贡献 `bookUrl`；
+详情产生的 Book variable、目录产生的 Book/Chapter variable 以及第二章 URL 才沿后半链传递。
 
 当前 `SourceManager.vue` 把调试降成三个独立标签：只能选择已持久化源，手工复制搜索结果 URL 和
 章节 URL，没有详情阶段、流式日志、默认“我的”、直达前缀、撤销/重做或任务取消；独立 REST body
-又丢失 Book/Chapter variable 与 `nextChapterUrl`。`source_debug.go` 还把调试中的远程失败写入
+又丢失详情/目录阶段的 Book/Chapter variable 与 `nextChapterUrl`。`source_debug.go` 还把调试中的远程失败写入
 `source_failures`，可能让普通搜索在随后 10 分钟跳过用户正在修理的源。以上均为 `must-fix`，而非
 Go/Vue 技术栈差异。
 

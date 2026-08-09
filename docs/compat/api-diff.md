@@ -29,7 +29,7 @@ association-scoped and released. The `/ws/sync` protocol audit and implementatio
 
 The ownership statement does not prove source-debug workflow parity. The fixed-baseline second audit found that
 the current three-tab Dialog omits the standalone rule editor, save-before-debug transaction, one-stream automatic
-search/explore → BookInfo → TOC → first-content state machine, parser-variable/next-chapter propagation and ordered
+search/explore → BookInfo → TOC → first-content state machine, BookInfo/TOC variable and next-chapter propagation, and ordered
 logs. It also incorrectly lets debug request failures populate `source_failures`. These are `must-fix`; the existing
 three `/api/sources/:id/test*` paths remain response-compatible shims, while a Bearer-capable canonical stream is
 specified in `source-debug-fixed-baseline-second-audit-p2-contract.md`. Status: `extracted / implementation-pending`.

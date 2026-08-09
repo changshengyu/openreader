@@ -45,7 +45,7 @@ server event names and existing business payloads remain stable.
 | Group | Representative paths | Contract notes |
 |---|---|---|
 | User/settings/admin | `/api/me`, `/api/settings/:key`, `/api/admin/users` | Settings are per user. Admin endpoints require admin role. |
-| Sources | `/api/sources`, `/api/sources/import`, `/api/sources/:id/test*`, `/api/sources/:id/debug/stream` | Preserve reader3-compatible source fields and parser semantics. The three deployed test endpoints keep their authenticated `200` response fields, while the canonical debugger uses one cancellable stream to carry search/explore → BookInfo → TOC → first content variables and stage logs. Debugging has no `source_failures` side effect; only the separate explicit health-check action may record diagnostic failures. |
+| Sources | `/api/sources`, `/api/sources/import`, `/api/sources/:id/test*`, `/api/sources/:id/debug/stream` | Preserve reader3-compatible source fields and parser semantics. The three deployed test endpoints keep their authenticated `200` response fields, while the canonical debugger uses one cancellable stream for search/explore → BookInfo → TOC → first content and carries the BookInfo/TOC runtime into content. Debugging has no `source_failures` side effect; only the separate explicit health-check action may record diagnostic failures. |
 | Bookshelf | `/api/books`, `/api/books/:id`, `/api/books/batch`, `/api/books/export` | Book operations must not cross user boundaries. `GET /api/books` is the current user's authoritative mutable shelf snapshot: the frontend requests it network-first and may use its scoped persistent copy only after a network failure. |
 | Reader content | `/api/books/:id/chapters`, `/api/books/:id/chapters/:index/content` | Content fetch uses a valid cache first and returns stable chapter data. On a remote cache miss, one single `nextContentUrl` that resolves to the adjacent catalog chapter is a chapter boundary, not continuation content. A blank text `contentRule` remains the existing client-safe `502` response but must not cache page HTML or create a `source_failures` row; audio sources retain their approved blank-rule media-URL behavior. |
 | Reader legacy search | `/api/reader3/searchBookContent` | Compatibility endpoint; keep until old clients/routes no longer need it. |
@@ -831,8 +831,10 @@ index is `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500
 ## P2 source-debug second-audit API contract (2026-08-09 extracted)
 
 The fixed baseline saves the current editor source and starts one SSE debugger which automatically runs search or
-direct-entry dispatch, BookInfo, TOC and first-chapter content while carrying parser variables and the adjacent
-chapter boundary. The current three unrelated REST probes are not an upstream-equivalent state machine.
+direct-entry dispatch, BookInfo, TOC and first-chapter content while carrying the BookInfo/TOC parser runtime and
+the adjacent chapter boundary. Its `Debugger.infoDebug` deliberately re-enters by `bookUrl`, so a search/explore
+result's own variable is not carried into BookInfo; the contract preserves that exact call graph. The current three
+unrelated REST probes are not an upstream-equivalent state machine.
 
 OpenReader retains `POST /api/sources/:id/test`, `/test-chapter` and `/test-content` as deployed-client shims with
 their existing bodies, authenticated `200` debug envelopes, optional `code/stage`, validation and owner-scoped
