@@ -131,6 +131,98 @@ func TestSharedFetcherAPIErrorsRemainRedacted(t *testing.T) {
 	})
 }
 
+func TestSharedFetcherPrivateNetworkFailuresKeepExistingAPIContracts(t *testing.T) {
+	restorePolicy, err := engine.ConfigureSourceNetworkPolicy("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restorePolicy()
+
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+	bookSource := sourceErrorContractSource(t)
+	bookSource.BaseURL = "http://127.0.0.1:65534"
+	if err := bookSource.SetRules(models.BookSourceRule{
+		SearchURL:       "http://127.0.0.1:65534/search?token=private-search",
+		BookListRule:    ".book",
+		BookNameRule:    ".name|text",
+		BookURLRule:     "a|attr:href",
+		ChapterListRule: ".chapter",
+		ChapterNameRule: ".name|text",
+		ChapterURLRule:  "a|attr:href",
+		ContentRule:     ".content|html",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&bookSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	rssSource := models.RSSSource{
+		UserID:       user.ID,
+		Title:        "私网 RSS",
+		URL:          "http://[::1]:65534/feed",
+		RuleContent:  ".content@html",
+		Enabled:      true,
+		SingleURL:    true,
+		RuleArticles: ".article",
+	}
+	if err := server.db.Create(&rssSource).Error; err != nil {
+		t.Fatal(err)
+	}
+	article := models.RSSArticle{
+		UserID:   user.ID,
+		SourceID: rssSource.ID,
+		Title:    "私网文章",
+		Link:     "http://[::1]:65534/article?token=private-rss",
+	}
+	if err := server.db.Create(&article).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("search", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/search", strings.NewReader(`{"keyword":"测试","sourceIds":[`+strconv.FormatUint(uint64(bookSource.ID), 10)+`],"page":1}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", token)
+		writer := httptest.NewRecorder()
+		router.ServeHTTP(writer, req)
+		assertSourceErrorResponse(t, writer, http.StatusBadGateway, "failed to search source", "source_request_failed", "search")
+		assertNoPrivateNetworkDetails(t, writer.Body.String())
+	})
+
+	t.Run("RSS article", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/rss/articles/"+strconv.FormatUint(uint64(article.ID), 10)+"/content", nil)
+		req.Header.Set("Authorization", token)
+		writer := httptest.NewRecorder()
+		router.ServeHTTP(writer, req)
+		if writer.Code != http.StatusBadRequest || writer.Body.String() != "{\"error\":\"failed to fetch RSS article\"}" {
+			t.Fatalf("RSS private-network status=%d body=%s", writer.Code, writer.Body.String())
+		}
+		assertNoPrivateNetworkDetails(t, writer.Body.String())
+	})
+
+	t.Run("remote source preview", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/sources/remote-preview", strings.NewReader(`{"url":"http://169.254.169.254/latest/meta-data?token=private-import"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", token)
+		writer := httptest.NewRecorder()
+		router.ServeHTTP(writer, req)
+		if writer.Code != http.StatusBadRequest || writer.Body.String() != "{\"error\":\"failed to fetch remote source URL\"}" {
+			t.Fatalf("remote private-network status=%d body=%s", writer.Code, writer.Body.String())
+		}
+		assertNoPrivateNetworkDetails(t, writer.Body.String())
+	})
+}
+
+func assertNoPrivateNetworkDetails(t *testing.T, value string) {
+	t.Helper()
+	for _, forbidden := range []string{"127.0.0.1", "::1", "169.254.169.254", "private-search", "private-rss", "private-import"} {
+		if strings.Contains(value, forbidden) {
+			t.Fatalf("private-network API error leaked %q: %s", forbidden, value)
+		}
+	}
+}
+
 func TestRemoteSourcePreviewRequiresSourceEditPermissionBeforeFetch(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)

@@ -44,6 +44,17 @@ func TestLoadSourceFetchLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) 
 	}
 }
 
+func TestLoadSourceNetworkAllowlistPreservesAdministratorValue(t *testing.T) {
+	t.Setenv("OPENREADER_SOURCE_NETWORK_ALLOWLIST", "nas.home,192.168.50.0/24")
+	if got := Load().SourceNetworkAllowlist; got != "nas.home,192.168.50.0/24" {
+		t.Fatalf("SourceNetworkAllowlist = %q", got)
+	}
+	t.Setenv("OPENREADER_SOURCE_NETWORK_ALLOWLIST", "")
+	if got := Load().SourceNetworkAllowlist; got != "" {
+		t.Fatalf("default SourceNetworkAllowlist = %q, want empty", got)
+	}
+}
+
 func TestLoadParserLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
 	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRIES", "12")
 	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRY_BYTES", "2048")
