@@ -73,3 +73,9 @@ partial-failure counts and one durable shelf event are implemented behind it. Ex
 Docker-published evidence are recorded in `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`.
 `43635a1`/`latest` points to OCI index
 `sha256:0f75a0434d209af901cde81f86127f8e62fa78d6cb3610d6c10ef2e0863053c0`.
+
+## Search/Explore temporary Reader second audit
+
+Reader-dev keeps an unshelved search result in the browser `readingBook` state and reconstructs BookInfo/TOC/content without calling `saveBook`; durable progress is rejected until the user explicitly adds the book. OpenReader's authenticated opaque `/api/reader/remote-sessions*` API is a technical-stack/security translation of that lifecycle, not a new persistent book type.
+
+The fixed-baseline second audit verifies the existing user binding, no-store response, server-authoritative chapter URL, zero shelf writes and Book/Chapter variable precedence. It also classifies three remaining differences as `must-fix`: the create body is unbounded, the in-memory session map has no per-session/user/process retention budget, and malformed chapter indices renew the idle lease before validation. Exact limits, LRU semantics, cancellation/error-redaction requirements and pre-implementation tests are recorded in [`remote-reader-session-fixed-baseline-second-audit-p1-contract.md`](remote-reader-session-fixed-baseline-second-audit-p1-contract.md). Status: `inventory-complete / implementation-pending`.
