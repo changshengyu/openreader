@@ -27,12 +27,11 @@ content/cache, scheduler, backup/WebDAV restore and administrator count/default/
 association-scoped and released. The `/ws/sync` protocol audit and implementation are recorded in
 `websocket-sync-p2-contract.md`.
 
-The ownership statement does not prove source-debug workflow parity. The fixed-baseline second audit found that
-the current three-tab Dialog omits the standalone rule editor, save-before-debug transaction, one-stream automatic
-search/explore → BookInfo → TOC → first-content state machine, BookInfo/TOC variable and next-chapter propagation, and ordered
-logs. It also incorrectly lets debug request failures populate `source_failures`. These are `must-fix`; the existing
-three `/api/sources/:id/test*` paths remain response-compatible shims, while a Bearer-capable canonical stream is
-specified in `source-debug-fixed-baseline-second-audit-p2-contract.md`. Status: `extracted / implementation-pending`.
+The source-debug second audit is now implemented and browser-validated. The wrong three-tab Dialog was removed;
+the standalone editor saves before one Bearer POST SSE stream and restores exact search/explore/direct-entry →
+BookInfo → TOC → first-content sequencing, runtime-variable boundaries, adjacent-chapter protection and ordered
+bounded logs. Existing `/api/sources/:id/test*` paths remain response-compatible shims but no debug path writes
+`source_failures`. Full status is in `source-debug-fixed-baseline-second-audit-p2-contract.md`; Docker is pending.
 
 The UserManage second audit found and removed a full-row GORM `Save` from `PUT /api/admin/users/:id`.
 The endpoint now updates only explicitly supplied columns, reloads a fresh row, projects legacy nullable WebDAV

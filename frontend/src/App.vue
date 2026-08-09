@@ -10,6 +10,8 @@
     正在等待重新登录…
   </div>
 
+  <router-view v-else-if="isStandaloneWorkspace && isLoggedIn && !authenticatedSessionBlocked" />
+
   <template v-else-if="isLoggedIn && !authenticatedSessionBlocked">
     <AppLayout>
       <router-view />
@@ -51,6 +53,7 @@ const { connect, disconnect } = useSync()
 
 const isLoggedIn = computed(() => !!userStore.token)
 const isReader = computed(() => ['reader', 'remote-reader'].includes(route.name))
+const isStandaloneWorkspace = computed(() => route.name === 'source-debug')
 const isLoginRoute = computed(() => route.name === 'login')
 const authenticatedSessionBlocked = computed(() => userStore.readerSessionBlocked)
 const readerSessionKey = computed(() => `reader-session:${userStore.sessionGeneration}`)

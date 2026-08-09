@@ -828,7 +828,7 @@ index is `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500
 
 `code` and `stage` are optional additive fields. Legacy frontend paths continue to use `error`; no parser error becomes an authentication failure. Normal source operations may classify `engine.IsSourceRequestError` for their existing failure policy, but source debug/test requests are now explicitly read-only and never enter `source_failures`; the separate batch health action owns diagnostic failure writes. The second-audit implementation/tests are pending in [`source-debug-fixed-baseline-second-audit-p2-contract.md`](source-debug-fixed-baseline-second-audit-p2-contract.md).
 
-## P2 source-debug second-audit API contract (2026-08-09 extracted)
+## P2 source-debug second-audit API contract (2026-08-09 implemented)
 
 The fixed baseline saves the current editor source and starts one SSE debugger which automatically runs search or
 direct-entry dispatch, BookInfo, TOC and first-chapter content while carrying the BookInfo/TOC parser runtime and
@@ -847,6 +847,10 @@ occurs before the stream through the existing create/update APIs and therefore k
 association, copy-on-write and post-commit sync behavior. Full request/response/status/side-effect/error fields and
 planned tests are fixed in
 [`source-debug-fixed-baseline-second-audit-p2-contract.md`](source-debug-fixed-baseline-second-audit-p2-contract.md).
+
+Implementation status: the canonical stream, cancellation, bounded/redacted events, exact dispatch/runtime
+boundaries and zero failure-cache side effects are implemented. Focused race, full Go/vet, frontend 724/724,
+production build and four-viewport real-browser validation pass; Docker publication is pending.
 
 ## P2 parser persistent-variable contract (P2-Parser-1G implemented)
 

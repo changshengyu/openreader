@@ -368,48 +368,12 @@
       </template>
     </el-drawer>
 
-    <el-dialog v-model="showDebug" title="书源调试" width="720px" :fullscreen="isMobileDialog">
-      <div class="debug-title">
-        <strong>{{ debugSource?.name }}</strong>
-        <span>{{ debugSource?.baseUrl }}</span>
-      </div>
-      <el-tabs v-model="debugTab">
-        <el-tab-pane label="搜索" name="search">
-          <div class="debug-row">
-            <el-input v-model="debugKeyword" placeholder="搜索关键词" />
-            <el-button :loading="testing" @click="testSearch">测试搜索</el-button>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="目录" name="toc">
-          <div class="debug-row">
-            <el-input v-model="debugBookURL" placeholder="书籍页 URL" />
-            <el-button :loading="testing" @click="testChapter">测试目录</el-button>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="正文" name="content">
-          <div class="debug-row">
-            <el-input v-model="debugChapterURL" placeholder="章节页 URL" />
-            <el-button :loading="testing" @click="testContent">测试正文</el-button>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-      <div v-if="debugSearchRows.length" class="debug-next-actions">
-        <span>搜索返回 {{ debugSearchRows.length }} 条</span>
-        <el-button size="small" type="primary" plain @click="useSearchResultForChapter(debugSearchRows[0])">用第一条测试目录</el-button>
-      </div>
-      <div v-if="debugChapterRows.length" class="debug-next-actions">
-        <span>目录返回 {{ debugChapterRows.length }} 章</span>
-        <el-button size="small" type="primary" plain @click="useChapterForContent(debugChapterRows[0])">用第一章测试正文</el-button>
-      </div>
-      <p v-if="debugCompatibilityMessage" class="debug-compatibility-warning">{{ debugCompatibilityMessage }}</p>
-      <pre v-if="debugResult" class="debug-pre">{{ debugResultText }}</pre>
-    </el-dialog>
   </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, Download, Link, Plus, Search, Upload } from '@element-plus/icons-vue'
 import {
@@ -426,9 +390,6 @@ import {
   previewRemoteSource,
   restoreDefaultSources,
   saveDefaultSources,
-  testSourceChapter,
-  testSourceContent,
-  testSourceSearch,
   updateSource,
 } from '../../api/sources'
 import {
@@ -440,11 +401,18 @@ import {
   analyzeSourceCompatibility,
   sourceCompatibilityMessage,
 } from '../../utils/bookSourceCompatibility.js'
+import {
+  BOOK_SOURCE_RULE_KEYS,
+  createBookSourceForm,
+  parseBookSourceRules,
+  sourceToEditorSnapshot,
+} from '../../utils/bookSourceEditor.js'
 import { useReaderStore } from '../../stores/reader'
 import { useUserStore } from '../../stores/user'
 import { currentViewportWidth, shouldUseMiniInterface } from '../../utils/responsive'
 
 const route = useRoute()
+const router = useRouter()
 const props = defineProps({
   embedded: { type: Boolean, default: false },
   intent: { type: String, default: 'manage' },
@@ -515,69 +483,11 @@ const {
 const showEditor = ref(false)
 const editingSourceId = ref(null)
 const savingSource = ref(false)
-const sourceForm = reactive({ name: '', group: '', baseUrl: '', searchUrl: '', bookUrlPattern: '', bookSourceType: 0, bookSourceComment: '', charset: 'utf-8', concurrentRate: '', header: '', loginUrl: '', loginCheckJs: '', customOrder: 0, lastUpdateTime: 0, weight: 0, respondTime: 180000, rules: '', enabled: true, enabledExplore: true })
-const ruleKeys = [
-  'exploreUrl',
-  'bookListRule',
-  'bookNameRule',
-  'bookAuthorRule',
-  'bookCoverRule',
-  'bookIntroRule',
-  'bookKindRule',
-  'bookWordCountRule',
-  'latestChapterRule',
-  'bookUpdateTimeRule',
-  'bookUrlRule',
-  'paginationRule',
-  'exploreBookListRule',
-  'exploreBookNameRule',
-  'exploreBookAuthorRule',
-  'exploreBookCoverRule',
-  'exploreBookIntroRule',
-  'exploreBookKindRule',
-  'exploreBookWordCountRule',
-  'exploreLatestChapterRule',
-  'exploreBookUpdateTimeRule',
-  'exploreBookUrlRule',
-  'explorePaginationRule',
-  'bookInfoInitRule',
-  'bookInfoNameRule',
-  'bookInfoAuthorRule',
-  'bookInfoCoverRule',
-  'bookInfoIntroRule',
-  'bookInfoKindRule',
-  'bookInfoLatestChapterRule',
-  'bookInfoUpdateTimeRule',
-  'bookInfoWordCountRule',
-  'bookInfoCanRenameRule',
-  'tocUrlRule',
-  'chapterPreUpdateJsRule',
-  'chapterListRule',
-  'chapterNameRule',
-  'chapterUrlRule',
-  'chapterIsVolumeRule',
-  'chapterIsVipRule',
-  'chapterUpdateTimeRule',
-  'nextTocUrlRule',
-  'contentUrlRule',
-  'contentRule',
-  'nextContentUrlRule',
-  'contentWebJsRule',
-  'contentSourceRegex',
-  'contentReplaceRegex',
-  'contentImageStyle',
-]
+const sourceForm = reactive(createBookSourceForm())
+const ruleKeys = BOOK_SOURCE_RULE_KEYS
 const ruleForm = reactive(Object.fromEntries(ruleKeys.map(key => [key, ''])))
 const replaceRules = ref([])
 
-const showDebug = ref(false)
-const debugSource = ref(null)
-const debugTab = ref('search')
-const debugKeyword = ref('')
-const debugBookURL = ref('')
-const debugChapterURL = ref('')
-const debugResult = ref(null)
-const testing = ref(false)
 const handledRouteAction = ref('')
 const windowWidth = ref(currentViewportWidth())
 let sourceReloadTimer
@@ -631,14 +541,6 @@ const pagedSources = computed(() => {
   const start = (sourcePage.value - 1) * sourcePageSize.value
   return shownSources.value.slice(start, start + sourcePageSize.value)
 })
-const debugResultText = computed(() => debugResult.value ? JSON.stringify(debugResult.value, null, 2) : '')
-const debugCompatibilityMessage = computed(() => {
-  if (debugResult.value?.code !== 'source_rule_unsupported') return ''
-  const stage = sourceDebugStageLabel(debugResult.value?.stage)
-  return `当前服务不会执行此书源在${stage}阶段需要的 JavaScript 或 WebView；配置会保留。`
-})
-const debugSearchRows = computed(() => Array.isArray(debugResult.value?.results) ? debugResult.value.results : [])
-const debugChapterRows = computed(() => Array.isArray(debugResult.value?.chapters) ? debugResult.value.chapters : [])
 const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const drawerDirection = computed(() => isMobileDialog.value ? 'btt' : 'rtl')
 const editorDrawerSize = computed(() => isMobileDialog.value ? '88%' : '520px')
@@ -769,9 +671,6 @@ async function applyRouteAction() {
   if (intent === 'import') {
     openSourceImportPicker()
   }
-  if (intent === 'debug') {
-    openFirstDebugSource()
-  }
 }
 
 async function loadInvalidSourceHealth() {
@@ -803,7 +702,6 @@ function sourceManageIntent() {
   if (route.query.panel === 'remote') return 'remote'
   if (route.query.action === 'import') return 'import'
   if (route.query.action === 'health') return 'health'
-  if (route.query.action === 'debug') return 'debug'
   return 'manage'
 }
 
@@ -824,30 +722,11 @@ async function toggleSource(source, enabled) {
 }
 
 function openEditor(source) {
-  const parsedRules = parseRules(source?.rules || '')
+  const snapshot = sourceToEditorSnapshot(source)
+  const parsedRules = snapshot.rules
   editingSourceId.value = source?.id || null
   resetRuleForm(parsedRules)
-  Object.assign(sourceForm, {
-    name: source?.name || '',
-    group: source?.group || '',
-    baseUrl: source?.baseUrl || '',
-    searchUrl: source?.searchUrl || '',
-    bookUrlPattern: source?.bookUrlPattern || '',
-    bookSourceType: Number(source?.bookSourceType) || 0,
-    bookSourceComment: source?.bookSourceComment || '',
-    charset: source?.charset || 'utf-8',
-    concurrentRate: source?.concurrentRate || '',
-    header: source?.header || '',
-    loginUrl: source?.loginUrl || '',
-    loginCheckJs: source?.loginCheckJs || '',
-    customOrder: Number(source?.customOrder) || 0,
-    lastUpdateTime: Number(source?.lastUpdateTime) || 0,
-    weight: Number(source?.weight) || 0,
-    respondTime: source?.respondTime == null ? 180000 : Number(source.respondTime),
-    rules: source?.rules || '',
-    enabled: source?.enabled ?? true,
-    enabledExplore: source?.enabledExplore ?? true,
-  })
+  Object.assign(sourceForm, snapshot.form)
   replaceRules.value = Array.isArray(parsedRules.textReplaceRules)
     ? parsedRules.textReplaceRules.map(rule => ({ pattern: rule.pattern || '', replacement: rule.replacement || '' }))
     : []
@@ -861,7 +740,7 @@ async function saveSource() {
   }
   let payload
   try {
-    const rules = parseRules(sourceForm.rules)
+    const rules = parseBookSourceRules(sourceForm.rules)
     syncRuleFormToRules(rules)
     const cleanedReplacements = replaceRules.value
       .map(rule => ({ pattern: rule.pattern.trim(), replacement: rule.replacement }))
@@ -1176,27 +1055,8 @@ async function checkInvalidSources() {
 }
 
 function openDebug(source) {
-  debugSource.value = source
-  debugKeyword.value = ''
-  debugBookURL.value = ''
-  debugChapterURL.value = ''
-  debugResult.value = null
-  showDebug.value = true
-}
-
-function openFirstDebugSource() {
-  const source = sources.value.find(item => item.enabled) || sources.value[0]
-  if (source) {
-    openDebug(source)
-    return
-  }
-  ElMessage.info('请先添加书源后再调试')
-}
-
-function parseRules(value) {
-  const raw = String(value || '').trim()
-  if (!raw) return {}
-  return JSON.parse(raw)
+  const target = router.resolve({ name: 'source-debug', query: { sourceId: source.id } })
+  window.open(target.href, '_target')
 }
 
 function resetRuleForm(rules = {}) {
@@ -1216,47 +1076,10 @@ function syncRuleFormToRules(rules) {
   }
 }
 
-async function testSearch() {
-  if (!debugKeyword.value.trim()) return
-  await runDebug(() => testSourceSearch(debugSource.value.id, debugKeyword.value.trim()))
-}
-
-async function testChapter() {
-  if (!debugBookURL.value.trim()) return
-  await runDebug(() => testSourceChapter(debugSource.value.id, debugBookURL.value.trim()))
-}
-
-async function testContent() {
-  if (!debugChapterURL.value.trim()) return
-  await runDebug(() => testSourceContent(debugSource.value.id, debugChapterURL.value.trim()))
-}
-
-async function runDebug(fn) {
-  const operation = operations.begin('debug-source')
-  testing.value = true
-  try {
-    const { data } = await fn()
-    if (!operations.canCommit(operation)) return
-    debugResult.value = data
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    const response = err?.response?.data
-    debugResult.value = response && typeof response === 'object'
-      ? {
-          error: readError(err, '失败'),
-          ...(response.code ? { code: response.code } : {}),
-          ...(response.stage ? { stage: response.stage } : {}),
-        }
-      : { error: readError(err, '失败') }
-  } finally {
-    if (operations.canCommit(operation)) testing.value = false
-  }
-}
-
 function editorSourceSnapshot() {
   let rules = {}
   try {
-    rules = parseRules(sourceForm.rules)
+    rules = parseBookSourceRules(sourceForm.rules)
   } catch {
     rules = {}
   }
@@ -1271,39 +1094,6 @@ function editorSourceSnapshot() {
     loginCheckJs: sourceForm.loginCheckJs,
     rules,
   }
-}
-
-function sourceDebugStageLabel(stage) {
-  const labels = {
-    search: '搜索',
-    explore: '探索',
-    book_info: '书籍详情',
-    toc: '目录',
-    content: '正文',
-  }
-  return labels[String(stage || '').trim()] || '当前'
-}
-
-async function useSearchResultForChapter(row) {
-  const bookUrl = row?.bookUrl || row?.url || row?.bookURL
-  if (!bookUrl) {
-    ElMessage.warning('搜索结果没有书籍地址')
-    return
-  }
-  debugBookURL.value = bookUrl
-  debugTab.value = 'toc'
-  await testChapter()
-}
-
-async function useChapterForContent(row) {
-  const chapterUrl = row?.url || row?.chapterUrl || row?.chapterURL
-  if (!chapterUrl) {
-    ElMessage.warning('目录结果没有章节地址')
-    return
-  }
-  debugChapterURL.value = chapterUrl
-  debugTab.value = 'content'
-  await testContent()
 }
 
 function readError(err, fallback) {
@@ -1491,40 +1281,6 @@ function readError(err, fallback) {
   justify-content: flex-end;
 }
 
-.debug-title {
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.debug-row .el-input {
-  flex: 1;
-}
-
-.debug-next-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 9px 10px;
-  color: var(--app-text-muted);
-  background: var(--app-bg-soft);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  font-size: 13px;
-}
-
-.debug-pre {
-  max-height: 320px;
-  margin: 12px 0 0;
-  overflow: auto;
-  padding: 12px;
-  background: var(--app-bg-soft);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  font-size: 12px;
-  white-space: pre-wrap;
-}
 
 .source-import-preview {
   display: grid;
@@ -1647,10 +1403,6 @@ function readError(err, fallback) {
 
   .health-summary {
     white-space: normal;
-  }
-
-  .debug-next-actions {
-    display: grid;
   }
 
   .desktop-source-table {

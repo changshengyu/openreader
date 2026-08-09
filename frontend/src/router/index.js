@@ -4,10 +4,11 @@ import { safeReturnTo } from '../utils/authNavigation'
 const Home = () => import('../views/Home.vue')
 const Login = () => import('../views/Login.vue')
 const Reader = () => import('../views/Reader.vue')
+const SourceDebug = () => import('../views/SourceDebug.vue')
 
 function sourceOverlayIntentFromLegacy(to) {
   if (to.query.panel === 'remote') return 'remote'
-  if (['import', 'health', 'debug'].includes(to.query.action)) return to.query.action
+  if (['import', 'health'].includes(to.query.action)) return to.query.action
   return 'manage'
 }
 
@@ -82,6 +83,9 @@ const router = createRouter({
       name: 'sources',
       redirect: to => {
         const { panel, action, ...query } = to.query
+        if (action === 'debug') {
+          return { name: 'source-debug', query }
+        }
         return {
           path: '/',
           query: {
@@ -91,6 +95,12 @@ const router = createRouter({
           },
         }
       },
+    },
+    {
+      path: '/source-debug',
+      alias: ['/bookSourceDebug', '/bookSourceDebug/'],
+      name: 'source-debug',
+      component: SourceDebug,
     },
     {
       path: '/settings',

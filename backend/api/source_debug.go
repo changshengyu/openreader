@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,6 +17,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 	"openreader/backend/services/booksources"
+	"openreader/backend/services/sourcedebug"
 )
 
 type testSearchRequest struct {
@@ -44,9 +48,6 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 	}
 
 	results, err := engine.SearchBooks(source, strings.TrimSpace(req.Keyword))
-	if err != nil {
-		s.recordSourceHealthFailure(userID, source, err)
-	}
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"results": results}, err, "search"))
 }
 
@@ -78,9 +79,6 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 	}
 
 	chapters, err := engine.ParseTOC(strings.TrimSpace(req.BookURL), source)
-	if err != nil {
-		s.recordSourceHealthFailure(userID, source, err)
-	}
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"chapters": chapters, "count": len(chapters)}, err, "toc"))
 }
 
@@ -112,14 +110,102 @@ func (s *Server) testSourceContent(c *gin.Context) {
 	}
 
 	content, err := engine.FetchChapterContent(strings.TrimSpace(req.ChapterURL), source)
-	if err != nil {
-		s.recordSourceHealthFailure(userID, source, err)
-	}
 	preview := content
 	if len([]rune(preview)) > 2000 {
 		preview = string([]rune(preview)[:2000]) + "..."
 	}
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"content": preview, "fullLength": len([]rune(content))}, err, "content"))
+}
+
+type sourceDebugStreamRequest struct {
+	Keyword string `json:"keyword"`
+}
+
+const maxSourceDebugRequestBytes = 16 * 1024
+
+func (s *Server) debugSourceStream(c *gin.Context) {
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	userID, _ := middleware.UserID(c)
+	source, err := s.bookSources.FindActive(userID, uint(id))
+	if errors.Is(err, booksources.ErrSourceNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load source"})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSourceDebugRequestBytes)
+	var req sourceDebugStreamRequest
+	decoder := json.NewDecoder(c.Request.Body)
+	if err := decoder.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid source debug payload"})
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid source debug payload"})
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	startedAt := time.Now()
+	sequence := 0
+	emit := func(event sourcedebug.Event) error {
+		if err := c.Request.Context().Err(); err != nil {
+			return err
+		}
+		sequence++
+		data := make(map[string]any, len(event.Data)+2)
+		for key, value := range event.Data {
+			data[key] = value
+		}
+		data["seq"] = sequence
+		data["elapsedMs"] = time.Since(startedAt).Milliseconds()
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Name, encoded); err != nil {
+			return err
+		}
+		c.Writer.Flush()
+		return nil
+	}
+
+	result, err := sourcedebug.Run(c.Request.Context(), source, req.Keyword, emit)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return
+	}
+	if err != nil {
+		stage := sourcedebug.ErrorStage(err)
+		details := sourceErrorDetailsFor(err, stage)
+		message := sourceErrorMessage(err)
+		data := map[string]any{
+			"stage":   stage,
+			"status":  "error",
+			"message": message,
+			"error":   message,
+		}
+		if details.Code != "" {
+			data["code"] = details.Code
+		}
+		_ = emit(sourcedebug.Event{Name: "error", Data: data})
+		return
+	}
+	_ = emit(sourcedebug.Event{Name: "end", Data: map[string]any{
+		"status":        "success",
+		"message":       "调试完成",
+		"contentLength": result.ContentLength,
+	}})
 }
 
 type batchTestSourcesRequest struct {

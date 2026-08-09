@@ -299,7 +299,7 @@ const navSections = computed(() => [
       { key: 'importSources', label: '导入书源', action: () => overlay.openSourceManage('import') },
       { key: 'remoteSources', label: '远程书源', action: () => overlay.openSourceManage('remote') },
       { key: 'sourceHealth', label: '失效书源', action: () => overlay.openSourceManage('health') },
-      { key: 'sourceDebug', label: '调试书源', action: () => overlay.openSourceManage('debug') },
+      { key: 'sourceDebug', label: '调试书源', action: openSourceDebugWorkspace },
     ],
   },
   {
@@ -720,6 +720,11 @@ function clearRouteBookInfoOverlayIntent() {
 function openRouteSourceManageOverlay() {
   if (route.name === 'reader' || route.query.overlay !== 'sources') return
   overlay.openSourceManage(route.query.sourceAction)
+}
+
+function openSourceDebugWorkspace() {
+  const target = router.resolve({ name: 'source-debug' })
+  window.open(target.href, '_target')
 }
 
 function clearRouteSourceManageOverlayIntent() {

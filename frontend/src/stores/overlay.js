@@ -244,7 +244,7 @@ export const useOverlayStore = defineStore('overlay', {
 })
 
 function normalizeSourceManageIntent(intent) {
-  return ['manage', 'import', 'remote', 'health', 'debug'].includes(intent)
+  return ['manage', 'import', 'remote', 'health'].includes(intent)
     ? intent
     : 'manage'
 }

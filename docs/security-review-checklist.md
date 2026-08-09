@@ -87,6 +87,26 @@ ambient process proxies. Docker public/host-gateway/loopback/exact-host/restart 
 mounted-volume, portable backup and restart gates passed. FlClash fake-IP ranges remain denied unless the deployment
 administrator explicitly allows them; this is documented rather than silently weakening the default policy.
 
+### P2 source-debug streaming boundary (2026-08-09 browser-validated; Docker pending)
+
+- [x] `POST /api/sources/:id/debug/stream` requires Bearer auth and an active current-user source association;
+  JWT is never placed in a query parameter, event, local source draft or history record.
+- [x] Current source persistence remains a separate permission-checked create/update before streaming. The stream
+  and all three legacy `/test*` probes are read-only and never write `source_failures`, cache, shelf, variables or sync events.
+- [x] Request context cancellation stops the active remote transport and later stages, emits no fake `end`, and
+  does not classify user cancellation as source failure.
+- [x] Events are bounded to 128 entries/64 KiB, have strict sequence/elapsed metadata and exactly one terminal;
+  errors redact URL query/userinfo, headers/cookies, response body, parser variables, JWT, WebDAV credentials and host paths.
+- [x] The shared source fetcher continues to enforce HTTP(S), timeout, body, redirect, DNS/private-network and proxy
+  policy. JavaScript/WebView rules remain stored but are not executed and produce a safe unsupported-code event.
+- [x] Browser local source/history keys include schema and authenticated account scope; switching accounts cannot
+  restore another user's drafts. Generated JSON keeps reader-dev fields plus the same lossless `rules` extension
+  used by the backend exporter, without embedding auth material.
+
+Evidence: `backend/api/source_debug_second_audit_contract_test.go`,
+`backend/services/sourcedebug/service_test.go`, frontend source-debug/editor/state contracts,
+`scripts/smoke/source-debug-contract.mjs`, focused race, full Go/vet, frontend 724/724 and production build.
+
 ### P1 temporary remote-Reader session boundary (2026-08-09 published)
 
 - [x] `POST /api/reader/remote-sessions` accepts one JSON value within 64 KiB; declared and chunked oversized bodies fail with a safe 413 before source lookup or transport.

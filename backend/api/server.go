@@ -117,6 +117,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	protected.POST("/sources/:id/test", server.testSourceSearch)
 	protected.POST("/sources/:id/test-chapter", server.testSourceChapter)
 	protected.POST("/sources/:id/test-content", server.testSourceContent)
+	protected.POST("/sources/:id/debug/stream", server.debugSourceStream)
 	protected.GET("/categories", server.listCategories)
 	protected.POST("/categories", server.createCategory)
 	protected.PUT("/categories/reorder", server.reorderCategories)

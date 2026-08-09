@@ -59,6 +59,13 @@ test('standalone debugger restores the editor, command rail, output tabs, and au
   assert(runDebug.indexOf('saveCurrentSource') < runDebug.indexOf('debugSourceStream'), 'the stream must not start before save succeeds')
   assert.match(view, /AbortController/)
   assert.match(view, /onBeforeUnmount\([\s\S]*?abort\(/)
+  assert.match(view, /importSources\(createSourceImportForm\(rows\)\)/, 'push must synchronize the debugger list into the app')
+  assert.match(view, /sources\.value\.map\(sourceSnapshot\)/, 'pull must refresh the debugger list from the app')
+  assert.match(view, /parseImportSourceList|exportLocalSources|deleteSelectedLocalSource|clearLocalSources/)
+  assert.match(view, /URLSearchParams\(window\.location\.hash/)
+  assert.match(view, /window\.history\.replaceState/)
+  assert.match(view, /buildBookSourcePayload|sourceToEditorSnapshot/, 'the debugger must reuse the shared source conversion')
+  assert.doesNotMatch(view, /function\s+emptySource|function\s+emptyRules/)
 })
 
 test('source debug API uses a cancellable Bearer POST stream and never puts JWT in the URL', () => {

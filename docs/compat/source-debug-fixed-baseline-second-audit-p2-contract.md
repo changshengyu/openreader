@@ -1,6 +1,6 @@
 # 书源调试固定基准第二轮复审合同（P2）
 
-状态：`extracted / tests-pending / implementation-pending`
+状态：`implemented / full-regression-passed / browser-validated / Docker-pending`
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -155,3 +155,20 @@ reader-dev 的 cookie-only EventSource 身份模型。
 - 真实 CSS/JSONPath/XPath 链路和取消链路。
 - fresh/historical volume、portable backup/restart；本批无 schema 变化仍需证明旧卷可启动。
 - 完成上述门后可作为半模块本地构建并发布 Docker；报告必须说明 JavaScript/WebView 仍是允许差异。
+
+## 7. 实施与验证结果（2026-08-09）
+
+- `SourceManager.vue` 已删除错误的三探针 Dialog；Index 与书源管理均用命名 `_target` 标签打开独立
+  `/source-debug` 工作区，旧 `/bookSourceDebug` 和 `/sources?action=debug` 继续兼容跳转。
+- 新工作区恢复完整规则表单、九项命令栏、JSON/调试/源列表/帮助标签、账号 scoped 本地源列表、
+  最多 50 步 `old/now/new` 历史、hash 恢复，以及 pull/push/import/export/delete/clear。表单生成和
+  导出采用完整 reader-dev JSON；`rules` 仅作为与后端正式导出器一致的无损 OpenReader 扩展。
+- `POST /api/sources/:id/debug/stream` 已实现五类关键字分派、搜索/详情/目录/正文自动链、固定上游
+  variable 边界、第二章 URL 边界、严格事件顺序、唯一终端、取消和有界脱敏日志。三个旧探针保持
+  既有响应/status，但所有调试路径均不再写 `source_failures`。
+- focused/race、全量 Go、`go vet ./...`、frontend 724/724、production build 和 `git diff --check`
+  通过。真实 Go/SQLite/Chromium 在 1440×900、1024×1366、390×844、360×800 验证 save-before-stream、
+  Bearer header、reader-dev JSON、完整链、无相邻章节越界、无失败缓存污染、hash 恢复及传输取消；
+  控制台没有正文、JWT、secret、变量或 URL 凭据泄漏。smoke 也会有界清理临时 Go/Chromium 进程。
+- 本批不改 SQLite schema、书架/章节/缓存、备份和挂载目录。Docker 与 fresh/historical volume/backup
+  门仍待当前实现提交后执行，因此在获得镜像 digest 前不标记 `Docker-published`。

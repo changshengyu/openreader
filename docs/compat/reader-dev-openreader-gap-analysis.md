@@ -3563,7 +3563,13 @@ Go/Vue 技术栈差异。
 保留三个 `/api/sources/:id/test*` 为响应兼容探针，新增 Bearer-capable POST SSE 作为规范自动链；
 调试流和旧探针均改为零失败缓存副作用，只有独立批量健康检测可写诊断缓存。JWT、账号 scoped
 localStorage、`CanEditSources` 保存权限、有界 fetch/SSE、SSRF 防护和不执行 JavaScript/WebView 是明确
-允许的多用户/安全适配。本轮只完成 inventory，状态 `extracted / implementation-pending`。
+允许的多用户/安全适配。
+
+实施现已完成：错误的三探针 Dialog 已删除，`SourceDebug.vue` 恢复独立三列/移动单列工作区、完整
+reader-dev JSON、九项命令、账号隔离的本地源列表与 50 步历史；规范 Bearer POST SSE 自动完成五类
+入口到详情/目录/首章的链路，并保持固定上游 variable 与下一章边界。旧探针响应兼容但不再污染
+`source_failures`。全量 Go、focused race、vet、frontend 724/724、build、diff 和四视口真实浏览器均
+通过；状态为 `implemented / full-regression-passed / browser-validated / Docker-pending`。
 
 ## 2026-08-09 P2 WebSocket 同步协议与账号隔离复审
 

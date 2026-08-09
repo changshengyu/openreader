@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	stdhtml "html"
 	"net/url"
@@ -17,7 +18,10 @@ import (
 
 const maxSourcePaginationPages = 1000
 
-var sourceFalsePattern = regexp.MustCompile(`(?i)^\s*(false|no|not|0)\s*$`)
+var (
+	ErrNoChapters      = errors.New("no chapters found on toc page")
+	sourceFalsePattern = regexp.MustCompile(`(?i)^\s*(false|no|not|0)\s*$`)
+)
 
 // SearchResult represents a single book found through remote search.
 type SearchResult struct {
@@ -264,6 +268,15 @@ func ExploreBooksPage(source models.BookSource, page int) (ExploreResult, error)
 }
 
 func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string, page int) (ExploreResult, error) {
+	return ExploreBooksPageWithURLContext(context.Background(), source, exploreURLOverride, page)
+}
+
+// ExploreBooksPageWithURLContext is the cancellable counterpart used by the
+// source debugger and other request-scoped callers.
+func ExploreBooksPageWithURLContext(ctx context.Context, source models.BookSource, exploreURLOverride string, page int) (ExploreResult, error) {
+	if err := ctx.Err(); err != nil {
+		return ExploreResult{}, err
+	}
 	if page < 1 {
 		page = 1
 	}
@@ -296,7 +309,7 @@ func ExploreBooksPageWithURL(source models.BookSource, exploreURLOverride string
 	if err != nil {
 		return ExploreResult{}, err
 	}
-	document, request, err := fetchSourceRuleDocumentContext(context.Background(), request)
+	document, request, err := fetchSourceRuleDocumentContext(ctx, request)
 	if err != nil {
 		return ExploreResult{}, fmt.Errorf("fetch explore page: %w", err)
 	}
@@ -641,6 +654,12 @@ func formatSourceWordCount(value string) string {
 
 // ParseTOC fetches and parses a book's table of contents.
 func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error) {
+	return ParseTOCContext(context.Background(), bookURL, source)
+}
+
+// ParseTOCContext is the cancellable counterpart used by request-scoped
+// callers that do not need persisted Book.variable state.
+func ParseTOCContext(ctx context.Context, bookURL string, source models.BookSource) ([]RemoteChapter, error) {
 	rule, err := source.ParsedRules()
 	if err != nil {
 		return nil, fmt.Errorf("parse rules: %w", err)
@@ -653,7 +672,7 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 	if charset == "" {
 		charset = "utf-8"
 	}
-	return parseTOCWithRule(bookURL, source.BaseURL, rule, charset, bookSourceRequestPolicy(source), nil, nil, newSourceRuleRuntime())
+	return parseTOCWithRuleContext(ctx, bookURL, source.BaseURL, rule, charset, bookSourceRequestPolicy(source), nil, nil, newSourceRuleRuntime())
 }
 
 // ParseTOCWithVariables performs a TOC-only refresh while preserving the
@@ -661,6 +680,15 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 // BookInfo fields: a shelf refresh may update catalogue state but must not
 // rename the book or replace its cover/author/intro.
 func ParseTOCWithVariables(bookURL string, source models.BookSource, bookVariable, bookName string) ([]RemoteChapter, string, error) {
+	return ParseTOCWithVariablesContext(context.Background(), bookURL, source, bookVariable, bookName)
+}
+
+// ParseTOCWithVariablesContext preserves the bounded Book.variable map while
+// making the entire catalogue request chain cancellable.
+func ParseTOCWithVariablesContext(ctx context.Context, bookURL string, source models.BookSource, bookVariable, bookName string) ([]RemoteChapter, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	rule, err := source.ParsedRules()
 	if err != nil {
 		return nil, "", fmt.Errorf("parse rules: %w", err)
@@ -676,7 +704,8 @@ func ParseTOCWithVariables(bookURL string, source models.BookSource, bookVariabl
 	if charset == "" {
 		charset = "utf-8"
 	}
-	chapters, err := parseTOCWithRule(
+	chapters, err := parseTOCWithRuleContext(
+		ctx,
 		bookURL,
 		source.BaseURL,
 		rule,
@@ -701,6 +730,24 @@ func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookIn
 // across detail and catalogue parsing. The returned map is already bounded and
 // normalized for one durable book row; each returned chapter owns its own map.
 func FetchBookInfoAndTOCWithVariables(bookURL string, source models.BookSource, bookVariable, bookName string) (RemoteBookInfo, []RemoteChapter, string, error) {
+	return FetchBookInfoAndTOCWithVariablesContext(context.Background(), bookURL, source, bookVariable, bookName, nil)
+}
+
+// FetchBookInfoAndTOCWithVariablesContext keeps the detail and catalogue
+// phases in one parser runtime and one request chain. onBookInfo runs after the
+// detail rules succeed and before catalogue parsing begins, allowing callers
+// to expose the same phase boundary as reader-dev without refetching the book
+// page or leaking parser state.
+func FetchBookInfoAndTOCWithVariablesContext(
+	ctx context.Context,
+	bookURL string,
+	source models.BookSource,
+	bookVariable, bookName string,
+	onBookInfo func(RemoteBookInfo) error,
+) (RemoteBookInfo, []RemoteChapter, string, error) {
+	if err := ctx.Err(); err != nil {
+		return RemoteBookInfo{}, nil, "", err
+	}
 	rule, err := source.ParsedRules()
 	if err != nil {
 		return RemoteBookInfo{}, nil, "", fmt.Errorf("parse rules: %w", err)
@@ -724,7 +771,7 @@ func FetchBookInfoAndTOCWithVariables(bookURL string, source models.BookSource, 
 	if err != nil {
 		return RemoteBookInfo{}, nil, "", fmt.Errorf("prepare book info request: %w", err)
 	}
-	bookDocument, bookRequest, err := fetchSourceRuleDocumentContext(context.Background(), bookRequest)
+	bookDocument, bookRequest, err := fetchSourceRuleDocumentContext(ctx, bookRequest)
 	if err != nil {
 		return RemoteBookInfo{}, nil, "", fmt.Errorf("fetch book info page: %w", err)
 	}
@@ -732,7 +779,12 @@ func FetchBookInfoAndTOCWithVariables(bookURL string, source models.BookSource, 
 	if err != nil {
 		return RemoteBookInfo{}, nil, "", fmt.Errorf("parse book info page: %w", err)
 	}
-	chapters, err := parseTOCWithRule(bookURL, source.BaseURL, rule, charset, policy, bookDocument, &bookRequest, runtime)
+	if onBookInfo != nil {
+		if err := onBookInfo(info); err != nil {
+			return RemoteBookInfo{}, nil, "", err
+		}
+	}
+	chapters, err := parseTOCWithRuleContext(ctx, bookURL, source.BaseURL, rule, charset, policy, bookDocument, &bookRequest, runtime)
 	if err != nil {
 		return RemoteBookInfo{}, nil, "", err
 	}
@@ -866,6 +918,13 @@ func bookInfoScope(doc *goquery.Document, initRule string) *goquery.Selection {
 }
 
 func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule, charset string, policy SourceRequestPolicy, bookDocument *sourceRuleDocument, preparedBookRequest *sourceRequest, runtime *sourceRuleRuntime) ([]RemoteChapter, error) {
+	return parseTOCWithRuleContext(context.Background(), bookURL, sourceBaseURL, rule, charset, policy, bookDocument, preparedBookRequest, runtime)
+}
+
+func parseTOCWithRuleContext(ctx context.Context, bookURL, sourceBaseURL string, rule models.BookSourceRule, charset string, policy SourceRequestPolicy, bookDocument *sourceRuleDocument, preparedBookRequest *sourceRequest, runtime *sourceRuleRuntime) ([]RemoteChapter, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	bookRequest := sourceRequest{}
 	if preparedBookRequest != nil {
 		bookRequest = *preparedBookRequest
@@ -877,7 +936,7 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 		}
 	}
 	fetchDocument := func(request sourceRequest) (*sourceRuleDocument, sourceRequest, error) {
-		return fetchSourceRuleDocumentContext(context.Background(), request)
+		return fetchSourceRuleDocumentContext(ctx, request)
 	}
 	ensureBookDocument := func() (*sourceRuleDocument, error) {
 		if bookDocument != nil {
@@ -1026,7 +1085,7 @@ func parseTOCWithRule(bookURL, sourceBaseURL string, rule models.BookSourceRule,
 		}
 	}
 	if len(chapters) == 0 {
-		return nil, fmt.Errorf("no chapters found on toc page")
+		return nil, ErrNoChapters
 	}
 	return normalizeChapterOrder(chapters, reverse), nil
 }

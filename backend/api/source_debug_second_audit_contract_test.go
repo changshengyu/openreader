@@ -71,6 +71,20 @@ func TestSourceDebugStreamRunsFixedBaselineChainWithRuntimeAndBoundary(t *testin
 		t.Fatalf("source debug content type = %q", contentType)
 	}
 	events := decodeSourceDebugStreamContract(t, response.Body.String())
+	if len(events) == 0 || events[0].Name != "log" || events[0].Data["stage"] != "dispatch" {
+		t.Fatalf("source debug initial log = %#v", events)
+	}
+	previousSequence := 0
+	previousElapsed := -1
+	for _, event := range events {
+		sequence := intValue(event.Data["seq"])
+		elapsed := intValue(event.Data["elapsedMs"])
+		if sequence != previousSequence+1 || elapsed < previousElapsed {
+			t.Fatalf("source debug event order = %#v after seq=%d elapsed=%d", event, previousSequence, previousElapsed)
+		}
+		previousSequence = sequence
+		previousElapsed = elapsed
+	}
 	wantStages := []string{
 		"search:start", "search:success",
 		"book_info:start", "book_info:success",
@@ -321,9 +335,44 @@ func TestLegacySourceDebugProbesNeverPopulateFailureCache(t *testing.T) {
 			if writer.Code != http.StatusOK || !strings.Contains(writer.Body.String(), `"code":"source_request_failed"`) {
 				t.Fatalf("legacy %s response = %d %s", test.name, writer.Code, writer.Body.String())
 			}
+			for _, secret := range []string{"alice", "secret", "private", "source-debug-failure.example"} {
+				if strings.Contains(writer.Body.String(), secret) {
+					t.Fatalf("legacy %s leaked %q: %s", test.name, secret, writer.Body.String())
+				}
+			}
 			assertNoSourceDebugFailureRows(t, server, source.ID)
 		})
 	}
+}
+
+func TestSourceDebugStreamEmitsOneRedactedErrorWithoutFailureCache(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	source := sourceDebugModeSource(t, "https://source-debug-redaction.example")
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	restore := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return nil, errors.New("upstream https://alice:secret@source-debug-redaction.example/path?token=private failed")
+	})})
+	defer restore()
+
+	response := callSourceDebugStream(t, router, token, source.ID, `{"keyword":"失败"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("redacted source debug = %d: %s", response.Code, response.Body.String())
+	}
+	events := decodeSourceDebugStreamContract(t, response.Body.String())
+	terminal := requireSingleSourceDebugTerminal(t, events, "error")
+	if terminal.Data["code"] != "source_request_failed" || terminal.Data["stage"] != "search" || terminal.Data["error"] == "" {
+		t.Fatalf("redacted source debug error = %#v", terminal)
+	}
+	for _, secret := range []string{"alice", "secret", "private", "source-debug-redaction.example", "token="} {
+		if strings.Contains(response.Body.String(), secret) {
+			t.Fatalf("source debug stream leaked %q: %s", secret, response.Body.String())
+		}
+	}
+	assertNoSourceDebugFailureRows(t, server, source.ID)
 }
 
 func sourceDebugContractSource(t *testing.T, baseURL string) models.BookSource {
