@@ -4,8 +4,9 @@ Date: 2026-07-19
 
 Fixed upstream: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-Status: shared implementation and automated frontend gates complete; real-browser touch and Docker
-verification pending because the current local Chromium/Docker approval quota is unavailable.
+Status: **historical implementation complete / Docker-published**. The current fixed-baseline
+second-audit status is maintained in
+[`reader-ipad-panel-fixed-baseline-second-audit-p0-contract.md`](reader-ipad-panel-fixed-baseline-second-audit-p0-contract.md).
 
 This is a focused correction to `reader-ipad-responsive-p0-contract.md`. The shared width-only
 `<=750px` adaptive decision remains correct, but the previous release did not prove the upstream
