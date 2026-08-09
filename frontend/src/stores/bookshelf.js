@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { batchBooks, createBook, deleteBook, exportBooks, listBooks } from '../api/books'
+import { batchBooks, checkBookUpdates, createBook, deleteBook, exportBooks, listBooks } from '../api/books'
 import { listBookGroups, reorderBookGroups, updateBuiltInBookGroup as updateBuiltInBookGroupAPI } from '../api/bookGroups'
 import { createCategory, deleteCategory, listCategories, reorderCategories, updateCategory } from '../api/categories'
 import api from '../api/client'
@@ -40,15 +40,19 @@ function sortBookGroups(groups) {
   return asList(groups).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.key || '').localeCompare(String(b.key || '')))
 }
 
-async function clearDeletedBookBrowserCache(book, bookId, scope) {
+async function clearBookBrowserChapterCacheBestEffort(book, bookId, scope) {
   const targetBook = book || await findCachedShelfBook(bookId, scope)
   if (!targetBook) return
   try {
     await clearBookBrowserChapterCache(targetBook, bookId, { scope })
   } catch {
-    // Deletion has already succeeded remotely; stale browser entries are
-    // cache-only data and will be retried/overwritten on the next read.
+    // The durable server mutation has already succeeded; stale browser entries
+    // are cache-only data and will be retried/overwritten on the next read.
   }
+}
+
+async function clearDeletedBookBrowserCache(book, bookId, scope) {
+  return clearBookBrowserChapterCacheBestEffort(book, bookId, scope)
 }
 
 function normalizeLoadOptions(options = {}) {
@@ -64,6 +68,7 @@ let booksRequest = null
 let booksRequestKey = ''
 let categoriesRequest = null
 let bookGroupsRequest = null
+let manualRefreshRequest = null
 const booksRevision = createShelfRequestRevisionGate()
 const categoryOperations = createAuthenticatedOperationGuard()
 const bookGroupOperations = createAuthenticatedOperationGuard()
@@ -108,6 +113,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       booksRequestKey = ''
       categoriesRequest = null
       bookGroupsRequest = null
+      manualRefreshRequest = null
       booksRevision.reset(scope)
       categoryOperations.reset()
       bookGroupOperations.reset()
@@ -167,6 +173,45 @@ export const useBookshelfStore = defineStore('bookshelf', {
         })
       booksRequest = request
       return booksRequest
+    },
+    async refreshFromSources() {
+      const scope = this.ensureShelfScope()
+      if (manualRefreshRequest) return manualRefreshRequest
+
+      const request = (async () => {
+        let checkError = null
+        let summary = normalizeManualRefreshSummary()
+        try {
+          const { data } = await checkBookUpdates({})
+          summary = normalizeManualRefreshSummary(data)
+          if (!manualRefreshScopeIsCurrent(this, scope)) return { ...summary, cancelled: true }
+          for (const bookId of summary.replacedBookIds) {
+            const book = this.books.find(item => Number(item.id) === Number(bookId))
+            await clearBookBrowserChapterCacheBestEffort(book, bookId, scope)
+          }
+        } catch (error) {
+          checkError = error
+        }
+
+        if (!manualRefreshScopeIsCurrent(this, scope)) return { ...summary, cancelled: true }
+        let loadError = null
+        try {
+          await this.loadBooks({ force: true, all: true, settleProgress: true })
+        } catch (error) {
+          loadError = error
+        }
+        if (!manualRefreshScopeIsCurrent(this, scope)) return { ...summary, cancelled: true }
+        if (checkError) throw checkError
+        if (loadError) throw loadError
+        return summary
+      })()
+
+      manualRefreshRequest = request
+      try {
+        return await request
+      } finally {
+        if (manualRefreshRequest === request) manualRefreshRequest = null
+      }
     },
     async loadCategories(options = {}) {
       const scope = this.ensureShelfScope()
@@ -547,6 +592,24 @@ function writeShelfCache(key, value) {
 
 function scopedShelfCacheKey(key, scope = currentUserScope()) {
   return `${key}:${scope}`
+}
+
+function normalizeManualRefreshSummary(data = {}) {
+  const number = value => Math.max(0, Number.parseInt(value, 10) || 0)
+  const replacedBookIds = Array.isArray(data?.replacedBookIds)
+    ? [...new Set(data.replacedBookIds.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0))]
+    : []
+  return {
+    checked: number(data?.checked),
+    updated: number(data?.updated),
+    failed: number(data?.failed),
+    newChapters: number(data?.newChapters),
+    replacedBookIds,
+  }
+}
+
+function manualRefreshScopeIsCurrent(store, scope) {
+  return store.shelfScope === scope && currentUserScope() === scope
 }
 
 async function reconcileServerProgressFromBooks(books, options = {}) {

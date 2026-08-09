@@ -13,7 +13,7 @@
         <button v-if="isNormalPage" type="button" @click="showBookEditButton = !showBookEditButton">
           {{ showBookEditButton ? '取消' : '编辑' }}
         </button>
-        <button type="button" @click="refreshShelf">
+        <button type="button" :disabled="refreshLoading" @click="refreshShelf">
           {{ refreshLoading ? '刷新中...' : '刷新' }}
         </button>
         <button v-if="isNormalPage" type="button" @click="overlay.openRSS()">RSS</button>
@@ -192,17 +192,25 @@ async function deleteManagedBook(book) {
 }
 
 async function refreshShelf() {
+  if (refreshLoading.value) return
   refreshLoading.value = true
   try {
     const [categoryResult, bookGroupResult, booksResult] = await Promise.allSettled([
       bookshelf.loadCategories({ force: true }),
       bookshelf.loadBookGroups({ force: true }),
-      bookshelf.loadBooks({ force: true, all: true, settleProgress: true }),
+      bookshelf.refreshFromSources(),
     ])
     if (booksResult.status === 'rejected') throw booksResult.reason
+    if (booksResult.value?.cancelled) return
+    const remoteWarning = Number(booksResult.value?.failed || 0) > 0
+      ? `书架已刷新，${booksResult.value.failed} 本书检查失败`
+      : ''
     if (categoryResult.status === 'rejected' || bookGroupResult.status === 'rejected') {
       const groupError = categoryResult.status === 'rejected' ? categoryResult.reason : bookGroupResult.reason
-      ElMessage.warning(readError(groupError, '书架已刷新，分组刷新失败'))
+      const groupWarning = readError(groupError, '书架已刷新，分组刷新失败')
+      ElMessage.warning(remoteWarning ? `${remoteWarning}；${groupWarning}` : groupWarning)
+    } else if (remoteWarning) {
+      ElMessage.warning(remoteWarning)
     } else {
       ElMessage.success('书架已刷新')
     }

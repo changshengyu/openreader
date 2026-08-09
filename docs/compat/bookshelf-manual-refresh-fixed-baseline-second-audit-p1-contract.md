@@ -1,7 +1,7 @@
 # 书架手动刷新固定基准第二轮合同（P1）
 
-状态：`extracted / implementation-pending`  
-固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
+状态：`implemented / regression-validated / Docker-pending`
+固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 盘点日期：2026-08-09
 
 ## 范围与结论
@@ -146,3 +146,20 @@ SQLite 和 WebSocket，但必须达到相同的可见动作、单书失败隔离
 - `bookshelf-network-first-sync-p2-contract.md` 的网络优先、账号 scope 与迟到响应门禁保持不变。
 - 显式单书 `POST /api/books/:id/refresh` 继续负责完整 BookInfo + TOC 刷新；手动书架刷新只检查 TOC，
   不得借机改变书籍元数据。
+
+## 实施与回归结果（2026-08-09）
+
+- `services/scheduler` 现先按固定快照并发抓取（上限 16），再串行执行每书 SQLite 事务；TOC-only
+  规则运行从持久化 `Book.Variable` 开始，不覆盖 BookInfo。
+- 完全一致目录不重写；精确前缀只追加并保留旧章节 ID、缓存、进度和书签引用；改名、URL/变量变化、
+  重排或缩短统一复用 catalogue replacement，事务内重绑引用，提交后才清理无引用派生缓存。
+- `POST /api/books/check-updates` 已返回安全统计、稳定 shelf projection 和 `replacedBookIds`；一本书失败
+  只增加 `failed`，候选读取/最终投影失败才返回稳定 `500`。所有成功事务结束后至多广播一次。
+- 首页和 Reader 内书架共用 Pinia `refreshFromSources()`；共享 in-flight，顺序为 check → 浏览器缓存失效
+  → 等待 pending progress 后权威重载。检查失败仍尝试重载；初始化/focus/WebSocket 不触发远程检查。
+- 回归通过：Go 全量、`go vet`、受影响 scheduler/API race、frontend 713/713、production build、
+  `git diff --check`。完整 Reader 浏览器合同通过桌面、390×844、360×800、自适应/强制手机 iPad，
+  并再次精确得到 Reader 内书架 350/320px。独立 Home+Reader 真实 Go 刷新脚本本轮因 Codex 外部执行
+  额度拒绝未能重跑；其新增请求计数已由前端运行时测试覆盖，发布记录必须保留这一限制。
+
+本实现不迁移 SQLite 或 mounted paths。fresh/historical volume 与 Docker 发布证据将在同一合同内追加。

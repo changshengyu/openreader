@@ -73,9 +73,14 @@ export function useReaderShelf(options) {
   }
 
   async function refresh() {
+    if (loading.value) return
     loading.value = true
     try {
-      await options.bookshelf.loadBooks({ force: true, all: true, settleProgress: true })
+      const summary = await options.bookshelf.refreshFromSources()
+      if (summary?.cancelled) return
+      if (Number(summary?.failed || 0) > 0) {
+        options.onWarning?.(`书架已刷新，${summary.failed} 本书检查失败`)
+      }
       locateCurrentBook()
     } catch (error) {
       options.onError?.(error, '刷新书架失败')

@@ -677,6 +677,7 @@ const {
   currentChapterCount: () => chapters.value.length,
   router,
   saveProgress: () => saveCurrentProgress({ force: true }),
+  onWarning: message => ElMessage.warning(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const {

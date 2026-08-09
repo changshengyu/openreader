@@ -127,6 +127,70 @@ func TestManualShelfRefreshReplacesChangedAndShorterCatalogue(t *testing.T) {
 	}
 }
 
+func TestManualShelfRefreshAppendsWithoutReplacingExistingChapterIdentity(t *testing.T) {
+	database := newManualShelfRefreshDatabase(t)
+	source := createManualShelfRefreshSource(t, database, 1, models.BookSourceRule{
+		ChapterListRule: ".chapter", ChapterNameRule: "a|text", ChapterURLRule: "a|attr:href",
+	})
+	restore := engine.SetHTTPClientForTesting(&http.Client{Transport: schedulerRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(manualShelfRefreshHTML("第一章", "第二章", "第三章"))),
+			Header:     make(http.Header), Request: request,
+		}, nil
+	})})
+	defer restore()
+
+	oldCheck := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	book := models.Book{UserID: 1, SourceID: source.ID, Title: "只追加目录", URL: "https://manual-refresh.test/book", LastChapter: "第二章", ChapterCount: 2, LastCheckTime: oldCheck, CanUpdate: true}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapters := []models.Chapter{
+		{BookID: book.ID, Index: 0, Title: "第一章", URL: "https://manual-refresh.test/chapter/0", CachePath: "manual-refresh/one.txt"},
+		{BookID: book.ID, Index: 1, Title: "第二章", URL: "https://manual-refresh.test/chapter/1", CachePath: "manual-refresh/two.txt"},
+	}
+	if err := database.Create(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	progress := models.ReadingProgress{UserID: 1, BookID: book.ID, ChapterID: chapters[1].ID, ChapterIndex: 1, Offset: 23}
+	bookmark := models.Bookmark{UserID: 1, BookID: book.ID, ChapterID: chapters[1].ID, ChapterIndex: 1, Offset: 11, Title: "第二章书签"}
+	if err := database.Create(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&bookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(database, time.Hour)
+	result, err := service.CheckNowForUserDetailed(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewChapters != 1 || result.Updated != 1 || len(result.UpdatedBookIDs) != 1 || len(result.ReplacedBookIDs) != 0 || len(result.SupersededCachePaths) != 0 {
+		t.Fatalf("append result = %+v", result)
+	}
+	var current []models.Chapter
+	if err := database.Where("book_id = ?", book.ID).Order("`index` asc").Find(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(current) != 3 || current[0].ID != chapters[0].ID || current[1].ID != chapters[1].ID {
+		t.Fatalf("append replaced existing chapter identity: before=%+v after=%+v", chapters, current)
+	}
+	if current[0].CachePath != "manual-refresh/one.txt" || current[1].CachePath != "manual-refresh/two.txt" {
+		t.Fatalf("append discarded existing cache paths: %+v", current)
+	}
+	if err := database.First(&progress, progress.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.First(&bookmark, bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.ChapterID != chapters[1].ID || bookmark.ChapterID != chapters[1].ID {
+		t.Fatalf("append rewrote stable references: progress=%+v bookmark=%+v", progress, bookmark)
+	}
+}
+
 func TestManualShelfRefreshRollsBackPartialCatalogueInsert(t *testing.T) {
 	database := newManualShelfRefreshDatabase(t)
 	source := createManualShelfRefreshSource(t, database, 1, models.BookSourceRule{

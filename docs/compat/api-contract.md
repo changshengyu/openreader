@@ -340,7 +340,7 @@ The upstream uses namespace-specific JSON storage and SSE cache progress. OpenRe
 
 ### P1 manual shelf refresh API contract
 
-Status: extracted 2026-08-09; implementation pending. Full state, transaction and test requirements are in
+Status: implemented and regression-validated 2026-08-09; Docker pending. Full state, transaction and test requirements are in
 [`bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`](bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md).
 
 | Method / path | Request | Success / side effects | Auth and errors |

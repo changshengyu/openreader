@@ -806,6 +806,21 @@ owner-isolation smoke. See `reader-settings-fixed-baseline-second-audit-p0-contr
 
 See [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md).
 
+## P1 manual shelf refresh compatibility (2026-08-09)
+
+- No table, column, index, mounted directory, backup member, WebDAV object or browser key format changes.
+  Existing `Book`, `Chapter`, `ReadingProgress` and `Bookmark` rows remain the durable authority.
+- An exact-prefix remote catalogue update appends only new chapter rows and preserves every existing chapter ID,
+  cache path, progress reference and bookmark reference. An equal catalogue performs no chapter rewrite.
+- A successful non-prefix replacement reuses the existing catalogue replacement transaction. Recoverable progress
+  and bookmark offsets/indexes remain; obsolete chapter IDs are rebound by canonical resource or index, and only
+  unreferenced derived chapter caches are removed after commit. Original imports and mounted library files are not
+  cleanup targets.
+- A remote, parser, stale-snapshot or transaction failure leaves that book's old catalogue, summary, variable,
+  progress, bookmarks and cache readable. Another book may still commit independently in the same refresh round.
+- Existing old volumes need no migration or backfill. The unchanged fresh/historical Docker volume gate remains
+  required before publication; see `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`.
+
 ## P2 backup restore transaction-worker compatibility (2026-08-09 extracted)
 
 - The logical restore already promises one SQLite transaction for selected settings, groups, shelf, progress,

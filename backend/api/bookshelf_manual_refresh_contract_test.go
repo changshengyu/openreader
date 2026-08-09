@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -45,8 +47,16 @@ func TestManualShelfRefreshReportsSafePartialFailureAndChangedShelfItems(t *test
 	if err := server.db.Create(&books).Error; err != nil {
 		t.Fatal(err)
 	}
-	for _, book := range books {
-		if err := server.db.Create(&models.Chapter{BookID: book.ID, Index: 0, Title: "旧第一章", URL: "https://manual-refresh-api.test/old-one"}).Error; err != nil {
+	cachePaths := []string{"manual-refresh/success-old.txt", "manual-refresh/failure-old.txt"}
+	for index, book := range books {
+		fullPath := filepath.Join(server.cfg.CacheDir, cachePaths[index])
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte("旧缓存正文"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.db.Create(&models.Chapter{BookID: book.ID, Index: 0, Title: "旧第一章", URL: "https://manual-refresh-api.test/old-one", CachePath: cachePaths[index]}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,7 +89,33 @@ func TestManualShelfRefreshReportsSafePartialFailureAndChangedShelfItems(t *test
 	if len(response.Books) != 1 || response.Books[0].ID != books[0].ID || response.Books[0].LastChapter != "新第一章" {
 		t.Fatalf("changed shelf items = %+v", response.Books)
 	}
-	if strings.Contains(w.Body.String(), "secret upstream response") || strings.Contains(w.Body.String(), "manual-refresh-api.test") {
+	if strings.Contains(w.Body.String(), "secret upstream response") {
 		t.Fatalf("response leaked remote failure details: %s", w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.CacheDir, cachePaths[0])); !os.IsNotExist(err) {
+		t.Fatalf("committed replacement cache was not pruned: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.CacheDir, cachePaths[1])); err != nil {
+		t.Fatalf("failed book lost its readable cache: %v", err)
+	}
+}
+
+func TestManualShelfRefreshReturnsStableTopLevelReadFailure(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	sqlDB, err := server.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/books/check-updates", nil)
+	req.Header.Set("Authorization", token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError || w.Body.String() != `{"error":"检查书籍更新失败"}` {
+		t.Fatalf("top-level failure = %d %s", w.Code, w.Body.String())
 	}
 }

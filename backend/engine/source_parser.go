@@ -656,6 +656,42 @@ func ParseTOC(bookURL string, source models.BookSource) ([]RemoteChapter, error)
 	return parseTOCWithRule(bookURL, source.BaseURL, rule, charset, bookSourceRequestPolicy(source), nil, nil, newSourceRuleRuntime())
 }
 
+// ParseTOCWithVariables performs a TOC-only refresh while preserving the
+// reader-dev Book.variable state. It intentionally does not evaluate or return
+// BookInfo fields: a shelf refresh may update catalogue state but must not
+// rename the book or replace its cover/author/intro.
+func ParseTOCWithVariables(bookURL string, source models.BookSource, bookVariable, bookName string) ([]RemoteChapter, string, error) {
+	rule, err := source.ParsedRules()
+	if err != nil {
+		return nil, "", fmt.Errorf("parse rules: %w", err)
+	}
+	if err := ensureSourceScriptEntryPointsSupported(source); err != nil {
+		return nil, "", err
+	}
+	runtime, err := newSourceRuleRuntimeWithBookVariables(bookVariable, bookName)
+	if err != nil {
+		return nil, "", err
+	}
+	charset := source.Charset
+	if charset == "" {
+		charset = "utf-8"
+	}
+	chapters, err := parseTOCWithRule(
+		bookURL,
+		source.BaseURL,
+		rule,
+		charset,
+		bookSourceRequestPolicy(source),
+		nil,
+		nil,
+		runtime,
+	)
+	if err != nil {
+		return nil, "", err
+	}
+	return chapters, runtime.persistentBookVariables(), nil
+}
+
 func FetchBookInfoAndTOC(bookURL string, source models.BookSource) (RemoteBookInfo, []RemoteChapter, error) {
 	info, chapters, _, err := FetchBookInfoAndTOCWithVariables(bookURL, source, "", "")
 	return info, chapters, err
