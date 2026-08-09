@@ -63,6 +63,86 @@ func TestSourceRequestErrorsAreStructuredAndRedacted(t *testing.T) {
 	})
 }
 
+func TestSharedFetcherAPIErrorsRemainRedacted(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	user := lifecycleUser(t, server, "testuser")
+	source := models.RSSSource{
+		UserID:       user.ID,
+		Title:        "安全 RSS",
+		URL:          "https://rss-errors.example/feed",
+		RuleContent:  ".content@html",
+		Enabled:      true,
+		SingleURL:    true,
+		RuleArticles: ".article",
+	}
+	if err := server.db.Create(&source).Error; err != nil {
+		t.Fatal(err)
+	}
+	article := models.RSSArticle{
+		UserID:   user.ID,
+		SourceID: source.ID,
+		Title:    "安全文章",
+		Link:     "https://rss-errors.example/article?session=rss-query-secret",
+	}
+	if err := server.db.Create(&article).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var requests atomic.Int32
+	restore := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, errors.New("upstream https://alice:rss-password@rss-errors.example/article?session=rss-query-secret header rss-header-secret proxy rss-proxy-secret")
+	})})
+	defer restore()
+
+	t.Run("RSS article content", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/rss/articles/"+strconv.FormatUint(uint64(article.ID), 10)+"/content", nil)
+		req.Header.Set("Authorization", token)
+		writer := httptest.NewRecorder()
+		router.ServeHTTP(writer, req)
+		if writer.Code != http.StatusBadRequest {
+			t.Fatalf("RSS content status = %d, want 400: %s", writer.Code, writer.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(writer.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["error"] != "failed to fetch RSS article" {
+			t.Fatalf("RSS safe error = %#v", payload)
+		}
+		assertNoSharedFetchSecrets(t, writer.Body.String())
+	})
+
+	t.Run("remote source preview rejects userinfo before transport", func(t *testing.T) {
+		before := requests.Load()
+		req := httptest.NewRequest(http.MethodPost, "/api/sources/remote-preview", strings.NewReader(`{"url":"https://alice:remote-password@source-import.example/list.json?token=remote-query-secret"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", token)
+		writer := httptest.NewRecorder()
+		router.ServeHTTP(writer, req)
+		if writer.Code != http.StatusBadRequest || writer.Body.String() != "{\"error\":\"failed to fetch remote source URL\"}" {
+			t.Fatalf("remote source safe error status=%d body=%s", writer.Code, writer.Body.String())
+		}
+		if requests.Load() != before {
+			t.Fatal("unsafe remote source URL reached transport")
+		}
+		assertNoSharedFetchSecrets(t, writer.Body.String())
+	})
+}
+
+func assertNoSharedFetchSecrets(t *testing.T, value string) {
+	t.Helper()
+	for _, forbidden := range []string{
+		"alice", "rss-password", "rss-query-secret", "rss-header-secret", "rss-proxy-secret",
+		"remote-password", "remote-query-secret", "session=", "token=",
+	} {
+		if strings.Contains(value, forbidden) {
+			t.Fatalf("shared fetch API error leaked %q: %s", forbidden, value)
+		}
+	}
+}
+
 func TestChapterContentRuleFailureHasStructuredCode(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
