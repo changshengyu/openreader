@@ -65,7 +65,9 @@ Evidence: `frontend/tests/localCacheStatsScope.test.mjs`,
 - [x] Shared Source/RSS redirects are explicitly bounded to five and every redirect URL is revalidated.
 - [x] Shared Source/RSS requests have a configurable 15-second safe default timeout and preserve earlier caller cancellation.
 - [x] Shared Source/RSS response bodies are bounded to 16 MiB before charset, HTML/XML/JSON or binary processing.
-- [ ] Private network access is considered when server-side fetches are user-controlled.
+- [x] Shared Source/RSS private, loopback, link-local, metadata and special-use targets are denied by default;
+  DNS answers, redirects and actual dials are revalidated, and deployment exceptions require the administrator-only
+  exact-host/IP/CIDR allowlist.
 - [x] Shared Source/RSS public errors redact URL query, userinfo, headers/cookies, request/response body and
   proxy credentials; cross-origin redirects strip credential-bearing headers.
 
@@ -75,17 +77,15 @@ P2-N1 is implemented and published as `981bca7` / `latest`, OCI index
 `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`. Focused race tests,
 full Go/frontend/build, real CSS/JSONPath/XPath/RSS browser flows and fresh/historical mounted-volume gates passed.
 
-The unchecked private-network item is intentionally still open. P2-N2 must add private/loopback/link-local/
-metadata blocking, DNS-rebinding-safe dialing, proxy endpoint/target checks and an administrator-only host/IP/CIDR
-allowlist so NAS/LAN sources remain an explicit deployment choice. N1 deliberately preserves their previous
-reachability and therefore does not close the complete shared-fetcher SSRF review.
+### P2-N2 shared Source/RSS private-network boundary (2026-08-09 published)
 
-The P2-N2 design is now contract-locked in `docs/compat/shared-source-fetcher-p2-contract.md` with the sole
-administrator variable `OPENREADER_SOURCE_NETWORK_ALLOWLIST`, fail-closed startup grammar, mixed-DNS rejection,
-dial-time IP pinning, explicit HTTP/SOCKS endpoint and target checks, and no ambient process proxy. This checklist
-item remains unchecked until public/LAN Docker fixtures and historical-volume gates pass. Implementation, focused
-engine/config/API tests, Engine race, full Go, frontend 706/706 and production build now pass; Docker is the
-remaining release gate.
+P2-N2 is implemented and published as `d198c2e` / `latest`, OCI index
+`sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc1`. The sole administrator variable
+`OPENREADER_SOURCE_NETWORK_ALLOWLIST` is fail-closed; direct and explicit HTTP/SOCKS requests validate target and
+proxy endpoint independently, reject mixed DNS and rebinding, pin validated IPs at dial/handshake time, and ignore
+ambient process proxies. Docker public/host-gateway/loopback/exact-host/restart fixtures plus fresh/historical
+mounted-volume, portable backup and restart gates passed. FlClash fake-IP ranges remain denied unless the deployment
+administrator explicitly allows them; this is documented rather than silently weakening the default policy.
 
 ## P2 RSS requested-page and import review (2026-08-09 implementation)
 
@@ -103,10 +103,10 @@ remaining release gate.
 - [x] Article cache upsert is transactional and preserves hidden read/favourite
   state; visible content is sanitized and a delayed source/page or old-account
   result cannot commit into the current dialog.
-- [x] The shared `engine` source fetcher now applies the P2-N1 response, redirect,
-  timeout, retry, URL and redaction boundaries. General private-address/DNS/proxy
-  policy remains the separate unchecked P2-N2 item above; the RSS visible-workspace
-  slice alone does not claim that portion closed.
+- [x] The shared `engine` source fetcher applies the P2-N1 response, redirect,
+  timeout, retry, URL and redaction boundaries and the separately published P2-N2
+  private-address/DNS/proxy policy. The RSS visible-workspace slice does not own those
+  transport contracts, but all RSS fetches consume them.
 
 Evidence: `backend/api/rss_requested_page_contract_test.go`,
 `backend/services/rss/service_test.go`, the existing RSS parser/content tests,

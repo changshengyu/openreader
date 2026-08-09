@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**aligned / Docker-published / awaiting-device-verification**
+状态：**aligned / Docker-republished in `d198c2e` / deployment-update-required**
 
 本合同只处理 Reader 顶部“书架”按钮打开的阅读内书架，不改变 Index 首页普通书架。普通书架在
 `7971e23` 已恢复移动书籍行等于视口宽度；两者是不同 DOM、CSS 和验收边界。
@@ -86,3 +86,14 @@ API、SQLite、缓存或持久化格式。
 候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
 的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation。当前等待真实设备确认 20px inset 与上游
 视觉一致；本批没有允许的 UI 差异，也没有数据/API/持久化变更。
+
+## 6. 设备反馈与线上部署核验（2026-08-09）
+
+设备再次反馈“移动端阅读书架明显窄”。对 `https://openreader.yuchsh.top` 的已登录线上页面做 390px
+只读测量后确认：站点版本按钮仍显示 `7971e23`；首页普通书架行宽为 390px，但 Reader 内书架内容仍
+是旧实现的左右 24px、列表 342px。它与当前 `main` 的左右 20px、列表 350px 差异完全一致，因此
+本次反馈判定为 **部署版本滞后**，不是 `5151609` 之后源码再次回归。
+
+包含该宽度修复和 P2-N2 网络策略的 `d198c2e` 已重新由本机发布为同名标签与 `latest`，OCI index 为
+`sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc1`。线上容器必须拉取并重建到
+`d198c2e`（或该 digest）后再做设备验收；仅执行容器 restart 不会自动替换旧镜像。

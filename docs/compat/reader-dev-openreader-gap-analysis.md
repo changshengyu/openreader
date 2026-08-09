@@ -3490,5 +3490,14 @@ redirect 和实际拨号都复核 DNS；混合答案默认整体拒绝，direct 
 该 inventory 先以 `ff53b16` 单独提交；失败合同 `4cb88ed` 随后证明旧实现缺少 allowlist、IPv4/IPv6、
 mixed DNS、rebinding、redirect→metadata、HTTP CONNECT/absolute-form、SOCKS target/endpoint 和安全 API
 边界。当前实现已使上述专项、Engine race、全量 Go、frontend 706/706 和 production build 通过；历史
-SQLite、source/RSS JSON、缓存、备份和 WebDAV 均未迁移或重写。真实 Docker 公网/LAN/重启与新旧卷
-尚未执行，因此状态为 `implemented / regression-validated / Docker-pending`。
+SQLite、source/RSS JSON、缓存、备份和 WebDAV 均未迁移或重写。真实 Docker 默认公网 IP、
+host-gateway/loopback 拒绝、exact-host 放行、移除 allowlist 后重启恢复严格模式，以及 fresh/historical
+volume、portable backup、restart 门全部通过。FlClash fake-IP 对 GitHub 的解析落入合同明确拒绝的
+`198.18.0.0/15`，因此公网门使用真实公网 IP 完成，并保留 README 中的 real-IP/Redir-Host 或显式
+CIDR 部署说明。
+
+`d198c2e` 已由本机 OrbStack 构建并发布为同名标签与 `latest`，没有使用云构建；OCI index 为
+`sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc1`，amd64/arm64 manifest 分别为
+`sha256:ef6bbd76f6b748b2597a57154fc54826c4afde3cc60615fbd63f867a7fa6217b` 与
+`sha256:d45132098b26dbf8a4ebbc9ca1f3e22b5fbb2ec48430e813a2c13f29204bee50`。状态更新为
+`aligned / Docker-published / awaiting-device-verification`。

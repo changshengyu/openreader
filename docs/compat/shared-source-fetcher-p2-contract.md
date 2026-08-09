@@ -2,11 +2,11 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：**P2-N1 aligned / Docker-published；P2-N2 implemented / regression-validated / Docker-pending**。
+状态：**P2-N1 aligned / Docker-published；P2-N2 aligned / Docker-published / awaiting-device-verification**。
 2026-08-09 已完成固定上游、当前 Go 实现和调用面的源码盘点，并按两个可独立验证的安全切片推进：
 不改变合法目标可达性的 `P2-N1` 通用请求边界已经测试先行实现和发布；需要显式部署策略的
-`P2-N2` 私网地址边界已按合同实现并通过代码级回归；真实 Docker 公网/LAN/重启门与镜像发布完成前，
-仍不能宣称共享 SSRF 债务已经整体关闭。
+`P2-N2` 私网地址边界已按合同实现，并通过代码级、真实 Docker 网络、新旧卷和镜像发布门；共享
+Source/RSS 抓取器的本合同 SSRF 债务已经关闭，后续 parser/upload 资源上限仍由独立 P2 合同追踪。
 
 ## 权威文件
 
@@ -101,7 +101,7 @@
 
 ## P2-N2：私网、DNS/dial 与代理边界
 
-状态：**implemented / regression-validated / Docker-pending**。
+状态：**aligned / Docker-published / awaiting-device-verification**。
 
 N2 在 N1 通过后独立实施。固定上游只支持书源内显式 HTTP/SOCKS 代理，没有进程环境代理、私网阻断或
 部署白名单；因此 OpenReader 保留合法公网请求和显式代理能力，但把默认 SSRF 边界作为允许的安全差异。
@@ -246,7 +246,7 @@ P2-N1 可在完成上述门后作为半模块镜像发布，但必须在进度�
   `sha256:fd9f37f2d20c326c06cf0110fd8c6e529455523141e91383440bbb431dad06ce`，arm64 为
   `sha256:852f6ef18e7f7506c7b03ea377e35f1f3b12d0ef5cc7a6833fc871307e5a9719`。
 
-## P2-N2 实施结果（Docker pending）
+## P2-N2 实施与发布结果
 
 - 新增 `OPENREADER_SOURCE_NETWORK_ALLOWLIST` 的 fail-closed parser、启动时安装和 README 配置说明；
   非法配置在目录/SQLite/监听初始化前失败，错误不回显条目值。
@@ -262,5 +262,17 @@ P2-N1 可在完成上述门后作为半模块镜像发布，但必须在进度�
   `go vet . ./engine ./config` 通过；全仓 `go vet ./...` 仍有既存 `api/backup_restore_plan.go` 复制
   `Server` mutex 警告，不属于本切片且未据此冒充全仓 vet 通过。
 
-仍未完成：真实 Docker 公网、默认 host-gateway/loopback 拒绝、exact-host allowlist、移除 allowlist 后
-重启恢复严格模式，以及 fresh/historical volume 门；通过并发布前安全清单保持未签收。
+- 本机候选镜像在默认严格策略下使用真实公网 IP source 成功发网并进入 JSON 格式错误；
+  `host.docker.internal` 与 `127.0.0.1` 在 fixture 零请求的情况下被拒绝。exact-host allowlist 只恢复
+  host-gateway fixture，删除 allowlist 并重启后重新拒绝，SQLite 中的历史 source 行始终保留。
+- FlClash fake-IP 环境会把 `raw.githubusercontent.com` 解析到 `198.18.0.0/15`，首轮公网探针因此按
+  合同被拒绝。正式门禁改用 `https://1.1.1.1/cdn-cgi/trace` 验证默认公网 IP 可达；这不是放宽策略。
+  部署继续使用 fake-IP DNS 时，应优先使用 real-IP/Redir-Host，或由管理员明确将
+  `198.18.0.0/15` 加入 allowlist。
+- fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume 的 TXT、EPUB、
+  UMD、CBZ、relative-cache、owner-isolation、backup/restore 均通过。
+- 实现提交 `d198c2e` 已推送 `main`。OrbStack 本机构建 amd64/arm64 并直接发布
+  `ghcr.io/changshengyu/openreader:d198c2e` 与 `latest`，没有使用云构建。两个标签共同指向 OCI index
+  `sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc1`；amd64 为
+  `sha256:ef6bbd76f6b748b2597a57154fc54826c4afde3cc60615fbd63f867a7fa6217b`，arm64 为
+  `sha256:d45132098b26dbf8a4ebbc9ca1f3e22b5fbb2ec48430e813a2c13f29204bee50`。

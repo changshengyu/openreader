@@ -771,13 +771,14 @@ headers and never Cookie, Authorization, Proxy-Authorization or custom source cr
 | `POST /api/rss/sources/:id/refresh`, `GET /api/rss/articles/:id/content` | Existing authenticated source/article ownership, requested-page semantics, success payload and current 400 failure status remain. | Fetch diagnostics are redacted before concatenation; no URL query, userinfo, header/cookie, body or proxy credential enters the `error` field or persisted RSS article/source state. |
 
 P2-N1 does not change SQLite, backup, WebSocket or frontend request schemas. The separate P2-N2 contract is now
-implemented and regression-validated, with Docker network/volume release gates still pending. It adds only the deployment variable
+implemented, regression-validated and Docker-published. It adds only the deployment variable
 `OPENREADER_SOURCE_NETWORK_ALLOWLIST` (comma-separated exact hostname, bare IP or CIDR; empty means public-only),
 fails startup on invalid non-empty entries, and keeps all business API paths/status/success/error schemas unchanged.
 Unsafe private/DNS/proxy targets become the existing `source_request_failed` family without exposing the target,
-DNS answer, allowlist or proxy credentials. The complete API/network review is not signed until its tests and
-Docker LAN/public fixtures pass. Engine/config/API focused tests, the full Go suite, Engine race, frontend 706/706
-and production build already pass without changing a business response schema.
+DNS answer, allowlist or proxy credentials. Engine/config/API focused tests, the full Go suite, Engine race,
+frontend 706/706, production build, Docker public/LAN/loopback/restart and fresh/historical volume gates pass without
+changing a business response schema. P2-N2 was published locally to GHCR as `d198c2e` / `latest`; the verified OCI
+index is `sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc1`.
 P2-N1 was implemented in `981bca7` and published locally to GHCR as `981bca7` / `latest`; the verified OCI
 index is `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`.
 
