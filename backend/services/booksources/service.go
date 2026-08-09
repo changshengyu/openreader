@@ -272,12 +272,17 @@ func (s *Service) ListActiveByIDs(userID uint, sourceIDs []uint, enabledOnly boo
 	if len(sources) == 0 || userID == 0 {
 		return sources, nil
 	}
-	counts, err := sourceUsageCounts(s.db, userID, nil)
+	usage, err := sourceUsageBookNames(s.db, userID, nil)
 	if err != nil {
 		return nil, err
 	}
 	for index := range sources {
-		sources[index].UsedBookCount = counts[sources[index].ID]
+		names := usage[sources[index].ID]
+		if names == nil {
+			names = []string{}
+		}
+		sources[index].UsedBookNames = names
+		sources[index].UsedBookCount = len(names)
 	}
 	return sources, nil
 }
@@ -1070,6 +1075,29 @@ func sourceUsageCounts(database *gorm.DB, userID uint, sourceIDs []uint) (map[ui
 		counts[row.SourceID] = row.Count
 	}
 	return counts, nil
+}
+
+func sourceUsageBookNames(database *gorm.DB, userID uint, sourceIDs []uint) (map[uint][]string, error) {
+	type sourceBook struct {
+		SourceID uint
+		Title    string
+	}
+	query := database.Model(&models.Book{}).
+		Select("source_id, title").
+		Where("user_id = ? AND source_id > 0", userID).
+		Order("id asc")
+	if len(sourceIDs) > 0 {
+		query = query.Where("source_id IN ?", sourceIDs)
+	}
+	var rows []sourceBook
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	usage := make(map[uint][]string)
+	for _, row := range rows {
+		usage[row.SourceID] = append(usage[row.SourceID], row.Title)
+	}
+	return usage, nil
 }
 
 func sourceSnapshotIsShared(tx *gorm.DB, userID, sourceID uint) (bool, error) {

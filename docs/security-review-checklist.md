@@ -677,3 +677,26 @@ Evidence: `backend/api/websocket_sync_p2_contract_test.go`, `backend/sync/hub_te
 `backend/middleware/access_log_test.go`, `frontend/tests/authenticatedRuntimeScope.test.mjs`, the full Go/frontend
 gates, focused race and a real two-client synchronization smoke at 1440×900, 390×844 and 360×800. See
 [`compat/websocket-sync-p2-contract.md`](compat/websocket-sync-p2-contract.md).
+
+## P1 source-manager second-audit security review (2026-08-09)
+
+- [x] `usedBookNames` is response-only and produced by one query scoped to the authenticated user; another user's
+      shelf names cannot enter the source manager projection.
+- [x] Unknown reader-dev top-level fields are stored only as inert JSON under the reserved
+      `__openreaderSourceExtra` rule key and restored on export; parser/runtime code ignores that key and never
+      executes dormant JavaScript/WebView content.
+- [x] Dangerous object keys (`__proto__`, `prototype`, `constructor`) are rejected from the preservation envelope;
+      canonical source fields cannot be overridden by preserved extras.
+- [x] Local source JSON imports are capped at 16 MiB and fail with 413 before JSON decoding; the multipart request
+      is also bounded with explicit overhead.
+- [x] Remote source preview continues through the shared SSRF-safe fetcher with scheme/host, redirect, timeout,
+      response-size, DNS/rebinding, private-network and credential constraints.
+- [x] Failure-cache categories expose only fixed safe labels and do not reveal JWTs, cookies, source headers,
+      query strings, response bodies, WebDAV credentials or host filesystem paths.
+- [x] The implementation changes no SQLite schema, filesystem path, backup/WebDAV format or destructive migration;
+      existing source ownership, usage guard, mutation transaction and durable-only broadcast remain active.
+
+Evidence: `backend/api/book_source_ownership_api_contract_test.go`,
+`backend/services/sourcecompat/export.go`, `frontend/tests/bookSourceEditor.test.mjs`,
+`frontend/tests/sourceScriptTransparencyContract.test.mjs`, full Go/frontend gates, focused/full race, `go vet`,
+and `scripts/smoke/source-workspace-contract.mjs` at four viewports.

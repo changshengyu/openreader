@@ -1,6 +1,6 @@
 # 书源管理器第二轮固定基准兼容合同（P1）
 
-状态：`contract-complete / implementation-blocked-until-red-tests`
+状态：`aligned / regression-validated / Docker-pending`
 
 固定权威：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -219,3 +219,23 @@ WebDAV 和历史卷格式不变。
 7. fresh/historical volume 和 backup compatibility 通过后，形成可验收切片并本地构建、推送 GHCR。
 
 本合同完成前禁止书源管理应用代码修改；红测试通过定义前禁止实现。
+
+## 11. 实施与发布前验证结果（2026-08-09）
+
+- `SourceManager.vue` 已删除移动卡片、结构化 Drawer、常驻 health/batch 工具和管理器内导入入口，
+  恢复正常/失效动态标题、固定上游几何、同一张 `el-table`、固定列、分组、分页和 footer。
+- 新增/编辑统一使用完整 reader-dev JSON；未知顶层字段通过现有 `rules` JSON 中的内部保留信封往返，
+  导出时恢复为顶层字段。该信封不改变 SQLite schema，也不会被 parser 当作可执行规则。
+- `usedBookNames` 由一次当前用户限定、稳定顺序的查询投影，既满足可见“书架书籍”列，又不会暴露
+  其他账号书名；删除时原有服务端 usage guard 继续生效。
+- 本地与远程导入已从管理器背景壳拆出，共用一个默认空选的确认预览；真实 JavaScript/WebView
+  源仍由安全筛选跳过自动全选，但 dormant/未知字段可手动选择并原样保存，服务端不执行。
+- 本地书源 JSON 文件增加 16 MiB 上限，超限在 JSON 解码前返回 413；远程预览继续复用现有
+  scheme/host、DNS/rebinding、redirect、timeout、响应大小和 credential 边界。
+- failure 入口只读取当前用户 600 秒缓存；普通 Go 错误只映射到固定上游可见类别，不泄露 header、
+  query、响应正文、凭据或宿主路径。live check 仍只由用户显式点击触发。
+
+发布前门禁：frontend `730/730`、production build、全量 Go、`go vet ./...`、focused/full race 和
+`git diff --check` 均通过；生产包浏览器合同在 1440×900、1024×1366、390×844、360×800 通过，
+并确认 `singleTable=true`、`jsonEditor=true`、`importPreview=true`、`failureCache=true`。当前只剩
+本机 Docker 构建、fresh/historical volume 与 GHCR 发布，完成后在本合同补记提交、标签和 digest。

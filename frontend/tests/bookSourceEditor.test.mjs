@@ -101,3 +101,38 @@ test('shared source editor generates a reader-dev compatible lossless JSON snaps
   assert.equal(roundTrip.rules.searchUrl, '/search?q={keyword}&page={page}')
   assert.equal(roundTrip.rules.paginationRule, '.next|attr:href')
 })
+
+test('shared source editor preserves unknown reader-dev top-level fields without executing them', () => {
+  const source = {
+    bookSourceName: '扩展字段源',
+    bookSourceUrl: 'https://source-extra.example',
+    enabled: true,
+    enabledExplore: true,
+    loginUi: [{ name: '账号', type: 'text' }],
+    customExtension: {
+      mode: 'preserve-only',
+      script: '@js:never-execute()',
+    },
+    ruleToc: {
+      preUpdateJs: '@js:preserve-toc()',
+      chapterList: '.chapter',
+    },
+    ruleContent: {
+      content: '.content',
+      webJs: '@js:preserve-content()',
+    },
+  }
+
+  const snapshot = sourceToEditorSnapshot(source)
+  const payload = buildBookSourcePayload(snapshot.form, snapshot.rules)
+  const reopened = buildReaderDevBookSource(
+    sourceToEditorSnapshot(payload).form,
+    sourceToEditorSnapshot(payload).rules,
+  )
+
+  assert.deepEqual(reopened.loginUi, source.loginUi)
+  assert.deepEqual(reopened.customExtension, source.customExtension)
+  assert.equal(reopened.ruleToc.preUpdateJs, '@js:preserve-toc()')
+  assert.equal(reopened.ruleContent.webJs, '@js:preserve-content()')
+  assert.doesNotMatch(reopened.rules, /__openreaderSourceExtra/)
+})

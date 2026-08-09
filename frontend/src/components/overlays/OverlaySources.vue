@@ -1,20 +1,25 @@
 <template>
-  <el-dialog
-    v-model="overlay.sourceManageVisible"
-    title="书源管理"
-    width="min(1120px, calc(100vw - 48px))"
-    :fullscreen="isMobile"
-    destroy-on-close
-    class="global-source-manage-dialog"
-    @closed="overlay.closeSourceManage"
-  >
-    <SourceManager embedded :intent="overlay.sourceManageIntent" />
-  </el-dialog>
+  <SourceManager
+    v-if="isNormalPage"
+    :visible="overlay.sourceManageVisible && isManagerIntent"
+    :failure-mode="overlay.sourceManageIntent === 'health'"
+    :is-mobile="isMobile"
+    @close="overlay.closeSourceManage"
+  />
+
+  <SourceTransferOverlay
+    v-if="isNormalPage && overlay.sourceManageVisible && !isManagerIntent"
+    :visible="overlay.sourceManageVisible"
+    :intent="overlay.sourceManageIntent"
+    :is-mobile="isMobile"
+    @close="overlay.closeSourceManage"
+  />
 </template>
 
 <script setup>
-import { defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, watch } from 'vue'
 import { useOverlayStore } from '../../stores/overlay'
+import { useReaderStore } from '../../stores/reader'
 
 defineProps({
   isMobile: {
@@ -24,5 +29,13 @@ defineProps({
 })
 
 const SourceManager = defineAsyncComponent(() => import('../workspace/SourceManager.vue'))
+const SourceTransferOverlay = defineAsyncComponent(() => import('../workspace/SourceTransferOverlay.vue'))
 const overlay = useOverlayStore()
+const reader = useReaderStore()
+const isNormalPage = computed(() => reader.pageType === 'normal')
+const isManagerIntent = computed(() => ['manage', 'health'].includes(overlay.sourceManageIntent))
+
+watch(isNormalPage, normal => {
+  if (!normal && overlay.sourceManageVisible) overlay.closeSourceManage()
+})
 </script>

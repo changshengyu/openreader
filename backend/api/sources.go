@@ -22,6 +22,8 @@ import (
 	"openreader/backend/services/sourcecompat"
 )
 
+const maxBookSourceImportBytes int64 = 16 << 20
+
 func (s *Server) listSources(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	sources, err := s.bookSources.ListActive(userID)
@@ -29,40 +31,91 @@ func (s *Server) listSources(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
-	c.JSON(http.StatusOK, sources)
+	type sourceListItem struct {
+		models.BookSource
+		UsedBookNames []string `json:"usedBookNames"`
+	}
+	items := make([]sourceListItem, 0, len(sources))
+	for _, source := range sources {
+		names := source.UsedBookNames
+		if names == nil {
+			names = []string{}
+		}
+		items = append(items, sourceListItem{
+			BookSource:    source,
+			UsedBookNames: names,
+		})
+	}
+	c.JSON(http.StatusOK, items)
 }
 
 type bookSourcePayload struct {
-	Name              string                   `json:"name"`
-	BaseURL           string                   `json:"baseUrl"`
-	SearchURL         string                   `json:"searchUrl"`
-	Charset           string                   `json:"charset"`
-	ConcurrentRate    string                   `json:"concurrentRate"`
-	LoginURL          string                   `json:"loginUrl"`
-	LoginCheckJS      string                   `json:"loginCheckJs"`
-	CustomOrder       int                      `json:"customOrder"`
-	LastUpdateTime    int64                    `json:"lastUpdateTime"`
-	Weight            int                      `json:"weight"`
-	RespondTime       *int64                   `json:"respondTime"`
-	Rules             string                   `json:"rules"`
-	Enabled           *bool                    `json:"enabled"`
-	EnabledExplore    *bool                    `json:"enabledExplore"`
-	Group             string                   `json:"group"`
-	BookSourceName    string                   `json:"bookSourceName"`
-	BookSourceURL     string                   `json:"bookSourceUrl"`
-	BookURLPattern    string                   `json:"bookUrlPattern"`
-	RuleURLPattern    string                   `json:"ruleBookUrlPattern"`
-	BookSourceType    int                      `json:"bookSourceType"`
-	BookSourceComment string                   `json:"bookSourceComment"`
-	BookSourceGroup   string                   `json:"bookSourceGroup"`
-	ExploreURL        string                   `json:"exploreUrl"`
-	Header            string                   `json:"header"`
-	HeaderMap         json.RawMessage          `json:"headerMap"`
-	RuleSearch        legacySourceSearchRule   `json:"ruleSearch"`
-	RuleExplore       legacySourceSearchRule   `json:"ruleExplore"`
-	RuleBookInfo      legacySourceBookInfoRule `json:"ruleBookInfo"`
-	RuleTOC           legacySourceTOCRule      `json:"ruleToc"`
-	RuleContent       legacySourceContentRule  `json:"ruleContent"`
+	Name              string                     `json:"name"`
+	BaseURL           string                     `json:"baseUrl"`
+	SearchURL         string                     `json:"searchUrl"`
+	Charset           string                     `json:"charset"`
+	ConcurrentRate    string                     `json:"concurrentRate"`
+	LoginURL          string                     `json:"loginUrl"`
+	LoginCheckJS      string                     `json:"loginCheckJs"`
+	CustomOrder       int                        `json:"customOrder"`
+	LastUpdateTime    int64                      `json:"lastUpdateTime"`
+	Weight            int                        `json:"weight"`
+	RespondTime       *int64                     `json:"respondTime"`
+	Rules             string                     `json:"rules"`
+	Enabled           *bool                      `json:"enabled"`
+	EnabledExplore    *bool                      `json:"enabledExplore"`
+	Group             string                     `json:"group"`
+	BookSourceName    string                     `json:"bookSourceName"`
+	BookSourceURL     string                     `json:"bookSourceUrl"`
+	BookURLPattern    string                     `json:"bookUrlPattern"`
+	RuleURLPattern    string                     `json:"ruleBookUrlPattern"`
+	BookSourceType    int                        `json:"bookSourceType"`
+	BookSourceComment string                     `json:"bookSourceComment"`
+	BookSourceGroup   string                     `json:"bookSourceGroup"`
+	ExploreURL        string                     `json:"exploreUrl"`
+	Header            string                     `json:"header"`
+	HeaderMap         json.RawMessage            `json:"headerMap"`
+	RuleSearch        legacySourceSearchRule     `json:"ruleSearch"`
+	RuleExplore       legacySourceSearchRule     `json:"ruleExplore"`
+	RuleBookInfo      legacySourceBookInfoRule   `json:"ruleBookInfo"`
+	RuleTOC           legacySourceTOCRule        `json:"ruleToc"`
+	RuleContent       legacySourceContentRule    `json:"ruleContent"`
+	PreservedExtras   map[string]json.RawMessage `json:"-"`
+}
+
+var bookSourcePayloadKeys = map[string]struct{}{
+	"name": {}, "baseUrl": {}, "searchUrl": {}, "charset": {},
+	"concurrentRate": {}, "loginUrl": {}, "loginCheckJs": {},
+	"customOrder": {}, "lastUpdateTime": {}, "weight": {},
+	"respondTime": {}, "rules": {}, "enabled": {}, "enabledExplore": {},
+	"group": {}, "bookSourceName": {}, "bookSourceUrl": {},
+	"bookUrlPattern": {}, "ruleBookUrlPattern": {}, "bookSourceType": {},
+	"bookSourceComment": {}, "bookSourceGroup": {}, "exploreUrl": {},
+	"header": {}, "headerMap": {}, "ruleSearch": {}, "ruleExplore": {},
+	"ruleBookInfo": {}, "ruleToc": {}, "ruleTOC": {}, "ruleContent": {},
+}
+
+func (p *bookSourcePayload) UnmarshalJSON(data []byte) error {
+	type payloadAlias bookSourcePayload
+	var decoded payloadAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = bookSourcePayload(decoded)
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	for key, value := range object {
+		if _, known := bookSourcePayloadKeys[key]; known {
+			continue
+		}
+		if p.PreservedExtras == nil {
+			p.PreservedExtras = make(map[string]json.RawMessage)
+		}
+		p.PreservedExtras[key] = append(json.RawMessage(nil), value...)
+	}
+	return nil
 }
 
 type legacySourceSearchRule struct {
@@ -131,6 +184,7 @@ func (p bookSourcePayload) toModel() models.BookSource {
 	if rules == "" {
 		rules = p.compatRules()
 	}
+	rules = sourcecompat.MergePreservedExtras(rules, p.PreservedExtras)
 	charset := strings.TrimSpace(p.Charset)
 	if charset == "" && (strings.TrimSpace(p.BookSourceName) != "" || strings.TrimSpace(p.BookSourceURL) != "") {
 		charset = "auto"
@@ -704,6 +758,7 @@ func (s *Server) importSources(c *gin.Context) {
 		return
 	}
 
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBookSourceImportBytes+(1<<20))
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
@@ -717,9 +772,13 @@ func (s *Server) importSources(c *gin.Context) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
+	data, err := io.ReadAll(io.LimitReader(file, maxBookSourceImportBytes+1))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read file"})
+		return
+	}
+	if int64(len(data)) > maxBookSourceImportBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "source file is too large"})
 		return
 	}
 

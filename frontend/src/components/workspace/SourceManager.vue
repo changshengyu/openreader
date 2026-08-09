@@ -1,1188 +1,769 @@
 <template>
-  <section class="app-page sources-page" :class="{ 'embedded-sources-page': embedded }">
-    <header class="sources-head">
-      <div v-if="!embedded">
-        <h1 class="app-page-title">书源管理</h1>
+  <el-dialog
+    v-if="isNormalPage"
+    :model-value="visible"
+    :title="isFailureMode ? '失效书源管理' : '书源管理'"
+    width="min(1000px, max(750px, 70vw))"
+    top="max(15dvh, calc((100dvh - 584px) / 2))"
+    :fullscreen="isMobile"
+    class="global-source-manage-dialog"
+    @update:model-value="handleDialogModel"
+    @open="handleOpen"
+    @closed="handleClosed"
+  >
+    <template #header>
+      <div class="source-dialog-title">
+        <span>{{ isFailureMode ? '失效书源管理' : '书源管理' }}</span>
+        <div v-if="!isFailureMode" class="source-title-actions">
+          <el-button link type="primary" @click="openEditor()">新增</el-button>
+          <el-button link type="primary" @click="exportAllSources">导出</el-button>
+          <el-button link type="primary" :loading="restoring" @click="restoreDefaults">恢复默认</el-button>
+          <el-button link type="danger" :loading="clearing" @click="clearAllSources">清空</el-button>
+        </div>
       </div>
-      <div class="head-actions">
-        <el-button type="primary" :icon="Plus" @click="openEditor()">新增</el-button>
-        <el-button :icon="Download" @click="exportSources">
-          {{ selection.length ? `导出选中 ${selection.length}` : '导出' }}
-        </el-button>
-        <el-upload ref="sourceUploadRef" :show-file-list="false" :auto-upload="false" accept=".json" @change="importFile">
-          <el-button :icon="Upload">导入</el-button>
-        </el-upload>
-        <el-button :icon="Link" @click="showRemote = true">远程书源</el-button>
-        <el-button v-if="isAdmin" plain :loading="defaultSaving" @click="setCurrentAsDefault">设为默认</el-button>
-        <el-button plain :disabled="!defaultSource.configured" :loading="defaultRestoring" @click="restoreDefaults">
-          恢复默认{{ defaultSource.count ? ` ${defaultSource.count}` : '' }}
-        </el-button>
-        <el-button type="danger" plain :disabled="!sources.length" @click="clearAllSources">清空</el-button>
-      </div>
-    </header>
+    </template>
 
-    <section class="source-toolbar app-panel">
-      <el-input v-model="keyword" placeholder="搜索书源名称、地址或分组" clearable>
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
-      <el-select v-model="selectedGroup" placeholder="全部分组" clearable>
-        <el-option v-for="group in sourceGroupOptions" :key="group.value" :label="group.label" :value="group.value" />
-      </el-select>
-      <div class="source-check-config">
-        <span>搜索词</span>
-        <el-input v-model="checkConfig.keyword" placeholder="检测关键词" />
-        <span>超时(ms)</span>
-        <el-input-number v-model="checkConfig.timeout" :min="1000" :max="15000" :step="500" controls-position="right" />
-        <span>并发数</span>
-        <el-input-number v-model="checkConfig.concurrent" :min="3" :max="15" :step="1" controls-position="right" />
+    <section class="source-manager-body">
+      <div v-if="isFailureMode" class="source-check-form">
+        <span class="source-check-label">搜索词：</span>
+        <el-input v-model="checkConfig.keyword" size="small" />
+        <span class="source-check-label source-timeout-label">超时(ms)：</span>
+        <el-input-number
+          v-model="checkConfig.timeout"
+          :min="1000"
+          :max="15000"
+          :step="500"
+          size="small"
+        />
+        <span class="source-check-label">并发数：</span>
+        <el-input-number
+          v-model="checkConfig.concurrent"
+          :min="3"
+          :max="15"
+          :step="1"
+          size="small"
+        />
       </div>
-      <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('enable')">启用选中</el-button>
-      <el-button class="source-batch-command" :disabled="!selection.length" @click="batchUpdateSources('disable')">停用选中</el-button>
-      <el-button class="source-batch-command" :disabled="!selection.length" @click="setSelectedSourceGroup">设置分组</el-button>
-      <el-button class="source-batch-command" type="danger" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">删除选中</el-button>
-      <el-button class="source-batch-command" :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">失效检测</el-button>
-      <el-button class="source-batch-command" type="warning" plain :disabled="!failedHealthSourceIds.length" @click="disableFailedSources">
-        停用失败 {{ failedHealthSourceIds.length || '' }}
-      </el-button>
-      <el-checkbox v-model="failedOnly" :disabled="!healthSummary.total">只看失败</el-checkbox>
-      <span v-if="healthSummary.total" class="health-summary">
-        已检 {{ healthSummary.total }} · 可用 {{ healthSummary.ok }} · 失败 {{ healthSummary.failed }}
-      </span>
+
+      <div class="source-group-wrapper">
+        <el-tag
+          v-for="group in sourceShowGroups"
+          :key="group"
+          type="info"
+          class="source-group-btn"
+          :effect="selectedGroup === group ? 'dark' : 'light'"
+          :class="{ selected: selectedGroup === group }"
+          @click="setSourceGroup(group)"
+        >
+          {{ group }}
+        </el-tag>
+      </div>
+
+      <el-table
+        ref="tableRef"
+        :key="isFailureMode"
+        :data="pagedSources"
+        :height="tableHeight"
+        class="source-table"
+        @selection-change="selection = $event"
+      >
+        <el-table-column
+          type="selection"
+          width="25"
+          :fixed="isMobile"
+          :selectable="isSourceSelectable"
+        />
+        <el-table-column
+          prop="name"
+          label="书源名称"
+          min-width="120"
+          :fixed="isMobile"
+        />
+        <el-table-column prop="baseUrl" label="书源链接" min-width="120">
+          <template #default="{ row }">
+            <el-link type="primary" :href="row.baseUrl" target="_blank">
+              {{ row.baseUrl }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-if="isFailureMode"
+          prop="errorMessage"
+          label="错误信息"
+          min-width="120"
+        />
+        <el-table-column label="书架书籍" min-width="120">
+          <template #default="{ row }">
+            <pre class="source-used-books">{{ (row.usedBookNames || []).join('\n') }}</pre>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="!isFailureMode" label="操作" width="100px">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEditor(row)">编辑</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="source-pagination">
+        <el-pagination
+          v-model:current-page="sourcePage"
+          v-model:page-size="sourcePageSize"
+          :page-sizes="sourcePageSizes"
+          layout="total, sizes, prev, pager, next"
+          :pager-count="isMobile ? 5 : 7"
+          :total="filteredSources.length"
+        />
+      </div>
     </section>
 
-    <div v-if="sourceShowGroups.length" class="source-group-wrapper">
-      <el-tag
-        v-for="group in sourceShowGroups"
-        :key="group.value"
-        type="info"
-        class="source-group-btn"
-        :effect="isSourceGroupChipSelected(group.value) ? 'dark' : 'light'"
-        :class="{ selected: isSourceGroupChipSelected(group.value) }"
-        @click="setSourceGroupChip(group.value)"
-      >
-        {{ group.label }}
-      </el-tag>
-    </div>
-
-    <el-table :data="pagedSources" stripe class="source-table desktop-source-table" @selection-change="selection = $event">
-      <el-table-column type="selection" width="42" :selectable="isSourceSelectable" />
-      <el-table-column prop="name" label="名称" min-width="150" show-overflow-tooltip />
-      <el-table-column prop="group" label="分组" width="120">
-        <template #default="{ row }">{{ row.group || '默认分组' }}</template>
-      </el-table-column>
-      <el-table-column prop="baseUrl" label="地址" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="charset" label="编码" width="90" />
-      <el-table-column label="书架书籍" width="100">
-        <template #default="{ row }">
-          <span :class="row.usedBookCount ? 'source-used' : 'muted'">{{ row.usedBookCount || 0 }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="启用" width="76">
-        <template #default="{ row }">
-          <el-switch :model-value="row.enabled" size="small" @change="value => toggleSource(row, value)" />
-        </template>
-      </el-table-column>
-      <el-table-column label="检测" min-width="160">
-        <template #default="{ row }">
-          <el-tag v-if="health[row.id]" :type="health[row.id].ok ? 'success' : 'danger'" effect="plain">
-            {{ health[row.id].ok ? '可用' : health[row.id].message }}
-          </el-tag>
-          <span v-else class="muted">未检测</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="{ row }">
-          <el-button size="small" text type="primary" @click="openDebug(row)">调试</el-button>
-          <el-button size="small" text @click="openEditor(row)">编辑</el-button>
-          <el-button size="small" text type="danger" :disabled="!isSourceSelectable(row)" @click="deleteSource(row.id)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <div v-if="pagedSources.length" class="mobile-source-list">
-      <div class="mobile-source-select-actions app-panel">
-        <span>已选 {{ selection.length }} 个</span>
-        <div>
-          <el-button size="small" text @click="selectShownSources">全选当前</el-button>
-          <el-button size="small" text @click="selection = []">清空</el-button>
-        </div>
-      </div>
-      <article
-        v-for="source in pagedSources"
-        :key="source.id"
-        class="mobile-source-card app-panel"
-        :class="{ selected: isSourceSelected(source) }"
-      >
-        <header>
-          <el-checkbox :model-value="isSourceSelected(source)" :disabled="!isSourceSelectable(source)" @change="value => toggleMobileSourceSelection(source, value)" />
-          <div>
-            <strong>{{ source.name }}</strong>
-            <span>{{ source.group || '默认分组' }}</span>
-          </div>
-          <el-switch :model-value="source.enabled" size="small" @change="value => toggleSource(source, value)" />
-        </header>
-        <p>{{ source.baseUrl || source.searchUrl || '未设置地址' }}</p>
-        <div class="mobile-source-meta">
-          <el-tag size="small" effect="plain">{{ source.charset || 'utf-8' }}</el-tag>
-          <el-tag v-if="source.usedBookCount" size="small" type="warning" effect="plain">书架 {{ source.usedBookCount }} 本</el-tag>
-          <el-tag v-if="health[source.id]" size="small" :type="health[source.id].ok ? 'success' : 'danger'" effect="plain">
-            {{ health[source.id].ok ? '可用' : health[source.id].message }}
-          </el-tag>
-          <el-tag v-else size="small" effect="plain">未检测</el-tag>
-        </div>
-        <footer>
-          <el-button size="small" text type="primary" @click="openDebug(source)">调试</el-button>
-          <el-button size="small" text @click="openEditor(source)">编辑</el-button>
-          <el-button size="small" text type="danger" :disabled="!isSourceSelectable(source)" @click="deleteSource(source.id)">删除</el-button>
-        </footer>
-      </article>
-    </div>
-
-    <div v-if="shownSources.length" class="source-pagination">
-      <el-pagination
-        v-model:current-page="sourcePage"
-        v-model:page-size="sourcePageSize"
-        :page-sizes="sourcePageSizes"
-        layout="total, sizes, prev, pager, next"
-        :pager-count="isMobileDialog ? 5 : 7"
-        :total="shownSources.length"
-      />
-    </div>
-
-    <el-empty v-if="!sources.length" description="还没有书源，导入或新增书源开始使用" />
-
-    <div v-if="sources.length" class="source-batch-footer app-panel">
-      <span class="check-tip">已选择 {{ selection.length }} 个</span>
-      <el-button type="primary" plain :disabled="!selection.length" @click="batchUpdateSources('delete')">批量删除</el-button>
-      <el-button :icon="CircleCheck" :loading="checking" @click="checkInvalidSources">
-        {{ checking ? '正在' : '' }}检测书源
-      </el-button>
-      <el-dropdown @command="handleSourceBatchMoreCommand">
-        <el-button :disabled="!selection.length && !failedHealthSourceIds.length">
-          更多批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+    <template #footer>
+      <div class="source-dialog-footer">
+        <el-button type="primary" class="float-left" :loading="deleting" @click="deleteSelectedSources">
+          批量删除
         </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="enable" :disabled="!selection.length">启用选中</el-dropdown-item>
-            <el-dropdown-item command="disable" :disabled="!selection.length">停用选中</el-dropdown-item>
-            <el-dropdown-item command="group" :disabled="!selection.length">设置分组</el-dropdown-item>
-            <el-dropdown-item command="export" :disabled="!selection.length">导出选中 {{ selection.length || '' }}</el-dropdown-item>
-            <el-dropdown-item command="disable-failed" :disabled="!failedHealthSourceIds.length">停用失败 {{ failedHealthSourceIds.length || '' }}</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <el-button @click="clearSourceBatchState">取消</el-button>
-    </div>
-
-    <el-dialog v-model="showRemote" title="远程书源" width="460px" :fullscreen="isMobileDialog">
-      <el-input v-model="remoteURL" placeholder="输入书源 JSON 订阅地址" />
-      <template #footer>
-        <el-button @click="showRemote = false">取消</el-button>
-        <el-button type="primary" :loading="remoteLoading" @click="importRemote">导入</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="showImportPreview" title="导入书源" width="720px" :fullscreen="isMobileDialog">
-      <div class="source-import-preview">
-        <el-checkbox
-          v-model="importCheckAll"
-          :indeterminate="importCheckIndeterminate"
-          border
-          @change="toggleImportCheckAll"
+        <span class="check-tip">已选择 {{ selection.length }} 个</span>
+        <el-button
+          v-if="isFailureMode"
+          :disabled="checking"
+          @click="checkInvalidSources"
         >
-          全选
-        </el-checkbox>
-        <span class="check-tip">已选择 {{ checkedImportSourceIndexes.length }} / {{ importPreviewSources.length }} 个</span>
-        <el-checkbox-group v-model="checkedImportSourceIndexes" class="source-import-list" @change="handleImportSelectionChange">
-          <el-checkbox
-            v-for="(source, index) in importPreviewSources"
-            :key="index"
-            :label="index"
-            class="source-import-item"
-          >
-            <strong>{{ importSourceName(source) || '未命名书源' }}</strong>
-            <span>{{ importSourceURL(source) || '未设置地址' }}</span>
-            <em v-if="importSourceTags(source)">{{ importSourceTags(source) }}</em>
-            <small v-if="importSourceCompatibilityHint(source)" class="source-compatibility-hint">
-              {{ importSourceCompatibilityHint(source) }}
-            </small>
-          </el-checkbox>
-        </el-checkbox-group>
-      </div>
-      <template #footer>
-        <el-button @click="closeImportPreview">取消</el-button>
-        <el-button type="primary" :loading="importPreviewSaving" :disabled="!checkedImportSourceIndexes.length" @click="saveSelectedImportSources">
-          确定导入
+          {{ checking ? '正在' : '' }}检测书源 {{ checkProgress }}
         </el-button>
-      </template>
-    </el-dialog>
+        <el-button @click="requestClose">取消</el-button>
+      </div>
+    </template>
+  </el-dialog>
 
-    <el-drawer v-model="showEditor" :title="editingSourceId ? '编辑书源' : '新增书源'" :direction="drawerDirection" :size="editorDrawerSize">
-      <el-form label-position="top">
-        <el-alert
-          v-if="editorCompatibility.blocking"
-          class="source-compatibility-warning"
-          type="warning"
-          :closable="false"
-          show-icon
-          title="此书源包含当前服务不会执行的配置"
-          :description="editorCompatibilityMessage"
-        />
-        <el-alert
-          v-else-if="editorCompatibility.status === 'preserved-dormant'"
-          class="source-compatibility-warning"
-          type="info"
-          :closable="false"
-          show-icon
-          title="包含固定基准普通 HTTP 流程未消费的字段"
-          description="配置会保留，当前服务不会擅自执行这些兼容字段。"
-        />
-        <el-form-item label="名称"><el-input v-model="sourceForm.name" /></el-form-item>
-        <el-form-item label="分组"><el-input v-model="sourceForm.group" placeholder="默认分组" /></el-form-item>
-        <el-form-item label="基础地址"><el-input v-model="sourceForm.baseUrl" /></el-form-item>
-        <el-form-item label="搜索地址"><el-input v-model="sourceForm.searchUrl" /></el-form-item>
-        <el-form-item label="详情页 URL 正则"><el-input v-model="sourceForm.bookUrlPattern" /></el-form-item>
-        <el-form-item label="书源类型">
-          <el-select v-model="sourceForm.bookSourceType">
-            <el-option label="文本" :value="0" />
-            <el-option label="音频" :value="1" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="注释"><el-input v-model="sourceForm.bookSourceComment" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="探索地址">
-          <el-input v-model="ruleForm.exploreUrl" placeholder="用于书海/发现页的 exploreUrl，可包含 {page}" />
-        </el-form-item>
-        <el-form-item label="编码">
-          <el-select v-model="sourceForm.charset">
-            <el-option label="自动检测" value="auto" />
-            <el-option label="UTF-8" value="utf-8" />
-            <el-option label="GBK" value="gbk" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="并发率">
-          <el-input v-model="sourceForm.concurrentRate" placeholder="例如 1000 或 3/1000" />
-        </el-form-item>
-        <el-form-item label="请求头 header">
-          <el-input v-model="sourceForm.header" type="textarea" :rows="2" placeholder="静态 JSON 会用于请求；JS header 仅无损保存" />
-        </el-form-item>
-        <el-form-item label="登录地址（兼容字段）">
-          <el-input v-model="sourceForm.loginUrl" />
-        </el-form-item>
-        <el-form-item label="登录检测 JS（兼容字段）">
-          <el-input v-model="sourceForm.loginCheckJs" type="textarea" :rows="2" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="sourceForm.customOrder" :step="1" />
-        </el-form-item>
-        <el-form-item label="常用规则">
-          <el-collapse class="rule-collapse">
-            <el-collapse-item title="搜索结果" name="search">
-              <div class="rule-grid">
-                <el-input v-model="ruleForm.bookListRule" placeholder="结果列表规则 bookListRule" />
-                <el-input v-model="ruleForm.bookNameRule" placeholder="书名 bookNameRule" />
-                <el-input v-model="ruleForm.bookAuthorRule" placeholder="作者 bookAuthorRule" />
-                <el-input v-model="ruleForm.bookCoverRule" placeholder="封面 bookCoverRule" />
-                <el-input v-model="ruleForm.bookIntroRule" placeholder="简介 bookIntroRule" />
-                <el-input v-model="ruleForm.bookKindRule" placeholder="分类 bookKindRule" />
-                <el-input v-model="ruleForm.bookWordCountRule" placeholder="字数 bookWordCountRule" />
-                <el-input v-model="ruleForm.latestChapterRule" placeholder="最新章节 latestChapterRule" />
-                <el-input v-model="ruleForm.bookUpdateTimeRule" placeholder="更新时间 bookUpdateTimeRule" />
-                <el-input v-model="ruleForm.bookUrlRule" placeholder="详情地址 bookUrlRule" />
-                <el-input v-model="ruleForm.paginationRule" placeholder="下一页 paginationRule（可选）" />
-              </div>
-            </el-collapse-item>
-            <el-collapse-item title="探索结果" name="explore">
-              <div class="rule-grid">
-                <el-input v-model="ruleForm.exploreBookListRule" placeholder="探索列表 exploreBookListRule（留空复用搜索规则）" />
-                <el-input v-model="ruleForm.exploreBookNameRule" placeholder="书名 exploreBookNameRule" />
-                <el-input v-model="ruleForm.exploreBookAuthorRule" placeholder="作者 exploreBookAuthorRule" />
-                <el-input v-model="ruleForm.exploreBookCoverRule" placeholder="封面 exploreBookCoverRule" />
-                <el-input v-model="ruleForm.exploreBookIntroRule" placeholder="简介 exploreBookIntroRule" />
-                <el-input v-model="ruleForm.exploreBookKindRule" placeholder="分类 exploreBookKindRule" />
-                <el-input v-model="ruleForm.exploreBookWordCountRule" placeholder="字数 exploreBookWordCountRule" />
-                <el-input v-model="ruleForm.exploreLatestChapterRule" placeholder="最新章节 exploreLatestChapterRule" />
-                <el-input v-model="ruleForm.exploreBookUpdateTimeRule" placeholder="更新时间 exploreBookUpdateTimeRule" />
-                <el-input v-model="ruleForm.exploreBookUrlRule" placeholder="详情地址 exploreBookUrlRule" />
-                <el-input v-model="ruleForm.explorePaginationRule" placeholder="下一页 explorePaginationRule（可选）" />
-              </div>
-            </el-collapse-item>
-            <el-collapse-item title="目录" name="toc">
-              <div class="rule-grid">
-                <el-input v-model="ruleForm.bookInfoInitRule" placeholder="详情初始化范围 bookInfoInitRule" />
-                <el-input v-model="ruleForm.bookInfoNameRule" placeholder="详情书名 bookInfoNameRule" />
-                <el-input v-model="ruleForm.bookInfoAuthorRule" placeholder="详情作者 bookInfoAuthorRule" />
-                <el-input v-model="ruleForm.bookInfoCoverRule" placeholder="详情封面 bookInfoCoverRule" />
-                <el-input v-model="ruleForm.bookInfoIntroRule" placeholder="详情简介 bookInfoIntroRule" />
-                <el-input v-model="ruleForm.bookInfoKindRule" placeholder="详情分类 bookInfoKindRule" />
-                <el-input v-model="ruleForm.bookInfoLatestChapterRule" placeholder="详情最新章节 bookInfoLatestChapterRule" />
-                <el-input v-model="ruleForm.bookInfoUpdateTimeRule" placeholder="详情更新时间 bookInfoUpdateTimeRule" />
-                <el-input v-model="ruleForm.bookInfoWordCountRule" placeholder="详情字数 bookInfoWordCountRule" />
-                <el-input v-model="ruleForm.bookInfoCanRenameRule" placeholder="允许详情改名 bookInfoCanRenameRule" />
-                <el-input v-model="ruleForm.tocUrlRule" placeholder="目录地址 tocUrlRule" />
-                <el-input v-model="ruleForm.chapterPreUpdateJsRule" placeholder="目录预处理 JS chapterPreUpdateJsRule（兼容字段）" />
-                <el-input v-model="ruleForm.chapterListRule" placeholder="章节列表 chapterListRule" />
-                <el-input v-model="ruleForm.chapterNameRule" placeholder="章节名 chapterNameRule" />
-                <el-input v-model="ruleForm.chapterUrlRule" placeholder="章节地址 chapterUrlRule" />
-                <el-input v-model="ruleForm.chapterIsVolumeRule" placeholder="卷名 chapterIsVolumeRule" />
-                <el-input v-model="ruleForm.chapterIsVipRule" placeholder="VIP chapterIsVipRule" />
-                <el-input v-model="ruleForm.chapterUpdateTimeRule" placeholder="章节更新时间 chapterUpdateTimeRule" />
-                <el-input v-model="ruleForm.nextTocUrlRule" placeholder="目录下一页 nextTocUrlRule（可选）" />
-              </div>
-            </el-collapse-item>
-            <el-collapse-item title="正文" name="content">
-              <div class="rule-grid">
-                <el-input v-model="ruleForm.contentUrlRule" placeholder="正文地址 contentUrlRule" />
-                <el-input v-model="ruleForm.contentRule" placeholder="正文内容 contentRule" />
-                <el-input v-model="ruleForm.nextContentUrlRule" placeholder="正文下一页 nextContentUrlRule（可选）" />
-                <el-input v-model="ruleForm.contentWebJsRule" placeholder="正文 Web JS contentWebJsRule（兼容字段）" />
-                <el-input v-model="ruleForm.contentSourceRegex" placeholder="源码正则 contentSourceRegex（兼容字段）" />
-                <el-input v-model="ruleForm.contentReplaceRegex" placeholder="替换正则 contentReplaceRegex" />
-                <el-input v-model="ruleForm.contentImageStyle" placeholder="图片样式 contentImageStyle" />
-              </div>
-            </el-collapse-item>
-          </el-collapse>
-        </el-form-item>
-        <el-form-item label="高级规则 JSON">
-          <el-input v-model="sourceForm.rules" type="textarea" :rows="8" placeholder="保留 headers、分页、特殊规则等高级 JSON；上方常用规则会同步写入" />
-        </el-form-item>
-        <el-form-item label="正文替换规则">
-          <div class="replace-rule-editor">
-            <div v-for="(rule, index) in replaceRules" :key="index" class="replace-rule-row">
-              <el-input v-model="rule.pattern" placeholder="正则或文本" />
-              <el-input v-model="rule.replacement" placeholder="替换为" />
-              <el-button text type="danger" @click="replaceRules.splice(index, 1)">删除</el-button>
-            </div>
-            <el-button size="small" plain :icon="Plus" @click="replaceRules.push({ pattern: '', replacement: '' })">添加替换规则</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item>
-          <el-switch v-model="sourceForm.enabled" active-text="启用" inactive-text="停用" />
-        </el-form-item>
-        <el-form-item>
-          <el-switch v-model="sourceForm.enabledExplore" active-text="启用发现" inactive-text="关闭发现" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showEditor = false">取消</el-button>
-        <el-button type="primary" :loading="savingSource" @click="saveSource">保存</el-button>
-      </template>
-    </el-drawer>
-
-  </section>
+  <el-dialog
+    v-model="showEditor"
+    title="编辑书源"
+    width="min(1000px, max(750px, 70vw))"
+    top="10vh"
+    :fullscreen="isMobile"
+    append-to-body
+    class="source-json-editor-dialog"
+  >
+    <el-alert
+      v-if="editorCompatibilityMessage"
+      class="source-json-compatibility-warning"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="此书源包含当前服务不会执行或仅保留的配置"
+      :description="editorCompatibilityMessage"
+    />
+    <el-input
+      v-model="sourceJSON"
+      class="source-json-editor"
+      type="textarea"
+      :rows="isMobile ? 24 : 22"
+      spellcheck="false"
+    />
+    <template #footer>
+      <el-button @click="showEditor = false">取 消</el-button>
+      <el-button type="primary" :loading="saving" @click="saveSourceJSON">保 存</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, CircleCheck, Download, Link, Plus, Search, Upload } from '@element-plus/icons-vue'
 import {
   batchSources,
   batchTestSources,
   clearSources,
   createSource,
-  defaultSourceStatus,
-  deleteSource as deleteSourceApi,
-  exportSources as exportSourcesApi,
-  importSources,
+  exportSources,
+  getSource,
   listInvalidSources,
   listSources,
-  previewRemoteSource,
   restoreDefaultSources,
-  saveDefaultSources,
   updateSource,
 } from '../../api/sources'
-import {
-  sourceImportMessage,
-  useSourceTransfer,
-} from '../../composables/useSourceTransfer'
 import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
+import { useReaderStore } from '../../stores/reader'
 import {
   analyzeSourceCompatibility,
   sourceCompatibilityMessage,
-} from '../../utils/bookSourceCompatibility.js'
+} from '../../utils/bookSourceCompatibility'
 import {
-  BOOK_SOURCE_RULE_KEYS,
-  createBookSourceForm,
-  parseBookSourceRules,
+  buildBookSourcePayload,
+  buildReaderDevBookSource,
   sourceToEditorSnapshot,
-} from '../../utils/bookSourceEditor.js'
-import { useReaderStore } from '../../stores/reader'
-import { useUserStore } from '../../stores/user'
-import { currentViewportWidth, shouldUseMiniInterface } from '../../utils/responsive'
+} from '../../utils/bookSourceEditor'
 
-const route = useRoute()
-const router = useRouter()
 const props = defineProps({
-  embedded: { type: Boolean, default: false },
-  intent: { type: String, default: 'manage' },
+  visible: { type: Boolean, default: false },
+  failureMode: { type: Boolean, default: false },
+  isMobile: { type: Boolean, default: false },
 })
+const emit = defineEmits(['close'])
+
 const reader = useReaderStore()
-const userStore = useUserStore()
 const operations = useAuthenticatedOperationGuard()
-const isAdmin = computed(() => userStore.profile?.role === 'admin')
+const tableRef = ref(null)
 const sources = ref([])
-const keyword = ref('')
-const selectedGroup = ref('')
+const failureSources = ref([])
 const selection = ref([])
-const health = ref({})
-const checking = ref(false)
-const failedOnly = ref(false)
-const checkConfig = reactive({ keyword: '斗罗大陆', timeout: 5000, concurrent: 5 })
+const selectedGroup = ref('')
 const sourcePage = ref(1)
 const sourcePageSize = ref(25)
 const sourcePageSizes = [25, 50, 100, 200, 300, 400]
-const defaultSource = reactive({ configured: false, count: 0 })
-const defaultSaving = ref(false)
-const defaultRestoring = ref(false)
-const {
-  showRemote,
-  remoteURL,
-  remoteLoading,
-  sourceUploadRef,
-  showImportPreview,
-  importPreviewSources,
-  checkedImportSourceIndexes,
-  importCheckAll,
-  importCheckIndeterminate,
-  importPreviewSaving,
-  importFile,
-  openSourceImportPicker,
-  importRemote,
-  closeImportPreview,
-  toggleImportCheckAll,
-  handleImportSelectionChange,
-  importSourceName,
-  importSourceURL,
-  importSourceTags,
-  importSourceCompatibilityHint,
-  saveSelectedImportSources,
-  exportSources,
-} = useSourceTransfer({
-  operationGuard: operations,
-  previewRemoteSource,
-  importSources,
-  exportSources: exportSourcesApi,
-  reloadSources: loadSources,
-  getSelection: () => selection.value,
-  download: (data, filename) => {
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(
-      new Blob([data], { type: 'application/json' }),
-    )
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(link.href)
-  },
-  onInfo: message => ElMessage.info(message),
-  onWarning: message => ElMessage.warning(message),
-  onSuccess: message => ElMessage.success(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+const checkConfig = reactive({
+  keyword: '斗罗大陆',
+  timeout: 5000,
+  concurrent: 5,
 })
-
+const checking = ref(false)
+const checkProgress = ref('')
+const deleting = ref(false)
+const clearing = ref(false)
+const restoring = ref(false)
 const showEditor = ref(false)
 const editingSourceId = ref(null)
-const savingSource = ref(false)
-const sourceForm = reactive(createBookSourceForm())
-const ruleKeys = BOOK_SOURCE_RULE_KEYS
-const ruleForm = reactive(Object.fromEntries(ruleKeys.map(key => [key, ''])))
-const replaceRules = ref([])
-
-const handledRouteAction = ref('')
-const windowWidth = ref(currentViewportWidth())
+const sourceJSON = ref('')
+const saving = ref(false)
 let sourceReloadTimer
 
-const sourceGroupOptions = computed(() => buildSourceGroupOptions(sources.value))
+const isNormalPage = computed(() => reader.pageType === 'normal')
+const isFailureMode = computed(() => props.failureMode)
+const sourceList = computed(() => (
+  isFailureMode.value ? failureSources.value : sources.value
+))
 const sourceShowGroups = computed(() => {
+  if (isFailureMode.value) return [...failureGroupOrder]
   const groups = []
   const seen = new Set()
-  let ungroupedCount = 0
-  for (const source of sources.value || []) {
-    const rawGroup = String(source?.group || '').trim()
-    if (!rawGroup) {
-      ungroupedCount += 1
-      continue
-    }
-    if (seen.has(rawGroup)) continue
-    seen.add(rawGroup)
-    groups.push({ value: rawGroup, label: rawGroup })
+  for (const source of sourceList.value) {
+    const group = String(source?.group || '').trim()
+    if (!group || seen.has(group)) continue
+    seen.add(group)
+    groups.push(group)
   }
-  groups.sort((a, b) => a.label.localeCompare(b.label))
-  if (ungroupedCount > 0) {
-    groups.push({ value: '默认分组', label: '未分组' })
-  }
+  groups.push('未分组')
   return groups
 })
-const healthSummary = computed(() => {
-  const rows = Object.values(health.value)
-  return {
-    total: rows.length,
-    ok: rows.filter(row => row.ok).length,
-    failed: rows.filter(row => !row.ok).length,
+const filteredSources = computed(() => {
+  if (!selectedGroup.value) return sourceList.value
+  if (isFailureMode.value) {
+    return sourceList.value.filter(source => (
+      String(source.errorMessage || '').includes(selectedGroup.value)
+    ))
   }
-})
-const failedHealthSourceIds = computed(() =>
-  Object.entries(health.value)
-    .filter(([, row]) => row && row.ok === false)
-    .map(([id]) => Number(id))
-    .filter(Boolean),
-)
-const shownSources = computed(() => {
-  const value = keyword.value.trim().toLowerCase()
-  return sources.value.filter(source => {
-    const groupName = source.group || '默认分组'
-    if (selectedGroup.value && groupName !== selectedGroup.value) return false
-    if (failedOnly.value && health.value[source.id]?.ok !== false) return false
-    if (!value) return true
-    return `${source.name || ''} ${source.baseUrl || ''} ${source.searchUrl || ''} ${groupName}`.toLowerCase().includes(value)
-  })
+  if (selectedGroup.value === '未分组') {
+    return sourceList.value.filter(source => !String(source.group || '').trim())
+  }
+  return sourceList.value.filter(source => source.group === selectedGroup.value)
 })
 const pagedSources = computed(() => {
   const start = (sourcePage.value - 1) * sourcePageSize.value
-  return shownSources.value.slice(start, start + sourcePageSize.value)
+  if (start > filteredSources.value.length) return []
+  return filteredSources.value.slice(start, start + sourcePageSize.value)
 })
-const isMobileDialog = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
-const drawerDirection = computed(() => isMobileDialog.value ? 'btt' : 'rtl')
-const editorDrawerSize = computed(() => isMobileDialog.value ? '88%' : '520px')
-const editorCompatibility = computed(() => analyzeSourceCompatibility(editorSourceSnapshot()))
-const editorCompatibilityMessage = computed(() => sourceCompatibilityMessage(editorCompatibility.value))
-
-onMounted(async () => {
-  const operation = operations.begin('mount')
-  window.addEventListener('resize', handleResize)
-  window.addEventListener('openreader:sources-update', handleSourcesUpdate)
-  const [sourcesResult, defaultResult] = await Promise.allSettled([
-    loadSources(),
-    loadDefaultSourceStatus(),
-  ])
-  if (!operations.canCommit(operation)) return
-  if (sourcesResult.status === 'rejected') {
-    ElMessage.warning(readError(sourcesResult.reason, '加载书源失败'))
+const tableHeight = computed(() => {
+  if (props.isMobile) {
+    return `calc(100dvh - ${isFailureMode.value ? 300 : 268}px)`
   }
-  if (defaultResult.status === 'rejected') {
-    ElMessage.warning(readError(defaultResult.reason, '默认书源状态加载失败'))
+  return `calc(min(70dvh - 184px, 400px) - ${isFailureMode.value ? 116 : 84}px)`
+})
+const editorCompatibilityMessage = computed(() => {
+  try {
+    return sourceCompatibilityMessage(analyzeSourceCompatibility(JSON.parse(sourceJSON.value)))
+  } catch {
+    return ''
   }
-  await applyRouteAction()
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
-  window.removeEventListener('openreader:sources-update', handleSourcesUpdate)
-  clearSourceReloadTimer()
+const failureGroupOrder = [
+  'UnknownHostException',
+  'ConnectException: Failed to connect',
+  'SocketException: Connection reset',
+  'SSLHandshakeException',
+  'responseCode: 307',
+  'responseCode: 400',
+  'responseCode: 403',
+  'responseCode: 404',
+  'responseCode: 500',
+  'responseCode: 502',
+  'responseCode: 503',
+  'responseCode: 504',
+  'responseCode: 513',
+  'timeout',
+]
+
+watch(isNormalPage, normal => {
+  if (!normal && props.visible) requestClose()
 })
 
 watch(
-  () => [route.query.panel, route.query.action],
-  () => {
-    if (!props.embedded) applyRouteAction()
+  () => [props.visible, props.failureMode],
+  async ([visible, failure], [wasVisible, wasFailure] = []) => {
+    if (!visible) {
+      showEditor.value = false
+      return
+    }
+    if (!wasVisible || !failure || wasFailure) return
+    await loadInvalidSourceHealth()
   },
 )
 
-watch(
-  () => props.intent,
-  () => {
-    if (props.embedded) applyRouteAction()
-  },
-)
-
-watch(sourceGroupOptions, (items) => {
-  if (selectedGroup.value && !items.some(item => item.value === selectedGroup.value)) {
+watch(sourceShowGroups, groups => {
+  if (selectedGroup.value && !groups.includes(selectedGroup.value)) {
     selectedGroup.value = ''
   }
 })
 
-watch([keyword, selectedGroup, failedOnly, sourcePageSize], () => {
-  sourcePage.value = 1
+if (typeof window !== 'undefined') {
+  window.addEventListener('openreader:sources-update', handleSourcesUpdate)
+}
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('openreader:sources-update', handleSourcesUpdate)
+    if (sourceReloadTimer) window.clearTimeout(sourceReloadTimer)
+  }
 })
 
-watch(
-  () => shownSources.value.length,
-  () => ensureSourcePageInRange(),
-)
+async function handleOpen() {
+  const operation = operations.begin('open-source-manager')
+  try {
+    await loadSources(operation)
+    if (isFailureMode.value) await loadInvalidSourceHealth(operation)
+  } catch (error) {
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(error, '加载书源失败'))
+    }
+  }
+}
+
+function handleDialogModel(value) {
+  if (!value) requestClose()
+}
+
+function handleClosed() {
+  selectedGroup.value = ''
+  checkProgress.value = ''
+  operations.reset()
+}
+
+function requestClose() {
+  emit('close')
+}
 
 async function loadSources(parentOperation = null) {
   if (parentOperation && !operations.canCommit(parentOperation)) return false
-  const operation = operations.begin('load-sources')
+  const operation = operations.begin('load-source-list')
   const { data } = await listSources()
   if (!operations.canCommit(operation)) return false
-  sources.value = data
+  sources.value = Array.isArray(data) ? data : []
   return true
 }
 
-async function loadDefaultSourceStatus(parentOperation = null) {
+async function loadInvalidSourceHealth(parentOperation = null) {
   if (parentOperation && !operations.canCommit(parentOperation)) return false
-  const operation = operations.begin('load-default-source-status')
-  try {
-    const { data } = await defaultSourceStatus()
-    if (!operations.canCommit(operation)) return false
-    defaultSource.configured = !!data?.configured
-    defaultSource.count = Number(data?.count || 0)
-    return true
-  } catch {
-    if (!operations.canCommit(operation)) return false
-    defaultSource.configured = false
-    defaultSource.count = 0
-    return false
-  }
+  const operation = operations.begin('load-invalid-source-health')
+  const { data } = await listInvalidSources()
+  if (!operations.canCommit(operation)) return false
+  failureSources.value = (Array.isArray(data) ? data : []).map(source => ({
+    ...source,
+    errorMessage: visibleFailureCategory(source.errorMessage),
+    usedBookNames: Array.isArray(source.usedBookNames)
+      ? source.usedBookNames
+      : sourceNamesFromActiveList(source.id),
+  }))
+  return true
 }
 
-function handleSourcesUpdate(event) {
-  scheduleSourcesReload(event?.detail)
+function sourceNamesFromActiveList(sourceId) {
+  return sources.value.find(source => Number(source.id) === Number(sourceId))?.usedBookNames || []
 }
 
-function scheduleSourcesReload(detail = {}) {
-  clearSourceReloadTimer()
-  const operation = operations.begin('scheduled-reload')
+function handleSourcesUpdate() {
+  if (!props.visible || typeof window === 'undefined') return
+  if (sourceReloadTimer) window.clearTimeout(sourceReloadTimer)
   sourceReloadTimer = window.setTimeout(async () => {
     sourceReloadTimer = undefined
-    if (!operations.canCommit(operation)) return
+    const operation = operations.begin('sync-source-manager')
     try {
       await loadSources(operation)
-      if (!operations.canCommit(operation)) return
-      if (['save-default', 'restore-default'].includes(detail?.kind)) {
-        await loadDefaultSourceStatus(operation)
-      }
+      if (isFailureMode.value) await loadInvalidSourceHealth(operation)
     } catch {
-      // Keep the current list visible; the next explicit refresh or sync event can recover.
+      // Keep the current list visible; the next durable event/open retries.
     }
-  }, 350)
+  }, 250)
 }
 
-function clearSourceReloadTimer() {
-  if (!sourceReloadTimer) return
-  window.clearTimeout(sourceReloadTimer)
-  sourceReloadTimer = undefined
-}
-
-async function applyRouteAction() {
-  const intent = sourceManageIntent()
-  const signature = props.embedded
-    ? `overlay:${intent}`
-    : `${route.query.panel || ''}:${route.query.action || ''}`
-  if (!signature || signature === handledRouteAction.value) return
-  handledRouteAction.value = signature
-  if (intent === 'remote') {
-    showRemote.value = true
-  }
-  if (intent === 'health') {
-    failedOnly.value = true
-    await loadInvalidSourceHealth()
-  }
-  if (intent === 'import') {
-    openSourceImportPicker()
-  }
-}
-
-async function loadInvalidSourceHealth() {
-  const operation = operations.begin('load-invalid-source-health')
-  try {
-    const { data } = await listInvalidSources()
-    if (!operations.canCommit(operation)) return
-    health.value = {}
-    for (const item of data || []) {
-      if (!item?.id) continue
-      health.value[item.id] = {
-        ok: false,
-        message: item.errorMessage || '请求书源失败',
-        name: item.name,
-        group: item.group || '默认分组',
-        enabled: item.enabled,
-        failedAt: item.failedAt,
-        expiresAt: item.expiresAt,
-      }
-    }
-  } catch {
-    if (!operations.canCommit(operation)) return
-    health.value = {}
-  }
-}
-
-function sourceManageIntent() {
-  if (props.embedded) return props.intent
-  if (route.query.panel === 'remote') return 'remote'
-  if (route.query.action === 'import') return 'import'
-  if (route.query.action === 'health') return 'health'
-  return 'manage'
-}
-
-function handleResize() {
-  windowWidth.value = currentViewportWidth()
-}
-
-async function toggleSource(source, enabled) {
-  const sourceId = source.id
-  const operation = operations.begin(`toggle-source:${sourceId}`)
-  try {
-    const { data } = await updateSource(sourceId, { ...source, enabled })
-    if (!operations.canCommit(operation)) return
-    Object.assign(source, data)
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '操作失败'))
-  }
-}
-
-function openEditor(source) {
-  const snapshot = sourceToEditorSnapshot(source)
-  const parsedRules = snapshot.rules
-  editingSourceId.value = source?.id || null
-  resetRuleForm(parsedRules)
-  Object.assign(sourceForm, snapshot.form)
-  replaceRules.value = Array.isArray(parsedRules.textReplaceRules)
-    ? parsedRules.textReplaceRules.map(rule => ({ pattern: rule.pattern || '', replacement: rule.replacement || '' }))
-    : []
-  showEditor.value = true
-}
-
-async function saveSource() {
-  if (!sourceForm.name.trim()) {
-    ElMessage.warning('书源名称不能为空')
-    return
-  }
-  let payload
-  try {
-    const rules = parseBookSourceRules(sourceForm.rules)
-    syncRuleFormToRules(rules)
-    const cleanedReplacements = replaceRules.value
-      .map(rule => ({ pattern: rule.pattern.trim(), replacement: rule.replacement }))
-      .filter(rule => rule.pattern)
-    if (cleanedReplacements.length) {
-      rules.textReplaceRules = cleanedReplacements
-    } else {
-      delete rules.textReplaceRules
-    }
-    payload = { ...sourceForm, rules: Object.keys(rules).length ? JSON.stringify(rules, null, 2) : '' }
-  } catch (err) {
-    ElMessage.error(err instanceof SyntaxError ? '规则 JSON 格式不正确' : readError(err, '保存失败'))
-    return
-  }
-  const sourceId = editingSourceId.value
-  const operation = operations.begin('save-source')
-  savingSource.value = true
-  try {
-    if (sourceId) {
-      await updateSource(sourceId, payload)
-      if (!operations.canCommit(operation)) return
-      ElMessage.success('书源已更新')
-    } else {
-      await createSource(payload)
-      if (!operations.canCommit(operation)) return
-      ElMessage.success('书源已新增')
-    }
-    showEditor.value = false
-    await loadSources(operation)
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '保存失败'))
-  } finally {
-    if (operations.canCommit(operation)) savingSource.value = false
-  }
-}
-
-async function deleteSource(id) {
-  const source = sources.value.find(item => item.id === id)
-  if (source && !isSourceSelectable(source)) {
-    ElMessage.warning(`该书源仍有 ${source.usedBookCount} 本书在使用，不能删除`)
-    return
-  }
-  const operation = operations.begin(`delete-source:${id}`)
-  try {
-    await ElMessageBox.confirm('确定删除这个书源吗？', '提示', { type: 'warning' })
-    if (!operations.canCommit(operation)) return
-    await deleteSourceApi(id)
-    if (!operations.canCommit(operation)) return
-    sources.value = sources.value.filter(source => source.id !== id)
-    ElMessage.success('已删除')
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err !== 'cancel' && err !== 'close') {
-      ElMessage.error(readError(err, '删除书源失败'))
-    }
-    // canceled
-  }
-}
-
-async function batchUpdateSources(action) {
-  if (!selection.value.length) return
-  const sourceIds = selection.value.map(source => source.id)
-  const actionName = action === 'enable' ? '启用' : action === 'disable' ? '停用' : '删除'
-  const operation = operations.begin(`batch-sources:${action}`)
-  try {
-    if (action === 'delete') {
-      await ElMessageBox.confirm(`确定删除选中的 ${sourceIds.length} 个书源吗？`, '批量删除书源', { type: 'warning' })
-      if (!operations.canCommit(operation)) return
-    }
-    const { data } = await batchSources({ action, sourceIds })
-    if (!operations.canCommit(operation)) return
-    const skippedUsed = Number(data.skippedUsed || 0)
-    ElMessage.success(`已${actionName} ${data.affected || 0} 个书源${skippedUsed ? `，跳过 ${skippedUsed} 个使用中的书源` : ''}`)
-    selection.value = []
-    await loadSources(operation)
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, `批量${actionName}失败`))
-  }
-}
-
-async function setSelectedSourceGroup() {
-  if (!selection.value.length) return
-  const selectedSources = [...selection.value]
-  const sourceIds = selectedSources.map(source => source.id)
-  const operation = operations.begin('batch-source-group')
-  try {
-    const currentGroups = [...new Set(selectedSources.map(source => source.group || '').filter(Boolean))]
-    const res = await ElMessageBox.prompt(
-      '留空将移回默认分组',
-      `设置 ${sourceIds.length} 个书源的分组`,
-      {
-        inputValue: currentGroups.length === 1 ? currentGroups[0] : '',
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-      },
-    )
-    if (!operations.canCommit(operation)) return
-    const group = String(res.value || '').trim()
-    const { data } = await batchSources({ action: 'group', sourceIds, group })
-    if (!operations.canCommit(operation)) return
-    ElMessage.success(`已设置 ${data.affected || 0} 个书源分组`)
-    selection.value = []
-    await loadSources(operation)
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '设置分组失败'))
-  }
-}
-
-async function disableFailedSources() {
-  const sourceIds = [...failedHealthSourceIds.value]
-  if (!sourceIds.length) return
-  const operation = operations.begin('disable-failed-sources')
-  try {
-    await ElMessageBox.confirm(`确定停用检测失败的 ${sourceIds.length} 个书源吗？`, '停用失败书源', { type: 'warning' })
-    if (!operations.canCommit(operation)) return
-    const { data } = await batchSources({ action: 'disable', sourceIds })
-    if (!operations.canCommit(operation)) return
-    ElMessage.success(`已停用 ${data.affected || 0} 个失败书源`)
-    for (const id of sourceIds) {
-      if (health.value[id]) health.value[id].enabled = false
-    }
-    selection.value = []
-    await loadSources(operation)
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '停用失败书源失败'))
-  }
-}
-
-function handleSourceBatchMoreCommand(command) {
-  if (command === 'enable') {
-    batchUpdateSources('enable')
-  } else if (command === 'disable') {
-    batchUpdateSources('disable')
-  } else if (command === 'group') {
-    setSelectedSourceGroup()
-  } else if (command === 'export') {
-    exportSources()
-  } else if (command === 'disable-failed') {
-    disableFailedSources()
-  }
-}
-
-function clearSourceBatchState() {
-  selection.value = []
-}
-
-function buildSourceGroupOptions(rows) {
-  const counts = new Map()
-  for (const source of rows || []) {
-    const group = String(source?.group || '默认分组').trim() || '默认分组'
-    counts.set(group, (counts.get(group) || 0) + 1)
-  }
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([value, count]) => ({ value, label: `${value} (${count})`, count }))
-}
-
-function isSourceGroupChipSelected(group) {
-  return selectedGroup.value === group
-}
-
-function setSourceGroupChip(group) {
+function setSourceGroup(group) {
   selectedGroup.value = selectedGroup.value === group ? '' : group
-}
-
-function isSourceSelected(source) {
-  return selection.value.some(item => item.id === source.id)
 }
 
 function isSourceSelectable(source) {
   return Number(source?.usedBookCount || 0) === 0
 }
 
-function toggleMobileSourceSelection(source, checked) {
-  if (!isSourceSelectable(source)) return
-  if (checked) {
-    if (!isSourceSelected(source)) selection.value = [...selection.value, source]
+async function deleteSelectedSources() {
+  if (!selection.value.length) {
+    ElMessage.error('请选择需要删除的源')
     return
   }
-  selection.value = selection.value.filter(item => item.id !== source.id)
-}
-
-function selectShownSources() {
-  selection.value = pagedSources.value.filter(isSourceSelectable)
-}
-
-function ensureSourcePageInRange() {
-  const maxPage = Math.max(1, Math.ceil(shownSources.value.length / sourcePageSize.value))
-  if (sourcePage.value > maxPage) {
-    sourcePage.value = maxPage
+  const operation = operations.begin('delete-selected-sources')
+  try {
+    await ElMessageBox.confirm('确认要删除所选择的书源吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    if (!operations.canCommit(operation)) return
+    deleting.value = true
+    const sourceIds = selection.value.map(source => source.id).filter(Boolean)
+    await batchSources({ action: 'delete', sourceIds })
+    if (!operations.canCommit(operation)) return
+    selection.value = []
+    tableRef.value?.clearSelection()
+    await loadSources(operation)
+    if (isFailureMode.value) await loadInvalidSourceHealth(operation)
+    if (!operations.canCommit(operation)) return
+    ElMessage.success('删除书源成功')
+  } catch (error) {
+    if (!operations.canCommit(operation) || isCancel(error)) return
+    ElMessage.error(readError(error, '删除书源失败'))
+  } finally {
+    if (operations.canCommit(operation)) deleting.value = false
   }
 }
 
 async function clearAllSources() {
-  if (!sources.value.length) return
-  const sourceCount = sources.value.length
   const operation = operations.begin('clear-all-sources')
   try {
-    await ElMessageBox.confirm(`确定清空全部 ${sourceCount} 个书源吗？这个操作不可撤销。`, '清空书源', { type: 'warning' })
+    await ElMessageBox.confirm('确认要清空所有书源吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
     if (!operations.canCommit(operation)) return
-    const { data } = await clearSources()
+    clearing.value = true
+    await clearSources()
     if (!operations.canCommit(operation)) return
     sources.value = []
+    failureSources.value = []
     selection.value = []
-    health.value = {}
-    failedOnly.value = false
-    ElMessage.success(`已清空 ${data.affected || 0} 个书源`)
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '清空书源失败'))
-  }
-}
-
-async function setCurrentAsDefault() {
-  if (!sources.value.length) return
-  const sourceCount = sources.value.length
-  const operation = operations.begin('save-default-sources')
-  defaultSaving.value = true
-  try {
-    await ElMessageBox.confirm(
-      `确定将当前 ${sourceCount} 个书源保存为默认书源吗？之后“恢复默认”会用它替换当前书源。`,
-      '设为默认书源',
-      { type: 'warning' },
-    )
-    if (!operations.canCommit(operation)) return
-    const { data } = await saveDefaultSources()
-    if (!operations.canCommit(operation)) return
-    defaultSource.configured = true
-    defaultSource.count = Number(data.count || sourceCount)
-    ElMessage.success(`已保存 ${defaultSource.count} 个默认书源`)
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '保存默认书源失败'))
+    tableRef.value?.clearSelection()
+    ElMessage.success('清空书源成功')
+  } catch (error) {
+    if (!operations.canCommit(operation) || isCancel(error)) return
+    ElMessage.error(readError(error, '清空书源失败'))
   } finally {
-    if (operations.canCommit(operation)) defaultSaving.value = false
+    if (operations.canCommit(operation)) clearing.value = false
   }
 }
 
 async function restoreDefaults() {
-  if (!defaultSource.configured) return
-  const defaultCount = defaultSource.count || 0
   const operation = operations.begin('restore-default-sources')
-  defaultRestoring.value = true
   try {
-    await ElMessageBox.confirm(
-      `确定恢复默认书源吗？当前书源会被默认快照中的 ${defaultCount} 个书源替换。`,
-      '恢复默认书源',
-      { type: 'warning' },
-    )
+    await ElMessageBox.confirm('确认要恢复默认书源吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
     if (!operations.canCommit(operation)) return
-    const { data } = await restoreDefaultSources()
+    restoring.value = true
+    await restoreDefaultSources()
     if (!operations.canCommit(operation)) return
-    selection.value = []
-    health.value = {}
-    failedOnly.value = false
-    ElMessage.success(sourceImportMessage(data))
-    await Promise.all([
-      loadSources(operation),
-      loadDefaultSourceStatus(operation),
-    ])
-  } catch (err) {
+    await loadSources(operation)
     if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '恢复默认书源失败'))
+    ElMessage.success('恢复默认书源成功')
+  } catch (error) {
+    if (!operations.canCommit(operation) || isCancel(error)) return
+    ElMessage.error(`操作失败 ${readError(error, '')}`.trimEnd())
   } finally {
-    if (operations.canCommit(operation)) defaultRestoring.value = false
+    if (operations.canCommit(operation)) restoring.value = false
+  }
+}
+
+async function exportAllSources() {
+  const operation = operations.begin('export-all-sources')
+  try {
+    const response = await exportSources([])
+    if (!operations.canCommit(operation)) return
+    downloadJSON(response.data, `reader书源-${currentDateTime()}.json`)
+  } catch (error) {
+    if (operations.canCommit(operation)) {
+      ElMessage.error(`导出书源失败 ${readError(error, '')}`.trimEnd())
+    }
+  }
+}
+
+async function openEditor(source = null) {
+  const operation = operations.begin('open-source-editor')
+  try {
+    if (!source) {
+      editingSourceId.value = null
+      sourceJSON.value = JSON.stringify(newSourceTemplate(), null, 4)
+      showEditor.value = true
+      return
+    }
+    const { data } = await getSource(source.id)
+    if (!operations.canCommit(operation)) return
+    const snapshot = sourceToEditorSnapshot(data)
+    const readerDevSource = buildReaderDevBookSource(snapshot.form, snapshot.rules)
+    editingSourceId.value = source.id
+    sourceJSON.value = JSON.stringify(readerDevSource, null, 4)
+    showEditor.value = true
+  } catch (error) {
+    if (operations.canCommit(operation)) {
+      ElMessage.error(`加载书源信息失败 ${readError(error, '')}`.trimEnd())
+    }
+  }
+}
+
+async function saveSourceJSON() {
+  let parsed
+  try {
+    parsed = JSON.parse(sourceJSON.value)
+  } catch {
+    ElMessage.error('书源必须是JSON格式')
+    return
+  }
+  const name = String(parsed.bookSourceName || parsed.name || '').trim()
+  if (!name) {
+    ElMessage.error('书源名称不能为空')
+    return
+  }
+  const url = String(parsed.bookSourceUrl || parsed.baseUrl || '').trim()
+  if (!url) {
+    ElMessage.error('书源链接不能为空')
+    return
+  }
+
+  let payload
+  try {
+    const snapshot = sourceToEditorSnapshot(parsed)
+    payload = buildBookSourcePayload(snapshot.form, snapshot.rules)
+  } catch {
+    ElMessage.error('书源必须是JSON格式')
+    return
+  }
+
+  const sourceId = editingSourceId.value
+  const operation = operations.begin('save-source-json')
+  saving.value = true
+  try {
+    if (sourceId) await updateSource(sourceId, payload)
+    else await createSource(payload)
+    if (!operations.canCommit(operation)) return
+    showEditor.value = false
+    await loadSources(operation)
+    if (!operations.canCommit(operation)) return
+    ElMessage.success('保存书源成功')
+  } catch (error) {
+    if (operations.canCommit(operation)) {
+      ElMessage.error(`保存书源失败 ${readError(error, '')}`.trimEnd())
+    }
+  } finally {
+    if (operations.canCommit(operation)) saving.value = false
   }
 }
 
 async function checkInvalidSources() {
-  // The upstream failure entry only opens its cached failure view.  Live tests
-  // are an explicit OpenReader action; when that view is empty, test the full
-  // source set instead of the empty failed-only projection.
-  const list = selection.value.length ? selection.value : (failedOnly.value ? sources.value : shownSources.value)
-  if (!list.length) return
-  const sourceIds = list.map(source => source.id)
+  if (!String(checkConfig.keyword || '').trim()) {
+    ElMessage.error('请输入搜索关键词')
+    return
+  }
+  const sourceRows = [...sources.value]
+  if (!sourceRows.length) {
+    checkProgress.value = '0/0'
+    return
+  }
   const operation = operations.begin('check-invalid-sources')
   checking.value = true
+  checkProgress.value = `0/${sourceRows.length}`
+  let checked = 0
   try {
-    const { data } = await batchTestSources({
-      sourceIds,
-      keyword: checkConfig.keyword,
-      timeout: checkConfig.timeout,
-      concurrent: checkConfig.concurrent,
-    })
-    if (!operations.canCommit(operation)) return
-    for (const item of data.results || []) {
-      health.value[item.sourceId] = {
-        ok: item.ok,
-        message: item.ok ? `可用，${item.count} 条` : item.message || '失败',
-        name: item.name,
-        group: item.group || '默认分组',
-        enabled: item.enabled,
-        count: item.count || 0,
-      }
+    const batchSize = Math.max(3, Math.min(15, Number(checkConfig.concurrent) || 5))
+    for (let offset = 0; offset < sourceRows.length; offset += batchSize) {
+      const chunk = sourceRows.slice(offset, offset + batchSize)
+      const { data } = await batchTestSources({
+        sourceIds: chunk.map(source => source.id),
+        keyword: String(checkConfig.keyword).trim(),
+        timeout: checkConfig.timeout,
+        concurrent: checkConfig.concurrent,
+      })
+      if (!operations.canCommit(operation)) return
+      mergeHealthFailures(data?.results || [])
+      checked += chunk.length
+      checkProgress.value = `${checked}/${sourceRows.length}`
     }
-    const failed = (data.results || []).filter(item => !item.ok).length
-    ElMessage.success(`已检测 ${data.results?.length || 0} 个书源，失败 ${failed} 个`)
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '批量检测失败'))
+  } catch (error) {
+    if (operations.canCommit(operation)) {
+      ElMessage.error(readError(error, '检测书源失败'))
+    }
   } finally {
     if (operations.canCommit(operation)) checking.value = false
   }
 }
 
-function openDebug(source) {
-  const target = router.resolve({ name: 'source-debug', query: { sourceId: source.id } })
-  window.open(target.href, '_target')
-}
-
-function resetRuleForm(rules = {}) {
-  for (const key of ruleKeys) {
-    ruleForm[key] = rules[key] || ''
-  }
-}
-
-function syncRuleFormToRules(rules) {
-  for (const key of ruleKeys) {
-    const value = String(ruleForm[key] || '').trim()
-    if (value) {
-      rules[key] = value
-    } else {
-      delete rules[key]
+function mergeHealthFailures(results) {
+  for (const result of results) {
+    if (result?.ok) continue
+    const source = sources.value.find(item => Number(item.id) === Number(result.sourceId))
+    if (!source) continue
+    const row = {
+      ...source,
+      errorMessage: visibleHealthError(result),
     }
+    const index = failureSources.value.findIndex(item => Number(item.id) === Number(source.id))
+    if (index >= 0) failureSources.value.splice(index, 1, row)
+    else failureSources.value.push(row)
   }
 }
 
-function editorSourceSnapshot() {
-  let rules = {}
-  try {
-    rules = parseBookSourceRules(sourceForm.rules)
-  } catch {
-    rules = {}
+function visibleHealthError(result) {
+  return visibleFailureCategory(result?.message, result?.code)
+}
+
+function visibleFailureCategory(rawMessage, code = '') {
+  const message = String(rawMessage || '')
+  if (failureGroupOrder.some(type => message.includes(type))) return message
+  if (/timeout|超时/i.test(message)) return 'timeout'
+  const status = message.match(/\b(307|400|403|404|500|502|503|504|513)\b/)?.[1]
+  if (status) return `responseCode: ${status}`
+  if (code === 'source_request_failed' || message === '请求书源失败' || message === 'failed to request book source') {
+    return 'ConnectException: Failed to connect'
   }
-  for (const key of ruleKeys) {
-    const value = String(ruleForm[key] || '').trim()
-    if (value) rules[key] = value
-    else delete rules[key]
-  }
+  return message || '请求书源失败'
+}
+
+function newSourceTemplate() {
   return {
-    header: sourceForm.header,
-    loginUrl: sourceForm.loginUrl,
-    loginCheckJs: sourceForm.loginCheckJs,
-    rules,
+    bookSourceComment: '',
+    bookSourceGroup: '',
+    bookSourceName: '新增书源',
+    bookSourceType: 0,
+    bookSourceUrl: '',
+    bookUrlPattern: '',
+    enabled: true,
+    enabledExplore: true,
+    exploreUrl: '',
+    ruleBookInfo: {},
+    ruleContent: { content: '' },
+    ruleExplore: {},
+    ruleSearch: {
+      author: '',
+      bookList: '',
+      bookUrl: '',
+      coverUrl: '',
+      intro: '',
+      kind: '',
+      lastChapter: '',
+      name: '',
+    },
+    ruleToc: {
+      chapterList: '',
+      chapterName: '',
+      chapterUrl: '',
+    },
+    searchUrl: '',
   }
 }
 
-function readError(err, fallback) {
-  return err?.response?.data?.error?.message || err?.response?.data?.error || fallback
+function downloadJSON(data, filename) {
+  const blob = data instanceof Blob
+    ? data
+    : new Blob([data], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function currentDateTime() {
+  const date = new Date()
+  const pad = value => String(value).padStart(2, '0')
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join('-')
+}
+
+function isCancel(error) {
+  return error === 'cancel' || error === 'close'
+}
+
+function readError(error, fallback) {
+  return error?.response?.data?.error?.message || error?.response?.data?.error || fallback
 }
 </script>
 
 <style scoped>
-.sources-page {
-  display: grid;
+.source-dialog-title,
+.source-title-actions,
+.source-dialog-footer,
+.source-check-form,
+.source-group-wrapper,
+.source-pagination {
+  display: flex;
+  align-items: center;
+}
+
+.source-dialog-title {
   min-width: 0;
+  justify-content: space-between;
   gap: 16px;
 }
 
-.sources-head,
-.head-actions,
-.source-toolbar,
-.debug-row,
-.debug-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.sources-head {
-  justify-content: space-between;
-}
-
-.head-actions {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.muted,
-.debug-title span {
-  color: var(--app-text-muted);
-}
-
-.source-used {
-  color: var(--app-warning, #b7791f);
-  font-weight: 600;
-}
-
-.source-toolbar {
+.source-title-actions {
   min-width: 0;
-  flex-wrap: wrap;
-  padding: 12px;
+  overflow-x: auto;
+  gap: 4px;
 }
 
-.source-toolbar .el-input {
-  min-width: min(260px, 100%);
-  flex: 1;
-}
-
-.source-check-config {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--app-text-muted);
-  font-size: 13px;
-}
-
-.source-check-config :deep(.el-input) {
-  width: 150px;
-  min-width: 0;
-  flex: none;
-}
-
-.source-check-config :deep(.el-input-number) {
-  width: 110px;
-}
-
-.health-summary {
-  color: var(--app-text-muted);
-  font-size: 13px;
+.source-title-actions :deep(.el-button) {
+  margin-left: 0;
   white-space: nowrap;
 }
 
-.source-table {
-  width: 100%;
+.source-manager-body {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.source-check-form {
+  min-width: 0;
+  gap: 8px;
+}
+
+.source-check-form :deep(.el-input) {
+  min-width: 120px;
+  flex: 1;
+}
+
+.source-check-form :deep(.el-input-number) {
+  width: 128px;
+}
+
+.source-check-label {
+  flex: 0 0 auto;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+}
+
+.source-timeout-label {
+  min-width: 68px;
 }
 
 .source-group-wrapper {
-  display: flex;
   min-width: 0;
   overflow-x: auto;
   gap: 8px;
-  padding: 0 2px 2px;
+  padding-bottom: 2px;
 }
 
 .source-group-btn {
@@ -1196,253 +777,88 @@ function readError(err, fallback) {
   color: var(--app-primary);
 }
 
+.source-table {
+  width: 100%;
+}
+
+.source-used-books {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .source-pagination {
-  display: flex;
+  min-width: 0;
   justify-content: flex-end;
+  overflow-x: auto;
+}
+
+.source-dialog-footer {
   min-width: 0;
-}
-
-.source-batch-footer {
-  display: none;
-}
-
-.mobile-source-list {
-  display: none;
-}
-
-.mobile-source-select-actions {
-  align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
-  padding: 9px 10px;
+}
+
+.source-dialog-footer .float-left {
+  margin-right: auto;
+}
+
+.source-dialog-footer .check-tip {
   color: var(--app-text-muted);
-  font-size: 13px;
-}
-
-.mobile-source-select-actions,
-.mobile-source-select-actions div {
-  display: flex;
-}
-
-.mobile-source-card {
-  display: grid;
-  gap: 9px;
-  padding: 12px;
-}
-
-.mobile-source-card.selected {
-  border-color: var(--app-primary);
-  background: var(--app-primary-soft);
-}
-
-.mobile-source-card header,
-.mobile-source-card footer,
-.mobile-source-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mobile-source-card header {
-  justify-content: space-between;
-}
-
-.mobile-source-card header > div {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 3px;
-}
-
-.mobile-source-card strong,
-.mobile-source-card span,
-.mobile-source-card p {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mobile-source-card strong {
-  color: var(--app-text);
-  font-size: 15px;
+.source-json-compatibility-warning {
+  margin-bottom: 12px;
 }
 
-.mobile-source-card span,
-.mobile-source-card p {
-  color: var(--app-text-muted);
-  font-size: 12px;
+.source-json-editor {
+  width: 100%;
 }
 
-.mobile-source-card p {
-  margin: 0;
-}
-
-.mobile-source-card footer {
-  justify-content: flex-end;
-}
-
-
-.source-import-preview {
-  display: grid;
-  min-width: 0;
-  gap: 12px;
-}
-
-.source-import-list {
-  display: grid;
-  max-height: min(58vh, 520px);
-  min-width: 0;
-  overflow: auto;
-  gap: 8px;
-}
-
-.source-import-item {
-  display: block;
-  min-width: 0;
-  margin-right: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-}
-
-.source-import-item :deep(.el-checkbox__label) {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  line-height: 1.5;
-  white-space: normal;
-}
-
-.source-import-item strong {
-  color: var(--app-text);
-}
-
-.source-import-item span,
-.source-import-item em {
-  overflow-wrap: anywhere;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  font-style: normal;
-}
-
-.source-compatibility-hint {
-  display: block;
-  max-width: 100%;
-  margin-top: 4px;
-  color: #b26a00;
-  line-height: 1.45;
-  white-space: normal;
-}
-
-.source-compatibility-warning {
-  margin-bottom: 16px;
-}
-
-.debug-compatibility-warning {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  color: #8a4b00;
-  background: #fff7e6;
-  border: 1px solid #f3d19e;
-  border-radius: 4px;
+.source-json-editor :deep(.el-textarea__inner) {
+  min-height: min(62dvh, 560px) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
   line-height: 1.55;
-}
-
-.replace-rule-editor {
-  display: grid;
-  width: 100%;
-  gap: 8px;
-}
-
-.rule-collapse {
-  width: 100%;
-}
-
-.rule-grid {
-  display: grid;
-  gap: 8px;
-}
-
-.replace-rule-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
+  tab-size: 4;
 }
 
 @media (max-width: 750px) {
-  .sources-head,
-  .debug-row,
-  .source-toolbar,
-  .replace-rule-row {
-    display: grid;
+  .source-dialog-title {
+    align-items: flex-start;
   }
 
-  .source-batch-command {
-    display: none;
+  .source-title-actions {
+    max-width: calc(100vw - 110px);
   }
 
-  .head-actions,
-  .source-toolbar :deep(.el-input),
-  .source-toolbar :deep(.el-select),
-  .source-toolbar :deep(.el-button),
-  .debug-row :deep(.el-input),
-  .debug-row :deep(.el-button) {
-    width: 100%;
-  }
-
-  .source-check-config {
+  .source-check-form {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .source-check-config :deep(.el-input),
-  .source-check-config :deep(.el-input-number) {
+  .source-check-form :deep(.el-input),
+  .source-check-form :deep(.el-input-number) {
     width: 100%;
-  }
-
-  .health-summary {
-    white-space: normal;
-  }
-
-  .desktop-source-table {
-    display: none;
-  }
-
-  .mobile-source-list {
-    display: grid;
-    gap: 10px;
   }
 
   .source-pagination {
-    justify-content: center;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    justify-content: flex-start;
   }
 
-  .source-batch-footer {
-    position: sticky;
-    z-index: 2;
-    bottom: max(10px, env(safe-area-inset-bottom));
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 10px;
-    box-shadow: 0 -8px 22px rgba(15, 23, 42, 0.08);
+  .source-dialog-footer {
+    flex-wrap: wrap;
   }
 
-  .source-batch-footer .check-tip {
-    grid-column: 1 / -1;
-    color: var(--app-text-muted);
-    font-size: 13px;
+  .source-dialog-footer .float-left {
+    margin-right: 0;
   }
 
-  .source-batch-footer :deep(.el-button),
-  .source-batch-footer :deep(.el-dropdown),
-  .source-batch-footer :deep(.el-dropdown .el-button) {
-    width: 100%;
-    min-height: 38px;
-    margin-left: 0;
+  .source-json-editor :deep(.el-textarea__inner) {
+    min-height: calc(100dvh - 168px) !important;
   }
 }
 </style>

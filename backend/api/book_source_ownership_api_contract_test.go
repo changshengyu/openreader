@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -21,6 +22,168 @@ type sourceContractAccount struct {
 	ID     uint
 	Auth   string
 	Source models.BookSource
+}
+
+func TestBookSourceListProjectsOnlyCallerBookshelfNamesInStableOrder(t *testing.T) {
+	router, server := setupTestServer(t)
+	alice := registerSourceContractAccount(t, router, "sourceusagealice")
+	bob := registerSourceContractAccount(t, router, "sourceusagebob")
+	shared := createSourceThroughAPI(t, router, alice.Auth, `{
+		"name":"共享引用源",
+		"baseUrl":"https://source-usage.example",
+		"enabled":true
+	}`)
+	if err := server.db.Create(&models.UserBookSource{UserID: bob.ID, SourceID: shared.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&models.BookSourceNamespace{UserID: bob.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	books := []models.Book{
+		{UserID: alice.ID, SourceID: shared.ID, Title: "Alice 第一册"},
+		{UserID: alice.ID, SourceID: shared.ID, Title: "Alice 第二册"},
+		{UserID: bob.ID, SourceID: shared.ID, Title: "Bob 私有册"},
+	}
+	if err := server.db.Create(&books).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	type sourceUsageProjection struct {
+		ID            uint     `json:"id"`
+		UsedBookCount int      `json:"usedBookCount"`
+		UsedBookNames []string `json:"usedBookNames"`
+	}
+	load := func(auth string) []sourceUsageProjection {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+		request.Header.Set("Authorization", auth)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("list sources = %d %s", response.Code, response.Body.String())
+		}
+		var rows []sourceUsageProjection
+		if err := json.Unmarshal(response.Body.Bytes(), &rows); err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+
+	aliceRows := load(alice.Auth)
+	if len(aliceRows) != 1 || aliceRows[0].ID != shared.ID || aliceRows[0].UsedBookCount != 2 {
+		t.Fatalf("alice usage projection = %#v", aliceRows)
+	}
+	if got, want := aliceRows[0].UsedBookNames, []string{"Alice 第一册", "Alice 第二册"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("alice usedBookNames = %#v, want %#v", got, want)
+	}
+
+	bobRows := load(bob.Auth)
+	if len(bobRows) != 1 || bobRows[0].ID != shared.ID || bobRows[0].UsedBookCount != 1 {
+		t.Fatalf("bob usage projection = %#v", bobRows)
+	}
+	if got, want := bobRows[0].UsedBookNames, []string{"Bob 私有册"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("bob usedBookNames = %#v, want %#v", got, want)
+	}
+}
+
+func TestBookSourceImportEditorFieldsRoundTripWithoutSchemaMigration(t *testing.T) {
+	router, server := setupTestServer(t)
+	account := registerSourceContractAccount(t, router, "sourceextraroundtrip")
+	response := importSourcesThroughAPI(t, router, account.Auth, `[
+		{
+			"bookSourceName":"扩展字段源",
+			"bookSourceUrl":"https://source-extra.example",
+			"enabled":true,
+			"enabledExplore":true,
+			"loginUi":[{"name":"账号","type":"text"}],
+			"customExtension":{"mode":"preserve-only","script":"@js:never-execute()"},
+			"ruleToc":{"chapterList":".chapter","preUpdateJs":"@js:preserve-toc()"},
+			"ruleContent":{"content":".content","webJs":"@js:preserve-content()"}
+		}
+	]`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("import extended source = %d %s", response.Code, response.Body.String())
+	}
+
+	var stored models.BookSource
+	if err := server.db.Where("base_url = ?", "https://source-extra.example").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stored.Rules, `"__openreaderSourceExtra"`) {
+		t.Fatalf("stored rules did not preserve top-level extensions: %s", stored.Rules)
+	}
+
+	exportRequest := httptest.NewRequest(http.MethodGet, "/api/sources/export?sourceIds="+uintString(stored.ID), nil)
+	exportRequest.Header.Set("Authorization", account.Auth)
+	exportResponse := httptest.NewRecorder()
+	router.ServeHTTP(exportResponse, exportRequest)
+	if exportResponse.Code != http.StatusOK {
+		t.Fatalf("export extended source = %d %s", exportResponse.Code, exportResponse.Body.String())
+	}
+	var exported []map[string]any
+	if err := json.Unmarshal(exportResponse.Body.Bytes(), &exported); err != nil {
+		t.Fatal(err)
+	}
+	if len(exported) != 1 {
+		t.Fatalf("exported extended sources = %#v", exported)
+	}
+	if _, ok := exported[0]["loginUi"].([]any); !ok {
+		t.Fatalf("loginUi did not round-trip at top level: %#v", exported[0])
+	}
+	extension, ok := exported[0]["customExtension"].(map[string]any)
+	if !ok || extension["script"] != "@js:never-execute()" {
+		t.Fatalf("custom extension did not round-trip: %#v", exported[0])
+	}
+	if strings.Contains(fmt.Sprint(exported[0]["rules"]), "__openreaderSourceExtra") {
+		t.Fatalf("internal preservation envelope leaked into reader-dev JSON: %#v", exported[0])
+	}
+}
+
+func TestBookSourceImportRejectsOversizedFileBeforeJSONDecode(t *testing.T) {
+	router, _ := setupTestServer(t)
+	account := registerSourceContractAccount(t, router, "sourceoversize")
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "oversized-bookSources.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(part, io.LimitReader(zeroBytesReader{}, maxBookSourceImportBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/sources/import", &body)
+	request.Header.Set("Authorization", account.Auth)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge ||
+		!strings.Contains(response.Body.String(), "source file is too large") {
+		t.Fatalf("oversized source import = %d %s", response.Code, response.Body.String())
+	}
+}
+
+type zeroBytesReader struct{}
+
+func (zeroBytesReader) Read(data []byte) (int, error) {
+	for index := range data {
+		data[index] = 'x'
+	}
+	return len(data), nil
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestBookSourceCRUDAndReadsAreScopedToAuthenticatedUser(t *testing.T) {

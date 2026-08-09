@@ -41,23 +41,25 @@ test('hosts ordinary source management as one overlay while debugger remains a s
   const sourceManager = readFileSync(sourceManagerPath, 'utf8')
 
   assert.match(host, /OverlaySources/)
-  assert.match(overlay, /v-model="overlay\.sourceManageVisible"/)
-  assert.match(overlay, /<SourceManager\s+embedded/)
-  assert.match(overlay, /:intent="overlay\.sourceManageIntent"/)
-  assert.match(sourceManager, /embedded:\s*\{ type: Boolean, default: false \}/)
-  assert.match(sourceManager, /intent:\s*\{ type: String, default: 'manage' \}/)
+  assert.match(overlay, /<SourceManager/)
+  assert.match(overlay, /:visible="overlay\.sourceManageVisible && isManagerIntent"/)
+  assert.match(overlay, /:failure-mode="overlay\.sourceManageIntent === 'health'"/)
+  assert.match(overlay, /<SourceTransferOverlay/)
+  assert.match(sourceManager, /visible:\s*\{ type: Boolean, default: false \}/)
+  assert.match(sourceManager, /failureMode:\s*\{ type: Boolean, default: false \}/)
   assert.doesNotMatch(sourceManager, /title="书源调试"|showDebug|debugKeyword|testSourceChapter|testSourceContent/, 'the retired three-probe dialog must not remain in SourceManager')
 })
 
 test('opens the upstream-style failure view without starting a live test', () => {
   const sourceManager = readFileSync(sourceManagerPath, 'utf8')
-  const healthIntent = sourceManager.match(/if \(intent === 'health'\) \{([\s\S]*?)\n  \}/)?.[1] || ''
+  const handleOpen = sourceManager.match(/async function handleOpen\(\) \{([\s\S]*?)\n\}/)?.[1] || ''
 
-  assert.match(healthIntent, /failedOnly\.value = true/)
-  assert.doesNotMatch(healthIntent, /checkInvalidSources\(/)
+  assert.match(sourceManager, /const isFailureMode = computed\(\(\) => props\.failureMode\)/)
+  assert.match(handleOpen, /if \(isFailureMode\.value\) await loadInvalidSourceHealth\(operation\)/)
+  assert.doesNotMatch(handleOpen, /checkInvalidSources\(/)
   assert.match(
     sourceManager,
-    /selection\.value\.length \? selection\.value : \(failedOnly\.value \? sources\.value : shownSources\.value\)/,
-    'an explicit test from an empty failure view must still be able to test the source set',
+    /const sourceRows = \[\.\.\.sources\.value\]/,
+    'an explicit test from an empty failure view must still test the complete source set',
   )
 })

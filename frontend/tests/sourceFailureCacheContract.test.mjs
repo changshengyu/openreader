@@ -14,19 +14,19 @@ test('uses a dedicated cached-invalid-source API instead of a live health probe 
 
   assert.match(sourceAPI, /export function listInvalidSources\(\)\s*\{\s*return api\.get\('\/sources\/invalid'\)/)
   assert.match(sourceManager, /listInvalidSources,/)
-  assert.match(sourceManager, /async function loadInvalidSourceHealth\(\)/)
+  assert.match(sourceManager, /async function loadInvalidSourceHealth\(parentOperation = null\)/)
 
-  const healthIntent = sourceManager.match(/if \(intent === 'health'\) \{([\s\S]*?)\n  \}/)?.[1] || ''
-  assert.match(healthIntent, /failedOnly\.value = true/)
-  assert.match(healthIntent, /await loadInvalidSourceHealth\(\)/)
-  assert.doesNotMatch(healthIntent, /batchTestSources\(|checkInvalidSources\(/)
+  const handleOpen = sourceManager.match(/async function handleOpen\(\) \{([\s\S]*?)\n\}/)?.[1] || ''
+  assert.match(handleOpen, /await loadInvalidSourceHealth\(operation\)/)
+  assert.doesNotMatch(handleOpen, /batchTestSources\(|checkInvalidSources\(/)
 })
 
-test('maps persisted failed rows into the existing failed-only source state and resets it on close', () => {
+test('maps persisted failed rows into the failure table and resets only upstream close state', () => {
   const sourceManager = readFileSync(sourceManagerPath, 'utf8')
 
-  assert.match(sourceManager, /health\.value\[item\.id\] = \{[\s\S]*?ok: false/)
-  assert.match(sourceManager, /message: item\.errorMessage \|\| '请求书源失败'/)
-  assert.match(sourceManager, /health\.value = \{\}/)
-  assert.match(sourceManager, /failedOnly\.value = false/)
+  assert.match(sourceManager, /failureSources\.value = \(Array\.isArray\(data\) \? data : \[\]\)\.map/)
+  assert.match(sourceManager, /errorMessage: visibleFailureCategory\(source\.errorMessage\)/)
+  const close = sourceManager.match(/function handleClosed\(\) \{([\s\S]*?)\n\}/)?.[1] || ''
+  assert.match(close, /selectedGroup\.value = ''/)
+  assert.doesNotMatch(close, /failureSources\.value = \[\]/)
 })

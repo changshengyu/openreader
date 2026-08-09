@@ -16,7 +16,6 @@ const sharedResponsiveConsumers = [
   '../src/components/BookInfoDialog.vue',
   '../src/components/BookEditDialog.vue',
   '../src/components/GlobalOverlayHost.vue',
-  '../src/components/workspace/SourceManager.vue',
 ]
 
 function withIPadNavigator(run) {

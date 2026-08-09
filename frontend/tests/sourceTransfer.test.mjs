@@ -142,7 +142,7 @@ test('detects every source entry point rejected by the current runtime', () => {
   assert.equal(importSourceTags(fixtures.at(-1)[0]), '@WebView')
 })
 
-test('preselects compatible sources and preserves check-all semantics', () => {
+test('starts the import preview empty and preserves safe check-all semantics', () => {
   const fixture = createController()
   fixture.controller.openImportPreview([
     { name: '普通源' },
@@ -153,18 +153,19 @@ test('preselects compatible sources and preserves check-all semantics', () => {
     { name: '固定基准未消费字段', ruleToc: { preUpdateJs: 'return list' } },
   ])
 
-  assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [0, 5])
-  assert.equal(fixture.controller.importCheckAll.value, true)
+  assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [])
+  assert.equal(fixture.controller.importCheckAll.value, false)
   assert.equal(fixture.controller.importCheckIndeterminate.value, false)
-  assert.deepEqual(fixture.calls, [[
-    'info',
-    '部分使用 Javascript 或 WebView 的书源未默认勾选',
-  ]])
+  assert.deepEqual(fixture.calls, [])
 
   fixture.controller.toggleImportCheckAll(false)
   assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [])
   fixture.controller.toggleImportCheckAll(true)
   assert.deepEqual(fixture.controller.checkedImportSourceIndexes.value, [0, 5])
+  assert.deepEqual(fixture.calls, [[
+    'info',
+    '部分使用了Javascript和Webview的书源未勾选',
+  ]])
 })
 
 test('imports a local file through preview and saves only selected sources', async () => {
@@ -184,7 +185,7 @@ test('imports a local file through preview and saves only selected sources', asy
   const uploaded = importCall[1].get('file')
   assert.deepEqual(JSON.parse(await uploaded.text()), [{ name: '源二' }])
   assert.deepEqual(fixture.calls.slice(-2), [
-    ['success', '新增 1 个，更新 1 个，跳过 1 个'],
+    ['success', '导入书源成功'],
     ['reload'],
   ])
   assert.equal(fixture.controller.showImportPreview.value, false)
@@ -207,15 +208,15 @@ test('previews a trimmed remote URL and resets the remote dialog', async () => {
   )
 })
 
-test('exports selected sources with the existing filename and feedback', async () => {
+test('exports all sources with the fixed-baseline filename', async () => {
   const fixture = createController()
   await fixture.controller.exportSources()
 
-  assert.deepEqual(fixture.calls, [
-    ['export', [2, 4]],
-    ['download', '[{"name":"书源"}]', 'bookSources-selected.json'],
-    ['success', '已导出 2 个书源'],
-  ])
+  assert.deepEqual(fixture.calls[0], ['export', []])
+  assert.equal(fixture.calls[1][0], 'download')
+  assert.equal(fixture.calls[1][1], '[{"name":"书源"}]')
+  assert.match(fixture.calls[1][2], /^reader书源-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.json$/)
+  assert.equal(fixture.calls.length, 2)
 })
 
 test('an imported source response cannot update or reload a later authenticated session', async () => {
@@ -229,6 +230,7 @@ test('an imported source response cannot update or reload a later authenticated 
     },
   })
   fixture.controller.openImportPreview([{ name: '旧账号书源' }])
+  fixture.controller.checkedImportSourceIndexes.value = [0]
 
   const importTask = fixture.controller.saveSelectedImportSources()
   operationGuard.expire()

@@ -14,6 +14,24 @@ export const BOOK_SOURCE_RULE_KEYS = [
   'contentImageStyle',
 ]
 
+export const BOOK_SOURCE_EXTRA_RULE_KEY = '__openreaderSourceExtra'
+
+const BOOK_SOURCE_CANONICAL_KEYS = new Set([
+  'bookSourceName', 'bookSourceGroup', 'bookSourceUrl', 'bookSourceType',
+  'bookUrlPattern', 'ruleBookUrlPattern', 'bookSourceComment', 'enabled',
+  'enabledExplore', 'searchUrl', 'exploreUrl', 'header', 'ruleSearch',
+  'ruleExplore', 'ruleBookInfo', 'ruleToc', 'ruleTOC', 'ruleContent',
+  'charset', 'concurrentRate', 'loginUrl', 'loginCheckJs', 'customOrder',
+  'lastUpdateTime', 'weight', 'respondTime', 'rules',
+])
+
+const BOOK_SOURCE_API_KEYS = new Set([
+  'id', 'userId', 'name', 'group', 'baseUrl', 'sourceType', 'comment',
+  'createdAt', 'updatedAt', 'usedBookCount', 'usedBookNames',
+])
+
+const UNSAFE_EXTRA_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
 export function createBookSourceForm(source = {}) {
   return {
     id: source.id || null,
@@ -58,9 +76,16 @@ export function parseBookSourceRules(value) {
 
 export function sourceToEditorSnapshot(source = {}) {
   const form = createBookSourceForm(source)
-  const rules = form.rules.trim()
+  const parsedRules = form.rules.trim()
     ? parseBookSourceRules(form.rules)
     : legacyBookSourceRules(source)
+  const preservedExtras = normalizeSourceExtras(parsedRules[BOOK_SOURCE_EXTRA_RULE_KEY])
+  delete parsedRules[BOOK_SOURCE_EXTRA_RULE_KEY]
+  const sourceExtras = sourceTopLevelExtras(source)
+  const extras = { ...preservedExtras, ...sourceExtras }
+  const rules = Object.keys(extras).length
+    ? { ...parsedRules, [BOOK_SOURCE_EXTRA_RULE_KEY]: extras }
+    : parsedRules
   return { form, rules: { ...createBookSourceRuleForm(), ...rules } }
 }
 
@@ -78,8 +103,14 @@ export function buildBookSourcePayload(form, rules) {
 export function buildReaderDevBookSource(form, rules) {
   const payload = buildBookSourcePayload(form, rules)
   const cleanRules = parseBookSourceRules(payload.rules)
+  const sourceExtras = normalizeSourceExtras(cleanRules[BOOK_SOURCE_EXTRA_RULE_KEY])
+  delete cleanRules[BOOK_SOURCE_EXTRA_RULE_KEY]
+  const exportedRules = Object.keys(cleanRules).length
+    ? JSON.stringify(cleanRules, null, 2)
+    : ''
 
   return {
+    ...sourceExtras,
     bookSourceName: payload.name,
     bookSourceGroup: payload.group,
     bookSourceUrl: payload.baseUrl,
@@ -134,8 +165,34 @@ export function buildReaderDevBookSource(form, rules) {
     respondTime: payload.respondTime,
     // Preserve OpenReader-only parser fields while exposing the complete
     // reader-dev shape, matching the canonical backend exporter.
-    rules: payload.rules,
+    rules: exportedRules,
   }
+}
+
+function sourceTopLevelExtras(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {}
+  const extras = {}
+  for (const [key, value] of Object.entries(source)) {
+    if (BOOK_SOURCE_CANONICAL_KEYS.has(key) || BOOK_SOURCE_API_KEYS.has(key)) continue
+    if (UNSAFE_EXTRA_KEYS.has(key) || value === undefined) continue
+    extras[key] = cloneJSONValue(value)
+  }
+  return extras
+}
+
+function normalizeSourceExtras(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const extras = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (BOOK_SOURCE_CANONICAL_KEYS.has(key) || UNSAFE_EXTRA_KEYS.has(key)) continue
+    if (item === undefined) continue
+    extras[key] = cloneJSONValue(item)
+  }
+  return extras
+}
+
+function cloneJSONValue(value) {
+  return JSON.parse(JSON.stringify(value))
 }
 
 function normalizeRulesText(value) {

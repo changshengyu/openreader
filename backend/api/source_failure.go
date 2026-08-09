@@ -17,9 +17,10 @@ import (
 
 type invalidSourceResponse struct {
 	models.BookSource
-	ErrorMessage string    `json:"errorMessage"`
-	FailedAt     time.Time `json:"failedAt"`
-	ExpiresAt    time.Time `json:"expiresAt"`
+	UsedBookNames []string  `json:"usedBookNames"`
+	ErrorMessage  string    `json:"errorMessage"`
+	FailedAt      time.Time `json:"failedAt"`
+	ExpiresAt     time.Time `json:"expiresAt"`
 }
 
 func (s *Server) listInvalidSources(c *gin.Context) {
@@ -66,10 +67,11 @@ func (s *Server) invalidSourceResponses(userID uint) ([]invalidSourceResponse, e
 			continue
 		}
 		result = append(result, invalidSourceResponse{
-			BookSource:   source,
-			ErrorMessage: failure.Message,
-			FailedAt:     failure.FailedAt,
-			ExpiresAt:    failure.ExpiresAt,
+			BookSource:    source,
+			UsedBookNames: source.UsedBookNames,
+			ErrorMessage:  failure.Message,
+			FailedAt:      failure.FailedAt,
+			ExpiresAt:     failure.ExpiresAt,
 		})
 	}
 	sort.SliceStable(result, func(i, j int) bool {

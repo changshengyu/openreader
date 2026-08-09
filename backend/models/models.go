@@ -55,6 +55,7 @@ type BookSource struct {
 	EnabledExplore *bool     `json:"enabledExplore" gorm:"not null;default:true"`
 	Group          string    `json:"group" gorm:"size:80"`
 	UsedBookCount  int       `json:"usedBookCount" gorm:"-"`
+	UsedBookNames  []string  `json:"-" gorm:"-"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }

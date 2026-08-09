@@ -29,11 +29,12 @@ export function useSourceTransfer(options) {
   const importPreviewSaving = ref(false)
 
   async function importFile(data) {
-    const file = data.raw
+    const file = data?.raw || data?.target?.files?.[0] || data
     if (!file) return
     const operation = operations.begin('file-preview')
     try {
-      const list = parseImportSourceList(JSON.parse(await file.text()))
+      const parsed = JSON.parse(await file.text())
+      const list = Array.isArray(parsed) ? parsed : []
       if (!operations.canCommit(operation)) return
       if (!list.length) {
         options.onError(null, '书源文件错误')
@@ -41,14 +42,13 @@ export function useSourceTransfer(options) {
       }
       openImportPreview(list)
     } catch (error) {
-      if (operations.canCommit(operation)) options.onError(error, '导入失败')
+      if (operations.canCommit(operation)) options.onError(error, '书源文件错误')
     }
   }
 
   function openSourceImportPicker() {
-    const input = sourceUploadRef.value?.$el?.querySelector?.(
-      'input[type="file"]',
-    )
+    const input = sourceUploadRef.value?.$el?.querySelector?.('input[type="file"]')
+      || sourceUploadRef.value
     if (input) {
       input.click()
       return
@@ -67,7 +67,7 @@ export function useSourceTransfer(options) {
       if (!operations.canCommit(operation)) return
       const list = parseImportSourceList(preview.sources || [])
       if (!list.length) {
-        options.onError(null, '远程订阅未识别到书源')
+        options.onError(null, '远程书源文件错误')
         return
       }
       showRemote.value = false
@@ -75,7 +75,7 @@ export function useSourceTransfer(options) {
       openImportPreview(list)
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '远程导入失败')
+        options.onError(error, '读取远程书源文件内容失败')
       }
     } finally {
       if (operations.canCommit(operation)) remoteLoading.value = false
@@ -84,12 +84,9 @@ export function useSourceTransfer(options) {
 
   function openImportPreview(list) {
     importPreviewSources.value = list
-    checkedImportSourceIndexes.value = selectableIndexes(list)
+    checkedImportSourceIndexes.value = []
     updateImportCheckState()
     showImportPreview.value = true
-    if (checkedImportSourceIndexes.value.length < list.length) {
-      options.onInfo('部分使用 Javascript 或 WebView 的书源未默认勾选')
-    }
   }
 
   function closeImportPreview() {
@@ -106,7 +103,7 @@ export function useSourceTransfer(options) {
     updateImportCheckState()
     if (checked &&
       checkedImportSourceIndexes.value.length < importPreviewSources.value.length) {
-      options.onInfo('部分使用 Javascript 或 WebView 的书源未勾选')
+      options.onInfo('部分使用了Javascript和Webview的书源未勾选')
     }
   }
 
@@ -134,7 +131,7 @@ export function useSourceTransfer(options) {
       const form = createSourceImportForm(selectedSources)
       const { data: result } = await options.importSources(form)
       if (!operations.canCommit(operation)) return
-      options.onSuccess(sourceImportMessage(result))
+      options.onSuccess('导入书源成功')
       closeImportPreview()
       await options.reloadSources()
     } catch (error) {
@@ -147,20 +144,10 @@ export function useSourceTransfer(options) {
   async function exportSources() {
     const operation = operations.begin('export')
     try {
-      const selectedIds = options.getSelection()
-        .map(source => source.id)
-        .filter(Boolean)
-      const response = await options.exportSources(selectedIds)
+      const response = await options.exportSources([])
       if (!operations.canCommit(operation)) return
-      const filename = selectedIds.length
-        ? 'bookSources-selected.json'
-        : 'bookSources.json'
+      const filename = `reader书源-${currentDateTime()}.json`
       options.download(response.data, filename)
-      options.onSuccess(
-        selectedIds.length
-          ? `已导出 ${selectedIds.length} 个书源`
-          : '已导出全部书源',
-      )
     } catch (error) {
       if (operations.canCommit(operation)) options.onError(error, '导出失败')
     }
@@ -193,6 +180,19 @@ export function useSourceTransfer(options) {
     exportSources,
     resetOperations: operations.reset,
   }
+}
+
+function currentDateTime() {
+  const date = new Date()
+  const pad = value => String(value).padStart(2, '0')
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join('-')
 }
 
 function selectableIndexes(sources) {

@@ -139,6 +139,6 @@ test('keeps UserManage protected rows and the upstream single-table interaction 
       selectedCountIndex < cancelIndex,
     'footer actions must follow upstream batch-delete, source-reset, selection-count, cancel order',
   )
-  assert.match(sourceManagerSource, /v-if="isAdmin"[\s\S]*?@click="setCurrentAsDefault"/, 'the compatibility default-save entry must be visible only to administrators')
-  assert.doesNotMatch(sourceManagerSource, /v-if="isAdmin"[^>]*:disabled="!sources\.length"/, 'an administrator must be able to save an explicit empty default snapshot')
+  assert.doesNotMatch(sourceManagerSource, /setCurrentAsDefault|设为默认/, 'the ordinary source manager must not expose the administrator default-save action')
+  assert.match(userOverlaySource, /@click="setDefaultSources\(row\)"/, 'the administrator default-save workflow remains in UserManage')
 })

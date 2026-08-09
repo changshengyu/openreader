@@ -10,6 +10,8 @@ import (
 	"openreader/backend/models"
 )
 
+const PreservedExtraRuleKey = "__openreaderSourceExtra"
+
 type SearchRule struct {
 	BookList    string `json:"bookList"`
 	Name        string `json:"name"`
@@ -83,11 +85,36 @@ type BookSource struct {
 	Weight            int          `json:"weight"`
 	RespondTime       int64        `json:"respondTime"`
 	Rules             string       `json:"rules,omitempty"`
+	preservedExtras   map[string]json.RawMessage
+}
+
+func (s BookSource) MarshalJSON() ([]byte, error) {
+	type bookSourceAlias BookSource
+	encoded, err := json.Marshal(bookSourceAlias(s))
+	if err != nil || len(s.preservedExtras) == 0 {
+		return encoded, err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &object); err != nil {
+		return nil, err
+	}
+	for key, value := range s.preservedExtras {
+		key = strings.TrimSpace(key)
+		if key == "" || len(value) == 0 {
+			continue
+		}
+		if _, canonical := object[key]; canonical {
+			continue
+		}
+		object[key] = append(json.RawMessage(nil), value...)
+	}
+	return json.Marshal(object)
 }
 
 func Export(sources []models.BookSource) []BookSource {
 	exported := make([]BookSource, 0, len(sources))
 	for _, source := range sources {
+		exportedRules, preservedExtras := SplitPreservedExtras(source.Rules)
 		rule, err := source.ParsedRules()
 		if err != nil {
 			rule = models.BookSourceRule{}
@@ -167,18 +194,90 @@ func Export(sources []models.BookSource) []BookSource {
 				ReplaceRegex:   rule.ContentReplaceRegex,
 				ImageStyle:     rule.ContentImageStyle,
 			},
-			Charset:        source.Charset,
-			ConcurrentRate: source.ConcurrentRate,
-			LoginURL:       source.LoginURL,
-			LoginCheckJS:   source.LoginCheckJS,
-			CustomOrder:    source.CustomOrder,
-			LastUpdateTime: source.LastUpdateTime,
-			Weight:         source.Weight,
-			RespondTime:    source.RespondTime,
-			Rules:          source.Rules,
+			Charset:         source.Charset,
+			ConcurrentRate:  source.ConcurrentRate,
+			LoginURL:        source.LoginURL,
+			LoginCheckJS:    source.LoginCheckJS,
+			CustomOrder:     source.CustomOrder,
+			LastUpdateTime:  source.LastUpdateTime,
+			Weight:          source.Weight,
+			RespondTime:     source.RespondTime,
+			Rules:           exportedRules,
+			preservedExtras: preservedExtras,
 		})
 	}
 	return exported
+}
+
+// MergePreservedExtras stores unsupported reader-dev top-level fields inside
+// the existing rules text. The parser ignores the reserved key, so preserving
+// configuration does not make dormant JavaScript/WebView fields executable and
+// does not require a database migration.
+func MergePreservedExtras(rules string, extras map[string]json.RawMessage) string {
+	if len(extras) == 0 {
+		return strings.TrimSpace(rules)
+	}
+	object := make(map[string]json.RawMessage)
+	trimmed := strings.TrimSpace(rules)
+	if trimmed != "" {
+		if err := json.Unmarshal([]byte(trimmed), &object); err != nil {
+			return trimmed
+		}
+	}
+	preserved := make(map[string]json.RawMessage)
+	if raw := object[PreservedExtraRuleKey]; len(raw) > 0 {
+		_ = json.Unmarshal(raw, &preserved)
+	}
+	for key, value := range extras {
+		key = strings.TrimSpace(key)
+		if key == "" || len(value) == 0 {
+			continue
+		}
+		preserved[key] = append(json.RawMessage(nil), value...)
+	}
+	if len(preserved) == 0 {
+		return trimmed
+	}
+	data, err := json.Marshal(preserved)
+	if err != nil {
+		return trimmed
+	}
+	object[PreservedExtraRuleKey] = data
+	data, err = json.Marshal(object)
+	if err != nil {
+		return trimmed
+	}
+	return string(data)
+}
+
+// SplitPreservedExtras reconstructs the original reader-dev top-level shape
+// for exports while keeping the internal preservation envelope private.
+func SplitPreservedExtras(rules string) (string, map[string]json.RawMessage) {
+	trimmed := strings.TrimSpace(rules)
+	if trimmed == "" {
+		return "", nil
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &object); err != nil {
+		return trimmed, nil
+	}
+	raw := object[PreservedExtraRuleKey]
+	if len(raw) == 0 {
+		return trimmed, nil
+	}
+	var extras map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &extras); err != nil {
+		return trimmed, nil
+	}
+	delete(object, PreservedExtraRuleKey)
+	if len(object) == 0 {
+		return "", extras
+	}
+	data, err := json.Marshal(object)
+	if err != nil {
+		return trimmed, nil
+	}
+	return string(data), extras
 }
 
 func firstNonBlank(values ...string) string {
