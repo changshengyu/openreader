@@ -2,7 +2,7 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：`aligned / regression-validated / Docker-pending`。本轮只复审 UserManage 权限开关到 Go 更新接口的字段所有权；
+状态：`aligned / Docker-published / awaiting-device-verification`。本轮只复审 UserManage 权限开关到 Go 更新接口的字段所有权；
 不重开已经签收的用户创建、密码规则、删除、书源 namespace、工作区清理和 WebSocket recipient scope。
 
 ## 权威映射
@@ -95,5 +95,15 @@
 - UserManage 真实浏览器合同已在 1440×900、1024×1366、390×844、360×800 通过，覆盖单字段
   payload、字段级 loading、独立字段并行和失败恢复。
 
-本切片代码与浏览器闸门已经关闭；Docker fresh/historical volume、候选构建和 GHCR digest 仍待本次
-发布批次执行。
+本切片代码与浏览器闸门已经关闭。实现提交 `77a60d8345ac28be9aa0542bc016ba98dcc89bc0` 已由本机
+OrbStack 构建并发布，不使用云端构建：
+
+- `ghcr.io/changshengyu/openreader:77a60d8`
+- `ghcr.io/changshengyu/openreader:latest`
+- amd64/arm64 OCI index：`sha256:a1a37b223e10a3c43febd23250dd7790394c200d69e7c9548255cf1fdba3b017`
+- amd64 manifest：`sha256:45120281cd09162f547ee2574f6b4feca4fcb078c96f1b7b423baaf095369e77`
+- arm64 manifest：`sha256:111ea9d2ba2dec923b01f3081f3c4467af5dc69cdcb6035239db9dfde532d25d`
+
+候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
+的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation。当前等待真实设备验证开关 busy、并行和
+失败恢复的用户可见反馈。

@@ -107,3 +107,10 @@ API、SQLite、缓存或持久化格式。
 该提交已由本机发布为 `2ea6e8c` 与 `latest`，OCI index 为
 `sha256:678b019c34ac1f92a38dbd650de48867002ae6425a4206aff2e8f315e189d6ac`。线上仍需 pull 并 force
 recreate 到该版本后才能验收；旧容器 restart 不能更新镜像内容。
+
+2026-08-09 设备再次反馈移动书架偏窄时，线上 `/api/health` 仍明确返回 `7971e23`。当前
+`main@77a60d8` 重新生产构建后，完整 Reader 合同继续在 390×844、360×800 得到 20px/350px 与
+20px/320px；普通首页书架合同在 390×844、360×800 继续得到 390/360px 整行宽度。该提交已由
+本机发布为 `77a60d8`/`latest`，OCI index 为
+`sha256:a1a37b223e10a3c43febd23250dd7790394c200d69e7c9548255cf1fdba3b017`。因此当前反馈仍判定为线上
+容器滞后；服务器必须 pull 并 force recreate，不能只 restart。

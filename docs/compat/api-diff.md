@@ -30,8 +30,8 @@ association-scoped and released. The `/ws/sync` protocol audit and implementatio
 The UserManage second audit found and removed a full-row GORM `Save` from `PUT /api/admin/users/:id`.
 The endpoint now updates only explicitly supplied columns, reloads a fresh row, projects legacy nullable WebDAV
 access without backfilling it, and rejects empty or negative-limit patches. Frontend switches own one field each,
-with field-scoped pending and rollback. The regression-validated contract is
-`user-management-partial-update-second-audit-p2-contract.md`; Docker publication remains pending.
+with field-scoped pending and rollback. The Docker-published contract is
+`user-management-partial-update-second-audit-p2-contract.md`; `77a60d8` passed fresh/historical volume gates.
 
 ## WebSocket synchronization direction and scope
 

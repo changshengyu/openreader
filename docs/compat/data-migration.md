@@ -761,8 +761,9 @@ fixtures. No migration or mounted data rewrite was observed.
 - Existing `false` permission values and zero unlimited book/source limits remain readable and writable. Negative
   limits and empty patches are rejected without updating `updated_at` or emitting synchronization events.
 
-Focused trigger-based concurrency tests, race tests and full API regressions pass. Fresh/historical mounted-volume
-and portable-backup release evidence remains required before Docker publication.
+Focused trigger-based concurrency tests, race tests and full API regressions pass. `77a60d8` then passed fresh
+mounted volume portable v1/v2 assets, cross-user and restart, plus historical TXT/EPUB/UMD/CBZ, relative-cache,
+owner-isolation and portable restore. No mounted data or archive rewrite was observed.
 
 ## P0 ReaderSettings scheme/snapshot compatibility (2026-08-02 extracted)
 
