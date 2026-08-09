@@ -41,7 +41,8 @@
               v-model="row.canAccessWebdav"
               size="small"
               active-text="WebDAV"
-              @change="updateUserPermission(row)"
+              :loading="isPermissionUpdating(row, 'canAccessWebdav')"
+              @change="value => updateUserPermission(row, 'canAccessWebdav', value)"
             />
           </template>
         </el-table-column>
@@ -52,7 +53,8 @@
               v-model="row.canAccessStore"
               size="small"
               active-text="书仓"
-              @change="updateUserPermission(row)"
+              :loading="isPermissionUpdating(row, 'canAccessStore')"
+              @change="value => updateUserPermission(row, 'canAccessStore', value)"
             />
           </template>
         </el-table-column>
@@ -63,7 +65,8 @@
               v-model="row.canEditSources"
               size="small"
               active-text="书源"
-              @change="updateUserPermission(row)"
+              :loading="isPermissionUpdating(row, 'canEditSources')"
+              @change="value => updateUserPermission(row, 'canEditSources', value)"
             />
             <span v-else class="protected-user-label">受保护账号</span>
           </template>
@@ -171,6 +174,7 @@ const {
   clearRefresh: clearUsersRefreshTimer,
   isSelectable: isUserSelectable,
   isMutable: isUserMutable,
+  isPermissionUpdating,
   changeSelection: onUserSelectionChange,
   openCreateDialog: openCreateUserDialog,
   create: createManagedUser,

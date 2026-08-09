@@ -27,10 +27,11 @@ content/cache, scheduler, backup/WebDAV restore and administrator count/default/
 association-scoped and released. The `/ws/sync` protocol audit and implementation are recorded in
 `websocket-sync-p2-contract.md`.
 
-The UserManage second audit found that the current `PUT /api/admin/users/:id` still uses a full-row GORM
-`Save` after applying a partial request. This contradicts reader-dev's field-specific update action and can overwrite
-a concurrent password reset or successful-login timestamp. The extracted, implementation-pending contract is
-`user-management-partial-update-second-audit-p2-contract.md`.
+The UserManage second audit found and removed a full-row GORM `Save` from `PUT /api/admin/users/:id`.
+The endpoint now updates only explicitly supplied columns, reloads a fresh row, projects legacy nullable WebDAV
+access without backfilling it, and rejects empty or negative-limit patches. Frontend switches own one field each,
+with field-scoped pending and rollback. The regression-validated contract is
+`user-management-partial-update-second-audit-p2-contract.md`; Docker publication remains pending.
 
 ## WebSocket synchronization direction and scope
 

@@ -239,9 +239,17 @@ test('submits only the changed permission field and blocks a duplicate field wri
   await fixture.controller.updatePermission(row, 'canAccessStore', true)
   assert.equal(fixture.calls.filter(call => call[0] === 'update').length, 1)
 
-  response.resolve({ data: { ...row, canAccessStore: false } })
-  await pending
+  const otherPending = fixture.controller.updatePermission(row, 'canEditSources', false)
+  assert.deepEqual(fixture.calls.filter(call => call[0] === 'update'), [
+    ['update', 3, { canAccessStore: false }],
+    ['update', 3, { canEditSources: false }],
+  ])
+  assert.equal(fixture.controller.isPermissionUpdating(row, 'canEditSources'), true)
+
+  response.resolve({ data: { ...row, canAccessStore: false, canEditSources: false } })
+  await Promise.all([pending, otherPending])
   assert.equal(fixture.controller.isPermissionUpdating(row, 'canAccessStore'), false)
+  assert.equal(fixture.controller.isPermissionUpdating(row, 'canEditSources'), false)
 })
 
 test('reverts only the failed permission field before reloading users', async () => {

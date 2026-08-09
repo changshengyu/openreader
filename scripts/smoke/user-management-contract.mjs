@@ -22,6 +22,10 @@ function fakeToken(role) {
 }
 
 async function installApiMocks(page, role, profilePermissions = {}) {
+  const state = {
+    permissionWrites: [],
+    failNextPermissionField: '',
+  }
   const users = [
     {
       id: 1,
@@ -89,8 +93,36 @@ async function installApiMocks(page, role, profilePermissions = {}) {
         return route.fulfill(json(created, 201))
       }
     }
+    const userUpdate = path.match(/^\/admin\/users\/(\d+)$/)
+    if (userUpdate && method === 'PUT') {
+      if (role !== 'admin') {
+        return route.fulfill(json({ error: { code: 'FORBIDDEN', message: 'admin access required' } }, 403))
+      }
+      const payload = request.postDataJSON()
+      state.permissionWrites.push(payload)
+      await new Promise(resolve => setTimeout(resolve, 180))
+      const changedField = Object.keys(payload)[0] || ''
+      if (state.failNextPermissionField === changedField) {
+        state.failNextPermissionField = ''
+        return route.fulfill(json({ error: 'simulated permission update failure' }, 500))
+      }
+      const user = users.find(item => item.id === Number(userUpdate[1]))
+      if (!user) return route.fulfill(json({ error: 'user not found' }, 404))
+      Object.assign(user, payload)
+      return route.fulfill(json(user))
+    }
     return route.fulfill(json({}))
   })
+  return state
+}
+
+async function waitUntil(check, message, timeout = 5000) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    if (await check()) return
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(message)
 }
 
 async function closeDialog(page, selector, expectedOverlay) {
@@ -116,15 +148,24 @@ async function assertAdminViewport(browser, viewport) {
   await context.addInitScript(token => localStorage.setItem('openreader_token', token), fakeToken('admin'))
   const page = await context.newPage()
   const failures = []
+  let expectedPermissionFailureResponses = 0
   page.on('pageerror', error => failures.push(`pageerror: ${error.message}`))
   page.on('console', message => {
+    if (
+      message.type() === 'error'
+      && expectedPermissionFailureResponses > 0
+      && /Failed to load resource: the server responded with a status of 500/.test(message.text())
+    ) {
+      expectedPermissionFailureResponses -= 1
+      return
+    }
     if (
       message.type() === 'error'
       && !/WebSocket connection to .*\/ws\/sync/.test(message.text())
       && !/Failed to load resource: the server responded with a status of 403/.test(message.text())
     ) failures.push(`console.error: ${message.text()}`)
   })
-  await installApiMocks(page, 'admin')
+  const apiState = await installApiMocks(page, 'admin')
   const root = targetUrl.replace(/\/$/, '')
   const dialog = await openAdminManager(page, root)
 
@@ -141,6 +182,49 @@ async function assertAdminViewport(browser, viewport) {
   assert(await dialog.getByText('WebDAV', { exact: true }).count() >= 1, `${viewport.width}: independent WebDAV column missing`)
   assert(await dialog.getByText('书仓', { exact: true }).count() >= 1, `${viewport.width}: independent LocalStore column missing`)
   assert(await dialog.locator('.mobile-user-card').count() === 0, `${viewport.width}: separate mobile card flow must be removed`)
+
+  const permissionSwitches = memberRow.locator('.el-switch')
+  const webdavSwitch = permissionSwitches.nth(0)
+  const storeSwitch = permissionSwitches.nth(1)
+  const sourceSwitch = permissionSwitches.nth(2)
+  await webdavSwitch.click()
+  await waitUntil(
+    () => webdavSwitch.evaluate(node => node.classList.contains('is-loading') || Boolean(node.querySelector('.is-loading'))),
+    `${viewport.width}: WebDAV switch did not expose field loading`,
+  )
+  assert(
+    await sourceSwitch.evaluate(node => !node.classList.contains('is-disabled') && !node.querySelector('input')?.disabled),
+    `${viewport.width}: WebDAV update blocked the independent source permission`,
+  )
+  await sourceSwitch.click()
+  await waitUntil(() => apiState.permissionWrites.length === 2, `${viewport.width}: independent permission writes did not start`)
+  assert(
+    JSON.stringify(apiState.permissionWrites) === JSON.stringify([
+      { canAccessWebdav: false },
+      { canEditSources: false },
+    ]),
+    `${viewport.width}: permission payloads were not field-owned: ${JSON.stringify(apiState.permissionWrites)}`,
+  )
+  await waitUntil(
+    () => Promise.all([webdavSwitch, sourceSwitch].map(locator => locator.evaluate(node => (
+      !node.classList.contains('is-loading') && !node.querySelector('.is-loading')
+    )))).then(values => values.every(Boolean)),
+    `${viewport.width}: permission loading state did not settle`,
+  )
+
+  apiState.failNextPermissionField = 'canAccessStore'
+  expectedPermissionFailureResponses += 1
+  await storeSwitch.click()
+  await waitUntil(() => apiState.permissionWrites.length === 3, `${viewport.width}: failed permission write did not start`)
+  await waitUntil(
+    () => storeSwitch.locator('input').isChecked().then(checked => !checked),
+    `${viewport.width}: failed LocalStore permission did not revert`,
+  )
+  assert(
+    JSON.stringify(apiState.permissionWrites[2]) === JSON.stringify({ canAccessStore: true }),
+    `${viewport.width}: failed permission payload contained unrelated fields`,
+  )
+  await waitUntil(() => expectedPermissionFailureResponses === 0, `${viewport.width}: expected permission failure was not observed`)
 
   const geometry = await dialog.evaluate(node => {
     const rect = node.getBoundingClientRect()

@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, shallowRef } from 'vue'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
 export function useOverlayUserManagement(options) {
@@ -13,6 +13,7 @@ export function useOverlayUserManagement(options) {
   const creatingUser = ref(false)
   const createDialogVisible = ref(false)
   const selectedUserIds = ref([])
+  const permissionUpdates = shallowRef(new Map())
   const draft = reactive({
     username: '',
     password: '',
@@ -80,6 +81,7 @@ export function useOverlayUserManagement(options) {
     deletingUsers.value = false
     resettingSources.value = false
     defaultingSourceUserId.value = null
+    permissionUpdates.value = new Map()
   }
 
   function scheduleRefresh() {
@@ -274,22 +276,50 @@ export function useOverlayUserManagement(options) {
     }
   }
 
-  async function updatePermission(row) {
-    const operation = operations.begin(`update-permission:${row.id}`)
+  function permissionUpdateKey(row, field) {
+    return `${Number(row?.id || 0)}:${field}`
+  }
+
+  function isPermissionUpdating(row, field) {
+    return permissionUpdates.value.has(permissionUpdateKey(row, field))
+  }
+
+  function setPermissionUpdating(key, operation) {
+    const next = new Map(permissionUpdates.value)
+    next.set(key, operation)
+    permissionUpdates.value = next
+  }
+
+  function clearPermissionUpdating(key, operation) {
+    if (permissionUpdates.value.get(key) !== operation) return
+    const next = new Map(permissionUpdates.value)
+    next.delete(key)
+    permissionUpdates.value = next
+  }
+
+  async function updatePermission(row, field, value) {
+    const allowedFields = new Set(['canEditSources', 'canAccessStore', 'canAccessWebdav'])
+    if (!isMutable(row) || !allowedFields.has(field)) return
+    const pendingKey = permissionUpdateKey(row, field)
+    if (permissionUpdates.value.has(pendingKey)) return
+
+    const operation = operations.begin(`update-permission:${pendingKey}`)
+    setPermissionUpdating(pendingKey, operation)
     try {
-      await options.updateUser(row.id, {
-        canEditSources: row.canEditSources,
-        canAccessStore: row.canAccessStore,
-        canAccessWebdav: row.canAccessWebdav,
-        bookLimit: row.bookLimit,
-        sourceLimit: row.sourceLimit,
-      })
+      const { data } = await options.updateUser(row.id, { [field]: Boolean(value) })
       if (!operations.canCommit(operation)) return
+      const current = users.value.find(user => user.id === row.id)
+      if (current && data && typeof data === 'object' && Object.hasOwn(data, field)) {
+        current[field] = data[field]
+      }
       options.onSuccess('用户权限已更新')
     } catch (error) {
       if (!operations.canCommit(operation)) return
+      if (row[field] === value) row[field] = !Boolean(value)
       options.onError(error, '更新用户失败')
       await load()
+    } finally {
+      clearPermissionUpdating(pendingKey, operation)
     }
   }
 
@@ -311,6 +341,7 @@ export function useOverlayUserManagement(options) {
     isSelectable,
     isDeletable,
     isMutable,
+    isPermissionUpdating,
     changeSelection,
     toggleSelection,
     openCreateDialog,

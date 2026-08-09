@@ -750,6 +750,20 @@ Release evidence completed with `f44447f`: both ordinary and historical volume s
 including restart, portable v1/v2 assets, cross-user isolation, TXT/EPUB/UMD/CBZ and relative-cache
 fixtures. No migration or mounted data rewrite was observed.
 
+## P2 UserManage partial-update compatibility (2026-08-09)
+
+- No table, column, index, file, mounted directory, backup member or WebDAV path changes.
+- Permission writes now use an explicit SQL column map. Existing user rows and every omitted account field remain
+  untouched; in particular, a concurrent `password_hash` or `last_active_at` update cannot be replaced by a stale
+  permission-screen snapshot.
+- Existing `can_access_webdav=NULL` rows remain NULL in SQLite. API responses expose the effective inherited value
+  on a response copy only; this is not a backfill or migration.
+- Existing `false` permission values and zero unlimited book/source limits remain readable and writable. Negative
+  limits and empty patches are rejected without updating `updated_at` or emitting synchronization events.
+
+Focused trigger-based concurrency tests, race tests and full API regressions pass. Fresh/historical mounted-volume
+and portable-backup release evidence remains required before Docker publication.
+
 ## P0 ReaderSettings scheme/snapshot compatibility (2026-08-02 extracted)
 
 - No SQLite table, column, index, mounted directory, API path, backup member or WebDAV file changes. Reader settings

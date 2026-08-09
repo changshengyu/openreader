@@ -308,28 +308,47 @@ func (s *Server) updateUser(c *gin.Context) {
 		return
 	}
 
+	updates := make(map[string]any, 5)
 	if req.BookLimit != nil {
-		user.BookLimit = *req.BookLimit
+		if *req.BookLimit < 0 {
+			badRequest(c, "book limit cannot be negative")
+			return
+		}
+		updates["book_limit"] = *req.BookLimit
 	}
 	if req.SourceLimit != nil {
-		user.SourceLimit = *req.SourceLimit
+		if *req.SourceLimit < 0 {
+			badRequest(c, "source limit cannot be negative")
+			return
+		}
+		updates["source_limit"] = *req.SourceLimit
 	}
 	if req.CanEditSources != nil {
-		user.CanEditSources = *req.CanEditSources
+		updates["can_edit_sources"] = *req.CanEditSources
 	}
 	if req.CanAccessStore != nil {
-		user.CanAccessStore = *req.CanAccessStore
+		updates["can_access_store"] = *req.CanAccessStore
 	}
 	if req.CanAccessWebDAV != nil {
-		user.CanAccessWebDAV = boolValue(*req.CanAccessWebDAV)
+		updates["can_access_webdav"] = *req.CanAccessWebDAV
+	}
+	if len(updates) == 0 {
+		badRequest(c, "no user fields selected")
+		return
 	}
 
-	if err := s.db.Save(&user).Error; err != nil {
+	if err := s.db.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
 		internalError(c, "failed to update user")
 		return
 	}
+	if err := s.db.First(&user, user.ID).Error; err != nil {
+		internalError(c, "failed to load updated user")
+		return
+	}
 	s.broadcastUsersUpdate("update", []uint{user.ID})
-	c.JSON(http.StatusOK, user)
+	response := user
+	response.CanAccessWebDAV = boolValue(effectiveWebDAVAccess(user))
+	c.JSON(http.StatusOK, response)
 }
 
 type resetUserPasswordRequest struct {

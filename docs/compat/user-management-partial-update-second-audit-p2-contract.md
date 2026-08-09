@@ -2,7 +2,7 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：`extracted / implementation-pending`。本轮只复审 UserManage 权限开关到 Go 更新接口的字段所有权；
+状态：`aligned / regression-validated / Docker-pending`。本轮只复审 UserManage 权限开关到 Go 更新接口的字段所有权；
 不重开已经签收的用户创建、密码规则、删除、书源 namespace、工作区清理和 WebSocket recipient scope。
 
 ## 权威映射
@@ -83,5 +83,17 @@
 6. 真实浏览器在 1440×900、390×844、360×800 验证三个开关 payload、字段级 loading、成功和
    失败恢复；移动表格固定列、AddUser、密码、书源默认/重置、删除流程保持。
 
-完成上述闸门后，本切片才可从 `implementation-pending` 改为 `aligned`；发布仍按本机 Docker、
-fresh/historical volume 和可追踪 digest 执行。
+## 实施与验证结果（2026-08-09）
+
+- Go 更新接口已改为仅包含显式请求列的 `Updates(map)`，负限额和空/未知 patch 返回 `400`；成功后
+  重新读取 fresh row，再投影 legacy nullable WebDAV 有效值并广播。
+- 前端三个权限开关均只提交自己的单字段 payload；busy 以 `userID + field` 隔离，同字段重复写入被
+  拒绝，不同字段可并行；失败立即撤回该字段并重新载入权威数据。
+- SQLite trigger 并发回归已证明权限更新不会覆盖较新的密码散列或登录时间；`false`、`0`、缺失字段、
+  负限额、空 patch、零广播和 legacy WebDAV NULL 投影均有 API 合同测试。
+- focused Go、focused `-race`、`go vet ./...`、全量 Go、frontend 707/707 和生产构建通过。
+- UserManage 真实浏览器合同已在 1440×900、1024×1366、390×844、360×800 通过，覆盖单字段
+  payload、字段级 loading、独立字段并行和失败恢复。
+
+本切片代码与浏览器闸门已经关闭；Docker fresh/historical volume、候选构建和 GHCR digest 仍待本次
+发布批次执行。
