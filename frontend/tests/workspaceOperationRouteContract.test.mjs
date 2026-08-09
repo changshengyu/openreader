@@ -111,6 +111,18 @@ test('keeps UserManage protected rows and the upstream single-table interaction 
   assert.match(userOverlaySource, /formatUserTime\(/, 'manager must use one deterministic time/empty-state formatter')
   assert.match(userOverlaySource, /canAccessWebdav/, 'manager must expose the upstream WebDAV permission separately from LocalStore')
   assert.match(userOverlaySource, /active-text="WebDAV"/, 'the WebDAV control must remain visible in the table and create-user flow')
+  for (const field of ['canAccessWebdav', 'canAccessStore', 'canEditSources']) {
+    assert.match(
+      userOverlaySource,
+      new RegExp(`:loading="isPermissionUpdating\\(row, '${field}'\\)"`),
+      `${field} must expose field-scoped pending state`,
+    )
+    assert.match(
+      userOverlaySource,
+      new RegExp(`@change="value => updateUserPermission\\(row, '${field}', value\\)"`),
+      `${field} must submit only its owned value`,
+    )
+  }
   assert.doesNotMatch(userOverlaySource, /清理不活跃用户/, 'the non-upstream destructive cleanup entry must not be exposed in the manager UI')
   assert.match(userOverlaySource, /@click="setDefaultSources\(row\)"/, 'every real user row must restore the upstream set-as-default-source action')
   assert.match(userOverlaySource, /@click="resetSelectedSources"/, 'the manager footer must restore the upstream selected-user source reset action')

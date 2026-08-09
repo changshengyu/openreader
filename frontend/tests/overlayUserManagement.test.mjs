@@ -213,21 +213,54 @@ test('resets every selected source namespace while account deletion stays protec
   assert.equal(fixture.controller.resettingSources.value, false)
 })
 
-test('reloads users after a permission update fails', async () => {
+test('submits only the changed permission field and blocks a duplicate field write while pending', async () => {
+  const response = deferred()
+  const fixture = createController({
+    updateUser: async (...args) => {
+      fixture.calls.push(['update', ...args])
+      return response.promise
+    },
+  })
+  const row = {
+    id: 3,
+    canEditSources: true,
+    canAccessStore: false,
+    canAccessWebdav: true,
+    bookLimit: 10,
+    sourceLimit: 20,
+  }
+
+  const pending = fixture.controller.updatePermission(row, 'canAccessStore', false)
+  assert.deepEqual(fixture.calls, [
+    ['update', 3, { canAccessStore: false }],
+  ])
+  assert.equal(fixture.controller.isPermissionUpdating(row, 'canAccessStore'), true)
+
+  await fixture.controller.updatePermission(row, 'canAccessStore', true)
+  assert.equal(fixture.calls.filter(call => call[0] === 'update').length, 1)
+
+  response.resolve({ data: { ...row, canAccessStore: false } })
+  await pending
+  assert.equal(fixture.controller.isPermissionUpdating(row, 'canAccessStore'), false)
+})
+
+test('reverts only the failed permission field before reloading users', async () => {
   const failure = new Error('offline')
   const fixture = createController({
     updateUser: async () => {
       throw failure
     },
   })
-  await fixture.controller.updatePermission({
+  const row = {
     id: 3,
     canEditSources: false,
-    canAccessStore: true,
+    canAccessStore: false,
     canAccessWebdav: false,
     bookLimit: 10,
     sourceLimit: 20,
-  })
+  }
+  await fixture.controller.updatePermission(row, 'canAccessStore', false)
+  assert.equal(row.canAccessStore, true)
   assert.deepEqual(fixture.calls, [
     ['error', failure, '更新用户失败'],
     ['list'],
