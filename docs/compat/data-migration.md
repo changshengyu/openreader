@@ -205,6 +205,8 @@ Status: parser and staged-preview cleanup implementation complete. Backup ZIP re
 - Implementation keeps this no-migration contract: no model, `AutoMigrate`, backup schema, stage filename or mounted
   root changed. The new generic chapter field exists only in process configuration/parser limits, while historical
   refresh and lazy reconstruction retain the existing source path and use a bounded reader before allocation.
+- Release `e7f168e` passed both fresh portable-v1/v2/cross-user/restart and historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation mounted-volume gates.
 - Configured import limits apply while previewing, importing or explicitly reparsing new bytes. Existing `books`, `chapters`, `chapters.json`, archived originals, cached chapter content and reader progress are never scanned, rewritten or deleted by startup cleanup; lazy recovery of a pre-existing local archive uses a documented wider but still bounded compatibility ceiling instead of retroactively applying the new-upload policy.
 - The preview cleanup worker operates only below `cache/import-previews/<user-id>/`. It may remove an expired token's `.book` and `.json` pair or a stale orphan created by an interrupted stage write. It must not remove a fresh valid pair, any LocalStore/WebDAV source, any `library/` archive, SQLite row or backup file.
 - Parser rejection happens before `ArchiveImportedBook`, category mutation, chapter-row creation, sync broadcast or staged-token consumption. A rejected input leaves the mounted source and existing shelf untouched.

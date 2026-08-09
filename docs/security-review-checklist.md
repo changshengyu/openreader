@@ -311,6 +311,10 @@ Targeted evidence: `backend/api/reader_appearance_assets_p2_contract_test.go`,
   input ceiling。parser 错误不消费重试 stage、不产生书籍行或暴露宿主路径。证据见
   `docs/compat/local-text-parser-budget-p2-contract.md` 及对应 engine/importer/API/config tests。
 
+P2 本地 parser 预算已由本机发布为 `e7f168e` / `latest`，OCI index
+`sha256:8d64bbb187f65c433388bddc5385ce68d42e8b40d9b397787e4c1d354c892dac`；三视口真实导入和
+fresh/historical mounted-volume/portable-backup 门均通过。
+
 Evidence for the checked items: `backend/api/workspace_storage_access_contract_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/api/import_size_contract_test.go`, `frontend/tests/webdavAuthContract.test.mjs`, full Go/frontend test suites and production frontend build. This remains not a storage/backup release approval.
 
 ## P1-E3 workspace file-manager follow-up

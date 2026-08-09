@@ -1611,7 +1611,9 @@ order, preface behavior, 10KiB no-TOC fallback and zero-chapter explicit-rule pr
 The inventory pass itself changed no application code. The subsequent implementation now routes TXT/`.text`/Markdown
 through the same configured limits as the other local formats, applies the generic final-chapter ceiling to every
 parser and prepared snapshot, and bounds historical refresh/lazy reads before full allocation. Focused/race/full Go,
-frontend 706/706, production build and targeted vet pass; Docker and mounted-volume evidence remains the release gate.
+frontend 706/706, production build, targeted vet, three-viewport real import, fresh/historical mounted volumes and
+portable backup pass. The locally built multi-architecture release is `e7f168e` / `latest`, OCI index
+`sha256:8d64bbb187f65c433388bddc5385ce68d42e8b40d9b397787e4c1d354c892dac`.
 
 ### 2026-07-13 P2 local-import UMD binary compatibility audit
 

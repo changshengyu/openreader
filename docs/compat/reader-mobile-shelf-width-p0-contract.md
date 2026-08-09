@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**aligned / Docker-republished in `d198c2e` / deployment-update-required**
+状态：**aligned / Docker-republished in `e7f168e` / deployment-update-required**
 
 本合同只处理 Reader 顶部“书架”按钮打开的阅读内书架，不改变 Index 首页普通书架。普通书架在
 `7971e23` 已恢复移动书籍行等于视口宽度；两者是不同 DOM、CSS 和验收边界。
@@ -97,3 +97,7 @@ API、SQLite、缓存或持久化格式。
 包含该宽度修复和 P2-N2 网络策略的 `d198c2e` 已重新由本机发布为同名标签与 `latest`，OCI index 为
 `sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc1`。线上容器必须拉取并重建到
 `d198c2e`（或该 digest）后再做设备验收；仅执行容器 restart 不会自动替换旧镜像。
+
+随后本机发布的 `e7f168e` / `latest` 继续包含相同 20px 修复，并通过 fresh/historical volume 门；
+其 OCI index 为 `sha256:8d64bbb187f65c433388bddc5385ce68d42e8b40d9b397787e4c1d354c892dac`。当前部署应直接更新到
+`e7f168e`（或该 digest），无需先部署中间镜像。

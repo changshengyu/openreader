@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**fixed-baseline-audited / implemented / release-validation-in-progress**
+状态：**aligned / Docker-published in `e7f168e` / awaiting-deployment-verification**
 
 本合同只关闭本地纯文本分支仍未接入统一 parser 预算的问题，并校正旧审计中已经过时的
 “ZIP/UMD/PDF/暂存清理尚未实现”结论。它不改变可见导入格式、目录识别语义、SQLite、书架数据、
@@ -98,5 +98,11 @@ OPENREADER_MAX_PARSED_CHAPTERS=100000
 - 历史本地归档刷新和 lazy cache rebuild 在分配完整源文件前先执行 1GiB legacy ceiling；超限错误
   不包含宿主路径，也不修改现有 book/chapter/cache。
 - 新配置不增加 SQLite 列、迁移 marker、备份字段或持久设置；启动时不扫描或重写既有数据。
-- focused、受影响包 race、全量 Go、frontend 706/706、production build 与 `go vet` 已通过；真实导入、
-  fresh/historical volume 和本地 Docker 发布证据待本批 release gate 完成后补录。
+- focused、受影响包 race（含 API）、全量 Go、frontend 706/706、production build 与 `go vet` 已通过；
+  真实 Go 的 TXT/EPUB staged preview/confirm 在 1440×900、390×844、360×800 通过。
+- 本机 OrbStack 已构建并上传 `ghcr.io/changshengyu/openreader:e7f168e` 与 `latest`；OCI index 为
+  `sha256:8d64bbb187f65c433388bddc5385ce68d42e8b40d9b397787e4c1d354c892dac`，amd64/arm64 manifest
+  分别为 `sha256:a7e6d5e481f6c1736f86c1ea5bc687612ddc515c9fa74f3ea3a889e15223b55b` 与
+  `sha256:506dd3b2572b55d1f7e5a03c9b715b96328fa49e1177c32bd2377778d13f123e`。
+- Fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume 的
+  TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 均通过；没有使用云端 Docker 构建。
