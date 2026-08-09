@@ -190,7 +190,8 @@ test('a failed explicit pending sync remains local and rejects the visible refre
   assert.deepEqual(reader.progressByBook[8], pending)
 })
 
-test('both visible refresh buttons request a settled full shelf snapshot', () => {
-  assert.match(homeSource, /bookshelf\.loadBooks\(\{ force: true, all: true, settleProgress: true \}\)/)
-  assert.match(readerShelfSource, /bookshelf\.loadBooks\(\{ force: true, all: true, settleProgress: true \}\)/)
+test('both visible refresh buttons share the remote-check plus settled-snapshot transaction', () => {
+  assert.match(homeSource, /bookshelf\.refreshFromSources\(\)/)
+  assert.match(readerShelfSource, /options\.bookshelf\.refreshFromSources\(\)/)
+  assert.match(bookshelfSource, /checkBookUpdates\([\s\S]*?loadBooks\(\{ force: true, all: true, settleProgress: true \}\)/)
 })

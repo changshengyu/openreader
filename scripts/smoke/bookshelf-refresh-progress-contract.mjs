@@ -218,9 +218,11 @@ async function runViewport(browser, root, viewport) {
   const page = await context.newPage()
   const errors = collectPageErrors(page, suffix)
   let pageProgressWrites = 0
+  let manualUpdateChecks = 0
   page.on('request', request => {
     const url = new URL(request.url())
     if (request.method() === 'PUT' && url.pathname === '/api/progress') pageProgressWrites += 1
+    if (request.method() === 'POST' && url.pathname === '/api/books/check-updates') manualUpdateChecks += 1
   })
   let navigationCount = 0
   page.on('framenavigated', frame => {
@@ -268,10 +270,12 @@ async function runViewport(browser, root, viewport) {
     assert(await page.getByText(`已读：${chapters[2].title}`, { exact: true }).count() === 0, `${suffix}: silent client received an unexpected live update`)
 
     const progressWritesBeforeRefresh = pageProgressWrites
+    const updateChecksBeforeRefresh = manualUpdateChecks
     await page.getByRole('button', { name: '刷新', exact: true }).click()
     await page.getByText(`已读：${chapters[2].title}`, { exact: true }).waitFor({ timeout: 10_000 })
     assert(navigationCount === navigationBaseline, `${suffix}: refresh reloaded or replaced the document`)
     assert(pageProgressWrites === progressWritesBeforeRefresh + 1, `${suffix}: refresh did not settle the pending progress with one CAS request`)
+    assert(manualUpdateChecks === updateChecksBeforeRefresh + 1, `${suffix}: Home refresh did not perform exactly one remote update check`)
 
     const stored = await page.evaluate(key => JSON.parse(localStorage.getItem(key) || 'null'), localKey)
     assert(stored?.chapterIndex === 2, `${suffix}: scoped local progress did not converge to the server snapshot`)
@@ -323,12 +327,14 @@ async function runViewport(browser, root, viewport) {
     const readerShelfCard = page.locator(`.reader-shelf-card[data-book-id="${book.id}"]`)
     assert(await readerShelfCard.locator('.reader-shelf-chapter').textContent() !== chapters[1].title, `${suffix}: silent Reader shelf received an unexpected live update`)
     const readerProgressWritesBeforeRefresh = pageProgressWrites
+    const readerUpdateChecksBeforeRefresh = manualUpdateChecks
     const readerRefresh = viewport.width <= 750
       ? page.locator('.reader-mobile-primary-shelf .reader-mobile-primary-actions button').filter({ hasText: '刷新' })
       : page.locator('.reader-desktop-workspace.workspace-panel-shelf .reader-workspace-actions button').filter({ hasText: '刷新' })
     await readerRefresh.click()
     await readerShelfCard.locator('.reader-shelf-chapter').filter({ hasText: chapters[1].title }).waitFor({ timeout: 10_000 })
     assert(pageProgressWrites === readerProgressWritesBeforeRefresh + 1, `${suffix}: Reader shelf refresh did not settle its pending progress with one CAS request`)
+    assert(manualUpdateChecks === readerUpdateChecksBeforeRefresh + 1, `${suffix}: Reader shelf refresh did not perform exactly one remote update check`)
     assert(await page.locator('.reader-body h3').filter({ hasText: chapters[0].title }).count() === 1, `${suffix}: Reader shelf refresh changed the active chapter`)
     assert(new URL(page.url()).searchParams.get('chapter') === '0', `${suffix}: Reader shelf refresh rewrote the active route`)
     assert(errors.length === 0, errors.join('\n'))
