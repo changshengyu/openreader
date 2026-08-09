@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**implemented / regression-validated / Docker-pending**
+状态：**aligned / Docker-published / awaiting-device-verification**
 
 本合同只处理 Reader 顶部“书架”按钮打开的阅读内书架，不改变 Index 首页普通书架。普通书架在
 `7971e23` 已恢复移动书籍行等于视口宽度；两者是不同 DOM、CSS 和验收边界。
@@ -70,4 +70,19 @@ API、SQLite、缓存或持久化格式。
 - Reader 完整浏览器合同通过桌面、双手机、1024×1366/1366×1024 自适应 iPad 和 1024×1366
   强制手机模式；Index 普通书架在 1440×900、1024×1366、390×844、360×800 继续保持固定网格、
   390/360px 移动整行宽度、加载/空态/夜间合同。
-- frontend 706/706、production build、全量 Go 和 `git diff --check` 通过。Docker 发布证据待提交后补写。
+- frontend 706/706、production build、全量 Go 和 `git diff --check` 通过。
+
+## 5. Docker 发布结果
+
+实现提交 `515160960996d6c63159871e1f7b20a6a6c8d1ae` 已推送 `main`。镜像只使用本机 OrbStack
+构建并直接上传 GHCR，没有使用云端构建：
+
+- `ghcr.io/changshengyu/openreader:5151609`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:d3110429a422e092832afde3b7780d6a3c193c01316c5e251c7c6ba8cd85f23c`
+- amd64：`sha256:98365bb846817b34747cd565b4f502a26546af48eb909400bda6efd43e3e18e8`
+- arm64：`sha256:79d342d85db6cef9c55d346031d6abdd879525c7a680ea70776f6caded7e2822`
+
+候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
+的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation。当前等待真实设备确认 20px inset 与上游
+视觉一致；本批没有允许的 UI 差异，也没有数据/API/持久化变更。

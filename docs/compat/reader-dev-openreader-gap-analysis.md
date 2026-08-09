@@ -3465,5 +3465,10 @@ CBZ、relative-cache、owner-isolation。OrbStack 在本机构建并推送 `92b7
 当前 computed padding 反推 expected width，因而无法发现该偏差。裁决为 `must-fix` 后已测试先行
 实施：Reader 水平 inset 恢复 20px，390/360 列表实测 350/320px；1024 强制手机模式仍按上游
 `min-width:900px` 显示四列。Reader 桌面/双手机/自适应与强制 iPad、Index 书架四视口、frontend
-706/706、全量 Go 和 production build 通过。Index 普通书架的 390/360px 整行宽度未改变；Docker
-发布证据待提交后补写。
+706/706、全量 Go 和 production build 通过。Index 普通书架的 390/360px 整行宽度未改变。
+
+实现提交 `5151609` 已推送 `main`；本机 OrbStack 完成 amd64/arm64 构建并发布 `5151609` 与
+`latest`，OCI index 为
+`sha256:d3110429a422e092832afde3b7780d6a3c193c01316c5e251c7c6ba8cd85f23c`。fresh/historical
+volume、portable backup、restart、TXT/EPUB/UMD/CBZ、relative-cache 和 owner-isolation 均通过。
+状态更新为 `aligned / Docker-published / awaiting-device-verification`。
