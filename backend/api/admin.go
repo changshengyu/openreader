@@ -604,13 +604,35 @@ func (s *Server) broadcastUsersUpdate(kind string, userIDs []uint) {
 	if s.hub == nil {
 		return
 	}
-	_ = s.hub.BroadcastAll(nil, gin.H{
+	userIDs = uniqueAdminUserIDs(userIDs)
+	var adminIDs []uint
+	if err := s.db.Model(&models.User{}).Where("role = ?", "admin").Pluck("id", &adminIDs).Error; err != nil {
+		return
+	}
+	adminEvent := gin.H{
 		"type": "users_update",
 		"payload": gin.H{
 			"kind":    kind,
 			"userIds": userIDs,
 		},
-	})
+	}
+	adminSet := make(map[uint]struct{}, len(adminIDs))
+	for _, adminID := range adminIDs {
+		adminSet[adminID] = struct{}{}
+		_ = s.hub.Broadcast(adminID, nil, adminEvent)
+	}
+	for _, userID := range userIDs {
+		if _, isAdmin := adminSet[userID]; isAdmin {
+			continue
+		}
+		_ = s.hub.Broadcast(userID, nil, gin.H{
+			"type": "users_update",
+			"payload": gin.H{
+				"kind":    kind,
+				"userIds": []uint{userID},
+			},
+		})
+	}
 }
 
 func (s *Server) cleanupDeletedUserCoverImages(users []models.User) int {

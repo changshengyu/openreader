@@ -24,16 +24,16 @@ copy-on-write. Full route/status/error compatibility is recorded in
 
 Implementation status on 2026-08-09: source management/debug, search, explore, remote-book, Reader
 content/cache, scheduler, backup/WebDAV restore and administrator count/default/reset/delete consumers are
-association-scoped and released. The current open protocol audit is `/ws/sync`; see
+association-scoped and released. The `/ws/sync` protocol audit and implementation are recorded in
 `websocket-sync-p2-contract.md`.
 
 ## WebSocket synchronization direction and scope
 
 Reader-dev has no WebSocket write path. OpenReader retains `GET /ws/sync?token=<jwt>` as a multi-client runtime
 adaptation, but the protocol is server-to-client only: only committed REST mutations may produce events. The current
-arbitrary client-event relay, unconditional Origin acceptance and global `users_update` recipient set are
-`must-fix`. Exact handshake statuses, event envelopes, account scopes, log redaction and tests are recorded in
-`websocket-sync-p2-contract.md`.
+arbitrary client-event relay, unconditional Origin acceptance and global `users_update` recipient set were
+`must-fix` and are now removed. Exact handshake statuses, event envelopes, account scopes, log redaction and tests
+are recorded in `websocket-sync-p2-contract.md`.
 
 ## Required extraction before backend changes
 

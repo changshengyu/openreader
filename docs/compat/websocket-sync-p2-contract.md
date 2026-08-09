@@ -2,8 +2,9 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-08-09 已完成固定基准、当前实现、前端调用点和既有专项合同取证；
-`audit-complete / implementation-pending`。本轮 inventory 只定义合同，不修改应用代码。
+状态：2026-08-09 已完成固定基准、当前实现、前端调用点和既有专项合同取证，并按测试先行实施；
+`implemented / regression-validated / Docker-pending`。合同提交 `7953bc6`、失败测试提交 `598b00b`
+均先于应用实现。
 
 ## 范围与权威证据
 
@@ -35,7 +36,7 @@
 |---|---|---|
 | 握手 Origin | `websocket.Upgrader.CheckOrigin` 无条件返回 `true`，任意浏览器 Origin 都可尝试升级。 | **must-fix**：同源浏览器握手；无 Origin 的非浏览器兼容客户端可继续使用。不能用普通 HTTP CORS 反射逻辑放宽 WebSocket。 |
 | 握手身份 | `GET /ws/sync?token=<jwt>` 解析 token 并取得 user ID，但不确认用户行仍存在。 | **must-fix**：缺失、无效或已删除用户统一 `401 {"error":"invalid token"}`；有效当前用户才可升级。保留 query token 作为浏览器 WebSocket API 适配，并继续整段日志脱敏。 |
-| 事件方向 | 浏览器虽然从不发送，但服务端接受任意文本事件并向同账号转发。 | **must-fix**：协议改为严格 server→client。任何客户端 text/binary application message 都以 policy violation 关闭发送方，绝不广播、写库或影响其它连接；读循环只为处理 close/ping/pong 控制帧保留。 |
+| 事件方向 | 浏览器虽然从不发送，但服务端接受任意文本事件并向同账号转发。 | **must-fix**：协议改为严格 server→client。普通客户端 text/binary application message 以 policy violation 关闭发送方，绝不广播、写库或影响其它连接；超过输入上限的 frame 可由 WebSocket 层先以 message-too-big 关闭。读循环只为处理 close/ping/pong 控制帧保留。 |
 | 输入边界 | `ReadMessage` 会完整分配客户端 payload，未设置消息大小边界。 | **must-fix**：在读取前设置很小的 application-message 上限；由于协议禁止客户端数据，首个 application frame 即关闭，不执行 JSON 分配/解析。 |
 | 普通业务事件 | 书架、进度、分类、设置、书源、书签、RSS、替换规则均按 `userID` 调用 `Broadcast`。 | **aligned / must-preserve**：事件只能在对应 durable mutation 成功后发送；失败、回滚、冲突输家不得发送。 |
 | 用户管理事件 | `users_update` 使用 `BroadcastAll`，全部账号都收到完整 `userIds`。 | **must-fix**：所有管理员收到完整变更集合以刷新管理器；每个受影响普通用户只收到包含自己 ID 的事件以刷新 profile，删除/清理时触发退出；无关普通用户收不到事件或其它账号 ID。 |
@@ -92,8 +93,9 @@
 
 1. Go 真实 WebSocket：缺失/无效 token 为 401；有效 token 但用户已删除也为 401；Hub 不登记。
 2. Go 真实 WebSocket：同源 Origin 和无 Origin 可 101；不同 host Origin 为 403，即使 token 有效。
-3. Go 双连接：客户端 A 上传伪造 `bookshelf_delete`/大 application frame 后收到 policy close；同账号
-   B 不收到该事件且仍可接收后续服务端合法广播；另一个用户始终收不到。
+3. Go 双连接：客户端 A 上传伪造 `bookshelf_delete` 后收到 policy close；超过 1 KiB 的 application
+   frame 收到 message-too-big；同账号 B 不收到伪造事件且仍可接收后续服务端合法广播；另一个用户
+   始终收不到。
 4. Go 用户管理事件：管理员收到完整变更 ID；目标普通用户只收到自己的 ID 并可在删除后退出；
    无关普通用户在短有界窗口内收不到事件。失败/回滚动作不发送。
 5. 前端静态/运行时合同：`useSync` 不再暴露或调用 `send`；所有既有事件 consumer、连接代际、
@@ -109,3 +111,27 @@
 - 不允许客户端事件 type allowlist 取代 server-only 方向；即使 type 合法也不能绕过 REST。
 - 不把 WebSocket 变成书架/进度的唯一权威，不删除前台/重连 REST 校准。
 - 不使用 `BroadcastAll` 发送私有书源、书架、设置、进度或完整用户 ID 集合。
+
+## 实施与验证记录
+
+- `websocket.Upgrader` 恢复 Gorilla 的 safe default Origin 检查并增加 5 秒握手上限；token 解析后还会
+  验证当前用户行。缺失、无效、已删除账号均在登记 Hub 前返回同一 401。
+- Hub 删除任意账号全局广播能力。读泵只处理控制帧；普通 text/binary application frame 收到
+  1008 policy close，超过 1 KiB 的 frame 在分配前收到 1009 message-too-big，不再 JSON 解析或 relay。
+  写泵增加 10 秒写 deadline，
+  读/写任一结束都幂等移除并关闭客户端。
+- 前端删除从初始提交起无人调用的 `send()`；socket generation、重连和所有服务端 consumer 不变。
+- `users_update` 先查询当前管理员并向其发送完整 ID 集合，再给每个受影响普通用户发送 self-only
+  projection；删除后的目标连接仍能收到退出提示，无关账号不再收到事件。
+- 新增真实 WebSocket Go 合同先在旧实现稳定复现 cross-Origin 101、deleted-user 101、伪造事件 relay
+  和全局用户 ID 四项失败，实施后全部通过；缺失 token、同源、Origin-less、合法同用户广播和
+  跨用户静默也有断言。
+- 全量 Go、frontend **706/706**、production build、`go test -race ./sync ./api`（API race
+  414.677 秒）通过。真实 Go/SQLite/Chrome 双客户端在 1440×900、390×844、360×800 均通过
+  network-first 冷启动与实时同账号导入收敛。
+- 多客户端 smoke 原来等待已经从上游对齐 UI 删除的“同步在线”文案；本轮改为 init-script 包装
+  浏览器原生 WebSocket、只记录 attempts/open/close/error 数字且不记录 URL/JWT，以真实 open
+  作为传输门。该测试修复不重新暴露产品 UI。
+- 当前 Docker/新旧卷门尚未执行，因此不能标记 `Docker-published`。Go vet 另报
+  `backup_restore_plan.go` 复制含 Mutex 的 `Server`，属于既有备份事务实现债务，将单独修复并
+  重新运行后再决定本批 Docker。

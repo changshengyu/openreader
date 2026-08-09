@@ -139,7 +139,29 @@ function collectPageErrors(page, label) {
 }
 
 async function waitForSync(page) {
-  await page.waitForFunction(() => document.body?.innerText.includes('同步在线'), null, { timeout: 10_000 })
+  await page.waitForFunction(() => window.__openreaderSyncProbe?.open === true, null, { timeout: 10_000 })
+}
+
+function installAuthenticatedSyncProbe(token) {
+  localStorage.setItem('openreader_token', token)
+  const NativeWebSocket = window.WebSocket
+  const state = { attempts: 0, open: false, closes: 0, errors: 0 }
+  window.__openreaderSyncProbe = state
+  window.WebSocket = new Proxy(NativeWebSocket, {
+    construct(target, args) {
+      const socket = Reflect.construct(target, args)
+      if (String(args[0] || '').includes('/ws/sync?')) {
+        state.attempts += 1
+        socket.addEventListener('open', () => { state.open = true })
+        socket.addEventListener('close', () => {
+          state.open = false
+          state.closes += 1
+        })
+        socket.addEventListener('error', () => { state.errors += 1 })
+      }
+      return socket
+    },
+  })
 }
 
 async function importTXTFromClient(page, token, title) {
@@ -178,8 +200,8 @@ async function runViewport(browser, root, viewport) {
 
   const contextA = await browser.newContext({ viewport, isMobile: viewport.width <= 750, hasTouch: viewport.width <= 750 })
   const contextB = await browser.newContext({ viewport, isMobile: viewport.width <= 750, hasTouch: viewport.width <= 750 })
-  await contextA.addInitScript(value => localStorage.setItem('openreader_token', value), token)
-  await contextB.addInitScript(value => localStorage.setItem('openreader_token', value), token)
+  await contextA.addInitScript(installAuthenticatedSyncProbe, token)
+  await contextB.addInitScript(installAuthenticatedSyncProbe, token)
   let pageA
   let pageB
   let releaseBooks

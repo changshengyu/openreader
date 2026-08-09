@@ -170,13 +170,7 @@ export function useSync() {
     candidate?.close()
   }
 
-  function send(type, payload) {
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type, payload }))
-    }
-  }
-
-  return { connected, connect, disconnect, send }
+  return { connected, connect, disconnect }
 
   function scheduleReconnect(expected) {
     if (manualDisconnect || reconnectTimer) return

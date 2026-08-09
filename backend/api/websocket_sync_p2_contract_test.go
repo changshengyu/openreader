@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -81,6 +82,14 @@ func TestSyncWebSocketHandshakeRequiresSameOriginAndExistingUser(t *testing.T) {
 
 	t.Run("invalid token", func(t *testing.T) {
 		connection, response, err := dialSyncWebSocket(httpServer.URL, "not-a-token", "")
+		if connection != nil {
+			_ = connection.Close()
+		}
+		requireHandshakeStatus(t, response, err, http.StatusUnauthorized)
+	})
+
+	t.Run("missing token", func(t *testing.T) {
+		connection, response, err := dialSyncWebSocket(httpServer.URL, "", "")
 		if connection != nil {
 			_ = connection.Close()
 		}
@@ -205,8 +214,30 @@ func TestSyncWebSocketRejectsClientApplicationEventsWithoutRelaying(t *testing.T
 	_, _, err = ownerA.ReadMessage()
 	var closeError *websocket.CloseError
 	if !strings.Contains(errorText(err), "policy violation") &&
-		!(asCloseError(err, &closeError) && closeError.Code == websocket.ClosePolicyViolation) {
+		!(errors.As(err, &closeError) && closeError.Code == websocket.ClosePolicyViolation) {
 		t.Fatalf("forged sender close = %v, want policy violation", err)
+	}
+}
+
+func TestSyncWebSocketBoundsOversizedClientApplicationMessage(t *testing.T) {
+	router, _ := setupTestServer(t)
+	authorization := authHeader(t, router)
+	httpServer := httptest.NewServer(router)
+	defer httpServer.Close()
+
+	connection, _, err := dialSyncWebSocket(httpServer.URL, bearerToken(authorization), "")
+	if err != nil {
+		t.Fatalf("connect websocket: %v", err)
+	}
+	defer connection.Close()
+	if err := connection.WriteMessage(websocket.TextMessage, []byte(strings.Repeat("x", 2048))); err != nil {
+		t.Fatalf("write oversized client message: %v", err)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(websocketContractReadWait))
+	_, _, err = connection.ReadMessage()
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) || closeError.Code != websocket.CloseMessageTooBig {
+		t.Fatalf("oversized sender close = %v, want message-too-big", err)
 	}
 }
 
@@ -215,14 +246,6 @@ func errorText(err error) string {
 		return ""
 	}
 	return strings.ToLower(err.Error())
-}
-
-func asCloseError(err error, target **websocket.CloseError) bool {
-	closeError, ok := err.(*websocket.CloseError)
-	if ok {
-		*target = closeError
-	}
-	return ok
 }
 
 type usersUpdateMessage struct {

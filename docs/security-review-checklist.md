@@ -624,18 +624,18 @@ open because the local-server external permission request was rejected when the 
 
 ## P2 WebSocket synchronization security review (2026-08-09 extracted)
 
-- [ ] Browser handshakes reject an Origin whose host differs from request Host; the ordinary HTTP CORS reflection
+- [x] Browser handshakes reject an Origin whose host differs from request Host; the ordinary HTTP CORS reflection
       path cannot authorize a cross-site WebSocket. Same-origin and Origin-less diagnostic clients remain usable.
-- [ ] Missing, invalid and deleted-user JWTs return the same safe 401 before a Hub client is registered. The existing
+- [x] Missing, invalid and deleted-user JWTs return the same safe 401 before a Hub client is registered. The existing
       query-token transport remains redacted as `/ws/sync?<redacted>` and is never copied into an event/error.
-- [ ] The protocol is server-to-client only. A client text/binary frame is bounded and closed with policy violation;
+- [x] The protocol is server-to-client only. A client text/binary frame is bounded and closed with policy violation;
       it is never parsed as a trusted event, relayed, persisted or used to trigger another client's store action.
-- [ ] Durable business events remain scoped to their owner. `users_update` reaches administrators and each affected
+- [x] Durable business events remain scoped to their owner. `users_update` reaches administrators and each affected
       user only; an unrelated ordinary account cannot learn another batch's user IDs.
-- [ ] Failed/rolled-back REST mutations emit nothing; Hub backpressure closes stale clients and reconnect continues
+- [x] Failed/rolled-back REST mutations emit nothing; Hub backpressure closes stale clients and reconnect continues
       to reconcile through authenticated REST rather than trusting a missed event stream.
 
-Required evidence: `backend/api/websocket_sync_p2_contract_test.go`, `backend/sync/hub_test.go`,
+Evidence: `backend/api/websocket_sync_p2_contract_test.go`, `backend/sync/hub_test.go`,
 `backend/middleware/access_log_test.go`, `frontend/tests/authenticatedRuntimeScope.test.mjs`, the full Go/frontend
-gates and a real two-client synchronization smoke. See
+gates, focused race and a real two-client synchronization smoke at 1440×900, 390×844 and 360×800. See
 [`compat/websocket-sync-p2-contract.md`](compat/websocket-sync-p2-contract.md).

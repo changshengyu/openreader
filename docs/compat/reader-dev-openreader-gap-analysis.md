@@ -3537,3 +3537,9 @@ CIDR 部署说明。
 type/payload、日志脱敏、同用户收敛与 REST 权威；改为同源/有效现存用户握手、严格 server→client、
 有界 policy close，并把用户事件限定为管理员完整集合及目标用户 self-only 投影。本轮只完成
 inventory，应用实现必须在失败测试之后进行。
+
+合同 `7953bc6` 与红灯测试 `598b00b` 已分别先行提交。实现随后恢复 same-Origin safe default、拒绝
+已删除账号、删除客户端 `send` 与 Hub 任意 relay/全账号广播，并保持目标删除通知；Go/full race、
+frontend 706/706、build 和真实三视口双客户端均通过。状态现为
+`implemented / regression-validated / Docker-pending`；备份事务的独立 vet 债务和新旧卷/Docker 门
+完成前不发布。

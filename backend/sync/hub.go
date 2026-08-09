@@ -3,8 +3,15 @@ package sync
 import (
 	"encoding/json"
 	stdsync "sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	maxClientApplicationMessageBytes int64 = 1024
+	websocketControlWriteWait              = 5 * time.Second
+	websocketDataWriteWait                 = 10 * time.Second
 )
 
 type Hub struct {
@@ -83,31 +90,6 @@ func (h *Hub) Broadcast(userID uint, except *Client, event any) error {
 	return nil
 }
 
-func (h *Hub) BroadcastAll(except *Client, event any) error {
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	h.mu.RLock()
-	backpressured := make([]*Client, 0)
-	for _, userClients := range h.clients {
-		for client := range userClients {
-			if client == except {
-				continue
-			}
-			select {
-			case client.Send <- payload:
-			default:
-				backpressured = append(backpressured, client)
-			}
-		}
-	}
-	h.mu.RUnlock()
-	h.evictBackpressured(backpressured)
-	return nil
-}
-
 func (h *Hub) evictBackpressured(clients []*Client) {
 	for _, client := range clients {
 		h.RemoveClient(client)
@@ -122,26 +104,33 @@ func (c *Client) ReadPump() {
 		c.hub.RemoveClient(c)
 		_ = c.Conn.Close()
 	}()
+	c.Conn.SetReadLimit(maxClientApplicationMessageBytes)
 
 	for {
-		_, payload, err := c.Conn.ReadMessage()
+		messageType, _, err := c.Conn.NextReader()
 		if err != nil {
 			return
 		}
-
-		var event struct {
-			Type    string          `json:"type"`
-			Payload json.RawMessage `json:"payload"`
+		if messageType == websocket.TextMessage || messageType == websocket.BinaryMessage {
+			_ = c.Conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "client application messages are not supported"),
+				time.Now().Add(websocketControlWriteWait),
+			)
+			return
 		}
-		if err := json.Unmarshal(payload, &event); err != nil || event.Type == "" {
-			continue
-		}
-		_ = c.hub.Broadcast(c.UserID, c, event)
 	}
 }
 
 func (c *Client) WritePump() {
+	defer func() {
+		c.hub.RemoveClient(c)
+		_ = c.Conn.Close()
+	}()
 	for payload := range c.Send {
+		if err := c.Conn.SetWriteDeadline(time.Now().Add(websocketDataWriteWait)); err != nil {
+			return
+		}
 		if err := c.Conn.WriteMessage(websocket.TextMessage, payload); err != nil {
 			return
 		}

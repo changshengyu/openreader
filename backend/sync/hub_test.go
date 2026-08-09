@@ -56,25 +56,3 @@ func TestBroadcastEvictsBackpressuredClientWithoutStarvingHealthyPeer(t *testing
 		t.Fatal("evicted slow client's send queue remained open")
 	}
 }
-
-func TestBroadcastAllEvictsOnlyBackpressuredClients(t *testing.T) {
-	hub := NewHub()
-	slow := addBufferedTestClient(hub, 1, 1)
-	healthy := addBufferedTestClient(hub, 2, 1)
-	slow.Send <- []byte(`{"type":"queued"}`)
-
-	if err := hub.BroadcastAll(nil, map[string]any{"type": "users_update"}); err != nil {
-		t.Fatalf("broadcast all: %v", err)
-	}
-	if hubContainsClient(hub, slow) {
-		t.Fatal("slow client remained connected after BroadcastAll backpressure")
-	}
-	if !hubContainsClient(hub, healthy) {
-		t.Fatal("healthy client was evicted")
-	}
-	select {
-	case <-healthy.Send:
-	case <-time.After(time.Second):
-		t.Fatal("healthy client did not receive BroadcastAll event")
-	}
-}
