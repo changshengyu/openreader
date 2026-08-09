@@ -707,7 +707,7 @@ does not authorize access.
 
 | Method / path | Stable request and success response | User scope, side effects and errors |
 |---|---|---|
-| `GET /api/sources` | `200` ordered `BookSource[]`; existing JSON fields remain unchanged and `usedBookCount` counts only caller-owned books. | Lazily initializes the caller from the current default exactly once. An initialized empty namespace returns `[]`; persistence failure is `500 {"error":"failed to list sources"}`. |
+| `GET /api/sources` | `200` ordered `BookSource[]`; existing JSON fields remain unchanged. `usedBookCount` counts only caller-owned books and the additive response-only `usedBookNames:string[]` contains those books' titles in stable book-ID order. An unused source returns an empty array. | Lazily initializes the caller from the current default exactly once. The usage projection must be computed in bounded grouped queries, never per-source N+1 reads, and must not expose another user's title. It does not add a SQLite column or enter source export/backup/WebDAV data. An initialized empty namespace returns `[]`; persistence failure is `500 {"error":"failed to list sources"}`. |
 | `GET /api/sources/:id` | Existing `200 BookSource`. | Only a caller-active association is addressable. Missing, detached, or foreign ID is the same `404 {"error":"source not found"}`; no ownership detail is disclosed. |
 | `POST /api/sources` | Existing payload/default normalization and `201 BookSource`. | Requires JWT plus `CanEditSources`; creates only a caller association. Validation remains `400`, disabled editing `403`, persistence failure `500`. After commit, `sources_update` is sent only to the caller's clients. |
 | `PUT /api/sources/:id` | Existing full source payload and `200 BookSource`. The returned ID may change when an upgraded shared snapshot is copied. | Requires JWT plus `CanEditSources`; foreign/detached ID is `404`. A shared snapshot is copy-on-write and only caller books/failure rows are remapped. Semantic rule changes clear only caller variables. Persistence failure remains `500`. |
@@ -730,6 +730,12 @@ status or error envelope is changed by the remaining Docker work: the dedicated 
 stable routes above and compares actual source IDs/lists plus ZIP members before and after restart.
 Until the old-global-source fixture, COW, administrator-root/regular-root and restore-isolation checks
 pass together, the implemented management/runtime API slices are not sufficient release evidence.
+
+The additive `usedBookNames` projection above is required by the fixed upstream source-manager
+`书架书籍` column and is governed by
+[`source-manager-fixed-baseline-second-audit-p1-contract.md`](source-manager-fixed-baseline-second-audit-p1-contract.md).
+It is deliberately limited to `GET /api/sources`: single-source persistence responses and source
+archives remain source configuration records, not bookshelf-data envelopes.
 
 ## P2 local-text parser budget
 
