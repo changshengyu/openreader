@@ -193,3 +193,19 @@ amd64/arm64 构建和 GHCR 上传：
 候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
 的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation。当前仅待服务器 pull/force recreate
 到该镜像后进行真实移动设备签收；仅重启旧容器不会更新镜像。
+
+## 11. `f8f263d` 线上真实账号复测（2026-08-09）
+
+线上 `/api/health` 已确认运行 `f8f263d`，旧镜像因素已经排除。随后复用真实登录账号，在
+390×844 Chromium 视口分别测量首页普通书架和 Reader 顶部“书架”面板：
+
+- 首页 `.book-list` 与每本 `.book-row` 均为 390px，移动行没有被父容器或侧栏压窄；
+- Reader 面板根 `.reader-mobile-workspace` 为 390px，内部左右 padding 均为 20px；
+- `.reader-shelf-list` 与 `.reader-shelf-card` 均为 350px，左右 inset 对称；
+- 389 本书时列表保持 300px 可滚动视口，`scrollHeight=31483px`；首项高 65px、标题高 22px、
+  章节行高 20px，`grid-auto-rows:max-content`、`align-content:start` 和 16px gap 均已生效。
+
+这组线上权威 DOM 证据与固定上游合同一致，因此本次“明显窄”的设备反馈继续保持 open，但不再
+直接归类为已知水平 padding 或行轨回归。下一步需要设备截图区分：用户指的是首页普通书架、Reader
+内书架，还是浏览器缩放/安全区造成的可见层变化。在取得该证据前不把 20px 擅自改为 0，也不以
+扩大内容区的方式制造新的上游偏差。
