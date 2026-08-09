@@ -3544,6 +3544,27 @@ CIDR 部署说明。
 [`bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`](bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md)；
 本次 inventory 只修改合同，状态为 `extracted / implementation-pending`。
 
+## 2026-08-09 书源调试第二轮固定基准复审
+
+固定基准 `Index.vue#debugBookSource` 打开独立的 `bookSourceDebug` 工作区；该工作区同时拥有完整规则
+表单、命令栏、JSON/控制台/源列表/帮助面板、50 步撤销重做及本地源列表。调试动作先把当前表单源
+保存到当前 namespace，再建立一条 SSE。`Debugger.startDebug` 根据绝对 URL、`::`、`++`、`--` 或普通
+搜索词选择入口，并自动串联第一条结果的详情、目录和首章正文；搜索/书籍/章节变量以及第二章 URL
+沿链传递。
+
+当前 `SourceManager.vue` 把调试降成三个独立标签：只能选择已持久化源，手工复制搜索结果 URL 和
+章节 URL，没有详情阶段、流式日志、默认“我的”、直达前缀、撤销/重做或任务取消；独立 REST body
+又丢失 Book/Chapter variable 与 `nextChapterUrl`。`source_debug.go` 还把调试中的远程失败写入
+`source_failures`，可能让普通搜索在随后 10 分钟跳过用户正在修理的源。以上均为 `must-fix`，而非
+Go/Vue 技术栈差异。
+
+完整 UI、状态、API、权限、安全和测试合同见
+[`source-debug-fixed-baseline-second-audit-p2-contract.md`](source-debug-fixed-baseline-second-audit-p2-contract.md)。
+保留三个 `/api/sources/:id/test*` 为响应兼容探针，新增 Bearer-capable POST SSE 作为规范自动链；
+调试流和旧探针均改为零失败缓存副作用，只有独立批量健康检测可写诊断缓存。JWT、账号 scoped
+localStorage、`CanEditSources` 保存权限、有界 fetch/SSE、SSRF 防护和不执行 JavaScript/WebView 是明确
+允许的多用户/安全适配。本轮只完成 inventory，状态 `extracted / implementation-pending`。
+
 ## 2026-08-09 P2 WebSocket 同步协议与账号隔离复审
 
 固定上游没有 WebSocket；每个业务动作经控制器持久化后由当前页面更新本地状态。因此 OpenReader
