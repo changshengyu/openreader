@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**inventory-complete / current-source-aligned / regression-rerun-pending**
+状态：**aligned / regression-validated / no-application-change / Docker-contained**
 
 本合同重新核对 iPad Pro 自适应场景、显式手机模式和 Reader 主面板关闭路径，并取代总矩阵中
 “宽屏 iPad 仍自动进入手机面板”的过期结论。历史合同
@@ -78,3 +78,30 @@
 本轮在浏览器复验前不发布 Docker。若当前实现全部通过且没有应用代码变化，复审只更新合同与总
 矩阵，沿用已包含实现的最新镜像；若测试或浏览器暴露真实回归，则修复后按本地双架构流程发布，
 并记录 tag、OCI digest、新旧卷门禁和真实设备待验项。
+
+## 5. 当前 `main` 复验结果
+
+合同提交 `cb3c245` 后已在当前生产构建重新执行：
+
+- 专项 Node 合同：7/7；
+- frontend 全量：713/713；
+- `npm run build`：通过，仅保留 Element Plus 既有大 chunk 警告；
+- Go 全量：`go test ./...` 通过；
+- `reader-mobile-contract.mjs`：1440×900、390×844、360×800、iPad 1024×1366、
+  1366×1024 和 1024×1366 显式手机模式全部通过，最终输出
+  `reader desktop/mobile/adaptive-iPad/forced-mobile-iPad contract smoke passed`。
+
+浏览器批次逐一证明四个主面板：自适应 iPad 只挂桌面结构；可见关闭、外点关闭和同工具关闭均
+有效；外点不改变 Reader scroll、page transform 或 route；书签、正文搜索和书籍信息保持非全屏且
+关闭按钮位于视口内；手机和强制手机模式不混挂桌面工具。
+
+`git diff --exit-code 30dbe53..HEAD -- frontend backend Dockerfile scripts/docker-*` 为零差异；从
+最新已发布实现提交 `30dbe53` 到当前仅有兼容合同和发布记录变化。因此本轮不重复构建内容相同的
+Docker，继续使用已本地构建并发布的：
+
+- `ghcr.io/changshengyu/openreader:30dbe53`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index `sha256:9c07871ef7d3c8d99733fcecea205336576c081db651dada13eaeedafda76365`
+
+该镜像包含本合同复验的同一应用代码；线上服务器当前仍运行 `77a60d8`，必须 pull/force recreate
+后才能进行真实 iPad 设备签收。
