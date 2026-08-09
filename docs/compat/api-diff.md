@@ -57,3 +57,19 @@ For each module, record:
 3. Local import preview/import.
 4. Book management/category/batch operations.
 5. Backup/WebDAV/local store.
+
+## Manual shelf refresh second audit
+
+The fixed reader-dev Index and Reader-internal shelf both map a visible “刷新” click to
+`getBookshelf?refresh=1`; the backend checks current-namespace remote updateable books with concurrency 16,
+isolates one book's fetch failure, refreshes its TOC, and returns the complete shelf. OpenReader's two visible
+buttons currently only force `GET /api/books`, while the otherwise unused `POST /api/books/check-updates` performs
+a sequential append-only scheduler pass that ignores persisted source-rule variables and lacks a per-book
+transaction.
+
+This is a `must-fix`, not an allowed REST redesign. The stable OpenReader POST path is retained as a translation
+layer, but must gain bounded concurrent fetch, authoritative catalogue reconciliation, stale-result protection,
+per-book atomic writes, safe partial-failure counts and one durable shelf event. Home and Reader must share one
+deduplicated Pinia action that calls the check before the authoritative shelf reload. Exact API and data behavior is
+frozen in `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`; application code must follow only
+after its failing contracts.

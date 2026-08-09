@@ -338,6 +338,20 @@ Status: extracted 2026-07-10. These routes retain their OpenReader paths while m
 
 The upstream uses namespace-specific JSON storage and SSE cache progress. OpenReader's REST/SQLite adaptation is allowed only where it preserves the visible action semantics, current-user isolation, durable event ordering, and bounded resource use described above.
 
+### P1 manual shelf refresh API contract
+
+Status: extracted 2026-08-09; implementation pending. Full state, transaction and test requirements are in
+[`bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`](bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md).
+
+| Method / path | Request | Success / side effects | Auth and errors |
+|---|---|---|---|
+| `POST /api/books/check-updates` | Empty body or `{}`; deployed-client extra JSON fields remain ignored. | Checks only the caller's remote `canUpdate` shelf books with fetch concurrency ≤16. Returns backward-compatible `{newChapters,books}` plus `{checked,updated,failed,replacedBookIds}`. Every successful book is committed atomically; one book's remote/parse/transaction/stale-snapshot failure does not roll back another book. A single post-commit `bookshelf_update` contains changed shelf items. | JWT required. Candidate-list or final-projection failure is `500 {"error":"检查书籍更新失败"}`; per-book failures remain `200` and are represented only by a safe count. No error may expose rules, credentials, remote bodies or host paths. |
+
+The successful remote TOC is authoritative for rename, URL change, reorder and shrink as well as append growth.
+Exact-prefix growth preserves existing chapter IDs/cache; non-prefix replacement rebinds progress/bookmarks and
+prunes only superseded derived cache after commit. `lastCheckTime` advances only for positive growth relative to the
+persisted book summary. Initial/focus/WebSocket shelf reloads do not invoke this route.
+
 ## EPUB reader resource contract
 
 ### Authenticated chapter response

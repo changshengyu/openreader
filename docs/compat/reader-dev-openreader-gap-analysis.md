@@ -3522,6 +3522,20 @@ CIDR 部署说明。
 `sha256:d45132098b26dbf8a4ebbc9ca1f3e22b5fbb2ec48430e813a2c13f29204bee50`。状态更新为
 `aligned / Docker-published / awaiting-device-verification`。
 
+## 2026-08-09 书架手动刷新第二轮固定基准复审
+
+固定基准的首页 `Index.vue#refreshShelf` 与 Reader 内 `BookShelf.vue#refreshShelf` 都把用户可见刷新
+映射为 `getBookshelf?refresh=1`。`BookController#getBookShelfBooks` 对当前 namespace 中非本地、
+可更新的书以 16 并发抓取最新 TOC；单书/书源失败不阻断其它书，成功目录更新最后章节、总章数，
+只有正增长推进 `lastCheckTime`，最后返回完整书架。
+
+当前 `Home.vue` 和 `useReaderShelf.js` 都只强制读取 `/api/books`，从未调用已经存在的
+`POST /api/books/check-updates`。后者底层又是顺序、append-only：忽略 Book.Variable，同数改名/URL、
+重排、缩短均不生效，逐行 INSERT 与随后全行 `Save` 也会在中途失败时留下不一致状态。因此现状为
+`must-fix`。完整 API、目录差异、单书事务、陈旧抓取、缓存、UI 去重和红灯门禁见
+[`bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`](bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md)；
+本次 inventory 只修改合同，状态为 `extracted / implementation-pending`。
+
 ## 2026-08-09 P2 WebSocket 同步协议与账号隔离复审
 
 固定上游没有 WebSocket；每个业务动作经控制器持久化后由当前页面更新本地状态。因此 OpenReader
