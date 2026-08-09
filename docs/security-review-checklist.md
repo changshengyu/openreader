@@ -87,7 +87,7 @@ ambient process proxies. Docker public/host-gateway/loopback/exact-host/restart 
 mounted-volume, portable backup and restart gates passed. FlClash fake-IP ranges remain denied unless the deployment
 administrator explicitly allows them; this is documented rather than silently weakening the default policy.
 
-### P2 source-debug streaming boundary (2026-08-09 browser-validated; Docker pending)
+### P2 source-debug streaming boundary (2026-08-09 published)
 
 - [x] `POST /api/sources/:id/debug/stream` requires Bearer auth and an active current-user source association;
   JWT is never placed in a query parameter, event, local source draft or history record.
@@ -105,7 +105,8 @@ administrator explicitly allows them; this is documented rather than silently we
 
 Evidence: `backend/api/source_debug_second_audit_contract_test.go`,
 `backend/services/sourcedebug/service_test.go`, frontend source-debug/editor/state contracts,
-`scripts/smoke/source-debug-contract.mjs`, focused race, full Go/vet, frontend 724/724 and production build.
+`scripts/smoke/source-debug-contract.mjs`, focused race, full Go/vet, frontend 724/724, production build,
+fresh/historical volume gates and locally published `f8f263d`/`latest`.
 
 ### P1 temporary remote-Reader session boundary (2026-08-09 published)
 

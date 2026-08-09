@@ -31,7 +31,8 @@ The source-debug second audit is now implemented and browser-validated. The wron
 the standalone editor saves before one Bearer POST SSE stream and restores exact search/explore/direct-entry →
 BookInfo → TOC → first-content sequencing, runtime-variable boundaries, adjacent-chapter protection and ordered
 bounded logs. Existing `/api/sources/:id/test*` paths remain response-compatible shims but no debug path writes
-`source_failures`. Full status is in `source-debug-fixed-baseline-second-audit-p2-contract.md`; Docker is pending.
+`source_failures`. Full status is in `source-debug-fixed-baseline-second-audit-p2-contract.md`; the locally built
+`f8f263d`/`latest` image has passed fresh/historical volume gates and is published.
 
 The UserManage second audit found and removed a full-row GORM `Save` from `PUT /api/admin/users/:id`.
 The endpoint now updates only explicitly supplied columns, reloads a fresh row, projects legacy nullable WebDAV

@@ -1,6 +1,6 @@
 # BookGroup 第二轮固定上游复审合同（P2）
 
-状态：**第二轮固定基准审计完成；应用代码尚未按本合同重建**。
+状态：**aligned / Docker-published / awaiting-device-verification**。第二轮应用重建与完整发布证据见第 10 节。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 

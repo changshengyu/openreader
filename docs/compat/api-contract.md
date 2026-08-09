@@ -826,7 +826,7 @@ index is `sha256:021817e602aa589c1583ec7ccb65828172c1a2afe1e038e23651dd51c455fcc
 P2-N1 was implemented in `981bca7` and published locally to GHCR as `981bca7` / `latest`; the verified OCI
 index is `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`.
 
-`code` and `stage` are optional additive fields. Legacy frontend paths continue to use `error`; no parser error becomes an authentication failure. Normal source operations may classify `engine.IsSourceRequestError` for their existing failure policy, but source debug/test requests are now explicitly read-only and never enter `source_failures`; the separate batch health action owns diagnostic failure writes. The second-audit implementation/tests are pending in [`source-debug-fixed-baseline-second-audit-p2-contract.md`](source-debug-fixed-baseline-second-audit-p2-contract.md).
+`code` and `stage` are optional additive fields. Legacy frontend paths continue to use `error`; no parser error becomes an authentication failure. Normal source operations may classify `engine.IsSourceRequestError` for their existing failure policy, but source debug/test requests are now explicitly read-only and never enter `source_failures`; the separate batch health action owns diagnostic failure writes. The completed second-audit implementation and release evidence are in [`source-debug-fixed-baseline-second-audit-p2-contract.md`](source-debug-fixed-baseline-second-audit-p2-contract.md).
 
 ## P2 source-debug second-audit API contract (2026-08-09 implemented)
 
@@ -850,7 +850,9 @@ planned tests are fixed in
 
 Implementation status: the canonical stream, cancellation, bounded/redacted events, exact dispatch/runtime
 boundaries and zero failure-cache side effects are implemented. Focused race, full Go/vet, frontend 724/724,
-production build and four-viewport real-browser validation pass; Docker publication is pending.
+production build, four-viewport real-browser validation and fresh/historical volume gates pass. The locally built
+amd64/arm64 image is published as `f8f263d`/`latest`, OCI index
+`sha256:9c83821de9e5f4df223b6e69a6d67eff512fa55d4a271f544718ccad8ae58ba1`.
 
 ## P2 parser persistent-variable contract (P2-Parser-1G implemented)
 

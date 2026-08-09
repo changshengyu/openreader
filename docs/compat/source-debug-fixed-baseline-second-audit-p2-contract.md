@@ -1,6 +1,6 @@
 # 书源调试固定基准第二轮复审合同（P2）
 
-状态：`implemented / full-regression-passed / browser-validated / Docker-pending`
+状态：`aligned / Docker-published / awaiting-device-verification`
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -170,5 +170,10 @@ reader-dev 的 cookie-only EventSource 身份模型。
   通过。真实 Go/SQLite/Chromium 在 1440×900、1024×1366、390×844、360×800 验证 save-before-stream、
   Bearer header、reader-dev JSON、完整链、无相邻章节越界、无失败缓存污染、hash 恢复及传输取消；
   控制台没有正文、JWT、secret、变量或 URL 凭据泄漏。smoke 也会有界清理临时 Go/Chromium 进程。
-- 本批不改 SQLite schema、书架/章节/缓存、备份和挂载目录。Docker 与 fresh/historical volume/backup
-  门仍待当前实现提交后执行，因此在获得镜像 digest 前不标记 `Docker-published`。
+- 本批不改 SQLite schema、书架/章节/缓存、备份和挂载目录。实现提交 `f8f263d` 已推送 `main`；
+  fresh volume 的 portable v1/v2 assets、cross-user、restart 与 historical TXT/EPUB/UMD/CBZ、
+  relative-cache、owner-isolation 门均通过。只使用本机 OrbStack 构建并推送
+  `ghcr.io/changshengyu/openreader:f8f263d` 和 `latest`，二者 OCI index 均为
+  `sha256:9c83821de9e5f4df223b6e69a6d67eff512fa55d4a271f544718ccad8ae58ba1`；amd64 为
+  `sha256:8558b903640579fcd18970cf1f02e8044a081bfd6a7356dae9702eba8fd03351`，arm64 为
+  `sha256:b2ce3d3624053a8340a662e77fae5be55aeadd9379276a478d4585b08aefce0f`。

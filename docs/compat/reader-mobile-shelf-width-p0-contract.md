@@ -178,6 +178,18 @@ amd64/arm64 构建和 GHCR 上传：
 - amd64：`sha256:5d014f8f8fdfbe7ba9ca27d0eee53e5dd0e19c83b010655c9de820e9b14c66a5`
 - arm64：`sha256:8caed99599fa33cda01bc2750f4a86a55cb4a702f06c3dec43950423322fac3d`
 
+## 10. 当前发布与线上版本核验（2026-08-09）
+
+完整 Reader 浏览器合同已在当前生产构建重新通过桌面、390×844、360×800、自适应 iPad 与强制
+移动 iPad；横向 20px/350px、20px/320px 和多书内容高度行轨均未回归。包含上述修复的最新本机构建
+镜像为 `f8f263d`/`latest`，OCI index
+`sha256:9c83821de9e5f4df223b6e69a6d67eff512fa55d4a271f544718ccad8ae58ba1`。
+
+同一时间线上 `https://openreader.yuchsh.top/api/health` 仍返回 `77a60d8`，它早于 `a445121` 行轨
+修复。因此本次设备看到的“明显窄”不能用线上旧容器否定当前源码合同；部署端必须 pull
+`f8f263d`（或上述 digest）并 force recreate，确认 health 返回 `f8f263d` 后再复验。只 restart
+现有容器不会拉取新镜像。
+
 候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
 的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation。当前仅待服务器 pull/force recreate
 到该镜像后进行真实移动设备签收；仅重启旧容器不会更新镜像。

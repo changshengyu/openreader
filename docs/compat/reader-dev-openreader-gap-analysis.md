@@ -1094,7 +1094,7 @@ Fixed upstream authority: `web/src/views/Index.vue` methods `uploadBookSource`, 
 | Local import | File input parses JSON; valid entries open a selection preview. User confirms selected rows. Invalid input shows a source-file error. | Preserve file selection/preview/confirmation, JSON shapes, source tags, cancellation and reload broadcast. Do not directly import a file without the preview selection. |
 | Remote import | Prompt remembers the last remote URL, fetches remote JSON, then opens the same selection preview as local import. | Keep one remote URL dialog and the same preview/confirm transaction. Persisting the last URL per authenticated user is a compatible current-runtime adaptation. |
 | Failure detection | `Index.vue#showFailureBookSource()` calls `getInvalidBookSources()`, opens the same manager in failure view, and filters the failures that the backend recorded during normal use. `BookController#getInvalidBookSources` reads that user-scoped cache; invalid entries expire after 600 seconds. Opening the view does not run a new source request. | Entering the failure intent must only select the failure view. A user must explicitly press the bounded health-test command to start live checks. OpenReader has no persisted normal-use invalid-source cache yet, so the initial failure list is empty until P2 adds the equivalent user-scoped runtime-error cache; that missing cache is a separate backend/data gap, not permission to auto-test every source. |
-| Debug | Upstream opens a separate source-debug page. | The current in-overlay three-step debug dialog (search → TOC → content) is an allowed improvement if it keeps source rules and request results unmodified and opens without leaving Index. |
+| Debug | Upstream opens a separate source-debug page. | The old in-overlay three-step Dialog was an incorrect reconstruction and has been removed. The canonical named standalone workspace, save-before-debug and automatic streamed chain are implemented and published under the fixed-baseline second-audit contract. |
 | Mobile | Upstream source dialogs are fullscreen under collapsed/mobile UI; side actions do not create a second product page. | Source overlay is fullscreen/appropriate mobile popover and must consume clicks. Source manager opening does not implicitly close the Index sidebar unless the specific upstream action does. |
 | Events | Successful save/import/default/restore causes source list refresh. | Keep `sources_update` WebSocket event and `openreader:sources-update` browser event with debounced reload; no stale list after an overlay transaction. |
 
@@ -3569,7 +3569,8 @@ localStorage、`CanEditSources` 保存权限、有界 fetch/SSE、SSRF 防护和
 reader-dev JSON、九项命令、账号隔离的本地源列表与 50 步历史；规范 Bearer POST SSE 自动完成五类
 入口到详情/目录/首章的链路，并保持固定上游 variable 与下一章边界。旧探针响应兼容但不再污染
 `source_failures`。全量 Go、focused race、vet、frontend 724/724、build、diff 和四视口真实浏览器均
-通过；状态为 `implemented / full-regression-passed / browser-validated / Docker-pending`。
+通过；fresh/historical volume/backup 门和本机双架构 GHCR 回读也已通过，状态为
+`aligned / Docker-published / awaiting-device-verification`，镜像 `f8f263d`/`latest`。
 
 ## 2026-08-09 P2 WebSocket 同步协议与账号隔离复审
 
