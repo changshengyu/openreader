@@ -1,8 +1,8 @@
 # Reader-dev vs OpenReader API Diff
 
-Status: initial scaffold.
+Status: specialist contracts cover the implemented priority modules; remaining routes are audited action by action.
 
-Reader-dev is a Java/Spring + Vue 2 application. OpenReader is a Go/Gin + Vue 3 rewrite with JWT multi-user auth and a single-container runtime. Exact endpoint-by-endpoint extraction is still required per module before backend refactors.
+Reader-dev is a Java/Spring + Vue 2 application. OpenReader is a Go/Gin + Vue 3 rewrite with JWT multi-user auth and a single-container runtime. Reader, sources, import, book management, backup/WebDAV/local store, settings/admin/RSS/replace/resource routes now have specialist contracts. Any route not named by one of those contracts still requires action-level extraction before backend refactors.
 
 ## Known intentional OpenReader additions
 
@@ -22,9 +22,18 @@ associations. Shared rows created by the additive migration are storage deduplic
 copy-on-write. Full route/status/error compatibility is recorded in
 `book-source-ownership-p2-contract.md` and `api-contract.md`.
 
-Implementation status on 2026-07-27: source management/debug, search, explore, remote-book, Reader
-content/cache, scheduler and administrator count/default/reset/delete consumers are association-scoped.
-Backup/WebDAV restore and the browser/release gates remain open and keep the module from release-complete status.
+Implementation status on 2026-08-09: source management/debug, search, explore, remote-book, Reader
+content/cache, scheduler, backup/WebDAV restore and administrator count/default/reset/delete consumers are
+association-scoped and released. The current open protocol audit is `/ws/sync`; see
+`websocket-sync-p2-contract.md`.
+
+## WebSocket synchronization direction and scope
+
+Reader-dev has no WebSocket write path. OpenReader retains `GET /ws/sync?token=<jwt>` as a multi-client runtime
+adaptation, but the protocol is server-to-client only: only committed REST mutations may produce events. The current
+arbitrary client-event relay, unconditional Origin acceptance and global `users_update` recipient set are
+`must-fix`. Exact handshake statuses, event envelopes, account scopes, log redaction and tests are recorded in
+`websocket-sync-p2-contract.md`.
 
 ## Required extraction before backend changes
 

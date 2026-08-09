@@ -1,6 +1,6 @@
 # OpenReader Data Migration and Storage Contract
 
-Status: initial scaffold.
+Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
 ## P2 reading-progress CAS and WebDAV mirror (audit pending implementation)
 
@@ -772,3 +772,21 @@ fixtures. No migration or mounted data rewrite was observed.
 Required evidence before release: old/current reader JSON fixtures, cross-user reset and delayed settings load,
 normal↔Kindle reload, custom scheme/asset preservation, portable v1/v2 assets, historical mounted-volume restart and
 owner-isolation smoke. See `reader-settings-fixed-baseline-second-audit-p0-contract.md`.
+
+## P2 WebSocket synchronization protocol compatibility (2026-08-09 extracted)
+
+- `/ws/sync` remains an ephemeral transport. It adds no SQLite row, browser-persisted event queue, mounted file,
+  backup member, WebDAV object or migration.
+- Existing server event names and payloads remain readable by old clients. The protocol becomes explicitly
+  server-to-client only; removing the unused frontend `send()` and rejecting inbound application messages cannot
+  delete or translate persisted state.
+- Tightening `users_update` recipients changes no user, role or source row. Administrators receive the complete
+  changed-ID set; an affected ordinary user receives only its own ID so profile refresh/deletion logout still works;
+  unrelated users receive nothing.
+- A reconnect never replays an event log. Existing REST/SQLite authority, foreground reconciliation, operation
+  generation and cache fallback remain unchanged, including historical browser caches.
+- Because there is no data-format change, no new old-volume fixture is required. A release still runs the unchanged
+  fresh/historical volume and portable-backup gates to prove that the transport hardening did not accidentally touch
+  `data/`, `cache/` or `library/`.
+
+See [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md).

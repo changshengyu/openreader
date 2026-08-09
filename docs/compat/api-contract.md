@@ -10,6 +10,12 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 - The upstream WebDAV compatibility root is implemented and shares the same caller-scoped storage;
   see [`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md)).
 - Sync WebSocket: `/ws/sync`.
+
+The sync route is specified by [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md):
+`GET /ws/sync?token=<jwt>` is a same-origin, active-user-authenticated, server-to-client-only transport. Client
+application messages are not a second write API and must be closed without relay. Owner events remain user-scoped;
+`users_update` is limited to administrators plus each affected user with a self-only ID projection. The route,
+server event names and existing business payloads remain stable.
 - Expected error shape for handled failures: JSON object with `error`.
 - User-owned resources must be scoped to the authenticated user unless documented as admin/global.
 - Concurrent first writes to the same authenticated `settings/:key` use the existing `(user_id,key)` unique key as

@@ -3521,3 +3521,19 @@ CIDR 部署说明。
 `sha256:ef6bbd76f6b748b2597a57154fc54826c4afde3cc60615fbd63f867a7fa6217b` 与
 `sha256:d45132098b26dbf8a4ebbc9ca1f3e22b5fbb2ec48430e813a2c13f29204bee50`。状态更新为
 `aligned / Docker-published / awaiting-device-verification`。
+
+## 2026-08-09 P2 WebSocket 同步协议与账号隔离复审
+
+固定上游没有 WebSocket；每个业务动作经控制器持久化后由当前页面更新本地状态。因此 OpenReader
+的 JWT 多标签同步只能是服务端 durable mutation 的通知层，不能形成一条浏览器上传任意
+`{type,payload}`、绕开 REST 参数/权限/事务后再由 Hub 转发的第二写路径。
+
+当前仓库全历史没有 `useSync().send()` 调用者，但 `ReadPump` 仍会完整读取、解析并转发客户端消息；
+握手又无条件接受任意 Origin。另一个已经写入用户管理/书源专项合同却未落实的偏差是
+`users_update` 仍用 `BroadcastAll`，向无关普通用户暴露整批变更 ID。三项均裁决为 `must-fix`。
+
+完整线协议和测试闸门见
+[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)：保持 `/ws/sync?token=`、现有服务端事件
+type/payload、日志脱敏、同用户收敛与 REST 权威；改为同源/有效现存用户握手、严格 server→client、
+有界 policy close，并把用户事件限定为管理员完整集合及目标用户 self-only 投影。本轮只完成
+inventory，应用实现必须在失败测试之后进行。
