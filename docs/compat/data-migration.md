@@ -818,8 +818,9 @@ See [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md).
   cleanup targets.
 - A remote, parser, stale-snapshot or transaction failure leaves that book's old catalogue, summary, variable,
   progress, bookmarks and cache readable. Another book may still commit independently in the same refresh round.
-- Existing old volumes need no migration or backfill. The unchanged fresh/historical Docker volume gate remains
-  required before publication; see `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`.
+- Existing old volumes need no migration or backfill. `43635a1` passed the unchanged fresh/historical Docker volume
+  and portable-backup gates before publication; see
+  `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`.
 
 ## P2 backup restore transaction-worker compatibility (2026-08-09 extracted)
 

@@ -4,7 +4,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-状态：**aligned / Docker-republished in `e7f168e` / deployment-update-required**
+状态：**automated-upstream-geometry-aligned / Docker-published / device-feedback-open**
 
 本合同只处理 Reader 顶部“书架”按钮打开的阅读内书架，不改变 Index 首页普通书架。普通书架在
 `7971e23` 已恢复移动书籍行等于视口宽度；两者是不同 DOM、CSS 和验收边界。
@@ -114,3 +114,10 @@ recreate 到该版本后才能验收；旧容器 restart 不能更新镜像内�
 本机发布为 `77a60d8`/`latest`，OCI index 为
 `sha256:a1a37b223e10a3c43febd23250dd7790394c200d69e7c9548255cf1fdba3b017`。因此当前反馈仍判定为线上
 容器滞后；服务器必须 pull 并 force recreate，不能只 restart。
+
+随后线上 `/api/health` 已于同日确认运行 `77a60d8`，不再属于旧镜像；当前 `43635a1`/`latest`
+继续包含完全相同的 Reader 内 20px/350px、20px/320px 合同，OCI index 为
+`sha256:0f75a0434d209af901cde81f86127f8e62fa78d6cb3610d6c10ef2e0863053c0`。设备仍反馈“明显窄”，
+因此本项不再以“部署滞后”关闭，而改为 **device-feedback-open**。在取得实际设备可见层证据前不得
+随意把 20px 改成 0：需要先区分 Index 普通书架（书籍行应为 390/360px）与 Reader 顶栏书架
+Popover（列表应为 350/320px），再对照截图逐层测量视口、根层、内容层和列表层。

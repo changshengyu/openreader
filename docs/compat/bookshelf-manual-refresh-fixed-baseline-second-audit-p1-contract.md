@@ -1,6 +1,6 @@
 # 书架手动刷新固定基准第二轮合同（P1）
 
-状态：`implemented / regression-validated / Docker-pending`
+状态：`aligned / Docker-published / awaiting-device-verification`
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 盘点日期：2026-08-09
 
@@ -160,6 +160,23 @@ SQLite 和 WebSocket，但必须达到相同的可见动作、单书失败隔离
 - 回归通过：Go 全量、`go vet`、受影响 scheduler/API race、frontend 713/713、production build、
   `git diff --check`。完整 Reader 浏览器合同通过桌面、390×844、360×800、自适应/强制手机 iPad，
   并再次精确得到 Reader 内书架 350/320px。独立 Home+Reader 真实 Go 刷新脚本本轮因 Codex 外部执行
-  额度拒绝未能重跑；其新增请求计数已由前端运行时测试覆盖，发布记录必须保留这一限制。
+  额度拒绝未能重跑；其新增请求计数已由前端运行时测试覆盖，发布记录保留这一限制。
 
-本实现不迁移 SQLite 或 mounted paths。fresh/historical volume 与 Docker 发布证据将在同一合同内追加。
+本实现不迁移 SQLite 或 mounted paths。
+
+## Docker 发布结果（2026-08-09）
+
+- 实现提交 `43635a1c4a89c0c660e0f47b6e32df08b5ad745f` 已在发布前推送 `main`。
+- 候选镜像通过 fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume
+  的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 和 portable restore。
+- 双架构镜像完全由本机 OrbStack 构建；第一次 GHCR 上传在第 11/23 个 blob 遇到网络中断，复用同一
+  OCI 归档重试后只补传缺失 blob 并成功提交标签，没有改用云端构建。
+- 发布标签：`ghcr.io/changshengyu/openreader:43635a1` 与
+  `ghcr.io/changshengyu/openreader:latest`。
+- OCI index：`sha256:0f75a0434d209af901cde81f86127f8e62fa78d6cb3610d6c10ef2e0863053c0`；
+  amd64 manifest：`sha256:9186bbdecaebda5dc7cc7dca47f9c4c612d86d7236e0b77f1ca66027bfdbb761`；
+  arm64 manifest：`sha256:95ff4645eb28cd853d5888363f54e0a28d86784ba24c82215c29653cf967644c`。
+
+本批允许差异只有 OpenReader 的 JWT/SQLite/Pinia/WebSocket 技术栈映射；可见“刷新”动作、单书失败
+隔离、目录替换和整份书架收敛均按固定上游合同实现。尚未完成项仍是独立 Home+Reader 真实 Go 浏览器
+脚本的本轮重跑与真实设备验收；它们不改变已经通过的 API、事务、前端运行时和新旧卷证据。

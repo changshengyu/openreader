@@ -70,4 +70,6 @@ one authoritative `GET /api/books` after invalidating only replaced browser chap
 This was a `must-fix`, not an allowed REST redesign. The stable OpenReader POST path remains the translation layer;
 bounded fetch, authoritative catalogue reconciliation, stale-result protection, per-book atomic writes, safe
 partial-failure counts and one durable shelf event are implemented behind it. Exact API/data behavior and the
-remaining Docker evidence are recorded in `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`.
+Docker-published evidence are recorded in `bookshelf-manual-refresh-fixed-baseline-second-audit-p1-contract.md`.
+`43635a1`/`latest` points to OCI index
+`sha256:0f75a0434d209af901cde81f86127f8e62fa78d6cb3610d6c10ef2e0863053c0`.
