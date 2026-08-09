@@ -87,7 +87,7 @@ ambient process proxies. Docker public/host-gateway/loopback/exact-host/restart 
 mounted-volume, portable backup and restart gates passed. FlClash fake-IP ranges remain denied unless the deployment
 administrator explicitly allows them; this is documented rather than silently weakening the default policy.
 
-### P1 temporary remote-Reader session boundary (2026-08-09 regression-validated; Docker pending)
+### P1 temporary remote-Reader session boundary (2026-08-09 published)
 
 - [x] `POST /api/reader/remote-sessions` accepts one JSON value within 64 KiB; declared and chunked oversized bodies fail with a safe 413 before source lookup or transport.
 - [x] Session IDs use 32 random bytes and are bound to the authenticated user. Unknown, foreign and LRU-evicted IDs are indistinguishable 404s; natural expiry remains 410 without being confused with JWT expiry.
@@ -102,7 +102,7 @@ Evidence: `backend/services/remotereader/store_contract_test.go`,
 `scripts/smoke/remote-reader-contract.mjs`,
 `scripts/smoke/source-parser-workflow-contract.mjs`, and
 [`docs/compat/remote-reader-session-fixed-baseline-second-audit-p1-contract.md`](compat/remote-reader-session-fixed-baseline-second-audit-p1-contract.md).
-Docker and mounted-volume gates remain pending before publication.
+Local amd64/arm64 build, GHCR digest readback and fresh/historical mounted-volume/backup gates passed for `30dbe53`/`latest`, OCI index `sha256:9c07871ef7d3c8d99733fcecea205336576c081db651dada13eaeedafda76365`.
 
 ## P2 RSS requested-page and import review (2026-08-09 implementation)
 

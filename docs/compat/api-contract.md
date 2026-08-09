@@ -664,7 +664,7 @@ Frontend ownership rules:
 - Opening a result cover only opens the shared BookInfo; opening result body may create a temporary
   Reader session. Neither preview action persists a shelf book.
 
-## P1-B remote temporary-reader contract (second audit implemented; Docker pending)
+## P1-B remote temporary-reader contract (second audit Docker-published)
 
 Reader-dev permits a search/explore result to enter Reader before it has been
 added to the shelf. Its Vuex `readingBook` is an in-memory reading context, not
@@ -676,7 +676,7 @@ second audit on 2026-08-09 found and corrected missing request/session memory
 budgets and an invalid chapter-index lease extension. The authoritative
 lifecycle, variable, cancellation, redaction and retention contract is now
 [`remote-reader-session-fixed-baseline-second-audit-p1-contract.md`](remote-reader-session-fixed-baseline-second-audit-p1-contract.md);
-implemented and regression-validated; Docker publication is pending.
+implemented, regression-validated and Docker-published as `30dbe53`.
 
 | Method / path | Request | Success / side effects | Auth and errors |
 |---|---|---|---|
@@ -692,7 +692,7 @@ implemented and regression-validated; Docker publication is pending.
 - Search and Explore must call this same session creation endpoint and use the same reader route form, e.g. `/reader/remote/:sessionId`; neither preview nor result-body reading may call `POST /books/remote`. Persistence starts only from an explicit result-card or BookInfo “加入书架” action. The result card confirms categories first; BookInfo adds directly. Both may forward the returned opaque `variable` field.
 - Reader controls that require a durable shelf record (bookmark creation, group editing, cache/clear cache, durable progress, source change/refresh) must be either temporarily unavailable with an explicit “加入书架后可用” state or receive a separately documented temporary-session contract. They must never fail as a hidden `404` caused by a synthetic book ID.
 
-Regression evidence now includes `backend/api/remote_reader_contract_test.go`, `backend/api/remote_reader_second_audit_contract_test.go`, `backend/services/remotereader/store_contract_test.go`, focused race, full Go/vet, frontend 713/713/build, three-viewport `remote-reader-contract.mjs`, and real Go CSS/JSONPath/XPath `source-parser-workflow-contract.mjs`. Body/retention budgets, expiry/LRU, invalid-index lease behavior, safe parser error redaction, cancellation, source-failure cache and cross-chapter variable propagation are covered. Docker/mounted-volume publication remains pending.
+Regression evidence now includes `backend/api/remote_reader_contract_test.go`, `backend/api/remote_reader_second_audit_contract_test.go`, `backend/services/remotereader/store_contract_test.go`, focused race, full Go/vet, frontend 713/713/build, three-viewport `remote-reader-contract.mjs`, and real Go CSS/JSONPath/XPath `source-parser-workflow-contract.mjs`. Body/retention budgets, expiry/LRU, invalid-index lease behavior, safe parser error redaction, cancellation, source-failure cache and cross-chapter variable propagation are covered. Local dual-architecture build, GHCR digest readback and fresh/historical mounted-volume/backup gates passed for `30dbe53`.
 
 ## Compatibility rule
 

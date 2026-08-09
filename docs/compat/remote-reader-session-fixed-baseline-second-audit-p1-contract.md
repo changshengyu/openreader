@@ -1,6 +1,6 @@
 # 搜索/探索临时阅读会话固定上游第二轮合同（P1）
 
-状态：`implemented / regression-validated / Docker-pending`
+状态：`aligned / Docker-published / awaiting-device-verification`
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -100,4 +100,12 @@
 - `remote-reader-contract.mjs`：1440×900、390×844、360×800 通过，并证明显式加入书架保留 bounded book variable、临时阅读零隐式写入。
 - `source-parser-workflow-contract.mjs`：真实 Go + CSS/JSONPath/XPath fixture 的 Search → BookInfo → temporary Reader → TOC/content 通过；测试进程显式 allowlist `127.0.0.1`，生产 public-only 默认未削弱。
 
-Docker 和 mounted-volume 门禁通过后，本专项可改为 `aligned / Docker-published / awaiting-device-verification`。
+实现提交 `30dbe533188817f81d051af540206b58ed0cd8e5` 已推送 `main`。本机 OrbStack 构建并推送：
+
+- `ghcr.io/changshengyu/openreader:30dbe53`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:9c07871ef7d3c8d99733fcecea205336576c081db651dada13eaeedafda76365`
+- amd64 manifest：`sha256:bf36ae94718af22c6eccabdf002c83e5d296c679589d581ccbfd81ae7f6e45ec`
+- arm64 manifest：`sha256:f10a8c44da8355e77bca37f48305ec8d3ef687726acacba331f51c61800795e7`
+
+两个标签已从 GHCR 回读为同一 index。Fresh volume 的 portable v1/v2 assets、cross-user、restart，以及 historical volume 的 TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 全部通过。本批无 SQLite schema、持久文件格式、备份/WebDAV 或前端路由迁移；临时会话仍只存在于进程内存。状态更新为 `aligned / Docker-published / awaiting-device-verification`。

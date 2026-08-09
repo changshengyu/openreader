@@ -1,5 +1,13 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-09 P1 搜索/探索临时 Reader 会话第二轮
+
+固定上游仍由 `Index.vue#toDetail` 把未入架搜索结果写入浏览器 `readingBook`，再由目录/正文动作按书源重建；只有显式 `saveBook` 才持久化。OpenReader 的用户绑定高熵服务端会话是 JWT/Vue 3 下隐藏书源凭证的技术栈等价适配，但原实现的 create body 无上限、内存 map 无单会话/用户/进程预算，且非法章节 index 会提前续期，均判定为 `must-fix`。
+
+合同 `7c35555` 先行提交；随后失败测试固定 64 KiB 唯一 JSON、30m idle/4h absolute TTL、8 MiB/session、8 sessions+32 MiB/user、128 sessions+128 MiB/process、确定性 LRU、自然到期 410、预算驱逐 404、Book/Chapter 变量优先级、取消回滚、typed failure cache 与错误脱敏。实现 `30dbe53` 把 store 迁入 `services/remotereader`，不改现有路由/响应，不创建 SQLite、cache、backup/WebDAV 或同步记录。
+
+Go full/focused race/vet、frontend 713/713/build、临时 Reader 1440×900/390×844/360×800、真实 Go CSS/JSONPath/XPath Search → BookInfo → temporary Reader → TOC/content、新旧挂载卷均通过。本机 OrbStack 发布 `30dbe53` 与 `latest`，OCI index 为 `sha256:9c07871ef7d3c8d99733fcecea205336576c081db651dada13eaeedafda76365`。状态：`aligned / Docker-published / awaiting-device-verification`。
+
 ## 2026-08-05 P1 移动书架发布后宽度回归
 
 设备验收确认 `c851c5f` 的普通移动书架明显变窄。生产构建在 390px 视口稳定复现书籍行仅
