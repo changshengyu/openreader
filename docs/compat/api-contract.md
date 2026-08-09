@@ -772,6 +772,8 @@ headers and never Cookie, Authorization, Proxy-Authorization or custom source cr
 
 P2-N1 does not change SQLite, backup, WebSocket or frontend request schemas. Private-network/DNS/dial policy is
 the separate P2-N2 contract and remains open until its own tests and deployment allowlist grammar are signed.
+P2-N1 was implemented in `981bca7` and published locally to GHCR as `981bca7` / `latest`; the verified OCI
+index is `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`.
 
 `code` and `stage` are optional additive fields. Legacy frontend paths continue to use `error`; no parser error becomes an authentication failure, and only `engine.IsSourceRequestError` may enter `source_failures`. `backend/api/source_error_contract_test.go` proves remote request failures are redacted for paged search, explore, source debug and remote-book creation, while an invalid content rule keeps its existing `502` text and receives `source_rule_invalid` / `content`.
 

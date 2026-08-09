@@ -59,12 +59,26 @@ Evidence: `frontend/tests/localCacheStatsScope.test.mjs`,
 
 ## SSRF and remote fetches
 
-- [ ] Source/RSS/cover/WebDAV remote URLs validate scheme.
-- [ ] Redirect count is bounded.
-- [ ] Request timeout is set.
-- [ ] Response body size is bounded.
+- [x] Shared Source/RSS URLs validate absolute HTTP(S), host, port and userinfo before transport; the
+  independently published cover fetcher has its own stricter capability/target policy. WebDAV remote-client
+  behavior remains governed by its separate protocol contract.
+- [x] Shared Source/RSS redirects are explicitly bounded to five and every redirect URL is revalidated.
+- [x] Shared Source/RSS requests have a configurable 15-second safe default timeout and preserve earlier caller cancellation.
+- [x] Shared Source/RSS response bodies are bounded to 16 MiB before charset, HTML/XML/JSON or binary processing.
 - [ ] Private network access is considered when server-side fetches are user-controlled.
-- [ ] Headers/cookies are not logged.
+- [x] Shared Source/RSS public errors redact URL query, userinfo, headers/cookies, request/response body and
+  proxy credentials; cross-origin redirects strip credential-bearing headers.
+
+### P2-N1 shared Source/RSS fetch boundary (2026-08-09 published)
+
+P2-N1 is implemented and published as `981bca7` / `latest`, OCI index
+`sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`. Focused race tests,
+full Go/frontend/build, real CSS/JSONPath/XPath/RSS browser flows and fresh/historical mounted-volume gates passed.
+
+The unchecked private-network item is intentionally still open. P2-N2 must add private/loopback/link-local/
+metadata blocking, DNS-rebinding-safe dialing, proxy endpoint/target checks and an administrator-only host/IP/CIDR
+allowlist so NAS/LAN sources remain an explicit deployment choice. N1 deliberately preserves their previous
+reachability and therefore does not close the complete shared-fetcher SSRF review.
 
 ## P2 RSS requested-page and import review (2026-08-09 implementation)
 
@@ -82,11 +96,10 @@ Evidence: `frontend/tests/localCacheStatsScope.test.mjs`,
 - [x] Article cache upsert is transactional and preserves hidden read/favourite
   state; visible content is sanitized and a delayed source/page or old-account
   result cannot commit into the current dialog.
-- [ ] The shared `engine` source fetcher still reads response bodies without a
-  universal byte cap and relies on `http.Client` redirect defaults rather than a
-  project limit. It also has no general private-address SSRF policy. This debt is
-  inherited by book sources and RSS and must be handled as a compatibility-aware
-  shared-fetcher project; the RSS visible-workspace slice does not claim it closed.
+- [x] The shared `engine` source fetcher now applies the P2-N1 response, redirect,
+  timeout, retry, URL and redaction boundaries. General private-address/DNS/proxy
+  policy remains the separate unchecked P2-N2 item above; the RSS visible-workspace
+  slice alone does not claim that portion closed.
 
 Evidence: `backend/api/rss_requested_page_contract_test.go`,
 `backend/services/rss/service_test.go`, the existing RSS parser/content tests,

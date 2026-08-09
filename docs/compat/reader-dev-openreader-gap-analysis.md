@@ -3435,11 +3435,33 @@ page bound、owned sort allowlist、事务和内容清洗；共享 source fetche
 实施拆为两个测试先行切片：`P2-N1` 增加显式 15 秒总 timeout、16 MiB 单响应上限、5 次 redirect、
 3 次 retry 上限、HTTP(S)/host/userinfo 校验和跨 origin credential 剥离；`P2-N2` 再增加默认严格的
 private/loopback/link-local/metadata/DNS-dial policy 与仅由部署管理员配置的 host/CIDR allowlist，保留
-显式配置后的 NAS/局域网书源能力。当前只完成 inventory/contract，尚未修改应用代码，也不宣称关闭
-共享 SSRF 债务。
+显式配置后的 NAS/局域网书源能力。
+
+P2-N1 已按合同先写失败测试并在 `981bca7` 实施：共享 fetcher 现在有显式 timeout/body/redirect/retry
+上限、HTTP(S)/host/port/userinfo 校验、跨 origin credential 剥离、body 关闭和安全错误；远程书源
+预览还在发网前完成权限检查。全量 Go/frontend/build、focused race、CSS/JSONPath/XPath、RSS/Source/
+Index 浏览器流程、新旧挂载卷和 portable backup/restart 门均通过。本机 OrbStack 双架构镜像
+`981bca7`/`latest` 已发布，index 为
+`sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`。
+
+P2-N2 仍未实施：private/loopback/link-local/metadata、DNS rebinding、proxy target/endpoint 与管理员
+host/IP/CIDR allowlist 继续开放。因此当前仍不宣称关闭全部共享 SSRF 债务。
 
 本地候选随后通过新卷 portable v1/v2 assets、cross-user、restart，以及历史卷 TXT/EPUB/UMD/
 CBZ、relative-cache、owner-isolation。OrbStack 在本机构建并推送 `92b7034` 与 `latest`，没有使用
 云端构建；两个标签共同指向双架构 OCI index
 `sha256:095540fe28c553ab6d2cfd9ce589ec0b31809f00600cd9f59ab814b7753098ba`。RSS 状态现更新为
 `aligned / Docker-published / awaiting-device-verification`，共享 fetcher 安全债务仍保持开放。
+
+## 2026-08-09 Reader 移动端阅读内书架宽度复审
+
+固定基准取证见
+[`reader-mobile-shelf-width-p0-contract.md`](reader-mobile-shelf-width-p0-contract.md)。上游最终
+`100vw` Popover 中，Element 的 12px padding 与 `BookShelf.vue` 的 `margin:-16px;padding:24px`
+组合后，标题、列表和书籍条目相对视口的最终左右 inset 各为 20px；390/360 视口的列表宽分别为
+350/320px。
+
+当前主面板根虽为 `100vw`，但内容层直接使用左右各 24px，列表只有 342/312px。现有 smoke 又从
+当前 computed padding 反推 expected width，因而无法发现该偏差。裁决为 `must-fix`：先把静态和真实
+浏览器合同锁到上游固定数值，再只调整 Reader 主 Popover 水平 inset；Index 普通书架的 390/360px
+整行宽度不得改变。

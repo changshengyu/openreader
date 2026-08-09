@@ -2,9 +2,10 @@
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-状态：2026-08-09 已完成固定上游、当前 Go 实现和调用面的源码盘点；尚未修改应用代码。
-本项目分为两个可独立验证的安全切片：先完成不改变合法目标可达性的 `P2-N1` 通用请求边界，
-再完成需要显式部署策略的 `P2-N2` 私网地址边界。任一切片均须先写失败合同测试。
+状态：**P2-N1 aligned / Docker-published / awaiting-device-verification；P2-N2 pending**。
+2026-08-09 已完成固定上游、当前 Go 实现和调用面的源码盘点，并按两个可独立验证的安全切片推进：
+不改变合法目标可达性的 `P2-N1` 通用请求边界已经测试先行实现和发布；需要显式部署策略的
+`P2-N2` 私网地址边界仍未实施，不能宣称共享 SSRF 债务已经整体关闭。
 
 ## 权威文件
 
@@ -148,3 +149,25 @@ P2-N2：
 
 P2-N1 可在完成上述门后作为半模块镜像发布，但必须在进度报告中明确 `P2-N2 private-network policy`
 仍未完成；只有 N2 也发布后，`docs/security-review-checklist.md` 的共享 source/RSS SSRF 项才能整体签收。
+
+## P2-N1 实施与发布结果
+
+- `backend/engine/fetcher.go` 已实现 15 秒默认总 timeout、16 MiB 单响应上限、5 次 redirect、最多
+  3 次 retry、绝对 HTTP(S)/host/port/userinfo 校验、fragment 清除、所有 body 关闭及跨 origin
+  credential/header 剥离；测试 client 覆盖栈和并发恢复不会泄漏旧 client。
+- `backend/api/rss.go`、`backend/api/sources.go` 已把 RSS 和远程 source JSON 预览/导入的公开失败
+  收敛为稳定无凭证文本；远程预览在读取 body 或发网前先完成编辑权限检查。
+- 新环境变量只约束后续请求，不修改 SQLite、`data/`、`cache/`、`library/`、书源/RSS JSON、
+  WebDAV 或备份格式。安全 TLS 保持为明确允许差异；N1 为兼容局域网书源，尚未改变 private target
+  可达性。
+- 验证：focused `go test -race ./engine`、全量 Go、frontend 706/706、production build；真实 API 的
+  CSS/JSONPath/XPath 搜索→BookInfo→目录→正文、Source/RSS/Index 工作区 1440×900、390×844、
+  360×800（RSS 另含 1024×1366）；fresh/historical volume、portable backup、restart 均通过。
+- 实现提交 `981bca7` 已推送 `main`。OrbStack 本机完成 amd64/arm64 构建并直接发布
+  `ghcr.io/changshengyu/openreader:981bca7` 与 `latest`，没有使用云构建。OCI index 为
+  `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`；amd64 为
+  `sha256:fd9f37f2d20c326c06cf0110fd8c6e529455523141e91383440bbb431dad06ce`，arm64 为
+  `sha256:852f6ef18e7f7506c7b03ea377e35f1f3b12d0ef5cc7a6833fc871307e5a9719`。
+
+仍未完成：P2-N2 private/loopback/link-local/metadata 拒绝、DNS-rebinding-safe dial、source proxy
+目标/端点复核及部署管理员 host/IP/CIDR allowlist。
