@@ -162,6 +162,9 @@ async function startOpenReader() {
       OPENREADER_JWT_SECRET: 'source-parser-workflow-smoke-secret',
       OPENREADER_CORS_ORIGIN: `http://127.0.0.1:${backendPort}`,
       OPENREADER_CHECK_INTERVAL: '24h',
+      // This parser-only fixture is intentionally loopback. Production keeps
+      // the P2-N2 public-only default unless an administrator opts in.
+      OPENREADER_SOURCE_NETWORK_ALLOWLIST: '127.0.0.1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

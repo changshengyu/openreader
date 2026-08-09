@@ -19,6 +19,7 @@ import (
 	"openreader/backend/services/coverimage"
 	"openreader/backend/services/epubreader"
 	"openreader/backend/services/readingprogress"
+	"openreader/backend/services/remotereader"
 	rssservice "openreader/backend/services/rss"
 	"openreader/backend/services/scheduler"
 	"openreader/backend/services/sourcefailure"
@@ -41,7 +42,7 @@ type Server struct {
 	progressSvc    *readingprogress.Service
 	rss            *rssservice.Service
 	sourceFailures *sourcefailure.Service
-	remoteReaders  *remoteReaderSessionStore
+	remoteReaders  *remotereader.Store
 	registerMu     sync.Mutex
 }
 
@@ -62,7 +63,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		progressSvc:    readingprogress.New(database, cfg.DataDir),
 		rss:            rssservice.New(database),
 		sourceFailures: sourcefailure.New(database),
-		remoteReaders:  newRemoteReaderSessionStore(),
+		remoteReaders:  remotereader.NewStore(remotereader.DefaultLimits(), nil),
 	}
 	server.cleanupPortableAssetRestoreJournals()
 

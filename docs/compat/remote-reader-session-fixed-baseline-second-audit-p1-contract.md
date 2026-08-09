@@ -1,6 +1,6 @@
 # 搜索/探索临时阅读会话固定上游第二轮合同（P1）
 
-状态：`inventory-complete / implementation-pending`
+状态：`implemented / regression-validated / Docker-pending`
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -29,9 +29,9 @@
 | 变量状态 | 创建保存 Book/Chapter variable；正文成功后回写 book 与当前 chapter variable | **已复核一致，但缺测试**。必须用至少两个章节证明章节变量隔离、书籍变量跨章可见和失败/取消不提交变量。 |
 | 取消 | 正文 fetch 使用 `c.Request.Context()`；取消分支不构造成功响应 | **实现方向正确，缺合同测试**。取消后不得继续解析、回写变量、记录 source failure 或产生持久副作用。 |
 | 错误脱敏 | `writeSourceError` 与共享 fetcher 的 typed/redacted error | **实现方向正确，缺合同测试**。响应和日志不得泄露规则、header、cookie、代理凭证或带 query/fragment 的远端 URL。 |
-| 请求体预算 | 创建接口直接 `ShouldBindJSON` | **必须修复**：在 JSON 解码前加硬上限，超限返回安全的 `413`；不得先访问书源。 |
-| 会话内存预算 | 当前 map 只清理到期条目，无个体/用户/进程预算 | **必须修复**：认证用户可反复创建会话并保留大目录，形成内存 DoS。 |
-| 非法章节索引 | 当前先 `get()` 续期，再解析 index | **必须修复**：格式错误或负数索引不得延长 idle lease；先校验 index，再触碰会话。 |
+| 请求体预算 | 创建接口曾直接 `ShouldBindJSON`；现使用受限唯一 JSON 解码 | **已修复**：Content-Length 与 chunked/trailing oversized body 均在 source lookup/transport 前安全返回 413。 |
+| 会话内存预算 | 原 map 只清理到期条目；现由 `services/remotereader` 管理 | **已修复**：单会话、用户和进程数量/字节预算及确定性 LRU 均有 focused/race 合同。 |
+| 非法章节索引 | 原实现先 `get()` 续期再解析；现先解析非负整数 | **已修复**：格式错误或负数索引不查询、不续期会话。 |
 | 显式关闭 | 当前无 DELETE；依靠 TTL | **允许差异/无需新增**：固定上游也没有服务端关闭动作。到期清理和受限 LRU 足够；浏览器卸载不建立不可靠的必达合同。 |
 
 ## 3. 稳定 API 合同
@@ -50,6 +50,7 @@
 - 成功返回该用户原始会话投影并续期 idle lease；`Cache-Control: no-store`。
 - 未知、已被预算驱逐或属于其他用户的 ID 返回相同的 `404`；自然到期返回 `410`。
 - idle TTL 保持 30 分钟；absolute TTL 保持 4 小时。任何续期都不得超过 absolute deadline。
+- 自然到期后的轻量标记只保存 session ID、user ID 与时间，最多 1024 条且最长再保留 4 小时；因此先被清理的自然到期仍为 410，同时不保留 source/book/chapter payload。预算驱逐不建立标记，仍为 404。
 
 ### `GET /api/reader/remote-sessions/:id/chapters/:index/content`
 
@@ -79,7 +80,7 @@
 - 临时 Reader 可以在当前组件内保留已加载正文以避免重复渲染，但不得写 OpenReader 的持久 shelf chapter cache、localStorage/IndexedDB、备份或 WebDAV。该 no-persistence 差异优先于上游旧实现的磁盘/浏览器缓存。
 - 离开临时 Reader 不要求可靠 DELETE；重新进入同一未到期 session 可恢复目录，但不承诺持久阅读进度。
 
-## 6. 实施前失败测试清单
+## 6. 失败测试与实施证据
 
 1. 创建体：缺字段、无效 variable、超 64 KiB 均在 transport 前失败；超限为 413。
 2. 生命周期：idle 续期、absolute TTL 不延长、自然到期 410、未知/foreign/驱逐 404。
@@ -91,4 +92,12 @@
 8. 前端：Search 与 Explore 共用 create→route；临时 Reader 不调用 progress/bookmark/cache/category/source-change writer；显式加入书架仍携带 bounded book variable。
 9. 回归：真实 Go fixture 完成 Search/Explore → BookInfo → temporary Reader → 跨章 → 显式加入书架，并在 1440×900、390×844、360×800 验证。
 
-只有上述失败测试先建立、实现通过并完成真实浏览器门禁后，本专项才可从 `implementation-pending` 改为 `aligned`。
+上述用例先以缺失 store 服务和 chunked trailing-body 绕过转红，再由实现关闭。当前证据：
+
+- `backend/services/remotereader/store_contract_test.go`：idle/absolute TTL、自然到期标记、用户/进程 count+byte LRU、oversized 原子拒绝、当前章节变量提交与 clone 隔离。
+- `backend/api/remote_reader_second_audit_contract_test.go`：64 KiB 唯一 JSON、校验先于 transport、非法 index 不续期、typed/redacted errors、跨章变量和取消回滚。
+- Go full、focused race、vet：通过；frontend 713/713 与生产 build：通过。
+- `remote-reader-contract.mjs`：1440×900、390×844、360×800 通过，并证明显式加入书架保留 bounded book variable、临时阅读零隐式写入。
+- `source-parser-workflow-contract.mjs`：真实 Go + CSS/JSONPath/XPath fixture 的 Search → BookInfo → temporary Reader → TOC/content 通过；测试进程显式 allowlist `127.0.0.1`，生产 public-only 默认未削弱。
+
+Docker 和 mounted-volume 门禁通过后，本专项可改为 `aligned / Docker-published / awaiting-device-verification`。

@@ -87,6 +87,23 @@ ambient process proxies. Docker public/host-gateway/loopback/exact-host/restart 
 mounted-volume, portable backup and restart gates passed. FlClash fake-IP ranges remain denied unless the deployment
 administrator explicitly allows them; this is documented rather than silently weakening the default policy.
 
+### P1 temporary remote-Reader session boundary (2026-08-09 regression-validated; Docker pending)
+
+- [x] `POST /api/reader/remote-sessions` accepts one JSON value within 64 KiB; declared and chunked oversized bodies fail with a safe 413 before source lookup or transport.
+- [x] Session IDs use 32 random bytes and are bound to the authenticated user. Unknown, foreign and LRU-evicted IDs are indistinguishable 404s; natural expiry remains 410 without being confused with JWT expiry.
+- [x] Idle lifetime is 30 minutes and absolute lifetime is four hours. Per-session (8 MiB), per-user (8 sessions/32 MiB) and process (128 sessions/128 MiB) retention budgets use deterministic LRU eviction; bounded expiry markers preserve 410 without retaining source snapshots.
+- [x] Retained-byte estimation includes the complete server-side source snapshot, book and chapters. Source rules, headers/cookies, login state, proxy credentials and resolved fetch URLs are never serialized to the client.
+- [x] Content requests trust only the server catalogue index/URL. Malformed indices do not renew a lease; successful parser variables commit atomically to the book/current chapter while other chapters remain isolated.
+- [x] Cancellation produces no synthetic success/error body, variable commit, source-failure row, shelf/cache/database/file write or sync event. Typed transport failures alone enter the caller-scoped short-lived failure cache, and API errors redact raw rules, credentials, response content and URL query/fragment.
+- [x] The session remains memory-only and cannot enter SQLite, chapter cache, browser persistence, backup/WebDAV or shelf WebSocket events. Durable controls continue to require an explicit add-to-shelf action.
+
+Evidence: `backend/services/remotereader/store_contract_test.go`,
+`backend/api/remote_reader_second_audit_contract_test.go`, the full Go/race/vet gates,
+`scripts/smoke/remote-reader-contract.mjs`,
+`scripts/smoke/source-parser-workflow-contract.mjs`, and
+[`docs/compat/remote-reader-session-fixed-baseline-second-audit-p1-contract.md`](compat/remote-reader-session-fixed-baseline-second-audit-p1-contract.md).
+Docker and mounted-volume gates remain pending before publication.
+
 ## P2 RSS requested-page and import review (2026-08-09 implementation)
 
 - [x] Every source, article, import update and page cache write is scoped to the

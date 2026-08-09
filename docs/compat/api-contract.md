@@ -664,7 +664,7 @@ Frontend ownership rules:
 - Opening a result cover only opens the shared BookInfo; opening result body may create a temporary
   Reader session. Neither preview action persists a shelf book.
 
-## P1-B remote temporary-reader contract (second audit inventory complete)
+## P1-B remote temporary-reader contract (second audit implemented; Docker pending)
 
 Reader-dev permits a search/explore result to enter Reader before it has been
 added to the shelf. Its Vuex `readingBook` is an in-memory reading context, not
@@ -672,11 +672,11 @@ a saved shelf row. OpenReader adds a server-owned expiring session so Vue 3 can
 preserve that behavior without treating `POST /api/books/remote` as a read
 operation. The main slice is implemented and covered by an API contract test
 plus the desktop and two mobile browser flows on 2026-07-13. The fixed-baseline
-second audit on 2026-08-09 found missing request/session memory budgets and an
-invalid chapter-index lease extension. The authoritative lifecycle, variable,
-cancellation, redaction and retention contract is now
+second audit on 2026-08-09 found and corrected missing request/session memory
+budgets and an invalid chapter-index lease extension. The authoritative
+lifecycle, variable, cancellation, redaction and retention contract is now
 [`remote-reader-session-fixed-baseline-second-audit-p1-contract.md`](remote-reader-session-fixed-baseline-second-audit-p1-contract.md);
-its implementation status is pending.
+implemented and regression-validated; Docker publication is pending.
 
 | Method / path | Request | Success / side effects | Auth and errors |
 |---|---|---|---|
@@ -686,13 +686,13 @@ its implementation status is pending.
 
 ### Runtime and frontend boundary
 
-- Session IDs are high-entropy opaque values, held server-side only; they are never JWTs, never appear in a source URL, never enter backup/WebDAV/export data, and use `Cache-Control: no-store`. The implemented idle TTL is 30 minutes and the absolute lifetime is four hours. Expiration returns `410`, never a silent account/session logout.
+- Session state is held server-side behind a high-entropy opaque ID carried only by the authenticated OpenReader route/API; it is never a JWT, never appears in a source URL, never enters backup/WebDAV/export data, and uses `Cache-Control: no-store`. The implemented idle TTL is 30 minutes and the absolute lifetime is four hours. Expiration returns `410`, never a silent account/session logout.
 - The complete source snapshot, request credentials and resolved fetch URLs stay server-side. Bounded opaque Book/Chapter variables may be returned to the same authenticated user because they are upstream entity state and the Book variable is needed for a later explicit add-to-shelf; the frontend never interprets them as request URLs. Temporary sessions deliberately do **not** save browser-local or server progress, and must not call `/progress/:bookId`, bookmark, cache, category, source-change, refresh, or any other shelf-ID endpoint with a fabricated ID.
 - Retention is bounded by the specialist contract: 8 MiB per session, eight sessions/32 MiB per user, and 128 sessions/128 MiB per process, with deterministic least-recently-used eviction after expired-session purge. Eviction is memory-only and appears as 404.
 - Search and Explore must call this same session creation endpoint and use the same reader route form, e.g. `/reader/remote/:sessionId`; neither preview nor result-body reading may call `POST /books/remote`. Persistence starts only from an explicit result-card or BookInfo “加入书架” action. The result card confirms categories first; BookInfo adds directly. Both may forward the returned opaque `variable` field.
 - Reader controls that require a durable shelf record (bookmark creation, group editing, cache/clear cache, durable progress, source change/refresh) must be either temporarily unavailable with an explicit “加入书架后可用” state or receive a separately documented temporary-session contract. They must never fail as a hidden `404` caused by a synthetic book ID.
 
-Existing tests: `backend/api/remote_reader_contract_test.go` proves user isolation, content loading and zero Book/Chapter/Progress/Bookmark writes. `scripts/smoke/remote-reader-contract.mjs` proves Search cover → BookInfo, Search body → temporary Reader, and zero persistent writer requests at 1440×900, 390×844 and 360×800. These are only the starting point. The second-audit contract requires new failing tests for body/retention budgets, expiry/LRU, invalid-index lease behavior, safe parser error redaction, cancellation, source-failure cache and cross-chapter variable propagation before implementation.
+Regression evidence now includes `backend/api/remote_reader_contract_test.go`, `backend/api/remote_reader_second_audit_contract_test.go`, `backend/services/remotereader/store_contract_test.go`, focused race, full Go/vet, frontend 713/713/build, three-viewport `remote-reader-contract.mjs`, and real Go CSS/JSONPath/XPath `source-parser-workflow-contract.mjs`. Body/retention budgets, expiry/LRU, invalid-index lease behavior, safe parser error redaction, cancellation, source-failure cache and cross-chapter variable propagation are covered. Docker/mounted-volume publication remains pending.
 
 ## Compatibility rule
 

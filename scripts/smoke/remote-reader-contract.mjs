@@ -90,6 +90,7 @@ async function installApiMocks(page) {
           sourceId: 1,
           url: remoteBook().bookUrl,
           chapterCount: 1,
+          variable: '{"session":"book-variable"}',
         },
         chapters: [{ id: 0, index: 0, title: '第一章', url: 'https://source.example/chapter/1' }],
       }, 201))
@@ -119,6 +120,7 @@ async function installApiMocks(page) {
           sourceId: 1,
           url: remoteBook().bookUrl,
           chapterCount: 1,
+          variable: '{"session":"book-variable"}',
         },
         chapters: [{ id: 0, index: 0, title: '第一章', url: 'https://source.example/chapter/1' }],
       }))
@@ -198,6 +200,7 @@ async function runViewport(browser, viewport) {
   const directAddRequest = await remoteCreateRequest
   const directAddPayload = directAddRequest.postDataJSON() || {}
   assert(Array.isArray(directAddPayload.categoryIds) && directAddPayload.categoryIds.length === 0, `${viewport.width}: temporary Reader BookInfo must direct-add without categories`)
+  assert(directAddPayload.variable === '{"session":"book-variable"}', `${viewport.width}: temporary Reader BookInfo must preserve the bounded book variable`)
   assert(await categoryDialog.isHidden(), `${viewport.width}: temporary Reader BookInfo direct add must not open the result-card chooser`)
   assert(await page.evaluate(() => window.__remoteReaderBookCreates()) === 1, `${viewport.width}: temporary Reader direct add must create one shelf book`)
   await temporaryReaderBookInfo.getByText('分组：', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
