@@ -5,6 +5,15 @@ regression-validated and Docker-published on 2026-07-28 for the manual-create
 editor transition described below. This contract was extracted before changing
 the corresponding RSS application behavior.
 
+Supersession notice (2026-08-09):
+[`rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md`](rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md)
+withdraws this document's acceptance of the structured editor, empty manual
+title, rich article controls, cached-list paging and other visible/runtime
+equivalence claims. The source name/URL identity, same-user replacement,
+transactional delete, request ownership, account isolation and security/data
+requirements below remain authoritative unless the newer contract says
+otherwise.
+
 Fixed baseline:
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 

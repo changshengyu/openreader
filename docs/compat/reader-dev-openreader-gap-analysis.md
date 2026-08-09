@@ -3379,3 +3379,29 @@ frontend 649/649、Go 全量和 production build 通过。专项浏览器在
 工作台三视口和 Reader 桌面/手机/iPad 选中文字流程也通过。RE2 pattern 子集、JWT/SQLite、
 legacy 空 scope 及隐藏兼容 API 是唯一明确允许差异；Docker mounted-volume/backup 门在提交后
 执行。
+
+## 2026-08-09 RSS 可见工作区与分页第二轮固定基准复审
+
+此前 RSS 合同虽然纠正了 Drawer、三层弹窗所有权、账号隔离、同 URL 身份和事务删除，却错误地
+把 OpenReader 的富卡片、结构化表单、直接全量导入、文章筛选/收藏和缓存分页当成了允许增强。
+重新逐行核对固定 `RssSourceList.vue`、`RssArticleList.vue`、`RssArticle.vue`、根 `App.vue`、
+`Index.vue` 导入流程及 `RssSourceController/Rss.getArticles` 后，现撤销该结论。
+
+固定上游源场景是标题为 `RSS订阅(N)` 的 500px/fullscreen Dialog，只有新增、导入、编辑，
+内部始终为四列 25% 图标/名称网格；编辑模式只叠加删除和编辑图标。新增/编辑使用 750–1000px
+通用 JSON editor，导入先进入默认零选择的 checkbox Dialog。文章列表同样是 500px/fullscreen，
+只显示可选 tabs、标题、日期、图片和固定加载更多；正文弹层只显示 `content || description`。
+当前重复 panel header、760/900px 几何、group/enabled/refresh、structured form、全量确认、
+all/unread/favorite、作者/摘要、已读/收藏、正文 metadata/footer 都是 `must-fix`。
+
+后端还存在语义级偏差：当前一次 refresh 会沿下一页循环直至结束或 1000 页；固定上游每次
+`getRssArticles(page)` 只发起请求页。后续 REST 可继续使用 user-scoped ID 和 SQLite cache，
+但 source/sort/page 必须成为一次有界操作，page 1 不得预抓 page 2…1000，响应也不得再由全局
+缓存重新切片冒充请求页。
+
+完整证据、允许差异和 test-first 门禁见
+[`rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md`](rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md)。
+状态为 `audit-complete / implementation-pending`；本次 inventory 只修改合同和总矩阵，未修改
+RSS 应用或测试代码。下一步必须先替换固化错误富 UI/缓存分页的测试，再依次重建 source/editor/
+import、article/content 和 page API/parser 数据流。JWT/SQLite 用户隔离、HTML 清洗、SSRF/超时/
+大小/重定向限制、请求 generation、事务删除及隐藏 read/favorite 数据继续作为条件保留。
