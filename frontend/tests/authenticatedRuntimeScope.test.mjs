@@ -951,6 +951,8 @@ test('callbacks from a superseded websocket cannot close, clear, reconnect, or d
   bookshelf.loadBookGroups = async () => []
   const sync = useSync()
 
+  assert.equal(sync.send, undefined, 'the sync transport must not expose an unaudited client-to-server event path')
+
   sync.connect()
   const socketA = FakeWebSocket.instances[0]
   socketA.readyState = FakeWebSocket.OPEN
