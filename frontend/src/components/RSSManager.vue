@@ -1,176 +1,86 @@
 <template>
   <section class="rss-manager">
-    <article class="rss-panel">
-      <header class="rss-head">
-        <div>
-          <strong>RSS 源</strong>
-          <span>{{ sources.length }} 个订阅</span>
-        </div>
-        <div class="rss-actions">
-          <el-button size="small" @click="rssEditMode = !rssEditMode">{{ rssEditMode ? '取消' : '编辑' }}</el-button>
-          <el-button size="small" :loading="importingSources" @click="triggerSourceImport">导入</el-button>
-          <el-button size="small" type="primary" @click="openEditor()">新增</el-button>
-          <el-button size="small" :loading="sourcesLoading" @click="loadSources">刷新</el-button>
-          <input ref="sourceImportInput" class="rss-source-import-input" type="file" accept=".json,application/json" @change="importRSSSources" />
-        </div>
-      </header>
-      <div v-loading="sourcesLoading" class="rss-source-list">
-        <div
-          v-for="source in sources"
-          :key="source.id"
-          class="rss-source-card"
-          :class="{ active: selectedSourceId === source.id }"
-        >
-          <button type="button" @click="selectSource(source.id)">
-            <span class="rss-source-icon" :class="{ placeholder: !source.icon }">
-              <img v-if="source.icon" :src="source.icon" alt="" loading="lazy" @error="source.icon = ''" />
-              <span v-else>{{ sourceInitial(source) }}</span>
-            </span>
-            <strong>{{ source.title || '未命名 RSS' }}</strong>
-            <small v-if="source.group">{{ source.group }}</small>
-          </button>
-          <span class="rss-source-tools">
-            <el-tag size="small" :type="source.enabled === false ? 'info' : 'success'" effect="plain">
-              {{ source.enabled === false ? '停用' : '启用' }}
-            </el-tag>
-            <template v-if="rssEditMode">
-              <el-button size="small" text :loading="refreshingSourceId === source.id" @click="refreshSource(source)">刷新</el-button>
-              <el-button size="small" text @click="openEditor(source)">编辑</el-button>
-              <el-button size="small" text type="danger" @click="removeSource(source)">删除</el-button>
-            </template>
+    <el-dialog
+      :model-value="visible"
+      width="500px"
+      :fullscreen="isMobile"
+      class="global-rss-dialog"
+      destroy-on-close
+      @update:model-value="handleRootVisibleChange"
+    >
+      <template #header>
+        <div class="rss-dialog-title">
+          <span class="rss-dialog-title-text">RSS订阅({{ sources.length }})</span>
+          <span class="rss-title-actions">
+            <span class="rss-title-action" @click="openEditor()">新增</span>
+            <span class="rss-title-action" @click="triggerSourceImport">导入</span>
+            <span class="rss-title-action" @click="rssEditMode = !rssEditMode">{{ rssEditMode ? '取消' : '编辑' }}</span>
           </span>
         </div>
-        <el-empty v-if="!sourcesLoading && !sources.length" description="暂无 RSS 源" />
-      </div>
-    </article>
+      </template>
 
-    <el-dialog
-      v-model="articleListDialogVisible"
-      :title="selectedSource?.title || 'RSS 文章'"
-      width="min(900px, calc(100vw - 48px))"
-      :fullscreen="isMobile"
-      class="rss-article-list-dialog"
-    >
-      <article class="rss-panel rss-article-list-panel">
-        <header class="rss-head">
-          <div>
-            <strong>文章</strong>
-            <span>{{ articleCountText }}</span>
-          </div>
-          <div class="rss-actions">
-            <el-select
-              v-if="selectedSortOptions.length > 1"
-              v-model="selectedSortURL"
-              size="small"
-              class="rss-sort-select"
-              @change="handleSortChange"
-            >
-              <el-option v-for="option in selectedSortOptions" :key="option.value" :label="option.label" :value="option.value" />
-            </el-select>
-            <el-radio-group v-model="articleFilter" size="small" @change="handleFilterChange">
-              <el-radio-button value="all">全部</el-radio-button>
-              <el-radio-button value="unread">未读</el-radio-button>
-              <el-radio-button value="favorite">收藏</el-radio-button>
-            </el-radio-group>
-            <el-button size="small" :loading="refreshingSourceId === selectedSourceId" @click="refreshSelectedSource">刷新文章</el-button>
-          </div>
-        </header>
-        <div v-loading="articlesLoading" class="rss-article-list">
-          <article v-for="article in articles" :key="article.id" class="rss-article-row" :class="{ read: article.isRead }">
-            <button type="button" @click="openArticle(article)">
-              <span class="rss-article-info">
-                <strong>{{ article.title }}</strong>
-                <small>{{ articleDateText(article) }} · {{ article.author || '未知作者' }}</small>
-                <span>{{ stripHTML(article.summary || article.content || '无摘要') }}</span>
-              </span>
-              <span v-if="article.image" class="rss-article-image" @click.stop.prevent="openArticleListImagePreview(article)">
-                <img :src="article.image" alt="" loading="lazy" />
-              </span>
-            </button>
-            <span class="rss-article-tools">
-              <el-button size="small" text @click="toggleRead(article)">
-                {{ article.isRead ? '标未读' : '标已读' }}
-              </el-button>
-              <el-button
-                size="small"
-                text
-                :type="article.favorite ? 'warning' : 'info'"
-                @click="toggleFavorite(article)"
-              >
-                {{ article.favorite ? '已收藏' : '收藏' }}
-              </el-button>
-            </span>
-          </article>
-          <button v-if="articles.length || hasMoreArticles" type="button" class="load-more-rss" :disabled="!hasMoreArticles || articlesLoadingMore" @click="loadMoreArticles">
-            {{ hasMoreArticles ? (articlesLoadingMore ? '加载中...' : '加载更多') : '没有更多啦' }}
-          </button>
-          <el-empty v-if="!articlesLoading && !articles.length" description="暂无 RSS 文章" />
-        </div>
-      </article>
+      <input
+        ref="sourceImportInput"
+        class="rss-source-import-input"
+        type="file"
+        accept=".json,application/json"
+        @change="readRSSSourceFile"
+      />
+      <RSSSourceGrid
+        :sources="sources"
+        :edit-mode="rssEditMode"
+        @open="selectSource"
+        @edit="openEditor"
+        @remove="removeSource"
+      />
     </el-dialog>
 
-    <el-dialog
+    <RSSJsonEditorDialog
       v-model="editorVisible"
-      :title="editingSourceId ? '编辑 RSS 源' : '新增 RSS 源'"
-      width="520px"
-      :fullscreen="isMobile"
-      class="rss-source-editor-dialog"
-    >
-      <el-form label-position="top">
-        <el-form-item label="名称"><el-input v-model="draft.title" /></el-form-item>
-        <el-form-item label="订阅地址"><el-input v-model="draft.url" /></el-form-item>
-        <el-form-item label="图标地址"><el-input v-model="draft.icon" /></el-form-item>
-        <el-form-item label="分组"><el-input v-model="draft.group" /></el-form-item>
-        <el-form-item label="源注释"><el-input v-model="draft.comment" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="排序"><el-input-number v-model="draft.customOrder" :min="0" :step="1" controls-position="right" /></el-form-item>
-        <el-form-item><el-switch v-model="draft.enabled" active-text="启用" inactive-text="停用" /></el-form-item>
-        <el-collapse class="rss-rule-collapse">
-          <el-collapse-item title="高级规则" name="advanced">
-            <div class="rss-rule-grid">
-              <el-form-item label="单页地址"><el-switch v-model="draft.singleUrl" active-text="单页" inactive-text="分页" /></el-form-item>
-              <el-form-item label="文章样式"><el-input-number v-model="draft.articleStyle" :min="0" :step="1" controls-position="right" /></el-form-item>
-              <el-form-item label="启用 JS（兼容字段）"><el-switch v-model="draft.enableJs" active-text="启用" inactive-text="停用" /></el-form-item>
-              <el-form-item label="使用基础地址（兼容字段）"><el-switch v-model="draft.loadWithBaseUrl" active-text="启用" inactive-text="停用" /></el-form-item>
-              <el-form-item label="请求头 header"><el-input v-model="draft.header" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" placeholder='JSON 或每行 Header: Value' /></el-form-item>
-              <el-form-item label="登录地址（仅保存）"><el-input v-model="draft.loginUrl" /></el-form-item>
-              <el-form-item label="登录检测 JS（仅保存）"><el-input v-model="draft.loginCheckJs" type="textarea" :rows="2" /></el-form-item>
-              <el-form-item label="并发率"><el-input v-model="draft.concurrentRate" placeholder="例如 1000 或 3/1000" /></el-form-item>
-              <el-form-item label="排序地址 sortUrl"><el-input v-model="draft.sortUrl" /></el-form-item>
-              <el-form-item label="文章列表 ruleArticles"><el-input v-model="draft.ruleArticles" /></el-form-item>
-              <el-form-item label="标题 ruleTitle"><el-input v-model="draft.ruleTitle" /></el-form-item>
-              <el-form-item label="发布时间 rulePubDate"><el-input v-model="draft.rulePubDate" /></el-form-item>
-              <el-form-item label="摘要 ruleDescription"><el-input v-model="draft.ruleDescription" /></el-form-item>
-              <el-form-item label="图片 ruleImage"><el-input v-model="draft.ruleImage" /></el-form-item>
-              <el-form-item label="链接 ruleLink"><el-input v-model="draft.ruleLink" /></el-form-item>
-              <el-form-item label="正文 ruleContent"><el-input v-model="draft.ruleContent" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" /></el-form-item>
-              <el-form-item label="显示样式（仅保存）"><el-input v-model="draft.style" type="textarea" :rows="2" /></el-form-item>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-      </el-form>
-      <template #footer>
-        <el-button @click="editorVisible = false">取消</el-button>
-        <el-button type="primary" :loading="savingSource" @click="saveSource">保存</el-button>
-      </template>
-    </el-dialog>
+      v-model:content="editorContent"
+      :is-mobile="isMobile"
+      :saving="savingSource"
+      @close="closeEditor"
+      @save="saveSource"
+    />
 
-    <el-dialog v-model="articleDialogVisible" :title="selectedArticle?.title || 'RSS 文章'" width="720px" class="rss-article-content-dialog" :fullscreen="isMobile">
-      <article v-if="selectedArticle" v-loading="articleContentLoading" class="rss-reader">
-        <h2>{{ selectedArticle.title }}</h2>
-        <small>{{ articleDateText(selectedArticle) }} · {{ selectedArticle.author || '未知作者' }}</small>
-        <div class="rss-reader-content" v-html="articleBodyHTML(selectedArticle)" @click="handleArticleContentClick" />
-      </article>
-      <template #footer>
-        <el-button @click="articleDialogVisible = false">关闭</el-button>
-        <el-button v-if="selectedArticle" @click="toggleRead(selectedArticle)">
-          {{ selectedArticle.isRead ? '标为未读' : '标为已读' }}
-        </el-button>
-        <el-button v-if="selectedArticle" :type="selectedArticle.favorite ? 'warning' : 'default'" @click="toggleFavorite(selectedArticle)">
-          {{ selectedArticle.favorite ? '取消收藏' : '收藏' }}
-        </el-button>
-        <el-button v-if="selectedArticle?.link" type="primary" @click="openExternal(selectedArticle.link)">打开原文</el-button>
-      </template>
-    </el-dialog>
+    <RSSImportDialog
+      v-model="importDialogVisible"
+      v-model:selected="selectedImportIndexes"
+      :sources="importSources"
+      :check-all="importCheckAll"
+      :indeterminate="importIndeterminate"
+      :is-mobile="isMobile"
+      :saving="importingSources"
+      @check-all="handleImportCheckAll"
+      @cancel="closeImportDialog"
+      @confirm="saveImportedSources"
+    />
+
+    <RSSArticleListDialog
+      v-model="articleListDialogVisible"
+      :title="sourceName(selectedSource)"
+      :is-mobile="isMobile"
+      :sort-options="selectedSortOptions"
+      :sort-name="selectedSortName"
+      :articles="articles"
+      :loading="articlesLoading"
+      :loading-more="articlesLoadingMore"
+      :has-more="hasMoreArticles"
+      @close="closeArticleList"
+      @sort-change="handleSortChange"
+      @open-article="openArticle"
+      @load-more="loadMoreArticles"
+    />
+
+    <RSSArticleDialog
+      v-model="articleDialogVisible"
+      :title="selectedArticle?.title || ''"
+      :content="articleBodyHTML(selectedArticle)"
+      :is-mobile="isMobile"
+      @close="closeArticle"
+      @preview-images="openArticleImagePreview"
+    />
 
     <el-image-viewer
       v-if="articleImagePreviewVisible"
@@ -184,12 +94,31 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createRSSSource, deleteRSSSource, getRSSArticleContent, listRSSArticles, listRSSSources, refreshRSSSource, updateRSSArticle, updateRSSSource } from '../api/rss'
-import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
-import { currentUserScope } from '../utils/authScope'
-import { createRSSArticleRequestGate } from '../utils/rssArticleRequestGate'
-import { planRSSSourceImport } from '../utils/rssSourceImport'
+import {
+  createRSSSource,
+  deleteRSSSource,
+  getRSSArticleContent,
+  importRSSSourcesBatch,
+  listRSSSources,
+  refreshRSSSource,
+  updateRSSSource,
+} from '../api/rss'
 import { useAuthenticatedOperationGuard } from '../composables/useAuthenticatedOperationGuard'
+import { currentUserScope } from '../utils/authScope'
+import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../utils/browserCache'
+import { createRSSArticleRequestGate } from '../utils/rssArticleRequestGate'
+import {
+  createDefaultRSSSource,
+  normalizeRSSSourceImport,
+  parseRSSSortOptions,
+  safeRSSImportIndexes,
+  toUpstreamRSSSource,
+} from '../utils/rssSourceImport'
+import RSSArticleDialog from './rss/RSSArticleDialog.vue'
+import RSSArticleListDialog from './rss/RSSArticleListDialog.vue'
+import RSSImportDialog from './rss/RSSImportDialog.vue'
+import RSSJsonEditorDialog from './rss/RSSJsonEditorDialog.vue'
+import RSSSourceGrid from './rss/RSSSourceGrid.vue'
 
 const props = defineProps({
   isMobile: {
@@ -202,80 +131,64 @@ const props = defineProps({
   },
 })
 
-const ARTICLE_LIMIT = 50
+const emit = defineEmits(['close'])
 const operations = useAuthenticatedOperationGuard()
-
-const sources = ref([])
-const articles = ref([])
-const selectedSourceId = ref('')
-const selectedSortURL = ref('')
-const sourcesLoading = ref(false)
-const articlesLoading = ref(false)
-const articlesLoadingMore = ref(false)
-const refreshingSourceId = ref(null)
-const rssEditMode = ref(false)
-const editorVisible = ref(false)
-const savingSource = ref(false)
-const importingSources = ref(false)
-const editingSourceId = ref(null)
-const draft = ref({ title: '', url: '', icon: '', group: '', customOrder: 0, enabled: true })
-const articleDialogVisible = ref(false)
-const articleContentLoading = ref(false)
-const selectedArticle = ref(null)
-const articleFilter = ref('all')
-const articlePage = ref(1)
-const hasMoreArticles = ref(false)
-const sourceImportInput = ref(null)
-const articleListDialogVisible = ref(false)
-const articleImagePreviewVisible = ref(false)
-const articlePreviewImages = ref([])
-const articlePreviewIndex = ref(0)
-let rssReloadTimer
-let articleOpenRequest = 0
 const articleListRequestGate = createRSSArticleRequestGate()
 const articleLoadMoreRequestGate = createRSSArticleRequestGate()
 
-const RSS_ADVANCED_FIELDS = [
-  'singleUrl',
-  'articleStyle',
-  'comment',
-  'concurrentRate',
-  'header',
-  'loginUrl',
-  'loginCheckJs',
-  'sortUrl',
-  'ruleArticles',
-  'ruleNextPage',
-  'ruleTitle',
-  'rulePubDate',
-  'ruleDescription',
-  'ruleImage',
-  'ruleLink',
-  'ruleContent',
-  'style',
-  'enableJs',
-  'loadWithBaseUrl',
-]
+const sources = ref([])
+const sourcesLoading = ref(false)
+const rssEditMode = ref(false)
+const sourceImportInput = ref(null)
 
-const articleCountText = computed(() => `${articles.value.length} 篇${hasMoreArticles.value ? '+' : ''}`)
-const rssArticleImageList = computed(() => articles.value.map(article => article.image).filter(Boolean))
+const editorVisible = ref(false)
+const editorContent = ref('')
+const editingSourceId = ref(null)
+const savingSource = ref(false)
+
+const importDialogVisible = ref(false)
+const importSources = ref([])
+const selectedImportIndexes = ref([])
+const importingSources = ref(false)
+
+const selectedSourceId = ref('')
+const selectedSortName = ref('')
+const selectedSortURL = ref('')
+const articleListDialogVisible = ref(false)
+const articles = ref([])
+const articlePage = ref(1)
+const hasMoreArticles = ref(true)
+const articlesLoading = ref(false)
+const articlesLoadingMore = ref(false)
+
+const articleDialogVisible = ref(false)
+const selectedArticle = ref(null)
+const articleImagePreviewVisible = ref(false)
+const articlePreviewImages = ref([])
+const articlePreviewIndex = ref(0)
+let articleOpenRequest = 0
+
 const selectedSource = computed(() => sources.value.find(source => source.id === selectedSourceId.value) || null)
-const selectedSortOptions = computed(() => rssSortOptions(selectedSource.value))
-const selectedSortOption = computed(() => selectedSortOptions.value.find(option => option.value === selectedSortURL.value) || null)
+const selectedSortOptions = computed(() => parseRSSSortOptions(toUpstreamRSSSource(selectedSource.value || {})))
+const importCheckAll = computed(() => (
+  importSources.value.length > 0 && selectedImportIndexes.value.length === importSources.value.length
+))
+const importIndeterminate = computed(() => (
+  selectedImportIndexes.value.length > 0 && selectedImportIndexes.value.length < importSources.value.length
+))
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener('openreader:rss-updated', handleRSSUpdated)
-  if (props.visible) await openRSSWorkspace()
+  if (props.visible) openRSSWorkspace()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('openreader:rss-updated', handleRSSUpdated)
-  clearRSSReloadTimer()
 })
 
-watch(() => props.visible, async (visible) => {
+watch(() => props.visible, (visible) => {
   if (visible) {
-    await openRSSWorkspace()
+    openRSSWorkspace()
     return
   }
   resetRSSWorkspace()
@@ -286,88 +199,12 @@ watch(articleListDialogVisible, (visible) => {
 })
 
 async function openRSSWorkspace() {
-  const operation = operations.begin('open-workspace')
+  const operation = operations.begin('open-rss-workspace')
   await loadSources(operation)
 }
 
-function resetSourceArticleState({ resetSort = false } = {}) {
-  operations.invalidate('load-articles')
-  operations.invalidate('load-more-articles')
-  operations.invalidate('open-article')
-  invalidateArticleRequests()
-  articleOpenRequest += 1
-  articles.value = []
-  articlePage.value = 1
-  hasMoreArticles.value = false
-  articlesLoading.value = false
-  articlesLoadingMore.value = false
-  if (resetSort) selectedSortURL.value = ''
-  articleDialogVisible.value = false
-  articleContentLoading.value = false
-  selectedArticle.value = null
-  articleImagePreviewVisible.value = false
-  articlePreviewImages.value = []
-  articlePreviewIndex.value = 0
-}
-
-function resetRSSWorkspace() {
-  operations.reset()
-  clearRSSReloadTimer()
-  articleListDialogVisible.value = false
-  resetSourceArticleState({ resetSort: true })
-  sources.value = []
-  selectedSourceId.value = ''
-  articleFilter.value = 'all'
-  rssEditMode.value = false
-  editorVisible.value = false
-  editingSourceId.value = null
-  refreshingSourceId.value = null
-}
-
-async function loadSources(parentOperation = null) {
-  if (parentOperation && !operations.canCommit(parentOperation)) return false
-  const operation = operations.begin('load-sources')
-  sourcesLoading.value = true
-  try {
-    const response = await cacheFirstRequest(
-      () => listRSSSources(),
-      rssSourcesCacheKey(),
-      { validate: data => Array.isArray(data) },
-    )
-    if (!operations.canCommit(operation)) return false
-    applyRSSSources(response.data)
-    if (response.fromCache) refreshRSSSourcesCache(operation).catch(() => {})
-    return true
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '加载 RSS 源失败'))
-    return false
-  } finally {
-    if (operations.canCommit(operation)) sourcesLoading.value = false
-  }
-}
-
-async function refreshRSSSourcesCache(parentOperation = null) {
-  if (parentOperation && !operations.canCommit(parentOperation)) return false
-  const operation = operations.begin('refresh-sources-cache')
-  const response = await networkFirstRequest(
-    () => listRSSSources(),
-    rssSourcesCacheKey(),
-    { validate: data => Array.isArray(data) },
-  )
-  if (!operations.canCommit(operation)) return false
-  applyRSSSources(response.data)
-  return true
-}
-
-function applyRSSSources(data) {
-  if (!props.visible) return
-  sources.value = Array.isArray(data) ? data : []
-  if (!sources.value.length) rssEditMode.value = false
-  if (!selectedSourceId.value && sources.value.length) selectedSourceId.value = sources.value[0].id
-  if (selectedSourceId.value && !sources.value.some(source => source.id === selectedSourceId.value)) {
-    selectedSourceId.value = sources.value[0]?.id || ''
-  }
-  syncSelectedSortURL()
+function handleRootVisibleChange(visible) {
+  if (!visible) emit('close')
 }
 
 function rssSourcesCacheKey() {
@@ -378,71 +215,210 @@ async function invalidateRSSSourcesCache() {
   await removeBrowserCache(rssSourcesCacheKey())
 }
 
-function handleRSSUpdated(event) {
-  const detail = event?.detail || {}
-  const article = detail.payload?.article
-  if (article?.id && selectedArticle.value?.id === article.id) {
-    selectedArticle.value = { ...selectedArticle.value, ...article }
+async function loadSources(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return false
+  const operation = operations.begin('load-rss-sources')
+  sourcesLoading.value = true
+  try {
+    const response = await cacheFirstRequest(
+      () => listRSSSources(),
+      rssSourcesCacheKey(),
+      { validate: data => Array.isArray(data) },
+    )
+    if (!operations.canCommit(operation) || !props.visible) return false
+    applyRSSSources(response.data)
+    if (response.fromCache) refreshRSSSourcesCache(operation).catch(() => {})
+    return true
+  } catch (error) {
+    if (operations.canCommit(operation)) ElMessage.error(readError(error, '加载 RSS 源失败'))
+    return false
+  } finally {
+    if (operations.canCommit(operation)) sourcesLoading.value = false
   }
-  scheduleRSSReload(detail)
 }
 
-function scheduleRSSReload(detail = {}) {
-  clearRSSReloadTimer()
-  const operation = operations.begin('scheduled-reload')
-  rssReloadTimer = window.setTimeout(async () => {
-    rssReloadTimer = undefined
+async function refreshRSSSourcesCache(parentOperation = null) {
+  if (parentOperation && !operations.canCommit(parentOperation)) return false
+  const operation = operations.begin('refresh-rss-source-cache')
+  const response = await networkFirstRequest(
+    () => listRSSSources(),
+    rssSourcesCacheKey(),
+    { validate: data => Array.isArray(data) },
+  )
+  if (!operations.canCommit(operation) || !props.visible) return false
+  applyRSSSources(response.data)
+  return true
+}
+
+function applyRSSSources(data) {
+  sources.value = [...(Array.isArray(data) ? data : [])]
+    .sort((left, right) => Number(left.customOrder || 0) - Number(right.customOrder || 0))
+  if (!sources.value.length) rssEditMode.value = false
+  if (selectedSourceId.value && !sources.value.some(source => source.id === selectedSourceId.value)) {
+    selectedSourceId.value = ''
+  }
+}
+
+function sourceName(source) {
+  return source?.sourceName || source?.title || ''
+}
+
+function sourceURL(source) {
+  return source?.sourceUrl || source?.url || ''
+}
+
+function triggerSourceImport() {
+  sourceImportInput.value?.click()
+}
+
+async function readRSSSourceFile(event) {
+  const file = event?.target?.files?.[0]
+  if (event?.target) event.target.value = ''
+  if (!file) return
+  const operation = operations.begin('read-rss-import')
+  try {
+    const parsed = JSON.parse(await file.text())
     if (!operations.canCommit(operation)) return
-    try {
-      if (detail.sources) {
-        await invalidateRSSSourcesCache()
-        if (!operations.canCommit(operation)) return
-        await loadSources(operation)
-      }
-      if (!operations.canCommit(operation)) return
-      if (detail.articles) await loadArticles(operation)
-    } catch {
-      // Keep the visible RSS state; the next manual refresh or sync event can recover.
-    }
-  }, 250)
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error('invalid RSS source file')
+    importSources.value = normalizeRSSSourceImport(parsed)
+    selectedImportIndexes.value = []
+    importDialogVisible.value = true
+  } catch {
+    if (operations.canCommit(operation)) ElMessage.error('RSS源文件错误')
+  }
 }
 
-function clearRSSReloadTimer() {
-  if (!rssReloadTimer) return
-  window.clearTimeout(rssReloadTimer)
-  rssReloadTimer = undefined
+function handleImportCheckAll(checked) {
+  if (!checked) {
+    selectedImportIndexes.value = []
+    return
+  }
+  const safeIndexes = safeRSSImportIndexes(importSources.value)
+  selectedImportIndexes.value = safeIndexes
+  if (safeIndexes.length < importSources.value.length) {
+    ElMessage.info('部分使用了Javascript和Webview的书源未勾选')
+  }
 }
 
-async function selectSource(sourceId) {
-  const operation = operations.begin('select-source')
+function closeImportDialog() {
+  importDialogVisible.value = false
+  selectedImportIndexes.value = []
+  importSources.value = []
+}
+
+async function saveImportedSources() {
+  if (!selectedImportIndexes.value.length) {
+    ElMessage.error('请选择需要导入的源')
+    return
+  }
+  const selectedSources = selectedImportIndexes.value.map(index => importSources.value[index])
+  const operation = operations.begin('save-rss-import')
+  importingSources.value = true
+  try {
+    await importRSSSourcesBatch(selectedSources)
+    if (!operations.canCommit(operation)) return
+    ElMessage.success('导入RSS源成功')
+    closeImportDialog()
+    await invalidateRSSSourcesCache()
+    if (operations.canCommit(operation)) await loadSources(operation)
+  } catch (error) {
+    if (operations.canCommit(operation)) ElMessage.error(readError(error, '导入RSS源失败'))
+  } finally {
+    if (operations.canCommit(operation)) importingSources.value = false
+  }
+}
+
+function openEditor(source = null) {
+  const upstreamSource = source ? toUpstreamRSSSource(source) : createDefaultRSSSource()
+  editingSourceId.value = source?.id || null
+  editorContent.value = JSON.stringify(upstreamSource, null, 4)
+  editorVisible.value = true
+}
+
+function closeEditor() {
+  editorVisible.value = false
+  editingSourceId.value = null
+  editorContent.value = ''
+}
+
+async function saveSource() {
+  let source
+  try {
+    source = JSON.parse(editorContent.value)
+  } catch {
+    ElMessage.error('RSS源必须是JSON格式')
+    return
+  }
+  if (!source.sourceName) {
+    ElMessage.error('RSS源名称不能为空')
+    return
+  }
+  if (!source.sourceUrl) {
+    ElMessage.error('RSS源链接不能为空')
+    return
+  }
+  const sourceId = editingSourceId.value
+  const operation = operations.begin('save-rss-source')
+  savingSource.value = true
+  try {
+    if (sourceId) await updateRSSSource(sourceId, source)
+    else await createRSSSource(source)
+    if (!operations.canCommit(operation)) return
+    closeEditor()
+    ElMessage.success('保存RSS源成功')
+    await invalidateRSSSourcesCache()
+    if (operations.canCommit(operation)) await loadSources(operation)
+  } catch (error) {
+    if (operations.canCommit(operation)) ElMessage.error(readError(error, '保存RSS源失败'))
+  } finally {
+    if (operations.canCommit(operation)) savingSource.value = false
+  }
+}
+
+async function removeSource(source) {
+  const operation = operations.begin(`delete-rss-source:${source.id}`)
+  try {
+    await ElMessageBox.confirm('确认要删除该RSS订阅源吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    if (!operations.canCommit(operation)) return
+    await deleteRSSSource(source.id)
+    if (!operations.canCommit(operation)) return
+    await invalidateRSSSourcesCache()
+    if (!operations.canCommit(operation)) return
+    await loadSources(operation)
+    if (operations.canCommit(operation)) ElMessage.success('删除成功')
+  } catch (error) {
+    if (!operations.canCommit(operation) || error === 'cancel' || error === 'close') return
+    ElMessage.error(readError(error, '删除失败'))
+  }
+}
+
+async function selectSource(source) {
+  const operation = operations.begin('select-rss-source')
   resetSourceArticleState({ resetSort: true })
-  selectedSourceId.value = sourceId
-  syncSelectedSortURL(true)
+  selectedSourceId.value = source.id
+  setInitialSort(source)
   articleListDialogVisible.value = true
-  const query = articleRequestQuery(1)
-  await loadArticles(operation)
-  if (!operations.canCommit(operation) || !isArticleRequestQueryCurrent(query)) return
-  await refreshSelectedSource(operation)
+  await loadArticlePage(1, false, operation)
 }
 
-async function handleSortChange() {
-  const operation = operations.begin('select-sort')
+function setInitialSort(source) {
+  const options = parseRSSSortOptions(toUpstreamRSSSource(source || {}))
+  selectedSortName.value = options[0]?.name || ''
+  selectedSortURL.value = options[0]?.url || sourceURL(source)
+}
+
+async function handleSortChange(sortName) {
+  const option = selectedSortOptions.value.find(item => item.name === sortName)
+  if (!option) return
+  const operation = operations.begin('select-rss-sort')
   resetSourceArticleState()
-  const query = articleRequestQuery(1)
-  await loadArticles(operation)
-  if (!operations.canCommit(operation) || !isArticleRequestQueryCurrent(query)) return
-  await refreshSelectedSource(operation)
-}
-
-async function handleFilterChange() {
-  const operation = operations.begin('select-filter')
-  resetSourceArticleState()
-  await loadArticles(operation)
-}
-
-function invalidateArticleRequests() {
-  articleListRequestGate.invalidate()
-  articleLoadMoreRequestGate.invalidate()
+  selectedSortName.value = option.name
+  selectedSortURL.value = option.url
+  await loadArticlePage(1, false, operation)
 }
 
 function articleRequestQuery(page) {
@@ -450,764 +426,187 @@ function articleRequestQuery(page) {
     rootVisible: props.visible,
     listVisible: articleListDialogVisible.value,
     sourceId: selectedSourceId.value,
-    sort: selectedSortURL.value,
-    filter: articleFilter.value,
+    sortName: selectedSortName.value,
+    sortURL: selectedSortURL.value,
     page,
   }
 }
 
 function isArticleRequestQueryCurrent(query) {
   const current = articleRequestQuery(query.page)
-  return current.rootVisible === query.rootVisible
-    && current.listVisible === query.listVisible
-    && current.sourceId === query.sourceId
-    && current.sort === query.sort
-    && current.filter === query.filter
-    && current.page === query.page
+  return Object.keys(query).every(key => current[key] === query[key])
 }
 
-async function loadArticles(parentOperation = null) {
+async function loadArticlePage(page, append, parentOperation = null) {
   if (parentOperation && !operations.canCommit(parentOperation)) return false
-  if (!props.visible || !articleListDialogVisible.value) return
-  const operation = operations.begin('load-articles')
-  articleLoadMoreRequestGate.invalidate()
-  articlesLoadingMore.value = false
-  const query = articleRequestQuery(1)
-  const request = articleListRequestGate.begin(query)
-  articlesLoading.value = true
-  articlePage.value = 1
+  if (!props.visible || !articleListDialogVisible.value || !selectedSource.value) return false
+  const operation = operations.begin(append ? 'load-more-rss-articles' : 'load-rss-articles')
+  const query = articleRequestQuery(page)
+  const gate = append ? articleLoadMoreRequestGate : articleListRequestGate
+  const request = gate.begin(query)
+  if (append) articlesLoadingMore.value = true
+  else articlesLoading.value = true
   try {
-    const { data } = await listRSSArticles(articleParams(articlePage.value))
-    const result = normalizeArticleResult(data, articlePage.value)
-    if (!operations.canCommit(operation) ||
-      !articleListRequestGate.isCurrent(request, articleRequestQuery(1))) return false
-    articles.value = result.items
-    hasMoreArticles.value = result.hasMore
+    const { data } = await refreshRSSSource(selectedSourceId.value, {
+      page,
+      sortName: selectedSortName.value,
+      sortUrl: selectedSortURL.value,
+    })
+    if (!operations.canCommit(operation) || !gate.isCurrent(request, articleRequestQuery(page)) || !isArticleRequestQueryCurrent(query)) return false
+    const nextItems = Array.isArray(data?.items) ? data.items : []
+    if (!nextItems.length) {
+      ElMessage.error('没有数据')
+      hasMoreArticles.value = false
+      if (!append) articles.value = []
+      return true
+    }
+    articles.value = append ? articles.value.concat(nextItems) : nextItems
+    articlePage.value = Number(data.page || page)
+    hasMoreArticles.value = data.hasMore !== false
     return true
-  } catch (err) {
-    if (operations.canCommit(operation) &&
-      articleListRequestGate.isCurrent(request, articleRequestQuery(1))) {
-      ElMessage.error(readError(err, '加载 RSS 文章失败'))
+  } catch (error) {
+    if (operations.canCommit(operation) && gate.isCurrent(request, articleRequestQuery(page))) {
+      ElMessage.error(readError(error, '加载RSS文章列表失败'))
     }
     return false
   } finally {
-    if (operations.canCommit(operation) &&
-      articleListRequestGate.isCurrent(request, articleRequestQuery(1))) {
-      articlesLoading.value = false
+    if (operations.canCommit(operation) && gate.isCurrent(request, articleRequestQuery(page))) {
+      if (append) articlesLoadingMore.value = false
+      else articlesLoading.value = false
     }
   }
 }
 
 async function loadMoreArticles() {
-  if (!props.visible || !articleListDialogVisible.value || !hasMoreArticles.value || articlesLoadingMore.value) return
-  const operation = operations.begin('load-more-articles')
-  const nextPage = articlePage.value + 1
-  const query = articleRequestQuery(nextPage)
-  const request = articleLoadMoreRequestGate.begin(query)
-  articlesLoadingMore.value = true
-  try {
-    const { data } = await listRSSArticles(articleParams(nextPage))
-    const result = normalizeArticleResult(data, nextPage)
-    if (!operations.canCommit(operation) ||
-      !articleLoadMoreRequestGate.isCurrent(request, articleRequestQuery(nextPage))) return
-    const known = new Set(articles.value.map(article => article.id))
-    const nextItems = result.items.filter(article => !known.has(article.id))
-    articles.value = [...articles.value, ...nextItems]
-    articlePage.value = result.page || nextPage
-    hasMoreArticles.value = result.hasMore && nextItems.length > 0
-  } catch (err) {
-    if (operations.canCommit(operation) &&
-      articleLoadMoreRequestGate.isCurrent(request, articleRequestQuery(nextPage))) {
-      ElMessage.error(readError(err, '加载更多 RSS 文章失败'))
-    }
-  } finally {
-    if (operations.canCommit(operation) &&
-      articleLoadMoreRequestGate.isCurrent(request, articleRequestQuery(nextPage))) {
-      articlesLoadingMore.value = false
-    }
-  }
-}
-
-function articleParams(page) {
-  const params = { page, limit: ARTICLE_LIMIT }
-  if (selectedSourceId.value) params.sourceId = selectedSourceId.value
-  if (selectedSortOptions.value.length > 1 && selectedSortOption.value?.label) params.sort = selectedSortOption.value.label
-  if (articleFilter.value === 'unread') params.unread = true
-  if (articleFilter.value === 'favorite') params.favorite = true
-  return params
-}
-
-function normalizeArticleResult(data, fallbackPage) {
-  if (Array.isArray(data)) return { items: data, page: fallbackPage, hasMore: false }
-  return {
-    items: Array.isArray(data?.items) ? data.items : [],
-    page: Number(data?.page || fallbackPage),
-    hasMore: !!data?.hasMore,
-  }
-}
-
-function openEditor(source = null) {
-  const normalizedSource = source || {}
-  editingSourceId.value = normalizedSource.id || null
-  draft.value = {
-    title: normalizedSource.title || '',
-    url: normalizedSource.url || '',
-    icon: normalizedSource.icon || '',
-    group: normalizedSource.group || '',
-    comment: normalizedSource.comment || '',
-    customOrder: Number(normalizedSource.customOrder || 0),
-    enabled: normalizedSource.enabled ?? true,
-    ...pickRSSAdvancedFields(normalizedSource),
-  }
-  editorVisible.value = true
-}
-
-async function saveSource() {
-  if (!draft.value.title.trim()) {
-    ElMessage.warning('RSS 源名称不能为空')
-    return
-  }
-  if (!draft.value.url.trim()) {
-    ElMessage.warning('RSS 地址不能为空')
-    return
-  }
-  const sourceId = editingSourceId.value
-  const payload = {
-    ...draft.value,
-    title: draft.value.title.trim(),
-    url: draft.value.url.trim(),
-    icon: draft.value.icon.trim(),
-    group: draft.value.group.trim(),
-    customOrder: Number(draft.value.customOrder || 0),
-    ...pickRSSAdvancedFields(draft.value),
-  }
-  const operation = operations.begin('save-source')
-  savingSource.value = true
-  try {
-    if (sourceId) {
-      await updateRSSSource(sourceId, payload)
-      if (!operations.canCommit(operation)) return
-      ElMessage.success('RSS 源已更新')
-    } else {
-      await createRSSSource(payload)
-      if (!operations.canCommit(operation)) return
-      ElMessage.success('RSS 源已创建')
-    }
-    editorVisible.value = false
-    await invalidateRSSSourcesCache()
-    if (!operations.canCommit(operation)) return
-    await loadSources(operation)
-    await loadArticles(operation)
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '保存 RSS 源失败'))
-  } finally {
-    if (operations.canCommit(operation)) savingSource.value = false
-  }
-}
-
-function triggerSourceImport() {
-  sourceImportInput.value?.click()
-}
-
-async function importRSSSources(event) {
-  const file = event?.target?.files?.[0]
-  if (event?.target) event.target.value = ''
-  if (!file) return
-  const operation = operations.begin('import-sources')
-  importingSources.value = true
-  try {
-    const text = await file.text()
-    if (!operations.canCommit(operation)) return
-    const parsed = JSON.parse(text)
-    const imported = normalizeRSSSourceImport(parsed)
-    if (!imported.length) {
-      ElMessage.warning('没有找到可导入的 RSS 源')
-      return
-    }
-    const { creates, updates } = planRSSSourceImport(imported, sources.value)
-    await ElMessageBox.confirm(
-      `将新增 ${creates.length} 个 RSS 源，更新 ${updates.length} 个同地址源。`,
-      '导入 RSS 源',
-      { type: 'info' },
-    )
-    if (!operations.canCommit(operation)) return
-    for (const { id, source } of updates) {
-      await updateRSSSource(id, source)
-      if (!operations.canCommit(operation)) return
-    }
-    for (const source of creates) {
-      await createRSSSource(source)
-      if (!operations.canCommit(operation)) return
-    }
-    ElMessage.success(`已导入 ${creates.length} 个、更新 ${updates.length} 个 RSS 源`)
-    await invalidateRSSSourcesCache()
-    if (!operations.canCommit(operation)) return
-    await loadSources(operation)
-    await loadArticles(operation)
-    if (!operations.canCommit(operation)) return
-    window.dispatchEvent(new CustomEvent('openreader:rss-updated', { detail: { sources: true, articles: true } }))
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '导入 RSS 源失败'))
-  } finally {
-    if (operations.canCommit(operation)) importingSources.value = false
-  }
-}
-
-function normalizeRSSSourceImport(payload) {
-  const list = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.sources)
-      ? payload.sources
-      : Array.isArray(payload?.rssSources)
-        ? payload.rssSources
-        : Array.isArray(payload?.rssSourceList)
-          ? payload.rssSourceList
-          : payload && typeof payload === 'object'
-            ? [payload]
-            : []
-  return list
-    .map((source, index) => {
-      const title = String(source.title || source.sourceName || source.name || `RSS ${index + 1}`).trim()
-      const url = String(source.url || source.sourceUrl || source.feedUrl || source.link || '').trim()
-      const icon = String(source.icon || source.sourceIcon || '').trim()
-      const group = String(source.group || source.sourceGroup || '').trim()
-      const order = Number(source.customOrder || source.order || 0)
-      const enabled = source.enabled ?? source.isEnabled
-      return {
-        title,
-        url,
-        icon,
-        group,
-        customOrder: Number.isFinite(order) ? order : 0,
-        enabled: enabled !== false,
-        ...pickRSSAdvancedFields(source, { singleURLDefault: false }),
-      }
-    })
-    .filter(source => source.title && source.url)
-}
-
-function pickRSSAdvancedFields(source = {}, { singleURLDefault = true } = {}) {
-  const picked = {}
-  for (const field of RSS_ADVANCED_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(source, field)) picked[field] = source[field]
-  }
-  if (!Object.prototype.hasOwnProperty.call(picked, 'comment') && source.sourceComment !== undefined) {
-    picked.comment = source.sourceComment
-  }
-  if (!Object.prototype.hasOwnProperty.call(picked, 'header') && source.headerMap !== undefined) {
-    picked.header = typeof source.headerMap === 'string' ? source.headerMap : JSON.stringify(source.headerMap)
-  }
-  if (!Object.prototype.hasOwnProperty.call(picked, 'singleUrl')) picked.singleUrl = singleURLDefault
-  if (!Object.prototype.hasOwnProperty.call(picked, 'articleStyle')) picked.articleStyle = 0
-  if (!Object.prototype.hasOwnProperty.call(picked, 'enableJs')) picked.enableJs = true
-  if (!Object.prototype.hasOwnProperty.call(picked, 'loadWithBaseUrl')) picked.loadWithBaseUrl = true
-  return picked
-}
-
-async function refreshSource(source, parentOperation = null) {
-  if (parentOperation && !operations.canCommit(parentOperation)) return false
-  const sourceId = source.id
-  const operation = operations.begin(`refresh-source:${sourceId}`)
-  refreshingSourceId.value = sourceId
-  try {
-    const params = sourceId === selectedSourceId.value && selectedSortURL.value
-      ? { sortUrl: selectedSortURL.value, sortName: selectedSortOption.value?.label || '' }
-      : {}
-    const { data } = await refreshRSSSource(sourceId, params)
-    if (!operations.canCommit(operation)) return false
-    ElMessage.success(`已同步 ${data.imported || 0}/${data.total || 0} 篇文章`)
-    if (props.visible && articleListDialogVisible.value && sourceId === selectedSourceId.value) {
-      await loadArticles(operation)
-    }
-    return true
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '刷新 RSS 源失败'))
-    return false
-  } finally {
-    if (operations.canCommit(operation) && refreshingSourceId.value === sourceId) {
-      refreshingSourceId.value = null
-    }
-  }
-}
-
-async function refreshSelectedSource(parentOperation = null) {
-  if (parentOperation && !operations.canCommit(parentOperation)) return
-  if (!selectedSource.value) {
-    if (props.visible && articleListDialogVisible.value) await loadArticles(parentOperation)
-    return
-  }
-  await refreshSource(selectedSource.value, parentOperation)
-}
-
-async function removeSource(source) {
-  const sourceId = source.id
-  const sourceTitle = source.title
-  const operation = operations.begin(`remove-source:${sourceId}`)
-  try {
-    await ElMessageBox.confirm(`确定删除 RSS 源“${sourceTitle}”吗？文章缓存也会删除。`, '删除 RSS 源', { type: 'warning' })
-    if (!operations.canCommit(operation)) return
-    await deleteRSSSource(sourceId)
-    if (!operations.canCommit(operation)) return
-    await invalidateRSSSourcesCache()
-    if (!operations.canCommit(operation)) return
-    sources.value = sources.value.filter(item => item.id !== sourceId)
-    if (!sources.value.length) rssEditMode.value = false
-    if (selectedSourceId.value === sourceId) selectedSourceId.value = sources.value[0]?.id || ''
-    if (props.visible && articleListDialogVisible.value) await loadArticles(operation)
-    if (!operations.canCommit(operation)) return
-    ElMessage.success('RSS 源已删除')
-  } catch (err) {
-    if (!operations.canCommit(operation)) return
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(readError(err, '删除 RSS 源失败'))
-  }
+  if (!hasMoreArticles.value || articlesLoading.value || articlesLoadingMore.value) return
+  await loadArticlePage(articlePage.value + 1, true)
 }
 
 async function openArticle(article) {
-  const operation = operations.begin('open-article')
+  const operation = operations.begin('open-rss-article')
   const request = ++articleOpenRequest
-  selectedArticle.value = article
-  articleDialogVisible.value = true
-  articleImagePreviewVisible.value = false
-  articleContentLoading.value = true
   try {
     const { data } = await getRSSArticleContent(article.id)
     if (request !== articleOpenRequest || !operations.canCommit(operation)) return
-    Object.assign(article, data)
-    selectedArticle.value = article
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '加载 RSS 正文失败'))
-  } finally {
-    if (request === articleOpenRequest && operations.canCommit(operation)) {
-      articleContentLoading.value = false
-    }
-  }
-  if (request === articleOpenRequest && operations.canCommit(operation) && !article.isRead) {
-    await updateArticleState(article, { isRead: true }, { silent: true })
+    selectedArticle.value = { ...article, ...data }
+    articleDialogVisible.value = true
+  } catch (error) {
+    if (operations.canCommit(operation)) ElMessage.error(readError(error, '加载RSS文章内容失败'))
   }
 }
 
-async function toggleFavorite(article) {
-  await updateArticleState(article, { favorite: !article.favorite })
+function closeArticleList() {
+  articleListDialogVisible.value = false
 }
 
-async function toggleRead(article) {
-  await updateArticleState(article, { isRead: !article.isRead })
+function closeArticle() {
+  articleOpenRequest += 1
+  operations.invalidate('open-rss-article')
+  articleDialogVisible.value = false
+  selectedArticle.value = null
+  articleImagePreviewVisible.value = false
 }
 
-async function updateArticleState(article, payload, { silent = false } = {}) {
-  const articleId = article.id
-  const operation = operations.begin(`update-article:${articleId}`)
-  try {
-    const { data } = await updateRSSArticle(articleId, payload)
-    if (!operations.canCommit(operation)) return
-    Object.assign(article, data)
-    if (selectedArticle.value?.id === articleId) selectedArticle.value = article
-    if (shouldHideArticle(article)) articles.value = articles.value.filter(item => item.id !== article.id)
-    if (!silent) ElMessage.success('文章状态已更新')
-  } catch (err) {
-    if (operations.canCommit(operation)) ElMessage.error(readError(err, '更新 RSS 文章失败'))
-  }
-}
-
-function shouldHideArticle(article) {
-  if (articleFilter.value === 'unread' && article.isRead) return true
-  if (articleFilter.value === 'favorite' && !article.favorite) return true
-  return false
+function openArticleImagePreview({ images, index }) {
+  articlePreviewImages.value = images
+  articlePreviewIndex.value = index
+  articleImagePreviewVisible.value = true
 }
 
 function articleBodyHTML(article) {
-  return article?.content || article?.summary || '无正文内容'
+  return article?.content || article?.description || article?.summary || ''
 }
 
-function stripHTML(value) {
-  return String(value || '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .trim()
+function invalidateArticleRequests() {
+  articleListRequestGate.invalidate()
+  articleLoadMoreRequestGate.invalidate()
 }
 
-function openExternal(url) {
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-function handleArticleContentClick(event) {
-  const image = event?.target?.closest?.('img')
-  if (!image) return
-  const root = event.currentTarget
-  const images = Array.from(root.querySelectorAll('img'))
-    .map(item => item.currentSrc || item.src)
-    .filter(Boolean)
-  if (!images.length) return
-  const clickedURL = image.currentSrc || image.src
-  articlePreviewImages.value = images
-  articlePreviewIndex.value = Math.max(0, images.indexOf(clickedURL))
-  articleImagePreviewVisible.value = true
-}
-
-function openArticleListImagePreview(article) {
-  const images = rssArticleImageList.value
-  if (!images.length || !article?.image) return
-  articlePreviewImages.value = images
-  articlePreviewIndex.value = Math.max(0, images.indexOf(article.image))
-  articleImagePreviewVisible.value = true
-}
-
-function sourceInitial(source) {
-  return String(source?.title || source?.url || 'R').trim().slice(0, 1).toUpperCase() || 'R'
-}
-
-function formatDate(value) {
-  if (!value) return '-'
-  return new Date(value).toLocaleString()
-}
-
-function articleDateText(article) {
-  const raw = String(article?.pubDate || '').trim()
-  if (raw) return raw
-  const publishedAt = String(article?.publishedAt || '')
-  if (publishedAt && !publishedAt.startsWith('0001-01-01')) return formatDate(publishedAt)
-  return formatDate(article?.updatedAt)
-}
-
-function readError(err, fallback) {
-  return err?.response?.data?.error?.message || err?.response?.data?.error || fallback
-}
-
-function normalizeURL(value) {
-  return String(value || '').trim()
-}
-
-function rssSortOptions(source) {
-  const baseURL = String(source?.url || '').trim()
-  if (source?.singleUrl) {
-    return baseURL ? [{ label: '全部', value: baseURL }] : []
+function resetSourceArticleState({ resetSort = false } = {}) {
+  operations.invalidate('load-rss-articles')
+  operations.invalidate('load-more-rss-articles')
+  operations.invalidate('open-rss-article')
+  invalidateArticleRequests()
+  articleOpenRequest += 1
+  articles.value = []
+  articlePage.value = 1
+  hasMoreArticles.value = true
+  articlesLoading.value = false
+  articlesLoadingMore.value = false
+  if (resetSort) {
+    selectedSortName.value = ''
+    selectedSortURL.value = ''
   }
-  const raw = String(source?.sortUrl || '').trim()
-  if (!raw || raw.startsWith('@js:') || raw.startsWith('<js>')) {
-    return baseURL ? [{ label: '全部', value: baseURL }] : []
-  }
-  const options = raw.split(/(?:&&|\r?\n)+/)
-    .map((row, index) => {
-      const separator = row.indexOf('::')
-      const label = separator >= 0 ? row.slice(0, separator).trim() : `分类 ${index + 1}`
-      const value = separator >= 0 ? row.slice(separator + 2).trim() : row.trim()
-      return value ? { label: label || `分类 ${index + 1}`, value } : null
-    })
-    .filter(Boolean)
-  return options.length ? options : (baseURL ? [{ label: '全部', value: baseURL }] : [])
+  articleDialogVisible.value = false
+  selectedArticle.value = null
+  articleImagePreviewVisible.value = false
+  articlePreviewImages.value = []
+  articlePreviewIndex.value = 0
 }
 
-function syncSelectedSortURL(reset = false) {
-  const options = selectedSortOptions.value
-  if (reset || !options.some(option => option.value === selectedSortURL.value)) {
-    selectedSortURL.value = options[0]?.value || ''
-  }
+function resetRSSWorkspace() {
+  operations.reset()
+  articleListDialogVisible.value = false
+  resetSourceArticleState({ resetSort: true })
+  sources.value = []
+  selectedSourceId.value = ''
+  rssEditMode.value = false
+  closeEditor()
+  closeImportDialog()
+}
+
+function handleRSSUpdated(event) {
+  if (!props.visible || !event?.detail?.sources) return
+  invalidateRSSSourcesCache()
+    .then(() => loadSources())
+    .catch(() => {})
+}
+
+function readError(error, fallback) {
+  return error?.response?.data?.error?.message || error?.response?.data?.error || fallback
 }
 </script>
 
 <style scoped>
 .rss-manager {
-  min-height: min(560px, calc(100vh - 180px));
+  display: contents;
 }
 
-.rss-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+.rss-dialog-title {
+  display: flex;
+  align-items: center;
+  width: 100%;
   min-width: 0;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  background: rgba(255, 255, 255, 0.62);
 }
 
-.rss-article-list-panel {
-  min-height: min(560px, calc(100vh - 180px));
+.rss-dialog-title-text {
+  color: var(--app-text);
+  font-size: var(--el-dialog-title-font-size);
+  line-height: var(--el-dialog-font-line-height);
 }
 
-.rss-head {
-  display: flex;
+.rss-title-actions {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  padding: 12px;
-  border-bottom: 1px solid var(--app-border);
+  margin-left: auto;
+  margin-right: 28px;
 }
 
-.rss-head > div:first-child {
-  display: grid;
-  gap: 2px;
-}
-
-.rss-head span,
-.rss-source-row small,
-.rss-article-row small,
-.rss-article-row span {
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.rss-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+.rss-title-action {
+  color: var(--app-primary-strong);
+  font-size: 15px;
+  cursor: pointer;
 }
 
 .rss-source-import-input {
   display: none;
 }
 
-.rss-source-list,
-.rss-article-list {
-  display: grid;
-  align-content: start;
-  max-height: calc(100vh - 230px);
-  overflow: auto;
-}
-
-.rss-source-card,
-.rss-article-row {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--app-border);
-}
-
-.rss-source-list {
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 10px;
-  padding: 12px;
-}
-
-.rss-source-card {
-  position: relative;
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: var(--app-radius-sm);
-  text-align: center;
-}
-
-.rss-source-card.active {
-  background: rgba(145, 118, 62, 0.12);
-  border-color: rgba(145, 118, 62, 0.3);
-}
-
-.rss-source-card button,
-.rss-article-row button {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  padding: 0;
-  color: var(--app-text);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.rss-source-card button {
-  justify-items: center;
-  text-align: center;
-}
-
-.rss-source-icon {
-  display: grid;
-  place-items: center;
-  width: 50px;
-  height: 50px;
-  overflow: hidden;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--app-border);
-  color: var(--app-primary-strong);
-  font-weight: 700;
-}
-
-.rss-source-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.rss-source-card strong,
-.rss-source-card small,
-.rss-article-info strong,
-.rss-article-info small,
-.rss-article-info span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rss-source-tools,
-.rss-article-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.rss-source-tools {
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.rss-article-tools {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.rss-article-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-.rss-article-row button {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-}
-
-.rss-article-info {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.rss-article-image {
-  width: 120px;
-  aspect-ratio: 16 / 10;
-  overflow: hidden;
-  border-radius: var(--app-radius-sm);
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid var(--app-border);
-  cursor: zoom-in;
-}
-
-.rss-article-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.rss-article-row.read {
-  opacity: 0.68;
-}
-
-.load-more-rss {
-  padding: 12px;
-  color: var(--app-primary-strong);
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--app-border);
-  cursor: pointer;
-}
-
-.load-more-rss:disabled {
-  color: var(--app-text-muted);
-  cursor: default;
-}
-
-.rss-reader {
-  display: grid;
-  gap: 12px;
-}
-
-.rss-reader h2 {
-  margin: 0;
-  color: var(--app-text);
-  font-size: 24px;
-  line-height: 1.35;
-}
-
-.rss-reader small {
-  color: var(--app-text-muted);
-}
-
-.rss-reader-content {
-  max-height: min(62vh, 680px);
-  overflow: auto;
-  color: var(--app-text);
-  font-size: 16px;
-  line-height: 1.85;
-}
-
-.rss-reader-content :deep(img),
-.rss-reader-content :deep(video) {
-  max-width: 100%;
-  height: auto;
-}
-
-.rss-reader-content :deep(img) {
-  cursor: zoom-in;
-}
-
-.rss-rule-collapse {
-  width: 100%;
-}
-
-.rss-rule-grid {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-
-.rss-rule-grid :deep(.el-form-item) {
-  margin-bottom: 0;
-}
-
-.rss-rule-grid :deep(.el-form-item:last-child) {
-  grid-column: 1 / -1;
-}
-
 @media (max-width: 750px) {
-  .rss-manager {
-    grid-template-columns: 1fr;
-    min-height: 0;
-  }
-
-  .rss-source-list,
-  .rss-article-list {
-    max-height: 40vh;
-  }
-
-  .rss-source-card,
-  .rss-article-row {
-    grid-template-columns: 1fr;
-  }
-
-  .rss-article-row button {
-    grid-template-columns: 1fr auto;
-  }
-
-  .rss-article-image {
-    width: 100px;
-  }
-
-  .rss-source-tools,
-  .rss-article-tools {
-    justify-content: flex-start;
-  }
-
-  .rss-reader-dialog :deep(.el-dialog) {
-    width: 94vw !important;
-    margin-top: 3vh;
-  }
-
-  .rss-reader-content {
-    max-height: 70vh;
-  }
-
-  .rss-rule-grid {
-    grid-template-columns: 1fr;
+  .rss-title-actions {
+    gap: 8px;
+    margin-right: 24px;
   }
 }
 </style>

@@ -3405,3 +3405,20 @@ all/unread/favorite、作者/摘要、已读/收藏、正文 metadata/footer 都
 RSS 应用或测试代码。下一步必须先替换固化错误富 UI/缓存分页的测试，再依次重建 source/editor/
 import、article/content 和 page API/parser 数据流。JWT/SQLite 用户隔离、HTML 清洗、SSRF/超时/
 大小/重定向限制、请求 generation、事务删除及隐藏 read/favorite 数据继续作为条件保留。
+
+### 固定基准重建结果
+
+审查合同 `1283f03` 和 API 合同 `dff7c86` 已先于应用代码单独提交。随后以失败合同替换旧富 UI/
+缓存分页测试，重建 `RSS订阅(N)` 500px/fullscreen 根层、四列图标/名称源网格、JSON editor、默认
+零选择的安全导入，以及独立 500px/fullscreen 的文章列表和正文 sibling dialogs。可见列表只保留
+tabs、标题、日期、图片和加载更多；正文获取成功后才打开并只渲染已清洗正文。
+
+Go endpoint 现在按 source/sort/page 执行一个请求页，标准 feed 的 page>1 零网络返回；批量导入和
+页面 article upsert 使用 current-user transaction，sort URL 必须来自 owned source。frontend
+706/706、Go 全量、production build 和 diff 通过；RSS 专项在 1440×900、1024×1366、390×844、
+360×800 通过，工作台旧链接和 RSS 跨账号迟到写入也在桌面/双手机通过。当前状态更新为
+`implemented / regression-validated / Docker-pending`。
+
+安全复核没有把旧共享 fetcher 的缺口包装成完成：本批新增 8 MiB/5000 条 import bound、100000
+page bound、owned sort allowlist、事务和内容清洗；共享 source fetcher 仍需单独补响应体上限、
+显式重定向上限和私网 SSRF 策略。这些是跨书源/RSS 的后续 P2，不由本批可见对齐签收。

@@ -12,6 +12,10 @@ export function updateRSSSource(id, payload) {
   return api.put(`/rss/sources/${id}`, payload)
 }
 
+export function importRSSSourcesBatch(payload) {
+  return api.post('/rss/sources/import', payload)
+}
+
 export function deleteRSSSource(id) {
   return api.delete(`/rss/sources/${id}`)
 }

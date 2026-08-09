@@ -9525,12 +9525,27 @@ func TestRSSRuleSourceExecutesPageRequestsAndArticleOptions(t *testing.T) {
 	refreshW := httptest.NewRecorder()
 	router.ServeHTTP(refreshW, refreshReq)
 	if refreshW.Code != http.StatusOK ||
-		!strings.Contains(refreshW.Body.String(), `"pages":2`) ||
-		!strings.Contains(refreshW.Body.String(), `"total":2`) {
-		t.Fatalf("refresh paginated RSS source: got %d: %s", refreshW.Code, refreshW.Body.String())
+		!strings.Contains(refreshW.Body.String(), `"page":1`) ||
+		!strings.Contains(refreshW.Body.String(), `"total":1`) ||
+		!strings.Contains(refreshW.Body.String(), `"hasMore":true`) {
+		t.Fatalf("refresh RSS page one: got %d: %s", refreshW.Code, refreshW.Body.String())
+	}
+	if strings.Join(listBodies, ",") != "page=1" {
+		t.Fatalf("RSS page one crossed its request boundary: %+v", listBodies)
+	}
+
+	refreshPageTwoReq := httptest.NewRequest(http.MethodPost, "/api/rss/sources/"+strconv.FormatUint(uint64(source.ID), 10)+"/refresh?page=2", nil)
+	refreshPageTwoReq.Header.Set("Authorization", token)
+	refreshPageTwoW := httptest.NewRecorder()
+	router.ServeHTTP(refreshPageTwoW, refreshPageTwoReq)
+	if refreshPageTwoW.Code != http.StatusOK ||
+		!strings.Contains(refreshPageTwoW.Body.String(), `"page":2`) ||
+		!strings.Contains(refreshPageTwoW.Body.String(), `"total":2`) ||
+		!strings.Contains(refreshPageTwoW.Body.String(), `"hasMore":false`) {
+		t.Fatalf("refresh RSS page two: got %d: %s", refreshPageTwoW.Code, refreshPageTwoW.Body.String())
 	}
 	if strings.Join(listBodies, ",") != "page=1,page=2" {
-		t.Fatalf("RSS PAGE requests were not bounded by repeated request descriptor: %+v", listBodies)
+		t.Fatalf("RSS page requests were not one transition each: %+v", listBodies)
 	}
 
 	var articles []models.RSSArticle
@@ -9542,7 +9557,7 @@ func TestRSSRuleSourceExecutesPageRequestsAndArticleOptions(t *testing.T) {
 	}
 	var first models.RSSArticle
 	for _, article := range articles {
-		if article.Title == "第一页文章" {
+		if strings.Contains(article.Link, "/post/1") {
 			first = article
 			break
 		}

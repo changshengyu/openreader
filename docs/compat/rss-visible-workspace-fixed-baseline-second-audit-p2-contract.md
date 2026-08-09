@@ -1,6 +1,6 @@
 # RSS visible workspace fixed-baseline second-audit P2 contract
 
-Status: `audit-complete / implementation-pending` on 2026-08-09. This audit
+Status: `implemented / regression-validated / Docker-pending` on 2026-08-09. This audit
 supersedes every earlier conclusion that treated the richer OpenReader RSS
 cards, form editor, filters, refresh actions, article metadata, or eager
 multi-page refresh as an allowed upstream-equivalent UI. No RSS application or
@@ -170,3 +170,56 @@ Implementation order after this contract is committed: replace conflicting
 tests, rebuild source/editor/import visible structure, rebuild article/content
 visible structure, then change the page/API/parser data flow. Do not combine the
 contract pass with implementation.
+
+## 2026-08-09 implementation and validation result
+
+The inventory contract and requested-page API contract were committed and
+pushed before application code changed (`1283f03`, `dff7c86`). The implementation
+then replaced the tests that had encoded the richer OpenReader scene and rebuilt
+the feature in the contract order:
+
+- The root is now the one `500px`/mobile-fullscreen `RSS订阅(N)` dialog. Its
+  visible source scene contains only `新增、导入、编辑/取消` and four `25%`
+  icon/name tiles with the fixed `50x50` icon geometry. The old refresh,
+  group/enabled badges, active state, rich cards and invented empty scene are
+  gone.
+- New and edit use the independent `编辑RSS源` JSON dialog with the exact
+  upstream draft and validation order. Import uses an initially unchecked
+  checkbox dialog; safe select-all correctly keeps safe index zero and excludes
+  `@js:`/`webView:` rows. The selected records are submitted by one authenticated
+  transactional batch endpoint.
+- Article list and article content are independent `500px`/mobile-fullscreen
+  sibling dialogs. The list has only optional newline `name::url` tabs,
+  title/date/image rows and load-more state; content is fetched before its dialog
+  opens and the body renders sanitized `content || description` with image
+  preview. Hidden read/favourite APIs and data remain non-visible compatibility
+  capabilities.
+- `POST /api/rss/sources/:id/refresh` now validates the owned source/sort and
+  executes exactly the requested page. Standard feeds return no network work
+  after page one; rule pages compare prepared request descriptors and do not
+  eagerly crawl later pages. Page rows are upserted transactionally while
+  preserving hidden read/favourite state and returned in parser order.
+- Source, sort, page, workspace and authenticated-operation generations prevent
+  delayed requests or writes from committing into a closed scene or another
+  account. Import broadcasts only after commit.
+
+Validation evidence:
+
+- frontend: `706/706`; backend: `go test ./...` passed; Vite production build
+  and `git diff --check` passed.
+- `rss-workspace-contract.mjs` passed at `1440x900`, `1024x1366`, `390x844`
+  and `360x800`, covering source/editor/import/list/content geometry, parent-child
+  coexistence, safe import, requested pages `1 -> 2`, image preview, no legacy
+  article-list request, no overflow and late-source isolation.
+- `workspace-operation-contract.mjs` passed at desktop and both phone sizes;
+  the RSS pending-write branch of
+  `workspace-overlay-session-isolation-contract.mjs` passed at the same three
+  viewports with no stale toast, event or reload after account replacement.
+
+The new slice does not create a caller-selected remote fetch capability:
+`sortUrl` must match the authenticated source's base/sort options, import is
+bounded to 8 MiB/5000 records, and page is bounded. The inherited shared source
+fetcher still lacks a universal response-byte cap, explicit redirect cap and
+private-network SSRF rejection. Those pre-existing cross-source hardening items
+remain open in `docs/security-review-checklist.md`; this RSS alignment result
+does not claim that separate security project is complete.

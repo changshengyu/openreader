@@ -610,7 +610,7 @@ async function beginRSSSaveOperation(session) {
   await page.goto(`${targetUrl}/settings?panel=rss&overlaySession=1`, { waitUntil: 'networkidle' })
   const dialog = page.locator('.global-rss-dialog')
   await dialog.waitFor({ state: 'visible', timeout: 10_000 })
-  await dialog.getByRole('button', { name: '新增', exact: true }).click()
+  await dialog.getByText('新增', { exact: true }).click()
   const editor = page.locator('.rss-source-editor-dialog')
   try {
     await editor.waitFor({ state: 'visible', timeout: 10_000 })
@@ -622,7 +622,7 @@ async function beginRSSSaveOperation(session) {
         text: element.textContent?.trim().slice(0, 300) || '',
       }))
     ))
-    const addButtons = await dialog.getByRole('button', { name: '新增', exact: true }).evaluateAll(elements => (
+    const addButtons = await dialog.getByText('新增', { exact: true }).evaluateAll(elements => (
       elements.map(element => ({
         disabled: element.disabled,
         text: element.textContent?.trim() || '',
@@ -637,10 +637,14 @@ async function beginRSSSaveOperation(session) {
     ))
     throw new Error(`${error.message}\nRSS visible dialogs: ${JSON.stringify(visibleDialogs)}\nRSS add buttons: ${JSON.stringify(addButtons)}\nRSS editor states: ${JSON.stringify(editorStates)}\nRSS browser errors: ${JSON.stringify(errors)}`)
   }
-  const inputs = editor.locator('input')
-  await inputs.nth(0).fill('A 延迟新增 RSS')
-  await inputs.nth(1).fill('https://stale.example/feed.xml')
-  await editor.getByRole('button', { name: '保存', exact: true }).click()
+  const textarea = editor.locator('textarea')
+  const draft = JSON.parse(await textarea.inputValue())
+  await textarea.fill(JSON.stringify({
+    ...draft,
+    sourceName: 'A 延迟新增 RSS',
+    sourceUrl: 'https://stale.example/feed.xml',
+  }, null, 4))
+  await editor.getByRole('button', { name: '保 存', exact: true }).click()
 }
 
 async function beginUserCreateOperation(session) {

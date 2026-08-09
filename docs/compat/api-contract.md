@@ -56,8 +56,8 @@ Status: working contract. Keep this file updated when endpoint semantics change.
 
 ## P2 RSS source import and requested-page contract
 
-Status: audited on 2026-08-09; implementation pending. The complete visible,
-state and parser contract is
+Status: implemented and regression-validated on 2026-08-09; Docker publication
+pending. The complete visible, state and parser contract is
 [`rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md`](rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md).
 
 All routes below require `Authorization: Bearer <jwt>` and scope every source,

@@ -1,14 +1,9 @@
 <template>
-  <el-dialog
-    v-model="overlay.rssVisible"
-    title="RSS 订阅"
-    width="min(760px, calc(100vw - 48px))"
-    :fullscreen="isMobile"
-    class="global-rss-dialog"
-    destroy-on-close
-  >
-    <RSSManager :is-mobile="isMobile" :visible="overlay.rssVisible" />
-  </el-dialog>
+  <RSSManager
+    :is-mobile="isMobile"
+    :visible="overlay.rssVisible"
+    @close="overlay.rssVisible = false"
+  />
 </template>
 
 <script setup>

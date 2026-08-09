@@ -66,6 +66,33 @@ Evidence: `frontend/tests/localCacheStatsScope.test.mjs`,
 - [ ] Private network access is considered when server-side fetches are user-controlled.
 - [ ] Headers/cookies are not logged.
 
+## P2 RSS requested-page and import review (2026-08-09 implementation)
+
+- [x] Every source, article, import update and page cache write is scoped to the
+  authenticated user. Same URLs in another account are unrelated, and source
+  import commits or rolls back as one transaction before its sync event.
+- [x] The visible refresh endpoint accepts only pages `1..100000`; a requested
+  `sortUrl` must resolve to the owned source base/sort options and an arbitrary
+  outside URL is rejected before transport. Standard feed page greater than one
+  performs no network request.
+- [x] Batch import is capped at 8 MiB and 5000 records, skips blank identities,
+  preserves input order, and submits only the frontend's explicitly selected
+  rows. Safe select-all excludes `@js:` and `webView:` records without dropping
+  safe index zero.
+- [x] Article cache upsert is transactional and preserves hidden read/favourite
+  state; visible content is sanitized and a delayed source/page or old-account
+  result cannot commit into the current dialog.
+- [ ] The shared `engine` source fetcher still reads response bodies without a
+  universal byte cap and relies on `http.Client` redirect defaults rather than a
+  project limit. It also has no general private-address SSRF policy. This debt is
+  inherited by book sources and RSS and must be handled as a compatibility-aware
+  shared-fetcher project; the RSS visible-workspace slice does not claim it closed.
+
+Evidence: `backend/api/rss_requested_page_contract_test.go`,
+`backend/services/rss/service_test.go`, the existing RSS parser/content tests,
+frontend RSS contracts, and `scripts/smoke/rss-workspace-contract.mjs` at four
+viewports. Full contract: [`docs/compat/rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md`](compat/rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md).
+
 ## P2 remote book-cover proxy review (2026-07-27 implemented and published)
 
 - [x] Public image route accepts only an opaque, purpose-separated, expiring server-issued
