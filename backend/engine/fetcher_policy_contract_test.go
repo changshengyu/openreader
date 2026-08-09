@@ -8,8 +8,10 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const contractMaxSourceResponseBytes = 16 * 1024 * 1024
@@ -109,6 +111,62 @@ func TestSharedFetcherBoundsResponseBeforeDecodeAndClosesBody(t *testing.T) {
 		}
 		if !body.closed.Load() {
 			t.Fatal("oversized chunked body was not closed")
+		}
+	})
+}
+
+func TestSharedFetcherAppliesConfiguredResponseAndTimeoutLimits(t *testing.T) {
+	t.Run("response bytes", func(t *testing.T) {
+		restoreLimits := ConfigureSourceFetchLimits(SourceFetchLimits{
+			Timeout:          time.Second,
+			MaxResponseBytes: 4,
+			MaxRedirects:     1,
+			MaxRetries:       1,
+		})
+		defer restoreLimits()
+
+		var responseText atomic.Value
+		responseText.Store("1234")
+		restoreClient := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode:    http.StatusOK,
+				ContentLength: -1,
+				Body:          io.NopCloser(strings.NewReader(responseText.Load().(string))),
+				Header:        make(http.Header),
+				Request:       request,
+			}, nil
+		})})
+		defer restoreClient()
+
+		body, err := FetchTextContext(context.Background(), "https://source.example/exact", "utf-8")
+		if err != nil || body != "1234" {
+			t.Fatalf("exact configured response body=%q err=%v", body, err)
+		}
+		responseText.Store("12345")
+		_, err = FetchTextContext(context.Background(), "https://source.example/over", "utf-8")
+		if !errors.Is(err, ErrSourceResponseLimit) {
+			t.Fatalf("configured response limit error = %v", err)
+		}
+	})
+
+	t.Run("total timeout", func(t *testing.T) {
+		restoreLimits := ConfigureSourceFetchLimits(SourceFetchLimits{
+			Timeout:          25 * time.Millisecond,
+			MaxResponseBytes: 1024,
+			MaxRedirects:     1,
+			MaxRetries:       1,
+		})
+		defer restoreLimits()
+		restoreClient := SetHTTPClient(&http.Client{Transport: contextRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			<-request.Context().Done()
+			return nil, request.Context().Err()
+		})})
+		defer restoreClient()
+
+		started := time.Now()
+		_, err := FetchTextContext(context.Background(), "https://source.example/timeout", "utf-8")
+		if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > time.Second {
+			t.Fatalf("configured timeout elapsed=%v err=%v", time.Since(started), err)
 		}
 	})
 }
@@ -245,5 +303,33 @@ func TestSharedFetcherRedactsTransportFailureWithoutBreakingErrorsIs(t *testing.
 		if strings.Contains(err.Error(), forbidden) {
 			t.Fatalf("transport error leaked %q: %v", forbidden, err)
 		}
+	}
+}
+
+func TestSetHTTPClientConcurrentRestoreDoesNotLeakAnOverride(t *testing.T) {
+	outer := &http.Client{Timeout: 9 * time.Second}
+	restoreOuter := SetHTTPClient(outer)
+	defer restoreOuter()
+
+	const workers = 24
+	var ready sync.WaitGroup
+	var finished sync.WaitGroup
+	ready.Add(workers)
+	finished.Add(workers)
+	release := make(chan struct{})
+	for index := 0; index < workers; index++ {
+		go func(timeout time.Duration) {
+			defer finished.Done()
+			restore := SetHTTPClient(&http.Client{Timeout: timeout})
+			ready.Done()
+			<-release
+			restore()
+		}(time.Duration(index+1) * time.Millisecond)
+	}
+	ready.Wait()
+	close(release)
+	finished.Wait()
+	if current := defaultClient.Load(); current != outer {
+		t.Fatalf("concurrent override restore left client %#v, want outer override %#v", current, outer)
 	}
 }

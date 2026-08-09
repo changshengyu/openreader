@@ -20,6 +20,30 @@ func TestLoadMaxImportBytesFallsBackForInvalidValues(t *testing.T) {
 	}
 }
 
+func TestLoadSourceFetchLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
+	t.Setenv("OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS", "7")
+	t.Setenv("OPENREADER_MAX_SOURCE_RESPONSE_BYTES", "2048")
+	t.Setenv("OPENREADER_MAX_SOURCE_REDIRECTS", "2")
+	t.Setenv("OPENREADER_MAX_SOURCE_RETRIES", "1")
+
+	configured := Load()
+	if configured.SourceRequestTimeoutSeconds != 7 || configured.MaxSourceResponseBytes != 2048 ||
+		configured.MaxSourceRedirects != 2 || configured.MaxSourceRetries != 1 {
+		t.Fatalf("configured source fetch limits = %+v", configured)
+	}
+
+	t.Setenv("OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS", "0")
+	t.Setenv("OPENREADER_MAX_SOURCE_RESPONSE_BYTES", "invalid")
+	t.Setenv("OPENREADER_MAX_SOURCE_REDIRECTS", "-1")
+	t.Setenv("OPENREADER_MAX_SOURCE_RETRIES", "0")
+
+	defaults := Load()
+	if defaults.SourceRequestTimeoutSeconds != 15 || defaults.MaxSourceResponseBytes != 16*1024*1024 ||
+		defaults.MaxSourceRedirects != 5 || defaults.MaxSourceRetries != 3 {
+		t.Fatalf("safe source fetch defaults = %+v", defaults)
+	}
+}
+
 func TestLoadParserLimitsUsesConfiguredValuesAndSafeDefaults(t *testing.T) {
 	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRIES", "12")
 	t.Setenv("OPENREADER_MAX_ARCHIVE_ENTRY_BYTES", "2048")

@@ -15,6 +15,7 @@ import (
 	"openreader/backend/api"
 	"openreader/backend/config"
 	"openreader/backend/db"
+	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/services/backup"
 	"openreader/backend/services/scheduler"
@@ -23,6 +24,12 @@ import (
 
 func main() {
 	cfg := config.Load()
+	engine.ConfigureSourceFetchLimits(engine.SourceFetchLimits{
+		Timeout:          time.Duration(cfg.SourceRequestTimeoutSeconds) * time.Second,
+		MaxResponseBytes: cfg.MaxSourceResponseBytes,
+		MaxRedirects:     cfg.MaxSourceRedirects,
+		MaxRetries:       cfg.MaxSourceRetries,
+	})
 	cleanupContext, cleanupCancel := context.WithCancel(context.Background())
 	defer cleanupCancel()
 

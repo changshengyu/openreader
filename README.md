@@ -138,6 +138,10 @@ All three are mounted as volumes in Docker. Backup these directories to migrate.
 | `OPENREADER_JWT_SECRET` | *(required)* | JWT signing secret — use a long random string |
 | `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | CORS allowed origin |
 | `OPENREADER_PUBLIC_DIR` | `public` | Frontend static files directory |
+| `OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS` | `15` | Total timeout for one shared book-source or RSS request |
+| `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216` (16 MiB) | Maximum response bytes decoded by one shared book-source or RSS request |
+| `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` | Maximum redirects followed by one shared book-source or RSS request |
+| `OPENREADER_MAX_SOURCE_RETRIES` | `3` | Maximum URL-option retries after non-2xx source responses |
 | `OPENREADER_MAX_IMPORT_BYTES` | `134217728` (128 MiB) | Maximum bytes accepted for one local-book or LocalStore/WebDAV upload, preview, or import; adjust only when the host has sufficient memory/disk |
 | `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | Maximum embedded images processed for one chapter |
 | `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum bytes for one cached chapter image |

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -813,7 +814,7 @@ func (s *Server) importRemoteSource(c *gin.Context) {
 		return
 	}
 
-	sources, err := fetchRemoteBookSources(req.URL)
+	sources, err := fetchRemoteBookSourcesContext(c.Request.Context(), req.URL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -841,12 +842,15 @@ func (s *Server) broadcastSourcesUpdate(userID uint, kind string) {
 }
 
 func (s *Server) previewRemoteSource(c *gin.Context) {
+	if !s.requireSourceEdit(c) {
+		return
+	}
 	var req remoteSourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
-	sources, err := fetchRemoteBookSources(req.URL)
+	sources, err := fetchRemoteBookSourcesContext(c.Request.Context(), req.URL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -860,8 +864,8 @@ func (s *Server) previewRemoteSource(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": len(sources), "names": names, "sources": sources})
 }
 
-func fetchRemoteBookSources(rawURL string) ([]models.BookSource, error) {
-	text, err := engine.FetchText(rawURL, "utf-8")
+func fetchRemoteBookSourcesContext(ctx context.Context, rawURL string) ([]models.BookSource, error) {
+	text, err := engine.FetchTextContext(ctx, rawURL, "utf-8")
 	if err != nil {
 		return nil, errors.New("failed to fetch remote source URL")
 	}

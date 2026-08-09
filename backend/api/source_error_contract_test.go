@@ -131,6 +131,33 @@ func TestSharedFetcherAPIErrorsRemainRedacted(t *testing.T) {
 	})
 }
 
+func TestRemoteSourcePreviewRequiresSourceEditPermissionBeforeFetch(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := authHeader(t, router)
+	if err := server.db.Model(&models.User{}).Where("username = ?", "testuser").Update("can_edit_sources", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var requests atomic.Int32
+	restore := engine.SetHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, errors.New("permission check must run before transport")
+	})})
+	defer restore()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sources/remote-preview", strings.NewReader(`{"url":"https://source-import.example/list.json"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	writer := httptest.NewRecorder()
+	router.ServeHTTP(writer, req)
+	if writer.Code != http.StatusForbidden || !strings.Contains(writer.Body.String(), `"code":"FORBIDDEN"`) {
+		t.Fatalf("remote source preview permission status=%d body=%s", writer.Code, writer.Body.String())
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("forbidden remote source preview made %d requests", requests.Load())
+	}
+}
+
 func assertNoSharedFetchSecrets(t *testing.T, value string) {
 	t.Helper()
 	for _, forbidden := range []string{

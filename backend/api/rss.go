@@ -469,7 +469,7 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 	}
 	fetched, err := fetchRSSArticlesPageContext(c.Request.Context(), source, requestedSortURL, page)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS source: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS source"})
 		return
 	}
 	sortName := strings.TrimSpace(c.Query("sortName"))
@@ -642,17 +642,17 @@ func (s *Server) getRSSArticleContent(c *gin.Context) {
 		(strings.TrimSpace(article.Content) == "" || c.Query("refresh") == "1") {
 		request, err := engine.PrepareSourceRequest(article.Link, "", 1, "utf-8", rssSourceHeaders(source), rssSourceRequestPolicy(source))
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to prepare RSS article: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to prepare RSS article"})
 			return
 		}
 		body, responseURL, err := engine.FetchSourceTextWithURLContext(c.Request.Context(), request)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS article: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to fetch RSS article"})
 			return
 		}
 		content, err := engine.ExtractRSSRuleContent(body, responseURL, source.RuleContent)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse RSS article: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse RSS article"})
 			return
 		}
 		if strings.TrimSpace(content) != "" {
