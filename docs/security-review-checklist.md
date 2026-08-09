@@ -80,6 +80,12 @@ metadata blocking, DNS-rebinding-safe dialing, proxy endpoint/target checks and 
 allowlist so NAS/LAN sources remain an explicit deployment choice. N1 deliberately preserves their previous
 reachability and therefore does not close the complete shared-fetcher SSRF review.
 
+The P2-N2 design is now contract-locked in `docs/compat/shared-source-fetcher-p2-contract.md` with the sole
+administrator variable `OPENREADER_SOURCE_NETWORK_ALLOWLIST`, fail-closed startup grammar, mixed-DNS rejection,
+dial-time IP pinning, explicit HTTP/SOCKS endpoint and target checks, and no ambient process proxy. This checklist
+item remains unchecked until implementation, focused race tests, public/LAN Docker fixtures and historical-volume
+gates all pass.
+
 ## P2 RSS requested-page and import review (2026-08-09 implementation)
 
 - [x] Every source, article, import update and page cache write is scoped to the

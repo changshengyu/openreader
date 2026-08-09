@@ -3472,3 +3472,21 @@ CBZ、relative-cache、owner-isolation。OrbStack 在本机构建并推送 `92b7
 `sha256:d3110429a422e092832afde3b7780d6a3c193c01316c5e251c7c6ba8cd85f23c`。fresh/historical
 volume、portable backup、restart、TXT/EPUB/UMD/CBZ、relative-cache 和 owner-isolation 均通过。
 状态更新为 `aligned / Docker-published / awaiting-device-verification`。
+
+## 2026-08-09 P2-N2 共享抓取器私网/DNS/代理合同
+
+固定上游 `HttpHelper.kt` 只从 source 配置读取 HTTP/SOCKS 代理，直接把 hostname 交给 OkHttp/代理，
+没有私网、metadata、混合 DNS 或 rebinding 防护；当前 OpenReader N1 同样仍可访问私网，并额外继承
+Go `http.DefaultTransport` 的进程代理。判定：合法 GET/POST/header/body/charset/retry/proxy 为
+`must-preserve`，隐式进程代理和无界私网访问为 `acceptable security change / must-fix`。
+
+N2 合同已固定：`OPENREADER_SOURCE_NETWORK_ALLOWLIST` 是唯一管理员入口，逗号分隔 exact hostname、
+bare IP 或 CIDR，空值默认只允许公网，非法非空值使服务在监听和打开数据库前失败。初始 URL、每跳
+redirect 和实际拨号都复核 DNS；混合答案默认整体拒绝，direct 只拨复核后的 IP。HTTP proxy target
+改为本地解析并以 IP 固定 CONNECT/absolute-form，同时保留 Host、TLS SNI 和证书校验；SOCKS4/5
+握手同样只接收本地验证 IP，proxy endpoint 自身也受 policy。进程 `HTTP_PROXY/HTTPS_PROXY/ALL_PROXY`
+不进入共享 source transport，上游兼容的显式 source `proxy` 与 FlClash/TUN 系统路由继续保留。
+
+该 inventory 只修改合同，没有修改应用代码。下一步必须先添加 allowlist、IPv4/IPv6、mixed DNS、
+rebinding、redirect→metadata、HTTP CONNECT/absolute-form、SOCKS target/endpoint 和现有 API 安全错误
+的失败测试，再实施。历史 SQLite、source/RSS JSON、缓存、备份和 WebDAV 均不得迁移或重写。

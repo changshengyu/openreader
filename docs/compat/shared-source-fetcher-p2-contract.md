@@ -98,20 +98,90 @@
 - 失败仍使用各端点现有 status；只把不安全的底层诊断替换成稳定、安全的错误文本/代码。
 - source headers/cookies 仍可到达初始/same-origin 目标；跨 origin redirect 的凭证剥离是明确安全差异。
 
-## P2-N2：私网与 DNS/dial 边界
+## P2-N2：私网、DNS/dial 与代理边界
 
-N2 在 N1 通过后独立实施，避免把网络兼容问题混入 body/redirect 修复：
+状态：**contract-locked / tests-pending / implementation-pending**。
 
-1. 默认拒绝 loopback、private、link-local、multicast、unspecified、CGNAT、benchmark/documentation
-   网段和云 metadata 目标；IPv4、IPv6、IPv4-mapped IPv6 一致处理。
-2. 新增管理员环境 allowlist（准确名称和 grammar 在 N2 测试前锁定），支持 exact hostname/IP 和 CIDR。
-   allowlist 是部署权限，不从用户可导入的 source/RSS JSON、header、URL option 或数据库字段读取。
-3. 初始 URL、每次 redirect、实际 dial 和 source proxy endpoint 都复核；DNS 返回任一禁止地址时失败，
-   direct transport 必须只 dial 已验证地址，防止 DNS rebinding。
-4. allowlist 中的 NAS/局域网源保持相对 URL、same-origin redirect、headers、proxy 与 charset 行为；
-   未 allowlist 的历史源数据仍原样保留，只在发请求时返回可操作的安全错误。
-5. HTTP proxy 的 target resolution 与 SOCKS4/5 remote-DNS 行为必须在实现前写专项测试；不能以“已配置
-   proxy”为由绕过目标地址 policy。
+N2 在 N1 通过后独立实施。固定上游只支持书源内显式 HTTP/SOCKS 代理，没有进程环境代理、私网阻断或
+部署白名单；因此 OpenReader 保留合法公网请求和显式代理能力，但把默认 SSRF 边界作为允许的安全差异。
+
+### 管理员配置合同
+
+唯一新增配置为：
+
+```text
+OPENREADER_SOURCE_NETWORK_ALLOWLIST=
+```
+
+- 空值是默认值，表示只允许公网目标和公网代理端点。
+- 值为逗号分隔，最多 256 项、原始值最多 16 KiB；每项去除首尾空白，空项忽略。
+- 每项只能是：精确 DNS hostname、裸 IP 或 CIDR。示例：
+  `nas.home,192.168.1.20,192.168.1.0/24,fd00:1234::/48`。
+- hostname 转为小写并去除末尾的点后精确匹配；允许常用单标签 LAN hostname 和 ASCII/punycode，
+  不支持 `*`、后缀匹配、URL、端口、userinfo 或 Unicode hostname。IP/CIDR 使用规范化地址；
+  IPv4-mapped IPv6 先还原为 IPv4。
+- 精确 hostname 项明确授权该 hostname 当前解析出的全部 A/AAAA 地址；IP/CIDR 项只授权匹配地址，
+  不隐式授权同名或同网域主机。redirect 到另一 hostname 后必须重新匹配。
+- 非空非法项、超过条目/字节上限均使进程在监听端口和打开数据库前启动失败；错误只报告条目序号，
+  不回显内部 hostname/IP。不能静默忽略拼写错误后以更宽松策略启动。
+- 该变量只由部署管理员提供，不进入 REST、前端、SQLite、source/RSS JSON、WebDAV 或备份。历史源记录
+  原样保留；未放行源只在真正请求时失败，不被删除、禁用或重写。
+
+### 地址判定合同
+
+默认拒绝以下地址；allowlist 可对明确的 hostname/IP/CIDR 做部署级例外：
+
+- unspecified、loopback、RFC1918/ULA private、link-local、interface/link-local multicast、multicast；
+- `0.0.0.0/8`、`100.64.0.0/10`、`192.0.0.0/24`、IPv4 TEST-NET、`198.18.0.0/15`、
+  `224.0.0.0/4`、`240.0.0.0/4`；
+- IPv6 discard/documentation/benchmark/ORCHID/6to4 和 NAT64 special-use 前缀，以及 IPv4-mapped IPv6；
+- 因上述范围自然覆盖的 `169.254.169.254`、`fd00:ec2::254` 等云 metadata 地址。
+
+IP literal 在发网前判定；hostname 每次解析必须得到至少一个地址。除非 exact-host 明确放行，否则一次
+解析结果中任一地址被禁止且未被 IP/CIDR 放行时，整次请求失败，不能只挑其中公网地址继续。
+
+### 初始请求、redirect 与实际拨号
+
+1. 初始 URL 在 RoundTripper 前解析并检查；每次 redirect 先继续执行 N1 URL/header 合同，再按 N2
+   重新解析和检查新目标。
+2. direct transport 不使用解析后仍按 hostname 再拨号的窗口：实际 `DialContext` 再解析、复核全部
+   答案，并且只向本次复核得到的已允许 IP literal 拨号。预检查为公网、拨号时变成私网的 DNS rebinding
+   必须失败。
+3. 已建立并复用的 keep-alive 连接只可能指向此前已验证 IP；策略重新配置时关闭 idle 连接。caller
+   cancellation/deadline 在 DNS、拨号和代理握手中继续可由 `errors.Is` 识别。
+4. 默认 shared source transport 忽略进程 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，避免未进入书源
+   合同的隐式远程 DNS/代理绕过；上游本来也只使用 source JSON 中的显式 `proxy`。FlClash/TUN 等系统
+   路由不受影响。需要应用层代理时继续使用上游兼容的 source `proxy` 字段。
+
+### 显式 HTTP/SOCKS 代理
+
+- 保留现有 `http|socks4|socks5://host:port@username@password` 语义和合法端口；代理凭证永不进入
+  policy、日志或公开错误。
+- 代理 endpoint 与 target 是两个独立目标：两者在握手前都执行同一公网/allowlist 规则，endpoint
+  在实际拨号时再次解析并只拨已验证 IP。
+- HTTP proxy：OpenReader 在本地解析 target，将已验证 IP:port 写入 absolute-form/CONNECT 目标，
+  同时保留原始 HTTP `Host` 与 HTTPS TLS SNI/证书 hostname 校验。proxy 不再替 OpenReader 远程解析
+  未验证 hostname；redirect 后重新固定新 target。
+- SOCKS4/SOCKS5：OpenReader 在本地解析 target，并只把已验证 IP literal 交给握手。SOCKS4 只选择
+  IPv4；SOCKS5 支持 IPv4/IPv6。生产请求不使用 SOCKS4a/SOCKS5 hostname remote-DNS。
+- 私网 proxy endpoint 也必须由管理员 allowlist；“用户在 source JSON 配了 proxy”不是访问容器
+  loopback、bridge、host gateway 或 NAS 的授权。
+
+### 测试 transport 合同
+
+现有 Go fixture 通过 `SetHTTPClient` 注入不发真实 socket 的 RoundTripper。N2 将其明确重命名为
+`SetHTTPClientForTesting`，并以测试 override frame 标记：该 frame 继续执行 N1 URL/body/redirect/retry
+边界，但跳过 N2 DNS/dial policy；生产文件不得调用该入口，静态合同锁定所有调用都位于 `_test.go`。
+N2 自身网络测试不得使用此 bypass，而使用 policy resolver/dial hooks 与生产 transport 验证。
+
+### API 与错误合同
+
+- 不增加或修改业务路由、成功 JSON、认证、缓存、WebSocket、source failure 或 retry 语义。
+- 新增内部 sentinel `ErrUnsafeSourceNetwork`，同时仍属于 `ErrSourceRequest`；API 继续使用 N1 已固定的
+  endpoint status、顶层 `error` 及可选 `source_request_failed`/`stage`，不得返回 DNS answer、目标、
+  allowlist、代理 endpoint/credential 或底层拨号文本。
+- allowlisted LAN source 的 GET/POST、relative URL、same-origin redirect、headers/body、charset/type、
+  retry 与最终 URL 行为保持；只有访问权限从隐式开放改为管理员显式授权。
 
 ## 先写的失败测试
 
@@ -131,11 +201,17 @@ P2-N1：
 
 P2-N2：
 
-1. direct IPv4/IPv6、hostname→private、混合 DNS、DNS rebinding、redirect→metadata、默认端口与自定义
-   端口；allowlisted exact host/IP/CIDR 成功。
-2. HTTP/SOCKS4/SOCKS5 proxy endpoint 与 target 分别校验；proxy credential 不进入错误。
-3. 真实 Docker 网络下验证公网 source、默认拒绝容器 loopback/bridge/host gateway、显式 allowlist 后
-   局域网 fixture 可用。
+1. allowlist parser：空值、trim/空项、exact host/IP/CIDR、大小写/末尾点、IPv4-mapped、非法 wildcard/
+   URL/端口/Unicode、256 项与 16 KiB 上限；非法值不替换既有运行策略。
+2. direct IPv4/IPv6、hostname→private、混合 DNS、DNS rebinding、redirect→metadata、默认/自定义端口；
+   allowlisted exact host/IP/CIDR 成功，exact host 不授权 redirect 后另一 hostname。
+3. 默认 transport 不读取进程代理；direct 的预检查与实际 dial 分别取 DNS，第二次变私网时零拨号。
+4. HTTP proxy endpoint 与 target 分别校验；CONNECT/absolute-form 使用已验证 IP，但保留原 Host、TLS SNI
+   和证书校验。SOCKS4/SOCKS5 endpoint 分别复核，握手 target 必须为本地解析后的 IP 而不是 hostname。
+5. API search/RSS/source remote import 对私网失败保持既有 status/schema 和安全错误；测试 client bypass
+   只允许 `_test.go`。
+6. 真实 Docker 网络下验证公网 source、默认拒绝容器 loopback/bridge/host gateway、显式 allowlist 后
+   LAN fixture 可用；移除 allowlist 并重启后再次拒绝，历史 SQLite/source JSON 不变化。
 
 ## 发布闸门
 

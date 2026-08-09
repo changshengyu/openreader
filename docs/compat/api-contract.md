@@ -770,8 +770,13 @@ headers and never Cookie, Authorization, Proxy-Authorization or custom source cr
 | `POST /api/sources/remote-preview`, `POST /api/sources/remote` | Existing JWT/edit permission, 200 success shape and 400 failure shape remain. | Malformed/unsafe/oversized/redirect-limited fetches return the existing generic `{"error":"failed to fetch remote source URL"}`; remote response bytes never reach JSON decoding after the cap. |
 | `POST /api/rss/sources/:id/refresh`, `GET /api/rss/articles/:id/content` | Existing authenticated source/article ownership, requested-page semantics, success payload and current 400 failure status remain. | Fetch diagnostics are redacted before concatenation; no URL query, userinfo, header/cookie, body or proxy credential enters the `error` field or persisted RSS article/source state. |
 
-P2-N1 does not change SQLite, backup, WebSocket or frontend request schemas. Private-network/DNS/dial policy is
-the separate P2-N2 contract and remains open until its own tests and deployment allowlist grammar are signed.
+P2-N1 does not change SQLite, backup, WebSocket or frontend request schemas. The separate P2-N2 contract is now
+locked but remains unimplemented. It adds only the deployment variable
+`OPENREADER_SOURCE_NETWORK_ALLOWLIST` (comma-separated exact hostname, bare IP or CIDR; empty means public-only),
+fails startup on invalid non-empty entries, and keeps all business API paths/status/success/error schemas unchanged.
+Unsafe private/DNS/proxy targets become the existing `source_request_failed` family without exposing the target,
+DNS answer, allowlist or proxy credentials. The complete API/network review is not signed until its tests and
+Docker LAN/public fixtures pass.
 P2-N1 was implemented in `981bca7` and published locally to GHCR as `981bca7` / `latest`; the verified OCI
 index is `sha256:02160e0797b3371fdfadccb550b8766d412c3e09df632ba1e36d192b26eb500d`.
 
