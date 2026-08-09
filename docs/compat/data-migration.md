@@ -790,3 +790,16 @@ owner-isolation smoke. See `reader-settings-fixed-baseline-second-audit-p0-contr
   `data/`, `cache/` or `library/`.
 
 See [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md).
+
+## P2 backup restore transaction-worker compatibility (2026-08-09 extracted)
+
+- The logical restore already promises one SQLite transaction for selected settings, groups, shelf, progress,
+  bookmarks, RSS, rules and permitted sources. Its transaction worker must therefore contain only the transaction
+  DB and services explicitly rebuilt on that DB.
+- Copying the full `Server` also copies its mutex and unrelated long-lived runtime/service pointers. It is forbidden
+  even if today's helpers happen not to dereference those fields; a later helper could silently escape the rollback
+  boundary through an original-DB service.
+- Replacing the shallow copy with a minimal transaction-bound worker changes no table, row, archive, mounted file,
+  API field or WebSocket event. Existing old/current backup fixtures remain authoritative.
+- `go vet ./...` is an explicit red/green gate in addition to the existing rollback and fresh/historical volume
+  tests. See `backup-restore-fixed-baseline-p2-contract.md`.

@@ -228,3 +228,33 @@ P2-S4 已按该勘误实施：用户逻辑/portable 备份、管理员旧根 tri
 2026-07-28 又用当前 `f44447f` 本机镜像重跑专项门，legacy ownership migration、COW、
 管理员/普通用户备份根、logical/portable、恢复隔离和重启全部通过。P2-S4 状态为
 `aligned / Docker-published`，不再保留“全局 BookSource”或“升级卷待完成”的旧结论。
+
+## 2026-08-09 恢复事务 worker 复审
+
+WebSocket P2 发布前运行当前 Go toolchain 的 `go vet ./...`，稳定报出：
+
+```text
+api/backup_restore_plan.go:53:13: assignment copies lock value to worker:
+openreader/backend/api.Server contains sync.Mutex
+```
+
+当前 `restoreLegadoBackupDataWithPermissions` 在 `s.db.Transaction` 内用 `worker := *s` 复制完整
+`Server`，再只替换 `db` 和 `bookGroups`。这既复制 `registerMu`，也把 Hub、scheduler、remote reader、
+cache/resource services 等与本次逻辑恢复无关的长生命周期运行时指针带进事务 worker。虽然当前
+`executeLogicalBackupRestorePlan` 的实际字段依赖经逐方法取证只有 transaction-bound `db` 和
+`bookGroups`，保留完整 Server 浅拷贝会让未来 helper 无意使用绑定原 DB 的 service，并破坏本合同
+“全部逻辑 artifact 同一 SQLite 事务”的保证。
+
+裁决为内部事务 `must-fix`，不重开已签收的可见/API/archive 行为：
+
+1. transaction worker 必须显式构造，只注入 `db:tx` 与 `bookGroups:bookgroups.New(tx)`；不得复制
+   `Server`、Mutex、Hub、scheduler、backup service、source/resource service 或注册状态。
+2. 当前 restore helper 继续只通过 worker 的 transaction DB 执行。新增依赖时必须显式注入一个
+   transaction-bound service，不能回退到浅拷贝。
+3. 任何 artifact 失败仍回滚先前全部逻辑写入；广播仍只由原 Server 在 transaction commit 后执行。
+4. API 路径、请求/响应/count、错误 envelope、ZIP/portable 格式、权限、SQLite schema 和挂载目录
+   全部不变。
+5. 红灯门为当前 `go vet ./...`；实施后必须通过 focused restore、全量 Go、vet、数据 race、frontend
+   build/tests 与 fresh/historical Docker volume/backup smoke。
+
+本节只授权移除运行时浅拷贝并明确事务依赖，不授权重写恢复顺序或 archive 映射。
