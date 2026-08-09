@@ -304,7 +304,11 @@ Targeted evidence: `backend/api/reader_appearance_assets_p2_contract_test.go`,
 - [x] LocalStore, WebDAV and generated backups resolve to private descendants for regular users while the administrator retains the preserved legacy root. Cross-user access is denied without moving/deleting mounted data.
 - [x] Direct and storage-backed preview/import uses user-scoped random staged tokens; confirmation consumes the staged bytes, foreign/expired tokens fail closed, and successful/expired stages are removed.
 - [x] Direct local-book upload, LocalStore/WebDAV upload, preview and confirmation reads are capped by `OPENREADER_MAX_IMPORT_BYTES` (128 MiB by default) before staging or parser work. LocalStore/WebDAV writes stage beside the target and rename only after the bounded copy succeeds.
-- [ ] Archive entry/expanded-size and parser-work limits still need explicit bounds; stage cleanup must also run without a later user request.
+- [x] Archive entry/expanded-size、UMD/PDF parser work 和跨用户 stage cleanup 已有显式上限；cleanup
+  在启动时执行并每小时重复，不依赖下一次用户请求。
+- [ ] TXT/Markdown 尚未把解码后文本和最终章节数接入统一 parser limits；历史本地归档刷新/缓存
+  重建在读取完整文件前也尚未执行文档声明的 legacy input ceiling。以
+  `docs/compat/local-text-parser-budget-p2-contract.md` 为下一条 P2 门禁。
 
 Evidence for the checked items: `backend/api/workspace_storage_access_contract_test.go`, `backend/api/workspace_import_stage_contract_test.go`, `backend/api/import_size_contract_test.go`, `frontend/tests/webdavAuthContract.test.mjs`, full Go/frontend test suites and production frontend build. This remains not a storage/backup release approval.
 

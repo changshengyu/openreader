@@ -50,7 +50,8 @@
 - **P2 已覆盖的高风险项**：账号/overlay/cache 隔离、原子阅读进度、删除收敛、替换规则、书签、
   用户管理、RSS 第二轮、书源 owner/API/主解析链、外部 WebDAV、portable backup、封面/章节图片
   capability，以及共享抓取器 P2-N1/N2 请求与私网/DNS/代理边界。
-- **尚未完成的主线**：更广的 parser/upload 解压、条目数、耗时与资源上限；尚未逐动作签约的 Go
+- **尚未完成的主线**：ZIP/UMD/PDF 和暂存清理已复核为既有完成项；parser/upload 当前真实缺口收敛为
+  TXT/Markdown 解码后文本、最终章节数及历史归档读取前的 legacy ceiling；尚未逐动作签约的 Go
   REST/错误/事务语义；以及后续真实设备反馈暴露出的上游可见偏差。线上目前仍运行 `7971e23`，需
   部署 `d198c2e` 后再验收 Reader 内书架。上述项目继续按“合同→失败测试→实现→浏览器/新旧卷→本地
   Docker”推进。

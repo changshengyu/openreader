@@ -1595,6 +1595,21 @@ Planned delivery order: (A) common import-parser limits, EPUB/UMD/PDF guards and
 
 The backup ZIP reader/restore path was kept as the next separate data-contract submodule; its existing formats remain unchanged by this parser/staged-preview implementation.
 
+### 2026-08-09 P2 TXT/Markdown parser-budget follow-up
+
+The earlier parser record correctly closed EPUB/CBZ archive structure, UMD/PDF work limits and proactive staged
+preview cleanup, but its “shared parser policy” claim was too broad. `parseUploadedBookWithLimits` still calls
+the no-limit `ParseTXTWithRule` branch for TXT/`.text`/Markdown, while prepared-snapshot validation borrows the
+UMD-specific chapter setting. Historical refresh and cache reconstruction also call `os.ReadFile` before the
+documented wider legacy ceiling can apply.
+
+This remaining gap is now governed by
+[`local-text-parser-budget-p2-contract.md`](local-text-parser-budget-p2-contract.md): add a generic parsed-chapter
+limit, enforce decoded UTF-8 text and chapter budgets in the TXT branch, and bound historical source reads before
+full allocation. It is a security/runtime adaptation only; the fixed-upstream 512000-byte probe, explicit-rule
+order, preface behavior, 10KiB no-TOC fallback and zero-chapter explicit-rule preview remain authoritative.
+No application code changed during this inventory pass.
+
 ### 2026-07-13 P2 local-import UMD binary compatibility audit
 
 This audit directly compares the fixed upstream `LocalBook.kt`, `UmdFile.kt`, `me/ag2s/umdlib/umd/UmdReader.java`, `UmdChapters.java`, `UmdHeader.java`, and `UmdUtils.java` with OpenReader's `backend/engine/umd_parser.go`. It supersedes the earlier limits-only UMD assessment: current limits protect allocation, but the parser does not recognize the reader-dev UMD wire format at all.

@@ -197,6 +197,11 @@ Status: implemented in-progress; no database migration is required.
 Status: parser and staged-preview cleanup implementation complete. Backup ZIP restore is documented and implemented in the following section; no SQLite or mounted-root migration is authorized.
 
 - New parser-limit environment values must be additive with documented defaults. An unset deployment keeps the default bounded policy; existing `OPENREADER_MAX_IMPORT_BYTES` remains the byte limit before staging.
+- The follow-up TXT/Markdown budget is additive and migration-free. `OPENREADER_MAX_PARSED_CHAPTERS`
+  limits final parser output for new/explicit parse work; when unset it follows an explicitly configured legacy
+  `OPENREADER_MAX_UMD_CHAPTERS` value, otherwise defaults to 100000. Existing rows, archives and caches are not
+  scanned on startup. Historical lazy recovery uses the wider bounded compatibility policy and must reject an
+  over-ceiling source before reading the complete file into memory.
 - Configured import limits apply while previewing, importing or explicitly reparsing new bytes. Existing `books`, `chapters`, `chapters.json`, archived originals, cached chapter content and reader progress are never scanned, rewritten or deleted by startup cleanup; lazy recovery of a pre-existing local archive uses a documented wider but still bounded compatibility ceiling instead of retroactively applying the new-upload policy.
 - The preview cleanup worker operates only below `cache/import-previews/<user-id>/`. It may remove an expired token's `.book` and `.json` pair or a stale orphan created by an interrupted stage write. It must not remove a fresh valid pair, any LocalStore/WebDAV source, any `library/` archive, SQLite row or backup file.
 - Parser rejection happens before `ArchiveImportedBook`, category mutation, chapter-row creation, sync broadcast or staged-token consumption. A rejected input leaves the mounted source and existing shelf untouched.
