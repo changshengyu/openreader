@@ -1,5 +1,17 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-11 P2 公开认证请求边界第二轮
+
+固定上游 `/reader3/login` 的账号字段、登录/注册转换和错误语义已由六动作合同裁决；本轮不重开该
+产品状态机。当前 OpenReader 拆分的公开 `/api/auth/login`、`/register` 却在 JWT 前直接执行无上限
+`ShouldBindJSON`，Gin 只消费首个 JSON 值；超过 bcrypt 72-byte 硬限制的新密码又落成错误的 `500`。
+
+这些差异裁决为 P2 Go/security `must-fix`。目标是 16 KiB 声明/流式 body 上限、单 JSON、超限
+`413`、格式错误 `400`、过长新密码 `400`，同时保留通用登录 `401`、旧账号登录、成功响应和零数据
+迁移。完整合同见
+[`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**，本轮尚未修改应用或测试。
+
 ## 2026-08-11 P0 Reader 内联章节缓存第二轮
 
 固定上游 `Reader.vue#cacheChapterContent/cancelCaching`、`App.vue#getBookContent` 和

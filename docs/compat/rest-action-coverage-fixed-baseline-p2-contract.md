@@ -152,3 +152,14 @@ relative-cache、owner-isolation 和 portable restore/restart。正式发布因�
   OCI index `sha256:311ca87a75e4b77c49c95c033c80ac4a6d7baa1598092b630ac5002ce5493754`。
 
 当前状态：**TXT aligned / Docker-published / awaiting-device-verification；source-switch aligned / Docker-published / awaiting-device-verification**。
+
+## 11. 公开认证请求边界第二轮（2026-08-11）
+
+六动作的可见登录/注册状态机继续保持 `technical-stack-equivalent`，但其公开 wire boundary 尚未签收：
+`POST /api/auth/login` 与 `/register` 直接使用无上限 `ShouldBindJSON`，Gin 又只解码首个 JSON 值；
+注册密码超过 bcrypt 的 72-byte 硬限制还会错误返回 `500`。这些不是上游产品行为，属于 Go 运行时/
+安全适配的 P2 must-fix。
+
+精确 16 KiB body、单 JSON、`413/400/401`、零副作用、旧账号和测试先行合同见
+[`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本节只完成合同取证，未修改应用或测试。

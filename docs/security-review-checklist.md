@@ -10,6 +10,18 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
+### P2 public auth request boundary (2026-08-11 inventory)
+
+- [ ] `POST /api/auth/login` and `/register` enforce the same 16 KiB actual-read limit for declared and chunked
+  bodies before DB lookup, bcrypt or durable writes; overflow is a path-free `413` and never logs credentials.
+- [ ] Exactly one JSON value is accepted. Trailing whitespace is compatible; a second value or garbage is `400`
+  with no user/login-time mutation.
+- [ ] New bcrypt passwords over 72 bytes fail as an explicit `400`, never a library-derived `500`; invalid login
+  remains a generic `401`, and historical usernames are not revalidated as new accounts.
+
+Target evidence:
+[`docs/compat/auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/auth-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ## P1 Index authenticated-session isolation (2026-07-27 candidate; browser gate pending)
 
 - [x] Session invalidation suspends or resets Index state before token removal. Visible search/explore rows,

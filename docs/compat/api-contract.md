@@ -37,8 +37,13 @@ server event names and existing business payloads remain stable.
 |---|---|---|---|
 | `GET` | `/api/health` | Health and build metadata. | OpenReader runtime addition; keep stable for Docker/probes. |
 | `GET`, `HEAD` | `/api/cover/:capability` | Serve a server-projected remote book cover through a same-origin, short-lived resource capability. | Implemented and published in `ceb4baa` on 2026-07-27. The path never accepts a raw URL or login JWT. Successful responses are bounded, type-verified and privately cacheable; malformed/tampered capabilities are `403`, unavailable/unsafe remote images are `404`. See [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md). |
-| `POST` | `/api/auth/register` | Create user; first user becomes admin. | OpenReader multi-user addition. |
-| `POST` | `/api/auth/login` | Return JWT and user object. | OpenReader auth addition; invalid credentials return `401`. |
+| `POST` | `/api/auth/register` | Create user; first user becomes admin. | OpenReader multi-user addition. One JSON body is limited to 16 KiB; overflow is `413`. New passwords are 8 characters and at most 72 bytes for bcrypt; oversize is `400`. |
+| `POST` | `/api/auth/login` | Return JWT and user object. | OpenReader auth addition; one JSON body is limited to 16 KiB and overflow is `413`. Invalid credentials remain generic `401`, and legacy usernames are not revalidated as new registrations. |
+
+The complete auth wire/error/no-side-effect contract is
+[`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+It is currently `inventory-complete / implementation-pending`; the table records the target contract, not proof that
+the current handlers already enforce it.
 
 ## Protected endpoint groups
 
