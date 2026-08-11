@@ -1,6 +1,6 @@
 # Reader 内联章节缓存第二轮固定基准合同（P0）
 
-状态：**implementation-complete / regression-validated / Docker-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -118,5 +118,14 @@ OpenReader：
   toast、扁平表面和视口边界；
 - 完整 `reader-mobile-contract.mjs` 同时通过桌面、两种手机、自适应/强制移动 iPad 合同。
 
-本批不改变 API、SQLite、挂载目录、备份、WebDAV 或浏览器 cache key。Docker 新旧卷门与本地
-双架构发布仍是把状态改为 `Docker-published` 的独立门槛。
+本批不改变 API、SQLite、挂载目录、备份、WebDAV 或浏览器 cache key。实现提交 `4da98fa` 的本地
+arm64 候选先后通过：
+
+- fresh volume 的 portable v1、portable v2 assets、cross-user 和 restart；
+- historical volume 的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 和 portable restore。
+
+随后同一提交在本机生成并发布 `ghcr.io/changshengyu/openreader:4da98fa` 与 `latest`。两个远端标签
+共同指向 amd64/arm64 OCI index
+`sha256:771df515341f46f35a07b7f62de913490cdefe4489f3016d7d82f4436aa8f75d`；amd64 manifest 为
+`sha256:f239157a67a381c552662cc83e341e4525fe22c840062be72ecf71faa6ea9c3f`，arm64 manifest 为
+`sha256:0044561f83e3e605ca942b46f9c38a83499cdb8d4b27f6be9d0d8194f9094f4f`。GHCR 回读已确认两标签一致。

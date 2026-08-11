@@ -8,9 +8,9 @@
 浏览器已命中章节仍计入完整进度；取消同步清空 pending 并立即恢复按钮；自然结束只提示
 `缓存完成`。
 
-当前实现会提前剔除已缓存章节、全命中时误报“不需要缓存”、对已入架本地书静默返回、取消后把
+审计时实现会提前剔除已缓存章节、全命中时误报“不需要缓存”、对已入架本地书静默返回、取消后把
 面板锁在“正在取消缓存...”直到在途请求结束，还增加完成计数/取消 toast 和无关目录重载。这些均为
-`must-fix`。当前独立边框/阴影、描边动作和“取消”文字按钮也应恢复为继承底栏的扁平区、文本动作
+`must-fix`。审计时的独立边框/阴影、描边动作和“取消”文字按钮也应恢复为继承底栏的扁平区、文本动作
 和关闭图标，同时保留 button/ARIA。临时 Reader 保留既有 `Cache-Control:no-store` 和零 cache
 writer 安全适配，不为表面对齐写入 IndexedDB。账号或书籍切换后的旧任务还必须禁止迟到提示和
 跨作用域刷新。
@@ -20,7 +20,10 @@ writer 安全适配，不为表面对齐写入 IndexedDB。账号或书籍切换
 合同先以 `03e337a` 独立推送；随后失败测试锁定完整区间、扁平关闭图标、本地书、取消即时恢复和
 上下文隔离。实现恢复 cache-first 全区间和精确反馈，冻结每任务用户 scope，并保留临时 Reader
 `no-store`。frontend 740/740、build、Go 全量、新增四视口专项浏览器和完整 Reader/iPad 合同通过。
-当前状态为 **implementation-complete / regression-validated / Docker-pending**。
+实现提交 `4da98fa` 又通过顺序 fresh/historical 卷门并由本机发布为同名标签与 `latest`；两标签的
+amd64/arm64 OCI index 均为
+`sha256:771df515341f46f35a07b7f62de913490cdefe4489f3016d7d82f4436aa8f75d`。当前状态为
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 ## 2026-08-09 P1 搜索/探索临时 Reader 会话第二轮
 

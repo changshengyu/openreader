@@ -691,6 +691,9 @@ UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existi
   Reader sessions retain `Cache-Control: no-store` and do not gain a persistent cache writer.
 - Queue progress, cancellation tokens and cached-index projections are runtime-only. Existing browser cache and
   mounted server chapter cache remain usable after upgrade and rollback.
+- The locally built `4da98fa` candidate passed fresh portable-v1/v2-assets/cross-user/restart and historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation mounted-volume and portable-restore gates before the same commit
+  was published for amd64/arm64. No migration was required.
 
 ## P2 whole-book chapter text cache compatibility (2026-07-18)
 
