@@ -162,4 +162,7 @@ relative-cache、owner-isolation 和 portable restore/restart。正式发布因�
 
 精确 16 KiB body、单 JSON、`413/400/401`、零副作用、旧账号和测试先行合同见
 [`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；本节只完成合同取证，未修改应用或测试。
+合同先以 `052de86` 独立提交。随后旧实现红测证明 declared/chunked 超限可继续认证/写入、尾随 JSON
+被忽略、73-byte 注册误成 `500`，且共享前 72 bytes 的 73-byte 登录会错误成功；实现现已在查库、
+bcrypt 和写入前执行认证专用有界单值解码及 72-byte 分流。focused/full/race/vet、frontend 740/740、
+build 和真实 HTTP smoke 均通过。当前状态为 **aligned / regression-validated / Docker-pending**。

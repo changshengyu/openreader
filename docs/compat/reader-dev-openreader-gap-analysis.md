@@ -10,7 +10,10 @@
 `413`、格式错误 `400`、过长新密码 `400`，同时保留通用登录 `401`、旧账号登录、成功响应和零数据
 迁移。完整合同见
 [`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**，本轮尚未修改应用或测试。
+合同已先以 `052de86` 独立提交；随后测试先行实现认证专用 16 KiB 有界单 JSON 解码和 bcrypt 72-byte
+注册/登录适配。旧实现红测复现超限写入、尾随 JSON、注册 `500` 与前 72 bytes 相同的 73-byte 密码
+错误登录；新实现的 focused/full/race/vet、frontend 740/740、build 与真实 declared/chunked HTTP smoke
+均通过。当前状态为 **aligned / regression-validated / Docker-pending**。
 
 ## 2026-08-11 P0 Reader 内联章节缓存第二轮
 

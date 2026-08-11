@@ -871,6 +871,22 @@ owner-isolation smoke. See `reader-settings-fixed-baseline-second-audit-p0-contr
 
 See [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md).
 
+## P2 public auth request-boundary compatibility (2026-08-12)
+
+- No SQLite table, column, index, user row, JWT claim, browser key, mounted directory, backup member or WebDAV
+  object changes. Existing `data/`, `cache/` and `library/` layouts remain byte-for-byte compatible.
+- The 16 KiB limit applies only to the wire body of public login/registration requests. It does not rewrite stored
+  usernames, password hashes or login timestamps and does not add a migration/backfill.
+- The bcrypt 72-byte registration boundary constrains only newly submitted public passwords. Existing password
+  hashes remain readable; login keeps existing username trimming and does not apply new-account username rules.
+- Rejected oversized, multi-value or overlong-password requests are validated before durable work. Contract tests
+  directly prove no user row or `last_active_at` mutation; runtime smoke proves no rejected registration appears in
+  the public server's authoritative user list.
+
+Focused/full/race/vet, frontend 740/740, production build and isolated production-shape HTTP smoke pass. The unchanged
+fresh/historical mounted-volume and portable-backup gates remain required before Docker publication. See
+`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`.
+
 ## P1 manual shelf refresh compatibility (2026-08-09)
 
 - No table, column, index, mounted directory, backup member, WebDAV object or browser key format changes.

@@ -1,10 +1,10 @@
 # 公开认证请求边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**aligned / regression-validated / Docker-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-本轮只提取合同并映射现状，不修改应用或测试代码。范围严格限定为：
+合同先在 `052de86` 中独立提取并映射现状；应用实现和测试在合同提交后完成。范围严格限定为：
 
 - `POST /api/auth/login`
 - `POST /api/auth/register`
@@ -103,3 +103,19 @@ build。该切片无 UI 几何变化，真实运行时门使用生产二进制�
 实现应把有界单值 JSON 解码集中在认证 handler 的窄 helper 中；handler 仍只负责 bind/validate、状态码
 和序列化。不得新增第二套路由、全局 body 中间件或改变其它 JSON endpoint 的既有上限。若实施发现
 需要账号速率/总量策略，先另建合同，不在本切片中顺带加入。
+
+## 8. 实施与回归结果（2026-08-12）
+
+- `backend/api/auth.go` 使用认证专用 helper，同步检查声明长度并通过 `http.MaxBytesReader` 限制实际读取；
+  首值后第二次 decode 必须得到 EOF，因此只保留尾部 JSON whitespace 兼容。
+- 注册在 bcrypt 前拒绝超过 72 bytes 的密码并返回精确 `400`；登录在查库前将同类输入映射为通用
+  `401`，关闭 bcrypt 截断导致“前 72 bytes 相同即可登录”的运行时风险。
+- `backend/api/auth_request_boundary_contract_test.go` 先在旧实现上证明 declared/chunked 超限会注册/
+  登录、第二 JSON 值被忽略、73-byte 注册变成 `500` 且 73-byte 登录可错误成功，再锁定精确状态、
+  错误体、72-byte 正常路径和 SQLite 零副作用。
+- `scripts/smoke/auth-request-boundary-contract.mjs` 在隔离的生产形态服务上通过 declared/chunked `413`、
+  单 JSON、精确 16 KiB、72/73-byte 边界、错误不回显和拒绝请求不新增用户。
+- `go test ./...`、认证 focused race、`go vet ./...`、frontend 740/740、production build、
+  `git diff --check` 全部通过。该切片没有前端几何变化，不需要新增视口截图门。
+- SQLite schema、JWT、`data/`、`cache/`、`library/`、backup/WebDAV 和旧账号行均未改变；Docker
+  fresh/historical mounted-volume 门与正式本地发布仍待本切片提交后执行。

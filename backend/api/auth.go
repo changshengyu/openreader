@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -16,9 +18,19 @@ import (
 )
 
 type authRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
+
+const (
+	maxAuthRequestBodyBytes = 16 << 10
+	maxBcryptPasswordBytes  = 72
+)
+
+var (
+	errAuthRequestInvalid  = errors.New("invalid auth request")
+	errAuthRequestTooLarge = errors.New("auth request body too large")
+)
 
 var errUsernameExists = errors.New("username already exists")
 
@@ -55,10 +67,51 @@ func boolValue(value bool) *bool {
 	return &value
 }
 
+func decodeAuthRequest(c *gin.Context, request *authRequest) error {
+	if c.Request.ContentLength > maxAuthRequestBodyBytes {
+		return errAuthRequestTooLarge
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAuthRequestBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	if err := decoder.Decode(request); err != nil {
+		return classifyAuthRequestDecodeError(err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err == nil {
+		return errAuthRequestInvalid
+	} else if !errors.Is(err, io.EOF) {
+		return classifyAuthRequestDecodeError(err)
+	}
+	if request.Username == "" || request.Password == "" {
+		return errAuthRequestInvalid
+	}
+	return nil
+}
+
+func classifyAuthRequestDecodeError(err error) error {
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		return errAuthRequestTooLarge
+	}
+	return errAuthRequestInvalid
+}
+
+func writeAuthRequestError(c *gin.Context, err error) {
+	if errors.Is(err, errAuthRequestTooLarge) {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		return
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+}
+
 func (s *Server) register(c *gin.Context) {
 	var request authRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+	if err := decodeAuthRequest(c, &request); err != nil {
+		writeAuthRequestError(c, err)
+		return
+	}
+	if len(request.Password) > maxBcryptPasswordBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at most 72 bytes"})
 		return
 	}
 
@@ -120,8 +173,12 @@ func (s *Server) register(c *gin.Context) {
 
 func (s *Server) login(c *gin.Context) {
 	var request authRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+	if err := decodeAuthRequest(c, &request); err != nil {
+		writeAuthRequestError(c, err)
+		return
+	}
+	if len(request.Password) > maxBcryptPasswordBytes {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid username or password"})
 		return
 	}
 

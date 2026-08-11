@@ -42,8 +42,8 @@ server event names and existing business payloads remain stable.
 
 The complete auth wire/error/no-side-effect contract is
 [`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md).
-It is currently `inventory-complete / implementation-pending`; the table records the target contract, not proof that
-the current handlers already enforce it.
+It is `aligned / regression-validated / Docker-pending`: focused contract/race tests, the full Go/frontend gates and
+a real declared/chunked HTTP smoke prove the current handlers enforce it. Mounted-volume gates and publication remain.
 
 ## Protected endpoint groups
 
