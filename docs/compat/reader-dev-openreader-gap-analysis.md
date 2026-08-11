@@ -1,5 +1,24 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-11 P0 Reader 内联章节缓存第二轮
+
+固定上游 `Reader.vue#cacheChapterContent/cancelCaching`、`App.vue#getBookContent` 和
+`helper.js#LimitResquest/cacheFirstRequest` 证明，2026-07-10 只核对内联几何后作出的“缓存引擎和
+取消行为未变”结论并不完整。上游对当前章后的完整 50/100/all 区间执行并发 2 的 cache-first，
+浏览器已命中章节仍计入完整进度；取消同步清空 pending 并立即恢复按钮；自然结束只提示
+`缓存完成`。
+
+当前实现会提前剔除已缓存章节、全命中时误报“不需要缓存”、对已入架本地书静默返回、取消后把
+面板锁在“正在取消缓存...”直到在途请求结束，还增加完成计数/取消 toast 和无关目录重载。这些均为
+`must-fix`。当前独立边框/阴影、描边动作和“取消”文字按钮也应恢复为继承底栏的扁平区、文本动作
+和关闭图标，同时保留 button/ARIA。临时 Reader 保留既有 `Cache-Control:no-store` 和零 cache
+writer 安全适配，不为表面对齐写入 IndexedDB。账号或书籍切换后的旧任务还必须禁止迟到提示和
+跨作用域刷新。
+
+完整合同、数据边界和测试先行门见
+[`reader-inline-chapter-cache-fixed-baseline-second-audit-p0-contract.md`](reader-inline-chapter-cache-fixed-baseline-second-audit-p0-contract.md)。
+本节仅完成固定上游取证，状态为 **inventory-complete / implementation-pending**，尚未修改应用或测试。
+
 ## 2026-08-09 P1 搜索/探索临时 Reader 会话第二轮
 
 固定上游仍由 `Index.vue#toDetail` 把未入架搜索结果写入浏览器 `readingBook`，再由目录/正文动作按书源重建；只有显式 `saveBook` 才持久化。OpenReader 的用户绑定高熵服务端会话是 JWT/Vue 3 下隐藏书源凭证的技术栈等价适配，但原实现的 create body 无上限、内存 map 无单会话/用户/进程预算，且非法章节 index 会提前续期，均判定为 `must-fix`。
