@@ -2,6 +2,23 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## User-facing migration contract (2026-08-11)
+
+The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation
+of existing behavior and do not authorize a new schema or filesystem migration:
+
+| Source | Supported path | Explicit boundary |
+|---|---|---|
+| reader-dev/Legado | Upload the original logical `backup*.zip` to the authenticated user's WebDAV root and restore it through the single WebDAV file manager. | Never reuse the upstream SQLite database, IDs, accounts, passwords, JWT state or host paths. Upstream logical backups do not contain local-book originals. |
+| OpenReader account/host | Use portable v2 for an account-level move. | Portable packages are caller-scoped, fail closed when a required archive/asset is unavailable, and exclude local audio directories. |
+| Complete OpenReader instance | Stop the service and copy `data/`, `cache/` and `library/` together with deployment configuration. | A partial root copy is not described as a complete migration. Preserve `OPENREADER_JWT_SECRET` only when existing sessions should remain valid. |
+
+An in-place OpenReader upgrade retains the same three mounts and relies only on already-reviewed additive startup
+migrations. The documented rollback is a complete pre-upgrade volume snapshot plus the prior image; it never merges
+an old database into directories already written by a newer container. The README also distinguishes ordinary
+logical `backup_*.zip`, OpenReader `portable_backup_*.zip`, and a cold three-root system snapshot so users do not
+mistake logical reader-dev compatibility for full filesystem portability.
+
 ## P2 reading-progress CAS and WebDAV mirror (audit pending implementation)
 
 The 2026-07-18 fixed-baseline audit in
