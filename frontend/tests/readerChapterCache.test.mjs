@@ -5,13 +5,12 @@ import {
   readerChapterCacheTargets,
 } from '../src/utils/readerChapterCache.js'
 
-test('selects uncached chapters after the current chapter', () => {
+test('selects the complete upstream chapter range after the current chapter', () => {
   assert.deepEqual(readerChapterCacheTargets({
     chapterCount: 8,
     currentIndex: 2,
     count: 4,
-    cachedMap: { 4: true, 6: true },
-  }), [3, 5])
+  }), [3, 4, 5, 6])
 })
 
 test('supports caching every remaining chapter and end-of-book bounds', () => {

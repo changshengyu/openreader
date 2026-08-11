@@ -90,7 +90,7 @@ test('saves progress before navigating back to the shelf', async () => {
   ])
 })
 
-test('opens plain reader BookInfo and keeps the upstream source entry available for local books', () => {
+test('keeps upstream source and inline cache entries available for local books', () => {
   const fixture = createController()
   fixture.controller.openBookInfo()
   const remoteOptions = fixture.calls[0][2]
@@ -110,8 +110,9 @@ test('opens plain reader BookInfo and keeps the upstream source entry available 
   const localOptions = fixture.calls.at(-1)[2]
   assert.equal('actions' in localOptions, false)
   assert.equal(fixture.state.sourceVisible.value, true)
-  assert.equal(fixture.state.cacheVisible.value, false)
-  assert.deepEqual(fixture.calls.slice(0, 2), [
+  assert.equal(fixture.state.cacheVisible.value, true)
+  assert.deepEqual(fixture.calls.slice(0, 3), [
+    ['refresh-cache'],
     ['open-bookmarks', fixture.book.value],
     ['open-content-search', fixture.book.value],
   ])

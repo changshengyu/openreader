@@ -44,8 +44,8 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
   return data
 }
 
-export async function listBookBrowserCachedChapters(book, bookId) {
-  const scope = currentUserScope()
+export async function listBookBrowserCachedChapters(book, bookId, options = {}) {
+  const scope = options.scope || currentUserScope()
   const prefix = `${chapterCacheKeyPrefix(book, bookId, scope)}@chapterContent-`
   const keys = await listBrowserCacheKeys(prefix)
   const map = {}
@@ -106,13 +106,14 @@ export async function clearCurrentUserBrowserChapterCache() {
 }
 
 export async function cacheBookChaptersToBrowser(book, bookId, chapters, options = {}) {
-  const cachedMap = await listBookBrowserCachedChapters(book, bookId)
+  const loadChapterContent = options.loadChapterContent || loadBrowserChapterContent
+  const scope = options.scope || currentUserScope()
   const startIndex = Math.max(0, Number(options.startIndex || 0))
   const count = options.count === true ? chapters.length : Number(options.count || chapters.length)
   const endIndex = Math.min(chapters.length, startIndex + count)
   const targets = []
   for (let index = startIndex; index < endIndex; index += 1) {
-    if (!cachedMap[index]) targets.push(index)
+    targets.push(index)
   }
   let finished = 0
   let cached = 0
@@ -121,7 +122,7 @@ export async function cacheBookChaptersToBrowser(book, bookId, chapters, options
     while (targets.length && !options.cancelled?.()) {
       const index = targets.shift()
       try {
-        const data = await loadBrowserChapterContent(book, bookId, index)
+        const data = await loadChapterContent(book, bookId, index, { scope })
         if (isValidChapterContentResponse(data)) cached += 1
       } catch {
         // Keep parity with upstream batch caching: failed chapters should not stop the queue.

@@ -21,7 +21,6 @@ export function useReaderPanels(options) {
       options.onUnavailable?.()
       return
     }
-    if (!unref(options.isRemoteBook)) return
     options.refreshBrowserCachedChapters()
     options.cacheVisible.value = !options.cacheVisible.value
   }

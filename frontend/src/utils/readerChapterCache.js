@@ -2,7 +2,6 @@ export function readerChapterCacheTargets({
   chapterCount,
   currentIndex,
   count,
-  cachedMap,
 }) {
   const start = Math.max(0, Number(currentIndex) + 1)
   const total = Math.max(0, Number(chapterCount) || 0)
@@ -12,7 +11,7 @@ export function readerChapterCacheTargets({
     : Math.min(total, start + Math.max(0, Number(count) || 0))
   const targets = []
   for (let index = start; index < end; index += 1) {
-    if (!cachedMap?.[index]) targets.push(index)
+    targets.push(index)
   }
   return targets
 }

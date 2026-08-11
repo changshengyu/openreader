@@ -1,12 +1,13 @@
 # Reader 内联章节缓存第二轮固定基准合同（P0）
 
-状态：**固定上游取证完成 / implementation-pending**。
+状态：**implementation-complete / regression-validated / Docker-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-本轮只完成合同提取和现状映射，不修改应用或测试代码。此前 2026-07-10 的聚焦审查只确认了
-内联面板的所有权和几何，并把“缓存引擎和取消行为未变”当成正确结论；本轮逐行比较证明该结论
-遗漏了目标区间、适用书籍、完成文案和取消状态转换，不能继续作为签收依据。
+本合同最初只完成合同提取和现状映射，并以 `03e337a` 独立推送；应用与测试实施结果记录在第 7 节。
+此前 2026-07-10 的聚焦审查只确认了内联面板的所有权和几何，并把“缓存引擎和取消行为未变”当成
+正确结论；本轮逐行比较证明该结论遗漏了目标区间、适用书籍、完成文案和取消状态转换，不能继续
+作为签收依据。
 
 ## 1. 权威文件与当前映射
 
@@ -94,3 +95,28 @@ OpenReader：
 `/api/cache/stats`、`DELETE /api/cache`、章节图片缓存和服务端 cache stream 已有独立合同，不因
 本轮重新设计。若测试发现既有 chapter-content API 或 browser key 不能满足上述状态机，必须先更新
 对应 API/数据合同，不能在前端加入第二套未签约存储格式。
+
+## 7. 实施与验证结果（2026-08-11）
+
+- `readerChapterCacheTargets` 和共用 `cacheBookChaptersToBrowser` 现在保留完整后续区间；已有浏览器
+  缓存仍由 `loadBrowserChapterContent` cache-first 命中，计入完整进度但不重复发 API。
+- 队列继续使用两个 worker，并在任务开始时冻结用户 scope。每个 Reader 缓存任务拥有独立取消
+  令牌；取消同步恢复三个动作，旧任务的两个在途请求可结束，但不能因新任务启动而恢复 pending。
+- `useReaderPanels` 删除已入架本地书的静默 guard；TXT/EPUB/UMD/CBZ 使用同一用户作用域章节入口。
+  临时 Reader 的 `no-store` 前置拒绝保持不变。
+- 自然完成只提示 `缓存完成`，取消不提示；结束不再重载目录。书籍 URL/source、路由身份或账号 scope
+  变化会同步取消旧任务，并抑制其迟到进度、提示和缓存投影刷新。
+- `ReaderCachePanel` 保留语义化按钮和 focus/ARIA，恢复继承底栏的无边框/无阴影表面、扁平文本动作
+  和关闭图标。
+
+测试先在旧实现上失败于完整区间、关闭图标、本地书入口和取消状态。实现后：
+
+- 聚焦 Node 合同 19 项通过；frontend 全量 **740/740**、production build 通过；
+- backend `go test ./...` 通过；本批没有 Go 代码改动；
+- 新增 `scripts/smoke/reader-inline-cache-contract.mjs`，在 1440x900、390x844、360x800、
+  1024x1366 的生产构建上验证本地书、预置缓存零重复请求、并发 2、慢请求取消、完整区间、精确
+  toast、扁平表面和视口边界；
+- 完整 `reader-mobile-contract.mjs` 同时通过桌面、两种手机、自适应/强制移动 iPad 合同。
+
+本批不改变 API、SQLite、挂载目录、备份、WebDAV 或浏览器 cache key。Docker 新旧卷门与本地
+双架构发布仍是把状态改为 `Docker-published` 的独立门槛。

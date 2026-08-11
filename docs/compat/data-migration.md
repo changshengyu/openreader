@@ -677,6 +677,21 @@ UNIQUE error. SQLite connection count, WAL/busy-timeout configuration and existi
   and current plus historical Docker volume/backup smoke. The first three automated code gates pass; browser and
   Docker gates remain pending.
 
+## P0 Reader inline chapter browser-cache compatibility (2026-08-11)
+
+- No SQLite table/column/index, API shape, mounted root, backup/WebDAV member, cache/library file or Docker volume
+  changes. Existing `data/`, `cache/` and `library/` content remains byte-compatible.
+- Existing `localCache@<user-scope>@...@chapterContent-<index>` keys remain unchanged and readable. The Reader now
+  schedules the complete requested range; cache-first hits still advance progress without issuing another API
+  request, so no cache migration, rewrite or owner claim is needed.
+- Each task freezes the existing authenticated user scope before workers start. A book or account change cancels
+  pending work and suppresses late UI updates; at most two already authorized in-flight requests can finish in the
+  frozen old scope. No result can be re-keyed into the new user scope.
+- Shelved TXT/EPUB/UMD/CBZ books use the same existing chapter-content endpoint and scoped browser keys. Temporary
+  Reader sessions retain `Cache-Control: no-store` and do not gain a persistent cache writer.
+- Queue progress, cancellation tokens and cached-index projections are runtime-only. Existing browser cache and
+  mounted server chapter cache remain usable after upgrade and rollback.
+
 ## P2 whole-book chapter text cache compatibility (2026-07-18)
 
 - No SQLite table/column/index, mounted root, backup member, WebDAV file, browser cache key or chapter-cache

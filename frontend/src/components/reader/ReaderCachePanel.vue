@@ -3,7 +3,9 @@
     <span class="reader-cache-title">缓存章节</span>
     <div v-if="caching" class="reader-cache-status">
       <span>{{ statusText }}</span>
-      <button type="button" @click="$emit('cancel')">取消</button>
+      <button class="reader-cache-cancel" type="button" title="取消缓存" aria-label="取消缓存" @click="$emit('cancel')">
+        <el-icon :size="16"><Close /></el-icon>
+      </button>
     </div>
     <div v-else class="reader-cache-actions">
       <button type="button" @click="$emit('cache', 50)">后面50章</button>
@@ -14,6 +16,8 @@
 </template>
 
 <script setup>
+import { Close } from '@element-plus/icons-vue'
+
 defineProps({
   visible: {
     type: Boolean,
@@ -41,9 +45,9 @@ defineEmits(['cache', 'cancel'])
   box-sizing: border-box;
   padding: 8px 14px;
   color: var(--reader-popup-text, var(--reader-text));
-  background: var(--reader-popup-bg);
-  border: 1px solid rgba(148, 132, 87, 0.38);
-  box-shadow: 0 4px 14px rgba(73, 57, 27, 0.1);
+  background: inherit;
+  border: 0;
+  box-shadow: none;
   font-size: 14px;
 }
 
@@ -64,8 +68,7 @@ defineEmits(['cache', 'cancel'])
   padding: 0 8px;
   color: var(--reader-popup-text, var(--reader-text));
   background: transparent;
-  border: 1px solid #e7dabb;
-  border-radius: 3px;
+  border: 0;
   cursor: pointer;
   font-size: 13px;
 }
@@ -80,6 +83,19 @@ defineEmits(['cache', 'cancel'])
 
 .reader-cache-status button {
   flex: 0 0 auto;
+}
+
+.reader-cache-cancel {
+  display: grid;
+  width: 30px;
+  padding: 0;
+  place-items: center;
+}
+
+.reader-cache-actions button:focus-visible,
+.reader-cache-cancel:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
 @media (max-width: 750px) {

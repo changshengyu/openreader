@@ -462,6 +462,7 @@ import { useReaderViewportProgress } from '../composables/useReaderViewportProgr
 import { useReaderWheel } from '../composables/useReaderWheel'
 import { bookCategoryIds, createBookCategoryNameResolver } from '../utils/bookCategory'
 import { clearBookBrowserChapterCache, loadBrowserChapterContent } from '../utils/bookChapterCache'
+import { currentUserScope } from '../utils/authScope'
 import { cacheFirstRequest, networkFirstRequest } from '../utils/browserCache'
 import { isEPUBLocalBook as checkEPUBLocalBook, isTextLocalBook as checkTextLocalBook } from '../utils/localBookToc'
 import { readerFontOptions, readerFontStack, syncReaderFontFaces } from '../utils/readerFonts'
@@ -754,9 +755,14 @@ const {
   bookId,
   chapters,
   currentIndex,
-  isRemoteBook,
   isTemporaryReader: isTemporaryRemoteReader,
-  afterCache: (...args) => loadChapters(...args),
+  getContextKey: () => [
+    bookId.value,
+    remoteSessionId.value,
+    book.value?.url || book.value?.bookUrl || book.value?.libraryPath || '',
+    book.value?.sourceId || '',
+  ].join('|'),
+  getCacheScope: () => currentUserScope(),
   onClearMemory: () => clearChapterContentMemory(),
   notify: message => showReaderToast(message, 1600),
   onNoTargets: () => ElMessage.error('不需要缓存'),
@@ -1722,7 +1728,6 @@ const {
 } = useReaderPanels({
   book,
   bookId,
-  isRemoteBook,
   bookProgress,
   bookProgressLabel,
   mobileChromeVisible,

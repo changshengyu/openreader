@@ -17,7 +17,10 @@ writer 安全适配，不为表面对齐写入 IndexedDB。账号或书籍切换
 
 完整合同、数据边界和测试先行门见
 [`reader-inline-chapter-cache-fixed-baseline-second-audit-p0-contract.md`](reader-inline-chapter-cache-fixed-baseline-second-audit-p0-contract.md)。
-本节仅完成固定上游取证，状态为 **inventory-complete / implementation-pending**，尚未修改应用或测试。
+合同先以 `03e337a` 独立推送；随后失败测试锁定完整区间、扁平关闭图标、本地书、取消即时恢复和
+上下文隔离。实现恢复 cache-first 全区间和精确反馈，冻结每任务用户 scope，并保留临时 Reader
+`no-store`。frontend 740/740、build、Go 全量、新增四视口专项浏览器和完整 Reader/iPad 合同通过。
+当前状态为 **implementation-complete / regression-validated / Docker-pending**。
 
 ## 2026-08-09 P1 搜索/探索临时 Reader 会话第二轮
 
