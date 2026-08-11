@@ -42,8 +42,9 @@ server event names and existing business payloads remain stable.
 
 The complete auth wire/error/no-side-effect contract is
 [`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md).
-It is `aligned / regression-validated / Docker-pending`: focused contract/race tests, the full Go/frontend gates and
-a real declared/chunked HTTP smoke prove the current handlers enforce it. Mounted-volume gates and publication remain.
+It is `aligned / Docker-published / awaiting-device-verification`: focused contract/race tests, the full Go/frontend
+gates, real declared/chunked HTTP smoke and fresh/historical mounted-volume gates passed before local publication as
+`f5c15d7` and `latest`.
 
 ## Protected endpoint groups
 

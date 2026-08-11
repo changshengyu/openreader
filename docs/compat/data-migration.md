@@ -883,9 +883,10 @@ See [`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md).
   directly prove no user row or `last_active_at` mutation; runtime smoke proves no rejected registration appears in
   the public server's authoritative user list.
 
-Focused/full/race/vet, frontend 740/740, production build and isolated production-shape HTTP smoke pass. The unchanged
-fresh/historical mounted-volume and portable-backup gates remain required before Docker publication. See
-`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`.
+Focused/full/race/vet, frontend 740/740, production build and isolated production-shape HTTP smoke pass. `f5c15d7`
+then passed the unchanged fresh portable-v1/v2-assets/cross-user/restart and historical
+TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates before local dual-architecture publication. No migration or
+mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`.
 
 ## P1 manual shelf refresh compatibility (2026-08-09)
 

@@ -22,6 +22,8 @@ Use this checklist for security-sensitive changes and release reviews.
 Evidence: `backend/api/auth_request_boundary_contract_test.go`,
 `scripts/smoke/auth-request-boundary-contract.mjs`, focused/full/race/vet, frontend 740/740 and production build. See
 [`docs/compat/auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/auth-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+`f5c15d7` also passed sequential fresh/historical mounted-volume gates and was published locally as the matching
+version/latest OCI index `sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`.
 
 ## P1 Index authenticated-session isolation (2026-07-27 candidate; browser gate pending)
 

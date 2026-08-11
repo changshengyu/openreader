@@ -1,6 +1,6 @@
 # 公开认证请求边界第二轮固定基准合同（P2）
 
-状态：**aligned / regression-validated / Docker-pending**。
+状态：**aligned / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -117,5 +117,9 @@ build。该切片无 UI 几何变化，真实运行时门使用生产二进制�
   单 JSON、精确 16 KiB、72/73-byte 边界、错误不回显和拒绝请求不新增用户。
 - `go test ./...`、认证 focused race、`go vet ./...`、frontend 740/740、production build、
   `git diff --check` 全部通过。该切片没有前端几何变化，不需要新增视口截图门。
-- SQLite schema、JWT、`data/`、`cache/`、`library/`、backup/WebDAV 和旧账号行均未改变；Docker
-  fresh/historical mounted-volume 门与正式本地发布仍待本切片提交后执行。
+- SQLite schema、JWT、`data/`、`cache/`、`library/`、backup/WebDAV 和旧账号行均未改变。
+- 实现提交 `f5c15d7` 顺序通过 fresh portable-v1/v2-assets/cross-user/restart 与 historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation；本机双架构发布后，`f5c15d7` 与 `latest` 远端回读
+  同为 OCI index `sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`，包含
+  `linux/amd64` manifest `sha256:b4ade586cf8b2d3eb04eb0767826aec3395c1f91eedeadad4d961a71a06cc6b1`
+  和 `linux/arm64` manifest `sha256:d41e46a29b613d3cae5d86911e0e625c95190b947beead317935c8e24665feec`。

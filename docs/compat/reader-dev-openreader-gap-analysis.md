@@ -13,7 +13,10 @@
 合同已先以 `052de86` 独立提交；随后测试先行实现认证专用 16 KiB 有界单 JSON 解码和 bcrypt 72-byte
 注册/登录适配。旧实现红测复现超限写入、尾随 JSON、注册 `500` 与前 72 bytes 相同的 73-byte 密码
 错误登录；新实现的 focused/full/race/vet、frontend 740/740、build 与真实 declared/chunked HTTP smoke
-均通过。当前状态为 **aligned / regression-validated / Docker-pending**。
+均通过。实现提交 `f5c15d7` 又顺序通过 fresh/historical 卷与 portable backup 门，并由本机发布为
+`f5c15d7`/`latest`，OCI index 为
+`sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。
 
 ## 2026-08-11 P0 Reader 内联章节缓存第二轮
 

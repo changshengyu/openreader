@@ -32,14 +32,14 @@
 | Reader：登录失效与账号切换 | `plugins/axios.js` 的 `NEED_LOGIN`、根 `App.vue#login`、`Reader.vue#loginAuth` | `api/client.js`、`App.vue`、`AuthDialog.vue`、`stores/user.js`、Reader lifecycle/progress、`stores/overlay.js` | **P0 已完成并发布 `59e11a9`**：401 按真实拦截顺序先挂起旧 Reader 再清凭证，未认证根场景不渲染私有 DOM；overlay reset、同账号 generation 重挂载、异账号返回书架、安全 returnTo、旧进度写入抑制均已验证。 | [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)；1440×900、1024×1366、390×844、360×800、frontend 643/643、Go/build 和新旧卷门通过。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、`ReaderTTSBar.vue`、`useReaderChapterReady.js`、格式 parser / cache | **EPUB、CBZ、连续跨章、音频和 TTS 固定基准切片均已完成实现、三视口验证和 Docker 发布**：音频恢复上游结构、边界行为与真实 autoplay；TTS 恢复显式 voice、贴底栏、可取消跨章和关闭段落定位。 | [`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md) 及前三份格式合同；本批 frontend 444/444、Go/build、Reader 全矩阵通过，镜像 `5260efd`/`latest` 已发布。当前 volume 脚本受 Codex socket 授权额度阻断，兼容证据继承无后端/持久化差异的 `370d0f7` 已通过门禁。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
-| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。阅读进度、外部 WebDAV、远程封面等已发布；六动作中的可见登录/注册、书签批删、旧 Category reorder、TXT 与 Reader 换源均已裁决/发布。**公开 auth wire boundary must-fix 已测试先行实施**：login/register 使用 16 KiB 实际读取上限和单 JSON，bcrypt 72-byte 注册/登录边界在查库/写入前处理。 | [`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md) 状态 `aligned / regression-validated / Docker-pending`；focused/full/race/vet、frontend 740/740、build 与真实 declared/chunked HTTP smoke 通过。旧账号、JWT、多用户状态机和其它 JSON endpoint 未改变，发布前仍需顺序 fresh/historical 卷门。 |
+| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。阅读进度、外部 WebDAV、远程封面等已发布；六动作中的可见登录/注册、书签批删、旧 Category reorder、TXT 与 Reader 换源均已裁决/发布。**公开 auth wire boundary must-fix 已测试先行实施并发布 `f5c15d7`**：login/register 使用 16 KiB 实际读取上限和单 JSON，bcrypt 72-byte 注册/登录边界在查库/写入前处理。 | [`auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`](auth-request-boundary-fixed-baseline-second-audit-p2-contract.md) 状态 `aligned / Docker-published / awaiting-device-verification`；focused/full/race/vet、frontend 740/740、build、真实 declared/chunked HTTP smoke 与顺序 fresh/historical 卷门通过。旧账号、JWT、多用户状态机和其它 JSON endpoint 未改变；OCI index `sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链和 RSS 请求页语义已实现；P2-N1/P2-N2 共享抓取边界均已发布**。可见 page 1/2 只执行请求页；标准 feed 的 page>1 不发网；owned sort allowlist、事务/parser order/隐藏状态保持。共享 fetcher 现有 15 秒 timeout、16 MiB body、5 redirect、3 retry、HTTP(S)/userinfo、跨 origin credential、默认公网-only、mixed-DNS/rebinding-safe dial、ambient proxy 隔离和 HTTP/SOCKS target/endpoint pinning。 | [`shared-source-fetcher-p2-contract.md`](shared-source-fetcher-p2-contract.md)：focused/full/race/frontend/build、真实 Docker public/LAN/loopback/restart 及 fresh/historical volume 全部通过；`d198c2e`/`latest` 状态 `aligned / Docker-published / awaiting-device-verification`。 |
-| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | **Reader 内联章节缓存已由本机作为 `4da98fa` 发布**：frontend 740/740、Go full、build、四视口专项、完整 Reader/iPad、本机双架构构建和 GHCR 回读成功。 | fresh portable-v1/v2-assets/cross-user/restart 与 historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 均顺序通过。`4da98fa`/`latest` OCI index `sha256:771df515341f46f35a07b7f62de913490cdefe4489f3016d7d82f4436aa8f75d`。 |
+| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | **公开认证请求边界已由本机作为 `f5c15d7` 发布**：frontend 740/740、Go full/race/vet、build、生产形态 HTTP smoke、本机双架构构建和 GHCR 回读成功。 | fresh portable-v1/v2-assets/cross-user/restart 与 historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 均顺序通过。`f5c15d7`/`latest` OCI index `sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`。 |
 
-## 当前整体进度快照（2026-08-11，`4da98fa`）
+## 当前整体进度快照（2026-08-12，`f5c15d7`）
 
 按全量计划的模块/合同口径而不是代码行数估算，整体约 **93%**。该数字表示固定基准合同和测试先行
-实现覆盖度；本轮 Reader 内联章节缓存已完成实现、全量、四视口、卷门和本机 Docker 发布，不表示
+实现覆盖度；本轮公共认证请求边界已完成实现、全量、运行时 smoke、卷门和本机 Docker 发布，不表示
 剩余 7% 只是简单收尾。
 
 - **P0 Reader 主链已覆盖**：工具层/面板状态机、正文排版、移动点击与连续滚动、设置、书签、正文
@@ -53,7 +53,8 @@
 - **P2 已覆盖的高风险项**：账号/overlay/cache 隔离、原子阅读进度、删除收敛、替换规则、书签、
   用户管理、RSS 第二轮、书源 owner/API/主解析链、外部 WebDAV、portable backup、封面/章节图片
   capability，共享抓取器 P2-N1/N2 请求与私网/DNS/代理边界，本地格式 parser 的输入、解码文本、
-  章节与历史读取预算、独立书源调试器完整链，以及 server-only WebSocket/recipient scope 和备份事务 worker。
+  章节与历史读取预算、独立书源调试器完整链、公共认证 body/bcrypt 边界，以及 server-only
+  WebSocket/recipient scope 和备份事务 worker。
 - **尚未完成的主线**：尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
   以及后续真实设备反馈暴露出的上游可见偏差。`c74be70` 已发布但尚待服务器部署；移动书架在
   390×844 线上真实账号复测中保持上游 390/350px 几何和内容高度行轨，但设备“明显窄”的反馈仍待
@@ -71,6 +72,11 @@ frontend 740/740、build、Go 全量、四视口专项和完整 Reader/iPad 浏�
 缓存并在打开时联网宽搜的 must-fix 已关闭：available 现在无网络，refresh/search、精确身份、缓存
 生命周期、前端状态和四视口位置保持均已验证，并已完成卷门与 Docker 发布。移动书架设备反馈仍
 需完整截图区分首页书架、Reader 内书架或设备可见层。
+
+2026-08-12 的长尾切片关闭公开认证请求边界：login/register 现在使用 16 KiB 实际读取上限与单 JSON
+文档，声明/chunked 超限统一 `413`；注册密码超过 bcrypt 72 bytes 为可操作 `400`，登录保持通用
+`401` 并在查库前拒绝截断碰撞。focused/full/race/vet、frontend 740/740、build、真实 HTTP smoke、
+fresh/historical 卷门和本机双架构发布均完成；实现提交与 Docker 标签为 `f5c15d7`。
 
 ## P0 Reader 重新审查（已完成的源码证据）
 

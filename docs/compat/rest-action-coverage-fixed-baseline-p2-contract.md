@@ -165,4 +165,7 @@ relative-cache、owner-isolation 和 portable restore/restart。正式发布因�
 合同先以 `052de86` 独立提交。随后旧实现红测证明 declared/chunked 超限可继续认证/写入、尾随 JSON
 被忽略、73-byte 注册误成 `500`，且共享前 72 bytes 的 73-byte 登录会错误成功；实现现已在查库、
 bcrypt 和写入前执行认证专用有界单值解码及 72-byte 分流。focused/full/race/vet、frontend 740/740、
-build 和真实 HTTP smoke 均通过。当前状态为 **aligned / regression-validated / Docker-pending**。
+build 和真实 HTTP smoke 均通过。`f5c15d7` 随后顺序通过 fresh/historical 卷与 portable backup 门，并
+由本机发布为 `f5c15d7`/`latest`；远端 OCI index 为
+`sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。
