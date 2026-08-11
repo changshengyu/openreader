@@ -187,6 +187,19 @@ OpenReader：
 - 真实 Chromium 在 1440×900、390×844、360×800、1024×1366 全部通过 available/refresh/search、
   当前项、独立按钮状态、部分失败、空态、换源关闭、无额外候选请求和正文段落位置不跳变。
 
-Docker 发布前仍必须完成本地 fresh/historical mounted-volume 门，并回读双架构 GHCR index。
+## 10. Docker 发布结果（2026-08-11）
 
-当前状态：**implemented / regression-validated / Docker-pending**。
+实现提交 `a2ecc175985677b83514ca3d3d005b59dc058a05` 已先推送 GitHub，再仅由本机 OrbStack 构建和上传：
+
+- `ghcr.io/changshengyu/openreader:a2ecc17`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:311ca87a75e4b77c49c95c033c80ac4a6d7baa1598092b630ac5002ce5493754`
+- amd64：`sha256:e86f4fda61b79d211d2865348afd0289ca2e8718fd8072c734c96a4fff584177`
+- arm64：`sha256:3e6b87a29702465d1c6fdd206fde1cbbe796619d4ef792e7a03aade761fd55f1`
+
+本机 arm64 候选先通过 fresh volume 的 portable-v1、portable-v2 assets、cross-user 和 restart。
+historical volume 首次运行在创建旧卷后出现一次无上下文 404，未记为通过；原样顺序重跑后完整通过
+TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 和 portable backup/restore。远端 commit tag
+与 `latest` 已回读为同一上述双架构 index。
+
+当前状态：**aligned / Docker-published / awaiting-device-verification**。

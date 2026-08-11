@@ -32,19 +32,19 @@
 | Reader：登录失效与账号切换 | `plugins/axios.js` 的 `NEED_LOGIN`、根 `App.vue#login`、`Reader.vue#loginAuth` | `api/client.js`、`App.vue`、`AuthDialog.vue`、`stores/user.js`、Reader lifecycle/progress、`stores/overlay.js` | **P0 已完成并发布 `59e11a9`**：401 按真实拦截顺序先挂起旧 Reader 再清凭证，未认证根场景不渲染私有 DOM；overlay reset、同账号 generation 重挂载、异账号返回书架、安全 returnTo、旧进度写入抑制均已验证。 | [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)；1440×900、1024×1366、390×844、360×800、frontend 643/643、Go/build 和新旧卷门通过。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、`ReaderTTSBar.vue`、`useReaderChapterReady.js`、格式 parser / cache | **EPUB、CBZ、连续跨章、音频和 TTS 固定基准切片均已完成实现、三视口验证和 Docker 发布**：音频恢复上游结构、边界行为与真实 autoplay；TTS 恢复显式 voice、贴底栏、可取消跨章和关闭段落定位。 | [`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md) 及前三份格式合同；本批 frontend 444/444、Go/build、Reader 全矩阵通过，镜像 `5260efd`/`latest` 已发布。当前 volume 脚本受 Codex socket 授权额度阻断，兼容证据继承无后端/持久化差异的 `370d0f7` 已通过门禁。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
-| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。阅读进度、外部 WebDAV、远程封面等已发布；`/ws/sync` 的 same-origin/active-user/server-only/recipient-scope 已实施验证。2026-08-11 六个精确路径中，登录/注册、书签批删和旧 Category reorder 已裁决，TXT must-fix 已发布；Reader 换源已实现三 mode API、派生候选表、精确匹配、事务与前端状态机。 | 既有专项合同继续有效；新增 [`rest-action-coverage-fixed-baseline-p2-contract.md`](rest-action-coverage-fixed-baseline-p2-contract.md) 与 [`reader-source-switch-fixed-baseline-second-audit-p0-contract.md`](reader-source-switch-fixed-baseline-second-audit-p0-contract.md)。换源 Go/full/race/vet、frontend 734/734、build 和四视口 Chromium 已通过，状态 `implemented / regression-validated / Docker-pending`。 |
+| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。阅读进度、外部 WebDAV、远程封面等已发布；`/ws/sync` 的 same-origin/active-user/server-only/recipient-scope 已实施验证。2026-08-11 六个精确路径中，登录/注册、书签批删和旧 Category reorder 已裁决，TXT must-fix 已发布；Reader 换源已实现三 mode API、派生候选表、精确匹配、事务与前端状态机。 | 既有专项合同继续有效；新增 [`rest-action-coverage-fixed-baseline-p2-contract.md`](rest-action-coverage-fixed-baseline-p2-contract.md) 与 [`reader-source-switch-fixed-baseline-second-audit-p0-contract.md`](reader-source-switch-fixed-baseline-second-audit-p0-contract.md)。换源 Go/full/race/vet、frontend 734/734、build、四视口 Chromium 和新旧卷已通过，状态 `aligned / Docker-published / awaiting-device-verification`。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链和 RSS 请求页语义已实现；P2-N1/P2-N2 共享抓取边界均已发布**。可见 page 1/2 只执行请求页；标准 feed 的 page>1 不发网；owned sort allowlist、事务/parser order/隐藏状态保持。共享 fetcher 现有 15 秒 timeout、16 MiB body、5 redirect、3 retry、HTTP(S)/userinfo、跨 origin credential、默认公网-only、mixed-DNS/rebinding-safe dial、ambient proxy 隔离和 HTTP/SOCKS target/endpoint pinning。 | [`shared-source-fetcher-p2-contract.md`](shared-source-fetcher-p2-contract.md)：focused/full/race/frontend/build、真实 Docker public/LAN/loopback/restart 及 fresh/historical volume 全部通过；`d198c2e`/`latest` 状态 `aligned / Docker-published / awaiting-device-verification`。 |
-| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | TXT 目录规则仍由本机 `33c7b15` 发布。**Reader 换源实现候选**已通过 Go full/API+service race/vet、frontend 734/734、build 和四视口真实 Chromium；尚未发布。 | 换源切片仍须完成 fresh/historical mounted-volume 和本机双架构构建/上传/回读。当前已发布镜像仍是 `33c7b15`/`latest`，OCI index `sha256:e3c88f10fb213abae9d730ca9eec62c46d09fbc2487b2af8c42d1f4ebb1b9a24`。 |
+| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | **Reader 换源已由本机作为 `a2ecc17` 发布**：Go full/API+service race/vet、frontend 734/734、build、四视口真实 Chromium、本机双架构构建和 GHCR 回读成功。 | fresh portable-v1/v2-assets/cross-user/restart 通过；historical 首次无上下文 404 未计入，原样顺序重跑通过 TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation。`a2ecc17`/`latest` OCI index `sha256:311ca87a75e4b77c49c95c033c80ac4a6d7baa1598092b630ac5002ce5493754`。 |
 
-## 当前整体进度快照（2026-08-11，Reader 换源实现候选）
+## 当前整体进度快照（2026-08-11，`a2ecc17`）
 
 按全量计划的模块/合同口径而不是代码行数估算，整体约 **93%**。该数字表示固定基准合同和测试先行
-实现覆盖度；本轮 Reader 换源已完成实现、全量和四视口验证但尚未发布 Docker，不表示剩余 7% 只是简单收尾。
+实现覆盖度；本轮 Reader 换源已完成实现、全量、四视口、卷门和本机 Docker 发布，不表示剩余 7% 只是简单收尾。
 
 - **P0 Reader 主链已覆盖**：工具层/面板状态机、正文排版、移动点击与连续滚动、设置、书签、正文
   搜索、登录恢复、普通文本、EPUB、CBZ/漫画、音频、连续跨章、TTS、夜间对比度均有专项合同和
-  Docker 证据；Reader 换源三 mode、派生候选缓存、精确匹配、换源事务和位置保持已通过回归，等待
-  mounted-volume 与 Docker 发布门。
+  Docker 证据；Reader 换源三 mode、派生候选缓存、精确匹配、换源事务和位置保持已通过回归并随
+  `a2ecc17` 发布，等待真实设备签收。
 - **P1 Index 工作台主链已覆盖**：侧边栏、普通书架、搜索/探索、唯一 BookInfo、BookManage、
   BookGroup、导入、本地书仓、WebDAV 与兼容旧路由均已重建/收敛；书架 freshness、进度刷新和
   lastCheckTime 专项已关闭；临时 Reader 的预算、TTL/LRU、变量、取消和脱敏，以及可见书源管理器
@@ -63,7 +63,7 @@
 2026-08-11 长尾动作复审已将“尚未逐动作签约”进一步收敛：六个精确路径已有正式合同；TXT 默认
 目录规则缺项、禁用项过滤和双标题语义已完成实现及三视口真实导入。Reader 换源原先缺少每书候选
 缓存并在打开时联网宽搜的 must-fix 已关闭：available 现在无网络，refresh/search、精确身份、缓存
-生命周期、前端状态和四视口位置保持均已验证；其 Docker/卷发布证据仍待完成。移动书架设备反馈仍
+生命周期、前端状态和四视口位置保持均已验证，并已完成卷门与 Docker 发布。移动书架设备反馈仍
 需完整截图区分首页书架、Reader 内书架或设备可见层。
 
 ## P0 Reader 重新审查（已完成的源码证据）

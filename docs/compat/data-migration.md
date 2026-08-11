@@ -163,7 +163,7 @@ Implementation evidence: `db.AutoMigrate` only adds `source_failures`; it never 
 
 ## P0 Reader source-candidate derived cache
 
-Status: implemented and migration-tested on 2026-08-11; mounted-volume release gate pending.
+Status: implemented, migration-tested and Docker-published as `a2ecc17` on 2026-08-11.
 
 - Startup may add only a `book_source_candidates` table and its indexes. Existing users, books, sources,
   chapters, progress, bookmarks, `data/`, `cache/`, and `library/` content must not be rewritten.
@@ -187,8 +187,9 @@ book/user deletion cleanup, backup member stability, restore-then-seed, full Go 
 Implementation evidence: startup `AutoMigrate` adds only `book_source_candidates`; the historical migration
 test verifies existing book identity is unchanged and no candidate rows are eagerly created. API/service contracts
 verify first-available seeding, remote-book and source-change transactional seeding, user/book deletion, source COW,
-200-row pruning with current retention, two-user isolation, and backup exclusion. Full Go and focused race tests pass;
-fresh/historical mounted-volume smoke remains required before Docker publication.
+200-row pruning with current retention, two-user isolation, and backup exclusion. Full Go and focused race tests pass.
+The local `a2ecc17` image passed fresh portable-v1/v2-assets/cross-user/restart and the successful sequential
+historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation mounted-volume gate before publication.
 
 ## P2-Parser-1G persistent source-rule variables
 

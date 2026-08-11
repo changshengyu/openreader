@@ -147,5 +147,8 @@ relative-cache、owner-isolation 和 portable restore/restart。正式发布因�
 - 前端拆分 opening/refreshing/loadingMore，换源不再二次搜索；面板关闭后使用段落视口锚点恢复正文。
 - Go 全量、API/service race、`go vet`、frontend 734/734、production build 及四视口真实 Chromium
   available/refresh/search/change/empty 流程通过。
+- 本机 `a2ecc17` 候选通过 fresh 与成功顺序 historical mounted-volume 门；第一次 historical 运行的
+  无上下文 404 未记为通过，原样重跑完整成功后才发布。`a2ecc17`/`latest` 远端回读为同一双架构
+  OCI index `sha256:311ca87a75e4b77c49c95c033c80ac4a6d7baa1598092b630ac5002ce5493754`。
 
-当前状态：**TXT aligned / Docker-published / awaiting-device-verification；source-switch implemented / regression-validated / Docker-pending**。
+当前状态：**TXT aligned / Docker-published / awaiting-device-verification；source-switch aligned / Docker-published / awaiting-device-verification**。

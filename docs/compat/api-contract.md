@@ -338,7 +338,7 @@ Status: extracted 2026-07-10. These routes retain their OpenReader paths while m
 
 ### P0 Reader source-candidate API contract (2026-08-11 implemented)
 
-Status: implemented and regression-validated; Docker pending. The stable OpenReader route remains
+Status: implemented, regression-validated and Docker-published as `a2ecc17`. The stable OpenReader route remains
 `GET /api/books/:id/source-candidates`; the additive `mode` query separates the fixed-upstream
 available/refresh/search state transitions.
 
