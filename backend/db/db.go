@@ -53,6 +53,7 @@ func AutoMigrate(database *gorm.DB) error {
 		&models.Category{},
 		&models.BookGroupPreference{},
 		&models.Book{},
+		&models.BookSourceCandidate{},
 		&models.BookCategory{},
 		&models.Chapter{},
 		&models.ReadingProgress{},

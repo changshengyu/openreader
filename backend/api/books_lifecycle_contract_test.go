@@ -165,6 +165,12 @@ func TestBookDeletionCleansOnlyOwnedDerivedFiles(t *testing.T) {
 	if err := server.db.Create(&remoteB).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := server.db.Create(&[]models.BookSourceCandidate{
+		{UserID: userA.ID, BookID: remoteA.ID, SourceID: source.ID, Title: remoteA.Title, BookURL: "https://delete.example/owner", SortOrder: 1},
+		{UserID: userB.ID, BookID: remoteB.ID, SourceID: source.ID, Title: remoteB.Title, BookURL: "https://delete.example/other", SortOrder: 1},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	cacheA := filepath.Join("delete-lifecycle", "owner.txt")
 	cacheB := filepath.Join("delete-lifecycle", "other.txt")
 	cacheAPath := writeLifecycleCache(t, server.cfg.CacheDir, cacheA, "owner remote cache")
@@ -205,7 +211,7 @@ func TestBookDeletionCleansOnlyOwnedDerivedFiles(t *testing.T) {
 	if deletedBookCount != 0 {
 		t.Fatalf("deleted remote book left %d book rows", deletedBookCount)
 	}
-	for _, model := range []any{&models.Chapter{}, &models.BookCategory{}, &models.Bookmark{}, &models.ReadingProgress{}} {
+	for _, model := range []any{&models.Chapter{}, &models.BookSourceCandidate{}, &models.BookCategory{}, &models.Bookmark{}, &models.ReadingProgress{}} {
 		var count int64
 		if err := server.db.Model(model).Where("book_id = ?", remoteA.ID).Count(&count).Error; err != nil {
 			t.Fatal(err)
@@ -213,6 +219,13 @@ func TestBookDeletionCleansOnlyOwnedDerivedFiles(t *testing.T) {
 		if count != 0 {
 			t.Fatalf("deleted remote book left %d %T rows", count, model)
 		}
+	}
+	var otherCandidateCount int64
+	if err := server.db.Model(&models.BookSourceCandidate{}).Where("user_id = ? AND book_id = ?", userB.ID, remoteB.ID).Count(&otherCandidateCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if otherCandidateCount != 1 {
+		t.Fatalf("other user's source candidates were deleted: %d", otherCandidateCount)
 	}
 
 	ownerLibraryPath := filepath.Join("data", "deleteowner", "direct-import")

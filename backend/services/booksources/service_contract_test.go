@@ -211,6 +211,17 @@ func TestUpdateUsesCopyOnWriteAndRemapsOnlyTheTargetUser(t *testing.T) {
 	if err := database.Create(&[]*models.SourceFailure{&aliceFailure, &bobFailure}).Error; err != nil {
 		t.Fatal(err)
 	}
+	aliceCandidate := models.BookSourceCandidate{
+		UserID: alice.ID, BookID: aliceBook.ID, SourceID: shared.ID, SourceURL: shared.BaseURL,
+		SourceName: shared.Name, Title: aliceBook.Title, BookURL: "https://shared.example/alice", SortOrder: 1,
+	}
+	bobCandidate := models.BookSourceCandidate{
+		UserID: bob.ID, BookID: bobBook.ID, SourceID: shared.ID, SourceURL: shared.BaseURL,
+		SourceName: shared.Name, Title: bobBook.Title, BookURL: "https://shared.example/bob", SortOrder: 1,
+	}
+	if err := database.Create(&[]*models.BookSourceCandidate{&aliceCandidate, &bobCandidate}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	next := shared
 	next.Name = "Alice 私有源"
@@ -246,6 +257,20 @@ func TestUpdateUsesCopyOnWriteAndRemapsOnlyTheTargetUser(t *testing.T) {
 	assertChapterVariable(t, database, bobChapter.ID, `{"chapter":"bob"}`)
 	assertFailureSource(t, database, aliceFailure.ID, updated.ID)
 	assertFailureSource(t, database, bobFailure.ID, shared.ID)
+	var persistedAliceCandidate models.BookSourceCandidate
+	if err := database.First(&persistedAliceCandidate, aliceCandidate.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persistedAliceCandidate.SourceID != updated.ID || persistedAliceCandidate.SourceName != updated.Name || persistedAliceCandidate.SourceURL != updated.BaseURL {
+		t.Fatalf("alice candidate was not remapped with source COW: %+v", persistedAliceCandidate)
+	}
+	var persistedBobCandidate models.BookSourceCandidate
+	if err := database.First(&persistedBobCandidate, bobCandidate.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persistedBobCandidate.SourceID != shared.ID || persistedBobCandidate.SourceName != shared.Name || persistedBobCandidate.SourceURL != shared.BaseURL {
+		t.Fatalf("source COW crossed into bob's candidate cache: %+v", persistedBobCandidate)
+	}
 }
 
 func TestCreateAndDeleteAreScopedToTheCallingUser(t *testing.T) {

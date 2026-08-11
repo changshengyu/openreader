@@ -58,7 +58,7 @@ OpenReader：
 - `BookSource` 组件中的候选数组本身不因一次新的全网搜索被替换，下次打开仍可立即显示缓存并定位
   新的当前来源。
 
-## 3. 当前结构偏差
+## 3. 实施前结构偏差
 
 当前 `GET /api/books/:id/source-candidates` 同时承担打开、刷新和加载更多：每次调用都会把活动书源
 按 offset 切片并执行远程搜索，最多接收每源前三条任意结果。因此已确认：
@@ -168,4 +168,25 @@ OpenReader：
    定位、无候选、部分失败、换源关闭面板和正文位置不跳变。
 7. Go/full/race/vet、frontend 全量、production build、fresh/historical volume 后才可发布 Docker。
 
-当前状态：**inventory-complete / implementation-pending**。
+## 9. 实施与回归结果（2026-08-11）
+
+- 后端保留 `GET /api/books/:id/source-candidates`，以 `available`、`refresh`、`search` 三种 mode
+  分离无网络读取、缓存来源复验和分组增量搜索；非法 mode 返回 400，书籍身份始终从当前 owner 行读取。
+- 新增 `book_source_candidates` 派生表；远程建书和成功换源在原事务中播种当前快照，历史书首次
+  available 幂等播种，书/用户删除清理，书源 copy-on-write 只重映射目标用户。每书最多 200 行，
+  字段有界，稳定清理最旧非当前项，当前项不得被裁剪。
+- search 使用精确书名+作者、每组独立 source cursor、4 并发、每源 12 秒 timeout、单批最多扫描
+  40 源，并沿用 user-scoped failure cache、请求取消和共享安全 fetcher；refresh 只解析缓存 source ID，
+  部分失败仍保留当前书快照。
+- 前端打开、刷新、加载更多使用独立 busy 状态；换组不清空候选，换源后只本地更新 current 投影，
+  不再触发额外候选搜索。换源事务清理旧正文搜索 owner、关闭面板，并以段落和视口偏移锚点恢复
+  连续阅读位置，offset 继续作为翻页/非连续模式回退。
+- 数据/API/生命周期、上限、取消、精确匹配、稳定 cursor、用户隔离、建书/换源事务、COW、删除和
+  backup 排除测试通过；Go 全量、换源 API/service race、`go vet`、frontend 734/734 和 production
+  build 通过。
+- 真实 Chromium 在 1440×900、390×844、360×800、1024×1366 全部通过 available/refresh/search、
+  当前项、独立按钮状态、部分失败、空态、换源关闭、无额外候选请求和正文段落位置不跳变。
+
+Docker 发布前仍必须完成本地 fresh/historical mounted-volume 门，并回读双架构 GHCR index。
+
+当前状态：**implemented / regression-validated / Docker-pending**。

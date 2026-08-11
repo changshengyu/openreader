@@ -22,48 +22,51 @@ import (
 	"openreader/backend/services/remotereader"
 	rssservice "openreader/backend/services/rss"
 	"openreader/backend/services/scheduler"
+	"openreader/backend/services/sourcecandidates"
 	"openreader/backend/services/sourcefailure"
 	readersync "openreader/backend/sync"
 )
 
 type Server struct {
-	cfg            config.Config
-	db             *gorm.DB
-	hub            *readersync.Hub
-	scheduler      *scheduler.Scheduler
-	backupSvc      *backup.Service
-	bookGroups     *bookgroups.Service
-	bookSources    *booksources.Service
-	audioReader    *audioreader.Service
-	cbzReader      *cbzreader.Service
-	chapterImages  *chapterimage.Service
-	coverImages    *coverimage.Service
-	epubReader     *epubreader.Service
-	progressSvc    *readingprogress.Service
-	rss            *rssservice.Service
-	sourceFailures *sourcefailure.Service
-	remoteReaders  *remotereader.Store
-	registerMu     sync.Mutex
+	cfg              config.Config
+	db               *gorm.DB
+	hub              *readersync.Hub
+	scheduler        *scheduler.Scheduler
+	backupSvc        *backup.Service
+	bookGroups       *bookgroups.Service
+	bookSources      *booksources.Service
+	audioReader      *audioreader.Service
+	cbzReader        *cbzreader.Service
+	chapterImages    *chapterimage.Service
+	coverImages      *coverimage.Service
+	epubReader       *epubreader.Service
+	progressSvc      *readingprogress.Service
+	rss              *rssservice.Service
+	sourceFailures   *sourcefailure.Service
+	sourceCandidates *sourcecandidates.Service
+	remoteReaders    *remotereader.Store
+	registerMu       sync.Mutex
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) *Server {
 	server := &Server{
-		cfg:            cfg,
-		db:             database,
-		hub:            hub,
-		scheduler:      sched,
-		backupSvc:      backupSvc,
-		bookGroups:     bookgroups.New(database),
-		bookSources:    booksources.New(database),
-		audioReader:    audioreader.New(cfg, database),
-		cbzReader:      cbzreader.New(cfg, database),
-		chapterImages:  chapterimage.New(cfg, database),
-		coverImages:    coverimage.New(cfg, database),
-		epubReader:     epubreader.New(cfg, database),
-		progressSvc:    readingprogress.New(database, cfg.DataDir),
-		rss:            rssservice.New(database),
-		sourceFailures: sourcefailure.New(database),
-		remoteReaders:  remotereader.NewStore(remotereader.DefaultLimits(), nil),
+		cfg:              cfg,
+		db:               database,
+		hub:              hub,
+		scheduler:        sched,
+		backupSvc:        backupSvc,
+		bookGroups:       bookgroups.New(database),
+		bookSources:      booksources.New(database),
+		audioReader:      audioreader.New(cfg, database),
+		cbzReader:        cbzreader.New(cfg, database),
+		chapterImages:    chapterimage.New(cfg, database),
+		coverImages:      coverimage.New(cfg, database),
+		epubReader:       epubreader.New(cfg, database),
+		progressSvc:      readingprogress.New(database, cfg.DataDir),
+		rss:              rssservice.New(database),
+		sourceFailures:   sourcefailure.New(database),
+		sourceCandidates: sourcecandidates.New(database),
+		remoteReaders:    remotereader.NewStore(remotereader.DefaultLimits(), nil),
 	}
 	server.cleanupPortableAssetRestoreJournals()
 

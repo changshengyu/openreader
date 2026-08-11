@@ -165,6 +165,11 @@ export const useOverlayStore = defineStore('overlay', {
       this.searchBook = book
       this.searchBookContentVisible = true
     },
+    resetSearchBookContent() {
+      this.searchBookContentVisible = false
+      this.searchBook = null
+      this.searchBookContentJump = null
+    },
     requestSearchBookContentJump(result, query = '') {
       if (!this.searchBook || !result || typeof result !== 'object') return false
       this.searchBookContentJumpSerial += 1

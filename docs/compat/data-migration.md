@@ -161,6 +161,35 @@ Status: implemented and tested. This is a derived, caller-scoped runtime cache a
 
 Implementation evidence: `db.AutoMigrate` only adds `source_failures`; it never alters existing source/user/book rows. Records are created and expired under the JWT user/source unique key and are neither exported nor restored. `backend/api/source_failure_contract_test.go` verifies isolation, expiry and source-edit invalidation; release Docker volume smoke remains required before publishing this slice.
 
+## P0 Reader source-candidate derived cache
+
+Status: implemented and migration-tested on 2026-08-11; mounted-volume release gate pending.
+
+- Startup may add only a `book_source_candidates` table and its indexes. Existing users, books, sources,
+  chapters, progress, bookmarks, `data/`, `cache/`, and `library/` content must not be rewritten.
+- Each row is scoped by `user_id` and `book_id`, with a unique current-user/book/`book_url` identity. It stores
+  the bounded source/book projection needed by Reader source switching plus stable order and timestamps.
+- Remote-book creation seeds the current row in the same SQLite transaction. Old books are not bulk rewritten;
+  their first `available` read seeds the current snapshot idempotently.
+- Book deletion removes that book's rows in the same transaction. User deletion removes all rows for that user.
+  Source copy-on-write may remap only the affected user's candidate source ids; source deletion never deletes
+  another user's snapshots.
+- A successful source change upserts the selected/current snapshot in the same transaction as book and chapter
+  replacement. `books.source_id + books.url` remains authoritative; no persisted `current` flag is introduced.
+- Candidate rows are derived cache and are deliberately excluded from reader-dev logical backup, OpenReader
+  portable backup, WebDAV backup and restore payloads. Restored books seed on first `available` access.
+- Field lengths and rows per book are bounded. Stable oldest non-current rows are pruned at the cap; the current
+  source snapshot is never pruned.
+
+Required evidence: fresh and historical `AutoMigrate`, idempotent historical seeding, two-user isolation,
+book/user deletion cleanup, backup member stability, restore-then-seed, full Go tests and mounted-volume smoke.
+
+Implementation evidence: startup `AutoMigrate` adds only `book_source_candidates`; the historical migration
+test verifies existing book identity is unchanged and no candidate rows are eagerly created. API/service contracts
+verify first-available seeding, remote-book and source-change transactional seeding, user/book deletion, source COW,
+200-row pruning with current retention, two-user isolation, and backup exclusion. Full Go and focused race tests pass;
+fresh/historical mounted-volume smoke remains required before Docker publication.
+
 ## P2-Parser-1G persistent source-rule variables
 
 Status: implemented and migration-tested on 2026-07-13. The format is additive: old SQLite databases and backups remain valid, while new backups can preserve reader-dev-compatible remote parser state.

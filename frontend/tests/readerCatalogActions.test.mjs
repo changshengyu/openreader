@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { ref } from 'vue'
 import { useReaderCatalogActions } from '../src/composables/useReaderCatalogActions.js'
@@ -48,13 +49,18 @@ function createController(overrides = {}) {
     locateCurrentTocChapter: () => calls.push(['locate-toc']),
     getCurrentOffset: () => 88,
     getCurrentChapterPercent: () => 0.45,
+    captureScrollAnchor: () => {
+      calls.push(['capture-anchor'])
+      return { chapterIndex: 1, paragraphPos: 88, viewportOffset: 120 }
+    },
     fetchChapters: async id => {
       calls.push(['fetch-chapters', id])
       return [{ id: 21 }, { id: 22 }]
     },
     resetContentSearch: () => calls.push(['reset-search']),
-    refreshSourceCandidates: async () => calls.push(['refresh-sources']),
+    applyChangedSource: source => calls.push(['apply-source', source]),
     closeSourceDrawer: () => calls.push(['close-source']),
+    restoreScrollAnchor: async anchor => calls.push(['restore-anchor', anchor]),
     notify: (...args) => calls.push(['notify', ...args]),
     onError: (...args) => calls.push(['error', ...args]),
     ...overrides,
@@ -111,15 +117,17 @@ test('refreshes a remote catalog while restoring the chapter position', async ()
   ])
 })
 
-test('applies a source change with the new catalog before refreshing candidates', async () => {
+test('applies a source change with the new catalog without another candidate search', async () => {
   const fixture = createController()
   await fixture.controller.applySourceChange({
     book: { id: 7, sourceId: 9, title: '换源后' },
+    source: { sourceId: 9, bookUrl: 'https://new.example/book' },
     previousBook: { id: 7, sourceId: 2 },
   })
   assert.deepEqual(fixture.chapters.value, [{ id: 21 }, { id: 22 }])
   assert.equal(fixture.currentIndex.value, 1)
   assert.deepEqual(fixture.calls, [
+    ['capture-anchor'],
     ['invalidate', { book: true, chapters: true }],
     ['reset', { clearBrowser: true, book: { id: 7, sourceId: 2 } }],
     ['upsert', { retained: true, id: 7, sourceId: 9, title: '换源后' }],
@@ -128,9 +136,15 @@ test('applies a source change with the new catalog before refreshing candidates'
       bookData: { retained: true, id: 7, sourceId: 9, title: '换源后' },
       chaptersData: [{ id: 21 }, { id: 22 }],
     }],
-    ['load-chapter', 1, 0],
+    ['load-chapter', 1, 88],
     ['reset-search'],
-    ['refresh-sources'],
+    ['apply-source', { sourceId: 9, bookUrl: 'https://new.example/book' }],
     ['close-source'],
+    ['restore-anchor', { chapterIndex: 1, paragraphPos: 88, viewportOffset: 120 }],
   ])
+})
+
+test('Reader wires source-change content-search reset into the transaction', () => {
+  const source = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
+  assert.match(source, /resetContentSearch:\s*\(\) => overlay\.resetSearchBookContent\(\)/)
 })

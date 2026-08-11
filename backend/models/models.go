@@ -336,6 +336,31 @@ type Book struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
+// BookSourceCandidate is a bounded, rebuildable Reader source-switch cache.
+// Book.SourceID + Book.URL remains the authority for the current source.
+type BookSourceCandidate struct {
+	ID                 uint      `json:"-" gorm:"primaryKey"`
+	UserID             uint      `json:"-" gorm:"not null;uniqueIndex:idx_book_source_candidate_identity,priority:1;index"`
+	BookID             uint      `json:"-" gorm:"not null;uniqueIndex:idx_book_source_candidate_identity,priority:2;index"`
+	SourceID           uint      `json:"sourceId" gorm:"index"`
+	SourceURL          string    `json:"-" gorm:"size:500"`
+	SourceName         string    `json:"sourceName" gorm:"size:120"`
+	SourceGroup        string    `json:"group" gorm:"size:80"`
+	Title              string    `json:"title" gorm:"size:240;not null"`
+	Author             string    `json:"author" gorm:"size:160"`
+	BookURL            string    `json:"bookUrl" gorm:"size:800;not null;uniqueIndex:idx_book_source_candidate_identity,priority:3"`
+	CoverURL           string    `json:"coverUrl" gorm:"size:600"`
+	Intro              string    `json:"intro" gorm:"type:text"`
+	Kind               string    `json:"kind" gorm:"size:400"`
+	WordCount          string    `json:"wordCount" gorm:"size:120"`
+	LatestChapterTitle string    `json:"latestChapterTitle" gorm:"size:240"`
+	Type               int       `json:"type"`
+	RespondTime        int64     `json:"time,omitempty"`
+	SortOrder          int       `json:"-" gorm:"not null;index"`
+	CreatedAt          time.Time `json:"-"`
+	UpdatedAt          time.Time `json:"-"`
+}
+
 type Category struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	UserID    uint      `json:"userId" gorm:"not null;uniqueIndex:idx_user_category"`

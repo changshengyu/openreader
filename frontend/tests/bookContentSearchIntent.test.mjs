@@ -37,6 +37,18 @@ test('turns every search row click into a monotonic repeatable Reader intent', (
   assert.notEqual(overlay.searchBookContentJump, first)
 })
 
+test('resets content-search ownership after the active book source changes', () => {
+  const overlay = useOverlayStore()
+  overlay.openSearchBookContent({ id: 7, bookUrl: 'https://old.example/book' })
+  overlay.requestSearchBookContentJump({ chapterIndex: 2 }, 'keyword')
+
+  overlay.resetSearchBookContent()
+
+  assert.equal(overlay.searchBookContentVisible, false)
+  assert.equal(overlay.searchBook, null)
+  assert.equal(overlay.searchBookContentJump, null)
+})
+
 test('does not create a search jump without an active book or result', () => {
   const overlay = freshOverlay()
   assert.equal(overlay.requestSearchBookContentJump({ chapterIndex: 1 }, '目标'), false)

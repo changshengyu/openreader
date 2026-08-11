@@ -771,7 +771,7 @@ func TestRemoteBookReaderCandidatesAndRefreshRejectForeignSources(t *testing.T) 
 			requestMu.Lock()
 			requestHosts = append(requestHosts, request.URL.Host)
 			requestMu.Unlock()
-			body := `<div class="book"><a class="name" href="/book">候选书</a></div>
+			body := `<div class="book"><a class="name" href="/book">Bob 候选书</a></div>
 				<a class="chapter" href="/chapter/1">第一章</a>
 				<div class="content">正文</div>`
 			return &http.Response{
@@ -790,7 +790,7 @@ func TestRemoteBookReaderCandidatesAndRefreshRejectForeignSources(t *testing.T) 
 	}
 	candidatesRequest := httptest.NewRequest(
 		http.MethodGet,
-		"/api/books/"+uintString(bobBook.ID)+"/source-candidates?paged=true&limit=10",
+		"/api/books/"+uintString(bobBook.ID)+"/source-candidates?mode=search&paged=true&limit=10",
 		nil,
 	)
 	candidatesRequest.Header.Set("Authorization", bob.Auth)

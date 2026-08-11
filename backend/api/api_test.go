@@ -3442,12 +3442,12 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	book := models.Book{UserID: user.ID, SourceID: source.ID, Title: "候选书", URL: upstream + "/old"}
+	book := models.Book{UserID: user.ID, SourceID: source.ID, Title: "候选书", Author: "新作者", URL: upstream + "/old"}
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?group=%E4%BC%98%E5%85%88&limit=1&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?mode=search&group=%E4%BC%98%E5%85%88&limit=1&offset=0&paged=1", nil)
 	req.Header.Set("Authorization", token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -3455,17 +3455,19 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		t.Fatalf("source candidates: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var candidates []struct {
-		SourceID           uint   `json:"sourceId"`
-		Title              string `json:"title"`
-		BookURL            string `json:"bookUrl"`
-		LatestChapterTitle string `json:"latestChapterTitle"`
-		Kind               string `json:"kind"`
-		WordCount          string `json:"wordCount"`
-		Current            bool   `json:"current"`
-		Type               int    `json:"type"`
+	var candidateBatch struct {
+		List []struct {
+			SourceID           uint   `json:"sourceId"`
+			Title              string `json:"title"`
+			BookURL            string `json:"bookUrl"`
+			LatestChapterTitle string `json:"latestChapterTitle"`
+			Kind               string `json:"kind"`
+			WordCount          string `json:"wordCount"`
+			Current            bool   `json:"current"`
+			Type               int    `json:"type"`
+		} `json:"list"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &candidates); err != nil {
+	if err := json.Unmarshal(w.Body.Bytes(), &candidateBatch); err != nil {
 		t.Fatal(err)
 	}
 	var target struct {
@@ -3478,14 +3480,14 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		Current            bool   `json:"current"`
 		Type               int    `json:"type"`
 	}
-	for _, candidate := range candidates {
+	for _, candidate := range candidateBatch.List {
 		if !candidate.Current {
 			target = candidate
 			break
 		}
 	}
 	if target.BookURL != upstream+"/book-new" {
-		t.Fatalf("unexpected candidates: %+v", candidates)
+		t.Fatalf("unexpected candidates: %+v", candidateBatch.List)
 	}
 	if target.SourceID != source.ID {
 		t.Fatalf("source candidates should honor group filter, got source %d", target.SourceID)
@@ -3500,7 +3502,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		t.Fatalf("source candidates should expose list metadata, got %+v", target)
 	}
 
-	pagedReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?group=%E4%BC%98%E5%85%88&limit=1&offset=0&paged=1", nil)
+	pagedReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?mode=search&group=%E4%BC%98%E5%85%88&limit=1&offset=0&paged=1", nil)
 	pagedReq.Header.Set("Authorization", token)
 	pagedW := httptest.NewRecorder()
 	router.ServeHTTP(pagedW, pagedReq)
@@ -3533,7 +3535,7 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		t.Fatalf("expected paged candidates, got %+v", pagedCandidates)
 	}
 
-	queryReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?group=%E4%BC%98%E5%85%88&q=%E5%88%AB%E5%90%8D&limit=1", nil)
+	queryReq := httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/source-candidates?mode=search&group=%E4%BC%98%E5%85%88&q=%E5%88%AB%E5%90%8D&limit=1", nil)
 	queryReq.Header.Set("Authorization", token)
 	queryW := httptest.NewRecorder()
 	router.ServeHTTP(queryW, queryReq)
@@ -3541,16 +3543,16 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		t.Fatalf("queried source candidates: expected 200, got %d: %s", queryW.Code, queryW.Body.String())
 	}
 	searchMu.Lock()
-	foundQuery := false
+	foundBookIdentity := false
 	for _, query := range searchQueries {
-		if query == "别名" {
-			foundQuery = true
+		if query == "候选书" {
+			foundBookIdentity = true
 			break
 		}
 	}
 	searchMu.Unlock()
-	if !foundQuery {
-		t.Fatalf("expected source candidate search to use custom query, got %#v", searchQueries)
+	if !foundBookIdentity {
+		t.Fatalf("source candidate search must derive identity from the owned book, got %#v", searchQueries)
 	}
 
 	body := `{"sourceId":` + strconv.FormatUint(uint64(target.SourceID), 10) + `,"bookUrl":` + strconv.Quote(target.BookURL) + `,"title":"候选书","author":"新作者"}`
@@ -3578,6 +3580,13 @@ func TestSourceCandidatesAndChangeSourceUseCandidateURL(t *testing.T) {
 		updated.ChapterCount != 2 ||
 		updated.LastChapter != "第二章" {
 		t.Fatalf("book was not switched to candidate URL: %+v", updated)
+	}
+	var switchedCandidate models.BookSourceCandidate
+	if err := server.db.Where("user_id = ? AND book_id = ? AND book_url = ?", user.ID, book.ID, updated.URL).First(&switchedCandidate).Error; err != nil {
+		t.Fatal(err)
+	}
+	if switchedCandidate.SourceID != updated.SourceID || switchedCandidate.Title != updated.Title || switchedCandidate.Author != updated.Author {
+		t.Fatalf("source change did not commit its current candidate snapshot: %+v", switchedCandidate)
 	}
 }
 
@@ -3701,6 +3710,13 @@ func TestCreateRemoteBookAcceptsMultipleCategories(t *testing.T) {
 		book.Kind != "科幻" ||
 		book.WordCount != "2.3万字" {
 		t.Fatalf("expected detail page metadata to override search payload: %+v", book.Book)
+	}
+	var seededCandidate models.BookSourceCandidate
+	if err := server.db.Where("user_id = ? AND book_id = ? AND book_url = ?", user.ID, book.ID, book.URL).First(&seededCandidate).Error; err != nil {
+		t.Fatal(err)
+	}
+	if seededCandidate.SourceID != source.ID || seededCandidate.Title != book.Title || seededCandidate.Author != book.Author {
+		t.Fatalf("remote book creation did not seed its current candidate: %+v", seededCandidate)
 	}
 	var chapters []models.Chapter
 	if err := server.db.Where("book_id = ?", book.ID).Order("`index` asc").Find(&chapters).Error; err != nil {

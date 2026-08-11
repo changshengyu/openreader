@@ -39,6 +39,12 @@ func TestFixedBaselineBackupExportsUpstreamAliases(t *testing.T) {
 	if err := server.db.Create(&book).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := server.db.Create(&models.BookSourceCandidate{
+		UserID: user.ID, BookID: book.ID, SourceID: source.ID, SourceName: source.Name,
+		Title: book.Title, Author: book.Author, BookURL: book.URL, SortOrder: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	createdAt := time.Date(2026, time.July, 22, 9, 30, 0, 0, time.UTC)
 	if err := server.db.Create(&models.Bookmark{
 		UserID: user.ID, BookID: book.ID, ChapterIndex: 2, Offset: 18,
@@ -60,6 +66,11 @@ func TestFixedBaselineBackupExportsUpstreamAliases(t *testing.T) {
 	for _, name := range []string{"bookSource.json", "bookshelf.json", "bookmark.json", "bookmarks.json", "replaceRule.json", "replaceRules.json"} {
 		if _, ok := entries[name]; !ok {
 			t.Fatalf("generated backup missing %s; entries=%v", name, fixedBaselineEntryNames(entries))
+		}
+	}
+	for name, data := range entries {
+		if strings.Contains(strings.ToLower(name), "candidate") || strings.Contains(string(data), "book_source_candidates") {
+			t.Fatalf("derived source candidates leaked into logical backup entry %s", name)
 		}
 	}
 	if !strings.Contains(string(entries["bookSource.json"]), `"bookSourceName"`) || strings.Contains(string(entries["bookSource.json"]), `"baseUrl"`) {

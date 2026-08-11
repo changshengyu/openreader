@@ -52,6 +52,9 @@
         :book="book"
         :sources="sourceCandidates"
         :loading="loadingSources"
+        :opening="openingSources"
+        :refreshing="refreshingSources"
+        :loading-more="loadingMoreSources"
         :changing-source="changingSource"
         :current-source-name="currentSourceName"
         :group="sourceGroup"
@@ -327,6 +330,9 @@
           :book="book"
           :sources="sourceCandidates"
           :loading="loadingSources"
+          :opening="openingSources"
+          :refreshing="refreshingSources"
+          :loading-more="loadingMoreSources"
           :changing-source="changingSource"
           :current-source-name="currentSourceName"
           :group="sourceGroup"
@@ -633,6 +639,9 @@ const sourceGroupOptions = ref([])
 const {
   candidates: sourceCandidates,
   loading: loadingSources,
+  opening: openingSources,
+  refreshing: refreshingSources,
+  loadingMore: loadingMoreSources,
   group: sourceGroup,
   hasMore: sourceHasMore,
   groups: sourceGroups,
@@ -640,6 +649,7 @@ const {
   refresh: refreshSourceCandidates,
   loadMore: loadMoreSourceCandidates,
   changeGroup: changeSourceGroup,
+  applyChangedSource,
   reset: resetSourceCandidates,
 } = useBookSourceCandidates({
   bookId,
@@ -845,14 +855,17 @@ const {
   locateCurrentTocChapter: locateTocCurrentChapter,
   getCurrentOffset: () => currentOffset(),
   getCurrentChapterPercent: () => currentChapterPercent(),
+  captureScrollAnchor: () => captureReaderScrollAnchor(),
   fetchChapters: async targetBookId => {
     const { data } = await api.get(`/books/${targetBookId}/chapters`)
     return data
   },
-  refreshSourceCandidates,
+  resetContentSearch: () => overlay.resetSearchBookContent(),
+  applyChangedSource,
   closeSourceDrawer: () => {
     showSourceDrawer.value = false
   },
+  restoreScrollAnchor: anchor => restoreReaderScrollAnchor(anchor),
   notify: (...args) => showReaderToast(...args),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })

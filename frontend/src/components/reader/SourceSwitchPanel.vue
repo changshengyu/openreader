@@ -9,12 +9,13 @@
         clearable
         filterable
         class="source-group-select"
+        :disabled="opening"
         @update:model-value="$emit('groupChange', $event || '')"
       >
         <el-option v-for="item in normalizedGroups" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
-      <button type="button" :disabled="loading" @click="$emit('refresh')">{{ loading ? '刷新中...' : '刷新' }}</button>
-      <button type="button" :disabled="loading || !hasMore" @click="$emit('loadMore')">{{ loading ? '加载中...' : (hasMore ? '加载更多' : '没有更多') }}</button>
+      <button type="button" :disabled="opening || refreshing || loadingMore" @click="$emit('refresh')">{{ refreshing ? '刷新中...' : '刷新' }}</button>
+      <button type="button" :disabled="opening || refreshing || loadingMore || !hasMore" @click="$emit('loadMore')">{{ loadingMore ? '加载中...' : (hasMore ? '加载更多' : '没有更多') }}</button>
     </div>
   </div>
 
@@ -59,6 +60,18 @@ const props = defineProps({
     default: () => [],
   },
   loading: {
+    type: Boolean,
+    default: false,
+  },
+  opening: {
+    type: Boolean,
+    default: false,
+  },
+  refreshing: {
+    type: Boolean,
+    default: false,
+  },
+  loadingMore: {
     type: Boolean,
     default: false,
   },

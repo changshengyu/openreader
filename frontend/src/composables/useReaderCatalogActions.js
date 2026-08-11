@@ -74,7 +74,9 @@ export function useReaderCatalogActions(options) {
     }
   }
 
-  async function applySourceChange({ book: updatedBook, previousBook }) {
+  async function applySourceChange({ book: updatedBook, source, previousBook }) {
+    const restoreOffset = options.getCurrentOffset()
+    const restoreAnchor = options.captureScrollAnchor?.()
     await options.invalidateDataCache({ book: true, chapters: true })
     await options.resetChapterCaches({ clearBrowser: true, book: previousBook })
     const merged = applyUpdatedBook(updatedBook)
@@ -88,10 +90,11 @@ export function useReaderCatalogActions(options) {
       unref(options.currentIndex),
       Math.max(options.chapters.value.length - 1, 0),
     )
-    await options.loadChapter(unref(options.currentIndex), 0)
+    await options.loadChapter(unref(options.currentIndex), restoreOffset)
     options.resetContentSearch()
-    await options.refreshSourceCandidates()
+    options.applyChangedSource(source)
     options.closeSourceDrawer()
+    await options.restoreScrollAnchor?.(restoreAnchor)
   }
 
   return {

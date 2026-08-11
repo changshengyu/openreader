@@ -399,6 +399,17 @@ func (s *Service) Update(userID, sourceID uint, next models.BookSource) (models.
 				Updates(map[string]any{"source_id": next.ID, "source_url": next.BaseURL}).Error; err != nil {
 				return err
 			}
+			if err := tx.Model(&models.BookSourceCandidate{}).
+				Where("user_id = ? AND source_id = ?", userID, sourceID).
+				Updates(map[string]any{
+					"source_id":    next.ID,
+					"source_url":   next.BaseURL,
+					"source_name":  next.Name,
+					"source_group": next.Group,
+					"type":         next.SourceType,
+				}).Error; err != nil {
+				return err
+			}
 		} else if err := tx.Save(&next).Error; err != nil {
 			return err
 		}

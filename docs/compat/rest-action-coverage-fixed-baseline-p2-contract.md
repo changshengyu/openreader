@@ -26,7 +26,7 @@
 | `POST /api/auth/login` | `POST /reader3/login`，`isLogin=true` | 独立登录路由，JWT `{token,user}`；未知用户和错误密码统一 401；成功后更新 `last_active_at`。 | **technical-stack-equivalent**。拆分路由、JWT、通用 401 是 Go/多用户安全适配；既有账号包括旧卷账号必须继续可登录。 |
 | `POST /api/auth/register` | 同一 `/reader3/login`，`isLogin=false` | 独立注册路由；新账号用户名/密码规则与上游一致；首个账号成为管理员；重复账号 409；成功直接签发 JWT。 | **technical-stack-equivalent**。显式注册界面替代 `isLogin` 开关，不能把注册重新混回登录或破坏旧账号兼容。 |
 | `GET /api/txt-toc-rules` | `GET /reader3/getTxtTocRules` | 当前仅返回 10 条 `enable=true` 规则，导入前端又过滤 `enable:false`。 | **must-fix**。必须返回固定上游全部 18 条及原始顺序，手动规则列表不得按 `enable` 过滤。 |
-| `GET /api/books/:id/source-candidates` | `/reader3/getAvailableBookSource`、`searchBookSource(SSE)` | 当前打开面板就按活动书源远程搜索，并接收非精确结果；没有每书候选缓存。 | **must-fix**。见 [`reader-source-switch-fixed-baseline-second-audit-p0-contract.md`](reader-source-switch-fixed-baseline-second-audit-p0-contract.md)。 |
+| `GET /api/books/:id/source-candidates` | `/reader3/getAvailableBookSource`、`searchBookSource(SSE)` | 已用 `available/refresh/search` 分离无网络读取、缓存来源复验和分组增量搜索；每用户/每书派生缓存、精确书名+作者、稳定 cursor、当前项保留和换源事务已落地。 | **technical-stack-equivalent / implemented**。用有界 JSON 批响应替代 SSE 是 Go 栈适配；见 [`reader-source-switch-fixed-baseline-second-audit-p0-contract.md`](reader-source-switch-fixed-baseline-second-audit-p0-contract.md)。 |
 | `POST /api/books/:id/bookmarks/batch-delete` | `POST /reader3/deleteBookmarks` | 当前按不可变 bookmark ID、当前用户和当前书过滤；事务删除；按请求中的首次有效顺序返回 `deletedIds`；提交后只广播一次。 | **technical-stack-equivalent / aligned**。ID 身份修复上游按书名作者删除首条的歧义，必须保留。 |
 | `PUT /api/categories/reorder` | `/reader3/saveBookGroupOrder` 的旧 Category-only 映射 | 当前按当前用户 category ID 更新顺序；前端 API/store 仍保留，但可见 BookGroup 已统一使用 `/api/book-groups/reorder {keys}`。 | **compatibility-only**。旧内部 API 保留以兼容历史调用，不得重新接入可见 UI；统一混合分组排序继续以 `book-groups/reorder` 为唯一主链。 |
 
@@ -120,8 +120,8 @@ OpenReader 的 bookmark ID、`user_id + book_id + id` 过滤、去重、事务�
   手动选择、2 章重新解析，以及既有 TXT 重试/确认和 EPUB 导入全流程。移动侧栏测试同步改为等待
   元素真实进入视口，避免在 260px 过渡期间误报不可见。
 
-本切片不修改 API 路径、SQLite、缓存、书架数据、备份/WebDAV 格式或用户文件。Reader 换源候选
-仍按专项合同处于 `implementation-pending`，不得因为 TXT 已完成而宣称六个动作全部关闭。
+TXT 切片不修改 API 路径、SQLite、缓存、书架数据、备份/WebDAV 格式或用户文件。Reader 换源候选
+已在后续专项切片完成实现和回归，但 Docker 发布仍须独立通过 mounted-volume 门。
 
 ## 9. TXT Docker 发布结果（2026-08-11）
 
@@ -138,4 +138,14 @@ fresh 门并行运行时出现一次无上下文 404，发布暂停后顺序重�
 relative-cache、owner-isolation 和 portable restore/restart。正式发布因此采用顺序门结果，不把并行
 容器资源竞争当作数据兼容通过证据。远端 `33c7b15` 与 `latest` 已回读为同一上述双架构 index。
 
-当前状态：**TXT aligned / Docker-published / awaiting-device-verification；source-switch implementation-pending**。
+## 10. Reader 换源实施与验证结果（2026-08-11）
+
+- `available` 不发远程请求并幂等播种历史书当前项；`refresh` 只访问缓存 source ID；`search` 按分组
+  独立 cursor 有界扫描，只保存书名和作者双精确结果。
+- `book_source_candidates` 是 user/book scoped、200 行上限的派生表，不进入普通/portable/WebDAV
+  backup；建书、换源、删除、用户删除和 source COW 的事务/隔离合同均有测试。
+- 前端拆分 opening/refreshing/loadingMore，换源不再二次搜索；面板关闭后使用段落视口锚点恢复正文。
+- Go 全量、API/service race、`go vet`、frontend 734/734、production build 及四视口真实 Chromium
+  available/refresh/search/change/empty 流程通过。
+
+当前状态：**TXT aligned / Docker-published / awaiting-device-verification；source-switch implemented / regression-validated / Docker-pending**。

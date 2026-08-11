@@ -336,6 +336,23 @@ Status: extracted 2026-07-10. These routes retain their OpenReader paths while m
 | `POST /api/books/export` | `{ "bookIds": number[], "format": "txt"\|"epub"\|"json" }` | A single local book returns its archived original file. Remote books retain TXT/EPUB export. JSON and multi-book ZIP are explicit OpenReader extensions and remain user-scoped/bounded. | JWT required. Empty/foreign-only selections are client errors; safe `Content-Disposition` names must not expose host paths. |
 | `POST /api/books/:id/refresh`, `POST /api/books/:id/refresh-local`, `POST /api/books/:id/change-source` | Existing route bodies | Replace chapter rows atomically. For EPUB `refresh-local`, the newly parsed catalogue uses one row per canonical href and empty fragment metadata; an old fragment progress/bookmark is rebound by canonical resource path before the generic index fallback. Only after commit, prune superseded derived caches while preserving `OriginalFile`, `chapters.json`, `bookSource.json`, local-store/WebDAV source files, and valid progress/bookmark recovery. Broadcast the merged shelf item after durable writes. | Owner only. Parse/fetch errors and an explicitly selected rule with no readable chapters return `400` and leave the current catalogue/cache metadata usable without deleting source files. Thus an old pure-`toc`/no-TOC EPUB remains readable after a rejected default refresh and can be explicitly refreshed with `{"tocRule":"spin"}`. Ordinary startup/read/backup never silently collapses historical fragment rows; only a successful explicit refresh applies the new catalogue. |
 
+### P0 Reader source-candidate API contract (2026-08-11 implemented)
+
+Status: implemented and regression-validated; Docker pending. The stable OpenReader route remains
+`GET /api/books/:id/source-candidates`; the additive `mode` query separates the fixed-upstream
+available/refresh/search state transitions.
+
+| Mode | Request and response | Authorization, side effects and errors |
+| --- | --- | --- |
+| omitted or `available` | No remote request. Returns the current user's saved candidate array in stable order. A historical book with no rows is transactionally seeded from its current shelf snapshot. Each row projects `current` from the authoritative book source id and URL. | JWT and current-user book ownership required; foreign/missing book is `404`. No candidate, source or source-failure data from another user may be observed. |
+| `refresh` | Revalidates only source ids already represented in the saved candidate set. Remote results are retained only when both title and author exactly match the shelf book. The response is the replacement saved array; the current shelf snapshot is retained when its source fails. | Partial source failure records only the caller-scoped failure cache and does not roll back successful candidates or remove the current candidate. No active but uncached source is contacted. |
+| `search` | Accepts `group`, `offset`, `limit`, and compatibility `paged=1`. `offset` is the next active-source index in that group. Returns `{list,offset,nextOffset,hasMore,total,searched,matched,failed,empty}`; `list` contains only this scan batch. | Uses caller-active enabled sources, existing failed-source filtering, bounded concurrency, per-source timeout and request cancellation. Only exact title+author matches are merged by `bookUrl` into the derived cache. |
+
+Unknown `mode` is `400` with the existing `{error}` envelope. The server derives title and author from the
+owned book and never accepts client identity fields for candidate discovery. `POST /api/books/:id/change-source`
+keeps its existing body and success object, but commits the selected candidate snapshot with the source/catalogue
+transaction; the frontend updates the current projection locally and must not issue a follow-up candidate search.
+
 The upstream uses namespace-specific JSON storage and SSE cache progress. OpenReader's REST/SQLite adaptation is allowed only where it preserves the visible action semantics, current-user isolation, durable event ordering, and bounded resource use described above.
 
 ### P1 manual shelf refresh API contract

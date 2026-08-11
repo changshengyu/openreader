@@ -305,6 +305,12 @@ func populateUserManagementP2Workspace(t *testing.T, server *Server, user models
 	if err := server.db.Create(&models.SourceFailure{UserID: user.ID, SourceID: 1, SourceURL: "https://example.com/source", Message: "failed", FailedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := server.db.Create(&models.BookSourceCandidate{
+		UserID: user.ID, BookID: book.ID, Title: book.Title,
+		BookURL: "https://example.com/candidate/" + user.Username, SortOrder: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	for _, root := range []string{
 		filepath.Join(server.cfg.DataDir, "webdav", "users", user.Username),
@@ -340,16 +346,17 @@ func assertUserManagementP2DataRemoved(t *testing.T, server *Server, user models
 		t.Fatalf("user remains after deletion: %d", userCount)
 	}
 	for name, model := range map[string]any{
-		"books":           &models.Book{},
-		"categories":      &models.Category{},
-		"book categories": &models.BookCategory{},
-		"progress":        &models.ReadingProgress{},
-		"bookmarks":       &models.Bookmark{},
-		"rss sources":     &models.RSSSource{},
-		"rss articles":    &models.RSSArticle{},
-		"replace rules":   &models.ReplaceRule{},
-		"settings":        &models.UserSetting{},
-		"source failures": &models.SourceFailure{},
+		"books":             &models.Book{},
+		"categories":        &models.Category{},
+		"book categories":   &models.BookCategory{},
+		"progress":          &models.ReadingProgress{},
+		"bookmarks":         &models.Bookmark{},
+		"rss sources":       &models.RSSSource{},
+		"rss articles":      &models.RSSArticle{},
+		"replace rules":     &models.ReplaceRule{},
+		"settings":          &models.UserSetting{},
+		"source failures":   &models.SourceFailure{},
+		"source candidates": &models.BookSourceCandidate{},
 	} {
 		var count int64
 		if err := server.db.Model(model).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {

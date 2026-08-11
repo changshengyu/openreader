@@ -16,7 +16,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -1551,6 +1550,9 @@ func cacheBookResponse(result chaptercache.Progress, book any) gin.H {
 }
 
 func deleteBookRecords(tx *gorm.DB, userID, bookID uint, book *models.Book) error {
+	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Delete(&models.BookSourceCandidate{}).Error; err != nil {
+		return err
+	}
 	if err := tx.Where("user_id = ? AND book_id = ?", userID, bookID).Delete(&models.BookCategory{}).Error; err != nil {
 		return err
 	}
@@ -1765,6 +1767,9 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		if err := s.setBookCategories(tx, userID, book.ID, categoryIDs); err != nil {
 			return err
 		}
+		if err := s.sourceCandidates.SeedCurrent(tx, book, &source); err != nil {
+			return err
+		}
 		for _, ch := range chapters {
 			chapter := models.Chapter{
 				BookID:   book.ID,
@@ -1822,209 +1827,6 @@ type contentSearchScan struct {
 	UnavailableChapters int
 	Truncated           bool
 	Canceled            bool
-}
-
-func (s *Server) listBookSourceCandidates(c *gin.Context) {
-	userID, _ := middleware.UserID(c)
-	bookID, ok := parseUintParam(c, "id")
-	if !ok {
-		return
-	}
-	book, ok := s.ensureBook(c, userID, bookID)
-	if !ok {
-		return
-	}
-
-	group := strings.TrimSpace(c.Query("group"))
-	keyword := strings.TrimSpace(c.Query("q"))
-	if keyword == "" {
-		keyword = book.Title
-	}
-	limit := parseBoundedInt(c.Query("limit"), 10, 1, 80)
-	offset := parseBoundedInt(c.Query("offset"), 0, 0, 10000)
-	paged := c.Query("paged") == "1" || c.Query("paged") == "true"
-
-	sources, err := s.bookSources.ListActiveByIDs(userID, nil, true)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sources"})
-		return
-	}
-	if group != "" {
-		filtered := make([]models.BookSource, 0, len(sources))
-		for _, source := range sources {
-			if source.Group == group {
-				filtered = append(filtered, source)
-			}
-		}
-		sources = filtered
-	}
-	totalSources := int64(len(sources))
-	if paged {
-		if offset >= len(sources) {
-			sources = []models.BookSource{}
-		} else {
-			end := offset + limit
-			if end > len(sources) {
-				end = len(sources)
-			}
-			sources = sources[offset:end]
-		}
-	} else if len(sources) > limit {
-		sources = sources[:limit]
-	}
-	sources = s.filterActiveSourceFailures(userID, sources)
-
-	type sourceCandidate struct {
-		SourceID           uint    `json:"sourceId"`
-		SourceName         string  `json:"sourceName"`
-		Group              string  `json:"group"`
-		Title              string  `json:"title"`
-		Author             string  `json:"author"`
-		CoverURL           string  `json:"coverUrl"`
-		CoverResourceURL   *string `json:"coverResourceUrl,omitempty"`
-		Intro              string  `json:"intro"`
-		Kind               string  `json:"kind"`
-		WordCount          string  `json:"wordCount"`
-		LatestChapterTitle string  `json:"latestChapterTitle"`
-		BookURL            string  `json:"bookUrl"`
-		Time               int64   `json:"time,omitempty"`
-		Current            bool    `json:"current"`
-		Type               int     `json:"type"`
-	}
-	type sourceCandidateBatch struct {
-		Index      int
-		Candidates []sourceCandidate
-		Failure    error
-		Empty      bool
-	}
-
-	results := make([]sourceCandidate, 0)
-	if offset == 0 && book.SourceID > 0 {
-		currentSource, err := s.bookSources.FindActive(userID, book.SourceID)
-		if err == nil && currentSource.Enabled && (group == "" || currentSource.Group == group) {
-			results = append(results, sourceCandidate{
-				SourceID:           currentSource.ID,
-				SourceName:         currentSource.Name,
-				Group:              currentSource.Group,
-				Title:              book.Title,
-				Author:             book.Author,
-				CoverURL:           book.CoverURL,
-				Intro:              book.Intro,
-				Kind:               book.Kind,
-				WordCount:          book.WordCount,
-				LatestChapterTitle: book.LastChapter,
-				BookURL:            book.URL,
-				Current:            true,
-				Type:               currentSource.SourceType,
-			})
-		}
-	}
-	channel := make(chan sourceCandidateBatch, len(sources))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4)
-	parentCtx := c.Request.Context()
-	for index, source := range sources {
-		source := source
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			ctx, cancel := context.WithTimeout(parentCtx, 12*time.Second)
-			started := time.Now()
-			searchResults, err := engine.SearchBooksContext(ctx, source, keyword)
-			cancel()
-			elapsed := time.Since(started).Milliseconds()
-			if err != nil {
-				channel <- sourceCandidateBatch{Index: index, Failure: err}
-				return
-			}
-			candidates := make([]sourceCandidate, 0)
-			for _, item := range searchResults {
-				if item.BookURL == "" {
-					continue
-				}
-				candidates = append(candidates, sourceCandidate{
-					SourceID:           source.ID,
-					SourceName:         source.Name,
-					Group:              source.Group,
-					Title:              item.Title,
-					Author:             item.Author,
-					CoverURL:           item.CoverURL,
-					Intro:              item.Intro,
-					Kind:               item.Kind,
-					WordCount:          item.WordCount,
-					LatestChapterTitle: item.LatestChapter,
-					BookURL:            item.BookURL,
-					Time:               elapsed,
-					Current:            source.ID == book.SourceID && item.BookURL == book.URL,
-					Type:               source.SourceType,
-				})
-				if len(candidates) >= 3 {
-					break
-				}
-			}
-			channel <- sourceCandidateBatch{
-				Index:      index,
-				Candidates: candidates,
-				Empty:      len(candidates) == 0,
-			}
-		}(index)
-	}
-	go func() {
-		wg.Wait()
-		close(channel)
-	}()
-	failedSources := 0
-	emptySources := 0
-	matchedSources := 0
-	batches := make([]sourceCandidateBatch, len(sources))
-	for batch := range channel {
-		batches[batch.Index] = batch
-	}
-	for _, batch := range batches {
-		if batch.Failure != nil {
-			failedSources++
-			if batch.Index >= 0 && batch.Index < len(sources) {
-				s.recordSourceFailure(userID, sources[batch.Index], batch.Failure)
-			}
-			continue
-		}
-		if batch.Empty {
-			emptySources++
-			continue
-		}
-		matchedSources++
-		results = append(results, batch.Candidates...)
-		if len(results) >= 120 {
-			break
-		}
-	}
-	for index := range results {
-		results[index].CoverResourceURL = s.projectCoverResource(
-			userID,
-			results[index].SourceID,
-			results[index].CoverURL,
-		)
-	}
-
-	if paged {
-		c.JSON(http.StatusOK, gin.H{
-			"list":       results,
-			"offset":     offset,
-			"nextOffset": offset + len(sources),
-			"hasMore":    int64(offset+len(sources)) < totalSources,
-			"total":      totalSources,
-			"searched":   len(sources),
-			"matched":    matchedSources,
-			"failed":     failedSources,
-			"empty":      emptySources,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, results)
 }
 
 func parseBoundedInt(value string, fallback int, minValue int, maxValue int) int {
@@ -2130,7 +1932,10 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		book.LastChapter = newChapters[len(newChapters)-1].Title
 		book.ChapterCount = len(newChapters)
 		book.LastCheckTime = time.Now().UnixMilli()
-		return tx.Save(&book).Error
+		if err := tx.Save(&book).Error; err != nil {
+			return err
+		}
+		return s.sourceCandidates.SeedCurrent(tx, book, &newSource)
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change source"})
