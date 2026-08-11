@@ -123,4 +123,19 @@ OpenReader 的 bookmark ID、`user_id + book_id + id` 过滤、去重、事务�
 本切片不修改 API 路径、SQLite、缓存、书架数据、备份/WebDAV 格式或用户文件。Reader 换源候选
 仍按专项合同处于 `implementation-pending`，不得因为 TXT 已完成而宣称六个动作全部关闭。
 
-当前状态：**TXT implementation-complete / Docker-release-pending；source-switch implementation-pending**。
+## 9. TXT Docker 发布结果（2026-08-11）
+
+实现提交 `33c7b15b064afb3943686348a260cb5eef89fd4b` 已先推送 GitHub，再仅由本机 OrbStack 构建和上传：
+
+- `ghcr.io/changshengyu/openreader:33c7b15`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:e3c88f10fb213abae9d730ca9eec62c46d09fbc2487b2af8c42d1f4ebb1b9a24`
+- amd64：`sha256:a378b2732c5eeefbb4dec23420dcd2f906429a9212534535004a1bd43441cb65`
+- arm64：`sha256:9a33be3ca80fd68de37cb1e94eccf2cd08ad7eedd645f88ab6f15d0306dc81a2`
+
+本地候选先通过 fresh volume 的 portable-v1、portable-v2 assets、cross-user、restart；历史卷第一次与
+fresh 门并行运行时出现一次无上下文 404，发布暂停后顺序重跑完整通过 TXT、EPUB、UMD、CBZ、
+relative-cache、owner-isolation 和 portable restore/restart。正式发布因此采用顺序门结果，不把并行
+容器资源竞争当作数据兼容通过证据。远端 `33c7b15` 与 `latest` 已回读为同一上述双架构 index。
+
+当前状态：**TXT aligned / Docker-published / awaiting-device-verification；source-switch implementation-pending**。
