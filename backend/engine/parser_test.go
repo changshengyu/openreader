@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -241,19 +242,138 @@ func TestParseTXTWithExplicitNonMatchingRuleReturnsEmptyCatalog(t *testing.T) {
 	}
 }
 
-func TestDefaultTXTTocRulesIncludeUpstreamEnabledRules(t *testing.T) {
-	rules := DefaultTXTTocRules()
-	if len(rules) < 9 {
-		t.Fatalf("expected upstream enabled txt toc rules, got %d", len(rules))
+func TestDefaultTXTTocRulesExactlyMatchFixedUpstream(t *testing.T) {
+	want := []TXTTocRule{
+		{ID: -1, Enable: true, Name: "目录(去空白)", Rule: `(?<=[　\s])(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`, SerialNumber: 0},
+		{ID: -2, Enable: true, Name: "目录", Rule: `^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`, SerialNumber: 1},
+		{ID: -3, Enable: false, Name: "目录(匹配简介)", Rule: `(?<=[　\s])(?:(?:内容|文章)?简介|文案|前言|序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|回(?![合来事去])|场(?![和合比电是])|篇(?!张))).{0,30}$`, SerialNumber: 2},
+		{ID: -4, Enable: false, Name: "目录(古典、轻小说备用)", Rule: `^[ 　\t]{0,4}(?:序章|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|回(?![合来事去])|场(?![和合比电是])|话|篇(?!张))).{0,30}$`, SerialNumber: 3},
+		{ID: -5, Enable: false, Name: "数字(纯数字标题)", Rule: `(?<=[　\s])\d+\.?[ 　\t]{0,4}$`, SerialNumber: 4},
+		{ID: -6, Enable: true, Name: "数字 分隔符 标题名称", Rule: `^[ 　\t]{0,4}\d{1,5}[：:,.， 、_—\-].{1,30}$`, SerialNumber: 5},
+		{ID: -7, Enable: true, Name: "大写数字 分隔符 标题名称", Rule: `^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[ 、_—\-].{1,30}$`, SerialNumber: 6},
+		{ID: -8, Enable: true, Name: "正文 标题/序号", Rule: `^[ 　\t]{0,4}正文[ 　]{1,4}.{0,20}$`, SerialNumber: 7},
+		{ID: -9, Enable: true, Name: "Chapter/Section/Part/Episode 序号 标题", Rule: `^[ 　\t]{0,4}(?:[Cc]hapter|[Ss]ection|[Pp]art|ＰＡＲＴ|[Nn][oO]\.|[Ee]pisode|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)\s{0,4}\d{1,4}.{0,30}$`, SerialNumber: 8},
+		{ID: -10, Enable: false, Name: "Chapter(去简介)", Rule: `^[ 　\t]{0,4}(?:[Cc]hapter|[Ss]ection|[Pp]art|ＰＡＲＴ|[Nn][Oo]\.|[Ee]pisode)\s{0,4}\d{1,4}.{0,30}$`, SerialNumber: 9},
+		{ID: -11, Enable: true, Name: "特殊符号 序号 标题", Rule: `(?<=[\s　])[【〔〖「『〈［\[](?:第|[Cc]hapter)[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,10}[章节].{0,20}$`, SerialNumber: 10},
+		{ID: -12, Enable: false, Name: "特殊符号 标题(成对)", Rule: `(?<=[\s　]{0,4})(?:[\[〈「『〖〔《（【\(].{1,30}[\)】）》〕〗』」〉\]]?|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)[ 　]{0,4}$`, SerialNumber: 11},
+		{ID: -13, Enable: true, Name: "特殊符号 标题(单个)", Rule: `(?<=[\s　]{0,4})(?:[☆★✦✧].{1,30}|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)[ 　]{0,4}$`, SerialNumber: 12},
+		{ID: -14, Enable: true, Name: "章/卷 序号 标题", Rule: `^[ \t　]{0,4}(?:(?:内容|文章)?简介|文案|前言|序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|[卷章][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[ 　]{0,4}.{0,30}$`, SerialNumber: 13},
+		{ID: -15, Enable: false, Name: "顶格标题", Rule: `^\S.{1,20}$`, SerialNumber: 14},
+		{ID: -16, Enable: false, Name: "双标题(前向)", Rule: `(?m)(?<=[ \t　]{0,4})第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$(?=[\s　]{0,8}第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章)`, SerialNumber: 15},
+		{ID: -17, Enable: false, Name: "双标题(后向)", Rule: `(?m)(?<=[ \t　]{0,4}第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$[\s　]{0,8})第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$`, SerialNumber: 16},
+		{ID: -18, Enable: true, Name: "标题 特殊符号 序号", Rule: `^.{1,20}[(（][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}[)）][ 　\t]{0,4}$`, SerialNumber: 17},
 	}
-	if rules[0].ID != -1 || rules[0].Name != "目录(去空白)" || !strings.Contains(rules[0].Rule, `(?!完|结)`) {
-		t.Fatalf("first rule is not upstream rule -1: %+v", rules[0])
+
+	got := DefaultTXTTocRules()
+	if len(got) != len(want) {
+		t.Fatalf("default TXT TOC rule count = %d, want %d", len(got), len(want))
 	}
-	for _, rule := range rules {
-		if _, err := compileTXTTitleMatcher(rule.Rule); err != nil {
-			t.Fatalf("default rule %d %s does not compile after normalization: %v", rule.ID, rule.Name, err)
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("default TXT TOC rule %d\n got: %+v\nwant: %+v", index, got[index], want[index])
+		}
+		if _, err := compileTXTTitleMatcher(got[index].Rule); err != nil {
+			t.Fatalf("default rule %d %s does not compile through compatibility matcher: %v", got[index].ID, got[index].Name, err)
 		}
 	}
+}
+
+func TestParseTXTWithDisabledUpstreamRulesSelectedManually(t *testing.T) {
+	tests := []struct {
+		id       int
+		input    string
+		title    string
+		rejected string
+	}{
+		{id: -3, input: "简介\n这是简介正文。", title: "简介", rejected: "正文完结\n普通正文。"},
+		{id: -4, input: "第一话 开场\n这是第一话正文。", title: "第一话 开场", rejected: "第一场比赛\n普通正文。"},
+		{id: -5, input: "1\n这是第一节正文。", title: "1", rejected: "1. 正文\n普通正文。"},
+		{id: -10, input: "Chapter 1 Opening\nThis is the chapter body.", title: "Chapter 1 Opening", rejected: "简介 1\n普通正文。"},
+		{id: -12, input: "【第一幕】\n这是第一幕正文。", title: "【第一幕】", rejected: "【\n普通正文。"},
+		{id: -15, input: "短标题\n这是一段明显超过二十个字符而不应该被顶格标题规则匹配的正文内容。", title: "短标题", rejected: "这是一行明确超过二十个字符且不应被识别成目录标题的普通正文内容。"},
+	}
+	rules := DefaultTXTTocRules()
+	for _, test := range tests {
+		t.Run(strconv.Itoa(test.id), func(t *testing.T) {
+			rule := findTXTTocRule(t, rules, test.id)
+			chapters, err := ParseTXTWithRule([]byte(test.input), rule.Rule)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(chapters) != 1 || chapters[0].Title != test.title {
+				t.Fatalf("manual rule %d parsed %+v, want one chapter %q", test.id, chapters, test.title)
+			}
+			rejected, err := ParseTXTWithRule([]byte(test.rejected), rule.Rule)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rejected) != 0 {
+				t.Fatalf("manual rule %d matched rejected fixture: %+v", test.id, rejected)
+			}
+		})
+	}
+}
+
+func TestParseTXTAutomaticDetectionSkipsDisabledUpstreamRules(t *testing.T) {
+	input := []byte("1\n这是第一段正文。\n2\n这是第二段正文。")
+	chapters, err := ParseTXT(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chapter := range chapters {
+		if chapter.Title == "1" || chapter.Title == "2" {
+			t.Fatalf("disabled pure-number rule must be manual-only: %+v", chapters)
+		}
+	}
+}
+
+func TestParseTXTWithUpstreamDoubleTitleLookaroundRules(t *testing.T) {
+	rules := DefaultTXTTocRules()
+	input := []byte("第一章 总标题\n第二章 分标题\n这是第二章的正文内容。")
+
+	forward, err := ParseTXTWithRule(input, findTXTTocRule(t, rules, -16).Rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(forward) != 1 || forward[0].Title != "第一章 总标题" || !strings.Contains(forward[0].Content, "第二章 分标题") {
+		t.Fatalf("forward double-title rule must select only the first adjacent title: %+v", forward)
+	}
+
+	backward, err := ParseTXTWithRule(input, findTXTTocRule(t, rules, -17).Rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backward) != 2 || backward[0].Title != "前言" || backward[1].Title != "第二章 分标题" {
+		t.Fatalf("backward double-title rule must select only the second adjacent title: %+v", backward)
+	}
+
+	isolated := []byte("第一章 孤立标题\n这里没有相邻的第二个标题。")
+	for _, id := range []int{-16, -17} {
+		chapters, err := ParseTXTWithRule(isolated, findTXTTocRule(t, rules, id).Rule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(chapters) != 0 {
+			t.Fatalf("double-title rule %d matched an isolated title: %+v", id, chapters)
+		}
+	}
+}
+
+func TestCompileTXTTitleMatcherOnlySpecializesExactUpstreamDoubleTitleRules(t *testing.T) {
+	if _, err := compileTXTTitleMatcher(txtForwardDoubleTitleRule + `|^附录$`); err == nil {
+		t.Fatal("modified lookaround rule must not silently inherit the fixed-upstream double-title matcher")
+	}
+}
+
+func findTXTTocRule(t *testing.T, rules []TXTTocRule, id int) TXTTocRule {
+	t.Helper()
+	for _, rule := range rules {
+		if rule.ID == id {
+			return rule
+		}
+	}
+	t.Fatalf("TXT TOC rule %d not found", id)
+	return TXTTocRule{}
 }
 
 func TestParseTXTDetectsCommonUpstreamTextEncodings(t *testing.T) {

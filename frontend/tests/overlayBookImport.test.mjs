@@ -52,7 +52,7 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
-test('loads categories and filters enabled TXT TOC rules once', async () => {
+test('loads categories and exposes enabled and disabled TXT TOC rules for manual selection once', async () => {
   const fixture = createController()
   await fixture.controller.open()
   await fixture.controller.loadTocRules()
@@ -63,6 +63,7 @@ test('loads categories and filters enabled TXT TOC rules once', async () => {
   ])
   assert.deepEqual(fixture.controller.tocRuleOptions.value, [
     { id: 1, name: '章节', rule: '^第.+章$', enable: true },
+    { id: 2, name: '停用', rule: '^卷', enable: false },
   ])
 })
 

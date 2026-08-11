@@ -106,6 +106,11 @@ async function openImport(page) {
   if (!await actionIsInViewport() && await mobileTrigger.isVisible()) {
     await mobileTrigger.click()
     await action.waitFor({ state: 'visible' })
+    const actionElement = await action.elementHandle()
+    await page.waitForFunction(element => {
+      const rect = element?.getBoundingClientRect()
+      return Boolean(rect && rect.left < window.innerWidth && rect.right > 0)
+    }, actionElement)
     await action.scrollIntoViewIfNeeded()
   }
   if (!await actionIsInViewport()) {
@@ -174,6 +179,17 @@ async function runViewport(browser, viewport) {
     assert(await titleInput.inputValue() === 'second-race', 'late file preview overwrote the latest selection')
     await page.unroute('**/api/imports/books/preview')
 
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'disabled-rule.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('1\n第一段正文。\n2\n第二段正文。', 'utf8'),
+    })
+    await page.locator('.import-form .el-select').nth(1).click()
+    await page.getByText('数字(纯数字标题)', { exact: true }).last().click()
+    await page.getByText('重新解析', { exact: true }).click()
+    await page.getByText('已解析 2 章', { exact: true }).waitFor()
+
+    await page.getByPlaceholder('TXT目录规则（可选，留空使用默认规则，例如：^第.+章.*$）').fill('')
     await page.locator('input[type="file"]').setInputFiles({
       name: 'retry-rule.txt',
       mimeType: 'text/plain',

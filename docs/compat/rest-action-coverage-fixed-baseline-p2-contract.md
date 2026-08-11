@@ -104,4 +104,23 @@ OpenReader 的 bookmark ID、`user_id + book_id + id` 过滤、去重、事务�
 5. 涉及候选缓存表时必须通过 fresh/historical volume、用户删除/书籍删除清理和 portable backup
    不包含派生缓存的合同。
 
-当前状态：**inventory-complete / implementation-pending**。
+## 8. TXT 实施与验证结果（2026-08-11）
+
+- `DefaultTXTTocRules()` 已逐字段恢复固定上游 18 条规则、原始顺序和八条 `enable=false` 状态；
+  `GET /api/txt-toc-rules` 直接数组由 API 合同逐项比对该清单。
+- 导入界面只过滤空规则，八条默认关闭规则仍出现在手动选择列表；自动探测继续只遍历
+  `enable=true`。
+- `-16/-17` 使用仅针对固定上游原始规则的有界相邻行匹配器，最多检查相邻 8 个 Unicode 空白；
+  不把跨行 lookaround 删除成普通章节匹配，也不把用户修改过的相似规则静默映射到专用匹配器。
+- 原始输入、解码文本、规则字节数和章节数继续使用既有 parser limits；普通规则仍由 Go RE2 执行，
+  没有引入回溯型正则引擎、脚本执行或新的文件/网络入口。
+- 18 条精确清单、八条手动规则正反 fixture、自动探测禁用项、双标题相邻/孤立语义和 API 投影均
+  通过；相关包、全量 Go、focused race、`go vet`、frontend 730/730 和 production build 通过。
+- 真实 Go + Chromium 在 1440×900、390×844、360×800 均完成默认关闭的“数字(纯数字标题)”
+  手动选择、2 章重新解析，以及既有 TXT 重试/确认和 EPUB 导入全流程。移动侧栏测试同步改为等待
+  元素真实进入视口，避免在 260px 过渡期间误报不可见。
+
+本切片不修改 API 路径、SQLite、缓存、书架数据、备份/WebDAV 格式或用户文件。Reader 换源候选
+仍按专项合同处于 `implementation-pending`，不得因为 TXT 已完成而宣称六个动作全部关闭。
+
+当前状态：**TXT implementation-complete / Docker-release-pending；source-switch implementation-pending**。

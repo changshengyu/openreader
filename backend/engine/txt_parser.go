@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -13,27 +14,32 @@ const (
 	txtNoTocChunkBytes     = 10 * 1024
 	txtNoTocShortTailBytes = 100
 	MaxTXTTocRuleBytes     = 16 * 1024
+
+	txtForwardDoubleTitleRule  = `(?m)(?<=[ \t　]{0,4})第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$(?=[\s　]{0,8}第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章)`
+	txtBackwardDoubleTitleRule = `(?m)(?<=[ \t　]{0,4}第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$[\s　]{0,8})第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$`
 )
 
 var ChapterTitlePattern = regexp.MustCompile(`^(?:第[零一二三四五六七八九十百千万两〇○0-9０-９]+[章回节卷集部]|序章|楔子|引子|前言|尾声|后记|番外(?:篇)?|第[零一二三四五六七八九十百千万两〇○0-9０-９]+卷|[上中下]卷).{0,64}$`)
 
-var defaultTXTTitleRules = []string{
-	`(?<=[　\s])(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`,
-	`^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`,
-	`^[ 　\t]{0,4}\d{1,5}[：:,.， 、_—\-].{1,30}$`,
-	`^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[ 、_—\-].{1,30}$`,
-	`^[ 　\t]{0,4}正文[ 　]{1,4}.{0,20}$`,
-	`^[ 　\t]{0,4}(?:[Cc]hapter|[Ss]ection|[Pp]art|ＰＡＲＴ|[Nn][oO]\.|[Ee]pisode|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)\s{0,4}\d{1,4}.{0,30}$`,
-	`(?<=[\s　])[【〔〖「『〈［\[](?:第|[Cc]hapter)[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,10}[章节].{0,20}$`,
-	`(?<=[\s　]{0,4})(?:[☆★✦✧].{1,30}|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)[ 　]{0,4}$`,
-	`^[ \t　]{0,4}(?:(?:内容|文章)?简介|文案|前言|序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|[卷章][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[ 　]{0,4}.{0,30}$`,
-	`^.{1,20}[(（][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}[)）][ 　\t]{0,4}$`,
-}
-
 type txtTitleMatcher struct {
 	pattern    *regexp.Regexp
 	exclusions []txtTitleExclusion
+	context    txtTitleContext
 }
+
+type txtTitleContext uint8
+
+const (
+	txtTitleContextNone txtTitleContext = iota
+	txtTitleContextForward
+	txtTitleContextBackward
+)
+
+var (
+	txtForwardFirstTitlePattern  = regexp.MustCompile(`^第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$`)
+	txtForwardSecondTitlePattern = regexp.MustCompile(`^第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章`)
+	txtBackwardTitlePattern      = regexp.MustCompile(`^第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$`)
+)
 
 type txtTitleExclusion struct {
 	token  string
@@ -75,6 +81,60 @@ func (matcher *txtTitleMatcher) MatchString(line string) bool {
 	return true
 }
 
+func (matcher *txtTitleMatcher) MatchText(text string, lineStart, lineEnd int, line string) bool {
+	if !matcher.MatchString(line) {
+		return false
+	}
+	switch matcher.context {
+	case txtTitleContextForward:
+		lineText := strings.TrimRight(text[lineStart:lineEnd], "\r\n")
+		return nextTXTTitleWithinWhitespace(text, lineStart+len(lineText), 8)
+	case txtTitleContextBackward:
+		return previousTXTTitleWithinWhitespace(text, lineStart, 8)
+	default:
+		return true
+	}
+}
+
+func nextTXTTitleWithinWhitespace(text string, start, maxRunes int) bool {
+	position := start
+	spaces := 0
+	for position < len(text) {
+		r, size := utf8.DecodeRuneInString(text[position:])
+		if !unicode.IsSpace(r) && r != '　' {
+			break
+		}
+		spaces++
+		if spaces > maxRunes {
+			return false
+		}
+		position += size
+	}
+	return position > start && txtForwardSecondTitlePattern.MatchString(text[position:])
+}
+
+func previousTXTTitleWithinWhitespace(text string, start, maxRunes int) bool {
+	position := start
+	spaces := 0
+	for position > 0 {
+		r, size := utf8.DecodeLastRuneInString(text[:position])
+		if !unicode.IsSpace(r) && r != '　' {
+			break
+		}
+		spaces++
+		if spaces > maxRunes {
+			return false
+		}
+		position -= size
+	}
+	if position == start || position == 0 {
+		return false
+	}
+	previousStart := strings.LastIndex(text[:position], "\n") + 1
+	previous := strings.TrimSpace(strings.TrimPrefix(text[previousStart:position], "\ufeff"))
+	return txtForwardFirstTitlePattern.MatchString(previous)
+}
+
 type TXTChapter struct {
 	Index               int    `json:"index"`
 	Title               string `json:"title"`
@@ -96,15 +156,23 @@ type TXTTocRule struct {
 
 func DefaultTXTTocRules() []TXTTocRule {
 	return []TXTTocRule{
-		{ID: -1, Enable: true, Name: "目录(去空白)", Rule: defaultTXTTitleRules[0], SerialNumber: 0},
-		{ID: -2, Enable: true, Name: "目录", Rule: defaultTXTTitleRules[1], SerialNumber: 1},
+		{ID: -1, Enable: true, Name: "目录(去空白)", Rule: `(?<=[　\s])(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`, SerialNumber: 0},
+		{ID: -2, Enable: true, Name: "目录", Rule: `^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))).{0,30}$`, SerialNumber: 1},
+		{ID: -3, Enable: false, Name: "目录(匹配简介)", Rule: `(?<=[　\s])(?:(?:内容|文章)?简介|文案|前言|序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|回(?![合来事去])|场(?![和合比电是])|篇(?!张))).{0,30}$`, SerialNumber: 2},
+		{ID: -4, Enable: false, Name: "目录(古典、轻小说备用)", Rule: `^[ 　\t]{0,4}(?:序章|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|回(?![合来事去])|场(?![和合比电是])|话|篇(?!张))).{0,30}$`, SerialNumber: 3},
+		{ID: -5, Enable: false, Name: "数字(纯数字标题)", Rule: `(?<=[　\s])\d+\.?[ 　\t]{0,4}$`, SerialNumber: 4},
 		{ID: -6, Enable: true, Name: "数字 分隔符 标题名称", Rule: `^[ 　\t]{0,4}\d{1,5}[：:,.， 、_—\-].{1,30}$`, SerialNumber: 5},
-		{ID: -7, Enable: true, Name: "大写数字 分隔符 标题名称", Rule: defaultTXTTitleRules[3], SerialNumber: 6},
+		{ID: -7, Enable: true, Name: "大写数字 分隔符 标题名称", Rule: `^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[ 、_—\-].{1,30}$`, SerialNumber: 6},
 		{ID: -8, Enable: true, Name: "正文 标题/序号", Rule: `^[ 　\t]{0,4}正文[ 　]{1,4}.{0,20}$`, SerialNumber: 7},
-		{ID: -9, Enable: true, Name: "Chapter/Section/Part/Episode 序号 标题", Rule: defaultTXTTitleRules[5], SerialNumber: 8},
-		{ID: -11, Enable: true, Name: "特殊符号 序号 标题", Rule: defaultTXTTitleRules[6], SerialNumber: 10},
-		{ID: -13, Enable: true, Name: "特殊符号 标题(单个)", Rule: defaultTXTTitleRules[7], SerialNumber: 12},
-		{ID: -14, Enable: true, Name: "章/卷 序号 标题", Rule: defaultTXTTitleRules[8], SerialNumber: 13},
+		{ID: -9, Enable: true, Name: "Chapter/Section/Part/Episode 序号 标题", Rule: `^[ 　\t]{0,4}(?:[Cc]hapter|[Ss]ection|[Pp]art|ＰＡＲＴ|[Nn][oO]\.|[Ee]pisode|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)\s{0,4}\d{1,4}.{0,30}$`, SerialNumber: 8},
+		{ID: -10, Enable: false, Name: "Chapter(去简介)", Rule: `^[ 　\t]{0,4}(?:[Cc]hapter|[Ss]ection|[Pp]art|ＰＡＲＴ|[Nn][Oo]\.|[Ee]pisode)\s{0,4}\d{1,4}.{0,30}$`, SerialNumber: 9},
+		{ID: -11, Enable: true, Name: "特殊符号 序号 标题", Rule: `(?<=[\s　])[【〔〖「『〈［\[](?:第|[Cc]hapter)[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,10}[章节].{0,20}$`, SerialNumber: 10},
+		{ID: -12, Enable: false, Name: "特殊符号 标题(成对)", Rule: `(?<=[\s　]{0,4})(?:[\[〈「『〖〔《（【\(].{1,30}[\)】）》〕〗』」〉\]]?|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)[ 　]{0,4}$`, SerialNumber: 11},
+		{ID: -13, Enable: true, Name: "特殊符号 标题(单个)", Rule: `(?<=[\s　]{0,4})(?:[☆★✦✧].{1,30}|(?:内容|文章)?简介|文案|前言|序章|楔子|正文(?!完|结)|终章|后记|尾声|番外)[ 　]{0,4}$`, SerialNumber: 12},
+		{ID: -14, Enable: true, Name: "章/卷 序号 标题", Rule: `^[ \t　]{0,4}(?:(?:内容|文章)?简介|文案|前言|序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|[卷章][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[ 　]{0,4}.{0,30}$`, SerialNumber: 13},
+		{ID: -15, Enable: false, Name: "顶格标题", Rule: `^\S.{1,20}$`, SerialNumber: 14},
+		{ID: -16, Enable: false, Name: "双标题(前向)", Rule: txtForwardDoubleTitleRule, SerialNumber: 15},
+		{ID: -17, Enable: false, Name: "双标题(后向)", Rule: txtBackwardDoubleTitleRule, SerialNumber: 16},
 		{ID: -18, Enable: true, Name: "标题 特殊符号 序号", Rule: `^.{1,20}[(（][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}[)）][ 　\t]{0,4}$`, SerialNumber: 17},
 	}
 }
@@ -160,7 +228,7 @@ func parseTXTText(text string, titlePattern *txtTitleMatcher, maxChapters int) (
 		lineEnd := nextLineEnd(text, lineStart)
 		lineText := strings.TrimRight(text[lineStart:lineEnd], "\r\n")
 		line := strings.TrimSpace(lineText)
-		if titlePattern.MatchString(line) {
+		if titlePattern.MatchText(text, lineStart, lineEnd, line) {
 			if hasCurrent {
 				content := strings.TrimSpace(text[contentStart:lineStart])
 				current.Index = len(chapters)
@@ -331,7 +399,8 @@ func countTXTTitleMatches(text string, pattern *txtTitleMatcher) int {
 	for lineStart := 0; lineStart < len(text); {
 		lineEnd := nextLineEnd(text, lineStart)
 		lineText := strings.TrimRight(text[lineStart:lineEnd], "\r\n")
-		if isChapterTitleWithRule(lineText, pattern) {
+		line := strings.TrimSpace(strings.TrimPrefix(lineText, "\ufeff"))
+		if line != "" && pattern.MatchText(text, lineStart, lineEnd, line) {
 			count++
 		}
 		lineStart = lineEnd
@@ -340,6 +409,13 @@ func countTXTTitleMatches(text string, pattern *txtTitleMatcher) int {
 }
 
 func compileTXTTitleMatcher(rule string) (*txtTitleMatcher, error) {
+	rawRule := strings.TrimSpace(rule)
+	if rawRule == txtForwardDoubleTitleRule {
+		return &txtTitleMatcher{pattern: txtForwardFirstTitlePattern, context: txtTitleContextForward}, nil
+	}
+	if rawRule == txtBackwardDoubleTitleRule {
+		return &txtTitleMatcher{pattern: txtBackwardTitlePattern, context: txtTitleContextBackward}, nil
+	}
 	exclusions := txtTitleExclusions(rule)
 	rule = normalizeTXTTitleRule(rule)
 	pattern, err := regexp.Compile(rule)

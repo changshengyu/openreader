@@ -82,7 +82,7 @@ export function useOverlayBookImport(options) {
       const { data } = await options.listTocRules()
       if (!operations.canCommit(operation)) return
       tocRuleOptions.value = Array.isArray(data)
-        ? data.filter(rule => rule?.enable !== false && rule?.rule)
+        ? data.filter(rule => rule?.rule)
         : []
     } catch (error) {
       if (operations.canCommit(operation)) {

@@ -226,11 +226,12 @@ func TestListTXTTocRules(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &rules); err != nil {
 		t.Fatal(err)
 	}
-	if len(rules) == 0 {
-		t.Fatal("expected default txt toc rules")
+	want := engine.DefaultTXTTocRules()
+	if !reflect.DeepEqual(rules, want) {
+		t.Fatalf("TXT TOC API did not preserve the fixed-upstream rule list\n got: %+v\nwant: %+v", rules, want)
 	}
-	if rules[0].Name == "" || rules[0].Rule == "" {
-		t.Fatalf("unexpected first rule: %+v", rules[0])
+	if len(rules) != 18 || rules[2].ID != -3 || rules[2].Enable || rules[16].ID != -17 || rules[16].Enable {
+		t.Fatalf("TXT TOC API must expose disabled manual rules in upstream order: %+v", rules)
 	}
 }
 

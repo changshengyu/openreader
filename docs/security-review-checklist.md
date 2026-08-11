@@ -700,3 +700,20 @@ Evidence: `backend/api/book_source_ownership_api_contract_test.go`,
 `backend/services/sourcecompat/export.go`, `frontend/tests/bookSourceEditor.test.mjs`,
 `frontend/tests/sourceScriptTransparencyContract.test.mjs`, full Go/frontend gates, focused/full race, `go vet`,
 and `scripts/smoke/source-workspace-contract.mjs` at four viewports.
+
+## P2 TXT TOC rule compatibility security review (2026-08-11)
+
+- [x] The fixed-upstream 18-rule list changes no upload, stage-token, filesystem, SQLite, backup or WebDAV boundary.
+- [x] Automatic detection still scans only enabled rules over the existing 512 KiB probe; disabled rules require an
+      explicit user selection.
+- [x] Ordinary rules continue through Go RE2 and the existing 16 KiB rule limit. No backtracking regex engine,
+      JavaScript evaluator or remote fetch was introduced.
+- [x] The two fixed-upstream cross-line lookaround rules use exact-rule dispatch and inspect at most eight adjacent
+      Unicode whitespace runes. Modified/custom lookaround strings fail compilation instead of silently receiving
+      broader semantics.
+- [x] Input bytes, decoded text and final chapter count remain bounded by the shared local-book parser policy;
+      parser failures consume no import stage and expose no source bytes or host path.
+
+Evidence: `backend/engine/parser_test.go`, `backend/api/api_test.go`,
+`frontend/tests/overlayBookImport.test.mjs`, full/focused/race Go, `go vet`, frontend 730/730, production build,
+and `scripts/smoke/local-book-import-contract.mjs` at 1440×900, 390×844 and 360×800.
