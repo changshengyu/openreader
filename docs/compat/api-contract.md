@@ -746,38 +746,39 @@ does not authorize access.
 |---|---|---|
 | `GET /api/sources` | `200` ordered `BookSource[]`; existing JSON fields remain unchanged. `usedBookCount` counts only caller-owned books and the additive response-only `usedBookNames:string[]` contains those books' titles in stable book-ID order. An unused source returns an empty array. | Lazily initializes the caller from the current default exactly once. The usage projection must be computed in bounded grouped queries, never per-source N+1 reads, and must not expose another user's title. It does not add a SQLite column or enter source export/backup/WebDAV data. An initialized empty namespace returns `[]`; persistence failure is `500 {"error":"failed to list sources"}`. |
 | `GET /api/sources/:id` | Existing `200 BookSource`. | Only a caller-active association is addressable. Missing, detached, or foreign ID is the same `404 {"error":"source not found"}`; no ownership detail is disclosed. |
-| `POST /api/sources` | Existing payload/default normalization and `201 BookSource`. | Requires JWT plus `CanEditSources`; creates only a caller association. Validation remains `400`, disabled editing `403`, persistence failure `500`. After commit, `sources_update` is sent only to the caller's clients. |
-| `PUT /api/sources/:id` | Existing full source payload and `200 BookSource`. The returned ID may change when an upgraded shared snapshot is copied. | Requires JWT plus `CanEditSources`; foreign/detached ID is `404`. A shared snapshot is copy-on-write and only caller books/failure rows are remapped. Semantic rule changes clear only caller variables. Persistence failure remains `500`. |
+| `POST /api/sources` | Existing payload/default normalization and `201 BookSource`; one non-null JSON object is capped at 16 MiB actual-read bytes. | Requires JWT plus `CanEditSources`; creates only a caller association. Validation remains `400`, body overflow is flat `413`, positive `sourceLimit` exhaustion is flat `409`, disabled editing `403`, persistence failure `500`. After commit, `sources_update` is sent only to the caller's clients. |
+| `PUT /api/sources/:id` | Existing full source payload and `200 BookSource`; one non-null JSON object is capped at 16 MiB actual-read bytes. The returned ID may change when an upgraded shared snapshot is copied. | Requires JWT plus `CanEditSources`; foreign/detached ID is resolved before body read and remains `404`. A shared snapshot is copy-on-write without consuming active quota, and only caller books/failure rows are remapped. Semantic rule changes clear only caller variables. Body overflow is flat `413`; persistence failure remains `500`. |
 | `DELETE /api/sources/:id` | Existing `204`; a caller-owned source used by caller books remains `409 {"error":"source is used by bookshelf books","usedBookCount":N}`. | Requires JWT plus `CanEditSources`. Foreign/detached ID is `404`. Deletion removes only caller association/failures; the shared snapshot is garbage-collected only when globally unreferenced. |
 | `GET /api/sources/export?sourceIds=...` | Existing JSON download and sourceIds validation. With no IDs, exports all caller-active sources; supplied IDs retain caller order/filter behavior. | Foreign/detached IDs are omitted and cannot be exported. A selection containing no caller source returns `200 []`; malformed input remains `400`. |
 | `POST /api/sources/:id/test`, `/test-chapter`, `/test-content`; `POST /api/sources/:id/debug/stream`; `POST /api/sources/batch-test`; `GET /api/sources/invalid` | Existing test payloads and optional structured parser error fields remain; the additive canonical stream is defined in `source-debug-fixed-baseline-second-audit-p2-contract.md`. | Single-item foreign/detached ID is `404`; batch selection silently excludes non-caller IDs. Debug/test requests never write `source_failures`; only batch health-check reads/writes are caller-scoped. |
-| `DELETE /api/sources`; `POST /api/sources/batch`; import/remote-import | Existing request validation and response envelopes remain stable. | Mutation affects only caller-active associations. Batch foreign IDs are not counted as affected. Import identity is normalized `bookSourceUrl/baseUrl` within the caller namespace; no same-name or ID match may mutate another user. |
+| `DELETE /api/sources`; `POST /api/sources/batch`; import/remote-import | Existing request validation and response envelopes remain stable. Batch/remote URL controls accept one JSON object capped at 16 KiB; local/remote source arrays cap at 5,000 raw entries. | Mutation affects only caller-active associations. Batch foreign IDs are not counted as affected. Import identity is normalized `bookSourceUrl/baseUrl` within the caller namespace; no same-name or ID match may mutate another user. Projected quota overflow is flat `409`; 5,001 entries are flat `400`; no-op import/batch does not clear failures or broadcast. |
 | `GET /api/sources/default`; `POST /api/sources/default/restore` | Existing status/restore paths remain compatible. Restore reconciles only the caller against current default; initialized empty and restore-default remain distinct states. | Restore requires `CanEditSources`; used unmatched sources become detached instead of leaving dangling book references. |
 | `POST /api/sources/default/save` | Existing path remains as an admin compatibility shim and returns `{count}`; `count` may be zero for an explicitly configured empty default. | Requires administrator role in addition to `CanEditSources`; copies the caller's active list into the default namespace. It does not rewrite initialized users or broadcast a false private-source update to every account. |
 | `GET /api/admin/users` | Existing user summary array; additive `sourceCount` remains. | `sourceCount` is each target's active association count, excluding detached rows. An uninitialized target projects the current default count without creating its namespace. Admin JWT required. |
 | `POST /api/admin/users/:id/sources/default` | No body; `200 {"count":N}` where `N` may be zero. | Admin JWT required. Missing target is `404 {"error":"user not found"}`; existing but uninitialized target is `409 {"error":"user sources are not initialized"}`. Copies that target's active snapshot to default and never falls back to caller sources. |
 | `POST /api/admin/users/sources/reset` | `{ids:[positive user ids]}`; success is `200 {reset,imported,updated,skipped}`. | Admin JWT required. IDs are deduplicated; empty effective selection is `400`. Every target must exist and the default namespace must be configured; missing target/default is `404` and the whole batch remains unchanged. All target reconciles commit in one transaction, then each target alone receives `sources_update`; `users_update` refreshes admin summaries. |
 
-### P2 BookSource write/import boundary (2026-08-12 extracted)
+### P2 BookSource write/import boundary (2026-08-12 implemented)
 
-The next source hardening slice is specified by
+The completed source hardening slice is specified by
 [`book-source-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-source-write-boundary-fixed-baseline-second-audit-p2-contract.md)
-and remains `inventory-complete / implementation-pending`. Target behavior preserves the routes and response schemas
-above while adding: one actual-read-bounded JSON object (16 MiB for full create/update source documents; 16 KiB for
+and is `implemented / regression-validated / Docker-published / awaiting-device-verification`. It preserves the routes
+and response schemas above while adding: one actual-read-bounded JSON object (16 MiB for full create/update source documents; 16 KiB for
 batch and remote URL controls), a 5,000-entry local/remote import ceiling, and atomic enforcement of the existing
 per-user `sourceLimit` for future active associations. `sourceLimit=0` remains unlimited; historical/default/restore
-data stays readable and is never truncated or deleted. This paragraph records the target contract and must not be
-treated as proof that `OpenReader@fe8abf9` implements it.
+data stays readable and is never truncated or deleted. Same-user create/import races are serialized around one
+authoritative SQLite transaction; existing identity updates and COW remain available at or above quota.
 
 Search, explore, remote-book, change-source, Reader content/cache and scheduler consumers now resolve the same
 association service. New/read-by-selection operations require caller-active enabled sources, while an existing
 caller-owned book may continue resolving its caller-detached snapshot; a foreign source id is treated as missing
 before any remote request. Administrator source-count/default/reset/delete and owner-scoped
 logical/portable/WebDAV backup/restore consumers are implemented. No API method, body, success schema,
-status or error envelope is changed by the remaining Docker work: the dedicated smoke invokes the
-stable routes above and compares actual source IDs/lists plus ZIP members before and after restart.
-Until the old-global-source fixture, COW, administrator-root/regular-root and restore-isolation checks
-pass together, the implemented management/runtime API slices are not sufficient release evidence.
+status or error envelope outside this documented additive 409/413/entry-limit behavior changed. The dedicated
+source ownership smoke compares actual source IDs/lists plus ZIP members before and after restart. Fixed tests,
+focused race, full Go/vet, frontend `740/740`, production build, real HTTP and fresh/historical/ownership/portable
+container gates all passed for `d9ddc0f`. The locally built amd64/arm64 image is published as `d9ddc0f`/`latest` with
+OCI index `sha256:548bf0984e7fa5039411bd75f9ae8ac8496052010255bfe746bf36fa9336dc8f`.
 
 The additive `usedBookNames` projection above is required by the fixed upstream source-manager
 `书架书籍` column and is governed by

@@ -1,10 +1,11 @@
 # BookSource 写入、导入与配额边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-本轮只提取合同、记录当前反例并定义失败测试，不修改应用或测试代码。范围限定为现有书源管理主链：
+本轮先在 `45a73ca` 提取合同和当前反例，再以 `4f502df` 固化失败测试，最后由 `d9ddc0f` 实施并发布。
+范围限定为现有书源管理主链：
 
 - `POST /api/sources`
 - `PUT /api/sources/:id`
@@ -146,7 +147,7 @@ OpenReader 保留已部署的 JWT REST 路径、关系型 source ID、当前用�
 - full-document update 若未来提交本身超过 16 MiB 必须明确 `413`，不得截断或部分保存；用户仍可先
   导出历史源。禁止启动时扫描、截断规则、删除超额 source 或自动改写 `sourceLimit`。
 
-## 7. 失败测试先行闸门
+## 7. 测试先行闸门（已通过）
 
 实现前必须先让以下合同在当前代码上失败：
 
@@ -185,3 +186,32 @@ production build。该切片无前端几何变化；隔离生产形态真实 HTT
   跨用户隔离。
 - 远程 preview 只解析和返回，不写 source/failure/event；remote import 必须在 fetch+decode 全部成功
   后才进入原子 quota/import transaction。调用取消继续停止 transport，绝不转成成功或失败缓存。
+
+## 9. 实施与发布证据（2026-08-12）
+
+- 合同提交 `45a73ca` 与红测提交 `4f502df` 均先于实现提交 `d9ddc0f113d4bc2cc76a6722ecaf19f617163345`
+  推送到 `main`。当前实现的五个 JSON 入口复用 actual-read decoder，并在 source 专用 object gate 映射
+  原有平面错误；本地/远程 source decoder 在 normalization、响应和事务前共同限制 5,000 个原始条目。
+- `booksources` service 使用仅同用户互斥的写锁；create/import 的事务以 user row 无值变更写入先取得
+  SQLite writer lock，再读取 authoritative `sourceLimit` 和 active association 数。import 先完整分类
+  update/new/duplicate，再统一做 projected quota；确认容量后才执行 COW/update/create。`sourceLimit=0`、
+  满额已有 identity update、满额 COW、历史超额 update 和 detached 不计数均有合同测试。
+- focused API/source-service tests、同用户 create/create、create/import、import/import 的
+  `go test -race -count=3`、`go vet ./...` 和完整 `go test ./...` 通过；前端 `740/740` 与 Vite production
+  build 通过。本批无前端 DOM/CSS/路由变化，因此使用隔离生产形态真实 HTTP 代替无关浏览器几何门。
+- 宿主 Go 服务、本地候选容器及从 GHCR 回拉的不可变镜像都通过同一 HTTP 探针：配额最后一个名额为
+  `[201,409]` 且最终 active 不超限；declared/chunked 16 MiB + 1 均为 `413`，精确 16 MiB 为 `201`；
+  第二 JSON 为 `400`；batch/两条 remote control 的 16 KiB + 1 为 `413`；本地 5,000 项为 `200`、
+  5,001 项为 `400`，拒绝前后 source 数不变，空 import 保留零统计。
+- 本地镜像先通过 fresh portable-v1/portable-v2-assets/cross-user/restart、historical TXT/EPUB/UMD/CBZ/
+  relative-cache/owner-isolation，以及独立 source legacy migration/COW/admin-private roots/logical+portable/
+  restore/restart 三组顺序门。没有新增 SQLite schema、持久文件、备份成员或 destructive migration。
+- 镜像完全由本机 BuildKit 构建并由宿主 OCI publisher 上传，没有使用云端构建：
+  `ghcr.io/changshengyu/openreader:d9ddc0f` 与 `latest` 均指向 amd64/arm64 OCI index
+  `sha256:548bf0984e7fa5039411bd75f9ae8ac8496052010255bfe746bf36fa9336dc8f`；两平台 revision label 均为
+  `d9ddc0f113d4bc2cc76a6722ecaf19f617163345`。
+
+允许差异仍只有 OpenReader 多用户 `sourceLimit` 与 HTTP/parser 安全预算；固定上游可见字段、空 URL
+服务端兼容、identity、owner/COW、SSRF fetcher 和恢复绕过配额的历史保真均未改变。本切片没有未完成
+代码项；仍等待真实设备上的大型书源导入/管理员限额反馈。发布不表示用户生产服务器已升级，当前生产
+运行提交仍未知。
