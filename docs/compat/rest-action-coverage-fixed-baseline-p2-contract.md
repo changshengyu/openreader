@@ -223,7 +223,7 @@ amd64/arm64 OCI index 为
 写边界均已关闭。下一轮不得从旧 pending 文案重开这些模块；应重新对 `backend/api/server.go` 与固定
 上游 controller 做差集，先形成新的动作 inventory，再选择下一项 must-fix。
 
-## 15. 用户资产上传/删除请求边界（2026-08-12 inventory）
+## 15. 用户资产上传/删除请求边界（2026-08-12 implemented）
 
 重新执行动作差集后，`POST /api/uploads` 的 8/32 MiB 限制被确认只发生在 Gin 完整解析 multipart
 之后；默认 32 MiB `MaxMultipartMemory` 只是临时文件分界，不是请求上限。额外 file/type part 被静默
@@ -233,4 +233,9 @@ amd64/arm64 OCI index 为
 固定上游、多用户允许差异、33 MiB 总包络、单 file/type、handler-owned `RemoveAll`、16 KiB 单 JSON、
 稳定状态/错误与失败测试见
 [`user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；本 inventory 未修改应用或测试。
+合同 `ce38478`、旧实现红测 `bb0c067`、实现 `f386016` 和真实 HTTP 探针 `be83a0f` 已依次推送；
+33 MiB actual-read 包络、唯一 file/type、handler-owned `RemoveAll`、16 KiB 单 JSON 和既有 8/32 MiB
+文件 admission 均有精确边界测试。Go full/race/vet、frontend 740/740、build、宿主/候选/GHCR 回拉
+runtime、fresh 与成功重跑的 historical 卷门通过。本机发布 `be83a0f`/`latest`，远端 OCI index 为
+`sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。

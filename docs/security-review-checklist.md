@@ -410,9 +410,18 @@ contract (three viewports).
 
 第二轮 HTTP wire/multipart 生命周期复审见
 [`compat/user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**：计划以 33 MiB actual-read 包络、单一
-file/type、显式 multipart 临时文件清理和 16 KiB 单 JSON 删除，关闭当前 Gin 先完整解析再做 8/32 MiB
-文件检查的资源缺口。以下已签收的内容/路径/事务结论继续有效，但不能作为 wire 上限证据。
+当前状态为 **aligned / regression-validated / Docker-published / awaiting-device-verification**：33 MiB
+actual-read 包络、单一 file/type、显式 multipart 临时文件清理和 16 KiB 单 JSON 删除已关闭原先 Gin
+先完整解析再做 8/32 MiB 文件检查的资源缺口。以下内容/路径/事务结论继续有效。
+
+- [x] Declared and chunked multipart bodies share the 33 MiB actual-read envelope; JWT rejection happens before
+  body parsing, while authenticated overflow returns the stable path-free 413.
+- [x] Exactly one file and at most one bounded type are accepted. Ambiguous parts and oversized metadata fail
+  before final write, and every successfully parsed form releases its `multipart-*` temporary storage on all exits.
+- [x] Asset deletion accepts one 16 KiB JSON object plus whitespace. Overflow, a second document or trailing
+  garbage cannot reach reference checks or delete the file.
+- [x] Host, local candidate and GHCR-pulled HTTP probes verify upload/read/rejected-delete/final-delete bytes and
+  temp-file cleanup; fresh and traced historical mounted-volume/portable gates pass before local publication.
 
 - [x] Cover/background/font/misc uploads still enforce the existing 8 MiB/32 MiB
   admission caps before content inspection and continue to derive the destination owner

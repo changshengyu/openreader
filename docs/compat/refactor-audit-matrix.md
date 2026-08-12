@@ -34,9 +34,9 @@
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
 | Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。公开 auth、管理员 user、用户配置、BookGroup/Category、Book、BookSource、Bookmark 与 RSS source/article 写边界均已关闭并发布。RSS 新增单 JSON/actual-read、同用户 URL 身份串行、显式列 SQL 和网络请求后 liveness recheck。 | [`rest-action-coverage-fixed-baseline-p2-contract.md`](rest-action-coverage-fixed-baseline-p2-contract.md) 原列六动作已全部关闭。下一项须重新盘点 `server.go` 中尚未专项签约的动作，独立固定上游合同和旧实现红测，不能用模块级绿测替代动作级 wire/事务证据。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链、RSS 可见请求页语义、P2-N1/P2-N2 抓取边界和 RSS 持久提交边界均已发布**。refresh 只写 parser/remote 列并按 detail rule 保留权威正文；content cache 只写 content；state 只写 read/favourite；三者不再用全行 `Save` 覆盖。 | 抓取预算/SSRF 合同不重开；[`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md) 已用 trigger/API 证明列所有权、删除不复活、无孤儿 article 和远程工作后的 source/article 存活复验。 |
-| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | **RSS 写入/缓存并发边界已在 `0986d8e` 完成完整回归和 Docker 门**：frontend 740/740、Go full/focused race/vet、build、RSS 四视口、宿主 HTTP + SQLite trigger、候选/回拉容器纯 API，以及 fresh portable-v1/v2/cross-user/restart 和 historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 均通过。 | 本机 amd64/arm64 已发布 `0986d8e` 与 `latest`，OCI index `sha256:9884d0e9b41c1a1a109f3034159ae2968fe9d889da063deaca2514e1ac371e25`；两平台 revision label 均为 `0986d8e7218cd299aab9d80d65912a9307c14ce5`。用户生产环境当前运行提交仍未知，发布不等于服务器已升级。 |
+| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | **用户资产 wire boundary 已在 `be83a0f` 完成完整回归和 Docker 门**：frontend 740/740、Go full/focused race/vet、build、宿主/候选/GHCR 回拉真实 HTTP，以及 fresh portable-v1/v2/cross-user/restart 和成功 trace 重跑的 historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 均通过。 | 本机 amd64/arm64 已发布 `be83a0f` 与 `latest`，OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`；两平台 revision label 均为 `be83a0f7bdafe68fe5dfda5f590b90ec3a9d9615`。用户生产环境当前运行提交仍未知，发布不等于服务器已升级。 |
 
-## 当前整体进度快照（2026-08-12，`0986d8e` 发布签收 pass）
+## 当前整体进度快照（2026-08-12，`be83a0f` 发布签收 pass）
 
 按全量计划的模块/合同口径而不是代码行数估算，整体约 **96%**。该数字表示固定基准合同和测试先行
 实现覆盖度；用户配置、BookGroup/Category、Book、BookSource、Bookmark 与 RSS 写入/导入边界均完成
@@ -55,10 +55,10 @@
   capability，共享抓取器 P2-N1/N2 请求与私网/DNS/代理边界，本地格式 parser 的输入、解码文本、
   章节与历史读取预算、独立书源调试器完整链、公共/管理员/用户配置/BookGroup/Book 写入 body、字段、
   owner 与归档引用边界，BookSource JSON/cardinality/原子 `sourceLimit`，Bookmark wire/cardinality/
-  note-only/并发删除边界，RSS actual-read/single-JSON/同 URL 身份/列所有权/远程存活边界，以及
+  note-only/并发删除边界，RSS actual-read/single-JSON/同 URL 身份/列所有权/远程存活边界，用户资产
+  33 MiB multipart/单 part/临时文件/16 KiB 删除 JSON 边界，以及
   server-only WebSocket/recipient scope 和备份事务 worker。
-- **尚未完成的主线**：用户资产 multipart/删除 JSON 的请求边界已完成 inventory、等待红测与实现；其余
-  尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
+- **尚未完成的主线**：其余尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
   以及后续真实设备反馈暴露出的上游可见偏差。`c74be70` 已发布但尚待服务器部署；移动书架在
   390×844 线上真实账号复测中保持上游 390/350px 几何和内容高度行轨，但设备“明显窄”的反馈仍待
   完整截图区分首页书架、Reader 内书架或设备可见层；书源管理、临时阅读和调试器继续等待真实设备
@@ -70,7 +70,10 @@
 multipart；Gin 32 MiB 只是内存阈值，chunked/额外 part 仍可继续读盘，DELETE 也仍接受无界首个 JSON。
 固定 33 MiB multipart 包络、单 file/type、临时文件清理和 16 KiB 单 JSON 删除合同见
 [`user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；本次提取未修改应用或测试。
+合同、旧实现红测、实现和真实 HTTP 探针已依次落地；Go full/race/vet、frontend 740/740、build、宿主/
+候选/GHCR 回拉 runtime 与 fresh/historical 卷门通过。本机发布 `be83a0f`/`latest`，远端 OCI index 为
+`sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。
 
 2026-08-11 的长尾切片 Reader 内联章节缓存已实施并回归：完整后续区间、已入架本地书、取消
 即时恢复、精确完成反馈和跨书/跨身份迟到任务隔离均已关闭；临时 Reader 继续保持 `no-store`。

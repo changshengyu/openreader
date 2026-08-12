@@ -1,6 +1,6 @@
 # 用户资产上传/删除请求边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -132,5 +132,32 @@ OpenReader：
   全局 body middleware。
 - DELETE 复用 `request_body.go#decodeBoundedSingleJSON`，由 upload handler 映射本文既有平面错误。
 - 不把整个文件再次读入内存；内容验证继续读取 `FileHeader.Open()`，最终写入继续流式复制到随机目标。
-- 合同、红测、实现、验证/发布记录依次独立提交。完成前状态保持
-  **inventory-complete / implementation-pending**。
+- 合同、红测、实现、验证/发布记录依次独立提交。
+
+## 8. 实施、验证与发布结果（2026-08-12）
+
+- 合同 `ce38478`、旧实现红测 `bb0c067`、实现 `f386016` 和可重复真实 HTTP 探针 `be83a0f`
+  已按门禁顺序独立提交并推送。旧实现反例精确证明 declared/chunked 超限、重复 file/type、超长
+  metadata、multipart 临时文件和 DELETE 多 JSON 缺口，不是仅由代码审查推断。
+- `uploads.go` 现在在解析前执行 33 MiB `Content-Length`/`MaxBytesReader` 总包络，完整检查唯一 file、
+  至多一个 type 与 filename/type byte 上限，并由 handler 对成功解析的 form 统一 `RemoveAll`。DELETE
+  复用 16 KiB 有界单 JSON primitive。既有 8/32 MiB 文件上限、内容校验、用户根、引用保护、成功
+  shape 和错误语义保持。
+- 新合同 focused、既有 BookInfo/Reader 资产 focused、Go 全量、focused race、`go vet ./...`、frontend
+  740/740 和 Vite production build 通过。真实宿主、arm64 候选容器和 GHCR 回拉容器三次运行
+  `scripts/smoke/user-asset-write-boundary-contract.mjs` 均通过 declared/chunked 413、认证优先、重复 part、
+  正常上传/静态读取、DELETE single JSON/exact limit、最终文件删除和 `multipart-*` 清理。
+- 本地 `be83a0f` 候选先通过 fresh volume 的 portable-v1、portable-v2-assets、cross-user、restart。顺序
+  historical 第一次在 fixture 后出现无上下文 `curl 404`，未记为通过；保留现场并启用 shell trace 的
+  原样重跑完整通过 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation、portable restore/restart
+  与归档 hash。
+- 本机完成 amd64/arm64 构建并发布 `ghcr.io/changshengyu/openreader:be83a0f` 与 `latest`；两标签远端
+  回读为 OCI index
+  `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。amd64 manifest 为
+  `sha256:eef842be04742dd892158039ea7c31581be2c854bec293c977b187b36c8303f5`，arm64 为
+  `sha256:bac0fb70f1fe5ccf111920d7d9b80e20a2b811bbb5a439da94b5bf33222c2bc2`，两平台 revision label
+  均为 `be83a0f7bdafe68fe5dfda5f590b90ec3a9d9615`。
+
+本切片的允许差异仍是 OpenReader 已部署的单文件 object API、随机名、多用户路径、内容校验、引用保护
+和 portable v2；没有复制固定上游的多文件数组、原文件名覆盖或弱路径删除。未完成项仅为用户真实设备
+上传/删除签收，以及全项目其它尚未逐动作复审的长尾；生产实例当前运行 commit 仍未知。
