@@ -10,6 +10,21 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
+### P2 BookSource write/import boundary (2026-08-12 inventory)
+
+- [ ] Source create/update must accept exactly one actual-read-bounded 16 MiB JSON object; batch and remote URL
+  controls must use a 16 KiB boundary after JWT and `CanEditSources` checks.
+- [ ] Local and remote source JSON must stop at 5,000 raw entries before normalization, database work or response;
+  remote bytes continue through the existing SSRF-safe 16 MiB fetch boundary.
+- [ ] Positive `sourceLimit` must atomically cap future caller-active associations across concurrent create/import,
+  while zero remains unlimited and historical/default/restore data is never truncated or deleted.
+- [ ] Every rejected/no-op request must preserve source associations, COW snapshots, failure cache, parser variables,
+  timestamps and sync events; errors must not expose rules, credentials, URLs with queries or SQLite details.
+
+Target contract and current runtime counterexamples are recorded in
+[`docs/compat/book-source-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/book-source-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / implementation-pending`; unchecked items are not implementation evidence.
+
 ### P2 user-setting write boundary (2026-08-12 implementation)
 
 - [x] Auth and legal setting-key checks run before reading a setting value; legal `reader/shelf/search` PUT bodies

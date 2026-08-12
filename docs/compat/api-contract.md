@@ -758,6 +758,17 @@ does not authorize access.
 | `POST /api/admin/users/:id/sources/default` | No body; `200 {"count":N}` where `N` may be zero. | Admin JWT required. Missing target is `404 {"error":"user not found"}`; existing but uninitialized target is `409 {"error":"user sources are not initialized"}`. Copies that target's active snapshot to default and never falls back to caller sources. |
 | `POST /api/admin/users/sources/reset` | `{ids:[positive user ids]}`; success is `200 {reset,imported,updated,skipped}`. | Admin JWT required. IDs are deduplicated; empty effective selection is `400`. Every target must exist and the default namespace must be configured; missing target/default is `404` and the whole batch remains unchanged. All target reconciles commit in one transaction, then each target alone receives `sources_update`; `users_update` refreshes admin summaries. |
 
+### P2 BookSource write/import boundary (2026-08-12 extracted)
+
+The next source hardening slice is specified by
+[`book-source-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-source-write-boundary-fixed-baseline-second-audit-p2-contract.md)
+and remains `inventory-complete / implementation-pending`. Target behavior preserves the routes and response schemas
+above while adding: one actual-read-bounded JSON object (16 MiB for full create/update source documents; 16 KiB for
+batch and remote URL controls), a 5,000-entry local/remote import ceiling, and atomic enforcement of the existing
+per-user `sourceLimit` for future active associations. `sourceLimit=0` remains unlimited; historical/default/restore
+data stays readable and is never truncated or deleted. This paragraph records the target contract and must not be
+treated as proof that `OpenReader@fe8abf9` implements it.
+
 Search, explore, remote-book, change-source, Reader content/cache and scheduler consumers now resolve the same
 association service. New/read-by-selection operations require caller-active enabled sources, while an existing
 caller-owned book may continue resolving its caller-detached snapshot; a foreign source id is treated as missing
