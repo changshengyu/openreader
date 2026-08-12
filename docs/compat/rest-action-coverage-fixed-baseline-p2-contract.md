@@ -239,3 +239,16 @@ amd64/arm64 OCI index 为
 runtime、fresh 与成功重跑的 historical 卷门通过。本机发布 `be83a0f`/`latest`，远端 OCI index 为
 `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
 **aligned / Docker-published / awaiting-device-verification**。
+
+## 16. LocalStore 文件系统与请求边界（2026-08-12 inventory）
+
+重新盘点 `server.go` 后，下一项 must-fix 落在 `/api/local-store*`：多文件上传虽已有每文件上限、
+私有根和原子替换，但 `PostForm`/`MultipartForm` 会在业务检查前完整读取无界聚合 body；legacy
+directory/rename/import JSON 仍无 actual-read/single-document/cardinality 边界。更严重的是
+`localStorePath` 只做 lexical prefix，后续 `Stat/Open/Mkdir/Rename/RemoveAll` 和导入读取会跟随挂载卷
+中的 symlink，无法证明最终文件仍位于当前用户根。
+
+固定上游多选上传、当前 OpenReader 稳定路由/响应/逐文件提交、允许的安全差异、multipart/JSON
+精确边界、symlink-safe regular-file 读取和测试门禁见
+[`local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本 inventory 未修改应用或测试。

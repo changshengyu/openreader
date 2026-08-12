@@ -487,6 +487,20 @@ Evidence for the checked items: `backend/api/workspace_storage_access_contract_t
 - [x] Workbench suffix gating is presentation-only: disallowed current UI formats do not bypass P1-E1 scoped preview tokens, and retained direct parser support does not expand filesystem access.
 - [x] Browser regression proves LocalStore/WebDAV requests retain bearer auth and no hidden mobile control can invoke a removed operation.
 
+第二轮 LocalStore 文件系统与 HTTP wire 复审见
+[`compat/local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**：下列缺口必须由旧实现红测证明后关闭，
+不能用既有 lexical prefix、每文件 copy limit 或 WebDAV 测试代替 LocalStore 证据。
+
+- [ ] Multi-file upload has one aggregate actual-read envelope, bounded part cardinality/metadata and explicit
+  handler-owned multipart temporary-file cleanup; authentication and `canAccessStore` still run first.
+- [ ] Directory/rename/import JSON actions accept one bounded document; import request and recursive expansion
+  cardinality fail before stage, database, cache or sync side effects.
+- [ ] Every LocalStore action rejects root/ancestor/target symlinks and special files. Open/download/import recheck
+  an opened regular file, and no read/write/delete can escape the current user's resolved root.
+- [ ] Host HTTP, focused race, fresh/historical mounted-volume and portable restore probes cover these boundaries
+  without moving or deleting pre-existing symlinks or mounted user data.
+
 Evidence: `backend/api/workspace_file_manager_p1e3_contract_test.go` covers private rooted listing fields, multi-file ordinary-file storage and a rejected later part preserving its old destination. `frontend/tests/workspaceFileManagerParity.test.mjs` keeps source-specific presentation gates separated from direct parser support. `scripts/smoke/workspace-storage-import-state-machine.mjs` validates authenticated WebDAV requests and removed actions across desktop and both required mobile sizes.
 
 ## P1-E4 TXT empty-catalogue follow-up

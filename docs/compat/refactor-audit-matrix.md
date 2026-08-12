@@ -75,6 +75,14 @@ multipart；Gin 32 MiB 只是内存阈值，chunked/额外 part 仍可继续读�
 `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
 **aligned / Docker-published / awaiting-device-verification**。
 
+2026-08-12 的下一轮 REST 差集已选择 LocalStore 文件系统/请求边界：当前多文件上传在每文件
+128 MiB admission 前完整解析无总包络 multipart，legacy JSON 动作无 actual-read/single-document/
+cardinality；lexical `localStorePath` 也不能阻止挂载卷 symlink 将 list/download/write/delete/import
+导向当前用户根外。固定上游多选/逐文件可见语义、OpenReader 私有根与稳定 API、允许安全差异和
+红测门见
+[`local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本次未修改应用或测试，整体比例暂不变。
+
 2026-08-11 的长尾切片 Reader 内联章节缓存已实施并回归：完整后续区间、已入架本地书、取消
 即时恢复、精确完成反馈和跨书/跨身份迟到任务隔离均已关闭；临时 Reader 继续保持 `no-store`。
 frontend 740/740、build、Go 全量、四视口专项和完整 Reader/iPad 浏览器门通过；实现提交 `4da98fa`
