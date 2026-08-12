@@ -256,7 +256,9 @@ func TestBookCreateValidatesFinalEffectiveCategoryOwner(t *testing.T) {
 
 	foreignBody := fmt.Sprintf(`{"title":"foreign category fallback","categoryId":%d,"categoryIds":[0]}`, foreign.ID)
 	response := performBookWriteRequest(router, auth, http.MethodPost, "/api/books", foreignBody, false)
-	assertBookWriteFlatError(t, response, http.StatusBadRequest, "category not found")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "category not found") {
+		t.Fatalf("foreign category fallback = %d: %s", response.Code, response.Body.String())
+	}
 	var count int64
 	if err := server.db.Model(&models.Book{}).Where("user_id = ?", owner.ID).Count(&count).Error; err != nil {
 		t.Fatal(err)
@@ -398,6 +400,32 @@ func TestBookWriteBoundaryEnforcesUTF8FieldBudgetsAndPreservesHistoricalRows(t *
 		}
 		response = performBookWriteRequest(router, auth, http.MethodPut, path, fmt.Sprintf(`{"title":%q}`, strings.Repeat("x", 241)), false)
 		assertBookWriteFlatError(t, response, http.StatusBadRequest, "book title is too long")
+
+		backupPath, err := server.backupSvc.RunNowForUser(owner.ID, owner.Username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries := readFixedBaselineBackupEntries(t, backupPath)
+		if !bytes.Contains(entries["bookshelf.json"], []byte(historical.Title)) {
+			t.Fatal("historical oversized book title was truncated in logical backup")
+		}
+		archive, err := os.ReadFile(backupPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		destinationRouter, destination := setupTestServer(t)
+		_ = registerLifecycleToken(t, destinationRouter, "bookwritehistoricalrestore")
+		destinationOwner := lifecycleUser(t, destination, "bookwritehistoricalrestore")
+		if _, err := destination.restoreLegadoBackupData(archive, destinationOwner.ID); err != nil {
+			t.Fatal(err)
+		}
+		var restored models.Book
+		if err := destination.db.Where("user_id = ? AND url = ?", destinationOwner.ID, historical.URL).First(&restored).Error; err != nil {
+			t.Fatal(err)
+		}
+		if restored.Title != historical.Title || restored.Author != historical.Author || restored.CoverURL != historical.CoverURL || restored.URL != historical.URL {
+			t.Fatalf("historical oversized book changed across logical restore: %+v", restored)
+		}
 	})
 }
 
@@ -435,6 +463,65 @@ func TestBookDeletionPreservesSharedLocalArchiveUntilLastReference(t *testing.T)
 				t.Fatalf("last local archive reference did not clean directory, stat err=%v", err)
 			}
 		})
+	}
+}
+
+func TestBookDeletionLeavesUnsafeSymlinkArchiveUntouched(t *testing.T) {
+	router, server := setupTestServer(t)
+	username := "bookwritesymlink"
+	auth := registerLifecycleToken(t, router, username)
+	owner := lifecycleUser(t, server, username)
+	ownerRoot := filepath.Join(server.cfg.LibraryDir, "data", username)
+	if err := os.MkdirAll(ownerRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	outsideFile := writeLifecycleCache(t, outside, "source.txt", "outside source")
+	linkPath := filepath.Join(ownerRoot, "linked-archive")
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	book := models.Book{
+		UserID: owner.ID, Title: "unsafe linked archive", LibraryPath: filepath.Join("data", username, "linked-archive"),
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deleteBookByContractAction(t, router, auth, "single", book.ID)
+	if _, err := os.Stat(outsideFile); err != nil {
+		t.Fatalf("unsafe linked archive reached outside private root: %v", err)
+	}
+	if info, err := os.Lstat(linkPath); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("unsafe linked archive should be left untouched, info=%v err=%v", info, err)
+	}
+}
+
+func TestBookCleanupFailsClosedWhenReferencesCannotBeQueried(t *testing.T) {
+	router, server := setupTestServer(t)
+	username := "bookwritequeryfailure"
+	_ = registerLifecycleToken(t, router, username)
+	owner := lifecycleUser(t, server, username)
+	libraryPath := filepath.Join("data", username, "query-failure")
+	archiveRoot := filepath.Join(server.cfg.LibraryDir, libraryPath)
+	sourcePath := writeLifecycleCache(t, archiveRoot, "source.txt", "query failure source")
+	resolved, ok := server.resolvedPrivateImportedBookDirectory(username, libraryPath)
+	if !ok {
+		t.Fatal("failed to resolve query-failure fixture")
+	}
+	sqlDB, err := server.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	server.cleanupDeletedBookArtifacts([]bookCleanupPlan{{
+		privateLibrary: resolved, privateLibraryUserID: owner.ID,
+	}})
+	if _, err := os.Stat(sourcePath); err != nil {
+		t.Fatalf("reference query failure removed private archive: %v", err)
 	}
 }
 

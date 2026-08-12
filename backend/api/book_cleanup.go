@@ -16,9 +16,10 @@ import (
 // database rows still exist and executed only after the owning transaction has
 // committed, so a failed database write cannot delete readable user data.
 type bookCleanupPlan struct {
-	remoteCachePaths []string
-	remoteImageBook  *models.Book
-	privateLibrary   string
+	remoteCachePaths     []string
+	remoteImageBook      *models.Book
+	privateLibrary       string
+	privateLibraryUserID uint
 }
 
 func (s *Server) captureBookCleanup(tx *gorm.DB, userID uint, book models.Book) (bookCleanupPlan, error) {
@@ -43,8 +44,9 @@ func (s *Server) captureBookCleanup(tx *gorm.DB, userID uint, book models.Book) 
 	if err := tx.Select("username").First(&user, userID).Error; err != nil {
 		return plan, err
 	}
-	if path, ok := s.privateImportedBookDirectory(user.Username, book.LibraryPath); ok {
+	if path, ok := s.resolvedPrivateImportedBookDirectory(user.Username, book.LibraryPath); ok {
 		plan.privateLibrary = path
+		plan.privateLibraryUserID = userID
 	}
 	return plan, nil
 }
@@ -66,22 +68,81 @@ func (s *Server) privateImportedBookDirectory(username, libraryPath string) (str
 	return candidate, true
 }
 
+func (s *Server) resolvedPrivateImportedBookDirectory(username, libraryPath string) (string, bool) {
+	candidate, ok := s.privateImportedBookDirectory(username, libraryPath)
+	if !ok {
+		return "", false
+	}
+	ownerRoot := filepath.Join(s.cfg.LibraryDir, "data", engine.SafeFilename(username))
+	relative, ok := relativePathInside(ownerRoot, candidate)
+	if !ok {
+		return "", false
+	}
+	resolvedOwnerRoot, err := filepath.EvalSymlinks(ownerRoot)
+	if err != nil {
+		return "", false
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", false
+	}
+	if filepath.Clean(resolved) != filepath.Clean(filepath.Join(resolvedOwnerRoot, relative)) || !pathInside(resolvedOwnerRoot, resolved) {
+		return "", false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	return resolved, true
+}
+
 func (s *Server) cleanupDeletedBookArtifacts(plans []bookCleanupPlan) {
 	paths := make([]string, 0)
-	directories := make(map[string]struct{})
+	type privateDirectory struct {
+		path   string
+		userID uint
+	}
+	directories := make(map[privateDirectory]struct{})
 	for _, plan := range plans {
 		paths = append(paths, plan.remoteCachePaths...)
 		if plan.remoteImageBook != nil {
 			_, _ = s.chapterImages.RemoveBook(*plan.remoteImageBook)
 		}
 		if plan.privateLibrary != "" {
-			directories[plan.privateLibrary] = struct{}{}
+			directories[privateDirectory{path: plan.privateLibrary, userID: plan.privateLibraryUserID}] = struct{}{}
 		}
 	}
 	s.pruneUnreferencedRemoteCachePaths(paths)
 	for directory := range directories {
-		_ = os.RemoveAll(directory)
+		if s.privateImportedBookDirectoryReferenced(directory.userID, directory.path) {
+			continue
+		}
+		_ = os.RemoveAll(directory.path)
 	}
+}
+
+func (s *Server) privateImportedBookDirectoryReferenced(userID uint, target string) bool {
+	var user models.User
+	if err := s.db.Select("username").First(&user, userID).Error; err != nil {
+		return true
+	}
+	var references []struct {
+		LibraryPath string
+	}
+	if err := s.db.Model(&models.Book{}).
+		Select("library_path").
+		Where("user_id = ? AND source_id = 0 AND library_path <> ''", userID).
+		Find(&references).Error; err != nil {
+		return true
+	}
+	target = filepath.Clean(target)
+	for _, reference := range references {
+		candidate, ok := s.resolvedPrivateImportedBookDirectory(user.Username, reference.LibraryPath)
+		if ok && filepath.Clean(candidate) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) clearRemoteBookCacheRows(tx *gorm.DB, bookIDs []uint) (int, []string, error) {

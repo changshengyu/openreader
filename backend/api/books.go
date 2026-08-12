@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -302,34 +301,70 @@ func shelfOrderAt(book models.Book, progress *models.ReadingProgress) time.Time 
 func (s *Server) createBook(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
-	var book models.Book
-	data, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
+	request, ok := decodeBookCreateRequest(c)
+	if !ok {
 		return
 	}
-	if err := json.Unmarshal(data, &book); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
+	title, ok := normalizeBookWriteField(c, request.Title, maxBookTitleBytes, "book title is too long")
+	if !ok {
 		return
 	}
-	var request struct {
-		CategoryIDs []uint `json:"categoryIds"`
-	}
-	_ = json.Unmarshal(data, &request)
-	book.UserID = userID
-	book.Title = strings.TrimSpace(book.Title)
-	if book.Title == "" {
+	if title == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "book title is required"})
 		return
 	}
-	if len(request.CategoryIDs) > 0 {
-		if !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
-			return
-		}
-	} else if !s.validateCategory(c, userID, book.CategoryID) {
+	author, ok := normalizeBookWriteField(c, request.Author, maxBookAuthorBytes, "book author is too long")
+	if !ok {
 		return
 	}
-	categoryIDs := categoryIDsFromRequest(book.CategoryID, request.CategoryIDs)
+	coverURL, ok := normalizeBookWriteField(c, request.CoverURL, maxBookCoverURLBytes, "book cover url is too long")
+	if !ok {
+		return
+	}
+	customCoverURL, ok := normalizeBookWriteField(c, request.CustomCoverURL, maxBookCustomCoverURLBytes, "book custom cover url is too long")
+	if !ok {
+		return
+	}
+	intro := ""
+	if request.Intro != nil {
+		intro = strings.TrimSpace(*request.Intro)
+	}
+	kind, ok := normalizeBookWriteField(c, request.Kind, maxBookKindBytes, "book kind is too long")
+	if !ok {
+		return
+	}
+	wordCount, ok := normalizeBookWriteField(c, request.WordCount, maxBookWordCountBytes, "book word count is too long")
+	if !ok {
+		return
+	}
+	bookURL, ok := normalizeBookWriteField(c, request.URL, maxBookURLBytes, "book url is too long")
+	if !ok {
+		return
+	}
+	if err := s.validateBookCustomCoverURL(userID, "", customCoverURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid custom cover url"})
+		return
+	}
+	categoryIDs := categoryIDsFromRequest(request.CategoryID, request.CategoryIDs)
+	if !s.validateCategoryIDs(c, userID, categoryIDs) {
+		return
+	}
+
+	book := models.Book{
+		UserID:         userID,
+		Title:          title,
+		Author:         author,
+		CoverURL:       coverURL,
+		CustomCoverURL: customCoverURL,
+		Intro:          intro,
+		Kind:           kind,
+		WordCount:      wordCount,
+		URL:            bookURL,
+		CanUpdate:      true,
+	}
+	if request.CanUpdate != nil {
+		book.CanUpdate = *request.CanUpdate
+	}
 	if len(categoryIDs) > 0 {
 		book.CategoryID = &categoryIDs[0]
 	}
@@ -337,6 +372,15 @@ func (s *Server) createBook(c *gin.Context) {
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&book).Error; err != nil {
 			return err
+		}
+		// GORM applies the model's true default to a false bool during Create.
+		// Preserve an explicitly submitted false without changing the model schema.
+		if request.CanUpdate != nil && !*request.CanUpdate {
+			if err := tx.Model(&models.Book{}).Where("id = ? AND user_id = ?", book.ID, userID).
+				UpdateColumn("can_update", false).Error; err != nil {
+				return err
+			}
+			book.CanUpdate = false
 		}
 		return s.setBookCategories(tx, userID, book.ID, categoryIDs)
 	}); err != nil {
@@ -382,32 +426,27 @@ func (s *Server) updateBook(c *gin.Context) {
 		return
 	}
 
-	data, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
-		return
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
-		return
-	}
-	var request bookUpdateRequest
-	if err := json.Unmarshal(data, &request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book payload"})
+	raw, request, ok := decodeBookUpdateRequest(c)
+	if !ok {
 		return
 	}
 	_, categoryIDSet := raw["categoryId"]
 	_, categoryIDsSet := raw["categoryIds"]
-	if categoryIDSet && !s.validateCategory(c, userID, request.CategoryID) {
-		return
-	}
-	if categoryIDsSet && !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
+	var nextCategoryIDs []uint
+	if categoryIDsSet {
+		nextCategoryIDs = uniquePositiveUintIDs(request.CategoryIDs)
+		if !s.validateCategoryIDs(c, userID, nextCategoryIDs) {
+			return
+		}
+	} else if categoryIDSet && !s.validateCategory(c, userID, request.CategoryID) {
 		return
 	}
 
 	if request.Title != nil {
-		title := strings.TrimSpace(*request.Title)
+		title, ok := normalizeBookWriteField(c, request.Title, maxBookTitleBytes, "book title is too long")
+		if !ok {
+			return
+		}
 		if title == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "book title is required"})
 			return
@@ -415,13 +454,24 @@ func (s *Server) updateBook(c *gin.Context) {
 		book.Title = title
 	}
 	if request.Author != nil {
-		book.Author = strings.TrimSpace(*request.Author)
+		author, ok := normalizeBookWriteField(c, request.Author, maxBookAuthorBytes, "book author is too long")
+		if !ok {
+			return
+		}
+		book.Author = author
 	}
 	if request.CoverURL != nil {
-		book.CoverURL = strings.TrimSpace(*request.CoverURL)
+		coverURL, ok := normalizeBookWriteField(c, request.CoverURL, maxBookCoverURLBytes, "book cover url is too long")
+		if !ok {
+			return
+		}
+		book.CoverURL = coverURL
 	}
 	if request.CustomCoverURL != nil {
-		customCoverURL := strings.TrimSpace(*request.CustomCoverURL)
+		customCoverURL, ok := normalizeBookWriteField(c, request.CustomCoverURL, maxBookCustomCoverURLBytes, "book custom cover url is too long")
+		if !ok {
+			return
+		}
 		if err := s.validateBookCustomCoverURL(userID, book.CustomCoverURL, customCoverURL); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid custom cover url"})
 			return
@@ -435,9 +485,8 @@ func (s *Server) updateBook(c *gin.Context) {
 		book.CategoryID = request.CategoryID
 	}
 	if categoryIDsSet {
-		ids := uniquePositiveUintIDs(request.CategoryIDs)
-		if len(ids) > 0 {
-			book.CategoryID = &ids[0]
+		if len(nextCategoryIDs) > 0 {
+			book.CategoryID = &nextCategoryIDs[0]
 		} else {
 			book.CategoryID = nil
 		}
@@ -451,7 +500,7 @@ func (s *Server) updateBook(c *gin.Context) {
 			return err
 		}
 		if categoryIDsSet {
-			return s.setBookCategories(tx, userID, book.ID, request.CategoryIDs)
+			return s.setBookCategories(tx, userID, book.ID, nextCategoryIDs)
 		}
 		if categoryIDSet {
 			if request.CategoryID == nil {
