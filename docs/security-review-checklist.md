@@ -10,20 +10,24 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
-### P2 Bookmark write boundary (2026-08-12 extracted)
+### P2 Bookmark write boundary (2026-08-12 implementation)
 
-- [ ] Single create/update bodies accept exactly one actual-read-bounded 64 KiB JSON object; batch create uses
+- [x] Single create/update bodies accept exactly one actual-read-bounded 64 KiB JSON object; batch create uses
   16 MiB/2,000 raw rows and batch delete uses 16 KiB/2,000 raw IDs after owner target resolution.
-- [ ] Malformed, multi-JSON, overflow, cardinality and invalid note patches fail before per-row queries, mutation,
+- [x] Malformed, multi-JSON, overflow, cardinality and invalid note patches fail before per-row queries, mutation,
   timestamp changes or sync events, without reflecting excerpt/note/JWT/database content.
-- [ ] Note edits require an explicit string and use only an owner-scoped note column update. A concurrently deleted
+- [x] Note edits require an explicit string and use only an owner-scoped note column update. A concurrently deleted
   target cannot be reinserted by GORM `Save` fallback, and newer immutable location/context values cannot be lost.
-- [ ] The frontend edit action sends only `{note}`; create/import keeps the published DTO and all-row transaction,
+- [x] The frontend edit action sends only `{note}`; create/import keeps the published DTO and all-row transaction,
   chapter ownership, user/book isolation, backup and historical-row behavior.
 
 Target contract:
 [`docs/compat/bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / implementation-pending`; this extraction pass changes no application or tests.
+Status is `implemented / regression-validated / Docker-published / awaiting-device-verification`. Contract/red-test/
+implementation ordering, focused race, full Go/vet, frontend 740/740, production build, Reader browser payload,
+host/local/pullback HTTP plus SQLite-trigger probes, and sequential fresh/historical volume gates passed. The locally
+built `a9a55db`/`latest` amd64/arm64 OCI index is
+`sha256:944a85881170bc900c1fda0acb885bedc1dc4b17ed4e635305988163e1b635e5`.
 
 ### P2 BookSource write/import boundary (2026-08-12 implementation)
 

@@ -653,12 +653,12 @@ an allowed OpenReader runtime adaptation.
 | `PUT /api/bookmarks/:id` | `{ "note": string }` | Edits the note only; the original book, chapter, offset, title, and paragraph context remain unchanged. | JWT/current-user required; absent row `404`, oversize note `400`. |
 | Backup / restore `bookmarks.json` | Existing JSON shape, including `bookTitle` and `bookUrl`. | Exports ID/creation order; restores modern timestamped rows idempotently without merging independent same-location bookmarks, and remaps a matching destination chapter by index. | Per-user restore scope applies. Legacy rows without timestamps remain readable through the narrow fallback identity. |
 
-### Bookmark write request and concurrent-delete boundary (2026-08-12 extracted)
+### Bookmark write request and concurrent-delete boundary (2026-08-12 implemented)
 
-The four JSON mutations are now inventoried in
+The four JSON mutations are specified and regression-validated in
 [`bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md`](bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / implementation-pending`; the existing Bookmark UI, independent-ID data model,
-reader navigation and backup contract remain closed.
+Status is `implemented / regression-validated / Docker-published / awaiting-device-verification`; the existing
+Bookmark UI, independent-ID data model, reader navigation and backup contract remain closed.
 
 - Single create and note update accept exactly one non-null object within 64 KiB actual wire bytes. Batch create
   accepts one non-null array within 16 MiB and at most 2,000 raw rows; batch delete accepts one non-null object within
@@ -672,7 +672,9 @@ reader navigation and backup contract remain closed.
   after precheck stays deleted and produces no successful event. The frontend edit action sends only `{note}`.
 
 These are narrow Go/multi-user safety adaptations. They add no route, schema, archive field, global middleware or
-visible Bookmark behavior. Contract tests and implementation must be committed after this extraction pass.
+visible Bookmark behavior. Contract, red tests and implementation were committed in that order; `a9a55db`/`latest`
+is the validated amd64/arm64 release at OCI index
+`sha256:944a85881170bc900c1fda0acb885bedc1dc4b17ed4e635305988163e1b635e5`.
 
 ## Reader book-content search contract
 

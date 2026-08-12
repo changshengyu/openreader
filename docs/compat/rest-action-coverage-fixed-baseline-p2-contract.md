@@ -188,3 +188,19 @@ namespace/event 副作用。`6c1c6db` 引入窄共享有界单 JSON decoder、8 
 smoke 均通过。该提交顺序通过 fresh/historical 卷门并由本机发布为 `6c1c6db`/`latest`；远端 OCI
 index 为 `sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`。当前状态为
 **aligned / Docker-published / awaiting-device-verification**。
+
+## 13. Bookmark 写入与并发删除边界（2026-08-12）
+
+六动作中的 batch-delete 身份/事务语义保持 `technical-stack-equivalent`，其 wire/cardinality 与同模块
+create/update 入口由
+[`bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md`](bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md)
+统一签约。合同 `7fa0e07`、红测 `030696b`、实现 `e5a7ea9` 已按顺序推送：单项 64 KiB、批量创建
+16 MiB/2,000、批删 16 KiB/2,000、单 JSON、显式 note-only payload/SQL、fresh row 与并发删除不复活
+全部关闭。
+
+focused/full/race/vet、frontend 740/740、production build、Reader 多视口 payload、宿主/本地候选/GHCR
+回拉 HTTP、SQLite trigger 与顺序 fresh/historical 卷门均通过。本机发布 `a9a55db` 与 `latest`；远端
+amd64/arm64 OCI index 为
+`sha256:944a85881170bc900c1fda0acb885bedc1dc4b17ed4e635305988163e1b635e5`，两平台 revision label 均为
+`a9a55db16d490af61b31b5e1470ee477e2bba613`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。

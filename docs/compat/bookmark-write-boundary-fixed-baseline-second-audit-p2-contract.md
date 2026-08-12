@@ -1,6 +1,6 @@
 # Bookmark 写入与并发删除边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -155,3 +155,31 @@ fresh/historical mounted-volume 与 portable backup 门，再由本机完成 amd
   偶然顺序。
 
 本合同阶段不修改应用或测试代码。下一门是先提交失败测试，不能把既有绿测当成该 wire/并发边界已实现。
+
+## 9. 实施与发布证据（2026-08-12）
+
+- 合同提交 `7fa0e07` 与红测提交 `030696b` 均先于实现提交
+  `e5a7ea90b380ec091f661e7736dd10800eea38a0` 推送到 `main`。实现为四个 JSON 入口加入 Bookmark
+  专用 actual-read/single-document gate，并在任何逐行 chapter 查询或写入前执行 2,000 原始项上限。
+- note patch 现在要求显式非 null string；Vue 编辑请求只发送 `{note}`。后端以 `user_id + id` 条件执行
+  note-only `UPDATE`，检查零 affected 后重新读取 fresh row，不再使用 GORM `Save` 或 fallback upsert。
+- focused Bookmark API/frontend 合同、关键并发合同 `-race -count=3`、`go vet ./...`、完整
+  `go test ./...`、frontend `740/740` 和 Vite production build 均通过。完整 Reader mobile smoke 在
+  1440×900、390×844、360×800 及 adaptive/forced-mobile iPad 通过，并直接断言编辑 payload 只有 note。
+- 宿主 Go 服务、本地候选容器及从 GHCR 回拉的精确镜像都通过同一真实 HTTP 探针：四路
+  declared/chunked +1 overflow 为 `413`，精确 64 KiB/16 MiB/16 KiB 进入原状态机，第二 JSON 为
+  `400`，batch 2,000 成功而 2,001 零写入；空/未知/null note 被拒绝。SQLite trigger 进一步证明并发
+  context 更新不会被旧快照覆盖，预写删除不会复活目标。容器通过停机安装 trigger 后重启，避免把
+  macOS/Linux VM 在线 bind-mount schema 同步延迟混入业务结论。
+- 本地候选顺序通过 fresh portable-v1/portable-v2-assets/cross-user/restart 与 historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 挂载卷门。没有新增 schema、迁移、备份成员或持久文件。
+- 镜像完全由本机 BuildKit 构建并由宿主 OCI publisher 上传，没有使用云端构建：
+  `ghcr.io/changshengyu/openreader:a9a55db` 与 `latest` 均指向 amd64/arm64 OCI index
+  `sha256:944a85881170bc900c1fda0acb885bedc1dc4b17ed4e635305988163e1b635e5`；amd64 manifest 为
+  `sha256:a11dad06aedb47c5601d2116fd80d92a9bbbaea02940422b8c994f0176ef4b7e`，arm64 manifest 为
+  `sha256:f52aca2df3b09d8fee4a2f506a0e443f4c67766e5bd7d2549d26bd824be2640d`，两平台 revision label 均为
+  `a9a55db16d490af61b31b5e1470ee477e2bba613`。
+
+本切片没有未完成代码项；允许差异仍只有 OpenReader 的 JWT/caller-owned ID、多书签、事务/事件与上述
+窄 HTTP 工作预算，没有新增可见 Bookmark 行为。仍等待真实设备的添加、编辑、清空备注、批量导入/
+删除反馈。发布不表示用户生产服务器已经升级，当前生产运行提交仍未知。
