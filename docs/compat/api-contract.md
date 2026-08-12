@@ -30,6 +30,11 @@ server event names and existing business payloads remain stable.
 - `PUT /api/settings/:key` may receive additive `force:true` only for the confirmed “备份用户配置” action.
   It bypasses stale-base comparison for that authenticated user's legal `reader/shelf/search` row only; ordinary
   background writes keep CAS. Explicit restore never creates a missing row as a side effect of reading it.
+- The five JSON-writing `/api/admin/users*` mutations are being closed under the fixed-baseline contract in
+  [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+  Target behavior is admin-auth-first, one actual-read-bounded 16 KiB JSON value, 2,000 raw IDs for batch actions,
+  and new-password validation of 8 UTF-16 code units through 72 UTF-8 bytes. Status is
+  `inventory-complete / implementation-pending`; these are target semantics until implementation evidence replaces it.
 
 ## Public endpoints
 

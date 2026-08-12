@@ -10,6 +10,18 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
+### P2 admin user write boundary (2026-08-12 inventory)
+
+- [ ] Five administrator JSON user mutations authenticate the administrator before reading credentials, then enforce
+  one 16 KiB actual-read-bounded JSON value for declared and chunked bodies.
+- [ ] Batch user deletion/source reset accept at most 2,000 raw IDs and retain existing dedupe, protected-user,
+  transaction, workspace-root and post-commit event boundaries.
+- [ ] Every newly written password is at least 8 UTF-16 code units and at most 72 UTF-8 bytes; rejected input is
+  handled before bcrypt/SQLite and never enters errors, logs, events or backups. Existing hashes remain loginable.
+
+Target evidence:
+[`docs/compat/admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ### P2 public auth request boundary (2026-08-12 implementation)
 
 - [x] `POST /api/auth/login` and `/register` enforce the same 16 KiB actual-read limit for declared and chunked

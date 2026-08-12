@@ -1,6 +1,6 @@
 # 公开认证请求边界第二轮固定基准合同（P2）
 
-状态：**aligned / Docker-published / awaiting-device-verification**。
+状态：**public wire aligned / Docker-published；shared password-length follow-up implementation-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -10,6 +10,9 @@
 - `POST /api/auth/register`
 
 管理员创建/重置用户、公开注册开关、账号总量、速率限制和 JWT 生命周期不在本切片中重设计。
+2026-08-12 的固定上游 follow-up 证明，共享的新密码最小长度还需按 UTF-16 code units 修正；管理员
+写入口的 body/batch/bcrypt 边界也需单独签收。见
+[`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
 
 ## 1. 权威文件与入口
 

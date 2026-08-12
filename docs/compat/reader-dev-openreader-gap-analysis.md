@@ -1,5 +1,19 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-12 P2 管理员用户写入请求边界与共享密码长度第二轮
+
+固定上游 `UserController#addUser/resetPassword` 与当前 Vue 都按 UTF-16 `String.length` 执行密码至少
+8 位；当前 Go 却按 UTF-8 bytes，6 个 UTF-16 单元的中文密码可创建。管理员 create/reset 还未继承
+公开认证切片的 bcrypt 72-byte 适配，实测均返回错误 `500`；五个管理员 JSON 写入口无 actual-read
+上限并接受首 JSON 后的尾随值，两个批量动作也没有 cardinality 上限。
+
+这些差异裁决为 P2 Go/security `must-fix`。目标为管理员鉴权优先、16 KiB actual-read 单 JSON、批量
+2,000 项、所有新密码至少 8 UTF-16 单元且至多 72 UTF-8 bytes，并把确定性失败移到 bcrypt/事务前。
+旧账号登录、成功响应、UserManage 可见结构、用户删除/书源事务和数据格式不重开。完整合同见
+[`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；运行时反例只使用隔离临时数据，尚未
+修改应用或测试。
+
 ## 2026-08-11 P2 公开认证请求边界第二轮
 
 固定上游 `/reader3/login` 的账号字段、登录/注册转换和错误语义已由六动作合同裁决；本轮不重开该

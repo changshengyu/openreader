@@ -169,3 +169,14 @@ build 和真实 HTTP smoke 均通过。`f5c15d7` 随后顺序通过 fresh/histor
 由本机发布为 `f5c15d7`/`latest`；远端 OCI index 为
 `sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`。当前状态为
 **aligned / Docker-published / awaiting-device-verification**。
+
+## 12. 管理员用户写入请求边界与共享密码长度（2026-08-12）
+
+六动作中的公开认证 wire boundary 已发布，但它刻意没有覆盖管理员 user mutations。当前管理员创建、
+权限更新、密码重置、书源重置和批量删除仍直接 `ShouldBindJSON`，没有 actual-read/single-JSON；两个
+批量动作没有 cardinality，create/reset 的 73-byte bcrypt 密码变成 `500`。固定上游和当前 Vue 又
+证明新密码最小长度应按 UTF-16 code units，而不是 Go UTF-8 bytes。
+
+精确路由、`401/403/413/400`、2,000 项、8 UTF-16/72 UTF-8、零副作用和测试先行合同见
+[`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本节未修改应用或测试。
