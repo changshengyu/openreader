@@ -6,6 +6,7 @@ import https from 'node:https'
 
 const targetURL = new URL(process.env.TARGET_URL || 'http://127.0.0.1:8080')
 const databasePath = String(process.env.OPENREADER_SMOKE_DB || '').trim()
+const triggerMode = String(process.env.OPENREADER_SMOKE_TRIGGER_MODE || 'direct').trim()
 const singleLimit = 64 << 10
 const batchCreateLimit = 16 << 20
 const batchDeleteLimit = 16 << 10
@@ -138,6 +139,7 @@ async function listBookmarks(token, bookID) {
 }
 
 async function main() {
+  assert(['direct', 'preinstalled'].includes(triggerMode), `unsupported OPENREADER_SMOKE_TRIGGER_MODE ${JSON.stringify(triggerMode)}`)
   const suffix = `${process.pid}${Date.now().toString().slice(-7)}`
   const health = await request('/api/health')
   assert(health.status === 200, `health status ${health.status}: ${health.text}`)
@@ -226,16 +228,18 @@ async function main() {
   assert(exactDelete.status === 200 && exactDelete.data?.deletedIds?.[0] === deleteCardinalityTarget.id, `exact ID batch: ${exactDelete.status} ${exactDelete.text}`)
 
   const contextTarget = await createBookmark(owner.token, book.id, 'context before', 'before')
-  sqlite(`
-    CREATE TRIGGER smoke_bookmark_note_context BEFORE UPDATE OF note ON bookmarks
-    WHEN OLD.id = ${Number(contextTarget.id)} BEGIN
-      UPDATE bookmarks SET excerpt = 'context after', "offset" = 91 WHERE id = OLD.id;
-    END;
-  `)
+  if (triggerMode === 'direct') {
+    sqlite(`
+      CREATE TRIGGER smoke_bookmark_note_context BEFORE UPDATE OF note ON bookmarks
+      WHEN OLD.id = ${Number(contextTarget.id)} BEGIN
+        UPDATE bookmarks SET excerpt = 'context after', "offset" = 91 WHERE id = OLD.id;
+      END;
+    `)
+  }
   const contextUpdate = await request(`/api/bookmarks/${contextTarget.id}`, {
     method: 'PUT', token: owner.token, body: '{"note":"after"}',
   })
-  sqlite('DROP TRIGGER smoke_bookmark_note_context;')
+  if (triggerMode === 'direct') sqlite('DROP TRIGGER smoke_bookmark_note_context;')
   assert(
     contextUpdate.status === 200 && contextUpdate.data?.note === 'after' &&
       contextUpdate.data?.excerpt === 'context after' && contextUpdate.data?.offset === 91,
@@ -243,16 +247,18 @@ async function main() {
   )
 
   const deletedTarget = await createBookmark(owner.token, book.id, 'delete before', 'before')
-  sqlite(`
-    CREATE TRIGGER smoke_bookmark_note_delete BEFORE UPDATE OF note ON bookmarks
-    WHEN OLD.id = ${Number(deletedTarget.id)} BEGIN
-      DELETE FROM bookmarks WHERE id = OLD.id;
-    END;
-  `)
+  if (triggerMode === 'direct') {
+    sqlite(`
+      CREATE TRIGGER smoke_bookmark_note_delete BEFORE UPDATE OF note ON bookmarks
+      WHEN OLD.id = ${Number(deletedTarget.id)} BEGIN
+        DELETE FROM bookmarks WHERE id = OLD.id;
+      END;
+    `)
+  }
   const deletedUpdate = await request(`/api/bookmarks/${deletedTarget.id}`, {
     method: 'PUT', token: owner.token, body: '{"note":"must not revive"}',
   })
-  sqlite('DROP TRIGGER smoke_bookmark_note_delete;')
+  if (triggerMode === 'direct') sqlite('DROP TRIGGER smoke_bookmark_note_delete;')
   expectError(deletedUpdate, 404, 'bookmark not found')
   assert(!(await listBookmarks(owner.token, book.id)).some(row => row.id === deletedTarget.id), 'concurrent note update revived a deleted bookmark')
 
