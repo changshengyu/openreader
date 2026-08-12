@@ -57,12 +57,20 @@
   owner 与归档引用边界，BookSource JSON/cardinality/原子 `sourceLimit`，Bookmark wire/cardinality/
   note-only/并发删除边界，RSS actual-read/single-JSON/同 URL 身份/列所有权/远程存活边界，以及
   server-only WebSocket/recipient scope 和备份事务 worker。
-- **尚未完成的主线**：其余尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
+- **尚未完成的主线**：用户资产 multipart/删除 JSON 的请求边界已完成 inventory、等待红测与实现；其余
+  尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
   以及后续真实设备反馈暴露出的上游可见偏差。`c74be70` 已发布但尚待服务器部署；移动书架在
   390×844 线上真实账号复测中保持上游 390/350px 几何和内容高度行轨，但设备“明显窄”的反馈仍待
   完整截图区分首页书架、Reader 内书架或设备可见层；书源管理、临时阅读和调试器继续等待真实设备
   签收。上述项目继续按“合同→失败测试→实现→浏览器/
   新旧卷→本地 Docker”推进。
+
+2026-08-12 在 `12036de` 后重新对 `backend/api/server.go` 做动作差集，下一项 must-fix 收敛为
+`POST/DELETE /api/uploads` 的 wire boundary。现有 8/32 MiB 是解析后的单文件 admission，不限制完整
+multipart；Gin 32 MiB 只是内存阈值，chunked/额外 part 仍可继续读盘，DELETE 也仍接受无界首个 JSON。
+固定 33 MiB multipart 包络、单 file/type、临时文件清理和 16 KiB 单 JSON 删除合同见
+[`user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本次提取未修改应用或测试。
 
 2026-08-11 的长尾切片 Reader 内联章节缓存已实施并回归：完整后续区间、已入架本地书、取消
 即时恢复、精确完成反馈和跨书/跨身份迟到任务隔离均已关闭；临时 Reader 继续保持 `no-store`。

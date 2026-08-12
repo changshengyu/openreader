@@ -222,3 +222,15 @@ amd64/arm64 OCI index 为
 本文件最初列出的六个动作以及后续 auth/admin/settings/group/category/book/BookSource/Bookmark/RSS
 写边界均已关闭。下一轮不得从旧 pending 文案重开这些模块；应重新对 `backend/api/server.go` 与固定
 上游 controller 做差集，先形成新的动作 inventory，再选择下一项 must-fix。
+
+## 15. 用户资产上传/删除请求边界（2026-08-12 inventory）
+
+重新执行动作差集后，`POST /api/uploads` 的 8/32 MiB 限制被确认只发生在 Gin 完整解析 multipart
+之后；默认 32 MiB `MaxMultipartMemory` 只是临时文件分界，不是请求上限。额外 file/type part 被静默
+忽略，成功解析的 multipart 又依赖外层 `net/http.Server` 清理。`DELETE /api/uploads` 则仍无 actual-read
+上限并接受首个 JSON 后的第二文档。
+
+固定上游、多用户允许差异、33 MiB 总包络、单 file/type、handler-owned `RemoveAll`、16 KiB 单 JSON、
+稳定状态/错误与失败测试见
+[`user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本 inventory 未修改应用或测试。

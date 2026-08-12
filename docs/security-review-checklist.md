@@ -408,6 +408,12 @@ contract (three viewports).
 
 ## P2 Reader appearance asset runtime review
 
+第二轮 HTTP wire/multipart 生命周期复审见
+[`compat/user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/user-asset-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**：计划以 33 MiB actual-read 包络、单一
+file/type、显式 multipart 临时文件清理和 16 KiB 单 JSON 删除，关闭当前 Gin 先完整解析再做 8/32 MiB
+文件检查的资源缺口。以下已签收的内容/路径/事务结论继续有效，但不能作为 wire 上限证据。
+
 - [x] Cover/background/font/misc uploads still enforce the existing 8 MiB/32 MiB
   admission caps before content inspection and continue to derive the destination owner
   from the authenticated JWT only.
