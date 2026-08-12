@@ -21,6 +21,8 @@ type userSettingRequest struct {
 	Force         bool            `json:"force"`
 }
 
+const maxUserSettingRequestBodyBytes int64 = 8 << 20
+
 func (s *Server) getUserSetting(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	key := normalizeUserSettingKey(c.Param("key"))
@@ -51,7 +53,15 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 	}
 
 	var req userSettingRequest
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.Value) == 0 {
+	if err := decodeBoundedSingleJSON(c, &req, maxUserSettingRequestBodyBytes); err != nil {
+		if errors.Is(err, errJSONRequestTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "setting value is required"})
+		}
+		return
+	}
+	if len(req.Value) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "setting value is required"})
 		return
 	}
