@@ -66,6 +66,11 @@ func (s *Service) EnsureRoot() error {
 	if err := s.rejectSymlinks(s.root); err != nil {
 		return err
 	}
+	if info, err := os.Lstat(s.root); err == nil && !info.IsDir() {
+		return ErrUnsafePath
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
 		return fmt.Errorf("create WebDAV root: %w", err)
 	}
@@ -100,7 +105,7 @@ func (s *Service) Stat(rawPath string) (Resource, error) {
 	if err != nil {
 		return Resource{}, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
 		return Resource{}, ErrUnsafePath
 	}
 	return Resource{RelativePath: relative, Info: info}, nil
@@ -118,7 +123,7 @@ func (s *Service) List(rawPath string, depth int) ([]Resource, error) {
 	if err != nil {
 		return nil, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
 		return nil, ErrUnsafePath
 	}
 	resources := []Resource{{RelativePath: relative, Info: info}}
@@ -135,7 +140,7 @@ func (s *Service) List(rawPath string, depth int) ([]Resource, error) {
 		if err != nil {
 			return nil, err
 		}
-		if entryInfo.Mode()&os.ModeSymlink != 0 {
+		if entryInfo.Mode()&os.ModeSymlink != 0 || (!entryInfo.IsDir() && !entryInfo.Mode().IsRegular()) {
 			return nil, ErrUnsafePath
 		}
 		entryRelative := filepath.ToSlash(filepath.Join(filepath.FromSlash(relative), entry.Name()))
@@ -203,6 +208,9 @@ func (s *Service) Put(ctx context.Context, rawPath string, source io.Reader, max
 		if targetInfo.IsDir() {
 			return ErrIsDirectory
 		}
+		if !targetInfo.Mode().IsRegular() {
+			return ErrUnsafePath
+		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
 	}
@@ -249,6 +257,9 @@ func (s *Service) Mkdir(rawPath string) error {
 		if info.IsDir() {
 			return nil
 		}
+		if !info.Mode().IsRegular() {
+			return ErrUnsafePath
+		}
 		return ErrConflict
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
@@ -267,10 +278,14 @@ func (s *Service) Remove(rawPath string) error {
 	if relative == "" {
 		return ErrUnsafePath
 	}
-	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
+		return ErrUnsafePath
 	}
 	return os.RemoveAll(target)
 }
@@ -337,7 +352,7 @@ func (s *Service) validTransfer(sourceRaw, destinationRaw string, overwrite bool
 		return "", "", ErrNotDirectory
 	}
 	if info, err := os.Lstat(destination); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
+		if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
 			return "", "", ErrUnsafePath
 		}
 		if !overwrite {

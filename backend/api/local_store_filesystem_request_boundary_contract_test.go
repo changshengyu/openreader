@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"openreader/backend/config"
@@ -842,5 +844,147 @@ func TestLocalStoreRejectsSymlinkedConfiguredRoot(t *testing.T) {
 	}
 	if strings.Contains(response.Body.String(), outside) {
 		t.Fatalf("response exposed root target: %s", response.Body.String())
+	}
+}
+
+func TestLocalStoreSpecialFilesAreHiddenAndCannotBeReplacedOrRemoved(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   func(t *testing.T) ([]byte, string)
+	}{
+		{
+			name:   "upload target",
+			method: http.MethodPost,
+			path:   "/api/local-store/upload",
+			body: func(t *testing.T) ([]byte, string) {
+				return localStoreMultipartPayload(t, nil, []localStoreMultipartFile{{
+					field: "file", filename: "blocked.txt", data: []byte("replacement"),
+				}})
+			},
+		},
+		{
+			name:   "rename destination",
+			method: http.MethodPut,
+			path:   "/api/local-store/rename",
+			body: func(t *testing.T) ([]byte, string) {
+				return []byte(`{"path":"source.txt","name":"blocked.txt"}`), "application/json"
+			},
+		},
+		{
+			name:   "delete target",
+			method: http.MethodDelete,
+			path:   "/api/local-store?path=blocked.txt",
+		},
+		{
+			name:   "create target",
+			method: http.MethodPost,
+			path:   "/api/local-store/directory",
+			body: func(t *testing.T) ([]byte, string) {
+				return []byte(`{"path":"","name":"blocked.txt"}`), "application/json"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			if err := os.MkdirAll(server.cfg.LocalStoreDir, 0o755); err != nil {
+				t.Fatalf("create local-store root: %v", err)
+			}
+			fifoPath := filepath.Join(server.cfg.LocalStoreDir, "blocked.txt")
+			if err := syscall.Mkfifo(fifoPath, 0o600); err != nil {
+				t.Skipf("FIFO unavailable: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(server.cfg.LocalStoreDir, "source.txt"), []byte("source"), 0o644); err != nil {
+				t.Fatalf("write rename source: %v", err)
+			}
+
+			var body []byte
+			var contentType string
+			if test.body != nil {
+				body, contentType = test.body(t)
+			}
+			response, _ := performLocalStoreRequest(router, test.method, test.path, auth, contentType, body, false)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("expected special-file-safe 400, got %d: %s", response.Code, response.Body.String())
+			}
+			info, err := os.Lstat(fifoPath)
+			if err != nil || info.Mode()&os.ModeNamedPipe == 0 {
+				t.Fatalf("special target changed: mode=%v err=%v", info, err)
+			}
+			if data, err := os.ReadFile(filepath.Join(server.cfg.LocalStoreDir, "source.txt")); err != nil || string(data) != "source" {
+				t.Fatalf("rename source changed: data=%q err=%v", data, err)
+			}
+		})
+	}
+
+	router, server := setupTestServer(t)
+	auth := authHeader(t, router)
+	if err := os.MkdirAll(server.cfg.LocalStoreDir, 0o755); err != nil {
+		t.Fatalf("create local-store root: %v", err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(server.cfg.LocalStoreDir, "blocked.txt"), 0o600); err != nil {
+		t.Skipf("FIFO unavailable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(server.cfg.LocalStoreDir, "safe.txt"), []byte("safe"), 0o644); err != nil {
+		t.Fatalf("write safe neighbor: %v", err)
+	}
+	response, _ := performLocalStoreRequest(router, http.MethodGet, "/api/local-store", auth, "", nil, false)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"name":"safe.txt"`) {
+		t.Fatalf("listing must retain safe neighbor: %d %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), `"name":"blocked.txt"`) {
+		t.Fatalf("listing exposed special file: %s", response.Body.String())
+	}
+}
+
+func TestNormalizeLocalStorePathAndNameContract(t *testing.T) {
+	validPaths := map[string]string{
+		"":           "",
+		"/":          "",
+		"/subdir":    "subdir",
+		"nested/./x": "nested/x",
+	}
+	for input, want := range validPaths {
+		got, err := normalizeLocalStorePath(input)
+		if err != nil || got != want {
+			t.Fatalf("normalize path %q: got %q err=%v, want %q", input, got, err, want)
+		}
+	}
+
+	invalidPaths := []string{
+		"../outside",
+		"nested/../outside",
+		"//server/share",
+		`\\server\share`,
+		`C:\outside`,
+		`/C:/outside`,
+		"bad\x00path",
+		string([]byte{0xff}),
+		strings.Repeat("p", 4097),
+	}
+	for _, input := range invalidPaths {
+		if got, err := normalizeLocalStorePath(input); !errors.Is(err, errLocalStorePathInvalid) {
+			t.Fatalf("normalize unsafe path %q: got %q err=%v", input, got, err)
+		}
+	}
+
+	if got, err := normalizeLocalStoreName(strings.Repeat("n", 255)); err != nil || len(got) != 255 {
+		t.Fatalf("255-byte name: len=%d err=%v", len(got), err)
+	}
+	for _, input := range []string{
+		strings.Repeat("n", 256),
+		"../book.txt",
+		`nested\book.txt`,
+		`C:book.txt`,
+		"bad\x00name.txt",
+		string([]byte{0xff}),
+	} {
+		if got, err := normalizeLocalStoreName(input); !errors.Is(err, errLocalStorePathInvalid) {
+			t.Fatalf("normalize unsafe name %q: got %q err=%v", input, got, err)
+		}
 	}
 }

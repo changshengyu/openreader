@@ -234,13 +234,23 @@ func (s *Server) previewStagedStorageImport(userID uint, file localStoreImportFi
 	if err != nil {
 		return localbook.PreviewResult{}, "", err
 	}
-	importToken, err := s.stageLocalImport(userID, filepath.Base(file.filePath), file.extension, data)
+	return s.previewStagedStorageImportData(userID, filepath.Base(file.filePath), file.extension, data, override)
+}
+
+func (s *Server) previewStagedStorageImportData(
+	userID uint,
+	fileName string,
+	extension string,
+	data []byte,
+	override localBookImportItem,
+) (localbook.PreviewResult, string, error) {
+	importToken, err := s.stageLocalImport(userID, fileName, extension, data)
 	if err != nil {
 		return localbook.PreviewResult{}, "", errors.New("failed to stage import")
 	}
 	request := localbook.ImportRequest{
-		FileName:  filepath.Base(file.filePath),
-		Extension: file.extension,
+		FileName:  fileName,
+		Extension: extension,
 		Data:      data,
 		Title:     override.Title,
 		Author:    override.Author,
