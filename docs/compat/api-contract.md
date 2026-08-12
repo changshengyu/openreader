@@ -30,11 +30,12 @@ server event names and existing business payloads remain stable.
 - `PUT /api/settings/:key` may receive additive `force:true` only for the confirmed “备份用户配置” action.
   It bypasses stale-base comparison for that authenticated user's legal `reader/shelf/search` row only; ordinary
   background writes keep CAS. Explicit restore never creates a missing row as a side effect of reading it.
-- The setting write wire boundary is extracted in
+- The setting write wire boundary is implemented in
   [`user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md).
-  Target behavior preserves auth/key priority and the deployed flat errors, then accepts one actual-read-bounded
+  It preserves auth/key priority and the deployed flat errors, then accepts one actual-read-bounded
   8 MiB JSON envelope for `reader/shelf/search`; existing value/CAS/force/upsert/response/event and historical-row
-  semantics remain unchanged. Status is `inventory-complete / implementation-pending`.
+  semantics remain unchanged. `c2bc736` passed focused/full/race/vet, frontend 740/740, production build and real
+  declared/chunked HTTP; status is `implementation-complete / regression-validated / Docker-pending`.
 - The five JSON-writing `/api/admin/users*` mutations are closed under the fixed-baseline contract in
   [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md).
   They authenticate first, accept one actual-read-bounded 16 KiB JSON value, cap batch actions at 2,000 raw IDs,

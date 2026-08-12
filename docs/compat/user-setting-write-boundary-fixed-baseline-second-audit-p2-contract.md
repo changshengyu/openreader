@@ -1,10 +1,10 @@
 # 用户配置写入请求边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implementation-complete / regression-validated / Docker-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-本轮只提取合同并记录当前反例，不修改应用或测试代码。范围严格限定为：
+合同提取阶段只记录当前反例、不修改应用或测试代码；后续实现仍严格限定为：
 
 - `PUT /api/settings/:key` 的认证、key、wire body、单 JSON、错误与写入前边界；
 - 现有 `reader` / `shelf` / `search` 三键映射、CAS、显式 `force`、Reader 本地字段清理、响应和
@@ -126,3 +126,21 @@ localStorage 的配置 JSON，不包含上传资产 bytes；OpenReader 的自定
 实现应复用 `request_body.go` 的窄有界单 JSON decoder，由 settings handler 映射现有平面错误体；不得
 改成全局 body middleware，也不得顺带给 book/source/RSS/replace-rule/上传入口套用相同上限。handler
 继续负责 key、value、CAS、持久化和响应。该切片没有可见 UI 几何变化，不新增前端 maxlength 或提示。
+
+## 7. 实施与回归结果（2026-08-12）
+
+- 合同先以 `7233add` 独立提交。随后
+  `backend/api/user_setting_write_boundary_contract_test.go` 在旧实现上复现 declared/chunked 8 MiB + 1、
+  第二 JSON 和尾随垃圾仍写库并广播，再由 `c2bc736` 实现转绿。
+- `settings.go` 只在合法 key 后复用既有 `decodeBoundedSingleJSON`：完整 wire body 最多 8 MiB，overflow
+  映射到既有平面 `413`，其它 decode 失败映射到既有平面 `400`。未引入全局 middleware 或其它端点上限。
+- 专项测试覆盖三键、两种传输方式、精确 8 MiB、尾部 whitespace、未知 envelope 字段、六类 JSON value、
+  reader 顶层字段清理、另一个用户、零错误广播，以及超过 8 MiB 历史行的 GET/logical backup/restore。
+  既有 CAS、显式 force 和八路并发初写测试继续通过。
+- `go test ./...`、focused race、`go vet ./...`、frontend 740/740、production build 和 `git diff --check`
+  全部通过。隔离生产形态真实 HTTP 又确认 declared/chunked `413`、精确 8 MiB `200`、双 JSON/垃圾
+  `400`、拒绝后 marker 不变，以及无 token `401`/非法 key `400` 优先级；服务随后停止。
+- 没有 SQLite/schema/JWT、现有 setting 行、`data/`、`cache/`、`library/`、backup/WebDAV、浏览器 key
+  或前端几何变化。本地 arm64 候选已从 `c2bc736` 构建并带正确 OCI revision label。
+- fresh/historical mounted-volume 门和正式 amd64/arm64 GHCR 发布仍 pending：访问 OrbStack socket 的提升
+  权限自动审批通道在执行时断开并拒绝，本轮没有绕过审批，也没有发布远端标签或填写 digest。

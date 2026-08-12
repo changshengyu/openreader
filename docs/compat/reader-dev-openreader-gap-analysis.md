@@ -12,7 +12,12 @@ force。该状态机不重开，但当前 PUT 仍直接 `ShouldBindJSON`，没�
 现有平面 400，并保证零查询/写入/event。三键、任意合法 JSON value、reader 顶层设备字段清理、
 CAS/force、并发 upsert、GET/backup/restore 和历史大行均保持。完整合同见
 [`user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-状态为 **inventory-complete / implementation-pending**；本轮只修改合同和矩阵。
+合同先以 `7233add` 独立提交；旧实现红测随后复现超限/尾随请求的写入与广播副作用。`c2bc736` 只在
+setting handler 内复用窄共享 decoder，完成 8 MiB actual-read 单 JSON 和既有平面错误映射，同时保持
+任意 JSON value、CAS/force/upsert、三键、历史大行和 backup/restore。focused/full/race/vet、frontend
+740/740、build 与真实 HTTP 均通过；本地 arm64 候选构建成功。fresh/historical 卷与正式多架构发布因
+OrbStack socket 自动审批通道断开而未执行，当前状态为
+**implementation-complete / regression-validated / Docker-pending**。
 
 ## 2026-08-12 P2 管理员用户写入请求边界与共享密码长度第二轮
 

@@ -10,16 +10,18 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
-### P2 user-setting write boundary (2026-08-12 inventory)
+### P2 user-setting write boundary (2026-08-12 implementation)
 
-- [ ] Auth and legal setting-key checks run before reading a setting value; legal `reader/shelf/search` PUT bodies
+- [x] Auth and legal setting-key checks run before reading a setting value; legal `reader/shelf/search` PUT bodies
   accept exactly one actual-read-bounded 8 MiB JSON value for declared and chunked transport.
-- [ ] Overflow, malformed, second JSON and garbage fail before setting query/upsert/event, do not change the prior
+- [x] Overflow, malformed, second JSON and garbage fail before setting query/upsert/event, do not change the prior
   row or timestamp, and never place setting/JWT/private asset data in errors or logs.
-- [ ] Existing large rows remain readable/exportable/restorable without migration; normal CAS/force/concurrent upsert
+- [x] Existing large rows remain readable/exportable/restorable without migration; normal CAS/force/concurrent upsert
   and current-user isolation stay unchanged.
 
-Target evidence:
+Evidence: `backend/api/user_setting_write_boundary_contract_test.go`, focused/full/race/vet, frontend 740/740,
+production build and isolated real declared/chunked/exact-limit HTTP. `c2bc736` also produced a local arm64 candidate;
+fresh/historical volume and remote publication remain pending after the OrbStack socket approval reviewer disconnected.
 [`docs/compat/user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ### P2 admin user write boundary (2026-08-12 implementation)

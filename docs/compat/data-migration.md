@@ -901,16 +901,19 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates. No mounted data or archive rewrite was observed before local
   dual-architecture publication. See `admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`.
 
-## P2 user-setting write-boundary compatibility (2026-08-12 extracted)
+## P2 user-setting write-boundary compatibility (2026-08-12 implementation)
 
-- The planned 8 MiB single-JSON limit applies only to future authenticated `PUT /api/settings/:key` wire bodies
+- The 8 MiB single-JSON limit applies only to future authenticated `PUT /api/settings/:key` wire bodies
   after legal-key validation. It adds no table, column, index, row, browser key, backup member or mounted file.
 - Existing `user_settings` values, including rows larger than the new PUT limit, remain readable and exportable.
   Startup and restore do not scan, truncate, delete or rewrite them. Logical/portable/WebDAV restore keeps its own
   archive and transaction limits rather than reusing the interactive HTTP PUT limit.
-- Rejected oversized/multi-value writes must leave the prior value and `updated_at` unchanged and emit no sync event.
+- Rejected oversized/multi-value writes leave the prior value and `updated_at` unchanged and emit no sync event.
   Normal CAS/force, `(user_id,key)` upsert, reader local-field cleanup and three-key backup mapping remain authoritative.
-- Implementation and Docker volume evidence are pending; see
+- `c2bc736` passed focused/full/race/vet, frontend 740/740, production build and isolated real HTTP. A directly seeded
+  setting larger than 8 MiB also passed GET, logical backup and restore without truncation. The local arm64 candidate
+  built with the correct revision; fresh/historical volume and remote multi-architecture publication remain pending
+  because the OrbStack socket approval request was rejected after its automatic reviewer disconnected. See
   `user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md`.
 
 ## P1 manual shelf refresh compatibility (2026-08-09)
