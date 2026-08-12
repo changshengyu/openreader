@@ -121,6 +121,46 @@ func TestBookSourceJSONWritesRejectDeclaredAndChunkedOversizedBodies(t *testing.
 	}
 }
 
+func TestBookSourceJSONWritesAcceptExactLimitWithTrailingWhitespace(t *testing.T) {
+	for _, route := range []string{"create", "update", "batch", "remote-preview", "remote"} {
+		t.Run(route, func(t *testing.T) {
+			fixture := newSourceWriteBoundaryFixture(t, route)
+			body := fixture.body
+			if strings.HasPrefix(route, "remote") {
+				installSourceBoundaryPayloadTransport(t, `[
+					{"bookSourceName":"exact remote source","bookSourceUrl":"https://exact-remote-source.example"}
+				]`)
+				body = `{"url":"https://exact-source-body.example/bookSources.json"}`
+			}
+			if len(body) >= fixture.limit {
+				t.Fatalf("source %s body length %d exceeds test limit %d", route, len(body), fixture.limit)
+			}
+			body += strings.Repeat(" ", fixture.limit-len(body))
+			response := performSourceWriteRequest(
+				fixture.router,
+				fixture.account.Auth,
+				fixture.method,
+				fixture.path,
+				body,
+				false,
+			)
+			want := http.StatusOK
+			if route == "create" {
+				want = http.StatusCreated
+			}
+			if response.Code != want {
+				t.Fatalf(
+					"exact-limit source %s = %d %s, want %d",
+					route,
+					response.Code,
+					sourceBoundaryDiagnostic(response.Body.String()),
+					want,
+				)
+			}
+		})
+	}
+}
+
 func TestBookSourceJSONWritesAcceptOnlyOneNonNullObject(t *testing.T) {
 	for _, route := range []string{"create", "update", "batch", "remote-preview", "remote"} {
 		for _, document := range []struct {
@@ -191,18 +231,22 @@ func TestBookSourceWritePrioritizesAuthorizationAndOwnedTargetBeforeBody(t *test
 }
 
 func TestDecodeBookSourcesEnforcesRawEntryLimit(t *testing.T) {
-	exact := sourceBoundaryPayloadArray(testSourceImportEntryLimit)
-	sources, err := decodeBookSources([]byte(exact))
-	if err != nil {
-		t.Fatalf("decode exact source entry limit: %v", err)
-	}
-	if len(sources) != testSourceImportEntryLimit {
-		t.Fatalf("decoded exact source entries = %d, want %d", len(sources), testSourceImportEntryLimit)
-	}
+	for _, format := range []string{"array", "bookSources-wrapper", "sources-wrapper"} {
+		t.Run(format, func(t *testing.T) {
+			exact := sourceBoundaryPayloadDocument(format, testSourceImportEntryLimit)
+			sources, err := decodeBookSources([]byte(exact))
+			if err != nil {
+				t.Fatalf("decode exact source entry limit: %v", err)
+			}
+			if len(sources) != testSourceImportEntryLimit {
+				t.Fatalf("decoded exact source entries = %d, want %d", len(sources), testSourceImportEntryLimit)
+			}
 
-	_, err = decodeBookSources([]byte(sourceBoundaryPayloadArray(testSourceImportEntryLimit + 1)))
-	if err == nil || err.Error() != "too many sources" {
-		t.Fatalf("decode over source entry limit = %v, want too many sources", err)
+			_, err = decodeBookSources([]byte(sourceBoundaryPayloadDocument(format, testSourceImportEntryLimit+1)))
+			if err == nil || err.Error() != "too many sources" {
+				t.Fatalf("decode over source entry limit = %v, want too many sources", err)
+			}
+		})
 	}
 }
 
@@ -275,6 +319,17 @@ func TestBookSourceLimitRejectsDirectCreateAndAtomicImportOverflow(t *testing.T)
 			"baseUrl":"https://limit-existing.example"
 		}`)
 		failure := seedSourceBoundaryFailure(t, server, account.ID, existing)
+		book := models.Book{
+			UserID: account.ID, SourceID: existing.ID, Title: "quota variable book", Variable: `{"book":"retain"}`,
+		}
+		if err := server.db.Create(&book).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := server.db.Create(&models.Chapter{
+			BookID: book.ID, Index: 0, Title: "quota variable chapter", Variable: `{"chapter":"retain"}`,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
 		before := snapshotSourceWriteState(t, server, account.ID)
 		events := server.hub.AddClient(account.ID, nil).Send
 
@@ -370,7 +425,7 @@ func TestBookSourceLimitSerializesConcurrentFinalSlot(t *testing.T) {
 				got = append(got, code)
 			}
 			sort.Ints(got)
-			if len(got) != 2 || got[0] != http.StatusConflict || (got[1] != http.StatusOK && got[1] != http.StatusCreated) {
+			if len(got) != 2 || (got[0] != http.StatusOK && got[0] != http.StatusCreated) || got[1] != http.StatusConflict {
 				t.Errorf("concurrent %s statuses = %v, want one success and one 409", scenario, got)
 			}
 			assertActiveSourceCount(t, server, account.ID, 1)
@@ -388,8 +443,83 @@ func TestBookSourceLimitSerializesConcurrentFinalSlot(t *testing.T) {
 	}
 }
 
+func TestBookSourceLimitPreservesUnlimitedHistoricalAndDetachedSemantics(t *testing.T) {
+	t.Run("zero-is-unlimited", func(t *testing.T) {
+		router, server := setupTestServer(t)
+		account := registerSourceContractAccount(t, router, "sourcelimitunlimited")
+		setSourceLimit(t, server, account.ID, 0)
+		for index := 1; index <= 2; index++ {
+			createSourceThroughAPI(t, router, account.Auth, fmt.Sprintf(`{
+				"name":"unlimited source %d",
+				"baseUrl":"https://unlimited-%d.example"
+			}`, index, index))
+		}
+		assertActiveSourceCount(t, server, account.ID, 2)
+	})
+
+	t.Run("historical-over-limit-can-update-but-not-add", func(t *testing.T) {
+		router, server := setupTestServer(t)
+		account := registerSourceContractAccount(t, router, "sourcelimithistorical")
+		first := createSourceThroughAPI(t, router, account.Auth, `{
+			"name":"historical first",
+			"baseUrl":"https://historical-first.example",
+			"enabled":true
+		}`)
+		createSourceThroughAPI(t, router, account.Auth, `{
+			"name":"historical second",
+			"baseUrl":"https://historical-second.example",
+			"enabled":true
+		}`)
+		setSourceLimit(t, server, account.ID, 1)
+
+		update := performSourceWriteRequest(
+			router,
+			account.Auth,
+			http.MethodPut,
+			"/api/sources/"+uintString(first.ID),
+			`{"name":"historical first updated","baseUrl":"https://historical-first.example","enabled":true}`,
+			false,
+		)
+		if update.Code != http.StatusOK {
+			t.Fatalf("historical over-limit update = %d %s", update.Code, update.Body.String())
+		}
+
+		create := performSourceWriteRequest(
+			router,
+			account.Auth,
+			http.MethodPost,
+			"/api/sources",
+			`{"name":"historical rejected add","baseUrl":"https://historical-rejected.example"}`,
+			false,
+		)
+		assertSourceWriteFlatError(t, create, http.StatusConflict, "source limit exceeded")
+		assertActiveSourceCount(t, server, account.ID, 2)
+	})
+
+	t.Run("detached-association-does-not-consume", func(t *testing.T) {
+		router, server := setupTestServer(t)
+		account := registerSourceContractAccount(t, router, "sourcelimitdetached")
+		detached := createSourceThroughAPI(t, router, account.Auth, `{
+			"name":"detached historical source",
+			"baseUrl":"https://detached-historical.example"
+		}`)
+		if err := server.db.Model(&models.UserBookSource{}).
+			Where("user_id = ? AND source_id = ?", account.ID, detached.ID).
+			Update("detached", true).Error; err != nil {
+			t.Fatal(err)
+		}
+		setSourceLimit(t, server, account.ID, 1)
+
+		createSourceThroughAPI(t, router, account.Auth, `{
+			"name":"active after detached",
+			"baseUrl":"https://active-after-detached.example"
+		}`)
+		assertActiveSourceCount(t, server, account.ID, 1)
+	})
+}
+
 func TestBookSourceNoOpImportAndBatchPreserveFailureAndDoNotBroadcast(t *testing.T) {
-	for _, operation := range []string{"empty-import", "foreign-only-batch"} {
+	for _, operation := range []string{"empty-import", "foreign-only-batch", "used-only-delete"} {
 		t.Run(operation, func(t *testing.T) {
 			router, server := setupTestServer(t)
 			account := registerSourceContractAccount(t, router, "sourcenoop"+strings.ReplaceAll(operation, "-", ""))
@@ -398,6 +528,12 @@ func TestBookSourceNoOpImportAndBatchPreserveFailureAndDoNotBroadcast(t *testing
 				"baseUrl":"https://no-op-retained.example",
 				"enabled":true
 			}`)
+			if operation == "used-only-delete" {
+				book := models.Book{UserID: account.ID, SourceID: source.ID, Title: "retained used source"}
+				if err := server.db.Create(&book).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
 			failure := seedSourceBoundaryFailure(t, server, account.ID, source)
 			before := snapshotSourceWriteState(t, server, account.ID)
 			events := server.hub.AddClient(account.ID, nil).Send
@@ -406,12 +542,18 @@ func TestBookSourceNoOpImportAndBatchPreserveFailureAndDoNotBroadcast(t *testing
 			if operation == "empty-import" {
 				response = importSourcesThroughAPI(t, router, account.Auth, `[]`)
 			} else {
+				sourceID := uint(999999)
+				action := "disable"
+				if operation == "used-only-delete" {
+					sourceID = source.ID
+					action = "delete"
+				}
 				response = performSourceWriteRequest(
 					router,
 					account.Auth,
 					http.MethodPost,
 					"/api/sources/batch",
-					`{"action":"disable","sourceIds":[999999]}`,
+					fmt.Sprintf(`{"action":%q,"sourceIds":[%d]}`, action, sourceID),
 					false,
 				)
 			}
@@ -501,6 +643,20 @@ func sourceBoundaryPayloadArray(count int) string {
 	return body.String()
 }
 
+func sourceBoundaryPayloadDocument(format string, count int) string {
+	payload := sourceBoundaryPayloadArray(count)
+	switch format {
+	case "array":
+		return payload
+	case "bookSources-wrapper":
+		return `{"bookSources":` + payload + `}`
+	case "sources-wrapper":
+		return `{"sources":` + payload + `}`
+	default:
+		panic("unknown source boundary payload format " + format)
+	}
+}
+
 func padSourceWriteBody(body string, total int) string {
 	prefix := strings.TrimSuffix(body, "}") + `,"padding":"`
 	suffix := `"}`
@@ -564,6 +720,8 @@ func snapshotSourceWriteState(t *testing.T, server *Server, userID uint) []byte 
 		Sources      []models.BookSource
 		Associations []models.UserBookSource
 		Failures     []models.SourceFailure
+		Books        []models.Book
+		Chapters     []models.Chapter
 	}
 	if err := server.db.Order("id asc").Find(&snapshot.Sources).Error; err != nil {
 		t.Fatal(err)
@@ -573,6 +731,18 @@ func snapshotSourceWriteState(t *testing.T, server *Server, userID uint) []byte 
 	}
 	if err := server.db.Where("user_id = ?", userID).Order("id asc").Find(&snapshot.Failures).Error; err != nil {
 		t.Fatal(err)
+	}
+	if err := server.db.Where("user_id = ?", userID).Order("id asc").Find(&snapshot.Books).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookIDs := make([]uint, 0, len(snapshot.Books))
+	for _, book := range snapshot.Books {
+		bookIDs = append(bookIDs, book.ID)
+	}
+	if len(bookIDs) > 0 {
+		if err := server.db.Where("book_id IN ?", bookIDs).Order("id asc").Find(&snapshot.Chapters).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {

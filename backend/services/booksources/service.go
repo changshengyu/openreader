@@ -16,10 +16,44 @@ import (
 var (
 	ErrSourceNotFound          = errors.New("book source not found")
 	ErrSourceInUse             = errors.New("book source is in use")
+	ErrSourceLimitExceeded     = errors.New("source limit exceeded")
 	ErrNoDefault               = errors.New("default book sources are not configured")
 	ErrNamespaceNotInitialized = errors.New("user book sources are not initialized")
 	sourceNamespaceInitMu      sync.Mutex
+	sourceUserWriteLocks       = sourceUserLockRegistry{locks: make(map[uint]*sourceUserLock)}
 )
+
+type sourceUserLock struct {
+	mutex sync.Mutex
+	refs  int
+}
+
+type sourceUserLockRegistry struct {
+	mutex sync.Mutex
+	locks map[uint]*sourceUserLock
+}
+
+func lockSourceUserWrite(userID uint) func() {
+	sourceUserWriteLocks.mutex.Lock()
+	entry := sourceUserWriteLocks.locks[userID]
+	if entry == nil {
+		entry = &sourceUserLock{}
+		sourceUserWriteLocks.locks[userID] = entry
+	}
+	entry.refs++
+	sourceUserWriteLocks.mutex.Unlock()
+
+	entry.mutex.Lock()
+	return func() {
+		entry.mutex.Unlock()
+		sourceUserWriteLocks.mutex.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(sourceUserWriteLocks.locks, userID)
+		}
+		sourceUserWriteLocks.mutex.Unlock()
+	}
+}
 
 type ImportResult struct {
 	Imported int `json:"imported"`
@@ -330,17 +364,22 @@ func (s *Service) Create(userID uint, source models.BookSource) (models.BookSour
 	if err := s.EnsureNamespace(userID); err != nil {
 		return models.BookSource{}, err
 	}
+	unlock := lockSourceUserWrite(userID)
+	defer unlock()
+
 	source.ID = 0
 	source.UsedBookCount = 0
 	source.CreatedAt = time.Time{}
 	source.UpdatedAt = time.Time{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Set(managedCreateSessionKey, true).Create(&source).Error; err != nil {
+		limit, err := lockSourceLimit(tx, userID)
+		if err != nil {
 			return err
 		}
-		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.UserBookSource{
-			UserID: userID, SourceID: source.ID,
-		}).Error
+		if err := ensureSourceCapacity(tx, userID, limit, 1); err != nil {
+			return err
+		}
+		return createManagedSource(tx, userID, &source)
 	})
 	return source, err
 }
@@ -550,8 +589,15 @@ func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult
 	if err := s.EnsureNamespace(userID); err != nil {
 		return ImportResult{}, err
 	}
+	unlock := lockSourceUserWrite(userID)
+	defer unlock()
+
 	result := ImportResult{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		limit, err := lockSourceLimit(tx, userID)
+		if err != nil {
+			return err
+		}
 		scoped := New(tx)
 		active := make([]models.BookSource, 0)
 		if err := activeSourceQuery(tx, userID).
@@ -563,7 +609,13 @@ func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult
 		for _, source := range active {
 			byIdentity[sourceIdentity(source)] = source
 		}
+		type importCandidate struct {
+			source   models.BookSource
+			existing *models.BookSource
+		}
+		candidates := make([]importCandidate, 0, len(sources))
 		seen := make(map[string]bool, len(sources))
+		additions := 0
 		for _, source := range sources {
 			source = normalizeSource(source)
 			if source.Name == "" {
@@ -577,25 +629,76 @@ func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult
 			}
 			seen[identity] = true
 			if existing, ok := byIdentity[identity]; ok {
-				source.ID = existing.ID
-				updated, err := scoped.Update(userID, existing.ID, source)
-				if err != nil {
+				existingCopy := existing
+				candidates = append(candidates, importCandidate{source: source, existing: &existingCopy})
+				continue
+			}
+			additions++
+			candidates = append(candidates, importCandidate{source: source})
+		}
+		if err := ensureSourceCapacity(tx, userID, limit, additions); err != nil {
+			return err
+		}
+		for _, candidate := range candidates {
+			if candidate.existing != nil {
+				candidate.source.ID = candidate.existing.ID
+				if _, err := scoped.Update(userID, candidate.existing.ID, candidate.source); err != nil {
 					return err
 				}
-				byIdentity[identity] = updated
 				result.Updated++
 				continue
 			}
-			created, err := scoped.Create(userID, source)
-			if err != nil {
+			if err := createManagedSource(tx, userID, &candidate.source); err != nil {
 				return err
 			}
-			byIdentity[identity] = created
 			result.Imported++
 		}
 		return nil
 	})
 	return result, err
+}
+
+func lockSourceLimit(tx *gorm.DB, userID uint) (int, error) {
+	if userID == 0 {
+		return 0, nil
+	}
+	result := tx.Exec("UPDATE users SET source_limit = source_limit WHERE id = ?", userID)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return 0, gorm.ErrRecordNotFound
+	}
+	var user models.User
+	if err := tx.Select("source_limit").First(&user, userID).Error; err != nil {
+		return 0, err
+	}
+	return user.SourceLimit, nil
+}
+
+func ensureSourceCapacity(tx *gorm.DB, userID uint, limit, additions int) error {
+	if userID == 0 || limit <= 0 || additions <= 0 {
+		return nil
+	}
+	var active int64
+	if err := tx.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND detached = ?", userID, false).
+		Count(&active).Error; err != nil {
+		return err
+	}
+	if active+int64(additions) > int64(limit) {
+		return ErrSourceLimitExceeded
+	}
+	return nil
+}
+
+func createManagedSource(tx *gorm.DB, userID uint, source *models.BookSource) error {
+	if err := tx.Set(managedCreateSessionKey, true).Create(source).Error; err != nil {
+		return err
+	}
+	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.UserBookSource{
+		UserID: userID, SourceID: source.ID,
+	}).Error
 }
 
 // ReplaceActive reconciles an archive source list into exactly one user's

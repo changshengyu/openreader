@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,7 +23,13 @@ import (
 	"openreader/backend/services/sourcecompat"
 )
 
-const maxBookSourceImportBytes int64 = 16 << 20
+const (
+	maxBookSourceImportBytes  int64 = 16 << 20
+	maxBookSourceControlBytes int64 = 16 << 10
+	maxBookSourceImportCount        = 5000
+)
+
+var errTooManyBookSources = errors.New("too many sources")
 
 func (s *Server) listSources(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
@@ -457,8 +464,7 @@ func (s *Server) createSource(c *gin.Context) {
 	}
 
 	var req bookSourcePayload
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid source payload"})
+	if !decodeBookSourceObject(c, &req, maxBookSourceImportBytes, "invalid source payload") {
 		return
 	}
 	source := req.toModel()
@@ -472,6 +478,10 @@ func (s *Server) createSource(c *gin.Context) {
 
 	userID, _ := middleware.UserID(c)
 	source, err := s.bookSources.Create(userID, source)
+	if errors.Is(err, booksources.ErrSourceLimitExceeded) {
+		c.JSON(http.StatusConflict, gin.H{"error": "source limit exceeded"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create source"})
 		return
@@ -502,8 +512,7 @@ func (s *Server) updateSource(c *gin.Context) {
 	}
 
 	var req models.BookSource
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid source payload"})
+	if !decodeBookSourceObject(c, &req, maxBookSourceImportBytes, "invalid source payload") {
 		return
 	}
 
@@ -714,7 +723,10 @@ func (s *Server) batchSources(c *gin.Context) {
 	}
 
 	var req batchSourcesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if !decodeBookSourceObject(c, &req, maxBookSourceControlBytes, "action and sourceIds are required") {
+		return
+	}
+	if strings.TrimSpace(req.Action) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "action and sourceIds are required"})
 		return
 	}
@@ -749,7 +761,9 @@ func (s *Server) batchSources(c *gin.Context) {
 		return
 	}
 
-	s.broadcastSourcesUpdate(userID, "batch-"+req.Action)
+	if affected > 0 {
+		s.broadcastSourcesUpdate(userID, "batch-"+req.Action)
+	}
 	c.JSON(http.StatusOK, gin.H{"affected": affected, "skippedUsed": skippedUsed})
 }
 
@@ -783,6 +797,10 @@ func (s *Server) importSources(c *gin.Context) {
 	}
 
 	sources, err := decodeBookSources(data)
+	if errors.Is(err, errTooManyBookSources) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "too many sources"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 		return
@@ -790,12 +808,18 @@ func (s *Server) importSources(c *gin.Context) {
 
 	userID, _ := middleware.UserID(c)
 	result, err := s.bookSources.Import(userID, sources)
+	if errors.Is(err, booksources.ErrSourceLimitExceeded) {
+		c.JSON(http.StatusConflict, gin.H{"error": "source limit exceeded"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import sources"})
 		return
 	}
-	s.clearUserSourceFailures(userID)
-	s.broadcastSourcesUpdate(userID, "import")
+	if result.Imported+result.Updated > 0 {
+		s.clearUserSourceFailures(userID)
+		s.broadcastSourcesUpdate(userID, "import")
+	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -868,7 +892,11 @@ func (s *Server) importRemoteSource(c *gin.Context) {
 	}
 
 	var req remoteSourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if !decodeBookSourceObject(c, &req, maxBookSourceControlBytes, "url is required") {
+		return
+	}
+	req.URL = strings.TrimSpace(req.URL)
+	if req.URL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
@@ -881,12 +909,18 @@ func (s *Server) importRemoteSource(c *gin.Context) {
 
 	userID, _ := middleware.UserID(c)
 	result, err := s.bookSources.Import(userID, sources)
+	if errors.Is(err, booksources.ErrSourceLimitExceeded) {
+		c.JSON(http.StatusConflict, gin.H{"error": "source limit exceeded"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import sources"})
 		return
 	}
-	s.clearUserSourceFailures(userID)
-	s.broadcastSourcesUpdate(userID, "remote-import")
+	if result.Imported+result.Updated > 0 {
+		s.clearUserSourceFailures(userID)
+		s.broadcastSourcesUpdate(userID, "remote-import")
+	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -905,7 +939,11 @@ func (s *Server) previewRemoteSource(c *gin.Context) {
 		return
 	}
 	var req remoteSourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if !decodeBookSourceObject(c, &req, maxBookSourceControlBytes, "url is required") {
+		return
+	}
+	req.URL = strings.TrimSpace(req.URL)
+	if req.URL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
@@ -930,6 +968,9 @@ func fetchRemoteBookSourcesContext(ctx context.Context, rawURL string) ([]models
 	}
 	sources, err := decodeBookSources([]byte(text))
 	if err != nil {
+		if errors.Is(err, errTooManyBookSources) {
+			return nil, err
+		}
 		return nil, errors.New("invalid remote JSON format")
 	}
 	return sources, nil
@@ -1017,6 +1058,9 @@ func (s *Server) requireSourceEdit(c *gin.Context) bool {
 func decodeBookSources(data []byte) ([]models.BookSource, error) {
 	var payloads []bookSourcePayload
 	if err := json.Unmarshal(data, &payloads); err == nil {
+		if len(payloads) > maxBookSourceImportCount {
+			return nil, errTooManyBookSources
+		}
 		return bookSourcePayloadsToModels(payloads), nil
 	}
 
@@ -1025,6 +1069,9 @@ func decodeBookSources(data []byte) ([]models.BookSource, error) {
 		Sources     []bookSourcePayload `json:"sources"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err == nil {
+		if len(wrapper.BookSources) > maxBookSourceImportCount || len(wrapper.Sources) > maxBookSourceImportCount {
+			return nil, errTooManyBookSources
+		}
 		if len(wrapper.BookSources) > 0 {
 			return bookSourcePayloadsToModels(wrapper.BookSources), nil
 		}
@@ -1042,6 +1089,28 @@ func decodeBookSources(data []byte) ([]models.BookSource, error) {
 		return nil, errors.New("no source entries")
 	}
 	return []models.BookSource{source}, nil
+}
+
+func decodeBookSourceObject(c *gin.Context, target any, maxBytes int64, message string) bool {
+	var raw json.RawMessage
+	if err := decodeBoundedSingleJSON(c, &raw, maxBytes); err != nil {
+		if errors.Is(err, errJSONRequestTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": message})
+		}
+		return false
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		c.JSON(http.StatusBadRequest, gin.H{"error": message})
+		return false
+	}
+	if err := json.Unmarshal(trimmed, target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": message})
+		return false
+	}
+	return true
 }
 
 func bookSourcePayloadsToModels(payloads []bookSourcePayload) []models.BookSource {
