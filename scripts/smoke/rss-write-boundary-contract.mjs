@@ -6,6 +6,7 @@ import https from 'node:https'
 
 const targetURL = new URL(process.env.TARGET_URL || 'http://127.0.0.1:8080')
 const databasePath = String(process.env.OPENREADER_SMOKE_DB || '').trim()
+const directSQLite = databasePath !== ''
 const sourceLimit = 8 << 20
 const articleLimit = 16 << 10
 const importItemLimit = 5000
@@ -143,24 +144,51 @@ function seedArticle(userID, sourceID, { title, link, content = '', isRead = fal
 
 function startFeedServer() {
   const state = {
+    token: '',
     deleteSourceID: 0,
     deleteArticleID: 0,
     deleteArticleSourceID: 0,
+    priorityFresh: false,
   }
-  const server = http.createServer((incoming, response) => {
+  const server = http.createServer(async (incoming, response) => {
     try {
       response.setHeader('Content-Type', incoming.url?.startsWith('/detail') ? 'text/html; charset=utf-8' : 'application/xml; charset=utf-8')
+      if (incoming.url === '/feed-state') {
+        response.end(`<rss version="2.0"><channel><item><title>state before</title><link>${state.baseURL}/state-article</link></item></channel></rss>`)
+        return
+      }
+      if (incoming.url === '/feed-detail') {
+        response.end(`<rss version="2.0"><channel><item><title>detail before</title><link>${state.baseURL}/detail-preserve</link></item></channel></rss>`)
+        return
+      }
+      if (incoming.url === '/feed-detail-delete') {
+        response.end(`<rss version="2.0"><channel><item><title>late detail</title><link>${state.baseURL}/detail-delete</link></item></channel></rss>`)
+        return
+      }
       if (incoming.url === '/feed-priority') {
-        response.end(`<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><item><title>fresh feed title</title><link>${state.baseURL}/article-priority</link><description>fresh summary</description><content:encoded><![CDATA[<p>feed candidate</p>]]></content:encoded></item></channel></rss>`)
+        const title = state.priorityFresh ? 'fresh feed title' : 'priority before'
+        const summary = state.priorityFresh ? 'fresh summary' : 'initial summary'
+        const content = state.priorityFresh ? '<p>feed candidate</p>' : ''
+        response.end(`<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><item><title>${title}</title><link>${state.baseURL}/detail-preserve</link><description>${summary}</description><content:encoded><![CDATA[${content}]]></content:encoded></item></channel></rss>`)
         return
       }
       if (incoming.url === '/feed-delete') {
-        sqlite(`DELETE FROM rss_sources WHERE id = ${Number(state.deleteSourceID)};`)
+        if (directSQLite) {
+          sqlite(`DELETE FROM rss_sources WHERE id = ${Number(state.deleteSourceID)};`)
+        } else {
+          const deleted = await request(`/api/rss/sources/${state.deleteSourceID}`, { method: 'DELETE', token: state.token })
+          assert(deleted.status === 204, `delete source during refresh: ${deleted.status} ${deleted.text}`)
+        }
         response.end(`<rss version="2.0"><channel><item><title>late article</title><link>${state.baseURL}/late</link></item></channel></rss>`)
         return
       }
       if (incoming.url === '/detail-delete') {
-        sqlite(`DELETE FROM rss_articles WHERE id = ${Number(state.deleteArticleID)}; DELETE FROM rss_sources WHERE id = ${Number(state.deleteArticleSourceID)};`)
+        if (directSQLite) {
+          sqlite(`DELETE FROM rss_articles WHERE id = ${Number(state.deleteArticleID)}; DELETE FROM rss_sources WHERE id = ${Number(state.deleteArticleSourceID)};`)
+        } else {
+          const deleted = await request(`/api/rss/sources/${state.deleteArticleSourceID}`, { method: 'DELETE', token: state.token })
+          assert(deleted.status === 204, `delete source during content fetch: ${deleted.status} ${deleted.text}`)
+        }
         response.end('<div class="content">late detail</div>')
         return
       }
@@ -196,6 +224,7 @@ async function main() {
     const owner = await register(`rss${suffix}`)
     const token = owner.token
     const userID = owner.user.id
+    feed.state.token = token
 
     const createBody = JSON.stringify({ title: 'wire create', url: `https://rss.example/wire-create-${suffix}.xml` })
     const importBody = JSON.stringify([{ title: 'wire import', url: `https://rss.example/wire-import-${suffix}.xml` }])
@@ -233,10 +262,24 @@ async function main() {
     expectError(overflowImport, 400, 'invalid RSS source import')
     assert((await listSources(token)).length === sourceCountBeforeOverflow, '5,001-item import persisted a prefix')
 
-    const stateSource = await createSource(token, { title: 'state source', url: `https://rss.example/state-${suffix}.xml` })
-    const stateArticleID = seedArticle(userID, stateSource.id, {
-      title: 'state before', link: `https://rss.example/state/${suffix}`, favorite: true,
+    const stateSource = await createSource(token, {
+      title: 'state source',
+      url: directSQLite ? `https://rss.example/state-${suffix}.xml` : `${feed.state.baseURL}/feed-state`,
     })
+    let stateArticleID
+    if (directSQLite) {
+      stateArticleID = seedArticle(userID, stateSource.id, {
+        title: 'state before', link: `https://rss.example/state/${suffix}`, favorite: true,
+      })
+    } else {
+      const stateRefresh = await request(`/api/rss/sources/${stateSource.id}/refresh`, { method: 'POST', token })
+      assert(stateRefresh.status === 200 && stateRefresh.data?.items?.length === 1, `seed state article: ${stateRefresh.status} ${stateRefresh.text}`)
+      stateArticleID = stateRefresh.data.items[0].id
+      const favoriteState = await request(`/api/rss/articles/${stateArticleID}`, {
+        method: 'PUT', token, body: '{"favorite":true}',
+      })
+      assert(favoriteState.status === 200 && favoriteState.data?.favorite === true, `seed favorite state: ${favoriteState.status} ${favoriteState.text}`)
+    }
     const statePath = `/api/rss/articles/${stateArticleID}`
     for (const chunked of [false, true]) {
       const overflow = await request(statePath, {
@@ -267,73 +310,106 @@ async function main() {
     assert(concurrent.every(result => result.status === 200 || result.status === 201), `concurrent create/import statuses: ${concurrent.map(result => result.status)}`)
     assert((await listSources(token)).filter(source => source.url === concurrentURL).length === 1, 'concurrent create/import left duplicate URLs')
 
-    const deletedSource = await createSource(token, { title: 'delete source', url: `https://rss.example/delete-${suffix}.xml` })
-    sqlite(`
-      CREATE TRIGGER smoke_rss_source_update_delete BEFORE UPDATE OF title ON rss_sources
-      WHEN OLD.id = ${Number(deletedSource.id)} BEGIN DELETE FROM rss_sources WHERE id = OLD.id; END;
-    `)
-    const deletedSourceUpdate = await request(`/api/rss/sources/${deletedSource.id}`, {
-      method: 'PUT', token, body: JSON.stringify({ title: 'must not revive', url: deletedSource.url }),
-    })
-    sqlite('DROP TRIGGER smoke_rss_source_update_delete;')
-    expectError(deletedSourceUpdate, 404, 'RSS source not found')
-    assert(sqliteNumber(`SELECT COUNT(*) FROM rss_sources WHERE id = ${Number(deletedSource.id)};`) === 0, 'source update revived a deleted row')
+    if (directSQLite) {
+      const deletedSource = await createSource(token, { title: 'delete source', url: `https://rss.example/delete-${suffix}.xml` })
+      sqlite(`
+        CREATE TRIGGER smoke_rss_source_update_delete BEFORE UPDATE OF title ON rss_sources
+        WHEN OLD.id = ${Number(deletedSource.id)} BEGIN DELETE FROM rss_sources WHERE id = OLD.id; END;
+      `)
+      const deletedSourceUpdate = await request(`/api/rss/sources/${deletedSource.id}`, {
+        method: 'PUT', token, body: JSON.stringify({ title: 'must not revive', url: deletedSource.url }),
+      })
+      sqlite('DROP TRIGGER smoke_rss_source_update_delete;')
+      expectError(deletedSourceUpdate, 404, 'RSS source not found')
+      assert(sqliteNumber(`SELECT COUNT(*) FROM rss_sources WHERE id = ${Number(deletedSource.id)};`) === 0, 'source update revived a deleted row')
 
-    const metadataArticleID = seedArticle(userID, stateSource.id, {
-      title: 'metadata before', link: `https://rss.example/metadata/${suffix}`,
-    })
-    sqlite(`
-      CREATE TRIGGER smoke_rss_state_metadata BEFORE UPDATE OF is_read ON rss_articles
-      WHEN OLD.id = ${metadataArticleID} BEGIN
-        UPDATE rss_articles SET title = 'metadata after', summary = 'summary after' WHERE id = OLD.id;
-      END;
-    `)
-    const metadataUpdate = await request(`/api/rss/articles/${metadataArticleID}`, {
-      method: 'PUT', token, body: '{"isRead":true}',
-    })
-    sqlite('DROP TRIGGER smoke_rss_state_metadata;')
-    assert(metadataUpdate.status === 200 && metadataUpdate.data?.title === 'metadata after' && metadataUpdate.data?.summary === 'summary after', `state patch returned stale metadata: ${metadataUpdate.status} ${metadataUpdate.text}`)
+      const metadataArticleID = seedArticle(userID, stateSource.id, {
+        title: 'metadata before', link: `https://rss.example/metadata/${suffix}`,
+      })
+      sqlite(`
+        CREATE TRIGGER smoke_rss_state_metadata BEFORE UPDATE OF is_read ON rss_articles
+        WHEN OLD.id = ${metadataArticleID} BEGIN
+          UPDATE rss_articles SET title = 'metadata after', summary = 'summary after' WHERE id = OLD.id;
+        END;
+      `)
+      const metadataUpdate = await request(`/api/rss/articles/${metadataArticleID}`, {
+        method: 'PUT', token, body: '{"isRead":true}',
+      })
+      sqlite('DROP TRIGGER smoke_rss_state_metadata;')
+      assert(metadataUpdate.status === 200 && metadataUpdate.data?.title === 'metadata after' && metadataUpdate.data?.summary === 'summary after', `state patch returned stale metadata: ${metadataUpdate.status} ${metadataUpdate.text}`)
 
-    const deletedArticleID = seedArticle(userID, stateSource.id, {
-      title: 'article delete before', link: `https://rss.example/article-delete/${suffix}`,
-    })
-    sqlite(`
-      CREATE TRIGGER smoke_rss_state_delete BEFORE UPDATE OF favorite ON rss_articles
-      WHEN OLD.id = ${deletedArticleID} BEGIN DELETE FROM rss_articles WHERE id = OLD.id; END;
-    `)
-    const deletedArticleUpdate = await request(`/api/rss/articles/${deletedArticleID}`, {
-      method: 'PUT', token, body: '{"favorite":true}',
-    })
-    sqlite('DROP TRIGGER smoke_rss_state_delete;')
-    expectError(deletedArticleUpdate, 404, 'RSS article not found')
-    assert(sqliteNumber(`SELECT COUNT(*) FROM rss_articles WHERE id = ${deletedArticleID};`) === 0, 'state patch revived a deleted article')
+      const deletedArticleID = seedArticle(userID, stateSource.id, {
+        title: 'article delete before', link: `https://rss.example/article-delete/${suffix}`,
+      })
+      sqlite(`
+        CREATE TRIGGER smoke_rss_state_delete BEFORE UPDATE OF favorite ON rss_articles
+        WHEN OLD.id = ${deletedArticleID} BEGIN DELETE FROM rss_articles WHERE id = OLD.id; END;
+      `)
+      const deletedArticleUpdate = await request(`/api/rss/articles/${deletedArticleID}`, {
+        method: 'PUT', token, body: '{"favorite":true}',
+      })
+      sqlite('DROP TRIGGER smoke_rss_state_delete;')
+      expectError(deletedArticleUpdate, 404, 'RSS article not found')
+      assert(sqliteNumber(`SELECT COUNT(*) FROM rss_articles WHERE id = ${deletedArticleID};`) === 0, 'state patch revived a deleted article')
+    }
 
     const detailSource = await createSource(token, {
-      title: 'detail source', url: `${feed.state.baseURL}/unused`, ruleContent: '.content|html',
+      title: 'detail source',
+      url: `${feed.state.baseURL}/${directSQLite ? 'unused' : 'feed-detail'}`,
+      ruleContent: '.content|html',
     })
-    const detailArticleID = seedArticle(userID, detailSource.id, {
-      title: 'detail before', link: `${feed.state.baseURL}/detail-preserve`,
-    })
-    sqlite(`
-      CREATE TRIGGER smoke_rss_content_columns BEFORE UPDATE OF content ON rss_articles
-      WHEN OLD.id = ${detailArticleID} BEGIN
-        UPDATE rss_articles SET title = 'detail concurrent', favorite = 1 WHERE id = OLD.id;
-      END;
-    `)
+    let detailArticleID
+    if (directSQLite) {
+      detailArticleID = seedArticle(userID, detailSource.id, {
+        title: 'detail before', link: `${feed.state.baseURL}/detail-preserve`,
+      })
+      sqlite(`
+        CREATE TRIGGER smoke_rss_content_columns BEFORE UPDATE OF content ON rss_articles
+        WHEN OLD.id = ${detailArticleID} BEGIN
+          UPDATE rss_articles SET title = 'detail concurrent', favorite = 1 WHERE id = OLD.id;
+        END;
+      `)
+    } else {
+      const detailRefresh = await request(`/api/rss/sources/${detailSource.id}/refresh`, { method: 'POST', token })
+      assert(detailRefresh.status === 200 && detailRefresh.data?.items?.length === 1, `seed detail article: ${detailRefresh.status} ${detailRefresh.text}`)
+      detailArticleID = detailRefresh.data.items[0].id
+      const favoriteDetail = await request(`/api/rss/articles/${detailArticleID}`, {
+        method: 'PUT', token, body: '{"favorite":true}',
+      })
+      assert(favoriteDetail.status === 200 && favoriteDetail.data?.favorite === true, `seed detail favorite: ${favoriteDetail.status} ${favoriteDetail.text}`)
+    }
     const detailResponse = await request(`/api/rss/articles/${detailArticleID}/content`, { token })
-    sqlite('DROP TRIGGER smoke_rss_content_columns;')
-    assert(detailResponse.status === 200 && detailResponse.data?.title === 'detail concurrent' && detailResponse.data?.favorite === true && String(detailResponse.data?.content).includes('authoritative detail'), `content cache overwrote concurrent columns: ${detailResponse.status} ${detailResponse.text}`)
+    if (directSQLite) sqlite('DROP TRIGGER smoke_rss_content_columns;')
+    const expectedDetailTitle = directSQLite ? 'detail concurrent' : 'detail before'
+    assert(detailResponse.status === 200 && detailResponse.data?.title === expectedDetailTitle && detailResponse.data?.favorite === true && String(detailResponse.data?.content).includes('authoritative detail'), `content cache overwrote owned columns: ${detailResponse.status} ${detailResponse.text}`)
 
     const prioritySource = await createSource(token, {
       title: 'priority source', url: `${feed.state.baseURL}/feed-priority`, ruleContent: '.content|html',
     })
-    const priorityArticleID = seedArticle(userID, prioritySource.id, {
-      title: 'priority before', link: `${feed.state.baseURL}/article-priority`, content: '<p>stored detail</p>', favorite: true,
-    })
+    let priorityArticleID
+    let expectedPriorityContent
+    if (directSQLite) {
+      priorityArticleID = seedArticle(userID, prioritySource.id, {
+        title: 'priority before', link: `${feed.state.baseURL}/detail-preserve`, content: '<p>stored detail</p>', favorite: true,
+      })
+      expectedPriorityContent = '<p>stored detail</p>'
+    } else {
+      const initialPriority = await request(`/api/rss/sources/${prioritySource.id}/refresh`, { method: 'POST', token })
+      assert(initialPriority.status === 200 && initialPriority.data?.items?.length === 1, `seed priority article: ${initialPriority.status} ${initialPriority.text}`)
+      priorityArticleID = initialPriority.data.items[0].id
+      const cachedPriority = await request(`/api/rss/articles/${priorityArticleID}/content`, { token })
+      assert(cachedPriority.status === 200 && String(cachedPriority.data?.content).includes('authoritative detail'), `cache priority detail: ${cachedPriority.status} ${cachedPriority.text}`)
+      expectedPriorityContent = cachedPriority.data.content
+      const favoritePriority = await request(`/api/rss/articles/${priorityArticleID}`, {
+        method: 'PUT', token, body: '{"favorite":true}',
+      })
+      assert(favoritePriority.status === 200 && favoritePriority.data?.favorite === true, `seed priority favorite: ${favoritePriority.status} ${favoritePriority.text}`)
+    }
+    feed.state.priorityFresh = true
     const priorityRefresh = await request(`/api/rss/sources/${prioritySource.id}/refresh`, { method: 'POST', token })
     assert(priorityRefresh.status === 200, `priority refresh: ${priorityRefresh.status} ${priorityRefresh.text}`)
     const priorityArticle = (await listArticles(token, prioritySource.id)).find(article => article.id === priorityArticleID)
-    assert(priorityArticle?.title === 'fresh feed title' && priorityArticle?.content === '<p>stored detail</p>' && priorityArticle?.favorite === true, `refresh violated content/state priority: ${JSON.stringify(priorityArticle)}`)
+    assert(priorityArticle?.title === 'fresh feed title' && priorityArticle?.content === expectedPriorityContent && priorityArticle?.favorite === true, `refresh violated content/state priority: ${JSON.stringify(priorityArticle)}`)
 
     const lateSource = await createSource(token, {
       title: 'late source', url: `${feed.state.baseURL}/feed-delete`,
@@ -341,19 +417,39 @@ async function main() {
     feed.state.deleteSourceID = lateSource.id
     const lateRefresh = await request(`/api/rss/sources/${lateSource.id}/refresh`, { method: 'POST', token })
     expectError(lateRefresh, 404, 'RSS source not found')
-    assert(sqliteNumber(`SELECT COUNT(*) FROM rss_articles WHERE source_id = ${Number(lateSource.id)};`) === 0, 'refresh persisted orphan articles')
+    if (directSQLite) {
+      assert(sqliteNumber(`SELECT COUNT(*) FROM rss_articles WHERE source_id = ${Number(lateSource.id)};`) === 0, 'refresh persisted orphan articles')
+    } else {
+      assert((await listArticles(token, lateSource.id)).length === 0, 'refresh persisted orphan articles')
+    }
 
     const lateDetailSource = await createSource(token, {
-      title: 'late detail source', url: `${feed.state.baseURL}/unused-delete`, ruleContent: '.content|html',
+      title: 'late detail source',
+      url: `${feed.state.baseURL}/${directSQLite ? 'unused-delete' : 'feed-detail-delete'}`,
+      ruleContent: '.content|html',
     })
-    const lateDetailArticleID = seedArticle(userID, lateDetailSource.id, {
-      title: 'late detail', link: `${feed.state.baseURL}/detail-delete`,
-    })
+    let lateDetailArticleID
+    if (directSQLite) {
+      lateDetailArticleID = seedArticle(userID, lateDetailSource.id, {
+        title: 'late detail', link: `${feed.state.baseURL}/detail-delete`,
+      })
+    } else {
+      const lateDetailRefresh = await request(`/api/rss/sources/${lateDetailSource.id}/refresh`, { method: 'POST', token })
+      assert(lateDetailRefresh.status === 200 && lateDetailRefresh.data?.items?.length === 1, `seed late detail article: ${lateDetailRefresh.status} ${lateDetailRefresh.text}`)
+      lateDetailArticleID = lateDetailRefresh.data.items[0].id
+    }
     feed.state.deleteArticleID = lateDetailArticleID
     feed.state.deleteArticleSourceID = lateDetailSource.id
     const lateDetail = await request(`/api/rss/articles/${lateDetailArticleID}/content`, { token })
     expectError(lateDetail, 404, 'RSS source not found')
-    assert(sqliteNumber(`SELECT COUNT(*) FROM rss_articles WHERE id = ${lateDetailArticleID};`) === 0, 'content fetch revived a deleted article')
+    if (directSQLite) {
+      assert(sqliteNumber(`SELECT COUNT(*) FROM rss_articles WHERE id = ${lateDetailArticleID};`) === 0, 'content fetch revived a deleted article')
+    } else {
+      const missingArticle = await request(`/api/rss/articles/${lateDetailArticleID}`, {
+        method: 'PUT', token, body: '{"isRead":true}',
+      })
+      expectError(missingArticle, 404, 'RSS article not found')
+    }
 
     console.log(JSON.stringify({
       status: 'ok',
@@ -363,6 +459,7 @@ async function main() {
       explicitColumns: 'preserved',
       deletedRows: 'not-revived',
       remoteLiveness: 'rechecked',
+      mode: directSQLite ? 'http-plus-sqlite-triggers' : 'public-api-container',
     }))
   } finally {
     await new Promise(resolve => feed.server.close(resolve))
