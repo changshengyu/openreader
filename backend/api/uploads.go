@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,18 +21,43 @@ import (
 	assetservice "openreader/backend/services/assets"
 )
 
+const (
+	maxAssetUploadRequestBodyBytes int64 = assetservice.MaxFontBytes + (1 << 20)
+	maxAssetDeleteRequestBodyBytes int64 = 16 << 10
+	maxAssetUploadTypeBytes              = 32
+	maxAssetUploadFilenameBytes          = 255
+)
+
+var (
+	errAssetUploadRequestTooLarge = errors.New("asset upload request body too large")
+	errAssetUploadRequestInvalid  = errors.New("invalid asset upload request")
+	errAssetUploadFileRequired    = errors.New("asset upload file required")
+)
+
+type parsedAssetUpload struct {
+	form *multipart.Form
+	file *multipart.FileHeader
+	kind string
+}
+
 func (s *Server) uploadAsset(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	if userID == 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	fileHeader, err := c.FormFile("file")
+	upload, err := parseAssetUpload(c)
+	if upload != nil && upload.form != nil {
+		defer func() {
+			_ = upload.form.RemoveAll()
+		}()
+	}
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		writeAssetUploadRequestError(c, err)
 		return
 	}
-	kind := strings.TrimSpace(c.PostForm("type"))
+	fileHeader := upload.file
+	kind := upload.kind
 	if fileHeader.Size > uploadSizeLimit(kind) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is too large"})
 		return
@@ -78,10 +105,18 @@ func (s *Server) uploadAsset(c *gin.Context) {
 }
 
 func (s *Server) deleteAsset(c *gin.Context) {
-	var payload struct {
+	var payload *struct {
 		URL string `json:"url"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil || strings.TrimSpace(payload.URL) == "" {
+	if err := decodeBoundedSingleJSON(c, &payload, maxAssetDeleteRequestBodyBytes); err != nil {
+		if errors.Is(err, errJSONRequestTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+		}
+		return
+	}
+	if payload == nil || strings.TrimSpace(payload.URL) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
@@ -107,6 +142,72 @@ func (s *Server) deleteAsset(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func parseAssetUpload(c *gin.Context) (*parsedAssetUpload, error) {
+	if c.Request.ContentLength > maxAssetUploadRequestBodyBytes {
+		return nil, errAssetUploadRequestTooLarge
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAssetUploadRequestBodyBytes)
+	form, err := c.MultipartForm()
+	upload := &parsedAssetUpload{form: form}
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			return upload, errAssetUploadRequestTooLarge
+		}
+		if errors.Is(err, http.ErrNotMultipart) {
+			return upload, errAssetUploadFileRequired
+		}
+		return upload, errAssetUploadRequestInvalid
+	}
+	if form == nil {
+		return upload, errAssetUploadRequestInvalid
+	}
+
+	files := form.File["file"]
+	if len(files) == 0 {
+		return upload, errAssetUploadFileRequired
+	}
+	fileCount := 0
+	for _, headers := range form.File {
+		fileCount += len(headers)
+	}
+	if len(files) != 1 || fileCount != 1 {
+		return upload, errAssetUploadRequestInvalid
+	}
+
+	types := form.Value["type"]
+	if len(types) > 1 {
+		return upload, errAssetUploadRequestInvalid
+	}
+	kind := ""
+	if len(types) == 1 {
+		kind = strings.TrimSpace(types[0])
+		if !utf8.ValidString(kind) || len(kind) > maxAssetUploadTypeBytes {
+			return upload, errAssetUploadRequestInvalid
+		}
+	}
+	filename := strings.TrimSpace(files[0].Filename)
+	if filename == "" || !utf8.ValidString(filename) || len(filename) > maxAssetUploadFilenameBytes {
+		return upload, errAssetUploadRequestInvalid
+	}
+
+	files[0].Filename = filename
+	upload.file = files[0]
+	upload.kind = kind
+	return upload, nil
+}
+
+func writeAssetUploadRequestError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, errAssetUploadRequestTooLarge):
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+	case errors.Is(err, errAssetUploadFileRequired):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid upload request"})
+	}
 }
 
 type userUploadAsset struct {
