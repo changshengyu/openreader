@@ -815,7 +815,7 @@ post-commit sync side effects additionally invalidate or broadcast the unified p
 after the maximum order across both data sources; the old custom-only reorder endpoint remains compatible for old
 clients but is not used by the rebuilt mixed manager.
 
-### BookGroup / Category write request boundary (2026-08-12 extracted)
+### BookGroup / Category write request boundary (2026-08-12 implementation)
 
 The six JSON mutations in the BookGroup state machine are governed by
 [`book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md).
@@ -831,8 +831,10 @@ priority, empty effective-array fallback, clear behavior, legacy primary field a
 Future explicitly submitted Category/built-in names are bounded to 80 UTF-8 bytes and Category colors to 24 UTF-8
 bytes. Historical oversized rows remain readable/restorable and may receive updates that do not touch those fields.
 No schema, route, success payload, complete mixed-reorder transaction, category-only compatibility behavior, book
-membership semantics, backup format, or visible BookGroup workflow changes in this slice. Status is
-`inventory-complete / implementation-pending`.
+membership semantics, backup format, or visible BookGroup workflow changes in this slice. `6f54be3` passed the
+red/green six-route API contract, focused/full/race Go, full vet, frontend 740/740, production build and isolated
+real declared/chunked/exact-limit HTTP smoke. Status is
+`implementation-complete / regression-validated / mounted-volume-and-Docker-pending`.
 
 ## P2 embedded chapter-image cache contract (implementation in progress)
 

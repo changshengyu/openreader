@@ -945,9 +945,9 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - `go vet ./...` is an explicit red/green gate in addition to the existing rollback and fresh/historical volume
   tests. See `backup-restore-fixed-baseline-p2-contract.md`.
 
-## P2 BookGroup / Category write-boundary compatibility (2026-08-12 extracted)
+## P2 BookGroup / Category write-boundary compatibility (2026-08-12 implementation)
 
-- The planned 16 KiB single-JSON boundary applies only to six future authenticated HTTP mutations in the existing
+- The implemented 16 KiB single-JSON boundary applies only to six authenticated HTTP mutations in the existing
   BookGroup state machine. It adds no table, column, index, row, backup member, browser key or mounted file.
 - The existing `categories`, `book_group_preferences`, `book_categories` and `books` rows remain authoritative.
   No startup scan, truncation, backfill, ID rewrite or relationship conversion is permitted.
@@ -963,4 +963,6 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   Existing contaminated rows are not silently scanned or rewritten by this HTTP-boundary slice.
 - No frontend geometry or BookGroup backup format changes. See
   `book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`; status is
-  `inventory-complete / implementation-pending`.
+  `implementation-complete / regression-validated / mounted-volume-and-Docker-pending`. `6f54be3` changes no
+  schema or persistent format; API backup/restore coverage proves historical oversized rows remain lossless. The
+  release-specific fresh/historical mounted-volume gate still awaits explicit Docker socket approval.

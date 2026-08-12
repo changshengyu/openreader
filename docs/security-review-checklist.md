@@ -762,24 +762,31 @@ Evidence: `backend/engine/parser_test.go`, `backend/api/api_test.go`,
 `frontend/tests/overlayBookImport.test.mjs`, full/focused/race Go, `go vet`, frontend 730/730, production build,
 and `scripts/smoke/local-book-import-contract.mjs` at 1440×900, 390×844 and 360×800.
 
-## P2 BookGroup / Category write-boundary review (2026-08-12 extracted)
+## P2 BookGroup / Category write-boundary review (2026-08-12 implementation)
 
-- [ ] Six authenticated BookGroup JSON mutations enforce the same 16 KiB actual-read limit for declared and
+- [x] Six authenticated BookGroup JSON mutations enforce the same 16 KiB actual-read limit for declared and
       chunked bodies; exactly 16 KiB reaches normal validation and 16 KiB + 1 returns safe flat 413.
-- [ ] Each mutation accepts exactly one JSON object plus whitespace. A second JSON value or trailing garbage maps
+- [x] Each mutation accepts exactly one JSON object plus whitespace. A second JSON value or trailing garbage maps
       to the endpoint's existing 400 and produces no row, timestamp or event change.
-- [ ] JWT remains first. Unknown built-in keys and missing/foreign owned Category/Book targets retain their existing
+- [x] JWT remains first. Unknown built-in keys and missing/foreign owned Category/Book targets retain their existing
       pre-body 400/404 behavior and do not expose whether request data would otherwise be valid.
-- [ ] Invalid Category create is fully validated before `NextSortOrder`, so it cannot create built-in preference
+- [x] Invalid Category create is fully validated before `NextSortOrder`, so it cannot create built-in preference
       rows as a side effect. Mixed reorder and book-membership replacement stay atomic and caller-scoped.
-- [ ] `PUT /api/books/:id/category` validates the final effective ID set. A foreign `categoryId` combined with an
+- [x] `PUT /api/books/:id/category` validates the final effective ID set. A foreign `categoryId` combined with an
       empty/zero-only `categoryIds` cannot create a cross-user `books` or `book_categories` reference.
-- [ ] New names/colors enforce 80/24 UTF-8-byte budgets, while untouched historical oversized rows remain usable,
+- [x] New names/colors enforce 80/24 UTF-8-byte budgets, while untouched historical oversized rows remain usable,
       backup/restorable and are never scanned or rewritten.
-- [ ] Errors, logs and sync events do not include JWTs, request bodies, submitted names/colors, SQLite text or host
+- [x] Errors, logs and sync events do not include JWTs, request bodies, submitted names/colors, SQLite text or host
       paths. No global middleware or unrelated endpoint limit is introduced.
+- [ ] Before Docker publication, run the fresh/historical mounted-volume and backup compatibility gates against the
+      implementation candidate.
 
-Required evidence before checking these items: red/green API contracts for all six routes, two-user isolation and
-event assertions, historical-row backup/restore coverage, focused/full/race/vet, frontend/build, isolated real HTTP,
-and fresh/historical mounted-volume gates. See
+Required implementation evidence: red/green API contracts for all six routes, two-user isolation and event
+assertions, historical-row backup/restore coverage, focused/full/race/vet, frontend/build and isolated real HTTP.
+The separate release checkbox additionally requires fresh/historical mounted-volume gates. See
 [`compat/book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+
+Implementation evidence is complete on `6f54be3`: the red/green six-route contracts, caller/other-user persistence
+and event assertions, historical oversized backup/restore, focused/full/race/vet, frontend 740/740, production build
+and `scripts/smoke/book-group-write-boundary-contract.mjs` all pass. The release-specific fresh/historical
+mounted-volume gate and local Docker publication still await explicit Docker socket approval.

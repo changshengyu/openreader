@@ -1,11 +1,11 @@
 # BookGroup / Category 写请求边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implementation-complete / regression-validated / mounted-volume-and-Docker-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-本轮只提取合同和记录当前反例，不修改应用或测试代码。范围严格限定为同一 BookGroup 状态机的六个
-现有 JSON 写入口：
+合同阶段只提取固定上游行为和当前反例；红灯测试与应用实现随后分别独立提交。范围严格限定为同一
+BookGroup 状态机的六个现有 JSON 写入口：
 
 - `POST /api/categories`
 - `PUT /api/categories/:id`
@@ -166,3 +166,20 @@ business transaction 搬进 decoder。
 
 合同实现前不改前端。服务端是直接 API 的权威边界；当前 prompt 校验和 set-mode 空选择只能作为 UX，
 不能代替 HTTP 防护。
+
+## 9. 实施与验证记录
+
+- 合同 `3873781` 先行提交；红灯合同 `dc4589d` 随后在旧实现上复现六入口超限/尾随 JSON、空白创建
+  副作用、字段无界和双字段 owner 绕过。
+- 实现 `6f54be3` 在 BookGroup/Category handler 内复用共享 bounded single-JSON decoder；没有新增全局
+  middleware，也没有改变其它 JSON、上传或恢复入口。未知内置 key 在 body 前 allowlist，Category
+  create 在 `NextSortOrder` 前完成字段校验，书籍分组先计算最终有效 ID 再执行 caller-owner 校验。
+- `backend/api/book_group_write_boundary_contract_test.go` 覆盖六路 declared/chunked `16 KiB + 1`、精确
+  16 KiB、第二 JSON/垃圾/`null`、优先级、零 row/time/event 副作用、80/24 UTF-8-byte 边界、历史
+  oversized row 的 show/backup/restore，以及双用户 fallback 矩阵；既有 BookGroup、Category、排序、
+  many-to-many 与 backup 合同继续通过。
+- focused/full/race Go、`go vet ./...`、frontend 740/740 和 Vite production build 通过。隔离生产形态
+  `scripts/smoke/book-group-write-boundary-contract.mjs` 以临时 SQLite 和临时 `data/cache/library` 重跑
+  六条真实 HTTP 路径并通过；本切片没有前端或视口行为变化，因此不新增浏览器几何门。
+- fresh/historical mounted-volume 和正式本机 Docker 发布尚未执行：此前 Docker socket 权限审批通道
+  断开，本轮没有绕过或重试该门槛。完成这两个发布门之前不得标记 Docker-published。

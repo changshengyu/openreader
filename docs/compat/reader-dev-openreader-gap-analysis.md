@@ -3711,4 +3711,9 @@ SQLite 行与所有 backup/restore 格式不迁移。
 
 完整 API、数据、安全和测试先行门见
 [`book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-状态为 **inventory-complete / implementation-pending**；本次 inventory 只修改合同，没有修改应用或测试。
+合同 `3873781` 与红灯合同 `dc4589d` 分别先行提交。实现 `6f54be3` 随后统一六入口 16 KiB actual-read
+single-JSON、字段预算和 body 前优先级，并修复最终有效 category 集合的 caller-owner 校验；没有 schema、
+backup、前端或其它 endpoint 变化。focused/full/race Go、全量 vet、frontend 740/740、production build、
+历史 oversized backup/restore 和隔离真实 HTTP smoke 均通过。状态为
+**implementation-complete / regression-validated / mounted-volume-and-Docker-pending**；fresh/historical
+mounted-volume 与正式本机 Docker 发布仍等待显式 Docker socket 授权。
