@@ -1,6 +1,6 @@
 # 用户配置写入请求边界第二轮固定基准合同（P2）
 
-状态：**implementation-complete / regression-validated / Docker-pending**。
+状态：**implementation-complete / regression-validated / Docker-published**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -141,6 +141,8 @@ localStorage 的配置 JSON，不包含上传资产 bytes；OpenReader 的自定
   全部通过。隔离生产形态真实 HTTP 又确认 declared/chunked `413`、精确 8 MiB `200`、双 JSON/垃圾
   `400`、拒绝后 marker 不变，以及无 token `401`/非法 key `400` 优先级；服务随后停止。
 - 没有 SQLite/schema/JWT、现有 setting 行、`data/`、`cache/`、`library/`、backup/WebDAV、浏览器 key
-  或前端几何变化。本地 arm64 候选已从 `c2bc736` 构建并带正确 OCI revision label。
-- fresh/historical mounted-volume 门和正式 amd64/arm64 GHCR 发布仍 pending：访问 OrbStack socket 的提升
-  权限自动审批通道在执行时断开并拒绝，本轮没有绕过审批，也没有发布远端标签或填写 digest。
+  或前端几何变化。该实现随最终聚合镜像 `231aa9e` 完成 fresh/historical mounted-volume 与
+  portable-v1/v2 backup/restore 门。
+- `ghcr.io/changshengyu/openreader:231aa9e` 与 `latest` 已由本机 amd64/arm64 构建并发布；OCI index
+  digest 为 `sha256:e4affbeaf133220409c82dc1316d7cc2e2e7267fe8623d817205b1fa0340a5c6`，两平台
+  revision label 均为 `231aa9e0a572a1a34d64e016063860a42da9570e`。

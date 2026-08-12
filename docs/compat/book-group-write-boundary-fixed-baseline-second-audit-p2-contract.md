@@ -1,6 +1,6 @@
 # BookGroup / Category 写请求边界第二轮固定基准合同（P2）
 
-状态：**implementation-complete / regression-validated / mounted-volume-and-Docker-pending**。
+状态：**implementation-complete / regression-validated / Docker-published**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -181,5 +181,8 @@ business transaction 搬进 decoder。
 - focused/full/race Go、`go vet ./...`、frontend 740/740 和 Vite production build 通过。隔离生产形态
   `scripts/smoke/book-group-write-boundary-contract.mjs` 以临时 SQLite 和临时 `data/cache/library` 重跑
   六条真实 HTTP 路径并通过；本切片没有前端或视口行为变化，因此不新增浏览器几何门。
-- fresh/historical mounted-volume 和正式本机 Docker 发布尚未执行：此前 Docker socket 权限审批通道
-  断开，本轮没有绕过或重试该门槛。完成这两个发布门之前不得标记 Docker-published。
+- 该实现随最终聚合镜像 `231aa9e` 完成 fresh volume 的 portable-v1/v2-assets、cross-user、restart，
+  以及 historical TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation 和 portable restore 门。
+  `ghcr.io/changshengyu/openreader:231aa9e` 与 `latest` 已由本机 amd64/arm64 构建并发布；OCI index
+  digest 为 `sha256:e4affbeaf133220409c82dc1316d7cc2e2e7267fe8623d817205b1fa0340a5c6`，两平台
+  revision label 均为 `231aa9e0a572a1a34d64e016063860a42da9570e`。

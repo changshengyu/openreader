@@ -1,6 +1,6 @@
 # Book 写入与本地书档引用边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implementation-complete / regression-validated / Docker-published**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -122,7 +122,8 @@ import/stage 管理。兼容 create 忽略这些字段是明确的多用户数�
 `customCoverUrl`、`intro`、`categoryId`、`categoryIds`、`canUpdate`；未知及服务端字段忽略。未提交的列、
 并发保存的分组/追更/进度、章节和缓存均保持。
 
-- 仍以 raw object key 区分“未提交”和显式空/false/null；`title` 显式提交时 trim 后必填；
+- `categoryId/categoryIds` 仍以 raw object key 区分“未提交”和显式清空；其它允许字段以非 null 指针
+  区分未提交和值，保持已部署的字段级 `null` no-op 兼容。`title` 显式提交非 null 值时 trim 后必填；
 - `categoryIds` 显式出现时以它的非零去重结果替换关系，空/全零表示清空；只有 `categoryId` 出现时
   才按单值替换。所有最终正 ID 在 transaction 前验证为 caller-owned；
 - `customCoverUrl` 沿用当前值、空值或当前用户现存 cover capability 规则；
@@ -155,9 +156,11 @@ oversized row 不修改、不回填、不删除，仍可 list/get/backup/restore
 - `captureBookCleanup` 继续只在 book/chapter 行尚存的 transaction 内收集候选；任何数据库失败回滚，
   不能删除文件。远程缓存与图片保持既有引用修剪逻辑。
 - 本地候选仍必须是相对 `libraryPath`，并经当前用户名的
-  `library/data/<SafeFilename(username)>` 根校验；非法、绝对、越界路径永不清理。
+  `library/data/<SafeFilename(username)>` 根校验；非法、绝对、越界路径永不清理。真正执行删除的候选
+  不得穿越 owner root 下的符号链接，状态不确定时保留目录。
 - 删除 transaction 提交后，清理前重新查询同一用户剩余的本地书籍行。将每个非空 `libraryPath`
-  经同一根校验和规范化后比较；只要任一存活行指向同一目录，就跳过 `RemoveAll`。
+  经同一根校验和规范化后比较；安全解析后仍位于 owner root 内的历史符号链接也算同一目标引用，
+  只要任一存活行指向同一真实目录，就跳过 `RemoveAll`。解析到 owner root 外的链接不扩大引用范围。
 - 单删或 batch 只删部分重复引用时目录和存活书必须可读；同一 transaction 删除最后几个引用时，
   目录最多清理一次。最后一个引用以后被删除时才清理。
 - 查询用户/引用失败、路径无法可靠规范化或任何状态不确定时 fail closed：保留目录。文件清理失败
@@ -180,7 +183,8 @@ oversized row 不修改、不回填、不删除，仍可 list/get/backup/restore
 6. 每个字段精确 byte 上限成功，+1 失败；UTF-8 多字节边界、历史 oversized row 的读、只改其它字段、
    logical/portable backup/restore 保持。
 7. 两个同用户本地 book 指向同一规范目录时，单删或 batch 删一个不能删除文件；删最后一个才清理。
-   词法等价路径需视为同一引用，外用户/越界路径不能扩大清理范围。
+   词法等价路径和 owner root 内安全符号链接需视为同一目标引用；外用户/越界链接不能扩大清理范围，
+   删除候选自身若穿越链接则 fail closed。
 8. focused/full/race/vet、frontend 全量、production build、隔离生产形态真实 HTTP 与 fresh/historical
    mounted-volume/backup 门通过后，才可把状态更新为 implementation-complete 或发布 Docker。
 
@@ -194,3 +198,25 @@ oversized row 不修改、不回填、不删除，仍可 list/get/backup/restore
 本地目录引用检查必须发生在删除 commit 后、`RemoveAll` 前，并以数据库剩余行作为权威。不得用预先
 计算的删除 ID 数量代替引用查询，不得通过 schema 迁移或启动时清扫修复历史行，也不得因为清理
 best-effort 失败改变已有 `204`/batch `200` 成功响应。
+
+## 10. 实施与验证记录（2026-08-12）
+
+- 合同由 `6a9dce9` 先行提交；红灯合同 `4843468` 在旧实现上复现 mass assignment、无界/多 JSON、
+  分类 fallback owner 绕过、自定义封面越权、字段无界和共享本地书档提前删除。实现 `8de9a38` 转绿，
+  `11bf2c2` 增加可复跑的真实 HTTP/SQLite WAL smoke。
+- create/update 现已复用 1 MiB bounded single-JSON decoder 和显式 DTO/patch；服务端身份、来源、格式、
+  存储、解析、进度、章节、计数与时间字段不再接受通用入口赋值。最终分类集合、自定义封面 capability
+  和 UTF-8 byte 字段上限均在 transaction 前验证。
+- 删除清理在 commit 后重新查询同用户剩余本地书引用；数据库或路径状态不确定时保留文件。最终补丁
+  `231aa9e` 区分“删除候选不得穿越符号链接”和“owner root 内安全历史别名仍算有效引用”，避免删除
+  仍可读存活书的真实归档。
+- focused/full/race Go、`go vet ./...`、frontend 740/740、Vite production build、`git diff --check` 均
+  通过。隔离生产形态真实 HTTP 覆盖 DTO ownership、1 MiB declared/chunked、strict JSON、target/body
+  优先级、UTF-8 字段和单删/batch 最后引用清理；进程随后停止。
+- `ghcr.io/changshengyu/openreader:231aa9e` 与 `latest` 已由本机 amd64/arm64 构建并发布，OCI index digest
+  为 `sha256:e4affbeaf133220409c82dc1316d7cc2e2e7267fe8623d817205b1fa0340a5c6`。fresh volume 的
+  portable-v1/v2-assets、cross-user、restart，以及 historical TXT/EPUB/UMD/CBZ、relative-cache、
+  owner-isolation 和 portable restore 均通过；两平台 revision label 均为
+  `231aa9e0a572a1a34d64e016063860a42da9570e`。
+- 未修改 SQLite schema、历史行、`data/cache/library`、backup/WebDAV/portable 格式或前端几何。远程确认、
+  本地导入、Reader 换源和刷新继续走各自已签收的专用事务。
