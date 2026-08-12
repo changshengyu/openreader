@@ -38,6 +38,11 @@ test('global bookmark form preserves upstream readonly context and mobile dialog
   assert.match(form, /readonly/)
   assert.match(form, /createBookmark\(/)
   assert.match(form, /updateBookmark\(/)
+  assert.match(
+    form,
+    /updateBookmark\(currentDraft\.id,\s*\{\s*note:\s*payload\.note,?\s*\}\)/s,
+  )
+  assert.doesNotMatch(form, /updateBookmark\(currentDraft\.id,\s*payload\)/)
 })
 
 test('bookmark manager restores the fixed-upstream dialog geometry, columns, and direct field rendering', () => {
