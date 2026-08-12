@@ -425,6 +425,11 @@ async function installApiMocks(page, readerSettings = {}) {
     }
     if (path === '/bookmarks/101' && method === 'PUT') {
       const payload = request.postDataJSON()
+      const fields = Object.keys(payload).sort()
+      assert(
+        fields.length === 1 && fields[0] === 'note',
+        `bookmark edit payload must own only note, got ${JSON.stringify(fields)}`,
+      )
       Object.assign(bookmarks[0], payload)
       return route.fulfill(json(bookmarks[0]))
     }

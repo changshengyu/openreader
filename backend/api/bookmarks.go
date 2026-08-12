@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -13,9 +15,13 @@ import (
 )
 
 const (
-	maxBookmarkTitleBytes   = 320
-	maxBookmarkExcerptBytes = 16 * 1024
-	maxBookmarkNoteBytes    = 16 * 1024
+	maxBookmarkTitleBytes                   = 320
+	maxBookmarkExcerptBytes                 = 16 * 1024
+	maxBookmarkNoteBytes                    = 16 * 1024
+	maxBookmarkSingleRequestBodyBytes int64 = 64 << 10
+	maxBookmarkBatchRequestBodyBytes  int64 = 16 << 20
+	maxBookmarkDeleteRequestBodyBytes int64 = 16 << 10
+	maxBookmarkBatchItems                   = 2000
 )
 
 type bookmarkRequest struct {
@@ -60,8 +66,7 @@ func (s *Server) createBookmark(c *gin.Context) {
 	}
 
 	var request bookmarkRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bookmark payload"})
+	if !decodeBookmarkJSON(c, &request, maxBookmarkSingleRequestBodyBytes, '{', "invalid bookmark payload") {
 		return
 	}
 
@@ -135,7 +140,10 @@ func (s *Server) createBookmarks(c *gin.Context) {
 	}
 
 	var requests []bookmarkRequest
-	if err := c.ShouldBindJSON(&requests); err != nil || len(requests) == 0 {
+	if !decodeBookmarkJSON(c, &requests, maxBookmarkBatchRequestBodyBytes, '[', "invalid bookmarks payload") {
+		return
+	}
+	if len(requests) == 0 || len(requests) > maxBookmarkBatchItems {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bookmarks payload"})
 		return
 	}
@@ -172,27 +180,76 @@ func (s *Server) updateBookmark(c *gin.Context) {
 		return
 	}
 
-	var request bookmarkRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bookmark payload"})
+	note, ok := decodeBookmarkNote(c)
+	if !ok {
 		return
 	}
 
-	note := strings.TrimSpace(request.Note)
 	if len(note) > maxBookmarkNoteBytes {
 		writeBookmarkValidationError(c, errors.New("bookmark is too large"))
 		return
 	}
-	// Reader-dev's form exposes the saved reading context as read-only. Keep
-	// the ID-backed OpenReader location/context immutable on note edits too.
-	bookmark.Note = note
-
-	if err := s.db.Save(&bookmark).Error; err != nil {
+	result := s.db.Model(&models.Bookmark{}).
+		Where("user_id = ? AND id = ?", userID, bookmarkID).
+		Updates(map[string]any{"note": note})
+	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update bookmark"})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bookmark not found"})
+		return
+	}
+	if err := s.db.Where("user_id = ? AND id = ?", userID, bookmarkID).First(&bookmark).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "bookmark not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update bookmark"})
+		}
 		return
 	}
 	s.broadcastBookmarksUpdate(userID, "update", bookmark.BookID, gin.H{"bookmark": bookmark})
 	c.JSON(http.StatusOK, bookmark)
+}
+
+func decodeBookmarkNote(c *gin.Context) (string, bool) {
+	var request map[string]json.RawMessage
+	if !decodeBookmarkJSON(c, &request, maxBookmarkSingleRequestBodyBytes, '{', "invalid bookmark payload") {
+		return "", false
+	}
+	noteJSON, exists := request["note"]
+	if !exists || bytes.Equal(bytes.TrimSpace(noteJSON), []byte("null")) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bookmark payload"})
+		return "", false
+	}
+	var note string
+	if err := json.Unmarshal(noteJSON, &note); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bookmark payload"})
+		return "", false
+	}
+	return strings.TrimSpace(note), true
+}
+
+func decodeBookmarkJSON(c *gin.Context, target any, maxBytes int64, shape byte, invalidMessage string) bool {
+	var raw json.RawMessage
+	if err := decodeBoundedSingleJSON(c, &raw, maxBytes); err != nil {
+		if errors.Is(err, errJSONRequestTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": invalidMessage})
+		}
+		return false
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != shape {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidMessage})
+		return false
+	}
+	if err := json.Unmarshal(trimmed, target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidMessage})
+		return false
+	}
+	return true
 }
 
 func writeBookmarkValidationError(c *gin.Context, err error) {
@@ -244,7 +301,10 @@ func (s *Server) deleteBookmarks(c *gin.Context) {
 	}
 
 	var request bookmarkBatchDeleteRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if !decodeBookmarkJSON(c, &request, maxBookmarkDeleteRequestBodyBytes, '{', "invalid bookmark ids") {
+		return
+	}
+	if len(request.IDs) > maxBookmarkBatchItems {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bookmark ids"})
 		return
 	}

@@ -87,7 +87,7 @@ async function save() {
     const payload = bookmarkPayload(currentDraft)
     let bookmark
     if (overlay.bookmarkFormMode === 'edit' && currentDraft.id) {
-      const { data } = await updateBookmark(currentDraft.id, payload)
+      const { data } = await updateBookmark(currentDraft.id, { note: payload.note })
       bookmark = data
       if (!operations.canCommit(operation)) return
       ElMessage.success('编辑书签成功')
