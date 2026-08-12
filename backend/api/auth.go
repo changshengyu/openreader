@@ -1,13 +1,12 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -44,8 +43,8 @@ func validateNewAccountCredentials(rawUsername, password string) (string, string
 	if len(username) < 5 {
 		return "", "username must be at least 5 characters"
 	}
-	if len(password) < 8 {
-		return "", "password must be at least 8 characters"
+	if validationError := validateNewPassword(password); validationError != "" {
+		return "", validationError
 	}
 	if strings.EqualFold(username, "default") {
 		return "", "username is reserved"
@@ -57,8 +56,15 @@ func validateNewAccountCredentials(rawUsername, password string) (string, string
 }
 
 func validateResetPassword(password string) string {
-	if len(password) < 8 {
+	return validateNewPassword(password)
+}
+
+func validateNewPassword(password string) string {
+	if len(utf16.Encode([]rune(password))) < 8 {
 		return "password must be at least 8 characters"
+	}
+	if len([]byte(password)) > maxBcryptPasswordBytes {
+		return "password must be at most 72 bytes"
 	}
 	return ""
 }
@@ -68,32 +74,16 @@ func boolValue(value bool) *bool {
 }
 
 func decodeAuthRequest(c *gin.Context, request *authRequest) error {
-	if c.Request.ContentLength > maxAuthRequestBodyBytes {
-		return errAuthRequestTooLarge
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAuthRequestBodyBytes)
-	decoder := json.NewDecoder(c.Request.Body)
-	if err := decoder.Decode(request); err != nil {
-		return classifyAuthRequestDecodeError(err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
+	if err := decodeBoundedSingleJSON(c, request, maxAuthRequestBodyBytes); err != nil {
+		if errors.Is(err, errJSONRequestTooLarge) {
+			return errAuthRequestTooLarge
+		}
 		return errAuthRequestInvalid
-	} else if !errors.Is(err, io.EOF) {
-		return classifyAuthRequestDecodeError(err)
 	}
 	if request.Username == "" || request.Password == "" {
 		return errAuthRequestInvalid
 	}
 	return nil
-}
-
-func classifyAuthRequestDecodeError(err error) error {
-	var maxBytesError *http.MaxBytesError
-	if errors.As(err, &maxBytesError) {
-		return errAuthRequestTooLarge
-	}
-	return errAuthRequestInvalid
 }
 
 func writeAuthRequestError(c *gin.Context, err error) {
