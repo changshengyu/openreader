@@ -815,6 +815,25 @@ post-commit sync side effects additionally invalidate or broadcast the unified p
 after the maximum order across both data sources; the old custom-only reorder endpoint remains compatible for old
 clients but is not used by the rebuilt mixed manager.
 
+### BookGroup / Category write request boundary (2026-08-12 extracted)
+
+The six JSON mutations in the BookGroup state machine are governed by
+[`book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+After JWT and any path/owner precheck, each accepts at most a 16 KiB actual-read wire body and exactly one JSON
+object. Overflow is flat `413 {"error":"request body too large"}`; trailing non-whitespace is each endpoint's
+existing malformed `400`. Unknown built-in keys are rejected before body read. A failed Category create must not
+seed built-ins, and all rejected requests produce no durable mutation or sync event.
+
+`PUT /api/books/:id/category` must compute its final effective category IDs before owner validation. A foreign
+`categoryId` cannot bypass validation by accompanying an empty/zero-only `categoryIds`; the existing non-empty-array
+priority, empty effective-array fallback, clear behavior, legacy primary field and many-to-many transaction remain.
+
+Future explicitly submitted Category/built-in names are bounded to 80 UTF-8 bytes and Category colors to 24 UTF-8
+bytes. Historical oversized rows remain readable/restorable and may receive updates that do not touch those fields.
+No schema, route, success payload, complete mixed-reorder transaction, category-only compatibility behavior, book
+membership semantics, backup format, or visible BookGroup workflow changes in this slice. Status is
+`inventory-complete / implementation-pending`.
+
 ## P2 embedded chapter-image cache contract (implementation in progress)
 
 Reader-dev downloads embedded chapter images while caching text and reuses those files during EPUB export. OpenReader keeps the existing authenticated chapter path and adds an optional browser-safe mapping rather than changing persisted text or text-position semantics.

@@ -32,14 +32,15 @@
 | Reader：登录失效与账号切换 | `plugins/axios.js` 的 `NEED_LOGIN`、根 `App.vue#login`、`Reader.vue#loginAuth` | `api/client.js`、`App.vue`、`AuthDialog.vue`、`stores/user.js`、Reader lifecycle/progress、`stores/overlay.js` | **P0 已完成并发布 `59e11a9`**：401 按真实拦截顺序先挂起旧 Reader 再清凭证，未认证根场景不渲染私有 DOM；overlay reset、同账号 generation 重挂载、异账号返回书架、安全 returnTo、旧进度写入抑制均已验证。 | [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)；1440×900、1024×1366、390×844、360×800、frontend 643/643、Go/build 和新旧卷门通过。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、`ReaderTTSBar.vue`、`useReaderChapterReady.js`、格式 parser / cache | **EPUB、CBZ、连续跨章、音频和 TTS 固定基准切片均已完成实现、三视口验证和 Docker 发布**：音频恢复上游结构、边界行为与真实 autoplay；TTS 恢复显式 voice、贴底栏、可取消跨章和关闭段落定位。 | [`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md) 及前三份格式合同；本批 frontend 444/444、Go/build、Reader 全矩阵通过，镜像 `5260efd`/`latest` 已发布。当前 volume 脚本受 Codex socket 授权额度阻断，兼容证据继承无后端/持久化差异的 `370d0f7` 已通过门禁。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
-| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。公开 auth wire boundary 已发布 `f5c15d7`；管理员 user JSON 写入口与共享密码长度已随 `6c1c6db` 关闭。**用户配置 PUT 边界已由 `c2bc736` 实现**：合法 key 后使用 8 MiB actual-read single-JSON，超限/尾随失败不写库、不改时间戳、不广播。 | [`user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md) 已通过专项/full/race/vet、frontend 740/740、build 与真实 HTTP；三键/CAS/force/历史大行/backup 保持。状态 `implementation-complete / regression-validated / Docker-pending`；卷门与正式发布等待 OrbStack socket 审批恢复。 |
+| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；优先模块已有专项合同，`api-diff.md` 的旧 scaffold 状态已纠正**。公开 auth wire boundary 已发布 `f5c15d7`；管理员 user JSON 写入口与共享密码长度已随 `6c1c6db` 关闭；用户配置 PUT 边界已由 `c2bc736` 实现。**下一条已取证 must-fix 是 BookGroup/Category 六个 JSON 写入口**：当前可无界读、五入口忽略第二 JSON、20 KiB 名称可落库，空白 create 先播种内置偏好；空 `categoryIds` 还可让 foreign `categoryId` 绕过 owner 校验并落库。 | [`book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md) 已固定 JWT/path 优先、16 KiB actual-read single-JSON、最终 category 集合 owner 校验、80/24-byte 未来字段、历史行/backup 保留及零错误副作用；状态 `inventory-complete / implementation-pending`。用户设置切片仍为 `implementation-complete / regression-validated / Docker-pending`。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链和 RSS 请求页语义已实现；P2-N1/P2-N2 共享抓取边界均已发布**。可见 page 1/2 只执行请求页；标准 feed 的 page>1 不发网；owned sort allowlist、事务/parser order/隐藏状态保持。共享 fetcher 现有 15 秒 timeout、16 MiB body、5 redirect、3 retry、HTTP(S)/userinfo、跨 origin credential、默认公网-only、mixed-DNS/rebinding-safe dial、ambient proxy 隔离和 HTTP/SOCKS target/endpoint pinning。 | [`shared-source-fetcher-p2-contract.md`](shared-source-fetcher-p2-contract.md)：focused/full/race/frontend/build、真实 Docker public/LAN/loopback/restart 及 fresh/historical volume 全部通过；`d198c2e`/`latest` 状态 `aligned / Docker-published / awaiting-device-verification`。 |
 | 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | **用户配置写入边界实现 `c2bc736` 已完成非 Docker 回归**：frontend 740/740、Go full/focused race/vet、build、生产形态 declared/chunked/精确边界 HTTP 均通过，本地 arm64 候选构建成功。 | fresh/historical 卷脚本因 OrbStack socket 提升权限自动审批通道断开而未运行；没有绕过审批，也没有覆盖上一版远端 `6c1c6db`/`latest` OCI index `sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`。 |
 
-## 当前整体进度快照（2026-08-12，`c2bc736`）
+## 当前整体进度快照（2026-08-12，`f54e197` 后续合同 pass）
 
 按全量计划的模块/合同口径而不是代码行数估算，整体约 **93%**。该数字表示固定基准合同和测试先行
-实现覆盖度；本轮用户配置写入边界已完成实现、全量与运行时 smoke，但卷门和正式 Docker 发布待补，不表示
+实现覆盖度；用户配置写入边界已完成实现、全量与运行时 smoke，但卷门和正式 Docker 发布待补；
+BookGroup/Category 写边界刚完成 inventory、尚未进入测试和实现，不表示
 剩余 7% 只是简单收尾。
 
 - **P0 Reader 主链已覆盖**：工具层/面板状态机、正文排版、移动点击与连续滚动、设置、书签、正文
@@ -55,7 +56,8 @@
   capability，共享抓取器 P2-N1/N2 请求与私网/DNS/代理边界，本地格式 parser 的输入、解码文本、
   章节与历史读取预算、独立书源调试器完整链、公共/管理员认证写入 body/bcrypt/cardinality 边界，以及 server-only
   WebSocket/recipient scope 和备份事务 worker。
-- **尚未完成的主线**：尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
+- **尚未完成的主线**：BookGroup/Category 六个 JSON 写入口已完成合同、待红测与实现；其余尚未逐动作
+  签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
   以及后续真实设备反馈暴露出的上游可见偏差。`c74be70` 已发布但尚待服务器部署；移动书架在
   390×844 线上真实账号复测中保持上游 390/350px 几何和内容高度行轨，但设备“明显窄”的反馈仍待
   完整截图区分首页书架、Reader 内书架或设备可见层；书源管理、临时阅读和调试器继续等待真实设备

@@ -761,3 +761,25 @@ and `scripts/smoke/source-workspace-contract.mjs` at four viewports.
 Evidence: `backend/engine/parser_test.go`, `backend/api/api_test.go`,
 `frontend/tests/overlayBookImport.test.mjs`, full/focused/race Go, `go vet`, frontend 730/730, production build,
 and `scripts/smoke/local-book-import-contract.mjs` at 1440×900, 390×844 and 360×800.
+
+## P2 BookGroup / Category write-boundary review (2026-08-12 extracted)
+
+- [ ] Six authenticated BookGroup JSON mutations enforce the same 16 KiB actual-read limit for declared and
+      chunked bodies; exactly 16 KiB reaches normal validation and 16 KiB + 1 returns safe flat 413.
+- [ ] Each mutation accepts exactly one JSON object plus whitespace. A second JSON value or trailing garbage maps
+      to the endpoint's existing 400 and produces no row, timestamp or event change.
+- [ ] JWT remains first. Unknown built-in keys and missing/foreign owned Category/Book targets retain their existing
+      pre-body 400/404 behavior and do not expose whether request data would otherwise be valid.
+- [ ] Invalid Category create is fully validated before `NextSortOrder`, so it cannot create built-in preference
+      rows as a side effect. Mixed reorder and book-membership replacement stay atomic and caller-scoped.
+- [ ] `PUT /api/books/:id/category` validates the final effective ID set. A foreign `categoryId` combined with an
+      empty/zero-only `categoryIds` cannot create a cross-user `books` or `book_categories` reference.
+- [ ] New names/colors enforce 80/24 UTF-8-byte budgets, while untouched historical oversized rows remain usable,
+      backup/restorable and are never scanned or rewritten.
+- [ ] Errors, logs and sync events do not include JWTs, request bodies, submitted names/colors, SQLite text or host
+      paths. No global middleware or unrelated endpoint limit is introduced.
+
+Required evidence before checking these items: red/green API contracts for all six routes, two-user isolation and
+event assertions, historical-row backup/restore coverage, focused/full/race/vet, frontend/build, isolated real HTTP,
+and fresh/historical mounted-volume gates. See
+[`compat/book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md).

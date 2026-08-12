@@ -944,3 +944,23 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   API field or WebSocket event. Existing old/current backup fixtures remain authoritative.
 - `go vet ./...` is an explicit red/green gate in addition to the existing rollback and fresh/historical volume
   tests. See `backup-restore-fixed-baseline-p2-contract.md`.
+
+## P2 BookGroup / Category write-boundary compatibility (2026-08-12 extracted)
+
+- The planned 16 KiB single-JSON boundary applies only to six future authenticated HTTP mutations in the existing
+  BookGroup state machine. It adds no table, column, index, row, backup member, browser key or mounted file.
+- The existing `categories`, `book_group_preferences`, `book_categories` and `books` rows remain authoritative.
+  No startup scan, truncation, backfill, ID rewrite or relationship conversion is permitted.
+- Future explicitly submitted names and colors will enforce the already documented model budgets of 80/24 UTF-8
+  bytes. Historical oversized values remain readable, exportable and restorable, and an update that does not touch
+  the oversized field must remain possible.
+- Logical, portable, WebDAV, reader-dev and categories-only restore retain their own archive/transaction contracts;
+  they do not reuse the interactive HTTP body or field limit.
+- Rejected create/update/reorder/set requests must leave rows and timestamps unchanged and emit no sync event.
+  In particular, an invalid Category create may not lazily seed four built-in preference rows before returning 400.
+- A book-category mutation must validate the final effective ID set before writing either `books.category_id` or
+  `book_categories`; an empty secondary array cannot let a foreign fallback ID create a cross-user relationship.
+  Existing contaminated rows are not silently scanned or rewritten by this HTTP-boundary slice.
+- No frontend geometry or BookGroup backup format changes. See
+  `book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`; status is
+  `inventory-complete / implementation-pending`.

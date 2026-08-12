@@ -3689,3 +3689,26 @@ inventory，应用实现必须在失败测试之后进行。
 frontend 706/706、build 和真实三视口双客户端均通过。状态现为
 `implemented / regression-validated / Docker-pending`；备份事务的独立 vet 债务和新旧卷/Docker 门
 完成前不发布。
+
+## 2026-08-12 BookGroup / Category 写请求边界第二轮复审
+
+Reader 换源专项已由当前仓库的 `a2ecc17` 实现、全量/四视口/卷门与 Docker 证据证明关闭，本轮没有
+因旧交接状态重开。继续逐动作盘点 Go REST 后，BookGroup 状态机的六个 JSON mutation 成为下一条
+明确 must-fix：五个 Gin bind 入口没有 actual-read 上限且忽略第二 JSON，`updateBookCategory` 虽严格
+unmarshal 却先无界 `io.ReadAll`。隔离生产服务还证明 20 KiB Category name 会 `201` 落库，而空白名称
+在 400 前会惰性创建四个内置 preference。
+
+同一双用户探针还发现并持久化复现了 owner 绕过：`categoryIds:[]` 让验证分支检查空集合，后续却
+fallback 到另一个用户的 `categoryId`，同时污染 `books.category_id` 和 `book_categories`。因此实现
+必须先计算最终有效 ID，再统一 owner 校验；这不是 body-limit 附带优化，而是本入口的 P2 隔离缺口。
+
+固定上游的 save/order/set 动作均在认证后先解析并校验必要 payload，再进入当前用户存储；它没有可
+照抄的资源上限。OpenReader 因此保留已签收的 REST 路径、many-to-many、完整混合排序、兼容
+category-only 排序、事务、用户隔离和 event，只新增明确的安全适配：六入口 16 KiB actual-read
+single-JSON，未来显式名称/颜色 80/24 UTF-8 bytes，body/字段拒绝零写入零广播，invalid built-in key
+和 owned path target 继续 body 前裁决，书籍分类最终采用集合必须完整 owner 验证。历史 oversized
+SQLite 行与所有 backup/restore 格式不迁移。
+
+完整 API、数据、安全和测试先行门见
+[`book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md`](book-group-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+状态为 **inventory-complete / implementation-pending**；本次 inventory 只修改合同，没有修改应用或测试。
