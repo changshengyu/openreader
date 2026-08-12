@@ -112,10 +112,10 @@ private host paths or raw security diagnostics.
 
 ### P2 RSS write and cached-article concurrency boundary
 
-Status: **inventory-complete / implementation-pending** on 2026-08-12. Full contract:
+Status: **aligned / regression-validated / Docker-published** on 2026-08-12. Full contract:
 [`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md).
 
-| Method / path | Pending request boundary | Pending durable-write contract |
+| Method / path | Request boundary | Durable-write contract |
 |---|---|---|
 | `POST /api/rss/sources` | One non-null JSON object, 8 MiB actual-read; overflow `413`. Preserve aliases, validation/defaults, `201` create and `200` same-user same-URL replace. | Serialize source mutations per user; transactionally recheck URL identity/order and use explicit columns. Same-user concurrent create/import cannot create duplicate active URLs. |
 | `POST /api/rss/sources/import` | One non-empty JSON array, 8 MiB actual-read and 5,000 raw records; malformed/overflow/cardinality retain flat `400 invalid RSS source import`. | One per-user serialized transaction; preserve skip/order/counts and same-URL in-place replacement; one post-commit event only when changed. |
@@ -126,6 +126,11 @@ Status: **inventory-complete / implementation-pending** on 2026-08-12. Full cont
 
 This slice adds no schema/index/migration and does not route `rssSources.json` backup restore through HTTP limits.
 Historical oversized source rows remain readable/exportable/restorable/deletable; RSS articles remain rebuildable cache.
+Implementation commit `5236389` and runtime-probe commits through `0986d8e` passed focused/full/race/vet,
+frontend 740/740, production build, four-viewport RSS workspace, real declared/chunked HTTP plus SQLite triggers,
+pullback-container public API, and fresh/historical volume gates. The locally built amd64/arm64 `0986d8e` and
+`latest` tags resolve to OCI index
+`sha256:9884d0e9b41c1a1a109f3034159ae2968fe9d889da063deaca2514e1ac371e25`.
 
 ## P2 remote book-cover projection contract (implemented and published)
 

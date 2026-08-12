@@ -1,6 +1,6 @@
 # RSS 写入与文章缓存并发边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -179,3 +179,40 @@ fresh/historical mounted-volume 与 portable backup 门，再由本机完成 amd
 
 本 inventory pass 不修改应用或测试代码。下一门是提交能证明旧实现违反上述 wire、身份和列所有权合同的
 失败测试；合同、红测和实现必须保持独立提交。
+
+## 9. 2026-08-12 实施、验证与发布记录
+
+本合同按三阶段门完成：`051bd12` 固定上游与当前差异；`1d0e5a0` 先提交旧实现红测；`5236389`
+实现有界单 JSON、每用户 source 写事务、显式列所有权、正文优先级和远程工作后的存活性复验。
+`01d1503`/`0986d8e` 再加入可复现运行探针；后者区分宿主 `HTTP + SQLite trigger` 与容器纯公开 API
+模式，避免把 macOS/OrbStack bind mount 的跨 VM WAL 可见性当成产品语义。
+
+实现结果：
+
+- source create/update 使用 8 MiB actual-read 单 object；article state 使用 16 KiB 单 object；import
+  保留 8 MiB、5,000 项与平面 400。declared/chunked、精确上限、多 JSON、null/shape 和 target 优先级
+  均有 API 与真实 HTTP 证据。
+- source create/import/update/delete 共享按 user ID 引用计数回收的窄锁和事务；SQLite `BUSY/LOCKED`
+  对整笔 RSS 写事务做有界重试。同用户并发同 URL 收敛到一行，不新增历史数据不兼容的唯一索引。
+- source/article 不再使用 `Save` 提交 existing row；state、refresh metadata 和 detail content 各自只写
+  所拥有列，成功后重读 fresh row。SQLite trigger 证明并发字段不被旧快照覆盖、删除行不复活。
+- refresh/content 的网络工作不持锁；提交阶段重新确认 caller-owned source/article。受控远程 callback
+  在响应前删除目标时返回 404，不写孤儿缓存、不广播迟到成功。
+
+验证结果：
+
+- 新增 API/service 合同及既有 RSS 测试通过；关键 API/service 并发合同 `-race -count=3`、并发身份
+  `-count=5`、`go vet ./...` 与 `go test ./...` 通过。
+- frontend `740/740`、production build、`rss-workspace-contract.mjs` 四视口通过。
+- `rss-write-boundary-contract.mjs` 在真实 Go 服务的 HTTP + SQLite trigger 模式，以及候选/回拉容器的
+  public-API 模式通过；覆盖 8 MiB/16 KiB、5,000/5,001、同 URL 并发、显式列、正文优先级和远程删除。
+- 本地候选与 GHCR 回拉镜像均通过 fresh volume 的 portable-v1/v2-assets、cross-user、restart；
+  historical volume 的 TXT、EPUB、UMD、CBZ、relative-cache、owner-isolation 通过。候选 historical
+  首次出现一次无上下文 404，原样顺序复跑通过；正式回拉镜像首次即通过。
+
+本机双架构发布标签为 `ghcr.io/changshengyu/openreader:0986d8e` 与 `latest`，OCI index digest 为
+`sha256:9884d0e9b41c1a1a109f3034159ae2968fe9d889da063deaca2514e1ac371e25`；平台 manifest 为
+linux/amd64 `sha256:fb145fafb58b0cef60be62b46b150fbd7e9dfa7d760457407e5adefa8235b5a0` 和
+linux/arm64 `sha256:0724dc6d880d7dc1c89aa77488eae2f599ec3f8be06a938294c31afac067dd91`。
+本批无 schema、索引、迁移、备份成员、路径、前端路由或可见 RSS 工作台变化；允许差异仍只有第 6 节
+列出的 JWT/numeric ID/per-user SQLite cache/hidden state/WebSocket 与安全抓取适配。

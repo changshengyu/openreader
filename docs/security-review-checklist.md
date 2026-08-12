@@ -232,31 +232,34 @@ Evidence: `backend/api/rss_requested_page_contract_test.go`,
 frontend RSS contracts, and `scripts/smoke/rss-workspace-contract.mjs` at four
 viewports. Full contract: [`docs/compat/rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md`](compat/rss-visible-workspace-fixed-baseline-second-audit-p2-contract.md).
 
-### P2 RSS write/cache concurrency boundary (2026-08-12 inventory)
+### P2 RSS write/cache concurrency boundary (2026-08-12 implemented and published)
 
-- [ ] Source create/update must consume exactly one non-null JSON object with an
-  8 MiB actual-read cap; import must consume one non-empty array under its existing
-  8 MiB/5,000-item flat-400 contract; article state patch must consume one non-null
-  object under 16 KiB and require at least one explicit non-null boolean.
-- [ ] Same-user source create/import/update/delete must share a narrow per-user
+- [x] Source create/update consumes exactly one non-null JSON object with an
+  8 MiB actual-read cap; import consumes one non-empty array under its existing
+  8 MiB/5,000-item flat-400 contract; article state patch consumes one non-null
+  object under 16 KiB and requires at least one explicit non-null boolean.
+- [x] Same-user source create/import/update/delete shares a narrow per-user
   transactional mutation boundary so concurrent same-URL requests cannot create
   duplicate active identities or resurrect an ID deleted after precheck. Other users
-  must remain independent.
-- [ ] Source/article existing-row writes must use caller-scoped explicit columns,
+  remain independent.
+- [x] Source/article existing-row writes use caller-scoped explicit columns,
   check zero affected and return fresh rows; no GORM `Save`/upsert fallback may
   overwrite concurrent owner columns or recreate a deleted target.
-- [ ] Article state owns only supplied `is_read`/`favorite`; refresh owns only
+- [x] Article state owns only supplied `is_read`/`favorite`; refresh owns only
   remote/parser columns; content fetch completion owns only `content`. Source/article
-  liveness must be rechecked after remote work so delayed results cannot create
+  liveness is rechecked after remote work so delayed results cannot create
   orphan cache rows or revive deleted data.
-- [ ] Failures and tests must not expose source rules, headers/cookies, URL query,
+- [x] Failures and tests do not expose source rules, headers/cookies, URL query,
   article content, JWT, SQLite diagnostics or filesystem paths. No schema/index,
   backup member, startup cleanup or historical-row truncation is allowed.
 
-Inventory evidence and test-first gates:
+Contract and test-first evidence:
 [`docs/compat/rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/rss-write-boundary-fixed-baseline-second-audit-p2-contract.md).
-The checklist remains open until red tests, implementation, race/full/browser/HTTP,
-mounted-volume and local Docker release evidence are recorded.
+Evidence: implementation `5236389`; API/service red-to-green contracts; critical race
+`-count=3`, full Go/vet, frontend 740/740, production build, four-viewport RSS UI,
+host HTTP + SQLite-trigger and pullback-container public-API probes. Fresh/historical
+volume gates passed. Locally published `0986d8e`/`latest` resolve to OCI index
+`sha256:9884d0e9b41c1a1a109f3034159ae2968fe9d889da063deaca2514e1ac371e25`.
 
 ## P2 remote book-cover proxy review (2026-07-27 implemented and published)
 
