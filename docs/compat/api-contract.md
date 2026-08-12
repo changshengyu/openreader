@@ -74,7 +74,7 @@ gates, real declared/chunked HTTP smoke and fresh/historical mounted-volume gate
 | Uploads | `/api/uploads` | Uploaded assets are content-validated before final write, rooted under data uploads and user-scoped for new writes/deletes; legacy global upload URLs remain readable. BookInfo ownership is in [`bookinfo-shelf-mutations-p2-contract.md`](bookinfo-shelf-mutations-p2-contract.md); implemented Reader upload/save/delete ordering, signature/dimension admission and the separate pending P2-B backup boundary are in [`reader-appearance-assets-p2-contract.md`](reader-appearance-assets-p2-contract.md). |
 | Cache | `/api/cache/stats`, `/api/cache`, `/api/books/:id/cache` | Cache operations must not delete unrelated user data. |
 | Replace rules | `/api/replace-rules*` | See the P2 replace-rule contract below: stable name-upsert order and upstream-visible plain/regex/scope semantics. |
-| RSS | `/api/rss/sources`, `/api/rss/sources/import`, `/api/rss/sources/:id/refresh`, `/api/rss/articles` | Source writes are current-user scoped. The visible article flow fetches exactly one requested remote page; remote fetch limits and parser safety apply. See the P2 RSS page contract below. |
+| RSS | `/api/rss/sources`, `/api/rss/sources/import`, `/api/rss/sources/:id/refresh`, `/api/rss/articles` | Source writes are current-user scoped. The visible article flow fetches exactly one requested remote page; remote fetch limits and parser safety apply. The pending second-audit write boundary additionally owns single-JSON limits, same-URL serialization and source/article column ownership; see the two P2 RSS contracts below. |
 | Explore | `/api/explore/sources`, `/api/explore/:sourceId` | Browse source catalogs with bounded pagination/fetch behavior. |
 | Backup/WebDAV import | `/api/backup/*`, `/api/webdav/import-*` | Backup/restore must preserve existing data and report clear compatibility failures. |
 
@@ -109,6 +109,23 @@ parsed next-page state supports the next requested transition. Timeout, response
 size, redirect, scheme/host, SSRF, request-rate and parser-work limits apply to
 every page. Response/error data must not reveal credentials, request headers,
 private host paths or raw security diagnostics.
+
+### P2 RSS write and cached-article concurrency boundary
+
+Status: **inventory-complete / implementation-pending** on 2026-08-12. Full contract:
+[`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+
+| Method / path | Pending request boundary | Pending durable-write contract |
+|---|---|---|
+| `POST /api/rss/sources` | One non-null JSON object, 8 MiB actual-read; overflow `413`. Preserve aliases, validation/defaults, `201` create and `200` same-user same-URL replace. | Serialize source mutations per user; transactionally recheck URL identity/order and use explicit columns. Same-user concurrent create/import cannot create duplicate active URLs. |
+| `POST /api/rss/sources/import` | One non-empty JSON array, 8 MiB actual-read and 5,000 raw records; malformed/overflow/cardinality retain flat `400 invalid RSS source import`. | One per-user serialized transaction; preserve skip/order/counts and same-URL in-place replacement; one post-commit event only when changed. |
+| `PUT /api/rss/sources/:id` | Owner/missing lookup precedes one non-null 8 MiB JSON object; overflow `413`; URL collision remains `409`. | Revalidate caller-owned row and collision inside the per-user source transaction; explicit configuration-column update, fresh response, zero affected `404`, no `Save` resurrection. |
+| `PUT /api/rss/articles/:id` | Owner/missing lookup precedes one non-null 16 KiB JSON object; at least one explicit non-null boolean `isRead`/`favorite`; overflow `413`. | Update only supplied state columns under `user_id + id`; preserve refresh/content columns, return fresh row, zero affected `404`, one durable event. |
+| `POST /api/rss/sources/:id/refresh` | Existing requested-page/sort/fetch boundary is unchanged. | Commit parser metadata and never overwrite read/favourite. Feed content may update existing rows only when the source has no detail `ruleContent`; otherwise refresh may fill an empty content value but cannot replace cached detail. Recheck source ownership/liveness in the write transaction; a source deleted during fetch yields `404` and no orphan rows/event. |
+| `GET /api/rss/articles/:id/content` | Existing owned content fetch, sanitizer and bounded remote request remain. | Cache only authoritative detail `content`, recheck article/source liveness after fetch and return a fresh row. Concurrent state/metadata fields survive; deleted rows/sources are never recreated. |
+
+This slice adds no schema/index/migration and does not route `rssSources.json` backup restore through HTTP limits.
+Historical oversized source rows remain readable/exportable/restorable/deletable; RSS articles remain rebuildable cache.
 
 ## P2 remote book-cover projection contract (implemented and published)
 
