@@ -1584,34 +1584,15 @@ func (s *Server) updateBookCategory(c *gin.Context) {
 		return
 	}
 
-	var request bookCategoryRequest
-	data, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
+	request, ok := decodeBookGroupWriteRequest[bookCategoryRequest](c, "invalid category payload")
+	if !ok {
 		return
 	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
-		return
-	}
-	if err := json.Unmarshal(data, &request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
-		return
-	}
-	_, categoryIDsSet := raw["categoryIds"]
-	if categoryIDsSet {
-		if !s.validateCategoryIDs(c, userID, request.CategoryIDs) {
-			return
-		}
-	} else if !s.validateCategory(c, userID, request.CategoryID) {
+	nextIDs := categoryIDsFromRequest(request.CategoryID, request.CategoryIDs)
+	if !s.validateCategoryIDs(c, userID, nextIDs) {
 		return
 	}
 
-	nextIDs := categoryIDsFromRequest(request.CategoryID, request.CategoryIDs)
-	if !categoryIDsSet && request.CategoryID != nil {
-		nextIDs = []uint{*request.CategoryID}
-	}
 	if len(nextIDs) > 0 {
 		book.CategoryID = &nextIDs[0]
 	} else {

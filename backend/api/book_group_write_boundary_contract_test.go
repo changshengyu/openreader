@@ -19,8 +19,6 @@ import (
 	"openreader/backend/models"
 )
 
-const bookGroupWriteContractMaxBodyBytes = 16 << 10
-
 type bookGroupWriteBoundaryFixture struct {
 	router         *gin.Engine
 	server         *Server
@@ -136,7 +134,7 @@ func TestBookGroupWriteBoundaryRejectsDeclaredAndChunkedOversizedBodies(t *testi
 			}
 			t.Run(route+"/"+transport, func(t *testing.T) {
 				fixture := newBookGroupWriteBoundaryFixture(t, route)
-				body := padBookGroupWriteBody(fixture.body, bookGroupWriteContractMaxBodyBytes+1)
+				body := padBookGroupWriteBody(fixture.body, int(maxBookGroupWriteRequestBodyBytes)+1)
 				response := performBookGroupWriteRequest(fixture.router, fixture.auth, fixture.method, fixture.path, body, chunked)
 				assertBookGroupWriteFlatError(t, response, http.StatusRequestEntityTooLarge, "request body too large")
 				assertBookGroupWriteFailureStable(t, fixture)
@@ -162,6 +160,15 @@ func TestBookGroupWriteBoundaryRejectsTrailingJSONAndGarbage(t *testing.T) {
 			})
 		}
 	}
+
+	for _, route := range bookGroupWriteBoundaryRoutes() {
+		t.Run(route+"/null-document", func(t *testing.T) {
+			fixture := newBookGroupWriteBoundaryFixture(t, route)
+			response := performBookGroupWriteRequest(fixture.router, fixture.auth, fixture.method, fixture.path, "null", false)
+			assertBookGroupWriteFlatError(t, response, http.StatusBadRequest, fixture.malformedError)
+			assertBookGroupWriteFailureStable(t, fixture)
+		})
+	}
 }
 
 func TestBookGroupWriteBoundaryAcceptsExactLimitAndTrailingWhitespace(t *testing.T) {
@@ -169,8 +176,8 @@ func TestBookGroupWriteBoundaryAcceptsExactLimitAndTrailingWhitespace(t *testing
 		t.Run(route, func(t *testing.T) {
 			fixture := newBookGroupWriteBoundaryFixture(t, route)
 			const whitespace = "\r\n\t"
-			body := padBookGroupWriteBody(fixture.body, bookGroupWriteContractMaxBodyBytes-len(whitespace)) + whitespace
-			if len(body) != bookGroupWriteContractMaxBodyBytes {
+			body := padBookGroupWriteBody(fixture.body, int(maxBookGroupWriteRequestBodyBytes)-len(whitespace)) + whitespace
+			if len(body) != int(maxBookGroupWriteRequestBodyBytes) {
 				t.Fatalf("exact-limit fixture bytes=%d", len(body))
 			}
 			response := performBookGroupWriteRequest(fixture.router, fixture.auth, fixture.method, fixture.path, body, false)

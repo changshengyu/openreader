@@ -34,10 +34,29 @@ func (s *Server) listBookGroups(c *gin.Context) {
 func (s *Server) updateBuiltInBookGroup(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	key := strings.TrimSpace(c.Param("key"))
-	var request builtInBookGroupUpdateRequest
-	if err := c.ShouldBindJSON(&request); err != nil || (request.Name == nil && request.Show == nil) {
+	if !bookgroups.IsBuiltInKey(key) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid built-in book group"})
+		return
+	}
+	request, ok := decodeBookGroupWriteRequest[builtInBookGroupUpdateRequest](c, "invalid book group payload")
+	if !ok {
+		return
+	}
+	if request.Name == nil && request.Show == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book group payload"})
 		return
+	}
+	if request.Name != nil {
+		name := strings.TrimSpace(*request.Name)
+		if name == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid built-in book group"})
+			return
+		}
+		if len(name) > maxBookGroupNameBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "book group name is too long"})
+			return
+		}
+		request.Name = &name
 	}
 	row, err := s.bookGroups.UpdateBuiltIn(userID, key, request.Name, request.Show)
 	if errors.Is(err, bookgroups.ErrInvalidBuiltIn) {
@@ -54,8 +73,11 @@ func (s *Server) updateBuiltInBookGroup(c *gin.Context) {
 
 func (s *Server) reorderBookGroups(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	var request bookGroupReorderRequest
-	if err := c.ShouldBindJSON(&request); err != nil || len(request.Keys) == 0 {
+	request, ok := decodeBookGroupWriteRequest[bookGroupReorderRequest](c, "keys is required")
+	if !ok {
+		return
+	}
+	if len(request.Keys) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "keys is required"})
 		return
 	}

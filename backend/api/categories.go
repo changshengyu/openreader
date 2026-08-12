@@ -40,10 +40,26 @@ func (s *Server) listCategories(c *gin.Context) {
 func (s *Server) createCategory(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
-	var request categoryRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	request, ok := decodeBookGroupWriteRequest[categoryRequest](c, "category name is required")
+	if !ok {
+		return
+	}
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category name is required"})
 		return
+	}
+	if len(name) > maxBookGroupNameBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category name is too long"})
+		return
+	}
+	color := strings.TrimSpace(request.Color)
+	if len(color) > maxCategoryColorBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category color is too long"})
+		return
+	}
+	if color == "" {
+		color = "#216869"
 	}
 
 	nextSort, err := s.bookGroups.NextSortOrder(userID)
@@ -54,17 +70,10 @@ func (s *Server) createCategory(c *gin.Context) {
 
 	category := models.Category{
 		UserID:    userID,
-		Name:      strings.TrimSpace(request.Name),
-		Color:     strings.TrimSpace(request.Color),
+		Name:      name,
+		Color:     color,
 		Show:      true,
 		SortOrder: nextSort,
-	}
-	if category.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "category name is required"})
-		return
-	}
-	if category.Color == "" {
-		category.Color = "#216869"
 	}
 
 	if err := s.db.Create(&category).Error; err != nil {
@@ -89,9 +98,8 @@ func (s *Server) updateCategory(c *gin.Context) {
 		return
 	}
 
-	var request categoryUpdateRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category payload"})
+	request, ok := decodeBookGroupWriteRequest[categoryUpdateRequest](c, "invalid category payload")
+	if !ok {
 		return
 	}
 
@@ -101,13 +109,22 @@ func (s *Server) updateCategory(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "category name is required"})
 			return
 		}
+		if len(name) > maxBookGroupNameBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "category name is too long"})
+			return
+		}
 		category.Name = name
 	}
 	if request.Color != nil {
-		category.Color = strings.TrimSpace(*request.Color)
-		if category.Color == "" {
-			category.Color = "#216869"
+		color := strings.TrimSpace(*request.Color)
+		if len(color) > maxCategoryColorBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "category color is too long"})
+			return
 		}
+		if color == "" {
+			color = "#216869"
+		}
+		category.Color = color
 	}
 	if request.Show != nil {
 		category.Show = *request.Show
@@ -124,8 +141,11 @@ func (s *Server) updateCategory(c *gin.Context) {
 
 func (s *Server) reorderCategories(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	var request categoryReorderRequest
-	if err := c.ShouldBindJSON(&request); err != nil || len(request.IDs) == 0 {
+	request, ok := decodeBookGroupWriteRequest[categoryReorderRequest](c, "ids is required")
+	if !ok {
+		return
+	}
+	if len(request.IDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ids is required"})
 		return
 	}

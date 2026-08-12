@@ -381,6 +381,11 @@ func builtInDefinition(key string) (BuiltInDefinition, bool) {
 	return BuiltInDefinition{}, false
 }
 
+func IsBuiltInKey(key string) bool {
+	_, ok := builtInDefinition(strings.TrimSpace(key))
+	return ok
+}
+
 func builtInDefinitionByGroupID(groupID int) (BuiltInDefinition, bool) {
 	for _, definition := range BuiltIns {
 		if definition.GroupID == groupID {
