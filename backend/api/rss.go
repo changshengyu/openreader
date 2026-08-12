@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
@@ -24,9 +24,11 @@ import (
 )
 
 const (
-	maxRSSPaginationPages = 1000
-	maxRSSImportBytes     = 8 << 20
-	maxRSSRequestedPage   = 100000
+	maxRSSPaginationPages         = 1000
+	maxRSSSourceWriteBytes  int64 = 8 << 20
+	maxRSSImportBytes       int64 = 8 << 20
+	maxRSSArticleWriteBytes int64 = 16 << 10
+	maxRSSRequestedPage           = 100000
 )
 
 func rssSourceRequestPolicy(source models.RSSSource) engine.SourceRequestPolicy {
@@ -88,8 +90,7 @@ func (s *Server) listRSSSources(c *gin.Context) {
 func (s *Server) createRSSSource(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	var req rssSourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+	if !decodeRSSJSON(c, &req, maxRSSSourceWriteBytes, '{', "url is required", false) {
 		return
 	}
 	req.normalize()
@@ -103,68 +104,28 @@ func (s *Server) createRSSSource(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
-	var existing models.RSSSource
-	existingResult := s.db.Where("user_id = ? AND url = ?", userID, sourceURL).Order("id asc").Limit(1).Find(&existing)
-	if existingResult.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to find RSS source"})
-		return
-	}
-	if existingResult.RowsAffected > 0 {
-		applyRSSSourceUpdate(&existing, req)
-		if err := s.db.Save(&existing).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update RSS source"})
-			return
-		}
-		s.broadcastRSSUpdate(userID, "source-update", gin.H{"sourceId": existing.ID})
-		c.JSON(http.StatusOK, existing)
-		return
-	}
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
-	customOrder := req.orderOrDefault(s, userID)
-	source := models.RSSSource{
-		UserID:          userID,
-		Title:           title,
-		URL:             sourceURL,
-		Icon:            strings.TrimSpace(req.Icon),
-		Group:           strings.TrimSpace(req.Group),
-		Comment:         strings.TrimSpace(req.Comment),
-		CustomOrder:     customOrder,
-		ConcurrentRate:  strings.TrimSpace(req.ConcurrentRate),
-		Header:          req.headerText(),
-		LoginURL:        strings.TrimSpace(req.LoginURL),
-		LoginCheckJS:    strings.TrimSpace(req.LoginCheckJS),
-		SingleURL:       req.singleURLOr(true),
-		ArticleStyle:    req.articleStyleOrDefault(),
-		SortURL:         strings.TrimSpace(req.SortURL),
-		RuleArticles:    strings.TrimSpace(req.RuleArticles),
-		RuleNextPage:    strings.TrimSpace(req.RuleNextPage),
-		RuleTitle:       strings.TrimSpace(req.RuleTitle),
-		RulePubDate:     strings.TrimSpace(req.RulePubDate),
-		RuleDescription: strings.TrimSpace(req.RuleDescription),
-		RuleImage:       strings.TrimSpace(req.RuleImage),
-		RuleLink:        strings.TrimSpace(req.RuleLink),
-		RuleContent:     strings.TrimSpace(req.RuleContent),
-		Style:           strings.TrimSpace(req.Style),
-		EnableJS:        req.enableJSOrDefault(),
-		LoadWithBaseURL: req.loadWithBaseURLOrDefault(),
-		Enabled:         enabled,
-	}
-	if err := s.db.Create(&source).Error; err != nil {
+	source, created, err := s.rss.CreateOrReplaceSource(userID, req.sourceInput(userID))
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create RSS source"})
 		return
 	}
-	s.broadcastRSSUpdate(userID, "source-create", gin.H{"sourceId": source.ID})
-	c.JSON(http.StatusCreated, source)
+	kind := "source-update"
+	status := http.StatusOK
+	if created {
+		kind = "source-create"
+		status = http.StatusCreated
+	}
+	s.broadcastRSSUpdate(userID, kind, gin.H{"sourceId": source.ID})
+	c.JSON(status, source)
 }
 
 func (s *Server) importRSSSources(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRSSImportBytes)
 	var requests []rssSourceRequest
-	if err := c.ShouldBindJSON(&requests); err != nil || len(requests) == 0 || len(requests) > rssservice.MaxImportSources {
+	if !decodeRSSJSON(c, &requests, maxRSSImportBytes, '[', "invalid RSS source import", true) {
+		return
+	}
+	if len(requests) == 0 || len(requests) > rssservice.MaxImportSources {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid RSS source import"})
 		return
 	}
@@ -200,8 +161,7 @@ func (s *Server) updateRSSSource(c *gin.Context) {
 		return
 	}
 	var req rssSourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
+	if !decodeRSSJSON(c, &req, maxRSSSourceWriteBytes, '{', "url is required", false) {
 		return
 	}
 	req.normalize()
@@ -215,66 +175,22 @@ func (s *Server) updateRSSSource(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url is required"})
 		return
 	}
-	var collisionCount int64
-	if err := s.db.Model(&models.RSSSource{}).
-		Where("user_id = ? AND url = ? AND id <> ?", userID, sourceURL, source.ID).
-		Count(&collisionCount).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check RSS source URL"})
-		return
-	}
-	if collisionCount > 0 {
+	source, err := s.rss.UpdateSource(userID, sourceID, req.sourceInput(userID))
+	if errors.Is(err, rssservice.ErrSourceURLConflict) {
 		c.JSON(http.StatusConflict, gin.H{"error": "RSS source URL already exists"})
 		return
 	}
-	applyRSSSourceUpdate(&source, req)
-	if err := s.db.Save(&source).Error; err != nil {
+	if errors.Is(err, rssservice.ErrSourceNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "RSS source not found"})
+		return
+	}
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update RSS source"})
 		return
 	}
 	s.broadcastRSSUpdate(userID, "source-update", gin.H{"sourceId": source.ID})
 	c.JSON(http.StatusOK, source)
 }
-
-func applyRSSSourceUpdate(source *models.RSSSource, req rssSourceRequest) {
-	source.Title = strings.TrimSpace(req.Title)
-	source.URL = strings.TrimSpace(req.URL)
-	source.Icon = strings.TrimSpace(req.Icon)
-	source.Group = strings.TrimSpace(req.Group)
-	source.Comment = strings.TrimSpace(req.Comment)
-	source.ConcurrentRate = strings.TrimSpace(req.ConcurrentRate)
-	source.Header = req.headerText()
-	source.LoginURL = strings.TrimSpace(req.LoginURL)
-	source.LoginCheckJS = strings.TrimSpace(req.LoginCheckJS)
-	if req.CustomOrder != nil {
-		source.CustomOrder = *req.CustomOrder
-	}
-	if req.SingleURL != nil {
-		source.SingleURL = *req.SingleURL
-	}
-	if req.ArticleStyle != nil {
-		source.ArticleStyle = *req.ArticleStyle
-	}
-	source.SortURL = strings.TrimSpace(req.SortURL)
-	source.RuleArticles = strings.TrimSpace(req.RuleArticles)
-	source.RuleNextPage = strings.TrimSpace(req.RuleNextPage)
-	source.RuleTitle = strings.TrimSpace(req.RuleTitle)
-	source.RulePubDate = strings.TrimSpace(req.RulePubDate)
-	source.RuleDescription = strings.TrimSpace(req.RuleDescription)
-	source.RuleImage = strings.TrimSpace(req.RuleImage)
-	source.RuleLink = strings.TrimSpace(req.RuleLink)
-	source.RuleContent = strings.TrimSpace(req.RuleContent)
-	source.Style = strings.TrimSpace(req.Style)
-	if req.EnableJS != nil {
-		source.EnableJS = *req.EnableJS
-	}
-	if req.LoadWithBaseURL != nil {
-		source.LoadWithBaseURL = *req.LoadWithBaseURL
-	}
-	if req.Enabled != nil {
-		source.Enabled = *req.Enabled
-	}
-}
-
 func (r *rssSourceRequest) normalize() {
 	if strings.TrimSpace(r.Title) == "" {
 		r.Title = r.UpstreamTitle
@@ -297,11 +213,6 @@ func (r *rssSourceRequest) normalize() {
 	if r.Enabled == nil && r.UpstreamIsEnabled != nil {
 		r.Enabled = r.UpstreamIsEnabled
 	}
-}
-
-func (r rssSourceRequest) orderOrDefault(s *Server, userID uint) int {
-	order, _ := r.orderOrDefaultStrict(s, userID)
-	return order
 }
 
 func (r rssSourceRequest) orderOrDefaultStrict(s *Server, userID uint) (int, error) {
@@ -386,6 +297,74 @@ func (r rssSourceRequest) importModel(userID uint) models.RSSSource {
 	}
 }
 
+func (r rssSourceRequest) sourceInput(userID uint) rssservice.SourceInput {
+	source := r.importModel(userID)
+	source.Icon = strings.TrimSpace(source.Icon)
+	source.Group = strings.TrimSpace(source.Group)
+	source.Comment = strings.TrimSpace(source.Comment)
+	source.ConcurrentRate = strings.TrimSpace(source.ConcurrentRate)
+	source.Header = r.headerText()
+	source.LoginURL = strings.TrimSpace(source.LoginURL)
+	source.LoginCheckJS = strings.TrimSpace(source.LoginCheckJS)
+	source.SingleURL = r.singleURLOr(true)
+	source.SortURL = strings.TrimSpace(source.SortURL)
+	source.RuleArticles = strings.TrimSpace(source.RuleArticles)
+	source.RuleNextPage = strings.TrimSpace(source.RuleNextPage)
+	source.RuleTitle = strings.TrimSpace(source.RuleTitle)
+	source.RulePubDate = strings.TrimSpace(source.RulePubDate)
+	source.RuleDescription = strings.TrimSpace(source.RuleDescription)
+	source.RuleImage = strings.TrimSpace(source.RuleImage)
+	source.RuleLink = strings.TrimSpace(source.RuleLink)
+	source.RuleContent = strings.TrimSpace(source.RuleContent)
+	source.Style = strings.TrimSpace(source.Style)
+	return rssservice.SourceInput{
+		Source:          source,
+		CustomOrder:     r.CustomOrder,
+		SingleURL:       r.SingleURL,
+		ArticleStyle:    r.ArticleStyle,
+		EnableJS:        r.EnableJS,
+		LoadWithBaseURL: r.LoadWithBaseURL,
+		Enabled:         r.Enabled,
+	}
+}
+
+func decodeRSSJSON(c *gin.Context, target any, maxBytes int64, shape byte, message string, overflowAsInvalid bool) bool {
+	var raw json.RawMessage
+	if err := decodeBoundedSingleJSON(c, &raw, maxBytes); err != nil {
+		if errors.Is(err, errJSONRequestTooLarge) && !overflowAsInvalid {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": message})
+		}
+		return false
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != shape {
+		c.JSON(http.StatusBadRequest, gin.H{"error": message})
+		return false
+	}
+	if err := json.Unmarshal(trimmed, target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": message})
+		return false
+	}
+	return true
+}
+
+func decodeRSSBooleanPatch(request map[string]json.RawMessage, field string) (bool, bool, bool) {
+	raw, exists := request[field]
+	if !exists {
+		return false, false, true
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return false, true, false
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, true, false
+	}
+	return value, true, true
+}
+
 func normalizeRSSImportHeaderValue(value any) string {
 	if text, ok := value.(string); ok {
 		return text
@@ -424,17 +403,8 @@ func (s *Server) deleteRSSSource(c *gin.Context) {
 	if !ok {
 		return
 	}
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var source models.RSSSource
-		if err := tx.Where("user_id = ? AND id = ?", userID, sourceID).First(&source).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ? AND source_id = ?", userID, sourceID).Delete(&models.RSSArticle{}).Error; err != nil {
-			return err
-		}
-		return tx.Where("user_id = ? AND id = ?", userID, sourceID).Delete(&models.RSSSource{}).Error
-	})
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	err := s.rss.DeleteSource(userID, sourceID)
+	if errors.Is(err, rssservice.ErrSourceNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "RSS source not found"})
 		return
 	}
@@ -477,6 +447,10 @@ func (s *Server) refreshRSSSource(c *gin.Context) {
 		sortName = rssSourceSortName(source, requestedSortURL)
 	}
 	persisted, imported, err := s.rss.UpsertArticlePage(userID, source.ID, sortName, fetched.Articles)
+	if errors.Is(err, rssservice.ErrSourceNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "RSS source not found"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cache RSS articles"})
 		return
@@ -584,11 +558,6 @@ func (s *Server) listRSSArticles(c *gin.Context) {
 	c.JSON(http.StatusOK, articles)
 }
 
-type rssArticleStateRequest struct {
-	IsRead   *bool `json:"isRead"`
-	Favorite *bool `json:"favorite"`
-}
-
 func (s *Server) updateRSSArticleState(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	articleID, ok := parseUintParam(c, "id")
@@ -600,18 +569,34 @@ func (s *Server) updateRSSArticleState(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "RSS article not found"})
 		return
 	}
-	var req rssArticleStateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var request map[string]json.RawMessage
+	if !decodeRSSJSON(c, &request, maxRSSArticleWriteBytes, '{', "invalid RSS article payload", false) {
+		return
+	}
+	isRead, isReadSet, ok := decodeRSSBooleanPatch(request, "isRead")
+	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid RSS article payload"})
 		return
 	}
-	if req.IsRead != nil {
-		article.IsRead = *req.IsRead
+	favorite, favoriteSet, ok := decodeRSSBooleanPatch(request, "favorite")
+	if !ok || (!isReadSet && !favoriteSet) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid RSS article payload"})
+		return
 	}
-	if req.Favorite != nil {
-		article.Favorite = *req.Favorite
+	var isReadValue *bool
+	if isReadSet {
+		isReadValue = &isRead
 	}
-	if err := s.db.Save(&article).Error; err != nil {
+	var favoriteValue *bool
+	if favoriteSet {
+		favoriteValue = &favorite
+	}
+	article, err := s.rss.UpdateArticleState(userID, articleID, isReadValue, favoriteValue)
+	if errors.Is(err, rssservice.ErrArticleNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "RSS article not found"})
+		return
+	}
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update RSS article"})
 		return
 	}
@@ -655,12 +640,22 @@ func (s *Server) getRSSArticleContent(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse RSS article"})
 			return
 		}
+		var contentUpdate *string
 		if strings.TrimSpace(content) != "" {
-			article.Content = content
-			if err := s.db.Save(&article).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cache RSS article"})
-				return
-			}
+			contentUpdate = &content
+		}
+		article, err = s.rss.CommitArticleContent(userID, source.ID, article.ID, contentUpdate)
+		if errors.Is(err, rssservice.ErrSourceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "RSS source not found"})
+			return
+		}
+		if errors.Is(err, rssservice.ErrArticleNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "RSS article not found"})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cache RSS article"})
+			return
 		}
 	}
 	article.Summary = engine.SanitizeRSSHTML(article.Summary, article.Link)
