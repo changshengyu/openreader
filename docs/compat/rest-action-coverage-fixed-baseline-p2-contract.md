@@ -179,4 +179,12 @@ build 和真实 HTTP smoke 均通过。`f5c15d7` 随后顺序通过 fresh/histor
 
 精确路由、`401/403/413/400`、2,000 项、8 UTF-16/72 UTF-8、零副作用和测试先行合同见
 [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；本节未修改应用或测试。
+合同提交时状态为 **inventory-complete / implementation-pending**；该提取阶段未修改应用或测试。
+
+合同已先以 `61512f7` 独立提交。旧实现红测随后证明五入口的 declared/chunked 超限、第二 JSON/垃圾、
+2,001 项批量、UTF-16 最小长度、73-byte bcrypt 与负限额均违反合同，并能产生 row/hash/source
+namespace/event 副作用。`6c1c6db` 引入窄共享有界单 JSON decoder、8 UTF-16/72 UTF-8 新密码边界、
+2,000 原始 ID 上限和 bcrypt 前确定性检查；focused/full/race/vet、frontend 740/740、build 与真实 HTTP
+smoke 均通过。该提交顺序通过 fresh/historical 卷门并由本机发布为 `6c1c6db`/`latest`；远端 OCI
+index 为 `sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。

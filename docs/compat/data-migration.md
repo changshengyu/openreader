@@ -888,6 +888,19 @@ then passed the unchanged fresh portable-v1/v2-assets/cross-user/restart and his
 TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates before local dual-architecture publication. No migration or
 mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-second-audit-p2-contract.md`.
 
+## P2 administrator user-write boundary compatibility (2026-08-12)
+
+- No SQLite table, column, index, JWT claim, mounted path, backup member, WebDAV object or browser key changed.
+  Existing password hashes and legacy usernames remain loginable; only future public/admin password writes use the
+  corrected 8 UTF-16-code-unit minimum and existing bcrypt 72 UTF-8-byte maximum.
+- The 16 KiB single-JSON boundary applies only to five administrator user mutations, after authentication. The 2,000
+  raw-ID limit applies only to source reset and batch deletion before dedupe/query/transaction. Rejected requests do
+  not create users, update limits/hashes, alter source namespaces, plan workspace cleanup or broadcast events.
+- `6c1c6db` passed focused/full/race/vet, frontend 740/740, production build, real HTTP declared/chunked and exact-limit
+  checks, then sequential fresh portable-v1/v2-assets/cross-user/restart and historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates. No mounted data or archive rewrite was observed before local
+  dual-architecture publication. See `admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`.
+
 ## P1 manual shelf refresh compatibility (2026-08-09)
 
 - No table, column, index, mounted directory, backup member, WebDAV object or browser key format changes.

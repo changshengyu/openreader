@@ -1,6 +1,6 @@
 # 公开认证请求边界第二轮固定基准合同（P2）
 
-状态：**public wire aligned / Docker-published；shared password-length follow-up implementation-pending**。
+状态：**aligned / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -126,3 +126,7 @@ build。该切片无 UI 几何变化，真实运行时门使用生产二进制�
   同为 OCI index `sha256:db667de319ae2721cbd35990896612a738b4570a94920875ea14e2aed613503f`，包含
   `linux/amd64` manifest `sha256:b4ade586cf8b2d3eb04eb0767826aec3395c1f91eedeadad4d961a71a06cc6b1`
   和 `linux/arm64` manifest `sha256:d41e46a29b613d3cae5d86911e0e625c95190b947beead317935c8e24665feec`。
+- 共享最小长度 follow-up 已随管理员写入专项 `6c1c6db` 完成：public register 现在按固定上游 Kotlin/
+  JavaScript 的 UTF-16 code units 拒绝 6、接受 8，同时继续执行 72 UTF-8 bytes 上限；旧账号登录不受
+  影响。该提交完成全量/race/vet、真实 HTTP、新旧卷并发布为 `6c1c6db`/`latest`，OCI index 为
+  `sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`。

@@ -10,16 +10,19 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
-### P2 admin user write boundary (2026-08-12 inventory)
+### P2 admin user write boundary (2026-08-12 implementation)
 
-- [ ] Five administrator JSON user mutations authenticate the administrator before reading credentials, then enforce
+- [x] Five administrator JSON user mutations authenticate the administrator before reading credentials, then enforce
   one 16 KiB actual-read-bounded JSON value for declared and chunked bodies.
-- [ ] Batch user deletion/source reset accept at most 2,000 raw IDs and retain existing dedupe, protected-user,
+- [x] Batch user deletion/source reset accept at most 2,000 raw IDs and retain existing dedupe, protected-user,
   transaction, workspace-root and post-commit event boundaries.
-- [ ] Every newly written password is at least 8 UTF-16 code units and at most 72 UTF-8 bytes; rejected input is
+- [x] Every newly written password is at least 8 UTF-16 code units and at most 72 UTF-8 bytes; rejected input is
   handled before bcrypt/SQLite and never enters errors, logs, events or backups. Existing hashes remain loginable.
 
-Target evidence:
+Evidence: `backend/api/admin_user_write_boundary_contract_test.go`, focused/full/race/vet, frontend 740/740,
+production build, real declared/chunked HTTP smoke and sequential fresh/historical volume gates. `6c1c6db` was built
+locally for amd64/arm64 and published as version/latest OCI index
+`sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`. See
 [`docs/compat/admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ### P2 public auth request boundary (2026-08-12 implementation)

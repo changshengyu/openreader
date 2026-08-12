@@ -55,11 +55,12 @@ user/default 书源所有权已经实施；书源所有权的最终合同见
 | `POST /api/auth/login` | 凭证成功后更新用户的兼容 `last_active_at` 存储值，响应 user 同时提供 `lastLoginAt` 和弃用中的 `lastActiveAt`。 | 错误凭证不得更新时间；更新时间失败返回 `500`，不得为未记录的登录签发 token。 |
 | `GET /api/admin/users` | 从兼容持久字段返回 `lastLoginAt`，并保留 `lastActiveAt` 旧响应别名。 | 管理员专用；零值在 UI 显示空白。 |
 
-2026-08-12 follow-up：上述可见状态机、权限字段所有权与删除事务继续有效，但管理员 user JSON wire
-boundary 与共享新密码字符计数尚未签收。五个管理员写入口的 16 KiB 单 JSON、批量 2,000 项、
+2026-08-12 follow-up：上述可见状态机、权限字段所有权与删除事务继续有效。五个管理员写入口的
+16 KiB 单 JSON、批量 2,000 项、
 8 UTF-16 code units/72 UTF-8 bytes、错误优先级和测试闸门见
 [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md)，
-状态 `inventory-complete / implementation-pending`。
+现已随 `6c1c6db` 完成 focused/full/race/vet、真实 HTTP、fresh/historical volume 与本机双架构发布；
+状态 `aligned / Docker-published / awaiting-device-verification`。
 
 ### 加法迁移与存储边界
 

@@ -1,6 +1,6 @@
 # 管理员用户写入请求边界与共享密码长度第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**aligned / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -141,3 +141,27 @@ UTF-16/bcrypt 边界、权限优先级和零错误写入。发布前执行顺序
 各自映射现有错误形状。它不得成为全局中间件，也不得顺带改变 remote Reader、书源、RSS、替换规则
 或上传端点的已发布上限。密码长度 helper 必须明确 UTF-16 code units 与 UTF-8 bytes 两种单位；前端
 `maxlength` 不能替代服务器验证。
+
+## 8. 实施、回归与发布结果（2026-08-12）
+
+- 合同先以 `61512f7` 独立提交。随后
+  `backend/api/admin_user_write_boundary_contract_test.go` 在旧实现上复现五入口 declared/chunked 超限、
+  双 JSON/垃圾尾随、2,001 项仍执行、6 个 UTF-16 单元可写入、73-byte 密码为 `500`、负限额持久化
+  以及失败后的 row/hash/namespace/event 副作用，再由 `6c1c6db` 实现转绿。
+- `backend/api/request_body.go` 提供窄共享的 actual-read-bounded single-JSON decoder；公开认证保留平面
+  错误体，管理员入口保留结构化错误体。五个管理员入口统一 16 KiB，两个批量入口在去重/查询前限制
+  2,000 个原始 ID，未知字段和尾部 whitespace 保持兼容。
+- 新密码最小长度统一按 UTF-16 code units，bcrypt 最大长度仍按 UTF-8 bytes；public register、管理员
+  create/reset 的 6/8 与 72/73 边界均有测试。create 的 role/负限额和 reset 的目标/保护检查均在 bcrypt
+  前完成；登录不重新校验历史账号。
+- focused 与既有 auth/admin/user-management、`go test ./...`、focused race、`go vet ./...`、frontend
+  740/740、production build 和 `git diff --check` 全部通过。隔离生产形态真实 HTTP 又覆盖五入口的
+  declared/chunked `413`、双 JSON `400`、`401/403` 优先级、精确 16 KiB、UTF-16/bcrypt、2,001 项及
+  失败用户不存在；服务随后停止。
+- 没有 SQLite/schema/JWT、`data/`、`cache/`、`library/`、backup/WebDAV、浏览器 key 或前端几何变化。
+  `6c1c6db` 顺序通过 fresh portable-v1/v2-assets/cross-user/restart 与 historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 门。
+- 本机 amd64/arm64 构建后，`ghcr.io/changshengyu/openreader:6c1c6db` 与 `latest` 远端回读为同一 OCI
+  index `sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`；amd64 manifest 为
+  `sha256:1de28e731f826e5f42f648c5e79534519291e544d5def375e79cdaf0271209cb`，arm64 manifest 为
+  `sha256:20719d1dd329927da041e06cd68c6826e807658b89438b93466c25d300ebeb16`。

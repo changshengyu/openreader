@@ -30,11 +30,11 @@ server event names and existing business payloads remain stable.
 - `PUT /api/settings/:key` may receive additive `force:true` only for the confirmed “备份用户配置” action.
   It bypasses stale-base comparison for that authenticated user's legal `reader/shelf/search` row only; ordinary
   background writes keep CAS. Explicit restore never creates a missing row as a side effect of reading it.
-- The five JSON-writing `/api/admin/users*` mutations are being closed under the fixed-baseline contract in
+- The five JSON-writing `/api/admin/users*` mutations are closed under the fixed-baseline contract in
   [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md).
-  Target behavior is admin-auth-first, one actual-read-bounded 16 KiB JSON value, 2,000 raw IDs for batch actions,
-  and new-password validation of 8 UTF-16 code units through 72 UTF-8 bytes. Status is
-  `inventory-complete / implementation-pending`; these are target semantics until implementation evidence replaces it.
+  They authenticate first, accept one actual-read-bounded 16 KiB JSON value, cap batch actions at 2,000 raw IDs,
+  and validate new passwords from 8 UTF-16 code units through 72 UTF-8 bytes. `6c1c6db` passed focused/full/race/vet,
+  real declared/chunked HTTP, fresh/historical volumes and local dual-architecture publication.
 
 ## Public endpoints
 
@@ -42,7 +42,7 @@ server event names and existing business payloads remain stable.
 |---|---|---|---|
 | `GET` | `/api/health` | Health and build metadata. | OpenReader runtime addition; keep stable for Docker/probes. |
 | `GET`, `HEAD` | `/api/cover/:capability` | Serve a server-projected remote book cover through a same-origin, short-lived resource capability. | Implemented and published in `ceb4baa` on 2026-07-27. The path never accepts a raw URL or login JWT. Successful responses are bounded, type-verified and privately cacheable; malformed/tampered capabilities are `403`, unavailable/unsafe remote images are `404`. See [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md). |
-| `POST` | `/api/auth/register` | Create user; first user becomes admin. | OpenReader multi-user addition. One JSON body is limited to 16 KiB; overflow is `413`. New passwords are 8 characters and at most 72 bytes for bcrypt; oversize is `400`. |
+| `POST` | `/api/auth/register` | Create user; first user becomes admin. | OpenReader multi-user addition. One JSON body is limited to 16 KiB; overflow is `413`. New passwords are at least 8 UTF-16 code units and at most 72 UTF-8 bytes for bcrypt; oversize is `400`. |
 | `POST` | `/api/auth/login` | Return JWT and user object. | OpenReader auth addition; one JSON body is limited to 16 KiB and overflow is `413`. Invalid credentials remain generic `401`, and legacy usernames are not revalidated as new registrations. |
 
 The complete auth wire/error/no-side-effect contract is

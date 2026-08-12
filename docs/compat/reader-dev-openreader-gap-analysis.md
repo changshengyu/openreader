@@ -11,8 +11,12 @@
 2,000 项、所有新密码至少 8 UTF-16 单元且至多 72 UTF-8 bytes，并把确定性失败移到 bcrypt/事务前。
 旧账号登录、成功响应、UserManage 可见结构、用户删除/书源事务和数据格式不重开。完整合同见
 [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；运行时反例只使用隔离临时数据，尚未
-修改应用或测试。
+合同先以 `61512f7` 独立提交；随后旧实现红测复现全部差异及失败副作用。`6c1c6db` 以窄共享 decoder
+统一 public/admin 的 actual-read 单 JSON 边界但保留各自错误形状，加入 2,000 原始 ID 上限、UTF-16/
+UTF-8 双单位密码校验、负限额拒绝和 bcrypt 前确定性检查。focused/full/race/vet、frontend 740/740、
+build、真实 HTTP 与 fresh/historical 卷门均通过；本机双架构发布的 `6c1c6db`/`latest` OCI index 为
+`sha256:55326ed147aea4370c0161d75568fe85a5095abb6dad6b487856dfeea09832a2`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。
 
 ## 2026-08-11 P2 公开认证请求边界第二轮
 
