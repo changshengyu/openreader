@@ -10,6 +10,21 @@ Use this checklist for security-sensitive changes and release reviews.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
 
+### P2 Bookmark write boundary (2026-08-12 extracted)
+
+- [ ] Single create/update bodies accept exactly one actual-read-bounded 64 KiB JSON object; batch create uses
+  16 MiB/2,000 raw rows and batch delete uses 16 KiB/2,000 raw IDs after owner target resolution.
+- [ ] Malformed, multi-JSON, overflow, cardinality and invalid note patches fail before per-row queries, mutation,
+  timestamp changes or sync events, without reflecting excerpt/note/JWT/database content.
+- [ ] Note edits require an explicit string and use only an owner-scoped note column update. A concurrently deleted
+  target cannot be reinserted by GORM `Save` fallback, and newer immutable location/context values cannot be lost.
+- [ ] The frontend edit action sends only `{note}`; create/import keeps the published DTO and all-row transaction,
+  chapter ownership, user/book isolation, backup and historical-row behavior.
+
+Target contract:
+[`docs/compat/bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/bookmark-write-boundary-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / implementation-pending`; this extraction pass changes no application or tests.
+
 ### P2 BookSource write/import boundary (2026-08-12 implementation)
 
 - [x] Source create/update accept exactly one actual-read-bounded 16 MiB JSON object; batch and remote URL
