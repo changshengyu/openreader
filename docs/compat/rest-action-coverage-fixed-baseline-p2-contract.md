@@ -204,3 +204,21 @@ amd64/arm64 OCI index 为
 `sha256:944a85881170bc900c1fda0acb885bedc1dc4b17ed4e635305988163e1b635e5`，两平台 revision label 均为
 `a9a55db16d490af61b31b5e1470ee477e2bba613`。当前状态为
 **aligned / Docker-published / awaiting-device-verification**。
+
+## 14. RSS 写入与缓存并发边界（2026-08-12）
+
+六动作台账完成后，下一批按同一动作级方法复审 RSS source/article 持久写入。专项合同
+[`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md)
+以 `051bd12` 固定，旧实现红测 `1d0e5a0` 证明无界/多 JSON、同 URL create/import 竞争、全行 `Save`
+覆盖和删除后复活；`5236389` 实现 actual-read 单 JSON、每用户 source 写事务、显式列所有权、正文
+优先级与网络工作后的 source/article 存活复验。
+
+focused/full/race/vet、frontend 740/740、production build、RSS 四视口、宿主 HTTP + SQLite trigger、
+候选/回拉容器纯 API 与顺序 fresh/historical 卷门均通过。本机发布 `0986d8e` 与 `latest`；远端
+amd64/arm64 OCI index 为
+`sha256:9884d0e9b41c1a1a109f3034159ae2968fe9d889da063deaca2514e1ac371e25`。当前状态为
+**aligned / Docker-published / awaiting-device-verification**。
+
+本文件最初列出的六个动作以及后续 auth/admin/settings/group/category/book/BookSource/Bookmark/RSS
+写边界均已关闭。下一轮不得从旧 pending 文案重开这些模块；应重新对 `backend/api/server.go` 与固定
+上游 controller 做差集，先形成新的动作 inventory，再选择下一项 must-fix。
