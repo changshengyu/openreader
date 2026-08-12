@@ -497,6 +497,47 @@ func TestBookDeletionLeavesUnsafeSymlinkArchiveUntouched(t *testing.T) {
 	}
 }
 
+func TestBookDeletionPreservesArchiveReferencedThroughSafeSymlink(t *testing.T) {
+	router, server := setupTestServer(t)
+	username := "bookwritesafelink"
+	auth := registerLifecycleToken(t, router, username)
+	owner := lifecycleUser(t, server, username)
+	ownerRoot := filepath.Join(server.cfg.LibraryDir, "data", username)
+	targetRoot := filepath.Join(ownerRoot, "real-archive")
+	sourcePath := writeLifecycleCache(t, targetRoot, "source.txt", "safe linked source")
+	resolvedTargetRoot, err := filepath.EvalSymlinks(targetRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(ownerRoot, "linked-archive")
+	if err := os.Symlink(targetRoot, linkPath); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	direct := models.Book{
+		UserID: owner.ID, Title: "direct archive", LibraryPath: filepath.Join("data", username, "real-archive"),
+	}
+	linked := models.Book{
+		UserID: owner.ID, Title: "linked archive", LibraryPath: filepath.Join("data", username, "linked-archive"),
+	}
+	if err := server.db.Create(&direct).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Create(&linked).Error; err != nil {
+		t.Fatal(err)
+	}
+	if resolved, ok := server.localBookArchiveRoot(linked); !ok || filepath.Clean(resolved) != filepath.Clean(resolvedTargetRoot) {
+		t.Fatalf("safe linked archive was not readable before deletion: path=%q ok=%v", resolved, ok)
+	}
+
+	deleteBookByContractAction(t, router, auth, "single", direct.ID)
+	if _, err := os.Stat(sourcePath); err != nil {
+		t.Fatalf("safe linked reference did not preserve its target: %v", err)
+	}
+	if resolved, ok := server.localBookArchiveRoot(linked); !ok || filepath.Clean(resolved) != filepath.Clean(resolvedTargetRoot) {
+		t.Fatalf("safe linked archive became unreadable after deleting direct alias: path=%q ok=%v", resolved, ok)
+	}
+}
+
 func TestBookCleanupFailsClosedWhenReferencesCannotBeQueried(t *testing.T) {
 	router, server := setupTestServer(t)
 	username := "bookwritequeryfailure"

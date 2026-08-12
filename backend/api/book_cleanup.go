@@ -69,31 +69,45 @@ func (s *Server) privateImportedBookDirectory(username, libraryPath string) (str
 }
 
 func (s *Server) resolvedPrivateImportedBookDirectory(username, libraryPath string) (string, bool) {
-	candidate, ok := s.privateImportedBookDirectory(username, libraryPath)
+	resolvedOwnerRoot, resolved, relative, ok := s.resolvePrivateImportedBookDirectory(username, libraryPath)
 	if !ok {
 		return "", false
+	}
+	// A deletion candidate must not traverse a symlink below the configured
+	// owner root. References may resolve such legacy aliases, but cleanup fails
+	// closed instead of choosing and deleting the symlink target.
+	if filepath.Clean(resolved) != filepath.Clean(filepath.Join(resolvedOwnerRoot, relative)) {
+		return "", false
+	}
+	return resolved, true
+}
+
+func (s *Server) resolvePrivateImportedBookDirectory(username, libraryPath string) (string, string, string, bool) {
+	candidate, ok := s.privateImportedBookDirectory(username, libraryPath)
+	if !ok {
+		return "", "", "", false
 	}
 	ownerRoot := filepath.Join(s.cfg.LibraryDir, "data", engine.SafeFilename(username))
 	relative, ok := relativePathInside(ownerRoot, candidate)
 	if !ok {
-		return "", false
+		return "", "", "", false
 	}
 	resolvedOwnerRoot, err := filepath.EvalSymlinks(ownerRoot)
 	if err != nil {
-		return "", false
+		return "", "", "", false
 	}
 	resolved, err := filepath.EvalSymlinks(candidate)
 	if err != nil {
-		return "", false
+		return "", "", "", false
 	}
-	if filepath.Clean(resolved) != filepath.Clean(filepath.Join(resolvedOwnerRoot, relative)) || !pathInside(resolvedOwnerRoot, resolved) {
-		return "", false
+	if !pathInside(resolvedOwnerRoot, resolved) {
+		return "", "", "", false
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.IsDir() {
-		return "", false
+		return "", "", "", false
 	}
-	return resolved, true
+	return resolvedOwnerRoot, resolved, relative, true
 }
 
 func (s *Server) cleanupDeletedBookArtifacts(plans []bookCleanupPlan) {
@@ -137,7 +151,7 @@ func (s *Server) privateImportedBookDirectoryReferenced(userID uint, target stri
 	}
 	target = filepath.Clean(target)
 	for _, reference := range references {
-		candidate, ok := s.resolvedPrivateImportedBookDirectory(user.Username, reference.LibraryPath)
+		_, candidate, _, ok := s.resolvePrivateImportedBookDirectory(user.Username, reference.LibraryPath)
 		if ok && filepath.Clean(candidate) == target {
 			return true
 		}
