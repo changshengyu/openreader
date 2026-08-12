@@ -1,5 +1,19 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-08-12 P2 用户配置写入请求边界第二轮
+
+固定上游 `saveUserConfig/getUserConfig` 认证后保存当前终端四项 localStorage 配置 object；OpenReader 已
+签收的技术栈映射把它拆为当前用户 `reader/shelf/search` 三个 SQLite setting，并增加 CAS 与显式
+force。该状态机不重开，但当前 PUT 仍直接 `ShouldBindJSON`，没有 actual-read/single-JSON 边界。
+
+隔离运行时实测 declared 与 chunked 的 8 MiB + 1 请求都返回 200、写入并回显约 8 MiB；第二 JSON 和
+尾随垃圾也返回 200 并持久化首对象。无 token 401 与非法 key 400 仍优先。差异裁决为 P2 Go/security
+`must-fix`：合法 key 后使用 8 MiB actual-read 单 JSON，overflow 为现有平面 413，malformed/multi 为
+现有平面 400，并保证零查询/写入/event。三键、任意合法 JSON value、reader 顶层设备字段清理、
+CAS/force、并发 upsert、GET/backup/restore 和历史大行均保持。完整合同见
+[`user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md`](user-setting-write-boundary-fixed-baseline-second-audit-p2-contract.md)。
+状态为 **inventory-complete / implementation-pending**；本轮只修改合同和矩阵。
+
 ## 2026-08-12 P2 管理员用户写入请求边界与共享密码长度第二轮
 
 固定上游 `UserController#addUser/resetPassword` 与当前 Vue 都按 UTF-16 `String.length` 执行密码至少
