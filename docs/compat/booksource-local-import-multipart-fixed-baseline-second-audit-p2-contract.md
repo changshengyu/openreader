@@ -1,10 +1,10 @@
 # BookSource 本地导入 multipart 固定基准第二轮合同（P2）
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-本轮只提取合同，不修改应用或测试。已发布的书源管理 UI、reader-dev 字段往返、5,000 项、
+本轮先提取合同，再按红测试、实现、运行时和发布门依次关闭。已发布的书源管理 UI、reader-dev 字段往返、5,000 项、
 `sourceLimit`、owner/COW、失败缓存和事务合同继续权威；本合同只关闭原始本地文件读取与已部署
 `POST /api/sources/import` multipart 适配层尚未签收的 wire、part shape、错误和资源所有权。
 
@@ -41,7 +41,7 @@ OpenReader 保留一个部署适配路由：浏览器读取原始文件并预览
 | multipart 总体 | 已有 `MaxBytesReader(16 MiB + 1 MiB)`，但不预检 declared length，解析 overflow 会被统一映射成 `400 file is required`。 | **must-fix wire/error**：declared/chunked actual overflow 均为稳定 `413 request body too large`；精确边界进入 shape/file 检查。 |
 | file bytes | 读取最多 16 MiB + 1，超限为 `413 source file is too large`。 | **aligned**：保持精确 16 MiB；不得扩大或把 JSON/parser 错误误报 413。 |
 | multipart shape | `c.FormFile("file")` 取首项；额外同名/异名 file 和任意 scalar part 被忽略后仍可提交。 | **must-fix parser ambiguity**：只接受恰好一个名为 `file` 的 file part，拒绝所有 scalar 和额外 file part。 |
-| filename/MIME | 内容按 JSON 解码，文件名不持久化，也不依赖扩展名或 MIME。 | **aligned security behavior**：不信任也不新增 filename/MIME authority；空/普通文件名均可由内容裁决。 |
+| filename/MIME | 内容按 JSON 解码，文件名不持久化，也不依赖扩展名或 MIME。 | **aligned security behavior**：不按名称、扩展名或 MIME 判断内容；part 仍须由 multipart parser 分类为 file。 |
 | 临时 multipart | handler 不显式 `RemoveAll`；标准 `net/http` server 在请求结束会清理，但 handler 测试、替代嵌入和后续 memory threshold 变更没有局部所有权。 | **must-fix ownership hardening**：只要 form 已建立，handler 在所有成功/失败返回上显式清理。 |
 | JSON、身份与事务 | 接受数组、`bookSources`/`sources` wrapper 和单对象；最多 5,000 raw item，按 caller namespace identity/COW/quota 一次事务导入。 | **aligned**：不得因 multipart 整理重写或收窄。 |
 | 认证与事件 | protected JWT 后再检查 `CanEditSources`；只有 durable mutation 清 failure cache 并广播。 | **aligned**：`401/403` 必须先于 body read；拒绝请求零持久化和零事件。 |
@@ -129,3 +129,24 @@ quota 和安全脚本筛选继续是已批准适配。
 以及 source ownership、fresh/historical/portable 卷门。只有全部通过并由本地 amd64/arm64 构建发布后，
 状态才能改为 `aligned / Docker-published / awaiting-device-verification`。
 
+## 9. 实施、验证与发布结果（2026-08-16）
+
+- 合同 `d7bc00a`、旧实现红测 `ddbac4c`、实现 `8c66dc9` 和真实运行时合同 `3f3c9c8` 按闸门顺序落地。
+  旧实现证据覆盖浏览器 16 MiB +1 仍调用 `text()`、歧义/损坏 multipart 被首文件或 missing-file 语义
+  接受、declared/chunked overflow 错映射，以及磁盘 multipart 临时文件残留。
+- 前端在读取前拒绝已知超限 `File.size`；后端在认证与 `CanEditSources` 后统一执行 17 MiB actual-read
+  包络、恰好一个 `file`/零 scalar 的 shape、16 MiB file read，并在所有已建立 form 的返回路径调用
+  `RemoveAll()`。数组/wrapper/单对象、5,000 项、identity/COW/quota、事务和事件合同未改变。
+- Go focused/full、focused race 与 `go vet ./...` 通过；frontend focused 与全量 `738/738`、Vite build
+  通过。真实 Go + Chromium 在 1440x900、390x844、360x800 验证超限 chooser 零请求、正常预览选择、
+  唯一 file 持久导入，并通过 direct API 的认证优先级、declared/chunked 双层 413、shape 和零副作用检查。
+- 本地 arm64 candidate 通过 fresh portable-v1/v2-assets、cross-user、restart 和 source ownership/COW 门。
+  historical 首次普通运行在 fixture 后出现一次瞬时 404；同镜像 trace 重跑通过 TXT/EPUB/UMD/CBZ、
+  relative-cache、owner isolation 和 restore 全链，该未复现事件保留在发布台账。
+- 本机为 `linux/amd64`、`linux/arm64` 构建并发布 `ghcr.io/changshengyu/openreader:3f3c9c8` 与
+  `latest`；两标签指向 OCI index
+  `sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`。GHCR 强制回拉容器的
+  `/api/health` 报告完整 revision `3f3c9c8461e60a12dd0ba08ce4a4f95860dbf319`。
+
+本合同现为 **aligned / regression-validated / Docker-published / awaiting-device-verification**。reading
+progress 与其它 batch/control JSON 仍是独立动作差集，不因本入口关闭而合并签收。

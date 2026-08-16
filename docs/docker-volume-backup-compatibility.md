@@ -104,3 +104,24 @@ resolve to OCI index `sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb
 manifests are `sha256:02d2055bec076f2590e2a952c9dffad84c55c959965ea1f3dd212da5ef9ff424` for amd64 and
 `sha256:84f17fca80e57e00bdd833c00d300b3cbd31dbaf706dd3ae20d475812037ff53` for arm64. Both image labels report
 revision `6157466687c15d2ce48007443992523dd6a26834`.
+
+## 2026-08-16 BookSource local import multipart release
+
+Release `3f3c9c8` passed the fresh portable-v1/v2-assets, cross-user and restart gates against the locally built
+arm64 candidate. The first ordinary `HISTORICAL_VOLUME=1` run encountered one transient HTTP 404 after fixture
+creation; an immediate traced rerun against the same image passed TXT/EPUB/UMD/CBZ, relative-cache migration,
+owner isolation and historical backup/restore. The failure was not reproducible and is retained here rather than
+being hidden by the successful rerun. The separate source-ownership gate also passed legacy migration, COW,
+administrator/private roots, logical/portable restore and restart.
+
+The candidate passed full Go/race/vet, frontend 738/738, production build and the 1440x900, 390x844, 360x800
+real-Go BookSource import browser contract. Direct API coverage included authentication priority, declared/chunked
+envelope overflow, exact 16 MiB file and +1 boundaries, strict part shape, disk-backed temporary-file cleanup and
+zero mutation on rejection.
+
+The image was built locally for `linux/amd64` and `linux/arm64`, then published as
+`ghcr.io/changshengyu/openreader:3f3c9c8` and `latest`. Both tags resolve to OCI index
+`sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`; platform manifests are
+`sha256:a47a179afdc0356a84ac808148c0a930a40ac80856a5ecf5be3f267b3037036c` for amd64 and
+`sha256:8298c35b5d3d43000a68a52fbd612a48c5e079a1ba9fbaf80e4677b67081e339` for arm64. Both image labels report
+revision `3f3c9c8461e60a12dd0ba08ce4a4f95860dbf319`; a forced GHCR pull returned that revision from `/api/health`.

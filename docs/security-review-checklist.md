@@ -871,7 +871,11 @@ gates, focused race and a real two-client synchronization smoke at 1440×900, 39
 - [x] Dangerous object keys (`__proto__`, `prototype`, `constructor`) are rejected from the preservation envelope;
       canonical source fields cannot be overridden by preserved extras.
 - [x] Local source JSON imports are capped at 16 MiB and fail with 413 before JSON decoding; the multipart request
-      is also bounded with explicit overhead.
+      is actual-read bounded at 17 MiB after JWT/source-edit authorization. Declared/chunked envelope overflow and
+      16 MiB file overflow use distinct stable 413 errors.
+- [x] The raw browser chooser rejects a known `File.size > 16 MiB` before `text()`/JSON parsing. The API accepts
+      exactly one multipart file named `file`, rejects duplicate/foreign/scalar parts before decode or mutation,
+      and explicitly removes every successfully parsed form on success and all failure paths.
 - [x] Remote source preview continues through the shared SSRF-safe fetcher with scheme/host, redirect, timeout,
       response-size, DNS/rebinding, private-network and credential constraints.
 - [x] Failure-cache categories expose only fixed safe labels and do not reveal JWTs, cookies, source headers,
@@ -880,9 +884,12 @@ gates, focused race and a real two-client synchronization smoke at 1440×900, 39
       existing source ownership, usage guard, mutation transaction and durable-only broadcast remain active.
 
 Evidence: `backend/api/book_source_ownership_api_contract_test.go`,
+`backend/api/book_source_local_import_multipart_boundary_contract_test.go`,
 `backend/services/sourcecompat/export.go`, `frontend/tests/bookSourceEditor.test.mjs`,
 `frontend/tests/sourceScriptTransparencyContract.test.mjs`, full Go/frontend gates, focused/full race, `go vet`,
-and `scripts/smoke/source-workspace-contract.mjs` at four viewports.
+`scripts/smoke/source-workspace-contract.mjs` at four viewports and
+`scripts/smoke/booksource-local-import-multipart-contract.mjs` at three viewports. See
+[`compat/booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](compat/booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md).
 
 ## P2 TXT TOC rule compatibility security review (2026-08-11)
 

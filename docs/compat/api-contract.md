@@ -825,10 +825,10 @@ focused race, full Go/vet, frontend `740/740`, production build, real HTTP and f
 container gates all passed for `d9ddc0f`. The locally built amd64/arm64 image is published as `d9ddc0f`/`latest` with
 OCI index `sha256:548bf0984e7fa5039411bd75f9ae8ac8496052010255bfe746bf36fa9336dc8f`.
 
-### P2 BookSource local multipart boundary (2026-08-16 extracted)
+### P2 BookSource local multipart boundary (2026-08-16 implemented)
 
 The deployed `POST /api/sources/import` remains the single JWT and `CanEditSources`-protected mutation adapter for
-the selected local-source JSON. Its pending wire/resource contract is
+the selected local-source JSON. Its implemented wire/resource contract is
 [`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md).
 
 - The raw browser chooser keeps the fixed-upstream single-file preview flow, but a known `File.size` above 16 MiB
@@ -842,8 +842,11 @@ the selected local-source JSON. Its pending wire/resource contract is
   no-op behavior and success response remain governed by the completed BookSource write boundary. A parsed form is
   explicitly cleaned on every handler exit.
 
-Status is **inventory-complete / implementation-pending**. No application or test change is part of this extraction;
-red frontend/API/resource-ownership tests must land before implementation.
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `d7bc00a`,
+old-implementation red tests `ddbac4c`, implementation `8c66dc9` and runtime contract `3f3c9c8` landed in order.
+Go full/race/vet, frontend `738/738`, build, three-viewport real Go/Chromium, fresh/historical/portable and source
+ownership gates passed. The locally built amd64/arm64 image is published as `3f3c9c8`/`latest`, OCI index
+`sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`.
 
 The additive `usedBookNames` projection above is required by the fixed upstream source-manager
 `书架书籍` column and is governed by
