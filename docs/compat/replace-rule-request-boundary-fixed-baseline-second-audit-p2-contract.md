@@ -1,6 +1,6 @@
 # ReplaceRule 请求边界第二轮固定基准合同
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -81,7 +81,7 @@ unknown-field 拒绝。字段上限仍按解码后 UTF-8 字节计数，raw 非�
 - 不改前端 payload、旧 URL、JWT、多用户隔离、规则执行顺序、RE2 子集或输出预算。
 - 被 body/字段/cardinality/context 拒绝的请求必须对 SQLite、Hub、Reader cache、backup 和文件系统零副作用。
 
-## 6. 当前差异矩阵
+## 6. Inventory 时差异矩阵
 
 | 层 | 当前证据 | 判定 |
 |---|---|---|
@@ -91,6 +91,9 @@ unknown-field 拒绝。字段上限仍按解码后 UTF-8 字节计数，raw 非�
 | 事务取消 | GORM 调用未绑定 request context，2,000-row batch 断开后仍可继续 | `must-fix` |
 | field/cardinality/执行预算 | 512 KiB/16 MiB/128 KiB/4 MiB、2,000 rows/IDs、字段/RE2/match/output 已存在 | `aligned`；只补 exact-edge 回归 |
 | UI/Reader/SQLite/backup | 已由 `a7abcdd` 模块合同和 Docker 证据签收 | `closed`；不得借本轮重构 |
+
+上述 `must-fix` 是实现前红灯证据。`9f5a52b` 已关闭四项请求/事务差异；可见模块、持久格式和允许差异
+保持不变。
 
 ## 7. 测试先行门
 
@@ -125,3 +128,23 @@ cd frontend && npm run build
 2026-08-16 重新扫描 `backend/api` 后，除公共 bounded decoder 和已签收入口外，剩余直接
 `ShouldBindJSON` 全部集中在 `replace_rules.go` 这五路。它们是当前 REST action 长尾的下一项 must-fix；
 本 inventory 阶段只新增/更新合同文档，没有修改应用或测试。
+
+## 9. 实现、验证与发布
+
+- `ff6d7e3` 固化本合同，`c70f04e` 在旧实现上证明五路 declared/chunked overflow、第二 JSON、尾随垃圾、
+  非法 UTF-8、null/shape 和预取消缺口，`9f5a52b` 再实施共享 admission 与 request-context transaction。
+- 五路现在按 512 KiB/16 MiB/128 KiB/4 MiB 实际读取，只接受一个非 null UTF-8 object/array；真实 overflow
+  为稳定 413，其余 malformed 保持路由级 400。PUT target-first、2,000 raw row/ID、精确字符串、默认值、
+  stable ID、输入顺序、skipped/deletedIds、RE2/match/output 和 durable-only event 均有聚焦回归。
+- focused/full/race/vet、frontend 741/741、production build 和真实 Go HTTP smoke 通过。现有 manager/editor/
+  import/toggle/batch flow 在 1440x900、1024x1366、390x844、360x800 四视口通过。
+- 本机候选通过 fresh portable-v1/v2-assets、cross-user、restart，以及 historical TXT/EPUB/UMD/CBZ、
+  relative-cache、owner-isolation 和 restore 门。随后本机构建并发布
+  `ghcr.io/changshengyu/openreader:9f5a52b` 与 `latest`，OCI index 均为
+  `sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`；amd64/arm64 manifests 分别为
+  `sha256:333515ea7c5601bbb1567f39f989d63ad377659347bb27986766b143669e142b` 和
+  `sha256:1c67d6f6e274fe0638fe77458778d566ed7c90da3dd9ee8ee11739805307933d`。
+- Docker CLI 强制 arm64 回拉受 macOS `osxkeychain` `-50` 阻断；只读 GHCR Registry API 已解析远端 arm64
+  config `sha256:ca3cc698073f6741075f41300ef0062590d73d59ea87cd842e2fa25115910fd6`，确认
+  `architecture=arm64` 且 revision 为完整 `9f5a52b3ea4da8ca557653052c5190d8023dfa61`。这项替代验证不等同于
+  用户生产环境部署；生产运行提交仍未知。

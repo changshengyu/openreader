@@ -991,3 +991,16 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   historical/portable mounted-volume gates for TXT/EPUB/UMD/CBZ, relative cache, owner isolation, restart and portable
   v1/v2 before the locally built amd64/arm64 image was published. `65199f6`/`latest` resolve to OCI index
   `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`.
+
+## P2 ReplaceRule request-boundary compatibility (2026-08-16 implemented/published)
+
+- `9f5a52b` changes only authenticated request decoding/admission and request-context propagation. It adds no table,
+  column, index, migration, startup scan, path, mounted file, archive member, browser key or backup format.
+- Existing `replace_rules` rows remain byte-for-byte authoritative, including stable IDs/order, exact whitespace,
+  duplicate names, legacy empty scope and historical mode values. No existing row is normalized, truncated or
+  rewritten by startup, list, backup or restore.
+- Logical/portable/reader-dev/Legado/WebDAV backup and restore retain their independent size/cardinality/transaction
+  contracts. Rejected new HTTP requests mutate neither SQLite nor mounted `data/`, `cache/` or `library/` state.
+- The local candidate passed fresh portable-v1/v2-assets, cross-user and restart plus historical TXT/EPUB/UMD/CBZ,
+  relative-cache, owner-isolation and restore gates. The locally built amd64/arm64 `9f5a52b`/`latest` release resolves
+  to OCI index `sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`.

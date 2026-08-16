@@ -387,6 +387,13 @@ when every input row was skipped and no durable write occurred. Regex execution 
 the complete input to that rule and stops the Reader pipeline. Focused API/engine tests plus the
 full Go suite pass; Docker volume publication evidence is recorded in the focused contract.
 
+The second-audit request boundary is also implemented and published; see
+[`replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+Contract `ff6d7e3`, old-implementation red tests `c70f04e` and implementation `9f5a52b` close actual-read/single
+UTF-8 document, stable 413 and request-context transaction gaps without changing these successful API or data
+semantics. `9f5a52b`/`latest` resolve to OCI index
+`sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`.
+
 | Method / path | Request and validation | Success / side effects | Auth and errors |
 |---|---|---|---|
 | `GET /api/replace-rules` | None. | Returns only the caller's rules in stable insertion order (`id ASC`), never `sort_order` or update-time order. Compatibility output retains `enabled` plus legacy-readable `isEnabled`. | JWT required; `500` only for a read failure. |

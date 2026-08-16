@@ -3771,12 +3771,17 @@ batch、batch-delete 和隐藏 test。固定上游 `ReplaceRuleController.kt`/`R
 object/array shape、精确字符串、name-upsert、输入顺序和精确空 name/pattern skip；已发布 `a7abcdd`
 合同继续权威管理器/编辑器、Reader pipeline、SQLite/backup 和允许差异，本轮不因 wire 长尾重开。
 
-当前五路虽有 `MaxBytesReader` 和既有 512 KiB/16 MiB/128 KiB/4 MiB、2,000 row/ID、字段、RE2、
+inventory 时五路虽有 `MaxBytesReader` 和既有 512 KiB/16 MiB/128 KiB/4 MiB、2,000 row/ID、字段、RE2、
 match/output 预算，但 `ShouldBindJSON` 只消费首文档，actual overflow 被普通 400 吸收，非法 UTF-8 可被
-替换后进入精确规则字段；GORM 与 batch transaction 也未绑定 request context。下一切片只补认证后
+替换后进入精确规则字段；GORM 与 batch transaction 也未绑定 request context。实施范围因此只补认证后
 single non-null UTF-8 JSON、稳定 413、PUT target-first、pre-work admission 和 transaction 取消，所有拒绝
 零写入/零广播，不改 schema、文件、旧 URL、前端 payload 或成功业务语义。
 
-完整合同和必须先写的失败测试见
+完整合同、失败测试和发布证据见
 [`replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本 inventory 只修改合同文档，没有修改应用或测试。
+`ff6d7e3` 合同、`c70f04e` 旧实现红测和 `9f5a52b` 实现已依次完成。Go focused/full/race/vet、frontend
+741/741、build、真实 HTTP、四视口 ReplaceRule 及 fresh/historical/portable 卷门通过；本机发布
+`9f5a52b`/`latest`，OCI index 为
+`sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`。Docker CLI 强制 arm64 回拉受
+本机 `osxkeychain -50` 阻断，GHCR Registry config 已确认远端 arm64 与完整 revision。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

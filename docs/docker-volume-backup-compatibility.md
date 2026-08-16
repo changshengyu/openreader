@@ -140,3 +140,27 @@ remote-work browser contracts at 1440x900, 390x844 and 360x800. The image was bu
 `sha256:df8b9653ea313ebebef0a86c6d1c5359607eb16ea5f2cfb25e72d0ea32c60a0c` for amd64 and
 `sha256:351b7ffbadd4b0ac00689f458cefa0bd179aaf600092a9b0cb71b8655bd4f58a` for arm64. A forced GHCR arm64 pull
 reported the same full revision and index digest.
+
+## 2026-08-16 ReplaceRule request boundary release
+
+Release `9f5a52b` passed the fresh portable-v1/v2-assets, cross-user and restart gate plus the ordinary
+`HISTORICAL_VOLUME=1` TXT/EPUB/UMD/CBZ, relative-cache, owner-isolation and historical/portable restore gate against
+the locally built arm64 candidate. Candidate health and image labels reported full revision
+`9f5a52b3ea4da8ca557653052c5190d8023dfa61`.
+
+The same implementation passed focused/full/race/vet, frontend 741/741, production build, real-Go HTTP request
+boundary smoke and the 1440x900, 1024x1366, 390x844 and 360x800 ReplaceRule manager/editor/import/toggle/batch
+browser contract. No schema, migration, mounted path, archive, backup format or frontend payload changed.
+
+The image was built locally for `linux/amd64` and `linux/arm64`, then published as
+`ghcr.io/changshengyu/openreader:9f5a52b` and `latest`. Both tags resolve to OCI index
+`sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`; platform manifests are
+`sha256:333515ea7c5601bbb1567f39f989d63ad377659347bb27986766b143669e142b` for amd64 and
+`sha256:1c67d6f6e274fe0638fe77458778d566ed7c90da3dd9ee8ee11739805307933d` for arm64.
+
+A forced Docker CLI arm64 pull was blocked locally by macOS `osxkeychain` error `-50`, including with an otherwise
+empty Docker config. Read-only GHCR Registry API inspection resolved the remote arm64 manifest config
+`sha256:ca3cc698073f6741075f41300ef0062590d73d59ea87cd842e2fa25115910fd6` and confirmed
+`architecture=arm64` plus full revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. This verifies the published
+remote artifact but is not evidence that any user production instance has upgraded; production runtime remains
+unknown.
