@@ -6,6 +6,8 @@ import {
 } from '../utils/bookSourceCompatibility.js'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
 
+export const MAX_BOOK_SOURCE_IMPORT_BYTES = 16 * 1024 * 1024
+
 export {
   analyzeSourceCompatibility,
   importSourceCompatibilityHint,
@@ -32,6 +34,10 @@ export function useSourceTransfer(options) {
     const file = data?.raw || data?.target?.files?.[0] || data
     if (!file) return
     const operation = operations.begin('file-preview')
+    if (Number.isFinite(file.size) && file.size > MAX_BOOK_SOURCE_IMPORT_BYTES) {
+      if (operations.canCommit(operation)) options.onError(null, '书源文件过大')
+      return
+    }
     try {
       const parsed = JSON.parse(await file.text())
       const list = Array.isArray(parsed) ? parsed : []

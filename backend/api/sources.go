@@ -772,14 +772,24 @@ func (s *Server) importSources(c *gin.Context) {
 		return
 	}
 
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBookSourceImportBytes+(1<<20))
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
+	payload, err := parseBookSourceImportMultipart(c)
+	if payload != nil && payload.form != nil {
+		defer payload.form.RemoveAll()
+	}
+	if errors.Is(err, errBookSourceImportRequestTooLarge) {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		return
+	}
+	if errors.Is(err, errBookSourceImportFileRequired) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
 	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid source import request"})
+		return
+	}
 
-	file, err := fileHeader.Open()
+	file, err := payload.file.Open()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
 		return

@@ -182,18 +182,34 @@ func TestBookSourceLocalImportOwnsMultipartTemporaryFiles(t *testing.T) {
 		name       string
 		payload    []byte
 		wantStatus int
+		setup      string
 	}{
 		{name: "success", payload: sourceImportFixture("temp-success"), wantStatus: http.StatusOK},
 		{name: "invalid json", payload: bytes.Repeat([]byte("not-json"), 256), wantStatus: http.StatusBadRequest},
+		{name: "quota conflict", payload: sourceImportFixture("temp-quota-new"), wantStatus: http.StatusConflict, setup: "quota"},
+		{name: "service failure", payload: sourceImportFixture("temp-service-failure"), wantStatus: http.StatusInternalServerError, setup: "service-error"},
 	}
 
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			tempRoot := t.TempDir()
 			t.Setenv("TMPDIR", tempRoot)
-			router, _ := setupTestServer(t)
+			router, server := setupTestServer(t)
 			router.MaxMultipartMemory = 1
 			account := registerSourceContractAccount(t, router, fmt.Sprintf("sourcetempowner%d", index))
+			switch test.setup {
+			case "quota":
+				if err := server.db.Model(&models.User{}).
+					Where("id = ?", account.ID).
+					Update("source_limit", 1).Error; err != nil {
+					t.Fatal(err)
+				}
+				createSourceThroughAPI(t, router, account.Auth, string(sourceImportObjectFixture("temp-quota-existing")))
+			case "service-error":
+				if err := server.db.Migrator().DropTable(&models.UserBookSource{}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			response := performBookSourceMultipartImport(t, router, account.Auth, []bookSourceMultipartFile{
 				{field: "file", filename: "bookSources.json", data: test.payload},
 			}, nil)
@@ -274,8 +290,12 @@ func TestBookSourceLocalImportMalformedMultipartErrors(t *testing.T) {
 }
 
 func sourceImportFixture(identity string) []byte {
+	return append(append([]byte{'['}, sourceImportObjectFixture(identity)...), ']')
+}
+
+func sourceImportObjectFixture(identity string) []byte {
 	return []byte(fmt.Sprintf(
-		`[{"bookSourceName":"%s","bookSourceUrl":"https://%s.example"}]`,
+		`{"bookSourceName":"%s","bookSourceUrl":"https://%s.example"}`,
 		identity,
 		identity,
 	))
