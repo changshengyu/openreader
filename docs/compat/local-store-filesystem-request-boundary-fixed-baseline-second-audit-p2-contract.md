@@ -1,6 +1,6 @@
 # LocalStore 文件系统与请求边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implementation-complete / regression-validated / Docker-release-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 当前审查基线：`OpenReader@c7e669e87c5e5b282405be4cef6468981b35763f`。  
@@ -131,3 +131,26 @@ actual-read、part 数、JSON cardinality、symlink 或最终解析路径合同�
 完成红测后才可实施；合同、红测、实现、运行探针和发布记录必须分别提交。实现后至少运行 focused、
 Go 全量、race、vet、frontend test/build、真实 declared/chunked HTTP 探针，以及 fresh/historical
 `data/cache/library` 卷和 portable backup/restore 门。
+
+## 7. 实施与回归记录（2026-08-12）
+
+- 合同 `69145fc`、旧实现红测 `8c78775`、实现 `bba99e1` 和真实 HTTP 探针 `930be4d` 已按门禁顺序
+  独立提交并推送。旧实现证据覆盖 declared/chunked 聚合 body、65/额外/重复 multipart part、临时文件、
+  多 JSON、201 项/目录展开，以及每个 LocalStore 动作穿越 symlink 的真实失败，不以静态审查代替。
+- `localstore_boundary.go` 现在在权限之后、目录创建之前执行 `maxLocalImportBytes + 1 MiB` actual-read
+  multipart 包络、`1..64` 同名 file part、唯一 path 和 UTF-8 byte/path 校验，并由 handler 统一
+  `RemoveAll`。directory/rename 使用 16 KiB、preview/import 使用 1 MiB single-JSON；请求和展开均最多
+  200 项，完整计划成功前不 stage、不写库。
+- LocalStore 复用 `webdavfs.Service` 的 caller-rooted 逐组件 `Lstat`、同目录 staged replace 和 opened-file
+  identity recheck。共享 primitive 同时补齐 special-file 拒绝：非 regular/directory 目标不能被上传覆盖、
+  rename 替换、删除或列出；symlink/special 既不迁移也不删除。
+- focused、Go 33 包全量、focused race、`go vet ./...`、frontend 740/740、Vite production build 和
+  `git diff --check` 通过。宿主二进制与本机 arm64 candidate `930be4d` 均运行
+  `scripts/smoke/local-store-filesystem-request-boundary-contract.mjs`，确认 34 MiB 配置下 declared/chunked
+  413、认证优先、32 MiB 以上磁盘 multipart 零临时文件、201 文件整体拒绝、symlink/FIFO fail closed、
+  下载字节和源文件删除后的 token 确认导入。
+- 本机 candidate 镜像 revision 为 `930be4dded3d8b54985606e92c45b7484115ffa7`，仅完成 arm64 本地构建；
+  fresh/historical/portable 卷脚本因当前 Docker socket 提升权限额度审批被拒而未执行。因此没有发布
+  `930be4d` 或改写 `latest` 的远端标签；正式 GHCR 仍是 `be83a0f`/`latest`，OCI index
+  `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。卷门恢复前不得标记
+  Docker-published。

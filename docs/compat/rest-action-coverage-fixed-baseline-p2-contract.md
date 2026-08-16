@@ -240,7 +240,7 @@ runtime、fresh 与成功重跑的 historical 卷门通过。本机发布 `be83a
 `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
 **aligned / Docker-published / awaiting-device-verification**。
 
-## 16. LocalStore 文件系统与请求边界（2026-08-12 inventory）
+## 16. LocalStore 文件系统与请求边界（2026-08-12 implementation）
 
 重新盘点 `server.go` 后，下一项 must-fix 落在 `/api/local-store*`：多文件上传虽已有每文件上限、
 私有根和原子替换，但 `PostForm`/`MultipartForm` 会在业务检查前完整读取无界聚合 body；legacy
@@ -251,4 +251,13 @@ directory/rename/import JSON 仍无 actual-read/single-document/cardinality 边�
 固定上游多选上传、当前 OpenReader 稳定路由/响应/逐文件提交、允许的安全差异、multipart/JSON
 精确边界、symlink-safe regular-file 读取和测试门禁见
 [`local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；本 inventory 未修改应用或测试。
+合同 `69145fc`、旧实现红测 `8c78775`、实现 `bba99e1` 和真实 HTTP 探针 `930be4d` 已依次推送。
+现在 multipart 总包络、1..64 part/metadata、临时文件所有权、16 KiB/1 MiB single-JSON、200 项请求/
+目录展开、逐组件 symlink/special-file 拒绝和 opened regular-file 复验均已落地；固定上游多文件顺序、
+逐文件提交、旧路由/响应、private root 和 immutable token 保持。
+
+Go focused/full/race/vet、frontend 740/740、build、宿主和本机 arm64 candidate 真实 HTTP 均通过。
+candidate revision 为 `930be4dded3d8b54985606e92c45b7484115ffa7`；fresh/historical/portable 卷门因 Docker
+socket 提升权限额度审批被拒而尚未执行，所以没有发布 `930be4d`。正式 GHCR 仍为 `be83a0f`/`latest`，
+OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
+**implementation-complete / regression-validated / Docker-release-pending**。
