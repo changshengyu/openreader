@@ -325,6 +325,26 @@ func TestReplaceRuleRequestBoundaryPreservesAuthAndTargetPriority(t *testing.T) 
 	})
 }
 
+func TestReplaceRuleRequestBoundaryPreservesTestRequiredFields(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing pattern": `{"text":"a"}`,
+		"missing text":    `{"pattern":"a"}`,
+		"empty text":      `{"pattern":"a","text":""}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			token := authHeader(t, router)
+			fixture := newReplaceRuleRequestBoundaryFixture(t, router, server, "test")
+			response := replaceRuleRequestBoundaryRequest(
+				router, fixture, []byte(body), token, int64(len(body)), nil,
+			)
+			assertReplaceRuleRequestBoundaryError(
+				t, response, http.StatusBadRequest, fixture.malformedMessage,
+			)
+		})
+	}
+}
+
 func TestReplaceRuleRequestBoundaryEnforcesRawCardinality(t *testing.T) {
 	t.Run("batch rows", func(t *testing.T) {
 		router, server := setupTestServer(t)
