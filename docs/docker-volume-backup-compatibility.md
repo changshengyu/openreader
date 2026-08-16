@@ -125,3 +125,18 @@ The image was built locally for `linux/amd64` and `linux/arm64`, then published 
 `sha256:a47a179afdc0356a84ac808148c0a930a40ac80856a5ecf5be3f267b3037036c` for amd64 and
 `sha256:8298c35b5d3d43000a68a52fbd612a48c5e079a1ba9fbaf80e4677b67081e339` for arm64. Both image labels report
 revision `3f3c9c8461e60a12dd0ba08ce4a4f95860dbf319`; a forced GHCR pull returned that revision from `/api/health`.
+
+## 2026-08-16 Book control request boundary release
+
+Release `65199f6` passed the fresh portable-v1/v2-assets, cross-user and restart gate plus the ordinary
+`HISTORICAL_VOLUME=1` TXT/EPUB/UMD/CBZ, relative-cache, owner-isolation and historical/portable restore gate against
+the locally built arm64 candidate. The local candidate label reported full revision
+`65199f666723010beb39a982f941e18af3927697`.
+
+The same implementation passed focused/full/race/vet, frontend 741/741, production build, and real-Go BookManage and
+remote-work browser contracts at 1440x900, 390x844 and 360x800. The image was built locally for `linux/amd64` and
+`linux/arm64`, then published as `ghcr.io/changshengyu/openreader:65199f6` and `latest`. Both tags resolve to OCI index
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`; platform manifests are
+`sha256:df8b9653ea313ebebef0a86c6d1c5359607eb16ea5f2cfb25e72d0ea32c60a0c` for amd64 and
+`sha256:351b7ffbadd4b0ac00689f458cefa0bd179aaf600092a9b0cb71b8655bd4f58a` for arm64. A forced GHCR arm64 pull
+reported the same full revision and index digest.

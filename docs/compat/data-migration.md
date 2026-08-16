@@ -987,3 +987,7 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - Logical/portable/WebDAV backups and restores keep their own archive/cardinality contracts; they do not reuse these
   interactive request limits. Fresh/historical/portable volume gates remain required before release. See
   `book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`.
+- Implemented in `65199f6` with zero model/migration/path/backup-format diff. The local candidate passed fresh plus
+  historical/portable mounted-volume gates for TXT/EPUB/UMD/CBZ, relative cache, owner isolation, restart and portable
+  v1/v2 before the locally built amd64/arm64 image was published. `65199f6`/`latest` resolve to OCI index
+  `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`.

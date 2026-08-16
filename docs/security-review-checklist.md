@@ -360,24 +360,28 @@ the remaining gates pass.
 Evidence: `backend/api/reading_progress_request_boundary_contract_test.go`,
 `frontend/tests/readerProgressRequestBoundary.test.mjs`, `scripts/smoke/reader-progress-multiclient-contract.mjs`,
 focused/full/race/vet, frontend 741/741, production build and three real Chromium viewports. The local `1563bc3`
-candidate build passed; mounted-volume verification and formal publication remain pending because the Docker socket
-approval quota rejected that gate. Full contract:
+candidate build passed; the later `65199f6` release passed fresh/historical/portable mounted-volume gates and forced
+arm64 revision verification, then published `65199f6`/`latest` at OCI index
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`. Full contract:
 [`compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
-### Book control request boundary second audit (2026-08-16 inventory)
+### Book control request boundary second audit (2026-08-16 implemented/published)
 
-- [ ] Six authenticated `books.go` JSON control routes enforce actual-read 16 KiB/32 KiB/1 MiB limits, one non-null UTF-8
+- [x] Six authenticated `books.go` JSON control routes enforce actual-read 16 KiB/32 KiB/1 MiB limits, one non-null UTF-8
       object, auth/target-first priority and their stable modern or reader3 error envelope.
-- [ ] Batch/export accept at most 200 raw unique positive owner book IDs; batch Category IDs stop at 200 before
+- [x] Batch/export accept at most 200 raw unique positive owner book IDs; batch Category IDs stop at 200 before
       dedupe/query/transaction, and existing 50-book cache/100-book clear-cache limits remain.
-- [ ] Local refresh decodes the optional body and 16 KiB TOC rule before reading/staging its caller-owned archive;
+- [x] Local refresh decodes the optional body and 16 KiB TOC rule before reading/staging its caller-owned archive;
       rejected input cannot mutate Book/Chapter, TOC/cache files, progress or events.
-- [ ] Remote add/source change validate bounded caller fields/categories/variables before fetch and use request context.
+- [x] Remote add/source change validate bounded caller fields/categories/variables before fetch and use request context.
       Cancellation writes no failure row, book/chapter/candidate/cache state or completion event.
-- [ ] Batch cache/export cancellation stops later books/chapters without rolling back already durable cache work or
+- [x] Batch cache/export cancellation stops later books/chapters without rolling back already durable cache work or
       truncating successful complete exports; legacy content search keeps raw whitespace, bounded controls and 200.
 
-Required evidence is fixed in
+Evidence: contract/correction `097c862`/`669aa5b`, red tests `5cc4b18`, implementation `65199f6`, focused/full/race/vet,
+frontend 741/741, production build, real-Go three-viewport browser contracts, fresh/historical/portable gates and forced
+GHCR arm64 revision verification. Published OCI index:
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`. Full contract:
 [`compat/book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## Uploads and archive formats

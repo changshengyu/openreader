@@ -1,6 +1,6 @@
 # 阅读进度请求边界固定基准第二轮合同（P2）
 
-状态：**aligned / regression-validated / local-Docker-candidate / release-gate-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -133,6 +133,8 @@ OpenReader 的 JWT、数字 book/chapter identity、精确 offset/percent、SQLi
   `1563bc3b0d92b274761743f8629d17f845da9096`。本轮 mounted-volume 门因 Codex Docker socket 使用额度
   在授权阶段被拒绝，未将未执行的 fresh/historical/portable 验证记为通过，也未执行 `RELEASE=1`。
 
-因此应用实现与回归已对齐；正式 Docker 发布、远端 digest 和强制回拉 revision 仍待卷门恢复后完成。
-当前已发布镜像仍是 `3f3c9c8`/`latest`，OCI index
-`sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`；用户生产环境运行提交未知。
+后续 Book 控制动作切片恢复了 Docker gate：包含该进度实现的 `65199f6` 候选通过 fresh 与
+historical/portable mounted-volume 门，并由本机构建发布为 `65199f6`/`latest`。两个标签共同指向
+amd64/arm64 OCI index `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`；
+强制回拉 arm64 后 revision 为完整 `65199f666723010beb39a982f941e18af3927697`。因此本合同的 release gate
+现已关闭；用户生产环境运行提交仍未知，继续等待真实设备签收。

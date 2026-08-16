@@ -1,6 +1,6 @@
 # Book 控制动作请求边界固定基准第二轮合同（P2）
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -168,3 +168,26 @@ SQLite transaction、多对多 Category、Blob 导出、派生缓存和稳定 `/
 validation 与 context 传播。不得引入全局 body middleware，不得顺带重构 parser、导出格式、换源 UI、
 数据库 schema 或 backup。只有应用回归、真实运行时、卷门和本地双架构发布全部完成后，状态才能改为
 `aligned / regression-validated / Docker-published / awaiting-device-verification`。
+
+## 10. 实施与发布结果（2026-08-16）
+
+- 合同与 32 KiB TOC 包络勘误分别以 `097c862`、`669aa5b` 提交；`5cc4b18` 先证明旧实现会忽略第二
+  JSON、在 body admission 前执行删除/文件/远程工作，并丢失请求取消；`65199f6` 随后完成实现并推送。
+- 六路现在执行认证后、目标优先的 16 KiB/32 KiB/1 MiB actual-read 单 UTF-8 object admission。batch /
+  remote category 原始项、远程客户端 Book 字段和 TOC rule 均在 DB、文件或网络工作前裁决；legacy
+  search POST 保持 HTTP 200 失败 envelope 与原始 keyword，并夹紧 cursor/size。
+- batch cache、JSON/TXT/EPUB export、remote add 和 change-source 均使用 request context；取消停止后续
+  书/章和完成事件，remote add/change 不写 source failure。完整导出 bytes、local original、换源事务、
+  parser、SQLite schema 与 data/cache/library/backup 格式未改。
+- `TestBookControl*` focused/race、`go test ./...`、`go vet ./...`、frontend 741/741 和 production build
+  通过。真实 Go + Chromium 的 BookManage 与 remote-work 合同在 1440x900、390x844、360x800 通过；
+  旧 BookInfo 综合 smoke 两次在本轮无关的追更 PUT 前置步骤超时，未触达 local refresh，因此没有据此
+  修改已签收 UI。本地刷新由 focused/full Go 合同及 fresh/historical 容器重解析门覆盖。
+- 本机 arm64 候选 revision 为 `65199f666723010beb39a982f941e18af3927697`，fresh 和 historical/portable
+  卷门通过 TXT/EPUB/UMD/CBZ、relative-cache、owner isolation、restart、portable v1/v2。随后本机
+  构建并发布 `ghcr.io/changshengyu/openreader:65199f6` 与 `latest` 的 amd64/arm64 OCI index
+  `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`；强制回拉 arm64 后 revision
+  与完整 Git 提交一致。
+
+当前只剩真实设备签收和后续独立长尾；用户生产环境运行提交仍未知，不能把浏览器或 GHCR 发布当作
+生产升级完成。

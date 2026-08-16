@@ -201,10 +201,11 @@ The completed CAS/chapter/mirror contract above remains authoritative. The imple
 - Rejection occurs before CAS, WebDAV mirror and Hub broadcast. Conflict remains compatible `200` plus
   `X-OpenReader-Progress-Conflict: 1`; successful response and persisted schema do not change.
 
-Status is **aligned / regression-validated / local-Docker-candidate / release-gate-pending**. Contract `f924604`,
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `f924604`,
 red tests `a10facb`, implementation `8d3790d` and runtime evidence `1563bc3` were pushed in order. No route, schema,
-backup or mirror-format migration was introduced. The local candidate build passed; mounted-volume verification and
-formal GHCR publication remain pending after the Docker socket approval quota rejected that gate.
+backup or mirror-format migration was introduced. The later `65199f6` release includes this implementation and passed
+fresh/historical/portable volume gates plus forced arm64 revision verification; `65199f6`/`latest` resolve to OCI index
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`.
 
 ### P2 Book control request boundary (2026-08-16 extracted)
 
@@ -223,8 +224,12 @@ The six remaining direct JSON binders in `backend/api/books.go` are governed by
 - Local refresh checks owner/type first, then decodes an optional object and 16 KiB TOC rule before reading or staging
   the existing archive. Parser budgets, archive identity and all successful reparse formats remain unchanged.
 
-Status is **inventory-complete / implementation-pending**. No route, schema, mounted path, archive, backup or visible
-frontend change is authorized; red wire/work/side-effect tests must precede implementation.
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `097c862`
+plus TOC-envelope correction `669aa5b`, red tests `5cc4b18`, and implementation `65199f6` were pushed in order.
+Focused/full/race/vet, frontend 741/741, production build, real-Go three-viewport BookManage/remote-work contracts,
+fresh/historical/portable volume gates and a forced GHCR arm64 revision pull passed. `65199f6` and `latest` resolve to
+OCI index `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`. No route,
+schema, mounted path, archive, backup or visible frontend flow changed.
 
 ## P1-B workspace search API contract
 

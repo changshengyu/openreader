@@ -333,8 +333,8 @@ LocalStore、WebDAV、upload、auth/admin、BookGroup、Bookmark、RSS、BookSou
 |---|---|---|---|
 | remote-work JSON：`/search`、三个 `/sources/:id/test*`、`/sources/batch-test`、两个 book cache | 小 JSON 可触发多源/多章远程工作；旧 search 无 60/八轮上限，旧 batch health 按全部源预建 goroutine，七路曾缺统一 actual-read/single-object。 | 已补 64/16 KiB 单 object、字段/cardinality、60 并发/八窗口、15-worker/300-source、Context 取消，并保留搜索 cursor、诊断 envelope、failure cache 和整本缓存。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
 | BookSource local multipart `/sources/import` | 原始浏览器 File 现于 `text()` 前执行 16 MiB admission；API 具有 17 MiB actual-read 包络、严格单 file/零 scalar、稳定双层 413 与 handler-owned cleanup。 | selected payload bytes/cardinality/quota/COW 保持；raw chooser、multipart shape/error/temporary ownership 已有红测、运行时与发布证据。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md)。 |
-| reading progress `/progress` | 旧无界首 JSON、缺省 chapter index 与无短界 CAS 控制字段已由 16 KiB 单 UTF-8 object、显式 identity 和 RFC3339Nano/字段长度 admission 关闭。 | 进度身份、CAS、镜像、冲突和多客户端收敛保持；`f924604` 合同、`a10facb` 红测、`8d3790d` 实现、`1563bc3` runtime 已完成。 | **aligned / regression-validated / local-Docker-candidate / release-gate-pending**；mounted-volume 与正式发布仍待 Docker socket 配额恢复。 |
-| 其它 batch/control JSON | books batch/export、local refresh、remote add/change-source、legacy content search，以及 replace-rule 的 first-document/overflow 映射仍可见。 | 多数动作的业务/数据合同和部分 cardinality 已发布；是否缺 actual-read、single-document 或字段 owner 需逐动作取证。 | **inventory-pending**；不得从本表直接推导实现。 |
+| reading progress `/progress` | 旧无界首 JSON、缺省 chapter index 与无短界 CAS 控制字段已由 16 KiB 单 UTF-8 object、显式 identity 和 RFC3339Nano/字段长度 admission 关闭。 | 进度身份、CAS、镜像、冲突和多客户端收敛保持；`f924604` 合同、`a10facb` 红测、`8d3790d` 实现、`1563bc3` runtime 已完成并随 `65199f6` 通过卷门/正式发布。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。 |
+| 其它 batch/control JSON | books batch/export、local refresh、remote add/change-source、legacy content search 已关闭；replace-rule 等 first-document/overflow 映射仍可见。 | Book 控制六路已在 `65199f6` 实现并完成双架构发布；其它动作仍须重新枚举并逐项取证。 | **books control aligned/published；remaining inventory-pending**；不得从本表直接推导下一实现。 |
 
 固定上游 `BookController.searchBookMulti` 与 SSE 版本使用可见最高 60 并发和
 `concurrentLoopCount=8`；inventory 时 OpenReader 只有前端枚举，没有服务端 60/八轮边界。旧健康检查
@@ -393,12 +393,13 @@ mode 和 128-byte clientId；所有拒绝必须先于 service/SQLite/WebDAV/Hub�
 后续按 `f924604` 合同、`a10facb` 旧实现红测、`8d3790d` 实现和 `1563bc3` 真实运行时合同顺序关闭。
 Go full/race/vet、frontend 741/741、production build，以及 1440x900、390x844、360x800 的真实
 Go/Chromium 请求边界、client ID 自愈、双客户端 CAS/WebSocket、冷恢复和 WebDAV mirror 均通过。
-`1563bc3` 本机 Docker 候选已构建，但 mounted-volume 授权被 Codex Docker socket 使用额度拒绝，因此
-没有虚报 fresh/historical/portable 卷门，也没有执行正式 GHCR 发布。当前状态为
-**aligned / regression-validated / local-Docker-candidate / release-gate-pending**；其它 batch/control JSON
-继续排队。
+`1563bc3` 本机 Docker 候选当时因 socket 使用额度未完成卷门；后续 `65199f6` 重新通过
+fresh/historical/portable 门并由本机发布。`65199f6`/`latest` OCI index 为
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`，强制回拉 arm64 revision
+通过。当前状态为 **aligned / regression-validated / Docker-published / awaiting-device-verification**；
+其它尚未签约 action 继续排队。
 
-## 22. Book 控制动作 JSON、cardinality 与取消（2026-08-16 inventory）
+## 22. Book 控制动作 JSON、cardinality 与取消（2026-08-16 implemented/published）
 
 重新枚举 `books.go` 中仍直接 `ShouldBindJSON` 的入口后，下一项 must-fix 收敛为 batch、export、
 refresh-local、remote add、change-source 和 legacy content-search POST。固定上游证明这些分别对应已签收
@@ -411,5 +412,11 @@ cardinality，batch cache 和 remote add/change 使用 `context.Background()`，
 target-first priority、取消及零迁移合同见
 [`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
 
-状态为 **inventory-complete / implementation-pending**。本阶段只修改合同；下一步必须先提交能在
-`c9b50e3` 失败的 API/side-effect/cancel 测试，再修改应用。
+后续已按 `097c862` 合同、`669aa5b` 32 KiB TOC 包络勘误、`5cc4b18` 旧实现红测和 `65199f6` 实现
+顺序关闭。六路已执行 single UTF-8 object/actual-read admission，category/Book/TOC 短界和 request
+context 取消，同时保留完整导出、本地原文件、换源 transaction、legacy 200 envelope 和零迁移。
+Go focused/full/race/vet、frontend 741/741、build、三视口真实 Go/Chromium、fresh/historical/portable
+卷门与 GHCR arm64 强制回拉 revision 均通过。本机发布 `65199f6`/`latest`，OCI index 为
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`；状态为
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。下一轮必须从剩余
+server action 重新取证，不因本项签收而合并关闭 replace-rule 等 first-document 长尾。

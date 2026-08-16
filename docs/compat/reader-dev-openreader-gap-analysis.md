@@ -3757,5 +3757,9 @@ route-specific 16 KiB/32 KiB/1 MiB 单 UTF-8 object、200 raw categories、既�
 
 完整 API、数据、安全和测试先行门见
 [`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-状态为 **inventory-complete / implementation-pending**；本阶段只修改合同，应用与测试必须在独立后续
-提交中按“红测→实现”推进。
+后续按 `5cc4b18` 旧实现红测、`65199f6` 实现完成独立阶段；六路现已落实 actual-read/single UTF-8
+object、字段/cardinality 和 request-context 取消，并保持成功业务/数据合同。Go focused/full/race/vet、
+frontend 741/741、build、三视口真实 Go/Chromium、fresh/historical/portable 卷门及 GHCR arm64 revision
+回拉均通过。本机发布 `65199f6`/`latest`，OCI index 为
+`sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`；状态为
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
