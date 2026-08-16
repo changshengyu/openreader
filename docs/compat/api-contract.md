@@ -977,6 +977,30 @@ production build, four-viewport real-browser validation and fresh/historical vol
 amd64/arm64 image is published as `f8f263d`/`latest`, OCI index
 `sha256:9c83821de9e5f4df223b6e69a6d67eff512fa55d4a271f544718ccad8ae58ba1`.
 
+### Remote-work JSON request boundary (2026-08-16 extracted)
+
+The deployed search, three legacy source probes, explicit batch health action and two book-cache routes keep their
+existing paths, successful bodies, owner scopes, parser/fetcher policies, failure-cache ownership and cancellation
+semantics. Their pending second-audit wire/work contract is
+[`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
+- `POST /api/search` accepts one UTF-8 JSON object up to 64 KiB. The trimmed keyword is at most 1024 bytes and raw
+  `sourceIds` at most 5,000. Non-positive concurrency remains 24; positive concurrency is capped at 60. A
+  multi-source request examines at most eight concurrency windows while preserving the stable original ordinal,
+  `lastIndex`, suppression behavior and `hasMore`.
+- `POST /api/sources/:id/test*`, `/sources/batch-test`, `/books/:id/cache` and `/cache/stream` accept one UTF-8
+  object up to 16 KiB. Probe keywords are at most 1024 bytes and probe URLs 8192 bytes. Batch health handles at most
+  300 sources through at most 15 workers; it does not create one waiting goroutine per source.
+- Exact limits enter the existing business state machine; declared or streamed overflow is flat
+  `413 {"error":"request body too large"}`. A second JSON, trailing garbage, null or wrong top-level type keeps
+  each route's existing malformed `400`. JWT and path/source/book ownership prechecks retain their current priority.
+- Book cache `all=true,count<=0` still means the whole remaining catalogue. The wire boundary is not permission to
+  replace the published whole-book product contract with a 300-chapter cap.
+
+Status is **inventory-complete / implementation-pending**. These limits are not implemented until the required red
+tests, application change and regression gates have landed; existing published source-debug/search/cache behavior
+must not be reported as proving this request boundary.
+
 ## P2 parser persistent-variable contract (P2-Parser-1G implemented)
 
 | Path / payload | Additive behavior | Compatibility and safety |
