@@ -344,20 +344,24 @@ Targeted evidence: `backend/api/progress_p2_contract_test.go`,
 `scripts/smoke/reader-progress-multiclient-contract.mjs`. Release evidence will be appended after
 the remaining gates pass.
 
-### Reading-progress request boundary second audit (2026-08-16 inventory)
+### Reading-progress request boundary second audit (2026-08-16 implemented)
 
-- [ ] JWT rejection precedes declared/actual body admission; unauthorized oversized, malformed or multi-value input
+- [x] JWT rejection precedes declared/actual body admission; unauthorized oversized, malformed or multi-value input
       is not read and cannot reveal progress shape or book existence.
-- [ ] `PUT /api/progress` accepts one non-null UTF-8 JSON object within 16 KiB. Declared/chunked overflow is stable
+- [x] `PUT /api/progress` accepts one non-null UTF-8 JSON object within 16 KiB. Declared/chunked overflow is stable
       413; malformed, invalid UTF-8, wrong-shape and trailing JSON are stable 400 before service work.
-- [ ] `bookId` and `chapterIndex` are explicit; non-empty conflict timestamps are bounded valid RFC3339Nano.
+- [x] `bookId` and `chapterIndex` are explicit; non-empty conflict timestamps are bounded valid RFC3339Nano.
       Persisted `mode` and event-reflected `clientId` have 20/128-byte limits without truncation or secret echo.
-- [ ] Every wire/field rejection leaves SQLite, shelf order, WebDAV mirror and Hub queue unchanged. Existing CAS,
+- [x] Every wire/field rejection leaves SQLite, shelf order, WebDAV mirror and Hub queue unchanged. Existing CAS,
       conflict 200, chapter canonicalization, mirror failure and user isolation tests remain green.
-- [ ] A stale/oversized session client ID is regenerated in the browser so a bad local value cannot permanently
+- [x] A stale/oversized session client ID is regenerated in the browser so a bad local value cannot permanently
       prevent progress synchronization; pending local position and account-generation isolation remain intact.
 
-Required evidence is fixed in
+Evidence: `backend/api/reading_progress_request_boundary_contract_test.go`,
+`frontend/tests/readerProgressRequestBoundary.test.mjs`, `scripts/smoke/reader-progress-multiclient-contract.mjs`,
+focused/full/race/vet, frontend 741/741, production build and three real Chromium viewports. The local `1563bc3`
+candidate build passed; mounted-volume verification and formal publication remain pending because the Docker socket
+approval quota rejected that gate. Full contract:
 [`compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## Uploads and archive formats

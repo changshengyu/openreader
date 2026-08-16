@@ -333,7 +333,7 @@ LocalStore、WebDAV、upload、auth/admin、BookGroup、Bookmark、RSS、BookSou
 |---|---|---|---|
 | remote-work JSON：`/search`、三个 `/sources/:id/test*`、`/sources/batch-test`、两个 book cache | 小 JSON 可触发多源/多章远程工作；旧 search 无 60/八轮上限，旧 batch health 按全部源预建 goroutine，七路曾缺统一 actual-read/single-object。 | 已补 64/16 KiB 单 object、字段/cardinality、60 并发/八窗口、15-worker/300-source、Context 取消，并保留搜索 cursor、诊断 envelope、failure cache 和整本缓存。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
 | BookSource local multipart `/sources/import` | 原始浏览器 File 现于 `text()` 前执行 16 MiB admission；API 具有 17 MiB actual-read 包络、严格单 file/零 scalar、稳定双层 413 与 handler-owned cleanup。 | selected payload bytes/cardinality/quota/COW 保持；raw chooser、multipart shape/error/temporary ownership 已有红测、运行时与发布证据。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md)。 |
-| reading progress `/progress` | 无界首 JSON可进入 CAS、WebDAV mirror 和 WebSocket；`clientId/mode/timestamp` wire 未设短界。 | 进度身份、CAS、镜像、冲突和多客户端收敛已发布。 | **P2 queued**；副作用频繁但单请求无多源网络放大，因此排在 remote-work 后。 |
+| reading progress `/progress` | 旧无界首 JSON、缺省 chapter index 与无短界 CAS 控制字段已由 16 KiB 单 UTF-8 object、显式 identity 和 RFC3339Nano/字段长度 admission 关闭。 | 进度身份、CAS、镜像、冲突和多客户端收敛保持；`f924604` 合同、`a10facb` 红测、`8d3790d` 实现、`1563bc3` runtime 已完成。 | **aligned / regression-validated / local-Docker-candidate / release-gate-pending**；mounted-volume 与正式发布仍待 Docker socket 配额恢复。 |
 | 其它 batch/control JSON | books batch/export、local refresh、remote add/change-source、legacy content search，以及 replace-rule 的 first-document/overflow 映射仍可见。 | 多数动作的业务/数据合同和部分 cardinality 已发布；是否缺 actual-read、single-document 或字段 owner 需逐动作取证。 | **inventory-pending**；不得从本表直接推导实现。 |
 
 固定上游 `BookController.searchBookMulti` 与 SSE 版本使用可见最高 60 并发和
@@ -348,7 +348,8 @@ progress，成为本轮实现切片。BookManage 整本缓存是明确上游产�
 `6157466`/`latest`，OCI index 为
 `sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`。历史卷首次普通运行出现一次
 fixture 后瞬时 404，同镜像 trace 重跑全链通过。BookSource multipart 后续亦按独立合同关闭；下一轮
-仍须从 reading progress 和其它 batch/control JSON 重新取证，不能因这些项目关闭而合并签收。
+reading progress 后续已由独立合同关闭；下一轮仍须从其它 batch/control JSON 重新取证，不能因这些项目
+关闭而合并签收。
 
 ## 20. BookSource 本地导入 multipart 与前端预读（2026-08-16 implemented）
 
@@ -372,9 +373,10 @@ Go/Chromium、fresh/historical/portable 与 source ownership 门通过。本机�
 index 为 `sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`；状态为
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-reading progress 与其它 batch/control JSON 继续排队，不因 BookSource multipart 关闭而合并签收。
+reading progress 后续已由独立合同关闭；其它 batch/control JSON 继续排队，不因 BookSource multipart
+关闭而合并签收。
 
-## 21. 阅读进度 JSON 与 CAS 控制字段（2026-08-16 inventory）
+## 21. 阅读进度 JSON 与 CAS 控制字段（2026-08-16 implemented）
 
 固定上游 `saveBookProgress` 只提交书籍 URL 和显式目录 index；POST 缺省 index 为 `-1`，服务端先确认
 当前用户书架书籍，再从目录取得规范章节。OpenReader 保留已发布的数字 identity、精确位置、SQLite
@@ -388,4 +390,10 @@ actual-read 上限或 UTF-8/single-document 检查；value `chapterIndex` 缺省
 本轮裁决为 auth-first 16 KiB 单 UTF-8 object、显式 book/index、64-byte RFC3339Nano timestamps、20-byte
 mode 和 128-byte clientId；所有拒绝必须先于 service/SQLite/WebDAV/Hub。精确合同和必须先写的测试见
 [`reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-状态为 **inventory-complete / implementation-pending**；其它 batch/control JSON 继续排队。
+后续按 `f924604` 合同、`a10facb` 旧实现红测、`8d3790d` 实现和 `1563bc3` 真实运行时合同顺序关闭。
+Go full/race/vet、frontend 741/741、production build，以及 1440x900、390x844、360x800 的真实
+Go/Chromium 请求边界、client ID 自愈、双客户端 CAS/WebSocket、冷恢复和 WebDAV mirror 均通过。
+`1563bc3` 本机 Docker 候选已构建，但 mounted-volume 授权被 Codex Docker socket 使用额度拒绝，因此
+没有虚报 fresh/historical/portable 卷门，也没有执行正式 GHCR 发布。当前状态为
+**aligned / regression-validated / local-Docker-candidate / release-gate-pending**；其它 batch/control JSON
+继续排队。

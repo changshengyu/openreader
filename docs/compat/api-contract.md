@@ -186,9 +186,9 @@ preserves the existing `200` plus
 commits. Existing `bookProgress/` or `legado/bookProgress/` directories regain upstream-compatible
 per-book JSON mirrors without weakening OpenReader's private WebDAV roots.
 
-### P2 reading-progress request boundary (2026-08-16 extracted)
+### P2 reading-progress request boundary (2026-08-16 implemented)
 
-The completed CAS/chapter/mirror contract above remains authoritative. The pending second-audit wire contract is
+The completed CAS/chapter/mirror contract above remains authoritative. The implemented second-audit wire contract is
 [`reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 - Authenticated `PUT /api/progress` accepts at most one non-null UTF-8 JSON object within 16 KiB. Declared/chunked
@@ -201,8 +201,10 @@ The completed CAS/chapter/mirror contract above remains authoritative. The pendi
 - Rejection occurs before CAS, WebDAV mirror and Hub broadcast. Conflict remains compatible `200` plus
   `X-OpenReader-Progress-Conflict: 1`; successful response and persisted schema do not change.
 
-Status is **inventory-complete / implementation-pending**. Red API/wire/side-effect and frontend client-ID recovery
-tests must land before implementation.
+Status is **aligned / regression-validated / local-Docker-candidate / release-gate-pending**. Contract `f924604`,
+red tests `a10facb`, implementation `8d3790d` and runtime evidence `1563bc3` were pushed in order. No route, schema,
+backup or mirror-format migration was introduced. The local candidate build passed; mounted-volume verification and
+formal GHCR publication remain pending after the Docker socket approval quota rejected that gate.
 
 ## P1-B workspace search API contract
 

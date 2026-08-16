@@ -1,6 +1,6 @@
 # 阅读进度请求边界固定基准第二轮合同（P2）
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / local-Docker-candidate / release-gate-pending**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -120,3 +120,19 @@ OpenReader 的 JWT、数字 book/chapter identity、精确 offset/percent、SQLi
 `go test ./...`、`go vet ./...`、frontend full/build、三视口真实进度合同以及 fresh/historical/portable
 卷门。只有本地 amd64/arm64 构建、GHCR 推送和强制回拉 revision 核验完成后，状态才能改为
 `aligned / regression-validated / Docker-published / awaiting-device-verification`。
+
+## 9. 实施与验证结果（2026-08-16）
+
+- 合同、旧实现红测、实现和真实运行时分别以 `f924604`、`a10facb`、`8d3790d`、`1563bc3` 顺序提交
+  并推送。后端现在在 service、SQLite、WebDAV 和 Hub 之前执行 auth-first 16 KiB actual-read、单 UTF-8
+  JSON object、显式 book/index、RFC3339Nano 与 mode/clientId 短界；前端会替换超限 session client ID。
+- 聚焦与全量 Go、focused race、`go vet`、frontend 741/741、production build 和脚本语法检查通过。
+  真实 Go + Chromium 在 1440x900、390x844、360x800 通过请求边界、client ID 自愈、双客户端 CAS、
+  WebSocket 收敛、冷恢复和 WebDAV winner mirror。
+- `PUSH=0` 已从 `1563bc3` 完成本机候选构建，arm64 revision label 为完整提交
+  `1563bc3b0d92b274761743f8629d17f845da9096`。本轮 mounted-volume 门因 Codex Docker socket 使用额度
+  在授权阶段被拒绝，未将未执行的 fresh/historical/portable 验证记为通过，也未执行 `RELEASE=1`。
+
+因此应用实现与回归已对齐；正式 Docker 发布、远端 digest 和强制回拉 revision 仍待卷门恢复后完成。
+当前已发布镜像仍是 `3f3c9c8`/`latest`，OCI index
+`sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`；用户生产环境运行提交未知。
