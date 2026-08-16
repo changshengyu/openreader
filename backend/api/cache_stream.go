@@ -45,11 +45,11 @@ func (s *Server) cacheBookContentStream(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var request cacheBookRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cache payload"})
+	decoded, ok := decodeRemoteWorkRequest[cacheBookRequest](c, maxRemoteControlRequestBytes, "invalid cache payload")
+	if !ok {
 		return
 	}
+	request := *decoded
 	if !request.All && request.ChapterIndex == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "chapterIndex is required"})
 		return

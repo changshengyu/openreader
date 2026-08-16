@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,14 +34,18 @@ type searchResponse struct {
 
 func (s *Server) search(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	var req searchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	request, ok := decodeRemoteWorkRequest[searchRequest](c, maxRemoteSearchRequestBytes, "keyword is required")
+	if !ok {
+		return
+	}
+	req := *request
+	req.Keyword = strings.TrimSpace(req.Keyword)
+	if req.Keyword == "" || len(req.Keyword) > maxRemoteSearchKeywordBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "keyword is required"})
 		return
 	}
-	req.Keyword = strings.TrimSpace(req.Keyword)
-	if req.Keyword == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "keyword is required"})
+	if len(req.SourceIDs) > maxRemoteSearchSourceIDs {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "too many sources"})
 		return
 	}
 
@@ -64,7 +69,20 @@ func (s *Server) search(c *gin.Context) {
 	}
 
 	if !pagedRequest {
-		results := s.concurrentSearch(c.Request.Context(), userID, sources, req.Keyword, req.ConcurrentCount, activeFailures)
+		results, nextIndex := s.concurrentSearchFrom(
+			c.Request.Context(),
+			userID,
+			sources,
+			req.Keyword,
+			req.ConcurrentCount,
+			-1,
+			0,
+			activeFailures,
+		)
+		if hasActiveSearchSourceAfter(sources, activeFailures, nextIndex) {
+			c.Header("X-OpenReader-Search-Truncated", "1")
+			c.Header("X-OpenReader-Search-Last-Index", strconv.Itoa(nextIndex))
+		}
 		c.JSON(http.StatusOK, s.projectSearchResultCovers(userID, results))
 		return
 	}
@@ -117,11 +135,6 @@ func (s *Server) search(c *gin.Context) {
 	})
 }
 
-func (s *Server) concurrentSearch(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount int, activeFailures map[uint]models.SourceFailure) []engine.SearchResult {
-	results, _ := s.concurrentSearchFrom(parent, userID, sources, keyword, concurrentCount, -1, 0, activeFailures)
-	return results
-}
-
 func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sources []models.BookSource, keyword string, concurrentCount, lastIndex, searchSize int, activeFailures map[uint]models.SourceFailure) ([]engine.SearchResult, int) {
 	start := lastIndex + 1
 	if start < 0 {
@@ -134,14 +147,19 @@ func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sourc
 	aggregated := make([]engine.SearchResult, 0)
 	nextIndex := lastIndex
 
-	for start < len(sources) {
+	for windows := 0; start < len(sources) && windows < maxRemoteSearchWindows; windows++ {
+		if parent.Err() != nil {
+			break
+		}
 		remaining := len(sources) - start
 		limit := normalizedConcurrentCount(concurrentCount, remaining)
 		batch := make([]models.BookSource, 0, limit)
-		end := start
-		for end < len(sources) && len(batch) < limit {
-			source := sources[end]
-			end += 1
+		end := start + limit
+		if end > len(sources) {
+			end = len(sources)
+		}
+		for index := start; index < end; index++ {
+			source := sources[index]
 			if _, suppressed := activeFailures[source.ID]; suppressed {
 				continue
 			}
@@ -170,6 +188,9 @@ func (s *Server) concurrentSearchFrom(parent context.Context, userID uint, sourc
 			}
 		}
 		if searchSize > 0 && len(aggregated) >= searchSize {
+			break
+		}
+		if parent.Err() != nil {
 			break
 		}
 		start = end
@@ -246,6 +267,9 @@ func searchSingleSourcePage(parent context.Context, source models.BookSource, ke
 func normalizedConcurrentCount(value, sourceCount int) int {
 	if value <= 0 {
 		value = 24
+	}
+	if value > maxRemoteSearchConcurrent {
+		value = maxRemoteSearchConcurrent
 	}
 	if value > sourceCount {
 		value = sourceCount

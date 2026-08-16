@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -1555,11 +1554,11 @@ func (s *Server) cacheBookContent(c *gin.Context) {
 		return
 	}
 
-	var request cacheBookRequest
-	if err := c.ShouldBindJSON(&request); err != nil && !errors.Is(err, io.EOF) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cache payload"})
+	decoded, ok := decodeRemoteWorkRequest[cacheBookRequest](c, maxRemoteControlRequestBytes, "invalid cache payload")
+	if !ok {
 		return
 	}
+	request := *decoded
 
 	if !request.All && request.ChapterIndex == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "chapterIndex is required"})

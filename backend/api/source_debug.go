@@ -15,7 +15,6 @@ import (
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
-	"openreader/backend/models"
 	"openreader/backend/services/booksources"
 	"openreader/backend/services/sourcedebug"
 )
@@ -41,13 +40,17 @@ func (s *Server) testSourceSearch(c *gin.Context) {
 		return
 	}
 
-	var req testSearchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	request, ok := decodeRemoteWorkRequest[testSearchRequest](c, maxRemoteControlRequestBytes, "keyword is required")
+	if !ok {
+		return
+	}
+	keyword := strings.TrimSpace(request.Keyword)
+	if keyword == "" || len(keyword) > maxRemoteSearchKeywordBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "keyword is required"})
 		return
 	}
 
-	results, err := engine.SearchBooks(source, strings.TrimSpace(req.Keyword))
+	results, err := engine.SearchBooksContext(c.Request.Context(), source, keyword)
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"results": results}, err, "search"))
 }
 
@@ -72,13 +75,17 @@ func (s *Server) testSourceChapter(c *gin.Context) {
 		return
 	}
 
-	var req testChapterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	request, ok := decodeRemoteWorkRequest[testChapterRequest](c, maxRemoteControlRequestBytes, "bookUrl is required")
+	if !ok {
+		return
+	}
+	bookURL := strings.TrimSpace(request.BookURL)
+	if bookURL == "" || len(bookURL) > maxRemoteProbeURLBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bookUrl is required"})
 		return
 	}
 
-	chapters, err := engine.ParseTOC(strings.TrimSpace(req.BookURL), source)
+	chapters, err := engine.ParseTOCContext(c.Request.Context(), bookURL, source)
 	c.JSON(http.StatusOK, sourceDebugPayload(gin.H{"chapters": chapters, "count": len(chapters)}, err, "toc"))
 }
 
@@ -103,13 +110,17 @@ func (s *Server) testSourceContent(c *gin.Context) {
 		return
 	}
 
-	var req testContentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	request, ok := decodeRemoteWorkRequest[testContentRequest](c, maxRemoteControlRequestBytes, "chapterUrl is required")
+	if !ok {
+		return
+	}
+	chapterURL := strings.TrimSpace(request.ChapterURL)
+	if chapterURL == "" || len(chapterURL) > maxRemoteProbeURLBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "chapterUrl is required"})
 		return
 	}
 
-	content, err := engine.FetchChapterContent(strings.TrimSpace(req.ChapterURL), source)
+	content, err := engine.FetchChapterContentContext(c.Request.Context(), chapterURL, source)
 	preview := content
 	if len([]rune(preview)) > 2000 {
 		preview = string([]rune(preview)[:2000]) + "..."
@@ -229,14 +240,22 @@ type batchTestSourceResult struct {
 
 func (s *Server) batchTestSources(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	var req batchTestSourcesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid batch test payload"})
+	request, ok := decodeRemoteWorkRequest[batchTestSourcesRequest](c, maxRemoteControlRequestBytes, "invalid batch test payload")
+	if !ok {
+		return
+	}
+	req := *request
+	if len(req.SourceIDs) > maxRemoteHealthSources {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "too many sources"})
 		return
 	}
 	keyword := strings.TrimSpace(req.Keyword)
 	if keyword == "" {
 		keyword = "测试"
+	}
+	if len(keyword) > maxRemoteSearchKeywordBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid batch test payload"})
+		return
 	}
 	concurrent := req.Concurrent
 	if concurrent < 3 {
@@ -263,41 +282,57 @@ func (s *Server) batchTestSources(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sources"})
 		return
 	}
+	if len(sources) > maxRemoteHealthSources {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "too many sources"})
+		return
+	}
 
 	results := make([]batchTestSourceResult, len(sources))
 	failureCauses := make([]error, len(sources))
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, concurrent)
-	for index, source := range sources {
+	workerCount := concurrent
+	if workerCount > len(sources) {
+		workerCount = len(sources)
+	}
+	jobs := make(chan int, len(sources))
+	for index := range sources {
+		jobs <- index
+	}
+	close(jobs)
+	for worker := 0; worker < workerCount; worker++ {
 		wg.Add(1)
-		go func(index int, source models.BookSource) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			ctx, cancel := context.WithTimeout(parentCtx, timeout)
-			searchResults, err := engine.SearchBooksContext(ctx, source, keyword)
-			cancel()
-			if errors.Is(err, context.DeadlineExceeded) {
-				err = errTimeout
+			for index := range jobs {
+				if parentCtx.Err() != nil {
+					return
+				}
+				source := sources[index]
+				ctx, cancel := context.WithTimeout(parentCtx, timeout)
+				searchResults, err := engine.SearchBooksContext(ctx, source, keyword)
+				cancel()
+				if errors.Is(err, context.DeadlineExceeded) {
+					err = errTimeout
+				}
+				failureCauses[index] = err
+				results[index] = batchTestSourceResult{
+					SourceID: source.ID,
+					Name:     source.Name,
+					Group:    source.Group,
+					Enabled:  source.Enabled,
+					OK:       err == nil,
+					Count:    len(searchResults),
+					Message:  sourceErrorMessage(err),
+				}
+				if details := sourceErrorDetailsFor(err, "search"); details.Code != "" {
+					results[index].Code = details.Code
+					results[index].Stage = details.Stage
+				}
+				if err == nil {
+					results[index].Message = "可用"
+				}
 			}
-			failureCauses[index] = err
-			results[index] = batchTestSourceResult{
-				SourceID: source.ID,
-				Name:     source.Name,
-				Group:    source.Group,
-				Enabled:  source.Enabled,
-				OK:       err == nil,
-				Count:    len(searchResults),
-				Message:  sourceErrorMessage(err),
-			}
-			if details := sourceErrorDetailsFor(err, "search"); details.Code != "" {
-				results[index].Code = details.Code
-				results[index].Stage = details.Stage
-			}
-			if err == nil {
-				results[index].Message = "可用"
-			}
-		}(index, source)
+		}()
 	}
 	wg.Wait()
 	for index, cause := range failureCauses {
