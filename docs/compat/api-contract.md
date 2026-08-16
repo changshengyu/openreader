@@ -825,6 +825,26 @@ focused race, full Go/vet, frontend `740/740`, production build, real HTTP and f
 container gates all passed for `d9ddc0f`. The locally built amd64/arm64 image is published as `d9ddc0f`/`latest` with
 OCI index `sha256:548bf0984e7fa5039411bd75f9ae8ac8496052010255bfe746bf36fa9336dc8f`.
 
+### P2 BookSource local multipart boundary (2026-08-16 extracted)
+
+The deployed `POST /api/sources/import` remains the single JWT and `CanEditSources`-protected mutation adapter for
+the selected local-source JSON. Its pending wire/resource contract is
+[`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md).
+
+- The raw browser chooser keeps the fixed-upstream single-file preview flow, but a known `File.size` above 16 MiB
+  must be rejected before `text()` or JSON parsing. Exact 16 MiB still enters the existing parse/preview state.
+- The API accepts exactly one `file` multipart part and no scalar fields. Duplicate/foreign file or any scalar part
+  is flat `400 {"error":"invalid source import request"}` before JSON decode or durable side effects.
+- The full multipart request is actual-read bounded at 17 MiB and the unique file at 16 MiB. Declared/chunked
+  envelope overflow is flat `413 {"error":"request body too large"}`; file overflow keeps
+  `413 {"error":"source file is too large"}`. JWT/permission errors retain priority over all body inspection.
+- Array/wrapper/single-object decoding, 5,000 items, reader-dev fields, caller identity, COW, quota, one transaction,
+  no-op behavior and success response remain governed by the completed BookSource write boundary. A parsed form is
+  explicitly cleaned on every handler exit.
+
+Status is **inventory-complete / implementation-pending**. No application or test change is part of this extraction;
+red frontend/API/resource-ownership tests must land before implementation.
+
 The additive `usedBookNames` projection above is required by the fixed upstream source-manager
 `书架书籍` column and is governed by
 [`source-manager-fixed-baseline-second-audit-p1-contract.md`](source-manager-fixed-baseline-second-audit-p1-contract.md).

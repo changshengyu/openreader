@@ -332,7 +332,7 @@ LocalStore、WebDAV、upload、auth/admin、BookGroup、Bookmark、RSS、BookSou
 | 候选 | 当前放大面 | 既有合同覆盖 | 排序 |
 |---|---|---|---|
 | remote-work JSON：`/search`、三个 `/sources/:id/test*`、`/sources/batch-test`、两个 book cache | 小 JSON 可触发多源/多章远程工作；旧 search 无 60/八轮上限，旧 batch health 按全部源预建 goroutine，七路曾缺统一 actual-read/single-object。 | 已补 64/16 KiB 单 object、字段/cardinality、60 并发/八窗口、15-worker/300-source、Context 取消，并保留搜索 cursor、诊断 envelope、failure cache 和整本缓存。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
-| BookSource local multipart `/sources/import` | 约 17 MiB 总包络与 16 MiB file read 已存在。仍接受歧义 file/scalar part，handler 未显式拥有 `RemoveAll`。 | BookSource 写合同把 bytes/cardinality/quota/COW 标为 aligned；multipart shape/temporary ownership 未签收。 | **P2 queued**；不与 remote-work 合同混写。 |
+| BookSource local multipart `/sources/import` | 约 17 MiB 总包络与 16 MiB file read 已存在，但 overflow 映射不稳定，仍接受歧义 file/scalar part；原始浏览器 File 又在 size admission 前 `text()`。 | BookSource 写合同把 selected payload bytes/cardinality/quota/COW 标为 aligned；raw chooser、multipart shape/error/temporary ownership 未签收。 | **本轮 must-fix / inventory-complete / implementation-pending**。见 [`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md)。 |
 | reading progress `/progress` | 无界首 JSON可进入 CAS、WebDAV mirror 和 WebSocket；`clientId/mode/timestamp` wire 未设短界。 | 进度身份、CAS、镜像、冲突和多客户端收敛已发布。 | **P2 queued**；副作用频繁但单请求无多源网络放大，因此排在 remote-work 后。 |
 | 其它 batch/control JSON | books batch/export、local refresh、remote add/change-source、legacy content search，以及 replace-rule 的 first-document/overflow 映射仍可见。 | 多数动作的业务/数据合同和部分 cardinality 已发布；是否缺 actual-read、single-document 或字段 owner 需逐动作取证。 | **inventory-pending**；不得从本表直接推导实现。 |
 
@@ -349,3 +349,20 @@ progress，成为本轮实现切片。BookManage 整本缓存是明确上游产�
 `sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`。历史卷首次普通运行出现一次
 fixture 后瞬时 404，同镜像 trace 重跑全链通过。下一轮仍须从 BookSource multipart、reading progress
 和其它 batch/control JSON 重新取证，不能因本项关闭而合并签收。
+
+## 20. BookSource 本地导入 multipart 与前端预读（2026-08-16 inventory）
+
+固定上游 chooser 只取第一项，正常路径由浏览器 `FileReader` 解析非空数组，失败 fallback 才把该文件
+交给 `readSourceFile`，最终以用户勾选数组调用 `saveBookSources`。OpenReader 的规范前端同样只取第一项，
+并在确认后生成唯一 `file=bookSources.json` 调用合并的 `/api/sources/import`，因此严格单 file/零 scalar
+不会删减可见流程。
+
+`54f2c83` 的后端已有 17 MiB `MaxBytesReader` 与 16 MiB file read，但 `c.FormFile` 会忽略额外同/异名
+file 与 scalar，body overflow 又会降级成 `400 file is required`，handler 也未局部拥有 multipart temp。
+更重要的是，前端原始 chooser 在任何 size 检查前调用 `file.text()`，所以既有 16 MiB 声明只覆盖预览
+后重新生成的 selected-source Blob，不覆盖用户选入浏览器的原文件。
+
+精确上游映射、17/16 MiB 双层 413、单 file shape、错误优先级、显式 `RemoveAll`、前端预读和必须先写
+的失败测试见
+[`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md)。
+本阶段只提交 inventory，不修改应用或测试；reading progress 与其它 batch/control JSON 继续排队。

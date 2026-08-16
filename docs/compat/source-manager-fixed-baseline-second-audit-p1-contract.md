@@ -230,8 +230,11 @@ WebDAV 和历史卷格式不变。
   其他账号书名；删除时原有服务端 usage guard 继续生效。
 - 本地与远程导入已从管理器背景壳拆出，共用一个默认空选的确认预览；真实 JavaScript/WebView
   源仍由安全筛选跳过自动全选，但 dormant/未知字段可手动选择并原样保存，服务端不执行。
-- 本地书源 JSON 文件增加 16 MiB 上限，超限在 JSON 解码前返回 413；远程预览继续复用现有
-  scheme/host、DNS/rebinding、redirect、timeout、响应大小和 credential 边界。
+- 确认后生成的本地书源 selected-source Blob 受 16 MiB 后端文件上限，超限在服务端 JSON 解码前
+  返回 413；原始 chooser 文件的浏览器预读上限此前未实现，已在
+  [`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md)
+  单独列为 pending。远程预览继续复用现有 scheme/host、DNS/rebinding、redirect、timeout、响应大小和
+  credential 边界。
 - failure 入口只读取当前用户 600 秒缓存；普通 Go 错误只映射到固定上游可见类别，不泄露 header、
   query、响应正文、凭据或宿主路径。live check 仍只由用户显式点击触发。
 
