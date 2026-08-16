@@ -442,3 +442,17 @@ API 确认完整 revision，Docker CLI 强制回拉仅受本机 `osxkeychain -50
 
 `backend/api` 当前 direct `ShouldBindJSON`/`ShouldBind` 差集为空，但这只关闭该类 binder；下一项仍须按
 路由、工作放大、事务和错误优先级重新枚举，不能据此宣称全部 REST action 已签收。
+
+## 24. 备份生成错误与请求取消（2026-08-16 inventory）
+
+改按 route/work amplification 枚举后，`POST /api/backup/trigger` 和 `/backup/portable/trigger` 成为下一项
+确定 must-fix。固定上游 `backupToWebdav` 失败只返回“备份失败”；OpenReader 已发布的普通备份 API
+合同同样要求安全固定 500，但当前 handler 仍把 `Service.run` 的 `err.Error()` 拼入响应。底层 OS/GORM/
+ZIP 错误可含 mounted path、SQL 或内部归档信息。
+
+两个生成服务也都没有 context：取消请求仍会等待全局锁并继续数据库查询、ZIP/asset/archive I/O 直到
+rename。现有 temp+rename、caller scope、logical/portable 格式和 typed 409/413 均保持；下一切片只增加
+HTTP context lifecycle、安全错误投影与 path-free 日志，final rename 前取消清理 temp，rename 后 durable
+包不补偿删除。完整合同和红测门见
+[`backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；本 inventory 没有修改应用或测试。

@@ -3785,3 +3785,20 @@ single non-null UTF-8 JSON、稳定 413、PUT target-first、pre-work admission 
 `sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`。Docker CLI 强制 arm64 回拉受
 本机 `osxkeychain -50` 阻断，GHCR Registry config 已确认远端 arm64 与完整 revision。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-16 备份生成请求生命周期第二轮固定基准复审
+
+ReplaceRule 发布后不再按 direct Gin binder 推断剩余动作，而是重新按 route、工作放大、事务和错误优先级
+枚举。下一项确定 must-fix 收敛到 `POST /api/backup/trigger` 与 `/backup/portable/trigger`。固定上游
+`WebdavController.backupToWebdav` 在认证/WebDAV 权限后执行确认过的备份，失败只返回固定“备份失败”；
+OpenReader 已发布合同同样要求 ordinary trigger 使用 path-free 安全 500。
+
+当前 ordinary handler 却把 `Service.run` 的 `err.Error()` 直接拼回响应；底层 Mkdir/CreateTemp/Sync/
+Rename、GORM 和 ZIP 错误都可能带 mounted host path、SQL 或内部归档细节。两个 HTTP generator 及 service
+又都没有 context，取消请求仍会等待全局锁并继续 logical/portable DB、ZIP、asset 和原 archive I/O 直到
+rename。现有 caller root、原子 temp+rename、logical/portable 格式、typed 409/413、预算、恢复和唯一工作台
+入口不重开。
+
+完整错误、取消、durable rename、数据和测试先行门见
+[`backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；本 inventory 只修改合同文档，没有修改应用或测试。

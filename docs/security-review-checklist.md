@@ -405,6 +405,20 @@ revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. Status is
 Full contract:
 [`compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
+### Backup generation request lifecycle second audit (2026-08-16 inventory)
+
+- [ ] `POST /api/backup/trigger` maps every internal DB/ZIP/OS failure to fixed `500 {"error":"backup failed"}`;
+      no mounted path, SQL, ZIP detail, source/archive path or credential appears in response or ordinary logs.
+- [ ] Logical and portable HTTP generation propagate request context through lock wait, DB reads and bounded
+      archive/asset copies; a canceled waiter never starts after the active generator releases the lock.
+- [ ] Cancellation before final rename closes/removes the private temp and creates no list-visible package; successful
+      rename is the durable boundary and is not compensation-deleted after a later disconnect.
+- [ ] Existing auth/WebDAV permission priority, caller roots, logical/portable formats, typed 409/413, output budgets,
+      same-name collision protection and scheduled backup behavior remain unchanged.
+
+Status is `inventory-complete / implementation-pending`; no application or test change is included. Full contract:
+[`compat/backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ## Uploads and archive formats
 
 - [ ] File size limits are enforced before expensive parsing.

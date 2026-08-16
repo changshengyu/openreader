@@ -281,6 +281,17 @@ atomic generation/restore and source-edit capability contract are defined by
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
 
+### P2 backup-generation request lifecycle (2026-08-16 extracted)
+
+The logical and portable formats above remain closed. The next route-level action gap is limited to generation
+diagnostics and cancellation; see
+[`backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+Both trigger routes keep no-body requests, auth/permission priority, caller roots, atomic temp+rename and current
+success/typed error fields. The ordinary trigger must stop serializing raw service errors and use safe fixed 500;
+both HTTP-triggered generators must propagate request context through lock wait, DB reads, archive/asset copies and
+the pre-rename boundary. Existing no-context service methods remain scheduled/internal compatibility wrappers.
+Status: **inventory-complete / implementation-pending**.
+
 P2-S4 keeps `sources` as imported/updated/reactivated count and may add
 `sourceDetached`/`sourceRemoved` when replace-style reconciliation only removes or detaches old active
 sources. Those additive fields also drive a target-user `sources_update`; old clients may ignore them.
