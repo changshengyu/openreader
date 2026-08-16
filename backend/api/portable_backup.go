@@ -190,6 +190,13 @@ func (s *Server) stageUploadedBackup(fileHeader *multipart.FileHeader, userID ui
 		return "", errInvalidPortableBackup
 	}
 	defer input.Close()
+	return s.stageBackupReader(input, userID, maxBytes)
+}
+
+func (s *Server) stageBackupReader(input io.Reader, userID uint, maxBytes int64) (string, error) {
+	if input == nil || maxBytes <= 0 {
+		return "", errInvalidPortableBackup
+	}
 	root := filepath.Join(s.cfg.CacheDir, "backup-uploads", fmt.Sprintf("%d", userID))
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", err

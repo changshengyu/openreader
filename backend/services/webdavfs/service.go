@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 )
 
 var (
@@ -20,6 +21,8 @@ var (
 	ErrNotDirectory = errors.New("WebDAV parent is not a directory")
 	ErrTooLarge     = errors.New("WebDAV upload exceeds size limit")
 )
+
+const maxImportPathBytes = 4096
 
 type Service struct {
 	boundary string
@@ -33,6 +36,15 @@ type Resource struct {
 
 func New(root string) (*Service, error) {
 	return NewScoped(root, root)
+}
+
+// NormalizeImportPath applies the stricter JSON import boundary without
+// changing the raw DAV protocol's established path contract.
+func NormalizeImportPath(value string) (string, error) {
+	if !utf8.ValidString(value) || len(value) > maxImportPathBytes {
+		return "", ErrUnsafePath
+	}
+	return cleanRelative(value)
 }
 
 // NewScoped creates a service rooted at root while also checking every

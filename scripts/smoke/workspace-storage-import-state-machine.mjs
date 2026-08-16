@@ -126,13 +126,26 @@ const sources = {
   },
 }
 
+function selectedSources() {
+  const requested = String(process.env.STORAGE_SOURCES || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  if (!requested.length) return Object.keys(sources)
+  const unknown = requested.filter(source => !sources[source])
+  assert(!unknown.length, `unknown STORAGE_SOURCES: ${unknown.join(', ')}`)
+  return requested
+}
+
 for (const source of Object.values(sources)) {
   source.openMulti = async (page, dialog) => {
     const rows = page.locator(`${dialog} .el-table__body-wrapper .el-checkbox`)
     assert(await rows.count() >= 2, 'workspace file manager must expose two selectable imported files')
-    await rows.nth(0).click()
-    await rows.nth(1).click()
-    await page.locator(dialog).getByRole('button', { name: '加入书架 2', exact: true }).click()
+    for (const index of [0, 1]) {
+      const row = rows.nth(index)
+      if (!(await row.evaluate(node => node.classList.contains('is-checked')))) await row.click()
+    }
+    await page.locator(dialog).getByRole('button', { name: '批量加入书架 2', exact: true }).click()
   }
 }
 
@@ -167,6 +180,7 @@ async function runSource(page, viewport, imports, source) {
   await page.locator('.storage-import-groups-dialog').waitFor()
   await page.locator('.storage-import-groups-dialog').locator('.el-select').click()
   await page.getByText('导入组', { exact: true }).last().click()
+  await page.keyboard.press('Escape')
   await page.locator('.storage-import-groups-dialog').getByRole('button', { name: '确定', exact: true }).click()
   await page.locator('.storage-import-groups-dialog').waitFor({ state: 'hidden' })
   assert(imports.length === importedAtStart + 3, `${viewport.width} ${source}: batch confirmation must write both rows`)
@@ -190,17 +204,24 @@ async function runSource(page, viewport, imports, source) {
   await assertNoHorizontalOverflow(page, `${viewport.width} ${source} storage import state machine`)
   if (viewport.width <= 750) {
     await page.locator(config.dialog).getByRole('button', { name: config.oneButton, exact: true }).first().click()
-    const geometry = await page.locator('.storage-import-single-dialog').evaluate(node => {
+    await page.waitForTimeout(350)
+    const geometry = await page.locator('.storage-import-single-dialog:visible').evaluate(node => {
       const rect = node.getBoundingClientRect()
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, viewportWidth: innerWidth, viewportHeight: innerHeight }
     })
-    assert(Math.abs(geometry.left) <= 1 && Math.abs(geometry.top) <= 1, `${viewport.width} ${source}: storage confirmation must be fullscreen`)
-    assert(Math.abs(geometry.width - geometry.viewportWidth) <= 1 && Math.abs(geometry.height - geometry.viewportHeight) <= 1, `${viewport.width} ${source}: storage confirmation must fill mobile viewport`)
+    assert(
+      Math.abs(geometry.left) <= 1 && Math.abs(geometry.top) <= 1,
+      `${viewport.width} ${source}: storage confirmation must be fullscreen: ${JSON.stringify(geometry)}`,
+    )
+    assert(
+      Math.abs(geometry.width - geometry.viewportWidth) <= 1 && Math.abs(geometry.height - geometry.viewportHeight) <= 1,
+      `${viewport.width} ${source}: storage confirmation must fill mobile viewport: ${JSON.stringify(geometry)}`,
+    )
     await page.locator('.storage-import-single-dialog').getByRole('button', { name: '取消', exact: true }).click()
   }
 }
 
-async function runViewport(browser, viewport) {
+async function runViewport(browser, viewport, activeSources) {
   const context = await browser.newContext({ viewport, isMobile: viewport.width <= 750, hasTouch: viewport.width <= 750 })
   const page = await context.newPage()
   const failures = []
@@ -212,8 +233,7 @@ async function runViewport(browser, viewport) {
   const imports = await installApiMocks(page)
 
   try {
-    await runSource(page, viewport, imports, 'local')
-    await runSource(page, viewport, imports, 'webdav')
+    for (const source of activeSources) await runSource(page, viewport, imports, source)
     assert(failures.length === 0, failures.join('\n'))
     return `${viewport.width}x${viewport.height}`
   } finally {
@@ -222,13 +242,14 @@ async function runViewport(browser, viewport) {
 }
 
 async function run() {
+  const activeSources = selectedSources()
   const browser = await openSmokeBrowser()
   try {
     const checks = []
-    checks.push(await runViewport(browser, { width: 1440, height: 900 }))
-    checks.push(await runViewport(browser, { width: 390, height: 844 }))
-    checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`workspace-storage-state-machine: ok ${checks.join(', ')} single=true batch=true sequential=true closeCancels=true`)
+    checks.push(await runViewport(browser, { width: 1440, height: 900 }, activeSources))
+    checks.push(await runViewport(browser, { width: 390, height: 844 }, activeSources))
+    checks.push(await runViewport(browser, { width: 360, height: 800 }, activeSources))
+    console.log(`workspace-storage-state-machine: ok ${checks.join(', ')} sources=${activeSources.join(',')} single=true batch=true sequential=true closeCancels=true`)
   } finally {
     await browser.close()
   }

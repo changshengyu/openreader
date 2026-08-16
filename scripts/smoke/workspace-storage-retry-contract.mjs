@@ -111,11 +111,23 @@ async function assertNoHorizontalOverflow(page, label) {
   assert(geometry.scrollWidth <= geometry.width + 1, `${label}: horizontal overflow ${geometry.scrollWidth} > ${geometry.width}`)
 }
 
+function selectedSources() {
+  const available = ['local', 'webdav']
+  const requested = String(process.env.STORAGE_SOURCES || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  if (!requested.length) return available
+  const unknown = requested.filter(source => !available.includes(source))
+  assert(!unknown.length, `unknown STORAGE_SOURCES: ${unknown.join(', ')}`)
+  return requested
+}
+
 async function openAndRetry(page, root, viewport, source) {
   const isLocal = source === 'local'
   const path = isLocal ? '/local-store?storageRetry=1' : '/settings?panel=webdav&storageRetry=1'
   const dialog = isLocal ? '.global-local-store-dialog' : '.global-webdav-dialog'
-  const startLabel = isLocal ? '导入' : '加入书架'
+  const startLabel = '加入书架'
 
   await page.goto(`${root}${path}`, { waitUntil: 'networkidle' })
   await page.waitForSelector(dialog, { timeout: 10000 })
@@ -141,7 +153,7 @@ async function openAndRetry(page, root, viewport, source) {
   }
 }
 
-async function runViewport(browser, viewport) {
+async function runViewport(browser, viewport, activeSources) {
   const context = await browser.newContext({ viewport, isMobile: viewport.width <= 750, hasTouch: viewport.width <= 750 })
   const page = await context.newPage()
   const failures = []
@@ -153,10 +165,11 @@ async function runViewport(browser, viewport) {
   const calls = await installApiMocks(page)
 
   try {
-    await openAndRetry(page, targetUrl, viewport, 'local')
-    await openAndRetry(page, targetUrl, viewport, 'webdav')
-    assert(calls.retries.local === 1 && calls.retries.webdav === 1, `${viewport.width}: both retry operations must make one tokenized preview request`)
-    assert(calls.imports.local === 1 && calls.imports.webdav === 1, `${viewport.width}: both confirmation operations must keep the staged token`)
+    for (const source of activeSources) await openAndRetry(page, targetUrl, viewport, source)
+    for (const source of activeSources) {
+      assert(calls.retries[source] === 1, `${viewport.width} ${source}: retry must make one tokenized preview request`)
+      assert(calls.imports[source] === 1, `${viewport.width} ${source}: confirmation must keep the staged token`)
+    }
     assert(failures.length === 0, failures.join('\n'))
     return `${viewport.width}x${viewport.height}`
   } finally {
@@ -165,13 +178,14 @@ async function runViewport(browser, viewport) {
 }
 
 async function run() {
+  const activeSources = selectedSources()
   const browser = await openSmokeBrowser()
   try {
     const checks = []
-    checks.push(await runViewport(browser, { width: 1440, height: 900 }))
-    checks.push(await runViewport(browser, { width: 390, height: 844 }))
-    checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`workspace-storage-retry: ok ${checks.join(', ')} localStore=true webdav=true emptyCatalog=true tokenReparse=true`)
+    checks.push(await runViewport(browser, { width: 1440, height: 900 }, activeSources))
+    checks.push(await runViewport(browser, { width: 390, height: 844 }, activeSources))
+    checks.push(await runViewport(browser, { width: 360, height: 800 }, activeSources))
+    console.log(`workspace-storage-retry: ok ${checks.join(', ')} sources=${activeSources.join(',')} emptyCatalog=true tokenReparse=true`)
   } finally {
     await browser.close()
   }

@@ -3,9 +3,11 @@ package webdavfs
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -47,6 +49,69 @@ func TestResolvePreservesEncodedFilenameWhitespaceAndRejectsPortableVolumes(t *t
 				t.Fatalf("Resolve(%q) error = %v, want ErrUnsafePath", unsafe, err)
 			}
 		})
+	}
+}
+
+func TestNormalizeImportPathAddsUTF8AndLengthAdmission(t *testing.T) {
+	valid := " folder / spaced file.txt "
+	if normalized, err := NormalizeImportPath(valid); err != nil || normalized != valid {
+		t.Fatalf("NormalizeImportPath(%q) = %q, %v", valid, normalized, err)
+	}
+	exact := strings.Repeat("a", maxImportPathBytes)
+	if normalized, err := NormalizeImportPath(exact); err != nil || normalized != exact {
+		t.Fatalf("exact import path limit = %d bytes, %v", len(normalized), err)
+	}
+	for _, unsafe := range []string{
+		strings.Repeat("a", maxImportPathBytes+1),
+		string([]byte{0xff}),
+		"../outside.txt",
+		"//server/share.txt",
+		`C:\outside.txt`,
+		`/C:/outside.txt`,
+		"bad\x00path.txt",
+	} {
+		if _, err := NormalizeImportPath(unsafe); !errors.Is(err, ErrUnsafePath) {
+			t.Fatalf("NormalizeImportPath(%q) error = %v, want ErrUnsafePath", unsafe, err)
+		}
+	}
+}
+
+func TestOpenReturnsOnlySameRegularFileAndRejectsUnsafeKinds(t *testing.T) {
+	service := newTestService(t)
+	regularPath := filepath.Join(service.Root(), "regular.txt")
+	if err := os.WriteFile(regularPath, []byte("regular"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, info, err := service.Open("regular.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || string(data) != "regular" || !info.Mode().IsRegular() {
+		t.Fatalf("opened regular file = %q mode=%v read=%v close=%v", data, info.Mode(), readErr, closeErr)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(service.Root(), "linked.txt")); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	if _, _, err := service.Open("linked.txt"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("Open symlink error = %v, want ErrUnsafePath", err)
+	}
+
+	fifoPath := filepath.Join(service.Root(), "blocked.txt")
+	if err := syscall.Mkfifo(fifoPath, 0o600); err != nil {
+		t.Skipf("FIFO fixture unavailable: %v", err)
+	}
+	if _, _, err := service.Open("blocked.txt"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("Open FIFO error = %v, want ErrUnsafePath", err)
+	}
+	if _, _, err := service.Open(""); !errors.Is(err, ErrIsDirectory) {
+		t.Fatalf("Open directory error = %v, want ErrIsDirectory", err)
 	}
 }
 

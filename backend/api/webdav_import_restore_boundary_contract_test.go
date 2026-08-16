@@ -246,6 +246,82 @@ func TestWebDAVImportJSONAcceptsExactOneMiBBody(t *testing.T) {
 	}
 }
 
+func TestWebDAVImportRejectsUnsafePathAdmissionBeforeFilesystemAccess(t *testing.T) {
+	tests := []struct {
+		name string
+		body func(t *testing.T) []byte
+	}{
+		{
+			name: "parent traversal",
+			body: func(t *testing.T) []byte {
+				body, _ := json.Marshal(map[string]any{"paths": []string{"../outside.txt"}})
+				return body
+			},
+		},
+		{
+			name: "UNC path",
+			body: func(t *testing.T) []byte {
+				body, _ := json.Marshal(map[string]any{"paths": []string{`\\server\share.txt`}})
+				return body
+			},
+		},
+		{
+			name: "Windows volume",
+			body: func(t *testing.T) []byte {
+				body, _ := json.Marshal(map[string]any{"paths": []string{`/C:/outside.txt`}})
+				return body
+			},
+		},
+		{
+			name: "NUL path",
+			body: func(t *testing.T) []byte {
+				body, _ := json.Marshal(map[string]any{"paths": []string{"bad\x00path.txt"}})
+				return body
+			},
+		},
+		{
+			name: "4097 byte path",
+			body: func(t *testing.T) []byte {
+				body, _ := json.Marshal(map[string]any{"paths": []string{strings.Repeat("p", 4097)}})
+				return body
+			},
+		},
+		{
+			name: "invalid UTF-8 JSON",
+			body: func(t *testing.T) []byte {
+				body := []byte(`{"paths":["x"]}`)
+				body[len(body)-4] = 0xff
+				return body
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			user := webDAVTestUser(t, server)
+			events := server.hub.AddClient(user.ID, nil).Send
+			response, _ := performLocalStoreRequest(
+				router,
+				http.MethodPost,
+				"/api/webdav/import-preview",
+				auth,
+				"application/json",
+				test.body(t),
+				false,
+			)
+			if response.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", response.Code, response.Body.String())
+			}
+			assertWebDAVRejectedWithoutImportSideEffects(t, server, events)
+			if _, err := os.Stat(webDAVTestRoot(server)); !os.IsNotExist(err) {
+				t.Errorf("unsafe path request touched WebDAV root: %v", err)
+			}
+		})
+	}
+}
+
 func TestWebDAVImportExpansionRejectsItemTwoHundredOneBeforeSideEffects(t *testing.T) {
 	for _, endpoint := range []string{"/api/webdav/import-preview", "/api/webdav/import"} {
 		t.Run(endpoint, func(t *testing.T) {
@@ -614,6 +690,69 @@ func TestWebDAVRestoreJSONAcceptsExactSixteenKiBBody(t *testing.T) {
 	}
 	if staged := countFilesBelow(t, filepath.Join(server.cfg.CacheDir, "backup-uploads")); staged != 0 {
 		t.Fatalf("successful restore left %d backup snapshots", staged)
+	}
+}
+
+func TestWebDAVRestoreRejectsSymlinkDirectoryAndSpecialSourcesBeforeSnapshot(t *testing.T) {
+	for _, kind := range []string{"symlink", "directory", "fifo"} {
+		t.Run(kind, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			user := webDAVTestUser(t, server)
+			events := server.hub.AddClient(user.ID, nil).Send
+			root := webDAVTestRoot(server)
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			sourcePath := filepath.Join(root, "blocked.zip")
+			switch kind {
+			case "symlink":
+				outside := filepath.Join(t.TempDir(), "outside.zip")
+				if err := os.WriteFile(outside, makeBackupRestoreZIP(t, map[string]string{"myBookShelf.json": `[]`}), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, sourcePath); err != nil {
+					t.Skipf("symlink fixture unavailable: %v", err)
+				}
+			case "directory":
+				if err := os.Mkdir(sourcePath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			case "fifo":
+				if err := syscall.Mkfifo(sourcePath, 0o600); err != nil {
+					t.Skipf("FIFO fixture unavailable: %v", err)
+				}
+			}
+
+			response, _ := performLocalStoreRequest(
+				router,
+				http.MethodPost,
+				"/api/backup/restore-webdav",
+				auth,
+				"application/json",
+				[]byte(`{"path":"blocked.zip"}`),
+				false,
+			)
+			if response.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", response.Code, response.Body.String())
+			}
+			if files := countFilesBelow(t, filepath.Join(server.cfg.CacheDir, "backup-uploads")); files != 0 {
+				t.Errorf("rejected source left %d backup snapshots", files)
+			}
+			var books int64
+			if err := server.db.Model(&models.Book{}).Count(&books).Error; err != nil {
+				t.Fatal(err)
+			}
+			if books != 0 {
+				t.Errorf("rejected source restored %d books", books)
+			}
+			if emitted := drainBookWriteEvents(events); len(emitted) != 0 {
+				t.Errorf("rejected source emitted events: %v", emitted)
+			}
+			if _, err := os.Lstat(sourcePath); err != nil {
+				t.Errorf("rejected source was modified or removed: %v", err)
+			}
+		})
 	}
 }
 

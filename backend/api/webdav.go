@@ -546,30 +546,46 @@ func (s *Server) restoreWebDAVBackup(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var req restoreWebDAVBackupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var req *restoreWebDAVBackupRequest
+	if !decodeWebDAVJSON(c, &req, maxWebDAVRestoreBodyBytes, "path is required") {
+		return
+	}
+	if req == nil || strings.TrimSpace(req.Path) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
 		return
 	}
-	if !strings.EqualFold(filepath.Ext(strings.TrimSpace(req.Path)), ".zip") {
+	relativePath, err := webdavfs.NormalizeImportPath(strings.TrimSpace(req.Path))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(relativePath), ".zip") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file must be a zip archive"})
 		return
 	}
-	filePath, _, ok := s.webdavPath(c, req.Path)
+	service, ok := s.webDAVReadService(c)
 	if !ok {
 		return
 	}
-	info, err := os.Stat(filePath)
-	if err != nil || info.IsDir() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file not found"})
+	input, info, err := service.Open(relativePath)
+	if err != nil {
+		writeWebDAVRestoreSourceError(c, err)
 		return
 	}
 	limits := s.portableLimits()
 	if info.Size() > limits.maxCompressed {
+		_ = input.Close()
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return
 	}
-	result, err := s.restoreBackupFileWithPermissions(filePath, userID, username, user.CanEditSources)
+	stagedPath, err := s.stageBackupReader(input, userID, limits.maxCompressed)
+	_ = input.Close()
+	if err != nil {
+		writeBackupRestoreError(c, err)
+		return
+	}
+	defer os.Remove(stagedPath)
+	result, err := s.restoreBackupFileWithPermissions(stagedPath, userID, username, user.CanEditSources)
 	if err != nil {
 		writeBackupRestoreError(c, err)
 		return
@@ -600,14 +616,12 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 	}
 	userID, _ := middleware.UserID(c)
 
-	var req localBookImportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+	req, ok := decodeWebDAVImportRequest(c)
+	if !ok {
 		return
 	}
-	paths := req.requestedPaths()
-	if len(paths) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+	plan, ok := s.prepareWebDAVImport(c, *req)
+	if !ok {
 		return
 	}
 	categoryIDs := categoryIDsFromRequest(req.CategoryID, req.CategoryIDs)
@@ -631,85 +645,64 @@ func (s *Server) importFromWebDAV(c *gin.Context) {
 	importer := localbook.NewImporter(s.cfg, s.db)
 	imported := make([]gin.H, 0)
 	importedBooks := make([]bookListItem, 0)
-	seen := make(map[string]bool)
-	itemByPath := req.itemByPath()
 
-	for _, rawPath := range paths {
-		_, requestedPath, ok := s.webdavPath(c, rawPath)
-		if !ok {
-			return
-		}
-		override := itemByPath[requestedPath]
-		if override.ImportToken != "" {
-			if seen[requestedPath] {
-				continue
-			}
-			seen[requestedPath] = true
-			importRequest, err := s.stagedStorageImportRequest(userID, userName, override.ImportToken, override, primaryCategoryID)
+	for _, target := range plan.targets {
+		if target.override.ImportToken != "" {
+			importRequest, err := s.stagedStorageImportRequest(userID, userName, target.override.ImportToken, target.override, primaryCategoryID)
 			if err != nil {
-				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
+				imported = append(imported, gin.H{"path": target.relativePath, "error": err.Error()})
 				continue
 			}
-			book, err := s.importStagedLocalBook(userID, override.ImportToken, importer, importRequest)
+			book, err := s.importStagedLocalBook(userID, target.override.ImportToken, importer, importRequest)
 			if err != nil {
-				imported = append(imported, gin.H{"path": requestedPath, "error": err.Error()})
+				imported = append(imported, gin.H{"path": target.relativePath, "error": err.Error()})
 				continue
 			}
-			s.removeStagedLocalImport(userID, override.ImportToken)
+			s.removeStagedLocalImport(userID, target.override.ImportToken)
 			if len(categoryIDs) > 0 {
 				_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 			}
 			item := s.bookShelfListItem(userID, book)
-			imported = append(imported, gin.H{"path": requestedPath, "book": item})
+			imported = append(imported, gin.H{"path": target.relativePath, "book": item})
 			importedBooks = append(importedBooks, item)
 			continue
 		}
-		files, ok := s.webDAVImportFiles(c, rawPath)
-		if !ok {
-			return
+		file := target.file
+		if file.validationError != "" {
+			imported = append(imported, gin.H{"path": file.relativePath, "error": file.validationError})
+			continue
 		}
-		for _, file := range files {
-			if seen[file.relativePath] {
-				continue
-			}
-			seen[file.relativePath] = true
-			if file.validationError != "" {
-				imported = append(imported, gin.H{"path": file.relativePath, "error": file.validationError})
-				continue
-			}
-
-			data, err := s.readBoundedLocalImportFile(file.filePath)
-			if err != nil {
-				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
-				continue
-			}
-
-			override := itemByPath[file.relativePath]
-			book, err := importer.Import(localbook.ImportRequest{
-				UserID:     userID,
-				UserName:   userName,
-				FileName:   filepath.Base(file.filePath),
-				Extension:  file.extension,
-				Data:       data,
-				Title:      override.Title,
-				Author:     override.Author,
-				CategoryID: primaryCategoryID,
-				TOCRule:    override.TOCRule,
-			})
-			if err != nil {
-				imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
-				continue
-			}
-			if len(categoryIDs) > 0 {
-				_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
-			}
-			item := s.bookShelfListItem(userID, book)
-			imported = append(imported, gin.H{"path": file.relativePath, "book": item})
-			importedBooks = append(importedBooks, item)
+		data, err := s.readBoundedWebDAVImport(plan.service, file.relativePath)
+		if err != nil {
+			imported = append(imported, gin.H{"path": file.relativePath, "error": webDAVImportReadError(err)})
+			continue
 		}
+		book, err := importer.Import(localbook.ImportRequest{
+			UserID:     userID,
+			UserName:   userName,
+			FileName:   webDAVImportFileName(file.relativePath),
+			Extension:  file.extension,
+			Data:       data,
+			Title:      target.override.Title,
+			Author:     target.override.Author,
+			CategoryID: primaryCategoryID,
+			TOCRule:    target.override.TOCRule,
+		})
+		if err != nil {
+			imported = append(imported, gin.H{"path": file.relativePath, "error": err.Error()})
+			continue
+		}
+		if len(categoryIDs) > 0 {
+			_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
+		}
+		item := s.bookShelfListItem(userID, book)
+		imported = append(imported, gin.H{"path": file.relativePath, "book": item})
+		importedBooks = append(importedBooks, item)
 	}
 
-	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": importedBooks})
+	if len(importedBooks) > 0 {
+		_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": importedBooks})
+	}
 	c.JSON(http.StatusOK, gin.H{"imported": imported})
 }
 
@@ -718,104 +711,49 @@ func (s *Server) previewWebDAVImport(c *gin.Context) {
 		return
 	}
 	userID, _ := middleware.UserID(c)
-	var req localBookImportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+	req, ok := decodeWebDAVImportRequest(c)
+	if !ok {
 		return
 	}
-	paths := req.requestedPaths()
-	if len(paths) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+	plan, ok := s.prepareWebDAVImport(c, *req)
+	if !ok {
 		return
 	}
 	results := make([]gin.H, 0)
-	seen := make(map[string]bool)
-	itemByPath := req.itemByPath()
-	for _, rawPath := range paths {
-		_, requestedPath, ok := s.webdavPath(c, rawPath)
-		if !ok {
-			continue
-		}
-		if override, exists := itemByPath[requestedPath]; exists && override.ImportToken != "" {
-			if seen[requestedPath] {
-				continue
-			}
-			seen[requestedPath] = true
-			preview, importToken, err := s.reparseStagedStorageImport(userID, override.ImportToken, override)
+	for _, target := range plan.targets {
+		if target.override.ImportToken != "" {
+			preview, importToken, err := s.reparseStagedStorageImport(userID, target.override.ImportToken, target.override)
 			if err != nil {
-				results = append(results, gin.H{"path": requestedPath, "error": err.Error(), "importToken": importToken})
+				results = append(results, gin.H{"path": target.relativePath, "error": err.Error(), "importToken": importToken})
 				continue
 			}
-			results = append(results, gin.H{"path": requestedPath, "book": preview, "importToken": importToken})
+			results = append(results, gin.H{"path": target.relativePath, "book": preview, "importToken": importToken})
 			continue
 		}
-
-		files, ok := s.webDAVImportFiles(c, rawPath)
-		if !ok {
+		file := target.file
+		if file.validationError != "" {
+			results = append(results, gin.H{"path": file.relativePath, "error": file.validationError})
 			continue
 		}
-		for _, file := range files {
-			if seen[file.relativePath] {
-				continue
-			}
-			seen[file.relativePath] = true
-			if file.validationError != "" {
-				results = append(results, gin.H{"path": file.relativePath, "error": file.validationError})
-				continue
-			}
-			override := itemByPath[file.relativePath]
-			preview, importToken, err := s.previewStagedStorageImport(userID, file, override)
-			if err != nil {
-				results = append(results, gin.H{"path": file.relativePath, "error": err.Error(), "importToken": importToken})
-				continue
-			}
-			results = append(results, gin.H{"path": file.relativePath, "book": preview, "importToken": importToken})
+		data, err := s.readBoundedWebDAVImport(plan.service, file.relativePath)
+		if err != nil {
+			results = append(results, gin.H{"path": file.relativePath, "error": webDAVImportReadError(err)})
+			continue
 		}
+		preview, importToken, err := s.previewStagedStorageImportData(
+			userID,
+			webDAVImportFileName(file.relativePath),
+			file.extension,
+			data,
+			target.override,
+		)
+		if err != nil {
+			results = append(results, gin.H{"path": file.relativePath, "error": err.Error(), "importToken": importToken})
+			continue
+		}
+		results = append(results, gin.H{"path": file.relativePath, "book": preview, "importToken": importToken})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": results})
-}
-
-func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStoreImportFile, bool) {
-	filePath, relativePath, ok := s.webdavPath(c, rawPath)
-	if !ok {
-		return nil, false
-	}
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return nil, true
-	}
-	if !info.IsDir() {
-		ext := strings.ToLower(filepath.Ext(filePath))
-		if !isImportableExtension(ext) {
-			return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext, validationError: "unsupported file type"}}, true
-		}
-		return []localStoreImportFile{{filePath: filePath, relativePath: relativePath, extension: ext}}, true
-	}
-
-	files := make([]localStoreImportFile, 0)
-	_ = filepath.WalkDir(filePath, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if !isImportableExtension(ext) {
-			return nil
-		}
-		rel, err := filepath.Rel(filePath, path)
-		if err != nil {
-			return nil
-		}
-		files = append(files, localStoreImportFile{
-			filePath:     path,
-			relativePath: cleanRelativePath(filepath.Join(relativePath, rel)),
-			extension:    ext,
-		})
-		return nil
-	})
-	sort.SliceStable(files, func(i, j int) bool {
-		return strings.ToLower(files[i].relativePath) < strings.ToLower(files[j].relativePath)
-	})
-	return files, true
 }
 
 func (s *Server) restoreLegadoBackupData(data []byte, userID uint) (gin.H, error) {
@@ -1918,22 +1856,4 @@ func findRestoredBookWithDB(db *gorm.DB, userID uint, bookURL string, title stri
 
 func (s *Server) webdavDir() string {
 	return filepath.Join(s.cfg.DataDir, "webdav")
-}
-
-func (s *Server) webdavPath(c *gin.Context, rawPath string) (string, string, bool) {
-	storeRoot, ok := s.storeRoot(c, s.webdavDir())
-	if !ok {
-		return "", "", false
-	}
-	service, err := webdavfs.NewScoped(s.webdavDir(), storeRoot)
-	if err != nil {
-		writeWebDAVServiceError(c, err)
-		return "", "", false
-	}
-	target, relative, err := service.Resolve(rawPath)
-	if err != nil {
-		writeWebDAVServiceError(c, err)
-		return "", "", false
-	}
-	return target, relative, true
 }

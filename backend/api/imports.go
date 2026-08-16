@@ -216,27 +216,6 @@ func (request localBookImportRequest) requestedPaths() []string {
 	return paths
 }
 
-func (request localBookImportRequest) itemByPath() map[string]localBookImportItem {
-	items := make(map[string]localBookImportItem, len(request.Items))
-	for _, item := range request.Items {
-		if path := cleanRelativePath(item.Path); path != "" {
-			items[path] = item
-		}
-	}
-	return items
-}
-
-// previewStagedStorageImport fixes the source bytes at preview time for files
-// coming from LocalStore or WebDAV. Confirm/import can then safely reparse the
-// user's edited TOC rule without depending on a mutable mounted file.
-func (s *Server) previewStagedStorageImport(userID uint, file localStoreImportFile, override localBookImportItem) (localbook.PreviewResult, string, error) {
-	data, err := s.readBoundedLocalImportFile(file.filePath)
-	if err != nil {
-		return localbook.PreviewResult{}, "", err
-	}
-	return s.previewStagedStorageImportData(userID, filepath.Base(file.filePath), file.extension, data, override)
-}
-
 func (s *Server) previewStagedStorageImportData(
 	userID uint,
 	fileName string,
