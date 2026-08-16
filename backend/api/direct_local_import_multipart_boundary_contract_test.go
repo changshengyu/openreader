@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -83,6 +84,51 @@ func TestDirectLocalImportMultipartEnvelopeAndAuthPriority(t *testing.T) {
 	})
 }
 
+func TestDirectLocalImportExactMultipartAndFileLimits(t *testing.T) {
+	router, server := setupTestServerWithConfig(t, func(cfg *config.Config) {
+		cfg.MaxImportBytes = 64
+	})
+	auth := authHeader(t, router)
+
+	t.Run("exact file limit is admitted", func(t *testing.T) {
+		data := append([]byte("第一章\n"), bytes.Repeat([]byte("x"), 64-len([]byte("第一章\n")))...)
+		request, response := directLocalImportMultipartRequest(t, "/api/imports/books/preview", auth, []directLocalImportMultipartPart{
+			{name: "file", filename: "exact-file.txt", data: data},
+		})
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("exact file limit = %d: %s", response.Code, response.Body.String())
+		}
+	})
+
+	t.Run("exact request envelope reaches the file-size gate", func(t *testing.T) {
+		requestLimit := server.maxLocalImportBytes() + directLocalImportEnvelopeBytes
+		emptyBody, _ := directLocalImportMultipartBody(t, []directLocalImportMultipartPart{
+			{name: "file", filename: "exact-envelope.txt", data: nil},
+		})
+		payloadBytes := int(requestLimit) - len(emptyBody)
+		body, contentType := directLocalImportMultipartBody(t, []directLocalImportMultipartPart{
+			{name: "file", filename: "exact-envelope.txt", data: bytes.Repeat([]byte("x"), payloadBytes)},
+		})
+		if delta := int(requestLimit) - len(body); delta != 0 {
+			payloadBytes += delta
+			body, contentType = directLocalImportMultipartBody(t, []directLocalImportMultipartPart{
+				{name: "file", filename: "exact-envelope.txt", data: bytes.Repeat([]byte("x"), payloadBytes)},
+			})
+		}
+		if int64(len(body)) != requestLimit {
+			t.Fatalf("exact envelope fixture = %d bytes, want %d", len(body), requestLimit)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/imports/books/preview", bytes.NewReader(body))
+		request.Header.Set("Authorization", auth)
+		request.Header.Set("Content-Type", contentType)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+
+		assertDirectLocalImportError(t, response, http.StatusRequestEntityTooLarge, "local book exceeds maximum import size")
+	})
+}
+
 func TestDirectLocalImportRejectsAmbiguousMultipartBeforeStaging(t *testing.T) {
 	router, server := setupTestServer(t)
 	auth := authHeader(t, router)
@@ -126,6 +172,19 @@ func TestDirectLocalImportRejectsAmbiguousMultipartBeforeStaging(t *testing.T) {
 			},
 		},
 		{
+			name: "duplicate token",
+			parts: []directLocalImportMultipartPart{
+				{name: "importToken", data: []byte(token)},
+				{name: "importToken", data: []byte(token)},
+			},
+		},
+		{
+			name: "uppercase token",
+			parts: []directLocalImportMultipartPart{
+				{name: "importToken", data: []byte(strings.ToUpper(token))},
+			},
+		},
+		{
 			name: "unknown scalar",
 			parts: []directLocalImportMultipartPart{
 				validFile,
@@ -150,6 +209,53 @@ func TestDirectLocalImportRejectsAmbiguousMultipartBeforeStaging(t *testing.T) {
 			assertDirectLocalImportError(t, response, http.StatusBadRequest, "invalid local import request")
 			if after := directLocalImportStageEntryCount(t, server, 1); after != beforeStages {
 				t.Errorf("invalid multipart changed stage entries: before=%d after=%d", beforeStages, after)
+			}
+		})
+	}
+}
+
+func TestDirectLocalImportAcceptsRepeatedCategoriesForBothAliases(t *testing.T) {
+	router, server := setupTestServer(t)
+	auth := authHeader(t, router)
+	var user models.User
+	if err := server.db.Where("username = ?", "testuser").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	categories := []models.Category{
+		{UserID: user.ID, Name: "direct one"},
+		{UserID: user.ID, Name: "direct two"},
+	}
+	if err := server.db.Create(&categories).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for index, endpoint := range []string{"/api/imports/books", "/api/imports/txt"} {
+		t.Run(endpoint, func(t *testing.T) {
+			request, response := directLocalImportMultipartRequest(t, endpoint, auth, []directLocalImportMultipartPart{
+				{name: "file", filename: "compatible-" + strconv.Itoa(index) + ".txt", data: []byte("第一章\n正文")},
+				{name: "categoryIds", data: []byte(strconv.FormatUint(uint64(categories[0].ID), 10) + "," + strconv.FormatUint(uint64(categories[1].ID), 10))},
+				{name: "categoryIds", data: []byte(strconv.FormatUint(uint64(categories[0].ID), 10))},
+				{name: "categoryIds", data: []byte("0,")},
+			})
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusCreated {
+				t.Fatalf("compatible repeated categories = %d: %s", response.Code, response.Body.String())
+			}
+			var book models.Book
+			if err := json.Unmarshal(response.Body.Bytes(), &book); err != nil {
+				t.Fatal(err)
+			}
+			var rows []models.BookCategory
+			if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).Order("id ASC").Find(&rows).Error; err != nil {
+				t.Fatal(err)
+			}
+			got := make([]uint, 0, len(rows))
+			for _, row := range rows {
+				got = append(got, row.CategoryID)
+			}
+			want := []uint{categories[0].ID, categories[1].ID}
+			if !slices.Equal(got, want) {
+				t.Fatalf("category relations = %v, want %v", got, want)
 			}
 		})
 	}
@@ -274,6 +380,27 @@ func TestDirectLocalImportRejectsMalformedCategoriesBeforePersistence(t *testing
 			}
 		})
 	}
+
+	t.Run("invalid singular category cannot hide behind category list", func(t *testing.T) {
+		beforeBooks := directLocalImportBookCount(t, server)
+		beforeLibrary := directLocalImportTreeEntryCount(t, server.cfg.LibraryDir)
+		request, response := directLocalImportMultipartRequest(t, "/api/imports/books", auth, []directLocalImportMultipartPart{
+			file,
+			{name: "categoryId", data: []byte("999999")},
+			{name: "categoryIds", data: []byte(strconv.FormatUint(uint64(category.ID), 10))},
+		})
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "category not found") {
+			t.Fatalf("invalid singular category = %d: %s", response.Code, response.Body.String())
+		}
+		if after := directLocalImportBookCount(t, server); after != beforeBooks {
+			t.Errorf("invalid categories changed books: before=%d after=%d", beforeBooks, after)
+		}
+		if after := directLocalImportTreeEntryCount(t, server.cfg.LibraryDir); after != beforeLibrary {
+			t.Errorf("invalid categories changed library tree: before=%d after=%d", beforeLibrary, after)
+		}
+	})
 }
 
 func TestDirectLocalImportRemovesMultipartTemporaryFiles(t *testing.T) {

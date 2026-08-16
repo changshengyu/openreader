@@ -26,6 +26,49 @@ export function previewLocalBook(file, payload = {}, options = {}) {
   })
 }
 
+export async function previewDirectLocalBooks(inputs, options = {}) {
+  const items = Array.isArray(inputs) ? inputs : []
+  const previewBook = options.previewBook || previewLocalBook
+  const results = []
+  for (let index = 0; index < items.length; index += 1) {
+    const input = items[index]
+    const path = String(input?.path || input?.name || '')
+    const key = String(input?.key || `direct:${index}`)
+    const importToken = String(input?.importToken || '')
+    const payload = importToken
+      ? {
+          importToken,
+          title: String(input?.title || ''),
+          author: String(input?.author || ''),
+          tocRule: String(input?.tocRule || ''),
+        }
+      : { tocRule: /\.epub$/i.test(path) ? 'spin+toc' : '' }
+    try {
+      const { data } = await previewBook(importToken ? null : input, payload, {
+        signal: options.signal,
+      })
+      results.push({
+        key,
+        path,
+        book: data,
+        importToken: String(data?.importToken || importToken),
+      })
+    } catch (error) {
+      if (isCancelledRequest(error)) throw error
+      results.push({
+        key,
+        path,
+        title: String(input?.title || ''),
+        author: String(input?.author || ''),
+        tocRule: String(input?.tocRule || ''),
+        importToken: String(error?.response?.data?.importToken || importToken),
+        error: localImportError(error, '解析书籍失败'),
+      })
+    }
+  }
+  return { items: results }
+}
+
 export function checkBookUpdates(payload = {}) {
   return api.post('/books/check-updates', payload)
 }
@@ -201,4 +244,17 @@ export function deleteBookmark(id) {
 
 export function deleteBookmarks(id, bookmarkIds) {
   return api.post(`/books/${id}/bookmarks/batch-delete`, { ids: bookmarkIds })
+}
+
+function isCancelledRequest(error) {
+  return error?.name === 'AbortError' ||
+    error?.name === 'CanceledError' ||
+    error?.code === 'ERR_CANCELED'
+}
+
+function localImportError(error, fallback) {
+  const message = error?.response?.data?.error?.message ||
+    error?.response?.data?.error ||
+    error?.message
+  return String(message || fallback)
 }

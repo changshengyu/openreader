@@ -100,11 +100,25 @@ export const useOverlayStore = defineStore('overlay', {
       this.importBookVisible = true
     },
     openStorageImport(source, paths) {
-      const normalizedSource = ['local-store', 'webdav'].includes(source) ? source : ''
+      const normalizedSource = ['direct', 'local-store', 'webdav'].includes(source) ? source : ''
+      if (normalizedSource === 'direct') {
+        const files = Array.isArray(paths)
+          ? paths.filter(file => file && typeof file.name === 'string')
+          : []
+        if (!files.length) return false
+        this.storageImportRequestSerial += 1
+        this.storageImportRequest = {
+          requestId: this.storageImportRequestSerial,
+          source: normalizedSource,
+          files: [...files],
+        }
+        this.storageImportVisible = true
+        return true
+      }
       const normalizedPaths = Array.isArray(paths)
         ? [...new Set(paths.map(path => String(path || '').trim()).filter(Boolean))]
         : []
-      if (!normalizedSource || !normalizedPaths.length) return
+      if (!normalizedSource || !normalizedPaths.length) return false
       this.storageImportRequestSerial += 1
       this.storageImportRequest = {
         requestId: this.storageImportRequestSerial,
@@ -112,6 +126,7 @@ export const useOverlayStore = defineStore('overlay', {
         paths: normalizedPaths,
       }
       this.storageImportVisible = true
+      return true
     },
     closeStorageImport() {
       this.storageImportVisible = false

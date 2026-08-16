@@ -21,7 +21,7 @@ test('sends tokenized preview items instead of re-reading LocalStore or WebDAV p
     ['LocalStore', localStoreApi, 'previewLocalStoreImport'],
     ['WebDAV', webdavApi, 'previewWebDAVImport'],
   ]) {
-    assert.match(source, new RegExp(`export function ${fn}\\(paths\\)[\\s\\S]*?const items[\\s\\S]*?items\\.length\\s*\\?\\s*\\{ items \\}`), `${name} preview API must forward a tokenized items array unchanged`)
+    assert.match(source, new RegExp(`export function ${fn}\\(paths, options = \\{\\}\\)[\\s\\S]*?const items[\\s\\S]*?items\\.length\\s*\\?\\s*\\{ items \\}`), `${name} preview API must forward a tokenized items array unchanged`)
   }
 })
 
@@ -32,6 +32,6 @@ test('wires both storage managers through the one root-level retry controller', 
   ]) {
     assert.match(source, new RegExp(`overlay\\.openStorageImport\\('${sourceName}'`), `${name} must open the root storage controller instead of owning a retry dialog`)
   }
-  assert.match(overlay, /previewLocalStoreImport\(payload\)/, 'the root controller must select the LocalStore staged preview endpoint')
-  assert.match(overlay, /previewWebDAVImport\(payload\)/, 'the root controller must select the WebDAV staged preview endpoint')
+  assert.match(overlay, /previewLocalStoreImport\(stripClientKeys\(payload\), options\)/, 'the root controller must select the LocalStore staged preview endpoint')
+  assert.match(overlay, /previewWebDAVImport\(stripClientKeys\(payload\), options\)/, 'the root controller must select the WebDAV staged preview endpoint')
 })

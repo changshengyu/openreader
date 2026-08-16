@@ -3,9 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"path/filepath"
-	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +19,17 @@ func (s *Server) listTXTTocRules(c *gin.Context) {
 
 func (s *Server) previewTXTImport(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
-	fileName, ext, data, importToken, err := s.readLocalImportPayload(c, userID, true)
+	payload, err := s.parseLocalImportMultipart(c, true)
+	if payload != nil && payload.form != nil {
+		defer func() {
+			_ = payload.form.RemoveAll()
+		}()
+	}
+	if err != nil {
+		writeLocalImportRequestError(c, err)
+		return
+	}
+	fileName, ext, data, importToken, err := s.readLocalImportPayload(payload, userID, true)
 	if err != nil {
 		writeLocalImportError(c, err)
 		return
@@ -31,9 +38,9 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		FileName:  fileName,
 		Extension: ext,
 		Data:      data,
-		Title:     c.PostForm("title"),
-		Author:    c.PostForm("author"),
-		TOCRule:   c.PostForm("tocRule"),
+		Title:     payload.title,
+		Author:    payload.author,
+		TOCRule:   payload.tocRule,
 	}
 	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
 	if err != nil {
@@ -51,7 +58,17 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 func (s *Server) importTXT(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
-	fileName, ext, data, importToken, err := s.readLocalImportPayload(c, userID, false)
+	payload, err := s.parseLocalImportMultipart(c, false)
+	if payload != nil && payload.form != nil {
+		defer func() {
+			_ = payload.form.RemoveAll()
+		}()
+	}
+	if err != nil {
+		writeLocalImportRequestError(c, err)
+		return
+	}
+	fileName, ext, data, importToken, err := s.readLocalImportPayload(payload, userID, false)
 	if err != nil {
 		writeLocalImportError(c, err)
 		return
@@ -61,15 +78,16 @@ func (s *Server) importTXT(c *gin.Context) {
 		return
 	}
 
-	categoryIDs := parseOptionalCategoryIDs(c.PostFormArray("categoryIds"))
-	categoryID := parseOptionalCategoryID(c.PostForm("categoryId"))
+	categoryIDs := payload.categoryIDs
+	categoryID := payload.categoryID
+	if categoryID != nil && !s.validateCategory(c, userID, categoryID) {
+		return
+	}
 	if len(categoryIDs) > 0 {
 		if !s.validateCategoryIDs(c, userID, categoryIDs) {
 			return
 		}
 		categoryID = &categoryIDs[0]
-	} else if !s.validateCategory(c, userID, categoryID) {
-		return
 	} else if categoryID != nil {
 		categoryIDs = []uint{*categoryID}
 	}
@@ -85,10 +103,10 @@ func (s *Server) importTXT(c *gin.Context) {
 		FileName:   fileName,
 		Extension:  ext,
 		Data:       data,
-		Title:      c.PostForm("title"),
-		Author:     c.PostForm("author"),
+		Title:      payload.title,
+		Author:     payload.author,
 		CategoryID: categoryID,
-		TOCRule:    c.PostForm("tocRule"),
+		TOCRule:    payload.tocRule,
 	}
 	var book models.Book
 	if importToken != "" {
@@ -121,71 +139,6 @@ func writeLocalImportError(c *gin.Context, err error) {
 		status = http.StatusRequestEntityTooLarge
 	}
 	c.JSON(status, gin.H{"error": err.Error()})
-}
-
-func (s *Server) readLocalImportPayload(c *gin.Context, userID uint, createStage bool) (string, string, []byte, string, error) {
-	importToken := strings.TrimSpace(c.PostForm("importToken"))
-	if importToken != "" {
-		metadata, data, err := s.loadStagedLocalImport(userID, importToken)
-		if err != nil {
-			return "", "", nil, "", err
-		}
-		return metadata.FileName, metadata.Extension, data, importToken, nil
-	}
-
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		return "", "", nil, "", errors.New("file or importToken is required")
-	}
-	if fileHeader.Size > s.maxLocalImportBytes() {
-		return "", "", nil, "", errLocalImportTooLarge
-	}
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	file, err := fileHeader.Open()
-	if err != nil {
-		return "", "", nil, "", errors.New("failed to open file")
-	}
-	defer file.Close()
-	data, err := s.readBoundedLocalImport(file)
-	if err != nil {
-		if errors.Is(err, errLocalImportTooLarge) {
-			return "", "", nil, "", err
-		}
-		return "", "", nil, "", errors.New("failed to read file")
-	}
-	if !createStage {
-		return fileHeader.Filename, ext, data, "", nil
-	}
-	importToken, err = s.stageLocalImport(userID, fileHeader.Filename, ext, data)
-	if err != nil {
-		return "", "", nil, "", errors.New("failed to stage import")
-	}
-	return fileHeader.Filename, ext, data, importToken, nil
-}
-
-func parseOptionalCategoryIDs(values []string) []uint {
-	result := make([]uint, 0, len(values))
-	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
-			if id := parseOptionalCategoryID(part); id != nil && !slices.Contains(result, *id) {
-				result = append(result, *id)
-			}
-		}
-	}
-	return result
-}
-
-func parseOptionalCategoryID(value string) *uint {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil || parsed == 0 {
-		return nil
-	}
-	result := uint(parsed)
-	return &result
 }
 
 type localBookImportItem struct {

@@ -283,7 +283,7 @@ func (s *Server) validStagedPreparedImport(prepared localbook.PreparedImport) bo
 }
 
 func validLocalImportToken(token string) bool {
-	if len(token) != 48 {
+	if len(token) != 48 || token != strings.ToLower(token) {
 		return false
 	}
 	decoded, err := hex.DecodeString(token)

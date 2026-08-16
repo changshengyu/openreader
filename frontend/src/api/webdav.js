@@ -30,14 +30,14 @@ export function downloadWebDAV(path) {
   return rootApi.get(webdavURL(path), { responseType: 'blob' })
 }
 
-export function importFromWebDAV(paths, categoryIds = []) {
+export function importFromWebDAV(paths, categoryIds = [], options = {}) {
   const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
-  return api.post('/webdav/import', items.length ? { items, categoryIds } : { paths, categoryIds })
+  return api.post('/webdav/import', items.length ? { items, categoryIds } : { paths, categoryIds }, options)
 }
 
-export function previewWebDAVImport(paths) {
+export function previewWebDAVImport(paths, options = {}) {
   const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
-  return api.post('/webdav/import-preview', items.length ? { items } : { paths })
+  return api.post('/webdav/import-preview', items.length ? { items } : { paths }, options)
 }
 
 function webdavURL(path) {

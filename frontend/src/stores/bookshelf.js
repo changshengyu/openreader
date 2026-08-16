@@ -543,7 +543,7 @@ export const useBookshelfStore = defineStore('bookshelf', {
       this.replaceBookGroups(data)
       return data
     },
-    async importTXT({ file, importToken, title, author, categoryId, categoryIds = [], tocRule }) {
+    async importTXT({ file, importToken, title, author, categoryId, categoryIds = [], tocRule }, options = {}) {
       const form = new FormData()
       if (importToken) form.append('importToken', importToken)
       else form.append('file', file)
@@ -562,8 +562,9 @@ export const useBookshelfStore = defineStore('bookshelf', {
       const { data } = await api.post('/imports/books', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 10 * 60 * 1000,
+        signal: options.signal,
       })
-      this.upsertBook(data)
+      if (options.upsert !== false) this.upsertBook(data)
       return data
     },
   },

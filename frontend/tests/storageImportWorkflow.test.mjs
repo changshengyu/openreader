@@ -141,7 +141,7 @@ test('keeps a failed staged item in its single dialog and reparses the same toke
   await workflow.reparse(workflow.currentRow.value)
   assert.equal(workflow.currentRow.value.importToken, token)
   assert.equal(workflow.currentRow.value.chapterCount, 2)
-  assert.deepEqual(calls[1], ['preview', [{ path: 'retry.txt', importToken: token, title: 'retry', author: '', tocRule: '^== .+ ==$' }]])
+  assert.deepEqual(calls[1], ['preview', [{ key: 'retry.txt', path: 'retry.txt', importToken: token, title: 'retry', author: '', tocRule: '^== .+ ==$' }]])
 
   const imported = await workflow.confirmCurrent()
   assert.equal(imported, false)
@@ -183,4 +183,34 @@ test('stops a batch after session invalidation without upserting or completing t
   assert.deepEqual(calls.filter(([kind]) => kind === 'import').map(([, , path]) => path), ['one.txt'])
   assert.deepEqual(imported, [])
   assert.deepEqual(completed, [])
+})
+
+test('a new direct selection aborts the old preview generation without a late error', async () => {
+  const errors = []
+  const requests = []
+  const workflow = useStorageImportWorkflow({
+    preview: async (_source, files, options) => {
+      requests.push({ files, signal: options.signal })
+      if (requests.length === 2) {
+        return { items: [previewRow('second.txt', 'b'.repeat(48))] }
+      }
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          reject(Object.assign(new Error('cancelled'), { code: 'ERR_CANCELED' }))
+        }, { once: true })
+      })
+    },
+    importItem: async () => ({ imported: [] }),
+    onError: error => errors.push(error),
+  })
+
+  const first = workflow.start({ source: 'direct', files: [{ name: 'first.txt' }] })
+  await Promise.resolve()
+  const second = workflow.start({ source: 'direct', files: [{ name: 'second.txt' }] })
+
+  assert.equal(await second, true)
+  assert.equal(await first, false)
+  assert.equal(requests[0].signal.aborted, true)
+  assert.deepEqual(workflow.rows.value.map(row => row.path), ['second.txt'])
+  assert.deepEqual(errors, [])
 })

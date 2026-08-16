@@ -32,12 +32,12 @@ export function downloadFromLocalStore(path) {
   return api.get('/local-store/download', { params: { path }, responseType: 'blob' })
 }
 
-export function importFromLocalStore(paths, categoryIds = []) {
+export function importFromLocalStore(paths, categoryIds = [], options = {}) {
   const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
-  return api.post('/local-store/import', items.length ? { items, categoryIds } : { paths, categoryIds })
+  return api.post('/local-store/import', items.length ? { items, categoryIds } : { paths, categoryIds }, options)
 }
 
-export function previewLocalStoreImport(paths) {
+export function previewLocalStoreImport(paths, options = {}) {
   const items = Array.isArray(paths) && paths.length && typeof paths[0] === 'object' ? paths : []
-  return api.post('/local-store/import-preview', items.length ? { items } : { paths })
+  return api.post('/local-store/import-preview', items.length ? { items } : { paths }, options)
 }

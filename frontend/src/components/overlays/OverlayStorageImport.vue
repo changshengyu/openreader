@@ -11,7 +11,7 @@
       已先冻结所选文件的字节。修正规则后可在同一份暂存数据上重新解析，不会重新读取书仓或 WebDAV 原文件。
     </p>
     <div class="storage-import-preflight-list">
-      <article v-for="row in rows" :key="row.path" :class="['storage-import-preflight-row', { failed: row.error }]">
+      <article v-for="row in rows" :key="row.key" :class="['storage-import-preflight-row', { failed: row.error }]">
         <el-tag :type="row.valid ? 'success' : 'danger'" effect="plain">{{ row.valid ? '可导入' : '待修复' }}</el-tag>
         <div>
           <strong>{{ row.path }}</strong>
@@ -20,7 +20,17 @@
           <span v-else>已解析 {{ row.chapterCount }} 章</span>
         </div>
         <div v-if="isRuleConfigurable(row.path)" class="storage-import-rule-row">
-          <el-input v-if="isTextLocalPath(row.path)" v-model="row.tocRule" placeholder="TXT 目录规则（可选）" />
+          <el-select
+            v-if="isTextLocalPath(row.path)"
+            v-model="row.tocRule"
+            allow-create
+            clearable
+            default-first-option
+            filterable
+            placeholder="TXT 目录规则（可选）"
+          >
+            <el-option v-for="rule in txtTocRuleOptions" :key="rule.id" :label="rule.name" :value="rule.rule" />
+          </el-select>
           <el-select v-else v-model="row.tocRule" placeholder="EPUB 目录规则">
             <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
           </el-select>
@@ -89,7 +99,17 @@
           <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="Number(category.id)" />
         </el-select>
         <div v-if="isRuleConfigurable(currentRow.path)" class="storage-import-rule-row">
-          <el-input v-if="isTextLocalPath(currentRow.path)" v-model="currentRow.tocRule" placeholder="TXT 目录规则（可选）" />
+          <el-select
+            v-if="isTextLocalPath(currentRow.path)"
+            v-model="currentRow.tocRule"
+            allow-create
+            clearable
+            default-first-option
+            filterable
+            placeholder="TXT 目录规则（可选）"
+          >
+            <el-option v-for="rule in txtTocRuleOptions" :key="rule.id" :label="rule.name" :value="rule.rule" />
+          </el-select>
           <el-select v-else v-model="currentRow.tocRule" placeholder="EPUB 目录规则">
             <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
           </el-select>
@@ -113,8 +133,9 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { listTXTTocRules, previewDirectLocalBooks } from '../../api/books'
 import { importFromLocalStore, previewLocalStoreImport } from '../../api/localStore'
 import { importFromWebDAV, previewWebDAVImport } from '../../api/webdav'
 import { useStorageImportWorkflow } from '../../composables/useStorageImportWorkflow'
@@ -133,19 +154,29 @@ defineProps({
 const overlay = useOverlayStore()
 const bookshelf = useBookshelfStore()
 const operations = useAuthenticatedOperationGuard()
+const txtTocRuleOptions = ref([])
 const workflow = useStorageImportWorkflow({
   operationGuard: operations,
-  loadCategories: () => bookshelf.ensureCategoriesLoaded(),
-  preview: async (source, payload) => {
+  loadCategories: loadImportOptions,
+  preview: async (source, payload, options) => {
+    if (source === 'direct') return previewDirectLocalBooks(payload, options)
     const response = source === 'local-store'
-      ? await previewLocalStoreImport(payload)
-      : await previewWebDAVImport(payload)
+      ? await previewLocalStoreImport(stripClientKeys(payload), options)
+      : await previewWebDAVImport(stripClientKeys(payload), options)
     return response.data
   },
-  importItem: async (source, item, categoryIds) => {
+  importItem: async (source, item, categoryIds, options) => {
+    if (source === 'direct') {
+      const book = await bookshelf.importTXT(
+        { ...item, categoryIds },
+        { ...options, upsert: false },
+      )
+      return { imported: [{ key: item.key, path: item.path, book }] }
+    }
+    const backendItem = stripClientKey(item)
     const response = source === 'local-store'
-      ? await importFromLocalStore([item], categoryIds)
-      : await importFromWebDAV([item], categoryIds)
+      ? await importFromLocalStore([backendItem], categoryIds, options)
+      : await importFromWebDAV([backendItem], categoryIds, options)
     return response.data
   },
   onImported: book => bookshelf.upsertBook(book),
@@ -172,13 +203,19 @@ const {
   busy,
 } = workflow
 
-const sourceLabel = computed(() => source.value === 'webdav' ? 'WebDAV ' : '本地书仓')
+const sourceLabel = computed(() => {
+  if (source.value === 'direct') return '本地文件'
+  return source.value === 'webdav' ? 'WebDAV ' : '本地书仓'
+})
 
 watch(
   () => overlay.storageImportRequest?.requestId,
-  requestId => {
+  async requestId => {
     if (!requestId || !overlay.storageImportVisible || !overlay.storageImportRequest) return
-    workflow.start(overlay.storageImportRequest)
+    const started = await workflow.start(overlay.storageImportRequest)
+    if (!started && overlay.storageImportRequest?.requestId === requestId) {
+      overlay.closeStorageImport()
+    }
   },
 )
 
@@ -211,6 +248,44 @@ function isRuleConfigurable(path) {
 
 function reparse(row) {
   workflow.reparse(row)
+}
+
+async function loadImportOptions() {
+  const operation = operations.begin('load-import-options')
+  const requests = [bookshelf.ensureCategoriesLoaded()]
+  let tocRulesError = null
+  if (!txtTocRuleOptions.value.length) {
+    requests.push(listTXTTocRules().catch(error => {
+      tocRulesError = error
+      return null
+    }))
+  }
+  const results = await Promise.all(requests)
+  if (!operations.canCommit(operation)) return
+  const tocRulesResponse = results[1]
+  if (tocRulesResponse) {
+    txtTocRuleOptions.value = Array.isArray(tocRulesResponse.data)
+      ? tocRulesResponse.data.filter(rule => rule?.rule)
+      : []
+  }
+  if (tocRulesError) ElMessage.error(readError(tocRulesError, '加载目录规则失败'))
+}
+
+function stripClientKeys(items) {
+  return Array.isArray(items) ? items.map(stripClientKey) : items
+}
+
+function stripClientKey(item) {
+  if (!item || typeof item !== 'object') return item
+  const { key: _key, ...payload } = item
+  return payload
+}
+
+function readError(error, fallback) {
+  return error?.response?.data?.error?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
 }
 </script>
 
