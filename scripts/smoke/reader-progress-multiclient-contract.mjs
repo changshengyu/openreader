@@ -9,7 +9,7 @@ import {
   readdir,
   rm,
 } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +20,7 @@ const execFileAsync = promisify(execFile)
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const backendDir = join(rootDir, 'backend')
 const publicDir = join(rootDir, 'frontend', 'dist')
+const progressRequestLimit = 16 * 1024
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -149,6 +150,162 @@ async function api(root, path, options = {}) {
   return response.data
 }
 
+function rawProgressRequest(root, { token = '', contentLength, body = Buffer.alloc(0) } = {}) {
+  const target = new URL('/api/progress', root)
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: 'PUT',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'Content-Type': 'application/json',
+        ...(contentLength === undefined ? {} : { 'Content-Length': String(contentLength) }),
+      },
+    }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString()
+        let data = null
+        try {
+          data = text ? JSON.parse(text) : null
+        } catch {
+          data = text
+        }
+        resolve({
+          status: response.statusCode,
+          data,
+          text,
+          conflict: response.headers['x-openreader-progress-conflict'] === '1',
+        })
+      })
+    })
+    request.once('error', reject)
+    request.setTimeout(15_000, () => request.destroy(new Error('progress raw request timed out')))
+    request.end(body)
+  })
+}
+
+function paddedProgressPayload(bookID, size) {
+  const prefix = Buffer.from(`{"bookId":${bookID},"chapterIndex":0,"padding":"`)
+  const suffix = Buffer.from('"}')
+  assert(prefix.length + suffix.length <= size, `progress payload size ${size} is too small`)
+  return Buffer.concat([prefix, Buffer.alloc(size - prefix.length - suffix.length, 0x61), suffix])
+}
+
+function assertProgressBoundaryError(result, status, message, label) {
+  assert(result.status === status, `${label}: ${result.status} ${result.text}`)
+  assert(result.data?.error === message, `${label}: error ${JSON.stringify(result.data)}`)
+}
+
+async function runRequestBoundary(root, token) {
+  const book = await importTXT(root, token, '进度请求边界合同')
+  const chapters = await api(root, `/books/${book.id}/chapters`, { token })
+  assert(Array.isArray(chapters) && chapters.length > 0, 'progress boundary book has no chapter')
+  const chapter = chapters[0]
+
+  const declaredBody = paddedProgressPayload(book.id, progressRequestLimit + 1)
+  const unauthorized = await rawProgressRequest(root, {
+    contentLength: declaredBody.length,
+    body: declaredBody,
+  })
+  assertProgressBoundaryError(unauthorized, 401, 'missing bearer token', 'unauthorized declared overflow')
+
+  const declared = await rawProgressRequest(root, {
+    token,
+    contentLength: declaredBody.length,
+    body: declaredBody,
+  })
+  assertProgressBoundaryError(declared, 413, 'request body too large', 'declared overflow')
+
+  const exactBody = paddedProgressPayload(book.id, progressRequestLimit)
+  const exact = await rawProgressRequest(root, {
+    token,
+    contentLength: exactBody.length,
+    body: exactBody,
+  })
+  assert(exact.status === 200 && exact.data?.bookId === book.id, `exact 16 KiB progress: ${exact.status} ${exact.text}`)
+  const baseline = await api(root, `/progress/${book.id}`, { token })
+
+  const minimal = Buffer.from(JSON.stringify({ bookId: book.id, chapterIndex: 0, offset: 99 }))
+  const invalidUTF8Prefix = Buffer.from(`{"bookId":${book.id},"chapterIndex":0,"offset":99,"padding":"`)
+  const invalidUTF8 = Buffer.concat([invalidUTF8Prefix, Buffer.from([0xff]), Buffer.from('"}')])
+  const rejected = [
+    {
+      label: 'actual chunked overflow',
+      body: paddedProgressPayload(book.id, progressRequestLimit + 1),
+      status: 413,
+      error: 'request body too large',
+    },
+    {
+      label: 'trailing JSON value',
+      body: Buffer.concat([minimal, Buffer.from(' {"ignored":true}')]),
+      status: 400,
+      error: 'invalid progress payload',
+    },
+    { label: 'invalid UTF-8', body: invalidUTF8, status: 400, error: 'invalid progress payload' },
+    {
+      label: 'missing chapter index',
+      body: Buffer.from(JSON.stringify({ bookId: book.id, offset: 99 })),
+      status: 400,
+      error: 'invalid progress payload',
+    },
+    {
+      label: 'invalid conflict timestamps',
+      body: Buffer.from(JSON.stringify({
+        bookId: book.id,
+        chapterIndex: 0,
+        offset: 99,
+        baseUpdatedAt: 'invalid-base',
+        clientUpdatedAt: 'invalid-client',
+      })),
+      status: 400,
+      error: 'invalid progress payload',
+    },
+    {
+      label: 'oversized mode',
+      body: Buffer.from(JSON.stringify({ bookId: book.id, chapterIndex: 0, offset: 99, mode: 'm'.repeat(21) })),
+      status: 400,
+      error: 'invalid progress payload',
+    },
+    {
+      label: 'oversized client ID',
+      body: Buffer.from(JSON.stringify({ bookId: book.id, chapterIndex: 0, offset: 99, clientId: 'c'.repeat(129) })),
+      status: 400,
+      error: 'invalid progress payload',
+    },
+  ]
+  for (const test of rejected) {
+    const result = await rawProgressRequest(root, { token, body: test.body })
+    assertProgressBoundaryError(result, test.status, test.error, test.label)
+  }
+
+  const afterRejected = await api(root, `/progress/${book.id}`, { token })
+  assert(
+    afterRejected.offset === baseline.offset && afterRejected.updatedAt === baseline.updatedAt,
+    'rejected progress boundary requests changed the durable winner',
+  )
+
+  const bounded = await request(root, '/progress', {
+    token,
+    method: 'PUT',
+    body: {
+      bookId: book.id,
+      chapterId: chapter.id,
+      chapterIndex: chapter.index,
+      offset: 4,
+      mode: 'm'.repeat(20),
+      baseUpdatedAt: baseline.updatedAt,
+      clientUpdatedAt: new Date().toISOString(),
+      clientId: 'c'.repeat(128),
+    },
+  })
+  assert(bounded.status === 200 && bounded.data?.offset === 4, `bounded progress fields: ${bounded.status} ${JSON.stringify(bounded.data)}`)
+  console.log('progress request boundary: auth + 16 KiB + single UTF-8 JSON + field controls ok')
+}
+
 async function importTXT(root, token, title) {
   const paragraphs = Array.from(
     { length: 90 },
@@ -187,19 +344,20 @@ function collectPageErrors(page, label) {
   return errors
 }
 
-async function newReaderContext(browser, root, token, viewport, bookID, label) {
+async function newReaderContext(browser, root, token, viewport, bookID, label, options = {}) {
   const context = await browser.newContext({
     viewport,
     isMobile: viewport.width <= 750,
     hasTouch: viewport.width <= 750,
   })
-  await context.addInitScript((tokenValue) => {
+  await context.addInitScript(({ tokenValue, oversizedClientId }) => {
     localStorage.setItem('openreader_token', tokenValue)
+    if (oversizedClientId) sessionStorage.setItem('openreader_reader_client_id', 'x'.repeat(129))
     window.__openReaderProgressEvents = []
     window.addEventListener('openreader:progress-updated', (event) => {
       window.__openReaderProgressEvents.push(JSON.parse(JSON.stringify(event.detail?.progress || null)))
     })
-  }, token)
+  }, { tokenValue: token, oversizedClientId: options.oversizedClientId === true })
   const page = await context.newPage()
   const errors = collectPageErrors(page, label)
   await page.goto(`${root}/books/${bookID}/read?resume=1`, { waitUntil: 'domcontentloaded' })
@@ -209,6 +367,10 @@ async function newReaderContext(browser, root, token, viewport, bookID, label) {
     return content && !document.body.innerText.includes('正在加载章节')
   }, null, { timeout: 15_000 })
   await page.waitForTimeout(450)
+  if (options.oversizedClientId) {
+    const clientId = await page.evaluate(() => sessionStorage.getItem('openreader_reader_client_id'))
+    assert(clientId?.startsWith('web-') && Buffer.byteLength(clientId, 'utf8') <= 128, `${label}: oversized session client ID did not self-heal`)
+  }
   return { context, page, errors }
 }
 
@@ -316,7 +478,7 @@ async function runViewport(browser, app, token, progressDir, viewport) {
   })
   assert(initial?.updatedAt, `${suffix}: baseline progress is missing updatedAt`)
 
-  const readerA = await newReaderContext(browser, app.root, token, viewport, book.id, `${suffix}/A`)
+  const readerA = await newReaderContext(browser, app.root, token, viewport, book.id, `${suffix}/A`, { oversizedClientId: true })
   const readerB = await newReaderContext(browser, app.root, token, viewport, book.id, `${suffix}/B`)
   try {
     const baseline = await api(app.root, `/progress/${book.id}`, { token })
@@ -351,7 +513,7 @@ async function runViewport(browser, app, token, progressDir, viewport) {
         bookId: book.id,
         chapterId: chapter.id,
         chapterIndex: chapter.index,
-        offset: 111,
+        offset: 2200,
         percent: 0.25,
         chapterPercent: 0.25,
         mode: 'page',
@@ -363,7 +525,7 @@ async function runViewport(browser, app, token, progressDir, viewport) {
         bookId: book.id,
         chapterId: chapter.id,
         chapterIndex: chapter.index,
-        offset: 222,
+        offset: 4400,
         percent: 0.5,
         chapterPercent: 0.5,
         mode: 'page',
@@ -380,7 +542,7 @@ async function runViewport(browser, app, token, progressDir, viewport) {
     assert(responses.filter(response => response.conflict).length === 1, `${suffix}: concurrent writes need exactly one conflict`)
     assert(responses.filter(response => !response.conflict).length === 1, `${suffix}: concurrent writes need exactly one winner`)
     const winner = responses.find(response => !response.conflict)?.data
-    assert([111, 222].includes(Number(winner?.offset)), `${suffix}: winner has an unexpected offset`)
+    assert([2200, 4400].includes(Number(winner?.offset)), `${suffix}: winner has an unexpected offset`)
 
     await Promise.all([
       waitForEvent(readerA.page, book.id, winner.offset),
@@ -406,14 +568,20 @@ async function runViewport(browser, app, token, progressDir, viewport) {
       await waitForLocalProgress(reopened.page, book.id, winner.offset)
       const restored = await localProgress(reopened.page, book.id)
       assert(restored?.updatedAt === winner.updatedAt, `${suffix}: fresh context did not restore the server winner`)
-      assert(await reopened.page.locator('.reader-content').evaluate(element => element.scrollTop) > 0, `${suffix}: fresh context did not restore a non-zero reading position`)
+      await reopened.page.waitForFunction(() => (
+        Number(
+          document.querySelector('.reader-shell')?.classList.contains('document-scroll')
+            ? document.scrollingElement?.scrollTop
+            : document.querySelector('.reader-content')?.scrollTop,
+        ) > 0
+      ), null, { timeout: 10_000 })
       assert(reopened.errors.length === 0, reopened.errors.join('\n'))
     } finally {
       await reopened.context.close()
     }
     const errors = [...readerA.errors, ...readerB.errors]
     assert(errors.length === 0, errors.join('\n'))
-    console.log(`${viewport.width}x${viewport.height}: two-client CAS + WebSocket convergence + cold restore + WebDAV mirror ok`)
+    console.log(`${viewport.width}x${viewport.height}: client ID recovery + two-client CAS + WebSocket convergence + cold restore + WebDAV mirror ok`)
   } finally {
     await readerA.context.close().catch(() => {})
     await readerB.context.close().catch(() => {})
@@ -431,6 +599,7 @@ try {
   assert(token, 'registration did not return a token')
   const progressDir = join(app.dataDir, 'webdav', 'bookProgress')
   await mkdir(progressDir, { recursive: true })
+  await runRequestBoundary(app.root, token)
   await runViewport(browser, app, token, progressDir, { width: 1440, height: 900 })
   await runViewport(browser, app, token, progressDir, { width: 390, height: 844 })
   await runViewport(browser, app, token, progressDir, { width: 360, height: 800 })
