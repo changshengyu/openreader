@@ -3,232 +3,287 @@
 import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 const targetURL = (process.env.TARGET_URL || 'http://127.0.0.1:8080').replace(/\/$/, '')
-const emptyCatalogHint = '未匹配到目录。你可以修改目录规则后重新解析，或保留空目录导入，之后再从书籍信息中刷新目录。'
-const fixture = Buffer.from('== 第一章 ==\n这是正文内容。', 'utf8')
 const runID = Date.now()
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
-function crc32(input) {
-  let crc = 0xffffffff
-  for (const byte of input) {
-    crc ^= byte
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0)
-    }
-  }
-  return (crc ^ 0xffffffff) >>> 0
+function multipartValue(body, field) {
+  const match = body.toString('utf8').match(new RegExp(`name="${field}"\\r\\n\\r\\n([^\\r]*)`))
+  return match?.[1] || ''
 }
 
-function makeStoredZip(entries) {
-  const localParts = []
-  const centralParts = []
-  let offset = 0
-  for (const [name, rawContent] of entries) {
-    const fileName = Buffer.from(name, 'utf8')
-    const content = Buffer.from(rawContent, 'utf8')
-    const checksum = crc32(content)
-    const local = Buffer.alloc(30)
-    local.writeUInt32LE(0x04034b50, 0)
-    local.writeUInt16LE(20, 4)
-    local.writeUInt16LE(0x0800, 6)
-    local.writeUInt16LE(0, 8)
-    local.writeUInt32LE(checksum, 14)
-    local.writeUInt32LE(content.length, 18)
-    local.writeUInt32LE(content.length, 22)
-    local.writeUInt16LE(fileName.length, 26)
-    localParts.push(local, fileName, content)
-
-    const central = Buffer.alloc(46)
-    central.writeUInt32LE(0x02014b50, 0)
-    central.writeUInt16LE(20, 4)
-    central.writeUInt16LE(20, 6)
-    central.writeUInt16LE(0x0800, 8)
-    central.writeUInt16LE(0, 10)
-    central.writeUInt32LE(checksum, 16)
-    central.writeUInt32LE(content.length, 20)
-    central.writeUInt32LE(content.length, 24)
-    central.writeUInt16LE(fileName.length, 28)
-    central.writeUInt32LE(offset, 42)
-    centralParts.push(central, fileName)
-    offset += local.length + fileName.length + content.length
-  }
-  const centralDirectory = Buffer.concat(centralParts)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(entries.length, 8)
-  end.writeUInt16LE(entries.length, 10)
-  end.writeUInt32LE(centralDirectory.length, 12)
-  end.writeUInt32LE(offset, 16)
-  return Buffer.concat([...localParts, centralDirectory, end])
+function multipartValues(body, field) {
+  return [...body.toString('utf8').matchAll(new RegExp(`name="${field}"\\r\\n\\r\\n([^\\r]*)`, 'g'))]
+    .map(match => match[1])
 }
 
-function makeEPUBFixture() {
-  return makeStoredZip([
-    ['META-INF/container.xml', `<?xml version="1.0"?>
-<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`],
-    ['OPS/content.opf', `<?xml version="1.0"?>
-<package><metadata><title>导入快照 EPUB</title><creator>Smoke</creator></metadata><manifest>
-  <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-  <item id="one" href="Text/one.xhtml" media-type="application/xhtml+xml"/>
-  <item id="two" href="Text/two.xhtml" media-type="application/xhtml+xml"/>
-</manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>`],
-    ['OPS/nav.xhtml', `<html><body><nav epub:type="toc"><ol>
-  <li><a href="Text/one.xhtml">第一章</a></li>
-  <li><a href="Text/two.xhtml">第二章</a></li>
-</ol></nav></body></html>`],
-    ['OPS/Text/one.xhtml', '<html><body><h1>第一章</h1><p>第一章正文。</p></body></html>'],
-    ['OPS/Text/two.xhtml', '<html><body><h1>第二章</h1><p>第二章正文。</p></body></html>'],
-  ])
+function multipartFilename(body) {
+  return body.toString('utf8').match(/name="file"; filename="([^"]+)"/)?.[1] || ''
 }
 
-async function signIn(page, suffix) {
-  const response = await page.request.post(`${targetURL}/api/auth/register`, {
-    data: { username: `txtsmoke${suffix.replace(/\D/g, '')}${runID}`, password: 'txt-smoke-password' },
+async function register(page, viewport) {
+  const username = `direct${viewport.width}${runID}`
+  const registration = await page.request.post(`${targetURL}/api/auth/register`, {
+    data: { username, password: 'direct-import-password' },
   })
-  assert(response.ok(), `registration failed: ${response.status()} ${await response.text()}`)
-  const { token } = await response.json()
+  assert(registration.ok(), `registration failed: ${registration.status()} ${await registration.text()}`)
+  const { token } = await registration.json()
   assert(token, 'registration did not return a token')
   await page.evaluate(value => localStorage.setItem('openreader_token', value), token)
+
+  const category = await page.request.post(`${targetURL}/api/categories`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name: '导入组' },
+  })
+  assert(category.ok(), `category creation failed: ${category.status()} ${await category.text()}`)
   await page.reload({ waitUntil: 'networkidle' })
 }
 
 async function openImport(page) {
   const action = page.getByText('导入书籍', { exact: true })
   const mobileTrigger = page.getByLabel('打开侧边栏', { exact: true })
-  const actionIsInViewport = async () => {
+  const inViewport = async () => {
     const box = await action.boundingBox()
     const viewport = page.viewportSize()
     return Boolean(box && viewport && box.x < viewport.width && box.x + box.width > 0)
   }
-  if (!await actionIsInViewport() && await mobileTrigger.isVisible()) {
+  if (!await inViewport() && await mobileTrigger.isVisible()) {
     await mobileTrigger.click()
     await action.waitFor({ state: 'visible' })
     const actionElement = await action.elementHandle()
     await page.waitForFunction(element => {
       const rect = element?.getBoundingClientRect()
-      return Boolean(rect && rect.left < window.innerWidth && rect.right > 0)
+      return Boolean(rect && rect.left < innerWidth && rect.right > 0)
     }, actionElement)
     await action.scrollIntoViewIfNeeded()
   }
-  if (!await actionIsInViewport()) {
-    throw new Error('import action is not visible')
-  }
+  assert(await inViewport(), 'import action is outside the viewport')
   await action.click()
-  await page.getByText('导入本地书籍', { exact: true }).waitFor()
+  await page.locator('.direct-import-picker-dialog').waitFor()
+}
+
+async function setDirectFiles(page, files) {
+  await page.locator('.direct-import-picker-dialog input[type="file"]').setInputFiles(files)
+  await page.locator('.direct-import-picker-dialog').waitFor({ state: 'hidden' })
+}
+
+async function selectCategory(page, dialogSelector) {
+  const dialog = page.locator(dialogSelector)
+  await dialog.locator('.storage-import-single-form > .el-select').first().click()
+  await page.getByText('导入组', { exact: true }).last().click()
+  await page.keyboard.press('Escape')
+}
+
+async function assertFullscreen(page, selector, label) {
+  const geometry = await page.locator(selector).evaluate(node => {
+    const rect = node.getBoundingClientRect()
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+    }
+  })
+  assert(Math.abs(geometry.left) <= 1 && Math.abs(geometry.top) <= 1, `${label}: dialog is not viewport anchored: ${JSON.stringify(geometry)}`)
+  assert(
+    Math.abs(geometry.width - geometry.viewportWidth) <= 1 && Math.abs(geometry.height - geometry.viewportHeight) <= 1,
+    `${label}: dialog is not fullscreen: ${JSON.stringify(geometry)}`,
+  )
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const geometry = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: innerWidth,
+  }))
+  assert(geometry.scrollWidth <= geometry.viewportWidth + 1, `${label}: horizontal overflow ${geometry.scrollWidth} > ${geometry.viewportWidth}`)
 }
 
 async function runViewport(browser, viewport) {
-  const context = await browser.newContext({ viewport })
+  const context = await browser.newContext({
+    viewport,
+    isMobile: viewport.width <= 750,
+    hasTouch: viewport.width <= 750,
+  })
   const page = await context.newPage()
-  const errors = []
-  page.on('pageerror', error => errors.push(`pageerror: ${error.message}`))
+  const failures = []
+  const previews = []
+  const imports = []
+  const activePreviews = new Map()
+  const maxActivePreviews = new Map()
+  let phase = ''
+  let firstRaceSeenResolve
+  let releaseFirstRaceResolve
+  const firstRaceSeen = new Promise(resolve => { firstRaceSeenResolve = resolve })
+  const releaseFirstRace = new Promise(resolve => { releaseFirstRaceResolve = resolve })
+
+  page.on('pageerror', error => failures.push(`pageerror: ${error.message}`))
   page.on('console', message => {
-    if (message.type() === 'error') {
-      errors.push(`console.error: ${message.text()}`)
+    if (message.type() === 'error' && !/WebSocket connection to .*\/ws\/sync/.test(message.text())) {
+      failures.push(`console.error: ${message.text()}`)
     }
   })
   page.on('response', response => {
     if (response.status() >= 500 && response.url().includes('/api/')) {
-      errors.push(`api ${response.status()}: ${response.url()}`)
+      failures.push(`api ${response.status()}: ${response.url()}`)
     }
+  })
+
+  await page.route('**/api/imports/books/preview', async route => {
+    const requestPhase = phase
+    const body = route.request().postDataBuffer() || Buffer.alloc(0)
+    const filename = multipartFilename(body)
+    const active = Number(activePreviews.get(requestPhase) || 0) + 1
+    activePreviews.set(requestPhase, active)
+    maxActivePreviews.set(requestPhase, Math.max(active, Number(maxActivePreviews.get(requestPhase) || 0)))
+    if (requestPhase === 'race-first') {
+      firstRaceSeenResolve()
+      await releaseFirstRace
+      activePreviews.set(requestPhase, active - 1)
+      await route.abort().catch(() => {})
+      return
+    }
+    try {
+      const response = await route.fetch()
+      const data = await response.json().catch(() => ({}))
+      previews.push({ phase: requestPhase, filename, token: String(data?.importToken || '') })
+      await route.fulfill({ response })
+    } catch {
+      await route.abort().catch(() => {})
+    } finally {
+      activePreviews.set(requestPhase, active - 1)
+    }
+  })
+
+  await page.route('**/api/imports/books', async route => {
+    const body = route.request().postDataBuffer() || Buffer.alloc(0)
+    imports.push({
+      phase,
+      token: multipartValue(body, 'importToken'),
+      categoryIds: multipartValues(body, 'categoryIds'),
+      hasFile: /name="file"; filename=/.test(body.toString('utf8')),
+    })
+    const response = await route.fetch()
+    await route.fulfill({ response })
   })
 
   try {
     await page.goto(targetURL, { waitUntil: 'networkidle' })
-    await signIn(page, `${viewport.width}-${viewport.height}`)
-    await openImport(page)
+    await register(page, viewport)
 
-    let releaseFirstPreview
-    let markFirstPreviewSeen
-    const firstPreviewSeen = new Promise(resolve => { markFirstPreviewSeen = resolve })
-    const firstPreviewBlocked = new Promise(resolve => { releaseFirstPreview = resolve })
-    await page.route('**/api/imports/books/preview', async route => {
-      const body = route.request().postDataBuffer()
-      if (body?.includes(Buffer.from('first-race.txt'))) {
-        markFirstPreviewSeen()
-        await firstPreviewBlocked
-      }
-      try {
-        await route.continue()
-      } catch {
-        // The superseded browser request is expected to be aborted.
-      }
-    })
-    const fileInput = page.locator('input[type="file"]')
-    await fileInput.setInputFiles({
+    await openImport(page)
+    phase = 'race-first'
+    await setDirectFiles(page, [{
       name: 'first-race.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('第一章 旧请求\n旧正文', 'utf8'),
-    })
-    await firstPreviewSeen
-    await fileInput.setInputFiles({
+    }])
+    await firstRaceSeen
+    await openImport(page)
+    phase = 'race-second'
+    await setDirectFiles(page, [{
       name: 'second-race.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('第二章 新请求\n新正文', 'utf8'),
-    })
-    const titleInput = page.getByPlaceholder('书名（可选，不填则使用文件名）')
-    await page.waitForFunction(() => {
-      const input = document.querySelector('input[placeholder="书名（可选，不填则使用文件名）"]')
-      return input?.value === 'second-race'
-    })
-    releaseFirstPreview()
+    }])
+    const raceDialog = page.locator('.storage-import-single-dialog')
+    await raceDialog.waitFor()
+    assert(await raceDialog.getByPlaceholder('书名').inputValue() === 'second-race', `${viewport.width}: replacement preview did not win`)
+    releaseFirstRaceResolve()
     await page.waitForTimeout(150)
-    assert(await titleInput.inputValue() === 'second-race', 'late file preview overwrote the latest selection')
-    await page.unroute('**/api/imports/books/preview')
-
-    await page.locator('input[type="file"]').setInputFiles({
-      name: 'disabled-rule.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('1\n第一段正文。\n2\n第二段正文。', 'utf8'),
-    })
-    await page.locator('.import-form .el-select').nth(1).click()
-    await page.getByText('数字(纯数字标题)', { exact: true }).last().click()
-    await page.getByText('重新解析', { exact: true }).click()
-    await page.getByText('已解析 2 章', { exact: true }).waitFor()
-
-    await page.getByPlaceholder('TXT目录规则（可选，留空使用默认规则，例如：^第.+章.*$）').fill('')
-    await page.locator('input[type="file"]').setInputFiles({
-      name: 'retry-rule.txt',
-      mimeType: 'text/plain',
-      buffer: fixture,
-    })
-    await page.getByText('已解析 1 章', { exact: true }).waitFor()
-
-    const rule = page.getByPlaceholder('TXT目录规则（可选，留空使用默认规则，例如：^第.+章.*$）')
-    await rule.fill('^不存在的目录$')
-    await page.getByText('重新解析', { exact: true }).click()
-    await page.locator('.direct-import-preview-empty').getByText(emptyCatalogHint, { exact: true }).waitFor()
-    assert(await page.getByRole('button', { name: '导入', exact: true }).isEnabled(), 'upstream-compatible empty catalogue must remain confirmable')
-
-    await rule.fill('^== .+ ==$')
-    await page.getByText('重新解析', { exact: true }).click()
-    await page.getByText('已解析 1 章', { exact: true }).waitFor()
-    assert(await page.getByRole('button', { name: '导入', exact: true }).isEnabled(), 'import must re-enable after the valid staged retry')
-
-    await page.getByRole('button', { name: '导入', exact: true }).click()
-    await page.getByText('导入本地书籍', { exact: true }).waitFor({ state: 'hidden' })
-    await page.getByText('retry-rule', { exact: true }).first().waitFor()
+    assert(await raceDialog.getByPlaceholder('书名').inputValue() === 'second-race', `${viewport.width}: cancelled preview overwrote the new batch`)
+    await raceDialog.getByRole('button', { name: '取消', exact: true }).click()
+    await raceDialog.waitFor({ state: 'hidden' })
 
     await openImport(page)
-    await page.locator('input[type="file"]').setInputFiles({
-      name: 'snapshot.epub',
-      mimeType: 'application/epub+zip',
-      buffer: makeEPUBFixture(),
-    })
-    await page.getByText('已解析 2 章', { exact: true }).waitFor()
-    assert(await page.getByPlaceholder('书名（可选，不填则使用文件名）').inputValue() === '导入快照 EPUB', 'EPUB metadata preview did not settle')
-    await page.getByRole('button', { name: '导入', exact: true }).click()
-    await page.getByText('导入本地书籍', { exact: true }).waitFor({ state: 'hidden' })
-    await page.getByText('导入快照 EPUB', { exact: true }).first().waitFor()
-    assert(errors.length === 0, errors.join('\n'))
-    console.log(`${viewport.width}x${viewport.height}: latest-preview + TXT/EPUB staged-confirm UI ok`)
+    phase = 'single'
+    await setDirectFiles(page, [{
+      name: 'single-numeric.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('1\n第一段正文。\n2\n第二段正文。', 'utf8'),
+    }])
+    const singleDialog = page.locator('.storage-import-single-dialog')
+    await singleDialog.waitFor()
+    if (viewport.width <= 750) await assertFullscreen(page, '.storage-import-single-dialog', `${viewport.width} single`)
+    await singleDialog.locator('.storage-import-rule-row .el-select').click()
+    await page.getByText('数字(纯数字标题)', { exact: true }).last().click()
+    await singleDialog.getByRole('button', { name: '刷新目录', exact: true }).click()
+    await singleDialog.getByText('章节列表（2）', { exact: true }).waitFor()
+    const singleTitle = `单本导入-${viewport.width}`
+    await singleDialog.getByPlaceholder('书名').fill(singleTitle)
+    await selectCategory(page, '.storage-import-single-dialog')
+    await singleDialog.getByRole('button', { name: '确定导入', exact: true }).click()
+    await singleDialog.waitFor({ state: 'hidden' })
+    await page.getByText(singleTitle, { exact: true }).first().waitFor()
+
+    await openImport(page)
+    phase = 'batch'
+    await setDirectFiles(page, [
+      { name: 'same.txt', mimeType: 'text/plain', buffer: Buffer.from('第一章\n批量一', 'utf8') },
+      { name: 'same.txt', mimeType: 'text/plain', buffer: Buffer.from('第二章\n批量二', 'utf8') },
+    ])
+    const modeDialog = page.locator('.storage-import-mode-dialog')
+    await modeDialog.waitFor()
+    if (viewport.width <= 750) await assertFullscreen(page, '.storage-import-mode-dialog', `${viewport.width} mode`)
+    await page.keyboard.press('Escape')
+    assert(await modeDialog.isVisible(), `${viewport.width}: Escape bypassed the required import mode choice`)
+    await modeDialog.getByRole('button', { name: '批量导入', exact: true }).click()
+    const groupsDialog = page.locator('.storage-import-groups-dialog')
+    await groupsDialog.locator('.el-select').click()
+    await page.getByText('导入组', { exact: true }).last().click()
+    await page.keyboard.press('Escape')
+    await groupsDialog.getByRole('button', { name: '确定', exact: true }).click()
+    await groupsDialog.waitFor({ state: 'hidden' })
+
+    const batchPreviews = previews.filter(item => item.phase === 'batch')
+    const batchImports = imports.filter(item => item.phase === 'batch')
+    assert(batchPreviews.length === 2, `${viewport.width}: batch preview count ${batchPreviews.length}`)
+    assert(batchPreviews.every(item => item.filename === 'same.txt'), `${viewport.width}: duplicate filenames changed order`)
+    assert(batchPreviews[0].token && batchPreviews[1].token && batchPreviews[0].token !== batchPreviews[1].token, `${viewport.width}: duplicate filenames did not retain distinct tokens`)
+    assert(batchImports.length === 2, `${viewport.width}: batch import count ${batchImports.length}`)
+    assert(batchImports.map(item => item.token).join(',') === batchPreviews.map(item => item.token).join(','), `${viewport.width}: batch token order changed`)
+    assert(batchImports.every(item => item.categoryIds.length === 1), `${viewport.width}: batch group was not applied to every book`)
+
+    await openImport(page)
+    phase = 'sequential'
+    await setDirectFiles(page, [
+      { name: 'sequence-one.txt', mimeType: 'text/plain', buffer: Buffer.from('第一章\n逐本一', 'utf8') },
+      { name: 'sequence-two.txt', mimeType: 'text/plain', buffer: Buffer.from('第二章\n逐本二', 'utf8') },
+    ])
+    await modeDialog.waitFor()
+    await modeDialog.getByRole('button', { name: '逐一确认导入', exact: true }).click()
+    await singleDialog.getByText('导入本地书籍（1/2）', { exact: true }).waitFor()
+    await singleDialog.getByRole('button', { name: '取消', exact: true }).click()
+    await singleDialog.getByText('导入本地书籍（2/2）', { exact: true }).waitFor()
+    const sequentialTitle = `逐本第二本-${viewport.width}`
+    await singleDialog.getByPlaceholder('书名').fill(sequentialTitle)
+    await singleDialog.getByRole('button', { name: '确定导入', exact: true }).click()
+    await singleDialog.waitFor({ state: 'hidden' })
+    await page.getByText(sequentialTitle, { exact: true }).first().waitFor()
+
+    const sequentialPreviews = previews.filter(item => item.phase === 'sequential')
+    const sequentialImports = imports.filter(item => item.phase === 'sequential')
+    assert(sequentialPreviews.length === 2, `${viewport.width}: sequential preview count ${sequentialPreviews.length}`)
+    assert(sequentialImports.length === 1, `${viewport.width}: skipped sequential item was imported`)
+    assert(sequentialImports[0].token === sequentialPreviews[1].token, `${viewport.width}: sequential confirmation imported the wrong token`)
+    assert(imports.every(item => item.token && !item.hasFile), `${viewport.width}: final confirmation retransmitted a browser File`)
+    assert(previews.filter(item => item.phase === 'race-first').length === 0, `${viewport.width}: cancelled preview reached the backend response`)
+    assert(Number(maxActivePreviews.get('batch') || 0) === 1, `${viewport.width}: batch preview uploads overlapped`)
+    assert(Number(maxActivePreviews.get('sequential') || 0) === 1, `${viewport.width}: sequential preview uploads overlapped`)
+
+    await assertNoHorizontalOverflow(page, `${viewport.width} direct import`)
+    assert(failures.length === 0, failures.join('\n'))
+    console.log(`${viewport.width}x${viewport.height}: cancellation + single + batch + sequential direct import ok`)
   } finally {
+    releaseFirstRaceResolve?.()
     await context.close()
   }
 }
+
 const browser = await openSmokeBrowser()
 try {
   await runViewport(browser, { width: 1440, height: 900 })
