@@ -407,7 +407,7 @@ refresh-local、remote add、change-source 和 legacy content-search POST。固�
 
 当前六路都接受首个 object 后的第二 JSON 且无 actual-read/UTF-8 admission；batch category IDs 无 raw
 cardinality，batch cache 和 remote add/change 使用 `context.Background()`，local refresh 又在读取整个
-原书档后才绑定可选规则。完整 16 KiB/1 MiB、200 项、Book 字段、16 KiB TOC rule、legacy 200 envelope、
+原书档后才绑定可选规则。完整 16 KiB/32 KiB/1 MiB、200 项、Book 字段、16 KiB TOC rule、legacy 200 envelope、
 target-first priority、取消及零迁移合同见
 [`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
 

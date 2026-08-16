@@ -366,7 +366,7 @@ approval quota rejected that gate. Full contract:
 
 ### Book control request boundary second audit (2026-08-16 inventory)
 
-- [ ] Six authenticated `books.go` JSON control routes enforce actual-read 16 KiB/1 MiB limits, one non-null UTF-8
+- [ ] Six authenticated `books.go` JSON control routes enforce actual-read 16 KiB/32 KiB/1 MiB limits, one non-null UTF-8
       object, auth/target-first priority and their stable modern or reader3 error envelope.
 - [ ] Batch/export accept at most 200 raw unique positive owner book IDs; batch Category IDs stop at 200 before
       dedupe/query/transaction, and existing 50-book cache/100-book clear-cache limits remain.

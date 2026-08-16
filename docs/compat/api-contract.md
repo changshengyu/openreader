@@ -211,9 +211,9 @@ formal GHCR publication remain pending after the Docker socket approval quota re
 The six remaining direct JSON binders in `backend/api/books.go` are governed by
 [`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md):
 
-- `POST /api/books/batch`, `/books/export`, `/books/:id/refresh-local` and
-  `/reader3/searchBookContent` accept at most one UTF-8 object within 16 KiB. Empty body remains valid only for
-  `refresh-local`; legacy search preserves its HTTP 200 failure envelope.
+- `POST /api/books/batch`, `/books/export` and `/reader3/searchBookContent` accept at most one UTF-8 object within
+  16 KiB; `/books/:id/refresh-local` uses 32 KiB so a valid 16 KiB TOC rule plus JSON wrapping remains representable.
+  Empty body remains valid only for refresh-local; legacy search preserves its HTTP 200 failure envelope.
 - `POST /api/books/remote` and `/books/:id/change-source` use a 1 MiB boundary for the published candidate/intro
   projection. Existing Book field bytes, source-variable limits and at most 200 raw Category IDs are enforced before
   remote work or persistence.

@@ -34,7 +34,7 @@ SQLite transaction、多对多 Category、Blob 导出、派生缓存和稳定 `/
 
 | 动作 | `OpenReader@c9b50e3` | 裁决 |
 |---|---|---|
-| 六路 JSON wire | 均直接 `ShouldBindJSON`；无 actual-read/single-document/UTF-8 边界，首个合法 object 后的第二文档可被忽略。 | **must-fix**：认证后执行 route-specific 16 KiB/1 MiB actual-read、单 UTF-8 non-null object；现代路由 overflow 413，其它 wire 400，legacy 保持 HTTP 200 失败 envelope。 |
+| 六路 JSON wire | 均直接 `ShouldBindJSON`；无 actual-read/single-document/UTF-8 边界，首个合法 object 后的第二文档可被忽略。 | **must-fix**：认证后执行 route-specific 16 KiB/32 KiB/1 MiB actual-read、单 UTF-8 non-null object；现代路由 overflow 413，其它 wire 400，legacy 保持 HTTP 200 失败 envelope。 |
 | batch/export cardinality | `bookIds` 已有 200 与 unique-positive/owner 检查；`categoryIds` 无 raw 上限。 | **partial / must-fix**：保留 200 book IDs，并把 category IDs 限为 200 raw 项后再去重/owner 校验。 |
 | batch cache 取消 | 每书循环调用 `cacheBookChapters(context.Background())`；断开后仍可继续最多 50 本的远程工作并发送完成投影。 | **must-fix remote work**：使用 request context，取消后不启动下一本、不发伪完成广播；已 durable 的章节缓存不回滚。 |
 | export | body 拒绝前没有上限；TXT/EPUB 可在请求断开后继续遍历后续书/章。 | **must-fix admission/cancel**：拒绝发生在 DB/文件/章节读取前；生成循环检查 request context。完整导出、单本本地原文件和现有格式不截断。 |
@@ -50,8 +50,9 @@ SQLite transaction、多对多 Category、Blob 导出、派生缓存和稳定 `/
 
 - JWT middleware 始终先于 body admission。无 token/无效 token 携带 declared/chunked overflow、无效
   UTF-8 或 multi JSON 时保持既有 401，且不得读取 body。
-- `batch`、`export`、`refresh-local`、legacy content-search POST 的完整 body 上限为 `16 << 10` bytes；
-  `books/remote` 与 `change-source` 为 `1 << 20` bytes，以容纳已发布的完整简介和候选投影。
+- `batch`、`export`、legacy content-search POST 的完整 body 上限为 `16 << 10` bytes；`refresh-local` 为
+  `32 << 10` bytes，使合法 16 KiB TOC rule 加 JSON 包装仍可提交；`books/remote` 与 `change-source` 为
+  `1 << 20` bytes，以容纳已发布的完整简介和候选投影。
 - declared `Content-Length` 与 unknown-length/chunked 使用相同 actual-read 上限；精确 limit 可进入业务
   校验，`+1` 必须在任何 DB、文件、解析、远程请求、缓存或事件前拒绝。
 - 非空 body 必须是有效 UTF-8 且恰好一个 non-null JSON object。空、`null`、array/scalar、损坏 JSON、
@@ -138,7 +139,7 @@ SQLite transaction、多对多 Category、Blob 导出、派生缓存和稳定 `/
   请求不清理文件。fresh/historical volume 仍需证明现有书可导出、重解析、换源和备份恢复。
 - 规范 Vue payload 已远低于上限，不新增可见输入、提示、spinner 或状态；BookManage、BookInfo、Reader
   和搜索 overlay 的固定上游几何/文案/工具层合同不变。客户端继续使用现有 API/error pipeline。
-- 16 KiB/1 MiB、UTF-8 single JSON、200 categories、字段短界和 request-context 取消是明确 Go/JWT/
+- 16 KiB/32 KiB/1 MiB、UTF-8 single JSON、200 categories、字段短界和 request-context 取消是明确 Go/JWT/
   SQLite/远程抓取安全适配。上游的完整导出、精确搜索、已入架判重、重解析与换源可见状态不得退化。
 
 ## 8. 必须先写的失败测试

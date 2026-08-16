@@ -973,7 +973,7 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 
 ## P2 Book control request-boundary compatibility (2026-08-16 extracted)
 
-- The proposed 16 KiB/1 MiB single-JSON boundaries affect only six future authenticated HTTP requests. They add no
+- The proposed 16 KiB/32 KiB/1 MiB single-JSON boundaries affect only six future authenticated HTTP requests. They add no
   table, column, index, startup scan, data rewrite, browser key, mounted path or backup member.
 - Existing Book, Chapter, Category, Progress, Bookmark and source-candidate rows remain authoritative. Historical
   oversized text/URL rows are not scanned or truncated; the new Book byte limits apply only to fields explicitly

@@ -3751,7 +3751,7 @@ POST 均无 actual-read/single-document/UTF-8 admission。category IDs 可放大
 
 固定上游分别证明批删/分组/缓存/导出、本地重解析、远程入架、Reader 换源和正文搜索的可见状态；
 这些成功语义及 OpenReader 已签收的 JWT/ID/transaction/Blob/派生缓存适配继续权威。新增限制只包括
-route-specific 16 KiB/1 MiB 单 UTF-8 object、200 raw categories、既有 Book/variable/TOC 字段预算，以及
+route-specific 16 KiB/32 KiB/1 MiB 单 UTF-8 object、200 raw categories、既有 Book/variable/TOC 字段预算，以及
 直接请求触发远程工作的 context 取消。legacy POST 继续返回 HTTP 200 envelope，完整导出不截断，
 历史 SQLite、archive、cache、backup 和 WebDAV 均不迁移。
 
