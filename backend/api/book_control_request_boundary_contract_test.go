@@ -297,6 +297,100 @@ func TestBookControlBoundaryValidatesRawCategoryAndStoredFieldLimitsBeforeWork(t
 	})
 }
 
+func TestBookControlBoundaryAcceptsExactCategoryAndStoredFieldLimits(t *testing.T) {
+	t.Run("batch categories", func(t *testing.T) {
+		fixture := newBookControlBoundaryFixture(t)
+		category := createBookGroupWriteCategory(t, fixture.server, fixture.user.ID, "book-control-category-exact", 10)
+		body := fmt.Sprintf(
+			`{"action":"category","bookIds":[%d],"categoryIds":[%s]}`,
+			fixture.remoteBook.ID,
+			repeatedBookControlIDs(category.ID, 200),
+		)
+		response := performBookControlRequest(fixture.router, fixture.auth, "/api/books/batch", []byte(body), false, nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("200 batch categories = %d: %s", response.Code, response.Body.String())
+		}
+	})
+
+	t.Run("remote categories", func(t *testing.T) {
+		fixture := newBookControlBoundaryFixture(t)
+		category := createBookGroupWriteCategory(t, fixture.server, fixture.user.ID, "remote-control-category-exact", 10)
+		body := fmt.Sprintf(
+			`{"title":"remote","bookUrl":"https://book-control.invalid/new","sourceId":999999,"categoryIds":[%s]}`,
+			repeatedBookControlIDs(category.ID, 200),
+		)
+		response := performBookControlRequest(fixture.router, fixture.auth, "/api/books/remote", []byte(body), false, nil)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "source not found") {
+			t.Fatalf("200 remote categories = %d: %s", response.Code, response.Body.String())
+		}
+	})
+
+	for _, field := range []struct {
+		name       string
+		jsonName   string
+		maxBytes   int
+		tooLongErr string
+	}{
+		{name: "title", jsonName: "title", maxBytes: 240, tooLongErr: "book title is too long"},
+		{name: "author", jsonName: "author", maxBytes: 160, tooLongErr: "book author is too long"},
+		{name: "cover", jsonName: "coverUrl", maxBytes: 600, tooLongErr: "book cover url is too long"},
+		{name: "kind", jsonName: "kind", maxBytes: 400, tooLongErr: "book kind is too long"},
+		{name: "word-count", jsonName: "wordCount", maxBytes: 120, tooLongErr: "book word count is too long"},
+		{name: "book-url", jsonName: "bookUrl", maxBytes: 800, tooLongErr: "book url is too long"},
+	} {
+		for _, route := range []string{"remote-add", "change-source"} {
+			t.Run(route+"/"+field.name, func(t *testing.T) {
+				for _, delta := range []int{0, 1} {
+					fixture := newBookControlBoundaryFixture(t)
+					payload := map[string]any{"sourceId": 999999}
+					path := "/api/books/" + uintString(fixture.remoteBook.ID) + "/change-source"
+					if route == "remote-add" {
+						payload["title"] = "remote"
+						payload["bookUrl"] = "https://book-control.invalid/new"
+						path = "/api/books/remote"
+					}
+					payload[field.jsonName] = strings.Repeat("v", field.maxBytes+delta)
+					body, err := json.Marshal(payload)
+					if err != nil {
+						t.Fatal(err)
+					}
+					response := performBookControlRequest(fixture.router, fixture.auth, path, body, false, nil)
+					if delta == 0 {
+						if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "source not found") {
+							t.Fatalf("exact %s = %d: %s", field.name, response.Code, response.Body.String())
+						}
+						continue
+					}
+					if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), field.tooLongErr) {
+						t.Fatalf("oversized %s = %d: %s", field.name, response.Code, response.Body.String())
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestBookControlLocalRefreshAcceptsEmptyBodiesAndExactTOCRuleLimit(t *testing.T) {
+	fixture := newBookControlBoundaryFixture(t)
+	path := "/api/books/" + uintString(fixture.localBook.ID) + "/refresh-local"
+	for _, request := range []struct {
+		name    string
+		body    []byte
+		chunked bool
+	}{
+		{name: "known-empty", body: []byte{}},
+		{name: "unknown-empty", body: []byte{}, chunked: true},
+		{name: "exact-toc-rule", body: []byte(fmt.Sprintf(`{"tocRule":%q}`, strings.Repeat("r", engine.MaxTXTTocRuleBytes)))},
+	} {
+		t.Run(request.name, func(t *testing.T) {
+			response := performBookControlRequest(fixture.router, fixture.auth, path, request.body, request.chunked, nil)
+			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "local source file not found") {
+				t.Fatalf("accepted refresh body = %d: %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestBookControlRemoteWorkPropagatesRequestCancellation(t *testing.T) {
 	for _, mode := range []string{"remote-add", "change-source", "batch-cache", "export"} {
 		t.Run(mode, func(t *testing.T) {
