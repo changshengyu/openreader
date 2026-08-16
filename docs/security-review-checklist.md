@@ -364,6 +364,22 @@ candidate build passed; mounted-volume verification and formal publication remai
 approval quota rejected that gate. Full contract:
 [`compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
+### Book control request boundary second audit (2026-08-16 inventory)
+
+- [ ] Six authenticated `books.go` JSON control routes enforce actual-read 16 KiB/1 MiB limits, one non-null UTF-8
+      object, auth/target-first priority and their stable modern or reader3 error envelope.
+- [ ] Batch/export accept at most 200 raw unique positive owner book IDs; batch Category IDs stop at 200 before
+      dedupe/query/transaction, and existing 50-book cache/100-book clear-cache limits remain.
+- [ ] Local refresh decodes the optional body and 16 KiB TOC rule before reading/staging its caller-owned archive;
+      rejected input cannot mutate Book/Chapter, TOC/cache files, progress or events.
+- [ ] Remote add/source change validate bounded caller fields/categories/variables before fetch and use request context.
+      Cancellation writes no failure row, book/chapter/candidate/cache state or completion event.
+- [ ] Batch cache/export cancellation stops later books/chapters without rolling back already durable cache work or
+      truncating successful complete exports; legacy content search keeps raw whitespace, bounded controls and 200.
+
+Required evidence is fixed in
+[`compat/book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ## Uploads and archive formats
 
 - [ ] File size limits are enforced before expensive parsing.

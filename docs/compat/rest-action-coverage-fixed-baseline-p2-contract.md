@@ -397,3 +397,19 @@ Go/Chromium 请求边界、client ID 自愈、双客户端 CAS/WebSocket、冷�
 没有虚报 fresh/historical/portable 卷门，也没有执行正式 GHCR 发布。当前状态为
 **aligned / regression-validated / local-Docker-candidate / release-gate-pending**；其它 batch/control JSON
 继续排队。
+
+## 22. Book 控制动作 JSON、cardinality 与取消（2026-08-16 inventory）
+
+重新枚举 `books.go` 中仍直接 `ShouldBindJSON` 的入口后，下一项 must-fix 收敛为 batch、export、
+refresh-local、remote add、change-source 和 legacy content-search POST。固定上游证明这些分别对应已签收
+的 BookManage、BookInfo、本地重解析、入架、Reader 换源和正文搜索状态机；本轮不改可见流程或成功
+语义，只关闭请求可放大的 wire/work 边界。
+
+当前六路都接受首个 object 后的第二 JSON 且无 actual-read/UTF-8 admission；batch category IDs 无 raw
+cardinality，batch cache 和 remote add/change 使用 `context.Background()`，local refresh 又在读取整个
+原书档后才绑定可选规则。完整 16 KiB/1 MiB、200 项、Book 字段、16 KiB TOC rule、legacy 200 envelope、
+target-first priority、取消及零迁移合同见
+[`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+
+状态为 **inventory-complete / implementation-pending**。本阶段只修改合同；下一步必须先提交能在
+`c9b50e3` 失败的 API/side-effect/cancel 测试，再修改应用。

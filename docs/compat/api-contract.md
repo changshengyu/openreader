@@ -206,6 +206,26 @@ red tests `a10facb`, implementation `8d3790d` and runtime evidence `1563bc3` wer
 backup or mirror-format migration was introduced. The local candidate build passed; mounted-volume verification and
 formal GHCR publication remain pending after the Docker socket approval quota rejected that gate.
 
+### P2 Book control request boundary (2026-08-16 extracted)
+
+The six remaining direct JSON binders in `backend/api/books.go` are governed by
+[`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md):
+
+- `POST /api/books/batch`, `/books/export`, `/books/:id/refresh-local` and
+  `/reader3/searchBookContent` accept at most one UTF-8 object within 16 KiB. Empty body remains valid only for
+  `refresh-local`; legacy search preserves its HTTP 200 failure envelope.
+- `POST /api/books/remote` and `/books/:id/change-source` use a 1 MiB boundary for the published candidate/intro
+  projection. Existing Book field bytes, source-variable limits and at most 200 raw Category IDs are enforced before
+  remote work or persistence.
+- Batch/export retain 200 unique positive owner book IDs and their existing response/transaction/export formats.
+  Batch cache, export generation, remote add and source change propagate request cancellation without rolling back
+  already durable cache work or reporting cancellation as a source failure.
+- Local refresh checks owner/type first, then decodes an optional object and 16 KiB TOC rule before reading or staging
+  the existing archive. Parser budgets, archive identity and all successful reparse formats remain unchanged.
+
+Status is **inventory-complete / implementation-pending**. No route, schema, mounted path, archive, backup or visible
+frontend change is authorized; red wire/work/side-effect tests must precede implementation.
+
 ## P1-B workspace search API contract
 
 Status: implemented for the P1-B search-default/error slice on 2026-07-13 from fixed reader-dev `Index.vue`, `config.js`, and `BookController.kt`. OpenReader keeps its authenticated REST path and source-ID representation, but restores the upstream search defaults and error semantics.

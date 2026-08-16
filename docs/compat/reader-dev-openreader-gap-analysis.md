@@ -3740,3 +3740,22 @@ runtime/browser 证据依次为 `279f688`、`cd8f073`、`05343ec`、`3b9ae54`。
 full/race/vet、build、真实 HTTP、三视口 direct/storage flow 和 fresh/historical/portable 卷门均通过；
 本机 `429444a`/`latest` OCI index 为 `sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`。
 其余 batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。
+
+## 2026-08-16 Book 控制动作请求边界第二轮复审
+
+Reader 换源和 reading progress 已由当前专项合同、实现及 runtime 证据关闭；本轮没有从旧 pending 文案
+重开。重新扫描 `backend/api/books.go` 后，剩余六个直接 `ShouldBindJSON` 入口成为下一项 must-fix：
+`books/batch`、`books/export`、`refresh-local`、`books/remote`、`change-source` 和 reader3 content-search
+POST 均无 actual-read/single-document/UTF-8 admission。category IDs 可放大关系写入，batch cache 与远程
+入架/换源又使用 request-independent context，local refresh 则在验证 body 前先读完整原书档。
+
+固定上游分别证明批删/分组/缓存/导出、本地重解析、远程入架、Reader 换源和正文搜索的可见状态；
+这些成功语义及 OpenReader 已签收的 JWT/ID/transaction/Blob/派生缓存适配继续权威。新增限制只包括
+route-specific 16 KiB/1 MiB 单 UTF-8 object、200 raw categories、既有 Book/variable/TOC 字段预算，以及
+直接请求触发远程工作的 context 取消。legacy POST 继续返回 HTTP 200 envelope，完整导出不截断，
+历史 SQLite、archive、cache、backup 和 WebDAV 均不迁移。
+
+完整 API、数据、安全和测试先行门见
+[`book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+状态为 **inventory-complete / implementation-pending**；本阶段只修改合同，应用与测试必须在独立后续
+提交中按“红测→实现”推进。

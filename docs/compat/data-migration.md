@@ -970,3 +970,20 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   `implementation-complete / regression-validated / mounted-volume-and-Docker-pending`. `6f54be3` changes no
   schema or persistent format; API backup/restore coverage proves historical oversized rows remain lossless. The
   release-specific fresh/historical mounted-volume gate still awaits explicit Docker socket approval.
+
+## P2 Book control request-boundary compatibility (2026-08-16 extracted)
+
+- The proposed 16 KiB/1 MiB single-JSON boundaries affect only six future authenticated HTTP requests. They add no
+  table, column, index, startup scan, data rewrite, browser key, mounted path or backup member.
+- Existing Book, Chapter, Category, Progress, Bookmark and source-candidate rows remain authoritative. Historical
+  oversized text/URL rows are not scanned or truncated; the new Book byte limits apply only to fields explicitly
+  submitted by future remote-add/source-change requests.
+- `refresh-local` continues to reuse the existing `library` archive and atomically stage/promote derived TOC data.
+  Moving request admission before archive reads must leave every rejected request with identical Book/Chapter rows,
+  source bytes, TOC metadata, cache paths and progress.
+- Batch cache cancellation may retain chapters already durably cached before cancellation, exactly like the published
+  stream cache contract, but must not start later books or delete prior cache. Export cancellation writes no database
+  or mounted data. Remote add/change cancellation creates no row/candidate and records no source failure.
+- Logical/portable/WebDAV backups and restores keep their own archive/cardinality contracts; they do not reuse these
+  interactive request limits. Fresh/historical/portable volume gates remain required before release. See
+  `book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`.
