@@ -261,3 +261,30 @@ candidate revision 为 `930be4dded3d8b54985606e92c45b7484115ffa7`；fresh/histor
 socket 提升权限额度审批被拒而尚未执行，所以没有发布 `930be4d`。正式 GHCR 仍为 `be83a0f`/`latest`，
 OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
 **implementation-complete / regression-validated / Docker-release-pending**。
+
+## 17. WebDAV 导入/恢复文件系统与请求边界（2026-08-16 inventory）
+
+再次扫描 `server.go` 与所有仍直接使用 `ShouldBindJSON`/multipart form 的 handler 后，下一项 must-fix
+选择三个 mounted WebDAV 读取动作，而不是重开已签收的原生 DAV 协议：
+
+- `POST /api/webdav/import-preview`
+- `POST /api/webdav/import`
+- `POST /api/backup/restore-webdav`
+
+固定上游 `WebDAV.vue`、`WebdavController.kt` 与 `BookController.importFromLocalPathPreview` 证明：用户
+从唯一 WebDAV 文件管理器显式选择有序文件，预览后逐本确认；恢复只在确认一项 ZIP 后执行，mounted
+源保留。当前 OpenReader 的稳定 JSON 路由、private root、immutable token、logical/portable ZIP 和
+逐项结果是允许适配，不能被改回上游弱路径拼接或 token-in-URL。
+
+当前三个 handler 无 actual-read/single-document JSON；import path/category/目录展开无 cardinality。
+`webdavPath` 仅对顶层请求 path 执行 `Service.Resolve`，随后目录内项进入 `WalkDir`/`os.Open`，因此
+嵌套 symlink/special file 和 restore 的 path 重新打开没有 caller-rooted opened regular-file 证据。
+动作矩阵还发现 direct/source multipart、remote search/debug/cache JSON、progress 和其它 batch JSON
+仍待后续排序；本项因同时触及 mounted data、目录展开、parser 与恢复事务而优先。
+
+精确 1 MiB/16 KiB single JSON、200 项 raw/expanded admission、path 正规化、token-source independence、
+`Service.Open` identity、restore caller-private snapshot、稳定响应/逐项提交、零迁移与红测/卷门见
+[`webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+一次性 Go overlay probe 又实际证明超限+第二 JSON 仍 stage/restore、目录内根外 symlink 字节进入 stage，
+且一个目录可返回 201 个 preview item；probe 未写入仓库，不能替代下一阶段正式红测。当前状态为
+**inventory-complete / implementation-pending**；本 inventory 未修改应用或测试。

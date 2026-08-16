@@ -506,6 +506,19 @@ Evidence: `backend/api/local_store_filesystem_request_boundary_contract_test.go`
 race/vet, frontend 740/740, build, host and arm64 candidate runtime pass. Fresh/historical/portable mounted-volume gates
 remain unchecked because the Docker socket elevation approval was rejected; no new GHCR image was published.
 
+第二轮 WebDAV mounted import/restore 复审见
+[`compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；原生 DAV 协议和 archive transaction 不重开。
+
+- [ ] WebDAV preview/import and WebDAV-path restore accept one actual-read-bounded JSON document after JWT and
+  effective WebDAV permission; raw and expanded target cardinality fails before stage, DB, cache or event work.
+- [ ] Every source-backed import item is opened through the caller-rooted file service. A selected directory cannot
+  introduce a nested symlink/FIFO/device/socket into parser input, and no response or log discloses a host path.
+- [ ] WebDAV-path restore copies one opened regular ZIP into caller-private bounded cache before archive work; mounted
+  source rename/delete/replace cannot change the restore bytes and the source is never modified.
+- [ ] Focused/full/race/vet, declared/chunked host HTTP, three-viewport WebDAV workflow and fresh/historical logical/
+  portable mounted-volume gates prove the boundary before Docker publication.
+
 ## P1-E4 TXT empty-catalogue follow-up
 
 - [x] A valid staged TXT with an unmatched user TOC rule is no longer misclassified as a parser or transport failure. The response retains only the opaque caller-scoped stage token and returns no mounted path, parser internals, credentials or source bytes.
