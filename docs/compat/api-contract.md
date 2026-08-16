@@ -977,11 +977,11 @@ production build, four-viewport real-browser validation and fresh/historical vol
 amd64/arm64 image is published as `f8f263d`/`latest`, OCI index
 `sha256:9c83821de9e5f4df223b6e69a6d67eff512fa55d4a271f544718ccad8ae58ba1`.
 
-### Remote-work JSON request boundary (2026-08-16 extracted)
+### Remote-work JSON request boundary (2026-08-16 implemented)
 
 The deployed search, three legacy source probes, explicit batch health action and two book-cache routes keep their
 existing paths, successful bodies, owner scopes, parser/fetcher policies, failure-cache ownership and cancellation
-semantics. Their pending second-audit wire/work contract is
+semantics. Their implemented second-audit wire/work contract is
 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 - `POST /api/search` accepts one UTF-8 JSON object up to 64 KiB. The trimmed keyword is at most 1024 bytes and raw
@@ -997,9 +997,12 @@ semantics. Their pending second-audit wire/work contract is
 - Book cache `all=true,count<=0` still means the whole remaining catalogue. The wire boundary is not permission to
   replace the published whole-book product contract with a 300-chapter cap.
 
-Status is **inventory-complete / implementation-pending**. These limits are not implemented until the required red
-tests, application change and regression gates have landed; existing published source-debug/search/cache behavior
-must not be reported as proving this request boundary.
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Inventory `5aadf9b`,
+old-implementation red tests `94d0a4e`, implementation `346a49d` and real-browser contract `6157466` landed in
+order. Focused/full/race/vet, frontend 737/737, production build, three-viewport real Go/Chromium, existing
+source-debug browser coverage and fresh/historical/portable volume gates pass. The locally built amd64/arm64 image
+is published as `6157466`/`latest`, OCI index
+`sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`.
 
 ## P2 parser persistent-variable contract (P2-Parser-1G implemented)
 

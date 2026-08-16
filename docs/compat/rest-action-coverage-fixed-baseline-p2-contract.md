@@ -331,16 +331,21 @@ LocalStore、WebDAV、upload、auth/admin、BookGroup、Bookmark、RSS、BookSou
 
 | 候选 | 当前放大面 | 既有合同覆盖 | 排序 |
 |---|---|---|---|
-| remote-work JSON：`/search`、三个 `/sources/:id/test*`、`/sources/batch-test`、两个 book cache | 小 JSON 可触发多源/多章远程工作；search 无 60/八轮上限，batch health 按全部源预建 goroutine，七路都缺统一 actual-read/single-object。 | 搜索 cursor/UI、debug 状态机、fetcher、failure cache 和整本缓存已发布，但没有统一客户端 wire/work 合同。 | **本轮 must-fix / inventory-complete / implementation-pending**。见 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
+| remote-work JSON：`/search`、三个 `/sources/:id/test*`、`/sources/batch-test`、两个 book cache | 小 JSON 可触发多源/多章远程工作；旧 search 无 60/八轮上限，旧 batch health 按全部源预建 goroutine，七路曾缺统一 actual-read/single-object。 | 已补 64/16 KiB 单 object、字段/cardinality、60 并发/八窗口、15-worker/300-source、Context 取消，并保留搜索 cursor、诊断 envelope、failure cache 和整本缓存。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
 | BookSource local multipart `/sources/import` | 约 17 MiB 总包络与 16 MiB file read 已存在。仍接受歧义 file/scalar part，handler 未显式拥有 `RemoveAll`。 | BookSource 写合同把 bytes/cardinality/quota/COW 标为 aligned；multipart shape/temporary ownership 未签收。 | **P2 queued**；不与 remote-work 合同混写。 |
 | reading progress `/progress` | 无界首 JSON可进入 CAS、WebDAV mirror 和 WebSocket；`clientId/mode/timestamp` wire 未设短界。 | 进度身份、CAS、镜像、冲突和多客户端收敛已发布。 | **P2 queued**；副作用频繁但单请求无多源网络放大，因此排在 remote-work 后。 |
 | 其它 batch/control JSON | books batch/export、local refresh、remote add/change-source、legacy content search，以及 replace-rule 的 first-document/overflow 映射仍可见。 | 多数动作的业务/数据合同和部分 cardinality 已发布；是否缺 actual-read、single-document 或字段 owner 需逐动作取证。 | **inventory-pending**；不得从本表直接推导实现。 |
 
 固定上游 `BookController.searchBookMulti` 与 SSE 版本使用可见最高 60 并发和
-`concurrentLoopCount=8`；当前 OpenReader 只有前端枚举，没有服务端 60/八轮边界。健康检查虽把执行
-并发夹到 15，却按源数创建等待 goroutine。由此 remote-work 的网络/内存放大风险高于 progress，成为
-下一实现切片。BookManage 整本缓存是明确上游产品合同，本轮只能补 wire/cancel，不能借安全收紧改回
-固定章数。
+`concurrentLoopCount=8`；inventory 时 OpenReader 只有前端枚举，没有服务端 60/八轮边界。旧健康检查
+虽把执行并发夹到 15，却按源数创建等待 goroutine。由此 remote-work 的网络/内存放大风险高于
+progress，成为本轮实现切片。BookManage 整本缓存是明确上游产品合同，本轮只补 wire/cancel，没有借
+安全收紧改回固定章数。
 
-该 inventory 阶段只新增/更新文档，没有应用或测试改动。下一阶段必须先提交能在 `649f2eb` 旧实现上
-失败的 API/worker/cancellation 合同，再实施；没有红测证据前不得把本节改为 implemented。
+该 inventory 阶段本身只新增/更新文档；后续已按 `5aadf9b` inventory、`94d0a4e` 旧实现红测、
+`346a49d` 实现和 `6157466` 真实浏览器合同顺序关闭。Go full/race/vet、frontend 737/737、build、
+三视口真实 Go/Chromium、source-debug smoke 和 fresh/historical/portable 卷门通过；本机发布
+`6157466`/`latest`，OCI index 为
+`sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`。历史卷首次普通运行出现一次
+fixture 后瞬时 404，同镜像 trace 重跑全链通过。下一轮仍须从 BookSource multipart、reading progress
+和其它 batch/control JSON 重新取证，不能因本项关闭而合并签收。

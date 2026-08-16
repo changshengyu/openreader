@@ -32,15 +32,15 @@
 | Reader：登录失效与账号切换 | `plugins/axios.js` 的 `NEED_LOGIN`、根 `App.vue#login`、`Reader.vue#loginAuth` | `api/client.js`、`App.vue`、`AuthDialog.vue`、`stores/user.js`、Reader lifecycle/progress、`stores/overlay.js` | **P0 已完成并发布 `59e11a9`**：401 按真实拦截顺序先挂起旧 Reader 再清凭证，未认证根场景不渲染私有 DOM；overlay reset、同账号 generation 重挂载、异账号返回书架、安全 returnTo、旧进度写入抑制均已验证。 | [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)；1440×900、1024×1366、390×844、360×800、frontend 643/643、Go/build 和新旧卷门通过。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、`ReaderTTSBar.vue`、`useReaderChapterReady.js`、格式 parser / cache | **EPUB、CBZ、连续跨章、音频和 TTS 固定基准切片均已完成实现、三视口验证和 Docker 发布**：音频恢复上游结构、边界行为与真实 autoplay；TTS 恢复显式 voice、贴底栏、可取消跨章和关闭段落定位。 | [`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md) 及前三份格式合同；本批 frontend 444/444、Go/build、Reader 全矩阵通过，镜像 `5260efd`/`latest` 已发布。当前 volume 脚本受 Codex socket 授权额度阻断，兼容证据继承无后端/持久化差异的 `370d0f7` 已通过门禁。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
-| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；已关闭模块不从旧日志重开**。WebDAV mounted import/restore 保持 `65a9870` 已发布；direct local preview/import/alias 的 wire、shape、分类、临时文件与副作用边界已按 `cd8f073`/`05343ec` 测试先行关闭并随 `429444a` 发布。 | [`rest-action-coverage-fixed-baseline-p2-contract.md`](rest-action-coverage-fixed-baseline-p2-contract.md) 第 18 节与 direct 专项合同状态 `aligned / Docker-published / awaiting-device-verification`。下一步从当前 server 重新做 action 差集，再决定 source multipart、remote-work JSON、progress 或其它 batch JSON，不预设旧日志优先级。 |
+| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、`ReturnData.kt` | `backend/api/*.go`、`middleware/*.go`、前端 `api/*.js` | **按动作逐项复审；已关闭模块不从旧日志重开**。WebDAV 与 direct local 边界保持已发布；remote-work 七路已按 `5aadf9b` inventory、`94d0a4e` 红测、`346a49d` 实现关闭 64/16 KiB 单 object、字段/cardinality、搜索 60 并发/八窗口、batch 15 worker/300 source 和取消边界。 | [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md) 状态 `aligned / Docker-published / awaiting-device-verification`。剩余差集为 source multipart、progress 和其它 batch/control JSON，须逐项取证。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链、RSS 可见请求页语义、P2-N1/P2-N2 抓取边界和 RSS 持久提交边界均已发布**。refresh 只写 parser/remote 列并按 detail rule 保留权威正文；content cache 只写 content；state 只写 read/favourite；三者不再用全行 `Save` 覆盖。 | 抓取预算/SSRF 合同不重开；[`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md) 已用 trigger/API 证明列所有权、删除不复活、无孤儿 article 和远程工作后的 source/article 存活复验。 |
-| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | `429444a` 通过 frontend 737/737、Go full/race/vet、build、宿主与 candidate direct HTTP、direct/storage 三视口、fresh/historical/portable 三目录卷、跨用户与重启；GHCR 回拉 health revision 正确。 | 本机发布 `429444a` 与 `latest`；amd64/arm64 OCI index `sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`。用户生产环境当前运行提交仍未知，发布不等于服务器已升级。 |
+| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release scripts | `6157466` 通过 frontend 737/737、Go full/race/vet、build、remote-work 三视口、source-debug 四视口、fresh/portable/cross-user/restart 及 historical trace 重跑卷门；两个平台 revision label 均为完整提交。 | 本机发布 `6157466` 与 `latest`；amd64/arm64 OCI index `sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`。历史卷首次普通运行瞬时 404、同镜像 trace 重跑通过；用户生产环境当前运行提交仍未知。 |
 
-## 当前整体进度快照（2026-08-16，`429444a` direct import 发布签收 pass）
+## 当前整体进度快照（2026-08-16，`6157466` remote-work boundary 发布签收 pass）
 
-按全量计划的模块/合同口径而不是代码行数估算，整体约 **97%**。该数字表示固定基准合同和测试先行
+按全量计划的模块/合同口径而不是代码行数估算，整体约 **98%**。该数字表示固定基准合同和测试先行
 实现覆盖度；用户配置、BookGroup/Category、Book、BookSource、Bookmark 与 RSS 写入/导入边界均完成
-实现、全量、运行时、新旧卷和正式 Docker 发布；剩余 3% 仍包含未逐动作签约的长尾，不是简单收尾。
+实现、全量、运行时、新旧卷和正式 Docker 发布；剩余 2% 仍包含未逐动作签约的长尾，不是简单收尾。
 
 - **P0 Reader 主链已覆盖**：工具层/面板状态机、正文排版、移动点击与连续滚动、设置、书签、正文
   搜索、登录恢复、普通文本、EPUB、CBZ/漫画、音频、连续跨章、TTS、夜间对比度均有专项合同和
@@ -58,14 +58,26 @@
   owner 与归档引用边界，BookSource JSON/cardinality/原子 `sourceLimit`，Bookmark wire/cardinality/
   note-only/并发删除边界，RSS actual-read/single-JSON/同 URL 身份/列所有权/远程存活边界，用户资产
   33 MiB multipart/单 part/临时文件/16 KiB 删除 JSON 边界，LocalStore 聚合 multipart/JSON/cardinality/
-  symlink/special-file/opened-file 边界，以及
+  symlink/special-file/opened-file 边界，remote-work 七路 actual-read/single-object、搜索八窗口/60 并发、
+  health 300-source/15-worker、取消与整本缓存不退化边界，以及
   server-only WebSocket/recipient scope 和备份事务 worker。
 - **尚未完成的主线**：其余尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
-  以及后续真实设备反馈暴露出的上游可见偏差。`c74be70` 已发布但尚待服务器部署；移动书架在
+  以及后续真实设备反馈暴露出的上游可见偏差。当前明确未签收的动作差集是 BookSource multipart、
+  reading progress 和其它 batch/control JSON。`c74be70` 已发布但尚待服务器部署；移动书架在
   390×844 线上真实账号复测中保持上游 390/350px 几何和内容高度行轨，但设备“明显窄”的反馈仍待
   完整截图区分首页书架、Reader 内书架或设备可见层；书源管理、临时阅读和调试器继续等待真实设备
   签收。上述项目继续按“合同→失败测试→实现→浏览器/
   新旧卷→本地 Docker”推进。
+
+2026-08-16 的 remote-work 请求边界按 `5aadf9b` inventory、`94d0a4e` 红测、`346a49d` 实现和
+`6157466` browser contract 顺序关闭：七路 JSON 入口现有 actual-read/single-object 与短字段边界，
+多源搜索最多 60 并发和八个稳定 ordinal 窗口，batch health 最多 300 source/15 worker；旧数组响应、
+诊断 envelope、failure cache owner、Context 取消和 BookManage 整本缓存均保持。Go full/race/vet、
+frontend 737/737、build、三视口 remote-work、四视口 source-debug 和 fresh/portable/cross-user/restart
+卷门通过；历史卷首次普通运行在 fixture 后瞬时 404，同镜像 trace 重跑 TXT/EPUB/UMD/CBZ、
+relative-cache、owner isolation 全链通过。本机发布 `6157466`/`latest`，OCI index 为
+`sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`，状态为
+**aligned / Docker-published / awaiting-device-verification**。
 
 2026-08-12 在 `12036de` 后重新对 `backend/api/server.go` 做动作差集，下一项 must-fix 收敛为
 `POST/DELETE /api/uploads` 的 wire boundary。现有 8/32 MiB 是解析后的单文件 admission，不限制完整

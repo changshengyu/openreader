@@ -1,11 +1,12 @@
 # 远程工作 JSON 请求边界固定基准第二轮合同（P2）
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
-本轮只提取合同，没有修改应用或测试。已发布的 Index 搜索、书源调试、失效缓存和 BookManage
-整本缓存状态机继续成立；本合同只关闭这些动作尚未签收的客户端 JSON、单次工作量和取消边界。
+本轮按合同、失败测试、实现、浏览器/卷门和本地 Docker 发布顺序完成。已发布的 Index 搜索、书源
+调试、失效缓存和 BookManage 整本缓存状态机继续成立；本合同只关闭这些动作此前尚未签收的客户端
+JSON、单次工作量和取消边界。
 
 ## 1. 范围与权威证据
 
@@ -164,3 +165,28 @@ envelope 中，不写 `source_failures`，不改 canonical debug stream 的自�
 
 只有红测、实现、完整回归、真实浏览器和本地 Docker 门都通过后，状态才能改为 `aligned` 并发布。
 
+## 9. 实施与验证结果（2026-08-16）
+
+- `5aadf9b` 只提交固定上游 inventory；`94d0a4e` 使旧实现在线路读取、顶层类型、搜索工作窗口、
+  batch worker、取消和整本缓存边界上正式变红；`346a49d` 完成共享有界读取和七路实现；`6157466`
+  增加真实 Go/Chromium 回归脚本。四个提交均已推送。
+- search 现按实际读取执行 64 KiB 单 UTF-8 object、1024-byte keyword、5,000 raw ID、最多 60 并发和
+  八个稳定 ordinal 窗口；旧数组响应保持 body 并在截断时返回真实 last-index header。三个兼容探针、
+  batch health 和两个缓存入口共享 16 KiB control boundary；batch 只创建最多 15 个 worker，缓存整本
+  语义未被 300 章显式 count 上限替代。
+- focused contract、既有 search/source-debug/cache/failure suites、Go full、独立 sandbox 外 full race、
+  `go vet ./...`、frontend 737/737 和 Vite production build 均通过。race 的首次 sandbox 运行仅因环境
+  禁止 `httptest` IPv6 bind 失败，获准在同一代码上重跑后全量通过。
+- `scripts/smoke/remote-work-request-boundary-contract.mjs` 在 1440x900、390x844、360x800 的真实 Go
+  服务上通过：70 个源证明八窗口 64 ordinal 与后续 6 项续页、单源分页、14 个五源健康分块、整本
+  缓存、真实 transport 取消和七路 413/单文档合同；既有四视口 source-debug smoke 同时通过。
+- 本地 arm64 candidate 通过 fresh、portable v1/v2 assets、跨用户和重启卷门。历史卷首次普通运行在
+  fixture 建立后遇到一次瞬时 HTTP 404；立即对同一镜像以 shell trace 重跑，TXT/EPUB/UMD/CBZ、
+  relative-cache、owner isolation 和历史迁移全链通过，未形成可复现产品失败。
+
+本机为 `linux/amd64` 与 `linux/arm64` 构建并发布
+`ghcr.io/changshengyu/openreader:6157466` 和 `latest`；两标签均解析到 OCI index
+`sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`，平台 manifest 分别为
+`sha256:02d2055bec076f2590e2a952c9dffad84c55c959965ea1f3dd212da5ef9ff424` 和
+`sha256:84f17fca80e57e00bdd833c00d300b3cbd31dbaf706dd3ae20d475812037ff53`。两个平台 label 均记录完整
+revision `6157466687c15d2ce48007443992523dd6a26834`。用户生产环境运行提交仍未知，发布不等于已升级。

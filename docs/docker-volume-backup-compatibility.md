@@ -88,3 +88,19 @@ The image was built locally for `linux/amd64` and `linux/arm64`, then published 
 `ghcr.io/changshengyu/openreader:429444a` and `latest`. Both tags resolve to OCI index
 `sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`; a GHCR-pulled arm64 container
 reported commit `429444a83ddbe774070c8832ec9d33390037852f` from `/api/health`.
+
+## 2026-08-16 Remote-work request boundary release
+
+Release `6157466` passed the fresh portable-v1/v2-assets, cross-user and restart gates against the locally built
+arm64 candidate. The first ordinary `HISTORICAL_VOLUME=1` run encountered one transient HTTP 404 after fixture
+creation; an immediate traced rerun against the same image passed TXT/EPUB/UMD/CBZ, relative-cache migration,
+owner isolation and historical backup/restore. The failure was not reproducible and is retained here rather than
+being hidden by the successful rerun.
+
+The candidate also passed full Go/race/vet, frontend 737/737, production build, the three-viewport real-Go
+remote-work browser contract and the existing four-viewport source-debug contract. It was built locally for
+`linux/amd64` and `linux/arm64`, then published as `ghcr.io/changshengyu/openreader:6157466` and `latest`. Both tags
+resolve to OCI index `sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`; platform
+manifests are `sha256:02d2055bec076f2590e2a952c9dffad84c55c959965ea1f3dd212da5ef9ff424` for amd64 and
+`sha256:84f17fca80e57e00bdd833c00d300b3cbd31dbaf706dd3ae20d475812037ff53` for arm64. Both image labels report
+revision `6157466687c15d2ce48007443992523dd6a26834`.
