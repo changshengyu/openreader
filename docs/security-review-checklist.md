@@ -489,8 +489,8 @@ Evidence for the checked items: `backend/api/workspace_storage_access_contract_t
 
 第二轮 LocalStore 文件系统与 HTTP wire 复审见
 [`compat/local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/local-store-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **implementation-complete / regression-validated / Docker-release-pending**：合同、旧实现红测、
-实现和真实 HTTP 探针已按 `69145fc`、`8c78775`、`bba99e1`、`930be4d` 顺序落地。
+当前状态为 **aligned / Docker-published / awaiting-device-verification**：合同、旧实现红测、实现和真实
+HTTP 探针已按 `69145fc`、`8c78775`、`bba99e1`、`930be4d` 顺序落地，并随 `65a9870` 完成卷门与发布。
 
 - [x] Multi-file upload has one aggregate actual-read envelope, bounded part cardinality/metadata and explicit
   handler-owned multipart temporary-file cleanup; authentication and `canAccessStore` still run first.
@@ -498,18 +498,20 @@ Evidence for the checked items: `backend/api/workspace_storage_access_contract_t
   cardinality fail before stage, database, cache or sync side effects.
 - [x] Every LocalStore action rejects root/ancestor/target symlinks and special files. Open/download/import recheck
   an opened regular file, and no read/write/delete can escape the current user's resolved root.
-- [ ] Host HTTP, focused race, fresh/historical mounted-volume and portable restore probes cover these boundaries
+- [x] Host/candidate HTTP, focused race, fresh/historical mounted-volume and portable restore probes cover these boundaries
   without moving or deleting pre-existing symlinks or mounted user data.
 
 Evidence: `backend/api/local_store_filesystem_request_boundary_contract_test.go` and
 `scripts/smoke/local-store-filesystem-request-boundary-contract.mjs` cover the wire/filesystem boundary; focused/full/
-race/vet, frontend 740/740, build, host and arm64 candidate runtime pass. Fresh/historical/portable mounted-volume gates
-remain unchecked because the Docker socket elevation approval was rejected; no new GHCR image was published.
+race/vet, frontend 740/740, build, host/candidate runtime and fresh/historical/portable mounted-volume gates pass.
+`65a9870`/`latest` is published at OCI index
+`sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`.
 
 第二轮 WebDAV mounted import/restore 复审见
 [`compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态为 **implementation-complete / regression-validated / Docker-release-pending**；合同 `cf46e22`、
-旧实现红测 `1bb904a` 与实现/runtime `616a076` 已推送，原生 DAV 协议和 archive transaction 不重开。
+当前状态为 **aligned / Docker-published / awaiting-device-verification**；合同 `cf46e22`、旧实现红测
+`1bb904a` 与实现/runtime `616a076` 已推送，并随 `65a9870` 完成卷门与发布；原生 DAV 协议和 archive
+transaction 不重开。
 
 - [x] WebDAV preview/import and WebDAV-path restore accept one actual-read-bounded JSON document after JWT and
   effective WebDAV permission; raw and expanded target cardinality fails before stage, DB, cache or event work.
@@ -519,7 +521,7 @@ remain unchecked because the Docker socket elevation approval was rejected; no n
   source rename/delete/replace cannot change the restore bytes and the source is never modified.
 - [x] Focused/full/race/vet, declared/chunked host HTTP and three-viewport WebDAV workflow prove the request and
   mounted-read boundary before Docker publication.
-- [ ] Fresh/historical logical/portable mounted-volume gates prove non-destructive upgrade and restore before Docker
+- [x] Fresh/historical logical/portable mounted-volume gates prove non-destructive upgrade and restore before Docker
   publication.
 
 ## P1-E4 TXT empty-catalogue follow-up

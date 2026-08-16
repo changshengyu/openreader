@@ -257,10 +257,10 @@ directory/rename/import JSON 仍无 actual-read/single-document/cardinality 边�
 逐文件提交、旧路由/响应、private root 和 immutable token 保持。
 
 Go focused/full/race/vet、frontend 740/740、build、宿主和本机 arm64 candidate 真实 HTTP 均通过。
-candidate revision 为 `930be4dded3d8b54985606e92c45b7484115ffa7`；fresh/historical/portable 卷门因 Docker
-socket 提升权限额度审批被拒而尚未执行，所以没有发布 `930be4d`。正式 GHCR 仍为 `be83a0f`/`latest`，
-OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
-**implementation-complete / regression-validated / Docker-release-pending**。
+后续 `65a9870` 重新通过 LocalStore candidate 探针、fresh/historical/portable 卷、跨用户与重启，并由
+本机发布为同名标签与 `latest`。远端 amd64/arm64 OCI index 为
+`sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`；GHCR 回拉 health revision
+一致。当前状态为 **aligned / Docker-published / awaiting-device-verification**。
 
 ## 17. WebDAV 导入/恢复文件系统与请求边界（2026-08-16 implemented）
 
@@ -291,8 +291,10 @@ OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b
 最多 200 个唯一 target；source-backed 文件逐项用 caller-rooted `Service.Open`，token-only 不访问 mounted
 root；restore 使用 opened regular ZIP 的 caller-private bounded snapshot。
 
-Go focused/full/race/vet、frontend 740/740、build、宿主 declared/chunked + symlink/FIFO + token/snapshot
-探针，以及 1440x900/390x844/360x800 导入、token 重试和恢复会话隔离均通过。状态为
-**implementation-complete / regression-validated / Docker-release-pending**；下一门仅为本地 candidate、
-fresh/historical 三卷和 logical/portable backup/restore。direct/source multipart、remote-work JSON、progress
-及其它 batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。
+Go focused/full/race/vet、frontend 740/740、build、宿主/candidate declared/chunked + symlink/FIFO +
+token/snapshot 探针，以及 1440x900/390x844/360x800 导入、token 重试和恢复会话隔离均通过。
+`65a9870` 又通过 fresh/historical 三卷和 logical/portable v1/v2、跨用户、重启，由本机发布为同名标签
+与 `latest`；amd64/arm64 OCI index 为
+`sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`。状态为 **aligned /
+Docker-published / awaiting-device-verification**。direct/source multipart、remote-work JSON、progress 及其它
+batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。

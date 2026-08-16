@@ -1,6 +1,6 @@
 # WebDAV 导入/恢复文件系统与请求边界第二轮固定基准合同（P2）
 
-状态：**implementation-complete / regression-validated / Docker-release-pending**。
+状态：**aligned / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 inventory 审查基线：`OpenReader@930be4dded3d8b54985606e92c45b7484115ffa7`。
@@ -197,5 +197,20 @@ special file、opened restore snapshot 和 exact 200/201 边界。
 验证结果：WebDAV API/service 专项无缓存通过，focused race、`go vet ./...`、Go 全量、frontend 740/740、
 Vite build 与 diff check 通过；`webdav-import-restore-boundary-contract.mjs` 在真实宿主服务通过 declared/
 chunked、symlink/FIFO、token-only 与 snapshot 清理；导入状态机、token 重试和恢复会话隔离均通过
-1440x900、390x844、360x800。默认 LocalStore+WebDAV 组合也通过。剩余门禁仅为本地 Docker candidate、
-fresh/historical 三卷及 logical/portable backup/restore；通过前不发布、不移动现有数据。
+1440x900、390x844、360x800。默认 LocalStore+WebDAV 组合也通过。实现提交时剩余门禁为本地 Docker
+candidate、fresh/historical 三卷及 logical/portable backup/restore；下一节记录其后续通过与发布证据。
+
+## 12. Docker 发布记录（2026-08-16）
+
+本地 arm64 candidate `65a9870` 先通过 health revision、WebDAV 与 LocalStore 两个真实文件系统/HTTP
+探针。随后 fresh 与 historical 三卷门顺序通过，覆盖 TXT/EPUB/UMD/CBZ/relative-cache、owner isolation、
+logical restore、portable v1/v2 assets、cross-user restore 和 restart。正式镜像由本机双架构构建并推送：
+
+- tags：`ghcr.io/changshengyu/openreader:65a9870`、`ghcr.io/changshengyu/openreader:latest`；
+- OCI index：`sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`；
+- platforms：`linux/amd64`、`linux/arm64`，另含对应 provenance attestation；
+- GHCR 回拉 arm64 容器 `/api/health` 返回 version `65a9870` 和完整 commit
+  `65a987049d6a9bff7feeb2618f7257620cd896a9`。
+
+发布不代表用户生产服务器已经升级；其当前运行 commit 仍未知。允许差异仍只有多用户/JWT/private
+root、immutable token、有界安全策略与已列出的 OpenReader runtime 适配；没有 SQLite、目录或备份格式迁移。

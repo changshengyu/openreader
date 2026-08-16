@@ -1,6 +1,6 @@
 # LocalStore 文件系统与请求边界第二轮固定基准合同（P2）
 
-状态：**implementation-complete / regression-validated / Docker-release-pending**。
+状态：**aligned / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 当前审查基线：`OpenReader@c7e669e87c5e5b282405be4cef6468981b35763f`。  
@@ -154,3 +154,13 @@ Go 全量、race、vet、frontend test/build、真实 declared/chunked HTTP 探�
   `930be4d` 或改写 `latest` 的远端标签；正式 GHCR 仍是 `be83a0f`/`latest`，OCI index
   `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。卷门恢复前不得标记
   Docker-published。
+
+## 8. Docker 发布记录（2026-08-16）
+
+后续 `65a9870` candidate 重新运行 LocalStore 真实边界探针，确认 34 MiB multipart declared/chunked
+包络、磁盘临时文件清理、200/201 展开、symlink/FIFO、download/open identity 和 source-independent token。
+同一镜像顺序通过 fresh/historical `data/cache/library`、logical/portable v1/v2、跨用户和重启门禁，并由
+本机发布 `65a9870`/`latest`。远端 amd64/arm64 OCI index 为
+`sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`；GHCR 回拉 health revision
+与 `65a987049d6a9bff7feeb2618f7257620cd896a9` 一致。未修改 SQLite schema、mounted root 或备份格式；
+用户生产环境运行 commit 仍未知。

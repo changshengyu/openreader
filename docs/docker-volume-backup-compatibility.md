@@ -63,3 +63,15 @@ archive. See
 [`portable-local-archive-backup-p1e4-contract.md`](compat/portable-local-archive-backup-p1e4-contract.md).
 
 This is not a substitute for full restore validation. It is the minimum release gate for Docker volume and backup regressions.
+
+## 2026-08-16 LocalStore/WebDAV boundary release
+
+Release `65a9870` ran the fresh and `HISTORICAL_VOLUME=1` variants sequentially against the locally built candidate.
+Both passed, including TXT/EPUB/UMD/CBZ/relative-cache, owner isolation, logical restore, portable v1/v2 appearance
+assets, cross-user restore and restart. The candidate also passed the LocalStore and WebDAV declared/chunked HTTP,
+symlink/FIFO, token-only and private restore-snapshot probes against mounted host directories.
+
+The image was built locally for `linux/amd64` and `linux/arm64`, then published as
+`ghcr.io/changshengyu/openreader:65a9870` and `latest`. Both tags resolve to OCI index
+`sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`; a GHCR-pulled arm64 container
+reported commit `65a987049d6a9bff7feeb2618f7257620cd896a9` from `/api/health`.
