@@ -14,9 +14,9 @@ import (
 )
 
 type progressRequest struct {
-	BookID          uint    `json:"bookId" binding:"required"`
+	BookID          uint    `json:"bookId"`
 	ChapterID       uint    `json:"chapterId"`
-	ChapterIndex    int     `json:"chapterIndex"`
+	ChapterIndex    *int    `json:"chapterIndex"`
 	Offset          int     `json:"offset"`
 	Percent         float64 `json:"percent"`
 	ChapterPercent  float64 `json:"chapterPercent"`
@@ -59,16 +59,15 @@ func (s *Server) getProgress(c *gin.Context) {
 func (s *Server) updateProgress(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
-	var request progressRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid progress payload"})
+	request, ok := decodeProgressRequest(c)
+	if !ok {
 		return
 	}
 	result, err := s.progressSvc.Save(readingprogress.Input{
 		UserID:          userID,
 		BookID:          request.BookID,
 		ChapterID:       request.ChapterID,
-		ChapterIndex:    request.ChapterIndex,
+		ChapterIndex:    *request.ChapterIndex,
 		Offset:          request.Offset,
 		Percent:         request.Percent,
 		ChapterPercent:  request.ChapterPercent,

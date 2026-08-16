@@ -11,6 +11,43 @@ export function readerProgressSaveKey(payload, mode = '') {
   ].join(':')
 }
 
+export const MAX_READER_PROGRESS_CLIENT_ID_BYTES = 128
+
+const READER_PROGRESS_CLIENT_ID_KEY = 'openreader_reader_client_id'
+
+export function isReaderProgressClientId(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && utf8ByteLength(value) <= MAX_READER_PROGRESS_CLIENT_ID_BYTES
+}
+
+export function readOrCreateReaderClientId(storage, createClientId) {
+  let current = ''
+  try {
+    current = storage?.getItem(READER_PROGRESS_CLIENT_ID_KEY) || ''
+  } catch {
+    // Restricted storage falls back to a per-page client ID.
+  }
+  if (isReaderProgressClientId(current)) return current
+
+  const next = createClientId()
+  try {
+    storage?.setItem(READER_PROGRESS_CLIENT_ID_KEY, next)
+  } catch {
+    // The generated ID remains valid for this page when storage is unavailable.
+  }
+  return next
+}
+
+function utf8ByteLength(value) {
+  let bytes = 0
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
+  }
+  return bytes
+}
+
 export function readerProgressBaseUpdatedAt(progress) {
   if (!progress) return ''
   if (progress.pendingSync) return progress.baseUpdatedAt || ''

@@ -7,6 +7,7 @@ import {
   progressUpdatedAt,
   reconcileAuthoritativeShelfProgress,
 } from '../utils/bookOrder'
+import { readOrCreateReaderClientId } from '../utils/readerProgressPersistence'
 import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThemeType'
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
@@ -945,16 +946,7 @@ function numberAtLeast(value, min, fallback) {
 
 function readerClientId() {
   if (typeof sessionStorage === 'undefined') return makeClientId()
-  const key = 'openreader_reader_client_id'
-  try {
-    const current = sessionStorage.getItem(key)
-    if (current) return current
-    const next = makeClientId()
-    sessionStorage.setItem(key, next)
-    return next
-  } catch {
-    return makeClientId()
-  }
+  return readOrCreateReaderClientId(sessionStorage, makeClientId)
 }
 
 function makeClientId() {
