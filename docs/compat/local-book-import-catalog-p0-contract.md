@@ -5,12 +5,14 @@ Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 Audit date: 2026-07-18. This contract supersedes the earlier broad claim that the
 local-import flow was fully aligned merely because a staged upload could be
 reused. The TXT matcher itself remains aligned for the previously extracted
-slice; the upload/preview/confirm state machine and parsed-result lifecycle do
-not in the pre-implementation state recorded below.
+slice. The upload/preview/confirm and parsed-result gaps originally recorded
+here are closed; the 2026-08-16 direct multi-select audit also converged its
+confirmation path on the shared storage workflow.
 
-Implementation status: **completed and validated on 2026-07-18** for the
-preview/confirm lifecycle. The frontend now applies latest-request-only state
-with transport cancellation. Direct, LocalStore and WebDAV successful previews
+Implementation status: **completed and validated on 2026-07-18**, with the
+shared direct multi-select follow-up validated on 2026-08-16. The frontend
+applies latest-request-only state with transport cancellation. Direct,
+LocalStore and WebDAV successful previews
 atomically store a versioned parsed snapshot; confirmation consumes the exact
 matching rule/hash snapshot and old two-file stages rebuild it lazily. Failed
 parses retain the last successful snapshot, failed durable imports compensate
@@ -43,20 +45,19 @@ expiry/removal. The wider non-TXT parser-semantic audit remains open.
 
 ## Current OpenReader evidence
 
-- `frontend/src/composables/useOverlayBookImport.js` uploads once, stores the
-  returned `importToken`, and uses the token for rule refresh and confirmation.
+- `frontend/src/api/books.js#previewDirectLocalBooks` uploads selected files one
+  at a time; `useStorageImportWorkflow` stores each returned `importToken` and
+  uses only the token for rule refresh and confirmation.
 - `frontend/src/api/books.js` allows ten minutes for preview; the old 12-second
   upload timeout is no longer present.
 - `backend/api/local_import_stage.go` stores immutable caller-scoped raw bytes
   below `cache/import-previews/<user-id>/` for 24 hours.
-- `backend/services/localbook/importer.go` calls
-  `parseUploadedBookWithLimits(...)` in both `Preview` and `Import`.
-- `backend/engine/epub_parser.go` reads and normalizes every readable spine
-  resource during preview, including chapter content. Confirmation repeats
-  that work, then writes one cache file per chapter.
-- `useOverlayBookImport.preview()` has no request generation check or abort
-  signal. A response from a superseded file/rule request can overwrite the
-  latest dialog state, and a response can repopulate state after close/reset.
+- `backend/services/localbook/importer.go` and staged prepared snapshots bind
+  the successful parsed result to token/rule/hash so confirmation need not
+  repeat the catalogue parse.
+- `useStorageImportWorkflow` and the direct adapter use request generation,
+  AbortController and lifecycle scope disposal; superseded or closed batches
+  cannot repopulate dialog/shelf state.
 
 ## Compatibility matrix
 
@@ -64,10 +65,10 @@ expiry/removal. The wider non-TXT parser-semantic audit remains open.
 |---|---|---|---|---|
 | Browser upload count | Selected bytes are uploaded once. All later parsing uses a server-side local copy. | Direct upload creates a stage once; rule retries and confirmation submit only the token. | `technical-stack-equivalent` | Preserve the token flow and ten-minute transport timeout. Do not reintroduce repeated browser uploads. |
 | Network independence after stage | Rule parsing and confirmation read only the local asset. | Token requests read immutable staged bytes. LocalStore/WebDAV token retries also ignore later mounted-source changes. | `acceptable-change` | Preserve caller scoping, 24-hour cleanup, and immutable snapshot semantics. |
-| Preview response ordering | The upstream dialog has one active upload and explicit refresh actions; returned state corresponds to the current local `Book`. | Multiple asynchronous calls can overlap. Older success/failure responses can replace a newer file/rule preview or repopulate a closed dialog. | `must-fix` | Give each preview a generation, abort the superseded request, ignore stale completion, and make intentional cancellation silent. Closing/resetting the dialog must invalidate in-flight work. |
-| Loading state ordering | The visible loading state represents the active operation. | Any older request's `finally` can set `previewing=false` while a newer request is still running. | `must-fix` | Only the current generation may mutate loading/error/data/token state. |
-| Parsed-result lifecycle | Preview creates the server-side prepared local book and chapter catalogue; confirmation saves that prepared asset without reparsing the entire source. | Preview parses the entire source, discards `ParsedBook`, and confirmation parses it again. EPUB preview reads all spine content twice across preview + confirm. | `must-fix` | Store a bounded, caller-scoped parsed snapshot for the active token/rule and consume that exact snapshot on confirmation. A changed rule must atomically replace the snapshot only after successful parsing. |
-| Final durability | Confirmation makes the prepared book durable and refreshes the shelf. | Original file, chapter caches, archive JSON and SQLite rows are assembled during confirmation. Filesystem failures can leave a partial archive because compensation is incomplete. | `must-fix` | Treat archive preparation as a compensating transaction: no shelf broadcast/token consumption before DB + required files succeed; remove a newly created archive on failure. Existing data must never be touched. |
+| Preview response ordering | The upstream dialog has one active upload and explicit refresh actions; returned state corresponds to the current local `Book`. | Direct and shared workflow abort superseded requests and reject stale generation/scope commits. | `aligned` | Preserve abort, generation and silent intentional cancellation. |
+| Loading state ordering | The visible loading state represents the active operation. | Only the current operation generation may mutate loading/error/data/token state. | `aligned` | Keep current operation ownership tests. |
+| Parsed-result lifecycle | Preview creates the server-side prepared local book and chapter catalogue; confirmation saves that prepared asset without reparsing the entire source. | Versioned caller-scoped prepared snapshot is bound to token/rule/hash and consumed at confirmation. | `technical-stack-equivalent` | Preserve lazy upgrade for old two-file stages and failed-reparse retention. |
+| Final durability | Confirmation makes the prepared book durable and refreshes the shelf. | Archive/DB/category work compensates failure; token consumption and broadcast occur only after durable success. | `aligned durability adaptation` | Preserve injected-failure and orphan cleanup tests. |
 | TXT automatic rule | First 512,000 bytes, enabled rules in reverse, one-match threshold, upstream tie overwrite. | Same extracted behavior. | `aligned` | Keep existing engine fixtures. |
 | TXT explicit no-match | Empty catalogue remains visible and confirmable. | `200` with zero chapters and reusable token; confirmation can create a zero-chapter local book. | `aligned` | Preserve this state; do not translate it into a transport failure. |
 | Java regex compatibility | Java multiline patterns are applied directly. | Known upstream lookbehind/lookahead forms are normalized for Go RE2; arbitrary unsupported Java constructs fail explicitly. | `acceptable-change` | Keep explicit client-safe errors and the staged token. Do not silently use a different rule. |
@@ -113,8 +114,9 @@ Implemented evidence:
   failed-reparse retention, bounds/overflow, cleanup and archive compensation;
 - production Vite build;
 - `scripts/smoke/local-book-import-contract.mjs` against the real Go API at
-  1440x900, 390x844 and 360x800, covering delayed stale response isolation,
-  TXT reparse/confirm, EPUB preview/confirm and immediate shelf visibility.
+  1440x900, 390x844 and 360x800, now also covering new-batch cancellation,
+  direct single/batch/sequential confirmation, duplicate filenames, ordered
+  token-only import and mobile fullscreen geometry.
 
 ## Data and release constraints
 

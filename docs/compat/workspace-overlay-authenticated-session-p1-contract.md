@@ -47,7 +47,7 @@
 | BookManage / 缓存 / 导出 | 打开时加载书架和浏览器缓存统计；批量分组/删除、单书缓存、清缓存和导出在 await 后直接写共享 store 或提示。服务器/浏览器缓存任务由模块级 map 持有。 | **must-fix**：普通动作必须隔离；现有 `cancelAllBookManagementCacheJobs()` 在凭证移除前取消长期任务，应保留，不把 cache job 生命周期误缩短为 Dialog 生命周期。 |
 | BookGroup | `useOverlayBookGroups` 的设置分组、增删改、显隐与排序在 await 后直接更新 bookshelf、BookInfo overlay、广播和关闭 Dialog。 | **must-fix**：迟到设置分组不能覆盖 B 的书对象或关闭 B 新开的分组弹层。 |
 | Bookmark / 表单 / 正文搜索 | `useBookBookmarks` 只有 book id/load token；表单保存、导入、删除、跳转和更新事件没有认证 identity。正文搜索仅有查询 revision。 | **must-fix**：不同账号可能存在相同自增 book id；仅比较 id 不能证明身份，迟到导航、toast、表单 resolve 和结果写入都需拦截。 |
-| 上传导入 | `useOverlayBookImport` 预览有 AbortController 与本地 generation，但分组加载、目录规则加载和正式导入没有认证 guard。 | **部分一致 / must-fix**：保留预览取消；正式导入的 A 响应不得 upsert 到 B、关闭 B 弹层或提示 B 成功。 |
+| 上传导入 | direct picker 与 LocalStore/WebDAV 共用 `useStorageImportWorkflow`；preview/import、分组、目录规则和队列均冻结认证 identity，并在 dispose 时 abort/reset。 | **已对齐**：A 的迟到响应不能 upsert B 书架、关闭 B 弹层或提示 B 成功。 |
 | LocalStore | `LocalStoreManager` 在 mount 自动加载；目录加载、上传、删除和批量删除没有 unmount/identity guard。 | **must-fix**：A 的目录结果和消息不得提交到 B；一个动作切换账号后不得继续以 B token 执行 `load()`。 |
 | WebDAV / 恢复 | `WebDAVBrowser` 在 mount 自动加载；上传、下载、删除、导入与恢复没有认证 guard。恢复成功会调用 `applyRestoreResult` 刷新多个全局 store。 | **must-fix / 最高风险**：A 的恢复响应绝不能在 B 会话调用全局恢复收敛；账号变化后不得继续请求 B 的目录。 |
 | StorageImport | `useStorageImportWorkflow` 的 reset 只清本地 phase；预览、重解析、逐本/批量导入在 await 后仍可 upsert、提示、关闭 overlay，批量循环可在换号后继续下一项。 | **must-fix / 最高风险**：会话变化必须淘汰当前 workflow，并停止后续队列请求。 |

@@ -1,9 +1,9 @@
 # 直接本地图书导入与 multipart 边界第二轮固定基准合同（P1/P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implementation-complete / regression-validated / Docker-release-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
-当前审查基线：`OpenReader@a0a0b31`。  
+当前审查基线：`OpenReader@3b9ae54`。
 审查日期：2026-08-16。
 
 本轮重新审查首页“导入书籍”的直接浏览器文件选择、预览、批量/逐本确认，以及以下已部署
@@ -14,8 +14,8 @@ multipart 动作：
 - `POST /api/imports/txt`
 
 TXT/EPUB/UMD/CBZ parser、不可变 stage、prepared snapshot、归档补偿、分类多对多和 LocalStore/WebDAV
-导入已由既有合同签收，本轮不重建这些内部语义。合同阶段只修改文档；失败测试和实现必须后续独立
-提交。
+导入已由既有合同签收，本轮不重建这些内部语义。原始合同、失败测试、实现和 runtime/browser 证据已按
+`279f688`、`cd8f073`、`05343ec`、`3b9ae54` 四个独立提交完成；卷门与 Docker 发布仍待本轮执行。
 
 ## 1. 固定上游权威行为
 
@@ -45,36 +45,30 @@ TXT/EPUB/UMD/CBZ parser、不可变 stage、prepared snapshot、归档补偿、�
 
 ## 2. 当前 OpenReader 证据
 
-- `OverlayBookImport.vue` 的 `el-upload` 没有 `multiple`，只显示一个 `draft.file`；选择后立即进入一套
-  独立的书名/作者/分组/规则表单。
-- `useOverlayBookImport.js` 只拥有一个 file/token/preview，并直接调用 `bookshelf.importTXT`；它没有
-  多项方式选择、顺序队列或批量分组状态。
-- `OverlayStorageImport.vue` 与 `useStorageImportWorkflow.js` 已拥有固定上游要求的单本确认、批量/逐本
-  方式选择、统一分组、逐本失败/跳过、目录重解析和登录失效隔离，但只接收 LocalStore/WebDAV path。
-- `previewLocalBook` 和 `bookshelf.importTXT` 每次发送一个 `file` 或一个 `importToken`，preview 返回单个
-  `{title,author,chapterCount,chapters,importToken}`，import 返回单个 `201 Book`。该 wire 已部署且已有
-  旧客户端/测试，不应为了恢复多选而破坏响应 shape。
-- `imports.go#readLocalImportPayload` 在任何 `MaxBytesReader` 之前调用 `PostForm`/`FormFile`。Gin 的默认
-  `MaxMultipartMemory` 只是内存到磁盘的阈值，不是请求上限；超大 declared/chunked body、额外 part
-  和超长 scalar 可先被完整解析到内存/临时磁盘。
-- `FormFile("file")`、`PostForm` 和 `PostFormArray` 只采用当前逻辑关心的值。重复 file/token/title、
-  file+token、未知 file/value part 或过量 category IDs 会被静默忽略、降级或部分采用。
-- handler 不显式调用 `MultipartForm.RemoveAll()`；生产 `net/http.Server` 通常会在请求结束清理，但
-  直接 handler、嵌入调用和所有返回分支没有明确的临时文件所有权。
+- `OverlayBookImport.vue` 现为支持 `multiple`、最多 64 项的文件选择宿主；选择结果通过 direct adapter
+  交给 `OverlayStorageImport.vue` 和 `useStorageImportWorkflow.js`，不再拥有第二套确认状态机。
+- `frontend/src/api/books.js#previewDirectLocalBooks` 按浏览器选择顺序一次只上传一个文件，并为同名文件
+  分配独立 client key。成功 row 后续只保留 `importToken`，重解析和最终确认不重传浏览器 `File`。
+- direct、LocalStore、WebDAV 共用单本、批量和逐一确认 phase；direct 批量统一分组、逐本跳过/重试、
+  `（i/n）`、认证 generation 和 scope disposal 均走同一实现。
+- `backend/api/direct_local_import_boundary.go` 在认证后统一执行饱和 `maxLocalImportBytes + 1 MiB`
+  declared/actual-read 包络、严格 file/token/field/category admission 和 handler-owned `RemoveAll()`。
+- `imports.go` 只消费已验证 payload，不再通过 `PostForm`/`FormFile` 静默采用首值；两个 import route 与
+  preview 保持原单对象 wire、caller-scoped stage、prepared snapshot 和 durable-only broadcast。
 
 ## 3. 差异矩阵
 
 | 合同点 | 固定上游 | 当前行为 | 裁决 |
 |---|---|---|---|
-| 直接选择数量 | 一个 chooser 可多选并保持顺序。 | 只能选择/预览一本。 | **must-fix visible workflow**。 |
-| 单本确认 | preview 后编辑当前书并确认。 | 独立单书表单可完成相同动作。 | **partial**：字段能力保留，但必须迁入共享状态机。 |
-| 多本方式 | 明确选择批量或逐一；关闭方式选择取消整批。 | 不存在。 | **must-fix state machine**。 |
-| 统一业务流 | 直接、LocalStore、WebDAV 都进入 `importMultiBooks`。 | direct 与 storage 两套 composable/dialog。 | **must-fix architecture/behavior**：收敛到一个确认控制器。 |
+| 直接选择数量 | 一个 chooser 可多选并保持顺序。 | 支持 1..64 项，顺序 preview；同名文件用稳定 client identity 分离。 | **aligned**。 |
+| 单本确认 | preview 后编辑当前书并确认。 | 单项直接进入共享单本确认，可编辑书名、作者、分组和规则。 | **aligned**。 |
+| 多本方式 | 明确选择批量或逐一；关闭方式选择取消整批。 | 多项进入不可 Escape 绕过的方式选择，再批量统一分组或逐本 `（i/n）`。 | **aligned**。 |
+| 统一业务流 | 直接、LocalStore、WebDAV 都进入 `importMultiBooks`。 | 三入口共用 `OverlayStorageImport/useStorageImportWorkflow`。 | **aligned / Vue adaptation**。 |
 | preview wire | 一个 multipart 可含多个任意名字 file，返回 list。 | 一个 `file`，返回单 object。 | **acceptable Go/Vue adaptation**：保留单 object API，由前端按顺序逐文件预览并聚合。 |
 | 不可变确认 | 上游确认使用服务端已准备文件。 | token 后续只读 caller-scoped stage。 | **aligned security adaptation**：不得在确认时重传或重读浏览器 File。 |
-| multipart 总量 | 上游共享 BodyHandler，无模块精确合同。 | direct routes 无 actual-read 总包络。 | **must-fix security boundary**。 |
-| multipart shape | 遍历所有 upload。 | 只采用第一个匹配 part/值。 | **must-fix request identity**：稳定单对象 API 每次只接受一个 file 或 token。 |
-| 临时文件 | Vert.x 工作文件由框架/控制器处理。 | Go handler 不拥有 `RemoveAll` 生命周期。 | **must-fix resource ownership**。 |
+| multipart 总量 | 上游共享 BodyHandler，无模块精确合同。 | 三路由认证后、multipart 解析前执行 declared/actual-read 总包络。 | **aligned security adaptation**。 |
+| multipart shape | 遍历所有 upload。 | 稳定单对象 API 每次严格接受一个 file 或 token，并限制字段与分类。 | **aligned security adaptation**。 |
+| 临时文件 | Vert.x 工作文件由框架/控制器处理。 | 成功解析的 form 由 handler 在所有分支 `RemoveAll()`。 | **aligned resource ownership**。 |
 | 数据格式 | 工作目录准备后 `saveBook`。 | 24h stage + parsed snapshot + SQLite/library transaction。 | **acceptable multi-user/durability adaptation**；无迁移。 |
 
 ## 4. 目标前端合同
@@ -198,5 +192,21 @@ TXT/EPUB/UMD/CBZ parser、不可变 stage、prepared snapshot、归档补偿、�
   importer/service/parser 不负责 HTTP shape；其现有 size/parser/durability gate继续作为第二道防线。
 - 前端优先给 `useStorageImportWorkflow` 增加 source adapter 和稳定 row identity，使 direct 复用其 phase；
   不通过复制 `importMultiBooks` 或保留 `useOverlayBookImport` 确认逻辑来“实现”多选。
-- 合同、红测、实现、runtime/browser/发布记录依次独立提交。实现前状态保持
-  `inventory-complete / implementation-pending`，不得因旧单文件测试仍绿而标记 aligned。
+- 合同、红测、实现、runtime/browser/发布记录依次独立提交。前三个实现阶段已按独立提交完成；只有
+  fresh/historical/portable 卷门和本地 Docker 发布通过后，才可标记 `Docker-published`。
+
+## 9. 实现与回归记录（2026-08-16）
+
+- `cd8f073` 先锁定 direct 多选/共享状态机、包络、shape、metadata/category 和临时文件所有权红测；
+  `05343ec` 再实现共享 frontend adapter 与专用 Go multipart boundary，`3b9ae54` 提交真实运行时证据。
+- frontend focused 与全量 `737/737`、Vite production build、Go focused/full、`go vet ./...` 和
+  `git diff --check` 通过。完整 `go test -race ./...` 首次仅因 sandbox 禁止 `httptest` 绑定 IPv6 失败，
+  相同命令在允许监听的环境完整通过，API race 用时约 538 秒。
+- 真实 Go 服务在 33 MiB 配置下通过 declared/chunked `35,651,585` bytes 的 413、JWT 401 优先、精确
+  envelope 进入独立 file-limit admission、严格 multipart shape、32 MiB 以上磁盘临时文件清理、
+  token-only reparse/import 和两个 import aliases。
+- 1440x900、390x844、360x800 通过新批次取消旧 preview、单本规则重解析/分组、同名双文件有序批量、
+  逐本跳过/确认、token-only final import、最多一个 preview 在途、方式选择不可 Escape 绕过、移动全屏
+  与无横向溢出；LocalStore/WebDAV retry 和共享状态机三视口回归也通过。
+- 本切片没有 SQLite、stage、cache/library 根、备份格式或浏览器持久 key 迁移。当前只剩 mounted-volume/
+  backup 门和本机 amd64/arm64 GHCR 发布；用户生产环境运行 commit 仍未知。

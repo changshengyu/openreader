@@ -59,7 +59,8 @@
 必须满足：
 
 1. API 直接数组必须逐项保留 `id/enable/name/rule/serialNumber`，顺序与上游 JSON 完全一致。
-2. `useOverlayBookImport.loadTocRules()` 只剔除没有规则文本的损坏行，不得过滤 `enable=false`。
+2. 共享 `useStorageImportWorkflow.loadTocRules()` 只剔除没有规则文本的损坏行，不得过滤
+   `enable=false`；direct、LocalStore、WebDAV 使用同一规则投影。
 3. 自动检测仍只遍历 `enable=true`，并继续受 512 KiB probe、输入/解码文本/章节数预算约束。
 4. 手动选择 18 条中的任一条都必须可执行；不能只把 RE2 无法编译的 Java 正则显示出来。
 5. `-16` 前向双标题和 `-17` 后向双标题包含跨行 lookaround。Go 实现必须保留相邻标题语义，
@@ -67,8 +68,8 @@
 6. 自定义用户规则继续支持当前已实现的上游 lookbehind 前缀和负向排除兼容，超长规则与解析预算
    继续拒绝。
 
-错误测试 `overlayBookImport.test.mjs` 中“filters enabled TXT TOC rules once”必须改写；
-`TestDefaultTXTTocRulesIncludeUpstreamEnabledRules` 必须升级为精确 18 条合同，并为八条手动规则增加
+前端规则投影由 `localBookImportRetryContract.test.mjs` 与共享 workflow 合同锁定；
+`TestDefaultTXTTocRulesIncludeUpstreamEnabledRules` 已升级为精确 18 条合同，并为八条手动规则增加
 至少一组成功/不应匹配 fixture，特别覆盖 `-16/-17` 的相邻行语义。
 
 ## 5. 书签批删合同
@@ -299,22 +300,22 @@ token/snapshot 探针，以及 1440x900/390x844/360x800 导入、token 重试和
 Docker-published / awaiting-device-verification**。direct/source multipart、remote-work JSON、progress 及其它
 batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。
 
-## 18. 直接本地图书多选与 multipart 边界（2026-08-16 inventory）
+## 18. 直接本地图书多选与 multipart 边界（2026-08-16 implemented）
 
-按第 17 节保留的差集继续核对固定上游 `Index.vue#onBookFileChange/importMultiBooks`、
-`BookController.importBookPreview` 和当前 `OverlayBookImport/useOverlayBookImport/imports.go` 后，direct
-local import 成为下一项 must-fix：固定上游隐藏 chooser 明确支持多选，单本进入确认，多本必须选择
-批量或逐一，并与 LocalStore/WebDAV 复用同一状态机；当前 direct 只允许一本且维护第二套确认逻辑。
+按第 17 节保留的差集核对固定上游 `Index.vue#onBookFileChange/importMultiBooks`、
+`BookController.importBookPreview` 和旧 `OverlayBookImport/useOverlayBookImport/imports.go` 后，direct
+local import 曾被确定为 must-fix：固定上游隐藏 chooser 支持多选，单本进入确认，多本选择批量或逐一，
+并与 LocalStore/WebDAV 复用同一状态机。
 
-当前单 object preview/import API、caller-scoped token 和 prepared snapshot 是已部署安全适配，不改成
-上游 list wire。目标以顺序单文件 preview adapter 聚合多项，并把 direct 接入现有 shared workflow。
-同时三个 direct multipart 路由必须在任何 `PostForm/FormFile` 前执行
-`maxLocalImportBytes + 1 MiB` actual-read 包络，只接受一个 file 或 token、有限已知 scalar/category，
-并由 handler 清理成功解析的 multipart 临时文件。认证、parser、stage、archive、分类和广播的既有
-成功/失败语义保持。
+`05343ec` 保留单 object preview/import API、caller-scoped token 和 prepared snapshot，以顺序单文件
+adapter 聚合 1..64 项并接入 shared workflow；旧 direct composable 已删除。三个 direct multipart 路由
+在任何 `PostForm/FormFile` 或 stage 前执行 `maxLocalImportBytes + 1 MiB` declared/actual-read 包络，只
+接受一个 file 或 token、有限已知 scalar/category，并由 handler 清理成功解析的 multipart 临时文件。
+认证、parser、stage、archive、分类和 durable-only 广播的既有成功/失败语义保持。
 
 精确上游证据、可见状态、允许适配、wire/field/error/副作用和测试先行门见
 [`direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md)。
-当前状态为 **inventory-complete / implementation-pending**；本轮只修改文档。下一提交必须先让旧实现
+状态为 **implementation-complete / regression-validated / Docker-release-pending**。`cd8f073` 先使旧实现
 在 direct 多选/共享状态机、declared/chunked、ambiguous part、metadata/category 和临时文件所有权上
-正式变红，不能直接改应用代码。
+正式变红，`05343ec` 实现，`3b9ae54` 补齐真实 HTTP 与三视口 browser 证据；frontend 737/737、Go
+full/race/vet 和 build 均通过。待卷门与本地 Docker 发布后，从当前 server 重新生成下一轮动作差集。

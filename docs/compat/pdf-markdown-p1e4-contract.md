@@ -18,7 +18,7 @@
 
 | 合同层 | 当前证据 | 判定 |
 |---|---|---|
-| 直接导入可见入口 | `OverlayBookImport.vue` 仅声明 `.txt,.epub,.umd,.cbz` 与四格式文案；`useOverlayBookImport.js` 用 `isDirectImportableLocalPath` 在预览 API 之前拒绝被“所有文件”强行选入的历史扩展名。 | **aligned（E4-PDFMD-1）**：新用户入口已收敛。 |
+| 直接导入可见入口 | `OverlayBookImport.vue` 仅声明 `.txt,.epub,.umd,.cbz` 与四格式文案；direct picker 在进入共享 `useStorageImportWorkflow` 前用 `isDirectImportableLocalPath` 拒绝被“所有文件”强行选入的历史扩展名。 | **aligned（E4-PDFMD-1）**：新用户入口已收敛。 |
 | 直接导入 API | `backend/api/imports.go`、`services/localbook/importer.go` 接受 `.text/.md/.pdf`；PDF 走受限提取，Markdown/`.text` 走普通 TXT parser。 | **明确的遗留数据兼容差异**：不作为 UI 能力宣传，但暂保留路由，以免已部署客户端、已暂存导入流和历史自动化调用失效。 |
 | 既有书架阅读、刷新、缓存恢复 | `backend/api/books.go` 的 `parseLocalBookChapters` 和 `isSupportedLocalBookFile` 仍能读取 `.text/.md/.pdf` 原始 archive。 | **必须保留**：不能为了 UI 对齐而让已导入书籍白屏、无法刷新或无法从缺失 cache 恢复。 |
 | 书仓 / WebDAV 工作台 | `storageImportable.js` 分别限制为 `txt/epub/umd/cbz` 与 `txt/epub/umd`，已有回归测试覆盖。 | **aligned（P1-E3）**：本切片不得回退。 |

@@ -3725,15 +3725,17 @@ mounted-volume 与正式本机 Docker 发布仍等待显式 Docker socket 授权
 再统一分组或逐本显示 `（i/n）`。LocalStore/WebDAV 的预览结果也调用同一个 `importMultiBooks`，因此
 多入口共享确认状态机是产品合同，不是当前组件形状的选择。
 
-当前 `OverlayBookImport/useOverlayBookImport` 只拥有一个 file/token/preview，且复制了已在
-`OverlayStorageImport/useStorageImportWorkflow` 实现的确认逻辑；裁决为 **must-fix visible workflow**。
-现有 `/api/imports/books/preview` 单 object 与 `/api/imports/books`/`imports/txt` 单 Book 响应不破坏，
-由前端顺序逐文件 preview、使用稳定 row identity 聚合，再复用共享 phase/队列/分组/错误/账号隔离。
-成功 preview 后只用 caller-scoped token reparse/import，不重新提交浏览器 File。
+`05343ec` 已把 `OverlayBookImport` 收敛为 1..64 项文件选择宿主，删除独立
+`useOverlayBookImport` 确认流；direct adapter 按顺序逐文件 preview、使用稳定 row identity 聚合，再复用
+`OverlayStorageImport/useStorageImportWorkflow` 的 phase/队列/分组/错误/账号隔离。现有
+`/api/imports/books/preview` 单 object 与 `/api/imports/books`/`imports/txt` 单 Book 响应保持不变；成功
+preview 后只用 caller-scoped token reparse/import，不重新提交浏览器 File。
 
-同一动作的 Go 入口会在无 actual-read 包络时由 `PostForm/FormFile` 完整解析 multipart，并静默采用重复
-或额外 part 的首值；这会把超大 declared/chunked body 和 multipart 临时磁盘消耗放在业务上限之前。
-目标合同要求认证优先、`maxLocalImportBytes + 1 MiB` 总包络、唯一 file/token、有限 scalar/category、
-handler-owned `RemoveAll` 和 shape 拒绝零 stage/DB/archive/event。完整合同与红测计划见
+同一提交新增 direct 专用 multipart boundary：认证优先、`maxLocalImportBytes + 1 MiB` declared/actual-read
+总包络、唯一 file/token、有限 scalar/category、handler-owned `RemoveAll`，并使 shape 拒绝保持零
+stage/DB/archive/event。完整合同与回归证据见
 [`direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md)。
-状态为 `inventory-complete / implementation-pending`；本轮未修改应用或测试代码。
+状态为 `implementation-complete / regression-validated / Docker-release-pending`；合同、红测、实现和
+runtime/browser 证据依次为 `279f688`、`cd8f073`、`05343ec`、`3b9ae54`。frontend 737/737、Go
+full/race/vet、build、真实 HTTP 和三视口 direct/storage flow 已通过；卷门与 Docker 发布待执行。其余
+batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。

@@ -507,27 +507,27 @@ race/vet, frontend 740/740, build, host/candidate runtime and fresh/historical/p
 `65a9870`/`latest` is published at OCI index
 `sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`.
 
-## P1/P2 direct local-book multipart and workflow review (2026-08-16 extracted)
+## P1/P2 direct local-book multipart and workflow review (2026-08-16 implemented)
 
-- [ ] Direct preview/import/compat-alias must apply the same saturating
+- [x] Direct preview/import/compat-alias apply the same saturating
       `maxLocalImportBytes + 1 MiB` actual-read envelope to declared and chunked multipart after JWT, before any
       `PostForm`, `FormFile`, stage, parser, database or archive work.
-- [ ] The stable single-object API must accept exactly one `file` or one caller-scoped `importToken`; duplicate,
+- [x] The stable single-object API accepts exactly one `file` or one caller-scoped `importToken`; duplicate,
       mixed, extra file/value parts, unknown fields and over-cardinality categories fail before side effects.
-- [ ] Filename/title/author/rule/category metadata must be valid UTF-8 and byte/cardinality bounded. File bytes keep
+- [x] Filename/title/author/rule/category metadata are valid UTF-8 and byte/cardinality bounded. File bytes keep
       the independent configured import limit; token-only reparse/import cannot access a browser or mounted source.
-- [ ] Every successfully parsed multipart form is handler-cleaned on success and every failure branch. Cleanup cannot
+- [x] Every successfully parsed multipart form is handler-cleaned on success and every failure branch. Cleanup cannot
       delete the immutable stage, a successful library archive or another user's derived cache.
-- [ ] Direct browser multi-select validates at most 64 visible TXT/EPUB/UMD/CBZ files before network, previews one at
+- [x] Direct browser multi-select validates at most 64 visible TXT/EPUB/UMD/CBZ files before network, previews one at
       a time, keeps duplicate filenames as separate stable rows, and reuses the shared LocalStore/WebDAV confirmation
       state machine rather than a second business flow.
-- [ ] Cancellation/session invalidation aborts current requests and suppresses stale UI/shelf writes. A parser failure
+- [x] Cancellation/session invalidation aborts current requests and suppresses stale UI/shelf writes. A parser failure
       may retain only its scoped retry token; shape/wire rejection creates no token, Book, category relation, archive
       or sync event.
 
-Required evidence is intentionally unchecked until formal red tests, implementation, focused/full/race/vet,
-frontend/build, real HTTP temporary-file probes, three-viewport browser flow and fresh/historical mounted-volume gates
-pass. See [`compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md).
+Formal red tests, implementation, focused/full/race/vet, frontend 737/737, build, real HTTP temporary-file probes and
+three-viewport browser flow pass as `cd8f073`/`05343ec`/`3b9ae54`. Fresh/historical/portable mounted-volume gates and
+Docker publication remain pending. See [`compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md).
 
 第二轮 WebDAV mounted import/restore 复审见
 [`compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
