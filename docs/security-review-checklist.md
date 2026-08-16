@@ -344,6 +344,22 @@ Targeted evidence: `backend/api/progress_p2_contract_test.go`,
 `scripts/smoke/reader-progress-multiclient-contract.mjs`. Release evidence will be appended after
 the remaining gates pass.
 
+### Reading-progress request boundary second audit (2026-08-16 inventory)
+
+- [ ] JWT rejection precedes declared/actual body admission; unauthorized oversized, malformed or multi-value input
+      is not read and cannot reveal progress shape or book existence.
+- [ ] `PUT /api/progress` accepts one non-null UTF-8 JSON object within 16 KiB. Declared/chunked overflow is stable
+      413; malformed, invalid UTF-8, wrong-shape and trailing JSON are stable 400 before service work.
+- [ ] `bookId` and `chapterIndex` are explicit; non-empty conflict timestamps are bounded valid RFC3339Nano.
+      Persisted `mode` and event-reflected `clientId` have 20/128-byte limits without truncation or secret echo.
+- [ ] Every wire/field rejection leaves SQLite, shelf order, WebDAV mirror and Hub queue unchanged. Existing CAS,
+      conflict 200, chapter canonicalization, mirror failure and user isolation tests remain green.
+- [ ] A stale/oversized session client ID is regenerated in the browser so a bad local value cannot permanently
+      prevent progress synchronization; pending local position and account-generation isolation remain intact.
+
+Required evidence is fixed in
+[`compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ## Uploads and archive formats
 
 - [ ] File size limits are enforced before expensive parsing.

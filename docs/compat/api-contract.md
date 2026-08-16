@@ -186,6 +186,24 @@ preserves the existing `200` plus
 commits. Existing `bookProgress/` or `legado/bookProgress/` directories regain upstream-compatible
 per-book JSON mirrors without weakening OpenReader's private WebDAV roots.
 
+### P2 reading-progress request boundary (2026-08-16 extracted)
+
+The completed CAS/chapter/mirror contract above remains authoritative. The pending second-audit wire contract is
+[`reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
+- Authenticated `PUT /api/progress` accepts at most one non-null UTF-8 JSON object within 16 KiB. Declared/chunked
+  overflow is `413 {"error":"request body too large"}`; malformed, multi-value or wrong-shape input remains
+  `400 {"error":"invalid progress payload"}`. JWT rejection precedes every body check.
+- `bookId` and `chapterIndex` must be explicitly present; chapter index and offset remain non-negative. Service-side
+  chapter canonicalization, percent clamping, user isolation and 404/400 distinctions are unchanged.
+- Empty conflict timestamps remain compatible; non-empty `baseUpdatedAt`/`clientUpdatedAt` are at most 64 bytes and
+  valid RFC3339Nano. `mode` is at most 20 bytes and reflected event-only `clientId` at most 128 bytes.
+- Rejection occurs before CAS, WebDAV mirror and Hub broadcast. Conflict remains compatible `200` plus
+  `X-OpenReader-Progress-Conflict: 1`; successful response and persisted schema do not change.
+
+Status is **inventory-complete / implementation-pending**. Red API/wire/side-effect and frontend client-ID recovery
+tests must land before implementation.
+
 ## P1-B workspace search API contract
 
 Status: implemented for the P1-B search-default/error slice on 2026-07-13 from fixed reader-dev `Index.vue`, `config.js`, and `BookController.kt`. OpenReader keeps its authenticated REST path and source-ID representation, but restores the upstream search defaults and error semantics.

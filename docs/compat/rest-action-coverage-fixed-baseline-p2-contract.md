@@ -373,3 +373,19 @@ index 为 `sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc567417310
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 reading progress 与其它 batch/control JSON 继续排队，不因 BookSource multipart 关闭而合并签收。
+
+## 21. 阅读进度 JSON 与 CAS 控制字段（2026-08-16 inventory）
+
+固定上游 `saveBookProgress` 只提交书籍 URL 和显式目录 index；POST 缺省 index 为 `-1`，服务端先确认
+当前用户书架书籍，再从目录取得规范章节。OpenReader 保留已发布的数字 identity、精确位置、SQLite
+CAS、200 conflict、WebSocket 和 existing-directory WebDAV 镜像，不重开该业务合同。
+
+`cfb06e9` 的 `PUT /api/progress` 仍直接 `ShouldBindJSON`：Gin 1.10 只 decode 第一个 JSON value，没有
+actual-read 上限或 UTF-8/single-document 检查；value `chapterIndex` 缺省为 0，省略字段可误写第一章。
+`baseUpdatedAt/clientUpdatedAt` 无长度/语法检查，非法非空时间可落入 non-stale fallback；持久 `mode`
+与广播 `clientId` 也没有应用层短界。
+
+本轮裁决为 auth-first 16 KiB 单 UTF-8 object、显式 book/index、64-byte RFC3339Nano timestamps、20-byte
+mode 和 128-byte clientId；所有拒绝必须先于 service/SQLite/WebDAV/Hub。精确合同和必须先写的测试见
+[`reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+状态为 **inventory-complete / implementation-pending**；其它 batch/control JSON 继续排队。

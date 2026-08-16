@@ -19,15 +19,16 @@ an old database into directories already written by a newer container. The READM
 logical `backup_*.zip`, OpenReader `portable_backup_*.zip`, and a cold three-root system snapshot so users do not
 mistake logical reader-dev compatibility for full filesystem portability.
 
-## P2 reading-progress CAS and WebDAV mirror (audit pending implementation)
+## P2 reading-progress CAS, WebDAV mirror and request boundary
 
-The 2026-07-18 fixed-baseline audit in
-[`reading-progress-p2-contract.md`](reading-progress-p2-contract.md) does not authorize a schema
-migration. `reading_progresses` retains its existing `(user_id,book_id)` unique index and precise
-chapter/offset/percent fields. Atomicity is implemented with conditional writes against the
-existing row ID and `updated_at`, not a replacement table or destructive migration.
+The implemented 2026-07-18 fixed-baseline contract in
+[`reading-progress-p2-contract.md`](reading-progress-p2-contract.md) and the pending second-audit request contract in
+[`reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md`](reading-progress-request-boundary-fixed-baseline-second-audit-p2-contract.md)
+do not authorize a schema migration. `reading_progresses` retains its existing `(user_id,book_id)` unique index and
+precise chapter/offset/percent fields. Atomicity uses conditional writes against the existing row ID and `updated_at`,
+not a replacement table or destructive migration.
 
-The planned upstream-compatible live progress mirror is additive filesystem output only. It may
+The implemented upstream-compatible live progress mirror is additive filesystem output only. It may
 write a safe `bookProgress/<book>_<author>.json` or `legado/bookProgress/...` file when that
 directory already exists in the caller's WebDAV root. It must not move/delete historical files,
 create the feature directory implicitly, cross the administrator/regular-user root boundary, or
