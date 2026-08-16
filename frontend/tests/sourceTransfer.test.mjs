@@ -192,6 +192,40 @@ test('imports a local file through preview and saves only selected sources', asy
   assert.equal(fixture.controller.importPreviewSaving.value, false)
 })
 
+test('bounds a local source file before reading it in the browser', async () => {
+  let exactReads = 0
+  const exact = createController()
+  await exact.controller.importFile({
+    raw: {
+      size: 16 * 1024 * 1024,
+      text: async () => {
+        exactReads += 1
+        return JSON.stringify([{ name: '精确边界源' }])
+      },
+    },
+  })
+
+  assert.equal(exactReads, 1)
+  assert.equal(exact.controller.showImportPreview.value, true)
+  assert.equal(exact.controller.importPreviewSources.value[0].name, '精确边界源')
+
+  let oversizedReads = 0
+  const oversized = createController()
+  await oversized.controller.importFile({
+    raw: {
+      size: 16 * 1024 * 1024 + 1,
+      text: async () => {
+        oversizedReads += 1
+        return JSON.stringify([{ name: '不应读取' }])
+      },
+    },
+  })
+
+  assert.equal(oversizedReads, 0)
+  assert.equal(oversized.controller.showImportPreview.value, false)
+  assert.deepEqual(oversized.calls, [['error', '书源文件过大', null]])
+})
+
 test('previews a trimmed remote URL and resets the remote dialog', async () => {
   const fixture = createController()
   fixture.controller.showRemote.value = true
