@@ -298,3 +298,23 @@ token/snapshot 探针，以及 1440x900/390x844/360x800 导入、token 重试和
 `sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`。状态为 **aligned /
 Docker-published / awaiting-device-verification**。direct/source multipart、remote-work JSON、progress 及其它
 batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。
+
+## 18. 直接本地图书多选与 multipart 边界（2026-08-16 inventory）
+
+按第 17 节保留的差集继续核对固定上游 `Index.vue#onBookFileChange/importMultiBooks`、
+`BookController.importBookPreview` 和当前 `OverlayBookImport/useOverlayBookImport/imports.go` 后，direct
+local import 成为下一项 must-fix：固定上游隐藏 chooser 明确支持多选，单本进入确认，多本必须选择
+批量或逐一，并与 LocalStore/WebDAV 复用同一状态机；当前 direct 只允许一本且维护第二套确认逻辑。
+
+当前单 object preview/import API、caller-scoped token 和 prepared snapshot 是已部署安全适配，不改成
+上游 list wire。目标以顺序单文件 preview adapter 聚合多项，并把 direct 接入现有 shared workflow。
+同时三个 direct multipart 路由必须在任何 `PostForm/FormFile` 前执行
+`maxLocalImportBytes + 1 MiB` actual-read 包络，只接受一个 file 或 token、有限已知 scalar/category，
+并由 handler 清理成功解析的 multipart 临时文件。认证、parser、stage、archive、分类和广播的既有
+成功/失败语义保持。
+
+精确上游证据、可见状态、允许适配、wire/field/error/副作用和测试先行门见
+[`direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md)。
+当前状态为 **inventory-complete / implementation-pending**；本轮只修改文档。下一提交必须先让旧实现
+在 direct 多选/共享状态机、declared/chunked、ambiguous part、metadata/category 和临时文件所有权上
+正式变红，不能直接改应用代码。

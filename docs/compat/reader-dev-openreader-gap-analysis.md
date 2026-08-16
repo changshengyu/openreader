@@ -3717,3 +3717,23 @@ backup、前端或其它 endpoint 变化。focused/full/race Go、全量 vet、f
 历史 oversized backup/restore 和隔离真实 HTTP smoke 均通过。状态为
 **implementation-complete / regression-validated / mounted-volume-and-Docker-pending**；fresh/historical
 mounted-volume 与正式本机 Docker 发布仍等待显式 Docker socket 授权。
+
+## 2026-08-16 直接本地图书导入第二轮固定基准复审
+
+固定上游 `Index.vue` 的隐藏 input 含 `multiple`：一次选择的文件按顺序进入
+`importBookPreview`；单本直接打开可编辑书名、作者、分组和规则的确认，多本先选“批量导入/逐一确认”，
+再统一分组或逐本显示 `（i/n）`。LocalStore/WebDAV 的预览结果也调用同一个 `importMultiBooks`，因此
+多入口共享确认状态机是产品合同，不是当前组件形状的选择。
+
+当前 `OverlayBookImport/useOverlayBookImport` 只拥有一个 file/token/preview，且复制了已在
+`OverlayStorageImport/useStorageImportWorkflow` 实现的确认逻辑；裁决为 **must-fix visible workflow**。
+现有 `/api/imports/books/preview` 单 object 与 `/api/imports/books`/`imports/txt` 单 Book 响应不破坏，
+由前端顺序逐文件 preview、使用稳定 row identity 聚合，再复用共享 phase/队列/分组/错误/账号隔离。
+成功 preview 后只用 caller-scoped token reparse/import，不重新提交浏览器 File。
+
+同一动作的 Go 入口会在无 actual-read 包络时由 `PostForm/FormFile` 完整解析 multipart，并静默采用重复
+或额外 part 的首值；这会把超大 declared/chunked body 和 multipart 临时磁盘消耗放在业务上限之前。
+目标合同要求认证优先、`maxLocalImportBytes + 1 MiB` 总包络、唯一 file/token、有限 scalar/category、
+handler-owned `RemoveAll` 和 shape 拒绝零 stage/DB/archive/event。完整合同与红测计划见
+[`direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md)。
+状态为 `inventory-complete / implementation-pending`；本轮未修改应用或测试代码。
