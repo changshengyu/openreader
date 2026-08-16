@@ -315,7 +315,9 @@ adapter 聚合 1..64 项并接入 shared workflow；旧 direct composable 已删
 
 精确上游证据、可见状态、允许适配、wire/field/error/副作用和测试先行门见
 [`direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md)。
-状态为 **implementation-complete / regression-validated / Docker-release-pending**。`cd8f073` 先使旧实现
+状态为 **aligned / regression-validated / Docker-published / awaiting-device-verification**。`cd8f073` 先使旧实现
 在 direct 多选/共享状态机、declared/chunked、ambiguous part、metadata/category 和临时文件所有权上
 正式变红，`05343ec` 实现，`3b9ae54` 补齐真实 HTTP 与三视口 browser 证据；frontend 737/737、Go
-full/race/vet 和 build 均通过。待卷门与本地 Docker 发布后，从当前 server 重新生成下一轮动作差集。
+full/race/vet、build、fresh/historical/portable 卷门和 GHCR 回拉 revision 均通过。本机发布
+`429444a`/`latest`，OCI index 为 `sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`；
+下一步从当前 server 重新生成动作差集。

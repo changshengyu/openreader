@@ -3735,7 +3735,8 @@ preview 后只用 caller-scoped token reparse/import，不重新提交浏览器 
 总包络、唯一 file/token、有限 scalar/category、handler-owned `RemoveAll`，并使 shape 拒绝保持零
 stage/DB/archive/event。完整合同与回归证据见
 [`direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md)。
-状态为 `implementation-complete / regression-validated / Docker-release-pending`；合同、红测、实现和
+状态为 `aligned / regression-validated / Docker-published / awaiting-device-verification`；合同、红测、实现和
 runtime/browser 证据依次为 `279f688`、`cd8f073`、`05343ec`、`3b9ae54`。frontend 737/737、Go
-full/race/vet、build、真实 HTTP 和三视口 direct/storage flow 已通过；卷门与 Docker 发布待执行。其余
-batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。
+full/race/vet、build、真实 HTTP、三视口 direct/storage flow 和 fresh/historical/portable 卷门均通过；
+本机 `429444a`/`latest` OCI index 为 `sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`。
+其余 batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。

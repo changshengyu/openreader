@@ -1,6 +1,6 @@
 # 直接本地图书导入与 multipart 边界第二轮固定基准合同（P1/P2）
 
-状态：**implementation-complete / regression-validated / Docker-release-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 当前审查基线：`OpenReader@3b9ae54`。
@@ -208,5 +208,22 @@ TXT/EPUB/UMD/CBZ parser、不可变 stage、prepared snapshot、归档补偿、�
 - 1440x900、390x844、360x800 通过新批次取消旧 preview、单本规则重解析/分组、同名双文件有序批量、
   逐本跳过/确认、token-only final import、最多一个 preview 在途、方式选择不可 Escape 绕过、移动全屏
   与无横向溢出；LocalStore/WebDAV retry 和共享状态机三视口回归也通过。
-- 本切片没有 SQLite、stage、cache/library 根、备份格式或浏览器持久 key 迁移。当前只剩 mounted-volume/
-  backup 门和本机 amd64/arm64 GHCR 发布；用户生产环境运行 commit 仍未知。
+- 本切片没有 SQLite、stage、cache/library 根、备份格式或浏览器持久 key 迁移。mounted-volume/backup
+  门和本机 amd64/arm64 GHCR 发布已完成；用户生产环境运行 commit 仍未知。
+
+## 10. Docker 发布记录（2026-08-16）
+
+本地 arm64 candidate `429444a` 先通过完整 revision health、direct multipart 真实 HTTP 探针和
+1440x900、390x844、360x800 direct 浏览器合同。随后 fresh 与 historical 三目录卷门顺序通过，覆盖
+TXT/EPUB/UMD/CBZ/relative-cache、owner isolation、logical restore、portable v1/v2 assets、cross-user
+restore 和 restart。正式镜像由本机双架构构建并经宿主 OCI uploader 推送：
+
+- tags：`ghcr.io/changshengyu/openreader:429444a`、`ghcr.io/changshengyu/openreader:latest`；
+- OCI index：`sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`；
+- platforms：`linux/amd64`、`linux/arm64`，另含对应 provenance attestation；
+- GHCR 回拉 arm64 容器 `/api/health` 返回 version `429444a` 和完整 commit
+  `429444a83ddbe774070c8832ec9d33390037852f`。
+
+允许差异仍只有顺序单文件 adapter 保留既有单对象 API、多用户/JWT/caller-scoped token、prepared
+snapshot 和有界安全策略；没有 SQLite、目录或备份迁移。未完成项是用户真实设备/生产部署签收和其余
+尚未逐动作复审的长尾；发布不代表用户服务器已经升级。

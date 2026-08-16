@@ -526,8 +526,9 @@ race/vet, frontend 740/740, build, host/candidate runtime and fresh/historical/p
       or sync event.
 
 Formal red tests, implementation, focused/full/race/vet, frontend 737/737, build, real HTTP temporary-file probes and
-three-viewport browser flow pass as `cd8f073`/`05343ec`/`3b9ae54`. Fresh/historical/portable mounted-volume gates and
-Docker publication remain pending. See [`compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md).
+three-viewport browser flow pass as `cd8f073`/`05343ec`/`3b9ae54`. Fresh/historical/portable mounted-volume gates,
+candidate HTTP/browser probes and GHCR pullback revision also pass; `429444a`/`latest` is published at OCI index
+`sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`. See [`compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md`](compat/direct-local-book-import-multipart-workflow-fixed-baseline-second-audit-p1-contract.md).
 
 第二轮 WebDAV mounted import/restore 复审见
 [`compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。

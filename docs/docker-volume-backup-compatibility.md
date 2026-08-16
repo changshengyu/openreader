@@ -75,3 +75,16 @@ The image was built locally for `linux/amd64` and `linux/arm64`, then published 
 `ghcr.io/changshengyu/openreader:65a9870` and `latest`. Both tags resolve to OCI index
 `sha256:255c81b43dbb7f49c707d6c609b920aa183b730401ad1c1ca32157eb0a945c71`; a GHCR-pulled arm64 container
 reported commit `65a987049d6a9bff7feeb2618f7257620cd896a9` from `/api/health`.
+
+## 2026-08-16 Direct local import boundary release
+
+Release `429444a` reran the fresh and `HISTORICAL_VOLUME=1` variants sequentially against the locally built
+candidate. Both passed, including TXT/EPUB/UMD/CBZ/relative-cache, owner isolation, logical restore, portable v1/v2
+assets, cross-user restore and restart. The same candidate passed direct declared/chunked multipart admission,
+authentication priority, strict field shape, disk-backed temporary-file cleanup, token-only aliases and 1440x900,
+390x844, 360x800 single/batch/sequential browser flows.
+
+The image was built locally for `linux/amd64` and `linux/arm64`, then published as
+`ghcr.io/changshengyu/openreader:429444a` and `latest`. Both tags resolve to OCI index
+`sha256:41f430a5fbf944b9a1dcf25aec6c9f6e92a11a3ff75e395d1a73120da5a6f4d5`; a GHCR-pulled arm64 container
+reported commit `429444a83ddbe774070c8832ec9d33390037852f` from `/api/health`.
