@@ -1,12 +1,14 @@
 # WebDAV 导入/恢复文件系统与请求边界第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**implementation-complete / regression-validated / Docker-release-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
-当前审查基线：`OpenReader@930be4dded3d8b54985606e92c45b7484115ffa7`。
+inventory 审查基线：`OpenReader@930be4dded3d8b54985606e92c45b7484115ffa7`。
+当前实现基线：`OpenReader@616a076571b61a548f4f5f5779192a275b06516c`。
 审查日期：2026-08-16。
 
-本轮只提取合同，不修改应用或测试。原生 `/webdav/*`、`/reader3/webdav/*` 协议已由
+inventory 阶段只提取合同、不修改应用或测试；合同、正式红测和实现随后已分阶段落地。原生
+`/webdav/*`、`/reader3/webdav/*` 协议已由
 [`webdav-protocol-p2-contract.md`](webdav-protocol-p2-contract.md) 签收；逻辑/portable ZIP 内容、事务、
 所有权和唯一文件管理器已由
 [`backup-restore-fixed-baseline-p2-contract.md`](backup-restore-fixed-baseline-p2-contract.md) 签收。本合同不
@@ -35,8 +37,8 @@ opened-file 边界。
   - `POST /api/backup/restore-webdav`
   - `POST /api/webdav/import-preview`
   - `POST /api/webdav/import`
-- `backend/api/webdav.go:475-819,1923-1938`
-  - WebDAV restore/import handler、`webDAVImportFiles` 和 `webdavPath`。
+- `backend/api/webdav.go`、`backend/api/webdav_boundary.go`、`backend/api/request_body.go`
+  - WebDAV restore/import handler、bounded single-JSON admission、完整 import plan 和 scoped opened read。
 - `backend/services/webdavfs/service.go`
   - caller-rooted path、逐组件 symlink 检查、regular-file `Stat/Open` 和 opened identity recheck。
 - `frontend/src/components/WebDAVBrowser.vue`、`frontend/src/components/overlays/OverlayStorageImport.vue`
@@ -56,7 +58,7 @@ opened-file 边界。
 稳定 `/api/*` 路由；immutable preview token；有界 parser/archive；OpenReader logical/portable ZIP；现有旧 API
 可读取的额外本地格式。可见 WebDAV 入口仍只显示固定上游 TXT/EPUB/UMD，不能借本轮扩大 UI。
 
-## 3. 当前缺口与 must-fix
+## 3. 旧实现缺口与 must-fix（已关闭）
 
 1. 三个 handler 都直接 `ShouldBindJSON`。声明长度或 chunked 实际读取没有上限，且第一个合法 JSON
    后的第二文档/垃圾会被忽略；有效第一文档仍可 stage、写书架或恢复备份。
@@ -123,9 +125,9 @@ opened-file 边界。
   logical/portable backup，不成为 mounted source 的替代迁移。
 - 旧路由、响应、import token 和历史 archive 保持可读；本轮没有启动时扫描或后台批量迁移。
 
-## 8. 实现前失败测试合同
+## 8. 失败测试与实现结果
 
-合同提交后先新增失败测试，至少覆盖：
+合同提交后先新增失败测试，覆盖：
 
 1. 三动作 declared/chunked 超限、第二 JSON/垃圾/null；断言认证优先和零 stage/row/event/restore。
 2. 201 个 raw paths/items/categoryIds、单目录 201 个 importable files、重复 path；第 201 项必须在首个
@@ -141,7 +143,8 @@ opened-file 边界。
 验证门：focused API/service、focused race、`go vet ./...`、Go 全量、frontend 全量/build、宿主真实
 declared/chunked HTTP、1440x900/390x844/360x800 WebDAV 导入与恢复 smoke，以及 fresh/historical
 `data/cache/library` mounted-volume + logical/portable backup/restore。合同、红测、实现、runtime probe、
-Docker 发布记录必须分别提交。
+Docker 发布记录必须单独提交。合同 `cf46e22`、旧实现红测 `1bb904a`、实现与 runtime probe
+`616a076` 已依次推送；Docker 仍等待本地 candidate 与卷门。
 
 ## 9. 非本轮范围与后续排序
 
@@ -173,5 +176,26 @@ GOCACHE="$PWD/.gocache" go test \
    拒绝。
 4. `restore-webdav` 接受合法 `{path}` + 16 KiB 空白 + 第二 JSON，并对合法 ZIP 返回 `200`。
 
-这些 probe 是固定当前缺口的 inventory 证据，不替代下一阶段必须提交的失败合同测试。正式红测还需
-覆盖 chunked、认证优先、零副作用、special file、opened restore snapshot 和 exact 200/201 边界。
+这些 probe 是固定旧缺口的 inventory 证据；正式红测已经在 `1bb904a` 覆盖 chunked、认证优先、零副作用、
+special file、opened restore snapshot 和 exact 200/201 边界。
+
+## 11. 实现与回归记录（2026-08-16）
+
+`616a076` 完成以下边界，不改变成功响应、SQLite schema、mounted root 或备份格式：
+
+1. import-preview/import 使用 1 MiB、restore-webdav 使用 16 KiB actual-read UTF-8 single JSON；声明长度与
+   chunked 超限统一 `413`，第二文档、垃圾、null/数组和非法 UTF-8 在副作用前失败。
+2. raw paths/items/categoryIds 与去重后的完整目录展开均限制为 200；计划完成前不 stage、不写 DB、
+   不广播，exact 200 保持 case-insensitive 稳定顺序。
+3. JSON path 通过 `webdavfs.NormalizeImportPath`；source-backed 项逐个使用 scoped `Service.Open` 的
+   regular/same-file 复验。嵌套 symlink/special file 不进入 parser，安全相邻文件仍可处理。
+4. token-only retry/import 不实例化 mounted service；源删除或根被替换为 symlink 后仍只消费 caller-scoped
+   immutable stage。
+5. restore-webdav 把同一 opened regular ZIP handle 有界复制到 `cache/backup-uploads/<user-id>/`，再调用
+   既有 planner/事务；成功或失败均删除私有 snapshot，mounted ZIP 保持不变。
+
+验证结果：WebDAV API/service 专项无缓存通过，focused race、`go vet ./...`、Go 全量、frontend 740/740、
+Vite build 与 diff check 通过；`webdav-import-restore-boundary-contract.mjs` 在真实宿主服务通过 declared/
+chunked、symlink/FIFO、token-only 与 snapshot 清理；导入状态机、token 重试和恢复会话隔离均通过
+1440x900、390x844、360x800。默认 LocalStore+WebDAV 组合也通过。剩余门禁仅为本地 Docker candidate、
+fresh/historical 三卷及 logical/portable backup/restore；通过前不发布、不移动现有数据。

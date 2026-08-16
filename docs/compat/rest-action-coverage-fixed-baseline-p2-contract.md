@@ -262,7 +262,7 @@ socket 提升权限额度审批被拒而尚未执行，所以没有发布 `930be
 OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b73`。当前状态为
 **implementation-complete / regression-validated / Docker-release-pending**。
 
-## 17. WebDAV 导入/恢复文件系统与请求边界（2026-08-16 inventory）
+## 17. WebDAV 导入/恢复文件系统与请求边界（2026-08-16 implemented）
 
 再次扫描 `server.go` 与所有仍直接使用 `ShouldBindJSON`/multipart form 的 handler 后，下一项 must-fix
 选择三个 mounted WebDAV 读取动作，而不是重开已签收的原生 DAV 协议：
@@ -276,7 +276,7 @@ OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b
 源保留。当前 OpenReader 的稳定 JSON 路由、private root、immutable token、logical/portable ZIP 和
 逐项结果是允许适配，不能被改回上游弱路径拼接或 token-in-URL。
 
-当前三个 handler 无 actual-read/single-document JSON；import path/category/目录展开无 cardinality。
+旧实现三个 handler 无 actual-read/single-document JSON；import path/category/目录展开无 cardinality。
 `webdavPath` 仅对顶层请求 path 执行 `Service.Resolve`，随后目录内项进入 `WalkDir`/`os.Open`，因此
 嵌套 symlink/special file 和 restore 的 path 重新打开没有 caller-rooted opened regular-file 证据。
 动作矩阵还发现 direct/source multipart、remote search/debug/cache JSON、progress 和其它 batch JSON
@@ -285,6 +285,14 @@ OCI index `sha256:e1f31f3dd728bc27fbc89bbc8c21f81e8c5511c5e99196891feb21cd47138b
 精确 1 MiB/16 KiB single JSON、200 项 raw/expanded admission、path 正规化、token-source independence、
 `Service.Open` identity、restore caller-private snapshot、稳定响应/逐项提交、零迁移与红测/卷门见
 [`webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](webdav-import-restore-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-一次性 Go overlay probe 又实际证明超限+第二 JSON 仍 stage/restore、目录内根外 symlink 字节进入 stage，
-且一个目录可返回 201 个 preview item；probe 未写入仓库，不能替代下一阶段正式红测。当前状态为
-**inventory-complete / implementation-pending**；本 inventory 未修改应用或测试。
+一次性 Go overlay probe 实际证明超限+第二 JSON 仍 stage/restore、目录内根外 symlink 字节进入 stage，
+且一个目录可返回 201 个 preview item。合同 `cf46e22`、正式旧实现红测 `1bb904a`、实现与真实 runtime
+探针 `616a076` 随后依次推送：三个动作现在按认证优先执行 actual-read UTF-8 single JSON，完整规划
+最多 200 个唯一 target；source-backed 文件逐项用 caller-rooted `Service.Open`，token-only 不访问 mounted
+root；restore 使用 opened regular ZIP 的 caller-private bounded snapshot。
+
+Go focused/full/race/vet、frontend 740/740、build、宿主 declared/chunked + symlink/FIFO + token/snapshot
+探针，以及 1440x900/390x844/360x800 导入、token 重试和恢复会话隔离均通过。状态为
+**implementation-complete / regression-validated / Docker-release-pending**；下一门仅为本地 candidate、
+fresh/historical 三卷和 logical/portable backup/restore。direct/source multipart、remote-work JSON、progress
+及其它 batch JSON 仍保留在下一轮动作差集，不因本项完成而误报关闭。
