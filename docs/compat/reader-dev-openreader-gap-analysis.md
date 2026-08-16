@@ -3763,3 +3763,20 @@ frontend 741/741、build、三视口真实 Go/Chromium、fresh/historical/portab
 回拉均通过。本机发布 `65199f6`/`latest`，OCI index 为
 `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`；状态为
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-16 ReplaceRule 请求边界第二轮固定基准复审
+
+重新扫描 `backend/api` 后，剩余直接 `ShouldBindJSON` 全部集中在 `replace_rules.go` 的 create、update、
+batch、batch-delete 和隐藏 test。固定上游 `ReplaceRuleController.kt`/`ReplaceRule.kt` 证明认证后的
+object/array shape、精确字符串、name-upsert、输入顺序和精确空 name/pattern skip；已发布 `a7abcdd`
+合同继续权威管理器/编辑器、Reader pipeline、SQLite/backup 和允许差异，本轮不因 wire 长尾重开。
+
+当前五路虽有 `MaxBytesReader` 和既有 512 KiB/16 MiB/128 KiB/4 MiB、2,000 row/ID、字段、RE2、
+match/output 预算，但 `ShouldBindJSON` 只消费首文档，actual overflow 被普通 400 吸收，非法 UTF-8 可被
+替换后进入精确规则字段；GORM 与 batch transaction 也未绑定 request context。下一切片只补认证后
+single non-null UTF-8 JSON、稳定 413、PUT target-first、pre-work admission 和 transaction 取消，所有拒绝
+零写入/零广播，不改 schema、文件、旧 URL、前端 payload 或成功业务语义。
+
+完整合同和必须先写的失败测试见
+[`replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；本 inventory 只修改合同文档，没有修改应用或测试。

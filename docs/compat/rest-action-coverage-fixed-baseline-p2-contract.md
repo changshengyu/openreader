@@ -334,7 +334,7 @@ LocalStore、WebDAV、upload、auth/admin、BookGroup、Bookmark、RSS、BookSou
 | remote-work JSON：`/search`、三个 `/sources/:id/test*`、`/sources/batch-test`、两个 book cache | 小 JSON 可触发多源/多章远程工作；旧 search 无 60/八轮上限，旧 batch health 按全部源预建 goroutine，七路曾缺统一 actual-read/single-object。 | 已补 64/16 KiB 单 object、字段/cardinality、60 并发/八窗口、15-worker/300-source、Context 取消，并保留搜索 cursor、诊断 envelope、failure cache 和整本缓存。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md`](remote-work-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
 | BookSource local multipart `/sources/import` | 原始浏览器 File 现于 `text()` 前执行 16 MiB admission；API 具有 17 MiB actual-read 包络、严格单 file/零 scalar、稳定双层 413 与 handler-owned cleanup。 | selected payload bytes/cardinality/quota/COW 保持；raw chooser、multipart shape/error/temporary ownership 已有红测、运行时与发布证据。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。见 [`booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md`](booksource-local-import-multipart-fixed-baseline-second-audit-p2-contract.md)。 |
 | reading progress `/progress` | 旧无界首 JSON、缺省 chapter index 与无短界 CAS 控制字段已由 16 KiB 单 UTF-8 object、显式 identity 和 RFC3339Nano/字段长度 admission 关闭。 | 进度身份、CAS、镜像、冲突和多客户端收敛保持；`f924604` 合同、`a10facb` 红测、`8d3790d` 实现、`1563bc3` runtime 已完成并随 `65199f6` 通过卷门/正式发布。 | **aligned / regression-validated / Docker-published / awaiting-device-verification**。 |
-| 其它 batch/control JSON | books batch/export、local refresh、remote add/change-source、legacy content search 已关闭；replace-rule 等 first-document/overflow 映射仍可见。 | Book 控制六路已在 `65199f6` 实现并完成双架构发布；其它动作仍须重新枚举并逐项取证。 | **books control aligned/published；remaining inventory-pending**；不得从本表直接推导下一实现。 |
+| ReplaceRule control JSON | books control 已关闭；重新扫描后剩余直接 `ShouldBindJSON` 全部集中在 replace-rule create/update/batch/batch-delete/test，现有 `MaxBytesReader + ShouldBindJSON` 仍把 overflow 映射为普通 400，并只消费首文档。 | 已发布的 UI/Reader/SQLite/backup 合同保持关闭；只新增 512 KiB/16 MiB/128 KiB/4 MiB actual-read 单 UTF-8 文档、稳定 413 与 request-context GORM transaction。 | **inventory-complete / implementation-pending**；见 [`replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md)。 |
 
 固定上游 `BookController.searchBookMulti` 与 SSE 版本使用可见最高 60 并发和
 `concurrentLoopCount=8`；inventory 时 OpenReader 只有前端枚举，没有服务端 60/八轮边界。旧健康检查
@@ -420,3 +420,17 @@ Go focused/full/race/vet、frontend 741/741、build、三视口真实 Go/Chromiu
 `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`；状态为
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。下一轮必须从剩余
 server action 重新取证，不因本项签收而合并关闭 replace-rule 等 first-document 长尾。
+
+## 23. ReplaceRule JSON 与事务取消（2026-08-16 inventory）
+
+重新枚举 `backend/api` 后，剩余直接 `ShouldBindJSON` 只有 `replace_rules.go` 的 create、update、batch、
+batch-delete 和隐藏 test。固定上游证明 object/array shape、精确字符串、name-upsert、输入顺序和 skip
+语义；当前业务层已有字段、2,000 row/ID、RE2、match/output、事务、owner 和 durable-only broadcast，
+因此本轮不重开已由 `a7abcdd` 发布的管理器、Reader、SQLite 或 backup 合同。
+
+当前五路的 `MaxBytesReader + ShouldBindJSON` 仍只消费首个 JSON，actual overflow 被各路普通 400 吸收，
+非法 UTF-8 又可被替换后进入精确规则字段；GORM/batch transaction 也没有 request context。下一实现切片
+仅补认证后 route-specific actual-read 单 UTF-8 文档、稳定 413、PUT target-first 与 transaction 取消，
+所有拒绝保持零写入/零广播。完整边界和红测门见
+[`replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；本阶段没有修改应用或测试。

@@ -384,6 +384,21 @@ GHCR arm64 revision verification. Published OCI index:
 `sha256:57eda43d437d98a4f2d748164d58c5816f3ff3dc199397bd9dc8f6d48334a8cb`. Full contract:
 [`compat/book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/book-control-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
+### ReplaceRule request boundary second audit (2026-08-16 inventory)
+
+- [ ] Five authenticated ReplaceRule JSON routes enforce their existing 512 KiB/16 MiB/128 KiB/4 MiB limits by
+      actual read, accept exactly one non-null UTF-8 object/array and map true overflow to stable 413.
+- [ ] Trailing JSON/garbage, invalid UTF-8, null/wrong shape and over-cardinality fail before rule execution,
+      SQLite mutation or Hub broadcast; PUT preserves auth/path/owner target-first priority.
+- [ ] Batch upsert/delete bind GORM and their transactions to request context; pre-commit cancellation rolls back
+      every row and emits no event, while a durable commit retains the existing one convergence event.
+- [ ] Existing exact strings/defaults/name-upsert/order/skipped/deletedIds, RE2/match/output budgets, schema, backup and
+      visible manager/Reader behavior remain unchanged.
+
+Status is `inventory-complete / implementation-pending`; no application or test change is included in this inventory.
+Full contract:
+[`compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ## Uploads and archive formats
 
 - [ ] File size limits are enforced before expensive parsing.
