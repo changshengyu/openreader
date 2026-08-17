@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -107,6 +108,35 @@ func TestUploadPublicResourceRejectsRootSymlinkAndBackslashPath(t *testing.T) {
 	})
 }
 
+func TestUploadPublicResourceRejectsDirectoriesAndSpecialFiles(t *testing.T) {
+	router, server := setupTestServer(t)
+	uploadsRoot := filepath.Join(server.cfg.DataDir, "uploads")
+
+	directory := filepath.Join(uploadsRoot, "users", "9", "covers", "directory.png")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fifo := filepath.Join(uploadsRoot, "users", "9", "covers", "pipe.png")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		"/uploads/users/9/covers/directory.png",
+		"/uploads/users/9/covers/pipe.png",
+	} {
+		response := uploadPublicResourceRequest(router, http.MethodGet, path, nil)
+		if response.Code != http.StatusNotFound || response.Body.Len() != 0 {
+			t.Fatalf("GET %s = %d body=%q, want empty 404", path, response.Code, response.Body.String())
+		}
+	}
+
+	for _, path := range []string{directory, fifo} {
+		if _, err := os.Lstat(path); err != nil {
+			t.Fatalf("read changed mounted object %s: %v", path, err)
+		}
+	}
+}
+
 func TestUploadPublicResourcePreservesRegularFileHTTPContract(t *testing.T) {
 	router, server := setupTestServer(t)
 	uploadsRoot := filepath.Join(server.cfg.DataDir, "uploads")
@@ -153,6 +183,11 @@ func TestUploadPublicResourcePreservesRegularFileHTTPContract(t *testing.T) {
 		notModified := uploadPublicResourceRequest(router, http.MethodGet, requestPath, map[string]string{"If-Modified-Since": get.Header().Get("Last-Modified")})
 		if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 {
 			t.Fatalf("conditional GET %s = %d body=%q", file.path, notModified.Code, notModified.Body.String())
+		}
+
+		invalidRange := uploadPublicResourceRequest(router, http.MethodGet, requestPath, map[string]string{"Range": "bytes=999-1000"})
+		if invalidRange.Code != http.StatusRequestedRangeNotSatisfiable || invalidRange.Header().Get("Content-Range") != "bytes */"+stringInt(len(file.data)) {
+			t.Fatalf("invalid Range %s = %d range=%q body=%q", file.path, invalidRange.Code, invalidRange.Header().Get("Content-Range"), invalidRange.Body.String())
 		}
 	}
 }

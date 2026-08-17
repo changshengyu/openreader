@@ -304,8 +304,10 @@ backup gates. Locally published `ceb4baa`/`latest` resolve to OCI index
       credential or file bytes. Read requests do not create, repair, delete or rewrite mounted objects.
 
 Published `2986357` runtime inventory reproduced both an entry symlink and an ancestor symlink returning 200 with
-bytes outside `data/uploads`. Status is `inventory-complete / implementation-pending`; this pass changes only
-contracts. Full contract:
+bytes outside `data/uploads`. Contract `d0c948c` and old-implementation red tests `7181634` now precede an explicit
+GET/HEAD rooted same-file-open implementation; focused/race, full Go/vet, frontend 741/741 and build pass. Status is
+`aligned / regression-validated / Docker-pending`; checklist items remain open until candidate HTTP/browser and
+mounted-volume probes pass. Full contract:
 [`compat/upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## P2 raw WebDAV protocol review (2026-07-19 implemented; Docker gate pending)

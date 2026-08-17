@@ -3846,5 +3846,10 @@ entry symlink，并先 open/close 检查、再由 `http.FileServer` 按 path 重
 rooted same-file-open、special-file、legacy/portable/data 与测试门见
 [`upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md`](upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md)。
 
-当前状态 **inventory-complete / implementation-pending**；本 inventory 只修改合同文档，已发布的 upload
-write/delete、BookInfo/Reader/portable v2 合同不重开。
+合同 `d0c948c` 与旧实现红测 `7181634` 已按顺序完成。当前实现以显式 GET/HEAD handler 替代
+`router.Static/http.Dir`，复用 `webdavfs.New/Open` 的逐组件 symlink、普通文件与 same-file 验证，并从
+同一 `*os.File` 执行 `http.ServeContent`。root/ancestor/entry symlink、反斜杠、目录、FIFO、安全 404 与
+legacy/current GET/HEAD/304/Range 均有测试；focused/race、Go 全量/vet、frontend 741/741 与 build 通过。
+
+当前状态 **aligned / regression-validated / Docker-pending**；真实 HTTP/浏览器与 fresh/historical/portable
+卷门待执行，upload write/delete、BookInfo/Reader/portable v2 合同不重开。

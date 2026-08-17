@@ -1,6 +1,6 @@
 # 上传资产公开读取文件系统边界第二轮固定基准合同
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-pending**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -111,3 +111,18 @@ fresh/historical/portable mounted-volume 门；本地多架构发布前回读远
 
 backup list/download 发布后继续按公开文件读取与 path-traversal 枚举，下一项确定 must-fix 是
 `GET|HEAD /uploads/*resourcePath`。本轮只新增/更新兼容与安全合同，没有修改应用或测试。
+
+## 9. 测试先行实现记录
+
+- 合同 `d0c948c` 与旧实现红测 `7181634` 已按顺序完成；红测在未修复实现上证明 root、ancestor、entry
+  symlink 与编码反斜杠文件名都会返回 200，其中三类 symlink 直接暴露 uploads root 外 sentinel。
+- `server.go` 保留 startup `MkdirAll`，但把 Gin `router.Static/http.Dir` 替换为显式 GET/HEAD handler。
+  handler 拒绝空/双前导斜杠、NUL 和反斜杠，复用 `webdavfs.New/Open` 的逐组件 symlink、普通文件与
+  `os.SameFile` 边界，并从同一 `*os.File` 调用 `http.ServeContent`。
+- 专项测试覆盖 root/ancestor/entry symlink、目录、FIFO、反斜杠、对象不变，以及 legacy/current
+  Unicode/空格路径的公开 GET/HEAD、Content-Length/Last-Modified、304、Range 206 与 416。
+- focused API、既有 upload/asset/portable appearance、`webdavfs`、focused race、Go 全量、`go vet`、
+  frontend 741/741 与 Vite build 均通过。实现不改写入/删除、URL、schema、备份格式或前端。
+
+真实 HTTP/浏览器资源加载与 fresh/historical/portable mounted-volume 门仍须在本地候选镜像上通过，
+才可把本合同推进到 Docker published。

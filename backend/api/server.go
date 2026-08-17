@@ -214,7 +214,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 
 	uploadsDir := filepath.Join(cfg.DataDir, "uploads")
 	if err := os.MkdirAll(uploadsDir, 0o755); err == nil {
-		router.Static("/uploads", uploadsDir)
+		router.GET("/uploads/*resourcePath", server.uploadPublicResource)
+		router.HEAD("/uploads/*resourcePath", server.uploadPublicResource)
 	}
 	return server
 }
