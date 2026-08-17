@@ -297,6 +297,17 @@ use the fixed safe 500 while portable typed 409/413 responses remain unchanged. 
 `f9d2aff` and implementation `cd3a17c` are complete; `cd3a17c`/`latest` resolve to OCI index
 `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`.
 
+### P2 backup list/download filesystem boundary (2026-08-17 extracted)
+
+The next route/work-amplification gap is limited to `GET /api/backup/list` and
+`GET /api/backup/download/:name`; see
+[`backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+Only caller-root regular files with a single basename, the existing logical/portable prefix, and a case-insensitive
+`.zip` suffix may be listed or downloaded. List metadata/portable format and download bytes must come from one
+rooted, symlink-rejecting, same-file-verified opened handle. Missing roots remain `200 []`; unsafe/non-regular entries
+are hidden and unavailable without exposing host paths. Generation, restore, formats and routes remain closed.
+Status: **inventory-complete / implementation-pending**.
+
 P2-S4 keeps `sources` as imported/updated/reactivated count and may add
 `sourceDetached`/`sourceRemoved` when replace-style reconciliation only removes or detaches old active
 sources. Those additive fields also drive a target-user `sources_update`; old clients may ignore them.

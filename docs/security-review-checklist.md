@@ -312,8 +312,25 @@ middleware, and WebDAVBrowser at 1440×900, 390×844 and 360×800. Historical-vo
 container curl remain mandatory before Docker release. Required evidence is fixed in
 [`docs/compat/webdav-protocol-p2-contract.md`](compat/webdav-protocol-p2-contract.md): auth/permission,
 two-prefix, PROPFIND, mutation/status, symlink, LOCK, browser regression, curl and mounted-volume tests.
-- [ ] Backup downloads only expose expected backup files.
+- [ ] Backup list/download only expose caller-root, same-file-verified regular `backup_*.zip` and
+      `portable_backup_*.zip`; symlink, directory, special and prefix-only non-ZIP entries fail closed.
 - [ ] API errors do not leak host filesystem paths.
+
+### P2 backup list/download filesystem boundary (2026-08-17 inventory)
+
+- [ ] JWT and effective WebDAV permission resolve the caller root before stat/open; regular users cannot list or
+      download an administrator or another user's same-name backup.
+- [ ] Root/ancestor/entry symlinks, directories, FIFO/device/socket and non-ZIP names are hidden from list and
+      unavailable from direct download without deleting or rewriting the mounted object.
+- [ ] Metadata, portable format inspection and response bytes derive from one scoped `Lstat -> open -> SameFile`
+      handle; no check-then-`c.File(path)` race remains.
+- [ ] Missing roots keep `200 []`; invalid/missing/unsafe download responses and logs expose no root, symlink target,
+      OS/ZIP detail, JWT or WebDAV credential.
+
+Runtime inventory on published `cd3a17c` reproduced a regular-user `backup_escape.zip` symlink returning 200 with
+caller-root-external bytes, a prefix-only non-ZIP returning 200, and a directory returning 301. Status is
+`inventory-complete / implementation-pending`; no application or test change is included. Full contract:
+[`compat/backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## P2 reading-progress CAS and WebDAV mirror review (2026-07-18)
 
@@ -405,18 +422,21 @@ revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. Status is
 Full contract:
 [`compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
-### Backup generation request lifecycle second audit (2026-08-16 inventory)
+### Backup generation request lifecycle second audit (2026-08-17 implemented/published)
 
-- [ ] `POST /api/backup/trigger` maps every internal DB/ZIP/OS failure to fixed `500 {"error":"backup failed"}`;
+- [x] `POST /api/backup/trigger` maps every internal DB/ZIP/OS failure to fixed `500 {"error":"backup failed"}`;
       no mounted path, SQL, ZIP detail, source/archive path or credential appears in response or ordinary logs.
-- [ ] Logical and portable HTTP generation propagate request context through lock wait, DB reads and bounded
+- [x] Logical and portable HTTP generation propagate request context through lock wait, DB reads and bounded
       archive/asset copies; a canceled waiter never starts after the active generator releases the lock.
-- [ ] Cancellation before final rename closes/removes the private temp and creates no list-visible package; successful
+- [x] Cancellation before final rename closes/removes the private temp and creates no list-visible package; successful
       rename is the durable boundary and is not compensation-deleted after a later disconnect.
-- [ ] Existing auth/WebDAV permission priority, caller roots, logical/portable formats, typed 409/413, output budgets,
+- [x] Existing auth/WebDAV permission priority, caller roots, logical/portable formats, typed 409/413, output budgets,
       same-name collision protection and scheduled backup behavior remain unchanged.
 
-Status is `inventory-complete / implementation-pending`; no application or test change is included. Full contract:
+Contract `05def84`, red tests `f9d2aff` and implementation `cd3a17c` passed focused/full/race/vet, frontend 741/741,
+build, real HTTP safe-500/success/128 MiB cancel and fresh/historical/portable gates. The local amd64/arm64 release
+resolves to OCI index `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`.
+Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
 [`compat/backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## Uploads and archive formats

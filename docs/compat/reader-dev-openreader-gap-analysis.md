@@ -3809,3 +3809,17 @@ rename 后 durable ZIP 与 path-free 日志均有测试。focused/backup/race、
 通过。本机发布 `cd3a17c`/`latest`，OCI index 为
 `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`，远端 amd64/arm64 config
 均确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-17 备份 list/download 文件系统读取边界第二轮固定基准复审
+
+generation lifecycle 发布后按 path-traversal 与 route/work amplification 继续枚举，下一项确定 must-fix
+收敛到 `GET /api/backup/list` 和 `/backup/download/:name`。既有合同只允许 caller root 内
+`backup_*.zip`/`portable_backup_*.zip`；当前 `backupFileNameAllowed` 却只检查前缀，list 信任 `ReadDir`
+entry，download 再由 `c.File(path)` 跟随路径。
+
+已发布 `cd3a17c` 的真实 HTTP 反例证明：regular user 的 allowed-name symlink 可返回 caller root 外内容，
+前缀匹配非 ZIP 返回 200，目录 direct download 返回 301，list 还暴露 symlink/非 ZIP。完整 scoped-root、
+opened-handle、same-file、format、错误和测试先行门见
+[`backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；generation/restore/格式未重开，本 inventory
+只修改合同文档，没有修改应用或测试。
