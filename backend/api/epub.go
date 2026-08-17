@@ -25,6 +25,9 @@ func (s *Server) epubResource(c *gin.Context) {
 	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("Cross-Origin-Resource-Policy", "same-origin")
 	c.Header("Cache-Control", "private, max-age=300")
+	if resource.File != nil {
+		defer resource.File.Close()
+	}
 	if c.Request.Method == http.MethodHead {
 		c.Status(http.StatusOK)
 		return
@@ -33,7 +36,11 @@ func (s *Server) epubResource(c *gin.Context) {
 		c.Data(http.StatusOK, resource.ContentType, resource.Data)
 		return
 	}
-	http.ServeFile(c.Writer, c.Request, resource.Path)
+	if resource.File == nil || resource.Info == nil {
+		writeEPUBServiceError(c, epubreader.ErrNotFound, "failed to load EPUB resource")
+		return
+	}
+	http.ServeContent(c.Writer, c.Request, resource.Name, resource.Info.ModTime(), resource.File)
 }
 
 func writeEPUBServiceError(c *gin.Context, err error, fallback string) {

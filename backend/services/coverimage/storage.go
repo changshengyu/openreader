@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"openreader/backend/services/webdavfs"
 )
 
 type FileStats struct {
@@ -20,6 +22,7 @@ type FileStats struct {
 
 type cacheEntry struct {
 	path    string
+	info    os.FileInfo
 	modTime time.Time
 	size    int64
 }
@@ -123,18 +126,19 @@ func (s *Service) readCached(userID uint, rawURL string) (Resource, error) {
 	if err != nil {
 		return Resource{}, err
 	}
-	info, err := os.Lstat(path)
+	root := filepath.Dir(path)
+	storage, err := webdavfs.NewScoped(root, root)
 	if err != nil {
-		return Resource{}, err
+		return Resource{}, mapCachedOpenError(err)
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 ||
-		info.Size() <= 0 || info.Size() > s.limits.MaxImageBytes {
-		_ = os.Remove(path)
+	file, info, err := storage.Open(filepath.Base(path))
+	if err != nil {
+		return Resource{}, mapCachedOpenError(err)
+	}
+	if info.Size() <= 0 || info.Size() > s.limits.MaxImageBytes {
+		_ = file.Close()
+		removeSameFile(path, info)
 		return Resource{}, os.ErrNotExist
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return Resource{}, err
 	}
 	data, readErr := io.ReadAll(io.LimitReader(file, s.limits.MaxImageBytes+1))
 	closeErr := file.Close()
@@ -146,12 +150,40 @@ func (s *Service) readCached(userID uint, rawURL string) (Resource, error) {
 	}
 	contentType, ok := detectImageType(data)
 	if !ok || !validImageBytes(data, contentType) {
-		_ = os.Remove(path)
+		removeSameFile(path, info)
 		return Resource{}, os.ErrNotExist
 	}
 	now := s.now().UTC()
-	_ = os.Chtimes(path, now, now)
+	touchSameFile(path, info, now)
 	return Resource{Data: data, ContentType: contentType, Size: int64(len(data))}, nil
+}
+
+func mapCachedOpenError(err error) error {
+	switch {
+	case errors.Is(err, webdavfs.ErrNotFound):
+		return os.ErrNotExist
+	case errors.Is(err, webdavfs.ErrIsDirectory),
+		errors.Is(err, webdavfs.ErrNotDirectory),
+		errors.Is(err, webdavfs.ErrUnsafePath):
+		return ErrUnsafePath
+	default:
+		return err
+	}
+}
+
+func sameRegularFile(path string, expected os.FileInfo) bool {
+	current, err := os.Lstat(path)
+	return err == nil && current.Mode().IsRegular() && os.SameFile(expected, current)
+}
+
+func touchSameFile(path string, expected os.FileInfo, now time.Time) {
+	if sameRegularFile(path, expected) {
+		_ = os.Chtimes(path, now, now)
+	}
+}
+
+func removeSameFile(path string, expected os.FileInfo) bool {
+	return sameRegularFile(path, expected) && os.Remove(path) == nil
 }
 
 func (s *Service) writeCached(userID uint, rawURL string, data []byte) error {
@@ -206,7 +238,7 @@ func (s *Service) enforceUserLimit(userID uint, keepPath string) error {
 		if infoErr != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
-		files = append(files, cacheEntry{path: path, modTime: info.ModTime(), size: info.Size()})
+		files = append(files, cacheEntry{path: path, info: info, modTime: info.ModTime(), size: info.Size()})
 		total += info.Size()
 	}
 	sort.Slice(files, func(i, j int) bool {
@@ -222,12 +254,14 @@ func (s *Service) enforceUserLimit(userID uint, keepPath string) error {
 		if entry.path == keepPath {
 			continue
 		}
-		if err := os.Remove(entry.path); err == nil {
+		if removeSameFile(entry.path, entry.info) {
 			total -= entry.size
 		}
 	}
 	if total > s.limits.MaxCacheBytes {
-		_ = os.Remove(keepPath)
+		if info, err := os.Lstat(keepPath); err == nil && info.Mode().IsRegular() {
+			removeSameFile(keepPath, info)
+		}
 		return ErrCacheLimit
 	}
 	return nil

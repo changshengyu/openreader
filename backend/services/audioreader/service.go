@@ -20,6 +20,7 @@ import (
 
 	"openreader/backend/config"
 	"openreader/backend/models"
+	"openreader/backend/services/webdavfs"
 )
 
 const (
@@ -39,7 +40,9 @@ type PreparedResource struct {
 }
 
 type Resource struct {
-	Path        string
+	File        *os.File
+	Info        os.FileInfo
+	Name        string
 	ContentType string
 }
 
@@ -135,32 +138,53 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 	if err != nil {
 		return Resource{}, err
 	}
-	filePath, err := resolveRelativeUnder(bookRoot, resourcePath)
-	if err != nil {
-		return Resource{}, err
-	}
-	info, err := os.Stat(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return Resource{}, ErrNotFound
-		}
-		return Resource{}, err
-	}
-	if info.IsDir() {
-		return Resource{}, ErrNotFound
-	}
 	contentType, ok := audioMediaType(resourcePath)
 	if !ok {
 		return Resource{}, ErrUnsupportedMedia
 	}
-	fingerprint, err := fingerprintFile(filePath)
+	storage, err := webdavfs.NewScoped(bookRoot, bookRoot)
 	if err != nil {
+		return Resource{}, mapResourceOpenError(err)
+	}
+	file, info, err := storage.Open(resourcePath)
+	if err != nil {
+		return Resource{}, mapResourceOpenError(err)
+	}
+	fingerprint, err := fingerprintOpenFile(file)
+	if err != nil {
+		_ = file.Close()
 		return Resource{}, err
 	}
 	if !strings.EqualFold(fingerprint, claims.Fingerprint) {
+		_ = file.Close()
 		return Resource{}, ErrInvalidCapability
 	}
-	return Resource{Path: filePath, ContentType: contentType}, nil
+	return Resource{File: file, Info: info, Name: path.Base(resourcePath), ContentType: contentType}, nil
+}
+
+func mapResourceOpenError(err error) error {
+	switch {
+	case errors.Is(err, webdavfs.ErrNotFound), errors.Is(err, webdavfs.ErrIsDirectory):
+		return ErrNotFound
+	case errors.Is(err, webdavfs.ErrUnsafePath), errors.Is(err, webdavfs.ErrNotDirectory):
+		return ErrUnsafePath
+	default:
+		return err
+	}
+}
+
+func fingerprintOpenFile(file *os.File) (string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func directAudioURL(book models.Book, chapter *models.Chapter, content string) (string, bool) {

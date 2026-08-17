@@ -79,9 +79,11 @@ func TestOpenResourceUsesTheImmutableExtractionBoundToTheCapability(t *testing.T
 	if fingerprintCalls != 1 {
 		t.Fatalf("prepare fingerprint calls = %d, want 1", fingerprintCalls)
 	}
-	if _, err := service.OpenResource(capability, "OPS/Styles/book.css"); err != nil {
+	resource, err := service.OpenResource(capability, "OPS/Styles/book.css")
+	if err != nil {
 		t.Fatal(err)
 	}
+	_ = resource.File.Close()
 	if fingerprintCalls != 1 {
 		t.Fatalf("unchanged resource request rehashed the EPUB: calls = %d", fingerprintCalls)
 	}
@@ -93,9 +95,11 @@ func TestOpenResourceUsesTheImmutableExtractionBoundToTheCapability(t *testing.T
 	if err := os.Remove(extractedCSS); err != nil {
 		t.Fatalf("remove derived stylesheet: %v", err)
 	}
-	if _, err := service.OpenResource(capability, "OPS/Styles/book.css"); err != nil {
+	resource, err = service.OpenResource(capability, "OPS/Styles/book.css")
+	if err != nil {
 		t.Fatalf("missing derived resource was not repaired: %v", err)
 	}
+	_ = resource.File.Close()
 	if fingerprintCalls != 2 {
 		t.Fatalf("missing derived resource repair fingerprint calls = %d, want 2", fingerprintCalls)
 	}
@@ -106,12 +110,13 @@ func TestOpenResourceUsesTheImmutableExtractionBoundToTheCapability(t *testing.T
 	if err := os.Rename(sourcePath, sourcePath+".moved"); err != nil {
 		t.Fatal(err)
 	}
-	resource, err := service.OpenResource(capability, "OPS/Styles/book.css")
+	resource, err = service.OpenResource(capability, "OPS/Styles/book.css")
 	if err != nil {
 		t.Fatalf("signed immutable extraction should not reopen the source EPUB: %v", err)
 	}
-	if !strings.HasSuffix(filepath.ToSlash(resource.Path), "/OPS/Styles/book.css") {
-		t.Fatalf("resource path = %q", resource.Path)
+	defer resource.File.Close()
+	if !strings.HasSuffix(filepath.ToSlash(resource.File.Name()), "/OPS/Styles/book.css") {
+		t.Fatalf("resource path = %q", resource.File.Name())
 	}
 	if fingerprintCalls != 2 {
 		t.Fatalf("immutable extracted resource rehashed the EPUB: calls = %d", fingerprintCalls)

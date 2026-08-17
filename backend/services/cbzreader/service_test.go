@@ -55,6 +55,7 @@ func TestSignedImmutableResourceSurvivesTemporarySourceAbsence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete signed generation should survive missing source: %v", err)
 	}
+	defer resource.File.Close()
 	if resource.ContentType != "image/jpeg" {
 		t.Fatalf("content type = %q", resource.ContentType)
 	}
@@ -76,9 +77,11 @@ func TestWarmPrepareAndOpenDoNotRehashSourceArchive(t *testing.T) {
 	if _, err := service.PrepareChapter(book, &chapter); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.OpenResource(capabilityFromResourceURL(t, prepared.ResourceURL), "/pages/001.jpg"); err != nil {
+	resource, err := service.OpenResource(capabilityFromResourceURL(t, prepared.ResourceURL), "/pages/001.jpg")
+	if err != nil {
 		t.Fatal(err)
 	}
+	_ = resource.File.Close()
 	if fingerprintCalls != 1 {
 		t.Fatalf("warm Prepare/Open hashed source %d times, want once", fingerprintCalls)
 	}
@@ -139,6 +142,7 @@ func TestSourceReplacementInvalidatesOldCapability(t *testing.T) {
 	if err != nil || resource.ContentType != "image/jpeg" {
 		t.Fatalf("replacement capability resource = %+v, err=%v", resource, err)
 	}
+	defer resource.File.Close()
 	entries, err := os.ReadDir(filepath.Join(service.cfg.LibraryDir, book.LibraryPath, extractionDirectoryName))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("source replacement retained stale generations: entries=%+v err=%v", entries, err)

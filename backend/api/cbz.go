@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -25,7 +24,12 @@ func (s *Server) cbzResource(c *gin.Context) {
 	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("Cross-Origin-Resource-Policy", "same-origin")
 	c.Header("Cache-Control", "private, max-age=300")
-	http.ServeFile(c.Writer, c.Request, filepath.Clean(resource.Path))
+	if resource.File == nil || resource.Info == nil {
+		writeCBZServiceError(c, cbzreader.ErrNotFound, "failed to load CBZ resource")
+		return
+	}
+	defer resource.File.Close()
+	http.ServeContent(c.Writer, c.Request, resource.Name, resource.Info.ModTime(), resource.File)
 }
 
 func writeCBZServiceError(c *gin.Context, err error, fallback string) {

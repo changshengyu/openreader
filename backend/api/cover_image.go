@@ -22,7 +22,8 @@ func (s *Server) coverImageResource(c *gin.Context) {
 			status = http.StatusForbidden
 			message = "cover capability is invalid"
 		case errors.Is(err, coverimage.ErrUnavailable),
-			errors.Is(err, coverimage.ErrUnsafeURL):
+			errors.Is(err, coverimage.ErrUnsafeURL),
+			errors.Is(err, coverimage.ErrUnsafePath):
 			status = http.StatusNotFound
 			message = "cover unavailable"
 		}

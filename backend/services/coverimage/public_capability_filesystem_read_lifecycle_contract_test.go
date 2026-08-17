@@ -2,6 +2,7 @@ package coverimage
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -91,5 +92,11 @@ func TestCachedCoverDoesNotTouchReplacementAfterVerification(t *testing.T) {
 	}
 	if !info.ModTime().Equal(originalTime) {
 		t.Fatalf("cached cover touched the replacement mounted object: got %s want %s", info.ModTime(), originalTime)
+	}
+	if _, err := service.Open(context.Background(), capability); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("cached cover mounted symlink error = %v, want ErrUnsafePath", err)
+	}
+	if info, err := os.Lstat(cachePath); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("cached cover lookup changed mounted symlink: info=%v err=%v", info, err)
 	}
 }

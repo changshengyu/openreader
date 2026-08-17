@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -179,6 +180,12 @@ func TestEPUBCapabilityDoesNotServeReplacementAfterAuthorization(t *testing.T) {
 	if strings.Contains(response.Body.String(), replacementBytes) {
 		t.Fatalf("EPUB capability served the replacement mounted object: status=%d body=%q", response.Code, response.Body.String())
 	}
+	symlinkRequest := httptest.NewRequest(http.MethodGet, requestPath, nil)
+	symlinkResponse := httptest.NewRecorder()
+	router.ServeHTTP(symlinkResponse, symlinkRequest)
+	if symlinkResponse.Code != http.StatusBadRequest || strings.Contains(symlinkResponse.Body.String(), replacementBytes) {
+		t.Fatalf("EPUB capability did not reject the mounted symlink: status=%d body=%q", symlinkResponse.Code, symlinkResponse.Body.String())
+	}
 }
 
 func TestCBZCapabilityDoesNotServeReplacementAfterAuthorization(t *testing.T) {
@@ -225,6 +232,12 @@ func TestCBZCapabilityDoesNotServeReplacementAfterAuthorization(t *testing.T) {
 	if strings.Contains(response.Body.String(), replacementBytes) {
 		t.Fatalf("CBZ capability served the replacement mounted object: status=%d body=%q", response.Code, response.Body.String())
 	}
+	symlinkRequest := httptest.NewRequest(http.MethodGet, prepared.ResourceURL, nil)
+	symlinkResponse := httptest.NewRecorder()
+	router.ServeHTTP(symlinkResponse, symlinkRequest)
+	if symlinkResponse.Code != http.StatusBadRequest || strings.Contains(symlinkResponse.Body.String(), replacementBytes) {
+		t.Fatalf("CBZ capability did not reject the mounted symlink: status=%d body=%q", symlinkResponse.Code, symlinkResponse.Body.String())
+	}
 }
 
 func TestAudioCapabilityDoesNotServeReplacementAfterAuthorization(t *testing.T) {
@@ -255,17 +268,24 @@ func TestAudioCapabilityDoesNotServeReplacementAfterAuthorization(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer resource.File.Close()
 	replacement := filepath.Join(t.TempDir(), "outside.mp3")
 	const replacementBytes = "mounted audio replacement"
 	if err := os.WriteFile(replacement, []byte(replacementBytes), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	replaceRegularWithSymlink(t, trackPath, replacement)
-	served, err := os.ReadFile(resource.Path)
+	served, err := io.ReadAll(resource.File)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(served), replacementBytes) {
 		t.Fatalf("audio capability authorized a path that reopened the replacement mounted object: %q", served)
+	}
+	symlinkRequest := httptest.NewRequest(http.MethodGet, prepared.ResourceURL, nil)
+	symlinkResponse := httptest.NewRecorder()
+	router.ServeHTTP(symlinkResponse, symlinkRequest)
+	if symlinkResponse.Code != http.StatusBadRequest || strings.Contains(symlinkResponse.Body.String(), replacementBytes) {
+		t.Fatalf("audio capability did not reject the mounted symlink: status=%d body=%q", symlinkResponse.Code, symlinkResponse.Body.String())
 	}
 }

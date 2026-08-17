@@ -22,6 +22,7 @@ import (
 	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/webdavfs"
 )
 
 const (
@@ -62,7 +63,9 @@ type PreparedChapter struct {
 }
 
 type Resource struct {
-	Path        string
+	File        *os.File
+	Info        os.FileInfo
+	Name        string
 	ContentType string
 }
 
@@ -282,7 +285,7 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 	if !ok {
 		return Resource{}, ErrUnsupportedMedia
 	}
-	filePath, err := s.resourceFile(extractionRoot, resourcePath)
+	file, info, err := openResourceFile(bookRoot, extractionRoot, resourcePath)
 	if errors.Is(err, ErrNotFound) && sourcePath != "" {
 		fingerprint, rebuiltRoot, rebuildErr := s.rebuildExtraction(sourcePath, bookRoot)
 		if rebuildErr != nil {
@@ -291,12 +294,36 @@ func (s *Service) OpenResource(capability, requestedPath string) (Resource, erro
 		if !strings.EqualFold(fingerprint, claims.Fingerprint) {
 			return Resource{}, ErrInvalidCapability
 		}
-		filePath, err = s.resourceFile(rebuiltRoot, resourcePath)
+		extractionRoot = rebuiltRoot
+		file, info, err = openResourceFile(bookRoot, extractionRoot, resourcePath)
 	}
 	if err != nil {
 		return Resource{}, err
 	}
-	return Resource{Path: filePath, ContentType: contentType}, nil
+	return Resource{File: file, Info: info, Name: filepath.Base(resourcePath), ContentType: contentType}, nil
+}
+
+func openResourceFile(bookRoot, extractionRoot, resourcePath string) (*os.File, os.FileInfo, error) {
+	storage, err := webdavfs.NewScoped(bookRoot, extractionRoot)
+	if err != nil {
+		return nil, nil, mapResourceOpenError(err)
+	}
+	file, info, err := storage.Open(resourcePath)
+	if err != nil {
+		return nil, nil, mapResourceOpenError(err)
+	}
+	return file, info, nil
+}
+
+func mapResourceOpenError(err error) error {
+	switch {
+	case errors.Is(err, webdavfs.ErrNotFound), errors.Is(err, webdavfs.ErrIsDirectory):
+		return ErrNotFound
+	case errors.Is(err, webdavfs.ErrUnsafePath), errors.Is(err, webdavfs.ErrNotDirectory):
+		return ErrUnsafePath
+	default:
+		return err
+	}
 }
 
 func (s *Service) sourcePath(book models.Book) (string, string, error) {
