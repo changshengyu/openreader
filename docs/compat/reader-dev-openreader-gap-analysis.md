@@ -3821,5 +3821,10 @@ entry，download 再由 `c.File(path)` 跟随路径。
 前缀匹配非 ZIP 返回 200，目录 direct download 返回 301，list 还暴露 symlink/非 ZIP。完整 scoped-root、
 opened-handle、same-file、format、错误和测试先行门见
 [`backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；generation/restore/格式未重开，本 inventory
-只修改合同文档，没有修改应用或测试。
+合同 `b9deec2` 与旧实现红测 `d7810ca` 已按顺序完成。当前实现复用 `webdavfs.NewScoped` 与
+`Service.Open`，list 只投影严格 ZIP basename 的同文件句柄 metadata/portable format，download 直接发送
+同一 opened handle；不再有 prefix-only 接受、symlink follow 或 `c.File(path)` 重开。固定安全
+400/404/500 不暴露 host path。focused/race、Go 全量/vet、frontend 741/741 与 build 已通过。
+
+当前状态 **aligned / regression-validated / Docker-pending**；generation/restore/格式未重开。真实 HTTP
+边界探针与 fresh/historical/portable 卷门通过后方可发布。

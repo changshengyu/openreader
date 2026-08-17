@@ -328,8 +328,10 @@ two-prefix, PROPFIND, mutation/status, symlink, LOCK, browser regression, curl a
       OS/ZIP detail, JWT or WebDAV credential.
 
 Runtime inventory on published `cd3a17c` reproduced a regular-user `backup_escape.zip` symlink returning 200 with
-caller-root-external bytes, a prefix-only non-ZIP returning 200, and a directory returning 301. Status is
-`inventory-complete / implementation-pending`; no application or test change is included. Full contract:
+caller-root-external bytes, a prefix-only non-ZIP returning 200, and a directory returning 301. Contract `b9deec2`
+and old-implementation red tests `d7810ca` now precede a scoped same-file-open implementation; focused/race,
+full Go/vet, frontend 741/741 and build pass. Status is `aligned / regression-validated / Docker-pending`; checklist
+items remain open until the candidate HTTP and mounted-volume probes pass. Full contract:
 [`compat/backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## P2 reading-progress CAS and WebDAV mirror review (2026-07-18)

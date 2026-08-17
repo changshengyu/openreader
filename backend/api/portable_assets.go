@@ -582,11 +582,23 @@ func (s *Server) cleanupPortableAssetRestoreJournals() {
 }
 
 func portableBackupFormatFromFile(path string) string {
-	reader, err := zip.OpenReader(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return "portable-invalid"
 	}
-	defer reader.Close()
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "portable-invalid"
+	}
+	return portableBackupFormat(file, info.Size())
+}
+
+func portableBackupFormat(source io.ReaderAt, size int64) string {
+	reader, err := zip.NewReader(source, size)
+	if err != nil {
+		return "portable-invalid"
+	}
 	var manifest *zip.File
 	version := 0
 	for _, file := range reader.File {

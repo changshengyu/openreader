@@ -475,5 +475,10 @@ entry，download 再由 `c.File(path)` 跟随路径。
 前缀匹配非 ZIP 返回 200，目录 direct download 返回 301，list 还暴露 symlink/非 ZIP。完整 scoped-root、
 opened-handle、same-file、format、错误和测试先行门见
 [`backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；generation/restore/格式未重开，本 inventory
-没有修改应用或测试。
+合同 `b9deec2` 与旧实现红测 `d7810ca` 已按顺序完成。当前实现以 `webdavfs.NewScoped` 约束 caller root，
+list 对严格 ZIP basename 逐项执行普通文件/same-file open，并从同一句柄取得 metadata 与 portable format；
+download 直接发送该句柄，不再由 `c.File(path)` 重开。missing/unsafe/non-regular 使用固定安全 404，
+其它打开失败使用固定安全 500。focused/race、Go 全量/vet、frontend 741/741 与 build 已通过。
+
+当前状态 **aligned / regression-validated / Docker-pending**；generation/restore/格式未重开。真实 HTTP
+symlink/non-ZIP/directory/valid/ancestor 探针与 fresh/historical/portable 卷门通过后方可发布。

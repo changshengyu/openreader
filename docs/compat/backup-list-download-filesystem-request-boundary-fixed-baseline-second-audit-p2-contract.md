@@ -1,6 +1,6 @@
 # 备份列表/下载文件系统请求边界第二轮固定基准合同
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-pending**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -105,3 +105,19 @@ logical/portable 文件名前缀是已发布的 Go 运行时适配。OpenReader 
 备份 generation lifecycle 发布后，按 route/work amplification 与 path-traversal checklist 继续枚举得到的
 下一项确定 must-fix 是 list/download 的文件系统读取边界。当前 inventory 只新增/更新合同文档，没有
 修改应用或测试。
+
+## 8. 测试先行实现记录
+
+- 合同 `b9deec2` 与旧实现红测 `d7810ca` 先后落地；红测在未修复实现上复现 symlink 外逃、prefix-only
+  非 ZIP、目录重定向、特殊文件暴露、不安全祖先和非固定 missing 错误。
+- `listBackups` 现在先建立 caller-root `webdavfs.Service`，再逐项用严格 basename/prefix/extension 过滤
+  和 `Service.Open` 验证；size/time 与 portable format 都来自该打开句柄。缺失或不安全 root 继续投影
+  `200 []`，单个坏项不影响合法 ZIP。
+- `downloadBackup` 不再使用 `filepath.Base` 静默归一化或 `c.File(path)` 二次按路径打开，而是从同一
+  scoped、same-file-verified `*os.File` 调用 `http.ServeContent`。invalid name 固定 400，missing/unsafe/
+  non-regular 固定安全 404，其它打开失败固定安全 500。
+- focused API、WebDAV/portable/backup 专项、focused race、Go 全量与 `go vet` 均通过；frontend
+  741/741 与 Vite build 通过。实现不改 schema、备份格式、生成位置、restore、WebDAV 原始协议或前端。
+
+真实 HTTP symlink/non-ZIP/directory/valid/ancestor 探针与 fresh/historical/portable mounted-volume 门仍须
+在本地候选镜像上通过，才可把本合同推进到 Docker published。
