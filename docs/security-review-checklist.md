@@ -1075,19 +1075,22 @@ and event assertions, historical oversized backup/restore, focused/full/race/vet
 and `scripts/smoke/book-group-write-boundary-contract.mjs` all pass. The release-specific fresh/historical
 mounted-volume gate and local Docker publication still await explicit Docker socket approval.
 
-## P2 public capability opened-file identity review (2026-08-17 extracted)
+## P2 public capability opened-file identity review (2026-08-17 implemented)
 
-- [ ] EPUB XHTML and sibling assets are read from a rooted regular handle whose identity is the object checked after
+- [x] EPUB XHTML and sibling assets are read from a rooted regular handle whose identity is the object checked after
       capability, owner, generation and resource-path validation; no handler pathname reopen remains.
-- [ ] CBZ GET/HEAD/Range and local-audio GET/HEAD/Range pass the same verified handle and metadata to
+- [x] CBZ GET/HEAD/Range and local-audio GET/HEAD/Range pass the same verified handle and metadata to
       `http.ServeContent`; source/generation replacement cannot redirect an existing capability to another object.
-- [ ] Cached cover reads compare `Lstat/open/fstat` identity and never read or touch a replacement mounted object.
-- [ ] Root/ancestor/entry symlinks, directory/FIFO/device and deterministic validation-to-open replacement probes
+- [x] Cached cover reads compare `Lstat/open/fstat` identity and never read or touch a replacement mounted object.
+- [x] Root/ancestor/entry symlinks, directory/FIFO/device and deterministic validation-to-open replacement probes
       fail closed with path/token/credential-free errors while leaving every mounted object unchanged.
-- [ ] Capability purpose/user/book/fingerprint/expiry, EPUB CSP, MIME allowlists, byte/range behavior, private cache
+- [x] Capability purpose/user/book/fingerprint/expiry, EPUB CSP, MIME allowlists, byte/range behavior, private cache
       headers, old URLs and multi-user isolation remain unchanged.
 - [ ] Focused/race/full/vet, real EPUB/CBZ/audio/cover browser flows and fresh/historical/portable mounted-volume
       gates pass before local Docker publication.
 
 Required evidence and scope exclusions are defined in
 [`compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Implementation commit `a90f7b3` and its code-level gates are complete. EPUB passed all three required Chromium
+viewports; CBZ desktop and host HEAD/Range/mounted-symlink probes passed. The final checkbox remains open until the
+blocked CBZ/audio/cover browser reruns and fresh/historical/portable/restart volume gates can receive local approvals.

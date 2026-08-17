@@ -1086,3 +1086,7 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - Required release evidence includes fresh/historical/portable mounted volumes and restart, proving TXT/EPUB/UMD/
   CBZ/audio, relative cache, owner isolation and backup/restore remain compatible. Full contract:
   [`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+- `a90f7b3` implements opened-file identity without schema, migration, startup scan or layout changes. Focused/full/race/
+  vet and host mounted-symlink probes pass, and the local candidate image reports the full expected revision. The
+  fresh/historical/portable/restart volume gate remains pending because the workspace could not grant Docker socket
+  approval after its automatic approval quota was exhausted; no release image is claimed for this slice yet.

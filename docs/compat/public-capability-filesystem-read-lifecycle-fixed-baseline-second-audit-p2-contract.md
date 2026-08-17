@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
 当前审查基线：`OpenReader@910cb38`  
 审查日期：2026-08-17  
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**implementation-complete / release-validation-pending**
 
 ## 1. 范围与权威证据
 
@@ -112,3 +112,31 @@ archive 或整个媒体文件读入内存。
 3. 复用仓库现有 rooted opened-file helper/pattern，实现四路同句柄读取并保持 API surface。
 4. 运行 focused/race/full/vet、frontend 全量/build、真实浏览器/mounted probe 与卷门。
 5. 形成可验证切片后提交并推送；只用本机构建 amd64/arm64 并发布 GHCR。
+
+## 9. 测试先行与实现证据
+
+- `2587299` 只提交本合同和总矩阵，固定 upstream/OpenReader 差集未混入代码改动。
+- `df49535` 在旧实现上加入确定性 replacement 红测：EPUB/CBZ handler 会在授权后重开 mounted
+  replacement，audio service 返回的 path 可被调用方重开为 replacement，cached cover 会按 path touch
+  replacement。
+- `a90f7b3` 让 EPUB/CBZ/audio service 返回同一 rooted、symlink-rejecting、`SameFile` 验证的 opened
+  regular handle 与 metadata；handler 只用该句柄 `ServeContent` 并拥有关闭责任。EPUB XHTML 的有界
+  sanitize/bridge 读取也改为消费同一句柄。cached cover 用同一 verified handle 有界读取，并只在 path
+  仍指向同一普通文件时 touch/remove；unsafe mounted 对象原样保留。
+- 路由、capability claim/purpose/TTL、CSP、MIME、private headers、HEAD/Range、generation、archive、
+  SQLite 与 `data/cache/library` 布局均未改变。
+
+## 10. 当前验证边界
+
+focused 正常/替换/symlink 回归、affected packages、focused `-race`、`go test ./...`、`go vet ./...`、
+frontend 741/741 与 Vite build 已通过。真实 Go + Chromium EPUB 在 1440x900、390x844、360x800 通过；
+CBZ desktop 通过，390px 已成功加载 capability 图片后在与本切片无关的 reader mode 断言出现一次
+`page`/`scroll` 时序失败。宿主真实 HTTP 已确认 CBZ HEAD 200、Range 206/正确 `Content-Range`，并在
+派生页临时替换为指向 `/etc/hosts` 的 symlink 时返回既有 path-free 400；mounted symlink 未被消费，
+恢复原页后再次 200。
+
+本地 `PUSH=0` 候选镜像 `a90f7b3` 已成功构建，label revision 为
+`a90f7b35a3d6caaa3fc3bbdc76acea27a83b810d`。当前工作区自动批准额度耗尽，真实 Chromium 复跑及
+Docker volume/backup 脚本均无法取得新的本机浏览器/Docker socket 授权；audio/cover browser、CBZ
+完整三视口、fresh/historical/portable/restart 和正式 amd64/arm64 GHCR 发布因此保持待完成。不得把
+本地候选当作已发布镜像；最近已发布 Docker 仍是 `3cef8df`。

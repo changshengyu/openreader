@@ -3894,4 +3894,9 @@ cache 也在 `Lstat` 后重新 `Open` 并按 path `Chtimes`。因此 mounted 对
 identity。目标只把响应改为消费 rooted same-file opened handle，保留旧 URL、token、状态码、原 archive、
 目录布局和备份格式。完整矩阵与 red-test 门见
 [`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态：**inventory-complete / tests-and-implementation-pending**；本轮未修改应用或测试。
+`2587299` 完成 inventory，`df49535` 在旧实现上锁定四路 replacement 红测，`a90f7b3` 已让
+EPUB/CBZ/audio 以同一 rooted verified handle 响应，并让 cached cover 只读取/touch 同一普通文件。
+focused/race/full/vet、frontend 741/741、build、EPUB 三视口、CBZ desktop 和宿主
+HEAD/Range/mounted-symlink probe 已通过，本地候选镜像 revision 已确认。CBZ 完整三视口、audio/cover
+browser、fresh/historical/portable/restart 与正式 Docker 发布因本机授权额度耗尽待补；当前状态：
+**implementation-complete / release-validation-pending**。
