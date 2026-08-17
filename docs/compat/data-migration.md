@@ -1069,3 +1069,5 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   shared-reference runtime probes, plus unchanged fresh/historical/portable `data/cache/library` gates before local
   amd64/arm64 publication. Full contract:
   [`remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+- `75cc238` implements this boundary without a migration or startup scan. Code regression is complete; runtime,
+  volume and local Docker publication evidence remains pending for this slice.

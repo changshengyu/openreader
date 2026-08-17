@@ -528,4 +528,7 @@ root/ancestor/entry symlink；`WriteChapterCache` 的 `MkdirAll/WriteFile` 也�
 详细 rooted opened-file、原子写、实际文件统计、all-user reference fail-closed、write/prune 并发、
 历史 relative/current-absolute path 和无迁移边界见
 [`remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本轮尚未修改应用或测试代码。
+`f8e5c04` 先在旧实现上锁定读/写/统计/删除和引用查询失败反例；`75cc238` 已实现 rooted
+同句柄有界读取、原子可取消写入、实际文件统计、全用户引用 fail-closed 和 write/prune 共享串行边界。
+专项/focused race、Go full/vet、frontend 741/741 与 build 已通过；当前状态
+**implemented / code-regression-validated / runtime-and-release-pending**。

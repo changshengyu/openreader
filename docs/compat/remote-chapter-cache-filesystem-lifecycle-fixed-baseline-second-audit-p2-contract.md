@@ -1,6 +1,6 @@
 # 远程章节文本缓存文件系统生命周期第二轮固定基准合同
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**implemented / code-regression-validated / runtime-and-release-pending**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -130,3 +130,21 @@ shape 和侧边栏确认/反馈；不新增管理员全局 clear、不返回 ser
 
 公开 upload read 边界发布后，下一项 must-fix 确定为远程章节文本缓存的共享文件系统
 生命周期。本提取阶段只新增/更新合同，没有修改应用或测试代码。
+
+## 10. 测试先行与实现证据
+
+- `c6f9de8` 只提交本合同和矩阵，完成固定上游 inventory。
+- `f8e5c04` 在旧实现上锁定 outside absolute、ancestor/entry symlink 读取，missing/unsafe stats，
+  unsafe/shared clear、引用查询失败继续删除和 root/ancestor/entry symlink 写入五组红测。
+- `75cc238` 使用现有 rooted filesystem service 完成 canonical relative identity、同句柄有界读取、
+  原子可取消写入和同一普通文件删除；stats 只计实际非空安全文件，prune 在全用户引用查询或
+  引用规范化失败时删除零对象。
+- 同一 `remoteCacheMu` 串行化远程文件发布 + SQLite 引用提交与引用查询 + 物理剪枝；本地导入书
+  的 `library/` 候选读取、哈希名、API JSON、SQLite schema 和备份格式未改变。
+
+## 11. 当前验证边界
+
+专项正常/反例、普通相对/当前绝对路径、读取预算、取消写入、跨用户共享引用、刷新/换源/缓存流
+和 focused race 已通过；后端 `go test ./...`、`go vet ./...`、frontend 741/741 与 Vite build 已通过。
+真实 Reader/BookManage/侧边栏缓存流程、候选容器 mounted probe、fresh/historical/portable 卷门和
+本机双平台发布仍待本批完成，因此当前不标记 Docker-published。
