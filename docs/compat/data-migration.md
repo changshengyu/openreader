@@ -1073,3 +1073,16 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   named-volume restart and fresh/historical/portable gates passed. The locally built amd64/arm64 `3cef8df`/`latest`
   release resolves to OCI index `sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`;
   both pulled platform configs report full revision `3cef8dfdccd45970596b3d8916a2cb6fab1480dc`.
+
+## P2 public capability filesystem-read lifecycle compatibility (2026-08-17 extracted)
+
+- The pending EPUB/CBZ/local-audio/cached-cover opened-file change adds no table, column, index, migration, startup
+  scan, directory, capability field, URL, environment variable, backup member or browser key.
+- Existing regular files under `library/` and `cache/cover-images`, original archives, complete EPUB/CBZ generation
+  markers and historical relative paths remain byte-for-byte authoritative. No startup rewrite or eager rebuild is
+  allowed.
+- Unsafe symlinks, directories and special files remain untouched on mounted storage but cannot be projected by a
+  public capability. A failed identity check must not delete an archive, generation, audio source or cover object.
+- Required release evidence includes fresh/historical/portable mounted volumes and restart, proving TXT/EPUB/UMD/
+  CBZ/audio, relative cache, owner isolation and backup/restore remain compatible. Full contract:
+  [`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).

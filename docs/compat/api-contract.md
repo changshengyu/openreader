@@ -721,6 +721,16 @@ Implementation tests must cover:
 - modified, expired, wrong-purpose, wrong-user/book, traversal, missing-file, and unsupported-media requests fail with client-safe errors;
 - access logs redact `/api/audio-resource/<capability>/...` the same way EPUB/CBZ resource capabilities are redacted.
 
+### Public capability opened-file identity
+
+EPUB, CBZ, local-audio, and cached-cover capability handlers must consume the exact regular file object that passed
+their rooted path and ownership checks. A service must not authorize a pathname and then let the handler reopen that
+pathname. EPUB/CBZ/audio streaming uses the same owned handle for metadata and `ServeContent`; EPUB document
+sanitization and cached-cover validation read from the same verified handle. Mounted root/ancestor/entry symlinks,
+special files, and validation-to-read replacements fail closed without changing the existing URLs, capability
+claims, success headers, Range behavior, or route-specific error envelopes. See
+[`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+
 ## Legacy WebDAV summary
 
 | Method | Path | Purpose |

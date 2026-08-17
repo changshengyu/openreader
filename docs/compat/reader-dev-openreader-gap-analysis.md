@@ -3882,3 +3882,16 @@ root/ancestor/entry symlink；`WriteChapterCache` 的 `MkdirAll/WriteFile` 也�
 `sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`；两平台回拉 config 均确认
 完整 revision `3cef8dfdccd45970596b3d8916a2cb6fab1480dc`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-17 公开 capability 文件读取生命周期第二轮固定基准复审
+
+远程章节缓存切片发布后，下一项 route/path 差集收敛为 EPUB、CBZ、本地音频和 cached cover 四路公开
+capability 读取。固定上游通过 `/assets/*`、`/epub/*` 和本地章节投影直接提供浏览器资源；OpenReader
+保留已签收的私有 generation、短期用途隔离 capability、CSP、MIME allowlist、Range 与多用户 owner。
+
+当前 EPUB/CBZ/audio service 在授权和路径检查后返回 path，handler 或 service 随后重新打开；cover
+cache 也在 `Lstat` 后重新 `Open` 并按 path `Chtimes`。因此 mounted 对象可在检查和实际读取间改变
+identity。目标只把响应改为消费 rooted same-file opened handle，保留旧 URL、token、状态码、原 archive、
+目录布局和备份格式。完整矩阵与 red-test 门见
+[`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态：**inventory-complete / tests-and-implementation-pending**；本轮未修改应用或测试。

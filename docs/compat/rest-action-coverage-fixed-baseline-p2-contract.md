@@ -536,3 +536,20 @@ root/ancestor/entry symlink；`WriteChapterCache` 的 `MkdirAll/WriteFile` 也�
 `sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`；两平台回拉 config 均确认
 完整 revision `3cef8dfdccd45970596b3d8916a2cb6fab1480dc`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 28. 公开 capability 文件读取生命周期（2026-08-17 inventory）
+
+远程章节文本缓存发布后继续枚举公开读取路由。`/api/epub-resource`、`/api/cbz-resource` 和
+`/api/audio-resource` 都在 service 完成 capability/owner/path/fingerprint 检查后只返回 path，随后由
+service 或 handler 再次 `os.Open/http.ServeFile`；cached `/api/cover` 也存在 `Lstat -> Open -> Chtimes`
+而没有 same-file 证明。mounted entry/ancestor 在验证后替换时，已授权 capability 可能消费或 touch
+另一个文件对象。
+
+固定上游的 `/assets/*`、`/epub/*` 与本地 EPUB/CBZ 章节投影只要求浏览器能读取对应资源；OpenReader
+私有 generation、用途隔离 capability、CSP/MIME/Range 和多用户 owner 是必须保留的安全适配。本切片
+不改变 URL、token、派生目录、原 archive、响应 schema 或备份格式，只把授权、路径验证和响应收敛到
+rooted same-file opened handle。完整合同见
+[`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
+章节图片 capability 在响应前按 token fingerprint 重验最终内存字节，公开 uploads 已由独立合同关闭，
+二者不并入本轮。当前状态：**inventory-complete / tests-and-implementation-pending**。

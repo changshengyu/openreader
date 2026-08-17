@@ -1074,3 +1074,20 @@ Implementation evidence is complete on `6f54be3`: the red/green six-route contra
 and event assertions, historical oversized backup/restore, focused/full/race/vet, frontend 740/740, production build
 and `scripts/smoke/book-group-write-boundary-contract.mjs` all pass. The release-specific fresh/historical
 mounted-volume gate and local Docker publication still await explicit Docker socket approval.
+
+## P2 public capability opened-file identity review (2026-08-17 extracted)
+
+- [ ] EPUB XHTML and sibling assets are read from a rooted regular handle whose identity is the object checked after
+      capability, owner, generation and resource-path validation; no handler pathname reopen remains.
+- [ ] CBZ GET/HEAD/Range and local-audio GET/HEAD/Range pass the same verified handle and metadata to
+      `http.ServeContent`; source/generation replacement cannot redirect an existing capability to another object.
+- [ ] Cached cover reads compare `Lstat/open/fstat` identity and never read or touch a replacement mounted object.
+- [ ] Root/ancestor/entry symlinks, directory/FIFO/device and deterministic validation-to-open replacement probes
+      fail closed with path/token/credential-free errors while leaving every mounted object unchanged.
+- [ ] Capability purpose/user/book/fingerprint/expiry, EPUB CSP, MIME allowlists, byte/range behavior, private cache
+      headers, old URLs and multi-user isolation remain unchanged.
+- [ ] Focused/race/full/vet, real EPUB/CBZ/audio/cover browser flows and fresh/historical/portable mounted-volume
+      gates pass before local Docker publication.
+
+Required evidence and scope exclusions are defined in
+[`compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
