@@ -292,6 +292,25 @@ backup gates. Locally published `ceb4baa`/`latest` resolve to OCI index
 - [ ] Final resolved path is verified to remain under the allowed root.
 - [ ] Local store, uploads, cache, backups, and WebDAV all use rooted paths.
 
+### P2 remote chapter-text cache filesystem lifecycle (2026-08-17 inventory)
+
+- [ ] Remote chapter cache read/stat/remove accepts only relative or current-root absolute identities that resolve to
+      regular files below `cache/`; root/ancestor/entry symlinks, directories and special files fail closed.
+- [ ] Remote chapter cache reads use one same-file-verified handle and the configured source-response byte budget;
+      mounted outside bytes, host paths and OS errors never enter chapter responses or cache API errors.
+- [ ] Remote cache writes use a verified parent, private stage and atomic rename; unsafe targets, cancellation and
+      failures do not truncate an existing file, write outside the root, publish a DB path or leave temporary files.
+- [ ] Stats count only actual safe non-empty chapter files and remain current-user scoped. Clear/prune removes only
+      verified regular files after commit and only when an all-user reference query proves them unreferenced.
+- [ ] File publication plus DB reference and reference-query plus prune share one process serialization boundary, so
+      concurrent cache writes and cleanup cannot leave a newly referenced path missing.
+
+Current source inventory shows lexical-prefix validation followed by `os.ReadFile/Stat/Remove`, direct
+`MkdirAll/WriteFile`, stale DB-path counting, and delete-on-reference-query-error behavior. Status is
+`inventory-complete / tests-and-implementation-pending`; checklist items remain open until old-implementation red
+tests, the complete implementation, runtime/mounted-volume probes and release gates pass. Full contract:
+[`compat/remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+
 ### P2 public upload-resource filesystem boundary (2026-08-17 inventory)
 
 - [x] Public `GET|HEAD /uploads/*resourcePath` opens only a regular file beneath `data/uploads`; root, ancestor and

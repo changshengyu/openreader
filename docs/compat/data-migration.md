@@ -1052,3 +1052,20 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   `sha256:f936ed8b9dbf3bf61a5d0f621bd7c06f4861f0c1a963df2fe85cc3890cc3ed81`, arm64 manifest is
   `sha256:111f01ed3ddf7c404bdc6dc3a40c97180ce4821dc0bff852d8b4abf3e1213c91`, and both configs carry full revision
   `277e512fa1a0135cff4089298d4644ee72ddf518`.
+
+## P2 remote chapter-text cache filesystem-lifecycle compatibility (2026-08-17 extracted)
+
+- The pending second audit changes no SQLite table/column/index, mounted root, cache hash name, backup member,
+  WebDAV object, browser key or environment variable. Existing `chapters.cache_path` remains authoritative input.
+- Relative paths and historical absolute paths below the current `cache/` root remain lazy-readable. Retired-host or
+  unsafe paths are not rewritten at startup; they remain until a successful recache publishes the existing relative
+  hash identity or the owning user explicitly clears/deletes that remote book.
+- Explicit clear may reset the caller's unsafe/missing remote DB references after commit, but must leave every unsafe,
+  special or outside-root mounted object untouched. Local imported-book rows and `library/` content are excluded.
+- Reference-aware pruning remains post-commit and compensating. It may remove a verified regular derived file only
+  after an all-user query proves no remote chapter still references its canonical cache identity; query failure and
+  concurrent publication fail closed.
+- Required release evidence is focused/race/full/vet, real Reader/BookManage/sidebar cache flows, mounted symlink and
+  shared-reference runtime probes, plus unchanged fresh/historical/portable `data/cache/library` gates before local
+  amd64/arm64 publication. Full contract:
+  [`remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).

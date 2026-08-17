@@ -512,3 +512,20 @@ cross-user/restart 与 historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolatio
 完整 revision `277e512fa1a0135cff4089298d4644ee72ddf518`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**；upload write/delete、
 BookInfo/Reader/portable v2 合同不重开。
+
+## 27. 远程章节文本缓存文件系统生命周期（2026-08-17 inventory）
+
+公开 upload read 发布后继续按 mounted path 与数据引用枚举，下一项 must-fix 不只是
+`GET /api/cache/stats`/`DELETE /api/cache`，而是远程章节文本缓存的读、写、统计、剪枝和
+DB path 发布共享生命周期。固定上游只统计/删除当前 namespace 书架中远程书的实际
+`.txt` 缓存；OpenReader 当前用户级 JSON stats/clear 和共享物理 path 是已发布多用户适配。
+
+当前 `remoteCacheFilePath` 只做 lexical prefix，后续 `os.ReadFile/Stat/Remove` 会跟随 mounted
+root/ancestor/entry symlink；`WriteChapterCache` 的 `MkdirAll/WriteFile` 也可被 ancestor/entry symlink
+扩展到 `cache/` 外。stats 会把 missing/unsafe 非空 DB path 计为 cached chapter；prune 在全局
+引用查询失败时反而继续删候选，且文件写入→DB 发布与 DB 清行→剪枝无共享串行边界。
+
+详细 rooted opened-file、原子写、实际文件统计、all-user reference fail-closed、write/prune 并发、
+历史 relative/current-absolute path 和无迁移边界见
+[`remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本轮尚未修改应用或测试代码。
