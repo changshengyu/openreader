@@ -3876,5 +3876,9 @@ root/ancestor/entry symlink；`WriteChapterCache` 的 `MkdirAll/WriteFile` 也�
 [`remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 `f8e5c04` 先在旧实现上锁定读/写/统计/删除和引用查询失败反例；`75cc238` 已实现 rooted
 同句柄有界读取、原子可取消写入、实际文件统计、全用户引用 fail-closed 和 write/prune 共享串行边界。
-专项/focused race、Go full/vet、frontend 741/741 与 build 已通过；当前状态
-**implemented / code-regression-validated / runtime-and-release-pending**。
+专项/focused race、Go full/vet、frontend 741/741、build、Reader/BookManage/侧边栏真实浏览器、宿主与
+候选 mounted probe、named-volume restart 及 fresh/historical/portable 卷门均通过。本机发布
+`3cef8df`/`latest`，OCI index 为
+`sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`；两平台回拉 config 均确认
+完整 revision `3cef8dfdccd45970596b3d8916a2cb6fab1480dc`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

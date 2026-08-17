@@ -1069,5 +1069,7 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   shared-reference runtime probes, plus unchanged fresh/historical/portable `data/cache/library` gates before local
   amd64/arm64 publication. Full contract:
   [`remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-- `75cc238` implements this boundary without a migration or startup scan. Code regression is complete; runtime,
-  volume and local Docker publication evidence remains pending for this slice.
+- `75cc238` implements this boundary without a migration or startup scan. Host/candidate mounted probes, Docker
+  named-volume restart and fresh/historical/portable gates passed. The locally built amd64/arm64 `3cef8df`/`latest`
+  release resolves to OCI index `sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`;
+  both pulled platform configs report full revision `3cef8dfdccd45970596b3d8916a2cb6fab1480dc`.

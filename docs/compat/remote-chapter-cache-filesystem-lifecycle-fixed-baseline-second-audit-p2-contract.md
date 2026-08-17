@@ -1,6 +1,6 @@
 # 远程章节文本缓存文件系统生命周期第二轮固定基准合同
 
-状态：**implemented / code-regression-validated / runtime-and-release-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -146,5 +146,14 @@ shape 和侧边栏确认/反馈；不新增管理员全局 clear、不返回 ser
 
 专项正常/反例、普通相对/当前绝对路径、读取预算、取消写入、跨用户共享引用、刷新/换源/缓存流
 和 focused race 已通过；后端 `go test ./...`、`go vet ./...`、frontend 741/741 与 Vite build 已通过。
-真实 Reader/BookManage/侧边栏缓存流程、候选容器 mounted probe、fresh/historical/portable 卷门和
-本机双平台发布仍待本批完成，因此当前不标记 Docker-published。
+Reader 1440/390/360/1024、BookManage 五视口和侧边栏三视口真实 Chromium 流程通过；宿主 Go 与
+候选容器的 safe/outside/ancestor/entry/FIFO/shared/local stats/read/clear 探针通过，Docker named
+volume 重启保持 owner 清理和 other shared 引用。fresh 与 historical 卷门覆盖 portable v1/v2 assets、
+跨用户、重启、TXT/EPUB/UMD/CBZ、relative-cache 和 owner isolation。
+
+本机发布 `3cef8df` 与 `latest`，OCI index 为
+`sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`；amd64 清单为
+`sha256:b2267985379cdf8145e4ec5ab6fe98b0b5257c2b305667d25aa93abb7ebdf45c`，arm64 清单为
+`sha256:37e52422283b4cec4d7b67eabb3847abd9695201a204b58060531db4efa642ea`。两平台回拉 config 和 arm64
+运行时均确认完整 revision `3cef8dfdccd45970596b3d8916a2cb6fab1480dc`。允许差异仍是当前用户聚合
+stats/clear 与共享物理 path 的多用户适配；真实设备反馈仍待验证。
