@@ -3832,3 +3832,19 @@ owner-isolation 卷门均通过。本机 amd64/arm64 发布 `2986357`/`latest`�
 `sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`；远端两平台 config 均确认
 完整 revision `298635792caaa9a8dfb6de09fd2879f837c84f22`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**；generation/restore/格式未重开。
+
+## 2026-08-17 上传资产公开读取文件系统边界第二轮固定基准复审
+
+继续枚举 `server.go` 的非 `/api` 文件读取面后，下一项确定 must-fix 收敛到
+`GET|HEAD /uploads/*resourcePath`。固定上游公开 `/assets/<namespace>/...` 供封面、背景和字体直接加载；
+OpenReader 的 `/uploads` capability、JWT user-ID 随机路径和 legacy 全局 URL 是已签收适配，不能改成
+Bearer-only、短期签名或新 URL。
+
+当前 `router.Static` 使用 Gin `onlyFilesFS(http.Dir)`：它只禁用目录 `Readdir`，仍跟随 root/ancestor/
+entry symlink，并先 open/close 检查、再由 `http.FileServer` 按 path 重开。已发布 `2986357` 的真实容器
+反例确认 entry symlink 与 ancestor symlink 均返回 200 和 uploads root 外 bytes。完整 GET/HEAD/Range、
+rooted same-file-open、special-file、legacy/portable/data 与测试门见
+[`upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md`](upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md)。
+
+当前状态 **inventory-complete / implementation-pending**；本 inventory 只修改合同文档，已发布的 upload
+write/delete、BookInfo/Reader/portable v2 合同不重开。

@@ -292,6 +292,22 @@ backup gates. Locally published `ceb4baa`/`latest` resolve to OCI index
 - [ ] Final resolved path is verified to remain under the allowed root.
 - [ ] Local store, uploads, cache, backups, and WebDAV all use rooted paths.
 
+### P2 public upload-resource filesystem boundary (2026-08-17 inventory)
+
+- [ ] Public `GET|HEAD /uploads/*resourcePath` opens only a regular file beneath `data/uploads`; root, ancestor and
+      entry symlinks plus directory/FIFO/device/socket targets fail closed without blocking or object mutation.
+- [ ] Metadata and response bytes derive from one `Lstat -> open -> SameFile` handle; no Gin static check/reopen
+      race or fallback `c.File(path)`/`http.FileServer(http.Dir)` remains.
+- [ ] Existing unauthenticated legacy/current/portable-restored URLs preserve GET/HEAD, inline Content-Type,
+      Content-Length, Last-Modified, conditional and Range behavior; no directory listing or redirect is introduced.
+- [ ] Missing/unsafe 404 responses and logs expose no upload root, symlink target, OS error, SQLite path, JWT,
+      credential or file bytes. Read requests do not create, repair, delete or rewrite mounted objects.
+
+Published `2986357` runtime inventory reproduced both an entry symlink and an ancestor symlink returning 200 with
+bytes outside `data/uploads`. Status is `inventory-complete / implementation-pending`; this pass changes only
+contracts. Full contract:
+[`compat/upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/upload-public-read-filesystem-boundary-fixed-baseline-second-audit-p2-contract.md).
+
 ## P2 raw WebDAV protocol review (2026-07-19 implemented; Docker gate pending)
 
 - [x] `/webdav/*` and `/reader3/webdav/*` authenticate before reading path, Destination, Depth or body;
