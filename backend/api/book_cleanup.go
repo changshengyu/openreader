@@ -193,10 +193,17 @@ func (s *Server) replaceBookChapterRows(tx *gorm.DB, userID, bookID uint, next [
 }
 
 func (s *Server) pruneUnreferencedRemoteCachePaths(cachePaths []string) (int, int64) {
+	s.remoteCacheMu.Lock()
+	defer s.remoteCacheMu.Unlock()
+
+	storage, err := s.remoteCacheStorage()
+	if err != nil {
+		return 0, 0
+	}
 	paths := make(map[string]struct{})
 	for _, cachePath := range cachePaths {
-		if path, ok := s.remoteCacheFilePath(cachePath); ok {
-			paths[path] = struct{}{}
+		if relative, err := s.remoteCacheRelativePath(cachePath); err == nil {
+			paths[relative] = struct{}{}
 		}
 	}
 	if len(paths) == 0 {
@@ -211,24 +218,23 @@ func (s *Server) pruneUnreferencedRemoteCachePaths(cachePaths []string) (int, in
 		Select("chapters.cache_path").
 		Joins("JOIN books ON books.id = chapters.book_id").
 		Where("books.source_id > 0 AND chapters.cache_path <> ''").
-		Scan(&references).Error; err == nil {
-		for _, reference := range references {
-			if path, ok := s.remoteCacheFilePath(reference.CachePath); ok {
-				delete(paths, path)
-			}
+		Find(&references).Error; err != nil {
+		return 0, 0
+	}
+	for _, reference := range references {
+		relative, err := s.remoteCacheRelativePath(reference.CachePath)
+		if err != nil {
+			return 0, 0
 		}
+		delete(paths, relative)
 	}
 
 	files := 0
 	size := int64(0)
-	for path := range paths {
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		if err := os.Remove(path); err == nil {
+	for relative := range paths {
+		if removed, bytes := s.removeRemoteCacheFile(storage, relative); removed {
 			files++
-			size += info.Size()
+			size += bytes
 		}
 	}
 	return files, size

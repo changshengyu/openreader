@@ -251,6 +251,9 @@ func (s *Service) Put(ctx context.Context, rawPath string, source io.Reader, max
 	if err := os.Chmod(stagedPath, 0o644); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return replaceWithStaged(target, stagedPath)
 }
 
@@ -300,6 +303,40 @@ func (s *Service) Remove(rawPath string) error {
 		return ErrUnsafePath
 	}
 	return os.RemoveAll(target)
+}
+
+func (s *Service) RemoveRegular(rawPath string) (os.FileInfo, error) {
+	target, _, err := s.Resolve(rawPath)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, ErrUnsafePath
+	}
+	file, err := os.Open(target)
+	if err != nil {
+		return nil, err
+	}
+	openedInfo, statErr := file.Stat()
+	closeErr := file.Close()
+	if statErr != nil || closeErr != nil || !os.SameFile(info, openedInfo) {
+		return nil, ErrUnsafePath
+	}
+	currentInfo, err := os.Lstat(target)
+	if err != nil || !currentInfo.Mode().IsRegular() || !os.SameFile(openedInfo, currentInfo) {
+		return nil, ErrUnsafePath
+	}
+	if err := os.Remove(target); err != nil {
+		return nil, err
+	}
+	return openedInfo, nil
 }
 
 func (s *Service) Copy(ctx context.Context, sourceRaw, destinationRaw string, overwrite bool) error {

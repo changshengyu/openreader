@@ -1,10 +1,7 @@
 package api
 
 import (
-	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -77,6 +74,9 @@ type cacheStatSummary struct {
 }
 
 func (s *Server) remoteCacheStats(userID uint) (cacheStatSummary, error) {
+	s.remoteCacheMu.Lock()
+	defer s.remoteCacheMu.Unlock()
+
 	var chapters []models.Chapter
 	if err := s.db.
 		Joins("JOIN books ON books.id = chapters.book_id").
@@ -86,22 +86,24 @@ func (s *Server) remoteCacheStats(userID uint) (cacheStatSummary, error) {
 	}
 
 	seen := map[string]struct{}{}
-	summary := cacheStatSummary{chapters: int64(len(chapters))}
+	summary := cacheStatSummary{}
+	limit := s.remoteChapterCacheReadLimit()
 	for _, chapter := range chapters {
-		path, ok := s.remoteCacheFilePath(chapter.CachePath)
-		if !ok {
+		opened, err := s.openRemoteCacheFile(chapter.CachePath)
+		if err != nil {
 			continue
 		}
-		if _, exists := seen[path]; exists {
+		_ = opened.file.Close()
+		if opened.info.Size() <= 0 || opened.info.Size() > limit {
 			continue
 		}
-		seen[path] = struct{}{}
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
+		summary.chapters++
+		if _, exists := seen[opened.relative]; exists {
 			continue
 		}
+		seen[opened.relative] = struct{}{}
 		summary.files++
-		summary.size += info.Size()
+		summary.size += opened.info.Size()
 	}
 	imageStats, err := s.chapterImages.StatsUser(userID)
 	if err != nil {
@@ -116,70 +118,4 @@ func (s *Server) remoteCacheStats(userID uint) (cacheStatSummary, error) {
 	summary.files += coverStats.Files
 	summary.size += coverStats.Bytes
 	return summary, nil
-}
-
-func (s *Server) deleteRemoteCacheFile(cachePath string) (bool, int64) {
-	path, ok := s.remoteCacheFilePath(cachePath)
-	if !ok {
-		return false, 0
-	}
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return false, 0
-	}
-	size := info.Size()
-	if err := os.Remove(path); err != nil {
-		return false, 0
-	}
-	return true, size
-}
-
-func (s *Server) remoteCacheFilePath(cachePath string) (string, bool) {
-	if cachePath == "" {
-		return "", false
-	}
-	fullPath := cachePath
-	if !filepath.IsAbs(fullPath) {
-		fullPath = filepath.Join(s.cfg.CacheDir, cachePath)
-	}
-	cleanPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return "", false
-	}
-	cleanCacheDir, err := filepath.Abs(s.cfg.CacheDir)
-	if err != nil {
-		return "", false
-	}
-	if cleanPath != cleanCacheDir && !startsWithPath(cleanPath, cleanCacheDir) {
-		return "", false
-	}
-	return cleanPath, true
-}
-
-func startsWithPath(path, parent string) bool {
-	return len(path) > len(parent) && path[:len(parent)] == parent && path[len(parent)] == os.PathSeparator
-}
-
-func directoryStats(root string) (int, int64) {
-	var fileCount int
-	var totalSize int64
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return nil
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		fileCount++
-		totalSize += info.Size()
-		return nil
-	})
-	return fileCount, totalSize
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
 )
@@ -101,6 +103,34 @@ func TestRemoteChapterCacheReadRejectsOutsideAndSymlinkPaths(t *testing.T) {
 				t.Fatalf("unsafe read changed outside file: data=%q err=%v", string(data), readErr)
 			}
 		})
+	}
+}
+
+func TestRemoteChapterCacheReadAcceptsCurrentVolumePathsAndEnforcesLimit(t *testing.T) {
+	_, server := setupTestServerWithConfig(t, func(cfg *config.Config) {
+		cfg.MaxSourceResponseBytes = 8
+	})
+	book := models.Book{ID: 1, UserID: 1, SourceID: 1}
+	relative := filepath.Join("verified", "chapter.txt")
+	fullPath := filepath.Join(server.cfg.CacheDir, relative)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, []byte("12345678"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, cachePath := range []string{relative, fullPath} {
+		content, normalized, err := server.readChapterCache(book, cachePath)
+		if err != nil || string(content) != "12345678" || normalized != fullPath {
+			t.Fatalf("verified cache %q returned content=%q path=%q err=%v", cachePath, content, normalized, err)
+		}
+	}
+	if err := os.WriteFile(fullPath, []byte("123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	content, normalized, err := server.readChapterCache(book, relative)
+	if !errors.Is(err, errRemoteChapterCacheTooLarge) || len(content) != 0 || normalized != "" {
+		t.Fatalf("oversize cache returned content=%q path=%q err=%v", content, normalized, err)
 	}
 }
 
@@ -351,5 +381,36 @@ func TestWriteChapterCacheRejectsSymlinkBoundaries(t *testing.T) {
 				t.Fatalf("unsafe write created outside object %s", path)
 			}
 		})
+	}
+}
+
+func TestWriteChapterCacheCancellationPreservesExistingFile(t *testing.T) {
+	root := t.TempDir()
+	bookURL := "https://remote-cache-write.test/cancel-book"
+	chapterURL := "https://remote-cache-write.test/cancel-chapter"
+	relative := engine.ChapterCachePath(bookURL, chapterURL)
+	path := filepath.Join(root, relative)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("existing chapter bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := engine.WriteChapterCacheContext(ctx, root, bookURL, chapterURL, "replacement chapter bytes"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled write error=%v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "existing chapter bytes" {
+		t.Fatalf("canceled write changed existing file: data=%q err=%v", data, err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".webdav-") {
+			t.Fatalf("canceled write left staging entry %q", entry.Name())
+		}
 	}
 }

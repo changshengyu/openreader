@@ -46,6 +46,7 @@ type Server struct {
 	sourceCandidates *sourcecandidates.Service
 	remoteReaders    *remotereader.Store
 	registerMu       sync.Mutex
+	remoteCacheMu    sync.Mutex
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) *Server {

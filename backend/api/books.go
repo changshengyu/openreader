@@ -2686,24 +2686,35 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		}
 		book.Variable = variableState.BookVariable
 		chapter.Variable = variableState.ChapterVariable
-		if fetched != "" {
-			content = fetched
-			cachePath, cacheErr := engine.WriteChapterCache(s.cfg.CacheDir, book.URL, chapter.URL, content)
-			if cacheErr == nil {
-				chapter.CachePath = cachePath
+		persistFetchedState := func() error {
+			if fetched != "" {
+				content = fetched
+				cachePath, cacheErr := engine.WriteChapterCacheContext(ctx, s.cfg.CacheDir, book.URL, chapter.URL, content)
+				if cacheErr == nil {
+					chapter.CachePath = cachePath
+				}
 			}
+			return s.db.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Model(&models.Book{}).
+					Where("id = ? AND user_id = ?", book.ID, book.UserID).
+					Update("variable", book.Variable).Error; err != nil {
+					return err
+				}
+				return tx.Model(&models.Chapter{}).
+					Where("id = ? AND book_id = ?", chapter.ID, book.ID).
+					Updates(map[string]any{"variable": chapter.Variable, "cache_path": chapter.CachePath}).Error
+			})
 		}
-		if err := s.db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&models.Book{}).
-				Where("id = ? AND user_id = ?", book.ID, book.UserID).
-				Update("variable", book.Variable).Error; err != nil {
-				return err
-			}
-			return tx.Model(&models.Chapter{}).
-				Where("id = ? AND book_id = ?", chapter.ID, book.ID).
-				Updates(map[string]any{"variable": chapter.Variable, "cache_path": chapter.CachePath}).Error
-		}); err != nil {
-			return "", err
+		var persistErr error
+		if fetched != "" {
+			s.remoteCacheMu.Lock()
+			persistErr = persistFetchedState()
+			s.remoteCacheMu.Unlock()
+		} else {
+			persistErr = persistFetchedState()
+		}
+		if persistErr != nil {
+			return "", persistErr
 		}
 	}
 	if policy.ApplyReaderReplaceRules && !epubreader.IsLocalEPUB(*book) && book.Type != 1 {
@@ -2966,6 +2977,9 @@ func isSupportedLocalBookFile(path string) bool {
 }
 
 func (s *Server) readChapterCache(book models.Book, cachePath string) ([]byte, string, error) {
+	if book.SourceID != 0 {
+		return s.readRemoteChapterCache(cachePath)
+	}
 	var lastErr error
 	for _, path := range s.chapterCacheCandidates(book, cachePath) {
 		bytes, err := os.ReadFile(path)

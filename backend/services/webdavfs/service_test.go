@@ -115,6 +115,47 @@ func TestOpenReturnsOnlySameRegularFileAndRejectsUnsafeKinds(t *testing.T) {
 	}
 }
 
+func TestRemoveRegularDeletesOnlyVerifiedRegularFiles(t *testing.T) {
+	service := newTestService(t)
+	regularPath := filepath.Join(service.Root(), "regular.txt")
+	if err := os.WriteFile(regularPath, []byte("regular"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := service.RemoveRegular("regular.txt")
+	if err != nil || info.Size() != int64(len("regular")) {
+		t.Fatalf("remove regular info=%v err=%v", info, err)
+	}
+	if _, err := os.Lstat(regularPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("regular file still exists: %v", err)
+	}
+
+	directoryPath := filepath.Join(service.Root(), "directory")
+	if err := os.Mkdir(directoryPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RemoveRegular("directory"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("remove directory error=%v", err)
+	}
+	if _, err := os.Lstat(directoryPath); err != nil {
+		t.Fatalf("remove regular changed directory: %v", err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(service.Root(), "linked.txt")
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	if _, err := service.RemoveRegular("linked.txt"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("remove symlink error=%v", err)
+	}
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "outside" {
+		t.Fatalf("remove regular changed symlink target: data=%q err=%v", data, err)
+	}
+}
+
 func TestMkdirReportsAFileParentAsNotDirectory(t *testing.T) {
 	service := newTestService(t)
 	if err := os.WriteFile(filepath.Join(service.Root(), "parent"), []byte("file"), 0o644); err != nil {
