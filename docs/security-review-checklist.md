@@ -312,26 +312,28 @@ middleware, and WebDAVBrowser at 1440×900, 390×844 and 360×800. Historical-vo
 container curl remain mandatory before Docker release. Required evidence is fixed in
 [`docs/compat/webdav-protocol-p2-contract.md`](compat/webdav-protocol-p2-contract.md): auth/permission,
 two-prefix, PROPFIND, mutation/status, symlink, LOCK, browser regression, curl and mounted-volume tests.
-- [ ] Backup list/download only expose caller-root, same-file-verified regular `backup_*.zip` and
+- [x] Backup list/download only expose caller-root, same-file-verified regular `backup_*.zip` and
       `portable_backup_*.zip`; symlink, directory, special and prefix-only non-ZIP entries fail closed.
-- [ ] API errors do not leak host filesystem paths.
+- [x] API errors do not leak host filesystem paths.
 
-### P2 backup list/download filesystem boundary (2026-08-17 inventory)
+### P2 backup list/download filesystem boundary (2026-08-17 implemented/published)
 
-- [ ] JWT and effective WebDAV permission resolve the caller root before stat/open; regular users cannot list or
+- [x] JWT and effective WebDAV permission resolve the caller root before stat/open; regular users cannot list or
       download an administrator or another user's same-name backup.
-- [ ] Root/ancestor/entry symlinks, directories, FIFO/device/socket and non-ZIP names are hidden from list and
+- [x] Root/ancestor/entry symlinks, directories, FIFO/device/socket and non-ZIP names are hidden from list and
       unavailable from direct download without deleting or rewriting the mounted object.
-- [ ] Metadata, portable format inspection and response bytes derive from one scoped `Lstat -> open -> SameFile`
+- [x] Metadata, portable format inspection and response bytes derive from one scoped `Lstat -> open -> SameFile`
       handle; no check-then-`c.File(path)` race remains.
-- [ ] Missing roots keep `200 []`; invalid/missing/unsafe download responses and logs expose no root, symlink target,
+- [x] Missing roots keep `200 []`; invalid/missing/unsafe download responses and logs expose no root, symlink target,
       OS/ZIP detail, JWT or WebDAV credential.
 
 Runtime inventory on published `cd3a17c` reproduced a regular-user `backup_escape.zip` symlink returning 200 with
 caller-root-external bytes, a prefix-only non-ZIP returning 200, and a directory returning 301. Contract `b9deec2`
-and old-implementation red tests `d7810ca` now precede a scoped same-file-open implementation; focused/race,
-full Go/vet, frontend 741/741 and build pass. Status is `aligned / regression-validated / Docker-pending`; checklist
-items remain open until the candidate HTTP and mounted-volume probes pass. Full contract:
+and old-implementation red tests `d7810ca` precede scoped same-file-open implementation `2986357`; focused/race,
+full Go/vet, frontend 741/741, build, real HTTP and fresh/historical/portable mounted-volume gates pass. Locally built
+`2986357`/`latest` resolve to OCI index
+`sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`. Status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
 [`compat/backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-list-download-filesystem-request-boundary-fixed-baseline-second-audit-p2-contract.md).
 
 ## P2 reading-progress CAS and WebDAV mirror review (2026-07-18)

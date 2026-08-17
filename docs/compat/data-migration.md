@@ -1019,3 +1019,20 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - The locally built amd64/arm64 `cd3a17c`/`latest` release resolves to OCI index
   `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`; both remote platform configs carry
   full revision `cd3a17c63f9768130a33b4a199a3228cb94d8261`.
+
+## P2 backup list/download filesystem-boundary compatibility (2026-08-17 implemented/published)
+
+- `2986357` changes only future backup list filtering, safe file opening, portable format inspection and download
+  response handling. It adds no table, column, index, migration, startup scan, caller root, archive member, manifest
+  version, filename prefix, generation path, browser key or persisted setting.
+- Existing regular `backup_*.zip` and `portable_backup_*.zip` remain readable without rewriting. Symlinks,
+  directories, special files and prefix-only non-ZIP objects remain untouched in their mounted location but are no
+  longer projected or downloadable through the backup API. Raw WebDAV management retains its independent contract.
+- The local candidate passed fresh portable-v1/v2-assets, cross-user and restart plus historical TXT/EPUB/UMD/CBZ,
+  relative-cache, owner-isolation and restore gates. Real HTTP also proved valid logical/portable bytes, portable-invalid
+  projection, same-name caller isolation and symlink/non-ZIP/directory/FIFO/ancestor fail-closed behavior.
+- The locally built amd64/arm64 `2986357`/`latest` release resolves to OCI index
+  `sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`; remote amd64 manifest is
+  `sha256:e782f3219c910e2c70580fc74b5d0bc9fd7014fa370e638e16b07eccb5e99628`, arm64 manifest is
+  `sha256:85e0a43109b2d98e77e3150b4a1600c08fb638dbd7298eb3800631128245fa8f`, and both configs carry full revision
+  `298635792caaa9a8dfb6de09fd2879f837c84f22`.

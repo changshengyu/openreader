@@ -3826,5 +3826,9 @@ opened-handle、same-file、format、错误和测试先行门见
 同一 opened handle；不再有 prefix-only 接受、symlink follow 或 `c.File(path)` 重开。固定安全
 400/404/500 不暴露 host path。focused/race、Go 全量/vet、frontend 741/741 与 build 已通过。
 
-当前状态 **aligned / regression-validated / Docker-pending**；generation/restore/格式未重开。真实 HTTP
-边界探针与 fresh/historical/portable 卷门通过后方可发布。
+真实 HTTP symlink/non-ZIP/directory/FIFO/valid/ancestor、跨用户同名与 path-free 错误探针，以及
+fresh portable-v1/v2-assets/cross-user/restart 和 historical TXT/EPUB/UMD/CBZ/relative-cache/
+owner-isolation 卷门均通过。本机 amd64/arm64 发布 `2986357`/`latest`，OCI index 为
+`sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`；远端两平台 config 均确认
+完整 revision `298635792caaa9a8dfb6de09fd2879f837c84f22`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**；generation/restore/格式未重开。

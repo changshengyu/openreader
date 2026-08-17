@@ -464,7 +464,7 @@ rename 后 durable ZIP 与 path-free 日志均有测试。focused/backup/race、
 `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`，远端 amd64/arm64 config
 均确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 25. 备份 list/download 文件系统读取边界（2026-08-17 inventory）
+## 25. 备份 list/download 文件系统读取边界（2026-08-17 implemented/published）
 
 generation lifecycle 发布后按 path-traversal 与 route/work amplification 继续枚举，下一项确定 must-fix
 收敛到 `GET /api/backup/list` 和 `/backup/download/:name`。既有合同只允许 caller root 内
@@ -480,5 +480,9 @@ list 对严格 ZIP basename 逐项执行普通文件/same-file open，并从同�
 download 直接发送该句柄，不再由 `c.File(path)` 重开。missing/unsafe/non-regular 使用固定安全 404，
 其它打开失败使用固定安全 500。focused/race、Go 全量/vet、frontend 741/741 与 build 已通过。
 
-当前状态 **aligned / regression-validated / Docker-pending**；generation/restore/格式未重开。真实 HTTP
-symlink/non-ZIP/directory/valid/ancestor 探针与 fresh/historical/portable 卷门通过后方可发布。
+真实 HTTP symlink/non-ZIP/directory/FIFO/valid/ancestor、跨用户同名与 path-free 错误探针，以及
+fresh portable-v1/v2-assets/cross-user/restart 和 historical TXT/EPUB/UMD/CBZ/relative-cache/
+owner-isolation 卷门均通过。本机 amd64/arm64 发布 `2986357`/`latest`，OCI index 为
+`sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`；远端两平台 config 均确认
+完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**；
+generation/restore/格式未重开。

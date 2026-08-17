@@ -1,6 +1,6 @@
 # 备份列表/下载文件系统请求边界第二轮固定基准合同
 
-状态：**aligned / regression-validated / Docker-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -119,5 +119,13 @@ logical/portable 文件名前缀是已发布的 Go 运行时适配。OpenReader 
 - focused API、WebDAV/portable/backup 专项、focused race、Go 全量与 `go vet` 均通过；frontend
   741/741 与 Vite build 通过。实现不改 schema、备份格式、生成位置、restore、WebDAV 原始协议或前端。
 
-真实 HTTP symlink/non-ZIP/directory/valid/ancestor 探针与 fresh/historical/portable mounted-volume 门仍须
-在本地候选镜像上通过，才可把本合同推进到 Docker published。
+真实 HTTP 探针在本地候选镜像上验证合法 logical/portable/portable-invalid 投影与逐字节下载、跨用户
+同名隔离、symlink、非 ZIP、目录、FIFO、缺失和祖先 symlink fail-closed，并确认不清理对象、不泄露
+目标 path。fresh portable-v1/v2-assets/cross-user/restart 与 historical TXT/EPUB/UMD/CBZ/relative-cache/
+owner-isolation mounted-volume 门均通过。
+
+本机 amd64/arm64 发布 `ghcr.io/changshengyu/openreader:2986357` 与 `latest`；二者均指向 OCI index
+`sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`。amd64 manifest 为
+`sha256:e782f3219c910e2c70580fc74b5d0bc9fd7014fa370e638e16b07eccb5e99628`，arm64 manifest 为
+`sha256:85e0a43109b2d98e77e3150b4a1600c08fb638dbd7298eb3800631128245fa8f`；远端两平台 config 均确认
+完整 revision `298635792caaa9a8dfb6de09fd2879f837c84f22`。

@@ -306,10 +306,12 @@ Only caller-root regular files with a single basename, the existing logical/port
 `.zip` suffix may be listed or downloaded. List metadata/portable format and download bytes must come from one
 rooted, symlink-rejecting, same-file-verified opened handle. Missing roots remain `200 []`; unsafe/non-regular entries
 are hidden and unavailable without exposing host paths. Generation, restore, formats and routes remain closed.
-Status: **aligned / regression-validated / Docker-pending**. Contract `b9deec2` and old-implementation red tests
-`d7810ca` precede the implementation. List now filters strict ZIP basenames and derives metadata/portable format
+Status: **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `b9deec2`
+and old-implementation red tests `d7810ca` precede the implementation. List now filters strict ZIP basenames and derives metadata/portable format
 from a scoped same-file-verified handle; download serves that same opened handle with fixed path-free 400/404/500
-errors. Focused/race, full Go/vet, frontend 741/741 and build pass; candidate HTTP and mounted-volume gates remain.
+errors. Focused/race, full Go/vet, frontend 741/741, build, real HTTP and fresh/historical/portable mounted-volume
+gates pass. `2986357`/`latest` resolve to OCI index
+`sha256:bdb8195077000a898569e0f3f6664a5760c2b56058d67b2d6ae1d4aaf42fea5e`.
 
 P2-S4 keeps `sources` as imported/updated/reactivated count and may add
 `sourceDetached`/`sourceRemoved` when replace-style reconciliation only removes or detaches old active
