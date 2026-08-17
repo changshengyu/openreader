@@ -2,13 +2,13 @@ package backup
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,11 +23,11 @@ import (
 
 // Service handles automated backups.
 type Service struct {
-	db        *gorm.DB
-	webdavDir string
-	cfg       config.Config
-	stopCh    chan struct{}
-	mu        sync.Mutex
+	db             *gorm.DB
+	webdavDir      string
+	cfg            config.Config
+	stopCh         chan struct{}
+	generationGate chan struct{}
 }
 
 // New creates a backup service.
@@ -39,12 +39,15 @@ func New(db *gorm.DB, webdavDir string, configs ...config.Config) *Service {
 	if len(configs) > 0 {
 		cfg = configs[0]
 	}
-	return &Service{
-		db:        db,
-		webdavDir: webdavDir,
-		cfg:       cfg,
-		stopCh:    make(chan struct{}),
+	service := &Service{
+		db:             db,
+		webdavDir:      webdavDir,
+		cfg:            cfg,
+		stopCh:         make(chan struct{}),
+		generationGate: make(chan struct{}, 1),
 	}
+	service.generationGate <- struct{}{}
+	return service
 }
 
 // Start begins the daily backup schedule (23:50).
@@ -81,20 +84,30 @@ func nextScheduledTime(hour, minute int) time.Time {
 
 // RunNow triggers an immediate backup. Returns the backup file path.
 func (s *Service) RunNow() (string, error) {
-	return s.run(nil, s.webdavDir)
+	return s.run(context.Background(), nil, s.webdavDir)
 }
 
 // RunNowForUser creates a user-scoped backup below the existing WebDAV mount.
 // The caller supplies the persisted username only to derive a safe directory;
 // all exported personal rows are filtered by the authenticated user id.
 func (s *Service) RunNowForUser(userID uint, username string) (string, error) {
-	return s.run(&userID, filepath.Join(s.webdavDir, "users", engine.SafeFilename(username)))
+	return s.RunNowForUserContext(context.Background(), userID, username)
+}
+
+// RunNowForUserContext creates a logical backup while respecting an HTTP request lifecycle.
+func (s *Service) RunNowForUserContext(ctx context.Context, userID uint, username string) (string, error) {
+	return s.run(ctx, &userID, filepath.Join(s.webdavDir, "users", engine.SafeFilename(username)))
 }
 
 // RunNowForUserAtRoot preserves the administrator's deployed legacy WebDAV
 // location while filtering every logical artifact by the authenticated user.
 func (s *Service) RunNowForUserAtRoot(userID uint) (string, error) {
-	return s.run(&userID, s.webdavDir)
+	return s.RunNowForUserAtRootContext(context.Background(), userID)
+}
+
+// RunNowForUserAtRootContext preserves the administrator root while respecting request cancellation.
+func (s *Service) RunNowForUserAtRootContext(ctx context.Context, userID uint) (string, error) {
+	return s.run(ctx, &userID, s.webdavDir)
 }
 
 func (s *Service) runScheduled() {
@@ -105,16 +118,24 @@ func (s *Service) runScheduled() {
 	}
 	for _, user := range users {
 		if _, err := s.RunNowForUser(user.ID, user.Username); err != nil {
-			log.Printf("scheduled backup for user %d failed: %v", user.ID, err)
+			log.Printf("scheduled backup for user %d failed", user.ID)
 		}
 	}
 }
 
-func (s *Service) run(userID *uint, backupDir string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *Service) run(ctx context.Context, userID *uint, backupDir string) (string, error) {
+	if err := s.acquireGeneration(ctx); err != nil {
+		return "", err
+	}
+	defer s.releaseGeneration()
 
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	backupPath, err := nextBackupPath(backupDir, "backup_"+time.Now().Format("20060102_150405"))
@@ -137,9 +158,13 @@ func (s *Service) run(userID *uint, backupDir string) (string, error) {
 		return "", err
 	}
 
-	zipWriter := zip.NewWriter(temporary)
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := s.writeLogicalEntries(tx, zipWriter, userID); err != nil {
+	zipWriter := zip.NewWriter(contextWriter{ctx: ctx, writer: temporary})
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.writeLogicalEntries(ctx, tx, zipWriter, userID); err != nil {
+			_ = zipWriter.Close()
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			_ = zipWriter.Close()
 			return err
 		}
@@ -147,10 +172,19 @@ func (s *Service) run(userID *uint, backupDir string) (string, error) {
 	}); err != nil {
 		return "", err
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := temporary.Sync(); err != nil {
 		return "", err
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := temporary.Close(); err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	if err := os.Rename(temporaryPath, backupPath); err != nil {
@@ -158,7 +192,7 @@ func (s *Service) run(userID *uint, backupDir string) (string, error) {
 	}
 	completed = true
 
-	log.Printf("backup created: %s", backupPath)
+	log.Printf("backup created: %s", filepath.Base(backupPath))
 	return backupPath, nil
 }
 
@@ -180,7 +214,7 @@ func nextBackupPath(backupDir, stem string) (string, error) {
 	return "", fmt.Errorf("backup filename space exhausted")
 }
 
-func (s *Service) writeLogicalEntries(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
+func (s *Service) writeLogicalEntries(ctx context.Context, db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {
 	steps := []func() error{
 		func() error { return s.addSources(db, zipWriter, userID) },
 		func() error { return s.addRSSSources(db, zipWriter, userID) },
@@ -194,11 +228,14 @@ func (s *Service) writeLogicalEntries(db *gorm.DB, zipWriter *zip.Writer, userID
 		func() error { return s.addReplaceRules(db, zipWriter, userID) },
 	}
 	for _, step := range steps {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := step(); err != nil {
 			return err
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 func (s *Service) addSources(db *gorm.DB, zipWriter *zip.Writer, userID *uint) error {

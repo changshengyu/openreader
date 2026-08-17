@@ -455,4 +455,8 @@ rename。现有 temp+rename、caller scope、logical/portable 格式和 typed 40
 HTTP context lifecycle、安全错误投影与 path-free 日志，final rename 前取消清理 temp，rename 后 durable
 包不补偿删除。完整合同和红测门见
 [`backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-generation-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本 inventory 没有修改应用或测试。
+合同和旧实现红测已依次完成；当前实现把两个 handler 的 request context 贯穿可取消生成 gate、GORM
+snapshot、logical entry、archive/asset validation/copy、ZIP close、sync 和 rename 前提交边界。普通 trigger
+固定安全 500，portable typed 409/413 保持；预取消零查询、锁 waiter、logical/portable 中途取消、temp 清理、
+rename 后 durable ZIP 与 path-free 日志均有测试。focused/backup/race、Go 全量/vet、frontend 741/741 与 build
+通过。当前状态 **aligned / regression-validated / Docker-pending**。

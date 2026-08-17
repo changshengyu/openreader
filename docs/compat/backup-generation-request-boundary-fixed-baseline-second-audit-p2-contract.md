@@ -1,6 +1,6 @@
 # 备份生成请求边界第二轮固定基准合同
 
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-pending**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -109,3 +109,18 @@ caller-root 解析必须先于任何数据库快照、目录创建、文件打�
 direct Gin JSON binder 差集关闭后，按 route/work amplification 重新枚举得到的下一项确定 must-fix 是
 备份生成 action lifecycle：一个已证明的安全 500 冲突，以及普通/portable 两条无 context 长 I/O 路径。
 本 inventory 只新增/更新合同文档，没有修改应用或测试。
+
+## 9. 实施与回归证据
+
+- `backend/api/backup.go` 将两个 trigger 的 request context 传入生成服务；普通内部错误固定投影为
+  `500 {"error":"backup failed"}`，portable 原有 409/413 和安全 500 保持，客户端取消直接结束 handler。
+- `backend/services/backup` 保留无 context 兼容入口，并新增 context-aware ordinary/portable 入口；全局
+  生成锁改为可取消 gate，GORM snapshot、logical entry、archive/asset validation/copy、ZIP close、sync
+  与 rename 提交前均观察同一 context。取消路径只删除本次私有 temp，rename 后取消不补偿删除 durable ZIP。
+- 成功日志只记录 basename；scheduled 失败不再输出可能含 mounted path/SQL/ZIP 细节的底层错误。
+- 旧实现红测位于 `backend/api/backup_generation_request_boundary_contract_test.go` 与
+  `backend/services/backup/request_context_contract_test.go`。实施后覆盖预取消零查询、锁 waiter 取消、
+  logical snapshot 中途取消、8 MiB portable archive copy 中途取消、temp/final 零残留、rename 后 durable
+  包可读及 host-path-free 日志。
+- focused、备份专项、focused race、Go 全量、`go vet ./...`、frontend 741/741 与 Vite build 已通过。
+  Docker 与 mounted-volume 证据待本地发布后补入发布台账。

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -25,13 +26,20 @@ func (s *Server) triggerBackup(c *gin.Context) {
 		path string
 		err  error
 	)
+	ctx := c.Request.Context()
 	if user.Role == "admin" {
-		path, err = s.backupSvc.RunNowForUserAtRoot(user.ID)
+		path, err = s.backupSvc.RunNowForUserAtRootContext(ctx, user.ID)
 	} else {
-		path, err = s.backupSvc.RunNowForUser(user.ID, user.Username)
+		path, err = s.backupSvc.RunNowForUserContext(ctx, user.ID, user.Username)
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "backup failed: " + err.Error()})
+		if requestCanceled(err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "backup failed"})
+		return
+	}
+	if err := ctx.Err(); err != nil {
 		return
 	}
 	name := filepath.Base(path)
@@ -51,9 +59,12 @@ func (s *Server) triggerPortableBackup(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := s.backupSvc.RunPortableV2ForUser(user.ID, user.Username, backupDir)
+	ctx := c.Request.Context()
+	result, err := s.backupSvc.RunPortableV2ForUserContext(ctx, user.ID, user.Username, backupDir)
 	if err != nil {
 		switch {
+		case requestCanceled(err):
+			return
 		case errors.Is(err, backup.ErrPortableArchiveUnavailable):
 			c.JSON(http.StatusConflict, gin.H{"error": "local archive unavailable for portable backup"})
 		case errors.Is(err, backup.ErrPortableAssetUnavailable):
@@ -67,6 +78,9 @@ func (s *Server) triggerPortableBackup(c *gin.Context) {
 		}
 		return
 	}
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	name := filepath.Base(result.Path)
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "portable backup created",
@@ -77,6 +91,10 @@ func (s *Server) triggerPortableBackup(c *gin.Context) {
 		"assets":       result.Assets,
 		"legacyAssets": result.LegacyAssets,
 	})
+}
+
+func requestCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (s *Server) listBackups(c *gin.Context) {

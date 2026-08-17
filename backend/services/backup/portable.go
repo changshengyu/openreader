@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -85,26 +86,47 @@ func (s *Service) RunPortableForUser(userID uint, username, backupDir string) (s
 }
 
 func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) (PortableResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.RunPortableV2ForUserContext(context.Background(), userID, username, backupDir)
+}
 
+// RunPortableV2ForUserContext creates a portable package while respecting request cancellation.
+func (s *Service) RunPortableV2ForUserContext(
+	ctx context.Context,
+	userID uint,
+	username string,
+	backupDir string,
+) (PortableResult, error) {
+	if err := s.acquireGeneration(ctx); err != nil {
+		return PortableResult{}, err
+	}
+	defer s.releaseGeneration()
+
+	if err := ctx.Err(); err != nil {
+		return PortableResult{}, err
+	}
 	if strings.TrimSpace(s.cfg.LibraryDir) == "" {
 		return PortableResult{}, ErrPortableBackupUnavailable
 	}
-	books, err := s.collectPortableArchives(userID, username)
+	books, err := s.collectPortableArchives(ctx, userID, username)
 	if err != nil {
 		return PortableResult{}, err
 	}
-	logicalEntries, assets, legacyAssets, err := s.collectPortableAssetBundle(userID)
+	logicalEntries, assets, legacyAssets, err := s.collectPortableAssetBundle(ctx, userID)
 	if err != nil {
 		return PortableResult{}, err
 	}
 	createdAt := time.Now().UTC()
-	if err := s.validatePortableExportBudget(logicalEntries, books, assets, legacyAssets, createdAt); err != nil {
+	if err := s.validatePortableExportBudget(ctx, logicalEntries, books, assets, legacyAssets, createdAt); err != nil {
 		return PortableResult{}, err
 	}
 
+	if err := ctx.Err(); err != nil {
+		return PortableResult{}, err
+	}
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return PortableResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return PortableResult{}, err
 	}
 	finalPath, err := nextBackupPath(backupDir, "portable_backup_"+time.Now().Format("20060102_150405"))
@@ -127,8 +149,8 @@ func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) 
 		return PortableResult{}, err
 	}
 
-	writer := zip.NewWriter(temporary)
-	if err := writePortableLogicalEntries(writer, logicalEntries); err != nil {
+	writer := zip.NewWriter(contextWriter{ctx: ctx, writer: temporary})
+	if err := writePortableLogicalEntries(ctx, writer, logicalEntries); err != nil {
 		_ = writer.Close()
 		return PortableResult{}, err
 	}
@@ -142,6 +164,10 @@ func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) 
 		LegacyAssets: legacyAssets,
 	}
 	for index, item := range books {
+		if err := ctx.Err(); err != nil {
+			_ = writer.Close()
+			return PortableResult{}, err
+		}
 		extension := strings.ToLower(filepath.Ext(item.path))
 		entryName := fmt.Sprintf("local-books/b%04d/original%s", index+1, extension)
 		entry, err := writer.Create(entryName)
@@ -163,9 +189,13 @@ func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) 
 		hash := sha256.New()
 		written, copyErr := io.Copy(
 			io.MultiWriter(entry, hash),
-			io.LimitReader(file, item.size+1),
+			contextReader{ctx: ctx, reader: io.LimitReader(file, item.size+1)},
 		)
 		closeErr := file.Close()
+		if err := ctx.Err(); err != nil {
+			_ = writer.Close()
+			return PortableResult{}, err
+		}
 		if copyErr != nil || closeErr != nil || written != item.size {
 			_ = writer.Close()
 			return PortableResult{}, portableUnavailable(item.book)
@@ -182,11 +212,15 @@ func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) 
 		})
 	}
 	for _, item := range assets {
-		if err := writePortableAssetEntry(writer, item); err != nil {
+		if err := writePortableAssetEntry(ctx, writer, item); err != nil {
 			_ = writer.Close()
 			return PortableResult{}, err
 		}
 		manifest.Assets = append(manifest.Assets, item.manifest)
+	}
+	if err := ctx.Err(); err != nil {
+		_ = writer.Close()
+		return PortableResult{}, err
 	}
 	manifestData, err := json.Marshal(manifest)
 	if err != nil {
@@ -205,16 +239,28 @@ func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) 
 	if err := writer.Close(); err != nil {
 		return PortableResult{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return PortableResult{}, err
+	}
 	if err := temporary.Sync(); err != nil {
 		return PortableResult{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return PortableResult{}, err
+	}
 	if err := temporary.Close(); err != nil {
+		return PortableResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return PortableResult{}, err
 	}
 	if info, err := os.Stat(temporaryPath); err != nil {
 		return PortableResult{}, err
 	} else if info.Size() > portableConfiguredCompressedLimit(s.cfg.MaxPortableBackupBytes) {
 		return PortableResult{}, ErrPortableBackupLimit
+	}
+	if err := ctx.Err(); err != nil {
+		return PortableResult{}, err
 	}
 	if err := os.Rename(temporaryPath, finalPath); err != nil {
 		return PortableResult{}, err
@@ -228,13 +274,16 @@ func (s *Service) RunPortableV2ForUser(userID uint, username, backupDir string) 
 	}, nil
 }
 
-func (s *Service) collectPortableArchives(userID uint, username string) ([]portableArchiveInput, error) {
+func (s *Service) collectPortableArchives(ctx context.Context, userID uint, username string) ([]portableArchiveInput, error) {
 	var books []models.Book
-	if err := s.db.Where("user_id = ? AND source_id = ?", userID, 0).Order("id asc").Find(&books).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("user_id = ? AND source_id = ?", userID, 0).Order("id asc").Find(&books).Error; err != nil {
 		return nil, err
 	}
 	items := make([]portableArchiveInput, 0, len(books))
 	for _, book := range books {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if book.Type == 1 {
 			return nil, portableUnavailable(book)
 		}
@@ -245,6 +294,9 @@ func (s *Service) collectPortableArchives(userID uint, username string) ([]porta
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() || info.Size() < 0 {
 			return nil, portableUnavailable(book)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		items = append(items, portableArchiveInput{book: book, path: path, size: info.Size()})
 	}
@@ -352,13 +404,16 @@ func PortableManifestForTest(path string) (portableManifest, error) {
 	return portableManifest{}, os.ErrNotExist
 }
 
-func writePortableLogicalEntries(writer *zip.Writer, entries map[string][]byte) error {
+func writePortableLogicalEntries(ctx context.Context, writer *zip.Writer, entries map[string][]byte) error {
 	names := make([]string, 0, len(entries))
 	for name := range entries {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		entry, err := writer.Create(name)
 		if err != nil {
 			return err
@@ -378,6 +433,7 @@ func portableConfiguredCompressedLimit(value int64) int64 {
 }
 
 func (s *Service) validatePortableExportBudget(
+	ctx context.Context,
 	logicalEntries map[string][]byte,
 	books []portableArchiveInput,
 	assets []portableAssetInput,
@@ -408,6 +464,9 @@ func (s *Service) validatePortableExportBudget(
 		return nil
 	}
 	for _, data := range logicalEntries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := add(int64(len(data))); err != nil {
 			return err
 		}
@@ -421,6 +480,9 @@ func (s *Service) validatePortableExportBudget(
 		LegacyAssets: legacyAssets,
 	}
 	for index, book := range books {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := add(book.size); err != nil {
 			return err
 		}
@@ -433,6 +495,9 @@ func (s *Service) validatePortableExportBudget(
 		})
 	}
 	for _, asset := range assets {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := add(asset.manifest.Size); err != nil {
 			return err
 		}

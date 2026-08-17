@@ -3,6 +3,7 @@ package backup
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -29,8 +30,8 @@ type portableAssetReference struct {
 	sha256    string
 }
 
-func (s *Service) collectPortableAssetBundle(userID uint) (map[string][]byte, []portableAssetInput, int, error) {
-	logicalEntries, err := s.portableLogicalEntries(userID)
+func (s *Service) collectPortableAssetBundle(ctx context.Context, userID uint) (map[string][]byte, []portableAssetInput, int, error) {
+	logicalEntries, err := s.portableLogicalEntries(ctx, userID)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -63,7 +64,10 @@ func (s *Service) collectPortableAssetBundle(userID uint) (map[string][]byte, []
 	deduplicated := make(map[string]portableAssetInput)
 	assets := make([]portableAssetInput, 0, len(urls))
 	for _, rawURL := range urls {
-		reference, err := s.validatePortableAssetReference(userID, rawURL)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, 0, err
+		}
+		reference, err := s.validatePortableAssetReference(ctx, userID, rawURL)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -100,11 +104,15 @@ func (s *Service) collectPortableAssetBundle(userID uint) (map[string][]byte, []
 	return logicalEntries, assets, len(legacy), nil
 }
 
-func (s *Service) portableLogicalEntries(userID uint) (map[string][]byte, error) {
+func (s *Service) portableLogicalEntries(ctx context.Context, userID uint) (map[string][]byte, error) {
 	var output bytes.Buffer
-	writer := zip.NewWriter(&output)
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := s.writeLogicalEntries(tx, writer, &userID); err != nil {
+	writer := zip.NewWriter(contextWriter{ctx: ctx, writer: &output})
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.writeLogicalEntries(ctx, tx, writer, &userID); err != nil {
+			_ = writer.Close()
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			_ = writer.Close()
 			return err
 		}
@@ -119,11 +127,14 @@ func (s *Service) portableLogicalEntries(userID uint) (map[string][]byte, error)
 	}
 	entries := make(map[string][]byte, len(reader.File))
 	for _, file := range reader.File {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		opened, err := file.Open()
 		if err != nil {
 			return nil, err
 		}
-		data, readErr := io.ReadAll(opened)
+		data, readErr := io.ReadAll(contextReader{ctx: ctx, reader: opened})
 		closeErr := opened.Close()
 		if readErr != nil {
 			return nil, readErr
@@ -266,7 +277,10 @@ func rewritePortableAssetStrings(value any, placeholders map[string]string) any 
 	return value
 }
 
-func (s *Service) validatePortableAssetReference(userID uint, rawURL string) (portableAssetReference, error) {
+func (s *Service) validatePortableAssetReference(ctx context.Context, userID uint, rawURL string) (portableAssetReference, error) {
+	if err := ctx.Err(); err != nil {
+		return portableAssetReference{}, err
+	}
 	if strings.ContainsAny(rawURL, "?#") || strings.Contains(rawURL, `\`) {
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
@@ -307,12 +321,18 @@ func (s *Service) validatePortableAssetReference(userID uint, rawURL string) (po
 	if err != nil {
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
-	validationErr := assetservice.ValidateUpload(file, info.Size(), kind, extension)
+	validationErr := assetservice.ValidateUpload(contextReader{ctx: ctx, reader: file}, info.Size(), kind, extension)
 	_ = file.Close()
+	if err := ctx.Err(); err != nil {
+		return portableAssetReference{}, err
+	}
 	if validationErr != nil {
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
-	digest, size, err := portableAssetDigest(resolved, assetservice.SizeLimitForKind(kind))
+	digest, size, err := portableAssetDigest(ctx, resolved, assetservice.SizeLimitForKind(kind))
+	if contextErr := ctx.Err(); contextErr != nil {
+		return portableAssetReference{}, contextErr
+	}
 	if err != nil || size != info.Size() {
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
@@ -325,7 +345,10 @@ func (s *Service) validatePortableAssetReference(userID uint, rawURL string) (po
 	}, nil
 }
 
-func writePortableAssetEntry(writer *zip.Writer, asset portableAssetInput) error {
+func writePortableAssetEntry(ctx context.Context, writer *zip.Writer, asset portableAssetInput) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	file, err := os.Open(asset.path)
 	if err != nil {
 		return ErrPortableAssetUnavailable
@@ -336,7 +359,11 @@ func writePortableAssetEntry(writer *zip.Writer, asset portableAssetInput) error
 		_ = file.Close()
 		return ErrPortableAssetUnavailable
 	}
-	if err := assetservice.ValidateUpload(file, info.Size(), asset.manifest.Kind, asset.manifest.Extension); err != nil {
+	if err := assetservice.ValidateUpload(contextReader{ctx: ctx, reader: file}, info.Size(), asset.manifest.Kind, asset.manifest.Extension); err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			_ = file.Close()
+			return contextErr
+		}
 		_ = file.Close()
 		return ErrPortableAssetUnavailable
 	}
@@ -350,8 +377,14 @@ func writePortableAssetEntry(writer *zip.Writer, asset portableAssetInput) error
 		return err
 	}
 	hash := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(entry, hash), io.LimitReader(file, asset.manifest.Size+1))
+	written, copyErr := io.Copy(
+		io.MultiWriter(entry, hash),
+		contextReader{ctx: ctx, reader: io.LimitReader(file, asset.manifest.Size+1)},
+	)
 	closeErr := file.Close()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if copyErr != nil || closeErr != nil || written != asset.manifest.Size ||
 		hex.EncodeToString(hash.Sum(nil)) != asset.manifest.SHA256 {
 		return ErrPortableAssetUnavailable
@@ -359,14 +392,14 @@ func writePortableAssetEntry(writer *zip.Writer, asset portableAssetInput) error
 	return nil
 }
 
-func portableAssetDigest(path string, limit int64) (string, int64, error) {
+func portableAssetDigest(ctx context.Context, path string, limit int64) (string, int64, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", 0, err
 	}
 	defer file.Close()
 	hash := sha256.New()
-	written, err := io.Copy(hash, io.LimitReader(file, limit+1))
+	written, err := io.Copy(hash, contextReader{ctx: ctx, reader: io.LimitReader(file, limit+1)})
 	if err != nil || written > limit {
 		return "", 0, ErrPortableBackupLimit
 	}
