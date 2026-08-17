@@ -3851,5 +3851,10 @@ rooted same-file-open、special-file、legacy/portable/data 与测试门见
 同一 `*os.File` 执行 `http.ServeContent`。root/ancestor/entry symlink、反斜杠、目录、FIFO、安全 404 与
 legacy/current GET/HEAD/304/Range 均有测试；focused/race、Go 全量/vet、frontend 741/741 与 build 通过。
 
-当前状态 **aligned / regression-validated / Docker-pending**；真实 HTTP/浏览器与 fresh/historical/portable
-卷门待执行，upload write/delete、BookInfo/Reader/portable v2 合同不重开。
+真实 Go + Chromium 三视口、本地候选与 GHCR 回拉 HTTP 探针、fresh portable-v1/v2-assets/
+cross-user/restart 与 historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 卷门均通过。
+本机 amd64/arm64 发布 `277e512`/`latest`，OCI index 为
+`sha256:ca50fd59dce4f4bb13a1450ee7ee39b2a3d7b392de3902a7f3c21272e8ac9c70`，远端两平台 config 均确认
+完整 revision `277e512fa1a0135cff4089298d4644ee72ddf518`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**；upload write/delete、
+BookInfo/Reader/portable v2 合同不重开。

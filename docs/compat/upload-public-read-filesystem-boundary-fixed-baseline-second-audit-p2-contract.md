@@ -1,6 +1,6 @@
 # 上传资产公开读取文件系统边界第二轮固定基准合同
 
-状态：**aligned / regression-validated / Docker-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -37,11 +37,11 @@
 |---|---|---|---|
 | 公开稳定 URL | `/assets/<namespace>/...` 可由页面直接加载 | `/uploads/users/<id>/...` 与 legacy `/uploads/<kind>/...` 公开 GET/HEAD | **technical-stack-equivalent / 保持**；不能改成 Bearer-only 或签名短链，避免破坏 `<img>`、CSS 字体、背景和历史设置 |
 | namespace/文件名 | 用户 namespace + 原文件名，可覆盖 | JWT user ID + kind + 随机名；legacy 全局 URL 只读 | **允许的多用户/迁移增强 / 保持**；不移动、不改名、不扫描已有资产 |
-| 目录可见性 | 静态资源读取，不构成目录管理动作 | Gin `Static` 禁止目录 listing | **aligned / 保持**；目录、root 和空路径不列举、不重定向到索引 |
-| rooted path | 上游没有证明 mounted symlink 安全 | `http.Dir.Open` 跟随 root/ancestor/entry symlink | **must-fix**；公开 capability 只能读取 uploads root 内同一普通文件，不能扩展到 DB、备份或其它 mounted bytes |
-| 文件类型 | 返回被选择的资源文件 | `http.Dir` 可尝试打开目录和特殊文件 | **must-fix**；只允许普通文件，symlink、目录、FIFO/device/socket 全部快速 404，不能阻塞请求 |
-| 检查/发送身份 | 上游未定义 Go 文件句柄生命周期 | Gin 先 `fs.Open` 检查并关闭，再由 `http.FileServer` 按 path 重开 | **must-fix**；metadata 和响应必须来自一个 `Lstat -> open -> SameFile` 句柄，消除 check/reopen 窗口 |
-| HTTP 读取 | 浏览器静态资源语义 | stdlib file server 提供 GET/HEAD、Content-Length/Type、Last-Modified、conditional/range | **aligned / 保持**；安全修复不能把合法图片/字体变成下载附件、JSON 包络或无 Range 流 |
+| 目录可见性 | 静态资源读取，不构成目录管理动作 | 显式 handler 将目录、root 和空路径投影为空 404 | **aligned / 保持**；不列举、不重定向到索引 |
+| rooted path | 上游没有证明 mounted symlink 安全 | 显式 GET/HEAD handler 通过 caller-rooted `webdavfs.Service.Open` 逐组件拒绝 root/ancestor/entry symlink | **aligned / 允许的安全加固**；公开 capability 只读 uploads root 内同一普通文件 |
+| 文件类型 | 返回被选择的资源文件 | `Service.Open` 只返回已验证普通文件，目录、FIFO 与其它非普通对象 fail closed | **aligned / 允许的安全加固**；特殊文件快速空 404，不阻塞请求 |
+| 检查/发送身份 | 上游未定义 Go 文件句柄生命周期 | `Lstat -> open -> SameFile` 后将同一 `*os.File` 交给 `http.ServeContent` | **aligned / 技术栈等价**；已消除 Gin static check/reopen 窗口 |
+| HTTP 读取 | 浏览器静态资源语义 | `http.ServeContent` 从已验证句柄提供 GET/HEAD、Content-Length/Type、Last-Modified、conditional/range | **aligned / 保持**；合法图片/字体仍非下载附件、JSON 包络或无 Range 流 |
 
 ## 3. 稳定读取合同
 
@@ -124,5 +124,20 @@ backup list/download 发布后继续按公开文件读取与 path-traversal 枚�
 - focused API、既有 upload/asset/portable appearance、`webdavfs`、focused race、Go 全量、`go vet`、
   frontend 741/741 与 Vite build 均通过。实现不改写入/删除、URL、schema、备份格式或前端。
 
-真实 HTTP/浏览器资源加载与 fresh/historical/portable mounted-volume 门仍须在本地候选镜像上通过，
-才可把本合同推进到 Docker published。
+真实 Go + Chromium 三视口、本地候选镜像、GHCR 回拉镜像与 fresh/historical/portable
+mounted-volume 门均已通过。
+
+## 10. 容器发布证据
+
+- 真实 Reader 资产流程在 1440x900、390x844、360x800 通过：公开背景/字体加载、上传持久化、
+  设置失败回滚清理、五字体槽、刷新恢复和删除均使用真实 Go API。
+- 本地候选与 GHCR 回拉镜像均通过同一 HTTP 探针：legacy/current 普通文件保持
+  GET/HEAD/Range/304/416；root/ancestor/entry symlink、目录、FIFO、反斜杠和 missing 均为
+  空 404，对象不变且日志无外部目标。
+- fresh 卷通过 portable v1/v2 assets、cross-user 和 restart；historical 卷通过 TXT/EPUB/UMD/CBZ、
+  relative-cache、owner-isolation 和 restore。
+- 本机发布 `277e512` 与 `latest`，OCI index 为
+  `sha256:ca50fd59dce4f4bb13a1450ee7ee39b2a3d7b392de3902a7f3c21272e8ac9c70`；amd64 清单为
+  `sha256:f936ed8b9dbf3bf61a5d0f621bd7c06f4861f0c1a963df2fe85cc3890cc3ed81`，arm64 清单为
+  `sha256:111f01ed3ddf7c404bdc6dc3a40c97180ce4821dc0bff852d8b4abf3e1213c91`，两平台 config 均确认
+  完整 revision `277e512fa1a0135cff4089298d4644ee72ddf518`。

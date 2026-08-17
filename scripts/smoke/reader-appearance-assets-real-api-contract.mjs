@@ -209,6 +209,21 @@ async function uploadFromInput(page, selector, file) {
   return JSON.parse(text)
 }
 
+async function uploadFontFromOption(page, option, file) {
+  const responsePromise = page.waitForResponse(response => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/api/uploads'
+  ), { timeout: 15_000 })
+  const fileChooserPromise = page.waitForEvent('filechooser')
+  await option.locator('.font-action-btn').click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles(file)
+  const response = await responsePromise
+  const text = await response.text()
+  assert(response.status() === 201, `font upload failed with ${response.status()}: ${text}`)
+  return JSON.parse(text)
+}
+
 async function assertAssetGone(root, url, label) {
   const deadline = Date.now() + 10_000
   let status = 200
@@ -324,7 +339,7 @@ async function runViewport(browser, root, viewport, fontBuffer) {
     await page.unroute('**/api/settings/reader')
 
     const heiOption = page.locator('.font-family-option').filter({ hasText: '黑体' })
-    const font = await uploadFromInput(page, '.font-family-option:has-text("黑体") input[type="file"]', {
+    const font = await uploadFontFromOption(page, heiOption, {
       name: 'reader-custom-hei.ttf',
       mimeType: 'font/ttf',
       buffer: fontBuffer,
@@ -354,7 +369,8 @@ async function runViewport(browser, root, viewport, fontBuffer) {
       response.request().method() === 'DELETE'
       && new URL(response.url()).pathname === '/api/uploads'
     ), { timeout: 15_000 })
-    await restoredHei.locator('button[title="恢复默认字体"]').click()
+    await restoredHei.locator('button[title="管理自定义字体"]').click()
+    await page.getByRole('button', { name: '恢复默认', exact: true }).click()
     const fontDelete = await fontDeletePromise
     assert(fontDelete.status() === 200, `${viewport.width}: font delete ${fontDelete.status()} ${await fontDelete.text()}`)
     await waitForSetting(
