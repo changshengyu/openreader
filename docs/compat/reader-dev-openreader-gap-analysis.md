@@ -3805,4 +3805,7 @@ rename。现有 caller root、原子 temp+rename、logical/portable 格式、typ
 snapshot、logical entry、archive/asset validation/copy、ZIP close、sync 和 rename 前提交边界。普通 trigger
 固定安全 500，portable typed 409/413 保持；预取消零查询、锁 waiter、logical/portable 中途取消、temp 清理、
 rename 后 durable ZIP 与 path-free 日志均有测试。focused/backup/race、Go 全量/vet、frontend 741/741 与 build
-通过。当前状态 **aligned / regression-validated / Docker-pending**。
+通过；真实 HTTP safe-500/success/list/download/128 MiB portable cancel 与 fresh/historical/portable 卷门亦
+通过。本机发布 `cd3a17c`/`latest`，OCI index 为
+`sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`，远端 amd64/arm64 config
+均确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**。

@@ -1004,3 +1004,18 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - The local candidate passed fresh portable-v1/v2-assets, cross-user and restart plus historical TXT/EPUB/UMD/CBZ,
   relative-cache, owner-isolation and restore gates. The locally built amd64/arm64 `9f5a52b`/`latest` release resolves
   to OCI index `sha256:7a72f2d01b26d1d28c35bb13970cb64a1f7dbf97ddebc3aa704957f58f2f56c3`.
+
+## P2 backup-generation request lifecycle compatibility (2026-08-17 implemented/published)
+
+- `cd3a17c` changes only future ordinary/portable generation request cancellation, internal-error projection and
+  path-free logging. It adds no table, column, index, migration, startup scan, caller root, archive member, manifest
+  version, filename prefix, browser key or persisted setting.
+- Existing logical/portable ZIPs, SQLite rows and mounted `data/`, `cache/` and `library/` files are neither scanned
+  nor rewritten. A canceled request removes only its current private pre-rename temp; an already renamed durable ZIP
+  is retained. Scheduled and existing in-process callers keep background-context compatibility entry points.
+- The local candidate passed fresh portable-v1/v2-assets, cross-user and restart plus historical TXT/EPUB/UMD/CBZ,
+  relative-cache, owner-isolation and restore gates. Real HTTP also proved fixed safe 500, ordinary list/download and
+  cleanup after disconnecting a 128 MiB portable copy with a visible private temp.
+- The locally built amd64/arm64 `cd3a17c`/`latest` release resolves to OCI index
+  `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`; both remote platform configs carry
+  full revision `cd3a17c63f9768130a33b4a199a3228cb94d8261`.

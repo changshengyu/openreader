@@ -290,10 +290,12 @@ Both trigger routes keep no-body requests, auth/permission priority, caller root
 success/typed error fields. The ordinary trigger must stop serializing raw service errors and use safe fixed 500;
 both HTTP-triggered generators must propagate request context through lock wait, DB reads, archive/asset copies and
 the pre-rename boundary. Existing no-context service methods remain scheduled/internal compatibility wrappers.
-Status: **aligned / regression-validated / Docker-pending**. Both handlers now use request context;
+Status: **aligned / regression-validated / Docker-published / awaiting-device-verification**. Both handlers now use request context;
 pre-canceled and lock-waiting work performs no generation, in-flight logical/archive work removes its private
 temporary file, and cancellation after the atomic rename keeps the durable package. Ordinary internal failures
-use the fixed safe 500 while portable typed 409/413 responses remain unchanged.
+use the fixed safe 500 while portable typed 409/413 responses remain unchanged. Contract `05def84`, red tests
+`f9d2aff` and implementation `cd3a17c` are complete; `cd3a17c`/`latest` resolve to OCI index
+`sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`.
 
 P2-S4 keeps `sources` as imported/updated/reactivated count and may add
 `sourceDetached`/`sourceRemoved` when replace-style reconciliation only removes or detaches old active

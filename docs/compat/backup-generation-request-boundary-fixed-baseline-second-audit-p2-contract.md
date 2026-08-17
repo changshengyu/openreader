@@ -1,6 +1,6 @@
 # 备份生成请求边界第二轮固定基准合同
 
-状态：**aligned / regression-validated / Docker-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -122,5 +122,13 @@ direct Gin JSON binder 差集关闭后，按 route/work amplification 重新枚�
   `backend/services/backup/request_context_contract_test.go`。实施后覆盖预取消零查询、锁 waiter 取消、
   logical snapshot 中途取消、8 MiB portable archive copy 中途取消、temp/final 零残留、rename 后 durable
   包可读及 host-path-free 日志。
-- focused、备份专项、focused race、Go 全量、`go vet ./...`、frontend 741/741 与 Vite build 已通过。
-  Docker 与 mounted-volume 证据待本地发布后补入发布台账。
+- 合同 `05def84`、旧实现红测 `f9d2aff` 与实现 `cd3a17c` 已按顺序完成。focused、备份专项、focused
+  race、Go 全量、`go vet ./...`、frontend 741/741 与 Vite build 通过；真实 HTTP 探针覆盖 path-bearing
+  内部失败的固定 500、普通 success/list/download，以及 128 MiB portable copy 在 temp 出现后的 TCP
+  断开清理。fresh portable-v1/v2-assets/cross-user/restart 与 historical TXT/EPUB/UMD/CBZ/relative-cache/
+  owner-isolation mounted-volume 门通过。
+- 本机 amd64/arm64 发布 `ghcr.io/changshengyu/openreader:cd3a17c` 与 `latest`；二者均指向 OCI index
+  `sha256:08e9a5ba94646e5955e9c0d4586a4be95d004d6a015b518331c02748a9e53f70`。amd64 manifest 为
+  `sha256:9440e2d3d04b4e9565efe5e89507bacd03e9f9335d77a74e033cb0fcc58878ab`，arm64 manifest 为
+  `sha256:9006acfadff69446f872bea96e40cce0e6289cb5ecd14c21b3337c8455d44d0b`；远端两平台 config 均确认
+  完整 revision `cd3a17c63f9768130a33b4a199a3228cb94d8261`。
