@@ -1119,3 +1119,15 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   release resolves to OCI index `sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`.
   Full contract:
   [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+
+## P2 backup-upload multipart request compatibility (2026-08-24 extracted)
+
+- The pending change adds no schema, migration, startup scan, mounted path, backup member, manifest, archive budget,
+  environment variable, route, response field, browser key or visible restore workflow.
+- Existing logical reader-dev/Legado/OpenReader ZIPs and portable v1/v2 packages remain byte-for-byte inputs to the
+  same preflight and transaction. Current/historical `data/cache/library` volumes are not scanned or rewritten.
+- Only future ambiguous HTTP uploads with scalar, duplicate or differently named extra file parts are rejected before
+  stage/restore. A valid singular `file=*.zip` retains current counts, permission, collision and rollback semantics.
+- Handler-owned `multipart.Form.RemoveAll()` shortens request temp lifetime only; caller-private restore stage and its
+  existing cleanup remain separate. Fresh/historical/portable/restart gates are required before release. Full contract:
+  [`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md).

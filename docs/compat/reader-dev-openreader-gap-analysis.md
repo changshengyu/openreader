@@ -3926,3 +3926,18 @@ build、Reader/BookManage 三视口与 fresh/historical/portable/restart 卷门�
 OCI index 为 `sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`；当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。不删除历史路径回退，
 不要求重新上传，也不迁移 mounted 数据。
+
+## 2026-08-24 备份上传恢复 multipart 请求边界第二轮固定基准复审
+
+本地书归档发布后重新扫描当前 route/wire 差集，下一项确定 must-fix 是
+`POST /api/backup/restore-legado` 的 multipart identity 与临时文件 ownership。固定上游只允许用户选择
+一个 `.zip` WebDAV 行并确认恢复；OpenReader 保留 JWT multipart route 作为部署适配，但没有多包合并
+语义。已签收 ZIP budgets、logical/portable 内容、权限、transaction 和 WebDAV snapshot 不重开。
+
+`OpenReader@7045827` 使用 `c.FormFile("file")`，完整解析后忽略额外 scalar、第二个同名 file 和其它
+file field，也不在 handler 内调用 `MultipartForm.RemoveAll()`。一次性 overlay 探针提交合法 ZIP、scalar
+和 34 MiB 额外 file 后仍返回 200、写入 Book，并在直接 handler 返回后留下 temp。目标为 auth-first、
+compressed+1 MiB 总包络、唯一 `file`、零 scalar/额外 file、255-byte UTF-8 ZIP filename 和所有返回路径
+handler-owned cleanup。完整合同与红测/卷门见
+[`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**。

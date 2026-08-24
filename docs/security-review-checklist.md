@@ -463,6 +463,25 @@ blocked by local `osxkeychain -50`; read-only GHCR Registry config inspection co
 revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. Status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
+## P2 backup-upload multipart request-boundary review (2026-08-24 inventory)
+
+- [ ] Keep JWT/activity/effective WebDAV permission before multipart parsing; unauthorized/forbidden requests create
+      no temp, restore stage, row, asset or event.
+- [ ] Enforce the existing compressed-limit-plus-1-MiB declared/actual body envelope before restore allocation.
+- [ ] Accept exactly one file part named `file`, zero scalar/other file parts, and a non-empty UTF-8 `.zip` filename
+      of at most 255 bytes. Reject ambiguity before stage/preflight/transaction.
+- [ ] Register handler-owned `multipart.Form.RemoveAll()` for every non-nil parsed form on success, invalid shape,
+      wrong extension, oversized file, stage failure and restore failure; never log temp paths or submitted names.
+- [ ] Preserve compressed/entry/expanded ZIP budgets, path/symlink/duplicate checks, portable hashes/collisions,
+      caller/source ownership, one-transaction restore and safe 400/409/413/500 envelopes.
+- [ ] Pass red/green shape and forced-disk cleanup tests, focused race/full/vet, real declared/chunked multipart probe,
+      frontend/build, WebDAV restore three-view and fresh/historical/portable/restart gates before local publication.
+
+The `7045827` overlay probe proved that a valid ZIP plus scalar and 34 MiB extra file still restores a Book and leaves
+the parsed temp after direct handler return. Full contract:
+[`compat/backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+Status: `inventory-complete / implementation-pending`.
+
 ## P2 local-book archive rooted lifecycle review (2026-08-24 implemented/published)
 
 - [x] Resolve every imported-book owner/book root from trusted `LibraryDir`; do not accept a resolved owner root that

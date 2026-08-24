@@ -305,6 +305,23 @@ atomic generation/restore and source-edit capability contract are defined by
 
 Configuration defaults: `OPENREADER_MAX_BACKUP_RESTORE_BYTES=134217728`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES=5000`, `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES=16777216`, and `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES=134217728`. These are an allowed OpenReader security improvement; they do not change the exported data schema or user-visible restore sequence.
 
+### P2 backup-upload multipart request boundary (2026-08-24 extracted)
+
+The archive/content/transaction contract above remains closed. The remaining upload-wire gap is tracked by
+[`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md):
+
+- `POST /api/backup/restore-legado` must contain exactly one file part named `file` and no scalar or additional file
+  part. Missing/non-multipart keeps the existing safe `400`; ambiguous shape uses safe
+  `400 {"error":"invalid backup upload"}` before stage or restore.
+- The total request remains bounded by compressed limit plus 1 MiB for declared and actual bytes. The sole filename is
+  non-empty UTF-8, at most 255 bytes and `.zip`; actual file/archive/portable budgets remain authoritative.
+- JWT and effective WebDAV permission remain first. Every non-nil parsed multipart form is removed by the handler on
+  success and all post-parse failures; cleanup never changes the stable response or exposes a temp path.
+
+The `7045827` overlay probe submitted a valid ZIP plus scalar and 34 MiB extra file: restore returned 200 and mutated
+the shelf, while a multipart temp remained after direct handler return. Status:
+**inventory-complete / implementation-pending**.
+
 ### P2 backup-generation request lifecycle (2026-08-16 extracted)
 
 The logical and portable formats above remain closed. The next route-level action gap is limited to generation

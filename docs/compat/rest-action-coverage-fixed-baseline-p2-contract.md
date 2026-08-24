@@ -399,6 +399,20 @@ restart 卷门通过。本机发布 `125fd93`/`latest`，OCI index
 reading progress 后续已由独立合同关闭；其它 batch/control JSON 继续排队，不因 BookSource multipart
 关闭而合并签收。
 
+## 30. 备份上传恢复 multipart 请求边界（2026-08-24 inventory）
+
+重新生成当前 route/wire 差集后，下一项 must-fix 收敛到 `POST /api/backup/restore-legado`。已发布的
+compressed/expanded ZIP budgets、logical/portable restore、caller/source permission、transaction/
+rollback、WebDAV opened snapshot 均保持关闭；本轮只补 multipart singularity 和 handler-owned temp
+cleanup。
+
+当前 `c.FormFile("file")` 忽略额外 scalar、同名/异名 file，且 handler 不调用
+`MultipartForm.RemoveAll()`。`7045827` 一次性 overlay 探针提交合法 ZIP、scalar 与 34 MiB 额外 file 后
+仍恢复 Book，并在直接 handler 返回后留下 temp。固定上游单 ZIP 确认动作、OpenReader 稳定 route/error/
+counts 和精确 red-test 门见
+[`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
+状态：**inventory-complete / implementation-pending**。
+
 ## 21. 阅读进度 JSON 与 CAS 控制字段（2026-08-16 implemented）
 
 固定上游 `saveBookProgress` 只提交书籍 URL 和显式目录 index；POST 缺省 index 为 `-1`，服务端先确认
