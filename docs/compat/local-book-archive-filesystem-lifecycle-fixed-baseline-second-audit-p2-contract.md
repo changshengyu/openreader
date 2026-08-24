@@ -65,8 +65,10 @@ portable v2 和多用户隔离是已签收技术适配。本轮不改变解析�
 ## 4. 目标 rooted archive 合同
 
 1. `LibraryDir` 是本地书归档的唯一可信边界。归档 resolver 必须从该边界逐组件检查
-   `data/<safe-user>/<book>`；root、`data`、owner root、book root、`content`、metadata parent 和最终 entry
-   的 symlink、FIFO/socket/device 或非预期类型均 fail closed。不能把 resolved owner root 当作新的信任根。
+   `data/<safe-user>`；root、`data` 和 owner root 的 symlink、FIFO/socket/device 或非预期类型均 fail
+   closed，不能把 resolved owner root 当作新的信任根。历史书目录 symlink 只有在解析目标仍位于同一已
+   验证 owner root、引用判定使用同一真实目录且后续 entry 仍受 rooted identity 检查时可作为安全 alias
+   保留；越界 book root、`content`/metadata parent 和最终 entry symlink 或特殊文件均 fail closed。
 2. 合法旧 SQLite 相对/绝对字段仍可按当前 basename/suffix 规则重定位，但最终目标必须是同一可信书目录
    内的普通文件。旧宿主绝对路径本身永不成为候选。
 3. source、chapter cache 和 original export 从 `Lstat/open/fstat/SameFile` 或等价 rooted API 得到调用方
@@ -86,7 +88,7 @@ portable v2 和多用户隔离是已签收技术适配。本轮不改变解析�
 
 ## 5. 测试先行门
 
-1. 在旧实现上加入 owner-root、book-root、content/metadata ancestor 和 final-entry symlink，以及
+1. 在旧实现上加入 owner-root、越界 book-root、content/metadata ancestor 和 final-entry symlink，以及
    directory/FIFO 夹具；外部 sentinel bytes/hash/目录必须证明会被旧实现读取、写入或删除。
 2. `refresh-local` 红测锁定 owner-root symlink 当前返回 200 并在库外产生 generation/metadata；目标实现
    必须在 DB、stage、event 前 path-free 失败，旧 rows/files/hash 不变。
@@ -94,8 +96,9 @@ portable v2 和多用户隔离是已签收技术适配。本轮不改变解析�
    实际读取前替换 entry；目标只读取 verified handle 或失败，replacement sentinel 永不进入响应/cache。
 4. delete 红测锁定 owner-root symlink 当前会删除库外书目录；目标实现保持 DB 删除结果，但库外 sentinel、
    共享 archive 和外用户同名目录不变。另测验证后 entry replacement。
-5. 合法 current relative、historical absolute basename/suffix、TXT/EPUB/UMD/CBZ、relative cache、刷新原子性、
-   进度/书签重绑、单本原文件导出、portable v1/v2 和 startup cache migration 全部保持。
+5. 合法 current relative、historical absolute basename/suffix、同 owner 内安全 book-root alias、
+   TXT/EPUB/UMD/CBZ、relative cache、刷新原子性、进度/书签重绑、单本原文件导出、portable v1/v2 和
+   startup cache migration 全部保持。
 6. focused/race/full/vet、frontend full/build、真实 HTTP mounted probe、fresh/historical/portable/restart
    卷门通过后才可发布 Docker；纯后端边界不要求新增可见 UI，但 Reader/BookManage 导出和本地刷新至少
    完成三视口无回归 smoke。

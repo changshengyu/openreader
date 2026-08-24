@@ -467,6 +467,8 @@ revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. Status is
 
 - [ ] Resolve every imported-book owner/book root from trusted `LibraryDir`; do not accept a resolved owner root that
       has escaped through a mounted root/ancestor symlink.
+- [ ] Preserve a historical book-directory alias only when it resolves inside that same verified owner root and all
+      source/cache/write/delete consumers remain bound to the resolved real directory identity.
 - [ ] Open source, chapter cache and original export as the same rooted regular file identity that passed path/type
       validation; deterministic replacement must not redirect bytes.
 - [ ] Keep `refresh-local` stage, metadata promotion and stale-content pruning under the verified book root; unsafe

@@ -1106,9 +1106,10 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - Existing regular current-relative and historical-absolute `LibraryPath`/`OriginalFile` representations remain
   readable through the established basename/suffix rebase. The retired host path itself never becomes readable,
   and no valid original archive is rewritten by refresh.
-- Root, `data`, owner, book, content/metadata ancestor and entry symlinks or special files remain untouched on mounted
-  storage but cannot be read, written, promoted, pruned or recursively deleted through the API. A durable Book delete
-  is not rolled back when best-effort unsafe cleanup is refused.
+- Root, `data`, owner, outside-book, content/metadata ancestor and entry symlinks or special files remain untouched on
+  mounted storage but cannot be read, written, promoted, pruned or recursively deleted through the API. A historical
+  book-directory alias resolving inside the same verified owner root remains compatible; a durable Book delete is not
+  rolled back when best-effort unsafe cleanup is refused.
 - Refresh continues to stage a new generation and commit chapter/progress/bookmark metadata atomically. Unsafe archive
   identity must fail before DB/file/event work; valid old rows, archive hashes and active cache remain unchanged.
 - Required release evidence includes current and historical TXT/EPUB/UMD/CBZ, relative cache, owner isolation,
