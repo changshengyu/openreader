@@ -1090,4 +1090,10 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   race/vet, host and `5313c49` candidate mounted-symlink probes pass. Fresh volumes preserve portable v1/v2 assets,
   cross-user isolation and restart; historical volumes preserve TXT/EPUB/UMD/CBZ, relative cache, owner isolation,
   portable restore and archive hashes. The local candidate reports full revision
-  `5313c49f6a18b3cce769ea03e4f8cdf8fddafebe`; no release image is claimed until the formal multi-arch publish.
+  `5313c49f6a18b3cce769ea03e4f8cdf8fddafebe`.
+- The final locally built amd64/arm64 `5e63eb1`/`latest` release resolves to OCI index
+  `sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`; remote amd64 manifest is
+  `sha256:f5ac952ead7e410c3debe7c2892f84cc5d6e0212a3982c3cd18209e084186c3d`, arm64 manifest is
+  `sha256:a7a243fe0bc4083ebdb6f4f1df5206315a6d3cbac05544525544e44244663d76`, and both configs carry full revision
+  `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`. A forced remote arm64 pull reported the same index and healthy
+  runtime revision. No mounted path, database row or backup member changed in the release.

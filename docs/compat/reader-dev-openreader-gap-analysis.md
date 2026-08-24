@@ -3898,5 +3898,8 @@ identity。目标只把响应改为消费 rooted same-file opened handle，保�
 EPUB/CBZ/audio 以同一 rooted verified handle 响应，并让 cached cover 只读取/touch 同一普通文件。
 focused/race/full/vet、frontend 741/741、build、EPUB/CBZ/audio/真实 cover 三视口、宿主和 `5313c49`
 候选容器 HEAD/Range/mounted-symlink probe，以及 fresh/historical/portable/restart 卷门均已通过；
-CBZ smoke 的自动主题夹具缺口由 `a0c0206`/`5313c49` 修正而未改变产品行为。正式 amd64/arm64 GHCR
-发布尚未执行；当前状态：**implementation-complete / regression-validated / Docker-pending**。
+CBZ smoke 的自动主题夹具缺口由 `a0c0206`/`5313c49` 修正而未改变产品行为。本机已发布
+`5e63eb1`/`latest`，OCI index 为
+`sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`；远端两平台 config 和回拉
+arm64 健康接口均确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。当前状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

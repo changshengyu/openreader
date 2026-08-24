@@ -554,5 +554,9 @@ rooted same-file opened handle。完整合同见
 章节图片 capability 在响应前按 token fingerprint 重验最终内存字节，公开 uploads 已由独立合同关闭，
 二者不并入本轮。focused/race/full/vet、frontend 741/741、build、EPUB/CBZ/audio/真实 cover 三视口、
 宿主和 `5313c49` 候选容器 HEAD/Range/mounted-symlink probe，以及 fresh/historical/portable/restart
-卷门均已通过；候选镜像确认完整 revision。正式 amd64/arm64 GHCR 发布尚未执行；状态：
-**implementation-complete / regression-validated / Docker-pending**。
+卷门均已通过。最终证据提交由本机发布为 `5e63eb1`/`latest`；OCI index 为
+`sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`，amd64/arm64 manifest 分别为
+`sha256:f5ac952ead7e410c3debe7c2892f84cc5d6e0212a3982c3cd18209e084186c3d` 和
+`sha256:a7a243fe0bc4083ebdb6f4f1df5206315a6d3cbac05544525544e44244663d76`；远端两平台 config 与回拉
+arm64 runtime 均确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

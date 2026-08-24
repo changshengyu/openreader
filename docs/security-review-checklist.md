@@ -1093,4 +1093,7 @@ Required evidence and scope exclusions are defined in
 [`compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 Implementation commit `a90f7b3` and all code-level gates are complete. `5313c49` evidence covers EPUB/CBZ/audio/
 real cover at 1440/390/360, host and candidate HEAD/Range/mounted-symlink probes, plus fresh/historical/portable/
-restart volumes. Formal GHCR publication remains a release step, not an open security check.
+restart volumes. The final evidence commit was built locally and published as `5e63eb1`/`latest` at OCI index
+`sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`; both platform configs and a forced
+remote arm64 runtime check report full revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`. Status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`.

@@ -145,3 +145,8 @@ auto-reading 或 TTS read bar 打开 + mode=flip -> 临时 page
 `5313c49` 已在 smoke payload 中显式写入 `autoTheme:false`。修正后的真实 Go + Chromium 流程通过
 1440x900 page、390x844/360x800 scroll 和 390x844 flip；capability 图片全部成功加载且无 console/
 page error。该提交只改变测试夹具，不改变前端产物、持久设置迁移或 Reader mode 状态机。
+
+该复验随 `5e63eb1`/`latest` 由本机完成 amd64/arm64 发布；OCI index 为
+`sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`，远端 arm64 运行时健康接口
+确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。CBZ 产品实现仍是先前已签收状态，本次发布只补齐
+opened-file 安全实现和 smoke 前置条件证据。

@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
 当前审查基线：`OpenReader@910cb38`  
 审查日期：2026-08-17  
-状态：**implementation-complete / regression-validated / Docker-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围与权威证据
 
@@ -139,4 +139,19 @@ capability 请求无 4xx/5xx。CBZ 先前 `page`/`scroll` 失败已由 `a0c0206`
 本地 `PUSH=0` 候选镜像 label revision 为
 `5313c49f6a18b3cce769ea03e4f8cdf8fddafebe`。fresh 卷通过 portable v1/v2 assets、cross-user、restart；
 historical 卷通过 TXT/EPUB/UMD/CBZ、relative-cache、owner isolation。正式本机 amd64/arm64 GHCR 发布
-尚未执行；不得把候选镜像当作已发布镜像，最近已发布 Docker 仍是 `3cef8df`。
+已在最终证据提交 `5e63eb1` 上完成。
+
+## 11. Docker 发布结果（2026-08-24）
+
+- 本机 OrbStack/BuildKit 构建并上传 `ghcr.io/changshengyu/openreader:5e63eb1` 与 `latest`；两 tag 远端
+  回读为同一 OCI index
+  `sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`。
+- linux/amd64 manifest 为
+  `sha256:f5ac952ead7e410c3debe7c2892f84cc5d6e0212a3982c3cd18209e084186c3d`，linux/arm64 manifest 为
+  `sha256:a7a243fe0bc4083ebdb6f4f1df5206315a6d3cbac05544525544e44244663d76`；两平台 config 均确认完整
+  revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。
+- 从远端 tag 强制拉取 arm64 后，`/api/health` 返回 `status:"ok"`、`version:"5e63eb1"` 和同一完整
+  revision。发布前门禁包括 Go full/race/vet、frontend 741/741、Vite build、EPUB/CBZ/audio/真实 cover
+  三视口、宿主/候选 mounted probe、fresh/historical/portable/restart。
+- 允许差异仍限于私有用途隔离 capability、rooted same-file open、MIME/CSP/Range 和多用户 owner；
+  本切片没有新增未完成的数据迁移或格式工作，真实设备签收仍待用户生产环境升级后确认。
