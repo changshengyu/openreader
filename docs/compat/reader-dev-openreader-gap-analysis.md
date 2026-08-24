@@ -3896,7 +3896,7 @@ identity。目标只把响应改为消费 rooted same-file opened handle，保�
 [`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 `2587299` 完成 inventory，`df49535` 在旧实现上锁定四路 replacement 红测，`a90f7b3` 已让
 EPUB/CBZ/audio 以同一 rooted verified handle 响应，并让 cached cover 只读取/touch 同一普通文件。
-focused/race/full/vet、frontend 741/741、build、EPUB 三视口、CBZ desktop 和宿主
-HEAD/Range/mounted-symlink probe 已通过，本地候选镜像 revision 已确认。CBZ 完整三视口、audio/cover
-browser、fresh/historical/portable/restart 与正式 Docker 发布因本机授权额度耗尽待补；当前状态：
-**implementation-complete / release-validation-pending**。
+focused/race/full/vet、frontend 741/741、build、EPUB/CBZ/audio/真实 cover 三视口、宿主和 `5313c49`
+候选容器 HEAD/Range/mounted-symlink probe，以及 fresh/historical/portable/restart 卷门均已通过；
+CBZ smoke 的自动主题夹具缺口由 `a0c0206`/`5313c49` 修正而未改变产品行为。正式 amd64/arm64 GHCR
+发布尚未执行；当前状态：**implementation-complete / regression-validated / Docker-pending**。

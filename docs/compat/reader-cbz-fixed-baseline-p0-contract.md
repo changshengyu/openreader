@@ -141,3 +141,7 @@ auto-reading 或 TTS read bar 打开 + mode=flip -> 临时 page
 `autoTheme:false`，使本测试拥有的 `page/scroll/flip` 模式不再被系统昼夜状态异步改写；Reader 的
 自动主题、方案字段所有权和 CBZ 保留用户最终有效 mode 的产品合同均不改变。修正后必须重跑
 1440x900 page、390x844/360x800 scroll 和 390x844 flip，并继续检查 capability 请求无 4xx/5xx。
+
+`5313c49` 已在 smoke payload 中显式写入 `autoTheme:false`。修正后的真实 Go + Chromium 流程通过
+1440x900 page、390x844/360x800 scroll 和 390x844 flip；capability 图片全部成功加载且无 console/
+page error。该提交只改变测试夹具，不改变前端产物、持久设置迁移或 Reader mode 状态机。

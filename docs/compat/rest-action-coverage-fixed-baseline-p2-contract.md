@@ -552,7 +552,7 @@ rooted same-file opened handle。完整合同见
 [`public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 
 章节图片 capability 在响应前按 token fingerprint 重验最终内存字节，公开 uploads 已由独立合同关闭，
-二者不并入本轮。focused/race/full/vet、frontend 741/741、build、EPUB 三视口、CBZ desktop 与宿主
-HEAD/Range/mounted-symlink probe 已通过，本地 `a90f7b3` 候选镜像 revision 已确认。CBZ 完整三视口、
-audio/cover browser、fresh/historical/portable/restart 与正式 Docker 发布因当前本机授权额度耗尽待补；
-状态：**implementation-complete / release-validation-pending**。
+二者不并入本轮。focused/race/full/vet、frontend 741/741、build、EPUB/CBZ/audio/真实 cover 三视口、
+宿主和 `5313c49` 候选容器 HEAD/Range/mounted-symlink probe，以及 fresh/historical/portable/restart
+卷门均已通过；候选镜像确认完整 revision。正式 amd64/arm64 GHCR 发布尚未执行；状态：
+**implementation-complete / regression-validated / Docker-pending**。

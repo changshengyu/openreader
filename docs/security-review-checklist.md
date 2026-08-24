@@ -1086,11 +1086,11 @@ mounted-volume gate and local Docker publication still await explicit Docker soc
       fail closed with path/token/credential-free errors while leaving every mounted object unchanged.
 - [x] Capability purpose/user/book/fingerprint/expiry, EPUB CSP, MIME allowlists, byte/range behavior, private cache
       headers, old URLs and multi-user isolation remain unchanged.
-- [ ] Focused/race/full/vet, real EPUB/CBZ/audio/cover browser flows and fresh/historical/portable mounted-volume
+- [x] Focused/race/full/vet, real EPUB/CBZ/audio/cover browser flows and fresh/historical/portable mounted-volume
       gates pass before local Docker publication.
 
 Required evidence and scope exclusions are defined in
 [`compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/public-capability-filesystem-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Implementation commit `a90f7b3` and its code-level gates are complete. EPUB passed all three required Chromium
-viewports; CBZ desktop and host HEAD/Range/mounted-symlink probes passed. The final checkbox remains open until the
-blocked CBZ/audio/cover browser reruns and fresh/historical/portable/restart volume gates can receive local approvals.
+Implementation commit `a90f7b3` and all code-level gates are complete. `5313c49` evidence covers EPUB/CBZ/audio/
+real cover at 1440/390/360, host and candidate HEAD/Range/mounted-symlink probes, plus fresh/historical/portable/
+restart volumes. Formal GHCR publication remains a release step, not an open security check.

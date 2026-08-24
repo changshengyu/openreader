@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
 当前审查基线：`OpenReader@910cb38`  
 审查日期：2026-08-17  
-状态：**implementation-complete / release-validation-pending**
+状态：**implementation-complete / regression-validated / Docker-pending**
 
 ## 1. 范围与权威证据
 
@@ -129,14 +129,14 @@ archive 或整个媒体文件读入内存。
 ## 10. 当前验证边界
 
 focused 正常/替换/symlink 回归、affected packages、focused `-race`、`go test ./...`、`go vet ./...`、
-frontend 741/741 与 Vite build 已通过。真实 Go + Chromium EPUB 在 1440x900、390x844、360x800 通过；
-CBZ desktop 通过，390px 已成功加载 capability 图片后在与本切片无关的 reader mode 断言出现一次
-`page`/`scroll` 时序失败。宿主真实 HTTP 已确认 CBZ HEAD 200、Range 206/正确 `Content-Range`，并在
-派生页临时替换为指向 `/etc/hosts` 的 symlink 时返回既有 path-free 400；mounted symlink 未被消费，
-恢复原页后再次 200。
+frontend 741/741 与 Vite build 已通过。真实 Chromium 中 EPUB、audio UI 和真实 Go/API cover proxy
+均通过 1440x900、390x844、360x800；CBZ 通过 desktop page、390/360 scroll 和额外 390 flip，所有
+capability 请求无 4xx/5xx。CBZ 先前 `page`/`scroll` 失败已由 `a0c0206` 证明为 smoke 未关闭
+`autoTheme`，`5313c49` 显式冻结该测试前置条件，未改变 Reader 产品行为。
 
-本地 `PUSH=0` 候选镜像 `a90f7b3` 已成功构建，label revision 为
-`a90f7b35a3d6caaa3fc3bbdc76acea27a83b810d`。当前工作区自动批准额度耗尽，真实 Chromium 复跑及
-Docker volume/backup 脚本均无法取得新的本机浏览器/Docker socket 授权；audio/cover browser、CBZ
-完整三视口、fresh/historical/portable/restart 和正式 amd64/arm64 GHCR 发布因此保持待完成。不得把
-本地候选当作已发布镜像；最近已发布 Docker 仍是 `3cef8df`。
+宿主与 `5313c49` 候选容器均确认 CBZ HEAD 200、Range 206/正确 `Content-Range`；派生页替换为指向
+`/etc/hosts` 的 symlink 时返回既有 path-free 400，mounted symlink 未被消费，恢复原页后再次 200。
+本地 `PUSH=0` 候选镜像 label revision 为
+`5313c49f6a18b3cce769ea03e4f8cdf8fddafebe`。fresh 卷通过 portable v1/v2 assets、cross-user、restart；
+historical 卷通过 TXT/EPUB/UMD/CBZ、relative-cache、owner isolation。正式本机 amd64/arm64 GHCR 发布
+尚未执行；不得把候选镜像当作已发布镜像，最近已发布 Docker 仍是 `3cef8df`。
