@@ -86,6 +86,7 @@ async function registerAndImport(archive, mode) {
     body: JSON.stringify({
       value: {
         mode,
+        autoTheme: false,
         pageType: 'normal',
         clickMethod: 'auto',
         fontSize: 18,
