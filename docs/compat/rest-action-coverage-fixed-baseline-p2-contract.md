@@ -373,6 +373,25 @@ Go/Chromium、fresh/historical/portable 与 source ownership 门通过。本机�
 index 为 `sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`；状态为
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
+## 29. 本地书归档文件系统生命周期（2026-08-24 inventory）
+
+继续按持久 path 与 destructive side effect 枚举后，下一项 must-fix 覆盖
+`GET /api/books/:id/chapters/:index/content`、`POST /api/books/:id/refresh-local`、
+`POST /api/books/export` 的本地书分支及 Book 删除后的 archive cleanup。当前 resolver 把
+resolved owner root 当作新信任根，refresh stage 还直接使用 lexical private path；因此
+`library/data/<user>` symlink 可把 source/cache 读、generation/metadata 写和最后引用删除带到
+`LibraryDir` 外。
+
+2026-08-24 的 `/tmp` 真实 Go/HTTP 探针已证明 refresh/read 返回库外正文并写入库外，batch delete 在
+提交 Book 删除后真实删除库外书目录。original export 自身因额外 library check 回退，但生成式导出仍会
+消费同一不安全 cache/source 链。固定上游本地书可见行为、旧绝对字段 rebase、原 archive、进度/书签、
+导出格式和 path-free envelope 均保留；目标只补 `LibraryDir -> owner -> book -> entry` 逐组件边界、
+same-file opened handle、rooted refresh stage/promote/prune 和 identity-safe delete detach。
+
+完整合同与红测/卷门见
+[`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+状态：**inventory-complete / implementation-pending**。
+
 reading progress 后续已由独立合同关闭；其它 batch/control JSON 继续排队，不因 BookSource multipart
 关闭而合并签收。
 

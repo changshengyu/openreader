@@ -1097,3 +1097,21 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   `sha256:a7a243fe0bc4083ebdb6f4f1df5206315a6d3cbac05544525544e44244663d76`, and both configs carry full revision
   `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`. A forced remote arm64 pull reported the same index and healthy
   runtime revision. No mounted path, database row or backup member changed in the release.
+
+## P2 local-book archive filesystem lifecycle compatibility (2026-08-24 extracted)
+
+- The pending change adds no table, column, index, migration, startup rewrite, archive layout, backup member, URL,
+  browser key or environment variable. It only constrains future local-book reads, explicit refresh and post-delete
+  cleanup to the existing trusted `library/` mount.
+- Existing regular current-relative and historical-absolute `LibraryPath`/`OriginalFile` representations remain
+  readable through the established basename/suffix rebase. The retired host path itself never becomes readable,
+  and no valid original archive is rewritten by refresh.
+- Root, `data`, owner, book, content/metadata ancestor and entry symlinks or special files remain untouched on mounted
+  storage but cannot be read, written, promoted, pruned or recursively deleted through the API. A durable Book delete
+  is not rolled back when best-effort unsafe cleanup is refused.
+- Refresh continues to stage a new generation and commit chapter/progress/bookmark metadata atomically. Unsafe archive
+  identity must fail before DB/file/event work; valid old rows, archive hashes and active cache remain unchanged.
+- Required release evidence includes current and historical TXT/EPUB/UMD/CBZ, relative cache, owner isolation,
+  original export, refresh, delete/reference sharing, portable v1/v2, startup cache migration and restart against the
+  final local image. Full contract:
+  [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).

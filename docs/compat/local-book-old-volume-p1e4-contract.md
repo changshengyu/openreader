@@ -8,6 +8,11 @@ reader-dev 的本地书格式行为与 OpenReader 已发布的 SQLite/挂载目�
 TXT、EPUB、UMD、CBZ 的解析和阅读结果；后者是 OpenReader 为 Docker、多用户和安全适配
 必须持续读取的历史数据。当前组件和既有测试都不是本合同的正确性依据。
 
+> 2026-08-24 第二轮 mounted-path 复审发现：`OpenReader@20ba211` 尚未兑现本合同中 owner-root
+> symlink fail-closed 的声明；真实探针可在 `LibraryDir` 外读写并由删除清理移除目录。该缺口由
+> [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)
+> 接管，状态为 `inventory-complete / implementation-pending`。本合同的合法旧卷兼容要求继续有效。
+
 ## 1. 历史卷的事实表示
 
 一个已挂载的 OpenReader 卷由下列根组成，不能在升级、启动或刷新时整体替换：

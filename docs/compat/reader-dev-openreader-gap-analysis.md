@@ -3903,3 +3903,21 @@ CBZ smoke 的自动主题夹具缺口由 `a0c0206`/`5313c49` 修正而未改变�
 `sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`；远端两平台 config 和回拉
 arm64 健康接口均确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。当前状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-24 本地书归档文件系统生命周期第二轮固定基准复审
+
+公开 capability 发布后继续按 mounted path、持久路径字段和文件副作用枚举，下一项确定 must-fix
+收敛到本地书 archive 的 source/cache 读取、`refresh-local` stage/promote、生成式导出回退和删除清理。
+固定上游只从当前 namespace 的本地书文件恢复目录/正文并清理该书存储；OpenReader 的私有
+`library/data/<safe-user>/<book>`、原子 generation、旧绝对字段重定位和 portable v2 保持权威。
+
+`OpenReader@20ba211` 的 `localBookArchiveRoot` 只证明书目录位于 resolved owner root，没有证明该 owner
+root 仍位于可信 `LibraryDir`；refresh 更直接复用 lexical private path。隔离真实 HTTP 探针把
+`library/data/exportaudit` 换成指向库外的 symlink 后，refresh 和章节读取均返回 200 并在库外读写；随后
+batch delete 还删除了库外书目录。完整反例、rooted opened-file、refresh generation、identity-safe cleanup、
+旧卷/portable 回归和测试先行门见
+[`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
+当前状态 **inventory-complete / implementation-pending**。下一步必须先在 `20ba211` 旧实现上提交
+owner/book/content/metadata symlink 与 replacement 红测，再建立共享 caller/book rooted archive helper；
+不得用删除历史路径回退、要求重新上传或迁移 mounted 数据代替修复。
