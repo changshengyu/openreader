@@ -1,9 +1,9 @@
 # 本地书归档文件系统生命周期固定基准第二轮合同（P2）
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
-当前审查基线：`OpenReader@20ba211`  
+当前实施基线：`OpenReader@125fd93`
 审查日期：2026-08-24  
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围与权威证据
 
@@ -121,3 +121,27 @@ portable v2 和多用户隔离是已签收技术适配。本轮不改变解析�
    delete detach；保留 service/handler ownership 与旧路径回退。
 4. 跑专项/race/full/vet、frontend/build、真实 HTTP/浏览器/mounted probe 和三类卷门。
 5. 形成连贯切片后提交并推送；只在本机构建 amd64/arm64 并发布 GHCR。
+
+## 8. 实施与发布证据
+
+- 合同 `cae9bf2`、安全同 owner 目录 alias 勘误 `852df65`、旧实现红测 `92a5fa4` 和实现
+  `125fd93` 已按顺序提交并推送。共享 `local_book_archive.go` 从已验证的 owner root 解析 archive，
+  source/cache/export 消费同一 opened regular file；refresh 在 DB 与 promotion 前复验 archive、stage 和
+  destination identity；删除在同父目录 detach 后核对原对象 identity，再做 best-effort 清理。
+- 专项测试覆盖 owner-root/book/content/metadata symlink、source/cache deterministic replacement、
+  refresh transaction 前 parent replacement、单本/批量删除及删除目标 replacement；同 owner 安全 alias、
+  旧绝对字段 rebase、共享引用和外用户目录保持。focused/full API、`go test -race`、`go vet ./...`、
+  Go 全量、frontend 741/741 与 Vite production build 均通过。
+- 修复后的隔离真实 HTTP 探针先确认普通章节读取与 `refresh-local` 成功；再把 owner root 换成库外
+  symlink 后，外部 sentinel 不再进入章节或生成式 TXT，refresh 返回 path-free 400，Book 删除保持
+  既有 204，而库外 archive/sentinel 与 symlink 均未被删除。Reader volume 和 BookManage smoke 在
+  1440x900、390x844、360x800 通过；后者使用真实 Go API 覆盖 metadata、分组、batch category 和
+  batch delete。
+- 本机 arm64 候选通过 fresh portable-v1/v2-assets、cross-user、restart，以及 historical
+  TXT/EPUB/UMD/CBZ、relative-cache、owner-isolation、archive hash 和 portable restore 卷门。随后只在
+  本机构建并发布 amd64/arm64 `ghcr.io/changshengyu/openreader:125fd93` 与 `latest`；两者均指向 OCI
+  index `sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`，amd64 manifest 为
+  `sha256:e2708aebe923c204aa4299713490f817bd84246dfabbefb13e0eeffa6ecbbf0f`，arm64 manifest 为
+  `sha256:f0e423d8bdbefcce040e31e1530a9f3c1aded04c201e6f5c022716ff47f4bd0e`。
+- 五视口 BookInfo smoke 在进入本地刷新前的既有追更开关 PUT 捕获处超时，因此不计作本批通过；该
+  前端长尾需单独按固定上游取证，未削弱本批专项 HTTP、BookManage 三视口和无前端代码变更证据。

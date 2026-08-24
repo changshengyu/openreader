@@ -463,29 +463,31 @@ blocked by local `osxkeychain -50`; read-only GHCR Registry config inspection co
 revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. Status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 local-book archive rooted lifecycle review (2026-08-24 inventory)
+## P2 local-book archive rooted lifecycle review (2026-08-24 implemented/published)
 
-- [ ] Resolve every imported-book owner/book root from trusted `LibraryDir`; do not accept a resolved owner root that
+- [x] Resolve every imported-book owner/book root from trusted `LibraryDir`; do not accept a resolved owner root that
       has escaped through a mounted root/ancestor symlink.
-- [ ] Preserve a historical book-directory alias only when it resolves inside that same verified owner root and all
+- [x] Preserve a historical book-directory alias only when it resolves inside that same verified owner root and all
       source/cache/write/delete consumers remain bound to the resolved real directory identity.
-- [ ] Open source, chapter cache and original export as the same rooted regular file identity that passed path/type
+- [x] Open source, chapter cache and original export as the same rooted regular file identity that passed path/type
       validation; deterministic replacement must not redirect bytes.
-- [ ] Keep `refresh-local` stage, metadata promotion and stale-content pruning under the verified book root; unsafe
+- [x] Keep `refresh-local` stage, metadata promotion and stale-content pruning under the verified book root; unsafe
       roots/ancestors/entries must fail before DB, event or active-generation changes.
-- [ ] Detach a last-reference archive identity-safely before recursive cleanup; a symlink or replacement must never
+- [x] Detach a last-reference archive identity-safely before recursive cleanup; a symlink or replacement must never
       delete its target outside `library/`, while durable Book deletion remains committed.
-- [ ] Preserve legal historical path rebase, archive bytes, progress/bookmarks, TXT/EPUB/UMD/CBZ, relative cache,
+- [x] Preserve legal historical path rebase, archive bytes, progress/bookmarks, TXT/EPUB/UMD/CBZ, relative cache,
       portable backup and startup migration without an eager scan or destructive migration.
-- [ ] Pass focused/race/full/vet, real mounted owner/book/content/metadata symlink and replacement probes, frontend
+- [x] Pass focused/race/full/vet, real mounted owner/book/content/metadata symlink and replacement probes, frontend
       full/build, Reader/BookManage three-view smoke and fresh/historical/portable/restart volume gates before release.
 
 The `/tmp` real HTTP probe on `OpenReader@20ba211` proved out-of-root refresh/read/write and post-delete directory
 removal. Required evidence is defined in
 [`compat/local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status: `inventory-complete / implementation-pending`.
-Full contract:
-[`compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/replace-rule-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+Evidence: contract `cae9bf2`, alias correction `852df65`, red tests `92a5fa4`, implementation `125fd93`, focused/full/
+race/vet, frontend 741/741, build, post-fix real HTTP, Reader/BookManage three-view and fresh/historical/portable/restart
+volume gates. The locally built amd64/arm64 `125fd93`/`latest` release resolves to OCI index
+`sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`. Status:
+`aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
 ### Backup generation request lifecycle second audit (2026-08-17 implemented/published)
 

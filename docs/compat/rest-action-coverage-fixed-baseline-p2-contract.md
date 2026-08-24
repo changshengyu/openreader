@@ -373,7 +373,7 @@ Go/Chromium、fresh/historical/portable 与 source ownership 门通过。本机�
 index 为 `sha256:62ee55ffab7859aef4334f8fb8dd31520953521da494edd5f37cc56741731070`；状态为
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 29. 本地书归档文件系统生命周期（2026-08-24 inventory）
+## 29. 本地书归档文件系统生命周期（2026-08-24 implemented/published）
 
 继续按持久 path 与 destructive side effect 枚举后，下一项 must-fix 覆盖
 `GET /api/books/:id/chapters/:index/content`、`POST /api/books/:id/refresh-local`、
@@ -390,7 +390,11 @@ same-file opened handle、rooted refresh stage/promote/prune 和 identity-safe d
 
 完整合同与红测/卷门见
 [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-状态：**inventory-complete / implementation-pending**。
+合同 `cae9bf2`、alias 勘误 `852df65`、红测 `92a5fa4`、实现 `125fd93` 已顺序推送；修复后真实 HTTP
+探针、focused/full/race/vet、frontend 741/741、build、Reader/BookManage 三视口和 fresh/historical/portable/
+restart 卷门通过。本机发布 `125fd93`/`latest`，OCI index
+`sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`。状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 reading progress 后续已由独立合同关闭；其它 batch/control JSON 继续排队，不因 BookSource multipart
 关闭而合并签收。

@@ -3918,6 +3918,11 @@ batch delete 还删除了库外书目录。完整反例、rooted opened-file、r
 旧卷/portable 回归和测试先行门见
 [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 
-当前状态 **inventory-complete / implementation-pending**。下一步必须先在 `20ba211` 旧实现上提交
-owner/book/content/metadata symlink 与 replacement 红测，再建立共享 caller/book rooted archive helper；
-不得用删除历史路径回退、要求重新上传或迁移 mounted 数据代替修复。
+合同 `cae9bf2`、alias 勘误 `852df65`、旧实现红测 `92a5fa4` 与实现 `125fd93` 已按顺序关闭该缺口。
+共享 caller/book rooted archive helper 约束 source/cache/export、refresh stage/promote/prune 和删除 detach；
+修复后真实 HTTP 探针不再读取/导出/写入/删除库外 sentinel。focused/full/race/vet、frontend 741/741、
+build、Reader/BookManage 三视口与 fresh/historical/portable/restart 卷门均通过。本机发布
+`125fd93`/`latest`，
+OCI index 为 `sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`；当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。不删除历史路径回退，
+不要求重新上传，也不迁移 mounted 数据。

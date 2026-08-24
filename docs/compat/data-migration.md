@@ -1098,9 +1098,9 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`. A forced remote arm64 pull reported the same index and healthy
   runtime revision. No mounted path, database row or backup member changed in the release.
 
-## P2 local-book archive filesystem lifecycle compatibility (2026-08-24 extracted)
+## P2 local-book archive filesystem lifecycle compatibility (2026-08-24 implemented/published)
 
-- The pending change adds no table, column, index, migration, startup rewrite, archive layout, backup member, URL,
+- The `125fd93` change adds no table, column, index, migration, startup rewrite, archive layout, backup member, URL,
   browser key or environment variable. It only constrains future local-book reads, explicit refresh and post-delete
   cleanup to the existing trusted `library/` mount.
 - Existing regular current-relative and historical-absolute `LibraryPath`/`OriginalFile` representations remain
@@ -1112,7 +1112,10 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   rolled back when best-effort unsafe cleanup is refused.
 - Refresh continues to stage a new generation and commit chapter/progress/bookmark metadata atomically. Unsafe archive
   identity must fail before DB/file/event work; valid old rows, archive hashes and active cache remain unchanged.
-- Required release evidence includes current and historical TXT/EPUB/UMD/CBZ, relative cache, owner isolation,
-  original export, refresh, delete/reference sharing, portable v1/v2, startup cache migration and restart against the
-  final local image. Full contract:
+- Focused/full/race/vet, frontend 741/741, production build, post-fix real HTTP, Reader and BookManage three-view
+  smoke passed.
+  The local `125fd93` candidate then passed fresh portable-v1/v2-assets/cross-user/restart and historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation/archive-hash/portable-restore gates. The locally built amd64/arm64
+  release resolves to OCI index `sha256:777ca720981b8a3529009211ce179b430bb354cb01e2957681f191036699f6a5`.
+  Full contract:
   [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
