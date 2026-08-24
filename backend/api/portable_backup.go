@@ -587,11 +587,12 @@ func (s *Server) validatePortableCollisions(userID uint, manifest portableBackup
 		if err != nil {
 			return err
 		}
-		path, ok := s.localBookSourcePath(book)
+		source, ok := s.openLocalBookSource(book)
 		if !ok {
 			return errPortableBackupConflict
 		}
-		digest, size, err := portableFileDigest(path)
+		digest, size, err := portableOpenedFileDigest(source.file, source.info)
+		source.close()
 		if err != nil || size != entry.Size || !strings.EqualFold(digest, entry.SHA256) {
 			return errPortableBackupConflict
 		}
@@ -608,11 +609,12 @@ func (s *Server) reusePortableArchiveIfIdentical(userID uint, entry portableBack
 	if err != nil {
 		return false, err
 	}
-	path, ok := s.localBookSourcePath(book)
+	source, ok := s.openLocalBookSource(book)
 	if !ok {
 		return false, errPortableBackupConflict
 	}
-	digest, size, err := portableFileDigest(path)
+	digest, size, err := portableOpenedFileDigest(source.file, source.info)
+	source.close()
 	if err != nil || size != entry.Size || !strings.EqualFold(digest, entry.SHA256) {
 		return false, errPortableBackupConflict
 	}
@@ -713,12 +715,10 @@ func makePortableLogicalZIP(entries map[string][]byte) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func portableFileDigest(path string) (string, int64, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
+func portableOpenedFileDigest(file *os.File, info os.FileInfo) (string, int64, error) {
+	if file == nil || info == nil || !info.Mode().IsRegular() {
+		return "", 0, os.ErrInvalid
 	}
-	defer file.Close()
 	hash := sha256.New()
 	written, err := io.Copy(hash, file)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/bookcatalog"
+	"openreader/backend/services/webdavfs"
 )
 
 // bookCleanupPlan captures only derived artifacts. It is collected while the
@@ -19,8 +20,14 @@ type bookCleanupPlan struct {
 	remoteCachePaths     []string
 	remoteImageBook      *models.Book
 	privateLibrary       string
+	privateLibraryInfo   os.FileInfo
+	privateLibraryOwner  string
 	privateLibraryUserID uint
 }
+
+// localBookArchiveCleanupTestHook replaces a validated deletion target before
+// detach. API tests are not parallel.
+var localBookArchiveCleanupTestHook func(string)
 
 func (s *Server) captureBookCleanup(tx *gorm.DB, userID uint, book models.Book) (bookCleanupPlan, error) {
 	plan := bookCleanupPlan{}
@@ -45,8 +52,12 @@ func (s *Server) captureBookCleanup(tx *gorm.DB, userID uint, book models.Book) 
 		return plan, err
 	}
 	if path, ok := s.resolvedPrivateImportedBookDirectory(user.Username, book.LibraryPath); ok {
-		plan.privateLibrary = path
-		plan.privateLibraryUserID = userID
+		if info, err := os.Lstat(path); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			plan.privateLibrary = path
+			plan.privateLibraryInfo = info
+			plan.privateLibraryOwner = user.Username
+			plan.privateLibraryUserID = userID
+		}
 	}
 	return plan, nil
 }
@@ -87,13 +98,13 @@ func (s *Server) resolvePrivateImportedBookDirectory(username, libraryPath strin
 	if !ok {
 		return "", "", "", false
 	}
-	ownerRoot := filepath.Join(s.cfg.LibraryDir, "data", engine.SafeFilename(username))
-	relative, ok := relativePathInside(ownerRoot, candidate)
+	configuredOwnerRoot := filepath.Join(s.cfg.LibraryDir, "data", engine.SafeFilename(username))
+	relative, ok := relativePathInside(configuredOwnerRoot, candidate)
 	if !ok {
 		return "", "", "", false
 	}
-	resolvedOwnerRoot, err := filepath.EvalSymlinks(ownerRoot)
-	if err != nil {
+	resolvedOwnerRoot, ok := s.trustedLocalBookOwnerRoot(username)
+	if !ok {
 		return "", "", "", false
 	}
 	resolved, err := filepath.EvalSymlinks(candidate)
@@ -113,26 +124,78 @@ func (s *Server) resolvePrivateImportedBookDirectory(username, libraryPath strin
 func (s *Server) cleanupDeletedBookArtifacts(plans []bookCleanupPlan) {
 	paths := make([]string, 0)
 	type privateDirectory struct {
-		path   string
-		userID uint
+		path      string
+		ownerName string
+		info      os.FileInfo
+		userID    uint
 	}
-	directories := make(map[privateDirectory]struct{})
+	directories := make(map[string]privateDirectory)
 	for _, plan := range plans {
 		paths = append(paths, plan.remoteCachePaths...)
 		if plan.remoteImageBook != nil {
 			_, _ = s.chapterImages.RemoveBook(*plan.remoteImageBook)
 		}
 		if plan.privateLibrary != "" {
-			directories[privateDirectory{path: plan.privateLibrary, userID: plan.privateLibraryUserID}] = struct{}{}
+			directories[plan.privateLibrary] = privateDirectory{
+				path: plan.privateLibrary, ownerName: plan.privateLibraryOwner,
+				info: plan.privateLibraryInfo, userID: plan.privateLibraryUserID,
+			}
 		}
 	}
 	s.pruneUnreferencedRemoteCachePaths(paths)
-	for directory := range directories {
+	for _, directory := range directories {
 		if s.privateImportedBookDirectoryReferenced(directory.userID, directory.path) {
 			continue
 		}
-		_ = os.RemoveAll(directory.path)
+		s.detachAndRemovePrivateArchive(directory.ownerName, directory.path, directory.info)
 	}
+}
+
+func (s *Server) detachAndRemovePrivateArchive(ownerName, target string, expected os.FileInfo) {
+	if expected == nil || !expected.IsDir() || expected.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+	ownerRoot, ok := s.trustedLocalBookOwnerRoot(ownerName)
+	if !ok {
+		return
+	}
+	ownerStorage, err := webdavfs.New(ownerRoot)
+	if err != nil {
+		return
+	}
+	relative, ok := relativePathInside(ownerRoot, target)
+	if !ok {
+		return
+	}
+	resolved, _, err := ownerStorage.Resolve(filepath.ToSlash(relative))
+	if err != nil || filepath.Clean(resolved) != filepath.Clean(target) {
+		return
+	}
+	current, err := os.Lstat(target)
+	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(expected, current) {
+		return
+	}
+	if localBookArchiveCleanupTestHook != nil {
+		localBookArchiveCleanupTestHook(target)
+	}
+	placeholder, err := os.MkdirTemp(filepath.Dir(target), ".openreader-delete-")
+	if err != nil {
+		return
+	}
+	if err := os.Remove(placeholder); err != nil {
+		return
+	}
+	if err := os.Rename(target, placeholder); err != nil {
+		return
+	}
+	detached, err := os.Lstat(placeholder)
+	if err != nil || !detached.IsDir() || detached.Mode()&os.ModeSymlink != 0 || !os.SameFile(expected, detached) {
+		if _, targetErr := os.Lstat(target); os.IsNotExist(targetErr) {
+			_ = os.Rename(placeholder, target)
+		}
+		return
+	}
+	_ = os.RemoveAll(placeholder)
 }
 
 func (s *Server) privateImportedBookDirectoryReferenced(userID uint, target string) bool {

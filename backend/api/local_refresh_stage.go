@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/webdavfs"
 )
 
 // localRefreshStage keeps regenerated local-book artifacts off the active
@@ -17,17 +19,22 @@ import (
 // replacement chapter row read a previous generation's cache by accident.
 type localRefreshStage struct {
 	stageDir        string
+	stageInfo       os.FileInfo
 	stagedContent   string
 	finalContent    string
+	finalContentRel string
 	cachePathPrefix string
 	archiveRoot     string
+	archive         *localBookArchive
+	storage         *webdavfs.Service
 	usesArchive     bool
 	promotions      []localRefreshPromotion
 }
 
 type localRefreshPromotion struct {
-	stagedPath string
-	finalPath  string
+	stagedPath   string
+	finalPath    string
+	relativePath string
 }
 
 // localRefreshStageTestHook is deliberately package-private and used only by
@@ -35,22 +42,17 @@ type localRefreshPromotion struct {
 // not parallel, so it cannot affect a concurrent production request.
 var localRefreshStageTestHook func(string) error
 
-func (s *Server) ownedLocalRefreshArchiveRoot(userID uint, book models.Book) (string, bool) {
-	if strings.TrimSpace(book.LibraryPath) == "" {
-		return "", false
+func (s *Server) stageLocalRefresh(book models.Book, archive *localBookArchive, parsed []engine.TXTChapter, bookURL string) (*localRefreshStage, []models.Chapter, error) {
+	usesArchive := archive != nil && strings.TrimSpace(archive.root) != ""
+	if usesArchive && !archive.current() {
+		return nil, nil, fmt.Errorf("unsafe local refresh archive root")
 	}
-	var user models.User
-	if err := s.db.Select("username").First(&user, userID).Error; err != nil {
-		return "", false
-	}
-	return s.privateImportedBookDirectory(user.Username, book.LibraryPath)
-}
-
-func (s *Server) stageLocalRefresh(book models.Book, archiveRoot string, parsed []engine.TXTChapter, bookURL string) (*localRefreshStage, []models.Chapter, error) {
-	usesArchive := strings.TrimSpace(archiveRoot) != ""
 	stageParent := s.cfg.CacheDir
 	if usesArchive {
-		stageParent = archiveRoot
+		stageParent = archive.root
+		if _, _, err := archive.storage.Resolve("content"); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := os.MkdirAll(stageParent, 0o755); err != nil {
 		return nil, nil, err
@@ -64,15 +66,28 @@ func (s *Server) stageLocalRefresh(book models.Book, archiveRoot string, parsed 
 		_ = os.RemoveAll(stageDir)
 		return nil, nil, fmt.Errorf("create local refresh generation")
 	}
+	stageInfo, err := os.Lstat(stageDir)
+	if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
+		_ = os.RemoveAll(stageDir)
+		return nil, nil, fmt.Errorf("verify local refresh generation")
+	}
 
 	stage := &localRefreshStage{
 		stageDir:      stageDir,
+		stageInfo:     stageInfo,
 		stagedContent: filepath.Join(stageDir, "content"),
-		archiveRoot:   archiveRoot,
 		usesArchive:   usesArchive,
 	}
 	if usesArchive {
-		stage.finalContent = filepath.Join(archiveRoot, "content", generation)
+		stage.archiveRoot = archive.root
+		stage.archive = archive
+		stage.storage = archive.storage
+		stage.finalContentRel = filepath.Join("content", generation)
+		stage.finalContent, _, err = archive.storage.Resolve(filepath.ToSlash(stage.finalContentRel))
+		if err != nil {
+			stage.cleanup()
+			return nil, nil, err
+		}
 		stage.cachePathPrefix = filepath.Join("content", generation)
 	} else {
 		stage.finalContent = filepath.Join(s.cfg.CacheDir, "local-refresh", fmt.Sprintf("book-%d", book.ID), generation)
@@ -81,6 +96,10 @@ func (s *Server) stageLocalRefresh(book models.Book, archiveRoot string, parsed 
 
 	chapters := make([]models.Chapter, 0, len(parsed))
 	for index, parsedChapter := range parsed {
+		if stage.archive != nil && !stage.archive.current() {
+			stage.cleanup()
+			return nil, nil, fmt.Errorf("unsafe local refresh archive root")
+		}
 		title := strings.TrimSpace(parsedChapter.Title)
 		if title == "" {
 			title = fmt.Sprintf("第 %d 章", index+1)
@@ -90,6 +109,10 @@ func (s *Server) stageLocalRefresh(book models.Book, archiveRoot string, parsed 
 		if err != nil {
 			stage.cleanup()
 			return nil, nil, err
+		}
+		if stage.archive != nil && !stage.archive.current() {
+			stage.cleanup()
+			return nil, nil, fmt.Errorf("unsafe local refresh archive root")
 		}
 		chapters = append(chapters, models.Chapter{
 			BookID:              book.ID,
@@ -111,31 +134,40 @@ func (s *Server) stageLocalRefresh(book models.Book, archiveRoot string, parsed 
 	return stage, chapters, nil
 }
 
-func (stage *localRefreshStage) stageArchiveMetadata(libraryDir string, archive engine.ArchivedBook, chapters []engine.ArchivedChapter, source engine.ArchivedBookSource) error {
+func (stage *localRefreshStage) stageArchiveMetadata(archive engine.ArchivedBook, chapters []engine.ArchivedChapter, source engine.ArchivedBookSource) error {
 	if !stage.usesArchive {
 		return nil
 	}
+	if stage.archive == nil || !stage.archive.current() {
+		return fmt.Errorf("unsafe local refresh archive root")
+	}
+	if _, _, err := stage.storage.Resolve("content"); err != nil {
+		return fmt.Errorf("unsafe local refresh content path")
+	}
 	if strings.TrimSpace(archive.TOCFile) != "" {
-		if err := stage.stageJSONFile(libraryDir, archive.TOCFile, chapters); err != nil {
+		if err := stage.stageJSONFile(archive.Directory, archive.TOCFile, chapters); err != nil {
 			return err
 		}
 	}
 	if strings.TrimSpace(archive.SourceFile) != "" {
-		if err := stage.stageJSONFile(libraryDir, archive.SourceFile, []engine.ArchivedBookSource{source}); err != nil {
+		if err := stage.stageJSONFile(archive.Directory, archive.SourceFile, []engine.ArchivedBookSource{source}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (stage *localRefreshStage) stageJSONFile(libraryDir, storedPath string, value any) error {
-	if filepath.IsAbs(storedPath) {
+func (stage *localRefreshStage) stageJSONFile(archiveDirectory, storedPath string, value any) error {
+	if stage.storage == nil || filepath.IsAbs(storedPath) || filepath.IsAbs(archiveDirectory) {
 		return fmt.Errorf("unsafe local refresh metadata path")
 	}
-	finalPath := filepath.Join(libraryDir, storedPath)
-	relativePath, ok := relativePathInside(stage.archiveRoot, finalPath)
-	if !ok {
+	relativePath, err := filepath.Rel(filepath.Clean(archiveDirectory), filepath.Clean(storedPath))
+	if err != nil || relativePath == "." || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("local refresh metadata path is outside archive")
+	}
+	finalPath, _, err := stage.storage.Resolve(filepath.ToSlash(relativePath))
+	if err != nil {
+		return fmt.Errorf("unsafe local refresh metadata path")
 	}
 	stagedPath := filepath.Join(stage.stageDir, "metadata", relativePath)
 	if err := os.MkdirAll(filepath.Dir(stagedPath), 0o755); err != nil {
@@ -149,20 +181,46 @@ func (stage *localRefreshStage) stageJSONFile(libraryDir, storedPath string, val
 	if err := os.WriteFile(stagedPath, data, 0o644); err != nil {
 		return err
 	}
-	stage.promotions = append(stage.promotions, localRefreshPromotion{stagedPath: stagedPath, finalPath: finalPath})
+	stage.promotions = append(stage.promotions, localRefreshPromotion{stagedPath: stagedPath, finalPath: finalPath, relativePath: relativePath})
 	return nil
 }
 
 func (stage *localRefreshStage) promote() error {
-	if err := os.MkdirAll(filepath.Dir(stage.finalContent), 0o755); err != nil {
+	if stage.archive != nil && !stage.archive.current() {
+		return fmt.Errorf("unsafe local refresh archive root")
+	}
+	if stage.storage != nil {
+		if err := stage.storage.Mkdir("content"); err != nil {
+			return err
+		}
+		finalContent, _, err := stage.storage.Resolve(filepath.ToSlash(stage.finalContentRel))
+		if err != nil || filepath.Clean(finalContent) != filepath.Clean(stage.finalContent) {
+			return fmt.Errorf("unsafe local refresh content path")
+		}
+		for index := range stage.promotions {
+			promotion := &stage.promotions[index]
+			parent := filepath.Dir(promotion.relativePath)
+			if parent != "." {
+				if err := stage.storage.Mkdir(filepath.ToSlash(parent)); err != nil {
+					return err
+				}
+			}
+			finalPath, _, err := stage.storage.Resolve(filepath.ToSlash(promotion.relativePath))
+			if err != nil || filepath.Clean(finalPath) != filepath.Clean(promotion.finalPath) {
+				return fmt.Errorf("unsafe local refresh metadata path")
+			}
+		}
+	} else if err := os.MkdirAll(filepath.Dir(stage.finalContent), 0o755); err != nil {
 		return err
 	}
 	if err := os.Rename(stage.stagedContent, stage.finalContent); err != nil {
 		return err
 	}
 	for _, promotion := range stage.promotions {
-		if err := os.MkdirAll(filepath.Dir(promotion.finalPath), 0o755); err != nil {
-			return err
+		if stage.storage == nil {
+			if err := os.MkdirAll(filepath.Dir(promotion.finalPath), 0o755); err != nil {
+				return err
+			}
 		}
 		if err := os.Rename(promotion.stagedPath, promotion.finalPath); err != nil {
 			return err
@@ -172,13 +230,32 @@ func (stage *localRefreshStage) promote() error {
 }
 
 func (stage *localRefreshStage) cleanup() {
-	if stage != nil && stage.stageDir != "" {
-		_ = os.RemoveAll(stage.stageDir)
+	if stage == nil || stage.stageDir == "" || stage.stageInfo == nil {
+		return
 	}
+	current, err := os.Lstat(stage.stageDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(stage.stageInfo, current) {
+		return
+	}
+	detached := stage.stageDir + ".cleanup"
+	if err := os.Rename(stage.stageDir, detached); err != nil {
+		return
+	}
+	detachedInfo, err := os.Lstat(detached)
+	if err != nil || !detachedInfo.IsDir() || detachedInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(stage.stageInfo, detachedInfo) {
+		if _, targetErr := os.Lstat(stage.stageDir); os.IsNotExist(targetErr) {
+			_ = os.Rename(detached, stage.stageDir)
+		}
+		return
+	}
+	_ = os.RemoveAll(detached)
 }
 
-func (s *Server) pruneSupersededLocalDerivedContent(book models.Book, archiveRoot string, supersededCachePaths []string) {
-	if strings.TrimSpace(archiveRoot) == "" || len(supersededCachePaths) == 0 {
+func (s *Server) pruneSupersededLocalDerivedContent(book models.Book, archive *localBookArchive, supersededCachePaths []string) {
+	if archive == nil || !archive.current() || strings.TrimSpace(archive.root) == "" || len(supersededCachePaths) == 0 {
 		return
 	}
 	var current []models.Chapter
@@ -189,15 +266,19 @@ func (s *Server) pruneSupersededLocalDerivedContent(book models.Book, archiveRoo
 	for _, chapter := range current {
 		active[chapter.CachePath] = struct{}{}
 	}
-	contentRoot := filepath.Join(archiveRoot, "content")
+	contentRoot := filepath.Join(archive.root, "content")
 	for _, cachePath := range supersededCachePaths {
 		if _, retained := active[cachePath]; retained || filepath.IsAbs(cachePath) {
 			continue
 		}
-		candidate := filepath.Join(archiveRoot, cachePath)
+		candidate := filepath.Join(archive.root, cachePath)
 		if _, ok := relativePathInside(contentRoot, candidate); !ok {
 			continue
 		}
-		_ = os.Remove(candidate)
+		relative, ok := relativePathInside(archive.root, candidate)
+		if !ok {
+			continue
+		}
+		_, _ = archive.storage.RemoveRegular(filepath.ToSlash(relative))
 	}
 }

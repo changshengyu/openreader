@@ -867,22 +867,19 @@ func (s *Server) exportOriginalLocalBook(c *gin.Context, book models.Book) bool 
 	if err := c.Request.Context().Err(); err != nil {
 		return false
 	}
-	path, ok := s.localBookSourcePath(book)
+	source, ok := s.openLocalBookSource(book)
 	if !ok {
 		return false
 	}
-	libraryRoot, err := filepath.EvalSymlinks(s.cfg.LibraryDir)
-	if err != nil || !pathInside(libraryRoot, path) {
-		return false
-	}
-	content, err := os.ReadFile(path)
+	defer source.close()
+	content, err := readOpenedFile(source.file)
 	if err != nil {
 		return false
 	}
 	if err := c.Request.Context().Err(); err != nil {
 		return false
 	}
-	setAttachmentHeader(c, filepath.Base(path))
+	setAttachmentHeader(c, source.name)
 	c.Data(http.StatusOK, "application/octet-stream", content)
 	return true
 }
@@ -1542,13 +1539,14 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 		}
 	}
 
-	sourcePath, ok := s.localBookSourcePath(book)
+	source, ok := s.openLocalBookSource(book)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "local source file not found"})
 		return
 	}
+	defer source.close()
 	legacyLimits := engine.LegacyLocalBookParseLimits()
-	data, err := readBoundedLocalBookSource(sourcePath, legacyLimits.MaxArchiveBytes)
+	data, err := readBoundedOpenedLocalBookSource(source.file, source.info, legacyLimits.MaxArchiveBytes)
 	if err != nil {
 		if errors.Is(err, engine.ErrLocalBookParseLimit) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": engine.ErrLocalBookParseLimit.Error()})
@@ -1557,7 +1555,7 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read local source file"})
 		return
 	}
-	parsed, err := parseLocalBookChapters(filepath.Ext(sourcePath), data, tocRule)
+	parsed, err := parseLocalBookChapters(filepath.Ext(source.name), data, tocRule)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to parse local book: %v", err)})
 		return
@@ -1571,8 +1569,7 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 	if bookURL == "" {
 		bookURL = fmt.Sprintf("local://book_%d", book.ID)
 	}
-	archiveRoot, _ := s.ownedLocalRefreshArchiveRoot(userID, book)
-	stage, nextChapters, err := s.stageLocalRefresh(book, archiveRoot, parsed, bookURL)
+	stage, nextChapters, err := s.stageLocalRefresh(book, source.archive, parsed, bookURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stage local refreshed content"})
 		return
@@ -1624,7 +1621,7 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 				ResourceEndFragment: chapter.ResourceEndFragment,
 			})
 		}
-		return stage.stageArchiveMetadata(s.cfg.LibraryDir, archive, archivedChapters, engine.ArchivedBookSource{
+		return stage.stageArchiveMetadata(archive, archivedChapters, engine.ArchivedBookSource{
 			BookURL:            book.OriginalFile,
 			Origin:             "loc_book",
 			OriginName:         book.OriginalFile,
@@ -1645,7 +1642,7 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to publish local refreshed content"})
 		return
 	}
-	s.pruneSupersededLocalDerivedContent(book, archiveRoot, supersededCachePaths)
+	s.pruneSupersededLocalDerivedContent(book, source.archive, supersededCachePaths)
 
 	c.JSON(http.StatusOK, gin.H{"book": s.broadcastBookShelfUpdate(userID, book), "chapterCount": len(parsed)})
 }
@@ -2783,7 +2780,7 @@ func relativePathInside(root string, path string) (string, bool) {
 }
 
 func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapter) string {
-	archiveRoot, archiveOK := s.localBookArchiveRoot(book)
+	archive, archiveOK := s.resolveLocalBookArchive(book)
 	if !archiveOK {
 		return ""
 	}
@@ -2792,18 +2789,19 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 		if err != nil || strings.TrimSpace(content) == "" {
 			return ""
 		}
-		return s.persistRebuiltLocalChapterText(book, chapter, archiveRoot, content)
+		return s.persistRebuiltLocalChapterText(book, chapter, archive, content)
 	}
-	sourcePath, ok := s.localBookSourcePath(book)
+	source, ok := s.openLocalBookSource(book)
 	if !ok {
 		return ""
 	}
+	defer source.close()
 	legacyLimits := engine.LegacyLocalBookParseLimits()
-	data, err := readBoundedLocalBookSource(sourcePath, legacyLimits.MaxArchiveBytes)
+	data, err := readBoundedOpenedLocalBookSource(source.file, source.info, legacyLimits.MaxArchiveBytes)
 	if err != nil {
 		return ""
 	}
-	chapters, err := parseLocalBookChapters(filepath.Ext(sourcePath), data, book.TOCRule)
+	chapters, err := parseLocalBookChapters(filepath.Ext(source.name), data, book.TOCRule)
 	if err != nil || chapter.Index < 0 || chapter.Index >= len(chapters) {
 		return ""
 	}
@@ -2811,10 +2809,13 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 	if content == "" {
 		return ""
 	}
-	return s.persistRebuiltLocalChapterText(book, chapter, archiveRoot, content)
+	return s.persistRebuiltLocalChapterText(book, chapter, archive, content)
 }
 
-func (s *Server) persistRebuiltLocalChapterText(book models.Book, chapter *models.Chapter, archiveRoot, content string) string {
+func (s *Server) persistRebuiltLocalChapterText(book models.Book, chapter *models.Chapter, archive *localBookArchive, content string) string {
+	if archive == nil || !archive.current() {
+		return content
+	}
 	chapterURL := strings.TrimSpace(chapter.URL)
 	if chapterURL == "" {
 		chapterURL = fmt.Sprintf("local://book_%d/chapter_%d", book.ID, chapter.Index)
@@ -2824,8 +2825,11 @@ func (s *Server) persistRebuiltLocalChapterText(book models.Book, chapter *model
 	if bookURL == "" {
 		bookURL = fmt.Sprintf("local://book_%d", book.ID)
 	}
-	contentDir := filepath.Join(archiveRoot, "content")
+	contentDir := filepath.Join(archive.root, "content")
 	if cachePath, err := engine.WriteChapterCache(contentDir, bookURL, chapterURL, content); err == nil {
+		if !archive.current() {
+			return content
+		}
 		chapter.CachePath = filepath.Join("content", cachePath)
 		_ = s.db.Save(chapter)
 	}
@@ -2854,56 +2858,12 @@ func parseLocalBookChapters(ext string, data []byte, tocRule string) ([]engine.T
 }
 
 func (s *Server) localBookSourcePath(book models.Book) (string, bool) {
-	archiveRoot, ok := s.localBookArchiveRoot(book)
+	source, ok := s.openLocalBookSource(book)
 	if !ok {
 		return "", false
 	}
-
-	candidates := make([]string, 0, 4)
-	add := func(path string) {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return
-		}
-		for _, existing := range candidates {
-			if existing == path {
-				return
-			}
-		}
-		candidates = append(candidates, path)
-	}
-
-	originalFile := strings.TrimSpace(book.OriginalFile)
-	if filepath.IsAbs(originalFile) {
-		if suffix, ok := suffixAfterPathSegment(originalFile, book.LibraryPath); ok {
-			add(filepath.Join(archiveRoot, suffix))
-		}
-		add(filepath.Join(archiveRoot, filepath.Base(originalFile)))
-	} else if originalFile != "" {
-		add(filepath.Join(s.cfg.LibraryDir, originalFile))
-		add(filepath.Join(archiveRoot, originalFile))
-		add(filepath.Join(archiveRoot, filepath.Base(originalFile)))
-	}
-
-	for _, path := range candidates {
-		if resolved, ok := existingRegularPathInside(archiveRoot, path); ok && isSupportedLocalBookFile(resolved) {
-			return resolved, true
-		}
-	}
-	entries, err := os.ReadDir(archiveRoot)
-	if err != nil {
-		return "", false
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(archiveRoot, entry.Name())
-		if resolved, ok := existingRegularPathInside(archiveRoot, path); ok && isSupportedLocalBookFile(resolved) {
-			return resolved, true
-		}
-	}
-	return "", false
+	defer source.close()
+	return source.file.Name(), true
 }
 
 // localBookArchiveRoot is the sole authority for local-book filesystem access.
@@ -2911,47 +2871,11 @@ func (s *Server) localBookSourcePath(book models.Book) (string, bool) {
 // CachePath can describe a former Docker host, but must never authorize a read
 // outside the current owner's private library root.
 func (s *Server) localBookArchiveRoot(book models.Book) (string, bool) {
-	if book.SourceID != 0 || strings.TrimSpace(book.LibraryPath) == "" {
-		return "", false
-	}
-	var owner models.User
-	if err := s.db.Select("username").First(&owner, book.UserID).Error; err != nil {
-		return "", false
-	}
-	candidate, ok := s.privateImportedBookDirectory(owner.Username, book.LibraryPath)
+	archive, ok := s.resolveLocalBookArchive(book)
 	if !ok {
 		return "", false
 	}
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return "", false
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.IsDir() {
-		return "", false
-	}
-	ownerRoot := filepath.Join(s.cfg.LibraryDir, "data", engine.SafeFilename(owner.Username))
-	resolvedOwnerRoot, err := filepath.EvalSymlinks(ownerRoot)
-	if err != nil || !pathInside(resolvedOwnerRoot, resolved) {
-		return "", false
-	}
-	return resolved, true
-}
-
-func existingRegularPathInside(root, candidate string) (string, bool) {
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", false
-	}
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return "", false
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || info.IsDir() || !pathInside(resolvedRoot, resolved) {
-		return "", false
-	}
-	return resolved, true
+	return archive.root, true
 }
 
 func pathInside(root, path string) bool {
@@ -2980,93 +2904,32 @@ func (s *Server) readChapterCache(book models.Book, cachePath string) ([]byte, s
 	if book.SourceID != 0 {
 		return s.readRemoteChapterCache(cachePath)
 	}
-	var lastErr error
-	for _, path := range s.chapterCacheCandidates(book, cachePath) {
-		bytes, err := os.ReadFile(path)
-		if err == nil {
-			return bytes, path, nil
-		}
-		lastErr = err
+	file, _, ok := s.openLocalChapterCache(book, cachePath)
+	if !ok {
+		return nil, "", os.ErrNotExist
 	}
-	if lastErr == nil {
-		lastErr = os.ErrNotExist
+	defer file.Close()
+	bytes, err := readOpenedFile(file)
+	if err != nil {
+		return nil, "", err
 	}
-	return nil, "", lastErr
+	return bytes, file.Name(), nil
 }
 
 func (s *Server) chapterCacheCandidates(book models.Book, cachePath string) []string {
-	cachePath = strings.TrimSpace(cachePath)
-	if cachePath == "" {
-		return nil
-	}
-
-	candidates := make([]string, 0, 5)
-	add := func(path string) {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return
-		}
-		for _, existing := range candidates {
-			if existing == path {
-				return
-			}
-		}
-		candidates = append(candidates, path)
-	}
-
 	if book.SourceID != 0 {
 		if filepath.IsAbs(cachePath) {
-			add(cachePath)
-		} else {
-			add(filepath.Join(s.cfg.CacheDir, cachePath))
+			return []string{cachePath}
 		}
-		return candidates
+		return []string{filepath.Join(s.cfg.CacheDir, cachePath)}
 	}
-
-	archiveRoot, ok := s.localBookArchiveRoot(book)
+	file, _, ok := s.openLocalChapterCache(book, cachePath)
 	if !ok {
-		// Early OpenReader data and audio-library records can have only a
-		// relative cache path, with no imported-book archive directory. Keep
-		// that narrow recovery path while refusing absolute cache paths and
-		// refusing non-audio books that claim an invalid archive directory.
-		if strings.TrimSpace(book.LibraryPath) != "" && book.Type != 1 {
-			return nil
-		}
-		if filepath.IsAbs(cachePath) {
-			return nil
-		}
-		if resolved, ok := existingRegularPathInside(s.cfg.CacheDir, filepath.Join(s.cfg.CacheDir, cachePath)); ok {
-			return []string{resolved}
-		}
 		return nil
 	}
-	contentRoot := filepath.Join(archiveRoot, "content")
-	if filepath.IsAbs(cachePath) {
-		if suffix, ok := suffixAfterPathSegment(cachePath, "content"); ok {
-			add(filepath.Join(contentRoot, suffix))
-		}
-		if suffix, ok := suffixAfterPathSegment(cachePath, book.LibraryPath); ok {
-			add(filepath.Join(archiveRoot, suffix))
-		}
-	} else {
-		add(filepath.Join(archiveRoot, cachePath))
-		add(filepath.Join(contentRoot, cachePath))
-		add(filepath.Join(s.cfg.CacheDir, cachePath))
-	}
-
-	trusted := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		if _, ok := existingRegularPathInside(archiveRoot, candidate); ok {
-			trusted = append(trusted, candidate)
-			continue
-		}
-		if !filepath.IsAbs(cachePath) {
-			if _, ok := existingRegularPathInside(s.cfg.CacheDir, candidate); ok {
-				trusted = append(trusted, candidate)
-			}
-		}
-	}
-	return trusted
+	path := file.Name()
+	_ = file.Close()
+	return []string{path}
 }
 
 func suffixAfterPathSegment(path string, segment string) (string, bool) {

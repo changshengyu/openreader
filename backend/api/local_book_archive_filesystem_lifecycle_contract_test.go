@@ -210,6 +210,64 @@ func TestLocalBookRefreshRejectsSymlinkedDerivedParentsBeforeMutation(t *testing
 	}
 }
 
+func TestLocalBookRefreshRejectsDerivedParentReplacementBeforeCommit(t *testing.T) {
+	router, server := setupTestServer(t)
+	username := "archiverefreshreplace"
+	auth := registerLifecycleToken(t, router, username)
+	owner := lifecycleUser(t, server, username)
+	libraryPath := filepath.Join("data", username, "mounted-book")
+	bookRoot := filepath.Join(server.cfg.LibraryDir, libraryPath)
+	_ = writeLifecycleCache(t, bookRoot, "source.txt", "第一章 新目录\n合法源正文\n")
+	book := models.Book{
+		UserID: owner.ID, SourceID: 0, Title: "derived replacement", URL: "local://derived-replacement",
+		LibraryPath: libraryPath, OriginalFile: filepath.Join(libraryPath, "source.txt"),
+		TOCFile: filepath.Join(libraryPath, "chapters.json"), SourceFile: filepath.Join(libraryPath, "bookSource.json"),
+		TOCRule: `^第.+章.*$`, LastChapter: "旧目录", ChapterCount: 1,
+	}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "旧目录", URL: book.URL + "/chapter_0"}
+	if err := server.db.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+	outsideContent := t.TempDir()
+	localRefreshStageTestHook = func(string) error {
+		localRefreshStageTestHook = nil
+		if err := os.Symlink(outsideContent, filepath.Join(bookRoot, "content")); err != nil {
+			t.Skipf("replacement symlink unavailable: %v", err)
+		}
+		return nil
+	}
+	defer func() { localRefreshStageTestHook = nil }()
+
+	request := httptest.NewRequest(http.MethodPost, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/refresh-local", nil)
+	request.Header.Set("Authorization", auth)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code == http.StatusOK {
+		t.Errorf("refresh committed after derived parent replacement: %s", response.Body.String())
+	}
+	var persistedChapter models.Chapter
+	if err := server.db.First(&persistedChapter, chapter.ID).Error; err != nil {
+		t.Errorf("derived parent replacement changed the active catalogue: %v", err)
+	}
+	var persistedBook models.Book
+	if err := server.db.First(&persistedBook, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persistedBook.LastChapter != "旧目录" || persistedBook.ChapterCount != 1 {
+		t.Errorf("derived parent replacement changed book metadata: %+v", persistedBook)
+	}
+	entries, err := os.ReadDir(outsideContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("derived parent replacement received staged content: %v", entries)
+	}
+}
+
 func TestLocalBookDeletionNeverRemovesThroughOwnerRootSymlink(t *testing.T) {
 	for _, action := range []string{"single", "batch"} {
 		t.Run(action, func(t *testing.T) {
@@ -226,5 +284,131 @@ func TestLocalBookDeletionNeverRemovesThroughOwnerRootSymlink(t *testing.T) {
 				t.Errorf("unsafe owner-root symlink should remain untouched after %s delete: info=%v err=%v", action, info, err)
 			}
 		})
+	}
+}
+
+func TestLocalBookArchiveReadsOpenedIdentityAfterMountedReplacement(t *testing.T) {
+	for _, target := range []string{"cache", "source"} {
+		t.Run(target, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			username := "archivereplace" + target
+			auth := registerLifecycleToken(t, router, username)
+			owner := lifecycleUser(t, server, username)
+			libraryPath := filepath.Join("data", username, "mounted-book")
+			bookRoot := filepath.Join(server.cfg.LibraryDir, libraryPath)
+			sourcePath := writeLifecycleCache(t, bookRoot, "source.txt", "第一章 已验证原文件\nverified source bytes\n")
+			cacheRelative := filepath.Join("content", "active", "chapter.txt")
+			cachePath := writeLifecycleCache(t, bookRoot, cacheRelative, "verified cache bytes")
+			book := models.Book{
+				UserID: owner.ID, SourceID: 0, Title: "opened identity", URL: "local://opened-identity",
+				LibraryPath: libraryPath, OriginalFile: filepath.Join(libraryPath, "source.txt"),
+				TOCRule: `^第.+章.*$`, ChapterCount: 1,
+			}
+			if err := server.db.Create(&book).Error; err != nil {
+				t.Fatal(err)
+			}
+			chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "one", URL: book.URL + "/chapter_0", CachePath: cacheRelative}
+			if err := server.db.Create(&chapter).Error; err != nil {
+				t.Fatal(err)
+			}
+			replacement := writeLifecycleCache(t, t.TempDir(), "replacement.txt", outsideLocalArchiveSentinel)
+			wantedPath := cachePath
+			if target == "source" {
+				wantedPath = sourcePath
+			}
+			resolvedWantedPath, err := filepath.EvalSymlinks(wantedPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hookCalled := false
+			localBookArchiveOpenTestHook = func(openedPath string) {
+				if filepath.Clean(openedPath) != filepath.Clean(resolvedWantedPath) {
+					return
+				}
+				hookCalled = true
+				localBookArchiveOpenTestHook = nil
+				backup := openedPath + ".verified-open"
+				if err := os.Rename(openedPath, backup); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(replacement, openedPath); err != nil {
+					t.Skipf("replacement symlink unavailable: %v", err)
+				}
+			}
+			defer func() { localBookArchiveOpenTestHook = nil }()
+
+			var request *http.Request
+			if target == "cache" {
+				request = httptest.NewRequest(http.MethodGet, "/api/books/"+strconv.FormatUint(uint64(book.ID), 10)+"/chapters/0/content", nil)
+			} else {
+				body := `{"bookIds":[` + strconv.FormatUint(uint64(book.ID), 10) + `],"format":"txt"}`
+				request = httptest.NewRequest(http.MethodPost, "/api/books/export", strings.NewReader(body))
+				request.Header.Set("Content-Type", "application/json")
+			}
+			request.Header.Set("Authorization", auth)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("%s replacement response: status=%d body=%s", target, response.Code, response.Body.String())
+			}
+			if !hookCalled {
+				t.Fatalf("%s replacement hook did not observe the verified opened file", target)
+			}
+			if strings.Contains(response.Body.String(), outsideLocalArchiveSentinel) {
+				t.Fatalf("%s response consumed the mounted replacement: %s", target, response.Body.String())
+			}
+			want := "verified cache bytes"
+			if target == "source" {
+				want = "verified source bytes"
+			}
+			if !strings.Contains(response.Body.String(), want) {
+				t.Fatalf("%s response lost the verified opened object: %s", target, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestLocalBookDeletionRestoresReplacementInsteadOfRemovingIt(t *testing.T) {
+	router, server := setupTestServer(t)
+	username := "archivedeletereplace"
+	auth := registerLifecycleToken(t, router, username)
+	owner := lifecycleUser(t, server, username)
+	libraryPath := filepath.Join("data", username, "mounted-book")
+	bookRoot := filepath.Join(server.cfg.LibraryDir, libraryPath)
+	sourcePath := writeLifecycleCache(t, bookRoot, "source.txt", "verified original directory")
+	resolvedBookRoot, err := filepath.EvalSymlinks(bookRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{UserID: owner.ID, SourceID: 0, Title: "delete replacement", LibraryPath: libraryPath, OriginalFile: filepath.Join(libraryPath, "source.txt")}
+	if err := server.db.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	backupRoot := resolvedBookRoot + ".verified-directory"
+	replacementSentinel := filepath.Join(resolvedBookRoot, "replacement.txt")
+	localBookArchiveCleanupTestHook = func(target string) {
+		localBookArchiveCleanupTestHook = nil
+		if filepath.Clean(target) != filepath.Clean(resolvedBookRoot) {
+			t.Fatalf("cleanup hook target=%q want=%q", target, resolvedBookRoot)
+		}
+		if err := os.Rename(resolvedBookRoot, backupRoot); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(resolvedBookRoot, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(replacementSentinel, []byte(outsideLocalArchiveSentinel), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() { localBookArchiveCleanupTestHook = nil }()
+
+	deleteBookByContractAction(t, router, auth, "single", book.ID)
+	if data, err := os.ReadFile(replacementSentinel); err != nil || string(data) != outsideLocalArchiveSentinel {
+		t.Fatalf("validated cleanup removed the replacement object: data=%q err=%v", string(data), err)
+	}
+	if data, err := os.ReadFile(filepath.Join(backupRoot, filepath.Base(sourcePath))); err != nil || string(data) != "verified original directory" {
+		t.Fatalf("cleanup replacement lost the originally validated directory: data=%q err=%v", string(data), err)
 	}
 }

@@ -14,9 +14,6 @@ import (
 // cache reconstruction. The caller has already resolved the path below the
 // authenticated book's archive root; errors deliberately contain no path.
 func readBoundedLocalBookSource(path string, maxBytes int64) ([]byte, error) {
-	if maxBytes <= 0 {
-		return nil, fmt.Errorf("%w: invalid local source input limit", engine.ErrLocalBookParseLimit)
-	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -25,6 +22,16 @@ func readBoundedLocalBookSource(path string, maxBytes int64) ([]byte, error) {
 	info, err := file.Stat()
 	if err != nil {
 		return nil, err
+	}
+	return readBoundedOpenedLocalBookSource(file, info, maxBytes)
+}
+
+func readBoundedOpenedLocalBookSource(file *os.File, info os.FileInfo, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("%w: invalid local source input limit", engine.ErrLocalBookParseLimit)
+	}
+	if file == nil || info == nil {
+		return nil, os.ErrInvalid
 	}
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("local source is not a regular file")
