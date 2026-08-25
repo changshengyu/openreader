@@ -428,7 +428,15 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
     -H "Authorization: Bearer ${TOKEN}")"
   BACKUP_NAME="$(printf '%s' "$BACKUP_RESPONSE" | json_field name)"
   curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$BACKUP_NAME" >/dev/null
-  BACKUP_PATH="$ROOT/data/webdav/users/${USERNAME}/${BACKUP_NAME}"
+  BACKUP_STORED_PATH="$ROOT/data/webdav/users/${USERNAME}/${BACKUP_NAME}"
+  [ -f "$BACKUP_STORED_PATH" ] || {
+    echo "historical backup was not written to the owner's private backup root" >&2
+    exit 1
+  }
+  BACKUP_PATH="$ROOT/$BACKUP_NAME"
+  curl -fsS "${BASE_URL}/api/backup/download/${BACKUP_NAME}" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -o "$BACKUP_PATH"
   curl -fsS -X POST "${BASE_URL}/api/backup/restore-legado" \
     -H "Authorization: Bearer ${TOKEN}" \
     -F "file=@${BACKUP_PATH}" >/dev/null
@@ -487,12 +495,16 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
     echo "portable historical backup exported ${PORTABLE_LOCAL_BOOKS} local books, expected 5" >&2
     exit 1
   fi
-  PORTABLE_BACKUP_PATH="$ROOT/data/webdav/users/${USERNAME}/${PORTABLE_BACKUP_NAME}"
+  PORTABLE_STORED_BACKUP_PATH="$ROOT/data/webdav/users/${USERNAME}/${PORTABLE_BACKUP_NAME}"
   curl -fsS "${BASE_URL}/api/backup/list" -H "Authorization: Bearer ${TOKEN}" | grep "$PORTABLE_BACKUP_NAME" | grep 'openreader-portable-v2' >/dev/null
-  [ -f "$PORTABLE_BACKUP_PATH" ] || {
+  [ -f "$PORTABLE_STORED_BACKUP_PATH" ] || {
     echo "portable backup was not written to the owner's private backup root" >&2
     exit 1
   }
+  PORTABLE_BACKUP_PATH="$ROOT/$PORTABLE_BACKUP_NAME"
+  curl -fsS "${BASE_URL}/api/backup/download/${PORTABLE_BACKUP_NAME}" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -o "$PORTABLE_BACKUP_PATH"
 
   start_portable_destination
   wait_portable_health
