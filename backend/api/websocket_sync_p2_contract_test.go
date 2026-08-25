@@ -272,6 +272,41 @@ func readUsersUpdate(t *testing.T, connection *websocket.Conn) usersUpdateMessag
 	return message
 }
 
+func TestSyncHubCloseIsIdempotentAndRejectsNewLifetime(t *testing.T) {
+	router, server := setupTestServer(t)
+	token := bearerToken(authHeader(t, router))
+	httpServer := httptest.NewServer(router)
+	defer httpServer.Close()
+
+	connection, response, err := dialSyncWebSocket(httpServer.URL, token, "")
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
+	if err != nil {
+		t.Fatalf("connect websocket: %v", err)
+	}
+	defer connection.Close()
+
+	server.hub.Close()
+	server.hub.Close()
+	_ = connection.SetReadDeadline(time.Now().Add(websocketContractReadWait))
+	if _, _, err := connection.ReadMessage(); err == nil {
+		t.Fatal("hub close left an existing websocket connected")
+	}
+
+	late, response, err := dialSyncWebSocket(httpServer.URL, token, "")
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
+	if err == nil {
+		defer late.Close()
+		_ = late.SetReadDeadline(time.Now().Add(websocketContractReadWait))
+		if _, _, err := late.ReadMessage(); err == nil {
+			t.Fatal("closed hub accepted a new websocket lifetime")
+		}
+	}
+}
+
 func TestUsersUpdateTargetsAdministratorsAndAffectedUsersOnly(t *testing.T) {
 	router, server := setupTestServer(t)
 	adminAuthorization := authHeader(t, router)
