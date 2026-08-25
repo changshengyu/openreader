@@ -352,5 +352,8 @@ WebDAV、HTTP lifecycle 与 query/capability 脱敏保持。完整证据、配�
 合同 `30b7630` 与旧实现红测 `db89593` 已按顺序推送。当前实现默认 `SetTrustedProxies(nil)`，只在
 `OPENREADER_TRUSTED_PROXIES` 明确列出 IP/CIDR 后读取 forwarded client headers；配置在目录、SQLite、
 scheduler、backup、middleware 和 listen 前严格验证。focused/full/race/vet、frontend 741/741、build、
-Compose、README 42/42 变量和真实二进制 default/trusted/invalid 三组探针通过。当前状态
-**implemented / regression-validated / Docker-release-pending**；整体比例仍为 99%。
+Compose、README 42/42 变量和真实二进制 default/trusted/invalid 三组探针通过。GitHub Actions
+`32828470325` 又通过 native image、fresh/historical/portable/restart 卷门并发布 `f5b3869`/`latest`；
+amd64/arm64 OCI index 为
+`sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**；整体比例仍为 99%。

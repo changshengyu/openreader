@@ -3978,3 +3978,17 @@ build、真实二进制 200/401/404/256 KiB query 和新旧/portable/restart 卷
 `f88ecec`/`latest`，OCI index 为
 `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`。状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-25 可信代理、客户端身份与限流第二轮固定基准复审
+
+访问日志发布后，process/middleware 差集确认 `gin.New()` 的全代理默认信任会让直连请求方通过
+`X-Forwarded-For` 选择限流桶并伪造日志来源。固定上游 Nginx 示例证明显式反向代理是合法部署，
+但没有把任意直连方声明为可信代理；OpenReader 的每 IP 限流是允许的安全增强，不能由客户端自行绕过。
+
+合同 `30b7630`、旧实现红测 `db89593` 和实现 `f5b3869` 已按顺序关闭：默认只使用 TCP peer；可选
+`OPENREADER_TRUSTED_PROXIES` 严格列出代理 IP/CIDR；非法列表在持久/后台工作和 listen 前退出；limiter
+与 logger 共用 Gin 验证后的右到左代理链。Go full/race/vet、frontend 741/741、build、Compose、真实
+default/trusted/invalid 进程探针及 GitHub Actions `32828470325` fresh/historical/portable/restart 卷门通过。
+已发布 `f5b3869`/`latest`，amd64/arm64 OCI index 为
+`sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`；当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

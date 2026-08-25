@@ -13,10 +13,12 @@ Use this checklist for security-sensitive changes and release reviews.
 - [x] Existing 429 JSON, route exemptions, query/capability redaction, CORS, JWT, WebDAV, source proxy and mounted
   data contracts remain unchanged.
 
-Evidence: contract `30b7630`, old-implementation red tests `db89593`, focused/full/race/vet, frontend 741/741,
-production build, Compose and README variable checks, plus real-process default/trusted/invalid probes. See
+Evidence: contract `30b7630`, old-implementation red tests `db89593`, implementation `f5b3869`, focused/full/
+race/vet, frontend 741/741, production build, Compose and README variable checks, real-process default/trusted/invalid
+probes, and GitHub Actions `32828470325` fresh/historical/portable/restart gates. The published amd64/arm64 index is
+`sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`. See
 [`docs/compat/trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](compat/trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).
-Status is `implemented / regression-validated / Docker-release-pending`.
+Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
 ## Authentication and authorization
 

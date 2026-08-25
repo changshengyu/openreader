@@ -1160,3 +1160,16 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - Full contract:
   [`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md).
   Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
+## P2 trusted-proxy client identity compatibility (2026-08-25 implemented/published)
+
+- `f5b3869` adds one optional process-only environment variable and no schema, migration, startup scan, persistent
+  path, route, payload, backup member, manifest member, browser key or UI state. Existing `data/cache/library` bytes
+  are not scanned, moved or rewritten.
+- Direct deployments need no change and now ignore caller-controlled forwarded client-IP headers. Reverse proxies
+  can explicitly list their own IP/CIDR through `OPENREADER_TRUSTED_PROXIES`; this affects limiter/log identity only.
+- GitHub Actions `32828470325` passed fresh portable-v1/v2-assets/cross-user/restart and historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates against unchanged volumes.
+- The published amd64/arm64 `f5b3869`/`latest` OCI index is
+  `sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`. Full contract:
+  [`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).

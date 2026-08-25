@@ -652,4 +652,7 @@ WebDAV、graceful shutdown 和日志脱敏保持。完整合同见
 合同 `30b7630` 与旧实现红测 `db89593` 已按顺序推送。当前实现默认不信任 forwarded client headers，
 只接受 `OPENREADER_TRUSTED_PROXIES` 明确列出的 IP/CIDR；空项/非法项在任何持久或后台工作及 listen 前
 失败。focused/full/race/vet、frontend 741/741、build、Compose、README 配置映射及真实二进制三组探针
-通过。当前状态 **implemented / regression-validated / Docker-release-pending**。
+通过。GitHub Actions `32828470325` 又通过原生镜像与 fresh/historical/portable/restart 卷门，发布
+`f5b3869`/`latest`；amd64/arm64 OCI index 为
+`sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

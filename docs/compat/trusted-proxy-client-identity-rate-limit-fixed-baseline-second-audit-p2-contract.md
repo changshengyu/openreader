@@ -137,5 +137,16 @@ README 的常用部署段不增加反向代理前置要求；只在高级变量�
 loopback 后两个 forwarded client 得到 `401(A) -> 401(B) -> 429(A)`；含空项的配置在后台服务和 listen
 前退出。
 
-当前状态：**implemented / regression-validated / Docker-release-pending**。不涉及前端交互，因此没有
-新增浏览器 smoke；fresh/historical/portable/restart 卷门由可信 GitHub Actions 发布流程执行。
+可信 GitHub Actions 运行 `32828470325` 随后重新通过 backend、frontend 741/741、production build、
+Compose、原生验证镜像、fresh portable-v1/v2-assets/cross-user/restart 和 historical
+TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 卷门，并发布：
+
+- `ghcr.io/changshengyu/openreader:f5b3869`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`
+- amd64 manifest：`sha256:0c8dcb1374ab39bab0fe5aeeba229c3a36e325d96a06e6dc9e5bedd26de37fb3`
+- arm64 manifest：`sha256:5960e765a6f77f4a7453fb66f526758fa3acc4e70f83e237c219e441dac27cfe`
+
+远端 commit tag 与 `latest` 已回读为同一索引。不涉及前端交互，因此没有新增浏览器 smoke。当前状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**；用户生产环境运行提交
+仍未知。
