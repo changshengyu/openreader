@@ -81,6 +81,16 @@ Docker-published evidence are recorded in `bookshelf-manual-refresh-fixed-baseli
 `43635a1`/`latest` points to OCI index
 `sha256:0f75a0434d209af901cde81f86127f8e62fa78d6cb3610d6c10ef2e0863053c0`.
 
+## Authenticated session lifecycle second audit
+
+Reader-dev persists each login token with a seven-day expiry, renews a valid token during authenticated activity and
+deletes the current token on logout. OpenReader's signed JWT transport is retained, but the current permanent,
+signature-only REST/WebDAV Bearer acceptance and local-only logout are `must-fix`. The planned translation uses a
+hashed SQLite session identity and auth generation, adds current-session logout, validates user/session state across
+REST/WebDAV/WS and gives pre-existing JWTs one persistent seven-day adoption window. Password-reset revocation and a
+64-session cap are explicit security adaptations. Full contract:
+[`authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+
 ## Search/Explore temporary Reader second audit
 
 Reader-dev keeps an unshelved search result in the browser `readingBook` state and reconstructs BookInfo/TOC/content without calling `saveBook`; durable progress is rejected until the user explicitly adds the book. OpenReader's authenticated opaque `/api/reader/remote-sessions*` API is a technical-stack/security translation of that lifecycle, not a new persistent book type.

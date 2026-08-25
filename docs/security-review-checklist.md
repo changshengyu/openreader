@@ -1221,3 +1221,22 @@ passed. The amd64/arm64 `5163262`/`latest` release is OCI index
 expected health revision and theme/background bytes. Status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
 [`compat/frontend-public-static-tree-fixed-baseline-second-audit-p2-contract.md`](compat/frontend-public-static-tree-fixed-baseline-second-audit-p2-contract.md).
+
+## P2 authenticated-session lifecycle review (2026-08-25 inventory)
+
+- [ ] Protected REST, WebDAV Bearer and WebSocket must all require a live User, matching auth generation and one
+      non-expired persisted session after validating HS256; failure reasons remain indistinguishable 401s.
+- [ ] Store only SHA-256 identities for cryptographically random session tokens; never persist or log raw JWT/JTI,
+      Authorization, password, claims, username or request query.
+- [ ] Implement seven-day sliding expiry, bounded 64-session retention, conditional renewal and current-session
+      logout without allowing logout/delete races to recreate a removed session.
+- [ ] Password reset must atomically update hash, increment auth generation and remove all target sessions. User
+      deletion and inactive cleanup must remove sessions before the User row and prevent stale-token side effects.
+- [ ] Adopt old JWTs only during one persisted seven-day migration window while the user remains at generation 1;
+      restart cannot reopen the window and a post-reset old token cannot revive.
+- [ ] Exclude sessions and token identities from every backup/export; prove historical migration, rollback,
+      REST/WebDAV/WS behavior, frontend best-effort logout, mounted volumes and pulled image before publication.
+
+Target contract:
+[`compat/authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / implementation-pending`; this inventory changes no application code or data.

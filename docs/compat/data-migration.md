@@ -1173,3 +1173,21 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
 - The published amd64/arm64 `f5b3869`/`latest` OCI index is
   `sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`. Full contract:
   [`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).
+
+## P2 authenticated-session lifecycle compatibility (2026-08-25 inventory)
+
+- The proposed migration is additive only: existing users gain nonzero `auth_version=1`, a new `user_sessions`
+  runtime table stores only hashed random identities and timestamps, and one idempotent schema-migration marker fixes
+  the legacy-JWT transition start. Existing user/profile/shelf/source/content rows and mounted files are not scanned
+  or rewritten.
+- `user_sessions` is disposable authentication state and must never enter ordinary, portable or Legado backup,
+  WebDAV backup, source export or user configuration. Restoring data does not restore sessions.
+- Existing signed JWTs are not invalidated immediately: for at most seven days after the persistent marker they may
+  be adopted when the user still exists with `auth_version=1`. Restart and repeat migration cannot reopen the
+  window; password reset increments the version so an old token cannot be adopted afterward.
+- Historical/current `data/cache/library`, migration idempotence, backup omission, password-reset rollback and
+  user-deletion cleanup require focused and mounted-volume tests before implementation may be published.
+
+Target contract:
+[`authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / implementation-pending**; this inventory adds no schema or runtime change.
