@@ -1,5 +1,13 @@
 .DS_Store
 .env
+
+# Local AI/agent workspace configuration. Keep these files on the developer
+# machine, but do not publish them with the project.
+AGENTS.md
+.agents/
+.claude/
+.codex/
+
 data/
 cache/
 library/

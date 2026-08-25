@@ -2,6 +2,10 @@
 .gitignore
 .DS_Store
 .env
+AGENTS.md
+.agents
+.claude
+.codex
 
 data
 cache
