@@ -446,6 +446,77 @@ async function installApiMocks(page, readerSettings = {}) {
   })
 }
 
+async function assertPublicStaticResources(page, viewport) {
+  const state = await page.evaluate(async () => {
+    const shell = document.querySelector('.reader-shell')
+    const readerPage = document.querySelector('.reader-page')
+    const resources = await Promise.all([
+      ['/themes/body_0.png', 'image/png'],
+      ['/themes/content_0.png', 'image/png'],
+      ['/themes/popup_0.png', 'image/png'],
+      ['/bg/山水画.jpg', 'image/jpeg'],
+    ].map(async ([path, expectedType]) => {
+      const response = await fetch(path)
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const image = new Image()
+      image.src = objectUrl
+      try {
+        await image.decode()
+        return {
+          path,
+          expectedType,
+          status: response.status,
+          contentType: response.headers.get('content-type') || '',
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        }
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
+    }))
+    return {
+      shellBackground: shell ? window.getComputedStyle(shell).backgroundImage : '',
+      pageBackground: readerPage ? window.getComputedStyle(readerPage).backgroundImage : '',
+      resources,
+    }
+  })
+
+  assert(state.shellBackground.includes('/themes/body_0.png'), `${viewport.width}: Reader shell did not use body_0.png: ${state.shellBackground}`)
+  assert(state.pageBackground.includes('/themes/content_0.png'), `${viewport.width}: Reader page did not use content_0.png: ${state.pageBackground}`)
+  for (const resource of state.resources) {
+    assert(resource.status === 200, `${viewport.width}: ${resource.path} status ${resource.status}`)
+    assert(resource.contentType.startsWith(resource.expectedType), `${viewport.width}: ${resource.path} MIME ${resource.contentType}`)
+    assert(resource.width > 0 && resource.height > 0, `${viewport.width}: ${resource.path} did not decode as an image`)
+  }
+}
+
+async function runPublicStaticViewport(browser, viewport) {
+  const context = await browser.newContext({ viewport })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+  }, fakeToken())
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    failures.push(text)
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('/ws/sync')) return
+    failures.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText || 'request failed'}`)
+  })
+  await installApiMocks(page)
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-body p', { timeout: 10000 })
+  await assertPublicStaticResources(page, viewport)
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
 async function assertWorkspaceOpen(page, viewport, label, { primary = false, contentSized = false, heightRange = null } = {}) {
   await page.waitForSelector('.reader-mobile-workspace', { timeout: 10000 })
   const topCount = await page.locator('.reader-mobile-top.visible').count()
@@ -2123,6 +2194,17 @@ async function runIPadForcedMobileViewport(browser, viewport) {
 async function main() {
   const browser = await openSmokeBrowser()
   try {
+    if (process.env.SMOKE_PUBLIC_STATIC_ONLY === '1') {
+      for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 390, height: 844 },
+        { width: 1024, height: 1366 },
+      ]) {
+        await runPublicStaticViewport(browser, viewport)
+      }
+      console.log('reader public static tree contract smoke passed')
+      return
+    }
     if (process.env.SMOKE_NIGHT_ONLY === '1') {
       for (const viewport of [
         { width: 1440, height: 900 },

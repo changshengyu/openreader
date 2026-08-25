@@ -204,7 +204,7 @@ func serveFrontend(router *gin.Engine, publicDir string) {
 			if isFrontendHistoryRoute(path) && serveFrontendFile(c, publicDir, "index.html") {
 				return
 			}
-			if name, ok := frontendRootFilename(path); ok && serveFrontendFile(c, publicDir, name) {
+			if name, ok := frontendPublicFilename(path); ok && serveFrontendFile(c, publicDir, name) {
 				return
 			}
 		}
@@ -246,12 +246,17 @@ func validFrontendRouteSegment(segment string) bool {
 		!strings.ContainsAny(segment, `/\`) && !strings.ContainsRune(segment, 0)
 }
 
-func frontendRootFilename(requestPath string) (string, bool) {
+func frontendPublicFilename(requestPath string) (string, bool) {
 	if !strings.HasPrefix(requestPath, "/") {
 		return "", false
 	}
 	name := strings.TrimPrefix(requestPath, "/")
-	if !validFrontendRouteSegment(name) {
+	if name == "" || !fs.ValidPath(name) || strings.ContainsRune(name, 0) || strings.Contains(name, `\`) {
+		return "", false
+	}
+	rootSegment, _, _ := strings.Cut(name, "/")
+	switch rootSegment {
+	case "api", "ws", "webdav", "reader3", "uploads", "assets":
 		return "", false
 	}
 	return name, true

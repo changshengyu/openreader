@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -318,12 +319,16 @@ func TestFrontendPublicSubtreeRejectsUnsafeObjects(t *testing.T) {
 	if err := os.Symlink(outsideTree, filepath.Join(root, "linked-tree")); err != nil {
 		t.Skipf("ancestor symlink fixture unavailable: %v", err)
 	}
+	if err := syscall.Mkfifo(filepath.Join(root, "themes", "stream.png"), 0o600); err != nil {
+		t.Skipf("FIFO fixture unavailable: %v", err)
+	}
 
 	router := newFrontendBoundaryRouter(t, root)
 	for _, target := range []string{
 		"/themes",
 		"/themes/missing.png",
 		"/themes/linked.png",
+		"/themes/stream.png",
 		"/linked-tree/secret.png",
 		"/themes/../index.html",
 		"/themes/content_0.png%5Cextra",
