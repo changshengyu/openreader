@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 	_ "time/tzdata"
 
@@ -23,35 +27,44 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("OpenReader stopped with error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg := config.Load()
 	if err := configureSourceRuntime(cfg); err != nil {
-		log.Fatalf("configure source network policy: %v", err)
+		return fmt.Errorf("configure source network policy: %w", err)
 	}
 	cleanupContext, cleanupCancel := context.WithCancel(context.Background())
+	defer log.Println("OpenReader cleanup completed")
 	defer cleanupCancel()
 
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		log.Fatalf("create data dir: %v", err)
+		return fmt.Errorf("create data dir: %w", err)
 	}
 	if err := os.MkdirAll(cfg.CacheDir, 0o755); err != nil {
-		log.Fatalf("create cache dir: %v", err)
+		return fmt.Errorf("create cache dir: %w", err)
 	}
 	if err := os.MkdirAll(cfg.LibraryDir, 0o755); err != nil {
-		log.Fatalf("create library dir: %v", err)
+		return fmt.Errorf("create library dir: %w", err)
 	}
 
 	database, err := db.Open(cfg)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		return fmt.Errorf("open database: %w", err)
 	}
 	if err := db.AutoMigrate(database); err != nil {
-		log.Fatalf("migrate database: %v", err)
+		return fmt.Errorf("migrate database: %w", err)
 	}
 	if err := db.MigrateLocalBookCache(database, cfg); err != nil {
-		log.Fatalf("migrate local book cache: %v", err)
+		return fmt.Errorf("migrate local book cache: %w", err)
 	}
 
 	hub := readersync.NewHub()
+	defer hub.Close()
 	api.StartLocalImportStageCleanup(cleanupContext, cfg.CacheDir)
 
 	interval, err := time.ParseDuration(cfg.CheckInterval)
@@ -73,10 +86,21 @@ func main() {
 	api.RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
 	serveFrontend(router, cfg.PublicDir)
 
-	log.Printf("OpenReader listening on %s", cfg.Address)
-	if err := router.Run(cfg.Address); err != nil {
-		log.Fatal(err)
+	listener, err := net.Listen("tcp", cfg.Address)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", cfg.Address, err)
 	}
+	server := newHTTPServer(cfg.Address, router)
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+
+	log.Printf("OpenReader listening on %s", listener.Addr())
+	if err := serveHTTPServer(server, listener, signals, httpShutdownTimeout, hub.Close); err != nil {
+		return fmt.Errorf("serve HTTP: %w", err)
+	}
+	log.Println("OpenReader stopped")
+	return nil
 }
 
 func configureSourceRuntime(cfg config.Config) error {

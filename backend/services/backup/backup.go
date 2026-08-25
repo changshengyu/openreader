@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -27,6 +28,7 @@ type Service struct {
 	webdavDir      string
 	cfg            config.Config
 	stopCh         chan struct{}
+	stopOnce       sync.Once
 	generationGate chan struct{}
 }
 
@@ -58,7 +60,9 @@ func (s *Service) Start() {
 
 // Stop gracefully stops the backup service.
 func (s *Service) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 }
 
 func (s *Service) loop() {

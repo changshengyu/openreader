@@ -166,6 +166,40 @@ func TestHTTPServerSignalForcesCancellationAtDeadline(t *testing.T) {
 	}
 }
 
+func TestHTTPServerSecondSignalForcesImmediateCancellation(t *testing.T) {
+	started := make(chan struct{})
+	canceled := make(chan struct{})
+	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(started)
+		<-request.Context().Done()
+		close(canceled)
+	}))
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	signals := make(chan os.Signal, 2)
+	done := make(chan error, 1)
+	go func() {
+		done <- serveHTTPServer(server, listener, signals, 5*time.Second, nil)
+	}()
+	go func() {
+		_, _ = http.Get("http://" + listener.Addr().String())
+	}()
+	<-started
+	signals <- os.Interrupt
+	signals <- os.Interrupt
+
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("second signal did not force immediate request cancellation")
+	}
+	if err := <-done; err == nil {
+		t.Fatal("forced second-signal shutdown was reported as graceful")
+	}
+}
+
 func TestHTTPServerReturnsListenFailureWithoutWaitingForSignal(t *testing.T) {
 	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	listener, err := net.Listen("tcp", server.Addr)

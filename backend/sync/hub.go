@@ -17,6 +17,7 @@ const (
 type Hub struct {
 	mu      stdsync.RWMutex
 	clients map[uint]map[*Client]struct{}
+	closed  bool
 }
 
 type Client struct {
@@ -41,13 +42,49 @@ func (h *Hub) AddClient(userID uint, conn *websocket.Conn) *Client {
 	}
 
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
+	if h.closed {
+		h.mu.Unlock()
+		close(client.Send)
+		closeWebSocket(client.Conn)
+		return client
+	}
 	if h.clients[userID] == nil {
 		h.clients[userID] = make(map[*Client]struct{})
 	}
 	h.clients[userID][client] = struct{}{}
+	h.mu.Unlock()
 	return client
+}
+
+// Close ends every active client lifetime and prevents a later connection from
+// outliving process shutdown.
+func (h *Hub) Close() {
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return
+	}
+	h.closed = true
+	clients := make([]*Client, 0)
+	for userID, userClients := range h.clients {
+		for client := range userClients {
+			clients = append(clients, client)
+			close(client.Send)
+		}
+		delete(h.clients, userID)
+	}
+	h.mu.Unlock()
+
+	for _, client := range clients {
+		closeWebSocket(client.Conn)
+	}
+}
+
+func closeWebSocket(connection *websocket.Conn) {
+	if connection == nil {
+		return
+	}
+	_ = connection.Close()
 }
 
 func (h *Hub) RemoveClient(client *Client) {

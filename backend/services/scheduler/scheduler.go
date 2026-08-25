@@ -53,6 +53,7 @@ type Scheduler struct {
 	sources  *booksources.Service
 	interval time.Duration
 	stopCh   chan struct{}
+	stopOnce sync.Once
 }
 
 // New creates a scheduler with the given check interval.
@@ -76,7 +77,9 @@ func (s *Scheduler) Start() {
 
 // Stop gracefully stops the scheduler.
 func (s *Scheduler) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 }
 
 func (s *Scheduler) loop() {
