@@ -1,16 +1,17 @@
 services:
   openreader:
+    # Use :latest for automatic upgrades, or replace it with :<commit> for a pinned release.
     image: ghcr.io/changshengyu/openreader:latest
+    # Always refresh the selected tag before the container is recreated.
     pull_policy: always
     container_name: openreader
     ports:
+      # Change only the host-side port (left) when 8080 is already in use.
       - "8080:8080"
-    environment:
-      OPENREADER_JWT_SECRET: ${OPENREADER_JWT_SECRET:-change-this-before-deploy}
-      OPENREADER_CORS_ORIGIN: ${OPENREADER_CORS_ORIGIN:-http://localhost:8080}
-      OPENREADER_LOCAL_STORE_DIR: /app/library/localStore
     volumes:
+      # Change only the host-side paths (left). Keep the container paths unchanged.
       - ./data:/app/data
       - ./cache:/app/cache
       - ./library:/app/library
+    # Restart after host/container-engine restarts unless explicitly stopped.
     restart: unless-stopped

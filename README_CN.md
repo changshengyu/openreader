@@ -9,6 +9,7 @@
 ![Go 1.24+](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
 ![Vue 3.5](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![SQLite WAL](https://img.shields.io/badge/SQLite-WAL-brightgreen)
+![项目状态：WIP](https://img.shields.io/badge/status-WIP-F59E0B)
 ![Docker ready](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
 [![自动构建并发布 Docker 镜像](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml)
 
@@ -16,6 +17,17 @@
 > OpenReader 是基于 [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev) 行为进行的独立 Go/Vue 重构与重写，并非其可执行文件或数据库的原位替代品。项目以 [`fa22f271`](https://github.com/changshengyu/reader-dev/commit/fa22f271849d45f93349ae1636223e27b16a4691) 为固定兼容基线，目前仍在持续重构；各模块现状见[兼容性审查矩阵](docs/compat/refactor-audit-matrix.md)。
 >
 > 服务端进程有意不执行 JavaScript、WebJS 和 WebView 书源规则。导入/导出会保留这些字段，但依赖它们的书源会返回明确的规则不支持错误。CSS、JSONPath、XPath、正则、组合、分页和受限变量规则的支持范围见[在线书源解析合同](docs/compat/online-booksource-parser.md)。
+
+## 开发状态（WIP）
+
+OpenReader 仍是**开发中的项目**，不是已经完成全部兼容验收的稳定版本。截至 2026-08-25，固定基准审查估算约有 **99% 的合同与测试覆盖**。该比例表示已提取上游合同并实现回归验证的覆盖度，不代表零缺陷，也不代表所有设备均已验收完成。
+
+- **P0 Reader 主链：** 阅读工具层、分页与连续滚动、手机/平板/桌面布局、设置、书签、正文搜索、EPUB、CBZ、音频、TTS、登录恢复、换源和章节缓存均已实现并通过回归；仍在等待更多真实设备签收。
+- **P1 Index 主链：** 书架、搜索/探索、BookInfo、BookManage、BookGroup、导入、本地书仓、WebDAV、书源管理、刷新、进度与旧路由均已覆盖；仍在等待更多真实设备签收。
+- **P2 后端与数据：** 多用户隔离、书源 ownership、备份/portable v2、WebDAV、RSS、替换规则、书签、用户管理、WebSocket、抓取安全、解析预算和主要请求边界均已覆盖。
+- **剩余工作：** 长尾 REST 动作审查、尚未完成的第二轮上游复审、真实设备反馈暴露的可见差异及最终设备验收。JavaScript/WebView 书源执行仍是明确的安全限制，不是被静默隐藏的兼容能力。
+
+完整证据、剩余项和状态定义见[全量兼容性审查矩阵](docs/compat/refactor-audit-matrix.md)。
 
 ## 功能特性
 
@@ -36,21 +48,25 @@
 ```bash
 git clone https://github.com/changshengyu/openreader.git
 cd openreader
-cp .env.example .env
-```
-
-使用 `openssl rand -hex 32` 生成随机密钥，填入 `OPENREADER_JWT_SECRET`；同时把 `OPENREADER_CORS_ORIGIN` 设置为实际访问 OpenReader 的公开来源，例如 `https://reader.example.com`。然后启动服务：
-
-```bash
 docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
 
-仓库 workflow 会构建并发布包含 `linux/amd64` 与 `linux/arm64` 的 OCI 索引到 `ghcr.io/changshengyu/openreader`。`docker compose up` 会拉取已发布镜像，Docker 自动选择与主机匹配的架构；普通用户不需要安装 Go、Node.js、QEMU，也不需要在本地构建镜像。需要显式拉取时可执行 `docker pull ghcr.io/changshengyu/openreader:latest`。
+已发布镜像是包含 `linux/amd64` 与 `linux/arm64` 的 OCI 索引。`docker compose up` 会拉取镜像，Docker 自动选择与主机匹配的架构；普通用户不需要安装 Go、Node.js、QEMU，也不需要在本地构建镜像。需要显式拉取时可执行 `docker pull ghcr.io/changshengyu/openreader:latest`。
 
 打开 `http://localhost:8080`。空数据库中注册的第一个账号会成为管理员，后续注册账号为普通用户。
 
-仓库自带的 Compose 文件会挂载 `./data`、`./cache`、`./library`。重新创建容器时不要删除或替换这些目录。
+默认配置无需额外设置环境变量即可启动。只修改与你的主机不一致的项目：
+
+| Compose 配置 | 默认值 | 何时需要修改 |
+|---|---|---|
+| `image` | `ghcr.io/changshengyu/openreader:latest` | 需要固定版本时，将 `latest` 替换为 commit 标签。 |
+| `ports` | `8080:8080` | 宿主机 8080 已被占用时，只修改左侧端口；容器端口保持不变。 |
+| `./data` | SQLite、上传资源和备份 | 持久数据需要放到其他磁盘或目录时，修改左侧路径。 |
+| `./cache` | 可重建的正文/导入缓存 | 缓存需要放到其他磁盘或目录时，修改左侧路径。 |
+| `./library` | 本地书原文件和 LocalStore | 书库需要放到其他磁盘或目录时，修改左侧路径。 |
+
+容器内 `/app/data`、`/app/cache`、`/app/library` 三个路径不要修改。重新创建容器时，不要删除或替换宿主机上的三个持久化目录。
 
 ### 升级已有 OpenReader
 
@@ -58,13 +74,13 @@ curl -fsS http://localhost:8080/api/health
 
 ```bash
 docker compose stop openreader
-tar -czf "../openreader-volume-backup-$(date +%Y%m%d-%H%M%S).tar.gz" data cache library .env docker-compose.yml
+tar -czf "../openreader-volume-backup-$(date +%Y%m%d-%H%M%S).tar.gz" data cache library docker-compose.yml
 docker compose pull openreader
 docker compose up -d --force-recreate openreader
 curl -fsS http://localhost:8080/api/health
 ```
 
-该归档包含 JWT 密钥和用户数据，请限制访问并妥善保管。仓库自带的 Compose 文件设置了 `pull_policy: always`。`/api/health` 返回的 `version` 与 `commit` 才代表正在运行的代码；浏览器强制刷新不能升级容器。
+该归档包含用户数据，请限制访问并妥善保管。仓库自带的 Compose 文件设置了 `pull_policy: always`。`/api/health` 返回的 `version` 与 `commit` 才代表正在运行的代码；浏览器强制刷新不能升级容器。
 
 需要可控发布时，建议固定使用 `ghcr.io/changshengyu/openreader:<commit>`，不要直接跟随 `latest`。如需安全回滚，应停止新容器，把升级前的完整快照恢复到空的持久化目录，固定旧镜像后再启动。不要把旧 SQLite 快照合并到已经被新容器写入的目录中。
 
@@ -97,7 +113,7 @@ curl -fsS http://localhost:8080/api/health
 完整迁移整套实例时：
 
 1. 停止源主机上的 OpenReader 容器。
-2. 在服务停止期间同时复制 `data/`、`cache/` 和 `library/`；另行复制 `.env`/Compose 配置。如果希望已有浏览器会话继续有效，应保留原 `OPENREADER_JWT_SECRET`。
+2. 在服务停止期间同时复制 `data/`、`cache/` 和 `library/`；另行复制 Compose 文件和自行设置的环境变量覆盖项。
 3. 目标主机使用相同或更新的 OpenReader 镜像，并保持相同容器内挂载路径。
 4. 检查 `/api/health`，登录并分别打开本地书和远程书，验证完成后再停用源主机。
 
@@ -122,7 +138,7 @@ curl -fsS http://localhost:8080/api/health
 
 ## 配置
 
-常用部署变量：
+仓库自带的 Compose 已通过镜像默认值提供容器路径。以下服务变量主要用于源码开发、自定义编排或有意识地调整资源上限：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -132,8 +148,8 @@ curl -fsS http://localhost:8080/api/health
 | `OPENREADER_LIBRARY_DIR` | `library` | 书库目录 |
 | `OPENREADER_LOCAL_STORE_DIR` | `library/localStore` | 本地书仓根目录 |
 | `OPENREADER_DB` | `data/openreader.db` | SQLite 数据库路径 |
-| `OPENREADER_JWT_SECRET` | 不安全的开发回退值 | JWT 签名密钥；任何部署都必须改成长随机值 |
-| `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | 浏览器允许来源；生产环境应设为实际公开来源 |
+| `OPENREADER_JWT_SECRET` | 兼容回退值 | JWT/资源 capability 签名密钥；同源的标准 Compose 部署无需覆盖 |
+| `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | 前端/API 分离开发时的 CORS 响应来源；普通同源容器访问无需修改 |
 | `OPENREADER_PUBLIC_DIR` | `public` | 已构建前端目录 |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | 书架/书源定时检查间隔 |
 | `OPENREADER_RATE_LIMIT_PER_MINUTE` | `6000` | 单客户端 API 每分钟请求上限 |
@@ -142,37 +158,37 @@ curl -fsS http://localhost:8080/api/health
 <details>
 <summary>解析、网络、备份和资源安全上限</summary>
 
-| 变量 | 默认值 |
-|---|---:|
-| `OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS` | `15` |
-| `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216`（16 MiB） |
-| `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` |
-| `OPENREADER_MAX_SOURCE_RETRIES` | `3` |
-| `OPENREADER_MAX_IMPORT_BYTES` | `134217728`（128 MiB） |
-| `OPENREADER_MAX_ARCHIVE_ENTRIES` | `20000` |
-| `OPENREADER_MAX_ARCHIVE_ENTRY_BYTES` | `134217728`（128 MiB） |
-| `OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES` | `536870912`（512 MiB） |
-| `OPENREADER_MAX_PDF_PAGES` | `10000` |
-| `OPENREADER_MAX_PARSED_TEXT_BYTES` | `268435456`（256 MiB） |
-| `OPENREADER_MAX_PARSED_CHAPTERS` | `100000` |
-| `OPENREADER_MAX_UMD_CHAPTERS` | `100000` |
-| `OPENREADER_MAX_BACKUP_RESTORE_BYTES` | `134217728`（128 MiB） |
-| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES` | `5000` |
-| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES` | `16777216`（16 MiB） |
-| `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES` | `134217728`（128 MiB） |
-| `OPENREADER_MAX_PORTABLE_BACKUP_BYTES` | `536870912`（512 MiB） |
-| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES` | `10000` |
-| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES` | `268435456`（256 MiB） |
-| `OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES` | `536870912`（512 MiB） |
-| `OPENREADER_MAX_CHAPTER_IMAGES` | `64` |
-| `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608`（8 MiB） |
-| `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432`（32 MiB） |
-| `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` |
-| `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` |
-| `OPENREADER_MAX_COVER_IMAGE_BYTES` | `8388608`（8 MiB） |
-| `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456`（256 MiB） |
-| `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` |
-| `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` |
+| 变量 | 默认值 | 控制内容 |
+|---|---:|---|
+| `OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS` | `15` | 单次远程书源或 RSS 请求超时秒数 |
+| `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216`（16 MiB） | 单个远程响应正文上限 |
+| `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` | 单次远程请求最大重定向次数 |
+| `OPENREADER_MAX_SOURCE_RETRIES` | `3` | 可重试远程请求的最大尝试次数 |
+| `OPENREADER_MAX_IMPORT_BYTES` | `134217728`（128 MiB） | 上传本地书/导入文件的大小上限 |
+| `OPENREADER_MAX_ARCHIVE_ENTRIES` | `20000` | 单个导入书籍归档的文件数量上限 |
+| `OPENREADER_MAX_ARCHIVE_ENTRY_BYTES` | `134217728`（128 MiB） | 单个导入归档条目的解压大小上限 |
+| `OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES` | `536870912`（512 MiB） | 单个导入归档的总解压大小上限 |
+| `OPENREADER_MAX_PDF_PAGES` | `10000` | 单个 PDF 的最大解析页数 |
+| `OPENREADER_MAX_PARSED_TEXT_BYTES` | `268435456`（256 MiB） | 本地书解析期间保留的解码文本上限 |
+| `OPENREADER_MAX_PARSED_CHAPTERS` | `100000` | 本地书解析器可生成的章节数量上限 |
+| `OPENREADER_MAX_UMD_CHAPTERS` | `100000` | UMD 专用章节上限及兼容回退值 |
+| `OPENREADER_MAX_BACKUP_RESTORE_BYTES` | `134217728`（128 MiB） | 上传逻辑备份 ZIP 的大小上限 |
+| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES` | `5000` | 逻辑备份允许的归档条目数量上限 |
+| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES` | `16777216`（16 MiB） | 单个逻辑备份条目的解压大小上限 |
+| `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES` | `134217728`（128 MiB） | 逻辑备份的总解压大小上限 |
+| `OPENREADER_MAX_PORTABLE_BACKUP_BYTES` | `536870912`（512 MiB） | portable 备份包大小上限 |
+| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES` | `10000` | portable 备份允许的归档条目数量上限 |
+| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES` | `268435456`（256 MiB） | 单个 portable 备份条目的解压大小上限 |
+| `OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES` | `536870912`（512 MiB） | portable 备份的总解压大小上限 |
+| `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | 单章可缓存的远程图片数量上限 |
+| `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608`（8 MiB） | 单张章节图片大小上限 |
+| `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432`（32 MiB） | 单章缓存图片的总大小上限 |
+| `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` | 单张章节图片抓取超时秒数 |
+| `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` | 单张章节图片最大重定向次数 |
+| `OPENREADER_MAX_COVER_IMAGE_BYTES` | `8388608`（8 MiB） | 单张下载封面大小上限 |
+| `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456`（256 MiB） | 封面缓存触发淘汰前的总大小上限 |
+| `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | 单张封面抓取超时秒数 |
+| `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | 单张封面最大重定向次数 |
 
 </details>
 

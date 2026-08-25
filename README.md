@@ -9,6 +9,7 @@ Everyone is welcome to use OpenReader and actively submit [Issues](https://githu
 ![Go 1.24+](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
 ![Vue 3.5](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![SQLite WAL](https://img.shields.io/badge/SQLite-WAL-brightgreen)
+![Status: WIP](https://img.shields.io/badge/status-WIP-F59E0B)
 ![Docker ready](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
 [![Build and publish Docker image](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml)
 
@@ -16,6 +17,17 @@ Everyone is welcome to use OpenReader and actively submit [Issues](https://githu
 > OpenReader is an independent Go/Vue refactor and rewrite of [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev), not a drop-in replacement for its executable or database. Upstream behavior at commit [`fa22f271`](https://github.com/changshengyu/reader-dev/commit/fa22f271849d45f93349ae1636223e27b16a4691) is the compatibility baseline. The refactor is active; see the [compatibility audit](docs/compat/refactor-audit-matrix.md) for current module status.
 >
 > JavaScript, WebJS, and WebView book-source execution is intentionally unsupported in the server process. Those fields are preserved during import/export, but sources that require them return an explicit unsupported-rule error. CSS, JSONPath, XPath, regex, composite, pagination, and bounded variable rules are supported as documented in the [online source parser contract](docs/compat/online-booksource-parser.md).
+
+## Development Status (WIP)
+
+OpenReader is still a **work in progress**, not a finished compatibility release. As of 2026-08-25, the fixed-baseline audit estimates about **99% contract and test coverage**. This percentage measures reviewed upstream contracts and implemented regression coverage, not defect-free readiness or completion on every device.
+
+- **P0 Reader mainline:** reader controls, paging and continuous scrolling, phone/tablet/desktop layouts, settings, bookmarks, content search, EPUB, CBZ, audio, TTS, authentication recovery, source switching, and chapter caching are implemented and regression-tested; real-device sign-off is still ongoing.
+- **P1 Index mainline:** bookshelf, search/explore, BookInfo, BookManage, BookGroup, imports, LocalStore, WebDAV, source management, refresh, progress, and legacy routes are covered; real-device sign-off is still ongoing.
+- **P2 backend/data:** multi-user isolation, source ownership, backup/portable v2, WebDAV, RSS, replace rules, bookmarks, user management, WebSocket, fetch security, parser budgets, and major request boundaries are covered.
+- **Remaining work:** long-tail REST action audits, remaining second-pass upstream reviews, device-reported visible differences, and final device verification. JavaScript/WebView source execution remains an explicit security limitation rather than pending silent compatibility.
+
+See the [full compatibility audit](docs/compat/refactor-audit-matrix.md) for evidence, remaining work, and the meaning of each status.
 
 ## Features
 
@@ -36,21 +48,25 @@ Everyone is welcome to use OpenReader and actively submit [Issues](https://githu
 ```bash
 git clone https://github.com/changshengyu/openreader.git
 cd openreader
-cp .env.example .env
-```
-
-Generate a secret with `openssl rand -hex 32`, place it in `OPENREADER_JWT_SECRET`, and set `OPENREADER_CORS_ORIGIN` to the public origin from which you will open OpenReader (for example, `https://reader.example.com`). Then start the service:
-
-```bash
 docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
 
-The repository workflow builds and publishes a `linux/amd64` and `linux/arm64` OCI index to `ghcr.io/changshengyu/openreader`. `docker compose up` pulls the published image and Docker automatically selects the matching platform; users do not need Go, Node.js, QEMU, or a local image build. To fetch it explicitly, run `docker pull ghcr.io/changshengyu/openreader:latest`.
+Published images are a `linux/amd64` and `linux/arm64` OCI index. `docker compose up` pulls the image and Docker automatically selects the matching platform; users do not need Go, Node.js, QEMU, or a local image build. To fetch it explicitly, run `docker pull ghcr.io/changshengyu/openreader:latest`.
 
 Open `http://localhost:8080`. The first account registered in an empty installation becomes the administrator; later accounts are regular users.
 
-The included Compose file mounts `./data`, `./cache`, and `./library`. Do not remove or replace these directories when recreating the container.
+The defaults run without extra environment configuration. Edit only the values that differ on your host:
+
+| Compose setting | Default | When to change it |
+|---|---|---|
+| `image` | `ghcr.io/changshengyu/openreader:latest` | Replace `latest` with a commit tag when you need a pinned release. |
+| `ports` | `8080:8080` | Change the left-hand `8080` when the host port is already occupied. Keep the container port unchanged. |
+| `./data` | SQLite, uploads, and backups | Change the left-hand path when persistent data belongs on another disk or directory. |
+| `./cache` | Regenerable content/import cache | Change the left-hand path when cache belongs on another disk or directory. |
+| `./library` | Imported originals and LocalStore | Change the left-hand path when the book library belongs on another disk or directory. |
+
+Keep the container-side `/app/data`, `/app/cache`, and `/app/library` paths unchanged. Do not remove or replace the three host directories when recreating the container.
 
 ### Upgrade an Existing OpenReader Deployment
 
@@ -58,13 +74,13 @@ First make a cold backup. Stopping the container ensures the SQLite database and
 
 ```bash
 docker compose stop openreader
-tar -czf "../openreader-volume-backup-$(date +%Y%m%d-%H%M%S).tar.gz" data cache library .env docker-compose.yml
+tar -czf "../openreader-volume-backup-$(date +%Y%m%d-%H%M%S).tar.gz" data cache library docker-compose.yml
 docker compose pull openreader
 docker compose up -d --force-recreate openreader
 curl -fsS http://localhost:8080/api/health
 ```
 
-The archive contains the JWT secret and user data; store it with restricted access. The bundled Compose file uses `pull_policy: always`. The `version` and `commit` returned by `/api/health` identify the code actually running; refreshing the browser does not update a container.
+The archive contains user data; store it with restricted access. The bundled Compose file uses `pull_policy: always`. The `version` and `commit` returned by `/api/health` identify the code actually running; refreshing the browser does not update a container.
 
 For a controlled rollout, pin `ghcr.io/changshengyu/openreader:<commit>` instead of `latest`. To roll back safely, stop the candidate, restore the complete pre-upgrade snapshot into empty persistent directories, pin the previous image, and start again. Do not merge an old SQLite snapshot into directories already written by a newer container.
 
@@ -97,7 +113,7 @@ Restore maps data to the currently authenticated OpenReader account and allocate
 For an exact whole-instance move:
 
 1. Stop the source container.
-2. Copy `data/`, `cache/`, and `library/` together while the service is stopped. Copy `.env`/Compose configuration separately and preserve `OPENREADER_JWT_SECRET` if existing browser sessions should remain valid.
+2. Copy `data/`, `cache/`, and `library/` together while the service is stopped. Copy the Compose file and any custom environment overrides separately.
 3. Start the destination with the same or a newer OpenReader image and the same mount paths.
 4. Check `/api/health`, sign in, open local and remote books, and only then retire the source host.
 
@@ -122,7 +138,7 @@ The administrator keeps the historical WebDAV root under `data/webdav/`; regular
 
 ## Configuration
 
-Common deployment variables:
+The bundled Compose file already supplies the container paths through the image defaults. These service variables are mainly for source development, custom orchestration, or deliberate limit tuning:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -132,8 +148,8 @@ Common deployment variables:
 | `OPENREADER_LIBRARY_DIR` | `library` | Library directory |
 | `OPENREADER_LOCAL_STORE_DIR` | `library/localStore` | LocalStore root |
 | `OPENREADER_DB` | `data/openreader.db` | SQLite database path |
-| `OPENREADER_JWT_SECRET` | insecure development fallback | JWT signing secret; set a long random value in every deployment |
-| `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | Allowed browser origin; set the externally visible origin in production |
+| `OPENREADER_JWT_SECRET` | compatibility fallback | JWT/capability signing secret; the bundled same-origin Compose deployment does not require an override |
+| `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | CORS response origin for split frontend/API development; irrelevant to normal same-origin container access |
 | `OPENREADER_PUBLIC_DIR` | `public` | Built frontend directory |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | Scheduled bookshelf/source check interval |
 | `OPENREADER_RATE_LIMIT_PER_MINUTE` | `6000` | Per-client API request limit |
@@ -142,37 +158,37 @@ Common deployment variables:
 <details>
 <summary>Parser, network, backup, and asset safety limits</summary>
 
-| Variable | Default |
-|---|---:|
-| `OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS` | `15` |
-| `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216` (16 MiB) |
-| `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` |
-| `OPENREADER_MAX_SOURCE_RETRIES` | `3` |
-| `OPENREADER_MAX_IMPORT_BYTES` | `134217728` (128 MiB) |
-| `OPENREADER_MAX_ARCHIVE_ENTRIES` | `20000` |
-| `OPENREADER_MAX_ARCHIVE_ENTRY_BYTES` | `134217728` (128 MiB) |
-| `OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES` | `536870912` (512 MiB) |
-| `OPENREADER_MAX_PDF_PAGES` | `10000` |
-| `OPENREADER_MAX_PARSED_TEXT_BYTES` | `268435456` (256 MiB) |
-| `OPENREADER_MAX_PARSED_CHAPTERS` | `100000` |
-| `OPENREADER_MAX_UMD_CHAPTERS` | `100000` |
-| `OPENREADER_MAX_BACKUP_RESTORE_BYTES` | `134217728` (128 MiB) |
-| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES` | `5000` |
-| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES` | `16777216` (16 MiB) |
-| `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES` | `134217728` (128 MiB) |
-| `OPENREADER_MAX_PORTABLE_BACKUP_BYTES` | `536870912` (512 MiB) |
-| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES` | `10000` |
-| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES` | `268435456` (256 MiB) |
-| `OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES` | `536870912` (512 MiB) |
-| `OPENREADER_MAX_CHAPTER_IMAGES` | `64` |
-| `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608` (8 MiB) |
-| `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432` (32 MiB) |
-| `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` |
-| `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` |
-| `OPENREADER_MAX_COVER_IMAGE_BYTES` | `8388608` (8 MiB) |
-| `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456` (256 MiB) |
-| `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` |
-| `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` |
+| Variable | Default | What it controls |
+|---|---:|---|
+| `OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS` | `15` | Timeout for one remote book-source or RSS request |
+| `OPENREADER_MAX_SOURCE_RESPONSE_BYTES` | `16777216` (16 MiB) | Maximum remote response body size |
+| `OPENREADER_MAX_SOURCE_REDIRECTS` | `5` | Maximum remote redirect count |
+| `OPENREADER_MAX_SOURCE_RETRIES` | `3` | Maximum attempts for a retryable remote request |
+| `OPENREADER_MAX_IMPORT_BYTES` | `134217728` (128 MiB) | Maximum uploaded local-book/import file size |
+| `OPENREADER_MAX_ARCHIVE_ENTRIES` | `20000` | Maximum files in an imported book archive |
+| `OPENREADER_MAX_ARCHIVE_ENTRY_BYTES` | `134217728` (128 MiB) | Maximum expanded size of one imported archive entry |
+| `OPENREADER_MAX_ARCHIVE_EXPANDED_BYTES` | `536870912` (512 MiB) | Maximum total expanded size of an imported archive |
+| `OPENREADER_MAX_PDF_PAGES` | `10000` | Maximum pages parsed from one PDF |
+| `OPENREADER_MAX_PARSED_TEXT_BYTES` | `268435456` (256 MiB) | Maximum decoded text retained during local-book parsing |
+| `OPENREADER_MAX_PARSED_CHAPTERS` | `100000` | Maximum chapters produced by a local parser |
+| `OPENREADER_MAX_UMD_CHAPTERS` | `100000` | UMD-specific chapter limit and compatibility fallback |
+| `OPENREADER_MAX_BACKUP_RESTORE_BYTES` | `134217728` (128 MiB) | Maximum uploaded logical-backup ZIP size |
+| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRIES` | `5000` | Maximum entries accepted in a logical backup |
+| `OPENREADER_MAX_BACKUP_ARCHIVE_ENTRY_BYTES` | `16777216` (16 MiB) | Maximum expanded size of one logical-backup entry |
+| `OPENREADER_MAX_BACKUP_ARCHIVE_EXPANDED_BYTES` | `134217728` (128 MiB) | Maximum total expanded logical-backup size |
+| `OPENREADER_MAX_PORTABLE_BACKUP_BYTES` | `536870912` (512 MiB) | Maximum portable backup package size |
+| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRIES` | `10000` | Maximum entries accepted in a portable backup |
+| `OPENREADER_MAX_PORTABLE_ARCHIVE_ENTRY_BYTES` | `268435456` (256 MiB) | Maximum expanded size of one portable-backup entry |
+| `OPENREADER_MAX_PORTABLE_ARCHIVE_EXPANDED_BYTES` | `536870912` (512 MiB) | Maximum total expanded portable-backup size |
+| `OPENREADER_MAX_CHAPTER_IMAGES` | `64` | Maximum remote images cached for one chapter |
+| `OPENREADER_MAX_CHAPTER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum size of one chapter image |
+| `OPENREADER_MAX_CHAPTER_IMAGE_TOTAL_BYTES` | `33554432` (32 MiB) | Maximum total image bytes cached for one chapter |
+| `OPENREADER_CHAPTER_IMAGE_TIMEOUT_SECONDS` | `12` | Timeout for one chapter-image fetch |
+| `OPENREADER_MAX_CHAPTER_IMAGE_REDIRECTS` | `3` | Maximum redirects for one chapter image |
+| `OPENREADER_MAX_COVER_IMAGE_BYTES` | `8388608` (8 MiB) | Maximum downloaded cover-image size |
+| `OPENREADER_MAX_COVER_CACHE_BYTES` | `268435456` (256 MiB) | Maximum total cover-cache size before eviction |
+| `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | Timeout for one cover-image fetch |
+| `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | Maximum redirects for one cover image |
 
 </details>
 
