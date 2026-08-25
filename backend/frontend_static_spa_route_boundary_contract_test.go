@@ -18,6 +18,8 @@ const (
 	testFrontendIndex    = "<!doctype html><title>OpenReader contract index</title>"
 	testFrontendManifest = `{"name":"OpenReader contract"}`
 	testFrontendSVG      = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`
+	testFrontendPNG      = "\x89PNG\r\n\x1a\nOpenReader theme contract"
+	testFrontendJPEG     = "\xff\xd8\xffOpenReader background contract\xff\xd9"
 )
 
 func newFrontendBoundaryRouter(t *testing.T, publicDir string) *gin.Engine {
@@ -33,6 +35,9 @@ func newFrontendBoundaryRouter(t *testing.T, publicDir string) *gin.Engine {
 	router.GET("/ws/sync", func(c *gin.Context) {
 		c.Status(http.StatusSwitchingProtocols)
 	})
+	router.GET("/uploads/*resourcePath", func(c *gin.Context) {
+		c.Status(http.StatusUnauthorized)
+	})
 	router.GET("/webdav/*path", func(c *gin.Context) {
 		c.Status(http.StatusUnauthorized)
 	})
@@ -47,15 +52,28 @@ func newFrontendBoundaryRouter(t *testing.T, publicDir string) *gin.Engine {
 func writeFrontendBoundaryFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	assetsDir := filepath.Join(root, "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
-		t.Fatal(err)
+	for _, directory := range []string{
+		"assets",
+		"themes",
+		"bg",
+		filepath.Join("nested", "reader"),
+		filepath.Join("api"),
+		filepath.Join("books", "42"),
+	} {
+		if err := os.MkdirAll(filepath.Join(root, directory), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for path, body := range map[string]string{
-		filepath.Join(root, "index.html"):           testFrontendIndex,
-		filepath.Join(root, "manifest.webmanifest"): testFrontendManifest,
-		filepath.Join(root, "openreader.svg"):       testFrontendSVG,
-		filepath.Join(assetsDir, "app.js"):          "globalThis.openReaderContract = true",
+		filepath.Join(root, "index.html"):                      testFrontendIndex,
+		filepath.Join(root, "manifest.webmanifest"):            testFrontendManifest,
+		filepath.Join(root, "openreader.svg"):                  testFrontendSVG,
+		filepath.Join(root, "assets", "app.js"):                "globalThis.openReaderContract = true",
+		filepath.Join(root, "themes", "content_0.png"):         testFrontendPNG,
+		filepath.Join(root, "bg", "山水画.jpg"):                   testFrontendJPEG,
+		filepath.Join(root, "nested", "reader", "texture.png"): testFrontendPNG,
+		filepath.Join(root, "api", "does-not-exist"):           "must not shadow API namespace",
+		filepath.Join(root, "books", "42", "read"):             "must not shadow history route",
 	} {
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
@@ -69,6 +87,14 @@ func writeFrontendBoundaryFixture(t *testing.T) string {
 
 func performFrontendBoundaryRequest(router http.Handler, method, target string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, target, nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	return response
+}
+
+func performFrontendBoundaryRequestWithHeaders(router http.Handler, method, target string, headers http.Header) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, target, nil)
+	request.Header = headers.Clone()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	return response
@@ -205,6 +231,108 @@ func TestFrontendRootFilesAndAssetsKeepFileSemantics(t *testing.T) {
 			assertRouteError(t, response, http.StatusNotFound, "NOT_FOUND", "route not found")
 			if strings.Contains(response.Body.String(), "outside secret") || strings.Contains(response.Body.String(), testFrontendIndex) {
 				t.Fatalf("GET %s exposed file or SPA bytes: %q", target, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestFrontendPublicSubtreeFilesKeepStaticHTTPAndRoutePrecedence(t *testing.T) {
+	root := writeFrontendBoundaryFixture(t)
+	router := newFrontendBoundaryRouter(t, root)
+
+	for _, test := range []struct {
+		path        string
+		body        string
+		contentType string
+	}{
+		{path: "/themes/content_0.png?scheme=parchment", body: testFrontendPNG, contentType: "image/png"},
+		{path: "/bg/山水画.jpg", body: testFrontendJPEG, contentType: "image/jpeg"},
+		{path: "/bg/%E5%B1%B1%E6%B0%B4%E7%94%BB.jpg", body: testFrontendJPEG, contentType: "image/jpeg"},
+		{path: "/nested/reader/texture.png", body: testFrontendPNG, contentType: "image/png"},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			response := performFrontendBoundaryRequest(router, http.MethodGet, test.path)
+			if response.Code != http.StatusOK || response.Body.String() != test.body {
+				t.Fatalf("GET %s = %d %q, want static file bytes", test.path, response.Code, response.Body.String())
+			}
+			if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(strings.ToLower(contentType), test.contentType) {
+				t.Fatalf("GET %s Content-Type = %q, want %q", test.path, contentType, test.contentType)
+			}
+
+			head := performFrontendBoundaryRequest(router, http.MethodHead, test.path)
+			if head.Code != http.StatusOK || head.Body.Len() != 0 {
+				t.Fatalf("HEAD %s = %d with %d body bytes", test.path, head.Code, head.Body.Len())
+			}
+		})
+	}
+
+	ranged := performFrontendBoundaryRequestWithHeaders(router, http.MethodGet, "/themes/content_0.png", http.Header{
+		"Range": []string{"bytes=0-7"},
+	})
+	if ranged.Code != http.StatusPartialContent || ranged.Body.String() != testFrontendPNG[:8] {
+		t.Fatalf("range response = %d %q, want first 8 PNG bytes", ranged.Code, ranged.Body.String())
+	}
+
+	initial := performFrontendBoundaryRequest(router, http.MethodGet, "/themes/content_0.png")
+	lastModified := initial.Header().Get("Last-Modified")
+	if lastModified == "" {
+		t.Fatal("static response omitted Last-Modified")
+	}
+	conditional := performFrontendBoundaryRequestWithHeaders(router, http.MethodGet, "/themes/content_0.png", http.Header{
+		"If-Modified-Since": []string{lastModified},
+	})
+	if conditional.Code != http.StatusNotModified || conditional.Body.Len() != 0 {
+		t.Fatalf("conditional response = %d with %d body bytes, want 304", conditional.Code, conditional.Body.Len())
+	}
+
+	if response := performFrontendBoundaryRequest(router, http.MethodGet, "/api/health"); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"ok"`) {
+		t.Fatalf("public collision shadowed API route: %d %q", response.Code, response.Body.String())
+	}
+	assertRouteError(t, performFrontendBoundaryRequest(router, http.MethodGet, "/api/does-not-exist"), http.StatusNotFound, "NOT_FOUND", "route not found")
+	if response := performFrontendBoundaryRequest(router, http.MethodGet, "/uploads/example"); response.Code != http.StatusUnauthorized {
+		t.Fatalf("public fallback shadowed uploads namespace: %d", response.Code)
+	}
+	if response := performFrontendBoundaryRequest(router, http.MethodGet, "/books/42/read"); response.Code != http.StatusOK || response.Body.String() != testFrontendIndex {
+		t.Fatalf("public collision shadowed history route: %d %q", response.Code, response.Body.String())
+	}
+	assertRouteError(t, performFrontendBoundaryRequest(router, http.MethodPost, "/themes/content_0.png"), http.StatusNotFound, "NOT_FOUND", "route not found")
+}
+
+func TestFrontendPublicSubtreeRejectsUnsafeObjects(t *testing.T) {
+	root := writeFrontendBoundaryFixture(t)
+	outsideRoot := t.TempDir()
+	outsideFile := filepath.Join(outsideRoot, "outside.png")
+	if err := os.WriteFile(outsideFile, []byte("outside secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outsideTree := filepath.Join(outsideRoot, "tree")
+	if err := os.Mkdir(outsideTree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outsideTree, "secret.png"), []byte("ancestor secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(root, "themes", "linked.png")); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	if err := os.Symlink(outsideTree, filepath.Join(root, "linked-tree")); err != nil {
+		t.Skipf("ancestor symlink fixture unavailable: %v", err)
+	}
+
+	router := newFrontendBoundaryRouter(t, root)
+	for _, target := range []string{
+		"/themes",
+		"/themes/missing.png",
+		"/themes/linked.png",
+		"/linked-tree/secret.png",
+		"/themes/../index.html",
+		"/themes/content_0.png%5Cextra",
+	} {
+		t.Run(target, func(t *testing.T) {
+			response := performFrontendBoundaryRequest(router, http.MethodGet, target)
+			assertRouteError(t, response, http.StatusNotFound, "NOT_FOUND", "route not found")
+			if strings.Contains(response.Body.String(), root) || strings.Contains(response.Body.String(), "secret") {
+				t.Fatalf("GET %s leaked path or outside bytes: %q", target, response.Body.String())
 			}
 		})
 	}
