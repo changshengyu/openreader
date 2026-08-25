@@ -307,3 +307,13 @@ viewport 捕获段落、合并同批 mode/pageMode/排版变化、取消陈旧�
 页面模式合同通过。Docker 候选进一步通过真实后端 EPUB 三视口与普通/历史持久卷备份门禁，
 已发布 `a7254e3`/`latest`；远端 OCI 索引为
 `sha256:fd4c84bb9da97d4bbab39783d3949d610543195d169756cc2faa13a8e1c2722c`。
+
+## 2026-08-25 HTTP 服务生命周期固定基准复审
+
+备份 multipart 发布后重新扫描 process/server 边界，下一项 must-fix 是 Go PID 1 的请求头与终止信号
+合同。固定上游显式限制 512 KiB header 并以标准信号停止；当前 `router.Run` 使用 Go 默认 1 MiB header，
+没有 header deadline、signal handling 或 graceful shutdown，容器停止会跳过 cleanup/scheduler/backup
+defer。目标为 512 KiB、10 秒 header、8 秒总 drain、WebSocket hub close 和幂等 cleanup，同时保持全局
+read/write timeout 为零，避免破坏 SSE/WebSocket/大文件工作。详见
+[`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；未改应用、数据或测试。

@@ -3946,3 +3946,15 @@ portable restore、事务和稳定错误保持。Go full/race/vet、frontend 741
 恢复 1440/390/360 三视口及 fresh/historical/portable/restart 卷门通过。本机发布 `a0fb1bd`/`latest`，
 OCI index 为 `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`；当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-25 HTTP 服务生命周期第二轮固定基准复审
+
+当前 action/body/file 差集收敛后，进程级入口仍有一个独立 must-fix。固定上游 startup 将最大 HTTP
+header 固定为 524288 bytes，shutdown 通过标准终止信号关闭进程；OpenReader 作为容器 PID 1 却直接
+调用 `router.Run`，没有显式 header deadline、signal handler 或 `http.Server.Shutdown`。因此当前正常
+`docker stop` 会跳过 cleanup/scheduler/backup defer，且请求头上限无意放宽为 Go 默认 1 MiB。
+
+目标是显式 512 KiB/10 秒 header 边界与 8 秒有界 drain，并关闭 hijacked WebSocket、最终取消 SSE；
+不得设置全局 read/write timeout，不改变 route/body/transaction/API/UI/数据格式。详细矩阵和测试先行门见
+[`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+状态：**inventory-complete / implementation-pending**。

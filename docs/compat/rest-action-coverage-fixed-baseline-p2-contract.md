@@ -601,3 +601,16 @@ rooted same-file opened handle。完整合同见
 `sha256:a7a243fe0bc4083ebdb6f4f1df5206315a6d3cbac05544525544e44244663d76`；远端两平台 config 与回拉
 arm64 runtime 均确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 31. HTTP 服务生命周期（2026-08-25 inventory）
+
+备份 multipart 发布后重新枚举 route 以外的进程级 HTTP 边界，下一项 must-fix 收敛为 Go PID 1 的
+请求头与停止生命周期。固定上游 startup 显式使用 512 KiB header 上限，shutdown 脚本发送标准终止
+信号；当前 `router.Run` 沿用 Go 1 MiB 默认 header 且不接管 `SIGINT`/`SIGTERM`，因此容器停止会直接
+跳过 cleanup、scheduler 和 backup defer，也不等待普通在途请求。
+
+目标只引入显式 `http.Server`、10 秒 header deadline、512 KiB header、有界 8 秒 drain、WebSocket hub
+关闭和幂等 cleanup；全局 read/write timeout 必须保持为零，以免截断章节缓存 SSE、书源调试 SSE、
+WebSocket、大文件上传或备份。完整固定上游证据、目标合同、红测与容器门见
+[`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；本 inventory 不含代码或测试修改。

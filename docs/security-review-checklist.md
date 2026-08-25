@@ -1144,3 +1144,19 @@ restart volumes. The final evidence commit was built locally and published as `5
 `sha256:8b7bc4cd8542f79eccc54d393cf2d79041f5fe9a90b05776c473cd3f1e4c2cee`; both platform configs and a forced
 remote arm64 runtime check report full revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`. Status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+
+## P2 HTTP server lifecycle review (2026-08-25 inventory)
+
+- [ ] Replace `router.Run` with an explicit `http.Server` using a 512 KiB maximum header and a 10-second
+      `ReadHeaderTimeout`; keep global `ReadTimeout` and `WriteTimeout` disabled for valid long-lived work.
+- [ ] Handle `SIGINT`/`SIGTERM`, stop accepting new connections, and complete or cancel work within one bounded
+      8-second shutdown budget instead of allowing Go's default signal exit to skip every defer.
+- [ ] Close hijacked WebSocket clients, terminate SSE by the final deadline, and invoke cleanup context,
+      scheduler Stop and backup Stop exactly once without double-close panic.
+- [ ] Prove header, listen-error, ordinary-request drain, forced timeout, SSE, WebSocket and real container stop/restart
+      behavior before publication; logs must remain credential-, query-, body-, database- and host-path-free.
+- [x] The inventory introduces no code, schema, migration, persistent path, route, response, backup format or UI change.
+
+Target contract:
+[`docs/compat/http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / implementation-pending`.
