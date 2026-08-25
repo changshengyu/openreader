@@ -31,21 +31,25 @@ func AccessLogger() gin.HandlerFunc {
 }
 
 func RedactAccessPath(requestPath string) string {
-	if strings.HasPrefix(requestPath, "/ws/sync?") {
-		return "/ws/sync?<redacted>"
-	}
+	path, _, hasQuery := strings.Cut(requestPath, "?")
+	redactedPath := path
 	for _, prefix := range capabilityResourceLogPrefixes {
-		index := strings.Index(requestPath, prefix)
+		index := strings.Index(path, prefix)
 		if index < 0 {
 			continue
 		}
 		capabilityStart := index + len(prefix)
-		remainder := requestPath[capabilityStart:]
+		remainder := path[capabilityStart:]
 		slash := strings.IndexByte(remainder, '/')
 		if slash < 0 {
-			return requestPath[:capabilityStart] + "<redacted>"
+			redactedPath = path[:capabilityStart] + "<redacted>"
+		} else {
+			redactedPath = path[:capabilityStart] + "<redacted>" + remainder[slash:]
 		}
-		return requestPath[:capabilityStart] + "<redacted>" + remainder[slash:]
+		break
 	}
-	return requestPath
+	if hasQuery {
+		return redactedPath + "?<redacted>"
+	}
+	return redactedPath
 }
