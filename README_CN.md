@@ -10,9 +10,12 @@
 ![Vue 3.5](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![SQLite WAL](https://img.shields.io/badge/SQLite-WAL-brightgreen)
 ![Docker ready](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
+[![自动构建并发布 Docker 镜像](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml)
 
 > [!IMPORTANT]
 > OpenReader 是基于 [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev) 行为进行的独立 Go/Vue 重构与重写，并非其可执行文件或数据库的原位替代品。项目以 [`fa22f271`](https://github.com/changshengyu/reader-dev/commit/fa22f271849d45f93349ae1636223e27b16a4691) 为固定兼容基线，目前仍在持续重构；各模块现状见[兼容性审查矩阵](docs/compat/refactor-audit-matrix.md)。
+>
+> 服务端进程有意不执行 JavaScript、WebJS 和 WebView 书源规则。导入/导出会保留这些字段，但依赖它们的书源会返回明确的规则不支持错误。CSS、JSONPath、XPath、正则、组合、分页和受限变量规则的支持范围见[在线书源解析合同](docs/compat/online-booksource-parser.md)。
 
 ## 功能特性
 
@@ -42,6 +45,8 @@ cp .env.example .env
 docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
+
+仓库 workflow 会构建并发布包含 `linux/amd64` 与 `linux/arm64` 的 OCI 索引到 `ghcr.io/changshengyu/openreader`。`docker compose up` 会拉取已发布镜像，Docker 自动选择与主机匹配的架构；普通用户不需要安装 Go、Node.js、QEMU，也不需要在本地构建镜像。需要显式拉取时可执行 `docker pull ghcr.io/changshengyu/openreader:latest`。
 
 打开 `http://localhost:8080`。空数据库中注册的第一个账号会成为管理员，后续注册账号为普通用户。
 
@@ -208,12 +213,12 @@ cd frontend && npm test
 cd frontend && npm run build
 ```
 
-阅读器和工作台修改还必须执行真实浏览器冒烟测试；发布候选镜像应在本地构建，并通过挂载卷/备份兼容性闸门后再上传。
+阅读器和工作台修改还必须执行真实浏览器冒烟测试。符合触发条件的 `main` 更新会由仓库 workflow 重复执行后端/前端闸门，构建原生候选镜像，验证新卷、历史卷和 portable 备份后，才发布多架构镜像。
 
 <details>
-<summary>维护者：本地构建并发布 Docker 镜像</summary>
+<summary>维护者：可选的本地 Docker 构建与发布回退</summary>
 
-Apple Silicon 开发期默认发布 `linux/arm64`：
+正常发布由 [GitHub Actions](.github/workflows/docker-publish.yml) 完成，同时生成 `latest` 和七位 commit 标签。本地脚本保留用于开发或发布故障回退；Apple Silicon 开发期默认使用 `linux/arm64`：
 
 ```bash
 docker login ghcr.io
@@ -227,7 +232,7 @@ RELEASE=1 ./scripts/docker-build-push.sh
 docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 ```
 
-常用覆盖参数包括 `TAG`、`IMAGE`、`PUSH=0`、`PLATFORMS`、`BUILD_PROGRESS=plain` 和 `HOST_OCI_PUSH`。脚本会写入 `VERSION`、`VCS_REF`、`BUILD_DATE`；正式发布即使使用宿主机网络 OCI 上传器，镜像本身也仍在本地构建。
+常用覆盖参数包括 `TAG`、`IMAGE`、`PUSH=0`、`PLATFORMS`、`BUILD_PROGRESS=plain` 和 `HOST_OCI_PUSH`。两种发布路径都会写入 `VERSION`、`VCS_REF`、`BUILD_DATE`；手工回退发布也必须通过与 workflow 相同的验证和卷/备份兼容性闸门。
 
 </details>
 

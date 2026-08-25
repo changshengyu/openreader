@@ -10,9 +10,12 @@ Everyone is welcome to use OpenReader and actively submit [Issues](https://githu
 ![Vue 3.5](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![SQLite WAL](https://img.shields.io/badge/SQLite-WAL-brightgreen)
 ![Docker ready](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
+[![Build and publish Docker image](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml)
 
 > [!IMPORTANT]
 > OpenReader is an independent Go/Vue refactor and rewrite of [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev), not a drop-in replacement for its executable or database. Upstream behavior at commit [`fa22f271`](https://github.com/changshengyu/reader-dev/commit/fa22f271849d45f93349ae1636223e27b16a4691) is the compatibility baseline. The refactor is active; see the [compatibility audit](docs/compat/refactor-audit-matrix.md) for current module status.
+>
+> JavaScript, WebJS, and WebView book-source execution is intentionally unsupported in the server process. Those fields are preserved during import/export, but sources that require them return an explicit unsupported-rule error. CSS, JSONPath, XPath, regex, composite, pagination, and bounded variable rules are supported as documented in the [online source parser contract](docs/compat/online-booksource-parser.md).
 
 ## Features
 
@@ -42,6 +45,8 @@ Generate a secret with `openssl rand -hex 32`, place it in `OPENREADER_JWT_SECRE
 docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
+
+The repository workflow builds and publishes a `linux/amd64` and `linux/arm64` OCI index to `ghcr.io/changshengyu/openreader`. `docker compose up` pulls the published image and Docker automatically selects the matching platform; users do not need Go, Node.js, QEMU, or a local image build. To fetch it explicitly, run `docker pull ghcr.io/changshengyu/openreader:latest`.
 
 Open `http://localhost:8080`. The first account registered in an empty installation becomes the administrator; later accounts are regular users.
 
@@ -208,12 +213,12 @@ cd frontend && npm test
 cd frontend && npm run build
 ```
 
-Reader and workspace changes additionally require real-browser smoke checks. Release candidates are built locally and pass the mounted-volume/backup compatibility gate before publication.
+Reader and workspace changes additionally require real-browser smoke checks. On eligible `main` updates, the repository workflow repeats these backend/frontend gates, builds a native candidate, validates fresh and historical mounted volumes plus portable backups, and only then publishes the multi-platform image.
 
 <details>
-<summary>Maintainer: build and publish the Docker image locally</summary>
+<summary>Maintainer: optional local Docker build and release fallback</summary>
 
-Development publication defaults to `linux/arm64` on Apple Silicon:
+Normal releases are handled by [GitHub Actions](.github/workflows/docker-publish.yml), which publishes `latest` and the seven-character commit tag. The local script remains available for development or release recovery. On Apple Silicon, its development default is `linux/arm64`:
 
 ```bash
 docker login ghcr.io
@@ -227,7 +232,7 @@ RELEASE=1 ./scripts/docker-build-push.sh
 docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 ```
 
-Useful overrides include `TAG`, `IMAGE`, `PUSH=0`, `PLATFORMS`, `BUILD_PROGRESS=plain`, and `HOST_OCI_PUSH`. The script embeds `VERSION`, `VCS_REF`, and `BUILD_DATE`; formal releases remain local builds even when the host-network OCI publisher is used to upload the result.
+Useful overrides include `TAG`, `IMAGE`, `PUSH=0`, `PLATFORMS`, `BUILD_PROGRESS=plain`, and `HOST_OCI_PUSH`. Both release paths embed `VERSION`, `VCS_REF`, and `BUILD_DATE`; a manually published fallback must pass the same validation and volume/backup compatibility gates as the workflow.
 
 </details>
 

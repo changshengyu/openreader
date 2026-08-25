@@ -70,8 +70,9 @@ For every copied reader-dev feature, verify the relevant contract layer before c
 
 ### Release
 
-- Do not use cloud Docker builds for releases.
-- Build Docker images locally and push to GHCR after any coherent validation slice that is suitable for user verification. A full module boundary is preferred but no longer required.
+- The repository GitHub Actions workflow is the trusted release path: after its backend, frontend, Compose, fresh-volume, historical-volume, and backup gates pass, it builds and pushes the `linux/amd64` and `linux/arm64` OCI index to GHCR.
+- Keep the local Docker build script as a development and recovery path. Do not require consumers to compile images locally, and do not use unrelated external cloud builders.
+- Publish after any coherent validation slice that is suitable for user verification. A full module boundary is preferred but no longer required.
 - Push Git commits to GitHub promptly after successful commits unless the user explicitly asks to keep work local.
 - Every Docker release report must include completed items, allowed differences, unfinished items, image tags, digest, and verification summary.
 
@@ -85,4 +86,4 @@ cd frontend && npm test
 cd frontend && npm run build
 ```
 
-For frontend interaction changes, add a real-browser smoke check. For release candidates, also run a local Docker build and volume/backup compatibility check.
+For frontend interaction changes, add a real-browser smoke check. Release candidates must pass the Docker volume/backup compatibility gates, either in the trusted GitHub Actions workflow or through the local fallback before publication.
