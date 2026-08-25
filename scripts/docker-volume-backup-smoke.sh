@@ -24,14 +24,28 @@ case "$HISTORICAL_VOLUME" in
     ;;
 esac
 
+make_cleanup_writable() {
+  path="$1"
+  [ -d "$path" ] || return 0
+  # Linux bind mounts retain root ownership for files created by the container.
+  # Normalize only this mktemp tree so the unprivileged CI runner can remove it.
+  docker run --rm \
+    --entrypoint /bin/sh \
+    -v "$path:/cleanup" \
+    "$IMAGE" \
+    -c 'chmod -R a+rwX /cleanup' >/dev/null 2>&1 || true
+}
+
 cleanup() {
   docker stop "$NAME" >/dev/null 2>&1 || true
   if [ -n "$PORTABLE_NAME" ]; then
     docker stop "$PORTABLE_NAME" >/dev/null 2>&1 || true
   fi
   if [ "${KEEP_OPENREADER_SMOKE:-0}" != "1" ]; then
+    make_cleanup_writable "$ROOT"
     rm -rf "$ROOT"
     if [ -n "$PORTABLE_ROOT" ]; then
+      make_cleanup_writable "$PORTABLE_ROOT"
       rm -rf "$PORTABLE_ROOT"
     fi
   else
