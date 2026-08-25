@@ -76,8 +76,9 @@
   实现 `a90f7b3`、完整回归/卷门和 `5e63eb1` Docker 发布；本地书 archive rooted filesystem
   lifecycle 又按合同 `cae9bf2`、alias 勘误 `852df65`、红测 `92a5fa4`、实现与 Docker 发布
   `125fd93` 关闭；backup upload multipart singularity/handler-owned cleanup 已按合同/红测/实现顺序
-  随 `a0fb1bd` 发布；HTTP server header/signal 生命周期又以 `5b06084`/`6bee4e0`/`f394c1a` 完成并发布。
-  三项状态均为 `aligned / regression-validated / Docker-published / awaiting-device-verification`；下一 action
+  随 `a0fb1bd` 发布；HTTP server header/signal 生命周期又以 `5b06084`/`6bee4e0`/`f394c1a` 完成并发布；
+  access-log raw query 最后以 `9161ce5`/`cce9efd`/`f88ecec` 完成全 route 固定 marker 并发布。这些切片
+  状态均为 `aligned / regression-validated / Docker-published / awaiting-device-verification`；下一 action
   必须重新从当前 `server.go`、进程边界和固定上游取证，其它 action 继续逐项审查。
   `c74be70` 已发布但尚待
   服务器部署；移动书架在
@@ -330,4 +331,8 @@ access log。真实 `f394c1a` 已证明任意 health query 可写入阅读短语
 正文搜索、Explore、LocalStore、RSS 和 source candidates 都有真实 query 面。目标保留 path 与运维字段，
 统一把 query 投影为固定 `?<redacted>`，不改变 handler 或数据。详见
 [`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；整体比例保持 99%。
+合同 `9161ce5`、旧实现红测 `cce9efd` 与实现 `f88ecec` 已依次关闭。focused/race/full/vet、frontend
+741/741、build、真实二进制与 fresh/historical/portable/restart 卷门均通过；本机发布 `f88ecec`/`latest`，
+OCI index `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`，两平台 config
+确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**，
+整体比例仍为 99%。

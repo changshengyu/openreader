@@ -1148,12 +1148,15 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`. Full contract:
   [`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 
-## P2 access-log query redaction compatibility (2026-08-25 inventory)
+## P2 access-log query redaction compatibility (2026-08-25 implemented/published)
 
 - No schema, migration, startup scan, persistent path, environment variable, route, payload, backup member, manifest,
   browser key or UI is introduced. Existing `data/cache/library` bytes are not scanned or rewritten.
 - Only future access-log lines replace raw query with fixed `?<redacted>`; request parsing, SQLite/files/events and
   backup/restore remain byte-for-byte outside this slice. Existing log files are not scanned or rewritten.
+- Fresh portable-v1/v2-assets/cross-user/restart and historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates
+  passed against the local candidate. The locally built amd64/arm64 release is `f88ecec`/`latest`, OCI index
+  `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`.
 - Full contract:
   [`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md).
-  Status is **inventory-complete / implementation-pending**.
+  Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**.

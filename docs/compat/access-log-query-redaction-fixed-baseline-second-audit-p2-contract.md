@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 当前实现基线：`OpenReader@b21bd6b`
 审查日期：2026-08-25
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围
 
@@ -91,3 +91,23 @@ OpenReader 已有明确安全适配：`middleware.AccessLogger` 不记录 header
 2. 在 `b21bd6b` 旧实现上提交 formatter/integration/bounded-output 红测。
 3. 只修改共享 access-path 投影，删除冗余 WebSocket 特判并保留 capability path helper。
 4. 完成 focused/race/full/runtime/卷门；形成可验证切片后提交推送并只在本机发布 amd64/arm64。
+
+## 8. 实施与发布证据
+
+- 合同 `9161ce5`、旧实现红测 `cce9efd` 和实现 `f88ecec` 已依次提交并推送 `main`。实现只在
+  `RedactAccessPath` 中先按第一个 `?` 分离 path，再沿用 capability segment 脱敏并追加固定
+  `?<redacted>`；WebSocket 特判被统一规则替代。handler 的 `RawQuery`、route、auth、status、响应和
+  副作用未改。
+- 旧实现测试先证明普通/legacy/LocalStore/Explore/capability 组合、200/401/404 和 256 KiB query 会泄漏
+  原值并按输入放大。实现后 focused middleware、focused race、`go vet ./...`、Go 全量、frontend 741/741
+  和 production build 均通过。
+- 真实 `f88ecec` 宿主二进制在 health 200、未认证 books 401、缺失 upload 404 和 256 KiB health query
+  上均只记录 path 加固定 marker；完整原始/编码 credential、阅读短语和大 query 未进入日志。SIGINT
+  cleanup 正常完成。
+- 本地 candidate 的 fresh portable-v1/v2-assets/cross-user/restart，以及 historical TXT/EPUB/UMD/CBZ/
+  relative-cache/owner-isolation 卷门通过。没有 schema、目录、archive、backup 或既有日志迁移。
+- 本机发布 `ghcr.io/changshengyu/openreader:f88ecec` 与 `latest`。两标签共同指向 OCI index
+  `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`；amd64/arm64 manifests 分别为
+  `sha256:ebaaa5deaa6cc2e11d68efc5025ad6fe0d28804ab91e161b8802b207e6642684` 和
+  `sha256:16f330ee7108dbacae53c72a44d5080c27651944bc21fbb35d137b8486c6eae0`。远端两平台 config 均确认
+  完整 revision `f88ecec460e71145bf12432b012fa03a54c5796e`。用户生产环境运行提交仍未知。

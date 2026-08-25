@@ -1165,16 +1165,20 @@ fresh/historical/portable/restart volume gates passed. The locally built amd64/a
 OCI index `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`; both remote platform configs report
 the full revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 access-log query redaction review (2026-08-25 inventory)
+## P2 access-log query redaction review (2026-08-25 implemented/published)
 
-- [ ] Replace every non-empty/raw query in access logs with one fixed `?<redacted>` marker before route/auth/status
+- [x] Replace every non-empty/raw query in access logs with one fixed `?<redacted>` marker before route/auth/status
       decisions can affect logging; never parse, decode, hash or partially retain query keys/values.
-- [ ] Preserve queryless path, method, status, latency and client IP, plus existing capability path-token redaction;
+- [x] Preserve queryless path, method, status, latency and client IP, plus existing capability path-token redaction;
       WebSocket JWT must converge to the same global query rule.
-- [ ] Prove handlers still receive complete query values while 200/401/404, legacy/modern search, LocalStore,
+- [x] Prove handlers still receive complete query values while 200/401/404, legacy/modern search, LocalStore,
       Explore, encoded credentials and 256 KiB query requests cannot place secrets or proportional bytes in logs.
 - [x] The inventory changes no code, schema, migration, route, API result, filesystem path, backup format or UI.
 
 Target contract:
 [`docs/compat/access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](compat/access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / implementation-pending`.
+Contract `9161ce5`, red tests `cce9efd`, and implementation `f88ecec` landed in order. Focused/race/vet/full,
+frontend 741/741, production build, real binary 200/401/404/256 KiB query and fresh/historical/portable/restart gates
+passed. The locally built amd64/arm64 `f88ecec`/`latest` release is OCI index
+`sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`; both remote platform configs report the
+full revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.

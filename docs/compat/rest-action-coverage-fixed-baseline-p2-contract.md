@@ -619,7 +619,7 @@ fresh/historical/portable/restart 卷门通过。本机发布 `f394c1a`/`latest`
 `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 32. 访问日志 Query 脱敏（2026-08-25 inventory）
+## 32. 访问日志 Query 脱敏（2026-08-25 implemented/published）
 
 HTTP 生命周期发布后继续枚举 process/middleware 边界，下一项 must-fix 收敛为共享 access log 的 query
 投影。固定上游保留 method/path 运维日志但会记录完整 URI；OpenReader 已明确遮蔽 WebSocket JWT 和
@@ -630,4 +630,8 @@ capability token，却仍让普通 query 原样进入 Gin log。真实 `f394c1a`
 不 decode、不改变 handler `c.Query` 或任何 API 行为；现有 capability path 脱敏保持。完整固定上游证据、
 真实反例和红测门见
 [`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本 inventory 不含代码或测试修改。
+合同 `9161ce5`、旧实现红测 `cce9efd` 与实现 `f88ecec` 已依次推送。focused/race/full/vet、frontend
+741/741、build、真实二进制 200/401/404/256 KiB query 及 fresh/historical/portable/restart 卷门通过。本机
+发布 `f88ecec`/`latest`，OCI index 为
+`sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

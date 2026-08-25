@@ -3973,4 +3973,8 @@ header 固定为 524288 bytes，shutdown 通过标准终止信号关闭进程；
 目标为全 route 固定 `?<redacted>` query marker，保留 path/method/status/latency/client IP 和 handler 的
 完整 query，不改变 API/UI/数据。详见
 [`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md)。
-状态：**inventory-complete / implementation-pending**。
+合同 `9161ce5`、旧实现红测 `cce9efd` 与实现 `f88ecec` 已按顺序关闭。Go full/race/vet、frontend 741/741、
+build、真实二进制 200/401/404/256 KiB query 和新旧/portable/restart 卷门通过；本机发布
+`f88ecec`/`latest`，OCI index 为
+`sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`。状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

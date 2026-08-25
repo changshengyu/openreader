@@ -1190,11 +1190,16 @@ amd64/arm64 release is `f394c1a`/`latest`, OCI index
 | Remote refresh/change-source and chapter content | The server reads/writes optional Book/Chapter variables around existing parser calls. Chapter content stores the returned Book/Chapter map atomically with its cache path. | Existing paths and successful response bodies do not change. A source semantics change clears obsolete state rather than translating or exposing it. |
 | Backup restore | `bookshelf.json.variable` and optional `chapterVariables.json` are accepted. | Old archives need neither field. New maps are fully validated before restore mutation and target only the authenticated destination user's source-name-resolved book/chapters; source/book/chapter database IDs are never variable identity. |
 
-## P2 access-log query projection (2026-08-25 inventory)
+## P2 access-log query projection (2026-08-25 implemented/published)
 
 All route methods, paths, auth, query parsing, responses and side effects remain unchanged. The shared access logger
-must project any request target containing query as its redacted path plus fixed `?<redacted>`; handlers continue to
+projects any request target containing query as its redacted path plus fixed `?<redacted>`; handlers continue to
 receive the original query. Existing WebSocket JWT and public capability path-token redaction remain. This is a logging
-security boundary, not a new accepted parameter or response field. Full contract:
+security boundary, not a new accepted parameter or response field.
+
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `9161ce5`,
+red tests `cce9efd` and implementation `f88ecec` landed in order. Focused/race/vet/full, frontend 741/741, build,
+real binary 200/401/404/256 KiB query and fresh/historical/portable/restart gates passed. The local amd64/arm64 release
+is `f88ecec`/`latest`, OCI index
+`sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`. Full contract:
 [`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / implementation-pending**.
