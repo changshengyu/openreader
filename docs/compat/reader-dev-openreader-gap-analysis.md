@@ -3940,4 +3940,9 @@ file field，也不在 handler 内调用 `MultipartForm.RemoveAll()`。一次性
 compressed+1 MiB 总包络、唯一 `file`、零 scalar/额外 file、255-byte UTF-8 ZIP filename 和所有返回路径
 handler-owned cleanup。完整合同与红测/卷门见
 [`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**。
+合同 `7a2a44a`、旧实现红测 `20ac551` 与实现 `a0fb1bd` 已依次推送。实现严格拒绝任何 scalar、重复/
+异名 file 和非法 filename，在所有 parsed-form 路径由 handler 清理 temp；auth/permission、逻辑与
+portable restore、事务和稳定错误保持。Go full/race/vet、frontend 741/741、build、真实 HTTP、WebDAV
+恢复 1440/390/360 三视口及 fresh/historical/portable/restart 卷门通过。本机发布 `a0fb1bd`/`latest`，
+OCI index 为 `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`；当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

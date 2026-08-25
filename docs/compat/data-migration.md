@@ -1120,14 +1120,17 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   Full contract:
   [`local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-archive-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 
-## P2 backup-upload multipart request compatibility (2026-08-24 extracted)
+## P2 backup-upload multipart request compatibility (2026-08-25 implemented/published)
 
-- The pending change adds no schema, migration, startup scan, mounted path, backup member, manifest, archive budget,
+- The `a0fb1bd` change adds no schema, migration, startup scan, mounted path, backup member, manifest, archive budget,
   environment variable, route, response field, browser key or visible restore workflow.
 - Existing logical reader-dev/Legado/OpenReader ZIPs and portable v1/v2 packages remain byte-for-byte inputs to the
   same preflight and transaction. Current/historical `data/cache/library` volumes are not scanned or rewritten.
 - Only future ambiguous HTTP uploads with scalar, duplicate or differently named extra file parts are rejected before
   stage/restore. A valid singular `file=*.zip` retains current counts, permission, collision and rollback semantics.
 - Handler-owned `multipart.Form.RemoveAll()` shortens request temp lifetime only; caller-private restore stage and its
-  existing cleanup remain separate. Fresh/historical/portable/restart gates are required before release. Full contract:
+  existing cleanup remain separate. Fresh portable-v1/v2-assets/cross-user/restart and historical TXT/EPUB/UMD/CBZ/
+  relative-cache/owner-isolation/archive-hash/portable-restore gates passed against unchanged mounts. The locally built
+  amd64/arm64 `a0fb1bd`/`latest` release resolves to OCI index
+  `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`. Full contract:
   [`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md).

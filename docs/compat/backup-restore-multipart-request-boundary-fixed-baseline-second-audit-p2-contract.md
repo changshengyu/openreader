@@ -1,9 +1,9 @@
 # 备份上传恢复 multipart 请求边界固定基准第二轮合同（P2）
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
-当前审查基线：`OpenReader@7045827`
-审查日期：2026-08-24
-状态：**inventory-complete / implementation-pending**
+当前实现基线：`OpenReader@a0fb1bd`
+审查日期：2026-08-25
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围
 
@@ -91,3 +91,23 @@ cleanup 不能从总包络或 ZIP transaction 绿测间接推导。
 2. 在 `7045827` 旧实现上提交 shape/cleanup 红测。
 3. 提取窄作用域 multipart parser，handler 只做权限、parse/defer cleanup、现有 restore dispatch。
 4. 完成专项/race/full/runtime/卷门；形成可验证切片后提交推送并只在本机发布 amd64/arm64。
+
+## 8. 实施与发布证据
+
+- 合同 `7a2a44a`、旧实现红测 `20ac551` 和实现 `a0fb1bd` 依次提交并推送 `main`。实现新增窄作用域
+  multipart parser，严格校验唯一 `file`、零 scalar/额外 file、255-byte UTF-8 ZIP filename，并在
+  parsed form 存在时立即注册 `RemoveAll()`；现有 auth/permission、restore dispatch 和 transaction 未改。
+- 旧实现红测逐项证明 scalar、重复同名 file、其它 file field 和 256-byte filename 会恢复 Book，且
+  success、invalid shape/extension、oversized file、invalid ZIP 的 forced-disk temp 在直接 handler 返回后
+  存留；实现后全部转绿。focused restore、focused race、`go vet ./...` 和 Go 全量通过。
+- 前端 741/741 与 production build 通过。真实 Go HTTP 探针证明 ambiguous parts=400、单一大写 `.ZIP`=200
+  并恢复 1 本书、declared/chunked overflow=413，服务运行期间 multipart temp files=0。WebDAV 恢复会话
+  隔离在 1440x900、390x844、360x800 均通过，无 stale toast/event/reload。
+- 本地 `a0fb1bd` candidate 的 fresh portable-v1/v2-assets/cross-user/restart 卷门通过。historical 首次并行
+  运行在 fixture 后遇到瞬时 404；同镜像独立 trace 重跑完整通过 TXT/EPUB/UMD/CBZ、relative-cache、
+  owner isolation、logical/portable restore、archive hash 和 restart，未形成可复现产品回归。
+- 本机完成 amd64/arm64 构建后发布 `ghcr.io/changshengyu/openreader:a0fb1bd` 和 `latest`；两标签共同
+  指向 OCI index `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`。
+  amd64 manifest 为 `sha256:4bd4e8e85e3213247191a1a2c7df37efade1a62a38d39851dab897766cc38224`，arm64
+  manifest 为 `sha256:a470eaf82724c71d0d8100dc60676b54d16dc5e122ba33cfd57090495a5b44e3`。
+  用户生产环境当前运行提交仍未知，故保留 `awaiting-device-verification`。

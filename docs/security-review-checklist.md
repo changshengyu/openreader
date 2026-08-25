@@ -463,24 +463,28 @@ blocked by local `osxkeychain -50`; read-only GHCR Registry config inspection co
 revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. Status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 backup-upload multipart request-boundary review (2026-08-24 inventory)
+## P2 backup-upload multipart request-boundary review (2026-08-25 implemented/published)
 
-- [ ] Keep JWT/activity/effective WebDAV permission before multipart parsing; unauthorized/forbidden requests create
+- [x] Keep JWT/activity/effective WebDAV permission before multipart parsing; unauthorized/forbidden requests create
       no temp, restore stage, row, asset or event.
-- [ ] Enforce the existing compressed-limit-plus-1-MiB declared/actual body envelope before restore allocation.
-- [ ] Accept exactly one file part named `file`, zero scalar/other file parts, and a non-empty UTF-8 `.zip` filename
+- [x] Enforce the existing compressed-limit-plus-1-MiB declared/actual body envelope before restore allocation.
+- [x] Accept exactly one file part named `file`, zero scalar/other file parts, and a non-empty UTF-8 `.zip` filename
       of at most 255 bytes. Reject ambiguity before stage/preflight/transaction.
-- [ ] Register handler-owned `multipart.Form.RemoveAll()` for every non-nil parsed form on success, invalid shape,
+- [x] Register handler-owned `multipart.Form.RemoveAll()` for every non-nil parsed form on success, invalid shape,
       wrong extension, oversized file, stage failure and restore failure; never log temp paths or submitted names.
-- [ ] Preserve compressed/entry/expanded ZIP budgets, path/symlink/duplicate checks, portable hashes/collisions,
+- [x] Preserve compressed/entry/expanded ZIP budgets, path/symlink/duplicate checks, portable hashes/collisions,
       caller/source ownership, one-transaction restore and safe 400/409/413/500 envelopes.
-- [ ] Pass red/green shape and forced-disk cleanup tests, focused race/full/vet, real declared/chunked multipart probe,
+- [x] Pass red/green shape and forced-disk cleanup tests, focused race/full/vet, real declared/chunked multipart probe,
       frontend/build, WebDAV restore three-view and fresh/historical/portable/restart gates before local publication.
 
 The `7045827` overlay probe proved that a valid ZIP plus scalar and 34 MiB extra file still restores a Book and leaves
 the parsed temp after direct handler return. Full contract:
 [`compat/backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](compat/backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md).
-Status: `inventory-complete / implementation-pending`.
+Contract `7a2a44a`, old-implementation red tests `20ac551` and implementation `a0fb1bd` landed in order. Focused/
+full/race/vet, frontend 741/741, production build, real Go HTTP shape/envelope/temp validation, WebDAV restore at
+1440/390/360 and fresh/historical/portable/restart gates pass. The locally built `a0fb1bd`/`latest` release resolves
+to OCI index `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`.
+Status: `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
 ## P2 local-book archive rooted lifecycle review (2026-08-24 implemented/published)
 

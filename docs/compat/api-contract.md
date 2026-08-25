@@ -319,8 +319,11 @@ The archive/content/transaction contract above remains closed. The remaining upl
   success and all post-parse failures; cleanup never changes the stable response or exposes a temp path.
 
 The `7045827` overlay probe submitted a valid ZIP plus scalar and 34 MiB extra file: restore returned 200 and mutated
-the shelf, while a multipart temp remained after direct handler return. Status:
-**inventory-complete / implementation-pending**.
+the shelf, while a multipart temp remained after direct handler return. Contract `7a2a44a`, red tests `20ac551` and
+implementation `a0fb1bd` landed in order. Focused/full/race/vet, frontend 741/741, build, real HTTP, WebDAV restore
+at 1440/390/360, and fresh/historical/portable/restart gates pass. The locally built `a0fb1bd`/`latest` release
+resolves to OCI index `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`.
+Status: **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
 ### P2 backup-generation request lifecycle (2026-08-16 extracted)
 

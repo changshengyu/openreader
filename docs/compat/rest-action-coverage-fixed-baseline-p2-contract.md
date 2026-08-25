@@ -399,7 +399,7 @@ restart 卷门通过。本机发布 `125fd93`/`latest`，OCI index
 reading progress 后续已由独立合同关闭；其它 batch/control JSON 继续排队，不因 BookSource multipart
 关闭而合并签收。
 
-## 30. 备份上传恢复 multipart 请求边界（2026-08-24 inventory）
+## 30. 备份上传恢复 multipart 请求边界（2026-08-25 implemented/published）
 
 重新生成当前 route/wire 差集后，下一项 must-fix 收敛到 `POST /api/backup/restore-legado`。已发布的
 compressed/expanded ZIP budgets、logical/portable restore、caller/source permission、transaction/
@@ -411,7 +411,11 @@ cleanup。
 仍恢复 Book，并在直接 handler 返回后留下 temp。固定上游单 ZIP 确认动作、OpenReader 稳定 route/error/
 counts 和精确 red-test 门见
 [`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md)。
-状态：**inventory-complete / implementation-pending**。
+合同 `7a2a44a`、红测 `20ac551` 和实现 `a0fb1bd` 已按测试先行顺序关闭。focused/full/race/vet、
+frontend 741/741、build、真实 HTTP declared/chunked/shape/temp 探针、WebDAV restore 三视口及
+fresh/historical/portable/restart 卷门通过。本机发布 `a0fb1bd`/`latest`，OCI index 为
+`sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`。状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 ## 21. 阅读进度 JSON 与 CAS 控制字段（2026-08-16 implemented）
 
