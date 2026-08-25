@@ -893,10 +893,30 @@ test('different-account reauthentication discards the suspended Index scene', { 
   })
 })
 
-test('explicit logout never restores an old Index scene after the same user logs in again', { concurrency: false }, async () => {
+test('explicit logout revokes the captured server session and never restores an old Index scene', { concurrency: false }, async () => {
   const { user, workspace } = freshStores(11)
   workspace.beginSearch({ keyword: '退出前搜索', sourceId: 5, searchType: 'single' })
-  user.logout()
+  const rejectedLogout = deferred()
+  const calls = []
+  await withAPI('post', (path, body, config) => {
+    calls.push({ path, body, authorization: config?.headers?.Authorization || '' })
+    return rejectedLogout.promise
+  }, async () => {
+    const capturedToken = user.token
+    user.logout()
+    assert.deepEqual(calls, [{
+      path: '/auth/logout',
+      body: null,
+      authorization: `Bearer ${capturedToken}`,
+    }])
+    assert.equal(user.token, '')
+    assert.equal(storage.getItem('openreader_token'), null)
+    assert.equal(workspace.mode, 'shelf')
+    rejectedLogout.reject(new Error('network unavailable after local logout'))
+    await Promise.resolve()
+    await Promise.resolve()
+    assert.equal(user.authDialogVisible, false)
+  })
 
   await withAPI('post', async () => ({
     data: {
