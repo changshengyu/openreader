@@ -635,3 +635,18 @@ capability token，却仍让普通 query 原样进入 Gin log。真实 `f394c1a`
 发布 `f88ecec`/`latest`，OCI index 为
 `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 33. 可信代理、客户端身份与限流（2026-08-25 inventory）
+
+访问日志 query 脱敏发布后继续枚举 process/middleware 边界。当前 `gin.New()` 没有覆盖 Gin 1.10 的
+“信任全部代理”默认值，而全局 `RateLimiter` 和 access log 都以 `c.ClientIP()` 为身份。真实二进制将
+limit 设为 1 后，同一 TCP peer 使用同一 `X-Forwarded-For` 的第二次请求为 429，只变换 header 即再次
+得到 401；日志也把两个伪造值记录为客户端地址。
+
+固定上游 Nginx 文档证明显式反向代理是合法部署，但没有把任意直连请求方声明为可信代理，也没有
+客户端可自行选择限流桶的行为。目标是默认忽略 forwarded client-IP header，并以可选
+`OPENREADER_TRUSTED_PROXIES` 显式列出代理 IP/CIDR；非法配置须在 listen 前失败，可信链使用 Gin
+右到左算法，limiter/logger 共用同一验证身份。现有路由、429 envelope、限流豁免、CORS、JWT、
+WebDAV、graceful shutdown 和日志脱敏保持。完整合同见
+[`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**。

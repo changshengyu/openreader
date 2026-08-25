@@ -336,3 +336,17 @@ access log。真实 `f394c1a` 已证明任意 health query 可写入阅读短语
 OCI index `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`，两平台 config
 确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**，
 整体比例仍为 99%。
+
+## 2026-08-25 可信代理、客户端身份与限流固定基准复审
+
+访问日志 query 脱敏发布后重新扫描 process/middleware 边界，下一项 must-fix 收敛为 Gin 默认可信代理
+与 `ClientIP()` 限流身份。当前 `gin.New()` 默认信任全部 IPv4/IPv6 peer，`RateLimiter` 和 access log
+又共同消费 `c.ClientIP()`；真实二进制在 limit=1 时已证明，同一 TCP peer 只需变换
+`X-Forwarded-For` 就能从 429 恢复为 401，日志也记录伪造地址。固定上游虽在 Nginx 示例中设置转发
+header，但没有把任意直连客户端声明为可信代理，也没有“请求方自行选择限流桶”的产品行为。
+
+目标为默认不信任代理、可选 `OPENREADER_TRUSTED_PROXIES` 显式 IP/CIDR 列表、非法配置 listen 前失败、
+可信链右到左投影，以及 limiter/logger 共用同一验证身份；现有 429 envelope、路由豁免、CORS、JWT、
+WebDAV、HTTP lifecycle 与 query/capability 脱敏保持。完整证据、配置/运行时/数据合同和红测门见
+[`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；本阶段未修改应用或测试，整体比例仍为 99%。
