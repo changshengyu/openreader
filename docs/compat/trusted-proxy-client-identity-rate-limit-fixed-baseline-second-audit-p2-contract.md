@@ -118,5 +118,24 @@ README 的常用部署段不增加反向代理前置要求；只在高级变量�
 
 ## 7. 当前状态
 
-**inventory-complete / implementation-pending**。本阶段只新增合同与总矩阵记录，没有修改应用、测试、
-配置、README 或 Compose。
+合同先以 `30b7630` 独立提交。旧实现红测 `db89593` 随后证明配置模型和启动层没有可信代理入口，并
+锁定默认直连、显式可信代理、多 hop、非可信 peer、429 JSON 和 access-log 身份合同。
+
+当前实现：
+
+- `Config` 新增原样读取的 `OPENREADER_TRUSTED_PROXIES`，默认空值；
+- `run()` 在目录、SQLite、scheduler、backup、middleware 和 listen 之前调用
+  `configureTrustedProxies()`；
+- 空值执行 `SetTrustedProxies(nil)`；非空值严格 trim 逗号列表并交给 Gin 验证 IP/CIDR，空项或非法项
+  直接使启动失败；
+- limiter 和 AccessLogger 继续共用 Gin `ClientIP()`，没有新增第二套代理链解析；
+- Compose 提供带人类说明的空默认值，中英文 README 高级配置表均解释直连与反向代理填写方式。
+
+回归证据：focused 测试、focused race、Go 全量、`go vet`、frontend 741/741、production build、
+`docker compose config --quiet` 和 README 42/42 配置变量检查通过。真实二进制在 limit=1 时：默认直连
+变换两个伪造 header 得到 `401 -> 429`，日志只记录 `127.0.0.1` 且 query 为固定 `<redacted>`；显式信任
+loopback 后两个 forwarded client 得到 `401(A) -> 401(B) -> 429(A)`；含空项的配置在后台服务和 listen
+前退出。
+
+当前状态：**implemented / regression-validated / Docker-release-pending**。不涉及前端交互，因此没有
+新增浏览器 smoke；fresh/historical/portable/restart 卷门由可信 GitHub Actions 发布流程执行。

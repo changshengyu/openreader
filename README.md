@@ -177,6 +177,7 @@ Normal Docker deployments do not need environment variables. Open the advanced s
 | `OPENREADER_PUBLIC_DIR` | `public` | Built frontend directory |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | Scheduled bookshelf/source check interval |
 | `OPENREADER_RATE_LIMIT_PER_MINUTE` | `6000` | Per-client API request limit |
+| `OPENREADER_TRUSTED_PROXIES` | empty | Leave empty for direct access. Behind a reverse proxy, list only that proxy's IP address or network range, separated by commas. Do not enter visitor networks. |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Trusted LAN source hosts, IP addresses, or network ranges, separated by commas |
 
 **File and network limits**

@@ -18,6 +18,7 @@ type Config struct {
 	CheckInterval               string
 	LocalStoreDir               string
 	RateLimitPerMinute          int
+	TrustedProxies              string
 	SourceRequestTimeoutSeconds int
 	MaxSourceResponseBytes      int64
 	MaxSourceRedirects          int
@@ -72,6 +73,7 @@ func Load() Config {
 		CheckInterval:               env("OPENREADER_CHECK_INTERVAL", "30m"),
 		LocalStoreDir:               env("OPENREADER_LOCAL_STORE_DIR", filepath.Join("library", "localStore")),
 		RateLimitPerMinute:          envInt("OPENREADER_RATE_LIMIT_PER_MINUTE", 6000),
+		TrustedProxies:              env("OPENREADER_TRUSTED_PROXIES", ""),
 		SourceRequestTimeoutSeconds: envPositiveInt("OPENREADER_SOURCE_REQUEST_TIMEOUT_SECONDS", 15),
 		MaxSourceResponseBytes:      envInt64("OPENREADER_MAX_SOURCE_RESPONSE_BYTES", 16*1024*1024),
 		MaxSourceRedirects:          envPositiveInt("OPENREADER_MAX_SOURCE_REDIRECTS", 5),

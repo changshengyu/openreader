@@ -649,4 +649,7 @@ limit 设为 1 后，同一 TCP peer 使用同一 `X-Forwarded-For` 的第二次
 右到左算法，limiter/logger 共用同一验证身份。现有路由、429 envelope、限流豁免、CORS、JWT、
 WebDAV、graceful shutdown 和日志脱敏保持。完整合同见
 [`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**。
+合同 `30b7630` 与旧实现红测 `db89593` 已按顺序推送。当前实现默认不信任 forwarded client headers，
+只接受 `OPENREADER_TRUSTED_PROXIES` 明确列出的 IP/CIDR；空项/非法项在任何持久或后台工作及 listen 前
+失败。focused/full/race/vet、frontend 741/741、build、Compose、README 配置映射及真实二进制三组探针
+通过。当前状态 **implemented / regression-validated / Docker-release-pending**。

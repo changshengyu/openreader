@@ -38,6 +38,10 @@ func run() error {
 	if err := configureSourceRuntime(cfg); err != nil {
 		return fmt.Errorf("configure source network policy: %w", err)
 	}
+	router := gin.New()
+	if err := configureTrustedProxies(router, cfg.TrustedProxies); err != nil {
+		return fmt.Errorf("configure trusted proxies: %w", err)
+	}
 	cleanupContext, cleanupCancel := context.WithCancel(context.Background())
 	defer log.Println("OpenReader cleanup completed")
 	defer cleanupCancel()
@@ -80,7 +84,6 @@ func run() error {
 	backupSvc.Start()
 	defer backupSvc.Stop()
 
-	router := gin.New()
 	router.Use(middleware.AccessLogger(), gin.Recovery(), middleware.NewRateLimiter(cfg.RateLimitPerMinute, time.Minute).Middleware(), cors(cfg))
 
 	api.RegisterRoutes(router, cfg, database, hub, sched, backupSvc)
@@ -100,6 +103,26 @@ func run() error {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}
 	log.Println("OpenReader stopped")
+	return nil
+}
+
+func configureTrustedProxies(router *gin.Engine, configured string) error {
+	if strings.TrimSpace(configured) == "" {
+		return router.SetTrustedProxies(nil)
+	}
+
+	items := strings.Split(configured, ",")
+	proxies := make([]string, 0, len(items))
+	for index, item := range items {
+		proxy := strings.TrimSpace(item)
+		if proxy == "" {
+			return fmt.Errorf("entry %d is empty", index+1)
+		}
+		proxies = append(proxies, proxy)
+	}
+	if err := router.SetTrustedProxies(proxies); err != nil {
+		return fmt.Errorf("invalid IP or CIDR: %w", err)
+	}
 	return nil
 }
 

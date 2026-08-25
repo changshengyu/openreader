@@ -349,4 +349,8 @@ header，但没有把任意直连客户端声明为可信代理，也没有“�
 可信链右到左投影，以及 limiter/logger 共用同一验证身份；现有 429 envelope、路由豁免、CORS、JWT、
 WebDAV、HTTP lifecycle 与 query/capability 脱敏保持。完整证据、配置/运行时/数据合同和红测门见
 [`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本阶段未修改应用或测试，整体比例仍为 99%。
+合同 `30b7630` 与旧实现红测 `db89593` 已按顺序推送。当前实现默认 `SetTrustedProxies(nil)`，只在
+`OPENREADER_TRUSTED_PROXIES` 明确列出 IP/CIDR 后读取 forwarded client headers；配置在目录、SQLite、
+scheduler、backup、middleware 和 listen 前严格验证。focused/full/race/vet、frontend 741/741、build、
+Compose、README 42/42 变量和真实二进制 default/trusted/invalid 三组探针通过。当前状态
+**implemented / regression-validated / Docker-release-pending**；整体比例仍为 99%。

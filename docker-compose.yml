@@ -13,5 +13,8 @@ services:
       - ./data:/app/data
       - ./cache:/app/cache
       - ./library:/app/library
+    environment:
+      # Leave empty for direct access. Behind a reverse proxy, set only the proxy IP/CIDR.
+      OPENREADER_TRUSTED_PROXIES: ${OPENREADER_TRUSTED_PROXIES:-}
     # Restart after host/container-engine restarts unless explicitly stopped.
     restart: unless-stopped

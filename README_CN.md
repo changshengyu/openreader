@@ -177,6 +177,7 @@ docker rm openreader
 | `OPENREADER_PUBLIC_DIR` | `public` | 已构建前端目录 |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | 书架/书源定时检查间隔 |
 | `OPENREADER_RATE_LIMIT_PER_MINUTE` | `6000` | 单客户端 API 每分钟请求上限 |
+| `OPENREADER_TRUSTED_PROXIES` | 空 | 直接访问时保持为空。使用反向代理时，只填写代理服务器自身的 IP 或网段，多个值用英文逗号分隔；不要填写访客网段。 |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | 空 | 允许访问的局域网书源主机、IP 或网段，多个值用英文逗号分隔 |
 
 **文件和网络限制**

@@ -2,6 +2,22 @@
 
 Use this checklist for security-sensitive changes and release reviews.
 
+## P2 trusted proxy and rate-limit identity (2026-08-25 implementation)
+
+- [x] Direct deployments trust only the TCP peer address; caller-controlled `X-Forwarded-For` and `X-Real-IP`
+  cannot select a new rate-limit bucket or forge the access-log client identity.
+- [x] Reverse-proxy deployments require an explicit `OPENREADER_TRUSTED_PROXIES` IP/CIDR list. Gin's validated
+  right-to-left chain algorithm remains the single identity source for both the limiter and logger.
+- [x] Empty list items, malformed IPs/CIDRs and wildcard shorthand fail before directories, SQLite, scheduler,
+  backup, middleware registration or listen. The default Compose deployment needs no configuration change.
+- [x] Existing 429 JSON, route exemptions, query/capability redaction, CORS, JWT, WebDAV, source proxy and mounted
+  data contracts remain unchanged.
+
+Evidence: contract `30b7630`, old-implementation red tests `db89593`, focused/full/race/vet, frontend 741/741,
+production build, Compose and README variable checks, plus real-process default/trusted/invalid probes. See
+[`docs/compat/trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](compat/trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).
+Status is `implemented / regression-validated / Docker-release-pending`.
+
 ## Authentication and authorization
 
 - [ ] `OPENREADER_JWT_SECRET` is required and not logged.
