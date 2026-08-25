@@ -656,3 +656,20 @@ WebDAV、graceful shutdown 和日志脱敏保持。完整合同见
 `f5b3869`/`latest`；amd64/arm64 OCI index 为
 `sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 34. 前端静态资源与 SPA 路由失败分流（2026-08-25 inventory）
+
+可信代理发布后继续枚举 process/router 边界。固定上游以 hash router 配合普通静态 handler，不把未知
+服务端请求改写成首页；OpenReader 为 Vue history route 增加 SPA fallback 属于必要技术适配，但当前
+`serveFrontend` 对所有 `NoRoute`、所有 method 都无条件发送 `index.html`，同时只挂载 `/assets`。
+
+真实 `acaae61` 二进制证明未知 `/api/*`、`/ws/*`、缺失 `/assets/*.js`、`PATCH /api/health`、未知页面
+和 `POST` 前端 route 都是 `200 text/html`；构建输出中的 `/manifest.webmanifest`、`/openreader.svg`
+也只能得到首页 HTML。目标是 rooted same-file 服务根级普通构建文件，只允许已注册 Vue history route
+在 GET/HEAD 回退，并让未知 route 与已注册路径错误 method 分别使用安全 JSON 404/405；WebDAV、
+OPTIONS、uploads/capability、CORS、日志和限流优先级保持。
+
+完整上游证据、路由 allowlist、wire envelope、文件安全边界和测试门见
+[`frontend-static-spa-route-boundary-fixed-baseline-second-audit-p2-contract.md`](frontend-static-spa-route-boundary-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；下一步必须先让旧实现合同测试失败，再修改
+`backend/main.go`。
