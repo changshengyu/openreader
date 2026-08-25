@@ -4,8 +4,6 @@
 
 A self-hosted ebook reader with multi-device sync, online book sources, local book import, WebDAV, RSS, and a reader experience aligned with reader-dev.
 
-Everyone is welcome to use OpenReader and actively submit [Issues](https://github.com/changshengyu/openreader/issues) with bug reports and suggestions.
-
 ![Go 1.24+](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
 ![Vue 3.5](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
 ![SQLite WAL](https://img.shields.io/badge/SQLite-WAL-brightgreen)
@@ -14,36 +12,35 @@ Everyone is welcome to use OpenReader and actively submit [Issues](https://githu
 [![Build and publish Docker image](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/changshengyu/openreader/actions/workflows/docker-publish.yml)
 
 > [!IMPORTANT]
-> OpenReader is an independent Go/Vue refactor and rewrite of [changshengyu/reader-dev](https://github.com/changshengyu/reader-dev), not a drop-in replacement for its executable or database. Upstream behavior at commit [`fa22f271`](https://github.com/changshengyu/reader-dev/commit/fa22f271849d45f93349ae1636223e27b16a4691) is the compatibility baseline. The refactor is active; see the [compatibility audit](docs/compat/refactor-audit-matrix.md) for current module status.
+> **OpenReader is still under active development.** Core features are available, but you should back up your data before upgrades and report problems through [Issues](https://github.com/changshengyu/openreader/issues).
 >
-> JavaScript, WebJS, and WebView book-source execution is intentionally unsupported in the server process. Those fields are preserved during import/export, but sources that require them return an explicit unsupported-rule error. CSS, JSONPath, XPath, regex, composite, pagination, and bounded variable rules are supported as documented in the [online source parser contract](docs/compat/online-booksource-parser.md).
+> This project recreates the experience of [reader-dev](https://github.com/changshengyu/reader-dev). It can import reader-dev backups, but it cannot use or replace a reader-dev database directly.
 
 ## Development Status (WIP)
 
-OpenReader is still a **work in progress**, not a finished compatibility release. As of 2026-08-25, the fixed-baseline audit estimates about **99% contract and test coverage**. This percentage measures reviewed upstream contracts and implemented regression coverage, not defect-free readiness or completion on every device.
+As of 2026-08-25, development is estimated at about **99%** based on the feature checklist and automated tests. This means the main features are implemented and tested; it does not mean the software is defect-free or verified on every device.
 
-- **P0 Reader mainline:** reader controls, paging and continuous scrolling, phone/tablet/desktop layouts, settings, bookmarks, content search, EPUB, CBZ, audio, TTS, authentication recovery, source switching, and chapter caching are implemented and regression-tested; real-device sign-off is still ongoing.
-- **P1 Index mainline:** bookshelf, search/explore, BookInfo, BookManage, BookGroup, imports, LocalStore, WebDAV, source management, refresh, progress, and legacy routes are covered; real-device sign-off is still ongoing.
-- **P2 backend/data:** multi-user isolation, source ownership, backup/portable v2, WebDAV, RSS, replace rules, bookmarks, user management, WebSocket, fetch security, parser budgets, and major request boundaries are covered.
-- **Remaining work:** long-tail REST action audits, remaining second-pass upstream reviews, device-reported visible differences, and final device verification. JavaScript/WebView source execution remains an explicit security limitation rather than pending silent compatibility.
+- **Available now:** reader, bookshelf, search and source switching, local-book imports, WebDAV, backup and restore, RSS, multi-user support, and reading-progress sync.
+- **Still being improved:** less common API actions, small differences from reader-dev, and hands-on testing across more phones, tablets, and desktop browsers.
+- **Known limitation:** the server does not run JavaScript, WebJS, or WebView book-source rules. Sources that depend on those rules will not work; see the [book-source rule guide](docs/compat/online-booksource-parser.md) for supported rule types.
 
-See the [full compatibility audit](docs/compat/refactor-audit-matrix.md) for evidence, remaining work, and the meaning of each status.
+See the [compatibility progress table](docs/compat/refactor-audit-matrix.md) for detailed development records.
 
 ## Features
 
 - **Local books** — Import TXT, EPUB, UMD, and CBZ; preview and customize TXT chapter rules. Existing Markdown/PDF archives from earlier OpenReader versions remain readable.
 - **Online sources** — Import and manage reader-dev/Legado-compatible sources, search across sources, browse catalogs, switch sources, and cache chapters.
-- **Upstream-aligned reader** — Vertical paging, horizontal swiping, and continuous vertical scrolling; desktop, phone, and tablet layouts; bookmarks, in-book search, progress sync, themes, typography, auto-reading, and TTS.
-- **Bookshelf workspace** — Groups, search, batch operations, metadata editing, local storage, WebDAV file management, and cross-client refresh.
-- **Content cleanup** — Ordered regular-expression replacement rules for advertisements, watermarks, and formatting noise.
+- **Reader** — Vertical or horizontal paging, continuous scrolling, desktop/phone/tablet layouts, bookmarks, full-book search, progress sync, themes, typography, auto-read, and text-to-speech.
+- **Bookshelf workspace** — Groups, search, batch operations, title and author editing, local storage, WebDAV file management, and cross-device refresh.
+- **Content cleanup** — Replacement rules for removing advertisements, watermarks, and formatting noise.
 - **RSS and discovery** — Import RSS sources, browse articles, and explore source catalogs.
-- **Backup and restore** — reader-dev/Legado-compatible logical ZIP restore, OpenReader logical backups, and portable v2 backups containing recoverable local-book originals and supported custom appearance assets.
-- **Multi-user** — JWT authentication, per-user data isolation, source/store/WebDAV permissions, and administrator management.
-- **Single container** — One Go binary serves the API and built Vue application; SQLite runs in WAL mode.
+- **Backup and restore** — Restore reader-dev/Legado backups or create an OpenReader portable backup containing account data, local books, and supported appearance assets.
+- **Multi-user** — Isolated user data, source/library/WebDAV permissions, and administrator tools.
+- **Simple deployment** — The frontend, backend, and database run in one Docker container.
 
 ## Quick Start
 
-No source checkout or local image build is required. Choose either deployment method below.
+Install Docker first. No source checkout or local image build is required; choose either method below. The Compose method also requires the `docker compose` command.
 
 ### Option 1: Docker Compose (Recommended)
 
@@ -59,15 +56,15 @@ This method creates `data/`, `cache/`, and `library/` beside `docker-compose.yml
 
 ### Option 2: One `docker run` Command
 
-This command needs no project files and stores persistent data in three Docker named volumes:
+This command needs no project files and stores persistent data in three Docker-managed volumes:
 
 ```bash
 docker run -d --name openreader --restart unless-stopped -p 8080:8080 -v openreader-data:/app/data -v openreader-cache:/app/cache -v openreader-library:/app/library ghcr.io/changshengyu/openreader:latest
 ```
 
-The named volumes survive container recreation. Do not delete `openreader-data`, `openreader-cache`, or `openreader-library` when upgrading the container.
+These Docker volumes survive container recreation. Do not delete `openreader-data`, `openreader-cache`, or `openreader-library` when upgrading the container.
 
-Published images are a `linux/amd64` and `linux/arm64` OCI index. Docker automatically pulls the image and selects the matching platform; users do not need the source repository, Go, Node.js, QEMU, or a local image build. To fetch it explicitly, run `docker pull ghcr.io/changshengyu/openreader:latest`.
+The same image supports common 64-bit x86 and ARM hosts, and Docker selects the correct version automatically. Users do not need the source code, Go, Node.js, or a local build environment.
 
 Open `http://localhost:8080`. The first account registered in an empty installation becomes the administrator; later accounts are regular users.
 
@@ -75,17 +72,17 @@ For the Compose method, the defaults run without extra environment configuration
 
 | Compose setting | Default | When to change it |
 |---|---|---|
-| `image` | `ghcr.io/changshengyu/openreader:latest` | Replace `latest` with a commit tag when you need a pinned release. |
+| `image` | `ghcr.io/changshengyu/openreader:latest` | Replace `latest` with a specific version tag when you need to pin a release. |
 | `ports` | `8080:8080` | Change the left-hand `8080` when the host port is already occupied. Keep the container port unchanged. |
 | `./data` | SQLite, uploads, and backups | Change the left-hand path when persistent data belongs on another disk or directory. |
 | `./cache` | Regenerable content/import cache | Change the left-hand path when cache belongs on another disk or directory. |
-| `./library` | Imported originals and LocalStore | Change the left-hand path when the book library belongs on another disk or directory. |
+| `./library` | Imported originals and local library files | Change the left-hand path when the book library belongs on another disk or directory. |
 
 Keep the container-side `/app/data`, `/app/cache`, and `/app/library` paths unchanged. Do not remove or replace the three host directories when recreating the container.
 
 ### Upgrade an Existing OpenReader Deployment
 
-First make a cold backup. Stopping the container ensures the SQLite database and its WAL files are captured consistently:
+Stop the container and back up all three data directories before upgrading so files are not copied while the database is being written:
 
 ```bash
 docker compose stop openreader
@@ -95,9 +92,19 @@ docker compose up -d --force-recreate openreader
 curl -fsS http://localhost:8080/api/health
 ```
 
-The archive contains user data; store it with restricted access. The bundled Compose file uses `pull_policy: always`. The `version` and `commit` returned by `/api/health` identify the code actually running; refreshing the browser does not update a container.
+The archive contains user data, so store it securely. After upgrading, check the `version` and `commit` returned by `/api/health` to confirm that the new container is running. Refreshing the browser does not upgrade a container.
 
-For a controlled rollout, pin `ghcr.io/changshengyu/openreader:<commit>` instead of `latest`. To roll back safely, stop the candidate, restore the complete pre-upgrade snapshot into empty persistent directories, pin the previous image, and start again. Do not merge an old SQLite snapshot into directories already written by a newer container.
+To control when upgrades happen, replace `latest` with a specific version tag. To roll back, stop the container, restore all three pre-upgrade data directories, and start the previous image. Do not mix old and new database files.
+
+For a one-command `docker run` installation, first download a portable backup from OpenReader, then run:
+
+```bash
+docker pull ghcr.io/changshengyu/openreader:latest
+docker stop openreader
+docker rm openreader
+```
+
+Run the one-line start command above again. The three Docker volumes remain available.
 
 ## Migration Guide
 
@@ -105,23 +112,21 @@ Choose the migration path by what you are moving:
 
 | Source | Recommended method | What it preserves |
 |---|---|---|
-| reader-dev or Legado | Restore its logical `backup*.zip` into the target OpenReader account | Supported sources, bookshelf entries, groups, RSS, bookmarks, replace rules, and progress present in the archive |
-| Another OpenReader account/host | Create and restore an **OpenReader portable backup** | Logical account data plus recoverable local-book originals and supported custom covers/backgrounds/fonts |
-| A complete OpenReader installation | Cold-copy `data/`, `cache/`, and `library/` together, plus deployment configuration | All users, SQLite data, uploads, backups, original local books, and cached content |
-| An older OpenReader version on the same host | Keep the same three mounts and recreate the container with the new image | Existing installation data through additive startup migrations |
+| reader-dev or Legado | Upload and restore the original `backup*.zip` | Sources, bookshelf entries, groups, RSS, bookmarks, replace rules, and reading progress contained in the backup |
+| Another OpenReader account/host | Create and restore an **OpenReader portable backup** | Account data, local-book originals, and supported custom covers, backgrounds, and fonts |
+| A complete OpenReader installation | Stop the container, then copy `data/`, `cache/`, `library/`, and the deployment configuration together | All users, database data, uploads, backups, original local books, and cached content |
+| An older OpenReader version on the same host | Keep the three data directories and recreate the container with the new image | Existing accounts, settings, and library data |
 
 ### Migrate from reader-dev
 
-1. **Create a final backup in reader-dev.** Use its existing backup/WebDAV action to produce a `backup*.zip`. Download that ZIP and also keep an independent copy of the old reader-dev data directory and every original local book.
-2. **Keep the old service unchanged.** Do not point OpenReader at the reader-dev database or overwrite `data/openreader.db`; the database schemas and filesystem layouts are different.
-3. **Start OpenReader and create the destination account.** On a new installation, register the administrator first. For a multi-user reader-dev deployment, restore one user's archive while signed in as the corresponding OpenReader account; accounts and passwords are not contained in the logical backup.
-4. **Upload the archive.** Open the sidebar and choose **WebDAV → 文件管理 (File Manager)**, click **上传文件 (Upload Files)**, and upload the original ZIP without unpacking or renaming its JSON files.
-5. **Restore it.** Click **恢复 (Restore)** on the uploaded ZIP and confirm. OpenReader recognizes reader-dev/Legado names such as `bookSource.json`, `bookshelf.json` or `myBookShelf.json`, `bookGroup.json`, `rssSources.json`, `bookmark.json`, `replaceRule.json`, and `bookProgress/*.json`.
-6. **Read the restore summary.** A user without source-edit permission still gets personal data restored, but sources are skipped and the UI reports that explicitly. Ask an administrator to grant source-edit permission before retrying if those sources are required.
-7. **Re-import local originals.** A normal reader-dev/Legado backup does **not** contain original TXT/EPUB/UMD/CBZ files. Upload and import those originals separately. OpenReader portable backups can carry supported local originals, but only after the books already live in OpenReader.
-8. **Verify before switching traffic.** Compare bookshelf and source counts, open several remote and local books, check bookmarks and progress, and test one source refresh. Keep the old deployment and its backup until this verification is complete.
+1. Create and download a final `backup*.zip` in reader-dev, and separately save every original local-book file.
+2. Start a new OpenReader installation and create the destination account. Do not copy the reader-dev database into OpenReader; the formats are different.
+3. Sign in to the destination account, open **WebDAV → 文件管理 (File Manager) → 上传文件 (Upload Files)**, and upload the original ZIP without unpacking or renaming it.
+4. Click **恢复 (Restore)** beside the uploaded file, then review the result shown on the page. Sources are skipped when the current user does not have permission to edit them.
+5. Normal reader-dev/Legado backups do not include original TXT, EPUB, UMD, or CBZ files. Import those books separately.
+6. Check the bookshelf, sources, bookmarks, and reading progress, then open several remote and local books. Keep the old installation and backup until everything is verified.
 
-Restore maps data to the currently authenticated OpenReader account and allocates destination IDs; IDs, user records, passwords, JWT sessions, WebDAV credentials, and host paths from the old installation are never reused. Restoration is transactional for supported logical data, but it is still a write operation—back up a non-empty destination first.
+Restored content belongs to the currently signed-in OpenReader account; old account passwords are not transferred. Back up a destination account before restoring into it when it already contains data.
 
 ### Move OpenReader to Another Host
 
@@ -132,14 +137,15 @@ For an exact whole-instance move:
 3. Start the destination with the same or a newer OpenReader image and the same mount paths.
 4. Check `/api/health`, sign in, open local and remote books, and only then retire the source host.
 
-For a single-account move, use **WebDAV → 保存完整可移植备份 (Save Portable Backup)**, download the resulting `portable_backup_*.zip`, upload it to the target account's WebDAV file manager, and click **恢复 (Restore)**. Portable generation intentionally fails instead of producing a partial package when a referenced local original or supported custom asset is missing. Local audio directories are not included.
+To move one account, choose **WebDAV → 保存完整可移植备份 (Save Portable Backup)**, download the resulting `portable_backup_*.zip`, then upload and restore it in the destination account. Local audio directories are not included in this backup.
 
-### Backup Types and Limits
+### Backup Types
 
-- `backup_*.zip` is a logical account backup. It is compatible with supported reader-dev/Legado JSON artifacts, but it does not contain the SQLite database or local-book originals.
-- `portable_backup_*.zip` is an OpenReader portable v2 package. It adds validated local-book originals and supported current-user appearance assets; portable v1 packages remain restorable.
-- A cold snapshot of all three persistent directories is the only complete system-level backup for all users.
-- Never copy a reader-dev SQLite database over `data/openreader.db`, and never restore only one of OpenReader's three directories as if it were a complete instance migration.
+- `backup_*.zip`: account data only; it does not contain original local-book files.
+- `portable_backup_*.zip`: account data plus local-book originals and supported appearance assets; use it to move one account.
+- `data/`, `cache/`, and `library/`: stop the container and copy all three directories to back up the complete installation and every user.
+
+Never copy a reader-dev SQLite database into OpenReader, and do not copy only part of the three OpenReader data directories.
 
 ## Persistent Data
 
@@ -147,13 +153,16 @@ For a single-account move, use **WebDAV → 保存完整可移植备份 (Save Po
 |---|---|---|
 | `data/` | SQLite database, uploaded assets, and per-user WebDAV/backup files | Required for every full backup |
 | `cache/` | Chapter/content and import-preview cache | Regenerable in many cases, but copy it for an exact move |
-| `library/` | Imported original files and LocalStore content | Required to preserve local books |
+| `library/` | Imported original files and local-library content | Required to preserve local books |
 
-The administrator keeps the historical WebDAV root under `data/webdav/`; regular users are isolated under user-specific descendants. The WebDAV protocol is available at both `/webdav/` and the reader-dev-compatible `/reader3/webdav/` path.
+Each user's WebDAV files are isolated. For compatibility with older clients, both `/webdav/` and `/reader3/webdav/` are supported.
 
 ## Configuration
 
-The bundled Compose file already supplies the container paths through the image defaults. These service variables are mainly for source development, custom orchestration, or deliberate limit tuning:
+Normal Docker deployments do not need environment variables. Open the advanced section only when developing from source, changing storage paths, connecting to a trusted LAN source, or adjusting file-size limits.
+
+<details>
+<summary>Advanced environment variables</summary>
 
 | Variable | Default | Description |
 |---|---|---|
@@ -161,17 +170,16 @@ The bundled Compose file already supplies the container paths through the image 
 | `OPENREADER_DATA_DIR` | `data` | Data directory |
 | `OPENREADER_CACHE_DIR` | `cache` | Cache directory |
 | `OPENREADER_LIBRARY_DIR` | `library` | Library directory |
-| `OPENREADER_LOCAL_STORE_DIR` | `library/localStore` | LocalStore root |
+| `OPENREADER_LOCAL_STORE_DIR` | `library/localStore` | Local-library directory |
 | `OPENREADER_DB` | `data/openreader.db` | SQLite database path |
-| `OPENREADER_JWT_SECRET` | compatibility fallback | JWT/capability signing secret; the bundled same-origin Compose deployment does not require an override |
-| `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | CORS response origin for split frontend/API development; irrelevant to normal same-origin container access |
+| `OPENREADER_JWT_SECRET` | built-in default | Signs login sessions and protected resource links; the standard Compose deployment does not require a change |
+| `OPENREADER_CORS_ORIGIN` | `http://localhost:5173` | Used only when the frontend and API run separately during development; the standard Docker deployment does not require a change |
 | `OPENREADER_PUBLIC_DIR` | `public` | Built frontend directory |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | Scheduled bookshelf/source check interval |
 | `OPENREADER_RATE_LIMIT_PER_MINUTE` | `6000` | Per-client API request limit |
-| `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Comma-separated exact hosts, IPs, or CIDRs allowed to reach non-public networks |
+| `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Trusted LAN source hosts, IP addresses, or network ranges, separated by commas |
 
-<details>
-<summary>Parser, network, backup, and asset safety limits</summary>
+**File and network limits**
 
 | Variable | Default | What it controls |
 |---|---:|---|
@@ -205,30 +213,38 @@ The bundled Compose file already supplies the container paths through the image 
 | `OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS` | `3` | Timeout for one cover-image fetch |
 | `OPENREADER_MAX_COVER_IMAGE_REDIRECTS` | `3` | Maximum redirects for one cover image |
 
-</details>
-
-Book-source and RSS requests reject loopback, private, link-local, cloud metadata, benchmark, documentation, and other special-use networks by default. For a trusted LAN source, allow only the exact host or address when possible:
+For security, book-source and RSS requests cannot access the local machine or private network by default. If a trusted source runs on your NAS or LAN, allow only its hostname or IP address:
 
 ```yaml
 environment:
   OPENREADER_SOURCE_NETWORK_ALLOWLIST: "nas.home,192.168.50.20"
 ```
 
-The shared fetcher intentionally ignores ambient `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`. Use the source's explicit proxy setting or a TUN/system route. Fake-IP DNS ranges such as `198.18.0.0/15` require an explicit exception and therefore authorize the entire range; prefer real-IP/Redir-Host DNS when practical.
+OpenReader does not read the container's `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` settings. Use the source's own proxy option or a system network route instead. Fake-IP modes used by tools such as Clash may require allowing the corresponding network range; real-IP mode is simpler and safer when available.
+
+</details>
 
 ## Development
 
 ### Local Development
 
 ```bash
+git clone https://github.com/changshengyu/openreader.git
+cd openreader
+```
+
+Start the backend:
+
+```bash
 cd backend
-go mod tidy
 go run .
 ```
 
+From the repository root, open another terminal and start the frontend:
+
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -244,12 +260,12 @@ cd frontend && npm test
 cd frontend && npm run build
 ```
 
-Reader and workspace changes additionally require real-browser smoke checks. On eligible `main` updates, the repository workflow repeats these backend/frontend gates, builds a native candidate, validates fresh and historical mounted volumes plus portable backups, and only then publishes the multi-platform image.
+After changing the reader or bookshelf UI, also test it in a real browser at desktop and phone sizes. GitHub Actions repeats backend, frontend, and data-compatibility checks before publishing an image.
 
 <details>
 <summary>Maintainer: optional local Docker build and release fallback</summary>
 
-Normal releases are handled by [GitHub Actions](.github/workflows/docker-publish.yml), which publishes `latest` and the seven-character commit tag. The local script remains available for development or release recovery. On Apple Silicon, its development default is `linux/arm64`:
+Normal releases are handled by [GitHub Actions](.github/workflows/docker-publish.yml), which publishes `latest` and a version tag. The local script is only for development or recovery when automated publishing is unavailable. On Apple Silicon, it builds `linux/arm64` by default:
 
 ```bash
 docker login ghcr.io
@@ -263,7 +279,7 @@ RELEASE=1 ./scripts/docker-build-push.sh
 docker buildx imagetools inspect ghcr.io/changshengyu/openreader:latest
 ```
 
-Useful overrides include `TAG`, `IMAGE`, `PUSH=0`, `PLATFORMS`, `BUILD_PROGRESS=plain`, and `HOST_OCI_PUSH`. Both release paths embed `VERSION`, `VCS_REF`, and `BUILD_DATE`; a manually published fallback must pass the same validation and volume/backup compatibility gates as the workflow.
+Use `TAG`, `IMAGE`, `PUSH`, and `PLATFORMS` when you need to change the tag, image location, or target platforms. A manual release must pass the same tests and data-compatibility checks as GitHub Actions.
 
 </details>
 
