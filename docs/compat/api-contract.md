@@ -1189,3 +1189,12 @@ amd64/arm64 release is `f394c1a`/`latest`, OCI index
 | `POST /api/books/remote` | Optional `variable` accepts the bounded JSON string map and seeds BookInfo/TOC parsing. Returned book keeps normal shape with optional `variable`. | Omitted values remain empty. Malformed/non-string/oversized maps return existing-style `400` with safe `error`/`code`/`stage`, before a remote request. |
 | Remote refresh/change-source and chapter content | The server reads/writes optional Book/Chapter variables around existing parser calls. Chapter content stores the returned Book/Chapter map atomically with its cache path. | Existing paths and successful response bodies do not change. A source semantics change clears obsolete state rather than translating or exposing it. |
 | Backup restore | `bookshelf.json.variable` and optional `chapterVariables.json` are accepted. | Old archives need neither field. New maps are fully validated before restore mutation and target only the authenticated destination user's source-name-resolved book/chapters; source/book/chapter database IDs are never variable identity. |
+
+## P2 access-log query projection (2026-08-25 inventory)
+
+All route methods, paths, auth, query parsing, responses and side effects remain unchanged. The shared access logger
+must project any request target containing query as its redacted path plus fixed `?<redacted>`; handlers continue to
+receive the original query. Existing WebSocket JWT and public capability path-token redaction remain. This is a logging
+security boundary, not a new accepted parameter or response field. Full contract:
+[`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / implementation-pending**.

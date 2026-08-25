@@ -3962,3 +3962,15 @@ header 固定为 524288 bytes，shutdown 通过标准终止信号关闭进程；
 卷门均通过；本机发布 `f394c1a`/`latest`，OCI index 为
 `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`。状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-08-25 访问日志 Query 脱敏第二轮固定基准复审
+
+当前 process/middleware 差集的下一项 must-fix 是 access log query。固定上游的 Vert.x logger 和
+`RestVerticle` 会记录 URI，OpenReader 出于多用户/JWT 安全已不记录 body/header 并遮蔽 WebSocket JWT、
+公开 capability；但其它 raw query 仍完整输出。真实 `f394c1a` health 请求已把阅读短语、编码 userinfo
+和 token 原样写入日志，handler 不认识参数也不能阻止泄漏与日志放大。
+
+目标为全 route 固定 `?<redacted>` query marker，保留 path/method/status/latency/client IP 和 handler 的
+完整 query，不改变 API/UI/数据。详见
+[`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md)。
+状态：**inventory-complete / implementation-pending**。

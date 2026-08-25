@@ -322,3 +322,12 @@ read/write timeout 为零，避免破坏 SSE/WebSocket/大文件工作。详见
 OCI index `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`，两平台 config
 确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**，
 整体比例仍为 99%。
+
+## 2026-08-25 访问日志 Query 脱敏固定基准复审
+
+HTTP lifecycle 发布后重新扫描 middleware/logging 边界，下一项 must-fix 是普通 raw query 原样进入
+access log。真实 `f394c1a` 已证明任意 health query 可写入阅读短语、编码 userinfo/token；现代/legacy
+正文搜索、Explore、LocalStore、RSS 和 source candidates 都有真实 query 面。目标保留 path 与运维字段，
+统一把 query 投影为固定 `?<redacted>`，不改变 handler 或数据。详见
+[`access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**；整体比例保持 99%。

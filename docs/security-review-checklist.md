@@ -1164,3 +1164,17 @@ frontend 741/741, production build, real binary header/listen/SIGTERM/WebSocket,
 fresh/historical/portable/restart volume gates passed. The locally built amd64/arm64 `f394c1a`/`latest` release is
 OCI index `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`; both remote platform configs report
 the full revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+
+## P2 access-log query redaction review (2026-08-25 inventory)
+
+- [ ] Replace every non-empty/raw query in access logs with one fixed `?<redacted>` marker before route/auth/status
+      decisions can affect logging; never parse, decode, hash or partially retain query keys/values.
+- [ ] Preserve queryless path, method, status, latency and client IP, plus existing capability path-token redaction;
+      WebSocket JWT must converge to the same global query rule.
+- [ ] Prove handlers still receive complete query values while 200/401/404, legacy/modern search, LocalStore,
+      Explore, encoded credentials and 256 KiB query requests cannot place secrets or proportional bytes in logs.
+- [x] The inventory changes no code, schema, migration, route, API result, filesystem path, backup format or UI.
+
+Target contract:
+[`docs/compat/access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md`](compat/access-log-query-redaction-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / implementation-pending`.
