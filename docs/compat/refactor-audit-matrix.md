@@ -75,9 +75,10 @@
   `3cef8df` Docker 发布；公开 capability 文件读取生命周期已完成合同 `2587299`、红测 `df49535`、
   实现 `a90f7b3`、完整回归/卷门和 `5e63eb1` Docker 发布；本地书 archive rooted filesystem
   lifecycle 又按合同 `cae9bf2`、alias 勘误 `852df65`、红测 `92a5fa4`、实现与 Docker 发布
-  `125fd93` 关闭，状态 `aligned / regression-validated / Docker-published / awaiting-device-verification`；
-  下一 action 已收敛为 backup upload multipart singularity/handler-owned cleanup，合同状态
-  `inventory-complete / implementation-pending`，其它 action 继续逐项取证。
+  `125fd93` 关闭；backup upload multipart singularity/handler-owned cleanup 已按合同/红测/实现顺序
+  随 `a0fb1bd` 发布；HTTP server header/signal 生命周期又以 `5b06084`/`6bee4e0`/`f394c1a` 完成并发布。
+  三项状态均为 `aligned / regression-validated / Docker-published / awaiting-device-verification`；下一 action
+  必须重新从当前 `server.go`、进程边界和固定上游取证，其它 action 继续逐项审查。
   `c74be70` 已发布但尚待
   服务器部署；移动书架在
   390×844 线上真实账号复测中保持上游 390/350px 几何和内容高度行轨，但设备“明显窄”的反馈仍待
@@ -316,4 +317,8 @@ viewport 捕获段落、合并同批 mode/pageMode/排版变化、取消陈旧�
 defer。目标为 512 KiB、10 秒 header、8 秒总 drain、WebSocket hub close 和幂等 cleanup，同时保持全局
 read/write timeout 为零，避免破坏 SSE/WebSocket/大文件工作。详见
 [`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；未改应用、数据或测试。
+合同 `5b06084`、旧实现红测 `6bee4e0` 与实现 `f394c1a` 已依次关闭该边界。focused/race/full/vet、frontend
+741/741、build、真实二进制与 candidate stop、新旧/portable 卷门均通过；本机发布 `f394c1a`/`latest`，
+OCI index `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`，两平台 config
+确认完整 revision。当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**，
+整体比例仍为 99%。

@@ -3957,4 +3957,8 @@ header 固定为 524288 bytes，shutdown 通过标准终止信号关闭进程；
 目标是显式 512 KiB/10 秒 header 边界与 8 秒有界 drain，并关闭 hijacked WebSocket、最终取消 SSE；
 不得设置全局 read/write timeout，不改变 route/body/transaction/API/UI/数据格式。详细矩阵和测试先行门见
 [`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-状态：**inventory-complete / implementation-pending**。
+合同 `5b06084`、旧实现红测 `6bee4e0` 与实现 `f394c1a` 已按顺序关闭差异。Go full/race/vet、frontend
+741/741、build、真实 10 秒 header/431/listen-error/SIGTERM/WebSocket、candidate stop 和新旧/portable
+卷门均通过；本机发布 `f394c1a`/`latest`，OCI index 为
+`sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`。状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

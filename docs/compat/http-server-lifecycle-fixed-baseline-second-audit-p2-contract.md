@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
 当前实现基线：`OpenReader@5155b40`  
 审查日期：2026-08-25  
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围
 
@@ -98,3 +98,25 @@ OpenReader 改为一个 PID 1 Go binary，`Dockerfile` 以 `CMD ["/app/openreade
 2. 在 `5155b40` 旧实现上提交 server/header/signal/long-connection 红测。
 3. 提取窄作用域 server runner、信号源和 shutdown hook；为 hub/Stop 增加最小幂等关闭能力。
 4. 完成专项/race/full/runtime/container/卷门；形成可验证切片后提交推送并只在本机发布 amd64/arm64。
+
+## 8. 实施与发布证据
+
+- 合同 `5b06084`、旧实现红测 `6bee4e0` 和实现 `f394c1a` 已依次提交并推送 `main`。实现以显式
+  `http.Server` 替换 `router.Run`，固定 512 KiB/10 秒 header 边界并保持全局 read/write timeout 为零；
+  第一次信号执行 8 秒 drain，第二次信号或 deadline 强制关闭，监听错误保持非零退出。
+- WebSocket hub 现可幂等关闭并拒绝新的连接 lifetime；scheduler/backup Stop 同样幂等。正常/监听失败/
+  强制路径均执行固定 cleanup 链并只记录无敏感数据的生命周期日志。route、SSE event、API payload、
+  SQLite、目录和备份格式未改。
+- 旧实现测试先暴露缺少 server constructor/runner/hub close，以及 scheduler/backup double Stop panic；实现后
+  production/focused/race、`go vet ./...` 和 Go 全量通过。frontend 741/741 与 production build 通过。
+- 真实宿主二进制探针得到：production partial-header deadline `10004ms`、600 KiB header `431`、监听冲突
+  exit 1、SIGTERM exit 0、WebSocket 关闭、完整停止 `543ms`。本地 candidate 容器 `docker stop -t 10`
+  用时 `0.50s`，exit 0、无 OOM，日志依次包含 shutdown requested/stopped/cleanup completed。
+- 本地 `f394c1a` candidate 的 fresh portable-v1/v2-assets/cross-user/restart，以及 historical
+  TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation 卷门通过。现有 cache/debug SSE request-context 取消合同、
+  server-only WebSocket 协议和 route body budgets 均由全量/focused 门保持。
+- 本机发布 `ghcr.io/changshengyu/openreader:f394c1a` 与 `latest`。两标签共同指向 OCI index
+  `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`；amd64/arm64 manifests 分别为
+  `sha256:d0a40c15cda04b7f44ca09546bbd8cd9c8a8c39eac0ea206cb56846875be7550` 和
+  `sha256:0f88167c848f92b92caae54402d1edc34472c257a59c1ad2fe9fa7b1e0d5373b`。远端两平台 config 均确认
+  完整 revision `f394c1a4ec040cdde3ff79ad7b311805a5e31892`。用户生产环境运行提交仍未知。

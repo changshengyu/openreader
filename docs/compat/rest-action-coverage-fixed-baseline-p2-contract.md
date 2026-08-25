@@ -602,7 +602,7 @@ rooted same-file opened handle。完整合同见
 arm64 runtime 均确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da`。状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 31. HTTP 服务生命周期（2026-08-25 inventory）
+## 31. HTTP 服务生命周期（2026-08-25 implemented/published）
 
 备份 multipart 发布后重新枚举 route 以外的进程级 HTTP 边界，下一项 must-fix 收敛为 Go PID 1 的
 请求头与停止生命周期。固定上游 startup 显式使用 512 KiB header 上限，shutdown 脚本发送标准终止
@@ -613,4 +613,8 @@ arm64 runtime 均确认完整 revision `5e63eb1854a95dc3fd79ebafec89f4723f37f8da
 关闭和幂等 cleanup；全局 read/write timeout 必须保持为零，以免截断章节缓存 SSE、书源调试 SSE、
 WebSocket、大文件上传或备份。完整固定上游证据、目标合同、红测与容器门见
 [`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本 inventory 不含代码或测试修改。
+合同 `5b06084`、旧实现红测 `6bee4e0` 与实现 `f394c1a` 已依次推送。focused/race/full/vet、frontend
+741/741、build、真实二进制 header/listen/SIGTERM/WebSocket、candidate `docker stop` 及
+fresh/historical/portable/restart 卷门通过。本机发布 `f394c1a`/`latest`，OCI index 为
+`sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

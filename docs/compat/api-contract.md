@@ -1165,6 +1165,22 @@ source-debug browser coverage and fresh/historical/portable volume gates pass. T
 is published as `6157466`/`latest`, OCI index
 `sha256:1e890a60a1b75879dd99074b1da13b17f91bbd4173e945b92cb8cec0fe8001b6`.
 
+## P2 HTTP server lifecycle contract (2026-08-25 implemented/published)
+
+All existing routes retain their method, path, auth, body budget, response and error envelope. The shared listener now
+uses the fixed-upstream 512 KiB header cap plus a 10-second header deadline; global read/write timeouts remain zero so
+valid uploads, chapter-cache/source-debug SSE and WebSocket lifetimes are not assigned a new short business deadline.
+`SIGINT`/`SIGTERM` stops admission, closes hijacked sync sockets and drains ordinary HTTP for at most eight seconds;
+deadline or a second signal force-cancels remaining request contexts. Listen failure is nonzero, graceful signal stop is
+zero, and every exit path runs idempotent cleanup without logging credentials, request data or host paths.
+
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `5b06084`,
+red tests `6bee4e0` and implementation `f394c1a` landed in order. Full/race/vet, frontend 741/741, build, real binary
+header/listen/SIGTERM/WebSocket, candidate container stop and fresh/historical/portable/restart gates passed. The local
+amd64/arm64 release is `f394c1a`/`latest`, OCI index
+`sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`. See
+[`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+
 ## P2 parser persistent-variable contract (P2-Parser-1G implemented)
 
 | Path / payload | Additive behavior | Compatibility and safety |

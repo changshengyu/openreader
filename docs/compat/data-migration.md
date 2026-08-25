@@ -1134,3 +1134,16 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   amd64/arm64 `a0fb1bd`/`latest` release resolves to OCI index
   `sha256:b25f5b05df983532bf656ec8647e553188db3ba7fb291b826cb45b65deae6f3c`. Full contract:
   [`backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md`](backup-restore-multipart-request-boundary-fixed-baseline-second-audit-p2-contract.md).
+
+## P2 HTTP server lifecycle compatibility (2026-08-25 implemented/published)
+
+- `f394c1a` adds no schema, migration, startup scan, persistent path, environment variable, route, response field,
+  browser key, backup member or manifest. Existing `data/cache/library` bytes are not scanned, moved or rewritten.
+- Graceful stop only changes process admission/lifetime: 512 KiB/10 second headers, an 8 second drain and explicit
+  cleanup notification. SQLite WAL/transaction, atomic stage/file publication and existing route body budgets remain
+  authoritative; global read/write timeouts stay disabled for large and streaming work.
+- Fresh portable-v1/v2-assets/cross-user/restart and historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation gates
+  passed against the local candidate. Candidate `docker stop -t 10` completed in 0.50 seconds with exit 0 and no OOM.
+- The locally built amd64/arm64 release is `f394c1a`/`latest`, OCI index
+  `sha256:4af0cf100434ed852fdf6727d351425cca6935c8f7f6a00eaec220de9865eafa`. Full contract:
+  [`http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md`](http-server-lifecycle-fixed-baseline-second-audit-p2-contract.md).
