@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"openreader/backend/config"
 )
 
 const (
@@ -207,6 +210,37 @@ func TestFrontendRootFilesAndAssetsKeepFileSemantics(t *testing.T) {
 	}
 }
 
+func TestFrontendOpenedFileKeepsVerifiedIdentityAfterPathReplacement(t *testing.T) {
+	root := writeFrontendBoundaryFixture(t)
+	path := filepath.Join(root, "manifest.webmanifest")
+	file, expected, err := openFrontendFile(root, "manifest.webmanifest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("replacement bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(expected, current) {
+		t.Fatal("replacement unexpectedly retained the verified file identity")
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != testFrontendManifest {
+		t.Fatalf("opened handle read %q, want original bytes", data)
+	}
+}
+
 func TestFrontendBoundaryReturnsMethodNotAllowedForRegisteredServerRoutes(t *testing.T) {
 	router := newFrontendBoundaryRouter(t, writeFrontendBoundaryFixture(t))
 	for _, target := range []string{
@@ -239,5 +273,28 @@ func TestRouteErrorsDoNotDependOnFrontendBuildPresence(t *testing.T) {
 	assertRouteError(t, method, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	if allow := method.Header().Get("Allow"); !strings.Contains(allow, http.MethodGet) {
 		t.Fatalf("PATCH /api/health Allow = %q, want GET", allow)
+	}
+}
+
+func TestFrontendMethodHandlingPreservesCORSOptions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(cors(config.Config{CORSOrigin: "https://reader.example"}))
+	router.GET("/api/health", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	router.OPTIONS("/webdav/*path", func(c *gin.Context) {
+		c.Header("DAV", "1,2")
+		c.Status(http.StatusOK)
+	})
+	serveFrontend(router, writeFrontendBoundaryFixture(t))
+
+	ordinary := performFrontendBoundaryRequest(router, http.MethodOptions, "/api/health")
+	if ordinary.Code != http.StatusNoContent {
+		t.Fatalf("ordinary OPTIONS = %d, want 204", ordinary.Code)
+	}
+	dav := performFrontendBoundaryRequest(router, http.MethodOptions, "/webdav/example.txt")
+	if dav.Code != http.StatusOK || dav.Header().Get("DAV") != "1,2" {
+		t.Fatalf("WebDAV OPTIONS = %d DAV=%q", dav.Code, dav.Header().Get("DAV"))
 	}
 }

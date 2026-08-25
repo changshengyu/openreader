@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -175,17 +177,137 @@ func isWebDAVProtocolPath(path string) bool {
 }
 
 func serveFrontend(router *gin.Engine, publicDir string) {
-	indexPath := filepath.Join(publicDir, "index.html")
-	if _, err := os.Stat(indexPath); err != nil {
+	router.HandleMethodNotAllowed = true
+	router.NoMethod(frontendMethodNotAllowed)
+	router.NoRoute(func(c *gin.Context) {
+		frontendRouteNotFound(c)
+	})
+
+	index, _, err := openFrontendFile(publicDir, "index.html")
+	if err != nil {
 		return
 	}
+	_ = index.Close()
 
-	assetsDir := filepath.Join(publicDir, "assets")
-	if _, err := os.Stat(assetsDir); err == nil {
-		router.Static("/assets", assetsDir)
+	assetsHandler := func(c *gin.Context) {
+		name := strings.TrimPrefix(c.Param("filepath"), "/")
+		if name == "" || !serveFrontendFile(c, publicDir, "assets/"+name) {
+			frontendRouteNotFound(c)
+		}
 	}
+	router.GET("/assets/*filepath", assetsHandler)
+	router.HEAD("/assets/*filepath", assetsHandler)
 
 	router.NoRoute(func(c *gin.Context) {
-		c.File(indexPath)
+		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
+			path := c.Request.URL.Path
+			if isFrontendHistoryRoute(path) && serveFrontendFile(c, publicDir, "index.html") {
+				return
+			}
+			if name, ok := frontendRootFilename(path); ok && serveFrontendFile(c, publicDir, name) {
+				return
+			}
+		}
+		frontendRouteNotFound(c)
 	})
+}
+
+func frontendRouteNotFound(c *gin.Context) {
+	c.JSON(http.StatusNotFound, gin.H{
+		"error": gin.H{"code": "NOT_FOUND", "message": "route not found"},
+	})
+}
+
+func frontendMethodNotAllowed(c *gin.Context) {
+	c.JSON(http.StatusMethodNotAllowed, gin.H{
+		"error": gin.H{"code": "METHOD_NOT_ALLOWED", "message": "method not allowed"},
+	})
+}
+
+func isFrontendHistoryRoute(requestPath string) bool {
+	switch requestPath {
+	case "/", "/login", "/search", "/discover", "/local-store", "/sources",
+		"/source-debug", "/bookSourceDebug", "/bookSourceDebug/", "/settings":
+		return true
+	}
+
+	parts := strings.Split(strings.TrimPrefix(requestPath, "/"), "/")
+	if len(parts) == 2 && parts[0] == "books" {
+		return validFrontendRouteSegment(parts[1])
+	}
+	if len(parts) == 3 && parts[0] == "books" && parts[2] == "read" {
+		return validFrontendRouteSegment(parts[1])
+	}
+	return len(parts) == 3 && parts[0] == "reader" && parts[1] == "remote" && validFrontendRouteSegment(parts[2])
+}
+
+func validFrontendRouteSegment(segment string) bool {
+	return segment != "" && segment != "." && segment != ".." &&
+		!strings.ContainsAny(segment, `/\`) && !strings.ContainsRune(segment, 0)
+}
+
+func frontendRootFilename(requestPath string) (string, bool) {
+	if !strings.HasPrefix(requestPath, "/") {
+		return "", false
+	}
+	name := strings.TrimPrefix(requestPath, "/")
+	if !validFrontendRouteSegment(name) {
+		return "", false
+	}
+	return name, true
+}
+
+func serveFrontendFile(c *gin.Context, publicDir, name string) bool {
+	file, info, err := openFrontendFile(publicDir, name)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	if extension := strings.ToLower(filepath.Ext(name)); extension == ".webmanifest" {
+		c.Header("Content-Type", "application/manifest+json")
+	} else if contentType := mime.TypeByExtension(extension); contentType != "" {
+		c.Header("Content-Type", contentType)
+	}
+	http.ServeContent(c.Writer, c.Request, filepath.Base(name), info.ModTime(), file)
+	return true
+}
+
+func openFrontendFile(publicDir, name string) (*os.File, os.FileInfo, error) {
+	if name == "" || !fs.ValidPath(name) || strings.ContainsRune(name, 0) || strings.Contains(name, `\`) {
+		return nil, nil, fs.ErrNotExist
+	}
+
+	root, err := os.OpenRoot(publicDir)
+	if err != nil {
+		return nil, nil, fs.ErrNotExist
+	}
+	defer root.Close()
+
+	parts := strings.Split(name, "/")
+	for index := range parts {
+		current := strings.Join(parts[:index+1], "/")
+		info, statErr := root.Lstat(current)
+		if statErr != nil || info.Mode()&os.ModeSymlink != 0 {
+			return nil, nil, fs.ErrNotExist
+		}
+		if index < len(parts)-1 && !info.IsDir() {
+			return nil, nil, fs.ErrNotExist
+		}
+	}
+
+	expected, err := root.Lstat(name)
+	if err != nil || !expected.Mode().IsRegular() || expected.Mode()&os.ModeSymlink != 0 {
+		return nil, nil, fs.ErrNotExist
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, nil, fs.ErrNotExist
+	}
+	actual, err := file.Stat()
+	if err != nil || !actual.Mode().IsRegular() || !os.SameFile(expected, actual) {
+		_ = file.Close()
+		return nil, nil, fs.ErrNotExist
+	}
+	return file, actual, nil
 }
