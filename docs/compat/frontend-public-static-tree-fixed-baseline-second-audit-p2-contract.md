@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
 当前实现基线：`OpenReader@a92f8d6`  
 审查日期：2026-08-25  
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围
 
@@ -97,3 +97,35 @@ CSS `background-image` 的请求可以失败而 Vue 应用本身仍成功挂载�
 2. 提交只暴露旧实现缺口的红测。
 3. 复用 `openFrontendFile()` 和统一 404/405，增加 public 子树分流；不复制第二套文件验证器。
 4. 完成全部验证后提交推送，由受信 runner 发布 amd64/arm64 镜像，再补发布证据。
+
+## 8. 实施与发布证据
+
+- 合同 `9d32418`、旧实现红测 `525a4b6` 与实现 `5163262` 已按顺序提交并推送 `main`。红测的
+  GitHub Actions run `32851072861` 只因 theme PNG、中文/percent-encoded JPEG、嵌套文件和 Range
+  仍为 404 而失败，保存了旧实现证据。
+- `serveFrontend()` 现于已知 history route 之后，把 GET/HEAD 请求投影到完整 public 相对路径；
+  `api/ws/webdav/reader3/uploads/assets` 首段继续保留给服务端。文件读取只复用已有 `openFrontendFile()`
+  rooted、逐组件 symlink、普通文件和 same-file opened-handle 边界，没有第二套路径验证器。
+- focused、focused race、Go 全量、`go vet ./...`、frontend 741/741、Vite production build 和 Compose
+  config 通过。测试覆盖 UTF-8/percent-encoded、多级文件、MIME、HEAD、Range、304、query、history/API/
+  uploads 优先级、missing/目录、entry/ancestor symlink、FIFO、traversal、反斜杠和路径无泄漏错误。
+- 修改后的真实 Go 服务返回 `themes/content_0.png` 为 `200 image/png`、中文 `bg/山水画.jpg` 为
+  `200 image/jpeg`，下载 SHA-256 与 build 文件逐字节一致；HEAD 为 200、Range 为 206，未知 API 保持
+  JSON 404。1440x900、390x844、1024x1366 Chromium Reader 进一步确认 shell/page 实际计算样式引用
+  `body_0.png`/`content_0.png`，三张 theme PNG 和中文 JPEG 均为 200、MIME 正确、可解码且无静态请求/
+  console error。
+- 受信 GitHub Actions run `32851803480` 在 20m43s 内通过 backend/frontend/Compose、原生候选、fresh
+  portable-v1/v2-assets/cross-user/restart、historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation、
+  双架构发布与平台核验。`ghcr.io/changshengyu/openreader:5163262` 和 `latest` 共同指向 OCI index
+  `sha256:3a70be27680b32d51c11e20f56efa2be4824b12f8dff53135b45153dd2f2758d`；amd64/arm64 manifests
+  分别为 `sha256:da98b11603a334800b252c59bbef8807fa7096d93c4fcc333303c5b036d0b9c1` 和
+  `sha256:c586bda7b02dd7f5d4143fc7d6f516e46f582c5846962e894f5c38a9dd2edd19`，两平台 config 均确认
+  revision `516326206f38939ecaaadb7db4fb78655f545fb3`。两个 `unknown/unknown` manifests
+  `sha256:7fa243371d0165dde8531965097d0d7b5a7a56700282c5f04981794991c462c4`、
+  `sha256:677ab2049ede6fb96f54fb8022f7cbd3b20dc88ca5f8dab76c5bb231eff33d99` 是对应平台 provenance
+  attestation，不是可运行架构。
+- 从 GHCR 新拉取 `5163262` 后实际启动，health 返回 version `5163262` 和完整 revision；容器内同两张
+  图片仍得到正确 MIME 与相同 SHA-256。没有 schema、migration、环境变量、API/前端 route、浏览器
+  状态、备份或 `data/cache/library` 改动。允许差异仅是 OpenReader 对服务端 namespace 的显式优先级和
+  rooted same-file 安全适配；未完成项仍为整体长尾 action 审计及用户真实设备签收，用户生产环境运行
+  commit 未知。

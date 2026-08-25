@@ -1200,3 +1200,24 @@ frontend 741/741, production build, real binary 200/401/404/256 KiB query and fr
 passed. The locally built amd64/arm64 `f88ecec`/`latest` release is OCI index
 `sha256:832216dbacb0650a5a6cb30b14731432714f4d48393516aed10c957a97549a29`; both remote platform configs report the
 full revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+
+## P2 frontend public static tree review (2026-08-25 implemented/published)
+
+- [x] Serve only trusted frontend build output through the generic public-file fallback; `api`, `ws`, `webdav`,
+      `reader3`, `uploads` and `assets` retain their dedicated route and authorization behavior.
+- [x] Resolve nested paths through the existing rooted file opener, reject entry/ancestor symlinks and non-regular
+      files, and serve the same verified open handle so validation cannot be redirected by a pathname replacement.
+- [x] Keep Vue history routes ahead of the public-file fallback, and restrict the fallback to GET/HEAD; missing files,
+      directories, traversal, backslashes and unsupported methods retain safe 404/405 responses without host paths.
+- [x] Do not expose or modify `data`, `cache`, `library`, uploads, database rows, environment variables, backup data
+      or browser state. The change adds no schema or migration.
+- [x] Prove UTF-8 and encoded paths, MIME, HEAD, Range, 304, route priority, symlink/FIFO rejection, real Reader
+      asset decoding, mounted-volume compatibility and pulled-image behavior before publication.
+
+Contract `9d32418`, red tests `525a4b6`, and implementation `5163262` landed in order. Focused/race/full/vet,
+frontend 741/741, production build, real Go HTTP, three Chromium viewports and trusted Actions run `32851803480`
+passed. The amd64/arm64 `5163262`/`latest` release is OCI index
+`sha256:3a70be27680b32d51c11e20f56efa2be4824b12f8dff53135b45153dd2f2758d`; a fresh GHCR pull preserved the
+expected health revision and theme/background bytes. Status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
+[`compat/frontend-public-static-tree-fixed-baseline-second-audit-p2-contract.md`](compat/frontend-public-static-tree-fixed-baseline-second-audit-p2-contract.md).

@@ -678,7 +678,7 @@ full/vet、frontend 741/741、build、Compose、真实 Go 200/401/404/405/MIME/H
 `sha256:ed700c5e4e04274b47d69a7c6613eeb8a02bb6838f40bbd22e2f53295386b6d3`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 35. 前端 public 静态子树（2026-08-25 inventory）
+## 35. 前端 public 静态子树（2026-08-25 implemented/published）
 
 frontend/static/router 发布后继续核对真实 production build 与 HTTP 路由可达性。Vite 已把
 `frontend/public/themes/*` 和 `frontend/public/bg/*` 原样输出到 `dist/`，Reader store 也以
@@ -690,4 +690,10 @@ Go `NoRoute` 只允许 Vue history route 和根级单文件，真实服务对 `t
 API/WebDAV/WebSocket/uploads/assets namespace、已知 history route、统一 404/405、GET/HEAD/MIME/Range
 和 symlink/特殊文件边界。完整合同与红测门见
 [`frontend-public-static-tree-fixed-baseline-second-audit-p2-contract.md`](frontend-public-static-tree-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本阶段未修改应用或测试代码。
+合同 `9d32418`、旧实现红测 `525a4b6` 与实现 `5163262` 已按顺序推送。focused/race/full/vet、frontend
+741/741、build、Compose、真实 Go bytes/MIME/HEAD/Range/hash 和 1440/390/1024 Chromium Reader
+加载/解码均通过。受信 Actions run `32851803480` 又通过原生候选、fresh/historical/portable/restart、
+双架构发布和平台核验；`5163262`/`latest` OCI index 为
+`sha256:3a70be27680b32d51c11e20f56efa2be4824b12f8dff53135b45153dd2f2758d`。GHCR 回拉容器也确认
+health revision 与 theme/bg bytes。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
