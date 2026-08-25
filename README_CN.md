@@ -43,20 +43,35 @@ OpenReader 仍是**开发中的项目**，不是已经完成全部兼容验收�
 
 ## 快速开始
 
-### Docker Compose 部署
+部署不需要克隆源码，也不需要在本地构建镜像。任选下面一种方式即可。
+
+### 方式一：Docker Compose（推荐）
+
+新建一个空的部署目录，只下载 [`docker-compose.yml`](https://raw.githubusercontent.com/changshengyu/openreader/main/docker-compose.yml)：
 
 ```bash
-git clone https://github.com/changshengyu/openreader.git
-cd openreader
+curl -fsSLO https://raw.githubusercontent.com/changshengyu/openreader/main/docker-compose.yml
 docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
 
-已发布镜像是包含 `linux/amd64` 与 `linux/arm64` 的 OCI 索引。`docker compose up` 会拉取镜像，Docker 自动选择与主机匹配的架构；普通用户不需要安装 Go、Node.js、QEMU，也不需要在本地构建镜像。需要显式拉取时可执行 `docker pull ghcr.io/changshengyu/openreader:latest`。
+这种方式会在 `docker-compose.yml` 旁创建 `data/`、`cache/`、`library/`，便于备份和整实例迁移。
+
+### 方式二：单行 `docker run`
+
+下面的命令不需要任何项目文件，持久数据保存在三个 Docker named volume 中：
+
+```bash
+docker run -d --name openreader --restart unless-stopped -p 8080:8080 -v openreader-data:/app/data -v openreader-cache:/app/cache -v openreader-library:/app/library ghcr.io/changshengyu/openreader:latest
+```
+
+重新创建容器不会删除这些 named volume。升级时不要删除 `openreader-data`、`openreader-cache`、`openreader-library`。
+
+已发布镜像是包含 `linux/amd64` 与 `linux/arm64` 的 OCI 索引。Docker 会自动拉取镜像并选择与主机匹配的架构；普通用户不需要源码仓库、Go、Node.js、QEMU 或本地镜像构建。需要显式拉取时可执行 `docker pull ghcr.io/changshengyu/openreader:latest`。
 
 打开 `http://localhost:8080`。空数据库中注册的第一个账号会成为管理员，后续注册账号为普通用户。
 
-默认配置无需额外设置环境变量即可启动。只修改与你的主机不一致的项目：
+使用 Compose 时，默认配置无需额外设置环境变量即可启动。只修改与你的主机不一致的项目：
 
 | Compose 配置 | 默认值 | 何时需要修改 |
 |---|---|---|

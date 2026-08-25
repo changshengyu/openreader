@@ -43,20 +43,35 @@ See the [full compatibility audit](docs/compat/refactor-audit-matrix.md) for evi
 
 ## Quick Start
 
-### Docker Compose
+No source checkout or local image build is required. Choose either deployment method below.
+
+### Option 1: Docker Compose (Recommended)
+
+Create an empty deployment directory and download only the [Compose file](https://raw.githubusercontent.com/changshengyu/openreader/main/docker-compose.yml):
 
 ```bash
-git clone https://github.com/changshengyu/openreader.git
-cd openreader
+curl -fsSLO https://raw.githubusercontent.com/changshengyu/openreader/main/docker-compose.yml
 docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
 
-Published images are a `linux/amd64` and `linux/arm64` OCI index. `docker compose up` pulls the image and Docker automatically selects the matching platform; users do not need Go, Node.js, QEMU, or a local image build. To fetch it explicitly, run `docker pull ghcr.io/changshengyu/openreader:latest`.
+This method creates `data/`, `cache/`, and `library/` beside `docker-compose.yml`, making backups and whole-instance migration straightforward.
+
+### Option 2: One `docker run` Command
+
+This command needs no project files and stores persistent data in three Docker named volumes:
+
+```bash
+docker run -d --name openreader --restart unless-stopped -p 8080:8080 -v openreader-data:/app/data -v openreader-cache:/app/cache -v openreader-library:/app/library ghcr.io/changshengyu/openreader:latest
+```
+
+The named volumes survive container recreation. Do not delete `openreader-data`, `openreader-cache`, or `openreader-library` when upgrading the container.
+
+Published images are a `linux/amd64` and `linux/arm64` OCI index. Docker automatically pulls the image and selects the matching platform; users do not need the source repository, Go, Node.js, QEMU, or a local image build. To fetch it explicitly, run `docker pull ghcr.io/changshengyu/openreader:latest`.
 
 Open `http://localhost:8080`. The first account registered in an empty installation becomes the administrator; later accounts are regular users.
 
-The defaults run without extra environment configuration. Edit only the values that differ on your host:
+For the Compose method, the defaults run without extra environment configuration. Edit only the values that differ on your host:
 
 | Compose setting | Default | When to change it |
 |---|---|---|
