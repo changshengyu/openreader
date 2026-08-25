@@ -481,11 +481,10 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 		return
 	}
 	limits := s.portableLimits()
-	if c.Request.ContentLength > limits.maxCompressed+backupMultipartEnvelopeBytes {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
+	if err := prepareBackupRestoreMultipartBody(c, limits.maxCompressed); err != nil {
+		writeBackupRestoreMultipartError(c, err)
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limits.maxCompressed+backupMultipartEnvelopeBytes)
 	userID, _ := middleware.UserID(c)
 	user, ok := storeUser(c)
 	if !ok {
@@ -496,20 +495,15 @@ func (s *Server) importLegadoBackup(c *gin.Context) {
 	if !ok {
 		return
 	}
-	fileHeader, err := c.FormFile("file")
+	upload, err := parseBackupRestoreMultipart(c)
+	if upload != nil {
+		defer upload.removeAll()
+	}
 	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file is required"})
+		writeBackupRestoreMultipartError(c, err)
 		return
 	}
-	if !strings.EqualFold(filepath.Ext(fileHeader.Filename), ".zip") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "backup file must be a zip archive"})
-		return
-	}
+	fileHeader := upload.file
 	if fileHeader.Size > limits.maxCompressed {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "backup file exceeds size limit"})
 		return

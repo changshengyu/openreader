@@ -298,3 +298,50 @@ func TestBackupRestoreMultipartPreservesAuthAndValidZIPBehavior(t *testing.T) {
 		}
 	})
 }
+
+func TestBackupRestoreMultipartEnforcesDeclaredAndActualEnvelope(t *testing.T) {
+	t.Run("declared overflow is unread", func(t *testing.T) {
+		router, server := setupTestServerWithConfig(t, func(cfg *config.Config) {
+			cfg.MaxPortableBackupBytes = 8
+		})
+		auth := authHeader(t, router)
+		tracker := &backupRestoreBodyTracker{}
+		request := httptest.NewRequest(http.MethodPost, "/api/backup/restore-legado", tracker)
+		request.Header.Set("Authorization", auth)
+		request.Header.Set("Content-Type", "multipart/form-data; boundary=declared")
+		request.ContentLength = backupRestoreMultipartRequestLimit(server.portableLimits().maxCompressed) + 1
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		assertBackupRestoreBoundaryError(t, response, http.StatusRequestEntityTooLarge, "backup file exceeds size limit")
+		if tracker.reads != 0 {
+			t.Fatalf("declared overflow body read %d times", tracker.reads)
+		}
+	})
+
+	t.Run("chunked overflow is bounded and cleaned", func(t *testing.T) {
+		tempRoot := t.TempDir()
+		t.Setenv("TMPDIR", tempRoot)
+		router, server := setupTestServerWithConfig(t, func(cfg *config.Config) {
+			cfg.MaxPortableBackupBytes = 8
+		})
+		router.MaxMultipartMemory = 1
+		auth := authHeader(t, router)
+		requestLimit := backupRestoreMultipartRequestLimit(server.portableLimits().maxCompressed)
+		request := makeBackupRestoreMultipartRequest(t, auth, []backupRestoreMultipartPart{{
+			field:    "file",
+			filename: "backup.zip",
+			data:     bytes.Repeat([]byte("x"), int(requestLimit+1)),
+		}})
+		request.ContentLength = -1
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		assertBackupRestoreBoundaryError(t, response, http.StatusRequestEntityTooLarge, "backup file exceeds size limit")
+		entries, err := os.ReadDir(tempRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Errorf("chunked overflow left multipart temporary files: %+v", entries)
+		}
+	})
+}
