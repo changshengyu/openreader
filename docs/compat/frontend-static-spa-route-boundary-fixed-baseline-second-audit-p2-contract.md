@@ -50,8 +50,8 @@ OpenReader 使用 Vue Router `createWebHistory()`，已发布的 `/login`、工�
 
 ## 4. 目标 HTTP 合同
 
-1. 当 `index.html` 不存在时，`serveFrontend` 不注册静态/SPA fallback；现有 API/router 默认失败行为
-   保持，启动不创建或修改 public 目录。
+1. 当 `index.html` 不存在时，`serveFrontend` 不注册静态文件或 SPA fallback，启动不创建或修改 public
+   目录；第 6、7 条统一安全 404/405 仍须注册，不能让 API 错误语义依赖前端构建目录是否完整。
 2. `GET /` 与 `HEAD /` 返回真实 `index.html`。只有下列 Vue history 路由可回退到同一文件：
    `/login`、`/search`、`/discover`、`/local-store`、`/sources`、`/source-debug`、
    `/bookSourceDebug`（可带末尾 `/`）、`/settings`、`/books/:id`、`/books/:id/read`、
