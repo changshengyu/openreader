@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
 当前实现基线：`OpenReader@acaae61`  
 审查日期：2026-08-25  
-状态：**inventory-complete / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围
 
@@ -105,3 +105,29 @@ OpenReader 使用 Vue Router `createWebHistory()`，已发布的 `/login`、工�
 3. 提取窄作用域 route matcher、rooted root-file opener 和统一 404/405 handler；不改业务 route 注册。
 4. 完成专项/race/full/runtime/browser/container/卷门后提交推送，由受信 GitHub Actions 本地 runner 构建
    并发布 amd64/arm64 镜像，再补发布证据。
+
+## 8. 实施与发布证据
+
+- 合同 `c079857`、勘误 `575f269`、旧实现红测 `3c87c89` 和实现 `bf114a6` 已按顺序提交并推送
+  `main`。实现开启 Gin method-not-allowed，统一安全 JSON 404/405，仅允许已登记 Vue history route 在
+  GET/HEAD 回退，并用 Go 1.24 `os.Root` 对根级构建文件和 `assets/` 执行逐组件 symlink 拒绝、普通文件
+  与 same-file opened-handle 服务。
+- 旧实现测试首先证明未知 API/WS/页面、missing asset、根级 manifest/icon 和错误 method 都落入
+  `200 index.html`，并证明 `/assets` symlink 可读取 public root 外 bytes。实现后 focused、focused race、
+  `go vet ./...` 和 Go 全量通过；frontend 741/741、Vite production build 与 Compose config 通过。
+- 真实 Go 二进制得到：未知 `/api/*`、`/ws/*`、页面和 missing asset 为 JSON 404；
+  `PATCH /api/health` 为带 `Allow: GET` 的 JSON 405；manifest/SVG 为真实 bytes 与
+  `application/manifest+json`/`image/svg+xml`；WebDAV missing 仍先返回 DAV 401；Reader history route 为
+  200 HTML。1440x900、390x844、1024x1366 Chromium 直接打开 `/login`、`/books/42/read` 和旧
+  `/bookSourceDebug/`，均无 console error、asset failure、MIME 错误或横向溢出。
+- 受信 GitHub Actions run `32847847945` 通过 backend/frontend/Compose、原生候选、fresh portable-v1/
+  v2-assets/cross-user/restart、historical TXT/EPUB/UMD/CBZ/relative-cache/owner-isolation、双架构发布和平台
+  核验。`ghcr.io/changshengyu/openreader:bf114a6` 与 `latest` 共同指向 OCI index
+  `sha256:ed700c5e4e04274b47d69a7c6613eeb8a02bb6838f40bbd22e2f53295386b6d3`；amd64/arm64 manifests
+  分别为 `sha256:ca8cdefa2d0b0d3980a88f770394dc936f5c537960d3067a351182eaafe7a109` 和
+  `sha256:a95aedf9ec39a65d10226875a216676053b5de19de750efdcb0796f8abb6457c`，两平台 config 均确认完整
+  revision `bf114a6802aa30a65c8fb7b3132dab3413ceee69`。OCI index 中附加的两个 `unknown/unknown` 是各平台
+  provenance attestation manifest，不是可运行架构或第三个镜像。
+- 本切片没有 schema、migration、持久目录、API 路径、前端路由、备份格式或用户数据改动。允许差异仅
+  为 Vue history route 的明确 allowlist 与 OpenReader JSON 错误包络；未完成项仍是整体长尾 action 审计
+  和用户真实设备签收，用户生产环境运行 commit 仍未知。

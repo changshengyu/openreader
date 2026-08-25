@@ -657,7 +657,7 @@ WebDAV、graceful shutdown 和日志脱敏保持。完整合同见
 `sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 34. 前端静态资源与 SPA 路由失败分流（2026-08-25 inventory）
+## 34. 前端静态资源与 SPA 路由失败分流（2026-08-25 implemented/published）
 
 可信代理发布后继续枚举 process/router 边界。固定上游以 hash router 配合普通静态 handler，不把未知
 服务端请求改写成首页；OpenReader 为 Vue history route 增加 SPA fallback 属于必要技术适配，但当前
@@ -671,5 +671,9 @@ OPTIONS、uploads/capability、CORS、日志和限流优先级保持。
 
 完整上游证据、路由 allowlist、wire envelope、文件安全边界和测试门见
 [`frontend-static-spa-route-boundary-fixed-baseline-second-audit-p2-contract.md`](frontend-static-spa-route-boundary-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；下一步必须先让旧实现合同测试失败，再修改
-`backend/main.go`。
+合同 `c079857`、勘误 `575f269`、旧实现红测 `3c87c89` 与实现 `bf114a6` 已按顺序推送。focused/race/
+full/vet、frontend 741/741、build、Compose、真实 Go 200/401/404/405/MIME/HEAD 与三视口 Chromium
+深链接通过。受信 Actions run `32847847945` 又通过原生候选、fresh/historical/portable/restart、双架构
+发布和平台核验；`bf114a6`/`latest` OCI index 为
+`sha256:ed700c5e4e04274b47d69a7c6613eeb8a02bb6838f40bbd22e2f53295386b6d3`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
