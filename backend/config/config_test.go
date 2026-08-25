@@ -2,6 +2,18 @@ package config
 
 import "testing"
 
+func TestLoadTrustedProxiesPreservesExplicitValueAndDefaultsEmpty(t *testing.T) {
+	t.Setenv("OPENREADER_TRUSTED_PROXIES", " 127.0.0.1/32 , ::1 ")
+	if got := Load().TrustedProxies; got != " 127.0.0.1/32 , ::1 " {
+		t.Fatalf("TrustedProxies = %q, want administrator value unchanged", got)
+	}
+
+	t.Setenv("OPENREADER_TRUSTED_PROXIES", "")
+	if got := Load().TrustedProxies; got != "" {
+		t.Fatalf("default TrustedProxies = %q, want empty", got)
+	}
+}
+
 func TestLoadMaxImportBytesUsesPositiveEnvironmentValue(t *testing.T) {
 	t.Setenv("OPENREADER_MAX_IMPORT_BYTES", "4096")
 	if got := Load().MaxImportBytes; got != 4096 {
