@@ -1245,3 +1245,19 @@ passed. A pulled `a0edce3` image reported the full revision and repeated REST/We
 kept WS query redacted and GORM SQL parameterized. OCI index:
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`. Status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+
+## P2 default book-source snapshot boundary (2026-08-26 inventory)
+
+- [ ] Read only the fixed `data/defaultBookSources.json` as a same-file-verified non-symlink regular file with a
+      16 MiB actual-read and 300-source cap; reject directories/FIFO/devices/sockets and replacement races.
+- [ ] Keep configured SQLite default namespace authoritative, but preserve a safe explicit legacy file (including
+      `[]`) on direct pre-ownership upgrades without rewriting existing user source IDs or private namespaces.
+- [ ] Serialize current-user/target-user save, restore, admin reset, mirror publication and startup repair so one
+      completed generation owns both SQLite and canonical JSON; cancellation/failure emits no false event.
+- [ ] Return stable path-free errors and logs. Never expose raw OS/SQLite text, host path, source URL/header/cookie,
+      username, JWT, JSON body or temporary filename.
+- [ ] Keep mirror/migration state out of ordinary/portable/Legado backup and pass fresh/historical/restart volumes.
+
+Target contract:
+[`compat/default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](compat/default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changes in inventory.

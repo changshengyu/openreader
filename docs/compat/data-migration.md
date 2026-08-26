@@ -1194,3 +1194,18 @@ Status is **aligned / regression-validated / Docker-published / awaiting-device-
 red tests `2396537` and implementation `a0edce3` landed in order. Actions run `32914105929` passed fresh and historical
 volume gates; the published OCI index is
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.
+
+## P2 default book-source compatibility mirror migration (2026-08-26 inventory)
+
+- A direct pre-ownership upgrade with a safe valid `data/defaultBookSources.json` must preserve that explicit default,
+  including `[]`, while existing users retain all legacy active-source associations and stable source IDs.
+- If ownership-v1 is already applied, SQLite remains authoritative; a potentially stale compatibility JSON cannot
+  overwrite it. Startup canonicalizes the mirror from the committed namespace before serving source actions.
+- Legacy input is one rooted, same-file-verified regular file, at most 16 MiB and 300 source objects. Missing means no
+  legacy default; symlink/special/oversized/malformed input creates no namespace and exposes no path.
+- Migration/recovery markers are additive and idempotent. They never enter ordinary/portable/Legado backup and never
+  rewrite user namespaces, books, failures, cache or mounted library files.
+
+Full contract:
+[`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**.

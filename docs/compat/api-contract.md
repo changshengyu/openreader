@@ -1236,3 +1236,18 @@ red tests `2396537` and implementation `a0edce3` landed in order. Go full/race/v
 four-viewport browser logout/relogin, real REST/WebDAV/WS lifecycle probes, Actions run `32914105929` volume gates and
 fresh GHCR pull all passed. The `a0edce3`/`latest` OCI index is
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.
+
+## P2 default book-source snapshot lifecycle (2026-08-26 inventory)
+
+Existing default-source methods, paths, auth and success bodies remain unchanged. SQLite default namespace is the
+runtime authority after ownership migration; `data/defaultBookSources.json` remains a bounded reader-dev-compatible
+legacy input and canonical mirror. `GET /api/sources/default` must never serialize raw filesystem/SQLite diagnostics;
+invalid or unsafe compatibility state uses a stable path-free 500 while genuinely unconfigured state remains
+`200 {configured:false,count:0}`.
+
+The two save actions, current-user restore and admin batch reset must observe one serialized default generation.
+Successful saves return the existing `{count}` only for a committed authoritative snapshot; target `404`, namespace
+`409`, restore `404`, auth and event behavior remain. Exact 16 MiB/300-source legacy admission, same-file regular
+read, cancellation, crash recovery and historical-volume rules are defined in
+[`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**.
