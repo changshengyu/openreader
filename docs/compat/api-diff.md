@@ -84,11 +84,14 @@ Docker-published evidence are recorded in `bookshelf-manual-refresh-fixed-baseli
 ## Authenticated session lifecycle second audit
 
 Reader-dev persists each login token with a seven-day expiry, renews a valid token during authenticated activity and
-deletes the current token on logout. OpenReader's signed JWT transport is retained, but the current permanent,
-signature-only REST/WebDAV Bearer acceptance and local-only logout are `must-fix`. The planned translation uses a
-hashed SQLite session identity and auth generation, adds current-session logout, validates user/session state across
+deletes the current token on logout. OpenReader's signed JWT transport is retained, but the former permanent,
+signature-only REST/WebDAV Bearer acceptance and local-only logout were `must-fix`. The implemented translation uses
+a hashed SQLite session identity and auth generation, adds current-session logout, validates user/session state across
 REST/WebDAV/WS and gives pre-existing JWTs one persistent seven-day adoption window. Password-reset revocation and a
-64-session cap are explicit security adaptations. Full contract:
+64-session cap are explicit security adaptations. Contract `8db7c85`, red tests `2396537` and implementation
+`a0edce3` landed in order; Actions run `32914105929` published `a0edce3`/`latest` at OCI index
+`sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`. Status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
 [`authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 
 ## Search/Explore temporary Reader second audit

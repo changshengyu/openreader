@@ -1174,9 +1174,9 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   `sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`. Full contract:
   [`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).
 
-## P2 authenticated-session lifecycle compatibility (2026-08-25 inventory)
+## P2 authenticated-session lifecycle compatibility (2026-08-26 implemented/published)
 
-- The proposed migration is additive only: existing users gain nonzero `auth_version=1`, a new `user_sessions`
+- The migration is additive only: existing users gain nonzero `auth_version=1`, a new `user_sessions`
   runtime table stores only hashed random identities and timestamps, and one idempotent schema-migration marker fixes
   the legacy-JWT transition start. Existing user/profile/shelf/source/content rows and mounted files are not scanned
   or rewritten.
@@ -1186,8 +1186,11 @@ mounted data rewrite was observed. See `auth-request-boundary-fixed-baseline-sec
   be adopted when the user still exists with `auth_version=1`. Restart and repeat migration cannot reopen the
   window; password reset increments the version so an old token cannot be adopted afterward.
 - Historical/current `data/cache/library`, migration idempotence, backup omission, password-reset rollback and
-  user-deletion cleanup require focused and mounted-volume tests before implementation may be published.
+  user-deletion cleanup passed focused, race, historical-volume and portable-backup tests before publication.
 
 Target contract:
 [`authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / implementation-pending**; this inventory adds no schema or runtime change.
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `8db7c85`,
+red tests `2396537` and implementation `a0edce3` landed in order. Actions run `32914105929` passed fresh and historical
+volume gates; the published OCI index is
+`sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.

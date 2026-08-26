@@ -1,9 +1,11 @@
 # 认证会话生命周期固定基准第二轮合同（P2）
 
-固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`  
-当前审查基线：`OpenReader@569c75d`  
-审查日期：2026-08-25  
-状态：**inventory-complete / implementation-pending**
+固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
+
+当前实施基线：`OpenReader@a0edce3`
+
+审查日期：2026-08-26
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围与结论
 
@@ -170,3 +172,22 @@ fresh/historical/portable/restart mounted-volume 门，再由受信 release work
 - 管理员改密立即撤销全部 token、hashed session identity 和 64-session cap 是明确安全增强。
 - 七天滑动 session 是固定上游语义；JWT payload 不直接携带可续期 expiry，而由 SQLite 权威 session
   行控制，是 Go/SQLite 技术等价实现。
+
+## 9. 实施与发布证据
+
+合同 `8db7c85`、旧实现红测 `2396537` 与实现 `a0edce3` 已按固定顺序落地。实现增加随机 hashed session
+identity、七天滑动续期、64-session 上限、旧 JWT 幂等收编窗、当前会话 logout、改密全撤销，以及
+REST/WebDAV Bearer/WebSocket 共用的用户与 session 存活校验；普通/portable 备份继续排除认证运行态。
+
+本地最终代码通过 Go full、20 分钟上限的 middleware/authsession/api race、vet、frontend 742/742、生产
+build、Compose、四视口 logout/重新认证浏览器合同和真实 API 双登录/logout/改密/删用户三入口合同。
+受信 GitHub Actions run `32914105929` 又通过 backend/frontend/Compose、native image、fresh portable 与
+historical volume 门禁，并发布 `ghcr.io/changshengyu/openreader:a0edce3` 和 `latest`。amd64/arm64 OCI index
+为 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`；对应 manifest 为
+`sha256:dc50d7db9eb1bddb8c3a094fd507fa1e1f4631b633cacc58d635070b1ba606ab` 和
+`sha256:1785dee2ec3d62894a20b35c33535fc1bd2c9167585b12bc567b71c71bff13df`。
+
+从 GHCR 回拉不可变标签后，health 报告完整 revision `a0edce35c928813e33c15881016c2450b0881669`；真实
+API 再次通过 logout `204/401`、另一会话存活、改密/删用户旧 token 401，以及 REST/WebDAV/WS 拒绝。
+容器日志中的 WebSocket query 为 `?<redacted>`，GORM SQL 使用参数占位符。剩余工作仅为用户真实设备
+验收和后续长尾固定基准复审；不把 Docker/自动化验证等同于生产实例已经升级。

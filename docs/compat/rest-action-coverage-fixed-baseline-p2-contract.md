@@ -698,21 +698,23 @@ API/WebDAV/WebSocket/uploads/assets namespace、已知 history route、统一 40
 health revision 与 theme/bg bytes。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 36. 认证会话生命周期（2026-08-25 inventory）
+## 36. 认证会话生命周期（2026-08-26 implemented/published）
 
 继续按 auth/middleware/action 差集复审后，下一项 must-fix 收敛到登录后的 JWT 生命周期。固定上游
 `saveUserSession/checkAuth/logout` 为每个 token 保存七天期限、认证活动时滑动续期，并在退出时删除当前
 token；账号删除后也不再存在可供 token 定位的用户。
 
-当前 REST `AuthRequired` 和 WebDAV Bearer 只验证 HS256 签名与非零 `userId`，JWT 没有 expiry，前端
-logout 只清 localStorage，管理员改密也不撤销 token。删除用户后的旧 JWT 因而仍能进入受保护 REST，
-不先加载 User 的 handler 还可能重建孤立 user-owned 行；WS 已有独立 deleted-user 检查，但没有统一
-期限/撤销状态。
+旧实现的 REST `AuthRequired` 和 WebDAV Bearer 只验证 HS256 签名与非零 `userId`，JWT 没有 expiry，
+前端 logout 只清 localStorage，管理员改密也不撤销 token。该差异已由 `2396537` 红测固定，并由
+`a0edce3` 关闭。
 
-目标是加法 `auth_version + user_sessions + migration marker`：新会话随机、数据库只存 hashed identity、
+实现采用加法 `auth_version + user_sessions + migration marker`：新会话随机、数据库只存 hashed identity、
 七天滑动过期、每用户最多 64 个；老 JWT 只在幂等迁移 marker 后七天内收编。新增
 `POST /api/auth/logout` 仅撤销当前会话，管理员改密事务递增代次并撤销目标全部会话，删用户事务删除
 session；REST、WebDAV Bearer、WS 共用同一权威认证。WebDAV Basic、登录响应、现有用户数据和
 `data/cache/library` 不变。完整合同见
 [`authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**；本阶段没有修改应用或测试代码。
+当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**。Go full/race/vet、
+frontend 742/742、build、四视口浏览器、真实 API 和 Actions run `32914105929` 新旧卷门均通过；
+`a0edce3`/`latest` OCI index 为
+`sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`。

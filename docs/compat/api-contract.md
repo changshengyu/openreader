@@ -1219,9 +1219,9 @@ restart gates passed. The published amd64/arm64 `f5b3869`/`latest` OCI index is
 `sha256:6a2fc83bf79426e93423b1dd5756c8ea49b716d1321441d5c194efff9c03b066`. Full contract:
 [`trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).
 
-## P2 authenticated-session lifecycle (2026-08-25 inventory)
+## P2 authenticated-session lifecycle (2026-08-26 implemented/published)
 
-`POST /api/auth/login` and `/register` retain `200 {token,user}`. The next implementation must make that token a
+`POST /api/auth/login` and `/register` retain `200 {token,user}`. The token is now a
 user-bound, revocable, seven-day sliding session shared by protected REST, WebDAV Bearer and WebSocket auth. Every
 invalid signature, missing/deleted user, wrong auth generation, unknown/revoked session or expired session maps to
 the entry point's existing generic 401 without exposing the reason.
@@ -1231,4 +1231,8 @@ another login for the same user remains valid. Password reset keeps its current 
 all target-user sessions. WebDAV Basic remains credential-based and unchanged. Exact legacy-token transition,
 session cap, persistence and tests are defined in
 [`authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md`](authenticated-session-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / implementation-pending**.
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `8db7c85`,
+red tests `2396537` and implementation `a0edce3` landed in order. Go full/race/vet, frontend 742/742, build,
+four-viewport browser logout/relogin, real REST/WebDAV/WS lifecycle probes, Actions run `32914105929` volume gates and
+fresh GHCR pull all passed. The `a0edce3`/`latest` OCI index is
+`sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.
