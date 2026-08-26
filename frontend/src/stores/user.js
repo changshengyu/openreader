@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getMe, loginUser } from '../api/user'
+import { getMe, loginUser, logoutUser } from '../api/user'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { currentUserScope } from '../utils/authScope'
 import { useBookshelfStore } from './bookshelf'
@@ -56,6 +56,8 @@ export const useUserStore = defineStore('user', {
       return data
     },
     logout() {
+      const token = this.token
+      if (token) void logoutUser(token).catch(() => {})
       this.clearSession({ suspendWorkspace: false })
       this.authDialogVisible = false
       this.authReason = ''

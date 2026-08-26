@@ -11,6 +11,7 @@ import (
 	"openreader/backend/config"
 	"openreader/backend/middleware"
 	"openreader/backend/services/audioreader"
+	"openreader/backend/services/authsession"
 	"openreader/backend/services/backup"
 	"openreader/backend/services/bookgroups"
 	"openreader/backend/services/booksources"
@@ -45,6 +46,7 @@ type Server struct {
 	sourceFailures   *sourcefailure.Service
 	sourceCandidates *sourcecandidates.Service
 	remoteReaders    *remotereader.Store
+	sessions         *authsession.Service
 	registerMu       sync.Mutex
 	remoteCacheMu    sync.Mutex
 }
@@ -68,6 +70,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		sourceFailures:   sourcefailure.New(database),
 		sourceCandidates: sourcecandidates.New(database),
 		remoteReaders:    remotereader.NewStore(remotereader.DefaultLimits(), nil),
+		sessions:         authsession.New(database, cfg.JWTSecret),
 	}
 	server.cleanupPortableAssetRestoreJournals()
 
@@ -89,8 +92,9 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	auth.POST("/login", server.login)
 
 	protected := api.Group("")
-	protected.Use(middleware.AuthRequired(cfg.JWTSecret))
+	protected.Use(middleware.AuthRequired(cfg.JWTSecret, server.sessions))
 	protected.Use(middleware.TrackActivity(database))
+	protected.POST("/auth/logout", server.logout)
 	protected.GET("/me", server.me)
 	protected.GET("/settings/:key", server.getUserSetting)
 	protected.PUT("/settings/:key", server.updateUserSetting)

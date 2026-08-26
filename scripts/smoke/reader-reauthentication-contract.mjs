@@ -60,6 +60,10 @@ async function installApiMocks(page, state) {
         user,
       }))
     }
+    if (path === '/auth/logout' && method === 'POST') {
+      state.logoutTokens.push(requestToken)
+      return route.fulfill({ status: 204, body: '' })
+    }
     if (path === '/me') return route.fulfill(json(activeUser))
     if (path === '/health') {
       return route.fulfill(json({ version: 'reader-reauth-smoke', commit: 'reader-reauth-smoke' }))
@@ -170,6 +174,7 @@ async function openReader(browser, viewport) {
     tokenB: tokenFor(2, 'renewed'),
     userA: { id: 1, username: 'same-user', role: 'admin' },
     userB: { id: 2, username: 'other-user', role: 'user' },
+    logoutTokens: [],
     progressWrites: [],
   }
   const context = await browser.newContext({
@@ -202,6 +207,49 @@ async function openReader(browser, viewport) {
     page,
     readerURL: page.url(),
     state,
+  }
+}
+
+async function assertExplicitLogout(browser, viewport) {
+  const session = await openReader(browser, viewport)
+  try {
+    await session.page.goto(targetUrl, { waitUntil: 'networkidle' })
+    await session.page.getByText(privateTitle, { exact: true })
+      .waitFor({ state: 'visible', timeout: 10_000 })
+    if (viewport.width <= 750) {
+      await session.page.locator('.mobile-menu-trigger').click()
+      await session.page.waitForFunction(() => document.querySelector('.app-shell')?.classList.contains('mobile-nav-open'))
+    }
+    const accountSection = session.page.locator('[data-sidebar-section="account"]')
+    await accountSection.scrollIntoViewIfNeeded()
+    await accountSection.getByText('注销', { exact: true }).click()
+    await session.page.waitForFunction(() => location.pathname === '/login')
+    assert(
+      await session.page.evaluate(() => localStorage.getItem('openreader_token')) === null,
+      `${viewport.width}: explicit logout retained local token`,
+    )
+    assert(
+      JSON.stringify(session.state.logoutTokens) === JSON.stringify([session.state.tokenA]),
+      `${viewport.width}: explicit logout did not revoke the captured token`,
+    )
+    assert(
+      await session.page.getByText(privateTitle, { exact: true }).count() === 0,
+      `${viewport.width}: explicit logout retained private shelf content`,
+    )
+
+    await session.page.getByPlaceholder('请输入用户名').fill('same-user')
+    await session.page.getByPlaceholder('请输入密码').fill('password')
+    await session.page.locator('button[type="submit"]').click()
+    await session.page.waitForFunction(() => location.pathname === '/')
+    await session.page.getByText(privateTitle, { exact: true })
+      .waitFor({ state: 'visible', timeout: 10_000 })
+    assert(
+      await session.page.evaluate(token => localStorage.getItem('openreader_token') === token, session.state.tokenARenewed),
+      `${viewport.width}: explicit logout relogin did not persist the renewed token`,
+    )
+    assert(session.errors.length === 0, `${viewport.width}: ${session.errors.join('\n')}`)
+  } finally {
+    await session.context.close()
   }
 }
 
@@ -308,11 +356,12 @@ async function main() {
       { width: 390, height: 844 },
       { width: 360, height: 800 },
     ]) {
+      await assertExplicitLogout(browser, viewport)
       await assertSameAccount(browser, viewport)
       await assertDifferentAccount(browser, viewport)
       checked.push(`${viewport.width}x${viewport.height}`)
     }
-    console.log(`reader-reauthentication: ok ${checked.join(', ')} sameAccount=true differentAccount=true oldProgressWrites=0`)
+    console.log(`reader-reauthentication: ok ${checked.join(', ')} explicitLogout=true sameAccount=true differentAccount=true oldProgressWrites=0`)
   } finally {
     await browser.close()
   }

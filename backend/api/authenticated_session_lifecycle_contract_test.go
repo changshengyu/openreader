@@ -1,12 +1,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -192,6 +195,70 @@ func TestDeletedUserTokenFailsBeforeRESTAndWebDAVSideEffects(t *testing.T) {
 	if orphanSettings != 0 {
 		t.Errorf("deleted token created %d orphan user settings", orphanSettings)
 	}
+	var orphanSessions int64
+	if err := server.db.Model(&models.UserSession{}).Where("user_id = ?", target.User.ID).Count(&orphanSessions).Error; err != nil {
+		t.Fatalf("count orphan sessions: %v", err)
+	}
+	if orphanSessions != 0 {
+		t.Errorf("deleted user retained %d sessions", orphanSessions)
+	}
+}
+
+func TestCanceledUserDeletionPreservesUserAndSession(t *testing.T) {
+	router, server := setupTestServer(t)
+	target := registerSessionContractUser(t, router, "sessioncanceldelete", "password8")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := server.deleteUserData(ctx, []uint{target.User.ID}, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled deletion error = %v, want context.Canceled", err)
+	}
+	var users, sessions int64
+	if err := server.db.Model(&models.User{}).Where("id = ?", target.User.ID).Count(&users).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Model(&models.UserSession{}).Where("user_id = ?", target.User.ID).Count(&sessions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if users != 1 || sessions != 1 {
+		t.Fatalf("canceled deletion partially committed: users=%d sessions=%d", users, sessions)
+	}
+}
+
+func TestPasswordResetSessionRevocationRollsBackWithPasswordHash(t *testing.T) {
+	router, server := setupTestServer(t)
+	admin := registerSessionContractUser(t, router, "rollbackadmin", "password8")
+	target := registerSessionContractUser(t, router, "rollbackmember", "password8")
+	var before models.User
+	if err := server.db.First(&before, target.User.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := server.db.Exec(`CREATE TRIGGER fail_session_revoke
+		BEFORE DELETE ON user_sessions
+		WHEN OLD.user_id = ` + strconv.FormatUint(uint64(target.User.ID), 10) + `
+		BEGIN SELECT RAISE(ABORT, 'forced session revoke failure'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	reset := sessionContractJSONRequest(
+		router,
+		http.MethodPut,
+		"/api/admin/users/"+strconv.FormatUint(uint64(target.User.ID), 10)+"/password",
+		`{"password":"changed88"}`,
+		admin.Token,
+	)
+	if reset.Code != http.StatusInternalServerError {
+		t.Fatalf("forced reset failure status=%d, want 500: %s", reset.Code, reset.Body.String())
+	}
+	var after models.User
+	if err := server.db.First(&after, target.User.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.PasswordHash != before.PasswordHash || after.AuthVersion != before.AuthVersion {
+		t.Fatalf("failed reset partially committed credentials: before=%+v after=%+v", before, after)
+	}
+	stillValid := sessionContractJSONRequest(router, http.MethodGet, "/api/me", "", target.Token)
+	if stillValid.Code != http.StatusOK {
+		t.Fatalf("rolled-back session status=%d, want 200: %s", stillValid.Code, stillValid.Body.String())
+	}
 }
 
 func TestPasswordResetRevokesExistingSessions(t *testing.T) {
@@ -218,4 +285,39 @@ func TestPasswordResetRevokesExistingSessions(t *testing.T) {
 	if current.Code != http.StatusOK {
 		t.Errorf("post-reset login status=%d, want 200: %s", current.Code, current.Body.String())
 	}
+}
+
+func TestExpiredSessionFailsAcrossRESTWebDAVAndWebSocket(t *testing.T) {
+	router, server := setupTestServer(t)
+	issued := registerSessionContractUser(t, router, "sessionexpired", "password8")
+	expiredAt := time.Now().UTC().Add(-time.Hour)
+	result := server.db.Model(&models.UserSession{}).Where("user_id = ?", issued.User.ID).
+		UpdateColumn("expires_at", expiredAt)
+	if result.Error != nil || result.RowsAffected != 1 {
+		t.Fatalf("expire session: rows=%d err=%v", result.RowsAffected, result.Error)
+	}
+	var stored models.UserSession
+	if err := server.db.Where("user_id = ?", issued.User.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.ExpiresAt.Equal(expiredAt) {
+		t.Fatalf("stored expiry=%s, want %s", stored.ExpiresAt, expiredAt)
+	}
+
+	rest := sessionContractJSONRequest(router, http.MethodGet, "/api/me", "", issued.Token)
+	if rest.Code != http.StatusUnauthorized {
+		t.Errorf("expired REST session status=%d, want 401: %s", rest.Code, rest.Body.String())
+	}
+	webdav := sessionContractJSONRequest(router, http.MethodGet, "/webdav/", "", issued.Token)
+	if webdav.Code != http.StatusUnauthorized {
+		t.Errorf("expired WebDAV session status=%d, want 401: %s", webdav.Code, webdav.Body.String())
+	}
+
+	httpServer := httptest.NewServer(router)
+	defer httpServer.Close()
+	connection, response, err := dialSyncWebSocket(httpServer.URL, issued.Token, "")
+	if connection != nil {
+		_ = connection.Close()
+	}
+	requireHandshakeStatus(t, response, err, http.StatusUnauthorized)
 }

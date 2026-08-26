@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -30,6 +31,13 @@ func TestPortableBackupExportsOnlyCallerOriginalArchives(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := database.Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	sessionIdentity := strings.Repeat("a1", 32)
+	if err := database.Create(&models.UserSession{
+		ID: sessionIdentity, UserID: owner.ID, AuthVersion: 1,
+		CreatedAt: time.Now(), LastSeenAt: time.Now(), ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	ownerArchive := createPortableArchiveFixture(t, libraryDir, owner.Username, "first-book", "first.txt", "第一本 archive 正文")
@@ -72,6 +80,7 @@ func TestPortableBackupExportsOnlyCallerOriginalArchives(t *testing.T) {
 			t.Fatalf("ordinary logical backup must not include portable entry %q", entry)
 		}
 	}
+	assertBackupOmitsSessionState(t, logicalPath, sessionIdentity)
 
 	portableDir := filepath.Join(webdavDir, "users", owner.Username)
 	portablePath, localBooks, err := service.RunPortableForUser(owner.ID, owner.Username, portableDir)
@@ -84,6 +93,7 @@ func TestPortableBackupExportsOnlyCallerOriginalArchives(t *testing.T) {
 	if filepath.Base(portablePath) == "" || !strings.HasPrefix(filepath.Base(portablePath), "portable_backup_") {
 		t.Fatalf("portable backup name = %q", portablePath)
 	}
+	assertBackupOmitsSessionState(t, portablePath, sessionIdentity)
 
 	manifest, err := PortableManifestForTest(portablePath)
 	if err != nil {
@@ -171,6 +181,7 @@ func portableBackupTestDB(t *testing.T) *gorm.DB {
 	}
 	if err := database.AutoMigrate(
 		&models.User{},
+		&models.UserSession{},
 		&models.BookSource{},
 		&models.UserBookSource{},
 		&models.BookSourceNamespace{},
@@ -189,6 +200,30 @@ func portableBackupTestDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	return database
+}
+
+func assertBackupOmitsSessionState(t *testing.T, archivePath, identity string) {
+	t.Helper()
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	for _, file := range reader.File {
+		entry, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, readErr := io.ReadAll(entry)
+		closeErr := entry.Close()
+		if readErr != nil || closeErr != nil {
+			t.Fatalf("read backup entry %s: read=%v close=%v", file.Name, readErr, closeErr)
+		}
+		text := string(data)
+		if strings.Contains(text, identity) || strings.Contains(text, "user_sessions") || strings.Contains(text, "auth_version") {
+			t.Fatalf("backup entry %s leaked authentication session state", file.Name)
+		}
+	}
 }
 
 func createPortableArchiveFixture(t *testing.T, libraryDir, username, directory, fileName, contents string) string {

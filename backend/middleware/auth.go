@@ -9,9 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
+
+	"openreader/backend/services/authsession"
 )
 
 const userIDKey = "userID"
+const sessionIdentityKey = "authenticatedSessionIdentity"
 
 const (
 	legacyDefaultJWTSecret  = "change-me-in-production"
@@ -74,7 +77,7 @@ func compatibleJWTSecrets(secret string) []string {
 	}
 }
 
-func AuthRequired(secret string) gin.HandlerFunc {
+func AuthRequired(secret string, sessionServices ...*authsession.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		tokenString := strings.TrimPrefix(header, "Bearer ")
@@ -83,15 +86,44 @@ func AuthRequired(secret string) gin.HandlerFunc {
 			return
 		}
 
-		userID, err := ParseToken(secret, tokenString)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
+		var userID uint
+		if len(sessionServices) > 0 && sessionServices[0] != nil {
+			identity, err := sessionServices[0].Authenticate(c.Request.Context(), tokenString)
+			if err != nil {
+				if c.Request.Context().Err() != nil {
+					c.Abort()
+					return
+				}
+				if errors.Is(err, authsession.ErrInvalidSession) {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				} else {
+					c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to authenticate"})
+				}
+				return
+			}
+			userID = identity.UserID
+			c.Set(sessionIdentityKey, identity)
+		} else {
+			parsedUserID, err := ParseToken(secret, tokenString)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
+			}
+			userID = parsedUserID
 		}
 
 		c.Set(userIDKey, userID)
 		c.Next()
 	}
+}
+
+func SessionIdentity(c *gin.Context) (authsession.Identity, bool) {
+	value, exists := c.Get(sessionIdentityKey)
+	if !exists {
+		return authsession.Identity{}, false
+	}
+	identity, ok := value.(authsession.Identity)
+	return identity, ok
 }
 
 func TrackActivity(db *gorm.DB) gin.HandlerFunc {

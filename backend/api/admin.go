@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -263,6 +264,7 @@ func (s *Server) createUser(c *gin.Context) {
 		CanEditSources:  true,
 		CanAccessStore:  true,
 		CanAccessWebDAV: boolValue(true),
+		AuthVersion:     1,
 		LastActiveAt:    time.Now(),
 	}
 	if req.CanEditSources != nil {
@@ -414,7 +416,19 @@ func (s *Server) resetUserPassword(c *gin.Context) {
 		internalError(c, "failed to hash password")
 		return
 	}
-	if err := s.db.Model(&user).Update("password_hash", string(hash)).Error; err != nil {
+	if err := s.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]any{
+			"password_hash": string(hash),
+			"auth_version":  gorm.Expr("auth_version + 1"),
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return s.sessions.RevokeUser(c.Request.Context(), tx, user.ID)
+	}); err != nil {
 		internalError(c, "failed to reset password")
 		return
 	}
@@ -482,10 +496,10 @@ func (s *Server) userWorkspaceCleanupPlans(users []models.User) ([]userWorkspace
 // deleteUserData atomically removes every SQLite row owned by the requested
 // ordinary users. Files are intentionally a post-commit cleanup: rollback can
 // protect database data, but it cannot safely undo a removed mounted file.
-func (s *Server) deleteUserData(ids []uint, protectedUserID uint) ([]models.User, []userWorkspaceCleanupPlan, error) {
+func (s *Server) deleteUserData(ctx context.Context, ids []uint, protectedUserID uint) ([]models.User, []userWorkspaceCleanupPlan, error) {
 	var deletedUsers []models.User
 	var plans []userWorkspaceCleanupPlan
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		query := tx.Where("id IN ? AND role <> ?", ids, "admin")
 		if protectedUserID != 0 {
 			query = query.Where("id <> ?", protectedUserID)
@@ -532,6 +546,7 @@ func (s *Server) deleteUserData(ids []uint, protectedUserID uint) ([]models.User
 			{model: &models.ReplaceRule{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.UserSetting{}, where: "user_id IN ?", args: []any{deletedIDs}},
 			{model: &models.SourceFailure{}, where: "user_id IN ?", args: []any{deletedIDs}},
+			{model: &models.UserSession{}, where: "user_id IN ?", args: []any{deletedIDs}},
 		} {
 			if err := tx.Where(deletion.where, deletion.args...).Delete(deletion.model).Error; err != nil {
 				return err
@@ -600,7 +615,7 @@ func (s *Server) deleteUsers(c *gin.Context) {
 		badRequest(c, "no deletable users selected")
 		return
 	}
-	deletedUsers, plans, err := s.deleteUserData(ids, currentUserID)
+	deletedUsers, plans, err := s.deleteUserData(c.Request.Context(), ids, currentUserID)
 	if errors.Is(err, errNoDeletableUsers) {
 		badRequest(c, err.Error())
 		return
@@ -633,7 +648,7 @@ func (s *Server) cleanupInactiveUsers(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"deleted": 0})
 		return
 	}
-	deletedUsers, plans, err := s.deleteUserData(ids, 0)
+	deletedUsers, plans, err := s.deleteUserData(c.Request.Context(), ids, 0)
 	if err != nil {
 		internalError(c, "cleanup failed")
 		return

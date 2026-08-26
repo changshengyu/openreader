@@ -14,6 +14,7 @@ import (
 
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/authsession"
 )
 
 type authRequest struct {
@@ -145,6 +146,7 @@ func (s *Server) register(c *gin.Context) {
 			CanEditSources:  true,
 			CanAccessStore:  true,
 			CanAccessWebDAV: boolValue(true),
+			AuthVersion:     1,
 			LastActiveAt:    time.Now().UTC(),
 		}
 		return tx.Create(&user).Error
@@ -211,7 +213,7 @@ func (s *Server) me(c *gin.Context) {
 }
 
 func (s *Server) respondWithToken(c *gin.Context, user models.User) {
-	token, err := middleware.GenerateToken(s.cfg.JWTSecret, user.ID)
+	token, err := s.sessions.Issue(c.Request.Context(), user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create token"})
 		return
@@ -226,4 +228,21 @@ func (s *Server) respondWithToken(c *gin.Context, user models.User) {
 			LastLoginAt: user.LastActiveAt,
 		},
 	})
+}
+
+func (s *Server) logout(c *gin.Context) {
+	identity, ok := middleware.SessionIdentity(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		return
+	}
+	if err := s.sessions.Revoke(c.Request.Context(), identity); err != nil {
+		if errors.Is(err, authsession.ErrInvalidSession) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke session"})
+		}
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

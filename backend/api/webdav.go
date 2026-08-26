@@ -35,7 +35,7 @@ const webDAVAllow = "OPTIONS, DELETE, GET, PUT, PROPFIND, MKCOL, MOVE, COPY, LOC
 func (s *Server) registerWebDAVRoutes(router *gin.Engine, prefix string) {
 	group := router.Group(prefix)
 	group.Use(webDAVResponseHeaders)
-	group.Use(middleware.WebDAVAuthRequired(s.cfg.JWTSecret, s.db))
+	group.Use(middleware.WebDAVAuthRequired(s.cfg.JWTSecret, s.db, s.sessions))
 	group.Use(middleware.TrackActivity(s.db))
 	group.Use(func(c *gin.Context) {
 		if c.Request.Method == http.MethodOptions {

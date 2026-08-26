@@ -1,6 +1,7 @@
 package db
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	gormlogger "gorm.io/gorm/logger"
 
 	"openreader/backend/config"
 	"openreader/backend/models"
@@ -19,7 +21,9 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	database, err := gorm.Open(sqlite.Open(cfg.DatabasePath), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(cfg.DatabasePath), &gorm.Config{
+		Logger: databaseLogger(log.New(os.Stdout, "\r\n", log.LstdFlags)),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -38,9 +42,20 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 	return database, nil
 }
 
+func databaseLogger(writer gormlogger.Writer) gormlogger.Interface {
+	return gormlogger.New(writer, gormlogger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  gormlogger.Warn,
+		IgnoreRecordNotFoundError: false,
+		Colorful:                  true,
+		ParameterizedQueries:      true,
+	})
+}
+
 func AutoMigrate(database *gorm.DB) error {
 	if err := database.AutoMigrate(
 		&models.User{},
+		&models.UserSession{},
 		&models.UserSetting{},
 		&models.BookSource{},
 		&models.UserBookSource{},
@@ -64,7 +79,19 @@ func AutoMigrate(database *gorm.DB) error {
 	if err := migrateLegacyBookSourceOwnership(database); err != nil {
 		return err
 	}
+	if err := initializeAuthenticatedSessionMigration(database); err != nil {
+		return err
+	}
 	return backfillBookLastCheckTimes(database)
+}
+
+const authenticatedSessionMigrationKey = "authenticated-session-v1"
+
+func initializeAuthenticatedSessionMigration(database *gorm.DB) error {
+	return database.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.SchemaMigration{
+		Key:       authenticatedSessionMigrationKey,
+		AppliedAt: time.Now().UTC(),
+	}).Error
 }
 
 const bookSourceOwnershipMigrationKey = "book-source-ownership-v1"

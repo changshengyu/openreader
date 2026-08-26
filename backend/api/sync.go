@@ -7,10 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"gorm.io/gorm"
-
-	"openreader/backend/middleware"
-	"openreader/backend/models"
+	"openreader/backend/services/authsession"
 )
 
 var upgrader = websocket.Upgrader{
@@ -19,19 +16,16 @@ var upgrader = websocket.Upgrader{
 
 func (s *Server) syncSocket(c *gin.Context) {
 	token := c.Query("token")
-	userID, err := middleware.ParseToken(s.cfg.JWTSecret, token)
-	if err != nil {
+	identity, err := s.sessions.Authenticate(c.Request.Context(), token)
+	if errors.Is(err, authsession.ErrInvalidSession) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return
 	}
-	var user models.User
-	if err := s.db.Select("id").First(&user, userID).Error; errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-		return
-	} else if err != nil {
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to authenticate sync connection"})
 		return
 	}
+	userID := identity.UserID
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

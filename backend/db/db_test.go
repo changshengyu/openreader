@@ -1,17 +1,52 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"openreader/backend/config"
 	"openreader/backend/models"
 )
+
+func TestDatabaseLoggerNeverInterpolatesSessionIdentity(t *testing.T) {
+	var output bytes.Buffer
+	database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "logger.db")), &gorm.Config{
+		Logger: databaseLogger(log.New(&output, "", 0)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AutoMigrate(&models.UserSession{}); err != nil {
+		t.Fatal(err)
+	}
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDatabase.Close(); err != nil {
+		t.Fatal(err)
+	}
+	identity := strings.Repeat("a1", 32)
+	if err := database.Where("id = ?", identity).First(&models.UserSession{}).Error; err == nil {
+		t.Fatal("closed database query unexpectedly succeeded")
+	}
+	if strings.Contains(output.String(), identity) {
+		t.Fatalf("database log leaked hashed session identity: %s", output.String())
+	}
+	if !strings.Contains(output.String(), "id = ?") {
+		t.Fatalf("database log did not retain parameterized query diagnostics: %s", output.String())
+	}
+}
 
 func TestOpenAppliesWALAndBusyTimeoutToEveryPooledConnection(t *testing.T) {
 	database, err := Open(config.Config{

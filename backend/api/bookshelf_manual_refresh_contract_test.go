@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 
 	"openreader/backend/engine"
 	"openreader/backend/models"
@@ -103,13 +106,15 @@ func TestManualShelfRefreshReportsSafePartialFailureAndChangedShelfItems(t *test
 func TestManualShelfRefreshReturnsStableTopLevelReadFailure(t *testing.T) {
 	router, server := setupTestServer(t)
 	token := authHeader(t, router)
-	sqlDB, err := server.db.DB()
-	if err != nil {
+	callbackName := "test:manual-shelf-refresh-read-failure"
+	if err := server.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "books" {
+			tx.AddError(errors.New("injected shelf read failure"))
+		}
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlDB.Close(); err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { _ = server.db.Callback().Query().Remove(callbackName) })
 
 	req := httptest.NewRequest(http.MethodPost, "/api/books/check-updates", nil)
 	req.Header.Set("Authorization", token)

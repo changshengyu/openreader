@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -353,7 +354,7 @@ func TestBookGroupPreferencesAreDeletedWithUserData(t *testing.T) {
 	if before != 4 {
 		t.Fatalf("expected four preference rows before delete, got %d", before)
 	}
-	if _, _, err := server.deleteUserData([]uint{user.ID}, 0); err != nil {
+	if _, _, err := server.deleteUserData(context.Background(), []uint{user.ID}, 0); err != nil {
 		t.Fatal(err)
 	}
 	var after int64

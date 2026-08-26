@@ -932,6 +932,23 @@ test('explicit logout revokes the captured server session and never restores an 
   })
 })
 
+test('a later login cannot replace the session captured by an in-flight logout request', { concurrency: false }, async () => {
+  const capturedToken = tokenFor(11, 'logout')
+  storage.setItem('openreader_token', tokenFor(11, 'new-login'))
+  const response = await api.post('/auth/logout', null, {
+    headers: { Authorization: `Bearer ${capturedToken}` },
+    adapter: async config => ({
+      config,
+      data: null,
+      headers: {},
+      request: {},
+      status: 204,
+      statusText: 'No Content',
+    }),
+  })
+  assert.equal(response.config.headers.Authorization, `Bearer ${capturedToken}`)
+})
+
 test('callbacks from a superseded websocket cannot close, clear, reconnect, or dispatch into the new session', { concurrency: false }, async () => {
   class FakeWebSocket {
     static OPEN = 1

@@ -9,7 +9,7 @@ function notifyAuthRequired(detail) {
 function addAuthInterceptors(client) {
   client.interceptors.request.use((config) => {
     const token = localStorage.getItem('openreader_token')
-    if (token) {
+    if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config

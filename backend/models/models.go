@@ -20,9 +20,23 @@ type User struct {
 	// WebDAV permission existed retains the historical CanAccessStore behavior
 	// until an administrator explicitly chooses a distinct value.
 	CanAccessWebDAV *bool     `json:"canAccessWebdav,omitempty" gorm:"column:can_access_webdav"`
+	AuthVersion     uint64    `json:"-" gorm:"not null;default:1"`
 	LastActiveAt    time.Time `json:"lastActiveAt"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+// UserSession is disposable authentication state. ID is a SHA-256 digest of
+// a random token identity; raw bearer credentials are never persisted.
+type UserSession struct {
+	ID          string     `json:"-" gorm:"primaryKey;size:64"`
+	UserID      uint       `json:"-" gorm:"not null;index"`
+	AuthVersion uint64     `json:"-" gorm:"not null"`
+	Legacy      bool       `json:"-" gorm:"not null;default:false"`
+	CreatedAt   time.Time  `json:"-" gorm:"not null"`
+	LastSeenAt  time.Time  `json:"-" gorm:"not null;index"`
+	ExpiresAt   time.Time  `json:"-" gorm:"not null;index"`
+	RevokedAt   *time.Time `json:"-" gorm:"index"`
 }
 
 type UserSetting struct {
