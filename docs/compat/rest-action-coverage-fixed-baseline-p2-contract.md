@@ -736,3 +736,22 @@ GORM/文件 I/O，ownership-v1 直接升级保留安全显式 JSON（含空数�
 frontend 742/742、build、四视口、真实 HTTP、GHCR 回拉和 Actions run
 `32919553203` 新旧卷门均通过；`a36b888`/`latest` OCI index 为
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`。
+
+## 38. Explore 入口、分页与请求取消（2026-08-26 inventory）
+
+默认书源快照发布后重新从当前 `server.go`、query 驱动远程工作和固定上游取证。下一项 must-fix
+收敛到 `GET /api/explore/:sourceId`：固定上游 chooser 只发送该 source `exploreUrl` 中选中的
+`ruleFindUrl`，第一页为 1，后续只复用入口并递增 page；OpenReader 的 JWT/owned source、现代 JSON
+和通用抓取安全是已签收适配。
+
+当前 handler 允许任意 `url`/`exploreUrl` override、page 只校验 `>=1`，并调用使用
+`context.Background()` 的 engine wrapper。结果是客户端可把 source 首次请求 header/proxy policy 带到
+未声明公网入口，超长 query/page 没有动作边界，浏览器离开或 Axios 超时后远程 fetch/parse 仍继续，
+迟到 request failure 还可能进入 caller 的 `source_failures`。
+
+目标保持 source 404 优先、query/响应字段、chooser/结果状态和 parser 顺序；新增 `page=1..100000`、
+8192-byte source-declared entry admission，并把 request context 贯穿 fetch/parser。取消不写业务错误、
+失败缓存、数据库或事件；真正 source request failure 继续按现有 caller-scoped 600 秒缓存。完整合同与
+红测门见
+[`explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。

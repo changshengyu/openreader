@@ -310,23 +310,24 @@ backup gates. Locally published `ceb4baa`/`latest` resolve to OCI index
 - [ ] Final resolved path is verified to remain under the allowed root.
 - [ ] Local store, uploads, cache, backups, and WebDAV all use rooted paths.
 
-### P2 remote chapter-text cache filesystem lifecycle (2026-08-17 inventory)
+### P2 remote chapter-text cache filesystem lifecycle (2026-08-17 implemented/published)
 
-- [ ] Remote chapter cache read/stat/remove accepts only relative or current-root absolute identities that resolve to
+- [x] Remote chapter cache read/stat/remove accepts only relative or current-root absolute identities that resolve to
       regular files below `cache/`; root/ancestor/entry symlinks, directories and special files fail closed.
-- [ ] Remote chapter cache reads use one same-file-verified handle and the configured source-response byte budget;
+- [x] Remote chapter cache reads use one same-file-verified handle and the configured source-response byte budget;
       mounted outside bytes, host paths and OS errors never enter chapter responses or cache API errors.
-- [ ] Remote cache writes use a verified parent, private stage and atomic rename; unsafe targets, cancellation and
+- [x] Remote cache writes use a verified parent, private stage and atomic rename; unsafe targets, cancellation and
       failures do not truncate an existing file, write outside the root, publish a DB path or leave temporary files.
-- [ ] Stats count only actual safe non-empty chapter files and remain current-user scoped. Clear/prune removes only
+- [x] Stats count only actual safe non-empty chapter files and remain current-user scoped. Clear/prune removes only
       verified regular files after commit and only when an all-user reference query proves them unreferenced.
-- [ ] File publication plus DB reference and reference-query plus prune share one process serialization boundary, so
+- [x] File publication plus DB reference and reference-query plus prune share one process serialization boundary, so
       concurrent cache writes and cleanup cannot leave a newly referenced path missing.
 
-Current source inventory shows lexical-prefix validation followed by `os.ReadFile/Stat/Remove`, direct
-`MkdirAll/WriteFile`, stale DB-path counting, and delete-on-reference-query-error behavior. Status is
-`inventory-complete / tests-and-implementation-pending`; checklist items remain open until old-implementation red
-tests, the complete implementation, runtime/mounted-volume probes and release gates pass. Full contract:
+Contract `c6f9de8`, old-implementation red tests `f8e5c04`, implementation `75cc238` and release evidence
+`3cef8df` landed in order. Focused/race/full/vet, frontend/build, Reader/BookManage/sidebar browser flows,
+mounted-host/container probes and fresh/historical/portable gates passed. OCI index
+`sha256:8cfe72e56af0cbb191d6b31fa243153a3ce14010614c5153881b262229facf86`; status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
 [`compat/remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/remote-chapter-cache-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 
 ### P2 public upload-resource filesystem boundary (2026-08-17 inventory)
@@ -1265,3 +1266,20 @@ full/race/vet, frontend/build, path-free real HTTP, four-viewport browser, fresh
 Actions gates and pulled-image mirror checks passed. OCI index
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`; status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+
+## P2 Explore request lifecycle (2026-08-26 inventory)
+
+- [ ] Resolve the caller-owned active source before query validation; foreign, detached and disabled sources retain
+      one 404 and cannot be probed through page/entry error differences.
+- [ ] Accept only page `1..100000` and an at-most-8192-byte entry declared by that source's current explore rule;
+      arbitrary relative/same-origin/cross-origin URL and request-option injection fail before remote work.
+- [ ] Preserve declared relative/absolute templates, URL options and existing response/UI semantics without treating
+      a client override as a new remote-fetch capability.
+- [ ] Propagate the HTTP request context through fetch and parsing. Cancellation stops work and never writes a source
+      failure, database row, event or path/query/header/body-bearing response/log.
+- [ ] Prove owner priority, exact boundaries, zero-request rejection, cancellation and real chooser pagination before
+      publication; keep existing fetcher SSRF/redirect/size/timeout policy unchanged.
+
+Target contract:
+[`compat/explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed in inventory.
