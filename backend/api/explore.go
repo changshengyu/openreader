@@ -6,13 +6,17 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
+	"openreader/backend/models"
 	"openreader/backend/services/booksources"
 )
+
+const maxExploreRequestedPage = 100000
 
 type exploreSourceResponse struct {
 	ID            uint             `json:"id"`
@@ -69,7 +73,7 @@ func (s *Server) exploreBooks(c *gin.Context) {
 	page := 1
 	if raw := strings.TrimSpace(c.Query("page")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 {
+		if err != nil || parsed < 1 || parsed > maxExploreRequestedPage {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page"})
 			return
 		}
@@ -79,14 +83,48 @@ func (s *Server) exploreBooks(c *gin.Context) {
 	if exploreURL == "" {
 		exploreURL = strings.TrimSpace(c.Query("exploreUrl"))
 	}
-	results, err := engine.ExploreBooksPageWithURL(source, exploreURL, page)
+	allowed, err := sourceAllowsExploreEntry(source, exploreURL)
 	if err != nil {
+		writeSourceError(c, http.StatusBadRequest, "failed to explore source", err, "explore")
+		return
+	}
+	if !allowed {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid explore URL"})
+		return
+	}
+	results, err := engine.ExploreBooksPageWithURLContext(c.Request.Context(), source, exploreURL, page)
+	if err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+		}
 		s.recordSourceFailure(userID, source, err)
 		writeSourceError(c, http.StatusBadRequest, "failed to explore source", err, "explore")
 		return
 	}
 	results.Items = s.projectSearchResultCovers(userID, results.Items)
 	c.JSON(http.StatusOK, results)
+}
+
+func sourceAllowsExploreEntry(source models.BookSource, requested string) (bool, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return true, nil
+	}
+	if !utf8.ValidString(requested) || len(requested) > maxRemoteProbeURLBytes {
+		return false, nil
+	}
+	rule, err := source.ParsedRules()
+	if err != nil {
+		return false, err
+	}
+	for _, group := range parseExploreGroups(rule.ExploreURL) {
+		for _, entry := range group {
+			if strings.TrimSpace(entry.URL) == requested {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 type exploreURLItem struct {
