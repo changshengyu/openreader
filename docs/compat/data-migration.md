@@ -1195,7 +1195,7 @@ red tests `2396537` and implementation `a0edce3` landed in order. Actions run `3
 volume gates; the published OCI index is
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.
 
-## P2 default book-source compatibility mirror migration (2026-08-26 inventory)
+## P2 default book-source compatibility mirror migration (2026-08-26 implemented/published)
 
 - A direct pre-ownership upgrade with a safe valid `data/defaultBookSources.json` must preserve that explicit default,
   including `[]`, while existing users retain all legacy active-source associations and stable source IDs.
@@ -1208,4 +1208,9 @@ volume gates; the published OCI index is
 
 Full contract:
 [`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**.
+Contract `1c5f7b5`, red tests `6d8b8f1`, test correction `07761b5` and implementation `a36b888` landed in order.
+Direct pre-ownership custom/nonempty and explicit-empty upgrades, already-migrated stale-mirror restart, stable user
+source IDs, database rollback, backup omission, fresh/historical/portable volumes and pulled-image 0600 mirror all
+passed. Actions run `32919553203` published OCI index
+`sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.

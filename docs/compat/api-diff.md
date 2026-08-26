@@ -99,3 +99,16 @@ REST/WebDAV/WS and gives pre-existing JWTs one persistent seven-day adoption win
 Reader-dev keeps an unshelved search result in the browser `readingBook` state and reconstructs BookInfo/TOC/content without calling `saveBook`; durable progress is rejected until the user explicitly adds the book. OpenReader's authenticated opaque `/api/reader/remote-sessions*` API is a technical-stack/security translation of that lifecycle, not a new persistent book type.
 
 The fixed-baseline second audit verifies the existing user binding, no-store response, server-authoritative chapter URL, zero shelf writes and Book/Chapter variable precedence. It also found and corrected three `must-fix` differences: the create body was unbounded, the in-memory session map had no per-session/user/process retention budget, and malformed chapter indices renewed the idle lease before validation. Exact limits, LRU/expiry-marker semantics, cancellation/error-redaction requirements and regression evidence are recorded in [`remote-reader-session-fixed-baseline-second-audit-p1-contract.md`](remote-reader-session-fixed-baseline-second-audit-p1-contract.md). Status: `aligned / Docker-published / awaiting-device-verification`; `30dbe53`/`latest` OCI index is `sha256:9c07871ef7d3c8d99733fcecea205336576c081db651dada13eaeedafda76365`.
+
+## Default book-source snapshot lifecycle second audit
+
+Reader-dev copies one target user's existing source file to the default file and treats an existing `[]` as a
+configured empty default. OpenReader retains its SQLite namespace/COW translation, but the former unbounded legacy
+read, raw status error, unsynchronized JSON/SQLite save and ownership-v1 global-source override were `must-fix`.
+`a36b888` now admits only the fixed same-file regular JSON with 16 MiB/300-object bounds, serializes every default
+action and startup repair, propagates request context, keeps configured SQLite authoritative, and preserves a safe
+explicit file during direct pre-ownership upgrades. Contract `1c5f7b5`, red tests `6d8b8f1`, correction `07761b5`
+and implementation `a36b888` landed in order. Actions run `32919553203` published `a36b888`/`latest` at OCI index
+`sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`. Status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Full contract:
+[`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md).

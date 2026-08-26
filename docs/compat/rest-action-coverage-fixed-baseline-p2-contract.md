@@ -719,16 +719,20 @@ frontend 742/742、build、四视口浏览器、真实 API 和 Actions run `3291
 `a0edce3`/`latest` OCI index 为
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`。
 
-## 37. 默认书源快照文件系统与提交生命周期（2026-08-26 inventory）
+## 37. 默认书源快照文件系统与提交生命周期（2026-08-26 implemented/published）
 
 认证会话发布后从当前 `server.go` 重新枚举尚未签约的 action。下一项 must-fix 收敛到
 `GET/POST /api/sources/default*`、目标用户设默认、管理员批量重置及旧卷
 `data/defaultBookSources.json` 初始化边界。固定上游完整复制目标用户文件并以存在的空数组表示有效
 空默认；OpenReader 的 SQLite namespace 是允许的关系模型翻译，但必须和兼容镜像表达同一快照。
 
-当前固定文件使用无界 `os.ReadFile` 且跟随 symlink/special file；status 将 raw `err.Error()` 放入 200；
-两个 save 先写文件后写 SQLite、没有共享 serialization boundary，可由 A/B 交错得到不同最终快照；
-ownership-v1 迁移又会先用旧全局活动源配置 default，使历史自定义 JSON 缺少迁移证据。精确 API、
-SQLite/文件 authority、16 MiB/300-source、same-file regular read、取消/并发/恢复和历史卷测试见
+旧实现的无界/symlink 读取、raw status error、A/B 交叉提交和旧卷默认覆盖已由 `6d8b8f1` 红测固定，
+`07761b5` 校正串行化测试后，由 `a36b888` 关闭。新实现以 SQLite 为迁移后的运行时权威，固定 JSON
+为有界 legacy 输入和 canonical mirror；所有默认动作和启动修复共用生命周期锁，请求 context 贯穿
+GORM/文件 I/O，ownership-v1 直接升级保留安全显式 JSON（含空数组）及普通用户旧 source ID。精确 API、
+16 MiB/300-source、same-file regular read、取消/并发/恢复和历史卷测试见
 [`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试。
+当前状态 **aligned / regression-validated / Docker-published / awaiting-device-verification**。Go full/race/vet、
+frontend 742/742、build、四视口、真实 HTTP、GHCR 回拉和 Actions run
+`32919553203` 新旧卷门均通过；`a36b888`/`latest` OCI index 为
+`sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`。

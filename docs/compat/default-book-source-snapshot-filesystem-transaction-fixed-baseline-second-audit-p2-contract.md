@@ -6,7 +6,7 @@
 
 审查日期：2026-08-26
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 ## 1. 范围与结论
 
@@ -156,3 +156,29 @@ docker compose config --quiet
 - 不新增默认书源编辑 UI、公开文件下载、环境变量、备份条目或 WebDAV 文件。
 - 不扫描或重写用户私有 `data/cache/library`，不把 default mirror 当作普通用户 backup。
 - 不处理固定上游自身无 size/symlink/transaction hardening 的缺陷；这些是 OpenReader 明确安全增强。
+
+## 9. 实施与发布记录
+
+合同 `1c5f7b5`、旧实现红测 `6d8b8f1`、串行化兼容勘误 `07761b5` 和实现 `a36b888` 按阶段落地。
+实现结果：
+
+- `sourcecompat` 统一固定文件的 `Lstat -> open -> fstat/SameFile`、16 MiB actual-read、300-object、
+  UTF-8/shape、0600 temp、file/directory sync 与 rename；symlink、目录、special file 和 unsafe replacement
+  均 fail closed。
+- 默认 status/save/restore、目标用户设默认、管理员批量重置和启动修复共用 server-level mutex；请求
+  context 进入 GORM 与文件 I/O，SQLite 提交后生成 reader-dev canonical mirror，数据库失败不改旧镜像。
+- ownership-v1 在同一次直接升级中先识别安全 legacy 文件：有效文件（含 `[]`）保留为默认，普通用户
+  仍关联原全局源和 ID；已迁移数据库始终由 SQLite 反向修复陈旧 JSON。
+- API 对 unsafe/invalid 状态统一返回 path-free 500，不再返回 raw OS/SQLite/path；备份、WebDAV、
+  `data/cache/library` 目录结构、书源 COW/identity 和可见 UI 不变。
+
+本地通过 Go full/race/vet、frontend 742/742、Vite build、Compose、
+真实 HTTP 保存/状态/清空/恢复/symlink 500/自动修复，以及 SourceManager/UserManage 的
+1440x900、1024x1366、390x844、360x800 浏览器回归。受信 Actions run `32919553203` 通过 backend、
+frontend、Compose、native image、fresh portable 和 historical volume 后发布
+`ghcr.io/changshengyu/openreader:a36b888` 与 `latest`：OCI index
+`sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`，amd64/arm64 manifests 分别为
+`sha256:824272d06924388385a0d2e8a409ebece7e835943c77d597ed5e4d53a01515e5`、
+`sha256:270bc815d34bd8c13984de7b83bb916df60e7ae798272c93f7ac5ca4ecc5eb26`。回拉不可变标签后 health 报告
+完整 revision `a36b8888122abed793d7bb9a0e238d5ffeae2fde`，容器内默认保存/状态和 0600 镜像再次通过。
+剩余只是真实设备对现有 SourceManager/UserManage 操作体感的签收，不是已知实现缺口。

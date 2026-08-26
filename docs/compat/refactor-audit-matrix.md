@@ -32,18 +32,18 @@
 | Reader：登录失效与账号切换 | `plugins/axios.js` 的 `NEED_LOGIN`、根 `App.vue#login`、`Reader.vue#loginAuth` | `api/client.js`、`App.vue`、`AuthDialog.vue`、`stores/user.js`、Reader lifecycle/progress、`stores/overlay.js` | **P0 已完成并发布 `59e11a9`**：401 按真实拦截顺序先挂起旧 Reader 再清凭证，未认证根场景不渲染私有 DOM；overlay reset、同账号 generation 重挂载、异账号返回书架、安全 returnTo、旧进度写入抑制均已验证。 | [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)；1440×900、1024×1366、390×844、360×800、frontend 643/643、Go/build 和新旧卷门通过。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、`ReaderTTSBar.vue`、`useReaderChapterReady.js`、格式 parser / cache | **EPUB、CBZ、连续跨章、音频和 TTS 固定基准切片均已完成实现、三视口验证和 Docker 发布**：音频恢复上游结构、边界行为与真实 autoplay；TTS 恢复显式 voice、贴底栏、可取消跨章和关闭段落定位。 | [`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md) 及前三份格式合同；当前 `5313c49` 复验再次通过 EPUB/CBZ/audio 三视口与 fresh/historical/portable/restart 卷门，CBZ smoke 自动主题前置由测试显式冻结。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
-| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、ReturnData、`YueduApi.kt` `/assets/*` | `backend/api/*.go`、middleware、前端 `api/*.js`、public capability routes | **按动作逐项复审；已关闭模块不从旧日志重开**。frontend/static/router、public 子树与认证会话生命周期均已关闭。当前新差集收敛为默认书源 JSON/SQLite 双持久边界：无界/symlink 文件读取、raw status error、并发交叉提交和旧卷自定义默认迁移仍待红测。 | [`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md) 已固定 SQLite authority、兼容镜像、16 MiB/300-source、same-file、取消/并发/recovery 与历史卷合同；状态 `inventory-complete / tests-and-implementation-pending`。上一会话切片仍为 `aligned / Docker-published / awaiting-device-verification`，OCI index `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`。 |
+| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、ReturnData、`YueduApi.kt` `/assets/*` | `backend/api/*.go`、middleware、前端 `api/*.js`、public capability routes | **按动作逐项复审；已关闭模块不从旧日志重开**。frontend/static/router、public 子树、认证会话与默认书源 JSON/SQLite 双持久边界均已关闭。`a36b888` 增加 same-file/16 MiB/300-object legacy read、path-free 500、共享生命周期锁、请求 context、DB-authoritative mirror repair 和显式旧卷默认迁移。 | [`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md) 状态 `aligned / regression-validated / Docker-published / awaiting-device-verification`；Actions run `32919553203`、真实 HTTP、四视口和回拉容器通过，OCI index `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链、RSS 可见请求页语义、P2-N1/P2-N2 抓取边界和 RSS 持久提交边界均已发布**。refresh 只写 parser/remote 列并按 detail rule 保留权威正文；content cache 只写 content；state 只写 read/favourite；三者不再用全行 `Save` 覆盖。 | 抓取预算/SSRF 合同不重开；[`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md) 已用 trigger/API 证明列所有权、删除不复活、无孤儿 article 和远程工作后的 source/article 存活复验。 |
-| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release workflow | `a0edce3` 通过 frontend 742/742、Go full/race/vet、build、Compose、四视口重新认证、真实 API 会话合同与 GHCR 回拉容器；受信 Actions run `32914105929` 通过原生候选、fresh portable 和 historical volume 门禁后发布。 | amd64/arm64 发布 `a0edce3`/`latest`，OCI index `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`；manifests 分别为 `sha256:dc50d7db9eb1bddb8c3a094fd507fa1e1f4631b633cacc58d635070b1ba606ab`、`sha256:1785dee2ec3d62894a20b35c33535fc1bd2c9167585b12bc567b71c71bff13df`。用户生产环境运行提交未知。 |
+| 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release workflow | `a36b888` 通过 frontend 742/742、Go full/race/vet、build、Compose、SourceManager/UserManage 四视口、真实 HTTP 和 GHCR 回拉容器；受信 Actions run `32919553203` 通过原生候选、fresh portable 和 historical volume 门后发布。 | amd64/arm64 发布 `a36b888`/`latest`，OCI index `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`；manifests 分别为 `sha256:824272d06924388385a0d2e8a409ebece7e835943c77d597ed5e4d53a01515e5`、`sha256:270bc815d34bd8c13984de7b83bb916df60e7ae798272c93f7ac5ca4ecc5eb26`。用户生产环境运行提交未知。 |
 
-## 当前整体进度快照（2026-08-26，默认书源快照 inventory 已完成）
+## 当前整体进度快照（2026-08-26，默认书源快照已实现并发布）
 
 按全量计划的模块/合同口径而不是代码行数估算，整体约 **99%**。该数字表示固定基准合同和测试先行
 实现覆盖度；用户配置、BookGroup/Category、Book、BookSource、Bookmark 与 RSS 写入/导入边界均完成
 实现、全量、运行时、新旧卷和正式 Docker 发布；ReplaceRule、备份、trusted proxy、frontend/static/
-router 失败分流、public 静态子树和认证会话生命周期亦已关闭。剩余约 1% 当前包含已确认的默认书源
-快照文件/事务 must-fix、后续逐路由 action 审计、长尾固定基准复审与真实设备证据，不能从 direct
-binder 差集为空推导完成。
+router 失败分流、public 静态子树、认证会话生命周期和默认书源快照文件/事务边界亦已关闭。剩余约
+1% 包含后续逐路由 action 审计、长尾固定基准复审与真实设备证据，不能从 direct binder 差集为空
+推导完成。
 
 - **P0 Reader 主链已覆盖**：工具层/面板状态机、正文排版、移动点击与连续滚动、设置、书签、正文
   搜索、登录恢复、普通文本、EPUB、CBZ/漫画、音频、连续跨章、TTS、夜间对比度均有专项合同和
@@ -68,7 +68,8 @@ binder 差集为空推导完成。
   JSON control 的 16 KiB/32 KiB/1 MiB single UTF-8 object、Book/TOC/category admission、batch cache /
   export / remote add / change-source 取消，ReplaceRule 五路 512 KiB/16 MiB/128 KiB/4 MiB actual-read 单
   UTF-8 document 与 transaction 取消、server-only WebSocket/recipient scope、备份事务 worker，以及
-  ordinary/portable 备份生成 safe-500、可取消 gate/DB/copy 和 durable rename 边界。
+  ordinary/portable 备份生成 safe-500、可取消 gate/DB/copy 和 durable rename，以及默认书源 JSON/SQLite
+  same-file、串行提交、旧卷显式快照和启动修复边界。
 - **尚未完成的主线**：其余尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
   以及后续真实设备反馈暴露出的上游可见偏差。reading progress、books.go 六个 JSON control 和
   ReplaceRule 五路、备份生成、backup list/download 与公开 upload resource rooted opened-file 边界均已

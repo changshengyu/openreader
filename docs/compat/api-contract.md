@@ -1237,7 +1237,7 @@ four-viewport browser logout/relogin, real REST/WebDAV/WS lifecycle probes, Acti
 fresh GHCR pull all passed. The `a0edce3`/`latest` OCI index is
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.
 
-## P2 default book-source snapshot lifecycle (2026-08-26 inventory)
+## P2 default book-source snapshot lifecycle (2026-08-26 implemented/published)
 
 Existing default-source methods, paths, auth and success bodies remain unchanged. SQLite default namespace is the
 runtime authority after ownership migration; `data/defaultBookSources.json` remains a bounded reader-dev-compatible
@@ -1250,4 +1250,9 @@ Successful saves return the existing `{count}` only for a committed authoritativ
 `409`, restore `404`, auth and event behavior remain. Exact 16 MiB/300-source legacy admission, same-file regular
 read, cancellation, crash recovery and historical-volume rules are defined in
 [`default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md`](default-book-source-snapshot-filesystem-transaction-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**.
+Status is **aligned / regression-validated / Docker-published / awaiting-device-verification**. Contract `1c5f7b5`,
+red tests `6d8b8f1`, serialization-test correction `07761b5` and implementation `a36b888` landed in order. Go
+full/race/vet, frontend 742/742, build, four-viewport SourceManager/UserManage, real HTTP and
+Actions run `32919553203` fresh/historical/portable gates passed. The pulled `a36b888` image reported the full
+revision and repeated save/status with a private canonical mirror. OCI index:
+`sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`.
