@@ -10309,7 +10309,7 @@ func TestExploreBooksUsesSelectedExploreURL(t *testing.T) {
 
 	source := models.BookSource{Name: "分类探索源", BaseURL: "https://explore.example", Charset: "utf-8", Enabled: true}
 	if err := source.SetRules(models.BookSourceRule{
-		ExploreURL:   "https://explore.example/top/{page}",
+		ExploreURL:   "热门::https://explore.example/top/{page}\n分类::https://explore.example/category/{page}",
 		BookListRule: ".book",
 		BookNameRule: ".title|text",
 		BookURLRule:  ".link|attr:href",
