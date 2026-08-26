@@ -49,6 +49,7 @@ type Server struct {
 	sessions         *authsession.Service
 	registerMu       sync.Mutex
 	remoteCacheMu    sync.Mutex
+	defaultSourcesMu sync.Mutex
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) *Server {
@@ -73,6 +74,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		sessions:         authsession.New(database, cfg.JWTSecret),
 	}
 	server.cleanupPortableAssetRestoreJournals()
+	_, _, _ = server.ensureDefaultBookSourceNamespace()
 
 	api := router.Group("/api")
 	api.GET("/health", server.health)

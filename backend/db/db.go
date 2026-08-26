@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,7 +16,22 @@ import (
 
 	"openreader/backend/config"
 	"openreader/backend/models"
+	"openreader/backend/services/sourcecompat"
 )
+
+const dataDirectoryPluginName = "openreader:data-directory"
+
+type dataDirectoryPlugin struct {
+	path string
+}
+
+func (p *dataDirectoryPlugin) Name() string {
+	return dataDirectoryPluginName
+}
+
+func (p *dataDirectoryPlugin) Initialize(*gorm.DB) error {
+	return nil
+}
 
 func Open(cfg config.Config) (*gorm.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.DatabasePath), 0o755); err != nil {
@@ -39,6 +56,11 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 		}
 	}
 
+	if strings.TrimSpace(cfg.DataDir) != "" {
+		if err := database.Use(&dataDirectoryPlugin{path: cfg.DataDir}); err != nil {
+			return nil, err
+		}
+	}
 	return database, nil
 }
 
@@ -106,6 +128,10 @@ func migrateLegacyBookSourceOwnership(database *gorm.DB) error {
 	if applied > 0 {
 		return nil
 	}
+	seedDefaultNamespace, err := shouldSeedLegacyDefaultNamespace(database)
+	if err != nil {
+		return err
+	}
 
 	return database.Transaction(func(tx *gorm.DB) error {
 		var userIDs []uint
@@ -121,7 +147,7 @@ func migrateLegacyBookSourceOwnership(database *gorm.DB) error {
 		for _, userID := range userIDs {
 			namespaces = append(namespaces, models.BookSourceNamespace{UserID: userID})
 		}
-		if len(sourceIDs) > 0 {
+		if len(sourceIDs) > 0 && seedDefaultNamespace {
 			namespaces = append(namespaces, models.BookSourceNamespace{UserID: 0})
 		}
 		if len(namespaces) > 0 {
@@ -132,7 +158,7 @@ func migrateLegacyBookSourceOwnership(database *gorm.DB) error {
 		}
 
 		associationUsers := userIDs
-		if len(sourceIDs) > 0 {
+		if len(sourceIDs) > 0 && seedDefaultNamespace {
 			associationUsers = append(append([]uint{}, userIDs...), 0)
 		}
 		associations := make([]models.UserBookSource, 0, len(associationUsers)*len(sourceIDs))
@@ -156,6 +182,28 @@ func migrateLegacyBookSourceOwnership(database *gorm.DB) error {
 			AppliedAt: time.Now(),
 		}).Error
 	})
+}
+
+func shouldSeedLegacyDefaultNamespace(database *gorm.DB) (bool, error) {
+	plugin, ok := database.Config.Plugins[dataDirectoryPluginName]
+	if !ok {
+		return true, nil
+	}
+	dataDirectory, ok := plugin.(*dataDirectoryPlugin)
+	if !ok || strings.TrimSpace(dataDirectory.path) == "" {
+		return true, nil
+	}
+	_, err := sourcecompat.ReadSnapshotFile(
+		context.Background(),
+		filepath.Join(dataDirectory.path, "defaultBookSources.json"),
+	)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func backfillBookLastCheckTimes(database *gorm.DB) error {

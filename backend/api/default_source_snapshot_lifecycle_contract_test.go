@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -284,6 +285,103 @@ func TestConfiguredSQLiteDefaultCanonicalizesStaleMirror(t *testing.T) {
 	defaults, err := restarted.bookSources.ListActive(0)
 	if err != nil || len(defaults) != 1 || defaults[0].ID != current.ID {
 		t.Fatalf("restart rewrote SQLite defaults: %+v err=%v", defaults, err)
+	}
+}
+
+func TestDirectLegacyUpgradePreservesExplicitEmptyDefaultSnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:       filepath.Join(root, "data"),
+		CacheDir:      filepath.Join(root, "cache"),
+		LibraryDir:    filepath.Join(root, "library"),
+		DatabasePath:  filepath.Join(root, "data", "openreader.db"),
+		JWTSecret:     "legacy-empty-default-secret",
+		LocalStoreDir: filepath.Join(root, "library", "localStore"),
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AutoMigrate(&models.User{}, &models.BookSource{}, &models.Book{}, &models.SourceFailure{}); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "legacy-empty-default-user", PasswordHash: "hash", Role: "user"}
+	legacy := models.BookSource{Name: "Legacy user source", BaseURL: "https://legacy-empty-user.example", Enabled: true}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.DataDir, "defaultBookSources.json"), []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+
+	server := RegisterRoutes(
+		gin.New(), cfg, database, readersync.NewHub(), scheduler.New(database, time.Hour),
+		backup.New(database, filepath.Join(cfg.DataDir, "webdav"), cfg),
+	)
+	configured, count, err := server.bookSources.DefaultStatus()
+	if err != nil || !configured || count != 0 {
+		t.Fatalf("explicit empty default = configured:%v count:%d err:%v", configured, count, err)
+	}
+	userSources, err := server.bookSources.ListExistingActive(user.ID)
+	if err != nil || len(userSources) != 1 || userSources[0].ID != legacy.ID {
+		t.Fatalf("explicit empty migration changed user sources: %+v err=%v", userSources, err)
+	}
+}
+
+func TestDefaultSourceDatabaseFailureKeepsPreviousMirror(t *testing.T) {
+	router, server := setupTestServer(t)
+	alice := registerSourceContractAccount(t, router, "defaultrollbackalice")
+	bob := registerSourceContractAccount(t, router, "defaultrollbackbob")
+	createSourceThroughAPI(t, router, alice.Auth, `{
+		"name":"Previous default",
+		"baseUrl":"https://previous-default.example",
+		"enabled":true
+	}`)
+	bobSource := createSourceThroughAPI(t, router, bob.Auth, `{
+		"name":"Rejected default",
+		"baseUrl":"https://rejected-default.example",
+		"enabled":true
+	}`)
+	if _, err := server.saveDefaultSourceSnapshot(alice.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.ReadFile(server.defaultBookSourcesPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	trigger := `CREATE TRIGGER reject_default_snapshot
+		BEFORE INSERT ON user_book_sources
+		WHEN NEW.user_id = 0 AND NEW.source_id = ` + strconv.FormatUint(uint64(bobSource.ID), 10) + `
+		BEGIN
+			SELECT RAISE(ABORT, 'rejected default snapshot');
+		END`
+	if err := server.db.Exec(trigger).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.saveDefaultSourceSnapshot(bob.ID, true); err == nil {
+		t.Fatal("database-rejected default save unexpectedly succeeded")
+	}
+
+	defaults, err := server.bookSources.ListExistingActive(0)
+	if err != nil || len(defaults) != 1 || defaults[0].BaseURL != "https://previous-default.example" {
+		t.Fatalf("database failure changed defaults: %+v err=%v", defaults, err)
+	}
+	current, err := os.ReadFile(server.defaultBookSourcesPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(current) != string(previous) {
+		t.Fatalf("database failure changed mirror: before=%s after=%s", previous, current)
 	}
 }
 

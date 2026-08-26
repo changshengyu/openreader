@@ -607,13 +607,13 @@ func (s *Server) clearSources(c *gin.Context) {
 }
 
 func (s *Server) defaultSourcesStatus(c *gin.Context) {
-	configured, count, err := s.ensureDefaultBookSourceNamespace()
+	configured, count, err := s.ensureDefaultBookSourceNamespaceContext(c.Request.Context())
 	if errors.Is(err, os.ErrNotExist) {
 		c.JSON(http.StatusOK, gin.H{"configured": false, "count": 0})
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"configured": false, "count": 0, "error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load default sources"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"configured": configured, "count": count})
@@ -628,7 +628,7 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 	}
 
 	userID, _ := middleware.UserID(c)
-	count, err := s.saveDefaultSourceSnapshot(userID, false)
+	count, err := s.saveDefaultSourceSnapshotContext(c.Request.Context(), userID, false)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
 		return
@@ -637,47 +637,28 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 }
 
 func (s *Server) saveDefaultSourceSnapshot(userID uint, requireExisting bool) (int, error) {
-	var (
-		sources []models.BookSource
-		err     error
-	)
-	if requireExisting {
-		sources, err = s.bookSources.ListExistingActive(userID)
-	} else {
-		sources, err = s.bookSources.ListActive(userID)
-	}
-	if err != nil {
+	return s.saveDefaultSourceSnapshotContext(context.Background(), userID, requireExisting)
+}
+
+func (s *Server) saveDefaultSourceSnapshotContext(ctx context.Context, userID uint, requireExisting bool) (int, error) {
+	s.defaultSourcesMu.Lock()
+	defer s.defaultSourcesMu.Unlock()
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	exported := append([]models.BookSource(nil), sources...)
-	for i := range exported {
-		exported[i].ID = 0
-	}
-	data, err := json.MarshalIndent(exported, "", "  ")
-	if err != nil {
-		return 0, err
-	}
-	path := s.defaultBookSourcesPath()
-	previous, previousErr := os.ReadFile(path)
-	hadPrevious := previousErr == nil
-	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
-		return 0, previousErr
-	}
-	if err := writeBookSourceFileAtomically(path, data); err != nil {
-		return 0, err
-	}
+
+	bookSources := booksources.New(s.db.WithContext(ctx))
 	var count int
+	var err error
 	if requireExisting {
-		count, err = s.bookSources.SaveDefaultFromExistingUser(userID)
+		count, err = bookSources.SaveDefaultFromExistingUser(userID)
 	} else {
-		count, err = s.bookSources.SaveDefaultFromUser(userID)
+		count, err = bookSources.SaveDefaultFromUser(userID)
 	}
 	if err != nil {
-		if hadPrevious {
-			_ = writeBookSourceFileAtomically(path, previous)
-		} else {
-			_ = os.Remove(path)
-		}
+		return 0, err
+	}
+	if err := s.writeCanonicalDefaultSourceMirror(ctx, bookSources); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -689,16 +670,19 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 	}
 
 	userID, _ := middleware.UserID(c)
-	_, _, err := s.ensureDefaultBookSourceNamespace()
+	s.defaultSourcesMu.Lock()
+	defer s.defaultSourcesMu.Unlock()
+	bookSources := booksources.New(s.db.WithContext(c.Request.Context()))
+	_, _, err := s.ensureDefaultBookSourceNamespaceLocked(c.Request.Context(), bookSources)
 	if errors.Is(err, os.ErrNotExist) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "default sources are invalid"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load default sources"})
 		return
 	}
-	result, err := s.bookSources.RestoreDefault(userID)
+	result, err := bookSources.RestoreDefault(userID)
 	if errors.Is(err, booksources.ErrNoDefault) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
 		return
@@ -990,8 +974,8 @@ func (s *Server) defaultBookSourcesPath() string {
 	return filepath.Join(s.cfg.DataDir, "defaultBookSources.json")
 }
 
-func (s *Server) loadDefaultBookSources() ([]models.BookSource, error) {
-	data, err := os.ReadFile(s.defaultBookSourcesPath())
+func (s *Server) loadDefaultBookSourcesContext(ctx context.Context) ([]models.BookSource, error) {
+	data, err := sourcecompat.ReadSnapshotFile(ctx, s.defaultBookSourcesPath())
 	if err != nil {
 		return nil, err
 	}
@@ -999,46 +983,56 @@ func (s *Server) loadDefaultBookSources() ([]models.BookSource, error) {
 }
 
 func (s *Server) ensureDefaultBookSourceNamespace() (bool, int, error) {
-	configured, count, err := s.bookSources.DefaultStatus()
-	if err != nil || configured {
-		return configured, count, err
-	}
-	sources, err := s.loadDefaultBookSources()
-	if err != nil {
-		return false, 0, err
-	}
-	if _, err := s.bookSources.Import(0, sources); err != nil {
-		return false, 0, err
-	}
-	return s.bookSources.DefaultStatus()
+	return s.ensureDefaultBookSourceNamespaceContext(context.Background())
 }
 
-func writeBookSourceFileAtomically(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+func (s *Server) ensureDefaultBookSourceNamespaceContext(ctx context.Context) (bool, int, error) {
+	s.defaultSourcesMu.Lock()
+	defer s.defaultSourcesMu.Unlock()
+	return s.ensureDefaultBookSourceNamespaceLocked(ctx, booksources.New(s.db.WithContext(ctx)))
+}
+
+func (s *Server) ensureDefaultBookSourceNamespaceLocked(ctx context.Context, bookSources *booksources.Service) (bool, int, error) {
+	if err := ctx.Err(); err != nil {
+		return false, 0, err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".default-book-sources-*.tmp")
+	configured, count, err := bookSources.DefaultStatus()
+	if err != nil {
+		return false, 0, err
+	}
+	if configured {
+		if err := s.writeCanonicalDefaultSourceMirror(ctx, bookSources); err != nil {
+			return false, 0, err
+		}
+		return true, count, nil
+	}
+	sources, err := s.loadDefaultBookSourcesContext(ctx)
+	if err != nil {
+		return false, 0, err
+	}
+	if _, err := bookSources.ReplaceActive(0, sources); err != nil {
+		return false, 0, err
+	}
+	configured, count, err = bookSources.DefaultStatus()
+	if err != nil {
+		return false, 0, err
+	}
+	if err := s.writeCanonicalDefaultSourceMirror(ctx, bookSources); err != nil {
+		return false, 0, err
+	}
+	return configured, count, nil
+}
+
+func (s *Server) writeCanonicalDefaultSourceMirror(ctx context.Context, bookSources *booksources.Service) error {
+	sources, err := bookSources.ListExistingActive(0)
 	if err != nil {
 		return err
 	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o644); err != nil {
-		_ = temporary.Close()
+	data, err := json.MarshalIndent(sourcecompat.Export(sources), "", "  ")
+	if err != nil {
 		return err
 	}
-	if _, err := temporary.Write(data); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporaryPath, path)
+	return sourcecompat.WriteSnapshotFile(ctx, s.defaultBookSourcesPath(), data)
 }
 
 func (s *Server) requireSourceEdit(c *gin.Context) bool {
@@ -1049,7 +1043,7 @@ func (s *Server) requireSourceEdit(c *gin.Context) bool {
 	}
 
 	var user models.User
-	err := s.db.Select("can_edit_sources").First(&user, userID).Error
+	err := s.db.WithContext(c.Request.Context()).Select("can_edit_sources").First(&user, userID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		unauthorized(c, "user not found")
 		return false
@@ -1074,19 +1068,21 @@ func decodeBookSources(data []byte) ([]models.BookSource, error) {
 		return bookSourcePayloadsToModels(payloads), nil
 	}
 
-	var wrapper struct {
-		BookSources []bookSourcePayload `json:"bookSources"`
-		Sources     []bookSourcePayload `json:"sources"`
-	}
+	var wrapper map[string]json.RawMessage
 	if err := json.Unmarshal(data, &wrapper); err == nil {
-		if len(wrapper.BookSources) > maxBookSourceImportCount || len(wrapper.Sources) > maxBookSourceImportCount {
-			return nil, errTooManyBookSources
-		}
-		if len(wrapper.BookSources) > 0 {
-			return bookSourcePayloadsToModels(wrapper.BookSources), nil
-		}
-		if len(wrapper.Sources) > 0 {
-			return bookSourcePayloadsToModels(wrapper.Sources), nil
+		for _, key := range []string{"bookSources", "sources"} {
+			raw, exists := wrapper[key]
+			if !exists {
+				continue
+			}
+			var wrapped []bookSourcePayload
+			if err := json.Unmarshal(raw, &wrapped); err != nil {
+				return nil, err
+			}
+			if len(wrapped) > maxBookSourceImportCount {
+				return nil, errTooManyBookSources
+			}
+			return bookSourcePayloadsToModels(wrapped), nil
 		}
 	}
 

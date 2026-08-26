@@ -28,7 +28,7 @@ func (s *Server) requireAdmin(c *gin.Context) bool {
 		return false
 	}
 	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil || user.Role != "admin" {
+	if err := s.db.WithContext(c.Request.Context()).First(&user, userID).Error; err != nil || user.Role != "admin" {
 		c.JSON(http.StatusForbidden, errResp("FORBIDDEN", "admin access required"))
 		return false
 	}
@@ -104,14 +104,14 @@ func (s *Server) setUserSourcesAsDefault(c *gin.Context) {
 		return
 	}
 	var target models.User
-	if err := s.db.Select("id").First(&target, userID).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.db.WithContext(c.Request.Context()).Select("id").First(&target, userID).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	} else if err != nil {
 		internalError(c, "failed to load user")
 		return
 	}
-	count, err := s.saveDefaultSourceSnapshot(userID, true)
+	count, err := s.saveDefaultSourceSnapshotContext(c.Request.Context(), userID, true)
 	if errors.Is(err, booksources.ErrNamespaceNotInitialized) {
 		c.JSON(http.StatusConflict, gin.H{"error": "user sources are not initialized"})
 		return
@@ -162,7 +162,7 @@ func (s *Server) resetUserSources(c *gin.Context) {
 		return
 	}
 	var existing int64
-	if err := s.db.Model(&models.User{}).Where("id IN ?", ids).Count(&existing).Error; err != nil {
+	if err := s.db.WithContext(c.Request.Context()).Model(&models.User{}).Where("id IN ?", ids).Count(&existing).Error; err != nil {
 		internalError(c, "failed to load users")
 		return
 	}
@@ -170,16 +170,19 @@ func (s *Server) resetUserSources(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
-	_, _, err := s.ensureDefaultBookSourceNamespace()
+	s.defaultSourcesMu.Lock()
+	defer s.defaultSourcesMu.Unlock()
+	bookSources := booksources.New(s.db.WithContext(c.Request.Context()))
+	_, _, err := s.ensureDefaultBookSourceNamespaceLocked(c.Request.Context(), bookSources)
 	if errors.Is(err, os.ErrNotExist) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
 		return
 	}
 	if err != nil {
-		badRequest(c, "default sources are invalid")
+		internalError(c, "failed to load default sources")
 		return
 	}
-	result, err := s.bookSources.RestoreDefaultForUsers(ids)
+	result, err := bookSources.RestoreDefaultForUsers(ids)
 	if errors.Is(err, booksources.ErrNoDefault) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "default sources are not configured"})
 		return
