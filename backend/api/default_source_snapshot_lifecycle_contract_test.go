@@ -160,29 +160,28 @@ func TestConcurrentDefaultSourceSavesPublishOneMatchingSnapshot(t *testing.T) {
 		count, err := server.saveDefaultSourceSnapshot(bob.ID, true)
 		results <- saveResult{name: "bob", count: count, err: err}
 	}()
-	var bobResult saveResult
+	completed := make([]saveResult, 0, 2)
 	select {
-	case bobResult = <-results:
-		if bobResult.name != "bob" {
-			t.Fatalf("first completed save = %s, want bob", bobResult.name)
-		}
-	case <-time.After(5 * time.Second):
-		releaseOnce.Do(func() { close(release) })
-		t.Fatal("bob save was blocked by an uncommitted alice database operation")
-	}
-	if bobResult.err != nil || bobResult.count != 1 {
-		t.Fatalf("bob save = count:%d err:%v", bobResult.count, bobResult.err)
+	case result := <-results:
+		completed = append(completed, result)
+	case <-time.After(100 * time.Millisecond):
+		// A serialized implementation keeps Bob outside the lifecycle until Alice
+		// finishes. The old implementation lets Bob publish a conflicting mirror.
 	}
 
 	releaseOnce.Do(func() { close(release) })
-	var aliceResult saveResult
-	select {
-	case aliceResult = <-results:
-	case <-time.After(5 * time.Second):
-		t.Fatal("alice save did not finish after release")
+	for len(completed) < 2 {
+		select {
+		case result := <-results:
+			completed = append(completed, result)
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent default saves did not finish after release")
+		}
 	}
-	if aliceResult.name != "alice" || aliceResult.err != nil || aliceResult.count != 1 {
-		t.Fatalf("alice save = %+v", aliceResult)
+	for _, result := range completed {
+		if result.err != nil || result.count != 1 {
+			t.Fatalf("%s save = count:%d err:%v", result.name, result.count, result.err)
+		}
 	}
 
 	defaults, err := server.bookSources.ListActive(0)
