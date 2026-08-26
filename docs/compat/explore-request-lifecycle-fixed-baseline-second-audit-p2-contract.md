@@ -85,7 +85,8 @@
 - handler 必须调用 `ExploreBooksPageWithURLContext(c.Request.Context(), ...)`。请求在 fetch 前取消时零
   remote work；DNS/dial/read/parser 中取消时尽快停止后续工作。
 - `context.Canceled`/`DeadlineExceeded` 或 request context 已结束时，handler 不再写业务错误响应、
-  不调用 `recordSourceFailure`，也不产生 SQLite、WebSocket、cache/library/data 或浏览器持久副作用。
+  不调用 `recordSourceFailure`，也不产生 Explore 业务行、WebSocket、cache/library/data 或浏览器持久
+  副作用。认证层既有 session 滑动和 `last_active_at` 不属于本动作，不在本轮重开。
 - 真正的 source request failure 仍按现有 600 秒、caller/source-scoped failure cache 记录；rule
   validation/parser error 和无结果不记录。成功探索仍是只读动作，不新增事件或数据库行。
 - 前端现有 workspace/session request gate 继续拒绝迟到 UI 提交；本轮不要求改路由、loading 文案、

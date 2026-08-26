@@ -1275,8 +1275,9 @@ Actions gates and pulled-image mirror checks passed. OCI index
       arbitrary relative/same-origin/cross-origin URL and request-option injection fail before remote work.
 - [ ] Preserve declared relative/absolute templates, URL options and existing response/UI semantics without treating
       a client override as a new remote-fetch capability.
-- [ ] Propagate the HTTP request context through fetch and parsing. Cancellation stops work and never writes a source
-      failure, database row, event or path/query/header/body-bearing response/log.
+- [ ] Propagate the HTTP request context through fetch and parsing. Cancellation stops work and never writes an
+      Explore business row, source failure, event or path/query/header/body-bearing response/log; shared auth
+      activity/session middleware remains unchanged.
 - [ ] Prove owner priority, exact boundaries, zero-request rejection, cancellation and real chooser pagination before
       publication; keep existing fetcher SSRF/redirect/size/timeout policy unchanged.
 

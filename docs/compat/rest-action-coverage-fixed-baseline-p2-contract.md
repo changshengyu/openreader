@@ -751,7 +751,8 @@ frontend 742/742、build、四视口、真实 HTTP、GHCR 回拉和 Actions run
 
 目标保持 source 404 优先、query/响应字段、chooser/结果状态和 parser 顺序；新增 `page=1..100000`、
 8192-byte source-declared entry admission，并把 request context 贯穿 fetch/parser。取消不写业务错误、
-失败缓存、数据库或事件；真正 source request failure 继续按现有 caller-scoped 600 秒缓存。完整合同与
+Explore 业务行、失败缓存或事件；认证 activity/session 中间件保持。真正 source request failure 继续按
+现有 caller-scoped 600 秒缓存。完整合同与
 红测门见
 [`explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
