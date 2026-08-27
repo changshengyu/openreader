@@ -49,6 +49,38 @@ func TestLocalBookRefreshCancellationBeforeReadHasNoBusinessSideEffects(t *testi
 	}
 }
 
+func TestLocalBookRefreshCancellationAfterStageHasNoBusinessSideEffects(t *testing.T) {
+	fixture := newLocalBookRefreshLifecycleFixture(t, "localrefreshstagecancel", false)
+	before := snapshotLocalBookRefreshLifecycle(t, fixture)
+	blocker := installLocalBookRefreshStageBlocker(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	request := httptest.NewRequest(http.MethodPost, localBookRefreshPath(fixture.book.ID), nil).WithContext(ctx)
+	request.Header.Set("Authorization", fixture.auth)
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		fixture.router.ServeHTTP(response, request)
+		close(done)
+	}()
+
+	blocker.wait(t, "local refresh did not finish its inactive stage")
+	cancel()
+	blocker.unblock()
+	waitLocalBookRefreshHandler(t, done)
+
+	if response.Body.Len() != 0 {
+		t.Errorf("cancelled staged local refresh wrote a business response: %d %s", response.Code, response.Body.String())
+	}
+	after := snapshotLocalBookRefreshLifecycle(t, fixture)
+	if !bytes.Equal(after, before) {
+		t.Errorf("cancelled staged local refresh changed durable state\nbefore=%s\nafter=%s", before, after)
+	}
+	if queuedPayloadContains(fixture.events, `"type":"bookshelf_update"`) {
+		t.Error("cancelled staged local refresh broadcast a shelf update")
+	}
+}
+
 func TestLocalBookRefreshRejectsDeletedBookAfterStage(t *testing.T) {
 	fixture := newLocalBookRefreshLifecycleFixture(t, "localrefreshdelete", true)
 	oldTOC := readLocalRefreshLifecycleFile(t, fixture.tocPath)
@@ -148,6 +180,43 @@ func TestLocalBookRefreshRejectsConcurrentBookEditAfterStage(t *testing.T) {
 	assertNoLocalRefreshInactiveStage(t, fixture.bookRoot)
 	if queuedPayloadContains(fixture.events, `"type":"bookshelf_update"`) {
 		t.Error("stale local refresh broadcast a shelf update after edit")
+	}
+}
+
+func TestSameLocalBookRefreshSnapshotRejectsCommitIdentityChanges(t *testing.T) {
+	base := models.Book{
+		ID: 7, UserID: 11, SourceID: 0, URL: "local://book",
+		LibraryPath: "data/user/book", OriginalFile: "data/user/book/source.txt",
+		TOCFile: "data/user/book/chapters.json", SourceFile: "data/user/book/bookSource.json",
+		TOCRule: "^chapter", UpdatedAt: time.Unix(123, 456),
+	}
+	if !sameLocalBookRefreshSnapshot(base, base) {
+		t.Fatal("unchanged local refresh snapshot was rejected")
+	}
+
+	tests := []struct {
+		name   string
+		change func(*models.Book)
+	}{
+		{name: "id", change: func(book *models.Book) { book.ID++ }},
+		{name: "user", change: func(book *models.Book) { book.UserID++ }},
+		{name: "source", change: func(book *models.Book) { book.SourceID++ }},
+		{name: "url", change: func(book *models.Book) { book.URL += "/changed" }},
+		{name: "library path", change: func(book *models.Book) { book.LibraryPath += "/changed" }},
+		{name: "original file", change: func(book *models.Book) { book.OriginalFile += ".changed" }},
+		{name: "toc file", change: func(book *models.Book) { book.TOCFile += ".changed" }},
+		{name: "source file", change: func(book *models.Book) { book.SourceFile += ".changed" }},
+		{name: "toc rule", change: func(book *models.Book) { book.TOCRule += ".changed" }},
+		{name: "updated at", change: func(book *models.Book) { book.UpdatedAt = book.UpdatedAt.Add(time.Nanosecond) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			current := base
+			test.change(&current)
+			if sameLocalBookRefreshSnapshot(current, base) {
+				t.Errorf("changed %s was accepted as the original snapshot", test.name)
+			}
+		})
 	}
 }
 

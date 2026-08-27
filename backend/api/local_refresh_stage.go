@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,13 @@ type localRefreshPromotion struct {
 var localRefreshStageTestHook func(string) error
 
 func (s *Server) stageLocalRefresh(book models.Book, archive *localBookArchive, parsed []engine.TXTChapter, bookURL string) (*localRefreshStage, []models.Chapter, error) {
+	return s.stageLocalRefreshContext(context.Background(), book, archive, parsed, bookURL)
+}
+
+func (s *Server) stageLocalRefreshContext(ctx context.Context, book models.Book, archive *localBookArchive, parsed []engine.TXTChapter, bookURL string) (*localRefreshStage, []models.Chapter, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	usesArchive := archive != nil && strings.TrimSpace(archive.root) != ""
 	if usesArchive && !archive.current() {
 		return nil, nil, fmt.Errorf("unsafe local refresh archive root")
@@ -55,6 +63,9 @@ func (s *Server) stageLocalRefresh(book models.Book, archive *localBookArchive, 
 		}
 	}
 	if err := os.MkdirAll(stageParent, 0o755); err != nil {
+		return nil, nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
 	stageDir, err := os.MkdirTemp(stageParent, ".refresh-")
@@ -96,6 +107,10 @@ func (s *Server) stageLocalRefresh(book models.Book, archive *localBookArchive, 
 
 	chapters := make([]models.Chapter, 0, len(parsed))
 	for index, parsedChapter := range parsed {
+		if err := ctx.Err(); err != nil {
+			stage.cleanup()
+			return nil, nil, err
+		}
 		if stage.archive != nil && !stage.archive.current() {
 			stage.cleanup()
 			return nil, nil, fmt.Errorf("unsafe local refresh archive root")
@@ -105,7 +120,7 @@ func (s *Server) stageLocalRefresh(book models.Book, archive *localBookArchive, 
 			title = fmt.Sprintf("第 %d 章", index+1)
 		}
 		chapterURL := fmt.Sprintf("%s/chapter_%d", bookURL, index)
-		cachePath, err := engine.WriteChapterCache(stage.stagedContent, bookURL, chapterURL, parsedChapter.Content)
+		cachePath, err := engine.WriteChapterCacheContext(ctx, stage.stagedContent, bookURL, chapterURL, parsedChapter.Content)
 		if err != nil {
 			stage.cleanup()
 			return nil, nil, err
@@ -131,10 +146,21 @@ func (s *Server) stageLocalRefresh(book models.Book, archive *localBookArchive, 
 			return nil, nil, err
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		stage.cleanup()
+		return nil, nil, err
+	}
 	return stage, chapters, nil
 }
 
 func (stage *localRefreshStage) stageArchiveMetadata(archive engine.ArchivedBook, chapters []engine.ArchivedChapter, source engine.ArchivedBookSource) error {
+	return stage.stageArchiveMetadataContext(context.Background(), archive, chapters, source)
+}
+
+func (stage *localRefreshStage) stageArchiveMetadataContext(ctx context.Context, archive engine.ArchivedBook, chapters []engine.ArchivedChapter, source engine.ArchivedBookSource) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !stage.usesArchive {
 		return nil
 	}
@@ -145,19 +171,26 @@ func (stage *localRefreshStage) stageArchiveMetadata(archive engine.ArchivedBook
 		return fmt.Errorf("unsafe local refresh content path")
 	}
 	if strings.TrimSpace(archive.TOCFile) != "" {
-		if err := stage.stageJSONFile(archive.Directory, archive.TOCFile, chapters); err != nil {
+		if err := stage.stageJSONFileContext(ctx, archive.Directory, archive.TOCFile, chapters); err != nil {
 			return err
 		}
 	}
 	if strings.TrimSpace(archive.SourceFile) != "" {
-		if err := stage.stageJSONFile(archive.Directory, archive.SourceFile, []engine.ArchivedBookSource{source}); err != nil {
+		if err := stage.stageJSONFileContext(ctx, archive.Directory, archive.SourceFile, []engine.ArchivedBookSource{source}); err != nil {
 			return err
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 func (stage *localRefreshStage) stageJSONFile(archiveDirectory, storedPath string, value any) error {
+	return stage.stageJSONFileContext(context.Background(), archiveDirectory, storedPath, value)
+}
+
+func (stage *localRefreshStage) stageJSONFileContext(ctx context.Context, archiveDirectory, storedPath string, value any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if stage.storage == nil || filepath.IsAbs(storedPath) || filepath.IsAbs(archiveDirectory) {
 		return fmt.Errorf("unsafe local refresh metadata path")
 	}
@@ -179,6 +212,9 @@ func (stage *localRefreshStage) stageJSONFile(archiveDirectory, storedPath strin
 	}
 	data = append(data, '\n')
 	if err := os.WriteFile(stagedPath, data, 0o644); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	stage.promotions = append(stage.promotions, localRefreshPromotion{stagedPath: stagedPath, finalPath: finalPath, relativePath: relativePath})

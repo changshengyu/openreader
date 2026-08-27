@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -27,6 +28,10 @@ func readBoundedLocalBookSource(path string, maxBytes int64) ([]byte, error) {
 }
 
 func readBoundedOpenedLocalBookSource(file *os.File, info os.FileInfo, maxBytes int64) ([]byte, error) {
+	return readBoundedOpenedLocalBookSourceContext(context.Background(), file, info, maxBytes)
+}
+
+func readBoundedOpenedLocalBookSourceContext(ctx context.Context, file *os.File, info os.FileInfo, maxBytes int64) ([]byte, error) {
 	if maxBytes <= 0 {
 		return nil, fmt.Errorf("%w: invalid local source input limit", engine.ErrLocalBookParseLimit)
 	}
@@ -43,12 +48,27 @@ func readBoundedOpenedLocalBookSource(file *os.File, info os.FileInfo, maxBytes 
 	if maxBytes < math.MaxInt64 {
 		readLimit++
 	}
-	data, err := io.ReadAll(io.LimitReader(file, readLimit))
+	data, err := io.ReadAll(io.LimitReader(localBookSourceContextReader{ctx: ctx, reader: file}, readLimit))
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if int64(len(data)) > maxBytes {
 		return nil, fmt.Errorf("%w: local source input exceeds the limit", engine.ErrLocalBookParseLimit)
 	}
 	return data, nil
+}
+
+type localBookSourceContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r localBookSourceContextReader) Read(data []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(data)
 }
