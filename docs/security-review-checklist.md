@@ -1267,20 +1267,24 @@ Actions gates and pulled-image mirror checks passed. OCI index
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`; status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 Explore request lifecycle (2026-08-26 inventory)
+## P2 Explore request lifecycle (2026-08-26 implemented)
 
-- [ ] Resolve the caller-owned active source before query validation; foreign, detached and disabled sources retain
+- [x] Resolve the caller-owned active source before query validation; foreign, detached and disabled sources retain
       one 404 and cannot be probed through page/entry error differences.
-- [ ] Accept only page `1..100000` and an at-most-8192-byte entry declared by that source's current explore rule;
+- [x] Accept only page `1..100000` and an at-most-8192-byte entry declared by that source's current explore rule;
       arbitrary relative/same-origin/cross-origin URL and request-option injection fail before remote work.
-- [ ] Preserve declared relative/absolute templates, URL options and existing response/UI semantics without treating
+- [x] Preserve declared relative/absolute templates, URL options and existing response/UI semantics without treating
       a client override as a new remote-fetch capability.
-- [ ] Propagate the HTTP request context through fetch and parsing. Cancellation stops work and never writes an
+- [x] Propagate the HTTP request context through fetch and parsing. Cancellation stops work and never writes an
       Explore business row, source failure, event or path/query/header/body-bearing response/log; shared auth
       activity/session middleware remains unchanged.
-- [ ] Prove owner priority, exact boundaries, zero-request rejection, cancellation and real chooser pagination before
+- [x] Prove owner priority, exact boundaries, zero-request rejection, cancellation and real chooser pagination before
       publication; keep existing fetcher SSRF/redirect/size/timeout policy unchanged.
 
 Target contract:
 [`compat/explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed in inventory.
+Contract `2035965`, cancellation correction `9262864`, red tests `f9527c4` and implementation `938d956` landed in
+order. Focused/race/full/vet, frontend 742/742, build, Compose, real HTTP, four-viewport Chromium and trusted Actions
+run `32962930310` fresh/historical/portable/platform gates passed. `938d956`/`latest` OCI index is
+`sha256:40cd73c3106736d88d361ae9fc81c3daf2ef1a7534b1b4db81bea46e9c6bc777`; a pulled container reported the full
+revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.

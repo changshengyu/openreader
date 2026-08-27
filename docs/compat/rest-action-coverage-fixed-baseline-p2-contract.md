@@ -737,14 +737,14 @@ frontend 742/742、build、四视口、真实 HTTP、GHCR 回拉和 Actions run
 `32919553203` 新旧卷门均通过；`a36b888`/`latest` OCI index 为
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`。
 
-## 38. Explore 入口、分页与请求取消（2026-08-26 inventory）
+## 38. Explore 入口、分页与请求取消（2026-08-26 implemented）
 
 默认书源快照发布后重新从当前 `server.go`、query 驱动远程工作和固定上游取证。下一项 must-fix
 收敛到 `GET /api/explore/:sourceId`：固定上游 chooser 只发送该 source `exploreUrl` 中选中的
 `ruleFindUrl`，第一页为 1，后续只复用入口并递增 page；OpenReader 的 JWT/owned source、现代 JSON
 和通用抓取安全是已签收适配。
 
-当前 handler 允许任意 `url`/`exploreUrl` override、page 只校验 `>=1`，并调用使用
+旧 handler 允许任意 `url`/`exploreUrl` override、page 只校验 `>=1`，并调用使用
 `context.Background()` 的 engine wrapper。结果是客户端可把 source 首次请求 header/proxy policy 带到
 未声明公网入口，超长 query/page 没有动作边界，浏览器离开或 Axios 超时后远程 fetch/parse 仍继续，
 迟到 request failure 还可能进入 caller 的 `source_failures`。
@@ -755,4 +755,10 @@ Explore 业务行、失败缓存或事件；认证 activity/session 中间件保
 现有 caller-scoped 600 秒缓存。完整合同与
 红测门见
 [`explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](explore-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
+合同 `2035965`、取消边界勘误 `9262864` 与旧实现红测 `f9527c4` 已按测试先行顺序落地；`938d956`
+实现 source-first lookup、`1..100000`、8192-byte declared-entry allowlist 和 request-context cancellation。
+focused/race/full/vet、frontend 742/742、build、Compose、真实 HTTP 与四视口 Index workspace 均通过。
+受信 Actions run `32962930310` 又通过 native、fresh/historical/portable 和平台门并发布
+`938d956`/`latest`；OCI index 为
+`sha256:40cd73c3106736d88d361ae9fc81c3daf2ef1a7534b1b4db81bea46e9c6bc777`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

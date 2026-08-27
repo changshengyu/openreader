@@ -2,7 +2,7 @@
 
 审查日期：2026-08-26
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -40,10 +40,10 @@
 | 合同点 | 固定上游 | 当前 OpenReader | 裁决 |
 |---|---|---|---|
 | 身份与 source | 当前 namespace 书源 | JWT user + active owned/COW source，foreign/detached 返回 404 | **aligned security adaptation / 保持** |
-| 入口来源 | chooser 只发送该书源 `exploreUrl` 中选中的 `ruleFindUrl` | API 接受任意非空 `url`/`exploreUrl` override | **must-fix**：任意公网 URL 可成为携带 source headers/proxy policy 的首次请求 |
-| 页码 | 初始 1，每次只加一 | 只验证可解析且 `>=1`，没有上限 | **must-fix**：API 已承诺 bounded pagination，应与 RSS 可见分页使用同一 `1..100000` admission |
-| query 工作量 | chooser 发送已持久化短入口 | override 可占满 512 KiB header 包络 | **must-fix**：入口实际 UTF-8 bytes 最大 8192，与远程 probe URL 边界一致 |
-| 请求取消 | Vert.x coroutine/连接生命周期 | handler 调用 `ExploreBooksPageWithURL`，内部强制 `context.Background()` | **must-fix**：浏览器离开/超时后仍继续 fetch/parse，迟到请求失败还可能写 `source_failures` |
+| 入口来源 | chooser 只发送该书源 `exploreUrl` 中选中的 `ruleFindUrl` | API 仅接受当前 source 规则声明的 `url`/`exploreUrl` entry | **aligned / fixed**：客户端不能把 source headers/proxy policy 带到新入口 |
+| 页码 | 初始 1，每次只加一 | 只接受十进制 `1..100000` | **aligned security adaptation**：保留上游分页，同时限制异常工作放大 |
+| query 工作量 | chooser 发送已持久化短入口 | 声明入口实际 UTF-8 bytes 最大 8192 | **aligned security adaptation**：与远程 probe URL 边界一致 |
+| 请求取消 | Vert.x coroutine/连接生命周期 | handler 将 HTTP request context 贯穿 engine fetch/parser | **aligned technical-stack adaptation**：取消不再形成迟到失败缓存 |
 | 返回与 UI | 当前页结果，前端合并并去重 | `{items,page,hasMore,nextUrl}` + request gate | **aligned / 保持**；不改字段、顺序、chooser/结果状态或“没有更多”反馈 |
 
 ## 3. 稳定 API 合同
@@ -100,9 +100,9 @@
   override 从可执行远程请求收紧为 400，是明确的安全修复。
 - 回滚旧版本可继续读取相同 SQLite 和 source JSON；本轮没有不可逆数据写入。
 
-## 7. 测试先行门
+## 7. 测试先行门与证据
 
-实现前必须在旧实现上锁定失败：
+实现前已在旧实现上锁定以下失败，并由实现回归关闭：
 
 1. missing/foreign/disabled source 保持 404 且先于 invalid page/URL；匿名保持 401。
 2. page 缺省、1、100000 成功并精确替换模板；0、负数、非数字、100001 返回固定 400 且零 remote。
@@ -112,13 +112,41 @@
    request method/body/header 执行，成功 JSON shape/顺序不变。
 5. 阻塞远程请求开始后取消 caller：上游请求 context 被取消，handler 结束，不写 failure row；真正
    timeout/request failure 仍记录当前用户且不影响其它用户。
-6. focused/race、Go 全量/vet、frontend 全量/build、真实 HTTP、Explore chooser/result 四视口和
+6. focused/race、Go 全量/vet、frontend 全量/build、真实 HTTP、Explore chooser/result 多视口和
    trusted Actions fresh/historical/portable gates 通过后，才可发布 amd64/arm64 OCI index。
 
-## 8. Inventory 结论
+测试提交 `f9527c4` 在旧实现上证明未声明 same-origin/cross-origin/URL-options entry 会实际请求、
+`page=100001` 不被 admission 拒绝、caller cancellation 不会到达上游且会写 `source_failures`。实现
+`938d956` 使 focused Explore、source ownership/failure、race、Go 全量/vet 全部通过；前端 742/742、
+Vite build、Compose config 和 Index workspace 1440x900、1024x1366、390x844、360x800 真实 Chromium
+合同通过。真实 Go HTTP/本地 source fixture 又证明两个声明入口分别返回 200，未声明入口与超界 page
+均为 400 且总 remote request 仍为 2，missing source 在非法 query 前保持 404。
 
-判定：**must-fix**。现有公开 API 文档已承诺 bounded explore fetch 与 caller cancellation，但 handler
-仍允许任意 override、无上限 page，并丢弃 request context。修复范围只收紧远程能力和生命周期，
-不改变固定上游可见 chooser、分页、结果或 OpenReader 已发布的多用户/API 适配。
+## 8. 实施结论
 
-本提取阶段只新增/更新合同与审计矩阵，没有修改应用或测试代码。
+判定：**must-fix 已关闭**。`backend/api/explore.go` 现在先解析 caller-owned active source，再校验
+`page=1..100000` 和不超过 8192 bytes 的 source-declared entry，并调用
+`ExploreBooksPageWithURLContext(c.Request.Context(), ...)`。caller context 结束后 handler 不记录
+`source_failures`，也不写迟到业务响应。修复只收紧远程能力和生命周期，没有改变固定上游可见 chooser、
+分页、结果或 OpenReader 已发布的多用户/API 适配。
+
+合同 `2035965`、取消边界勘误 `9262864`、旧实现红测 `f9527c4` 与实现 `938d956` 已按顺序推送。
+
+## 9. Docker 发布与回滚证据
+
+受信 GitHub Actions run
+[`32962930310`](https://github.com/changshengyu/openreader/actions/runs/32962930310) 已通过 backend、frontend、
+Compose、native candidate、fresh volumes/portable backup、historical volume 和 published-platform gates，
+并发布：
+
+- `ghcr.io/changshengyu/openreader:938d956`
+- `ghcr.io/changshengyu/openreader:latest`
+- OCI index：`sha256:40cd73c3106736d88d361ae9fc81c3daf2ef1a7534b1b4db81bea46e9c6bc777`
+- linux/amd64：`sha256:eb260e471b1da51d190e0eac2752b7ef99ac79c76af90ba91d48ae7da056c3ad`
+- linux/arm64：`sha256:22fd2fb203358a87a6d1ba29e0e59009c76a8b9328a480fbc8dace750cc625be`
+
+索引中的两个 `unknown/unknown` manifest 是分别绑定上述平台 manifest 的 BuildKit provenance
+attestation，不是可运行镜像。不可变标签已在本地拉取，digest 与 OCI index 一致；容器
+`GET /api/health` 返回 `status=ok` 和完整 revision
+`938d9560bb3c0e006d3c3ef2c173a4dd4f56555a`。本批不含 schema、数据目录或备份格式变更，旧镜像可直接
+回滚；用户生产环境当前运行提交未知，真机 Explore chooser/分页签收仍待用户环境验证。
