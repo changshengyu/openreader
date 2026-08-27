@@ -812,3 +812,18 @@ Reader 的 1440x900、390x844、360x800 Chromium 均通过。可信 Actions run 
 fresh/historical/portable 与 published-platform 门并发布 `8df38f1`/`latest`；OCI index 为
 `sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 41. Book patch 与分组提交列所有权（2026-08-27 inventory）
+
+本地 refresh 发布后继续从当前持久 `Save` 差集与已签收合同反查，下一项 must-fix 收敛为
+`PUT /api/books/:id` 和 `PUT /api/books/:id/category`。两路虽然已有 bounded DTO、owner-first lookup、
+字段/Category 校验和事务，但仍在 transaction 前读取整行 Book，随后 `tx.Save(&book)`；显式 patch 因此
+仍可覆盖读取后完成的 metadata/追更/primary category，目标被并发删除时还可 fallback insert，分组动作
+可能同时留下 relation。已有所谓 concurrent 测试只预置状态后顺序保存，没有覆盖 read-modify-save race。
+
+固定上游局部 shelf/group 动作通过 `editShelfBook` 重取现有条目并只修改动作拥有字段，目标已不存在时
+不会重新添加。新合同要求 request-context transaction 在任何 mutation 前重读 owner Book，metadata
+只更新请求显式列，category 只更新 relation 与 legacy `category_id`，成功后重载当前 Book 再广播；并发
+无关列按列合并，并发删除稳定 owner-safe 404 且零复活/孤儿/event。完整合同与红测门见
+[`book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。

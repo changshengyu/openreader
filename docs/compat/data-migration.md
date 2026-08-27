@@ -1239,3 +1239,19 @@ unchanged; successful refresh still uses the existing generation and backup form
 `33068512106` passed fresh/historical/portable gates and published OCI index
 `sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
+## P2 Book patch/category write lifecycle compatibility (2026-08-27 inventory)
+
+- The target adds no schema, migration, startup scan, persistent path, environment variable, backup member or
+  browser state.
+- Existing Book/Category/BookCategory IDs, fields, relations, timestamps and logical/portable/Legado/WebDAV rows
+  remain authoritative; the change affects only future HTTP transaction column ownership.
+- Metadata patch owns only submitted metadata/category/can-update columns. The dedicated category action owns only
+  the caller Book's relations and legacy primary category. Concurrent writes to other columns must survive.
+- A target deleted after the first owner lookup remains deleted; no Book, relation, chapter, progress or bookmark may
+  be recreated. Cancellation before commit creates no durable row, timestamp or event.
+- Rollback sees the same SQLite and backup formats; it only reintroduces stale full-row `Save` risks.
+
+Target contract:
+[`book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data or application code changed in inventory.
