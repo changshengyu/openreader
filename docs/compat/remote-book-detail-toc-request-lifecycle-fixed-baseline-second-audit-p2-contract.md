@@ -2,7 +2,7 @@
 
 审查日期：2026-08-27
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -103,9 +103,28 @@ SQLite row race 或服务端临时 session；这些必须做技术栈等价翻�
 6. focused/race、Go full/vet、frontend full/build、真实 HTTP/Chromium Reader/remote-reader 回归和 trusted
    Actions fresh/historical/portable gates 通过后，才可发布 amd64/arm64 OCI index。
 
-## 6. Inventory 结论
+## 6. 实现与发布结论
 
-判定：**must-fix**。当前 route scan 中只有这两个远程 BookInfo/TOC handler 仍调用 background wrapper。
-临时会话合同已经要求 cancellation 不建 session/不记失败；显式单书刷新又缺少手动书架刷新已经具备的
-post-fetch liveness/snapshot check。下一阶段必须先提交旧实现红测，再改 handler；本 inventory 不修改
-应用或测试代码。
+判定：**aligned**。合同 `0148f63`、旧实现红测 `928ce39` 与实现 `48f52c6` 已按顺序提交。实现后：
+
+- 两个 handler 都以 `c.Request.Context()` 调用 BookInfo/TOC engine；取消不再创建临时 session、记录
+  source failure 或继续 refresh 写入；
+- refresh 在事务内重读 owner Book，验证 `source_id/url/variable/updated_at`，并以显式 owned-field update
+  取代全行 `Save`；并发删除不会复活 Book/Chapter，并发换源、变量或 metadata 编辑不会被旧结果覆盖；
+- caller 有效时陈旧结果稳定返回 409；正常目录替换、引用恢复、cache/image prune、增长型
+  lastCheckTime、真实 source failure 和一次 durable shelf broadcast 保持。
+
+验证证据：新增 focused/race 测试、相邻 remote-reader/refresh/source/lastCheckTime/variable 测试、Go full、
+`go vet`、frontend 742/742、Vite build、Compose、真实 parser workflow、remote-reader 1440x900、390x844、
+360x800 Chromium，以及真实 HTTP 取消/并发删除探针全部通过。真实探针得到
+`staleRefresh=409`、删除后 404、`upstreamCanceled=true`、`invalidSources=0`。
+
+可信 GitHub Actions run `33045811548` 又通过 backend/frontend/Compose、native image、
+fresh/historical/portable 和 published-platform 门，发布 `48f52c6`/`latest`。两标签均指向 OCI index
+`sha256:6447fd11480b1652c0f513d05b50dc66bb3aea61762030cd18435677324098f4`；amd64/arm64 manifests 分别为
+`sha256:c3fa70c812e333e3fde84f52c8d0ba9f3c0b7eb89ec97c6c53b9ab7167dc63f4`、
+`sha256:e63842d1f7baffa6249a5862cd18cb4a2caecb603f531996a3be2b2d468bb7d4`。不可变标签回拉后的 image label
+与 `/api/health` 均报告完整 revision `48f52c671d847c03c06d1ee0387160ed7b8c4316`。GHCR 中附带的
+`unknown/unknown` manifest 是两个平台镜像的 provenance attestation，不是可运行平台镜像。
+
+当前仅等待真实设备签收；用户生产环境运行提交未知。本批不改变数据格式，旧镜像仍可回滚。

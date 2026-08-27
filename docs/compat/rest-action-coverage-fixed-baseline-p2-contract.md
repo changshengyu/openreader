@@ -763,7 +763,7 @@ focused/race/full/vet、frontend 742/742、build、Compose、真实 HTTP 与四�
 `sha256:40cd73c3106736d88d361ae9fc81c3daf2ef1a7534b1b4db81bea46e9c6bc777`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 39. 远程 BookInfo/TOC 取消与陈旧提交（2026-08-27 inventory）
+## 39. 远程 BookInfo/TOC 取消与陈旧提交（2026-08-27 implemented）
 
 Explore 发布后重新枚举所有从 handler 进入 source engine 的调用。除测试/内部 compatibility wrapper 外，
 只剩 `POST /api/reader/remote-sessions` 与 `POST /api/books/:id/refresh` 仍调用固定
@@ -775,4 +775,14 @@ variable 或 metadata 更新可能被迟到结果复活/覆盖。
 验证 `id/user/source/url/variable/updated_at`，陈旧结果固定 409 且零目录/cache/event 副作用；正常完整
 BookInfo + TOC、章节引用恢复、lastCheckTime、错误和 UI 保持。完整合同与红测门见
 [`remote-book-detail-toc-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-book-detail-toc-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
+合同 `0148f63`、旧实现红测 `928ce39` 与实现 `48f52c6` 已按测试先行顺序落地。两路 fetch 现传播
+request context；refresh 在事务内重读 owner Book 并验证 `source_id/url/variable/updated_at`，以 guarded
+owned-field update 取代可 fallback insert 的全行 `Save`。caller 取消零 session/failure/catalogue/event，
+并发删除不能复活 Book/Chapter，并发换源、变量或 metadata 编辑不能被迟到结果覆盖；有效 caller 的
+陈旧结果稳定为 409。
+
+focused/race/full/vet、frontend 742/742、build、Compose、真实 parser/HTTP，以及 remote-reader
+1440x900、390x844、360x800 Chromium 均通过。可信 Actions run `33045811548` 又通过 native、
+fresh/historical/portable 与 published-platform 门并发布 `48f52c6`/`latest`；OCI index 为
+`sha256:6447fd11480b1652c0f513d05b50dc66bb3aea61762030cd18435677324098f4`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
