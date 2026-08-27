@@ -1214,3 +1214,23 @@ source IDs, database rollback, backup omission, fresh/historical/portable volume
 passed. Actions run `32919553203` published OCI index
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
+## P2 local-book refresh request lifecycle compatibility (2026-08-27 inventory)
+
+- The target adds no schema, migration, startup scan, persistent path, environment variable, archive generation,
+  backup member, route, payload, browser key or UI state.
+- Existing regular current/historical `LibraryPath`, `OriginalFile`, `TOCFile`, `SourceFile`, local archive bytes and
+  TXT/EPUB/UMD/CBZ/PDF/Markdown parser outputs remain authoritative. Rooted archive and opened-file rules are not
+  reopened.
+- A cancelled or stale refresh must discard only its uncommitted result and request-owned inactive stage. It must not
+  rewrite the current Book/Chapter/Progress/Bookmark rows, promote metadata/cache, prune active data or resurrect a
+  concurrently deleted Book.
+- A successful refresh continues to replace the catalogue and rebind references, but updates only local-catalogue
+  fields. Existing title/author/cover/intro/category/can-update and mounted path fields are not owned by a late
+  refresh result.
+- Rollback to an older image sees the same SQLite and filesystem formats; it only reintroduces stale `Save` and
+  cancellation risks.
+
+Target contract:
+[`local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data or application code changed in inventory.

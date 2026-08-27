@@ -786,3 +786,19 @@ focused/race/full/vet、frontend 742/742、build、Compose、真实 parser/HTTP�
 fresh/historical/portable 与 published-platform 门并发布 `48f52c6`/`latest`；OCI index 为
 `sha256:6447fd11480b1652c0f513d05b50dc66bb3aea61762030cd18435677324098f4`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 40. 本地书刷新取消与陈旧提交（2026-08-27 inventory）
+
+远程 BookInfo/TOC lifecycle 发布后继续从当前 `server.go` 和持久 `Save` 调用差集取证。下一项 must-fix
+收敛为 `POST /api/books/:id/refresh-local`：它虽已具备 owner/body admission、rooted opened-file 和
+stage -> transaction -> promote，但 opened source read、最多 1 GiB legacy parse、逐章 staging 和 GORM
+transaction 均不传播 request context；transaction 又先替换 Chapter，再用读取/解析前的整行 Book
+`Save`。并发删除可被 fallback insert 复活，并发标题/作者/封面/简介/分类/追更编辑可被覆盖。
+
+固定上游在当前请求执行 `updateFromLocal(true)` 后，只用 `editShelfBook` 更新仍存在的 shelf item，不会
+重新添加已删除目标。目标因此是在 transaction 前重读并验证
+`id/user/source/url/library/original/toc/source-file/tocRule/updatedAt`，取消或陈旧结果均不得替换目录、提升
+generation、剪枝或广播；有效 caller 的陈旧结果固定 409。正常解析格式、TOC rule、章节引用、rooted
+archive、promotion、响应与 UI 保持。完整合同与红测门见
+[`local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
