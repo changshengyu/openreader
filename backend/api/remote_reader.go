@@ -68,10 +68,17 @@ func (s *Server) createRemoteReaderSession(c *gin.Context) {
 		return
 	}
 
-	remoteInfo, remoteChapters, variable, err := engine.FetchBookInfoAndTOCWithVariables(req.BookURL, source, variable, req.Title)
+	ctx := c.Request.Context()
+	remoteInfo, remoteChapters, variable, err := engine.FetchBookInfoAndTOCWithVariablesContext(ctx, req.BookURL, source, variable, req.Title, nil)
 	if err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
 		s.recordSourceFailure(userID, source, err)
 		writeSourceError(c, http.StatusBadGateway, "failed to fetch chapters", err, "book_info")
+		return
+	}
+	if ctx.Err() != nil {
 		return
 	}
 	if len(remoteChapters) == 0 {

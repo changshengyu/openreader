@@ -1438,6 +1438,7 @@ func setAttachmentHeader(c *gin.Context, filename string) {
 }
 
 func (s *Server) refreshBook(c *gin.Context) {
+	ctx := c.Request.Context()
 	userID, _ := middleware.UserID(c)
 	bookID, ok := parseUintParam(c, "id")
 	if !ok {
@@ -1457,10 +1458,16 @@ func (s *Server) refreshBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source not found"})
 		return
 	}
-	remoteInfo, remoteChapters, variable, err := engine.FetchBookInfoAndTOCWithVariables(book.URL, source, book.Variable, book.Title)
+	remoteInfo, remoteChapters, variable, err := engine.FetchBookInfoAndTOCWithVariablesContext(ctx, book.URL, source, book.Variable, book.Title, nil)
 	if err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
 		s.recordSourceFailure(userID, source, err)
 		writeSourceError(c, http.StatusBadRequest, "failed to fetch chapters", err, "book_info")
+		return
+	}
+	if ctx.Err() != nil {
 		return
 	}
 	if len(remoteChapters) == 0 {
@@ -1469,12 +1476,22 @@ func (s *Server) refreshBook(c *gin.Context) {
 	}
 
 	var supersededCachePaths []string
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		previousChapterCount := book.ChapterCount
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current models.Book
+		if err := tx.Where("id = ? AND user_id = ?", book.ID, userID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errRemoteBookRefreshStale
+			}
+			return err
+		}
+		if !sameRemoteBookRefreshSnapshot(current, book) {
+			return errRemoteBookRefreshStale
+		}
+		previousChapterCount := current.ChapterCount
 		nextChapters := make([]models.Chapter, 0, len(remoteChapters))
 		for _, remoteChapter := range remoteChapters {
 			nextChapters = append(nextChapters, models.Chapter{
-				BookID:   book.ID,
+				BookID:   current.ID,
 				Index:    remoteChapter.Index,
 				Title:    remoteChapter.Title,
 				URL:      remoteChapter.URL,
@@ -1484,25 +1501,44 @@ func (s *Server) refreshBook(c *gin.Context) {
 			})
 		}
 		var err error
-		supersededCachePaths, _, err = s.replaceBookChapterRows(tx, userID, book.ID, nextChapters)
+		supersededCachePaths, _, err = s.replaceBookChapterRows(tx, userID, current.ID, nextChapters)
 		if err != nil {
 			return err
 		}
-		book.Title = firstNonBlankCanRename(remoteInfo.Title, book.Title, remoteInfo.CanRename)
-		book.Author = firstNonBlankCanRename(remoteInfo.Author, book.Author, remoteInfo.CanRename)
-		book.CoverURL = firstNonBlank(remoteInfo.CoverURL, book.CoverURL)
-		book.Intro = firstNonBlank(remoteInfo.Intro, book.Intro)
-		book.Kind = firstNonBlank(remoteInfo.Kind, book.Kind)
-		book.WordCount = firstNonBlank(remoteInfo.WordCount, book.WordCount)
-		book.LastChapter = remoteChapters[len(remoteChapters)-1].Title
-		book.ChapterCount = len(remoteChapters)
-		if len(remoteChapters) > previousChapterCount {
-			book.LastCheckTime = time.Now().UnixMilli()
+		updates := map[string]any{
+			"title":         firstNonBlankCanRename(remoteInfo.Title, current.Title, remoteInfo.CanRename),
+			"author":        firstNonBlankCanRename(remoteInfo.Author, current.Author, remoteInfo.CanRename),
+			"cover_url":     firstNonBlank(remoteInfo.CoverURL, current.CoverURL),
+			"intro":         firstNonBlank(remoteInfo.Intro, current.Intro),
+			"kind":          firstNonBlank(remoteInfo.Kind, current.Kind),
+			"word_count":    firstNonBlank(remoteInfo.WordCount, current.WordCount),
+			"last_chapter":  remoteChapters[len(remoteChapters)-1].Title,
+			"chapter_count": len(remoteChapters),
+			"variable":      variable,
 		}
-		book.Variable = variable
-		return tx.Save(&book).Error
+		if len(remoteChapters) > previousChapterCount {
+			updates["last_check_time"] = time.Now().UnixMilli()
+		}
+		write := tx.Model(&models.Book{}).
+			Where("id = ? AND user_id = ? AND source_id = ? AND url = ? AND variable = ? AND updated_at = ?",
+				current.ID, current.UserID, current.SourceID, current.URL, current.Variable, current.UpdatedAt).
+			Updates(updates)
+		if write.Error != nil {
+			return write.Error
+		}
+		if write.RowsAffected != 1 {
+			return errRemoteBookRefreshStale
+		}
+		return tx.Where("id = ? AND user_id = ?", current.ID, current.UserID).First(&book).Error
 	})
 	if err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, errRemoteBookRefreshStale) {
+			c.JSON(http.StatusConflict, gin.H{"error": "book changed during refresh"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to refresh book"})
 		return
 	}
@@ -1510,6 +1546,17 @@ func (s *Server) refreshBook(c *gin.Context) {
 	_, _ = s.chapterImages.RemoveBook(book)
 
 	c.JSON(http.StatusOK, gin.H{"book": s.broadcastBookShelfUpdate(userID, book), "added": len(remoteChapters), "chapterCount": len(remoteChapters)})
+}
+
+var errRemoteBookRefreshStale = errors.New("book changed during refresh")
+
+func sameRemoteBookRefreshSnapshot(current, snapshot models.Book) bool {
+	return current.ID == snapshot.ID &&
+		current.UserID == snapshot.UserID &&
+		current.SourceID == snapshot.SourceID &&
+		current.URL == snapshot.URL &&
+		current.Variable == snapshot.Variable &&
+		current.UpdatedAt.Equal(snapshot.UpdatedAt)
 }
 
 func (s *Server) refreshLocalBook(c *gin.Context) {
