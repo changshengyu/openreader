@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile)
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const backendDir = join(rootDir, 'backend')
 const publicDir = join(rootDir, 'frontend', 'dist')
+const localRefreshOnly = process.env.LOCAL_REFRESH_ONLY === '1'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -203,6 +204,63 @@ async function waitFor(check, description) {
   throw new Error(`timed out: ${description}`)
 }
 
+async function runFocusedLocalRefresh(page, root, viewport, seeded, failures) {
+  const suffix = `${viewport.width}x${viewport.height}`
+  const dialog = page.locator('.book-info-dialog')
+  const localRow = shelfRow(page, seeded.local.title)
+  await localRow.locator('.list-cover').click()
+  await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+
+  const dialogGeometry = await dialog.evaluate(node => {
+    const rect = node.getBoundingClientRect()
+    return { width: rect.width, fullscreen: node.classList.contains('is-fullscreen') }
+  })
+  if (viewport.width <= 750) {
+    assert(dialogGeometry.fullscreen, `${suffix}: local BookInfo must be fullscreen`)
+  } else {
+    assert(!dialogGeometry.fullscreen, `${suffix}: desktop local BookInfo must not be fullscreen`)
+    assert(Math.abs(dialogGeometry.width - 500) <= 1, `${suffix}: local BookInfo width must be 500px, got ${dialogGeometry.width}`)
+  }
+
+  const refreshRequestPromise = page.waitForRequest(
+    request => request.method() === 'POST' && new URL(request.url()).pathname === `/api/books/${seeded.local.id}/refresh-local`,
+    { timeout: 15_000 },
+  )
+  const refreshResponsePromise = page.waitForResponse(
+    response => response.request().method() === 'POST' && new URL(response.url()).pathname === `/api/books/${seeded.local.id}/refresh-local`,
+    { timeout: 15_000 },
+  )
+  await dialog.getByRole('button', { name: '更新', exact: true }).click()
+  const [refreshRequest, refreshResponse] = await Promise.all([refreshRequestPromise, refreshResponsePromise])
+  assert((refreshRequest.postData() || '') === '', `${suffix}: local refresh must not send a stray body`)
+  assert(refreshResponse.status() === 200, `${suffix}: local refresh returned ${refreshResponse.status()}`)
+  await page.getByText('更新成功', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 })
+  await waitFor(
+    async () => {
+      const book = await api(root, `/books/${seeded.local.id}`, { token: seeded.token })
+      return Number(book.chapterCount) === 1 ? book : null
+    },
+    `${suffix}: refreshed local chapter count`,
+  )
+  assert(await dialog.isVisible(), `${suffix}: local refresh must leave BookInfo open`)
+
+  await dialog.locator('.el-dialog__headerbtn').click()
+  await dialog.waitFor({ state: 'hidden', timeout: 10_000 })
+  await shelfRow(page, seeded.local.title).locator('.info').click()
+  await page.waitForURL(new RegExp(`/books/${seeded.local.id}/read`), { timeout: 10_000 })
+  const chapter = page.locator('.reader-content .chapter-content').first()
+  await chapter.waitFor({ state: 'visible', timeout: 15_000 })
+  await page.waitForFunction(() => !document.body.innerText.includes('正在加载章节'), null, { timeout: 15_000 })
+  assert((await chapter.innerText()).includes('本地刷新验收正文'), `${suffix}: Reader did not render refreshed local content`)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  assert(overflow <= 1, `${suffix}: Reader has ${overflow}px horizontal overflow`)
+  if (viewport.width <= 750) {
+    assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${suffix}: mobile Reader tool layer is not visible`)
+  }
+  assert(failures.length === 0, `${suffix}: ${failures.join('\n')}`)
+  return suffix
+}
+
 async function runViewport(browser, root, viewport) {
   const seeded = await seedWorkspace(root, viewport)
   const context = await browser.newContext({
@@ -225,6 +283,10 @@ async function runViewport(browser, root, viewport) {
     const remoteRow = shelfRow(page, seeded.remote.title)
     await remoteRow.waitFor({ state: 'visible', timeout: 15_000 })
     await shelfRow(page, seeded.local.title).waitFor({ state: 'visible', timeout: 15_000 })
+
+    if (localRefreshOnly) {
+      return await runFocusedLocalRefresh(page, root, viewport, seeded, failures)
+    }
 
     await remoteRow.locator('.list-cover').click()
     const dialog = page.locator('.book-info-dialog')
@@ -363,16 +425,27 @@ async function run() {
     const browser = await openSmokeBrowser()
     try {
       const completed = []
-      for (const viewport of [
-        { width: 1440, height: 900 },
-        { width: 390, height: 844 },
-        { width: 360, height: 800 },
-        { width: 1024, height: 1366 },
-        { width: 1366, height: 1024 },
-      ]) {
+      const viewports = localRefreshOnly
+        ? [
+            { width: 1440, height: 900 },
+            { width: 390, height: 844 },
+            { width: 360, height: 800 },
+          ]
+        : [
+            { width: 1440, height: 900 },
+            { width: 390, height: 844 },
+            { width: 360, height: 800 },
+            { width: 1024, height: 1366 },
+            { width: 1366, height: 1024 },
+          ]
+      for (const viewport of viewports) {
         completed.push(await runViewport(browser, app.root, viewport))
       }
-      console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true localRefresh=true`)
+      if (localRefreshOnly) {
+        console.log(`bookinfo-local-refresh-real-api: ok ${completed.join(', ')} realApi=true geometry=true localRefresh=true reader=true`)
+      } else {
+        console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true localRefresh=true`)
+      }
     } finally {
       await browser.close()
     }
