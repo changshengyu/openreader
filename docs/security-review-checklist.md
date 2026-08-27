@@ -1288,3 +1288,20 @@ order. Focused/race/full/vet, frontend 742/742, build, Compose, real HTTP, four-
 run `32962930310` fresh/historical/portable/platform gates passed. `938d956`/`latest` OCI index is
 `sha256:40cd73c3106736d88d361ae9fc81c3daf2ef1a7534b1b4db81bea46e9c6bc777`; a pulled container reported the full
 revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+
+## P2 remote BookInfo/TOC request lifecycle (2026-08-27 inventory)
+
+- [ ] Propagate the caller request context through temporary-session creation and explicit remote-book refresh;
+      cancellation must stop BookInfo/TOC work and create no session, failure row, catalogue write or event.
+- [ ] Re-read the owned Book in the refresh transaction after remote work and reject deleted or changed
+      source/url/variable/updated-at snapshots before chapter mutation.
+- [ ] Replace the refresh full-row `Save` with owned-field updates that cannot fallback-insert a deleted Book or
+      overwrite a newer source, parser variable or metadata edit.
+- [ ] Preserve normal BookInfo/TOC, progress/bookmark rebinding, cache prune, lastCheckTime, source failure and one
+      durable shelf event semantics; do not reopen other remote actions or visible Reader/BookInfo flows.
+- [ ] Prove cancellation and delete/change/edit races on the old implementation before coding, then pass focused/race,
+      full/vet, real HTTP/browser and fresh/historical/portable publication gates.
+
+Target contract:
+[`compat/remote-book-detail-toc-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/remote-book-detail-toc-request-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed in inventory.

@@ -762,3 +762,17 @@ focused/race/full/vet、frontend 742/742、build、Compose、真实 HTTP 与四�
 `938d956`/`latest`；OCI index 为
 `sha256:40cd73c3106736d88d361ae9fc81c3daf2ef1a7534b1b4db81bea46e9c6bc777`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 39. 远程 BookInfo/TOC 取消与陈旧提交（2026-08-27 inventory）
+
+Explore 发布后重新枚举所有从 handler 进入 source engine 的调用。除测试/内部 compatibility wrapper 外，
+只剩 `POST /api/reader/remote-sessions` 与 `POST /api/books/:id/refresh` 仍调用固定
+`context.Background()` 的 `FetchBookInfoAndTOCWithVariables`。前者违反已发布临时会话合同中的取消零
+session/零 failure；后者还在远程工作后用抓取前 Book 快照替换目录并全行 `Save`，并发删除、换源、URL/
+variable 或 metadata 更新可能被迟到结果复活/覆盖。
+
+目标让两路 BookInfo/TOC fetch 传播 request context。显式 refresh 在 chapter mutation 前以事务重读并
+验证 `id/user/source/url/variable/updated_at`，陈旧结果固定 409 且零目录/cache/event 副作用；正常完整
+BookInfo + TOC、章节引用恢复、lastCheckTime、错误和 UI 保持。完整合同与红测门见
+[`remote-book-detail-toc-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-book-detail-toc-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
