@@ -1310,19 +1310,23 @@ fresh/historical/portable/platform gates passed. `48f52c6`/`latest` OCI index is
 `sha256:6447fd11480b1652c0f513d05b50dc66bb3aea61762030cd18435677324098f4`; a pulled container reported the full
 revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 local-book refresh request lifecycle (2026-08-27 inventory)
+## P2 local-book refresh request lifecycle (2026-08-27 implemented/published)
 
-- [ ] Propagate request cancellation through opened-source reading, parser phase boundaries, per-chapter staging and
+- [x] Propagate request cancellation through opened-source reading, parser phase boundaries, per-chapter staging and
       the GORM transaction; cancellation before commit creates no active catalogue/file/event side effect.
-- [ ] Re-read the caller-owned Book after read/parse/stage and reject deleted or changed
+- [x] Re-read the caller-owned Book after read/parse/stage and reject deleted or changed
       source/url/library/original/toc/source-file/toc-rule/updated-at snapshots before chapter mutation.
-- [ ] Replace full-row `Save` with guarded owned-field updates so refresh cannot fallback-insert a deleted Book or
+- [x] Replace full-row `Save` with guarded owned-field updates so refresh cannot fallback-insert a deleted Book or
       overwrite concurrent metadata/category/can-update edits.
-- [ ] Clean only the cancelled/stale request's inactive stage; preserve active generation, original archive, current
+- [x] Clean only the cancelled/stale request's inactive stage; preserve active generation, original archive, current
       metadata/cache, progress/bookmarks and the already-published rooted archive boundary.
-- [ ] Prove old cancellation/delete/edit failures before implementation, then pass focused/race/full/vet, real
+- [x] Prove old cancellation/delete/edit failures before implementation, then pass focused/race/full/vet, real
       HTTP/browser and fresh/historical/portable publication gates.
 
 Target contract:
 [`compat/local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed in inventory.
+Contract `474b992`, red tests `e6138f3` and implementation `8df38f1` landed in order. Focused/race/full/vet,
+frontend 742/742, build, Compose, real three-viewport BookInfo/Reader and trusted Actions run `33068512106`
+fresh/historical/portable/platform gates passed. `8df38f1`/`latest` OCI index is
+`sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`; a pulled container reported the full
+revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.

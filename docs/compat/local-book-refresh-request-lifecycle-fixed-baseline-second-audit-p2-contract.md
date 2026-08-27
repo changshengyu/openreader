@@ -2,7 +2,7 @@
 
 审查日期：2026-08-27
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
@@ -100,3 +100,31 @@ CBZ/PDF/Markdown 解析结果、目录重绑、archive rooted filesystem、导�
 判定：**must-fix**。本地 refresh 是当前 route scan 中下一项长工作后仍以旧整行 `Save` 提交的动作。
 既有合同只证明 body admission、rooted opened-file、正常 stage/promotion 和格式兼容，没有证明 caller
 取消、并发删除或编辑后的 liveness/ownership。本阶段只记录合同和测试门，不修改应用或测试代码。
+
+## 7. 实施与发布结论
+
+合同 `474b992`、旧实现红测 `e6138f3` 和实现 `8df38f1` 按三阶段顺序落地；聚焦浏览器模式
+`b338c3f` 只增加验证资产，不改变镜像应用代码。实现后：
+
+- opened-source 完整读取按 chunk 观察 request context；同步 parser 返回后立即复查；逐章 stage 使用
+  context-aware cache writer，取消清理当前 inactive generation 且不写业务响应、目录、metadata 或 event；
+- GORM transaction 使用 request context，并在任何 chapter mutation 前按 owner 重读 Book、比较
+  source/url/library/original/toc/source-file/toc-rule/updated-at snapshot；删除或变化固定返回 409；
+- 全行 `Save` 已替换为 guarded owned-field update，只拥有 URL 空值规范化、last chapter、chapter count、
+  TOC rule 和 variable；事务内重载当前 Book 后才生成 metadata 和最终 shelf projection；
+- DB 成功提交后继续完成 generation promotion、旧派生正文剪枝和一次 durable shelf broadcast；现有
+  TXT/EPUB/UMD/CBZ/PDF/Markdown、progress/bookmark 重绑、rooted archive 和错误/响应语义保持。
+
+取消前读取、stage 后取消、并发删除、并发正常编辑和逐 snapshot 字段测试均通过；旧实现曾分别产生
+200/持久副作用、删除后 Book/Chapter 复活和 metadata 编辑被覆盖。修复后 focused/race/API full、Go full/
+vet、frontend 742/742、build、Compose，以及真实 BookInfo -> refresh-local -> Reader 的 1440x900、
+390x844、360x800 Chromium 均通过。
+
+可信 GitHub Actions run `33068512106` 又通过 backend/frontend/Compose、native image、fresh volume、
+portable backup、historical volume 和 published-platform 门，发布 `8df38f1`/`latest`。OCI index 为
+`sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`；amd64/arm64 manifests 分别为
+`sha256:c2a753bbf1dae93bb5c11fe5ec2a478a07950cdcae902d843c4d6bb119e3e587`、
+`sha256:a83a45245ca889f9c09a18371a9cb066df36a4c3101b7374aeba9785b1ccfc7d`。不可变标签回拉后的 OCI label
+和 `/api/health` 均报告完整 revision `8df38f18ba84c9c8bdd850e3ac795e49cec6bee0`；`unknown/unknown`
+entries 是对应平台的 provenance attestations，不是可运行镜像。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

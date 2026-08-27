@@ -787,7 +787,7 @@ fresh/historical/portable 与 published-platform 门并发布 `48f52c6`/`latest`
 `sha256:6447fd11480b1652c0f513d05b50dc66bb3aea61762030cd18435677324098f4`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 40. 本地书刷新取消与陈旧提交（2026-08-27 inventory）
+## 40. 本地书刷新取消与陈旧提交（2026-08-27 implemented/published）
 
 远程 BookInfo/TOC lifecycle 发布后继续从当前 `server.go` 和持久 `Save` 调用差集取证。下一项 must-fix
 收敛为 `POST /api/books/:id/refresh-local`：它虽已具备 owner/body admission、rooted opened-file 和
@@ -801,4 +801,14 @@ transaction 均不传播 request context；transaction 又先替换 Chapter，�
 generation、剪枝或广播；有效 caller 的陈旧结果固定 409。正常解析格式、TOC rule、章节引用、rooted
 archive、promotion、响应与 UI 保持。完整合同与红测门见
 [`local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
+合同 `474b992`、旧实现红测 `e6138f3` 与实现 `8df38f1` 已按测试先行顺序落地。opened read、parser
+边界、逐章 stage 和 transaction 现传播 caller context；transaction 在 chapter mutation 前重读 owner
+Book 并验证完整归档/snapshot，以 guarded owned-field update 取代全行 `Save`。caller 取消零活动
+catalogue/file/event 副作用；并发删除不能复活 Book/Chapter，并发正常编辑不能被迟到 refresh 覆盖；
+有效 caller 的陈旧结果稳定为 409。
+
+focused/race/API full、Go full/vet、frontend 742/742、build、Compose，以及 BookInfo -> local refresh ->
+Reader 的 1440x900、390x844、360x800 Chromium 均通过。可信 Actions run `33068512106` 又通过 native、
+fresh/historical/portable 与 published-platform 门并发布 `8df38f1`/`latest`；OCI index 为
+`sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

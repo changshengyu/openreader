@@ -1215,7 +1215,7 @@ passed. Actions run `32919553203` published OCI index
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
-## P2 local-book refresh request lifecycle compatibility (2026-08-27 inventory)
+## P2 local-book refresh request lifecycle compatibility (2026-08-27 implemented/published)
 
 - The target adds no schema, migration, startup scan, persistent path, environment variable, archive generation,
   backup member, route, payload, browser key or UI state.
@@ -1233,4 +1233,9 @@ passed. Actions run `32919553203` published OCI index
 
 Target contract:
 [`local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-refresh-request-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no data or application code changed in inventory.
+Contract `474b992`, red tests `e6138f3` and implementation `8df38f1` landed in order. Cancellation and stale
+delete/edit results now leave Book/Chapter/Progress/Bookmark, active metadata/cache and the original archive
+unchanged; successful refresh still uses the existing generation and backup formats. Trusted Actions run
+`33068512106` passed fresh/historical/portable gates and published OCI index
+`sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
