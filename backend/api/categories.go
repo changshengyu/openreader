@@ -26,6 +26,10 @@ type categoryReorderRequest struct {
 	IDs []uint `json:"ids" binding:"required"`
 }
 
+// categoryPatchWriteLifecycleTestHook pauses a validated update before
+// persistence so contract tests can deterministically exercise stale reads.
+var categoryPatchWriteLifecycleTestHook func()
+
 func (s *Server) listCategories(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
@@ -128,6 +132,9 @@ func (s *Server) updateCategory(c *gin.Context) {
 	}
 	if request.Show != nil {
 		category.Show = *request.Show
+	}
+	if categoryPatchWriteLifecycleTestHook != nil {
+		categoryPatchWriteLifecycleTestHook()
 	}
 
 	if err := s.db.Save(&category).Error; err != nil {
