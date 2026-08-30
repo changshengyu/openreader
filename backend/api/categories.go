@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -29,6 +30,8 @@ type categoryReorderRequest struct {
 // categoryPatchWriteLifecycleTestHook pauses a validated update before
 // persistence so contract tests can deterministically exercise stale reads.
 var categoryPatchWriteLifecycleTestHook func()
+
+var errCategoryPatchTargetNotFound = errors.New("category not found during patch")
 
 func (s *Server) listCategories(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
@@ -107,6 +110,7 @@ func (s *Server) updateCategory(c *gin.Context) {
 		return
 	}
 
+	updates := make(map[string]any)
 	if request.Name != nil {
 		name := strings.TrimSpace(*request.Name)
 		if name == "" {
@@ -118,6 +122,7 @@ func (s *Server) updateCategory(c *gin.Context) {
 			return
 		}
 		category.Name = name
+		updates["name"] = name
 	}
 	if request.Color != nil {
 		color := strings.TrimSpace(*request.Color)
@@ -129,15 +134,48 @@ func (s *Server) updateCategory(c *gin.Context) {
 			color = "#216869"
 		}
 		category.Color = color
+		updates["color"] = color
 	}
 	if request.Show != nil {
 		category.Show = *request.Show
+		updates["show"] = *request.Show
 	}
 	if categoryPatchWriteLifecycleTestHook != nil {
 		categoryPatchWriteLifecycleTestHook()
 	}
 
-	if err := s.db.Save(&category).Error; err != nil {
+	ctx := c.Request.Context()
+	if ctx.Err() != nil {
+		return
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current models.Category
+		if err := tx.Where("user_id = ? AND id = ?", userID, categoryID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errCategoryPatchTargetNotFound
+			}
+			return err
+		}
+		if len(updates) > 0 {
+			write := tx.Model(&models.Category{}).
+				Where("user_id = ? AND id = ?", current.UserID, current.ID).
+				Updates(updates)
+			if write.Error != nil {
+				return write.Error
+			}
+			if write.RowsAffected != 1 {
+				return errCategoryPatchTargetNotFound
+			}
+		}
+		return tx.Where("user_id = ? AND id = ?", current.UserID, current.ID).First(&category).Error
+	}); err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, errCategoryPatchTargetNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
+			return
+		}
 		c.JSON(http.StatusConflict, gin.H{"error": "category already exists"})
 		return
 	}
