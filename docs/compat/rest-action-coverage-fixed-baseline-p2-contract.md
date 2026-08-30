@@ -813,7 +813,7 @@ fresh/historical/portable 与 published-platform 门并发布 `8df38f1`/`latest`
 `sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 41. Book patch 与分组提交列所有权（2026-08-27 inventory）
+## 41. Book patch 与分组提交列所有权（2026-08-30 implemented/published）
 
 本地 refresh 发布后继续从当前持久 `Save` 差集与已签收合同反查，下一项 must-fix 收敛为
 `PUT /api/books/:id` 和 `PUT /api/books/:id/category`。两路虽然已有 bounded DTO、owner-first lookup、
@@ -826,4 +826,14 @@ fresh/historical/portable 与 published-platform 门并发布 `8df38f1`/`latest`
 只更新请求显式列，category 只更新 relation 与 legacy `category_id`，成功后重载当前 Book 再广播；并发
 无关列按列合并，并发删除稳定 owner-safe 404 且零复活/孤儿/event。完整合同与红测门见
 [`book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。
+合同 `8e1a2e4`、旧实现红测 `946df03`、404 envelope 勘误 `7aad4b7` 与实现 `4b0a599` 已按顺序落地。
+两路 transaction 现传播 caller context，在 mutation 前重读 owner Book；metadata 使用提交字段 update map，
+category 使用 guarded primary category update 后替换 caller relation，成功事务重载当前 Book。取消零写入/
+event，并发删除稳定 owner-safe 404 且不复活 Book/relation，并发 metadata/category/canUpdate 按列合并，
+`{}` 不推进时间。
+
+focused/adjacent/race、API full、Go full/vet、frontend 742/742、build、Compose，以及 BookManage 与 BookInfo
+1440x900、390x844、360x800 真实 API/Chromium 均通过。可信 Actions run `33308641504` 通过 native、
+fresh/historical/portable 与 published-platform 门并发布 `4b0a599`/`latest`；OCI index 为
+`sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

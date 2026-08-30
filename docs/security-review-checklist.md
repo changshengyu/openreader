@@ -20,22 +20,25 @@ probes, and GitHub Actions `32828470325` fresh/historical/portable/restart gates
 [`docs/compat/trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md`](compat/trusted-proxy-client-identity-rate-limit-fixed-baseline-second-audit-p2-contract.md).
 Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 Book patch/category write lifecycle (2026-08-27 inventory)
+## P2 Book patch/category write lifecycle (2026-08-30 implemented/published)
 
-- [ ] Use request-context transactions for `PUT /api/books/:id` and `/api/books/:id/category`; cancellation before
+- [x] Use request-context transactions for `PUT /api/books/:id` and `/api/books/:id/category`; cancellation before
       commit must create no Book/relation/timestamp/event side effect.
-- [ ] Re-read the caller-owned Book inside the transaction before any relation or row mutation; a concurrent delete
+- [x] Re-read the caller-owned Book inside the transaction before any relation or row mutation; a concurrent delete
       must remain deleted and return the same owner-safe 404 without fallback insert or orphan relations.
-- [ ] Replace both full-row `Save` calls with explicit owned-column updates. Metadata patch owns only submitted
+- [x] Replace both full-row `Save` calls with explicit owned-column updates. Metadata patch owns only submitted
       fields; category assignment owns only `category_id` plus caller-scoped BookCategory rows.
-- [ ] Reload the current Book inside the successful transaction and broadcast only its complete post-commit shelf
+- [x] Reload the current Book inside the successful transaction and broadcast only its complete post-commit shelf
       projection, preserving concurrent metadata, follow, group, source and catalogue state.
-- [ ] Prove the old read-modify-save races first, then pass focused/race/full/vet, real API/browser and
+- [x] Prove the old read-modify-save races first, then pass focused/race/full/vet, real API/browser and
       fresh/historical/portable publication gates without changing schema or backup formats.
 
 Target contract:
 [`compat/book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed in inventory.
+Contract `8e1a2e4`, red tests `946df03`, correction `7aad4b7`, implementation `4b0a599`, focused/race/full/vet,
+BookManage/BookInfo three-view browser checks and Actions run `33308641504` passed. Published OCI index is
+`sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`; status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
 ## Authentication and authorization
 

@@ -2,7 +2,7 @@
 
 审查日期：2026-08-27
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -108,9 +108,16 @@ modify-save race。
 7. focused/race、Go full/vet、frontend full/build、真实 API/BookInfo/BookManage 三视口和 trusted Actions
    fresh/historical/portable 门通过后，才可发布 amd64/arm64 OCI index。
 
-## 6. Inventory 结论
+## 6. 实施与验证结论
 
-判定：**must-fix**。当前显式 DTO/patch 只限制了 HTTP 输入，没有限制最终 SQL 列；两个已签收动作仍
-可在读取后覆盖另一事务或复活删除目标。下一阶段必须先用 package-private barrier 让旧实现稳定失败，
-再以 request-context transaction、事务内 owner 重读和显式列 update 实现；inventory 阶段不修改应用或
-测试代码。
+审计判定的 **must-fix** 已关闭。合同 `8e1a2e4`、旧实现红测 `946df03`、既有 404 envelope 勘误
+`7aad4b7`、实现 `4b0a599` 和 BookInfo 聚焦浏览器合同 `0edbbb5` 按阶段顺序落地。两个 handler 现使用
+request-context transaction，在任何 mutation 前重读 owner Book；metadata 只更新请求显式列，category
+只更新 guarded `category_id` 与 caller-scoped relation，成功后重载当前 Book 再响应/广播。取消不落库，
+并发删除不复活目标，并发无关列按提交列合并，空 patch 不推进 `updated_at`。
+
+focused、adjacent、race、API/full Go、vet、frontend 742/742、Vite build、Compose、BookManage 与 BookInfo
+1440x900、390x844、360x800 真实 Go/SQLite/Chromium 均通过。可信 Actions run `33308641504` 又通过
+native、fresh portable、historical volume 和 published-platform 门，发布 `4b0a599`/`latest` OCI index
+`sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`。回拉不可变标签后，OCI revision
+和 `/api/health` 均确认完整提交 `4b0a599d1bd773a78f7864a34ae5b784ff7af259`。

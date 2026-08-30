@@ -1240,7 +1240,7 @@ unchanged; successful refresh still uses the existing generation and backup form
 `sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
-## P2 Book patch/category write lifecycle compatibility (2026-08-27 inventory)
+## P2 Book patch/category write lifecycle compatibility (2026-08-30 implemented/published)
 
 - The target adds no schema, migration, startup scan, persistent path, environment variable, backup member or
   browser state.
@@ -1254,4 +1254,8 @@ unchanged; successful refresh still uses the existing generation and backup form
 
 Target contract:
 [`book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](book-patch-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no data or application code changed in inventory.
+Contract `8e1a2e4`, red tests `946df03`, envelope correction `7aad4b7` and implementation `4b0a599` landed in order.
+Focused/race/full tests proved cancellation, concurrent delete and column merge without schema, backup or mounted-root
+changes. Actions run `33308641504` passed fresh portable and historical-volume gates and published OCI index
+`sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
