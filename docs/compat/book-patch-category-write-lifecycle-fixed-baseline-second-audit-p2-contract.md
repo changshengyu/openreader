@@ -75,8 +75,8 @@ modify-save race。
 - 两个 handler 的 transaction 使用 `c.Request.Context()`。caller 在 commit 前取消时保持空响应，且不
   开始后续 row/relation mutation、不推进时间、不广播。
 - 在任何 relation 或 Book mutation 前，transaction 必须按 `id + user_id` 重读当前 Book。目标在前置
-  lookup 后被删除时返回与 owner-missing 相同的稳定 `404 {"error":"book not found"}`；caller 已取消则
-  空响应。不能复活 Book、Chapter、BookCategory、Progress、Bookmark 或其它关联状态。
+  lookup 后被删除时返回与 owner-missing 相同的稳定 `404` `NOT_FOUND` envelope；caller 已取消则空响应。
+  不能复活 Book、Chapter、BookCategory、Progress、Bookmark 或其它关联状态。
 - 显式列 update 必须以 `id + user_id` 为 guard，并要求一行仍存在。并发写入未提交列时采用列级合并，
   不把无关变化误判为冲突；同一显式列的正常 SQLite 提交顺序保持 last committed write。
 - 成功 transaction 内重载当前 Book；commit 后使用该 Book 构造完整 shelf projection 并只广播一次。

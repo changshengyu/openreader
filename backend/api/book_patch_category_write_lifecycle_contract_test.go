@@ -110,7 +110,7 @@ func TestBookPatchWritesDoNotResurrectConcurrentDeletes(t *testing.T) {
 
 			blocker.unblock()
 			waitBookPatchWriteLifecycleHandler(t, done)
-			if response.Code != http.StatusNotFound || response.Body.String() != `{"error":"book not found"}` {
+			if response.Code != http.StatusNotFound || response.Body.String() != `{"error":{"code":"NOT_FOUND","message":"book not found"}}` {
 				t.Errorf("late %s patch = %d %s, want owner-safe 404", action, response.Code, response.Body.String())
 			}
 
