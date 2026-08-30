@@ -250,7 +250,7 @@ async function runViewport(browser, root, viewport) {
       pageA.goto(root, { waitUntil: 'domcontentloaded' }),
       pageB.goto(root, { waitUntil: 'domcontentloaded' }),
     ])
-    const originalTabs = ['全部', '本地', '音频', '未分组', seeded.category.name]
+    const originalTabs = ['全部', '本地', '未分组', seeded.category.name]
     await assertVisibleTabs(pageA, originalTabs, seeded.suffix)
     await assertVisibleTabs(pageB, originalTabs, seeded.suffix)
 
@@ -264,7 +264,8 @@ async function runViewport(browser, root, viewport) {
     const audioName = `有声 ${seeded.suffix}`
     await renameGroup(pageA, dialog, groupRow(dialog, '音频(音频)'), audioName)
     await pageA.getByText('修改成功', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
-    await pageB.locator('.book-group-wrapper .group-chip').filter({ hasText: audioName }).waitFor({ state: 'visible', timeout: 10_000 })
+    const peerDialog = await openGroupManager(pageB, viewport)
+    await groupRow(peerDialog, `${audioName}(音频)`).waitFor({ state: 'visible', timeout: 10_000 })
 
     const addedName = `临时分组 ${seeded.suffix}`
     await addGroup(pageA, dialog, addedName)
