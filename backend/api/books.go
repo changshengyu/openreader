@@ -414,6 +414,10 @@ type bookUpdateRequest struct {
 	CanUpdate      *bool   `json:"canUpdate"`
 }
 
+// bookPatchWriteLifecycleTestHook pauses a validated write before its
+// transaction so contract tests can deterministically exercise stale reads.
+var bookPatchWriteLifecycleTestHook func(string)
+
 func (s *Server) updateBook(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	bookID, ok := parseUintParam(c, "id")
@@ -492,6 +496,9 @@ func (s *Server) updateBook(c *gin.Context) {
 	}
 	if request.CanUpdate != nil {
 		book.CanUpdate = *request.CanUpdate
+	}
+	if bookPatchWriteLifecycleTestHook != nil {
+		bookPatchWriteLifecycleTestHook("metadata")
 	}
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -1863,6 +1870,9 @@ func (s *Server) updateBookCategory(c *gin.Context) {
 		book.CategoryID = &nextIDs[0]
 	} else {
 		book.CategoryID = nil
+	}
+	if bookPatchWriteLifecycleTestHook != nil {
+		bookPatchWriteLifecycleTestHook("category")
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := s.setBookCategories(tx, userID, book.ID, nextIDs); err != nil {
