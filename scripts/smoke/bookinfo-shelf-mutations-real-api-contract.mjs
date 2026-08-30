@@ -15,6 +15,7 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const backendDir = join(rootDir, 'backend')
 const publicDir = join(rootDir, 'frontend', 'dist')
 const localRefreshOnly = process.env.LOCAL_REFRESH_ONLY === '1'
+const bookPatchOnly = process.env.BOOK_PATCH_ONLY === '1'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -320,21 +321,23 @@ async function runViewport(browser, root, viewport) {
     assert(introParagraphs[0].startsWith('\u00a0'.repeat(6)), `${viewport.width}: BookInfo intro must keep the upstream six-space prefix`)
     assert(introParagraphs[1] === '\u00a0'.repeat(6), `${viewport.width}: BookInfo intro must preserve the empty line`)
 
-    const followRequest = await captureRequest(
-      page,
-      request => request.method() === 'PUT' && new URL(request.url()).pathname === `/api/books/${seeded.remote.id}`,
-      () => dialog.locator('.inline-update-switch .el-switch').click(),
-    )
-    const followPayload = JSON.parse(followRequest.postData() || '{}')
-    assert(JSON.stringify(followPayload) === JSON.stringify({ canUpdate: false }), `${viewport.width}: follow toggle payload must be precise, got ${JSON.stringify(followPayload)}`)
-    const afterFollow = await waitFor(
-      async () => {
-        const book = await api(root, `/books/${seeded.remote.id}`, { token: seeded.token })
-        return book.canUpdate === false ? book : null
-      },
-      `${viewport.width}: follow state persisted`,
-    )
-    assert(afterFollow.title === seeded.remote.title, `${viewport.width}: follow toggle changed the book title`)
+    if (!bookPatchOnly) {
+      const followRequest = await captureRequest(
+        page,
+        request => request.method() === 'PUT' && new URL(request.url()).pathname === `/api/books/${seeded.remote.id}`,
+        () => dialog.locator('.inline-update-switch .el-switch').click(),
+      )
+      const followPayload = JSON.parse(followRequest.postData() || '{}')
+      assert(JSON.stringify(followPayload) === JSON.stringify({ canUpdate: false }), `${viewport.width}: follow toggle payload must be precise, got ${JSON.stringify(followPayload)}`)
+      const afterFollow = await waitFor(
+        async () => {
+          const book = await api(root, `/books/${seeded.remote.id}`, { token: seeded.token })
+          return book.canUpdate === false ? book : null
+        },
+        `${viewport.width}: follow state persisted`,
+      )
+      assert(afterFollow.title === seeded.remote.title, `${viewport.width}: follow toggle changed the book title`)
+    }
 
     const coverRequest = await captureRequest(
       page,
@@ -393,6 +396,11 @@ async function runViewport(browser, root, viewport) {
     await dialog.locator('.el-dialog__headerbtn').click()
     await dialog.waitFor({ state: 'hidden', timeout: 10_000 })
 
+    if (bookPatchOnly) {
+      assert(failures.length === 0, `${viewport.width}: ${failures.join('\n')}`)
+      return `${viewport.width}x${viewport.height}`
+    }
+
     const localRow = shelfRow(page, seeded.local.title)
     await localRow.locator('.list-cover').click()
     await dialog.waitFor({ state: 'visible', timeout: 10_000 })
@@ -425,7 +433,7 @@ async function run() {
     const browser = await openSmokeBrowser()
     try {
       const completed = []
-      const viewports = localRefreshOnly
+      const viewports = localRefreshOnly || bookPatchOnly
         ? [
             { width: 1440, height: 900 },
             { width: 390, height: 844 },
@@ -443,6 +451,8 @@ async function run() {
       }
       if (localRefreshOnly) {
         console.log(`bookinfo-local-refresh-real-api: ok ${completed.join(', ')} realApi=true geometry=true localRefresh=true reader=true`)
+      } else if (bookPatchOnly) {
+        console.log(`bookinfo-book-patch-real-api: ok ${completed.join(', ')} realApi=true geometry=true metadataPatch=true userAssets=true groupSet=true`)
       } else {
         console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true localRefresh=true`)
       }
