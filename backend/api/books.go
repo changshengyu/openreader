@@ -418,6 +418,8 @@ type bookUpdateRequest struct {
 // transaction so contract tests can deterministically exercise stale reads.
 var bookPatchWriteLifecycleTestHook func(string)
 
+var errBookPatchTargetNotFound = errors.New("book not found during patch")
+
 func (s *Server) updateBook(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	bookID, ok := parseUintParam(c, "id")
@@ -497,25 +499,81 @@ func (s *Server) updateBook(c *gin.Context) {
 	if request.CanUpdate != nil {
 		book.CanUpdate = *request.CanUpdate
 	}
+	updates := make(map[string]any)
+	if request.Title != nil {
+		updates["title"] = book.Title
+	}
+	if request.Author != nil {
+		updates["author"] = book.Author
+	}
+	if request.CoverURL != nil {
+		updates["cover_url"] = book.CoverURL
+	}
+	if request.CustomCoverURL != nil {
+		updates["custom_cover_url"] = book.CustomCoverURL
+	}
+	if request.Intro != nil {
+		updates["intro"] = book.Intro
+	}
+	if categoryIDSet || categoryIDsSet {
+		if book.CategoryID == nil {
+			updates["category_id"] = nil
+		} else {
+			updates["category_id"] = *book.CategoryID
+		}
+	}
+	if request.CanUpdate != nil {
+		updates["can_update"] = book.CanUpdate
+	}
 	if bookPatchWriteLifecycleTestHook != nil {
 		bookPatchWriteLifecycleTestHook("metadata")
 	}
 
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&book).Error; err != nil {
+	ctx := c.Request.Context()
+	if ctx.Err() != nil {
+		return
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current models.Book
+		if err := tx.Where("id = ? AND user_id = ?", bookID, userID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errBookPatchTargetNotFound
+			}
 			return err
 		}
-		if categoryIDsSet {
-			return s.setBookCategories(tx, userID, book.ID, nextCategoryIDs)
-		}
-		if categoryIDSet {
-			if request.CategoryID == nil {
-				return s.setBookCategories(tx, userID, book.ID, nil)
+		if len(updates) > 0 {
+			write := tx.Model(&models.Book{}).
+				Where("id = ? AND user_id = ?", current.ID, current.UserID).
+				Updates(updates)
+			if write.Error != nil {
+				return write.Error
 			}
-			return s.setBookCategories(tx, userID, book.ID, []uint{*request.CategoryID})
+			if write.RowsAffected != 1 {
+				return errBookPatchTargetNotFound
+			}
 		}
-		return nil
+		if categoryIDsSet {
+			if err := s.setBookCategories(tx, userID, current.ID, nextCategoryIDs); err != nil {
+				return err
+			}
+		} else if categoryIDSet {
+			if request.CategoryID == nil {
+				if err := s.setBookCategories(tx, userID, current.ID, nil); err != nil {
+					return err
+				}
+			} else if err := s.setBookCategories(tx, userID, current.ID, []uint{*request.CategoryID}); err != nil {
+				return err
+			}
+		}
+		return tx.Where("id = ? AND user_id = ?", current.ID, current.UserID).First(&book).Error
 	}); err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, errBookPatchTargetNotFound) {
+			notFound(c, "book not found")
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book"})
 		return
 	}
@@ -1874,12 +1932,43 @@ func (s *Server) updateBookCategory(c *gin.Context) {
 	if bookPatchWriteLifecycleTestHook != nil {
 		bookPatchWriteLifecycleTestHook("category")
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := s.setBookCategories(tx, userID, book.ID, nextIDs); err != nil {
+	ctx := c.Request.Context()
+	if ctx.Err() != nil {
+		return
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current models.Book
+		if err := tx.Where("id = ? AND user_id = ?", bookID, userID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errBookPatchTargetNotFound
+			}
 			return err
 		}
-		return tx.Save(&book).Error
+		var categoryID any
+		if len(nextIDs) > 0 {
+			categoryID = nextIDs[0]
+		}
+		write := tx.Model(&models.Book{}).
+			Where("id = ? AND user_id = ?", current.ID, current.UserID).
+			Update("category_id", categoryID)
+		if write.Error != nil {
+			return write.Error
+		}
+		if write.RowsAffected != 1 {
+			return errBookPatchTargetNotFound
+		}
+		if err := s.setBookCategories(tx, userID, current.ID, nextIDs); err != nil {
+			return err
+		}
+		return tx.Where("id = ? AND user_id = ?", current.ID, current.UserID).First(&book).Error
 	}); err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, errBookPatchTargetNotFound) {
+			notFound(c, "book not found")
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update category"})
 		return
 	}
