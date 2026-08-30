@@ -837,3 +837,17 @@ focused/adjacent/race、API full、Go full/vet、frontend 742/742、build、Comp
 fresh/historical/portable 与 published-platform 门并发布 `4b0a599`/`latest`；OCI index 为
 `sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 42. Category patch 提交列所有权（2026-08-30 inventory）
+
+Book patch/category 发布后继续从当前 full-row `Save` 差集与既有合同反查，下一项 must-fix 收敛为
+`PUT /api/categories/:id`。既有 BookGroup wire 合同声称该 DTO 只改显式 `name/color/show`，但 handler
+仍在 transaction 外读取整行 Category 后 `s.db.Save(&category)`；读取后完成的 reorder、show/color 或
+rename 可被迟到写覆盖，删除目标可被 fallback insert 复活，取消与 `{}` 也仍会落库/更新时间。
+
+固定上游 `saveBookGroup` 每次从当前用户 namespace 重新定位现有条目后替换，删除后的 group 不会被迟到
+保存重新加入。OpenReader 的部分 DTO/SQLite 是允许适配；目标是在 request-context transaction 内先重读
+owner Category，只更新请求显式列，成功重载权威 Category 后广播，并发无关列合并、删除保持 404、空
+patch 不 UPDATE。完整合同与红测门见
+[`category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。

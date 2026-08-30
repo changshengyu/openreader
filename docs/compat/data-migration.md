@@ -1259,3 +1259,18 @@ Focused/race/full tests proved cancellation, concurrent delete and column merge 
 changes. Actions run `33308641504` passed fresh portable and historical-volume gates and published OCI index
 `sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
+## P2 Category patch write lifecycle compatibility (2026-08-30 inventory)
+
+- The target adds no schema, migration, startup scan, persistent path, environment variable, backup member or
+  browser state.
+- Existing Category IDs, names, colors, visibility, sort order, timestamps, BookCategory/Book references and
+  logical/portable/Legado/WebDAV rows remain authoritative.
+- Future `PUT /api/categories/:id` writes own only submitted `name/color/show`; concurrent sort order and unsubmitted
+  fields survive. A target deleted after the first owner lookup remains deleted.
+- Cancellation before commit and empty/no-known-field patches create no durable row or timestamp change. Rollback
+  sees the same SQLite and backup formats and only reintroduces stale full-row `Save` risks.
+
+Target contract:
+[`category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.
