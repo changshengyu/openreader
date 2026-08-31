@@ -508,6 +508,13 @@ Status: extracted 2026-07-10. These routes retain their OpenReader paths while m
 | `POST /api/books/export` | `{ "bookIds": number[], "format": "txt"\|"epub"\|"json" }` | A single local book returns its archived original file. Remote books retain TXT/EPUB export. JSON and multi-book ZIP are explicit OpenReader extensions and remain user-scoped/bounded. | JWT required. Empty/foreign-only selections are client errors; safe `Content-Disposition` names must not expose host paths. |
 | `POST /api/books/:id/refresh`, `POST /api/books/:id/refresh-local`, `POST /api/books/:id/change-source` | Existing route bodies | Replace chapter rows atomically. For EPUB `refresh-local`, the newly parsed catalogue uses one row per canonical href and empty fragment metadata; an old fragment progress/bookmark is rebound by canonical resource path before the generic index fallback. Only after commit, prune superseded derived caches while preserving `OriginalFile`, `chapters.json`, `bookSource.json`, local-store/WebDAV source files, and valid progress/bookmark recovery. Broadcast the merged shelf item after durable writes. | Owner only. Parse/fetch errors and an explicitly selected rule with no readable chapters return `400` and leave the current catalogue/cache metadata usable without deleting source files. Thus an old pure-`toc`/no-TOC EPUB remains readable after a rejected default refresh and can be explicitly refreshed with `{"tocRule":"spin"}`. Ordinary startup/read/backup never silently collapses historical fragment rows; only a successful explicit refresh applies the new catalogue. |
 
+The `category`, `category-add`, and `category-remove` branches of `POST /api/books/batch` retain the wire and UI
+contract above, but their SQL column ownership, transaction-scoped relation reads, request cancellation, target
+deletion and authoritative event lifecycle are pending
+[`batch-book-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](batch-book-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+The target owns only caller-scoped `book_categories` plus legacy `books.category_id`; it must not `Save` a complete
+Book snapshot or recreate a Book deleted after the precheck.
+
 ### P0 Reader source-candidate API contract (2026-08-11 implemented)
 
 Status: implemented, regression-validated and Docker-published as `a2ecc17`. The stable OpenReader route remains
