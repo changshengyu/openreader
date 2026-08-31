@@ -1038,11 +1038,13 @@ post-commit sync side effects additionally invalidate or broadcast the unified p
 after the maximum order across both data sources; the old custom-only reorder endpoint remains compatible for old
 clients but is not used by the rebuilt mixed manager.
 
-`PUT /api/categories/:id` keeps its owner-first lookup, bounded partial DTO, flat errors and visible events, but its
-SQL column ownership, request cancellation and concurrent delete lifecycle are pending the second-round contract in
+`PUT /api/categories/:id` keeps its owner-first lookup, bounded partial DTO, flat errors and visible events. Its
+SQL column ownership, request cancellation and concurrent delete lifecycle are closed by the second-round contract in
 [`category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 The target updates only submitted `name/color/show`, treats an empty object as a no-update 200, re-reads the owner row
 inside a request-context transaction and cannot resurrect a target deleted after the initial lookup.
+The implementation landed in `92c3ae7`; focused/race/full, five-viewport real API and trusted fresh/historical/
+portable publication gates passed before the `090a643` multi-platform image was published.
 
 ### BookGroup / Category write request boundary (2026-08-12 implementation)
 

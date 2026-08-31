@@ -40,22 +40,25 @@ BookManage/BookInfo three-view browser checks and Actions run `33308641504` pass
 `sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`; status is
 `aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
-## P2 Category patch write lifecycle (2026-08-30 inventory)
+## P2 Category patch write lifecycle (2026-08-31 implementation)
 
-- [ ] Run `PUT /api/categories/:id` in a request-context transaction and re-read the caller-owned Category before
+- [x] Run `PUT /api/categories/:id` in a request-context transaction and re-read the caller-owned Category before
       mutation; cancellation before commit creates no row/time/event side effect.
-- [ ] Replace full-row `Save` with an owner-guarded update of only submitted `name/color/show`; preserve concurrent
+- [x] Replace full-row `Save` with an owner-guarded update of only submitted `name/color/show`; preserve concurrent
       reorder and unsubmitted partial writes.
-- [ ] Keep a concurrently deleted target deleted and return the existing flat 404 without fallback insert or false
+- [x] Keep a concurrently deleted target deleted and return the existing flat 404 without fallback insert or false
       `category_update`/`book_groups_update` events.
-- [ ] Treat empty/no-known-field patches as 200 without UPDATE, reload the current Category on every success, and
+- [x] Treat empty/no-known-field patches as 200 without UPDATE, reload the current Category on every success, and
       prove response/event authority with deterministic old-implementation failures.
-- [ ] Pass focused/race/full/vet, BookGroup real API/browser and fresh/historical/portable publication gates without
+- [x] Pass focused/race/full/vet, BookGroup real API/browser and fresh/historical/portable publication gates without
       changing schema, backup formats or the signed wire/UI contract.
 
 Target contract:
 [`compat/category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed.
+Contract `835f950`, red tests `73b1655`, implementation `92c3ae7` and five-viewport browser validation passed.
+Trusted Actions run `33361011263` published `090a643`/`latest` OCI index
+`sha256:0e0532f202ab0090005fd07642e61b551febf0b3a1c44e518fe2bfbf9df1875f`; status is
+`aligned / regression-validated / Docker-published / awaiting-device-verification`.
 
 ## Authentication and authorization
 

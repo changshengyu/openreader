@@ -838,7 +838,7 @@ fresh/historical/portable 与 published-platform 门并发布 `4b0a599`/`latest`
 `sha256:03158e390e967f6ef4f6addc9125de504bdd781aa81e85ed5aaa403d58ead0fd`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 42. Category patch 提交列所有权（2026-08-30 inventory）
+## 42. Category patch 提交列所有权（2026-08-31 implementation）
 
 Book patch/category 发布后继续从当前 full-row `Save` 差集与既有合同反查，下一项 must-fix 收敛为
 `PUT /api/categories/:id`。既有 BookGroup wire 合同声称该 DTO 只改显式 `name/color/show`，但 handler
@@ -850,4 +850,9 @@ rename 可被迟到写覆盖，删除目标可被 fallback insert 复活，取�
 owner Category，只更新请求显式列，成功重载权威 Category 后广播，并发无关列合并、删除保持 404、空
 patch 不 UPDATE。完整合同与红测门见
 [`category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](category-patch-write-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。
+合同 `835f950`、旧实现红测 `73b1655` 和实现 `92c3ae7` 已按顺序落地：handler 使用
+request-context transaction 重读 owner target，只更新显式列，空 patch 不 UPDATE，并发删除
+保持 404 且成功 event 使用重载行。focused/race/full/vet、frontend 742/742、build、Compose、BookGroup
+五视口真实 API 与可信 Actions run `33361011263` 全部通过；`090a643`/`latest` OCI index 为
+`sha256:0e0532f202ab0090005fd07642e61b551febf0b3a1c44e518fe2bfbf9df1875f`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

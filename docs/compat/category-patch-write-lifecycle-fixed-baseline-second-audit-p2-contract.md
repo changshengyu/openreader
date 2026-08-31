@@ -2,7 +2,7 @@
 
 审查日期：2026-08-30
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -93,9 +93,21 @@ create/rename/delete。它们没有让 reorder、另一个 partial update 或 de
 7. focused/race、Go full/vet、frontend full/build、真实 API/BookGroup 1440x900、390x844、360x800 和可信
    Actions fresh/historical/portable 门通过后，才可发布 amd64/arm64 OCI index。
 
-## 6. Inventory 结论
+## 6. 实施与验证结论
 
-判定：**must-fix**。现有 wire DTO 精确但 SQL 仍为 transaction 外整行 read-modify-`Save`，与已签收的
-部分更新合同冲突。下一阶段先用 package-private barrier 固定旧实现覆盖 reorder/partial update、复活删除、
-忽略取消和空 patch 更新时间，再以 request-context transaction、owner 重读和显式列 update 实现；本
-inventory 不修改应用或测试代码。
+审计判定的 **must-fix** 已关闭。合同 `835f950`、旧实现红测 `73b1655`、实现 `92c3ae7`、
+浏览器夹具勘误 `4b7d010` 与多架构构建稳定性修复 `090a643` 按阶段落地。`updateCategory`
+现在使用 request-context transaction，在任何 mutation 前重读 owner Category，并只更新请求显式提交的
+`name/color/show`。空 patch 不执行 UPDATE，取消不落库/广播，并发删除不复活目标，并发排序与未提交列
+按列合并；成功响应和两类事件均使用 transaction 内重载的当前 Category。
+
+focused、adjacent、race、API/full Go、vet、frontend 742/742、Vite build 与 Compose 均通过。真实
+Go/SQLite/Chromium BookGroup 合同在 1440x900、390x844、360x800、1024x1366 和 1366x1024 通过，
+覆盖双客户端同步、创建/改名/删除、显隐、混合排序和精确几何。
+
+可信 Actions run `33361011263` 通过 backend/frontend/Compose、native image、fresh portable、historical
+volume 和 published-platform 门，发布 `090a643`/`latest` OCI index
+`sha256:0e0532f202ab0090005fd07642e61b551febf0b3a1c44e518fe2bfbf9df1875f`。amd64 manifest 为
+`sha256:720bb45e323e26d83ba4d4f1989903ac1296eb8e097a552aa684dc52a0ca58fe`，arm64 manifest 为
+`sha256:1b574767ff4fcdd453963fbd9848b0a31ff00530b525b2844331df72f50ab861`。回拉不可变标签后，
+OCI revision 和 `/api/health` 均确认完整提交 `090a643051368afd910d3ce1f3aec19cd9b697a5`。
