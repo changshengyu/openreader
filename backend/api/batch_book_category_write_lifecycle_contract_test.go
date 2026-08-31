@@ -83,6 +83,84 @@ func TestBatchBookCategoryWriteDoesNotResurrectDeletedTarget(t *testing.T) {
 	}
 }
 
+func TestBatchBookCategoryWriteReturnsOnlySurvivingTargets(t *testing.T) {
+	fixture := newBatchBookCategoryWriteLifecycleFixture(t, "batchcategorysurvivor")
+	survivor := models.Book{
+		UserID: fixture.owner.ID, Title: "surviving title", Intro: "surviving intro",
+		CategoryID: &fixture.initialCategory.ID, CanUpdate: false,
+	}
+	if err := fixture.server.db.Create(&survivor).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.db.Model(&models.Book{}).Where("id = ?", survivor.ID).UpdateColumn("can_update", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.db.Create(&models.BookCategory{
+		UserID: fixture.owner.ID, BookID: survivor.ID, CategoryID: fixture.initialCategory.ID,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	installBatchBookCategoryWriteLifecycleHook(t, func(stage string, tx *gorm.DB, bookID uint) {
+		if stage != "before_book_write" || bookID != fixture.book.ID {
+			return
+		}
+		if err := tx.Where("user_id = ? AND book_id = ?", fixture.owner.ID, bookID).Delete(&models.BookCategory{}).Error; err != nil {
+			t.Errorf("delete concurrent BookCategory rows: %v", err)
+		}
+		if err := tx.Where("id = ? AND user_id = ?", bookID, fixture.owner.ID).Delete(&models.Book{}).Error; err != nil {
+			t.Errorf("delete concurrent Book: %v", err)
+		}
+	})
+
+	response := performBatchBookCategoryWriteLifecycleRequest(
+		fixture,
+		context.Background(),
+		fmt.Sprintf(
+			`{"action":"category","bookIds":[%d,%d],"categoryIds":[%d]}`,
+			fixture.book.ID,
+			survivor.ID,
+			fixture.nextCategory.ID,
+		),
+	)
+	assertBatchBookCategoryWriteLifecycleStatus(t, response, http.StatusOK)
+
+	var payload struct {
+		Affected int64          `json:"affected"`
+		Books    []bookListItem `json:"books"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Affected != 1 || len(payload.Books) != 1 || payload.Books[0].ID != survivor.ID {
+		t.Errorf("survivor response = affected %d books %+v, want only Book %d", payload.Affected, payload.Books, survivor.ID)
+	}
+	if payload.Affected == 1 && len(payload.Books) == 1 {
+		assertBatchBookCategoryWriteLifecycleBook(
+			t,
+			payload.Books[0].Book,
+			payload.Books[0].CategoryIDs,
+			"surviving title",
+			"surviving intro",
+			false,
+			fixture.nextCategory.ID,
+		)
+	}
+	emitted := drainBookGroupWriteEvents(fixture.events)
+	if len(emitted) != 1 {
+		t.Fatalf("survivor batch emitted %d events, want 1: %v", len(emitted), emitted)
+	}
+	var event struct {
+		Type    string         `json:"type"`
+		Payload []bookListItem `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(emitted[0]), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != "bookshelf_update" || len(event.Payload) != 1 || event.Payload[0].ID != survivor.ID {
+		t.Errorf("survivor event = type %q books %+v, want only Book %d", event.Type, event.Payload, survivor.ID)
+	}
+}
+
 func TestBatchBookCategoryWriteHonorsCancellationBeforeCommit(t *testing.T) {
 	fixture := newBatchBookCategoryWriteLifecycleFixture(t, "batchcategorycancel")
 	before := snapshotBatchBookCategoryWriteLifecycleState(t, fixture)
