@@ -1,6 +1,8 @@
 # Pin official base image digests so local and CI builds remain reproducible when a
 # registry's mutable-tag metadata endpoint is temporarily unavailable.
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS frontend-builder
+# Frontend assets are architecture-independent. Build them on the native
+# runner platform so multi-platform releases never execute Node under QEMU.
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS frontend-builder
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
