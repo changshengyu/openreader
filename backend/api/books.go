@@ -636,6 +636,10 @@ type bookIDsRequest struct {
 	Format  string `json:"format"`
 }
 
+// batchBookCategoryWriteLifecycleTestHook exposes deterministic transaction
+// barriers for package-level lifecycle contract tests.
+var batchBookCategoryWriteLifecycleTestHook func(string, *gorm.DB, uint)
+
 func (s *Server) batchBooks(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	request, ok := decodeBookControlRequest[batchBooksRequest](c, maxBookControlRequestBodyBytes, "invalid batch payload")
@@ -730,8 +734,14 @@ func (s *Server) batchBooks(c *gin.Context) {
 				} else {
 					updatedBooks[i].CategoryID = nil
 				}
+				if batchBookCategoryWriteLifecycleTestHook != nil {
+					batchBookCategoryWriteLifecycleTestHook("before_book_write", tx, updatedBooks[i].ID)
+				}
 				if err := tx.Save(&updatedBooks[i]).Error; err != nil {
 					return err
+				}
+				if batchBookCategoryWriteLifecycleTestHook != nil {
+					batchBookCategoryWriteLifecycleTestHook("after_book_write", tx, updatedBooks[i].ID)
 				}
 				affected++
 			}
