@@ -1296,3 +1296,18 @@ frontend 742/742, build, Compose and three-viewport real API/browser gates passe
 root changes. Trusted Actions run `33366021370` was triggered by the implementation commit; its final
 fresh/historical/portable, platform and digest evidence still requires retrieval. Status is
 **aligned / regression-validated / Docker-publication-pending-verification**.
+
+## P2 Remote Book existing-add write lifecycle compatibility (2026-09-04 inventory)
+
+- The target adds no schema, migration, startup scan, persistent path, environment variable, backup member or
+  browser state.
+- Existing Book/Category/BookCategory/Chapter/Progress/Bookmark/Candidate rows, source/url/metadata/variable/
+  catalogue fields and logical/portable/Legado/WebDAV backups remain authoritative.
+- An explicit category selection for an existing caller URL may replace only caller BookCategory rows and guarded
+  `books.category_id`; it must not write unrelated Book columns or fallback-insert a deleted Book.
+- Omitted/empty categories preserve the current memberships and timestamp. Cancellation and persistence failures
+  leave all rows/time/events unchanged. Rollback reads the same formats and only reintroduces stale `Save` risks.
+
+Target contract:
+[`remote-book-existing-add-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-book-existing-add-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.
