@@ -2,7 +2,7 @@
 
 审查日期：2026-09-04
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-publication-pending-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -94,9 +94,17 @@ Book 后仍存在三个提交边界：
 7. focused/race、API/full Go、vet、frontend full/build、BookInfo/Search/Explore 三视口真实 API 与可信
    Actions fresh/historical/portable 门通过后才可发布。
 
-## 6. Inventory 结论
+## 6. 实施结论
 
-判定：**must-fix**。`POST /api/books/remote` 的新书远程工作和公开边界已签收，但 existing URL
-category branch 仍把 pre-transaction Book 以全行 `Save` 提交，拥有超出请求的列并可复活删除目标。
-下一阶段先以确定性 barrier 固定列覆盖、删除复活、取消和 stale projection，再改为 request-context
-重读、guarded `category_id`/relation 写入与权威重载；本 inventory 不修改应用或测试代码。
+判定：**aligned / regression-validated**。合同 `594e17f`、旧实现红测 `1342583` 和实现 `4c2ef7c`
+按顺序落地。existing URL 分支现在在 request-context transaction 内按 owner ID 重读当前 Book；显式
+分组只用 guarded update 写 legacy `category_id` 并替换 relation，不再 `Save` 完整 Book。删除目标返回
+owner-safe 404，不重建残缺 Book；取消和 relation 写入/重载错误回滚全部行、时间与事件。
+
+transaction 内严格重载当前 Book 与 relation，commit 后 response 和唯一 shelf event 使用该权威快照；
+省略/空 `categoryIds` 仍保持 200、原分组和 `updated_at`。确定性测试证明旧实现的并发字段覆盖、
+fallback insert 和 stale projection 后，修复通过 focused/race、相邻 API、Go 全量、`go vet`、frontend
+742/742、Vite build 与 Compose config。BookInfo smoke 在 1440x900、390x844、360x800 使用真实
+Go/SQLite/API/Chromium 验证同 URL 重复入架仍为 200/同一 ID，并保留当前 metadata、用户封面与分组。
+未新增 schema、迁移、备份成员、持久路径、环境变量、浏览器 key 或可见 UI。实现提交已触发可信
+Actions；其 fresh/historical/portable、平台与 OCI digest 结果尚待读取。

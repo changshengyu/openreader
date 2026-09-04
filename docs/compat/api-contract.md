@@ -884,8 +884,8 @@ mutation utility and stable OpenReader endpoint, but they do not share the same 
 |---|---|---|---|
 | `POST /api/books/remote` | `{title,bookUrl,sourceId,author?,coverUrl?,intro?,kind?,wordCount?,sourceName?,variable?,categoryId?,categoryIds?}`. Result-card confirmation supplies its selected positive category IDs. BookInfo direct add supplies no positive category ID; an omitted or empty category list means an ungrouped new book. | A new URL is parsed and created as `201` with the authoritative shelf projection, chapters and exactly the requested positive category memberships. An existing caller-owned URL returns `200` without duplicating the book. If the request has no positive category selection, an existing book's memberships are preserved; category clearing remains the explicit category endpoint's responsibility. Every successful durable mutation emits one caller-scoped shelf update. | JWT and a caller-visible enabled source are required. Required-field/category/variable validation and source parsing failures retain the existing safe `400 {error,code?,stage?}` forms; internal persistence failures are `500`. No other user's same URL or category is visible or mutated. |
 
-The existing-URL `200` branch retains this wire and visible action contract, but its SQL column ownership,
-concurrent deletion/cancellation and authoritative projection lifecycle are pending
+The existing-URL `200` branch retains this wire and visible action contract. Its SQL column ownership,
+concurrent deletion/cancellation and authoritative projection lifecycle were implemented by `4c2ef7c`; see
 [`remote-book-existing-add-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](remote-book-existing-add-write-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 An explicit category selection owns only caller-scoped `book_categories` and legacy `books.category_id`; it must not
 write a stale complete Book snapshot or recreate a target deleted after the URL lookup.
