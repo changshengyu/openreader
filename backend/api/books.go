@@ -2089,6 +2089,10 @@ type remoteBookRequest struct {
 	CategoryIDs []uint `json:"categoryIds"`
 }
 
+// remoteBookExistingAddWriteLifecycleTestHook exposes deterministic barriers
+// around the existing-URL branch for package-level lifecycle contract tests.
+var remoteBookExistingAddWriteLifecycleTestHook func(string, *gorm.DB, uint)
+
 func firstNonBlankCanRename(remote string, current string, allowRename bool) string {
 	current = strings.TrimSpace(current)
 	remote = strings.TrimSpace(remote)
@@ -2149,6 +2153,9 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 
 	var existing models.Book
 	if err := s.db.WithContext(ctx).Where("user_id = ? AND url = ?", userID, req.BookURL).First(&existing).Error; err == nil {
+		if remoteBookExistingAddWriteLifecycleTestHook != nil {
+			remoteBookExistingAddWriteLifecycleTestHook("after_lookup", nil, existing.ID)
+		}
 		if len(req.CategoryIDs) > 0 || req.CategoryID != nil {
 			if len(categoryIDs) > 0 {
 				existing.CategoryID = &categoryIDs[0]
@@ -2162,10 +2169,19 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 				if err := s.setBookCategories(tx, userID, existing.ID, categoryIDs); err != nil {
 					return err
 				}
+				if remoteBookExistingAddWriteLifecycleTestHook != nil {
+					remoteBookExistingAddWriteLifecycleTestHook("after_relation_write", tx, existing.ID)
+				}
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				return tx.Save(&existing).Error
+				if err := tx.Save(&existing).Error; err != nil {
+					return err
+				}
+				if remoteBookExistingAddWriteLifecycleTestHook != nil {
+					remoteBookExistingAddWriteLifecycleTestHook("after_book_write", tx, existing.ID)
+				}
+				return nil
 			}); err != nil {
 				if isRequestContextError(err) {
 					return
