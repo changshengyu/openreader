@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -151,6 +153,38 @@ func TestRemoteBookExistingAddReloadsResponseAndEvent(t *testing.T) {
 		t, fixture.events, fixture.source.ID, "authoritative title", "authoritative intro",
 		`{"initial":"state"}`, false, fixture.nextCategory.ID,
 	)
+}
+
+func TestRemoteBookExistingAddRollsBackRelationReloadFailure(t *testing.T) {
+	fixture := newRemoteBookExistingAddWriteLifecycleFixture(t, "existingaddreloaderror")
+	before := snapshotRemoteBookExistingAddWriteLifecycleState(t, fixture)
+	callbackName := "test:existing-remote-add-relation-reload-error"
+	var failOnce sync.Once
+	if err := fixture.server.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "book_categories" {
+			failOnce.Do(func() { tx.AddError(errors.New("injected relation reload failure")) })
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fixture.server.db.Callback().Query().Remove(callbackName) })
+
+	response := performRemoteBookExistingAddWriteLifecycleRequest(
+		fixture,
+		context.Background(),
+		fmt.Sprintf(`{"title":"request title","bookUrl":%q,"sourceId":%d,"categoryIds":[%d]}`,
+			fixture.book.URL, fixture.source.ID, fixture.nextCategory.ID),
+	)
+	if response.Code != http.StatusInternalServerError || response.Body.String() != `{"error":"failed to update book categories"}` {
+		t.Errorf("relation reload failure = %d %s, want stable 500", response.Code, response.Body.String())
+	}
+	after := snapshotRemoteBookExistingAddWriteLifecycleState(t, fixture)
+	if !bytes.Equal(after, before) {
+		t.Errorf("relation reload failure changed durable state\nbefore=%s\nafter=%s", before, after)
+	}
+	if events := drainBookGroupWriteEvents(fixture.events); len(events) != 0 {
+		t.Errorf("relation reload failure broadcast events: %v", events)
+	}
 }
 
 func TestRemoteBookExistingAddWithoutPositiveCategoriesIsNoOp(t *testing.T) {

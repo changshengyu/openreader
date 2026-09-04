@@ -164,6 +164,16 @@ async function seedWorkspace(root, viewport) {
     method: 'POST',
     body: { name: `BookInfo 分组 ${suffix}` },
   })
+  const source = await api(root, '/sources', {
+    token,
+    method: 'POST',
+    body: {
+      name: `BookInfo 书源 ${suffix}`,
+      baseUrl: `https://bookinfo-source.example/${suffix}`,
+      charset: 'utf-8',
+      enabled: true,
+    },
+  })
   const remoteTitle = `BookInfo 远程书 ${suffix}`
   const remote = await api(root, '/books', {
     token,
@@ -182,7 +192,7 @@ async function seedWorkspace(root, viewport) {
   const localTitle = `BookInfo 本地书 ${suffix}`
   const local = await importLocalBook(root, token, localTitle)
   assert(Number(remote.id) > 0 && Number(local.id) > 0, `${suffix}: seed did not return shelf records`)
-  return { token, userID, category, remote, local }
+  return { token, userID, category, source, remote, local }
 }
 
 function shelfRow(page, title) {
@@ -396,6 +406,37 @@ async function runViewport(browser, root, viewport) {
     await dialog.locator('.el-dialog__headerbtn').click()
     await dialog.waitFor({ state: 'hidden', timeout: 10_000 })
 
+    const existingAdd = await page.evaluate(async input => {
+      const response = await fetch('/api/books/remote', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${input.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: input.title,
+          bookUrl: input.bookUrl,
+          sourceId: input.sourceId,
+          categoryIds: [input.categoryId],
+        }),
+      })
+      return { status: response.status, body: await response.json() }
+    }, {
+      token: seeded.token,
+      title: seeded.remote.title,
+      bookUrl: seeded.remote.url,
+      sourceId: seeded.source.id,
+      categoryId: seeded.category.id,
+    })
+    assert(existingAdd.status === 200, `${viewport.width}: existing remote add returned ${existingAdd.status}`)
+    assert(Number(existingAdd.body?.id) === Number(seeded.remote.id), `${viewport.width}: existing remote add duplicated the shelf Book`)
+    assert(existingAdd.body?.title === seeded.remote.title && existingAdd.body?.author === '真实 API', `${viewport.width}: existing remote add changed current metadata`)
+    assert(existingAdd.body?.customCoverUrl === coverPayload.customCoverUrl, `${viewport.width}: existing remote add returned a stale custom cover`)
+    assert(
+      Array.isArray(existingAdd.body?.categoryIds) && existingAdd.body.categoryIds.includes(Number(seeded.category.id)),
+      `${viewport.width}: existing remote add did not preserve its selected category`,
+    )
+
     if (bookPatchOnly) {
       assert(failures.length === 0, `${viewport.width}: ${failures.join('\n')}`)
       return `${viewport.width}x${viewport.height}`
@@ -452,9 +493,9 @@ async function run() {
       if (localRefreshOnly) {
         console.log(`bookinfo-local-refresh-real-api: ok ${completed.join(', ')} realApi=true geometry=true localRefresh=true reader=true`)
       } else if (bookPatchOnly) {
-        console.log(`bookinfo-book-patch-real-api: ok ${completed.join(', ')} realApi=true geometry=true metadataPatch=true userAssets=true groupSet=true`)
+        console.log(`bookinfo-book-patch-real-api: ok ${completed.join(', ')} realApi=true geometry=true metadataPatch=true userAssets=true groupSet=true existingRemoteAdd=true`)
       } else {
-        console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true localRefresh=true`)
+        console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true existingRemoteAdd=true localRefresh=true`)
       }
     } finally {
       await browser.close()

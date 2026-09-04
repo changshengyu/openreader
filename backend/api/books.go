@@ -75,6 +75,16 @@ func (s *Server) bookShelfListItem(userID uint, book models.Book) bookListItem {
 	return s.projectBookShelfListItem(book, categoryIDs, progress, cachedCount)
 }
 
+func (s *Server) bookShelfListItemWithCategoryIDs(userID uint, book models.Book, categoryIDs []uint) bookListItem {
+	var progress models.ReadingProgress
+	err := s.db.Where("user_id = ? AND book_id = ?", userID, book.ID).First(&progress).Error
+	cachedCount := s.cachedChapterCount(book.ID, book.SourceID)
+	if err != nil {
+		return s.projectBookShelfListItem(book, categoryIDs, models.ReadingProgress{}, cachedCount)
+	}
+	return s.projectBookShelfListItem(book, categoryIDs, progress, cachedCount)
+}
+
 func (s *Server) listAllBookShelfItems(userID uint) ([]bookListItem, error) {
 	var books []models.Book
 	if err := s.db.Where("user_id = ?", userID).Find(&books).Error; err != nil {
@@ -287,6 +297,12 @@ func (s *Server) cachedChapterCounts(books []models.Book) map[uint]int64 {
 
 func (s *Server) broadcastBookShelfUpdate(userID uint, book models.Book) bookListItem {
 	item := s.bookShelfListItem(userID, book)
+	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": item})
+	return item
+}
+
+func (s *Server) broadcastBookShelfUpdateWithCategoryIDs(userID uint, book models.Book, categoryIDs []uint) bookListItem {
+	item := s.bookShelfListItemWithCategoryIDs(userID, book, categoryIDs)
 	_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": item})
 	return item
 }
@@ -2093,6 +2109,8 @@ type remoteBookRequest struct {
 // around the existing-URL branch for package-level lifecycle contract tests.
 var remoteBookExistingAddWriteLifecycleTestHook func(string, *gorm.DB, uint)
 
+var errRemoteBookExistingAddTargetNotFound = errors.New("existing remote book not found during add")
+
 func firstNonBlankCanRename(remote string, current string, allowRename bool) string {
 	current = strings.TrimSpace(current)
 	remote = strings.TrimSpace(remote)
@@ -2152,19 +2170,32 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 	}
 
 	var existing models.Book
+	var existingCategoryIDs []uint
 	if err := s.db.WithContext(ctx).Where("user_id = ? AND url = ?", userID, req.BookURL).First(&existing).Error; err == nil {
 		if remoteBookExistingAddWriteLifecycleTestHook != nil {
 			remoteBookExistingAddWriteLifecycleTestHook("after_lookup", nil, existing.ID)
 		}
-		if len(req.CategoryIDs) > 0 || req.CategoryID != nil {
-			if len(categoryIDs) > 0 {
-				existing.CategoryID = &categoryIDs[0]
-			} else {
-				existing.CategoryID = nil
+		hasCategorySelection := len(req.CategoryIDs) > 0 || req.CategoryID != nil
+		if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("id = ? AND user_id = ?", existing.ID, userID).First(&existing).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errRemoteBookExistingAddTargetNotFound
+				}
+				return err
 			}
-			if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-				if err := ctx.Err(); err != nil {
-					return err
+			if hasCategorySelection {
+				var primaryCategoryID any
+				if len(categoryIDs) > 0 {
+					primaryCategoryID = categoryIDs[0]
+				}
+				write := tx.Model(&models.Book{}).
+					Where("id = ? AND user_id = ?", existing.ID, userID).
+					Update("category_id", primaryCategoryID)
+				if write.Error != nil {
+					return write.Error
+				}
+				if write.RowsAffected != 1 {
+					return errRemoteBookExistingAddTargetNotFound
 				}
 				if err := s.setBookCategories(tx, userID, existing.ID, categoryIDs); err != nil {
 					return err
@@ -2175,25 +2206,34 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if err := tx.Save(&existing).Error; err != nil {
-					return err
-				}
 				if remoteBookExistingAddWriteLifecycleTestHook != nil {
 					remoteBookExistingAddWriteLifecycleTestHook("after_book_write", tx, existing.ID)
 				}
-				return nil
-			}); err != nil {
-				if isRequestContextError(err) {
-					return
-				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book categories"})
+			}
+			if err := tx.Where("id = ? AND user_id = ?", existing.ID, userID).First(&existing).Error; err != nil {
+				return err
+			}
+			categoryIDsByBookID, err := loadBookCategoryIDsByBookID(tx, userID, []models.Book{existing})
+			if err != nil {
+				return err
+			}
+			existingCategoryIDs = categoryIDsByBookID[existing.ID]
+			return nil
+		}); err != nil {
+			if ctx.Err() != nil || isRequestContextError(err) {
 				return
 			}
+			if errors.Is(err, errRemoteBookExistingAddTargetNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
+				notFound(c, "book not found")
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book categories"})
+			return
 		}
 		if err := ctx.Err(); err != nil {
 			return
 		}
-		c.JSON(http.StatusOK, s.broadcastBookShelfUpdate(userID, existing))
+		c.JSON(http.StatusOK, s.broadcastBookShelfUpdateWithCategoryIDs(userID, existing, existingCategoryIDs))
 		return
 	}
 
