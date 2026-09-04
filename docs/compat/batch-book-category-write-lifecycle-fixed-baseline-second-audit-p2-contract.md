@@ -2,7 +2,7 @@
 
 审查日期：2026-08-31
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-publication-pending-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -96,10 +96,18 @@ handler 在 transaction 前验证全部 Book/Category ownership，但 category �
 7. focused/race、API/full Go、vet、frontend full/build、BookManage 1440x900、390x844、360x800
    真实 API 与可信 Actions fresh/historical/portable 门通过后才可发布。
 
-## 6. Inventory 结论
+## 6. 实施结论
 
-判定：**must-fix**。当前 endpoint 的 wire、owner 与顺序 UI 已签收，但 category durable branch
-仍将 transaction 外 relation snapshot 和 transaction 初始 Book snapshot 以整行 `Save` 提交，且忽略
-request cancellation。下一阶段先用可确定 barrier 固定旧实现的列覆盖、复活、关系错误丢失、
-取消落库和快照 event，再改为 request-context 同一 transaction 关系读写、guarded `category_id`
-与权威重载；本 inventory 不修改应用或测试代码。
+判定：**aligned / regression-validated**。合同 `271b545`、旧实现红测 `5b04825` 和实现 `95aa598`
+按顺序落地。category durable branch 现在只在 request-context transaction 内读取和替换 relation，
+以 `id + user_id` guarded update 提交 legacy primary `category_id`，不再 `Save` 完整 Book；消失目标
+不会复活，relation 错误和 commit 前取消会回滚全批。transaction 内按请求顺序重载实际存活 Book
+及 relation，commit 后的 `affected/books/bookshelf_update` 只投影该权威集合。
+
+确定性测试证明了旧实现会覆盖并发 title/intro/can-update、fallback insert 已删除 Book、吞掉 relation
+读取错误、在 caller 取消后仍提交，并广播 transaction 最终状态之前的快照。修复后 focused、`-race`、
+Go 全量、`go vet`、frontend 742/742、Vite build、Compose config 均通过；BookManage 使用真实
+Go/SQLite/API/Chromium 在 1440x900、390x844、360x800 完成 metadata edit、group set、batch
+add/remove 与 delete。未新增 schema、迁移、备份成员、持久路径、环境变量、浏览器 key 或 UI 流程。
+可信 Actions run `33366021370` 已由实现提交触发；其 fresh/historical/portable、多架构发布结果与
+OCI digest 尚待重新读取，不以此前的 `090a643` 镜像代替本切片发布证据。

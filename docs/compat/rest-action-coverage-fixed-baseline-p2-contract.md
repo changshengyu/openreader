@@ -857,7 +857,7 @@ request-context transaction 重读 owner target，只更新显式列，空 patch
 `sha256:0e0532f202ab0090005fd07642e61b551febf0b3a1c44e518fe2bfbf9df1875f`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 43. Batch Book Category 提交列所有权（2026-08-31 inventory）
+## 43. Batch Book Category 提交列所有权（2026-08-31 implementation）
 
 Category patch 关闭后继续对存量 full-row `Save` 做当前路由/当前合同反查，下一项 must-fix
 收敛为 `POST /api/books/batch` 的 `category/category-add/category-remove`。现有 handler 的
@@ -871,4 +871,10 @@ bookshelf namespace 重新定位现存条目后修改 group，已删除条目不
 继续保留 many-to-many 和幂等 remove 允许适配，但必须改为 request-context 同一 transaction
 关系读写、guarded `category_id` 与权威重载。完整合同与红测门见
 [`batch-book-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md`](batch-book-category-write-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。
+合同 `271b545`、旧实现红测 `5b04825` 与实现 `95aa598` 已按顺序落地。handler 现在使用
+request-context transaction 读取当前 relation，传播读取错误，只以 owner guard 更新 `category_id`，
+消失目标不会 fallback insert；提交前按请求顺序重载实际存活 Book/relation，response/event 不再使用
+初始快照。focused/race/full/vet、frontend 742/742、build、Compose 与 BookManage 1440x900、390x844、
+360x800 真实 Go/SQLite/API/Chromium 均通过。当前状态
+**aligned / regression-validated / Docker-publication-pending-verification**；可信 Actions run
+`33366021370` 已触发，最终卷门、平台与 digest 证据尚待重新读取。
