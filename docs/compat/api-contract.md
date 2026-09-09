@@ -1234,6 +1234,21 @@ checks at four viewports passed. Status is
 **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**; GitHub remained at `c500e81` after 443
 timeouts, so trusted Actions and GHCR publication evidence are not yet available.
 
+### P0/P2 Reader source-change write lifecycle (2026-09-09 inventory)
+
+`POST /api/books/:id/change-source` keeps its JWT, owner-first lookup, 1 MiB single-object body, selected-source
+fetch, normal `200` shelf object, safe parser `400`, owner-safe initial `404`, transactionally replaced catalogue,
+progress/bookmark reconciliation and candidate projection. After remote work, the transaction must revalidate the
+initial Book source identity and the caller's active target-Source semantic snapshot before any chapter mutation.
+
+A deleted Book, a newer source switch, or a changed/unavailable target Source returns
+`409 {"error":"book changed during source switch"}` with no row/file/failure/event side effect. A valid commit uses
+explicit source/metadata/catalogue columns over the transaction-current Book, preserves unrelated category/custom
+cover/update/local-archive fields, reloads the authoritative Book, and uses that row for candidate, response and event.
+Exact evidence and red-test requirements are in
+[`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no application or test code changed.
+
 ## P2 access-log query projection (2026-08-25 implemented/published)
 
 All route methods, paths, auth, query parsing, responses and side effects remain unchanged. The shared access logger

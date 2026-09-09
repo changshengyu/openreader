@@ -1338,3 +1338,19 @@ single-/owned-column updates and staged cache publication without adding a schem
 member, mounted root or environment variable. Existing rows, paths and archives remain readable. Focused/race/full,
 frontend 748/748, build, Compose and four-viewport browser checks passed. Status is
 **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
+
+## P0/P2 Reader source-change write lifecycle compatibility (2026-09-09 inventory)
+
+- The target adds no schema, migration, startup scan, persistent root, environment variable, backup member or browser
+  storage key.
+- Existing Book, Chapter, ReadingProgress, Bookmark and BookSourceCandidate rows remain authoritative. Source change
+  may replace the catalogue and update only its explicit source/metadata/catalogue Book columns after the initial
+  Book identity and caller-active target Source semantics still match.
+- Stale, cancelled or failed work must not recreate a deleted Book, replace a newer catalogue, rebind current
+  progress/bookmarks, overwrite unrelated Book columns, change candidates, or prune cache/image files.
+- Existing candidate derivation, cache hashes, Chapter IDs, position fallback and all logical/portable/Legado/WebDAV
+  backup formats remain unchanged. Rollback reads the same data and only reintroduces full-row Save/stale-commit risk.
+
+Target contract:
+[`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.

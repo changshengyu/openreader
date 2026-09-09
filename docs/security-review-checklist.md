@@ -125,6 +125,23 @@ Target contract:
 Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. Status is
 `aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending`.
 
+## P0/P2 Reader source-change write lifecycle (2026-09-09 inventory)
+
+- [ ] Revalidate the caller-owned Book and its initial source ID/URL after target-source remote work and before any
+      Chapter/Progress/Bookmark mutation; deletion and a newer source switch must win without resurrection.
+- [ ] Revalidate the caller's active, enabled target-Source association and parser/fetch semantic snapshot; source
+      edit, delete, detach or COW remap makes the remote result stale.
+- [ ] Replace full-row Book `Save` with guarded explicit source/metadata/catalogue columns over the transaction-current
+      row; preserve category, custom cover, update flag and local-archive fields.
+- [ ] Roll back Book/catalogue/reference/candidate changes together on stale, cancellation, guarded-row or candidate
+      failure; stale work must not prune cache/image files or write source-failure/event state.
+- [ ] Reload the committed Book for candidate, response and durable-only event projection; prove old implementation
+      failures, focused/race/full/vet, frontend/build, four-viewport browser and trusted publication gates.
+
+Target contract:
+[`compat/reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](compat/reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md).
+Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed.
+
 ## Authentication and authorization
 
 - [ ] `OPENREADER_JWT_SECRET` is required and not logged.
