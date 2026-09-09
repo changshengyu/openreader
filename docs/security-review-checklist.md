@@ -126,6 +126,23 @@ Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in o
 `34321320014` published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`.
 
+## P0/P2 Reader local chapter-cache rebuild lifecycle (2026-09-09 inventory)
+
+- [ ] Propagate caller context through bounded local archive reads and cache writes; check cancellation around parser
+      and EPUB recovery work before any durable publication.
+- [ ] Revalidate the caller-owned local Book, archive same-file identity and complete Chapter parse/cache snapshot
+      after rebuild work; deletion and `refresh-local` replacement must win without row resurrection.
+- [ ] Replace full-row Chapter `Save` with an old-snapshot-guarded `cache_path` update; never persist synthetic URL or
+      overwrite title/index/resource/variable/timestamps from a stale struct.
+- [ ] Stage rebuilt cache privately and coordinate validation, promote, guarded DB update and rollback so stale,
+      cancelled or failed work leaves no final orphan and cannot overwrite an active refresh generation.
+- [ ] Pass deterministic old-implementation red tests, focused/race/full/vet, local format/old-volume regression,
+      frontend/build, four-viewport Reader and trusted fresh/historical/portable publication gates.
+
+Target contract:
+[`compat/reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed.
+
 ## P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 - [x] Revalidate the caller-owned Book and its initial source ID/URL after target-source remote work and before any

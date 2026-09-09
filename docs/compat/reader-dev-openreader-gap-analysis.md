@@ -4016,3 +4016,20 @@ frontend 748/748、build、Compose 与 1440x900、390x844、360x800、1024x1366 
 `a7917ed`/`latest` amd64/arm64 OCI index 为
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。当前状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-09-09 Reader 本地章节缓存回建生命周期第二轮固定基准复审
+
+换源写入发布后继续扫描章节 loader 的本地 cache-miss 分支。固定上游按当前 namespace 的本地
+Book/Chapter 从文件范围或 EPUB/UMD 资源读取正文，不把旧目录实体写回 catalogue；EPUB 文本 cache 是
+派生文件。OpenReader 则在 `rebuildLocalChapterText` 中丢失 caller context，直接写最终 `content/<hash>`，
+随后把读取前 Chapter 整行 `Save` 且忽略错误。
+
+因此读取期间删除 Book 或完成 `refresh-local` 时，迟到请求可 fallback insert 旧 Chapter、覆盖替换目录
+字段或 active generation，并在取消/DB 失败时留下 orphan。现有 archive same-file 检查只证明目录 inode
+未被替换，不能证明数据库仍由当前用户的同一 Book/Chapter 引用。
+
+目标是在发布前复验 local Book/archive 和完整 Chapter parse/cache snapshot，只 guarded 更新
+`chapters.cache_path`，以 request-private stage 和 per-cache coordinator 收敛文件/DB，并传播 caller
+context。完整矩阵与测试先行门见
+[`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态：**inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。

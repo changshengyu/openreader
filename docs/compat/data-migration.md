@@ -1362,3 +1362,19 @@ checks passed. Trusted Actions run `34321320014` passed fresh/portable, historic
 gates and published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
+## P0/P2 Reader local chapter-cache rebuild lifecycle compatibility (2026-09-09 inventory)
+
+- The target adds no schema, migration, startup scan, persistent root, environment variable, backup member or browser
+  storage key.
+- Existing local Book, Chapter and caller-owned archive rows/files remain authoritative. Cache miss may publish only
+  a derived `content/` file and guarded `chapters.cache_path` after the Book/archive/Chapter snapshot is still current.
+- Stale, cancelled or failed work must not recreate a deleted Chapter, conflict with a replacement catalogue, alter
+  title/URL/index/resource/variable/time columns, overwrite the active refresh generation or leave a final orphan.
+- Existing safe relative and historical absolute cache paths, local format archives, parser budgets and all ordinary/
+  portable/Legado/WebDAV backup formats remain unchanged. Request-private stage files are derived and excluded.
+- Rollback reads the same data and only reintroduces contextless rebuild, full-row Save and direct-final-file risks.
+
+Target contract:
+[`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.

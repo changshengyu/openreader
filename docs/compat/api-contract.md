@@ -1256,6 +1256,20 @@ published-platform gates and published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
+### P0/P2 Reader local chapter-cache rebuild lifecycle (2026-09-09 inventory)
+
+The local-book cache-miss branch of `GET /api/books/:id/chapters/:index/content` keeps its JWT, owner-first lookup,
+server-authoritative index, normal text response and existing safe initial errors. A rebuilt result must revalidate
+the current local Book/archive and complete Chapter parse/cache snapshot before publishing any file or path.
+
+Deletion, `refresh-local`, archive/TOC replacement, Chapter identity change or caller cancellation makes the result
+stale and must not recreate a Chapter, overwrite the active cache generation or leave an unreferenced final file.
+Stale work uses the existing `409 {"error":"chapter content changed; retry"}`; persistence errors remain safe and
+path-free. A valid commit may update only `chapters.cache_path` with an old-snapshot guard and authoritative reload.
+Exact evidence and red-test requirements are in
+[`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no application or test code changed.
+
 ## P2 access-log query projection (2026-08-25 implemented/published)
 
 All route methods, paths, auth, query parsing, responses and side effects remain unchanged. The shared access logger

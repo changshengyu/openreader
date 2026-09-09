@@ -942,3 +942,21 @@ frontend 748/748、build、Compose 与四视口 Chromium 均通过。当前状�
 `34321320014` 的 native、fresh/portable、historical volume 与 published-platform 门全部通过；发布的
 `a7917ed`/`latest` OCI index 为
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。
+
+## 47. Reader 本地章节缓存回建生命周期（2026-09-09 inventory）
+
+换源写入关闭后继续扫描共享章节 loader 的本地分支。固定上游从当前 namespace 的本地 Book/Chapter
+直接读取文件范围或 EPUB/UMD 资源；正文读取不会把旧目录实体写回 shelf/catalogue，EPUB 的可选文本
+cache 也只是派生文件。
+
+OpenReader 在 cache miss 时通过 `rebuildLocalChapterText` 重新读取/解析 archive，然后直接写最终
+`content/<hash>`，修改旧 Chapter struct 的 URL/cache path 并执行 contextless `s.db.Save(chapter)`，且
+忽略写入错误。读取期间若删除 Book 或完成 `refresh-local`，迟到请求可 fallback insert 旧 Chapter、覆盖
+新目录字段/active generation 或留下 orphan；archive inode current 检查不能证明 DB 仍引用该实体。
+
+目标是贯穿 caller context，在最终文件/DB 发布前复验 local Book/archive 和完整 Chapter parse/cache
+snapshot，只以 guarded single-column update 写 `cache_path`，并以 request-private stage + per-cache
+coordinator 收敛 promote/rollback。stale 复用现有安全 409，正常 TXT/EPUB/UMD/旧卷恢复保持。完整合同与
+红测门见
+[`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。
