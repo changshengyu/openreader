@@ -1339,7 +1339,7 @@ member, mounted root or environment variable. Existing rows, paths and archives 
 frontend 748/748, build, Compose and four-viewport browser checks passed. Status is
 **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
 
-## P0/P2 Reader source-change write lifecycle compatibility (2026-09-09 inventory)
+## P0/P2 Reader source-change write lifecycle compatibility (2026-09-09 implemented)
 
 - The target adds no schema, migration, startup scan, persistent root, environment variable, backup member or browser
   storage key.
@@ -1353,4 +1353,7 @@ frontend 748/748, build, Compose and four-viewport browser checks passed. Status
 
 Target contract:
 [`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.
+Contract `31b2963`, old-implementation red tests `5734f74` and implementation `3bb465f` landed in order. The guarded
+explicit-column update and authoritative reload add no schema, startup rewrite, backup member, mounted root or
+environment variable. Focused/adjacent/race/full/vet, frontend 748/748, build, Compose and four-viewport Chromium
+checks passed. Status is **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.

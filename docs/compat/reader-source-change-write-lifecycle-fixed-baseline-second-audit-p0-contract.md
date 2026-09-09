@@ -2,7 +2,7 @@
 
 审查日期：2026-09-09
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -126,9 +126,18 @@ transaction 必须：
    full/build、Compose，以及 1440x900、390x844、360x800、1024x1366 延迟换源真实浏览器门。
 8. 同步 GitHub 后由可信 Actions 完成 fresh/historical/portable/published-platform 与 GHCR digest 证据。
 
-## 8. Inventory 结论
+## 8. 实施结论
 
-判定：**must-fix**。当前测试证明普通成功、fetch 失败、目录/位置重绑、缓存清理、候选和可见位置，
-没有在 fetch 与 transaction 之间删除/编辑 Book 或 Source，也没有证明 full-row `Save` 不覆盖并发字段。
-下一阶段先提交本合同，再提交旧实现红测，最后实施 current-row/source-snapshot validation、owned-column
-guarded update 和 authoritative reload；本 inventory 不修改应用或测试代码。
+合同 `31b2963`、旧实现红测 `5734f74` 和实现 `3bb465f` 已按顺序落地。确定性 barrier 在旧实现上证明了
+删除后复活、较新换源被覆盖、目标 Source 失效后仍提交，以及非换源列被旧快照覆盖；取消和候选写入
+失败的原有正确边界同时保持。
+
+实现现在于目录 mutation 前重读 caller Book、active association 和目标 Source，比较初始 Book 来源
+identity 与完整 fetch semantics；陈旧结果稳定返回 409。Book 写入改为 transaction-current row 上的
+显式拥有列 guarded update，随后权威重载并用于 candidate、response 和 durable-only event。正常目录
+替换、位置重绑、metadata merge、lastCheckTime 以及提交后的 cache/image 清理不变。
+
+专项及相邻 API、focused `-race`、Go full/vet、frontend 748/748、Vite build、Compose，以及
+1440x900、390x844、360x800、1024x1366 的真实 Chromium 换源合同均通过。未增加 schema、backup、
+mounted root 或环境变量。GitHub 因 443 网络超时尚未同步，因此可信 Actions 的 fresh/historical/
+portable/published-platform 门和本切片 GHCR digest 仍待补证。

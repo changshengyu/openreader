@@ -1234,7 +1234,7 @@ checks at four viewports passed. Status is
 **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**; GitHub remained at `c500e81` after 443
 timeouts, so trusted Actions and GHCR publication evidence are not yet available.
 
-### P0/P2 Reader source-change write lifecycle (2026-09-09 inventory)
+### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 `POST /api/books/:id/change-source` keeps its JWT, owner-first lookup, 1 MiB single-object body, selected-source
 fetch, normal `200` shelf object, safe parser `400`, owner-safe initial `404`, transactionally replaced catalogue,
@@ -1247,7 +1247,10 @@ explicit source/metadata/catalogue columns over the transaction-current Book, pr
 cover/update/local-archive fields, reloads the authoritative Book, and uses that row for candidate, response and event.
 Exact evidence and red-test requirements are in
 [`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no application or test code changed.
+Contract `31b2963`, old-implementation red tests `5734f74` and implementation `3bb465f` landed in order. The
+transaction now performs the required Book/association/Source revalidation, guarded owned-column update and
+authoritative reload. Focused/adjacent/race/full/vet, frontend 748/748, build, Compose and four-viewport Chromium
+checks passed. Status is **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
 
 ## P2 access-log query projection (2026-08-25 implemented/published)
 

@@ -3997,7 +3997,7 @@ default/trusted/invalid 进程探针及 GitHub Actions `32828470325` fresh/histo
 
 章节正文请求生命周期关闭后继续扫描远程工作后的持久 `Save`。固定上游 `setBookSource` 在抓取目标
 来源后通过 `editShelfBook` 重读当前 namespace 的现存书架项，只修改来源字段；目录完成后再次重读并
-更新 latest chapter/count。OpenReader 的 `changeBookSource` 则不在 fetch 后重读 Book 或目标 Source，
+更新 latest chapter/count。旧 OpenReader 的 `changeBookSource` 不在 fetch 后重读 Book 或目标 Source，
 先替换章节/重绑位置，再将 pre-fetch `models.Book` 交给 `tx.Save`，response/event/candidate 也使用该快照。
 
 因此删除目标可被 fallback insert 复活并留下章节，较早换源可覆盖较新的来源/目录/variable，目标
@@ -4008,4 +4008,8 @@ caller-active target Source semantics，以 transaction-current Book 计算显�
 
 完整矩阵与测试先行门见
 [`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md)。
-当前状态：**inventory-complete / tests-and-implementation-pending**；本阶段未修改应用或测试代码。
+合同 `31b2963`、旧实现红测 `5734f74` 和实现 `3bb465f` 已按顺序关闭。实现于目录 mutation 前重读并
+复验 Book、association 与目标 Source，以 transaction-current Book 计算显式拥有列、guarded update 并
+权威重载；删除、新换源和目标 Source 失效均安全 409，非换源列保持。focused/adjacent/race/full/vet、
+frontend 748/748、build、Compose 与 1440x900、390x844、360x800、1024x1366 Chromium 均通过。
+当前状态：**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**。

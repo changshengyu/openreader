@@ -919,21 +919,21 @@ OpenReader 现以 generation/scope guard 和 AbortSignal 约束主章节请求�
 748/748、build、Compose 与四视口延迟换源浏览器验证通过。当前状态
 **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**；GitHub/可信 Actions 证据待网络恢复。
 
-## 46. Reader 换源写入生命周期（2026-09-09 inventory）
+## 46. Reader 换源写入生命周期（2026-09-09 implemented）
 
 章节正文生命周期实施后，继续从当前持久 `Save` 和远程工作后的 transaction 做差集。固定上游
 `setBookSource` 在抓取目标来源后通过 `editShelfBook` 重新读取 namespace 内现存书架项，只修改来源
 字段；目录完成后再次重读并更新 latest chapter/count。已删除书不会被重新加入，远程工作前的整本
 Book 快照也不会覆盖当前条目。
 
-OpenReader 在 fetch 后不重读 Book 或目标 Source，先替换 Chapter/重绑 Progress/Bookmark，再
-`tx.Save(&book)`。因此并发删除可被 fallback insert 复活并留下章节；较早换源可覆盖较新的 source/
-catalogue/variable；目标 Source 编辑、禁用、删除或 COW 重映射后旧规则结果仍可提交；CategoryID、
-CustomCoverURL、CanUpdate 和本地归档等非换源列也可能被旧快照覆盖。response/event/candidate 同样使用
-该 pre-fetch Book。
+旧 OpenReader 在 fetch 后不重读 Book 或目标 Source，先替换 Chapter/重绑 Progress/Bookmark，再
+`tx.Save(&book)`。旧实现红测确定性证明了并发删除复活、较早换源覆盖、目标 Source 失效后提交，以及
+CategoryID、CustomCoverURL、CanUpdate 等非换源列被旧快照覆盖。
 
 目标是在任何目录 mutation 前复验初始 Book source identity 与 caller-active target Source semantics，
 以 transaction-current Book 计算显式换源列、guarded update 并权威重载；陈旧结果安全 409，零 row/file/
 failure/event 副作用。完整合同与红测门见
 [`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。
+合同 `31b2963`、旧实现红测 `5734f74` 和实现 `3bb465f` 已按顺序落地。focused/adjacent/race/full/vet、
+frontend 748/748、build、Compose 与四视口 Chromium 均通过。当前状态
+**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**。
