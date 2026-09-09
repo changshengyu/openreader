@@ -3398,9 +3398,16 @@ func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapt
 	return s.persistRebuiltLocalChapterText(book, chapter, archive, content)
 }
 
+// readerLocalChapterCacheRebuildLifecycleTestHook exposes the post-parse
+// persistence boundary for deterministic lifecycle contract tests.
+var readerLocalChapterCacheRebuildLifecycleTestHook func(string, models.Book, models.Chapter)
+
 func (s *Server) persistRebuiltLocalChapterText(book models.Book, chapter *models.Chapter, archive *localBookArchive, content string) string {
 	if archive == nil || !archive.current() {
 		return content
+	}
+	if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
+		readerLocalChapterCacheRebuildLifecycleTestHook("after_local_rebuild", book, *chapter)
 	}
 	chapterURL := strings.TrimSpace(chapter.URL)
 	if chapterURL == "" {
