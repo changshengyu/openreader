@@ -2,7 +2,7 @@
 
 审查日期：2026-09-09
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -137,9 +137,18 @@ old-path-guarded 的单列 update；失败继续按 cache hit 返回正文，但
 以及可信 Actions fresh/historical/portable/published-platform 门。发布报告继续区分 Git HEAD、Docker
 commit 和用户生产 commit。
 
-## 8. Inventory 结论
+## 8. 实施与验证结论
 
-判定：**must-fix**。现有测试只证明普通变量原子写入和前端“不把旧结果标记为当前 cached”，没有覆盖
-固定上游明确的主正文 `bookUrl/index` 迟到结果拒绝，也没有覆盖 OpenReader 持久变量/cache 适配在换源、
-source 编辑、目录替换和取消时的提交边界。下一阶段先提交本合同，再提交旧实现红测，最后实施前端
-generation/AbortSignal 和后端 request-context snapshot-guarded commit；本 inventory 不修改应用或测试。
+合同 `c500e81`、旧实现红测 `5bf7c66` 与实现 `0a8a0ef` 已按顺序落地。前端主 loader 和共享缓存现在
+使用 AbortSignal、generation 与 book scope 拒绝迟到结果；换源时冻结待恢复位置，失效的 reload 不再
+显示成功提示。后端以 caller/source/book/chapter/initial-variable snapshot 复验提交资格，只 guarded
+更新拥有列，并用 staged/backup 文件事务确保陈旧、取消或数据库失败不会发布 cache；legacy path
+归一化不再 full-row Save 或复活章节。
+
+确定性旧实现红测分别暴露 3 个前端和 4 个后端失败。实现后 focused、相邻 API/parser、race、Go full、
+`go vet`、frontend **748/748**、Vite build、Compose 均通过；延迟旧来源的真实浏览器换源场景在
+1440x900、390x844、360x800、1024x1366 四视口通过，并保持新正文与当前位置。全量 Go 在受限环境中
+仅因旧 httptest 无法绑定 IPv6 loopback 失败，解除网络沙箱后同一命令全部通过。
+
+本切片不改变 schema、备份格式、持久目录、环境变量或正常 API envelope。实现提交为 `0a8a0ef`；因
+GitHub 443 连接超时，远端仍停在 `c500e81`，可信 Actions 卷门、平台与 GHCR digest 证据尚未产生。

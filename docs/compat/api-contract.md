@@ -1213,7 +1213,7 @@ amd64/arm64 release is `f394c1a`/`latest`, OCI index
 | Remote refresh/change-source and chapter content | The server reads/writes optional Book/Chapter variables around existing parser calls. Chapter content stores the returned Book/Chapter map atomically with its cache path. | Existing paths and successful response bodies do not change. A source semantics change clears obsolete state rather than translating or exposing it. |
 | Backup restore | `bookshelf.json.variable` and optional `chapterVariables.json` are accepted. | Old archives need neither field. New maps are fully validated before restore mutation and target only the authenticated destination user's source-name-resolved book/chapters; source/book/chapter database IDs are never variable identity. |
 
-### P0/P2 Reader chapter-content request lifecycle (2026-09-09 inventory)
+### P0/P2 Reader chapter-content request lifecycle (2026-09-09 implemented)
 
 `GET /api/books/:id/chapters/:index/content` retains JWT, server-authoritative index, normal
 `200 {chapter,content,format,...}` and safe parser/source `502` responses. A remote result whose caller-owned Book,
@@ -1227,7 +1227,12 @@ envelopes. Frontend chapter GETs must carry an abort signal, and only the curren
 generation may apply a response or write browser/memory cache. Exact upstream evidence, current gaps and red-test
 requirements are in
 [`reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no application or test code changed.
+Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. Snapshot revalidation,
+request-context persistence, guarded owned-column updates, staged cache publication and frontend AbortSignal/generation
+guards now enforce the contract. Focused/race/full/vet, frontend 748/748, build, Compose and delayed-source browser
+checks at four viewports passed. Status is
+**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**; GitHub remained at `c500e81` after 443
+timeouts, so trusted Actions and GHCR publication evidence are not yet available.
 
 ## P2 access-log query projection (2026-08-25 implemented/published)
 

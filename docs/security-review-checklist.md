@@ -104,24 +104,26 @@ frontend 742/742, build, Compose and BookInfo three-viewport real API/browser ga
 triggered; final fresh/historical/portable, platform and digest evidence remains pending. Status is
 `aligned / regression-validated / Docker-publication-pending-verification`.
 
-## P0/P2 Reader chapter-content request lifecycle (2026-09-09 inventory)
+## P0/P2 Reader chapter-content request lifecycle (2026-09-09 implemented)
 
-- [ ] Reject a remote result unless the caller-owned Book, active Source semantics, Chapter identity and initial
+- [x] Reject a remote result unless the caller-owned Book, active Source semantics, Chapter identity and initial
       Book/Chapter variables still match the fetch snapshot; stale work must not repopulate source-cleared state.
-- [ ] Propagate request context through the persistence transaction and check guarded row counts; cancellation,
+- [x] Propagate request context through the persistence transaction and check guarded row counts; cancellation,
       source/catalogue replacement and deletion create no variable/path/file/failure side effect.
-- [ ] Publish remote cache content only with a successful current snapshot under the existing cache coordination
+- [x] Publish remote cache content only with a successful current snapshot under the existing cache coordination
       boundary; stale work cannot overwrite current bytes or leave a visible orphan/reference mismatch.
-- [ ] Replace legacy cache-path full-row Chapter `Save` with an old-path-guarded single-column update that cannot
+- [x] Replace legacy cache-path full-row Chapter `Save` with an old-path-guarded single-column update that cannot
       overwrite metadata/variables or fallback-insert a deleted/replaced chapter.
-- [ ] Give Reader chapter requests an AbortSignal and generation/scope guard so late success/failure cannot change
+- [x] Give Reader chapter requests an AbortSignal and generation/scope guard so late success/failure cannot change
       current content, format, loading/error, browser/memory cache, layout, preload or progress.
 - [ ] Pass deterministic old-implementation red tests, focused/race/full/vet, frontend full/build, delayed-source
-      three-viewport browser and fresh/historical/portable publication gates without schema/backup/root changes.
+      browser and fresh/historical/portable publication gates without schema/backup/root changes. Local code and
+      four-viewport browser gates pass; trusted Actions publication gates await GitHub synchronization.
 
 Target contract:
 [`compat/reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](compat/reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md).
-Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed.
+Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. Status is
+`aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending`.
 
 ## Authentication and authorization
 

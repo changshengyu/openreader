@@ -1316,7 +1316,7 @@ root changes. The implementation commit triggered trusted Actions; final fresh/h
 digest evidence still requires retrieval. Status is
 **aligned / regression-validated / Docker-publication-pending-verification**.
 
-## P0/P2 Reader chapter-content request lifecycle compatibility (2026-09-09 inventory)
+## P0/P2 Reader chapter-content request lifecycle compatibility (2026-09-09 implemented)
 
 - The target adds no schema, migration, startup scan, persistent root, environment variable, backup member or
   browser storage key.
@@ -1333,4 +1333,8 @@ digest evidence still requires retrieval. Status is
 
 Target contract:
 [`reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.
+Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. The implementation uses guarded
+single-/owned-column updates and staged cache publication without adding a schema migration, startup rewrite, backup
+member, mounted root or environment variable. Existing rows, paths and archives remain readable. Focused/race/full,
+frontend 748/748, build, Compose and four-viewport browser checks passed. Status is
+**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
