@@ -899,3 +899,21 @@ request-context transaction 内重读 owner Book，只 guarded 更新 primary ca
 390x844、360x800 真实 Go/SQLite/API/Chromium 均通过。当前状态
 **aligned / regression-validated / Docker-publication-pending-verification**；实现提交已触发可信 Actions，
 最终卷门、平台与 digest 证据待读取。
+
+## 45. Reader 章节正文请求与持久提交生命周期（2026-09-09 inventory）
+
+Remote Book existing-add 实施后，继续从共享章节 loader、持久 variable/cache path 和 Reader 换源动作做
+当前差集。固定上游 `Reader.vue#getContent` 在响应落地前比较当前 `bookUrl` 和 index，迟到旧正文不展示；
+上游正文 parser 只修改本次内存 Book/BookChapter，cache 文件按当前书 URL/index 派生，不把旧 chapter
+实体写回目录。
+
+OpenReader 的 `useReaderChapterLoader` 没有 generation/scope guard，chapter GET 也不接 AbortSignal；换源
+clear 后旧请求仍可覆盖当前正文或重建旧 browser cache。后端远程 fetch 后用 contextless transaction
+按 ID 写 Book/Chapter variable/cache path，不复验 owner source/url/rule/chapter/initial-variable snapshot；
+legacy path 归一化还以忽略错误的 full-row `Save(chapter)` 回写。并发换源、source semantic edit、目录
+替换或取消因此可提交旧变量、覆盖 cache，甚至 fallback-insert 被替换的章节。
+
+目标以前端 generation + AbortSignal 和后端 request-context snapshot-guarded owned-column commit 收敛，
+陈旧结果安全 409、零 source failure/变量/path/file/浏览器缓存副作用。完整合同与红测门见
+[`reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md)。
+当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。

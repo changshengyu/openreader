@@ -1213,6 +1213,22 @@ amd64/arm64 release is `f394c1a`/`latest`, OCI index
 | Remote refresh/change-source and chapter content | The server reads/writes optional Book/Chapter variables around existing parser calls. Chapter content stores the returned Book/Chapter map atomically with its cache path. | Existing paths and successful response bodies do not change. A source semantics change clears obsolete state rather than translating or exposing it. |
 | Backup restore | `bookshelf.json.variable` and optional `chapterVariables.json` are accepted. | Old archives need neither field. New maps are fully validated before restore mutation and target only the authenticated destination user's source-name-resolved book/chapters; source/book/chapter database IDs are never variable identity. |
 
+### P0/P2 Reader chapter-content request lifecycle (2026-09-09 inventory)
+
+`GET /api/books/:id/chapters/:index/content` retains JWT, server-authoritative index, normal
+`200 {chapter,content,format,...}` and safe parser/source `502` responses. A remote result whose caller-owned Book,
+active Source semantic snapshot, Chapter identity, or initial Book/Chapter variable state changed while work was in
+flight must commit no variable/cache state and returns path/value-free
+`409 {"error":"chapter content changed; retry"}`. Caller cancellation emits no synthetic response and neither stale
+nor cancelled work writes `source_failures`.
+
+Search, export and ordinary/stream cache callers reuse the same guarded loader without changing their existing
+envelopes. Frontend chapter GETs must carry an abort signal, and only the current Reader book URL/source/chapter
+generation may apply a response or write browser/memory cache. Exact upstream evidence, current gaps and red-test
+requirements are in
+[`reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no application or test code changed.
+
 ## P2 access-log query projection (2026-08-25 implemented/published)
 
 All route methods, paths, auth, query parsing, responses and side effects remain unchanged. The shared access logger

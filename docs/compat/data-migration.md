@@ -1315,3 +1315,22 @@ frontend 742/742, build, Compose and three-viewport real API/browser gates passe
 root changes. The implementation commit triggered trusted Actions; final fresh/historical/portable, platform and
 digest evidence still requires retrieval. Status is
 **aligned / regression-validated / Docker-publication-pending-verification**.
+
+## P0/P2 Reader chapter-content request lifecycle compatibility (2026-09-09 inventory)
+
+- The target adds no schema, migration, startup scan, persistent root, environment variable, backup member or
+  browser storage key.
+- Existing `books.variable`, `chapters.variable/cache_path`, Book/Chapter/Source IDs and timestamps remain
+  authoritative. A future content result may update only variables and the current chapter cache path after its
+  caller/source/book/chapter/initial-variable snapshot is still current.
+- Stale, cancelled or failed work must not restore variables cleared by a source semantic edit, publish a path for a
+  replaced chapter, overwrite a current cache file, recreate a deleted Chapter, or repopulate browser cache cleared
+  by a book/source transition.
+- Existing safe relative/current-absolute cache paths stay lazy-readable. Opportunistic path normalization becomes
+  an old-path-guarded single-column update; no existing row or file is scanned or rewritten during upgrade.
+- Rollback reads the same SQLite, cache and backup formats and only reintroduces stale response/state and full-row
+  Chapter `Save` risks.
+
+Target contract:
+[`reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.
