@@ -2331,6 +2331,8 @@ type changeSourceRequest struct {
 	WordCount string `json:"wordCount"`
 }
 
+var errReaderSourceChangeStale = errors.New("book changed during source switch")
+
 type contentMatch struct {
 	ChapterID                uint    `json:"chapterId"`
 	ChapterIndex             int     `json:"chapterIndex"`
@@ -2435,6 +2437,20 @@ func (s *Server) changeBookSource(c *gin.Context) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		var current models.Book
+		if err := tx.Where("id = ? AND user_id = ?", book.ID, userID).First(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errReaderSourceChangeStale
+			}
+			return err
+		}
+		if current.SourceID != book.SourceID || current.URL != book.URL {
+			return errReaderSourceChangeStale
+		}
+		currentSource, err := validateReaderSourceChangeTarget(tx, userID, newSource)
+		if err != nil {
+			return err
+		}
 		nextChapters := make([]models.Chapter, 0, len(newChapters))
 		for _, ch := range newChapters {
 			if err := ctx.Err(); err != nil {
@@ -2450,46 +2466,48 @@ func (s *Server) changeBookSource(c *gin.Context) {
 				Variable: ch.Variable,
 			})
 		}
-		var err error
 		supersededCachePaths, _, err = s.replaceBookChapterRows(tx, userID, bookID, nextChapters)
 		if err != nil {
 			return err
 		}
-		book.SourceID = req.SourceID
-		book.Type = newSource.SourceType
-		book.URL = newBookURL
-		book.Variable = variable
-		if title := firstNonBlankCanRename(remoteInfo.Title, firstNonBlank(req.Title, book.Title), remoteInfo.CanRename); title != "" {
-			book.Title = title
+		updates := map[string]any{
+			"source_id":       currentSource.ID,
+			"type":            currentSource.SourceType,
+			"url":             newBookURL,
+			"variable":        variable,
+			"title":           firstNonBlankCanRename(remoteInfo.Title, firstNonBlank(req.Title, current.Title), remoteInfo.CanRename),
+			"author":          firstNonBlankCanRename(remoteInfo.Author, firstNonBlank(req.Author, current.Author), remoteInfo.CanRename),
+			"cover_url":       firstNonBlank(remoteInfo.CoverURL, req.CoverURL, current.CoverURL),
+			"intro":           firstNonBlank(remoteInfo.Intro, req.Intro, current.Intro),
+			"kind":            firstNonBlank(remoteInfo.Kind, req.Kind, current.Kind),
+			"word_count":      firstNonBlank(remoteInfo.WordCount, req.WordCount, current.WordCount),
+			"last_chapter":    newChapters[len(newChapters)-1].Title,
+			"chapter_count":   len(newChapters),
+			"last_check_time": time.Now().UnixMilli(),
 		}
-		if author := firstNonBlankCanRename(remoteInfo.Author, firstNonBlank(req.Author, book.Author), remoteInfo.CanRename); author != "" {
-			book.Author = author
+		write := tx.Model(&models.Book{}).
+			Where("id = ? AND user_id = ? AND source_id = ? AND url = ?", current.ID, current.UserID, current.SourceID, current.URL).
+			Updates(updates)
+		if write.Error != nil {
+			return write.Error
 		}
-		if coverURL := firstNonBlank(remoteInfo.CoverURL, req.CoverURL); coverURL != "" {
-			book.CoverURL = coverURL
-		}
-		if intro := firstNonBlank(remoteInfo.Intro, req.Intro); intro != "" {
-			book.Intro = intro
-		}
-		if kind := firstNonBlank(remoteInfo.Kind, req.Kind); kind != "" {
-			book.Kind = kind
-		}
-		if wordCount := firstNonBlank(remoteInfo.WordCount, req.WordCount); wordCount != "" {
-			book.WordCount = wordCount
-		}
-		book.LastChapter = newChapters[len(newChapters)-1].Title
-		book.ChapterCount = len(newChapters)
-		book.LastCheckTime = time.Now().UnixMilli()
-		if err := tx.Save(&book).Error; err != nil {
-			return err
+		if write.RowsAffected != 1 {
+			return errReaderSourceChangeStale
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return s.sourceCandidates.SeedCurrent(tx, book, &newSource)
+		if err := tx.Where("id = ? AND user_id = ?", current.ID, current.UserID).First(&book).Error; err != nil {
+			return err
+		}
+		return s.sourceCandidates.SeedCurrent(tx, book, &currentSource)
 	})
 	if err != nil {
 		if isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, errReaderSourceChangeStale) {
+			c.JSON(http.StatusConflict, gin.H{"error": errReaderSourceChangeStale.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change source"})
@@ -2502,6 +2520,36 @@ func (s *Server) changeBookSource(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, s.broadcastBookShelfUpdate(userID, book))
+}
+
+func validateReaderSourceChangeTarget(
+	db *gorm.DB,
+	userID uint,
+	snapshot models.BookSource,
+) (models.BookSource, error) {
+	var association models.UserBookSource
+	if err := db.Where(
+		"user_id = ? AND source_id = ? AND detached = ?",
+		userID,
+		snapshot.ID,
+		false,
+	).First(&association).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.BookSource{}, errReaderSourceChangeStale
+		}
+		return models.BookSource{}, err
+	}
+	var source models.BookSource
+	if err := db.First(&source, snapshot.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.BookSource{}, errReaderSourceChangeStale
+		}
+		return models.BookSource{}, err
+	}
+	if !sameBookSourceFetchSemantics(source, snapshot) {
+		return models.BookSource{}, errReaderSourceChangeStale
+	}
+	return source, nil
 }
 
 func (s *Server) chapterContent(c *gin.Context) {
@@ -3213,7 +3261,7 @@ func (s *Server) validateReaderChapterContentSnapshot(
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
-	if !sameReaderChapterContentSource(source, snapshot.source) {
+	if !sameBookSourceFetchSemantics(source, snapshot.source) {
 		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
 	}
 
@@ -3244,7 +3292,7 @@ func (s *Server) validateReaderChapterContentSnapshot(
 	return book, chapter, nil
 }
 
-func sameReaderChapterContentSource(current models.BookSource, snapshot models.BookSource) bool {
+func sameBookSourceFetchSemantics(current models.BookSource, snapshot models.BookSource) bool {
 	return current.ID == snapshot.ID &&
 		current.BaseURL == snapshot.BaseURL &&
 		current.SearchURL == snapshot.SearchURL &&
