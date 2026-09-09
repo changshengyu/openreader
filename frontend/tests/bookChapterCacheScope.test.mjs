@@ -50,6 +50,28 @@ test('authenticated chapter loading never falls back to an unowned legacy cache 
   ]])
 })
 
+test('forwards cancellation and never caches a response cancelled during fetch', async () => {
+  const book = { id: 7, title: 'Scoped', author: 'Reader', url: 'book-url-7' }
+  const controller = new AbortController()
+  const calls = []
+  const writes = []
+  const result = await loadBrowserChapterContent(book, 7, 0, {
+    scope: 'user:11',
+    refresh: true,
+    signal: controller.signal,
+    getChapterContent: async (...args) => {
+      calls.push(args)
+      controller.abort()
+      return { data: { chapter: { index: 0 }, content: 'cancelled content' } }
+    },
+    setCache: async (...args) => writes.push(args),
+  })
+
+  assert.deepEqual(calls, [[7, 0, { signal: controller.signal }]])
+  assert.equal(result.content, 'cancelled content')
+  assert.deepEqual(writes, [])
+})
+
 test('book cleanup deletes only the captured scoped chapter prefix', async () => {
   const book = { id: 7, title: 'Scoped', author: 'Reader', url: 'book-url-7' }
   const prefixes = []

@@ -2971,6 +2971,10 @@ type chapterTextLoadPolicy struct {
 	ApplyReaderReplaceRules bool
 }
 
+// readerChapterContentLifecycleTestHook exposes deterministic boundaries for
+// request-lifecycle contract tests without changing production behavior.
+var readerChapterContentLifecycleTestHook func(string, context.Context, models.Book, models.Chapter)
+
 func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, book *models.Book, chapter *models.Chapter, policy chapterTextLoadPolicy) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -2981,10 +2985,16 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 			content = string(bytes)
 			if book.SourceID == 0 {
 				if normalizedPath := s.localChapterCachePath(*book, path); normalizedPath != "" && normalizedPath != chapter.CachePath {
+					if readerChapterContentLifecycleTestHook != nil {
+						readerChapterContentLifecycleTestHook("before_cache_path_normalize", ctx, *book, *chapter)
+					}
 					chapter.CachePath = normalizedPath
 					_ = s.db.Save(chapter)
 				}
 			} else if path != "" && path != chapter.CachePath {
+				if readerChapterContentLifecycleTestHook != nil {
+					readerChapterContentLifecycleTestHook("before_cache_path_normalize", ctx, *book, *chapter)
+				}
 				if normalizedPath := s.remoteChapterCachePath(path); normalizedPath != "" {
 					chapter.CachePath = normalizedPath
 				} else {
@@ -3022,6 +3032,9 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		})
 		if fetchErr != nil {
 			return "", fetchErr
+		}
+		if readerChapterContentLifecycleTestHook != nil {
+			readerChapterContentLifecycleTestHook("after_remote_fetch", ctx, *book, *chapter)
 		}
 		book.Variable = variableState.BookVariable
 		chapter.Variable = variableState.ChapterVariable

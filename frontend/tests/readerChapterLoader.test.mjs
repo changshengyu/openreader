@@ -114,6 +114,35 @@ test('records load failures and always releases loading guards', async () => {
   ])
 })
 
+test('discards an older main load that finishes after the active chapter', async () => {
+  const pending = new Map()
+  const fixture = createController({
+    loadContent: index => new Promise(resolve => {
+      pending.set(index, resolve)
+    }),
+  })
+
+  const first = fixture.controller.load(0)
+  const second = fixture.controller.load(1)
+  pending.get(1)(validLoaderContent(1))
+  await second
+  pending.get(0)(validLoaderContent(0))
+  await first
+
+  assert.equal(fixture.state.currentIndex.value, 1)
+  assert.equal(fixture.state.chapter.value.id, 2)
+  assert.equal(fixture.state.content.value, '正文 1')
+  assert.deepEqual(
+    fixture.calls.filter(call => ['layout', 'restore', 'preload', 'mark'].includes(call[0])),
+    [
+      ['layout'],
+      ['restore', 0, {}],
+      ['preload', 1],
+      ['mark', fixture.currentProgress],
+    ],
+  )
+})
+
 test('keeps EPUB document metadata out of the ordinary paragraph renderer', async () => {
   const fixture = createController({
     loadContent: async () => ({
@@ -206,3 +235,11 @@ test('stores cached image mappings and passes them to presentation after loading
   assert.deepEqual(fixture.state.cachedImages.value, { [remote]: capability })
   assert.deepEqual(presented.cachedImages, { [remote]: capability })
 })
+
+function validLoaderContent(index) {
+  return {
+    chapter: { id: index + 1, title: `第 ${index + 1} 章` },
+    content: `正文 ${index}`,
+    format: 'text',
+  }
+}

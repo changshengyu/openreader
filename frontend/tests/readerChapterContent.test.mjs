@@ -108,6 +108,39 @@ test('deduplicates concurrent loads for the same book and chapter', async () => 
   assert.deepEqual(await second, validContent(2))
 })
 
+test('clearing a book aborts its in-flight chapter request', async () => {
+  let capturedOptions
+  let resolveLoad
+  const fixture = createController({
+    loadBrowserContent: (_book, _bookId, _index, options) => {
+      capturedOptions = options
+      return new Promise((resolve, reject) => {
+        resolveLoad = resolve
+        options.signal?.addEventListener('abort', () => {
+          const error = new Error('chapter request cancelled')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    },
+  })
+
+  const pending = fixture.controller.load(1).then(
+    data => ({ status: 'fulfilled', data }),
+    error => ({ status: 'rejected', error }),
+  )
+  fixture.controller.clear(fixture.book.value, fixture.bookId.value)
+  if (!capturedOptions?.signal?.aborted) resolveLoad(validContent(1))
+  const result = await pending
+
+  assert.ok(capturedOptions.signal instanceof AbortSignal)
+  assert.equal(capturedOptions.signal.aborted, true)
+  assert.equal(result.status, 'rejected')
+  assert.equal(result.error.name, 'AbortError')
+  assert.equal(fixture.controller.get(1), null)
+  assert.deepEqual(fixture.calls, [])
+})
+
 test('preloads uncached neighboring chapters within the configured radius', async () => {
   const fixture = createController()
   fixture.controller.set(1, validContent(1))
