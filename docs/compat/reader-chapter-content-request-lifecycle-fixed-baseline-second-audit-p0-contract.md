@@ -2,7 +2,7 @@
 
 审查日期：2026-09-09
 
-状态：**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -150,5 +150,8 @@ commit 和用户生产 commit。
 1440x900、390x844、360x800、1024x1366 四视口通过，并保持新正文与当前位置。全量 Go 在受限环境中
 仅因旧 httptest 无法绑定 IPv6 loopback 失败，解除网络沙箱后同一命令全部通过。
 
-本切片不改变 schema、备份格式、持久目录、环境变量或正常 API envelope。实现提交为 `0a8a0ef`；因
-GitHub 443 连接超时，远端仍停在 `c500e81`，可信 Actions 卷门、平台与 GHCR digest 证据尚未产生。
+本切片不改变 schema、备份格式、持久目录、环境变量或正常 API envelope。实现提交为 `0a8a0ef`。
+GitHub Actions run `34321320014` 的 backend/frontend/Compose、native image、fresh/portable、historical
+volume 和 published-platform 门全部通过，并将包含该实现的 `a7917ed`/`latest` 发布为 amd64/arm64 OCI
+index `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。两平台 config 均报告完整
+revision `a7917ed0540f43e1bea8f958dfd5d7736ed0a9f0`。

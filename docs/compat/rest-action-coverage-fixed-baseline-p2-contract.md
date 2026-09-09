@@ -916,8 +916,10 @@ OpenReader 现以 generation/scope guard 和 AbortSignal 约束主章节请求�
 陈旧结果安全 409、零 source failure/变量/path/file/浏览器缓存副作用。完整合同与红测门见
 [`reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md)。
 合同 `c500e81`、旧实现红测 `5bf7c66` 和实现 `0a8a0ef` 已按顺序落地。focused/race/full/vet、frontend
-748/748、build、Compose 与四视口延迟换源浏览器验证通过。当前状态
-**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**；GitHub/可信 Actions 证据待网络恢复。
+748/748、build、Compose 与四视口延迟换源浏览器验证通过。可信 Actions run `34321320014` 又通过 native、
+fresh/portable、historical volume 与 published-platform 门，并发布 `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 ## 46. Reader 换源写入生命周期（2026-09-09 implemented）
 
@@ -936,4 +938,7 @@ failure/event 副作用。完整合同与红测门见
 [`reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md)。
 合同 `31b2963`、旧实现红测 `5734f74` 和实现 `3bb465f` 已按顺序落地。focused/adjacent/race/full/vet、
 frontend 748/748、build、Compose 与四视口 Chromium 均通过。当前状态
-**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**。
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。可信 Actions run
+`34321320014` 的 native、fresh/portable、historical volume 与 published-platform 门全部通过；发布的
+`a7917ed`/`latest` OCI index 为
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。

@@ -1336,8 +1336,10 @@ Target contract:
 Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. The implementation uses guarded
 single-/owned-column updates and staged cache publication without adding a schema migration, startup rewrite, backup
 member, mounted root or environment variable. Existing rows, paths and archives remain readable. Focused/race/full,
-frontend 748/748, build, Compose and four-viewport browser checks passed. Status is
-**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
+frontend 748/748, build, Compose and four-viewport browser checks passed. Trusted Actions run `34321320014` then
+passed fresh/portable, historical volume and published-platform gates and published `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
 ## P0/P2 Reader source-change write lifecycle compatibility (2026-09-09 implemented)
 
@@ -1356,4 +1358,7 @@ Target contract:
 Contract `31b2963`, old-implementation red tests `5734f74` and implementation `3bb465f` landed in order. The guarded
 explicit-column update and authoritative reload add no schema, startup rewrite, backup member, mounted root or
 environment variable. Focused/adjacent/race/full/vet, frontend 748/748, build, Compose and four-viewport Chromium
-checks passed. Status is **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
+checks passed. Trusted Actions run `34321320014` passed fresh/portable, historical volume and published-platform
+gates and published `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.

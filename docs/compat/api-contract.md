@@ -1230,9 +1230,10 @@ requirements are in
 Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. Snapshot revalidation,
 request-context persistence, guarded owned-column updates, staged cache publication and frontend AbortSignal/generation
 guards now enforce the contract. Focused/race/full/vet, frontend 748/748, build, Compose and delayed-source browser
-checks at four viewports passed. Status is
-**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**; GitHub remained at `c500e81` after 443
-timeouts, so trusted Actions and GHCR publication evidence are not yet available.
+checks at four viewports passed. Trusted Actions run `34321320014` then passed native, fresh/portable, historical
+volume and published-platform gates and published `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
 ### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
@@ -1250,7 +1251,10 @@ Exact evidence and red-test requirements are in
 Contract `31b2963`, old-implementation red tests `5734f74` and implementation `3bb465f` landed in order. The
 transaction now performs the required Book/association/Source revalidation, guarded owned-column update and
 authoritative reload. Focused/adjacent/race/full/vet, frontend 748/748, build, Compose and four-viewport Chromium
-checks passed. Status is **aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**.
+checks passed. Trusted Actions run `34321320014` passed native, fresh/portable, historical volume and
+published-platform gates and published `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
 ## P2 access-log query projection (2026-08-25 implemented/published)
 

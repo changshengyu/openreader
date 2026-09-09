@@ -116,14 +116,15 @@ triggered; final fresh/historical/portable, platform and digest evidence remains
       overwrite metadata/variables or fallback-insert a deleted/replaced chapter.
 - [x] Give Reader chapter requests an AbortSignal and generation/scope guard so late success/failure cannot change
       current content, format, loading/error, browser/memory cache, layout, preload or progress.
-- [ ] Pass deterministic old-implementation red tests, focused/race/full/vet, frontend full/build, delayed-source
-      browser and fresh/historical/portable publication gates without schema/backup/root changes. Local code and
-      four-viewport browser gates pass; trusted Actions publication gates await GitHub synchronization.
+- [x] Pass deterministic old-implementation red tests, focused/race/full/vet, frontend full/build, delayed-source
+      browser and fresh/historical/portable publication gates without schema/backup/root changes.
 
 Target contract:
 [`compat/reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md`](compat/reader-chapter-content-request-lifecycle-fixed-baseline-second-audit-p0-contract.md).
 Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in order. Status is
-`aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending`.
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Trusted Actions run
+`34321320014` published `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`.
 
 ## P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
@@ -135,14 +136,15 @@ Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in o
       row; preserve category, custom cover, update flag and local-archive fields.
 - [x] Roll back Book/catalogue/reference/candidate changes together on stale, cancellation, guarded-row or candidate
       failure; stale work must not prune cache/image files or write source-failure/event state.
-- [ ] Reload the committed Book for candidate, response and durable-only event projection; prove old implementation
-      failures, focused/race/full/vet, frontend/build, four-viewport browser and trusted publication gates. Local code
-      and browser gates pass; trusted Actions publication gates await GitHub synchronization.
+- [x] Reload the committed Book for candidate, response and durable-only event projection; prove old implementation
+      failures, focused/race/full/vet, frontend/build, four-viewport browser and trusted publication gates.
 
 Target contract:
 [`compat/reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md`](compat/reader-source-change-write-lifecycle-fixed-baseline-second-audit-p0-contract.md).
 Contract `31b2963`, red tests `5734f74` and implementation `3bb465f` landed in order. Status is
-`aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending`.
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Trusted Actions run
+`34321320014` published `a7917ed`/`latest` OCI index
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`.
 
 ## Authentication and authorization
 

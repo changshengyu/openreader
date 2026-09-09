@@ -4012,4 +4012,7 @@ caller-active target Source semantics，以 transaction-current Book 计算显�
 复验 Book、association 与目标 Source，以 transaction-current Book 计算显式拥有列、guarded update 并
 权威重载；删除、新换源和目标 Source 失效均安全 409，非换源列保持。focused/adjacent/race/full/vet、
 frontend 748/748、build、Compose 与 1440x900、390x844、360x800、1024x1366 Chromium 均通过。
-当前状态：**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**。
+可信 Actions run `34321320014` 又通过 native、fresh/portable、historical volume 和 published-platform 门；
+`a7917ed`/`latest` amd64/arm64 OCI index 为
+`sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。当前状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

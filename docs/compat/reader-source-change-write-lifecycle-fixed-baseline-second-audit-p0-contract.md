@@ -2,7 +2,7 @@
 
 审查日期：2026-09-09
 
-状态：**aligned / regression-validated / GitHub-sync-and-Docker-evidence-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -139,5 +139,10 @@ identity 与完整 fetch semantics；陈旧结果稳定返回 409。Book 写入�
 
 专项及相邻 API、focused `-race`、Go full/vet、frontend 748/748、Vite build、Compose，以及
 1440x900、390x844、360x800、1024x1366 的真实 Chromium 换源合同均通过。未增加 schema、backup、
-mounted root 或环境变量。GitHub 因 443 网络超时尚未同步，因此可信 Actions 的 fresh/historical/
-portable/published-platform 门和本切片 GHCR digest 仍待补证。
+mounted root 或环境变量。GitHub Actions run `34321320014` 的 backend/frontend/Compose、native image、
+fresh/portable、historical volume 和 published-platform 门全部通过，并发布 `a7917ed`/`latest` amd64/arm64
+OCI index `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。amd64 manifest 为
+`sha256:b99df24d948eb1df1b622808be79b408609126af5c2976af3ebe09cb0dad09bf`，arm64 manifest 为
+`sha256:46ebeb80b64af0211efce177285bcc07f22e70ddda453ac17200a7f022bc33d6`，两平台 config 均报告完整
+revision `a7917ed0540f43e1bea8f958dfd5d7736ed0a9f0`。OCI index 中额外的 `unknown/unknown` 项是两个平台的
+attestation manifest，不是可运行镜像。
