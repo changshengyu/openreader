@@ -8,6 +8,8 @@ export function getRemoteReaderSession(id) {
   return api.get(`/reader/remote-sessions/${encodeURIComponent(id)}`)
 }
 
-export function getRemoteReaderChapterContent(id, index) {
-  return api.get(`/reader/remote-sessions/${encodeURIComponent(id)}/chapters/${index}/content`)
+export function getRemoteReaderChapterContent(id, index, options = {}) {
+  return api.get(`/reader/remote-sessions/${encodeURIComponent(id)}/chapters/${index}/content`, {
+    signal: options.signal,
+  })
 }

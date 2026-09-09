@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"openreader/backend/engine"
 	"openreader/backend/services/webdavfs"
 )
 
@@ -19,6 +23,118 @@ type remoteCacheFile struct {
 	fullPath string
 	file     *os.File
 	info     os.FileInfo
+}
+
+type stagedRemoteChapterCache struct {
+	storage     *webdavfs.Service
+	relative    string
+	staged      string
+	backup      string
+	hadPrevious bool
+	published   bool
+}
+
+func (s *Server) stageRemoteChapterCache(
+	ctx context.Context,
+	bookURL string,
+	chapterURL string,
+	content string,
+) (*stagedRemoteChapterCache, error) {
+	storage, err := s.remoteCacheStorage()
+	if err != nil {
+		return nil, err
+	}
+	if err := storage.EnsureRoot(); err != nil {
+		return nil, err
+	}
+	relative := filepath.ToSlash(engine.ChapterCachePath(bookURL, chapterURL))
+	if err := storage.Mkdir(filepath.ToSlash(filepath.Dir(relative))); err != nil {
+		return nil, err
+	}
+	staged, err := remoteCacheSidecarPath(relative, "stage")
+	if err != nil {
+		return nil, err
+	}
+	backup, err := remoteCacheSidecarPath(relative, "backup")
+	if err != nil {
+		return nil, err
+	}
+	if err := storage.Put(ctx, staged, strings.NewReader(content), int64(len(content))); err != nil {
+		return nil, err
+	}
+	return &stagedRemoteChapterCache{
+		storage:  storage,
+		relative: relative,
+		staged:   staged,
+		backup:   backup,
+	}, nil
+}
+
+func remoteCacheSidecarPath(relative string, kind string) (string, error) {
+	var token [16]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return "", err
+	}
+	return relative + "." + kind + "-" + hex.EncodeToString(token[:]), nil
+}
+
+func (staged *stagedRemoteChapterCache) publish(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := staged.storage.Stat(staged.relative); err == nil {
+		if err := staged.storage.Move(staged.relative, staged.backup, false); err != nil {
+			return err
+		}
+		staged.hadPrevious = true
+	} else if !errors.Is(err, webdavfs.ErrNotFound) {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		staged.restorePrevious()
+		return err
+	}
+	if err := staged.storage.Move(staged.staged, staged.relative, false); err != nil {
+		staged.restorePrevious()
+		return err
+	}
+	staged.staged = ""
+	staged.published = true
+	return nil
+}
+
+func (staged *stagedRemoteChapterCache) rollback() {
+	if staged == nil {
+		return
+	}
+	if staged.published {
+		_, _ = staged.storage.RemoveRegular(staged.relative)
+		staged.restorePrevious()
+		staged.published = false
+	}
+	if staged.staged != "" {
+		_, _ = staged.storage.RemoveRegular(staged.staged)
+		staged.staged = ""
+	}
+}
+
+func (staged *stagedRemoteChapterCache) finalize() {
+	if staged == nil {
+		return
+	}
+	if staged.hadPrevious {
+		_, _ = staged.storage.RemoveRegular(staged.backup)
+	}
+	staged.hadPrevious = false
+	staged.published = false
+}
+
+func (staged *stagedRemoteChapterCache) restorePrevious() {
+	if !staged.hadPrevious {
+		return
+	}
+	_ = staged.storage.Move(staged.backup, staged.relative, false)
+	staged.hadPrevious = false
 }
 
 func (s *Server) remoteCacheStorage() (*webdavfs.Service, error) {

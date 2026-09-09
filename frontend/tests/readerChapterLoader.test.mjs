@@ -30,7 +30,8 @@ function createController(overrides = {}) {
     cancelProgressSave: () => calls.push(['cancel']),
     getMemoryContent: () => null,
     loadContent: async (index, options) => {
-      calls.push(['load', index, options])
+      const { signal: _signal, ...recordedOptions } = options
+      calls.push(['load', index, recordedOptions])
       return {
         chapter: { id: index + 1, title: `第 ${index + 1} 章` },
         content: `正文 ${index}`,
@@ -141,6 +142,29 @@ test('discards an older main load that finishes after the active chapter', async
       ['mark', fixture.currentProgress],
     ],
   )
+})
+
+test('aborts the previous main request when another chapter starts loading', async () => {
+  const signals = []
+  const pending = new Map()
+  const fixture = createController({
+    loadContent: (index, options) => {
+      signals.push(options.signal)
+      return new Promise(resolve => {
+        pending.set(index, resolve)
+      })
+    },
+  })
+
+  const first = fixture.controller.load(0)
+  const second = fixture.controller.load(1)
+  assert.ok(signals[0] instanceof AbortSignal)
+  assert.equal(signals[0].aborted, true)
+  assert.equal(signals[1].aborted, false)
+  pending.get(1)(validLoaderContent(1))
+  assert.equal(await second, true)
+  pending.get(0)(validLoaderContent(0))
+  assert.equal(await first, false)
 })
 
 test('keeps EPUB document metadata out of the ordinary paragraph renderer', async () => {

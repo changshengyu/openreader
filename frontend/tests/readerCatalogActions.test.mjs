@@ -144,6 +144,28 @@ test('applies a source change with the new catalog without another candidate sea
   ])
 })
 
+test('uses the frozen load position when source change starts behind a loading placeholder', async () => {
+  const frozenAnchor = { chapterIndex: 1, paragraphPos: 177, viewportOffset: 48 }
+  const fixture = createController({
+    isRestoring: () => true,
+    getPendingChapterLoad: () => ({ offset: 177, anchor: frozenAnchor }),
+  })
+  await fixture.controller.applySourceChange({
+    book: { id: 7, sourceId: 9, title: '换源后' },
+    source: { sourceId: 9, bookUrl: 'https://new.example/book' },
+    previousBook: { id: 7, sourceId: 2 },
+  })
+  assert.equal(fixture.calls.some(call => call[0] === 'capture-anchor'), false)
+  assert.deepEqual(
+    fixture.calls.find(call => call[0] === 'load-chapter'),
+    ['load-chapter', 1, 177],
+  )
+  assert.deepEqual(
+    fixture.calls.find(call => call[0] === 'restore-anchor'),
+    ['restore-anchor', frozenAnchor],
+  )
+})
+
 test('Reader wires source-change content-search reset into the transaction', () => {
   const source = readFileSync(new URL('../src/views/Reader.vue', import.meta.url), 'utf8')
   assert.match(source, /resetContentSearch:\s*\(\) => overlay\.resetSearchBookContent\(\)/)

@@ -79,9 +79,15 @@ function searchedCandidate() {
   }
 }
 
-function chapterContent() {
+function deferred() {
+  let resolve
+  const promise = new Promise(next => { resolve = next })
+  return { promise, resolve }
+}
+
+function chapterContent(sourceMarker = '旧来源正文') {
   return [
-    '第一章 开始',
+    sourceMarker,
     ...Array.from({ length: 70 }, (_, index) => `换源位置契约段落 ${index + 1}：面板操作与来源切换不应把正文重置到章节开头。`),
   ].join('\n')
 }
@@ -92,6 +98,9 @@ async function installMocks(page) {
     candidateRequests: [],
     changeRequests: [],
     emptyAvailable: false,
+    delayedOldContent: null,
+    oldContentPending: false,
+    oldContentSettled: false,
   }
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
@@ -119,7 +128,27 @@ async function installMocks(page) {
       ]))
     }
     if (path === '/books/1/chapters/0/content' && method === 'GET') {
-      return route.fulfill(json({ chapter: { id: 11, index: 0, title: '第一章' }, content: chapterContent() }))
+      const sourceId = state.book.sourceId
+      if (sourceId === 2 && state.delayedOldContent) {
+        const gate = state.delayedOldContent
+        state.oldContentPending = true
+        await gate.promise
+        try {
+          await route.fulfill(json({
+            chapter: { id: 11, index: 0, title: '第一章' },
+            content: chapterContent('迟到旧来源正文'),
+          }))
+        } catch {
+          // An AbortSignal may retire the intercepted request before release.
+        } finally {
+          state.oldContentSettled = true
+        }
+        return
+      }
+      return route.fulfill(json({
+        chapter: { id: 11, index: 0, title: '第一章' },
+        content: chapterContent(sourceId === 4 ? '新来源正文' : '旧来源正文'),
+      }))
     }
     if (path === '/progress/1' && method === 'GET') return route.fulfill(json({}))
     if (path === '/progress' && method === 'PUT') return route.fulfill(json(request.postDataJSON()))
@@ -219,6 +248,15 @@ async function waitForStablePosition(page, expectedText) {
   }, expectedText, { timeout: 10_000 })
 }
 
+async function waitForState(predicate, message) {
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(message)
+}
+
 async function assertPanelGeometry(page, viewport) {
   const geometry = await page.evaluate(() => {
     const list = document.querySelector('.source-switch-list')
@@ -254,10 +292,14 @@ async function runViewport(browser, viewport) {
   })
   const state = await installMocks(page)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
-  await page.locator('.reader-body p').nth(24).evaluate(element => {
-    element.scrollIntoView({ block: 'start' })
+  await page.waitForTimeout(400)
+  const targetParagraph = page.locator('.reader-body p').nth(24)
+  await targetParagraph.evaluate(element => {
+    const content = element.closest('.reader-content')
+    if (content) content.style.scrollBehavior = 'auto'
+    element.scrollIntoView({ block: 'start', behavior: 'instant' })
   })
-  await page.waitForTimeout(120)
+  await waitForStablePosition(page, await targetParagraph.innerText())
   const beforeOpen = await readerPosition(page)
   const initialGeometry = await page.evaluate(() => {
     const content = document.querySelector('.reader-content')
@@ -291,7 +333,8 @@ async function runViewport(browser, viewport) {
   await page.getByText('来源(2)', { exact: true }).waitFor({ state: 'visible' })
   await assertPanelGeometry(page, viewport)
   assert(await page.locator('.source-item.selected').count() === 1, `${viewport.width}: current source projection missing`)
-  assert((await readerPosition(page)).text === beforeOpen.text, `${viewport.width}: opening source panel moved the reader body`)
+  const afterOpen = await readerPosition(page)
+  assert(afterOpen.text === beforeOpen.text, `${viewport.width}: opening source panel moved the reader body from ${JSON.stringify(beforeOpen)} to ${JSON.stringify(afterOpen)}`)
   assert(state.candidateRequests.length === 1 && state.candidateRequests[0].mode === 'available', `${viewport.width}: opening mode = ${JSON.stringify(state.candidateRequests)}`)
 
   const refreshButton = page.locator('.title-actions button').filter({ hasText: /^刷新/ })
@@ -312,11 +355,32 @@ async function runViewport(browser, viewport) {
 
   const beforeChange = await readerPosition(page)
   const requestCountBeforeChange = state.candidateRequests.length
+  state.delayedOldContent = deferred()
+  if (viewport.width <= 750) {
+    await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '书源' }).click()
+    await page.locator('.source-switch-list').waitFor({ state: 'hidden' })
+  }
+  const reloadButton = viewport.width <= 750
+    ? page.locator('.reader-mobile-float-right.visible button[title="重新载入章节"]')
+    : page.locator('.reader-right-rail button[title="重新载入章节"]')
+  await reloadButton.click()
+  await waitForState(
+    () => state.oldContentPending,
+    `${viewport.width}: delayed old chapter request did not start`,
+  )
+  if (!await page.locator('.source-switch-list').isVisible()) {
+    await openSourcePanel(page, viewport)
+  }
   const changeResponse = page.waitForResponse(response => (
     new URL(response.url()).pathname === '/api/books/1/change-source'
   ))
+  const newContentResponse = page.waitForResponse(response => (
+    new URL(response.url()).pathname === '/api/books/1/chapters/0/content'
+    && response.status() === 200
+  ))
   await page.locator('.source-item').filter({ hasText: '加载来源' }).click()
   await changeResponse
+  await newContentResponse
   await page.waitForFunction(() => (
     !document.querySelector('.source-switch-list')
     || Boolean(document.querySelector('.el-message--error'))
@@ -330,7 +394,28 @@ async function runViewport(browser, viewport) {
     const messages = await page.locator('.el-message').allInnerTexts()
     throw new Error(`${viewport.width}: source panel stayed open requests=${JSON.stringify(state.changeRequests)} status=${JSON.stringify(status)} messages=${JSON.stringify(messages)} failures=${JSON.stringify(failures)} cause=${error.message}`)
   }
-  await waitForStablePosition(page, beforeChange.text)
+  await page.getByText('新来源正文', { exact: true }).waitFor({ state: 'visible' })
+  try {
+    await waitForStablePosition(page, beforeChange.text)
+  } catch (error) {
+    const current = await readerPosition(page)
+    const readerState = await page.evaluate(() => ({
+      loading: Boolean(document.querySelector('.reader-loading')),
+      error: document.querySelector('.reader-error')?.textContent || '',
+      scrollY: window.scrollY,
+      contentScrollTop: document.querySelector('.reader-content')?.scrollTop || 0,
+    }))
+    throw new Error(`${viewport.width}: new source did not restore ${JSON.stringify(beforeChange)} current=${JSON.stringify(current)} state=${JSON.stringify(readerState)} cause=${error.message}`)
+  }
+  state.delayedOldContent.resolve()
+  await waitForState(
+    () => state.oldContentSettled,
+    `${viewport.width}: delayed old chapter route did not settle`,
+  )
+  await page.waitForTimeout(120)
+  assert(await page.getByText('新来源正文', { exact: true }).count() === 1, `${viewport.width}: delayed old content replaced the new source`)
+  assert(await page.getByText('迟到旧来源正文', { exact: true }).count() === 0, `${viewport.width}: delayed old source marker became visible`)
+  assert(!(await page.locator('.el-message').allInnerTexts()).includes('章节已重新载入'), `${viewport.width}: cancelled reload reported success`)
   assert(state.changeRequests.length === 1, `${viewport.width}: source change request count ${state.changeRequests.length}`)
   assert(state.changeRequests[0].sourceId === 4 && state.changeRequests[0].bookUrl === 'https://searched.example/book', `${viewport.width}: source change payload ${JSON.stringify(state.changeRequests[0])}`)
   await page.waitForTimeout(250)

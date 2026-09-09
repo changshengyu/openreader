@@ -2,6 +2,8 @@ import { nextTick, unref } from 'vue'
 
 export function useReaderChapterLoader(options) {
   let loadingTimer = null
+  let loadGeneration = 0
+  let activeController = null
 
   function clearLoadingTimer() {
     clearTimeout(loadingTimer)
@@ -9,11 +11,23 @@ export function useReaderChapterLoader(options) {
   }
 
   async function load(index, offset = 0, loadOptions = {}) {
+    const generation = ++loadGeneration
+    activeController?.abort()
+    const controller = new AbortController()
+    activeController = controller
     options.invalidateChapterWindow?.()
-    options.currentIndex.value = Math.max(
+    const anchor = options.captureScrollAnchor?.() || null
+    const targetIndex = Math.max(
       0,
       Math.min(index, Math.max(options.chapters.value.length - 1, 0)),
     )
+    options.currentIndex.value = targetIndex
+    const scopeKey = options.getScopeKey?.()
+    const transaction = { generation, targetIndex, offset, anchor, scopeKey }
+    options.onStart?.(transaction)
+    const isCurrent = () => generation === loadGeneration
+      && options.currentIndex.value === targetIndex
+      && (options.getScopeKey?.() ?? scopeKey) === scopeKey
     if (loadOptions.hideChrome) {
       options.mobileChromeVisible.value = false
     }
@@ -28,15 +42,19 @@ export function useReaderChapterLoader(options) {
     options.chapterLoading.value = !cachedBeforeLoad
     if (!cachedBeforeLoad) {
       loadingTimer = setTimeout(() => {
-        options.chapterLoading.value = true
+        if (isCurrent()) options.chapterLoading.value = true
       }, 120)
     }
 
     try {
       const data = await options.loadContent(
-        options.currentIndex.value,
-        { refresh: Boolean(loadOptions.refresh) },
+        targetIndex,
+        {
+          refresh: Boolean(loadOptions.refresh),
+          signal: controller.signal,
+        },
       )
+      if (!isCurrent()) return false
       options.chapter.value = data.chapter
       options.content.value = data.content || ''
       const format = data.format === 'epub' && data.resourceUrl
@@ -69,7 +87,7 @@ export function useReaderChapterLoader(options) {
         ? []
         : [
             options.makeChapterBlock(
-              options.currentIndex.value,
+              targetIndex,
               options.chapter.value,
               options.content.value,
               cachedImages,
@@ -77,24 +95,26 @@ export function useReaderChapterLoader(options) {
           ]
       if (format === 'epub') {
         options.onEpubPrepared?.({
-          chapterIndex: options.currentIndex.value,
+          chapterIndex: targetIndex,
           offset,
           restoreOptions: loadOptions,
         })
       }
       if (format === 'audio') {
         options.onAudioPrepared?.({
-          chapterIndex: options.currentIndex.value,
+          chapterIndex: targetIndex,
           offset,
           restoreOptions: loadOptions,
         })
       }
       options.chapterLoading.value = false
       await nextTick()
+      if (!isCurrent()) return false
       options.updateLayout()
       await options.restorePosition(offset, loadOptions)
+      if (!isCurrent()) return false
       options.progressVersion.value += 1
-      options.preloadNearby(options.currentIndex.value)
+      options.preloadNearby(targetIndex)
       if (loadOptions.saveAfterLoad) {
         await options.saveProgress({ force: true })
       } else {
@@ -102,23 +122,40 @@ export function useReaderChapterLoader(options) {
       }
       options.chapterLoaded.value = true
       if (unref(options.isContinuousScrollRead)) {
-        options.computeChapterWindow({ anchorIndex: options.currentIndex.value }).catch(() => {})
+        options.computeChapterWindow({ anchorIndex: targetIndex }).catch(() => {})
       }
+      return true
     } catch (error) {
+      if (!isCurrent() || error?.name === 'AbortError') return false
       options.epubResource.value = null
       if (options.audioResource) options.audioResource.value = null
       if (options.cachedImages) options.cachedImages.value = {}
       options.chapterLoadError.value = options.formatError(error)
+      return false
     } finally {
-      clearLoadingTimer()
-      await options.nextFrame()
-      options.restoringPosition.value = false
-      options.chapterLoading.value = false
+      if (isCurrent()) {
+        clearLoadingTimer()
+        await options.nextFrame()
+        if (isCurrent()) {
+          options.restoringPosition.value = false
+          options.chapterLoading.value = false
+          if (activeController === controller) activeController = null
+        }
+      }
+      options.onSettled?.(transaction)
     }
   }
 
+  function invalidate() {
+    loadGeneration += 1
+    activeController?.abort()
+    activeController = null
+    clearLoadingTimer()
+  }
+
   return {
-    clearLoadingTimer,
+    clearLoadingTimer: invalidate,
+    invalidate,
     load,
   }
 }

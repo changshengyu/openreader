@@ -103,6 +103,19 @@ test('reloads the current chapter and clears remote caches with unchanged messag
   ])
 })
 
+test('does not report a reload invalidated by another reader action', async () => {
+  const fixture = createController({
+    loadChapter: async (...args) => {
+      fixture.calls.push(['load-chapter', ...args])
+      return false
+    },
+  })
+  await fixture.controller.reloadChapter()
+  assert.deepEqual(fixture.calls, [
+    ['load-chapter', 4, 88, { refresh: true }],
+  ])
+})
+
 test('does not clear cache for a local book', async () => {
   const fixture = createController()
   fixture.book.value = { id: 7, sourceId: 0 }

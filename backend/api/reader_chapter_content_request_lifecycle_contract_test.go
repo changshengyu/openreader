@@ -182,6 +182,44 @@ func TestReaderChapterCachePathNormalizationDoesNotReinsertReplacedChapter(t *te
 	}
 }
 
+func TestStagedRemoteChapterCacheRollbackRestoresPreviousFile(t *testing.T) {
+	_, server := setupTestServer(t)
+	bookURL := "https://cache-stage.test/book"
+	chapterURL := "https://cache-stage.test/chapter"
+	cachePath, err := engine.WriteChapterCache(server.cfg.CacheDir, bookURL, chapterURL, "current content")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	staged, err := server.stageRemoteChapterCache(context.Background(), bookURL, chapterURL, "candidate content")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := staged.publish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := engine.ReadChapterCache(server.cfg.CacheDir, cachePath); err != nil || content != "candidate content" {
+		t.Fatalf("published cache = %q, %v", content, err)
+	}
+	staged.rollback()
+	if content, err := engine.ReadChapterCache(server.cfg.CacheDir, cachePath); err != nil || content != "current content" {
+		t.Fatalf("rolled-back cache = %q, %v", content, err)
+	}
+
+	committed, err := server.stageRemoteChapterCache(context.Background(), bookURL, chapterURL, "committed content")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := committed.publish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	committed.finalize()
+	committed.rollback()
+	if content, err := engine.ReadChapterCache(server.cfg.CacheDir, cachePath); err != nil || content != "committed content" {
+		t.Fatalf("finalized cache = %q, %v", content, err)
+	}
+}
+
 type readerChapterContentLifecycleFixture struct {
 	router  http.Handler
 	server  *Server

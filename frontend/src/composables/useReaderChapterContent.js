@@ -28,7 +28,13 @@ export function useReaderChapterContent(options) {
   }
 
   function clear(targetBook = unref(options.book), fallbackBookId = unref(options.bookId)) {
-    options.memoryCache.clearBook(cacheKey(targetBook, fallbackBookId))
+    const targetCacheKey = cacheKey(targetBook, fallbackBookId)
+    options.memoryCache.clearBook(targetCacheKey)
+    inFlight.forEach((entry, requestKey) => {
+      if (entry.cacheKey !== targetCacheKey) return
+      entry.controller.abort()
+      inFlight.delete(requestKey)
+    })
   }
 
   async function load(index, loadOptions = {}) {
@@ -44,32 +50,50 @@ export function useReaderChapterContent(options) {
       Number(index),
       loadOptions.refresh ? 'refresh' : 'normal',
     ].join(':')
-    if (inFlight.has(requestKey)) return inFlight.get(requestKey)
+    if (inFlight.has(requestKey)) return inFlight.get(requestKey).promise
 
+    const controller = new AbortController()
+    const externalSignal = loadOptions.signal
+    const abortFromExternal = () => controller.abort(externalSignal.reason)
+    if (externalSignal?.aborted) abortFromExternal()
+    else externalSignal?.addEventListener('abort', abortFromExternal, { once: true })
     const request = (async () => {
-      const data = await loadBrowserContent(
-        targetBook,
-        targetBookId,
-        index,
-        { refresh: Boolean(loadOptions.refresh) },
-      )
-      if (options.shouldCache?.() !== false) set(index, data, targetCacheKey)
+      let data
+      try {
+        data = await loadBrowserContent(
+          targetBook,
+          targetBookId,
+          index,
+          {
+            refresh: Boolean(loadOptions.refresh),
+            signal: controller.signal,
+          },
+        )
+      } catch (error) {
+        if (controller.signal.aborted) throw chapterAbortError(controller.signal)
+        throw error
+      }
+      if (controller.signal.aborted) throw chapterAbortError(controller.signal)
+      const isCurrentBook = Number(unref(options.bookId)) === Number(targetBookId)
+        && cacheKey() === targetCacheKey
       if (
         options.shouldCache?.() !== false
         &&
         isValidChapterContentResponse(data)
-        && Number(unref(options.bookId)) === Number(targetBookId)
-        && cacheKey() === targetCacheKey
+        && isCurrentBook
       ) {
+        set(index, data, targetCacheKey)
         options.markCached(index)
       }
       return data
     })()
-    inFlight.set(requestKey, request)
+    const entry = { cacheKey: targetCacheKey, controller, promise: request }
+    inFlight.set(requestKey, entry)
     try {
       return await request
     } finally {
-      if (inFlight.get(requestKey) === request) inFlight.delete(requestKey)
+      externalSignal?.removeEventListener('abort', abortFromExternal)
+      if (inFlight.get(requestKey) === entry) inFlight.delete(requestKey)
     }
   }
 
@@ -94,4 +118,13 @@ export function useReaderChapterContent(options) {
     preload,
     set,
   }
+}
+
+function chapterAbortError(signal) {
+  if (signal.reason instanceof Error && signal.reason.name === 'AbortError') {
+    return signal.reason
+  }
+  const error = new Error('chapter request cancelled')
+  error.name = 'AbortError'
+  return error
 }

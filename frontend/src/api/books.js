@@ -218,8 +218,10 @@ export function listChapters(id) {
   return api.get(`/books/${id}/chapters`)
 }
 
-export function getChapterContent(id, index) {
-  return api.get(`/books/${id}/chapters/${index}/content`)
+export function getChapterContent(id, index, options = {}) {
+  return api.get(`/books/${id}/chapters/${index}/content`, {
+    signal: options.signal,
+  })
 }
 
 export function listBookmarks(id) {

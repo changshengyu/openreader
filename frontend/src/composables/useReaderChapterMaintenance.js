@@ -37,11 +37,12 @@ export function useReaderChapterMaintenance(options) {
   }
 
   async function reloadChapter() {
-    await options.loadChapter(
+    const loaded = await options.loadChapter(
       unref(options.currentIndex),
       options.getCurrentOffset(),
       { refresh: true },
     )
+    if (loaded === false) return
     options.notify?.('章节已重新载入')
   }
 

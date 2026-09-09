@@ -702,6 +702,7 @@ const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
 const restoringPosition = ref(false)
+let pendingReaderChapterLoad = null
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
 
 const fontOptions = readerFontOptions
@@ -784,7 +785,9 @@ const {
   shouldCache: () => !isTemporaryRemoteReader.value,
   loadBrowserContent: async (targetBook, targetBookId, index, options) => {
     if (isTemporaryRemoteReader.value && targetBookId === bookId.value) {
-      const { data } = await getRemoteReaderChapterContent(remoteSessionId.value, index)
+      const { data } = await getRemoteReaderChapterContent(remoteSessionId.value, index, {
+        signal: options.signal,
+      })
       return data
     }
     return loadBrowserChapterContent(targetBook, targetBookId, index, options)
@@ -862,6 +865,8 @@ const {
   getCurrentOffset: () => currentOffset(),
   getCurrentChapterPercent: () => currentChapterPercent(),
   captureScrollAnchor: () => captureReaderScrollAnchor(),
+  isRestoring: () => restoringPosition.value,
+  getPendingChapterLoad: () => pendingReaderChapterLoad,
   fetchChapters: async targetBookId => {
     const { data } = await api.get(`/books/${targetBookId}/chapters`)
     return data
@@ -1780,6 +1785,12 @@ const {
   chapterBlocks,
   progressVersion,
   isContinuousScrollRead,
+  getScopeKey: () => [
+    bookId.value,
+    remoteSessionId.value,
+    book.value?.url || book.value?.bookUrl || book.value?.libraryPath || '',
+    book.value?.sourceId || '',
+  ].join('|'),
   cancelProgressSave,
   getMemoryContent: getChapterContentFromMemory,
   loadContent: loadChapterContent,
@@ -1792,6 +1803,13 @@ const {
   getCurrentProgress: currentProgressPayload,
   computeChapterWindow: computeShowChapterList,
   invalidateChapterWindow: invalidateShowChapters,
+  captureScrollAnchor: () => captureReaderScrollAnchor(),
+  onStart: transaction => {
+    pendingReaderChapterLoad = transaction
+  },
+  onSettled: transaction => {
+    if (pendingReaderChapterLoad === transaction) pendingReaderChapterLoad = null
+  },
   formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
   nextFrame,
   onEpubPrepared: pending => {

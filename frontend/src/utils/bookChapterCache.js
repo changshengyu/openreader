@@ -39,8 +39,10 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
     const cached = await getValidCachedChapter(cacheKey, getCache)
     if (cached) return cached
   }
-  const { data } = await fetchChapter(bookId, index)
-  if (isValidChapterContentResponse(data)) await setCache(cacheKey, data)
+  const { data } = await fetchChapter(bookId, index, { signal: options.signal })
+  if (!options.signal?.aborted && isValidChapterContentResponse(data)) {
+    await setCache(cacheKey, data)
+  }
   return data
 }
 

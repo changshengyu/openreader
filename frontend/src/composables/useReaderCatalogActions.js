@@ -75,8 +75,11 @@ export function useReaderCatalogActions(options) {
   }
 
   async function applySourceChange({ book: updatedBook, source, previousBook }) {
-    const restoreOffset = options.getCurrentOffset()
-    const restoreAnchor = options.captureScrollAnchor?.()
+    const pendingLoad = options.isRestoring?.()
+      ? options.getPendingChapterLoad?.()
+      : null
+    const restoreOffset = pendingLoad?.offset ?? options.getCurrentOffset()
+    const restoreAnchor = pendingLoad?.anchor ?? options.captureScrollAnchor?.()
     await options.invalidateDataCache({ book: true, chapters: true })
     await options.resetChapterCaches({ clearBrowser: true, book: previousBook })
     const merged = applyUpdatedBook(updatedBook)
