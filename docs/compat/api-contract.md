@@ -1256,7 +1256,7 @@ published-platform gates and published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
-### P0/P2 Reader local chapter-cache rebuild lifecycle (2026-09-09 inventory)
+### P0/P2 Reader local chapter-cache rebuild lifecycle (2026-09-10 implemented)
 
 The local-book cache-miss branch of `GET /api/books/:id/chapters/:index/content` keeps its JWT, owner-first lookup,
 server-authoritative index, normal text response and existing safe initial errors. A rebuilt result must revalidate
@@ -1268,7 +1268,12 @@ Stale work uses the existing `409 {"error":"chapter content changed; retry"}`; p
 path-free. A valid commit may update only `chapters.cache_path` with an old-snapshot guard and authoritative reload.
 Exact evidence and red-test requirements are in
 [`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no application or test code changed.
+Contract `1b2ea90`, old-implementation red tests `b75f640` and implementation `a131aa9` landed in order. The local
+loader now carries caller context, revalidates the complete Book/archive/Chapter snapshot, stages the derived file,
+updates only guarded `chapters.cache_path`, and authoritatively reloads the result. Deletion, refresh, source
+replacement, cancellation and injected DB/publish failures leave no resurrected row or final orphan. Focused/race,
+Go full/vet, frontend 748/748, build, Compose and four-viewport Chromium checks passed. Status is
+**aligned / regression-validated / trusted-publication-pending**; Actions run `34471037381` is still running.
 
 ## P2 access-log query projection (2026-08-25 implemented/published)
 

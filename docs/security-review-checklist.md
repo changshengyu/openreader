@@ -126,22 +126,24 @@ Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in o
 `34321320014` published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`.
 
-## P0/P2 Reader local chapter-cache rebuild lifecycle (2026-09-09 inventory)
+## P0/P2 Reader local chapter-cache rebuild lifecycle (2026-09-10 implemented)
 
-- [ ] Propagate caller context through bounded local archive reads and cache writes; check cancellation around parser
+- [x] Propagate caller context through bounded local archive reads and cache writes; check cancellation around parser
       and EPUB recovery work before any durable publication.
-- [ ] Revalidate the caller-owned local Book, archive same-file identity and complete Chapter parse/cache snapshot
+- [x] Revalidate the caller-owned local Book, archive same-file identity and complete Chapter parse/cache snapshot
       after rebuild work; deletion and `refresh-local` replacement must win without row resurrection.
-- [ ] Replace full-row Chapter `Save` with an old-snapshot-guarded `cache_path` update; never persist synthetic URL or
+- [x] Replace full-row Chapter `Save` with an old-snapshot-guarded `cache_path` update; never persist synthetic URL or
       overwrite title/index/resource/variable/timestamps from a stale struct.
-- [ ] Stage rebuilt cache privately and coordinate validation, promote, guarded DB update and rollback so stale,
+- [x] Stage rebuilt cache privately and coordinate validation, promote, guarded DB update and rollback so stale,
       cancelled or failed work leaves no final orphan and cannot overwrite an active refresh generation.
-- [ ] Pass deterministic old-implementation red tests, focused/race/full/vet, local format/old-volume regression,
-      frontend/build, four-viewport Reader and trusted fresh/historical/portable publication gates.
+- [x] Pass deterministic old-implementation red tests, focused/race/full/vet, local format/old-volume regression,
+      frontend/build and four-viewport Reader checks.
+- [ ] Pass trusted fresh/historical/portable and published-platform gates in Actions run `34471037381`.
 
 Target contract:
 [`compat/reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is `inventory-complete / tests-and-implementation-pending`; no application or test code changed.
+Contract `1b2ea90`, red tests `b75f640` and implementation `a131aa9` landed in order. Status is
+`aligned / regression-validated / trusted-publication-pending`.
 
 ## P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 

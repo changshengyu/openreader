@@ -1363,7 +1363,7 @@ gates and published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
-## P0/P2 Reader local chapter-cache rebuild lifecycle compatibility (2026-09-09 inventory)
+## P0/P2 Reader local chapter-cache rebuild lifecycle compatibility (2026-09-10 implemented)
 
 - The target adds no schema, migration, startup scan, persistent root, environment variable, backup member or browser
   storage key.
@@ -1377,4 +1377,9 @@ gates and published `a7917ed`/`latest` OCI index
 
 Target contract:
 [`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
-Status is **inventory-complete / tests-and-implementation-pending**; no data, application or test code changed.
+Contract `1b2ea90`, old-implementation red tests `b75f640` and implementation `a131aa9` landed in order. The guarded
+single-column update and staged publication add no schema, migration, startup rewrite, backup member, mounted root or
+environment variable. Cancellation, stale snapshots and DB/publish failure now restore or remove staged/final files;
+normal and historical cache paths remain readable. Focused/race, Go full/vet, frontend 748/748, build, Compose and
+four-viewport Chromium checks passed. Status is **aligned / regression-validated / trusted-publication-pending**;
+Actions run `34471037381` is still running.

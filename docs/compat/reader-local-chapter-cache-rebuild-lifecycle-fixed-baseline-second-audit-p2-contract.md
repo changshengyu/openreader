@@ -1,8 +1,8 @@
 # Reader 本地章节缓存回建生命周期第二轮固定基准合同（P2）
 
-审查日期：2026-09-09
+审查日期：2026-09-10
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / trusted-publication-pending**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -28,12 +28,12 @@ TXT/UMD 读取不把目录实体写回 shelf/catalogue；EPUB 的可选文本 ca
 ### OpenReader
 
 - `backend/api/books.go#chapterContent/loadChapterTextContextResultWithPolicy`
-- `backend/api/books.go#rebuildLocalChapterText/persistRebuiltLocalChapterText`
+- `backend/api/books.go#rebuildLocalChapterTextContext/persistRebuiltLocalChapterTextContext`
 - `backend/api/books.go#refreshLocalBook/deleteBook`
 - `backend/api/local_book_archive.go#resolveLocalBookArchive/openLocalBookSource`
 - `backend/api/local_refresh_stage.go`
-- `backend/engine/cache.go#WriteChapterCache`
-- `backend/services/epubreader/service.go#ReadChapterText`
+- `backend/api/remote_cache_filesystem.go#stageLocalChapterCache`
+- `backend/services/epubreader/service.go#ReadChapterTextContext`
 - `backend/services/bookcatalog/catalog.go#ReplaceChapterRows`
 
 OpenReader 把本地正文缓存路径保存在 SQLite 是技术栈适配。该适配必须以提交时仍有效的 caller Book、
@@ -43,13 +43,13 @@ Chapter 和 archive 为边界，不能反向改变当前目录或归档。
 
 | 合同点 | 固定上游 / 已签收语义 | 当前 OpenReader | 裁决 |
 |---|---|---|---|
-| request context | 当前请求读取当前本地正文；连接结束不应继续发布用户可见状态 | cache miss 进入 `rebuildLocalChapterText` 后改用 contextless read/parse/EPUB prepare/`WriteChapterCache`/GORM | **P2 must-fix** |
-| Book/Chapter 存活 | 本地正文读取不创建 shelf/catalogue 实体 | parse 后不重读 Book/Chapter；`s.db.Save(chapter)` 可在删除后 fallback insert | **P0 data must-fix** |
-| 刷新竞争 | 显式 refresh 产生当前目录；旧读取不把旧目录写回 | `refresh-local` 替换 Chapter/generation 后，迟到 `Save` 可插回旧 ID/index 或碰 unique index | **must-fix** |
-| 列所有权 | 正文读取不修改目录 title/url/resource/variable/time | 为生成 hash 可修改旧 struct URL，随后 full-row `Save` 写全部 Chapter 列 | **must-fix** |
-| 文件发布 | cache 是可重建派生物，不是目录权威 | 先直写最终 `content/<hash>`，再忽略 `Save` 错误；取消、陈旧或 DB 失败可留 orphan/覆盖 current bytes | **must-fix** |
-| archive 身份 | 当前本地文件是正文来源 | rooted same-file open/current 已签收，但只验证目录 inode，不验证 DB 仍指向该 Book/archive/catalogue | **partially aligned** |
-| 正常恢复 | TXT/EPUB/UMD/历史卷 cache miss 仍应可读 | 正常回建、格式预算和旧路径兼容已有测试 | **closed / preserve** |
+| request context | 当前请求读取当前本地正文；连接结束不应继续发布用户可见状态 | caller context 已贯穿 bounded archive read、EPUB recovery、stage 和 GORM；取消后禁止发布 | **aligned** |
+| Book/Chapter 存活 | 本地正文读取不创建 shelf/catalogue 实体 | 回建后与 transaction 内都复验 caller-owned Book 和完整 Chapter snapshot；不再 `Save` 旧实体 | **aligned** |
+| 刷新竞争 | 显式 refresh 产生当前目录；旧读取不把旧目录写回 | refresh、cleanup 与 cache publish 共用本地 cache coordinator；旧 snapshot 安全 409，不复活目录 | **aligned** |
+| 列所有权 | 正文读取不修改目录 title/url/resource/variable/time | 只执行 old-snapshot-guarded `UpdateColumn("cache_path", ...)`；合成 URL 只用于 hash | **aligned** |
+| 文件发布 | cache 是可重建派生物，不是目录权威 | request-private stage 在事务内 promote；陈旧、取消、DB 或 publish 失败均 rollback/清理 | **aligned** |
+| archive 身份 | 当前本地文件是正文来源 | opened archive 和 source 的 regular same-file identity 在提交前再验证，同时完成 DB snapshot 复验 | **aligned** |
+| 正常恢复 | TXT/EPUB/UMD/历史卷 cache miss 仍应可读 | 正常回建、格式预算、缺失 cache path 恢复和旧路径兼容均通过回归 | **aligned / preserve** |
 
 ## 3. 读取与取消合同
 
@@ -126,9 +126,17 @@ Chapter 和 archive 为边界，不能反向改变当前目录或归档。
 8. 实现后运行 focused/race、相邻 local-refresh/archive/old-volume/parser tests、Go full/vet、frontend
    full/build、Compose、Reader 本地书四视口，以及可信 Actions fresh/historical/portable/platform 门。
 
-## 8. Inventory 结论
+## 8. 实施与回归结论
 
-判定：**must-fix**。当前 rooted archive 和正常 cache miss 测试只证明来源路径安全与可恢复，没有覆盖
-读取期间 Book/Chapter 被删除或 refresh，也没有证明直接最终文件写入和 full-row `Save` 可回滚。下一步
-先提交本合同，再添加旧实现确定性红测，最后实施 context-aware local rebuild、current snapshot guard、
-single-column cache-path update 和 staged publication；本 inventory 不修改应用或测试代码。
+合同 `1b2ea90`、旧实现红测 `b75f640` 和实现 `a131aa9` 已按顺序提交。红测确定性证明了删除后
+Chapter 复活、refresh 旧 cache orphan、并发字段覆盖、取消后副作用和 DB 错误被吞掉；同一组测试
+在新实现上全部通过。
+
+实现以 caller context、Book/Chapter/archive 快照、显式 `cache_path` 单列更新、request-private stage
+和共享本地 cache coordinator 关闭生命周期。EPUB metadata recovery 只改工作副本，不再写回 archive
+catalogue。全局 coordinator 比合同的 per-cache 最小要求更强，是不改变可见结果的 Go/SQLite 安全适配。
+
+focused 和 `-race`、Go 全量、`go vet`、frontend 748/748、Vite build、Compose 以及
+1440×900、390×844、360×800、1024×1366 Chromium Reader 回归已通过。本切片未增加 schema、migration、
+环境变量、持久根或 backup member。可信 Actions run `34471037381` 正在执行，因此当前不宣称
+Docker 已发布。

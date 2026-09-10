@@ -943,7 +943,7 @@ frontend 748/748、build、Compose 与四视口 Chromium 均通过。当前状�
 `a7917ed`/`latest` OCI index 为
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。
 
-## 47. Reader 本地章节缓存回建生命周期（2026-09-09 inventory）
+## 47. Reader 本地章节缓存回建生命周期（2026-09-10 implemented）
 
 换源写入关闭后继续扫描共享章节 loader 的本地分支。固定上游从当前 namespace 的本地 Book/Chapter
 直接读取文件范围或 EPUB/UMD 资源；正文读取不会把旧目录实体写回 shelf/catalogue，EPUB 的可选文本
@@ -959,4 +959,9 @@ snapshot，只以 guarded single-column update 写 `cache_path`，并以 request
 coordinator 收敛 promote/rollback。stale 复用现有安全 409，正常 TXT/EPUB/UMD/旧卷恢复保持。完整合同与
 红测门见
 [`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**；本阶段不修改应用或测试代码。
+合同 `1b2ea90`、旧实现红测 `b75f640` 和实现 `a131aa9` 已按顺序提交。当前 loader 贯穿 caller
+context、双重复验 Book/archive/Chapter snapshot、仅更新 guarded `cache_path`，并以 stage/
+transaction/rollback 收敛文件与 SQLite。删除、refresh、并发字段编辑、取消、source inode 替换、
+DB/publish 故障和同章并发均已锁定。focused/race、Go full/vet、frontend 748/748、build、
+Compose 和四视口 Chromium 通过。当前状态 **aligned / regression-validated /
+trusted-publication-pending**；可信 Actions run `34471037381` 仍在执行。
