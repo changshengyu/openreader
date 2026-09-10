@@ -1,6 +1,7 @@
 package epubreader
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -100,6 +101,10 @@ func (s *Service) PrepareBookResources(book models.Book) error {
 }
 
 func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (PreparedChapter, error) {
+	return s.prepareChapter(book, chapter, true)
+}
+
+func (s *Service) prepareChapter(book models.Book, chapter *models.Chapter, persistRecoveredMetadata bool) (PreparedChapter, error) {
 	if chapter == nil || chapter.BookID != book.ID || !IsLocalEPUB(book) {
 		return PreparedChapter{}, ErrNotEPUB
 	}
@@ -140,14 +145,16 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 		chapter.ResourcePath = resourcePath
 		chapter.ResourceFragment = resourceFragment
 		chapter.ResourceEndFragment = resourceEndFragment
-		if err := s.db.Model(chapter).Updates(map[string]any{
-			"resource_path":         resourcePath,
-			"resource_fragment":     resourceFragment,
-			"resource_end_fragment": resourceEndFragment,
-		}).Error; err != nil {
-			return PreparedChapter{}, err
+		if persistRecoveredMetadata {
+			if err := s.db.Model(chapter).Updates(map[string]any{
+				"resource_path":         resourcePath,
+				"resource_fragment":     resourceFragment,
+				"resource_end_fragment": resourceEndFragment,
+			}).Error; err != nil {
+				return PreparedChapter{}, err
+			}
+			s.backfillArchivedChapter(book, chapter.Index, resourcePath, resourceFragment, resourceEndFragment)
 		}
-		s.backfillArchivedChapter(book, chapter.Index, resourcePath, resourceFragment, resourceEndFragment)
 	}
 	if _, err := s.resourceFile(extractionRoot, resourcePath); err != nil {
 		if !errors.Is(err, ErrNotFound) {
@@ -191,11 +198,33 @@ func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (Pre
 // cleared chapter cache is missing; unlike the legacy recovery path it does not
 // parse every spine resource in the source archive.
 func (s *Service) ReadChapterText(book models.Book, chapter *models.Chapter) (string, error) {
-	if _, err := s.PrepareChapter(book, chapter); err != nil {
+	return s.readChapterTextContext(context.Background(), book, chapter, true)
+}
+
+func (s *Service) ReadChapterTextContext(ctx context.Context, book models.Book, chapter *models.Chapter) (string, error) {
+	return s.readChapterTextContext(ctx, book, chapter, false)
+}
+
+func (s *Service) readChapterTextContext(
+	ctx context.Context,
+	book models.Book,
+	chapter *models.Chapter,
+	persistRecoveredMetadata bool,
+) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if _, err := s.prepareChapter(book, chapter, persistRecoveredMetadata); err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	sourcePath, bookRoot, err := s.sourcePath(book)
 	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	_, extractionRoot, err := s.ensureExtraction(sourcePath, bookRoot)
@@ -222,14 +251,33 @@ func (s *Service) ReadChapterText(book models.Book, chapter *models.Chapter) (st
 		return "", err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
+	data, err := io.ReadAll(io.LimitReader(epubContextReader{ctx: ctx, reader: file}, maxDocumentBytes+1))
 	if err != nil {
 		return "", err
 	}
 	if len(data) > maxDocumentBytes {
 		return "", ErrExtractionLimit
 	}
-	return extractDocumentPlainText(data, chapter.ResourceFragment, chapter.ResourceEndFragment)
+	content, err := extractDocumentPlainText(data, chapter.ResourceFragment, chapter.ResourceEndFragment)
+	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return content, nil
+}
+
+type epubContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader epubContextReader) Read(data []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.reader.Read(data)
 }
 
 func (s *Service) OpenResource(capability, requestedPath string) (Resource, error) {

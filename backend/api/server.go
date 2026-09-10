@@ -49,6 +49,7 @@ type Server struct {
 	sessions         *authsession.Service
 	registerMu       sync.Mutex
 	remoteCacheMu    sync.Mutex
+	localCacheMu     sync.Mutex
 	defaultSourcesMu sync.Mutex
 }
 

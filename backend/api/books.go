@@ -1799,6 +1799,8 @@ func (s *Server) refreshLocalBook(c *gin.Context) {
 		return
 	}
 	defer stage.cleanup()
+	s.localCacheMu.Lock()
+	defer s.localCacheMu.Unlock()
 
 	lastChapter := strings.TrimSpace(parsed[len(parsed)-1].Title)
 	if lastChapter == "" {
@@ -3075,7 +3077,17 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 	}
 
 	if content == "" && book.SourceID == 0 {
-		content = s.rebuildLocalChapterText(*book, chapter)
+		var currentBook models.Book
+		var currentChapter models.Chapter
+		var rebuildErr error
+		content, currentBook, currentChapter, rebuildErr = s.rebuildLocalChapterTextContext(ctx, *book, *chapter)
+		if rebuildErr != nil {
+			return "", rebuildErr
+		}
+		if content != "" {
+			*book = currentBook
+			*chapter = currentChapter
+		}
 	}
 
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
@@ -3155,7 +3167,7 @@ func (s *Server) persistRemoteChapterFetch(
 		return models.Book{}, models.Chapter{}, err
 	}
 
-	var staged *stagedRemoteChapterCache
+	var staged *stagedChapterCache
 	var err error
 	if fetched != "" {
 		staged, err = s.stageRemoteChapterCache(ctx, snapshot.book.URL, snapshot.chapter.URL, fetched)
@@ -3365,68 +3377,228 @@ func relativePathInside(root string, path string) (string, bool) {
 	return rel, true
 }
 
-func (s *Server) rebuildLocalChapterText(book models.Book, chapter *models.Chapter) string {
-	archive, archiveOK := s.resolveLocalBookArchive(book)
-	if !archiveOK {
-		return ""
-	}
-	if epubreader.IsLocalEPUB(book) {
-		content, err := s.epubReader.ReadChapterText(book, chapter)
-		if err != nil || strings.TrimSpace(content) == "" {
-			return ""
-		}
-		return s.persistRebuiltLocalChapterText(book, chapter, archive, content)
+type readerLocalChapterCacheSnapshot struct {
+	book    models.Book
+	chapter models.Chapter
+}
+
+func (s *Server) rebuildLocalChapterTextContext(
+	ctx context.Context,
+	book models.Book,
+	chapter models.Chapter,
+) (string, models.Book, models.Chapter, error) {
+	if err := ctx.Err(); err != nil {
+		return "", models.Book{}, models.Chapter{}, err
 	}
 	source, ok := s.openLocalBookSource(book)
 	if !ok {
-		return ""
+		return "", models.Book{}, models.Chapter{}, nil
 	}
 	defer source.close()
-	legacyLimits := engine.LegacyLocalBookParseLimits()
-	data, err := readBoundedOpenedLocalBookSource(source.file, source.info, legacyLimits.MaxArchiveBytes)
-	if err != nil {
-		return ""
+	snapshot := readerLocalChapterCacheSnapshot{book: book, chapter: chapter}
+	content := ""
+	if epubreader.IsLocalEPUB(book) {
+		workingChapter := chapter
+		var err error
+		content, err = s.epubReader.ReadChapterTextContext(ctx, book, &workingChapter)
+		if err != nil {
+			if isRequestContextError(err) {
+				return "", models.Book{}, models.Chapter{}, err
+			}
+			return "", models.Book{}, models.Chapter{}, nil
+		}
+	} else {
+		legacyLimits := engine.LegacyLocalBookParseLimits()
+		data, err := readBoundedOpenedLocalBookSourceContext(ctx, source.file, source.info, legacyLimits.MaxArchiveBytes)
+		if err != nil {
+			if isRequestContextError(err) {
+				return "", models.Book{}, models.Chapter{}, err
+			}
+			return "", models.Book{}, models.Chapter{}, nil
+		}
+		chapters, err := parseLocalBookChapters(filepath.Ext(source.name), data, book.TOCRule)
+		if err != nil || chapter.Index < 0 || chapter.Index >= len(chapters) {
+			return "", models.Book{}, models.Chapter{}, nil
+		}
+		content = strings.TrimSpace(chapters[chapter.Index].Content)
 	}
-	chapters, err := parseLocalBookChapters(filepath.Ext(source.name), data, book.TOCRule)
-	if err != nil || chapter.Index < 0 || chapter.Index >= len(chapters) {
-		return ""
-	}
-	content := strings.TrimSpace(chapters[chapter.Index].Content)
 	if content == "" {
-		return ""
+		return "", models.Book{}, models.Chapter{}, nil
 	}
-	return s.persistRebuiltLocalChapterText(book, chapter, archive, content)
+	if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
+		readerLocalChapterCacheRebuildLifecycleTestHook("after_local_rebuild", book, chapter)
+	}
+	return s.persistRebuiltLocalChapterTextContext(ctx, snapshot, source, content)
 }
 
 // readerLocalChapterCacheRebuildLifecycleTestHook exposes the post-parse
 // persistence boundary for deterministic lifecycle contract tests.
 var readerLocalChapterCacheRebuildLifecycleTestHook func(string, models.Book, models.Chapter)
 
-func (s *Server) persistRebuiltLocalChapterText(book models.Book, chapter *models.Chapter, archive *localBookArchive, content string) string {
-	if archive == nil || !archive.current() {
-		return content
+func (s *Server) persistRebuiltLocalChapterTextContext(
+	ctx context.Context,
+	snapshot readerLocalChapterCacheSnapshot,
+	source *openedLocalBookSource,
+	content string,
+) (string, models.Book, models.Chapter, error) {
+	if err := ctx.Err(); err != nil {
+		return "", models.Book{}, models.Chapter{}, err
 	}
-	if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
-		readerLocalChapterCacheRebuildLifecycleTestHook("after_local_rebuild", book, *chapter)
+	s.localCacheMu.Lock()
+	defer s.localCacheMu.Unlock()
+	if !source.current() {
+		return "", models.Book{}, models.Chapter{}, errReaderChapterContentStale
 	}
-	chapterURL := strings.TrimSpace(chapter.URL)
+	currentBook, currentChapter, err := s.validateReaderLocalChapterCacheSnapshot(s.db.WithContext(ctx), snapshot)
+	if err != nil {
+		return "", models.Book{}, models.Chapter{}, err
+	}
+	chapterURL := strings.TrimSpace(snapshot.chapter.URL)
 	if chapterURL == "" {
-		chapterURL = fmt.Sprintf("local://book_%d/chapter_%d", book.ID, chapter.Index)
-		chapter.URL = chapterURL
+		chapterURL = fmt.Sprintf("local://book_%d/chapter_%d", snapshot.book.ID, snapshot.chapter.Index)
 	}
-	bookURL := strings.TrimSpace(book.URL)
+	bookURL := strings.TrimSpace(snapshot.book.URL)
 	if bookURL == "" {
-		bookURL = fmt.Sprintf("local://book_%d", book.ID)
+		bookURL = fmt.Sprintf("local://book_%d", snapshot.book.ID)
 	}
-	contentDir := filepath.Join(archive.root, "content")
-	if cachePath, err := engine.WriteChapterCache(contentDir, bookURL, chapterURL, content); err == nil {
-		if !archive.current() {
-			return content
+	staged, err := s.stageLocalChapterCache(ctx, source.archive, bookURL, chapterURL, content)
+	if err != nil {
+		return "", models.Book{}, models.Chapter{}, err
+	}
+	defer staged.rollback()
+	if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
+		readerLocalChapterCacheRebuildLifecycleTestHook("after_local_cache_stage", snapshot.book, snapshot.chapter)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", models.Book{}, models.Chapter{}, err
+	}
+
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var validateErr error
+		currentBook, currentChapter, validateErr = s.validateReaderLocalChapterCacheSnapshot(tx, snapshot)
+		if validateErr != nil {
+			return validateErr
 		}
-		chapter.CachePath = filepath.Join("content", cachePath)
-		_ = s.db.Save(chapter)
+		if !source.current() {
+			return errReaderChapterContentStale
+		}
+		if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
+			readerLocalChapterCacheRebuildLifecycleTestHook("before_local_cache_update", snapshot.book, snapshot.chapter)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		write := tx.Model(&models.Chapter{}).
+			Where(
+				"id = ? AND book_id = ? AND `index` = ? AND title = ? AND url = ? AND is_volume = ? AND tag = ? AND COALESCE(cache_path, '') = ? AND COALESCE(resource_path, '') = ? AND COALESCE(resource_fragment, '') = ? AND COALESCE(resource_end_fragment, '') = ? AND COALESCE(variable, '') = ?",
+				snapshot.chapter.ID,
+				snapshot.chapter.BookID,
+				snapshot.chapter.Index,
+				snapshot.chapter.Title,
+				snapshot.chapter.URL,
+				snapshot.chapter.IsVolume,
+				snapshot.chapter.Tag,
+				snapshot.chapter.CachePath,
+				snapshot.chapter.ResourcePath,
+				snapshot.chapter.ResourceFragment,
+				snapshot.chapter.ResourceEndFragment,
+				snapshot.chapter.Variable,
+			).
+			Where(
+				"EXISTS (SELECT 1 FROM books WHERE books.id = chapters.book_id AND books.id = ? AND books.user_id = ? AND books.source_id = ? AND books.type = ? AND books.url = ? AND books.library_path = ? AND books.original_file = ? AND books.toc_file = ? AND books.source_file = ? AND books.toc_rule = ?)",
+				snapshot.book.ID,
+				snapshot.book.UserID,
+				snapshot.book.SourceID,
+				snapshot.book.Type,
+				snapshot.book.URL,
+				snapshot.book.LibraryPath,
+				snapshot.book.OriginalFile,
+				snapshot.book.TOCFile,
+				snapshot.book.SourceFile,
+				snapshot.book.TOCRule,
+			).
+			UpdateColumn("cache_path", staged.relative)
+		if write.Error != nil {
+			return write.Error
+		}
+		if write.RowsAffected != 1 {
+			return errReaderChapterContentStale
+		}
+		if !source.current() {
+			return errReaderChapterContentStale
+		}
+		if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
+			readerLocalChapterCacheRebuildLifecycleTestHook("before_local_cache_publish", snapshot.book, snapshot.chapter)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := staged.publish(ctx); err != nil {
+			return err
+		}
+		currentChapter.CachePath = staged.relative
+		return nil
+	})
+	if err != nil {
+		return "", models.Book{}, models.Chapter{}, err
 	}
-	return content
+	staged.finalize()
+	return content, currentBook, currentChapter, nil
+}
+
+func (s *Server) validateReaderLocalChapterCacheSnapshot(
+	db *gorm.DB,
+	snapshot readerLocalChapterCacheSnapshot,
+) (models.Book, models.Chapter, error) {
+	var book models.Book
+	if err := db.Where("id = ? AND user_id = ?", snapshot.book.ID, snapshot.book.UserID).First(&book).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		}
+		return models.Book{}, models.Chapter{}, err
+	}
+	if !sameReaderLocalChapterCacheBookSnapshot(book, snapshot.book) {
+		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+	}
+	var chapter models.Chapter
+	if err := db.Where("id = ? AND book_id = ?", snapshot.chapter.ID, snapshot.book.ID).First(&chapter).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		}
+		return models.Book{}, models.Chapter{}, err
+	}
+	if !sameReaderLocalChapterCacheChapterSnapshot(chapter, snapshot.chapter) {
+		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+	}
+	return book, chapter, nil
+}
+
+func sameReaderLocalChapterCacheBookSnapshot(current, snapshot models.Book) bool {
+	return current.ID == snapshot.ID &&
+		current.UserID == snapshot.UserID &&
+		current.SourceID == 0 && snapshot.SourceID == 0 &&
+		current.Type == snapshot.Type &&
+		current.URL == snapshot.URL &&
+		current.LibraryPath == snapshot.LibraryPath &&
+		current.OriginalFile == snapshot.OriginalFile &&
+		current.TOCFile == snapshot.TOCFile &&
+		current.SourceFile == snapshot.SourceFile &&
+		current.TOCRule == snapshot.TOCRule
+}
+
+func sameReaderLocalChapterCacheChapterSnapshot(current, snapshot models.Chapter) bool {
+	return current.ID == snapshot.ID &&
+		current.BookID == snapshot.BookID &&
+		current.Index == snapshot.Index &&
+		current.Title == snapshot.Title &&
+		current.URL == snapshot.URL &&
+		current.IsVolume == snapshot.IsVolume &&
+		current.Tag == snapshot.Tag &&
+		current.CachePath == snapshot.CachePath &&
+		current.ResourcePath == snapshot.ResourcePath &&
+		current.ResourceFragment == snapshot.ResourceFragment &&
+		current.ResourceEndFragment == snapshot.ResourceEndFragment &&
+		current.Variable == snapshot.Variable
 }
 
 func parseLocalBookChapters(ext string, data []byte, tocRule string) ([]engine.TXTChapter, error) {

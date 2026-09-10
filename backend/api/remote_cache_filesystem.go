@@ -25,7 +25,7 @@ type remoteCacheFile struct {
 	info     os.FileInfo
 }
 
-type stagedRemoteChapterCache struct {
+type stagedChapterCache struct {
 	storage     *webdavfs.Service
 	relative    string
 	staged      string
@@ -39,7 +39,7 @@ func (s *Server) stageRemoteChapterCache(
 	bookURL string,
 	chapterURL string,
 	content string,
-) (*stagedRemoteChapterCache, error) {
+) (*stagedChapterCache, error) {
 	storage, err := s.remoteCacheStorage()
 	if err != nil {
 		return nil, err
@@ -51,6 +51,43 @@ func (s *Server) stageRemoteChapterCache(
 	if err := storage.Mkdir(filepath.ToSlash(filepath.Dir(relative))); err != nil {
 		return nil, err
 	}
+	return stageChapterCacheFile(ctx, storage, relative, content)
+}
+
+func (s *Server) stageLocalChapterCache(
+	ctx context.Context,
+	archive *localBookArchive,
+	bookURL string,
+	chapterURL string,
+	content string,
+) (*stagedChapterCache, error) {
+	if archive == nil || archive.storage == nil || !archive.current() {
+		return nil, errReaderChapterContentStale
+	}
+	relative := filepath.ToSlash(filepath.Join("content", engine.ChapterCachePath(bookURL, chapterURL)))
+	if err := archive.storage.Mkdir(filepath.ToSlash(filepath.Dir(relative))); err != nil {
+		return nil, err
+	}
+	if !archive.current() {
+		return nil, errReaderChapterContentStale
+	}
+	staged, err := stageChapterCacheFile(ctx, archive.storage, relative, content)
+	if err != nil {
+		return nil, err
+	}
+	if !archive.current() {
+		staged.rollback()
+		return nil, errReaderChapterContentStale
+	}
+	return staged, nil
+}
+
+func stageChapterCacheFile(
+	ctx context.Context,
+	storage *webdavfs.Service,
+	relative string,
+	content string,
+) (*stagedChapterCache, error) {
 	staged, err := remoteCacheSidecarPath(relative, "stage")
 	if err != nil {
 		return nil, err
@@ -62,7 +99,7 @@ func (s *Server) stageRemoteChapterCache(
 	if err := storage.Put(ctx, staged, strings.NewReader(content), int64(len(content))); err != nil {
 		return nil, err
 	}
-	return &stagedRemoteChapterCache{
+	return &stagedChapterCache{
 		storage:  storage,
 		relative: relative,
 		staged:   staged,
@@ -78,7 +115,7 @@ func remoteCacheSidecarPath(relative string, kind string) (string, error) {
 	return relative + "." + kind + "-" + hex.EncodeToString(token[:]), nil
 }
 
-func (staged *stagedRemoteChapterCache) publish(ctx context.Context) error {
+func (staged *stagedChapterCache) publish(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -103,7 +140,7 @@ func (staged *stagedRemoteChapterCache) publish(ctx context.Context) error {
 	return nil
 }
 
-func (staged *stagedRemoteChapterCache) rollback() {
+func (staged *stagedChapterCache) rollback() {
 	if staged == nil {
 		return
 	}
@@ -118,7 +155,7 @@ func (staged *stagedRemoteChapterCache) rollback() {
 	}
 }
 
-func (staged *stagedRemoteChapterCache) finalize() {
+func (staged *stagedChapterCache) finalize() {
 	if staged == nil {
 		return
 	}
@@ -129,7 +166,7 @@ func (staged *stagedRemoteChapterCache) finalize() {
 	staged.published = false
 }
 
-func (staged *stagedRemoteChapterCache) restorePrevious() {
+func (staged *stagedChapterCache) restorePrevious() {
 	if !staged.hadPrevious {
 		return
 	}

@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"openreader/backend/engine"
 	"openreader/backend/models"
@@ -178,6 +180,245 @@ func TestReaderLocalChapterCacheRebuildRollsBackDatabaseFailure(t *testing.T) {
 	assertReaderLocalChapterCacheRebuildLifecycleFileAbsent(t, fixture)
 }
 
+func TestReaderLocalChapterCacheRebuildCancellationPhasesCommitNothing(t *testing.T) {
+	for _, stage := range []string{"after_local_cache_stage", "before_local_cache_update", "before_local_cache_publish"} {
+		t.Run(stage, func(t *testing.T) {
+			fixture := newReaderLocalChapterCacheRebuildLifecycleFixture(t, "localcancel"+strings.ReplaceAll(stage, "_", ""))
+			ctx, cancel := context.WithCancel(context.Background())
+			installReaderLocalChapterCacheRebuildLifecycleHook(t, func(currentStage string, book models.Book, chapter models.Chapter) {
+				if currentStage == stage && book.ID == fixture.book.ID && chapter.ID == fixture.chapter.ID {
+					cancel()
+				}
+			})
+
+			response := performReaderLocalChapterCacheRebuildLifecycleRequest(fixture, ctx)
+			if response.Body.Len() != 0 {
+				t.Errorf("cancelled %s request returned %d %s", stage, response.Code, response.Body.String())
+			}
+			assertReaderLocalChapterCacheRebuildLifecycleChapterUnchanged(t, fixture)
+			assertReaderLocalChapterCacheRebuildLifecycleFileAbsent(t, fixture)
+			assertReaderLocalChapterCacheRebuildLifecycleNoSidecars(t, fixture)
+		})
+	}
+}
+
+func TestReaderLocalChapterCacheRebuildRejectsReplacedSourceFile(t *testing.T) {
+	fixture := newReaderLocalChapterCacheRebuildLifecycleFixture(t, "localcachesource")
+	sourceFile := filepath.Join(fixture.server.cfg.LibraryDir, fixture.book.OriginalFile)
+	installReaderLocalChapterCacheRebuildLifecycleHook(t, func(stage string, book models.Book, chapter models.Chapter) {
+		if stage != "after_local_rebuild" || book.ID != fixture.book.ID || chapter.ID != fixture.chapter.ID {
+			return
+		}
+		if err := os.Rename(sourceFile, sourceFile+".old"); err != nil {
+			t.Errorf("detach parsed source: %v", err)
+			return
+		}
+		if err := os.WriteFile(sourceFile, []byte("第一章 本地回建\n替换后的正文。\n"), 0o644); err != nil {
+			t.Errorf("replace parsed source: %v", err)
+		}
+	})
+
+	response := performReaderLocalChapterCacheRebuildLifecycleRequest(fixture, context.Background())
+	assertReaderLocalChapterCacheRebuildLifecycleStale(t, response)
+	assertReaderLocalChapterCacheRebuildLifecycleChapterUnchanged(t, fixture)
+	assertReaderLocalChapterCacheRebuildLifecycleFileAbsent(t, fixture)
+}
+
+func TestReaderLocalChapterCacheRebuildRollsBackPublishFailure(t *testing.T) {
+	fixture := newReaderLocalChapterCacheRebuildLifecycleFixture(t, "localcachepublish")
+	installReaderLocalChapterCacheRebuildLifecycleHook(t, func(stage string, book models.Book, chapter models.Chapter) {
+		if stage != "before_local_cache_publish" || book.ID != fixture.book.ID || chapter.ID != fixture.chapter.ID {
+			return
+		}
+		entries, err := os.ReadDir(filepath.Dir(fixture.cacheFile))
+		if err != nil {
+			t.Errorf("read staged cache directory: %v", err)
+			return
+		}
+		prefix := filepath.Base(fixture.cacheFile) + ".stage-"
+		removed := false
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), prefix) {
+				removed = true
+				if err := os.Remove(filepath.Join(filepath.Dir(fixture.cacheFile), entry.Name())); err != nil {
+					t.Errorf("remove staged cache: %v", err)
+				}
+			}
+		}
+		if !removed {
+			t.Error("local cache stage was not present before publish")
+		}
+	})
+
+	response := performReaderLocalChapterCacheRebuildLifecycleRequest(fixture, context.Background())
+	if response.Code != http.StatusBadGateway {
+		t.Errorf("publish failure = %d %s, want 502", response.Code, response.Body.String())
+	}
+	assertReaderLocalChapterCacheRebuildLifecycleChapterUnchanged(t, fixture)
+	assertReaderLocalChapterCacheRebuildLifecycleFileAbsent(t, fixture)
+	assertReaderLocalChapterCacheRebuildLifecycleNoSidecars(t, fixture)
+}
+
+func TestReaderLocalChapterCacheRebuildCoordinatesSameChapterRequests(t *testing.T) {
+	fixture := newReaderLocalChapterCacheRebuildLifecycleFixture(t, "localcacheconcurrent")
+	arrived := make(chan struct{}, 2)
+	release := make(chan struct{})
+	installReaderLocalChapterCacheRebuildLifecycleHook(t, func(stage string, book models.Book, chapter models.Chapter) {
+		if stage == "after_local_rebuild" && book.ID == fixture.book.ID && chapter.ID == fixture.chapter.ID {
+			arrived <- struct{}{}
+			<-release
+		}
+	})
+
+	responses := []*httptest.ResponseRecorder{httptest.NewRecorder(), httptest.NewRecorder()}
+	done := make(chan struct{}, len(responses))
+	for _, response := range responses {
+		go func(response *httptest.ResponseRecorder) {
+			request := httptest.NewRequest(
+				http.MethodGet,
+				"/api/books/"+strconv.FormatUint(uint64(fixture.book.ID), 10)+"/chapters/0/content",
+				nil,
+			)
+			request.Header.Set("Authorization", fixture.auth)
+			fixture.router.ServeHTTP(response, request)
+			done <- struct{}{}
+		}(response)
+	}
+	for range responses {
+		select {
+		case <-arrived:
+		case <-time.After(3 * time.Second):
+			close(release)
+			t.Fatal("same-chapter requests did not both reach the parse barrier")
+		}
+	}
+	close(release)
+	for range responses {
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("same-chapter request did not finish")
+		}
+	}
+
+	okCount := 0
+	staleCount := 0
+	for _, response := range responses {
+		switch {
+		case response.Code == http.StatusOK:
+			okCount++
+		case response.Code == http.StatusConflict && response.Body.String() == `{"error":"chapter content changed; retry"}`:
+			staleCount++
+		default:
+			t.Errorf("same-chapter response = %d %s", response.Code, response.Body.String())
+		}
+	}
+	if okCount != 1 || staleCount != 1 {
+		t.Errorf("same-chapter results = ok:%d stale:%d, want one of each", okCount, staleCount)
+	}
+	var current models.Chapter
+	if err := fixture.server.db.First(&current, fixture.chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if current.URL != "" || current.CachePath == "" {
+		t.Errorf("same-chapter commit persisted synthetic URL or missed cache path: %+v", current)
+	}
+	if data, err := os.ReadFile(filepath.Join(fixture.bookRoot, current.CachePath)); err != nil || string(data) != "旧解析正文。" {
+		t.Errorf("same-chapter current cache = %q, %v", data, err)
+	}
+	assertReaderLocalChapterCacheRebuildLifecycleNoSidecars(t, fixture)
+}
+
+func TestReaderLocalChapterCacheRebuildRestoresMissingCanonicalFile(t *testing.T) {
+	fixture := newReaderLocalChapterCacheRebuildLifecycleFixture(t, "localcachecanonical")
+	canonicalPath, ok := relativePathInside(fixture.bookRoot, fixture.cacheFile)
+	if !ok {
+		t.Fatal("fixture cache path is outside the local archive")
+	}
+	if err := fixture.server.db.Model(&models.Chapter{}).
+		Where("id = ? AND book_id = ?", fixture.chapter.ID, fixture.book.ID).
+		UpdateColumn("cache_path", canonicalPath).Error; err != nil {
+		t.Fatal(err)
+	}
+	fixture.chapter.CachePath = canonicalPath
+
+	response := performReaderLocalChapterCacheRebuildLifecycleRequest(fixture, context.Background())
+	if response.Code != http.StatusOK {
+		t.Fatalf("canonical cache rebuild = %d %s, want 200", response.Code, response.Body.String())
+	}
+	var current models.Chapter
+	if err := fixture.server.db.First(&current, fixture.chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if current.CachePath != canonicalPath || current.URL != "" {
+		t.Errorf("canonical cache rebuild changed catalogue identity: %+v", current)
+	}
+	if data, err := os.ReadFile(fixture.cacheFile); err != nil || string(data) != "旧解析正文。" {
+		t.Errorf("canonical cache rebuild = %q, %v", data, err)
+	}
+	assertReaderLocalChapterCacheRebuildLifecycleNoSidecars(t, fixture)
+}
+
+func TestReaderLocalChapterCacheSnapshotIdentity(t *testing.T) {
+	book := models.Book{
+		ID: 3, UserID: 5, SourceID: 0, Type: 0, Title: "metadata",
+		URL: "local://book", LibraryPath: "data/user/book", OriginalFile: "data/user/book/source.txt",
+		TOCFile: "data/user/book/chapters.json", SourceFile: "data/user/book/bookSource.json", TOCRule: "^chapter",
+	}
+	metadataEdit := book
+	metadataEdit.Title = "concurrent metadata"
+	metadataEdit.Author = "concurrent author"
+	if !sameReaderLocalChapterCacheBookSnapshot(metadataEdit, book) {
+		t.Fatal("ordinary Book metadata edit invalidated the local parse snapshot")
+	}
+	bookChanges := []func(*models.Book){
+		func(value *models.Book) { value.ID++ },
+		func(value *models.Book) { value.UserID++ },
+		func(value *models.Book) { value.SourceID++ },
+		func(value *models.Book) { value.Type++ },
+		func(value *models.Book) { value.URL += "/changed" },
+		func(value *models.Book) { value.LibraryPath += "/changed" },
+		func(value *models.Book) { value.OriginalFile += ".changed" },
+		func(value *models.Book) { value.TOCFile += ".changed" },
+		func(value *models.Book) { value.SourceFile += ".changed" },
+		func(value *models.Book) { value.TOCRule += ".changed" },
+	}
+	for index, change := range bookChanges {
+		current := book
+		change(&current)
+		if sameReaderLocalChapterCacheBookSnapshot(current, book) {
+			t.Errorf("Book parse identity change %d was accepted", index)
+		}
+	}
+
+	chapter := models.Chapter{
+		ID: 7, BookID: book.ID, Index: 1, Title: "chapter", URL: "local://chapter",
+		Tag: "tag", CachePath: "content/old", ResourcePath: "OPS/one.xhtml",
+		ResourceFragment: "start", ResourceEndFragment: "end", Variable: `{"old":true}`,
+	}
+	chapterChanges := []func(*models.Chapter){
+		func(value *models.Chapter) { value.ID++ },
+		func(value *models.Chapter) { value.BookID++ },
+		func(value *models.Chapter) { value.Index++ },
+		func(value *models.Chapter) { value.Title += " changed" },
+		func(value *models.Chapter) { value.URL += "/changed" },
+		func(value *models.Chapter) { value.IsVolume = !value.IsVolume },
+		func(value *models.Chapter) { value.Tag += " changed" },
+		func(value *models.Chapter) { value.CachePath += ".changed" },
+		func(value *models.Chapter) { value.ResourcePath += ".changed" },
+		func(value *models.Chapter) { value.ResourceFragment += ".changed" },
+		func(value *models.Chapter) { value.ResourceEndFragment += ".changed" },
+		func(value *models.Chapter) { value.Variable += " changed" },
+	}
+	for index, change := range chapterChanges {
+		current := chapter
+		change(&current)
+		if sameReaderLocalChapterCacheChapterSnapshot(current, chapter) {
+			t.Errorf("Chapter parse identity change %d was accepted", index)
+		}
+	}
+}
+
 type readerLocalChapterCacheRebuildLifecycleFixture struct {
 	router    http.Handler
 	server    *Server
@@ -273,6 +514,39 @@ func assertReaderLocalChapterCacheRebuildLifecycleFileAbsent(t *testing.T, fixtu
 	t.Helper()
 	if _, err := os.Stat(fixture.cacheFile); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("late local rebuild left final cache %q: %v", fixture.cacheFile, err)
+	}
+}
+
+func assertReaderLocalChapterCacheRebuildLifecycleChapterUnchanged(
+	t *testing.T,
+	fixture readerLocalChapterCacheRebuildLifecycleFixture,
+) {
+	t.Helper()
+	var current models.Chapter
+	if err := fixture.server.db.First(&current, fixture.chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !sameReaderLocalChapterCacheChapterSnapshot(current, fixture.chapter) {
+		t.Errorf("local rebuild changed Chapter: current=%+v initial=%+v", current, fixture.chapter)
+	}
+}
+
+func assertReaderLocalChapterCacheRebuildLifecycleNoSidecars(
+	t *testing.T,
+	fixture readerLocalChapterCacheRebuildLifecycleFixture,
+) {
+	t.Helper()
+	err := filepath.WalkDir(fixture.bookRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if strings.Contains(entry.Name(), ".stage-") || strings.Contains(entry.Name(), ".backup-") {
+			t.Errorf("local rebuild left sidecar %q", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

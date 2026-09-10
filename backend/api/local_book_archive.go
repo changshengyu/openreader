@@ -34,6 +34,14 @@ func (source *openedLocalBookSource) close() {
 	}
 }
 
+func (source *openedLocalBookSource) current() bool {
+	if source == nil || source.file == nil || source.info == nil || source.archive == nil || !source.archive.current() {
+		return false
+	}
+	current, err := os.Lstat(source.file.Name())
+	return err == nil && current.Mode().IsRegular() && current.Mode()&os.ModeSymlink == 0 && os.SameFile(source.info, current)
+}
+
 func (s *Server) resolveLocalBookArchive(book models.Book) (*localBookArchive, bool) {
 	if book.SourceID != 0 || strings.TrimSpace(book.LibraryPath) == "" {
 		return nil, false

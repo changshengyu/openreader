@@ -1,6 +1,7 @@
 package epubreader
 
 import (
+	"context"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -181,6 +182,59 @@ func TestPrepareChapterRecoversLegacyMissingResourcePathFromSpineWhenPureTOCIsEm
 	}
 	if !strings.Contains(text, "历史正文") {
 		t.Fatalf("historical chapter text = %q", text)
+	}
+}
+
+func TestReadChapterTextContextRecoversResourceWithoutPersistingCatalogue(t *testing.T) {
+	libraryDir := t.TempDir()
+	bookDirectory := filepath.Join("data", "reader", "epub-context-recovery")
+	bookRoot := filepath.Join(libraryDir, bookDirectory)
+	if err := os.MkdirAll(bookRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourceRelative := filepath.Join(bookDirectory, "legacy.epub")
+	archive := epubZip(t, map[string]string{
+		"META-INF/container.xml": `<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>`,
+		"OPS/content.opf":        `<package><metadata><title>旧 EPUB</title></metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/></spine></package>`,
+		"OPS/one.xhtml":          "<html><body><p>上下文恢复正文</p></body></html>",
+	}, nil)
+	if err := os.WriteFile(filepath.Join(libraryDir, sourceRelative), archive, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "epub-context-recovery.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AutoMigrate(&models.Book{}, &models.Chapter{}); err != nil {
+		t.Fatal(err)
+	}
+	book := models.Book{
+		UserID: 9, Title: "legacy EPUB", URL: "local://epub-context-recovery",
+		LibraryPath: bookDirectory, OriginalFile: sourceRelative, TOCRule: "toc",
+	}
+	if err := database.Create(&book).Error; err != nil {
+		t.Fatal(err)
+	}
+	chapter := models.Chapter{BookID: book.ID, Index: 0, Title: "legacy chapter"}
+	if err := database.Create(&chapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(config.Config{LibraryDir: libraryDir, JWTSecret: "epub-context-secret"}, database)
+	text, err := service.ReadChapterTextContext(context.Background(), book, &chapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "上下文恢复正文") || chapter.ResourcePath != "OPS/one.xhtml" {
+		t.Fatalf("context recovery = text:%q resource:%q", text, chapter.ResourcePath)
+	}
+	var persisted models.Chapter
+	if err := database.First(&persisted, chapter.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.ResourcePath != "" || persisted.ResourceFragment != "" || persisted.ResourceEndFragment != "" {
+		t.Errorf("context-only EPUB recovery rewrote catalogue metadata: %+v", persisted)
 	}
 }
 

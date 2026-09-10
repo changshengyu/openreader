@@ -143,6 +143,8 @@ func (s *Server) cleanupDeletedBookArtifacts(plans []bookCleanupPlan) {
 		}
 	}
 	s.pruneUnreferencedRemoteCachePaths(paths)
+	s.localCacheMu.Lock()
+	defer s.localCacheMu.Unlock()
 	for _, directory := range directories {
 		if s.privateImportedBookDirectoryReferenced(directory.userID, directory.path) {
 			continue
