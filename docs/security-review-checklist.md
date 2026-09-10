@@ -147,6 +147,25 @@ Contract `1b2ea90`, red tests `b75f640` and implementation `a131aa9` landed in o
 `34471037381` published the `a131aa9`/`latest` amd64/arm64 OCI index
 `sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`.
 
+## P2 user-asset filesystem/reference lifecycle (2026-09-10 inventory)
+
+- [ ] Anchor upload, delete, Book cover admission and portable asset I/O at the trusted `data/uploads` boundary;
+      reject symlink or special-file roots, ancestors and entries without exposing host paths.
+- [ ] Publish uploads through context-aware private staging, sync/close and no-overwrite final creation; random,
+      copy, close, cancellation and publish failures must converge to zero final and zero stale stage files.
+- [ ] Coordinate each caller's Book/Setting new asset references with delete so both operations cannot succeed and
+      leave a dangling SQLite reference; preserve exact `409` and current Book/Setting error envelopes.
+- [ ] Compare exact recursively decoded Setting string references, admit only newly introduced current-user URLs,
+      and preserve unchanged legacy/external/missing values.
+- [ ] Read portable export bytes through the same rooted regular handle and constrain restore promote/rollback/
+      journal cleanup to the original current entry; never accept a symlink-resolved user root as a new trust root.
+- [ ] Prove ancestor/entry replacement, failure injection, cancellation, reference/delete races, two-user isolation,
+      historical volumes and portable v1/v2 restore before publication.
+
+Target contract:
+[`compat/user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is `inventory-complete / tests-and-implementation-pending`.
+
 ## P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 - [x] Revalidate the caller-owned Book and its initial source ID/URL after target-source remote work and before any

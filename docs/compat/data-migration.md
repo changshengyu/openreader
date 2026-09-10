@@ -1385,3 +1385,21 @@ four-viewport Chromium checks passed. Trusted Actions run `34471037381` then pas
 historical-volume and published-platform gates and published the `a131aa9`/`latest` amd64/arm64 OCI index
 `sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
+## P2 user-asset filesystem/reference lifecycle compatibility (2026-09-10 inventory)
+
+- The target adds no SQLite table, column, index, migration marker, persistent root, environment variable, backup
+  member or browser storage key.
+- Existing `data/uploads/users/<user>/<kind>/<name>` regular assets and stable URLs remain in place. Upgrade performs
+  no scan, move, rename or URL rewrite; request-private stage files are transient and excluded from backup.
+- Existing Book `custom_cover_url` and UserSetting JSON remain authoritative. Legacy, external and already-missing
+  URLs remain readable, removable and logically restorable; only newly introduced current-user URLs require a
+  currently rooted regular asset.
+- Logical backup remains URL-only. Portable v1/v2 manifest, placeholder and cross-user rewriting stay byte-format
+  compatible while export reads one rooted handle and restore coordinates asset promotion with rewritten row commit.
+- Symlink/special-file paths that old versions followed now fail closed for upload, delete and portable asset I/O.
+  Rollback reads unchanged valid rows/files but reintroduces path-following, partial-final and dangling-reference risk.
+
+Target contract:
+[`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**.

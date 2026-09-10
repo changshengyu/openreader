@@ -32,11 +32,11 @@
 | Reader：登录失效与账号切换 | `plugins/axios.js` 的 `NEED_LOGIN`、根 `App.vue#login`、`Reader.vue#loginAuth` | `api/client.js`、`App.vue`、`AuthDialog.vue`、`stores/user.js`、Reader lifecycle/progress、`stores/overlay.js` | **P0 已完成并发布 `59e11a9`**：401 按真实拦截顺序先挂起旧 Reader 再清凭证，未认证根场景不渲染私有 DOM；overlay reset、同账号 generation 重挂载、异账号返回书架、安全 returnTo、旧进度写入抑制均已验证。 | [`reader-reauthentication-isolation-p0-contract.md`](reader-reauthentication-isolation-p0-contract.md)；1440×900、1024×1366、390×844、360×800、frontend 643/643、Go/build 和新旧卷门通过。 |
 | Reader：EPUB、漫画/CBZ、音频、连续跨章、TTS | `Reader.vue`、`Content.vue`、本地格式解析类 | `ReaderChapterContent.vue`、`ReaderEpubContent.vue`、`ReaderAudioContent.vue`、`ReaderTTSBar.vue`、`useReaderChapterReady.js`、格式 parser / cache | **EPUB、CBZ、连续跨章、音频和 TTS 固定基准切片均已完成实现、三视口验证和 Docker 发布**：音频恢复上游结构、边界行为与真实 autoplay；TTS 恢复显式 voice、贴底栏、可取消跨章和关闭段落定位。 | [`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md) 及前三份格式合同；当前 `5313c49` 复验再次通过 EPUB/CBZ/audio 三视口与 fresh/historical/portable/restart 卷门，CBZ smoke 自动主题前置由测试显式冻结。 |
 | Pinia 状态、缓存、同步、数据事务 | `plugins/vuex.js`、`plugins/cache.js`、后端 controller/model | `stores/*.js`、`utils/*cache*`、`backend/models`、`services`、`sync` | 书架、认证 scope 与阅读进度 P2 已完成并发布；**WebSocket 协议第二轮已测试先行实施并发布 `2ea6e8c`**：任意客户端 event relay、无条件 Origin、deleted-user 连接和全局 `users_update` 已关闭；服务端 event type/payload、同用户收敛、重连 REST 权威和数据格式保持。 | [`reading-progress-p2-contract.md`](reading-progress-p2-contract.md)、[`websocket-sync-p2-contract.md`](websocket-sync-p2-contract.md)；WebSocket 状态 `implemented / regression-validated / Docker-published`，Go/full race、frontend 706/706、build、三视口双客户端及新旧卷通过。 |
-| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、ReturnData、`YueduApi.kt` `/assets/*` | `backend/api/*.go`、middleware、前端 `api/*.js`、public capability routes | **按动作逐项复审；已关闭模块不从旧日志重开**。Book/Category/remote-add、远程章节正文、`changeBookSource` 与本地章节 cache rebuild 的列所有权/远程或 parser 工作后提交资格均已测试先行实施。 | [`reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md) 已实施 current Book/archive/Chapter snapshot、caller context、staged publication 和 guarded cache-path 单列更新，并随 `a131aa9` 发布；状态 `aligned / regression-validated / Docker-published / awaiting-device-verification`。下一 action 必须从当前 route/进程边界重新取证。 |
+| Go REST、鉴权与错误语义 | Kotlin `*Controller.kt`、ReturnData、`YueduApi.kt` `/assets/*` | `backend/api/*.go`、middleware、前端 `api/*.js`、public capability routes | **按动作逐项复审；已关闭模块不从旧日志重开**。Book/Category/remote-add、远程章节正文、`changeBookSource` 与本地章节 cache rebuild 已关闭；当前 must-fix 是上传/删除/Book/Setting/portable 之间的 rooted 资产与引用提交生命周期。 | [`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md) 已完成固定上游和当前实现 inventory；目标为 rooted current-entry I/O、staged no-overwrite upload 和 caller-scoped reference coordinator。状态 `inventory-complete / tests-and-implementation-pending`。 |
 | 书源解析、RSS、远程抓取 | `AnalyzeRule*`、`Rss*`、`BookSourceController.kt` | `backend/engine/source_*.go`、`rss_parser.go`、fetcher、`services/rss` | **CSS/JSONPath/XPath 书源主链、RSS 可见请求页语义、P2-N1/P2-N2 抓取边界和 RSS 持久提交边界均已发布**。refresh 只写 parser/remote 列并按 detail rule 保留权威正文；content cache 只写 content；state 只写 read/favourite；三者不再用全行 `Save` 覆盖。 | 抓取预算/SSRF 合同不重开；[`rss-write-boundary-fixed-baseline-second-audit-p2-contract.md`](rss-write-boundary-fixed-baseline-second-audit-p2-contract.md) 已用 trigger/API 证明列所有权、删除不复活、无孤儿 article 和远程工作后的 source/article 存活复验。 |
 | 测试、构建、Docker、卷升级 | 上游功能契约；OpenReader Docker/data 约束 | `frontend/tests`、`scripts/smoke`、`backend/**/*_test.go`、Dockerfile、release workflow | `a131aa9` 通过 frontend 748/748、Go focused/race/full/vet、build、Compose 和 Reader 本地 cache 四视口；可信 Actions run `34471037381` 又通过 backend/frontend/Compose、native、fresh/portable、historical volume 与 published-platform 门。前端构建固定在 `$BUILDPLATFORM` 原生运行；Go/CGO 与最终镜像仍按目标架构生成。 | amd64/arm64 发布 `a131aa9`/`latest`，OCI index `sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`；manifests 分别为 `sha256:595b40b26e9af74eb233c294be8f4f6ce879cec88f03a3153c72676632a29568`、`sha256:e6099f8141caad2d07c0d0e4c6396939115f06c86f7a24c1921425c91c708adb`，双平台构建/provenance 均锁定完整 revision `a131aa94ac99cfe1fb6b355854ec790fb438e4b0`。两个 `unknown/unknown` attestation manifest 不是运行镜像；用户生产环境运行提交未知。 |
 
-## 当前整体进度快照（2026-09-10，Reader local chapter-cache rebuild implemented）
+## 当前整体进度快照（2026-09-10，user-asset filesystem/reference inventory）
 
 按全量计划的模块/合同口径而不是代码行数估算，整体约 **99%**。该数字表示固定基准合同和测试先行
 实现覆盖度；用户配置、BookGroup/Category、Book、BookSource、Bookmark 与 RSS 写入/导入边界，以及
@@ -46,7 +46,8 @@ Reader 主正文迟到响应、持久 variable/cache 提交与换源写入边界
 `34321320014` 完成卷门和 amd64/arm64 发布。本地 cache miss 回建又以
 `1b2ea90`/`b75f640`/`a131aa9` 关闭，并由可信 Actions run `34471037381` 完成卷门和双架构发布。
 剩余约 1% 包含后续逐路由 action 审计、长尾固定基准复审与真实设备证据，不能从 direct binder、
-`Save` 或 contextless 调用差集缩小推导完成。下一 action 必须从当前 route/进程边界与固定上游重新取证。
+`Save` 或 contextless 调用差集缩小推导完成。当前 action 已取证为用户资产 filesystem/reference lifecycle，
+状态为 inventory complete，必须先在旧实现上加入确定性失败测试再实施。
 
 - **P0 Reader 主链已覆盖**：工具层/面板状态机、正文排版、移动点击与连续滚动、设置、书签、正文
   搜索、登录恢复、普通文本、EPUB、CBZ/漫画、音频、连续跨章、TTS、夜间对比度均有专项合同和
@@ -83,8 +84,10 @@ Reader 主正文迟到响应、持久 variable/cache 提交与换源写入边界
   Reader source-change post-fetch Book/association/Source 复验、显式拥有列更新与权威响应投影，以及
   本地章节 cache-miss 的 caller context、Book/archive/Chapter snapshot、guarded `cache_path`、
   staged publication/rollback 与 EPUB recovery 非持久化边界。
-- **尚未完成的主线**：其余尚未逐动作签约的 Go REST/错误/事务语义；仍待第二轮固定基准复审的长尾组件；
-  以及后续真实设备反馈暴露出的上游可见偏差。reading progress、books.go 六个 JSON control 和
+- **尚未完成的主线**：用户资产 filesystem/reference lifecycle 已完成专项 inventory，待按合同加入旧实现
+  红测并实施 rooted staged upload/delete、Book/Setting 引用协调与 portable 同句柄/协调提交；此外仍有
+  其余尚未逐动作签约的 Go REST/错误/事务语义、待第二轮固定基准复审的长尾组件，以及后续真实设备
+  反馈暴露出的上游可见偏差。reading progress、books.go 六个 JSON control 和
   ReplaceRule 五路、备份生成、backup list/download 与公开 upload resource rooted opened-file 边界均已
   完成合同、红测、实现、runtime、浏览器、卷门和发布；本地章节 cache rebuild 已完成合同、
   红测、实现与本地全量/浏览器门，并由 Actions run `34471037381` 通过可信卷/平台门与发布；

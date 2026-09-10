@@ -1278,6 +1278,26 @@ and published-platform gates. It published the `a131aa9`/`latest` amd64/arm64 OC
 `sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
+### P2 user-asset filesystem/reference lifecycle (2026-09-10 inventory)
+
+- `POST /api/uploads` keeps its JWT, multipart budget, single file/type admission, content checks and
+  `201 {url,name,size,type}` response. Unsafe rooted paths fail closed; copy/sync/close/cancel/random/publish failure
+  must leave no final asset and never overwrite an existing file.
+- `DELETE /api/uploads` keeps its bounded single-JSON request, owner checks, idempotent safe-missing success and
+  `409 upload is still in use`. It may remove only the caller's current rooted regular entry.
+- `POST /api/books`, `PUT /api/books/:id` and `PUT /api/settings/:key` keep their existing wire contracts. Only a
+  newly introduced current-user asset URL requires current rooted-file admission; an unchanged historical/missing
+  URL remains compatible.
+- A concurrent reference write and delete must serialize per caller: reference-first yields the existing delete
+  `409`; delete-first yields the existing Book `400 invalid custom cover url` or a flat Setting `400`. Both may not
+  report success while leaving a dangling row.
+- Portable v2 export/restore keeps its manifest, placeholder and cross-user rewrite formats, but asset bytes must be
+  read from one rooted opened handle and promotion/DB commit must share the same caller coordination boundary.
+
+Target contract:
+[`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Status is **inventory-complete / tests-and-implementation-pending**.
+
 ## P2 access-log query projection (2026-08-25 implemented/published)
 
 All route methods, paths, auth, query parsing, responses and side effects remain unchanged. The shared access logger
