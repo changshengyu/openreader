@@ -1273,7 +1273,10 @@ loader now carries caller context, revalidates the complete Book/archive/Chapter
 updates only guarded `chapters.cache_path`, and authoritatively reloads the result. Deletion, refresh, source
 replacement, cancellation and injected DB/publish failures leave no resurrected row or final orphan. Focused/race,
 Go full/vet, frontend 748/748, build, Compose and four-viewport Chromium checks passed. Status is
-**aligned / regression-validated / trusted-publication-pending**; Actions run `34471037381` is still running.
+Trusted Actions run `34471037381` then passed backend/frontend/Compose, native, fresh/portable, historical-volume
+and published-platform gates. It published the `a131aa9`/`latest` amd64/arm64 OCI index
+`sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
 ## P2 access-log query projection (2026-08-25 implemented/published)
 

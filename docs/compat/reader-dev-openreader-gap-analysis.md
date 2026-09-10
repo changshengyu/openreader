@@ -4037,5 +4037,7 @@ context，在回建后和 transaction 内复验 Book/archive/完整 Chapter snap
 `cache_path`，并以 request-private stage 和本地 cache coordinator 收敛 publish/rollback。EPUB
 resource recovery 只修改工作副本。删除、refresh、字段/archive 替换、取消、DB 和 publish
 故障均有确定性测试。focused/race、Go full/vet、frontend 748/748、build、Compose 和四视口
-Chromium 通过。当前状态：**aligned / regression-validated / trusted-publication-pending**；
-可信 Actions run `34471037381` 仍在执行。
+Chromium 通过。可信 Actions run `34471037381` 又通过 backend/frontend/Compose、native、
+fresh/portable、historical volume 和 published-platform 门；`a131aa9`/`latest` amd64/arm64 OCI index 为
+`sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`。当前状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

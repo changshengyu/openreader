@@ -963,5 +963,7 @@ coordinator 收敛 promote/rollback。stale 复用现有安全 409，正常 TXT/
 context、双重复验 Book/archive/Chapter snapshot、仅更新 guarded `cache_path`，并以 stage/
 transaction/rollback 收敛文件与 SQLite。删除、refresh、并发字段编辑、取消、source inode 替换、
 DB/publish 故障和同章并发均已锁定。focused/race、Go full/vet、frontend 748/748、build、
-Compose 和四视口 Chromium 通过。当前状态 **aligned / regression-validated /
-trusted-publication-pending**；可信 Actions run `34471037381` 仍在执行。
+Compose 和四视口 Chromium 通过。可信 Actions run `34471037381` 又通过 native、fresh/portable、
+historical volume 和 published-platform 门；发布的 `a131aa9`/`latest` amd64/arm64 OCI index 为
+`sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

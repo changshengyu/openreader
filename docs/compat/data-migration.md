@@ -1381,5 +1381,7 @@ Contract `1b2ea90`, old-implementation red tests `b75f640` and implementation `a
 single-column update and staged publication add no schema, migration, startup rewrite, backup member, mounted root or
 environment variable. Cancellation, stale snapshots and DB/publish failure now restore or remove staged/final files;
 normal and historical cache paths remain readable. Focused/race, Go full/vet, frontend 748/748, build, Compose and
-four-viewport Chromium checks passed. Status is **aligned / regression-validated / trusted-publication-pending**;
-Actions run `34471037381` is still running.
+four-viewport Chromium checks passed. Trusted Actions run `34471037381` then passed native, fresh/portable,
+historical-volume and published-platform gates and published the `a131aa9`/`latest` amd64/arm64 OCI index
+`sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.

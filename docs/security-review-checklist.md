@@ -138,12 +138,14 @@ Contract `c500e81`, red tests `5bf7c66` and implementation `0a8a0ef` landed in o
       cancelled or failed work leaves no final orphan and cannot overwrite an active refresh generation.
 - [x] Pass deterministic old-implementation red tests, focused/race/full/vet, local format/old-volume regression,
       frontend/build and four-viewport Reader checks.
-- [ ] Pass trusted fresh/historical/portable and published-platform gates in Actions run `34471037381`.
+- [x] Pass trusted fresh/historical/portable and published-platform gates in Actions run `34471037381`.
 
 Target contract:
 [`compat/reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/reader-local-chapter-cache-rebuild-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 Contract `1b2ea90`, red tests `b75f640` and implementation `a131aa9` landed in order. Status is
-`aligned / regression-validated / trusted-publication-pending`.
+`aligned / regression-validated / Docker-published / awaiting-device-verification`. Trusted Actions run
+`34471037381` published the `a131aa9`/`latest` amd64/arm64 OCI index
+`sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`.
 
 ## P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 

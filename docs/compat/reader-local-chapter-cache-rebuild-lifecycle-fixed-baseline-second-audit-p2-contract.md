@@ -2,7 +2,7 @@
 
 审查日期：2026-09-10
 
-状态：**aligned / regression-validated / trusted-publication-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -138,5 +138,11 @@ catalogue。全局 coordinator 比合同的 per-cache 最小要求更强，是�
 
 focused 和 `-race`、Go 全量、`go vet`、frontend 748/748、Vite build、Compose 以及
 1440×900、390×844、360×800、1024×1366 Chromium Reader 回归已通过。本切片未增加 schema、migration、
-环境变量、持久根或 backup member。可信 Actions run `34471037381` 正在执行，因此当前不宣称
-Docker 已发布。
+环境变量、持久根或 backup member。可信 Actions run `34471037381` 又通过 backend/frontend/
+Compose、native、fresh/portable、historical volume 和 published-platform 门，并发布
+`a131aa9`/`latest` amd64/arm64 OCI index
+`sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`。amd64/arm64 manifests 分别为
+`sha256:595b40b26e9af74eb233c294be8f4f6ce879cec88f03a3153c72676632a29568` 和
+`sha256:e6099f8141caad2d07c0d0e4c6396939115f06c86f7a24c1921425c91c708adb`；构建参数与双平台 provenance 均
+锁定完整 revision `a131aa94ac99cfe1fb6b355854ec790fb438e4b0`。两个 `unknown/unknown` 条目是分别
+关联 amd64/arm64 的 provenance attestation manifest，不是可运行镜像。
