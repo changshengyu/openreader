@@ -34,6 +34,10 @@ var (
 	errAssetUploadFileRequired    = errors.New("asset upload file required")
 )
 
+// userAssetUploadLifecycleTestHook exposes deterministic cancellation after
+// validation without changing production behavior.
+var userAssetUploadLifecycleTestHook func(string)
+
 type parsedAssetUpload struct {
 	form *multipart.Form
 	file *multipart.FileHeader
@@ -91,6 +95,9 @@ func (s *Server) uploadAsset(c *gin.Context) {
 	}
 	name := time.Now().Format("20060102150405") + "-" + randomHex(6) + ext
 	target := filepath.Join(dir, name)
+	if userAssetUploadLifecycleTestHook != nil {
+		userAssetUploadLifecycleTestHook("before_save")
+	}
 	if err := c.SaveUploadedFile(fileHeader, target); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save upload"})
 		return
