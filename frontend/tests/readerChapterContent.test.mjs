@@ -162,9 +162,11 @@ test('preloads uncached neighboring chapters within the configured radius', asyn
 
 test('retries one transient stale chapter conflict without exposing it', async () => {
   let requestCount = 0
+  const refreshes = []
   const fixture = createController({
-    loadBrowserContent: async (_book, _bookId, index) => {
+    loadBrowserContent: async (_book, _bookId, index, options) => {
       requestCount += 1
+      refreshes.push(options.refresh)
       if (requestCount === 1) throw staleChapterError()
       return validContent(index)
     },
@@ -174,6 +176,7 @@ test('retries one transient stale chapter conflict without exposing it', async (
 
   assert.deepEqual(data, validContent(2))
   assert.equal(requestCount, 2)
+  assert.deepEqual(refreshes, [false, false], 'stale recovery must allow a concurrently published cache hit')
   assert.deepEqual(fixture.controller.get(2), validContent(2))
   assert.deepEqual(fixture.calls, [['cached', 2]])
 })
