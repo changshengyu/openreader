@@ -109,3 +109,36 @@ test('mobile vertical text restores the upstream document scroll surface', () =>
     'the reader page must grow with the root document in vertical text modes',
   )
 })
+
+test('reader exposes the current chapter number and title in the upstream running header', () => {
+  assert.match(
+    readerSource,
+    /<header\s+v-if="showRunningChapterHeader"\s+class="reader-page-head">[\s\S]*?class="reader-running-chapter-title">\{\{ runningChapterLabel \}\}<\/span>[\s\S]*?<span v-if="!isMobileReader">\{\{ chapterLabel \}\}<\/span>/,
+    'the running header must show the active chapter label and retain desktop count',
+  )
+  assert.match(
+    readerSource,
+    /const runningChapterLabel = computed\(\(\) => formatRunningChapterLabel\(currentIndex\.value, chapter\.value\?\.title\)\)/,
+    'the label must derive from the current 1-based chapter position and active title',
+  )
+  assert.match(
+    readerSource,
+    /const showRunningChapterHeader = computed\(\(\) => !isAudioChapter\.value && !isCBZBook\(book\.value\)\)/,
+    'audio and full-width CBZ reading must preserve their header exceptions',
+  )
+  assert.doesNotMatch(
+    readerSource,
+    /\.reader-shell\.mini-interface \.reader-page-head\s*\{\s*display:\s*none;/,
+    'mini interface must not hide the upstream chapter header',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-shell\.mini-interface \.reader-page-head\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?height:\s*calc\(30px \+ env\(safe-area-inset-top\)\);[\s\S]*?padding:\s*calc\(6px \+ env\(safe-area-inset-top\)\) 16px 6px;[\s\S]*?font-size:\s*12px;/,
+    'mobile header must retain the upstream fixed safe-area geometry',
+  )
+  assert.match(
+    readerSource,
+    /\.reader-running-chapter-title\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/,
+    'long chapter titles must stay on one non-overlapping line',
+  )
+})

@@ -141,6 +141,90 @@ func TestImporterPreparedPreviewIsTheConfirmedChapterSource(t *testing.T) {
 	}
 }
 
+func TestImporterRehydratesUniqueReaderDevLocalPlaceholderInPlace(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		DataDir:      filepath.Join(root, "data"),
+		CacheDir:     filepath.Join(root, "cache"),
+		LibraryDir:   filepath.Join(root, "library"),
+		DatabasePath: filepath.Join(root, "data", "openreader.db"),
+	}
+	database, err := readerdb.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := readerdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Username: "readerdev-placeholder", PasswordHash: "hash"}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	placeholder := models.Book{
+		UserID: user.ID, SourceID: 0, Title: "迁移本地书", Author: "原作者",
+		URL: "storage/data/default/迁移本地书.txt", ChapterCount: 2,
+	}
+	if err := database.Create(&placeholder).Error; err != nil {
+		t.Fatal(err)
+	}
+	progress := models.ReadingProgress{
+		UserID: user.ID, BookID: placeholder.ID, ChapterIndex: 0, ChapterTitle: "第二章", Offset: 23,
+	}
+	if err := database.Create(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+	bookmark := models.Bookmark{
+		UserID: user.ID, BookID: placeholder.ID, ChapterIndex: 0, Offset: 9, Title: "迁移书签",
+	}
+	if err := database.Create(&bookmark).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	request := ImportRequest{
+		UserID: user.ID, UserName: user.Username, FileName: "迁移本地书.txt", Extension: ".txt",
+		Data: []byte("新增前言\n第一章\n正文一\n第二章\n正文二"), Title: placeholder.Title,
+		Author: placeholder.Author, TOCRule: `^第.+章$`,
+	}
+	importer := NewImporter(cfg, database)
+	_, prepared, err := importer.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	book, err := importer.ImportPrepared(request, prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if book.ID != placeholder.ID || book.URL != placeholder.URL || book.OriginalFile == "" || book.LibraryPath == "" {
+		t.Fatalf("rehydrated book = %+v, want original placeholder identity with archive", book)
+	}
+	var bookCount int64
+	if err := database.Model(&models.Book{}).Where("user_id = ? AND title = ? AND author = ?", user.ID, placeholder.Title, placeholder.Author).Count(&bookCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bookCount != 1 {
+		t.Fatalf("rehydrated local book count = %d, want one", bookCount)
+	}
+	var chapters []models.Chapter
+	if err := database.Where("book_id = ?", placeholder.ID).Order("`index` asc").Find(&chapters).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 3 || chapters[2].Title != "第二章" {
+		t.Fatalf("rehydrated chapters = %+v", chapters)
+	}
+	if err := database.First(&progress, progress.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.BookID != placeholder.ID || progress.ChapterID != chapters[2].ID || progress.ChapterIndex != 2 || progress.ChapterTitle != "第二章" || progress.Offset != 23 {
+		t.Fatalf("rehydrated progress = %+v", progress)
+	}
+	if err := database.First(&bookmark, bookmark.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bookmark.BookID != placeholder.ID || bookmark.Offset != 9 || bookmark.Title != "迁移书签" {
+		t.Fatalf("rehydrated bookmark = %+v", bookmark)
+	}
+}
+
 func TestImporterEPUBPreviewStoresCatalogueOnlyAndConfirmationPreparesReaderResources(t *testing.T) {
 	root := t.TempDir()
 	cfg := config.Config{

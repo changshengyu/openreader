@@ -9,11 +9,81 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"openreader/backend/engine"
 	"openreader/backend/models"
 )
+
+func TestReaderConcurrentSameChapterLoadsSharePublishedResult(t *testing.T) {
+	fixture := newReaderChapterContentLifecycleFixture(t, "chapterconcurrentduplicate")
+	var fetches atomic.Int32
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		fetches.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`<main class="content">shared remote content</main><span class="token">shared token</span>`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})})
+	t.Cleanup(restoreHTTPClient)
+
+	firstFetched := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var hookCalls atomic.Int32
+	installReaderChapterContentLifecycleHook(t, func(stage string, _ context.Context, book models.Book, chapter models.Chapter) {
+		if stage != "after_remote_fetch" || book.ID != fixture.book.ID || chapter.ID != fixture.chapter.ID {
+			return
+		}
+		if hookCalls.Add(1) == 1 {
+			close(firstFetched)
+			<-releaseFirst
+		}
+	})
+
+	responses := make(chan *httptest.ResponseRecorder, 2)
+	go func() {
+		responses <- performReaderChapterContentLifecycleRequest(fixture, context.Background())
+	}()
+	select {
+	case <-firstFetched:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first chapter request did not reach the remote-fetch boundary")
+	}
+	go func() {
+		responses <- performReaderChapterContentLifecycleRequest(fixture, context.Background())
+	}()
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		var chapter models.Chapter
+		if err := fixture.server.db.First(&chapter, fixture.chapter.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if chapter.Variable != fixture.chapter.Variable {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(releaseFirst)
+
+	for range 2 {
+		select {
+		case response := <-responses:
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "shared remote content") {
+				t.Errorf("concurrent same-chapter response = %d %s, want shared 200", response.Code, response.Body.String())
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("concurrent chapter request did not finish")
+		}
+	}
+	if fetches.Load() != 1 {
+		t.Fatalf("same chapter remote fetches = %d, want one published request", fetches.Load())
+	}
+}
 
 func TestReaderChapterContentRejectsSourceSemanticChangeAfterFetch(t *testing.T) {
 	fixture := newReaderChapterContentLifecycleFixture(t, "chapterstalesource")
