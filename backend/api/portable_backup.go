@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -120,6 +121,11 @@ func (s *Server) restorePortableBackupFileWithPermissions(archivePath string, us
 		return nil, err
 	}
 	defer os.RemoveAll(packageData.stagingDir)
+	unlockAssets, err := s.lockUserAssets(context.Background(), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockAssets()
 
 	journalPath, err := s.writePortableAssetRestoreJournal(packageData.assets, userID)
 	if err != nil {
@@ -135,7 +141,7 @@ func (s *Server) restorePortableBackupFileWithPermissions(archivePath string, us
 	keepAssets := false
 	defer func() {
 		if !keepAssets {
-			removePortablePromotedAssets(promotedAssets)
+			s.removePortablePromotedAssets(promotedAssets, userID)
 		}
 	}()
 

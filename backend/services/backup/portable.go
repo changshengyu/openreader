@@ -67,7 +67,7 @@ type portableManifestAsset struct {
 
 type portableAssetInput struct {
 	manifest portableManifestAsset
-	path     string
+	file     *os.File
 }
 
 type PortableResult struct {
@@ -115,6 +115,7 @@ func (s *Service) RunPortableV2ForUserContext(
 	if err != nil {
 		return PortableResult{}, err
 	}
+	defer closePortableAssetInputs(assets)
 	createdAt := time.Now().UTC()
 	if err := s.validatePortableExportBudget(ctx, logicalEntries, books, assets, legacyAssets, createdAt); err != nil {
 		return PortableResult{}, err

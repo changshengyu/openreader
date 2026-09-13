@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -70,6 +71,17 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		return
 	}
 	value := sanitizeUserSettingValue(key, req.Value)
+	ctx := c.Request.Context()
+	var unlockAssets func()
+	if len(managedUserSettingAssetStrings(value)) > 0 {
+		var err error
+		unlockAssets, err = s.lockUserAssets(ctx, userID)
+		if err != nil {
+			return
+		}
+		defer unlockAssets()
+	}
+	database := s.db.WithContext(ctx)
 
 	now := time.Now()
 	setting := models.UserSetting{
@@ -80,7 +92,7 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 	}
 
 	var existing models.UserSetting
-	err := s.db.Where("user_id = ? AND key = ?", userID, key).First(&existing).Error
+	err := database.Where("user_id = ? AND key = ?", userID, key).First(&existing).Error
 	if err == nil && !req.Force && isStaleProgressUpdate(existing.UpdatedAt, req.BaseUpdatedAt, "") {
 		c.Header("X-OpenReader-Setting-Conflict", "1")
 		c.JSON(http.StatusOK, userSettingResponse(existing))
@@ -90,8 +102,12 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}
+	if err := s.validateNewUserSettingAssetURLs(userID, existing.Value, value); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid setting asset url"})
+		return
+	}
 
-	if err := s.db.Clauses(clause.OnConflict{
+	if err := database.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}, {Name: "key"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"value":      setting.Value,
@@ -101,7 +117,7 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}
-	if err := s.db.Where("user_id = ? AND key = ?", userID, key).First(&setting).Error; err != nil {
+	if err := database.Where("user_id = ? AND key = ?", userID, key).First(&setting).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}
@@ -114,6 +130,41 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		},
 	})
 	c.JSON(http.StatusOK, userSettingResponse(setting))
+}
+
+func (s *Server) validateNewUserSettingAssetURLs(userID uint, current string, next []byte) error {
+	currentURLs := managedUserSettingAssetStrings([]byte(current))
+	nextURLs := managedUserSettingAssetStrings(next)
+	for rawURL := range nextURLs {
+		if _, exists := currentURLs[rawURL]; exists {
+			continue
+		}
+		asset, err := s.userUploadAsset(rawURL)
+		if err != nil || asset.UserID != userID {
+			return os.ErrPermission
+		}
+		opened, err := s.openUserUploadAsset(asset)
+		if err != nil {
+			return err
+		}
+		_ = opened.File.Close()
+	}
+	return nil
+}
+
+func managedUserSettingAssetStrings(data []byte) map[string]struct{} {
+	urls := make(map[string]struct{})
+	var value any
+	if !json.Valid(data) || json.Unmarshal(data, &value) != nil {
+		return urls
+	}
+	walkJSONStrings(value, func(current string) bool {
+		if strings.HasPrefix(current, "/uploads/users/") {
+			urls[current] = struct{}{}
+		}
+		return false
+	})
+	return urls
 }
 
 func normalizeUserSettingKey(key string) string {

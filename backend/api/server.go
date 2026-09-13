@@ -10,6 +10,7 @@ import (
 
 	"openreader/backend/config"
 	"openreader/backend/middleware"
+	assetservice "openreader/backend/services/assets"
 	"openreader/backend/services/audioreader"
 	"openreader/backend/services/authsession"
 	"openreader/backend/services/backup"
@@ -47,10 +48,13 @@ type Server struct {
 	sourceCandidates *sourcecandidates.Service
 	remoteReaders    *remotereader.Store
 	sessions         *authsession.Service
+	assetStore       *assetservice.Store
 	registerMu       sync.Mutex
 	remoteCacheMu    sync.Mutex
 	localCacheMu     sync.Mutex
 	defaultSourcesMu sync.Mutex
+	assetLocksMu     sync.Mutex
+	assetLocks       map[uint]*userAssetGate
 }
 
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) *Server {
@@ -73,6 +77,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		sourceCandidates: sourcecandidates.New(database),
 		remoteReaders:    remotereader.NewStore(remotereader.DefaultLimits(), nil),
 		sessions:         authsession.New(database, cfg.JWTSecret),
+		assetStore:       assetservice.NewStore(cfg.DataDir),
+		assetLocks:       make(map[uint]*userAssetGate),
 	}
 	server.cleanupPortableAssetRestoreJournals()
 	_, _, _ = server.ensureDefaultBookSourceNamespace()

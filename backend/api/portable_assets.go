@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -176,7 +177,11 @@ func (s *Server) allocatePortableAssetTarget(
 		manifest.Kind,
 	)
 	for attempt := 0; attempt < 32; attempt++ {
-		name := "portable-" + randomHex(12) + manifest.Extension
+		nonce, err := randomHex(12)
+		if err != nil {
+			return "", "", err
+		}
+		name := "portable-" + nonce + manifest.Extension
 		path := filepath.Join(dir, name)
 		if _, err := os.Lstat(path); os.IsNotExist(err) {
 			url := fmt.Sprintf("/uploads/users/%d/%s/%s", userID, manifest.Kind, name)
@@ -365,95 +370,43 @@ func portableLegacyAssetURL(rawURL string) bool {
 		parts[2] != "" && parts[2] == filepath.Base(parts[2])
 }
 
-func (s *Server) promotePortableAssets(assets []portableStagedAsset, userID uint) ([]string, error) {
+func (s *Server) promotePortableAssets(assets []portableStagedAsset, userID uint) ([]portableStagedAsset, error) {
 	if len(assets) == 0 {
 		return nil, nil
 	}
-	promoted := make([]string, 0, len(assets))
-	cleanup := func(err error) ([]string, error) {
-		removePortablePromotedAssets(promoted)
-		return nil, err
-	}
-	userRoot := filepath.Join(s.cfg.DataDir, "uploads", "users", strconv.FormatUint(uint64(userID), 10))
-	if err := os.MkdirAll(userRoot, 0o700); err != nil {
-		return nil, err
-	}
-	userResolved, err := filepath.EvalSymlinks(userRoot)
-	if err != nil {
+	promoted := make([]portableStagedAsset, 0, len(assets))
+	cleanup := func(err error) ([]portableStagedAsset, error) {
+		s.removePortablePromotedAssets(promoted, userID)
 		return nil, err
 	}
 	for _, asset := range assets {
-		dir := filepath.Dir(asset.finalPath)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return cleanup(err)
-		}
-		dirResolved, err := filepath.EvalSymlinks(dir)
-		if err != nil {
-			return cleanup(err)
-		}
-		relative, err := filepath.Rel(userResolved, dirResolved)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		parsed, err := s.userUploadAsset(asset.finalURL)
+		if err != nil || parsed.UserID != userID || parsed.Path != asset.finalPath || parsed.Kind != asset.manifest.Kind {
 			return cleanup(errInvalidPortableBackup)
-		}
-		if filepath.Base(asset.finalPath) == "." || filepath.Dir(asset.finalPath) != dir {
-			return cleanup(errInvalidPortableBackup)
-		}
-		if _, err := os.Lstat(asset.finalPath); !os.IsNotExist(err) {
-			if err == nil {
-				err = errInvalidPortableBackup
-			}
-			return cleanup(err)
 		}
 		input, err := os.Open(asset.path)
 		if err != nil {
 			return cleanup(err)
 		}
-		temporary, err := os.CreateTemp(dir, ".portable-asset-*.tmp")
-		if err != nil {
-			_ = input.Close()
+		err = s.assetStore.Publish(context.Background(), userID, parsed.Kind, parsed.Name, input, asset.manifest.Size)
+		closeErr := input.Close()
+		if err != nil || closeErr != nil {
+			if err == nil {
+				err = closeErr
+			}
 			return cleanup(err)
 		}
-		temporaryPath := temporary.Name()
-		linked := false
-		func() {
-			defer func() {
-				_ = input.Close()
-				_ = temporary.Close()
-				_ = os.Remove(temporaryPath)
-			}()
-			if err = temporary.Chmod(0o600); err != nil {
-				return
-			}
-			var written int64
-			written, err = io.Copy(temporary, io.LimitReader(input, asset.manifest.Size+1))
-			if err != nil || written != asset.manifest.Size {
-				if err == nil {
-					err = errInvalidPortableBackup
-				}
-				return
-			}
-			if err = temporary.Sync(); err != nil {
-				return
-			}
-			if err = temporary.Close(); err != nil {
-				return
-			}
-			if err = os.Link(temporaryPath, asset.finalPath); err != nil {
-				return
-			}
-			linked = true
-		}()
-		if err != nil || !linked {
-			return cleanup(err)
-		}
-		promoted = append(promoted, asset.finalPath)
+		promoted = append(promoted, asset)
 	}
 	return promoted, nil
 }
 
-func removePortablePromotedAssets(paths []string) {
-	for index := len(paths) - 1; index >= 0; index-- {
-		_ = os.Remove(paths[index])
+func (s *Server) removePortablePromotedAssets(assets []portableStagedAsset, userID uint) {
+	for index := len(assets) - 1; index >= 0; index-- {
+		asset, err := s.userUploadAsset(assets[index].finalURL)
+		if err == nil && asset.UserID == userID && asset.Path == assets[index].finalPath {
+			_ = s.assetStore.Remove(asset.UserID, asset.Kind, asset.Name)
+		}
 	}
 }
 
@@ -549,7 +502,7 @@ func (s *Server) cleanupPortableAssetRestoreJournals() {
 			_ = os.Remove(path)
 			continue
 		}
-		removable := make([]string, 0, len(journal.URLs))
+		removable := make([]userUploadAsset, 0, len(journal.URLs))
 		valid := true
 		for _, rawURL := range journal.URLs {
 			asset, err := s.userUploadAsset(rawURL)
@@ -563,15 +516,15 @@ func (s *Server) cleanupPortableAssetRestoreJournals() {
 				break
 			}
 			if !referenced {
-				removable = append(removable, asset.Path)
+				removable = append(removable, asset)
 			}
 		}
 		if !valid {
 			continue
 		}
 		cleaned := true
-		for _, assetPath := range removable {
-			if err := os.Remove(assetPath); err != nil && !os.IsNotExist(err) {
+		for _, asset := range removable {
+			if err := s.assetStore.Remove(asset.UserID, asset.Kind, asset.Name); err != nil && !assetMissing(err) {
 				cleaned = false
 			}
 		}

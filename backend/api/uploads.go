@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -88,17 +89,28 @@ func (s *Server) uploadAsset(c *gin.Context) {
 	}
 
 	kindDir := uploadKindDir(kind)
-	dir := filepath.Join(s.cfg.DataDir, "uploads", "users", strconv.FormatUint(uint64(userID), 10), kindDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upload directory"})
+	nonce, err := randomHex(6)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save upload"})
 		return
 	}
-	name := time.Now().Format("20060102150405") + "-" + randomHex(6) + ext
-	target := filepath.Join(dir, name)
+	name := time.Now().Format("20060102150405") + "-" + nonce + ext
 	if userAssetUploadLifecycleTestHook != nil {
 		userAssetUploadLifecycleTestHook("before_save")
 	}
-	if err := c.SaveUploadedFile(fileHeader, target); err != nil {
+	if err := c.Request.Context().Err(); err != nil {
+		return
+	}
+	input, err = fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save upload"})
+		return
+	}
+	defer input.Close()
+	if err := s.assetStore.Publish(c.Request.Context(), userID, kindDir, name, input, fileHeader.Size); err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save upload"})
 		return
 	}
@@ -137,6 +149,11 @@ func (s *Server) deleteAsset(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
 		return
 	}
+	unlock, err := s.lockUserAssets(c.Request.Context(), userID)
+	if err != nil {
+		return
+	}
+	defer unlock()
 	if referenced, err := s.userUploadAssetReferenced(userID, asset.URL); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check upload references"})
 		return
@@ -144,7 +161,7 @@ func (s *Server) deleteAsset(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "upload is still in use"})
 		return
 	}
-	if err := os.Remove(asset.Path); err != nil && !os.IsNotExist(err) {
+	if err := s.assetStore.Remove(asset.UserID, asset.Kind, asset.Name); err != nil && !assetMissing(err) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete upload"})
 		return
 	}
@@ -220,6 +237,7 @@ func writeAssetUploadRequestError(c *gin.Context, err error) {
 type userUploadAsset struct {
 	UserID uint
 	Kind   string
+	Name   string
 	URL    string
 	Path   string
 }
@@ -246,7 +264,7 @@ func (s *Server) userUploadAsset(rawURL string) (userUploadAsset, error) {
 	if relative, err := filepath.Rel(uploadsRoot, target); err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
 		return userUploadAsset{}, os.ErrPermission
 	}
-	return userUploadAsset{UserID: uint(ownerID), Kind: kind, URL: cleanURL, Path: target}, nil
+	return userUploadAsset{UserID: uint(ownerID), Kind: kind, Name: parts[3], URL: cleanURL, Path: target}, nil
 }
 
 func (s *Server) userUploadAssetReferenced(userID uint, url string) (bool, error) {
@@ -259,13 +277,44 @@ func (s *Server) userUploadAssetReferenced(userID uint, url string) (bool, error
 	if count > 0 {
 		return true, nil
 	}
-	escapedURL := strings.NewReplacer(`\\`, `\\\\`, `%`, `\\%`, `_`, `\\_`).Replace(url)
-	if err := s.db.Model(&models.UserSetting{}).
-		Where("user_id = ? AND value LIKE ? ESCAPE '\\'", userID, "%"+escapedURL+"%").
-		Count(&count).Error; err != nil {
+	var settings []models.UserSetting
+	if err := s.db.Select("value").Where("user_id = ?", userID).Find(&settings).Error; err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	for _, setting := range settings {
+		if jsonContainsExactString([]byte(setting.Value), url) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func jsonContainsExactString(data []byte, target string) bool {
+	var value any
+	if !json.Valid(data) || json.Unmarshal(data, &value) != nil {
+		return false
+	}
+	return walkJSONStrings(value, func(current string) bool { return current == target })
+}
+
+func walkJSONStrings(value any, visit func(string) bool) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, child := range typed {
+			if walkJSONStrings(child, visit) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if walkJSONStrings(child, visit) {
+				return true
+			}
+		}
+	case string:
+		return visit(typed)
+	}
+	return false
 }
 
 func uploadSizeLimit(kind string) int64 {
@@ -284,10 +333,10 @@ func allowedUploadExtension(kind, ext string) bool {
 	return assetservice.AllowedExtension(kind, ext)
 }
 
-func randomHex(bytesLen int) string {
+func randomHex(bytesLen int) (string, error) {
 	buf := make([]byte, bytesLen)
 	if _, err := rand.Read(buf); err != nil {
-		return "000000"
+		return "", err
 	}
-	return hex.EncodeToString(buf)
+	return hex.EncodeToString(buf), nil
 }

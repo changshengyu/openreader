@@ -25,7 +25,7 @@ const portableAssetPlaceholderPrefix = "openreader-asset://"
 type portableAssetReference struct {
 	kind      string
 	extension string
-	path      string
+	file      *os.File
 	size      int64
 	sha256    string
 }
@@ -63,6 +63,12 @@ func (s *Service) collectPortableAssetBundle(ctx context.Context, userID uint) (
 	placeholderByURL := make(map[string]string, len(urls))
 	deduplicated := make(map[string]portableAssetInput)
 	assets := make([]portableAssetInput, 0, len(urls))
+	complete := false
+	defer func() {
+		if !complete {
+			closePortableAssetInputs(assets)
+		}
+	}()
 	for _, rawURL := range urls {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, 0, err
@@ -73,6 +79,7 @@ func (s *Service) collectPortableAssetBundle(ctx context.Context, userID uint) (
 		}
 		dedupKey := reference.kind + "\x00" + reference.extension + "\x00" + reference.sha256
 		if existing, ok := deduplicated[dedupKey]; ok {
+			_ = reference.file.Close()
 			placeholderByURL[rawURL] = portableAssetPlaceholderPrefix + existing.manifest.ID
 			continue
 		}
@@ -85,7 +92,7 @@ func (s *Service) collectPortableAssetBundle(ctx context.Context, userID uint) (
 			Size:      reference.size,
 			SHA256:    reference.sha256,
 		}
-		input := portableAssetInput{manifest: manifest, path: reference.path}
+		input := portableAssetInput{manifest: manifest, file: reference.file}
 		assets = append(assets, input)
 		deduplicated[dedupKey] = input
 		placeholderByURL[rawURL] = portableAssetPlaceholderPrefix + id
@@ -101,6 +108,7 @@ func (s *Service) collectPortableAssetBundle(ctx context.Context, userID uint) (
 	}
 	logicalEntries["userSettings.json"] = rewrittenSettings
 	logicalEntries["bookshelf.json"] = rewrittenShelf
+	complete = true
 	return logicalEntries, assets, len(legacy), nil
 }
 
@@ -296,50 +304,46 @@ func (s *Service) validatePortableAssetReference(ctx context.Context, userID uin
 	if !assetservice.AllowedExtension(kind, extension) {
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
-	root := filepath.Join(s.cfg.DataDir, "uploads", "users", parts[2])
-	path := filepath.Join(root, kind, parts[4])
-	rootResolved, err := filepath.EvalSymlinks(root)
-	if err != nil {
+	store := assetservice.NewStore(s.cfg.DataDir)
+	opened, err := store.Open(userID, kind, parts[4])
+	if err != nil || opened.Info.Size() <= 0 {
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 {
-		return portableAssetReference{}, ErrPortableAssetUnavailable
-	}
-	if info.Size() > assetservice.SizeLimitForKind(kind) {
+	if opened.Info.Size() > assetservice.SizeLimitForKind(kind) {
+		_ = opened.File.Close()
 		return portableAssetReference{}, ErrPortableBackupLimit
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return portableAssetReference{}, ErrPortableAssetUnavailable
-	}
-	relative, err := filepath.Rel(rootResolved, resolved)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
-		return portableAssetReference{}, ErrPortableAssetUnavailable
-	}
-	file, err := os.Open(resolved)
-	if err != nil {
-		return portableAssetReference{}, ErrPortableAssetUnavailable
-	}
-	validationErr := assetservice.ValidateUpload(contextReader{ctx: ctx, reader: file}, info.Size(), kind, extension)
-	_ = file.Close()
+	file := opened.File
+	validationErr := assetservice.ValidateUpload(contextReader{ctx: ctx, reader: file}, opened.Info.Size(), kind, extension)
 	if err := ctx.Err(); err != nil {
+		_ = file.Close()
 		return portableAssetReference{}, err
 	}
 	if validationErr != nil {
+		_ = file.Close()
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
-	digest, size, err := portableAssetDigest(ctx, resolved, assetservice.SizeLimitForKind(kind))
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return portableAssetReference{}, ErrPortableAssetUnavailable
+	}
+	digest, size, err := portableAssetDigestFile(ctx, file, assetservice.SizeLimitForKind(kind))
 	if contextErr := ctx.Err(); contextErr != nil {
+		_ = file.Close()
 		return portableAssetReference{}, contextErr
 	}
-	if err != nil || size != info.Size() {
+	if err != nil || size != opened.Info.Size() {
+		_ = file.Close()
+		return portableAssetReference{}, ErrPortableAssetUnavailable
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
 		return portableAssetReference{}, ErrPortableAssetUnavailable
 	}
 	return portableAssetReference{
 		kind:      kind,
 		extension: extension,
-		path:      resolved,
+		file:      file,
 		size:      size,
 		sha256:    digest,
 	}, nil
@@ -349,31 +353,29 @@ func writePortableAssetEntry(ctx context.Context, writer *zip.Writer, asset port
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	file, err := os.Open(asset.path)
-	if err != nil {
+	file := asset.file
+	if file == nil {
 		return ErrPortableAssetUnavailable
 	}
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() != asset.manifest.Size ||
 		info.Size() > assetservice.SizeLimitForKind(asset.manifest.Kind) {
-		_ = file.Close()
+		return ErrPortableAssetUnavailable
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return ErrPortableAssetUnavailable
 	}
 	if err := assetservice.ValidateUpload(contextReader{ctx: ctx, reader: file}, info.Size(), asset.manifest.Kind, asset.manifest.Extension); err != nil {
 		if contextErr := ctx.Err(); contextErr != nil {
-			_ = file.Close()
 			return contextErr
 		}
-		_ = file.Close()
 		return ErrPortableAssetUnavailable
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		_ = file.Close()
 		return ErrPortableAssetUnavailable
 	}
 	entry, err := writer.Create(asset.manifest.Entry)
 	if err != nil {
-		_ = file.Close()
 		return err
 	}
 	hash := sha256.New()
@@ -381,29 +383,31 @@ func writePortableAssetEntry(ctx context.Context, writer *zip.Writer, asset port
 		io.MultiWriter(entry, hash),
 		contextReader{ctx: ctx, reader: io.LimitReader(file, asset.manifest.Size+1)},
 	)
-	closeErr := file.Close()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if copyErr != nil || closeErr != nil || written != asset.manifest.Size ||
+	if copyErr != nil || written != asset.manifest.Size ||
 		hex.EncodeToString(hash.Sum(nil)) != asset.manifest.SHA256 {
 		return ErrPortableAssetUnavailable
 	}
 	return nil
 }
 
-func portableAssetDigest(ctx context.Context, path string, limit int64) (string, int64, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
-	}
-	defer file.Close()
+func portableAssetDigestFile(ctx context.Context, file *os.File, limit int64) (string, int64, error) {
 	hash := sha256.New()
 	written, err := io.Copy(hash, contextReader{ctx: ctx, reader: io.LimitReader(file, limit+1)})
 	if err != nil || written > limit {
 		return "", 0, ErrPortableBackupLimit
 	}
 	return hex.EncodeToString(hash.Sum(nil)), written, nil
+}
+
+func closePortableAssetInputs(assets []portableAssetInput) {
+	for _, asset := range assets {
+		if asset.file != nil {
+			_ = asset.file.Close()
+		}
+	}
 }
 
 func isPortableLegacyAssetURL(rawURL string) bool {

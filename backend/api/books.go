@@ -361,6 +361,15 @@ func (s *Server) createBook(c *gin.Context) {
 	if !ok {
 		return
 	}
+	var unlockAssets func()
+	if customCoverURL != "" {
+		var err error
+		unlockAssets, err = s.lockUserAssets(c.Request.Context(), userID)
+		if err != nil {
+			return
+		}
+		defer unlockAssets()
+	}
 	if err := s.validateBookCustomCoverURL(userID, "", customCoverURL); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid custom cover url"})
 		return
@@ -440,6 +449,7 @@ type bookUpdateRequest struct {
 var bookPatchWriteLifecycleTestHook func(string)
 
 var errBookPatchTargetNotFound = errors.New("book not found during patch")
+var errBookInvalidCustomCover = errors.New("invalid custom cover url during patch")
 
 func (s *Server) updateBook(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
@@ -498,10 +508,6 @@ func (s *Server) updateBook(c *gin.Context) {
 		if !ok {
 			return
 		}
-		if err := s.validateBookCustomCoverURL(userID, book.CustomCoverURL, customCoverURL); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid custom cover url"})
-			return
-		}
 		book.CustomCoverURL = customCoverURL
 	}
 	if request.Intro != nil {
@@ -546,13 +552,21 @@ func (s *Server) updateBook(c *gin.Context) {
 	if request.CanUpdate != nil {
 		updates["can_update"] = book.CanUpdate
 	}
-	if bookPatchWriteLifecycleTestHook != nil {
-		bookPatchWriteLifecycleTestHook("metadata")
-	}
-
 	ctx := c.Request.Context()
 	if ctx.Err() != nil {
 		return
+	}
+	var unlockAssets func()
+	if request.CustomCoverURL != nil {
+		var err error
+		unlockAssets, err = s.lockUserAssets(ctx, userID)
+		if err != nil {
+			return
+		}
+		defer unlockAssets()
+	}
+	if bookPatchWriteLifecycleTestHook != nil {
+		bookPatchWriteLifecycleTestHook("metadata")
 	}
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current models.Book
@@ -561,6 +575,11 @@ func (s *Server) updateBook(c *gin.Context) {
 				return errBookPatchTargetNotFound
 			}
 			return err
+		}
+		if request.CustomCoverURL != nil {
+			if err := s.validateBookCustomCoverURL(userID, current.CustomCoverURL, book.CustomCoverURL); err != nil {
+				return errBookInvalidCustomCover
+			}
 		}
 		if len(updates) > 0 {
 			write := tx.Model(&models.Book{}).
@@ -595,6 +614,10 @@ func (s *Server) updateBook(c *gin.Context) {
 			notFound(c, "book not found")
 			return
 		}
+		if errors.Is(err, errBookInvalidCustomCover) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid custom cover url"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update book"})
 		return
 	}
@@ -609,10 +632,11 @@ func (s *Server) validateBookCustomCoverURL(userID uint, currentURL string, next
 	if err != nil || asset.UserID != userID || asset.Kind != "covers" {
 		return os.ErrPermission
 	}
-	info, err := os.Stat(asset.Path)
-	if err != nil || !info.Mode().IsRegular() {
-		return os.ErrNotExist
+	opened, err := s.openUserUploadAsset(asset)
+	if err != nil {
+		return err
 	}
+	_ = opened.File.Close()
 	return nil
 }
 
