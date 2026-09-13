@@ -10,6 +10,7 @@ export function useReaderChapterContent(options) {
   const loadBrowserContent = options.loadBrowserContent ?? loadBrowserChapterContent
   const preloadRadius = Math.max(0, Number(options.preloadRadius) || 0)
   const inFlight = new Map()
+  const staleRetryTails = new Map()
 
   function cacheKey(targetBook = unref(options.book), fallbackBookId = unref(options.bookId)) {
     return chapterCacheBookKey(targetBook, fallbackBookId)
@@ -71,7 +72,29 @@ export function useReaderChapterContent(options) {
         )
       } catch (error) {
         if (controller.signal.aborted) throw chapterAbortError(controller.signal)
-        throw error
+        if (!isStaleChapterConflict(error)) throw error
+        try {
+          data = await enqueueStaleRetry(
+            staleRetryTails,
+            targetCacheKey,
+            controller.signal,
+            () => loadBrowserContent(
+              targetBook,
+              targetBookId,
+              index,
+              {
+                refresh: true,
+                signal: controller.signal,
+              },
+            ),
+          )
+        } catch (retryError) {
+          if (controller.signal.aborted) throw chapterAbortError(controller.signal)
+          if (isStaleChapterConflict(retryError)) {
+            throw chapterStaleRetryError(retryError)
+          }
+          throw retryError
+        }
       }
       if (controller.signal.aborted) throw chapterAbortError(controller.signal)
       const isCurrentBook = Number(unref(options.bookId)) === Number(targetBookId)
@@ -126,5 +149,36 @@ function chapterAbortError(signal) {
   }
   const error = new Error('chapter request cancelled')
   error.name = 'AbortError'
+  return error
+}
+
+async function enqueueStaleRetry(retryTails, scopeKey, signal, retry) {
+  const previous = retryTails.get(scopeKey) ?? Promise.resolve()
+  let release
+  const turn = new Promise(resolve => {
+    release = resolve
+  })
+  const tail = previous.then(() => turn, () => turn)
+  retryTails.set(scopeKey, tail)
+
+  try {
+    await previous.catch(() => {})
+    if (signal.aborted) throw chapterAbortError(signal)
+    return await retry()
+  } finally {
+    release()
+    if (retryTails.get(scopeKey) === tail) retryTails.delete(scopeKey)
+  }
+}
+
+function isStaleChapterConflict(error) {
+  return Number(error?.response?.status) === 409
+    && error?.response?.data?.error === 'chapter content changed; retry'
+}
+
+function chapterStaleRetryError(cause) {
+  const error = new Error('章节状态已更新，请重试')
+  error.name = 'ChapterStaleConflictError'
+  error.cause = cause
   return error
 }

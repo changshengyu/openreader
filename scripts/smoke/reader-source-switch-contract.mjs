@@ -101,6 +101,8 @@ async function installMocks(page) {
     delayedOldContent: null,
     oldContentPending: false,
     oldContentSettled: false,
+    initialStaleConflicts: 1,
+    chapterContentRequests: 0,
   }
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
   await page.route(/^https?:\/\/[^/]+\/api\/.*$/, async (route) => {
@@ -128,6 +130,11 @@ async function installMocks(page) {
       ]))
     }
     if (path === '/books/1/chapters/0/content' && method === 'GET') {
+      state.chapterContentRequests += 1
+      if (state.initialStaleConflicts > 0) {
+        state.initialStaleConflicts -= 1
+        return route.fulfill(json({ error: 'chapter content changed; retry' }, 409))
+      }
       const sourceId = state.book.sourceId
       if (sourceId === 2 && state.delayedOldContent) {
         const gate = state.delayedOldContent
@@ -283,11 +290,16 @@ async function runViewport(browser, viewport) {
   await context.addInitScript(token => window.localStorage.setItem('openreader_token', token), fakeToken())
   const page = await context.newPage()
   const failures = []
+  let staleConflictConsoleErrors = 0
   page.on('pageerror', error => failures.push(`pageerror: ${error.message}`))
   page.on('console', message => {
     if (message.type() !== 'error') return
     const text = message.text()
     if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    if (text === 'Failed to load resource: the server responded with a status of 409 (Conflict)') {
+      staleConflictConsoleErrors += 1
+      return
+    }
     failures.push(`console.error: ${text}`)
   })
   const state = await installMocks(page)
@@ -318,6 +330,9 @@ async function runViewport(browser, viewport) {
     }
   })
   assert(beforeOpen?.text.includes('换源位置契约段落'), `${viewport.width}: reader did not reach a stable paragraph position=${JSON.stringify(beforeOpen)} geometry=${JSON.stringify(initialGeometry)}`)
+  assert(state.chapterContentRequests >= 2, `${viewport.width}: initial stale chapter conflict was not retried`)
+  assert(staleConflictConsoleErrors === 1, `${viewport.width}: stale conflict console count ${staleConflictConsoleErrors}`)
+  assert(await page.getByText('chapter content changed; retry', { exact: true }).count() === 0, `${viewport.width}: internal stale conflict became visible`)
 
   const availableResponse = page.waitForResponse(response => {
     const url = new URL(response.url())
