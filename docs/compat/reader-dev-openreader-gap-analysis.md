@@ -4057,3 +4057,32 @@ BookInfo 中保持“上传→写引用”的可见顺序；OpenReader 已发布
 公开读取、UI、API、SQLite schema 和 ordinary/portable 格式均保持。完整矩阵与测试先行门见
 [`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 当前状态 **inventory-complete / tests-and-implementation-pending**。
+
+## 2026-09-13 Reader 章节 stale 409 真机反馈复审
+
+真机正常阅读出现 `chapter content changed; retry`。固定上游在当前 bookUrl/index 已变化时静默丢弃迟到
+正文，不展示内部冲突；OpenReader 后端 409 snapshot guard 正确，但连续 window 的相邻章节共享 Book
+variable，后完成请求会成为预期 stale，前端原样显示因而构成 P0 可见回归。
+
+补充合同 `e19581b`、旧实现红测 `811d679` 和修复 `2bbb276` 已按顺序落地。共享章节 loader 只对精确
+stale 409 在同一 Book cache scope 内串行重取一次，初次请求并发和同章去重不变；AbortSignal/scope
+clear 取消排队，重复冲突转为中文可操作错误。focused/相邻测试、frontend 752/752、build 和四视口
+注入 409 Chromium 通过。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**；修复已包含于
+`3e8cec7`/`latest` OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。
+
+## 2026-09-13 用户资产文件系统与引用生命周期实施
+
+合同 `478654a`、旧实现红测 `947dfcb` 与实现 `3e8cec7` 已按顺序完成。上传和 portable promote 改为从
+受信 uploads root 逐组件验证，在已打开目录句柄内完成 private stage、sync/close 与 no-overwrite
+publication；删除使用同目录 `renameat` quarantine 并只移除已验证 current regular entry。portable 导出
+在一个 rooted opened handle 上完成内容校验、摘要和 ZIP copy，不再验证后按路径重开。
+
+Book/Setting 新资产引用、删除与 portable restore 使用 caller-scoped coordinator；Setting 引用由 SQL
+substring 改为有界 JSON 递归精确字符串集合。由此竞争只可能收敛为“引用成功、删除 409”或“删除成功、
+新引用 400”，历史相同/缺失 URL 保持兼容。8 个确定性红测、focused/race、API/backup full、Go full/vet、
+frontend 752/752、build 和 Compose 已通过。可信 Actions run `34747604054` 又通过 native、fresh/portable、
+historical volume 与 published-platform 门，并发布 `3e8cec7`/`latest` amd64/arm64 OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

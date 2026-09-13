@@ -2,7 +2,7 @@
 
 审查日期：2026-09-10
 
-状态：**inventory-complete / tests-and-implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -146,5 +146,15 @@ OpenReader 使用 JWT user ID、随机文件名、`/uploads/users/<user>/<kind>/
 identity 替换或引用查询与删除之间的并发写。`user-asset-write-boundary` 合同第 4 节已明确把跨请求
 原子引用模型留给后续专项，本轮是对该未完成边界的新取证，不重开已签收 UI 或 wire 模块。
 
-下一步必须先提交本合同，再在旧实现上添加确定性红测，最后实施共享 rooted asset storage、
-context-aware staged publication 和 caller-scoped reference coordinator。本 inventory 不修改应用或测试代码。
+合同 `478654a`、旧实现红测 `947dfcb` 与实现 `3e8cec7` 已按顺序落地。共享 asset store 从受信 uploads
+root 逐组件拒绝 symlink/特殊文件，在已打开目录句柄内以 request-private stage、`linkat` no-overwrite
+发布和 `renameat` quarantine 删除；实现保持 Go 1.24 和 Linux/macOS 运行基线。Book/Setting 新引用与
+删除共享 caller coordinator，Setting 使用 JSON 递归精确字符串集合，历史相同/缺失 URL 仍可保留。
+portable 导出从同一 rooted opened handle 完成校验、摘要和 ZIP copy，恢复 promote/rollback 与逻辑行
+提交置于同一协调边界。
+
+8 个旧实现失败已全部转绿；资产相邻 API/backup、focused race、API/backup full、Go full、`go vet`、
+frontend **752/752**、Vite build 和 Compose 通过。未增加 schema、迁移、环境变量、持久目录或备份成员。
+可信 Actions run `34747604054` 又通过 backend/frontend、build/Compose、native、fresh/portable、
+historical volume 与 published-platform 门，并发布 `3e8cec7`/`latest` amd64/arm64 OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。

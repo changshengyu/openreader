@@ -2,7 +2,7 @@
 
 审查日期：2026-09-09
 
-状态：**reopened-device-feedback / retry-contract-defined / implementation-pending**
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -176,3 +176,12 @@ revision `a7917ed0540f43e1bea8f958dfd5d7736ed0a9f0`。
    文案不得直接暴露英文内部实现错误，应转换为可操作的“章节状态已更新，请重试”。
 6. 测试必须覆盖首次 409 后成功、多个章节冲突重取的最大并发数为 1、重复冲突/非目标 409 不循环，
    以及 clear/abort 发生在排队期间时不重取、不缓存。
+
+合同补充 `e19581b`、旧实现红测 `811d679` 与修复 `2bbb276` 已按顺序落地。共享 loader 仅对精确 stale
+409 自动重取一次，并按 Book cache scope 串行冲突重取；普通初次请求、同章去重和连续预载并发不变。
+scope clear/AbortSignal 会终止正在执行或排队的重取，重复冲突转换为可操作中文错误。focused/相邻章节
+测试、frontend **752/752**、Vite build，以及注入首次 409 的 1440x900、390x844、360x800、1024x1366
+Chromium 均通过。该修复已包含于 `3e8cec7`；可信 Actions run `34747604054` 又通过 backend/frontend、
+build/Compose、native、fresh/portable、historical volume 与 published-platform 门，并发布 `3e8cec7`/
+`latest` amd64/arm64 OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。

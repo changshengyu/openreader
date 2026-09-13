@@ -921,6 +921,14 @@ fresh/portable、historical volume 与 published-platform 门，并发布 `a7917
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
+2026-09-13 真机反馈补充：连续 window 的多个远程章节会共享 Book variable，后完成请求可能正确返回
+stale 409，但前端曾将 `chapter content changed; retry` 原样渲染。补充合同 `e19581b`、红测 `811d679`
+和修复 `2bbb276` 保留后端保护，并把精确 409 改为按 Book scope 串行自动重取一次；取消/切书会终止
+排队，重复冲突使用中文可操作错误。frontend 752/752、build 和四视口注入 409 Chromium 通过，状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**；修复已包含于
+`3e8cec7`/`latest` OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。
+
 ## 46. Reader 换源写入生命周期（2026-09-09 implemented）
 
 章节正文生命周期实施后，继续从当前持久 `Save` 和远程工作后的 transaction 做差集。固定上游
@@ -968,7 +976,7 @@ historical volume 和 published-platform 门；发布的 `a131aa9`/`latest` amd6
 `sha256:17fcb8f7c5a1b91781af5a168c9ed2dd4053dbf0f68afc5d5871388c163b19a7`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 48. 用户资产文件系统与引用生命周期（2026-09-10 inventory）
+## 48. 用户资产文件系统与引用生命周期（2026-09-13 implemented）
 
 本地章节 cache 回建发布后继续从已签收 upload wire、公开 rooted read、Book/Setting 引用和 portable v2
 资产闭包之间做动作差集。固定上游保持“上传后写引用”的可见顺序，但其原名覆盖、路径跟随和无引用
@@ -984,4 +992,13 @@ historical volume 和 published-platform 门；发布的 `a131aa9`/`latest` amd6
 coordinator。已有历史/缺失 URL、API shape、Reader/BookInfo UI、公开读和备份格式保持。完整合同与
 确定性红测门见
 [`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / tests-and-implementation-pending**。
+合同 `478654a`、旧实现红测 `947dfcb` 和实现 `3e8cec7` 已按顺序落地。上传/删除/portable 使用受信
+uploads root、逐组件验证和打开目录句柄内的 stage/linkat/renameat/unlinkat；portable 导出从同一打开
+regular handle 完成验证、摘要和 ZIP copy。Book/Setting 新引用与删除使用 caller-scoped coordinator，
+Setting 引用改为 JSON 精确字符串遍历，已有相同/缺失 URL 保持。
+
+focused/race、API/backup full、Go full/vet、frontend 752/752、build 与 Compose 通过；未改变 schema、
+稳定 URL、持久目录、环境变量或 backup wire。可信 Actions run `34747604054` 又通过 native、fresh/
+portable、historical volume 与 published-platform 门，并发布 `3e8cec7`/`latest` amd64/arm64 OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

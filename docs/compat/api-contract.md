@@ -1235,6 +1235,15 @@ volume and published-platform gates and published `a7917ed`/`latest` OCI index
 `sha256:36c7d42ee048a061e44f639fa45ac5e1060bcc0e70583990de0655addf309d76`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
+Device feedback on 2026-09-13 showed that normal concurrent chapter preloading could correctly trigger this stale
+409 while the Reader incorrectly rendered its internal English message. Supplement `e19581b`, red tests `811d679`
+and fix `2bbb276` now keep the backend conflict unchanged while the shared Reader loader serializes one exact stale
+retry per Book cache scope. Abort/scope retirement cancels queued retries; repeated conflicts become
+`章节状态已更新，请重试`. Frontend 752/752, build and four-viewport injected-409 Chromium passed. Actions run
+`34747604054` passed all validation and publication gates and published the `3e8cec7`/`latest` amd64/arm64 OCI
+index `sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
+
 ### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 `POST /api/books/:id/change-source` keeps its JWT, owner-first lookup, 1 MiB single-object body, selected-source
@@ -1297,6 +1306,24 @@ and published-platform gates. It published the `a131aa9`/`latest` amd64/arm64 OC
 Target contract:
 [`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 Status is **inventory-complete / tests-and-implementation-pending**.
+
+### P2 user-asset filesystem/reference lifecycle (2026-09-13 implemented)
+
+`POST /api/uploads`, `DELETE /api/uploads`, Book `customCoverUrl`, UserSetting asset strings and portable v2 retain
+their existing routes, JWT ownership, limits, response shapes, stable URLs and archive formats. New writes now use a
+rooted store that rejects symlink/special-file components and publishes a fully copied, synced private stage with
+no-overwrite semantics. Delete checks exact Book fields and recursively decoded JSON strings instead of SQL
+substrings, then removes only the verified current regular entry.
+
+New Book/Setting references and deletion share a caller-scoped coordinator: reference-first yields the existing 409,
+while delete-first makes the new reference fail 400. Existing identical or already-missing URLs remain compatible.
+Portable export validates, hashes and writes one opened handle; restore promotion, rewritten rows and rollback use the
+same rooted/coordinated boundary. Contract `478654a`, red tests `947dfcb` and implementation `3e8cec7` landed in
+order. Focused/race, API/backup full, Go full/vet, frontend 752/752, build and Compose passed. Actions run
+`34747604054` passed native, fresh/portable, historical-volume and published-platform gates and published the
+`3e8cec7`/`latest` amd64/arm64 OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
 ## P2 access-log query projection (2026-08-25 implemented/published)
 

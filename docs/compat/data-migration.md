@@ -1403,3 +1403,23 @@ historical-volume and published-platform gates and published the `a131aa9`/`late
 Target contract:
 [`user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md`](user-asset-filesystem-reference-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 Status is **inventory-complete / tests-and-implementation-pending**.
+
+## P2 user-asset filesystem/reference lifecycle compatibility (2026-09-13 implemented)
+
+- No SQLite table, column, index, migration marker, environment variable, mounted root or backup member changes.
+- Existing regular files under `data/uploads/users/<user>/<kind>/<name>` and their stable URLs remain in place;
+  upgrade performs no scan, rename, move or content rewrite.
+- Existing identical, external, legacy and already-missing Book/UserSetting URLs remain readable and removable. Only
+  a newly introduced current-user managed URL requires a rooted current regular file.
+- Upload stages and delete quarantine names are request-private transient entries below the existing kind directory;
+  successful operations remove them, and ordinary/portable backup never references them.
+- Portable v1/v2 manifests, placeholders and cross-user URL rewriting are unchanged. Export now holds one rooted file
+  handle through validation/hash/ZIP copy; restore coordinates promotion and rewritten logical rows.
+- Rollback continues to read all valid rows, files and archives, but reintroduces symlink following, partial final
+  publication and reference/delete race risks.
+
+Contract `478654a`, red tests `947dfcb` and implementation `3e8cec7` landed in order. Focused/race, API/backup full,
+Go full/vet, frontend 752/752, build and Compose passed. Actions run `34747604054` passed native, fresh/portable,
+historical-volume and published-platform gates and published the `3e8cec7`/`latest` amd64/arm64 OCI index
+`sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`. Status is
+**aligned / regression-validated / Docker-published / awaiting-device-verification**.
