@@ -276,6 +276,9 @@ HTTP + SQLite trigger、候选/回拉容器纯 API 与 fresh/historical 卷门�
 | 中心点击、边缘翻页、自动阅读、TTS | `eventHandler()` 使用中间横纵各 20% 区域；主面板打开先返回；自动阅读点按切工具；TTS/read-bar 仅禁止中心菜单切换，边缘翻页保留。 | `readerInteraction.js` / `useReaderPointer.js` 同样以 20% 区域映射；TTS 仅抑制 `toggle-chrome`。 | **已复核一致，待重新运行**：旧单元/浏览器用例只可作覆盖起点，不能替代当前 DOM 改动后的回归。 |
 | 翻页与滚动差异 | 上游离散翻页/滚动模式。 | 原生连续手指/滚轮滚动，点击仍分页。 | **允许差异**：用户明确要求；模式选择、中心点击和边缘点击仍要复刻上游。 |
 | 设置数值控件 | 上游有离散选择及数值调整控件。 | `ReaderSettingStepper` 使用减号/数值/加号。 | **允许差异**：用户明确要求；默认值与存储语义仍必须与 `plugins/config.js` 对齐。 |
+| 远程相邻章节并发 | 上游连续窗口并发加载，但不会因另一个相邻章节更新临时 Book variable 而把正常请求判成版本冲突。 | `0a8a0ef` 后两个同书未缓存请求可互相制造 409；`2bbb276` 的一次前端重试未通过真机验收。 | **2026-09-13 真机重开 / must-fix**：同书远程 fetch 串行并在执行前重读变量，不同书保持并发；见 [`reader-remote-chapter-concurrency-device-feedback-p0-contract.md`](reader-remote-chapter-concurrency-device-feedback-p0-contract.md)。 |
+| reader-dev 本地书原文件回填 | 上游按 name+author 替换已存在 shelf book，并保留章节位置；逻辑 ZIP 本身不带原文件。 | reader-dev local metadata 恢复后，补传原文件总是新建 Book；目录替换又只按 index 回绑非 EPUB 引用。 | **2026-09-13 真机重开 / must-fix**：唯一缺档占位行原位回填，目录引用按唯一标题优先重绑；见 [`readerdev-local-book-reattachment-device-feedback-p0-contract.md`](readerdev-local-book-reattachment-device-feedback-p0-contract.md)。 |
+| 左上当前章节标注 | 上游 mini `.top-bar` 固定显示当前章节 title，并为正文保留 30px + safe-area 顶部区。 | 桌面左侧显示书名，mini 直接隐藏 header。 | **2026-09-13 真机重开 / must-fix**：恢复章节运行标注并按用户要求补 1-based 章节序号；见 [`reader-running-chapter-header-device-feedback-p0-contract.md`](reader-running-chapter-header-device-feedback-p0-contract.md)。 |
 
 ## 不能再沿用的历史测试假设
 
