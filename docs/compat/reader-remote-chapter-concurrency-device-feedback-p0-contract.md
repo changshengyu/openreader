@@ -1,6 +1,6 @@
 # Reader 远程章节并发加载真机反馈合同（P0）
 
-状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
+状态：**device-reopened / second-regression-isolated / implementation-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 正常对照镜像：`OpenReader@d0600ab`（2026-08-25）。  
@@ -64,3 +64,36 @@
   volume 和 platform 门并发布 `e1631d0`/`latest`；OCI index 为
   `sha256:94030bd8f72dcb5135ade46571a9b81d686da616fc704e4144dc78414a33c3ee`。用户真机仍待验证；在真机
   完成前不得写成 device-closed。
+
+## 2026-09-14 第二次真机反馈与历史定位
+
+用户在 `e1631d0` 发布后再次确认普通章节仍会显示“章节加载失败，请检查书源或网络后重试”，而
+`d0600ab` 没有该问题。本次按 `d0600ab..HEAD` 的提交历史重新取证，上一节的整书串行合同被真机证据
+否决，不再作为正确实现依据。
+
+历史差异收敛如下：
+
+1. `d0600ab` 对同一本书的不同章节并行远程抓取；Reader 的连续窗口和半径为 2 的预载早已存在，故
+   相邻章节并发本身不是新增行为。
+2. `0a8a0ef` 增加 Book/Chapter/source 快照 CAS。同章重复请求会竞争同一 Chapter variable/cache，后
+   完成者返回 409；这是第一次真机可见错误的直接来源。
+3. `2bbb276` 只在前端重取 409，没有消除服务端竞争。
+4. `e1631d0` 以 `user/book` 为 key 串行所有未缓存远程章节，消除了同章竞争，却把相邻章也放进同一
+   队列。浏览器通用 Axios 超时为 12 秒，服务端单次书源请求预算为 15 秒；因此一个慢章节足以让后续
+   章节只因排队超过浏览器预算，被前端投影成“网络问题”。这条队头阻塞是 `d0600ab` 到当前版本之间
+   新增且可确定复现的第二次回归。
+5. 正文 parser 创建 chapter variable scope 后，正文 `@put` 写入 Chapter variable；同一本书不同章节
+   不共享该提交目标。Book variable 在正文解析中只作为父级读取状态返回，正常相邻章节无需串行抓取。
+
+修订后的合同：
+
+1. 同一 `user/book/chapter` 的未缓存普通请求合并：等待者在先行请求发布后读取 cache，不重复抓取。
+2. 同一书的不同章节必须保持并行，且继续服从书源自身 `concurrentRate`；OpenReader 不额外施加整书
+   串行队列。
+3. Chapter/source/book 身份与变量的 staged publish、CAS、取消和换源保护保持；不得退回 `d0600ab`
+   的无保护覆盖写入。
+4. 同章显式 refresh 与普通请求继续按同章边界协调，不能覆盖另一请求正在发布的 cache/变量。
+5. 新回归测试必须让同书两个不同章节的第一轮 HTTP 请求都在任一请求释放前进入 transport；旧整书
+   gate 必须稳定失败。另保留同章只抓取一次、排队取消、换源/删书/source 编辑等既有门。
+6. 浏览器 12 秒超时与服务端 15 秒安全预算是既存配置，本切片不靠放大客户端超时隐藏排队问题；在
+   固定慢请求 fixture 下，相邻章节必须各自只承担自己的网络耗时。
