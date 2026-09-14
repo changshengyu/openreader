@@ -288,6 +288,32 @@ func TestRemoteCoverCacheEvictionAndUnsafeRoots(t *testing.T) {
 	}
 }
 
+func TestRemoveUserRejectsConfiguredCacheRootSymlink(t *testing.T) {
+	outside := t.TempDir()
+	cacheLink := filepath.Join(t.TempDir(), "cache")
+	if err := os.Symlink(outside, cacheLink); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	service, user, _ := newContractService(t, func(cfg *config.Config) {
+		cfg.CacheDir = cacheLink
+	})
+	outsideUser := filepath.Join(outside, "cover-images", "user-"+strconv.FormatUint(uint64(user.ID), 10))
+	if err := os.MkdirAll(outsideUser, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outsideUser, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.RemoveUser(user.ID); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("configured cache root symlink error=%v, want ErrUnsafePath", err)
+	}
+	if data, err := os.ReadFile(sentinel); err != nil || string(data) != "outside" {
+		t.Fatalf("cache cleanup followed configured root symlink: data=%q err=%v", data, err)
+	}
+}
+
 func TestRemoteCoverPolicyRevalidatesDNSAndRedirects(t *testing.T) {
 	var lookups atomic.Int32
 	policy := requestPolicy{

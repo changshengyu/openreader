@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 	"openreader/backend/services/booksources"
+	"openreader/backend/services/rootedfs"
 )
 
 func (s *Server) requireAdmin(c *gin.Context) bool {
@@ -446,52 +446,46 @@ type deleteUsersRequest struct {
 var errNoDeletableUsers = errors.New("no deletable users selected")
 
 type userWorkspaceCleanupPlan struct {
-	user  models.User
-	paths []string
+	user    models.User
+	targets []userWorkspaceCleanupTarget
 }
 
-var removeUserWorkspace = os.RemoveAll
-
-// privateUserWorkspacePath can only return a descendant below an internal
-// configured root. It is intentionally built from persisted user identity,
-// never from an HTTP path or a client-provided username.
-func privateUserWorkspacePath(root string, parts ...string) (string, error) {
-	base, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	target, err := filepath.Abs(filepath.Join(append([]string{base}, parts...)...))
-	if err != nil {
-		return "", err
-	}
-	if target == base || !strings.HasPrefix(target, base+string(os.PathSeparator)) {
-		return "", os.ErrPermission
-	}
-	return target, nil
+type userWorkspaceCleanupTarget struct {
+	root     string
+	relative string
+	preserve bool
 }
 
-func (s *Server) userWorkspaceCleanupPlans(users []models.User) ([]userWorkspaceCleanupPlan, error) {
+// Tests replace this hook to verify post-commit cleanup failure behavior. The
+// actual recursive deletion is always performed through rootedfs.
+var removeUserWorkspace = func(string) error { return nil }
+
+func (s *Server) userWorkspaceCleanupPlans(tx *gorm.DB, users []models.User) ([]userWorkspaceCleanupPlan, error) {
+	deletedIDs := make([]uint, 0, len(users))
+	for _, user := range users {
+		deletedIDs = append(deletedIDs, user.ID)
+	}
+	var survivors []models.User
+	if err := tx.Select("id", "username").Where("id NOT IN ?", deletedIDs).Find(&survivors).Error; err != nil {
+		return nil, err
+	}
+	survivingWorkspaceNames := make(map[string]struct{}, len(survivors))
+	for _, survivor := range survivors {
+		survivingWorkspaceNames[engine.SafeFilename(survivor.Username)] = struct{}{}
+	}
+
 	plans := make([]userWorkspaceCleanupPlan, 0, len(users))
 	for _, user := range users {
 		username := engine.SafeFilename(user.Username)
-		paths := make([]string, 0, 5)
-		for _, rootAndParts := range []struct {
-			root  string
-			parts []string
-		}{
-			{root: filepath.Join(s.cfg.DataDir, "webdav", "users"), parts: []string{username}},
-			{root: filepath.Join(s.cfg.LocalStoreDir, "users"), parts: []string{username}},
-			{root: filepath.Join(s.cfg.LibraryDir, "data"), parts: []string{username}},
-			{root: filepath.Join(s.cfg.DataDir, "uploads", "users"), parts: []string{strconv.FormatUint(uint64(user.ID), 10)}},
-			{root: filepath.Join(s.cfg.CacheDir, "cover-images"), parts: []string{"user-" + strconv.FormatUint(uint64(user.ID), 10)}},
-		} {
-			path, err := privateUserWorkspacePath(rootAndParts.root, rootAndParts.parts...)
-			if err != nil {
-				return nil, err
-			}
-			paths = append(paths, path)
+		_, preserveUsernamePaths := survivingWorkspaceNames[username]
+		id := strconv.FormatUint(uint64(user.ID), 10)
+		targets := []userWorkspaceCleanupTarget{
+			{root: s.cfg.DataDir, relative: strings.Join([]string{"webdav", "users", username}, string(os.PathSeparator)), preserve: preserveUsernamePaths},
+			{root: s.cfg.LocalStoreDir, relative: strings.Join([]string{"users", username}, string(os.PathSeparator)), preserve: preserveUsernamePaths},
+			{root: s.cfg.LibraryDir, relative: strings.Join([]string{"data", username}, string(os.PathSeparator)), preserve: preserveUsernamePaths},
+			{root: s.cfg.DataDir, relative: strings.Join([]string{"uploads", "users", id}, string(os.PathSeparator))},
 		}
-		plans = append(plans, userWorkspaceCleanupPlan{user: user, paths: paths})
+		plans = append(plans, userWorkspaceCleanupPlan{user: user, targets: targets})
 	}
 	return plans, nil
 }
@@ -514,7 +508,7 @@ func (s *Server) deleteUserData(ctx context.Context, ids []uint, protectedUserID
 			return errNoDeletableUsers
 		}
 		var err error
-		plans, err = s.userWorkspaceCleanupPlans(deletedUsers)
+		plans, err = s.userWorkspaceCleanupPlans(tx, deletedUsers)
 		if err != nil {
 			return err
 		}
@@ -572,8 +566,15 @@ func (s *Server) deleteUserData(ctx context.Context, ids []uint, protectedUserID
 func cleanupUserWorkspaces(plans []userWorkspaceCleanupPlan) int {
 	failed := 0
 	for _, plan := range plans {
-		for _, path := range plan.paths {
-			if err := removeUserWorkspace(path); err != nil {
+		for _, target := range plan.targets {
+			if target.preserve {
+				exists, err := rootedfs.DirectoryExists(target.root, target.relative)
+				if err != nil || exists {
+					failed++
+				}
+				continue
+			}
+			if err := rootedfs.RemoveDirectory(target.root, target.relative, removeUserWorkspace); err != nil {
 				// Do not place an internal path or a filesystem error (which often
 				// includes that path) in the log or API response. The durable database
 				// deletion is already complete and this cleanup is safe to retry only

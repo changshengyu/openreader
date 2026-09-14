@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"openreader/backend/services/rootedfs"
 	"openreader/backend/services/webdavfs"
 )
 
@@ -35,8 +36,15 @@ func (s *Service) cacheRoot() (string, error) {
 	if err != nil {
 		return "", ErrUnsafePath
 	}
-	if err := os.MkdirAll(base, 0o700); err != nil {
-		return "", err
+	baseInfo, err := os.Lstat(base)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(base, 0o700); err != nil {
+			return "", err
+		}
+		baseInfo, err = os.Lstat(base)
+	}
+	if err != nil || baseInfo.Mode()&os.ModeSymlink != 0 || !baseInfo.IsDir() {
+		return "", ErrUnsafePath
 	}
 	base, err = filepath.EvalSymlinks(base)
 	if err != nil {
@@ -290,7 +298,11 @@ func (s *Service) removeUserCache(userID uint) (FileStats, error) {
 	if err != nil {
 		return FileStats{}, err
 	}
-	if err := os.RemoveAll(root); err != nil {
+	relative := filepath.Join("cover-images", "user-"+strconv.FormatUint(uint64(userID), 10))
+	if err := rootedfs.RemoveDirectory(s.cfg.CacheDir, relative, nil); err != nil {
+		if errors.Is(err, rootedfs.ErrUnsafePath) {
+			return FileStats{}, ErrUnsafePath
+		}
 		return FileStats{}, err
 	}
 	return stats, nil
