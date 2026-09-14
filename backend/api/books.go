@@ -3068,6 +3068,16 @@ type readerChapterContentSnapshot struct {
 	source  models.BookSource
 }
 
+type readerChapterGateKey struct {
+	userID uint
+	bookID uint
+}
+
+type readerChapterGate struct {
+	token chan struct{}
+	refs  int
+}
+
 // readerChapterContentLifecycleTestHook exposes deterministic boundaries for
 // request-lifecycle contract tests without changing production behavior.
 var readerChapterContentLifecycleTestHook func(string, context.Context, models.Book, models.Chapter)
@@ -3115,6 +3125,40 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 	}
 
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
+		release, err := s.acquireReaderChapterGate(ctx, readerChapterGateKey{userID: book.UserID, bookID: book.ID})
+		if err != nil {
+			return "", err
+		}
+		defer release()
+
+		currentBook, currentChapter, err := s.reloadReaderChapterFetchState(ctx, *book, *chapter)
+		if err != nil {
+			return "", err
+		}
+		*book = currentBook
+		*chapter = currentChapter
+		if !policy.Refresh && chapter.CachePath != "" {
+			if cached, path, cacheErr := s.readChapterCache(*book, chapter.CachePath); cacheErr == nil {
+				if path != "" && path != chapter.CachePath {
+					normalizedPath := s.remoteChapterCachePath(path)
+					if normalizedPath == "" {
+						normalizedPath = path
+					}
+					s.normalizeChapterCachePath(ctx, chapter, normalizedPath)
+				}
+				content = string(cached)
+			}
+		}
+		if content != "" {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			if policy.ApplyReaderReplaceRules && !epubreader.IsLocalEPUB(*book) && book.Type != 1 {
+				content = s.applyUserReplaceRules(*book, content)
+			}
+			return content, nil
+		}
+
 		source, err := s.bookSources.FindForBook(book.UserID, book.SourceID)
 		if err != nil {
 			return "", err
@@ -3159,6 +3203,74 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		content = s.applyUserReplaceRules(*book, content)
 	}
 	return content, nil
+}
+
+func (s *Server) acquireReaderChapterGate(ctx context.Context, key readerChapterGateKey) (func(), error) {
+	s.remoteChapterMu.Lock()
+	if s.remoteChapterMap == nil {
+		s.remoteChapterMap = make(map[readerChapterGateKey]*readerChapterGate)
+	}
+	gate := s.remoteChapterMap[key]
+	if gate == nil {
+		gate = &readerChapterGate{token: make(chan struct{}, 1)}
+		gate.token <- struct{}{}
+		s.remoteChapterMap[key] = gate
+	}
+	gate.refs++
+	s.remoteChapterMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		s.releaseReaderChapterGateRef(key, gate)
+		return nil, ctx.Err()
+	case <-gate.token:
+		return func() {
+			gate.token <- struct{}{}
+			s.releaseReaderChapterGateRef(key, gate)
+		}, nil
+	}
+}
+
+func (s *Server) releaseReaderChapterGateRef(key readerChapterGateKey, gate *readerChapterGate) {
+	s.remoteChapterMu.Lock()
+	defer s.remoteChapterMu.Unlock()
+	gate.refs--
+	if gate.refs == 0 && s.remoteChapterMap[key] == gate {
+		delete(s.remoteChapterMap, key)
+	}
+}
+
+func (s *Server) reloadReaderChapterFetchState(
+	ctx context.Context,
+	requestedBook models.Book,
+	requestedChapter models.Chapter,
+) (models.Book, models.Chapter, error) {
+	var book models.Book
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", requestedBook.ID, requestedBook.UserID).
+		First(&book).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		}
+		return models.Book{}, models.Chapter{}, err
+	}
+	if book.SourceID != requestedBook.SourceID || book.Type != requestedBook.Type || book.URL != requestedBook.URL {
+		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+	}
+
+	var chapter models.Chapter
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND book_id = ?", requestedChapter.ID, requestedBook.ID).
+		First(&chapter).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		}
+		return models.Book{}, models.Chapter{}, err
+	}
+	if chapter.Index != requestedChapter.Index || chapter.URL != requestedChapter.URL || chapter.Title != requestedChapter.Title {
+		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+	}
+	return book, chapter, nil
 }
 
 func (s *Server) normalizeChapterCachePath(ctx context.Context, chapter *models.Chapter, normalizedPath string) {

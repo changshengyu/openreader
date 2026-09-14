@@ -83,7 +83,7 @@ export function useReaderChapterContent(options) {
               targetBookId,
               index,
               {
-                refresh: true,
+                refresh: false,
                 signal: controller.signal,
               },
             ),

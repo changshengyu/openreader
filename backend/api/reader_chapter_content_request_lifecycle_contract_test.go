@@ -85,6 +85,34 @@ func TestReaderConcurrentSameChapterLoadsSharePublishedResult(t *testing.T) {
 	}
 }
 
+func TestReaderChapterGateWaiterCanCancelWithoutBlockingOtherBooks(t *testing.T) {
+	_, server := setupTestServer(t)
+	firstKey := readerChapterGateKey{userID: 1, bookID: 1}
+	releaseFirst, err := server.acquireReaderChapterGate(context.Background(), firstKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitingContext, cancelWaiting := context.WithCancel(context.Background())
+	cancelWaiting()
+	if _, err := server.acquireReaderChapterGate(waitingContext, firstKey); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled gate wait error = %v, want context.Canceled", err)
+	}
+
+	releaseOther, err := server.acquireReaderChapterGate(context.Background(), readerChapterGateKey{userID: 1, bookID: 2})
+	if err != nil {
+		t.Fatalf("different book gate was blocked: %v", err)
+	}
+	releaseOther()
+	releaseFirst()
+
+	server.remoteChapterMu.Lock()
+	defer server.remoteChapterMu.Unlock()
+	if len(server.remoteChapterMap) != 0 {
+		t.Fatalf("released chapter gates retained %d entries", len(server.remoteChapterMap))
+	}
+}
+
 func TestReaderChapterContentRejectsSourceSemanticChangeAfterFetch(t *testing.T) {
 	fixture := newReaderChapterContentLifecycleFixture(t, "chapterstalesource")
 	currentCachePath := ""

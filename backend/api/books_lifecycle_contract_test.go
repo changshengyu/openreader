@@ -467,8 +467,8 @@ func TestRemoteRefreshReplacesCatalogueAndClearsSupersededCaches(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(refreshedBookmarks) != 2 || refreshedBookmarks[0].ChapterID != chapters[0].ID || refreshedBookmarks[0].Offset != 19 ||
-		refreshedBookmarks[1].ChapterID != 0 || refreshedBookmarks[1].ChapterIndex != 2 || refreshedBookmarks[1].Offset != 91 {
-		t.Fatalf("bookmarks should retain positions but never reference deleted chapter rows: %+v", refreshedBookmarks)
+		refreshedBookmarks[1].ChapterID != chapters[1].ID || refreshedBookmarks[1].ChapterIndex != 1 || refreshedBookmarks[1].Offset != 91 {
+		t.Fatalf("bookmarks should retain offsets and remain on readable replacement chapters: %+v", refreshedBookmarks)
 	}
 }
 
@@ -565,8 +565,8 @@ func TestChangeSourceReplacesCatalogueAndPrunesOldRemoteCache(t *testing.T) {
 	if err := server.db.First(&refreshedBookmark, bookmark.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if refreshedBookmark.ChapterID != 0 || refreshedBookmark.ChapterIndex != 1 || refreshedBookmark.Offset != 64 {
-		t.Fatalf("removed source chapter should clear bookmark id but preserve its position: %+v", refreshedBookmark)
+	if refreshedBookmark.ChapterID != chapters[0].ID || refreshedBookmark.ChapterIndex != 0 || refreshedBookmark.Offset != 64 {
+		t.Fatalf("removed source chapter should retain its offset on the final readable chapter: %+v", refreshedBookmark)
 	}
 }
 
@@ -744,8 +744,8 @@ func TestLocalRefreshClearsStaleChapterReferencesWithoutDeletingOriginal(t *test
 	if err := server.db.Where("user_id = ? AND book_id = ?", user.ID, book.ID).First(&progress).Error; err != nil {
 		t.Fatal(err)
 	}
-	if progress.ChapterID != 0 || progress.ChapterIndex != 1 || progress.Offset != 88 || progress.Percent != 0.63 {
-		t.Fatalf("removed local chapter should clear progress id but preserve resume position: %+v", progress)
+	if progress.ChapterID != chapters[0].ID || progress.ChapterIndex != 0 || progress.ChapterTitle != chapters[0].Title || progress.Offset != 88 || progress.Percent != 0.63 {
+		t.Fatalf("removed local chapter should retain resume detail on the final readable chapter: %+v", progress)
 	}
 	var refreshedBookmark models.Bookmark
 	if err := server.db.First(&refreshedBookmark, bookmark.ID).Error; err != nil {

@@ -103,6 +103,81 @@ func TestReplaceChapterRowsUsesProgressTitleWithoutOldChapterAndClampsMissingInd
 	}
 }
 
+func TestReplaceChapterRowsUsesEPUBFragmentsAndRejectsAmbiguousTitles(t *testing.T) {
+	db := openBookCatalogTestDB(t)
+	const userID = 9
+	const bookID = 13
+	previous := []models.Chapter{
+		{BookID: bookID, Index: 0, Title: "同名小节", ResourcePath: "OPS/chapter.xhtml", ResourceFragment: "part-a"},
+		{BookID: bookID, Index: 1, Title: "同名小节", ResourcePath: "OPS/chapter.xhtml", ResourceFragment: "part-b"},
+	}
+	for index := range previous {
+		if err := db.Create(&previous[index]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	progress := models.ReadingProgress{
+		UserID: userID, BookID: bookID, ChapterID: previous[1].ID, ChapterIndex: 1, ChapterTitle: "同名小节",
+	}
+	if err := db.Create(&progress).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	next := []models.Chapter{
+		{Index: 0, Title: "新增前言", ResourcePath: "OPS/preface.xhtml"},
+		{Index: 1, Title: "同名小节", ResourcePath: "OPS/chapter.xhtml", ResourceFragment: "part-a"},
+		{Index: 2, Title: "同名小节", ResourcePath: "OPS/chapter.xhtml", ResourceFragment: "part-b"},
+	}
+	var ids map[int]uint
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		_, ids, err = ReplaceChapterRows(tx, userID, bookID, next)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&progress, progress.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if progress.ChapterID != ids[2] || progress.ChapterIndex != 2 {
+		t.Fatalf("fragment-rebound progress = %+v, want part-b at index 2", progress)
+	}
+
+	const ambiguousBookID = 14
+	ambiguousPrevious := []models.Chapter{
+		{BookID: ambiguousBookID, Index: 0, Title: "重复标题"},
+		{BookID: ambiguousBookID, Index: 1, Title: "重复标题"},
+	}
+	for index := range ambiguousPrevious {
+		if err := db.Create(&ambiguousPrevious[index]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	ambiguousProgress := models.ReadingProgress{
+		UserID: userID, BookID: ambiguousBookID, ChapterID: ambiguousPrevious[1].ID, ChapterIndex: 1, ChapterTitle: "重复标题",
+	}
+	if err := db.Create(&ambiguousProgress).Error; err != nil {
+		t.Fatal(err)
+	}
+	ambiguousNext := []models.Chapter{
+		{Index: 0, Title: "新增前言"},
+		{Index: 1, Title: "重复标题"},
+		{Index: 2, Title: "重复标题"},
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		_, _, err := ReplaceChapterRows(tx, userID, ambiguousBookID, ambiguousNext)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&ambiguousProgress, ambiguousProgress.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ambiguousProgress.ChapterIndex != 1 {
+		t.Fatalf("ambiguous title moved progress to index %d", ambiguousProgress.ChapterIndex)
+	}
+}
+
 func openBookCatalogTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := fmt.Sprintf("file:bookcatalog-%s?mode=memory&cache=shared", t.Name())

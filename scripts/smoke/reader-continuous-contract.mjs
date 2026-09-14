@@ -147,17 +147,31 @@ async function runContinuousViewport(browser, viewport, mode) {
     const initial = await page.evaluate(() => {
       const pageEl = document.querySelector('.reader-page').getBoundingClientRect()
       const chapter = document.querySelector('.chapter-content[data-index="0"]').getBoundingClientRect()
+      const header = document.querySelector('.reader-page-head')
+      const headerRect = header.getBoundingClientRect()
+      const runningTitle = header.querySelector('.reader-running-chapter-title')
+      const runningTitleRect = runningTitle.getBoundingClientRect()
       const content = document.querySelector('.reader-shell.document-scroll')
         ? (document.scrollingElement || document.documentElement)
         : document.querySelector('.reader-content')
       return {
         indexes: [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)),
+        headerPosition: window.getComputedStyle(header).position,
+        headerPointerEvents: window.getComputedStyle(header).pointerEvents,
+        runningTitle: runningTitle.textContent.trim(),
+        runningTitleLeft: runningTitleRect.left,
+        runningTitleRight: runningTitleRect.right,
+        headerRight: headerRect.right,
         leftGap: chapter.left - pageEl.left,
         rightGap: pageEl.right - chapter.right,
         scrollTop: content.scrollTop,
       }
     })
     assert(initial.indexes.join(',') === '0,1', `${viewport.width}: initial blocks ${initial.indexes}`)
+    assert(initial.runningTitle === '第 1 章 第 1 章', `${viewport.width}: running title ${JSON.stringify(initial.runningTitle)}`)
+    assert(initial.headerPointerEvents === 'none', `${viewport.width}: running header intercepts input`)
+    assert(initial.runningTitleLeft >= 0 && initial.runningTitleRight <= initial.headerRight + 1, `${viewport.width}: running title overflows header`)
+    assert(initial.headerPosition === (viewport.width <= 750 ? 'fixed' : 'absolute'), `${viewport.width}: running header position ${initial.headerPosition}`)
     assert(Math.abs(initial.leftGap - initial.rightGap) <= 1, `${viewport.width}: asymmetric gaps ${initial.leftGap}/${initial.rightGap}`)
 
     await page.locator('.reader-content').hover()
@@ -207,7 +221,7 @@ async function runContinuousViewport(browser, viewport, mode) {
       ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
-      document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('1 /')
+      document.querySelector('.reader-running-chapter-title')?.textContent?.startsWith('第 1 章')
     ))
     const topBoundary = await page.evaluate(() => {
       const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
@@ -232,10 +246,8 @@ async function runContinuousViewport(browser, viewport, mode) {
       }
     })
     await page.waitForTimeout(120)
-    const beforeBoundaryLabel = await page.locator('.reader-page-head').evaluate(
-      element => element.lastElementChild?.textContent || '',
-    )
-    assert(beforeBoundaryLabel.startsWith('1 /'), `${viewport.width}/${mode}: chapter switched before top boundary (${beforeBoundaryLabel}, ${JSON.stringify(topBoundary)})`)
+    const beforeBoundaryLabel = await page.locator('.reader-running-chapter-title').innerText()
+    assert(beforeBoundaryLabel.startsWith('第 1 章'), `${viewport.width}/${mode}: chapter switched before top boundary (${beforeBoundaryLabel}, ${JSON.stringify(topBoundary)})`)
     await page.evaluate(() => {
       const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
       const element = usesDocumentScroll
@@ -245,7 +257,7 @@ async function runContinuousViewport(browser, viewport, mode) {
       ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
-      document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('2 /')
+      document.querySelector('.reader-running-chapter-title')?.textContent?.startsWith('第 2 章')
     ))
 
     await page.evaluate(() => {
@@ -276,10 +288,10 @@ async function runContinuousViewport(browser, viewport, mode) {
     await page.waitForTimeout(180)
     const beforeExtension = await page.evaluate(() => ({
       indexes: [...document.querySelectorAll('.chapter-content')].map(element => Number(element.dataset.index)),
-      chapterLabel: document.querySelector('.reader-page-head')?.lastElementChild?.textContent || '',
+      chapterLabel: document.querySelector('.reader-running-chapter-title')?.textContent || '',
     }))
     assert(beforeExtension.indexes.join(',') === '0,1', `${viewport.width}/${mode}: pre-extension blocks ${beforeExtension.indexes}`)
-    assert(beforeExtension.chapterLabel.startsWith('2 /'), `${viewport.width}/${mode}: visible chapter did not advance before extension (${beforeExtension.chapterLabel})`)
+    assert(beforeExtension.chapterLabel.startsWith('第 2 章'), `${viewport.width}/${mode}: visible chapter did not advance before extension (${beforeExtension.chapterLabel})`)
 
     const anchor = await page.evaluate(() => {
       const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
@@ -394,7 +406,7 @@ async function runProgressTransaction(browser) {
       ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
     await page.waitForFunction(() => (
-      document.querySelector('.reader-page-head')?.lastElementChild?.textContent?.startsWith('3 /')
+      document.querySelector('.reader-running-chapter-title')?.textContent?.startsWith('第 3 章')
     ))
     await page.waitForTimeout(180)
     assert((requestCounts.get(3) || 0) === 1, `delayed extension request count ${requestCounts.get(3) || 0}`)
@@ -452,6 +464,7 @@ async function main() {
       { width: 1440, height: 900 },
       { width: 390, height: 844 },
       { width: 360, height: 800 },
+      { width: 1024, height: 1366 },
     ]) {
       await runContinuousViewport(browser, viewport, 'scroll')
       await runContinuousViewport(browser, viewport, 'scroll2')

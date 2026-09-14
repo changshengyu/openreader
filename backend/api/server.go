@@ -51,6 +51,8 @@ type Server struct {
 	assetStore       *assetservice.Store
 	registerMu       sync.Mutex
 	remoteCacheMu    sync.Mutex
+	remoteChapterMu  sync.Mutex
+	remoteChapterMap map[readerChapterGateKey]*readerChapterGate
 	localCacheMu     sync.Mutex
 	defaultSourcesMu sync.Mutex
 	assetLocksMu     sync.Mutex

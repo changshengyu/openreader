@@ -122,8 +122,9 @@ func TestManualShelfRefreshReplacesChangedAndShorterCatalogue(t *testing.T) {
 	if err := database.First(&bookmark, bookmark.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if progress.ChapterID != 0 || progress.ChapterIndex != 2 || bookmark.ChapterID != 0 || bookmark.ChapterIndex != 2 {
-		t.Fatalf("out-of-range references were not made recoverable: progress=%+v bookmark=%+v", progress, bookmark)
+	if progress.ChapterID != current[1].ID || progress.ChapterIndex != 1 || progress.ChapterTitle != current[1].Title ||
+		bookmark.ChapterID != current[1].ID || bookmark.ChapterIndex != 1 {
+		t.Fatalf("out-of-range references were not clamped to the final readable chapter: progress=%+v bookmark=%+v", progress, bookmark)
 	}
 }
 

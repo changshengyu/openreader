@@ -14,6 +14,7 @@ import (
 	"openreader/backend/config"
 	"openreader/backend/engine"
 	"openreader/backend/models"
+	"openreader/backend/services/bookcatalog"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 )
@@ -189,6 +190,13 @@ func (importer Importer) importParsedBook(request ImportRequest, parsedBook engi
 	if author == "" {
 		author = parsedBook.Author
 	}
+	placeholder, rehydrate, err := importer.readerDevLocalPlaceholder(request.UserID, title, author)
+	if err != nil {
+		return models.Book{}, err
+	}
+	if rehydrate {
+		return importer.restoreExistingParsedBook(placeholder, request, parsedBook, title, author)
+	}
 
 	archive, err := engine.ArchiveImportedBook(importer.cfg.LibraryDir, request.UserName, title, author, request.FileName, request.Data)
 	if err != nil {
@@ -362,11 +370,9 @@ func normalizedLocalBookExtension(extension string) string {
 	return strings.ToLower(strings.TrimSpace(extension))
 }
 
-// RestoreExisting rehydrates a local-book shelf row from a portable backup archive. The logical
-// backup restore has already recreated the caller-owned book, progress, bookmarks and categories;
-// keeping that row and URL is what prevents those records from drifting to a newly allocated local
-// identifier. This is deliberately separate from Import, whose normal user-facing behavior creates
-// a new book and therefore a new local URL.
+// RestoreExisting rehydrates the caller-owned shelf row created by logical restore. Portable restore
+// calls it explicitly; normal import uses the same path only for one unambiguous reader-dev local-book
+// placeholder so progress and bookmarks do not drift to a newly allocated local identifier.
 func (importer Importer) RestoreExisting(existing models.Book, request ImportRequest) (models.Book, error) {
 	if existing.ID == 0 || existing.UserID == 0 || existing.UserID != request.UserID || existing.SourceID != 0 {
 		return models.Book{}, errors.New("invalid portable local book target")
@@ -399,6 +405,42 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 		author = strings.TrimSpace(parsedBook.Author)
 	}
 
+	return importer.restoreExistingParsedBook(existing, request, parsedBook, title, author)
+}
+
+func (importer Importer) readerDevLocalPlaceholder(userID uint, title, author string) (models.Book, bool, error) {
+	if userID == 0 || strings.TrimSpace(title) == "" {
+		return models.Book{}, false, nil
+	}
+	var candidates []models.Book
+	if err := importer.db.
+		Where(
+			"user_id = ? AND source_id = 0 AND title = ? AND author = ? AND COALESCE(library_path, '') = '' AND COALESCE(original_file, '') = ''",
+			userID,
+			title,
+			author,
+		).
+		Limit(2).
+		Find(&candidates).Error; err != nil {
+		return models.Book{}, false, err
+	}
+	if len(candidates) != 1 {
+		return models.Book{}, false, nil
+	}
+	var chapterCount int64
+	if err := importer.db.Model(&models.Chapter{}).Where("book_id = ?", candidates[0].ID).Count(&chapterCount).Error; err != nil {
+		return models.Book{}, false, err
+	}
+	return candidates[0], chapterCount == 0, nil
+}
+
+func (importer Importer) restoreExistingParsedBook(
+	existing models.Book,
+	request ImportRequest,
+	parsedBook engine.ParsedBook,
+	title string,
+	author string,
+) (models.Book, error) {
 	archive, err := engine.ArchiveImportedBook(importer.cfg.LibraryDir, request.UserName, title, author, request.FileName, request.Data)
 	if err != nil {
 		return models.Book{}, err
@@ -410,6 +452,19 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 			_ = os.RemoveAll(archiveRoot)
 		}
 	}()
+	preparedTarget := existing
+	preparedTarget.LibraryPath = archive.Directory
+	preparedTarget.OriginalFile = archive.OriginalFile
+	switch normalizedLocalBookExtension(request.Extension) {
+	case ".epub":
+		if err := epubreader.New(importer.cfg, importer.db).PrepareBookResources(preparedTarget); err != nil {
+			return models.Book{}, classifyEPUBPreparationError(err)
+		}
+	case ".cbz":
+		if err := cbzreader.New(importer.cfg, importer.db).PrepareBookResources(preparedTarget); err != nil {
+			return models.Book{}, classifyCBZPreparationError(err)
+		}
+	}
 
 	book := existing
 	err = importer.db.Transaction(func(tx *gorm.DB) error {
@@ -417,8 +472,8 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 		if err := tx.Where("id = ? AND user_id = ? AND source_id = ?", existing.ID, request.UserID, 0).First(&target).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("book_id = ?", target.ID).Delete(&models.Chapter{}).Error; err != nil {
-			return err
+		if target.LibraryPath != existing.LibraryPath || target.OriginalFile != existing.OriginalFile || target.URL != existing.URL {
+			return gorm.ErrDuplicatedKey
 		}
 		lastChapter := ""
 		if len(parsedBook.Chapters) > 0 {
@@ -434,11 +489,7 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 		target.SourceFile = archive.SourceFile
 		target.LastChapter = lastChapter
 		target.ChapterCount = len(parsedBook.Chapters)
-		if err := tx.Save(&target).Error; err != nil {
-			return err
-		}
-
-		archivedChapters := make([]engine.ArchivedChapter, 0, len(parsedBook.Chapters))
+		nextChapters := make([]models.Chapter, 0, len(parsedBook.Chapters))
 		for index, parsedChapter := range parsedBook.Chapters {
 			chapterTitle := strings.TrimSpace(parsedChapter.Title)
 			if chapterTitle == "" {
@@ -451,7 +502,7 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 				return err
 			}
 			cachePath := filepath.Join("content", contentPath)
-			chapter := models.Chapter{
+			nextChapters = append(nextChapters, models.Chapter{
 				BookID:              target.ID,
 				Index:               index,
 				Title:               chapterTitle,
@@ -460,21 +511,30 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 				ResourcePath:        parsedChapter.ResourcePath,
 				ResourceFragment:    parsedChapter.ResourceFragment,
 				ResourceEndFragment: parsedChapter.ResourceEndFragment,
-			}
-			if err := tx.Create(&chapter).Error; err != nil {
-				return err
-			}
+			})
+		}
+		_, chapterIDs, err := bookcatalog.ReplaceChapterRows(tx, request.UserID, target.ID, nextChapters)
+		if err != nil {
+			return err
+		}
+		if err := tx.Save(&target).Error; err != nil {
+			return err
+		}
+
+		archivedChapters := make([]engine.ArchivedChapter, 0, len(parsedBook.Chapters))
+		for index, parsedChapter := range parsedBook.Chapters {
+			chapter := nextChapters[index]
 			archivedChapters = append(archivedChapters, engine.ArchivedChapter{
-				ID:                  chapter.ID,
-				URL:                 chapterURL,
-				Title:               chapterTitle,
+				ID:                  chapterIDs[chapter.Index],
+				URL:                 chapter.URL,
+				Title:               chapter.Title,
 				IsVolume:            false,
 				BaseURL:             "",
 				BookURL:             archive.OriginalFile,
 				Index:               index,
 				Start:               parsedChapter.Start,
 				End:                 parsedChapter.End,
-				CachePath:           cachePath,
+				CachePath:           chapter.CachePath,
 				ResourcePath:        parsedChapter.ResourcePath,
 				ResourceFragment:    parsedChapter.ResourceFragment,
 				ResourceEndFragment: parsedChapter.ResourceEndFragment,
