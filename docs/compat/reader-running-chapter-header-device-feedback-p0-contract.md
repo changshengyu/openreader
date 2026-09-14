@@ -1,6 +1,6 @@
 # Reader 左上角当前章节标注真机反馈合同（P0）
 
-状态：**device-reopened / implementation-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 当前基线：`OpenReader@919b588`。
@@ -15,7 +15,7 @@
 
 ## 目标合同
 
-1. 文本、EPUB、CBZ 和音频之外的普通 Reader 顶部均使用同一派生 label：`第 N 章 章节名`，其中 N
+1. 文本和 EPUB Reader 顶部均使用同一派生 label：`第 N 章 章节名`，其中 N
    是当前目录的 1-based 位置，章节名来自当前可见/当前激活 Chapter；标题为空时只显示 `第 N 章`。
 2. mini interface 恢复上游左上固定章节栏，使用当前主题背景/文字色、12px、单行省略、30px + safe
    area 和 16px 左右边距。它不接收点击，不遮挡工具栏/面板，不因长标题撑高或横向溢出。
@@ -36,3 +36,13 @@
    主面板无重叠；scroll/scroll2/flip 切章时 label 正确。
 
 本切片不增加浏览器存储 key、API、数据库字段或持久文件。
+
+## 实施与验证（2026-09-14）
+
+- `e1631d0` 将桌面 header 左侧从书名改为当前 `第 N 章 章节名`，右侧继续显示 `N / total`；移动 mini
+  恢复上游 30px + safe-area、16px 边距、12px 固定章节栏。长标题单行省略且 `pointer-events:none`。
+- scroll/scroll2 使用 viewport 已提交的 `currentIndex` 和 Chapter title，因此跨章滚动同步更新；flip
+  保持相对顶部区。音频与全幅 CBZ 继续隐藏该栏。
+- frontend 753/753 与 Vite build 通过；1440x900、1024x1366、390x844、360x800 的 scroll/scroll2
+  浏览器合同验证了初始文字、跨章切换、fixed/absolute 几何、无溢出和不拦截点击，原移动/面板合同通过。
+- 可信 GitHub Actions run `34794997078` 已发布 `e1631d0`/`latest` 双架构镜像；用户真机显示效果仍待签收。

@@ -28,6 +28,11 @@ function chapterContent(index) {
   )).join('\n')
 }
 
+function chapterTitle(index) {
+  if (index === 0) return '第 1 章 这是一个用于验证左上运行标注单行省略且不遮挡右侧进度的超长章节名称'
+  return `第 ${index + 1} 章`
+}
+
 async function installMocks(page, requestCounts, progressWrites, options = {}) {
   const attempts = new Map()
   await page.route(/^https?:\/\/[^/]+\/ws\/sync.*$/, route => route.abort())
@@ -72,7 +77,7 @@ async function installMocks(page, requestCounts, progressWrites, options = {}) {
       return route.fulfill(json(Array.from({ length: 6 }, (_, index) => ({
         id: index + 11,
         index,
-        title: `第 ${index + 1} 章`,
+        title: chapterTitle(index),
       }))))
     }
     const contentMatch = path.match(/^\/books\/1\/chapters\/(\d+)\/content$/)
@@ -87,7 +92,7 @@ async function installMocks(page, requestCounts, progressWrites, options = {}) {
         return route.fulfill(json({ error: 'fixture adjacent chapter failure' }, 502))
       }
       return route.fulfill(json({
-        chapter: { id: index + 11, index, title: `第 ${index + 1} 章` },
+        chapter: { id: index + 11, index, title: chapterTitle(index) },
         content: chapterContent(index),
         format: 'text',
       }))
@@ -168,7 +173,7 @@ async function runContinuousViewport(browser, viewport, mode) {
       }
     })
     assert(initial.indexes.join(',') === '0,1', `${viewport.width}: initial blocks ${initial.indexes}`)
-    assert(initial.runningTitle === '第 1 章 第 1 章', `${viewport.width}: running title ${JSON.stringify(initial.runningTitle)}`)
+    assert(initial.runningTitle === `第 1 章 ${chapterTitle(0)}`, `${viewport.width}: running title ${JSON.stringify(initial.runningTitle)}`)
     assert(initial.headerPointerEvents === 'none', `${viewport.width}: running header intercepts input`)
     assert(initial.runningTitleLeft >= 0 && initial.runningTitleRight <= initial.headerRight + 1, `${viewport.width}: running title overflows header`)
     assert(initial.headerPosition === (viewport.width <= 750 ? 'fixed' : 'absolute'), `${viewport.width}: running header position ${initial.headerPosition}`)

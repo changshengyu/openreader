@@ -1,6 +1,6 @@
 # Reader 远程章节并发加载真机反馈合同（P0）
 
-状态：**device-reopened / implementation-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 正常对照镜像：`OpenReader@d0600ab`（2026-08-25）。  
@@ -49,3 +49,18 @@
    error，并记录实际请求顺序。
 
 本切片不修改 API 路径、response schema、SQLite schema、cache 命名、备份格式或三个持久目录。
+
+## 实施与验证（2026-09-14）
+
+- `e1631d0` 为每个 `user/book` 增加可取消的远程章节抓取门；等待者取得门后重读 Book/Chapter，普通
+  请求优先消费先行请求刚发布的 cache，不再以旧 variable 重复抓取。不同书使用不同门。
+- 真正的删除、换源、目录替换和 source 语义变化仍由原 staged cache + guarded transaction 返回 409；
+  前端仅对精确 stale 冲突重试一次，但重试不再强制绕过另一请求已发布的 cache。
+- 两个同章并发请求的 Gin/engine 合同均返回 200 且只抓取一次；排队取消、不同书独立门、抓取后取消、
+  source 变化和 cache 提交均通过，相关包 race 通过。
+- Go 全量、`go vet ./...`、frontend 753/753、Vite build、Compose config 通过；连续 Reader 的 scroll 与
+  scroll2 在 1440x900、1024x1366、390x844、360x800 通过，移动/面板及章节 cache 四视口合同也通过。
+- 可信 GitHub Actions run `34794997078` 通过 backend/frontend/Compose、native、fresh/portable、historical
+  volume 和 platform 门并发布 `e1631d0`/`latest`；OCI index 为
+  `sha256:94030bd8f72dcb5135ade46571a9b81d686da616fc704e4144dc78414a33c3ee`。用户真机仍待验证；在真机
+  完成前不得写成 device-closed。

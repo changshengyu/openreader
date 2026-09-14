@@ -1,6 +1,6 @@
 # reader-dev 本地书回填与章节引用真机反馈合同（P0）
 
-状态：**device-reopened / implementation-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 当前基线：`OpenReader@919b588`。
@@ -53,3 +53,21 @@
 
 若后续真实文件证明 TXT 默认规则本身仍与固定上游不同，应另开 parser fixture 合同；不得用本轮引用
 修复掩盖 parser 偏差。
+
+## 实施与验证（2026-09-14）
+
+- `e1631d0` 让统一 localbook Importer 仅在当前用户存在一个精确 `title + author`、`SourceID=0`、无
+  archive 且无 Chapter 的占位行时原地回填，因此 direct、LocalStore、WebDAV 的共同确认路径都会复用
+  reader-dev 恢复后的 Book ID/URL。多个同名候选继续创建新书，绝不猜测覆盖。
+- 回填先在新 archive 中完成 EPUB/CBZ 资源准备和逐章 cache，再在事务中替换 Chapter、重连引用并更新
+  Book；失败会清理新 archive，不删除或改写原占位记录。
+- 目录引用依次使用完整 EPUB `ResourcePath + ResourceFragment + ResourceEndFragment` 身份、旧新目录中
+  均唯一的 trim 后标题、原索引和最终有效边界。重复标题回退索引；进度标题随新章更新，offset、percent、
+  mode、书签 note 等位置细节保持。
+- TXT 占位书原地回填、唯一标题前插、无旧 Chapter 的进度标题恢复、目录缩短钳制、EPUB 同文件多 fragment、
+  重复标题、同名歧义不覆盖和 CBZ 资源预备合同均通过；Go 全量、相关包 race 与 `go vet ./...` 通过。
+- 本轮没有根据用户真实书籍修改 TXT 解析规则；如真机补传原文件后仍出现目录本身缺章，需要取得不含
+  版权正文的最小 fixture 后另开 parser 合同。
+- 可信 GitHub Actions run `34794997078` 通过 fresh、portable 和 historical volume 门并发布
+  `e1631d0`/`latest` 双架构 OCI index
+  `sha256:94030bd8f72dcb5135ade46571a9b81d686da616fc704e4144dc78414a33c3ee`；当前只待用户真机补传原文件签收。
