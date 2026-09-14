@@ -85,6 +85,83 @@ func TestReaderConcurrentSameChapterLoadsSharePublishedResult(t *testing.T) {
 	}
 }
 
+func TestReaderAdjacentChapterLoadsDoNotQueueBehindSameBook(t *testing.T) {
+	fixture := newReaderChapterContentLifecycleFixture(t, "chapteradjacentparallel")
+	secondChapter := models.Chapter{
+		BookID:   fixture.book.ID,
+		Index:    1,
+		Title:    "second chapter",
+		URL:      fixture.source.BaseURL + "/chapter/second",
+		Variable: `{"chapter":"second"}`,
+	}
+	if err := fixture.server.db.Create(&secondChapter).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		started <- request.URL.Path
+		<-release
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(
+				`<main class="content">` + request.URL.Path + `</main><span class="token">` + request.URL.Path + `</span>`,
+			)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})})
+	t.Cleanup(restoreHTTPClient)
+
+	type loadResult struct {
+		content string
+		err     error
+	}
+	results := make(chan loadResult, 2)
+	load := func(chapter models.Chapter) {
+		book := fixture.book
+		content, err := fixture.server.loadChapterTextContextResultWithPolicy(
+			context.Background(),
+			&book,
+			&chapter,
+			chapterTextLoadPolicy{},
+		)
+		results <- loadResult{content: content, err: err}
+	}
+
+	go load(fixture.chapter)
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		close(release)
+		t.Fatal("first adjacent chapter did not start its remote request")
+	}
+	go load(secondChapter)
+
+	overlapped := false
+	select {
+	case <-started:
+		overlapped = true
+	case <-time.After(250 * time.Millisecond):
+	}
+	close(release)
+
+	for range 2 {
+		select {
+		case result := <-results:
+			if result.err != nil || !strings.Contains(result.content, "/chapter/") {
+				t.Errorf("adjacent chapter load = %q, %v", result.content, result.err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("adjacent chapter load did not finish")
+		}
+	}
+	if !overlapped {
+		t.Fatal("second adjacent chapter queued behind the first chapter of the same book")
+	}
+}
+
 func TestReaderChapterGateWaiterCanCancelWithoutBlockingOtherBooks(t *testing.T) {
 	_, server := setupTestServer(t)
 	firstKey := readerChapterGateKey{userID: 1, bookID: 1}
