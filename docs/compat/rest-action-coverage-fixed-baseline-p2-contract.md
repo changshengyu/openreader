@@ -1034,3 +1034,18 @@ fail closed，而 ID 路径可独立清理。SQLite-first、缺失目录幂等�
 published-platform 门，并发布 `016a346`/`latest` OCI index
 `sha256:50031b016e22c18d6c06634ed4e809be9570bff48f8840dffae3d460b1595881`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 50. WebDAV DELETE 文件系统生命周期（2026-09-14 inventory）
+
+继续扫描持久文件删除动作后，原生 WebDAV `DELETE` 的验证到删除窗口成为下一项差异。固定上游在当前
+用户 WebDAV home 下递归删除文件或目录，缺失 `404`、成功 `200`；OpenReader 还需保留已部署
+`/webdav` 的成功 `204`、caller 私有根和安全适配。
+
+当前 `webdavfs.Service.Remove` 虽逐组件拒绝静态 symlink，却在验证后把绝对路径交给
+`os.RemoveAll`。父目录在窗口内被替换为根外 symlink 时，删除可沿新路径触碰外部同名实体。目标是
+从受信 root handle 逐组件验证，在同一打开父目录内核对目标 identity、原子 detach，再仅相对已打开
+quarantine 句柄删除 regular file 或递归目录；替换、特殊文件和不支持的 rooted 操作 fail closed。
+
+完整矩阵与测试先行门见
+[`webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**。

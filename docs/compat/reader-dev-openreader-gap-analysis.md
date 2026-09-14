@@ -4111,3 +4111,16 @@ username 的 `SafeFilename` 碰撞并保留共享路径，ID 路径不受影响�
 published-platform 门全部通过；已发布 `016a346`/`latest` OCI index
 `sha256:50031b016e22c18d6c06634ed4e809be9570bff48f8840dffae3d460b1595881`。当前状态：
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-09-14 WebDAV DELETE 文件系统生命周期第二轮固定基准复审
+
+原生 WebDAV 协议已签收的路由、认证、状态和 caller scope 不重开。本轮仅复核 `DELETE` 从路径验证到
+物理删除的动作生命周期。固定上游要求在当前用户 WebDAV home 下递归删除文件/目录，缺失 `404`、
+成功 `200`；OpenReader 的 `/webdav` 成功 `204` 仍作为部署兼容层保留。
+
+当前 `Service.Remove` 在 `Resolve`/`Lstat` 后按绝对路径调用 `os.RemoveAll`。若父目录在该窗口内被
+替换为指向 root 外的 symlink，删除可沿新路径触碰外部同名实体。目标是使用受信 root handle 和已打开
+父目录完成逐组件验证、同 identity detach 及 handle-relative 文件/目录递归删除；任何替换和特殊文件
+均 fail closed，wire/data contract 不变。完整矩阵与测试先行门见
+[`webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态 **inventory-complete / implementation-pending**。
