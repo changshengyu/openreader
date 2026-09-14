@@ -151,3 +151,22 @@
 
 本轮不修改 API 路径、响应 schema、后端书源安全预算、SQLite schema、cache 命名、备份格式或三个持久
 目录。30 秒是固定上游正文专用值，不是对所有接口放宽超时。
+
+## 第三次修复与本地验证
+
+- 合同 `1512534`、旧实现红测 `46e4933` 与实现 `c7fbf73` 依次落地。shelf 和 temporary Reader 正文
+  Axios config 现显式使用 30 秒；其它 API 仍保留 12 秒默认值。
+- 同 request key 的底层 fetch 与调用方订阅已分离。旧主 load 被新 generation 取消时只退出旧订阅；同章
+  新 load 可接管仍在执行的请求。最后一个订阅离开后在 microtask 边界确认无人接管才 abort transport；
+  scope clear 仍立即取消全部相关请求。
+- 旧实现测试稳定得到 `12000 != 30000`，且同章接管者复用已取消 Promise 并收到 `AbortError`；修复后
+  shelf/temporary config、同章单 fetch 接管、最后订阅取消和 scope clear 全部通过。
+- frontend **756/756**、Vite production build、Go full/vet、Compose config 通过。可配置延迟的 temporary
+  Reader Chromium 在 1440x900、390x844、360x800 以 13 秒正文响应跨过旧 12 秒边界，三个视口均显示
+  正文且无可见错误、409 或 console error。
+- 可信 GitHub Actions run `34853164985` 已通过 backend/frontend/build/Compose、native、fresh/portable、
+  historical volume 和 published-platform 全部门，并发布 `c7fbf73`/`latest`。amd64/arm64 OCI index 为
+  `sha256:874b0262c48a19c6861f80ca8cfdb157b6c419ebc46e7a7f4dd320358b8897ca`；平台 manifests 分别为
+  `sha256:37fd7eab62adabbed3095a8a16fbf745c1ed8e4d5f364d149f99ab727c356dd8` 和
+  `sha256:22b12499f54b2527c6fffe8d151efe37cad9403a966f1ccb1386449d572c0021`。状态为
+  **implemented / regression-validated / Docker-published / awaiting-device-verification**。

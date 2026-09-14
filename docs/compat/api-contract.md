@@ -1256,6 +1256,19 @@ published `5b79ad3`/`latest` as amd64/arm64 OCI index
 `sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`. Status is **implemented /
 regression-validated / Docker-published / awaiting-device-verification**.
 
+Third device feedback on 2026-09-14 showed that `5b79ad3` still surfaced the generic network fallback. Fixed-upstream
+evidence gives chapter content a dedicated 30-second client timeout, while both OpenReader chapter APIs inherited the
+generic 12-second budget. `0a8a0ef` had also attached the first caller's AbortSignal directly to a deduplicated request,
+so an immediate same-chapter replacement joined a Promise the old caller had already cancelled. Contract `1512534`,
+red tests `46e4933`, and implementation `c7fbf73` now give shelf/temporary chapter GETs 30 seconds and separate the
+shared transport from caller subscriptions. One caller cancellation cannot terminate a request still owned by a new
+subscriber; the last departed subscriber still cancels transport, and scope clear remains immediate. Frontend
+756/756, build, Go full/vet, Compose, and 13-second delayed temporary-Reader Chromium at 1440x900, 390x844 and
+360x800 passed. Trusted Actions run `34853164985` passed all validation/publication gates and published
+`c7fbf73`/`latest` as amd64/arm64 OCI index
+`sha256:874b0262c48a19c6861f80ca8cfdb157b6c419ebc46e7a7f4dd320358b8897ca`. Status is **implemented /
+regression-validated / Docker-published / awaiting-device-verification**.
+
 ### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 `POST /api/books/:id/change-source` keeps its JWT, owner-first lookup, 1 MiB single-object body, selected-source
