@@ -4086,3 +4086,19 @@ frontend 752/752、build 和 Compose 已通过。可信 Actions run `34747604054
 historical volume 与 published-platform 门，并发布 `3e8cec7`/`latest` amd64/arm64 OCI index
 `sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-09-14 管理员删除用户工作区文件系统生命周期第二轮固定基准复审
+
+用户资产 lifecycle 关闭后继续复核持久目录删除动作。固定上游 `UserController.kt#deleteUsers` 只删除
+目标用户的 `storage/data/<username>` namespace；OpenReader 允许把清理扩展到 WebDAV、LocalStore、
+本地归档、上传和封面缓存五类私有目录，但不能把“目标 namespace”放宽为任意词法后代。
+
+当前 `privateUserWorkspacePath` 只做绝对路径前缀检查，随后裸调用 `os.RemoveAll`。隔离文件系统反例已
+证明中间 `users` symlink 会使该调用删除配置根外 sentinel；不同历史用户名经 `SafeFilename` 投影到
+同一目录时，也可能删除仍存用户的数据。目标是以四个配置根的 rooted handle 逐组件拒绝 symlink/
+特殊文件，在已打开父目录内按同一 identity detach 后再递归清理；碰撞 username 目录 fail closed，
+ID 目录仍可独立清理。SQLite-first、缺失目录幂等、path-free `cleanupFailures` 和现有 API/UI 保持。
+
+完整矩阵与测试先行门见
+[`admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+当前状态：**inventory-complete / implementation-pending**。
