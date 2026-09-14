@@ -1,6 +1,6 @@
 # Reader 远程章节并发加载真机反馈合同（P0）
 
-状态：**device-reopened / second-regression-isolated / implementation-pending**。
+状态：**implemented / regression-validated / Docker-pending / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 正常对照镜像：`OpenReader@d0600ab`（2026-08-25）。  
@@ -97,3 +97,15 @@
    gate 必须稳定失败。另保留同章只抓取一次、排队取消、换源/删书/source 编辑等既有门。
 6. 浏览器 12 秒超时与服务端 15 秒安全预算是既存配置，本切片不靠放大客户端超时隐藏排队问题；在
    固定慢请求 fixture 下，相邻章节必须各自只承担自己的网络耗时。
+
+## 第二次修复与验证
+
+- 合同 `981d400`、旧实现红测 `99cfc88` 与实现 `0ecc4d9` 依次落地。远程章节 gate key 从
+  `user/book` 收缩为 `user/book/chapter`；同章普通请求仍只抓取一次并读取已发布 cache，同书相邻章
+  恢复固定上游已有的并行请求行为。
+- 红测通过两个真实 Gin 章节正文 GET 阻塞 transport：旧实现第二章在 250 ms 观察窗内无法开始；修复后
+  两章均在任一响应释放前进入 transport，并各自返回 200 正文。
+- 同章合并、相邻章并行、排队取消、不同书隔离、source 语义变化、fetch 后取消的 focused 与 race
+  通过；章节 API/remote reader 相邻集、engine chapter/source-rule 集、Go 全量与 vet 通过。
+- frontend 754/754、Vite build、Compose config 通过。本切片没有前端或可见布局改动；真实设备仍需用
+  发布后的镜像复验，当前不得标记 device-closed。

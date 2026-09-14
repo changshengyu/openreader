@@ -929,6 +929,13 @@ stale 409，但前端曾将 `chapter content changed; retry` 原样渲染。补�
 `3e8cec7`/`latest` OCI index
 `sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。
 
+2026-09-14 第二次真机反馈否决了后续 `e1631d0` 的整书串行方案。重新对照 `d0600ab..HEAD` 后确认：
+正文 `@put` 位于 Chapter variable scope，相邻章无需共享提交目标；`e1631d0` 的 `user/book` gate 反而
+使后续章节排队，而浏览器 12 秒超时短于单次书源 15 秒预算。合同 `981d400`、旧实现 Gin 并发红测
+`99cfc88` 与实现 `0ecc4d9` 已把 gate 收缩为 `user/book/chapter`，保留同章合并、staged CAS、取消和
+换源保护，同时恢复相邻章并行。当前状态 **implemented / regression-validated / Docker-pending /
+awaiting-device-verification**。
+
 ## 46. Reader 换源写入生命周期（2026-09-09 implemented）
 
 章节正文生命周期实施后，继续从当前持久 `Save` 和远程工作后的 transaction 做差集。固定上游

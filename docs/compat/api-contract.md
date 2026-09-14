@@ -1244,6 +1244,16 @@ retry per Book cache scope. Abort/scope retirement cancels queued retries; repea
 index `sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
 
+Second device feedback on 2026-09-14 rejected the later `e1631d0` whole-book serialization workaround. The historical
+`d0600ab..HEAD` comparison showed that content `@put` executes in Chapter-variable scope, while the `user/book` gate
+made unrelated adjacent chapters wait behind one another. Because the browser request timeout is 12 seconds and one
+server-side source request may use 15 seconds, that queue can surface as a false network failure. Contract `981d400`,
+old-implementation Gin concurrency test `99cfc88`, and implementation `0ecc4d9` now scope the gate to
+`user/book/chapter`: duplicate requests for one chapter still share the published cache, adjacent chapters run in
+parallel, and all snapshot/CAS/cancellation/source-change protections remain. Local full/vet/race, frontend 754/754,
+build, and Compose passed. Status is **implemented / regression-validated / Docker-pending /
+awaiting-device-verification**.
+
 ### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 `POST /api/books/:id/change-source` keeps its JWT, owner-first lookup, 1 MiB single-object body, selected-source
