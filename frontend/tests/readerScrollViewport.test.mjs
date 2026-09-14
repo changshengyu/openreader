@@ -6,13 +6,15 @@ import {
   shouldUseDocumentReaderScroll,
 } from '../src/utils/readerScrollViewport.js'
 
-test('uses the upstream document scroll host only for mobile vertical text modes', () => {
+test('uses the upstream document scroll host for desktop and mobile vertical text modes', () => {
   for (const mode of ['page', 'scroll', 'scroll2']) {
     assert.equal(shouldUseDocumentReaderScroll({ mobile: true, mode, format: 'text' }), true)
+    assert.equal(shouldUseDocumentReaderScroll({ mobile: false, mode, format: 'text' }), true)
   }
-  assert.equal(shouldUseDocumentReaderScroll({ mobile: false, mode: 'page', format: 'text' }), false)
   assert.equal(shouldUseDocumentReaderScroll({ mobile: true, mode: 'flip', format: 'text' }), false)
+  assert.equal(shouldUseDocumentReaderScroll({ mobile: false, mode: 'flip', format: 'text' }), false)
   assert.equal(shouldUseDocumentReaderScroll({ mobile: true, mode: 'page', format: 'epub' }), false)
+  assert.equal(shouldUseDocumentReaderScroll({ mobile: false, mode: 'page', format: 'epub' }), false)
   assert.equal(shouldUseDocumentReaderScroll({ mobile: true, mode: 'page', format: 'audio' }), false)
   assert.equal(shouldUseDocumentReaderScroll({ mobile: true, mode: 'page', format: 'text', comic: true }), false)
 })
