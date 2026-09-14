@@ -114,3 +114,40 @@
   `sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`；平台 manifests 分别为
   `sha256:4b4864634b595afa13df18562c692ec3712c050e5453b29c29189a941fa42f81` 和
   `sha256:e8dd34ad3a0302516742f10a2ede082ac892a88f35eb05122931971529ac218a`。
+
+## 2026-09-14 第三次真机反馈：正文请求预算与同章请求所有权
+
+用户在 `5b79ad3` 发布后再次确认章节仍会显示“章节加载失败，请检查书源或网络后重试”。因此
+`0ecc4d9` 只关闭了整书 gate 的队头阻塞，不能作为真机问题已解决的证据。本轮继续逐项比较
+`d0600ab..HEAD` 后确认两个尚未覆盖的请求边界：
+
+1. 固定上游 `web/src/App.vue#getBookContent` 对章节正文显式设置 `timeout: 30000`，其 Axios 全局默认
+   是 5 分钟。OpenReader 的 shelf/temporary Reader 正文 GET 没有专用预算，继承通用 API 的 12 秒。
+   后端单次书源请求预算本身是 15 秒，正文还可能先解析 `contentUrl` 或继续正文分页；合法慢响应会在
+   后端预算到期前先被浏览器中止，并被当前 `readError` 投影成笼统网络提示。这是明确的上游合同差异。
+2. `0a8a0ef` 开始把主章节的 `AbortSignal` 直接绑定到共享内容请求的唯一内部 controller。第二个同 scope、
+   同 chapter 的主 load 会先 abort 前一个主 load，然后命中 `inFlight` 并复用已经被 abort 的 Promise；
+   新 load 不能接管仍可复用的网络工作。目录路由、跨端进度协调或重复导航均可形成该重入。
+3. `a131aa9` 让本地书 cache rebuild 正确服从 request context。它消除了断开后继续写 cache 的陈旧提交，
+   但与过短的 12 秒客户端预算组合后，大型本地书首次重建会在每次请求中止时回滚，无法像旧实现那样
+   在浏览器断开后偶然完成并供下一次请求命中。不能通过恢复 contextless 后台写来解决，应修正调用方预算。
+4. `0a8a0ef` 的后端 snapshot/CAS、`a131aa9` 的本地重建事务以及 `0ecc4d9` 的同章 gate 都是正确的数据
+   生命周期保护，必须保留；本轮不得退回断开后继续写文件/数据库的旧行为。
+
+修订合同如下：
+
+1. shelf Reader 与 temporary Reader 的章节正文请求显式使用固定上游的 30 秒预算；普通 API 的 12 秒
+   默认值不变。AbortSignal 仍可在切书、换源、换章、清缓存、会话失效和卸载时提前取消请求。
+2. 同 cache scope、chapter index 和 refresh mode 的底层请求只创建一次。每个调用方拥有独立订阅；一个
+   调用方取消只结束自身等待，不能取消仍有其它调用方接管/等待的共享请求。
+3. 当最后一个订阅取消且当前事件循环没有新的同章订阅接管时，才取消底层 HTTP。scope clear 必须立即
+   取消该 scope 的全部底层请求，不等待订阅计数归零。
+4. 同章重入的新主 load 必须能取得共享请求结果并成为唯一可见 generation；旧 generation 仍静默退出，
+   不写正文、error、位置或进度。不同章节继续并行，refresh 与 normal 继续使用不同 request key。
+5. 测试先证明旧实现的正文 Axios config 没有 30 秒预算，并证明“主 load A 开始 -> 同章主 load B 取消 A
+   -> B 复用已取消 Promise”无法成功；实现后断言一个底层请求、A 返回 false、B 返回 true 且显示正文。
+6. 真实浏览器以超过 12 秒、低于 30 秒的可控章节响应验证 shelf/temporary Reader 不再提前显示网络错误；
+   另以同章快速重入验证请求未重复、最终正文正确、无 409/console error。移动与桌面结果必须一致。
+
+本轮不修改 API 路径、响应 schema、后端书源安全预算、SQLite schema、cache 命名、备份格式或三个持久
+目录。30 秒是固定上游正文专用值，不是对所有接口放宽超时。
