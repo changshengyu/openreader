@@ -1251,8 +1251,10 @@ server-side source request may use 15 seconds, that queue can surface as a false
 old-implementation Gin concurrency test `99cfc88`, and implementation `0ecc4d9` now scope the gate to
 `user/book/chapter`: duplicate requests for one chapter still share the published cache, adjacent chapters run in
 parallel, and all snapshot/CAS/cancellation/source-change protections remain. Local full/vet/race, frontend 754/754,
-build, and Compose passed. Status is **implemented / regression-validated / Docker-pending /
-awaiting-device-verification**.
+build, and Compose passed. Trusted Actions run `34816091195` passed every validation and publication gate and
+published `5b79ad3`/`latest` as amd64/arm64 OCI index
+`sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`. Status is **implemented /
+regression-validated / Docker-published / awaiting-device-verification**.
 
 ### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 

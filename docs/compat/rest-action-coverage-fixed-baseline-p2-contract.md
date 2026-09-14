@@ -933,8 +933,10 @@ stale 409，但前端曾将 `chapter content changed; retry` 原样渲染。补�
 正文 `@put` 位于 Chapter variable scope，相邻章无需共享提交目标；`e1631d0` 的 `user/book` gate 反而
 使后续章节排队，而浏览器 12 秒超时短于单次书源 15 秒预算。合同 `981d400`、旧实现 Gin 并发红测
 `99cfc88` 与实现 `0ecc4d9` 已把 gate 收缩为 `user/book/chapter`，保留同章合并、staged CAS、取消和
-换源保护，同时恢复相邻章并行。当前状态 **implemented / regression-validated / Docker-pending /
-awaiting-device-verification**。
+换源保护，同时恢复相邻章并行。可信 Actions run `34816091195` 通过全部校验与发布门并发布
+`5b79ad3`/`latest` OCI index
+`sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`。当前状态 **implemented /
+regression-validated / Docker-published / awaiting-device-verification**。
 
 ## 46. Reader 换源写入生命周期（2026-09-09 implemented）
 

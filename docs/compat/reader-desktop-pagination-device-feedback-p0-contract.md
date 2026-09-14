@@ -1,6 +1,6 @@
 # Reader desktop pagination device feedback P0 contract
 
-Status: implemented / regression-validated / Docker-pending / device-verification-pending
+Status: implemented / regression-validated / Docker-published / device-verification-pending
 
 Fixed upstream baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -52,3 +52,6 @@ Desktop text reading still differs from reader-dev when paging by click and movi
 - Frontend full test suite passes 754/754; Vite production build, Go full tests, and `git diff --check` pass.
 - Real Chromium `reader-text-modes-contract` passes at 1440x900 and 1024x1366 for the desktop root host, fixed frame geometry, 30/40/30 clicks, exact page step, native wheel motion, and no wheel boundary transition. Its 390x844 and 360x800 page/flip/timing coverage also passes.
 - Continuous `scroll`/`scroll2` passes at 1440x900, 1024x1366, 390x844, and 360x800. Mobile/iPad, settings-position, inline-cache, and deep-page performance contracts pass; the deep 2401-block fixture remains at 17 geometry reads with no visual Long Task.
+- Trusted GitHub Actions run `34816091195` passed backend/frontend/Compose, native, fresh/portable, historical-volume,
+  and published-platform gates. It published `5b79ad3`/`latest` as the amd64/arm64 OCI index
+  `sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`; device verification remains open.

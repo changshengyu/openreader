@@ -1,6 +1,6 @@
 # Reader 远程章节并发加载真机反馈合同（P0）
 
-状态：**implemented / regression-validated / Docker-pending / awaiting-device-verification**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。  
 正常对照镜像：`OpenReader@d0600ab`（2026-08-25）。  
@@ -109,3 +109,8 @@
   通过；章节 API/remote reader 相邻集、engine chapter/source-rule 集、Go 全量与 vet 通过。
 - frontend 754/754、Vite build、Compose config 通过。本切片没有前端或可见布局改动；真实设备仍需用
   发布后的镜像复验，当前不得标记 device-closed。
+- 可信 GitHub Actions run `34816091195` 通过 backend/frontend/Compose、native、fresh/portable、
+  historical volume 和 published-platform 门，并发布 `5b79ad3`/`latest`。amd64/arm64 OCI index 为
+  `sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`；平台 manifests 分别为
+  `sha256:4b4864634b595afa13df18562c692ec3712c050e5453b29c29189a941fa42f81` 和
+  `sha256:e8dd34ad3a0302516742f10a2ede082ac892a88f35eb05122931971529ac218a`。
