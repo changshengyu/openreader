@@ -114,30 +114,23 @@ func TestReaderAdjacentChapterLoadsDoNotQueueBehindSameBook(t *testing.T) {
 	})})
 	t.Cleanup(restoreHTTPClient)
 
-	type loadResult struct {
-		content string
-		err     error
-	}
-	results := make(chan loadResult, 2)
-	load := func(chapter models.Chapter) {
-		book := fixture.book
-		content, err := fixture.server.loadChapterTextContextResultWithPolicy(
+	results := make(chan *httptest.ResponseRecorder, 2)
+	load := func(index int) {
+		results <- performReaderChapterContentLifecycleRequestAtIndex(
+			fixture,
 			context.Background(),
-			&book,
-			&chapter,
-			chapterTextLoadPolicy{},
+			index,
 		)
-		results <- loadResult{content: content, err: err}
 	}
 
-	go load(fixture.chapter)
+	go load(fixture.chapter.Index)
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
 		close(release)
 		t.Fatal("first adjacent chapter did not start its remote request")
 	}
-	go load(secondChapter)
+	go load(secondChapter.Index)
 
 	overlapped := false
 	select {
@@ -149,9 +142,9 @@ func TestReaderAdjacentChapterLoadsDoNotQueueBehindSameBook(t *testing.T) {
 
 	for range 2 {
 		select {
-		case result := <-results:
-			if result.err != nil || !strings.Contains(result.content, "/chapter/") {
-				t.Errorf("adjacent chapter load = %q, %v", result.content, result.err)
+		case response := <-results:
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "/chapter/") {
+				t.Errorf("adjacent chapter response = %d %s", response.Code, response.Body.String())
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("adjacent chapter load did not finish")
@@ -164,7 +157,7 @@ func TestReaderAdjacentChapterLoadsDoNotQueueBehindSameBook(t *testing.T) {
 
 func TestReaderChapterGateWaiterCanCancelWithoutBlockingOtherBooks(t *testing.T) {
 	_, server := setupTestServer(t)
-	firstKey := readerChapterGateKey{userID: 1, bookID: 1}
+	firstKey := readerChapterGateKey{userID: 1, bookID: 1, chapterID: 1}
 	releaseFirst, err := server.acquireReaderChapterGate(context.Background(), firstKey)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +169,7 @@ func TestReaderChapterGateWaiterCanCancelWithoutBlockingOtherBooks(t *testing.T)
 		t.Fatalf("cancelled gate wait error = %v, want context.Canceled", err)
 	}
 
-	releaseOther, err := server.acquireReaderChapterGate(context.Background(), readerChapterGateKey{userID: 1, bookID: 2})
+	releaseOther, err := server.acquireReaderChapterGate(context.Background(), readerChapterGateKey{userID: 1, bookID: 2, chapterID: 1})
 	if err != nil {
 		t.Fatalf("different book gate was blocked: %v", err)
 	}
@@ -467,9 +460,17 @@ func performReaderChapterContentLifecycleRequest(
 	fixture readerChapterContentLifecycleFixture,
 	ctx context.Context,
 ) *httptest.ResponseRecorder {
+	return performReaderChapterContentLifecycleRequestAtIndex(fixture, ctx, fixture.chapter.Index)
+}
+
+func performReaderChapterContentLifecycleRequestAtIndex(
+	fixture readerChapterContentLifecycleFixture,
+	ctx context.Context,
+	index int,
+) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/api/books/"+strconv.FormatUint(uint64(fixture.book.ID), 10)+"/chapters/0/content",
+		"/api/books/"+strconv.FormatUint(uint64(fixture.book.ID), 10)+"/chapters/"+strconv.Itoa(index)+"/content",
 		nil,
 	).WithContext(ctx)
 	request.Header.Set("Authorization", fixture.auth)

@@ -3069,8 +3069,9 @@ type readerChapterContentSnapshot struct {
 }
 
 type readerChapterGateKey struct {
-	userID uint
-	bookID uint
+	userID    uint
+	bookID    uint
+	chapterID uint
 }
 
 type readerChapterGate struct {
@@ -3125,7 +3126,11 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 	}
 
 	if content == "" && chapter.URL != "" && book.SourceID > 0 {
-		release, err := s.acquireReaderChapterGate(ctx, readerChapterGateKey{userID: book.UserID, bookID: book.ID})
+		release, err := s.acquireReaderChapterGate(ctx, readerChapterGateKey{
+			userID:    book.UserID,
+			bookID:    book.ID,
+			chapterID: chapter.ID,
+		})
 		if err != nil {
 			return "", err
 		}
