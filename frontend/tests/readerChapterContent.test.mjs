@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ref } from 'vue'
+import api from '../src/api/client.js'
+import { getChapterContent } from '../src/api/books.js'
+import { getRemoteReaderChapterContent } from '../src/api/remoteReader.js'
 import { useReaderChapterContent } from '../src/composables/useReaderChapterContent.js'
 
 function validContent(index) {
@@ -113,6 +116,74 @@ test('deduplicates concurrent loads for the same book and chapter', async () => 
   resolveLoad(validContent(2))
   assert.deepEqual(await first, validContent(2))
   assert.deepEqual(await second, validContent(2))
+})
+
+test('uses the upstream 30 second budget for shelf and temporary chapter content', async () => {
+  const originalAdapter = api.defaults.adapter
+  const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const requests = []
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { getItem: () => null },
+  })
+  api.defaults.adapter = async config => {
+    requests.push(config)
+    return {
+      data: validContent(0),
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+      request: {},
+    }
+  }
+  try {
+    await getChapterContent(7, 0)
+    await getRemoteReaderChapterContent('session-7', 0)
+  } finally {
+    api.defaults.adapter = originalAdapter
+    if (originalLocalStorage) {
+      Object.defineProperty(globalThis, 'localStorage', originalLocalStorage)
+    } else {
+      delete globalThis.localStorage
+    }
+  }
+
+  assert.equal(requests.length, 2)
+  assert.equal(requests[0].timeout, 30_000)
+  assert.equal(requests[1].timeout, 30_000)
+})
+
+test('keeps a shared same-chapter request alive when a new caller replaces an aborted caller', async () => {
+  let requestCount = 0
+  let resolveLoad
+  const fixture = createController({
+    loadBrowserContent: (_book, _bookId, index, options) => {
+      requestCount += 1
+      return new Promise((resolve, reject) => {
+        resolveLoad = () => resolve(validContent(index))
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('chapter request cancelled')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    },
+  })
+  const firstController = new AbortController()
+  const secondController = new AbortController()
+  const first = fixture.controller.load(2, { signal: firstController.signal })
+    .catch(error => error)
+
+  firstController.abort()
+  const second = fixture.controller.load(2, { signal: secondController.signal })
+  resolveLoad()
+
+  const firstResult = await first
+  assert.equal(firstResult.name, 'AbortError')
+  assert.deepEqual(await second, validContent(2))
+  assert.equal(requestCount, 1)
+  assert.deepEqual(fixture.controller.get(2), validContent(2))
 })
 
 test('clearing a book aborts its in-flight chapter request', async () => {
