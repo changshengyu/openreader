@@ -1,6 +1,6 @@
 # 管理员删除用户工作区文件系统生命周期第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -93,3 +93,25 @@ SQLite、多用户 WebDAV、LocalStore、本地归档、上传和封面缓存而
 root-confined recursive removal。不能用 `EvalSymlinks` 后的目标作为新信任根，也不能在失败时回退
 `os.RemoveAll(absolutePath)`。现有 cover-image service 自己的 rooted cleanup 继续保留；不得因工作区
 清理而削弱其缓存锁、capability 或统计合同。
+
+## 6. 实施、回归与发布结果（2026-09-14）
+
+- 合同先以 `386f555` 独立提交。旧实现红测 `0f61853` 随后通过两个真实 Gin 管理 API，稳定证明
+  WebDAV、LocalStore、本地归档、uploads 与 cover cache 的祖先 symlink 会删除根外 sentinel；另一个
+  用例证明两个历史 username 的 `SafeFilename` 碰撞会删除存活用户的共享目录。
+- 实现 `016a346` 新增 Go 1.24 兼容的 `services/rootedfs`：从当前配置根打开 `os.Root`，逐组件验证，
+  在已打开父目录句柄内用 `renameat` 把同一 inode 移入随机 quarantine，再用 `openat/unlinkat` 递归
+  清理。最终/祖先 symlink、非目录、identity 替换均 fail closed，内部 symlink 只移除链接本身。
+- 用户删除计划在 SQLite transaction 内查询未删除账号的完整 username 投影；碰撞的三个 username
+  路径保留并计清理失败，目标账号独有的 uploads/cover ID 路径仍可清理。数据库先提交、缺失路径
+  幂等和 path-free `cleanupFailures` 保持不变。
+- focused service/API、focused race、`go test ./...`（API 73.563 秒）、`go vet ./...`、frontend
+  `754/754`、Vite production build、Compose 和 `git diff --check` 全部通过。本切片无 UI 几何变化，
+  因此没有重复截图。
+- 可信 GitHub Actions run `34825873958` 通过 backend/frontend/build/Compose、native image、fresh/
+  portable、historical volume 和 published-platform 门，发布
+  `ghcr.io/changshengyu/openreader:016a346` 与 `:latest`。amd64/arm64 OCI index 为
+  `sha256:50031b016e22c18d6c06634ed4e809be9570bff48f8840dffae3d460b1595881`；amd64 manifest 为
+  `sha256:6c68839b7906baad032e5c11edb1f4d50d27786fe796c2a11126857905bec767`，arm64 manifest 为
+  `sha256:a2dc36bfdcdf5f6fe98c8199c3fecaa93fd181b777bae2de7393e7b1c14ae20c`。其余
+  `unknown/unknown` 条目是 build provenance attestation。

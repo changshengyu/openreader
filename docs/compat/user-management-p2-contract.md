@@ -109,3 +109,8 @@ user/default 书源所有权已经实施；书源所有权的最终合同见
 
 用户管理本轮标记为 `aligned / Docker-published`。备份/WebDAV 文件操作与 RSS 的独立
 专项合同仍然成立，不能借本模块发布宣称全项目复审完成。
+
+2026-09-14 文件系统 follow-up：批量删除与兼容 cleanup-inactive 的 post-commit 工作区清理已按
+[`admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)
+补足 rooted parent、identity detach、根外 symlink 和旧用户名投影碰撞边界。合同 `386f555`、红测
+`0f61853`、实现 `016a346` 及可信 Actions run `34825873958` 均已完成；SQLite-first 和现有响应保持。

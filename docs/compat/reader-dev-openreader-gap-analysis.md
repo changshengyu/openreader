@@ -4101,4 +4101,13 @@ ID 目录仍可独立清理。SQLite-first、缺失目录幂等、path-free `cle
 
 完整矩阵与测试先行门见
 [`admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态：**inventory-complete / implementation-pending**。
+取证提交时状态为 **inventory-complete / implementation-pending**。
+
+合同 `386f555`、旧实现红测 `0f61853` 和实现 `016a346` 已按顺序关闭该差异。实现以 Go 1.24
+`os.Root` 打开受信根，并在已打开父目录内用 `renameat/openat/unlinkat` 完成 identity detach 与递归
+删除；根/祖先/目标/内部 symlink、特殊文件和校验后替换均 fail closed。删除计划在事务内识别仍存
+username 的 `SafeFilename` 碰撞并保留共享路径，ID 路径不受影响。focused/race/full/vet、frontend
+754/754、build、Compose 及可信 Actions run `34825873958` 的 native、fresh/portable、historical volume、
+published-platform 门全部通过；已发布 `016a346`/`latest` OCI index
+`sha256:50031b016e22c18d6c06634ed4e809be9570bff48f8840dffae3d460b1595881`。当前状态：
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

@@ -1012,7 +1012,7 @@ portable、historical volume 与 published-platform 门，并发布 `3e8cec7`/`l
 `sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 49. 管理员删除用户工作区文件系统生命周期（2026-09-14 inventory）
+## 49. 管理员删除用户工作区文件系统生命周期（2026-09-14 implemented）
 
 用户资产 lifecycle 关闭后继续复核持久目录删除动作。固定上游 `UserController.kt#deleteUsers` 删除目标
 用户的单一 `storage/data/<username>` namespace；OpenReader 因多用户数据布局扩展为 WebDAV、LocalStore、
@@ -1027,4 +1027,10 @@ symlink/特殊文件，在打开父目录内验证 identity、原子 detach 后�
 fail closed，而 ID 路径可独立清理。SQLite-first、缺失目录幂等、path-free `cleanupFailures` 和现有 API/UI
 保持。完整合同与红测门见
 [`admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](admin-user-workspace-cleanup-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**。
+合同 `386f555`、旧实现红测 `0f61853` 与实现 `016a346` 已按顺序落地。Go 1.24 rooted handle 配合
+`renameat/openat/unlinkat` 完成 current-identity detach 和 root-confined recursive removal；历史 username
+投影碰撞只保留共享路径，ID 路径继续清理。focused/race/full/vet、frontend 754/754、build 与 Compose
+通过。可信 Actions run `34825873958` 又通过 native、fresh/portable、historical volume 和
+published-platform 门，并发布 `016a346`/`latest` OCI index
+`sha256:50031b016e22c18d6c06634ed4e809be9570bff48f8840dffae3d460b1595881`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。
