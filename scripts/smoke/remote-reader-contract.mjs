@@ -3,6 +3,7 @@
 import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4173'
+const chapterDelayMs = Math.max(0, Number(process.env.CHAPTER_DELAY_MS) || 0)
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -126,6 +127,7 @@ async function installApiMocks(page) {
       }))
     }
     if (path === '/reader/remote-sessions/smoke-temporary-session/chapters/0/content') {
+      if (chapterDelayMs) await new Promise(resolve => setTimeout(resolve, chapterDelayMs))
       return route.fulfill(json({
         chapter: { id: 0, index: 0, title: '第一章' },
         content: '临时阅读正文验证内容。\n这段内容只能存在于远程会话，不能创建书架、进度或书签记录。',
@@ -179,7 +181,10 @@ async function runViewport(browser, viewport) {
   await page.locator('.result-shelf-page .remote-result-book .list-main').click()
   await page.waitForURL(/\/reader\/remote\/smoke-temporary-session\?chapter=0/, { timeout: 10000 })
   await page.waitForSelector('.reader-body', { timeout: 10000 })
-  await page.getByText('临时阅读正文验证内容。', { exact: false }).waitFor({ state: 'visible', timeout: 10000 })
+  await page.getByText('临时阅读正文验证内容。', { exact: false }).waitFor({
+    state: 'visible',
+    timeout: Math.max(10_000, chapterDelayMs + 5_000),
+  })
   assert(await page.evaluate(() => window.__remoteReaderSessionCreates()) === 1, `${viewport.width}: result body must create exactly one temporary reader session`)
 
   const temporaryReaderURL = await page.url()
@@ -234,7 +239,7 @@ async function run() {
     checks.push(await runViewport(browser, { width: 1440, height: 900 }))
     checks.push(await runViewport(browser, { width: 390, height: 844 }))
     checks.push(await runViewport(browser, { width: 360, height: 800 }))
-    console.log(`remote-reader: ok ${checks.join(', ')} coverInfo=true temporaryReaderInfo=true canonicalAdd=true noImplicitWrites=true`)
+    console.log(`remote-reader: ok ${checks.join(', ')} chapterDelayMs=${chapterDelayMs} coverInfo=true temporaryReaderInfo=true canonicalAdd=true noImplicitWrites=true`)
   } finally {
     await browser.close()
   }

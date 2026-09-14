@@ -221,6 +221,7 @@ export function listChapters(id) {
 export function getChapterContent(id, index, options = {}) {
   return api.get(`/books/${id}/chapters/${index}/content`, {
     signal: options.signal,
+    timeout: 30_000,
   })
 }
 

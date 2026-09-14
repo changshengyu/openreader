@@ -186,6 +186,32 @@ test('keeps a shared same-chapter request alive when a new caller replaces an ab
   assert.deepEqual(fixture.controller.get(2), validContent(2))
 })
 
+test('aborts the underlying request after its final caller leaves without replacement', async () => {
+  let internalSignal
+  const fixture = createController({
+    loadBrowserContent: (_book, _bookId, _index, options) => {
+      internalSignal = options.signal
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('chapter request cancelled')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    },
+  })
+  const caller = new AbortController()
+  const pending = fixture.controller.load(2, { signal: caller.signal }).catch(error => error)
+
+  caller.abort()
+  const result = await pending
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(result.name, 'AbortError')
+  assert.equal(internalSignal.aborted, true)
+  assert.equal(fixture.controller.get(2), null)
+})
+
 test('clearing a book aborts its in-flight chapter request', async () => {
   let capturedOptions
   let resolveLoad

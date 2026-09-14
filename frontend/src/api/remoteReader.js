@@ -11,5 +11,6 @@ export function getRemoteReaderSession(id) {
 export function getRemoteReaderChapterContent(id, index, options = {}) {
   return api.get(`/reader/remote-sessions/${encodeURIComponent(id)}/chapters/${index}/content`, {
     signal: options.signal,
+    timeout: 30_000,
   })
 }

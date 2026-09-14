@@ -51,13 +51,17 @@ export function useReaderChapterContent(options) {
       Number(index),
       loadOptions.refresh ? 'refresh' : 'normal',
     ].join(':')
-    if (inFlight.has(requestKey)) return inFlight.get(requestKey).promise
+    let entry = inFlight.get(requestKey)
+    if (entry) return subscribeToChapterRequest(entry, loadOptions.signal)
 
-    const controller = new AbortController()
-    const externalSignal = loadOptions.signal
-    const abortFromExternal = () => controller.abort(externalSignal.reason)
-    if (externalSignal?.aborted) abortFromExternal()
-    else externalSignal?.addEventListener('abort', abortFromExternal, { once: true })
+    entry = {
+      abortQueued: false,
+      cacheKey: targetCacheKey,
+      consumers: 0,
+      controller: new AbortController(),
+      promise: null,
+      settled: false,
+    }
     const request = (async () => {
       let data
       try {
@@ -67,36 +71,36 @@ export function useReaderChapterContent(options) {
           index,
           {
             refresh: Boolean(loadOptions.refresh),
-            signal: controller.signal,
+            signal: entry.controller.signal,
           },
         )
       } catch (error) {
-        if (controller.signal.aborted) throw chapterAbortError(controller.signal)
+        if (entry.controller.signal.aborted) throw chapterAbortError(entry.controller.signal)
         if (!isStaleChapterConflict(error)) throw error
         try {
           data = await enqueueStaleRetry(
             staleRetryTails,
             targetCacheKey,
-            controller.signal,
+            entry.controller.signal,
             () => loadBrowserContent(
               targetBook,
               targetBookId,
               index,
               {
                 refresh: false,
-                signal: controller.signal,
+                signal: entry.controller.signal,
               },
             ),
           )
         } catch (retryError) {
-          if (controller.signal.aborted) throw chapterAbortError(controller.signal)
+          if (entry.controller.signal.aborted) throw chapterAbortError(entry.controller.signal)
           if (isStaleChapterConflict(retryError)) {
             throw chapterStaleRetryError(retryError)
           }
           throw retryError
         }
       }
-      if (controller.signal.aborted) throw chapterAbortError(controller.signal)
+      if (entry.controller.signal.aborted) throw chapterAbortError(entry.controller.signal)
       const isCurrentBook = Number(unref(options.bookId)) === Number(targetBookId)
         && cacheKey() === targetCacheKey
       if (
@@ -110,14 +114,12 @@ export function useReaderChapterContent(options) {
       }
       return data
     })()
-    const entry = { cacheKey: targetCacheKey, controller, promise: request }
-    inFlight.set(requestKey, entry)
-    try {
-      return await request
-    } finally {
-      externalSignal?.removeEventListener('abort', abortFromExternal)
+    entry.promise = request.finally(() => {
+      entry.settled = true
       if (inFlight.get(requestKey) === entry) inFlight.delete(requestKey)
-    }
+    })
+    inFlight.set(requestKey, entry)
+    return subscribeToChapterRequest(entry, loadOptions.signal)
   }
 
   function preload(index) {
@@ -150,6 +152,38 @@ function chapterAbortError(signal) {
   const error = new Error('chapter request cancelled')
   error.name = 'AbortError'
   return error
+}
+
+function subscribeToChapterRequest(entry, signal) {
+  if (signal?.aborted) return Promise.reject(chapterAbortError(signal))
+  entry.consumers += 1
+
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (callback, value) => {
+      if (settled) return
+      settled = true
+      signal?.removeEventListener('abort', abortSubscriber)
+      releaseChapterRequestSubscriber(entry)
+      callback(value)
+    }
+    const abortSubscriber = () => finish(reject, chapterAbortError(signal))
+    signal?.addEventListener('abort', abortSubscriber, { once: true })
+    entry.promise.then(
+      value => finish(resolve, value),
+      error => finish(reject, error),
+    )
+  })
+}
+
+function releaseChapterRequestSubscriber(entry) {
+  entry.consumers = Math.max(0, entry.consumers - 1)
+  if (entry.settled || entry.consumers !== 0 || entry.abortQueued) return
+  entry.abortQueued = true
+  queueMicrotask(() => {
+    entry.abortQueued = false
+    if (!entry.settled && entry.consumers === 0) entry.controller.abort()
+  })
 }
 
 async function enqueueStaleRetry(retryTails, scopeKey, signal, retry) {
