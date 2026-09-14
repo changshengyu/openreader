@@ -24,6 +24,10 @@ var (
 
 const maxImportPathBytes = 4096
 
+// Tests use this hook to replace a target ancestor after lexical validation.
+// Package tests are not parallel while the hook is installed.
+var beforeRemoveTestHook func(root, relative string)
+
 type Service struct {
 	boundary string
 	root     string
@@ -301,6 +305,9 @@ func (s *Service) Remove(rawPath string) error {
 	}
 	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
 		return ErrUnsafePath
+	}
+	if beforeRemoveTestHook != nil {
+		beforeRemoveTestHook(s.root, relative)
 	}
 	return os.RemoveAll(target)
 }

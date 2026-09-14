@@ -156,6 +156,75 @@ func TestRemoveRegularDeletesOnlyVerifiedRegularFiles(t *testing.T) {
 	}
 }
 
+func TestRemoveRejectsAncestorReplacementAfterValidation(t *testing.T) {
+	for _, fixture := range []struct {
+		name  string
+		setup func(t *testing.T, path string)
+	}{
+		{
+			name: "directory",
+			setup: func(t *testing.T, path string) {
+				t.Helper()
+				if err := os.MkdirAll(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(path, "sentinel"), []byte("outside"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "regular-file",
+			setup: func(t *testing.T, path string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("outside"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			service := newTestService(t)
+			parent := filepath.Join(service.Root(), "collection")
+			target := filepath.Join(parent, "target")
+			fixture.setup(t, target)
+
+			outside := t.TempDir()
+			outsideTarget := filepath.Join(outside, "target")
+			fixture.setup(t, outsideTarget)
+			originalParent := filepath.Join(service.Root(), "original-collection")
+			beforeRemoveTestHook = func(_, relative string) {
+				if relative != "collection/target" {
+					t.Fatalf("remove hook relative=%q", relative)
+				}
+				if err := os.Rename(parent, originalParent); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, parent); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Cleanup(func() { beforeRemoveTestHook = nil })
+
+			if err := service.Remove("collection/target"); !errors.Is(err, ErrUnsafePath) {
+				t.Fatalf("replaced ancestor error=%v, want ErrUnsafePath", err)
+			}
+			if _, err := os.Lstat(outsideTarget); err != nil {
+				t.Fatalf("remove touched external target: %v", err)
+			}
+			if _, err := os.Lstat(filepath.Join(originalParent, "target")); err != nil {
+				t.Fatalf("remove touched validated target: %v", err)
+			}
+			if info, err := os.Lstat(parent); err != nil || info.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("remove changed replacement link: info=%v err=%v", info, err)
+			}
+		})
+	}
+}
+
 func TestMkdirReportsAFileParentAsNotDirectory(t *testing.T) {
 	service := newTestService(t)
 	if err := os.WriteFile(filepath.Join(service.Root(), "parent"), []byte("file"), 0o644); err != nil {
