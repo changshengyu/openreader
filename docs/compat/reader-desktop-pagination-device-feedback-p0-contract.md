@@ -1,6 +1,6 @@
 # Reader desktop pagination device feedback P0 contract
 
-Status: inventory-complete / implementation-pending
+Status: implemented / regression-validated / Docker-pending / device-verification-pending
 
 Fixed upstream baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`
 
@@ -42,3 +42,13 @@ Desktop text reading still differs from reader-dev when paging by click and movi
 - Preserve the user-requested running chapter header and numeric setting steppers.
 - Do not change persisted mode names, progress payloads, chapter indexes, API behavior, or local-book data.
 - Do not claim device closure until the published image is verified by the reporting user.
+
+## Implementation and validation
+
+- Desktop ordinary text in `page`, `scroll`, and `scroll2` now uses the same document-root viewport adapter as mobile ordinary text. The desktop reading frame remains 802px outside / 670px text width at the default 800px setting.
+- The running chapter header, brightness overlay, and transparent click layer remain fixed to the visible desktop reading frame while the document root moves beneath them.
+- Desktop click regions are now exact 30% previous / 40% center / 30% next bands on the active axis. The center remains non-paging on the desktop workspace; the upper and lower bands keep discrete cubic paging.
+- Vertical wheel and high-resolution trackpad deltas cancel a conflicting discrete animation but are otherwise untouched. They no longer call `preventDefault` or synthesize a chapter transition at either boundary.
+- Frontend full test suite passes 754/754; Vite production build, Go full tests, and `git diff --check` pass.
+- Real Chromium `reader-text-modes-contract` passes at 1440x900 and 1024x1366 for the desktop root host, fixed frame geometry, 30/40/30 clicks, exact page step, native wheel motion, and no wheel boundary transition. Its 390x844 and 360x800 page/flip/timing coverage also passes.
+- Continuous `scroll`/`scroll2` passes at 1440x900, 1024x1366, 390x844, and 360x800. Mobile/iPad, settings-position, inline-cache, and deep-page performance contracts pass; the deep 2401-block fixture remains at 17 geometry reads with no visual Long Task.

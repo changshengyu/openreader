@@ -80,11 +80,13 @@ test('leaves vertical reading movement native without synthesizing chapter chang
   fixture.controller.handle(fixture.event(100))
   assert.equal(fixture.contentEl.value.scrollTop, 300)
   assert.deepEqual(fixture.calls, [['cancel-animation']])
+  fixture.controller.handle(fixture.event(0.5))
   fixture.contentEl.value.scrollTop = 800
   fixture.controller.handle(fixture.event(100))
   fixture.contentEl.value.scrollTop = 0
   fixture.controller.handle(fixture.event(-100))
   assert.deepEqual(fixture.calls, [
+    ['cancel-animation'],
     ['cancel-animation'],
     ['cancel-animation'],
     ['cancel-animation'],

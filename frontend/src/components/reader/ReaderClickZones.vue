@@ -1,5 +1,5 @@
 <template>
-  <div class="reader-tap-zones" :class="mode" aria-hidden="true">
+  <div class="reader-tap-zones" :class="[mode, { 'document-scroll': documentScroll }]" aria-hidden="true">
     <button class="tap-zone tap-left" type="button" tabindex="-1" @click="emit('tap', 'left')" />
     <button class="tap-zone tap-center" type="button" tabindex="-1" @click="emit('tap', 'center')" />
     <button class="tap-zone tap-right" type="button" tabindex="-1" @click="emit('tap', 'right')" />
@@ -7,7 +7,7 @@
     <button class="tap-zone tap-lower" type="button" tabindex="-1" @click="emit('tap', 'lower')" />
   </div>
 
-  <div v-if="showOverlay" class="click-zone-overlay" :class="{ flip: mode === 'flip' }">
+  <div v-if="showOverlay" class="click-zone-overlay" :class="{ flip: mode === 'flip', 'document-scroll': documentScroll }">
     <div class="click-zone-piece click-zone-prev">
       <span>{{ mode === 'flip' ? '点击前一页' : '点击向上翻页' }}</span>
     </div>
@@ -24,6 +24,10 @@ defineProps({
   mode: {
     type: String,
     required: true,
+  },
+  documentScroll: {
+    type: Boolean,
+    default: false,
   },
   showOverlay: {
     type: Boolean,
@@ -43,6 +47,16 @@ const emit = defineEmits(['tap', 'close-overlay'])
   pointer-events: none;
 }
 
+.reader-tap-zones.document-scroll {
+  position: fixed;
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 50%;
+  width: var(--reader-frame-width);
+  transform: translateX(-50%);
+}
+
 .tap-zone {
   position: absolute;
   padding: 0;
@@ -56,35 +70,35 @@ const emit = defineEmits(['tap', 'close-overlay'])
   top: 0;
   bottom: 0;
   left: 0;
-  width: 24%;
+  width: 30%;
 }
 
 .tap-right {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 24%;
+  width: 30%;
 }
 
 .tap-center {
-  top: 35%;
-  right: 24%;
-  bottom: 35%;
-  left: 24%;
+  top: 30%;
+  right: 30%;
+  bottom: 30%;
+  left: 30%;
 }
 
 .tap-upper {
   top: 0;
-  right: 24%;
-  left: 24%;
-  height: 35%;
+  right: 30%;
+  left: 30%;
+  height: 30%;
 }
 
 .tap-lower {
-  right: 24%;
+  right: 30%;
   bottom: 0;
-  left: 24%;
-  height: 35%;
+  left: 30%;
+  height: 30%;
 }
 
 .reader-tap-zones.scroll .tap-left,
@@ -116,12 +130,22 @@ const emit = defineEmits(['tap', 'close-overlay'])
   inset: 0;
   z-index: 30;
   display: grid;
-  grid-template-rows: 35% 30% 35%;
+  grid-template-rows: 30% 40% 30%;
   background: rgba(20, 20, 20, 0.08);
 }
 
+.click-zone-overlay.document-scroll {
+  position: fixed;
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 50%;
+  width: var(--reader-frame-width);
+  transform: translateX(-50%);
+}
+
 .click-zone-overlay.flip {
-  grid-template-columns: 24% 52% 24%;
+  grid-template-columns: 30% 40% 30%;
   grid-template-rows: 1fr;
 }
 

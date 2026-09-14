@@ -176,7 +176,7 @@ async function runContinuousViewport(browser, viewport, mode) {
     assert(initial.runningTitle === `第 1 章 ${chapterTitle(0)}`, `${viewport.width}: running title ${JSON.stringify(initial.runningTitle)}`)
     assert(initial.headerPointerEvents === 'none', `${viewport.width}: running header intercepts input`)
     assert(initial.runningTitleLeft >= 0 && initial.runningTitleRight <= initial.headerRight + 1, `${viewport.width}: running title overflows header`)
-    assert(initial.headerPosition === (viewport.width <= 750 ? 'fixed' : 'absolute'), `${viewport.width}: running header position ${initial.headerPosition}`)
+    assert(initial.headerPosition === 'fixed', `${viewport.width}: running header position ${initial.headerPosition}`)
     assert(Math.abs(initial.leftGap - initial.rightGap) <= 1, `${viewport.width}: asymmetric gaps ${initial.leftGap}/${initial.rightGap}`)
 
     await page.locator('.reader-content').hover()

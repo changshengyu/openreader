@@ -6,21 +6,6 @@ export function useReaderWheel(options) {
   const now = options.now ?? Date.now
   let lastPageAt = 0
 
-  function handleVertical(event, delta, viewport) {
-    const bottom = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-    const atTop = viewport.scrollTop <= 2
-    const atBottom = viewport.scrollTop >= bottom - 2
-    if (delta < 0 && atTop) {
-      event.preventDefault()
-      options.previousPage()
-      return
-    }
-    if (delta > 0 && atBottom) {
-      event.preventDefault()
-      options.nextPage()
-    }
-  }
-
   function handle(event) {
     if (event._openReaderWheelHandled) return
     event._openReaderWheelHandled = true
@@ -38,14 +23,13 @@ export function useReaderWheel(options) {
       lineHeight: options.reader.lineHeight,
       pageHeight: viewport?.clientHeight || windowTarget.innerHeight || 800,
     })
-    if (Math.abs(delta) < 4) return
-
     if (unref(options.isVerticalRead)) {
-      if (!viewport) return
+      if (!viewport || Math.abs(delta) < 0.01) return
       options.cancelPageAnimation?.()
-      handleVertical(event, delta, viewport)
       return
     }
+
+    if (Math.abs(delta) < 4) return
 
     event.preventDefault()
     const timestamp = now()
@@ -60,6 +44,5 @@ export function useReaderWheel(options) {
 
   return {
     handle,
-    handleVertical,
   }
 }

@@ -192,18 +192,45 @@ async function seekRuntimePageSliderToEnd(page, viewport) {
   })
 }
 
-async function assertDesktopPage(browser) {
-  const viewport = { width: 1440, height: 900 }
+async function assertDesktopPage(browser, viewport) {
   const { context, page } = await openReader(browser, viewport, 'page')
   const geometry = await readerGeometry(page)
-  assert(!geometry.usesDocumentScroll, `${viewport.width}: desktop reader must retain its bounded workspace scroll host`)
-  close(geometry.page.left, 319, 1, 'desktop page left')
+  assert(geometry.usesDocumentScroll, `${viewport.width}: desktop vertical text must use the document scroll host`)
+  close(geometry.innerContentScrollTop, 0, 0, `${viewport.width}: nested reader-content must stay at zero`)
+  close(geometry.page.left, (viewport.width - 802) / 2, 1, 'desktop page left')
   close(geometry.page.width, 802, 1, 'desktop page outer width')
-  close(geometry.body.left, 385, 1, 'desktop text left')
+  close(geometry.body.left, (viewport.width - 670) / 2, 1, 'desktop text left')
   close(geometry.body.width, 670, 1, 'desktop text width')
   close(geometry.heading.top, 72, 1, 'desktop heading top')
   close(geometry.paragraph.top, 134, 1, 'desktop paragraph top')
   assert(geometry.textAlign === 'left', `desktop paragraph alignment ${geometry.textAlign}`)
+
+  await page.mouse.click(viewport.width / 2, viewport.height / 2)
+  close((await readerGeometry(page)).rootScrollTop, 0, 0, 'desktop center click must not page')
+
+  await page.mouse.click(viewport.width / 2, viewport.height * 0.75)
+  close((await readerGeometry(page)).rootScrollTop, viewport.height - 72, 2, 'desktop lower click step')
+
+  await page.mouse.click(viewport.width / 2, viewport.height * 0.32)
+  close((await readerGeometry(page)).rootScrollTop, viewport.height - 72, 2, 'desktop middle 40% click must not page')
+
+  await page.mouse.click(viewport.width / 2, viewport.height * 0.2)
+  close((await readerGeometry(page)).rootScrollTop, 0, 2, 'desktop upper click step')
+
+  await page.evaluate(() => { (document.scrollingElement || document.documentElement).scrollTop = 0 })
+  await page.locator('.reader-content').hover()
+  await page.mouse.wheel(0, 137)
+  await page.waitForTimeout(80)
+  const wheelTop = (await readerGeometry(page)).rootScrollTop
+  assert(wheelTop > 0 && wheelTop < 500, `desktop wheel must remain native and continuous: ${wheelTop}`)
+
+  await page.evaluate(() => {
+    const root = document.scrollingElement || document.documentElement
+    root.scrollTop = root.scrollHeight - root.clientHeight
+  })
+  await page.mouse.wheel(0, 240)
+  await page.waitForTimeout(80)
+  assert(new URL(page.url()).searchParams.get('chapter') === '0', 'desktop boundary wheel changed chapter')
   await context.close()
 }
 
@@ -666,7 +693,9 @@ async function assertMobileChapterEndPrompt(browser, viewport) {
 async function main() {
   const browser = await openSmokeBrowser()
   try {
-    await assertDesktopPage(browser)
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 1366 }]) {
+      await assertDesktopPage(browser, viewport)
+    }
     for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }]) {
       await assertMobilePage(browser, viewport)
       await assertMobileFlip(browser, viewport)

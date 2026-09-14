@@ -208,6 +208,7 @@
       <ReaderClickZones
         v-if="chapterFormat !== 'epub' && !isAudioChapter"
         :mode="effectiveReaderMode"
+        :document-scroll="usesDocumentScroll"
         :show-overlay="showClickZoneOverlay"
         @tap="handleTapZone"
         @close-overlay="showClickZoneOverlay = false"
@@ -2574,6 +2575,40 @@ function readError(err, fallback) {
   display: block;
   height: min(40vh, 280px);
 }
+
+.reader-shell.document-scroll {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.reader-shell.document-scroll .reader-page {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.reader-shell.document-scroll .reader-content {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.reader-shell.document-scroll:not(.mini-interface) .reader-page-head {
+  position: fixed;
+  right: auto;
+  left: 50%;
+  width: var(--reader-frame-width);
+  box-sizing: border-box;
+  transform: translateX(-50%);
+}
+
+.reader-shell.document-scroll:not(.mini-interface) .reader-page::after {
+  position: fixed;
+  right: calc(50vw - var(--reader-frame-width) / 2);
+  left: calc(50vw - var(--reader-frame-width) / 2);
+}
+
 /* 翻页模式 */
 .reader-shell.flip .reader-content {
   overflow: hidden;

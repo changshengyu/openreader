@@ -42,7 +42,7 @@ async function installApiMocks(page, appearance) {
         value: {
           mode: 'page',
           pageMode: 'auto',
-          theme: 'parchment',
+          theme: appearance.custom ? 'custom' : 'parchment',
           themeType: 'day',
           fontSize: 18,
           fontWeight: 400,
@@ -158,7 +158,11 @@ async function verifyDeepPage(browser, viewport, appearance) {
     assert(renderSurface.attachment === 'fixed' && renderSurface.backgroundSize === 'cover', `${viewport.width}: custom background is not viewport-limited ${JSON.stringify(renderSurface)}`)
     assert(renderSurface.overlayColor !== 'rgba(0, 0, 0, 0)', `${viewport.width}: dimmed appearance lost its brightness overlay`)
   } else {
-    assert(renderSurface.backgroundImage.includes('data:image/png;base64'), `${viewport.width}: default upstream texture is not a small embedded image ${JSON.stringify(renderSurface)}`)
+    assert(
+      renderSurface.backgroundImage.includes('data:image/png;base64')
+        || renderSurface.backgroundImage.includes('/themes/content_0.png'),
+      `${viewport.width}: default upstream 50px texture is missing ${JSON.stringify(renderSurface)}`,
+    )
     assert(renderSurface.backgroundSize === 'auto', `${viewport.width}: default texture is still chapter-height cover ${JSON.stringify(renderSurface)}`)
   }
 

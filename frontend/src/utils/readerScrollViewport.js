@@ -4,14 +4,12 @@ function finite(value, fallback = 0) {
 }
 
 export function shouldUseDocumentReaderScroll({
-  mobile = false,
   mode = 'page',
   format = 'text',
   comic = false,
 } = {}) {
   return Boolean(
-    mobile
-    && !comic
+    !comic
     && format === 'text'
     && ['page', 'scroll', 'scroll2'].includes(mode),
   )
