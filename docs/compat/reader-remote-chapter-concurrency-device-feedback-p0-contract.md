@@ -197,4 +197,20 @@
 4. 同一测试还要删除 association 后重试，证明真正失去用户所有权时仍不发远程请求且不能发布 cache。
 5. 不修改 API、SQLite schema、association 数据、备份格式、缓存命名或三个持久目录；不扫描或重写旧卷。
 
-本节状态：**contract-corrected / implementation-pending**。
+## 第四次修复与本地验证
+
+- 合同 `7e83024`、旧实现红测 `015d255` 与实现 `8bebcbf` 依次落地。正文提交阶段现在和抓取前的
+  `FindForBook` 使用同一 existing-association 合同：active 与 detached snapshot 均可提交，但关联缺失
+  仍会失败；修复不会把 detached source 重新激活。
+- 红测在真实 Gin/SQLite 路径创建被既有书籍引用的 detached source。旧实现抓取一次后固定返回
+  `409 chapter content changed; retry`；修复后返回 200，发布 Chapter variable/cache，并保持 source
+  detached。随后删除 association 的负向用例证明不会再访问远程书源或发布状态。
+- focused/race、章节 API 与 engine source-variable 集、Go 全量/vet、frontend 757/757、Vite build 和
+  Compose config 通过。真实 Go + loopback source + Chromium 在 1440x900、390x844、360x800 均返回
+  200 并显示正文，无错误占位或 409；三个视口合计只抓取一次，证明 cache 生效且 source 仍 detached。
+- 可信 GitHub Actions run `34963585121` 已通过 backend/frontend/Compose、native、fresh/portable、
+  historical volume 和 published-platform 门，并发布 `8bebcbf`/`latest`。amd64/arm64 OCI index 为
+  `sha256:5d097551c7d5c37bc54b69030ef07146d7b24888583ba2abc3903b7eff8d6a03`；平台 manifests 分别为
+  `sha256:d805484871070bbb6215e48015da14cc58b78a2bcc33bc1c584516cac636f371` 和
+  `sha256:dccb59866f3b9a611fbc0d81286f6b4d1ddbcd8774f20f91c67e83cda6478cb5`。用户生产环境尚未升级
+  验证，当前状态为 **implemented / regression-validated / Docker-published / awaiting-device-verification**。

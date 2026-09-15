@@ -1269,6 +1269,18 @@ subscriber; the last departed subscriber still cancels transport, and scope clea
 `sha256:874b0262c48a19c6861f80ca8cfdb157b6c419ebc46e7a7f4dd320358b8897ca`. Status is **implemented /
 regression-validated / Docker-published / awaiting-device-verification**.
 
+Fourth device feedback on 2026-09-15 exposed a data-dependent regression introduced by `0a8a0ef`. Existing shelf
+books may intentionally retain a detached source snapshot after source-list clear/restore/replace, and the pre-fetch
+`FindForBook` contract accepts that association. The post-fetch guard incorrectly added `detached=false`, so a
+successful fetch always ended as `409 chapter content changed; retry`; retry could never change the association.
+Contract correction `7e83024`, deterministic red test `015d255`, and fix `8bebcbf` now use the same existing-
+association rule before and after fetch. Missing ownership, Book/Chapter/source identity or semantic changes still
+fail closed, and detached sources are never reactivated. Go full/vet/race, frontend 757/757, build, Compose, and real
+Go/browser checks at 1440x900, 390x844 and 360x800 passed. Trusted Actions run `34963585121` passed every validation
+and publication gate and published `8bebcbf`/`latest` as amd64/arm64 OCI index
+`sha256:5d097551c7d5c37bc54b69030ef07146d7b24888583ba2abc3903b7eff8d6a03`. Status is **implemented /
+regression-validated / Docker-published / awaiting-device-verification**.
+
 ### P0/P2 Reader source-change write lifecycle (2026-09-09 implemented)
 
 `POST /api/books/:id/change-source` keeps its JWT, owner-first lookup, 1 MiB single-object body, selected-source

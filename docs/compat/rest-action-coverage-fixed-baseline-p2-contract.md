@@ -938,6 +938,21 @@ stale 409，但前端曾将 `chapter content changed; retry` 原样渲染。补�
 `sha256:558d4476ab2857905f194f18157da9a8b195477ad7733e08160ddf45af4a2e69`。当前状态 **implemented /
 regression-validated / Docker-published / awaiting-device-verification**。
 
+2026-09-14 第三次真机反馈又确认章节专用请求错误继承通用 12 秒预算，且同章新 generation 会加入已被
+旧订阅取消的共享 Promise。合同 `1512534`、红测 `46e4933` 与实现 `c7fbf73` 恢复固定上游 30 秒正文
+预算，并拆分 transport 与调用方订阅；可信 Actions run `34853164985` 发布 `c7fbf73`/`latest` OCI index
+`sha256:874b0262c48a19c6861f80ca8cfdb157b6c419ebc46e7a7f4dd320358b8897ca`。
+
+2026-09-15 第四次真机反馈继续比较 `d0600ab..HEAD` 后定位到 `0a8a0ef` 的确定性数据回归：抓取前
+`FindForBook` 接受现有 active 或 detached source association，抓取后的 snapshot guard 却额外要求
+`detached=false`。因此仍被既有书籍引用的 detached source 成功抓取后固定返回 stale 409，重试也不能
+恢复。合同修订 `7e83024`、旧实现红测 `015d255` 与修复 `8bebcbf` 已统一为 existing-association 合同；
+关联缺失及 Book/Chapter/source 真实变化仍 fail closed，source 不会被重新激活。focused/race/full/vet、
+frontend 757/757、build、Compose 与真实 Go/Chromium 三视口通过；可信 Actions run `34963585121`
+通过全部验证/发布门，并发布 `8bebcbf`/`latest` amd64/arm64 OCI index
+`sha256:5d097551c7d5c37bc54b69030ef07146d7b24888583ba2abc3903b7eff8d6a03`。当前状态
+**implemented / regression-validated / Docker-published / awaiting-device-verification**。
+
 ## 46. Reader 换源写入生命周期（2026-09-09 implemented）
 
 章节正文生命周期实施后，继续从当前持久 `Save` 和远程工作后的 transaction 做差集。固定上游
