@@ -75,14 +75,16 @@ OpenReader 持久化 Book/Chapter parser variable 和 `chapters.cache_path` 是�
 远程正文 fetch 开始时冻结：
 
 - caller user、Book ID/source ID/URL/variable；
-- BookSource ID、当前用户 active association 和 source semantic snapshot；
+- BookSource ID、当前书籍所属用户的 association 和 source semantic snapshot；association 可以仍在书源
+  列表中，也可以是为已入架书籍保留的 detached snapshot；
 - Chapter ID/book ID/index/URL/variable/cache path。
 
 远程工作成功后，在任何持久发布前必须使用同一个 request context 重读并核对当前状态：
 
 1. Book 仍属于 caller，且 source ID/URL 与请求快照一致；Book 被删除、换源或换 URL 时旧结果失效。
-2. Source 仍是 caller 当前可用快照，规则/URL/header/charset 等语义未变；同 ID source 编辑清空变量后，
-   旧请求不得把变量重新写回。
+2. Source 仍是 caller 当前书籍可用的快照，规则/URL/header/charset 等语义未变；同 ID source 编辑清空
+   变量后，旧请求不得把变量重新写回。`UserBookSource.detached` 只控制书源列表可见性；`FindForBook` 已
+   明确允许已入架书籍继续使用 detached snapshot，因此正文提交不得把 detached 误判为 source 已删除。
 3. Chapter 仍是同一 Book 下的同一 ID/index/URL；目录刷新/换源替换或删除章节后，不得重建旧行。
 4. 开始解析时的 Book/Chapter variable 仍为当前值；并发成功请求不得以旧初值覆盖较新的变量状态。
 5. 只更新本动作拥有的 `books.variable`、当前 `chapters.variable/cache_path`；不得写 title/URL/index/
@@ -112,6 +114,8 @@ old-path-guarded 的单列 update；失败继续按 cache hit 返回正文，但
 - `data/`、`cache/`、`library/`、章节 cache hash、Book/Chapter variable JSON、普通/portable/Legado/
   WebDAV backup 和环境变量均不变。
 - 现有安全普通 relative/当前 absolute cache path 继续懒读；只把未来成功归一化改成 guarded 单列更新。
+- 现有 active/detached source association 不迁移、不重新挂载；本修正只让正文提交校验沿用既有
+  `FindForBook` 所接受的书籍读取权限。
 - JWT/REST/SQLite、持久 parser variable、request cancellation、409 stale conflict 和 browser cache scope
   是技术/安全适配；不得改变固定上游最终显示“当前书、当前来源、当前章节正文”的产品结果。
 - 回滚旧镜像继续读取同一数据，只会重新引入迟到 UI、陈旧 variable/cache 提交和 full-row Save 风险。

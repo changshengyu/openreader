@@ -170,3 +170,31 @@
   `sha256:37fd7eab62adabbed3095a8a16fbf745c1ed8e4d5f364d149f99ab727c356dd8` 和
   `sha256:22b12499f54b2527c6fffe8d151efe37cad9403a966f1ccb1386449d572c0021`。状态为
   **implemented / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-09-15 第四次真机反馈：detached 书源快照被错误拒绝
+
+用户在 `c7fbf73` 已发布后仍确认章节无法加载，因此前三轮并发、队列、客户端预算与请求接管修复不能
+作为问题关闭依据。重新逐项比较 `d0600ab..HEAD` 的后端正文提交条件后发现一条与既有数据合同直接
+冲突、且会稳定复现的路径：
+
+1. `booksources.Service.FindForBook` 从 2026-07-27 起就明确接受 active 或 detached association；清空、
+   恢复或替换书源列表时，仍被书架书籍引用的 source 会保留为 detached snapshot，使现有书籍继续阅读。
+2. `0a8a0ef` 新增的 `validateReaderChapterContentSnapshot` 却用 `detached=false` 查询同一 association。
+   detached 书籍可以通过 fetch 前的 `FindForBook` 并成功抓到正文，却在发布 cache/variable 前固定返回
+   `409 chapter content changed; retry`；前端重试不会改变 association，因此仍固定失败。
+3. `d0600ab` 没有该提交校验，所以同一数据状态可以读取。这是 8 月 25 日镜像正常、当前镜像失败的
+   确定性差异，不依赖网络速度、相邻章节调度或设备视口。
+4. 固定上游没有 OpenReader 的多用户 COW/detached 存储层，但其删除/替换书源列表不能使已入架书籍的
+   当前来源在正文已成功获取后被内部版本门拒绝。保留 detached snapshot 是已签收的多用户兼容适配。
+
+修订合同如下：
+
+1. 正文 fetch 和提交都接受当前书籍所属用户的 existing association，不要求它仍在活动书源列表中。
+2. association 缺失、书籍换源/删除、章节替换、source 行缺失或抓取语义改变仍返回安全 409；不得放宽
+   Book/Chapter/source identity、variable/cache CAS、取消或 staged publish 保护。
+3. 确定性 API 红测必须创建已入架远程书及 detached association，断言正文只抓取一次、返回 200、保存
+   Chapter variable/cache，并且 source 仍保持 detached、不重新出现在活动列表。
+4. 同一测试还要删除 association 后重试，证明真正失去用户所有权时仍不发远程请求且不能发布 cache。
+5. 不修改 API、SQLite schema、association 数据、备份格式、缓存命名或三个持久目录；不扫描或重写旧卷。
+
+本节状态：**contract-corrected / implementation-pending**。
