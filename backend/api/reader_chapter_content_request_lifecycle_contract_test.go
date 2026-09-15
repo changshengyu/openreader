@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -82,6 +83,72 @@ func TestReaderConcurrentSameChapterLoadsSharePublishedResult(t *testing.T) {
 	}
 	if fetches.Load() != 1 {
 		t.Fatalf("same chapter remote fetches = %d, want one published request", fetches.Load())
+	}
+}
+
+func TestReaderDetachedSourceSnapshotStillServesExistingBook(t *testing.T) {
+	fixture := newReaderChapterContentLifecycleFixture(t, "chapterdetachedsource")
+	if err := fixture.server.db.Model(&models.UserBookSource{}).
+		Where("user_id = ? AND source_id = ?", fixture.user.ID, fixture.source.ID).
+		Update("detached", true).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var fetches atomic.Int32
+	restoreHTTPClient := engine.SetHTTPClientForTesting(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		fetches.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`<main class="content">detached source content</main><span class="token">detached token</span>`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})})
+	t.Cleanup(restoreHTTPClient)
+
+	response := performReaderChapterContentLifecycleRequest(fixture, context.Background())
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "detached source content") {
+		t.Fatalf("detached source chapter = %d %s, want existing-book 200", response.Code, response.Body.String())
+	}
+	if fetches.Load() != 1 {
+		t.Fatalf("detached source fetches = %d, want one", fetches.Load())
+	}
+
+	book, chapter := loadReaderChapterContentLifecycleState(t, fixture)
+	if book.Variable != fixture.book.Variable || chapter.CachePath == "" || !strings.Contains(chapter.Variable, "detached token") {
+		t.Fatalf("detached source state was not published: book=%q chapter=%q cache=%q", book.Variable, chapter.Variable, chapter.CachePath)
+	}
+	if cached, err := engine.ReadChapterCache(fixture.server.cfg.CacheDir, chapter.CachePath); err != nil || cached != "detached source content" {
+		t.Fatalf("detached source cache = %q, %v", cached, err)
+	}
+	var association models.UserBookSource
+	if err := fixture.server.db.Where("user_id = ? AND source_id = ?", fixture.user.ID, fixture.source.ID).
+		First(&association).Error; err != nil || !association.Detached {
+		t.Fatalf("chapter read reactivated detached source: %+v err=%v", association, err)
+	}
+
+	if err := os.Remove(filepath.Join(fixture.server.cfg.CacheDir, filepath.FromSlash(chapter.CachePath))); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.db.Model(&models.Chapter{}).
+		Where("id = ? AND book_id = ?", fixture.chapter.ID, fixture.book.ID).
+		Updates(map[string]any{"variable": fixture.chapter.Variable, "cache_path": ""}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.db.Delete(&association).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	response = performReaderChapterContentLifecycleRequest(fixture, context.Background())
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("unowned source chapter = %d %s, want rejection", response.Code, response.Body.String())
+	}
+	if fetches.Load() != 1 {
+		t.Fatalf("unowned source made %d remote fetches, want no additional fetch", fetches.Load())
+	}
+	_, chapter = loadReaderChapterContentLifecycleState(t, fixture)
+	if chapter.CachePath != "" || chapter.Variable != fixture.chapter.Variable {
+		t.Fatalf("unowned source published chapter state: variable=%q cache=%q", chapter.Variable, chapter.CachePath)
 	}
 }
 
