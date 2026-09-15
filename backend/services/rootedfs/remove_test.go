@@ -149,3 +149,144 @@ func TestRemoveDirectoryDetachesValidatedIdentityAndConfinesRecursiveRemoval(t *
 		}
 	})
 }
+
+func TestRemovePathSupportsFilesAndDirectoriesWithVisibleMissing(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "files", "item.txt")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemovePath(root, "files/item.txt"); err != nil {
+		t.Fatalf("remove regular file: %v", err)
+	}
+	if _, err := os.Lstat(file); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("regular file remains: %v", err)
+	}
+
+	directory := filepath.Join(root, "trees", "target", "nested")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "item.txt"), []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemovePath(root, "trees/target"); err != nil {
+		t.Fatalf("remove directory: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Dir(directory)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("directory remains: %v", err)
+	}
+	if err := RemovePath(root, "trees/missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing error=%v, want os.ErrNotExist", err)
+	}
+}
+
+func TestRemovePathRejectsParentReplacementAfterValidation(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	target := filepath.Join(root, "users", "target")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	originalParent := filepath.Join(root, "original-users")
+	outsideTarget := filepath.Join(outside, "target")
+	if err := os.MkdirAll(outsideTarget, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outsideTarget, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	beforeDetachTestHook = func(_, _ string) {
+		if err := os.Rename(filepath.Join(root, "users"), originalParent); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(root, "users")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { beforeDetachTestHook = nil })
+
+	if err := RemovePath(root, "users/target"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("replaced parent error=%v, want ErrUnsafePath", err)
+	}
+	if data, err := os.ReadFile(sentinel); err != nil || string(data) != "outside" {
+		t.Fatalf("parent replacement touched external data: data=%q err=%v", data, err)
+	}
+	if info, err := os.Stat(filepath.Join(originalParent, "target")); err != nil || !info.IsDir() {
+		t.Fatalf("validated target changed: info=%v err=%v", info, err)
+	}
+}
+
+func TestRemovePathRejectsFileReplacementAfterValidation(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "files")
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(parent, "target.txt")
+	if err := os.WriteFile(target, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	original := filepath.Join(parent, "original.txt")
+	beforeDetachTestHook = func(_, _ string) {
+		if err := os.Rename(target, original); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte("replacement"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { beforeDetachTestHook = nil })
+
+	if err := RemovePath(root, "files/target.txt"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("replaced file error=%v, want ErrUnsafePath", err)
+	}
+	if data, err := os.ReadFile(original); err != nil || string(data) != "original" {
+		t.Fatalf("validated file changed: data=%q err=%v", data, err)
+	}
+	if data, err := os.ReadFile(target); err != nil || string(data) != "replacement" {
+		t.Fatalf("replacement file changed: data=%q err=%v", data, err)
+	}
+}
+
+func TestRemovePathRejectsRootReplacementAfterValidation(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	target := filepath.Join(root, "target")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	originalRoot := filepath.Join(base, "original-root")
+	outside := t.TempDir()
+	outsideTarget := filepath.Join(outside, "target")
+	if err := os.MkdirAll(outsideTarget, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outsideTarget, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	beforeDetachTestHook = func(_, _ string) {
+		if err := os.Rename(root, originalRoot); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, root); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { beforeDetachTestHook = nil })
+
+	if err := RemovePath(root, "target"); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("replaced root error=%v, want ErrUnsafePath", err)
+	}
+	if data, err := os.ReadFile(sentinel); err != nil || string(data) != "outside" {
+		t.Fatalf("root replacement touched external data: data=%q err=%v", data, err)
+	}
+	if info, err := os.Stat(filepath.Join(originalRoot, "target")); err != nil || !info.IsDir() {
+		t.Fatalf("validated root target changed: info=%v err=%v", info, err)
+	}
+}

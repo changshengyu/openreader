@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"unicode/utf8"
+
+	"openreader/backend/services/rootedfs"
 )
 
 var (
@@ -309,7 +311,21 @@ func (s *Service) Remove(rawPath string) error {
 	if beforeRemoveTestHook != nil {
 		beforeRemoveTestHook(s.root, relative)
 	}
-	return os.RemoveAll(target)
+	boundaryRelative, err := filepath.Rel(s.boundary, target)
+	if err != nil || boundaryRelative == "." || strings.HasPrefix(boundaryRelative, ".."+string(os.PathSeparator)) {
+		return ErrUnsafePath
+	}
+	if err := rootedfs.RemovePath(s.boundary, boundaryRelative); err != nil {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			return ErrNotFound
+		case errors.Is(err, rootedfs.ErrUnsafePath):
+			return ErrUnsafePath
+		default:
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) RemoveRegular(rawPath string) (os.FileInfo, error) {

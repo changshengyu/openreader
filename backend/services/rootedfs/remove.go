@@ -36,22 +36,32 @@ func DirectoryExists(rootPath, relative string) (bool, error) {
 	return info != nil, err
 }
 
+// RemovePath removes one existing regular file or directory from a trusted
+// root. A missing target remains visible to callers as os.ErrNotExist.
+func RemovePath(rootPath, relative string) error {
+	return removeEntry(rootPath, relative, false, false, nil)
+}
+
 // RemoveDirectory detaches one validated directory inside an opened parent
 // before recursively removing it. The rooted parent keeps the recursive walk
 // confined even if a mounted entry changes after validation.
 func RemoveDirectory(rootPath, relative string, beforeRemove func(string) error) error {
+	return removeEntry(rootPath, relative, true, true, beforeRemove)
+}
+
+func removeEntry(rootPath, relative string, missingOK, directoryOnly bool, beforeRemove func(string) error) error {
 	root, clean, err := open(rootPath, relative)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return missingResult(missingOK)
 	}
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 
-	expected, err := validateDirectory(root, clean)
+	expected, err := validateEntry(root, clean, directoryOnly)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return missingResult(missingOK)
 	}
 	if err != nil {
 		return err
@@ -71,9 +81,9 @@ func RemoveDirectory(rootPath, relative string, beforeRemove func(string) error)
 	if err != nil || !parentOpened.IsDir() || !os.SameFile(parentExpected, parentOpened) {
 		return ErrUnsafePath
 	}
-	currentFile, current, err := openDirectoryAt(parent, entryName)
+	currentFile, current, err := openEntryAt(parent, entryName, directoryOnly)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return missingResult(missingOK)
 	}
 	if err != nil || !os.SameFile(expected, current) {
 		return ErrUnsafePath
@@ -82,21 +92,30 @@ func RemoveDirectory(rootPath, relative string, beforeRemove func(string) error)
 	if beforeDetachTestHook != nil {
 		beforeDetachTestHook(root.Name(), clean)
 	}
+	rootOpened, openErr := root.Stat(".")
+	rootCurrent, pathErr := os.Lstat(root.Name())
+	if openErr != nil || pathErr != nil || rootCurrent.Mode()&os.ModeSymlink != 0 || !rootCurrent.IsDir() || !os.SameFile(rootOpened, rootCurrent) {
+		return ErrUnsafePath
+	}
+	parentCurrent, err := root.Lstat(parentName)
+	if err != nil || parentCurrent.Mode()&os.ModeSymlink != 0 || !parentCurrent.IsDir() || !os.SameFile(parentOpened, parentCurrent) {
+		return ErrUnsafePath
+	}
 
-	quarantine, err := randomName(".openreader-user-delete-", 12)
+	quarantine, err := randomName(".openreader-delete-", 12)
 	if err != nil {
 		return err
 	}
 	if err := unix.Renameat(int(parent.Fd()), entryName, int(parent.Fd()), quarantine); err != nil {
 		return err
 	}
-	movedFile, moved, err := openDirectoryAt(parent, quarantine)
+	movedFile, moved, err := openEntryAt(parent, quarantine, directoryOnly)
 	if err != nil || !os.SameFile(current, moved) {
 		restore(parent, quarantine, entryName)
 		return ErrUnsafePath
 	}
 	defer movedFile.Close()
-	if beforeRemove != nil {
+	if beforeRemove != nil && moved.IsDir() {
 		absoluteTarget := filepath.Join(root.Name(), filepath.FromSlash(clean))
 		if err := beforeRemove(absoluteTarget); err != nil {
 			_ = movedFile.Close()
@@ -104,16 +123,26 @@ func RemoveDirectory(rootPath, relative string, beforeRemove func(string) error)
 			return err
 		}
 	}
-	if err := removeOpenedDirectory(movedFile); err != nil {
-		return err
+	if moved.IsDir() {
+		if err := removeOpenedDirectory(movedFile); err != nil {
+			return err
+		}
+		if err := movedFile.Close(); err != nil {
+			return err
+		}
+		return unix.Unlinkat(int(parent.Fd()), quarantine, unix.AT_REMOVEDIR)
 	}
 	if err := movedFile.Close(); err != nil {
 		return err
 	}
-	if err := unix.Unlinkat(int(parent.Fd()), quarantine, unix.AT_REMOVEDIR); err != nil {
-		return err
+	return unix.Unlinkat(int(parent.Fd()), quarantine, 0)
+}
+
+func missingResult(missingOK bool) error {
+	if missingOK {
+		return nil
 	}
-	return nil
+	return os.ErrNotExist
 }
 
 func open(rootPath, relative string) (*os.Root, string, error) {
@@ -148,6 +177,10 @@ func open(rootPath, relative string) (*os.Root, string, error) {
 }
 
 func validateDirectory(root *os.Root, relative string) (os.FileInfo, error) {
+	return validateEntry(root, relative, true)
+}
+
+func validateEntry(root *os.Root, relative string, directoryOnly bool) (os.FileInfo, error) {
 	parts := strings.Split(filepath.ToSlash(relative), "/")
 	current := ""
 	var target os.FileInfo
@@ -157,10 +190,17 @@ func validateDirectory(root *os.Root, relative string) (os.FileInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		isTarget := index == len(parts)-1
+		if info.Mode()&os.ModeSymlink != 0 || (!isTarget && !info.IsDir()) {
 			return nil, ErrUnsafePath
 		}
-		if index == len(parts)-1 {
+		if isTarget {
+			if directoryOnly && !info.IsDir() {
+				return nil, ErrUnsafePath
+			}
+			if !directoryOnly && !info.IsDir() && !info.Mode().IsRegular() {
+				return nil, ErrUnsafePath
+			}
 			target = info
 		}
 	}
@@ -214,6 +254,35 @@ func openDirectoryAt(parent *os.File, name string) (*os.File, os.FileInfo, error
 	}
 	info, err := file.Stat()
 	if err != nil || !info.IsDir() {
+		_ = file.Close()
+		return nil, nil, ErrUnsafePath
+	}
+	return file, info, nil
+}
+
+func openEntryAt(parent *os.File, name string, directoryOnly bool) (*os.File, os.FileInfo, error) {
+	if directoryOnly {
+		return openDirectoryAt(parent, name)
+	}
+	fd, err := unix.Openat(
+		int(parent.Fd()),
+		name,
+		unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK,
+		0,
+	)
+	if err != nil {
+		if errors.Is(err, syscall.ENOENT) {
+			return nil, nil, os.ErrNotExist
+		}
+		return nil, nil, ErrUnsafePath
+	}
+	file := os.NewFile(uintptr(fd), name)
+	if file == nil {
+		_ = unix.Close(fd)
+		return nil, nil, ErrUnsafePath
+	}
+	info, err := file.Stat()
+	if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
 		_ = file.Close()
 		return nil, nil, ErrUnsafePath
 	}

@@ -483,7 +483,6 @@ func TestWebDAVProtocolMutationFailuresAndRecursiveCopyAreTransactional(t *testi
 	if response := webDAVProtocolRequest(t, router, http.MethodGet, "/reader3/webdav/copied/sub/value.txt", auth, "", nil); response.Code != http.StatusOK || response.Body.String() != "recursive" {
 		t.Fatalf("recursive COPY content = %d: %q", response.Code, response.Body.String())
 	}
-
 	for _, request := range []struct {
 		name        string
 		method      string
@@ -525,6 +524,12 @@ func TestWebDAVProtocolMutationFailuresAndRecursiveCopyAreTransactional(t *testi
 	}
 	if response := webDAVProtocolRequest(t, router, "MKCOL", "/reader3/webdav/tree/sub/value.txt/child", auth, "", nil); response.Code != http.StatusConflict {
 		t.Fatalf("MKCOL below file = %d: %s", response.Code, response.Body.String())
+	}
+	if response := webDAVProtocolRequest(t, router, http.MethodDelete, "/reader3/webdav/copied", auth, "", nil); response.Code != http.StatusOK {
+		t.Fatalf("recursive DELETE = %d: %s", response.Code, response.Body.String())
+	}
+	if response := webDAVProtocolRequest(t, router, http.MethodGet, "/reader3/webdav/copied/sub/value.txt", auth, "", nil); response.Code != http.StatusNotFound {
+		t.Fatalf("recursive DELETE target remains = %d: %s", response.Code, response.Body.String())
 	}
 }
 
