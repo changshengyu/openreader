@@ -3397,10 +3397,9 @@ func (s *Server) validateReaderChapterContentSnapshot(
 ) (models.Book, models.Chapter, error) {
 	var association models.UserBookSource
 	if err := db.Where(
-		"user_id = ? AND source_id = ? AND detached = ?",
+		"user_id = ? AND source_id = ?",
 		snapshot.book.UserID,
 		snapshot.source.ID,
-		false,
 	).First(&association).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
