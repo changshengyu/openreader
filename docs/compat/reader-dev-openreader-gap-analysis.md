@@ -4123,4 +4123,10 @@ published-platform 门全部通过；已发布 `016a346`/`latest` OCI index
 父目录完成逐组件验证、同 identity detach 及 handle-relative 文件/目录递归删除；任何替换和特殊文件
 均 fail closed，wire/data contract 不变。完整矩阵与测试先行门见
 [`webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**。
+合同 `7d364ff`、旧实现红测 `2c96481` 和实现 `daa435d` 已按顺序关闭。新实现从受信 WebDAV boundary
+打开 root/parent/target，同 identity detach 后仅以句柄相对方式删除 regular file 或递归目录；root、
+parent、target 的验证后替换和内部 symlink 都不能越出 caller root。两路状态、缺失语义、私有目录和
+备份布局不变。focused/race/full/vet、frontend `757/757`、build、Compose、Linux 双架构编译、真实
+Basic/curl 协议 smoke 及可信 Actions run `34960341835` 全部门通过；已发布 `daa435d`/`latest` OCI
+index `sha256:f563313d1d38358ba354189a62fd47beda2ba4f83d2c1e9f15ddd8ae131cd417`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

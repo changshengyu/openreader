@@ -1035,7 +1035,7 @@ published-platform 门，并发布 `016a346`/`latest` OCI index
 `sha256:50031b016e22c18d6c06634ed4e809be9570bff48f8840dffae3d460b1595881`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
-## 50. WebDAV DELETE 文件系统生命周期（2026-09-14 inventory）
+## 50. WebDAV DELETE 文件系统生命周期（2026-09-15 implemented）
 
 继续扫描持久文件删除动作后，原生 WebDAV `DELETE` 的验证到删除窗口成为下一项差异。固定上游在当前
 用户 WebDAV home 下递归删除文件或目录，缺失 `404`、成功 `200`；OpenReader 还需保留已部署
@@ -1048,4 +1048,11 @@ quarantine 句柄删除 regular file 或递归目录；替换、特殊文件和�
 
 完整矩阵与测试先行门见
 [`webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-delete-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-当前状态 **inventory-complete / implementation-pending**。
+合同 `7d364ff`、旧实现红测 `2c96481` 和实现 `daa435d` 已按顺序关闭该差异。WebDAV 从受信 boundary
+打开 rooted handle，在同一 parent fd 内复验 root/parent/target identity、detach 到随机 quarantine，
+再以 `openat(O_NOFOLLOW)`/`unlinkat` 删除 regular file 或递归目录；缺失、两路成功状态和 caller scope
+保持。focused/race/full/vet、frontend `757/757`、build、Compose、Linux 双架构编译及真实 Basic/curl
+协议 smoke 通过。可信 Actions run `34960341835` 又通过 native、fresh/portable、historical volume 和
+published-platform 门，并发布 `daa435d`/`latest` OCI index
+`sha256:f563313d1d38358ba354189a62fd47beda2ba4f83d2c1e9f15ddd8ae131cd417`。当前状态
+**aligned / regression-validated / Docker-published / awaiting-device-verification**。

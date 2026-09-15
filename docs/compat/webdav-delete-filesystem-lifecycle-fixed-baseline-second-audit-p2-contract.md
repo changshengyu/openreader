@@ -1,6 +1,6 @@
 # WebDAV DELETE 文件系统生命周期第二轮固定基准合同（P2）
 
-状态：**inventory-complete / implementation-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -75,3 +75,22 @@ DELETE 和缺失状态。发布候选仍须通过 trusted Actions 的 fresh/port
 `openat/renameat/unlinkat` 生命周期，同时保留 `RemoveDirectory` 的缺失幂等合同。WebDAV adapter 负责把
 rooted missing/unsafe 精确映射为 `ErrNotFound`/`ErrUnsafePath`。不得使用 `EvalSymlinks` 结果作为新信任
 根，也不得以删除前再次拼接绝对路径代替同句柄 identity 验证。
+
+## 6. 实施与发布记录（2026-09-15）
+
+- 合同 `7d364ff`、旧实现红测 `2c96481`、实现 `daa435d` 按顺序落地。红测确定性证明父目录在验证后
+  被 symlink 替换时，旧 `os.RemoveAll` 会返回成功并删除根外同名 regular file 或 directory。
+- `rootedfs.RemovePath` 现在从受信 boundary 打开 `os.Root`，逐组件验证 root/parent/target identity，
+  在同一 parent fd 内把当前 regular file 或 directory detach 到随机 quarantine，再以
+  `openat(O_NOFOLLOW)`、`renameat` 和 `unlinkat` 完成句柄相对删除。管理员工作区的缺失幂等
+  `RemoveDirectory` 继续复用同一实现。
+- root、parent 或 target 在验证后被替换均返回安全错误；替换实体、原实体和根外 sentinel 保持。
+  普通文件、非空目录、内部 symlink、缺失路径及两路 WebDAV 状态均有 service/API 回归覆盖。
+- focused/race、Go 全量/vet、Linux amd64/arm64 编译、frontend `757/757`、Vite build、Compose 和最终
+  Basic/curl WebDAV 协议 smoke 通过；没有 UI 变化，因此不重复浏览器几何截图。
+- 可信 Actions run `34960341835` 通过 backend/frontend/build/Compose、native、fresh/portable、
+  historical volume 和 published-platform 门，发布 `ghcr.io/changshengyu/openreader:daa435d` 与
+  `latest`。amd64/arm64 OCI index 为
+  `sha256:f563313d1d38358ba354189a62fd47beda2ba4f83d2c1e9f15ddd8ae131cd417`；amd64 manifest 为
+  `sha256:ecb4ed2cb283233708a63ef194d0c8ca1ec4bdfc447cea9e43d1fe3b4ddcd998`，arm64 manifest 为
+  `sha256:8a5d7dd1d3e6fb5d871a1cad4b72cf8d6e3559b11798412139d3f1346e4e4d4a`。
