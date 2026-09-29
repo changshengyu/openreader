@@ -2625,7 +2625,7 @@ func (s *Server) chapterContent(c *gin.Context) {
 	}
 	var currentChapter models.Chapter
 	if err := s.db.WithContext(c.Request.Context()).
-		Where("id = ? AND book_id = ? AND `index` = ? AND url = ?", chapter.ID, book.ID, chapter.Index, chapter.URL).
+		Where("id = ? AND book_id = ? AND `index` = ? AND COALESCE(url, '') = ?", chapter.ID, book.ID, chapter.Index, chapter.URL).
 		First(&currentChapter).Error; err != nil {
 		if isRequestContextError(err) {
 			return
@@ -3671,9 +3671,11 @@ func (s *Server) persistRebuiltLocalChapterTextContext(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		// Historical optional columns may still be NULL. Match the zero-value
+		// projection used by snapshot reads without rewriting stored metadata.
 		write := tx.Model(&models.Chapter{}).
 			Where(
-				"id = ? AND book_id = ? AND `index` = ? AND title = ? AND url = ? AND is_volume = ? AND tag = ? AND COALESCE(cache_path, '') = ? AND COALESCE(resource_path, '') = ? AND COALESCE(resource_fragment, '') = ? AND COALESCE(resource_end_fragment, '') = ? AND COALESCE(variable, '') = ?",
+				"id = ? AND book_id = ? AND `index` = ? AND title = ? AND COALESCE(url, '') = ? AND COALESCE(is_volume, 0) = ? AND COALESCE(tag, '') = ? AND COALESCE(cache_path, '') = ? AND COALESCE(resource_path, '') = ? AND COALESCE(resource_fragment, '') = ? AND COALESCE(resource_end_fragment, '') = ? AND COALESCE(variable, '') = ?",
 				snapshot.chapter.ID,
 				snapshot.chapter.BookID,
 				snapshot.chapter.Index,
@@ -3688,7 +3690,7 @@ func (s *Server) persistRebuiltLocalChapterTextContext(
 				snapshot.chapter.Variable,
 			).
 			Where(
-				"EXISTS (SELECT 1 FROM books WHERE books.id = chapters.book_id AND books.id = ? AND books.user_id = ? AND books.source_id = ? AND books.type = ? AND books.url = ? AND books.library_path = ? AND books.original_file = ? AND books.toc_file = ? AND books.source_file = ? AND books.toc_rule = ?)",
+				"EXISTS (SELECT 1 FROM books WHERE books.id = chapters.book_id AND books.id = ? AND books.user_id = ? AND COALESCE(books.source_id, 0) = ? AND COALESCE(books.type, 0) = ? AND COALESCE(books.url, '') = ? AND COALESCE(books.library_path, '') = ? AND COALESCE(books.original_file, '') = ? AND COALESCE(books.toc_file, '') = ? AND COALESCE(books.source_file, '') = ? AND COALESCE(books.toc_rule, '') = ?)",
 				snapshot.book.ID,
 				snapshot.book.UserID,
 				snapshot.book.SourceID,
