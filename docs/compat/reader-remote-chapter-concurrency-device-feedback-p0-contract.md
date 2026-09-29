@@ -251,6 +251,20 @@
 
 ## 第五次诊断实现、发布与生产部署边界
 
+### 2026-09-29 生产已升级：旧导入书籍 chapter-write 复现
+
+用户确认 Mac 本地直连与反代均失败，且旧导入书籍集中受影响；健康端点已确认
+`c1e1dbb`，两次正文 Response 均为 `409`、`reason=chapter-write`。该 code 同时用于远程章节提交和
+本地缓存重建，不能仅凭 code 宣称远程书源错误。当前本地重建 SQL 对 nullable `url/is_volume/tag`
+及 Book 的 `toc_file/source_file` 等字段直接比较 Go 零值；历史 NULL 被读取为零值后无法匹配原行。
+
+本轮合同：沿用既有本地原文读取与按章缓存恢复行为，SQL 条件必须与 Go snapshot 对 nullable 字段的
+零值语义一致。只在比较时将 NULL 投影为空字符串或 false/0，不批量重写旧记录、不重导入、不删除
+目录/进度/文件。身份、所有权、非空值变化、取消、并发目录替换和 guarded write 仍受保护。
+先补逐字段 NULL 的真实 Gin/SQLite 本地重建红测，要求正文 200、缓存发布、第二次读取成功且原始
+nullable 元数据仍为 NULL；另在最终 write 前改变 NULL 字段为非空值，要求 409 且不发布缓存。
+该确定性兼容缺陷修复后仍须在生产原书验证，方可关闭此次用户故障。
+
 - 合同 `7057f52`、旧实现红测 `f9b6c08` 与诊断实现 `c1e1dbb` 已按顺序落地。stale sentinel 仍支持
   `errors.Is`，HTTP 仍返回 409 和原有 `error`；新增 `reason` 只投影上述白名单合同门，不包含 URL、规则、
   variable、cache path、用户或 source 内容。测试分别固定 `source` 与 `book-variable` 分支，并覆盖共享的

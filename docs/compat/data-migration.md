@@ -1423,3 +1423,10 @@ Go full/vet, frontend 752/752, build and Compose passed. Actions run `3474760405
 historical-volume and published-platform gates and published the `3e8cec7`/`latest` amd64/arm64 OCI index
 `sha256:c2c686d83ff63afb3e764e0a1878d176673d65a49d5ab7e9b5d7fc1a9d96c52d`. Status is
 **aligned / regression-validated / Docker-published / awaiting-device-verification**.
+# 2026-09-29 Reader historical NULL compatibility
+
+Existing local books and chapters may retain SQL NULL in optional metadata added after import.
+Reader snapshot reads project those values to Go zero values. Cache-rebuild guarded writes must use the same
+projection (empty text / false / zero), while retaining exact checks for nonempty changes and ownership.
+Use query-time COALESCE only: no schema migration, metadata backfill, reimport, or data/cache/library cleanup.
+Test each nullable predicate and a concurrent NULL-to-nonempty mutation before cache publication.

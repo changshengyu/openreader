@@ -466,3 +466,9 @@ frontend 742/742、build、Compose、BookInfo/Reader 三视口及可信 Actions 
 fresh/historical/portable/platform 门通过；`8df38f1`/`latest` OCI index 为
 `sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`。当前状态
 **aligned / regression-validated / Docker-published / awaiting-device-verification**；整体比例仍为 99%。
+# 2026-09-29 production chapter-write follow-up
+
+Production `c1e1dbb` still returns `chapter-write` for old imported books, including local direct access.
+Must-fix: local cache rebuild predicates disagree with Go snapshot zero values for historical SQL NULLs.
+Allowed adaptation: normalize NULL only in guarded comparisons; preserve original metadata and all stale-write protections.
+Required evidence: field-by-field NULL fixtures, concurrent mutation rejection, and production book verification.
