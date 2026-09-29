@@ -214,3 +214,37 @@
   `sha256:d805484871070bbb6215e48015da14cc58b78a2bcc33bc1c584516cac636f371` 和
   `sha256:dccb59866f3b9a611fbc0d81286f6b4d1ddbcd8774f20f91c67e83cda6478cb5`。用户生产环境尚未升级
   验证，当前状态为 **implemented / regression-validated / Docker-published / awaiting-device-verification**。
+
+## 2026-09-29 第五次生产反馈：`8bebcbf` 仍稳定返回两次 stale 409
+
+本轮不再把第四次修复视为生产关闭。生产公开健康检查返回完整 commit
+`8bebcbf67c49eb9ccd20310ff45f6624c4296beb`，与 GHCR `latest` index
+`sha256:5d097551c7d5c37bc54b69030ef07146d7b24888583ba2abc3903b7eff8d6a03` 一致；故障不是浏览器未刷新或
+生产未升级。
+
+在用户已登录的生产 Chrome 中清空 Network 后，对
+`https://openreader.yuchsh.top/books/39/read?resume=1` 点击一次“重新加载”，得到确定性证据：
+
+1. 主请求 `GET /api/books/39/chapters/0/content` 在约 191–215 ms 返回
+   `409 {"error":"chapter content changed; retry"}`。
+2. 前端按既有合同自动重试一次；第二个同路径请求在约 165–199 ms 返回完全相同的 409 body。
+3. 过滤全部 `chapters/` 请求后仍只有上述同章两次请求；主章失败前没有相邻章预载请求。因此这次故障
+   不能继续归因于相邻章节并发、12 秒预算、网络 502 或 detached-only 条件。
+4. 两次请求均在不足 250 ms 内稳定失败，说明当前粗粒度 stale 错误隐藏了一个可重复的服务端提交门
+   分支。现有 API/日志无法区分 association、source semantic、Book identity/variable、Chapter
+   identity/variable/cache path、guarded write 或成功加载后的最终 chapter re-read。
+
+诊断合同先于下一次行为修复：
+
+1. 对外 HTTP 状态和既有 `error` 字段保持 `409` 与 `chapter content changed; retry`，保证现有前端精确
+   重试继续工作。
+2. 响应增加稳定、非敏感的 `reason` code，只描述失败的合同门，不返回 URL、规则、变量、路径、用户或
+   source 内容。允许值限定为 `association`、`source`、`book-identity`、`book-variable`、
+   `chapter-identity`、`chapter-variable`、`chapter-cache`、`book-write`、`chapter-write` 和
+   `final-chapter`。
+3. 后端内部必须保留 `errors.Is(err, errReaderChapterContentStale)`，并让测试能断言具体 reason；不得通过
+   reason code 放宽任何 CAS、所有权或取消保护。
+4. 先用旧实现红测证明两个不同 stale 分支只能得到同一无原因 body，再实现 reason 投影；发布后只需
+   再取一次生产 Response 即可将根因收敛到一个具体门，然后继续执行该门的“合同→红测→实现”。
+5. 本诊断切片不修改成功响应、SQLite schema、cache 文件、三个持久目录、书源抓取行为或前端可见文案，
+   也不得被描述为已修复生产正文加载。
