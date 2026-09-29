@@ -248,3 +248,21 @@
    再取一次生产 Response 即可将根因收敛到一个具体门，然后继续执行该门的“合同→红测→实现”。
 5. 本诊断切片不修改成功响应、SQLite schema、cache 文件、三个持久目录、书源抓取行为或前端可见文案，
    也不得被描述为已修复生产正文加载。
+
+## 第五次诊断实现、发布与生产部署边界
+
+- 合同 `7057f52`、旧实现红测 `f9b6c08` 与诊断实现 `c1e1dbb` 已按顺序落地。stale sentinel 仍支持
+  `errors.Is`，HTTP 仍返回 409 和原有 `error`；新增 `reason` 只投影上述白名单合同门，不包含 URL、规则、
+  variable、cache path、用户或 source 内容。测试分别固定 `source` 与 `book-variable` 分支，并覆盖共享的
+  本地书 cache rebuild stale envelope。
+- Go focused/full/race/vet、frontend 757/757、Vite production build 与 Compose config 通过。可信 GitHub
+  Actions run `36516861894` 又通过 backend/frontend/build/Compose、native、fresh/portable、historical
+  volume 和 published-platform 全部门，并发布 `c1e1dbb`/`latest`。amd64/arm64 OCI index 为
+  `sha256:3d5eceaf00c0ceb6fcbb10121ef5fca444b2ea35756ebd4f2084b76d95f201d8`；平台 manifests 分别为
+  `sha256:40ae9885afd2f0027c15c9fb82eea6818af501a63cfc6c0535db40b7f59b78b6` 和
+  `sha256:ee4d94e98ca7d78ae3ae2a736734444e0b0eda5c4f26f06cee1e2dee8fefbacd`。
+- 发布后公开 `/api/health` 仍返回生产 commit
+  `8bebcbf67c49eb9ccd20310ff45f6624c4296beb`。用户的 OpenReader 登录态可用，但 Portainer 与 1Panel 均
+  未登录，本机 batch SSH 也没有服务器权限；因此 `c1e1dbb` 尚未部署，不能从旧生产响应获得 reason，
+  更不能将该诊断切片描述为正文修复。当前状态为
+  **diagnostic-implemented / regression-validated / Docker-published / production-awaiting-upgrade**。
