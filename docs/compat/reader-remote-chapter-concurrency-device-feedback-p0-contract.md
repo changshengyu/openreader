@@ -265,6 +265,16 @@
 nullable 元数据仍为 NULL；另在最终 write 前改变 NULL 字段为非空值，要求 409 且不发布缓存。
 该确定性兼容缺陷修复后仍须在生产原书验证，方可关闭此次用户故障。
 
+实现证据：合同 `4466345`、红测 `b1d74b2`、修复 `db1ea21`。五个独立 NULL fixture 均在旧实现
+返回精确 `chapter-write`；修复后第一次正文读取与第二次缓存读取均 200，原 nullable metadata 保持 NULL。
+最终 write 前的 NULL-to-nonempty 修改仍返回 409，未发布缓存。章节 URL 的最终 re-read 同步采用
+NULL/空串等价比较，避免提交成功后又被 `final-chapter` 拒绝。
+历史提交 `1367a28`（2026-06-24）新增 nullable `is_volume/tag`，没有数据库默认值；这解释了早期导入
+行为何具有该形态。固定上游 `fa22f271` 的 `BookController.kt#getBookContent` 本地分支直接返回
+`LocalBook.getContent`，没有因这些空 metadata 拒绝正文的行为。源码回归：Go 全量、local rebuild
+race、vet、frontend 757/757、Vite、Compose 均通过。Actions `36558964029` 负责发布门禁；原书生产
+验证尚未完成，不将确定性 fixture 成功等同于用户故障已关闭。
+
 - 合同 `7057f52`、旧实现红测 `f9b6c08` 与诊断实现 `c1e1dbb` 已按顺序落地。stale sentinel 仍支持
   `errors.Is`，HTTP 仍返回 409 和原有 `error`；新增 `reason` 只投影上述白名单合同门，不包含 URL、规则、
   variable、cache path、用户或 source 内容。测试分别固定 `source` 与 `book-variable` 分支，并覆盖共享的
