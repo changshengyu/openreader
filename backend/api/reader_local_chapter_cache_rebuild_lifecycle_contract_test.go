@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -307,7 +308,8 @@ func TestReaderLocalChapterCacheRebuildCoordinatesSameChapterRequests(t *testing
 		switch {
 		case response.Code == http.StatusOK:
 			okCount++
-		case response.Code == http.StatusConflict && response.Body.String() == `{"error":"chapter content changed; retry"}`:
+		case response.Code == http.StatusConflict:
+			assertReaderLocalChapterCacheRebuildLifecycleStale(t, response)
 			staleCount++
 		default:
 			t.Errorf("same-chapter response = %d %s", response.Code, response.Body.String())
@@ -485,7 +487,14 @@ func performReaderLocalChapterCacheRebuildLifecycleRequest(
 
 func assertReaderLocalChapterCacheRebuildLifecycleStale(t *testing.T, response *httptest.ResponseRecorder) {
 	t.Helper()
-	if response.Code != http.StatusConflict || response.Body.String() != `{"error":"chapter content changed; retry"}` {
+	var payload struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode stale local rebuild response %q: %v", response.Body.String(), err)
+	}
+	if response.Code != http.StatusConflict || payload.Error != errReaderChapterContentStale.Error() || payload.Reason == "" {
 		t.Errorf("stale local rebuild = %d %s, want stable 409", response.Code, response.Body.String())
 	}
 }

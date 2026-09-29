@@ -2609,7 +2609,7 @@ func (s *Server) chapterContent(c *gin.Context) {
 	content, contentErr := s.loadChapterTextContextResult(c.Request.Context(), book, &chapter)
 	if contentErr != nil {
 		if errors.Is(contentErr, errReaderChapterContentStale) {
-			c.JSON(http.StatusConflict, gin.H{"error": errReaderChapterContentStale.Error()})
+			writeReaderChapterContentStale(c, contentErr, "chapter-identity")
 			return
 		}
 		if isRequestContextError(contentErr) {
@@ -2630,7 +2630,7 @@ func (s *Server) chapterContent(c *gin.Context) {
 		if isRequestContextError(err) {
 			return
 		}
-		c.JSON(http.StatusConflict, gin.H{"error": errReaderChapterContentStale.Error()})
+		writeReaderChapterContentStale(c, readerChapterContentStale("final-chapter"), "final-chapter")
 		return
 	}
 	chapter = currentChapter
@@ -3062,6 +3062,41 @@ type chapterTextLoadPolicy struct {
 
 var errReaderChapterContentStale = errors.New("chapter content changed; retry")
 
+type readerChapterContentStaleError struct {
+	reason string
+}
+
+func (err *readerChapterContentStaleError) Error() string {
+	return errReaderChapterContentStale.Error()
+}
+
+func (err *readerChapterContentStaleError) Unwrap() error {
+	return errReaderChapterContentStale
+}
+
+func readerChapterContentStale(reason string) error {
+	return &readerChapterContentStaleError{reason: reason}
+}
+
+func readerChapterContentStaleReason(err error) string {
+	var stale *readerChapterContentStaleError
+	if errors.As(err, &stale) {
+		return stale.reason
+	}
+	return ""
+}
+
+func writeReaderChapterContentStale(c *gin.Context, err error, fallbackReason string) {
+	reason := readerChapterContentStaleReason(err)
+	if reason == "" {
+		reason = fallbackReason
+	}
+	c.JSON(http.StatusConflict, gin.H{
+		"error":  errReaderChapterContentStale.Error(),
+		"reason": reason,
+	})
+}
+
 type readerChapterContentSnapshot struct {
 	book    models.Book
 	chapter models.Chapter
@@ -3255,12 +3290,12 @@ func (s *Server) reloadReaderChapterFetchState(
 		Where("id = ? AND user_id = ?", requestedBook.ID, requestedBook.UserID).
 		First(&book).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if book.SourceID != requestedBook.SourceID || book.Type != requestedBook.Type || book.URL != requestedBook.URL {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
 	}
 
 	var chapter models.Chapter
@@ -3268,12 +3303,12 @@ func (s *Server) reloadReaderChapterFetchState(
 		Where("id = ? AND book_id = ?", requestedChapter.ID, requestedBook.ID).
 		First(&chapter).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-identity")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if chapter.Index != requestedChapter.Index || chapter.URL != requestedChapter.URL || chapter.Title != requestedChapter.Title {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-identity")
 	}
 	return book, chapter, nil
 }
@@ -3337,7 +3372,7 @@ func (s *Server) persistRemoteChapterFetch(
 			return bookResult.Error
 		}
 		if bookResult.RowsAffected != 1 {
-			return errReaderChapterContentStale
+			return readerChapterContentStale("book-write")
 		}
 		committedSnapshot := snapshot
 		committedSnapshot.book.Variable = variableState.BookVariable
@@ -3370,7 +3405,7 @@ func (s *Server) persistRemoteChapterFetch(
 			return chapterResult.Error
 		}
 		if chapterResult.RowsAffected != 1 {
-			return errReaderChapterContentStale
+			return readerChapterContentStale("chapter-write")
 		}
 		if staged != nil {
 			if err := staged.publish(ctx); err != nil {
@@ -3402,44 +3437,52 @@ func (s *Server) validateReaderChapterContentSnapshot(
 		snapshot.source.ID,
 	).First(&association).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("association")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	var source models.BookSource
 	if err := db.First(&source, snapshot.source.ID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("source")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if !sameBookSourceFetchSemantics(source, snapshot.source) {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("source")
 	}
 
 	var book models.Book
 	if err := db.Where("id = ? AND user_id = ?", snapshot.book.ID, snapshot.book.UserID).First(&book).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if book.SourceID != snapshot.book.SourceID || book.Type != snapshot.book.Type || book.URL != snapshot.book.URL ||
-		book.Title != snapshot.book.Title || book.Variable != snapshot.book.Variable {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		book.Title != snapshot.book.Title {
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
+	}
+	if book.Variable != snapshot.book.Variable {
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("book-variable")
 	}
 
 	var chapter models.Chapter
 	if err := db.Where("id = ? AND book_id = ?", snapshot.chapter.ID, snapshot.book.ID).First(&chapter).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-identity")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if chapter.Index != snapshot.chapter.Index || chapter.URL != snapshot.chapter.URL ||
-		chapter.Title != snapshot.chapter.Title || chapter.Variable != snapshot.chapter.Variable ||
-		chapter.CachePath != snapshot.chapter.CachePath {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		chapter.Title != snapshot.chapter.Title {
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-identity")
+	}
+	if chapter.Variable != snapshot.chapter.Variable {
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-variable")
+	}
+	if chapter.CachePath != snapshot.chapter.CachePath {
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-cache")
 	}
 	return book, chapter, nil
 }
@@ -3587,7 +3630,7 @@ func (s *Server) persistRebuiltLocalChapterTextContext(
 	s.localCacheMu.Lock()
 	defer s.localCacheMu.Unlock()
 	if !source.current() {
-		return "", models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		return "", models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
 	}
 	currentBook, currentChapter, err := s.validateReaderLocalChapterCacheSnapshot(s.db.WithContext(ctx), snapshot)
 	if err != nil {
@@ -3620,7 +3663,7 @@ func (s *Server) persistRebuiltLocalChapterTextContext(
 			return validateErr
 		}
 		if !source.current() {
-			return errReaderChapterContentStale
+			return readerChapterContentStale("book-identity")
 		}
 		if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
 			readerLocalChapterCacheRebuildLifecycleTestHook("before_local_cache_update", snapshot.book, snapshot.chapter)
@@ -3662,10 +3705,10 @@ func (s *Server) persistRebuiltLocalChapterTextContext(
 			return write.Error
 		}
 		if write.RowsAffected != 1 {
-			return errReaderChapterContentStale
+			return readerChapterContentStale("chapter-write")
 		}
 		if !source.current() {
-			return errReaderChapterContentStale
+			return readerChapterContentStale("book-identity")
 		}
 		if readerLocalChapterCacheRebuildLifecycleTestHook != nil {
 			readerLocalChapterCacheRebuildLifecycleTestHook("before_local_cache_publish", snapshot.book, snapshot.chapter)
@@ -3693,22 +3736,22 @@ func (s *Server) validateReaderLocalChapterCacheSnapshot(
 	var book models.Book
 	if err := db.Where("id = ? AND user_id = ?", snapshot.book.ID, snapshot.book.UserID).First(&book).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if !sameReaderLocalChapterCacheBookSnapshot(book, snapshot.book) {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("book-identity")
 	}
 	var chapter models.Chapter
 	if err := db.Where("id = ? AND book_id = ?", snapshot.chapter.ID, snapshot.book.ID).First(&chapter).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+			return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-identity")
 		}
 		return models.Book{}, models.Chapter{}, err
 	}
 	if !sameReaderLocalChapterCacheChapterSnapshot(chapter, snapshot.chapter) {
-		return models.Book{}, models.Chapter{}, errReaderChapterContentStale
+		return models.Book{}, models.Chapter{}, readerChapterContentStale("chapter-identity")
 	}
 	return book, chapter, nil
 }

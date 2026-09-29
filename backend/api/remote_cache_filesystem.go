@@ -62,14 +62,14 @@ func (s *Server) stageLocalChapterCache(
 	content string,
 ) (*stagedChapterCache, error) {
 	if archive == nil || archive.storage == nil || !archive.current() {
-		return nil, errReaderChapterContentStale
+		return nil, readerChapterContentStale("book-identity")
 	}
 	relative := filepath.ToSlash(filepath.Join("content", engine.ChapterCachePath(bookURL, chapterURL)))
 	if err := archive.storage.Mkdir(filepath.ToSlash(filepath.Dir(relative))); err != nil {
 		return nil, err
 	}
 	if !archive.current() {
-		return nil, errReaderChapterContentStale
+		return nil, readerChapterContentStale("book-identity")
 	}
 	staged, err := stageChapterCacheFile(ctx, archive.storage, relative, content)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *Server) stageLocalChapterCache(
 	}
 	if !archive.current() {
 		staged.rollback()
-		return nil, errReaderChapterContentStale
+		return nil, readerChapterContentStale("book-identity")
 	}
 	return staged, nil
 }

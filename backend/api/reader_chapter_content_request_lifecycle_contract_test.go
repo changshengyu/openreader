@@ -286,9 +286,7 @@ func TestReaderChapterContentRejectsSourceSemanticChangeAfterFetch(t *testing.T)
 	})
 
 	response := performReaderChapterContentLifecycleRequest(fixture, context.Background())
-	if response.Code != http.StatusConflict || response.Body.String() != `{"error":"chapter content changed; retry"}` {
-		t.Errorf("stale source result = %d %s, want safe 409", response.Code, response.Body.String())
-	}
+	assertReaderChapterStaleReason(t, response, "source")
 
 	book, chapter := loadReaderChapterContentLifecycleState(t, fixture)
 	if book.Variable != "" || chapter.Variable != "" || chapter.CachePath != currentCachePath {
