@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -305,6 +306,63 @@ func TestReaderChapterContentRejectsSourceSemanticChangeAfterFetch(t *testing.T)
 	}
 	if failures != 0 {
 		t.Fatalf("stale result wrote %d source failures", failures)
+	}
+}
+
+func TestReaderChapterContentStaleResponseIdentifiesSafeContractGate(t *testing.T) {
+	t.Run("source semantics", func(t *testing.T) {
+		fixture := newReaderChapterContentLifecycleFixture(t, "chapterstalereasonsource")
+		installReaderChapterContentLifecycleHook(t, func(stage string, _ context.Context, book models.Book, chapter models.Chapter) {
+			if stage != "after_remote_fetch" || book.ID != fixture.book.ID || chapter.ID != fixture.chapter.ID {
+				return
+			}
+			if err := fixture.server.db.Model(&models.BookSource{}).
+				Where("id = ?", fixture.source.ID).
+				Update("rules", `{"content":"main|text"}`).Error; err != nil {
+				t.Errorf("update source semantics: %v", err)
+			}
+		})
+
+		assertReaderChapterStaleReason(t, performReaderChapterContentLifecycleRequest(
+			fixture,
+			context.Background(),
+		), "source")
+	})
+
+	t.Run("book variable", func(t *testing.T) {
+		fixture := newReaderChapterContentLifecycleFixture(t, "chapterstalereasonbookvariable")
+		installReaderChapterContentLifecycleHook(t, func(stage string, _ context.Context, book models.Book, chapter models.Chapter) {
+			if stage != "after_remote_fetch" || book.ID != fixture.book.ID || chapter.ID != fixture.chapter.ID {
+				return
+			}
+			if err := fixture.server.db.Model(&models.Book{}).
+				Where("id = ? AND user_id = ?", fixture.book.ID, fixture.user.ID).
+				Update("variable", `{"book":"current"}`).Error; err != nil {
+				t.Errorf("update Book variable: %v", err)
+			}
+		})
+
+		assertReaderChapterStaleReason(t, performReaderChapterContentLifecycleRequest(
+			fixture,
+			context.Background(),
+		), "book-variable")
+	})
+}
+
+func assertReaderChapterStaleReason(t *testing.T, response *httptest.ResponseRecorder, reason string) {
+	t.Helper()
+	if response.Code != http.StatusConflict {
+		t.Fatalf("stale response = %d %s, want 409", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode stale response %q: %v", response.Body.String(), err)
+	}
+	if payload.Error != errReaderChapterContentStale.Error() || payload.Reason != reason {
+		t.Fatalf("stale response = %+v, want error=%q reason=%q", payload, errReaderChapterContentStale.Error(), reason)
 	}
 }
 
