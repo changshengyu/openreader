@@ -82,6 +82,17 @@ test('applies different remote progress to the current book', async () => {
   ])
 })
 
+test('remote offset without a measured percentage preserves offset-only restoration', async () => {
+  for (const chapterPercent of [undefined, null, '']) {
+    const fixture = createController()
+    await fixture.controller.handleProgressUpdated({
+      detail: { progress: { bookId: 7, chapterId: 13, chapterIndex: 2, offset: 240, chapterPercent } },
+    })
+    assert.deepEqual(fixture.calls.find(call => call[0] === 'navigate'), ['navigate', { chapter: 2, offset: 240 }])
+    assert.deepEqual(fixture.calls.find(call => call[0] === 'load'), ['load', 2, 240, { restorePercent: null, saveAfterLoad: false }])
+  }
+})
+
 test('ignores progress for other books, matching positions, or busy restoration', async () => {
   const fixture = createController()
   await fixture.controller.handleProgressUpdated({

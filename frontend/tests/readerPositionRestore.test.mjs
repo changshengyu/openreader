@@ -79,3 +79,22 @@ test('restores continuous chapter percentages relative to the active block', asy
   assert.equal(fixture.state.contentEl.value.scrollTop, 500)
   assert.deepEqual(fixture.calls, [['frame'], ['layout']])
 })
+
+test('absent percentages preserve paragraph offsets in single and continuous modes', async () => {
+  for (const continuous of [false, true]) {
+    for (const restorePercent of [null, undefined, '']) {
+      const fixture = createController()
+      fixture.state.isContinuousScrollRead.value = continuous
+      await fixture.controller.restore(240, { restorePercent })
+      assert.ok(fixture.calls.some(call => call[0] === 'jump' && call[1] === '200'),
+        `continuous=${continuous} restorePercent=${String(restorePercent)} lost paragraph offset`)
+    }
+  }
+})
+
+test('explicit percentage zero still restores the chapter beginning', async () => {
+  const fixture = createController()
+  await fixture.controller.restore(240, { restorePercent: 0 })
+  assert.equal(fixture.state.contentEl.value.scrollTop, 0)
+  assert.ok(!fixture.calls.some(call => call[0] === 'jump'))
+})
