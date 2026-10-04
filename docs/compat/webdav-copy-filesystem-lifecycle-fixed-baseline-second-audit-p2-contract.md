@@ -1,6 +1,6 @@
 # WebDAV COPY 文件系统生命周期固定基准第二轮合同（P2）
 
-状态：**implemented / regression-validated / Docker-publication-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 ## 权威行为和差异
@@ -84,5 +84,12 @@ Go full、COPY API/service race、vet、frontend 762/762/build、Compose 与文�
 
 非 root、无网络/生产卷的 Linux arm64 容器运行实际 COPY rootedfs 测试通过，包括只读目录权限、
 身份/取消补偿、提交后未知实体保存、硬链接正常复制和移开后真实修改拒绝；这是平台补充证据，
-不替代可信发布 fresh/historical/portable/backup 与已发布双架构门禁。Docker 尚待本实施提交的
-可信 workflow 终态与 OCI digest，生产仍为 `db1ea21`，未执行远程升级。
+不替代可信发布 fresh/historical/portable/backup 与已发布双架构门禁。生产仍为 `db1ea21`，
+未执行远程升级。
+
+可信 Actions `37189091695` 已成功完成所有门禁，发布 `463b487` / `latest` linux/amd64 + linux/arm64
+OCI index `sha256:cac29fea5b028c3927336fcb2d3fb07f95afb4bff90c7e9cb7fcdcd6e77216ea`；
+amd64 manifest `sha256:607cb60a3667f4a3691fe0b8d51e7443c3eeb105735ca26cf68c7b0cea66169b`，
+arm64 manifest `sha256:677b1b143147a77ee389676274c2cad4ec98148b718a60739c79957c60ac0dc7`。
+补充非 root Linux arm64 rootedfs/webdavfs 全包运行也通过。发布是候选可用的证明，不等于另一台
+Mac 已拉取并重新创建容器；MOVE 后续合同与红测单独推进，未计入本次 COPY 发布完成项。

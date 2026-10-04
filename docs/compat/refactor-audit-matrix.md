@@ -31,17 +31,21 @@ frontend 762/762、Go/full/race/vet、build/Compose 通过；可信 Actions `371
 COPY 初检之后的绝对 source/stage/publication/cleanup 已在合同与旧实现八项红测后改为 opened
 tree、同 parent stage、identity/metadata 复验和 no-replace 补偿；固定上游行为和允许安全适配见
 [`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-状态 **implemented / regression-validated / Docker-publication-pending**。Go/full/race/vet、frontend
+状态 **implemented / regression-validated / Docker-published / awaiting-device-verification**。Go/full/race/vet、frontend
 762/762/build、Compose、Linux 双架构编译、非 root Linux arm64 文件系统测试与最新二进制隔离
 Basic/curl 通过。历史硬链接 source 与旧 target 共享 inode 的自有 rename ctime 已限定适配，
 移开后真实修改仍拒绝；发布后的未知清理实体保留并返回固定 pending 诊断。
+可信 Actions `37189091695` 全门成功，已发布 `463b487` 双架构 OCI index
+`sha256:cac29fea5b028c3927336fcb2d3fb07f95afb4bff90c7e9cb7fcdcd6e77216ea`；生产仍确认 `db1ea21`。
 MOVE 的同类路径与取消缺口单独保留未完成，不从 PUT/DELETE/COPY 的验证推导它通过。
 
 MOVE 下一切片合同已从固定 `WebdavController.kt` 394–428 提取，状态
 **inventory-complete / red-tests-and-implementation-pending**，见
 [`webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 同时纳入共享 LocalStore rename / 章节缓存 stage-backup-publish-restore；取消、identity、no-replace
-恢复与 owned cleanup 不可仅覆盖外部 DAV handler。尚无本项实施或设备签收证据。
+恢复与 owned cleanup 不可仅覆盖外部 DAV handler。红测 `9b6a5f6` 已证明授权后取消仍返回 201
+并移动源文件；两个接收边界 fixture 的旧实现未触发，不当作旧竞态证据。后续实施回归与设备签收
+仍单独记录，不能从 COPY 已发布推导 MOVE 已发布。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 

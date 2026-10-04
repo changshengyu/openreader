@@ -1443,7 +1443,8 @@ source 或同期新 final，无法恢复时须保留旧字节 quarantine。现�
 
 历史硬链接正常复制不改 source；仅适配本请求确认的共享 inode rename ctime。旧数据无启动扫描、
 迁移、重写或目录清理。完整新树发布后遇到未知旧成员/stage 停止清理，返回 201 与固定 pending
-头并保留剩余 quarantine；不声称已删除旧成员可回滚。可信卷/备份发布门尚待本实施 workflow。
+头并保留剩余 quarantine；不声称已删除旧成员可回滚。可信 Actions `37189091695` 已通过
+fresh/historical/portable/backup 与双架构发布门，`463b487` 已发布；生产 `db1ea21` 未变。
 
 MOVE 后续合同同样不改 SQLite/根目录/备份格式；必须保留现有 WebDAV、LocalStore 与章节缓存
 shared Move 使用的文件路径和失败补偿。采用同 inode rename、不改写 source 权限；补偿遇到
