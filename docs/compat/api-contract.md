@@ -1438,6 +1438,13 @@ Basic/Bearer 双前缀 Gin、普通用户私有根与真实 Basic/curl 请求已
 完整 COPY 发布确认后旧 quarantine/stage 清理失败不伪称复制失败：201 空 body 加
 `X-OpenReader-WebDAV-Cleanup: pending`，保留未清理字节，不回滚已提交完整新树。
 
+MOVE 后续 request/filesystem 合同见
+[`webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+保留两路 MOVE、Destination/Overwrite:T、caller scope、201/400/403/409/412 空 body；授权后取消
+不得移动 source。提交后的旧目标 cleanup pending 保持 201 与固定诊断头，不伪称失败。
+LocalStore rename 的同种已提交情形保留 200 原 JSON 并加诊断头，不改变缓存补偿 caller 的恢复
+语义。当前仅盘点，未实施，不能以本段替代红测与回归。
+
 接收侧进度同步已按合同/红测/实现落地，新增两路 raw 上传到 caller-owned ReadingProgress 的接收
 副作用；已完成三视口在线/冷启动与无回声验证，可信 Actions `37186333157` 又完成卷门与 `8dc61c3`
 双架构发布；不代表用户另一台 Mac 已升级。

@@ -37,6 +37,12 @@ Basic/curl 通过。历史硬链接 source 与旧 target 共享 inode 的自有 
 移开后真实修改仍拒绝；发布后的未知清理实体保留并返回固定 pending 诊断。
 MOVE 的同类路径与取消缺口单独保留未完成，不从 PUT/DELETE/COPY 的验证推导它通过。
 
+MOVE 下一切片合同已从固定 `WebdavController.kt` 394–428 提取，状态
+**inventory-complete / red-tests-and-implementation-pending**，见
+[`webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+同时纳入共享 LocalStore rename / 章节缓存 stage-backup-publish-restore；取消、identity、no-replace
+恢复与 owned cleanup 不可仅覆盖外部 DAV handler。尚无本项实施或设备签收证据。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于

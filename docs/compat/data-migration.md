@@ -1445,6 +1445,12 @@ source 或同期新 final，无法恢复时须保留旧字节 quarantine。现�
 迁移、重写或目录清理。完整新树发布后遇到未知旧成员/stage 停止清理，返回 201 与固定 pending
 头并保留剩余 quarantine；不声称已删除旧成员可回滚。可信卷/备份发布门尚待本实施 workflow。
 
+MOVE 后续合同同样不改 SQLite/根目录/备份格式；必须保留现有 WebDAV、LocalStore 与章节缓存
+shared Move 使用的文件路径和失败补偿。采用同 inode rename、不改写 source 权限；补偿遇到
+newcomer 不覆盖，留存可恢复 quarantine。历史硬链接、nested symlink 只原位移动而不跟随。
+当前仅盘点，见
+[`webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
 后续进度接收仅更新既有 ReadingProgress，不新增 schema、配置或备份成员；外部毫秒时间不作为
 数据库 CAS 版本。上传成功、SQL 失败时保留原始文件，响应诊断并允许重传补偿，不宣称跨存储原子性。
 现已实施并通过初次/既有进度、caller 私有根、重复/旧时间、SQL 失败补偿与真实浏览器恢复测试。
