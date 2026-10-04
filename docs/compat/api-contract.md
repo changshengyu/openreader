@@ -1428,3 +1428,10 @@ full/race/vet, frontend 742/742, build, four-viewport SourceManager/UserManage, 
 Actions run `32919553203` fresh/historical/portable gates passed. The pulled `a36b888` image reported the full
 revision and repeated save/status with a private canonical mirror. OCI index:
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`.
+# 2026-10-04 WebDAV PUT 生命周期复审
+
+`PUT /reader3/webdav/*path` 和 `PUT /webdav/*path` 保持认证后的 raw body 上传，无新增 query/body
+字段；成功 201、parent 缺失/非目录 409、目录 target 405、超限 413、一般 I/O 500 均为空 body。
+上传期间 root/parent/target/stage identity 改变属于 unsafe lifecycle，返回 403 空 body，不能覆盖
+替换实体。caller cancellation 不新增错误正文。详见
+[`webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。

@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-04 下一动作：WebDAV PUT 生命周期
+
+从当前服务和固定上游重新取证，PUT 在 body 读取后仍按绝对路径 chmod/replace/cleanup，且没有复验
+target 与 stage identity。新差异 **P2 must-fix / inventory-complete**，见
+[`webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+正常 201/409/405、认证、原始 body 和私有根保持；失败保留原文件属于允许的数据保护强化。先红测，
+后 opened-parent staged publication；已签收 DELETE 与原书恢复不重开。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于

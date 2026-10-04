@@ -1435,3 +1435,9 @@ Implemented in `db1ea21`: five historical NULL fixtures pass rebuild and cache-h
 NULL metadata, and still reject a concurrent nonempty mutation. No data migration is required. Production
 reports the same fix commit; the user confirmed the original book recovered on 2026-10-04. This closes the
 reported original-book incident without claiming an exhaustive verification of all historical volumes.
+# 2026-10-04 WebDAV PUT 数据保护
+
+将上传 stage、提交与清理收敛到同一 opened parent；失败保持旧 final，不追随上传期间替换的目录。
+不改变 `data/webdav`、用户私有目录、SQLite 或 ordinary/portable 备份布局；无需迁移或重新上传。
+完整生命周期合同见
+[`webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
