@@ -1433,6 +1433,8 @@ revision and repeated save/status with a private canonical mirror. OCI index:
 接收侧进度同步尚未实现；已完成的 reading-progress 镜像只证明数据库到文件方向。
 后续 WebDAV progress ingress 的合同与测试门见
 [`webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md`](webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md)。
+该接收适配保留双前缀 raw PUT 201 空 body；文件提交后阅读进度 SQL/取消失败用
+`X-OpenReader-Progress-Sync: failed` 标识，不伪造跨存储同步成功，不回滚已上传文件。
 
 `PUT /reader3/webdav/*path` 和 `PUT /webdav/*path` 保持认证后的 raw body 上传，无新增 query/body
 字段；成功 201、parent 缺失/非目录 409、目录 target 405、超限 413、一般 I/O 500 均为空 body。

@@ -1437,6 +1437,9 @@ reports the same fix commit; the user confirmed the original book recovered on 2
 reported original-book incident without claiming an exhaustive verification of all historical volumes.
 # 2026-10-04 WebDAV PUT 数据保护
 
+后续进度接收仅更新既有 ReadingProgress，不新增 schema、配置或备份成员；外部毫秒时间不作为
+数据库 CAS 版本。上传成功、SQL 失败时保留原始文件，响应诊断并允许重传补偿，不宣称跨存储原子性。
+
 将上传 stage、提交与清理收敛到同一 opened parent；失败保持旧 final，不追随上传期间替换的目录。
 不改变 `data/webdav`、用户私有目录、SQLite 或 ordinary/portable 备份布局；无需迁移或重新上传。
 完整生命周期合同见
