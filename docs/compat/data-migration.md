@@ -1437,6 +1437,10 @@ reports the same fix commit; the user confirmed the original book recovered on 2
 reported original-book incident without claiming an exhaustive verification of all historical volumes.
 # 2026-10-04 WebDAV PUT 数据保护
 
+后续 COPY opened-tree/stage 合同不改变用户目录或 SQLite/备份格式；取消/失败不能丢弃旧目标、
+source 或同期新 final，无法恢复时须保留旧字节 quarantine。当前只盘点，详见
+[`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
 后续进度接收仅更新既有 ReadingProgress，不新增 schema、配置或备份成员；外部毫秒时间不作为
 数据库 CAS 版本。上传成功、SQL 失败时保留原始文件，响应诊断并允许重传补偿，不宣称跨存储原子性。
 现已实施并通过初次/既有进度、caller 私有根、重复/旧时间、SQL 失败补偿与真实浏览器恢复测试。

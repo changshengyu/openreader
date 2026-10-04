@@ -26,6 +26,12 @@ SQL 失败补偿诊断和三视口 Go/SQLite/WebSocket 在线/冷启动精确 of
 frontend 762/762、Go/full/race/vet、build/Compose 通过；本切片卷门与发布仍待可信 Actions。
 原书加载已验收保持关闭，整体审计未完成。
 
+下一动作仅盘点、不改代码：COPY 仍按绝对路径进行 source 遍历、stage publication 与 RemoveAll
+cleanup，未绑定初检 source/target identity；固定上游 COPY 行为和允许安全适配见
+[`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+状态 **inventory-complete / red-tests-and-implementation-pending**；MOVE 的同类路径与取消缺口单独
+保留未完成，不从 PUT/DELETE/COPY 的验证推导它通过。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于

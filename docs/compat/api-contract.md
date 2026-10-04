@@ -1430,6 +1430,11 @@ revision and repeated save/status with a private canonical mirror. OCI index:
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`.
 # 2026-10-04 WebDAV PUT 生命周期复审
 
+COPY 后续生命周期合同见
+[`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)：
+保留双前缀、Destination、Overwrite:T、Basic/Bearer 和 201 空 body；root/source/parent/target/stage
+在工作期间身份变更走既有 unsafe 403 空 body，不增加进度上传副作用。当前只盘点，尚未实施。
+
 接收侧进度同步已按合同/红测/实现落地，新增两路 raw 上传到 caller-owned ReadingProgress 的接收
 副作用；已完成三视口在线/冷启动与无回声验证，Docker 卷门和发布仍待可信 Actions。
 WebDAV progress ingress 的合同与测试门见
