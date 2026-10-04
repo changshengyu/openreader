@@ -36,6 +36,10 @@ missing parent 409、目录类型冲突、无覆盖 412 等走既有错误映射
 
 copy failure/取消不发布部分树，不删除 source、旧 destination 或同期新 final。覆盖采用 no-replace
 install/recovery；若新 final 阻止旧字节恢复，保留可恢复 quarantine，并记录诊断，不静默删除旧字节。
+此失败保护限定在完整新树发布前。发布确认后开始处置旧 quarantine；若此时旧树或 stage 出现
+不属于本请求的实体，停止清理并保留剩余 quarantine，不把完整已发布的新树回滚为旧树。
+返回 201 空 body 并附加 `X-OpenReader-WebDAV-Cleanup: pending`，明确复制已提交、清理待处理；
+不宣称已经开始的旧树清理具有跨文件系统回滚原子性，也不声称仍能恢复已经成功删除的旧成员。
 不增加 SQLite/schema、配置、备份成员，也不清理用户 data/cache/library。opened-handle 与 no-replace
 属于明确允许的安全/数据保护差异，不能声称任意外部 actor 的改动具有跨文件系统原子性。
 
@@ -48,3 +52,11 @@ destination parent symlink/真实目录、原 destination regular/目录/symlink
 文件/递归树正常复制、fail preservation、双前缀 Basic/Bearer、普通用户私有根和当前 PUT/DELETE/
 progress ingress 相邻回归必须通过。Go full/race/vet、frontend/build、实际隔离卷 Basic/curl 与可信
 fresh/historical/portable/Docker 双架构发布为完成门；无 UI 修改时不重开已签收 Reader 几何。
+
+## 红灯证据（2026-10-04）
+
+`e66510c` 上新增复制阶段 context fixture，只有 staging 已存在才触发（不依赖生产 timing）：
+source ancestor symlink、source 真实目录、destination parent symlink/真实目录、既有 target regular/
+directory 替换、stage directory 替换及最后 read 后取消共八个 fixture 全部失败；旧实现均返回 nil。
+这些结果证明身份变更与最后取消未阻止发布。红测提交先于实施；为避免取消 live `8dc61c3` 双架构
+发布，测试提交暂在本地等待其终态，随后推送同一序列，不能因此跳过或重启原发布流水线。
