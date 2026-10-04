@@ -42,5 +42,17 @@ OpenReader `webdavPut` 只调用文件服务并返回 201；readingprogress 服�
 重复上传、非法/超识别预算文件、取消、目录变化、同步上传与普通 Reader 保存竞争及数据库失败。
 
 真实 Go/SQLite/WebSocket + 浏览器三视口必须证明外部上传后书架、在线 Reader 与全新上下文恢复
-一致，且没有回声 PUT。最后运行全量 Go/race/vet、frontend/build、fresh/historical/portable 卷门和
-可信双架构发布；不能只用直接数据库更新或 API shape 测试证明可见同步已完成。
+  一致，且没有回声 PUT。最后运行全量 Go/race/vet、frontend/build、fresh/historical/portable 卷门和
+  可信双架构发布；不能只用直接数据库更新或 API shape 测试证明可见同步已完成。
+
+## 2026-10-04 红灯证据与位置恢复审查
+
+接收链路基础红测已在 `70d4fa8` 应用代码上执行：两路 × 两目录 × URL/name-author 共八个
+fixture，均确认文件 PUT 201 且字节正确，ReadingProgress 仍为旧第一章 offset=5，未成为目标第二章
+offset=37。这是接收副作用缺失的直接证据，不能记为普通上传失败。
+
+后续实现必须同时检查百分比缺省语义：当前在线 external updates 与 BookLoad 会将持久
+`chapterPercent=0` 当作显式百分比；PositionRestore 又对 `null` 执行 `Number(null)` 得到 0。
+外部 payload 只有 `durChapterPos`，因此不能伪造一个 0 百分比覆盖非零 offset。须先补对应前端红测，
+使“没有有效百分比”保持缺省，再由真实正文布局验证正向 offset 和第一章 offset=0 显式重置。
+已有非零百分比恢复和正常 Reader 保存继续按原合同回归，不能用 API 行值验证替代页面位置验证。
