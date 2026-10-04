@@ -370,7 +370,9 @@ func (s *Server) renameLocalStoreItem(c *gin.Context) {
 		writeLocalStoreFilesystemError(c, err, "failed to rename local store item")
 		return
 	}
-	if err := service.Move(relativePath, newRelativePath, true); err != nil {
+	if err := service.MoveContext(c.Request.Context(), relativePath, newRelativePath, true); errors.Is(err, webdavfs.ErrMoveCleanupPending) {
+		c.Header("X-OpenReader-WebDAV-Cleanup", "pending")
+	} else if err != nil {
 		if errors.Is(err, webdavfs.ErrUnsafePath) || errors.Is(err, webdavfs.ErrNotDirectory) {
 			writeLocalStoreFilesystemError(c, err, "failed to rename local store item")
 			return

@@ -1,6 +1,6 @@
 # WebDAV MOVE 文件系统生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / red-tests-and-implementation-pending**。
+状态：**implemented / regression-validated / Docker-publication-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 ## 权威行为与调用范围
@@ -75,8 +75,8 @@ regular WebDAV/LocalStore/cache 路径继续有效。opened handles、no-replace
 Go full/race/vet、frontend/build、实际隔离 Basic/curl 与可信 fresh/historical/portable/backup/双架构
 门禁为完成条件；无 UI 结构变更时不重开 Reader 已签收几何。
 
-COPY `463b487` Actions `37189091695` 仍在发布；本轮合同文档允许先推送，红测/backend 修改推送
-等待该 run 终态，以免 workflow 的 cancel-in-progress 取消已验证候选。
+合同/红测阶段，COPY `463b487` Actions `37189091695` 尚在发布；合同文档先推送，红测/backend
+推送等待该 run 终态，以免 cancel-in-progress 取消已验证候选。该 run 后续已成功，红测已推送。
 
 ## 红灯证据（2026-10-04）
 
@@ -84,9 +84,44 @@ COPY `463b487` Actions `37189091695` 仍在发布；本轮合同文档允许先�
 测试用户的已授权 storage context，直接运行真实 MOVE handler/service，避免“取消导致认证 DB
 读取失败”提前短路。两前缀×regular/directory×new/overwrite 八项全部失败；实际返回 201 空 body，
 original source 路径消失。此证据证明授权后的取消未阻止提交，不用于宣称尚未注入的 identity race
-已经被旧实现确定性重现。应用代码尚未修改；红测推送等待 COPY run 终态。
+已经被旧实现确定性重现。取红灯时应用代码尚未修改；红测推送在 COPY run 成功后进行。
 
 另新增 `TestWebDAVMoveAdmittedBoundaryRejectsTargetChangeOrCancellation`，以未来 source claim
 存在作为已接收边界。旧实现两项均 `fired=false, status=201`；这仅表明尚无边界支持，不作为
 旧实现目标替换竞态已经重现的证据。实施后必须实际触发并断言 403/取消、source 与 current final
 字节保存；不能删除 fired 断言以使其假通过。
+
+## 实施与回归（2026-10-04）
+
+合同 `ff1fbfa`、红测 `9b6a5f6` 后实施 rootedfs.MoveTree：同一 trusted boundary 打开两側
+ancestor/parent，源顶层 metadata/inode claim，旧树独立接收，no-replace detach/install/restore 与
+owned-only 旧目标清理；无源内容读取、copy/delete 或 source chmod。regular/dir 本请求 rename
+的已确认 ctime 变化同步到旧 target 硬链接快照，外部修改不整体放行。删除旧 absolute
+replaceByRename/MkdirTemp/RemoveAll，内部 Move 保留 background-context 包装，WebDAV/LocalStore
+入口传 request context。缓存 publish/rollback 的数据/CAS 与普通/历史 NULL 布局不变。
+
+八项授权后取消红测转绿；两个 source-claim 边界 fixture 在新实现 **实际 fired=true**，分别验证
+target 替换 403 与后续取消的 source/current final 字节保护。额外覆盖接收后 source/parent/target
+变更、source/old claim 替换、恢复 source/final 抢占、提交后未知旧成员、普通用户私有根和有效进度
+JSON MOVE 零接收副作用。三路真实 Gin→Service→MoveTree 提交后注入 unknown，WebDAV 两前缀
+201 空 body、LocalStore 200 原 JSON 均附固定 pending 头，保留完整新文件与未知/剩余旧成员。
+
+发现并修正的是测试 Context 的并发 Err 标志：认证 SQL Rows 后台也调用 Err，旧夹具不满足
+Context 的并发接口合同。互斥保护一次性注入、原子观察 fired 后，COPY/MOVE/LocalStore/cache
+API race 重跑通过；不把这个夹具 race 宣称为生产业务 race。旧目录 000 的 no-follow open 按
+既有 helper 映射为 unsafe，不要求裸 EACCES；原 inode/bytes/permissions 与未 detach 断言保持。
+
+Go full/vet、rootedfs/webdavfs 全包 race、COPY/MOVE/LocalStore/ChapterCache API race、frontend
+762/762/build、Compose 与 Linux amd64/arm64 服务交叉编译通过。非 root Linux arm64 实际运行
+覆盖只读/不可读源、不可读旧 regular/旧目录拒绝、nested FIFO/links、硬链接、恢复与 pending。
+双 tmpfs 实测 EXDEV 在任何 claim 前保持两侧 inode/bytes；测试环境变量只为诊断 fixture，不是
+应用配置或迁移。
+
+最新隔离 Go/SQLite Basic/curl 协议 smoke 验证文件、目录、空目录、覆盖、无覆盖、原名消失、
+跨 parent MOVE 与相邻 COPY/PUT/PROPFIND/LOCK/UNLOCK/DELETE；LocalStore 真实 HTTP 上传→覆盖
+改名 200 原 JSON→下载 exact bytes→旧名 404 通过。三视口真实 Go/SQLite/Chromium 相邻 Reader
+多客户端/CAS/WebSocket/cold restore 与外部进度无回声全部通过，没有 mock API。隔离服务已停止。
+
+Docker 本实施候选尚待可信 workflow fresh/historical/portable/backup/published-platform 门与
+exact OCI digest。COPY `463b487` run `37189091695` 已成功发布；MOVE 红测 run `37190626551`
+失败符合预期，不是发布候选。生产 health 仍是 `db1ea21`，未远程升级；整体固定基准审计未完成。

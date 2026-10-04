@@ -23,6 +23,7 @@ var (
 	ErrNotDirectory       = errors.New("WebDAV parent is not a directory")
 	ErrTooLarge           = errors.New("WebDAV upload exceeds size limit")
 	ErrCopyCleanupPending = errors.New("WebDAV copy committed with cleanup pending")
+	ErrMoveCleanupPending = errors.New("WebDAV move committed with cleanup pending")
 )
 
 const maxImportPathBytes = 4096
@@ -373,16 +374,40 @@ func (s *Service) Copy(ctx context.Context, sourceRaw, destinationRaw string, ov
 }
 
 func (s *Service) Move(sourceRaw, destinationRaw string, overwrite bool) error {
+	return s.MoveContext(context.Background(), sourceRaw, destinationRaw, overwrite)
+}
+
+func (s *Service) MoveContext(ctx context.Context, sourceRaw, destinationRaw string, overwrite bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	source, destination, err := s.validTransfer(sourceRaw, destinationRaw, overwrite)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Lstat(destination); errors.Is(err, os.ErrNotExist) {
-		return os.Rename(source, destination)
-	} else if err != nil {
+	sourceRelative, err := filepath.Rel(s.boundary, source)
+	if err != nil {
+		return ErrUnsafePath
+	}
+	destinationRelative, err := filepath.Rel(s.boundary, destination)
+	if err != nil {
+		return ErrUnsafePath
+	}
+	err = rootedfs.MoveTree(ctx, s.boundary, sourceRelative, destinationRelative, overwrite)
+	switch {
+	case errors.Is(err, rootedfs.ErrUnsafePath):
+		return ErrUnsafePath
+	case errors.Is(err, rootedfs.ErrMoveSourceMissing), errors.Is(err, rootedfs.ErrMoveDestinationExists):
+		return ErrPrecondition
+	case errors.Is(err, rootedfs.ErrMoveParentMissing):
+		return ErrConflict
+	case errors.Is(err, rootedfs.ErrNotDirectory):
+		return ErrNotDirectory
+	case errors.Is(err, rootedfs.ErrMoveCleanupPending):
+		return ErrMoveCleanupPending
+	default:
 		return err
 	}
-	return replaceByRename(source, destination)
 }
 
 func (s *Service) validTransfer(sourceRaw, destinationRaw string, overwrite bool) (string, string, error) {
@@ -523,23 +548,6 @@ func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (
 			return total, readErr
 		}
 	}
-}
-
-func replaceByRename(source, target string) error {
-	backupDir, err := os.MkdirTemp(filepath.Dir(target), ".webdav-replace-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(backupDir)
-	backup := filepath.Join(backupDir, "old")
-	if err := os.Rename(target, backup); err != nil {
-		return err
-	}
-	if err := os.Rename(source, target); err != nil {
-		_ = os.Rename(backup, target)
-		return err
-	}
-	return nil
 }
 
 func within(root, target string) bool {

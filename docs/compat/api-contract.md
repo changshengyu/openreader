@@ -1444,7 +1444,9 @@ MOVE 后续 request/filesystem 合同见
 保留两路 MOVE、Destination/Overwrite:T、caller scope、201/400/403/409/412 空 body；授权后取消
 不得移动 source。提交后的旧目标 cleanup pending 保持 201 与固定诊断头，不伪称失败。
 LocalStore rename 的同种已提交情形保留 200 原 JSON 并加诊断头，不改变缓存补偿 caller 的恢复
-语义。当前仅盘点，未实施，不能以本段替代红测与回归。
+语义。合同 `ff1fbfa`、红测 `9b6a5f6` 后已实施，取消/target 变更、普通用户私有根、有效进度 JSON
+零 PUT 副作用与三路实际提交后 pending 响应已测试。最新真实 Basic/curl 与 LocalStore HTTP
+正常改名 200/path、下载 bytes/旧名 404 通过；Docker 候选仍待可信发布终态，不记作生产升级。
 
 接收侧进度同步已按合同/红测/实现落地，新增两路 raw 上传到 caller-owned ReadingProgress 的接收
 副作用；已完成三视口在线/冷启动与无回声验证，可信 Actions `37186333157` 又完成卷门与 `8dc61c3`

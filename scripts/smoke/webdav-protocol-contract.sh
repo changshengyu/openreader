@@ -169,6 +169,47 @@ status="$(request GET "$TARGET_URL/webdav/$ROOT_NAME/tree-copy" --user "$USERNAM
 assert_status "$status" 200 "GET file over copied directory"
 grep -Fx 'copy overwrite bytes' "$BODY" >/dev/null
 
+status="$(request PUT "$TARGET_URL/webdav/$ROOT_NAME/move-source.txt" \
+  --user "$USERNAME:$PASSWORD" --data-binary 'move source bytes')"
+assert_status "$status" 201 "prepare MOVE source"
+status="$(request MOVE "$TARGET_URL/reader3/webdav/$ROOT_NAME/move-source.txt" \
+  --user "$USERNAME:$PASSWORD" -H "Destination: $TARGET_URL/webdav/$ROOT_NAME/copied.txt")"
+assert_status "$status" 412 "MOVE existing target without overwrite"
+status="$(request PUT "$TARGET_URL/webdav/$ROOT_NAME/move-target.txt" \
+  --user "$USERNAME:$PASSWORD" --data-binary 'old move target')"
+assert_status "$status" 201 "prepare MOVE target"
+status="$(request MOVE "$TARGET_URL/reader3/webdav/$ROOT_NAME/move-source.txt" \
+  --user "$USERNAME:$PASSWORD" -H "Destination: $TARGET_URL/webdav/$ROOT_NAME/move-target.txt" -H 'Overwrite: T')"
+assert_status "$status" 201 "cross-prefix MOVE file overwrite"
+[ ! -s "$BODY" ]
+status="$(request GET "$TARGET_URL/webdav/$ROOT_NAME/move-source.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 404 "MOVE removes original source name"
+status="$(request GET "$TARGET_URL/webdav/$ROOT_NAME/move-target.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 200 "GET moved file"
+grep -Fx 'move source bytes' "$BODY" >/dev/null
+status="$(request MOVE "$TARGET_URL/webdav/$ROOT_NAME/tree" \
+  --user "$USERNAME:$PASSWORD" -H "Destination: $TARGET_URL/reader3/webdav/$ROOT_NAME/move-target.txt" -H 'Overwrite: T')"
+assert_status "$status" 201 "MOVE directory over old file"
+status="$(request GET "$TARGET_URL/webdav/$ROOT_NAME/move-target.txt/nested/file.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 200 "GET moved directory member"
+grep -Fx 'nested copy bytes' "$BODY" >/dev/null
+status="$(request PROPFIND "$TARGET_URL/reader3/webdav/$ROOT_NAME/move-target.txt/empty" --user "$USERNAME:$PASSWORD" -H 'Depth: 0')"
+assert_status "$status" 207 "MOVE preserves empty directory"
+status="$(request PUT "$TARGET_URL/webdav/$ROOT_NAME/move-source.txt" \
+  --user "$USERNAME:$PASSWORD" --data-binary 'final move bytes')"
+assert_status "$status" 201 "prepare MOVE file over directory"
+status="$(request MOVE "$TARGET_URL/webdav/$ROOT_NAME/move-source.txt" \
+  --user "$USERNAME:$PASSWORD" -H "Destination: $TARGET_URL/reader3/webdav/$ROOT_NAME/move-target.txt" -H 'Overwrite: T')"
+assert_status "$status" 201 "MOVE file over old directory"
+status="$(request MKCOL "$TARGET_URL/webdav/$ROOT_NAME/move-destination" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 201 "prepare cross-parent MOVE"
+status="$(request MOVE "$TARGET_URL/reader3/webdav/$ROOT_NAME/move-target.txt" \
+  --user "$USERNAME:$PASSWORD" -H "Destination: $TARGET_URL/webdav/$ROOT_NAME/move-destination/final.txt")"
+assert_status "$status" 201 "MOVE across different opened parents"
+status="$(request GET "$TARGET_URL/webdav/$ROOT_NAME/move-destination/final.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 200 "GET cross-parent moved file"
+grep -Fx 'final move bytes' "$BODY" >/dev/null
+
 status="$(request LOCK "$TARGET_URL/reader3/webdav/$ROOT_NAME/copied.txt" --user "$USERNAME:$PASSWORD")"
 assert_status "$status" 200 "LOCK"
 lock_token="$(awk 'BEGIN { IGNORECASE = 1 } tolower($1) == "lock-token:" { sub(/\r$/, "", $2); print $2; exit }' "$HEADERS")"

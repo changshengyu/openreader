@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,12 +19,15 @@ import (
 type davCopyContext struct {
 	context.Context
 	onWork func() bool
-	fired  bool
+	mu     sync.Mutex
+	fired  atomic.Bool
 }
 
 func (c *davCopyContext) Err() error {
-	if !c.fired && c.onWork() {
-		c.fired = true
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.fired.Load() && c.onWork() {
+		c.fired.Store(true)
 		return nil
 	}
 	return c.Context.Err()
@@ -69,8 +74,8 @@ func TestWebDAVCopyWorkingTargetChangeReturnsEmpty403(t *testing.T) {
 			req.Header.Set("Overwrite", "T")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, req)
-			if !ctx.fired || response.Code != 403 || response.Body.Len() != 0 {
-				t.Fatalf("COPY changed target: fired=%v %d %s", ctx.fired, response.Code, response.Body.String())
+			if !ctx.fired.Load() || response.Code != 403 || response.Body.Len() != 0 {
+				t.Fatalf("COPY changed target: fired=%v %d %s", ctx.fired.Load(), response.Code, response.Body.String())
 			}
 			data, err := os.ReadFile(filepath.Join(server.webdavDir(), "target.txt"))
 			if err != nil || string(data) != "new final" {

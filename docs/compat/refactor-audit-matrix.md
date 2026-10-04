@@ -40,12 +40,16 @@ Basic/curl 通过。历史硬链接 source 与旧 target 共享 inode 的自有 
 MOVE 的同类路径与取消缺口单独保留未完成，不从 PUT/DELETE/COPY 的验证推导它通过。
 
 MOVE 下一切片合同已从固定 `WebdavController.kt` 394–428 提取，状态
-**inventory-complete / red-tests-and-implementation-pending**，见
+**implemented / regression-validated / Docker-publication-pending**，见
 [`webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 同时纳入共享 LocalStore rename / 章节缓存 stage-backup-publish-restore；取消、identity、no-replace
 恢复与 owned cleanup 不可仅覆盖外部 DAV handler。红测 `9b6a5f6` 已证明授权后取消仍返回 201
 并移动源文件；两个接收边界 fixture 的旧实现未触发，不当作旧竞态证据。后续实施回归与设备签收
-仍单独记录，不能从 COPY 已发布推导 MOVE 已发布。
+仍单独记录，不能从 COPY 已发布推导 MOVE 已发布。现已实施同 inode/no-replace MoveTree、
+request context 和 owned cleanup；内部 background Move 保持缓存补偿，LocalStore 已提交 pending
+保持 200 原 JSON。Go/full/race/vet、frontend 762/762/build、Compose、Linux 双架构编译、非 root
+Linux权限/硬链接/双tmpfs EXDEV、真实 Basic/curl 与 LocalStore HTTP、三视口真实 Reader 相邻
+回归通过。Docker 候选仍待可信卷/备份/平台门，原书恢复与整体未完成状态分别保持。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
