@@ -1,6 +1,6 @@
 # WebDAV 上传进度接收链路固定基准第二轮盘点（P2）
 
-状态：**implemented / regression-validated / Docker-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 ## 权威行为与当前缺口
@@ -101,3 +101,9 @@ WebSocket 下通过 1440×900、390×844、360×800：Basic raw 上传保持原�
 
 Docker fresh/historical/portable 与双架构发布待本切片可信 Actions 验证；生产最后确认仍为
 `db1ea21`，原书章节恢复已由用户验收，此次进度同步尚无另一台 Mac 的生产签收。
+
+可信 Actions run `37186333157` 对实现 `8dc61c3c417ea2f8bc1a4b1092fd430465289724` 全部门禁已成功，
+包括 native、fresh/portable、historical-volume 和 published-platform。GHCR `8dc61c3` / `latest`
+amd64/arm64 OCI index 已确认：
+`sha256:fa593e4764dff16291814cf0b283b32c170404d104ea27107b483ff0a8d3fcb9`。
+上述本地阶段“待发布”现推进为 published；这仍不是用户另一台 Mac 的部署或同步设备签收。

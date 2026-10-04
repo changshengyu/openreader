@@ -1438,7 +1438,8 @@ COPY 后续生命周期合同见
 `X-OpenReader-WebDAV-Cleanup: pending`，保留未清理字节，不回滚已提交完整新树。
 
 接收侧进度同步已按合同/红测/实现落地，新增两路 raw 上传到 caller-owned ReadingProgress 的接收
-副作用；已完成三视口在线/冷启动与无回声验证，Docker 卷门和发布仍待可信 Actions。
+副作用；已完成三视口在线/冷启动与无回声验证，可信 Actions `37186333157` 又完成卷门与 `8dc61c3`
+双架构发布；不代表用户另一台 Mac 已升级。
 WebDAV progress ingress 的合同与测试门见
 [`webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md`](webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md)。
 该接收适配保留双前缀 raw PUT 201 空 body；文件提交后阅读进度 SQL/取消失败用

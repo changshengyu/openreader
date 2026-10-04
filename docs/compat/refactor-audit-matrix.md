@@ -21,9 +21,11 @@ LocalStore/章节缓存相邻回归通过。Go/full/race/vet、frontend/build、
 进度；现有出站镜像不等于双向同步。见
 [`webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md`](webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md)。
 合同 `9190091` / `49642f0`、红测 `180132a` 后已实施；状态
-**implemented / regression-validated / Docker-pending**。真实上传、私有根、旧时间/重传/CAS、
+**implemented / regression-validated / Docker-published / awaiting-device-verification**。真实上传、私有根、旧时间/重传/CAS、
 SQL 失败补偿诊断和三视口 Go/SQLite/WebSocket 在线/冷启动精确 offset、零回声已通过。
-frontend 762/762、Go/full/race/vet、build/Compose 通过；本切片卷门与发布仍待可信 Actions。
+frontend 762/762、Go/full/race/vet、build/Compose 通过；可信 Actions `37186333157` 全部门禁成功，
+已发布 `8dc61c3` amd64/arm64 OCI index
+`sha256:fa593e4764dff16291814cf0b283b32c170404d104ea27107b483ff0a8d3fcb9`。
 原书加载已验收保持关闭，整体审计未完成。
 
 下一动作仅盘点、不改代码：COPY 仍按绝对路径进行 source 遍历、stage publication 与 RemoveAll
