@@ -1430,3 +1430,8 @@ Reader snapshot reads project those values to Go zero values. Cache-rebuild guar
 projection (empty text / false / zero), while retaining exact checks for nonempty changes and ownership.
 Use query-time COALESCE only: no schema migration, metadata backfill, reimport, or data/cache/library cleanup.
 Test each nullable predicate and a concurrent NULL-to-nonempty mutation before cache publication.
+
+Implemented in `db1ea21`: five historical NULL fixtures pass rebuild and cache-hit reads, preserve original
+NULL metadata, and still reject a concurrent nonempty mutation. No data migration is required. Production
+reports the same fix commit; the user confirmed the original book recovered on 2026-10-04. This closes the
+reported original-book incident without claiming an exhaustive verification of all historical volumes.

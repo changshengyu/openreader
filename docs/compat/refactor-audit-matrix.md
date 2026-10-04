@@ -472,3 +472,18 @@ Production `c1e1dbb` still returns `chapter-write` for old imported books, inclu
 Must-fix: local cache rebuild predicates disagree with Go snapshot zero values for historical SQL NULLs.
 Allowed adaptation: normalize NULL only in guarded comparisons; preserve original metadata and all stale-write protections.
 Required evidence: field-by-field NULL fixtures, concurrent mutation rejection, and production book verification.
+
+## 2026-10-04 production verification completed
+
+Contract `4466345`, red tests `b1d74b2`, implementation `db1ea21`, and regression evidence `f8f6d9a`
+landed in order. Five historical NULL fixtures now return 200 for rebuild and cached reads without rewriting
+nullable metadata; a real concurrent NULL-to-nonempty change still returns 409 without publishing cache.
+Go full/focused race/vet, frontend 757/757, Vite and Compose passed. Trusted Actions
+[`36558964029`](https://github.com/changshengyu/openreader/actions/runs/36558964029) passed release gates and
+published `ghcr.io/changshengyu/openreader:db1ea21` (and `latest` at publication), OCI index
+`sha256:61fb9e471315a8654b38f5e272c8e912e57f7da57044d0394d1c201772db00ee`.
+Production `/api/health` reports `db1ea216f9849bc44a90b5b760241df1c6d069b0`; the user explicitly confirmed
+the original book recovered on 2026-10-04. This incident is **device-verified / closed**. Browser automation
+remained unavailable (`Debugger unattached`), so production acceptance is user-reported rather than an
+automated browser pass. Other books, formats and Reader interactions retain their own verification status;
+the overall audit percentage is unchanged.

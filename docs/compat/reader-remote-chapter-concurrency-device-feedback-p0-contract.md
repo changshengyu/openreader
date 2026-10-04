@@ -272,8 +272,19 @@ NULL/空串等价比较，避免提交成功后又被 `final-chapter` 拒绝。
 历史提交 `1367a28`（2026-06-24）新增 nullable `is_volume/tag`，没有数据库默认值；这解释了早期导入
 行为何具有该形态。固定上游 `fa22f271` 的 `BookController.kt#getBookContent` 本地分支直接返回
 `LocalBook.getContent`，没有因这些空 metadata 拒绝正文的行为。源码回归：Go 全量、local rebuild
-race、vet、frontend 757/757、Vite、Compose 均通过。Actions `36558964029` 负责发布门禁；原书生产
-验证尚未完成，不将确定性 fixture 成功等同于用户故障已关闭。
+race、vet、frontend 757/757、Vite、Compose 均通过。可信 Actions
+[`36558964029`](https://github.com/changshengyu/openreader/actions/runs/36558964029) 已通过发布门禁，
+发布 `ghcr.io/changshengyu/openreader:db1ea21` 与当次 `latest`，amd64/arm64 OCI index 为
+`sha256:61fb9e471315a8654b38f5e272c8e912e57f7da57044d0394d1c201772db00ee`。
+
+### 2026-10-04 原书生产验收
+
+公开 `/api/health` 已确认生产 commit 为 `db1ea216f9849bc44a90b5b760241df1c6d069b0`；
+同日用户在原书复验后明确反馈“已经恢复”。因此本次旧导入书籍正文加载失败已获得用户生产验收，
+状态为 **aligned / regression-validated / Docker-published / device-verified**。
+验收来源为用户反馈；本轮 Chrome 自动读取因 `Debugger unattached` 未能完成，不能记为自动化
+生产浏览器通过。该签收仅关闭本次原书加载故障，不代表所有历史书籍、格式或其它 Reader 交互
+均已逐项真机验收。允许差异仍仅为查询时 NULL/零值归一化，原 metadata 和持久目录未迁移。
 
 - 合同 `7057f52`、旧实现红测 `f9b6c08` 与诊断实现 `c1e1dbb` 已按顺序落地。stale sentinel 仍支持
   `errors.Is`，HTTP 仍返回 409 和原有 `error`；新增 `reason` 只投影上述白名单合同门，不包含 URL、规则、
