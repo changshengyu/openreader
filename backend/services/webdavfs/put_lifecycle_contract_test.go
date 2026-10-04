@@ -190,3 +190,61 @@ func TestPutRejectsStagingReplacementDuringBodyRead(t *testing.T) {
 	}
 	assertPutFile(t, filepath.Join(service.Root(), "target"), "original")
 }
+
+func TestPutPreservesNormalUploadAndFailureContract(t *testing.T) {
+	for _, name := range []string{"target", " spaced name ", " "} {
+		t.Run(name, func(t *testing.T) {
+			service := newTestService(t)
+			for _, body := range []string{"created", "overwritten", ""} {
+				if err := service.Put(context.Background(), name, strings.NewReader(body), 11); err != nil {
+					t.Fatal(err)
+				}
+				assertPutFile(t, filepath.Join(service.Root(), name), body)
+				info, err := os.Stat(filepath.Join(service.Root(), name))
+				if err != nil || info.Mode().Perm() != 0o644 {
+					t.Fatalf("upload permission = %v, %v", info, err)
+				}
+				assertNoPutStage(t, service.Root())
+			}
+		})
+	}
+	for _, failure := range []string{"over-limit", "read-error", "pre-cancel", "last-read-cancel"} {
+		t.Run(failure, func(t *testing.T) {
+			service := newTestService(t)
+			target := filepath.Join(service.Root(), "target")
+			putFixtureFile(t, target, "original")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var reader io.Reader = strings.NewReader("12345")
+			var expected error
+			limit := int64(4)
+			switch failure {
+			case "over-limit":
+				expected = ErrTooLarge
+			case "read-error":
+				expected = errors.New("failed upload read")
+				reader = putErrorReader{err: expected}
+			case "pre-cancel":
+				cancel()
+				expected = context.Canceled
+			case "last-read-cancel":
+				reader = &putMutationReader{mutate: cancel}
+				expected = context.Canceled
+				limit = 16
+			}
+			if err := service.Put(ctx, "target", reader, limit); !errors.Is(err, expected) {
+				t.Errorf("failed upload = %v, want %v", err, expected)
+			}
+			assertPutFile(t, target, "original")
+			assertNoPutStage(t, service.Root())
+		})
+	}
+	service := newTestService(t)
+	if err := service.Put(context.Background(), "target", strings.NewReader("1234"), 4); err != nil {
+		t.Fatalf("exact upload limit: %v", err)
+	}
+}
+
+type putErrorReader struct{ err error }
+
+func (r putErrorReader) Read(data []byte) (int, error) { return copy(data, "partial"), r.err }

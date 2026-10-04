@@ -8,6 +8,12 @@ target 与 stage identity。新差异 **P2 must-fix / inventory-complete**，见
 正常 201/409/405、认证、原始 body 和私有根保持；失败保留原文件属于允许的数据保护强化。先红测，
 后 opened-parent staged publication；已签收 DELETE 与原书恢复不重开。
 
+合同 `894222c`、确定性红测 `616418b` 已落地，现已实施同 parent fd staging、root/ancestor/target/stage
+identity 复验和 no-overwrite publication。上传失败、取消与同期新 final 均保留既有字节；共享
+LocalStore/章节缓存相邻回归通过。Go/full/race/vet、frontend/build、Compose、服务 Linux 双架构
+交叉编译和本机隔离卷 Basic/curl 已通过。当前 **implemented / regression-validated / Docker-pending**；
+生产仍确认 `db1ea21`，不把新实现本地通过记作生产部署或设备签收。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于

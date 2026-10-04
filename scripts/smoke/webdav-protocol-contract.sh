@@ -94,6 +94,29 @@ status="$(request PUT "$TARGET_URL/reader3/webdav/$ROOT_NAME/source.txt" \
   --user "$USERNAME:$PASSWORD" --data-binary 'webdav protocol smoke')"
 assert_status "$status" 201 "PUT source"
 
+status="$(request PUT "$TARGET_URL/webdav/$ROOT_NAME/source.txt" \
+  --user "$USERNAME:$PASSWORD" --data-binary 'overwritten content')"
+assert_status "$status" 201 "cross-prefix PUT overwrite"
+[ ! -s "$BODY" ]
+status="$(request GET "$TARGET_URL/reader3/webdav/$ROOT_NAME/source.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 200 "GET overwritten source"
+grep -Fx 'overwritten content' "$BODY" >/dev/null
+
+status="$(request PUT "$TARGET_URL/webdav/$ROOT_NAME/source.txt" \
+  --user "$USERNAME:$PASSWORD" --data-binary '')"
+assert_status "$status" 201 "PUT empty overwrite"
+status="$(request GET "$TARGET_URL/reader3/webdav/$ROOT_NAME/source.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 200 "GET empty source"
+[ ! -s "$BODY" ]
+
+status="$(request PUT "$TARGET_URL/reader3/webdav/$ROOT_NAME" \
+  --user "$USERNAME:$PASSWORD" --data-binary 'cannot replace directory')"
+assert_status "$status" 405 "PUT directory target"
+
+status="$(request PUT "$TARGET_URL/reader3/webdav/$ROOT_NAME/source.txt" \
+  --user "$USERNAME:$PASSWORD" --data-binary 'webdav protocol smoke')"
+assert_status "$status" 201 "restore smoke source"
+
 status="$(request PROPFIND "$TARGET_URL/reader3/webdav/$ROOT_NAME" \
   --user "$USERNAME:$PASSWORD" -H 'Depth: 1')"
 assert_status "$status" 207 "directory PROPFIND"

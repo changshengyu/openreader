@@ -1,6 +1,6 @@
 # WebDAV PUT 文件系统生命周期第二轮固定基准合同（P2）
 
-状态：**inventory-complete / tests-and-implementation-pending**。
+状态：**implemented / regression-validated / Docker-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`，
 `WebdavController.kt#webdavUpload`。本轮只处理上传写入生命周期；其它 DAV 动作和 UI 不重开。
@@ -47,6 +47,27 @@ regular 或 missing 变为不同文件/目录/symlink，以及 stage 名称被�
 无条件覆盖；新建使用 no-overwrite publication，覆盖使用 identity quarantine 后 no-overwrite
 publication，失败恢复不得覆盖同期新实体。
 
+共用服务消费者：LocalStore multipart upload、engine chapter cache 和 Reader private stage 写入也调用
+`Service.Put`，须运行相邻全量回归，保留其已有 JSON/目录/缓存提交合同。纯空格文件名也属于合法
+WebDAV 名称；共享 relative-path helper 不得用 TrimSpace 把它误判为根路径。
+若原文件已隔离后同期新 final 抢先提交，返回 unsafe，保留新 final，同时将旧字节保留在原 parent 的
+`.openreader-write-old-*` recovery 名下；不得为恢复旧名称而覆盖新实体，也不自动删除此 recovery。
+
 运行 focused/race、WebDAV API、Go 全量/vet、frontend 全量/build、Compose、Linux 双架构编译和
 真实 Basic/curl PUT/GET/覆盖/错误 smoke。没有前端改动，不重复 Reader 几何截图。发布须通过可信
 Actions 的 fresh/portable、historical volume 和多架构门；发布不自动证明用户生产已升级。
+
+## 本地实施证据（2026-10-04）
+
+合同 `894222c`、旧实现红测 `616418b` 已按顺序提交。旧实现对四个 root/parent 替换 fixture 返回
+chmod missing 且遗留 stage；四个 target 替换 fixture 返回成功并覆盖同期实体；stage 替换 fixture
+发布了 imposter 内容。实现以 `rootedfs.ReplaceRegular` 的同 parent fd stage 和 identity 校验关闭
+这些反例；正常新建/覆盖/空文件、空格文件名、0644、exact/+1 limit、读取错误、两种取消均有覆盖。
+末次 detach 后取消会恢复原 final；同期新 final 抢先占名时 403 对应的 unsafe 错误保留新 final 和
+旧 quarantine 字节，没有上传 stage 遗留。API fixture 锁定两路空响应 201/403/409/413。
+
+Go full、WebDAV focused、rootedfs/webdavfs race、vet、frontend full、Vite build、Compose 均通过。
+修改的两个服务通过 Linux amd64/arm64 test-binary 交叉编译；完整应用不能用 CGO=0 编译（现有
+sqlite3 类型依赖 CGO），完整双架构镜像仍交由可信 Actions 构建验证。隔离临时卷、本机 Go 服务的
+Basic/curl 协议 smoke 覆盖创建、跨前缀覆盖、空文件、目录 405、missing parent 409 和相邻 DAV 动作，
+已通过。没有 UI 修改，因此不重复 Reader 几何浏览器门。Docker/卷门及生产设备仍未据此宣称通过。

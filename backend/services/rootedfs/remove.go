@@ -211,7 +211,7 @@ func validateEntry(root *os.Root, relative string, directoryOnly bool) (os.FileI
 }
 
 func cleanRelative(relative string) (string, error) {
-	if strings.TrimSpace(relative) == "" || filepath.IsAbs(relative) || filepath.VolumeName(relative) != "" {
+	if relative == "" || filepath.IsAbs(relative) || filepath.VolumeName(relative) != "" {
 		return "", ErrUnsafePath
 	}
 	clean := filepath.Clean(relative)

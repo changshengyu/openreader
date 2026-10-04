@@ -208,59 +208,36 @@ func (s *Service) Put(ctx context.Context, rawPath string, source io.Reader, max
 	if relative == "" {
 		return ErrUnsafePath
 	}
-	parent := filepath.Dir(target)
-	parentInfo, err := os.Lstat(parent)
-	if errors.Is(err, os.ErrNotExist) {
-		return ErrConflict
-	}
+	boundaryRelative, err := filepath.Rel(s.boundary, target)
 	if err != nil {
-		return err
+		return ErrUnsafePath
 	}
-	if parentInfo.Mode()&os.ModeSymlink != 0 || !parentInfo.IsDir() {
+	err = rootedfs.ReplaceRegular(ctx, s.boundary, boundaryRelative, func(staged *os.File) error {
+		reader := source
+		if maxBytes > 0 {
+			reader = io.LimitReader(source, maxBytes+1)
+		}
+		written, err := copyContext(ctx, staged, reader)
+		if err != nil {
+			return err
+		}
+		if maxBytes > 0 && written > maxBytes {
+			return ErrTooLarge
+		}
+		return nil
+	})
+	switch {
+	case errors.Is(err, rootedfs.ErrUnsafePath):
+		return ErrUnsafePath
+	case errors.Is(err, rootedfs.ErrIsDirectory):
+		return ErrIsDirectory
+	case errors.Is(err, rootedfs.ErrNotDirectory):
 		return ErrNotDirectory
-	}
-	if targetInfo, statErr := os.Lstat(target); statErr == nil {
-		if targetInfo.Mode()&os.ModeSymlink != 0 {
-			return ErrUnsafePath
-		}
-		if targetInfo.IsDir() {
-			return ErrIsDirectory
-		}
-		if !targetInfo.Mode().IsRegular() {
-			return ErrUnsafePath
-		}
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return statErr
-	}
-
-	staged, err := os.CreateTemp(parent, ".webdav-upload-")
-	if err != nil {
+	case errors.Is(err, os.ErrNotExist):
+		return ErrConflict
+	default:
 		return err
 	}
-	stagedPath := staged.Name()
-	defer os.Remove(stagedPath)
-
-	reader := source
-	if maxBytes > 0 {
-		reader = io.LimitReader(source, maxBytes+1)
-	}
-	written, copyErr := copyContext(ctx, staged, reader)
-	if closeErr := staged.Close(); copyErr == nil {
-		copyErr = closeErr
-	}
-	if copyErr != nil {
-		return copyErr
-	}
-	if maxBytes > 0 && written > maxBytes {
-		return ErrTooLarge
-	}
-	if err := os.Chmod(stagedPath, 0o644); err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return replaceWithStaged(target, stagedPath)
 }
 
 func (s *Service) Mkdir(rawPath string) error {
@@ -577,15 +554,6 @@ func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (
 			return total, readErr
 		}
 	}
-}
-
-func replaceWithStaged(target, staged string) error {
-	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
-		return os.Rename(staged, target)
-	} else if err != nil {
-		return err
-	}
-	return replaceByRename(staged, target)
 }
 
 func installTransfer(target, staged string, overwrite bool) error {
