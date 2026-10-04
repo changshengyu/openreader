@@ -40,6 +40,15 @@ OpenReader 双前缀 `MOVE /reader3/webdav/*path` / `MOVE /webdav/*path`，Basic
 允许请求内确认的 rename ctime 更新，不整体放宽共享 inode 检查；历史硬链接正常 MOVE 保持 source
 inode 为 final，旧同 inode target 的删除仅减少原旧链接，不破坏已发布的新路径。
 
+源的身份凭证是顶层 inode/metadata 与两侧 opened parent/ancestor，不进行源树内容读取或复制；
+这是固定上游 directory rename 的语义，不把 COPY 的完整内容遍历作为 MOVE 许可条件。普通文件
+或目录不可读但父目录允许 rename 时，正常移动仍保持同 inode 与原权限（包括 000/555）。源树
+descendant 没有被打开、读取或独立删除；并发 descendant 自身修改随同一 directory inode 移动，
+不声称移动操作能锁住或还原外部 actor 对既有 descendant 的修改。
+需要删除的旧 target 树另行逐节点接收并复验；regular 旧文件只做 no-follow metadata 接收，
+无需读取其字节。旧目录若权限不允许安全接收成员，则在移开 source/target 前失败保留两者，
+不 chmod live 目录来规避接收限制；owned quarantine 清理阶段的 chmod 不影响 live source/final。
+
 取消/失败在新 final 完整提交之前，不发布部分树，不丢 source/old target/newcomer。临时 claim、旧
 target detach、install 与 compensation 都 no-replace；不能恢复原名时保留可恢复 source/old-target
 quarantine，不能用 copy/delete 伪装跨文件系统原子 move。预先检查明显 cross-device destination，
@@ -68,3 +77,16 @@ Go full/race/vet、frontend/build、实际隔离 Basic/curl 与可信 fresh/hist
 
 COPY `463b487` Actions `37189091695` 仍在发布；本轮合同文档允许先推送，红测/backend 修改推送
 等待该 run 终态，以免 workflow 的 cancel-in-progress 取消已验证候选。
+
+## 红灯证据（2026-10-04）
+
+合同 `ff1fbfa` 后新增 `TestWebDAVMoveCancelledAfterAuthorizationPreservesBothPaths`：使用既有
+测试用户的已授权 storage context，直接运行真实 MOVE handler/service，避免“取消导致认证 DB
+读取失败”提前短路。两前缀×regular/directory×new/overwrite 八项全部失败；实际返回 201 空 body，
+original source 路径消失。此证据证明授权后的取消未阻止提交，不用于宣称尚未注入的 identity race
+已经被旧实现确定性重现。应用代码尚未修改；红测推送等待 COPY run 终态。
+
+另新增 `TestWebDAVMoveAdmittedBoundaryRejectsTargetChangeOrCancellation`，以未来 source claim
+存在作为已接收边界。旧实现两项均 `fired=false, status=201`；这仅表明尚无边界支持，不作为
+旧实现目标替换竞态已经重现的证据。实施后必须实际触发并断言 403/取消、source 与 current final
+字节保存；不能删除 fired 断言以使其假通过。
