@@ -1,5 +1,6 @@
 import { unref } from 'vue'
 import { deletedBookIdsFromEvent } from '../utils/bookDeletion.js'
+import { savedBookChapterPercent } from '../utils/readerRoute.js'
 
 export function useReaderExternalUpdates(options) {
   async function handleProgressUpdated(event) {
@@ -23,9 +24,7 @@ export function useReaderExternalUpdates(options) {
       Math.min(Number(progress.chapterIndex || 0), Math.max(chapterRows.length - 1, 0)),
     )
     const targetOffset = Math.max(0, Math.floor(Number(progress.offset || 0)))
-    const restorePercent = Number.isFinite(Number(progress.chapterPercent))
-      ? Math.max(0, Math.min(1, Number(progress.chapterPercent)))
-      : null
+    const restorePercent = savedBookChapterPercent(progress, chapterRows.length)
 
     options.cancelProgressSave()
     try {

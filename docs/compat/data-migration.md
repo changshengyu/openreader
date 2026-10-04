@@ -1439,6 +1439,8 @@ reported original-book incident without claiming an exhaustive verification of a
 
 后续进度接收仅更新既有 ReadingProgress，不新增 schema、配置或备份成员；外部毫秒时间不作为
 数据库 CAS 版本。上传成功、SQL 失败时保留原始文件，响应诊断并允许重传补偿，不宣称跨存储原子性。
+现已实施并通过初次/既有进度、caller 私有根、重复/旧时间、SQL 失败补偿与真实浏览器恢复测试。
+此处本地测试不替代可信工作流 fresh/historical/portable 卷门，也不代表另一台 Mac 已升级。
 
 将上传 stage、提交与清理收敛到同一 opened parent；失败保持旧 final，不追随上传期间替换的目录。
 不改变 `data/webdav`、用户私有目录、SQLite 或 ordinary/portable 备份布局；无需迁移或重新上传。

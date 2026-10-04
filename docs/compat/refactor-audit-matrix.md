@@ -1,6 +1,6 @@
 # OpenReader 全量上游复审矩阵
 
-## 2026-10-04 下一动作：WebDAV PUT 生命周期
+## 2026-10-04 当前切片：WebDAV PUT 生命周期与进度接收
 
 从当前服务和固定上游重新取证，PUT 在 body 读取后仍按绝对路径 chmod/replace/cleanup，且没有复验
 target 与 stage identity。新差异 **P2 must-fix / inventory-complete**，见
@@ -20,8 +20,11 @@ LocalStore/章节缓存相邻回归通过。Go/full/race/vet、frontend/build、
 下一项已从固定上游提取可见 **must-fix**：外部 App 的 WebDAV `bookProgress` 上传没有回写网页
 进度；现有出站镜像不等于双向同步。见
 [`webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md`](webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md)。
-状态 **inventory-complete / tests-and-implementation-pending**；下一步须真实上传红测，再实施和三视口
-在线/冷恢复验证。原书加载已验收保持关闭，整体审计未完成。
+合同 `9190091` / `49642f0`、红测 `180132a` 后已实施；状态
+**implemented / regression-validated / Docker-pending**。真实上传、私有根、旧时间/重传/CAS、
+SQL 失败补偿诊断和三视口 Go/SQLite/WebSocket 在线/冷启动精确 offset、零回声已通过。
+frontend 762/762、Go/full/race/vet、build/Compose 通过；本切片卷门与发布仍待可信 Actions。
+原书加载已验收保持关闭，整体审计未完成。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 

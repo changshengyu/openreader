@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -52,8 +53,10 @@ type Result struct {
 }
 
 type Service struct {
-	db      *gorm.DB
-	dataDir string
+	db       *gorm.DB
+	dataDir  string
+	uploadMu sync.Mutex
+	uploads  map[uint]*uploadGate
 }
 
 func New(database *gorm.DB, dataDir string) *Service {

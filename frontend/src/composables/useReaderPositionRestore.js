@@ -5,6 +5,7 @@ import {
   restoredReaderSingleChapterScrollTop,
 } from '../utils/readerPosition.js'
 import { readerElementScrollTop } from '../utils/readerScrollViewport.js'
+import { parseReaderRoutePercent } from '../utils/readerRoute.js'
 
 export function useReaderPositionRestore(options) {
   function restoreByChapterPosition(position) {
@@ -42,8 +43,8 @@ export function useReaderPositionRestore(options) {
   }
 
   async function restore(offset = 0, restoreOptions = {}) {
-    const restorePercent = Number(restoreOptions.restorePercent)
-    const hasRestorePercent = Number.isFinite(restorePercent)
+    const restorePercent = parseReaderRoutePercent(restoreOptions.restorePercent)
+    const hasRestorePercent = restorePercent !== null
     await nextTick()
     await options.nextFrame()
     options.updateLayout()

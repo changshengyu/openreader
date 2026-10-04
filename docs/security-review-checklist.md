@@ -1500,3 +1500,9 @@ frontend 742/742, build, Compose, real three-viewport BookInfo/Reader and truste
 fresh/historical/portable/platform gates passed. `8df38f1`/`latest` OCI index is
 `sha256:1f6c8c509457043400f19e181b4d52fb8c648d5f84509c7b4fbdd44fdb610232`; a pulled container reported the full
 revision. Status is `aligned / regression-validated / Docker-published / awaiting-device-verification`.
+# 2026-10-04 WebDAV 进度接收
+
+已复核并测试：只识别 scoped/rooted 规范路径的两级进度文件，不按客户端 ID 定位书籍；SQL 与
+WebSocket 限 caller，URL/name-author 歧义跳过；正文识别只捕获 16 KiB+1，UTF-8 单对象、显式
+非负 index/offset、有效过去时间受限；普通上传预算和原字节不改。SQL/取消失败只暴露固定诊断头，
+不泄漏路径、credentials 或数据库错误；仅 commit 后通知，无出站 mirror 回声。无新外部 fetch。

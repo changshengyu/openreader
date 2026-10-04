@@ -21,8 +21,11 @@ export function readerRouteQueryFromBook(book, progressOverride = null, totalCha
 }
 
 export function savedBookChapterPercent(progress, totalChapters) {
-  if (progress?.chapterPercent !== undefined && progress?.chapterPercent !== null && Number.isFinite(Number(progress.chapterPercent))) {
-    return Math.max(0, Math.min(1, Number(progress.chapterPercent)))
+  const explicitPercent = parseReaderRoutePercent(progress?.chapterPercent)
+  if (explicitPercent !== null) {
+    // Old/WebDAV records have no measured chapter fraction. Their default zero
+    // must not erase a positive character position; explicit route zero still wins.
+    return explicitPercent === 0 && Number(progress?.offset) > 0 ? null : explicitPercent
   }
   if (!progress || !Number.isFinite(Number(progress.percent))) return null
   const chapterIndex = Number(progress.chapterIndex)

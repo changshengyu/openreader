@@ -36,9 +36,7 @@ export function useReaderBookLoad(options) {
       ),
     )
     const targetOffset = Math.max(0, Math.floor(Number(serverSaved.offset || 0)))
-    const restorePercent = Number.isFinite(Number(serverSaved.chapterPercent))
-      ? Math.max(0, Math.min(1, Number(serverSaved.chapterPercent)))
-      : savedBookChapterPercent(serverSaved, options.chapters.value.length)
+    const restorePercent = savedBookChapterPercent(serverSaved, options.chapters.value.length)
     await options.navigate({
       resume: '1',
       chapter: targetIndex,

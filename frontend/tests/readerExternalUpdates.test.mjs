@@ -83,7 +83,7 @@ test('applies different remote progress to the current book', async () => {
 })
 
 test('remote offset without a measured percentage preserves offset-only restoration', async () => {
-  for (const chapterPercent of [undefined, null, '']) {
+  for (const chapterPercent of [undefined, null, '', 0]) {
     const fixture = createController()
     await fixture.controller.handleProgressUpdated({
       detail: { progress: { bookId: 7, chapterId: 13, chapterIndex: 2, offset: 240, chapterPercent } },

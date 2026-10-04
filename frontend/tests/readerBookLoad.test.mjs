@@ -82,6 +82,17 @@ async function flushBackgroundTasks() {
   await Promise.resolve()
 }
 
+test('cold load restores an offset-only WebDAV position without percentage zero', async () => {
+  for (const chapterPercent of [0, null, undefined, '']) {
+    const fixture = createController()
+    fixture.saved.chapterPercent = chapterPercent
+    fixture.saved.percent = 0.5
+    await fixture.controller.load()
+    assert.deepEqual(fixture.calls.find(call => call[0] === 'load-chapter'),
+      ['load-chapter', 2, 90, { restorePercent: null, saveAfterLoad: false }])
+  }
+})
+
 test('opens a book from saved progress and loads bookmarks independently', async () => {
   const fixture = createController()
   await fixture.controller.load()

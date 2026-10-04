@@ -1430,8 +1430,9 @@ revision and repeated save/status with a private canonical mirror. OCI index:
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`.
 # 2026-10-04 WebDAV PUT 生命周期复审
 
-接收侧进度同步尚未实现；已完成的 reading-progress 镜像只证明数据库到文件方向。
-后续 WebDAV progress ingress 的合同与测试门见
+接收侧进度同步已按合同/红测/实现落地，新增两路 raw 上传到 caller-owned ReadingProgress 的接收
+副作用；已完成三视口在线/冷启动与无回声验证，Docker 卷门和发布仍待可信 Actions。
+WebDAV progress ingress 的合同与测试门见
 [`webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md`](webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md)。
 该接收适配保留双前缀 raw PUT 201 空 body；文件提交后阅读进度 SQL/取消失败用
 `X-OpenReader-Progress-Sync: failed` 标识，不伪造跨存储同步成功，不回滚已上传文件。

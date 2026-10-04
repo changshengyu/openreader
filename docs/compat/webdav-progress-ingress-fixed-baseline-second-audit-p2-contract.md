@@ -1,6 +1,6 @@
 # WebDAV 上传进度接收链路固定基准第二轮盘点（P2）
 
-状态：**inventory-complete / tests-and-implementation-pending**。
+状态：**implemented / regression-validated / Docker-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 ## 权威行为与当前缺口
@@ -75,3 +75,29 @@ offset=37。这是接收副作用缺失的直接证据，不能记为普通上�
 
 持久 `chapterPercent=0` 且 offset>0 是未测量比例的旧格式占位，恢复时优先精确 offset；offset=0
 的明确零值和路由显式 `percent=0` 仍是章首，不改变有效非零比例的布局适配。
+
+## 实施与回归证据（2026-10-04）
+
+合同 `9190091` / `49642f0`，红测 `180132a`，实施按顺序落地。新增 readingprogress 接收服务负责
+有界 TeeReader、按用户可取消门、匹配与 SQL 事务/CAS；Gin 只调用已 scoped/rooted 文件服务、
+映射错误、发送 durable progress_update 与附加失败诊断。无新 schema、配置、公开端点或备份成员。
+
+两前缀 × 两目录 × URL/name-author 的实际 Gin/SQLite 上传、Basic/Bearer、普通用户私有根、
+只通知 caller、重复无广播、SQL 失败 201+诊断/raw 文件保留均通过。服务测试覆盖初次进度、
+精确 16 KiB/越界捕获、非法 UTF-8/多对象/index/time、未来时钟、旧时间、歧义/外书、同位置保留
+已测量比例、显式章首、文件失败、post-file 取消、目录/章节身份变化回滚、排队取消与门回收、
+其他用户不受门阻塞、上传 body 工作期间普通 Reader 保存获胜。
+
+Go full、focused API/service race、rootedfs/webdavfs race、vet、Compose 与 frontend 762/762/build
+通过。首次扩大 Basic fixture 时书架 GET 错用 Basic 导致 401，已修正为 Bearer 并重跑全量通过，
+未扩展 REST 的认证类型。浏览器首次运行发现本机默认 headless shell 版本缺失，后用已安装
+Chromium headless shell 1228 验证；失败也会关闭隔离 Go 进程，生产未触碰。
+
+`scripts/smoke/reader-progress-multiclient-contract.mjs` 在真实独立 Go/SQLite、导入两章 TXT、真实
+WebSocket 下通过 1440×900、390×844、360×800：Basic raw 上传保持原字节、canonical shelf 位置、
+在线第二章 offset=2400 恢复到目标 paragraph（顶边距视口 80±3px）、全新上下文精确恢复、
+第一章 offset=0 显式重置和无回声 progress PUT。原有两客户端 CAS、冲突、cold restore 和出站镜像
+三视口也一并通过。章首以章节顶边对齐实际滚动视口为证，不把外层文档布局偏移误当倒退。
+
+Docker fresh/historical/portable 与双架构发布待本切片可信 Actions 验证；生产最后确认仍为
+`db1ea21`，原书章节恢复已由用户验收，此次进度同步尚无另一台 Mac 的生产签收。

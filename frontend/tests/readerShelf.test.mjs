@@ -3,6 +3,16 @@ import test from 'node:test'
 import { sortByShelfOrder } from '../src/utils/bookOrder.js'
 import { readerRouteQueryFromBook } from '../src/utils/readerRoute.js'
 
+test('offset-only saved progress never adds a fabricated zero percentage', () => {
+  for (const chapterPercent of [0, null, undefined, '']) {
+    assert.deepEqual(readerRouteQueryFromBook({ chapterCount: 2, progress: {
+      chapterIndex: 1, offset: 240, percent: 0.5, chapterPercent,
+    } }), { resume: '1', chapter: 1, offset: 240 })
+  }
+  assert.deepEqual(readerRouteQueryFromBook({ progress: { chapterIndex: 0, offset: 0, chapterPercent: 0 } }),
+    { resume: '1', chapter: 0, percent: 0 })
+})
+
 test('orders the reader shelf by the newest merged reading activity', () => {
   const books = [
     { id: 1, updatedAt: '2026-01-01T00:00:00Z' },

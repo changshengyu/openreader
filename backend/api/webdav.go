@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"net/url"
@@ -25,6 +26,7 @@ import (
 	"openreader/backend/services/bookgroups"
 	"openreader/backend/services/booksources"
 	"openreader/backend/services/localbook"
+	"openreader/backend/services/readingprogress"
 	"openreader/backend/services/webdavfs"
 )
 
@@ -178,9 +180,26 @@ func (s *Server) webdavPut(c *gin.Context) {
 		c.Status(http.StatusRequestEntityTooLarge)
 		return
 	}
-	if err := service.Put(c.Request.Context(), strings.TrimPrefix(c.Param("path"), "/"), c.Request.Body, s.maxLocalImportBytes()); err != nil {
+	_, relative, err := service.Resolve(strings.TrimPrefix(c.Param("path"), "/"))
+	if err != nil {
 		writeWebDAVServiceError(c, err)
 		return
+	}
+	userID, _ := middleware.UserID(c)
+	syncFailed, err := s.progressSvc.UploadWebDAV(c.Request.Context(), userID, relative, c.Request.Body, func(body io.Reader) error {
+		return service.Put(c.Request.Context(), relative, body, s.maxLocalImportBytes())
+	}, func(result readingprogress.Result) {
+		_ = s.hub.Broadcast(userID, nil, gin.H{
+			"type":    "progress_update",
+			"payload": progressBroadcast{ReadingProgress: result.Progress, Book: s.bookShelfListItem(userID, result.Book)},
+		})
+	})
+	if err != nil {
+		writeWebDAVServiceError(c, err)
+		return
+	}
+	if syncFailed {
+		c.Header("X-OpenReader-Progress-Sync", "failed")
 	}
 	c.Status(http.StatusCreated)
 }
