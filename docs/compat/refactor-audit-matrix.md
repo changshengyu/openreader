@@ -14,6 +14,12 @@ LocalStore/章节缓存相邻回归通过。Go/full/race/vet、frontend/build、
 交叉编译和本机隔离卷 Basic/curl 已通过。当前 **implemented / regression-validated / Docker-pending**；
 生产仍确认 `db1ea21`，不把新实现本地通过记作生产部署或设备签收。
 
+下一项已从固定上游提取可见 **must-fix**：外部 App 的 WebDAV `bookProgress` 上传没有回写网页
+进度；现有出站镜像不等于双向同步。见
+[`webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md`](webdav-progress-ingress-fixed-baseline-second-audit-p2-contract.md)。
+状态 **inventory-complete / tests-and-implementation-pending**；下一步须真实上传红测，再实施和三视口
+在线/冷恢复验证。原书加载已验收保持关闭，整体审计未完成。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于
@@ -116,8 +122,8 @@ Reader 主正文迟到响应、持久 variable/cache 提交与换源写入边界
   Reader source-change post-fetch Book/association/Source 复验、显式拥有列更新与权威响应投影，以及
   本地章节 cache-miss 的 caller context、Book/archive/Chapter snapshot、guarded `cache_path`、
   staged publication/rollback 与 EPUB recovery 非持久化边界。
-- **尚未完成的主线**：用户资产 filesystem/reference lifecycle 已完成专项 inventory，待按合同加入旧实现
-  红测并实施 rooted staged upload/delete、Book/Setting 引用协调与 portable 同句柄/协调提交；此外仍有
+- **尚未完成的主线**：用户资产 filesystem/reference lifecycle 已按 `478654a/947dfcb/3e8cec7` 完成
+  合同、红测、实现和可信双架构发布（下方闭环记录权威），不再从旧 pending 文案重开；目前仍有
   其余尚未逐动作签约的 Go REST/错误/事务语义、待第二轮固定基准复审的长尾组件，以及后续真实设备
   反馈暴露出的上游可见偏差。reading progress、books.go 六个 JSON control 和
   ReplaceRule 五路、备份生成、backup list/download 与公开 upload resource rooted opened-file 边界均已
