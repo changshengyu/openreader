@@ -1,6 +1,6 @@
 # WebDAV PUT 文件系统生命周期第二轮固定基准合同（P2）
 
-状态：**implemented / regression-validated / Docker-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`，
 `WebdavController.kt#webdavUpload`。本轮只处理上传写入生命周期；其它 DAV 动作和 UI 不重开。
@@ -71,3 +71,10 @@ Go full、WebDAV focused、rootedfs/webdavfs race、vet、frontend full、Vite b
 sqlite3 类型依赖 CGO），完整双架构镜像仍交由可信 Actions 构建验证。隔离临时卷、本机 Go 服务的
 Basic/curl 协议 smoke 覆盖创建、跨前缀覆盖、空文件、目录 405、missing parent 409 和相邻 DAV 动作，
 已通过。没有 UI 修改，因此不重复 Reader 几何浏览器门。Docker/卷门及生产设备仍未据此宣称通过。
+# 2026-10-04 发布证据
+
+实现 `70d4fa86d2cb1e3580b81c3d5f1e01ba4ec5240f` 的可信 Actions run `37184286362` 已成功完成全部门禁，
+包括 published-platform；GHCR `70d4fa8` / `latest` 发布 amd64/arm64 OCI index：
+`sha256:1fc8dd5a898d568660053082e60d8517096ea6b89f96e6bba0ca904fe0eb8e04`。
+状态推进为 implemented / regression-validated / Docker-published / awaiting-device-verification。
+生产最后确认仍为 `db1ea21`；本记录不声明另一台 Mac 已升级或新切片已获设备签收。

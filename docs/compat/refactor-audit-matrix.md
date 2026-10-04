@@ -11,7 +11,10 @@ target 与 stage identity。新差异 **P2 must-fix / inventory-complete**，见
 合同 `894222c`、确定性红测 `616418b` 已落地，现已实施同 parent fd staging、root/ancestor/target/stage
 identity 复验和 no-overwrite publication。上传失败、取消与同期新 final 均保留既有字节；共享
 LocalStore/章节缓存相邻回归通过。Go/full/race/vet、frontend/build、Compose、服务 Linux 双架构
-交叉编译和本机隔离卷 Basic/curl 已通过。当前 **implemented / regression-validated / Docker-pending**；
+交叉编译和本机隔离卷 Basic/curl 已通过。
+可信 Actions `37184286362` 已成功发布 `70d4fa8` 双架构 OCI index
+`sha256:1fc8dd5a898d568660053082e60d8517096ea6b89f96e6bba0ca904fe0eb8e04`；状态
+**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 生产仍确认 `db1ea21`，不把新实现本地通过记作生产部署或设备签收。
 
 下一项已从固定上游提取可见 **must-fix**：外部 App 的 WebDAV `bookProgress` 上传没有回写网页
