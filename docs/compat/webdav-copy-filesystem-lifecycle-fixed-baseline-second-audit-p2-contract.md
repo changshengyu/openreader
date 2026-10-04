@@ -1,6 +1,6 @@
 # WebDAV COPY 文件系统生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / red-tests-and-implementation-pending**。
+状态：**implemented / regression-validated / Docker-publication-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 ## 权威行为和差异
@@ -43,6 +43,11 @@ install/recovery；若新 final 阻止旧字节恢复，保留可恢复 quaranti
 不增加 SQLite/schema、配置、备份成员，也不清理用户 data/cache/library。opened-handle 与 no-replace
 属于明确允许的安全/数据保护差异，不能声称任意外部 actor 的改动具有跨文件系统原子性。
 
+历史 regular source（包括源树子文件）可以与旧 destination 为硬链接。移开旧目标会改变这个
+共享 inode 的 ctime；仅在同一 Dev/Ino 且 mode/size/mtime 仍等于已接收快照时，将该已确认的
+本次 rename ctime 同步到源快照。不得整体忽略 ctime，也不得放行移开之后的外部内容/权限修改。
+复制后的 source 原字节保持，final 是独立复制；不更改历史硬链接布局或删除 source。
+
 ## 下一步红测和门禁
 
 先以测试 context 的复制阶段边界触发确定性替换，不在生产卷试验：source ancestor/目录、
@@ -60,3 +65,24 @@ source ancestor symlink、source 真实目录、destination parent symlink/真�
 directory 替换、stage directory 替换及最后 read 后取消共八个 fixture 全部失败；旧实现均返回 nil。
 这些结果证明身份变更与最后取消未阻止发布。红测提交先于实施；为避免取消 live `8dc61c3` 双架构
 发布，测试提交暂在本地等待其终态，随后推送同一序列，不能因此跳过或重启原发布流水线。
+
+补充红测：`TestCopyTreePreservesSourceHardLinkedToOldTarget` 的 source file / source tree 两个
+fixture 在当前未提交实施版本均报 unsafe rooted filesystem path；这是安全校验误拒绝合法旧数据，
+须以限定的自有 rename 元数据适配修正，并补移开后真实源修改仍被拒绝的回归。
+
+## 实施与验证（2026-10-04）
+
+合同 `e66510c`、旧实现八项红测 `c5d35a8`、提交后清理诊断细化 `dc8c212` 后，COPY 收敛到
+rootedfs.CopyTree：源树快照、opened source/destination ancestor chains、同 parent stage、逐节点
+身份/metadata 检查、no-replace detach/install/restore 和 owned-only 清理。移除 COPY 旧绝对路径
+copyTree/installTransfer；MOVE 的 replaceByRename 仍未整改，不能据此签收。
+
+Go full、COPY API/service race、vet、frontend 762/762/build、Compose 与文件服务 Linux amd64/arm64
+交叉编译通过。真实隔离 Go/SQLite Basic/curl 验证双前缀文件复制、无覆盖 412、覆盖、递归/空目录、
+文件覆盖旧目录及相邻 PUT/PROPFIND/LOCK/UNLOCK/DELETE；服务已停止。无 UI 修改，未重跑 Reader
+三视口几何（进度接收上一切片已完成实际三视口）。
+
+非 root、无网络/生产卷的 Linux arm64 容器运行实际 COPY rootedfs 测试通过，包括只读目录权限、
+身份/取消补偿、提交后未知实体保存、硬链接正常复制和移开后真实修改拒绝；这是平台补充证据，
+不替代可信发布 fresh/historical/portable/backup 与已发布双架构门禁。Docker 尚待本实施提交的
+可信 workflow 终态与 OCI digest，生产仍为 `db1ea21`，未执行远程升级。

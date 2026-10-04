@@ -278,7 +278,7 @@ func TestRecursiveCopyFailurePreservesExistingDestination(t *testing.T) {
 		t.Fatal(readDirErr)
 	}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".webdav-copy-") || strings.HasPrefix(entry.Name(), ".webdav-replace-") {
+		if strings.HasPrefix(entry.Name(), ".webdav-copy-") || strings.HasPrefix(entry.Name(), ".webdav-replace-") || strings.HasPrefix(entry.Name(), ".openreader-copy-") {
 			t.Fatalf("failed copy left staging entry %q", entry.Name())
 		}
 	}

@@ -1433,7 +1433,8 @@ revision and repeated save/status with a private canonical mirror. OCI index:
 COPY 后续生命周期合同见
 [`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)：
 保留双前缀、Destination、Overwrite:T、Basic/Bearer 和 201 空 body；root/source/parent/target/stage
-在工作期间身份变更走既有 unsafe 403 空 body，不增加进度上传副作用。当前只盘点，尚未实施。
+在工作期间身份变更走既有 unsafe 403 空 body，不增加进度上传副作用。已按合同/红测实施，
+Basic/Bearer 双前缀 Gin、普通用户私有根与真实 Basic/curl 请求已通过；可信 Docker 发布待终态。
 完整 COPY 发布确认后旧 quarantine/stage 清理失败不伪称复制失败：201 空 body 加
 `X-OpenReader-WebDAV-Cleanup: pending`，保留未清理字节，不回滚已提交完整新树。
 

@@ -28,11 +28,14 @@ frontend 762/762、Go/full/race/vet、build/Compose 通过；可信 Actions `371
 `sha256:fa593e4764dff16291814cf0b283b32c170404d104ea27107b483ff0a8d3fcb9`。
 原书加载已验收保持关闭，整体审计未完成。
 
-下一动作仅盘点、不改代码：COPY 仍按绝对路径进行 source 遍历、stage publication 与 RemoveAll
-cleanup，未绑定初检 source/target identity；固定上游 COPY 行为和允许安全适配见
+COPY 初检之后的绝对 source/stage/publication/cleanup 已在合同与旧实现八项红测后改为 opened
+tree、同 parent stage、identity/metadata 复验和 no-replace 补偿；固定上游行为和允许安全适配见
 [`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-状态 **inventory-complete / red-tests-and-implementation-pending**；MOVE 的同类路径与取消缺口单独
-保留未完成，不从 PUT/DELETE/COPY 的验证推导它通过。
+状态 **implemented / regression-validated / Docker-publication-pending**。Go/full/race/vet、frontend
+762/762/build、Compose、Linux 双架构编译、非 root Linux arm64 文件系统测试与最新二进制隔离
+Basic/curl 通过。历史硬链接 source 与旧 target 共享 inode 的自有 rename ctime 已限定适配，
+移开后真实修改仍拒绝；发布后的未知清理实体保留并返回固定 pending 诊断。
+MOVE 的同类路径与取消缺口单独保留未完成，不从 PUT/DELETE/COPY 的验证推导它通过。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 

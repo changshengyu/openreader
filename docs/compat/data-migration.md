@@ -1438,8 +1438,12 @@ reported original-book incident without claiming an exhaustive verification of a
 # 2026-10-04 WebDAV PUT 数据保护
 
 后续 COPY opened-tree/stage 合同不改变用户目录或 SQLite/备份格式；取消/失败不能丢弃旧目标、
-source 或同期新 final，无法恢复时须保留旧字节 quarantine。当前只盘点，详见
+source 或同期新 final，无法恢复时须保留旧字节 quarantine。现已实施、通过隔离卷实测，详见
 [`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
+历史硬链接正常复制不改 source；仅适配本请求确认的共享 inode rename ctime。旧数据无启动扫描、
+迁移、重写或目录清理。完整新树发布后遇到未知旧成员/stage 停止清理，返回 201 与固定 pending
+头并保留剩余 quarantine；不声称已删除旧成员可回滚。可信卷/备份发布门尚待本实施 workflow。
 
 后续进度接收仅更新既有 ReadingProgress，不新增 schema、配置或备份成员；外部毫秒时间不作为
 数据库 CAS 版本。上传成功、SQL 失败时保留原始文件，响应诊断并允许重传补偿，不宣称跨存储原子性。

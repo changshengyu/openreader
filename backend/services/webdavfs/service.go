@@ -15,13 +15,14 @@ import (
 )
 
 var (
-	ErrUnsafePath   = errors.New("unsafe WebDAV path")
-	ErrNotFound     = errors.New("WebDAV path not found")
-	ErrConflict     = errors.New("WebDAV path conflict")
-	ErrPrecondition = errors.New("WebDAV precondition failed")
-	ErrIsDirectory  = errors.New("WebDAV path is a directory")
-	ErrNotDirectory = errors.New("WebDAV parent is not a directory")
-	ErrTooLarge     = errors.New("WebDAV upload exceeds size limit")
+	ErrUnsafePath         = errors.New("unsafe WebDAV path")
+	ErrNotFound           = errors.New("WebDAV path not found")
+	ErrConflict           = errors.New("WebDAV path conflict")
+	ErrPrecondition       = errors.New("WebDAV precondition failed")
+	ErrIsDirectory        = errors.New("WebDAV path is a directory")
+	ErrNotDirectory       = errors.New("WebDAV parent is not a directory")
+	ErrTooLarge           = errors.New("WebDAV upload exceeds size limit")
+	ErrCopyCleanupPending = errors.New("WebDAV copy committed with cleanup pending")
 )
 
 const maxImportPathBytes = 4096
@@ -344,16 +345,31 @@ func (s *Service) Copy(ctx context.Context, sourceRaw, destinationRaw string, ov
 	if err != nil {
 		return err
 	}
-	stageDir, err := os.MkdirTemp(filepath.Dir(destination), ".webdav-copy-")
+	sourceRelative, err := filepath.Rel(s.boundary, source)
 	if err != nil {
+		return ErrUnsafePath
+	}
+	destinationRelative, err := filepath.Rel(s.boundary, destination)
+	if err != nil {
+		return ErrUnsafePath
+	}
+	err = rootedfs.CopyTree(ctx, s.boundary, sourceRelative, destinationRelative, overwrite)
+	switch {
+	case errors.Is(err, rootedfs.ErrUnsafePath):
+		return ErrUnsafePath
+	case errors.Is(err, rootedfs.ErrCopySourceMissing):
+		return ErrPrecondition
+	case errors.Is(err, rootedfs.ErrCopyParentMissing):
+		return ErrConflict
+	case errors.Is(err, rootedfs.ErrCopyDestinationExists):
+		return ErrPrecondition
+	case errors.Is(err, rootedfs.ErrCopyCleanupPending):
+		return ErrCopyCleanupPending
+	case errors.Is(err, rootedfs.ErrNotDirectory):
+		return ErrNotDirectory
+	default:
 		return err
 	}
-	defer os.RemoveAll(stageDir)
-	staged := filepath.Join(stageDir, "new")
-	if err := copyTree(ctx, source, staged); err != nil {
-		return err
-	}
-	return installTransfer(destination, staged, overwrite)
 }
 
 func (s *Service) Move(sourceRaw, destinationRaw string, overwrite bool) error {
@@ -482,53 +498,6 @@ func (s *Service) rejectSymlinks(target string) error {
 	return nil
 }
 
-func copyTree(ctx context.Context, source, destination string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	info, err := os.Lstat(source)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
-		return ErrUnsafePath
-	}
-	if info.IsDir() {
-		if err := os.Mkdir(destination, info.Mode().Perm()); err != nil {
-			return err
-		}
-		entries, err := os.ReadDir(source)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if err := copyTree(ctx, filepath.Join(source, entry.Name()), filepath.Join(destination, entry.Name())); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	input, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer input.Close()
-	openedInfo, err := input.Stat()
-	if err != nil || !os.SameFile(info, openedInfo) {
-		return ErrUnsafePath
-	}
-	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
-	if err != nil {
-		return err
-	}
-	_, copyErr := copyContext(ctx, output, input)
-	if closeErr := output.Close(); copyErr == nil {
-		copyErr = closeErr
-	}
-	return copyErr
-}
-
 func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (int64, error) {
 	buffer := make([]byte, 32*1024)
 	var total int64
@@ -554,18 +523,6 @@ func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (
 			return total, readErr
 		}
 	}
-}
-
-func installTransfer(target, staged string, overwrite bool) error {
-	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
-		return os.Rename(staged, target)
-	} else if err != nil {
-		return err
-	}
-	if !overwrite {
-		return ErrPrecondition
-	}
-	return replaceByRename(staged, target)
 }
 
 func replaceByRename(source, target string) error {

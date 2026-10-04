@@ -1506,3 +1506,12 @@ revision. Status is `aligned / regression-validated / Docker-published / awaitin
 WebSocket 限 caller，URL/name-author 歧义跳过；正文识别只捕获 16 KiB+1，UTF-8 单对象、显式
 非负 index/offset、有效过去时间受限；普通上传预算和原字节不改。SQL/取消失败只暴露固定诊断头，
 不泄漏路径、credentials 或数据库错误；仅 commit 后通知，无出站 mirror 回声。无新外部 fetch。
+
+# 2026-10-04 WebDAV COPY 生命周期
+
+已复核并测试：source/destination 从同一受信 boundary 打开，复验 root/私有 user ancestor、parent、
+完整源树、target 和 stage；source symlink/special 禁止，旧目标子 symlink 只按已接收 inode unlink，
+不追随根外路径。失败补偿 no-replace，不覆盖 newcomer；owned-only 清理保留未知实体。历史
+硬链接只接受已确认自有 rename 的 ctime 变化，后续外部修改仍拒绝。双前缀 Basic/Bearer 与普通
+用户隔离、无进度 JSON COPY 副作用均有测试。错误空 body、提交后固定 pending 诊断头，不暴露
+路径、令牌或 credentials；无新增远程 fetch。MOVE 同类风险仍未关闭。

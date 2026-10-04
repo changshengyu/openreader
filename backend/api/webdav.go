@@ -242,6 +242,15 @@ func (s *Server) webdavTransfer(c *gin.Context, copyResource bool) {
 	} else {
 		err = service.Move(sourceRelPath, destinationRelPath, overwrite)
 	}
+	writeWebDAVTransferResult(c, err)
+}
+
+func writeWebDAVTransferResult(c *gin.Context, err error) {
+	if errors.Is(err, webdavfs.ErrCopyCleanupPending) {
+		c.Header("X-OpenReader-WebDAV-Cleanup", "pending")
+		c.Status(http.StatusCreated)
+		return
+	}
 	if err != nil {
 		writeWebDAVServiceError(c, err)
 		return

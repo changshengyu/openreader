@@ -36,7 +36,7 @@ func copyStage(parent string) string {
 }
 
 func TestCopyRejectsWorkingPhaseIdentityChanges(t *testing.T) {
-	for _, kind := range []string{"source ancestor symlink", "source real directory", "destination parent symlink", "destination real directory", "target regular", "target directory", "stage replacement"} {
+	for _, kind := range []string{"source ancestor symlink", "source real directory", "destination parent symlink", "destination real directory", "target regular", "target directory", "stage replacement", "initially missing target"} {
 		t.Run(kind, func(t *testing.T) {
 			s := newTestService(t)
 			root := s.Root()
@@ -52,15 +52,17 @@ func TestCopyRejectsWorkingPhaseIdentityChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			final := filepath.Join(destinationParent, "final.txt")
-			if err := os.WriteFile(final, []byte("old final"), 0o644); err != nil {
-				t.Fatal(err)
+			if kind != "initially missing target" {
+				if err := os.WriteFile(final, []byte("old final"), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			outside := t.TempDir()
 			if err := os.WriteFile(filepath.Join(outside, "source.txt"), []byte("outside secret"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			context := &copyBoundaryContext{Context: context.Background()}
-			context.mutate = func() bool {
+			ctx := &copyBoundaryContext{Context: context.Background()}
+			ctx.mutate = func() bool {
 				stage := copyStage(destinationParent)
 				if stage == "" {
 					return false
@@ -112,6 +114,10 @@ func TestCopyRejectsWorkingPhaseIdentityChanges(t *testing.T) {
 					} else if err := os.WriteFile(final, []byte("new final"), 0o644); err != nil {
 						t.Fatal(err)
 					}
+				case "initially missing target":
+					if err := os.WriteFile(final, []byte("new final"), 0o644); err != nil {
+						t.Fatal(err)
+					}
 				case "stage replacement":
 					if err := os.Rename(stage, stage+"-held"); err != nil {
 						t.Fatal(err)
@@ -125,12 +131,29 @@ func TestCopyRejectsWorkingPhaseIdentityChanges(t *testing.T) {
 				}
 				return true
 			}
-			err := s.Copy(context, "source-parent/source.txt", "destination-parent/final.txt", true)
-			if !context.fired {
+			err := s.Copy(ctx, "source-parent/source.txt", "destination-parent/final.txt", true)
+			if !ctx.fired {
 				t.Fatal("copy boundary mutation never fired")
 			}
 			if !errors.Is(err, ErrUnsafePath) {
 				t.Fatalf("COPY admitted replacement: error=%v kind=%s", err, kind)
+			}
+			if kind == "target directory" {
+				if info, err := os.Stat(final); err != nil || !info.IsDir() {
+					t.Fatalf("new directory final changed: %v %v", info, err)
+				}
+			} else {
+				want := "old final"
+				if strings.HasPrefix(kind, "destination") {
+					want = "new parent final"
+				}
+				if kind == "target regular" || kind == "initially missing target" {
+					want = "new final"
+				}
+				got, err := os.ReadFile(final)
+				if err != nil || string(got) != want {
+					t.Fatalf("failed COPY changed final bytes: got=%q want=%q err=%v", got, want, err)
+				}
 			}
 			if kind == "stage replacement" {
 				stage := copyStage(destinationParent)
@@ -165,7 +188,10 @@ func TestCopyLastReadCancellationCannotPublish(t *testing.T) {
 			return false
 		}
 		info, err := os.Stat(filepath.Join(stage, "new"))
-		if err != nil || info.Size() == 0 {
+		if err != nil {
+			info, err = os.Stat(stage)
+		}
+		if err != nil || info.IsDir() || info.Size() == 0 {
 			return false
 		}
 		cancel()
