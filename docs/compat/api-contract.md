@@ -21,6 +21,14 @@ Directory candidate08de4de is now Docker-published: trusted Actions37740704252 p
 latest OCI index is sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c.
 See the directory contract for platform digests. Production remainsdb1ea21; no remote upgrade was performed.
 
+## 2026-10-08 storage import source-read inventory (no implementation)
+
+See [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+The four LocalStore/WebDAV preview/import POST routes retain bounded JSON, raw200-item and expanded200-item
+admission, response/item errors, permissions and token-only mounted-root independence. Absolute directory
+expansion and separate background plan/read admissions need source identity/context tests before edits.
+This does not authorize new UI, hidden filtering, missing404 instead of skip, SQL rollback claims or499.
+
 ## Global rules
 
 - Public API root: `/api`.

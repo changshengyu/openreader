@@ -82,6 +82,13 @@ symlink被接受、FIFO阻塞及授权后取消仍返回成功数据；fixture�
 下载 Range/conditional 和历史私有根；不把 import展开、共享内部caller或目录创建发布算作本项完成。
 目录创建实现 `08de4de` 已推送并发布，可信运行 `37740704252` 已终态success；生产仍db1ea21。
 
+下一项 storage-import source read 仅完成固定基准盘点，状态
+**inventory-complete / red-tests-pending / implementation-pending**，见
+[`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+目录展开仍绝对WalkDir/entry.Info，plan→byte read是不同background admission，无requestctx；
+这是源码证据而非生产漏洞复现。保留token-only不访问mounted根、200项、missing/empty、hidden和
+stable link/special目录策略；不把普通read/list或SQL/stage全生命周期算作本项完成。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于
