@@ -58,8 +58,9 @@
 7. 在mounted源bounded bytes交付至现有stage/parser前再检查request context。该边界之前取消
    不stage、不调用parser/Importer、不创建Book/Chapter/BookCategory、不广播，不返回成功项。
    之前已交付完成的项不能凭本合同承诺批量rollback；stage后、parser/SQL进行中取消留独立审查。
-8. 一般文件读取失败继续现有每项安全错误、邻项独立处理。生命周期失败如何整请求终止必须在
-   红测阶段固定：保持已有JSON error形状、不泄漏host path/entity/token/credentials，不新增499；
+8. 一般文件读取失败继续现有每项安全错误、邻项独立处理。红测阶段固定整请求终止映射：
+   request canceled/deadline为500 `{"error":"import source read canceled"}`；已经接收的身份
+   变更为400 `{"error":"invalid path"}`。保持已有JSON error形状、不泄漏host path/entity/token/credentials，不新增499；
    不把取消映射为200成功book/token。原文件/邻项/外部诱饵不写、不删、不chmod。
 
 ## 4. 数据和 API 保持
@@ -118,3 +119,13 @@ nonbook过滤、稳定symlink/special skip+neighbor、missing skip无创建；�
 运行37747103667已终态success且exact/latest OCI已核验。此项仍待实现和后续deep scan/bounded Read
 取消、late link/FIFO的实际控制、全部权限/私有用户/200展开/去重/相邻回归及候选卷/发布门。
 不缩减第5节要求，不把published普通read/list窗口重新描述成未修复。
+
+## 7. 追加深层 / 读取中红测（实施前）
+
+在真实深层目录遍历以及实际文件Read返回非零字节后追加nil观察接缝，不增加ctx检查。
+两来源×preview/import的deep-directory-scan和source-read共8项实际红灯：fixture均fired，
+仍返回book/token或写书架并广播。读取中测试源大于初始Read缓冲区，不是读取入口取消的别名。
+同阶段补明确上述取消500安全JSON裁决，既有20项取消均须满足；不会把无成功项的200误签收。
+证据：`/private/tmp/openreader-storage-import-source-deep-read-red-v2.log`。首个重复多段落fixture
+导致旧Importer展开大量SQL写入，诊断终止，不算已完成红测；缩小为仍大于初始Read缓冲区的
+连续正文后独立重新验证。这些测试与裁决先于实现。

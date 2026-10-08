@@ -134,16 +134,16 @@ func assertStorageImportNoAcceptedState(t *testing.T, server *Server, events <-c
 func TestStorageImportSourceCanceledBeforeHandoffCreatesNoAcceptedState(t *testing.T) {
 	for _, source := range []string{"local-store", "webdav"} {
 		for _, action := range []string{"import-preview", "import"} {
-			for _, phase := range []string{"directory-scan", "file-read", "source-handoff"} {
+			for _, phase := range []string{"directory-scan", "deep-directory-scan", "file-read", "source-read", "source-handoff"} {
 				t.Run(source+"/"+action+"/"+phase, func(t *testing.T) {
 					router, server := setupTestServer(t)
 					auth := authHeader(t, router)
 					root := storageImportTestRoot(server, source)
-					if err := os.MkdirAll(filepath.Join(root, "selected"), 0o755); err != nil {
+					if err := os.MkdirAll(filepath.Join(root, "selected/deep/deeper"), 0o755); err != nil {
 						t.Fatal(err)
 					}
-					original := filepath.Join(root, "selected", "book.txt")
-					bytes := []byte("第一章 原始\n正文保持不变")
+					original := filepath.Join(root, "selected/deep/deeper/book.txt")
+					bytes := []byte("第一章 原始\n" + string(byteutils.Repeat([]byte("正文保持不变"), 256)))
 					if err := os.WriteFile(original, bytes, 0o640); err != nil {
 						t.Fatal(err)
 					}
@@ -153,21 +153,27 @@ func TestStorageImportSourceCanceledBeforeHandoffCreatesNoAcceptedState(t *testi
 					defer cancel()
 					fired := false
 					stage := phase
+					if phase == "deep-directory-scan" {
+						stage = "directory-scan"
+					}
 					if stage == "file-read" {
 						stage = "local-file-read"
 						if source == "webdav" {
 							stage = "webdav-file-read"
 						}
 					}
-					storageImportSourceReadTestHook = func(current, _, _ string) {
+					storageImportSourceReadTestHook = func(current, _, path string) {
+						if phase == "deep-directory-scan" && path != "selected/deep/deeper" {
+							return
+						}
 						if current == stage && !fired {
 							fired = true
 							cancel()
 						}
 					}
 					t.Cleanup(func() { storageImportSourceReadTestHook = nil })
-					path := "selected/book.txt"
-					if phase == "directory-scan" {
+					path := "selected/deep/deeper/book.txt"
+					if phase == "directory-scan" || phase == "deep-directory-scan" {
 						path = "selected"
 					}
 					category := models.Category{UserID: 1, Name: "source-lifecycle-fixture"}
@@ -186,6 +192,9 @@ func TestStorageImportSourceCanceledBeforeHandoffCreatesNoAcceptedState(t *testi
 					router.ServeHTTP(response, request)
 					if !fired || ctx.Err() == nil {
 						t.Fatal("authorized source cancellation fixture did not fire")
+					}
+					if response.Code != http.StatusInternalServerError || response.Body.String() != `{"error":"import source read canceled"}` {
+						t.Errorf("cancellation must terminate with safe JSON, got %d %s", response.Code, response.Body.String())
 					}
 					assertStorageImportNoAcceptedState(t, server, client.Send, response)
 					after, err := os.ReadFile(original)

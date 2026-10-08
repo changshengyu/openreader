@@ -189,7 +189,7 @@ func (s *Server) readBoundedWebDAVImport(service *webdavfs.Service, relativePath
 		return nil, err
 	}
 	defer file.Close()
-	data, err := s.readBoundedLocalImport(file)
+	data, err := s.readBoundedLocalImport(observedStorageImportReader{Reader: file, service: service, relative: relativePath})
 	if err == nil {
 		runStorageImportSourceReadTestHook("source-handoff", service, relativePath)
 	}

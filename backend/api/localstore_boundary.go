@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -54,6 +55,20 @@ type localStoreImportPlan struct {
 // Nonparallel observation seam at actual source planning/read boundaries.
 // Nil in production; it adds no identity or cancellation checks.
 var storageImportSourceReadTestHook func(stage, root, relative string)
+
+type observedStorageImportReader struct {
+	io.Reader
+	service  *webdavfs.Service
+	relative string
+}
+
+func (r observedStorageImportReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if n > 0 {
+		runStorageImportSourceReadTestHook("source-read", r.service, r.relative)
+	}
+	return n, err
+}
 
 func runStorageImportSourceReadTestHook(stage string, service *webdavfs.Service, relative string) {
 	if storageImportSourceReadTestHook != nil {
@@ -366,6 +381,13 @@ func (s *Server) localStoreImportFilesWithService(service *webdavfs.Service, rel
 		if walkErr != nil {
 			return walkErr
 		}
+		if path != directoryPath && entry.IsDir() {
+			relative, err := filepath.Rel(service.Root(), path)
+			if err != nil {
+				return err
+			}
+			runStorageImportSourceReadTestHook("directory-scan", service, filepath.ToSlash(relative))
+		}
 		if path == directoryPath || entry.IsDir() {
 			return nil
 		}
@@ -415,7 +437,7 @@ func (s *Server) readBoundedLocalStoreImport(service *webdavfs.Service, relative
 		return nil, err
 	}
 	defer file.Close()
-	data, err := s.readBoundedLocalImport(file)
+	data, err := s.readBoundedLocalImport(observedStorageImportReader{Reader: file, service: service, relative: relativePath})
 	if err == nil {
 		runStorageImportSourceReadTestHook("source-handoff", service, relativePath)
 	}
