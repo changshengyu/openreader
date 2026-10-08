@@ -23,12 +23,15 @@ Earlier directory candidate08de4de was Docker-published by trusted Actions377407
 exact/latest OCI index was sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c.
 See the directory contract for platform digests. Production remainsdb1ea21; no remote upgrade was performed.
 
-## 2026-10-08 storage import source-read inventory (no implementation)
+## 2026-10-08 storage import source-read inventory and reds (no implementation)
 
 See [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 The four LocalStore/WebDAV preview/import POST routes retain bounded JSON, raw200-item and expanded200-item
 admission, response/item errors, permissions and token-only mounted-root independence. Absolute directory
-expansion and separate background plan/read admissions need source identity/context tests before edits.
+expansion and separate background plan/read admissions have36 actual fired red counterexamples after
+contract772fae2:18 foreign planned names, changed empty namespaces, authorized cancellation with staged/
+book/category state, and four same-name replacement sources accepted into stage/library. Independent
+normal/token-only/encoding/request controls pass; source identity/context implementation is still pending.
 This does not authorize new UI, hidden filtering, missing404 instead of skip, SQL rollback claims or499.
 
 ## Global rules

@@ -1,10 +1,10 @@
 # LocalStore / WebDAV 导入源读取生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / red-tests-pending / implementation-pending**。
+状态：**inventory-complete / red-tests-confirmed / implementation-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 当前审查基线：`OpenReader@11235c3ff111261dead932fab56fa36f98333fd5`，2026-10-08。
 
-本阶段只盘点，不改应用或测试。本合同须独立提交推送后才补实际接收边界红测，之后才实施。
+盘点合同772fae2已独立提交推送，之后才补实际接收边界红测；尚未实施。
 当前read/list可信运行37747103667已终态success，11235c3/latest OCI独立核验；不从它或旧目录
 创建发布推导本项通过。生产health仍db1ea21，无自动升级。
 
@@ -89,5 +89,32 @@ request lifecycle；扫描非书文件的大目录cardinality/深度/FD资源上
   现有token-only mountedroot删除或link、TTL/跨用户、规则重试、GB18030、prepared/no-reparse。
 
 实现后focused/full/race/vet、frontend/build、相邻Reader/存储真实HTTP与三视口、Linux双架构/
-非root、可信fresh/historical/portable/backup/platform门逐项记录。本阶段未新增测试或应用改动，
-不称候选通过；生产db1ea21、用户原书已恢复，未部署/清理任何用户数据。
+非root、可信fresh/historical/portable/backup/platform门逐项记录。红测阶段不称候选通过；
+生产db1ea21、用户原书已恢复，未部署/清理任何用户数据。
+
+## 6. 独立红测取证（2026-10-08，实施前）
+
+合同772fae2已推送后，只插入nil-in-production的directory-scan、两来源file-read和source-handoff
+观察接缝，不增加身份/context检查。原absolute WalkDir、background Stat/Open、bounded read、
+stage/parser/import保持原逻辑。新增36项确定性红灯，fixture均实际fired：
+
+- 20项planner：两来源×boundary/users/user/parent/target×real-directory/symlink在Resolve后替换。
+  18项返回`foreign-secret.txt`诱饵名字；2项target symlink得到nil/空计划而非unsafe。后两项不是
+  字节泄漏，只是错误接收已变更namespace。原文件未变，不能混称20项都泄漏或认证HTTP全部。
+- 12项真实授权Gin请求：两来源preview/import×directory-scan/file-read/source-handoff取消。
+  6项preview仍200成功book/token并留下3个暂存文件；6项import仍200成功book、写Book/Chapter/
+  BookCategory并广播bookshelf_update。分类为本测试私有fixture，源文件字节未变。
+- 4项真实授权Gin同名regular文件在plan后被真实新文件替换。两来源preview实际stage保存完整
+  `foreign-secret-bytes`诱饵输入，两来源import实际library保存该输入并写Book/Chapter/广播。
+  检查了暂存/library文件字节，不只依赖响应标题；原文件held及替换实体原字节均保持。
+
+独立controls通过：正常nested/hidden导入（与普通list隐藏策略不同）、case-insensitive排序、
+nonbook过滤、稳定symlink/special skip+neighbor、missing skip无创建；现有token-only mounted-root
+删除/link、同token规则重试、GB18030可读、raw JSON/200项边界。最终controls约1.5s exit0。
+完整36项最后一次红测API1.864s exit1（测试本身曾有变量遮蔽编译错误，修正后重新跑；编译错误
+不算红灯）。日志`/private/tmp/openreader-storage-import-source-red.log`与controls.log。
+
+独立红测提交保存在codex feature branch，不推送main作为可发布应用；published11235c3的可信
+运行37747103667已终态success且exact/latest OCI已核验。此项仍待实现和后续deep scan/bounded Read
+取消、late link/FIFO的实际控制、全部权限/私有用户/200展开/去重/相邻回归及候选卷/发布门。
+不缩减第5节要求，不把published普通read/list窗口重新描述成未修复。

@@ -27,7 +27,9 @@ release candidate and does not alter schema, mounted roots or backup membership.
 The next [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)
 preserves mounted roots, staged token format/TTL, prepared snapshots, old book/cache URLs and backups.
 Only mounted-source plan/scan/bounded-read admission is in scope; token stage/load/cleanup and full parser/
-SQL/cache commit lifecycle are separately unclosed. No repair, scan, chmod or migration was implemented.
+SQL/cache commit lifecycle are separately unclosed. Contract772fae2 preceded36 confirmed reds; fixture
+replacements preserve source/foreign bytes and reveal unauthorized-to-this-admission stage/library state
+in disposable test roots only. No repair, production scan, chmod or migration was implemented.
 
 ## User-facing migration contract (2026-08-11)
 

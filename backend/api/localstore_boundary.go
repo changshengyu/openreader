@@ -51,6 +51,16 @@ type localStoreImportPlan struct {
 	targets []localStoreImportTarget
 }
 
+// Nonparallel observation seam at actual source planning/read boundaries.
+// Nil in production; it adds no identity or cancellation checks.
+var storageImportSourceReadTestHook func(stage, root, relative string)
+
+func runStorageImportSourceReadTestHook(stage string, service *webdavfs.Service, relative string) {
+	if storageImportSourceReadTestHook != nil {
+		storageImportSourceReadTestHook(stage, service.Root(), relative)
+	}
+}
+
 func (s *Server) parseLocalStoreUpload(c *gin.Context) (*parsedLocalStoreUpload, error) {
 	requestLimit := s.maxLocalImportBytes() + localStoreUploadEnvelopeBytes
 	if requestLimit < s.maxLocalImportBytes() {
@@ -350,6 +360,7 @@ func (s *Server) localStoreImportFilesWithService(service *webdavfs.Service, rel
 	if err != nil {
 		return nil, err
 	}
+	runStorageImportSourceReadTestHook("directory-scan", service, relativePath)
 	files := make([]localStoreImportFile, 0)
 	err = filepath.WalkDir(directoryPath, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -398,12 +409,17 @@ func (s *Server) readBoundedLocalStoreImport(service *webdavfs.Service, relative
 	if service == nil {
 		return nil, errLocalStoreImportRead
 	}
+	runStorageImportSourceReadTestHook("local-file-read", service, relativePath)
 	file, _, err := service.Open(relativePath)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	return s.readBoundedLocalImport(file)
+	data, err := s.readBoundedLocalImport(file)
+	if err == nil {
+		runStorageImportSourceReadTestHook("source-handoff", service, relativePath)
+	}
+	return data, err
 }
 
 func writeLocalStoreImportPlanError(c *gin.Context, err error) {

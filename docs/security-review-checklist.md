@@ -1565,11 +1565,14 @@ returned-handle控制组独立通过。新读流程namespace/deep-cancel/子项�
 无新远程fetch、配置/数据迁移或密码日志；不改当前生产db1ea21，不重开原书已恢复事件。
 08de4de目录创建已由可信运行37740704252单独验证并发布，不能从它推导read/list通过。
 
-# 2026-10-08 storage-import source-read（仅合同盘点）
+# 2026-10-08 storage-import source-read（合同与红测，未实施）
 
 固定源码及已部署API/token差异见
 `compat/storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
-absolute directory walk和独立plan→read admission是must-fix源码证据，未注入fixture，不宣称生产泄漏。
+absolute directory walk和独立plan→read admission已在合同772fae2推送后确认36红灯：20目录替换
+fired（18诱饵名、2空计划）、12授权后cancel仍stage或Book/Chapter/category/广播、4同名regular
+替换实际进入暂存/library字节。只发生于一次性测试根，不宣称生产泄漏。
 token-only不访问mounted根、raw/expanded200项、稳定link/special隐藏且neighbor保留、当前hidden
 导入和empty/missing结果不可破坏。请求ctx只保护本切片source bytes交付边界，不签收stage/TTL/
-parser/SQL整个生命周期。红测/实现/发布仍待完成，无新网络fetch、密码日志或用户数据改动。
+parser/SQL整个生命周期。正常hidden/neighbor/token-only/GB18030/JSON边界controls通过，后续deep/
+read取消、special/权限/全展开200控制及实现/发布仍待完成，无新fetch、密码日志或用户数据改动。

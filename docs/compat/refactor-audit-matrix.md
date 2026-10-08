@@ -85,10 +85,13 @@ sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3，生产
 目录创建实现 `08de4de` 已推送并发布，可信运行 `37740704252` 已终态success；生产仍db1ea21。
 
 下一项 storage-import source read 仅完成固定基准盘点，状态
-**inventory-complete / red-tests-pending / implementation-pending**，见
+**inventory-complete / red-tests-confirmed / implementation-pending**，见
 [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 目录展开仍绝对WalkDir/entry.Info，plan→byte read是不同background admission，无requestctx；
-这是源码证据而非生产漏洞复现。保留token-only不访问mounted根、200项、missing/empty、hidden和
+合同772fae2推送后36项红灯实际触发：20目录planner接收替换（18诱饵名/2空计划）、12授权后
+cancel仍stage或写Book/Chapter/BookCategory、4同名regular替换实际stage/library接受诱饵字节。
+正常hidden/neighbor/token-only/GB18030/request-boundary独立controls通过；未实施、不称生产漏洞。
+保留token-only不访问mounted根、200项、missing/empty、hidden和
 stable link/special目录策略；不把普通read/list或SQL/stage全生命周期算作本项完成。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
