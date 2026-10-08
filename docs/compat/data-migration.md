@@ -1440,7 +1440,7 @@ reported original-book incident without claiming an exhaustive verification of a
 目录创建后续合同覆盖 fresh配置根、既有管理员根与private user初始化，见
 [`webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 不改layout/schema/backup，不chmod既有目录；取消/失败只回收owned-empty新层，未知实体保留。
-LocalStore缺失子路径的列表操作不得新建目录，固定上游语义需404；根初始化不取消。当前仅inventory，
+LocalStore缺失子路径的列表操作不得新建目录，固定上游语义需404；根惰性初始化能力保持，也须承接请求取消。当前仅inventory，
 需要红测、实现和新旧卷证据，不从前一MOVE已发布推导完成。
 
 后续 COPY opened-tree/stage 合同不改变用户目录或 SQLite/备份格式；取消/失败不能丢弃旧目标、
