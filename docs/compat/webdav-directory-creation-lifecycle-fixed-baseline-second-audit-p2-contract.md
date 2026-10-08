@@ -78,3 +78,17 @@ LocalStore directory/upload-parent/list404与 token/cache相邻合同单独覆�
 目录/权限/身份运行测试、真实 Basic/curl MKCOL两前缀和LocalStore HTTP副作用探针；无 UI改变不
 新增工作台控件。候选仍须可信 Actions native/fresh/historical/portable/backup/双架构发布门。
 GET/PROPFIND/Open 的独立读取/列表生命周期仍属未来审查，不能据此宣称全WebDAV模块完成。
+
+## 旧实现红灯（2026-10-08）
+
+合同 `d06f954` 后，`webdav_directory_lifecycle_contract_test.go` 在未修改应用的 `5338f26`
+实现上运行：两前缀×existing-admin/fresh-admin/fresh-member×单层/多层共12项取消MKCOL均返回
+201空body并创建目录；fresh情况还初始化了原本缺失的根。直接已授权Gin handler明确排除了认证
+查询因取消提前失败的干扰。LocalStore directory的fresh/existing两项同样在取消后创建并201原JSON。
+管理员/普通用户×recursive0/1共4项非取消missing list均200空列表且创建missing/child；这是真实
+上游可见偏差，不是取消导致的附带错误。总计18个确定性失败，证据日志
+`/private/tmp/openreader-directory-red.log`。实际源文件路径见仓库API测试，不依赖日志长期存在。
+
+正常fresh管理员/普通用户根、双前缀递归/重复MKCOL与LocalStore根列表控制组不失败；不能为了
+让取消红灯通过而禁掉新卷初始化或递归父层。没有工作期race夹具触发证据，不声称已确定性重现
+root/parent替换漏洞。当前仍是tests-and-implementation-pending，应用没有改动。

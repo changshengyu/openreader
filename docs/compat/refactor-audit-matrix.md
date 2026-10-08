@@ -57,8 +57,9 @@ Linux权限/硬链接/双tmpfs EXDEV、真实 Basic/curl 与 LocalStore HTTP、�
 见 [`webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 MKCOL / EnsureRoot / LocalStore parent 的绝对 MkdirAll 与无 request context 是生命周期 must-fix；
 LocalStore missing-child list 自动创建并200与固定上游读取报错偏离，需404且不创建。保留根惰性
-初始化、递归父层、旧权限/私有布局和所有正常协议，不增加上游没有的可见控件。尚未补红测/实施，
-不从 MOVE 发布推导这项通过。
+初始化、递归父层、旧权限/私有布局和所有正常协议，不增加上游没有的可见控件。合同 `d06f954`
+后18项旧实现红测已确定性复现取消后创建和missing list写盘；正常fresh/递归/幂等控制组不失败。
+尚未实施，不从 MOVE 发布推导这项通过，不把未注入的identity race说成已复现。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
