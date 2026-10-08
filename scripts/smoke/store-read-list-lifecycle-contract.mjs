@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -141,6 +141,53 @@ try {
     const safeList = await req('/api/local-store?path=readcase&recursive=1', { headers: user.headers })
     assert.equal(safeList.status, 200)
     assert.ok(!(await safeList.json()).items.some(item => item.name === 'unsafe-link'))
+    for (const [source, root] of [['local-store', localRoot], ['webdav', davRoot]]) {
+      await mkdir(join(root, 'importcase', '.hidden'), { recursive: true })
+      await mkdir(join(root, 'importcase', 'empty'))
+      const original = `第一章 原始\n原始正文-${user.username}-${source}`
+      await writeFile(join(root, 'importcase', 'A.TXT'), original)
+      await writeFile(join(root, 'importcase', '.hidden', 'b.txt'), original)
+      await writeFile(join(root, 'importcase', 'skip.bin'), 'not a book')
+      await writeFile(join(root, 'importcase', '000.txt'), original)
+      await chmod(join(root, 'importcase', '000.txt'), 0)
+      const outside = join(owned, `import-bait-${index}-${source}.txt`)
+      await writeFile(outside, 'foreign-secret-bytes')
+      await symlink(outside, join(root, 'importcase', 'escape.txt'))
+      const json = { ...user.headers, 'Content-Type': 'application/json' }
+      const preview = await req(`/api/${source}/import-preview`, { method: 'POST', headers: json,
+        body: JSON.stringify({ paths: ['importcase', 'importcase/A.TXT', 'importcase/empty', 'missing/child'] }) })
+      assert.equal(preview.status, 200)
+      const { items } = await preview.json()
+      assert.deepEqual(items.map(item => item.path), ['importcase/.hidden/b.txt', 'importcase/000.txt', 'importcase/A.TXT'])
+      const selected = items.find(item => item.path === 'importcase/A.TXT')
+      assert.ok(selected.book && selected.importToken)
+      assert.ok(items[0].book && items[0].importToken, 'import must keep hidden books')
+      if (process.getuid?.() !== 0) assert.equal(items[1].error, `failed to read ${source === 'webdav' ? 'WebDAV' : 'local store'} import`)
+      assert.equal((await stat(join(root, 'importcase', '000.txt'))).mode & 0o777, 0)
+      await assert.rejects(stat(join(root, 'missing')), { code: 'ENOENT' })
+      assert.equal(await readFile(outside, 'utf8'), 'foreign-secret-bytes')
+      await unlink(join(root, selected.path))
+      const reparse = await req(`/api/${source}/import-preview`, { method: 'POST', headers: json,
+        body: JSON.stringify({ items: [{ path: selected.path, importToken: selected.importToken, tocRule: '^第.+章.*$' }] }) })
+      assert.equal(reparse.status, 200)
+      const reparsed = (await reparse.json()).items[0]
+      assert.ok(reparsed.book && reparsed.importToken === selected.importToken)
+      const title = `source-snapshot-${user.username}-${source}`
+      const confirmed = await req(`/api/${source}/import`, { method: 'POST', headers: json,
+        body: JSON.stringify({ items: [{ path: selected.path, importToken: selected.importToken, title }] }) })
+      assert.equal(confirmed.status, 200)
+      const imported = (await confirmed.json()).imported[0]
+      assert.ok(imported.book?.id && !imported.error, 'confirmation must reuse original staged bytes')
+      assert.equal(imported.book.title, title)
+      const content = await req(`/api/books/${imported.book.id}/chapters/0/content`, { headers: user.headers })
+      assert.equal(content.status, 200)
+      assert.ok(JSON.stringify(await content.json()).includes(`原始正文-${user.username}-${source}`))
+      for (const other of accounts.filter(account => account !== user)) {
+        const denied = await req(`/api/books/${imported.book.id}/chapters/0/content`, { headers: other.headers })
+        assert.equal(denied.status, 404)
+      }
+      console.log(`PASS ${user.username}/${source}: nested/hidden/sort/dedup/stable-link/nonbook/000/missing, removed-source token reparse/confirm, exact Reader content and cross-user isolation`)
+    }
     console.log(`PASS ${user.username}: dual-prefix Basic/Bearer, Depth, directory GET, Unicode/space, Range/304/416, 000 metadata, recursive/hidden/sorted, missing404/no-write, unsafe policies and private bytes`)
   }
   // Existing protocol and LocalStore adjacent workflows on this owned fresh instance.

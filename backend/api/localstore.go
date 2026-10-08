@@ -383,6 +383,7 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 	if !ok {
 		return
 	}
+	defer plan.Close()
 	categoryIDs := categoryIDsFromRequest(req.CategoryID, req.CategoryIDs)
 	if len(req.CategoryIDs) > 0 {
 		if !s.validateCategoryIDs(c, userID, categoryIDs) {
@@ -431,8 +432,14 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 			imported = append(imported, gin.H{"path": file.relativePath, "error": file.validationError})
 			continue
 		}
-		data, err := s.readBoundedLocalStoreImport(plan.service, file.relativePath)
+		data, err := s.readBoundedStorageImport(c.Request.Context(), plan.service, file, "local-file-read")
 		if err != nil {
+			if writeStorageImportLifecycleError(c, err) {
+				if len(importedBooks) > 0 {
+					_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": importedBooks})
+				}
+				return
+			}
 			imported = append(imported, gin.H{"path": file.relativePath, "error": localStoreImportReadError(err)})
 			continue
 		}
@@ -476,6 +483,7 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 	if !ok {
 		return
 	}
+	defer plan.Close()
 	results := make([]gin.H, 0)
 	for _, target := range plan.targets {
 		if target.override.ImportToken != "" {
@@ -492,8 +500,11 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 			results = append(results, gin.H{"path": file.relativePath, "error": file.validationError})
 			continue
 		}
-		data, err := s.readBoundedLocalStoreImport(plan.service, file.relativePath)
+		data, err := s.readBoundedStorageImport(c.Request.Context(), plan.service, file, "local-file-read")
 		if err != nil {
+			if writeStorageImportLifecycleError(c, err) {
+				return
+			}
 			results = append(results, gin.H{"path": file.relativePath, "error": localStoreImportReadError(err)})
 			continue
 		}
@@ -514,6 +525,7 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 }
 
 type localStoreImportFile struct {
+	reader          *webdavfs.Reader
 	filePath        string
 	relativePath    string
 	extension       string

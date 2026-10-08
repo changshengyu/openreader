@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -37,6 +38,7 @@ type readDirectory struct {
 	file   *os.File
 	meta   *os.Root
 	info   os.FileInfo
+	refs   atomic.Int64
 }
 
 // ReadHandle owns the admitted boundary and every original target ancestor.
@@ -213,7 +215,7 @@ func (h *ReadHandle) List(options ReadListOptions) ([]ReadEntry, error) {
 		return nil, err
 	}
 	defer closeReadDirectory(directory)
-	if err := h.scan(directory, h.relative, options.Depth, options, &entries); err != nil {
+	if err := h.scan(directory, h.relative, options.Depth, options, &entries, nil); err != nil {
 		return nil, err
 	}
 	if err := h.Validate(); err != nil {
@@ -222,7 +224,10 @@ func (h *ReadHandle) List(options ReadListOptions) ([]ReadEntry, error) {
 	return entries, nil
 }
 
-func (h *ReadHandle) scan(directory *readDirectory, relative string, depth int, options ReadListOptions, result *[]ReadEntry) error {
+func (h *ReadHandle) scan(directory *readDirectory, relative string, depth int, options ReadListOptions, result *[]ReadEntry, visitor *ReadWalkVisitor) error {
+	if visitor != nil && visitor.BeforeScan != nil {
+		visitor.BeforeScan(relative)
+	}
 	if beforeReadDirectoryScanTestHook != nil {
 		beforeReadDirectoryScanTestHook(relative)
 	}
@@ -293,7 +298,21 @@ func (h *ReadHandle) scan(directory *readDirectory, relative string, depth int, 
 		if err := checkReadEntry(directory, name, info); err != nil {
 			return err
 		}
-		*result = append(*result, ReadEntry{RelativePath: childRelative, Info: info})
+		entry := ReadEntry{RelativePath: childRelative, Info: info}
+		if result != nil {
+			*result = append(*result, entry)
+		}
+		if visitor != nil && info.Mode().IsRegular() && visitor.Select(entry) {
+			child := h.retainEntry(directory, name, childRelative, info)
+			if err := child.Validate(); err != nil {
+				_ = child.Close()
+				return err
+			}
+			if err := visitor.Visit(child); err != nil {
+				_ = child.Close()
+				return err
+			}
+		}
 		if info.IsDir() && (depth < 0 || depth > 1) {
 			child, err := openReadDirectory(directory, name, info)
 			if err != nil {
@@ -305,7 +324,7 @@ func (h *ReadHandle) scan(directory *readDirectory, relative string, depth int, 
 				}
 				return err
 			}
-			err = h.scan(child, childRelative, depth-1, options, result)
+			err = h.scan(child, childRelative, depth-1, options, result, visitor)
 			_ = closeReadDirectory(child)
 			if err != nil {
 				return err
@@ -340,7 +359,9 @@ func bindReadDirectory(file *os.File, expected os.FileInfo) (*readDirectory, err
 		_ = file.Close()
 		return nil, ErrUnsafePath
 	}
-	return &readDirectory{file: file, meta: meta, info: info}, nil
+	directory := &readDirectory{file: file, meta: meta, info: info}
+	directory.refs.Store(1)
+	return directory, nil
 }
 
 func openReadDirectory(parent *readDirectory, name string, expected os.FileInfo) (*readDirectory, error) {
@@ -361,6 +382,9 @@ func openReadDirectory(parent *readDirectory, name string, expected os.FileInfo)
 }
 
 func closeReadDirectory(directory *readDirectory) error {
+	if directory.refs.Add(-1) != 0 {
+		return nil
+	}
 	return errors.Join(directory.meta.Close(), directory.file.Close())
 }
 

@@ -1565,7 +1565,7 @@ returned-handle控制组独立通过。新读流程namespace/deep-cancel/子项�
 无新远程fetch、配置/数据迁移或密码日志；不改当前生产db1ea21，不重开原书已恢复事件。
 08de4de目录创建已由可信运行37740704252单独验证并发布，不能从它推导read/list通过。
 
-# 2026-10-08 storage-import source-read（合同与红测，未实施）
+# 2026-10-08 storage-import source-read（已实施与本地验证，候选发布待核验）
 
 固定源码及已部署API/token差异见
 `compat/storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
@@ -1574,5 +1574,9 @@ fired（18诱饵名、2空计划）、12授权后cancel仍stage或Book/Chapter/c
 替换实际进入暂存/library字节。只发生于一次性测试根，不宣称生产泄漏。
 token-only不访问mounted根、raw/expanded200项、稳定link/special隐藏且neighbor保留、当前hidden
 导入和empty/missing结果不可破坏。请求ctx只保护本切片source bytes交付边界，不签收stage/TTL/
-parser/SQL整个生命周期。正常hidden/neighbor/token-only/GB18030/JSON边界controls通过，后续deep/
-read取消、special/权限/全展开200控制及实现/发布仍待完成，无新fetch、密码日志或用户数据改动。
+parser/SQL整个生命周期。追加8深层/读取中红灯后实施same-scope原opened scan/read，所有44初始
+红灯转绿。root/deep/read/handoff cancel、deep identity变更、late同inode link/FIFO有界join、
+200/201共享祖先引用和原生fd关闭、正常hidden/neighbor/token-only/GB18030/JSON/权限控制通过。
+最终full/race/vet、双普通用户/管理员旧根真实HTTP与Reader三视口、双架构编译及非rootLinux
+全服务通过；未知扫描cardinality/depth/FD上限和完整stage/TTL/parser/SQL仍独立未完成。
+无新fetch、密码日志、host-path诊断或用户数据改动；候选新旧卷/备份/发布仍待可信工作流。

@@ -1,10 +1,10 @@
 # LocalStore / WebDAV 导入源读取生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / red-tests-confirmed / implementation-pending**。
+状态：**implemented / regression-validated / Docker-publication-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 当前审查基线：`OpenReader@11235c3ff111261dead932fab56fa36f98333fd5`，2026-10-08。
 
-盘点合同772fae2已独立提交推送，之后才补实际接收边界红测；尚未实施。
+盘点合同772fae2已独立提交推送，之后才补实际接收边界红测5198e4d和追加红测6b32778；现已实施。
 当前read/list可信运行37747103667已终态success，11235c3/latest OCI独立核验；不从它或旧目录
 创建发布推导本项通过。生产health仍db1ea21，无自动升级。
 
@@ -58,6 +58,8 @@
 7. 在mounted源bounded bytes交付至现有stage/parser前再检查request context。该边界之前取消
    不stage、不调用parser/Importer、不创建Book/Chapter/BookCategory、不广播，不返回成功项。
    之前已交付完成的项不能凭本合同承诺批量rollback；stage后、parser/SQL进行中取消留独立审查。
+   若较早项已durable import、后项在source阶段失败，保留此前书架行并发布仅含此前成功书的
+   bookshelf_update；失败当前项不进入事件。不能让新的整请求终止路径吞掉既有已提交书的通知。
 8. 一般文件读取失败继续现有每项安全错误、邻项独立处理。红测阶段固定整请求终止映射：
    request canceled/deadline为500 `{"error":"import source read canceled"}`；已经接收的身份
    变更为400 `{"error":"invalid path"}`。保持已有JSON error形状、不泄漏host path/entity/token/credentials，不新增499；
@@ -115,9 +117,9 @@ nonbook过滤、稳定symlink/special skip+neighbor、missing skip无创建；�
 完整36项最后一次红测API1.864s exit1（测试本身曾有变量遮蔽编译错误，修正后重新跑；编译错误
 不算红灯）。日志`/private/tmp/openreader-storage-import-source-red.log`与controls.log。
 
-独立红测提交保存在codex feature branch，不推送main作为可发布应用；published11235c3的可信
-运行37747103667已终态success且exact/latest OCI已核验。此项仍待实现和后续deep scan/bounded Read
-取消、late link/FIFO的实际控制、全部权限/私有用户/200展开/去重/相邻回归及候选卷/发布门。
+实施前独立红测提交保存在codex feature branch，不推送main作为可发布应用；published11235c3的可信
+运行37747103667已终态success且exact/latest OCI已核验。此项实施和后续控制结果见第8节；
+候选卷/发布门保持独立待核验。
 不缩减第5节要求，不把published普通read/list窗口重新描述成未修复。
 
 ## 7. 追加深层 / 读取中红测（实施前）
@@ -129,3 +131,34 @@ nonbook过滤、稳定symlink/special skip+neighbor、missing skip无创建；�
 证据：`/private/tmp/openreader-storage-import-source-deep-read-red-v2.log`。首个重复多段落fixture
 导致旧Importer展开大量SQL写入，诊断终止，不算已完成红测；缩小为仍大于初始Read缓冲区的
 连续正文后独立重新验证。这些测试与裁决先于实现。
+
+## 8. 实施与独立验证（2026-10-08）
+
+共享rootedfs.ReadScope/webdavfs.ReadScope保留configured boundary与caller root；同一scope
+接收所有非token输入，不在plan后用Service.Open重新接收。目录从原opened fd扫描，原recursive
+父链由共享引用保留到各源字节交付，no-follow/nonblock regular open；不复制200份祖先fd栈。
+接口层仍负责路径/权限/200去重、格式选择、错误映射与既有stage/parser调用。
+取消检查覆盖root admission、逐层/批scan、每次Read前后及交付前；交付后合法file rename
+继续原fd原字节，祖先身份变更仍拒绝。计划成功/失败、扫描失败、201超限、读失败/取消都Close。
+token-only未创建service/scope，hidden导入、missing/empty、unsupported、prepared/GB18030保持。
+
+原36项与追加8项实施前红灯转绿；另补root-admission取消、深层directory/link真实替换、late
+同inode link/FIFO有界worker join、opened-file合法rename原字节、跨输入scope替换及200/201
+句柄所有权/原生fd关闭控制。新终止路径的“前一本已提交、第二本取消”通知差异又先补合同和
+两项实际红灯，再仅广播此前已durable书；当前失败项没有写入或成功事件，不声称整批rollback。
+一项资源测试曾误把fixture原有.hidden/secret.txt当外部名字，改为唯一foreign-secret.txt后
+重跑；该测试断言修正不作为应用缺陷红测。
+
+最终Go全量API87.209s与vet通过，API focused race73.987s、共享两个services完整race通过；
+frontend762/762、Vite和Compose通过。新测试服务Linux amd64/arm64交叉编译，arm64非root
+501:20/read-only/network-none/tmpfs全包通过（缓存8dc61c3仅提供Alpine环境，不是本候选应用）。
+隔离新Go+SQLite临时data/cache/library真实HTTP：管理员旧根与双ordinary user两来源均通过
+hidden/sort/dedup/stable-link/nonbook/000不chmod/missing无写、源删除后同token reparse/confirm、
+原字节Reader200和跨用户404；相邻两前缀Basic/curl及LocalStore目录/上传/下载亦通过。
+最终真实Chromium1228在1440x900/390x844/360x800通过Reader CAS/WS/coldrestore/DAV mirror及
+Basic进度接收在线/冷启动精确段落、reset/noecho。所有服务器/账户/根均为测试自有，无生产写入。
+
+日志：/private/tmp/openreader-storage-import-source-{full-final-v2,race-final,services-race,
+vet-final,http-final,reader-browser-final,linux-rootedfs,linux-webdavfs}.log；候选Git推送、可信
+fresh/historical/portable/backup/platform及新OCI仍独立待核验。生产版本本轮确认db1ea21，
+整体审计不变，stage/TTL/完整parser/SQL及扫描cardinality/depth/FD上限仍未签收。

@@ -81,7 +81,7 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose config --quiet
 
-      - name: Validate isolated storage read-list HTTP contracts
+      - name: Validate isolated storage read-list and import HTTP contracts
         run: node scripts/smoke/store-read-list-lifecycle-contract.mjs
 
       - name: Set up QEMU

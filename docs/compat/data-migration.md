@@ -22,14 +22,20 @@ sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c. Product
 db1ea21; original user-book recovery stays closed. Read/list red commit80bb48c is not an implementation or
 release candidate and does not alter schema, mounted roots or backup membership.
 
-## 2026-10-08 storage-import source-read inventory (no migration)
+## 2026-10-08 storage-import source-read implemented (no migration)
 
 The next [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)
 preserves mounted roots, staged token format/TTL, prepared snapshots, old book/cache URLs and backups.
 Only mounted-source plan/scan/bounded-read admission is in scope; token stage/load/cleanup and full parser/
 SQL/cache commit lifecycle are separately unclosed. Contract772fae2 preceded36 confirmed reds; fixture
 replacements preserve source/foreign bytes and reveal unauthorized-to-this-admission stage/library state
-in disposable test roots only. No repair, production scan, chmod or migration was implemented.
+in disposable test roots only. Implementation retains original root/ancestor/file handles through source
+handoff, request cancellation and all owned-handle closes; no repair, production scan, chmod or migration.
+Token-only paths still never admit mounted roots. Hidden/missing/empty/200/dedup/000 and staged-source
+removal/reparse/confirm controls pass on real isolated Go+SQLite HTTP for historical admin layout and two
+ordinary users. No whole-batch rollback or complete stage/TTL/parser/SQL lifecycle claim; prior durable imports
+remain with a precise prior-success notification after later source cancellation. Full/race/frontend/Linux and
+Reader controls pass; final-candidate fresh/historical/portable/backup/platform gates remain pending.
 
 ## User-facing migration contract (2026-08-11)
 

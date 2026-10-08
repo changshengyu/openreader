@@ -23,7 +23,7 @@ Earlier directory candidate08de4de was Docker-published by trusted Actions377407
 exact/latest OCI index was sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c.
 See the directory contract for platform digests. Production remainsdb1ea21; no remote upgrade was performed.
 
-## 2026-10-08 storage import source-read inventory and reds (no implementation)
+## 2026-10-08 storage import source-read (implemented; Docker publication pending)
 
 See [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 The four LocalStore/WebDAV preview/import POST routes retain bounded JSON, raw200-item and expanded200-item
@@ -31,7 +31,13 @@ admission, response/item errors, permissions and token-only mounted-root indepen
 expansion and separate background plan/read admissions have36 actual fired red counterexamples after
 contract772fae2:18 foreign planned names, changed empty namespaces, authorized cancellation with staged/
 book/category state, and four same-name replacement sources accepted into stage/library. Independent
-normal/token-only/encoding/request controls pass; source identity/context implementation is still pending.
+normal/token-only/encoding/request controls pass. The implementation now binds one caller read scope
+through recursive source selection and bounded-byte handoff; 36 initial and 8 deeper/in-read reds are green.
+Cancellation/deadline terminates with safe500 `{error:"import source read canceled"}`, changed admitted
+identity with400 `{error:"invalid path"}`; ordinary file I/O remains per-item. Earlier committed books are
+retained and notified independently if a later source cancels (two actual intermediate reds fixed).
+Full/race/vet, real three-account HTTP, Reader three-viewports, Linux and frontend gates pass; candidate-specific
+trusted volume/backup/platform and OCI publication remain pending, production is stilldb1ea21.
 This does not authorize new UI, hidden filtering, missing404 instead of skip, SQL rollback claims or499.
 
 ## Global rules

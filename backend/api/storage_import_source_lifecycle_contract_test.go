@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
+	"time"
 
 	"openreader/backend/models"
 	"openreader/backend/services/webdavfs"
@@ -134,7 +136,7 @@ func assertStorageImportNoAcceptedState(t *testing.T, server *Server, events <-c
 func TestStorageImportSourceCanceledBeforeHandoffCreatesNoAcceptedState(t *testing.T) {
 	for _, source := range []string{"local-store", "webdav"} {
 		for _, action := range []string{"import-preview", "import"} {
-			for _, phase := range []string{"directory-scan", "deep-directory-scan", "file-read", "source-read", "source-handoff"} {
+			for _, phase := range []string{"source-admission", "directory-scan", "deep-directory-scan", "file-read", "source-read", "source-handoff"} {
 				t.Run(source+"/"+action+"/"+phase, func(t *testing.T) {
 					router, server := setupTestServer(t)
 					auth := authHeader(t, router)
@@ -335,6 +337,262 @@ func TestStorageImportDirectoryKeepsHiddenAndSafeNeighborsAndMissingSkip(t *test
 			}
 			if _, err := os.Stat(filepath.Join(root, "missing")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("missing import created directory: %v", err)
+			}
+		})
+	}
+}
+
+func TestStorageImportLateSymlinkAndFIFORejectWithoutLeakingWorker(t *testing.T) {
+	for _, source := range []string{"local-store", "webdav"} {
+		for _, action := range []string{"import-preview", "import"} {
+			for _, kind := range []string{"same-inode-symlink", "fifo"} {
+				t.Run(source+"/"+action+"/"+kind, func(t *testing.T) {
+					router, server := setupTestServer(t)
+					auth := authHeader(t, router)
+					root := storageImportTestRoot(server, source)
+					if err := os.MkdirAll(root, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					original := filepath.Join(root, "book.txt")
+					if err := os.WriteFile(original, []byte("第一章 原始\n原字节"), 0o640); err != nil {
+						t.Fatal(err)
+					}
+					client := server.hub.AddClient(1, nil)
+					t.Cleanup(func() { server.hub.RemoveClient(client) })
+					phase := "local-file-read"
+					if source == "webdav" {
+						phase = "webdav-file-read"
+					}
+					var fixtureErr error
+					fired := false
+					storageImportSourceReadTestHook = func(stage, _, _ string) {
+						if fired || stage != phase {
+							return
+						}
+						fired = true
+						fixtureErr = os.Rename(original, original+"-held")
+						if fixtureErr != nil {
+							return
+						}
+						if kind == "fifo" {
+							fixtureErr = syscall.Mkfifo(original, 0o600)
+						} else {
+							fixtureErr = os.Symlink(original+"-held", original)
+						}
+					}
+					t.Cleanup(func() { storageImportSourceReadTestHook = nil })
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					request := httptest.NewRequest(http.MethodPost, "/api/"+source+"/"+action, byteutils.NewReader([]byte(`{"paths":["book.txt"]}`))).WithContext(ctx)
+					request.Header.Set("Authorization", auth)
+					request.Header.Set("Content-Type", "application/json")
+					response := httptest.NewRecorder()
+					done := make(chan struct{})
+					go func() { defer close(done); router.ServeHTTP(response, request) }()
+					select {
+					case <-done:
+					case <-time.After(2 * time.Second):
+						cancel()
+						select {
+						case <-done:
+							t.Fatal("unsafe source blocked until cancellation")
+						case <-time.After(time.Second):
+							t.Fatal("unsafe source left a blocked worker")
+						}
+					}
+					if !fired || fixtureErr != nil {
+						t.Fatalf("late source fixture: fired=%v err=%v", fired, fixtureErr)
+					}
+					if response.Code != http.StatusBadRequest || response.Body.String() != `{"error":"invalid path"}` {
+						t.Errorf("unsafe response: %d %s", response.Code, response.Body.String())
+					}
+					assertStorageImportNoAcceptedState(t, server, client.Send, response)
+					if data, err := os.ReadFile(original + "-held"); err != nil || string(data) != "第一章 原始\n原字节" {
+						t.Fatalf("original changed: %q %v", data, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestStorageImportDeepDirectoryReplacementCannotBecomeStableSkip(t *testing.T) {
+	for _, source := range []string{"local-store", "webdav"} {
+		for _, action := range []string{"import-preview", "import"} {
+			for _, kind := range []string{"directory", "symlink"} {
+				t.Run(source+"/"+action+"/"+kind, func(t *testing.T) {
+					router, server := setupTestServer(t)
+					auth := authHeader(t, router)
+					target := filepath.Join(storageImportTestRoot(server, source), "selected/deep")
+					if err := os.MkdirAll(target, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(target, "book.txt"), []byte("第一章 原始\n原字节"), 0o640); err != nil {
+						t.Fatal(err)
+					}
+					outside := filepath.Join(t.TempDir(), "foreign")
+					if err := os.Mkdir(outside, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					foreign := []byte("第一章 根外\nforeign-secret-bytes")
+					if err := os.WriteFile(filepath.Join(outside, "foreign.txt"), foreign, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					client := server.hub.AddClient(1, nil)
+					t.Cleanup(func() { server.hub.RemoveClient(client) })
+					fired := false
+					storageImportSourceReadTestHook = func(stage, _, relative string) {
+						if fired || stage != "directory-scan" || relative != "selected/deep" {
+							return
+						}
+						fired = true
+						if err := os.Rename(target, target+"-held"); err != nil {
+							t.Fatal(err)
+						}
+						if kind == "symlink" {
+							if err := os.Symlink(outside, target); err != nil {
+								t.Fatal(err)
+							}
+						} else if err := os.Rename(outside, target); err != nil {
+							t.Fatal(err)
+						}
+					}
+					t.Cleanup(func() { storageImportSourceReadTestHook = nil })
+					response, _ := performLocalStoreRequest(router, http.MethodPost, "/api/"+source+"/"+action, auth, "application/json", []byte(`{"paths":["selected"]}`), false)
+					if !fired || response.Code != http.StatusBadRequest {
+						t.Fatalf("deep swap result: fired=%v response=%d %s", fired, response.Code, response.Body.String())
+					}
+					assertStorageImportNoAcceptedState(t, server, client.Send, response)
+					if data, err := os.ReadFile(filepath.Join(target+"-held", "book.txt")); err != nil || string(data) != "第一章 原始\n原字节" {
+						t.Fatalf("original changed: %q %v", data, err)
+					}
+					foreignRoot := target
+					if kind == "symlink" {
+						foreignRoot = outside
+					}
+					if data, err := os.ReadFile(filepath.Join(foreignRoot, "foreign.txt")); err != nil || string(data) != string(foreign) {
+						t.Fatalf("foreign changed: %q %v", data, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestStorageImportOpenedFileRenameKeepsOriginalBytes(t *testing.T) {
+	for _, source := range []string{"local-store", "webdav"} {
+		for _, action := range []string{"import-preview", "import"} {
+			t.Run(source+"/"+action, func(t *testing.T) {
+				router, server := setupTestServer(t)
+				auth := authHeader(t, router)
+				root := storageImportTestRoot(server, source)
+				if err := os.MkdirAll(root, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				originalPath := filepath.Join(root, "book.txt")
+				original := []byte("第一章 原始\n" + string(byteutils.Repeat([]byte("原始正文"), 256)))
+				foreign := []byte("第一章 新文件\nforeign-secret-bytes")
+				if err := os.WriteFile(originalPath, original, 0o640); err != nil {
+					t.Fatal(err)
+				}
+				fired := false
+				storageImportSourceReadTestHook = func(stage, _, _ string) {
+					if fired || stage != "source-read" {
+						return
+					}
+					fired = true
+					if err := os.Rename(originalPath, originalPath+"-held"); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(originalPath, foreign, 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Cleanup(func() { storageImportSourceReadTestHook = nil })
+				response, _ := performLocalStoreRequest(router, http.MethodPost, "/api/"+source+"/"+action, auth, "application/json", []byte(`{"paths":["book.txt"]}`), false)
+				if !fired || response.Code != http.StatusOK {
+					t.Fatalf("opened rename: fired=%v status=%d %s", fired, response.Code, response.Body.String())
+				}
+				acceptedRoot := server.cfg.LibraryDir
+				if action == "import-preview" {
+					acceptedRoot = filepath.Join(server.cfg.CacheDir, "import-previews")
+				}
+				if !storageImportTreeContainsBytes(t, acceptedRoot, original) || storageImportTreeContainsBytes(t, acceptedRoot, foreign) {
+					t.Fatal("opened fd did not deliver only original bytes")
+				}
+				if data, err := os.ReadFile(originalPath + "-held"); err != nil || string(data) != string(original) {
+					t.Fatalf("original changed: %q %v", data, err)
+				}
+				if data, err := os.ReadFile(originalPath); err != nil || string(data) != string(foreign) {
+					t.Fatalf("replacement changed: %q %v", data, err)
+				}
+			})
+		}
+	}
+}
+
+func TestStorageImportLaterSourceCancelPreservesEarlierCommittedBookAndEvent(t *testing.T) {
+	for _, source := range []string{"local-store", "webdav"} {
+		t.Run(source, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			root := storageImportTestRoot(server, source)
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"first.txt", "second.txt"} {
+				if err := os.WriteFile(filepath.Join(root, name), []byte("第一章 原始\n原字节"), 0o640); err != nil {
+					t.Fatal(err)
+				}
+			}
+			client := server.hub.AddClient(1, nil)
+			t.Cleanup(func() { server.hub.RemoveClient(client) })
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			phase := "local-file-read"
+			if source == "webdav" {
+				phase = "webdav-file-read"
+			}
+			fired := false
+			storageImportSourceReadTestHook = func(stage, _, relative string) {
+				if stage == phase && relative == "second.txt" {
+					fired = true
+					cancel()
+				}
+			}
+			t.Cleanup(func() { storageImportSourceReadTestHook = nil })
+			request := httptest.NewRequest(http.MethodPost, "/api/"+source+"/import", byteutils.NewReader([]byte(`{"paths":["first.txt","second.txt"]}`))).WithContext(ctx)
+			request.Header.Set("Authorization", auth)
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if !fired || response.Code != 500 {
+				t.Fatalf("later cancel fixture: fired=%v response=%d %s", fired, response.Code, response.Body.String())
+			}
+			var books []models.Book
+			if err := server.db.Find(&books).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(books) != 1 {
+				t.Fatalf("earlier committed book lost or failed source accepted: %+v", books)
+			}
+			select {
+			case message := <-client.Send:
+				var event struct {
+					Type    string
+					Payload []struct{ ID uint }
+				}
+				if err := json.Unmarshal(message, &event); err != nil {
+					t.Fatal(err)
+				}
+				if event.Type != "bookshelf_update" || len(event.Payload) != 1 || event.Payload[0].ID != books[0].ID {
+					t.Errorf("prior commit notification: %s", message)
+				}
+			default:
+				t.Error("source termination swallowed earlier durable book notification")
+			}
+			if events := drainBookWriteEvents(client.Send); len(events) != 0 {
+				t.Errorf("extra source-failure events: %v", events)
 			}
 		})
 	}

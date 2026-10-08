@@ -79,6 +79,9 @@ func writeWebDAVImportFilesystemError(c *gin.Context, err error) {
 }
 
 func writeWebDAVImportPlanError(c *gin.Context, err error) {
+	if writeStorageImportLifecycleError(c, err) {
+		return
+	}
 	if errors.Is(err, errLocalStoreImportTooMany) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "too many paths"})
 		return
@@ -113,6 +116,12 @@ func (s *Server) prepareWebDAVImport(c *gin.Context, request localBookImportRequ
 	}
 
 	plan := localStoreImportPlan{targets: make([]localStoreImportTarget, 0, len(normalizedPaths))}
+	complete := false
+	defer func() {
+		if !complete {
+			plan.Close()
+		}
+	}()
 	seen := make(map[string]bool)
 	for _, relativePath := range normalizedPaths {
 		requestedOverride := overrides[relativePath]
@@ -135,7 +144,7 @@ func (s *Server) prepareWebDAVImport(c *gin.Context, request localBookImportRequ
 			}
 			plan.service = service
 		}
-		files, err := s.localStoreImportFilesWithService(plan.service, relativePath)
+		files, err := plan.collectImportFiles(c.Request.Context(), relativePath, seen)
 		if err != nil {
 			writeWebDAVImportPlanError(c, err)
 			return localStoreImportPlan{}, false
@@ -158,6 +167,7 @@ func (s *Server) prepareWebDAVImport(c *gin.Context, request localBookImportRequ
 			}
 		}
 	}
+	complete = true
 	return plan, true
 }
 
@@ -177,23 +187,6 @@ func (s *Server) webDAVImportFiles(c *gin.Context, rawPath string) ([]localStore
 		return nil, false
 	}
 	return files, true
-}
-
-func (s *Server) readBoundedWebDAVImport(service *webdavfs.Service, relativePath string) ([]byte, error) {
-	if service == nil {
-		return nil, errLocalStoreImportRead
-	}
-	runStorageImportSourceReadTestHook("webdav-file-read", service, relativePath)
-	file, _, err := service.Open(relativePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	data, err := s.readBoundedLocalImport(observedStorageImportReader{Reader: file, service: service, relative: relativePath})
-	if err == nil {
-		runStorageImportSourceReadTestHook("source-handoff", service, relativePath)
-	}
-	return data, err
 }
 
 func webDAVImportReadError(err error) string {
