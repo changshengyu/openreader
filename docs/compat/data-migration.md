@@ -14,6 +14,12 @@ Open/Stat callers need regression checks, not silent changes to import tokens, p
 cache compensation. Source-based inventory is complete; red tests, implementation and candidate-specific
 historical/fresh/portable/backup gates are still pending. No production upgrade is inferred.
 
+Directory creation08de4de independently completed trusted Actions37740704252, including fresh/historical/
+portable/backup and amd64/arm64 publication. Exact/latest OCI index is
+sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c. Production health remains
+db1ea21; original user-book recovery stays closed. Read/list red commit80bb48c is not an implementation or
+release candidate and does not alter schema, mounted roots or backup membership.
+
 ## User-facing migration contract (2026-08-11)
 
 The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation

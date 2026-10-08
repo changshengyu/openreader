@@ -11,8 +11,13 @@ empty errors and Range/conditional responses; `/reader3/webdav` directoryGET405 
 directoryGET207 remain distinct. LocalStore keeps list200 `{path,recursive,items}`, missing-child404,
 download/Range, fixed JSON errors and hidden-entry semantics. The pending change must bind caller boundary,
 ancestors, metadata and bytes to original opened handles and observe request cancellation after root
-initialization. No new route, request field, response shape or499 is authorized. Source evidence only;
-deterministic red tests and implementation remain pending, independent of directory candidate08de4de.
+initialization. No new route, request field, response shape or499 is authorized. Independent red commit80bb48c
+confirms30 failures in namespace admission, FIFO blocking and authorized cancellation; implementation remains
+pending, independent of directory image08de4de.
+
+Directory candidate08de4de is now Docker-published: trusted Actions37740704252 passed all gates and exact/
+latest OCI index is sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c.
+See the directory contract for platform digests. Production remainsdb1ea21; no remote upgrade was performed.
 
 ## Global rules
 

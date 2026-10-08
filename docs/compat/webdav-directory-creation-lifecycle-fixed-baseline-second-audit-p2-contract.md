@@ -1,6 +1,6 @@
 # WebDAV / LocalStore 目录创建生命周期固定基准第二轮合同（P2）
 
-状态：**implemented / regression-validated / Docker-publication-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 审查实现：`5338f261002bd8f234414c8f8e14ac89068ebab5`。本阶段只改合同，不改测试/应用。
 
@@ -134,3 +134,19 @@ directory201/重复409、中文/internal-space、upload-parent和exact download 
 原生产书籍故障已device-verified关闭；本轮再次health确认production commit `db1ea21`，不把本地通过记作部署。
 整体固定基准审计、独立GET/PROPFIND/Open动作未完成；npm同一锁文件当前报告8high，未升级依赖
 或改锁，需另行authoritative advisory与实际可达性inventory，不据metadata宣称生产可利用。
+
+## 2026-10-08 可信 Docker 发布签收（覆盖上文 publication-pending）
+
+实现 `08de4decfb91248901ca73adee5f102563181d68` 的 Actions
+[`37740704252`](https://github.com/changshengyu/openreader/actions/runs/37740704252) 已终态success。
+backend/frontend/build/Compose/native、fresh/portable、historical/backup以及最终发布平台门全部通过。
+本地再次只读核验exact tag `ghcr.io/changshengyu/openreader:08de4de` 与 `latest` 为同一OCI index：
+
+- index：`sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c`
+- linux/amd64：`sha256:a82c31ed9abfe5a712de9c3c421e2ba3b32cb742588b7812735c1db1052ea491`
+- linux/arm64：`sha256:f936e04a6f8a9ebff00b94b146a8298b7ed79515f482dcac3c3de3a4adbdb4fa`
+
+没有重新启动已有构建，也没有升级另一台Mac。生产health仍是
+`db1ea216f9849bc44a90b5b760241df1c6d069b0`；用户已确认的原书恢复保持关闭。
+允许差异为Go opened-fd/context安全适配、multi-user隔离及缺失子路径读操作不写盘；无schema/
+配置/layout/backup变化。独立read/list合同和30项新红测尚未实施，整体重构继续，不能记作全模块完成。

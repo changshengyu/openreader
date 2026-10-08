@@ -115,8 +115,9 @@ LocalStore/WebDAV import 的绝对目录展开与其他独立读取动作继续�
 local-book archive、upload/backup/import/restore与相邻Reader回归必测。可信fresh/historical/
 portable/backup和最终amd64/arm64 OCI门独立核验后才可Docker-published。
 
-当前目录创建08de4de的发布运行37740704252仍在进行，本合同不改变应用文件，不取消/重启该运行。
-最后确认镜像5338f26，生产db1ea21、原书用户验收已恢复；这些事实不证明本项read/list完成。
+盘点和红测建立时目录创建08de4de的发布运行37740704252仍在进行，故未向main推送应用测试以
+取消该运行。此后该运行已终态success，exact08de4de/latest双架构OCI已核验，见目录创建合同。
+生产db1ea21、原书用户验收已恢复；这些事实不证明本项read/list完成。
 
 ## 7. 独立红测记录（2026-10-08）
 

@@ -1531,19 +1531,20 @@ Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复
 实体 pending 头已验证；未暴露主机路径/令牌，无新外部 fetch/应用配置/迁移。实现 `5338f26`
 可信 Actions `37192132525` 全部门成功，双架构 exact OCI 已核验；生产 `db1ea21` 未升级。
 
-# 2026-10-08 目录创建生命周期（已实施/本地回归，发布待门）
+# 2026-10-08 目录创建生命周期（已实施/本地回归/可信发布）
 
 - [x] 绑定configured anchor/root/users/user/parent identity，实际工作期替换fixture触发并不跟随。
 - [x] request context覆盖MKCOL、root初始化、LocalStore upload/create父层；第二层取消只回收owned空目录，未知成员保留。
 - [x] missing-child LocalStore list404且无子目录创建；合法根惰性初始化与空目录200保持。
 - [x] 本地新根/ordinary user隔离、非rootLinux权限/unknown/newcomer/嵌套/空白与相邻token/cache race。
-- [ ] 最终候选可信fresh/historical/portable/backup/双架构发布门。
+- [x] 最终候选08de4de可信fresh/historical/portable/backup/双架构发布门，Actions37740704252终态success。
 
 聚焦合同 `compat/webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`；
 合同与18项旧实现红灯先于应用修改。已有Go/race/真实HTTP和非rootLinux证据，不以相邻MOVE代替。
 无新fetch/配置/schema/host-path或credentials泄漏；错误固定JSON/空body。GET/PROPFIND/Open
 独立生命周期尚待后续动作审查。最终Go/vet/race/最新Linux与fresh临时卷二进制HTTP复验exit0；
-可信卷/备份/双架构发布门仍独立待核验。
+可信卷/备份/双架构发布门已独立核验；exact08de4de/latest index为
+sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c，生产未升级。
 
 # 2026-10-08 WebDAV / LocalStore read-list（合同/红测，未实施）
 
@@ -1558,4 +1559,4 @@ Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复
 nil-in-production接缝未改变原行为；FIFO旧阻塞已用测试peer有界释放并join，000/Range/conditional/
 returned-handle控制组独立通过。实施后才能勾选无外部bytes/names和新读流程门。
 无新远程fetch、配置/数据迁移或密码日志；不改当前生产db1ea21，不重开原书已恢复事件。
-08de4de目录创建候选仍由可信运行37740704252单独验证，不能从它推导read/list通过。
+08de4de目录创建已由可信运行37740704252单独验证并发布，不能从它推导read/list通过。
