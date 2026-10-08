@@ -1,6 +1,6 @@
 # WebDAV / LocalStore 读取与列表生命周期固定基准第二轮合同（P2）
 
-状态：**implemented / regression-validated / Docker-publication-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 当前审查基线：`OpenReader@08de4decfb91248901ca73adee5f102563181d68`。
@@ -181,7 +181,23 @@ writer观察request context；Range/conditional、旧完整File.Name标签和内
   最新默认Chromium1234未安装；系统Chrome诊断首次cold-progress超时不当作通过，使用已有
   1228独立临时实例完成全部断言。没有访问用户生产登录态。
 
-HTTP gate已加入可信Actions；候选commit/push、该候选fresh/historical/portable/backup/platform及
-exact/latest OCI独立核验仍待进行，未发布前不标Docker-published。最后已核验published为08de4de，
-生产最后health为db1ea21、用户原书已恢复；没有部署或生产数据变更。整体重构、import绝对目录展开、
+HTTP gate已加入可信Actions；候选commit/push与其fresh/historical/portable/backup/platform及
+exact/latest OCI现已独立核验，见下节。生产最后health为db1ea21、用户原书已恢复；没有部署或
+生产数据变更。整体重构、import绝对目录展开、
 列表cardinality及npm advisory独立审查继续未完成。
+
+## 9. 可信发布核验（2026-10-08）
+
+实现`11235c3ff111261dead932fab56fa36f98333fd5`已推送；可信Actions`37747103667`终态success。
+backend/frontend/build/Compose、新真实HTTP/native image、新卷/portable backup、历史卷兼容及
+最终双架构发布/platform核验均success。未重启运行，不从旧08de4de发布推导本候选成功。
+
+exact tag `ghcr.io/changshengyu/openreader:11235c3`和`latest`读回同一OCI index，并与可信日志一致：
+
+- index：`sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3`
+- linux/amd64：`sha256:99dcc7617b0f032ad5fbe91000e330fc2464b584e347d82dc0969ff58935ebed`
+- linux/arm64：`sha256:2cefeaef51950c7726b6fbf5477237149736e290d339ec5cfda4fa8011c486ba`
+
+unknown/unknown成员是attestation，不是缺失CPU平台。允许差异仍为Go fd-relative/no-follow/
+context、既有多用户及REST适配；不改schema/root/backup/API字段/旧URL。设备验收未从CI推导。
+生产health重新读取仍`db1ea216f9849bc44a90b5b760241df1c6d069b0`/statusok；无自动升级。

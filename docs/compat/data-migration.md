@@ -4,7 +4,7 @@ Status: working compatibility ledger; implemented migrations and remaining actio
 
 ## 2026-10-08 read/list lifecycle inventory (no migration)
 
-The implemented (publication pending)
+The implemented and Docker-published
 [`webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)
 does not change SQLite, configuration, roots, cache generations, backups or old URLs. Existing administrator
 and private-user roots remain in place; read/list operations never repair, chmod, delete or create missing
@@ -13,7 +13,8 @@ entities are retained, with existing DAV rejection versus LocalStore hiding pres
 Open/Stat callers need regression checks, not silent changes to import tokens, progress ingress, restore or
 cache compensation. Contract3ecf48a preceded red80bb48c and application edits; full/race, nonroot Linux,
 isolated fresh three-account HTTP and adjacent real Reader checks pass. Candidate-specific historical/fresh/
-portable/backup publication gates remain pending. No production upgrade is inferred.
+portable/backup/platform gates passed trusted Actions37747103667 exact11235c3. Exact/latest index is
+sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3. No production upgrade is inferred.
 
 Directory creation08de4de independently completed trusted Actions37740704252, including fresh/historical/
 portable/backup and amd64/arm64 publication. Exact/latest OCI index is

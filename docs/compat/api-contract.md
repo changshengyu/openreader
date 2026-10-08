@@ -2,7 +2,7 @@
 
 Status: working contract. Keep this file updated when endpoint semantics change.
 
-## 2026-10-08 read/list lifecycle (implemented; image gate pending)
+## 2026-10-08 read/list lifecycle (implemented and Docker-published)
 
 The next fixed-baseline contract is
 [`webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
@@ -15,10 +15,12 @@ initialization. No new route, request field, response shape or499 is authorized.
 confirms30 failures in namespace admission, FIFO blocking and authorized cancellation. The fd-bound implementation
 now turns these green, preserves complete internal File.Name labels, and passes full/race/vet plus isolated
 three-account real HTTP and three-viewport real Reader controls. The HTTP suite is a trusted Actions prerequisite;
-candidate-specific volume/backup/platform publication remains pending, independent of directory image08de4de.
+candidate-specific volume/backup/platform publication passed trusted Actions37747103667 for exact11235c3,
+independent of directory image08de4de. Exact11235c3/latest share OCI index
+sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3.
 
-Directory candidate08de4de is now Docker-published: trusted Actions37740704252 passed all gates and exact/
-latest OCI index is sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c.
+Earlier directory candidate08de4de was Docker-published by trusted Actions37740704252; at that publication
+exact/latest OCI index was sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c.
 See the directory contract for platform digests. Production remainsdb1ea21; no remote upgrade was performed.
 
 ## 2026-10-08 storage import source-read inventory (no implementation)

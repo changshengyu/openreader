@@ -1546,7 +1546,7 @@ Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复
 可信卷/备份/双架构发布门已独立核验；exact08de4de/latest index为
 sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c，生产未升级。
 
-# 2026-10-08 WebDAV / LocalStore read-list（已实施，候选发布门待验）
+# 2026-10-08 WebDAV / LocalStore read-list（已实施并发布，设备验收独立）
 
 - [x] 固定基准及当前Stat/List/Open和LocalStore绝对扫描源码已映射；记录源码窗口，不称已复现。
 - [x] 30项实际admission/open/list替换与授权后cancel红测；fixture fired，旧List泄漏诱饵名，原字节未变。
@@ -1554,7 +1554,8 @@ sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c，生产
 - [x] regular NOFOLLOW/NONBLOCK、FIFO有界拒绝、000 native metadata/权限不改与句柄清理验证。
 - [x] DAV整体unsafe与LocalStore隐藏策略、Range/conditional、两用户及管理员旧布局根真实HTTP回归。
 - [x] 共享cache/archive/import/restore全量/race与真实Reader三视口相邻回归。
-- [ ] 该候选可信新旧卷/portable/backup/双架构发布门与exact OCI。
+- [x] 该候选可信新旧卷/portable/backup/双架构发布门与exact OCI：37747103667终态success，
+  11235c3/latest index sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3。
 
 见 `compat/webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
 nil-in-production接缝未改变原行为；FIFO旧阻塞已用测试peer有界释放并join，000/Range/conditional/

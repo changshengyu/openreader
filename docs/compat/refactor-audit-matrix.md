@@ -68,7 +68,7 @@ portable/backup/platform门通过，exact `08de4de` 和 `latest` 为同一双架
 不把旧实现未注入的identity race说成已复现。
 
 下一项 read/list lifecycle 已从固定上游与 `08de4de` 源码盘点，状态
-**implemented / regression-validated / Docker-publication-pending**，见
+**implemented / regression-validated / Docker-published / awaiting-device-verification**，见
 [`webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 两前缀 GET/PROPFIND 与 LocalStore list/download 在路径检查后仍绝对读取，未绑定整个 caller
 boundary/ancestor identity，也未把 root初始化后的 request cancellation带入读取与扫描。
@@ -77,7 +77,9 @@ symlink被接受、FIFO阻塞及授权后取消仍返回成功数据；fixture�
 现已实施全boundary/ancestor绑定、native fd-root metadata、NOFOLLOW/NONBLOCK、fd-relative扫描
 及request context；30红灯转绿。完整File.Name标签回退另补合同/红测后修复，未削弱Reader身份验证。
 最终Go full/vet/service和相邻API race、frontend762/build、Compose、Linux双架构编译/非root全包、
-三账户临时卷真实HTTP以及真实Go/SQLite/Chromium Reader三视口通过；独立可信卷/备份/发布门待验。
+三账户临时卷真实HTTP以及真实Go/SQLite/Chromium Reader三视口通过；独立可信运行37747103667
+全部新旧卷/portable/backup/platform门success，exact11235c3/latest为同一index
+sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3，生产仍db1ea21。
 保留正常 XML/JSON、Depth、recursive/hidden 策略差异、
 下载 Range/conditional 和历史私有根；不把 import展开、共享内部caller或目录创建发布算作本项完成。
 目录创建实现 `08de4de` 已推送并发布，可信运行 `37740704252` 已终态success；生产仍db1ea21。
