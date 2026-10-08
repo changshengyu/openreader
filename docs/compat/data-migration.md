@@ -2,6 +2,18 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## 2026-10-08 read/list lifecycle inventory (no migration)
+
+The pending
+[`webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)
+does not change SQLite, configuration, roots, cache generations, backups or old URLs. Existing administrator
+and private-user roots remain in place; read/list operations never repair, chmod, delete or create missing
+child directories. Legitimate lazy-root initialization retains the reviewed08de4de behavior. Symlink/special
+entities are retained, with existing DAV rejection versus LocalStore hiding preserved. Background shared
+Open/Stat callers need regression checks, not silent changes to import tokens, progress ingress, restore or
+cache compensation. Source-based inventory is complete; red tests, implementation and candidate-specific
+historical/fresh/portable/backup gates are still pending. No production upgrade is inferred.
+
 ## User-facing migration contract (2026-08-11)
 
 The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation

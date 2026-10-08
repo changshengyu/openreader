@@ -1544,3 +1544,16 @@ Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复
 无新fetch/配置/schema/host-path或credentials泄漏；错误固定JSON/空body。GET/PROPFIND/Open
 独立生命周期尚待后续动作审查。最终Go/vet/race/最新Linux与fresh临时卷二进制HTTP复验exit0；
 可信卷/备份/双架构发布门仍独立待核验。
+
+# 2026-10-08 WebDAV / LocalStore read-list（仅合同盘点）
+
+- [x] 固定基准及当前Stat/List/Open和LocalStore绝对扫描源码已映射；记录源码窗口，不称已复现。
+- [ ] 确定性实际admission/open/list边界替换与cancel红测；fixture fired、无外部bytes/names。
+- [ ] fd-relative boundary/users/user/parent/final身份绑定及request context实施。
+- [ ] regular NOFOLLOW/NONBLOCK、FIFO有界拒绝、000 metadata/权限不改与句柄清理验证。
+- [ ] DAV整体unsafe与LocalStore隐藏策略、Range/conditional、两用户及历史根真实HTTP回归。
+- [ ] 共享cache/archive/import/restore相邻回归及可信卷/备份/双架构门。
+
+见 `compat/webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
+本合同无新远程fetch、配置/数据迁移或密码日志；不改当前生产db1ea21，不重开原书已恢复事件。
+08de4de目录创建候选仍由可信运行37740704252单独验证，不能从它推导read/list通过。

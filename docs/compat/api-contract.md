@@ -2,6 +2,18 @@
 
 Status: working contract. Keep this file updated when endpoint semantics change.
 
+## 2026-10-08 read/list lifecycle inventory (not implemented)
+
+The next fixed-baseline contract is
+[`webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Both DAV prefixes keep authenticated file GET, standard PROPFIND207/Depth0-or-one, existing unsafe403/404
+empty errors and Range/conditional responses; `/reader3/webdav` directoryGET405 and `/webdav` private
+directoryGET207 remain distinct. LocalStore keeps list200 `{path,recursive,items}`, missing-child404,
+download/Range, fixed JSON errors and hidden-entry semantics. The pending change must bind caller boundary,
+ancestors, metadata and bytes to original opened handles and observe request cancellation after root
+initialization. No new route, request field, response shape or499 is authorized. Source evidence only;
+deterministic red tests and implementation remain pending, independent of directory candidate08de4de.
+
 ## Global rules
 
 - Public API root: `/api`.
