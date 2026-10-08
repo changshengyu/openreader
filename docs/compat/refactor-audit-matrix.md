@@ -53,6 +53,13 @@ Linux权限/硬链接/双tmpfs EXDEV、真实 Basic/curl 与 LocalStore HTTP、�
 同一 amd64/arm64 OCI index `sha256:28a0b797a289f8cf2cd54b0054471fe3b0ce3a197c2c4bc41a1bd7c9f2430a94`。
 生产 health 仍为 `db1ea21`，原书恢复与整体未完成状态分别保持。
 
+下一项 directory-creation lifecycle 已完成固定上游取证，状态 **inventory-complete / tests-and-implementation-pending**，
+见 [`webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+MKCOL / EnsureRoot / LocalStore parent 的绝对 MkdirAll 与无 request context 是生命周期 must-fix；
+LocalStore missing-child list 自动创建并200与固定上游读取报错偏离，需404且不创建。保留根惰性
+初始化、递归父层、旧权限/私有布局和所有正常协议，不增加上游没有的可见控件。尚未补红测/实施，
+不从 MOVE 发布推导这项通过。
+
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于

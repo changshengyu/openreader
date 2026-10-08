@@ -1530,3 +1530,13 @@ WebSocket 限 caller，URL/name-author 歧义跳过；正文识别只捕获 16 K
 Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复受阻保留 quarantine、提交后未知
 实体 pending 头已验证；未暴露主机路径/令牌，无新外部 fetch/应用配置/迁移。实现 `5338f26`
 可信 Actions `37192132525` 全部门成功，双架构 exact OCI 已核验；生产 `db1ea21` 未升级。
+
+# 2026-10-08 目录创建生命周期（inventory，未实施）
+
+- [ ] 绑定configured anchor/root/users/user/parent identity，工作期替换不跟随。
+- [ ] request context覆盖MKCOL、root初始化、LocalStore upload/create父层；取消只回收owned空目录。
+- [ ] missing-child LocalStore list404且无持久创建；合法根惰性初始化与空目录200保持。
+- [ ] 新卷/旧卷、ordinary user隔离、权限/unknown/newcomer/嵌套/空白路径与相邻token/cache门。
+
+聚焦合同 `compat/webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`；
+本阶段没有应用/测试改动或新漏洞复现声明。GET/PROPFIND/Open独立生命周期尚待后续动作审查。

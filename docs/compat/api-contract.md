@@ -1430,6 +1430,14 @@ revision and repeated save/status with a private canonical mirror. OCI index:
 `sha256:63979a0e01d8942a9c594d444e6d5cdf28f0ac5c382825f71a051a52b02a21e4`.
 # 2026-10-04 WebDAV PUT 生命周期复审
 
+目录创建后续合同见
+[`webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+状态 inventory-complete；双前缀 MKCOL existing-dir/recursive201空body、regular409/rootunsafe403
+和 Basic/Bearer 保持。授权后取消不得初始化根/创建目录；LocalStore directory保持201原pathJSON。
+固定上游列表不创建缺失子目录：`GET /api/local-store?path=<missing-child>` 将返回404固定
+`{"error":"local store path not found"}`且无子目录写入，根惰性初始化与已有空目录200保持。
+合同先于红测与实施，本段不宣称已经修复或发布。
+
 COPY 后续生命周期合同见
 [`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)：
 保留双前缀、Destination、Overwrite:T、Basic/Bearer 和 201 空 body；root/source/parent/target/stage
