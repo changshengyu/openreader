@@ -43,11 +43,8 @@ func (s *Server) listLocalStore(c *gin.Context) {
 	}
 	resource, err := service.Stat(relativePath)
 	if errors.Is(err, webdavfs.ErrNotFound) && relativePath != "" {
-		if err := service.Mkdir(relativePath); err != nil {
-			writeLocalStoreFilesystemError(c, err, "failed to create local store")
-			return
-		}
-		resource, err = service.Stat(relativePath)
+		c.JSON(http.StatusNotFound, gin.H{"error": "local store path not found"})
+		return
 	}
 	if err != nil {
 		writeLocalStoreFilesystemError(c, err, "failed to read local store")
@@ -174,7 +171,7 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 		return
 	}
 	if upload.path != "" {
-		if err := service.Mkdir(upload.path); err != nil {
+		if err := service.MkdirContext(c.Request.Context(), upload.path); err != nil {
 			writeLocalStoreFilesystemError(c, err, "failed to create directory")
 			return
 		}
@@ -300,7 +297,7 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 		return
 	}
 	if parentPath != "" {
-		if err := service.Mkdir(parentPath); err != nil {
+		if err := service.MkdirContext(c.Request.Context(), parentPath); err != nil {
 			writeLocalStoreFilesystemError(c, err, "failed to create parent directory")
 			return
 		}
@@ -318,7 +315,7 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 		writeLocalStoreFilesystemError(c, err, "failed to create directory")
 		return
 	}
-	if err := service.Mkdir(relativePath); err != nil {
+	if err := service.MkdirContext(c.Request.Context(), relativePath); err != nil {
 		if errors.Is(err, webdavfs.ErrConflict) {
 			c.JSON(http.StatusConflict, gin.H{"error": "failed to create directory"})
 		} else {

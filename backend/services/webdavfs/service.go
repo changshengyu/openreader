@@ -3,7 +3,6 @@ package webdavfs
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -83,6 +82,13 @@ func (s *Service) Root() string {
 }
 
 func (s *Service) EnsureRoot() error {
+	return s.EnsureRootContext(context.Background())
+}
+
+func (s *Service) EnsureRootContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := s.rejectSymlinks(s.root); err != nil {
 		return err
 	}
@@ -91,10 +97,11 @@ func (s *Service) EnsureRoot() error {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := os.MkdirAll(s.root, 0o755); err != nil {
-		return fmt.Errorf("create WebDAV root: %w", err)
+	relative, err := filepath.Rel(s.boundary, s.root)
+	if err != nil {
+		return ErrUnsafePath
 	}
-	return s.rejectSymlinks(s.root)
+	return directoryCreationError(rootedfs.CreateDirectories(ctx, s.boundary, relative))
 }
 
 func (s *Service) Resolve(rawPath string) (string, string, error) {
@@ -243,6 +250,13 @@ func (s *Service) Put(ctx context.Context, rawPath string, source io.Reader, max
 }
 
 func (s *Service) Mkdir(rawPath string) error {
+	return s.MkdirContext(context.Background(), rawPath)
+}
+
+func (s *Service) MkdirContext(ctx context.Context, rawPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	target, relative, err := s.Resolve(rawPath)
 	if err != nil {
 		return err
@@ -250,24 +264,24 @@ func (s *Service) Mkdir(rawPath string) error {
 	if relative == "" {
 		return ErrUnsafePath
 	}
-	if info, statErr := os.Lstat(target); statErr == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return ErrUnsafePath
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if !info.Mode().IsRegular() {
-			return ErrUnsafePath
-		}
-		return ErrConflict
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return statErr
+	boundaryRelative, err := filepath.Rel(s.boundary, target)
+	if err != nil {
+		return ErrUnsafePath
 	}
-	if err := os.MkdirAll(target, 0o755); err != nil {
+	return directoryCreationError(rootedfs.CreateDirectories(ctx, s.boundary, boundaryRelative))
+}
+
+func directoryCreationError(err error) error {
+	switch {
+	case errors.Is(err, rootedfs.ErrUnsafePath):
+		return ErrUnsafePath
+	case errors.Is(err, rootedfs.ErrNotDirectory):
+		return ErrNotDirectory
+	case errors.Is(err, rootedfs.ErrDirectoryConflict):
+		return ErrConflict
+	default:
 		return err
 	}
-	return s.rejectSymlinks(target)
 }
 
 func (s *Service) Remove(rawPath string) error {

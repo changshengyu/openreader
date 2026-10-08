@@ -1432,11 +1432,13 @@ revision and repeated save/status with a private canonical mirror. OCI index:
 
 目录创建后续合同见
 [`webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
-状态 inventory-complete；双前缀 MKCOL existing-dir/recursive201空body、regular409/rootunsafe403
+状态 implemented / regression-validated / Docker-publication-pending；双前缀 MKCOL existing-dir/recursive201空body、regular409/rootunsafe403
 和 Basic/Bearer 保持。授权后取消不得初始化根/创建目录；LocalStore directory保持201原pathJSON。
 固定上游列表不创建缺失子目录：`GET /api/local-store?path=<missing-child>` 将返回404固定
 `{"error":"local store path not found"}`且无子目录写入，根惰性初始化与已有空目录200保持。
-合同先于红测与实施，本段不宣称已经修复或发布。
+合同 `d06f954`、红测 `d5f00bc` 后已实施；18旧红灯与actual working-root403/上传parent取消转绿，
+真实协议/LocalStoreHTTP状态和无写入副作用通过。最终Go/最新Linux/二进制fresh卷HTTP也通过；
+可信Docker门仍待核验，生产health仍db1ea21，不计生产升级。
 
 COPY 后续生命周期合同见
 [`webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-copy-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)：

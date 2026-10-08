@@ -195,7 +195,7 @@ func (s *Server) localStoreFileService(c *gin.Context) (*webdavfs.Service, bool)
 		writeLocalStoreFilesystemError(c, err, "failed to access local store")
 		return nil, false
 	}
-	if err := service.EnsureRoot(); err != nil {
+	if err := service.EnsureRootContext(c.Request.Context()); err != nil {
 		writeLocalStoreFilesystemError(c, err, "failed to create local store")
 		return nil, false
 	}

@@ -1531,12 +1531,16 @@ Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复
 实体 pending 头已验证；未暴露主机路径/令牌，无新外部 fetch/应用配置/迁移。实现 `5338f26`
 可信 Actions `37192132525` 全部门成功，双架构 exact OCI 已核验；生产 `db1ea21` 未升级。
 
-# 2026-10-08 目录创建生命周期（inventory，未实施）
+# 2026-10-08 目录创建生命周期（已实施/本地回归，发布待门）
 
-- [ ] 绑定configured anchor/root/users/user/parent identity，工作期替换不跟随。
-- [ ] request context覆盖MKCOL、root初始化、LocalStore upload/create父层；取消只回收owned空目录。
-- [ ] missing-child LocalStore list404且无持久创建；合法根惰性初始化与空目录200保持。
-- [ ] 新卷/旧卷、ordinary user隔离、权限/unknown/newcomer/嵌套/空白路径与相邻token/cache门。
+- [x] 绑定configured anchor/root/users/user/parent identity，实际工作期替换fixture触发并不跟随。
+- [x] request context覆盖MKCOL、root初始化、LocalStore upload/create父层；第二层取消只回收owned空目录，未知成员保留。
+- [x] missing-child LocalStore list404且无子目录创建；合法根惰性初始化与空目录200保持。
+- [x] 本地新根/ordinary user隔离、非rootLinux权限/unknown/newcomer/嵌套/空白与相邻token/cache race。
+- [ ] 最终候选可信fresh/historical/portable/backup/双架构发布门。
 
 聚焦合同 `compat/webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`；
-本阶段没有应用/测试改动或新漏洞复现声明。GET/PROPFIND/Open独立生命周期尚待后续动作审查。
+合同与18项旧实现红灯先于应用修改。已有Go/race/真实HTTP和非rootLinux证据，不以相邻MOVE代替。
+无新fetch/配置/schema/host-path或credentials泄漏；错误固定JSON/空body。GET/PROPFIND/Open
+独立生命周期尚待后续动作审查。最终Go/vet/race/最新Linux与fresh临时卷二进制HTTP复验exit0；
+可信卷/备份/双架构发布门仍独立待核验。

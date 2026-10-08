@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,5 +155,97 @@ func TestDirectoryLifecycleFreshRootsAndExistingCollectionsRemainCompatible(t *t
 		if info, err := os.Lstat(filepath.Join(root, "nested", "parent", "child")); err != nil || !info.IsDir() {
 			t.Fatalf("recursive private/root path missing: %v %v", info, err)
 		}
+	}
+}
+
+func TestWebDAVMkcolWorkingRootReplacementReturnsEmpty403(t *testing.T) {
+	for _, prefix := range []string{"/reader3/webdav", "/webdav"} {
+		t.Run(prefix, func(t *testing.T) {
+			router, server := setupTestServer(t)
+			auth := authHeader(t, router)
+			if prefix == "/reader3/webdav" {
+				auth = webDAVBasic("testuser", "test1234")
+			}
+			root, outside := server.webdavDir(), t.TempDir()
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			ctx := &davCopyContext{Context: context.Background()}
+			ctx.onWork = func() bool {
+				entries, _ := os.ReadDir(root)
+				for _, entry := range entries {
+					if strings.HasPrefix(entry.Name(), ".openreader-directory-") {
+						if err := os.Rename(root, root+"-held"); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.Symlink(outside, root); err != nil {
+							t.Fatal(err)
+						}
+						return true
+					}
+				}
+				return false
+			}
+			request := httptest.NewRequest("MKCOL", prefix+"/new/child", nil).WithContext(ctx)
+			request.Header.Set("Authorization", auth)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if !ctx.fired.Load() || response.Code != 403 || response.Body.Len() != 0 {
+				t.Fatalf("MKCOL working boundary: fired=%v status=%d body=%q", ctx.fired.Load(), response.Code, response.Body.String())
+			}
+			for _, checked := range []string{outside, root + "-held"} {
+				entries, err := os.ReadDir(checked)
+				if err != nil || len(entries) != 0 {
+					t.Fatalf("replacement/original acquired new directories: %v %v", entries, err)
+				}
+			}
+		})
+	}
+}
+
+func TestLocalStoreUploadCancelledDuringParentCreationWritesNoFiles(t *testing.T) {
+	router, server := setupTestServer(t)
+	_ = authHeader(t, router)
+	auth := registerStorageTestUser(t, router, "directoryupload")
+	root := filepath.Join(server.cfg.LocalStoreDir, "users", "directoryupload")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("path", "incoming/parent"); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("file", "book.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("must not publish")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &davCopyContext{Context: base}
+	ctx.onWork = func() bool {
+		entries, _ := os.ReadDir(root)
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".openreader-directory-") {
+				cancel()
+				return true
+			}
+		}
+		return false
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/local-store/upload", &body).WithContext(ctx)
+	request.Header.Set("Authorization", auth)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	entries, err := os.ReadDir(root)
+	if !ctx.fired.Load() || response.Code == 201 || err != nil || len(entries) != 0 || strings.Contains(response.Body.String(), server.cfg.LocalStoreDir) {
+		t.Fatalf("upload parent cancellation: fired=%v status=%d body=%q entries=%v err=%v", ctx.fired.Load(), response.Code, response.Body.String(), entries, err)
 	}
 }

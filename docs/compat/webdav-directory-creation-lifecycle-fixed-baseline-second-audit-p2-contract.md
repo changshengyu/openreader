@@ -1,6 +1,6 @@
 # WebDAV / LocalStore 目录创建生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / tests-and-implementation-pending**。
+状态：**implemented / regression-validated / Docker-publication-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 审查实现：`5338f261002bd8f234414c8f8e14ac89068ebab5`。本阶段只改合同，不改测试/应用。
 
@@ -92,3 +92,45 @@ GET/PROPFIND/Open 的独立读取/列表生命周期仍属未来审查，不能�
 正常fresh管理员/普通用户根、双前缀递归/重复MKCOL与LocalStore根列表控制组不失败；不能为了
 让取消红灯通过而禁掉新卷初始化或递归父层。没有工作期race夹具触发证据，不声称已确定性重现
 root/parent替换漏洞。当前仍是tests-and-implementation-pending，应用没有改动。
+
+## 实施与验证记录（2026-10-08）
+
+合同 `d06f954`、确定性红测 `d5f00bc` 后实施 `rootedfs.CreateDirectories`。原configured root
+或缺失配置根的最近现存配置ancestor从第一次Lstat即绑定original inode，打开root并逐层no-follow；
+随机private目录在original parent fd创建，绑定opened inode后no-replace发布到请求component。
+工作阶段复验root/全部已接收parent，取消/失败仅逆序unlink当前仍为owned inode的空目录；没有
+绝对MkdirAll、递归RemoveAll或chmod既有目录。opened新节点持有到回收结束，owned-stat复验/
+unlink无需再分配fd，不因回收额外open失败而误取其它名字。
+
+正常并发创建时，no-replace遇到EEXIST只可重新接收同一original parent下的safe directory满足
+幂等；不覆盖该实体、不将其记录为本请求owned cleanup。文件仍409，symlink/special拒绝。
+实现期间的变量遮蔽曾使EEXIST分支误报missing，已修正，并保持16并发×10轮真实断言，不删测试。
+existing final目录000无需内容读取而幂等，保留inode/mode；只读parent失败保留权限和空内容。
+
+EnsureRootContext/MkdirContext贯穿WebDAV和LocalStore请求；内部background包装继续供既有
+cache/stage调用，不改其补偿或CAS。LocalStore missing-child list已移除Mkdir分支，404固定JSON；
+根惰性初始化、正常directory201/重复409、multipart父目录创建保持。LocalStore元数据name已有
+trim-outer-whitespace合同不改；raw MKCOL与rooted helper原始空白名继续保持。没有增加UI控件。
+
+18个旧红灯转绿；两前缀实际Gin/Basic-Bearer的工作期root替换fixture **fired=true**，403空body，
+original/external均无新节点。实际multipart父目录创建阶段取消fixture fired=true，无新文件。
+root/parent/users/user/fresh-anchor在接收后被real-dir或symlink替换均fail closed；stage换实体、
+newcomer file/link/directory、第二层stage/install后取消、未知成员保留、fresh层/中文空白名、
+existing000、readonly555和16并发幂等有本项测试，不从MOVE绿测推导。
+
+rootedfs目录合同重复10轮、rootedfs/webdavfs全包race、目录API race通过；更宽WebDAV/LocalStore/
+ChapterCache API race通过（176.296s）。Go full/vet、frontend762/762/build、Compose、Linux双架构
+服务编译和非root Linuxarm64真实目录/权限/完整WebDAV服务测试通过。最终owned-stat版本又通过
+Go full（API79.474s）/vet、rootedfs/webdavfs全包race、目录API race（19.258s）、刷新后的Linux
+双架构编译/非root实测与最终二进制全新临时卷HTTP复验，均已核对exit0。
+
+隔离真实Go/SQLite Basic/curl协议和LocalStore新探针已通过：recursive/idempotent MKCOL201、
+regular409、PROPFIND207及相邻PUT/COPY/MOVE/DELETE/LOCK；missing404/no-child-write、lazyroot、
+directory201/重复409、中文/internal-space、upload-parent和exact download bytes。首个诊断服务
+已停止；最终二进制在独立fresh临时卷同样通过两份协议探针。此切片无前端交互/几何变化，不添加或重复Reader控件截图；
+真实协议和状态副作用是本项运行门。trusted native/fresh/historical/portable/backup/双架构发布
+仍待新候选，红测run37738124537的backend失败符合预期且没有发布镜像。
+
+原生产书籍故障已device-verified关闭；本轮再次health确认production commit `db1ea21`，不把本地通过记作部署。
+整体固定基准审计、独立GET/PROPFIND/Open动作未完成；npm同一锁文件当前报告8high，未升级依赖
+或改锁，需另行authoritative advisory与实际可达性inventory，不据metadata宣称生产可利用。

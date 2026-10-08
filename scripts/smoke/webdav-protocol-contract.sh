@@ -90,9 +90,23 @@ assert_status "$status" 409 "PUT without parent"
 status="$(request MKCOL "$TARGET_URL/reader3/webdav/$ROOT_NAME" --user "$USERNAME:$PASSWORD")"
 assert_status "$status" 201 "MKCOL smoke directory"
 
+for prefix in reader3/webdav webdav; do
+  for attempt in 1 2; do
+    status="$(request MKCOL "$TARGET_URL/$prefix/$ROOT_NAME/mkdir/nested/leaf" --user "$USERNAME:$PASSWORD")"
+    assert_status "$status" 201 "recursive/idempotent MKCOL ($prefix/$attempt)"
+    [ ! -s "$BODY" ]
+  done
+done
+status="$(request PROPFIND "$TARGET_URL/webdav/$ROOT_NAME/mkdir/nested/leaf" --user "$USERNAME:$PASSWORD" -H 'Depth: 0')"
+assert_status "$status" 207 "MKCOL recursive leaf exists"
+
 status="$(request PUT "$TARGET_URL/reader3/webdav/$ROOT_NAME/source.txt" \
   --user "$USERNAME:$PASSWORD" --data-binary 'webdav protocol smoke')"
 assert_status "$status" 201 "PUT source"
+
+status="$(request MKCOL "$TARGET_URL/webdav/$ROOT_NAME/source.txt" --user "$USERNAME:$PASSWORD")"
+assert_status "$status" 409 "MKCOL preserves existing regular file"
+[ ! -s "$BODY" ]
 
 status="$(request PUT "$TARGET_URL/webdav/$ROOT_NAME/source.txt" \
   --user "$USERNAME:$PASSWORD" --data-binary 'overwritten content')"

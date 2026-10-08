@@ -53,13 +53,17 @@ Linux权限/硬链接/双tmpfs EXDEV、真实 Basic/curl 与 LocalStore HTTP、�
 同一 amd64/arm64 OCI index `sha256:28a0b797a289f8cf2cd54b0054471fe3b0ce3a197c2c4bc41a1bd7c9f2430a94`。
 生产 health 仍为 `db1ea21`，原书恢复与整体未完成状态分别保持。
 
-下一项 directory-creation lifecycle 已完成固定上游取证，状态 **inventory-complete / tests-and-implementation-pending**，
+下一项 directory-creation lifecycle 已按合同/红测实施，状态 **implemented / regression-validated / Docker-publication-pending**，
 见 [`webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-directory-creation-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 MKCOL / EnsureRoot / LocalStore parent 的绝对 MkdirAll 与无 request context 是生命周期 must-fix；
 LocalStore missing-child list 自动创建并200与固定上游读取报错偏离，需404且不创建。保留根惰性
 初始化、递归父层、旧权限/私有布局和所有正常协议，不增加上游没有的可见控件。合同 `d06f954`
 后18项旧实现红测已确定性复现取消后创建和missing list写盘；正常fresh/递归/幂等控制组不失败。
-尚未实施，不从 MOVE 发布推导这项通过，不把未注入的identity race说成已复现。
+现已实施original configured anchor/parent与no-replace mkdir、owned-empty-only回收和request context；
+missing list404无子目录写入。18红灯转绿，实际identity/取消fixture fired，重复并发/权限/非rootLinux、
+相邻API race、frontend762/build和真实Basic+LocalStoreHTTP通过。最终Go full/vet/race、最新Linux
+二进制与fresh隔离Go/SQLite协议复验均exit0；可信卷/发布门仍须独立核验，不从 MOVE 发布推导完成，
+不把旧实现未注入的identity race说成已复现。
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 

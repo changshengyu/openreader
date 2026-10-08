@@ -82,7 +82,7 @@ func (s *Server) webDAVFileService(c *gin.Context) (*webdavfs.Service, bool) {
 		writeWebDAVServiceError(c, err)
 		return nil, false
 	}
-	if err := service.EnsureRoot(); err != nil {
+	if err := service.EnsureRootContext(c.Request.Context()); err != nil {
 		writeWebDAVServiceError(c, err)
 		return nil, false
 	}
@@ -209,7 +209,7 @@ func (s *Server) webdavMkcol(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := service.Mkdir(strings.TrimPrefix(c.Param("path"), "/")); err != nil {
+	if err := service.MkdirContext(c.Request.Context(), strings.TrimPrefix(c.Param("path"), "/")); err != nil {
 		writeWebDAVServiceError(c, err)
 		return
 	}
